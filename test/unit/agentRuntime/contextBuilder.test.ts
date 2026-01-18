@@ -40,21 +40,18 @@ describe('contextBuilder with relationship hints', () => {
             userText: 'Hello',
         });
 
-        const blockOrder = messages.map((m) => {
-            if (m.content.includes('Relationship hints')) return 'relationship_hints';
-            if (m.content.includes('Channel profile')) return 'profile_summary';
-            if (m.content.includes('Rolling summary')) return 'rolling_summary';
-            if (m.content.includes('Transcript')) return 'transcript';
-            if (m.content.includes('User summary')) return 'memory';
-            if (m.role === 'user') return 'user';
-            return 'other';
-        });
+        const systemContent = messages[0].content;
 
-        const relIdx = blockOrder.indexOf('relationship_hints');
-        const profileIdx = blockOrder.indexOf('profile_summary');
-        const transcriptIdx = blockOrder.indexOf('transcript');
+        const relIdx = systemContent.indexOf('Relationship hints');
+        const profileIdx = systemContent.indexOf('Channel profile');
+        const transcriptIdx = systemContent.indexOf('Transcript');
 
-        expect(relIdx).toBeGreaterThan(profileIdx); // After profile_summary
-        expect(relIdx).toBeLessThan(transcriptIdx); // Before transcript
+        expect(relIdx).toBeGreaterThan(-1);
+        expect(profileIdx).toBeGreaterThan(-1);
+        expect(transcriptIdx).toBeGreaterThan(-1);
+
+        // Logical order check: profile -> relationship -> transcript
+        expect(relIdx).toBeGreaterThan(profileIdx);
+        expect(transcriptIdx).toBeGreaterThan(relIdx);
     });
 });

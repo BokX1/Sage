@@ -62,16 +62,7 @@ export function buildContextMessages(params: BuildContextMessagesParams): LLMCha
         },
     ];
 
-    if (userProfileSummary) {
-        blocks.push({
-            id: 'memory',
-            role: 'system',
-            content: `Personalization memory (may be incomplete): ${userProfileSummary}`,
-            priority: 90,
-            hardMaxTokens: config.contextBlockMaxTokensMemory,
-            truncatable: true,
-        });
-    }
+
 
     if (channelProfileSummary) {
         blocks.push({
@@ -128,6 +119,20 @@ export function buildContextMessages(params: BuildContextMessagesParams): LLMCha
         });
     }
 
+    // MOVED: Memory block placed HERE for high Recency Bias (after transcript)
+    if (userProfileSummary) {
+        blocks.push({
+            id: 'memory',
+            role: 'system',
+            content: `## User Personalization (CRITICAL)
+Use these known facts about the user to answer their question:
+${userProfileSummary}`,
+            priority: 90,
+            hardMaxTokens: config.contextBlockMaxTokensMemory,
+            truncatable: true,
+        });
+    }
+
     if (intentHint) {
         blocks.push({
             id: 'intent_hint',
@@ -165,8 +170,24 @@ export function buildContextMessages(params: BuildContextMessagesParams): LLMCha
         truncationNoticeEnabled: config.contextTruncationNotice,
     });
 
-    return budgetedBlocks.map((block) => ({
-        role: block.role,
-        content: block.content,
-    }));
+    // COALESCE SYSTEM MESSAGES
+    // Some providers (Pollinations/OpenAI-proxies) drop secondary system messages.
+    // We merge them all into a single system message to ensure context delivery.
+    const systemContentParts: string[] = [];
+    const nonSystemMessages: LLMChatMessage[] = [];
+
+    for (const block of budgetedBlocks) {
+        if (block.role === 'system') {
+            systemContentParts.push(block.content);
+        } else {
+            nonSystemMessages.push({ role: block.role, content: block.content });
+        }
+    }
+
+    const mergedSystemMessage: LLMChatMessage = {
+        role: 'system',
+        content: systemContentParts.join('\n\n'),
+    };
+
+    return [mergedSystemMessage, ...nonSystemMessages];
 }

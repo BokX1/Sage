@@ -135,6 +135,7 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
         channelId,
         userId,
         traceId,
+        skipMemory: !!userProfileSummary,
     });
 
     const expertPacketsText = expertPackets.map((p) => `[${p.name}] ${p.content}`).join('\n\n');

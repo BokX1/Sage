@@ -30,7 +30,9 @@ export interface VoiceEvent {
     type: 'voice';
     guildId: string | null;
     channelId: string;
+    channelName: string;
     userId: string;
+    userDisplayName: string;
     action: 'join' | 'leave' | 'move';
     timestamp: Date;
 }
@@ -112,6 +114,31 @@ export async function ingestEvent(event: Event): Promise<void> {
                     messageCountIncrement: 1,
                 });
             }
+        } else if (event.type === 'voice') {
+            // SYNTHETIC SYSTEM MESSAGE FOR TRANSCRIPT
+            // This allows the LLM to "see" voice activity in the short-term context.
+            const content = `[Voice] ${event.userDisplayName} ${event.action} voice channel "${event.channelName}"`;
+
+            const syntheticMessage: ChannelMessage = {
+                messageId: `voice-${event.timestamp.getTime()}-${event.userId}`,
+                guildId: event.guildId,
+                channelId: event.channelId, // Note: This associates the log with the VOICE channel. 
+                // The bot might not see this if it's looking at a text channel.
+                // TODO: Should we broadcast to a "main" text channel?
+                // For now, we store it keyed by the voice channel ID.
+                authorId: 'SYSTEM',
+                authorDisplayName: 'System',
+                timestamp: event.timestamp,
+                content,
+                mentionsUserIds: [event.userId],
+                mentionsBot: false,
+            };
+
+            appendMessage(syntheticMessage);
+
+            // We usually don't persist synthetic voice logs to DB as "messages", 
+            // but we could if we wanted a permanent record. 
+            // For now, in-memory transcript is enough for awareness.
         }
     } catch (err) {
         // CRITICAL: Never let ingestion errors break the handler

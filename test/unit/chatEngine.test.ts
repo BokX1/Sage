@@ -94,7 +94,8 @@ describe('ChatEngine', () => {
         });
 
         const chatCall = mockChatFn.mock.calls[0][0];
-        expect(chatCall.messages[1].content).toContain('Likes cats');
+        // Memory is now coalesced into the first system message
+        expect(chatCall.messages[0].content).toContain('Likes cats');
     });
 
     it('should trigger profile update in background', async () => {

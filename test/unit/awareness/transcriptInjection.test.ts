@@ -176,15 +176,11 @@ describe('transcript injection', () => {
 
         const call = mockChat.chat.mock.calls[0][0];
         const messages = call.messages as { role: string; content: string }[];
-        const rollingIndex = messages.findIndex((message) =>
-            message.content.startsWith('Channel rolling summary'),
-        );
-        const profileIndex = messages.findIndex((message) =>
-            message.content.startsWith('Channel profile'),
-        );
-        const transcriptIndex = messages.findIndex((message) =>
-            message.content.includes('Recent channel transcript'),
-        );
+        const systemContent = messages[0].content;
+
+        const rollingIndex = systemContent.indexOf('Channel rolling summary');
+        const profileIndex = systemContent.indexOf('Channel profile');
+        const transcriptIndex = systemContent.indexOf('Recent channel transcript');
 
         expect(rollingIndex).toBeGreaterThan(-1);
         expect(profileIndex).toBeGreaterThan(-1);

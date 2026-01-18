@@ -68,7 +68,7 @@ const envSchema = z.object({
   CONTEXT_BLOCK_MAX_TOKENS_TRANSCRIPT: z.coerce.number().int().positive().default(1800),
   CONTEXT_BLOCK_MAX_TOKENS_ROLLING_SUMMARY: z.coerce.number().int().positive().default(1200),
   CONTEXT_BLOCK_MAX_TOKENS_PROFILE_SUMMARY: z.coerce.number().int().positive().default(1200),
-  CONTEXT_BLOCK_MAX_TOKENS_MEMORY: z.coerce.number().int().positive().default(800),
+  CONTEXT_BLOCK_MAX_TOKENS_MEMORY: z.coerce.number().int().positive().default(1500),
   CONTEXT_BLOCK_MAX_TOKENS_REPLY_CONTEXT: z.coerce.number().int().positive().default(800),
   CONTEXT_USER_MAX_TOKENS: z.coerce.number().int().positive().default(2500),
   CONTEXT_TRUNCATION_NOTICE: z

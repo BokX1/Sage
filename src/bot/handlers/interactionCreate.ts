@@ -1,4 +1,5 @@
-import { Events, Interaction, ChatInputCommandInteraction } from 'discord.js';
+import { Events, Interaction, ChatInputCommandInteraction, EmbedBuilder, SlashCommandBuilder } from 'discord.js';
+import pkg from '../../../package.json';
 import { client } from '../client';
 import { logger } from '../../utils/logger';
 import { getLLMClient } from '../../core/llm';
@@ -250,7 +251,28 @@ async function handleAdminStats(interaction: ChatInputCommandInteraction) {
       paramsHash: computeParamsHash({ guildId }),
     });
 
-    await interaction.editReply(`**Bot Statistics**\\n- Relationship edges: ${edgeCount}`);
+    const uptime = process.uptime();
+    const memUsage = process.memoryUsage();
+    const heapUsedMB = (memUsage.heapUsed / 1024 / 1024).toFixed(2);
+    const rssMB = (memUsage.rss / 1024 / 1024).toFixed(2);
+
+    const formatTime = (seconds: number) => {
+      const h = Math.floor(seconds / 3600);
+      const m = Math.floor((seconds % 3600) / 60);
+      const s = Math.floor(seconds % 60);
+      return `${h}h ${m}m ${s}s`;
+    };
+
+    const stats = [
+      `**Bot Statistics**`,
+      `- **Uptime**: ${formatTime(uptime)}`,
+      `- **Memory**: ${heapUsedMB} MB Heap / ${rssMB} MB RSS`,
+      `- **Relationship Edges**: ${edgeCount}`,
+      `- **Environment**: ${process.env.NODE_ENV}`,
+      `- **Version**: ${pkg.version}`,
+    ];
+
+    await interaction.editReply(stats.join('\n'));
   } catch (error) {
     logger.error({ error, guildId }, 'handleAdminStats error');
     await interaction.editReply('Failed to retrieve statistics.');

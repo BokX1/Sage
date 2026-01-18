@@ -47,11 +47,16 @@ export async function handleVoiceStateUpdate(
             logger,
         });
 
+        const relevantChannel = newState.channel ?? oldState.channel;
+        const channelName = relevantChannel?.name ?? 'Unknown Channel';
+
         await ingestEvent({
             type: 'voice',
             guildId,
             channelId: change.newChannelId ?? change.oldChannelId ?? '?',
+            channelName,
             userId: change.userId,
+            userDisplayName: change.displayName ?? 'Unknown User',
             action,
             timestamp: change.at,
         });

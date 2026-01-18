@@ -139,8 +139,12 @@ export class PollinationsClient implements LLMClient {
             const jsonInstruction =
               ' IMPORTANT: You must output strictly valid JSON only. Do not wrap in markdown blocks. No other text.';
             const systemMsg = payload.messages.find((m: any) => m.role === 'system');
+
+            // Avoid duplicate instructions
             if (systemMsg) {
-              systemMsg.content += jsonInstruction;
+              if (!systemMsg.content.includes('valid JSON only')) {
+                systemMsg.content += jsonInstruction;
+              }
             } else {
               payload.messages.unshift({ role: 'system', content: jsonInstruction });
             }
@@ -180,10 +184,10 @@ export class PollinationsClient implements LLMClient {
           content,
           usage: data.usage
             ? {
-                promptTokens: data.usage.prompt_tokens,
-                completionTokens: data.usage.completion_tokens,
-                totalTokens: data.usage.total_tokens,
-              }
+              promptTokens: data.usage.prompt_tokens,
+              completionTokens: data.usage.completion_tokens,
+              totalTokens: data.usage.total_tokens,
+            }
             : undefined,
         };
       } catch (err: any) {

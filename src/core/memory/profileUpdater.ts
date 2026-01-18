@@ -6,10 +6,10 @@ import { LLMClient, LLMChatMessage, LLMRequest } from '../llm/types';
 const UPDATE_SYSTEM_PROMPT = `You update a compact user profile summary for personalization.
 Rules:
 - Keep <= 800 characters.
-- Store only stable preferences and non-sensitive facts that help future replies (tone preferences, formats, recurring interests).
-- Do NOT store raw chat logs or transcripts.
-- Do NOT store secrets, credentials, health/sexual/political identity, or anything sensitive.
-- If nothing stable is learned, return the previous summary unchanged.
+- Store ONLY stable preferences and facts (e.g. "Favorite color is blue", "Lives in Paris", "Likes sci-fi").
+- Do NOT store raw chat logs, "User said", or "Assistant replied".
+- Do NOT store secrets, credentials, or PII.
+- If nothing new/stable is learned, return the previous summary.
 Output format: JSON exactly: {"summary":"..."}.`;
 
 export async function updateProfileSummary(params: {
@@ -82,19 +82,48 @@ async function tryChat(
   }
 
   const response = await client.chat(payload);
-  const content = response.content.replace(/```json\n?|\n?```/g, '').trim();
+  let content = response.content;
+
+  logger.debug({ content, retry }, 'Profile Update Raw Response');
+
+  // Robust Extraction Strategy
+  // 1. Try identifying code block
+  const codeBlockMatch = content.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+  if (codeBlockMatch) {
+    content = codeBlockMatch[1];
+  }
+
+  // 2. Try identifying JSON object { ... }
+  // Find the first '{' and the last '}'
+  const jsonStart = content.indexOf('{');
+  const jsonEnd = content.lastIndexOf('}');
+
+  if (jsonStart !== -1 && jsonEnd !== -1 && jsonEnd > jsonStart) {
+    content = content.slice(jsonStart, jsonEnd + 1);
+  } else if (!retry) {
+    // If we can't even find brackets, retry immediately
+    logger.warn('Profile Update: No JSON brackets found. Retrying...');
+    return tryChat(client, messages, isNative, true);
+  }
 
   // Validate JSON
   try {
     const json = JSON.parse(content);
     return json;
   } catch (e) {
-    logger.debug({ error: e }, 'JSON Parse Error in profile update');
+    logger.debug({ error: e, content }, 'JSON Parse Error in profile update');
     if (!retry) {
       // RETRY ONCE
       logger.warn('Profile Update: Invalid JSON received. Retrying with shim...');
       return tryChat(client, messages, isNative, true);
     }
+
+    // Last ditch: Regex extraction for summary property
+    const summaryMatch = content.match(/"summary"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+    if (summaryMatch) {
+      return { summary: summaryMatch[1] };
+    }
+
     throw e;
   }
 }

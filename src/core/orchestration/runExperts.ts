@@ -11,6 +11,7 @@ export interface RunExpertsParams {
     channelId: string;
     userId: string;
     traceId: string;
+    skipMemory?: boolean;
 }
 
 /**
@@ -28,6 +29,10 @@ export async function runExperts(params: RunExpertsParams): Promise<ExpertPacket
 
             switch (expertName) {
                 case 'Memory':
+                    if (params.skipMemory) {
+                        // Optimization: Skip valid memory if already loaded
+                        continue;
+                    }
                     packet = await runMemoryExpert({ userId });
                     break;
 
