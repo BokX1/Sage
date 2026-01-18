@@ -8,6 +8,8 @@ export interface BuildContextMessagesParams {
     replyToBotText: string | null;
     /** The user's current message text */
     userText: string;
+    /** Recent channel transcript block */
+    recentTranscript?: string | null;
 
     // ================================================================
     // TODO (D2/D4/D5): Future context expansion points
@@ -27,7 +29,7 @@ export interface BuildContextMessagesParams {
  *   4. user (userText)
  */
 export function buildContextMessages(params: BuildContextMessagesParams): LLMChatMessage[] {
-    const { userProfileSummary, replyToBotText, userText } = params;
+    const { userProfileSummary, replyToBotText, userText, recentTranscript } = params;
 
     const messages: LLMChatMessage[] = [];
 
@@ -42,6 +44,14 @@ export function buildContextMessages(params: BuildContextMessagesParams): LLMCha
         messages.push({
             role: 'system',
             content: `Personalization memory (may be incomplete): ${userProfileSummary}`,
+        });
+    }
+
+    // 2b. Recent channel transcript (if present)
+    if (recentTranscript) {
+        messages.push({
+            role: 'system',
+            content: recentTranscript,
         });
     }
 

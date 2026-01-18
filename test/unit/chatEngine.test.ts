@@ -66,7 +66,12 @@ describe('ChatEngine', () => {
         mockChatFn.mockResolvedValue({ content: 'Hello there!' });
 
         const result = await generateChatReply({
-            traceId: 'test-trace', userId: 'user1', channelId: 'chan1', messageId: 'msg1', userText: 'Hi',
+            traceId: 'test-trace',
+            userId: 'user1',
+            channelId: 'chan1',
+            guildId: null,
+            messageId: 'msg1',
+            userText: 'Hi',
         });
 
         expect(result.replyText).toBe('Hello there!');
@@ -80,7 +85,12 @@ describe('ChatEngine', () => {
         mockChatFn.mockResolvedValue({ content: 'Meow' });
 
         await generateChatReply({
-            traceId: 'test', userId: 'u1', channelId: 'c1', messageId: 'm1', userText: 'Do I like pets?',
+            traceId: 'test',
+            userId: 'u1',
+            channelId: 'c1',
+            guildId: null,
+            messageId: 'm1',
+            userText: 'Do I like pets?',
         });
 
         const chatCall = mockChatFn.mock.calls[0][0];
@@ -94,7 +104,12 @@ describe('ChatEngine', () => {
         mockChatFn.mockResolvedValue({ content: 'Sure, updated.' });
 
         await generateChatReply({
-            traceId: 'test', userId: 'user1', channelId: 'chan1', messageId: 'msg1', userText: 'I like dark mode',
+            traceId: 'test',
+            userId: 'user1',
+            channelId: 'chan1',
+            guildId: null,
+            messageId: 'msg1',
+            userText: 'I like dark mode',
         });
 
         expect(mockUpdateProfile).toHaveBeenCalledWith({
@@ -117,7 +132,12 @@ describe('ChatEngine', () => {
         mockChatFn.mockResolvedValue({ content: 'Result' });
 
         await generateChatReply({
-            traceId: 'trace', userId: 'u1', channelId: 'c1', messageId: 'm1', userText: 'Query'
+            traceId: 'trace',
+            userId: 'u1',
+            channelId: 'c1',
+            guildId: null,
+            messageId: 'm1',
+            userText: 'Query',
         });
 
         const chatCall = mockChatFn.mock.calls[0][0];
