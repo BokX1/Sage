@@ -3,6 +3,12 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
+if (process.env.NODE_ENV === 'test') {
+  process.env.DISCORD_TOKEN ??= 'test-discord-token';
+  process.env.DISCORD_APP_ID ??= 'test-discord-app-id';
+  process.env.DATABASE_URL ??= 'test-database-url';
+}
+
 const envSchema = z.object({
   // Core
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
@@ -20,6 +26,10 @@ const envSchema = z.object({
     .default('false'),
   AUTOPILOT_LEVEL: z.enum(['manual', 'cautious', 'full']).default('cautious'),
   SILENCE_GRACE_SEC: z.coerce.number().default(60),
+  WAKE_WORDS: z.string().default('sage'),
+  WAKE_WORD_PREFIXES: z.string().default('hey,yo,hi,hello'),
+  WAKEWORD_COOLDOWN_SEC: z.coerce.number().default(20),
+  WAKEWORD_MAX_RESPONSES_PER_MIN_PER_CHANNEL: z.coerce.number().default(6),
 
   // Event Ingestion & Proactive Behavior (D1)
   LOGGING_ENABLED: z

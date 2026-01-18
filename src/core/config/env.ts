@@ -10,6 +10,11 @@ export const config = {
   seriousMode: newConfig.SERIOUS_MODE.toString(),
   autopilotLevel: newConfig.AUTOPILOT_LEVEL,
   silenceGraceSec: newConfig.SILENCE_GRACE_SEC.toString(),
+  wakeWords: newConfig.WAKE_WORDS,
+  wakeWordPrefixes: newConfig.WAKE_WORD_PREFIXES,
+  wakeWordCooldownSec: newConfig.WAKEWORD_COOLDOWN_SEC.toString(),
+  wakeWordMaxResponsesPerMinPerChannel:
+    newConfig.WAKEWORD_MAX_RESPONSES_PER_MIN_PER_CHANNEL.toString(),
 
   // LLM
   llmProvider: newConfig.LLM_PROVIDER,
