@@ -174,17 +174,34 @@ async function tryChat(
     }
 
     const response = await client.chat(payload);
-    const content = response.content.replace(/```json\n?|\n?```/g, '').trim();
+    const cleanedContent = cleanJsonOutput(response.content);
 
     try {
-        return JSON.parse(content);
+        return JSON.parse(cleanedContent);
     } catch (error) {
         if (!retry) {
-            logger.warn('Channel summary: invalid JSON, retrying once');
+            logger.warn({ error, content: response.content }, 'Channel summary: invalid JSON, retrying once');
             return tryChat(client, messages, provider, true);
         }
         throw error;
     }
+}
+
+export function cleanJsonOutput(content: string): string {
+    // 1. Try to extract from markdown code blocks
+    const codeBlockMatch = content.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+    if (codeBlockMatch) {
+        return codeBlockMatch[1].trim();
+    }
+
+    // 2. Find first '{' and last '}' to handle text before/after JSON
+    const firstOpen = content.indexOf('{');
+    const lastClose = content.lastIndexOf('}');
+    if (firstOpen !== -1 && lastClose !== -1 && lastClose > firstOpen) {
+        return content.substring(firstOpen, lastClose + 1);
+    }
+
+    return content.trim();
 }
 
 function normalizeSummary(

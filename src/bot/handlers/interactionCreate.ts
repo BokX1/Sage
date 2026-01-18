@@ -109,6 +109,11 @@ export function registerInteractionCreateHandler() {
           return;
         }
 
+        if (subcommandGroup === 'admin' && subcommand === 'summarize') {
+          await handleAdminSummarize(interaction);
+          return;
+        }
+
         await interaction.reply({ content: 'Unknown subcommand.', ephemeral: true });
         return;
       }
@@ -431,5 +436,52 @@ async function handleAdminTrace(interaction: ChatInputCommandInteraction) {
   } catch (error) {
     logger.error({ error, guildId }, 'handleAdminTrace error');
     await interaction.editReply('Failed to retrieve trace data.');
+  }
+}
+
+async function handleAdminSummarize(interaction: ChatInputCommandInteraction) {
+  if (!isAdmin(interaction)) {
+    await interaction.reply({ content: '❌ Admin only.', ephemeral: true });
+    return;
+  }
+
+  const guildId = interaction.guildId;
+  if (!guildId) {
+    await interaction.reply({ content: 'This command can only be used in a guild.', ephemeral: true });
+    return;
+  }
+
+  const targetChannel = interaction.options.getChannel('channel') ?? interaction.channel;
+  if (!targetChannel) {
+    await interaction.reply({ content: 'Could not determine channel.', ephemeral: true });
+    return;
+  }
+
+  await interaction.deferReply({ ephemeral: true });
+
+  try {
+    const { getChannelSummaryScheduler } = await import('../../core/summary/channelSummaryScheduler');
+    const scheduler = getChannelSummaryScheduler();
+
+    if (!scheduler) {
+      await interaction.editReply('❌ Scheduler is not running.');
+      return;
+    }
+
+    const summary = await scheduler.forceSummarize(guildId, targetChannel.id);
+
+    if (!summary) {
+      await interaction.editReply(`⚠️ No summary generated for <#${targetChannel.id}>. (Logging might be disabled or no sufficient messages)`);
+      return;
+    }
+
+    await interaction.editReply(
+      `✅ **Summary generated for <#${targetChannel.id}>**\n` +
+      `**Window**: ${summary.windowStart.toLocaleString()} - ${summary.windowEnd.toLocaleString()}\n` +
+      `**Summary**: ${summary.summaryText}`
+    );
+  } catch (error) {
+    logger.error({ error, guildId, channelId: targetChannel.id }, 'handleAdminSummarize error');
+    await interaction.editReply('❌ Failed to generate summary.');
   }
 }

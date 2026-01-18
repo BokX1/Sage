@@ -4,6 +4,7 @@ import { config as newConfig } from '../../config';
 export const config = {
   discordToken: newConfig.DISCORD_TOKEN,
   discordAppId: newConfig.DISCORD_APP_ID,
+  devGuildId: newConfig.DEV_GUILD_ID,
   logLevel: newConfig.LOG_LEVEL,
   rateLimitMax: newConfig.RATE_LIMIT_MAX.toString(), // casting to string to match old type if needed, or number
   rateLimitWindowSec: newConfig.RATE_LIMIT_WINDOW_SEC.toString(),

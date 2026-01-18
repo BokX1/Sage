@@ -154,9 +154,71 @@ export class ChannelSummaryScheduler {
         this.dirtyChannels.delete(key);
     }
 
+    async forceSummarize(guildId: string, channelId: string): Promise<StructuredSummary | null> {
+        if (!isLoggingEnabled(guildId, channelId)) {
+            logger.warn({ guildId, channelId }, 'Force summary aborted: logging disabled');
+            return null;
+        }
+
+        const nowMs = this.now();
+        const windowStart = new Date(nowMs - appConfig.SUMMARY_ROLLING_WINDOW_MIN * 60 * 1000);
+        const windowEnd = new Date(nowMs);
+
+        // Bypass checks, fetch standard limit
+        const messages = await this.messageStore.fetchRecent({
+            guildId,
+            channelId,
+            limit: 120,
+            sinceMs: windowStart.getTime(),
+        });
+
+        if (messages.length === 0) {
+            return null;
+        }
+
+        const rollingSummary = await this.summarizeWindow({
+            messages,
+            windowStart,
+            windowEnd,
+        });
+
+        await this.summaryStore.upsertSummary({
+            guildId,
+            channelId,
+            kind: 'rolling',
+            windowStart: rollingSummary.windowStart,
+            windowEnd: rollingSummary.windowEnd,
+            summaryText: rollingSummary.summaryText,
+            topics: rollingSummary.topics,
+            threads: rollingSummary.threads,
+            unresolved: rollingSummary.unresolved,
+            glossary: rollingSummary.glossary,
+        });
+
+        // For forced updates, we also try to update the profile immediately if possible,
+        // but we'll re-use the robust maybeUpdateProfileSummary logic to handle linking.
+        // To ensure it actually runs even if recent, we might need a "force" flag on maybeUpdateProfileSummary,
+        // but for now let's just let it be "maybe" or we can manually invoke the profile logic here if we want strictness.
+        // Let's stick to "maybe" to avoid churning the long-term profile too aggressively unless necessary,
+        // OR we can make a dummy state object.
+        await this.maybeUpdateProfileSummary(
+            {
+                guildId,
+                channelId,
+                lastMessageAt: new Date(), // approximate
+                messageCount: messages.length,
+            },
+            rollingSummary,
+            true // force update
+        );
+
+        return rollingSummary;
+    }
+
     private async maybeUpdateProfileSummary(
         state: DirtyChannelState,
         rollingSummary: StructuredSummary,
+        force = false,
     ): Promise<void> {
         const lastProfile = await this.summaryStore.getLatestSummary({
             guildId: state.guildId as string,
@@ -166,7 +228,8 @@ export class ChannelSummaryScheduler {
         const lastProfileAt = lastProfile?.updatedAt?.getTime() ?? lastProfile?.windowEnd.getTime();
         const nowMs = this.now();
         const minIntervalMs = appConfig.SUMMARY_PROFILE_MIN_INTERVAL_SEC * 1000;
-        const shouldUpdate = !lastProfileAt || nowMs - lastProfileAt >= minIntervalMs;
+        const shouldUpdate =
+            force || !lastProfileAt || nowMs - lastProfileAt >= minIntervalMs;
 
         if (!shouldUpdate) {
             return;
@@ -175,14 +238,14 @@ export class ChannelSummaryScheduler {
         const profileSummary = await this.summarizeProfile({
             previousSummary: lastProfile
                 ? {
-                      windowStart: lastProfile.windowStart,
-                      windowEnd: lastProfile.windowEnd,
-                      summaryText: lastProfile.summaryText,
-                      topics: lastProfile.topics ?? [],
-                      threads: lastProfile.threads ?? [],
-                      unresolved: lastProfile.unresolved ?? [],
-                      glossary: lastProfile.glossary ?? {},
-                  }
+                    windowStart: lastProfile.windowStart,
+                    windowEnd: lastProfile.windowEnd,
+                    summaryText: lastProfile.summaryText,
+                    topics: lastProfile.topics ?? [],
+                    threads: lastProfile.threads ?? [],
+                    unresolved: lastProfile.unresolved ?? [],
+                    glossary: lastProfile.glossary ?? {},
+                }
                 : null,
             latestRollingSummary: rollingSummary,
         });

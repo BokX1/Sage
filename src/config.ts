@@ -15,6 +15,7 @@ const envSchema = z.object({
   DISCORD_TOKEN: z.string().min(1, 'DISCORD_TOKEN is required'),
   DISCORD_APP_ID: z.string().min(1, 'DISCORD_APP_ID is required'),
   DATABASE_URL: z.string().min(1, 'DATABASE_URL is required'),
+  DEV_GUILD_ID: z.string().optional(),
 
   // Bot Behavior
   LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).default('info'),

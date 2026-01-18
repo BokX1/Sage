@@ -71,6 +71,14 @@ const commands = [
                 .setMinValue(1)
                 .setMaxValue(10),
             ),
+        )
+        .addSubcommand((sub) =>
+          sub
+            .setName('summarize')
+            .setDescription('Manually trigger channel summary (Admin only)')
+            .addChannelOption((opt) =>
+              opt.setName('channel').setDescription('Channel to summarize (defaults to current)').setRequired(false),
+            ),
         ),
     ),
 ].map((command) => command.toJSON());
@@ -79,11 +87,18 @@ export async function registerCommands() {
   const rest = new REST({ version: '10' }).setToken(config.discordToken);
 
   try {
-    logger.info('Started refreshing application (/) commands.');
-
-    await rest.put(Routes.applicationCommands(config.discordAppId), { body: commands });
-
-    logger.info('Successfully reloaded application (/) commands.');
+    if (config.devGuildId) {
+      logger.info(`Refreshing application (/) commands for DEV guild: ${config.devGuildId}`);
+      await rest.put(
+        Routes.applicationGuildCommands(config.discordAppId, config.devGuildId),
+        { body: commands }
+      );
+      logger.info('Successfully reloaded application (/) commands for DEV guild (Instant).');
+    } else {
+      logger.info('Refreshing application (/) commands GLOBALLY (may take ~1h to cache).');
+      await rest.put(Routes.applicationCommands(config.discordAppId), { body: commands });
+      logger.info('Successfully reloaded application (/) commands GLOBALLY.');
+    }
   } catch (error) {
     logger.error(error);
   }
