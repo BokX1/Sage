@@ -86,6 +86,23 @@ export async function ingestEvent(event: Event): Promise<void> {
                 await prismaMessageStore.append(message);
             }
 
+            // Update relationship graph (D7)
+            // Best-effort: don't throw if this fails
+            if (message.guildId) {
+                try {
+                    const { updateFromMessage } = await import('../relationships/relationshipGraph');
+                    await updateFromMessage({
+                        guildId: message.guildId,
+                        authorId: message.authorId,
+                        mentionedUserIds: message.mentionsUserIds,
+                        replyToAuthorId: null, // TODO: resolve from replyToMessageId if needed
+                        now: message.timestamp,
+                    });
+                } catch (err) {
+                    logger.warn({ error: err, messageId: message.messageId }, 'Relationship graph update failed (non-fatal)');
+                }
+            }
+
             const scheduler = getChannelSummaryScheduler();
             if (scheduler) {
                 scheduler.markDirty({

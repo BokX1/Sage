@@ -106,9 +106,12 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
         }
     }
 
+
     let recentTranscript: string | null = null;
     let rollingSummaryText: string | null = null;
     let profileSummaryText: string | null = null;
+    let relationshipHintsText: string | null = null;
+
     if (guildId && isLoggingEnabled(guildId, channelId)) {
         const recentMessages = getRecentMessages({
             guildId,
@@ -149,6 +152,22 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
                 'Failed to load channel summaries (non-fatal)',
             );
         }
+
+        // Compute relationship hints (D7)
+        try {
+            const { renderRelationshipHints } = await import('../relationships/relationshipHintsRenderer');
+            relationshipHintsText = await renderRelationshipHints({
+                guildId,
+                userId,
+                maxEdges: appConfig.RELATIONSHIP_HINTS_MAX_EDGES,
+                maxChars: 1200,
+            });
+        } catch (error) {
+            logger.warn(
+                { error, guildId, userId },
+                'Failed to load relationship hints (non-fatal)',
+            );
+        }
     }
 
     // 1. Build context messages
@@ -160,6 +179,7 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
         channelRollingSummary: rollingSummaryText,
         channelProfileSummary: profileSummaryText,
         intentHint: intent ?? null,
+        relationshipHints: relationshipHintsText,
     });
 
     logger.debug({ traceId, messages }, 'Agent runtime: built context messages');

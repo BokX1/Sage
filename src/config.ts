@@ -75,6 +75,17 @@ const envSchema = z.object({
     .transform((v) => v === 'true')
     .default('true'),
 
+  // Relationship Hints (D7)
+  CONTEXT_BLOCK_MAX_TOKENS_RELATIONSHIP_HINTS: z.coerce.number().int().positive().default(600),
+  RELATIONSHIP_HINTS_MAX_EDGES: z.coerce.number().int().positive().default(10),
+  RELATIONSHIP_DECAY_LAMBDA: z.coerce.number().positive().default(0.06),
+  RELATIONSHIP_WEIGHT_K: z.coerce.number().positive().default(0.2),
+  RELATIONSHIP_CONFIDENCE_C: z.coerce.number().positive().default(0.25),
+
+  // Admin Access Control (D7)
+  ADMIN_ROLE_IDS: z.string().default(''), // Comma-separated Discord role IDs
+  ADMIN_USER_IDS: z.string().default(''), // Comma-separated Discord user IDs
+
   // LLM - Pollinations (Default)
   LLM_PROVIDER: z.enum(['pollinations', 'gemini', 'noop']).default('pollinations'),
   POLLINATIONS_BASE_URL: z.string().default('https://gen.pollinations.ai/v1'),

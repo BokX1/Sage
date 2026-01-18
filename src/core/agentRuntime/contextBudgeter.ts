@@ -5,6 +5,7 @@ export type ContextBlockId =
     | 'memory'
     | 'profile_summary'
     | 'rolling_summary'
+    | 'relationship_hints'
     | 'transcript'
     | 'intent_hint'
     | 'reply_context'
@@ -114,6 +115,7 @@ function truncateBlockContent(
             return { ...block, content: safeTruncateText(block.content, maxTokens, estimator) };
         case 'profile_summary':
         case 'rolling_summary':
+        case 'relationship_hints':
         case 'base_system':
         case 'trunc_notice':
         default:
@@ -176,6 +178,7 @@ const TRUNCATION_ORDER: ContextBlockId[] = [
     'transcript',
     'rolling_summary',
     'profile_summary',
+    'relationship_hints',
     'intent_hint',
     'reply_context',
     'memory',

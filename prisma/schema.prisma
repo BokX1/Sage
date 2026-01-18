@@ -62,3 +62,30 @@ model VoiceSession {
   @@index([guildId, userId, startedAt])
   @@index([guildId, userId, endedAt])
 }
+
+model RelationshipEdge {
+  id             String   @id @default(cuid())
+  guildId        String
+  userA          String   // Always userA < userB (lexicographically)
+  userB          String
+  weight         Float    @default(0) // 0.0-1.0 relationship strength
+  confidence     Float    @default(0) // 0.0-1.0 evidence strength
+  featuresJson   Json     // { mentions, replies, voice, meta }
+  manualOverride Float?   // Admin-set override (0.0-1.0)
+  updatedAt      DateTime @updatedAt
+  createdAt      DateTime @default(now())
+
+  @@unique([guildId, userA, userB])
+  @@index([guildId, updatedAt])
+}
+
+model AdminAudit {
+  id         String   @id @default(cuid())
+  guildId    String
+  adminId    String
+  command    String
+  paramsHash String   // SHA256 of normalized params JSON
+  createdAt  DateTime @default(now())
+
+  @@index([guildId, createdAt])
+}

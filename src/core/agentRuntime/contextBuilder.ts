@@ -18,13 +18,14 @@ export interface BuildContextMessagesParams {
     recentTranscript?: string | null;
     /** Optional intent hint for the request */
     intentHint?: string | null;
+    /** Relationship hints between users (D7) */
+    relationshipHints?: string | null;
 
     // ================================================================
     // TODO (D2/D4/D5): Future context expansion points
     // ----------------------------------------------------------------
     // recentTranscript?: LLMChatMessage[];  // D2: recent channel messages
     // channelSummary?: string;               // D4: channel context summary
-    // relationshipHints?: string;            // D5: user relationship indicators
     // ================================================================
 }
 
@@ -50,6 +51,7 @@ export function buildContextMessages(params: BuildContextMessagesParams): LLMCha
         userText,
         recentTranscript,
         intentHint,
+        relationshipHints,
     } = params;
 
     const blocks: ContextBlock[] = [
@@ -91,6 +93,17 @@ export function buildContextMessages(params: BuildContextMessagesParams): LLMCha
             content: channelRollingSummary,
             priority: 60,
             hardMaxTokens: config.contextBlockMaxTokensRollingSummary,
+            truncatable: true,
+        });
+    }
+
+    if (relationshipHints) {
+        blocks.push({
+            id: 'relationship_hints',
+            role: 'system',
+            content: relationshipHints,
+            priority: 65, // Between profile_summary (70) and rolling_summary (60)
+            hardMaxTokens: config.contextBlockMaxTokensRelationshipHints,
             truncatable: true,
         });
     }

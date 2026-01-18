@@ -56,6 +56,23 @@ export async function handleVoiceChange(
     const action = classifyVoiceChange(change);
     if (action === 'noop') return;
 
+    // For leave/move: capture join time BEFORE updating presence (D7)
+    let userJoinedAt: Date | null = null;
+    if ((action === 'leave' || action === 'move') && change.oldChannelId) {
+        try {
+            // Access presence index to get join time
+            const guildPresence = deps.presenceIndex as any;
+            if (guildPresence.getGuildPresence) {
+                const presence = guildPresence.getGuildPresence(change.guildId);
+                const channelPresence = presence.find((c: any) => c.channelId === change.oldChannelId);
+                const userPresence = channelPresence?.members?.find((m: any) => m.userId === change.userId);
+                userJoinedAt = userPresence?.joinedAt ?? null;
+            }
+        } catch (error) {
+            deps.logger.warn({ error, change }, 'Failed to capture join time for overlap (non-fatal)');
+        }
+    }
+
     try {
         deps.presenceIndex.applyChange(change);
     } catch (error) {
@@ -76,7 +93,24 @@ export async function handleVoiceChange(
         }
     }
 
+
     if (action === 'leave') {
+        // Compute voice overlap (D7)
+        if (change.oldChannelId && userJoinedAt) {
+            try {
+                const { computeVoiceOverlapForUser } = await import('./voiceOverlapTracker');
+                await computeVoiceOverlapForUser({
+                    guildId: change.guildId,
+                    userId: change.userId,
+                    channelId: change.oldChannelId,
+                    joinedAt: userJoinedAt,
+                    leftAt: change.at,
+                });
+            } catch (error) {
+                deps.logger.warn({ error, change }, 'Voice overlap computation failed (non-fatal)');
+            }
+        }
+
         try {
             await deps.voiceSessionRepo.endOpenSession({
                 guildId: change.guildId,
@@ -89,6 +123,22 @@ export async function handleVoiceChange(
     }
 
     if (action === 'move') {
+        // Compute voice overlap for old channel (D7)
+        if (change.oldChannelId && userJoinedAt) {
+            try {
+                const { computeVoiceOverlapForUser } = await import('./voiceOverlapTracker');
+                await computeVoiceOverlapForUser({
+                    guildId: change.guildId,
+                    userId: change.userId,
+                    channelId: change.oldChannelId,
+                    joinedAt: userJoinedAt,
+                    leftAt: change.at,
+                });
+            } catch (error) {
+                deps.logger.warn({ error, change }, 'Voice overlap computation failed (non-fatal)');
+            }
+        }
+
         try {
             await deps.voiceSessionRepo.endOpenSession({
                 guildId: change.guildId,
