@@ -44,6 +44,8 @@ export interface RunChatTurnParams {
     userProfileSummary: string | null;
     /** Previous bot message if user is replying to bot */
     replyToBotText: string | null;
+    /** Optional intent hint from invocation detection */
+    intent?: string | null;
 }
 
 export interface RunChatTurnResult {
@@ -66,8 +68,16 @@ export interface RunChatTurnResult {
  * 4. Return final reply
  */
 export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTurnResult> {
-    const { traceId, userId, channelId, guildId, userText, userProfileSummary, replyToBotText } =
-        params;
+    const {
+        traceId,
+        userId,
+        channelId,
+        guildId,
+        userText,
+        userProfileSummary,
+        replyToBotText,
+        intent,
+    } = params;
 
     let recentTranscript: string | null = null;
     if (guildId && isLoggingEnabled(guildId, channelId)) {
@@ -89,6 +99,7 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
         replyToBotText,
         userText,
         recentTranscript,
+        intentHint: intent ?? null,
     });
 
     logger.debug({ traceId, messages }, 'Agent runtime: built context messages');

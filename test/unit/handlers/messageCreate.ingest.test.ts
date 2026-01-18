@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { Message, User, TextChannel } from 'discord.js';
 
 // Hoist mocks
@@ -55,6 +55,7 @@ vi.mock('../../../src/core/ingest/ingestEvent', async () => {
 });
 
 import { handleMessageCreate } from '../../../src/bot/handlers/messageCreate';
+import { resetInvocationCooldowns } from '../../../src/core/invoke/cooldown';
 import { logger } from '../../../src/utils/logger';
 
 describe('messageCreate - Ingest Flow', () => {
@@ -63,7 +64,12 @@ describe('messageCreate - Ingest Flow', () => {
     beforeEach(() => {
         vi.clearAllMocks();
         mockGenerateChatReply.mockResolvedValue({ replyText: 'Test response' });
-        messageCounter = 0;
+        resetInvocationCooldowns();
+        vi.useRealTimers();
+    });
+
+    afterEach(() => {
+        vi.useRealTimers();
     });
 
     function createMockMessage(overrides: Partial<Message> = {}): Message {
@@ -109,6 +115,48 @@ describe('messageCreate - Ingest Flow', () => {
         expect(mockGenerateChatReply).not.toHaveBeenCalled();
     });
 
+    it('should call generateChatReply for wakeword requests', async () => {
+        const message = createMockMessage({
+            content: 'hey sage summarize what they are talking about',
+        });
+
+        await handleMessageCreate(message);
+
+        expect(mockGenerateChatReply).toHaveBeenCalledTimes(1);
+    });
+
+    it('should apply wakeword cooldown per user/channel', async () => {
+        vi.useFakeTimers();
+        vi.setSystemTime(new Date('2024-01-01T00:00:00.000Z'));
+
+        const firstMessage = createMockMessage({
+            content: 'sage summarize this',
+        });
+
+        const secondMessage = createMockMessage({
+            content: 'sage summarize again',
+        });
+
+        try {
+            await handleMessageCreate(firstMessage);
+            await handleMessageCreate(secondMessage);
+
+            expect(mockGenerateChatReply).toHaveBeenCalledTimes(1);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it('should ignore mid-sentence wakeword mentions', async () => {
+        const message = createMockMessage({
+            content: 'I met Sage yesterday at the park',
+        });
+
+        await handleMessageCreate(message);
+
+        expect(mockGenerateChatReply).not.toHaveBeenCalled();
+    });
+
     it('should call generateChatReply for mentions', async () => {
         const message = createMockMessage({
             content: '<@bot-123> Hello!',
@@ -132,6 +180,29 @@ describe('messageCreate - Ingest Flow', () => {
 
         // Verify generateChatReply WAS called (message is a mention)
         expect(mockGenerateChatReply).toHaveBeenCalledTimes(1);
+    });
+
+    it('should treat replies as replies even when mentioning the bot', async () => {
+        const message = createMockMessage({
+            content: '<@bot-123> following up on your reply',
+            mentions: {
+                has: vi.fn((user: User) => user.id === 'bot-123'),
+            } as any,
+            reference: { messageId: 'ref-1' } as any,
+            fetchReference: vi.fn().mockResolvedValue({
+                author: { id: 'bot-123' },
+                content: 'Prior bot message',
+            }),
+        });
+
+        await handleMessageCreate(message);
+
+        expect(mockGenerateChatReply).toHaveBeenCalledTimes(1);
+        expect(mockGenerateChatReply).toHaveBeenCalledWith(
+            expect.objectContaining({
+                replyToBotText: 'Prior bot message',
+            }),
+        );
     });
 
     it('should skip bot messages without ingesting', async () => {

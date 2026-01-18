@@ -5,6 +5,9 @@ import { generateTraceId } from '../../utils/trace';
 import { isRateLimited, isSeriousMode } from '../../core/safety';
 import { generateChatReply } from '../../core/chat/chatEngine';
 import { ingestEvent } from '../../core/ingest/ingestEvent';
+import { config as appConfig } from '../../config';
+import { detectInvocation } from '../../core/invoke/wakeWord';
+import { shouldAllowInvocation } from '../../core/invoke/cooldown';
 
 const processedMessagesKey = Symbol.for('sage.handlers.messageCreate.processed');
 const registrationKey = Symbol.for('sage.handlers.messageCreate.registered');
@@ -66,7 +69,31 @@ export async function handleMessageCreate(message: Message) {
   });
 
   // Mention-first: only respond to mentions or replies
-  if (!isMentioned && !isReplyToBot) return;
+  const wakeWords = appConfig.WAKE_WORDS.split(',').map((word) => word.trim()).filter(Boolean);
+  const wakeWordPrefixes = appConfig.WAKE_WORD_PREFIXES.split(',')
+    .map((prefix) => prefix.trim())
+    .filter(Boolean);
+
+  const invocation = detectInvocation({
+    rawContent: message.content,
+    isMentioned,
+    isReplyToBot,
+    botUserId: client.user?.id,
+    wakeWords,
+    prefixes: wakeWordPrefixes,
+  });
+
+  if (!invocation) return;
+
+  if (
+    !shouldAllowInvocation({
+      channelId: message.channelId,
+      userId: message.author.id,
+      kind: invocation.kind,
+    })
+  ) {
+    return;
+  }
 
   const traceId = generateTraceId();
   const loggerWithTrace = logger.child({ traceId });
@@ -84,8 +111,7 @@ export async function handleMessageCreate(message: Message) {
   }
 
   try {
-    const text = message.content.replace(/<@!?[0-9]+>/g, '').trim();
-    loggerWithTrace.info({ msg: 'Message received', text });
+    loggerWithTrace.info({ msg: 'Message received', text: invocation.cleanedText });
 
     // Generate Chat Reply
     const result = await generateChatReply({
@@ -94,9 +120,12 @@ export async function handleMessageCreate(message: Message) {
       channelId: message.channelId,
       guildId: message.guildId,
       messageId: message.id,
-      userText: text,
+      userText: invocation.cleanedText,
       replyToBotText:
-        isReplyToBot && message.reference ? (await message.fetchReference()).content : null,
+        invocation.kind === 'reply' && message.reference
+          ? (await message.fetchReference()).content
+          : null,
+      intent: invocation.intent,
     });
 
     // Send messages to Discord

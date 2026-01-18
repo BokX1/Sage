@@ -10,6 +10,8 @@ export interface BuildContextMessagesParams {
     userText: string;
     /** Recent channel transcript block */
     recentTranscript?: string | null;
+    /** Optional intent hint for the request */
+    intentHint?: string | null;
 
     // ================================================================
     // TODO (D2/D4/D5): Future context expansion points
@@ -25,11 +27,13 @@ export interface BuildContextMessagesParams {
  * Output ordering matches current chatEngine behavior:
  *   1. system (base prompt)
  *   2. system (personalization memory) if present
- *   3. assistant (replyToBotText) if present
- *   4. user (userText)
+ *   3. system (recent transcript) if present
+ *   4. system (intent hint) if present
+ *   5. assistant (replyToBotText) if present
+ *   6. user (userText)
  */
 export function buildContextMessages(params: BuildContextMessagesParams): LLMChatMessage[] {
-    const { userProfileSummary, replyToBotText, userText, recentTranscript } = params;
+    const { userProfileSummary, replyToBotText, userText, recentTranscript, intentHint } = params;
 
     const messages: LLMChatMessage[] = [];
 
@@ -52,6 +56,13 @@ export function buildContextMessages(params: BuildContextMessagesParams): LLMCha
         messages.push({
             role: 'system',
             content: recentTranscript,
+        });
+    }
+
+    if (intentHint) {
+        messages.push({
+            role: 'system',
+            content: `Intent hint: ${intentHint}`,
         });
     }
 
