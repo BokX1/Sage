@@ -59,6 +59,22 @@ const envSchema = z.object({
   SUMMARY_SCHED_TICK_SEC: z.coerce.number().int().positive().default(60),
   SUMMARY_PROVIDER: z.string().optional().default(''),
 
+  // Context Budgeting (D5)
+  CONTEXT_MAX_INPUT_TOKENS: z.coerce.number().int().positive().default(8000),
+  CONTEXT_RESERVED_OUTPUT_TOKENS: z.coerce.number().int().positive().default(1200),
+  TOKEN_ESTIMATOR: z.enum(['heuristic']).default('heuristic'),
+  TOKEN_HEURISTIC_CHARS_PER_TOKEN: z.coerce.number().int().positive().default(4),
+  CONTEXT_BLOCK_MAX_TOKENS_TRANSCRIPT: z.coerce.number().int().positive().default(1800),
+  CONTEXT_BLOCK_MAX_TOKENS_ROLLING_SUMMARY: z.coerce.number().int().positive().default(1200),
+  CONTEXT_BLOCK_MAX_TOKENS_PROFILE_SUMMARY: z.coerce.number().int().positive().default(1200),
+  CONTEXT_BLOCK_MAX_TOKENS_MEMORY: z.coerce.number().int().positive().default(800),
+  CONTEXT_BLOCK_MAX_TOKENS_REPLY_CONTEXT: z.coerce.number().int().positive().default(800),
+  CONTEXT_USER_MAX_TOKENS: z.coerce.number().int().positive().default(2500),
+  CONTEXT_TRUNCATION_NOTICE: z
+    .enum(['true', 'false'])
+    .transform((v) => v === 'true')
+    .default('true'),
+
   // LLM - Pollinations (Default)
   LLM_PROVIDER: z.enum(['pollinations', 'gemini', 'noop']).default('pollinations'),
   POLLINATIONS_BASE_URL: z.string().default('https://gen.pollinations.ai/v1'),

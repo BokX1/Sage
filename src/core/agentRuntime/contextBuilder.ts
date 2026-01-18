@@ -1,5 +1,7 @@
 import { LLMChatMessage } from '../llm/types';
 import { composeSystemPrompt } from './promptComposer';
+import { config } from '../config/env';
+import { budgetContextBlocks, ContextBlock } from './contextBudgeter';
 
 export interface BuildContextMessagesParams {
     /** User profile summary for personalization (may be null) */
@@ -30,13 +32,14 @@ export interface BuildContextMessagesParams {
  * Build the context messages array for an LLM chat turn.
  * Output ordering matches current chatEngine behavior:
  *   1. system (base prompt)
- *   2. system (personalization memory) if present
- *   3. system (channel rolling summary) if present
+ *   2. system (truncation notice) if needed
+ *   3. system (personalization memory) if present
  *   4. system (channel profile summary) if present
- *   5. system (recent transcript) if present
- *   6. system (intent hint) if present
- *   7. assistant (replyToBotText) if present
- *   8. user (userText)
+ *   5. system (channel rolling summary) if present
+ *   6. system (recent transcript) if present
+ *   7. system (intent hint) if present
+ *   8. assistant (replyToBotText) if present
+ *   9. user (userText)
  */
 export function buildContextMessages(params: BuildContextMessagesParams): LLMChatMessage[] {
     const {
@@ -49,64 +52,99 @@ export function buildContextMessages(params: BuildContextMessagesParams): LLMCha
         intentHint,
     } = params;
 
-    const messages: LLMChatMessage[] = [];
+    const blocks: ContextBlock[] = [
+        {
+            id: 'base_system',
+            role: 'system',
+            content: composeSystemPrompt(),
+            priority: 100,
+            truncatable: false,
+        },
+    ];
 
-    // 1. Base system prompt
-    messages.push({
-        role: 'system',
-        content: composeSystemPrompt(),
-    });
-
-    // 2. Personalization memory (if present)
     if (userProfileSummary) {
-        messages.push({
+        blocks.push({
+            id: 'memory',
             role: 'system',
             content: `Personalization memory (may be incomplete): ${userProfileSummary}`,
-        });
-    }
-
-    if (channelRollingSummary) {
-        messages.push({
-            role: 'system',
-            content: channelRollingSummary,
+            priority: 90,
+            hardMaxTokens: config.contextBlockMaxTokensMemory,
+            truncatable: true,
         });
     }
 
     if (channelProfileSummary) {
-        messages.push({
+        blocks.push({
+            id: 'profile_summary',
             role: 'system',
             content: channelProfileSummary,
+            priority: 70,
+            hardMaxTokens: config.contextBlockMaxTokensProfileSummary,
+            truncatable: true,
         });
     }
 
-    // 2b. Recent channel transcript (if present)
+    if (channelRollingSummary) {
+        blocks.push({
+            id: 'rolling_summary',
+            role: 'system',
+            content: channelRollingSummary,
+            priority: 60,
+            hardMaxTokens: config.contextBlockMaxTokensRollingSummary,
+            truncatable: true,
+        });
+    }
+
     if (recentTranscript) {
-        messages.push({
+        blocks.push({
+            id: 'transcript',
             role: 'system',
             content: recentTranscript,
+            priority: 50,
+            hardMaxTokens: config.contextBlockMaxTokensTranscript,
+            truncatable: true,
         });
     }
 
     if (intentHint) {
-        messages.push({
+        blocks.push({
+            id: 'intent_hint',
             role: 'system',
             content: `Intent hint: ${intentHint}`,
+            priority: 45,
+            hardMaxTokens: config.contextBlockMaxTokensReplyContext,
+            truncatable: true,
         });
     }
 
-    // 3. Previous bot message context (if replying to bot)
     if (replyToBotText) {
-        messages.push({
+        blocks.push({
+            id: 'reply_context',
             role: 'assistant',
             content: replyToBotText,
+            priority: 40,
+            hardMaxTokens: config.contextBlockMaxTokensReplyContext,
+            truncatable: true,
         });
     }
 
-    // 4. User message
-    messages.push({
+    blocks.push({
+        id: 'user',
         role: 'user',
         content: userText,
+        priority: 110,
+        hardMaxTokens: config.contextUserMaxTokens,
+        truncatable: true,
     });
 
-    return messages;
+    const budgetedBlocks = budgetContextBlocks(blocks, {
+        maxInputTokens: config.contextMaxInputTokens,
+        reservedOutputTokens: config.contextReservedOutputTokens,
+        truncationNoticeEnabled: config.contextTruncationNotice,
+    });
+
+    return budgetedBlocks.map((block) => ({
+        role: block.role,
+        content: block.content,
+    }));
 }

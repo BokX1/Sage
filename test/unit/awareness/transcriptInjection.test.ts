@@ -188,8 +188,8 @@ describe('transcript injection', () => {
         expect(rollingIndex).toBeGreaterThan(-1);
         expect(profileIndex).toBeGreaterThan(-1);
         expect(transcriptIndex).toBeGreaterThan(-1);
-        expect(rollingIndex).toBeLessThan(profileIndex);
-        expect(profileIndex).toBeLessThan(transcriptIndex);
+        expect(profileIndex).toBeLessThan(rollingIndex);
+        expect(rollingIndex).toBeLessThan(transcriptIndex);
     });
 
     it('omits summaries when logging is disabled', async () => {
