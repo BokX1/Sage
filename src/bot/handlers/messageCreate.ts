@@ -40,7 +40,8 @@ export async function handleMessageCreate(message: Message) {
   const isMentioned = !!(client.user && message.mentions.has(client.user));
   const mentionsUserIds = Array.from(message.mentions.users?.keys?.() ?? []);
   const mentionedUserIdsForQueries = mentionsUserIds.filter((id) => id !== client.user?.id);
-  const authorDisplayName = message.member?.displayName ?? message.author.username ?? message.author.id;
+  const authorDisplayName =
+    message.member?.displayName ?? message.author.username ?? message.author.id;
 
   let isReplyToBot = false;
   if (message.reference) {
@@ -70,7 +71,9 @@ export async function handleMessageCreate(message: Message) {
   });
 
   // Mention-first: only respond to mentions or replies
-  const wakeWords = appConfig.WAKE_WORDS.split(',').map((word) => word.trim()).filter(Boolean);
+  const wakeWords = appConfig.WAKE_WORDS.split(',')
+    .map((word) => word.trim())
+    .filter(Boolean);
   const wakeWordPrefixes = appConfig.WAKE_WORD_PREFIXES.split(',')
     .map((prefix) => prefix.trim())
     .filter(Boolean);

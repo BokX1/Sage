@@ -1,10 +1,10 @@
 ---
-description: Major code cleanup, bug fixing, optimization, and standardization workflow
+description: Major code cleanup, bug fixing, optimization, and standardization workflow for Sage
 ---
 
-# Code Cleanup, Bug Fix & Optimization Workflow
+# Sage Code Cleanup & Optimization Workflow
 
-This workflow provides a systematic approach to cleaning up, fixing bugs, optimizing, and standardizing code in the Sage codebase.
+This workflow is specifically tailored for the Sage Discord bot codebase. Follow these phases systematically.
 
 ---
 
@@ -12,60 +12,76 @@ This workflow provides a systematic approach to cleaning up, fixing bugs, optimi
 
 ### 1.1 Run Quality Gates
 
+Capture baseline metrics before making changes.
+
 // turbo
 
 ```bash
-npm run lint
+npm run lint 2>&1 | tee lint-baseline.log
 ```
 
 // turbo
 
 ```bash
-npm run build
+npm run build 2>&1 | tee build-baseline.log
 ```
 
 // turbo
 
 ```bash
-npm test
+npm test 2>&1 | tee test-baseline.log
 ```
 
-### 1.2 Generate Baseline Report
+### 1.2 Run Doctor & Certification Check
 
-Document the current state:
+// turbo
 
-- Count of lint warnings/errors
-- Count of TypeScript errors
-- Test pass/fail count
-- Note any console warnings during build
+```bash
+npm run doctor
+```
 
-### 1.3 Identify Problem Areas
+// turbo
 
-Scan the codebase for:
+```bash
+npx prisma validate
+```
 
-**Bug Patterns:**
+### 1.3 Document Baseline Metrics
 
-- Unhandled promise rejections (missing `.catch()` or try/catch)
-- Null/undefined access without guards
-- Race conditions in async code
-- Memory leaks (unregistered event listeners, unclosed connections)
-- Duplicate declarations or imports
+Create a summary of:
 
-**Code Smells:**
+- Number of lint warnings/errors from `lint-baseline.log`
+- Number of TypeScript errors from `build-baseline.log`
+- Test pass/fail count from `test-baseline.log`
+- Any console warnings during build
 
-- Functions > 50 lines
-- Files > 300 lines
-- Deeply nested conditionals (> 3 levels)
-- Magic numbers/strings
-- Commented-out code blocks
-- TODO/FIXME comments
+### 1.4 Scan for Problem Areas
 
-**Standardization Issues:**
+Search the codebase for issues:
 
-- Inconsistent naming conventions
-- Mixed async patterns (callbacks vs promises vs async/await)
-- Inconsistent error handling
-- Missing or inconsistent type annotations
+**Bug Patterns to Find:**
+
+```bash
+# Unhandled promise rejections
+grep -r "\.then(" src/ --include="*.ts" | grep -v "\.catch"
+
+# console.log statements (should use logger)
+grep -rn "console\.log" src/ --include="*.ts"
+
+# TODO/FIXME comments
+grep -rn "TODO\|FIXME" src/ --include="*.ts"
+
+# any types
+grep -rn ": any" src/ --include="*.ts"
+```
+
+**Key Areas to Examine:**
+
+- `src/core/` - Core logic modules
+- `src/bot/handlers/` - Discord event handlers
+- `src/core/llm/` - LLM integration
+- `src/core/memory/` - Memory system
+- `test/unit/` - Unit tests
 
 ---
 
@@ -75,33 +91,35 @@ Scan the codebase for:
 
 Fix bugs that could cause:
 
-- Application crashes
-- Data corruption
+- Bot crashes or unhandled exceptions
+- Data corruption in Prisma/SQLite database
+- Memory leaks from unclosed connections
 - Security vulnerabilities
 
 ### 2.2 High-Priority Bugs
 
-Fix bugs that cause:
+Fix:
 
-- Incorrect behavior
-- Poor user experience
-- Race conditions
+- Incorrect Discord event handling
+- Race conditions in async code
+- LLM response parsing failures
+- User profile corruption
 
 ### 2.3 Low-Priority Bugs
 
 Fix:
 
-- Edge case handling
-- Minor UI/UX issues
+- Edge cases in rate limiting
+- Minor logging issues
 - Non-critical warnings
 
-**For each bug fix:**
+**For Each Bug Fix:**
 
-1. Document the bug
-2. Write a test case that reproduces it (if applicable)
+1. Document the bug in a comment or commit message
+2. Write a test case in `test/unit/` if applicable
 3. Implement the fix
-4. Verify the test passes
-5. Run full test suite to ensure no regressions
+4. Run `npm test` to verify
+5. Run `npm run lint` to ensure no new issues
 
 ---
 
@@ -109,23 +127,27 @@ Fix:
 
 ### 3.1 Performance Optimization
 
-- Identify slow operations (database queries, API calls)
-- Implement caching where appropriate
-- Optimize loops and data transformations
-- Reduce redundant computations
+Focus areas for Sage:
+
+- **Database queries** - Check Prisma queries in `src/core/memory/` and `src/core/relationships/`
+- **LLM calls** - Optimize prompt construction in `src/core/llm/`
+- **Event handlers** - Reduce redundant processing in `src/bot/handlers/`
 
 ### 3.2 Memory Optimization
 
-- Clean up event listeners properly
-- Close database connections
-- Clear timeouts/intervals
-- Remove circular references
+- Ensure Discord.js event listeners are properly cleaned up
+- Close Prisma connections appropriately
+- Clear timeouts/intervals on shutdown
 
-### 3.3 Bundle/Build Optimization
+### 3.3 Dependency Cleanup
 
-- Remove unused dependencies
-- Tree-shake dead code
-- Optimize imports (avoid `import *`)
+// turbo
+
+```bash
+npx depcheck
+```
+
+Remove unused dependencies from `package.json` if found.
 
 ---
 
@@ -133,54 +155,46 @@ Fix:
 
 ### 4.1 Code Style
 
-Ensure consistency across codebase:
+**Sage Naming Conventions:**
 
-**Naming Conventions:**
+- Files: `camelCase.ts` (e.g., `chatEngine.ts`, `userProfileRepo.ts`)
+- Classes: `PascalCase` (e.g., `ChatEngine`, `ContextBudgeter`)
+- Functions: `camelCase` (e.g., `generateReply`, `ingestEvent`)
+- Constants: `UPPER_SNAKE_CASE` (e.g., `MAX_CONTEXT_TOKENS`)
+- Interfaces/Types: `PascalCase` (e.g., `UserProfile`, `LLMResponse`)
 
-- Files: `kebab-case.ts` or `camelCase.ts` (pick one, be consistent)
-- Classes: `PascalCase`
-- Functions/methods: `camelCase`
-- Constants: `UPPER_SNAKE_CASE`
-- Interfaces/Types: `PascalCase` with optional `I` prefix for interfaces
+**Apply Prettier:**
 
-**Formatting:**
 // turbo
 
 ```bash
-npx prettier --write "src/**/*.ts"
+npx prettier --write "src/**/*.ts" "test/**/*.ts"
 ```
 
 ### 4.2 Error Handling Standardization
 
-Establish patterns:
+Sage uses Pino for logging. Ensure:
 
-- Use custom error classes for domain errors
-- Consistent error logging format
-- Proper error propagation
-- User-friendly error messages
+- Use `logger.error()` instead of `console.error()`
+- Use `logger.warn()` instead of `console.warn()`
+- Use `logger.info()` and `logger.debug()` for informational logs
+- Avoid `console.log()` in production code
 
-### 4.3 Async Pattern Standardization
+### 4.3 Type Standardization
 
-- Prefer `async/await` over raw Promises
-- Use `try/catch` for async error handling
-- Avoid mixing patterns in same file
+- Remove `as any` casts where possible
+- Add proper type annotations to functions
+- Use Zod schemas for runtime validation (already set up)
 
 ### 4.4 Import Organization
 
-Order imports consistently:
+Sage import order:
 
-1. Node.js built-ins
-2. External packages (npm)
-3. Internal modules (absolute paths)
-4. Relative imports
-5. Type imports
-
-### 4.5 TypeScript Strictness
-
-- Enable strict mode if not already
-- Remove `any` types where possible
-- Add proper type annotations
-- Use generics appropriately
+1. Node.js built-ins (`import { execSync } from 'child_process'`)
+2. External packages (`import { Client } from 'discord.js'`)
+3. Internal modules with alias (`import { config } from '@/config'`)
+4. Relative imports (`import { logger } from '../utils/logger'`)
+5. Type imports (`import type { Message } from 'discord.js'`)
 
 ---
 
@@ -189,23 +203,58 @@ Order imports consistently:
 ### 5.1 Remove Dead Code
 
 - Delete unused functions/classes
-- Remove commented-out code
-- Delete unused imports
+- Remove commented-out code blocks
+- Delete unused imports (ESLint will catch these)
 - Remove unused variables
 
 ### 5.2 Update Documentation
 
-- Update JSDoc comments
-- Ensure README accuracy
-- Document non-obvious logic
-- Update API documentation
+Key files to check and update:
+
+- **`README.md`** - Update to reflect latest codebase:
+  - Verify features list matches current functionality
+  - Update architecture diagram if modules changed
+  - Ensure all npm scripts are documented
+  - Check environment variables table is accurate
+  - Update version number if applicable
+- `docs/deploy.md` - Deployment instructions
+- `docs/decision-log.md` - Architecture decisions
+- `.env.example` - All required env vars documented
+
+**README.md Update Checklist:**
+
+```
+[ ] Features section reflects current capabilities
+[ ] Quick Start instructions work correctly
+[ ] Configuration tables match .env.example
+[ ] Development commands are all listed
+[ ] Architecture diagram is accurate
+[ ] Version badge/number is current
+```
 
 ### 5.3 Organize Files
 
-- Move misplaced files to correct directories
-- Consolidate related functionality
-- Split oversized files
-- Remove empty/stub files
+Sage directory structure:
+
+```
+src/
+├── bot/            # Discord.js handlers and client setup
+│   └── handlers/   # Event handlers (messageCreate, voiceStateUpdate, etc.)
+├── core/           # Core business logic
+│   ├── agentRuntime/   # Agent runtime components
+│   ├── chat/           # Chat engine
+│   ├── llm/            # LLM integration
+│   ├── memory/         # User memory system
+│   ├── orchestration/  # MoE orchestration
+│   ├── relationships/  # User relationship graph
+│   ├── summary/        # Channel summaries
+│   └── voice/          # Voice handling
+├── db/             # Database client
+├── scripts/        # CLI scripts (doctor, cert)
+└── utils/          # Shared utilities
+```
+
+Ensure files are in the correct locations.
 
 ---
 
@@ -231,7 +280,15 @@ npm run build
 npm test
 ```
 
-### 6.2 Run Certification (if available)
+### 6.2 Run Prisma Validation
+
+// turbo
+
+```bash
+npx prisma validate
+```
+
+### 6.3 Run Full Certification
 
 // turbo
 
@@ -239,20 +296,33 @@ npm test
 npm run cert
 ```
 
-### 6.3 Manual Verification
+### 6.4 Run Doctor Check
 
-- Test critical user flows
-- Verify no regressions
-- Check console for warnings
+// turbo
 
-### 6.4 Create Summary Report
+```bash
+npm run doctor
+```
+
+### 6.5 Manual Verification (Optional)
+
+If changes affect bot behavior:
+
+1. Start bot with `npm run dev`
+2. Test in Discord:
+   - Mention bot and verify response
+   - Check rate limiting works
+   - Verify memory persistence
+3. Check logs for errors
+
+### 6.6 Create Summary Report
 
 Document:
 
-- All bugs fixed (with brief description)
+- All bugs fixed (brief description of each)
 - Optimizations implemented
 - Standardization changes made
-- Before/after metrics (lint errors, test count, etc.)
+- Before/after metrics comparison
 
 ---
 
@@ -260,44 +330,67 @@ Document:
 
 ```
 [ ] Phase 1: Assessment
-    [ ] Run initial quality gates
+    [ ] Run lint/build/test and save baselines
+    [ ] Run doctor and prisma validate
     [ ] Document baseline metrics
     [ ] Identify problem areas
-    
+
 [ ] Phase 2: Bug Fixes
-    [ ] Fix critical bugs
-    [ ] Fix high-priority bugs
-    [ ] Fix low-priority bugs
+    [ ] Fix critical bugs (crashes, data corruption)
+    [ ] Fix high-priority bugs (incorrect behavior)
+    [ ] Fix low-priority bugs (edge cases)
     [ ] Write tests for fixed bugs
-    
+
 [ ] Phase 3: Optimization
-    [ ] Performance optimizations
-    [ ] Memory leak fixes
-    [ ] Dependency cleanup
-    
+    [ ] Optimize database queries
+    [ ] Fix memory leaks
+    [ ] Remove unused dependencies
+
 [ ] Phase 4: Standardization
-    [ ] Apply consistent naming
+    [ ] Apply naming conventions
+    [ ] Run Prettier
     [ ] Standardize error handling
-    [ ] Standardize async patterns
     [ ] Organize imports
-    [ ] TypeScript strictness
-    
+
 [ ] Phase 5: Cleanup
     [ ] Remove dead code
     [ ] Update documentation
-    [ ] Organize file structure
-    
+    [ ] Verify file organization
+
 [ ] Phase 6: Verification
-    [ ] All quality gates pass
-    [ ] Manual testing complete
+    [ ] npm run lint ✓
+    [ ] npm run build ✓
+    [ ] npm test ✓
+    [ ] npx prisma validate ✓
+    [ ] npm run cert ✓
+    [ ] npm run doctor ✓
+    [ ] Manual testing (if needed)
     [ ] Summary report created
 ```
 
 ---
 
-## Notes
+## Critical Notes
 
 - **Commit Frequently**: Make small, focused commits after each logical unit of work
-- **Document Changes**: Keep a running log of significant changes for the changelog
-- **Test Early, Test Often**: Run tests after each change to catch regressions early
-- **Prioritize Safety**: When in doubt, prefer safer changes over aggressive optimizations
+- **Use Logger**: Always use `logger` from `@/utils/logger` instead of `console`
+- **Test Early**: Run `npm test` after each change
+- **Preserve Behavior**: When refactoring, ensure existing functionality is preserved
+- **Check .env.example**: If adding/removing env vars, update `.env.example`
+
+---
+
+## Sage-Specific Commands Quick Reference
+
+| Command | Description |
+|---------|-------------|
+| `npm run dev` | Start bot in development mode with hot reload |
+| `npm run build` | Compile TypeScript to `dist/` |
+| `npm run lint` | Run ESLint on `src/` |
+| `npm test` | Run Vitest tests |
+| `npm run doctor` | Check config and database connection |
+| `npm run cert` | Full certification (lint + build + test + prisma) |
+| `npm run db:studio` | Open Prisma Studio GUI |
+| `npm run db:migrate` | Run Prisma migrations |
+| `npx prisma validate` | Validate Prisma schema |
+| `npx prettier --write "src/**/*.ts"` | Format all source files |

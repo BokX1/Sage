@@ -23,49 +23,49 @@ import { upsertTraceStart, updateTraceEnd } from '../trace/agentTraceRepo';
  * Kept here to match existing chatEngine behavior.
  */
 const GOOGLE_SEARCH_TOOL = {
-    type: 'function',
-    function: {
-        name: 'google_search',
-        description:
-            'Search the web for real-time information. Use this whenever the user asks for current facts, news, or topics you do not know.',
-        parameters: {
-            type: 'object',
-            properties: {
-                query: {
-                    type: 'string',
-                    description: 'The search query string.',
-                },
-            },
-            required: ['query'],
+  type: 'function',
+  function: {
+    name: 'google_search',
+    description:
+      'Search the web for real-time information. Use this whenever the user asks for current facts, news, or topics you do not know.',
+    parameters: {
+      type: 'object',
+      properties: {
+        query: {
+          type: 'string',
+          description: 'The search query string.',
         },
+      },
+      required: ['query'],
     },
+  },
 };
 
 export interface RunChatTurnParams {
-    traceId: string;
-    userId: string;
-    channelId: string;
-    guildId: string | null;
-    messageId: string;
-    userText: string;
-    /** User profile summary for personalization */
-    userProfileSummary: string | null;
-    /** Previous bot message if user is replying to bot */
-    replyToBotText: string | null;
-    /** Optional intent hint from invocation detection */
-    intent?: string | null;
-    mentionedUserIds?: string[];
-    /** Invocation method for router */
-    invokedBy?: 'mention' | 'reply' | 'wakeword' | 'command';
+  traceId: string;
+  userId: string;
+  channelId: string;
+  guildId: string | null;
+  messageId: string;
+  userText: string;
+  /** User profile summary for personalization */
+  userProfileSummary: string | null;
+  /** Previous bot message if user is replying to bot */
+  replyToBotText: string | null;
+  /** Optional intent hint from invocation detection */
+  intent?: string | null;
+  mentionedUserIds?: string[];
+  /** Invocation method for router */
+  invokedBy?: 'mention' | 'reply' | 'wakeword' | 'command';
 }
 
 export interface RunChatTurnResult {
-    replyText: string;
-    debug?: {
-        toolsExecuted?: boolean;
-        toolLoopResult?: ToolCallLoopResult;
-        messages?: LLMChatMessage[];
-    };
+  replyText: string;
+  debug?: {
+    toolsExecuted?: boolean;
+    toolLoopResult?: ToolCallLoopResult;
+    messages?: LLMChatMessage[];
+  };
 }
 
 /**
@@ -83,249 +83,243 @@ export interface RunChatTurnResult {
  * 8. Return governed reply
  */
 export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTurnResult> {
-    const {
-        traceId,
-        userId,
-        channelId,
-        guildId,
-        userText,
-        userProfileSummary,
-        replyToBotText,
-        intent,
-        mentionedUserIds,
-        invokedBy = 'mention',
-    } = params;
+  const {
+    traceId,
+    userId,
+    channelId,
+    guildId,
+    userText,
+    userProfileSummary,
+    replyToBotText,
+    intent,
+    mentionedUserIds,
+    invokedBy = 'mention',
+  } = params;
 
-    // Voice fast-path: Answer simple voice queries without routing/LLM
-    const normalizedText = userText.toLowerCase();
-    const isWhoInVoice =
-        /\bwho('?s| is)? in voice\b/.test(normalizedText) || /\bwho in voice\b/.test(normalizedText);
-    const isHowLongToday =
-        /\bhow long\b.*\bvoice today\b/.test(normalizedText) ||
-        /\btime in voice today\b/.test(normalizedText);
+  // Voice fast-path: Answer simple voice queries without routing/LLM
+  const normalizedText = userText.toLowerCase();
+  const isWhoInVoice =
+    /\bwho('?s| is)? in voice\b/.test(normalizedText) || /\bwho in voice\b/.test(normalizedText);
+  const isHowLongToday =
+    /\bhow long\b.*\bvoice today\b/.test(normalizedText) ||
+    /\btime in voice today\b/.test(normalizedText);
 
-    if ((isWhoInVoice || isHowLongToday) && guildId) {
-        try {
-            if (isWhoInVoice) {
-                const presence = await whoIsInVoice({ guildId });
-                return { replyText: formatWhoInVoice(presence) };
-            }
-
-            const targetUserId = mentionedUserIds?.[0] ?? userId;
-            const result = await howLongInVoiceToday({ guildId, userId: targetUserId });
-            return { replyText: formatHowLongToday({ userId: targetUserId, ms: result.ms }) };
-        } catch (error) {
-            logger.warn({ error, guildId, userId }, 'Voice fast-path failed, falling back to router');
-        }
-    }
-
-    // D9: Step 1 - Router classifies intent
-    const route = decideRoute({
-        userText,
-        invokedBy,
-        hasGuild: !!guildId,
-    });
-
-    logger.debug({ traceId, route }, 'Router decision');
-
-    // D9: Step 2 - Run experts (cheap DB queries)
-    const expertPackets = await runExperts({
-        experts: route.experts,
-        guildId,
-        channelId,
-        userId,
-        traceId,
-        skipMemory: !!userProfileSummary,
-    });
-
-    const expertPacketsText = expertPackets.map((p) => `[${p.name}] ${p.content}`).join('\n\n');
-
-    // D9: Step 3 - Persist trace start
-    if (appConfig.TRACE_ENABLED) {
-        try {
-            await upsertTraceStart({
-                id: traceId,
-                guildId,
-                channelId,
-                userId,
-                routeKind: route.kind,
-                routerJson: route,
-                expertsJson: expertPackets.map((p) => ({ name: p.name, json: p.json })),
-                tokenJson: {},
-            });
-        } catch (error) {
-            logger.warn({ error, traceId }, 'Failed to persist trace start');
-        }
-    }
-
-
-    let recentTranscript: string | null = null;
-    let rollingSummaryText: string | null = null;
-    let profileSummaryText: string | null = null;
-    let relationshipHintsText: string | null = null;
-
-    if (guildId && isLoggingEnabled(guildId, channelId)) {
-        const recentMessages = getRecentMessages({
-            guildId,
-            channelId,
-            limit: appConfig.CONTEXT_TRANSCRIPT_MAX_MESSAGES,
-        });
-
-        recentTranscript = buildTranscriptBlock(
-            recentMessages,
-            appConfig.CONTEXT_TRANSCRIPT_MAX_CHARS,
-        );
-
-        try {
-            const summaryStore = getChannelSummaryStore();
-            const [rollingSummary, profileSummary] = await Promise.all([
-                summaryStore.getLatestSummary({
-                    guildId,
-                    channelId,
-                    kind: 'rolling',
-                }),
-                summaryStore.getLatestSummary({
-                    guildId,
-                    channelId,
-                    kind: 'profile',
-                }),
-            ]);
-
-            if (rollingSummary) {
-                rollingSummaryText = `Channel rolling summary (last ${appConfig.SUMMARY_ROLLING_WINDOW_MIN}m): ${rollingSummary.summaryText}`;
-            }
-
-            if (profileSummary) {
-                profileSummaryText = `Channel profile (long-term): ${profileSummary.summaryText}`;
-            }
-        } catch (error) {
-            logger.warn(
-                { error, guildId, channelId },
-                'Failed to load channel summaries (non-fatal)',
-            );
-        }
-
-        // Compute relationship hints (D7)
-        try {
-            const { renderRelationshipHints } = await import('../relationships/relationshipHintsRenderer');
-            relationshipHintsText = await renderRelationshipHints({
-                guildId,
-                userId,
-                maxEdges: appConfig.RELATIONSHIP_HINTS_MAX_EDGES,
-                maxChars: 1200,
-            });
-        } catch (error) {
-            logger.warn(
-                { error, guildId, userId },
-                'Failed to load relationship hints (non-fatal)',
-            );
-        }
-    }
-
-    // D9: Step 4 - Build context with expert packets
-    const style = classifyStyle(userText);
-    const messages = buildContextMessages({
-        userProfileSummary,
-        replyToBotText,
-        userText,
-        recentTranscript,
-        channelRollingSummary: rollingSummaryText,
-        channelProfileSummary: profileSummaryText,
-        intentHint: intent ?? null,
-        relationshipHints: relationshipHintsText,
-        style,
-        expertPackets: expertPacketsText || null,
-    });
-
-    logger.debug({ traceId, route, expertCount: expertPackets.length }, 'Agent runtime: built context with experts');
-
-    // D9: Step 5 - Call LLM with route temperature
-    const client = getLLMClient();
-    const isGeminiNative = config.llmProvider === 'gemini';
-    const isPollinations = config.llmProvider === 'pollinations';
-
-    // Build native search tools if route allows
-    const nativeTools: unknown[] = [];
-    if (route.allowTools) {
-        if (isGeminiNative) {
-            nativeTools.push({ googleSearch: {} });
-        } else if (isPollinations) {
-            nativeTools.push(GOOGLE_SEARCH_TOOL);
-        }
-    }
-
-    let draftText = '';
-    let toolsExecuted = false;
+  if ((isWhoInVoice || isHowLongToday) && guildId) {
     try {
-        const response = await client.chat({
-            messages,
-            model: isGeminiNative ? config.geminiModel : undefined,
-            tools: nativeTools.length > 0 ? nativeTools : undefined,
-            toolChoice: isGeminiNative || isPollinations ? 'auto' : undefined,
-            temperature: route.temperature,
-        });
+      if (isWhoInVoice) {
+        const presence = await whoIsInVoice({ guildId });
+        return { replyText: formatWhoInVoice(presence) };
+      }
 
-        draftText = response.content;
-
-        // Check if response is a tool_calls envelope for custom tools
-        if (route.allowTools && globalToolRegistry.listNames().length > 0) {
-            const trimmed = draftText.trim();
-            const strippedFence = trimmed.startsWith('```')
-                ? trimmed.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```$/, '')
-                : trimmed;
-
-            try {
-                const parsed = JSON.parse(strippedFence);
-                if (parsed?.type === 'tool_calls' && Array.isArray(parsed?.calls)) {
-                    logger.debug({ traceId }, 'Tool calls detected, running loop');
-
-                    const toolLoopResult = await runToolCallLoop({
-                        client,
-                        messages,
-                        registry: globalToolRegistry,
-                        ctx: { traceId, userId, channelId },
-                        model: isGeminiNative ? config.geminiModel : undefined,
-                    });
-
-                    draftText = toolLoopResult.replyText;
-                    toolsExecuted = true;
-                }
-            } catch {
-                // Not JSON, treat as normal response
-            }
-        }
-    } catch (err) {
-        logger.error({ error: err, traceId }, 'LLM call error');
-        draftText = "I'm having trouble connecting right now. Please try again later.";
+      const targetUserId = mentionedUserIds?.[0] ?? userId;
+      const result = await howLongInVoiceToday({ guildId, userId: targetUserId });
+      return { replyText: formatHowLongToday({ userId: targetUserId, ms: result.ms }) };
+    } catch (error) {
+      logger.warn({ error, guildId, userId }, 'Voice fast-path failed, falling back to router');
     }
+  }
 
-    // D9: Step 6 - Governor post-processes draft
-    const governorResult = await governOutput({
-        traceId,
-        route,
-        draftText,
-        llm: client,
-        rewriteEnabled: appConfig.GOVERNOR_REWRITE_ENABLED,
+  // D9: Step 1 - Router classifies intent
+  const route = decideRoute({
+    userText,
+    invokedBy,
+    hasGuild: !!guildId,
+  });
+
+  logger.debug({ traceId, route }, 'Router decision');
+
+  // D9: Step 2 - Run experts (cheap DB queries)
+  const expertPackets = await runExperts({
+    experts: route.experts,
+    guildId,
+    channelId,
+    userId,
+    traceId,
+    skipMemory: !!userProfileSummary,
+  });
+
+  const expertPacketsText = expertPackets.map((p) => `[${p.name}] ${p.content}`).join('\n\n');
+
+  // D9: Step 3 - Persist trace start
+  if (appConfig.TRACE_ENABLED) {
+    try {
+      await upsertTraceStart({
+        id: traceId,
+        guildId,
+        channelId,
+        userId,
+        routeKind: route.kind,
+        routerJson: route,
+        expertsJson: expertPackets.map((p) => ({ name: p.name, json: p.json })),
+        tokenJson: {},
+      });
+    } catch (error) {
+      logger.warn({ error, traceId }, 'Failed to persist trace start');
+    }
+  }
+
+  let recentTranscript: string | null = null;
+  let rollingSummaryText: string | null = null;
+  let profileSummaryText: string | null = null;
+  let relationshipHintsText: string | null = null;
+
+  if (guildId && isLoggingEnabled(guildId, channelId)) {
+    const recentMessages = getRecentMessages({
+      guildId,
+      channelId,
+      limit: appConfig.CONTEXT_TRANSCRIPT_MAX_MESSAGES,
     });
 
-    // D9: Step 7 - Persist trace end
-    if (appConfig.TRACE_ENABLED) {
-        try {
-            await updateTraceEnd({
-                id: traceId,
-                governorJson: governorResult,
-                toolJson: toolsExecuted ? { executed: true } : undefined,
-                replyText: governorResult.finalText,
-            });
-        } catch (error) {
-            logger.warn({ error, traceId }, 'Failed to persist trace end');
-        }
+    recentTranscript = buildTranscriptBlock(recentMessages, appConfig.CONTEXT_TRANSCRIPT_MAX_CHARS);
+
+    try {
+      const summaryStore = getChannelSummaryStore();
+      const [rollingSummary, profileSummary] = await Promise.all([
+        summaryStore.getLatestSummary({
+          guildId,
+          channelId,
+          kind: 'rolling',
+        }),
+        summaryStore.getLatestSummary({
+          guildId,
+          channelId,
+          kind: 'profile',
+        }),
+      ]);
+
+      if (rollingSummary) {
+        rollingSummaryText = `Channel rolling summary (last ${appConfig.SUMMARY_ROLLING_WINDOW_MIN}m): ${rollingSummary.summaryText}`;
+      }
+
+      if (profileSummary) {
+        profileSummaryText = `Channel profile (long-term): ${profileSummary.summaryText}`;
+      }
+    } catch (error) {
+      logger.warn({ error, guildId, channelId }, 'Failed to load channel summaries (non-fatal)');
     }
 
-    logger.debug({ traceId, governorActions: governorResult.actions }, 'Chat turn complete');
+    // Compute relationship hints (D7)
+    try {
+      const { renderRelationshipHints } =
+        await import('../relationships/relationshipHintsRenderer');
+      relationshipHintsText = await renderRelationshipHints({
+        guildId,
+        userId,
+        maxEdges: appConfig.RELATIONSHIP_HINTS_MAX_EDGES,
+        maxChars: 1200,
+      });
+    } catch (error) {
+      logger.warn({ error, guildId, userId }, 'Failed to load relationship hints (non-fatal)');
+    }
+  }
 
-    return {
+  // D9: Step 4 - Build context with expert packets
+  const style = classifyStyle(userText);
+  const messages = buildContextMessages({
+    userProfileSummary,
+    replyToBotText,
+    userText,
+    recentTranscript,
+    channelRollingSummary: rollingSummaryText,
+    channelProfileSummary: profileSummaryText,
+    intentHint: intent ?? null,
+    relationshipHints: relationshipHintsText,
+    style,
+    expertPackets: expertPacketsText || null,
+  });
+
+  logger.debug(
+    { traceId, route, expertCount: expertPackets.length },
+    'Agent runtime: built context with experts',
+  );
+
+  // D9: Step 5 - Call LLM with route temperature
+  const client = getLLMClient();
+  const isGeminiNative = config.llmProvider === 'gemini';
+  const isPollinations = config.llmProvider === 'pollinations';
+
+  // Build native search tools if route allows
+  const nativeTools: unknown[] = [];
+  if (route.allowTools) {
+    if (isGeminiNative) {
+      nativeTools.push({ googleSearch: {} });
+    } else if (isPollinations) {
+      nativeTools.push(GOOGLE_SEARCH_TOOL);
+    }
+  }
+
+  let draftText = '';
+  let toolsExecuted = false;
+  try {
+    const response = await client.chat({
+      messages,
+      model: isGeminiNative ? config.geminiModel : undefined,
+      tools: nativeTools.length > 0 ? nativeTools : undefined,
+      toolChoice: isGeminiNative || isPollinations ? 'auto' : undefined,
+      temperature: route.temperature,
+    });
+
+    draftText = response.content;
+
+    // Check if response is a tool_calls envelope for custom tools
+    if (route.allowTools && globalToolRegistry.listNames().length > 0) {
+      const trimmed = draftText.trim();
+      const strippedFence = trimmed.startsWith('```')
+        ? trimmed.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```$/, '')
+        : trimmed;
+
+      try {
+        const parsed = JSON.parse(strippedFence);
+        if (parsed?.type === 'tool_calls' && Array.isArray(parsed?.calls)) {
+          logger.debug({ traceId }, 'Tool calls detected, running loop');
+
+          const toolLoopResult = await runToolCallLoop({
+            client,
+            messages,
+            registry: globalToolRegistry,
+            ctx: { traceId, userId, channelId },
+            model: isGeminiNative ? config.geminiModel : undefined,
+          });
+
+          draftText = toolLoopResult.replyText;
+          toolsExecuted = true;
+        }
+      } catch {
+        // Not JSON, treat as normal response
+      }
+    }
+  } catch (err) {
+    logger.error({ error: err, traceId }, 'LLM call error');
+    draftText = "I'm having trouble connecting right now. Please try again later.";
+  }
+
+  // D9: Step 6 - Governor post-processes draft
+  const governorResult = await governOutput({
+    traceId,
+    route,
+    draftText,
+    llm: client,
+    rewriteEnabled: appConfig.GOVERNOR_REWRITE_ENABLED,
+  });
+
+  // D9: Step 7 - Persist trace end
+  if (appConfig.TRACE_ENABLED) {
+    try {
+      await updateTraceEnd({
+        id: traceId,
+        governorJson: governorResult,
+        toolJson: toolsExecuted ? { executed: true } : undefined,
         replyText: governorResult.finalText,
-        debug: { messages, toolsExecuted },
-    };
+      });
+    } catch (error) {
+      logger.warn({ error, traceId }, 'Failed to persist trace end');
+    }
+  }
+
+  logger.debug({ traceId, governorActions: governorResult.actions }, 'Chat turn complete');
+
+  return {
+    replyText: governorResult.finalText,
+    debug: { messages, toolsExecuted },
+  };
 }

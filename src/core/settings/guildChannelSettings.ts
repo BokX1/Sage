@@ -11,28 +11,28 @@ const proactiveOverrides = new Map<string, boolean>();
  * Generate a key for guild+channel lookups.
  */
 function makeKey(guildId: string, channelId: string): string {
-    return `${guildId}:${channelId}`;
+  return `${guildId}:${channelId}`;
 }
 
 function parseChannelList(value: string): Set<string> {
-    return new Set(
-        value
-            .split(',')
-            .map((entry) => entry.trim())
-            .filter((entry) => entry.length > 0),
-    );
+  return new Set(
+    value
+      .split(',')
+      .map((entry) => entry.trim())
+      .filter((entry) => entry.length > 0),
+  );
 }
 
 function isChannelAllowed(channelId: string): boolean {
-    const blocklist = parseChannelList(config.LOGGING_BLOCKLIST_CHANNEL_IDS);
-    if (blocklist.has(channelId)) return false;
+  const blocklist = parseChannelList(config.LOGGING_BLOCKLIST_CHANNEL_IDS);
+  if (blocklist.has(channelId)) return false;
 
-    if (config.LOGGING_MODE === 'allowlist') {
-        const allowlist = parseChannelList(config.LOGGING_ALLOWLIST_CHANNEL_IDS);
-        return allowlist.has(channelId);
-    }
+  if (config.LOGGING_MODE === 'allowlist') {
+    const allowlist = parseChannelList(config.LOGGING_ALLOWLIST_CHANNEL_IDS);
+    return allowlist.has(channelId);
+  }
 
-    return true;
+  return true;
 }
 
 /**
@@ -40,12 +40,12 @@ function isChannelAllowed(channelId: string): boolean {
  * Priority: in-memory override > env default
  */
 export function isLoggingEnabled(guildId: string, channelId: string): boolean {
-    const key = makeKey(guildId, channelId);
-    const override = loggingOverrides.get(key);
-    if (!config.LOGGING_ENABLED) return false;
-    const allowed = isChannelAllowed(channelId);
-    if (override !== undefined) return override && allowed;
-    return allowed;
+  const key = makeKey(guildId, channelId);
+  const override = loggingOverrides.get(key);
+  if (!config.LOGGING_ENABLED) return false;
+  const allowed = isChannelAllowed(channelId);
+  if (override !== undefined) return override && allowed;
+  return allowed;
 }
 
 /**
@@ -53,10 +53,10 @@ export function isLoggingEnabled(guildId: string, channelId: string): boolean {
  * Priority: in-memory override > env default
  */
 export function isProactiveEnabled(guildId: string, channelId: string): boolean {
-    const key = makeKey(guildId, channelId);
-    const override = proactiveOverrides.get(key);
-    if (override !== undefined) return override;
-    return config.PROACTIVE_POSTING_ENABLED;
+  const key = makeKey(guildId, channelId);
+  const override = proactiveOverrides.get(key);
+  if (override !== undefined) return override;
+  return config.PROACTIVE_POSTING_ENABLED;
 }
 
 /**
@@ -64,8 +64,8 @@ export function isProactiveEnabled(guildId: string, channelId: string): boolean 
  * (For future admin commands; not used in D1)
  */
 export function setLoggingEnabled(guildId: string, channelId: string, enabled: boolean): void {
-    const key = makeKey(guildId, channelId);
-    loggingOverrides.set(key, enabled);
+  const key = makeKey(guildId, channelId);
+  loggingOverrides.set(key, enabled);
 }
 
 /**
@@ -73,14 +73,14 @@ export function setLoggingEnabled(guildId: string, channelId: string, enabled: b
  * (For future admin commands; not used in D1)
  */
 export function setProactiveEnabled(guildId: string, channelId: string, enabled: boolean): void {
-    const key = makeKey(guildId, channelId);
-    proactiveOverrides.set(key, enabled);
+  const key = makeKey(guildId, channelId);
+  proactiveOverrides.set(key, enabled);
 }
 
 /**
  * Clear all overrides (for testing or reset).
  */
 export function clearAllOverrides(): void {
-    loggingOverrides.clear();
-    proactiveOverrides.clear();
+  loggingOverrides.clear();
+  proactiveOverrides.clear();
 }

@@ -2,7 +2,6 @@ import { REST, Routes, SlashCommandBuilder } from 'discord.js';
 import { config } from '../../core/config/env';
 import { logger } from '../../utils/logger';
 
-
 const commands = [
   new SlashCommandBuilder().setName('ping').setDescription('Replies with Pong!'),
   new SlashCommandBuilder()
@@ -77,7 +76,10 @@ const commands = [
             .setName('summarize')
             .setDescription('Manually trigger channel summary (Admin only)')
             .addChannelOption((opt) =>
-              opt.setName('channel').setDescription('Channel to summarize (defaults to current)').setRequired(false),
+              opt
+                .setName('channel')
+                .setDescription('Channel to summarize (defaults to current)')
+                .setRequired(false),
             ),
         ),
     ),
@@ -89,10 +91,9 @@ export async function registerCommands() {
   try {
     if (config.devGuildId) {
       logger.info(`Refreshing application (/) commands for DEV guild: ${config.devGuildId}`);
-      await rest.put(
-        Routes.applicationGuildCommands(config.discordAppId, config.devGuildId),
-        { body: commands }
-      );
+      await rest.put(Routes.applicationGuildCommands(config.discordAppId, config.devGuildId), {
+        body: commands,
+      });
       logger.info('Successfully reloaded application (/) commands for DEV guild (Instant).');
     } else {
       logger.info('Refreshing application (/) commands GLOBALLY (may take ~1h to cache).');

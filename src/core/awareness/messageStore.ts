@@ -2,31 +2,31 @@ import { appendMessage, deleteOlderThan, getRecentMessages } from './channelRing
 import { ChannelMessage } from './types';
 
 export interface MessageStore {
-    append(message: ChannelMessage): Promise<void>;
-    fetchRecent(params: {
-        guildId: string | null;
-        channelId: string;
-        limit: number;
-        sinceMs?: number;
-    }): Promise<ChannelMessage[]>;
-    deleteOlderThan(cutoffMs: number): Promise<number>;
+  append(message: ChannelMessage): Promise<void>;
+  fetchRecent(params: {
+    guildId: string | null;
+    channelId: string;
+    limit: number;
+    sinceMs?: number;
+  }): Promise<ChannelMessage[]>;
+  deleteOlderThan(cutoffMs: number): Promise<number>;
 }
 
 export class InMemoryMessageStore implements MessageStore {
-    async append(message: ChannelMessage): Promise<void> {
-        appendMessage(message);
-    }
+  async append(message: ChannelMessage): Promise<void> {
+    appendMessage(message);
+  }
 
-    async fetchRecent(params: {
-        guildId: string | null;
-        channelId: string;
-        limit: number;
-        sinceMs?: number;
-    }): Promise<ChannelMessage[]> {
-        return getRecentMessages(params);
-    }
+  async fetchRecent(params: {
+    guildId: string | null;
+    channelId: string;
+    limit: number;
+    sinceMs?: number;
+  }): Promise<ChannelMessage[]> {
+    return getRecentMessages(params);
+  }
 
-    async deleteOlderThan(cutoffMs: number): Promise<number> {
-        return deleteOlderThan(cutoffMs);
-    }
+  async deleteOlderThan(cutoffMs: number): Promise<number> {
+    return deleteOlderThan(cutoffMs);
+  }
 }

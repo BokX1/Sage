@@ -184,10 +184,10 @@ export class PollinationsClient implements LLMClient {
           content,
           usage: data.usage
             ? {
-              promptTokens: data.usage.prompt_tokens,
-              completionTokens: data.usage.completion_tokens,
-              totalTokens: data.usage.total_tokens,
-            }
+                promptTokens: data.usage.prompt_tokens,
+                completionTokens: data.usage.completion_tokens,
+                totalTokens: data.usage.total_tokens,
+              }
             : undefined,
         };
       } catch (err: any) {

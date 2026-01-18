@@ -33,15 +33,14 @@ function detectIntent(text: string): Invocation['intent'] {
     return 'unknown';
   }
 
-  if (
-    /\b(summarize|summary|tldr|recap|catch up|what are they talking about)\b/i.test(
-      normalized,
-    )
-  ) {
+  if (/\b(summarize|summary|tldr|recap|catch up|what are they talking about)\b/i.test(normalized)) {
     return 'summarize';
   }
 
-  if (normalized.startsWith('admin') || (normalized.includes('admin') && normalized.includes('stats'))) {
+  if (
+    normalized.startsWith('admin') ||
+    (normalized.includes('admin') && normalized.includes('stats'))
+  ) {
     return 'admin';
   }
 
@@ -70,10 +69,7 @@ function buildWakeWordRegex(wakeWords: string[], prefixes: string[]): RegExp | n
   const normalizedPrefixes = prefixes.map((prefix) => prefix.trim()).filter(Boolean);
   if (normalizedPrefixes.length > 0) {
     const prefixPattern = `(?:${normalizedPrefixes.map(escapeRegex).join('|')})`;
-    return new RegExp(
-      `^(?:(?:${prefixPattern})\\s+)?${wakePattern}(?=$|[\\s\\p{P}\\p{S}])`,
-      'iu',
-    );
+    return new RegExp(`^(?:(?:${prefixPattern})\\s+)?${wakePattern}(?=$|[\\s\\p{P}\\p{S}])`, 'iu');
   }
 
   return new RegExp(`^${wakePattern}(?=$|[\\s\\p{P}\\p{S}])`, 'iu');

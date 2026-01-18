@@ -1,4 +1,4 @@
-import { Events, Interaction, ChatInputCommandInteraction, EmbedBuilder, SlashCommandBuilder } from 'discord.js';
+import { Events, Interaction, ChatInputCommandInteraction } from 'discord.js';
 import pkg from '../../../package.json';
 import { client } from '../client';
 import { logger } from '../../utils/logger';
@@ -26,9 +26,7 @@ function isAdmin(interaction: ChatInputCommandInteraction): boolean {
   // Check roles (if in guild)
   const member = interaction.member;
   if (member && 'roles' in member) {
-    const memberRoles = Array.isArray(member.roles)
-      ? member.roles
-      : [...member.roles.cache.keys()];
+    const memberRoles = Array.isArray(member.roles) ? member.roles : [...member.roles.cache.keys()];
     return adminRoleIds.some((r) => memberRoles.includes(r));
   }
 
@@ -65,15 +63,15 @@ export function registerInteractionCreateHandler() {
           const duration = Date.now() - start;
           await interaction.editReply(
             `✅ **LLM Connection Established!**\\n` +
-            `**Response**: "${response.content.trim()}"\\n` +
-            `**Latency**: ${duration}ms\\n` +
-            `**Provider**: ${config.llmProvider}`,
+              `**Response**: "${response.content.trim()}"\\n` +
+              `**Latency**: ${duration}ms\\n` +
+              `**Provider**: ${config.llmProvider}`,
           );
         } catch (e: any) {
           await interaction.editReply(
             `❌ **LLM Connection Failed**.\\n` +
-            `**Error**: ${e.message}\\n` +
-            `**Status**: Check server logs for details.`,
+              `**Error**: ${e.message}\\n` +
+              `**Status**: Check server logs for details.`,
           );
         }
         return;
@@ -140,7 +138,10 @@ async function handleWhoiswho(interaction: ChatInputCommandInteraction) {
   const guildId = interaction.guildId;
 
   if (!guildId) {
-    await interaction.reply({ content: 'This command can only be used in a guild.', ephemeral: true });
+    await interaction.reply({
+      content: 'This command can only be used in a guild.',
+      ephemeral: true,
+    });
     return;
   }
 
@@ -190,7 +191,10 @@ async function handleRelationshipSet(interaction: ChatInputCommandInteraction) {
   const guildId = interaction.guildId;
 
   if (!guildId) {
-    await interaction.reply({ content: 'This command can only be used in a guild.', ephemeral: true });
+    await interaction.reply({
+      content: 'This command can only be used in a guild.',
+      ephemeral: true,
+    });
     return;
   }
 
@@ -198,9 +202,8 @@ async function handleRelationshipSet(interaction: ChatInputCommandInteraction) {
 
   try {
     const { setManualRelationship } = await import('../../core/relationships/relationshipGraph');
-    const { logAdminAction, computeParamsHash } = await import(
-      '../../core/relationships/adminAuditRepo'
-    );
+    const { logAdminAction, computeParamsHash } =
+      await import('../../core/relationships/adminAuditRepo');
 
     await setManualRelationship({
       guildId,
@@ -234,16 +237,18 @@ async function handleAdminStats(interaction: ChatInputCommandInteraction) {
 
   const guildId = interaction.guildId;
   if (!guildId) {
-    await interaction.reply({ content: 'This command can only be used in a guild.', ephemeral: true });
+    await interaction.reply({
+      content: 'This command can only be used in a guild.',
+      ephemeral: true,
+    });
     return;
   }
 
   await interaction.deferReply({ ephemeral: true });
 
   try {
-    const { logAdminAction, computeParamsHash } = await import(
-      '../../core/relationships/adminAuditRepo'
-    );
+    const { logAdminAction, computeParamsHash } =
+      await import('../../core/relationships/adminAuditRepo');
     const { getTopEdges } = await import('../../core/relationships/relationshipGraph');
 
     const edges = await getTopEdges({ guildId, limit: 1000 });
@@ -294,19 +299,20 @@ async function handleAdminRelationshipGraph(interaction: ChatInputCommandInterac
   const guildId = interaction.guildId;
 
   if (!guildId) {
-    await interaction.reply({ content: 'This command can only be used in a guild.', ephemeral: true });
+    await interaction.reply({
+      content: 'This command can only be used in a guild.',
+      ephemeral: true,
+    });
     return;
   }
 
   await interaction.deferReply({ ephemeral: true });
 
   try {
-    const { logAdminAction, computeParamsHash } = await import(
-      '../../core/relationships/adminAuditRepo'
-    );
-    const { getTopEdges, getEdgesForUser } = await import(
-      '../../core/relationships/relationshipGraph'
-    );
+    const { logAdminAction, computeParamsHash } =
+      await import('../../core/relationships/adminAuditRepo');
+    const { getTopEdges, getEdgesForUser } =
+      await import('../../core/relationships/relationshipGraph');
 
     const edges = targetUser
       ? await getEdgesForUser({ guildId, userId: targetUser.id, limit: 15 })
@@ -364,7 +370,10 @@ async function handleAdminTrace(interaction: ChatInputCommandInteraction) {
   const guildId = interaction.guildId;
 
   if (!guildId) {
-    await interaction.reply({ content: 'This command can only be used in a guild.', ephemeral: true });
+    await interaction.reply({
+      content: 'This command can only be used in a guild.',
+      ephemeral: true,
+    });
     return;
   }
 
@@ -372,9 +381,8 @@ async function handleAdminTrace(interaction: ChatInputCommandInteraction) {
 
   try {
     const { getTraceById, listRecentTraces } = await import('../../core/trace/agentTraceRepo');
-    const { logAdminAction, computeParamsHash } = await import(
-      '../../core/relationships/adminAuditRepo'
-    );
+    const { logAdminAction, computeParamsHash } =
+      await import('../../core/relationships/adminAuditRepo');
 
     if (traceId) {
       // Show single trace
@@ -447,7 +455,10 @@ async function handleAdminSummarize(interaction: ChatInputCommandInteraction) {
 
   const guildId = interaction.guildId;
   if (!guildId) {
-    await interaction.reply({ content: 'This command can only be used in a guild.', ephemeral: true });
+    await interaction.reply({
+      content: 'This command can only be used in a guild.',
+      ephemeral: true,
+    });
     return;
   }
 
@@ -460,7 +471,8 @@ async function handleAdminSummarize(interaction: ChatInputCommandInteraction) {
   await interaction.deferReply({ ephemeral: true });
 
   try {
-    const { getChannelSummaryScheduler } = await import('../../core/summary/channelSummaryScheduler');
+    const { getChannelSummaryScheduler } =
+      await import('../../core/summary/channelSummaryScheduler');
     const scheduler = getChannelSummaryScheduler();
 
     if (!scheduler) {
@@ -471,14 +483,16 @@ async function handleAdminSummarize(interaction: ChatInputCommandInteraction) {
     const summary = await scheduler.forceSummarize(guildId, targetChannel.id);
 
     if (!summary) {
-      await interaction.editReply(`⚠️ No summary generated for <#${targetChannel.id}>. (Logging might be disabled or no sufficient messages)`);
+      await interaction.editReply(
+        `⚠️ No summary generated for <#${targetChannel.id}>. (Logging might be disabled or no sufficient messages)`,
+      );
       return;
     }
 
     await interaction.editReply(
       `✅ **Summary generated for <#${targetChannel.id}>**\n` +
-      `**Window**: ${summary.windowStart.toLocaleString()} - ${summary.windowEnd.toLocaleString()}\n` +
-      `**Summary**: ${summary.summaryText}`
+        `**Window**: ${summary.windowStart.toLocaleString()} - ${summary.windowEnd.toLocaleString()}\n` +
+        `**Summary**: ${summary.summaryText}`,
     );
   } catch (error) {
     logger.error({ error, guildId, channelId: targetChannel.id }, 'handleAdminSummarize error');
