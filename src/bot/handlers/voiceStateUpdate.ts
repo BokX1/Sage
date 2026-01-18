@@ -14,11 +14,14 @@ export async function handleVoiceStateUpdate(
     newState: VoiceState,
 ): Promise<void> {
     try {
-        const channelId = newState.channelId ?? oldState.channelId ?? null;
+        const oldChannelId = oldState.channelId ?? null;
+        const newChannelId = newState.channelId ?? null;
         const guildId = newState.guild?.id ?? oldState.guild?.id ?? null;
-        if (!channelId || !guildId) return;
+        if (!guildId || (!oldChannelId && !newChannelId)) return;
 
-        if (!isLoggingEnabled(guildId, channelId)) return;
+        const shouldLogOld = oldChannelId ? isLoggingEnabled(guildId, oldChannelId) : false;
+        const shouldLogNew = newChannelId ? isLoggingEnabled(guildId, newChannelId) : false;
+        if (!shouldLogOld && !shouldLogNew) return;
 
         const displayName =
             newState.member?.displayName ??
@@ -30,8 +33,8 @@ export async function handleVoiceStateUpdate(
             guildId,
             userId: newState.member?.id ?? newState.id,
             displayName,
-            oldChannelId: oldState.channelId ?? null,
-            newChannelId: newState.channelId ?? null,
+            oldChannelId: shouldLogOld ? oldChannelId : null,
+            newChannelId: shouldLogNew ? newChannelId : null,
             at: new Date(),
         };
 
@@ -47,7 +50,7 @@ export async function handleVoiceStateUpdate(
         await ingestEvent({
             type: 'voice',
             guildId,
-            channelId,
+            channelId: change.newChannelId ?? change.oldChannelId ?? '?',
             userId: change.userId,
             action,
             timestamp: change.at,
