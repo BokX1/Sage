@@ -5,6 +5,7 @@ import { registerCommands } from './bot/commands';
 import { registerMessageCreateHandler } from './bot/handlers/messageCreate';
 import { registerInteractionCreateHandler } from './bot/handlers/interactionCreate';
 import { registerVoiceStateUpdateHandler } from './bot/handlers/voiceStateUpdate';
+import { initChannelSummaryScheduler } from './core/summary/channelSummaryScheduler';
 
 async function main() {
   if (!config.DISCORD_TOKEN) {
@@ -16,6 +17,7 @@ async function main() {
   registerMessageCreateHandler();
   registerInteractionCreateHandler();
   registerVoiceStateUpdateHandler(); // D1: Voice event ingestion
+  initChannelSummaryScheduler();
 
   client.once('ready', async () => {
     logger.info(`Logged in as ${client.user?.tag}! (Sage v0.1 Beta - Ready)`);
