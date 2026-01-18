@@ -21,6 +21,16 @@ const envSchema = z.object({
   AUTOPILOT_LEVEL: z.enum(['manual', 'cautious', 'full']).default('cautious'),
   SILENCE_GRACE_SEC: z.coerce.number().default(60),
 
+  // Event Ingestion & Proactive Behavior (D1)
+  LOGGING_ENABLED: z
+    .enum(['true', 'false'])
+    .transform((v) => v === 'true')
+    .default('true'),
+  PROACTIVE_POSTING_ENABLED: z
+    .enum(['true', 'false'])
+    .transform((v) => v === 'true')
+    .default('true'),
+
   // LLM - Pollinations (Default)
   LLM_PROVIDER: z.enum(['pollinations', 'gemini', 'noop']).default('pollinations'),
   POLLINATIONS_BASE_URL: z.string().default('https://gen.pollinations.ai/v1'),

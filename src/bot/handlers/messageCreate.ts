@@ -4,6 +4,7 @@ import { logger } from '../../utils/logger';
 import { generateTraceId } from '../../utils/trace';
 import { isRateLimited, isSeriousMode } from '../../core/safety';
 import { generateChatReply } from '../../core/chat/chatEngine';
+import { ingestEvent } from '../../core/ingest/ingestEvent';
 
 const processedMessagesKey = Symbol.for('sage.handlers.messageCreate.processed');
 const registrationKey = Symbol.for('sage.handlers.messageCreate.registered');
@@ -44,6 +45,21 @@ export async function handleMessageCreate(message: Message) {
       // Message might be deleted
     }
   }
+
+  // ================================================================
+  // D1: Ingest event BEFORE reply gating
+  // ================================================================
+  await ingestEvent({
+    type: 'message',
+    guildId: message.guildId,
+    channelId: message.channelId,
+    messageId: message.id,
+    authorId: message.author.id,
+    content: message.content,
+    timestamp: message.createdAt,
+    replyToMessageId: message.reference?.messageId,
+    mentionsBot: isMentioned,
+  });
 
   // Mention-first: only respond to mentions or replies
   if (!isMentioned && !isReplyToBot) return;
