@@ -10,6 +10,8 @@ import { buildContextMessages } from './contextBuilder';
 import { globalToolRegistry } from './toolRegistry';
 import { runToolCallLoop, ToolCallLoopResult } from './toolCallLoop';
 import { getChannelSummaryStore } from '../summary/channelSummaryStoreRegistry';
+import { howLongInVoiceToday, whoIsInVoice } from '../voice/voiceQueries';
+import { formatHowLongToday, formatWhoInVoice } from '../voice/voiceFormat';
 
 /**
  * Google Search tool definition for OpenAI/Pollinations format.
@@ -47,6 +49,7 @@ export interface RunChatTurnParams {
     replyToBotText: string | null;
     /** Optional intent hint from invocation detection */
     intent?: string | null;
+    mentionedUserIds?: string[];
 }
 
 export interface RunChatTurnResult {
@@ -78,7 +81,30 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
         userProfileSummary,
         replyToBotText,
         intent,
+        mentionedUserIds,
     } = params;
+
+    const normalizedText = userText.toLowerCase();
+    const isWhoInVoice =
+        /\bwho('?s| is)? in voice\b/.test(normalizedText) || /\bwho in voice\b/.test(normalizedText);
+    const isHowLongToday =
+        /\bhow long\b.*\bvoice today\b/.test(normalizedText) ||
+        /\btime in voice today\b/.test(normalizedText);
+
+    if ((isWhoInVoice || isHowLongToday) && guildId) {
+        try {
+            if (isWhoInVoice) {
+                const presence = await whoIsInVoice({ guildId });
+                return { replyText: formatWhoInVoice(presence) };
+            }
+
+            const targetUserId = mentionedUserIds?.[0] ?? userId;
+            const result = await howLongInVoiceToday({ guildId, userId: targetUserId });
+            return { replyText: formatHowLongToday({ userId: targetUserId, ms: result.ms }) };
+        } catch (error) {
+            logger.warn({ error, guildId, userId }, 'Voice fast-path failed, falling back to LLM');
+        }
+    }
 
     let recentTranscript: string | null = null;
     let rollingSummaryText: string | null = null;

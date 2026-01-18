@@ -44,9 +44,19 @@ export async function generateChatReply(params: {
   userText: string;
   replyToBotText?: string | null;
   intent?: string | null;
+  mentionedUserIds?: string[];
 }): Promise<{ replyText: string }> {
-  const { traceId, userId, channelId, guildId, messageId, userText, replyToBotText, intent } =
-    params;
+  const {
+    traceId,
+    userId,
+    channelId,
+    guildId,
+    messageId,
+    userText,
+    replyToBotText,
+    intent,
+    mentionedUserIds,
+  } = params;
 
   // 1. Load Profile
   const profileSummary = await getUserProfile(userId);
@@ -64,6 +74,7 @@ export async function generateChatReply(params: {
     userProfileSummary: profileSummary,
     replyToBotText: replyToBotText ?? null,
     intent: intent ?? null,
+    mentionedUserIds,
   });
 
   let replyText = result.replyText;

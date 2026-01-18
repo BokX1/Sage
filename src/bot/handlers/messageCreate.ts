@@ -39,6 +39,7 @@ export async function handleMessageCreate(message: Message) {
 
   const isMentioned = !!(client.user && message.mentions.has(client.user));
   const mentionsUserIds = Array.from(message.mentions.users?.keys?.() ?? []);
+  const mentionedUserIdsForQueries = mentionsUserIds.filter((id) => id !== client.user?.id);
   const authorDisplayName = message.member?.displayName ?? message.author.username ?? message.author.id;
 
   let isReplyToBot = false;
@@ -126,6 +127,7 @@ export async function handleMessageCreate(message: Message) {
           ? (await message.fetchReference()).content
           : null,
       intent: invocation.intent,
+      mentionedUserIds: mentionedUserIdsForQueries,
     });
 
     // Send messages to Discord

@@ -46,3 +46,19 @@ model ChannelSummary {
   @@unique([guildId, channelId, kind])
   @@index([guildId, channelId, updatedAt])
 }
+
+model VoiceSession {
+  id          String   @id @default(cuid())
+  guildId     String
+  channelId   String
+  userId      String
+  displayName String?
+  startedAt   DateTime
+  endedAt     DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([guildId, channelId, startedAt])
+  @@index([guildId, userId, startedAt])
+  @@index([guildId, userId, endedAt])
+}
