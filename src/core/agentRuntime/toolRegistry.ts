@@ -38,6 +38,11 @@ export interface OpenAIToolSpec {
     };
 }
 
+const toJsonSchema = zodToJsonSchema as unknown as (
+    schema: z.ZodTypeAny,
+    options?: Record<string, unknown>,
+) => object;
+
 /**
  * Tool registry with strict validation.
  * Enforces: allowlist (only registered tools), schema validation, args size limits.
@@ -85,7 +90,9 @@ export class ToolRegistry {
             function: {
                 name: tool.name,
                 description: tool.description,
-                parameters: zodToJsonSchema(tool.schema, { $refStrategy: 'none' }),
+                parameters: toJsonSchema(tool.schema as z.ZodTypeAny, {
+                    $refStrategy: 'none',
+                }),
             },
         }));
     }

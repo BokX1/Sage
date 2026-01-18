@@ -14,4 +14,18 @@ model UserProfile {
   createdAt DateTime @default(now())
 }
 
+model ChannelMessage {
+  messageId         String   @id
+  guildId           String?
+  channelId         String
+  authorId          String
+  authorDisplayName String
+  timestamp         DateTime
+  content           String   @db.Text
+  replyToMessageId  String?
+  mentionsUserIds   Json
+  mentionsBot       Boolean  @default(false)
+
+  @@index([guildId, channelId, timestamp])
+}
 

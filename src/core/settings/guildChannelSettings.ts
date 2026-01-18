@@ -14,6 +14,27 @@ function makeKey(guildId: string, channelId: string): string {
     return `${guildId}:${channelId}`;
 }
 
+function parseChannelList(value: string): Set<string> {
+    return new Set(
+        value
+            .split(',')
+            .map((entry) => entry.trim())
+            .filter((entry) => entry.length > 0),
+    );
+}
+
+function isChannelAllowed(channelId: string): boolean {
+    const blocklist = parseChannelList(config.LOGGING_BLOCKLIST_CHANNEL_IDS);
+    if (blocklist.has(channelId)) return false;
+
+    if (config.LOGGING_MODE === 'allowlist') {
+        const allowlist = parseChannelList(config.LOGGING_ALLOWLIST_CHANNEL_IDS);
+        return allowlist.has(channelId);
+    }
+
+    return true;
+}
+
 /**
  * Check if logging is enabled for a guild/channel.
  * Priority: in-memory override > env default
@@ -21,8 +42,10 @@ function makeKey(guildId: string, channelId: string): string {
 export function isLoggingEnabled(guildId: string, channelId: string): boolean {
     const key = makeKey(guildId, channelId);
     const override = loggingOverrides.get(key);
-    if (override !== undefined) return override;
-    return config.LOGGING_ENABLED;
+    if (!config.LOGGING_ENABLED) return false;
+    const allowed = isChannelAllowed(channelId);
+    if (override !== undefined) return override && allowed;
+    return allowed;
 }
 
 /**

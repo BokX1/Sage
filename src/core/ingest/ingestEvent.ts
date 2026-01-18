@@ -1,4 +1,8 @@
 import { logger } from '../../utils/logger';
+import { config } from '../../config';
+import { appendMessage } from '../awareness/channelRingBuffer';
+import { PrismaMessageStore } from '../awareness/prismaMessageStore';
+import { ChannelMessage } from '../awareness/types';
 import { isLoggingEnabled } from '../settings/guildChannelSettings';
 
 /**
@@ -10,10 +14,12 @@ export interface MessageEvent {
     channelId: string;
     messageId: string;
     authorId: string;
+    authorDisplayName: string;
     content: string;
     timestamp: Date;
     replyToMessageId?: string;
     mentionsBot?: boolean;
+    mentionsUserIds: string[];
 }
 
 /**
@@ -32,6 +38,8 @@ export interface VoiceEvent {
  * Union of all event types that can be ingested.
  */
 export type Event = MessageEvent | VoiceEvent;
+
+const prismaMessageStore = new PrismaMessageStore();
 
 /**
  * Ingest an event from Discord.
@@ -57,8 +65,26 @@ export async function ingestEvent(event: Event): Promise<void> {
         // Log event for debugging
         logger.debug({ event }, 'Event ingested');
 
-        // TODO (D2): Store in persistent transcript ledger
-        // await transcriptRepo.insertEvent(event);
+        if (event.type === 'message') {
+            const message: ChannelMessage = {
+                messageId: event.messageId,
+                guildId: event.guildId,
+                channelId: event.channelId,
+                authorId: event.authorId,
+                authorDisplayName: event.authorDisplayName,
+                timestamp: event.timestamp,
+                content: event.content,
+                replyToMessageId: event.replyToMessageId,
+                mentionsUserIds: event.mentionsUserIds,
+                mentionsBot: event.mentionsBot ?? false,
+            };
+
+            appendMessage(message);
+
+            if (config.MESSAGE_DB_STORAGE_ENABLED) {
+                await prismaMessageStore.append(message);
+            }
+        }
     } catch (err) {
         // CRITICAL: Never let ingestion errors break the handler
         logger.error({ error: err, event }, 'Event ingestion failed (non-fatal)');

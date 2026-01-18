@@ -34,7 +34,9 @@ export async function handleMessageCreate(message: Message) {
     }
   }
 
-  const isMentioned = client.user && message.mentions.has(client.user);
+  const isMentioned = !!(client.user && message.mentions.has(client.user));
+  const mentionsUserIds = Array.from(message.mentions.users?.keys?.() ?? []);
+  const authorDisplayName = message.member?.displayName ?? message.author.username ?? message.author.id;
 
   let isReplyToBot = false;
   if (message.reference) {
@@ -55,10 +57,12 @@ export async function handleMessageCreate(message: Message) {
     channelId: message.channelId,
     messageId: message.id,
     authorId: message.author.id,
+    authorDisplayName,
     content: message.content,
     timestamp: message.createdAt,
     replyToMessageId: message.reference?.messageId,
     mentionsBot: isMentioned,
+    mentionsUserIds,
   });
 
   // Mention-first: only respond to mentions or replies
@@ -88,6 +92,7 @@ export async function handleMessageCreate(message: Message) {
       traceId,
       userId: message.author.id,
       channelId: message.channelId,
+      guildId: message.guildId,
       messageId: message.id,
       userText: text,
       replyToBotText:

@@ -26,6 +26,17 @@ const envSchema = z.object({
     .enum(['true', 'false'])
     .transform((v) => v === 'true')
     .default('true'),
+  LOGGING_MODE: z.enum(['all', 'allowlist']).default('all'),
+  LOGGING_ALLOWLIST_CHANNEL_IDS: z.string().default(''),
+  LOGGING_BLOCKLIST_CHANNEL_IDS: z.string().default(''),
+  RAW_MESSAGE_TTL_DAYS: z.coerce.number().int().positive().default(3),
+  RING_BUFFER_MAX_MESSAGES_PER_CHANNEL: z.coerce.number().int().positive().default(200),
+  CONTEXT_TRANSCRIPT_MAX_MESSAGES: z.coerce.number().int().positive().default(40),
+  CONTEXT_TRANSCRIPT_MAX_CHARS: z.coerce.number().int().positive().default(12_000),
+  MESSAGE_DB_STORAGE_ENABLED: z
+    .enum(['true', 'false'])
+    .transform((v) => v === 'true')
+    .default('false'),
   PROACTIVE_POSTING_ENABLED: z
     .enum(['true', 'false'])
     .transform((v) => v === 'true')

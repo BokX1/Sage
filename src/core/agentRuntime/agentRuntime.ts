@@ -1,6 +1,10 @@
+import { config as appConfig } from '../../config';
+import { getRecentMessages } from '../awareness/channelRingBuffer';
+import { buildTranscriptBlock } from '../awareness/transcriptBuilder';
 import { getLLMClient } from '../llm';
 import { config } from '../config/env';
 import { LLMChatMessage } from '../llm/types';
+import { isLoggingEnabled } from '../settings/guildChannelSettings';
 import { logger } from '../utils/logger';
 import { buildContextMessages } from './contextBuilder';
 import { globalToolRegistry } from './toolRegistry';
@@ -33,6 +37,7 @@ export interface RunChatTurnParams {
     traceId: string;
     userId: string;
     channelId: string;
+    guildId: string | null;
     messageId: string;
     userText: string;
     /** User profile summary for personalization */
@@ -61,13 +66,29 @@ export interface RunChatTurnResult {
  * 4. Return final reply
  */
 export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTurnResult> {
-    const { traceId, userId, channelId, userText, userProfileSummary, replyToBotText } = params;
+    const { traceId, userId, channelId, guildId, userText, userProfileSummary, replyToBotText } =
+        params;
+
+    let recentTranscript: string | null = null;
+    if (guildId && isLoggingEnabled(guildId, channelId)) {
+        const recentMessages = getRecentMessages({
+            guildId,
+            channelId,
+            limit: appConfig.CONTEXT_TRANSCRIPT_MAX_MESSAGES,
+        });
+
+        recentTranscript = buildTranscriptBlock(
+            recentMessages,
+            appConfig.CONTEXT_TRANSCRIPT_MAX_CHARS,
+        );
+    }
 
     // 1. Build context messages
     const messages = buildContextMessages({
         userProfileSummary,
         replyToBotText,
         userText,
+        recentTranscript,
     });
 
     logger.debug({ traceId, messages }, 'Agent runtime: built context messages');
