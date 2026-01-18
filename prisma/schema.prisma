@@ -29,3 +29,20 @@ model ChannelMessage {
   @@index([guildId, channelId, timestamp])
 }
 
+model ChannelSummary {
+  id             String   @id @default(cuid())
+  guildId        String
+  channelId      String
+  kind           String
+  windowStart    DateTime
+  windowEnd      DateTime
+  summaryText    String
+  topicsJson     Json?
+  threadsJson    Json?
+  unresolvedJson Json?
+  glossaryJson   Json?
+  updatedAt      DateTime @updatedAt
+
+  @@unique([guildId, channelId, kind])
+  @@index([guildId, channelId, updatedAt])
+}

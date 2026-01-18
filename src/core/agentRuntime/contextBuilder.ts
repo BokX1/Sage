@@ -4,6 +4,10 @@ import { composeSystemPrompt } from './promptComposer';
 export interface BuildContextMessagesParams {
     /** User profile summary for personalization (may be null) */
     userProfileSummary: string | null;
+    /** Channel rolling summary (may be null) */
+    channelRollingSummary?: string | null;
+    /** Channel profile summary (may be null) */
+    channelProfileSummary?: string | null;
     /** Previous bot message the user is replying to (may be null) */
     replyToBotText: string | null;
     /** The user's current message text */
@@ -27,13 +31,23 @@ export interface BuildContextMessagesParams {
  * Output ordering matches current chatEngine behavior:
  *   1. system (base prompt)
  *   2. system (personalization memory) if present
- *   3. system (recent transcript) if present
- *   4. system (intent hint) if present
- *   5. assistant (replyToBotText) if present
- *   6. user (userText)
+ *   3. system (channel rolling summary) if present
+ *   4. system (channel profile summary) if present
+ *   5. system (recent transcript) if present
+ *   6. system (intent hint) if present
+ *   7. assistant (replyToBotText) if present
+ *   8. user (userText)
  */
 export function buildContextMessages(params: BuildContextMessagesParams): LLMChatMessage[] {
-    const { userProfileSummary, replyToBotText, userText, recentTranscript, intentHint } = params;
+    const {
+        userProfileSummary,
+        channelRollingSummary,
+        channelProfileSummary,
+        replyToBotText,
+        userText,
+        recentTranscript,
+        intentHint,
+    } = params;
 
     const messages: LLMChatMessage[] = [];
 
@@ -48,6 +62,20 @@ export function buildContextMessages(params: BuildContextMessagesParams): LLMCha
         messages.push({
             role: 'system',
             content: `Personalization memory (may be incomplete): ${userProfileSummary}`,
+        });
+    }
+
+    if (channelRollingSummary) {
+        messages.push({
+            role: 'system',
+            content: channelRollingSummary,
+        });
+    }
+
+    if (channelProfileSummary) {
+        messages.push({
+            role: 'system',
+            content: channelProfileSummary,
         });
     }
 

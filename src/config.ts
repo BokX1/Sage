@@ -51,6 +51,13 @@ const envSchema = z.object({
     .enum(['true', 'false'])
     .transform((v) => v === 'true')
     .default('true'),
+  SUMMARY_ROLLING_WINDOW_MIN: z.coerce.number().int().positive().default(60),
+  SUMMARY_ROLLING_MIN_MESSAGES: z.coerce.number().int().positive().default(20),
+  SUMMARY_ROLLING_MIN_INTERVAL_SEC: z.coerce.number().int().positive().default(300),
+  SUMMARY_PROFILE_MIN_INTERVAL_SEC: z.coerce.number().int().positive().default(21600),
+  SUMMARY_MAX_CHARS: z.coerce.number().int().positive().default(1800),
+  SUMMARY_SCHED_TICK_SEC: z.coerce.number().int().positive().default(60),
+  SUMMARY_PROVIDER: z.string().optional().default(''),
 
   // LLM - Pollinations (Default)
   LLM_PROVIDER: z.enum(['pollinations', 'gemini', 'noop']).default('pollinations'),

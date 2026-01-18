@@ -9,6 +9,7 @@ import { logger } from '../utils/logger';
 import { buildContextMessages } from './contextBuilder';
 import { globalToolRegistry } from './toolRegistry';
 import { runToolCallLoop, ToolCallLoopResult } from './toolCallLoop';
+import { getChannelSummaryStore } from '../summary/channelSummaryStoreRegistry';
 
 /**
  * Google Search tool definition for OpenAI/Pollinations format.
@@ -80,6 +81,8 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
     } = params;
 
     let recentTranscript: string | null = null;
+    let rollingSummaryText: string | null = null;
+    let profileSummaryText: string | null = null;
     if (guildId && isLoggingEnabled(guildId, channelId)) {
         const recentMessages = getRecentMessages({
             guildId,
@@ -91,6 +94,35 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
             recentMessages,
             appConfig.CONTEXT_TRANSCRIPT_MAX_CHARS,
         );
+
+        try {
+            const summaryStore = getChannelSummaryStore();
+            const [rollingSummary, profileSummary] = await Promise.all([
+                summaryStore.getLatestSummary({
+                    guildId,
+                    channelId,
+                    kind: 'rolling',
+                }),
+                summaryStore.getLatestSummary({
+                    guildId,
+                    channelId,
+                    kind: 'profile',
+                }),
+            ]);
+
+            if (rollingSummary) {
+                rollingSummaryText = `Channel rolling summary (last ${appConfig.SUMMARY_ROLLING_WINDOW_MIN}m): ${rollingSummary.summaryText}`;
+            }
+
+            if (profileSummary) {
+                profileSummaryText = `Channel profile (long-term): ${profileSummary.summaryText}`;
+            }
+        } catch (error) {
+            logger.warn(
+                { error, guildId, channelId },
+                'Failed to load channel summaries (non-fatal)',
+            );
+        }
     }
 
     // 1. Build context messages
@@ -99,6 +131,8 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
         replyToBotText,
         userText,
         recentTranscript,
+        channelRollingSummary: rollingSummaryText,
+        channelProfileSummary: profileSummaryText,
         intentHint: intent ?? null,
     });
 

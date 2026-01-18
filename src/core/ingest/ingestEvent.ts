@@ -4,6 +4,7 @@ import { appendMessage } from '../awareness/channelRingBuffer';
 import { PrismaMessageStore } from '../awareness/prismaMessageStore';
 import { ChannelMessage } from '../awareness/types';
 import { isLoggingEnabled } from '../settings/guildChannelSettings';
+import { getChannelSummaryScheduler } from '../summary/channelSummaryScheduler';
 
 /**
  * Message event captured from Discord.
@@ -83,6 +84,16 @@ export async function ingestEvent(event: Event): Promise<void> {
 
             if (config.MESSAGE_DB_STORAGE_ENABLED) {
                 await prismaMessageStore.append(message);
+            }
+
+            const scheduler = getChannelSummaryScheduler();
+            if (scheduler) {
+                scheduler.markDirty({
+                    guildId: message.guildId,
+                    channelId: message.channelId,
+                    lastMessageAt: message.timestamp,
+                    messageCountIncrement: 1,
+                });
             }
         }
     } catch (err) {

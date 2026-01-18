@@ -10,30 +10,31 @@ export function getLLMClient(): LLMClient {
 
   const provider = (config.llmProvider || 'pollinations') as LLMProviderName;
 
+  instance = createLLMClient(provider);
+
+  return instance!;
+}
+
+export function createLLMClient(provider: LLMProviderName): LLMClient {
   switch (provider) {
     case 'pollinations':
-      instance = new PollinationsClient({
+      return new PollinationsClient({
         baseUrl: config.pollinationsBaseUrl,
         apiKey: config.pollinationsApiKey,
         model: config.pollinationsModel,
       });
-      break;
     case 'gemini': {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const { GeminiClient } = require('./providers/gemini');
-      instance = new GeminiClient({
+      return new GeminiClient({
         apiKey: config.geminiApiKey,
         model: config.geminiModel,
         baseUrl: config.geminiBaseUrl,
       });
-      break;
     }
     default:
       // Fallback or no-op if no provider
       logger.warn({ provider }, 'Unknown or unset LLM_PROVIDER, defaulting to Pollinations');
-      instance = new PollinationsClient();
-      break;
+      return new PollinationsClient();
   }
-
-  return instance!;
 }

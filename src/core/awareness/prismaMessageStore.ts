@@ -52,11 +52,13 @@ export class PrismaMessageStore implements MessageStore {
 
         const rows = await channelMessage.findMany({
             where,
-            orderBy: { timestamp: 'asc' },
+            orderBy: { timestamp: 'desc' },
             take: params.limit,
         });
 
-        return rows.map((row) => ({
+        return rows
+            .reverse()
+            .map((row) => ({
             messageId: row.messageId as string,
             guildId: row.guildId as string | null,
             channelId: row.channelId as string,
