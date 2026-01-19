@@ -1,7 +1,6 @@
-import { Client, Events, TextChannel } from 'discord.js';
+import { Client, Events } from 'discord.js';
 import { logger } from '../../utils/logger';
 import { backfillChannelHistory } from '../../core/ingest/historyBackfill';
-import { config } from '../../core/config/env';
 import { registerCommands } from '../commands';
 
 const HANDLED_KEY = Symbol.for('sage.handlers.ready');
