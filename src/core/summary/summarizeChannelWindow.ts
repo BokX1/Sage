@@ -1,6 +1,5 @@
 import { config as appConfig } from '../../config';
-import { config as llmConfig } from '../config/env';
-import { getLLMClient, createLLMClient } from '../llm';
+import { createLLMClient } from '../llm';
 import { LLMChatMessage, LLMClient, LLMRequest } from '../llm/types';
 import { logger } from '../utils/logger';
 import { ChannelMessage } from '../awareness/types';
@@ -18,40 +17,295 @@ export interface StructuredSummary {
   glossary: Record<string, string>;
 }
 
+// ============================================
+// ANALYST PROMPTS (Free text output)
+// ============================================
+
+/**
+ * STM ANALYST: Summarizes recent conversation window
+ * Outputs free text summary - no JSON constraints
+ */
+const STM_ANALYST_PROMPT = `You are a Channel Context Analyst.
+Summarize the recent conversation flow for immediate context.
+
+Input: Recent messages
+Output: A narrative summary of the window
+
+Goals:
+1. **Narrative Flow**: What happened? How did the conversation evolve?
+2. **Key Topics**: What were the main subjects? (e.g., "Debugging the auth bug", "Discussing weekend plans")
+3. **State Tracking**: identifying open questions or unresolved issues.
+4. **Vibe Check**: Note the emotional tone (e.g., "High energy", "Frustrated debugging", "Casual banter").
+
+Instructions:
+- Write in a concise, natural style.
+- Highlight specific technical terms or project names mentioned.
+- Ignore trivial bot commands or spam.
+- Output a polished summary paragraph(s).`;
+
+/**
+ * LTM ANALYST: Updates long-term channel profile
+ * Merges previous profile with new rolling summary
+ */
+const LTM_ANALYST_PROMPT = `You are a Channel Historian.
+Maintain the long-term "Wiki" or "Profile" of this channel.
+
+Input: Previous Profile + Latest Rolling Summary
+Output: The FULL Updated Channel Profile (Previous + New merged)
+
+Goals:
+1. **Culture & Identity**: Define what this channel is *for* and what it *feels* like.
+2. **Recurring Themes**: Track topics that come up repeatedly over time.
+3. **Knowledge Base**: Capture consensus decisions, project links, or definitions established here.
+4. **Evolve the History**: Merge new events from the rolling summary into the permanent record.
+
+Instructions:
+- **Preserve** the long-term history while adding new significant developments.
+- **Prune** outdated info (e.g., "fixing bug X" becomes "fixed bug X" or is removed if irrelevant).
+- **Format** as a comprehensive description of the channel's life and purpose.
+- **Output the FULL merged profile text** (do NOT output just the changes).`;
+
+/**
+ * FORMATTER PROMPT: Converts analyst text to structured JSON
+ * Pure wrapper - does NOT interpret or modify
+ */
+const FORMATTER_PROMPT = `Convert the text into structured JSON.
+
+Output format:
+{
+  "summaryText": "<main summary paragraph>",
+  "topics": ["topic1", "topic2"],
+  "threads": ["ongoing thread 1"],
+  "unresolved": ["question 1"],
+  "glossary": {"term": "description"}
+}
+
+Rules:
+- summaryText: the main summary paragraph
+- topics: array of main topics discussed (max 6)
+- threads: array of ongoing conversation threads (max 6)
+- unresolved: array of unanswered questions (max 6)
+- glossary: map of names/projects to descriptions (max 6)
+- If no items for a field, use empty array/object
+- Output valid JSON only`;
+
+// Cached clients
+let analystClientCache: LLMClient | null = null;
+let formatterClientCache: LLMClient | null = null;
+
+function getAnalystClient(): LLMClient {
+  if (analystClientCache) return analystClientCache;
+  // Use summary-specific model config (defaults to gemini-large)
+  const model = appConfig.SUMMARY_MODEL?.trim() || 'gemini-large';
+  analystClientCache = createLLMClient('pollinations', { pollinationsModel: model });
+  logger.debug({ model }, 'Summary analyst client initialized');
+  return analystClientCache;
+}
+
+function getFormatterClient(): LLMClient {
+  if (formatterClientCache) return formatterClientCache;
+  const model = appConfig.FORMATTER_MODEL || 'qwen-coder';
+  formatterClientCache = createLLMClient('pollinations', { pollinationsModel: model });
+  logger.debug({ model }, 'Summary formatter client initialized');
+  return formatterClientCache;
+}
+
+// ============================================
+// PUBLIC API
+// ============================================
+
+/**
+ * STM: Summarize recent channel messages (Rolling Summary)
+ * Uses two-step pipeline: Analyst → Formatter
+ */
 export async function summarizeChannelWindow(params: {
   messages: ChannelMessage[];
   windowStart: Date;
   windowEnd: Date;
 }): Promise<StructuredSummary> {
   const boundedMessages = boundMessages(params.messages, params.windowStart, params.windowEnd);
-  const prompt = buildWindowPrompt({
-    messages: boundedMessages,
-    windowStart: params.windowStart,
-    windowEnd: params.windowEnd,
-  });
+  const messageText = buildMessageLines(boundedMessages);
 
-  return summarizeWithPrompt({
-    prompt,
-    windowStart: params.windowStart,
-    windowEnd: params.windowEnd,
-  });
+  const userPrompt = `Window: ${params.windowStart.toISOString()} - ${params.windowEnd.toISOString()}
+
+Messages:
+${messageText || '(no messages)'}
+
+Summarize this conversation:`;
+
+  try {
+    // Step 1: Analyst (free text summary)
+    const analysisText = await runAnalyst(STM_ANALYST_PROMPT, userPrompt);
+
+    if (!analysisText) {
+      logger.warn('STM: Analyst returned empty, using fallback');
+      return fallbackSummary(messageText, params.windowStart, params.windowEnd);
+    }
+
+    // Step 2: Formatter (wrap in JSON)
+    const json = await runFormatter(analysisText);
+
+    if (json) {
+      logger.info('STM: Two-step pipeline succeeded');
+      return normalizeSummary(json, params.windowStart, params.windowEnd);
+    }
+
+    return fallbackSummary(messageText, params.windowStart, params.windowEnd);
+  } catch (error) {
+    logger.error({ error }, 'STM: Pipeline failed');
+    return fallbackSummary(messageText, params.windowStart, params.windowEnd);
+  }
 }
 
+/**
+ * LTM: Update long-term channel profile
+ * Uses two-step pipeline: Analyst → Formatter
+ */
 export async function summarizeChannelProfile(params: {
   previousSummary: StructuredSummary | null;
   latestRollingSummary: StructuredSummary;
 }): Promise<StructuredSummary> {
-  const prompt = buildProfilePrompt(params.previousSummary, params.latestRollingSummary);
-  const windowStart =
-    params.previousSummary?.windowStart ?? params.latestRollingSummary.windowStart;
+  const previousText = params.previousSummary
+    ? formatSummaryAsText(params.previousSummary)
+    : '(none - new channel)';
+  const latestText = formatSummaryAsText(params.latestRollingSummary);
+
+  const windowStart = params.previousSummary?.windowStart ?? params.latestRollingSummary.windowStart;
   const windowEnd = params.latestRollingSummary.windowEnd;
 
-  return summarizeWithPrompt({
-    prompt,
-    windowStart,
-    windowEnd,
-  });
+  const userPrompt = `Previous Profile:
+${previousText}
+
+Latest Rolling Summary:
+${latestText}
+
+Output the updated channel profile:`;
+
+  try {
+    // Step 1: Analyst (free text profile update)
+    const analysisText = await runAnalyst(LTM_ANALYST_PROMPT, userPrompt);
+
+    if (!analysisText) {
+      logger.warn('LTM: Analyst returned empty, preserving previous');
+      return params.previousSummary ?? params.latestRollingSummary;
+    }
+
+    // Step 2: Formatter (wrap in JSON)
+    const json = await runFormatter(analysisText);
+
+    if (json) {
+      logger.info('LTM: Two-step pipeline succeeded');
+      return normalizeSummary(json, windowStart, windowEnd);
+    }
+
+    // Preserve previous on failure
+    return params.previousSummary ?? params.latestRollingSummary;
+  } catch (error) {
+    logger.error({ error }, 'LTM: Pipeline failed');
+    return params.previousSummary ?? params.latestRollingSummary;
+  }
 }
+
+// ============================================
+// TWO-STEP PIPELINE
+// ============================================
+
+/**
+ * Step 1: Run the Analyst
+ * - Temperature: 0.3 (focused but creative)
+ * - Output: Free text (no JSON)
+ */
+async function runAnalyst(systemPrompt: string, userPrompt: string): Promise<string | null> {
+  const client = getAnalystClient();
+
+  const payload: LLMRequest = {
+    messages: [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userPrompt },
+    ],
+    temperature: 0.3,
+    maxTokens: 2048,
+    // NO responseFormat - free text output
+  };
+
+  try {
+    const response = await client.chat(payload);
+    const text = response.content?.trim();
+    logger.debug({ textLength: text?.length }, 'Summary analyst output');
+    return text || null;
+  } catch (error) {
+    logger.error({ error }, 'Summary analyst failed');
+    return null;
+  }
+}
+
+/**
+ * Step 2: Run the Formatter
+ * - Temperature: 0.0 (deterministic)
+ * - Output: Structured JSON
+ */
+async function runFormatter(analysisText: string): Promise<Record<string, unknown> | null> {
+  const client = getFormatterClient();
+
+  const payload: LLMRequest = {
+    messages: [
+      { role: 'system', content: FORMATTER_PROMPT },
+      { role: 'user', content: analysisText },
+    ],
+    responseFormat: 'json_object',
+    temperature: 0,
+    maxTokens: 2048,
+  };
+
+  try {
+    const response = await client.chat(payload);
+    const cleaned = cleanJsonOutput(response.content);
+
+    try {
+      return JSON.parse(cleaned);
+    } catch {
+      logger.warn({ content: response.content }, 'Formatter: Invalid JSON, retrying');
+      return retryFormatter(client, analysisText);
+    }
+  } catch (error) {
+    logger.error({ error }, 'Summary formatter failed');
+    return null;
+  }
+}
+
+async function retryFormatter(
+  client: LLMClient,
+  analysisText: string,
+): Promise<Record<string, unknown> | null> {
+  const strictPrompt = `Convert to JSON:
+
+${analysisText}
+
+Output: {"summaryText": "...", "topics": [], "threads": [], "unresolved": [], "glossary": {}}`;
+
+  const payload: LLMRequest = {
+    messages: [
+      { role: 'system', content: 'Output valid JSON only.' },
+      { role: 'user', content: strictPrompt },
+    ],
+    responseFormat: 'json_object',
+    temperature: 0,
+    maxTokens: 2048,
+  };
+
+  try {
+    const response = await client.chat(payload);
+    const cleaned = cleanJsonOutput(response.content);
+    return JSON.parse(cleaned);
+  } catch (error) {
+    logger.error({ error }, 'Summary formatter retry failed');
+    return null;
+  }
+}
+
+// ============================================
+// HELPERS
+// ============================================
 
 function boundMessages(
   messages: ChannelMessage[],
@@ -67,27 +321,6 @@ function boundMessages(
     return filtered;
   }
   return filtered.slice(filtered.length - MAX_INPUT_MESSAGES);
-}
-
-function buildWindowPrompt(params: {
-  messages: ChannelMessage[];
-  windowStart: Date;
-  windowEnd: Date;
-}): string {
-  const header = `Window: ${params.windowStart.toISOString()} to ${params.windowEnd.toISOString()}`;
-  const lines = buildMessageLines(params.messages);
-
-  return `${header}\nMessages:\n${lines || '(no messages)'}`;
-}
-
-function buildProfilePrompt(
-  previousSummary: StructuredSummary | null,
-  latestRollingSummary: StructuredSummary,
-): string {
-  const previousText = previousSummary?.summaryText ?? '(none)';
-  const latestText = latestRollingSummary.summaryText || '(none)';
-
-  return `Previous long-term profile summary:\n${previousText}\n\nLatest rolling summary:\n${latestText}\n\nUpdate the long-term profile summary for this channel.`;
 }
 
 function buildMessageLines(messages: ChannelMessage[]): string {
@@ -107,89 +340,26 @@ function buildMessageLines(messages: ChannelMessage[]): string {
   return lines.join('\n');
 }
 
-async function summarizeWithPrompt(params: {
-  prompt: string;
-  windowStart: Date;
-  windowEnd: Date;
-}): Promise<StructuredSummary> {
-  const { client, provider } = getSummaryClient();
-  const systemPrompt = buildSystemPrompt();
+function formatSummaryAsText(summary: StructuredSummary): string {
+  const parts: string[] = [summary.summaryText];
 
-  const messages: LLMChatMessage[] = [
-    { role: 'system', content: systemPrompt },
-    { role: 'user', content: params.prompt },
-  ];
-
-  try {
-    const json = await tryChat(client, messages, provider, false);
-    return normalizeSummary(json, params.windowStart, params.windowEnd);
-  } catch (error) {
-    logger.warn({ error }, 'Channel summary: JSON parse failed after retry');
-    return fallbackSummary(params.prompt, params.windowStart, params.windowEnd);
+  if (summary.topics.length > 0) {
+    parts.push(`Topics: ${summary.topics.join(', ')}`);
   }
-}
-
-function buildSystemPrompt(): string {
-  return `You are a summarization engine for Discord channels.\nReturn ONLY valid JSON with keys: summaryText, topics, threads, unresolved, glossary.\nRules:\n- summaryText: 3-6 sentences, concise, <= ${appConfig.SUMMARY_MAX_CHARS} characters.\n- topics/threads/unresolved: arrays of short strings (max 6 each).\n- glossary: object mapping names/projects to short descriptions (max 6 entries).\n- If a field has no items, return an empty array/object.\n- Do not include markdown or extra text.`;
-}
-
-function getSummaryClient(): { client: LLMClient; provider: 'pollinations' } {
-  const providerOverride = appConfig.SUMMARY_PROVIDER?.trim();
-  const modelOverride = appConfig.SUMMARY_MODEL?.trim() || undefined;
-
-  if (!providerOverride || providerOverride === llmConfig.llmProvider) {
-    // Use default provider but with summary-specific model
-    return {
-      client: createLLMClient('pollinations', { pollinationsModel: modelOverride }),
-      provider: 'pollinations',
-    };
+  if (summary.threads.length > 0) {
+    parts.push(`Threads: ${summary.threads.join(', ')}`);
+  }
+  if (summary.unresolved.length > 0) {
+    parts.push(`Unresolved: ${summary.unresolved.join(', ')}`);
+  }
+  if (Object.keys(summary.glossary).length > 0) {
+    const glossaryStr = Object.entries(summary.glossary)
+      .map(([k, v]) => `${k}: ${v}`)
+      .join('; ');
+    parts.push(`Glossary: ${glossaryStr}`);
   }
 
-  return {
-    client: createLLMClient('pollinations', { pollinationsModel: modelOverride }),
-    provider: 'pollinations',
-  };
-}
-
-async function tryChat(
-  client: LLMClient,
-  messages: LLMChatMessage[],
-  _provider: 'pollinations',
-  retry: boolean,
-): Promise<Record<string, unknown>> {
-  const payload: LLMRequest = {
-    messages,
-    responseFormat: retry ? undefined : 'json_object',
-    maxTokens: 4096,
-    temperature: 0,
-  };
-
-  if (retry) {
-    const strict = '\n\nIMPORTANT: Output ONLY valid JSON. No markdown. No extra text.';
-    const last = messages[messages.length - 1];
-    if (last) {
-      payload.messages = [
-        ...messages.slice(0, -1),
-        { role: last.role, content: last.content + strict },
-      ];
-    }
-  }
-
-  const response = await client.chat(payload);
-  const cleanedContent = cleanJsonOutput(response.content);
-
-  try {
-    return JSON.parse(cleanedContent);
-  } catch (error) {
-    if (!retry) {
-      logger.warn(
-        { error, content: response.content },
-        'Channel summary: invalid JSON, retrying once',
-      );
-      return tryChat(client, messages, _provider, true);
-    }
-    throw error;
-  }
+  return parts.join('\n');
 }
 
 export function cleanJsonOutput(content: string): string {
@@ -231,10 +401,7 @@ function normalizeSummaryText(value: unknown): string {
   if (!text) {
     return '(no summary available)';
   }
-  if (text.length <= appConfig.SUMMARY_MAX_CHARS) {
-    return text;
-  }
-  return text.slice(0, appConfig.SUMMARY_MAX_CHARS);
+  return text;
 }
 
 function normalizeStringArray(value: unknown): string[] {
@@ -256,8 +423,7 @@ function normalizeGlossary(value: unknown): Record<string, string> {
 
 function fallbackSummary(prompt: string, windowStart: Date, windowEnd: Date): StructuredSummary {
   const raw = prompt.replace(/\s+/g, ' ').trim();
-  const summaryText =
-    raw.length > appConfig.SUMMARY_MAX_CHARS ? raw.slice(0, appConfig.SUMMARY_MAX_CHARS) : raw;
+  const summaryText = raw.length > 500 ? raw.slice(0, 500) + '...' : raw;
 
   return {
     windowStart,

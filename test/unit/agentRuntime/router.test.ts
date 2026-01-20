@@ -73,7 +73,7 @@ describe('Router', () => {
 
       expect(result.kind).toBe('qa');
       expect(result.experts).toContain('Memory');
-      expect(result.temperature).toBe(0.7);
+      expect(result.temperature).toBe(0.8);
       expect(result.allowTools).toBe(true);
     });
 

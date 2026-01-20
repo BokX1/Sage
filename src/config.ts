@@ -42,8 +42,8 @@ const envSchema = z.object({
   LOGGING_BLOCKLIST_CHANNEL_IDS: z.string().default(''),
   RAW_MESSAGE_TTL_DAYS: z.coerce.number().int().positive().default(3),
   RING_BUFFER_MAX_MESSAGES_PER_CHANNEL: z.coerce.number().int().positive().default(200),
-  CONTEXT_TRANSCRIPT_MAX_MESSAGES: z.coerce.number().int().positive().default(40),
-  CONTEXT_TRANSCRIPT_MAX_CHARS: z.coerce.number().int().positive().default(12_000),
+  CONTEXT_TRANSCRIPT_MAX_MESSAGES: z.coerce.number().int().positive().default(80),
+  CONTEXT_TRANSCRIPT_MAX_CHARS: z.coerce.number().int().positive().default(24_000),
   MESSAGE_DB_STORAGE_ENABLED: z
     .enum(['true', 'false'])
     .transform((v) => v === 'true')
@@ -59,27 +59,27 @@ const envSchema = z.object({
   SUMMARY_MAX_CHARS: z.coerce.number().int().positive().default(1800),
   SUMMARY_SCHED_TICK_SEC: z.coerce.number().int().positive().default(60),
   SUMMARY_PROVIDER: z.string().optional().default(''),
-  SUMMARY_MODEL: z.string().default('deepseek'),
+  SUMMARY_MODEL: z.string().default('gemini-large'),
 
   // Context Budgeting (D5)
-  CONTEXT_MAX_INPUT_TOKENS: z.coerce.number().int().positive().default(8000),
-  CONTEXT_RESERVED_OUTPUT_TOKENS: z.coerce.number().int().positive().default(1200),
-  SYSTEM_PROMPT_MAX_TOKENS: z.coerce.number().int().positive().default(1500),
+  CONTEXT_MAX_INPUT_TOKENS: z.coerce.number().int().positive().default(16000),
+  CONTEXT_RESERVED_OUTPUT_TOKENS: z.coerce.number().int().positive().default(2400),
+  SYSTEM_PROMPT_MAX_TOKENS: z.coerce.number().int().positive().default(3000),
   TOKEN_ESTIMATOR: z.enum(['heuristic']).default('heuristic'),
   TOKEN_HEURISTIC_CHARS_PER_TOKEN: z.coerce.number().int().positive().default(4),
-  CONTEXT_BLOCK_MAX_TOKENS_TRANSCRIPT: z.coerce.number().int().positive().default(1800),
-  CONTEXT_BLOCK_MAX_TOKENS_ROLLING_SUMMARY: z.coerce.number().int().positive().default(1200),
-  CONTEXT_BLOCK_MAX_TOKENS_PROFILE_SUMMARY: z.coerce.number().int().positive().default(1200),
-  CONTEXT_BLOCK_MAX_TOKENS_MEMORY: z.coerce.number().int().positive().default(1500),
-  CONTEXT_BLOCK_MAX_TOKENS_REPLY_CONTEXT: z.coerce.number().int().positive().default(800),
-  CONTEXT_USER_MAX_TOKENS: z.coerce.number().int().positive().default(2500),
+  CONTEXT_BLOCK_MAX_TOKENS_TRANSCRIPT: z.coerce.number().int().positive().default(4000),
+  CONTEXT_BLOCK_MAX_TOKENS_ROLLING_SUMMARY: z.coerce.number().int().positive().default(2400),
+  CONTEXT_BLOCK_MAX_TOKENS_PROFILE_SUMMARY: z.coerce.number().int().positive().default(2400),
+  CONTEXT_BLOCK_MAX_TOKENS_MEMORY: z.coerce.number().int().positive().default(3000),
+  CONTEXT_BLOCK_MAX_TOKENS_REPLY_CONTEXT: z.coerce.number().int().positive().default(1600),
+  CONTEXT_USER_MAX_TOKENS: z.coerce.number().int().positive().default(5000),
   CONTEXT_TRUNCATION_NOTICE: z
     .enum(['true', 'false'])
     .transform((v) => v === 'true')
     .default('true'),
 
   // D9: MoE Orchestration
-  CONTEXT_BLOCK_MAX_TOKENS_EXPERTS: z.coerce.number().int().positive().default(1200),
+  CONTEXT_BLOCK_MAX_TOKENS_EXPERTS: z.coerce.number().int().positive().default(2400),
   GOVERNOR_REWRITE_ENABLED: z
     .enum(['true', 'false'])
     .transform((v) => v === 'true')
@@ -90,7 +90,7 @@ const envSchema = z.object({
     .default('true'),
 
   // Relationship Hints (D7)
-  CONTEXT_BLOCK_MAX_TOKENS_RELATIONSHIP_HINTS: z.coerce.number().int().positive().default(600),
+  CONTEXT_BLOCK_MAX_TOKENS_RELATIONSHIP_HINTS: z.coerce.number().int().positive().default(1200),
   RELATIONSHIP_HINTS_MAX_EDGES: z.coerce.number().int().positive().default(10),
   RELATIONSHIP_DECAY_LAMBDA: z.coerce.number().positive().default(0.06),
   RELATIONSHIP_WEIGHT_K: z.coerce.number().positive().default(0.2),
@@ -108,7 +108,10 @@ const envSchema = z.object({
 
   // Profile Memory LLM Override
   PROFILE_PROVIDER: z.string().default(''),
-  PROFILE_POLLINATIONS_MODEL: z.string().default(''),
+  PROFILE_POLLINATIONS_MODEL: z.string().default('gemini-large'),
+
+  // Formatter Model (for JSON formatting in profile updates)
+  FORMATTER_MODEL: z.string().default('qwen-coder'),
 });
 
 // Parse and validate or crash

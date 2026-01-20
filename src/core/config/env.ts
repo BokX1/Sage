@@ -56,4 +56,7 @@ export const config = {
   // Profile Memory LLM Override
   profileProvider: newConfig.PROFILE_PROVIDER,
   profilePollinationsModel: newConfig.PROFILE_POLLINATIONS_MODEL,
+
+  // Formatter Model (for JSON formatting)
+  formatterModel: newConfig.FORMATTER_MODEL,
 };

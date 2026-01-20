@@ -1,97 +1,281 @@
-import { getLLMClient, createLLMClient } from '../llm';
+import { createLLMClient } from '../llm';
 import { config } from '../config/env';
+import { config as appConfig } from '../../config';
 import { logger } from '../utils/logger';
-import { LLMClient, LLMChatMessage, LLMRequest, LLMProviderName } from '../llm/types';
-
-const UPDATE_SYSTEM_PROMPT = `You update a compact user profile summary for personalization.
-Rules:
-- Keep <= 800 characters.
-- Store ONLY stable preferences and facts (e.g. "Favorite color is blue", "Lives in Paris", "Likes sci-fi").
-- Do NOT store raw chat logs, "User said", or "Assistant replied".
-- Do NOT store secrets, credentials, or PII.
-- If nothing new/stable is learned, return the previous summary unchanged.
-- ALWAYS return a JSON object, even if summary is unchanged; never return plain text.
-Output format: JSON exactly: {"summary":"..."}.`;
-
-// Cached profile client
-let profileClientCache: { client: LLMClient; provider: LLMProviderName } | null = null;
+import { LLMClient, LLMRequest, LLMProviderName } from '../llm/types';
 
 /**
- * Get the LLM client for profile updates.
- * Uses PROFILE_PROVIDER and PROFILE_POLLINATIONS_MODEL overrides if configured.
+ * ANALYST SYSTEM PROMPT
+ * The analyst does the hard work: reads previous summary + new interaction,
+ * then outputs the UPDATED SUMMARY TEXT directly.
+ * If nothing new was learned, it outputs the previous summary unchanged.
+/**
+ * ANALYST SYSTEM PROMPT
+ * The analyst does the hard work: reads previous summary + new interaction,
+ * then outputs the UPDATED SUMMARY TEXT directly.
+ * If nothing new was learned, it outputs the previous summary unchanged.
  */
-function getProfileClient(): { client: LLMClient; provider: LLMProviderName } {
-  if (profileClientCache) {
-    return profileClientCache;
+const ANALYST_SYSTEM_PROMPT = `You are an expert User Profile Analyst.
+Your goal is to maintain a high-fidelity, evolving model of the user.
+
+Input: Previous Profile + Latest Interaction
+Output: The FULL Updated Profile (Previous + New merged)
+
+Core Instructions:
+1. **Analyze Deeply**: Look beyond surface facts. Identify values, communication style, technical proficiency, and recurring patterns.
+2. **Merge & Evolve**: Integrate new insights with the existing profile. Refine outdated beliefs.
+3. **Be Concise but Nuanced**: Use dense, descriptive language. Capture the "vibe" of the user.
+
+Rules:
+- PRESERVE existing stable facts unless contradicted.
+- IGNORE transient small talk (hellos, simple thanks) unless it reveals personality.
+- CAPTURE:
+  - **Hard Facts**: Location, job, tech stack, specific interests.
+  - **Soft Traits**: Tone (formal/casual), patience level, humor style.
+  - **Context**: Recent major topics or projects.
+- NO PII/SECRETS: Do not store phone numbers, keys, or passwords.
+- **Output the FULL merged profile text** (do NOT output just the changes).`;
+
+/**
+ * FORMATTER SYSTEM PROMPT
+ * Pure text-to-JSON wrapper. Does NOT interpret, extract, or rewrite.
+ * Just wraps the analyst's output in JSON format.
+ */
+const FORMATTER_SYSTEM_PROMPT = `Wrap the given text in JSON format.
+
+Output: {"summary": "<the text>"}
+
+Do NOT modify, summarize, or extract from the text.
+Just put the exact text inside the JSON summary field.`;
+
+// Cached analyst client (uses gemini-large)
+let analystClientCache: { client: LLMClient; provider: LLMProviderName } | null = null;
+
+// Cached formatter client (uses qwen-coder)
+let formatterClientCache: LLMClient | null = null;
+
+/**
+ * Get the LLM client for the Analyst phase.
+ * Uses PROFILE_PROVIDER and PROFILE_POLLINATIONS_MODEL overrides if configured.
+ * Default: gemini-large with temperature 0.3
+ */
+function getAnalystClient(): { client: LLMClient; provider: LLMProviderName } {
+  if (analystClientCache) {
+    return analystClientCache;
   }
 
   const profileProvider = config.profileProvider?.trim() || '';
-  const profilePollinationsModel = config.profilePollinationsModel?.trim() || '';
-
-  // If no overrides at all, use default client
-  if (!profileProvider && !profilePollinationsModel) {
-    profileClientCache = {
-      client: getLLMClient(),
-      provider: config.llmProvider as LLMProviderName,
-    };
-    return profileClientCache;
-  }
+  const profilePollinationsModel = config.profilePollinationsModel?.trim() || 'gemini-large';
 
   // Determine provider (use override or fallback to default)
-  const provider = (profileProvider || config.llmProvider) as LLMProviderName;
+  const provider = (profileProvider || 'pollinations') as LLMProviderName;
 
-  // Build model overrides (Pollinations only)
-  const opts: { pollinationsModel?: string } = {};
-  if (profilePollinationsModel) {
-    opts.pollinationsModel = profilePollinationsModel;
-  }
-
-  profileClientCache = {
-    client: createLLMClient(provider, opts),
+  analystClientCache = {
+    client: createLLMClient(provider, { pollinationsModel: profilePollinationsModel }),
     provider,
   };
 
   logger.debug(
-    { provider, pollinationsModel: opts.pollinationsModel },
-    'Profile updater using dedicated client',
+    { provider, model: profilePollinationsModel },
+    'Analyst client initialized (gemini-large)',
   );
 
-  return profileClientCache;
+  return analystClientCache;
 }
 
+/**
+ * Get the LLM client for the Formatter phase.
+ * Uses qwen-coder model with temperature 0.0 for deterministic JSON output.
+ */
+function getFormatterClient(): LLMClient {
+  if (formatterClientCache) {
+    return formatterClientCache;
+  }
+
+  const formatterModel = appConfig.FORMATTER_MODEL || 'qwen-coder';
+  formatterClientCache = createLLMClient('pollinations', { pollinationsModel: formatterModel });
+
+  logger.debug({ model: formatterModel }, 'Formatter client initialized (qwen-coder)');
+
+  return formatterClientCache;
+}
+
+/**
+ * Two-step profile update pipeline:
+ * 1. ANALYST (gemini-large, temp=0.3): Analyze the interaction freely (no JSON constraint)
+ * 2. FORMATTER (qwen-coder, temp=0.0): Convert analysis to strict JSON
+ */
 export async function updateProfileSummary(params: {
   previousSummary: string | null;
   userMessage: string;
   assistantReply: string;
 }): Promise<string | null> {
   const { previousSummary, userMessage, assistantReply } = params;
-  const { client, provider } = getProfileClient();
 
-  const prompt = `Current Summary: ${previousSummary || 'None'}
+  try {
+    // ========================================
+    // STEP 1: ANALYST (Outputs Updated Summary)
+    // ========================================
+    const updatedSummaryText = await runAnalyst({
+      previousSummary,
+      userMessage,
+      assistantReply,
+    });
+
+    if (!updatedSummaryText) {
+      logger.warn('Profile Update: Analyst returned empty response');
+      return previousSummary; // Preserve existing on failure
+    }
+
+    logger.debug({ updatedSummaryText }, 'Analyst output');
+
+    // ========================================
+    // STEP 2: FORMATTER (Wrap in JSON)
+    // ========================================
+    const json = await runFormatter({
+      summaryText: updatedSummaryText,
+    });
+
+    if (json && typeof json.summary === 'string') {
+      logger.info('Profile Update: Two-step pipeline succeeded');
+      return json.summary;
+    }
+
+    logger.warn('Profile Update: Formatter did not return valid summary');
+    return previousSummary; // Preserve existing on failure
+  } catch (error) {
+    logger.error({ error }, 'Error in profile update pipeline');
+    return null;
+  }
+}
+
+/**
+ * STEP 1: Run the Analyst
+ * - Model: gemini-large
+ * - Temperature: 0.3 (creative but focused)
+ * - Output: Free-form text analysis (NO JSON constraint)
+ */
+async function runAnalyst(params: {
+  previousSummary: string | null;
+  userMessage: string;
+  assistantReply: string;
+}): Promise<string | null> {
+  const { previousSummary, userMessage, assistantReply } = params;
+  const { client } = getAnalystClient();
+
+  const userPrompt = `Previous Summary: ${previousSummary || 'None (new user)'}
 
 Latest Interaction:
 User: ${userMessage}
 Assistant: ${assistantReply}
 
-Update the summary based on the new interaction.`;
+Output the updated summary:`;
+
+  const payload: LLMRequest = {
+    messages: [
+      { role: 'system', content: ANALYST_SYSTEM_PROMPT },
+      { role: 'user', content: userPrompt },
+    ],
+    temperature: 0.3, // Analyst temperature: creative but focused
+    maxTokens: 1024,
+    // NO responseFormat - allow free text output
+  };
 
   try {
-    const json = await tryChat(
-      client,
-      [
-        { role: 'system', content: UPDATE_SYSTEM_PROMPT },
-        { role: 'user', content: prompt },
-      ],
-      provider,
-      false, // Initial attempt, no retry yet
-    );
-
-    if (json && typeof json.summary === 'string') {
-      return json.summary;
-    }
-    return null;
+    const response = await client.chat(payload);
+    return response.content?.trim() || null;
   } catch (error) {
-    logger.error({ error }, 'Error updating profile');
+    logger.error({ error }, 'Analyst phase failed');
+    return null;
+  }
+}
+
+/**
+ * STEP 2: Run the Formatter
+ * - Model: qwen-coder
+ * - Temperature: 0.0 (deterministic)
+ * - Output: Strict JSON {"summary": "..."}
+ * Just wraps the analyst's text in JSON format.
+ */
+async function runFormatter(params: {
+  summaryText: string;
+}): Promise<{ summary?: string } | null> {
+  const { summaryText } = params;
+  const client = getFormatterClient();
+
+  // Simple prompt: just wrap this text in JSON
+  const userPrompt = summaryText;
+
+  const payload: LLMRequest = {
+    messages: [
+      { role: 'system', content: FORMATTER_SYSTEM_PROMPT },
+      { role: 'user', content: userPrompt },
+    ],
+    responseFormat: 'json_object',
+    temperature: 0, // Formatter temperature: deterministic
+    maxTokens: 1024,
+  };
+
+  try {
+    const response = await client.chat(payload);
+    const content = response.content;
+
+    logger.debug({ content }, 'Formatter raw output');
+
+    // Extract and parse JSON
+    const extracted = extractBalancedJson(content);
+
+    if (!extracted) {
+      logger.warn({ content }, 'Formatter: No JSON found, retrying with stricter prompt');
+      return retryFormatter(client, summaryText);
+    }
+
+    return JSON.parse(extracted);
+  } catch (error) {
+    logger.error({ error }, 'Formatter phase failed');
+    return null;
+  }
+}
+
+/**
+ * Retry formatter with stricter instructions
+ */
+async function retryFormatter(
+  client: LLMClient,
+  summaryText: string,
+): Promise<{ summary?: string } | null> {
+  const strictPrompt = `Wrap this text in JSON: {"summary": "<text>"}
+
+Text to wrap:
+${summaryText}`;
+
+  const payload: LLMRequest = {
+    messages: [
+      {
+        role: 'system',
+        content: 'Output valid JSON only. Format: {"summary": "..."}',
+      },
+      { role: 'user', content: strictPrompt },
+    ],
+    responseFormat: 'json_object',
+    temperature: 0,
+    maxTokens: 1024,
+  };
+
+  try {
+    const response = await client.chat(payload);
+    const extracted = extractBalancedJson(response.content);
+
+    if (!extracted) {
+      logger.error({ content: response.content }, 'Formatter retry failed - no JSON');
+      return null;
+    }
+
+    const json = JSON.parse(extracted);
+    logger.info('Formatter retry succeeded');
+    return json;
+  } catch (error) {
+    logger.error({ error }, 'Formatter retry failed');
     return null;
   }
 }
@@ -163,106 +347,4 @@ function extractFirstJsonObject(content: string): string | null {
 
   // No complete object found
   return null;
-}
-
-async function tryChat(
-  client: LLMClient,
-  messages: LLMChatMessage[],
-  _provider: LLMProviderName,
-  retry: boolean,
-): Promise<{ summary?: string } | null> {
-  // Keep responseFormat json_object for ALL attempts
-  const payload: LLMRequest = {
-    messages,
-    responseFormat: 'json_object',
-    maxTokens: 1024,
-    temperature: 0,
-  };
-
-  if (retry) {
-    // Append strict instruction on retry
-    const strict =
-      '\n\nIMPORTANT: Output ONLY valid JSON. No markdown. No text. Example: {"summary": "..."}';
-    const last = messages[messages.length - 1];
-    if (last) {
-      payload.messages = [
-        ...messages.slice(0, -1),
-        { role: last.role, content: last.content + strict },
-      ];
-    }
-  }
-
-  const response = await client.chat(payload);
-  const content = response.content;
-
-  logger.debug({ content, retry }, 'Profile Update Raw Response');
-
-  // Extract JSON using balanced extractor
-  const extracted = extractBalancedJson(content);
-
-  if (!extracted) {
-    if (!retry) {
-      logger.warn('Profile Update: No JSON object found. Retrying...');
-      return tryChat(client, messages, _provider, true);
-    }
-    // After retry fails, try repair pass
-    return tryRepairPass(client, content);
-  }
-
-  // Validate JSON
-  try {
-    const json = JSON.parse(extracted);
-    return json;
-  } catch (e) {
-    logger.debug({ error: e, extracted }, 'JSON Parse Error in profile update');
-    if (!retry) {
-      // RETRY ONCE
-      logger.warn('Profile Update: Invalid JSON received. Retrying with stronger prompt...');
-      return tryChat(client, messages, _provider, true);
-    }
-
-    // After retry fails, try repair pass
-    return tryRepairPass(client, content);
-  }
-}
-
-/**
- * Repair pass: Ask the LLM to convert raw output to valid JSON.
- * This is a last-ditch effort when normal parsing fails.
- */
-async function tryRepairPass(
-  client: LLMClient,
-  rawContent: string,
-): Promise<{ summary?: string } | null> {
-  logger.warn('Profile Update: Attempting repair pass...');
-
-  const repairSystemPrompt =
-    'Convert the following to JSON exactly: {"summary":"..."}. Output JSON only, nothing else.';
-
-  const payload: LLMRequest = {
-    messages: [
-      { role: 'system', content: repairSystemPrompt },
-      { role: 'user', content: rawContent },
-    ],
-    responseFormat: 'json_object',
-    temperature: 0,
-    maxTokens: 1024,
-  };
-
-  try {
-    const response = await client.chat(payload);
-    const extracted = extractBalancedJson(response.content);
-
-    if (!extracted) {
-      logger.error({ content: response.content }, 'Profile Update: Repair pass failed - no JSON');
-      return null;
-    }
-
-    const json = JSON.parse(extracted);
-    logger.info('Profile Update: Repair pass succeeded');
-    return json;
-  } catch (error) {
-    logger.error({ error, rawContent }, 'Profile Update: Repair pass failed');
-    return null;
-  }
 }

@@ -103,12 +103,12 @@ export function decideRoute(params: DecideRouteParams): RouteDecision {
     };
   }
 
-  // Route: QA (default)
+  // Route: QA (default) - Chat temperature 0.8 for creative responses
   return {
     kind: 'qa',
     experts: ['Memory'],
     allowTools: true,
-    temperature: 0.7,
+    temperature: 0.8,
     notes: 'Default Q&A route',
   };
 }

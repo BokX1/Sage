@@ -17,7 +17,13 @@ vi.mock('../../../src/core/config/env', () => ({
   config: {
     llmProvider: 'pollinations',
     profileProvider: '',
-    profilePollinationsModel: '',
+    profilePollinationsModel: 'gemini-large',
+  },
+}));
+
+vi.mock('../../../src/config', () => ({
+  config: {
+    FORMATTER_MODEL: 'qwen-coder',
   },
 }));
 
@@ -27,111 +33,131 @@ describe('ProfileUpdater', () => {
     mockChatFn.mockReset();
   });
 
-  describe('updateProfileSummary', () => {
-    it('should retry when receiving invalid JSON ("Meow") - keeping json_object format', async () => {
-      // 1. First call fails with text (JSON mode mismatch/hallucination)
+  describe('updateProfileSummary - Two-Step Pipeline', () => {
+    it('should complete two-step pipeline: Analyst outputs summary -> Formatter wraps in JSON', async () => {
+      // Step 1: Analyst outputs the updated summary directly
       mockChatFn.mockResolvedValueOnce({
-        content: 'Meow',
+        content: 'Loves cats. Enthusiastic about felines.',
       });
 
-      // 2. Second call (retry) succeeds with valid JSON
+      // Step 2: Formatter wraps in JSON
       mockChatFn.mockResolvedValueOnce({
-        content: '{"summary": "Likes cats"}',
+        content: '{"summary": "Loves cats. Enthusiastic about felines."}',
       });
 
       const result = await updateProfileSummary({
         previousSummary: null,
-        userMessage: 'I love cats',
-        assistantReply: 'Meow',
+        userMessage: 'I love cats!',
+        assistantReply: 'Cats are wonderful!',
       });
 
-      expect(result).toBe('Likes cats');
+      expect(result).toBe('Loves cats. Enthusiastic about felines.');
       expect(mockChatFn).toHaveBeenCalledTimes(2);
 
-      // Verify first call asked for JSON object
-      expect(mockChatFn.mock.calls[0][0].responseFormat).toEqual('json_object');
+      // Verify Step 1 (Analyst) does NOT request JSON format
+      const analystCall = mockChatFn.mock.calls[0][0];
+      expect(analystCall.responseFormat).toBeUndefined();
+      expect(analystCall.temperature).toBe(0.3);
 
-      // Verify second call (retry) ALSO uses json_object (key change from old behavior)
-      const retryCall = mockChatFn.mock.calls[1][0];
-      expect(retryCall.responseFormat).toEqual('json_object');
-
-      // Verify strict instruction was appended
-      const lastMsg = retryCall.messages[retryCall.messages.length - 1];
-      expect(lastMsg.content).toContain('IMPORTANT: Output ONLY valid JSON');
+      // Verify Step 2 (Formatter) DOES request JSON format
+      const formatterCall = mockChatFn.mock.calls[1][0];
+      expect(formatterCall.responseFormat).toBe('json_object');
+      expect(formatterCall.temperature).toBe(0);
     });
 
-    it('should parse JSON in code blocks', async () => {
+    it('should preserve previous summary when adding new facts', async () => {
+      // Analyst merges previous + new facts
       mockChatFn.mockResolvedValueOnce({
-        content: 'Here you go:\n```json\n{"summary": "Likes cats"}\n```',
+        content: 'Lives in Paris. Loves cats.',
+      });
+
+      // Formatter wraps in JSON
+      mockChatFn.mockResolvedValueOnce({
+        content: '{"summary": "Lives in Paris. Loves cats."}',
       });
 
       const result = await updateProfileSummary({
-        previousSummary: null,
-        userMessage: 'I love cats',
-        assistantReply: 'Cats are great!',
+        previousSummary: 'Lives in Paris',
+        userMessage: 'I love cats!',
+        assistantReply: 'Cats are wonderful!',
       });
 
-      expect(result).toBe('Likes cats');
-      expect(mockChatFn).toHaveBeenCalledTimes(1);
+      expect(result).toBe('Lives in Paris. Loves cats.');
     });
 
-    it('should handle braces inside JSON strings correctly', async () => {
+    it('should retry formatter when initial JSON parsing fails', async () => {
+      // Step 1: Analyst outputs summary
       mockChatFn.mockResolvedValueOnce({
-        content: 'Note: {"summary": "User said {hello} and likes {braces}"}',
+        content: 'Likes dogs.',
       });
 
-      const result = await updateProfileSummary({
-        previousSummary: null,
-        userMessage: 'I said {hello}',
-        assistantReply: 'Hello!',
-      });
-
-      expect(result).toBe('User said {hello} and likes {braces}');
-      expect(mockChatFn).toHaveBeenCalledTimes(1);
-    });
-
-    it('should use repair pass when normal parsing fails twice', async () => {
-      // 1. First call fails with plain text
-      mockChatFn.mockResolvedValueOnce({
-        content: 'Meow',
-      });
-
-      // 2. Second call (retry) also fails
+      // Step 2: Formatter fails first attempt (returns malformed text)
       mockChatFn.mockResolvedValueOnce({
         content: 'Woof',
       });
 
-      // 3. Third call (repair pass) succeeds
+      // Step 3: Formatter retry succeeds
       mockChatFn.mockResolvedValueOnce({
-        content: '{"summary": "Likes animals"}',
+        content: '{"summary": "Likes dogs."}',
       });
 
       const result = await updateProfileSummary({
         previousSummary: null,
-        userMessage: 'I like animals',
-        assistantReply: 'Animals are great!',
+        userMessage: 'I like dogs',
+        assistantReply: 'Dogs are great!',
       });
 
-      expect(result).toBe('Likes animals');
+      expect(result).toBe('Likes dogs.');
       expect(mockChatFn).toHaveBeenCalledTimes(3);
-
-      // Verify repair pass call
-      const repairCall = mockChatFn.mock.calls[2][0];
-      expect(repairCall.responseFormat).toEqual('json_object');
-      expect(repairCall.messages[0].content).toContain('Convert the following to JSON');
     });
 
-    it('should return null if all attempts fail including repair pass', async () => {
-      mockChatFn.mockResolvedValue({ content: 'Meow again' });
+    it('should preserve previous summary if analyst returns empty', async () => {
+      // Analyst returns empty
+      mockChatFn.mockResolvedValueOnce({
+        content: '',
+      });
+
+      const result = await updateProfileSummary({
+        previousSummary: 'Lives in Paris',
+        userMessage: 'Hi',
+        assistantReply: 'Hello!',
+      });
+
+      // Should preserve existing memory
+      expect(result).toBe('Lives in Paris');
+      expect(mockChatFn).toHaveBeenCalledTimes(1);
+    });
+
+    it('should return null if analyst throws error and no previous summary', async () => {
+      // Analyst throws error
+      mockChatFn.mockRejectedValueOnce(new Error('LLM Error'));
 
       const result = await updateProfileSummary({
         previousSummary: null,
         userMessage: 'Hi',
-        assistantReply: 'Hi',
+        assistantReply: 'Hello',
       });
 
       expect(result).toBeNull();
-      // Initial + retry + repair = 3 calls
+    });
+
+    it('should preserve previous summary if formatter fails completely', async () => {
+      // Analyst outputs summary
+      mockChatFn.mockResolvedValueOnce({
+        content: 'User likes something.',
+      });
+
+      // Formatter keeps failing
+      mockChatFn.mockResolvedValue({ content: 'Meow again' });
+
+      const result = await updateProfileSummary({
+        previousSummary: 'Lives in Paris',
+        userMessage: 'Hi',
+        assistantReply: 'Hi',
+      });
+
+      // Should preserve existing memory instead of returning null
+      expect(result).toBe('Lives in Paris');
       expect(mockChatFn).toHaveBeenCalledTimes(3);
     });
   });

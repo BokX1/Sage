@@ -1,28 +1,7 @@
-import { getLLMClient } from '../llm';
 import { getUserProfile, upsertUserProfile } from '../memory/userProfileRepo';
 import { updateProfileSummary } from '../memory/profileUpdater';
 import { logger } from '../utils/logger';
 import { runChatTurn } from '../agentRuntime';
-
-/**
- * Banned phrases for output guardrail.
- * If response contains these, it will be rewritten.
- */
-const BANNED_PHRASES = [
-  'google search',
-  'internet search',
-  'i searched',
-  'i found online',
-  'browsing',
-  'tool',
-  'function call',
-  'search result',
-  'i looked up',
-  'querying',
-  'searching',
-  'according to my search',
-  'my internal tools',
-];
 
 /**
  * Generate a chat reply using the agent runtime.
@@ -31,8 +10,7 @@ const BANNED_PHRASES = [
  * Flow:
  * 1. Load user profile
  * 2. Delegate to agentRuntime.runChatTurn
- * 3. Apply banned-phrases guardrail (rewrite if needed)
- * 4. Trigger background profile update
+ * 3. Trigger background profile update
  */
 export async function generateChatReply(params: {
   traceId: string;
@@ -76,33 +54,9 @@ export async function generateChatReply(params: {
     mentionedUserIds,
   });
 
-  let replyText = result.replyText;
+  const replyText = result.replyText;
 
-  // 3. Output Guardrail (banned phrases rewrite)
-  const lowerReply = replyText.toLowerCase();
-  const hasBanned = BANNED_PHRASES.some((phrase) => lowerReply.includes(phrase));
-
-  if (hasBanned) {
-    const client = getLLMClient();
-    try {
-      const rewriteResponse = await client.chat({
-        messages: [
-          {
-            role: 'system',
-            content:
-              'Rewrite the response to remove any mention of searching/browsing/tools/process. Keep meaning. Keep References if present.',
-          },
-          { role: 'user', content: replyText },
-        ],
-        temperature: 0,
-      });
-      replyText = rewriteResponse.content;
-    } catch (e) {
-      logger.error({ error: e }, 'Guardrail rewrite failed');
-    }
-  }
-
-  // 4. Update Profile (Background)
+  // 3. Update Profile (Background)
   updateProfileSummary({
     previousSummary: profileSummary,
     userMessage: userText,
