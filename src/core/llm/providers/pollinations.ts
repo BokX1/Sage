@@ -25,7 +25,7 @@ export class PollinationsClient implements LLMClient {
 
     this.config = {
       baseUrl,
-      model: (config.model || 'deepseek').toLowerCase(),
+      model: (config.model || 'gemini').toLowerCase(),
       apiKey: config.apiKey,
       timeoutMs: config.timeoutMs || 20000,
       maxRetries: config.maxRetries ?? 2,
@@ -184,10 +184,10 @@ export class PollinationsClient implements LLMClient {
           content,
           usage: data.usage
             ? {
-                promptTokens: data.usage.prompt_tokens,
-                completionTokens: data.usage.completion_tokens,
-                totalTokens: data.usage.total_tokens,
-              }
+              promptTokens: data.usage.prompt_tokens,
+              completionTokens: data.usage.completion_tokens,
+              totalTokens: data.usage.total_tokens,
+            }
             : undefined,
         };
       } catch (err: any) {

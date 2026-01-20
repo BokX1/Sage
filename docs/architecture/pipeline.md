@@ -220,7 +220,7 @@ flowchart TD
 | `PROFILE_POLLINATIONS_MODEL` | Analyst model | `gemini-large` |
 | `FORMATTER_MODEL` | Formatter model | `qwen-coder` |
 | `SUMMARY_PROVIDER` | Summary LLM provider override | *empty* (uses default) |
-| `SUMMARY_MODEL` | Summary model | `deepseek` |
+| `SUMMARY_MODEL` | Summary model | `gemini-large` |
 
 ---
 
