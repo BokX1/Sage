@@ -257,6 +257,7 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
       tools: nativeTools.length > 0 ? nativeTools : undefined,
       toolChoice: nativeTools.length > 0 ? 'auto' : undefined,
       temperature: route.temperature,
+      timeout: appConfig.TIMEOUT_CHAT_MS, // Fail fast for chat
     });
 
     draftText = response.content;

@@ -179,6 +179,7 @@ Output the updated summary:`;
     temperature: 0.3, // Analyst temperature: creative but focused
     maxTokens: 1024,
     // NO responseFormat - allow free text output
+    timeout: appConfig.TIMEOUT_MEMORY_MS, // Relaxed timeout for background
   };
 
   try {
@@ -212,6 +213,7 @@ async function runFormatter(params: { summaryText: string }): Promise<{ summary?
     responseFormat: 'json_object',
     temperature: 0, // Formatter temperature: deterministic
     maxTokens: 1024,
+    timeout: appConfig.TIMEOUT_MEMORY_MS, // Relaxed timeout for background
   };
 
   try {
@@ -258,6 +260,7 @@ ${summaryText}`;
     responseFormat: 'json_object',
     temperature: 0,
     maxTokens: 1024,
+    timeout: appConfig.TIMEOUT_MEMORY_MS, // Relaxed timeout for background
   };
 
   try {

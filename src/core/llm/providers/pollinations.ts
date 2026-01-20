@@ -115,7 +115,9 @@ export class PollinationsClient implements LLMClient {
     while (attempt < maxAttempts) {
       try {
         const controller = new AbortController();
-        const id = setTimeout(() => controller.abort(), this.config.timeoutMs);
+        // Use request-specific timeout if provided (e.g., chat vs. memory), else default
+        const timeout = request.timeout || this.config.timeoutMs;
+        const id = setTimeout(() => controller.abort(), timeout);
 
         const response = await fetch(url, {
           method: 'POST',
@@ -181,7 +183,10 @@ export class PollinationsClient implements LLMClient {
           const err = new Error(
             `Pollinations API error: ${response.status} ${response.statusText} - ${text.slice(0, 200)}`,
           );
-          logger.warn({ status: response.status, error: err.message }, '[Pollinations] API Error');
+          logger.warn(
+            { status: response.status, error: err.message, timeout },
+            '[Pollinations] API Error',
+          );
           throw err;
         }
 
@@ -197,10 +202,10 @@ export class PollinationsClient implements LLMClient {
           content,
           usage: data.usage
             ? {
-                promptTokens: data.usage.prompt_tokens,
-                completionTokens: data.usage.completion_tokens,
-                totalTokens: data.usage.total_tokens,
-              }
+              promptTokens: data.usage.prompt_tokens,
+              completionTokens: data.usage.completion_tokens,
+              totalTokens: data.usage.total_tokens,
+            }
             : undefined,
         };
       } catch (err: unknown) {

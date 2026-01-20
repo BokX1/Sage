@@ -22,6 +22,7 @@ export interface LLMRequest {
   responseFormat?: 'text' | 'json_object';
   tools?: ToolDefinition[];
   toolChoice?: string | 'auto' | 'none' | { type: 'function'; function: { name: string } };
+  timeout?: number;
 }
 
 export interface LLMResponse {

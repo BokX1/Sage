@@ -107,6 +107,10 @@ const envSchema = z.object({
 
   // Formatter Model (for JSON formatting in profile updates)
   FORMATTER_MODEL: z.string().default('qwen-coder'),
+
+  // Timeouts (Phase 7)
+  TIMEOUT_CHAT_MS: z.coerce.number().int().positive().default(30000), // 30s rigid limit for chat
+  TIMEOUT_MEMORY_MS: z.coerce.number().int().positive().default(90000), // 90s relaxed limit for background memory
 });
 
 // Parse and validate or crash
