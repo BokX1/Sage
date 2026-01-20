@@ -98,7 +98,6 @@ model AgentTrace {
   routeKind    String
   routerJson   Json
   expertsJson  Json
-  governorJson Json
   toolJson     Json?
   tokenJson    Json?
   replyText    String   @db.Text

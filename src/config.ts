@@ -75,10 +75,6 @@ const envSchema = z.object({
 
   // D9: MoE Orchestration
   CONTEXT_BLOCK_MAX_TOKENS_EXPERTS: z.coerce.number().int().positive().default(2400),
-  GOVERNOR_REWRITE_ENABLED: z
-    .enum(['true', 'false'])
-    .transform((v) => v === 'true')
-    .default('true'),
   TRACE_ENABLED: z
     .enum(['true', 'false'])
     .transform((v) => v === 'true')

@@ -63,15 +63,15 @@ export function registerInteractionCreateHandler() {
           const duration = Date.now() - start;
           await interaction.editReply(
             `✅ **LLM Connection Established!**\\n` +
-              `**Response**: "${response.content.trim()}"\\n` +
-              `**Latency**: ${duration}ms\\n` +
-              `**Provider**: ${config.llmProvider}`,
+            `**Response**: "${response.content.trim()}"\\n` +
+            `**Latency**: ${duration}ms\\n` +
+            `**Provider**: ${config.llmProvider}`,
           );
         } catch (e: any) {
           await interaction.editReply(
             `❌ **LLM Connection Failed**.\\n` +
-              `**Error**: ${e.message}\\n` +
-              `**Status**: Check server logs for details.`,
+            `**Error**: ${e.message}\\n` +
+            `**Status**: Check server logs for details.`,
           );
         }
         return;
@@ -394,7 +394,6 @@ async function handleAdminTrace(interaction: ChatInputCommandInteraction) {
       }
 
       const router = trace.routerJson as any;
-      const governor = trace.governorJson as any;
       const _experts = trace.expertsJson as any;
 
       const lines = [
@@ -402,8 +401,6 @@ async function handleAdminTrace(interaction: ChatInputCommandInteraction) {
         `**Route**: ${trace.routeKind}`,
         `**Temp**: ${router.temperature ?? 'N/A'}`,
         `**Experts**: ${router.experts?.join(', ') ?? 'none'}`,
-        `**Governor**: ${governor.actions?.length > 0 ? governor.actions.join(', ') : 'no actions'}`,
-        `**Flagged**: ${governor.flagged ? 'Yes' : 'No'}`,
         `**Created**: ${trace.createdAt.toISOString()}`,
       ];
 
@@ -491,8 +488,8 @@ async function handleAdminSummarize(interaction: ChatInputCommandInteraction) {
 
     await interaction.editReply(
       `✅ **Summary generated for <#${targetChannel.id}>**\n` +
-        `**Window**: ${summary.windowStart.toLocaleString()} - ${summary.windowEnd.toLocaleString()}\n` +
-        `**Summary**: ${summary.summaryText}`,
+      `**Window**: ${summary.windowStart.toLocaleString()} - ${summary.windowEnd.toLocaleString()}\n` +
+      `**Summary**: ${summary.summaryText}`,
     );
   } catch (error) {
     logger.error({ error, guildId, channelId: targetChannel.id }, 'handleAdminSummarize error');

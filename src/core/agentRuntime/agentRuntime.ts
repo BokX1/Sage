@@ -14,7 +14,7 @@ import { formatHowLongToday, formatWhoInVoice } from '../voice/voiceFormat';
 import { classifyStyle } from './styleClassifier';
 import { decideRoute } from '../orchestration/router';
 import { runExperts } from '../orchestration/runExperts';
-import { governOutput } from '../orchestration/governor';
+// import { governOutput } from '../orchestration/governor';
 import { upsertTraceStart, updateTraceEnd } from '../trace/agentTraceRepo';
 import { ExpertPacket } from '../orchestration/experts/types';
 
@@ -293,30 +293,29 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
     draftText = "I'm having trouble connecting right now. Please try again later.";
   }
 
-  // D9: Step 6 - Governor post-processes draft
-  const governorResult = await governOutput({
-    traceId,
-    route,
-    draftText,
-    llm: client,
-    rewriteEnabled: appConfig.GOVERNOR_REWRITE_ENABLED,
-  });
+  // D9: Step 6 - Removed Governor (User request)
+  const finalText = draftText;
+  const governorResult = {
+    finalText,
+    actions: [],
+    flagged: false,
+  };
 
   // D9: Step 7 - Persist trace end
   if (appConfig.TRACE_ENABLED) {
     try {
       await updateTraceEnd({
         id: traceId,
-        governorJson: governorResult,
+        // governorJson removed
         toolJson: toolsExecuted ? { executed: true } : undefined,
-        replyText: governorResult.finalText,
+        replyText: finalText,
       });
     } catch (error) {
       logger.warn({ error, traceId }, 'Failed to persist trace end');
     }
   }
 
-  logger.debug({ traceId, governorActions: governorResult.actions }, 'Chat turn complete');
+  logger.debug({ traceId }, 'Chat turn complete');
 
   // Check for Silence Protocol
   if (governorResult.finalText.trim().includes('[SILENCE]')) {

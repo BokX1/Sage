@@ -23,25 +23,33 @@ export interface StructuredSummary {
 
 /**
  * STM ANALYST: Summarizes recent conversation window
- * Outputs free text summary - no JSON constraints
+ * Outputs structured text summary
  */
 const STM_ANALYST_PROMPT = `You are a Channel Context Analyst.
 Summarize the recent conversation flow for immediate context.
 
 Input: Recent messages
-Output: A narrative summary of the window
-
-Goals:
-1. **Narrative Flow**: What happened? How did the conversation evolve?
-2. **Key Topics**: What were the main subjects? (e.g., "Debugging the auth bug", "Discussing weekend plans")
-3. **State Tracking**: identifying open questions or unresolved issues.
-4. **Vibe Check**: Note the emotional tone (e.g., "High energy", "Frustrated debugging", "Casual banter").
+Output: A structured summary
 
 Instructions:
-- Write in a concise, natural style.
-- Highlight specific technical terms or project names mentioned.
-- Ignore trivial bot commands or spam.
-- Output a polished summary paragraph(s).`;
+1. Analyze the conversation.
+2. Output your analysis in the following STRICT format:
+
+SUMMARY:
+<Write a narrative summary of what happened, who said what, and the vibe>
+
+TOPICS:
+<Comma-separated list of main topics>
+
+THREADS:
+<Comma-separated list of ongoing conversation threads>
+
+UNRESOLVED:
+<Comma-separated list of any open questions or issues>
+
+GLOSSARY:
+<Key: Value list of any specific terms, project names, or definitions mentioned>
+`;
 
 /**
  * LTM ANALYST: Updates long-term channel profile
@@ -51,43 +59,49 @@ const LTM_ANALYST_PROMPT = `You are a Channel Historian.
 Maintain the long-term "Wiki" or "Profile" of this channel.
 
 Input: Previous Profile + Latest Rolling Summary
-Output: The FULL Updated Channel Profile (Previous + New merged)
-
-Goals:
-1. **Culture & Identity**: Define what this channel is *for* and what it *feels* like.
-2. **Recurring Themes**: Track topics that come up repeatedly over time.
-3. **Knowledge Base**: Capture consensus decisions, project links, or definitions established here.
-4. **Evolve the History**: Merge new events from the rolling summary into the permanent record.
+Output: The FULL Updated Channel Profile
 
 Instructions:
-- **Preserve** the long-term history while adding new significant developments.
-- **Prune** outdated info (e.g., "fixing bug X" becomes "fixed bug X" or is removed if irrelevant).
-- **Format** as a comprehensive description of the channel's life and purpose.
-- **Output the FULL merged profile text** (do NOT output just the changes).`;
+1. Merge the new information into the existing history.
+2. Output the FULL profile in the following STRICT format:
+
+SUMMARY:
+<The comprehensive description of the channel's life, purpose, and culture>
+
+TOPICS:
+<Comma-separated list of recurring themes>
+
+THREADS:
+<Comma-separated list of active long-running threads>
+
+UNRESOLVED:
+<Comma-separated list of long-term open questions>
+
+GLOSSARY:
+<Key: Value list of established definitions and terms>
+`;
 
 /**
- * FORMATTER PROMPT: Converts analyst text to structured JSON
+ * FORMATTER PROMPT: Converts structured text to JSON
  * Pure wrapper - does NOT interpret or modify
  */
-const FORMATTER_PROMPT = `Convert the text into structured JSON.
+const FORMATTER_PROMPT = `Wrap the given text in JSON format.
 
-Output format:
+Input is text with sections (SUMMARY, TOPICS, etc.).
+Output is valid JSON only.
+
 {
-  "summaryText": "<main summary paragraph>",
-  "topics": ["topic1", "topic2"],
-  "threads": ["ongoing thread 1"],
-  "unresolved": ["question 1"],
-  "glossary": {"term": "description"}
+  "summaryText": "<content of SUMMARY section>",
+  "topics": ["<item 1>", "<item 2>"],
+  "threads": ["<item 1>", "<item 2>"],
+  "unresolved": ["<item 1>", "<item 2>"],
+  "glossary": {"<term>": "<def>"}
 }
 
 Rules:
-- summaryText: the main summary paragraph
-- topics: array of main topics discussed (max 6)
-- threads: array of ongoing conversation threads (max 6)
-- unresolved: array of unanswered questions (max 6)
-- glossary: map of names/projects to descriptions (max 6)
-- If no items for a field, use empty array/object
-- Output valid JSON only`;
+- Do NOT interpret or summarize.
+- Just extract the content from the sections and put it in the JSON fields.
+- If a section is missing, use empty array/object/string.`;
 
 // Cached clients
 let analystClientCache: LLMClient | null = null;

@@ -65,14 +65,12 @@ describe('AgentTraceRepo', () => {
 
       await updateTraceEnd({
         id: 'trace-123',
-        governorJson: { actions: [], flagged: false },
         replyText: 'Final reply text',
       });
 
       expect(mockUpdate).toHaveBeenCalledWith({
         where: { id: 'trace-123' },
         data: {
-          governorJson: expect.objectContaining({ actions: [] }),
           replyText: 'Final reply text',
           toolJson: Prisma.JsonNull,
         },

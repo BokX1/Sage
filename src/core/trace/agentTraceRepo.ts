@@ -14,7 +14,6 @@ export interface TraceStartData {
 
 export interface TraceEndData {
   id: string;
-  governorJson: unknown;
   toolJson?: unknown;
   replyText: string;
 }
@@ -36,7 +35,6 @@ export async function upsertTraceStart(data: TraceStartData): Promise<void> {
       routeKind: data.routeKind,
       routerJson: jsonMap(data.routerJson),
       expertsJson: jsonMap(data.expertsJson),
-      governorJson: {}, // Placeholder until trace end
       tokenJson: jsonMap(data.tokenJson ?? {}),
       replyText: '', // Placeholder until trace end
     },
@@ -59,7 +57,7 @@ export async function updateTraceEnd(data: TraceEndData): Promise<void> {
   await prisma.agentTrace.update({
     where: { id: data.id },
     data: {
-      governorJson: jsonMap(data.governorJson),
+      // governorJson removed
       toolJson: jsonMap(data.toolJson ?? Prisma.JsonNull),
       replyText: data.replyText,
     },
