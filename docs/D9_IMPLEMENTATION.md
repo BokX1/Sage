@@ -103,9 +103,9 @@ TRACE_ENABLED=true
 
 ### Tests
 
-10. `test/unit/agentRuntime/router.test.ts`
-2. `test/unit/agentRuntime/agentTraceRepo.test.ts`
-3. `test/unit/agentRuntime/governor.test.ts`
+10. `tests/unit/agentRuntime/router.test.ts`
+2. `tests/unit/agentRuntime/agentTraceRepo.test.ts`
+3. `tests/unit/agentRuntime/governor.test.ts`
 
 ---
 
