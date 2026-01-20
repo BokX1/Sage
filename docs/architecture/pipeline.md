@@ -70,7 +70,7 @@ flowchart TD
 
 * **Action:** Sends User Message + Assembled Context + System Prompt to the **Chat LLM**.
 * **Provider:** Pollinations
-* **Model:** `gemini-large`
+* **Model:** `gemini`
 * **Temperature:** `0.8` ✅ Implemented
 * **Output:** The LLM generates a conversational reply.
 
@@ -98,12 +98,12 @@ flowchart TD
 * **File:** `src/core/memory/profileUpdater.ts`
 * **Architecture:** Two-step pipeline where the Analyst does all the work.
 
-#### Step 1: The Analyst (gemini-large) — Memory Updater
+#### Step 1: The Analyst (gemini) — Memory Updater
 
 * **Input:** `Previous Summary` + `User Message` + `Assistant Reply`.
 * **Task:** Read previous summary, analyze new interaction, output **the updated summary**.
 * **Role:** Merge existing facts with new stable facts. PRESERVE all previous facts unless contradicted.
-* **Model:** `gemini-large`
+* **Model:** `gemini`
 * **Temperature:** `0.3` (creative but focused)
 * **Output:** **The updated summary text directly** — NOT an analysis, but the actual summary to save.
 * **Example:** Previous: "Lives in Paris." → After learning user likes cats → Output: "Lives in Paris. Loves cats."
@@ -137,7 +137,7 @@ flowchart TD
 
 #### STM: Rolling Summary (Short-Term Memory)
 
-**Step 1: STM Analyst (gemini-large, temp=0.3)**
+**Step 1: STM Analyst (gemini, temp=0.3)**
 
 * **Input:** Last ~120 raw messages.
 * **Task:** Summarize recent conversation as free text.
@@ -153,7 +153,7 @@ flowchart TD
 
 #### LTM: Channel Profile (Long-Term Memory)
 
-**Step 1: LTM Analyst (gemini-large, temp=0.3)**
+**Step 1: LTM Analyst (gemini, temp=0.3)**
 
 * **Input:** Previous Profile + Latest Rolling Summary.
 * **Task:** Merge rolling summary into long-term profile.
@@ -175,8 +175,8 @@ flowchart TD
 | Role | Model | Temperature | File |
 | :--- | :--- | :---: | :--- |
 | **Chat LLM** | `gemini` | `0.8` | `router.ts` (default route) |
-| **User Profile Analyst** | `gemini-large` | `0.3` | `profileUpdater.ts` |
-| **Channel Summary Analyst** | `gemini-large` | `0.3` | `summarizeChannelWindow.ts` |
+| **User Profile Analyst** | `gemini` | `0.3` | `profileUpdater.ts` |
+| **Channel Summary Analyst** | `gemini` | `0.3` | `summarizeChannelWindow.ts` |
 | **Formatter (all)** | `qwen-coder` | `0.0` | Both updaters |
 
 ---
@@ -188,7 +188,7 @@ flowchart TD
 | Component | Model Name | Config Variable |
 | :--- | :--- | :--- |
 | **Chat** | `gemini` | `POLLINATIONS_MODEL` |
-| **Analyst** | `gemini-large` | `PROFILE_POLLINATIONS_MODEL` |
+| **Analyst** | `gemini` | `PROFILE_POLLINATIONS_MODEL` |
 | **Formatter** | `qwen-coder` | `FORMATTER_MODEL` |
 | **Summary Analyst** | `gemini` | `SUMMARY_MODEL` |
 
@@ -215,7 +215,7 @@ flowchart TD
 | Variable | Purpose | Default |
 | :--- | :--- | :--- |
 | `LLM_PROVIDER` | Powers all LLM calls | `pollinations` |
-| `POLLINATIONS_MODEL` | Default chat model | `gemini-large` |
+| `POLLINATIONS_MODEL` | Default chat model | `gemini` |
 | `PROFILE_PROVIDER` | Profile LLM provider override | *empty* (uses default) |
 | `PROFILE_POLLINATIONS_MODEL` | Analyst model | `gemini` |
 | `FORMATTER_MODEL` | Formatter model | `qwen-coder` |
@@ -281,7 +281,7 @@ flowchart TD
 
 | File | Changes |
 | :--- | :--- |
-| `src/config.ts` | Token budgets increased, models updated to gemini-large/qwen-coder |
+| `src/config.ts` | Token budgets increased, models updated to gemini/qwen-coder |
 | `src/core/config/env.ts` | Added formatterModel to compatibility layer |
 | `src/core/chat/chatEngine.ts` | Removed banned phrase guardrail |
 | `src/core/orchestration/router.ts` | Default temperature set to 0.8 |

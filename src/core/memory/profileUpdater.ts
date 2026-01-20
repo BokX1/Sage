@@ -48,7 +48,7 @@ Output: {"summary": "<the text>"}
 Do NOT modify, summarize, or extract from the text.
 Just put the exact text inside the JSON summary field.`;
 
-// Cached analyst client (uses gemini-large)
+// Cached analyst client (uses gemini)
 let analystClientCache: { client: LLMClient; provider: LLMProviderName } | null = null;
 
 // Cached formatter client (uses qwen-coder)
@@ -57,7 +57,7 @@ let formatterClientCache: LLMClient | null = null;
 /**
  * Get the LLM client for the Analyst phase.
  * Uses PROFILE_PROVIDER and PROFILE_POLLINATIONS_MODEL overrides if configured.
- * Default: gemini-large with temperature 0.3
+ * Default: gemini with temperature 0.3
  */
 function getAnalystClient(): { client: LLMClient; provider: LLMProviderName } {
   if (analystClientCache) {
@@ -65,7 +65,7 @@ function getAnalystClient(): { client: LLMClient; provider: LLMProviderName } {
   }
 
   const profileProvider = config.profileProvider?.trim() || '';
-  const profilePollinationsModel = config.profilePollinationsModel?.trim() || 'gemini-large';
+  const profilePollinationsModel = config.profilePollinationsModel?.trim() || 'gemini';
 
   // Determine provider (use override or fallback to default)
   const provider = (profileProvider || 'pollinations') as LLMProviderName;
@@ -77,7 +77,7 @@ function getAnalystClient(): { client: LLMClient; provider: LLMProviderName } {
 
   logger.debug(
     { provider, model: profilePollinationsModel },
-    'Analyst client initialized (gemini-large)',
+    'Analyst client initialized (gemini)',
   );
 
   return analystClientCache;
@@ -102,7 +102,7 @@ function getFormatterClient(): LLMClient {
 
 /**
  * Two-step profile update pipeline:
- * 1. ANALYST (gemini-large, temp=0.3): Analyze the interaction freely (no JSON constraint)
+ * 1. ANALYST (gemini, temp=0.3): Analyze the interaction freely (no JSON constraint)
  * 2. FORMATTER (qwen-coder, temp=0.0): Convert analysis to strict JSON
  */
 export async function updateProfileSummary(params: {
@@ -151,7 +151,7 @@ export async function updateProfileSummary(params: {
 
 /**
  * STEP 1: Run the Analyst
- * - Model: gemini-large
+ * - Model: gemini
  * - Temperature: 0.3 (creative but focused)
  * - Output: Free-form text analysis (NO JSON constraint)
  */

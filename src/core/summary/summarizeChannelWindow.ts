@@ -95,8 +95,8 @@ let formatterClientCache: LLMClient | null = null;
 
 function getAnalystClient(): LLMClient {
   if (analystClientCache) return analystClientCache;
-  // Use summary-specific model config (defaults to gemini-large)
-  const model = appConfig.SUMMARY_MODEL?.trim() || 'gemini-large';
+  // Use summary-specific model config (defaults to gemini)
+  const model = appConfig.SUMMARY_MODEL?.trim() || 'gemini';
   analystClientCache = createLLMClient('pollinations', { pollinationsModel: model });
   logger.debug({ model }, 'Summary analyst client initialized');
   return analystClientCache;

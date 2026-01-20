@@ -17,7 +17,7 @@ vi.mock('../../../src/core/config/env', () => ({
   config: {
     llmProvider: 'pollinations',
     profileProvider: '',
-    profilePollinationsModel: 'gemini-large',
+    profilePollinationsModel: 'gemini',
   },
 }));
 
