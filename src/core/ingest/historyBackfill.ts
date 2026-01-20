@@ -1,4 +1,4 @@
-import { TextChannel, Collection, Message } from 'discord.js';
+import { TextChannel, Message } from 'discord.js';
 import { client } from '../../bot/client';
 import { logger } from '../utils/logger';
 import { ingestEvent } from '../ingest/ingestEvent';

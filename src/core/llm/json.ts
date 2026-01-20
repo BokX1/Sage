@@ -52,17 +52,7 @@ async function repairJsonOnce<T>(
   errorMsg: string,
 ): Promise<T | null> {
   // Construct a repair prompt
-  // In a real robust system, we might feed back the bad output.
-  // For now, simpler: retry with emphasis on the error.
-
-  // Re-inject system prompt context if missing from original messages (unlikely if passed properly)
-  // Actually, we should probably just re-run the whole context + "Previous attempt failed"
-  // But let's keep it simple: just call again with the same system prompt but verify we have it.
-  // The 'originalMessages' here likely didn't include the injected system prompt from callWithSchema.
-  // Let's refactor slightly to be cleaner.
-
-  // Simpler strategy: Just re-try the EXACT same call but with high urgency in system prompt?
-  // Or append a user message saying "You failed, fix it".
+  // Retry with explicit error feedback appended to conversation.
 
   // Let's append to the conversation.
   const repairMessages: LLMChatMessage[] = [
@@ -75,11 +65,7 @@ async function repairJsonOnce<T>(
 
   try {
     const response = await client.chat({
-      messages: repairMessages, // Note: this lacks the system prompt if originalMessages lacked it.
-      // But callWithSchema constructs fullMessages.
-      // We need to pass the *full* context including system prompt for the repair to work well?
-      // Or just rely on the LLM remembering (stateless, so NO).
-      // We need the system prompt.
+      messages: repairMessages, // Note: Retrying without re-injecting system prompt if missing.
       responseFormat: 'json_object',
     });
     return parseAndValidate(response.content, schema);

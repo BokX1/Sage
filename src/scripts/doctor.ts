@@ -21,9 +21,9 @@ async function main() {
     await prisma.$disconnect();
   }
 
-  // 3. Migrations Check (Simple: check if we can query pending migrations)
-  // Note: Prisma CLI is better for this, but simplistic check:
-  // ... skipping complex migration check for now, DB connect is good proxy for "up".
+  // 3. Migrations Check
+  // Note: Detailed migration status check requires Prisma CLI.
+  // DB connection success is a sufficient proxy for now.
 
   console.log('\nAll systems nominal (or at least responding).');
 }

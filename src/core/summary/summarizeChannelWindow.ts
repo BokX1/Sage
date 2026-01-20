@@ -1,6 +1,6 @@
 import { config as appConfig } from '../../config';
 import { createLLMClient } from '../llm';
-import { LLMChatMessage, LLMClient, LLMRequest } from '../llm/types';
+import { LLMClient, LLMRequest } from '../llm/types';
 import { logger } from '../utils/logger';
 import { ChannelMessage } from '../awareness/types';
 

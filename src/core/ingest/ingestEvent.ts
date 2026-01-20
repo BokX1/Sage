@@ -56,7 +56,7 @@ const prismaMessageStore = new PrismaMessageStore();
  * Flow:
  * 1. Check if logging is enabled for this guild/channel
  * 2. Log the event
- * 3. TODO (D2): Store in transcript ledger
+ * 3. Store in transcript ledger (Future)
  */
 export async function ingestEvent(event: Event): Promise<void> {
   try {
@@ -97,7 +97,7 @@ export async function ingestEvent(event: Event): Promise<void> {
             guildId: message.guildId,
             authorId: message.authorId,
             mentionedUserIds: message.mentionsUserIds,
-            replyToAuthorId: null, // TODO: resolve from replyToMessageId if needed
+            replyToAuthorId: null, // Future: resolve from replyToMessageId if needed
             now: message.timestamp,
           });
         } catch (err) {
@@ -125,10 +125,9 @@ export async function ingestEvent(event: Event): Promise<void> {
       const syntheticMessage: ChannelMessage = {
         messageId: `voice-${event.timestamp.getTime()}-${event.userId}`,
         guildId: event.guildId,
-        channelId: event.channelId, // Note: This associates the log with the VOICE channel.
-        // The bot might not see this if it's looking at a text channel.
-        // TODO: Should we broadcast to a "main" text channel?
-        // For now, we store it keyed by the voice channel ID.
+        channelId: event.channelId, // Note: associates log with VOICE channel.
+        // Future: Could broadcast to main text channel.
+        // For now, key by voice channel ID.
         authorId: 'SYSTEM',
         authorDisplayName: 'System',
         timestamp: event.timestamp,
