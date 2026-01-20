@@ -32,7 +32,7 @@ Sage is built to give Discord communities a reliable, memory-aware assistant. It
 │   ├── db/             # Prisma client
 │   ├── scripts/        # Operational scripts (doctor/cert)
 │   └── utils/          # Shared utilities
-├── test/               # Vitest unit/integration tests
+├── tests/              # Vitest unit/integration tests
 ├── README.md
 └── CHANGELOG.md
 ```
@@ -136,7 +136,7 @@ npx prisma validate      # Schema validation
 
 ## Testing
 
-- Tests live under `test/` and are run with Vitest.
+- Tests live under `tests/` and are run with Vitest.
 - Build output (`dist/`) is excluded from test discovery to avoid CommonJS/Vitest mismatches.
 
 ---
