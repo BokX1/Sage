@@ -1,93 +1,115 @@
 # Sage Memory System Architecture
 
-This document details how the bot manages memory, context, and summarization. The system uses a hybrid approach with immediate context (working memory), short-term rolling summaries, and long-term profiles.
+This document describes how Sage stores, summarizes, and injects memory into LLM requests. It reflects the current runtime behavior in `src/core`.
 
-## 1. High-Level Flow
+## 1) Memory sources and storage
 
-The memory lifecycle consists of three main phases:
-1.  **Ingestion & Immediate Response**: Building context for the current turn.
-2.  **Background Summarization (Channel)**: Compressing channel history into rolling and long-term summaries.
-3.  **Background Updates (User)**: Updating individual user profiles based on interactions.
+| Memory type | Purpose | Storage | Key files |
+| --- | --- | --- | --- |
+| **User profile** | Long-term personalization facts for a user. | `UserProfile` table. | `src/core/memory/profileUpdater.ts`, `src/core/memory/userProfileRepo.ts` |
+| **Channel summaries** | Rolling + long-term summaries for a channel. | `ChannelSummary` table. | `src/core/summary/*` |
+| **Raw transcript** | Recent messages for short-term context. | In-memory ring buffer; optional DB storage. | `src/core/awareness/*`, `src/core/ingest/ingestEvent.ts` |
+| **Relationship graph** | Probabilistic user connections from messages + voice overlap. | `RelationshipEdge` table. | `src/core/relationships/*` |
+| **Voice sessions** | Presence history and time-in-voice analytics. | `VoiceSession` table. | `src/core/voice/*` |
 
-## 2. Memory Context (The "Working Memory")
+### Data retention (transcripts)
+
+- **In-memory ring buffer** uses:
+  - `RAW_MESSAGE_TTL_DAYS` (default: 3 days)
+  - `RING_BUFFER_MAX_MESSAGES_PER_CHANNEL` (default: 200)
+- **DB transcript storage** (`ChannelMessage` table) is trimmed per channel to:
+  - `CONTEXT_TRANSCRIPT_MAX_MESSAGES` (default: 15)
+
+The DB store is **size-bounded**, not time-based. If you want longer retention, increase `CONTEXT_TRANSCRIPT_MAX_MESSAGES` and run migrations accordingly.
+
+## 2) Working memory (context assembly)
 
 **File:** `src/core/agentRuntime/contextBuilder.ts`
 
-When a user sends a message, `buildContextMessages` assembles the "Context" sent to the LLM. It prioritizes information based on token budgets combined dynamically:
+When a message is processed, `buildContextMessages` assembles the prompt by prioritizing structured context blocks. Key inputs include:
 
-| Priority | Component | Type | Description |
-| :--- | :--- | :--- | :--- |
-| **CRITICAL** | **Base System** | Static | Core persona instructions. |
-| **High** | **User Profile** | Long-Term | "User Personalization" - Stable facts about the specific user (e.g., "Likes sci-fi"). |
-| **High** | **Channel Profile** | Long-Term | "Profile Summary" - The long-term "vibe" or history of the channel. |
-| Medium | **Rolling Summary** | Short-Term | "Rolling Summary" - Summary of the last ~2 hours/120 messages. |
-| Medium | **Social Graph** | Dynamic | `RelationshipHints` - Who is friends with whom (D7). |
-| Low | **Transcript** | Review | `RecentTranscript` - Raw message logs of the immediate conversation. |
+- **Base system prompt** (includes user profile + style hints via `composeSystemPrompt`)
+- **Channel profile summary** (long-term)
+- **Relationship hints** (social graph edges)
+- **Rolling channel summary** (short-term)
+- **Expert packets** (router-selected lookups)
+- **Recent transcript** (raw message log)
+- **Intent hint / reply context**
+- **User message**
 
-**Key Concept: "Dynamic Memory"**
-The system dynamically allocates space. if the `Transcript` is too long, it is truncated in favor of the `User Profile` and `Base System`. This is the "Context Budgeter".
+Context is budgeted by `contextBudgeter` using the following defaults (configurable in `.env`):
 
-## 3. Short-Term Memory (Rolling Channel Summary)
+| Budget | Default | Env var |
+| --- | --- | --- |
+| Max input tokens | 8,000 | `CONTEXT_MAX_INPUT_TOKENS` |
+| Reserved output tokens | 4,000 | `CONTEXT_RESERVED_OUTPUT_TOKENS` |
+| Transcript block max | 4,000 | `CONTEXT_BLOCK_MAX_TOKENS_TRANSCRIPT` |
+| Rolling summary max | 2,400 | `CONTEXT_BLOCK_MAX_TOKENS_ROLLING_SUMMARY` |
+| Profile summary max | 2,400 | `CONTEXT_BLOCK_MAX_TOKENS_PROFILE_SUMMARY` |
+| Expert packets max | 2,400 | `CONTEXT_BLOCK_MAX_TOKENS_EXPERTS` |
+| Relationship hints max | 1,200 | `CONTEXT_BLOCK_MAX_TOKENS_RELATIONSHIP_HINTS` |
+
+> Note: `CONTEXT_BLOCK_MAX_TOKENS_MEMORY` is present in config but currently unused because user profile is merged into the base system prompt.
+
+## 3) Short-term memory: rolling channel summary
 
 **Files:**
 - `src/core/summary/channelSummaryScheduler.ts`
-- `src/core/summary/summarizeChannelWindow.ts` (Function: `summarizeChannelWindow`)
+- `src/core/summary/summarizeChannelWindow.ts`
 
-**Mechanism:**
-- **Trigger**: The scheduler runs every tick (configurable, e.g., 60s). It checks for "dirty" channels (channels with new messages).
-- **Condition**: If enough messages (e.g., >10) or enough time (e.g., >15m) has passed since the last summary.
-- **Process**:
-    1.  Fetch the last ~120 raw messages.
-    2.  Send to LLM with `System: You are a summarization engine...`.
-    3.  **Output**: A JSON object (`StructuredSummary`) containing:
-        -   `summaryText` (Narrative)
-        -   `topics` (List of active topics)
-        -   `threads` (Ongoing discussions)
-        -   `unresolved` (Questions not yet answered)
-- **Storage**: Saved to DB `ChannelSummary` table with `kind = 'rolling'`.
+**Trigger:** the channel summary scheduler runs every `SUMMARY_SCHED_TICK_SEC` (default: 60s), and only processes channels that have new messages.
 
-## 4. Long-Term Memory
+**Conditions:**
+- At least `SUMMARY_ROLLING_MIN_MESSAGES` new messages (default: 20)
+- At least `SUMMARY_ROLLING_MIN_INTERVAL_SEC` since last summary (default: 300s)
 
-### A. Channel Long-Term Memory (Profile)
-**File:** `src/core/summary/summarizeChannelWindow.ts` (Function: `summarizeChannelProfile`)
+**Window:**
+- Rolling window length: `SUMMARY_ROLLING_WINDOW_MIN` (default: 60 minutes)
+- Fetches up to 120 recent messages (via `MessageStore`)
 
-**Mechanism:**
-- **Trigger**: Runs periodically after a rolling summary update.
-- **Process**:
-    -   **Input**: The *previous* Long-Term Profile + The *latest* Rolling Summary.
-    -   **Prompt**: "Update the long-term profile summary for this channel."
-    -   **Goal**: condense the rolling summary into permanent history, discarding transient chatter.
-- **Storage**: Saved to DB `ChannelSummary` table with `kind = 'profile'`.
+**Output:** a `StructuredSummary` JSON object containing:
+- `summaryText`, `topics`, `threads`, `decisions`, `actionItems`, `sentiment`, `unresolved`, `glossary`
 
-### B. User Long-Term Memory (User Profile)
+**Storage:** `ChannelSummary` with `kind = 'rolling'`.
+
+## 4) Long-term memory: channel profile
+
+**File:** `src/core/summary/summarizeChannelWindow.ts`
+
+After a rolling summary, Sage optionally updates the long-term profile if:
+- `SUMMARY_PROFILE_MIN_INTERVAL_SEC` has elapsed (default: 6 hours), or
+- the summary is forced via the admin command.
+
+The profile merges the previous long-term summary with the latest rolling summary, and stores the result in `ChannelSummary` with `kind = 'profile'`.
+
+## 5) User profile updates
+
 **File:** `src/core/memory/profileUpdater.ts`
 
-**Mechanism:**
-- **Trigger**: After the bot replies to a user.
-- **Process**:
-    -   **Input**: Current User Profile + Latest [User Message, Bot Reply].
-    -   **Prompt**: "Store ONLY stable preferences and facts... If nothing new, return previous."
-    -   **Constraint**: Max 800 chars.
-- **Storage**: Saved to DB `UserProfile` table (`summary` column).
+After each reply, Sage runs a two-step update:
 
-## 5. The Complete Flow (Step-by-Step)
+1. **Analyst pass** (`PROFILE_POLLINATIONS_MODEL`, default: `deepseek`) produces the updated profile text.
+2. **Formatter pass** (`FORMATTER_MODEL`, default: `qwen-coder`) wraps the text into JSON for validation.
 
-1.  **User Sends Message**: stored in `ChannelMessage` (Prisma).
-2.  **Context Assembly**:
-    -   Fetching `UserProfile` for the author.
-    -   Fetching latest `ChannelSummary` (rolling & profile).
-    -   Fetching recent raw `ChannelMessage`s.
-    -   *Logic*: `buildContextMessages` creates the prompt.
-3.  **LLM Generation**: Bot generates a reply using this context.
-4.  **Bot Reply**: Sent to Discord & stored in `ChannelMessage`.
-5.  **Side Effects (Async)**:
-    -   **User Memory**: `profileUpdater` runs. If the user said "My name is John", the `UserProfile` is updated to include "Name is John".
-    -   **Channel Scheduler**: Marks the channel as "dirty".
-6.  **Scheduler Tick (Later)**:
-    -   Notices the channel is dirty.
-    -   Generates a new **Rolling Summary** (incorporating the recent "My name is John" interaction).
-    -   If enough time passed, merges Rolling Summary into **Channel Profile**.
+The result is stored in `UserProfile.summary`. If the formatter fails, the previous summary is preserved.
 
-## 6. Summary Channel vs Summary Store
-- **Summary Store**: The database and code (`PrismaChannelSummaryStore`) that holds the data.
-- **Summary Channel**: Often refers to the *scheduler* capability that keeps these summaries up to date automatically. The bot can also "Force Summarize" via command/tools, which triggers the scheduler logic immediately.
+## 6) Relationship graph updates
+
+**Files:**
+- `src/core/relationships/relationshipGraph.ts`
+- `src/core/voice/voiceOverlapTracker.ts`
+
+Relationship edges are updated from:
+- **Mentions** (message ingestion)
+- **Voice overlap** (when a user leaves or moves between voice channels)
+
+Reply-based edges are not currently resolved because reply target IDs are not fetched from the message store (`replyToAuthorId` is `null`).
+
+## 7) Voice awareness in memory
+
+Voice events are ingested and:
+- stored as `VoiceSession` entries
+- used to update relationship edges (overlap)
+- optionally injected into the transcript as synthetic messages
+
+This allows the LLM to answer voice-specific questions and use voice activity as social context.

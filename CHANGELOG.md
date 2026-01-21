@@ -7,24 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
-### Added
-- Improved autopilot routing robustness and heuristics.
-- Standardized documentation around the Gemini model and pipeline stats.
-
 ### Changed
-- Synced `.env.example` with production configuration values.
-- Removed stray Gemini-large references and DeepSeek references across docs.
+- Documentation refreshed to match current runtime behavior and configuration.
+- `.env.example` updated to reflect the full set of supported environment variables.
 
 ## 0.1.0-beta
 
 ### Added
-- Mixture-of-Experts orchestration with router, experts, governor, and tracing.
-- Relationship graph, memory system, and summary pipeline improvements.
-- Expanded documentation for architecture and memory systems.
+- Mixture-of-Experts orchestration with router, experts, and trace storage.
+- Relationship graph, memory system, and summary pipeline.
+- Voice session tracking and analytics queries.
 
 ### Changed
-- Pollinations-only model override in profile memory.
-- Lint/build verification improvements and assorted code cleanup.
+- Pollinations-only LLM integration with profile/summary/formatter model overrides.
 
 ### Fixed
 - Channel summary JSON handling and admin summary commands.
