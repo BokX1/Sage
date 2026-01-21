@@ -47,10 +47,14 @@ export async function handleMessageCreate(message: Message) {
     message.member?.displayName ?? message.author.username ?? message.author.id;
 
   let isReplyToBot = false;
+  let replyToBotText: string | null = null;
   if (message.reference) {
     try {
       const refMessage = await message.fetchReference();
       isReplyToBot = refMessage.author.id === client.user?.id;
+      if (isReplyToBot) {
+        replyToBotText = refMessage.content;
+      }
     } catch {
       // Message might be deleted
     }
@@ -153,10 +157,7 @@ export async function handleMessageCreate(message: Message) {
       guildId: message.guildId,
       messageId: message.id,
       userText: invocation.cleanedText,
-      replyToBotText:
-        invocation.kind === 'reply' && message.reference
-          ? (await message.fetchReference()).content
-          : null,
+      replyToBotText: invocation.kind === 'reply' ? replyToBotText : null,
       intent: invocation.intent,
       mentionedUserIds: mentionedUserIdsForQueries,
       invokedBy: invocation.kind,
