@@ -1,4 +1,5 @@
 import { estimateTokens } from './tokenEstimate';
+import { LLMMessageContent } from '../llm/types';
 
 export type ContextBlockId =
   | 'base_system'
@@ -10,13 +11,14 @@ export type ContextBlockId =
   | 'transcript'
   | 'intent_hint'
   | 'reply_context'
+  | 'reply_reference'
   | 'user'
   | 'trunc_notice';
 
 export type ContextBlock = {
   id: ContextBlockId;
   role: 'system' | 'assistant' | 'user';
-  content: string;
+  content: LLMMessageContent;
   priority: number;
   hardMaxTokens?: number;
   minTokens?: number;
@@ -33,8 +35,54 @@ export type ContextBudgetOptions = {
 
 const MESSAGE_OVERHEAD_TOKENS = 4;
 
+function extractText(content: LLMMessageContent): string {
+  if (typeof content === 'string') {
+    return content;
+  }
+
+  return content.map((part) => (part.type === 'text' ? part.text : '')).join('');
+}
+
+function ensureNonEmptyTextForMultimodal(
+  content: LLMMessageContent,
+  text: string,
+): string {
+  if (typeof content === 'string') {
+    return text;
+  }
+
+  const hasImage = content.some((part) => part.type === 'image_url');
+  if (hasImage && text.trim().length === 0) {
+    return ' ';
+  }
+
+  return text;
+}
+
+function applyTextToContent(
+  content: LLMMessageContent,
+  nextText: string,
+): LLMMessageContent {
+  if (typeof content === 'string') {
+    return nextText;
+  }
+
+  const updatedText = ensureNonEmptyTextForMultimodal(content, nextText);
+  let textApplied = false;
+  return content.map((part) => {
+    if (part.type !== 'text') {
+      return part;
+    }
+    if (!textApplied) {
+      textApplied = true;
+      return { ...part, text: updatedText };
+    }
+    return { ...part, text: '' };
+  });
+}
+
 function estimateBlockTokens(block: ContextBlock, estimator: (text: string) => number): number {
-  return estimator(block.content) + MESSAGE_OVERHEAD_TOKENS;
+  return estimator(extractText(block.content)) + MESSAGE_OVERHEAD_TOKENS;
 }
 
 function safeTruncateText(
@@ -99,36 +147,79 @@ function truncateBlockContent(
   estimator: (text: string) => number,
 ): ContextBlock {
   if (maxTokens <= 0) {
-    return { ...block, content: '' };
+    return { ...block, content: applyTextToContent(block.content, '') };
   }
+
+  const contentText = extractText(block.content);
 
   switch (block.id) {
     case 'transcript':
-      return { ...block, content: safeTruncateEnd(block.content, maxTokens, estimator) };
+      return {
+        ...block,
+        content: applyTextToContent(
+          block.content,
+          safeTruncateEnd(contentText, maxTokens, estimator),
+        ),
+      };
     case 'reply_context':
-      return { ...block, content: safeTruncateEnd(block.content, maxTokens, estimator) };
+      return {
+        ...block,
+        content: applyTextToContent(
+          block.content,
+          safeTruncateEnd(contentText, maxTokens, estimator),
+        ),
+      };
+    case 'reply_reference':
+      return {
+        ...block,
+        content: applyTextToContent(
+          block.content,
+          safeTruncateEnd(contentText, maxTokens, estimator),
+        ),
+      };
     case 'user': {
       const notice = 'User message truncated to fit context. Showing most recent portion:\\n';
       const noticeTokens = estimator(notice);
       const availableTokens = Math.max(0, maxTokens - noticeTokens);
-      const truncatedContent = safeTruncateEnd(block.content, availableTokens, estimator);
-      if (truncatedContent.length === block.content.length) {
-        return { ...block, content: truncatedContent };
+      const truncatedContent = safeTruncateEnd(contentText, availableTokens, estimator);
+      if (truncatedContent.length === contentText.length) {
+        return { ...block, content: applyTextToContent(block.content, truncatedContent) };
       }
       if (noticeTokens >= maxTokens) {
-        return { ...block, content: safeTruncateEnd(block.content, maxTokens, estimator) };
+        return {
+          ...block,
+          content: applyTextToContent(
+            block.content,
+            safeTruncateEnd(contentText, maxTokens, estimator),
+          ),
+        };
       }
-      return { ...block, content: `${notice}${truncatedContent}`.trimEnd() };
+      return {
+        ...block,
+        content: applyTextToContent(block.content, `${notice}${truncatedContent}`.trimEnd()),
+      };
     }
     case 'memory':
-      return { ...block, content: safeTruncateText(block.content, maxTokens, estimator) };
+      return {
+        ...block,
+        content: applyTextToContent(
+          block.content,
+          safeTruncateText(contentText, maxTokens, estimator),
+        ),
+      };
     case 'profile_summary':
     case 'rolling_summary':
     case 'relationship_hints':
     case 'base_system':
     case 'trunc_notice':
     default:
-      return { ...block, content: safeTruncateText(block.content, maxTokens, estimator) };
+      return {
+        ...block,
+        content: applyTextToContent(
+          block.content,
+          safeTruncateText(contentText, maxTokens, estimator),
+        ),
+      };
   }
 }
 
@@ -142,7 +233,7 @@ function applyHardMax(
       return block;
     }
 
-    const currentTokens = estimator(block.content);
+    const currentTokens = estimator(extractText(block.content));
     if (currentTokens <= block.hardMaxTokens) {
       return block;
     }
@@ -191,6 +282,7 @@ const TRUNCATION_ORDER: ContextBlockId[] = [
   'relationship_hints',
   'intent_hint',
   'reply_context',
+  'reply_reference',
   'memory',
   'user',
 ];
@@ -267,7 +359,7 @@ export function budgetContextBlocks(
     }
 
     const minTokens = block.minTokens ?? 0;
-    const upperBound = estimator(block.content);
+    const upperBound = estimator(extractText(block.content));
 
     if (upperBound > minTokens) {
       let bestTokens = upperBound;
@@ -304,7 +396,7 @@ export function budgetContextBlocks(
   if (total > maxAllowedTokens) {
     const userBlock = findBlock(workingBlocks, 'user');
     if (userBlock) {
-      const userTokens = estimator(userBlock.content);
+      const userTokens = estimator(extractText(userBlock.content));
       if (userTokens > 0) {
         let low = 0;
         let high = userTokens;

@@ -106,6 +106,9 @@ describe('messageCreate - Ingest Flow', () => {
       },
       reference: null,
       fetchReference: vi.fn(),
+      attachments: {
+        first: vi.fn(() => null),
+      },
       channel: {
         send: vi.fn(),
         sendTyping: vi.fn().mockResolvedValue(undefined),
@@ -210,6 +213,9 @@ describe('messageCreate - Ingest Flow', () => {
       fetchReference: vi.fn().mockResolvedValue({
         author: { id: 'bot-123' },
         content: 'Prior bot message',
+        attachments: {
+          first: vi.fn(() => null),
+        },
       }),
     });
 
@@ -220,6 +226,68 @@ describe('messageCreate - Ingest Flow', () => {
     expect(mockGenerateChatReply).toHaveBeenCalledWith(
       expect.objectContaining({
         replyToBotText: 'Prior bot message',
+      }),
+    );
+  });
+
+  it('should include reply reference content before the user message', async () => {
+    const referencedMessage = {
+      author: { id: 'user-999' },
+      content: 'Original question',
+      attachments: {
+        first: vi.fn(() => null),
+      },
+      partial: false,
+    } as unknown as Message;
+
+    const message = createMockMessage({
+      content: '<@bot-123> follow up',
+      mentions: {
+        has: vi.fn((user: User) => user.id === 'bot-123'),
+      } as any,
+      reference: { messageId: 'ref-2' } as any,
+      referencedMessage,
+    });
+
+    await handleMessageCreate(message);
+
+    expect(mockGenerateChatReply).toHaveBeenCalledWith(
+      expect.objectContaining({
+        replyReferenceContent: '[In reply to]: Original question',
+      }),
+    );
+  });
+
+  it('should include reply reference images as multimodal content', async () => {
+    const referencedMessage = {
+      author: { id: 'user-999' },
+      content: '',
+      attachments: {
+        first: vi.fn(() => ({
+          contentType: 'image/png',
+          url: 'https://cdn.example.com/image.png',
+        })),
+      },
+      partial: false,
+    } as unknown as Message;
+
+    const message = createMockMessage({
+      content: '<@bot-123> what do you think?',
+      mentions: {
+        has: vi.fn((user: User) => user.id === 'bot-123'),
+      } as any,
+      reference: { messageId: 'ref-3' } as any,
+      referencedMessage,
+    });
+
+    await handleMessageCreate(message);
+
+    expect(mockGenerateChatReply).toHaveBeenCalledWith(
+      expect.objectContaining({
+        replyReferenceContent: [
+          { type: 'text', text: '[In reply to]: ' },
+          { type: 'image_url', image_url: { url: 'https://cdn.example.com/image.png' } },
+        ],
       }),
     );
   });

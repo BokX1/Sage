@@ -8,6 +8,7 @@ import { ingestEvent } from '../../core/ingest/ingestEvent';
 import { config as appConfig } from '../../config';
 import { detectInvocation } from '../../core/invoke/wakeWord';
 import { shouldAllowInvocation } from '../../core/invoke/cooldown';
+import { LLMMessageContent } from '../../core/llm/types';
 
 const processedMessagesKey = Symbol.for('sage.handlers.messageCreate.processed');
 const registrationKey = Symbol.for('sage.handlers.messageCreate.registered');
@@ -18,6 +19,57 @@ const globalScope = globalThis as any;
 // Initialize or retrieve the global deduplication map
 const processedMessages: Map<string, number> = (globalScope[processedMessagesKey] ??= new Map());
 const DEDUP_TTL = 60_000;
+
+const IMAGE_EXTENSIONS = new Set([
+  'png',
+  'jpg',
+  'jpeg',
+  'gif',
+  'webp',
+  'bmp',
+  'tiff',
+  'svg',
+]);
+
+function isImageAttachment(attachment?: {
+  contentType?: string | null;
+  name?: string | null;
+  url?: string | null;
+}): boolean {
+  if (!attachment) return false;
+  const contentType = attachment.contentType?.toLowerCase();
+  if (contentType?.startsWith('image/')) {
+    return true;
+  }
+
+  const name = attachment.name ?? attachment.url ?? '';
+  const extension = name.split('?')[0]?.split('.').pop()?.toLowerCase();
+  return extension ? IMAGE_EXTENSIONS.has(extension) : false;
+}
+
+function buildMessageContent(
+  message: Message,
+  options?: { prefix?: string; allowEmpty?: boolean; textOverride?: string },
+): LLMMessageContent | null {
+  const prefix = options?.prefix ?? '';
+  const text = options?.textOverride ?? message.content ?? '';
+  const combinedText = `${prefix}${text}`;
+  const attachment = message.attachments?.first?.();
+  const hasImage = isImageAttachment(attachment);
+
+  if (!hasImage || !attachment?.url) {
+    if (!options?.allowEmpty && combinedText.trim().length === 0) {
+      return null;
+    }
+    return combinedText;
+  }
+
+  const textPart = combinedText.trim().length > 0 ? combinedText : ' ';
+  return [
+    { type: 'text', text: textPart },
+    { type: 'image_url', image_url: { url: attachment.url } },
+  ];
+}
 
 export async function handleMessageCreate(message: Message) {
   if (message.author.bot) return;
@@ -46,19 +98,36 @@ export async function handleMessageCreate(message: Message) {
   const authorDisplayName =
     message.member?.displayName ?? message.author.username ?? message.author.id;
 
-  let isReplyToBot = false;
-  let replyToBotText: string | null = null;
+  let referencedMessage: Message | null = null;
   if (message.reference) {
-    try {
-      const refMessage = await message.fetchReference();
-      isReplyToBot = refMessage.author.id === client.user?.id;
-      if (isReplyToBot) {
-        replyToBotText = refMessage.content;
+    const cachedReference =
+      'referencedMessage' in message ? (message.referencedMessage as Message | null) : null;
+    if (cachedReference && !cachedReference.partial) {
+      referencedMessage = cachedReference;
+    } else {
+      try {
+        referencedMessage = await message.fetchReference();
+      } catch (error) {
+        logger.debug(
+          { msgId: message.id, error: error instanceof Error ? error.message : String(error) },
+          'Reply reference fetch failed',
+        );
       }
-    } catch {
-      // Message might be deleted
     }
   }
+
+  let isReplyToBot = false;
+  let replyToBotText: string | null = null;
+  if (referencedMessage) {
+    isReplyToBot = referencedMessage.author.id === client.user?.id;
+    if (isReplyToBot) {
+      replyToBotText = referencedMessage.content;
+    }
+  }
+
+  const replyReferenceContent = referencedMessage
+    ? buildMessageContent(referencedMessage, { prefix: '[In reply to]: ' })
+    : null;
 
   // ================================================================
   // D1: Ingest event BEFORE reply gating
@@ -150,6 +219,11 @@ export async function handleMessageCreate(message: Message) {
     }, 8000);
 
     // Generate Chat Reply
+    const userContent = buildMessageContent(message, {
+      allowEmpty: true,
+      textOverride: invocation.cleanedText,
+    });
+
     const result = await generateChatReply({
       traceId,
       userId: message.author.id,
@@ -157,7 +231,9 @@ export async function handleMessageCreate(message: Message) {
       guildId: message.guildId,
       messageId: message.id,
       userText: invocation.cleanedText,
+      userContent: userContent ?? invocation.cleanedText,
       replyToBotText: invocation.kind === 'reply' ? replyToBotText : null,
+      replyReferenceContent,
       intent: invocation.intent,
       mentionedUserIds: mentionedUserIdsForQueries,
       invokedBy: invocation.kind,

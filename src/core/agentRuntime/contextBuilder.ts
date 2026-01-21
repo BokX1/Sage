@@ -1,4 +1,4 @@
-import { LLMChatMessage } from '../llm/types';
+import { LLMChatMessage, LLMMessageContent } from '../llm/types';
 import { composeSystemPrompt } from './promptComposer';
 import { config } from '../config/env';
 import { budgetContextBlocks, ContextBlock } from './contextBudgeter';
@@ -18,7 +18,9 @@ export interface BuildContextMessagesParams {
   channelRollingSummary?: string | null;
   channelProfileSummary?: string | null;
   replyToBotText: string | null;
+  replyReferenceContent?: LLMMessageContent | null;
   userText: string;
+  userContent?: LLMMessageContent;
   recentTranscript?: string | null;
   intentHint?: string | null;
   relationshipHints?: string | null;
@@ -45,7 +47,9 @@ export function buildContextMessages(params: BuildContextMessagesParams): LLMCha
     channelRollingSummary,
     channelProfileSummary,
     replyToBotText,
+    replyReferenceContent,
     userText,
+    userContent,
     recentTranscript,
     intentHint,
     relationshipHints,
@@ -169,10 +173,21 @@ If you have nothing to add, output '[SILENCE]' (without quotes).`;
     });
   }
 
+  if (replyReferenceContent) {
+    blocks.push({
+      id: 'reply_reference',
+      role: 'user',
+      content: replyReferenceContent,
+      priority: 105,
+      hardMaxTokens: config.contextBlockMaxTokensReplyContext,
+      truncatable: true,
+    });
+  }
+
   blocks.push({
     id: 'user',
     role: 'user',
-    content: userText,
+    content: userContent ?? userText,
     priority: 110,
     hardMaxTokens: config.contextUserMaxTokens,
     truncatable: true,
@@ -190,7 +205,13 @@ If you have nothing to add, output '[SILENCE]' (without quotes).`;
 
   for (const block of budgetedBlocks) {
     if (block.role === 'system') {
-      systemContentParts.push(block.content);
+      if (typeof block.content === 'string') {
+        systemContentParts.push(block.content);
+      } else {
+        systemContentParts.push(
+          block.content.map((part) => (part.type === 'text' ? part.text : '')).join(''),
+        );
+      }
     } else {
       nonSystemMessages.push({ role: block.role, content: block.content });
     }

@@ -97,7 +97,9 @@ export class PollinationsClient implements LLMClient {
 
       const systemMsg = payload.messages.find((m) => m.role === 'system');
       if (systemMsg) {
-        systemMsg.content += toolInstruction + jsonInstruction;
+        if (typeof systemMsg.content === 'string') {
+          systemMsg.content += toolInstruction + jsonInstruction;
+        }
       } else {
         payload.messages.unshift({ role: 'system', content: toolInstruction + jsonInstruction });
       }
@@ -154,7 +156,10 @@ export class PollinationsClient implements LLMClient {
 
             // Avoid duplicate instructions
             if (systemMsg) {
-              if (!systemMsg.content.includes('valid JSON only')) {
+              if (
+                typeof systemMsg.content === 'string' &&
+                !systemMsg.content.includes('valid JSON only')
+              ) {
                 systemMsg.content += jsonInstruction;
               }
             } else {

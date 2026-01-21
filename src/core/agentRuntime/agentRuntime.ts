@@ -3,7 +3,7 @@ import { formatSummaryAsText } from '../summary/summarizeChannelWindow';
 import { getRecentMessages } from '../awareness/channelRingBuffer';
 import { buildTranscriptBlock } from '../awareness/transcriptBuilder';
 import { getLLMClient } from '../llm';
-import { LLMChatMessage, ToolDefinition } from '../llm/types';
+import { LLMChatMessage, LLMMessageContent, ToolDefinition } from '../llm/types';
 import { isLoggingEnabled } from '../settings/guildChannelSettings';
 import { logger } from '../utils/logger';
 import { buildContextMessages } from './contextBuilder';
@@ -54,8 +54,10 @@ export interface RunChatTurnParams {
   guildId: string | null;
   messageId: string;
   userText: string;
+  userContent?: LLMMessageContent;
   userProfileSummary: string | null;
   replyToBotText: string | null;
+  replyReferenceContent?: LLMMessageContent | null;
   intent?: string | null;
   mentionedUserIds?: string[];
   invokedBy?: 'mention' | 'reply' | 'wakeword' | 'autopilot' | 'command';
@@ -99,8 +101,10 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
     channelId,
     guildId,
     userText,
+    userContent,
     userProfileSummary,
     replyToBotText,
+    replyReferenceContent,
     intent,
     mentionedUserIds,
     invokedBy = 'mention',
@@ -244,7 +248,9 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
   const messages = buildContextMessages({
     userProfileSummary,
     replyToBotText,
+    replyReferenceContent,
     userText,
+    userContent,
     recentTranscript,
     channelRollingSummary: rollingSummaryText,
     channelProfileSummary: profileSummaryText,

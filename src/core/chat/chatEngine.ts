@@ -2,6 +2,7 @@ import { getUserProfile, upsertUserProfile } from '../memory/userProfileRepo';
 import { updateProfileSummary } from '../memory/profileUpdater';
 import { logger } from '../utils/logger';
 import { runChatTurn } from '../agentRuntime';
+import { LLMMessageContent } from '../llm/types';
 
 import { limitByKey } from '../utils/perKeyConcurrency';
 
@@ -21,7 +22,9 @@ export async function generateChatReply(params: {
   guildId: string | null;
   messageId: string;
   userText: string;
+  userContent?: LLMMessageContent;
   replyToBotText?: string | null;
+  replyReferenceContent?: LLMMessageContent | null;
   intent?: string | null;
   mentionedUserIds?: string[];
   invokedBy?: 'mention' | 'reply' | 'wakeword' | 'autopilot' | 'command';
@@ -37,7 +40,9 @@ export async function generateChatReply(params: {
       guildId,
       messageId,
       userText,
+      userContent,
       replyToBotText,
+      replyReferenceContent,
       intent,
       mentionedUserIds,
       invokedBy = 'mention',
@@ -61,8 +66,10 @@ export async function generateChatReply(params: {
       guildId,
       messageId,
       userText,
+      userContent,
       userProfileSummary: profileSummary,
       replyToBotText: replyToBotText ?? null,
+      replyReferenceContent: replyReferenceContent ?? null,
       intent: intent ?? null,
       mentionedUserIds,
       invokedBy,
