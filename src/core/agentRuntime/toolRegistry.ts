@@ -1,34 +1,62 @@
 import { z } from 'zod';
 import { zodToJsonSchema } from 'zod-to-json-schema';
 
-/** Maximum JSON string length for tool arguments (10KB) */
 const MAX_ARGS_SIZE = 10 * 1024;
-
-/** Context passed to tool execution */
+/**
+ * Define execution metadata for tool calls.
+ *
+ * Details: includes identifiers used for tracing, logging, and access checks.
+ *
+ * Side effects: none.
+ * Error behavior: none.
+ */
 export interface ToolExecutionContext {
   traceId: string;
   userId: string;
   channelId: string;
 }
 
-/** Definition of a tool with typed arguments */
+/**
+ * Define a tool contract with schema-validated arguments.
+ *
+ * Details: a tool must declare a unique name, describe itself for the LLM, and
+ * supply a Zod schema for argument validation.
+ *
+ * Side effects: none.
+ * Error behavior: none.
+ */
 export interface ToolDefinition<TArgs = unknown> {
-  /** Unique tool name (must match allowlist) */
+  /** Unique tool name (must match allowlist). */
   name: string;
-  /** Human-readable description for LLM */
+  /** Human-readable description for the LLM. */
   description: string;
-  /** Zod schema for argument validation */
+  /** Zod schema for argument validation. */
   schema: z.ZodType<TArgs>;
-  /** Execute the tool with validated arguments */
+  /** Execute the tool with validated arguments. */
   execute: (args: TArgs, ctx: ToolExecutionContext) => Promise<unknown>;
 }
 
-/** Validation result for a tool call */
+/**
+ * Represent validation outcomes for a tool call.
+ *
+ * Details: success carries validated arguments; failure carries a human-readable
+ * error message.
+ *
+ * Side effects: none.
+ * Error behavior: none.
+ */
 export type ToolValidationResult<TArgs = unknown> =
   | { success: true; args: TArgs }
   | { success: false; error: string };
 
-/** OpenAI-compatible tool specification */
+/**
+ * Describe a tool in OpenAI-compatible JSON schema format.
+ *
+ * Details: used to advertise registered tools to LLM providers.
+ *
+ * Side effects: none.
+ * Error behavior: none.
+ */
 export interface OpenAIToolSpec {
   type: 'function';
   function: {
@@ -44,14 +72,27 @@ const toJsonSchema = zodToJsonSchema as unknown as (
 ) => object;
 
 /**
- * Tool registry with strict validation.
- * Enforces: allowlist (only registered tools), schema validation, args size limits.
+ * Manage registered tools with validation and allowlisting.
+ *
+ * Details: enforces name uniqueness, argument schema validation, and maximum
+ * serialized argument size before execution.
+ *
+ * Side effects: none.
+ * Error behavior: throws on duplicate registration; returns validation failures
+ * for invalid tool calls.
  */
 export class ToolRegistry {
   private tools: Map<string, ToolDefinition<unknown>> = new Map();
 
   /**
-   * Register a tool. Throws if name already registered.
+   * Register a tool definition.
+   *
+   * Details: name collisions are rejected to preserve the allowlist invariant.
+   *
+   * Side effects: mutates the registry.
+   * Error behavior: throws when a tool name is already registered.
+   *
+   * @param tool - Tool definition to register.
    */
   register<TArgs>(tool: ToolDefinition<TArgs>): void {
     if (this.tools.has(tool.name)) {
@@ -61,28 +102,59 @@ export class ToolRegistry {
   }
 
   /**
-   * Get a tool by name. Returns undefined if not found.
+   * Look up a tool by name.
+   *
+   * Details: returns undefined when the tool is not registered.
+   *
+   * Side effects: none.
+   * Error behavior: none.
+   *
+   * @param name - Tool name to look up.
+   * @returns The tool definition if registered.
    */
   get(name: string): ToolDefinition<unknown> | undefined {
     return this.tools.get(name);
   }
 
   /**
-   * Check if a tool is registered (allowlist check).
+   * Check whether a tool name is allowlisted.
+   *
+   * Details: returns true only for registered tool names.
+   *
+   * Side effects: none.
+   * Error behavior: none.
+   *
+   * @param name - Tool name to check.
+   * @returns True when the tool is registered.
    */
   has(name: string): boolean {
     return this.tools.has(name);
   }
 
   /**
-   * List all registered tool names.
+   * List registered tool names.
+   *
+   * Details: order matches Map insertion order.
+   *
+   * Side effects: none.
+   * Error behavior: none.
+   *
+   * @returns Tool names in registration order.
    */
   listNames(): string[] {
     return Array.from(this.tools.keys());
   }
 
   /**
-   * Generate OpenAI-compatible tool specifications for all registered tools.
+   * Build OpenAI-compatible tool specifications.
+   *
+   * Details: converts each Zod schema into JSON Schema using the local
+   * $refStrategy to avoid provider issues.
+   *
+   * Side effects: none.
+   * Error behavior: none.
+   *
+   * @returns Tool specs for all registered tools.
    */
   listOpenAIToolSpecs(): OpenAIToolSpec[] {
     return Array.from(this.tools.values()).map((tool) => ({
@@ -98,8 +170,16 @@ export class ToolRegistry {
   }
 
   /**
-   * Validate a tool call.
-   * Checks: allowlist, args size, schema validation.
+   * Validate a tool call payload.
+   *
+   * Details: enforces allowlist membership, argument size limits, and schema
+   * validation.
+   *
+   * Side effects: none.
+   * Error behavior: returns a failure result with a human-readable message.
+   *
+   * @param call - Tool call payload with name and arguments.
+   * @returns Validation result with validated arguments on success.
    */
   validateToolCall<TArgs = unknown>(call: {
     name: string;
@@ -144,8 +224,16 @@ export class ToolRegistry {
   }
 
   /**
-   * Execute a tool with validation.
-   * Returns the tool result or throws on validation/execution error.
+   * Execute a tool call after validation.
+   *
+   * Details: validates name, argument size, and schema before execution.
+   *
+   * Side effects: executes tool code and any downstream effects it performs.
+   * Error behavior: returns a failure result when validation or execution fails.
+   *
+   * @param call - Tool call payload with name and arguments.
+   * @param ctx - Execution context passed to the tool.
+   * @returns Success or failure result with tool output or error message.
    */
   async executeValidated<TArgs = unknown>(
     call: { name: string; args: unknown },
@@ -168,7 +256,11 @@ export class ToolRegistry {
 }
 
 /**
- * Global tool registry instance.
- * Tools should be registered at startup.
+ * Provide the shared tool registry instance.
+ *
+ * Details: tools are expected to register during startup before runtime calls.
+ *
+ * Side effects: none.
+ * Error behavior: none.
  */
 export const globalToolRegistry = new ToolRegistry();

@@ -19,10 +19,6 @@ import { runExperts } from '../orchestration/runExperts';
 import { upsertTraceStart, updateTraceEnd } from '../trace/agentTraceRepo';
 import { ExpertPacket } from '../orchestration/experts/types';
 
-/**
- * Google Search tool definition for OpenAI/Pollinations format.
- * Kept here to match existing chatEngine behavior.
- */
 const GOOGLE_SEARCH_TOOL: ToolDefinition = {
   type: 'function',
   function: {
@@ -42,6 +38,15 @@ const GOOGLE_SEARCH_TOOL: ToolDefinition = {
   },
 };
 
+/**
+ * Define inputs for a single chat turn.
+ *
+ * Details: includes routing hints, profile summaries, and invocation metadata
+ * used to build LLM context and traces.
+ *
+ * Side effects: none.
+ * Error behavior: none.
+ */
 export interface RunChatTurnParams {
   traceId: string;
   userId: string;
@@ -49,17 +54,21 @@ export interface RunChatTurnParams {
   guildId: string | null;
   messageId: string;
   userText: string;
-  /** User profile summary for personalization */
   userProfileSummary: string | null;
-  /** Previous bot message if user is replying to bot */
   replyToBotText: string | null;
-  /** Optional intent hint from invocation detection */
   intent?: string | null;
   mentionedUserIds?: string[];
-  /** Invocation method for router */
   invokedBy?: 'mention' | 'reply' | 'wakeword' | 'autopilot' | 'command';
 }
 
+/**
+ * Describe the outcome of a chat turn.
+ *
+ * Details: includes the reply text and optional debug metadata.
+ *
+ * Side effects: none.
+ * Error behavior: none.
+ */
 export interface RunChatTurnResult {
   replyText: string;
   debug?: {
@@ -71,17 +80,17 @@ export interface RunChatTurnResult {
 
 /**
  * Run a single chat turn through the agent runtime.
- * This is the main orchestration entrypoint.
  *
- * Flow (D9):
- * 1. Router classifies intent
- * 2. Run expert queries (cheap DB lookups)
- * 3. Persist trace start
- * 4. Build context with expert packets
- * 5. Call LLM (single call by default)
- * 6. Run governor (post-process safety)
- * 7. Persist trace end
- * 8. Return governed reply
+ * Details: routes the request, gathers expert packets, builds context, and
+ * executes LLM calls with optional tool usage.
+ *
+ * Side effects: performs LLM calls, DB reads/writes for traces, and may execute
+ * tools with their own side effects.
+ * Error behavior: catches and logs non-fatal errors; returns fallback text when
+ * the LLM call fails.
+ *
+ * @param params - Inputs for the chat turn and routing context.
+ * @returns Reply text and optional debug metadata.
  */
 export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTurnResult> {
   const {
@@ -97,7 +106,6 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
     invokedBy = 'mention',
   } = params;
 
-  // Voice fast-path: Answer simple voice queries without routing/LLM
   const normalizedText = userText.toLowerCase();
   const isWhoInVoice =
     /\bwho('?s| is)? in voice\b/.test(normalizedText) || /\bwho in voice\b/.test(normalizedText);
@@ -120,7 +128,6 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
     }
   }
 
-  // D9: Step 1 - Router classifies intent
   const route = decideRoute({
     userText,
     invokedBy,
@@ -129,8 +136,6 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
 
   logger.debug({ traceId, route }, 'Router decision');
 
-  // D9: Step 2 - Run experts (cheap DB queries)
-  // D9: Step 2 - Run experts (cheap DB queries)
   let expertPackets: ExpertPacket[] = [];
   try {
     expertPackets = await runExperts({
@@ -147,7 +152,6 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
 
   const expertPacketsText = expertPackets.map((p) => `[${p.name}] ${p.content}`).join('\n\n');
 
-  // D9: Step 3 - Persist trace start
   if (appConfig.TRACE_ENABLED) {
     try {
       await upsertTraceStart({
@@ -222,7 +226,6 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
       logger.warn({ error, guildId, channelId }, 'Failed to load channel summaries (non-fatal)');
     }
 
-    // Compute relationship hints (D7)
     try {
       const { renderRelationshipHints } =
         await import('../relationships/relationshipHintsRenderer');
@@ -237,7 +240,6 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
     }
   }
 
-  // D9: Step 4 - Build context with expert packets
   const style = classifyStyle(userText);
   const messages = buildContextMessages({
     userProfileSummary,
@@ -258,10 +260,8 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
     'Agent runtime: built context with experts',
   );
 
-  // D9: Step 5 - Call LLM with route temperature
   const client = getLLMClient();
 
-  // Build native search tools if route allows (Pollinations format)
   const nativeTools: ToolDefinition[] = [];
   if (route.allowTools) {
     nativeTools.push(GOOGLE_SEARCH_TOOL);
@@ -280,7 +280,6 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
 
     draftText = response.content;
 
-    // Check if response is a tool_calls envelope for custom tools
     if (route.allowTools && globalToolRegistry.listNames().length > 0) {
       const trimmed = draftText.trim();
       const strippedFence = trimmed.startsWith('```')
@@ -302,8 +301,8 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
           draftText = toolLoopResult.replyText;
           toolsExecuted = true;
         }
-      } catch {
-        // Not JSON, treat as normal response
+      } catch (_error) {
+        void _error;
       }
     }
   } catch (err) {
@@ -311,7 +310,6 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
     draftText = "I'm having trouble connecting right now. Please try again later.";
   }
 
-  // D9: Step 6 - Removed Governor (User request)
   const finalText = draftText;
   const governorResult = {
     finalText,
@@ -319,12 +317,10 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
     flagged: false,
   };
 
-  // D9: Step 7 - Persist trace end
   if (appConfig.TRACE_ENABLED) {
     try {
       await updateTraceEnd({
         id: traceId,
-        // governorJson removed
         toolJson: toolsExecuted ? { executed: true } : undefined,
         replyText: finalText,
       });
@@ -335,7 +331,6 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
 
   logger.debug({ traceId }, 'Chat turn complete');
 
-  // Check for Silence Protocol
   if (governorResult.finalText.trim().includes('[SILENCE]')) {
     logger.info({ traceId }, 'Agent chose silence');
     return {

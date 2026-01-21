@@ -3,7 +3,15 @@ import type { RelationshipEdge } from './relationshipEdgeRepo';
 
 /**
  * Render relationship hints for LLM context.
- * Format as probabilistic bullet points with evidence counts.
+ *
+ * Details: combines top guild edges with user-specific edges, then formats
+ * probabilistic bullets with evidence counts.
+ *
+ * Side effects: reads relationship data.
+ * Error behavior: returns null on rendering or data failures.
+ *
+ * @param params - Rendering limits and optional user focus.
+ * @returns Rendered hint block or null when no edges are available.
  */
 export async function renderRelationshipHints(params: {
   guildId: string;
@@ -14,13 +22,11 @@ export async function renderRelationshipHints(params: {
   const { guildId, userId, maxEdges, maxChars } = params;
 
   try {
-    // Fetch top edges (guild-wide) and user-specific edges
     const [topEdges, userEdges] = await Promise.all([
       getTopEdges({ guildId, limit: Math.ceil(maxEdges / 2), minWeight: 0.1 }),
       userId ? getEdgesForUser({ guildId, userId, limit: Math.ceil(maxEdges / 2) }) : [],
     ]);
 
-    // Merge and deduplicate
     const edgeMap = new Map<string, RelationshipEdge>();
     for (const edge of [...topEdges, ...userEdges]) {
       const key = `${edge.userA}-${edge.userB}`;
@@ -37,14 +43,12 @@ export async function renderRelationshipHints(params: {
       return null;
     }
 
-    // Render hints
     const lines: string[] = ['Relationship hints (probabilistic):'];
 
     for (const edge of edges) {
       const { userA, userB, weight, featuresJson } = edge;
       const f = featuresJson;
 
-      // Build evidence string
       const evidenceParts: string[] = [];
       if (f.mentions.count > 0) {
         evidenceParts.push(
@@ -63,7 +67,6 @@ export async function renderRelationshipHints(params: {
 
       const evidence = evidenceParts.length > 0 ? evidenceParts.join(', ') : 'no recent activity';
 
-      // Phrase relationship strength
       let strength = 'weak';
       if (weight >= 0.7) {
         strength = 'likely close';
@@ -84,7 +87,6 @@ export async function renderRelationshipHints(params: {
 
     return result;
   } catch (_error) {
-    // Non-fatal: return null if rendering fails
     return null;
   }
 }

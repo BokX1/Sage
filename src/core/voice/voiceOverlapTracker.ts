@@ -4,7 +4,14 @@ import { updateFromVoiceOverlap } from '../relationships/relationshipGraph';
 
 /**
  * Compute and update relationship edges for voice overlap.
- * Called when a user leaves a voice channel.
+ *
+ * Details: uses the current channel presence to determine overlap with users
+ * still connected when a member leaves.
+ *
+ * Side effects: writes relationship edges and logs warnings on failure.
+ * Error behavior: swallows errors to avoid disrupting voice state handling.
+ *
+ * @param params - Voice session details for the departing user.
  */
 export async function computeVoiceOverlapForUser(params: {
   guildId: string;
@@ -16,12 +23,11 @@ export async function computeVoiceOverlapForUser(params: {
   const { guildId, userId, channelId, joinedAt, leftAt } = params;
 
   try {
-    // Get current presence in the channel
     const guildPresence = getGuildPresence(guildId);
     const channelPresence = guildPresence.find((c) => c.channelId === channelId);
 
     if (!channelPresence || channelPresence.members.length === 0) {
-      return; // No one else in channel
+      return;
     }
 
     const userJoinMs = joinedAt.getTime();
@@ -29,16 +35,15 @@ export async function computeVoiceOverlapForUser(params: {
     const userDurationMs = userLeaveMs - userJoinMs;
 
     if (userDurationMs <= 0) {
-      return; // Invalid duration
+      return;
     }
 
-    // Compute overlap with each other user currently in channel
     for (const member of channelPresence.members) {
-      if (member.userId === userId) continue; // Skip self
+      if (member.userId === userId) continue;
 
       const otherJoinMs = member.joinedAt.getTime();
       const overlapStart = Math.max(userJoinMs, otherJoinMs);
-      const overlapEnd = userLeaveMs; // User is leaving, other is still present
+      const overlapEnd = userLeaveMs;
       const overlapMs = Math.max(0, overlapEnd - overlapStart);
 
       if (overlapMs > 0) {
