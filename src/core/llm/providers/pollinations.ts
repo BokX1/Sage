@@ -37,7 +37,7 @@ export class PollinationsClient implements LLMClient {
       baseUrl,
       model: (config.model || 'gemini').toLowerCase(),
       apiKey: config.apiKey,
-      timeoutMs: config.timeoutMs || 20000,
+      timeoutMs: config.timeoutMs || 60000,
       maxRetries: config.maxRetries ?? 2,
     };
     this.breaker = new CircuitBreaker({
