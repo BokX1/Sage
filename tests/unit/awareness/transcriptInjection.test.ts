@@ -60,7 +60,7 @@ describe('transcript injection', () => {
       channelId: 'channel-1',
       authorId: 'user-1',
       authorDisplayName: 'User One',
-      timestamp: new Date('2026-01-18T12:00:00.000Z'),
+      timestamp: new Date(),
       content: 'Hello there',
       replyToMessageId: undefined,
       mentionsUserIds: [],
@@ -96,7 +96,7 @@ describe('transcript injection', () => {
       channelId: 'channel-1',
       authorId: 'user-2',
       authorDisplayName: 'User Two',
-      timestamp: new Date('2026-01-18T12:05:00.000Z'),
+      timestamp: new Date(),
       content: 'No log',
       replyToMessageId: undefined,
       mentionsUserIds: [],
@@ -124,12 +124,13 @@ describe('transcript injection', () => {
   });
 
   it('includes rolling and profile summaries before the transcript', async () => {
+    const now = new Date();
     await summaryStore.upsertSummary({
       guildId: 'guild-1',
       channelId: 'channel-1',
       kind: 'rolling',
-      windowStart: new Date('2026-01-18T11:00:00.000Z'),
-      windowEnd: new Date('2026-01-18T12:00:00.000Z'),
+      windowStart: new Date(now.getTime() - 60 * 60 * 1000),
+      windowEnd: now,
       summaryText: 'Rolling summary text.',
       topics: [],
       threads: [],
@@ -140,8 +141,8 @@ describe('transcript injection', () => {
       guildId: 'guild-1',
       channelId: 'channel-1',
       kind: 'profile',
-      windowStart: new Date('2026-01-18T10:00:00.000Z'),
-      windowEnd: new Date('2026-01-18T12:00:00.000Z'),
+      windowStart: new Date(now.getTime() - 2 * 60 * 60 * 1000),
+      windowEnd: now,
       summaryText: 'Profile summary text.',
       topics: [],
       threads: [],
@@ -155,7 +156,7 @@ describe('transcript injection', () => {
       channelId: 'channel-1',
       authorId: 'user-3',
       authorDisplayName: 'User Three',
-      timestamp: new Date('2026-01-18T12:10:00.000Z'),
+      timestamp: new Date(),
       content: 'Summary window',
       replyToMessageId: undefined,
       mentionsUserIds: [],
@@ -190,12 +191,13 @@ describe('transcript injection', () => {
 
   it('omits summaries when logging is disabled', async () => {
     vi.mocked(isLoggingEnabled).mockReturnValue(false);
+    const now = new Date();
     await summaryStore.upsertSummary({
       guildId: 'guild-1',
       channelId: 'channel-1',
       kind: 'rolling',
-      windowStart: new Date('2026-01-18T11:00:00.000Z'),
-      windowEnd: new Date('2026-01-18T12:00:00.000Z'),
+      windowStart: new Date(now.getTime() - 60 * 60 * 1000),
+      windowEnd: now,
       summaryText: 'Rolling summary text.',
       topics: [],
       threads: [],
