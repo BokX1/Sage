@@ -215,6 +215,7 @@ describe('messageCreate - Ingest Flow', () => {
 
     await handleMessageCreate(message);
 
+    expect(message.fetchReference).toHaveBeenCalledTimes(1);
     expect(mockGenerateChatReply).toHaveBeenCalledTimes(1);
     expect(mockGenerateChatReply).toHaveBeenCalledWith(
       expect.objectContaining({
