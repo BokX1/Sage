@@ -100,7 +100,8 @@ export async function handleMessageCreate(message: Message) {
 
   let referencedMessage: Message | null = null;
   if (message.reference) {
-    const cachedReference = message.referencedMessage;
+    const cachedReference =
+      'referencedMessage' in message ? (message.referencedMessage as Message | null) : null;
     if (cachedReference && !cachedReference.partial) {
       referencedMessage = cachedReference;
     } else {
