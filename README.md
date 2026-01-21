@@ -2,59 +2,58 @@
 
 [![CI](https://github.com/BokX1/Sage/actions/workflows/ci.yml/badge.svg)](https://github.com/BokX1/Sage/actions/workflows/ci.yml)
 
-**Sage** is a context-aware Discord bot that remembers conversations, tracks relationships, and generates personalized responses using LLM-powered intelligence.
+**Sage** is a context-aware Discord bot that stores conversation context, relationship signals, and channel summaries to deliver more personalized responses in real time.
 
 ---
 
-## What Sage Does
+## Key capabilities
 
-Sage is built to give Discord communities a reliable, memory-aware assistant. It combines persistent memory, social graph analysis, and channel summaries to produce richer, more personalized replies.
-
-### Key Capabilities
-
-- **User Memory** — Learns and recalls preferences, interests, and conversation history.
-- **Relationship Graph** — Builds probabilistic relationships based on mentions, replies, and voice activity.
-- **Channel Summaries** — Maintains rolling summaries to give the model compact context.
-- **Voice Awareness** — Tracks voice joins, leaves, and overlap sessions.
-- **Agentic Routing** — Routes requests through a Mixture-of-Experts architecture with tracing.
+- **Persistent user profiles** built from conversations and updated after each reply.
+- **Relationship graph** that scores connections from mentions, replies, and voice overlap events.
+- **Channel summaries** (rolling + long-term profiles) to compress recent and historical context.
+- **Voice awareness** with presence tracking, voice sessions, and “who’s in voice / how long today” answers.
+- **Routing + tracing** that classifies requests, runs expert lookups, and stores trace metadata for debugging.
 
 ---
 
-## Repository Structure
+## Architecture at a glance
 
 ```
-.
-├── docs/               # Design docs and architecture references
-├── prisma/             # Prisma schema & migrations
-├── src/                # Bot runtime (TypeScript)
-│   ├── bot/            # Discord event handlers
-│   ├── core/           # Runtime pipeline, LLM, orchestration, memory
-│   ├── db/             # Prisma client
-│   ├── scripts/        # Operational scripts (doctor/cert)
-│   └── utils/          # Shared utilities
-├── tests/              # Vitest unit/integration tests
-├── README.md
-└── CHANGELOG.md
+Discord events
+  ├─ ingestEvent (logs message/voice + updates relationship graph)
+  ├─ generateChatReply
+  │   ├─ router → experts → context builder → LLM
+  │   └─ trace start/end persisted (optional)
+  └─ background updates
+      ├─ user profile updater
+      └─ channel summary scheduler
 ```
+
+Deep dives:
+- Memory + summaries: `docs/architecture/memory_system.md`
+- Routing + orchestration: `docs/architecture/pipeline.md`
+- Operations + safety: `docs/operations/runbook.md`
+- Security & privacy: `docs/security_privacy.md`
 
 ---
 
-## Quick Start
+## Quick start
 
 ```bash
-# Clone and install
-git clone https://github.com/BokX1/Sage.git
-cd Sage
+# Install dependencies
 npm ci
 
-# Configure
+# Configure env
 cp .env.example .env
-# Edit .env with your Discord token and database URL
+# Edit .env with your Discord token + database URL
 
-# Database setup
-npx prisma migrate dev
+# Start Postgres (optional helper)
+docker compose up -d db
 
-# Run
+# Run migrations
+npm run db:migrate
+
+# Start the bot in dev mode
 npm run dev
 ```
 
@@ -65,98 +64,98 @@ npm run dev
 ### Required
 
 | Variable | Description |
-|----------|-------------|
-| `DISCORD_TOKEN` | Bot token from Discord Developer Portal |
-| `DISCORD_APP_ID` | Application ID from Discord Developer Portal |
-| `DATABASE_URL` | PostgreSQL connection string |
+| --- | --- |
+| `DISCORD_TOKEN` | Bot token from the Discord Developer Portal. |
+| `DISCORD_APP_ID` | Discord application ID (used for slash command registration). |
+| `DATABASE_URL` | PostgreSQL connection string for Prisma. |
 
-### LLM Provider
+### LLM provider (Pollinations-only)
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `LLM_PROVIDER` | `pollinations` | LLM backend |
-| `POLLINATIONS_MODEL` | `gemini` | Model name for Pollinations API |
+| Variable | Purpose | Default |
+| --- | --- | --- |
+| `LLM_PROVIDER` | LLM backend (Pollinations only). | `pollinations` |
+| `POLLINATIONS_BASE_URL` | Pollinations base URL. | `https://gen.pollinations.ai/v1` |
+| `POLLINATIONS_MODEL` | Chat model used for replies. | `gemini` |
+| `POLLINATIONS_API_KEY` | Optional API key for Pollinations. | *(empty)* |
+| `PROFILE_PROVIDER` | Override provider for profile updates (Pollinations only). | *(empty)* |
+| `PROFILE_POLLINATIONS_MODEL` | Model for profile updates. | `deepseek` |
+| `SUMMARY_MODEL` | Model for channel summaries. | `openai-large` |
+| `FORMATTER_MODEL` | JSON formatter model for summaries/profiles. | `qwen-coder` |
 
-### Bot Behavior
+### Behavior + logging
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `RATE_LIMIT_MAX` | `5` | Max requests per window per user |
-| `RATE_LIMIT_WINDOW_SEC` | `10` | Rate limit window in seconds |
-| `AUTOPILOT_MODE` | `manual` | `manual`, `reserved`, `talkative` |
-| `WAKE_WORDS` | `sage` | Comma-separated trigger words |
-| `LOG_LEVEL` | `info` | `debug`, `info`, `warn`, `error` |
+| Variable | Purpose | Default |
+| --- | --- | --- |
+| `AUTOPILOT_MODE` | `manual`, `reserved`, or `talkative`. | `manual` |
+| `WAKE_WORDS` | Comma-separated wake words. | `sage` |
+| `WAKE_WORD_PREFIXES` | Optional prefixes like “hey”. | `hey,yo,hi,hello` |
+| `WAKEWORD_COOLDOWN_SEC` | Per-user wakeword cooldown. | `20` |
+| `WAKEWORD_MAX_RESPONSES_PER_MIN_PER_CHANNEL` | Channel-wide wakeword cap. | `6` |
+| `RATE_LIMIT_MAX` | Max bot responses per window (per channel). | `5` |
+| `RATE_LIMIT_WINDOW_SEC` | Rate-limit window. | `10` |
+| `LOGGING_ENABLED` | Enable message/voice ingestion. | `true` |
+| `LOGGING_MODE` | `all` or `allowlist`. | `all` |
+| `LOGGING_ALLOWLIST_CHANNEL_IDS` | Channels to log in allowlist mode. | *(empty)* |
+| `LOGGING_BLOCKLIST_CHANNEL_IDS` | Channels to skip logging. | *(empty)* |
+| `TRACE_ENABLED` | Persist router/expert trace metadata. | `true` |
 
-### Admin Access
-
-| Variable | Description |
-|----------|-------------|
-| `ADMIN_ROLE_IDS` | Comma-separated Discord role IDs with admin access |
-| `ADMIN_USER_IDS` | Comma-separated Discord user IDs with admin access |
-
-See `.env.example` for the full list of configuration options.
+See `.env.example` for the full list of environment variables (summaries, context budgets, relationship tuning, timeouts, etc.).
 
 ---
 
 ## Commands
 
 | Command | Description |
-|---------|-------------|
-| `/ping` | Check bot responsiveness |
-| `/llm_ping` | Test LLM connection and latency |
-| `/sage whoiswho [user]` | View relationship data for a user |
-| `/sage relationship set` | Manually set relationship level (admin) |
-| `/sage admin stats` | Bot statistics and uptime |
-| `/sage admin relationship_graph [user]` | View full relationship graph |
-| `/sage admin trace [trace_id]` | View agent decision traces |
-| `/sage admin summarize [channel]` | Force channel summary generation |
+| --- | --- |
+| `/ping` | Check bot responsiveness. |
+| `/llm_ping` | Admin: test LLM connectivity/latency. |
+| `/sage whoiswho [user]` | Show relationship data (probabilistic). |
+| `/sage relationship set user_a user_b level` | Admin: set relationship strength (0–1). |
+| `/sage admin stats` | Admin: bot uptime, memory, edge count, version. |
+| `/sage admin relationship_graph [user]` | Admin: view top relationship edges. |
+| `/sage admin trace [trace_id] [limit]` | Admin: view recent traces or a specific trace. |
+| `/sage admin summarize [channel]` | Admin: force a channel summary (rolling + profile update). |
+
+Admin commands require `ADMIN_ROLE_IDS` and/or `ADMIN_USER_IDS` to be configured.
 
 ---
 
-## Development
+## Development & testing
 
 ```bash
-npm run dev        # Start with hot reload
-npm run build      # Compile TypeScript to dist/
-npm run lint       # ESLint
-npm test           # Vitest tests
-npm run doctor     # Config + database check
-npm run cert       # Full certification (lint + build + test + prisma)
+npm run dev       # Start with nodemon + ts-node
+npm run build     # Compile TypeScript to dist/
+npm run lint      # ESLint
+npm test          # Vitest
+npm run doctor    # Validate config + DB connectivity
+npm run cert      # Lint + build + test + prisma validate
 ```
 
 ### Database
 
 ```bash
-npx prisma migrate dev   # Run migrations
-npx prisma studio        # GUI database browser
-npx prisma validate      # Schema validation
+npm run db:migrate   # prisma migrate dev
+npm run db:studio    # prisma studio
+npx prisma validate  # schema validation
 ```
 
 ---
 
-## Testing
+## Deployment
 
-- Tests live under `tests/` and are run with Vitest.
-- Build output (`dist/`) is excluded from test discovery to avoid CommonJS/Vitest mismatches.
-
----
-
-## Docs
-
-- `docs/architecture/` contains the memory and pipeline design notes.
-- `docs/D9_IMPLEMENTATION.md` covers the MoE orchestration rollout.
+- **Postgres required**: see `docker-compose.yml` for a ready-to-run Postgres service.
+- Run `npm run build` and `npm start` for production.
+- Ensure `DISCORD_TOKEN`, `DISCORD_APP_ID`, and `DATABASE_URL` are set.
 
 ---
 
-## Tech Stack
+## Troubleshooting
 
-- **Runtime**: Node.js + TypeScript
-- **Discord**: discord.js v14
-- **Database**: Prisma ORM (PostgreSQL)
-- **LLM**: Pollinations API
-- **Validation**: Zod
-- **Logging**: Pino
-- **Testing**: Vitest
+- **Bot never responds**: confirm `AUTOPILOT_MODE=manual` and that you mention the bot, reply to it, or use a wake word.
+- **Slash commands missing**: restart the bot to re-register commands; use `DEV_GUILD_ID` for faster propagation.
+- **Database errors**: check `DATABASE_URL`, run `npm run db:migrate`.
+- **No summaries/relationships**: verify `LOGGING_ENABLED=true` and channel allowlist/blocklist settings.
+- **Rate limiting**: tune `RATE_LIMIT_MAX`/`RATE_LIMIT_WINDOW_SEC` for busy channels.
 
 ---
 
