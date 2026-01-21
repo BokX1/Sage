@@ -8,9 +8,6 @@ import {
   upsertEdge,
 } from './relationshipEdgeRepo';
 
-/**
- * Configuration for relationship scoring algorithm
- */
 const DECAY_LAMBDA_PER_DAY = 0.06; // Half-life ~11.5 days
 const WEIGHT_K = 0.2; // Sigmoid steepness for score->weight
 const CONFIDENCE_C = 0.25; // Sigmoid steepness for evidence->confidence
@@ -19,8 +16,17 @@ const REPLY_WEIGHT = 0.4;
 const VOICE_WEIGHT = 0.2;
 
 /**
- * Normalize a pair of user IDs so userA < userB lexicographically.
- * This ensures consistent ordering for edge lookups.
+ * Normalize a user ID pair for consistent edge keys.
+ *
+ * Details: ensures deterministic lexicographic ordering so edge lookups and
+ * writes use the same key regardless of argument order.
+ *
+ * Side effects: none.
+ * Error behavior: none.
+ *
+ * @param user1 - First user ID.
+ * @param user2 - Second user ID.
+ * @returns Ordered user IDs as userA/userB.
  */
 export function normalizePair(user1: string, user2: string): { userA: string; userB: string } {
   if (user1 < user2) {
@@ -30,8 +36,12 @@ export function normalizePair(user1: string, user2: string): { userA: string; us
 }
 
 /**
- * Apply exponential decay to a value based on time elapsed.
- * decay = value * e^(-lambda * deltaDays)
+ * Apply exponential decay based on time elapsed.
+ *
+ * Details: decays the provided value using the configured lambda constant.
+ *
+ * Side effects: none.
+ * Error behavior: none.
  */
 function applyDecay(value: number, lastAt: number, now: number): number {
   const deltaDays = (now - lastAt) / (1000 * 60 * 60 * 24);
@@ -39,8 +49,12 @@ function applyDecay(value: number, lastAt: number, now: number): number {
 }
 
 /**
- * Compute weight from raw score using sigmoid-like function.
- * weight = 1 - e^(-k * score)
+ * Compute normalized weight from a raw score.
+ *
+ * Details: uses a sigmoid-like function to clamp results to [0, 1].
+ *
+ * Side effects: none.
+ * Error behavior: none.
  */
 function computeWeight(score: number): number {
   return Math.max(0, Math.min(1, 1 - Math.exp(-WEIGHT_K * score)));
@@ -48,33 +62,39 @@ function computeWeight(score: number): number {
 
 /**
  * Compute confidence from evidence volume.
- * confidence = 1 - e^(-c * evidence)
+ *
+ * Details: uses a sigmoid-like function to clamp results to [0, 1].
+ *
+ * Side effects: none.
+ * Error behavior: none.
  */
 function computeConfidence(evidence: number): number {
   return Math.max(0, Math.min(1, 1 - Math.exp(-CONFIDENCE_C * evidence)));
 }
 
 /**
- * Compute relationship score and update edge.
+ * Compute relationship weight and confidence for features.
+ *
+ * Details: applies decay to counts, combines weighted signals, and derives
+ * confidence from evidence volume.
+ *
+ * Side effects: none.
+ * Error behavior: none.
  */
 function computeScoreAndWeight(features: RelationshipFeatures, now: number) {
   const nowMs = now;
 
-  // Apply decay
   const decayedMentions = applyDecay(features.mentions.count, features.mentions.lastAt, nowMs);
   const decayedReplies = applyDecay(features.replies.count, features.replies.lastAt, nowMs);
   const voiceOverlapHours = features.voice.overlapMs / (1000 * 60 * 60);
 
-  // Raw score
   const score =
     MENTION_WEIGHT * decayedMentions +
     REPLY_WEIGHT * decayedReplies +
     VOICE_WEIGHT * Math.log1p(voiceOverlapHours);
 
-  // Weight
   const weight = computeWeight(score);
 
-  // Confidence (evidence volume)
   const evidence = decayedMentions + decayedReplies + Math.min(5, voiceOverlapHours);
   const confidence = computeConfidence(evidence);
 
@@ -82,7 +102,15 @@ function computeScoreAndWeight(features: RelationshipFeatures, now: number) {
 }
 
 /**
- * Update relationship edge based on a message event.
+ * Update relationship edges based on a message event.
+ *
+ * Details: increments mention and reply features, then recomputes weight and
+ * confidence for each affected pair.
+ *
+ * Side effects: writes relationship edges to storage.
+ * Error behavior: logs and suppresses errors to avoid impacting ingestion.
+ *
+ * @param params - Message event details used to update edges.
  */
 export async function updateFromMessage(params: {
   guildId: string;
@@ -95,7 +123,6 @@ export async function updateFromMessage(params: {
   const nowMs = now.getTime();
 
   try {
-    // Update edges for mentions
     for (const mentionedUserId of mentionedUserIds) {
       if (mentionedUserId === authorId) continue; // Skip self-mentions
 
@@ -129,7 +156,6 @@ export async function updateFromMessage(params: {
       });
     }
 
-    // Update edge for reply
     if (replyToAuthorId && replyToAuthorId !== authorId) {
       const { userA, userB } = normalizePair(authorId, replyToAuthorId);
       const existing = await findEdge({ guildId, userA, userB });
@@ -141,11 +167,7 @@ export async function updateFromMessage(params: {
         features.replies.lastAt = nowMs;
         features.meta.lastComputedAt = nowMs;
 
-        // Track reciprocity (optional enhancement)
-        if (authorId === userA && replyToAuthorId === userB) {
-          // A replied to B
-        } else if (authorId === userB && replyToAuthorId === userA) {
-          // B replied to A (reciprocal)
+        if (authorId === userB && replyToAuthorId === userA) {
           features.replies.reciprocalCount = (features.replies.reciprocalCount ?? 0) + 1;
         }
       } else {
@@ -174,7 +196,14 @@ export async function updateFromMessage(params: {
 }
 
 /**
- * Update relationship edge based on voice overlap.
+ * Update relationship edges based on voice overlap.
+ *
+ * Details: accumulates overlapping time and recomputes weight/confidence.
+ *
+ * Side effects: writes relationship edges to storage.
+ * Error behavior: logs and suppresses errors to avoid impacting ingestion.
+ *
+ * @param params - Voice overlap details used to update edges.
  */
 export async function updateFromVoiceOverlap(params: {
   guildId: string;
@@ -186,8 +215,8 @@ export async function updateFromVoiceOverlap(params: {
   const { guildId, userId, otherUserId, overlapMs, now = new Date() } = params;
   const nowMs = now.getTime();
 
-  if (userId === otherUserId) return; // Skip self-overlap
-  if (overlapMs <= 0) return; // Skip zero overlap
+  if (userId === otherUserId) return;
+  if (overlapMs <= 0) return;
 
   try {
     const { userA, userB } = normalizePair(userId, otherUserId);
@@ -224,7 +253,15 @@ export async function updateFromVoiceOverlap(params: {
 }
 
 /**
- * Get top relationship edges in a guild.
+ * Fetch top relationship edges in a guild.
+ *
+ * Details: respects the repository's limit and optional minimum weight.
+ *
+ * Side effects: reads from storage.
+ * Error behavior: propagates repository errors.
+ *
+ * @param params - Guild, limit, and minimum weight filter.
+ * @returns Relationship edges sorted by weight.
  */
 export async function getTopEdges(params: {
   guildId: string;
@@ -235,7 +272,15 @@ export async function getTopEdges(params: {
 }
 
 /**
- * Get relationship edges for a specific user.
+ * Fetch relationship edges for a specific user.
+ *
+ * Details: returns edges involving the target user, limited by the repository.
+ *
+ * Side effects: reads from storage.
+ * Error behavior: propagates repository errors.
+ *
+ * @param params - Guild, user, and result limit.
+ * @returns Relationship edges involving the user.
  */
 export async function getEdgesForUser(params: {
   guildId: string;
@@ -246,7 +291,15 @@ export async function getEdgesForUser(params: {
 }
 
 /**
- * Set manual relationship level between two users (admin action).
+ * Set a manual relationship level between two users.
+ *
+ * Details: clamps the level to [0, 1] and overwrites weight/confidence while
+ * preserving feature history.
+ *
+ * Side effects: writes relationship edges to storage.
+ * Error behavior: propagates repository errors.
+ *
+ * @param params - Admin override details for the user pair.
  */
 export async function setManualRelationship(params: {
   guildId: string;
@@ -275,7 +328,7 @@ export async function setManualRelationship(params: {
     };
   }
 
-  // Admin override: weight = manual level, confidence = 1.0
+  // Manual overrides pin confidence at 1.0 to reflect explicit admin intent.
   await upsertEdge({
     guildId,
     userA,

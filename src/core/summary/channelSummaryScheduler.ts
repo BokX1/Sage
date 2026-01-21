@@ -172,7 +172,6 @@ export class ChannelSummaryScheduler {
     const windowStart = new Date(nowMs - windowMinutes * 60 * 1000);
     const windowEnd = new Date(nowMs);
 
-    // Bypass checks, fetch standard limit
     const messages = await this.messageStore.fetchRecent({
       guildId,
       channelId,
@@ -206,12 +205,6 @@ export class ChannelSummaryScheduler {
       glossary: rollingSummary.glossary,
     });
 
-    // For forced updates, we also try to update the profile immediately if possible,
-    // but we'll re-use the robust maybeUpdateProfileSummary logic to handle linking.
-    // To ensure it actually runs even if recent, we might need a "force" flag on maybeUpdateProfileSummary,
-    // but for now let's just let it be "maybe" or we can manually invoke the profile logic here if we want strictness.
-    // Let's stick to "maybe" to avoid churning the long-term profile too aggressively unless necessary,
-    // OR we can make a dummy state object.
     await this.maybeUpdateProfileSummary(
       {
         guildId,

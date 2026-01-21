@@ -2,7 +2,15 @@ import { LLMChatMessage, LLMClient } from '../llm/types';
 import { ToolRegistry, ToolExecutionContext } from './toolRegistry';
 import { logger } from '../utils/logger';
 
-/** Tool call envelope format for provider-agnostic tool usage */
+/**
+ * Define the JSON envelope for provider-agnostic tool calls.
+ *
+ * Details: tools are requested by name with JSON arguments; the runtime validates
+ * and executes them before continuing the conversation.
+ *
+ * Side effects: none.
+ * Error behavior: none.
+ */
 export interface ToolCallEnvelope {
   type: 'tool_calls';
   calls: Array<{
@@ -11,7 +19,15 @@ export interface ToolCallEnvelope {
   }>;
 }
 
-/** Tool execution result */
+/**
+ * Capture the outcome of a tool execution attempt.
+ *
+ * Details: successful calls include a result payload; failures include an error
+ * message suitable for LLM consumption.
+ *
+ * Side effects: none.
+ * Error behavior: none.
+ */
 export interface ToolResult {
   name: string;
   success: boolean;
@@ -19,13 +35,21 @@ export interface ToolResult {
   error?: string;
 }
 
-/** Configuration for the tool call loop */
+/**
+ * Configure the tool call loop limits.
+ *
+ * Details: caps the number of tool rounds and calls per round, and enforces a
+ * timeout for each tool execution.
+ *
+ * Side effects: none.
+ * Error behavior: none.
+ */
 export interface ToolCallLoopConfig {
-  /** Maximum number of tool rounds (default: 2) */
+  /** Maximum number of tool rounds (default: 2). */
   maxRounds?: number;
-  /** Maximum tool calls per round (default: 3) */
+  /** Maximum tool calls per round (default: 3). */
   maxCallsPerRound?: number;
-  /** Tool execution timeout in ms (default: 10000) */
+  /** Tool execution timeout in ms (default: 10000). */
   toolTimeoutMs?: number;
 }
 
@@ -35,7 +59,15 @@ const DEFAULT_CONFIG: Required<ToolCallLoopConfig> = {
   toolTimeoutMs: 10_000,
 };
 
-/** Deterministic retry prompt for invalid JSON */
+/**
+ * Provide the retry prompt for invalid tool-call JSON.
+ *
+ * Details: instructs the LLM to return only a tool envelope or a plain text
+ * answer when tools are not needed.
+ *
+ * Side effects: none.
+ * Error behavior: none.
+ */
 const RETRY_PROMPT = `Your previous response was not valid JSON. Output ONLY valid JSON matching the exact schema:
 {
   "type": "tool_calls",
@@ -44,17 +76,26 @@ const RETRY_PROMPT = `Your previous response was not valid JSON. Output ONLY val
 OR respond with a plain text answer if you don't need to use tools.`;
 
 /**
- * Strip markdown code fences from a response.
+ * Strip markdown code fences from an LLM response.
+ *
+ * Details: unwraps ``` or ```json blocks so JSON parsing can proceed.
+ *
+ * Side effects: none.
+ * Error behavior: none.
  */
 function stripCodeFences(text: string): string {
-  // Remove ```json ... ``` or ``` ... ```
   const fencePattern = /^```(?:json)?\s*\n?([\s\S]*?)\n?```$/;
   const match = text.trim().match(fencePattern);
   return match ? match[1].trim() : text.trim();
 }
 
 /**
- * Check if text looks like it might be JSON (for retry logic).
+ * Check whether text plausibly contains JSON.
+ *
+ * Details: used to decide whether to trigger a deterministic retry prompt.
+ *
+ * Side effects: none.
+ * Error behavior: none.
  */
 function looksLikeJson(text: string): boolean {
   const trimmed = text.trim();
@@ -65,21 +106,24 @@ function looksLikeJson(text: string): boolean {
 }
 
 /**
- * Try to parse a tool call envelope from LLM response.
+ * Parse a tool call envelope from an LLM response.
+ *
+ * Details: validates the expected shape before returning the parsed envelope.
+ *
+ * Side effects: none.
+ * Error behavior: returns null on parse or validation failure.
  */
 function parseToolCallEnvelope(text: string): ToolCallEnvelope | null {
   try {
     const stripped = stripCodeFences(text);
     const parsed = JSON.parse(stripped);
 
-    // Validate envelope structure
     if (
       typeof parsed === 'object' &&
       parsed !== null &&
       parsed.type === 'tool_calls' &&
       Array.isArray(parsed.calls)
     ) {
-      // Validate each call has name and args
       const validCalls = parsed.calls.every(
         (c: unknown) =>
           typeof c === 'object' &&
@@ -98,7 +142,12 @@ function parseToolCallEnvelope(text: string): ToolCallEnvelope | null {
 }
 
 /**
- * Execute a single tool with timeout.
+ * Execute a tool with a timeout guard.
+ *
+ * Details: races the tool execution against a timeout to prevent stalled calls.
+ *
+ * Side effects: executes tool code and any downstream effects it performs.
+ * Error behavior: returns a failure result on timeout or tool errors.
  */
 async function executeToolWithTimeout(
   registry: ToolRegistry,
@@ -132,7 +181,13 @@ async function executeToolWithTimeout(
 }
 
 /**
- * Format tool results as a message for the LLM.
+ * Format tool results as an LLM user message.
+ *
+ * Details: uses a user-role message for compatibility with providers that
+ * mishandle tool-role messages.
+ *
+ * Side effects: none.
+ * Error behavior: none.
  */
 function formatToolResultsMessage(results: ToolResult[]): LLMChatMessage {
   const content = results
@@ -145,40 +200,65 @@ function formatToolResultsMessage(results: ToolResult[]): LLMChatMessage {
     .join('\n');
 
   return {
-    role: 'user', // Tool results as user message for compatibility
+    role: 'user',
     content: `[Tool Results]\n${content}`,
   };
 }
 
+/**
+ * Define inputs to the tool call loop.
+ *
+ * Details: includes the LLM client, seed messages, and tool execution context.
+ *
+ * Side effects: none.
+ * Error behavior: none.
+ */
 export interface ToolCallLoopParams {
-  /** LLM client to use */
+  /** LLM client to use. */
   client: LLMClient;
-  /** Initial messages (system + context) */
+  /** Initial messages (system + context). */
   messages: LLMChatMessage[];
-  /** Tool registry with registered tools */
+  /** Tool registry with registered tools. */
   registry: ToolRegistry;
-  /** Execution context for tools */
+  /** Execution context for tools. */
   ctx: ToolExecutionContext;
-  /** LLM model to use (optional) */
+  /** LLM model to use (optional). */
   model?: string;
-  /** Configuration overrides */
+  /** Configuration overrides. */
   config?: ToolCallLoopConfig;
 }
 
+/**
+ * Describe the tool call loop outcome.
+ *
+ * Details: includes the final reply text and any tool results produced.
+ *
+ * Side effects: none.
+ * Error behavior: none.
+ */
 export interface ToolCallLoopResult {
-  /** Final reply text from the LLM */
+  /** Final reply text from the LLM. */
   replyText: string;
-  /** Whether tools were executed */
+  /** Whether tools were executed. */
   toolsExecuted: boolean;
-  /** Number of tool rounds completed */
+  /** Number of tool rounds completed. */
   roundsCompleted: number;
-  /** All tool results from all rounds */
+  /** All tool results from all rounds. */
   toolResults: ToolResult[];
 }
 
 /**
  * Run the tool call loop.
- * Handles provider-agnostic tool calls via JSON envelope format.
+ *
+ * Details: requests tool envelopes from the LLM, executes tools, and continues
+ * until a final response or round limit is reached.
+ *
+ * Side effects: triggers LLM calls and executes registered tools.
+ * Error behavior: returns a final response even when tool parsing fails by
+ * treating the LLM output as a plain reply.
+ *
+ * @param params - Tool loop inputs including client, messages, and registry.
+ * @returns Final reply text and tool execution details.
  */
 export async function runToolCallLoop(params: ToolCallLoopParams): Promise<ToolCallLoopResult> {
   const { client, registry, ctx, model } = params;
@@ -190,7 +270,6 @@ export async function runToolCallLoop(params: ToolCallLoopParams): Promise<ToolC
   let retryAttempted = false;
 
   while (roundsCompleted < config.maxRounds) {
-    // Call LLM
     const response = await client.chat({
       messages,
       model,
@@ -199,10 +278,8 @@ export async function runToolCallLoop(params: ToolCallLoopParams): Promise<ToolC
 
     const responseText = response.content;
 
-    // Try to parse as tool call envelope
     let envelope = parseToolCallEnvelope(responseText);
 
-    // Deterministic retry: if parse fails but looks like JSON, retry once
     if (!envelope && !retryAttempted && looksLikeJson(responseText)) {
       retryAttempted = true;
       logger.debug(
@@ -222,7 +299,6 @@ export async function runToolCallLoop(params: ToolCallLoopParams): Promise<ToolC
       envelope = parseToolCallEnvelope(retryResponse.content);
 
       if (!envelope) {
-        // Still not valid, treat as final answer
         return {
           replyText: retryResponse.content,
           toolsExecuted: false,
@@ -232,7 +308,6 @@ export async function runToolCallLoop(params: ToolCallLoopParams): Promise<ToolC
       }
     }
 
-    // Not a tool call envelope - treat as final answer
     if (!envelope) {
       return {
         replyText: responseText,
@@ -242,7 +317,7 @@ export async function runToolCallLoop(params: ToolCallLoopParams): Promise<ToolC
       };
     }
 
-    // Enforce max calls per round
+    // Cap calls per round to avoid unbounded tool execution from oversized envelopes.
     const calls = envelope.calls.slice(0, config.maxCallsPerRound);
     if (envelope.calls.length > config.maxCallsPerRound) {
       logger.warn(
@@ -251,7 +326,6 @@ export async function runToolCallLoop(params: ToolCallLoopParams): Promise<ToolC
       );
     }
 
-    // Execute tools with timeout
     const roundResults: ToolResult[] = [];
     for (const call of calls) {
       const result = await executeToolWithTimeout(registry, call, ctx, config.toolTimeoutMs);
@@ -261,12 +335,10 @@ export async function runToolCallLoop(params: ToolCallLoopParams): Promise<ToolC
     allToolResults.push(...roundResults);
     roundsCompleted++;
 
-    // Append tool call and results to messages
     messages.push({ role: 'assistant', content: responseText });
     messages.push(formatToolResultsMessage(roundResults));
   }
 
-  // Max rounds reached, get final answer
   const finalResponse = await client.chat({
     messages,
     model,

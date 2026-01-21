@@ -4,41 +4,40 @@ import { config } from '../config/env';
 import { budgetContextBlocks, ContextBlock } from './contextBudgeter';
 import { StyleProfile } from './styleClassifier';
 
+/**
+ * Define inputs for building contextual LLM messages.
+ *
+ * Details: optional summaries and hints are injected into the system context
+ * and trimmed by the context budgeter when needed.
+ *
+ * Side effects: none.
+ * Error behavior: none.
+ */
 export interface BuildContextMessagesParams {
-  /** User profile summary for personalization (may be null) */
   userProfileSummary: string | null;
-  /** Channel rolling summary (may be null) */
   channelRollingSummary?: string | null;
-  /** Channel profile summary (may be null) */
   channelProfileSummary?: string | null;
-  /** Previous bot message the user is replying to (may be null) */
   replyToBotText: string | null;
-  /** The user's current message text */
   userText: string;
-  /** Recent channel transcript block */
   recentTranscript?: string | null;
-  /** Optional intent hint for the request */
   intentHint?: string | null;
-  /** Relationship hints between users (D7) */
   relationshipHints?: string | null;
-  /** Detected style profile (D8) */
   style?: StyleProfile;
-  /** Expert packets from MoE orchestration (D9) */
   expertPackets?: string | null;
-  /** Invocation method to determine system prompt behavior */
   invokedBy?: 'mention' | 'reply' | 'wakeword' | 'autopilot' | 'command';
-
-  // ================================================================
-  // TODO (D2/D4): Future context expansion points
-  // ----------------------------------------------------------------
-  // recentTranscript?: LLMChatMessage[];  // D2: recent channel messages
-  // channelSummary?: string;               // D4: channel context summary
-  // ================================================================
 }
 
 /**
- * Build the context messages array for an LLM chat turn.
- * Output ordering matches current chatEngine behavior
+ * Build the context messages for an LLM chat turn.
+ *
+ * Details: assembles system context blocks, applies budget constraints, and
+ * coalesces system content to avoid provider drops.
+ *
+ * Side effects: none.
+ * Error behavior: none.
+ *
+ * @param params - Contextual inputs for the message set.
+ * @returns Ordered messages ready for LLM chat calls.
  */
 export function buildContextMessages(params: BuildContextMessagesParams): LLMChatMessage[] {
   const {
@@ -55,7 +54,6 @@ export function buildContextMessages(params: BuildContextMessagesParams): LLMCha
     invokedBy,
   } = params;
 
-  // Autopilot Mode System Prompt Injection
   let autopilotInstruction = '';
   if (invokedBy === 'autopilot') {
     if (config.autopilotMode === 'reserved') {
@@ -79,8 +77,6 @@ If you have nothing to add, output '[SILENCE]' (without quotes).`;
     }
   }
 
-  // D9: Context-First Persona Integration
-  // We now pass userProfileSummary and style into the unified composer.
   const baseSystemContent = composeSystemPrompt({
     userProfileSummary,
     style
@@ -151,8 +147,6 @@ If you have nothing to add, output '[SILENCE]' (without quotes).`;
     });
   }
 
-  // MEMORY BLOCK REMOVED: Now integrated directly into 'base_system' via composeSystemPrompt
-
   if (intentHint) {
     blocks.push({
       id: 'intent_hint',
@@ -190,9 +184,7 @@ If you have nothing to add, output '[SILENCE]' (without quotes).`;
     truncationNoticeEnabled: config.contextTruncationNotice,
   });
 
-  // COALESCE SYSTEM MESSAGES
-  // Some providers (Pollinations/OpenAI-proxies) drop secondary system messages.
-  // We merge them all into a single system message to ensure context delivery.
+  // Some providers drop secondary system messages, so merge them into one block.
   const systemContentParts: string[] = [];
   const nonSystemMessages: LLMChatMessage[] = [];
 
