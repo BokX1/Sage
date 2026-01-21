@@ -3,12 +3,16 @@ import { client } from '../../bot/client';
 import { logger } from '../utils/logger';
 import { ingestEvent } from '../ingest/ingestEvent';
 import { isLoggingEnabled } from '../settings/guildChannelSettings';
+import { config as appConfig } from '../../config';
 
 /**
  * Backfill historical messages for a channel.
  * This is useful on startup or when joining a new channel to establish context immediately.
  */
-export async function backfillChannelHistory(channelId: string, limit = 50): Promise<void> {
+export async function backfillChannelHistory(
+  channelId: string,
+  limit = appConfig.CONTEXT_TRANSCRIPT_MAX_MESSAGES,
+): Promise<void> {
   try {
     const channel = await client.channels.fetch(channelId);
     if (!channel || !(channel instanceof TextChannel)) {

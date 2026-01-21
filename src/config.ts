@@ -37,8 +37,8 @@ const envSchema = z.object({
   LOGGING_BLOCKLIST_CHANNEL_IDS: z.string().default(''),
   RAW_MESSAGE_TTL_DAYS: z.coerce.number().int().positive().default(3),
   RING_BUFFER_MAX_MESSAGES_PER_CHANNEL: z.coerce.number().int().positive().default(200),
-  CONTEXT_TRANSCRIPT_MAX_MESSAGES: z.coerce.number().int().positive().default(80),
-  CONTEXT_TRANSCRIPT_MAX_CHARS: z.coerce.number().int().positive().default(24_000),
+  CONTEXT_TRANSCRIPT_MAX_MESSAGES: z.coerce.number().int().positive().default(15),
+  CONTEXT_TRANSCRIPT_MAX_CHARS: z.coerce.number().int().positive().default(12_000),
   MESSAGE_DB_STORAGE_ENABLED: z
     .enum(['true', 'false'])
     .transform((v) => v === 'true')
@@ -57,8 +57,8 @@ const envSchema = z.object({
   SUMMARY_MODEL: z.string().default('openai-large'), // Changed from 'gemini' to 'openai-large'
 
   // Context Budgeting (D5)
-  CONTEXT_MAX_INPUT_TOKENS: z.coerce.number().int().positive().default(16000),
-  CONTEXT_RESERVED_OUTPUT_TOKENS: z.coerce.number().int().positive().default(2400),
+  CONTEXT_MAX_INPUT_TOKENS: z.coerce.number().int().positive().default(8000),
+  CONTEXT_RESERVED_OUTPUT_TOKENS: z.coerce.number().int().positive().default(4000),
   SYSTEM_PROMPT_MAX_TOKENS: z.coerce.number().int().positive().default(3000),
   TOKEN_ESTIMATOR: z.enum(['heuristic']).default('heuristic'),
   TOKEN_HEURISTIC_CHARS_PER_TOKEN: z.coerce.number().int().positive().default(4),
@@ -105,7 +105,7 @@ const envSchema = z.object({
   FORMATTER_MODEL: z.string().default('qwen-coder'),
 
   // Timeouts (Phase 7)
-  TIMEOUT_CHAT_MS: z.coerce.number().int().positive().default(30000), // 30s rigid limit for chat
+  TIMEOUT_CHAT_MS: z.coerce.number().int().positive().default(60000), // 60s rigid limit for chat
   TIMEOUT_MEMORY_MS: z.coerce.number().int().positive().default(90000), // 90s relaxed limit for background memory
 });
 

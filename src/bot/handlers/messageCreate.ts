@@ -131,11 +131,19 @@ export async function handleMessageCreate(message: Message) {
     return;
   }
 
+  let typingInterval: NodeJS.Timeout | null = null;
+  const discordChannel = message.channel as TextChannel;
+
   try {
     loggerWithTrace.info({ msg: 'Message received', text: invocation.cleanedText });
 
     // Send typing indicator
-    await (message.channel as TextChannel).sendTyping();
+    await discordChannel.sendTyping();
+    typingInterval = setInterval(() => {
+      void discordChannel.sendTyping().catch(() => {
+        // Ignore typing errors (e.g., missing perms, channel deleted)
+      });
+    }, 8000);
 
     // Generate Chat Reply
     const result = await generateChatReply({
@@ -155,16 +163,25 @@ export async function handleMessageCreate(message: Message) {
     });
 
     // Send messages to Discord
-    const discordChannel = message.channel as TextChannel;
     if (result.replyText) {
       if (result.replyText.length > 2000) {
         // simple chunking
         const chunks = result.replyText.match(/.{1,2000}/g) || [];
-        for (const chunk of chunks) {
+        const [firstChunk, ...restChunks] = chunks;
+        if (firstChunk) {
+          await message.reply({
+            content: firstChunk,
+            allowedMentions: { repliedUser: false },
+          });
+        }
+        for (const chunk of restChunks) {
           await discordChannel.send(chunk);
         }
       } else {
-        await discordChannel.send(result.replyText);
+        await message.reply({
+          content: result.replyText,
+          allowedMentions: { repliedUser: false },
+        });
       }
     }
 
@@ -174,10 +191,16 @@ export async function handleMessageCreate(message: Message) {
 
     // Send error message to user
     try {
-      const errorChannel = message.channel as TextChannel;
-      await errorChannel.send('Sorry, something went wrong processing your request.');
+      await message.reply({
+        content: 'Sorry, something went wrong processing your request.',
+        allowedMentions: { repliedUser: false },
+      });
     } catch {
       // Ignore send errors
+    }
+  } finally {
+    if (typingInterval) {
+      clearInterval(typingInterval);
     }
   }
 }
