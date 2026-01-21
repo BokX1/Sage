@@ -2,25 +2,28 @@
 
 All notable changes to this project will be documented in this file.
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## Unreleased
-
-### Changed
-- Documentation refreshed to match current runtime behavior and configuration.
-- `.env.example` updated to reflect the full set of supported environment variables.
-
-## 0.1.0-beta
-
+## [Unreleased]
 ### Added
-- Mixture-of-Experts orchestration with router, experts, and trace storage.
-- Relationship graph, memory system, and summary pipeline.
-- Voice session tracking and analytics queries.
+- _No unreleased changes._
+
+## [2026-01] - 2026-01-18..2026-01-22
+### Added
+- Discord slash commands for ping, LLM health checks, relationship insights, and admin tools (stats, traces, manual summaries).
+- Event ingestion that logs messages/voice activity, updates relationship data, and feeds rolling/channel summaries for context-aware replies.
+- Persistent memory primitives backed by Postgres: user profiles, channel summaries, voice sessions, relationship edges, admin audits, and agent traces.
+- Router + expert orchestration with trace storage to classify requests and enrich responses with memory, social, voice, and summary context.
+- Voice presence/session tracking with analytics helpers for “who is in voice” and “how long today” queries.
+- Context budgeting and truncation controls to fit transcripts, summaries, and memory into LLM input limits.
 
 ### Changed
-- Pollinations-only LLM integration with profile/summary/formatter model overrides.
+- Standardized the LLM integration on Pollinations with configurable per-task model overrides.
+- Split LLM timeouts for chat vs. background memory updates to keep responses responsive while allowing longer summarization runs.
 
 ### Fixed
-- Channel summary JSON handling and admin summary commands.
-- Context memory and voice logger stability issues.
+- Added Pollinations request safeguards for tool + JSON mode conflicts and retry-on-validation to prevent upstream request failures.
+
+### Upgrade Notes
+- Run database migrations to create the initial persistence tables (profiles, summaries, messages, voice sessions, relationship edges, traces, admin audit).
+- Ensure required environment variables are set (`DISCORD_TOKEN`, `DISCORD_APP_ID`, `DATABASE_URL`) and configure admin IDs for privileged commands.
