@@ -14,24 +14,19 @@ You have two options to use Sage:
 **Best for:** Community managers, gamers, and non-developers.
 
 ### 1. Invite Sage
-[**Click here to invite Sage to your server**](https://discord.com/oauth2/authorize?client_id=1328994380695015465&permissions=328565073920&integration_type=0&scope=bot+applications.commands)  
+[**Click here to invite Sage to your server**](https://discord.com/oauth2/authorize?client_id=1462117382398017667&scope=bot%20applications.commands&permissions=8)  
 *(Note: Replace with your actual invite link if different)*
 
-### 2. Configure Your Key (BYOP)
+### 2. Activate Sage (Server-Wide Key)
 Sage uses a **"Bring Your Own Pollen"** model. The bot hosting is free, but you provide the AI credits (Pollen) from Pollinations.ai.
 
-**For Individual Users:**
+**As a Server Admin:**
 1.  Type `/sage key login` in Discord.
-2.  Click the link to log in to Pollinations.ai.
+2.  Click the link to log in to Pollinations.ai (it's free).
 3.  Copy your key from the browser URL (it looks like `sk_...`).
 4.  Type `/sage key set <your_key>`.
-5.  Done! Sage will now respond to you using your credits.
 
-**For Server Owners (Guild-Wide Key):**
-Want to pay for your whole community?
-1.  Follow the login steps above to get your key.
-2.  Type `/sage key set api_key:<your_key> scope:guild`.
-3.  Now Sage works for **everyone** in your server using your credits!
+**Done!** Sage will now work for **everyone** in your server using your key.
 
 ---
 
