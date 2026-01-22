@@ -57,8 +57,8 @@ const envSchema = z.object({
   SUMMARY_MODEL: z.string().default('openai-large'), // Changed from 'gemini' to 'openai-large'
 
   // Context Budgeting (D5)
-  CONTEXT_MAX_INPUT_TOKENS: z.coerce.number().int().positive().default(16000),
-  CONTEXT_RESERVED_OUTPUT_TOKENS: z.coerce.number().int().positive().default(8000),
+  CONTEXT_MAX_INPUT_TOKENS: z.coerce.number().int().positive().default(65536),
+  CONTEXT_RESERVED_OUTPUT_TOKENS: z.coerce.number().int().positive().default(8192),
   SYSTEM_PROMPT_MAX_TOKENS: z.coerce.number().int().positive().default(6000),
   TOKEN_ESTIMATOR: z.enum(['heuristic']).default('heuristic'),
   TOKEN_HEURISTIC_CHARS_PER_TOKEN: z.coerce.number().int().positive().default(4),
@@ -67,7 +67,7 @@ const envSchema = z.object({
   CONTEXT_BLOCK_MAX_TOKENS_PROFILE_SUMMARY: z.coerce.number().int().positive().default(4800),
   CONTEXT_BLOCK_MAX_TOKENS_MEMORY: z.coerce.number().int().positive().default(6000),
   CONTEXT_BLOCK_MAX_TOKENS_REPLY_CONTEXT: z.coerce.number().int().positive().default(3200),
-  CONTEXT_USER_MAX_TOKENS: z.coerce.number().int().positive().default(10000),
+  CONTEXT_USER_MAX_TOKENS: z.coerce.number().int().positive().default(24000),
   CONTEXT_TRUNCATION_NOTICE: z
     .enum(['true', 'false'])
     .transform((v) => v === 'true')
