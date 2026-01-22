@@ -1,15 +1,9 @@
-import {
-  LLMClient,
-  LLMRequest,
-  LLMResponse,
-  ToolDefinition,
-  LLMChatMessage,
-  LLMContentPart,
-  LLMMessageContent,
-} from '../types';
+import { LLMClient, LLMRequest, LLMResponse, ToolDefinition } from '../types';
 import { CircuitBreaker } from '../circuitBreaker';
 import { logger } from '../../utils/logger';
 import { metrics } from '../../utils/metrics';
+import { getModelBudgetConfig } from '../models';
+import { planBudget, trimMessagesToBudget } from '../budget/budgeter';
 
 interface PollinationsConfig {
   baseUrl: string;
@@ -21,92 +15,12 @@ interface PollinationsConfig {
 
 interface PollinationsPayload {
   model: string;
-  messages: LLMChatMessage[];
+  messages: LLMRequest['messages'];
   temperature: number;
   max_tokens?: number;
   response_format?: { type: 'json_object' };
   tools?: ToolDefinition[];
   tool_choice?: string | object;
-}
-
-const KEEP_LAST_USER_IMAGES = 1;
-const REPLY_REFERENCE_PREFIX = '[In reply to]:';
-
-function getMultimodalUserIndexes(messages: LLMChatMessage[]): number[] {
-  return messages
-    .map((m, i) => ({ m, i }))
-    .filter(
-      ({ m }) =>
-        m.role === 'user' &&
-        isContentArray(m.content) &&
-        m.content.some((part) => part.type === 'image_url'),
-    )
-    .map(({ i }) => i);
-}
-
-function getLastUserIndex(messages: LLMChatMessage[]): number | null {
-  for (let i = messages.length - 1; i >= 0; i -= 1) {
-    if (messages[i].role === 'user') return i;
-  }
-  return null;
-}
-
-function isReplyReferenceMessage(message: LLMChatMessage): boolean {
-  if (message.role !== 'user' || !isContentArray(message.content)) {
-    return false;
-  }
-
-  return message.content.some(
-    (part) => part.type === 'text' && part.text.trimStart().startsWith(REPLY_REFERENCE_PREFIX),
-  );
-}
-
-function selectVisionKeepIndexes(messages: LLMChatMessage[]): Set<number> {
-  const multimodalUserIndexes = getMultimodalUserIndexes(messages);
-  if (multimodalUserIndexes.length === 0) {
-    return new Set();
-  }
-
-  const lastUserIndex = getLastUserIndex(messages);
-  if (lastUserIndex !== null) {
-    const lastUserMessage = messages[lastUserIndex];
-    if (lastUserMessage.role === 'user' && isContentArray(lastUserMessage.content)) {
-      return new Set([lastUserIndex].slice(-KEEP_LAST_USER_IMAGES));
-    }
-  }
-
-  const replyIndexes = multimodalUserIndexes.filter((index) =>
-    isReplyReferenceMessage(messages[index]),
-  );
-  if (replyIndexes.length > 0) {
-    return new Set(replyIndexes.slice(-KEEP_LAST_USER_IMAGES));
-  }
-
-  return new Set();
-}
-
-function isContentArray(content: LLMMessageContent): content is LLMContentPart[] {
-  return Array.isArray(content);
-}
-
-function fadeVisionMessages(messages: LLMChatMessage[], keepSet: Set<number>): LLMChatMessage[] {
-  return messages.map((msg, index) => {
-    if (msg.role === 'user' && isContentArray(msg.content) && !keepSet.has(index)) {
-      const textOnly = msg.content
-        .filter((part) => part.type === 'text')
-        .map((part) => part.text)
-        .join('\n')
-        .trim();
-
-      const content = `${textOnly.length ? textOnly : ' '} [Image omitted from history]`;
-      return { ...msg, content };
-    }
-
-    return {
-      ...msg,
-      content: isContentArray(msg.content) ? [...msg.content] : msg.content,
-    };
-  });
 }
 
 export class PollinationsClient implements LLMClient {
@@ -151,12 +65,47 @@ export class PollinationsClient implements LLMClient {
       headers['Authorization'] = `Bearer ${this.config.apiKey}`;
     }
 
-    const keepSet = selectVisionKeepIndexes(request.messages);
-    const cleanedMessages = fadeVisionMessages(request.messages, keepSet);
+    const modelConfig = getModelBudgetConfig(model);
+    const plan = planBudget(modelConfig, {
+      reservedOutputTokens: request.maxTokens ?? modelConfig.maxOutputTokens,
+    });
+    const { trimmed, stats } = trimMessagesToBudget(request.messages, plan, {
+      keepSystemMessages: true,
+      keepLastUserTurns: 4,
+      visionFadeKeepLastUserImages: modelConfig.visionFadeKeepLastUserImages,
+      attachmentTextMaxTokens: modelConfig.attachmentTextMaxTokens,
+      estimator: modelConfig.estimation,
+      visionEnabled: modelConfig.visionEnabled,
+    });
+
+    if (stats.droppedCount > 0 || stats.notes.length > 0) {
+      logger.info(
+        {
+          model,
+          beforeCount: stats.beforeCount,
+          afterCount: stats.afterCount,
+          estimatedTokensBefore: stats.estimatedTokensBefore,
+          estimatedTokensAfter: stats.estimatedTokensAfter,
+          availableInputTokens: plan.availableInputTokens,
+          notes: stats.notes,
+        },
+        '[Budget] Trim applied',
+      );
+    } else {
+      logger.debug(
+        {
+          model,
+          messageCount: stats.afterCount,
+          estimatedTokens: stats.estimatedTokensAfter,
+          availableInputTokens: plan.availableInputTokens,
+        },
+        '[Budget] Budget ok',
+      );
+    }
 
     const payload: PollinationsPayload = {
       model,
-      messages: cleanedMessages,
+      messages: trimmed,
       temperature: request.temperature ?? 0.7,
       max_tokens: request.maxTokens,
       response_format:
@@ -197,7 +146,7 @@ export class PollinationsClient implements LLMClient {
     }
 
     // Safe URL logging (no headers)
-    logger.debug({ url, model, messageCount: request.messages.length }, '[Pollinations] Request');
+    logger.debug({ url, model, messageCount: trimmed.length }, '[Pollinations] Request');
     metrics.increment('llm_calls_total', { model, provider: 'pollinations' });
 
     let attempt = 0;

@@ -20,6 +20,7 @@ export const config = {
   pollinationsBaseUrl: newConfig.POLLINATIONS_BASE_URL,
   pollinationsApiKey: newConfig.POLLINATIONS_API_KEY,
   pollinationsModel: newConfig.POLLINATIONS_MODEL,
+  llmModelLimitsJson: newConfig.LLM_MODEL_LIMITS_JSON,
 
   // Context Budgeting (D5)
   contextMaxInputTokens: newConfig.CONTEXT_MAX_INPUT_TOKENS,
