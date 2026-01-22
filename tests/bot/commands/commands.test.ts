@@ -69,6 +69,9 @@ describe('Discord command registry', () => {
   });
 
   it('registers commands without network calls', async () => {
+    // Explicitly set DEV_GUILD_ID to trigger the dual-registration path
+    process.env.DEV_GUILD_ID = 'test-guild-id';
+    
     const { registerCommands, commandPayloads } = await import('../../../src/bot/commands');
     await expect(registerCommands()).resolves.toBeUndefined();
 
