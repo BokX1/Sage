@@ -20,7 +20,7 @@ This document describes how Sage stores, summarizes, and injects memory into LLM
 - **DB transcript storage** (`ChannelMessage` table) is trimmed per channel to:
   - `CONTEXT_TRANSCRIPT_MAX_MESSAGES` (default: 15)
 
-The DB store is **size-bounded**, not time-based. If you want longer retention, increase `CONTEXT_TRANSCRIPT_MAX_MESSAGES` and run migrations accordingly.
+The DB store is **size-bounded**, not time-based. If you want longer retention, increase `CONTEXT_TRANSCRIPT_MAX_MESSAGES`.
 
 ## 2) Working memory (context assembly)
 
@@ -41,15 +41,18 @@ Context is budgeted by `contextBudgeter` using the following defaults (configura
 
 | Budget | Default | Env var |
 | --- | --- | --- |
-| Max input tokens | 8,000 | `CONTEXT_MAX_INPUT_TOKENS` |
-| Reserved output tokens | 4,000 | `CONTEXT_RESERVED_OUTPUT_TOKENS` |
-| Transcript block max | 4,000 | `CONTEXT_BLOCK_MAX_TOKENS_TRANSCRIPT` |
-| Rolling summary max | 2,400 | `CONTEXT_BLOCK_MAX_TOKENS_ROLLING_SUMMARY` |
-| Profile summary max | 2,400 | `CONTEXT_BLOCK_MAX_TOKENS_PROFILE_SUMMARY` |
-| Expert packets max | 2,400 | `CONTEXT_BLOCK_MAX_TOKENS_EXPERTS` |
-| Relationship hints max | 1,200 | `CONTEXT_BLOCK_MAX_TOKENS_RELATIONSHIP_HINTS` |
+| Max input tokens | 65,536 | `CONTEXT_MAX_INPUT_TOKENS` |
+| Reserved output tokens | 8,192 | `CONTEXT_RESERVED_OUTPUT_TOKENS` |
+| System prompt max | 6,000 | `SYSTEM_PROMPT_MAX_TOKENS` |
+| Transcript block max | 8,000 | `CONTEXT_BLOCK_MAX_TOKENS_TRANSCRIPT` |
+| Rolling summary max | 4,800 | `CONTEXT_BLOCK_MAX_TOKENS_ROLLING_SUMMARY` |
+| Profile summary max | 4,800 | `CONTEXT_BLOCK_MAX_TOKENS_PROFILE_SUMMARY` |
+| Reply context max | 3,200 | `CONTEXT_BLOCK_MAX_TOKENS_REPLY_CONTEXT` |
+| Expert packets max | 4,800 | `CONTEXT_BLOCK_MAX_TOKENS_EXPERTS` |
+| Relationship hints max | 2,400 | `CONTEXT_BLOCK_MAX_TOKENS_RELATIONSHIP_HINTS` |
+| User message max | 24,000 | `CONTEXT_USER_MAX_TOKENS` |
 
-> Note: `CONTEXT_BLOCK_MAX_TOKENS_MEMORY` is present in config but currently unused because user profile is merged into the base system prompt.
+> Note: `CONTEXT_BLOCK_MAX_TOKENS_MEMORY` is present in config but currently unused because user profile content is merged into the base system prompt.
 
 ## 3) Short-term memory: rolling channel summary
 
@@ -65,7 +68,7 @@ Context is budgeted by `contextBudgeter` using the following defaults (configura
 
 **Window:**
 - Rolling window length: `SUMMARY_ROLLING_WINDOW_MIN` (default: 60 minutes)
-- Fetches up to 120 recent messages (via `MessageStore`)
+- Fetches up to 800 recent messages, bounded to 80,000 characters (`MAX_INPUT_MESSAGES` / `MAX_INPUT_CHARS`).
 
 **Output:** a `StructuredSummary` JSON object containing:
 - `summaryText`, `topics`, `threads`, `decisions`, `actionItems`, `sentiment`, `unresolved`, `glossary`
@@ -110,6 +113,6 @@ Reply-based edges are not currently resolved because reply target IDs are not fe
 Voice events are ingested and:
 - stored as `VoiceSession` entries
 - used to update relationship edges (overlap)
-- optionally injected into the transcript as synthetic messages
+- injected into the transcript as synthetic messages
 
 This allows the LLM to answer voice-specific questions and use voice activity as social context.

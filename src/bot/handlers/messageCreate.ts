@@ -16,8 +16,13 @@ import { smartSplit } from '../../utils/messageSplitter';
 const processedMessagesKey = Symbol.for('sage.handlers.messageCreate.processed');
 const registrationKey = Symbol.for('sage.handlers.messageCreate.registered');
 
+type GlobalScope = typeof globalThis & {
+  [processedMessagesKey]?: Map<string, number>;
+  [registrationKey]?: boolean;
+};
+
 // Access global scope safely
-const globalScope = globalThis as any;
+const globalScope = globalThis as GlobalScope;
 
 // Initialize or retrieve the global deduplication map
 const processedMessages: Map<string, number> = (globalScope[processedMessagesKey] ??= new Map());
@@ -436,7 +441,7 @@ export async function handleMessageCreate(message: Message) {
 }
 
 export function registerMessageCreateHandler() {
-  const g = globalThis as any;
+  const g = globalThis as GlobalScope;
   if (g[registrationKey]) {
     logger.warn('MessageCreate handler ALREADY registered (Skip)');
     return;

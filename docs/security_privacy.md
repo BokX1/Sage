@@ -1,6 +1,6 @@
 # Security & Privacy
 
-This document describes what Sage stores and how to control retention. The source of truth is `prisma/schema.prisma` and the ingestion pipeline.
+This document describes what Sage stores and how to control retention. The source of truth is `prisma/schema.prisma` and the ingestion pipeline in `src/core`.
 
 ## Data stored (by default)
 
@@ -13,6 +13,7 @@ This document describes what Sage stores and how to control retention. The sourc
 | Voice sessions | `VoiceSession` | Join/leave session history per user/channel. |
 | Admin audits | `AdminAudit` | Records admin command usage with hashed params. |
 | Agent traces | `AgentTrace` | Router/expert data and the final reply text (if tracing is enabled). |
+| Guild settings | `GuildSetting` | Per-guild overrides like model selection. |
 
 ## Message ingestion controls
 
@@ -26,6 +27,17 @@ This document describes what Sage stores and how to control retention. The sourc
 - **DB transcripts** are trimmed per channel to `CONTEXT_TRANSCRIPT_MAX_MESSAGES`.
 - **Summaries and profiles** persist until deleted manually.
 - **Agent traces** are stored only when `TRACE_ENABLED=true`.
+
+## What is sent to the LLM provider
+
+When generating replies, Sage sends:
+- The user’s message content.
+- Reply references (if the user replied to another message).
+- Recent transcript + summaries (if logging is enabled).
+- Attachment text blocks for supported text/code files.
+- Image URLs for vision-capable requests.
+
+Sage does **not** log API keys or tokens. Keep `.env` out of version control.
 
 ## Deletion / reset
 
