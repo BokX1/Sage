@@ -138,7 +138,7 @@ describe('messageCreate - Ingest Flow', () => {
 
   it('should call generateChatReply for wakeword requests', async () => {
     const message = createMockMessage({
-      content: 'hey sage summarize what they are talking about',
+      content: 'sage summarize what they are talking about',
     });
 
     await handleMessageCreate(message);
