@@ -214,14 +214,14 @@ async function runAnalyst(params: {
 
   const userPrompt = `Previous Summary: ${previousSummary || 'None (new user)'}
 
-Recent Conversation Context:
+Recent Conversation History (Chronological: Top=Oldest, Bottom=Newest):
 ${recentHistory}
 
 Latest Interaction (Focus):
 User: ${userMessage}
 Assistant: ${assistantReply}
 
-(Note: The Latest User message may appear twice if already ingested. Focus on the flow.)
+(Note: The latest interaction is shown above for focus, but is also the most recent entry in the history. Do not log it as a separate or duplicate event.)
 
 Output the updated summary:`;
 
