@@ -69,8 +69,9 @@ cd Sage
 # 2️⃣ Install dependencies
 npm install
 
-# 3️⃣ Run the setup wizard (interactive configuration)
-npm run setup
+# 3️⃣ Run the onboarding wizard (interactive configuration)
+npm run onboard
+# (alias: npm run setup)
 
 # 4️⃣ Start the database (requires Docker)
 docker compose up -d db
@@ -84,13 +85,30 @@ npm run dev
 
 ### What to Expect
 
-After running `npm run setup`, you'll be prompted for:
+After running `npm run onboard` (or `npm run setup`), you'll be prompted for:
 
 - **Discord Token** — Your bot's secret key from the Developer Portal
 - **Discord App ID** — Your application ID (same portal)
 - **Database URL** — Press `2` to use the Docker default
+- **Pollinations API Key** — Required (get one at [pollinations.ai](https://pollinations.ai/))
+- **Default Model** — Choose from the Pollinations model catalog
 
 **🎉 Once running, invite Sage to your server and say "Sage, hello!" to start chatting.**
+
+### Non-interactive Onboarding
+
+Use flags for CI or automation:
+
+```bash
+npm run onboard -- \\
+  --discord-token \"YOUR_TOKEN\" \\
+  --discord-app-id \"YOUR_APP_ID\" \\
+  --database-url \"postgresql://...\" \\
+  --api-key \"YOUR_POLLINATIONS_KEY\" \\
+  --model gemini \\
+  --yes \\
+  --non-interactive
+```
 
 ---
 
@@ -110,7 +128,7 @@ After running `npm run setup`, you'll be prompted for:
 |:---------|:-------------|:--------|
 | `WAKE_WORDS` | Words that trigger Sage (at start of message) | `sage` |
 | `AUTOPILOT_MODE` | `manual`, `reserved`, or `talkative` | `manual` |
-| `POLLINATIONS_MODEL` | Default AI model | `gemini` |
+| `POLLINATIONS_MODEL` | Default chat model | `gemini` |
 
 > 💡 **Autopilot Tip:** `reserved` and `talkative` modes make Sage respond without being mentioned — great for small servers but significantly increases API usage. See [Configuration Guide](docs/CONFIGURATION.md#autopilot-modes-explained) for details.
 <details>
@@ -123,7 +141,7 @@ After running `npm run setup`, you'll be prompted for:
 | `LLM_PROVIDER` | AI provider | `pollinations` |
 | `POLLINATIONS_BASE_URL` | API endpoint | `https://gen.pollinations.ai/v1` |
 | `POLLINATIONS_MODEL` | Primary chat model | `gemini` |
-| `POLLINATIONS_API_KEY` | Optional API key for higher limits | — |
+| `POLLINATIONS_API_KEY` | Required for onboarding; higher limits/premium models | — |
 | `PROFILE_POLLINATIONS_MODEL` | Model for profile analysis | `deepseek` |
 | `SUMMARY_MODEL` | Model for summaries | `openai-large` |
 | `FORMATTER_MODEL` | Model for JSON formatting | `qwen-coder` |
@@ -194,7 +212,11 @@ Sage, what do you know about me?
 | `/sage whoiswho [user]` | View relationship info | No |
 | `/llm_ping` | Test AI connectivity | Yes |
 | `/models` | List available models | Yes |
-| `/setmodel <model>` | Change AI model for this server | Yes |
+| `/model list` | List available models | Yes |
+| `/model select <model>` | Change chat model for this server | Yes |
+| `/model reset` | Reset to default model | Yes |
+| `/model refresh` | Refresh the model catalog | Yes |
+| `/setmodel <model>` | Legacy alias for chat model selection | Yes |
 | `/sage admin stats` | View bot statistics | Yes |
 | `/sage admin summarize` | Force channel summary | Yes |
 | `/sage admin trace` | View recent traces | Yes |

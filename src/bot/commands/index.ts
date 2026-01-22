@@ -11,8 +11,26 @@ const commands = [
     .setName('models')
     .setDescription('Admin: List available models and current selection'),
   new SlashCommandBuilder()
+    .setName('model')
+    .setDescription('Admin: Chat model commands')
+    .addSubcommand((sub) => sub.setName('list').setDescription('List available chat models'))
+    .addSubcommand((sub) =>
+      sub
+        .setName('select')
+        .setDescription('Select the chat model for this guild')
+        .addStringOption((opt) =>
+          opt.setName('model').setDescription('Model ID from /model list').setRequired(true),
+        ),
+    )
+    .addSubcommand((sub) =>
+      sub.setName('reset').setDescription('Reset chat model selection to default'),
+    )
+    .addSubcommand((sub) =>
+      sub.setName('refresh').setDescription('Refresh the model catalog'),
+    ),
+  new SlashCommandBuilder()
     .setName('setmodel')
-    .setDescription('Admin: Set the model for this guild')
+    .setDescription('Admin: Set the chat model for this guild')
     .addStringOption((opt) =>
       opt.setName('model_id').setDescription('Model ID from /models').setRequired(true),
     ),

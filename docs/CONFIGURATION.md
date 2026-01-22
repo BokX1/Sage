@@ -31,8 +31,8 @@ Configure which AI models Sage uses.
 |:---------|:------------|:--------|
 | `LLM_PROVIDER` | AI provider (only Pollinations supported) | `pollinations` |
 | `POLLINATIONS_BASE_URL` | API endpoint | `https://gen.pollinations.ai/v1` |
-| `POLLINATIONS_MODEL` | Primary chat model | `gemini` |
-| `POLLINATIONS_API_KEY` | API key for higher rate limits | *(empty)* |
+| `POLLINATIONS_MODEL` | Primary chat model (does not affect summaries/profile) | `gemini` |
+| `POLLINATIONS_API_KEY` | Required for onboarding; higher rate limits | *(empty)* |
 
 ### Specialized Models
 
@@ -43,7 +43,7 @@ Configure which AI models Sage uses.
 | `SUMMARY_MODEL` | Model for channel summaries | `openai-large` |
 | `FORMATTER_MODEL` | Model for structured JSON output | `qwen-coder` |
 
-> 💡 **Tip:** Use `/models` in Discord to see all available models.
+> 💡 **Tip:** Use `/model list` (or `/models`) in Discord to see all available models.
 
 ---
 

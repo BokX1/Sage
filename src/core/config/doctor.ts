@@ -57,7 +57,7 @@ export async function runConfigDoctor() {
     if (c.sensitive) {
       // Never print actual key value
       if ('present' in c) {
-        value = c.present ? '[PRESENT]' : '[NOT SET - Optional]';
+        value = c.present ? '[PRESENT]' : '[NOT SET - REQUIRED FOR ONBOARDING]';
       } else {
         value = c.valid ? '[PRESENT]' : '[MISSING]';
       }

@@ -121,10 +121,10 @@ npm install
 
 This downloads all the packages Sage needs. It might take a minute.
 
-### 3.3 Run the Setup Wizard
+### 3.3 Run the Onboarding Wizard
 
 ```bash
-npm run setup
+npm run onboard
 ```
 
 The wizard will ask you for:
@@ -134,12 +134,23 @@ The wizard will ask you for:
 | **DISCORD_TOKEN** | Paste the bot token from Step 2.3 |
 | **DISCORD_APP_ID** | Paste the Application ID from Step 2.2 |
 | **DATABASE_URL** | Type `2` to use the Docker default |
+| **POLLINATIONS_API_KEY** | Required — get one at [pollinations.ai](https://pollinations.ai/) |
+| **POLLINATIONS_MODEL** | Choose a default chat model from the list |
 
-Optional:
+> ✅ `npm run setup` is kept as a legacy alias for the onboarding wizard.
 
-| Prompt | What to Enter |
-|:-------|:--------------|
-| **POLLINATIONS_API_KEY** | Press Enter to skip (not required) |
+**Non-interactive option (CI/automation):**
+
+```bash
+npm run onboard -- \
+  --discord-token "YOUR_TOKEN" \
+  --discord-app-id "YOUR_APP_ID" \
+  --database-url "postgresql://..." \
+  --api-key "YOUR_POLLINATIONS_KEY" \
+  --model gemini \
+  --yes \
+  --non-interactive
+```
 
 ---
 
@@ -261,7 +272,7 @@ If you don't want to use Docker, you can use any PostgreSQL database:
 
 1. Install PostgreSQL from [postgresql.org](https://www.postgresql.org/download/)
 2. Create a database called `sage`
-3. During `npm run setup`, choose option `1` for DATABASE_URL
+3. During `npm run onboard` (or `npm run setup`), choose option `1` for DATABASE_URL
 4. Enter your connection string: `postgresql://username:password@localhost:5432/sage?schema=public`
 
 ### Alternative: Production Deployment

@@ -8,6 +8,7 @@ import {
   handleAdminStats,
   handleAdminSummarize,
   handleAdminTrace,
+  handleModelSelect,
   handleModels,
   handleRefreshModels,
   handleRelationshipSet,
@@ -79,6 +80,33 @@ export function registerInteractionCreateHandler() {
 
       if (interaction.commandName === 'refreshmodels') {
         await handleRefreshModels(interaction);
+        return;
+      }
+
+      if (interaction.commandName === 'model') {
+        const subcommand = interaction.options.getSubcommand();
+
+        if (subcommand === 'list') {
+          await handleModels(interaction);
+          return;
+        }
+
+        if (subcommand === 'select') {
+          await handleModelSelect(interaction);
+          return;
+        }
+
+        if (subcommand === 'reset') {
+          await handleResetModel(interaction);
+          return;
+        }
+
+        if (subcommand === 'refresh') {
+          await handleRefreshModels(interaction);
+          return;
+        }
+
+        await interaction.reply({ content: 'Unknown subcommand.', ephemeral: true });
         return;
       }
 

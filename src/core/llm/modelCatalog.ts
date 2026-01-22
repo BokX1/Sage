@@ -219,6 +219,82 @@ export function getModelCatalogState(): CatalogState {
   return { ...catalogState };
 }
 
+type FindModelCatalogOptions = {
+  refreshIfMissing?: boolean;
+  loadCatalog?: () => Promise<Record<string, ModelInfo>>;
+  refreshCatalog?: () => Promise<Record<string, ModelInfo>>;
+};
+
+export async function findModelInCatalog(
+  modelId: string,
+  options: FindModelCatalogOptions = {},
+): Promise<{ model: ModelInfo | null; catalog: Record<string, ModelInfo>; refreshed: boolean }> {
+  const normalized = normalizeModelId(modelId);
+  const loadCatalog = options.loadCatalog ?? loadModelCatalog;
+  const refreshCatalog = options.refreshCatalog ?? refreshModelCatalog;
+
+  let catalog = await loadCatalog();
+  let model = catalog[normalized] ?? null;
+  let refreshed = false;
+
+  if (!model && options.refreshIfMissing) {
+    catalog = await refreshCatalog();
+    refreshed = true;
+    model = catalog[normalized] ?? null;
+  }
+
+  return { model, catalog, refreshed };
+}
+
+function levenshteinDistance(a: string, b: string): number {
+  if (a === b) return 0;
+  if (a.length === 0) return b.length;
+  if (b.length === 0) return a.length;
+
+  const matrix = Array.from({ length: a.length + 1 }, () => new Array(b.length + 1).fill(0));
+  for (let i = 0; i <= a.length; i += 1) matrix[i][0] = i;
+  for (let j = 0; j <= b.length; j += 1) matrix[0][j] = j;
+
+  for (let i = 1; i <= a.length; i += 1) {
+    for (let j = 1; j <= b.length; j += 1) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      matrix[i][j] = Math.min(
+        matrix[i - 1][j] + 1,
+        matrix[i][j - 1] + 1,
+        matrix[i - 1][j - 1] + cost,
+      );
+    }
+  }
+
+  return matrix[a.length][b.length];
+}
+
+export function suggestModelIds(
+  query: string,
+  catalog: Record<string, ModelInfo>,
+  limit = 3,
+): string[] {
+  const normalized = normalizeModelId(query);
+  if (!normalized) return [];
+
+  const threshold = Math.max(2, Math.floor(normalized.length / 2));
+
+  const scored = Object.keys(catalog).map((id) => {
+    const candidate = normalizeModelId(id);
+    const startsWith = candidate.startsWith(normalized);
+    const includes = candidate.includes(normalized);
+    const distance = levenshteinDistance(normalized, candidate);
+    const score = distance - (startsWith ? 2 : includes ? 1 : 0);
+    return { id, score, startsWith, includes };
+  });
+
+  return scored
+    .filter((entry) => entry.startsWith || entry.includes || entry.score <= threshold)
+    .sort((a, b) => a.score - b.score || a.id.localeCompare(b.id))
+    .slice(0, limit)
+    .map((entry) => entry.id);
+}
+
 export async function getModelInfo(id: string): Promise<ModelInfo | null> {
   const catalog = await loadModelCatalog();
   const normalized = normalizeModelId(id);

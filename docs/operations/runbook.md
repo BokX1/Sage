@@ -64,7 +64,7 @@ Before starting Sage, verify:
 
 | Variable | When to Use |
 |:---------|:------------|
-| `POLLINATIONS_API_KEY` | For higher rate limits |
+| `POLLINATIONS_API_KEY` | Required for onboarding; higher rate limits |
 | `ADMIN_USER_IDS` | To enable admin commands |
 | `LOG_LEVEL=debug` | When troubleshooting |
 

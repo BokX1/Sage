@@ -427,19 +427,12 @@ export async function handleModels(interaction: ChatInputCommandInteraction) {
       `**Guild preference**: ${preferred ?? 'default'}`,
       `**Catalog source**: ${state.source}`,
       '**Models**:',
-    ];
-
-    for (const entry of entries) {
-      const visionCapable =
-        entry.caps.vision === true ||
-        entry.inputModalities?.map((item) => item.toLowerCase()).includes('image');
-      lines.push(`- ${entry.id}${visionCapable ? ' (vision)' : ''}`);
-    }
-
-    lines.push(
+      ...entries.map((entry) => formatModelLine(entry)),
       '',
+      'Use `/model select <name>` (or `/setmodel <name>`) to change the guild model.',
+      'This selection only affects chat responses; summaries and profile models are configured separately.',
       'Note: If an image is sent and your selected model lacks vision, Sage will auto-fallback to default for that message.',
-    );
+    ];
 
     await interaction.editReply(lines.join('\n'));
   } catch (error) {
@@ -449,6 +442,17 @@ export async function handleModels(interaction: ChatInputCommandInteraction) {
 }
 
 export async function handleSetModel(interaction: ChatInputCommandInteraction) {
+  return handleSelectModel(interaction, 'model_id');
+}
+
+export async function handleModelSelect(interaction: ChatInputCommandInteraction) {
+  return handleSelectModel(interaction, 'model');
+}
+
+async function handleSelectModel(
+  interaction: ChatInputCommandInteraction,
+  optionName: string,
+) {
   if (!isAdmin(interaction)) {
     await interaction.reply({ content: '❌ Admin only.', ephemeral: true });
     return;
@@ -463,27 +467,34 @@ export async function handleSetModel(interaction: ChatInputCommandInteraction) {
     return;
   }
 
-  const modelId = interaction.options.getString('model_id', true);
+  const modelId = interaction.options.getString(optionName, true);
   const normalized = modelId.trim().toLowerCase();
 
   await interaction.deferReply({ ephemeral: true });
 
   try {
-    const { loadModelCatalog } = await import('../../core/llm/modelCatalog');
+    const { findModelInCatalog, suggestModelIds } = await import('../../core/llm/modelCatalog');
     const { setGuildModel } = await import('../../core/settings/guildModelSettings');
 
-    const catalog = await loadModelCatalog();
-    if (!catalog[normalized]) {
+    const { model, catalog, refreshed } = await findModelInCatalog(normalized, {
+      refreshIfMissing: true,
+    });
+
+    if (!model) {
+      const suggestions = suggestModelIds(normalized, catalog);
+      const suggestionText =
+        suggestions.length > 0 ? ` Did you mean: ${suggestions.join(', ')}?` : '';
       await interaction.editReply(
-        `❌ Unknown model: ${modelId}. Use /models to view available options.`,
+        `❌ Unknown model: ${modelId}.${suggestionText} Use /model list to view available options.`,
       );
       return;
     }
 
-    await setGuildModel(guildId, normalized);
-    await interaction.editReply(`✅ Set guild model to **${normalized}**.`);
+    await setGuildModel(guildId, model.id);
+    const refreshedNote = refreshed ? ' (catalog refreshed)' : '';
+    await interaction.editReply(`✅ Set guild model to **${model.id}**.${refreshedNote}`);
   } catch (error) {
-    logger.error({ error, guildId }, 'handleSetModel error');
+    logger.error({ error, guildId }, 'handleSelectModel error');
     await interaction.editReply('Failed to set guild model.');
   }
 }
@@ -517,6 +528,40 @@ export async function handleResetModel(interaction: ChatInputCommandInteraction)
     logger.error({ error, guildId }, 'handleResetModel error');
     await interaction.editReply('Failed to reset guild model.');
   }
+}
+
+function formatModelLine(entry: {
+  id: string;
+  displayName?: string;
+  caps: { vision?: boolean; tools?: boolean; search?: boolean; audioIn?: boolean; audioOut?: boolean };
+  inputModalities?: string[];
+  raw?: unknown;
+}): string {
+  const provider = 'pollinations';
+  const display = entry.displayName ? ` — ${entry.displayName}` : '';
+  const description =
+    typeof (entry.raw as { description?: unknown })?.description === 'string'
+      ? ` (${(entry.raw as { description: string }).description})`
+      : '';
+  const availability = formatAvailability(entry);
+  return `- ${entry.id} [${provider}]${display}${description}${availability ? ` — ${availability}` : ''}`;
+}
+
+function formatAvailability(entry: {
+  caps: { vision?: boolean; tools?: boolean; search?: boolean; audioIn?: boolean; audioOut?: boolean };
+  inputModalities?: string[];
+}): string {
+  const capabilities: string[] = [];
+  const hasVision =
+    entry.caps.vision === true ||
+    entry.inputModalities?.map((item) => item.toLowerCase()).includes('image');
+  if (hasVision) capabilities.push('vision');
+  if (entry.caps.tools) capabilities.push('tools');
+  if (entry.caps.search) capabilities.push('search');
+  if (entry.caps.audioIn) capabilities.push('audio-in');
+  if (entry.caps.audioOut) capabilities.push('audio-out');
+
+  return capabilities.length > 0 ? capabilities.join(', ') : 'standard';
 }
 
 export async function handleRefreshModels(interaction: ChatInputCommandInteraction) {
