@@ -18,6 +18,7 @@ import { runExperts } from '../orchestration/runExperts';
 // import { governOutput } from '../orchestration/governor';
 import { upsertTraceStart, updateTraceEnd } from '../trace/agentTraceRepo';
 import { ExpertPacket } from '../orchestration/experts/types';
+import { resolveModelForRequest } from '../llm/modelResolver';
 
 const GOOGLE_SEARCH_TOOL: ToolDefinition = {
   type: 'function',
@@ -276,8 +277,17 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
   let draftText = '';
   let toolsExecuted = false;
   try {
+    const resolvedModel = await resolveModelForRequest({
+      guildId,
+      messages,
+      featureFlags: {
+        tools: nativeTools.length > 0,
+      },
+    });
+
     const response = await client.chat({
       messages,
+      model: resolvedModel,
       tools: nativeTools.length > 0 ? nativeTools : undefined,
       toolChoice: nativeTools.length > 0 ? 'auto' : undefined,
       temperature: route.temperature,

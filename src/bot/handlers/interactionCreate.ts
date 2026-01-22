@@ -77,6 +77,26 @@ export function registerInteractionCreateHandler() {
         return;
       }
 
+      if (interaction.commandName === 'models') {
+        await handleModels(interaction);
+        return;
+      }
+
+      if (interaction.commandName === 'setmodel') {
+        await handleSetModel(interaction);
+        return;
+      }
+
+      if (interaction.commandName === 'resetmodel') {
+        await handleResetModel(interaction);
+        return;
+      }
+
+      if (interaction.commandName === 'refreshmodels') {
+        await handleRefreshModels(interaction);
+        return;
+      }
+
       if (interaction.commandName === 'sage') {
         const subcommandGroup = interaction.options.getSubcommandGroup(false);
         const subcommand = interaction.options.getSubcommand();
@@ -495,5 +515,164 @@ async function handleAdminSummarize(interaction: ChatInputCommandInteraction) {
   } catch (error) {
     logger.error({ error, guildId, channelId: targetChannel.id }, 'handleAdminSummarize error');
     await interaction.editReply('❌ Failed to generate summary.');
+  }
+}
+
+async function handleModels(interaction: ChatInputCommandInteraction) {
+  if (!isAdmin(interaction)) {
+    await interaction.reply({ content: '❌ Admin only.', ephemeral: true });
+    return;
+  }
+
+  const guildId = interaction.guildId;
+  if (!guildId) {
+    await interaction.reply({
+      content: 'This command can only be used in a guild.',
+      ephemeral: true,
+    });
+    return;
+  }
+
+  await interaction.deferReply({ ephemeral: true });
+
+  try {
+    const { loadModelCatalog, getDefaultModelId, getModelCatalogState } = await import(
+      '../../core/llm/modelCatalog'
+    );
+    const { getGuildModel } = await import('../../core/settings/guildModelSettings');
+
+    const [catalog, preferred] = await Promise.all([loadModelCatalog(), getGuildModel(guildId)]);
+    const defaultModel = getDefaultModelId();
+    const state = getModelCatalogState();
+
+    const entries = Object.values(catalog).sort((a, b) => a.id.localeCompare(b.id));
+
+    const lines = [
+      `**Default model**: ${defaultModel}`,
+      `**Guild preference**: ${preferred ?? 'default'}`,
+      `**Catalog source**: ${state.source}`,
+      '**Models**:',
+    ];
+
+    for (const entry of entries) {
+      const visionCapable =
+        entry.caps.vision === true ||
+        entry.inputModalities?.map((item) => item.toLowerCase()).includes('image');
+      lines.push(`- ${entry.id}${visionCapable ? ' (vision)' : ''}`);
+    }
+
+    lines.push(
+      '',
+      'Note: If an image is sent and your selected model lacks vision, Sage will auto-fallback to default for that message.',
+    );
+
+    await interaction.editReply(lines.join('\n'));
+  } catch (error) {
+    logger.error({ error, guildId }, 'handleModels error');
+    await interaction.editReply('Failed to load model catalog.');
+  }
+}
+
+async function handleSetModel(interaction: ChatInputCommandInteraction) {
+  if (!isAdmin(interaction)) {
+    await interaction.reply({ content: '❌ Admin only.', ephemeral: true });
+    return;
+  }
+
+  const guildId = interaction.guildId;
+  if (!guildId) {
+    await interaction.reply({
+      content: 'This command can only be used in a guild.',
+      ephemeral: true,
+    });
+    return;
+  }
+
+  const modelId = interaction.options.getString('model_id', true);
+  const normalized = modelId.trim().toLowerCase();
+
+  await interaction.deferReply({ ephemeral: true });
+
+  try {
+    const { loadModelCatalog } = await import('../../core/llm/modelCatalog');
+    const { setGuildModel } = await import('../../core/settings/guildModelSettings');
+
+    const catalog = await loadModelCatalog();
+    if (!catalog[normalized]) {
+      await interaction.editReply(
+        `❌ Unknown model: ${modelId}. Use /models to view available options.`,
+      );
+      return;
+    }
+
+    await setGuildModel(guildId, normalized);
+    await interaction.editReply(`✅ Set guild model to **${normalized}**.`);
+  } catch (error) {
+    logger.error({ error, guildId }, 'handleSetModel error');
+    await interaction.editReply('Failed to set guild model.');
+  }
+}
+
+async function handleResetModel(interaction: ChatInputCommandInteraction) {
+  if (!isAdmin(interaction)) {
+    await interaction.reply({ content: '❌ Admin only.', ephemeral: true });
+    return;
+  }
+
+  const guildId = interaction.guildId;
+  if (!guildId) {
+    await interaction.reply({
+      content: 'This command can only be used in a guild.',
+      ephemeral: true,
+    });
+    return;
+  }
+
+  await interaction.deferReply({ ephemeral: true });
+
+  try {
+    const { clearGuildModel } = await import('../../core/settings/guildModelSettings');
+    const { getDefaultModelId } = await import('../../core/llm/modelCatalog');
+
+    await clearGuildModel(guildId);
+    await interaction.editReply(
+      `✅ Cleared guild model preference. Default (${getDefaultModelId()}) will be used.`,
+    );
+  } catch (error) {
+    logger.error({ error, guildId }, 'handleResetModel error');
+    await interaction.editReply('Failed to reset guild model.');
+  }
+}
+
+async function handleRefreshModels(interaction: ChatInputCommandInteraction) {
+  if (!isAdmin(interaction)) {
+    await interaction.reply({ content: '❌ Admin only.', ephemeral: true });
+    return;
+  }
+
+  const guildId = interaction.guildId;
+  if (!guildId) {
+    await interaction.reply({
+      content: 'This command can only be used in a guild.',
+      ephemeral: true,
+    });
+    return;
+  }
+
+  await interaction.deferReply({ ephemeral: true });
+
+  try {
+    const { refreshModelCatalog, getModelCatalogState } = await import(
+      '../../core/llm/modelCatalog'
+    );
+    const catalog = await refreshModelCatalog();
+    const state = getModelCatalogState();
+
+    await interaction.editReply(
+      `✅ Model catalog refreshed (${Object.keys(catalog).length} models, source: ${state.source}).`,
+    );
+  } catch (error) {
+    logger.error({ error, guildId }, 'handleRefreshModels error');
+    await interaction.editReply('Failed to refresh model catalog.');
   }
 }

@@ -8,6 +8,21 @@ const commands = [
     .setName('llm_ping')
     .setDescription('Admin: Test LLM connectivity (Config Verification)'),
   new SlashCommandBuilder()
+    .setName('models')
+    .setDescription('Admin: List available models and current selection'),
+  new SlashCommandBuilder()
+    .setName('setmodel')
+    .setDescription('Admin: Set the model for this guild')
+    .addStringOption((opt) =>
+      opt.setName('model_id').setDescription('Model ID from /models').setRequired(true),
+    ),
+  new SlashCommandBuilder()
+    .setName('resetmodel')
+    .setDescription('Admin: Reset model selection to default'),
+  new SlashCommandBuilder()
+    .setName('refreshmodels')
+    .setDescription('Admin: Refresh the model catalog'),
+  new SlashCommandBuilder()
     .setName('sage')
     .setDescription('Sage bot commands')
     .addSubcommand((sub) =>
