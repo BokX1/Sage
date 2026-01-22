@@ -1,6 +1,7 @@
 # Sage
 
 [![CI](https://github.com/BokX1/Sage/actions/workflows/ci.yml/badge.svg)](https://github.com/BokX1/Sage/actions/workflows/ci.yml)
+[![Powered by Pollinations](https://img.shields.io/badge/Powered%20by-Pollinations-blue)](https://pollinations.ai)
 
 **Sage** is a context-aware Discord bot that stores conversation context, relationship signals, and channel summaries to deliver more personalized responses in real time.
 
@@ -40,12 +41,15 @@ Deep dives:
 ## Quick start
 
 ```bash
+# Clone the repo
+git clone https://github.com/BokX1/Sage.git
+cd Sage
+
 # Install dependencies
-npm ci
+npm install
 
 # Configure env
-cp .env.example .env
-# Edit .env with your Discord token + database URL
+npm run setup
 
 # Start Postgres (optional helper)
 docker compose up -d db
@@ -56,6 +60,20 @@ npm run db:migrate
 # Start the bot in dev mode
 npm run dev
 ```
+
+Prefer manual configuration? Copy `.env.example` to `.env` and edit the required values directly.
+
+After the bot is running:
+
+- Use `/models` to list available models.
+- Use `/setmodel <id>` to set a guild-level model.
+- Use `/resetmodel` to clear the guild override.
+
+Notes on model selection:
+
+- If no model is selected, the bot uses `defaultModelId`.
+- Guild model selection overrides any global environment fallback (if set).
+- If a non-vision model is selected, image messages auto-fallback to the default per request.
 
 ---
 

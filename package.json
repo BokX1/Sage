@@ -9,6 +9,7 @@
     "start": "node dist/index.js",
     "lint": "eslint src",
     "test": "vitest run",
+    "setup": "node scripts/setup.js",
     "db:migrate": "prisma migrate dev",
     "db:studio": "prisma studio",
     "doctor": "ts-node src/scripts/doctor.ts",
