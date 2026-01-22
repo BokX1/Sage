@@ -5,25 +5,15 @@
  * - Composable prompt building (promptBlocks, promptComposer)
  * - Context message construction (contextBuilder)
  * - Strict tool validation and execution (toolRegistry, toolCallLoop)
- *
- * Phase D0: Foundation for future agentic capabilities.
  */
-
-// Main entrypoint
 export { runChatTurn, type RunChatTurnParams, type RunChatTurnResult } from './agentRuntime';
-
-// Prompt composition
 
 export {
   composeSystemPrompt,
   getCorePromptContent,
   type ComposeSystemPromptParams,
 } from './promptComposer';
-
-// Context building
 export { buildContextMessages, type BuildContextMessagesParams } from './contextBuilder';
-
-// Tool system
 export {
   ToolRegistry,
   globalToolRegistry,

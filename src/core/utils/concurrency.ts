@@ -1,6 +1,14 @@
 /**
- * A simple concurrency limiter (like p-limit).
- * Created to avoid ESM/CJS compatibility issues with p-limit v7+ in this project.
+ * Limit concurrent async executions.
+ *
+ * Details: queues tasks beyond the configured concurrency. This mirrors p-limit
+ * behavior while avoiding ESM/CJS compatibility issues in this project.
+ *
+ * Side effects: schedules asynchronous work and may defer execution.
+ * Error behavior: rejects the returned promise if the task throws or rejects.
+ *
+ * @param concurrency - Maximum number of in-flight tasks.
+ * @returns Function that enforces the concurrency limit for tasks.
  */
 export function limitConcurrency(concurrency: number) {
     const queue: (() => void)[] = [];

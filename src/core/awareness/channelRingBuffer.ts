@@ -27,9 +27,22 @@ function enforceMax(messages: ChannelMessage[], maxMessages: number): number {
   return removed;
 }
 
+/**
+ * Append a message to the in-memory channel buffer.
+ *
+ * Details: enforces the configured TTL and per-channel message cap after
+ * insertion.
+ *
+ * Side effects: mutates the in-memory ring buffer.
+ * Error behavior: none.
+ *
+ * @param message - Message to add to the buffer.
+ */
 export function appendMessage(message: ChannelMessage): void {
   const key = makeChannelKey(message.guildId, message.channelId);
   const buffer = channelBuffers.get(key) ?? [];
+  // Buffers are expected to receive messages in chronological order so TTL pruning can
+  // discard from the front.
   buffer.push(message);
 
   const cutoffMs = Date.now() - config.RAW_MESSAGE_TTL_DAYS * 24 * 60 * 60 * 1000;
@@ -39,6 +52,17 @@ export function appendMessage(message: ChannelMessage): void {
   channelBuffers.set(key, buffer);
 }
 
+/**
+ * Fetch recent messages from the in-memory channel buffer.
+ *
+ * Details: applies TTL pruning and returns messages in chronological order.
+ *
+ * Side effects: mutates the in-memory buffer when pruning expired entries.
+ * Error behavior: none.
+ *
+ * @param params - Channel selector and retrieval limits.
+ * @returns Messages ordered from oldest to newest.
+ */
 export function getRecentMessages(params: {
   guildId: string | null;
   channelId: string;
@@ -63,11 +87,32 @@ export function getRecentMessages(params: {
   return filtered.slice(filtered.length - limit);
 }
 
+/**
+ * Remove all buffered messages for a channel.
+ *
+ * Details: deletes the in-memory buffer entry for the channel key.
+ *
+ * Side effects: mutates the in-memory ring buffer.
+ * Error behavior: none.
+ *
+ * @param params - Channel selector to clear.
+ */
 export function clearChannel(params: { guildId: string | null; channelId: string }): void {
   const key = makeChannelKey(params.guildId, params.channelId);
   channelBuffers.delete(key);
 }
 
+/**
+ * Trim a channel buffer to the provided size.
+ *
+ * Details: removes the oldest messages when the buffer exceeds the limit.
+ *
+ * Side effects: mutates the in-memory ring buffer.
+ * Error behavior: none.
+ *
+ * @param params - Channel selector and maximum buffer size.
+ * @returns Number of messages removed.
+ */
 export function trimChannelMessages(params: {
   guildId: string | null;
   channelId: string;
@@ -88,6 +133,17 @@ export function trimChannelMessages(params: {
   return removed;
 }
 
+/**
+ * Delete buffered messages older than the cutoff timestamp.
+ *
+ * Details: removes expired messages across all channel buffers.
+ *
+ * Side effects: mutates the in-memory ring buffer.
+ * Error behavior: none.
+ *
+ * @param cutoffMs - Unix epoch cutoff in milliseconds.
+ * @returns Number of messages removed.
+ */
 export function deleteOlderThan(cutoffMs: number): number {
   let deleted = 0;
   for (const [key, buffer] of channelBuffers.entries()) {

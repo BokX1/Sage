@@ -23,9 +23,27 @@ function getChannelMessageClient(): PrismaChannelMessageClient {
   return (prisma as unknown as { channelMessage: PrismaChannelMessageClient }).channelMessage;
 }
 
+/**
+ * Persist awareness messages in Prisma-backed storage.
+ *
+ * Details: reads and writes channel messages using the Prisma client.
+ *
+ * Side effects: performs database reads and writes.
+ * Error behavior: propagates Prisma errors.
+ */
 export class PrismaMessageStore implements MessageStore {
   private static readonly PRUNE_BATCH_SIZE = 1000;
 
+  /**
+   * Upsert a channel message in the database.
+   *
+   * Details: overwrites existing records with the same message ID.
+   *
+   * Side effects: writes to the database.
+   * Error behavior: propagates Prisma errors.
+   *
+   * @param message - Message to persist.
+   */
   async append(message: ChannelMessage): Promise<void> {
     const channelMessage = getChannelMessageClient();
     const data = {
@@ -48,6 +66,17 @@ export class PrismaMessageStore implements MessageStore {
     });
   }
 
+  /**
+   * Fetch recent channel messages from the database.
+   *
+   * Details: returns messages ordered from oldest to newest.
+   *
+   * Side effects: reads from the database.
+   * Error behavior: propagates Prisma errors.
+   *
+   * @param params - Channel selector and retrieval limits.
+   * @returns Recent messages in chronological order.
+   */
   async fetchRecent(params: {
     guildId: string | null;
     channelId: string;
@@ -83,6 +112,17 @@ export class PrismaMessageStore implements MessageStore {
     }));
   }
 
+  /**
+   * Delete messages older than the cutoff timestamp.
+   *
+   * Details: removes all records with timestamps earlier than the cutoff.
+   *
+   * Side effects: deletes from the database.
+   * Error behavior: propagates Prisma errors.
+   *
+   * @param cutoffMs - Unix epoch cutoff in milliseconds.
+   * @returns Count of deleted messages.
+   */
   async deleteOlderThan(cutoffMs: number): Promise<number> {
     const channelMessage = getChannelMessageClient();
     const result = await channelMessage.deleteMany({
@@ -91,6 +131,17 @@ export class PrismaMessageStore implements MessageStore {
     return result.count;
   }
 
+  /**
+   * Prune a channel history down to a maximum number of messages.
+   *
+   * Details: deletes the oldest messages in batches until the limit is met.
+   *
+   * Side effects: deletes from the database.
+   * Error behavior: propagates Prisma errors.
+   *
+   * @param params - Channel selector and retention limit.
+   * @returns Count of deleted messages.
+   */
   async pruneChannelToLimit(params: {
     guildId: string | null;
     channelId: string;

@@ -1,6 +1,30 @@
+/**
+ * Represent a relative intensity level for style dimensions.
+ *
+ * Details: used for verbosity, formality, and directness scoring.
+ *
+ * Side effects: none.
+ * Error behavior: none.
+ */
 export type StyleLevel = 'low' | 'medium' | 'high';
+/**
+ * Represent a relative humor preference level.
+ *
+ * Details: values range from no humor to high humor signals.
+ *
+ * Side effects: none.
+ * Error behavior: none.
+ */
 export type HumorLevel = 'none' | 'subtle' | 'normal' | 'high';
 
+/**
+ * Describe inferred style preferences from a user message.
+ *
+ * Details: aggregates heuristic signals into named style dimensions.
+ *
+ * Side effects: none.
+ * Error behavior: none.
+ */
 export interface StyleProfile {
   verbosity: StyleLevel;
   formality: StyleLevel;
@@ -9,14 +33,20 @@ export interface StyleProfile {
 }
 
 /**
- * Pure deterministic heuristics to classify user style from their message.
- * Inspects the input text for signals like length, specific keywords, and punctuation.
+ * Classify style preferences from a user message.
+ *
+ * Details: applies deterministic keyword and length heuristics to infer
+ * verbosity, formality, humor, and directness.
+ *
+ * Side effects: none.
+ * Error behavior: none.
+ *
+ * @param text - User message text to analyze.
+ * @returns Inferred style profile.
  */
 export function classifyStyle(text: string): StyleProfile {
   const lower = text.toLowerCase();
 
-  // 1. Humor (Default: normal)
-  // Safety override: "serious", "no jokes", "be serious"
   let humor: HumorLevel = 'normal';
   if (/\b(serious|no jokes|no humor|professional)\b/.test(lower)) {
     humor = 'none';
@@ -24,7 +54,6 @@ export function classifyStyle(text: string): StyleProfile {
     humor = 'high';
   }
 
-  // 2. Verbosity (Default: medium)
   let verbosity: StyleLevel = 'medium';
   const wordCount = text.split(/\s+/).length;
 
@@ -33,12 +62,9 @@ export function classifyStyle(text: string): StyleProfile {
   } else if (/\b(detail|explain|elaborate|comprehensive|step-by-step|guide)\b/.test(lower)) {
     verbosity = 'high';
   } else if (wordCount < 5) {
-    // Very short prompt often implies "just give me the answer" (low verbosity)
-    // but we stick to medium or low.
     verbosity = 'low';
   }
 
-  // 3. Formality (Default: medium)
   let formality: StyleLevel = 'medium';
   if (/\b(sir|madam|please|kindly|regards|thank you)\b/.test(lower)) {
     formality = 'high';
@@ -46,8 +72,6 @@ export function classifyStyle(text: string): StyleProfile {
     formality = 'low';
   }
 
-  // 4. Directness (Default: medium)
-  // "just the code", "only the answer" => high directness
   let directness: StyleLevel = 'medium';
   if (/\b(just|only|merely)\b/.test(lower) && /\b(code|answer|result)\b/.test(lower)) {
     directness = 'high';

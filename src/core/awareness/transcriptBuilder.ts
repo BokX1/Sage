@@ -1,5 +1,18 @@
 import { ChannelMessage } from './types';
 
+/**
+ * Build a transcript block from recent channel messages.
+ *
+ * Details: formats messages from oldest to newest and respects the character
+ * budget, returning null if nothing fits.
+ *
+ * Side effects: none.
+ * Error behavior: none.
+ *
+ * @param messages - Recent messages in chronological order.
+ * @param maxChars - Maximum length of the returned block.
+ * @returns Transcript block or null when it would be empty.
+ */
 export function buildTranscriptBlock(messages: ChannelMessage[], maxChars: number): string | null {
   if (messages.length === 0) return null;
 

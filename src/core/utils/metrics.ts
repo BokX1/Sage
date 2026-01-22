@@ -1,15 +1,22 @@
+/**
+ * Track lightweight in-memory counters for debugging and diagnostics.
+ *
+ * Details: stores counters in-process with label serialization for simple
+ * metric keys.
+ *
+ * Side effects: mutates in-memory counter state.
+ * Error behavior: none.
+ */
 export const metrics = {
   counters: new Map<string, number>(),
 
   increment(name: string, labels: Record<string, string> = {}) {
     const key = this.getKey(name, labels);
-    // Simple key-based counting
     const current = this.counters.get(key) || 0;
     this.counters.set(key, current + 1);
   },
 
   getKey(name: string, labels: Record<string, string>) {
-    // specialized serialization for simple usage
     const labelStr = Object.entries(labels)
       .sort()
       .map(([k, v]) => `${k}=${v}`)
