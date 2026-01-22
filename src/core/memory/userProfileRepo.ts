@@ -7,6 +7,13 @@ export async function getUserProfile(userId: string): Promise<string | null> {
   return profile?.summary || null;
 }
 
+export async function getUserApiKey(userId: string): Promise<string | undefined> {
+  const profile = await prisma.userProfile.findUnique({
+    where: { userId },
+  });
+  return profile?.pollinationsApiKey ?? undefined;
+}
+
 export async function upsertUserProfile(userId: string, summary: string): Promise<void> {
   await prisma.userProfile.upsert({
     where: { userId },

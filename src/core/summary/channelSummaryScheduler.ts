@@ -161,6 +161,7 @@ export class ChannelSummaryScheduler {
     guildId: string,
     channelId: string,
     windowMinutesOverride?: number,
+    apiKey?: string,
   ): Promise<StructuredSummary | null> {
     if (!isLoggingEnabled(guildId, channelId)) {
       logger.warn({ guildId, channelId }, 'Force summary aborted: logging disabled');
@@ -187,6 +188,7 @@ export class ChannelSummaryScheduler {
       messages,
       windowStart,
       windowEnd,
+      apiKey,
     });
 
     await this.summaryStore.upsertSummary({
@@ -214,6 +216,7 @@ export class ChannelSummaryScheduler {
       },
       rollingSummary,
       true, // force update
+      apiKey,
     );
 
     return rollingSummary;
@@ -223,6 +226,7 @@ export class ChannelSummaryScheduler {
     state: DirtyChannelState,
     rollingSummary: StructuredSummary,
     force = false,
+    apiKey?: string,
   ): Promise<void> {
     const lastProfile = await this.summaryStore.getLatestSummary({
       guildId: state.guildId as string,
@@ -254,6 +258,7 @@ export class ChannelSummaryScheduler {
         }
         : null,
       latestRollingSummary: rollingSummary,
+      apiKey,
     });
 
     await this.summaryStore.upsertSummary({

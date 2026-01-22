@@ -1,28 +1,34 @@
-import { ChatInputCommandInteraction } from 'discord.js';
+import { ChatInputCommandInteraction, PermissionsBitField } from 'discord.js';
 import pkg from '../../../package.json';
 import { logger } from '../../utils/logger';
 import { config as appConfig } from '../../config';
 
 /**
- * Check if a user is an admin based on config.
+ * Check if a user is an admin based on config OR Discord permissions.
  */
 export function isAdmin(interaction: ChatInputCommandInteraction): boolean {
+  // 1. Config-based Admins (Bot Owners/Staff)
   const adminRoleIds = appConfig.ADMIN_ROLE_IDS.split(',').filter(Boolean);
   const adminUserIds = appConfig.ADMIN_USER_IDS.split(',').filter(Boolean);
 
-  // If no admins configured, deny all admin commands
-  if (adminRoleIds.length === 0 && adminUserIds.length === 0) {
-    return false;
-  }
-
-  // Check user ID
   if (adminUserIds.includes(interaction.user.id)) return true;
 
-  // Check roles (if in guild)
   const member = interaction.member;
   if (member && 'roles' in member) {
     const memberRoles = Array.isArray(member.roles) ? member.roles : [...member.roles.cache.keys()];
-    return adminRoleIds.some((r) => memberRoles.includes(r));
+    if (adminRoleIds.some((r) => memberRoles.includes(r))) return true;
+  }
+
+  // 2. Discord Native Admins (Server Owners/Admins)
+  // Only applicable in guilds
+  if (interaction.inGuild() && member && 'permissions' in member) {
+    // member.permissions can be a string (read-only) or Readonly<PermissionsBitField>
+    const perms = typeof member.permissions === 'string' 
+      ? new PermissionsBitField(BigInt(member.permissions)) 
+      : member.permissions;
+      
+    if (perms.has(PermissionsBitField.Flags.Administrator)) return true;
+    if (perms.has(PermissionsBitField.Flags.ManageGuild)) return true;
   }
 
   return false;
@@ -365,6 +371,7 @@ export async function handleAdminSummarize(interaction: ChatInputCommandInteract
   try {
     const { getChannelSummaryScheduler } =
       await import('../../core/summary/channelSummaryScheduler');
+    const { getGuildApiKey } = await import('../../core/settings/guildSettingsRepo');
     const scheduler = getChannelSummaryScheduler();
 
     if (!scheduler) {
@@ -372,8 +379,18 @@ export async function handleAdminSummarize(interaction: ChatInputCommandInteract
       return;
     }
 
+    const apiKey = await getGuildApiKey(guildId);
+
+    if (!apiKey) {
+      await interaction.editReply(
+        "❌ **No Server API Key found.**\n" +
+        "Please set a server-wide key first using `/sage key set` to use this feature."
+      );
+      return;
+    }
+
     // Use 24-hour lookback (1440 minutes) for forced admin summaries to ensure data is found
-    const summary = await scheduler.forceSummarize(guildId, targetChannel.id, 1440);
+    const summary = await scheduler.forceSummarize(guildId, targetChannel.id, 1440, apiKey);
 
     if (!summary) {
       await interaction.editReply(

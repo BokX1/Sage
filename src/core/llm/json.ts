@@ -8,6 +8,7 @@ export async function callWithSchema<T>(
   schema: ZodSchema<T>,
   messages: LLMChatMessage[],
   systemInstructions?: string,
+  apiKey?: string,
 ): Promise<T | null> {
   const jsonSchema = zodToJsonSchema(schema as any, 'output');
   const schemaStr = JSON.stringify(jsonSchema, null, 2);
@@ -30,6 +31,7 @@ Do not wrap the output in markdown blocks. Output raw JSON only.
     const response = await client.chat({
       messages: fullMessages,
       responseFormat: 'json_object',
+      apiKey,
     });
 
     return parseAndValidate(response.content, schema);
@@ -41,6 +43,7 @@ Do not wrap the output in markdown blocks. Output raw JSON only.
       schema,
       messages,
       error instanceof Error ? error.message : String(error),
+      apiKey,
     );
   }
 }
@@ -50,6 +53,7 @@ async function repairJsonOnce<T>(
   schema: ZodSchema<T>,
   originalMessages: LLMChatMessage[],
   errorMsg: string,
+  apiKey?: string,
 ): Promise<T | null> {
   // Construct a repair prompt
   // Retry with explicit error feedback appended to conversation.
@@ -67,6 +71,7 @@ async function repairJsonOnce<T>(
     const response = await client.chat({
       messages: repairMessages, // Note: Retrying without re-injecting system prompt if missing.
       responseFormat: 'json_object',
+      apiKey,
     });
     return parseAndValidate(response.content, schema);
   } catch (finalError) {

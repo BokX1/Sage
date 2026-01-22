@@ -20,6 +20,28 @@ const commandDefinitions = [
     )
     .addSubcommandGroup((group) =>
       group
+        .setName('key')
+        .setDescription('Bring Your Own Pollen (BYOP) - Manage Server API key')
+        .addSubcommand((sub) =>
+          sub.setName('login').setDescription('Get a link to login and generate an API key'),
+        )
+        .addSubcommand((sub) =>
+          sub
+            .setName('set')
+            .setDescription('Set the Server-wide Pollinations API key (Admin only)')
+            .addStringOption((opt) =>
+              opt.setName('api_key').setDescription('Your API Key (sk_...)').setRequired(true),
+            ),
+        )
+        .addSubcommand((sub) =>
+          sub.setName('check').setDescription('Check the Server-wide API key status'),
+        )
+        .addSubcommand((sub) =>
+          sub.setName('clear').setDescription('Remove the Server-wide API key (Admin only)'),
+        ),
+    )
+    .addSubcommandGroup((group) =>
+      group
         .setName('relationship')
         .setDescription('Relationship management')
         .addSubcommand((sub) =>
@@ -92,11 +114,21 @@ export async function registerCommands() {
 
   try {
     if (config.devGuildId) {
-      logger.info(`Refreshing application (/) commands for DEV guild: ${config.devGuildId}`);
-      await rest.put(Routes.applicationGuildCommands(config.discordAppId, config.devGuildId), {
-        body: commandPayloads,
-      });
-      logger.info('Successfully reloaded application (/) commands for DEV guild (Instant).');
+      const guildIds = config.devGuildId.split(',').map((id) => id.trim()).filter(Boolean);
+
+      for (const guildId of guildIds) {
+        logger.info(`Refreshing application (/) commands for DEV guild: ${guildId}`);
+        await rest.put(Routes.applicationGuildCommands(config.discordAppId, guildId), {
+          body: commandPayloads,
+        });
+        logger.info(`Successfully reloaded application (/) commands for DEV guild: ${guildId} (Instant).`);
+      }
+
+      // Clear Global commands to prevent duplicates in the Dev Guild
+      // (Global commands + Guild commands = Duplicate display in Discord)
+      logger.info('Clearing GLOBAL commands to prevent duplicates...');
+      await rest.put(Routes.applicationCommands(config.discordAppId), { body: [] });
+      logger.info('Successfully cleared GLOBAL commands.');
     } else {
       logger.info('Refreshing application (/) commands GLOBALLY (may take ~1h to cache).');
       await rest.put(Routes.applicationCommands(config.discordAppId), { body: commandPayloads });

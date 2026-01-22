@@ -32,7 +32,7 @@ Configure which AI models Sage uses.
 | `LLM_PROVIDER` | AI provider (only Pollinations supported) | `pollinations` |
 | `POLLINATIONS_BASE_URL` | API endpoint | `https://gen.pollinations.ai/v1` |
 | `POLLINATIONS_MODEL` | Primary chat model (does not affect summaries/profile) | `gemini` |
-| `POLLINATIONS_API_KEY` | Required for onboarding; higher rate limits | *(empty)* |
+| `POLLINATIONS_API_KEY` | **Host Key.** Used for internal bot tasks or legacy fallback. **Not used for Guild chats** (Strict BYOP applies). | *(empty)* |
 
 ### Specialized Models
 

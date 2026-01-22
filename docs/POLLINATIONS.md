@@ -31,13 +31,22 @@ Sage uses different Pollinations models for specialized tasks:
 
 ## ⚙️ Configuration
 
-### Basic Setup
+### Basic Setup (BYOP)
 
-Get your API key at [pollinations.ai](https://pollinations.ai/), then configure in `.env`:
+Sage uses a **Bring Your Own Pollen** model.
+
+1.  **Get a Key:** Type `/sage key login` in Discord.
+2.  **Set the Key:** Type `/sage key set <key>`.
+
+This key is used for all AI operations in your server.
+
+### Host Configuration (Optional)
+
+If you are self-hosting, you can set defaults in `.env`:
 
 ```env
-POLLINATIONS_API_KEY=your_api_key_here
 POLLINATIONS_MODEL=gemini
+# POLLINATIONS_API_KEY is not used for guild chats in Strict BYOP mode.
 ```
 
 ### Advanced Model Configuration

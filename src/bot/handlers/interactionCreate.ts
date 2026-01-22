@@ -11,6 +11,8 @@ import {
   handleRelationshipSet,
   handleWhoiswho,
 } from './interactionHandlers';
+import { handleKeyCheck, handleKeyClear, handleKeyLogin, handleKeySet } from '../commands/key';
+
 
 const registrationKey = Symbol.for('sage.handlers.interactionCreate.registered');
 
@@ -71,6 +73,25 @@ export function registerInteractionCreateHandler() {
         if (subcommandGroup === 'relationship' && subcommand === 'set') {
           await handleRelationshipSet(interaction);
           return;
+        }
+
+        if (subcommandGroup === 'key') {
+          if (subcommand === 'login') {
+            await handleKeyLogin(interaction);
+            return;
+          }
+          if (subcommand === 'set') {
+            await handleKeySet(interaction);
+            return;
+          }
+          if (subcommand === 'check') {
+            await handleKeyCheck(interaction);
+            return;
+          }
+          if (subcommand === 'clear') {
+            await handleKeyClear(interaction);
+            return;
+          }
         }
 
         if (subcommandGroup === 'admin' && subcommand === 'stats') {

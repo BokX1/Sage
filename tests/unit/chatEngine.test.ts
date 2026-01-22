@@ -49,6 +49,15 @@ vi.mock('../../src/core/memory/profileUpdater', () => ({
   updateProfileSummary: mockUpdateProfile,
 }));
 
+// 6. Mock Guild Settings Repo
+const { mockGetGuildApiKey } = vi.hoisted(() => ({
+  mockGetGuildApiKey: vi.fn().mockResolvedValue('test-api-key'),
+}));
+
+vi.mock('../../src/core/settings/guildSettingsRepo', () => ({
+  getGuildApiKey: mockGetGuildApiKey,
+}));
+
 import { generateChatReply } from '../../src/core/chat/chatEngine';
 import { prisma } from '../../src/db/client';
 
@@ -57,6 +66,8 @@ describe('ChatEngine', () => {
     vi.clearAllMocks();
     mockChatFn.mockReset();
     mockConfig.llmProvider = 'pollinations';
+    // Default to returning a key so normal chat flow proceeds
+    mockGetGuildApiKey.mockResolvedValue('test-api-key');
   });
 
   it('should generate a reply using the LLM', async () => {
@@ -112,7 +123,7 @@ describe('ChatEngine', () => {
       traceId: 'test',
       userId: 'user1',
       channelId: 'chan1',
-      guildId: null,
+      guildId: 'guild1', // Changed from null to guild1
       messageId: 'msg1',
       userText: 'I like dark mode',
     });
@@ -122,8 +133,9 @@ describe('ChatEngine', () => {
       userMessage: 'I like dark mode',
       assistantReply: 'Sure, updated.',
       channelId: 'chan1',
-      guildId: null,
+      guildId: 'guild1',
       userId: 'user1',
+      apiKey: 'test-api-key', // Expect the mocked key
     });
 
     // Wait for background promise

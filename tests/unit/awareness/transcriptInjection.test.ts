@@ -31,6 +31,10 @@ vi.mock('../../../src/core/settings/guildChannelSettings', () => ({
   isLoggingEnabled: vi.fn(),
 }));
 
+vi.mock('../../../src/core/settings/guildSettingsRepo', () => ({
+  getGuildApiKey: vi.fn().mockResolvedValue('test-key'),
+}));
+
 import { appendMessage, clearChannel } from '../../../src/core/awareness/channelRingBuffer';
 import { runChatTurn } from '../../../src/core/agentRuntime/agentRuntime';
 import { isLoggingEnabled } from '../../../src/core/settings/guildChannelSettings';

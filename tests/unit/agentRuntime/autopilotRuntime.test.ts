@@ -22,6 +22,9 @@ vi.mock('../../../src/core/orchestration/governor', () => ({
   })),
 }));
 vi.mock('../../../src/core/trace/agentTraceRepo');
+vi.mock('../../../src/core/settings/guildSettingsRepo', () => ({
+  getGuildApiKey: vi.fn().mockResolvedValue('test-key'),
+}));
 
 describe('Autopilot Runtime', () => {
   const mockLLM = {

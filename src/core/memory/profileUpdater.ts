@@ -116,8 +116,9 @@ export async function updateProfileSummary(params: {
   channelId: string;
   guildId: string | null;
   userId: string;
+  apiKey?: string;
 }): Promise<string | null> {
-  const { previousSummary, userMessage, assistantReply, channelId, guildId, userId } = params;
+  const { previousSummary, userMessage, assistantReply, channelId, guildId, userId, apiKey } = params;
 
   try {
     // ========================================
@@ -168,6 +169,7 @@ export async function updateProfileSummary(params: {
         recentHistory,
         userMessage,
         assistantReply,
+        apiKey,
       });
 
       if (!updatedSummaryText) {
@@ -182,6 +184,7 @@ export async function updateProfileSummary(params: {
       // ========================================
       const json = await runFormatter({
         summaryText: updatedSummaryText,
+        apiKey,
       });
 
       if (json && typeof json.summary === 'string') {
@@ -210,8 +213,9 @@ async function runAnalyst(params: {
   recentHistory: string;
   userMessage: string;
   assistantReply: string;
+  apiKey?: string;
 }): Promise<string | null> {
-  const { previousSummary, recentHistory, userMessage, assistantReply } = params;
+  const { previousSummary, recentHistory, userMessage, assistantReply, apiKey } = params;
   const { client } = getAnalystClient();
   // const currentDate = new Date().toISOString().split('T')[0]; // YYYY-MM-DD <--- Removed date injection
 
@@ -235,6 +239,7 @@ Output the updated summary:`;
     ],
     temperature: 0.3, // Analyst temperature: creative but focused
     maxTokens: 4096,
+    apiKey,
     // NO responseFormat - allow free text output
     timeout: appConfig.TIMEOUT_MEMORY_MS, // Relaxed timeout for background
   };
@@ -255,8 +260,11 @@ Output the updated summary:`;
  * - Output: Strict JSON {"summary": "..."}
  * Just wraps the analyst's text in JSON format.
  */
-async function runFormatter(params: { summaryText: string }): Promise<{ summary?: string } | null> {
-  const { summaryText } = params;
+async function runFormatter(params: {
+  summaryText: string;
+  apiKey?: string;
+}): Promise<{ summary?: string } | null> {
+  const { summaryText, apiKey } = params;
   const client = getFormatterClient();
 
   // Simple prompt: just wrap this text in JSON
@@ -270,6 +278,7 @@ async function runFormatter(params: { summaryText: string }): Promise<{ summary?
     responseFormat: 'json_object',
     temperature: 0, // Formatter temperature: deterministic
     maxTokens: 4096,
+    apiKey,
     timeout: appConfig.TIMEOUT_MEMORY_MS, // Relaxed timeout for background
   };
 
@@ -284,7 +293,7 @@ async function runFormatter(params: { summaryText: string }): Promise<{ summary?
 
     if (!extracted) {
       logger.warn({ content }, 'Formatter: No JSON found, retrying with stricter prompt');
-      return retryFormatter(client, summaryText);
+      return retryFormatter(client, summaryText, apiKey);
     }
 
     return JSON.parse(extracted);
@@ -300,6 +309,7 @@ async function runFormatter(params: { summaryText: string }): Promise<{ summary?
 async function retryFormatter(
   client: LLMClient,
   summaryText: string,
+  apiKey?: string,
 ): Promise<{ summary?: string } | null> {
   const strictPrompt = `Wrap this text in JSON: {"summary": "<text>"}
 
@@ -317,6 +327,7 @@ ${summaryText}`;
     responseFormat: 'json_object',
     temperature: 0,
     maxTokens: 4096,
+    apiKey,
     timeout: appConfig.TIMEOUT_MEMORY_MS, // Relaxed timeout for background
   };
 

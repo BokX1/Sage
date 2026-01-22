@@ -224,19 +224,18 @@ npm run dev
 2. Paste it in your browser
 3. Select your server and click **Authorize**
 
-**Or use these quick link formats** (replace `YOUR_APP_ID`):
+---
 
-**Recommended (minimal permissions - 1133568):**
+## Step 7: Configure the Server Key (BYOP)
 
-```
-https://discord.com/oauth2/authorize?client_id=YOUR_APP_ID&scope=bot%20applications.commands&permissions=1133568
-```
+**Sage requires an API key to function in your server.**
 
-**Admin (full access - 8):**
+1.  In your Discord server, type `/sage key login`
+2.  Follow the link to get your free Pollinations API Key.
+3.  Copy the key (starts with `sk_...`).
+4.  Run `/sage key set <your_key>`.
 
-```
-https://discord.com/oauth2/authorize?client_id=YOUR_APP_ID&scope=bot%20applications.commands&permissions=8
-```
+Once set, Sage will respond to all users in your server!
 
 ---
 

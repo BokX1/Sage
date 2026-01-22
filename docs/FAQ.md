@@ -16,16 +16,13 @@ Find answers to common questions about Sage.
 <details>
 <summary><strong>Will this cost me money?</strong></summary>
 
-**Sage itself is 100% free.** Here's the breakdown:
+**Sage is designed to be free.**
 
-| Item | Cost |
-|:-----|:-----|
-| Sage software | Free (open source) |
-| Pollinations.ai API | Free tier available |
-| Running on your computer | Free |
-| Cloud hosting (optional) | $0-10/month if you want 24/7 uptime |
-
-Most users run Sage for free on their own computer!
+- **Software:** Free & Open Source.
+- **AI Credits:** Uses the **Bring Your Own Pollen (BYOP)** model.
+  - Server Admins get a free API key from [Pollinations.ai](https://pollinations.ai).
+  - This key provides free, unlimited AI usage for their server.
+- **Hosting:** If you self-host, you only pay for your own server costs (if any).
 
 </details>
 
@@ -364,16 +361,15 @@ Yes! Sage will typically respond in the language you use. The underlying AI mode
 
 **Causes:**
 
-- AI model is processing a long response
+- AI model is processing a long response (especially with "Thinking" models like DeepSeek)
 - Network latency
-- Rate limiting on Pollinations API
+- Pollinations API load
 
 **Solutions:**
 
 1. Be patient — complex queries take longer
-2. Get a Pollinations API key for higher limits
-3. Try a faster model by setting `POLLINATIONS_MODEL=gemini` in `.env`
-4. Check your internet connection
+2. Try a faster model by setting `POLLINATIONS_MODEL=gemini` in `.env` (if you are the host)
+3. Check your internet connection
 
 </details>
 

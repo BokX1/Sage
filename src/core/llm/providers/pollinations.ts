@@ -61,8 +61,9 @@ export class PollinationsClient implements LLMClient {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
     };
-    if (this.config.apiKey) {
-      headers['Authorization'] = `Bearer ${this.config.apiKey}`;
+    const apiKey = request.apiKey || this.config.apiKey;
+    if (apiKey) {
+      headers['Authorization'] = `Bearer ${apiKey}`;
     }
 
     const modelConfig = getModelBudgetConfig(model);

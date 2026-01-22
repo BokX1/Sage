@@ -8,10 +8,18 @@ generator client {
 }
 
 model UserProfile {
-  userId    String   @id
-  summary   String   @default("") // Compressed memory: preferences, stable facts
-  updatedAt DateTime @updatedAt
-  createdAt DateTime @default(now())
+  userId             String   @id
+  summary            String   @default("") // Compressed memory: preferences, stable facts
+  pollinationsApiKey String?  // User-provided BYOP key
+  updatedAt          DateTime @updatedAt
+  createdAt          DateTime @default(now())
+}
+
+model GuildSettings {
+  guildId            String   @id
+  pollinationsApiKey String?  // Guild-provided BYOP key (fallback for users)
+  updatedAt          DateTime @updatedAt
+  createdAt          DateTime @default(now())
 }
 
 model ChannelMessage {

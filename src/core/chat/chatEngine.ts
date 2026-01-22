@@ -1,4 +1,5 @@
 import { getUserProfile, upsertUserProfile } from '../memory/userProfileRepo';
+import { getGuildApiKey } from '../settings/guildSettingsRepo';
 import { updateProfileSummary } from '../memory/profileUpdater';
 import { logger } from '../utils/logger';
 import { runChatTurn } from '../agentRuntime';
@@ -78,24 +79,29 @@ export async function generateChatReply(params: {
     const replyText = result.replyText;
 
     // 3. Update Profile (Background)
-    updateProfileSummary({
-      previousSummary: profileSummary,
-      userMessage: userText,
-      assistantReply: replyText,
-      channelId,
-      guildId,
-      userId,
-    })
-      .then((newSummary) => {
-        if (newSummary && newSummary !== profileSummary) {
-          upsertUserProfile(userId, newSummary).catch((err) =>
-            logger.error({ error: err }, 'Failed to save profile'),
-          );
-        }
+    const apiKey = guildId ? await getGuildApiKey(guildId) : undefined;
+    
+    if (apiKey) {
+      updateProfileSummary({
+        previousSummary: profileSummary,
+        userMessage: userText,
+        assistantReply: replyText,
+        channelId,
+        guildId,
+        userId,
+        apiKey,
       })
-      .catch((err) => {
-        logger.error({ error: err }, 'Profile update failed');
-      });
+        .then((newSummary) => {
+          if (newSummary && newSummary !== profileSummary) {
+            upsertUserProfile(userId, newSummary).catch((err) =>
+              logger.error({ error: err }, 'Failed to save profile'),
+            );
+          }
+        })
+        .catch((err) => {
+          logger.error({ error: err }, 'Profile update failed');
+        });
+    }
 
     return { replyText };
   });

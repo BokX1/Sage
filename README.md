@@ -51,7 +51,17 @@ Sage is an **intelligent Discord bot** that goes beyond simple chat commands. Un
 
 ## 🚀 Quick Start
 
-### 1) Prerequisites
+### Option 1: Use the Public Bot (Recommended)
+**Zero coding required.** Just invite the bot and bring your own API key (BYOP).
+1.  [**Invite Sage**](https://discord.com/oauth2/authorize?client_id=1328994380695015465&permissions=328565073920&integration_type=0&scope=bot+applications.commands)
+2.  Type `/sage key login` to get your free API key.
+3.  Type `/sage key set <key>` to start chatting!
+
+[**Read the full Quick Start Guide**](docs/QUICKSTART.md)
+
+### Option 2: Self-Host (Developers)
+
+#### 1) Prerequisites
 
 | Requirement | Notes |
 |:------------|:------|
@@ -65,7 +75,7 @@ Sage is an **intelligent Discord bot** that goes beyond simple chat commands. Un
 >
 > 📖 **Need screenshots?** See the [Complete Setup Guide](docs/GETTING_STARTED.md).
 
-### 2) Install
+#### 2) Install
 
 ```bash
 git clone https://github.com/BokX1/Sage.git

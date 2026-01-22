@@ -73,6 +73,8 @@ export interface ToolCallLoopParams {
   ctx: ToolExecutionContext;
   /** LLM model to use (optional). */
   model?: string;
+  /** Optional API Key (BYOP). */
+  apiKey?: string;
   /** Configuration overrides. */
   config?: ToolCallLoopConfig;
 }
@@ -110,7 +112,7 @@ export interface ToolCallLoopResult {
  * @returns Final reply text and tool execution details.
  */
 export async function runToolCallLoop(params: ToolCallLoopParams): Promise<ToolCallLoopResult> {
-  const { client, registry, ctx, model } = params;
+  const { client, registry, ctx, model, apiKey } = params;
   const config = { ...DEFAULT_CONFIG, ...params.config };
 
   const messages = [...params.messages];
@@ -122,6 +124,7 @@ export async function runToolCallLoop(params: ToolCallLoopParams): Promise<ToolC
     const response = await client.chat({
       messages,
       model,
+      apiKey,
       temperature: 0.7,
     });
 
@@ -142,6 +145,7 @@ export async function runToolCallLoop(params: ToolCallLoopParams): Promise<ToolC
       const retryResponse = await client.chat({
         messages,
         model,
+        apiKey,
         temperature: 0,
       });
 
@@ -201,6 +205,7 @@ export async function runToolCallLoop(params: ToolCallLoopParams): Promise<ToolC
   const finalResponse = await client.chat({
     messages,
     model,
+    apiKey,
     temperature: 0.7,
   });
 

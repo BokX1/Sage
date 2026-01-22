@@ -163,6 +163,7 @@ export async function summarizeChannelWindow(params: {
   messages: ChannelMessage[];
   windowStart: Date;
   windowEnd: Date;
+  apiKey?: string;
 }): Promise<StructuredSummary> {
   const boundedMessages = boundMessages(params.messages, params.windowStart, params.windowEnd);
   const messageText = buildMessageLines(boundedMessages);
@@ -176,7 +177,7 @@ Summarize this conversation:`;
 
   try {
     // Step 1: Analyst (free text summary)
-    const analysisText = await runAnalyst(STM_ANALYST_PROMPT, userPrompt);
+    const analysisText = await runAnalyst(STM_ANALYST_PROMPT, userPrompt, params.apiKey);
 
     if (!analysisText) {
       logger.warn('STM: Analyst returned empty, using fallback');
@@ -184,7 +185,7 @@ Summarize this conversation:`;
     }
 
     // Step 2: Formatter (wrap in JSON)
-    const json = await runFormatter(analysisText);
+    const json = await runFormatter(analysisText, params.apiKey);
 
     if (json) {
       logger.info('STM: Two-step pipeline succeeded');
@@ -205,6 +206,7 @@ Summarize this conversation:`;
 export async function summarizeChannelProfile(params: {
   previousSummary: StructuredSummary | null;
   latestRollingSummary: StructuredSummary;
+  apiKey?: string;
 }): Promise<StructuredSummary> {
   const previousText = params.previousSummary
     ? formatSummaryAsText(params.previousSummary)
@@ -225,7 +227,7 @@ Output the updated channel profile:`;
 
   try {
     // Step 1: Analyst (free text profile update)
-    const analysisText = await runAnalyst(LTM_ANALYST_PROMPT, userPrompt);
+    const analysisText = await runAnalyst(LTM_ANALYST_PROMPT, userPrompt, params.apiKey);
 
     if (!analysisText) {
       logger.warn('LTM: Analyst returned empty, preserving previous');
@@ -233,7 +235,7 @@ Output the updated channel profile:`;
     }
 
     // Step 2: Formatter (wrap in JSON)
-    const json = await runFormatter(analysisText);
+    const json = await runFormatter(analysisText, params.apiKey);
 
     if (json) {
       logger.info('LTM: Two-step pipeline succeeded');
@@ -257,7 +259,11 @@ Output the updated channel profile:`;
  * - Temperature: 0.3 (focused but creative)
  * - Output: Free text (no JSON)
  */
-async function runAnalyst(systemPrompt: string, userPrompt: string): Promise<string | null> {
+async function runAnalyst(
+  systemPrompt: string,
+  userPrompt: string,
+  apiKey?: string,
+): Promise<string | null> {
   const client = getAnalystClient();
 
   const payload: LLMRequest = {
@@ -267,6 +273,7 @@ async function runAnalyst(systemPrompt: string, userPrompt: string): Promise<str
     ],
     temperature: 0.3,
     maxTokens: 4096,
+    apiKey,
     // NO responseFormat - free text output
   };
 
@@ -286,7 +293,10 @@ async function runAnalyst(systemPrompt: string, userPrompt: string): Promise<str
  * - Temperature: 0.0 (deterministic)
  * - Output: Structured JSON
  */
-async function runFormatter(analysisText: string): Promise<Record<string, unknown> | null> {
+async function runFormatter(
+  analysisText: string,
+  apiKey?: string,
+): Promise<Record<string, unknown> | null> {
   const client = getFormatterClient();
 
   const payload: LLMRequest = {
@@ -297,6 +307,7 @@ async function runFormatter(analysisText: string): Promise<Record<string, unknow
     responseFormat: 'json_object',
     temperature: 0,
     maxTokens: 4096,
+    apiKey,
   };
 
   try {
@@ -307,7 +318,7 @@ async function runFormatter(analysisText: string): Promise<Record<string, unknow
       return JSON.parse(cleaned);
     } catch {
       logger.warn({ content: response.content }, 'Formatter: Invalid JSON, retrying');
-      return retryFormatter(client, analysisText);
+      return retryFormatter(client, analysisText, apiKey);
     }
   } catch (error) {
     logger.error({ error }, 'Summary formatter failed');
@@ -318,6 +329,7 @@ async function runFormatter(analysisText: string): Promise<Record<string, unknow
 async function retryFormatter(
   client: LLMClient,
   analysisText: string,
+  apiKey?: string,
 ): Promise<Record<string, unknown> | null> {
   const strictPrompt = `Convert to JSON:
 
@@ -333,6 +345,7 @@ Output: {"summaryText": "...", "topics": [], "threads": [], "decisions": [], "ac
     responseFormat: 'json_object',
     temperature: 0,
     maxTokens: 4096,
+    apiKey,
   };
 
   try {

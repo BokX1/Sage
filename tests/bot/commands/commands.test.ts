@@ -77,10 +77,17 @@ describe('Discord command registry', () => {
     expect(instances).toHaveLength(1);
 
     const restInstance = instances[0] as { put: ReturnType<typeof vi.fn> };
-    expect(restInstance.put).toHaveBeenCalledTimes(1);
-    expect(restInstance.put).toHaveBeenCalledWith(
+    // Expect 2 calls: one for guild commands, one to clear global commands
+    expect(restInstance.put).toHaveBeenCalledTimes(2);
+    expect(restInstance.put).toHaveBeenNthCalledWith(
+      1,
       expect.any(String),
-      expect.objectContaining({ body: commandPayloads }),
+      expect.objectContaining({ body: expect.any(Array) }),
+    );
+    expect(restInstance.put).toHaveBeenNthCalledWith(
+      2,
+      expect.any(String),
+      expect.objectContaining({ body: [] }),
     );
   });
 });

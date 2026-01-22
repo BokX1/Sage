@@ -71,6 +71,7 @@ export interface ToolDefinition {
 export interface LLMRequest {
   messages: LLMChatMessage[];
   model?: string;
+  apiKey?: string;
   temperature?: number;
   maxTokens?: number;
   responseFormat?: 'text' | 'json_object';

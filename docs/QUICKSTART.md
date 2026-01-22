@@ -1,159 +1,77 @@
 # ⚡ Quick Start Guide
 
-**Get Sage running in 5 minutes — no coding experience required!**
+**Sage is the first Discord AI agent that pays for itself—literally.**
+
+You have two options to use Sage:
+
+1.  **🤖 Use the Public Bot (Recommended):** Zero setup, free hosting, "Bring Your Own Pollen" (BYOP).
+2.  **💻 Self-Host:** For developers who want full control over the code and infrastructure.
 
 ---
 
-## 📋 What You Need
+## Option 1: Use the Public Bot (Zero Setup) 🚀
 
-Before starting, make sure you have:
+**Best for:** Community managers, gamers, and non-developers.
 
-| Item | Where to Get It | Time |
-|:-----|:----------------|:-----|
-| **Discord Account** | You probably have this already! | — |
-| **Node.js** | [nodejs.org](https://nodejs.org/) → Click the big green "LTS" button | 2 min |
-| **Docker Desktop** | [docker.com/products/docker-desktop](https://www.docker.com/products/docker-desktop/) | 3 min |
+### 1. Invite Sage
+[**Click here to invite Sage to your server**](https://discord.com/oauth2/authorize?client_id=1328994380695015465&permissions=328565073920&integration_type=0&scope=bot+applications.commands)  
+*(Note: Replace with your actual invite link if different)*
 
-> 💡 **Why these?** Node.js runs the bot. Docker runs the database. That's it!
+### 2. Configure Your Key (BYOP)
+Sage uses a **"Bring Your Own Pollen"** model. The bot hosting is free, but you provide the AI credits (Pollen) from Pollinations.ai.
 
----
+**For Individual Users:**
+1.  Type `/sage key login` in Discord.
+2.  Click the link to log in to Pollinations.ai.
+3.  Copy your key from the browser URL (it looks like `sk_...`).
+4.  Type `/sage key set <your_key>`.
+5.  Done! Sage will now respond to you using your credits.
 
-## 🤖 Step 1: Create Your Discord Bot (3 min)
-
-1. Go to [discord.com/developers/applications](https://discord.com/developers/applications)
-2. Click **"New Application"** → Name it "Sage" → Click **Create**
-3. Click **"Bot"** in the left menu
-4. Click **"Reset Token"** → Click **"Copy"**
-5. **Save this token somewhere!** (You'll need it soon)
-
-**Also copy the Application ID:**
-
-- Go to **"General Information"** in the left menu
-- Copy the **"Application ID"**
-
-**Enable these settings on the Bot page:**
-
-- ✅ PRESENCE INTENT
-- ✅ SERVER MEMBERS INTENT  
-- ✅ MESSAGE CONTENT INTENT
-- Click **"Save Changes"**
+**For Server Owners (Guild-Wide Key):**
+Want to pay for your whole community?
+1.  Follow the login steps above to get your key.
+2.  Type `/sage key set api_key:<your_key> scope:guild`.
+3.  Now Sage works for **everyone** in your server using your credits!
 
 ---
 
-## 📥 Step 2: Download Sage (1 min)
+## Option 2: Self-Host (For Developers) 🛠️
 
-Open a terminal (Command Prompt on Windows, Terminal on Mac) and run:
+**Best for:** Developers, privacy enthusiasts, or customizing the codebase.
 
+### 1. Prerequisites
+- **Node.js 18+**
+- **Docker Desktop** (for the database)
+- **Discord Bot Token**
+
+### 2. Install
 ```bash
 git clone https://github.com/BokX1/Sage.git
 cd Sage
 npm install
 ```
 
-> 📋 **Tip:** Just copy and paste these commands one at a time!
-
----
-
-## ⚙️ Step 3: Run the Setup Wizard (2 min)
-
+### 3. Configure
+Run the interactive wizard:
 ```bash
 npm run onboard
 ```
 
-The wizard will ask for:
-
-- **DISCORD_TOKEN** → Paste your bot token from Step 1
-- **DISCORD_APP_ID** → Paste your application ID from Step 1
-- **DATABASE_URL** → Type `2` to use the easy default
-- **POLLINATIONS_API_KEY** → Get one free at [pollinations.ai](https://pollinations.ai/)
-- **Model** → Press Enter to use the default (gemini)
-
----
-
-## 🚀 Step 4: Start Sage (1 min)
-
-Make sure Docker Desktop is open, then run:
-
+### 4. Start
 ```bash
 docker compose up -d db
 npm run db:migrate
 npm run dev
 ```
 
-**You should see:**
-
-```
-[info] Logged in as Sage#1234
-[info] Ready!
-```
-
-🎉 **Sage is running!** Keep this terminal window open.
+You should see: `Logged in as Sage#1234` and `Ready!`.
 
 ---
 
-## 🎮 Step 5: Invite Sage to Your Server
+## 🆘 Troubleshooting
 
-**Quick Method** (after running `npm run onboard`):
-
-The setup wizard gives you a ready-to-use invite link! Just click it.
-
-**Manual Method:**
-
-1. Go to [discord.com/developers/applications](https://discord.com/developers/applications)
-2. Select your Sage application
-3. Click **"OAuth2"** → **"URL Generator"**
-4. Check these **Scopes**:
-   - ✅ `bot`
-   - ✅ `applications.commands`
-5. Check these **Bot Permissions**:
-   - ✅ Send Messages (2048)
-   - ✅ Read Message History (65536)
-   - ✅ View Channels (1024)
-   - ✅ Connect (1048576) — for voice awareness
-6. Copy the URL at the bottom and open it in your browser
-7. Select your server and click **Authorize**
-
-> 💡 **Quick Link Format:** Replace `YOUR_APP_ID` with your Application ID:
->
-> **Recommended (minimal permissions):**
->
-> ```
-> https://discord.com/oauth2/authorize?client_id=YOUR_APP_ID&scope=bot%20applications.commands&permissions=1133568
-> ```
->
-> **Admin (full access):**
->
-> ```
-> https://discord.com/oauth2/authorize?client_id=YOUR_APP_ID&scope=bot%20applications.commands&permissions=8
-> ```
-
----
-
-## ✅ Test It Works
-
-In your Discord server, type:
-
-```
-Sage, hello!
-```
-
-Sage should respond! 🎊
-
----
-
-## 🆘 Stuck?
-
-| Problem | Solution |
-|:--------|:---------|
-| Sage not responding | Make sure the terminal is still running with `npm run dev` |
-| Database error | Check Docker Desktop is running, then try `docker compose up -d db` |
-| Token invalid | Go back to Discord Developer Portal and reset your token |
-
-**Need more help?**
-
-- Run `npm run doctor` to check your setup
-- See the [full Getting Started guide](GETTING_STARTED.md)
-- Check the [FAQ](FAQ.md)
+- **"Rate limit hit"**: If using the public bot without a key, you might hit the free tier limits. Add a key to lift them.
+- **"Invalid API Key"**: Make sure you copied the `sk_...` part correctly from the URL.
 
 ---
 
