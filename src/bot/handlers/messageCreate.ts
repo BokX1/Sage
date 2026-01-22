@@ -214,7 +214,9 @@ export async function handleMessageCreate(message: Message) {
     const discordChannel = message.channel as TextChannel;
 
     try {
-      loggerWithTrace.info({ msg: 'Message received', text: invocation.cleanedText });
+      loggerWithTrace.info(
+        { msg: 'Message received', textLength: invocation.cleanedText?.length ?? 0 },
+      );
 
       // Send typing indicator
       await discordChannel.sendTyping();
