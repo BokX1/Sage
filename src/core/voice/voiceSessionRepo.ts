@@ -22,6 +22,10 @@ type PrismaVoiceSessionClient = {
     where: Record<string, unknown>;
     data: Record<string, unknown>;
   }) => Promise<Record<string, unknown>>;
+  updateMany: (args: {
+    where: Record<string, unknown>;
+    data: Record<string, unknown>;
+  }) => Promise<{ count: number }>;
   findMany: (args: { where: Record<string, unknown> }) => Promise<Record<string, unknown>[]>;
 };
 
@@ -36,16 +40,43 @@ export async function startSession(params: {
   displayName?: string;
   startedAt: Date;
 }): Promise<void> {
-  const client = getVoiceSessionClient();
-  await client.create({
-    data: {
-      guildId: params.guildId,
-      channelId: params.channelId,
-      userId: params.userId,
-      displayName: params.displayName ?? null,
-      startedAt: params.startedAt,
+  await prisma.$transaction(
+    async (tx) => {
+      const client = (tx as unknown as { voiceSession: PrismaVoiceSessionClient }).voiceSession;
+      const openSession = await client.findFirst({
+        where: {
+          guildId: params.guildId,
+          userId: params.userId,
+          endedAt: null,
+        },
+        orderBy: { startedAt: 'desc' },
+      });
+
+      if (openSession) {
+        const sameChannel = openSession.channelId === params.channelId;
+        const openStartedAt = openSession.startedAt as Date;
+        if (sameChannel && openStartedAt <= params.startedAt) {
+          return;
+        }
+
+        await client.update({
+          where: { id: openSession.id as string },
+          data: { endedAt: params.startedAt },
+        });
+      }
+
+      await client.create({
+        data: {
+          guildId: params.guildId,
+          channelId: params.channelId,
+          userId: params.userId,
+          displayName: params.displayName ?? null,
+          startedAt: params.startedAt,
+        },
+      });
     },
-  });
+    { isolationLevel: 'Serializable' },
+  );
 }
 
 export async function endOpenSession(params: {
@@ -54,19 +85,12 @@ export async function endOpenSession(params: {
   endedAt: Date;
 }): Promise<void> {
   const client = getVoiceSessionClient();
-  const openSession = await client.findFirst({
+  await client.updateMany({
     where: {
       guildId: params.guildId,
       userId: params.userId,
       endedAt: null,
     },
-    orderBy: { startedAt: 'desc' },
-  });
-
-  if (!openSession) return;
-
-  await client.update({
-    where: { id: openSession.id as string },
     data: { endedAt: params.endedAt },
   });
 }
