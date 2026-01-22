@@ -61,11 +61,25 @@ Control how Sage interacts with users.
 
 ### Autopilot Modes Explained
 
-| Mode | Behavior |
-|:-----|:---------|
-| `manual` | Only responds when explicitly mentioned |
-| `reserved` | Occasionally joins relevant conversations |
-| `talkative` | Actively participates in discussions |
+| Mode | Behavior | API Usage |
+|:-----|:---------|:----------|
+| `manual` | Only responds when wake word is used or bot is @mentioned | 🟢 **Low** — Most cost-effective |
+| `reserved` | Occasionally joins relevant conversations | 🟡 **Medium** — Moderate increase |
+| `talkative` | Actively participates in discussions without prompts | 🔴 **High** — Significant cost increase |
+
+> ⚠️ **Cost Warning:** Autopilot modes (`reserved` and `talkative`) process **every message** in your server to decide whether to respond. This can **dramatically increase API usage** and is best suited for:
+>
+> - Low-activity servers (< 100 messages/day)
+> - Servers where you want Sage to feel "alive" and responsive
+> - Testing/development environments
+>
+> For high-activity servers, stick with `manual` mode to control costs.
+
+**Example:**
+
+```env
+AUTOPILOT_MODE=reserved  # Good for small, close-knit communities
+```
 
 ---
 

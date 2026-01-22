@@ -133,11 +133,13 @@ Restart Sage for changes to take effect.
 
 Change `AUTOPILOT_MODE` in your `.env`:
 
-| Mode | Behavior |
-|:-----|:---------|
-| `manual` | Only responds when mentioned (default) |
-| `reserved` | Occasionally joins conversations |
-| `talkative` | Actively participates in discussions |
+| Mode | Behavior | API Usage |
+|:-----|:---------|:----------|
+| `manual` | Only responds when wake word/@ mentioned (default) | 🟢 Low |
+| `reserved` | Occasionally joins relevant conversations | 🟡 Medium |
+| `talkative` | Actively participates without prompts | 🔴 High |
+
+> ⚠️ **Cost Warning:** Autopilot modes process **every message** to decide whether to respond. This significantly increases API usage. Best for **low-activity servers** (< 100 messages/day) where you want Sage to feel "alive."
 
 Example:
 

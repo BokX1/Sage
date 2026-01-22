@@ -108,10 +108,11 @@ After running `npm run setup`, you'll be prompted for:
 
 | Variable | What It Does | Default |
 |:---------|:-------------|:--------|
-| `WAKE_WORDS` | Words that trigger Sage | `sage` |
+| `WAKE_WORDS` | Words that trigger Sage (at start of message) | `sage` |
 | `AUTOPILOT_MODE` | `manual`, `reserved`, or `talkative` | `manual` |
 | `POLLINATIONS_MODEL` | Default AI model | `gemini` |
 
+> 💡 **Autopilot Tip:** `reserved` and `talkative` modes make Sage respond without being mentioned — great for small servers but significantly increases API usage. See [Configuration Guide](docs/CONFIGURATION.md#autopilot-modes-explained) for details.
 <details>
 <summary><strong>📋 View All Configuration Options</strong></summary>
 
