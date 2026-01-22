@@ -13,7 +13,6 @@ This document describes what Sage stores and how to control retention. The sourc
 | Voice sessions | `VoiceSession` | Join/leave session history per user/channel. |
 | Admin audits | `AdminAudit` | Records admin command usage with hashed params. |
 | Agent traces | `AgentTrace` | Router/expert data and the final reply text (if tracing is enabled). |
-| Guild settings | `GuildSetting` | Per-guild overrides like model selection. |
 
 ## Message ingestion controls
 

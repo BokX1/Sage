@@ -8,12 +8,7 @@ import {
   handleAdminStats,
   handleAdminSummarize,
   handleAdminTrace,
-  handleModelSelect,
-  handleModels,
-  handleRefreshModels,
   handleRelationshipSet,
-  handleResetModel,
-  handleSetModel,
   handleWhoiswho,
 } from './interactionHandlers';
 
@@ -60,53 +55,6 @@ export function registerInteractionCreateHandler() {
             `**Status**: Check server logs for details.`,
           );
         }
-        return;
-      }
-
-      if (interaction.commandName === 'models') {
-        await handleModels(interaction);
-        return;
-      }
-
-      if (interaction.commandName === 'setmodel') {
-        await handleSetModel(interaction);
-        return;
-      }
-
-      if (interaction.commandName === 'resetmodel') {
-        await handleResetModel(interaction);
-        return;
-      }
-
-      if (interaction.commandName === 'refreshmodels') {
-        await handleRefreshModels(interaction);
-        return;
-      }
-
-      if (interaction.commandName === 'model') {
-        const subcommand = interaction.options.getSubcommand();
-
-        if (subcommand === 'list') {
-          await handleModels(interaction);
-          return;
-        }
-
-        if (subcommand === 'select') {
-          await handleModelSelect(interaction);
-          return;
-        }
-
-        if (subcommand === 'reset') {
-          await handleResetModel(interaction);
-          return;
-        }
-
-        if (subcommand === 'refresh') {
-          await handleRefreshModels(interaction);
-          return;
-        }
-
-        await interaction.reply({ content: 'Unknown subcommand.', ephemeral: true });
         return;
       }
 

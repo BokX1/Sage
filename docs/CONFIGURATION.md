@@ -43,7 +43,7 @@ Configure which AI models Sage uses.
 | `SUMMARY_MODEL` | Model for channel summaries | `openai-large` |
 | `FORMATTER_MODEL` | Model for structured JSON output | `qwen-coder` |
 
-> 💡 **Tip:** Use `/model list` (or `/models`) in Discord to see all available models.
+> 💡 **Tip:** Run `npm run onboard` to browse available models or consult the Pollinations model catalog.
 
 ---
 

@@ -35,13 +35,13 @@ Sage uses multiple models through Pollinations.ai:
 - **Summaries:** OpenAI-Large for channel summaries
 - **Formatting:** Qwen-Coder for structured JSON output
 
-You can change the chat model via `/model select` (or legacy `/setmodel`) or in your `.env` file. Summaries and profile analysis use separate model settings.
+You can change the chat model in your `.env` file (or during onboarding). Summaries and profile analysis use separate model settings.
 </details>
 
 <details>
 <summary><strong>Can Sage see images?</strong></summary>
 
-**Yes!** When you share an image and mention Sage, it can analyze and discuss the image using vision-capable models. If the current model doesn't support vision, Sage automatically falls back to one that does.
+**Yes!** When you share an image and mention Sage, it can analyze and discuss the image using vision-capable models. If image replies are failing, make sure `POLLINATIONS_MODEL` is set to a vision-capable model in `.env`.
 </details>
 
 <details>
@@ -202,14 +202,9 @@ Sage responds when its wake word (default: "sage") is at the **start** of your m
 | Command | Description |
 |:--------|:------------|
 | `/llm_ping` | Test AI connectivity and latency |
-| `/models` | List available AI models |
-| `/model list` | List available AI models |
-| `/model select <model>` | Change the AI model for this server |
-| `/model reset` | Reset to default model |
-| `/model refresh` | Refresh the model catalog |
-| `/setmodel <model>` | Legacy alias for model selection |
-| `/resetmodel` | Legacy alias for model reset |
+| `/sage relationship set` | Set relationship level between users |
 | `/sage admin stats` | View bot statistics |
+| `/sage admin relationship_graph` | View relationship graph |
 | `/sage admin summarize` | Force a channel summary |
 | `/sage admin trace` | View recent processing traces |
 
@@ -323,7 +318,7 @@ Yes! Sage will typically respond in the language you use. The underlying AI mode
 
 1. Be patient — complex queries take longer
 2. Get a Pollinations API key for higher limits
-3. Try a faster model: `/model select gemini` (or `/setmodel gemini`)
+3. Try a faster model by setting `POLLINATIONS_MODEL=gemini` in `.env`
 4. Check your internet connection
 
 </details>

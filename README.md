@@ -47,57 +47,66 @@ Sage is an **intelligent Discord bot** that goes beyond simple chat commands. Un
 
 ## 🚀 Quick Start
 
-### Prerequisites
+### 1) Prerequisites
 
-Before you begin, make sure you have:
+| Requirement | Notes |
+|:------------|:------|
+| **Node.js 18+** | Use the LTS release from [nodejs.org](https://nodejs.org/). |
+| **npm** | Comes with Node.js (this repo uses npm scripts). |
+| **PostgreSQL** | Docker Desktop is the easiest path for local dev. |
+| **Discord bot credentials** | Get **DISCORD_TOKEN** + **DISCORD_APP_ID** from the [Discord Developer Portal](https://discord.com/developers/applications). |
+| **Pollinations API key** | Required by the onboarding wizard. Get one at [pollinations.ai](https://pollinations.ai/). |
 
-| Requirement | How to Get It |
-|:------------|:--------------|
-| **Node.js** (v18 or newer) | [Download Node.js](https://nodejs.org/) |
-| **Docker Desktop** | [Download Docker](https://www.docker.com/products/docker-desktop/) |
-| **Discord Bot Token** | [Create at Discord Developer Portal](https://discord.com/developers/applications) |
+> 💡 **New to Discord bots?** See the [Complete Setup Guide](docs/GETTING_STARTED.md).
 
-> 💡 **New to Discord bots?** See our [Complete Setup Guide](docs/GETTING_STARTED.md) for step-by-step instructions with screenshots.
-
-### Installation
+### 2) Install
 
 ```bash
-# 1️⃣ Clone the repository
 git clone https://github.com/BokX1/Sage.git
 cd Sage
-
-# 2️⃣ Install dependencies
 npm install
-
-# 3️⃣ Run the onboarding wizard (interactive configuration)
-npm run onboard
-# (alias: npm run setup)
-
-# 4️⃣ Start the database (requires Docker)
-docker compose up -d db
-
-# 5️⃣ Initialize database tables
-npm run db:migrate
-
-# 6️⃣ Start Sage
-npm run dev
 ```
 
-### What to Expect
+### 3) Configure
 
-After running `npm run onboard` (or `npm run setup`), you'll be prompted for:
+**Option A: interactive onboarding (recommended)**
 
-- **Discord Token** — Your bot's secret key from the Developer Portal
-- **Discord App ID** — Your application ID (same portal)
-- **Database URL** — Press `2` to use the Docker default
-- **Pollinations API Key** — Required (get one at [pollinations.ai](https://pollinations.ai/))
-- **Default Model** — Choose from the Pollinations model catalog
+```bash
+npm run onboard
+# (alias: npm run setup)
+```
 
-**🎉 Once running, invite Sage to your server and say "Sage, hello!" to start chatting.**
+The wizard will ask for:
 
-### Non-interactive Onboarding
+- **DISCORD_TOKEN** (bot token)
+- **DISCORD_APP_ID** (application ID)
+- **DATABASE_URL** (choose Docker default or paste your own)
+- **POLLINATIONS_API_KEY**
+- **POLLINATIONS_MODEL** (default chat model)
 
-Use flags for CI or automation:
+**Option B: copy a template**
+
+```bash
+cp .env.example .env
+```
+
+Fill in at minimum:
+
+```env
+DISCORD_TOKEN=your_token
+DISCORD_APP_ID=your_app_id
+DATABASE_URL="postgresql://postgres:password@localhost:5432/sage?schema=public"
+POLLINATIONS_API_KEY=your_pollinations_key
+```
+
+**Database setup (local Docker path):**
+
+```bash
+docker compose up -d db
+npm run db:migrate
+```
+
+**Non-interactive onboarding (CI/automation):**
 
 ```bash
 npm run onboard -- \\
@@ -109,6 +118,39 @@ npm run onboard -- \\
   --yes \\
   --non-interactive
 ```
+
+### 4) Verify
+
+Run a single check to validate config + DB connectivity:
+
+```bash
+npm run doctor
+```
+
+Expected output: ✅ config checks + “Database connected.”
+
+### 5) First successful run
+
+```bash
+npm run dev
+```
+
+You should see logs like `Logged in as Sage#1234` and `Ready!`.
+
+### 6) Troubleshooting
+
+- **Missing env vars:** Run `npm run onboard` again or compare against `.env.example`.
+- **Invalid Discord token:** Reset the token in the Developer Portal and update `.env`.
+- **Database errors:** Ensure Docker is running and `docker compose up -d db` completed.
+- **Permissions issues:** Re-invite the bot with `applications.commands` scope + Send Messages permissions.
+- **Rate limits/slow replies:** Confirm `POLLINATIONS_API_KEY` is set and consider a faster `POLLINATIONS_MODEL`.
+
+### 7) Next steps
+
+- [Getting Started Guide](docs/GETTING_STARTED.md) (screenshots + Discord setup)
+- [Configuration Reference](docs/CONFIGURATION.md)
+- [FAQ](docs/FAQ.md)
+- [Operations Runbook](docs/operations/runbook.md)
 
 ---
 
@@ -211,13 +253,9 @@ Sage, what do you know about me?
 | `/ping` | Check if Sage is online | No |
 | `/sage whoiswho [user]` | View relationship info | No |
 | `/llm_ping` | Test AI connectivity | Yes |
-| `/models` | List available models | Yes |
-| `/model list` | List available models | Yes |
-| `/model select <model>` | Change chat model for this server | Yes |
-| `/model reset` | Reset to default model | Yes |
-| `/model refresh` | Refresh the model catalog | Yes |
-| `/setmodel <model>` | Legacy alias for chat model selection | Yes |
+| `/sage relationship set` | Set relationship level between users | Yes |
 | `/sage admin stats` | View bot statistics | Yes |
+| `/sage admin relationship_graph` | View relationship graph | Yes |
 | `/sage admin summarize` | Force channel summary | Yes |
 | `/sage admin trace` | View recent traces | Yes |
 

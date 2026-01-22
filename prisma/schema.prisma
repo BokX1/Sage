@@ -110,15 +110,3 @@ model AgentTrace {
   @@index([channelId, createdAt])
   @@index([userId, createdAt])
 }
-
-model GuildSetting {
-  id        String   @id @default(cuid())
-  guildId   String
-  key       String
-  value     String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@unique([guildId, key])
-  @@index([guildId, updatedAt])
-}

@@ -2,44 +2,11 @@ import { REST, Routes, SlashCommandBuilder } from 'discord.js';
 import { config } from '../../core/config/env';
 import { logger } from '../../utils/logger';
 
-const commands = [
+const commandDefinitions = [
   new SlashCommandBuilder().setName('ping').setDescription('Replies with Pong!'),
   new SlashCommandBuilder()
     .setName('llm_ping')
     .setDescription('Admin: Test LLM connectivity (Config Verification)'),
-  new SlashCommandBuilder()
-    .setName('models')
-    .setDescription('Admin: List available models and current selection'),
-  new SlashCommandBuilder()
-    .setName('model')
-    .setDescription('Admin: Chat model commands')
-    .addSubcommand((sub) => sub.setName('list').setDescription('List available chat models'))
-    .addSubcommand((sub) =>
-      sub
-        .setName('select')
-        .setDescription('Select the chat model for this guild')
-        .addStringOption((opt) =>
-          opt.setName('model').setDescription('Model ID from /model list').setRequired(true),
-        ),
-    )
-    .addSubcommand((sub) =>
-      sub.setName('reset').setDescription('Reset chat model selection to default'),
-    )
-    .addSubcommand((sub) =>
-      sub.setName('refresh').setDescription('Refresh the model catalog'),
-    ),
-  new SlashCommandBuilder()
-    .setName('setmodel')
-    .setDescription('Admin: Set the chat model for this guild')
-    .addStringOption((opt) =>
-      opt.setName('model_id').setDescription('Model ID from /models').setRequired(true),
-    ),
-  new SlashCommandBuilder()
-    .setName('resetmodel')
-    .setDescription('Admin: Reset model selection to default'),
-  new SlashCommandBuilder()
-    .setName('refreshmodels')
-    .setDescription('Admin: Refresh the model catalog'),
   new SlashCommandBuilder()
     .setName('sage')
     .setDescription('Sage bot commands')
@@ -116,7 +83,9 @@ const commands = [
             ),
         ),
     ),
-].map((command) => command.toJSON());
+];
+
+export const commandPayloads = commandDefinitions.map((command) => command.toJSON());
 
 export async function registerCommands() {
   const rest = new REST({ version: '10' }).setToken(config.discordToken);
@@ -125,12 +94,12 @@ export async function registerCommands() {
     if (config.devGuildId) {
       logger.info(`Refreshing application (/) commands for DEV guild: ${config.devGuildId}`);
       await rest.put(Routes.applicationGuildCommands(config.discordAppId, config.devGuildId), {
-        body: commands,
+        body: commandPayloads,
       });
       logger.info('Successfully reloaded application (/) commands for DEV guild (Instant).');
     } else {
       logger.info('Refreshing application (/) commands GLOBALLY (may take ~1h to cache).');
-      await rest.put(Routes.applicationCommands(config.discordAppId), { body: commands });
+      await rest.put(Routes.applicationCommands(config.discordAppId), { body: commandPayloads });
       logger.info('Successfully reloaded application (/) commands GLOBALLY.');
     }
   } catch (error) {
