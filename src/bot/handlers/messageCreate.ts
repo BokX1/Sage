@@ -237,6 +237,16 @@ export async function handleMessageCreate(message: Message) {
         textOverride: userTextWithAttachments,
       });
 
+      // Check for voice overlap (User + Bot in same VC)
+      let isVoiceActive = false;
+      if (message.guildId && message.member?.voice?.channelId) {
+        const voiceManager = VoiceManager.getInstance();
+        const connection = voiceManager.getConnection(message.guildId);
+        if (connection && connection.joinConfig.channelId === message.member.voice.channelId) {
+          isVoiceActive = true;
+        }
+      }
+
       const result = await generateChatReply({
         traceId,
         userId: message.author.id,
@@ -250,20 +260,20 @@ export async function handleMessageCreate(message: Message) {
         intent: invocation.intent,
         mentionedUserIds: mentionedUserIdsForQueries,
         invokedBy: invocation.kind,
+        isVoiceActive,
       });
 
       // --- Voice TTS Trigger ---
-      if (result.replyText && message.guildId && message.member?.voice?.channelId) {
+      if (result.replyText && isVoiceActive && message.guildId) {
         try {
           const voiceManager = VoiceManager.getInstance();
-          const connection = voiceManager.getConnection(message.guildId);
-          // Check if bot is connected to the SAME voice channel as the user
-          if (connection && connection.joinConfig.channelId === message.member.voice.channelId) {
-            loggerWithTrace.info({ guildId: message.guildId }, 'Generating TTS (syncing)...');
-            // Await speech generation + start of playback BEFORE sending text
-            await voiceManager.speak(message.guildId, result.replyText, result.styleHint);
-            loggerWithTrace.info('TTS started, sending text reply.');
-          }
+          loggerWithTrace.info({ guildId: message.guildId, voice: result.voice }, 'Generating TTS (syncing)...');
+          
+          // Await speech generation + start of playback BEFORE sending text
+          // Pass the dynamically selected voice (e.g. 'onyx', 'nova') from the agent runtime
+          await voiceManager.speak(message.guildId, result.replyText, result.styleHint);
+          
+          loggerWithTrace.info('TTS started, sending text reply.');
         } catch (voiceErr) {
           loggerWithTrace.error({ voiceErr }, 'Voice TTS failed (sending text anyway)');
         }

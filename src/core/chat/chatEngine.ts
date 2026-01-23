@@ -36,7 +36,8 @@ export async function generateChatReply(params: {
   intent?: string | null;
   mentionedUserIds?: string[];
   invokedBy?: 'mention' | 'reply' | 'wakeword' | 'autopilot' | 'command';
-}): Promise<{ replyText: string; styleHint?: string }> {
+  isVoiceActive?: boolean;
+}): Promise<{ replyText: string; styleHint?: string; voice?: string }> {
   // Enforce sequential processing per user
   const limit = limitByKey(params.userId, 1);
 
@@ -54,6 +55,7 @@ export async function generateChatReply(params: {
       intent,
       mentionedUserIds,
       invokedBy = 'mention',
+      isVoiceActive,
     } = params;
 
     // 1. Load Profile
@@ -81,6 +83,7 @@ export async function generateChatReply(params: {
       intent: intent ?? null,
       mentionedUserIds,
       invokedBy,
+      isVoiceActive,
     });
 
     const replyText = result.replyText;
@@ -132,6 +135,6 @@ export async function generateChatReply(params: {
       }
     }
 
-    return { replyText, styleHint: result.styleHint };
+    return { replyText, styleHint: result.styleHint, voice: result.voice };
   });
 }

@@ -41,15 +41,6 @@ const GOOGLE_SEARCH_TOOL: ToolDefinition = {
   },
 };
 
-/**
- * Define inputs for a single chat turn.
- *
- * Details: includes routing hints, profile summaries, and invocation metadata
- * used to build LLM context and traces.
- *
- * Side effects: none.
- * Error behavior: none.
- */
 export interface RunChatTurnParams {
   traceId: string;
   userId: string;
@@ -64,19 +55,13 @@ export interface RunChatTurnParams {
   intent?: string | null;
   mentionedUserIds?: string[];
   invokedBy?: 'mention' | 'reply' | 'wakeword' | 'autopilot' | 'command';
+  isVoiceActive?: boolean;
 }
 
-/**
- * Describe the outcome of a chat turn.
- *
- * Details: includes the reply text and optional debug metadata.
- *
- * Side effects: none.
- * Error behavior: none.
- */
 export interface RunChatTurnResult {
   replyText: string;
   styleHint?: string;
+  voice?: string;
   debug?: {
     toolsExecuted?: boolean;
     toolLoopResult?: ToolCallLoopResult;
@@ -84,20 +69,18 @@ export interface RunChatTurnResult {
   };
 }
 
-/**
- * Run a single chat turn through the agent runtime.
- *
- * Details: routes the request, gathers expert packets, builds context, and
- * executes LLM calls with optional tool usage.
- *
- * Side effects: performs LLM calls, DB reads/writes for traces, and may execute
- * tools with their own side effects.
- * Error behavior: catches and logs non-fatal errors; returns fallback text when
- * the LLM call fails.
- *
- * @param params - Inputs for the chat turn and routing context.
- * @returns Reply text and optional debug metadata.
- */
+// Helper to select voice based on text signals
+function selectVoicePersona(text: string, profile: string | null): string {
+  const t = (text + (profile || '')).toLowerCase();
+  
+  if (/(david attenborough|narrator|deep voice|male|boy|man|guy)/.test(t)) return 'onyx';
+  if (/(girl|female|woman|crush|sister|mom|aunt|gf|girlfriend)/.test(t)) return 'nova';
+  if (/(energetic|excited|sparkly|anime)/.test(t)) return 'shimmer';
+  if (/(serious|news|anchor)/.test(t)) return 'echo';
+  
+  return 'alloy'; // Default
+}
+
 export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTurnResult> {
   const {
     traceId,
@@ -112,6 +95,7 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
     intent,
     mentionedUserIds,
     invokedBy = 'mention',
+    isVoiceActive,
   } = params;
 
   const normalizedText = userText.toLowerCase();
@@ -268,6 +252,20 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
     }
   }
 
+  // Voice Persona Logic
+  let voice = 'alloy';
+  let voiceInstruction = '';
+  
+  if (isVoiceActive) {
+    voice = selectVoicePersona(userText, userProfileSummary);
+    voiceInstruction = `\n[VOICE MODE ACTIVE]
+Your response will be spoken aloud by a TTS model (${voice} voice).
+- Write for the ear, not the eye.
+- Avoid markdown, links, or visual formatting.
+- Adopt the persona implied by the requested voice (e.g. if 'onyx', be deep/narrative; if 'nova', be energetic/feminine).
+- You are NARRATING this response.`;
+  }
+
   const style = classifyStyle(userText);
   // Calculate style mimicry for TTS usage (passed out in result)
   const userHistory = conversationHistory
@@ -289,6 +287,7 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
     style,
     expertPackets: expertPacketsText || null,
     invokedBy,
+    voiceInstruction,
   });
 
   logger.debug(
@@ -365,11 +364,6 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
   }
 
   const finalText = draftText;
-  const governorResult = {
-    finalText,
-    actions: [],
-    flagged: false,
-  };
 
   if (appConfig.TRACE_ENABLED) {
     try {
@@ -385,7 +379,7 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
 
   logger.debug({ traceId }, 'Chat turn complete');
 
-  if (governorResult.finalText.trim().includes('[SILENCE]')) {
+  if (finalText.trim().includes('[SILENCE]')) {
     logger.info({ traceId }, 'Agent chose silence');
     return {
       replyText: '',
@@ -394,8 +388,9 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
   }
 
   return {
-    replyText: governorResult.finalText,
-    styleHint: styleMimicry, // Pass style hint out for TTS
+    replyText: finalText,
+    styleHint: styleMimicry,
+    voice,
     debug: { messages, toolsExecuted },
   };
 }

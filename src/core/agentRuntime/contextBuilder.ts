@@ -27,6 +27,7 @@ export interface BuildContextMessagesParams {
   style?: StyleProfile;
   expertPackets?: string | null;
   invokedBy?: 'mention' | 'reply' | 'wakeword' | 'autopilot' | 'command';
+  voiceInstruction?: string;
 }
 
 /**
@@ -56,6 +57,7 @@ export function buildContextMessages(params: BuildContextMessagesParams): LLMCha
     style,
     expertPackets,
     invokedBy,
+    voiceInstruction,
   } = params;
 
   let autopilotInstruction = '';
@@ -84,7 +86,7 @@ If you have nothing to add, output '[SILENCE]' (without quotes).`;
   const baseSystemContent = composeSystemPrompt({
     userProfileSummary,
     style,
-  }) + autopilotInstruction;
+  }) + autopilotInstruction + (voiceInstruction || '');
 
   const blocks: ContextBlock[] = [
     {
