@@ -66,35 +66,22 @@ graph TD
 | 🧠 **Agentic Memory** | Builds long-term preferences and throttles updates for efficiency |
 | 👁️ **Vision Support** | Analyzes and discusses images shared in chat |
 | 📄 **File Analysis** | Share `.ts`, `.py`, `.txt` files for instant review or discussion |
-| 🎤 **Voice Insights** | Tracks presence and duration, translating raw data into natural language |
+| 🎤 **Voice Companion (Beta)** | Text-to-speech companion with dynamic personas (BYOP required) |
+| 📊 **Voice Insights** | Tracks presence and duration, translating raw data into natural language |
 | 🤝 **Social Graph** | Visualizes relationship tiers and interaction patterns with emojis |
 | 🚀 **Self-Correcting** | Autonomous tool loop with error recovery for high reliability |
 | ⚡ **Powered by Pollinations.ai** | Fast, high-throughput multi-model AI access |
 
 ---
 
-## 🎤 Voice Companion (Beta)
-
-Sage can now join your voice channel and speak to you!
-
-**How it works (Text-in, Voice-out):**
-1.  **Join:** Use `/join` to summon Sage to your voice channel.
-2.  **Chat:** Type your message in the text channel.
-3.  **Listen:** Sage will reply in text *and* speak the response aloud in the voice channel.
-
-**Features:**
-*   **Dynamic Persona:** Sage adapts its voice and tone to match your conversation style (e.g., casual, formal, energetic).
-*   **Agentic Control:** You can ask Sage to "join voice" or "leave voice" using natural language.
-*   **Synced Playback:** Text and audio are synchronized for a seamless experience.
-
-> **Note:** This feature requires a paid Pollinations API key (BYOP) because it uses the advanced `openai-audio` model. Set your key with `/sage key set`.
-
 ## 🚀 Getting Started
 
 ### 1. Invite Sage
+
 [**Click here to invite Sage to your server**](https://discord.com/api/oauth2/authorize?client_id=1211723232808570971&permissions=414464731200&scope=bot%20applications.commands)
 
 ### 2. Basic Commands
+
 - `/sage whoiswho` — See relationship statuses
 - `/sage key set` — Set your own API key (for higher limits)
 - `/join` — Summon Sage to voice

@@ -249,6 +249,7 @@ Summon Sage to your current voice channel.
 ```
 
 **Requirements:**
+
 - You must be in a voice channel.
 - Server must have a valid API key set (BYOP) for `openai-audio` support.
 

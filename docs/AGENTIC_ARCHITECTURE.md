@@ -50,6 +50,7 @@ mindmap
       Text Understanding
       Image Analysis
       File Processing
+      Voice Companion (Beta)
 ```
 
 ---
@@ -160,8 +161,8 @@ Sage introduces a novel **"Text-in, Voice-out"** architecture to provide a seaml
 
 Unlike traditional voice bots that struggle with speech-to-text accuracy, Sage decouples the "Brain" from the "Mouth".
 
-1.  **The Brain (Chat Agent):** You type to Sage in text. This leverages the full power of Sage's memory, tools, and social context without degradation.
-2.  **The Mouth (TTS Agent):** Sage replies in text *and* simultaneously speaks the response in your voice channel.
+    1. **The Brain (Chat Agent):** You type to Sage in text. This leverages the full power of Sage's memory, tools, and social context without degradation.
+    2. **The Mouth (TTS Agent):** Sage replies in text *and* simultaneously speaks the response in your voice channel.
 
 ### Dynamic Persona
 
