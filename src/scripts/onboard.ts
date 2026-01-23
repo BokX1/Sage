@@ -15,8 +15,6 @@ const dockerComposePath = path.join(repoRoot, 'docker-compose.yml');
 // CLI UX Helpers
 // ═══════════════════════════════════════════════════════════════════════════
 
-const TOTAL_STEPS = 5;
-let currentStep = 0;
 
 function printWelcomeBanner() {
   console.log(`
@@ -38,27 +36,6 @@ function printWelcomeBanner() {
 `);
 }
 
-function printStep(title: string, helpUrl?: string) {
-  currentStep++;
-  console.log(`\n\x1b[36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\x1b[0m`);
-  console.log(`\x1b[1m📍 Step ${currentStep} of ${TOTAL_STEPS}: ${title}\x1b[0m`);
-  if (helpUrl) {
-    console.log(`\x1b[90m   ℹ️  Help: ${helpUrl}\x1b[0m`);
-  }
-  console.log(`\x1b[36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\x1b[0m\n`);
-}
-
-function printSuccess(message: string) {
-  console.log(`\x1b[32m✅ ${message}\x1b[0m`);
-}
-
-function printWarning(message: string) {
-  console.log(`\x1b[33m⚠️  ${message}\x1b[0m`);
-}
-
-function printError(message: string) {
-  console.log(`\x1b[31m❌ ${message}\x1b[0m`);
-}
 
 function printCompletionBanner(appId?: string) {
   // Recommended permissions: Send Messages (2048) + Read Message History (65536) + 

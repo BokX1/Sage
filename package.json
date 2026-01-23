@@ -27,7 +27,6 @@
     "cert": "ts-node src/scripts/cert.ts",
     "prepare": "husky install"
   },
-  "keywords": [],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
