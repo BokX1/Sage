@@ -31,6 +31,12 @@ async function main() {
   const { initChannelSummaryScheduler } = await import('./core/summary/channelSummaryScheduler');
   const { registerReadyHandler } = await import('./bot/handlers/ready');
   const { registerGuildCreateHandler } = await import('./bot/handlers/guildCreate');
+  const { globalToolRegistry } = await import('./core/agentRuntime/toolRegistry');
+  const { joinVoiceTool, leaveVoiceTool } = await import('./core/tools/voiceTools');
+
+  // Register Tools
+  globalToolRegistry.register(joinVoiceTool);
+  globalToolRegistry.register(leaveVoiceTool);
 
   // Register handlers (idempotent)
   registerMessageCreateHandler();
