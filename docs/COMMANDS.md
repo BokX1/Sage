@@ -236,6 +236,32 @@ Manually set relationship level between two users.
 
 ---
 
+## 🎤 Voice Commands (Beta)
+
+Control Sage's voice presence.
+
+### `/join`
+
+Summon Sage to your current voice channel.
+
+```text
+/join
+```
+
+**Requirements:**
+- You must be in a voice channel.
+- Server must have a valid API key set (BYOP) for `openai-audio` support.
+
+### `/leave`
+
+Disconnect Sage from the voice channel.
+
+```text
+/leave
+```
+
+---
+
 ## 🛠️ Utility Command
 
 ### `/llm_ping`

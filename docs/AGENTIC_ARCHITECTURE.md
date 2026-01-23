@@ -152,6 +152,41 @@ Sage builds relationships naturally through:
 
 ---
 
+## 🎤 Voice Companion (Beta)
+
+Sage introduces a novel **"Text-in, Voice-out"** architecture to provide a seamless voice experience.
+
+### Decoupled Intelligence
+
+Unlike traditional voice bots that struggle with speech-to-text accuracy, Sage decouples the "Brain" from the "Mouth".
+
+1.  **The Brain (Chat Agent):** You type to Sage in text. This leverages the full power of Sage's memory, tools, and social context without degradation.
+2.  **The Mouth (TTS Agent):** Sage replies in text *and* simultaneously speaks the response in your voice channel.
+
+### Dynamic Persona
+
+Sage analyzes your conversation style and intent to dynamically select a voice persona (e.g., "Deep Narrator", "Energetic Friend") and instructs the TTS model to act it out.
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant ChatBrain
+    participant TTS
+    participant VoiceChannel
+    
+    User->>ChatBrain: "Tell me a scary story" (Text)
+    ChatBrain->>ChatBrain: Selects 'Onyx' Voice (Narrator)
+    ChatBrain->>ChatBrain: Generates Story Script
+    ChatBrain->>TTS: "Read this with a scary tone"
+    
+    par Sync
+        ChatBrain->>User: Sends Text Reply
+        TTS->>VoiceChannel: Plays Audio
+    end
+```
+
+---
+
 ## 🧭 Intelligent Routing
 
 Sage uses an **LLM-powered router** to understand questions.

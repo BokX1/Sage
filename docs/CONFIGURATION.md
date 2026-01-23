@@ -30,7 +30,7 @@ Sage uses an intelligent agentic architecture with specialized models for differ
 | `LLM_PROVIDER` | AI provider | `pollinations` |
 | `POLLINATIONS_BASE_URL` | API endpoint URL | `https://gen.pollinations.ai/v1` |
 | `POLLINATIONS_MODEL` | Primary chat model (ensure this is a vision-capable model like `gemini` for image support) | `gemini` |
-| `POLLINATIONS_API_KEY` | Optional global API key (if unset, admins must run `/sage key set` per server) | *(empty)* |
+| `POLLINATIONS_API_KEY` | **Required for Voice (TTS).** Optional global key (or use `/sage key set` per server). | *(empty)* |
 
 ### Specialized System Models
 
