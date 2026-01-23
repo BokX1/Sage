@@ -29,7 +29,7 @@ Sage uses an intelligent agentic architecture with specialized models for differ
 |:---------|:------------|:--------|
 | `LLM_PROVIDER` | AI provider | `pollinations` |
 | `POLLINATIONS_BASE_URL` | API endpoint URL | `https://gen.pollinations.ai/v1` |
-| `POLLINATIONS_MODEL` | Primary chat model | `gemini` |
+| `POLLINATIONS_MODEL` | Primary chat model (ensure this is a vision-capable model like `gemini` for image support) | `gemini` |
 | `POLLINATIONS_API_KEY` | Your Pollinations API key (required for guild chats) | *(empty)* |
 
 ### Specialized System Models
