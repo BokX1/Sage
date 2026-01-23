@@ -285,6 +285,7 @@ Now that Sage is running, try these:
 - "Sage, tell me about yourself?"
 - "Sage, what's the weather in Tokyo?"
 - "Sage, summarize our conversation"
+- "Sage, look at this image [attach an image] and tell me what you see"
 - "Sage, look at this file [attach a .ts or .txt file]"
 
 ### Configure Behavior

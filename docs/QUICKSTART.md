@@ -4,8 +4,8 @@
 
 You have two options to use Sage:
 
-1. **🤖 Use the Public Bot (Recommended):** Zero setup, free hosting, "Bring Your Own Pollen" (BYOP).
-2. **💻 Self-Host:** For developers who want full control over the code and infrastructure.
+1. **🤖 Use the Public Bot (Recommended):** Zero setup, free hosting, vision support, "Bring Your Own Pollen" (BYOP).
+2. **💻 Self-Host:** For developers who want full control over the code, infrastructure, and vision models.
 
 ---
 

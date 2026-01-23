@@ -70,6 +70,7 @@ mindmap
 | Traditional Bot | Sage |
 |:----------------|:-----|
 | ❌ "I don't understand what 'that thing' means" | ✅ Checks recent context: "You mean the API rate limiting issue we discussed earlier?" |
+| ❌ "I cannot see images" | ✅ Analyzes shared images: "I see a React component in that screenshot—want me to debug it?" |
 
 ---
 

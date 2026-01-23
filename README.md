@@ -28,6 +28,7 @@ Sage is a **Fully Agentic Discord companion** that goes beyond simple chat comma
 
 - 🧠 **Self-Learning Memory**: Remembers past conversations to build personalized user contexts.
 - 👥 **Socially Aware**: Understands relationship tiers (Best Friend, Acquaintance) and interaction "vibes."
+- 👁️ **Vision & Image Analysis**: Ingests images to discuss visual content and extract information.
 - 📄 **Knowledge Base**: Ingests code files and text documents to provide expert-level analysis.
 - 💬 **Intelligent Routing**: Uses a high-precision LLM classifier to resolve pronouns and context.
 
