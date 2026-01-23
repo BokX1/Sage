@@ -10,11 +10,16 @@ This ensures Sage remains free, unlimited, and sustainable for everyone.
 
 Sage needs an API Key (Pollen) to generate smart responses. We use a **Server-Wide Key** system so your community can chat freely without each person needing their own key.
 
-### The Flow
+### The Activation Lifecycle
 
-1.  **New Server:** You invite Sage. It wakes up but needs a key to start chatting.
-2.  **Admin Action:** You (the Admin) grab a free key from Pollinations.ai and save it to the server.
-3.  **Active:** Everyone in your server can now chat with Sage! The usage counts towards that key.
+```mermaid
+graph LR
+    A[Invite Sage] --> B[Sage Joins Server]
+    B --> C[Admin Runs /sage key login]
+    C --> D[Get Key from Pollinations]
+    D --> E[Admin Runs /sage key set]
+    E --> F[Sage Activated for Everyone]
+```
 
 ---
 
@@ -23,19 +28,24 @@ Sage needs an API Key (Pollen) to generate smart responses. We use a **Server-Wi
 **Prerequisite:** You must be a Server Admin or have the "Manage Guild" permission.
 
 ### Step 1: Get Your Key
+
 Type this command in your server:
+
 ```
 /sage key login
 ```
+
 Click the link to log in to Pollinations.ai. You'll see your API key in the browser URL bar (it starts with `sk_`).
 
 ### Step 2: Activate Sage
+
 Copy your key and run:
+
 ```
 /sage key set <your_key>
 ```
 
-**That's it!** Sage is now active for your entire server. 🎉
+**That's it!** Sage is now active for your entire server. 🎉 Members can start chatting by **tagging @Sage**, starting a message with "**Sage**", or **replying** to its posts.
 
 ---
 

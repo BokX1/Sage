@@ -10,6 +10,7 @@ export interface TraceStartData {
   routerJson: unknown;
   expertsJson: unknown;
   tokenJson?: unknown;
+  reasoningText?: string;
 }
 
 export interface TraceEndData {
@@ -36,6 +37,7 @@ export async function upsertTraceStart(data: TraceStartData): Promise<void> {
       routerJson: jsonMap(data.routerJson),
       expertsJson: jsonMap(data.expertsJson),
       tokenJson: jsonMap(data.tokenJson ?? {}),
+      reasoningText: data.reasoningText ?? null,
       replyText: '', // Placeholder until trace end
     },
     update: {
@@ -43,6 +45,7 @@ export async function upsertTraceStart(data: TraceStartData): Promise<void> {
       routerJson: jsonMap(data.routerJson),
       expertsJson: jsonMap(data.expertsJson),
       tokenJson: jsonMap(data.tokenJson ?? {}),
+      reasoningText: data.reasoningText ?? null,
     },
   });
 }

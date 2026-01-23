@@ -4,8 +4,15 @@ import { updateProfileSummary } from '../memory/profileUpdater';
 import { logger } from '../utils/logger';
 import { runChatTurn } from '../agentRuntime';
 import { LLMMessageContent } from '../llm/types';
+import { config } from '../../config';
 
 import { limitByKey } from '../utils/perKeyConcurrency';
+
+/**
+ * Per-user interaction counter for profile update throttling.
+ * Maps userId to count of messages since last profile update.
+ */
+const userInteractionCounts = new Map<string, number>();
 
 /**
  * Generate a chat reply using the agent runtime.
@@ -14,7 +21,7 @@ import { limitByKey } from '../utils/perKeyConcurrency';
  * Flow:
  * 1. Load user profile
  * 2. Delegate to agentRuntime.runChatTurn
- * 3. Trigger background profile update
+ * 3. Trigger background profile update (throttled every N messages)
  */
 export async function generateChatReply(params: {
   traceId: string;
@@ -78,29 +85,51 @@ export async function generateChatReply(params: {
 
     const replyText = result.replyText;
 
-    // 3. Update Profile (Background)
+    // 3. Update Profile (Background, Throttled)
+    // Only trigger profile update every PROFILE_UPDATE_INTERVAL messages
     const apiKey = guildId ? await getGuildApiKey(guildId) : undefined;
-    
+
     if (apiKey) {
-      updateProfileSummary({
-        previousSummary: profileSummary,
-        userMessage: userText,
-        assistantReply: replyText,
-        channelId,
-        guildId,
-        userId,
-        apiKey,
-      })
-        .then((newSummary) => {
-          if (newSummary && newSummary !== profileSummary) {
-            upsertUserProfile(userId, newSummary).catch((err) =>
-              logger.error({ error: err }, 'Failed to save profile'),
-            );
-          }
+      // Increment interaction count
+      const currentCount = (userInteractionCounts.get(userId) || 0) + 1;
+      userInteractionCounts.set(userId, currentCount);
+
+      const shouldUpdateProfile = currentCount >= config.PROFILE_UPDATE_INTERVAL;
+
+      if (shouldUpdateProfile) {
+        // Reset counter before update
+        userInteractionCounts.set(userId, 0);
+
+        logger.debug(
+          { userId, messageCount: currentCount, interval: config.PROFILE_UPDATE_INTERVAL },
+          'Profile update triggered (throttled)'
+        );
+
+        updateProfileSummary({
+          previousSummary: profileSummary,
+          userMessage: userText,
+          assistantReply: replyText,
+          channelId,
+          guildId,
+          userId,
+          apiKey,
         })
-        .catch((err) => {
-          logger.error({ error: err }, 'Profile update failed');
-        });
+          .then((newSummary) => {
+            if (newSummary && newSummary !== profileSummary) {
+              upsertUserProfile(userId, newSummary).catch((err) =>
+                logger.error({ error: err }, 'Failed to save profile'),
+              );
+            }
+          })
+          .catch((err) => {
+            logger.error({ error: err }, 'Profile update failed');
+          });
+      } else {
+        logger.debug(
+          { userId, messageCount: currentCount, threshold: config.PROFILE_UPDATE_INTERVAL },
+          'Profile update skipped (throttled)'
+        );
+      }
     }
 
     return { replyText };

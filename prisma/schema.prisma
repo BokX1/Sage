@@ -102,17 +102,18 @@ model AdminAudit {
 }
 
 model AgentTrace {
-  id           String   @id
-  guildId      String?
-  channelId    String
-  userId       String
-  routeKind    String
-  routerJson   Json
-  expertsJson  Json
-  toolJson     Json?
-  tokenJson    Json?
-  replyText    String   @db.Text
-  createdAt    DateTime @default(now())
+  id            String   @id
+  guildId       String?
+  channelId     String
+  userId        String
+  routeKind     String
+  routerJson    Json
+  expertsJson   Json
+  toolJson      Json?
+  tokenJson     Json?
+  reasoningText String?  @db.Text
+  replyText     String   @db.Text
+  createdAt     DateTime @default(now())
 
   @@index([guildId, createdAt])
   @@index([channelId, createdAt])

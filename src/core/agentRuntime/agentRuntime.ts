@@ -13,13 +13,14 @@ import { getChannelSummaryStore } from '../summary/channelSummaryStoreRegistry';
 import { howLongInVoiceToday, whoIsInVoice } from '../voice/voiceQueries';
 import { formatHowLongToday, formatWhoInVoice } from '../voice/voiceFormat';
 import { classifyStyle } from './styleClassifier';
-import { decideRoute } from '../orchestration/router';
+import { decideRoute } from '../orchestration/llmRouter';
 import { runExperts } from '../orchestration/runExperts';
 // import { governOutput } from '../orchestration/governor';
 import { upsertTraceStart, updateTraceEnd } from '../trace/agentTraceRepo';
 import { ExpertPacket } from '../orchestration/experts/types';
 import { resolveModelForRequest } from '../llm/modelResolver';
 import { getGuildApiKey } from '../settings/guildSettingsRepo';
+import { getWelcomeMessage } from '../../bot/handlers/welcomeMessage';
 
 const GOOGLE_SEARCH_TOOL: ToolDefinition = {
   type: 'function',
@@ -134,10 +135,29 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
     }
   }
 
-  const route = decideRoute({
+  // Build conversation history for LLM router (pronoun resolution)
+  let conversationHistory: LLMChatMessage[] = [];
+  if (guildId && isLoggingEnabled(guildId, channelId)) {
+    const recentMsgs = getRecentMessages({
+      guildId,
+      channelId,
+      limit: 7,
+    });
+    conversationHistory = recentMsgs.map((m) => ({
+      role: (m.authorId === 'bot' ? 'assistant' : 'user') as 'user' | 'assistant',
+      content: m.content,
+    }));
+  }
+
+  // Get API key for router LLM call
+  const routerApiKey = guildId ? await getGuildApiKey(guildId) : undefined;
+
+  const route = await decideRoute({
     userText,
     invokedBy,
     hasGuild: !!guildId,
+    conversationHistory,
+    apiKey: routerApiKey,
   });
 
   logger.debug({ traceId, route }, 'Router decision');
@@ -169,6 +189,7 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
         routerJson: route,
         expertsJson: expertPackets.map((p) => ({ name: p.name, json: p.json })),
         tokenJson: {},
+        reasoningText: route.reasoningText,
       });
     } catch (error) {
       logger.warn({ error, traceId }, 'Failed to persist trace start');
@@ -269,29 +290,14 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
   );
 
   const client = getLLMClient();
-  
+
   // Strict BYOP: Enforce Guild Key
   let apiKey: string | undefined;
   if (guildId) {
     apiKey = await getGuildApiKey(guildId);
     if (!apiKey) {
       return {
-        replyText:
-          "👋 **Welcome to Sage!**\n" +
-          "I'm your new intelligent AI agent. I can:\n" +
-          "🧠 **Remember** our conversations & your preferences\n" +
-          "👥 **Understand** who's who in the server\n" +
-          "🎤 **Track** voice chat activity\n" +
-          "👁️ **See** and discuss images you share\n\n" +
-          "**💬 How to Chat:**\n" +
-          "- Start your message with **Sage** (e.g., \"Sage, what's up?\")\n" +
-          "- **Reply** to my messages\n" +
-          "- **@Mention** me\n\n" +
-          "**🚀 How to Activate Me:**\n" +
-          "I run on a **Bring Your Own Pollen (BYOP)** model. This means I'm free to host, but you need a (free) API key from Pollinations.ai to power my brain.\n\n" +
-          "**Server Admins, please run:**\n" +
-          "1. `/sage key login` (Get your key)\n" +
-          "2. `/sage key set <your_key>` (Activate server-wide)\n",
+        replyText: getWelcomeMessage(),
       };
     }
   }

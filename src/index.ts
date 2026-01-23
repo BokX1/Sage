@@ -30,12 +30,14 @@ async function main() {
   const { registerVoiceStateUpdateHandler } = await import('./bot/handlers/voiceStateUpdate');
   const { initChannelSummaryScheduler } = await import('./core/summary/channelSummaryScheduler');
   const { registerReadyHandler } = await import('./bot/handlers/ready');
+  const { registerGuildCreateHandler } = await import('./bot/handlers/guildCreate');
 
   // Register handlers (idempotent)
   registerMessageCreateHandler();
   registerInteractionCreateHandler();
   registerVoiceStateUpdateHandler(); // D1: Voice event ingestion
   registerReadyHandler(client); // D1: Startup backfill & logging
+  registerGuildCreateHandler(client); // UX: Proactive welcome
   initChannelSummaryScheduler();
 
   await client.login(config.DISCORD_TOKEN);

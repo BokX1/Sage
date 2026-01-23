@@ -101,6 +101,7 @@ const envSchema = z.object({
   // Profile Memory LLM Override
   PROFILE_PROVIDER: z.string().default(''),
   PROFILE_POLLINATIONS_MODEL: z.string().default('deepseek'), // Changed from 'gemini' to 'deepseek'
+  PROFILE_UPDATE_INTERVAL: z.coerce.number().int().positive().default(5), // Update every N messages
 
   // Formatter Model (for JSON formatting in profile updates)
   FORMATTER_MODEL: z.string().default('qwen-coder'),

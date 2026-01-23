@@ -18,6 +18,18 @@ That's it! We'll install everything else together.
 
 ---
 
+## 🗺️ Setup at a Glance
+
+```mermaid
+graph TD
+    S1[1. Install Software] --> S2[2. Create Bot]
+    S2 --> S3[3. Download Sage]
+    S3 --> S4[4. Start Database]
+    S4 --> S5[5. Start Sage]
+    S5 --> S6[6. Invite Bot]
+    S6 --> S7[7. Activate Key]
+```
+
 ## Step 1: Install Required Software
 
 ### 1.1 Install Node.js
@@ -226,16 +238,9 @@ npm run dev
 
 ---
 
-## Step 7: Configure the Server Key (BYOP)
+1. Run `/sage key set <your_key>`.
 
-**Sage requires an API key to function in your server.**
-
-1.  In your Discord server, type `/sage key login`
-2.  Follow the link to get your free Pollinations API Key.
-3.  Copy the key (starts with `sk_...`).
-4.  Run `/sage key set <your_key>`.
-
-Once set, Sage will respond to all users in your server!
+Once set, Sage will wake up and be ready to chat! It will greet you with a friendly message explaining its unique "getting to know you" features.
 
 ---
 
@@ -245,7 +250,10 @@ Make sure everything is working:
 
 - [ ] Sage appears in your server's member list (might show as offline for a moment)
 - [ ] Type `/ping` — Sage should respond with "Pong!"
-- [ ] Type "Sage, how are you?" — Sage should reply
+- [ ] Chat with Sage using one of these three ways:
+  - **Prefix**: "Sage, hello!"
+  - **Mention**: "@Sage, what's up?"
+  - **Reply**: Just reply to one of Sage's messages.
 
 **If Sage doesn't respond:**
 
@@ -261,9 +269,10 @@ Now that Sage is running, try these:
 
 ### Talk to Sage
 
-- "Sage, tell me about yourself"
+- "Sage, tell me about yourself?"
 - "Sage, what's the weather in Tokyo?"
 - "Sage, summarize our conversation"
+- "Sage, look at this file [attach a .ts or .txt file]"
 
 ### Configure Behavior
 

@@ -51,9 +51,11 @@ describe('AgentTraceRepo', () => {
         create: expect.objectContaining({
           id: 'trace-123',
           routeKind: 'qa',
+          reasoningText: null,
         }),
         update: expect.objectContaining({
           routeKind: 'qa',
+          reasoningText: null,
         }),
       });
     });

@@ -35,6 +35,10 @@ vi.mock('../../src/core/llm', () => ({
 // 4. Mock Config (Mutable)
 const mockConfig = vi.hoisted(() => ({
   llmProvider: 'pollinations',
+  PROFILE_UPDATE_INTERVAL: 1, // Ensure updates trigger immediately in tests
+}));
+vi.mock('../../src/config', () => ({
+  config: mockConfig,
 }));
 vi.mock('../../src/core/config/env', () => ({
   config: mockConfig,

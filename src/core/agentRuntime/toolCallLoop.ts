@@ -30,27 +30,77 @@ const DEFAULT_CONFIG: Required<ToolCallLoopConfig> = {
 
 
 /**
- * Format tool results as an LLM user message.
+ * Error types for tool failures.
+ */
+type ToolErrorType = 'timeout' | 'not_found' | 'rate_limited' | 'validation' | 'unknown';
+
+/**
+ * Classify error type from error message.
+ */
+function classifyErrorType(error: string): ToolErrorType {
+  const lowerError = error.toLowerCase();
+  if (lowerError.includes('timeout') || lowerError.includes('timed out')) return 'timeout';
+  if (lowerError.includes('not found') || lowerError.includes('404')) return 'not_found';
+  if (lowerError.includes('rate limit') || lowerError.includes('429') || lowerError.includes('too many')) return 'rate_limited';
+  if (lowerError.includes('validation') || lowerError.includes('invalid')) return 'validation';
+  return 'unknown';
+}
+
+/**
+ * Get recovery suggestion for error type.
+ */
+function getRecoverySuggestion(errorType: ToolErrorType, toolName: string): string {
+  switch (errorType) {
+    case 'timeout':
+      return `The ${toolName} tool timed out. You may try again with a simpler query, or explain to the user that this operation is taking longer than expected.`;
+    case 'not_found':
+      return `The ${toolName} tool could not find the requested information. Try a different search query or let the user know the information is not available.`;
+    case 'rate_limited':
+      return `The ${toolName} tool hit a rate limit. Wait before retrying or use cached/known information instead.`;
+    case 'validation':
+      return `The ${toolName} tool received invalid parameters. Check your input format and try again with corrected parameters.`;
+    case 'unknown':
+      return `The ${toolName} tool encountered an error. You can try again, use a different approach, or explain the limitation to the user.`;
+  }
+}
+
+/**
+ * Format tool results as an LLM user message with enhanced error context.
  *
  * Details: uses a user-role message for compatibility with providers that
- * mishandle tool-role messages.
+ * mishandle tool-role messages. Includes error classification and recovery
+ * suggestions for failed tools.
  *
  * Side effects: none.
  * Error behavior: none.
  */
 function formatToolResultsMessage(results: ToolResult[]): LLMChatMessage {
-  const content = results
-    .map((r) => {
-      if (r.success) {
-        return `Tool "${r.name}" result: ${JSON.stringify(r.result)}`;
-      }
-      return `Tool "${r.name}" error: ${r.error}`;
-    })
-    .join('\n');
+  const successResults = results.filter(r => r.success);
+  const failedResults = results.filter(r => !r.success);
+
+  const parts: string[] = [];
+
+  // Format successful results
+  if (successResults.length > 0) {
+    const successTexts = successResults.map(r =>
+      `✅ Tool "${r.name}" succeeded: ${JSON.stringify(r.result)}`
+    );
+    parts.push(successTexts.join('\n'));
+  }
+
+  // Format failed results with recovery context
+  if (failedResults.length > 0) {
+    const failedTexts = failedResults.map(r => {
+      const errorType = classifyErrorType(r.error || 'unknown');
+      const suggestion = getRecoverySuggestion(errorType, r.name);
+      return `❌ Tool "${r.name}" failed (${errorType}): ${r.error}\n   💡 Suggestion: ${suggestion}`;
+    });
+    parts.push(failedTexts.join('\n'));
+  }
 
   return {
     role: 'user',
-    content: `[Tool Results]\n${content}`,
+    content: `[Tool Results]\n${parts.join('\n\n')}`,
   };
 }
 
