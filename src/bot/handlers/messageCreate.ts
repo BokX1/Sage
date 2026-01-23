@@ -10,6 +10,7 @@ import { detectInvocation } from '../../core/invoke/wakeWord';
 import { shouldAllowInvocation } from '../../core/invoke/cooldown';
 import { fetchAttachmentText, type FetchAttachmentResult } from '../../utils/fileHandler';
 import { smartSplit } from '../../utils/messageSplitter';
+import { VoiceManager } from '../../core/voice/voiceManager';
 import {
   appendAttachmentToText,
   buildAttachmentBlockFromResult,
@@ -250,6 +251,25 @@ export async function handleMessageCreate(message: Message) {
         mentionedUserIds: mentionedUserIdsForQueries,
         invokedBy: invocation.kind,
       });
+
+      // --- Voice TTS Trigger ---
+      if (result.replyText && message.guildId && message.member?.voice?.channelId) {
+        try {
+          const voiceManager = VoiceManager.getInstance();
+          const connection = voiceManager.getConnection(message.guildId);
+          // Check if bot is connected to the SAME voice channel as the user
+          if (connection && connection.joinConfig.channelId === message.member.voice.channelId) {
+            loggerWithTrace.info({ guildId: message.guildId }, 'Triggering TTS for voice channel');
+            // Fire and forget - don't block text reply
+            void voiceManager.speak(message.guildId, result.replyText).catch((err) => {
+               loggerWithTrace.error({ err }, 'TTS Failed');
+            });
+          }
+        } catch (voiceErr) {
+          loggerWithTrace.warn({ voiceErr }, 'Voice check failed (non-fatal)');
+        }
+      }
+      // -------------------------
 
       // Send messages to Discord
       if (result.replyText) {

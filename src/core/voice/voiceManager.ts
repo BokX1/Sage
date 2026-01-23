@@ -16,6 +16,9 @@ import { Readable } from 'stream';
 import { logger } from '../utils/logger';
 import * as prism from 'prism-media';
 import { EventEmitter } from 'events';
+import { getLLMClient } from '../llm';
+import { config } from '../config/env';
+import { getGuildApiKey } from '../settings/guildSettingsRepo';
 
 export class VoiceManager extends EventEmitter {
   private static instance: VoiceManager;
@@ -32,6 +35,45 @@ export class VoiceManager extends EventEmitter {
       VoiceManager.instance = new VoiceManager();
     }
     return VoiceManager.instance;
+  }
+
+  public async speak(guildId: string, text: string): Promise<void> {
+    const connection = this.connections.get(guildId);
+    if (!connection) return;
+
+    // Resolve API Key (BYOP)
+    const guildKey = await getGuildApiKey(guildId);
+    const effectiveKey = guildKey || config.pollinationsApiKey;
+
+    if (!effectiveKey) {
+      logger.warn({ guildId }, 'TTS skipped: No API Key available for openai-audio.');
+      return;
+    }
+
+    try {
+      logger.info({ guildId, textPreview: text.slice(0, 30) }, 'Generating TTS...');
+      const llm = getLLMClient();
+      const response = await llm.chat({
+        model: 'openai-audio',
+        apiKey: effectiveKey,
+        messages: [
+          {
+            role: 'user',
+            content: `Read this text naturally: "${text}"`,
+          },
+        ],
+      });
+
+      if (response.audio) {
+        const audioData = Buffer.from(response.audio.data, 'base64');
+        const stream = Readable.from(audioData);
+        await this.playAudio(guildId, stream);
+      } else {
+        logger.warn({ guildId }, 'TTS failed: No audio content in response.');
+      }
+    } catch (error) {
+      logger.error({ error, guildId }, 'TTS generation failed');
+    }
   }
 
   public async joinChannel(channel: VoiceChannel): Promise<VoiceConnection> {
