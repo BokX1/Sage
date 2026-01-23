@@ -12,7 +12,7 @@ import { runToolCallLoop, ToolCallLoopResult } from './toolCallLoop';
 import { getChannelSummaryStore } from '../summary/channelSummaryStoreRegistry';
 import { howLongInVoiceToday, whoIsInVoice } from '../voice/voiceQueries';
 import { formatHowLongToday, formatWhoInVoice } from '../voice/voiceFormat';
-import { classifyStyle } from './styleClassifier';
+import { classifyStyle, analyzeUserStyle } from './styleClassifier';
 import { decideRoute } from '../orchestration/llmRouter';
 import { runExperts } from '../orchestration/runExperts';
 // import { governOutput } from '../orchestration/governor';
@@ -268,6 +268,12 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
   }
 
   const style = classifyStyle(userText);
+  // Analyze mimicry from conversation history (user messages only)
+  const userHistory = conversationHistory
+    .filter(m => m.role === 'user')
+    .map(m => typeof m.content === 'string' ? m.content : '');
+  const styleMimicry = analyzeUserStyle([...userHistory, userText]);
+
   const messages = buildContextMessages({
     userProfileSummary,
     replyToBotText,
@@ -280,6 +286,7 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
     intentHint: intent ?? null,
     relationshipHints: relationshipHintsText,
     style,
+    styleMimicry,
     expertPackets: expertPacketsText || null,
     invokedBy,
   });

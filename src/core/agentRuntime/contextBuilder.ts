@@ -25,6 +25,7 @@ export interface BuildContextMessagesParams {
   intentHint?: string | null;
   relationshipHints?: string | null;
   style?: StyleProfile;
+  styleMimicry?: string;
   expertPackets?: string | null;
   invokedBy?: 'mention' | 'reply' | 'wakeword' | 'autopilot' | 'command';
 }
@@ -54,6 +55,7 @@ export function buildContextMessages(params: BuildContextMessagesParams): LLMCha
     intentHint,
     relationshipHints,
     style,
+    styleMimicry,
     expertPackets,
     invokedBy,
   } = params;
@@ -83,7 +85,8 @@ If you have nothing to add, output '[SILENCE]' (without quotes).`;
 
   const baseSystemContent = composeSystemPrompt({
     userProfileSummary,
-    style
+    style,
+    styleMimicry,
   }) + autopilotInstruction;
 
   const blocks: ContextBlock[] = [

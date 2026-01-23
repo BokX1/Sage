@@ -11,6 +11,7 @@ import { StyleProfile } from './styleClassifier';
 export interface ComposeSystemPromptParams {
   userProfileSummary: string | null;
   style?: StyleProfile;
+  styleMimicry?: string;
 }
 
 /**
@@ -26,7 +27,7 @@ export interface ComposeSystemPromptParams {
  * @returns System prompt content.
  */
 export function composeSystemPrompt(params: ComposeSystemPromptParams): string {
-  const { userProfileSummary, style } = params;
+  const { userProfileSummary, style, styleMimicry } = params;
 
   const baseIdentity = `You are Sage, an autonomous, context-aware Discord agent.
 You remember conversations, track relationships, and generate personalized responses.`;
@@ -44,6 +45,10 @@ You remember conversations, track relationships, and generate personalized respo
 - Formality: ${formality}
 - Humor: ${humor}
 - Directness: ${directness}`;
+  }
+
+  if (styleMimicry) {
+    styleInstructions += `\n- Mimicry: ${styleMimicry}`;
   }
 
   const modeSection = `## Current Interaction Mode\n${styleInstructions}`;

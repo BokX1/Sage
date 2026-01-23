@@ -79,3 +79,65 @@ export function classifyStyle(text: string): StyleProfile {
 
   return { verbosity, formality, humor, directness };
 }
+
+/**
+ * Analyze a user's recent message history to generate a style mimicry instruction.
+ * 
+ * @param history - Array of recent user message strings.
+ * @returns A natural language instruction for the LLM (e.g., "Write in all lowercase, be casual.").
+ */
+export function analyzeUserStyle(history: string[]): string {
+  if (!history || history.length === 0) return '';
+
+  const total = history.length;
+  let lowercaseCount = 0;
+  let emojiCount = 0;
+  let slangCount = 0;
+  let shortCount = 0;
+  let questionCount = 0;
+  let punctuationCount = 0; // Proper punctuation usage
+
+  const emojiRegex = /[\p{Emoji_Presentation}\p{Extended_Pictographic}]/u;
+  const slangRegex = /\b(lol|lmao|idk|rn|ur|u|pls|plz|thx|ty|omg|bruh|sup|yo|nah|yea)\b/i;
+
+  for (const msg of history) {
+    if (msg === msg.toLowerCase() && msg !== msg.toUpperCase()) lowercaseCount++;
+    if (emojiRegex.test(msg)) emojiCount++;
+    if (slangRegex.test(msg)) slangCount++;
+    if (msg.split(/\s+/).length < 6) shortCount++;
+    if (msg.includes('?')) questionCount++;
+    if (/[.!?]$/.test(msg.trim())) punctuationCount++;
+  }
+
+  const traits: string[] = [];
+
+  // Casing
+  if (lowercaseCount / total > 0.6) {
+    traits.push('use all lowercase');
+  }
+
+  // Tone/Formality
+  if (slangCount / total > 0.3) {
+    traits.push('be very casual and use slang (lol, rn, ur)');
+  } else if (punctuationCount / total > 0.8 && history.some(m => m.length > 50)) {
+    traits.push('be polite and use proper punctuation');
+  } else {
+    traits.push('be conversational');
+  }
+
+  // Emojis
+  if (emojiCount / total > 0.4) {
+    traits.push('use emojis frequently 🌟');
+  } else if (emojiCount > 0) {
+    traits.push('use emojis occasionally');
+  }
+
+  // Length
+  if (shortCount / total > 0.7) {
+    traits.push('keep responses short and punchy');
+  }
+
+  if (traits.length === 0) return '';
+
+  return `Mirror the user's style: ${traits.join(', ')}.`;
+}

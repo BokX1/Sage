@@ -259,14 +259,13 @@ export async function handleMessageCreate(message: Message) {
           const connection = voiceManager.getConnection(message.guildId);
           // Check if bot is connected to the SAME voice channel as the user
           if (connection && connection.joinConfig.channelId === message.member.voice.channelId) {
-            loggerWithTrace.info({ guildId: message.guildId }, 'Triggering TTS for voice channel');
-            // Fire and forget - don't block text reply
-            void voiceManager.speak(message.guildId, result.replyText).catch((err) => {
-               loggerWithTrace.error({ err }, 'TTS Failed');
-            });
+            loggerWithTrace.info({ guildId: message.guildId }, 'Generating TTS (syncing)...');
+            // Await speech generation + start of playback BEFORE sending text
+            await voiceManager.speak(message.guildId, result.replyText);
+            loggerWithTrace.info('TTS started, sending text reply.');
           }
         } catch (voiceErr) {
-          loggerWithTrace.warn({ voiceErr }, 'Voice check failed (non-fatal)');
+          loggerWithTrace.error({ voiceErr }, 'Voice TTS failed (sending text anyway)');
         }
       }
       // -------------------------
