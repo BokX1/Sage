@@ -194,7 +194,7 @@ npm run dev
 
 **You should see:**
 
-```
+```text
 [info] Logged in as Sage#1234
 [info] Ready!
 ```

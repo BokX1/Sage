@@ -136,7 +136,7 @@ Sage uses structured logging via Pino.
 
 In `.env`:
 
-```
+```env
 LOG_LEVEL=debug   # Most verbose
 LOG_LEVEL=info    # Normal (default)
 LOG_LEVEL=warn    # Warnings only
@@ -227,7 +227,7 @@ Restarting Sage is always safe:
 
 Lower these in `.env`:
 
-```
+```env
 RING_BUFFER_MAX_MESSAGES_PER_CHANNEL=100
 CONTEXT_TRANSCRIPT_MAX_MESSAGES=10
 ```

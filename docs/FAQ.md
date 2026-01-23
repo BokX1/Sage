@@ -125,7 +125,7 @@ Sage does not listen to or transcribe voice conversations.
 
 Edit `.env` and change:
 
-```
+```env
 WAKE_WORDS=sage
 ```
 
@@ -145,7 +145,7 @@ Change `AUTOPILOT_MODE` in your `.env`:
 
 Example:
 
-```
+```env
 AUTOPILOT_MODE=manual
 ```
 

@@ -35,8 +35,8 @@ Sage uses different Pollinations models for specialized tasks:
 
 Sage uses a **Bring Your Own Pollen** model.
 
-1.  **Get a Key:** Type `/sage key login` in Discord.
-2.  **Set the Key:** Type `/sage key set <key>`.
+1. **Get a Key:** Type `/sage key login` in Discord.
+2. **Set the Key:** Type `/sage key set <key>`.
 
 This key is used for all AI operations in your server.
 

@@ -230,7 +230,7 @@ Check these factors:
 
 2. **Check traces:**
 
-   ```
+   ```text
    /sage admin trace
    ```
 

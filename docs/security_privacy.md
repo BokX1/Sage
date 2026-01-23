@@ -30,6 +30,7 @@ This document describes what Sage stores and how to control retention. The sourc
 ## What is sent to the LLM provider
 
 When generating replies, Sage sends:
+
 - The user’s message content.
 - Reply references (if the user replied to another message).
 - Recent transcript + summaries (if logging is enabled).
@@ -41,6 +42,7 @@ Sage does **not** log API keys or tokens. Keep `.env` out of version control.
 ## Deletion / reset
 
 There is no built-in purge command. To delete data:
+
 1. Stop the bot.
 2. Delete rows from the relevant tables (or drop the schema) using Postgres tools.
 3. Restart the bot.

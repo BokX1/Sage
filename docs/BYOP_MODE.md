@@ -31,7 +31,7 @@ graph LR
 
 Type this command in your server:
 
-```
+```text
 /sage key login
 ```
 
@@ -41,7 +41,7 @@ Click the link to log in to Pollinations.ai. You'll see your API key in the brow
 
 Copy your key and run:
 
-```
+```text
 /sage key set <your_key>
 ```
 

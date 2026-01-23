@@ -121,7 +121,7 @@ Sage understands **who you are** to each other.
 
 ### Relationship Tiers
 
-```
+```text
 👑 Best Friend (0.9+)
    └─ Very personalized, remembers everything
    
@@ -204,7 +204,7 @@ flowchart LR
 
 ### Error Recovery Example
 
-```
+```text
 User: "Summarize the #dev channel"
 
 Attempt 1: Query channel summary
@@ -227,7 +227,7 @@ Admins can see exactly how Sage thinks.
 
 ### Trace Viewing
 
-```
+```text
 /sage admin trace
 ```
 

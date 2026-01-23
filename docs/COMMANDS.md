@@ -37,7 +37,7 @@ Available to all users.
 
 Check if Sage is online and responding.
 
-```
+```text
 /ping
 ```
 
@@ -49,7 +49,7 @@ Check if Sage is online and responding.
 
 View relationship information and social tiers.
 
-```
+```text
 /sage whoiswho [user]
 ```
 
@@ -73,7 +73,7 @@ Bring-Your-Own-Pollen — manage your API key for unlimited usage.
 
 Get a link to generate your Pollinations API key.
 
-```
+```text
 /sage key login
 ```
 
@@ -85,7 +85,7 @@ Get a link to generate your Pollinations API key.
 
 Set the server-wide Pollinations API key.
 
-```
+```text
 /sage key set <api_key>
 ```
 
@@ -102,7 +102,7 @@ Set the server-wide Pollinations API key.
 
 Check the current server's API key status.
 
-```
+```text
 /sage key check
 ```
 
@@ -118,7 +118,7 @@ Check the current server's API key status.
 
 Remove the server-wide API key.
 
-```
+```text
 /sage key clear
 ```
 
@@ -135,7 +135,7 @@ Restricted to users with admin permissions. Configure via `ADMIN_USER_IDS` or `A
 
 View bot statistics and performance metrics.
 
-```
+```text
 /sage admin stats
 ```
 
@@ -152,7 +152,7 @@ View bot statistics and performance metrics.
 
 Visualize the relationship graph.
 
-```
+```text
 /sage admin relationship_graph [user]
 ```
 
@@ -168,7 +168,7 @@ Visualize the relationship graph.
 
 View recent agent processing traces for debugging.
 
-```
+```text
 /sage admin trace [trace_id] [limit]
 ```
 
@@ -193,7 +193,7 @@ View recent agent processing traces for debugging.
 
 Manually trigger a channel summary.
 
-```
+```text
 /sage admin summarize [channel]
 ```
 
@@ -211,7 +211,7 @@ Manually trigger a channel summary.
 
 Manually set relationship level between two users.
 
-```
+```text
 /sage relationship set <user_a> <user_b> <level>
 ```
 
@@ -242,7 +242,7 @@ Manually set relationship level between two users.
 
 Test LLM connectivity (admin/debug only).
 
-```
+```text
 /llm_ping
 ```
 
