@@ -15,9 +15,9 @@ prisma/migrations/
 /powershell.exe
 !.env.example
 
-# Configs (Kept locally but removed from repository)
-tsconfig.json
-vitest.config.mjs
-docker-compose.yml
-.prettierrc
-scripts/
+# Configs (Kept locally but removed from repository root)
+/tsconfig.json
+/vitest.config.mjs
+/docker-compose.yml
+/.prettierrc
+/scripts/
