@@ -2,7 +2,7 @@
   "name": "sage",
   "version": "1.0.0",
   "description": "An intelligent Discord bot with persistent memory, powered by Pollinations.ai. Remembers conversations, understands community relationships, and delivers personalized AI responses.",
-  "main": "index.js",
+  "main": "dist/index.js",
   "keywords": [
     "discord",
     "bot",
@@ -19,12 +19,14 @@
     "start": "node dist/index.js",
     "lint": "eslint src",
     "test": "vitest run -c config/ci/vitest.config.mjs",
+    "release:check": "npm run lint && npm run build && npm run test && npm pack",
     "setup": "ts-node src/scripts/onboard.ts",
     "onboard": "ts-node src/scripts/onboard.ts",
     "db:migrate": "prisma migrate dev",
     "db:studio": "prisma studio",
     "doctor": "ts-node src/scripts/doctor.ts",
     "cert": "ts-node src/scripts/cert.ts",
+    "prepack": "npm run build",
     "prepare": "husky install"
   },
   "author": "",

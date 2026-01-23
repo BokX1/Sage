@@ -15,9 +15,34 @@ This project follows **Semantic Versioning (SemVer)**: `MAJOR.MINOR.PATCH`.
    - `npm run lint`
    - `npm run build`
    - `npm run test`
+   - `npm pack`
 3. **Review database migrations** (if applicable) and document required steps.
 4. **Confirm config changes** and update documentation if new env vars are added.
 5. **Tag the release** and publish artifacts if applicable.
+
+## Run locally like CI
+
+```bash
+npm ci
+NODE_ENV=test DISCORD_TOKEN=test-token DISCORD_APP_ID=test-app-id DATABASE_URL=file:./test.db npm run release:check
+```
+
+### Windows (PowerShell)
+
+```powershell
+npm ci
+$env:NODE_ENV="test"
+$env:DISCORD_TOKEN="test-token"
+$env:DISCORD_APP_ID="test-app-id"
+$env:DATABASE_URL="file:./test.db"
+npm run release:check
+```
+
+## Release readiness check (recommended)
+
+```bash
+npm run release:check
+```
 
 ## PR review expectations
 

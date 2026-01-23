@@ -19,13 +19,13 @@ const envSchema = z.object({
 
   // Bot Behavior
   LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
-  RATE_LIMIT_MAX: z.coerce.number().default(5),
-  RATE_LIMIT_WINDOW_SEC: z.coerce.number().default(10),
+  RATE_LIMIT_MAX: z.coerce.number().int().positive().default(5),
+  RATE_LIMIT_WINDOW_SEC: z.coerce.number().int().positive().default(10),
   AUTOPILOT_MODE: z.enum(['manual', 'reserved', 'talkative']).default('manual'),
   WAKE_WORDS: z.string().default('sage'),
   WAKE_WORD_PREFIXES: z.string().default(''),
-  WAKEWORD_COOLDOWN_SEC: z.coerce.number().default(20),
-  WAKEWORD_MAX_RESPONSES_PER_MIN_PER_CHANNEL: z.coerce.number().default(6),
+  WAKEWORD_COOLDOWN_SEC: z.coerce.number().int().min(0).default(20),
+  WAKEWORD_MAX_RESPONSES_PER_MIN_PER_CHANNEL: z.coerce.number().int().min(0).default(6),
 
   // Event Ingestion & Proactive Behavior (D1)
   LOGGING_ENABLED: z
