@@ -237,30 +237,6 @@ curl -L "https://gen.pollinations.ai/image/a%20cat%20wearing%20sunglasses?model=
 
 ---
 
-## 🧩 Applying to be featured on pollinations.ai/apps
-
-Pollinations showcases apps at:
-- `https://pollinations.ai/apps`
-
-A common pattern for submissions is via the Pollinations GitHub repo as an **“App Submission”** issue, including:
-- App name + description
-- App URL
-- GitHub repo URL
-- Category + language
-- Discord username/contact
-
-Example submission issue format:
-
-### What to highlight about Sage (reviewer-friendly)
-If you’re positioning Sage for feature consideration, the strongest “Pollinations-native” points are:
-
-- **OpenAI-compatible usage** (`/v1/chat/completions`) for text + vision
-- **Direct image endpoint** usage for fast image generation + editing
-- **BYOP server keys** (admins can enable higher limits for communities)
-- **Voice/TTS** via `openai-audio` (key-backed, multi-modal)
-
----
-
 ## 🧯 Troubleshooting
 
 ### “Invalid API key” on set
