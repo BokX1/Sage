@@ -94,6 +94,7 @@ const envSchema = z.object({
   // LLM - Pollinations (Default)
   LLM_PROVIDER: z.enum(['pollinations']).default('pollinations'),
   POLLINATIONS_BASE_URL: z.string().default('https://gen.pollinations.ai/v1'),
+  POLLINATIONS_IMAGE_BASE_URL: z.string().default('https://gen.pollinations.ai'),
   POLLINATIONS_MODEL: z.string().default('gemini'),
   POLLINATIONS_API_KEY: z.string().optional(),
   LLM_MODEL_LIMITS_JSON: z.string().default(''),

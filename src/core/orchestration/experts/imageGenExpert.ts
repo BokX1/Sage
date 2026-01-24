@@ -2,6 +2,7 @@ import { ExpertPacket } from './types';
 import { LLMMessageContent, LLMChatMessage } from '../../llm/types';
 import { logger } from '../../../utils/logger';
 import { getLLMClient } from '../../llm';
+import { config } from '../../../config';
 
 export interface ImageGenParams {
     userText: string;
@@ -25,6 +26,126 @@ Instructions:
 - **Strict Intent**: Follow the user's intent 1:1. Do not censor or hallucinate constraints. If the user asks for specific content, ensure it is in the prompt.
 - **Image Handling**: If an image is provided, use it as the base reference. If no image is provided, interpret the text request to the best of your ability.
 - **Output**: Output ONLY the final English prompt text. No conversational filler.`;
+
+const DEFAULT_IMAGE_GEN_TIMEOUT_MS = 180_000;
+const IMAGE_ROUTE = '/image/{prompt}';
+
+export function normalizeImageBaseUrl(baseUrl: string): string {
+    let normalized = baseUrl.trim();
+    if (normalized.endsWith('/')) {
+        normalized = normalized.slice(0, -1);
+    }
+    if (normalized.endsWith('/v1')) {
+        normalized = normalized.slice(0, -3);
+    }
+    return normalized;
+}
+
+export function buildImageGenUrl(params: {
+    baseUrl: string;
+    prompt: string;
+    model: string;
+    seed: number;
+    attachmentUrl?: string;
+    apiKey?: string;
+    includeApiKey?: boolean;
+    width?: number;
+    height?: number;
+}): string {
+    const {
+        baseUrl,
+        prompt,
+        model,
+        seed,
+        attachmentUrl,
+        apiKey,
+        includeApiKey = true,
+        width,
+        height,
+    } = params;
+    const normalizedBaseUrl = normalizeImageBaseUrl(baseUrl);
+    const encodedPrompt = encodeURIComponent(prompt);
+    const url = new URL(`${normalizedBaseUrl}/image/${encodedPrompt}`);
+    url.searchParams.set('model', model);
+    url.searchParams.set('nologo', 'true');
+    url.searchParams.set('seed', seed.toString());
+
+    if (typeof width === 'number') {
+        url.searchParams.set('width', width.toString());
+    }
+
+    if (typeof height === 'number') {
+        url.searchParams.set('height', height.toString());
+    }
+
+    if (attachmentUrl) {
+        url.searchParams.set('image', attachmentUrl);
+    }
+
+    if (includeApiKey && apiKey) {
+        url.searchParams.set('key', apiKey);
+    }
+
+    return url.toString();
+}
+
+export function getImageExtensionFromContentType(contentType?: string | null): string | null {
+    if (!contentType) return null;
+    const normalized = contentType.split(';')[0]?.trim().toLowerCase();
+    if (!normalized || !normalized.startsWith('image/')) return null;
+    switch (normalized) {
+        case 'image/jpeg':
+        case 'image/jpg':
+            return 'jpg';
+        case 'image/png':
+            return 'png';
+        case 'image/webp':
+            return 'webp';
+        case 'image/gif':
+            return 'gif';
+        case 'image/bmp':
+            return 'bmp';
+        case 'image/svg+xml':
+            return 'svg';
+        default:
+            return null;
+    }
+}
+
+async function safeReadResponseText(response: Response): Promise<string | null> {
+    const contentType = response.headers.get('content-type')?.toLowerCase() ?? '';
+    const isTextual = contentType.includes('text') || contentType.includes('json');
+    if (!isTextual) return null;
+    try {
+        const text = await response.text();
+        const trimmed = text.trim();
+        if (!trimmed) return null;
+        const maxLength = 500;
+        return trimmed.length > maxLength ? `${trimmed.slice(0, maxLength)}…` : trimmed;
+    } catch {
+        return null;
+    }
+}
+
+export async function fetchWithTimeout(
+    url: string,
+    timeoutMs: number,
+    fetcher: typeof fetch = fetch
+): Promise<Response> {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+        return await fetcher(url, { signal: controller.signal });
+    } finally {
+        clearTimeout(timer);
+    }
+}
+
+function buildSafeFilename(prompt: string, seed: number, extension: string): string {
+    const safePrompt = prompt.slice(0, 20).replace(/[^a-z0-9]/gi, '_');
+    return `sage_${safePrompt}_${seed}.${extension}`;
+}
 
 /**
  * Helper to extract text from content
@@ -96,7 +217,10 @@ async function refinePrompt(
         });
 
         const refined = response.content.trim();
-        logger.debug({ original: userText, replyContext: !!replyContext, refined }, '[ImageGen] Prompt refined');
+        logger.debug(
+            { replyContext: !!replyContext, originalLength: userText.length, refinedLength: refined.length },
+            '[ImageGen] Prompt refined'
+        );
         return refined;
     } catch (error) {
         logger.warn({ error }, '[ImageGen] Refiner failed, falling back to raw prompt');
@@ -139,36 +263,86 @@ export async function runImageGenExpert(params: ImageGenParams): Promise<ExpertP
         const prompt = await refinePrompt(userText, conversationHistory, apiKey, attachmentUrl, replyText);
 
         // 3. Construct URL
+        const imageBaseUrl = normalizeImageBaseUrl(
+            config.POLLINATIONS_IMAGE_BASE_URL || config.POLLINATIONS_BASE_URL
+        );
         const model = 'klein-large';
         const seed = Math.floor(Math.random() * 1_000_000);
-        const encodedPrompt = encodeURIComponent(prompt);
+        const url = buildImageGenUrl({
+            baseUrl: imageBaseUrl,
+            prompt,
+            model,
+            seed,
+            attachmentUrl,
+            apiKey,
+            includeApiKey: true
+        });
+        const logUrl = buildImageGenUrl({
+            baseUrl: imageBaseUrl,
+            prompt,
+            model,
+            seed,
+            attachmentUrl,
+            includeApiKey: false
+        });
 
-        // NEW Unified Endpoint: https://gen.pollinations.ai/image/{prompt}
-        let url = `https://gen.pollinations.ai/image/${encodedPrompt}?model=${model}&nologo=true&seed=${seed}`;
-
-        if (attachmentUrl) {
-            url += `&image=${encodeURIComponent(attachmentUrl)}`;
-        }
-
-        if (apiKey) {
-            url += `&key=${encodeURIComponent(apiKey)}`;
-        }
-
-        logger.info({ prompt, hasAttachment: !!attachmentUrl, url }, '[ImageGen] Fetching image...');
+        logger.info(
+            {
+                route: IMAGE_ROUTE,
+                model,
+                seed,
+                hasAttachment: !!attachmentUrl,
+                imageBaseUrl,
+                promptLength: prompt.length,
+                timeoutMs: DEFAULT_IMAGE_GEN_TIMEOUT_MS
+            },
+            '[ImageGen] Fetching image...'
+        );
 
         // 4. Fetch Image Bytes
-        const response = await fetch(url);
-        if (!response.ok) {
-            const errText = await response.text().catch(() => 'Unknown error');
-            throw new Error(`Pollinations API error: ${response.status} ${response.statusText} - ${errText}`);
+        let response: Response;
+        try {
+            response = await fetchWithTimeout(url, DEFAULT_IMAGE_GEN_TIMEOUT_MS);
+        } catch (error) {
+            if (error instanceof Error && error.name === 'AbortError') {
+                throw new Error(
+                    `Pollinations image request timed out after ${DEFAULT_IMAGE_GEN_TIMEOUT_MS}ms. Please try again.`
+                );
+            }
+            throw new Error(
+                `Pollinations image request failed. Check network connectivity and try again. (${String(
+                    error instanceof Error ? error.message : error
+                )})`
+            );
         }
 
-        const arrayBuffer = await response.arrayBuffer();
-        const buffer = Buffer.from(arrayBuffer);
+        if (!response.ok) {
+            const errText = await safeReadResponseText(response);
+            const details = errText ? ` Response: ${errText}` : '';
+            throw new Error(
+                `Pollinations image request failed with status ${response.status} ${response.statusText}.${details}`
+            );
+        }
 
-        // safe filename
-        const safePrompt = prompt.slice(0, 20).replace(/[^a-z0-9]/gi, '_');
-        const filename = `sage_${safePrompt}_${seed}.jpg`;
+        let arrayBuffer: ArrayBuffer;
+        try {
+            arrayBuffer = await response.arrayBuffer();
+        } catch (error) {
+            throw new Error(
+                `Pollinations image response could not be read. Please retry. (${String(
+                    error instanceof Error ? error.message : error
+                )})`
+            );
+        }
+        if (!arrayBuffer || arrayBuffer.byteLength === 0) {
+            throw new Error('Pollinations image response was empty. Please retry.');
+        }
+
+        const buffer = Buffer.from(arrayBuffer);
+        const contentType = response.headers.get('content-type');
+        const extension = getImageExtensionFromContentType(contentType) ?? 'bin';
+        const filename = buildSafeFilename(prompt, seed, extension);
+        const mimetype = contentType?.split(';')[0]?.trim() || 'application/octet-stream';
 
         return {
             name: 'ImageGenerator',
@@ -181,7 +355,7 @@ NOT: "{ action: ... }"`,
             binary: {
                 data: buffer,
                 filename,
-                mimetype: 'image/jpeg'
+                mimetype
             },
             // Do not put binary in json to avoid clogging traces
             json: {
@@ -190,12 +364,12 @@ NOT: "{ action: ... }"`,
                 model,
                 seed,
                 hasAttachment: !!attachmentUrl,
-                url
+                url: logUrl
             }
         };
 
     } catch (error) {
-        logger.error({ error, userText }, '[ImageGen] Failed to generate image');
+        logger.error({ error }, '[ImageGen] Failed to generate image');
         return {
             name: 'ImageGenerator',
             content: `[ImageGenerator] Failed to generate image: ${error instanceof Error ? error.message : String(error)}`,

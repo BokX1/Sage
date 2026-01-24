@@ -38,6 +38,7 @@ export const config = {
     newConfig.WAKEWORD_MAX_RESPONSES_PER_MIN_PER_CHANNEL.toString(),
   llmProvider: newConfig.LLM_PROVIDER,
   pollinationsBaseUrl: newConfig.POLLINATIONS_BASE_URL,
+  pollinationsImageBaseUrl: newConfig.POLLINATIONS_IMAGE_BASE_URL,
   pollinationsApiKey: newConfig.POLLINATIONS_API_KEY,
   pollinationsModel: newConfig.POLLINATIONS_MODEL,
   llmModelLimitsJson: newConfig.LLM_MODEL_LIMITS_JSON,
