@@ -25,7 +25,7 @@ If you’re not sure, start with **Option 1**.
 
 ### 1) Invite Sage
 
-[**Invite Sage to your server**](https://discord.com/api/oauth2/authorize?client_id=1211723232808570971&permissions=414464731200&scope=bot%20applications.commands)
+[**Invite Sage to your server**](https://discord.com/oauth2/authorize?client_id=1462117382398017667&scope=bot%20applications.commands&permissions=8)
 
 > [!TIP]
 > Prefer least-privilege permissions? You can generate a custom invite URL with only the permissions you want (see [Getting Started → Invite Bot](GETTING_STARTED.md#step-6-invite-sage-to-your-server)).
