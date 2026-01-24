@@ -35,6 +35,8 @@
 
 ---
 
+<a id="what-is-sage"></a>
+
 ## 🎯 What is Sage?
 
 Sage is a **fully agentic Discord companion** that goes beyond simple chat commands. Unlike traditional bots, Sage is designed to be a friendly member of your community who **listens and evolves alongside you**:
@@ -48,6 +50,8 @@ Sage is a **fully agentic Discord companion** that goes beyond simple chat comma
 **Perfect for:** Coding communities • Gaming groups • Research teams • Any Discord that wants a bot that "gets it."
 
 ---
+
+<a id="high-level-architecture"></a>
 
 ## 🏛️ High-Level Architecture
 
@@ -90,6 +94,8 @@ flowchart LR
 
 ---
 
+<a id="features"></a>
+
 ## ✨ Features
 
 | Feature | Description |
@@ -104,6 +110,8 @@ flowchart LR
 | ⚡ **Powered by Pollinations.ai** | Fast, high-throughput multi-model AI access |
 
 ---
+
+<a id="getting-started"></a>
 
 ## 🚀 Getting Started
 
@@ -126,6 +134,8 @@ flowchart LR
 Follow **[📖 Getting Started](docs/GETTING_STARTED.md)** for a full walkthrough (Node.js, Docker/Postgres, onboarding wizard, and invite generation).
 
 ---
+
+<a id="developer-quick-start"></a>
 
 ## 💻 Developer Quick Start
 
@@ -151,6 +161,8 @@ When Sage starts, you should see:
 
 ---
 
+<a id="configuration"></a>
+
 ## 🛠️ Configuration
 
 Sage is optimized for community interaction out of the box.
@@ -165,6 +177,8 @@ TRACE_ENABLED=true         # enable observability for admins
 See [Configuration Reference](docs/CONFIGURATION.md) for full details.
 
 ---
+
+<a id="documentation"></a>
 
 ## 📚 Documentation
 
@@ -184,6 +198,8 @@ See [Configuration Reference](docs/CONFIGURATION.md) for full details.
 | [📋 Operations](docs/operations/runbook.md) | Deployment guide |
 
 ---
+
+<a id="why-choose-sage"></a>
 
 ## 💚 Why Choose Sage?
 
