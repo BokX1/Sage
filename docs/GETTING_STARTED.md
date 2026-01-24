@@ -21,13 +21,18 @@ That's it! We'll install everything else together.
 ## 🗺️ Setup at a Glance
 
 ```mermaid
-graph TD
-    S1[1. Install Software] --> S2[2. Create Bot]
-    S2 --> S3[3. Download Sage]
-    S3 --> S4[4. Start Database]
-    S4 --> S5[5. Start Sage]
-    S5 --> S6[6. Invite Bot]
-    S6 --> S7[7. Activate Key]
+graph LR
+    %% Styling
+    classDef step fill:#e1f5fe,stroke:#01579b,stroke-width:2px,color:black
+    classDef start fill:#dcedc8,stroke:#33691e,stroke-width:2px,color:black
+    classDef endNode fill:#ffccbc,stroke:#bf360c,stroke-width:2px,color:black
+
+    S1[1. Install Software]:::start --> S2[2. Create Bot]:::step
+    S2 --> S3[3. Download Sage]:::step
+    S3 --> S4[4. Start Database]:::step
+    S4 --> S5[5. Start Sage]:::step
+    S5 --> S6[6. Invite Bot]:::step
+    S6 --> S7[7. Activate Key]:::endNode
 ```
 
 ## Step 1: Install Required Software

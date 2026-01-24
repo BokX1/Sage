@@ -26,12 +26,17 @@ This validates:
 
 ```mermaid
 flowchart TD
-    A[Bot crashes on startup] --> B{Error message?}
-    B -->|DISCORD_TOKEN is required| C[Set DISCORD_TOKEN in .env]
-    B -->|Cannot connect to database| D[Check DATABASE_URL]
-    B -->|P1001: Connection refused| E[Start PostgreSQL]
-    B -->|Module not found| F[Run npm install]
-    C --> G[Restart bot]
+    %% Styling
+    classDef error fill:#ffcdd2,stroke:#c62828,color:black
+    classDef fix fill:#c8e6c9,stroke:#2e7d32,color:black
+    classDef check fill:#e1f5fe,stroke:#0277bd,color:black
+
+    A[Bot crashes on startup]:::error --> B{Error message?}:::check
+    B -->|DISCORD_TOKEN is required| C[Set DISCORD_TOKEN in .env]:::fix
+    B -->|Cannot connect to database| D[Check DATABASE_URL]:::fix
+    B -->|P1001: Connection refused| E[Start PostgreSQL]:::fix
+    B -->|Module not found| F[Run npm install]:::fix
+    C --> G[Restart bot]:::check
     D --> G
     E --> G
     F --> G

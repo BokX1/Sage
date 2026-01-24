@@ -6,61 +6,35 @@ Sage uses **PostgreSQL** (via Prisma) to persist its long-term memory, social re
 
 ```mermaid
 erDiagram
-    UserProfile ||--o{ RelationshipEdge : "User A or B"
-    UserProfile ||--o{ VoiceSession : "Participates"
-    UserProfile ||--o{ AgentTrace : "Initiator"
-    
-    GuildSettings ||--o{ ChannelMessage : "Contains"
-    GuildSettings ||--o{ ChannelSummary : "Contains"
-    GuildSettings ||--o{ RelationshipEdge : "Scoping"
-    GuildSettings ||--o{ VoiceSession : "Scoping"
-    
-    ChannelMessage ||--o{ ChannelSummary : "Summarized into"
-    
+    %% Entities
     UserProfile {
-        string userId PK
-        string summary
-        string pollinationsApiKey
-        datetime updatedAt
-    }
-
-    GuildSettings {
-        string guildId PK
-        string pollinationsApiKey
-        datetime updatedAt
-    }
-
-    ChannelMessage {
-        string messageId PK
-        string channelId
-        string authorId
-        string content
-        datetime timestamp
-    }
-
-    ChannelSummary {
         string id PK
-        string channelId
-        string kind
-        string summaryText
-        json topics
+        json facts
+        string persona
     }
-
+    
+    VoiceSession {
+        string id PK
+        datetime joinedAt
+        datetime leftAt
+    }
+    
     RelationshipEdge {
-        string id PK
-        string userA
-        string userB
+        string sourceId FK
+        string targetId FK
         float weight
-        float confidence
     }
 
-    AgentTrace {
-        string id PK
-        string routeKind
-        string reasoningText
-        string replyText
-        datetime createdAt
-    }
+    UserProfile ||--o{ VoiceSession : "Participates"
+    UserProfile ||--o{ Message : "Sends"
+    
+    GuildSettings ||--o{ UserProfile : "Scoped to"
+    GuildSettings ||--o{ ChannelSummary : "Contains"
+    
+    RelationshipEdge }o--|| UserProfile : "Source"
+    RelationshipEdge }o--|| UserProfile : "Target"
+    
+    AgentTrace ||--o{ ToolCall : "Executes"
 ```
 
 ## Core Tables

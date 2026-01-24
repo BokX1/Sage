@@ -6,18 +6,24 @@ This document explains how Sage routes incoming messages, builds context, and ex
 
 ```mermaid
 graph TD
-    A[Discord Message] --> B[ingestEvent]
-    B --> C[generateChatReply]
-    C --> D{Voice Fast-Path?}
-    D -- Yes --> E[Voice Statistics]
-    D -- No --> F[LLM Router]
-    F --> G[Experts Enrichment]
-    G --> H[Context Builder]
-    H --> I[LLM Call]
-    I --> J[Agentic Tool Loop]
-    J --> K[Trace End / Response]
-    K --> L[Async: Profile Update]
-    K --> M[Async: Channel Summary]
+    %% Styling
+    classDef discord fill:#5865F2,stroke:#fff,color:white
+    classDef logic fill:#e0f7fa,stroke:#006064,color:black
+    classDef expert fill:#f3e5f5,stroke:#4a148c,color:black
+    classDef output fill:#a5d6a7,stroke:#1b5e20,color:black
+
+    A[Discord Message]:::discord --> B[ingestEvent]:::logic
+    B --> C[generateChatReply]:::logic
+    C --> D{Voice Fast-Path?}:::logic
+    D -- Yes --> E[Voice Statistics]:::output
+    D -- No --> F[LLM Router]:::logic
+    F --> G[Experts Enrichment]:::expert
+    G --> H[Context Builder]:::logic
+    H --> I[LLM Call]:::logic
+    I --> J[Agentic Tool Loop]:::logic
+    J --> K[Trace End / Response]:::output
+    K --> L[Async: Profile Update]:::expert
+    K --> M[Async: Channel Summary]:::expert
 ```
 
 ## 2) Intelligent LLM Router

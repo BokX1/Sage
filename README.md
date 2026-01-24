@@ -40,24 +40,32 @@ Sage is a **Fully Agentic Discord companion** that goes beyond simple chat comma
 
 ```mermaid
 graph TD
-    User((User)) -- "Message/Reply/Mention" --> Sage[Sage Bot]
-    Sage --> Router{LLM Router}
-    Router -- "Summarize" --> Summarizer[Summarizer Expert]
-    Router -- "Social" --> Social[Social Graph Expert]
-    Router -- "Voice" --> Voice[Voice Expert]
-    Router -- "General/Memory" --> Memory[Memory Expert]
+    %% Styling
+    classDef user fill:#f96,stroke:#333,stroke-width:2px,color:black
+    classDef bot fill:#9d9,stroke:#333,stroke-width:2px,color:black
+    classDef router fill:#b9f,stroke:#333,stroke-width:2px,color:black
+    classDef expert fill:#fff,stroke:#333,stroke-width:1px,stroke-dasharray: 5 5,color:black
+    classDef context fill:#ff9,stroke:#333,stroke-width:2px,color:black
+
+    User((User)):::user -- "Message/Reply/Mention" --> Sage[Sage Bot]:::bot
+    Sage --> Router{LLM Router}:::router
     
-    Social --> Context[Context Builder]
+    Router -- "Summarize" --> Summarizer[Summarizer Expert]:::expert
+    Router -- "Social" --> Social[Social Graph Expert]:::expert
+    Router -- "Voice" --> Voice[Voice Expert]:::expert
+    Router -- "General/Memory" --> Memory[Memory Expert]:::expert
+    
+    Social --> Context[Context Builder]:::context
     Voice --> Context
     Memory --> Context
     Summarizer --> Context
     
-    Context --> LLM[LLM Brain]
+    Context --> LLM[LLM Brain]:::router
     LLM -- "Tools/Reply" --> Sage
     
     Sage -- "Chat Response" --> User
-    Sage -- "Voice Trigger" --> TTS[TTS Generator]
-    TTS -- "Audio Output" --> VC[Voice Channel]
+    Sage -- "Voice Trigger" --> TTS[TTS Generator]:::bot
+    TTS -- "Audio Output" --> VC[Voice Channel]:::user
     VC -.-> User
 ```
 

@@ -79,6 +79,7 @@ mindmap
 
 ```mermaid
 sequenceDiagram
+    autonumber
     participant User
     participant Sage
     participant Memory
@@ -91,11 +92,13 @@ sequenceDiagram
     Sage->>Sage: Generate response with full context
     Sage->>User: Personalized reply
     
-    Note over Sage,Profile: Every 5 messages...
-    Sage->>Profile: Update user profile
-    Profile->>Profile: Consolidate facts
-    Profile->>Profile: Detect intent patterns
-    Profile-->>Memory: Save updated profile
+    rect rgb(45, 45, 45)
+        Note over Sage,Profile: Asynchronous Learning Loop (Every 5 messages)
+        Sage->>Profile: Update user profile
+        Profile->>Profile: Consolidate facts
+        Profile->>Profile: Detect intent patterns
+        Profile-->>Memory: Save updated profile
+    end
 ```
 
 ### What Sage Remembers
@@ -170,17 +173,18 @@ Sage analyzes your conversation style and intent to dynamically select a voice p
 
 ```mermaid
 sequenceDiagram
-    participant User
-    participant ChatBrain
-    participant TTS
-    participant VoiceChannel
+    autonumber
+    actor User
+    participant ChatBrain as 🧠 Chat Brain
+    participant TTS as 🗣️ TTS Agent
+    participant VoiceChannel as 🔊 Voice Channel
     
     User->>ChatBrain: "Tell me a scary story" (Text)
     ChatBrain->>ChatBrain: Selects 'Onyx' Voice (Narrator)
     ChatBrain->>ChatBrain: Generates Story Script
     ChatBrain->>TTS: "Read this with a scary tone"
     
-    par Sync
+    par Sync Response
         ChatBrain->>User: Sends Text Reply
         TTS->>VoiceChannel: Plays Audio
     end
@@ -194,22 +198,29 @@ Sage uses an **LLM-powered router** to understand questions.
 
 ```mermaid
 flowchart TD
-    M[User Message] --> R{LLM Router}
+    %% Styling
+    classDef user fill:#f96,stroke:#333,stroke-width:2px,color:black
+    classDef router fill:#b9f,stroke:#333,stroke-width:2px,color:black
+    classDef expert fill:#fff,stroke:#333,stroke-width:1px,stroke-dasharray: 5 5,color:black
+    classDef context fill:#ff9,stroke:#333,stroke-width:2px,color:black
+    classDef llm fill:#9d9,stroke:#333,stroke-width:2px,color:black
+
+    M[User Message]:::user --> R{LLM Router}:::router
     
-    R -->|Summarize request| S[📊 Summarizer Expert]
-    R -->|Social/relationship query| G[👥 Social Graph Expert]  
-    R -->|Voice activity question| V[🎤 Voice Analytics Expert]
-    R -->|Memory/profile query| P[🧠 Memory Expert]
-    R -->|General conversation| C[💬 Chat Engine]
+    R -->|Summarize request| S[📊 Summarizer Expert]:::expert
+    R -->|Social/relationship query| G[👥 Social Graph Expert]:::expert
+    R -->|Voice activity question| V[🎤 Voice Analytics Expert]:::expert
+    R -->|Memory/profile query| P[🧠 Memory Expert]:::expert
+    R -->|General conversation| C[💬 Chat Engine]:::expert
     
-    S --> CTX[Context Builder]
+    S --> CTX[Context Builder]:::context
     G --> CTX
     V --> CTX
     P --> CTX
     C --> CTX
     
-    CTX --> LLM[🤖 LLM Brain]
-    LLM --> Response[Reply to User]
+    CTX --> LLM[🤖 LLM Brain]:::llm
+    LLM --> Response[Reply to User]:::user
 ```
 
 ### Why This Matters
@@ -228,15 +239,19 @@ Sage doesn't just fail — it **adapts**.
 
 ```mermaid
 flowchart LR
-    A[Request] --> B[Attempt Action]
+    %% Styling
+    classDef start fill:#f9f9f9,stroke:#333,stroke-width:2px,color:black
+    classDef action fill:#bbdefb,stroke:#1565c0,stroke-width:2px,color:black
+    classDef success fill:#c8e6c9,stroke:#2e7d32,stroke-width:2px,color:black
+    classDef failure fill:#ffcdd2,stroke:#c62828,stroke-width:2px,color:black
+    classDef retry fill:#fff9c4,stroke:#fbc02d,stroke-width:2px,color:black
+
+    A[Request]:::start --> B[Attempt Action]:::action
     B --> C{Success?}
-    C -->|Yes| D[Return Result]
-    C -->|No| E[Analyze Error]
-    E --> F[Try Alternative]
+    C -->|Yes| D[Return Result]:::success
+    C -->|No| E[Analyze Error]:::failure
+    E --> F[Try Alternative]:::retry
     F --> C
-    
-    style E fill:#ff6b6b
-    style F fill:#51cf66
 ```
 
 ### Error Recovery Example
@@ -281,33 +296,40 @@ Shows:
 
 ```mermaid
 graph TB
+    %% Styling
+    classDef input fill:#e1f5fe,stroke:#01579b,color:black
+    classDef awareness fill:#e0f2f1,stroke:#00695c,color:black
+    classDef orch fill:#f3e5f5,stroke:#7b1fa2,color:black
+    classDef runtime fill:#fff3e0,stroke:#e65100,color:black
+    classDef db fill:#eceff1,stroke:#37474f,color:black
+
     subgraph Input Layer
-        D[Discord Events]
-        D --> IH[Event Handlers]
+        D[Discord Events]:::input
+        D --> IH[Event Handlers]:::input
     end
     
     subgraph Awareness Layer
-        IH --> RB[Ring Buffer]
-        IH --> MS[Message Store]
-        RB --> TB[Transcript Builder]
+        IH --> RB[Ring Buffer]:::awareness
+        IH --> MS[Message Store]:::awareness
+        RB --> TB[Transcript Builder]:::awareness
     end
     
     subgraph Orchestration Layer
-        TB --> RT[LLM Router]
-        RT --> EX[Expert Pool]
-        EX --> |Social| SG[Social Graph]
-        EX --> |Voice| VA[Voice Analytics]
-        EX --> |Summary| SM[Summarizer]
-        EX --> |Memory| MM[Memory]
+        TB --> RT[LLM Router]:::orch
+        RT --> EX[Expert Pool]:::orch
+        EX --> |Social| SG[Social Graph]:::orch
+        EX --> |Voice| VA[Voice Analytics]:::orch
+        EX --> |Summary| SM[Summarizer]:::orch
+        EX --> |Memory| MM[Memory]:::orch
     end
     
     subgraph Agent Runtime
-        EX --> CB[Context Builder]
-        CB --> BG[Budget Manager]
-        BG --> PC[Prompt Composer]
-        PC --> LLM[LLM Client]
-        LLM --> TL[Tool Loop]
-        TL --> |Execute| TR[Tool Registry]
+        EX --> CB[Context Builder]:::runtime
+        CB --> BG[Budget Manager]:::runtime
+        BG --> PC[Prompt Composer]:::runtime
+        PC --> LLM[LLM Client]:::runtime
+        LLM --> TL[Tool Loop]:::runtime
+        TL --> |Execute| TR[Tool Registry]:::runtime
         TR --> TL
     end
     
@@ -317,7 +339,7 @@ graph TB
     end
     
     subgraph Persistence
-        MS --> DB[(PostgreSQL)]
+        MS --> DB[(PostgreSQL)]:::db
         MM --> DB
         SG --> DB
     end

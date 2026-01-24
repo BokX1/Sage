@@ -26,20 +26,26 @@ The DB store is **size-bounded**, not time-based. If you want longer retention, 
 
 ```mermaid
 graph LR
+    %% Styling
+    classDef storage fill:#cfd8dc,stroke:#455a64,color:black
+    classDef expert fill:#d1c4e9,stroke:#512da8,color:black
+    classDef builder fill:#bbdefb,stroke:#1976d2,color:black
+    classDef llm fill:#c8e6c9,stroke:#388e3c,color:black
+
     subgraph Core_Storage [Data Storage]
-        DB[(PostgreSQL)]
-        RB[Ring Buffer]
+        DB[(PostgreSQL)]:::storage
+        RB[Ring Buffer]:::storage
     end
 
     subgraph Experts [Experts]
-        SE[Social Expert]
-        VE[Voice Expert]
-        ME[Memory Expert]
+        SE[Social Expert]:::expert
+        VE[Voice Expert]:::expert
+        ME[Memory Expert]:::expert
     end
 
     subgraph Builder [Context Builder]
-        MB[Message Assembler]
-        Budget[Budgeter]
+        MB[Message Assembler]:::builder
+        Budget[Budgeter]:::builder
     end
 
     DB --> SE
@@ -52,7 +58,7 @@ graph LR
     RB --> MB
     
     MB --> Budget
-    Budget -- "Tokens & Context" --> LLM[LLM Brain]
+    Budget -- "Tokens & Context" --> LLM[LLM Brain]:::llm
 ```
 
 ## 3) Working memory (context assembly)
@@ -150,16 +156,21 @@ Relationship edges are updated from **mentions** and **voice overlap**. The Soci
 
 ```mermaid
 graph TD
-    A[Best Friend 🌟] --- B[Close Friend ✨]
-    B --- C[Friend 👋]
-    C --- D[Acquaintance 👤]
-    D --- E[Stranger 🧊]
+    %% Styling
+    classDef tier fill:#fff9c4,stroke:#fbc02d,color:black
+    classDef input fill:#e1f5fe,stroke:#0277bd,color:black
+    classDef logic fill:#e0f2f1,stroke:#00695c,color:black
+
+    A[Best Friend 🌟]:::tier --- B[Close Friend ✨]:::tier
+    B --- C[Friend 👋]:::tier
+    C --- D[Acquaintance 👤]:::tier
+    D --- E[Stranger 🧊]:::tier
 
     subgraph Dynamics
-    F[Mentions] --> Weight
-    G[Replies] --> Weight
-    H[Voice Overlap] --> Weight
-    Weight --> Tiers
+    F[Mentions]:::input --> Weight:::logic
+    G[Replies]:::input --> Weight
+    H[Voice Overlap]:::input --> Weight
+    Weight --> Tiers:::logic
     end
 ```
 

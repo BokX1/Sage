@@ -14,11 +14,16 @@ Sage needs an API Key (Pollen) to generate smart responses. We use a **Server-Wi
 
 ```mermaid
 graph LR
-    A[Invite Sage] --> B[Sage Joins Server]
-    B --> C[Admin Runs /sage key login]
-    C --> D[Get Key from Pollinations]
-    D --> E[Admin Runs /sage key set]
-    E --> F[Sage Activated for Everyone]
+    %% Styling
+    classDef step fill:#e1f5fe,stroke:#01579b,stroke-width:2px,color:black
+    classDef start fill:#dcedc8,stroke:#33691e,stroke-width:2px,color:black
+    classDef finish fill:#ffccbc,stroke:#bf360c,stroke-width:2px,color:black
+
+    A[Invite Sage]:::start --> B[Sage Joins Server]:::step
+    B --> C[Admin Runs /sage key login]:::step
+    C --> D[Get Key from Pollinations]:::step
+    D --> E[Admin Runs /sage key set]:::step
+    E --> F[Sage Activated for Everyone]:::finish
 ```
 
 ---
