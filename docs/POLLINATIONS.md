@@ -1,106 +1,296 @@
 # 🐝 Pollinations.ai Integration
 
-Sage runs on Pollinations.ai for **text**, **vision**, and **image generation**. This doc explains what Sage calls, how BYOP works, and where to verify the upstream API.
+Sage runs on **Pollinations.ai** for **text**, **vision**, **voice (TTS)**, and **image generation**.
+
+This document is written for:
+- **Users** (how to use Sage in Discord)
+- **Server admins** (how BYOP keys work)
+- **Self-hosters** (which `.env` settings matter)
+- **Reviewers** (what Sage calls upstream, and how to verify it)
+
+> [!IMPORTANT]
+> Pollinations has gone through an auth migration: **token/key management moved to `enter.pollinations.ai`** and the old `auth.pollinations.ai` service is deprecated. citeturn0search10
 
 ---
 
-## 🔗 Useful links
+## 🧭 Quick navigation
 
-- **Pollinations homepage:** <https://pollinations.ai>
-- **Developer dashboard (keys, usage):** <https://enter.pollinations.ai>
-- **API reference:** <https://enter.pollinations.ai/api/docs>
+- [✅ What Sage uses Pollinations for](#-what-sage-uses-pollinations-for)
+- [🔗 Hosts and endpoints (the “unified” surface)](#-hosts-and-endpoints-the-unified-surface)
+- [🌸 BYOP: server-wide keys in Discord](#-byop-server-wide-keys-in-discord)
+- [⚙️ Self-host configuration (`.env`)](#-self-host-configuration-env)
+- [🧠 Text + vision (OpenAI-compatible chat)](#-text--vision-openai-compatible-chat)
+- [🎨 Image generation + image editing](#-image-generation--image-editing)
+- [🔊 Voice (TTS) via Pollinations](#-voice-tts-via-pollinations)
+- [✅ Verify Pollinations upstream (smoke tests)](#-verify-pollinations-upstream-smoke-tests)
+- [🧩 Applying to be featured on pollinations.ai/apps](#-applying-to-be-featured-on-pollinationsaiapps)
+- [🧯 Troubleshooting](#-troubleshooting)
+- [🔗 Resources](#-resources)
+
+---
+
+## ✅ What Sage uses Pollinations for
+
+| Capability | What users see in Discord | What Sage calls upstream |
+|---|---|---|
+| **Chat** | Normal conversations | OpenAI-compatible `chat/completions` on `gen.pollinations.ai` |
+| **Vision** | You send an image, Sage can describe/analyze it | `chat/completions` with `image_url` content parts |
+| **Image generation** | “Sage, draw …” → image attachment | `GET /image/{prompt}` on `gen.pollinations.ai` |
+| **Image editing** | Reply to an image: “make it watercolor” → edited image | Same image endpoint + `image=<url>` parameter |
+| **Voice (TTS)** | Sage speaks in a voice channel (when enabled) | `chat/completions` with model `openai-audio` |
+
+Pollinations positions itself as a **unified API** for multiple modalities (text/images/audio, etc.). citeturn0search1
+
+---
+
+## 🔗 Hosts and endpoints (the “unified” surface)
+
+Sage uses these Pollinations hosts:
+
+- **Dashboard + accounts + keys**: `https://enter.pollinations.ai` (manage keys, usage, account)
+- **OpenAI-compatible API base**: `https://gen.pollinations.ai/v1`
+- **Image bytes endpoint**: `https://gen.pollinations.ai/image/{prompt}`
 
 > [!NOTE]
-> Pollinations has older/legacy endpoints documented in some places. Sage uses the **unified** `gen.pollinations.ai` API surface (see links above).
+> You may still find older docs or examples using different hosts/subdomains. Sage’s current integration assumes the **enter + gen** split above, and the deprecated auth host should not be used. citeturn0search10turn0search7
 
 ---
 
-## 🌸 BYOP in Sage (Bring Your Own Pollen)
+## 🌸 BYOP: server-wide keys in Discord
 
-Sage supports **server-wide BYOP**: a server admin sets a Pollinations key once, and all members benefit.
+Sage supports **Bring Your Own Pollen (BYOP)**: a **server admin** sets a Pollinations **Secret key** once, and Sage uses it for that server.
+
+### Key types (what to paste)
+- Use **Secret keys** that start with `sk_...`
+- Do **not** paste keys in public channels. Use Sage’s **ephemeral** command replies.
 
 ### How `/sage key login` works
+1. Run: `/sage key login`
+2. Sage gives an auth link to Pollinations:
+   - `https://enter.pollinations.ai/authorize?redirect_url=https://pollinations.ai/&permissions=profile,balance,usage`
+3. After you sign in, Pollinations redirects you to a URL containing:
+   - `https://pollinations.ai/#api_key=sk_...`
+4. Copy the `sk_...` part and run:
+   - `/sage key set <sk_...>`
 
-The bot sends an auth link like:
+### How Sage validates your key
+Before storing, Sage verifies the key by calling:
+- `GET https://gen.pollinations.ai/account/profile` with header `Authorization: Bearer sk_...`
 
-- `https://enter.pollinations.ai/authorize?redirect_url=https://pollinations.ai/&permissions=profile,balance,usage`
+If that succeeds, Sage stores the key **scoped to the current Discord server**.
 
-After sign-in, Pollinations redirects to a URL that contains:
+### Key precedence (what Sage actually uses)
+When Sage needs a key, it resolves in this order:
+1. **Server key** (set via `/sage key set`)
+2. **Host-level fallback** (`POLLINATIONS_API_KEY` in `.env`)
+3. If neither exists, Sage may run on a **shared quota** (feature-dependent)
 
-- `https://pollinations.ai/#api_key=sk_...`
+> [!IMPORTANT]
+> **Voice (TTS)** requires a key (server key or `POLLINATIONS_API_KEY`) because Sage uses `openai-audio` for TTS.
 
-Copy the `sk_...` value and run:
+---
 
-```text
-/sage key set <your_key>
+## ⚙️ Self-host configuration (`.env`)
+
+Minimum Pollinations settings (see `.env.example` for the full list):
+
+```env
+LLM_PROVIDER=pollinations
+POLLINATIONS_BASE_URL=https://gen.pollinations.ai/v1
+POLLINATIONS_MODEL=gemini
+
+# Optional global fallback key (server BYOP keys override this)
+POLLINATIONS_API_KEY=
 ```
 
-### How `/sage key set` validates
+### Recommended: keep `POLLINATIONS_BASE_URL` at the `/v1` root
+Sage will append `/chat/completions` internally. If you accidentally include `/chat/completions` in the base URL, Sage normalizes it, but keeping it clean avoids confusion.
 
-Before saving, Sage validates the key by calling:
+### Common model overrides (optional)
+These are **defaults** you can customize:
 
-- `GET https://gen.pollinations.ai/account/profile` with `Authorization: Bearer sk_...`
+```env
+# Main chat model
+POLLINATIONS_MODEL=gemini
 
-If the profile call succeeds, Sage stores the key **scoped to the current Discord server**.
+# Profile/memory updates
+PROFILE_POLLINATIONS_MODEL=deepseek
+
+# Channel summaries
+SUMMARY_MODEL=openai-large
+
+# Structured JSON formatting
+FORMATTER_MODEL=qwen-coder
+```
+
+> [!NOTE]
+> Image generation uses a Pollinations image model (currently set in code). See the Image section below for details.
 
 ---
 
-## 🧠 Text + vision (chat completions)
+## 🧠 Text + vision (OpenAI-compatible chat)
 
-Sage uses an OpenAI-compatible chat interface on Pollinations.
+Sage uses Pollinations via the OpenAI-compatible endpoint:
 
-**Endpoint family (base):**
+- `POST https://gen.pollinations.ai/v1/chat/completions`
 
-- `https://gen.pollinations.ai/v1/chat/completions`
+### Vision message shape (conceptual)
+When users attach an image, Sage can send multimodal content:
 
-Sage can send multimodal messages by including both:
+```json
+{
+  "model": "gemini",
+  "messages": [
+    {
+      "role": "user",
+      "content": [
+        { "type": "text", "text": "Describe this image." },
+        { "type": "image_url", "image_url": { "url": "https://..." } }
+      ]
+    }
+  ]
+}
+```
 
-- `text`
-- `image_url` (when a user attaches/replies with an image)
+> [!TIP]
+> If you’re self-hosting and debugging, test with the official API docs for the current request schema. citeturn0search0
 
 ---
 
-## 🎨 Image generation and editing
+## 🎨 Image generation + image editing
 
 Sage can:
+- **Generate** images from a text prompt
+- **Edit** images when the user replies to an image (image-to-image)
 
-- **Generate images** from text prompts
-- **Edit images** (image-to-image) when the user attaches/replies with an image
+### What users do in Discord
+No slash command is required.
 
-### What Sage calls
+**Generate**
+- `Sage, draw a neon cyberpunk street scene at night`
 
-Sage fetches raw image bytes from Pollinations using a URL-style endpoint:
+**Edit**
+- Reply to an image and say:
+  - `Sage, make this look like a watercolor poster`
+
+### What Sage calls upstream
+Sage fetches raw image bytes from Pollinations:
 
 - `GET https://gen.pollinations.ai/image/{prompt}`
 
-Sage appends query parameters such as:
+Sage appends query parameters:
+- `model` (default in code: `klein-large`)
+- `seed` (random per request)
+- `nologo=true`
+- `key=sk_...` (only when BYOP/global key is available)
 
-- `model` (current default in code: `klein-large`)
-- `seed`
-- `nologo`
-- `key=sk_...` (when BYOP is enabled)
-
-When editing an image, Sage also includes an `image=<url>` parameter referencing the source image.
+When editing, Sage also includes:
+- `image=<url>` (the source image URL)
 
 > [!NOTE]
-> Pollinations also supports `width`/`height` query parameters, but Sage does not currently set them explicitly (Pollinations defaults apply).
+> Pollinations supports additional image parameters (e.g., sizes) in some setups and clients, but Sage documents only what it currently uses by default.
 
-### What users do in Discord
+### “Agentic” prompt refinement (why results look better)
+Before requesting the image, Sage runs a **prompt refiner**:
+- Uses an LLM to rewrite the user’s request into an image-optimized prompt
+- Pulls in **recent conversation context** (last ~10 messages)
+- Includes reply context and the input image (when editing)
 
-No slash command is required:
-
-- **Generate:** `Sage, draw a neon cyberpunk street scene`
-- **Edit:** reply to an image: `Sage, make this look like a watercolor poster`
-
-Sage replies with an **image attachment** (and may add a short caption).
+This is why “make it more cyberpunk” works even without restating the full prompt.
 
 ---
 
-## ✅ Troubleshooting
+## 🔊 Voice (TTS) via Pollinations
 
-- **Public bot is silent / prompts for setup:** BYOP is required on servers (admin must run `/sage key login` → `/sage key set`).
-- **“Invalid API key” on set:** re-run `/sage key login` and ensure you copied the `sk_...` token from the redirected URL.
-- **Image generation works but is slow:** Pollinations latency varies by model/traffic; retry, or use a server key for better throughput.
+Sage can speak in Discord voice channels when voice features are enabled.
+
+- TTS is generated via the OpenAI-compatible chat endpoint using model **`openai-audio`**
+- **A Pollinations key is required** (server BYOP key or `POLLINATIONS_API_KEY`), otherwise TTS is skipped
+
+Operationally:
+- The bot joins a voice channel (`/join`)
+- Sage generates audio bytes via Pollinations and plays them in-channel
+
+> [!NOTE]
+> If you’re trying to showcase Sage as a Pollinations-powered app, voice is a good “wow” feature — but ensure BYOP is configured first.
+
+---
+
+## ✅ Verify Pollinations upstream (smoke tests)
+
+These are fast checks you can run outside Discord to confirm upstream connectivity.
+
+### 1) Check your key is valid
+```bash
+curl -sS https://gen.pollinations.ai/account/profile   -H "Authorization: Bearer sk_YOUR_KEY" | head
+```
+
+### 2) Chat completion
+```bash
+curl -sS https://gen.pollinations.ai/v1/chat/completions   -H "Authorization: Bearer sk_YOUR_KEY"   -H "Content-Type: application/json"   -d '{
+    "model": "gemini",
+    "messages": [{"role":"user","content":"Say hello in one sentence."}]
+  }' | head
+```
+
+### 3) Image generation
+```bash
+curl -L "https://gen.pollinations.ai/image/a%20cat%20wearing%20sunglasses?model=klein-large&seed=123&nologo=true&key=sk_YOUR_KEY"   --output test_image
+```
+
+---
+
+## 🧩 Applying to be featured on pollinations.ai/apps
+
+Pollinations showcases apps at:
+- `https://pollinations.ai/apps` citeturn0search6
+
+A common pattern for submissions is via the Pollinations GitHub repo as an **“App Submission”** issue, including:
+- App name + description
+- App URL
+- GitHub repo URL
+- Category + language
+- Discord username/contact
+
+Example submission issue format: citeturn2view0
+
+### What to highlight about Sage (reviewer-friendly)
+If you’re positioning Sage for feature consideration, the strongest “Pollinations-native” points are:
+
+- **OpenAI-compatible usage** (`/v1/chat/completions`) for text + vision
+- **Direct image endpoint** usage for fast image generation + editing
+- **BYOP server keys** (admins can enable higher limits for communities)
+- **Voice/TTS** via `openai-audio` (key-backed, multi-modal)
+
+---
+
+## 🧯 Troubleshooting
+
+### “Invalid API key” on set
+- Re-run `/sage key login` and ensure you copied the exact `sk_...` token from the redirected URL.
+- Confirm `auth.pollinations.ai` is not being used anywhere (deprecated). citeturn0search10
+
+### Public bot is slow or rate-limited
+- Configure a server key via BYOP.
+- Pollinations traffic varies by model and load; retry can help.
+
+### Image edit didn’t use the image I replied to
+- Make sure you used Discord **Reply** (not just quoted text).
+- Sage only uses direct attachments or reply attachments for edit context.
+
+### Voice/TTS does nothing
+- Ensure the bot is in a voice channel (`/join`)
+- Ensure a key is available (server key or `POLLINATIONS_API_KEY`)
+
+---
+
+## 🔗 Resources
+
+- Pollinations homepage: <https://pollinations.ai> citeturn0search1
+- Dashboard (keys, usage): <https://enter.pollinations.ai>
+- API reference: <https://enter.pollinations.ai/api/docs> citeturn0search0
+- Featured apps: <https://pollinations.ai/apps> citeturn0search6
+- Deprecated auth notice: <https://auth.pollinations.ai/> citeturn0search10
 
 ---
 
