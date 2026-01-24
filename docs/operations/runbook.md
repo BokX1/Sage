@@ -19,6 +19,8 @@ A practical guide for operating and maintaining Sage (self-hosted).
 
 ---
 
+<a id="quick-reference"></a>
+
 ## ⚡ Quick Reference
 
 ### Start Sage
@@ -43,6 +45,8 @@ npm run db:studio        # Open visual database browser
 
 ---
 
+<a id="startup-checklist"></a>
+
 ## ✅ Startup Checklist
 
 Before starting Sage, verify:
@@ -55,6 +59,8 @@ Before starting Sage, verify:
 | Token correct | Check `.env` file | No spaces/quotes in token |
 
 ---
+
+<a id="environment-requirements"></a>
 
 ## 🔧 Environment Requirements
 
@@ -86,6 +92,8 @@ Before starting Sage, verify:
 See [Configuration Reference](../CONFIGURATION.md) for all options.
 
 ---
+
+<a id="database-management"></a>
 
 ## 🗄️ Database Management
 
@@ -119,6 +127,8 @@ npm run db:migrate                                       # Recreate tables
 
 ---
 
+<a id="health-checks"></a>
+
 ## 🏥 Health Checks
 
 ### In Discord
@@ -142,6 +152,8 @@ npm run doctor
 - ✅ LLM connectivity (if `LLM_DOCTOR_PING=1`)
 
 ---
+
+<a id="logs"></a>
 
 ## 📋 Logs
 
@@ -179,6 +191,8 @@ LOG_LEVEL=error   # Errors only
 
 ---
 
+<a id="restart-notes"></a>
+
 ## 🔄 Restart Notes
 
 ### Safe to restart anytime
@@ -197,6 +211,8 @@ Restarting Sage is safe:
 4. Voice sessions track new activity (previous sessions saved)
 
 ---
+
+<a id="common-issues"></a>
 
 ## 🆘 Common Issues
 
@@ -232,6 +248,8 @@ Restarting Sage is safe:
 
 ---
 
+<a id="performance-tips"></a>
+
 ## 📈 Performance Tips
 
 ### Reduce memory usage
@@ -254,6 +272,8 @@ CONTEXT_TRANSCRIPT_MAX_MESSAGES=10
 - Monitor with `LOG_LEVEL=info`
 
 ---
+
+<a id="production-deployment"></a>
 
 ## 🚢 Production Deployment
 

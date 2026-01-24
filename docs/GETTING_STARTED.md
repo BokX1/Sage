@@ -22,6 +22,8 @@ Set up Sage from source — even if you’ve never built a Discord bot before.
 
 ---
 
+<a id="before-you-begin"></a>
+
 ## ✅ Before You Begin
 
 You’ll need:
@@ -34,6 +36,8 @@ Everything else is installed in the steps below.
 
 ---
 
+<a id="setup-at-a-glance"></a>
+
 ## 🗺️ Setup at a Glance
 
 ```mermaid
@@ -43,16 +47,18 @@ flowchart LR
     classDef step fill:#e1f5fe,stroke:#01579b,stroke-width:2px,color:black
     classDef endNode fill:#ffccbc,stroke:#bf360c,stroke-width:2px,color:black
 
-    S1[1) Install prerequisites]:::start
-      --> S2[2) Create Discord app/bot]:::step
-      --> S3[3) Clone & install Sage]:::step
-      --> S4[4) Start PostgreSQL]:::step
-      --> S5[5) Configure .env]:::step
-      --> S6[6) Start Sage]:::step
-      --> S7[7) Invite bot & set key]:::endNode
+    S1["1) Install prerequisites"]:::start
+      --> S2["2) Create Discord app/bot"]:::step
+      --> S3["3) Clone & install Sage"]:::step
+      --> S4["4) Start PostgreSQL"]:::step
+      --> S5["5) Configure .env"]:::step
+      --> S6["6) Start Sage"]:::step
+      --> S7["7) Invite bot & set key"]:::endNode
 ```
 
 ---
+
+<a id="step-1-install-required-software"></a>
 
 ## Step 1: Install Required Software
 
@@ -91,6 +97,8 @@ Git downloads Sage’s code.
 
 ---
 
+<a id="step-2-create-your-discord-bot"></a>
+
 ## Step 2: Create Your Discord Bot
 
 ### 2.1 Create a Discord Application
@@ -123,6 +131,8 @@ On the Bot page, enable:
 Click **Save Changes**.
 
 ---
+
+<a id="step-3-download-and-configure-sage"></a>
 
 ## Step 3: Download and Configure Sage
 
@@ -173,6 +183,8 @@ npm run onboard --   --discord-token "YOUR_TOKEN"   --discord-app-id "YOUR_APP_I
 
 ---
 
+<a id="step-4-start-the-database"></a>
+
 ## Step 4: Start the Database
 
 Make sure Docker Desktop is running, then:
@@ -188,6 +200,8 @@ npm run db:migrate
 ```
 
 ---
+
+<a id="step-5-start-sage"></a>
 
 ## Step 5: Start Sage
 
@@ -205,6 +219,8 @@ You should see:
 Keep this terminal window open.
 
 ---
+
+<a id="step-6-invite-sage-to-your-server"></a>
 
 ## Step 6: Invite Sage to Your Server
 
@@ -240,6 +256,8 @@ Keep this terminal window open.
 
 ---
 
+<a id="step-7-activate-your-api-key-byop"></a>
+
 ## Step 7: Activate Your API Key (BYOP)
 
 Once Sage is in your server, set up your Pollinations API key:
@@ -258,6 +276,8 @@ Once Sage is in your server, set up your Pollinations API key:
 > 💡 **Need a key?** The `/sage key login` command provides step-by-step instructions.
 
 ---
+
+<a id="verification-checklist"></a>
 
 ## ✅ Verification Checklist
 

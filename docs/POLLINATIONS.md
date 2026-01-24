@@ -24,6 +24,8 @@ This page explains:
 
 ---
 
+<a id="why-pollinationsai"></a>
+
 ## ✅ Why Pollinations.ai?
 
 | Benefit | What It Means for You |
@@ -35,6 +37,8 @@ This page explains:
 | **Community-driven** | Open-source with active development |
 
 ---
+
+<a id="how-sage-uses-pollinations"></a>
 
 ## 🔧 How Sage Uses Pollinations
 
@@ -53,6 +57,8 @@ Sage uses different models for specialized tasks:
 
 ---
 
+<a id="byop-keys-in-discord"></a>
+
 ## 🌸 BYOP: Keys in Discord
 
 Sage supports BYOP (Bring Your Own Pollen) via Discord commands:
@@ -67,6 +73,8 @@ This sets a **server-wide key** used for all AI requests from that server.
 For a step-by-step guide, see **[BYOP Mode](BYOP_MODE.md)**.
 
 ---
+
+<a id="host-configuration-env"></a>
 
 ## ⚙️ Host Configuration (`.env`)
 
@@ -95,6 +103,8 @@ FORMATTER_MODEL=qwen-coder
 
 ---
 
+<a id="discover-available-models"></a>
+
 ## 🧪 Discover available models
 
 You can view available models during onboarding:
@@ -107,6 +117,8 @@ npm run onboard
 Or browse models at <https://pollinations.ai/>.
 
 ---
+
+<a id="features-sage-uses"></a>
 
 ## 🌟 Features Sage Uses
 
@@ -136,6 +148,8 @@ Or browse models at <https://pollinations.ai/>.
 
 ---
 
+<a id="api-usage-tips"></a>
+
 ## 📊 API Usage Tips
 
 ### Rate limits
@@ -151,6 +165,8 @@ Or browse models at <https://pollinations.ai/>.
 - Caching reduces redundant calls
 
 ---
+
+<a id="resources"></a>
 
 ## 🔗 Resources
 

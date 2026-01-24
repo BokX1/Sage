@@ -18,6 +18,8 @@ This document describes what Sage stores and how to control retention. Implement
 
 ---
 
+<a id="what-sage-stores-default"></a>
+
 ## ✅ What Sage stores (default)
 
 | Data | Table | Notes |
@@ -32,6 +34,8 @@ This document describes what Sage stores and how to control retention. Implement
 
 ---
 
+<a id="message-ingestion-controls"></a>
+
 ## ⚙️ Message ingestion controls
 
 These settings control what Sage ingests and logs:
@@ -41,6 +45,8 @@ These settings control what Sage ingests and logs:
 - `LOGGING_BLOCKLIST_CHANNEL_IDS` excludes specific channels.
 
 ---
+
+<a id="retention-behavior"></a>
 
 ## 🧾 Retention behavior
 
@@ -56,6 +62,8 @@ These settings control what Sage ingests and logs:
 
 ---
 
+<a id="what-is-sent-to-the-llm-provider"></a>
+
 ## 📤 What is sent to the LLM provider
 
 When generating replies, Sage sends:
@@ -70,6 +78,8 @@ Sage does **not** log API keys or tokens. Keep `.env` out of version control.
 
 ---
 
+<a id="deletion-reset"></a>
+
 ## 🧹 Deletion / reset
 
 There is no built-in purge command. To delete data:
@@ -81,6 +91,8 @@ There is no built-in purge command. To delete data:
 If you want to prevent future storage, disable logging and/or tracing in `.env`.
 
 ---
+
+<a id="redaction"></a>
 
 ## 🩹 Redaction
 

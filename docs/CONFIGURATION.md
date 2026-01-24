@@ -22,6 +22,8 @@ A complete reference for Sage configuration. All settings are configured in your
 
 ---
 
+<a id="how-to-use-this-page"></a>
+
 ## ✅ How to Use This Page
 
 - **Required** settings are the minimum needed for Sage to start.
@@ -29,6 +31,8 @@ A complete reference for Sage configuration. All settings are configured in your
 - If you’re new to `.env` files, start with the example at the bottom and edit from there.
 
 ---
+
+<a id="essential-required"></a>
 
 ## 🔴 Essential (Required)
 
@@ -41,6 +45,8 @@ These settings are required for Sage to start.
 | `DATABASE_URL` | PostgreSQL connection string | `postgresql://postgres:password@localhost:5432/sage?schema=public` |
 
 ---
+
+<a id="ai-models"></a>
 
 ## 🤖 AI Models
 
@@ -73,6 +79,8 @@ Sage uses specialized models for different tasks.
 
 ---
 
+<a id="behavior-agentic-triggers"></a>
+
 ## 💬 Behavior & Agentic Triggers
 
 Control how Sage responds in chat.
@@ -95,6 +103,8 @@ Control how Sage responds in chat.
 | `talkative` | Actively participates without prompts | 🔴 **High** |
 
 ---
+
+<a id="message-ingestion-storage"></a>
 
 ## 📥 Message Ingestion & Storage
 
@@ -120,6 +130,8 @@ Control what Sage logs and stores.
 
 ---
 
+<a id="channel-summaries"></a>
+
 ## 📊 Channel Summaries
 
 Configure automatic channel summarization.
@@ -134,6 +146,8 @@ Configure automatic channel summarization.
 | `SUMMARY_SCHED_TICK_SEC` | Summary scheduler tick interval | `60` |
 
 ---
+
+<a id="context-budgeting"></a>
 
 ## 🧠 Context Budgeting
 
@@ -170,6 +184,8 @@ Control token allocation for LLM requests.
 
 ---
 
+<a id="relationship-graph"></a>
+
 ## 🤝 Relationship Graph
 
 Tune social relationship calculations.
@@ -183,6 +199,8 @@ Tune social relationship calculations.
 
 ---
 
+<a id="rate-limits-timeouts"></a>
+
 ## 🔒 Rate Limits & Timeouts
 
 Prevent spam and manage latency.
@@ -195,6 +213,8 @@ Prevent spam and manage latency.
 | `TIMEOUT_MEMORY_MS` | Timeout for memory operations | `600000` (10 min) |
 
 ---
+
+<a id="admin-access-control"></a>
 
 ## 👑 Admin Access Control
 

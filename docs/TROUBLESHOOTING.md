@@ -21,6 +21,8 @@ Fast fixes for common Sage issues.
 
 ---
 
+<a id="quick-diagnostics"></a>
+
 ## 🚦 Quick Diagnostics
 
 Run the built-in health check:
@@ -36,6 +38,8 @@ This validates:
 - ✅ LLM provider availability (if `LLM_DOCTOR_PING=1`)
 
 ---
+
+<a id="startup-issues"></a>
 
 ## 🔴 Startup Issues
 
@@ -85,6 +89,8 @@ flowchart TD
 
 ---
 
+<a id="response-issues"></a>
+
 ## 🟡 Response Issues
 
 ### Bot is online but not responding
@@ -121,6 +127,8 @@ CONTEXT_RESERVED_OUTPUT_TOKENS=8192
 
 ---
 
+<a id="memory-learning-issues"></a>
+
 ## 🟠 Memory & Learning Issues
 
 ### Sage doesn’t remember conversations
@@ -156,6 +164,8 @@ Possible causes:
 
 ---
 
+<a id="command-issues"></a>
+
 ## 🔵 Command Issues
 
 ### Slash commands not appearing
@@ -185,6 +195,8 @@ Possible causes:
 
 ---
 
+<a id="database-issues"></a>
+
 ## 🟣 Database Issues
 
 ### “P2002: Unique constraint violation”
@@ -209,6 +221,8 @@ npx prisma migrate deploy # Production
 
 ---
 
+<a id="performance-issues"></a>
+
 ## ⚡ Performance Issues
 
 ### High memory usage
@@ -231,6 +245,8 @@ RAW_MESSAGE_TTL_DAYS=1                     # Reduce from 3
 
 ---
 
+<a id="error-code-reference"></a>
+
 ## 📋 Error Code Reference
 
 | Error | Meaning | Quick Fix |
@@ -243,6 +259,8 @@ RAW_MESSAGE_TTL_DAYS=1                     # Reduce from 3
 | `ETIMEDOUT` | Request timed out | Increase `TIMEOUT_CHAT_MS` |
 
 ---
+
+<a id="still-having-issues"></a>
 
 ## 🆘 Still Having Issues?
 

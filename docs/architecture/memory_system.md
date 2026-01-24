@@ -19,6 +19,8 @@ This document describes how Sage stores, summarizes, and injects memory into LLM
 
 ---
 
+<a id="1-memory-sources-and-storage"></a>
+
 ## 1) Memory sources and storage
 
 | Memory type | Purpose | Storage | Key files |
@@ -31,6 +33,8 @@ This document describes how Sage stores, summarizes, and injects memory into LLM
 
 ---
 
+<a id="2-data-retention-transcripts"></a>
+
 ## 2) Data retention (transcripts)
 
 - **In-memory ring buffer** uses:
@@ -42,6 +46,8 @@ This document describes how Sage stores, summarizes, and injects memory into LLM
 The DB store is **size-bounded**, not time-based. If you want longer retention, increase `CONTEXT_TRANSCRIPT_MAX_MESSAGES`.
 
 ---
+
+<a id="3-context-assembly-flow"></a>
 
 ## 3) Context assembly flow
 
@@ -83,6 +89,8 @@ flowchart LR
 
 ---
 
+<a id="4-working-memory-context-builder"></a>
+
 ## 4) Working memory (context builder)
 
 **File:** `src/core/agentRuntime/contextBuilder.ts`
@@ -115,6 +123,8 @@ Context is budgeted by `contextBudgeter` using the following defaults (configura
 
 ---
 
+<a id="5-short-term-memory-rolling-channel-summary"></a>
+
 ## 5) Short-term memory: rolling channel summary
 
 **Files:**
@@ -142,6 +152,8 @@ Context is budgeted by `contextBudgeter` using the following defaults (configura
 
 ---
 
+<a id="6-long-term-memory-channel-profile"></a>
+
 ## 6) Long-term memory: channel profile
 
 **File:** `src/core/summary/summarizeChannelWindow.ts`
@@ -154,6 +166,8 @@ After a rolling summary, Sage optionally updates the long-term profile if:
 The profile merges the previous long-term summary with the latest rolling summary, and stores the result in `ChannelSummary` with `kind = 'profile'`.
 
 ---
+
+<a id="7-throttled-user-profile-updates"></a>
 
 ## 7) Throttled user profile updates
 
@@ -169,6 +183,8 @@ Sage updates user profiles asynchronously. To reduce cost and duplicate work, up
 The result is stored in `UserProfile.summary`. If the formatter fails, the previous summary is preserved.
 
 ---
+
+<a id="8-relationship-graph-social-tiers"></a>
 
 ## 8) Relationship graph & social tiers
 
@@ -213,11 +229,15 @@ These tiers are injected into the LLM context to adjust tone and familiarity.
 
 ---
 
+<a id="9-voice-awareness-in-memory"></a>
+
 ## 9) Voice awareness in memory
 
 Voice events are ingested and stored as `VoiceSession` entries. The **Voice Analytics Expert** translates sessions into natural language insights (e.g., “Active in voice for 45 minutes today”) which are then used by the LLM to answer presence-related questions.
 
 ---
+
+<a id="related-documentation"></a>
 
 ## 🔗 Related documentation
 

@@ -15,6 +15,8 @@ Common questions about Sage, setup, and behavior.
 
 ---
 
+<a id="first-timer-questions"></a>
+
 ## 🌟 First-Timer Questions
 
 <details>
@@ -63,6 +65,8 @@ Try these in order:
 </details>
 
 ---
+
+<a id="about-sage"></a>
 
 ## 📖 About Sage
 
@@ -129,6 +133,8 @@ Sage does not listen to or transcribe voice conversations.
 
 ---
 
+<a id="setup-configuration"></a>
+
 ## 🔧 Setup & Configuration
 
 <details>
@@ -165,6 +171,8 @@ AUTOPILOT_MODE=manual
 
 ---
 
+<a id="using-sage"></a>
+
 ## 💬 Using Sage
 
 <details>
@@ -198,6 +206,8 @@ See **[Commands Reference](COMMANDS.md)**. Highlights:
 
 ---
 
+<a id="troubleshooting"></a>
+
 ## 🔴 Troubleshooting
 
 <details>
@@ -217,6 +227,8 @@ Things to try:
 </details>
 
 ---
+
+<a id="privacy-data"></a>
 
 ## 🔐 Privacy & Data
 

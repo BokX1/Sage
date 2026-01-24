@@ -15,6 +15,8 @@ This keeps Sage sustainable and enables higher limits for your server.
 
 ---
 
+<a id="how-it-works"></a>
+
 ## 🔑 How It Works
 
 Sage needs an API key (“Pollen”) to generate responses. Sage uses a **server-wide key** so your community can chat without each member needing their own key.
@@ -29,14 +31,16 @@ flowchart LR
     classDef finish fill:#ffccbc,stroke:#bf360c,stroke-width:2px,color:black
 
     A[Invite Sage]:::start
-      --> B[Sage joins server]:::step
-      --> C[/sage key login]:::step
-      --> D[Get key from Pollinations]:::step
-      --> E[/sage key set sk_...]:::step
-      --> F[Sage active for everyone]:::finish
+      --> B["Sage joins server"]:::step
+      --> C["/sage key login"]:::step
+      --> D["Get key from Pollinations"]:::step
+      --> E["/sage key set sk_..."]:::step
+      --> F["Sage active for everyone"]:::finish
 ```
 
 ---
+
+<a id="setup-guide-for-admins"></a>
 
 ## 🚀 Setup Guide (For Admins)
 
@@ -64,6 +68,8 @@ That’s it — Sage is active for the whole server. 🎉
 
 ---
 
+<a id="key-safety-notes"></a>
+
 ## 🔐 Key Safety Notes
 
 - The key is **server-wide** and used for requests originating from that server.
@@ -71,6 +77,8 @@ That’s it — Sage is active for the whole server. 🎉
 - If you need to revoke access, run `/sage key clear` and/or rotate the key in Pollinations.
 
 ---
+
+<a id="faq"></a>
 
 ## ❓ FAQ
 

@@ -19,6 +19,8 @@ A complete reference for Sage slash commands and interaction methods.
 
 ---
 
+<a id="quick-reference"></a>
+
 ## ⚡ Quick Reference
 
 | Goal | Command / Action |
@@ -34,6 +36,8 @@ A complete reference for Sage slash commands and interaction methods.
 
 ---
 
+<a id="table-of-contents"></a>
+
 ## 📋 Table of Contents
 
 - [Triggering Sage](#-triggering-sage)
@@ -45,6 +49,8 @@ A complete reference for Sage slash commands and interaction methods.
 - [Utility Command](#-utility-command)
 
 ---
+
+<a id="triggering-sage"></a>
 
 ## 💬 Triggering Sage
 
@@ -60,6 +66,8 @@ Sage can be triggered in three ways:
 > Wake word prefixes like “hey” are also supported: `Hey Sage, help me!`
 
 ---
+
+<a id="public-commands"></a>
 
 ## 🌐 Public Commands
 
@@ -96,6 +104,8 @@ View relationship information and social tiers.
 - Recent interaction summary
 
 ---
+
+<a id="key-management-byop"></a>
 
 ## 🔑 Key Management (BYOP)
 
@@ -157,6 +167,8 @@ Remove the server-wide API key.
 Sage will fall back to shared quota (if available).
 
 ---
+
+<a id="admin-commands"></a>
 
 ## 👑 Admin Commands
 
@@ -236,6 +248,8 @@ Manually trigger a channel summary.
 
 ---
 
+<a id="relationship-commands"></a>
+
 ## 🤝 Relationship Commands
 
 ### `/sage relationship set`
@@ -267,6 +281,8 @@ Manually set relationship level between two users.
 
 ---
 
+<a id="voice-commands-beta"></a>
+
 ## 🎤 Voice Commands (Beta)
 
 Control Sage's voice presence.
@@ -294,6 +310,8 @@ Disconnect Sage from the voice channel.
 
 ---
 
+<a id="utility-command"></a>
+
 ## 🛠️ Utility Command
 
 ### `/llm_ping`
@@ -307,6 +325,8 @@ Test LLM connectivity (admin/debug only).
 **Shows:** Whether the AI provider is reachable and responding.
 
 ---
+
+<a id="related-documentation"></a>
 
 ## 📝 Related Documentation
 

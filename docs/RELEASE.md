@@ -14,6 +14,8 @@ This project follows **Semantic Versioning (SemVer)**: `MAJOR.MINOR.PATCH`.
 
 ---
 
+<a id="changelog"></a>
+
 ## 🧾 Changelog
 
 - Update `CHANGELOG.md` for every user-facing change.
@@ -21,6 +23,8 @@ This project follows **Semantic Versioning (SemVer)**: `MAJOR.MINOR.PATCH`.
 - Note any migrations, configuration changes, or breaking behavior.
 
 ---
+
+<a id="release-checklist"></a>
 
 ## ✅ Release checklist
 
@@ -45,6 +49,8 @@ This project follows **Semantic Versioning (SemVer)**: `MAJOR.MINOR.PATCH`.
 
 ---
 
+<a id="run-locally-like-ci"></a>
+
 ## 🧪 Run locally like CI
 
 ```bash
@@ -65,6 +71,8 @@ npm run release:check
 
 ---
 
+<a id="release-readiness-check-recommended"></a>
+
 ## 🔍 Release readiness check (recommended)
 
 ```bash
@@ -72,6 +80,8 @@ npm run release:check
 ```
 
 ---
+
+<a id="pr-review-expectations"></a>
 
 ## 👀 PR review expectations
 

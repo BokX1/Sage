@@ -25,6 +25,8 @@ This document explains what makes Sage different from traditional bots and how i
 
 ---
 
+<a id="-what-is-agentic-ai"></a>
+
 ## 🎯 What is "Agentic AI"?
 
 An **agentic AI** is an AI system that can:
@@ -38,6 +40,8 @@ An **agentic AI** is an AI system that can:
 | **Error Recovery** | Crashes or fails silently | Self-corrects and tries alternative approaches |
 
 ---
+
+<a id="-the-five-pillars-of-sages-intelligence"></a>
 
 ## 🧠 The Five Pillars of Sage's Intelligence
 
@@ -89,6 +93,8 @@ mindmap
 
 ---
 
+<a id="-how-sage-learns"></a>
+
 ## 🔄 How Sage Learns
 
 ```mermaid
@@ -134,6 +140,8 @@ sequenceDiagram
 
 ---
 
+<a id="-social-intelligence"></a>
+
 ## 🎭 Social Intelligence
 
 Sage understands **who you are** to each other.
@@ -170,6 +178,8 @@ Sage builds relationships naturally through:
 
 ---
 
+<a id="-voice-companion-beta"></a>
+
 ## 🎤 Voice Companion (Beta)
 
 Sage introduces a **"Text-in, Voice-out"** architecture for a seamless voice experience.
@@ -205,6 +215,8 @@ sequenceDiagram
 ```
 
 ---
+
+<a id="-intelligent-routing"></a>
 
 ## 🧭 Intelligent Routing
 
@@ -252,6 +264,8 @@ flowchart TD
 
 ---
 
+<a id="-self-correcting-agent-loop"></a>
+
 ## 🔁 Self-Correcting Agent Loop
 
 Sage doesn't just fail — it **adapts**.
@@ -292,6 +306,8 @@ Reply: "Here's what happened in #dev today..."
 
 ---
 
+<a id="-observability"></a>
+
 ## 📊 Observability
 
 Admins can inspect how Sage reasoned about a request.
@@ -310,6 +326,8 @@ Shows:
 - 💭 Reasoning — how the final response was generated
 
 ---
+
+<a id="-technical-architecture"></a>
 
 ## 🏗️ Technical Architecture
 

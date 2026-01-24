@@ -17,6 +17,8 @@ This document explains how Sage routes incoming messages, builds context, and ex
 
 ---
 
+<a id="1-high-level-flow"></a>
+
 ## 1) High-level flow
 
 ```mermaid
@@ -42,6 +44,8 @@ flowchart TD
 
 ---
 
+<a id="2-intelligent-llm-router"></a>
+
 ## 2) Intelligent LLM Router
 
 **File:** `src/core/orchestration/llmRouter.ts`
@@ -65,6 +69,8 @@ Key properties:
 
 ---
 
+<a id="3-narrative-experts"></a>
+
 ## 3) Narrative experts
 
 **File:** `src/core/orchestration/runExperts.ts`
@@ -79,6 +85,8 @@ Experts run secondary DB lookups and return **enriched narrative packets** for t
 These packets are injected into the system prompt so the model has structured context before responding.
 
 ---
+
+<a id="4-agentic-tool-loop-error-recovery"></a>
 
 ## 4) Agentic tool loop & error recovery
 
@@ -119,6 +127,8 @@ sequenceDiagram
 
 ---
 
+<a id="5-context-building"></a>
+
 ## 5) Context building
 
 **File:** `src/core/agentRuntime/contextBuilder.ts`
@@ -134,6 +144,8 @@ It uses `contextBudgeter` to respect limits defined in `src/config.ts`.
 
 ---
 
+<a id="6-tracing-observability"></a>
+
 ## 6) Tracing & observability
 
 **File:** `src/core/trace/agentTraceRepo.ts`
@@ -146,11 +158,15 @@ Every interaction can be traced for admin debugging:
 
 ---
 
+<a id="7-voice-fast-path"></a>
+
 ## 7) Voice fast-path
 
 Before invoking the full LLM pipeline, Sage uses a deterministic fast-path for simple voice queries (e.g., “who is in voice?”). This enables sub-second responses using `src/core/voice/voiceQueries.ts`.
 
 ---
+
+<a id="related-documentation"></a>
 
 ## 🔗 Related documentation
 

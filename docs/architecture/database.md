@@ -14,6 +14,8 @@ Sage uses **PostgreSQL** (via Prisma) to persist long-term memory, social relati
 
 ---
 
+<a id="entity-relationship-diagram-erd"></a>
+
 ## Entity Relationship Diagram (ERD)
 
 ```mermaid
@@ -71,6 +73,8 @@ erDiagram
 ```
 
 ---
+
+<a id="core-tables"></a>
 
 ## Core tables
 
