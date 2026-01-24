@@ -1,199 +1,109 @@
 # 🐝 Pollinations.ai Integration
 
-Sage is powered by **[Pollinations.ai](https://pollinations.ai)** — an open platform that provides access to multiple language models via an OpenAI-compatible API.
-
-This page explains:
-
-- What Pollinations provides
-- How Sage uses it
-- Which settings to change in `.env`
-- How BYOP keys work in Discord
+Sage runs on Pollinations.ai for **text**, **vision**, and **image generation**. This doc explains what Sage calls, how BYOP works, and where to verify the upstream API.
 
 ---
 
-## 🧭 Quick navigation
+## 🔗 Useful links
 
-- [✅ Why Pollinations.ai?](#why-pollinationsai)
-- [🔧 How Sage Uses Pollinations](#how-sage-uses-pollinations)
-- [🌸 BYOP: Keys in Discord](#byop-keys-in-discord)
-- [⚙️ Host Configuration (`.env`)](#host-configuration-env)
-- [🧪 Discover available models](#discover-available-models)
-- [🌟 Features Sage Uses](#features-sage-uses)
-- [📊 API Usage Tips](#api-usage-tips)
-- [🔗 Resources](#resources)
-
----
-
-<a id="why-pollinationsai"></a>
-
-## ✅ Why Pollinations.ai?
-
-| Benefit | What It Means for You |
-| :--- | :--- |
-| **Free API access** | No credit card required; free tier available |
-| **Multi-model support** | Choose from Gemini, DeepSeek, OpenAI, and more |
-| **OpenAI-compatible** | Easy integration and familiar request format |
-| **Vision support** | Image understanding is supported by vision-capable models |
-| **Community-driven** | Open-source with active development |
-
----
-
-<a id="how-sage-uses-pollinations"></a>
-
-## 🔧 How Sage Uses Pollinations
-
-Sage uses different models for specialized tasks:
-
-| Task | Model | Purpose |
-| :--- | :--- | :--- |
-| **Chat** | `gemini` (configurable) | Main conversations with users |
-| **Profile Analysis** | `deepseek` | Building user memory profiles |
-| **Summaries** | `openai-large` | Channel conversation summaries |
-| **JSON Formatting** | `qwen-coder` | Structured data extraction |
-| **JSON Formatting** | `qwen-coder` | Structured data extraction |
-| **Voice** | `openai-audio` | Text-to-speech companion responses |
-| **Image Generation** | `klein-large` | Text-to-image with LLM-based prompt refinement |
+- **Pollinations homepage:** https://pollinations.ai
+- **Developer dashboard (keys, usage):** https://enter.pollinations.ai 
+- **API reference:** https://enter.pollinations.ai/api/docs 
 
 > [!NOTE]
-> You can override these defaults in `.env`. See [Configuration](CONFIGURATION.md) for the full list.
+> Pollinations has older/legacy endpoints documented in some places. Sage uses the **unified** `gen.pollinations.ai` API surface (see links above). 
 
 ---
 
-<a id="byop-keys-in-discord"></a>
+## 🌸 BYOP in Sage (Bring Your Own Pollen)
 
-## 🌸 BYOP: Keys in Discord
+Sage supports **server-wide BYOP**: a server admin sets a Pollinations key once, and all members benefit.
 
-Sage supports BYOP (Bring Your Own Pollen) via Discord commands:
+### How `/sage key login` works
 
-1. Run `/sage key login`
-2. Follow the link and log in to Pollinations.ai
-3. Copy the `sk_...` key from the URL
-4. Run `/sage key set <key>`
+The bot sends an auth link like:
 
-This sets a **server-wide key** used for all AI requests from that server.
+- `https://enter.pollinations.ai/authorize?redirect_url=https://pollinations.ai/&permissions=profile,balance,usage`
 
-For a step-by-step guide, see **[BYOP Mode](BYOP_MODE.md)**.
+After sign-in, Pollinations redirects to a URL that contains:
 
----
+- `https://pollinations.ai/#api_key=sk_...`
 
-<a id="host-configuration-env"></a>
+Copy the `sk_...` value and run:
 
-## ⚙️ Host Configuration (`.env`)
-
-If you self-host, you can set defaults in `.env`:
-
-```env
-POLLINATIONS_MODEL=gemini
-# POLLINATIONS_API_KEY provides a global fallback if a server key is not set.
+```text
+/sage key set <your_key>
 ```
 
-### Override models for specific tasks
+### How `/sage key set` validates
 
-```env
-# Main chat model
-POLLINATIONS_MODEL=gemini
+Before saving, Sage validates the key by calling:
 
-# Profile memory updates
-PROFILE_POLLINATIONS_MODEL=deepseek
+- `GET https://gen.pollinations.ai/account/profile` with `Authorization: Bearer sk_...`
 
-# Channel summaries
-SUMMARY_MODEL=openai-large
-
-# JSON formatting
-FORMATTER_MODEL=qwen-coder
-```
+If the profile call succeeds, Sage stores the key **scoped to the current Discord server**.
 
 ---
 
-<a id="discover-available-models"></a>
+## 🧠 Text + vision (chat completions)
 
-## 🧪 Discover available models
+Sage uses an OpenAI-compatible chat interface on Pollinations.
 
-You can view available models during onboarding:
+**Endpoint family (base):**
 
-```bash
-npm run onboard
-# Type "list" when prompted for model selection
-```
+- `https://gen.pollinations.ai/v1/chat/completions` 
 
-Or browse models at <https://pollinations.ai/>.
+Sage can send multimodal messages by including both:
 
----
-
-<a id="features-sage-uses"></a>
-
-## 🌟 Features Sage Uses
-
-### Text generation
-
-- Conversational responses
-- Memory-aware personalization
-- Context-rich dialogue
-
-### Vision (image understanding)
-
-- Analyze images shared in Discord
-- Discuss visual content
-- Analyze images shared in Discord
-- Discuss visual content
-- Multi-modal conversations
-
-### Image Generation
-
-- **Agentic Refiner**: Uses an LLM to rewrite and optimize your prompts before generation.
-- **Context-Aware**: Understands conversation history (last 10 messages) to interpret requests like "make it cyberpunk".
-- **Reply Support**: Explicitly handles "reply-to" context for image editing.
-- **Unified Endpoint**: Uses the fast `gen.pollinations.ai` API (requires API key for best performance).
-
-### Voice synthesis (TTS)
-
-- Text-to-speech companion responses
-- Dynamic persona adaptation
-- Expressive audio output
-
-### Structured output
-
-- JSON extraction for profiles
-- Summary generation
-- Data organization
+- `text`
+- `image_url` (when a user attaches/replies with an image)
 
 ---
 
-<a id="api-usage-tips"></a>
+## 🎨 Image generation and editing
 
-## 📊 API Usage Tips
+Sage can:
 
-### Rate limits
+- **Generate images** from text prompts
+- **Edit images** (image-to-image) when the user attaches/replies with an image
 
-- Free tier has generous limits
-- Setting an API key unlocks higher quotas
-- Sage automatically handles rate limiting
+### What Sage calls
 
-### Optimization
+Sage fetches raw image bytes from Pollinations using a URL-style endpoint:
 
-- Sage uses context budgeting to stay within limits
-- Specialized models for different tasks reduce costs
-- Caching reduces redundant calls
+- `GET https://gen.pollinations.ai/image/{prompt}`
+
+Sage appends query parameters such as:
+
+- `model` (current default in code: `klein-large`)
+- `seed`
+- `nologo`
+- `key=sk_...` (when BYOP is enabled)
+
+When editing an image, Sage also includes an `image=<url>` parameter referencing the source image.
+
+> [!NOTE]
+> Pollinations also supports `width`/`height` query parameters, but Sage does not currently set them explicitly (Pollinations defaults apply).
+
+### What users do in Discord
+
+No slash command is required:
+
+- **Generate:** `Sage, draw a neon cyberpunk street scene`
+- **Edit:** reply to an image: `Sage, make this look like a watercolor poster`
+
+Sage replies with an **image attachment** (and may add a short caption).
 
 ---
 
-<a id="resources"></a>
+## ✅ Troubleshooting
 
-## 🔗 Resources
-
-- **Pollinations website:** <https://pollinations.ai/>
-- **API documentation:** <https://enter.pollinations.ai/api/docs>
-- **Featured apps:** <https://pollinations.ai/apps>
-- **GitHub:** <https://github.com/pollinations>
+- **Public bot is silent / prompts for setup:** BYOP is required on servers (admin must run `/sage key login` → `/sage key set`).
+- **“Invalid API key” on set:** re-run `/sage key login` and ensure you copied the `sk_...` token from the redirected URL.
+- **Image generation works but is slow:** Pollinations latency varies by model/traffic; retry, or use a server key for better throughput.
 
 ---
 
 <p align="center">
-  <a href="https://pollinations.ai">
-    <img src="https://pollinations.ai/favicon.ico" alt="Pollinations.ai" width="48" />
-  </a>
-</p>
-
-<p align="center">
-  <sub>Build AI apps with easy APIs, daily grants, and community support</sub>
+  <sub>Powered by <a href="https://pollinations.ai">Pollinations.ai</a> 🐝</sub>
 </p>

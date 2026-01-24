@@ -25,7 +25,7 @@ Sage documentation is organized to support two common goals:
 
 | Document | Best For |
 | :--- | :--- |
-| [🎮 Commands Reference](COMMANDS.md) | Full slash command + interaction reference |
+| [🎮 Commands Reference](COMMANDS.md) | Slash commands, triggers, and **image generation/editing** usage |
 | [❓ FAQ](FAQ.md) | Common questions |
 | [🔧 Troubleshooting](TROUBLESHOOTING.md) | Fixes for common failures and misconfig |
 
@@ -44,7 +44,7 @@ Sage documentation is organized to support two common goals:
 | :--- | :--- |
 | [📋 Operations Runbook](operations/runbook.md) | Operating Sage in production |
 | [🔒 Security & Privacy](security_privacy.md) | What Sage stores and how to control it |
-| [🐝 Pollinations Integration](POLLINATIONS.md) | Provider + model configuration |
+| [🐝 Pollinations Integration](POLLINATIONS.md) | Provider overview (text/vision/images) + BYOP key flow |
 | [🌸 BYOP Mode](BYOP_MODE.md) | Bring-Your-Own-Pollen setup (keys) |
 
 ---

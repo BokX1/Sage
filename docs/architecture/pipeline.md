@@ -33,14 +33,17 @@ flowchart TD
     A[Discord message]:::discord --> B[ingestEvent]:::core --> C[generateChatReply]:::core
     C --> D{Voice fast-path?}:::router
 
-    D -- Yes --> E[Voice statistics]:::output --> K[Send response]:::output
+    D -- Yes --> E[Voice statistics]:::output --> K[Send response\n(text + optional attachments)]:::output
 
     D -- No --> R[LLM router]:::router
-    R --> X[Expert pool]:::expert --> H[Context builder]:::core --> I[LLM call]:::core --> J[Tool loop]:::core --> K
+    R --> X[Expert pool\n(Memory / Social / Voice / Summary / Image)]:::expert --> H[Context builder]:::core --> I[LLM call]:::core --> J[Tool loop (qa/admin)]:::core --> K
 
     K --> L[Async: profile update]:::expert
     K --> M[Async: channel summary]:::expert
 ```
+
+> [!IMPORTANT]
+> On the public bot, **BYOP is required inside servers**. If a message originates from a guild and no server key is set, Sage returns the BYOP welcome message and does not call the LLM.
 
 ---
 
@@ -50,22 +53,30 @@ flowchart TD
 
 **File:** `src/core/orchestration/llmRouter.ts`
 
-Sage uses a **high-precision LLM classifier** (via `gemini-fast` / Gemini 2.5 Flash Lite) to decide what kind of request a message represents and which experts should run.
+Sage uses a **high-precision LLM classifier** (model alias `gemini-fast`) to decide what kind of request a message represents and which experts should run.
 
 Key properties:
 
 - **Contextual intelligence:** The router receives the **last 7 messages** of history, helping it resolve pronouns (e.g., “what about them?”).
-- **Structured output:** Returns JSON containing `kind` (route), `reasoningText` (why), and `experts` to invoke.
-- **Fail-safe:** If routing fails or JSON is invalid, Sage defaults to `chat` with basic memory support.
+- **Structured output:** The router returns JSON (route + experts). `decideRoute()` validates it and produces a `RouteDecision` (`kind`, `experts`, `allowTools`, `temperature`, `reasoningText`).
+- **Fail-safe:** If routing fails or JSON is invalid, Sage defaults to `qa` (with the Memory expert enabled).
 
-| Route | Primary purpose | Default experts |
-| --- | --- | --- |
-| `summarize` | “summarize / recap / what happened” | Summarizer, Memory |
-| `voice_analytics` | “who’s in voice / how long in voice” | VoiceAnalytics, Memory |
-| `social_graph` | “relationship / social graph / who knows whom” | SocialGraph, Memory |
-| `memory` | “what do you know about me” | Memory |
-| `admin` | Slash command context or “admin/config” | SocialGraph, VoiceAnalytics, Memory |
-| `qa` | General conversation / default | Memory |
+| Route | Primary purpose | Typical experts (router prompt) |
+| :--- | :--- | :--- |
+| `summarize` | Channel recap / TL;DR | Summarizer, Memory |
+| `qa` | Default conversation + Q&A (fallback) | *(router decides; often includes Memory)* |
+| `image_generate` | Generate or edit an image | ImageGenerator *(Memory may be included)* |
+| `voice_analytics` | Voice analytics / voice-mode hints | VoiceAnalytics, Memory |
+| `social_graph` | Relationship / connection reasoning | SocialGraph, Memory |
+| `memory` | Profile / “remember/forget” intents | Memory |
+| `admin` | Slash commands / configuration | SocialGraph, VoiceAnalytics, Memory *(tools enabled)* |
+
+> [!NOTE]
+> Sage validates router output against: `summarize`, `qa`, `admin`, `voice_analytics`, `social_graph`, `memory`, `image_generate`.
+> If the router returns an empty expert list, Sage injects `Memory` as a safe default.
+
+
+
 
 ---
 
@@ -75,14 +86,18 @@ Key properties:
 
 **File:** `src/core/orchestration/runExperts.ts`
 
-Experts run secondary DB lookups and return **enriched narrative packets** for the LLM:
+Experts run secondary lookups (usually DB, sometimes external calls) and return **enriched packets** for the LLM (and optionally files):
 
 - **Memory** → User profile summary
 - **Summarizer** → Latest rolling channel summary
 - **VoiceAnalytics** → Human-readable session data (e.g., “Active for 2 hours and 15 minutes”)
 - **SocialGraph** → Relationship tiers (e.g., “Best Friend 🌟”) and interaction counts
+- **ImageGenerator** → Refines your prompt and fetches image bytes from Pollinations (`/image/{prompt}`); can also do image-to-image edits when you attach/reply to an image
 
 These packets are injected into the system prompt so the model has structured context before responding.
+
+> [!NOTE]
+> Experts can also return **binary attachments** (currently used for image generation). Attachments are sent alongside the first Discord reply chunk.
 
 ---
 

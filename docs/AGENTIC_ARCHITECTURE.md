@@ -60,16 +60,14 @@ mindmap
       LLM Classifier
       Expert Selection
       Context Resolution
-    Autonomous Loop
+    Autonomous Tool Loop
       Tool Execution
       Error Recovery
       Self-Correction
-    Multi-Modal
+    Multimodal
       Text Understanding
-      Image Analysis
-      Text Understanding
-      Image Analysis
-      Image Generation
+      Image Understanding (Vision)
+      Image Generation & Editing
       File Processing
       Voice Companion (Beta)
 ```
@@ -234,29 +232,28 @@ flowchart TD
     classDef context fill:#ff9,stroke:#333,stroke-width:2px,color:black
     classDef llm fill:#9d9,stroke:#333,stroke-width:2px,color:black
 
-    M[User message]:::user --> R{LLM Router}:::router
+    U[User message]:::user --> R{LLM Router}:::router
 
-    R -->|Summarize| S[📊 Summarizer Expert]:::expert
-    R -->|Social / relationship| G[👥 Social Graph Expert]:::expert
-    R -->|Voice analytics| V[🎤 Voice Analytics Expert]:::expert
-    R -->|Memory / profile| P[🧠 Memory Expert]:::expert
-    R -->|Image gen| IG[🎨 Image Generator Expert]:::expert
-    R -->|General chat| C[💬 Chat Engine]:::expert
+    R -->|selects| S[📊 Summarizer]:::expert
+    R -->|selects| G[👥 SocialGraph]:::expert
+    R -->|selects| V[🎤 VoiceAnalytics]:::expert
+    R -->|selects| M[🧠 Memory]:::expert
+    R -->|selects| IG[🎨 ImageGenerator]:::expert
 
     subgraph Context["Context Builder"]
         direction TB
-        CTX[Assemble relevant context]:::context
-        BUDGET[Apply token budget]:::context
+        CTX[Assemble context blocks]:::context
+        BUDGET[Apply token budgets]:::context
     end
 
     S --> CTX
     G --> CTX
     V --> CTX
-    P --> CTX
+    M --> CTX
     IG --> CTX
-    C --> CTX
 
-    CTX --> BUDGET --> LLM[🤖 LLM Brain]:::llm --> OUT[Reply to user]:::user
+    CTX --> BUDGET --> LLM[🤖 LLM]:::llm --> OUT[Reply
+(text + optional attachments)]:::user
 ```
 
 ### Why This Matters

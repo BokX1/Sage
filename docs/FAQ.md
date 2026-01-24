@@ -93,11 +93,11 @@ Yes — Sage is free and open source. It uses [Pollinations.ai](https://pollinat
 
 Sage uses a multi-model pipeline:
 
-- **Router:** Gemini-Fast (Gemini 2.5 Flash Lite) for high-precision context analysis.
-- **Chat:** Gemini (default), or any model available on Pollinations.
-- **Analysis:** DeepSeek for user profile analysis.
-- **Summaries:** OpenAI-Large for channel summaries.
-- **Formatting:** Qwen-Coder for structured JSON output.
+- **Router:** `gemini-fast` (Pollinations) for intent classification and expert selection.
+- **Chat:** `gemini` by default (configurable via `POLLINATIONS_MODEL`).
+- **Analysis:** `deepseek` for user profile synthesis (configurable via `PROFILE_MODEL`).
+- **Summaries:** `openai-large` for rolling channel summaries (configurable via `SUMMARY_MODEL`).
+- **Formatting:** `qwen-coder` for structured JSON output (configurable via `FORMAT_MODEL`).
 
 You can change defaults in **[Configuration](CONFIGURATION.md)**.
 
@@ -118,7 +118,21 @@ Sage uses file contents to help answer questions (e.g., code review, explanation
 <details>
 <summary><strong>Can Sage see images?</strong></summary>
 
-Yes. If you share an image and trigger Sage, it can analyze the image using vision-capable models.
+Yes. If you attach an image (or reply to one) and trigger Sage, the bot forwards it as a vision input (`image_url`) to Pollinations-compatible vision models.
+
+</details>
+
+<details>
+<summary><strong>Can Sage generate or edit images?</strong></summary>
+
+Yes.
+
+- **Generate:** `Sage, draw a futuristic city in the rain`
+- **Edit:** reply to an image: `Sage, make this more cinematic`
+
+Under the hood, Sage runs an **Image Generator expert** (prompt refinement → Pollinations image endpoint) and returns the result as a **Discord attachment**.
+
+</details>
 
 </details>
 

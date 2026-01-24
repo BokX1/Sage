@@ -67,6 +67,26 @@ Sage can be triggered in three ways:
 
 ---
 
+### 🎨 Image generation & editing (natural language)
+
+Sage can generate images (text → image) and do simple edits (image → image). No slash command required — just ask.
+
+**Generate**
+
+- `Sage, draw a neon cyberpunk city at night`
+- `Sage, generate an image of a cozy cabin in the snow, watercolor style`
+
+**Edit**
+
+- Reply to an image: `Sage, make this look like a Studio Ghibli scene`
+- Attach an image: `Sage, remove the background and make it a clean product photo`
+
+> [!NOTE]
+> Image replies typically include an **image attachment** (and may include a short caption). On the public bot, BYOP must be enabled (`/sage key login` → `/sage key set`).
+
+---
+
+
 <a id="public-commands"></a>
 
 ## 🌐 Public Commands

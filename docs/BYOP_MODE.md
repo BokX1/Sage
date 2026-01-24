@@ -21,6 +21,13 @@ This keeps Sage sustainable and enables higher limits for your server.
 
 Sage needs an API key (“Pollen”) to generate responses. Sage uses a **server-wide key** so your community can chat without each member needing their own key.
 
+This key is used for:
+
+- 💬 Text chat (default)
+- 👁️ Vision (image understanding)
+- 🎨 Image generation & editing
+- 🎤 Voice-related features (where enabled)
+
 ### The Activation Lifecycle
 
 ```mermaid
@@ -54,7 +61,10 @@ Run:
 /sage key login
 ```
 
-Open the link, log in to Pollinations.ai, then copy the key from the URL (starts with `sk_`).
+Open the link, sign in via Pollinations (GitHub), then copy the key from the URL (starts with `sk_`).
+
+> [!TIP]
+> You can also manage/create keys directly from the Pollinations dashboard at `enter.pollinations.ai`.
 
 ### Step 2: Activate Sage (server-wide)
 

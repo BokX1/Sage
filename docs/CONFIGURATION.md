@@ -59,7 +59,7 @@ Sage uses specialized models for different tasks.
 | `LLM_PROVIDER` | AI provider | `pollinations` |
 | `POLLINATIONS_BASE_URL` | API endpoint | `https://gen.pollinations.ai/v1` |
 | `POLLINATIONS_MODEL` | Primary chat model (use a vision-capable model like `gemini` for image support) | `gemini` |
-| `POLLINATIONS_API_KEY` | **Required for Voice & Image Gen.** Optional global key (or use `/sage key set`) | *(empty)* |
+| `POLLINATIONS_API_KEY` | Global Pollinations key. Required for voice generation; recommended for vision + image generation/editing (unless you set a server key via `/sage key set`). | *(empty)* |
 
 ### Specialized System Models
 
@@ -125,7 +125,7 @@ Control what Sage logs and stores.
 | :--- | :--- | :--- |
 | `RAW_MESSAGE_TTL_DAYS` | In-memory transcript retention (days) | `3` |
 | `RING_BUFFER_MAX_MESSAGES_PER_CHANNEL` | Max messages in memory per channel | `200` |
-| `CONTEXT_TRANSCRIPT_MAX_MESSAGES` | Max messages stored in DB per channel | `15` |
+| `CONTEXT_TRANSCRIPT_MAX_MESSAGES` | Max recent messages included in the transcript window (used in prompts) | `15` |
 | `CONTEXT_TRANSCRIPT_MAX_CHARS` | Max characters per transcript block | `12000` |
 
 ---
@@ -250,7 +250,7 @@ DATABASE_URL=postgresql://postgres:password@localhost:5432/sage?schema=public
 # =============================================================================
 # Recommended
 # =============================================================================
-POLLINATIONS_API_KEY=sk_... # Optional global key (or use /sage key set per server)
+POLLINATIONS_API_KEY=sk_... # Optional global key (or set a server key via /sage key set)
 AUTOPILOT_MODE=manual
 PROFILE_UPDATE_INTERVAL=5
 WAKE_WORDS=sage

@@ -37,7 +37,7 @@ Sage uses **Bring Your Own Pollen (BYOP)**: hosting is free, and your server pro
 As a server admin (or someone with **Manage Guild** permission):
 
 1. Run `/sage key login`
-2. Open the link and log in to Pollinations.ai
+2. Open the link and sign in via Pollinations (GitHub)
 3. Copy the `sk_...` key from the URL
 4. Run `/sage key set <your_key>`
 
@@ -50,6 +50,8 @@ After this, Sage is active for the entire server.
 - Say “Sage, hello” (wake word)
 - Mention `@Sage`
 - Reply to a Sage message
+- `Sage, draw a surreal landscape` (image generation)
+- Reply to an image: `Sage, turn this into a watercolor` (image editing)
 
 ---
 

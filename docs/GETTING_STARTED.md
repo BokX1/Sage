@@ -265,8 +265,11 @@ Once Sage is in your server, set up your Pollinations API key:
 ### 7.1 Get Your API Key
 
 1. Run `/sage key login` in any channel
-2. Click the link to log in at Pollinations
+2. Click the link to sign in via Pollinations (GitHub)
 3. Copy the `sk_...` key from the URL
+
+> [!TIP]
+> You can also manage/create keys from the Pollinations dashboard at `enter.pollinations.ai`.
 
 ### 7.2 Set the Server Key
 
@@ -287,6 +290,8 @@ Once Sage is in your server, set up your Pollinations API key:
   - **Wake word:** `Sage, hello!`
   - **Mention:** `@Sage what's up?`
   - **Reply:** reply to a Sage message
+  - **Image generation:** `Sage, draw a small robot chef` (returns an image attachment)
+  - **Image editing:** reply to an image: `Sage, make this more cinematic`
 
 If Sage doesn’t respond:
 
@@ -304,6 +309,8 @@ If Sage doesn’t respond:
 - “Sage, what’s the weather in Tokyo?”
 - “Sage, summarize our conversation”
 - “Sage, look at this image … and tell me what you see”
+- “Sage, draw a watercolor mountain landscape”
+- *(Reply to an image)* “Sage, turn this into a poster style”
 - “Sage, look at this file …”
 
 ### Configure Behavior
