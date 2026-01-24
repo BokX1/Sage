@@ -104,24 +104,24 @@ Sage implements a self-correcting tool loop:
 ```mermaid
 sequenceDiagram
     participant Brain as LLM Brain
-    participant Loop as Tool Loop
+    participant ToolLoop as Tool Loop
     participant Exec as Tool Execution
 
-    Brain->>Loop: Tool call envelope (e.g., Search: "query")
-    Loop->>Exec: Execute (with timeout)
+    Brain->>ToolLoop: Tool call envelope (e.g., Search: "query")
+    ToolLoop->>Exec: Execute (with timeout)
 
     alt Success
-        Exec-->>Loop: Results
-        Loop-->>Brain: ✅ Tool result
+        Exec-->>ToolLoop: Results
+        ToolLoop-->>Brain: ✅ Tool result
     else Error (timeout/validation)
-        Exec-->>Loop: Error
-        Loop->>Loop: Classify + suggest fix
-        Loop-->>Brain: ❌ Error + retry hint
+        Exec-->>ToolLoop: Error
+        ToolLoop->>ToolLoop: Classify + suggest fix
+        ToolLoop-->>Brain: ❌ Error + retry hint
         Note over Brain: Brain adjusts query/params
-        Brain->>Loop: Retry tool call
+        Brain->>ToolLoop: Retry tool call
     end
 
-    Loop-->>Brain: Updated context
+    ToolLoop-->>Brain: Updated context
     Brain-->>Brain: Continue reasoning
 ```
 

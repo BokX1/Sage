@@ -17,6 +17,8 @@ If you’re not sure, start with **Option 1**.
 
 ---
 
+<a id="option-1-use-the-public-bot-recommended"></a>
+
 ## Option 1: Use the public bot (recommended)
 
 **Best for:** Most servers that want Sage running immediately.
@@ -51,6 +53,8 @@ After this, Sage is active for the entire server.
 
 ---
 
+<a id="option-2-self-host-developers"></a>
+
 ## Option 2: Self-host (developers)
 
 **Best for:** Customizing the codebase, running private instances, or controlling infra.
@@ -58,6 +62,8 @@ After this, Sage is active for the entire server.
 Follow **[📖 Getting Started](GETTING_STARTED.md)** for a complete walkthrough (Discord app, `.env`, database, onboarding wizard, and invite generation).
 
 ---
+
+<a id="troubleshooting-fast"></a>
 
 ## 🆘 Troubleshooting (fast)
 
