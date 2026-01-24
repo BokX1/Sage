@@ -86,7 +86,6 @@ Sage can generate images (text → image) and do simple edits (image → image).
 
 ---
 
-
 <a id="public-commands"></a>
 
 ## 🌐 Public Commands

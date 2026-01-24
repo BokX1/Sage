@@ -75,9 +75,6 @@ Key properties:
 > Sage validates router output against: `summarize`, `qa`, `admin`, `voice_analytics`, `social_graph`, `memory`, `image_generate`.
 > If the router returns an empty expert list, Sage injects `Memory` as a safe default.
 
-
-
-
 ---
 
 <a id="3-narrative-experts"></a>

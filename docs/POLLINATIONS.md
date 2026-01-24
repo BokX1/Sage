@@ -6,12 +6,12 @@ Sage runs on Pollinations.ai for **text**, **vision**, and **image generation**.
 
 ## 🔗 Useful links
 
-- **Pollinations homepage:** https://pollinations.ai
-- **Developer dashboard (keys, usage):** https://enter.pollinations.ai 
-- **API reference:** https://enter.pollinations.ai/api/docs 
+- **Pollinations homepage:** <https://pollinations.ai>
+- **Developer dashboard (keys, usage):** <https://enter.pollinations.ai>
+- **API reference:** <https://enter.pollinations.ai/api/docs>
 
 > [!NOTE]
-> Pollinations has older/legacy endpoints documented in some places. Sage uses the **unified** `gen.pollinations.ai` API surface (see links above). 
+> Pollinations has older/legacy endpoints documented in some places. Sage uses the **unified** `gen.pollinations.ai` API surface (see links above).
 
 ---
 
@@ -51,7 +51,7 @@ Sage uses an OpenAI-compatible chat interface on Pollinations.
 
 **Endpoint family (base):**
 
-- `https://gen.pollinations.ai/v1/chat/completions` 
+- `https://gen.pollinations.ai/v1/chat/completions`
 
 Sage can send multimodal messages by including both:
 
