@@ -58,6 +58,7 @@ Sage uses specialized models for different tasks.
 | :--- | :--- | :--- |
 | `LLM_PROVIDER` | AI provider | `pollinations` |
 | `POLLINATIONS_BASE_URL` | API endpoint | `https://gen.pollinations.ai/v1` |
+| `POLLINATIONS_IMAGE_BASE_URL` | Image generation endpoint | `https://gen.pollinations.ai` |
 | `POLLINATIONS_MODEL` | Primary chat model (use a vision-capable model like `gemini` for image support) | `gemini` |
 | `POLLINATIONS_API_KEY` | Global Pollinations key. Required for voice generation; recommended for vision + image generation/editing (unless you set a server key via `/sage key set`). | *(empty)* |
 

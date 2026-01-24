@@ -23,7 +23,8 @@ export interface RunExpertsParams {
 
 /**
  * Execute selected experts and return their context packets.
- * All experts are cheap DB queries, no LLM calls.
+ * Experts may perform DB queries, external HTTP requests, and LLM calls.
+ * Some experts can also return attachments (e.g., image bytes).
  */
 export async function runExperts(params: RunExpertsParams): Promise<ExpertPacket[]> {
   const { experts, guildId, channelId, userId, traceId } = params;
