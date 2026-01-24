@@ -1,121 +1,159 @@
-# Sage Runtime Pipeline (Routing + Orchestration)
+# 🔀 Sage Runtime Pipeline (Routing + Orchestration)
 
 This document explains how Sage routes incoming messages, builds context, and executes LLM calls. It reflects the current implementation in `src/core/agentRuntime` and `src/core/orchestration`.
 
-## 1) High-level Flow
+---
+
+## 🧭 Quick navigation
+
+- [1) High-level flow](#1-high-level-flow)
+- [2) Intelligent LLM Router](#2-intelligent-llm-router)
+- [3) Narrative experts](#3-narrative-experts)
+- [4) Agentic tool loop & error recovery](#4-agentic-tool-loop-error-recovery)
+- [5) Context building](#5-context-building)
+- [6) Tracing & observability](#6-tracing-observability)
+- [7) Voice fast-path](#7-voice-fast-path)
+- [🔗 Related documentation](#related-documentation)
+
+---
+
+## 1) High-level flow
 
 ```mermaid
-graph TD
-    %% Styling
+flowchart TD
+    %% End-to-end message handling (routing + orchestration).
     classDef discord fill:#5865F2,stroke:#fff,color:white
-    classDef logic fill:#e0f7fa,stroke:#006064,color:black
+    classDef core fill:#e0f7fa,stroke:#006064,color:black
+    classDef router fill:#b9f,stroke:#333,stroke-width:2px,color:black
     classDef expert fill:#f3e5f5,stroke:#4a148c,color:black
     classDef output fill:#a5d6a7,stroke:#1b5e20,color:black
 
-    A[Discord Message]:::discord --> B[ingestEvent]:::logic
-    B --> C[generateChatReply]:::logic
-    C --> D{Voice Fast-Path?}:::logic
-    D -- Yes --> E[Voice Statistics]:::output
-    D -- No --> F[LLM Router]:::logic
-    F --> G[Experts Enrichment]:::expert
-    G --> H[Context Builder]:::logic
-    H --> I[LLM Call]:::logic
-    I --> J[Agentic Tool Loop]:::logic
-    J --> K[Trace End / Response]:::output
-    K --> L[Async: Profile Update]:::expert
-    K --> M[Async: Channel Summary]:::expert
+    A[Discord message]:::discord --> B[ingestEvent]:::core --> C[generateChatReply]:::core
+    C --> D{Voice fast-path?}:::router
+
+    D -- Yes --> E[Voice statistics]:::output --> K[Send response]:::output
+
+    D -- No --> R[LLM router]:::router
+    R --> X[Expert pool]:::expert --> H[Context builder]:::core --> I[LLM call]:::core --> J[Tool loop]:::core --> K
+
+    K --> L[Async: profile update]:::expert
+    K --> M[Async: channel summary]:::expert
 ```
+
+---
 
 ## 2) Intelligent LLM Router
 
 **File:** `src/core/orchestration/llmRouter.ts`
 
-Sage has moved from a regex-based router to a **High-Precision LLM Classifier** using `gemini-fast` (Gemini 2.5 Flash Lite).
+Sage uses a **high-precision LLM classifier** (via `gemini-fast` / Gemini 2.5 Flash Lite) to decide what kind of request a message represents and which experts should run.
 
-- **Contextual Intelligence**: The router receives the **last 7 messages** of history, allowing it to resolve pronouns (e.g., "what about them?" or "tell me more about those sessions").
-- **Classification**: It outputs a structured JSON object containing the `kind` (route), `reasoningText` (why the route was chosen), and a list of `experts` to invoke.
-- **Fail-safe**: If the LLM router fails or provides invalid JSON, Sage defaults to a general conversation route (`chat`) with basic memory support.
+Key properties:
 
-| Route | Primary Purpose | Default Experts |
+- **Contextual intelligence:** The router receives the **last 7 messages** of history, helping it resolve pronouns (e.g., “what about them?”).
+- **Structured output:** Returns JSON containing `kind` (route), `reasoningText` (why), and `experts` to invoke.
+- **Fail-safe:** If routing fails or JSON is invalid, Sage defaults to `chat` with basic memory support.
+
+| Route | Primary purpose | Default experts |
 | --- | --- | --- |
-| `summarize` | "summarize / recap / what happened" | Summarizer, Memory |
-| `voice_analytics` | "who’s in voice / how long in voice" | VoiceAnalytics, Memory |
-| `social_graph` | "relationship / social graph / who knows whom" | SocialGraph, Memory |
-| `memory` | "what do you know about me" | Memory |
-| `admin` | Slash command context or "admin/config" | SocialGraph, VoiceAnalytics, Memory |
-| `qa` | General conversation / Default | Memory |
+| `summarize` | “summarize / recap / what happened” | Summarizer, Memory |
+| `voice_analytics` | “who’s in voice / how long in voice” | VoiceAnalytics, Memory |
+| `social_graph` | “relationship / social graph / who knows whom” | SocialGraph, Memory |
+| `memory` | “what do you know about me” | Memory |
+| `admin` | Slash command context or “admin/config” | SocialGraph, VoiceAnalytics, Memory |
+| `qa` | General conversation / default | Memory |
 
-## 3) Narrative Experts
+---
+
+## 3) Narrative experts
 
 **File:** `src/core/orchestration/runExperts.ts`
 
-Experts run secondary DB lookups and return **enriched narrative packets** to the LLM:
+Experts run secondary DB lookups and return **enriched narrative packets** for the LLM:
 
-- **Memory** → Returns the user's personal profile summary.
-- **Summarizer** → Returns the latest rolling channel summary.
-- **VoiceAnalytics** → Returns human-readable session data (e.g., "Active for 2 hours and 15 minutes").
-- **SocialGraph** → Returns relationship tiers (e.g., "Best Friend 🌟") and interaction counts.
+- **Memory** → User profile summary
+- **Summarizer** → Latest rolling channel summary
+- **VoiceAnalytics** → Human-readable session data (e.g., “Active for 2 hours and 15 minutes”)
+- **SocialGraph** → Relationship tiers (e.g., “Best Friend 🌟”) and interaction counts
 
-These packets are injected into the system prompt, providing the "brain" with a high-level understanding of the context before it generates a response.
+These packets are injected into the system prompt so the model has structured context before responding.
 
-## 4) Agentic Tool Loop & Error Recovery
+---
+
+## 4) Agentic tool loop & error recovery
 
 **File:** `src/core/agentRuntime/toolCallLoop.ts`
 
 Sage implements a self-correcting tool loop:
 
-1. **Execution**: The LLM calls a tool (e.g., `google_search`).
-2. **Error Classification**: If the tool fails, the error is classified (e.g., `timeout`, `validation_error`).
-3. **Internal Feedback**: Instead of just erroring, Sage feeds a structured "Suggestion for Agent" back to the LLM.
-4. **Autonomous Retry**: The agent can choose to retry the call with corrected parameters, try a different approach, or explain the failure to the user.
+1. **Execution:** The LLM calls a tool (e.g., `google_search`).
+2. **Error classification:** Tool errors are categorized (e.g., `timeout`, `validation_error`).
+3. **Internal feedback:** Sage returns a structured suggestion back to the LLM.
+4. **Autonomous retry:** The agent can retry with corrected parameters, try an alternative tool, or explain failure.
 
-### Tool Loop Sequence
+### Tool loop sequence
 
 ```mermaid
 sequenceDiagram
-    participant B as LLM Brain
-    participant L as Tool Loop
-    participant E as Execution
-    
-    B->>L: Tool Call Envelope [Search: "Query"]
-    L->>E: Execute with Timeout
+    participant Brain as LLM Brain
+    participant Loop as Tool Loop
+    participant Exec as Tool Execution
+
+    Brain->>Loop: Tool call envelope (e.g., Search: "query")
+    Loop->>Exec: Execute (with timeout)
+
     alt Success
-        E-->>L: Results Data
-        L-->>B: ✅ Succeeded: [Data]
-    else Failure (Timeout/Validation)
-        E-->>L: Error (e.g., Timeout)
-        L->>L: Classify Error Type
-        L-->>B: ❌ Failed (timeout) + 💡 Suggestion
-        Note over B: Brain adjusts query/params
-        B->>L: Retried Tool Call
+        Exec-->>Loop: Results
+        Loop-->>Brain: ✅ Tool result
+    else Error (timeout/validation)
+        Exec-->>Loop: Error
+        Loop->>Loop: Classify + suggest fix
+        Loop-->>Brain: ❌ Error + retry hint
+        Note over Brain: Brain adjusts query/params
+        Brain->>Loop: Retry tool call
     end
-    L-->>B: Final Context
-    B-->>L: Final Reply Text
+
+    Loop-->>Brain: Updated context
+    Brain-->>Brain: Continue reasoning
 ```
 
-## 5) Context Building
+---
+
+## 5) Context building
 
 **File:** `src/core/agentRuntime/contextBuilder.ts`
 
 The context builder composes a single system message with:
 
-- Core system prompt + User/Channel profiles
+- Core system prompt + user/channel profiles
 - Narrative expert packets
-- Relationship hints + Rolling summary
-- Transcript block (respecting token budget)
+- Relationship hints + rolling summary
+- Transcript block (respecting token budgets)
 
-It uses `contextBudgeter` to respect token limits defined in `src/config.ts`.
+It uses `contextBudgeter` to respect limits defined in `src/config.ts`.
 
-## 6) Tracing & Observability
+---
+
+## 6) Tracing & observability
 
 **File:** `src/core/trace/agentTraceRepo.ts`
 
-Every interaction is traced for admin debugging:
+Every interaction can be traced for admin debugging:
 
-- **Reasoning**: The router's `reasoningText` is stored in the `AgentTrace` table.
-- **Payloads**: expert packets, tool calls, and final responses are all logged.
-- **Access**: surfaced via the `/sage admin trace` slash command.
+- **Reasoning:** Router `reasoningText` stored in `AgentTrace`
+- **Payloads:** Expert packets, tool calls, and final responses
+- **Access:** surfaced via `/sage admin trace`
 
-## 7) Voice Fast-Path
+---
 
-Before invoking the full LLM pipeline, Sage uses a deterministic fast-path for simple voice queries (e.g., "who is in voice?"). This ensures sub-second responses for basic status checks using `src/core/voice/voiceQueries.ts`.
+## 7) Voice fast-path
+
+Before invoking the full LLM pipeline, Sage uses a deterministic fast-path for simple voice queries (e.g., “who is in voice?”). This enables sub-second responses using `src/core/voice/voiceQueries.ts`.
+
+---
+
+## 🔗 Related documentation
+
+- [🧠 Memory system](memory_system.md)
+- [💾 Database architecture](database.md)
+- [🤖 Agentic architecture](../AGENTIC_ARCHITECTURE.md)

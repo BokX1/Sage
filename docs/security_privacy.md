@@ -1,8 +1,24 @@
-# Security & Privacy
+# 🔒 Security & Privacy
 
-This document describes what Sage stores and how to control retention. The source of truth is `prisma/schema.prisma` and the ingestion pipeline in `src/core`.
+This document describes what Sage stores and how to control retention. Implementation references include `prisma/schema.prisma` and the ingestion pipeline under `src/core`.
 
-## Data stored (by default)
+> [!IMPORTANT]
+> If you run Sage, you are responsible for the data it stores in your database. Review the defaults below and adjust `.env` to match your server’s privacy expectations.
+
+---
+
+## 🧭 Quick navigation
+
+- [✅ What Sage stores (default)](#what-sage-stores-default)
+- [⚙️ Message ingestion controls](#message-ingestion-controls)
+- [🧾 Retention behavior](#retention-behavior)
+- [📤 What is sent to the LLM provider](#what-is-sent-to-the-llm-provider)
+- [🧹 Deletion / reset](#deletion-reset)
+- [🩹 Redaction](#redaction)
+
+---
+
+## ✅ What Sage stores (default)
 
 | Data | Table | Notes |
 | --- | --- | --- |
@@ -14,32 +30,47 @@ This document describes what Sage stores and how to control retention. The sourc
 | Admin audits | `AdminAudit` | Records admin command usage with hashed params. |
 | Agent traces | `AgentTrace` | Router/expert data and the final reply text (if tracing is enabled). |
 
-## Message ingestion controls
+---
+
+## ⚙️ Message ingestion controls
+
+These settings control what Sage ingests and logs:
 
 - `LOGGING_ENABLED=false` disables message/voice ingestion entirely.
 - `LOGGING_MODE=allowlist` limits ingestion to channels listed in `LOGGING_ALLOWLIST_CHANNEL_IDS`.
 - `LOGGING_BLOCKLIST_CHANNEL_IDS` excludes specific channels.
 
-## Retention behavior
+---
 
-- **In-memory transcripts** honor `RAW_MESSAGE_TTL_DAYS` and `RING_BUFFER_MAX_MESSAGES_PER_CHANNEL`.
+## 🧾 Retention behavior
+
+- **In-memory transcripts** honor:
+  - `RAW_MESSAGE_TTL_DAYS`
+  - `RING_BUFFER_MAX_MESSAGES_PER_CHANNEL`
 - **DB transcripts** are trimmed per channel to `CONTEXT_TRANSCRIPT_MAX_MESSAGES`.
 - **Summaries and profiles** persist until deleted manually.
 - **Agent traces** are stored only when `TRACE_ENABLED=true`.
 
-## What is sent to the LLM provider
+> [!TIP]
+> Want less retained context? Reduce `CONTEXT_TRANSCRIPT_MAX_MESSAGES`, disable DB storage, and/or disable tracing.
+
+---
+
+## 📤 What is sent to the LLM provider
 
 When generating replies, Sage sends:
 
-- The user’s message content.
-- Reply references (if the user replied to another message).
-- Recent transcript + summaries (if logging is enabled).
-- Attachment text blocks for supported text/code files.
-- Image URLs for vision-capable requests.
+- The user’s message content
+- Reply references (if the user replied to another message)
+- Recent transcript + summaries (if logging is enabled)
+- Attachment text blocks for supported text/code files
+- Image URLs for vision-capable requests
 
 Sage does **not** log API keys or tokens. Keep `.env` out of version control.
 
-## Deletion / reset
+---
+
+## 🧹 Deletion / reset
 
 There is no built-in purge command. To delete data:
 
@@ -47,8 +78,10 @@ There is no built-in purge command. To delete data:
 2. Delete rows from the relevant tables (or drop the schema) using Postgres tools.
 3. Restart the bot.
 
-If you need to prevent future storage, disable logging and/or tracing via `.env`.
+If you want to prevent future storage, disable logging and/or tracing in `.env`.
 
-## Redaction
+---
+
+## 🩹 Redaction
 
 Profile prompts instruct the LLM not to store secrets or PII, but Sage does not apply automatic redaction beyond that prompt. Treat stored summaries and messages as sensitive data.

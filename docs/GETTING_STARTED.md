@@ -1,78 +1,93 @@
-# Getting Started with Sage
+# 📖 Getting Started with Sage
 
-Welcome! This guide will walk you through setting up Sage from scratch, even if you've never worked with Discord bots before.
+Set up Sage from source — even if you’ve never built a Discord bot before.
 
-**Time required:** About 15-20 minutes
+**Time:** ~15–20 minutes  
+**Outcome:** A running Sage instance + a working invite link + a configured Pollinations key (BYOP)
 
 ---
 
-## 📋 Before You Begin
+## 🧭 Quick navigation
 
-Make sure you have:
+- [✅ Before You Begin](#before-you-begin)
+- [🗺️ Setup at a Glance](#setup-at-a-glance)
+- [Step 1: Install Required Software](#step-1-install-required-software)
+- [Step 2: Create Your Discord Bot](#step-2-create-your-discord-bot)
+- [Step 3: Download and Configure Sage](#step-3-download-and-configure-sage)
+- [Step 4: Start the Database](#step-4-start-the-database)
+- [Step 5: Start Sage](#step-5-start-sage)
+- [Step 6: Invite Sage to Your Server](#step-6-invite-sage-to-your-server)
+- [Step 7: Activate Your API Key (BYOP)](#step-7-activate-your-api-key-byop)
+- [✅ Verification Checklist](#verification-checklist)
 
-- [ ] A **Discord account** (you probably have this!)
-- [ ] A **computer** running Windows, Mac, or Linux
-- [ ] An **internet connection**
+---
 
-That's it! We'll install everything else together.
+## ✅ Before You Begin
+
+You’ll need:
+
+- [ ] A **Discord account**
+- [ ] A computer (Windows / macOS / Linux)
+- [ ] Internet access
+
+Everything else is installed in the steps below.
 
 ---
 
 ## 🗺️ Setup at a Glance
 
 ```mermaid
-graph LR
-    %% Styling
-    classDef step fill:#e1f5fe,stroke:#01579b,stroke-width:2px,color:black
+flowchart LR
+    %% High-level setup checklist for self-hosting.
     classDef start fill:#dcedc8,stroke:#33691e,stroke-width:2px,color:black
+    classDef step fill:#e1f5fe,stroke:#01579b,stroke-width:2px,color:black
     classDef endNode fill:#ffccbc,stroke:#bf360c,stroke-width:2px,color:black
 
-    S1[1. Install Software]:::start --> S2[2. Create Bot]:::step
-    S2 --> S3[3. Download Sage]:::step
-    S3 --> S4[4. Start Database]:::step
-    S4 --> S5[5. Start Sage]:::step
-    S5 --> S6[6. Invite Bot]:::step
-    S6 --> S7[7. Activate Key]:::endNode
+    S1[1) Install prerequisites]:::start
+      --> S2[2) Create Discord app/bot]:::step
+      --> S3[3) Clone & install Sage]:::step
+      --> S4[4) Start PostgreSQL]:::step
+      --> S5[5) Configure .env]:::step
+      --> S6[6) Start Sage]:::step
+      --> S7[7) Invite bot & set key]:::endNode
 ```
+
+---
 
 ## Step 1: Install Required Software
 
 ### 1.1 Install Node.js
 
-Node.js is the platform that runs Sage.
+Node.js runs Sage.
 
-1. Go to [nodejs.org](https://nodejs.org/)
-2. Click the **LTS** (Long Term Support) version — it's the big green button
-3. Run the installer and click "Next" through the prompts
-4. **Restart your computer** after installation
+1. Go to https://nodejs.org/
+2. Install the **LTS** version
+3. Restart your computer after installation
 
-**Verify it worked:**
-Open a terminal (Command Prompt on Windows, Terminal on Mac) and type:
+Verify:
 
 ```bash
 node --version
 ```
 
-You should see something like `v20.11.0` (the number may vary).
+You should see something like `v20.11.0` (exact version may differ).
 
 ### 1.2 Install Docker Desktop
 
-Docker runs the database that Sage uses to remember things.
+Docker runs the database Sage uses to store memory.
 
-1. Go to [docker.com/products/docker-desktop](https://www.docker.com/products/docker-desktop/)
-2. Download for your operating system
-3. Run the installer
-4. **Start Docker Desktop** after installation (it needs to be running)
+1. Go to https://www.docker.com/products/docker-desktop/
+2. Install Docker Desktop for your OS
+3. Start Docker Desktop (it must be running)
 
-> 💡 **Don't want Docker?** You can use an external PostgreSQL database instead. See [Alternative Database Setup](#alternative-database-without-docker).
+> 💡 **Don’t want Docker?** You can use an external PostgreSQL database instead. See [Alternative Database Setup](#alternative-database-without-docker).
 
-### 1.3 Install Git (if you don't have it)
+### 1.3 Install Git (if you don’t have it)
 
-Git lets you download Sage's code.
+Git downloads Sage’s code.
 
-1. Go to [git-scm.com/downloads](https://git-scm.com/downloads)
-2. Download for your operating system
-3. Run the installer with default settings
+1. Go to https://git-scm.com/downloads
+2. Install for your OS using defaults
 
 ---
 
@@ -80,44 +95,38 @@ Git lets you download Sage's code.
 
 ### 2.1 Create a Discord Application
 
-1. Go to [discord.com/developers/applications](https://discord.com/developers/applications)
-2. Click **"New Application"** (top right)
-3. Enter a name (e.g., "Sage") and click **Create**
-4. You're now on your application's page!
+1. Open https://discord.com/developers/applications
+2. Click **New Application**
+3. Name it (e.g., “Sage”) and click **Create**
 
 ### 2.2 Get Your Application ID
 
-1. On the **General Information** page
-2. Find **"Application ID"**
-3. Click **"Copy"** — save this somewhere, you'll need it later
+1. In **General Information**, find **Application ID**
+2. Click **Copy** — you’ll use it in `.env`
 
-### 2.3 Create the Bot
+### 2.3 Create the Bot + Token
 
-1. Click **"Bot"** in the left sidebar
-2. Click **"Reset Token"** (or "Add Bot" if it's new)
-3. Click **"Copy"** to copy your bot token
-4. **Save this token somewhere safe** — you can only see it once!
+1. Click **Bot** in the sidebar
+2. Click **Reset Token** (or **Add Bot** if it’s new)
+3. Click **Copy** to copy the bot token
 
-> ⚠️ **Never share your bot token!** Anyone with it can control your bot.
+> ⚠️ **Never share your bot token.** Anyone with it can control your bot.
 
-### 2.4 Enable Required Permissions
+### 2.4 Enable Required Permissions (Gateway Intents)
 
-Still on the Bot page:
+On the Bot page, enable:
 
-1. Scroll down to **"Privileged Gateway Intents"**
-2. Enable these three options:
-   - ✅ **PRESENCE INTENT**
-   - ✅ **SERVER MEMBERS INTENT**
-   - ✅ **MESSAGE CONTENT INTENT**
-3. Click **"Save Changes"**
+- ✅ **PRESENCE INTENT**
+- ✅ **SERVER MEMBERS INTENT**
+- ✅ **MESSAGE CONTENT INTENT**
+
+Click **Save Changes**.
 
 ---
 
 ## Step 3: Download and Configure Sage
 
 ### 3.1 Download Sage
-
-Open a terminal and run:
 
 ```bash
 # Navigate to where you want to put Sage (e.g., Desktop)
@@ -136,37 +145,28 @@ cd Sage
 npm install
 ```
 
-This downloads all the packages Sage needs. It might take a minute.
-
 ### 3.3 Run the Onboarding Wizard
 
 ```bash
 npm run onboard
 ```
 
-The wizard will ask you for:
+The wizard will ask for:
 
 | Prompt | What to Enter |
 |:-------|:--------------|
-| **DISCORD_TOKEN** | Paste the bot token from Step 2.3 |
-| **DISCORD_APP_ID** | Paste the Application ID from Step 2.2 |
+| **DISCORD_TOKEN** | Bot token from Step 2.3 |
+| **DISCORD_APP_ID** | Application ID from Step 2.2 |
 | **DATABASE_URL** | Type `2` to use the Docker default |
-| **POLLINATIONS_API_KEY** | Optional — set a global key or leave blank to use `/sage key set` per server |
-| **POLLINATIONS_MODEL** | Choose a default chat model from the list |
+| **POLLINATIONS_API_KEY** | Optional global key (or set per server later via `/sage key set`) |
+| **POLLINATIONS_MODEL** | Choose a default chat model |
 
 > ✅ `npm run setup` is kept as a legacy alias for the onboarding wizard.
 
 **Non-interactive option (CI/automation):**
 
 ```bash
-npm run onboard -- \
-  --discord-token "YOUR_TOKEN" \
-  --discord-app-id "YOUR_APP_ID" \
-  --database-url "postgresql://..." \
-  --api-key "YOUR_POLLINATIONS_KEY" \
-  --model gemini \
-  --yes \
-  --non-interactive
+npm run onboard --   --discord-token "YOUR_TOKEN"   --discord-app-id "YOUR_APP_ID"   --database-url "postgresql://..."   --api-key "YOUR_POLLINATIONS_KEY"   --model gemini   --yes   --non-interactive
 ```
 
 > ℹ️ `--api-key` is optional. If you skip it, set a server key later with `/sage key set`.
@@ -181,15 +181,11 @@ Make sure Docker Desktop is running, then:
 docker compose -f config/ci/docker-compose.yml up -d db
 ```
 
-**What this does:** Starts a PostgreSQL database in the background.
-
-Wait about 10 seconds for it to fully start, then:
+Wait ~10 seconds, then run:
 
 ```bash
 npm run db:migrate
 ```
-
-**What this does:** Sets up the database tables Sage needs.
 
 ---
 
@@ -199,14 +195,14 @@ npm run db:migrate
 npm run dev
 ```
 
-**You should see:**
+You should see:
 
 ```text
 [info] Logged in as Sage#1234
 [info] Ready!
 ```
 
-🎉 **Sage is now running!** Keep this terminal window open.
+Keep this terminal window open.
 
 ---
 
@@ -214,19 +210,18 @@ npm run dev
 
 ### 6.1 Generate the Invite Link
 
-1. Go back to [discord.com/developers/applications](https://discord.com/developers/applications)
+1. Open https://discord.com/developers/applications
 2. Select your application
-3. Click **"OAuth2"** in the left sidebar
-4. Click **"URL Generator"**
+3. Go to **OAuth2** → **URL Generator**
 
-### 6.2 Select Permissions
+### 6.2 Select Scopes + Permissions
 
-**Scopes:** Check these boxes:
+**Scopes:**
 
 - ✅ `bot`
 - ✅ `applications.commands`
 
-**Bot Permissions:** Check these boxes:
+**Bot Permissions:**
 
 | Permission | Integer | Purpose |
 |:-----------|:--------|:--------|
@@ -235,78 +230,74 @@ npm run dev
 | View Channels | 1024 | See channels |
 | Connect | 1048576 | Voice awareness |
 
-> 💡 **Permission Total:** 1117184 (all permissions above combined)
+> 💡 **Permission Total:** 1117184 (sum of the permissions above)
 
 ### 6.3 Copy and Use the Link
 
 1. Scroll down and copy the **Generated URL**
-2. Paste it in your browser
-3. Select your server and click **Authorize**
+2. Open it in your browser
+3. Select a server and click **Authorize**
 
-## Step 7: Activate Your API Key
+---
 
-Once Sage is in your server, you need to set up your Pollinations API key:
+## Step 7: Activate Your API Key (BYOP)
+
+Once Sage is in your server, set up your Pollinations API key:
 
 ### 7.1 Get Your API Key
 
 1. Run `/sage key login` in any channel
 2. Click the link to log in at Pollinations
-3. After logging in, copy the `sk_...` key from the URL
+3. Copy the `sk_...` key from the URL
 
 ### 7.2 Set the Server Key
 
-1. Run `/sage key set <your_key>` (replace with your actual key)
+1. Run `/sage key set <your_key>`
 2. Sage will confirm the key is valid and show your account info
 
 > 💡 **Need a key?** The `/sage key login` command provides step-by-step instructions.
-
-Once set, Sage will wake up and be ready to chat! It will greet you with a friendly message explaining its unique "getting to know you" features.
 
 ---
 
 ## ✅ Verification Checklist
 
-Make sure everything is working:
+- [ ] Sage appears in your server member list
+- [ ] Run `/ping` — Sage should reply with **Pong!**
+- [ ] Chat with Sage in any of these ways:
+  - **Wake word:** `Sage, hello!`
+  - **Mention:** `@Sage what's up?`
+  - **Reply:** reply to a Sage message
 
-- [ ] Sage appears in your server's member list (might show as offline for a moment)
-- [ ] Type `/ping` — Sage should respond with "Pong!"
-- [ ] Chat with Sage using one of these three ways:
-  - **Prefix**: "Sage, hello!"
-  - **Mention**: "@Sage, what's up?"
-  - **Reply**: Just reply to one of Sage's messages.
+If Sage doesn’t respond:
 
-**If Sage doesn't respond:**
-
-1. Check the terminal for error messages
-2. Run `npm run doctor` to diagnose issues
+1. Check terminal logs for errors
+2. Run `npm run doctor`
 3. See [Troubleshooting](TROUBLESHOOTING.md)
 
 ---
 
-## 🎯 What's Next?
-
-Now that Sage is running, try these:
+## 🎯 What’s Next?
 
 ### Talk to Sage
 
-- "Sage, tell me about yourself?"
-- "Sage, what's the weather in Tokyo?"
-- "Sage, summarize our conversation"
-- "Sage, look at this image [attach an image] and tell me what you see"
-- "Sage, look at this file [attach a .ts or .txt file]"
+- “Sage, tell me about yourself?”
+- “Sage, what’s the weather in Tokyo?”
+- “Sage, summarize our conversation”
+- “Sage, look at this image … and tell me what you see”
+- “Sage, look at this file …”
 
 ### Configure Behavior
 
 Edit `.env` to customize:
 
-- `WAKE_WORDS` — Change what triggers Sage (default: "sage")
-- `AUTOPILOT_MODE` — Set to "talkative" for unprompted responses
-- `ADMIN_USER_IDS` — Add your Discord ID for admin commands
+- `WAKE_WORDS` — change what triggers Sage (default: `sage`)
+- `AUTOPILOT_MODE` — set to `talkative` for unprompted responses
+- `ADMIN_USER_IDS` — enable admin commands for your Discord user
 
 ### Add Admin Access
 
-1. Get your Discord User ID (Enable Developer Mode → Right-click yourself → Copy ID)
-2. Open `.env` and add: `ADMIN_USER_IDS=your_id_here`
+1. Enable Developer Mode in Discord → right-click yourself → **Copy ID**
+2. In `.env`, set: `ADMIN_USER_IDS=your_id_here`
 3. Restart Sage
 
 ---
@@ -315,34 +306,34 @@ Edit `.env` to customize:
 
 ### Alternative: Database Without Docker
 
-If you don't want to use Docker, you can use any PostgreSQL database:
+If you don’t want Docker, use any PostgreSQL database:
 
-1. Install PostgreSQL from [postgresql.org](https://www.postgresql.org/download/)
+1. Install PostgreSQL from https://www.postgresql.org/download/
 2. Create a database called `sage`
 3. During `npm run onboard` (or `npm run setup`), choose option `1` for DATABASE_URL
-4. Enter your connection string: `postgresql://username:password@localhost:5432/sage?schema=public`
+4. Enter your connection string:
+
+   `postgresql://username:password@localhost:5432/sage?schema=public`
 
 ### Alternative: Production Deployment
-
-For 24/7 hosting, build for production:
 
 ```bash
 npm run build
 npm start
 ```
 
-Consider hosting on:
+Hosting options mentioned in this repo:
 
-- [Railway](https://railway.app)
-- [Render](https://render.com)
-- [DigitalOcean](https://digitalocean.com)
+- https://railway.app
+- https://render.com
+- https://digitalocean.com
 - Your own VPS
 
 ---
 
 ## 🆘 Need Help?
 
-- Check the [FAQ](FAQ.md) for common questions
-- See the [Troubleshooting Guide](TROUBLESHOOTING.md)
-- Run `npm run doctor` for diagnostics
-- Open an issue on [GitHub](https://github.com/BokX1/Sage/issues)
+- [FAQ](FAQ.md)
+- [Troubleshooting](TROUBLESHOOTING.md)
+- `npm run doctor`
+- GitHub issues: https://github.com/BokX1/Sage/issues

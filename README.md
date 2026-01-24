@@ -17,14 +17,27 @@
 </p>
 
 <p align="center">
-  <strong>🎮 <a href="docs/QUICKSTART.md">I just want to run the bot</a></strong> · <strong>💻 <a href="#-quick-start">I'm a developer</a></strong>
+  <strong>🎮 <a href="docs/QUICKSTART.md">I just want to run the bot</a></strong> · <strong>💻 <a href="#-developer-quick-start">I'm a developer</a></strong>
 </p>
+
+---
+
+## 🧭 Quick navigation
+
+- [🎯 What is Sage?](#what-is-sage)
+- [🏛️ High-Level Architecture](#high-level-architecture)
+- [✨ Features](#features)
+- [🚀 Getting Started](#getting-started)
+- [💻 Developer Quick Start](#developer-quick-start)
+- [🛠️ Configuration](#configuration)
+- [📚 Documentation](#documentation)
+- [💚 Why Choose Sage?](#why-choose-sage)
 
 ---
 
 ## 🎯 What is Sage?
 
-Sage is a **Fully Agentic Discord companion** that goes beyond simple chat commands. Unlike traditional bots, Sage is designed to be a friendly member of your community who **listens and evolves alongside you**:
+Sage is a **fully agentic Discord companion** that goes beyond simple chat commands. Unlike traditional bots, Sage is designed to be a friendly member of your community who **listens and evolves alongside you**:
 
 - 🧠 **Self-Learning Memory**: Remembers past conversations to build personalized user contexts.
 - 👥 **Socially Aware**: Understands relationship tiers (Best Friend, Acquaintance) and interaction "vibes."
@@ -39,34 +52,40 @@ Sage is a **Fully Agentic Discord companion** that goes beyond simple chat comma
 ## 🏛️ High-Level Architecture
 
 ```mermaid
-graph TD
-    %% Styling
+flowchart LR
+    %% Keep the diagram left-to-right to reduce vertical scroll on GitHub.
     classDef user fill:#f96,stroke:#333,stroke-width:2px,color:black
     classDef bot fill:#9d9,stroke:#333,stroke-width:2px,color:black
     classDef router fill:#b9f,stroke:#333,stroke-width:2px,color:black
     classDef expert fill:#fff,stroke:#333,stroke-width:1px,stroke-dasharray: 5 5,color:black
     classDef context fill:#ff9,stroke:#333,stroke-width:2px,color:black
 
-    User((User)):::user -- "Message/Reply/Mention" --> Sage[Sage Bot]:::bot
-    Sage --> Router{LLM Router}:::router
-    
-    Router -- "Summarize" --> Summarizer[Summarizer Expert]:::expert
-    Router -- "Social" --> Social[Social Graph Expert]:::expert
-    Router -- "Voice" --> Voice[Voice Expert]:::expert
-    Router -- "General/Memory" --> Memory[Memory Expert]:::expert
-    
-    Social --> Context[Context Builder]:::context
-    Voice --> Context
-    Memory --> Context
-    Summarizer --> Context
-    
-    Context --> LLM[LLM Brain]:::router
-    LLM -- "Tools/Reply" --> Sage
-    
-    Sage -- "Chat Response" --> User
-    Sage -- "Voice Trigger" --> TTS[TTS Generator]:::bot
-    TTS -- "Audio Output" --> VC[Voice Channel]:::user
-    VC -.-> User
+    U((User)):::user -->|"Message / reply / mention"| B[Sage Bot]:::bot
+    B --> R{LLM Router}:::router
+
+    subgraph Experts
+        direction TB
+        S[📊 Summarizer]:::expert
+        G[👥 Social Graph]:::expert
+        V[🎤 Voice Analytics]:::expert
+        M[🧠 Memory]:::expert
+    end
+
+    R --> S
+    R --> G
+    R --> V
+    R --> M
+
+    S --> C[Context Builder]:::context
+    G --> C
+    V --> C
+    M --> C
+
+    C --> L[LLM Brain]:::router --> B
+    B -->|"Chat response"| U
+
+    B -->|"Voice trigger"| T[TTS Generator]:::bot --> VC[(Voice Channel)]:::user
+    VC -.-> U
 ```
 
 ---
@@ -88,16 +107,47 @@ graph TD
 
 ## 🚀 Getting Started
 
-### 1. Invite Sage
+### Option A: Use the public bot
 
-[**Click here to invite Sage to your server**](https://discord.com/api/oauth2/authorize?client_id=1211723232808570971&permissions=414464731200&scope=bot%20applications.commands)
+1. **Invite Sage**
 
-### 2. Basic Commands
+   [**Click here to invite Sage to your server**](https://discord.com/api/oauth2/authorize?client_id=1211723232808570971&permissions=414464731200&scope=bot%20applications.commands)
 
-- `/sage whoiswho` — See relationship statuses
-- `/sage key set` — Set your own API key (for higher limits)
-- `/join` — Summon Sage to voice
-- `/leave` — Disconnect Sage from voice
+2. **Activate BYOP (recommended for higher limits)**
+
+   - Run `/sage key login` to get your Pollinations key.
+   - Run `/sage key set <your_key>` to activate Sage for the entire server.
+
+> [!TIP]
+> Prefer least-privilege permissions? Generate a custom invite URL in the Discord Developer Portal (see [Getting Started → Invite Bot](docs/GETTING_STARTED.md#step-6-invite-sage-to-your-server)).
+
+### Option B: Self-host from source
+
+Follow **[📖 Getting Started](docs/GETTING_STARTED.md)** for a full walkthrough (Node.js, Docker/Postgres, onboarding wizard, and invite generation).
+
+---
+
+## 💻 Developer Quick Start
+
+> [!NOTE]
+> This is a fast path. For a complete setup (including creating a Discord app), use [Getting Started](docs/GETTING_STARTED.md).
+
+```bash
+git clone https://github.com/BokX1/Sage.git
+cd Sage
+npm install
+npm run onboard
+docker compose -f config/ci/docker-compose.yml up -d db
+npm run db:migrate
+npm run dev
+```
+
+When Sage starts, you should see:
+
+```text
+[info] Logged in as Sage#1234
+[info] Ready!
+```
 
 ---
 

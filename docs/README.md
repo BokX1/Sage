@@ -4,7 +4,10 @@
   <img src="https://img.shields.io/badge/🌿-Sage%20Docs-2d5016?style=for-the-badge&labelColor=4a7c23" alt="Sage Documentation" />
 </p>
 
-Welcome to the official documentation for **Sage** — the fully agentic Discord companion that learns and grows with your community.
+Sage documentation is organized to support two common goals:
+
+- 🎮 **Run Sage quickly** (public bot or minimal setup)
+- 💻 **Self-host and develop** (from source, with full configuration control)
 
 ---
 
@@ -14,35 +17,35 @@ Welcome to the official documentation for **Sage** — the fully agentic Discord
 
 | Document | Best For |
 |:---------|:---------|
-| [⚡ Quick Start](QUICKSTART.md) | Users who just want to run the bot (5 minutes) |
-| [📖 Getting Started](GETTING_STARTED.md) | Developers setting up from source |
-| [⚙️ Configuration](CONFIGURATION.md) | Customizing all settings and behaviors |
+| [⚡ Quick Start](QUICKSTART.md) | Run Sage in ~5 minutes |
+| [📖 Getting Started](GETTING_STARTED.md) | Set up Sage from source (step-by-step) |
+| [⚙️ Configuration](CONFIGURATION.md) | Tune behavior, memory, and limits |
 
 ### Usage & Commands
 
 | Document | Best For |
 |:---------|:---------|
-| [🎮 Commands Reference](COMMANDS.md) | Complete slash command documentation |
-| [❓ FAQ](FAQ.md) | Common questions and troubleshooting |
-| [🔧 Troubleshooting](TROUBLESHOOTING.md) | Error resolution and debugging |
+| [🎮 Commands Reference](COMMANDS.md) | Full slash command + interaction reference |
+| [❓ FAQ](FAQ.md) | Common questions |
+| [🔧 Troubleshooting](TROUBLESHOOTING.md) | Fixes for common failures and misconfig |
 
 ### Architecture & Technical
 
 | Document | Best For |
 |:---------|:---------|
-| [� Agentic Architecture](AGENTIC_ARCHITECTURE.md) | **NEW!** What makes Sage different |
-| [�🧠 Memory System](architecture/memory_system.md) | Understanding how Sage learns |
-| [🔀 Pipeline](architecture/pipeline.md) | Message processing flow |
-| [💾 Database](architecture/database.md) | Schema and storage details |
+| [🤖 Agentic Architecture](AGENTIC_ARCHITECTURE.md) | What makes Sage “agentic” (high-level) |
+| [🧠 Memory System](architecture/memory_system.md) | How Sage stores/summarizes context |
+| [🔀 Runtime Pipeline](architecture/pipeline.md) | How messages route through experts and tools |
+| [💾 Database](architecture/database.md) | Storage model + schema overview |
 
 ### Operations & Security
 
 | Document | Best For |
 |:---------|:---------|
-| [📋 Operations Runbook](operations/runbook.md) | Production deployment guide |
-| [🔒 Security & Privacy](security_privacy.md) | Data handling and privacy |
-| [🐝 Pollinations Integration](POLLINATIONS.md) | AI provider details |
-| [🏷️ BYOP Mode](BYOP_MODE.md) | Bring-Your-Own-Pollen setup |
+| [📋 Operations Runbook](operations/runbook.md) | Operating Sage in production |
+| [🔒 Security & Privacy](security_privacy.md) | What Sage stores and how to control it |
+| [🐝 Pollinations Integration](POLLINATIONS.md) | Provider + model configuration |
+| [🌸 BYOP Mode](BYOP_MODE.md) | Bring-Your-Own-Pollen setup (keys) |
 
 ---
 
@@ -50,29 +53,30 @@ Welcome to the official documentation for **Sage** — the fully agentic Discord
 
 ### "I just want to use the bot"
 
-1. **[Quick Start Guide](QUICKSTART.md)** — Invite and configure in 5 minutes
-2. **[Commands Reference](COMMANDS.md)** — Learn all available commands
-3. **[FAQ](FAQ.md)** — Get answers to common questions
+1. **[Quick Start Guide](QUICKSTART.md)** — Invite + activate
+2. **[Commands Reference](COMMANDS.md)** — What to run in Discord
+3. **[FAQ](FAQ.md)** — Common questions
 
 ### "I want to self-host Sage"
 
-1. **[Getting Started](GETTING_STARTED.md)** — Full development setup
-2. **[Configuration](CONFIGURATION.md)** — Customize behavior
-3. **[Operations Runbook](operations/runbook.md)** — Production deployment
+1. **[Getting Started](GETTING_STARTED.md)** — Create bot, configure `.env`, run locally
+2. **[Configuration](CONFIGURATION.md)** — Tune behavior and budgets
+3. **[Operations Runbook](operations/runbook.md)** — Production notes
 
 ### "I want to understand how Sage works"
 
-1. **[Pipeline Architecture](architecture/pipeline.md)** — Message flow
-2. **[Memory System](architecture/memory_system.md)** — Learning and context
-3. **[Database Schema](architecture/database.md)** — Data structures
+1. **[Agentic Architecture](AGENTIC_ARCHITECTURE.md)** — Mental model (why/how)
+2. **[Runtime Pipeline](architecture/pipeline.md)** — Message routing + orchestration
+3. **[Memory System](architecture/memory_system.md)** — Summaries, profiles, context budgeting
+4. **[Database Schema](architecture/database.md)** — Tables and relationships
 
 ---
 
 ## 🆘 Need Help?
 
-- Check the **[FAQ](FAQ.md)** for common issues
-- Read the **[Troubleshooting Guide](TROUBLESHOOTING.md)** for error resolution
-- Open an issue on [GitHub](https://github.com/BokX1/Sage/issues)
+- Start with **[Troubleshooting](TROUBLESHOOTING.md)**
+- Then check **[FAQ](FAQ.md)**
+- If you’re still blocked, open an issue on GitHub: https://github.com/BokX1/Sage/issues
 
 ---
 

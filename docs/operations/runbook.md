@@ -1,29 +1,44 @@
-# Sage Runbook
+# 📋 Sage Runbook
 
-A practical guide for operating and maintaining your Sage bot.
+A practical guide for operating and maintaining Sage (self-hosted).
 
 ---
 
-## 🚀 Quick Reference
+## 🧭 Quick navigation
+
+- [⚡ Quick Reference](#quick-reference)
+- [✅ Startup Checklist](#startup-checklist)
+- [🔧 Environment Requirements](#environment-requirements)
+- [🗄️ Database Management](#database-management)
+- [🏥 Health Checks](#health-checks)
+- [📋 Logs](#logs)
+- [🔄 Restart Notes](#restart-notes)
+- [🆘 Common Issues](#common-issues)
+- [📈 Performance Tips](#performance-tips)
+- [🚢 Production Deployment](#production-deployment)
+
+---
+
+## ⚡ Quick Reference
 
 ### Start Sage
 
 ```bash
-npm run dev        # Development (with hot-reload)
+npm run dev              # Development (with hot-reload)
 npm run build && npm start  # Production
 ```
 
-### Check Health
+### Check health
 
 ```bash
-npm run doctor     # Check configuration and database
+npm run doctor           # Check configuration and database
 ```
 
-### Database Operations
+### Database operations
 
 ```bash
-npm run db:migrate  # Apply database changes
-npm run db:studio   # Open visual database browser
+npm run db:migrate       # Apply database changes
+npm run db:studio        # Open visual database browser
 ```
 
 ---
@@ -34,7 +49,7 @@ Before starting Sage, verify:
 
 | Check | Command/Action | Expected Result |
 |:------|:---------------|:----------------|
-| Docker running | Open Docker Desktop | Green "Running" status |
+| Docker running | Open Docker Desktop | Green “Running” status |
 | Database up | `docker compose -f config/ci/docker-compose.yml up -d db` | Container starts |
 | Config valid | `npm run doctor` | All checks pass |
 | Token correct | Check `.env` file | No spaces/quotes in token |
@@ -43,15 +58,15 @@ Before starting Sage, verify:
 
 ## 🔧 Environment Requirements
 
-### Minimum Required
+### Minimum required
 
 | Variable | Description | How to Get |
 |:---------|:------------|:-----------|
-| `DISCORD_TOKEN` | Bot authentication | [Discord Developer Portal](https://discord.com/developers) → Bot → Token |
+| `DISCORD_TOKEN` | Bot authentication | Discord Developer Portal → Bot → Token |
 | `DISCORD_APP_ID` | Application identifier | Developer Portal → General Information |
 | `DATABASE_URL` | Database connection | Auto-configured with Docker |
 
-### Recommended Settings
+### Recommended settings
 
 | Variable | Recommended Value | Why |
 |:---------|:------------------|:----|
@@ -60,7 +75,7 @@ Before starting Sage, verify:
 | `AUTOPILOT_MODE` | `manual` | Predictable behavior |
 | `DEV_GUILD_ID` | Your server ID | Fast command registration (development) |
 
-### Optional Enhancements
+### Optional enhancements
 
 | Variable | When to Use |
 |:---------|:------------|
@@ -74,17 +89,17 @@ See [Configuration Reference](../CONFIGURATION.md) for all options.
 
 ## 🗄️ Database Management
 
-### Apply Migrations
+### Apply migrations
 
-After updates or fresh install:
+After updates or a fresh install:
 
 ```bash
 npm run db:migrate
 ```
 
-**What it does:** Creates or updates database tables to match Sage's requirements.
+**What it does:** Creates or updates database tables to match Sage’s requirements.
 
-### Browse Data
+### Browse data
 
 ```bash
 npm run db:studio
@@ -92,14 +107,14 @@ npm run db:studio
 
 **What it does:** Opens a visual interface at `http://localhost:5555` to view and edit database records.
 
-### Reset Database
+### Reset database
 
-⚠️ **Warning:** This deletes all data!
+⚠️ **Warning:** This deletes all data.
 
 ```bash
 docker compose -f config/ci/docker-compose.yml down -v   # Remove containers and volumes
 docker compose -f config/ci/docker-compose.yml up -d db  # Start fresh database
-npm run db:migrate       # Recreate tables
+npm run db:migrate                                       # Recreate tables
 ```
 
 ---
@@ -113,7 +128,7 @@ npm run db:migrate       # Recreate tables
 | `/ping` | Bot is online and responsive | Everyone |
 | `/llm_ping` | AI connectivity and latency | Admins only |
 
-### In Terminal
+### In terminal
 
 ```bash
 npm run doctor
@@ -132,7 +147,7 @@ npm run doctor
 
 Sage uses structured logging via Pino.
 
-### Change Log Level
+### Change log level
 
 In `.env`:
 
@@ -143,22 +158,22 @@ LOG_LEVEL=warn    # Warnings only
 LOG_LEVEL=error   # Errors only
 ```
 
-### Key Log Messages
+### Key log messages
 
 | Message | Meaning |
 |:--------|:--------|
 | `Logged in as Sage#1234` | Successfully connected to Discord |
 | `Ready!` | Bot is fully operational |
-| `Router decision` | Shows how a message was classified |
+| `Router decision` | How a message was classified |
 | `Agent runtime: built context` | Context being sent to AI |
 | `Channel summary scheduler tick` | Automatic summary processing |
 
-### Common Warning Signs
+### Common warning signs
 
 | Log Pattern | What It Means | Action |
 |:------------|:--------------|:-------|
-| `Database connection failed` | Can't reach PostgreSQL | Check Docker is running |
-| `Rate limited` | Too many AI requests | Wait or get API key |
+| `Database connection failed` | Can’t reach PostgreSQL | Check Docker is running |
+| `Rate limited` | Too many AI requests | Wait or set a key |
 | `Formatter retry failed` | AI returned invalid JSON | Usually self-recovers |
 | `Token invalid` | Discord rejected the token | Reset token in Developer Portal |
 
@@ -166,79 +181,73 @@ LOG_LEVEL=error   # Errors only
 
 ## 🔄 Restart Notes
 
-### Safe to Restart Anytime
+### Safe to restart anytime
 
-Restarting Sage is always safe:
+Restarting Sage is safe:
 
 - ✅ Commands re-register automatically
-- ✅ Summary scheduler restarts from where it left off
+- ✅ Summary scheduler resumes
 - ✅ Database data persists
 
-### What Happens on Restart
+### What happens on restart
 
-1. **Slash commands** re-register (global: up to 1 hour, guild: instant)
-2. **Message backfill** fetches recent messages from each channel
-3. **Summary scheduler** starts fresh timer
-4. **Voice sessions** track new activity (previous sessions saved)
+1. Slash commands re-register (global: up to 1 hour, guild: instant)
+2. Message backfill fetches recent messages from each channel
+3. Summary scheduler starts fresh timer
+4. Voice sessions track new activity (previous sessions saved)
 
 ---
 
 ## 🆘 Common Issues
 
-### "Cannot connect to database"
-
-**Check:**
+### “Cannot connect to database”
 
 1. Is Docker Desktop running?
-2. Is the database container up? Run: `docker compose -f config/ci/docker-compose.yml up -d db`
-3. Wait 10 seconds for database to initialize
+2. Is the database container up?
 
-### "Invalid token"
+   ```bash
+   docker compose -f config/ci/docker-compose.yml up -d db
+   ```
 
-**Fix:**
+3. Wait ~10 seconds for initialization
 
-1. Go to Discord Developer Portal
-2. Bot → Reset Token
-3. Copy new token to `.env`
-4. Restart Sage
+### “Invalid token”
+
+1. Discord Developer Portal → Bot → Reset Token
+2. Copy new token to `.env`
+3. Restart Sage
 
 ### Bot not responding
 
-**Check:**
-
 1. Is Sage online in your server?
-2. Are you using a wake word? (default: "sage")
+2. Are you using wake word / mention / reply?
 3. Does Sage have message permissions in the channel?
-4. Run `npm run doctor` for diagnostics
+4. Run `npm run doctor`
 
 ### Commands not showing
 
-**Causes & Fixes:**
-
-- **Global commands:** Wait up to 1 hour
-- **Fast testing:** Set `DEV_GUILD_ID` to your server ID
-- **Missing scope:** Re-invite bot with `applications.commands` OAuth2 scope
+- Global commands: wait up to 1 hour
+- For fast testing: set `DEV_GUILD_ID`
+- Ensure the invite includes `applications.commands` scope
 
 ---
 
 ## 📈 Performance Tips
 
-### Reduce Memory Usage
-
-Lower these in `.env`:
+### Reduce memory usage
 
 ```env
 RING_BUFFER_MAX_MESSAGES_PER_CHANNEL=100
 CONTEXT_TRANSCRIPT_MAX_MESSAGES=10
 ```
 
-### Speed Up Responses
+### Speed up responses
 
 - Use a faster model: `POLLINATIONS_MODEL=gemini`
-- Get an API key for higher rate limits
+- Set an API key for higher rate limits
 - Reduce context sizes (see above)
 
-### Handle High Traffic
+### Handle high traffic
 
 - Increase rate limits carefully
 - Consider hosting on a VPS for better uptime
@@ -248,27 +257,27 @@ CONTEXT_TRANSCRIPT_MAX_MESSAGES=10
 
 ## 🚢 Production Deployment
 
-### Build for Production
+### Build for production
 
 ```bash
-npm run build    # Compile TypeScript
-npm start        # Run production build
+npm run build
+npm start
 ```
 
-### Recommended Hosting
+### Recommended hosting
 
 | Provider | Notes |
 |:---------|:------|
-| [Railway](https://railway.app) | Easy deployment, free tier available |
-| [Render](https://render.com) | Simple setup, auto-deploys from GitHub |
-| [DigitalOcean](https://digitalocean.com) | Droplets for full control |
+| Railway | Easy deployment, free tier available |
+| Render | Simple setup, auto-deploys from GitHub |
+| DigitalOcean | Droplets for full control |
 | VPS (any) | Full control, requires more setup |
 
-### Production Checklist
+### Production checklist
 
 - [ ] `NODE_ENV=production`
 - [ ] Remove `DEV_GUILD_ID` (or set to empty)
 - [ ] Set appropriate `LOG_LEVEL` (info or warn)
 - [ ] Configure admin access (`ADMIN_USER_IDS`)
 - [ ] Secure database credentials
-- [ ] Set up process manager (pm2) for auto-restart
+- [ ] Set up a process manager (pm2) for auto-restart

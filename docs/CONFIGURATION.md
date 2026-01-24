@@ -1,36 +1,59 @@
-# Configuration Reference
+# ⚙️ Configuration Reference
 
-Complete reference for all Sage configuration options. All settings are configured in your `.env` file.
+A complete reference for Sage configuration. All settings are configured in your `.env` file.
 
 > [!TIP]
-> After making changes, restart Sage for them to take effect.
+> After changing `.env`, restart Sage for settings to take effect.
+
+---
+
+## 🧭 Quick navigation
+
+- [✅ How to Use This Page](#how-to-use-this-page)
+- [🔴 Essential (Required)](#essential-required)
+- [🤖 AI Models](#ai-models)
+- [💬 Behavior & Agentic Triggers](#behavior-agentic-triggers)
+- [📥 Message Ingestion & Storage](#message-ingestion-storage)
+- [📊 Channel Summaries](#channel-summaries)
+- [🧠 Context Budgeting](#context-budgeting)
+- [🤝 Relationship Graph](#relationship-graph)
+- [🔒 Rate Limits & Timeouts](#rate-limits-timeouts)
+- [👑 Admin Access Control](#admin-access-control)
+
+---
+
+## ✅ How to Use This Page
+
+- **Required** settings are the minimum needed for Sage to start.
+- Most users can keep defaults and only adjust **Behavior**, **Admin Access**, and **Logging/Retention**.
+- If you’re new to `.env` files, start with the example at the bottom and edit from there.
 
 ---
 
 ## 🔴 Essential (Required)
 
-These settings are **required** for Sage to start.
+These settings are required for Sage to start.
 
 | Variable | Description | Example |
 |:---------|:------------|:--------|
-| `DISCORD_TOKEN` | Your bot's authentication token from Discord Developer Portal | `MTIz...abc` |
-| `DISCORD_APP_ID` | Your application's ID from Discord Developer Portal | `1234567890123456789` |
+| `DISCORD_TOKEN` | Bot token from the Discord Developer Portal | `MTIz...abc` |
+| `DISCORD_APP_ID` | Discord application ID | `1234567890123456789` |
 | `DATABASE_URL` | PostgreSQL connection string | `postgresql://postgres:password@localhost:5432/sage?schema=public` |
 
 ---
 
 ## 🤖 AI Models
 
-Sage uses an intelligent agentic architecture with specialized models for different tasks.
+Sage uses specialized models for different tasks.
 
 ### Primary Configuration
 
 | Variable | Description | Default |
 |:---------|:------------|:--------|
 | `LLM_PROVIDER` | AI provider | `pollinations` |
-| `POLLINATIONS_BASE_URL` | API endpoint URL | `https://gen.pollinations.ai/v1` |
-| `POLLINATIONS_MODEL` | Primary chat model (ensure this is a vision-capable model like `gemini` for image support) | `gemini` |
-| `POLLINATIONS_API_KEY` | **Required for Voice (TTS).** Optional global key (or use `/sage key set` per server). | *(empty)* |
+| `POLLINATIONS_BASE_URL` | API endpoint | `https://gen.pollinations.ai/v1` |
+| `POLLINATIONS_MODEL` | Primary chat model (use a vision-capable model like `gemini` for image support) | `gemini` |
+| `POLLINATIONS_API_KEY` | **Required for Voice (TTS).** Optional global key (or use `/sage key set` per server) | *(empty)* |
 
 ### Specialized System Models
 
@@ -52,12 +75,12 @@ Sage uses an intelligent agentic architecture with specialized models for differ
 
 ## 💬 Behavior & Agentic Triggers
 
-Control how Sage interacts with users.
+Control how Sage responds in chat.
 
 | Variable | Description | Default |
 |:---------|:------------|:--------|
 | `WAKE_WORDS` | Words that trigger Sage at start of message | `sage` |
-| `WAKE_WORD_PREFIXES` | Optional prefixes (e.g., "hey sage") | *(empty)* |
+| `WAKE_WORD_PREFIXES` | Optional prefixes (e.g., “hey sage”) | *(empty)* |
 | `AUTOPILOT_MODE` | Response mode: `manual`, `reserved`, or `talkative` | `manual` |
 | `PROFILE_UPDATE_INTERVAL` | Messages between background profile updates | `5` |
 | `WAKEWORD_COOLDOWN_SEC` | Cooldown per user between responses (seconds) | `20` |
@@ -67,9 +90,9 @@ Control how Sage interacts with users.
 
 | Mode | Behavior | API Usage |
 |:-----|:---------|:----------|
-| `manual` | Only responds when wake word is used, bot is @mentioned, or via Reply | 🟢 **Low** |
-| `reserved` | Occasionally joins relevant conversations autonomously | 🟡 **Medium** |
-| `talkative` | Actively participates in discussions without prompts | 🔴 **High** |
+| `manual` | Responds only on wake word, @mention, or reply | 🟢 **Low** |
+| `reserved` | Occasionally joins relevant conversations | 🟡 **Medium** |
+| `talkative` | Actively participates without prompts | 🔴 **High** |
 
 ---
 
@@ -80,8 +103,8 @@ Control what Sage logs and stores.
 | Variable | Description | Default |
 |:---------|:------------|:--------|
 | `LOGGING_ENABLED` | Enable message/voice ingestion | `true` |
-| `LOGGING_MODE` | `all` or `allowlist` for channel filtering | `all` |
-| `LOGGING_ALLOWLIST_CHANNEL_IDS` | Comma-separated channel IDs to log (if mode=allowlist) | *(empty)* |
+| `LOGGING_MODE` | `all` or `allowlist` | `all` |
+| `LOGGING_ALLOWLIST_CHANNEL_IDS` | Comma-separated channel IDs to log (if allowlist) | *(empty)* |
 | `LOGGING_BLOCKLIST_CHANNEL_IDS` | Comma-separated channel IDs to exclude | *(empty)* |
 | `MESSAGE_DB_STORAGE_ENABLED` | Persist messages to database | `true` |
 | `PROACTIVE_POSTING_ENABLED` | Allow autonomous message posting | `true` |
@@ -129,7 +152,7 @@ Control token allocation for LLM requests.
 
 | Variable | Description | Default |
 |:---------|:------------|:--------|
-| `CONTEXT_BLOCK_MAX_TOKENS_TRANSCRIPT` | Budget for raw message transcript | `8000` |
+| `CONTEXT_BLOCK_MAX_TOKENS_TRANSCRIPT` | Budget for raw transcript | `8000` |
 | `CONTEXT_BLOCK_MAX_TOKENS_ROLLING_SUMMARY` | Budget for rolling summary | `4800` |
 | `CONTEXT_BLOCK_MAX_TOKENS_PROFILE_SUMMARY` | Budget for profile summary | `4800` |
 | `CONTEXT_BLOCK_MAX_TOKENS_MEMORY` | Budget for memory data | `6000` |
@@ -154,7 +177,7 @@ Tune social relationship calculations.
 | Variable | Description | Default |
 |:---------|:------------|:--------|
 | `RELATIONSHIP_HINTS_MAX_EDGES` | Max relationship edges to include | `10` |
-| `RELATIONSHIP_DECAY_LAMBDA` | Time decay factor for relationships | `0.06` |
+| `RELATIONSHIP_DECAY_LAMBDA` | Time decay factor | `0.06` |
 | `RELATIONSHIP_WEIGHT_K` | Weight scaling constant | `0.2` |
 | `RELATIONSHIP_CONFIDENCE_C` | Confidence scaling constant | `0.25` |
 
@@ -167,7 +190,7 @@ Prevent spam and manage latency.
 | Variable | Description | Default |
 |:---------|:------------|:--------|
 | `RATE_LIMIT_MAX` | Max responses per window | `5` |
-| `RATE_LIMIT_WINDOW_SEC` | Rate limit window duration (seconds) | `10` |
+| `RATE_LIMIT_WINDOW_SEC` | Window duration (seconds) | `10` |
 | `TIMEOUT_CHAT_MS` | Timeout for chat requests | `300000` (5 min) |
 | `TIMEOUT_MEMORY_MS` | Timeout for memory operations | `600000` (10 min) |
 
@@ -175,12 +198,10 @@ Prevent spam and manage latency.
 
 ## 👑 Admin Access Control
 
-Configure administrator permissions.
-
 | Variable | Description | Default |
 |:---------|:------------|:--------|
-| `ADMIN_ROLE_IDS` | Comma-separated Discord role IDs with admin access | *(empty)* |
-| `ADMIN_USER_IDS` | Comma-separated Discord user IDs with admin access | *(empty)* |
+| `ADMIN_ROLE_IDS` | Comma-separated role IDs with admin access | *(empty)* |
+| `ADMIN_USER_IDS` | Comma-separated user IDs with admin access | *(empty)* |
 
 ---
 
@@ -188,15 +209,15 @@ Configure administrator permissions.
 
 | Variable | Description | Default |
 |:---------|:------------|:--------|
-| `NODE_ENV` | Environment: `development`, `production`, `test` | `development` |
-| `LOG_LEVEL` | Log verbosity: `debug`, `info`, `warn`, `error` | `info` |
+| `NODE_ENV` | `development`, `production`, `test` | `development` |
+| `LOG_LEVEL` | `debug`, `info`, `warn`, `error` | `info` |
 | `TRACE_ENABLED` | Store processing traces in database | `true` |
 | `DEV_GUILD_ID` | Guild ID for fast command registration (dev only) | *(empty)* |
 | `LLM_DOCTOR_PING` | Enable LLM ping in `npm run doctor` (set to `1`) | `0` |
 
 ---
 
-## 📝 Example .env File
+## 📝 Example `.env`
 
 ```env
 # =============================================================================
@@ -226,7 +247,7 @@ ADMIN_USER_IDS=123456789012345678
 
 ## 🔗 Related Documentation
 
-- [Getting Started](GETTING_STARTED.md) — Initial setup walkthrough
-- [Pollinations Integration](POLLINATIONS.md) — AI provider details
-- [Memory System](architecture/memory_system.md) — How context budgets work
-- [Operations Runbook](operations/runbook.md) — Production deployment
+- [Getting Started](GETTING_STARTED.md) — Full setup walkthrough
+- [Pollinations Integration](POLLINATIONS.md) — Provider + model configuration
+- [Memory System](architecture/memory_system.md) — How context budgets are applied
+- [Operations Runbook](operations/runbook.md) — Production deployment notes

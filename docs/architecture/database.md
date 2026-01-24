@@ -1,24 +1,35 @@
-# Sage Database Architecture
+# 💾 Sage Database Architecture
 
-Sage uses **PostgreSQL** (via Prisma) to persist its long-term memory, social relationships, and processing traces.
+Sage uses **PostgreSQL** (via Prisma) to persist long-term memory, social relationships, and processing traces.
+
+> [!NOTE]
+> The ERD below is a simplified overview intended for orientation. The schema in `prisma/schema.prisma` is the authoritative reference.
+
+---
+
+## 🧭 Quick navigation
+
+- [Entity Relationship Diagram (ERD)](#entity-relationship-diagram-erd)
+- [Core tables](#core-tables)
+
+---
 
 ## Entity Relationship Diagram (ERD)
 
 ```mermaid
 erDiagram
-    %% Entities
+    %% Simplified ERD (see prisma/schema.prisma for the authoritative schema)
+    GuildSettings {
+        string guildId PK
+        json settings
+    }
+
     UserProfile {
         string id PK
         json facts
         string persona
     }
-    
-    VoiceSession {
-        string id PK
-        datetime joinedAt
-        datetime leftAt
-    }
-    
+
     RelationshipEdge {
         string sourceId FK
         string targetId FK
@@ -31,23 +42,37 @@ erDiagram
         string content
     }
 
-    UserProfile ||--o{ VoiceSession : "Participates"
-    UserProfile ||--o{ ChannelMessage : "Sends (Logical)"
-    
-    GuildSettings ||--o{ UserProfile : "Scoped to"
-    GuildSettings ||--o{ ChannelSummary : "Contains"
-    
-    RelationshipEdge }o--|| UserProfile : "Source"
-    RelationshipEdge }o--|| UserProfile : "Target"
-    
+    ChannelSummary {
+        string id PK
+        string channelId
+        json summary
+    }
+
+    VoiceSession {
+        string id PK
+        datetime joinedAt
+        datetime leftAt
+    }
+
     AgentTrace {
         string id PK
         json routerJson
         json toolJson
     }
+
+    GuildSettings ||--o{ UserProfile : "scopes"
+    GuildSettings ||--o{ ChannelSummary : "contains"
+
+    UserProfile ||--o{ VoiceSession : "participates"
+    UserProfile ||--o{ ChannelMessage : "sends (logical)"
+
+    RelationshipEdge }o--|| UserProfile : "source"
+    RelationshipEdge }o--|| UserProfile : "target"
 ```
 
-## Core Tables
+---
+
+## Core tables
 
 | Table | Purpose |
 | :--- | :--- |

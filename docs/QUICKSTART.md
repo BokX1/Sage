@@ -1,82 +1,71 @@
 # ⚡ Quick Start Guide
 
-**Sage is the first Discord AI agent that pays for itself—literally.**
+Run Sage fast. Choose your path:
 
-You have two options to use Sage:
+1. **🤖 Use the public bot** (invite + activate BYOP)
+2. **💻 Self-host from source** (local/dev or production)
 
-1. **🤖 Use the Public Bot (Recommended):** Zero setup, free hosting, vision support, "Bring Your Own Pollen" (BYOP).
-2. **💻 Self-Host:** For developers who want full control over the code, infrastructure, and vision models.
-
----
-
-## Option 1: Use the Public Bot (Zero Setup) 🚀
-
-**Best for:** Community managers, gamers, and non-developers.
-
-### 1. Invite Sage
-
-[**Click here to invite Sage to your server**](https://discord.com/oauth2/authorize?client_id=1462117382398017667&scope=bot%20applications.commands&permissions=8)  
-*(Note: Replace with your actual invite link if different)*
-
-### 2. Activate Sage (Server-Wide Key)
-
-Sage uses a **"Bring Your Own Pollen"** model. The bot hosting is free, but you provide the AI credits (Pollen) from Pollinations.ai.
-
-**As a Server Admin:**
-
-1. Type `/sage key login` in Discord.
-2. Click the link to log in to Pollinations.ai (it's free).
-3. Copy your key from the browser URL (it looks like `sk_...`).
-4. Type `/sage key set <your_key>`.
-
-**Done!** Sage will now work for **everyone** in your server using your key.
+If you’re not sure, start with **Option 1**.
 
 ---
 
-## Option 2: Self-Host (For Developers) 🛠️
+## 🧭 Quick navigation
 
-**Best for:** Developers, privacy enthusiasts, or customizing the codebase.
-
-### 1. Prerequisites
-
-- **Node.js 18+**
-- **Docker Desktop** (for the database)
-- **Discord Bot Token**
-
-### 2. Install
-
-```bash
-git clone https://github.com/BokX1/Sage.git
-cd Sage
-npm install
-```
-
-### 3. Configure
-
-Run the interactive wizard:
-
-```bash
-npm run onboard
-```
-
-> ℹ️ The wizard can set a global `POLLINATIONS_API_KEY`. If you skip it, run `/sage key set` later to activate per server.
-
-### 4. Start
-
-```bash
-docker compose -f config/ci/docker-compose.yml up -d db
-npm run db:migrate
-npm run dev
-```
-
-You should see: `Logged in as Sage#1234` and `Ready!`.
+- [Option 1: Use the public bot (recommended)](#option-1-use-the-public-bot-recommended)
+- [Option 2: Self-host (developers)](#option-2-self-host-developers)
+- [🆘 Troubleshooting (fast)](#troubleshooting-fast)
 
 ---
 
-## 🆘 Troubleshooting
+## Option 1: Use the public bot (recommended)
 
-- **"Rate limit hit"**: If using the public bot without a key, you might hit the free tier limits. Add a key to lift them.
-- **"Invalid API Key"**: Make sure you copied the `sk_...` part correctly from the URL.
+**Best for:** Most servers that want Sage running immediately.
+
+### 1) Invite Sage
+
+[**Invite Sage to your server**](https://discord.com/api/oauth2/authorize?client_id=1211723232808570971&permissions=414464731200&scope=bot%20applications.commands)
+
+> [!TIP]
+> Prefer least-privilege permissions? You can generate a custom invite URL with only the permissions you want (see [Getting Started → Invite Bot](GETTING_STARTED.md#step-6-invite-sage-to-your-server)).
+
+### 2) Activate BYOP (server-wide key)
+
+Sage uses **Bring Your Own Pollen (BYOP)**: hosting is free, and your server provides a Pollinations key.
+
+As a server admin (or someone with **Manage Guild** permission):
+
+1. Run `/sage key login`
+2. Open the link and log in to Pollinations.ai
+3. Copy the `sk_...` key from the URL
+4. Run `/sage key set <your_key>`
+
+After this, Sage is active for the entire server.
+
+### 3) Try it
+
+- `/ping`
+- `/sage whoiswho`
+- Say “Sage, hello” (wake word)
+- Mention `@Sage`
+- Reply to a Sage message
+
+---
+
+## Option 2: Self-host (developers)
+
+**Best for:** Customizing the codebase, running private instances, or controlling infra.
+
+Follow **[📖 Getting Started](GETTING_STARTED.md)** for a complete walkthrough (Discord app, `.env`, database, onboarding wizard, and invite generation).
+
+---
+
+## 🆘 Troubleshooting (fast)
+
+- **Rate limits / shared quota:** Set a BYOP key with `/sage key login` → `/sage key set`.
+- **Invalid API key:** Make sure you copied the `sk_...` value correctly from the URL.
+- **Bot is online but silent:** Check wake word / mentions, and verify permissions in the channel.
+
+For deeper debugging, see **[🔧 Troubleshooting Guide](TROUBLESHOOTING.md)**.
 
 ---
 

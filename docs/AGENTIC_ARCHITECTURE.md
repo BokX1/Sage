@@ -5,9 +5,23 @@
   <img src="https://img.shields.io/badge/Self--Learning-Memory-2d5016?style=for-the-badge&labelColor=4a7c23" alt="Self-Learning" />
 </p>
 
-**Sage is not just a chatbot — it's a fully agentic Discord companion that thinks, learns, and adapts.**
+**Sage is not just a chatbot — it’s a fully agentic Discord companion that thinks, learns, and adapts.**
 
 This document explains what makes Sage different from traditional bots and how its agentic architecture works.
+
+---
+
+## 🧭 On this page
+
+- [What is “agentic AI”?](#-what-is-agentic-ai)
+- [The five pillars](#-the-five-pillars-of-sages-intelligence)
+- [How Sage learns](#-how-sage-learns)
+- [Social intelligence](#-social-intelligence)
+- [Voice companion (beta)](#-voice-companion-beta)
+- [Routing and experts](#-intelligent-routing)
+- [Self-correcting tool loop](#-self-correcting-agent-loop)
+- [Observability](#-observability)
+- [Technical architecture map](#-technical-architecture)
 
 ---
 
@@ -84,14 +98,14 @@ sequenceDiagram
     participant Sage
     participant Memory
     participant Profile
-    
+
     User->>Sage: Message
     Sage->>Memory: Fetch recent context
     Memory-->>Sage: Last 15 messages + user profile
-    
+
     Sage->>Sage: Generate response with full context
     Sage->>User: Personalized reply
-    
+
     rect rgb(45, 45, 45)
         Note over Sage,Profile: Asynchronous Learning Loop (Every 5 messages)
         Sage->>Profile: Update user profile
@@ -129,16 +143,16 @@ Sage understands **who you are** to each other.
 ```text
 👑 Best Friend (0.9+)
    └─ Very personalized, remembers everything
-   
+
 💚 Close Friend (0.7-0.9)
    └─ Warm and familiar, good context
-   
+
 🤝 Friend (0.5-0.7)
    └─ Friendly, growing understanding
-   
+
 👋 Acquaintance (0.3-0.5)
    └─ Polite, learning about you
-   
+
 👤 Stranger (<0.3)
    └─ New friend, neutral and helpful
 ```
@@ -152,24 +166,24 @@ Sage builds relationships naturally through:
 - **Shared activities** — Group discussions, collaborative problem-solving
 
 > [!TIP]
-> Use `/sage whoiswho` to see your relationship status!
+> Use `/sage whoiswho` to see your relationship status.
 
 ---
 
 ## 🎤 Voice Companion (Beta)
 
-Sage introduces a novel **"Text-in, Voice-out"** architecture to provide a seamless voice experience.
+Sage introduces a **"Text-in, Voice-out"** architecture for a seamless voice experience.
 
 ### Decoupled Intelligence
 
 Unlike traditional voice bots that struggle with speech-to-text accuracy, Sage decouples the "Brain" from the "Mouth".
 
-1. **The Brain (Chat Agent):** You type to Sage in text. This leverages the full power of Sage's memory, tools, and social context without degradation.
+1. **The Brain (Chat Agent):** You type to Sage in text. This uses Sage’s memory, tools, and social context without degradation.
 2. **The Mouth (TTS Agent):** Sage replies in text *and* simultaneously speaks the response in your voice channel.
 
 ### Dynamic Persona
 
-Sage analyzes your conversation style and intent to dynamically select a voice persona (e.g., "Deep Narrator", "Energetic Friend") and instructs the TTS model to act it out.
+Sage analyzes conversation style and intent to dynamically select a voice persona (e.g., “Deep Narrator”, “Energetic Friend”) and instructs the TTS model accordingly.
 
 ```mermaid
 sequenceDiagram
@@ -178,12 +192,12 @@ sequenceDiagram
     participant ChatBrain as 🧠 Chat Brain
     participant TTS as 🗣️ TTS Agent
     participant VoiceChannel as 🔊 Voice Channel
-    
+
     User->>ChatBrain: "Tell me a scary story" (Text)
     ChatBrain->>ChatBrain: Selects 'Onyx' Voice (Narrator)
     ChatBrain->>ChatBrain: Generates Story Script
     ChatBrain->>TTS: "Read this with a scary tone"
-    
+
     par Sync Response
         ChatBrain->>User: Sends Text Reply
         TTS->>VoiceChannel: Plays Audio
@@ -194,33 +208,38 @@ sequenceDiagram
 
 ## 🧭 Intelligent Routing
 
-Sage uses an **LLM-powered router** to understand questions.
+Sage uses an **LLM-powered router** to understand questions and choose experts.
 
 ```mermaid
 flowchart TD
-    %% Styling
+    %% Router selects experts, then builds a single prompt for the LLM.
     classDef user fill:#f96,stroke:#333,stroke-width:2px,color:black
     classDef router fill:#b9f,stroke:#333,stroke-width:2px,color:black
-    classDef expert fill:#fff,stroke:#333,stroke-width:1px,stroke-dasharray: 5 5,color:black
+    classDef expert fill:#f3e5f5,stroke:#4a148c,color:black
     classDef context fill:#ff9,stroke:#333,stroke-width:2px,color:black
     classDef llm fill:#9d9,stroke:#333,stroke-width:2px,color:black
 
-    M[User Message]:::user --> R{LLM Router}:::router
-    
-    R -->|Summarize request| S[📊 Summarizer Expert]:::expert
-    R -->|Social/relationship query| G[👥 Social Graph Expert]:::expert
-    R -->|Voice activity question| V[🎤 Voice Analytics Expert]:::expert
-    R -->|Memory/profile query| P[🧠 Memory Expert]:::expert
-    R -->|General conversation| C[💬 Chat Engine]:::expert
-    
-    S --> CTX[Context Builder]:::context
+    M[User message]:::user --> R{LLM Router}:::router
+
+    R -->|Summarize| S[📊 Summarizer Expert]:::expert
+    R -->|Social / relationship| G[👥 Social Graph Expert]:::expert
+    R -->|Voice analytics| V[🎤 Voice Analytics Expert]:::expert
+    R -->|Memory / profile| P[🧠 Memory Expert]:::expert
+    R -->|General chat| C[💬 Chat Engine]:::expert
+
+    subgraph Context["Context Builder"]
+        direction TB
+        CTX[Assemble relevant context]:::context
+        BUDGET[Apply token budget]:::context
+    end
+
+    S --> CTX
     G --> CTX
     V --> CTX
     P --> CTX
     C --> CTX
-    
-    CTX --> LLM[🤖 LLM Brain]:::llm
-    LLM --> Response[Reply to User]:::user
+
+    CTX --> BUDGET --> LLM[🤖 LLM Brain]:::llm --> OUT[Reply to user]:::user
 ```
 
 ### Why This Matters
@@ -261,13 +280,13 @@ User: "Summarize the #dev channel"
 
 Attempt 1: Query channel summary
   → Error: No recent summary exists
-  
+
 Attempt 2: Trigger on-demand summarization
   → Error: Rate limited
 
 Attempt 3: Use channel transcript directly
   → Success: Generates summary from raw messages
-  
+
 Reply: "Here's what happened in #dev today..."
 ```
 
@@ -275,7 +294,7 @@ Reply: "Here's what happened in #dev today..."
 
 ## 📊 Observability
 
-Admins can see exactly how Sage thinks.
+Admins can inspect how Sage reasoned about a request.
 
 ### Trace Viewing
 
@@ -285,64 +304,66 @@ Admins can see exactly how Sage thinks.
 
 Shows:
 
-- 🧭 **Router Decision** — Which experts were selected and why
-- 📦 **Context Used** — What information Sage considered
-- 🔧 **Tool Calls** — What actions were attempted
-- 💭 **Reasoning** — How the final response was generated
+- 🧭 Router decision — which experts were selected and why
+- 📦 Context used — what information Sage considered
+- 🔧 Tool calls — what actions were attempted
+- 💭 Reasoning — how the final response was generated
 
 ---
 
 ## 🏗️ Technical Architecture
 
 ```mermaid
-graph TB
-    %% Styling
+flowchart TB
+    %% Layered view of the agentic runtime (simplified).
     classDef input fill:#e1f5fe,stroke:#01579b,color:black
     classDef awareness fill:#e0f2f1,stroke:#00695c,color:black
     classDef orch fill:#f3e5f5,stroke:#7b1fa2,color:black
     classDef runtime fill:#fff3e0,stroke:#e65100,color:black
     classDef db fill:#eceff1,stroke:#37474f,color:black
+    classDef output fill:#a5d6a7,stroke:#1b5e20,color:black
 
-    subgraph Input Layer
-        D[Discord Events]:::input
-        D --> IH[Event Handlers]:::input
+    subgraph Input["Input layer"]
+        direction TB
+        D[Discord events]:::input --> IH[Event handlers]:::input
     end
-    
-    subgraph Awareness Layer
-        IH --> RB[Ring Buffer]:::awareness
-        IH --> MS[Message Store]:::awareness
-        RB --> TB[Transcript Builder]:::awareness
+
+    subgraph Awareness["Awareness layer"]
+        direction TB
+        IH --> RB[Ring buffer]:::awareness
+        IH --> MS[Message store]:::awareness
+        RB --> TB[Transcript builder]:::awareness
     end
-    
-    subgraph Orchestration Layer
-        TB --> RT[LLM Router]:::orch
-        RT --> EX[Expert Pool]:::orch
-        EX --> |Social| SG[Social Graph]:::orch
-        EX --> |Voice| VA[Voice Analytics]:::orch
-        EX --> |Summary| SM[Summarizer]:::orch
-        EX --> |Memory| MM[Memory]:::orch
+
+    subgraph Orchestration["Orchestration layer"]
+        direction TB
+        TB --> RT[LLM router]:::orch
+        RT --> EX[Expert pool]:::orch
+        EX --> SG[Social graph]:::orch
+        EX --> VA[Voice analytics]:::orch
+        EX --> SM[Summarizer]:::orch
+        EX --> MM[Memory]:::orch
     end
-    
-    subgraph Agent Runtime
-        EX --> CB[Context Builder]:::runtime
-        CB --> BG[Budget Manager]:::runtime
-        BG --> PC[Prompt Composer]:::runtime
-        PC --> LLM[LLM Client]:::runtime
-        LLM --> TL[Tool Loop]:::runtime
-        TL --> |Execute| TR[Tool Registry]:::runtime
-        TR --> TL
+
+    subgraph Runtime["Agent runtime"]
+        direction TB
+        EX --> CB[Context builder]:::runtime
+        CB --> BG[Budget manager]:::runtime
+        BG --> PC[Prompt composer]:::runtime
+        PC --> LLM[LLM client]:::runtime
+        LLM --> TL[Tool loop]:::runtime
+        TL --> RP[Response]:::output
     end
-    
-    subgraph Response
-        TL --> RP[Response]
-        RP --> D
-    end
-    
-    subgraph Persistence
-        MS --> DB[(PostgreSQL)]:::db
+
+    subgraph Persistence["Persistence"]
+        direction TB
+        DB[(PostgreSQL)]:::db
+        MS --> DB
         MM --> DB
         SG --> DB
     end
+
+    RP --> D
 ```
 
 ---

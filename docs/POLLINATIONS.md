@@ -1,58 +1,83 @@
-# Pollinations.ai Integration
+# 🐝 Pollinations.ai Integration
 
-Sage is proudly powered by **[Pollinations.ai](https://pollinations.ai)** — a free, open-source AI platform providing easy access to cutting-edge language models.
+Sage is powered by **[Pollinations.ai](https://pollinations.ai)** — an open platform that provides access to multiple language models via an OpenAI-compatible API.
+
+This page explains:
+
+- What Pollinations provides
+- How Sage uses it
+- Which settings to change in `.env`
+- How BYOP keys work in Discord
 
 ---
 
-## 🐝 Why Pollinations.ai?
+## 🧭 Quick navigation
+
+- [✅ Why Pollinations.ai?](#why-pollinationsai)
+- [🔧 How Sage Uses Pollinations](#how-sage-uses-pollinations)
+- [🌸 BYOP: Keys in Discord](#byop-keys-in-discord)
+- [⚙️ Host Configuration (`.env`)](#host-configuration-env)
+- [🧪 Discover available models](#discover-available-models)
+- [🌟 Features Sage Uses](#features-sage-uses)
+- [📊 API Usage Tips](#api-usage-tips)
+- [🔗 Resources](#resources)
+
+---
+
+## ✅ Why Pollinations.ai?
 
 | Benefit | What It Means for You |
-|:--------|:---------------------|
-| **Free API Access** | No credit card required, free tier available |
-| **Multi-Model Access** | Choose from Gemini, DeepSeek, OpenAI, and more |
-| **Easy Integration** | Simple REST API, OpenAI-compatible format |
-| **Vision Support** | Image understanding built-in |
-| **Community-Driven** | Open-source with active development |
+|:--------|:----------------------|
+| **Free API access** | No credit card required; free tier available |
+| **Multi-model support** | Choose from Gemini, DeepSeek, OpenAI, and more |
+| **OpenAI-compatible** | Easy integration and familiar request format |
+| **Vision support** | Image understanding is supported by vision-capable models |
+| **Community-driven** | Open-source with active development |
 
 ---
 
 ## 🔧 How Sage Uses Pollinations
 
-Sage uses different Pollinations models for specialized tasks:
+Sage uses different models for specialized tasks:
 
 | Task | Model | Purpose |
 |:-----|:------|:--------|
 | **Chat** | `gemini` (configurable) | Main conversations with users |
 | **Profile Analysis** | `deepseek` | Building user memory profiles |
-| **Summaries** | `openai-large` | Creating channel conversation summaries |
+| **Summaries** | `openai-large` | Channel conversation summaries |
 | **JSON Formatting** | `qwen-coder` | Structured data extraction |
 | **Voice** | `openai-audio` | Text-to-speech companion responses |
 
+> [!NOTE]
+> You can override these defaults in `.env`. See [Configuration](CONFIGURATION.md) for the full list.
+
 ---
 
-## ⚙️ Configuration
+## 🌸 BYOP: Keys in Discord
 
-### Basic Setup (BYOP)
+Sage supports BYOP (Bring Your Own Pollen) via Discord commands:
 
-Sage uses a **Bring Your Own Pollen** model.
+1. Run `/sage key login`
+2. Follow the link and log in to Pollinations.ai
+3. Copy the `sk_...` key from the URL
+4. Run `/sage key set <key>`
 
-1. **Get a Key:** Type `/sage key login` in Discord.
-2. **Set the Key:** Type `/sage key set <key>`.
+This sets a **server-wide key** used for all AI requests from that server.
 
-This key is used for all AI operations in your server.
+For a step-by-step guide, see **[BYOP Mode](BYOP_MODE.md)**.
 
-### Host Configuration (Optional)
+---
 
-If you are self-hosting, you can set defaults in `.env`:
+## ⚙️ Host Configuration (`.env`)
+
+If you self-host, you can set defaults in `.env`:
 
 ```env
 POLLINATIONS_MODEL=gemini
 # POLLINATIONS_API_KEY provides a global fallback if a server key is not set.
 ```
 
-### Advanced Model Configuration
-
-Override models for specific tasks:
+### Override models for specific tasks
 
 ```env
 # Main chat model
@@ -68,41 +93,39 @@ SUMMARY_MODEL=openai-large
 FORMATTER_MODEL=qwen-coder
 ```
 
-### Available Models
+---
 
-Run the onboarding wizard to see all available models:
+## 🧪 Discover available models
+
+You can view available models during onboarding:
 
 ```bash
 npm run onboard
 # Type "list" when prompted for model selection
 ```
 
-Or browse models at [pollinations.ai](https://pollinations.ai/).
+Or browse models at https://pollinations.ai/.
 
 ---
 
-## 🌟 Features Used
+## 🌟 Features Sage Uses
 
-### Text Generation
-
+### Text generation
 - Conversational responses
 - Memory-aware personalization
 - Context-rich dialogue
 
-### Vision (Image Understanding)
-
+### Vision (image understanding)
 - Analyze images shared in Discord
 - Discuss visual content
 - Multi-modal conversations
 
-### Voice Synthesis (TTS)
-
+### Voice synthesis (TTS)
 - Text-to-speech companion responses
 - Dynamic persona adaptation
 - Expressive audio output
 
-### Structured Output
-
+### Structured output
 - JSON extraction for profiles
 - Summary generation
 - Data organization
@@ -111,34 +134,24 @@ Or browse models at [pollinations.ai](https://pollinations.ai/).
 
 ## 📊 API Usage Tips
 
-### Rate Limits
-
+### Rate limits
 - Free tier has generous limits
-- API key unlocks higher quotas
+- Setting an API key unlocks higher quotas
 - Sage automatically handles rate limiting
 
 ### Optimization
-
 - Sage uses context budgeting to stay within limits
 - Specialized models for different tasks reduce costs
-- Efficient caching reduces redundant calls
+- Caching reduces redundant calls
 
 ---
 
 ## 🔗 Resources
 
-- **Pollinations Website:** [pollinations.ai](https://pollinations.ai/)
-- **API Documentation:** [enter.pollinations.ai/api/docs](https://enter.pollinations.ai/api/docs)
-- **Featured Apps:** [pollinations.ai/apps](https://pollinations.ai/apps)
-- **GitHub:** [github.com/pollinations](https://github.com/pollinations)
-
----
-
-## 🤝 About Pollinations.ai
-
-Pollinations.ai provides free, open-source AI APIs for developers and creators. Their mission is to make AI accessible to everyone through easy-to-use tools and generous free tiers.
-
-Sage is a proud member of the Pollinations ecosystem, demonstrating how the platform can power intelligent, memory-aware Discord experiences.
+- **Pollinations website:** https://pollinations.ai/
+- **API documentation:** https://enter.pollinations.ai/api/docs
+- **Featured apps:** https://pollinations.ai/apps
+- **GitHub:** https://github.com/pollinations
 
 ---
 

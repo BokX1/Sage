@@ -1,69 +1,87 @@
 # 🌸 Bring Your Own Pollen (BYOP)
 
-Sage runs on a unique, community-friendly model: **The bot is free to host, and communities provide the "brain power."**
+Sage uses a community-friendly model: **the bot is free to host, and communities provide the “brain power” (API key).**
 
-This ensures Sage remains free, unlimited, and sustainable for everyone.
+This keeps Sage sustainable and enables higher limits for your server.
+
+---
+
+## 🧭 Quick navigation
+
+- [🔑 How It Works](#how-it-works)
+- [🚀 Setup Guide (For Admins)](#setup-guide-for-admins)
+- [🔐 Key Safety Notes](#key-safety-notes)
+- [❓ FAQ](#faq)
 
 ---
 
 ## 🔑 How It Works
 
-Sage needs an API Key (Pollen) to generate smart responses. We use a **Server-Wide Key** system so your community can chat freely without each person needing their own key.
+Sage needs an API key (“Pollen”) to generate responses. Sage uses a **server-wide key** so your community can chat without each member needing their own key.
 
 ### The Activation Lifecycle
 
 ```mermaid
-graph LR
-    %% Styling
-    classDef step fill:#e1f5fe,stroke:#01579b,stroke-width:2px,color:black
+flowchart LR
+    %% Admin-provided key enables server-wide access (BYOP mode).
     classDef start fill:#dcedc8,stroke:#33691e,stroke-width:2px,color:black
+    classDef step fill:#e1f5fe,stroke:#01579b,stroke-width:2px,color:black
     classDef finish fill:#ffccbc,stroke:#bf360c,stroke-width:2px,color:black
 
-    A[Invite Sage]:::start --> B[Sage Joins Server]:::step
-    B --> C[Admin Runs /sage key login]:::step
-    C --> D[Get Key from Pollinations]:::step
-    D --> E[Admin Runs /sage key set]:::step
-    E --> F[Sage Activated for Everyone]:::finish
+    A[Invite Sage]:::start
+      --> B[Sage joins server]:::step
+      --> C[/sage key login]:::step
+      --> D[Get key from Pollinations]:::step
+      --> E[/sage key set sk_...]:::step
+      --> F[Sage active for everyone]:::finish
 ```
 
 ---
 
 ## 🚀 Setup Guide (For Admins)
 
-**Prerequisite:** You must be a Server Admin or have the "Manage Guild" permission.
+**Prerequisite:** You must be a Server Admin or have the **Manage Guild** permission.
 
 ### Step 1: Get Your Key
 
-Type this command in your server:
+Run:
 
 ```text
 /sage key login
 ```
 
-Click the link to log in to Pollinations.ai. You'll see your API key in the browser URL bar (it starts with `sk_`).
+Open the link, log in to Pollinations.ai, then copy the key from the URL (starts with `sk_`).
 
-### Step 2: Activate Sage
+### Step 2: Activate Sage (server-wide)
 
-Copy your key and run:
+Run:
 
 ```text
 /sage key set <your_key>
 ```
 
-**That's it!** Sage is now active for your entire server. 🎉 Members can start chatting by **tagging @Sage**, starting a message with "**Sage**", or **replying** to its posts.
+That’s it — Sage is active for the whole server. 🎉
+
+---
+
+## 🔐 Key Safety Notes
+
+- The key is **server-wide** and used for requests originating from that server.
+- Treat your `sk_...` key like a password.
+- If you need to revoke access, run `/sage key clear` and/or rotate the key in Pollinations.
 
 ---
 
 ## ❓ FAQ
 
-**Q: Do my members need to pay?**
-**A:** No! The key you provide covers everyone. Pollinations.ai offers generous free tiers, so it's usually free for your community.
+**Q: Do my members need to pay?**  
+**A:** No. The key you provide covers everyone. Pollinations.ai offers free tiers, so it’s often free for many communities.
 
-**Q: Is this safe?**
-**A:** Yes. Your key is stored securely in Sage's database and is **only** used for requests from your specific server.
+**Q: Is this safe?**  
+**A:** The key is stored in Sage’s database and is used to make requests on behalf of your server.
 
-**Q: How do I remove a key?**
-**A:** If you want to stop using Sage in your server, just run `/sage key clear`.
+**Q: How do I remove a key?**  
+**A:** Run `/sage key clear`.
 
 ---
 

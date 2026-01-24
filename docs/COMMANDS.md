@@ -1,6 +1,36 @@
 # 🎮 Sage Commands Reference
 
-Complete reference for all Sage slash commands and interaction methods.
+A complete reference for Sage slash commands and interaction methods.
+
+---
+
+## 🧭 Quick navigation
+
+- [⚡ Quick Reference](#quick-reference)
+- [📋 Table of Contents](#table-of-contents)
+- [💬 Triggering Sage](#triggering-sage)
+- [🌐 Public Commands](#public-commands)
+- [🔑 Key Management (BYOP)](#key-management-byop)
+- [👑 Admin Commands](#admin-commands)
+- [🤝 Relationship Commands](#relationship-commands)
+- [🎤 Voice Commands (Beta)](#voice-commands-beta)
+- [🛠️ Utility Command](#utility-command)
+- [📝 Related Documentation](#related-documentation)
+
+---
+
+## ⚡ Quick Reference
+
+| Goal | Command / Action |
+|:-----|:-----------------|
+| Check bot is alive | `/ping` |
+| See relationship tiers | `/sage whoiswho [user]` |
+| Get Pollinations key link | `/sage key login` |
+| Set server-wide key (admin) | `/sage key set <api_key>` |
+| Check key status | `/sage key check` |
+| Clear server key (admin) | `/sage key clear` |
+| Join voice (beta) | `/join` |
+| Leave voice (beta) | `/leave` |
 
 ---
 
@@ -11,6 +41,8 @@ Complete reference for all Sage slash commands and interaction methods.
 - [Key Management (BYOP)](#-key-management-byop)
 - [Admin Commands](#-admin-commands)
 - [Relationship Commands](#-relationship-commands)
+- [Voice Commands (Beta)](#-voice-commands-beta)
+- [Utility Command](#-utility-command)
 
 ---
 
@@ -20,12 +52,12 @@ Sage can be triggered in three ways:
 
 | Method | Example | Description |
 |:-------|:--------|:------------|
-| **Wake Word** | `Sage, what is TypeScript?` | Start message with "Sage" |
-| **Mention** | `@Sage explain this code` | Tag the bot anywhere |
-| **Reply** | *Reply to Sage's message* | Continue a conversation |
+| **Wake Word** | `Sage, what is TypeScript?` | Start the message with “Sage” |
+| **Mention** | `@Sage explain this code` | Mention the bot anywhere |
+| **Reply** | *(Reply to Sage’s message)* | Continue an existing thread |
 
 > [!TIP]
-> Wake word prefixes like "hey" are also supported: `Hey Sage, help me!`
+> Wake word prefixes like “hey” are also supported: `Hey Sage, help me!`
 
 ---
 
@@ -67,7 +99,10 @@ View relationship information and social tiers.
 
 ## 🔑 Key Management (BYOP)
 
-Bring-Your-Own-Pollen — manage your API key for unlimited usage.
+Bring-Your-Own-Pollen (BYOP) — manage the Pollinations API key used by your server.
+
+> [!IMPORTANT]
+> `key set` and `key clear` are **admin-only**. They apply to the entire server.
 
 ### `/sage key login`
 
@@ -92,9 +127,6 @@ Set the server-wide Pollinations API key.
 | Parameter | Required | Description |
 |:----------|:---------|:------------|
 | `api_key` | Yes | Your Pollinations API key (starts with `sk_`) |
-
-> [!IMPORTANT]
-> This command is **Admin-only**. The key applies to the entire server.
 
 ---
 
@@ -122,14 +154,13 @@ Remove the server-wide API key.
 /sage key clear
 ```
 
-> [!IMPORTANT]
-> This command is **Admin-only**. Sage will fall back to shared quota.
+Sage will fall back to shared quota (if available).
 
 ---
 
 ## 👑 Admin Commands
 
-Restricted to users with admin permissions. Configure via `ADMIN_USER_IDS` or `ADMIN_ROLE_IDS`.
+Restricted to users with admin permissions. Configure access via `ADMIN_USER_IDS` or `ADMIN_ROLE_IDS`.
 
 ### `/sage admin stats`
 
@@ -185,7 +216,7 @@ View recent agent processing traces for debugging.
 - Response generation details
 
 > [!TIP]
-> Use traces to understand why Sage responded a certain way.
+> Traces are the fastest way to understand why Sage responded a certain way.
 
 ---
 
@@ -222,7 +253,7 @@ Manually set relationship level between two users.
 | `level` | Yes | Relationship level (0.0 - 1.0) |
 
 > [!IMPORTANT]
-> This command is **Admin-only**.
+> This command is **admin-only**.
 
 **Relationship Levels:**
 
@@ -279,6 +310,6 @@ Test LLM connectivity (admin/debug only).
 
 ## 📝 Related Documentation
 
-- [Configuration](CONFIGURATION.md) — Configure admin access and behavior
-- [BYOP Mode](BYOP_MODE.md) — Detailed BYOP setup guide
+- [Configuration](CONFIGURATION.md) — Admin access + behavior settings
+- [BYOP Mode](BYOP_MODE.md) — BYOP setup guide
 - [FAQ](FAQ.md) — Common questions
