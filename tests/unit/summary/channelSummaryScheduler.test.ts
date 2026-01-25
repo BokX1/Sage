@@ -38,6 +38,10 @@ vi.mock('../../../src/core/settings/guildChannelSettings', () => ({
   isLoggingEnabled: vi.fn(() => true),
 }));
 
+vi.mock('../../../src/core/settings/guildSettingsRepo', () => ({
+  getGuildApiKey: vi.fn().mockResolvedValue(undefined),
+}));
+
 import { InMemoryMessageStore } from '../../../src/core/awareness/messageStore';
 import { InMemoryChannelSummaryStore } from '../../../src/core/summary/inMemoryChannelSummaryStore';
 import { ChannelSummaryScheduler } from '../../../src/core/summary/channelSummaryScheduler';
