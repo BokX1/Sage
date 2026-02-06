@@ -35,6 +35,17 @@ let catalogCache: Record<string, ModelInfo> | null = null;
 let catalogState: CatalogState = { source: 'fallback', lastError: null };
 let pendingFetch: Promise<Record<string, ModelInfo>> | null = null;
 
+const MODEL_CATALOG_TIMEOUT_MS = 15_000;
+
+function assertSafeCatalogBaseUrl(baseUrl: string): string {
+  const normalized = normalizeBaseUrl(baseUrl);
+  const parsed = new URL(normalized);
+  if (parsed.protocol !== 'https:') {
+    throw new Error('Model catalog base URL must use HTTPS.');
+  }
+  return parsed.toString().replace(/\/$/, '');
+}
+
 function normalizeModelId(modelId: string): string {
   return modelId.trim().toLowerCase();
 }
@@ -124,9 +135,11 @@ function buildFallbackCatalog(): Record<string, ModelInfo> {
 }
 
 async function fetchRuntimeCatalog(): Promise<Record<string, ModelInfo>> {
-  const baseUrl = normalizeBaseUrl(config.llmBaseUrl || 'https://gen.pollinations.ai/v1');
+  const baseUrl = assertSafeCatalogBaseUrl(config.llmBaseUrl || 'https://gen.pollinations.ai/v1');
   const url = `${baseUrl}/models`;
-  const response = await fetch(url);
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), MODEL_CATALOG_TIMEOUT_MS);
+  const response = await fetch(url, { signal: controller.signal }).finally(() => clearTimeout(timeoutId));
   if (!response.ok) {
     throw new Error(`Model catalog fetch failed: ${response.status} ${response.statusText}`);
   }

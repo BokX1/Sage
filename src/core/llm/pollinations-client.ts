@@ -25,17 +25,21 @@ interface PollinationsPayload {
   audio?: { voice: string; format: string };
 }
 
+function assertSafeBaseUrl(rawBaseUrl: string): string {
+  const trimmed = rawBaseUrl.trim().replace(/\/$/, '').replace(/\/chat\/completions$/, '');
+  const parsed = new URL(trimmed);
+  if (parsed.protocol !== 'https:') {
+    throw new Error('LLM base URL must use HTTPS.');
+  }
+  return parsed.toString().replace(/\/$/, '');
+}
+
 export class PollinationsClient implements LLMClient {
   private config: PollinationsConfig;
   private breaker: CircuitBreaker;
 
   constructor(config: Partial<PollinationsConfig> = {}) {
-    let baseUrl = config.baseUrl || 'https://gen.pollinations.ai/v1';
-    // Normalize: trim, remove trailing slash, remove /chat/completions suffix
-    baseUrl = baseUrl
-      .trim()
-      .replace(/\/$/, '')
-      .replace(/\/chat\/completions$/, '');
+    const baseUrl = assertSafeBaseUrl(config.baseUrl || 'https://gen.pollinations.ai/v1');
 
     this.config = {
       baseUrl,
@@ -170,13 +174,17 @@ export class PollinationsClient implements LLMClient {
         const timeout = request.timeout || this.config.timeoutMs;
         const id = setTimeout(() => controller.abort(), timeout);
 
-        const response = await fetch(url, {
-          method: 'POST',
-          headers,
-          body: JSON.stringify(payload),
-          signal: controller.signal,
-        });
-        clearTimeout(id);
+        let response: Response;
+        try {
+          response = await fetch(url, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify(payload),
+            signal: controller.signal,
+          });
+        } finally {
+          clearTimeout(id);
+        }
 
         if (!response.ok) {
           const text = await response.text();

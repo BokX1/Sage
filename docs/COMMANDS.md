@@ -29,7 +29,7 @@ A complete reference for Sage slash commands and interaction methods.
 | See relationship tiers | `/sage whoiswho [user]` |
 | Get Pollinations key link | `/sage key login` |
 | Set server-wide key (admin) | `/sage key set <api_key>` |
-| Check key status | `/sage key check` |
+| Check key status (admin) | `/sage key check` |
 | Clear server key (admin) | `/sage key clear` |
 | Join voice (beta) | `/join` |
 | Leave voice (beta) | `/leave` |
@@ -131,7 +131,7 @@ View relationship information and social tiers.
 Bring-Your-Own-Pollen (BYOP) — manage the Pollinations API key used by your server.
 
 > [!IMPORTANT]
-> `key set` and `key clear` are **admin-only**. They apply to the entire server.
+> `key set`, `key check`, and `key clear` are **admin-only**. They apply to the entire server.
 
 ### `/sage key login`
 

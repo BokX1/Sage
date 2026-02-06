@@ -36,7 +36,7 @@ const commandDefinitions = [
             ),
         )
         .addSubcommand((sub) =>
-          sub.setName('check').setDescription('Check the Server-wide API key status'),
+          sub.setName('check').setDescription('Check the Server-wide API key status (Admin only)'),
         )
         .addSubcommand((sub) =>
           sub.setName('clear').setDescription('Remove the Server-wide API key (Admin only)'),

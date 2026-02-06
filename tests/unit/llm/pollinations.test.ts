@@ -9,6 +9,12 @@ describe('PollinationsClient', () => {
     vi.resetAllMocks();
   });
 
+  it('should reject non-HTTPS base URLs', () => {
+    expect(() => new PollinationsClient({ baseUrl: 'http://api.test/v1' })).toThrow(
+      'LLM base URL must use HTTPS.',
+    );
+  });
+
   it('should normalize baseUrl correctly (removing suffixes)', async () => {
     const client1 = new PollinationsClient({ baseUrl: 'https://api.test/v1/chat/completions' });
 
