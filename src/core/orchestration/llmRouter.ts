@@ -171,6 +171,17 @@ export async function decideRoute(params: LLMRouterParams): Promise<RouteDecisio
         };
     }
 
+    // Fast path: File attachments -> QA (Bypassing LLM to prevent hallucinations)
+    if (hasAttachment) {
+        return {
+            kind: 'qa',
+            experts: [], // QA route doesn't need specific experts usually, or maybe Memory?
+            allowTools: true,
+            temperature: 0.8,
+            reasoningText: 'File attachment detected - forcing QA route',
+        };
+    }
+
     try {
         const client = createLLMClient('pollinations', { chatModel: ROUTER_MODEL });
 
