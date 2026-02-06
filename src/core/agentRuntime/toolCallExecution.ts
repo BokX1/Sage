@@ -1,16 +1,10 @@
+/** Execute validated tool calls with timeout and structured result logging. */
 import { ToolExecutionContext, ToolRegistry } from './toolRegistry';
 import { logger } from '../utils/logger';
 import { ToolExecutionError, ToolTimeoutError, ToolValidationError, ToolErrorKind } from './toolErrors';
 
-/**
- * Capture the outcome of a tool execution attempt.
- *
- * Details: successful calls include a result payload; failures include an error
- * message suitable for LLM consumption.
- *
- * Side effects: none.
- * Error behavior: none.
- */
+
+/** Represent one completed tool invocation result. */
 export interface ToolResult {
   name: string;
   success: boolean;
@@ -20,13 +14,15 @@ export interface ToolResult {
   latencyMs: number;
 }
 
+
 /**
- * Execute a tool with a timeout guard.
+ * Execute one tool call with timeout protection and normalized error reporting.
  *
- * Details: races the tool execution against a timeout to prevent stalled calls.
- *
- * Side effects: executes tool code and any downstream effects it performs.
- * Error behavior: returns a failure result on timeout or tool errors.
+ * @param registry - Tool registry used for validation and execution.
+ * @param call - Tool call envelope containing name and args payload.
+ * @param ctx - Request-scoped execution context for logging and auth decisions.
+ * @param timeoutMs - Hard timeout in milliseconds for this invocation.
+ * @returns Structured tool result with latency and typed failure metadata.
  */
 export async function executeToolWithTimeout(
   registry: ToolRegistry,
@@ -40,8 +36,9 @@ export async function executeToolWithTimeout(
     'Tool invocation started',
   );
 
+  let timeoutHandle: NodeJS.Timeout | undefined;
   const timeoutPromise = new Promise<ToolResult>((resolve) => {
-    setTimeout(() => {
+    timeoutHandle = setTimeout(() => {
       const timeoutError = new ToolTimeoutError(call.name, timeoutMs);
       resolve({
         name: call.name,
@@ -63,6 +60,9 @@ export async function executeToolWithTimeout(
   }));
 
   const result = await Promise.race([executionPromise, timeoutPromise]);
+  if (timeoutHandle) {
+    clearTimeout(timeoutHandle);
+  }
   const latencyMs = Math.max(0, Date.now() - start);
 
   const finalResult = {

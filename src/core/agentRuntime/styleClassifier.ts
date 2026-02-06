@@ -1,30 +1,19 @@
 /**
- * Represent a relative intensity level for style dimensions.
+ * Infer stylistic guidance from user text samples.
  *
- * Details: used for verbosity, formality, and directness scoring.
+ * Responsibilities:
+ * - Classify immediate style signals from the latest prompt.
+ * - Build an optional mimicry hint from recent user history.
  *
- * Side effects: none.
- * Error behavior: none.
+ * Non-goals:
+ * - Persist user preferences.
+ * - Apply style transformations directly.
  */
 export type StyleLevel = 'low' | 'medium' | 'high';
-/**
- * Represent a relative humor preference level.
- *
- * Details: values range from no humor to high humor signals.
- *
- * Side effects: none.
- * Error behavior: none.
- */
+
 export type HumorLevel = 'none' | 'subtle' | 'normal' | 'high';
 
-/**
- * Describe inferred style preferences from a user message.
- *
- * Details: aggregates heuristic signals into named style dimensions.
- *
- * Side effects: none.
- * Error behavior: none.
- */
+/** Describe style dimensions consumed by prompt composition. */
 export interface StyleProfile {
   verbosity: StyleLevel;
   formality: StyleLevel;
@@ -33,16 +22,19 @@ export interface StyleProfile {
 }
 
 /**
- * Classify style preferences from a user message.
+ * Classify style attributes from a single user message.
  *
- * Details: applies deterministic keyword and length heuristics to infer
- * verbosity, formality, humor, and directness.
+ * @param text - Raw user prompt text.
+ * @returns Style profile inferred from keyword and length heuristics.
  *
- * Side effects: none.
- * Error behavior: none.
+ * Side effects:
+ * - None.
  *
- * @param text - User message text to analyze.
- * @returns Inferred style profile.
+ * Error behavior:
+ * - Never throws.
+ *
+ * Invariants:
+ * - Every style dimension is always returned.
  */
 export function classifyStyle(text: string): StyleProfile {
   const lower = text.toLowerCase();
@@ -81,10 +73,19 @@ export function classifyStyle(text: string): StyleProfile {
 }
 
 /**
- * Analyze a user's recent message history to generate a style mimicry instruction.
- * 
- * @param history - Array of recent user message strings.
- * @returns A natural language instruction for the LLM (e.g., "Write in all lowercase, be casual.").
+ * Generate a lightweight style mimicry instruction from user history.
+ *
+ * @param history - Recent user-authored messages ordered chronologically.
+ * @returns A single instruction sentence or an empty string when no signal exists.
+ *
+ * Side effects:
+ * - None.
+ *
+ * Error behavior:
+ * - Never throws.
+ *
+ * Invariants:
+ * - Output is safe to append to prompt context as plain text.
  */
 export function analyzeUserStyle(history: string[]): string {
   if (!history || history.length === 0) return '';
@@ -94,8 +95,7 @@ export function analyzeUserStyle(history: string[]): string {
   let emojiCount = 0;
   let slangCount = 0;
   let shortCount = 0;
-  // let questionCount = 0;
-  let punctuationCount = 0; // Proper punctuation usage
+  let punctuationCount = 0;
 
   const emojiRegex = /[\p{Emoji_Presentation}\p{Extended_Pictographic}]/u;
   const slangRegex = /\b(lol|lmao|idk|rn|ur|u|pls|plz|thx|ty|omg|bruh|sup|yo|nah|yea)\b/i;
@@ -105,39 +105,33 @@ export function analyzeUserStyle(history: string[]): string {
     if (emojiRegex.test(msg)) emojiCount++;
     if (slangRegex.test(msg)) slangCount++;
     if (msg.split(/\s+/).length < 6) shortCount++;
-    // if (msg.includes('?')) questionCount++;
     if (/[.!?]$/.test(msg.trim())) punctuationCount++;
   }
 
   const traits: string[] = [];
 
-  // Casing
   if (lowercaseCount / total > 0.6) {
     traits.push('use all lowercase');
   }
 
-  // Tone/Formality
   if (slangCount / total > 0.3) {
     traits.push('be very casual and use slang (lol, rn, ur)');
-  } else if (punctuationCount / total > 0.8 && history.some(m => m.length > 50)) {
+  } else if (punctuationCount / total > 0.8 && history.some((m) => m.length > 50)) {
     traits.push('be polite and use proper punctuation');
   } else {
     traits.push('be conversational');
   }
 
-  // Emojis
   if (emojiCount / total > 0.4) {
     traits.push('use emojis frequently 🌟');
   } else if (emojiCount > 0) {
     traits.push('use emojis occasionally');
   }
 
-  // Length
   if (shortCount / total > 0.7) {
     traits.push('keep responses short and punchy');
   }
 
   if (traits.length === 0) return '';
-
   return `Mirror the user's style: ${traits.join(', ')}.`;
 }
