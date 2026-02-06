@@ -30,9 +30,9 @@ export async function runConfigDoctor() {
       name: 'Chat Model',
       // Allow gemini, deepseek, or other valid models
       valid: ['gemini', 'deepseek', 'openai', 'mistral', 'llama', 'gpt-4o', 'qwen-coder'].some((m) =>
-        (config.chatModel || 'gemini').includes(m),
+        (config.chatModel || 'kimi').includes(m),
       ),
-      value: config.chatModel || 'gemini (default)',
+      value: config.chatModel || 'kimi (default)',
     },
     {
       name: 'LLM API Key',

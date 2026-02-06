@@ -43,7 +43,7 @@ export class PollinationsClient implements LLMClient {
 
     this.config = {
       baseUrl,
-      model: (config.model || 'gemini').toLowerCase(),
+      model: (config.model || 'kimi').toLowerCase(),
       apiKey: config.apiKey,
       timeoutMs: config.timeoutMs || 180000,
       maxRetries: config.maxRetries ?? 2,
