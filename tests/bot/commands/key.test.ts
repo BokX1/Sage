@@ -7,7 +7,7 @@ const isAdminMock = vi.fn();
 const getGuildApiKeyMock = vi.fn();
 const upsertGuildApiKeyMock = vi.fn();
 
-vi.mock('../../../src/bot/handlers/interactionHandlers', () => ({
+vi.mock('../../../src/bot/handlers/sage-command-handlers', () => ({
   isAdmin: isAdminMock,
 }));
 
@@ -51,7 +51,7 @@ describe('key command handlers', () => {
     });
 
     const interaction = createInteraction();
-    const { handleKeySet } = await import('../../../src/bot/commands/key');
+    const { handleKeySet } = await import('../../../src/bot/commands/api-key-handlers');
 
     await handleKeySet(interaction as never);
 
@@ -68,7 +68,7 @@ describe('key command handlers', () => {
     });
 
     const interaction = createInteraction();
-    const { handleKeyCheck } = await import('../../../src/bot/commands/key');
+    const { handleKeyCheck } = await import('../../../src/bot/commands/api-key-handlers');
 
     await handleKeyCheck(interaction as never);
 
