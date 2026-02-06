@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isRateLimited } from '../src/core/rate-limiter';
+import { isRateLimited } from '../../src/core/rate-limiter';
 
 describe('Rate Limiter', () => {
   it('should allow first message', () => {
