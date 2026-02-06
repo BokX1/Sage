@@ -1,6 +1,15 @@
+/**
+ * Enforce prompt token budgets across ordered context blocks.
+ *
+ * Responsibilities:
+ * - Apply per-block hard caps and global prompt budget limits.
+ * - Truncate or drop lower-priority blocks when needed.
+ * - Optionally inject a truncation notice when context was reduced.
+ */
 import { estimateTokens } from './tokenEstimate';
 import { LLMMessageContent } from '../llm/llm-types';
 
+/** Identify supported context block classes used by the runtime builder. */
 export type ContextBlockId =
   | 'base_system'
   | 'memory'
@@ -15,6 +24,7 @@ export type ContextBlockId =
   | 'user'
   | 'trunc_notice';
 
+/** Describe a budgetable context block before final message assembly. */
 export type ContextBlock = {
   id: ContextBlockId;
   role: 'system' | 'assistant' | 'user';
@@ -25,6 +35,7 @@ export type ContextBlock = {
   truncatable: boolean;
 };
 
+/** Configure global budgeting and truncation-notice behavior. */
 export type ContextBudgetOptions = {
   maxInputTokens: number;
   reservedOutputTokens: number;
@@ -315,6 +326,22 @@ function insertTruncationNotice(
   return [...blocks.slice(0, baseIndex + 1), noticeBlock, ...blocks.slice(baseIndex + 1)];
 }
 
+/**
+ * Fit context blocks inside the model input budget.
+ *
+ * @param blocks - Candidate context blocks in priority order.
+ * @param opts - Max-input and output-reservation limits.
+ * @returns Transformed blocks guaranteed to fit configured budget when possible.
+ *
+ * Side effects:
+ * - None.
+ *
+ * Error behavior:
+ * - Never throws for valid `blocks` and estimator inputs.
+ *
+ * Invariants:
+ * - Returned blocks preserve relative ordering of surviving entries.
+ */
 export function budgetContextBlocks(
   blocks: ContextBlock[],
   opts: ContextBudgetOptions,
@@ -434,5 +461,6 @@ export function budgetContextBlocks(
   return workingBlocks;
 }
 
+/** Provide default notice injected when prompt content was truncated. */
 export const DEFAULT_TRUNCATION_NOTICE =
   'Note: Context was truncated to fit the model window. Some older transcript/summary content may be omitted.';

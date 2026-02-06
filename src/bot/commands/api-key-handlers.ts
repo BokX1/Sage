@@ -9,7 +9,9 @@ interface PollinationsProfile {
   credits?: number;
 }
 
-// Helper to validate key and get profile info
+/**
+ * Validate a Pollinations API key by requesting the authenticated profile.
+ */
 async function fetchPollinationsProfile(apiKey: string): Promise<PollinationsProfile | null> {
   try {
     const res = await fetch('https://gen.pollinations.ai/account/profile', {
@@ -24,7 +26,6 @@ async function fetchPollinationsProfile(apiKey: string): Promise<PollinationsPro
 }
 
 export async function handleKeyLogin(interaction: ChatInputCommandInteraction) {
-  // Explicitly request permissions for profile and balance
   const authUrl = `https://enter.pollinations.ai/authorize?redirect_url=https://pollinations.ai/&permissions=profile,balance,usage`;
 
   const lines = [
@@ -54,7 +55,6 @@ export async function handleKeySet(interaction: ChatInputCommandInteraction) {
     return;
   }
 
-  // Guild Scope Only
   if (!guildId) {
     await interaction.reply({ content: '❌ Keys can only be set inside a server.', ephemeral: true });
     return;
@@ -67,7 +67,6 @@ export async function handleKeySet(interaction: ChatInputCommandInteraction) {
 
   await interaction.deferReply({ ephemeral: true });
 
-  // Validate key before saving
   const profile = await fetchPollinationsProfile(apiKey);
   if (!profile) {
     await interaction.editReply('❌ **Invalid API Key.** Could not verify this key with Pollinations. Please try logging in again.');
@@ -76,11 +75,12 @@ export async function handleKeySet(interaction: ChatInputCommandInteraction) {
 
   try {
     await upsertGuildApiKey(guildId, apiKey);
-    const balanceInfo = profile.credits ? ` (Balance: ${profile.credits} pollen)` : '';
-    await interaction.editReply(`✅ **Server-wide API Key saved!**\nUser: 
-${profile.username || 'Unknown'}
-${balanceInfo}
-Sage will now use this key for **all members** in this server.`);
+    const balanceInfo = profile.credits != null ? ` (Balance: ${profile.credits} pollen)` : '';
+    await interaction.editReply(
+      `✅ **Server-wide API Key saved!**\n` +
+      `User: ${profile.username || 'Unknown'}${balanceInfo}\n` +
+      'Sage will now use this key for **all members** in this server.',
+    );
   } catch (error) {
     logger.error({ error, guildId }, 'Failed to set API key');
     await interaction.editReply('❌ Failed to save API key (Database error).');
@@ -103,28 +103,21 @@ export async function handleKeyCheck(interaction: ChatInputCommandInteraction) {
     if (apiKey) {
       const masked = apiKey.length > 8 ? `${apiKey.slice(0, 4)}...${apiKey.slice(-4)}` : 'sk_...';
 
-      // Live check
       const liveProfile = await fetchPollinationsProfile(apiKey);
 
       if (liveProfile) {
         const balance = liveProfile.credits ?? 'Unknown';
         await interaction.editReply(
           `✅ **Active (Server-wide)**\n` +
-          `- **Key**: 
-${masked}
-` +
-          `- **Account**: 
-${liveProfile.username || 'Unknown'}
-` +
-          `- **Balance**: ${balance} pollen`
+          `- **Key**: ${masked}\n` +
+          `- **Account**: ${liveProfile.username || 'Unknown'}\n` +
+          `- **Balance**: ${balance} pollen`,
         );
       } else {
         await interaction.editReply(
           `⚠️ **Active (Unverified)**\n` +
-          `- **Key**: 
-${masked}
-` +
-          `- **Status**: Key saved, but could not connect to Pollinations to verify balance.`
+          `- **Key**: ${masked}\n` +
+          '- **Status**: Key saved, but could not connect to Pollinations to verify balance.',
         );
       }
     } else {

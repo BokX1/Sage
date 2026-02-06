@@ -1,10 +1,9 @@
 /**
- * Agent Runtime Module
+ * Re-export public agent-runtime surfaces used by handlers and tests.
  *
- * Central orchestration layer for LLM interactions with:
- * - Composable prompt building (promptBlocks, promptComposer)
- * - Context message construction (contextBuilder)
- * - Strict tool validation and execution (toolRegistry, toolCallLoop)
+ * Non-goals:
+ * - Hold runtime state.
+ * - Execute chat turns directly.
  */
 export { runChatTurn, type RunChatTurnParams, type RunChatTurnResult } from './agentRuntime';
 

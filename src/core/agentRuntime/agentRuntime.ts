@@ -1,3 +1,15 @@
+/**
+ * Orchestrate a single end-to-end chat turn.
+ *
+ * Responsibilities:
+ * - Route the request, gather context, and call the LLM.
+ * - Execute expert fan-out and optional tool-call follow-up.
+ * - Return reply text plus optional attachments and diagnostics.
+ *
+ * Non-goals:
+ * - Persist long-term memory directly.
+ * - Implement provider-specific request formatting.
+ */
 import { config as appConfig } from '../../config';
 import { formatSummaryAsText } from '../summary/summarizeChannelWindow';
 import { getRecentMessages } from '../awareness/channelRingBuffer';
@@ -41,6 +53,7 @@ const GOOGLE_SEARCH_TOOL: ToolDefinition = {
   },
 };
 
+/** Execute one chat turn using routing, context, and tool follow-up metadata. */
 export interface RunChatTurnParams {
   traceId: string;
   userId: string;
@@ -58,6 +71,7 @@ export interface RunChatTurnParams {
   isVoiceActive?: boolean;
 }
 
+/** Return payload for a completed chat turn. */
 export interface RunChatTurnResult {
   replyText: string;
   styleHint?: string;
@@ -73,7 +87,6 @@ export interface RunChatTurnResult {
   }>;
 }
 
-// Helper to select voice based on text signals
 function selectVoicePersona(text: string, profile: string | null): string {
   const t = (text + (profile || '')).toLowerCase();
 
@@ -82,9 +95,28 @@ function selectVoicePersona(text: string, profile: string | null): string {
   if (/(energetic|excited|sparkly|anime)/.test(t)) return 'shimmer';
   if (/(serious|news|anchor)/.test(t)) return 'echo';
 
-  return 'alloy'; // Default
+  return 'alloy';
 }
 
+/**
+ * Run the full runtime pipeline for one inbound user message.
+ *
+ * @param params - Turn metadata, user content, and optional invocation hints.
+ * @returns Reply text plus optional files and debug payload.
+ *
+ * Side effects:
+ * - Reads channel memory buffers and summary stores.
+ * - Calls routing experts and the configured LLM provider.
+ * - Persists trace records when tracing is enabled.
+ *
+ * Error behavior:
+ * - Non-critical fetch and expert failures are logged and execution continues.
+ * - LLM call failures return a fallback user-facing message.
+ *
+ * Invariants:
+ * - Input context never exceeds the configured token budget after context building.
+ * - BYOP-gated guilds return a welcome prompt when no API key is available.
+ */
 export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTurnResult> {
   const {
     traceId,
@@ -124,14 +156,9 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
     }
   }
 
-  // Build conversation history for LLM router (pronoun resolution)
   let conversationHistory: LLMChatMessage[] = [];
   if (guildId && isLoggingEnabled(guildId, channelId)) {
-    const recentMsgs = getRecentMessages({
-      guildId,
-      channelId,
-      limit: 15,
-    });
+    const recentMsgs = getRecentMessages({ guildId, channelId, limit: 15 });
     conversationHistory = recentMsgs.map((m) => ({
       role: (m.authorId === 'bot' ? 'assistant' : 'user') as 'user' | 'assistant',
       content: m.content,
@@ -170,14 +197,10 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
     logger.warn({ error: err, traceId }, 'Failed to run experts (non-fatal)');
   }
 
-  // Collect binary files from experts
   const files: Array<{ attachment: Buffer; name: string }> = [];
   for (const packet of expertPackets) {
     if (packet.binary) {
-      files.push({
-        attachment: packet.binary.data,
-        name: packet.binary.filename,
-      });
+      files.push({ attachment: packet.binary.data, name: packet.binary.filename });
     }
   }
 
@@ -218,18 +241,9 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
     try {
       const summaryStore = getChannelSummaryStore();
       const [rollingSummary, profileSummary] = await Promise.all([
-        summaryStore.getLatestSummary({
-          guildId,
-          channelId,
-          kind: 'rolling',
-        }),
-        summaryStore.getLatestSummary({
-          guildId,
-          channelId,
-          kind: 'profile',
-        }),
+        summaryStore.getLatestSummary({ guildId, channelId, kind: 'rolling' }),
+        summaryStore.getLatestSummary({ guildId, channelId, kind: 'profile' }),
       ]);
-
 
       if (rollingSummary) {
         rollingSummaryText = `Channel rolling summary (last ${appConfig.SUMMARY_ROLLING_WINDOW_MIN}m):\n${formatSummaryAsText({
@@ -259,8 +273,7 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
     }
 
     try {
-      const { renderRelationshipHints } =
-        await import('../relationships/relationshipHintsRenderer');
+      const { renderRelationshipHints } = await import('../relationships/relationshipHintsRenderer');
       relationshipHintsText = await renderRelationshipHints({
         guildId,
         userId,
@@ -272,7 +285,6 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
     }
   }
 
-  // Voice Persona Logic
   let voice = 'alloy';
   let voiceInstruction = '';
 
@@ -287,10 +299,9 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
   }
 
   const style = classifyStyle(userText);
-  // Calculate style mimicry for TTS usage (passed out in result)
   const userHistory = conversationHistory
-    .filter(m => m.role === 'user')
-    .map(m => typeof m.content === 'string' ? m.content : '');
+    .filter((m) => m.role === 'user')
+    .map((m) => (typeof m.content === 'string' ? m.content : ''));
   const styleMimicry = analyzeUserStyle([...userHistory, userText]);
 
   const messages = buildContextMessages({
@@ -317,7 +328,6 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
 
   const client = getLLMClient();
 
-  // Enforce BYOP if neither a guild key nor a global key is configured.
   if (guildId && !apiKey) {
     return {
       replyText: getWelcomeMessage(),
@@ -347,7 +357,7 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
       tools: nativeTools.length > 0 ? nativeTools : undefined,
       toolChoice: nativeTools.length > 0 ? 'auto' : undefined,
       temperature: route.temperature,
-      timeout: appConfig.TIMEOUT_CHAT_MS, // Fail fast for chat
+      timeout: appConfig.TIMEOUT_CHAT_MS,
     });
 
     draftText = response.content;
@@ -407,18 +417,13 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
     };
   }
 
-  // Final Cleanup: If we attached files (e.g., images), aggressively strip any "Action" JSON that might have leaked.
-  // The LLM often thinks "I must confirm the action with JSON" even if we told it not to.
   let cleanedText = finalText;
   if (files.length > 0) {
-    // Regex matches Markdown code blocks containing JSON-like keys "action", "action_input"
-    // OR raw JSON blocks that look like action confirmations.
     const jsonActionRegex = /```(?:json)?\s*\{(?:.|\n)*?"action"\s*:(?:.|\n)*?\}\s*```/yi;
     const rawJsonRegex = /\{(?:.|\n)*?"action"\s*:(?:.|\n)*?\}/yi;
 
     cleanedText = cleanedText.replace(jsonActionRegex, '').replace(rawJsonRegex, '').trim();
 
-    // Fallback: If the text is ONLY JSON, clear it entirely (let the image stand alone)
     if (/^\s*\{(?:.|\n)*?\}\s*$/.test(cleanedText)) {
       cleanedText = '';
     }

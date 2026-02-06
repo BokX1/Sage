@@ -4,21 +4,14 @@ import { logger } from '../utils/logger';
 import { executeToolWithTimeout, ToolResult } from './toolCallExecution';
 import { looksLikeJson, parseToolCallEnvelope, RETRY_PROMPT } from './toolCallParser';
 
-/**
- * Configure the tool call loop limits.
- *
- * Details: caps the number of tool rounds and calls per round, and enforces a
- * timeout for each tool execution.
- *
- * Side effects: none.
- * Error behavior: none.
- */
+
+/** Configure loop bounds and tool timeout behavior. */
 export interface ToolCallLoopConfig {
-  /** Maximum number of tool rounds (default: 2). */
+
   maxRounds?: number;
-  /** Maximum tool calls per round (default: 3). */
+
   maxCallsPerRound?: number;
-  /** Tool execution timeout in ms (default: 10000). */
+
   toolTimeoutMs?: number;
 }
 
@@ -29,14 +22,10 @@ const DEFAULT_CONFIG: Required<ToolCallLoopConfig> = {
 };
 
 
-/**
- * Error types for tool failures.
- */
+
 type ToolErrorType = 'timeout' | 'not_found' | 'rate_limited' | 'validation' | 'unknown';
 
-/**
- * Classify error type from error message.
- */
+
 function classifyErrorType(error: string): ToolErrorType {
   const lowerError = error.toLowerCase();
   if (lowerError.includes('timeout') || lowerError.includes('timed out')) return 'timeout';
@@ -46,9 +35,7 @@ function classifyErrorType(error: string): ToolErrorType {
   return 'unknown';
 }
 
-/**
- * Get recovery suggestion for error type.
- */
+
 function getRecoverySuggestion(errorType: ToolErrorType, toolName: string): string {
   switch (errorType) {
     case 'timeout':
@@ -64,23 +51,14 @@ function getRecoverySuggestion(errorType: ToolErrorType, toolName: string): stri
   }
 }
 
-/**
- * Format tool results as an LLM user message with enhanced error context.
- *
- * Details: uses a user-role message for compatibility with providers that
- * mishandle tool-role messages. Includes error classification and recovery
- * suggestions for failed tools.
- *
- * Side effects: none.
- * Error behavior: none.
- */
+
 function formatToolResultsMessage(results: ToolResult[]): LLMChatMessage {
   const successResults = results.filter(r => r.success);
   const failedResults = results.filter(r => !r.success);
 
   const parts: string[] = [];
 
-  // Format successful results
+
   if (successResults.length > 0) {
     const successTexts = successResults.map(r =>
       `✅ Tool "${r.name}" succeeded: ${JSON.stringify(r.result)}`
@@ -88,7 +66,7 @@ function formatToolResultsMessage(results: ToolResult[]): LLMChatMessage {
     parts.push(successTexts.join('\n'));
   }
 
-  // Format failed results with recovery context
+
   if (failedResults.length > 0) {
     const failedTexts = failedResults.map(r => {
       const errorType = classifyErrorType(r.error || 'unknown');
@@ -104,62 +82,50 @@ function formatToolResultsMessage(results: ToolResult[]): LLMChatMessage {
   };
 }
 
-/**
- * Define inputs to the tool call loop.
- *
- * Details: includes the LLM client, seed messages, and tool execution context.
- *
- * Side effects: none.
- * Error behavior: none.
- */
+
+/** Provide dependencies and request context for one tool-call loop run. */
 export interface ToolCallLoopParams {
-  /** LLM client to use. */
+
   client: LLMClient;
-  /** Initial messages (system + context). */
+
   messages: LLMChatMessage[];
-  /** Tool registry with registered tools. */
+
   registry: ToolRegistry;
-  /** Execution context for tools. */
+
   ctx: ToolExecutionContext;
-  /** LLM model to use (optional). */
+
   model?: string;
-  /** Optional API Key (BYOP). */
+
   apiKey?: string;
-  /** Configuration overrides. */
+
   config?: ToolCallLoopConfig;
 }
 
-/**
- * Describe the tool call loop outcome.
- *
- * Details: includes the final reply text and any tool results produced.
- *
- * Side effects: none.
- * Error behavior: none.
- */
+
+/** Return final response and execution telemetry for the tool loop. */
 export interface ToolCallLoopResult {
-  /** Final reply text from the LLM. */
+
   replyText: string;
-  /** Whether tools were executed. */
+
   toolsExecuted: boolean;
-  /** Number of tool rounds completed. */
+
   roundsCompleted: number;
-  /** All tool results from all rounds. */
+
   toolResults: ToolResult[];
 }
 
+
 /**
- * Run the tool call loop.
+ * Execute iterative tool-call rounds until model output no longer requests tools.
  *
- * Details: requests tool envelopes from the LLM, executes tools, and continues
- * until a final response or round limit is reached.
+ * @param params - Client, messages, registry, and optional loop overrides.
+ * @returns Final assistant text plus tool execution metadata.
  *
- * Side effects: triggers LLM calls and executes registered tools.
- * Error behavior: returns a final response even when tool parsing fails by
- * treating the LLM output as a plain reply.
+ * Side effects:
+ * - Calls the LLM multiple times and executes registered tools.
  *
- * @param params - Tool loop inputs including client, messages, and registry.
- * @returns Final reply text and tool execution details.
+ * Error behavior:
+ * - Invalid JSON envelopes trigger one retry prompt before falling back.
  */
 export async function runToolCallLoop(params: ToolCallLoopParams): Promise<ToolCallLoopResult> {
   const { client, registry, ctx, model, apiKey } = params;
@@ -230,7 +196,7 @@ export async function runToolCallLoop(params: ToolCallLoopParams): Promise<ToolC
       };
     }
 
-    // Cap calls per round to avoid unbounded tool execution from oversized envelopes.
+
     const calls = envelope.calls.slice(0, config.maxCallsPerRound);
     if (envelope.calls.length > config.maxCallsPerRound) {
       logger.warn(

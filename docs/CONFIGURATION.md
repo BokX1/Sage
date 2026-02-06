@@ -142,7 +142,7 @@ Configure automatic channel summarization.
 | `SUMMARY_ROLLING_MIN_MESSAGES` | Min messages before triggering summary | `20` |
 | `SUMMARY_ROLLING_MIN_INTERVAL_SEC` | Min seconds between summaries | `300` |
 | `SUMMARY_PROFILE_MIN_INTERVAL_SEC` | Min seconds between profile summaries | `21600` (6h) |
-| `SUMMARY_MAX_CHARS` | Max characters per summary | `1800` |
+| `SUMMARY_MAX_CHARS` | Max characters per summary | `4000` in `.env.example`, `1800` in runtime defaults when unset |
 | `SUMMARY_SCHED_TICK_SEC` | Summary scheduler tick interval | `60` |
 
 ---
