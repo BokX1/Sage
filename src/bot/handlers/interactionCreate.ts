@@ -132,7 +132,7 @@ export function registerInteractionCreateHandler() {
       logger.error({ err }, 'Interaction handler error');
       if (interaction.isRepliable()) {
         const reply = { content: 'Something went wrong.', ephemeral: true };
-        if (interaction.deferred) await interaction.editReply(reply);
+        if (interaction.deferred || interaction.replied) await interaction.editReply(reply);
         else await interaction.reply(reply);
       }
     }

@@ -321,6 +321,8 @@ export function initChannelSummaryScheduler(params?: {
     });
   }, appConfig.SUMMARY_SCHED_TICK_SEC * 1000);
 
+  schedulerTimer.unref();
+
   return schedulerInstance;
 }
 
