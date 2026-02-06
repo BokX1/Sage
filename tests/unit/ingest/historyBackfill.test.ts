@@ -36,7 +36,7 @@ vi.mock('../../../src/core/ingest/ingestEvent', () => ({
   ingestEvent: vi.fn().mockResolvedValue(undefined),
 }));
 
-vi.mock('../../../src/db/client', () => ({
+vi.mock('../../../src/core/db/prisma-client', () => ({
   prisma: {
     channelMessage: {
       create: vi.fn(),

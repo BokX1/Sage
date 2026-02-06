@@ -1,15 +1,15 @@
 import { Message, Events, TextChannel } from 'discord.js';
 import { client } from '../client';
-import { logger } from '../../utils/logger';
-import { generateTraceId } from '../../utils/trace';
-import { isRateLimited } from '../../core/safety';
-import { generateChatReply } from '../../core/chat/chatEngine';
+import { logger } from '../../core/utils/logger';
+import { generateTraceId } from '../../core/utils/trace-id-generator';
+import { isRateLimited } from '../../core/rate-limiter';
+import { generateChatReply } from '../../core/chat-engine';
 import { ingestEvent } from '../../core/ingest/ingestEvent';
 import { config as appConfig } from '../../config';
-import { detectInvocation } from '../../core/invoke/wakeWord';
-import { shouldAllowInvocation } from '../../core/invoke/cooldown';
-import { fetchAttachmentText, type FetchAttachmentResult } from '../../utils/fileHandler';
-import { smartSplit } from '../../utils/messageSplitter';
+import { detectInvocation } from '../../core/invocation/wake-word-detector';
+import { shouldAllowInvocation } from '../../core/invocation/invocation-rate-limiter';
+import { fetchAttachmentText, type FetchAttachmentResult } from '../../core/utils/file-handler';
+import { smartSplit } from '../../core/utils/message-splitter';
 import { VoiceManager } from '../../core/voice/voiceManager';
 import {
   appendAttachmentToText,
@@ -18,7 +18,7 @@ import {
   deriveAttachmentLimits,
   getNonImageAttachment,
   isImageAttachment,
-} from './messageCreateAttachments';
+} from './attachment-parser';
 
 const processedMessagesKey = Symbol.for('sage.handlers.messageCreate.processed');
 const registrationKey = Symbol.for('sage.handlers.messageCreate.registered');
@@ -155,11 +155,11 @@ export async function handleMessageCreate(message: Message) {
     });
 
     // Mention-first: only respond to mentions or replies
-    const wakeWords = appConfig.WAKE_WORDS.split(',')
-      .map((word) => word.trim())
+    const wakeWords = appConfig.WAKE_WORDS_CSV.split(',')
+      .map((word: string) => word.trim())
       .filter(Boolean);
-    const wakeWordPrefixes = appConfig.WAKE_WORD_PREFIXES.split(',')
-      .map((prefix) => prefix.trim())
+    const wakeWordPrefixes = appConfig.WAKE_WORD_PREFIXES_CSV.split(',')
+      .map((prefix: string) => prefix.trim())
       .filter(Boolean);
 
     let invocation = detectInvocation({

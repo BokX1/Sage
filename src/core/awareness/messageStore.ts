@@ -1,5 +1,5 @@
 import { appendMessage, deleteOlderThan, getRecentMessages } from './channelRingBuffer';
-import { ChannelMessage } from './types';
+import { ChannelMessage } from './awareness-types';
 
 /**
  * Persist and retrieve channel messages for awareness features.

@@ -1,4 +1,4 @@
-import { prisma } from '../../db/client';
+import { prisma } from '../../core/db/prisma-client';
 
 export async function getUserProfile(userId: string): Promise<string | null> {
   const profile = await prisma.userProfile.findUnique({

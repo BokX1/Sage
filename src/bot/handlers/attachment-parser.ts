@@ -1,8 +1,8 @@
 import { Message } from 'discord.js';
-import { LLMMessageContent } from '../../core/llm/types';
+import { LLMMessageContent } from '../../core/llm/llm-types';
 import { estimateTokens } from '../../core/agentRuntime/tokenEstimate';
 import { config as appConfig } from '../../config';
-import { FetchAttachmentResult } from '../../utils/fileHandler';
+import { FetchAttachmentResult } from '../../core/utils/file-handler';
 
 const IMAGE_EXTENSIONS = new Set([
   'png',

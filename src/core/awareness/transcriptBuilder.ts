@@ -1,4 +1,4 @@
-import { ChannelMessage } from './types';
+import { ChannelMessage } from './awareness-types';
 
 /**
  * Build a transcript block from recent channel messages.

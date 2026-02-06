@@ -1,6 +1,6 @@
-import { LLMChatMessage, LLMMessageContent } from '../llm/types';
+import { LLMChatMessage, LLMMessageContent } from '../llm/llm-types';
 import { composeSystemPrompt } from './promptComposer';
-import { config } from '../config/env';
+import { config } from '../config/legacy-config-adapter';
 import { budgetContextBlocks, ContextBlock } from './contextBudgeter';
 import { StyleProfile } from './styleClassifier';
 

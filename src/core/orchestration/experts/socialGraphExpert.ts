@@ -1,6 +1,6 @@
 import { getEdgesForUser } from '../../relationships/relationshipGraph';
 import { estimateTokens } from '../../agentRuntime/tokenEstimate';
-import { ExpertPacket } from './types';
+import { ExpertPacket } from './expert-types';
 
 export interface RunSocialGraphExpertParams {
   guildId: string;

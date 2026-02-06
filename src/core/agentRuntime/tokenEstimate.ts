@@ -1,4 +1,4 @@
-import { config } from '../config/env';
+import { config } from '../config/legacy-config-adapter';
 
 export function estimateTokens(text: string): number {
   if (config.tokenEstimator === 'heuristic') {

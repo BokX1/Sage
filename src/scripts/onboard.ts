@@ -515,7 +515,7 @@ async function main() {
     }
 
     const { loadModelCatalog, findModelInCatalog, suggestModelIds, getModelCatalogState } =
-      await import('../core/llm/modelCatalog');
+      await import('../core/llm/model-catalog');
 
     const catalog = await loadModelCatalog();
     const sortedModels = Object.values(catalog).sort((a, b) => a.id.localeCompare(b.id));

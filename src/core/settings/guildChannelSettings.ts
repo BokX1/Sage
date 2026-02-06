@@ -26,11 +26,11 @@ function parseChannelList(value: string): Set<string> {
 }
 
 function isChannelAllowed(channelId: string): boolean {
-  const blocklist = parseChannelList(config.LOGGING_BLOCKLIST_CHANNEL_IDS);
+  const blocklist = parseChannelList(config.INGESTION_BLOCKLIST_CHANNEL_IDS_CSV);
   if (blocklist.has(channelId)) return false;
 
-  if (config.LOGGING_MODE === 'allowlist') {
-    const allowlist = parseChannelList(config.LOGGING_ALLOWLIST_CHANNEL_IDS);
+  if (config.INGESTION_MODE === 'allowlist') {
+    const allowlist = parseChannelList(config.INGESTION_ALLOWLIST_CHANNEL_IDS_CSV);
     return allowlist.has(channelId);
   }
 
@@ -56,7 +56,7 @@ function isChannelAllowed(channelId: string): boolean {
 export function isLoggingEnabled(guildId: string, channelId: string): boolean {
   const key = makeKey(guildId, channelId);
   const override = loggingOverrides.get(key);
-  if (!config.LOGGING_ENABLED) return false;
+  if (!config.INGESTION_ENABLED) return false;
   const allowed = isChannelAllowed(channelId);
   if (override !== undefined) return override && allowed;
   return allowed;

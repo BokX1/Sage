@@ -1,6 +1,6 @@
-import { config } from '../config/env';
+import { config } from '../config/legacy-config-adapter';
 import { logger } from '../utils/logger';
-import { ModelLimits, TokenEstimateOptions } from './budget/budgeter';
+import { ModelLimits, TokenEstimateOptions } from './context-budgeter';
 
 export type ModelBudgetConfig = ModelLimits & {
   estimation: TokenEstimateOptions;

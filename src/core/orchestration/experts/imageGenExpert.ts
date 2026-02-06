@@ -1,6 +1,6 @@
-import { ExpertPacket } from './types';
-import { LLMMessageContent, LLMChatMessage } from '../../llm/types';
-import { logger } from '../../../utils/logger';
+import { ExpertPacket } from './expert-types';
+import { LLMMessageContent, LLMChatMessage } from '../../llm/llm-types';
+import { logger } from '../../../core/utils/logger';
 import { getLLMClient } from '../../llm';
 import { config } from '../../../config';
 
@@ -264,7 +264,7 @@ export async function runImageGenExpert(params: ImageGenParams): Promise<ExpertP
 
         // 3. Construct URL
         const imageBaseUrl = normalizeImageBaseUrl(
-            config.POLLINATIONS_IMAGE_BASE_URL || config.POLLINATIONS_BASE_URL
+            config.LLM_IMAGE_BASE_URL || config.LLM_BASE_URL
         );
         const model = 'klein-large';
         const seed = Math.floor(Math.random() * 1_000_000);

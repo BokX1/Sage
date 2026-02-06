@@ -1,7 +1,7 @@
 import { REST, Routes, SlashCommandBuilder } from 'discord.js';
-import { config } from '../../core/config/env';
-import { logger } from '../../utils/logger';
-import { voiceCommands } from './voice';
+import { config } from '../../core/config/legacy-config-adapter';
+import { logger } from '../../core/utils/logger';
+import { voiceCommands } from './voice-channel-handlers';
 
 const commandDefinitions = [
   new SlashCommandBuilder().setName('ping').setDescription('Replies with Pong!'),

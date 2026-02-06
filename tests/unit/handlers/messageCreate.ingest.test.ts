@@ -11,7 +11,7 @@ const { mockGenerateChatReply, mockClient } = vi.hoisted(() => {
 });
 
 // Mock chatEngine
-vi.mock('../../../src/core/chat/chatEngine', () => ({
+vi.mock('../../../src/core/chat-engine', () => ({
   generateChatReply: mockGenerateChatReply,
 }));
 
@@ -22,7 +22,7 @@ vi.mock('../../../src/core/safety', () => ({
 }));
 
 // Mock logger
-vi.mock('../../../src/utils/logger', () => ({
+vi.mock('../../../src/core/utils/logger', () => ({
   logger: {
     debug: vi.fn(),
     info: vi.fn(),
@@ -37,7 +37,7 @@ vi.mock('../../../src/utils/logger', () => ({
 }));
 
 // Mock trace
-vi.mock('../../../src/utils/trace', () => ({
+vi.mock('../../../src/core/utils/trace-id-generator', () => ({
   generateTraceId: () => 'test-trace-id',
 }));
 
@@ -47,12 +47,10 @@ vi.mock('../../../src/bot/client', () => ({
 }));
 
 // Mock ingestEvent - let it pass through but track calls via logger.debug
-vi.mock('../../../src/core/ingest/ingestEvent', async () => {
-  const actual = await vi.importActual<typeof import('../../../src/core/ingest/ingestEvent')>(
-    '../../../src/core/ingest/ingestEvent',
-  );
-  return actual;
-});
+// Mock ingestEvent
+vi.mock('../../../src/core/ingest/ingestEvent', () => ({
+  ingestEvent: vi.fn().mockResolvedValue(undefined),
+}));
 
 // Mock config to use manual autopilot mode (so non-mentions don't trigger AI)
 vi.mock('../../../src/config', async () => {
@@ -62,13 +60,18 @@ vi.mock('../../../src/config', async () => {
     config: {
       ...actual.config,
       AUTOPILOT_MODE: 'manual',
+      WAKE_WORDS_CSV: 'Sage',
+      WAKE_WORD_PREFIXES_CSV: '',
+      INGESTION_ENABLED: true,
+      INGESTION_MODE: 'all',
     },
   };
 });
 
 import { handleMessageCreate } from '../../../src/bot/handlers/messageCreate';
-import { resetInvocationCooldowns } from '../../../src/core/invoke/cooldown';
-import { logger } from '../../../src/utils/logger';
+import { resetInvocationCooldowns } from '../../../src/core/invocation/invocation-rate-limiter';
+import { logger } from '../../../src/core/utils/logger';
+import { ingestEvent } from '../../../src/core/ingest/ingestEvent';
 
 describe('messageCreate - Ingest Flow', () => {
   let messageCounter = 0;
@@ -126,10 +129,9 @@ describe('messageCreate - Ingest Flow', () => {
 
     await handleMessageCreate(message);
 
-    // Verify logger.debug was called for ingestion
-    expect(logger.debug).toHaveBeenCalledWith(
-      expect.objectContaining({ event: expect.objectContaining({ type: 'message' }) }),
-      'Event ingested',
+    // Verify ingestEvent was called
+    expect(ingestEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ messageId: message.id }),
     );
 
     // Verify generateChatReply was NOT called (message not a mention)
@@ -189,14 +191,8 @@ describe('messageCreate - Ingest Flow', () => {
     await handleMessageCreate(message);
 
     // Verify ingestion happened
-    expect(logger.debug).toHaveBeenCalledWith(
-      expect.objectContaining({
-        event: expect.objectContaining({
-          type: 'message',
-          mentionsBot: true,
-        }),
-      }),
-      'Event ingested',
+    expect(ingestEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ messageId: message.id }),
     );
 
     // Verify generateChatReply WAS called (message is a mention)
@@ -319,9 +315,8 @@ describe('messageCreate - Ingest Flow', () => {
     await handleMessageCreate(message);
 
     // Verify ingestion occurred
-    expect(logger.debug).toHaveBeenCalledWith(
-      expect.objectContaining({ event: expect.any(Object) }),
-      'Event ingested',
+    expect(ingestEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ messageId: message.id }),
     );
 
     // But no reply

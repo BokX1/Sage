@@ -57,19 +57,18 @@ Sage uses specialized models for different tasks.
 | Variable | Description | Default |
 | :--- | :--- | :--- |
 | `LLM_PROVIDER` | AI provider | `pollinations` |
-| `POLLINATIONS_BASE_URL` | API endpoint | `https://gen.pollinations.ai/v1` |
-| `POLLINATIONS_IMAGE_BASE_URL` | Image generation endpoint | `https://gen.pollinations.ai` |
-| `POLLINATIONS_MODEL` | Primary chat model (use a vision-capable model like `gemini` for image support) | `gemini` |
-| `POLLINATIONS_API_KEY` | Global Pollinations key. Optional fallback (useful for self-hosting). We recommend **BYOP** (server-wide keys) for communities. | *(empty)* |
+| `LLM_BASE_URL` | API endpoint | `https://gen.pollinations.ai/v1` |
+| `LLM_IMAGE_BASE_URL` | Image generation endpoint | `https://gen.pollinations.ai` |
+| `CHAT_MODEL` | Primary chat model (use a vision-capable model like `gemini` for image support) | `gemini` |
+| `LLM_API_KEY` | Global LLM key. Optional fallback (useful for self-hosting). We recommend **BYOP** (server-wide keys) for communities. | *(empty)* |
 
 ### Specialized System Models
 
 | Variable | Description | Default |
 | :--- | :--- | :--- |
 | `PROFILE_PROVIDER` | Provider override for profile analysis | *(empty)* |
-| `PROFILE_POLLINATIONS_MODEL` | Model for user profile analysis | `deepseek` |
+| `PROFILE_CHAT_MODEL` | Model for user profile analysis | `deepseek` |
 | `SUMMARY_MODEL` | Model for channel summaries | `openai-large` |
-| `SUMMARY_PROVIDER` | Provider override for summaries | *(empty)* |
 | `FORMATTER_MODEL` | Model for reliable JSON formatting | `qwen-coder` |
 
 ### Model Limits

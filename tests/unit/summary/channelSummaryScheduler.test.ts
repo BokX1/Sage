@@ -16,7 +16,7 @@ vi.mock('../../../src/config', () => ({
   config: mockConfig,
 }));
 
-vi.mock('../../../src/core/config/env', () => ({
+vi.mock('../../../src/core/config/legacy-config-adapter', () => ({
   config: {
     llmProvider: 'pollinations',
     pollinationsBaseUrl: '',

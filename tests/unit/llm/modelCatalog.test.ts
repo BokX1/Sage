@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { modelSupports, ModelInfo } from '../../../src/core/llm/modelCatalog';
+import { modelSupports, findModelInCatalog, suggestModelIds, type ModelInfo } from '../../../src/core/llm/model-catalog';
 
 describe('modelSupports', () => {
   it('treats vision capability as satisfied by caps.vision', () => {

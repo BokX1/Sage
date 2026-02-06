@@ -13,9 +13,9 @@ const validateEnv = () => {
     process.exit(1);
   }
 
-  if (!process.env.POLLINATIONS_API_KEY) {
+  if (!process.env.LLM_API_KEY) {
     console.warn(
-      'No Pollinations key found. Bot will run with limited/anonymous access if supported. Get one at pollinations.ai.',
+      'No LLM API key found. Bot will run with limited/anonymous access if supported. Get one at pollinations.ai.',
     );
   }
 };
@@ -32,7 +32,7 @@ async function main() {
   const { registerReadyHandler } = await import('./bot/handlers/ready');
   const { registerGuildCreateHandler } = await import('./bot/handlers/guildCreate');
   const { globalToolRegistry } = await import('./core/agentRuntime/toolRegistry');
-  const { joinVoiceTool, leaveVoiceTool } = await import('./core/tools/voiceTools');
+  const { joinVoiceTool, leaveVoiceTool } = await import('./core/agentRuntime/voice-tools');
 
   // Register Tools
   globalToolRegistry.register(joinVoiceTool);

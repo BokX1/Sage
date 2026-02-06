@@ -1,6 +1,6 @@
-import { prisma } from '../../db/client';
+import { prisma } from '../../core/db/prisma-client';
 import { MessageStore } from './messageStore';
-import { ChannelMessage } from './types';
+import { ChannelMessage } from './awareness-types';
 
 type PrismaChannelMessageClient = {
   create: (args: { data: Record<string, unknown> }) => Promise<unknown>;

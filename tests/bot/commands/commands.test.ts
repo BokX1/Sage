@@ -28,7 +28,7 @@ vi.mock('discord.js', async () => {
   };
 });
 
-vi.mock('../../../src/utils/logger', () => ({
+vi.mock('../../../src/core/utils/logger', () => ({
   logger: {
     info: vi.fn(),
     debug: vi.fn(),
@@ -57,7 +57,7 @@ describe('Discord command registry', () => {
   });
 
   it('does not include removed model commands', async () => {
-    const { commandPayloads } = await import('../../../src/bot/commands');
+    const { commandPayloads } = await import('../../../src/bot/commands/slash-command-registry');
     const commandNames = commandPayloads.map((command) => command.name);
 
     const removedCommands = ['models', 'model', 'setmodel', 'resetmodel', 'refreshmodels'];
@@ -71,8 +71,8 @@ describe('Discord command registry', () => {
   it('registers commands without network calls', async () => {
     // Explicitly set DEV_GUILD_ID to trigger the dual-registration path
     process.env.DEV_GUILD_ID = 'test-guild-id';
-    
-    const { registerCommands, commandPayloads } = await import('../../../src/bot/commands');
+
+    const { registerCommands, commandPayloads } = await import('../../../src/bot/commands/slash-command-registry');
     await expect(registerCommands()).resolves.toBeUndefined();
 
     const { REST } = await import('discord.js');

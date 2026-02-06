@@ -1,6 +1,6 @@
 import { whoIsInVoice, howLongInVoiceToday } from '../../voice/voiceQueries';
 import { estimateTokens } from '../../agentRuntime/tokenEstimate';
-import { ExpertPacket } from './types';
+import { ExpertPacket } from './expert-types';
 
 export interface RunVoiceAnalyticsExpertParams {
   guildId: string;

@@ -14,7 +14,7 @@ import { Readable } from 'stream';
 import { logger } from '../utils/logger';
 import { EventEmitter } from 'events';
 import { getLLMClient } from '../llm';
-import { config } from '../config/env';
+import { config } from '../config/legacy-config-adapter';
 import { getGuildApiKey } from '../settings/guildSettingsRepo';
 
 export class VoiceManager extends EventEmitter {
@@ -39,7 +39,7 @@ export class VoiceManager extends EventEmitter {
 
     // Resolve API Key (BYOP)
     const guildKey = await getGuildApiKey(guildId);
-    const effectiveKey = guildKey || config.pollinationsApiKey;
+    const effectiveKey = guildKey || config.llmApiKey;
 
     if (!effectiveKey) {
       logger.warn({ guildId }, 'TTS skipped: No API Key available for openai-audio.');

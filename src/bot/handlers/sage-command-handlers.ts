@@ -1,6 +1,6 @@
 import { ChatInputCommandInteraction, PermissionsBitField } from 'discord.js';
 import pkg from '../../../package.json';
-import { logger } from '../../utils/logger';
+import { logger } from '../../core/utils/logger';
 import { config as appConfig } from '../../config';
 
 /**
@@ -8,8 +8,8 @@ import { config as appConfig } from '../../config';
  */
 export function isAdmin(interaction: ChatInputCommandInteraction): boolean {
   // 1. Config-based Admins (Bot Owners/Staff)
-  const adminRoleIds = appConfig.ADMIN_ROLE_IDS.split(',').filter(Boolean);
-  const adminUserIds = appConfig.ADMIN_USER_IDS.split(',').filter(Boolean);
+  const adminRoleIds = appConfig.ADMIN_ROLE_IDS_CSV.split(',').filter(Boolean);
+  const adminUserIds = appConfig.ADMIN_USER_IDS_CSV.split(',').filter(Boolean);
 
   if (adminUserIds.includes(interaction.user.id)) return true;
 
@@ -281,7 +281,7 @@ export async function handleAdminTrace(interaction: ChatInputCommandInteraction)
   await interaction.deferReply({ ephemeral: true });
 
   try {
-    const { getTraceById, listRecentTraces } = await import('../../core/trace/agentTraceRepo');
+    const { getTraceById, listRecentTraces } = await import('../../core/agentRuntime/agent-trace-repo');
     const { logAdminAction, computeParamsHash } =
       await import('../../core/relationships/adminAuditRepo');
 

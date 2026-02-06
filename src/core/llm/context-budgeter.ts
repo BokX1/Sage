@@ -1,4 +1,4 @@
-import { LLMChatMessage, LLMContentPart, LLMMessageContent } from '../types';
+import { LLMChatMessage, LLMContentPart, LLMMessageContent } from './llm-types';
 
 export type ModelLimits = {
   model: string;

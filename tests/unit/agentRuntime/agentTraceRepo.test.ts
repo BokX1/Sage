@@ -9,7 +9,7 @@ const { mockUpsert, mockUpdate, mockFindUnique, mockFindMany } = vi.hoisted(() =
   mockFindMany: vi.fn(),
 }));
 
-vi.mock('../../../src/db/client', () => ({
+vi.mock('../../../src/core/db/prisma-client', () => ({
   prisma: {
     agentTrace: {
       upsert: mockUpsert,
@@ -25,7 +25,7 @@ import {
   updateTraceEnd,
   getTraceById,
   listRecentTraces,
-} from '../../../src/core/trace/agentTraceRepo';
+} from '../../../src/core/agentRuntime/agent-trace-repo';
 
 describe('AgentTraceRepo', () => {
   beforeEach(() => {

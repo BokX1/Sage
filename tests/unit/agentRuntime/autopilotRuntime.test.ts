@@ -21,7 +21,7 @@ vi.mock('../../../src/core/orchestration/governor', () => ({
     actions: [],
   })),
 }));
-vi.mock('../../../src/core/trace/agentTraceRepo');
+vi.mock('../../../src/core/agentRuntime/agent-trace-repo');
 vi.mock('../../../src/core/settings/guildSettingsRepo', () => ({
   getGuildApiKey: vi.fn().mockResolvedValue('test-key'),
 }));

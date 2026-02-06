@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { findModelInCatalog, suggestModelIds, type ModelInfo } from '../../src/core/llm/modelCatalog';
+import { findModelInCatalog, suggestModelIds, type ModelInfo } from '../../src/core/llm/model-catalog';
 
 describe('modelCatalog helpers', () => {
   it('refreshes catalog when model is missing and refreshIfMissing is true', async () => {

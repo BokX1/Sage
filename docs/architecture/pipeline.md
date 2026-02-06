@@ -160,7 +160,7 @@ It uses `contextBudgeter` to respect limits defined in `src/config.ts`.
 
 ## 6) Tracing & observability
 
-**File:** `src/core/trace/agentTraceRepo.ts`
+**File:** `src/core/agentRuntime/agent-trace-repo.ts`
 
 Every interaction can be traced for admin debugging:
 

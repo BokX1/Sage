@@ -1,6 +1,6 @@
 import { getChannelSummaryStore } from '../../summary/channelSummaryStoreRegistry';
 import { estimateTokens } from '../../agentRuntime/tokenEstimate';
-import { ExpertPacket } from './types';
+import { ExpertPacket } from './expert-types';
 
 export interface RunSummarizerExpertParams {
   guildId: string;

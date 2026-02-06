@@ -5,7 +5,7 @@ import { getGuildApiKey } from '../../../src/core/settings/guildSettingsRepo';
 import { getWelcomeMessage } from '../../../src/bot/handlers/welcomeMessage';
 
 const mockConfig = vi.hoisted(() => ({
-  POLLINATIONS_API_KEY: 'env-key',
+  LLM_API_KEY: 'env-key',
   TRACE_ENABLED: false,
   TIMEOUT_CHAT_MS: 1000,
   CONTEXT_TRANSCRIPT_MAX_MESSAGES: 5,
@@ -19,7 +19,7 @@ vi.mock('../../../src/config', () => ({
 }));
 
 vi.mock('../../../src/core/llm');
-vi.mock('../../../src/core/config/env', () => ({
+vi.mock('../../../src/core/config/legacy-config-adapter', () => ({
   config: {
     llmProvider: 'pollinations',
     logLevel: 'error',
@@ -52,7 +52,10 @@ vi.mock('../../../src/core/llm/modelResolver', () => ({
   resolveModelForRequest: vi.fn().mockResolvedValue('gemini'),
 }));
 vi.mock('../../../src/core/utils/logger');
-vi.mock('../../../src/core/trace/agentTraceRepo');
+vi.mock('../../../src/core/agentRuntime/agent-trace-repo', () => ({
+  upsertTraceStart: vi.fn(),
+  updateTraceEnd: vi.fn(),
+}));
 vi.mock('../../../src/core/settings/guildSettingsRepo', () => ({
   getGuildApiKey: vi.fn(),
 }));
@@ -70,7 +73,7 @@ describe('agent runtime API key fallback', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mockConfig.POLLINATIONS_API_KEY = 'env-key';
+    mockConfig.LLM_API_KEY = 'env-key';
     (getLLMClient as unknown as { mockReturnValue: (value: unknown) => void }).mockReturnValue(
       mockLLM,
     );
@@ -101,7 +104,7 @@ describe('agent runtime API key fallback', () => {
   });
 
   it('returns the welcome message when no keys are available', async () => {
-    mockConfig.POLLINATIONS_API_KEY = '';
+    mockConfig.LLM_API_KEY = '';
     vi.mocked(getGuildApiKey).mockResolvedValue(undefined);
 
     const result = await runChatTurn({

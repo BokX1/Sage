@@ -1,12 +1,12 @@
-import { getUserProfile, upsertUserProfile } from '../memory/userProfileRepo';
-import { getGuildApiKey } from '../settings/guildSettingsRepo';
-import { updateProfileSummary } from '../memory/profileUpdater';
-import { logger } from '../utils/logger';
-import { runChatTurn } from '../agentRuntime';
-import { LLMMessageContent } from '../llm/types';
-import { config } from '../../config';
+import { getUserProfile, upsertUserProfile } from './memory/userProfileRepo';
+import { getGuildApiKey } from './settings/guildSettingsRepo';
+import { updateProfileSummary } from './memory/profileUpdater';
+import { logger } from './utils/logger';
+import { runChatTurn } from './agentRuntime';
+import { LLMMessageContent } from './llm/llm-types';
+import { config } from '../config';
 
-import { limitByKey } from '../utils/perKeyConcurrency';
+import { limitByKey } from './utils/perKeyConcurrency';
 
 /**
  * Per-user interaction counter for profile update throttling.
@@ -95,7 +95,7 @@ export async function generateChatReply(params: {
 
     // 3. Update Profile (Background, Throttled)
     // Only trigger profile update every PROFILE_UPDATE_INTERVAL messages
-    const apiKey = (guildId ? await getGuildApiKey(guildId) : undefined) ?? config.POLLINATIONS_API_KEY;
+    const apiKey = (guildId ? await getGuildApiKey(guildId) : undefined) ?? config.LLM_API_KEY;
 
     if (apiKey) {
       // Increment interaction count

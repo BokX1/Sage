@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { PollinationsClient } from '../../../src/core/llm/providers/pollinations';
+import { PollinationsClient } from '../../../src/core/llm/pollinations-client';
 
 // Mock fetch globally
 global.fetch = vi.fn();

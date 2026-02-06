@@ -13,7 +13,7 @@ vi.mock('../../../src/core/llm', () => ({
 }));
 
 // Mock Config
-vi.mock('../../../src/core/config/env', () => ({
+vi.mock('../../../src/core/config/legacy-config-adapter', () => ({
   config: {
     llmProvider: 'pollinations',
     profileProvider: '',

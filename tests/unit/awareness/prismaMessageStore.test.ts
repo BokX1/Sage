@@ -5,7 +5,7 @@ const { mockUpsert } = vi.hoisted(() => ({
   mockUpsert: vi.fn(),
 }));
 
-vi.mock('../../../src/db/client', () => ({
+vi.mock('../../../src/core/db/prisma-client', () => ({
   prisma: {
     channelMessage: {
       upsert: mockUpsert,

@@ -1,5 +1,5 @@
 import { Events, Guild, TextChannel } from 'discord.js';
-import { logger } from '../../utils/logger';
+import { logger } from '../../core/utils/logger';
 import { getWelcomeMessage } from './welcomeMessage';
 
 /**

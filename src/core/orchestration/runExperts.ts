@@ -1,11 +1,11 @@
-import { logger } from '../../utils/logger';
-import { ExpertName, ExpertPacket } from './experts/types';
+import { logger } from '../../core/utils/logger';
+import { ExpertName, ExpertPacket } from './experts/expert-types';
 import { runMemoryExpert } from './experts/memoryExpert';
 import { runSocialGraphExpert } from './experts/socialGraphExpert';
 import { runVoiceAnalyticsExpert } from './experts/voiceAnalyticsExpert';
 import { runSummarizerExpert } from './experts/summarizerExpert';
 import { runImageGenExpert } from './experts/imageGenExpert';
-import { LLMMessageContent, LLMChatMessage } from '../llm/types';
+import { LLMMessageContent, LLMChatMessage } from '../llm/llm-types';
 
 export interface RunExpertsParams {
   experts: ExpertName[];

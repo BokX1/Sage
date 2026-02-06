@@ -11,7 +11,7 @@ import {
   StructuredSummary,
 } from './summarizeChannelWindow';
 import { getGuildApiKey } from '../settings/guildSettingsRepo';
-import { config } from '../config/env';
+import { config } from '../config/legacy-config-adapter';
 
 export interface DirtyChannelParams {
   guildId: string | null;
@@ -133,7 +133,7 @@ export class ChannelSummaryScheduler {
     }
 
     const guildApiKey = await getGuildApiKey(state.guildId);
-    const apiKey = guildApiKey ?? config.pollinationsApiKey;
+    const apiKey = guildApiKey ?? config.llmApiKey;
 
     const rollingSummary = await this.summarizeWindow({
       messages,

@@ -1,5 +1,5 @@
 import { Prisma } from '@prisma/client';
-import { prisma } from '../../db/client';
+import { prisma } from '../../core/db/prisma-client';
 
 export interface TraceStartData {
   id: string;

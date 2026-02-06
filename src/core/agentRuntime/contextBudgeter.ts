@@ -1,5 +1,5 @@
 import { estimateTokens } from './tokenEstimate';
-import { LLMMessageContent } from '../llm/types';
+import { LLMMessageContent } from '../llm/llm-types';
 
 export type ContextBlockId =
   | 'base_system'

@@ -1,6 +1,6 @@
 import { VoiceState, Events } from 'discord.js';
 import { client } from '../client';
-import { logger } from '../../utils/logger';
+import { logger } from '../../core/utils/logger';
 import { ingestEvent } from '../../core/ingest/ingestEvent';
 import { isLoggingEnabled } from '../../core/settings/guildChannelSettings';
 import { applyChange, getGuildPresence } from '../../core/voice/voicePresenceIndex';

@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { ToolDefinition } from '../agentRuntime/toolRegistry';
 import { client } from '../../bot/client';
 import { VoiceManager } from '../voice/voiceManager';
-import { logger } from '../../utils/logger';
+import { logger } from '../../core/utils/logger';
 
 export const joinVoiceTool: ToolDefinition = {
   name: 'join_voice_channel',

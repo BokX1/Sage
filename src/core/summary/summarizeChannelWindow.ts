@@ -1,8 +1,8 @@
 import { config as appConfig } from '../../config';
 import { createLLMClient } from '../llm';
-import { LLMClient, LLMRequest } from '../llm/types';
+import { LLMClient, LLMRequest } from '../llm/llm-types';
 import { logger } from '../utils/logger';
-import { ChannelMessage } from '../awareness/types';
+import { ChannelMessage } from '../awareness/awareness-types';
 
 const MAX_INPUT_MESSAGES = 800;
 const MAX_INPUT_CHARS = 80_000;
@@ -138,7 +138,7 @@ function getAnalystClient(): LLMClient {
   if (analystClientCache) return analystClientCache;
   // Use summary-specific model config (defaults to gemini)
   const model = appConfig.SUMMARY_MODEL?.trim() || 'gemini';
-  analystClientCache = createLLMClient('pollinations', { pollinationsModel: model });
+  analystClientCache = createLLMClient('pollinations', { chatModel: model });
   logger.debug({ model }, 'Summary analyst client initialized');
   return analystClientCache;
 }
@@ -146,7 +146,7 @@ function getAnalystClient(): LLMClient {
 function getFormatterClient(): LLMClient {
   if (formatterClientCache) return formatterClientCache;
   const model = appConfig.FORMATTER_MODEL || 'qwen-coder';
-  formatterClientCache = createLLMClient('pollinations', { pollinationsModel: model });
+  formatterClientCache = createLLMClient('pollinations', { chatModel: model });
   logger.debug({ model }, 'Summary formatter client initialized');
   return formatterClientCache;
 }

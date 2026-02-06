@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { detectInvocation, type DetectInvocationParams } from '../../../src/core/invoke/wakeWord';
+import { detectInvocation, type DetectInvocationParams } from '../../../src/core/invocation/wake-word-detector';
 
 const baseParams: DetectInvocationParams = {
   rawContent: '',

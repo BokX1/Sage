@@ -1,13 +1,15 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // 1. Mock Logger
-vi.mock('../../src/utils/logger', () => ({
+vi.mock('../../src/core/utils/logger', () => ({
   logger: {
     info: vi.fn(),
+    debug: vi.fn(),
     warn: vi.fn(),
     error: vi.fn(),
     child: () => ({
       info: vi.fn(),
+      debug: vi.fn(),
       warn: vi.fn(),
       error: vi.fn(),
     }),
@@ -15,11 +17,15 @@ vi.mock('../../src/utils/logger', () => ({
 }));
 
 // 2. Mock Prisma
-vi.mock('../../src/db/client', () => ({
+vi.mock('../../src/core/db/prisma-client', () => ({
   prisma: {
     userProfile: {
       findUnique: vi.fn(),
       upsert: vi.fn(),
+    },
+    agentTrace: {
+      create: vi.fn(),
+      update: vi.fn(),
     },
   },
 }));
@@ -34,13 +40,13 @@ vi.mock('../../src/core/llm', () => ({
 
 // 4. Mock Config (Mutable)
 const mockConfig = vi.hoisted(() => ({
-  llmProvider: 'pollinations',
+  LLM_PROVIDER: 'pollinations',
   PROFILE_UPDATE_INTERVAL: 1, // Ensure updates trigger immediately in tests
 }));
 vi.mock('../../src/config', () => ({
   config: mockConfig,
 }));
-vi.mock('../../src/core/config/env', () => ({
+vi.mock('../../src/core/config/legacy-config-adapter', () => ({
   config: mockConfig,
 }));
 
@@ -58,18 +64,35 @@ const { mockGetGuildApiKey } = vi.hoisted(() => ({
   mockGetGuildApiKey: vi.fn().mockResolvedValue('test-api-key'),
 }));
 
+vi.mock('../../../src/core/agentRuntime/agent-trace-repo', () => ({
+  upsertTraceStart: vi.fn().mockResolvedValue(undefined),
+  updateTraceEnd: vi.fn().mockResolvedValue(undefined),
+}));
+
 vi.mock('../../src/core/settings/guildSettingsRepo', () => ({
   getGuildApiKey: mockGetGuildApiKey,
 }));
 
-import { generateChatReply } from '../../src/core/chat/chatEngine';
-import { prisma } from '../../src/db/client';
+vi.mock('../../src/core/orchestration/llmRouter', () => ({
+  decideRoute: vi.fn().mockResolvedValue({ kind: 'simple', temperature: 0.7, experts: [], allowTools: true }),
+}));
+
+vi.mock('../../src/core/orchestration/runExperts', () => ({
+  runExperts: vi.fn().mockResolvedValue([]),
+}));
+
+vi.mock('../../src/core/llm/model-resolver', () => ({
+  resolveModelForRequest: vi.fn().mockResolvedValue('gemini'),
+}));
+
+import { generateChatReply } from '../../src/core/chat-engine';
+import { prisma } from '../../src/core/db/prisma-client';
 
 describe('ChatEngine', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockChatFn.mockReset();
-    mockConfig.llmProvider = 'pollinations';
+    mockConfig.LLM_PROVIDER = 'pollinations';
     // Default to returning a key so normal chat flow proceeds
     mockGetGuildApiKey.mockResolvedValue('test-api-key');
   });
@@ -154,7 +177,7 @@ describe('ChatEngine', () => {
   });
 
   it('should inject Google Search tool for Pollinations provider', async () => {
-    mockConfig.llmProvider = 'pollinations';
+    mockConfig.LLM_PROVIDER = 'pollinations';
     mockChatFn.mockResolvedValue({ content: 'Result' });
 
     await generateChatReply({

@@ -1,6 +1,6 @@
 import { ZodSchema } from 'zod';
 import zodToJsonSchema from 'zod-to-json-schema';
-import { LLMClient, LLMChatMessage } from './types';
+import { LLMClient, LLMChatMessage } from './llm-types';
 import { logger } from '../utils/logger';
 
 export async function callWithSchema<T>(

@@ -1,4 +1,4 @@
-import { LLMChatMessage, LLMClient } from '../llm/types';
+import { LLMChatMessage, LLMClient } from '../llm/llm-types';
 import { ToolRegistry, ToolExecutionContext } from './toolRegistry';
 import { logger } from '../utils/logger';
 import { executeToolWithTimeout, ToolResult } from './toolCallExecution';

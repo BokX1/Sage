@@ -1,5 +1,5 @@
 import { config } from '../../config';
-import { ChannelMessage } from './types';
+import { ChannelMessage } from './awareness-types';
 
 type ChannelKey = string;
 

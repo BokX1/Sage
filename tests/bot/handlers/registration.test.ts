@@ -9,7 +9,7 @@ vi.mock('../../../src/bot/client', () => ({
   },
 }));
 
-vi.mock('../../../src/utils/logger', () => ({
+vi.mock('../../../src/core/utils/logger', () => ({
   logger: {
     info: vi.fn(),
     debug: vi.fn(),

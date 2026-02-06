@@ -1,5 +1,5 @@
-import { LLMChatMessage } from './types';
-import { getDefaultModelId } from './modelCatalog';
+import { LLMChatMessage } from './llm-types';
+import { getDefaultModelId } from './model-catalog';
 
 type ResolveModelParams = {
   guildId: string | null;

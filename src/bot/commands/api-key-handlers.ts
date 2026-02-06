@@ -1,6 +1,6 @@
 import { ChatInputCommandInteraction } from 'discord.js';
-import { logger } from '../../utils/logger';
-import { isAdmin } from '../handlers/interactionHandlers';
+import { logger } from '../../core/utils/logger';
+import { isAdmin } from '../handlers/sage-command-handlers';
 import { getGuildApiKey, upsertGuildApiKey } from '../../core/settings/guildSettingsRepo';
 
 interface PollinationsProfile {

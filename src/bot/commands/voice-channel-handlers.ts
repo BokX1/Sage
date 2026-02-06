@@ -6,7 +6,7 @@ import {
   ChannelType,
 } from 'discord.js';
 import { VoiceManager } from '../../core/voice/voiceManager';
-import { logger } from '../../utils/logger';
+import { logger } from '../../core/utils/logger';
 
 export const voiceCommands = [
   new SlashCommandBuilder()

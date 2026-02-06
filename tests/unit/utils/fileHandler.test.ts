@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { fetchAttachmentText } from '../../../src/utils/fileHandler';
+import { fetchAttachmentText } from '../../../src/core/utils/file-handler';
 
 describe('fetchAttachmentText', () => {
   afterEach(() => {

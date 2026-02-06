@@ -1,6 +1,6 @@
-import { ExpertName } from './experts/types';
+import { ExpertName } from './experts/expert-types';
 import { createLLMClient } from '../llm';
-import { LLMChatMessage } from '../llm/types';
+import { LLMChatMessage } from '../llm/llm-types';
 import { logger } from '../utils/logger';
 
 // Router model: gemini-fast for low-cost, high-throughput classification
@@ -115,7 +115,7 @@ export async function decideRoute(params: LLMRouterParams): Promise<RouteDecisio
     }
 
     try {
-        const client = createLLMClient('pollinations', { pollinationsModel: ROUTER_MODEL });
+        const client = createLLMClient('pollinations', { chatModel: ROUTER_MODEL });
 
         // Build messages with conversation history
         const messages: LLMChatMessage[] = [

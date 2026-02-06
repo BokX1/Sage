@@ -20,7 +20,7 @@ vi.mock('../../../src/core/llm', () => ({
   getLLMClient: () => mockChat,
 }));
 
-vi.mock('../../../src/core/config/env', () => ({
+vi.mock('../../../src/core/config/legacy-config-adapter', () => ({
   config: {
     llmProvider: 'pollinations',
     logLevel: 'error',
@@ -33,6 +33,23 @@ vi.mock('../../../src/core/settings/guildChannelSettings', () => ({
 
 vi.mock('../../../src/core/settings/guildSettingsRepo', () => ({
   getGuildApiKey: vi.fn().mockResolvedValue('test-key'),
+}));
+
+vi.mock('../../../src/core/agentRuntime/agent-trace-repo', () => ({
+  upsertTraceStart: vi.fn().mockResolvedValue(undefined),
+  updateTraceEnd: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock('../../../src/core/orchestration/llmRouter', () => ({
+  decideRoute: vi.fn().mockResolvedValue({ kind: 'simple', temperature: 0.7, experts: [] }),
+}));
+
+vi.mock('../../../src/core/orchestration/runExperts', () => ({
+  runExperts: vi.fn().mockResolvedValue([]),
+}));
+
+vi.mock('../../../src/core/llm/model-resolver', () => ({
+  resolveModelForRequest: vi.fn().mockResolvedValue('gemini'),
 }));
 
 import { appendMessage, clearChannel } from '../../../src/core/awareness/channelRingBuffer';

@@ -1,6 +1,6 @@
-import { config } from '../config/env';
-import { logger } from '../../utils/logger';
-import { getModelBudgetConfig } from './models';
+import { config } from '../config/legacy-config-adapter';
+import { logger } from '../../core/utils/logger';
+import { getModelBudgetConfig } from './model-budget-config';
 
 export type ModelCaps = {
   vision?: boolean;
@@ -27,7 +27,7 @@ type CatalogState = {
   source: 'runtime' | 'fallback';
 };
 
-const normalizedDefaultModel = (config.pollinationsModel || 'gemini').trim().toLowerCase();
+const normalizedDefaultModel = (config.chatModel || 'gemini').trim().toLowerCase();
 
 export const defaultModelId = normalizedDefaultModel || 'gemini';
 
@@ -124,7 +124,7 @@ function buildFallbackCatalog(): Record<string, ModelInfo> {
 }
 
 async function fetchRuntimeCatalog(): Promise<Record<string, ModelInfo>> {
-  const baseUrl = normalizeBaseUrl(config.pollinationsBaseUrl || 'https://gen.pollinations.ai/v1');
+  const baseUrl = normalizeBaseUrl(config.llmBaseUrl || 'https://gen.pollinations.ai/v1');
   const url = `${baseUrl}/models`;
   const response = await fetch(url);
   if (!response.ok) {

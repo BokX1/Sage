@@ -1,14 +1,14 @@
 /* eslint-disable no-console */
-import { config } from './env';
+import { config } from './legacy-config-adapter';
 import { getLLMClient } from '../llm';
 
 export async function runConfigDoctor() {
   console.log('🩺 Running Configuration Doctor...');
 
   // Warning check for double path
-  if (config.pollinationsBaseUrl && config.pollinationsBaseUrl.includes('/chat/completions')) {
+  if (config.llmBaseUrl && config.llmBaseUrl.includes('/chat/completions')) {
     console.warn(
-      '⚠️  POLLINATIONS_BASE_URL contains "/chat/completions". This is usually a mistake. Auto-normalizing behavior enabled in provider.',
+      '⚠️  LLM_BASE_URL contains "/chat/completions". This is usually a mistake. Auto-normalizing behavior enabled in provider.',
     );
   }
 
@@ -21,23 +21,23 @@ export async function runConfigDoctor() {
     },
     { name: 'LLM Provider', valid: true, value: config.llmProvider || 'pollinations (default)' },
     {
-      name: 'Pollinations Base URL',
+      name: 'LLM Base URL',
       valid: true,
-      value: config.pollinationsBaseUrl || 'https://gen.pollinations.ai/v1 (default)',
+      value: config.llmBaseUrl || 'https://gen.pollinations.ai/v1 (default)',
     },
     {
-      name: 'Pollinations Model',
-      // Allow gemini, deepseek, or other valid pollinations models
+      name: 'Chat Model',
+      // Allow gemini, deepseek, or other valid models
       valid: ['gemini', 'deepseek', 'openai', 'mistral', 'llama', 'gpt-4o', 'qwen-coder'].some((m) =>
-        (config.pollinationsModel || 'gemini').includes(m),
+        (config.chatModel || 'gemini').includes(m),
       ),
-      value: config.pollinationsModel || 'gemini (default)',
+      value: config.chatModel || 'gemini (default)',
     },
     {
-      name: 'Pollinations API Key',
+      name: 'LLM API Key',
       valid: true,
       sensitive: true,
-      present: !!config.pollinationsApiKey,
+      present: !!config.llmApiKey,
     },
     {
       name: 'Profile Provider',
@@ -47,7 +47,7 @@ export async function runConfigDoctor() {
     {
       name: 'Profile Model',
       valid: true,
-      value: config.profilePollinationsModel || 'default (using provider model)',
+      value: config.profileChatModel || 'default (using provider model)',
     },
   ];
 

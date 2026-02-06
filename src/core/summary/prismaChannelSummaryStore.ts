@@ -1,4 +1,4 @@
-import { prisma } from '../../db/client';
+import { prisma } from '../../core/db/prisma-client';
 import { ChannelSummary, ChannelSummaryStore } from './channelSummaryStore';
 
 type PrismaChannelSummaryClient = {

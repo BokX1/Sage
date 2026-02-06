@@ -1,8 +1,8 @@
-import { logger } from '../../utils/logger';
+import { logger } from '../../core/utils/logger';
 import { config } from '../../config';
 import { appendMessage } from '../awareness/channelRingBuffer';
 import { PrismaMessageStore } from '../awareness/prismaMessageStore';
-import { ChannelMessage } from '../awareness/types';
+import { ChannelMessage } from '../awareness/awareness-types';
 import { isLoggingEnabled } from '../settings/guildChannelSettings';
 import { getChannelSummaryScheduler } from '../summary/channelSummaryScheduler';
 

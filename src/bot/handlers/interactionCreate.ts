@@ -1,8 +1,8 @@
 import { Events, Interaction } from 'discord.js';
 import { client } from '../client';
-import { logger } from '../../utils/logger';
+import { logger } from '../../core/utils/logger';
 import { getLLMClient } from '../../core/llm';
-import { config } from '../../core/config/env';
+import { config } from '../../core/config/legacy-config-adapter';
 import {
   handleAdminRelationshipGraph,
   handleAdminStats,
@@ -10,9 +10,9 @@ import {
   handleAdminTrace,
   handleRelationshipSet,
   handleWhoiswho,
-} from './interactionHandlers';
-import { handleKeyCheck, handleKeyClear, handleKeyLogin, handleKeySet } from '../commands/key';
-import { handleJoinCommand, handleLeaveCommand } from '../commands/voice';
+} from './sage-command-handlers';
+import { handleKeyCheck, handleKeyClear, handleKeyLogin, handleKeySet } from '../commands/api-key-handlers';
+import { handleJoinCommand, handleLeaveCommand } from '../commands/voice-channel-handlers';
 
 
 const registrationKey = Symbol.for('sage.handlers.interactionCreate.registered');

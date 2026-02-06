@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { resolveModelForRequest } from '../../../src/core/llm/modelResolver';
+import { resolveModelForRequest } from '../../../src/core/llm/model-resolver';
 
 vi.mock('../../../src/core/llm/modelCatalog', () => ({
   getDefaultModelId: () => 'gemini',

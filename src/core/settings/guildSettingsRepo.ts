@@ -1,4 +1,4 @@
-import { prisma } from '../../db/client';
+import { prisma } from '../../core/db/prisma-client';
 
 export async function getGuildApiKey(guildId: string): Promise<string | undefined> {
   const settings = await prisma.guildSettings.findUnique({

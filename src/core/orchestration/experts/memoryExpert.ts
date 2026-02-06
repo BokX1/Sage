@@ -1,6 +1,6 @@
 import { getUserProfile } from '../../memory/userProfileRepo';
 import { estimateTokens } from '../../agentRuntime/tokenEstimate';
-import { ExpertPacket } from './types';
+import { ExpertPacket } from './expert-types';
 
 export interface RunMemoryExpertParams {
   userId: string;

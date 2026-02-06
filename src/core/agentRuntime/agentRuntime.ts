@@ -3,7 +3,7 @@ import { formatSummaryAsText } from '../summary/summarizeChannelWindow';
 import { getRecentMessages } from '../awareness/channelRingBuffer';
 import { buildTranscriptBlock } from '../awareness/transcriptBuilder';
 import { getLLMClient } from '../llm';
-import { LLMChatMessage, LLMMessageContent, ToolDefinition } from '../llm/types';
+import { LLMChatMessage, LLMMessageContent, ToolDefinition } from '../llm/llm-types';
 import { isLoggingEnabled } from '../settings/guildChannelSettings';
 import { logger } from '../utils/logger';
 import { buildContextMessages } from './contextBuilder';
@@ -16,9 +16,9 @@ import { classifyStyle, analyzeUserStyle } from './styleClassifier';
 import { decideRoute } from '../orchestration/llmRouter';
 import { runExperts } from '../orchestration/runExperts';
 // import { governOutput } from '../orchestration/governor';
-import { upsertTraceStart, updateTraceEnd } from '../trace/agentTraceRepo';
-import { ExpertPacket } from '../orchestration/experts/types';
-import { resolveModelForRequest } from '../llm/modelResolver';
+import { upsertTraceStart, updateTraceEnd } from './agent-trace-repo';
+import { ExpertPacket } from '../orchestration/experts/expert-types';
+import { resolveModelForRequest } from '../llm/model-resolver';
 import { getGuildApiKey } from '../settings/guildSettingsRepo';
 import { getWelcomeMessage } from '../../bot/handlers/welcomeMessage';
 
@@ -139,7 +139,7 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
   }
 
   const guildApiKey = guildId ? await getGuildApiKey(guildId) : undefined;
-  const apiKey = guildApiKey ?? appConfig.POLLINATIONS_API_KEY;
+  const apiKey = guildApiKey ?? appConfig.LLM_API_KEY;
 
   const route = await decideRoute({
     userText,

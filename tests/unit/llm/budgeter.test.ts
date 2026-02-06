@@ -3,7 +3,7 @@ import {
   estimateMessageTokens,
   planBudget,
   trimMessagesToBudget,
-} from '../../../src/core/llm/budget/budgeter';
+} from '../../../src/core/llm/context-budgeter';
 
 const estimator = {
   charsPerToken: 1,

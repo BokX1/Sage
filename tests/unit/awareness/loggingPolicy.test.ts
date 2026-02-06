@@ -1,10 +1,10 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 const mockConfig = vi.hoisted(() => ({
-  LOGGING_ENABLED: true,
-  LOGGING_MODE: 'all' as const,
-  LOGGING_ALLOWLIST_CHANNEL_IDS: '',
-  LOGGING_BLOCKLIST_CHANNEL_IDS: '',
+  INGESTION_ENABLED: true,
+  INGESTION_MODE: 'all' as const,
+  INGESTION_ALLOWLIST_CHANNEL_IDS_CSV: '',
+  INGESTION_BLOCKLIST_CHANNEL_IDS_CSV: '',
 }));
 
 vi.mock('../../../src/config', () => ({
@@ -19,14 +19,14 @@ import {
 describe('logging policy', () => {
   beforeEach(() => {
     clearAllOverrides();
-    mockConfig.LOGGING_ENABLED = true;
-    mockConfig.LOGGING_MODE = 'all';
-    mockConfig.LOGGING_ALLOWLIST_CHANNEL_IDS = '';
-    mockConfig.LOGGING_BLOCKLIST_CHANNEL_IDS = '';
+    mockConfig.INGESTION_ENABLED = true;
+    mockConfig.INGESTION_MODE = 'all';
+    mockConfig.INGESTION_ALLOWLIST_CHANNEL_IDS_CSV = '';
+    mockConfig.INGESTION_BLOCKLIST_CHANNEL_IDS_CSV = '';
   });
 
   it('blocks channels on the blocklist', () => {
-    mockConfig.LOGGING_BLOCKLIST_CHANNEL_IDS = 'channel-1';
+    mockConfig.INGESTION_BLOCKLIST_CHANNEL_IDS_CSV = 'channel-1';
 
     const allowed = isLoggingEnabled('guild-1', 'channel-1');
 
@@ -34,8 +34,8 @@ describe('logging policy', () => {
   });
 
   it('allowlist mode only allows listed channels', () => {
-    mockConfig.LOGGING_MODE = 'allowlist';
-    mockConfig.LOGGING_ALLOWLIST_CHANNEL_IDS = 'channel-2,channel-3';
+    mockConfig.INGESTION_MODE = 'allowlist';
+    mockConfig.INGESTION_ALLOWLIST_CHANNEL_IDS_CSV = 'channel-2,channel-3';
 
     expect(isLoggingEnabled('guild-1', 'channel-2')).toBe(true);
     expect(isLoggingEnabled('guild-1', 'channel-9')).toBe(false);

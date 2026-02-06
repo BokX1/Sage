@@ -2,10 +2,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { z } from 'zod';
 import { ToolRegistry } from '../../../src/core/agentRuntime/toolRegistry';
 import { runToolCallLoop } from '../../../src/core/agentRuntime/toolCallLoop';
-import { LLMClient, LLMRequest, LLMResponse } from '../../../src/core/llm/types';
+import { LLMClient, LLMRequest, LLMResponse } from '../../../src/core/llm/llm-types';
 
 // Mock logger
-vi.mock('../../../src/utils/logger', () => ({
+vi.mock('../../../src/core/utils/logger', () => ({
   logger: {
     debug: vi.fn(),
     warn: vi.fn(),

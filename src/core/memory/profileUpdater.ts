@@ -1,8 +1,8 @@
 import { createLLMClient } from '../llm';
-import { config } from '../config/env';
+import { config } from '../config/legacy-config-adapter';
 import { config as appConfig } from '../../config';
 import { logger } from '../utils/logger';
-import { LLMClient, LLMRequest, LLMProviderName } from '../llm/types';
+import { LLMClient, LLMRequest, LLMProviderName } from '../llm/llm-types';
 import { limitByKey } from '../utils/perKeyConcurrency';
 import { getRecentMessages } from '../awareness/channelRingBuffer';
 import { buildTranscriptBlock } from '../awareness/transcriptBuilder';
@@ -60,7 +60,7 @@ let formatterClientCache: LLMClient | null = null;
 
 /**
  * Get the LLM client for the Analyst phase.
- * Uses PROFILE_PROVIDER and PROFILE_POLLINATIONS_MODEL overrides if configured.
+ * Uses PROFILE_PROVIDER and PROFILE_CHAT_MODEL overrides if configured.
  * Default: Configured model (default: deepseek) with temperature 0.3
  */
 function getAnalystClient(): { client: LLMClient; provider: LLMProviderName } {
@@ -69,18 +69,18 @@ function getAnalystClient(): { client: LLMClient; provider: LLMProviderName } {
   }
 
   const profileProvider = config.profileProvider?.trim() || '';
-  const profilePollinationsModel = config.profilePollinationsModel?.trim() || 'gemini';
+  const profileChatModel = config.profileChatModel?.trim() || 'gemini';
 
   // Determine provider (use override or fallback to default)
   const provider = (profileProvider || 'pollinations') as LLMProviderName;
 
   analystClientCache = {
-    client: createLLMClient(provider, { pollinationsModel: profilePollinationsModel }),
+    client: createLLMClient(provider, { chatModel: profileChatModel }),
     provider,
   };
 
   logger.debug(
-    { provider, model: profilePollinationsModel },
+    { provider, model: profileChatModel },
     'Analyst client initialized',
   );
 
@@ -97,7 +97,7 @@ function getFormatterClient(): LLMClient {
   }
 
   const formatterModel = appConfig.FORMATTER_MODEL || 'qwen-coder';
-  formatterClientCache = createLLMClient('pollinations', { pollinationsModel: formatterModel });
+  formatterClientCache = createLLMClient('pollinations', { chatModel: formatterModel });
 
   logger.debug({ model: formatterModel }, 'Formatter client initialized (qwen-coder)');
 

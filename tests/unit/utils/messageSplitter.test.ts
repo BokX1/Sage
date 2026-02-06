@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { smartSplit } from '../../../src/utils/messageSplitter';
+import { smartSplit } from '../../../src/core/utils/message-splitter';
 
 describe('smartSplit', () => {
   it('closes and reopens code fences across chunks', () => {

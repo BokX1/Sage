@@ -1,4 +1,4 @@
-import { config } from '../config/env';
+import { config } from './config/legacy-config-adapter';
 
 const limits = new Map<string, number[]>();
 

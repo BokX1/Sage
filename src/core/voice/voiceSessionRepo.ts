@@ -1,4 +1,4 @@
-import { prisma } from '../../db/client';
+import { prisma } from '../../core/db/prisma-client';
 
 export type VoiceSession = {
   id: string;
