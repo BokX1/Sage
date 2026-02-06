@@ -4,11 +4,12 @@ import { logger } from './shared/logging/logger';
 
 void bootstrapApp().catch((error) => {
   const appError = toErrorWithCode(error, 'BOOTSTRAP_FAILED');
+  const rootError = appError.cause instanceof Error ? appError.cause : appError;
+
   logger.error(
     {
+      err: rootError,
       code: appError.code,
-      message: appError.message,
-      cause: appError.cause,
       details: appError.details,
     },
     'Fatal startup error',
