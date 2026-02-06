@@ -2,6 +2,13 @@ import { describe, expect, it } from 'vitest';
 import { smartSplit } from '../../../src/core/utils/message-splitter';
 
 describe('smartSplit', () => {
+
+  it('throws when maxLength is not a positive integer', () => {
+    expect(() => smartSplit('hello', 0)).toThrow(RangeError);
+    expect(() => smartSplit('hello', -2)).toThrow('maxLength must be a positive integer');
+    expect(() => smartSplit('hello', 2.5)).toThrow(RangeError);
+    expect(() => smartSplit('hello', Number.NaN)).toThrow(RangeError);
+  });
   it('closes and reopens code fences across chunks', () => {
     const input = [
       '```typescript',

@@ -132,6 +132,34 @@ describe('ToolRegistry', () => {
       }
     });
 
+
+    it('should reject undefined top-level args safely', () => {
+      const result = registry.validateToolCall({
+        name: 'echo',
+        args: undefined,
+      });
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error).toContain('must be JSON-serializable');
+      }
+    });
+
+    it('should reject non-serializable args safely', () => {
+      const circular: Record<string, unknown> = { message: 'hello' };
+      circular.self = circular;
+
+      const result = registry.validateToolCall({
+        name: 'echo',
+        args: circular,
+      });
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error).toContain('must be JSON-serializable');
+      }
+    });
+
     it('should reject args exceeding size limit', () => {
       // Create args that exceed 10KB
       const largeString = 'x'.repeat(15_000);
