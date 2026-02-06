@@ -370,13 +370,28 @@ const promptDatabaseUrl = async (prompts: PromptFns) => {
 };
 
 const writeEnvFile = (output: string) => {
-  const tempPath = `${envPath}.tmp`;
-  fs.writeFileSync(tempPath, output + '\n', { encoding: 'utf8', mode: 0o600 });
+  const tempDir = fs.mkdtempSync(path.join(repoRoot, '.env-write-'));
+  const tempPath = path.join(tempDir, '.env.tmp');
+  const fd = fs.openSync(tempPath, 'wx', 0o600);
+
+  try {
+    fs.writeFileSync(fd, `${output}\n`, { encoding: 'utf8' });
+  } finally {
+    fs.closeSync(fd);
+  }
+
   fs.renameSync(tempPath, envPath);
+
   try {
     fs.chmodSync(envPath, 0o600);
   } catch {
     // Best-effort on platforms that support chmod.
+  }
+
+  try {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  } catch {
+    // Best-effort cleanup.
   }
 };
 

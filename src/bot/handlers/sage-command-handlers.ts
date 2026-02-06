@@ -38,6 +38,14 @@ export async function handleWhoiswho(interaction: ChatInputCommandInteraction) {
   const targetUser = interaction.options.getUser('user');
   const guildId = interaction.guildId;
 
+  if (targetUser && targetUser.id !== interaction.user.id && !isAdmin(interaction)) {
+    await interaction.reply({
+      content: '❌ You can only view your own relationship graph unless you are an admin.',
+      ephemeral: true,
+    });
+    return;
+  }
+
   if (!guildId) {
     await interaction.reply({
       content: 'This command can only be used in a guild.',
@@ -198,6 +206,14 @@ export async function handleAdminRelationshipGraph(interaction: ChatInputCommand
 
   const targetUser = interaction.options.getUser('user');
   const guildId = interaction.guildId;
+
+  if (targetUser && targetUser.id !== interaction.user.id && !isAdmin(interaction)) {
+    await interaction.reply({
+      content: '❌ You can only view your own relationship graph unless you are an admin.',
+      ephemeral: true,
+    });
+    return;
+  }
 
   if (!guildId) {
     await interaction.reply({
