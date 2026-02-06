@@ -21,3 +21,6 @@ prisma/migrations/
 /docker-compose.yml
 /.prettierrc
 /scripts/
+
+# Package artifacts
+*.tgz
