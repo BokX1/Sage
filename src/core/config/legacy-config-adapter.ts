@@ -57,4 +57,5 @@ export const config = {
   profileProvider: newConfig.PROFILE_PROVIDER,
   profileChatModel: newConfig.PROFILE_CHAT_MODEL,
   formatterModel: newConfig.FORMATTER_MODEL,
+  llmDoctorPing: newConfig.LLM_DOCTOR_PING,
 };

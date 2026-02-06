@@ -1,6 +1,7 @@
 /* eslint-disable no-console */
 import { config } from './legacy-config-adapter';
 import { getLLMClient } from '../llm';
+import { withTimeout } from '../../shared/async/resilience';
 
 export async function runConfigDoctor() {
   console.log('🩺 Running Configuration Doctor...');
@@ -77,21 +78,20 @@ export async function runConfigDoctor() {
   }
 
   // Optional LLM Ping
-  if (process.env.LLM_DOCTOR_PING === '1') {
+  if (config.llmDoctorPing === '1') {
     console.log('\n📡 Pinging LLM Provider...');
     try {
       const client = getLLMClient();
       // Tiny timeout for ping
-      const response = await Promise.race([
+      const response = await withTimeout(
         client.chat({
           messages: [{ role: 'user', content: 'say OK' }],
           maxTokens: 5,
           temperature: 0.1,
         }),
-        new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error('Ping timeout (5s)')), 5000),
-        ),
-      ]);
+        5000,
+        'Doctor LLM ping',
+      );
       console.log('✅ LLM Ping: SUCCESS');
       console.log(`   Response: "${response.content.trim()}"`);
     } catch (error) {

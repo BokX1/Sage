@@ -1,58 +1,18 @@
-import dotenv from 'dotenv';
+import { bootstrapApp } from './app/bootstrap';
+import { toErrorWithCode } from './shared/errors/app-error';
+import { logger } from './shared/logging/logger';
 
-dotenv.config();
+void bootstrapApp().catch((error) => {
+  const appError = toErrorWithCode(error, 'BOOTSTRAP_FAILED');
+  const rootError = appError.cause instanceof Error ? appError.cause : appError;
 
-const validateEnv = () => {
-  if (!process.env.DISCORD_TOKEN) {
-    console.error('DISCORD_TOKEN is missing. Set it in your .env or environment.');
-    process.exit(1);
-  }
-
-  if (!process.env.DATABASE_URL) {
-    console.error('DATABASE_URL is missing. Set it in your .env or environment.');
-    process.exit(1);
-  }
-
-  if (!process.env.LLM_API_KEY) {
-    console.warn(
-      'No LLM API key found. Bot will run with limited/anonymous access if supported. Get one at pollinations.ai.',
-    );
-  }
-};
-
-/**
- * Bootstrap the Discord client, runtime handlers, and tool registry.
- */
-async function main() {
-  validateEnv();
-
-  const { client } = await import('./bot/client');
-  const { config } = await import('./config');
-  const { registerMessageCreateHandler } = await import('./bot/handlers/messageCreate');
-  const { registerInteractionCreateHandler } = await import('./bot/handlers/interactionCreate');
-  const { registerVoiceStateUpdateHandler } = await import('./bot/handlers/voiceStateUpdate');
-  const { initChannelSummaryScheduler } = await import('./core/summary/channelSummaryScheduler');
-  const { registerReadyHandler } = await import('./bot/handlers/ready');
-  const { registerGuildCreateHandler } = await import('./bot/handlers/guildCreate');
-  const { globalToolRegistry } = await import('./core/agentRuntime/toolRegistry');
-  const { joinVoiceTool, leaveVoiceTool } = await import('./core/agentRuntime/voice-tools');
-  const { registerShutdownHooks } = await import('./core/runtime/shutdown');
-
-  globalToolRegistry.register(joinVoiceTool);
-  globalToolRegistry.register(leaveVoiceTool);
-
-  registerMessageCreateHandler();
-  registerInteractionCreateHandler();
-  registerVoiceStateUpdateHandler();
-  registerReadyHandler(client);
-  registerGuildCreateHandler(client);
-  initChannelSummaryScheduler();
-  registerShutdownHooks({ client });
-
-  await client.login(config.DISCORD_TOKEN);
-}
-
-main().catch((err) => {
-  console.error(err);
+  logger.error(
+    {
+      err: rootError,
+      code: appError.code,
+      details: appError.details,
+    },
+    'Fatal startup error',
+  );
   process.exit(1);
 });

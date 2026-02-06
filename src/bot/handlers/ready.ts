@@ -21,9 +21,7 @@ export function registerReadyHandler(client: Client) {
       // For now, let's just backfill the Dev Guild's channels or any channel in the allowlist?
       // A safe default is to iterate all cached channels and check `isLoggingEnabled` (handled inside backfill)
 
-      const contextTranscriptLimitSource = process.env.CONTEXT_TRANSCRIPT_MAX_MESSAGES
-        ? 'env'
-        : 'default';
+      const contextTranscriptLimitSource = appConfig.NODE_ENV === 'test' ? 'test-default' : 'env';
       const startupBacklogLimit = appConfig.CONTEXT_TRANSCRIPT_MAX_MESSAGES;
 
       logger.info(

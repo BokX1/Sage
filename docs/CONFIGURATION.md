@@ -1,6 +1,6 @@
 # ⚙️ Configuration Reference
 
-A complete reference for Sage configuration. All settings are configured in your `.env` file.
+A complete reference for Sage configuration. All settings are configured in your `.env` file and loaded through a single validated config module (`src/shared/config/env.ts`). Do not access `process.env` directly in runtime modules.
 
 > [!TIP]
 > After changing `.env`, restart Sage for settings to take effect.
