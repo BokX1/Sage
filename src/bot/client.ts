@@ -1,15 +1,6 @@
 import { Client, GatewayIntentBits } from 'discord.js';
 
 /**
- * Configure the shared Discord client instance and required intents.
- *
- * Responsibilities:
- * - Define gateway intents required by message, interaction, and voice features.
- *
- * Non-goals:
- * - Manage login or lifecycle of the client.
- */
-/**
  * Provide the singleton Discord client used by the bot.
  *
  * @returns The configured Discord.js Client instance.

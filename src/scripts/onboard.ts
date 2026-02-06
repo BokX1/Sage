@@ -4,7 +4,7 @@ import path from 'path';
 import readline from 'readline';
 
 const REQUIRED_KEYS = ['DISCORD_TOKEN', 'DISCORD_APP_ID', 'DATABASE_URL'] as const;
-const OPTIONAL_KEYS = ['POLLINATIONS_MODEL'] as const;
+const OPTIONAL_KEYS = ['CHAT_MODEL'] as const;
 
 const repoRoot = process.cwd();
 const envPath = path.join(repoRoot, '.env');
@@ -433,9 +433,18 @@ async function main() {
       values.set('DATABASE_URL', args.databaseUrl);
       forcedKeys.add('DATABASE_URL');
     }
+    if (!values.has('LLM_API_KEY') && values.has('POLLINATIONS_API_KEY')) {
+      values.set('LLM_API_KEY', values.get('POLLINATIONS_API_KEY') as string);
+      values.delete('POLLINATIONS_API_KEY');
+    }
+    if (!values.has('CHAT_MODEL') && values.has('POLLINATIONS_MODEL')) {
+      values.set('CHAT_MODEL', values.get('POLLINATIONS_MODEL') as string);
+      values.delete('POLLINATIONS_MODEL');
+    }
+
     if (args.apiKey) {
-      values.set('POLLINATIONS_API_KEY', args.apiKey);
-      forcedKeys.add('POLLINATIONS_API_KEY');
+      values.set('LLM_API_KEY', args.apiKey);
+      forcedKeys.add('LLM_API_KEY');
     }
 
     for (const key of REQUIRED_KEYS) {
@@ -468,15 +477,15 @@ async function main() {
       }
     }
 
-    const existingApiKey = values.get('POLLINATIONS_API_KEY');
+    const existingApiKey = values.get('LLM_API_KEY');
     if (args.apiKey) {
-      values.set('POLLINATIONS_API_KEY', args.apiKey);
-      forcedKeys.add('POLLINATIONS_API_KEY');
+      values.set('LLM_API_KEY', args.apiKey);
+      forcedKeys.add('LLM_API_KEY');
     } else if (!args.nonInteractive) {
-      const overwriteApiKey = forcedKeys.has('POLLINATIONS_API_KEY')
+      const overwriteApiKey = forcedKeys.has('LLM_API_KEY')
         ? true
         : await shouldOverwriteValue(
-          'POLLINATIONS_API_KEY',
+          'LLM_API_KEY',
           existingApiKey,
           prompts,
           !!args.yes,
@@ -487,17 +496,17 @@ async function main() {
           'Pollinations API key (optional, press Enter to skip): ',
         );
         if (apiKey) {
-          values.set('POLLINATIONS_API_KEY', apiKey);
+          values.set('LLM_API_KEY', apiKey);
         } else {
-          values.delete('POLLINATIONS_API_KEY');
+          values.delete('LLM_API_KEY');
         }
       }
     }
 
     for (const key of OPTIONAL_KEYS) {
-      if (key === 'POLLINATIONS_MODEL') {
+      if (key === 'CHAT_MODEL') {
         if (args.model) {
-          values.set('POLLINATIONS_MODEL', args.model);
+          values.set('CHAT_MODEL', args.model);
         }
       }
     }
@@ -506,8 +515,8 @@ async function main() {
       DISCORD_TOKEN: values.get('DISCORD_TOKEN'),
       DISCORD_APP_ID: values.get('DISCORD_APP_ID'),
       DATABASE_URL: values.get('DATABASE_URL'),
-      POLLINATIONS_API_KEY: values.get('POLLINATIONS_API_KEY'),
-      POLLINATIONS_MODEL: values.get('POLLINATIONS_MODEL'),
+      LLM_API_KEY: values.get('LLM_API_KEY'),
+      CHAT_MODEL: values.get('CHAT_MODEL'),
     };
 
     for (const [key, value] of Object.entries(requiredEnv)) {
@@ -520,7 +529,7 @@ async function main() {
     const catalog = await loadModelCatalog();
     const sortedModels = Object.values(catalog).sort((a, b) => a.id.localeCompare(b.id));
 
-    const existingModel = values.get('POLLINATIONS_MODEL') || 'gemini';
+    const existingModel = values.get('CHAT_MODEL') || 'gemini';
     let selectedModel = existingModel;
 
     if (!args.model) {
@@ -571,7 +580,7 @@ async function main() {
       selectedModel = foundModel.id;
     }
 
-    values.set('POLLINATIONS_MODEL', selectedModel);
+    values.set('CHAT_MODEL', selectedModel);
 
     console.log('\n✅ Validating configuration...');
     const { model: finalModel } = await findModelInCatalog(selectedModel, {
@@ -585,7 +594,7 @@ async function main() {
     console.log(`- Pollinations model: ${finalModel.id}`);
     console.log(`- Catalog source: ${catalogState.source}`);
     console.log(
-      `- Pollinations API key: ${values.get('POLLINATIONS_API_KEY') ? '[PRESENT]' : '[NOT SET]'}`,
+      `- Pollinations API key: ${values.get('LLM_API_KEY') ? '[PRESENT]' : '[NOT SET]'}`,
     );
 
     const extraEntries: Array<[string, string]> = [];

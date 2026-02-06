@@ -177,7 +177,7 @@ Sage updates user profiles asynchronously. To reduce cost and duplicate work, up
 
 - **Update interval:** `PROFILE_UPDATE_INTERVAL` (default: 5 messages)
 - **Process:**
-  1. **Analyst pass** (`PROFILE_POLLINATIONS_MODEL`, default: `deepseek`) produces updated profile text.
+  1. **Analyst pass** (`PROFILE_CHAT_MODEL`, default: `deepseek`) produces updated profile text.
   2. **Formatter pass** (`FORMATTER_MODEL`, default: `qwen-coder`) wraps the text into JSON for validation.
 
 The result is stored in `UserProfile.summary`. If the formatter fails, the previous summary is preserved.

@@ -87,8 +87,8 @@ Control how Sage responds in chat.
 
 | Variable | Description | Default |
 | :--- | :--- | :--- |
-| `WAKE_WORDS` | Words that trigger Sage at start of message | `sage` |
-| `WAKE_WORD_PREFIXES` | Optional prefixes (e.g., “hey sage”) | *(empty)* |
+| `WAKE_WORDS_CSV` | Words that trigger Sage at start of message | `sage` |
+| `WAKE_WORD_PREFIXES_CSV` | Optional prefixes (e.g., “hey sage”) | *(empty)* |
 | `AUTOPILOT_MODE` | Response mode: `manual`, `reserved`, or `talkative` | `manual` |
 | `PROFILE_UPDATE_INTERVAL` | Messages between background profile updates | `5` |
 | `WAKEWORD_COOLDOWN_SEC` | Cooldown per user between responses (seconds) | `20` |
@@ -112,10 +112,10 @@ Control what Sage logs and stores.
 
 | Variable | Description | Default |
 | :--- | :--- | :--- |
-| `LOGGING_ENABLED` | Enable message/voice ingestion | `true` |
-| `LOGGING_MODE` | `all` or `allowlist` | `all` |
-| `LOGGING_ALLOWLIST_CHANNEL_IDS` | Comma-separated channel IDs to log (if allowlist) | *(empty)* |
-| `LOGGING_BLOCKLIST_CHANNEL_IDS` | Comma-separated channel IDs to exclude | *(empty)* |
+| `INGESTION_ENABLED` | Enable message/voice ingestion | `true` |
+| `INGESTION_MODE` | `all` or `allowlist` | `all` |
+| `INGESTION_ALLOWLIST_CHANNEL_IDS_CSV` | Comma-separated channel IDs to log (if allowlist) | *(empty)* |
+| `INGESTION_BLOCKLIST_CHANNEL_IDS_CSV` | Comma-separated channel IDs to exclude | *(empty)* |
 | `MESSAGE_DB_STORAGE_ENABLED` | Persist messages to database | `true` |
 | `PROACTIVE_POSTING_ENABLED` | Allow autonomous message posting | `true` |
 
@@ -220,8 +220,8 @@ Prevent spam and manage latency.
 
 | Variable | Description | Default |
 | :--- | :--- | :--- |
-| `ADMIN_ROLE_IDS` | Comma-separated role IDs with admin access | *(empty)* |
-| `ADMIN_USER_IDS` | Comma-separated user IDs with admin access | *(empty)* |
+| `ADMIN_ROLE_IDS_CSV` | Comma-separated role IDs with admin access | *(empty)* |
+| `ADMIN_USER_IDS_CSV` | Comma-separated user IDs with admin access | *(empty)* |
 
 ---
 
@@ -250,17 +250,17 @@ DATABASE_URL=postgresql://postgres:password@localhost:5432/sage?schema=public
 # =============================================================================
 # Recommended
 # =============================================================================
-POLLINATIONS_API_KEY=sk_... # Optional global key (or set a server key via /sage key set)
+LLM_API_KEY=sk_... # Optional global key (or set a server key via /sage key set)
 AUTOPILOT_MODE=manual
 PROFILE_UPDATE_INTERVAL=5
-WAKE_WORDS=sage
+WAKE_WORDS_CSV=sage
 TRACE_ENABLED=true
 LOG_LEVEL=info
 
 # =============================================================================
 # Admin Access (add your Discord user ID)
 # =============================================================================
-ADMIN_USER_IDS=123456789012345678
+ADMIN_USER_IDS_CSV=123456789012345678
 ```
 
 ---

@@ -72,7 +72,7 @@ if (process.env.NODE_ENV === 'test') {
   process.env.LLM_MODEL_LIMITS_JSON ??= '{}';
   process.env.PROFILE_PROVIDER ??= 'pollinations';
   process.env.PROFILE_CHAT_MODEL ??= 'openai';
-  process.env.PROFILE_UPDATE_INTERVAL ??= '600000';
+  process.env.PROFILE_UPDATE_INTERVAL ??= '5';
   process.env.FORMATTER_MODEL ??= 'openai';
 
   // Timeouts
