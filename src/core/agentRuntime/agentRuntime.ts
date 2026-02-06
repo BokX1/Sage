@@ -53,6 +53,7 @@ export interface RunChatTurnParams {
   mentionedUserIds?: string[];
   invokedBy?: 'mention' | 'reply' | 'wakeword' | 'autopilot' | 'command';
   isVoiceActive?: boolean;
+  hasAttachment?: boolean;
 }
 
 /** Return payload for a completed chat turn. */
@@ -169,6 +170,7 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
     userText,
     invokedBy,
     hasGuild: !!guildId,
+    hasAttachment: params.hasAttachment,
     conversationHistory,
     replyReferenceContent: extractReplyText(replyReferenceContent),
     apiKey,

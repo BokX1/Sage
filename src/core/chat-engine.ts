@@ -40,6 +40,7 @@ export async function generateChatReply(params: {
   mentionedUserIds?: string[];
   invokedBy?: 'mention' | 'reply' | 'wakeword' | 'autopilot' | 'command';
   isVoiceActive?: boolean;
+  hasAttachment?: boolean;
 }): Promise<{
   replyText: string;
   styleHint?: string;
@@ -64,6 +65,7 @@ export async function generateChatReply(params: {
       mentionedUserIds,
       invokedBy = 'mention',
       isVoiceActive,
+      hasAttachment,
     } = params;
 
     // 1. Load Profile
@@ -92,6 +94,7 @@ export async function generateChatReply(params: {
       mentionedUserIds,
       invokedBy,
       isVoiceActive,
+      hasAttachment,
     });
 
     const replyText = result.replyText;

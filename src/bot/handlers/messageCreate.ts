@@ -280,6 +280,7 @@ export async function handleMessageCreate(message: Message) {
         mentionedUserIds: mentionedUserIdsForQueries,
         invokedBy: invocation.kind,
         isVoiceActive,
+        hasAttachment: !!attachmentBlock,
       });
 
       // --- Voice TTS Trigger ---

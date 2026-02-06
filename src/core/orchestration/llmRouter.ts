@@ -30,6 +30,7 @@ export interface LLMRouterParams {
     userText: string;
     invokedBy: 'mention' | 'reply' | 'wakeword' | 'autopilot' | 'command';
     hasGuild: boolean;
+    hasAttachment?: boolean;
     conversationHistory?: LLMChatMessage[];
     replyReferenceContent?: string | null;
     apiKey?: string;
@@ -157,7 +158,7 @@ interface RouterLLMResponse {
 
 
 export async function decideRoute(params: LLMRouterParams): Promise<RouteDecision> {
-    const { userText, invokedBy, hasGuild, conversationHistory, replyReferenceContent, apiKey } = params;
+    const { userText, invokedBy, hasGuild, hasAttachment, conversationHistory, replyReferenceContent, apiKey } = params;
 
     // Fast path: admin route for slash commands
     if (invokedBy === 'command' && hasGuild) {
@@ -192,8 +193,14 @@ export async function decideRoute(params: LLMRouterParams): Promise<RouteDecisio
 
         // Add reply context if available
         let finalUserContent = userText;
+
+        // Prepend attachment context for file attachments (forces qa route)
+        if (hasAttachment) {
+            finalUserContent = `[User has attached a file/code for review]\n\n${userText}`;
+        }
+
         if (replyReferenceContent) {
-            finalUserContent = `[User is Replying to: "${replyReferenceContent}"]\n\n${userText}`;
+            finalUserContent = `[User is Replying to: "${replyReferenceContent}"]\n\n${finalUserContent}`;
         }
 
         messages.push({ role: 'user', content: finalUserContent });
