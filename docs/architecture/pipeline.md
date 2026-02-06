@@ -54,7 +54,7 @@ flowchart TD
 
 **File:** `src/core/orchestration/llmRouter.ts`
 
-Sage uses a **high-precision LLM classifier** (model alias `gemini-fast`) to decide what kind of request a message represents and which experts should run.
+Sage uses a **high-precision LLM classifier** (model alias `deepseek`) to decide what kind of request a message represents and which experts should run.
 
 Key properties:
 

@@ -297,6 +297,7 @@ function getDefaultTemperature(route: RouteKind): number {
         case 'memory': return 0.6;
         case 'admin': return 0.4;
         case 'search': return 0.4; // Lower temperature for factual search
+        case 'image_generate': return 0.9; // Higher creativity for image prompts
         case 'qa': return 1.0;
         default: return 0.8;
     }
