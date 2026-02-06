@@ -9,6 +9,7 @@ import {
   handleAdminSummarize,
   handleAdminTrace,
   handleRelationshipSet,
+  isAdmin,
   handleWhoiswho,
 } from './sage-command-handlers';
 import { handleKeyCheck, handleKeyClear, handleKeyLogin, handleKeySet } from '../commands/api-key-handlers';
@@ -17,6 +18,9 @@ import { handleJoinCommand, handleLeaveCommand } from '../commands/voice-channel
 
 const registrationKey = Symbol.for('sage.handlers.interactionCreate.registered');
 
+/**
+ * Registers a single interaction handler instance for slash command routing.
+ */
 export function registerInteractionCreateHandler() {
   const g = globalThis as unknown as { [key: symbol]: boolean };
   if (g[registrationKey]) {
@@ -44,6 +48,11 @@ export function registerInteractionCreateHandler() {
       }
 
       if (interaction.commandName === 'llm_ping') {
+        if (!isAdmin(interaction)) {
+          await interaction.reply({ content: '❌ Admin only.', ephemeral: true });
+          return;
+        }
+
         await interaction.deferReply({ ephemeral: true });
         const start = Date.now();
 

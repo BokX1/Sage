@@ -26,6 +26,7 @@ A complete reference for Sage slash commands and interaction methods.
 | Goal | Command / Action |
 | :--- | :--- |
 | Check bot is alive | `/ping` |
+| Ping LLM provider (admin) | `/llm_ping` |
 | See relationship tiers | `/sage whoiswho [user]` |
 | Get Pollinations key link | `/sage key login` |
 | Set server-wide key (admin) | `/sage key set <api_key>` |
@@ -335,7 +336,7 @@ Disconnect Sage from the voice channel.
 
 ### `/llm_ping`
 
-Test LLM connectivity (admin/debug only).
+Test LLM connectivity. This command is restricted to admins.
 
 ```text
 /llm_ping
