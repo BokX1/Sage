@@ -60,6 +60,7 @@ mindmap
       LLM Classifier
       Expert Selection
       Context Resolution
+      Search-Augmented Generation
     Autonomous Tool Loop
       Tool Execution
       Error Recovery
@@ -239,6 +240,7 @@ flowchart TD
     R -->|selects| V[🎤 VoiceAnalytics]:::expert
     R -->|selects| M[🧠 Memory]:::expert
     R -->|selects| IG[🎨 ImageGenerator]:::expert
+    R -->|selects| SR[🔍 Search/SAG]:::expert
 
     subgraph Context["Context Builder"]
         direction TB
@@ -251,6 +253,7 @@ flowchart TD
     V --> CTX
     M --> CTX
     IG --> CTX
+    SR --> CTX
 
     CTX --> BUDGET --> LLM[🤖 LLM]:::llm --> OUT["Reply\n(text + optional attachments)"]:::user
 ```
@@ -262,6 +265,7 @@ flowchart TD
 | "Who was in voice last night?" | ❌ "I can't access voice data" | ✅ Routes to Voice Expert → "Alice, Bob, and Charlie were in General for 2 hours" |
 | "Summarize what we talked about" | ❌ "What conversation?" | ✅ Routes to Summarizer → Provides channel summary |
 | "What did Sarah say about TypeScript?" | ❌ "I don't know Sarah" | ✅ Routes to Memory → Recalls Sarah's recent TypeScript discussions |
+| "What's the current price of Bitcoin?" | ❌ "I don't have real-time data" | ✅ Routes to Search → Fetches live price via Perplexity |
 
 ---
 

@@ -11,7 +11,7 @@ export type ModelBudgetConfig = ModelLimits & {
 const DEFAULT_SAFETY_MARGIN = 200;
 const DEFAULT_IMAGE_TOKENS = 1200;
 const DEFAULT_MESSAGE_OVERHEAD = 4;
-const DEFAULT_ATTACHMENT_MAX_TOKENS = Math.min(2000, Math.floor(config.contextUserMaxTokens * 0.5));
+const DEFAULT_ATTACHMENT_MAX_TOKENS = Math.floor(config.contextUserMaxTokens * 0.4);
 
 const BASE_ESTIMATION: TokenEstimateOptions = {
   charsPerToken: config.tokenHeuristicCharsPerToken,

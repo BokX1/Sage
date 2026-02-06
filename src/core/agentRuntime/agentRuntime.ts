@@ -152,12 +152,25 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
   const guildApiKey = guildId ? await getGuildApiKey(guildId) : undefined;
   const apiKey = guildApiKey ?? appConfig.LLM_API_KEY;
 
+  // Extract text from replyReferenceContent for router (it can be string or LLMContentPart[])
+  const extractReplyText = (content: LLMMessageContent | null | undefined): string | null => {
+    if (!content) return null;
+    if (typeof content === 'string') return content;
+    if (Array.isArray(content)) {
+      const textParts = content
+        .filter((p): p is { type: 'text'; text: string } => p.type === 'text')
+        .map((p) => p.text);
+      return textParts.length > 0 ? textParts.join('\n') : null;
+    }
+    return null;
+  };
+
   const route = await decideRoute({
     userText,
     invokedBy,
     hasGuild: !!guildId,
     conversationHistory,
-    replyReferenceContent: typeof replyReferenceContent === 'string' ? replyReferenceContent : null,
+    replyReferenceContent: extractReplyText(replyReferenceContent),
     apiKey,
   });
 

@@ -13,6 +13,7 @@ This document explains how Sage routes incoming messages, builds context, and ex
 - [5) Context building](#5-context-building)
 - [6) Tracing & observability](#6-tracing-observability)
 - [7) Voice fast-path](#7-voice-fast-path)
+- [8) Search-Augmented Generation (SAG)](#8-search-augmented-generation)
 - [🔗 Related documentation](#related-documentation)
 
 ---
@@ -36,7 +37,7 @@ flowchart TD
     D -- Yes --> E[Voice statistics]:::output --> K["Send response\n(text + optional attachments)"]:::output
 
     D -- No --> R[LLM router]:::router
-    R --> X["Expert pool\n(Memory / Social / Voice / Summary / Image)"]:::expert --> H[Context builder]:::core --> I[LLM call]:::core --> J["Tool loop (qa/admin)"]:::core --> K
+    R --> X["Expert pool\n(Memory / Social / Voice / Summary / Image / Search)"]:::expert --> H[Context builder]:::core --> I[LLM call]:::core --> J["Tool loop (qa/admin)"]:::core --> K
 
     K --> L[Async: profile update]:::expert
     K --> M[Async: channel summary]:::expert
@@ -69,10 +70,11 @@ Key properties:
 | `voice_analytics` | Voice analytics / voice-mode hints | VoiceAnalytics, Memory |
 | `social_graph` | Relationship / connection reasoning | SocialGraph, Memory |
 | `memory` | Profile / “remember/forget” intents | Memory |
+| `search` | Real-time information retrieval (SAG) | *(uses Perplexity-reasoning model)* |
 | `admin` | Slash commands / configuration | SocialGraph, VoiceAnalytics, Memory *(tools enabled)* |
 
 > [!NOTE]
-> Sage validates router output against: `summarize`, `qa`, `admin`, `voice_analytics`, `social_graph`, `memory`, `image_generate`.
+> Sage validates router output against: `summarize`, `qa`, `admin`, `voice_analytics`, `social_graph`, `memory`, `image_generate`, `search`.
 > If the router returns an empty expert list, Sage injects `Memory` as a safe default.
 
 ---
@@ -175,6 +177,56 @@ Every interaction can be traced for admin debugging:
 ## 7) Voice fast-path
 
 Before invoking the full LLM pipeline, Sage uses a deterministic fast-path for simple voice queries (e.g., “who is in voice?”). This enables sub-second responses using `src/core/voice/voiceQueries.ts`.
+
+---
+
+<a id="8-search-augmented-generation"></a>
+
+## 8) Search-Augmented Generation (SAG)
+
+**File:** `src/core/agentRuntime/agentRuntime.ts` (lines 341-400)
+
+When the router detects a query requiring real-time information, Sage uses **Search-Augmented Generation (SAG)** powered by `perplexity-reasoning`.
+
+### How SAG works
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant Router as LLM Router
+    participant Perplexity as Perplexity-Reasoning
+    participant MainLLM as Main LLM
+    participant Response
+
+    User->>Router: "What's the price of Bitcoin?"
+    Router->>Router: Detect temporal signal ("price of")
+    Router-->>Perplexity: Route to search
+
+    Perplexity->>Perplexity: Real-time web search
+    Perplexity-->>MainLLM: Search results injected
+
+    MainLLM->>MainLLM: Synthesize with persona
+    MainLLM-->>Response: Natural reply with live data
+    Response-->>User: "Bitcoin is currently trading at $X..."
+```
+
+### Trigger signals
+
+The router routes to `search` when it detects:
+
+| Signal Type | Examples |
+| :--- | :--- |
+| **Temporal keywords** | "current", "latest", "today", "now", "recent" |
+| **Lookup verbs** | "search", "look up", "google", "find out" |
+| **Real-time data** | "price of", "weather", "stock", "news", "score" |
+| **URLs** | Any message containing `http://` or `https://` |
+
+### Example queries
+
+- "What's the current price of Bitcoin?"
+- "Search for the latest AI news"
+- "Look up Python async tutorials"
+- "What's the weather in Tokyo?"
 
 ---
 

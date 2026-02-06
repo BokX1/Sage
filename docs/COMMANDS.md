@@ -9,6 +9,8 @@ A complete reference for Sage slash commands and interaction methods.
 - [⚡ Quick Reference](#quick-reference)
 - [📋 Table of Contents](#table-of-contents)
 - [💬 Triggering Sage](#triggering-sage)
+- [🎨 Image Generation & Editing](#-image-generation--editing-natural-language)
+- [🔍 Real-time Search](#-real-time-search-natural-language)
 - [🌐 Public Commands](#public-commands)
 - [🔑 Key Management (BYOP)](#key-management-byop)
 - [👑 Admin Commands](#admin-commands)
@@ -84,6 +86,29 @@ Sage can generate images (text → image) and do simple edits (image → image).
 
 > [!NOTE]
 > Image replies typically include an **image attachment** (and may include a short caption). On the public bot, BYOP must be enabled (`/sage key login` → `/sage key set`).
+
+---
+
+### 🔍 Real-time search (natural language)
+
+Sage can fetch live information from the web using Search-Augmented Generation. No command needed — just ask about current events, prices, or time-sensitive topics.
+
+**Search triggers**
+
+- `Sage, what's the current price of Bitcoin?`
+- `Sage, search for the latest AI news`
+- `Sage, look up Python async tutorials`
+- `Sage, what's the weather in Tokyo right now?`
+
+**How it works**
+
+1. Sage detects temporal signals ("current", "latest", "price of", etc.)
+2. Routes to the `search` handler using Perplexity-Reasoning
+3. Injects live search data into context
+4. Responds naturally with up-to-date information
+
+> [!TIP]
+> Search works best for factual, time-sensitive queries. For conceptual explanations, Sage uses its built-in knowledge.
 
 ---
 

@@ -74,6 +74,7 @@ flowchart LR
         V[🎤 Voice Analytics]:::expert
         M[🧠 Memory]:::expert
         I[🎨 Image Generator]:::expert
+        SR[🔍 Search]:::expert
     end
 
     R --> S
@@ -83,12 +84,14 @@ flowchart LR
 
 
     R --> I
+    R --> SR
     S --> C[Context Builder]:::context
     G --> C
     V --> C
     M --> C
 
     I --> C
+    SR --> C
     C --> L[LLM Brain]:::router --> B
     B -->|"Chat response"| U
 
@@ -106,6 +109,7 @@ flowchart LR
 | :--- | :--- |
 | 🧠 **Agentic Memory** | Builds long-term preferences and throttles updates for efficiency |
 | 👁️ **Vision Support** | Analyzes images (Vision) and creates art (Agentic Generation) |
+| 🔍 **Real-Time Search** | Fetches live information via Perplexity for time-sensitive queries |
 | 📄 **File Analysis** | Share `.ts`, `.py`, `.txt` files for instant review or discussion |
 | 🎤 **Voice Companion (Beta)** | Text-to-speech companion with dynamic personas (BYOP required) |
 | 📊 **Voice Insights** | Tracks presence and duration, translating raw data into natural language |

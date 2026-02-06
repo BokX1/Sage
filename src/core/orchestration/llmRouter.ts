@@ -3,10 +3,9 @@ import { createLLMClient } from '../llm';
 import { LLMChatMessage } from '../llm/llm-types';
 import { logger } from '../utils/logger';
 
-// Router model: gemini-fast for low-cost, high-throughput classification
-// Router model: gemini-fast for low-cost, high-throughput classification
-const ROUTER_MODEL = 'gemini-fast';
-const ROUTER_TEMPERATURE = 0.0;
+// Router model: DeepSeek for high-quality intent classification
+const ROUTER_MODEL = 'deepseek';
+const ROUTER_TEMPERATURE = 0.1;
 const ROUTER_TIMEOUT_MS = 45_000;
 
 export type RouteKind =
@@ -17,7 +16,7 @@ export type RouteKind =
     | 'social_graph'
     | 'memory'
     | 'image_generate'
-    | 'search'; // New search route
+    | 'search';
 
 export interface RouteDecision {
     kind: RouteKind;
@@ -36,34 +35,102 @@ export interface LLMRouterParams {
     apiKey?: string;
 }
 
-const ROUTER_SYSTEM_PROMPT = `You are the Sage Intent Classifier.
-Route the user's request to the correct module based on INTENT.
+/**
+ * ROUTER SYSTEM PROMPT - DeepSeek 3.2 Optimized
+ * 
+ * Design Principles:
+ * 1. Signal-based classification (lexical + semantic)
+ * 2. Context-aware disambiguation
+ * 3. Explicit fallback hierarchy
+ * 4. Temperature guidance per route
+ */
+const ROUTER_SYSTEM_PROMPT = `# Sage Intent Router
 
-### ROUTES
-| Route | Function | Triggers |
-|:---|:---|:---|
-| **image_generate** | Create/edit images. | "draw", "paint", "generate", "visualize" |
-| **voice_analytics** | Voice stats. | "who is in voice", "vc stats", "time in voice" |
-| **social_graph** | Social/vibe checks. | "who are my friends", "relationship tier", "vibe check" |
-| **memory** | User memory/profile. | "what do you know about me", "forget me", "my profile" |
-| **summarize** | Conversation recap. | "summarize", "tl;dr", "recap", "catch me up" |
-| **search** | Real-time web search. | "search for", "google this", "price", "news", "today", "yesterday", "now", "release date", "check online", ANY URL/LINK |
-| **admin** | Config/debug. | "configure", "settings", "debug" |
-| **qa** | EVERYTHING ELSE. | Chat, coding, questions, banter. |
+You are an intent classification engine. Your ONLY job is to analyze the user's message and route it to the correct handler.
 
-### LOGIC
-1. **Context**: Check history. "Make **it** pop" + last bot msg was image -> \`image_generate\`.
-2. **Fact vs. Concept**: "What is Python?" -> \`qa\` | "Python release date?" -> \`search\`.
-3. **Temporal Rule**: "today", "yesterday", "now" -> BIAS towards \`search\`.
-4. **URL Rule**: Input contains "http" or "www" -> \`search\` (browse/read).
-5. **Default**: If unsure, use \`qa\`. NEVER invent routes.
+## AVAILABLE ROUTES
 
-### OUTPUT (JSON)
+| Route | Purpose | Primary Signals |
+|-------|---------|-----------------|
+| \`image_generate\` | Create, edit, or modify images | "draw", "paint", "sketch", "generate image", "create art", "make a picture", "visualize", "illustrate", "design" |
+| \`voice_analytics\` | Voice channel statistics and presence | "who is in voice", "vc stats", "voice time", "how long in voice", "voice activity" |
+| \`social_graph\` | Relationship and social dynamics | "who are my friends", "relationship", "vibe check", "who do I talk to", "social connections" |
+| \`memory\` | User profile and memory operations | "what do you know about me", "remember", "forget me", "my profile", "my preferences" |
+| \`summarize\` | Conversation or content summarization | "summarize", "tldr", "tl;dr", "recap", "catch me up", "what did I miss", "summary" |
+| \`search\` | Real-time information retrieval | "search", "look up", "google", "find out", "what's the price", "latest news", URLs, current events |
+| \`admin\` | Bot configuration and debugging | "configure", "settings", "debug", "admin", "bot config" |
+| \`qa\` | General conversation, Q&A, coding help | DEFAULT - anything not matching above |
+
+## CLASSIFICATION RULES
+
+### Rule 1: Explicit Trigger Words
+If the message contains EXPLICIT route keywords, use that route:
+- "draw me a cat" → \`image_generate\`
+- "summarize this channel" → \`summarize\`
+- "search for Python tutorials" → \`search\`
+
+### Rule 2: Context Continuation
+Check conversation history for context:
+- If last bot message was an image AND user says "make it darker" → \`image_generate\`
+- If discussing a topic AND user says "can you look that up?" → \`search\`
+
+### Rule 3: Temporal Signals → search
+Keywords indicating real-time or recent information:
+- "today", "yesterday", "this week", "latest", "current", "now", "recent"
+- "price of", "stock", "weather", "news", "score"
+- Any URL (http, https, www)
+
+### Rule 4: Knowledge vs Lookup
+- Conceptual/educational: "What is machine learning?" → \`qa\`
+- Factual/time-sensitive: "When was GPT-4 released?" → \`search\`
+- Opinion/creative: "What do you think about AI?" → \`qa\`
+
+### Rule 5: Default to qa
+When uncertain, route to \`qa\`. It handles:
+- General conversation and banter
+- Coding questions and help
+- Explanations and tutorials
+- Creative writing
+- Anything not clearly matching other routes
+
+## TEMPERATURE GUIDELINES
+
+| Route | Recommended Temperature | Rationale |
+|-------|------------------------|-----------|
+| \`image_generate\` | 0.9-1.0 | High creativity for art |
+| \`voice_analytics\` | 0.3 | Factual data presentation |
+| \`social_graph\` | 0.5 | Balanced interpretation |
+| \`memory\` | 0.4 | Accurate recall |
+| \`summarize\` | 0.3 | Faithful compression |
+| \`search\` | 0.4 | Factual synthesis |
+| \`admin\` | 0.2 | Precise configuration |
+| \`qa\` | 0.8 | Conversational flexibility |
+
+## OUTPUT FORMAT
+
+Respond with ONLY valid JSON (no markdown, no extra text):
 {
-  "reasoning": "Concise logic.",
-  "route": "qa" | "search" | "image_generate" | ...,
-  "temperature": 0.0-1.0
-}`;
+  "reasoning": "Your classification logic here",
+  "route": "qa",
+  "temperature": 0.7
+}
+
+## EXAMPLES
+
+User: "hey sage draw me a cyberpunk samurai"
+→ {"reasoning": "Explicit 'draw' keyword requesting image creation.", "route": "image_generate", "temperature": 0.95}
+
+User: "what's the current price of bitcoin"
+→ {"reasoning": "Temporal signal 'current' + real-time data request.", "route": "search", "temperature": 0.4}
+
+User: "explain how neural networks work"
+→ {"reasoning": "Educational question about concepts, no time-sensitivity.", "route": "qa", "temperature": 0.7}
+
+User: "who's in vc right now"
+→ {"reasoning": "Voice channel presence query.", "route": "voice_analytics", "temperature": 0.3}
+
+User: "make it more vibrant" (after image generation)
+→ {"reasoning": "Context continuation from previous image, modification request.", "route": "image_generate", "temperature": 0.9}`;
 
 // ... types and constants
 const DEFAULT_QA_ROUTE: RouteDecision = {
@@ -172,7 +239,7 @@ export async function decideRoute(params: LLMRouterParams): Promise<RouteDecisio
 
         // Use provided temperature or route-based default
         const temperature = typeof parsed.temperature === 'number'
-            ? Math.min(Math.max(parsed.temperature, 0), 1)
+            ? parsed.temperature
             : getDefaultTemperature(routeKind);
 
         const decision: RouteDecision = {
@@ -230,7 +297,7 @@ function getDefaultTemperature(route: RouteKind): number {
         case 'memory': return 0.6;
         case 'admin': return 0.4;
         case 'search': return 0.4; // Lower temperature for factual search
-        case 'qa': return 1.2;
+        case 'qa': return 1.0;
         default: return 0.8;
     }
 }
