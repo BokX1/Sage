@@ -1,15 +1,6 @@
 import { config as newConfig } from '../../config';
 
 /**
- * Provide a legacy-shaped configuration object for older modules.
- *
- * Responsibilities:
- * - Map current config fields into the deprecated naming and types.
- *
- * Non-goals:
- * - Validate configuration values.
- */
-/**
  * Expose configuration values using the legacy shape expected by older modules.
  *
  * @returns A configuration object with string-coerced and renamed fields.

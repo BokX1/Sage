@@ -20,6 +20,9 @@ const validateEnv = () => {
   }
 };
 
+/**
+ * Bootstrap the Discord client, runtime handlers, and tool registry.
+ */
 async function main() {
   validateEnv();
 
@@ -34,16 +37,14 @@ async function main() {
   const { globalToolRegistry } = await import('./core/agentRuntime/toolRegistry');
   const { joinVoiceTool, leaveVoiceTool } = await import('./core/tools/voiceTools');
 
-  // Register Tools
   globalToolRegistry.register(joinVoiceTool);
   globalToolRegistry.register(leaveVoiceTool);
 
-  // Register handlers (idempotent)
   registerMessageCreateHandler();
   registerInteractionCreateHandler();
-  registerVoiceStateUpdateHandler(); // D1: Voice event ingestion
-  registerReadyHandler(client); // D1: Startup backfill & logging
-  registerGuildCreateHandler(client); // UX: Proactive welcome
+  registerVoiceStateUpdateHandler();
+  registerReadyHandler(client);
+  registerGuildCreateHandler(client);
   initChannelSummaryScheduler();
 
   await client.login(config.DISCORD_TOKEN);

@@ -8,6 +8,7 @@ import {
 import { VoiceManager } from '../../core/voice/voiceManager';
 import { logger } from '../../utils/logger';
 
+/** Voice slash commands available to members in guild channels. */
 export const voiceCommands = [
   new SlashCommandBuilder()
     .setName('join')
@@ -17,6 +18,9 @@ export const voiceCommands = [
     .setDescription('Leave the current voice channel'),
 ];
 
+/**
+ * Join the caller's current voice channel using the shared voice manager.
+ */
 export async function handleJoinCommand(interaction: ChatInputCommandInteraction) {
   if (!interaction.guildId || !interaction.member) {
     await interaction.reply({
@@ -48,6 +52,9 @@ export async function handleJoinCommand(interaction: ChatInputCommandInteraction
   }
 }
 
+/**
+ * Leave the active voice channel for the guild where the command was invoked.
+ */
 export async function handleLeaveCommand(interaction: ChatInputCommandInteraction) {
   if (!interaction.guildId) {
     await interaction.reply({
