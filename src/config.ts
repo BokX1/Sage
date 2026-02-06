@@ -7,6 +7,77 @@ if (process.env.NODE_ENV === 'test') {
   process.env.DISCORD_TOKEN ??= 'test-discord-token';
   process.env.DISCORD_APP_ID ??= 'test-discord-app-id';
   process.env.DATABASE_URL ??= 'test-database-url';
+
+  // Bot Behavior
+  process.env.LOG_LEVEL ??= 'info';
+  process.env.RATE_LIMIT_MAX ??= '100';
+  process.env.RATE_LIMIT_WINDOW_SEC ??= '60';
+  process.env.AUTOPILOT_MODE ??= 'manual';
+  process.env.WAKE_WORDS_CSV ??= 'sage,bot';
+  process.env.WAKE_WORD_PREFIXES_CSV ??= '!';
+  process.env.WAKEWORD_COOLDOWN_SEC ??= '10';
+  process.env.WAKEWORD_MAX_RESPONSES_PER_MIN_PER_CHANNEL ??= '5';
+
+  // Ingestion & Behavior
+  process.env.INGESTION_ENABLED ??= 'true';
+  process.env.INGESTION_MODE ??= 'all';
+  process.env.INGESTION_ALLOWLIST_CHANNEL_IDS_CSV ??= '';
+  process.env.INGESTION_BLOCKLIST_CHANNEL_IDS_CSV ??= '';
+  process.env.RAW_MESSAGE_TTL_DAYS ??= '7';
+  process.env.RING_BUFFER_MAX_MESSAGES_PER_CHANNEL ??= '50';
+  process.env.CONTEXT_TRANSCRIPT_MAX_MESSAGES ??= '10';
+  process.env.CONTEXT_TRANSCRIPT_MAX_CHARS ??= '1000';
+  process.env.MESSAGE_DB_STORAGE_ENABLED ??= 'false';
+  process.env.PROACTIVE_POSTING_ENABLED ??= 'false';
+  process.env.SUMMARY_ROLLING_WINDOW_MIN ??= '15';
+  process.env.SUMMARY_ROLLING_MIN_MESSAGES ??= '5';
+  process.env.SUMMARY_ROLLING_MIN_INTERVAL_SEC ??= '60';
+  process.env.SUMMARY_PROFILE_MIN_INTERVAL_SEC ??= '600';
+  process.env.SUMMARY_MAX_CHARS ??= '500';
+  process.env.SUMMARY_SCHED_TICK_SEC ??= '60';
+  process.env.SUMMARY_MODEL ??= 'gpt-3.5-turbo';
+
+  // Context & Tokens
+  process.env.CONTEXT_MAX_INPUT_TOKENS ??= '4000';
+  process.env.CONTEXT_RESERVED_OUTPUT_TOKENS ??= '1000';
+  process.env.SYSTEM_PROMPT_MAX_TOKENS ??= '1000';
+  process.env.TOKEN_ESTIMATOR ??= 'heuristic';
+  process.env.TOKEN_HEURISTIC_CHARS_PER_TOKEN ??= '4';
+  process.env.CONTEXT_BLOCK_MAX_TOKENS_TRANSCRIPT ??= '1000';
+  process.env.CONTEXT_BLOCK_MAX_TOKENS_ROLLING_SUMMARY ??= '500';
+  process.env.CONTEXT_BLOCK_MAX_TOKENS_PROFILE_SUMMARY ??= '500';
+  process.env.CONTEXT_BLOCK_MAX_TOKENS_MEMORY ??= '500';
+  process.env.CONTEXT_BLOCK_MAX_TOKENS_REPLY_CONTEXT ??= '500';
+  process.env.CONTEXT_USER_MAX_TOKENS ??= '2000';
+  process.env.CONTEXT_TRUNCATION_NOTICE ??= 'true';
+  process.env.CONTEXT_BLOCK_MAX_TOKENS_EXPERTS ??= '500';
+  process.env.TRACE_ENABLED ??= 'false';
+
+  // Relationships
+  process.env.CONTEXT_BLOCK_MAX_TOKENS_RELATIONSHIP_HINTS ??= '200';
+  process.env.RELATIONSHIP_HINTS_MAX_EDGES ??= '5';
+  process.env.RELATIONSHIP_DECAY_LAMBDA ??= '0.01';
+  process.env.RELATIONSHIP_WEIGHT_K ??= '1.0';
+  process.env.RELATIONSHIP_CONFIDENCE_C ??= '0.5';
+
+  // Admin
+  process.env.ADMIN_ROLE_IDS_CSV ??= '';
+  process.env.ADMIN_USER_IDS_CSV ??= '';
+
+  // LLM
+  process.env.LLM_PROVIDER ??= 'pollinations';
+  process.env.LLM_BASE_URL ??= 'https://text.pollinations.ai/';
+  process.env.LLM_IMAGE_BASE_URL ??= 'https://image.pollinations.ai/';
+  process.env.CHAT_MODEL ??= 'openai';
+  process.env.LLM_MODEL_LIMITS_JSON ??= '{}';
+  process.env.PROFILE_PROVIDER ??= 'pollinations';
+  process.env.PROFILE_CHAT_MODEL ??= 'openai';
+  process.env.PROFILE_UPDATE_INTERVAL ??= '600000';
+  process.env.FORMATTER_MODEL ??= 'openai';
+
+  // Timeouts
+  process.env.TIMEOUT_CHAT_MS ??= '300000';
+  process.env.TIMEOUT_MEMORY_MS ??= '600000';
 }
 
 const envSchema = z.object({
