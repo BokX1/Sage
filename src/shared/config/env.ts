@@ -3,6 +3,30 @@ import { z } from 'zod';
 
 dotenv.config();
 
+export function isPrivateOrLocalHostname(hostname: string): boolean {
+  const normalized = hostname.toLowerCase();
+  const unwrappedIpv6 = normalized.replace(/^\[/, '').replace(/\]$/, '');
+
+  return (
+    normalized === 'localhost' ||
+    normalized.startsWith('127.') ||
+    unwrappedIpv6 === '::1' ||
+    unwrappedIpv6.startsWith('::ffff:127.') ||
+    normalized.startsWith('10.') ||
+    normalized.startsWith('192.168.') ||
+    /^172\.(1[6-9]|2\d|3[0-1])\./.test(normalized)
+  );
+}
+
+const httpsUrlSchema = z.string().trim().url().refine((value) => {
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === 'https:' && !isPrivateOrLocalHostname(parsed.hostname);
+  } catch {
+    return false;
+  }
+}, 'Must be a public HTTPS URL.');
+
 const testDefaults: Record<string, string> = {
   DISCORD_TOKEN: 'test-discord-token',
   DISCORD_APP_ID: 'test-discord-app-id',
@@ -75,8 +99,8 @@ const envSchema = z.object({
   DATABASE_URL: z.string().min(1),
   DEV_GUILD_ID: z.string().optional(),
   LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']),
-  RATE_LIMIT_MAX: z.coerce.number().int().positive(),
-  RATE_LIMIT_WINDOW_SEC: z.coerce.number().int().positive(),
+  RATE_LIMIT_MAX: z.coerce.number().int().positive().max(1000),
+  RATE_LIMIT_WINDOW_SEC: z.coerce.number().int().positive().max(3600),
   AUTOPILOT_MODE: z.enum(['manual', 'reserved', 'talkative']),
   WAKE_WORDS_CSV: z.string(),
   WAKE_WORD_PREFIXES_CSV: z.string(),
@@ -86,8 +110,8 @@ const envSchema = z.object({
   INGESTION_MODE: z.enum(['all', 'allowlist']),
   INGESTION_ALLOWLIST_CHANNEL_IDS_CSV: z.string(),
   INGESTION_BLOCKLIST_CHANNEL_IDS_CSV: z.string(),
-  RAW_MESSAGE_TTL_DAYS: z.coerce.number().int().positive(),
-  RING_BUFFER_MAX_MESSAGES_PER_CHANNEL: z.coerce.number().int().positive(),
+  RAW_MESSAGE_TTL_DAYS: z.coerce.number().int().positive().max(365),
+  RING_BUFFER_MAX_MESSAGES_PER_CHANNEL: z.coerce.number().int().positive().max(5000),
   CONTEXT_TRANSCRIPT_MAX_MESSAGES: z.coerce.number().int().positive(),
   CONTEXT_TRANSCRIPT_MAX_CHARS: z.coerce.number().int().positive(),
   MESSAGE_DB_STORAGE_ENABLED: z.enum(['true', 'false']).transform((v) => v === 'true'),
@@ -118,11 +142,11 @@ const envSchema = z.object({
   RELATIONSHIP_DECAY_LAMBDA: z.coerce.number().positive(),
   RELATIONSHIP_WEIGHT_K: z.coerce.number().positive(),
   RELATIONSHIP_CONFIDENCE_C: z.coerce.number().positive(),
-  ADMIN_ROLE_IDS_CSV: z.string(),
-  ADMIN_USER_IDS_CSV: z.string(),
+  ADMIN_ROLE_IDS_CSV: z.string().regex(/^[0-9,\s]*$/, 'Must contain only Discord snowflake IDs separated by commas.'),
+  ADMIN_USER_IDS_CSV: z.string().regex(/^[0-9,\s]*$/, 'Must contain only Discord snowflake IDs separated by commas.'),
   LLM_PROVIDER: z.enum(['pollinations']),
-  LLM_BASE_URL: z.string(),
-  LLM_IMAGE_BASE_URL: z.string(),
+  LLM_BASE_URL: httpsUrlSchema,
+  LLM_IMAGE_BASE_URL: httpsUrlSchema,
   CHAT_MODEL: z.string(),
   LLM_API_KEY: z.string().optional(),
   LLM_MODEL_LIMITS_JSON: z.string(),
@@ -130,8 +154,8 @@ const envSchema = z.object({
   PROFILE_CHAT_MODEL: z.string(),
   PROFILE_UPDATE_INTERVAL: z.coerce.number().int().positive(),
   FORMATTER_MODEL: z.string(),
-  TIMEOUT_CHAT_MS: z.coerce.number().int().positive(),
-  TIMEOUT_MEMORY_MS: z.coerce.number().int().positive(),
+  TIMEOUT_CHAT_MS: z.coerce.number().int().positive().max(300000),
+  TIMEOUT_MEMORY_MS: z.coerce.number().int().positive().max(600000),
   LLM_DOCTOR_PING: z.enum(['0', '1']).default('0'),
   SECRET_ENCRYPTION_KEY: z.string().regex(/^[0-9a-fA-F]{64}$/),
 });

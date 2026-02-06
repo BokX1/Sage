@@ -12,16 +12,25 @@ interface PollinationsProfile {
 /**
  * Validate a Pollinations API key by requesting the authenticated profile.
  */
+const API_KEY_MAX_LENGTH = 256;
+const PROFILE_TIMEOUT_MS = 15_000;
+
 async function fetchPollinationsProfile(apiKey: string): Promise<PollinationsProfile | null> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), PROFILE_TIMEOUT_MS);
+
   try {
     const res = await fetch('https://gen.pollinations.ai/account/profile', {
       headers: { Authorization: `Bearer ${apiKey}` },
+      signal: controller.signal,
     });
     if (!res.ok) return null;
     return (await res.json()) as PollinationsProfile;
   } catch (e) {
-    logger.warn({ error: e }, 'Failed to fetch Pollinations profile');
+    logger.warn({ error: e instanceof Error ? e.message : String(e) }, 'Failed to fetch Pollinations profile');
     return null;
+  } finally {
+    clearTimeout(timeoutId);
   }
 }
 
@@ -50,7 +59,7 @@ export async function handleKeySet(interaction: ChatInputCommandInteraction) {
   const apiKey = interaction.options.getString('api_key', true);
   const guildId = interaction.guildId;
 
-  if (!apiKey.startsWith('sk_')) {
+  if (!apiKey.startsWith('sk_') || apiKey.length > API_KEY_MAX_LENGTH) {
     await interaction.reply({ content: '⚠️ Invalid key format. It should start with `sk_`.', ephemeral: true });
     return;
   }
@@ -92,6 +101,11 @@ export async function handleKeyCheck(interaction: ChatInputCommandInteraction) {
 
   if (!guildId) {
     await interaction.reply({ content: '❌ Keys can only be checked inside a server.', ephemeral: true });
+    return;
+  }
+
+  if (!isAdmin(interaction)) {
+    await interaction.reply({ content: '❌ Only server admins can check the API key.', ephemeral: true });
     return;
   }
 

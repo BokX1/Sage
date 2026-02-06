@@ -60,6 +60,25 @@ describe('key command handlers', () => {
     );
   });
 
+
+
+  it('denies key status checks for non-admin users', async () => {
+    isAdminMock.mockReturnValue(false);
+
+    const interaction = createInteraction();
+    const { handleKeyCheck } = await import('../../../src/bot/commands/api-key-handlers');
+
+    await handleKeyCheck(interaction as never);
+
+    expect(interaction.reply).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: '❌ Only server admins can check the API key.',
+        ephemeral: true,
+      }),
+    );
+    expect(interaction.deferReply).not.toHaveBeenCalled();
+  });
+
   it('formats key status output on one line per field', async () => {
     getGuildApiKeyMock.mockResolvedValue('sk_abcdefgh12345678');
     fetchMock.mockResolvedValue({

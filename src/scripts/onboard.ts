@@ -305,7 +305,7 @@ const getDockerComposeDefaults = () => {
   }
   const content = fs.readFileSync(composePath, 'utf8');
   const user = content.match(/POSTGRES_USER:\s*([^\s]+)/)?.[1] ?? 'postgres';
-  const rawPassword = content.match(/POSTGRES_PASSWORD:\s*([^\s]+)/)?.[1] ?? 'postgres';
+  const rawPassword = content.match(/POSTGRES_PASSWORD:\s*([^\s]+)/)?.[1] ?? 'password';
   const password = resolveComposeValue(stripQuotes(rawPassword));
   const db = content.match(/POSTGRES_DB:\s*([^\s]+)/)?.[1] ?? 'sage';
   const port =
@@ -373,7 +373,7 @@ const promptRequired = async (label: string, prompts: PromptFns) => {
 
 const promptDatabaseUrl = async (prompts: PromptFns) => {
   const defaults = getDockerComposeDefaults();
-  const fallbackUrl = 'postgres://postgres:postgres@localhost:5432/sage?schema=public';
+  const fallbackUrl = 'postgresql://postgres:password@localhost:5432/sage?schema=public';
   const dockerUrl = defaults
     ? `postgresql://${defaults.user}:${defaults.password}@localhost:${defaults.port}/${defaults.db}?schema=public`
     : fallbackUrl;
@@ -495,15 +495,23 @@ async function main() {
 
     for (const key of REQUIRED_KEYS) {
       const existingValue = values.get(key);
+      const hasValidExistingEncryptionKey =
+        key === 'SECRET_ENCRYPTION_KEY' &&
+        typeof existingValue === 'string' &&
+        isValidEncryptionKey(existingValue);
+
       const overwrite = forcedKeys.has(key)
         ? true
-        : await shouldOverwriteValue(
-          key,
-          existingValue,
-          prompts,
-          !!args.yes,
-          !!args.nonInteractive,
-        );
+        : hasValidExistingEncryptionKey
+          ? false
+          : await shouldOverwriteValue(
+            key,
+            existingValue,
+            prompts,
+            !!args.yes,
+            !!args.nonInteractive,
+          );
+
       if (!overwrite) {
         if (!existingValue) {
           throw new Error(`${key} is required in non-interactive mode.`);
