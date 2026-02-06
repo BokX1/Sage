@@ -98,4 +98,49 @@ describe('llmRouter', () => {
         // Verify LLM WAS called
         expect(mockChat).toHaveBeenCalled();
     });
+
+    it('should override voice_analytics hallucination to qa when keywords are missing', async () => {
+        // Mock LLM returning voice_analytics for a non-voice query
+        mockChat.mockResolvedValue({
+            content: JSON.stringify({
+                reasoning: 'I think this is about voice',
+                route: 'voice_analytics',
+                temperature: 0.3,
+            }),
+        });
+
+        const result = await decideRoute({
+            userText: 'Look at this massive upgrade',
+            invokedBy: 'mention',
+            hasGuild: true,
+            hasAttachment: false,
+            apiKey: 'test-key',
+        });
+
+        // Should be overridden to qa
+        expect(result.kind).toBe('qa');
+        expect(result.reasoningText).toContain('Guardrail');
+    });
+
+    it('should allow voice_analytics when keywords are present', async () => {
+        // Mock LLM returning voice_analytics for a valid query
+        mockChat.mockResolvedValue({
+            content: JSON.stringify({
+                reasoning: 'Valid voice query',
+                route: 'voice_analytics',
+                temperature: 0.3,
+            }),
+        });
+
+        const result = await decideRoute({
+            userText: 'who is in voice?',
+            invokedBy: 'mention',
+            hasGuild: true,
+            hasAttachment: false,
+            apiKey: 'test-key',
+        });
+
+        // Should NOT be overridden
+        expect(result.kind).toBe('voice_analytics');
+    });
 });

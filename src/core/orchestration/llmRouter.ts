@@ -256,6 +256,22 @@ export async function decideRoute(params: LLMRouterParams): Promise<RouteDecisio
             return DEFAULT_QA_ROUTE;
         }
 
+        // --- POST-LLM GUARDRAILS ---
+
+        // Guardrail: Voice Analytics Hallucination Prevention
+        // If LLM picks voice_analytics but text has no voice keywords, force QA.
+        if (parsed.route === 'voice_analytics') {
+            const text = userText.toLowerCase();
+            const hasVoiceKeywords = /\b(voice|vc|call|channel|who|stat|stats|activity|speaking|talking)\b/.test(text);
+            if (!hasVoiceKeywords) {
+                logger.warn({ userText, originalRoute: 'voice_analytics' }, 'Router: Overriding voice_analytics hallucination -> qa');
+                return {
+                    ...DEFAULT_QA_ROUTE,
+                    reasoningText: 'Guardrail: Overrode voice_analytics (missing keywords)',
+                };
+            }
+        }
+
         // Validate route kind
         const validRoutes: RouteKind[] = ['summarize', 'qa', 'admin', 'voice_analytics', 'social_graph', 'memory', 'image_generate', 'search'];
         const routeKind = validRoutes.includes(parsed.route as RouteKind)
