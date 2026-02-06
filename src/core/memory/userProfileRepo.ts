@@ -1,5 +1,5 @@
 import { prisma } from '../../core/db/prisma-client';
-import { decryptSecret, encryptSecret } from '../../shared/security/secret-crypto';
+import { decryptSecret } from '../../shared/security/secret-crypto';
 
 export async function getUserProfile(userId: string): Promise<string | null> {
   const profile = await prisma.userProfile.findUnique({
