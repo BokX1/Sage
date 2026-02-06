@@ -163,7 +163,6 @@ When Sage starts, you should see:
 [info] Ready!
 ```
 
-
 ## 🗂️ Project Structure
 
 ```text
