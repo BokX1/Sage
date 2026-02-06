@@ -109,8 +109,12 @@ const commandDefinitions = [
     ),
 ];
 
+/** Discord slash-command payloads registered at startup. */
 export const commandPayloads = commandDefinitions.map((command) => command.toJSON());
 
+/**
+ * Register slash commands either globally or per development guild.
+ */
 export async function registerCommands() {
   const rest = new REST({ version: '10' }).setToken(config.discordToken);
 
@@ -126,8 +130,6 @@ export async function registerCommands() {
         logger.info(`Successfully reloaded application (/) commands for DEV guild: ${guildId} (Instant).`);
       }
 
-      // Clear Global commands to prevent duplicates in the Dev Guild
-      // (Global commands + Guild commands = Duplicate display in Discord)
       logger.info('Clearing GLOBAL commands to prevent duplicates...');
       await rest.put(Routes.applicationCommands(config.discordAppId), { body: [] });
       logger.info('Successfully cleared GLOBAL commands.');

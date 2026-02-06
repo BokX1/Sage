@@ -149,7 +149,7 @@ Follow **[📖 Getting Started](docs/GETTING_STARTED.md)** for a full walkthroug
 ```bash
 git clone https://github.com/BokX1/Sage.git
 cd Sage
-npm install
+npm ci
 npm run onboard
 docker compose -f config/ci/docker-compose.yml up -d db
 npm run db:migrate
@@ -161,6 +161,16 @@ When Sage starts, you should see:
 ```text
 [info] Logged in as Sage#1234
 [info] Ready!
+```
+
+## 🗂️ Project Structure
+
+```text
+src/                 # Bot runtime, handlers, core logic, scripts
+tests/               # Vitest test suites
+docs/                # User, operations, and architecture documentation
+prisma/              # Prisma schema and migrations
+config/ci/           # Shared lint, test, TypeScript, Docker CI config
 ```
 
 ---
