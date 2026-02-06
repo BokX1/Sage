@@ -1,29 +1,36 @@
+/**
+ * Compose the base system prompt for agent-runtime calls.
+ *
+ * Responsibilities:
+ * - Merge static identity text with dynamic profile/style context.
+ * - Keep prompt sections stable for downstream context assembly.
+ *
+ * Non-goals:
+ * - Enforce token budgets.
+ * - Inject transcript or expert packet content.
+ */
 import { StyleProfile } from './styleClassifier';
 
-/**
- * Define inputs for composing the system prompt.
- *
- * Details: the profile summary and style hints shape the final prompt content.
- *
- * Side effects: none.
- * Error behavior: none.
- */
+/** Configure profile and style inputs for system prompt composition. */
 export interface ComposeSystemPromptParams {
   userProfileSummary: string | null;
   style?: StyleProfile;
 }
 
 /**
- * Compose the system prompt for the LLM.
+ * Compose the runtime system prompt text.
  *
- * Details: combines base identity, user context, interaction mode, and
- * priority instructions into a single system message.
+ * @param params - User profile summary and optional style profile.
+ * @returns Prompt string containing identity, user context, and interaction mode.
  *
- * Side effects: none.
- * Error behavior: none.
+ * Side effects:
+ * - None.
  *
- * @param params - Prompt composition inputs.
- * @returns System prompt content.
+ * Error behavior:
+ * - Never throws.
+ *
+ * Invariants:
+ * - Output always includes all core sections in stable order.
  */
 export function composeSystemPrompt(params: ComposeSystemPromptParams): string {
   const { userProfileSummary, style } = params;
@@ -55,14 +62,9 @@ You remember conversations, track relationships, and generate personalized respo
 }
 
 /**
- * Provide a legacy-compatible core prompt.
+ * Return base prompt content without per-user profile state.
  *
- * Details: returns a system prompt without user profile context.
- *
- * Side effects: none.
- * Error behavior: none.
- *
- * @returns Core prompt content.
+ * @returns Static core prompt text.
  */
 export function getCorePromptContent(): string {
   return composeSystemPrompt({ userProfileSummary: null });

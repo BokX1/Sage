@@ -1,5 +1,12 @@
+/** Model typed error categories emitted by tool execution stages. */
 export type ToolErrorKind = 'validation' | 'execution' | 'timeout';
 
+/**
+ * Signal that tool input failed validation before execution.
+ *
+ * @param toolName - Registry name of the failing tool.
+ * @param message - Validation failure detail.
+ */
 export class ToolValidationError extends Error {
   readonly toolName: string;
   readonly kind: ToolErrorKind = 'validation';
@@ -11,6 +18,12 @@ export class ToolValidationError extends Error {
   }
 }
 
+/**
+ * Signal that a tool failed during execution.
+ *
+ * @param toolName - Registry name of the failing tool.
+ * @param message - Execution failure detail.
+ */
 export class ToolExecutionError extends Error {
   readonly toolName: string;
   readonly kind: ToolErrorKind = 'execution';
@@ -22,6 +35,12 @@ export class ToolExecutionError extends Error {
   }
 }
 
+/**
+ * Signal that a tool did not complete before timeout.
+ *
+ * @param toolName - Registry name of the timed-out tool.
+ * @param timeoutMs - Timeout limit applied to the execution.
+ */
 export class ToolTimeoutError extends Error {
   readonly toolName: string;
   readonly timeoutMs: number;

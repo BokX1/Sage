@@ -1,18 +1,22 @@
+/**
+ * Build the final LLM message array from runtime context sources.
+ *
+ * Responsibilities:
+ * - Materialize context blocks in priority order.
+ * - Apply token budgeting before provider invocation.
+ * - Merge system content into a single system message.
+ *
+ * Non-goals:
+ * - Resolve model/provider choice.
+ * - Persist context state.
+ */
 import { LLMChatMessage, LLMMessageContent } from '../llm/types';
 import { composeSystemPrompt } from './promptComposer';
 import { config } from '../config/env';
 import { budgetContextBlocks, ContextBlock } from './contextBudgeter';
 import { StyleProfile } from './styleClassifier';
 
-/**
- * Define inputs for building contextual LLM messages.
- *
- * Details: optional summaries and hints are injected into the system context
- * and trimmed by the context budgeter when needed.
- *
- * Side effects: none.
- * Error behavior: none.
- */
+/** Carry all optional context inputs used to construct a turn prompt. */
 export interface BuildContextMessagesParams {
   userProfileSummary: string | null;
   channelRollingSummary?: string | null;
@@ -31,16 +35,19 @@ export interface BuildContextMessagesParams {
 }
 
 /**
- * Build the context messages for an LLM chat turn.
+ * Build budgeted context messages for a single chat completion request.
  *
- * Details: assembles system context blocks, applies budget constraints, and
- * coalesces system content to avoid provider drops.
+ * @param params - Runtime context fragments collected for the current turn.
+ * @returns Message array ready to send to the LLM client.
  *
- * Side effects: none.
- * Error behavior: none.
+ * Side effects:
+ * - None.
  *
- * @param params - Contextual inputs for the message set.
- * @returns Ordered messages ready for LLM chat calls.
+ * Error behavior:
+ * - Never throws under normal string/object inputs.
+ *
+ * Invariants:
+ * - Returned message list always contains exactly one system message at index 0.
  */
 export function buildContextMessages(params: BuildContextMessagesParams): LLMChatMessage[] {
   const {
@@ -83,10 +90,13 @@ If you have nothing to add, output '[SILENCE]' (without quotes).`;
     }
   }
 
-  const baseSystemContent = composeSystemPrompt({
-    userProfileSummary,
-    style,
-  }) + autopilotInstruction + (voiceInstruction || '');
+  const baseSystemContent =
+    composeSystemPrompt({
+      userProfileSummary,
+      style,
+    }) +
+    autopilotInstruction +
+    (voiceInstruction || '');
 
   const blocks: ContextBlock[] = [
     {
@@ -125,7 +135,7 @@ If you have nothing to add, output '[SILENCE]' (without quotes).`;
       id: 'relationship_hints',
       role: 'system',
       content: relationshipHints,
-      priority: 65, // Between profile_summary (70) and rolling_summary (60)
+      priority: 65,
       hardMaxTokens: config.contextBlockMaxTokensRelationshipHints,
       truncatable: true,
     });
@@ -136,7 +146,7 @@ If you have nothing to add, output '[SILENCE]' (without quotes).`;
       id: 'expert_packets',
       role: 'system',
       content: expertPackets,
-      priority: 55, // Between rolling_summary (60) and transcript (50)
+      priority: 55,
       hardMaxTokens: config.contextBlockMaxTokensExperts,
       truncatable: true,
     });
@@ -201,7 +211,6 @@ If you have nothing to add, output '[SILENCE]' (without quotes).`;
     truncationNoticeEnabled: config.contextTruncationNotice,
   });
 
-  // Some providers drop secondary system messages, so merge them into one block.
   const systemContentParts: string[] = [];
   const nonSystemMessages: LLMChatMessage[] = [];
 

@@ -1,12 +1,4 @@
-/**
- * Define the JSON envelope for provider-agnostic tool calls.
- *
- * Details: tools are requested by name with JSON arguments; the runtime validates
- * and executes them before continuing the conversation.
- *
- * Side effects: none.
- * Error behavior: none.
- */
+/** Parse and validate structured tool-call envelopes emitted by the model. */
 export interface ToolCallEnvelope {
   type: 'tool_calls';
   calls: Array<{
@@ -15,15 +7,7 @@ export interface ToolCallEnvelope {
   }>;
 }
 
-/**
- * Provide the retry prompt for invalid tool-call JSON.
- *
- * Details: instructs the LLM to return only a tool envelope or a plain text
- * answer when tools are not needed.
- *
- * Side effects: none.
- * Error behavior: none.
- */
+/** Provide deterministic retry guidance when model output is invalid JSON. */
 export const RETRY_PROMPT = `Your previous response was not valid JSON. Output ONLY valid JSON matching the exact schema:
 {
   "type": "tool_calls",
@@ -31,14 +15,6 @@ export const RETRY_PROMPT = `Your previous response was not valid JSON. Output O
 }
 OR respond with a plain text answer if you don't need to use tools.`;
 
-/**
- * Strip markdown code fences from an LLM response.
- *
- * Details: unwraps ``` or ```json blocks so JSON parsing can proceed.
- *
- * Side effects: none.
- * Error behavior: none.
- */
 function stripCodeFences(text: string): string {
   const fencePattern = /^```(?:json)?\s*\n?([\s\S]*?)\n?```$/;
   const match = text.trim().match(fencePattern);
@@ -46,12 +22,10 @@ function stripCodeFences(text: string): string {
 }
 
 /**
- * Check whether text plausibly contains JSON.
+ * Detect whether a response is likely intended as JSON tool output.
  *
- * Details: used to decide whether to trigger a deterministic retry prompt.
- *
- * Side effects: none.
- * Error behavior: none.
+ * @param text - Raw model output.
+ * @returns True when shape markers suggest JSON content.
  */
 export function looksLikeJson(text: string): boolean {
   const trimmed = text.trim();
@@ -62,12 +36,13 @@ export function looksLikeJson(text: string): boolean {
 }
 
 /**
- * Parse a tool call envelope from an LLM response.
+ * Parse a model response into a validated tool-call envelope.
  *
- * Details: validates the expected shape before returning the parsed envelope.
+ * @param text - Raw model output, optionally fenced in markdown code blocks.
+ * @returns Parsed envelope when valid, otherwise null.
  *
- * Side effects: none.
- * Error behavior: returns null on parse or validation failure.
+ * Error behavior:
+ * - JSON parse and shape errors are swallowed and mapped to null.
  */
 export function parseToolCallEnvelope(text: string): ToolCallEnvelope | null {
   try {
