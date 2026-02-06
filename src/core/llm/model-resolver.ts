@@ -1,10 +1,13 @@
 import { LLMChatMessage } from './llm-types';
 import { getDefaultModelId } from './model-catalog';
 
+/**
+ * Inputs available when selecting an LLM model for a request.
+ */
 type ResolveModelParams = {
   guildId: string | null;
   messages: LLMChatMessage[];
-  route?: string; // Add route parameter
+  route?: string;
   featureFlags?: {
     tools?: boolean;
     search?: boolean;
@@ -15,15 +18,13 @@ type ResolveModelParams = {
   };
 };
 
+/**
+ * Resolves the model id used for a chat request.
+ *
+ * @param _params Request metadata and message context for routing decisions.
+ * @returns The model identifier to send to the configured LLM provider.
+ */
 export async function resolveModelForRequest(params: ResolveModelParams): Promise<string> {
-  // If the route is explicitly 'search', use the requested perplexity-reasoning model
-  // REVERTED for SAG pipeline: The main model handles the synthesis, Perplexity is called manually.
-  /*
-  if (params.route === 'search') {
-    return 'perplexity-reasoning';
-  }
-  */
-
-
+  void params;
   return getDefaultModelId();
 }
