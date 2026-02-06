@@ -3,12 +3,15 @@ import { z } from 'zod';
 
 dotenv.config();
 
-function isPrivateOrLocalHostname(hostname: string): boolean {
+export function isPrivateOrLocalHostname(hostname: string): boolean {
   const normalized = hostname.toLowerCase();
+  const unwrappedIpv6 = normalized.replace(/^\[/, '').replace(/\]$/, '');
+
   return (
     normalized === 'localhost' ||
-    normalized === '127.0.0.1' ||
-    normalized === '::1' ||
+    normalized.startsWith('127.') ||
+    unwrappedIpv6 === '::1' ||
+    unwrappedIpv6.startsWith('::ffff:127.') ||
     normalized.startsWith('10.') ||
     normalized.startsWith('192.168.') ||
     /^172\.(1[6-9]|2\d|3[0-1])\./.test(normalized)
