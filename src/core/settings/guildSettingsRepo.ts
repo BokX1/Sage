@@ -5,7 +5,23 @@ export async function getGuildApiKey(guildId: string): Promise<string | undefine
   const settings = await prisma.guildSettings.findUnique({
     where: { guildId },
   });
-  return settings?.pollinationsApiKey ? decryptSecret(settings.pollinationsApiKey) : undefined;
+
+  const raw = settings?.pollinationsApiKey;
+  if (!raw) {
+    return undefined;
+  }
+
+  if (raw.startsWith('enc:v1:')) {
+    return decryptSecret(raw);
+  }
+
+  // Legacy compatibility: migrate plaintext values to encrypted-at-rest on first read.
+  await prisma.guildSettings.update({
+    where: { guildId },
+    data: { pollinationsApiKey: encryptSecret(raw) },
+  });
+
+  return raw;
 }
 
 export async function upsertGuildApiKey(guildId: string, apiKey: string | null): Promise<void> {
