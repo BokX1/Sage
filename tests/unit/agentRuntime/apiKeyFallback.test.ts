@@ -49,7 +49,7 @@ vi.mock('../../../src/core/orchestration/runExperts', () => ({
   runExperts: vi.fn().mockResolvedValue([]),
 }));
 vi.mock('../../../src/core/llm/modelResolver', () => ({
-  resolveModelForRequest: vi.fn().mockResolvedValue('gemini'),
+  resolveModelForRequest: vi.fn().mockResolvedValue('kimi'),
 }));
 vi.mock('../../../src/core/utils/logger');
 vi.mock('../../../src/core/agentRuntime/agent-trace-repo', () => ({

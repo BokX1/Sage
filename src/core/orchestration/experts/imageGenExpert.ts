@@ -210,8 +210,8 @@ async function refinePrompt(
 
         const response = await client.chat({
             messages,
-            model: 'gemini', // Explicitly use Gemini for reasoning/vision
-            temperature: 0.8, // High creativity
+            model: 'kimi', // Explicitly use Kimi for reasoning/vision
+            temperature: 1.2, // High creativity
             maxTokens: 1000,
             apiKey,
         });

@@ -94,7 +94,7 @@ Yes — Sage is free and open source. It uses [Pollinations.ai](https://pollinat
 Sage uses a multi-model pipeline:
 
 - **Router:** `gemini-fast` (Pollinations) for intent classification and expert selection.
-- **Chat:** `gemini` by default (configurable via `CHAT_MODEL`).
+- **Chat:** `kimi` by default (configurable via `CHAT_MODEL`).
 - **Analysis:** `deepseek` for user profile synthesis (configurable via `PROFILE_CHAT_MODEL`).
 - **Summaries:** `openai-large` for rolling channel summaries (configurable via `SUMMARY_MODEL`).
 - **Formatting:** `qwen-coder` for structured JSON output (configurable via `FORMATTER_MODEL`).

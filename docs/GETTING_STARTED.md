@@ -176,7 +176,7 @@ The wizard will ask for:
 **Non-interactive option (CI/automation):**
 
 ```bash
-npm run onboard --   --discord-token "YOUR_TOKEN"   --discord-app-id "YOUR_APP_ID"   --database-url "postgresql://..."   --api-key "YOUR_POLLINATIONS_KEY"   --model gemini   --yes   --non-interactive
+npm run onboard --   --discord-token "YOUR_TOKEN"   --discord-app-id "YOUR_APP_ID"   --database-url "postgresql://..."   --api-key "YOUR_POLLINATIONS_KEY"   --model kimi   --yes   --non-interactive
 ```
 
 > ℹ️ `--api-key` is optional. If you skip it, set a server key later with `/sage key set`.

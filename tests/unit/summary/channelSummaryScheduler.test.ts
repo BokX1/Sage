@@ -21,7 +21,7 @@ vi.mock('../../../src/core/config/legacy-config-adapter', () => ({
     llmProvider: 'pollinations',
     pollinationsBaseUrl: '',
     pollinationsApiKey: undefined,
-    pollinationsModel: 'gemini',
+    pollinationsModel: 'kimi',
   },
 }));
 

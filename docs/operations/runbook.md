@@ -261,7 +261,7 @@ CONTEXT_TRANSCRIPT_MAX_MESSAGES=10
 
 ### Speed up responses
 
-- Use a faster model: `CHAT_MODEL=gemini`
+- Use a faster model: `CHAT_MODEL=kimi`
 - Set an API key for higher rate limits
 - Reduce context sizes (see above)
 

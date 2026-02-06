@@ -239,7 +239,7 @@ RAW_MESSAGE_TTL_DAYS=1                     # Reduce from 3
 
 | Factor | Optimization |
 | :--- | :--- |
-| Model | Use a faster model: `CHAT_MODEL=gemini` |
+| Model | Use a faster model: `CHAT_MODEL=kimi` |
 | Context | Reduce `CONTEXT_MAX_INPUT_TOKENS` |
 | Network | Check Pollinations API status |
 

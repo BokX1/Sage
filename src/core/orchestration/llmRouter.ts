@@ -65,6 +65,7 @@ Your job is to route the user's request to the correct internal module based on 
 
 4. **Default Rule**:
    - If the request is a general question, greeting, or specific codebase question, route to \`qa\`.
+   - **IMPORTANT**: If the user asks to "search", "google", "check online", or "find internet results", route to \`qa\` (as it has search tools).
    - **NEVER** invent new routes.
 
 ### OUTPUT FORMAT
@@ -230,7 +231,7 @@ function getDefaultTemperature(route: RouteKind): number {
         case 'social_graph': return 0.5;
         case 'memory': return 0.6;
         case 'admin': return 0.4;
-        case 'qa': return 0.8;
+        case 'qa': return 1.2;
         default: return 0.8;
     }
 }

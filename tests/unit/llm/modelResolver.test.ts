@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { resolveModelForRequest } from '../../../src/core/llm/model-resolver';
 
 vi.mock('../../../src/core/llm/model-catalog', () => ({
-  getDefaultModelId: () => 'gemini',
+  getDefaultModelId: () => 'kimi',
 }));
 
 describe('resolveModelForRequest', () => {
@@ -16,7 +16,7 @@ describe('resolveModelForRequest', () => {
       messages: [{ role: 'user', content: 'hello' }],
     });
 
-    expect(model).toBe('gemini');
+    expect(model).toBe('kimi');
   });
 
   it('returns the default model for vision requests', async () => {
@@ -30,6 +30,6 @@ describe('resolveModelForRequest', () => {
       ],
     });
 
-    expect(model).toBe('gemini');
+    expect(model).toBe('kimi');
   });
 });

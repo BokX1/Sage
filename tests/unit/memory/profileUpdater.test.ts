@@ -16,8 +16,8 @@ vi.mock('../../../src/core/llm', () => ({
 vi.mock('../../../src/core/config/legacy-config-adapter', () => ({
   config: {
     llmProvider: 'pollinations',
-    profileProvider: '',
-    profilePollinationsModel: 'gemini',
+    profileChatModel: 'deepseek', // Different for separation testing
+    pollinationsModel: 'kimi',
   },
 }));
 

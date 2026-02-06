@@ -32,7 +32,7 @@ const BASE_LIMITS: ModelBudgetConfig = {
 };
 
 const BUILTIN_MODEL_OVERRIDES: Record<string, Partial<ModelBudgetConfig>> = {
-  gemini: {
+  kimi: {
     visionEnabled: true,
   },
   deepseek: {

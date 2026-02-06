@@ -36,7 +36,7 @@ describe('modelCatalog', () => {
     describe('helpers', () => {
         it('refreshes catalog when model is missing and refreshIfMissing is true', async () => {
             const baseCatalog: Record<string, ModelInfo> = {
-                gemini: { id: 'gemini', caps: {} },
+                kimi: { id: 'kimi', caps: {} },
             };
             const refreshedCatalog: Record<string, ModelInfo> = {
                 ...baseCatalog,
@@ -55,13 +55,13 @@ describe('modelCatalog', () => {
 
         it('suggests close model matches', () => {
             const catalog: Record<string, ModelInfo> = {
-                gemini: { id: 'gemini', caps: {} },
+                kimi: { id: 'kimi', caps: {} },
                 deepseek: { id: 'deepseek', caps: {} },
                 'qwen-coder': { id: 'qwen-coder', caps: {} },
             };
 
-            const suggestions = suggestModelIds('gemni', catalog);
-            expect(suggestions).toContain('gemini');
+            const suggestions = suggestModelIds('kimi', catalog);
+            expect(suggestions).toContain('kimi');
         });
     });
 });

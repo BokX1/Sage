@@ -27,9 +27,9 @@ type CatalogState = {
   source: 'runtime' | 'fallback';
 };
 
-const normalizedDefaultModel = (config.chatModel || 'gemini').trim().toLowerCase();
+const normalizedDefaultModel = (config.chatModel || 'kimi').trim().toLowerCase();
 
-export const defaultModelId = normalizedDefaultModel || 'gemini';
+export const defaultModelId = normalizedDefaultModel || 'kimi';
 
 let catalogCache: Record<string, ModelInfo> | null = null;
 let catalogState: CatalogState = { source: 'fallback', lastError: null };

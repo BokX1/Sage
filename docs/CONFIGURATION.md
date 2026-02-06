@@ -59,7 +59,7 @@ Sage uses specialized models for different tasks.
 | `LLM_PROVIDER` | AI provider | `pollinations` |
 | `LLM_BASE_URL` | API endpoint | `https://gen.pollinations.ai/v1` |
 | `LLM_IMAGE_BASE_URL` | Image generation endpoint | `https://gen.pollinations.ai` |
-| `CHAT_MODEL` | Primary chat model (use a vision-capable model like `gemini` for image support) | `gemini` |
+| `CHAT_MODEL` | Primary chat model (use a vision-capable model like `kimi` for image support) | `kimi` |
 | `LLM_API_KEY` | Global LLM key. Optional fallback (useful for self-hosting). We recommend **BYOP** (server-wide keys) for communities. | *(empty)* |
 
 ### Specialized System Models

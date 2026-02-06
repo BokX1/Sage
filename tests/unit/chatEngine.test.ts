@@ -82,7 +82,7 @@ vi.mock('../../src/core/orchestration/runExperts', () => ({
 }));
 
 vi.mock('../../src/core/llm/model-resolver', () => ({
-  resolveModelForRequest: vi.fn().mockResolvedValue('gemini'),
+  resolveModelForRequest: vi.fn().mockResolvedValue('kimi'),
 }));
 
 import { generateChatReply } from '../../src/core/chat-engine';
