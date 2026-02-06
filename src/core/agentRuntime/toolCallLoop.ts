@@ -25,6 +25,19 @@ const DEFAULT_CONFIG: Required<ToolCallLoopConfig> = {
 
 type ToolErrorType = 'timeout' | 'not_found' | 'rate_limited' | 'validation' | 'unknown';
 
+function assertPositiveInteger(value: number, field: keyof Required<ToolCallLoopConfig>): void {
+  if (!Number.isInteger(value) || value < 1) {
+    throw new RangeError(`${field} must be a positive integer`);
+  }
+}
+
+function getValidatedConfig(config: Required<ToolCallLoopConfig>): Required<ToolCallLoopConfig> {
+  assertPositiveInteger(config.maxRounds, 'maxRounds');
+  assertPositiveInteger(config.maxCallsPerRound, 'maxCallsPerRound');
+  assertPositiveInteger(config.toolTimeoutMs, 'toolTimeoutMs');
+  return config;
+}
+
 
 function classifyErrorType(error: string): ToolErrorType {
   const lowerError = error.toLowerCase();
@@ -129,7 +142,7 @@ export interface ToolCallLoopResult {
  */
 export async function runToolCallLoop(params: ToolCallLoopParams): Promise<ToolCallLoopResult> {
   const { client, registry, ctx, model, apiKey } = params;
-  const config = { ...DEFAULT_CONFIG, ...params.config };
+  const config = getValidatedConfig({ ...DEFAULT_CONFIG, ...params.config });
 
   const messages = [...params.messages];
   let roundsCompleted = 0;

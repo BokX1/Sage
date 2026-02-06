@@ -15,6 +15,43 @@ vi.mock('../../../src/core/utils/logger', () => ({
 }));
 
 describe('toolCallLoop', () => {
+
+  describe('config validation', () => {
+    it('throws when maxRounds is invalid', async () => {
+      await expect(
+        runToolCallLoop({
+          client: mockClient,
+          messages: [{ role: 'user', content: 'Hi' }],
+          registry,
+          ctx: testCtx,
+          config: { maxRounds: 0 },
+        }),
+      ).rejects.toThrow('maxRounds must be a positive integer');
+    });
+
+    it('throws when maxCallsPerRound or toolTimeoutMs are invalid', async () => {
+      await expect(
+        runToolCallLoop({
+          client: mockClient,
+          messages: [{ role: 'user', content: 'Hi' }],
+          registry,
+          ctx: testCtx,
+          config: { maxCallsPerRound: -1 },
+        }),
+      ).rejects.toThrow('maxCallsPerRound must be a positive integer');
+
+      await expect(
+        runToolCallLoop({
+          client: mockClient,
+          messages: [{ role: 'user', content: 'Hi' }],
+          registry,
+          ctx: testCtx,
+          config: { toolTimeoutMs: Number.NaN },
+        }),
+      ).rejects.toThrow('toolTimeoutMs must be a positive integer');
+    });
+  });
+
   let registry: ToolRegistry;
   let mockClient: LLMClient;
   let mockChat: ReturnType<typeof vi.fn<[LLMRequest], Promise<LLMResponse>>>;

@@ -1,6 +1,14 @@
 import { AppError } from '../errors/app-error';
 
+function assertPositiveInteger(value: number, field: string): void {
+  if (!Number.isInteger(value) || value < 1) {
+    throw new RangeError(`${field} must be a positive integer`);
+  }
+}
+
 export async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, operation: string): Promise<T> {
+  assertPositiveInteger(timeoutMs, 'timeoutMs');
+
   let timeoutId: NodeJS.Timeout | undefined;
   try {
     return await Promise.race([
@@ -20,6 +28,11 @@ export async function retry<T>(
   operation: () => Promise<T>,
   opts: { retries: number; baseDelayMs: number; operationName: string },
 ): Promise<T> {
+  if (!Number.isInteger(opts.retries) || opts.retries < 0) {
+    throw new RangeError('retries must be a non-negative integer');
+  }
+  assertPositiveInteger(opts.baseDelayMs, 'baseDelayMs');
+
   let lastError: unknown;
   for (let attempt = 0; attempt <= opts.retries; attempt++) {
     try {

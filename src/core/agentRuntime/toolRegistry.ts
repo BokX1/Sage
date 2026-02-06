@@ -115,7 +115,23 @@ export class ToolRegistry {
       };
     }
 
-    const argsJson = JSON.stringify(args);
+    let argsJson: string | undefined;
+    try {
+      argsJson = JSON.stringify(args);
+    } catch {
+      return {
+        success: false,
+        error: `Tool arguments for "${name}" must be JSON-serializable`,
+      };
+    }
+
+    if (typeof argsJson !== 'string') {
+      return {
+        success: false,
+        error: `Tool arguments for "${name}" must be JSON-serializable`,
+      };
+    }
+
     if (argsJson.length > MAX_ARGS_SIZE) {
       return {
         success: false,

@@ -1,4 +1,8 @@
 export function smartSplit(text: string, maxLength = 2000): string[] {
+  if (!Number.isInteger(maxLength) || maxLength < 1) {
+    throw new RangeError('maxLength must be a positive integer');
+  }
+
   if (text.length <= maxLength) return [text];
 
   const parts: string[] = [];

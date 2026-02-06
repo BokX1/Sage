@@ -11,6 +11,10 @@
  * @returns Function that enforces the concurrency limit for tasks.
  */
 export function limitConcurrency(concurrency: number) {
+    if (!Number.isInteger(concurrency) || concurrency < 1) {
+        throw new RangeError('concurrency must be a positive integer');
+    }
+
     const queue: (() => void)[] = [];
     let activeCount = 0;
 
