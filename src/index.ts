@@ -36,6 +36,7 @@ async function main() {
   const { registerGuildCreateHandler } = await import('./bot/handlers/guildCreate');
   const { globalToolRegistry } = await import('./core/agentRuntime/toolRegistry');
   const { joinVoiceTool, leaveVoiceTool } = await import('./core/agentRuntime/voice-tools');
+  const { registerShutdownHooks } = await import('./core/runtime/shutdown');
 
   globalToolRegistry.register(joinVoiceTool);
   globalToolRegistry.register(leaveVoiceTool);
@@ -46,6 +47,7 @@ async function main() {
   registerReadyHandler(client);
   registerGuildCreateHandler(client);
   initChannelSummaryScheduler();
+  registerShutdownHooks({ client });
 
   await client.login(config.DISCORD_TOKEN);
 }
