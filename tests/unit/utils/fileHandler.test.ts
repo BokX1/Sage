@@ -11,7 +11,7 @@ describe('fetchAttachmentText', () => {
     const mockFetch = vi.fn();
     vi.stubGlobal('fetch', mockFetch);
 
-    const result = await fetchAttachmentText('https://example.com/file.bin', 'file.bin', {
+    const result = await fetchAttachmentText('https://cdn.discordapp.com/file.bin', 'file.bin', {
       maxBytes: 1000,
     });
 
@@ -27,7 +27,7 @@ describe('fetchAttachmentText', () => {
     const mockFetch = vi.fn().mockResolvedValue(response);
     vi.stubGlobal('fetch', mockFetch);
 
-    const result = await fetchAttachmentText('https://example.com/file.txt', 'file.txt', {
+    const result = await fetchAttachmentText('https://cdn.discordapp.com/file.txt', 'file.txt', {
       maxBytes: 512,
     });
 
@@ -42,7 +42,7 @@ describe('fetchAttachmentText', () => {
     const mockFetch = vi.fn().mockResolvedValue(response);
     vi.stubGlobal('fetch', mockFetch);
 
-    const result = await fetchAttachmentText('https://example.com/file.txt', 'file.txt', {
+    const result = await fetchAttachmentText('https://cdn.discordapp.com/file.txt', 'file.txt', {
       maxBytes: 1024,
       maxChars: 50,
       truncateStrategy: 'head',
@@ -62,7 +62,7 @@ describe('fetchAttachmentText', () => {
     const mockFetch = vi.fn().mockResolvedValue(response);
     vi.stubGlobal('fetch', mockFetch);
 
-    const result = await fetchAttachmentText('https://example.com/file.md', 'file.md', {
+    const result = await fetchAttachmentText('https://cdn.discordapp.com/file.md', 'file.md', {
       maxBytes: 1024,
     });
 
@@ -76,7 +76,7 @@ describe('fetchAttachmentText', () => {
     const mockFetch = vi.fn();
     vi.stubGlobal('fetch', mockFetch);
 
-    const result = await fetchAttachmentText('https://example.com/file.txt', 'file.txt', {
+    const result = await fetchAttachmentText('https://cdn.discordapp.com/file.txt', 'file.txt', {
       maxBytes: Number.NaN,
     });
 

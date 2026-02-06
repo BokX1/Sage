@@ -1,9 +1,10 @@
 /* eslint-disable no-console */
+import { randomBytes } from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import readline from 'readline';
 
-const REQUIRED_KEYS = ['DISCORD_TOKEN', 'DISCORD_APP_ID', 'DATABASE_URL'] as const;
+const REQUIRED_KEYS = ['DISCORD_TOKEN', 'DISCORD_APP_ID', 'DATABASE_URL', 'SECRET_ENCRYPTION_KEY'] as const;
 const OPTIONAL_KEYS = ['CHAT_MODEL'] as const;
 
 const repoRoot = process.cwd();
@@ -95,6 +96,7 @@ type CliArgs = {
   databaseUrl?: string;
   apiKey?: string;
   model?: string;
+  secretEncryptionKey?: string;
 };
 
 type PromptFns = {
@@ -134,6 +136,11 @@ function parseArgs(argv: string[]): CliArgs {
     } else if (arg === '--api-key') {
       args.apiKey = argv[i + 1];
       i += 1;
+    } else if (arg.startsWith('--secret-encryption-key=')) {
+      args.secretEncryptionKey = arg.split('=')[1];
+    } else if (arg === '--secret-encryption-key') {
+      args.secretEncryptionKey = argv[i + 1];
+      i += 1;
     } else if (arg.startsWith('--model=')) {
       args.model = arg.split('=')[1];
     } else if (arg === '--model') {
@@ -148,7 +155,7 @@ function parseArgs(argv: string[]): CliArgs {
 }
 
 function printHelp() {
-  console.log(`Sage Onboarding Wizard\n\nUsage:\n  npm run onboard -- [options]\n\nOptions:\n  --discord-token <token>   Discord bot token\n  --discord-app-id <id>     Discord application ID\n  --database-url <url>      PostgreSQL connection string\n  --api-key <key>           Pollinations API key (optional global key)\n  --model <id>              Default Pollinations model ID\n  --yes                     Overwrite existing values without prompting\n  --non-interactive         Fail if required values are missing\n  -h, --help                Show this help\n`);
+  console.log(`Sage Onboarding Wizard\n\nUsage:\n  npm run onboard -- [options]\n\nOptions:\n  --discord-token <token>   Discord bot token\n  --discord-app-id <id>     Discord application ID\n  --database-url <url>      PostgreSQL connection string\n  --api-key <key>           Pollinations API key (optional global key)\n  --model <id>              Default Pollinations model ID\n  --secret-encryption-key <hex>  64-hex key for encrypting stored secrets\n  --yes                     Overwrite existing values without prompting\n  --non-interactive         Fail if required values are missing\n  -h, --help                Show this help\n`);
 }
 
 function createPrompts(enabled: boolean): PromptFns {
@@ -270,6 +277,22 @@ const parseEnv = (content: string) => {
 
 const parseEnvExampleLines = (content: string) => content.split(/\r?\n/);
 
+const isValidEncryptionKey = (value: string): boolean => /^[0-9a-fA-F]{64}$/.test(value);
+
+const resolveComposeValue = (value: string): string => {
+  const trimmed = value.trim();
+  const interpolation = trimmed.match(/^\$\{([A-Z0-9_]+)(?::-([^}]*))?\}$/);
+  if (!interpolation) {
+    return trimmed;
+  }
+
+  const varName = interpolation[1];
+  const fallback = interpolation[2] ?? '';
+  return process.env[varName] || fallback;
+};
+
+const generateEncryptionKey = (): string => randomBytes(32).toString('hex');
+
 const getDockerComposeDefaults = () => {
   const composePath = fs.existsSync(dockerComposePath)
     ? dockerComposePath
@@ -282,7 +305,8 @@ const getDockerComposeDefaults = () => {
   }
   const content = fs.readFileSync(composePath, 'utf8');
   const user = content.match(/POSTGRES_USER:\s*([^\s]+)/)?.[1] ?? 'postgres';
-  const password = content.match(/POSTGRES_PASSWORD:\s*([^\s]+)/)?.[1] ?? 'postgres';
+  const rawPassword = content.match(/POSTGRES_PASSWORD:\s*([^\s]+)/)?.[1] ?? 'postgres';
+  const password = resolveComposeValue(stripQuotes(rawPassword));
   const db = content.match(/POSTGRES_DB:\s*([^\s]+)/)?.[1] ?? 'sage';
   const port =
     content.match(/-\s*["']?(\d+):\d+["']?/)?.[1] ??
@@ -370,13 +394,28 @@ const promptDatabaseUrl = async (prompts: PromptFns) => {
 };
 
 const writeEnvFile = (output: string) => {
-  const tempPath = `${envPath}.tmp`;
-  fs.writeFileSync(tempPath, output + '\n', { encoding: 'utf8', mode: 0o600 });
+  const tempDir = fs.mkdtempSync(path.join(repoRoot, '.env-write-'));
+  const tempPath = path.join(tempDir, '.env.tmp');
+  const fd = fs.openSync(tempPath, 'wx', 0o600);
+
+  try {
+    fs.writeFileSync(fd, `${output}\n`, { encoding: 'utf8' });
+  } finally {
+    fs.closeSync(fd);
+  }
+
   fs.renameSync(tempPath, envPath);
+
   try {
     fs.chmodSync(envPath, 0o600);
   } catch {
     // Best-effort on platforms that support chmod.
+  }
+
+  try {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  } catch {
+    // Best-effort cleanup.
   }
 };
 
@@ -446,6 +485,13 @@ async function main() {
       values.set('LLM_API_KEY', args.apiKey);
       forcedKeys.add('LLM_API_KEY');
     }
+    if (args.secretEncryptionKey) {
+      if (!isValidEncryptionKey(args.secretEncryptionKey)) {
+        throw new Error('SECRET_ENCRYPTION_KEY must be exactly 64 hex characters.');
+      }
+      values.set('SECRET_ENCRYPTION_KEY', args.secretEncryptionKey);
+      forcedKeys.add('SECRET_ENCRYPTION_KEY');
+    }
 
     for (const key of REQUIRED_KEYS) {
       const existingValue = values.get(key);
@@ -462,6 +508,9 @@ async function main() {
         if (!existingValue) {
           throw new Error(`${key} is required in non-interactive mode.`);
         }
+        if (key === 'SECRET_ENCRYPTION_KEY' && !isValidEncryptionKey(existingValue)) {
+          throw new Error('SECRET_ENCRYPTION_KEY must be exactly 64 hex characters.');
+        }
         continue;
       }
 
@@ -474,6 +523,16 @@ async function main() {
       } else if (key === 'DISCORD_APP_ID') {
         const appId = args.discordAppId ?? (await promptRequired('DISCORD_APP_ID', prompts));
         values.set(key, appId);
+      } else if (key === 'SECRET_ENCRYPTION_KEY') {
+        const provided = args.secretEncryptionKey?.trim();
+        if (provided) {
+          if (!isValidEncryptionKey(provided)) {
+            throw new Error('SECRET_ENCRYPTION_KEY must be exactly 64 hex characters.');
+          }
+          values.set(key, provided);
+        } else {
+          values.set(key, generateEncryptionKey());
+        }
       }
     }
 
@@ -517,6 +576,7 @@ async function main() {
       DATABASE_URL: values.get('DATABASE_URL'),
       LLM_API_KEY: values.get('LLM_API_KEY'),
       CHAT_MODEL: values.get('CHAT_MODEL'),
+      SECRET_ENCRYPTION_KEY: values.get('SECRET_ENCRYPTION_KEY'),
     };
 
     for (const [key, value] of Object.entries(requiredEnv)) {

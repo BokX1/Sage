@@ -39,6 +39,34 @@ const ALLOWED_EXTENSIONS = new Set([
   'prisma',
 ]);
 
+const ALLOWED_ATTACHMENT_HOSTS = new Set([
+  'cdn.discordapp.com',
+  'media.discordapp.net',
+]);
+
+function isPrivateOrLocalHostname(hostname: string): boolean {
+  const normalized = hostname.toLowerCase();
+  return (
+    normalized === 'localhost' ||
+    normalized === '127.0.0.1' ||
+    normalized === '::1' ||
+    normalized.startsWith('10.') ||
+    normalized.startsWith('192.168.') ||
+    /^172\.(1[6-9]|2\d|3[0-1])\./.test(normalized)
+  );
+}
+
+function isAllowedAttachmentUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== 'https:') return false;
+    if (isPrivateOrLocalHostname(parsed.hostname)) return false;
+    return ALLOWED_ATTACHMENT_HOSTS.has(parsed.hostname.toLowerCase());
+  } catch {
+    return false;
+  }
+}
+
 function buildSystemMessage(message: string): string {
   return `[System: ${message}]`;
 }
@@ -140,6 +168,13 @@ export async function fetchAttachmentText(
 ): Promise<FetchAttachmentResult> {
   if (!url) {
     return { kind: 'skip', reason: buildSystemMessage('Attachment URL missing; skipped.') };
+  }
+
+  if (!isAllowedAttachmentUrl(url)) {
+    return {
+      kind: 'skip',
+      reason: buildSystemMessage('Attachment URL is not from an allowed host; skipped.'),
+    };
   }
 
   if (isFilenameSuspicious(filename)) {

@@ -62,9 +62,9 @@ export function registerInteractionCreateHandler() {
             `**Provider**: ${config.llmProvider}`,
           );
         } catch (e) {
+          logger.warn({ err: e }, 'LLM ping failed');
           await interaction.editReply(
             `❌ **LLM Connection Failed**.\n` +
-            `**Error**: ${(e as Error).message}\n` +
             `**Status**: Check server logs for details.`,
           );
         }

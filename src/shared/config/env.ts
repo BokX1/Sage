@@ -65,6 +65,7 @@ const testDefaults: Record<string, string> = {
   TIMEOUT_CHAT_MS: '300000',
   TIMEOUT_MEMORY_MS: '600000',
   LLM_DOCTOR_PING: '0',
+  SECRET_ENCRYPTION_KEY: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
 };
 
 const envSchema = z.object({
@@ -132,6 +133,7 @@ const envSchema = z.object({
   TIMEOUT_CHAT_MS: z.coerce.number().int().positive(),
   TIMEOUT_MEMORY_MS: z.coerce.number().int().positive(),
   LLM_DOCTOR_PING: z.enum(['0', '1']).default('0'),
+  SECRET_ENCRYPTION_KEY: z.string().regex(/^[0-9a-fA-F]{64}$/),
 });
 
 const mergedEnv = {
