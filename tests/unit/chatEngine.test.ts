@@ -176,21 +176,5 @@ describe('ChatEngine', () => {
     );
   });
 
-  it('should inject Google Search tool for Pollinations provider', async () => {
-    mockConfig.LLM_PROVIDER = 'pollinations';
-    mockChatFn.mockResolvedValue({ content: 'Result' });
 
-    await generateChatReply({
-      traceId: 'trace',
-      userId: 'u1',
-      channelId: 'c1',
-      guildId: null,
-      messageId: 'm1',
-      userText: 'Query',
-    });
-
-    const chatCall = mockChatFn.mock.calls[0][0];
-    expect(chatCall.tools).toHaveLength(1);
-    expect(chatCall.tools[0].function.name).toBe('google_search');
-  });
 });

@@ -69,7 +69,7 @@ function getAnalystClient(): { client: LLMClient; provider: LLMProviderName } {
   }
 
   const profileProvider = config.profileProvider?.trim() || '';
-  const profileChatModel = config.profileChatModel?.trim() || 'gemini';
+  const profileChatModel = config.profileChatModel?.trim() || 'deepseek';
 
   // Determine provider (use override or fallback to default)
   const provider = (profileProvider || 'pollinations') as LLMProviderName;

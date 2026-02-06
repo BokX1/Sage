@@ -14,7 +14,7 @@ import { config as appConfig } from '../../config';
 import { formatSummaryAsText } from '../summary/summarizeChannelWindow';
 import { getRecentMessages } from '../awareness/channelRingBuffer';
 import { buildTranscriptBlock } from '../awareness/transcriptBuilder';
-import { getLLMClient } from '../llm';
+import { getLLMClient, createLLMClient } from '../llm';
 import { LLMChatMessage, LLMMessageContent, ToolDefinition } from '../llm/llm-types';
 import { isLoggingEnabled } from '../settings/guildChannelSettings';
 import { logger } from '../utils/logger';
@@ -34,24 +34,8 @@ import { resolveModelForRequest } from '../llm/model-resolver';
 import { getGuildApiKey } from '../settings/guildSettingsRepo';
 import { getWelcomeMessage } from '../../bot/handlers/welcomeMessage';
 
-const GOOGLE_SEARCH_TOOL: ToolDefinition = {
-  type: 'function',
-  function: {
-    name: 'google_search',
-    description:
-      'Search the web for real-time information. Use this whenever the user asks for current facts, news, or topics you do not know.',
-    parameters: {
-      type: 'object',
-      properties: {
-        query: {
-          type: 'string',
-          description: 'The search query string.',
-        },
-      },
-      required: ['query'],
-    },
-  },
-};
+// GOOGLE_SEARCH_TOOL removed
+
 
 /** Execute one chat turn using routing, context, and tool follow-up metadata. */
 export interface RunChatTurnParams {
@@ -173,6 +157,7 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
     invokedBy,
     hasGuild: !!guildId,
     conversationHistory,
+    replyReferenceContent: typeof replyReferenceContent === 'string' ? replyReferenceContent : null,
     apiKey,
   });
 
@@ -335,16 +320,90 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
   }
 
   const nativeTools: ToolDefinition[] = [];
-  if (route.allowTools) {
-    nativeTools.push(GOOGLE_SEARCH_TOOL);
-  }
+
 
   let draftText = '';
   let toolsExecuted = false;
+
+  // --- SEARCH-AUGMENTED GENERATION (SAG) ---
+  if (route.kind === 'search') {
+    logger.info({ traceId, userText }, 'Agent Runtime: Executing Search-Augmented Generation');
+    try {
+      // 1. Search Query
+      // Use perplexity-reasoning to get raw facts/reasoning
+      const searchClient = createLLMClient('pollinations', { chatModel: 'perplexity-reasoning' });
+
+      // Build context-aware messages for search
+      // 1. Reply Context (if any)
+      const searchMessages: LLMChatMessage[] = [];
+      if (replyReferenceContent) {
+        const replyContent = typeof replyReferenceContent === 'string'
+          ? replyReferenceContent
+          : '[Media/Complex Content]';
+        searchMessages.push({
+          role: 'system',
+          content: `CONTEXT: The user is replying to the following message:\n"${replyContent}"`
+        });
+      }
+
+      // 2. Conversation History (Last 5 messages)
+      if (conversationHistory.length > 0) {
+        // Take last 5
+        const historySlice = conversationHistory.slice(-5);
+        searchMessages.push(...historySlice);
+      }
+
+      // 3. Current User Message
+      searchMessages.push({ role: 'user', content: userText });
+
+      const searchResponse = await searchClient.chat({
+        messages: searchMessages,
+        model: 'perplexity-reasoning',
+        apiKey: apiKey, // Pass API key if available/needed
+        timeout: 120_000, // Increased to 2 minutes for deep reasoning
+      });
+
+      const searchResultContent = searchResponse.content;
+
+      // 2. Inject Context for Synthesis
+      // Add a high-priority system block with the search results
+      // This ensures the main model is "aware" of the external info.
+      const searchContextBlock: LLMChatMessage = {
+        role: 'system',
+        content: `## SEARCH RESULTS (Real-time data from Perplexity)\n\n${searchResultContent}\n\n## SYSTEM INSTRUCTION\nYou have access to the above real-time search data. Use it to answer the user's question naturally, maintaining your persona. Do not mention "Perplexity" explicitly unless asked.`
+      };
+
+      // Insert it right after the main system prompt (index 1) or at the end of system blocks
+      // For simplicity, we stick it at the end of the message list logic below, 
+      // BUT `messages` is already built. We need to inject it into `messages`.
+
+      // Find the last system message to append to, or just insert as a new system message before the user message.
+      // `messages` order: [System, System?, ..., User]
+      // We insert before the last message (User).
+      const lastMsgIndex = messages.length - 1;
+      if (lastMsgIndex >= 0) {
+        messages.splice(lastMsgIndex, 0, searchContextBlock);
+      } else {
+        messages.push(searchContextBlock);
+      }
+
+    } catch (searchError) {
+      logger.error({ error: searchError, traceId }, 'SAG: Search step failed');
+      // Fallback: Continue to normal chat, maybe the model knows enough or will halluciante slightly less.
+      // Or inject a failure note?
+      messages.splice(messages.length - 1, 0, {
+        role: 'system',
+        content: '## SEARCH STATUS\nSearch attempt failed. Please answer based on internal knowledge only.'
+      });
+    }
+  }
+
+  // --- STANDARD CHAT COMPLETION ---
   try {
     const resolvedModel = await resolveModelForRequest({
       guildId,
       messages,
+      route: route.kind, // Pass the route decision (used for logging/metrics logic mainly now)
       featureFlags: {
         tools: nativeTools.length > 0,
       },

@@ -312,9 +312,17 @@ export async function handleMessageCreate(message: Message) {
         for (const chunk of restChunks) {
           await discordChannel.send(chunk);
         }
+        loggerWithTrace.info('Response sent');
+      } else {
+        loggerWithTrace.info(
+          {
+            intent: invocation.intent,
+            hasFiles: false,
+            replyLength: 0,
+          },
+          'No response sent (empty reply)',
+        );
       }
-
-      loggerWithTrace.info('Response sent');
     } catch (err) {
       loggerWithTrace.error(err, 'Error handling message');
 

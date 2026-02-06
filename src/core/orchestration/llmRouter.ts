@@ -16,7 +16,8 @@ export type RouteKind =
     | 'voice_analytics'
     | 'social_graph'
     | 'memory'
-    | 'image_generate';
+    | 'image_generate'
+    | 'search'; // New search route
 
 export interface RouteDecision {
     kind: RouteKind;
@@ -31,57 +32,40 @@ export interface LLMRouterParams {
     invokedBy: 'mention' | 'reply' | 'wakeword' | 'autopilot' | 'command';
     hasGuild: boolean;
     conversationHistory?: LLMChatMessage[];
+    replyReferenceContent?: string | null;
     apiKey?: string;
 }
 
-const ROUTER_SYSTEM_PROMPT = `You are the Intent Classifier for Sage, an advanced Discord AI.
-Your job is to route the user's request to the correct internal module based on their INTENT.
+const ROUTER_SYSTEM_PROMPT = `You are the Sage Intent Classifier.
+Route the user's request to the correct module based on INTENT.
 
-### AVAILABLE ROUTES
-
-| Route | Function | Keywords & Triggers |
+### ROUTES
+| Route | Function | Triggers |
 |:---|:---|:---|
-| **image_generate** | Create or edit images. | "draw", "paint", "generate", "make it look like", "visualize", "turn this into" |
-| **voice_analytics** | Voice channel stats/status. | "who is in voice", "vc stats", "time in voice", "voice activity" |
-| **social_graph** | Relationship & vibe checks. | "who are my friends", "relationship tier", "who knows whom", "vibe check" |
-| **memory** | User profile/memory ops. | "what do you know about me", "forget me", "my profile", "memories" |
-| **summarize** | Recap conversations. | "summarize", "tl;dr", "recap", "catch me up", "what happened" |
-| **admin** | Bot configuration/debug. | "configure", "settings", "debug" |
-| **qa** | Conversational fallback. | EVERYTHING ELSE. Chat, coding, questions, banter. |
+| **image_generate** | Create/edit images. | "draw", "paint", "generate", "visualize" |
+| **voice_analytics** | Voice stats. | "who is in voice", "vc stats", "time in voice" |
+| **social_graph** | Social/vibe checks. | "who are my friends", "relationship tier", "vibe check" |
+| **memory** | User memory/profile. | "what do you know about me", "forget me", "my profile" |
+| **summarize** | Conversation recap. | "summarize", "tl;dr", "recap", "catch me up" |
+| **search** | Real-time web search. | "search for", "google this", "price", "news", "today", "yesterday", "now", "release date", "check online", ANY URL/LINK |
+| **admin** | Config/debug. | "configure", "settings", "debug" |
+| **qa** | EVERYTHING ELSE. | Chat, coding, questions, banter. |
 
-### REASONING LOGIC (CHAIN OF THOUGHT)
+### LOGIC
+1. **Context**: Check history. "Make **it** pop" + last bot msg was image -> \`image_generate\`.
+2. **Fact vs. Concept**: "What is Python?" -> \`qa\` | "Python release date?" -> \`search\`.
+3. **Temporal Rule**: "today", "yesterday", "now" -> BIAS towards \`search\`.
+4. **URL Rule**: Input contains "http" or "www" -> \`search\` (browse/read).
+5. **Default**: If unsure, use \`qa\`. NEVER invent routes.
 
-1. **Analyze Context**: Look at the "Conversation History".
-   - If the user says "make **it** pop" and the last bot message was an **image**, intent is \`image_generate\`.
-   - If the user says "who is **that**" and the last message was about a user, intent is \`qa\` or \`memory\`.
-
-2. **Check Explicit Intent**:
-   - "Draw a cat" -> \`image_generate\`
-   - "Summarize this" -> \`summarize\`
-
-3. **Check Implicit Intent**:
-   - "Make me a pfp" -> \`image_generate\`
-   - "Review this code" -> \`qa\` (Programming/General)
-
-4. **Default Rule**:
-   - If the request is a general question, greeting, or specific codebase question, route to \`qa\`.
-   - **IMPORTANT**: If the user asks to "search", "google", "check online", or "find internet results", route to \`qa\` (as it has search tools).
-   - **NEVER** invent new routes.
-
-### OUTPUT FORMAT
-
-Return a SINGLE valid JSON object. No markdown.
-
+### OUTPUT (JSON)
 {
-  "reasoning": "Step-by-step logic explaining why this route was chosen.",
-  "route": "qa" | "image_generate" | "summarize" | ... ,
-  "experts": ["Memory", "Summarizer", ...],
-  "temperature": 0.0 - 1.0 (suggested temp for this task)
-}
+  "reasoning": "Concise logic.",
+  "route": "qa" | "search" | "image_generate" | ...,
+  "temperature": 0.0-1.0
+}`;
 
-**Valid Experts**: Summarizer, SocialGraph, Memory, VoiceAnalytics, ImageGenerator.
-**Note**: You essentially ALWAYS include "Memory" unless it's a pure deterministic command.`;
-
+// ... types and constants
 const DEFAULT_QA_ROUTE: RouteDecision = {
     kind: 'qa',
     experts: ['Memory'],
@@ -97,12 +81,9 @@ interface RouterLLMResponse {
     temperature?: number;
 }
 
-/**
- * LLM-based intent classifier.
- * Uses Gemini Flash Lite for low-cost, contextual routing.
- */
+
 export async function decideRoute(params: LLMRouterParams): Promise<RouteDecision> {
-    const { userText, invokedBy, hasGuild, conversationHistory, apiKey } = params;
+    const { userText, invokedBy, hasGuild, conversationHistory, replyReferenceContent, apiKey } = params;
 
     // Fast path: admin route for slash commands
     if (invokedBy === 'command' && hasGuild) {
@@ -123,19 +104,26 @@ export async function decideRoute(params: LLMRouterParams): Promise<RouteDecisio
             { role: 'system', content: ROUTER_SYSTEM_PROMPT },
         ];
 
-        // Add conversation history (last 7 messages for context)
+        // Add conversation history (last 20 messages for context)
         if (conversationHistory && conversationHistory.length > 0) {
-            const historySlice = conversationHistory.slice(-7);
+            const historySlice = conversationHistory.slice(-20);
             const historyText = historySlice
                 .map((m) => `${m.role}: ${typeof m.content === 'string' ? m.content : '[media]'}`)
                 .join('\n');
             messages.push({
                 role: 'user',
-                content: `## Conversation History (for context)\n${historyText}\n\n## Current Message\n${userText}`,
+                content: `## Conversation History (last 20)\n${historyText}`,
             });
-        } else {
-            messages.push({ role: 'user', content: userText });
         }
+
+        // Add reply context if available
+        let finalUserContent = userText;
+        if (replyReferenceContent) {
+            finalUserContent = `[User is Replying to: "${replyReferenceContent}"]\n\n${userText}`;
+        }
+
+        messages.push({ role: 'user', content: finalUserContent });
+
 
         const response = await client.chat({
             messages,
@@ -155,18 +143,28 @@ export async function decideRoute(params: LLMRouterParams): Promise<RouteDecisio
         }
 
         // Validate route kind
-        const validRoutes: RouteKind[] = ['summarize', 'qa', 'admin', 'voice_analytics', 'social_graph', 'memory', 'image_generate'];
+        const validRoutes: RouteKind[] = ['summarize', 'qa', 'admin', 'voice_analytics', 'social_graph', 'memory', 'image_generate', 'search'];
         const routeKind = validRoutes.includes(parsed.route as RouteKind)
             ? (parsed.route as RouteKind)
             : 'qa';
 
-        // Validate experts
-        const validExperts: ExpertName[] = ['Summarizer', 'SocialGraph', 'Memory', 'VoiceAnalytics', 'ImageGenerator'];
-        const experts = (parsed.experts || ['Memory'])
-            .filter((e): e is ExpertName => validExperts.includes(e as ExpertName));
+        // Deterministic Expert Selection (TS Logic)
+        const experts: ExpertName[] = ['Memory']; // Memory is ALWAYS included
 
-        if (experts.length === 0) {
-            experts.push('Memory');
+        switch (routeKind) {
+            case 'summarize':
+                experts.push('Summarizer');
+                break;
+            case 'voice_analytics':
+                experts.push('VoiceAnalytics');
+                break;
+            case 'social_graph':
+                experts.push('SocialGraph');
+                break;
+            case 'image_generate':
+                experts.push('ImageGenerator');
+                break;
+            // qa, search, memory, admin -> Memory is already added
         }
 
         // Determine allowTools based on route
@@ -179,7 +177,7 @@ export async function decideRoute(params: LLMRouterParams): Promise<RouteDecisio
 
         const decision: RouteDecision = {
             kind: routeKind,
-            experts,
+            experts: Array.from(new Set(experts)), // Dedupe just in case
             allowTools,
             temperature,
             reasoningText: parsed.reasoning || `LLM classified as ${routeKind}`,
@@ -231,6 +229,7 @@ function getDefaultTemperature(route: RouteKind): number {
         case 'social_graph': return 0.5;
         case 'memory': return 0.6;
         case 'admin': return 0.4;
+        case 'search': return 0.4; // Lower temperature for factual search
         case 'qa': return 1.2;
         default: return 0.8;
     }

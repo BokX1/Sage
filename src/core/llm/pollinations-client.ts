@@ -43,7 +43,7 @@ export class PollinationsClient implements LLMClient {
 
     this.config = {
       baseUrl,
-      model: (config.model || 'gemini').toLowerCase(),
+      model: (config.model || 'kimi').toLowerCase(),
       apiKey: config.apiKey,
       timeoutMs: config.timeoutMs || 180000,
       maxRetries: config.maxRetries ?? 2,
@@ -85,6 +85,66 @@ export class PollinationsClient implements LLMClient {
       visionEnabled: modelConfig.visionEnabled,
     });
 
+    // 1. Normalize messages to enforce strict alternation (S? -> U -> A -> U...)
+    // This fixes "400 Bad Request" from strict models like Perplexity when contextBuilder produces (U, U) or (A, U).
+    const normalizedMessages: LLMRequest['messages'] = [];
+
+    // 1a. Filter out empty content if necessary, but budgeter usually handles it.
+    // 1b. Merge adjacent same-role messages.
+    for (const msg of trimmed) {
+      if (normalizedMessages.length === 0) {
+        normalizedMessages.push(msg);
+        continue;
+      }
+
+      const prev = normalizedMessages[normalizedMessages.length - 1];
+
+      // If same role, merge content
+      if (prev.role === msg.role) {
+        // Simple text merge. If complex content (images), this strictly appends.
+        // For array content, we concatenate arrays.
+        if (Array.isArray(prev.content) && Array.isArray(msg.content)) {
+          prev.content = [...prev.content, ...msg.content];
+        } else if (typeof prev.content === 'string' && typeof msg.content === 'string') {
+          prev.content += '\n\n' + msg.content;
+        } else {
+          // Mixed types: convert to array structure if possible, or stringify.
+          // For simplicity in this fix, we generally handle text. 
+          // If one is string and other is array, normalize both to array?
+          // Sage mostly uses text or array-of-text/image.
+          // Let's force-convert to string (lossy for images) or handle array logic?
+          // Best effort:
+          const prevText = typeof prev.content === 'string' ? prev.content : JSON.stringify(prev.content);
+          const currText = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content);
+          prev.content = `${prevText}\n\n${currText}`;
+        }
+      } else {
+        normalizedMessages.push(msg);
+      }
+    }
+
+    // 1c. Ensure first non-system message is User
+    // Find first non-system index
+    let firstNonSystemIndex = -1;
+    for (let i = 0; i < normalizedMessages.length; i++) {
+      if (normalizedMessages[i].role !== 'system') {
+        firstNonSystemIndex = i;
+        break;
+      }
+    }
+
+    if (firstNonSystemIndex !== -1) {
+      const firstMsg = normalizedMessages[firstNonSystemIndex];
+      // If it starts with Assistant, prepend a dummy User message
+      if (firstMsg.role === 'assistant') {
+        normalizedMessages.splice(firstNonSystemIndex, 0, {
+          role: 'user',
+          content: '(Consulting memory/context...)'
+        });
+      }
+    }
+
+
     if (stats.droppedCount > 0 || stats.notes.length > 0) {
       logger.info(
         {
@@ -112,7 +172,7 @@ export class PollinationsClient implements LLMClient {
 
     const payload: PollinationsPayload = {
       model,
-      messages: trimmed,
+      messages: normalizedMessages,
       temperature: request.temperature ?? 0.7,
       max_tokens: request.maxTokens,
       response_format:
@@ -261,7 +321,29 @@ export class PollinationsClient implements LLMClient {
           usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number };
         };
         const message = data.choices?.[0]?.message;
-        const content = message?.content || '';
+        let content = message?.content || '';
+
+        // Handle native tool calls from OpenAI-compatible APIs
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const toolCalls = (message as any)?.tool_calls;
+
+        if (toolCalls && Array.isArray(toolCalls) && toolCalls.length > 0) {
+          logger.debug({ count: toolCalls.length }, '[Pollinations] Native tool calls detected, serializing to envelope');
+
+          const envelope = {
+            type: 'tool_calls',
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            calls: toolCalls.map((tc: any) => ({
+              name: tc.function.name,
+              args: JSON.parse(tc.function.arguments),
+            })),
+          };
+
+          // If tool calls are present, we MUST return strict JSON for the agentRuntime to parse.
+          // Any text content (thought chain) must be discarded because agentRuntime expects 
+          // either pure text OR a JSON envelope, not both.
+          content = JSON.stringify(envelope, null, 2);
+        }
         const audio = message?.audio;
 
         logger.debug({ usage: data.usage, hasAudio: !!audio }, '[Pollinations] Success');
