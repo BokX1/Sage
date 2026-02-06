@@ -63,6 +63,13 @@ You are an intent classification engine. Your ONLY job is to analyze the user's 
 
 ## CLASSIFICATION RULES
 
+### Rule 0: File/Code Attachments → qa
+If the user attached a file (code, text, document) or mentions analyzing/reviewing code:
+- File attachments with questions → \`qa\`
+- "review this code" → \`qa\`
+- "what does this file do" → \`qa\`
+- "help me with this script" → \`qa\`
+
 ### Rule 1: Explicit Trigger Words
 If the message contains EXPLICIT route keywords, use that route:
 - "draw me a cat" → \`image_generate\`
