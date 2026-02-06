@@ -27,7 +27,9 @@
     "doctor": "ts-node src/scripts/doctor.ts",
     "cert": "ts-node src/scripts/cert.ts",
     "prepack": "npm run build",
-    "prepare": "husky install"
+    "prepare": "husky install",
+    "typecheck": "tsc -p config/ci/tsconfig.json --noEmit",
+    "check": "npm run lint && npm run typecheck && npm run test"
   },
   "author": "",
   "license": "ISC",

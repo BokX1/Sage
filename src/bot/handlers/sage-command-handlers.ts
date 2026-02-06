@@ -179,7 +179,7 @@ export async function handleAdminStats(interaction: ChatInputCommandInteraction)
       `- **Uptime**: ${formatTime(uptime)}`,
       `- **Memory**: ${heapUsedMB} MB Heap / ${rssMB} MB RSS`,
       `- **Relationship Edges**: ${edgeCount}`,
-      `- **Environment**: ${process.env.NODE_ENV}`,
+      `- **Environment**: ${appConfig.NODE_ENV}`,
       `- **Version**: ${pkg.version}`,
     ];
 

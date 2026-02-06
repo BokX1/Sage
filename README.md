@@ -153,6 +153,7 @@ npm ci
 npm run onboard
 docker compose -f config/ci/docker-compose.yml up -d db
 npm run db:migrate
+npm run check
 npm run dev
 ```
 
@@ -162,6 +163,15 @@ When Sage starts, you should see:
 [info] Logged in as Sage#1234
 [info] Ready!
 ```
+
+
+### Quality gate
+
+```bash
+npm run check
+```
+
+`npm run check` runs lint + typecheck + tests and is the required pre-merge gate.
 
 ## 🗂️ Project Structure
 
