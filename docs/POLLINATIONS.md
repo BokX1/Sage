@@ -89,11 +89,11 @@ If that succeeds, Sage stores the key **scoped to the current Discord server**.
 When Sage needs a key, it resolves in this order:
 
 1. **Server key** (set via `/sage key set`)
-2. **Host-level fallback** (`POLLINATIONS_API_KEY` in `.env`)
+2. **Host-level fallback** (`LLM_API_KEY` in `.env`)
 3. If neither exists, Sage may run on a **shared quota** (feature-dependent)
 
 > [!IMPORTANT]
-> **Voice (TTS)** requires a key (server key or `POLLINATIONS_API_KEY`) because Sage uses `openai-audio` for TTS.
+> **Voice (TTS)** requires a key (server key or `LLM_API_KEY`) because Sage uses `openai-audio` for TTS.
 
 ---
 
@@ -103,14 +103,14 @@ Minimum Pollinations settings (see `.env.example` for the full list):
 
 ```env
 LLM_PROVIDER=pollinations
-POLLINATIONS_BASE_URL=https://gen.pollinations.ai/v1
-POLLINATIONS_MODEL=gemini
+LLM_BASE_URL=https://gen.pollinations.ai/v1
+CHAT_MODEL=gemini
 
 # Optional: Global fallback key (used if no BYOP key is set for the server)
-POLLINATIONS_API_KEY=
+LLM_API_KEY=
 ```
 
-### Recommended: keep `POLLINATIONS_BASE_URL` at the `/v1` root
+### Recommended: keep `LLM_BASE_URL` at the `/v1` root
 
 Sage will append `/chat/completions` internally. If you accidentally include `/chat/completions` in the base URL, Sage normalizes it, but keeping it clean avoids confusion.
 
@@ -120,10 +120,10 @@ These are **defaults** you can customize:
 
 ```env
 # Main chat model
-POLLINATIONS_MODEL=gemini
+CHAT_MODEL=gemini
 
 # Profile/memory updates
-PROFILE_POLLINATIONS_MODEL=deepseek
+PROFILE_CHAT_MODEL=deepseek
 
 # Channel summaries
 SUMMARY_MODEL=openai-large
@@ -224,7 +224,7 @@ This is why “make it more cyberpunk” works even without restating the full p
 Sage can speak in Discord voice channels when voice features are enabled.
 
 - TTS is generated via the OpenAI-compatible chat endpoint using model **`openai-audio`**
-- **A Pollinations key is required** (server BYOP key or `POLLINATIONS_API_KEY`), otherwise TTS is skipped
+- **A Pollinations key is required** (server BYOP key or `LLM_API_KEY`), otherwise TTS is skipped
 
 Operationally:
 
@@ -280,7 +280,7 @@ curl -L "https://gen.pollinations.ai/image/a%20cat%20wearing%20sunglasses?model=
 ### Voice/TTS does nothing
 
 - Ensure the bot is in a voice channel (`/join`)
-- Ensure a key is available (server key or `POLLINATIONS_API_KEY`)
+- Ensure a key is available (server key or `LLM_API_KEY`)
 
 ---
 

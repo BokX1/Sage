@@ -124,9 +124,9 @@ Git downloads Sage’s code.
 
 On the Bot page, enable:
 
-- ✅ **PRESENCE INTENT**
-- ✅ **SERVER MEMBERS INTENT**
 - ✅ **MESSAGE CONTENT INTENT**
+
+Also ensure the bot has permissions to read/send messages in target channels, and voice permissions if using voice features.
 
 Click **Save Changes**.
 
@@ -168,8 +168,8 @@ The wizard will ask for:
 | **DISCORD_TOKEN** | Bot token from Step 2.3 |
 | **DISCORD_APP_ID** | Application ID from Step 2.2 |
 | **DATABASE_URL** | Type `2` to use the Docker default |
-| **POLLINATIONS_API_KEY** | Optional global key (or set per server later via `/sage key set`) |
-| **POLLINATIONS_MODEL** | Choose a default chat model |
+| **LLM_API_KEY** | Optional global key (or set per server later via `/sage key set`) |
+| **CHAT_MODEL** | Choose a default chat model |
 
 > ✅ `npm run setup` is kept as a legacy alias for the onboarding wizard.
 
@@ -317,14 +317,14 @@ If Sage doesn’t respond:
 
 Edit `.env` to customize:
 
-- `WAKE_WORDS` — change what triggers Sage (default: `sage`)
+- `WAKE_WORDS_CSV` — change what triggers Sage (default: `sage`)
 - `AUTOPILOT_MODE` — set to `talkative` for unprompted responses
-- `ADMIN_USER_IDS` — enable admin commands for your Discord user
+- `ADMIN_USER_IDS_CSV` — enable admin commands for your Discord user
 
 ### Add Admin Access
 
 1. Enable Developer Mode in Discord → right-click yourself → **Copy ID**
-2. In `.env`, set: `ADMIN_USER_IDS=your_id_here`
+2. In `.env`, set: `ADMIN_USER_IDS_CSV=your_id_here`
 3. Restart Sage
 
 ---

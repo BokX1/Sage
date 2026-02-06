@@ -40,9 +40,9 @@ This document describes what Sage stores and how to control retention. Implement
 
 These settings control what Sage ingests and logs:
 
-- `LOGGING_ENABLED=false` disables message/voice ingestion entirely.
-- `LOGGING_MODE=allowlist` limits ingestion to channels listed in `LOGGING_ALLOWLIST_CHANNEL_IDS`.
-- `LOGGING_BLOCKLIST_CHANNEL_IDS` excludes specific channels.
+- `INGESTION_ENABLED=false` disables message/voice ingestion entirely.
+- `INGESTION_MODE=allowlist` limits ingestion to channels listed in `INGESTION_ALLOWLIST_CHANNEL_IDS_CSV`.
+- `INGESTION_BLOCKLIST_CHANNEL_IDS_CSV` excludes specific channels.
 
 ---
 

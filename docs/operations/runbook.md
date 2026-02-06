@@ -76,7 +76,7 @@ Before starting Sage, verify:
 
 | Variable | Recommended Value | Why |
 | :--- | :--- | :--- |
-| `LOGGING_ENABLED` | `true` | Enables memory features |
+| `INGESTION_ENABLED` | `true` | Enables memory features |
 | `TRACE_ENABLED` | `true` | Helps debug issues |
 | `AUTOPILOT_MODE` | `manual` | Predictable behavior |
 | `DEV_GUILD_ID` | Your server ID | Fast command registration (development) |
@@ -85,8 +85,8 @@ Before starting Sage, verify:
 
 | Variable | When to Use |
 | :--- | :--- |
-| `POLLINATIONS_API_KEY` | Optional global key (or use `/sage key set` per server) |
-| `ADMIN_USER_IDS` | To enable admin commands |
+| `LLM_API_KEY` | Optional global key (or use `/sage key set` per server) |
+| `ADMIN_USER_IDS_CSV` | To enable admin commands |
 | `LOG_LEVEL=debug` | When troubleshooting |
 
 See [Configuration Reference](../CONFIGURATION.md) for all options.
@@ -261,7 +261,7 @@ CONTEXT_TRANSCRIPT_MAX_MESSAGES=10
 
 ### Speed up responses
 
-- Use a faster model: `POLLINATIONS_MODEL=gemini`
+- Use a faster model: `CHAT_MODEL=gemini`
 - Set an API key for higher rate limits
 - Reduce context sizes (see above)
 
@@ -298,6 +298,6 @@ npm start
 - [ ] `NODE_ENV=production`
 - [ ] Remove `DEV_GUILD_ID` (or set to empty)
 - [ ] Set appropriate `LOG_LEVEL` (info or warn)
-- [ ] Configure admin access (`ADMIN_USER_IDS`)
+- [ ] Configure admin access (`ADMIN_USER_IDS_CSV`)
 - [ ] Secure database credentials
 - [ ] Set up a process manager (pm2) for auto-restart

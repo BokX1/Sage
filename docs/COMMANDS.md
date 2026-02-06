@@ -191,7 +191,7 @@ Sage will fall back to shared quota (if available).
 
 ## 👑 Admin Commands
 
-Restricted to users with admin permissions. Configure access via `ADMIN_USER_IDS` or `ADMIN_ROLE_IDS`.
+Restricted to users with admin permissions. Configure access via `ADMIN_USER_IDS_CSV` or `ADMIN_ROLE_IDS_CSV`.
 
 ### `/sage admin stats`
 
