@@ -15,7 +15,53 @@ describe('llmRouter', () => {
         vi.clearAllMocks();
     });
 
-    it('should bypass LLM and return qa route when hasAttachment is true', async () => {
+    it('should match keywords and call LLM for image generation with attachment', async () => {
+        // Mock LLM response for image generation
+        mockChat.mockResolvedValue({
+            content: JSON.stringify({
+                reasoning: 'User wants to edit image',
+                route: 'image_generate',
+                temperature: 0.9,
+            }),
+        });
+
+        const result = await decideRoute({
+            userText: 'make this image cyberpunk',
+            invokedBy: 'mention',
+            hasGuild: true,
+            hasAttachment: true,
+            apiKey: 'test-key',
+        });
+
+        // LLM should be called because "make" is a keyword
+        expect(mockChat).toHaveBeenCalled();
+        expect(result.kind).toBe('image_generate');
+    });
+
+    it('should match keywords and call LLM for summarization with attachment', async () => {
+        // Mock LLM response for summarization
+        mockChat.mockResolvedValue({
+            content: JSON.stringify({
+                reasoning: 'User wants summary',
+                route: 'summarize',
+                temperature: 0.3,
+            }),
+        });
+
+        const result = await decideRoute({
+            userText: 'summarize this document',
+            invokedBy: 'mention',
+            hasGuild: true,
+            hasAttachment: true,
+            apiKey: 'test-key',
+        });
+
+        // LLM should be called because "summarize" is a keyword
+        expect(mockChat).toHaveBeenCalled();
+        expect(result.kind).toBe('summarize');
+    });
+
+    it('should bypass LLM and force QA for attachments without specific keywords', async () => {
         const result = await decideRoute({
             userText: 'Look at this code',
             invokedBy: 'mention',
@@ -25,7 +71,7 @@ describe('llmRouter', () => {
         });
 
         expect(result.kind).toBe('qa');
-        expect(result.reasoningText).toContain('File attachment detected');
+        expect(result.reasoningText).toContain('no explicit expert keywords');
         // Verify LLM was NOT called
         expect(mockChat).not.toHaveBeenCalled();
     });

@@ -171,15 +171,30 @@ export async function decideRoute(params: LLMRouterParams): Promise<RouteDecisio
         };
     }
 
-    // Fast path: File attachments -> QA (Bypassing LLM to prevent hallucinations)
+    // Fast path: File attachments -> QA (Default)
+    // We strictly limit experts for attachments to prevent hallucinations (like voice_analytics),
+    // but allow specific intents if keywords are present.
     if (hasAttachment) {
-        return {
-            kind: 'qa',
-            experts: [], // QA route doesn't need specific experts usually, or maybe Memory?
-            allowTools: true,
-            temperature: 0.8,
-            reasoningText: 'File attachment detected - forcing QA route',
-        };
+        const text = userText.toLowerCase();
+
+        // Allow Image Generation if explicitly requested
+        if (/\b(draw|paint|generate|create|make|edit|visualize)\b/.test(text)) {
+            // Fall through to LLM for full classification (it might be "draw a graph based on this data" -> qa)
+        }
+        // Allow Summarization if explicitly requested
+        else if (/\b(summarize|summary|tldr|tl;dr|recap)\b/.test(text)) {
+            // Fall through to LLM
+        }
+        // Otherwise, FORCE QA to prevent hallucinations for "Look at this", "What is this", etc.
+        else {
+            return {
+                kind: 'qa',
+                experts: [],
+                allowTools: true,
+                temperature: 0.8,
+                reasoningText: 'File attachment detected with no explicit expert keywords - forcing QA route',
+            };
+        }
     }
 
     try {
