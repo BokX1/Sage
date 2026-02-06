@@ -36,9 +36,18 @@ export async function executeToolWithTimeout(
     'Tool invocation started',
   );
 
+  // Create AbortController for timeout cancellation support
+  const abortController = new AbortController();
+  const ctxWithSignal: ToolExecutionContext = {
+    ...ctx,
+    signal: abortController.signal,
+  };
+
   let timeoutHandle: NodeJS.Timeout | undefined;
   const timeoutPromise = new Promise<ToolResult>((resolve) => {
     timeoutHandle = setTimeout(() => {
+      // Abort the signal so tools can detect cancellation
+      abortController.abort();
       const timeoutError = new ToolTimeoutError(call.name, timeoutMs);
       resolve({
         name: call.name,
@@ -50,7 +59,7 @@ export async function executeToolWithTimeout(
     }, timeoutMs);
   });
 
-  const executionPromise = registry.executeValidated(call, ctx).then((result) => ({
+  const executionPromise = registry.executeValidated(call, ctxWithSignal).then((result) => ({
     name: call.name,
     success: result.success,
     result: result.success ? result.result : undefined,

@@ -1,6 +1,7 @@
 import { logger } from '../../core/utils/logger';
 import {
   findEdge,
+  findEdgesBatch,
   findEdgesForUser,
   findTopEdges,
   RelationshipEdge,
@@ -122,12 +123,23 @@ export async function updateFromMessage(params: {
   const { guildId, authorId, mentionedUserIds, replyToAuthorId, now = new Date() } = params;
   const nowMs = now.getTime();
 
-  try {
-    for (const mentionedUserId of mentionedUserIds) {
-      if (mentionedUserId === authorId) continue; // Skip self-mentions
+  // Filter out self-mentions
+  const validMentions = mentionedUserIds.filter((id) => id !== authorId);
 
+  try {
+    // Batch fetch all mention edges in a single query (fixes N+1)
+    const mentionPairs = validMentions.map((mentionedUserId) => {
       const { userA, userB } = normalizePair(authorId, mentionedUserId);
-      const existing = await findEdge({ guildId, userA, userB });
+      return { userA, userB };
+    });
+
+    const existingEdges = await findEdgesBatch({ guildId, pairs: mentionPairs });
+
+    // Process all mentions in parallel
+    const mentionPromises = validMentions.map(async (mentionedUserId) => {
+      const { userA, userB } = normalizePair(authorId, mentionedUserId);
+      const edgeKey = `${userA}:${userB}`;
+      const existing = existingEdges.get(edgeKey);
 
       let features: RelationshipFeatures;
       if (existing) {
@@ -154,7 +166,9 @@ export async function updateFromMessage(params: {
         featuresJson: features,
         manualOverride: existing?.manualOverride ?? null,
       });
-    }
+    });
+
+    await Promise.allSettled(mentionPromises);
 
     if (replyToAuthorId && replyToAuthorId !== authorId) {
       const { userA, userB } = normalizePair(authorId, replyToAuthorId);

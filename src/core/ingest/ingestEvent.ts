@@ -5,6 +5,7 @@ import { PrismaMessageStore } from '../awareness/prismaMessageStore';
 import { ChannelMessage } from '../awareness/awareness-types';
 import { isLoggingEnabled } from '../settings/guildChannelSettings';
 import { getChannelSummaryScheduler } from '../summary/channelSummaryScheduler';
+import { updateFromMessage } from '../relationships/relationshipGraph';
 
 /**
  * Message event captured from Discord.
@@ -97,7 +98,6 @@ export async function ingestEvent(event: Event): Promise<void> {
       // Best-effort: don't throw if this fails
       if (message.guildId) {
         try {
-          const { updateFromMessage } = await import('../relationships/relationshipGraph');
           await updateFromMessage({
             guildId: message.guildId,
             authorId: message.authorId,

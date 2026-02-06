@@ -35,7 +35,8 @@ export class CircuitBreaker {
 
     try {
       const result = await action();
-      if (this.state === CircuitState.HALF_OPEN) {
+      // Reset failures on any success to prevent accumulation across separate failure events
+      if (this.state === CircuitState.HALF_OPEN || this.failures > 0) {
         this.reset();
       }
       return result;

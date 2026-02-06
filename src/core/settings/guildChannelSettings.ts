@@ -16,6 +16,10 @@ function makeKey(guildId: string, channelId: string): string {
   return `${guildId}:${channelId}`;
 }
 
+// Cache parsed channel lists at module level to avoid reparsing CSV on every check
+let cachedBlocklist: Set<string> | null = null;
+let cachedAllowlist: Set<string> | null = null;
+
 function parseChannelList(value: string): Set<string> {
   return new Set(
     value
@@ -25,12 +29,26 @@ function parseChannelList(value: string): Set<string> {
   );
 }
 
+function getBlocklist(): Set<string> {
+  if (!cachedBlocklist) {
+    cachedBlocklist = parseChannelList(config.INGESTION_BLOCKLIST_CHANNEL_IDS_CSV);
+  }
+  return cachedBlocklist;
+}
+
+function getAllowlist(): Set<string> {
+  if (!cachedAllowlist) {
+    cachedAllowlist = parseChannelList(config.INGESTION_ALLOWLIST_CHANNEL_IDS_CSV);
+  }
+  return cachedAllowlist;
+}
+
 function isChannelAllowed(channelId: string): boolean {
-  const blocklist = parseChannelList(config.INGESTION_BLOCKLIST_CHANNEL_IDS_CSV);
+  const blocklist = getBlocklist();
   if (blocklist.has(channelId)) return false;
 
   if (config.INGESTION_MODE === 'allowlist') {
-    const allowlist = parseChannelList(config.INGESTION_ALLOWLIST_CHANNEL_IDS_CSV);
+    const allowlist = getAllowlist();
     return allowlist.has(channelId);
   }
 

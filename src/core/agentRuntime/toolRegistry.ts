@@ -11,6 +11,8 @@ export interface ToolExecutionContext {
   traceId: string;
   userId: string;
   channelId: string;
+  /** Optional abort signal to check for timeout/cancellation. Tools should check signal.aborted periodically. */
+  signal?: AbortSignal;
 }
 
 /** Define one runtime tool with schema validation and async execution. */

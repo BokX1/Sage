@@ -49,7 +49,12 @@ export function appendMessage(message: ChannelMessage): void {
   pruneByTtl(buffer, cutoffMs);
   enforceMax(buffer, config.RING_BUFFER_MAX_MESSAGES_PER_CHANNEL);
 
-  channelBuffers.set(key, buffer);
+  // Clean up empty buffers to prevent memory leak
+  if (buffer.length === 0) {
+    channelBuffers.delete(key);
+  } else {
+    channelBuffers.set(key, buffer);
+  }
 }
 
 /**

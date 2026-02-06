@@ -34,6 +34,30 @@ const globalScope = globalThis as GlobalScope;
 // Initialize or retrieve the global deduplication map
 const processedMessages: Map<string, number> = (globalScope[processedMessagesKey] ??= new Map());
 const DEDUP_TTL = 60_000;
+const CLEANUP_INTERVAL = 30_000; // Run cleanup every 30s
+let lastCleanupTime = Date.now();
+
+// Cache parsed wake words at module level to avoid reparsing on every message
+let cachedWakeWords: string[] | null = null;
+let cachedWakeWordPrefixes: string[] | null = null;
+
+function getWakeWords(): string[] {
+  if (!cachedWakeWords) {
+    cachedWakeWords = appConfig.WAKE_WORDS_CSV.split(',')
+      .map((word: string) => word.trim())
+      .filter(Boolean);
+  }
+  return cachedWakeWords;
+}
+
+function getWakeWordPrefixes(): string[] {
+  if (!cachedWakeWordPrefixes) {
+    cachedWakeWordPrefixes = appConfig.WAKE_WORD_PREFIXES_CSV.split(',')
+      .map((prefix: string) => prefix.trim())
+      .filter(Boolean);
+  }
+  return cachedWakeWordPrefixes;
+}
 
 
 export async function handleMessageCreate(message: Message) {
@@ -52,8 +76,9 @@ export async function handleMessageCreate(message: Message) {
     }
     processedMessages.set(message.id, now);
 
-    // Periodic cleanup (simple)
-    if (processedMessages.size > 100) {
+    // Periodic cleanup (time-based, not just size-based)
+    if (now - lastCleanupTime > CLEANUP_INTERVAL) {
+      lastCleanupTime = now;
       for (const [id, timestamp] of processedMessages) {
         if (now - timestamp > DEDUP_TTL) processedMessages.delete(id);
       }
@@ -154,21 +179,14 @@ export async function handleMessageCreate(message: Message) {
       mentionsUserIds,
     });
 
-    // Mention-first: only respond to mentions or replies
-    const wakeWords = appConfig.WAKE_WORDS_CSV.split(',')
-      .map((word: string) => word.trim())
-      .filter(Boolean);
-    const wakeWordPrefixes = appConfig.WAKE_WORD_PREFIXES_CSV.split(',')
-      .map((prefix: string) => prefix.trim())
-      .filter(Boolean);
-
+    // Mention-first: only respond to mentions or replies (use cached wake words)
     let invocation = detectInvocation({
       rawContent: message.content,
       isMentioned,
       isReplyToBot,
       botUserId: client.user?.id,
-      wakeWords,
-      prefixes: wakeWordPrefixes,
+      wakeWords: getWakeWords(),
+      prefixes: getWakeWordPrefixes(),
     });
 
     if (
@@ -239,8 +257,9 @@ export async function handleMessageCreate(message: Message) {
 
       // Check for voice overlap (User + Bot in same VC)
       let isVoiceActive = false;
+      let voiceManager: VoiceManager | null = null;
       if (message.guildId && message.member?.voice?.channelId) {
-        const voiceManager = VoiceManager.getInstance();
+        voiceManager = VoiceManager.getInstance();
         const connection = voiceManager.getConnection(message.guildId);
         if (connection && connection.joinConfig.channelId === message.member.voice.channelId) {
           isVoiceActive = true;
@@ -264,9 +283,8 @@ export async function handleMessageCreate(message: Message) {
       });
 
       // --- Voice TTS Trigger ---
-      if (result.replyText && isVoiceActive && message.guildId) {
+      if (result.replyText && isVoiceActive && message.guildId && voiceManager) {
         try {
-          const voiceManager = VoiceManager.getInstance();
           loggerWithTrace.info({ guildId: message.guildId, voice: result.voice }, 'Generating TTS (syncing)...');
 
           // Await speech generation + start of playback BEFORE sending text

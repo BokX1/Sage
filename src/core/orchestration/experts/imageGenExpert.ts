@@ -299,20 +299,55 @@ export async function runImageGenExpert(params: ImageGenParams): Promise<ExpertP
             '[ImageGen] Fetching image...'
         );
 
-        // 4. Fetch Image Bytes
-        let response: Response;
-        try {
-            response = await fetchWithTimeout(url, DEFAULT_IMAGE_GEN_TIMEOUT_MS);
-        } catch (error) {
-            if (error instanceof Error && error.name === 'AbortError') {
+        // 4. Fetch Image Bytes with retries for transient failures
+        const MAX_RETRIES = 2;
+        const RETRY_DELAY_MS = 1000;
+        let response: Response | undefined;
+        let lastError: Error | undefined;
+
+        for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+            try {
+                response = await fetchWithTimeout(url, DEFAULT_IMAGE_GEN_TIMEOUT_MS);
+
+                // Check for transient server errors (5xx) - retry those
+                if (response.status >= 500 && attempt < MAX_RETRIES) {
+                    logger.warn(
+                        { status: response.status, attempt },
+                        '[ImageGen] Server error, retrying...'
+                    );
+                    await new Promise((r) => setTimeout(r, RETRY_DELAY_MS * (attempt + 1)));
+                    continue;
+                }
+
+                break; // Success or non-retryable error
+            } catch (error) {
+                lastError = error instanceof Error ? error : new Error(String(error));
+
+                if (lastError.name === 'AbortError') {
+                    throw new Error(
+                        `Pollinations image request timed out after ${DEFAULT_IMAGE_GEN_TIMEOUT_MS}ms. Please try again.`
+                    );
+                }
+
+                // Retry network errors
+                if (attempt < MAX_RETRIES) {
+                    logger.warn(
+                        { error: lastError.message, attempt },
+                        '[ImageGen] Network error, retrying...'
+                    );
+                    await new Promise((r) => setTimeout(r, RETRY_DELAY_MS * (attempt + 1)));
+                    continue;
+                }
+
                 throw new Error(
-                    `Pollinations image request timed out after ${DEFAULT_IMAGE_GEN_TIMEOUT_MS}ms. Please try again.`
+                    `Pollinations image request failed after ${MAX_RETRIES + 1} attempts. (${lastError.message})`
                 );
             }
+        }
+
+        if (!response) {
             throw new Error(
-                `Pollinations image request failed. Check network connectivity and try again. (${String(
-                    error instanceof Error ? error.message : error
-                )})`
+                `Pollinations image request failed. Check network connectivity and try again. (${lastError?.message ?? 'Unknown error'})`
             );
         }
 

@@ -59,6 +59,17 @@ function cleanupText(text: string): string {
   return text.trim();
 }
 
+// Cache compiled wake-word regex patterns to avoid rebuilding on every call
+const wakeWordRegexCache = new Map<string, RegExp | null>();
+
+function getCachedWakeWordRegex(wakeWords: string[], prefixes: string[]): RegExp | null {
+  const key = JSON.stringify([wakeWords, prefixes]);
+  if (!wakeWordRegexCache.has(key)) {
+    wakeWordRegexCache.set(key, buildWakeWordRegex(wakeWords, prefixes));
+  }
+  return wakeWordRegexCache.get(key) ?? null;
+}
+
 function buildWakeWordRegex(wakeWords: string[], prefixes: string[]): RegExp | null {
   const normalizedWakeWords = wakeWords.map((word) => word.trim()).filter(Boolean);
   if (normalizedWakeWords.length === 0) {
@@ -90,7 +101,7 @@ function detectWakeWord(
     return null;
   }
 
-  const wakeRegex = buildWakeWordRegex(wakeWords, prefixes);
+  const wakeRegex = getCachedWakeWordRegex(wakeWords, prefixes);
   if (!wakeRegex) {
     return null;
   }

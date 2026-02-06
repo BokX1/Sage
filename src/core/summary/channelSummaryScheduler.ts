@@ -25,6 +25,7 @@ type DirtyChannelState = {
   channelId: string;
   lastMessageAt: Date;
   messageCount: number;
+  createdAt: number; // Track when entry was created for TTL cleanup
 };
 
 type SummarizeChannelWindowFn = typeof summarizeChannelWindow;
@@ -72,21 +73,41 @@ export class ChannelSummaryScheduler {
       channelId: params.channelId,
       lastMessageAt: params.lastMessageAt,
       messageCount: increment,
+      createdAt: this.now(),
     });
   }
 
   async tick(): Promise<void> {
+    const nowMs = this.now();
+    const STALE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+    const CONCURRENCY_LIMIT = 3;
+
+    // Cleanup stale entries that haven't received messages in 24h
+    for (const [key, state] of this.dirtyChannels.entries()) {
+      const age = nowMs - state.createdAt;
+      const timeSinceMessage = nowMs - state.lastMessageAt.getTime();
+      if (age > STALE_TTL_MS && timeSinceMessage > STALE_TTL_MS) {
+        this.dirtyChannels.delete(key);
+        logger.debug({ key }, 'Cleaned up stale dirtyChannels entry');
+      }
+    }
+
     const entries = Array.from(this.dirtyChannels.entries());
 
-    for (const [key, state] of entries) {
-      try {
-        await this.updateChannel(key, state);
-      } catch (error) {
-        logger.error(
-          { error, guildId: state.guildId, channelId: state.channelId },
-          'Channel summary scheduler tick failed (non-fatal)',
-        );
-      }
+    // Process channels in parallel with concurrency limit
+    for (let i = 0; i < entries.length; i += CONCURRENCY_LIMIT) {
+      const batch = entries.slice(i, i + CONCURRENCY_LIMIT);
+      const promises = batch.map(async ([key, state]) => {
+        try {
+          await this.updateChannel(key, state);
+        } catch (error) {
+          logger.error(
+            { error, guildId: state.guildId, channelId: state.channelId },
+            'Channel summary scheduler tick failed (non-fatal)',
+          );
+        }
+      });
+      await Promise.allSettled(promises);
     }
   }
 
@@ -219,6 +240,7 @@ export class ChannelSummaryScheduler {
         channelId,
         lastMessageAt: new Date(), // approximate
         messageCount: messages.length,
+        createdAt: this.now(),
       },
       rollingSummary,
       true, // force update

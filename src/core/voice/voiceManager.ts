@@ -123,9 +123,18 @@ export class VoiceManager extends EventEmitter {
   public leaveChannel(guildId: string): void {
     const connection = this.connections.get(guildId);
     if (connection) {
+      // Clean up event listeners to prevent memory leaks
+      connection.removeAllListeners();
       connection.destroy();
       this.connections.delete(guildId);
+
+      // Clean up audio player listeners
+      const player = this.players.get(guildId);
+      if (player) {
+        player.removeAllListeners();
+      }
       this.players.delete(guildId);
+
       logger.info({ guildId }, 'Left voice channel');
     }
   }

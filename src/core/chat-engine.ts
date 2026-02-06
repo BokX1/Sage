@@ -10,9 +10,12 @@ import { limitByKey } from './utils/perKeyConcurrency';
 
 /**
  * Per-user interaction counter for profile update throttling.
- * Maps userId to count of messages since last profile update.
+ * Maps userId to { count, lastActiveAt } for cleanup support.
  */
-const userInteractionCounts = new Map<string, number>();
+type InteractionEntry = { count: number; lastActiveAt: number };
+const userInteractionCounts = new Map<string, InteractionEntry>();
+const INTERACTION_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+let lastInteractionCleanupMs = Date.now();
 
 /**
  * Generate a chat reply using the agent runtime.
@@ -98,15 +101,28 @@ export async function generateChatReply(params: {
     const apiKey = (guildId ? await getGuildApiKey(guildId) : undefined) ?? config.LLM_API_KEY;
 
     if (apiKey) {
+      const nowMs = Date.now();
+
+      // Periodic cleanup of stale interaction entries (every hour)
+      if (nowMs - lastInteractionCleanupMs > 60 * 60 * 1000) {
+        lastInteractionCleanupMs = nowMs;
+        for (const [uid, entry] of userInteractionCounts) {
+          if (nowMs - entry.lastActiveAt > INTERACTION_TTL_MS) {
+            userInteractionCounts.delete(uid);
+          }
+        }
+      }
+
       // Increment interaction count
-      const currentCount = (userInteractionCounts.get(userId) || 0) + 1;
-      userInteractionCounts.set(userId, currentCount);
+      const existing = userInteractionCounts.get(userId);
+      const currentCount = (existing?.count || 0) + 1;
+      userInteractionCounts.set(userId, { count: currentCount, lastActiveAt: nowMs });
 
       const shouldUpdateProfile = currentCount >= config.PROFILE_UPDATE_INTERVAL;
 
       if (shouldUpdateProfile) {
         // Reset counter before update
-        userInteractionCounts.set(userId, 0);
+        userInteractionCounts.set(userId, { count: 0, lastActiveAt: nowMs });
 
         logger.debug(
           { userId, messageCount: currentCount, interval: config.PROFILE_UPDATE_INTERVAL },

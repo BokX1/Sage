@@ -142,7 +142,10 @@ export class PollinationsClient implements LLMClient {
       // 1. Disable API-level JSON mode
       delete payload.response_format;
 
-      // 2. Inject instructions
+      // 2. Clone messages to avoid mutating the original array
+      payload.messages = payload.messages.map((m) => ({ ...m }));
+
+      // 3. Inject instructions into system message
       const jsonInstruction =
         ' IMPORTANT: You must output strictly valid JSON only. Do not wrap in markdown blocks. No other text.';
       const toolInstruction =

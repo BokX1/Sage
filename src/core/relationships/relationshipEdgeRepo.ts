@@ -148,3 +148,35 @@ export async function findEdgesForUser(params: {
 
   return rows.map(toRelationshipEdge);
 }
+
+/**
+ * Find multiple edges in a single batch query.
+ * Reduces N+1 queries when updating multiple relationships at once.
+ */
+export async function findEdgesBatch(params: {
+  guildId: string;
+  pairs: Array<{ userA: string; userB: string }>;
+}): Promise<Map<string, RelationshipEdge>> {
+  if (params.pairs.length === 0) {
+    return new Map();
+  }
+
+  const client = getRelationshipEdgeClient();
+  const rows = await client.findMany({
+    where: {
+      guildId: params.guildId,
+      OR: params.pairs.map((p) => ({
+        userA: p.userA,
+        userB: p.userB,
+      })),
+    },
+  });
+
+  const result = new Map<string, RelationshipEdge>();
+  for (const row of rows) {
+    const edge = toRelationshipEdge(row);
+    const key = `${edge.userA}:${edge.userB}`;
+    result.set(key, edge);
+  }
+  return result;
+}

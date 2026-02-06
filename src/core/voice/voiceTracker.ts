@@ -1,4 +1,5 @@
 import { VoicePresenceChannel } from './voicePresenceIndex';
+import { computeVoiceOverlapForUser } from './voiceOverlapTracker';
 
 export type VoiceChange = {
   guildId: string;
@@ -99,7 +100,6 @@ export async function handleVoiceChange(
     // Compute voice overlap (D7)
     if (change.oldChannelId && userJoinedAt) {
       try {
-        const { computeVoiceOverlapForUser } = await import('./voiceOverlapTracker');
         await computeVoiceOverlapForUser({
           guildId: change.guildId,
           userId: change.userId,
@@ -127,7 +127,6 @@ export async function handleVoiceChange(
     // Compute voice overlap for old channel (D7)
     if (change.oldChannelId && userJoinedAt) {
       try {
-        const { computeVoiceOverlapForUser } = await import('./voiceOverlapTracker');
         await computeVoiceOverlapForUser({
           guildId: change.guildId,
           userId: change.userId,

@@ -7,13 +7,16 @@ describe('relationshipGraph', () => {
 
   describe('updateFromMessage', () => {
     it('should create new edge with mention signal', async () => {
-      // Mock the repo
-      const mockFindEdge = vi.fn().mockResolvedValue(null);
+      // Mock the repo - now using findEdgesBatch for batch queries
+      const mockFindEdgesBatch = vi.fn().mockResolvedValue(new Map());
       const mockUpsertEdge = vi.fn().mockResolvedValue(undefined);
 
       vi.doMock('../../../src/core/relationships/relationshipEdgeRepo', () => ({
-        findEdge: mockFindEdge,
+        findEdge: vi.fn(),
+        findEdgesBatch: mockFindEdgesBatch,
         upsertEdge: mockUpsertEdge,
+        findEdgesForUser: vi.fn(),
+        findTopEdges: vi.fn(),
       }));
 
       const { updateFromMessage } =
@@ -49,12 +52,17 @@ describe('relationshipGraph', () => {
         manualOverride: null,
       };
 
-      const mockFindEdge = vi.fn().mockResolvedValue(existingEdge);
+      // Return edge in a Map keyed by "userA:userB"
+      const edgeMap = new Map([['user_a:user_b', existingEdge]]);
+      const mockFindEdgesBatch = vi.fn().mockResolvedValue(edgeMap);
       const mockUpsertEdge = vi.fn().mockResolvedValue(undefined);
 
       vi.doMock('../../../src/core/relationships/relationshipEdgeRepo', () => ({
-        findEdge: mockFindEdge,
+        findEdge: vi.fn(),
+        findEdgesBatch: mockFindEdgesBatch,
         upsertEdge: mockUpsertEdge,
+        findEdgesForUser: vi.fn(),
+        findTopEdges: vi.fn(),
       }));
 
       const { updateFromMessage } =
@@ -73,12 +81,15 @@ describe('relationshipGraph', () => {
     });
 
     it('should skip self-mentions', async () => {
-      const mockFindEdge = vi.fn();
+      const mockFindEdgesBatch = vi.fn().mockResolvedValue(new Map());
       const mockUpsertEdge = vi.fn();
 
       vi.doMock('../../../src/core/relationships/relationshipEdgeRepo', () => ({
-        findEdge: mockFindEdge,
+        findEdge: vi.fn(),
+        findEdgesBatch: mockFindEdgesBatch,
         upsertEdge: mockUpsertEdge,
+        findEdgesForUser: vi.fn(),
+        findTopEdges: vi.fn(),
       }));
 
       const { updateFromMessage } =
@@ -102,7 +113,10 @@ describe('relationshipGraph', () => {
 
       vi.doMock('../../../src/core/relationships/relationshipEdgeRepo', () => ({
         findEdge: mockFindEdge,
+        findEdgesBatch: vi.fn().mockResolvedValue(new Map()),
         upsertEdge: mockUpsertEdge,
+        findEdgesForUser: vi.fn(),
+        findTopEdges: vi.fn(),
       }));
 
       const { setManualRelationship } =
