@@ -22,8 +22,8 @@ import { buildContextMessages } from './contextBuilder';
 import { globalToolRegistry } from './toolRegistry';
 import { runToolCallLoop, ToolCallLoopResult } from './toolCallLoop';
 import { getChannelSummaryStore } from '../summary/channelSummaryStoreRegistry';
-// import { howLongInVoiceToday, whoIsInVoice } from '../voice/voiceQueries';
-// import { formatHowLongToday, formatWhoInVoice } from '../voice/voiceFormat';
+import { howLongInVoiceToday, whoIsInVoice } from '../voice/voiceQueries';
+import { formatHowLongToday, formatWhoInVoice } from '../voice/voiceFormat';
 import { classifyStyle, analyzeUserStyle } from './styleClassifier';
 import { decideRoute } from '../orchestration/llmRouter';
 import { runExperts } from '../orchestration/runExperts';
@@ -53,7 +53,6 @@ export interface RunChatTurnParams {
   mentionedUserIds?: string[];
   invokedBy?: 'mention' | 'reply' | 'wakeword' | 'autopilot' | 'command';
   isVoiceActive?: boolean;
-  hasAttachment?: boolean;
 }
 
 /** Return payload for a completed chat turn. */
@@ -114,14 +113,32 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
     replyToBotText,
     replyReferenceContent,
     intent,
-    // mentionedUserIds, // Unused after removing legacy voice path
+    mentionedUserIds,
     invokedBy = 'mention',
     isVoiceActive,
   } = params;
 
-  // Legacy Regex Fast-Path Removed
-  // All intent classification must go through the LLM router (decideRoute)
-  // to avoid hallucinations with attachments or complex queries.
+  const normalizedText = userText.toLowerCase();
+  const isWhoInVoice =
+    /\bwho('?s| is)? in voice\b/.test(normalizedText) || /\bwho in voice\b/.test(normalizedText);
+  const isHowLongToday =
+    /\bhow long\b.*\bvoice today\b/.test(normalizedText) ||
+    /\btime in voice today\b/.test(normalizedText);
+
+  if ((isWhoInVoice || isHowLongToday) && guildId) {
+    try {
+      if (isWhoInVoice) {
+        const presence = await whoIsInVoice({ guildId });
+        return { replyText: formatWhoInVoice(presence) };
+      }
+
+      const targetUserId = mentionedUserIds?.[0] ?? userId;
+      const result = await howLongInVoiceToday({ guildId, userId: targetUserId });
+      return { replyText: formatHowLongToday({ userId: targetUserId, ms: result.ms }) };
+    } catch (error) {
+      logger.warn({ error, guildId, userId }, 'Voice fast-path failed, falling back to router');
+    }
+  }
 
   let conversationHistory: LLMChatMessage[] = [];
   if (guildId && isLoggingEnabled(guildId, channelId)) {
@@ -152,7 +169,6 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
     userText,
     invokedBy,
     hasGuild: !!guildId,
-    hasAttachment: params.hasAttachment,
     conversationHistory,
     replyReferenceContent: extractReplyText(replyReferenceContent),
     apiKey,

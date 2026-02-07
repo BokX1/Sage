@@ -30,7 +30,6 @@ export interface LLMRouterParams {
     userText: string;
     invokedBy: 'mention' | 'reply' | 'wakeword' | 'autopilot' | 'command';
     hasGuild: boolean;
-    hasAttachment?: boolean;
     conversationHistory?: LLMChatMessage[];
     replyReferenceContent?: string | null;
     apiKey?: string;
@@ -54,7 +53,7 @@ You are an intent classification engine. Your ONLY job is to analyze the user's 
 | Route | Purpose | Primary Signals |
 |-------|---------|-----------------|
 | \`image_generate\` | Create, edit, or modify images | "draw", "paint", "sketch", "generate image", "create art", "make a picture", "visualize", "illustrate", "design" |
-| \`voice_analytics\` | Voice channel statistics and presence | **MUST contain:** "voice", "vc", "call", "channel", "who is in", "stats" |
+| \`voice_analytics\` | Voice channel statistics and presence | "who is in voice", "vc stats", "voice time", "how long in voice", "voice activity" |
 | \`social_graph\` | Relationship and social dynamics | "who are my friends", "relationship", "vibe check", "who do I talk to", "social connections" |
 | \`memory\` | User profile and memory operations | "what do you know about me", "remember", "forget me", "my profile", "my preferences" |
 | \`summarize\` | Conversation or content summarization | "summarize", "tldr", "tl;dr", "recap", "catch me up", "what did I miss", "summary" |
@@ -63,13 +62,6 @@ You are an intent classification engine. Your ONLY job is to analyze the user's 
 | \`qa\` | General conversation, Q&A, coding help | DEFAULT - anything not matching above |
 
 ## CLASSIFICATION RULES
-
-### Rule 0: File/Code Attachments → qa
-If the user attached a file (code, text, document) or mentions analyzing/reviewing code:
-- File attachments with questions → \`qa\`
-- "review this code" → \`qa\`
-- "what does this file do" → \`qa\`
-- "help me with this script" → \`qa\`
 
 ### Rule 1: Explicit Trigger Words
 If the message contains EXPLICIT route keywords, use that route:
@@ -100,13 +92,6 @@ When uncertain, route to \`qa\`. It handles:
 - Explanations and tutorials
 - Creative writing
 - Anything not clearly matching other routes
-
-### Rule 6: Voice Analytics Constraint
-ONLY route to \`voice_analytics\` if the user explicitly asks about:
-- Who is in a voice channel
-- Voice activity stats
-- Channel usage time
-DO NOT route "check this", "look at this", or "status" to \`voice_analytics\` unless "voice" or "vc" is mentioned.
 
 ## TEMPERATURE GUIDELINES
 
@@ -165,7 +150,7 @@ interface RouterLLMResponse {
 
 
 export async function decideRoute(params: LLMRouterParams): Promise<RouteDecision> {
-    const { userText, invokedBy, hasGuild, hasAttachment, conversationHistory, replyReferenceContent, apiKey } = params;
+    const { userText, invokedBy, hasGuild, conversationHistory, replyReferenceContent, apiKey } = params;
 
     // Fast path: admin route for slash commands
     if (invokedBy === 'command' && hasGuild) {
@@ -176,32 +161,6 @@ export async function decideRoute(params: LLMRouterParams): Promise<RouteDecisio
             temperature: 0.4,
             reasoningText: 'Slash command context detected',
         };
-    }
-
-    // Fast path: File attachments -> QA (Default)
-    // We strictly limit experts for attachments to prevent hallucinations (like voice_analytics),
-    // but allow specific intents if keywords are present.
-    if (hasAttachment) {
-        const text = userText.toLowerCase();
-
-        // Allow Image Generation if explicitly requested
-        if (/\b(draw|paint|generate|create|make|edit|visualize)\b/.test(text)) {
-            // Fall through to LLM for full classification (it might be "draw a graph based on this data" -> qa)
-        }
-        // Allow Summarization if explicitly requested
-        else if (/\b(summarize|summary|tldr|tl;dr|recap)\b/.test(text)) {
-            // Fall through to LLM
-        }
-        // Otherwise, FORCE QA to prevent hallucinations for "Look at this", "What is this", etc.
-        else {
-            return {
-                kind: 'qa',
-                experts: [],
-                allowTools: true,
-                temperature: 0.8,
-                reasoningText: 'File attachment detected with no explicit expert keywords - forcing QA route',
-            };
-        }
     }
 
     try {
@@ -226,14 +185,8 @@ export async function decideRoute(params: LLMRouterParams): Promise<RouteDecisio
 
         // Add reply context if available
         let finalUserContent = userText;
-
-        // Prepend attachment context for file attachments (forces qa route)
-        if (hasAttachment) {
-            finalUserContent = `[User has attached a file/code for review]\n\n${userText}`;
-        }
-
         if (replyReferenceContent) {
-            finalUserContent = `[User is Replying to: "${replyReferenceContent}"]\n\n${finalUserContent}`;
+            finalUserContent = `[User is Replying to: "${replyReferenceContent}"]\n\n${userText}`;
         }
 
         messages.push({ role: 'user', content: finalUserContent });
@@ -254,22 +207,6 @@ export async function decideRoute(params: LLMRouterParams): Promise<RouteDecisio
         if (!parsed) {
             logger.warn({ responseContent: response.content }, 'Router: Failed to parse LLM response');
             return DEFAULT_QA_ROUTE;
-        }
-
-        // --- POST-LLM GUARDRAILS ---
-
-        // Guardrail: Voice Analytics Hallucination Prevention
-        // If LLM picks voice_analytics but text has no voice keywords, force QA.
-        if (parsed.route === 'voice_analytics') {
-            const text = userText.toLowerCase();
-            const hasVoiceKeywords = /\b(voice|vc|call|channel|who|stat|stats|activity|speaking|talking)\b/.test(text);
-            if (!hasVoiceKeywords) {
-                logger.warn({ userText, originalRoute: 'voice_analytics' }, 'Router: Overriding voice_analytics hallucination -> qa');
-                return {
-                    ...DEFAULT_QA_ROUTE,
-                    reasoningText: 'Guardrail: Overrode voice_analytics (missing keywords)',
-                };
-            }
         }
 
         // Validate route kind
