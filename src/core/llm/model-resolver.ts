@@ -1,5 +1,5 @@
 import { LLMChatMessage } from './llm-types';
-import { getDefaultModelId } from './model-catalog';
+
 
 /**
  * Inputs available when selecting an LLM model for a request.
@@ -25,6 +25,13 @@ type ResolveModelParams = {
  * @returns The model identifier to send to the configured LLM provider.
  */
 export async function resolveModelForRequest(params: ResolveModelParams): Promise<string> {
-  void params;
-  return getDefaultModelId();
+  const { route } = params;
+
+  // Rule 1: Coding / Complex Logic -> Kimi
+  if (route === 'coding') {
+    return 'kimi';
+  }
+
+  // Rule 2: Default -> Gemini Fast
+  return 'gemini-fast';
 }

@@ -16,6 +16,16 @@ describe('resolveModelForRequest', () => {
       messages: [{ role: 'user', content: 'hello' }],
     });
 
+    expect(model).toBe('gemini-fast');
+  });
+
+  it('returns kimi for coding route', async () => {
+    const model = await resolveModelForRequest({
+      guildId: 'guild-1',
+      messages: [{ role: 'user', content: 'write code' }],
+      route: 'coding',
+    });
+
     expect(model).toBe('kimi');
   });
 
@@ -30,6 +40,6 @@ describe('resolveModelForRequest', () => {
       ],
     });
 
-    expect(model).toBe('kimi');
+    expect(model).toBe('gemini-fast');
   });
 });

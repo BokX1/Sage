@@ -27,7 +27,7 @@ function stripLeadingPunctuation(text: string): string {
   return text.replace(/^[\p{P}\p{S}]+/u, '');
 }
 
-function detectIntent(_text: string): Invocation['intent'] {
+function detectIntent(): Invocation['intent'] {
   return 'unknown';
 }
 
@@ -116,7 +116,7 @@ export function detectInvocation(params: DetectInvocationParams): Invocation | n
     return {
       kind: 'reply',
       cleanedText: cleanedBase,
-      intent: detectIntent(cleanedBase),
+      intent: detectIntent(),
     };
   }
 
@@ -127,7 +127,7 @@ export function detectInvocation(params: DetectInvocationParams): Invocation | n
     return {
       kind: 'mention',
       cleanedText: cleanedBase,
-      intent: detectIntent(cleanedBase),
+      intent: detectIntent(),
     };
   }
 
@@ -140,6 +140,6 @@ export function detectInvocation(params: DetectInvocationParams): Invocation | n
   return {
     kind: 'wakeword',
     cleanedText,
-    intent: detectIntent(cleanedText),
+    intent: detectIntent(),
   };
 }

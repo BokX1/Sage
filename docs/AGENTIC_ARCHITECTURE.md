@@ -240,7 +240,9 @@ flowchart TD
     R -->|selects| V[🎤 VoiceAnalytics]:::expert
     R -->|selects| M[🧠 Memory]:::expert
     R -->|selects| IG[🎨 ImageGenerator]:::expert
+    R -->|selects| IG[🎨 ImageGenerator]:::expert
     R -->|selects| SR[🔍 Search/SAG]:::expert
+    R -->|selects| C[💻 Coding/Reasoning]:::expert
 
     subgraph Context["Context Builder"]
         direction TB
@@ -266,6 +268,7 @@ flowchart TD
 | "Summarize what we talked about" | ❌ "What conversation?" | ✅ Routes to Summarizer → Provides channel summary |
 | "What did Sarah say about TypeScript?" | ❌ "I don't know Sarah" | ✅ Routes to Memory → Recalls Sarah's recent TypeScript discussions |
 | "What's the current price of Bitcoin?" | ❌ "I don't have real-time data" | ✅ Routes to Search → Fetches live price via Perplexity |
+| "Refactor this React component" | ❌ "Here is a generic answer" | ✅ Routes to Coding → Switches to **Kimi** (Reasoning Model) for high-quality code |
 
 ---
 

@@ -16,7 +16,8 @@ export type RouteKind =
     | 'social_graph'
     | 'memory'
     | 'image_generate'
-    | 'search';
+    | 'search'
+    | 'coding';
 
 export interface RouteDecision {
     kind: RouteKind;
@@ -52,6 +53,7 @@ You are an intent classification engine. Your ONLY job is to analyze the user's 
 
 | Route | Purpose | Primary Signals |
 |-------|---------|-----------------|
+| \`coding\` | Software development, debugging, code generation | "write a script", "fix this bug", "python", "js", "error", "implementation", "api", "function" |
 | \`image_generate\` | Create, edit, or modify images | "draw", "paint", "sketch", "generate image", "create art", "make a picture", "visualize", "illustrate", "design" |
 | \`voice_analytics\` | Voice channel statistics and presence | "who is in voice", "vc stats", "voice time", "how long in voice", "voice activity" |
 | \`social_graph\` | Relationship and social dynamics | "who are my friends", "relationship", "vibe check", "who do I talk to", "social connections" |
@@ -59,13 +61,14 @@ You are an intent classification engine. Your ONLY job is to analyze the user's 
 | \`summarize\` | Conversation or content summarization | "summarize", "tldr", "tl;dr", "recap", "catch me up", "what did I miss", "summary" |
 | \`search\` | Real-time information retrieval | "search", "look up", "google", "find out", "what's the price", "latest news", URLs, current events |
 | \`admin\` | Bot configuration and debugging | "configure", "settings", "debug", "admin", "bot config" |
-| \`qa\` | General conversation, Q&A, coding help | DEFAULT - anything not matching above |
+| \`qa\` | General conversation, Q&A, chat | DEFAULT - anything not matching above |
 
 ## CLASSIFICATION RULES
 
 ### Rule 1: Explicit Trigger Words
 If the message contains EXPLICIT route keywords, use that route:
 - "draw me a cat" → \`image_generate\`
+- "write a python script" → \`coding\`
 - "summarize this channel" → \`summarize\`
 - "search for Python tutorials" → \`search\`
 
@@ -73,6 +76,7 @@ If the message contains EXPLICIT route keywords, use that route:
 Check conversation history for context:
 - If last bot message was an image AND user says "make it darker" → \`image_generate\`
 - If discussing a topic AND user says "can you look that up?" → \`search\`
+- If discussing code AND user says "optimize it" → \`coding\`
 
 ### Rule 3: Temporal Signals → search
 Keywords indicating real-time or recent information:
@@ -81,15 +85,13 @@ Keywords indicating real-time or recent information:
 - Any URL (http, https, www)
 
 ### Rule 4: Knowledge vs Lookup
-- Conceptual/educational: "What is machine learning?" → \`qa\`
+- Conceptual/educational: "What is machine learning?" → \`qa\` (or \`coding\` if technical)
 - Factual/time-sensitive: "When was GPT-4 released?" → \`search\`
 - Opinion/creative: "What do you think about AI?" → \`qa\`
 
 ### Rule 5: Default to qa
 When uncertain, route to \`qa\`. It handles:
 - General conversation and banter
-- Coding questions and help
-- Explanations and tutorials
 - Creative writing
 - Anything not clearly matching other routes
 
@@ -97,6 +99,7 @@ When uncertain, route to \`qa\`. It handles:
 
 | Route | Recommended Temperature | Rationale |
 |-------|------------------------|-----------|
+| \`coding\` | 0.2 | High precision for code |
 | \`image_generate\` | 0.9-1.0 | High creativity for art |
 | \`voice_analytics\` | 0.3 | Factual data presentation |
 | \`social_graph\` | 0.5 | Balanced interpretation |
@@ -120,11 +123,14 @@ Respond with ONLY valid JSON (no markdown, no extra text):
 User: "hey sage draw me a cyberpunk samurai"
 → {"reasoning": "Explicit 'draw' keyword requesting image creation.", "route": "image_generate", "temperature": 0.95}
 
+User: "can you fix this typescript error"
+→ {"reasoning": "Request to fix code/error.", "route": "coding", "temperature": 0.2}
+
 User: "what's the current price of bitcoin"
 → {"reasoning": "Temporal signal 'current' + real-time data request.", "route": "search", "temperature": 0.4}
 
 User: "explain how neural networks work"
-→ {"reasoning": "Educational question about concepts, no time-sensitivity.", "route": "qa", "temperature": 0.7}
+→ {"reasoning": "Educational question about concepts.", "route": "qa", "temperature": 0.7}
 
 User: "who's in vc right now"
 → {"reasoning": "Voice channel presence query.", "route": "voice_analytics", "temperature": 0.3}
@@ -210,7 +216,7 @@ export async function decideRoute(params: LLMRouterParams): Promise<RouteDecisio
         }
 
         // Validate route kind
-        const validRoutes: RouteKind[] = ['summarize', 'qa', 'admin', 'voice_analytics', 'social_graph', 'memory', 'image_generate', 'search'];
+        const validRoutes: RouteKind[] = ['summarize', 'qa', 'admin', 'voice_analytics', 'social_graph', 'memory', 'image_generate', 'search', 'coding'];
         const routeKind = validRoutes.includes(parsed.route as RouteKind)
             ? (parsed.route as RouteKind)
             : 'qa';
@@ -231,11 +237,11 @@ export async function decideRoute(params: LLMRouterParams): Promise<RouteDecisio
             case 'image_generate':
                 experts.push('ImageGenerator');
                 break;
-            // qa, search, memory, admin -> Memory is already added
+            // coding, qa, search, memory, admin -> Memory is already added
         }
 
         // Determine allowTools based on route
-        const allowTools = routeKind === 'qa' || routeKind === 'admin';
+        const allowTools = routeKind === 'qa' || routeKind === 'admin' || routeKind === 'coding';
 
         // Use provided temperature or route-based default
         const temperature = typeof parsed.temperature === 'number'
@@ -298,6 +304,7 @@ function getDefaultTemperature(route: RouteKind): number {
         case 'admin': return 0.4;
         case 'search': return 0.4; // Lower temperature for factual search
         case 'image_generate': return 0.9; // Higher creativity for image prompts
+        case 'coding': return 0.2; // Low temperature for code precision
         case 'qa': return 1.0;
         default: return 0.8;
     }

@@ -210,7 +210,7 @@ async function refinePrompt(
 
         const response = await client.chat({
             messages,
-            model: 'kimi', // Explicitly use Kimi for reasoning/vision
+            model: 'gemini-fast', // Explicitly use Gemini Fast for reasoning/vision
             temperature: 1.2, // High creativity
             maxTokens: 1000,
             apiKey,

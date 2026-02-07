@@ -8,7 +8,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
-- _No unreleased changes._
+- **Dynamic Model Switching**: Sage now intelligently switches between `gemini-fast` (default) for speed and `kimi` (for coding/complex tasks).
+- **Search Prompt Optimization**: Improved robustness against context poisoning in search queries using strict system prompts and context isolation.
 
 ---
 
