@@ -27,31 +27,7 @@ function stripLeadingPunctuation(text: string): string {
   return text.replace(/^[\p{P}\p{S}]+/u, '');
 }
 
-function detectIntent(text: string): Invocation['intent'] {
-  const normalized = text.trim().toLowerCase();
-  if (!normalized) {
-    return 'unknown';
-  }
-
-  if (/\b(summarize|summary|tldr|recap|catch up|what are they talking about)\b/i.test(normalized)) {
-    return 'summarize';
-  }
-
-  if (
-    normalized.startsWith('admin') ||
-    (normalized.includes('admin') && normalized.includes('stats'))
-  ) {
-    return 'admin';
-  }
-
-  if (/\b(do|create|set|update)\b\s+\w+/i.test(normalized)) {
-    return 'action';
-  }
-
-  if (/\?/.test(text) || /^\s*(what|why|how|when|where|can you)\b/i.test(normalized)) {
-    return 'qa';
-  }
-
+function detectIntent(_text: string): Invocation['intent'] {
   return 'unknown';
 }
 
