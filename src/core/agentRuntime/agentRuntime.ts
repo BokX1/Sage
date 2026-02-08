@@ -27,11 +27,26 @@ import { classifyStyle, analyzeUserStyle } from './styleClassifier';
 import { decideRoute } from '../orchestration/llmRouter';
 import { runExperts } from '../orchestration/runExperts';
 // import { governOutput } from '../orchestration/governor';
-import { upsertTraceStart, updateTraceEnd } from './agent-trace-repo';
-import { ExpertPacket } from '../orchestration/experts/expert-types';
-import { resolveModelForRequest } from '../llm/model-resolver';
+import { replaceAgentRuns, upsertTraceStart, updateTraceEnd } from './agent-trace-repo';
+import { ExpertName, ExpertPacket } from '../orchestration/experts/expert-types';
+import { resolveModelForRequestDetailed } from '../llm/model-resolver';
+import { recordModelOutcome } from '../llm/model-health';
 import { getGuildApiKey } from '../settings/guildSettingsRepo';
 import { getWelcomeMessage } from '../../bot/handlers/welcomeMessage';
+import { buildPlannedExpertGraph } from './plannerAgent';
+import { executeAgentGraph } from './graphExecutor';
+import { renderExpertPacketContext } from './blackboard';
+import { evaluateDraftWithCritic } from './criticAgent';
+import { normalizeCriticConfig, shouldRequestRevision, shouldRunCritic } from './qualityPolicy';
+import { parseToolBlocklistCsv } from './toolPolicy';
+import { resolveTenantPolicy } from './tenantPolicy';
+import {
+  evaluateAgenticCanary,
+  getAgenticCanarySnapshot,
+  normalizeCanaryConfig,
+  parseRouteAllowlistCsv,
+  recordAgenticOutcome,
+} from './canaryPolicy';
 
 // GOOGLE_SEARCH_TOOL removed
 
@@ -129,6 +144,38 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
   const guildApiKey = guildId ? await getGuildApiKey(guildId) : undefined;
   const apiKey = guildApiKey ?? appConfig.LLM_API_KEY;
 
+  const tenantPolicy = resolveTenantPolicy({
+    guildId,
+    policyJson: appConfig.AGENTIC_TENANT_POLICY_JSON,
+  });
+  const effectiveGraphMaxParallel = tenantPolicy.maxParallel ?? appConfig.AGENTIC_GRAPH_MAX_PARALLEL;
+  const effectiveGraphParallelEnabled =
+    appConfig.AGENTIC_GRAPH_PARALLEL_ENABLED && effectiveGraphMaxParallel > 1;
+  const effectiveToolAllowExternalWrite =
+    tenantPolicy.toolAllowExternalWrite ?? appConfig.AGENTIC_TOOL_ALLOW_EXTERNAL_WRITE;
+  const effectiveToolAllowHighRisk =
+    tenantPolicy.toolAllowHighRisk ?? appConfig.AGENTIC_TOOL_ALLOW_HIGH_RISK;
+  const effectiveToolBlockedTools = Array.from(
+    new Set([
+      ...parseToolBlocklistCsv(appConfig.AGENTIC_TOOL_BLOCKLIST_CSV),
+      ...(tenantPolicy.toolBlockedTools ?? []),
+    ]),
+  );
+  const criticConfig = normalizeCriticConfig({
+    enabled: tenantPolicy.criticEnabled ?? appConfig.AGENTIC_CRITIC_ENABLED,
+    maxLoops: tenantPolicy.criticMaxLoops ?? appConfig.AGENTIC_CRITIC_MAX_LOOPS,
+    minScore: tenantPolicy.criticMinScore ?? appConfig.AGENTIC_CRITIC_MIN_SCORE,
+  });
+  const canaryConfig = normalizeCanaryConfig({
+    enabled: appConfig.AGENTIC_CANARY_ENABLED,
+    rolloutPercent: appConfig.AGENTIC_CANARY_PERCENT,
+    routeAllowlist: parseRouteAllowlistCsv(appConfig.AGENTIC_CANARY_ROUTE_ALLOWLIST_CSV),
+    maxFailureRate: appConfig.AGENTIC_CANARY_MAX_FAILURE_RATE,
+    minSamples: appConfig.AGENTIC_CANARY_MIN_SAMPLES,
+    cooldownMs: appConfig.AGENTIC_CANARY_COOLDOWN_SEC * 1000,
+    windowSize: appConfig.AGENTIC_CANARY_WINDOW_SIZE,
+  });
+
   // Extract text from replyReferenceContent for router (it can be string or LLMContentPart[])
   const extractReplyText = (content: LLMMessageContent | null | undefined): string | null => {
     if (!content) return null;
@@ -154,22 +201,148 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
   logger.debug({ traceId, route }, 'Router decision');
 
   let expertPackets: ExpertPacket[] = [];
-  try {
-    expertPackets = await runExperts({
-      experts: route.experts,
-      guildId,
-      channelId,
-      userId,
-      traceId,
-      skipMemory: !!userProfileSummary,
-      userText,
-      userContent,
-      replyReferenceContent,
-      conversationHistory,
-      apiKey,
+  let expertPacketsText = '';
+  let agentGraphJson: unknown = null;
+  let agentEventsJson: unknown = [];
+  let budgetJson: Record<string, unknown> = {};
+  let agentRunRows: Array<{
+    traceId: string;
+    nodeId: string;
+    agent: string;
+    status: string;
+    attempts: number;
+    startedAt: string;
+    finishedAt: string | null;
+    latencyMs: number | null;
+    errorText: string | null;
+    metadataJson?: Record<string, unknown>;
+  }> = [];
+  const canaryDecision = evaluateAgenticCanary({
+    traceId,
+    guildId,
+    routeKind: route.kind,
+    config: canaryConfig,
+  });
+
+  const buildCanaryEvent = () => ({
+    type: 'canary_decision',
+    reason: canaryDecision.reason,
+    allowAgentic: canaryDecision.allowAgentic,
+    samplePercent: canaryDecision.samplePercent ?? null,
+    timestamp: new Date().toISOString(),
+  });
+
+  const runLegacyExperts = async (params: { mode: string; reason: string; eventType: string }) => {
+    try {
+      expertPackets = await runExperts({
+        experts: route.experts,
+        guildId,
+        channelId,
+        userId,
+        traceId,
+        skipMemory: !!userProfileSummary,
+        userText,
+        userContent,
+        replyReferenceContent,
+        conversationHistory,
+        apiKey,
+      });
+      budgetJson = {
+        mode: params.mode,
+        expertCount: expertPackets.length,
+        canaryDecision,
+      };
+      agentEventsJson = [
+        buildCanaryEvent(),
+        {
+          type: params.eventType,
+          reason: params.reason,
+          timestamp: new Date().toISOString(),
+        },
+      ];
+    } catch (fallbackError) {
+      logger.warn({ error: fallbackError, traceId }, 'Failed to run experts (non-fatal)');
+      expertPackets = [];
+      budgetJson = {
+        mode: 'expert_runner_failed',
+        canaryDecision,
+      };
+      agentEventsJson = [
+        buildCanaryEvent(),
+        {
+          type: 'graph_fallback_failed',
+          reason: String(fallbackError),
+          timestamp: new Date().toISOString(),
+        },
+      ];
+    }
+  };
+
+  if (canaryDecision.allowAgentic) {
+    try {
+      const graph = buildPlannedExpertGraph({
+        routeKind: route.kind,
+        experts: route.experts,
+        skipMemory: !!userProfileSummary,
+        enableParallel: effectiveGraphParallelEnabled,
+      });
+      agentGraphJson = graph;
+
+      const graphExecution = await executeAgentGraph({
+        traceId,
+        graph,
+        guildId,
+        channelId,
+        userId,
+        userText,
+        userContent,
+        replyReferenceContent,
+        conversationHistory,
+        apiKey,
+        maxParallel: effectiveGraphMaxParallel,
+      });
+      recordAgenticOutcome({
+        success: true,
+        config: canaryConfig,
+      });
+
+      expertPackets = graphExecution.packets;
+      agentEventsJson = [buildCanaryEvent(), ...graphExecution.events];
+      agentRunRows = graphExecution.nodeRuns;
+      expertPacketsText = renderExpertPacketContext(graphExecution.blackboard);
+      budgetJson = {
+        graphNodes: graph.nodes.length,
+        graphEdges: graph.edges.length,
+        completedTasks: graphExecution.blackboard.counters.completedTasks,
+        failedTasks: graphExecution.blackboard.counters.failedTasks,
+        artifactCount: graphExecution.blackboard.artifacts.length,
+        estimatedArtifactTokens: graphExecution.blackboard.counters.totalEstimatedTokens,
+        graphParallelEnabled: effectiveGraphParallelEnabled,
+        graphMaxParallel: effectiveGraphMaxParallel,
+        canaryDecision,
+      };
+    } catch (err) {
+      recordAgenticOutcome({
+        success: false,
+        config: canaryConfig,
+      });
+      logger.warn({ error: err, traceId }, 'Agent graph execution failed; falling back to legacy experts');
+      await runLegacyExperts({
+        mode: 'legacy_expert_runner',
+        reason: String(err),
+        eventType: 'graph_fallback',
+      });
+    }
+  } else {
+    await runLegacyExperts({
+      mode: 'canary_legacy_runner',
+      reason: `Agentic graph skipped: ${canaryDecision.reason}`,
+      eventType: 'canary_skipped',
     });
-  } catch (err) {
-    logger.warn({ error: err, traceId }, 'Failed to run experts (non-fatal)');
+  }
+
+  if (!expertPacketsText) {
+    expertPacketsText = expertPackets.map((p) => `[${p.name}] ${p.content}`).join('\n\n');
   }
 
   const files: Array<{ attachment: Buffer; name: string }> = [];
@@ -178,8 +351,6 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
       files.push({ attachment: packet.binary.data, name: packet.binary.filename });
     }
   }
-
-  const expertPacketsText = expertPackets.map((p) => `[${p.name}] ${p.content}`).join('\n\n');
 
   if (appConfig.TRACE_ENABLED) {
     try {
@@ -191,9 +362,16 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
         routeKind: route.kind,
         routerJson: route,
         expertsJson: expertPackets.map((p) => ({ name: p.name, json: p.json })),
-        tokenJson: {},
+        tokenJson: budgetJson,
         reasoningText: route.reasoningText,
+        agentGraphJson,
+        agentEventsJson,
+        budgetJson,
       });
+
+      if (agentRunRows.length > 0) {
+        await replaceAgentRuns(traceId, agentRunRows);
+      }
     } catch (error) {
       logger.warn({ error, traceId }, 'Failed to persist trace start');
     }
@@ -314,14 +492,35 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
 
   let draftText = '';
   let toolsExecuted = false;
+  const modelResolutionEvents: Array<Record<string, unknown>> = [];
+  const criticRedispatches: Array<Record<string, unknown>> = [];
 
   // --- SEARCH-AUGMENTED GENERATION (SAG) ---
   if (route.kind === 'search') {
     logger.info({ traceId, userText }, 'Agent Runtime: Executing Search-Augmented Generation');
     try {
       // 1. Search Query
-      // Use perplexity-reasoning to get raw facts/reasoning
-      const searchClient = createLLMClient('pollinations', { chatModel: 'perplexity-reasoning' });
+      const searchModelDetails = await resolveModelForRequestDetailed({
+        guildId,
+        messages: [{ role: 'user', content: userText }],
+        route: 'search',
+        allowedModels: tenantPolicy.allowedModels,
+        featureFlags: {
+          search: true,
+          reasoning: true,
+        },
+      });
+      const searchModel = searchModelDetails.model;
+      modelResolutionEvents.push({
+        phase: 'search_augmented',
+        route: searchModelDetails.route,
+        selected: searchModelDetails.model,
+        candidates: searchModelDetails.candidates,
+        decisions: searchModelDetails.decisions,
+        allowlistApplied: searchModelDetails.allowlistApplied,
+      });
+
+      const searchClient = createLLMClient('pollinations', { chatModel: searchModel });
 
       // Build context-aware messages for search
       const searchMessages: LLMChatMessage[] = [];
@@ -359,11 +558,17 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
 
       searchMessages.push({ role: 'user', content: completeUserContent });
 
+      const searchStartedAt = Date.now();
       const searchResponse = await searchClient.chat({
         messages: searchMessages,
-        model: 'perplexity-reasoning',
+        model: searchModel,
         apiKey: apiKey, // Pass API key if available/needed
         timeout: 120_000, // Increased to 2 minutes for deep reasoning
+      });
+      recordModelOutcome({
+        model: searchModel,
+        success: true,
+        latencyMs: Date.now() - searchStartedAt,
       });
 
       const searchResultContent = searchResponse.content;
@@ -391,6 +596,14 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
       }
 
     } catch (searchError) {
+      const searchEvents = modelResolutionEvents.filter((entry) => entry.phase === 'search_augmented');
+      const lastSearch = searchEvents.length > 0 ? searchEvents[searchEvents.length - 1] : null;
+      if (lastSearch?.selected && typeof lastSearch.selected === 'string') {
+        recordModelOutcome({
+          model: lastSearch.selected,
+          success: false,
+        });
+      }
       logger.error({ error: searchError, traceId }, 'SAG: Search step failed');
       // Fallback: Continue to normal chat, maybe the model knows enough or will halluciante slightly less.
       // Or inject a failure note?
@@ -402,16 +615,29 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
   }
 
   // --- STANDARD CHAT COMPLETION ---
+  let lastPrimaryModel: string | null = null;
   try {
-    const resolvedModel = await resolveModelForRequest({
+    const resolvedModelDetails = await resolveModelForRequestDetailed({
       guildId,
       messages,
       route: route.kind, // Pass the route decision (used for logging/metrics logic mainly now)
+      allowedModels: tenantPolicy.allowedModels,
       featureFlags: {
         tools: nativeTools.length > 0,
       },
     });
+    const resolvedModel = resolvedModelDetails.model;
+    lastPrimaryModel = resolvedModel;
+    modelResolutionEvents.push({
+      phase: 'main',
+      route: resolvedModelDetails.route,
+      selected: resolvedModelDetails.model,
+      candidates: resolvedModelDetails.candidates,
+      decisions: resolvedModelDetails.decisions,
+      allowlistApplied: resolvedModelDetails.allowlistApplied,
+    });
 
+    const mainCallStartedAt = Date.now();
     const response = await client.chat({
       messages,
       model: resolvedModel,
@@ -420,6 +646,11 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
       toolChoice: nativeTools.length > 0 ? 'auto' : undefined,
       temperature: route.temperature,
       timeout: appConfig.TIMEOUT_CHAT_MS,
+    });
+    recordModelOutcome({
+      model: resolvedModel,
+      success: true,
+      latencyMs: Date.now() - mainCallStartedAt,
     });
 
     draftText = response.content;
@@ -441,6 +672,11 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
             registry: globalToolRegistry,
             ctx: { traceId, userId, channelId },
             apiKey,
+            toolPolicy: {
+              allowExternalWrite: !!effectiveToolAllowExternalWrite,
+              allowHighRisk: !!effectiveToolAllowHighRisk,
+              blockedTools: effectiveToolBlockedTools,
+            },
           });
 
           draftText = toolLoopResult.replyText;
@@ -451,17 +687,258 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
       }
     }
   } catch (err) {
+    if (lastPrimaryModel) {
+      recordModelOutcome({
+        model: lastPrimaryModel,
+        success: false,
+      });
+    }
     logger.error({ error: err, traceId }, 'LLM call error');
     draftText = "I'm having trouble connecting right now. Please try again later.";
   }
+  const criticAssessments: Array<{
+    iteration: number;
+    score: number;
+    verdict: 'pass' | 'revise';
+    model: string;
+    issues: string[];
+  }> = [];
+  const deriveCriticRedispatchExperts = (issues: string[]): ExpertName[] => {
+    const issueText = issues.join(' ').toLowerCase();
+    const experts = new Set<ExpertName>();
+
+    if (/(fact|factual|correct|accuracy|halluc|citation|source|verify|evidence)/.test(issueText)) {
+      experts.add('Memory');
+    }
+    if (/(relationship|friend|social|tone|persona|community)/.test(issueText)) {
+      experts.add('SocialGraph');
+    }
+    if (/(voice|speaker|audio|talked|vc)/.test(issueText)) {
+      experts.add('VoiceAnalytics');
+    }
+    if (/(summary|summar|context|missing context|thread)/.test(issueText)) {
+      experts.add('Summarizer');
+    }
+
+    return [...experts].filter((expert) => route.experts.includes(expert));
+  };
+
+  if (
+    shouldRunCritic({
+      config: criticConfig,
+      routeKind: route.kind,
+      draftText,
+      isVoiceActive,
+      hasFiles: files.length > 0,
+    })
+  ) {
+    for (let iteration = 1; iteration <= criticConfig.maxLoops; iteration += 1) {
+      const assessment = await evaluateDraftWithCritic({
+        guildId,
+        routeKind: route.kind,
+        userText,
+        draftText,
+        allowedModels: tenantPolicy.allowedModels,
+        apiKey,
+        timeoutMs: Math.min(90_000, appConfig.TIMEOUT_CHAT_MS),
+      });
+
+      if (!assessment) break;
+
+      criticAssessments.push({
+        iteration,
+        score: assessment.score,
+        verdict: assessment.verdict,
+        model: assessment.model,
+        issues: assessment.issues,
+      });
+
+      if (!shouldRequestRevision({ assessment, minScore: criticConfig.minScore })) {
+        break;
+      }
+
+      const revisionInstruction =
+        assessment.rewritePrompt.trim() ||
+        (assessment.issues.length > 0
+          ? `Fix the following issues: ${assessment.issues.join('; ')}`
+          : 'Improve factual precision and completeness while preserving tone.');
+
+      let redispatchContext = '';
+      const redispatchExperts = deriveCriticRedispatchExperts(assessment.issues);
+      if (redispatchExperts.length > 0) {
+        try {
+          const redispatchedPackets = await runExperts({
+            experts: redispatchExperts,
+            guildId,
+            channelId,
+            userId,
+            traceId,
+            skipMemory: false,
+            userText,
+            userContent,
+            replyReferenceContent,
+            conversationHistory,
+            apiKey,
+          });
+
+          if (redispatchedPackets.length > 0) {
+            criticRedispatches.push({
+              iteration,
+              experts: redispatchExperts,
+              packetCount: redispatchedPackets.length,
+            });
+            if (Array.isArray(agentEventsJson)) {
+              agentEventsJson.push({
+                type: 'critic_redispatch',
+                timestamp: new Date().toISOString(),
+                details: {
+                  iteration,
+                  experts: redispatchExperts,
+                  packetCount: redispatchedPackets.length,
+                },
+              });
+            }
+
+            redispatchContext = redispatchedPackets
+              .map((packet) => `[${packet.name}] ${packet.content}`)
+              .join('\n\n');
+
+            for (const packet of redispatchedPackets) {
+              if (packet.binary) {
+                files.push({ attachment: packet.binary.data, name: packet.binary.filename });
+              }
+            }
+          }
+        } catch (error) {
+          logger.warn(
+            { error, traceId, iteration, redispatchExperts },
+            'Critic-targeted redispatch failed (non-fatal)',
+          );
+        }
+      }
+
+      const revisionMessages: LLMChatMessage[] = [
+        ...messages,
+        { role: 'assistant', content: draftText },
+        {
+          role: 'system',
+          content:
+            `Critic requested revision:\n${revisionInstruction}` +
+            (redispatchContext ? `\n\nAdditional expert refresh:\n${redispatchContext}` : ''),
+        },
+      ];
+
+      try {
+        const revisionModelDetails = await resolveModelForRequestDetailed({
+          guildId,
+          messages: revisionMessages,
+          route: route.kind,
+          allowedModels: tenantPolicy.allowedModels,
+          featureFlags: {
+            reasoning: true,
+          },
+        });
+        const revisionModel = revisionModelDetails.model;
+        modelResolutionEvents.push({
+          phase: 'critic_revision',
+          iteration,
+          route: revisionModelDetails.route,
+          selected: revisionModelDetails.model,
+          candidates: revisionModelDetails.candidates,
+          decisions: revisionModelDetails.decisions,
+          allowlistApplied: revisionModelDetails.allowlistApplied,
+        });
+
+        const revisionStartedAt = Date.now();
+        const revisedResponse = await client.chat({
+          messages: revisionMessages,
+          model: revisionModel,
+          apiKey,
+          temperature: Math.max(0.1, route.temperature - 0.2),
+          timeout: appConfig.TIMEOUT_CHAT_MS,
+        });
+        recordModelOutcome({
+          model: revisionModel,
+          success: true,
+          latencyMs: Date.now() - revisionStartedAt,
+        });
+
+        draftText = revisedResponse.content;
+      } catch (error) {
+        const revisionEvents = modelResolutionEvents.filter(
+          (entry) => entry.phase === 'critic_revision',
+        );
+        const lastRevision = revisionEvents.length > 0 ? revisionEvents[revisionEvents.length - 1] : null;
+        if (lastRevision?.selected && typeof lastRevision.selected === 'string') {
+          recordModelOutcome({
+            model: lastRevision.selected,
+            success: false,
+          });
+        }
+        logger.warn({ error, traceId, iteration }, 'Critic revision attempt failed (non-fatal)');
+        break;
+      }
+    }
+  }
 
   const finalText = draftText;
+  const qualityJson =
+    criticAssessments.length > 0
+      ? {
+          critic: criticAssessments,
+          revised: criticAssessments.some((assessment) => assessment.verdict === 'revise'),
+          criticRedispatches: criticRedispatches.length > 0 ? criticRedispatches : undefined,
+        }
+      : undefined;
+  const canarySnapshot = getAgenticCanarySnapshot();
+  const finalBudgetJson: Record<string, unknown> = {
+    ...budgetJson,
+    toolsExecuted,
+    criticIterations: criticAssessments.length,
+    criticRedispatches: criticRedispatches.length,
+    modelResolution: modelResolutionEvents,
+    policy: {
+      tenantPolicyApplied:
+        tenantPolicy.allowedModels !== undefined ||
+        tenantPolicy.maxParallel !== undefined ||
+        tenantPolicy.criticEnabled !== undefined ||
+        tenantPolicy.criticMaxLoops !== undefined ||
+        tenantPolicy.criticMinScore !== undefined ||
+        tenantPolicy.toolAllowExternalWrite !== undefined ||
+        tenantPolicy.toolAllowHighRisk !== undefined ||
+        tenantPolicy.toolBlockedTools !== undefined,
+      allowedModels: tenantPolicy.allowedModels,
+      graph: {
+        parallelEnabled: effectiveGraphParallelEnabled,
+        maxParallel: effectiveGraphMaxParallel,
+      },
+      tools: {
+        allowExternalWrite: effectiveToolAllowExternalWrite,
+        allowHighRisk: effectiveToolAllowHighRisk,
+        blockedTools: effectiveToolBlockedTools,
+      },
+      critic: criticConfig,
+      canary: {
+        ...canaryConfig,
+        decision: canaryDecision,
+        snapshot: canarySnapshot,
+      },
+    },
+  };
 
   if (appConfig.TRACE_ENABLED) {
     try {
       await updateTraceEnd({
         id: traceId,
-        toolJson: toolsExecuted ? { executed: true } : undefined,
+        toolJson:
+          toolsExecuted || criticAssessments.length > 0
+            ? {
+                executed: toolsExecuted,
+                critic: criticAssessments.length > 0 ? criticAssessments : undefined,
+              }
+            : undefined,
+        qualityJson,
+        budgetJson: finalBudgetJson,
         replyText: finalText,
       });
     } catch (error) {

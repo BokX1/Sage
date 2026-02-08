@@ -9,7 +9,9 @@ coverage
 .DS_Store
 prisma/*.db
 prisma/*.db-journal
-prisma/migrations/
+# Track Prisma migration files in VCS.
+!prisma/migrations/
+!prisma/migrations/**
 .agent/
 /cmd.exe
 /powershell.exe

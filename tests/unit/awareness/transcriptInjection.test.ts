@@ -38,6 +38,7 @@ vi.mock('../../../src/core/settings/guildSettingsRepo', () => ({
 vi.mock('../../../src/core/agentRuntime/agent-trace-repo', () => ({
   upsertTraceStart: vi.fn().mockResolvedValue(undefined),
   updateTraceEnd: vi.fn().mockResolvedValue(undefined),
+  replaceAgentRuns: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock('../../../src/core/orchestration/llmRouter', () => ({
@@ -50,6 +51,14 @@ vi.mock('../../../src/core/orchestration/runExperts', () => ({
 
 vi.mock('../../../src/core/llm/model-resolver', () => ({
   resolveModelForRequest: vi.fn().mockResolvedValue('kimi'),
+  resolveModelForRequestDetailed: vi.fn().mockResolvedValue({
+    model: 'kimi',
+    route: 'qa',
+    requirements: {},
+    allowlistApplied: false,
+    candidates: ['kimi'],
+    decisions: [{ model: 'kimi', accepted: true, reason: 'selected', healthScore: 0.5 }],
+  }),
 }));
 
 import { appendMessage, clearChannel } from '../../../src/core/awareness/channelRingBuffer';

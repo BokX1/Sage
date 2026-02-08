@@ -109,6 +109,10 @@ model AgentTrace {
   routeKind     String
   routerJson    Json
   expertsJson   Json
+  agentGraphJson Json?
+  agentEventsJson Json?
+  qualityJson   Json?
+  budgetJson    Json?
   toolJson      Json?
   tokenJson     Json?
   reasoningText String?  @db.Text
@@ -118,4 +122,23 @@ model AgentTrace {
   @@index([guildId, createdAt])
   @@index([channelId, createdAt])
   @@index([userId, createdAt])
+}
+
+model AgentRun {
+  id           String   @id @default(cuid())
+  traceId      String
+  nodeId       String
+  agent        String
+  status       String
+  attempts     Int      @default(1)
+  startedAt    DateTime
+  finishedAt   DateTime?
+  latencyMs    Int?
+  errorText    String?  @db.Text
+  metadataJson Json?
+  createdAt    DateTime @default(now())
+
+  @@index([traceId, createdAt])
+  @@index([traceId, nodeId])
+  @@index([agent, createdAt])
 }

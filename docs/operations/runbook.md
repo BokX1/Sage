@@ -34,6 +34,7 @@ npm run build && npm start  # Production
 
 ```bash
 npm run doctor           # Check configuration and database
+npm run agentic:replay-gate  # Replay quality gate
 ```
 
 ### Database operations
@@ -80,6 +81,15 @@ Before starting Sage, verify:
 | `TRACE_ENABLED` | `true` | Helps debug issues |
 | `AUTOPILOT_MODE` | `manual` | Predictable behavior |
 | `DEV_GUILD_ID` | Your server ID | Fast command registration (development) |
+
+### Agentic rollout controls
+
+| Variable | Recommended Value | Why |
+| :--- | :--- | :--- |
+| `AGENTIC_CANARY_ENABLED` | `true` | Enables rollout guardrails |
+| `AGENTIC_CANARY_PERCENT` | `100` in stable, lower during canary | Control traffic exposure |
+| `AGENTIC_CANARY_MAX_FAILURE_RATE` | `0.30` (or stricter) | Triggers automatic cooldown on regressions |
+| `AGENTIC_TENANT_POLICY_JSON` | Explicit per-guild policy JSON | Per-tenant model/tool/critic governance |
 
 ### Optional enhancements
 
@@ -301,3 +311,5 @@ npm start
 - [ ] Configure admin access (`ADMIN_USER_IDS_CSV`)
 - [ ] Secure database credentials
 - [ ] Set up a process manager (pm2) for auto-restart
+- [ ] Set canary policy values for your rollout stage
+- [ ] Run `npm run agentic:replay-gate` before promoting builds

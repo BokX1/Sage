@@ -7,18 +7,19 @@ A complete reference for Sage configuration. All settings are configured in your
 
 ---
 
-## 🧭 Quick navigation
+## Quick Navigation
 
-- [✅ How to Use This Page](#how-to-use-this-page)
-- [🔴 Essential (Required)](#essential-required)
-- [🤖 AI Models](#ai-models)
-- [💬 Behavior & Agentic Triggers](#behavior-agentic-triggers)
-- [📥 Message Ingestion & Storage](#message-ingestion-storage)
-- [📊 Channel Summaries](#channel-summaries)
-- [🧠 Context Budgeting](#context-budgeting)
-- [🤝 Relationship Graph](#relationship-graph)
-- [🔒 Rate Limits & Timeouts](#rate-limits-timeouts)
-- [👑 Admin Access Control](#admin-access-control)
+- [How to Use This Page](#how-to-use-this-page)
+- [Essential (Required)](#essential-required)
+- [AI Models](#ai-models)
+- [Behavior & Agentic Triggers](#behavior-agentic-triggers)
+- [Agentic Runtime Governance](#agentic-runtime-governance)
+- [Message Ingestion & Storage](#message-ingestion-storage)
+- [Channel Summaries](#channel-summaries)
+- [Context Budgeting](#context-budgeting)
+- [Relationship Graph](#relationship-graph)
+- [Rate Limits & Timeouts](#rate-limits-timeouts)
+- [Admin Access Control](#admin-access-control)
 
 ---
 
@@ -101,6 +102,53 @@ Control how Sage responds in chat.
 | `manual` | Responds only on wake word, @mention, or reply | 🟢 **Low** |
 | `reserved` | Occasionally joins relevant conversations | 🟡 **Medium** |
 | `talkative` | Actively participates without prompts | 🔴 **High** |
+
+---
+
+<a id="agentic-runtime-governance"></a>
+
+## Agentic Runtime Governance
+
+These settings control the planner/executor safety rails, per-tenant overrides, and rollout behavior.
+
+### Graph, Tool, Critic, and Tenant Overrides
+
+| Variable | Description | Default |
+| :--- | :--- | :--- |
+| `AGENTIC_GRAPH_PARALLEL_ENABLED` | Enables parallel graph execution when dependencies allow | `true` |
+| `AGENTIC_GRAPH_MAX_PARALLEL` | Upper bound for concurrent graph nodes | `3` |
+| `AGENTIC_TOOL_ALLOW_EXTERNAL_WRITE` | Allows tools with external side effects | `false` |
+| `AGENTIC_TOOL_ALLOW_HIGH_RISK` | Allows high-risk tools | `false` |
+| `AGENTIC_TOOL_BLOCKLIST_CSV` | Comma-separated blocked tool names | *(empty)* |
+| `AGENTIC_CRITIC_ENABLED` | Enables bounded critic loops | `false` |
+| `AGENTIC_CRITIC_MIN_SCORE` | Critic score threshold before revision | `0.72` |
+| `AGENTIC_CRITIC_MAX_LOOPS` | Max critic-driven revisions | `1` |
+| `AGENTIC_TENANT_POLICY_JSON` | JSON policy registry for `default` and per-`guilds` overrides (max parallel, critic, tool policy, allowed models) | `{}` |
+
+### Canary and Rollback Controls
+
+| Variable | Description | Default |
+| :--- | :--- | :--- |
+| `AGENTIC_CANARY_ENABLED` | Enables rollout sampling and error-budget guardrails | `true` |
+| `AGENTIC_CANARY_PERCENT` | Percent of eligible traffic that uses agentic graph execution (0-100) | `100` |
+| `AGENTIC_CANARY_ROUTE_ALLOWLIST_CSV` | Comma-separated routes eligible for agentic execution | `qa,coding,search,summarize,admin,social_graph,voice_analytics,memory,image_generate` |
+| `AGENTIC_CANARY_MAX_FAILURE_RATE` | Failure-rate threshold that trips cooldown | `0.30` |
+| `AGENTIC_CANARY_MIN_SAMPLES` | Minimum samples before evaluating failure rate | `20` |
+| `AGENTIC_CANARY_COOLDOWN_SEC` | Cooldown duration after error-budget breach | `300` |
+| `AGENTIC_CANARY_WINDOW_SIZE` | Rolling sample window size for failure-rate checks | `100` |
+
+### Replay Gate Controls
+
+Used by `npm run agentic:replay-gate` (and CI release readiness).
+
+| Variable | Description | Default |
+| :--- | :--- | :--- |
+| `REPLAY_GATE_LIMIT` | Number of recent traces evaluated | `50` |
+| `REPLAY_GATE_MIN_AVG_SCORE` | Minimum average replay score (0-1) | `0.62` |
+| `REPLAY_GATE_MIN_SUCCESS_RATE` | Minimum success-likely ratio (0-1) | `0.70` |
+| `REPLAY_GATE_REQUIRE_DATA` | Fails gate when no traces exist (`1`/`0`) | `0` |
+| `REPLAY_GATE_GUILD_ID` | Optional guild scope for evaluation | *(empty)* |
+| `REPLAY_GATE_CHANNEL_ID` | Optional channel scope for evaluation | *(empty)* |
 
 ---
 
@@ -255,6 +303,26 @@ AUTOPILOT_MODE=manual
 PROFILE_UPDATE_INTERVAL=5
 WAKE_WORDS_CSV=sage
 TRACE_ENABLED=true
+AGENTIC_GRAPH_PARALLEL_ENABLED=true
+AGENTIC_GRAPH_MAX_PARALLEL=3
+AGENTIC_TOOL_ALLOW_EXTERNAL_WRITE=false
+AGENTIC_TOOL_ALLOW_HIGH_RISK=false
+AGENTIC_TOOL_BLOCKLIST_CSV=
+AGENTIC_CRITIC_ENABLED=false
+AGENTIC_CRITIC_MIN_SCORE=0.72
+AGENTIC_CRITIC_MAX_LOOPS=1
+AGENTIC_CANARY_ENABLED=true
+AGENTIC_CANARY_PERCENT=100
+AGENTIC_CANARY_ROUTE_ALLOWLIST_CSV=qa,coding,search,summarize,admin,social_graph,voice_analytics,memory,image_generate
+AGENTIC_CANARY_MAX_FAILURE_RATE=0.30
+AGENTIC_CANARY_MIN_SAMPLES=20
+AGENTIC_CANARY_COOLDOWN_SEC=300
+AGENTIC_CANARY_WINDOW_SIZE=100
+AGENTIC_TENANT_POLICY_JSON={}
+REPLAY_GATE_LIMIT=50
+REPLAY_GATE_MIN_AVG_SCORE=0.62
+REPLAY_GATE_MIN_SUCCESS_RATE=0.70
+REPLAY_GATE_REQUIRE_DATA=0
 LOG_LEVEL=info
 
 # =============================================================================
@@ -271,3 +339,6 @@ ADMIN_USER_IDS_CSV=123456789012345678
 - [Pollinations Integration](POLLINATIONS.md) — Provider + model configuration
 - [Memory System](architecture/memory_system.md) — How context budgets are applied
 - [Operations Runbook](operations/runbook.md) — Production deployment notes
+
+
+

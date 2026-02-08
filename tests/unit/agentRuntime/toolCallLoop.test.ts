@@ -55,6 +55,7 @@ describe('toolCallLoop', () => {
   let registry: ToolRegistry;
   let mockClient: LLMClient;
   let mockChat: ReturnType<typeof vi.fn<[LLMRequest], Promise<LLMResponse>>>;
+  let getTimeExecute: ReturnType<typeof vi.fn>;
 
   const testCtx = {
     traceId: 'test-trace',
@@ -67,12 +68,13 @@ describe('toolCallLoop', () => {
 
     // Setup registry with test tools
     registry = new ToolRegistry();
+    getTimeExecute = vi.fn().mockResolvedValue({ time: '12:00 PM' });
 
     registry.register({
       name: 'get_time',
       description: 'Get the current time',
       schema: z.object({}),
-      execute: async () => ({ time: '12:00 PM' }),
+      execute: getTimeExecute,
     });
 
     registry.register({
@@ -344,6 +346,84 @@ describe('toolCallLoop', () => {
 
       expect(result.toolResults[0].success).toBe(false);
       expect(result.toolResults[0].error).toContain('Invalid arguments');
+    });
+  });
+
+  describe('tool policy gating', () => {
+    it('blocks external side-effect tools when policy disallows them', async () => {
+      const leaveVoiceExecute = vi.fn().mockResolvedValue({ ok: true });
+      registry.register({
+        name: 'leave_voice',
+        description: 'Leave a voice channel',
+        schema: z.object({}),
+        execute: leaveVoiceExecute,
+      });
+
+      mockChat.mockResolvedValueOnce({
+        content: JSON.stringify({
+          type: 'tool_calls',
+          calls: [{ name: 'leave_voice', args: {} }],
+        }),
+      });
+
+      mockChat.mockResolvedValueOnce({
+        content: 'Cannot perform that action right now.',
+      });
+
+      const result = await runToolCallLoop({
+        client: mockClient,
+        messages: [{ role: 'user', content: 'Leave voice now' }],
+        registry,
+        ctx: testCtx,
+        toolPolicy: {
+          allowExternalWrite: false,
+          allowHighRisk: false,
+          blockedTools: [],
+        },
+      });
+
+      expect(result.toolResults).toHaveLength(1);
+      expect(result.toolResults[0].success).toBe(false);
+      expect(result.toolResults[0].error).toContain('external side effects');
+      expect(leaveVoiceExecute).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('tool result caching', () => {
+    it('reuses cached tool results across rounds for identical calls', async () => {
+      mockChat
+        .mockResolvedValueOnce({
+          content: JSON.stringify({
+            type: 'tool_calls',
+            calls: [{ name: 'get_time', args: {} }],
+          }),
+        })
+        .mockResolvedValueOnce({
+          content: JSON.stringify({
+            type: 'tool_calls',
+            calls: [{ name: 'get_time', args: {} }],
+          }),
+        })
+        .mockResolvedValueOnce({
+          content: 'Done.',
+        });
+
+      const result = await runToolCallLoop({
+        client: mockClient,
+        messages: [{ role: 'user', content: 'call get_time twice' }],
+        registry,
+        ctx: testCtx,
+        config: {
+          maxRounds: 2,
+          cacheEnabled: true,
+          cacheMaxEntries: 10,
+        },
+      });
+
+      expect(result.roundsCompleted).toBe(2);
+      expect(result.toolResults).toHaveLength(2);
+      expect(result.toolResults.every((item) => item.success)).toBe(true);
+      expect(getTimeExecute).toHaveBeenCalledTimes(1);
     });
   });
 });

@@ -177,6 +177,14 @@ npm run check
 
 `npm run check` runs lint + typecheck + tests and is the required pre-merge gate.
 
+### Agentic release gate
+
+```bash
+npm run agentic:replay-gate
+```
+
+This evaluates recent trace outcomes and enforces replay thresholds before promotion.
+
 ## 🗂️ Project Structure
 
 ```text

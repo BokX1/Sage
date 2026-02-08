@@ -1,239 +1,200 @@
-# 🔀 Sage Runtime Pipeline (Routing + Orchestration)
+# Sage Runtime Pipeline (Planner, Graph Executor, Safety Gates)
 
-This document explains how Sage routes incoming messages, builds context, and executes LLM calls. It reflects the current implementation in `src/core/agentRuntime` and `src/core/orchestration`.
-
----
-
-## 🧭 Quick navigation
-
-- [1) High-level flow](#1-high-level-flow)
-- [2) Intelligent LLM Router](#2-intelligent-llm-router)
-- [3) Narrative experts](#3-narrative-experts)
-- [4) Agentic tool loop & error recovery](#4-agentic-tool-loop-error-recovery)
-- [5) Context building](#5-context-building)
-- [6) Tracing & observability](#6-tracing-observability)
-- [7) Voice fast-path](#7-voice-fast-path)
-- [8) Search-Augmented Generation (SAG)](#8-search-augmented-generation)
-- [🔗 Related documentation](#related-documentation)
+This document describes the current end-to-end runtime as implemented in `src/core/agentRuntime` and related modules.
 
 ---
 
-<a id="1-high-level-flow"></a>
+## Quick Navigation
 
-## 1) High-level flow
+- [1) End-to-End Flow](#1-end-to-end-flow)
+- [2) Route + Plan Construction](#2-route--plan-construction)
+- [3) Graph Execution + Blackboard](#3-graph-execution--blackboard)
+- [4) Tools, Policy, and Cache](#4-tools-policy-and-cache)
+- [5) Critic Loop + Targeted Redispatch](#5-critic-loop--targeted-redispatch)
+- [6) Model Selection + Health Fallbacks](#6-model-selection--health-fallbacks)
+- [7) Tenant Overrides + Canary Guardrails](#7-tenant-overrides--canary-guardrails)
+- [8) Tracing, Replay, and Release Gates](#8-tracing-replay-and-release-gates)
+
+---
+
+## 1) End-to-End Flow
 
 ```mermaid
 flowchart TD
-    %% End-to-end message handling (routing + orchestration).
-    classDef discord fill:#5865F2,stroke:#fff,color:white
-    classDef core fill:#e0f7fa,stroke:#006064,color:black
-    classDef router fill:#b9f,stroke:#333,stroke-width:2px,color:black
-    classDef expert fill:#f3e5f5,stroke:#4a148c,color:black
-    classDef output fill:#a5d6a7,stroke:#1b5e20,color:black
+    A[Discord message] --> B[generateChatReply]
+    B --> C[runChatTurn]
+    C --> D[LLM Router]
+    D --> E[Canary Decision]
 
-    A[Discord message]:::discord --> B[ingestEvent]:::core --> C[generateChatReply]:::core
-    C --> D{Voice fast-path?}:::router
+    E -->|Agentic Allowed| F[Planner DAG]
+    E -->|Canary Skip| G[Legacy Expert Runner]
 
-    D -- Yes --> E[Voice statistics]:::output --> K["Send response\n(text + optional attachments)"]:::output
+    F --> H[Graph Executor]
+    H --> I[Blackboard Artifacts]
+    I --> J[Context Builder]
 
-    D -- No --> R[LLM router]:::router
-    R --> X["Expert pool\n(Memory / Social / Voice / Summary / Image / Search)"]:::expert --> H[Context builder]:::core --> I[LLM call]:::core --> J["Tool loop (qa/admin)"]:::core --> K
+    G --> J
 
-    K --> L[Async: profile update]:::expert
-    K --> M[Async: channel summary]:::expert
-```
+    J --> K[Model Resolver]
+    K --> L[LLM Response]
+    L --> M{Tool calls?}
+    M -->|Yes| N[Tool Loop + Policy + Cache]
+    M -->|No| O[Draft]
+    N --> O
 
-> [!IMPORTANT]
-> > **BYOP is the standard** for communities. If a message originates from a guild and no server key is set (and no global fallback key is configured in `.env`), Sage returns the BYOP welcome message and does not call the LLM.
+    O --> P{Critic enabled?}
+    P -->|Yes| Q[Critic + Optional Redispatch]
+    P -->|No| R[Final Reply]
+    Q --> R
 
----
-
-<a id="2-intelligent-llm-router"></a>
-
-## 2) Intelligent LLM Router
-
-**File:** `src/core/orchestration/llmRouter.ts`
-
-Sage uses a **high-precision LLM classifier** (model alias `deepseek`) to decide what kind of request a message represents and which experts should run.
-
-Key properties:
-
-- **Contextual intelligence:** The router receives the **last 7 messages** of history, helping it resolve pronouns (e.g., “what about them?”).
-- **Structured output:** The router returns JSON (route + experts). `decideRoute()` validates it and produces a `RouteDecision` (`kind`, `experts`, `allowTools`, `temperature`, `reasoningText`).
-- **Fail-safe:** If routing fails or JSON is invalid, Sage defaults to `qa` (with the Memory expert enabled).
-
-| Route | Primary purpose | Typical experts (router prompt) |
-| :--- | :--- | :--- |
-| `summarize` | Channel recap / TL;DR | Summarizer, Memory |
-| `qa` | Default conversation + Q&A (fallback) | *(router decides; often includes Memory)* |
-| `image_generate` | Generate or edit an image | ImageGenerator *(Memory may be included)* |
-| `voice_analytics` | Voice analytics / voice-mode hints | VoiceAnalytics, Memory |
-| `social_graph` | Relationship / connection reasoning | SocialGraph, Memory |
-| `memory` | Profile / “remember/forget” intents | Memory |
-| `search` | Real-time information retrieval (SAG) | *(uses Perplexity-reasoning model)* |
-| `admin` | Slash commands / configuration | SocialGraph, VoiceAnalytics, Memory *(tools enabled)* |
-
-> [!NOTE]
-> Sage validates router output against: `summarize`, `qa`, `admin`, `voice_analytics`, `social_graph`, `memory`, `image_generate`, `search`.
-> If the router returns an empty expert list, Sage injects `Memory` as a safe default.
-
----
-
-<a id="3-narrative-experts"></a>
-
-## 3) Narrative experts
-
-**File:** `src/core/orchestration/runExperts.ts`
-
-Experts run secondary lookups (usually DB, sometimes external calls) and return **enriched packets** for the LLM (and optionally files):
-
-- **Memory** → User profile summary
-- **Summarizer** → Latest rolling channel summary
-- **VoiceAnalytics** → Human-readable session data (e.g., “Active for 2 hours and 15 minutes”)
-- **SocialGraph** → Relationship tiers (e.g., “Best Friend 🌟”) and interaction counts
-- **ImageGenerator** → Refines your prompt and fetches image bytes from Pollinations (`/image/{prompt}`); can also do image-to-image edits when you attach/reply to an image
-
-These packets are injected into the system prompt so the model has structured context before responding.
-
-> [!NOTE]
-> Experts can also return **binary attachments** (currently used for image generation). Attachments are sent alongside the first Discord reply chunk.
-
----
-
-<a id="4-agentic-tool-loop-error-recovery"></a>
-
-## 4) Agentic tool loop & error recovery
-
-**File:** `src/core/agentRuntime/toolCallLoop.ts`
-
-Sage implements a self-correcting tool loop:
-
-1. **Execution:** The LLM calls a tool (e.g., `google_search`).
-2. **Error classification:** Tool errors are categorized (e.g., `timeout`, `validation_error`).
-3. **Internal feedback:** Sage returns a structured suggestion back to the LLM.
-4. **Autonomous retry:** The agent can retry with corrected parameters, try an alternative tool, or explain failure.
-
-### Tool loop sequence
-
-```mermaid
-sequenceDiagram
-    participant Brain as LLM Brain
-    participant ToolLoop as Tool Loop
-    participant Exec as Tool Execution
-
-    Brain->>ToolLoop: Tool call envelope (e.g., Search: "query")
-    ToolLoop->>Exec: Execute (with timeout)
-
-    alt Success
-        Exec-->>ToolLoop: Results
-        ToolLoop-->>Brain: ✅ Tool result
-    else Error (timeout/validation)
-        Exec-->>ToolLoop: Error
-        ToolLoop->>ToolLoop: Classify + suggest fix
-        ToolLoop-->>Brain: ❌ Error + retry hint
-        Note over Brain: Brain adjusts query/params
-        Brain->>ToolLoop: Retry tool call
-    end
-
-    ToolLoop-->>Brain: Updated context
-    Brain-->>Brain: Continue reasoning
+    R --> S[Trace Persist + Agent Runs]
+    S --> T[Discord response]
 ```
 
 ---
 
-<a id="5-context-building"></a>
+## 2) Route + Plan Construction
 
-## 5) Context building
+Primary files:
 
-**File:** `src/core/agentRuntime/contextBuilder.ts`
+- `src/core/orchestration/llmRouter.ts`
+- `src/core/agentRuntime/plannerAgent.ts`
+- `src/core/agentRuntime/graphPolicy.ts`
 
-The context builder composes a single system message with:
+Runtime behavior:
 
-- Core system prompt + user/channel profiles
-- Narrative expert packets
-- Relationship hints + rolling summary
-- Transcript block (respecting token budgets)
-
-It uses `contextBudgeter` to respect limits defined in `src/config.ts`.
-
----
-
-<a id="6-tracing-observability"></a>
-
-## 6) Tracing & observability
-
-**File:** `src/core/agentRuntime/agent-trace-repo.ts`
-
-Every interaction can be traced for admin debugging:
-
-- **Reasoning:** Router `reasoningText` stored in `AgentTrace`
-- **Payloads:** Expert packets, tool calls, and final responses
-- **Access:** surfaced via `/sage admin trace`
+1. `decideRoute` classifies request intent and expert set.
+2. `buildPlannedExpertGraph` constructs the execution plan.
+3. Planner strategy is route-aware:
+   - dependency-aware DAG for multi-expert routes that benefit from partial ordering,
+   - fanout graph for independent experts,
+   - linear graph fallback when needed.
+4. `validateAgentGraph` enforces acyclic graph and budget ceilings before execution.
 
 ---
 
-<a id="7-voice-fast-path"></a>
+## 3) Graph Execution + Blackboard
 
-## 7) Voice fast-path
+Primary files:
 
-Before invoking the full LLM pipeline, Sage uses a deterministic fast-path for simple voice queries (e.g., “who is in voice?”). This enables sub-second responses using `src/core/voice/voiceQueries.ts`.
+- `src/core/agentRuntime/graphExecutor.ts`
+- `src/core/agentRuntime/blackboard.ts`
+- `src/core/agentRuntime/agent-events.ts`
+
+Runtime behavior:
+
+1. Executor runs nodes with per-node timeout/retry budgets.
+2. Parallel execution is bounded by `AGENTIC_GRAPH_MAX_PARALLEL`.
+3. Node outputs are written as typed artifacts to blackboard state.
+4. Event stream captures graph lifecycle (`graph_started`, `node_completed`, `node_failed`, `graph_completed`).
+5. Per-node runtime rows are persisted via `AgentRun` records.
 
 ---
 
-<a id="8-search-augmented-generation"></a>
+## 4) Tools, Policy, and Cache
 
-## 8) Search-Augmented Generation (SAG)
+Primary files:
 
-**File:** `src/core/agentRuntime/agentRuntime.ts` (lines 341-400)
+- `src/core/agentRuntime/toolCallLoop.ts`
+- `src/core/agentRuntime/toolPolicy.ts`
+- `src/core/agentRuntime/toolCache.ts`
 
-When the router detects a query requiring real-time information, Sage uses **Search-Augmented Generation (SAG)** powered by `perplexity-reasoning`.
+Runtime behavior:
 
-### How SAG works
+1. Tool calls execute through a bounded loop with retry prompts for malformed envelopes.
+2. Deterministic policy gates classify risk (`read_only`, `external_write`, `high_risk`).
+3. Blocklists and risk permissions are enforced before any tool execution.
+4. Successful tool results are cached per turn to reduce duplicate calls.
 
-```mermaid
-sequenceDiagram
-    participant User
-    participant Router as LLM Router
-    participant Perplexity as Perplexity-Reasoning
-    participant MainLLM as Main LLM
-    participant Response
+---
 
-    User->>Router: "What's the price of Bitcoin?"
-    Router->>Router: Detect temporal signal ("price of")
-    Router-->>Perplexity: Route to search
+## 5) Critic Loop + Targeted Redispatch
 
-    Perplexity->>Perplexity: Real-time web search
-    Perplexity-->>MainLLM: Search results injected
+Primary files:
 
-    MainLLM->>MainLLM: Synthesize with persona
-    MainLLM-->>Response: Natural reply with live data
-    Response-->>User: "Bitcoin is currently trading at $X..."
+- `src/core/agentRuntime/criticAgent.ts`
+- `src/core/agentRuntime/qualityPolicy.ts`
+- `src/core/agentRuntime/agentRuntime.ts`
+
+Runtime behavior:
+
+1. Critic loop is bounded by `AGENTIC_CRITIC_MAX_LOOPS`.
+2. If quality is below threshold, the runtime requests revision.
+3. Before revision, the runtime can redispatch targeted experts based on critic issues and inject refreshed packets.
+4. Critic outcomes and redispatch metadata are persisted in trace quality/budget payloads.
+
+---
+
+## 6) Model Selection + Health Fallbacks
+
+Primary files:
+
+- `src/core/llm/model-resolver.ts`
+- `src/core/llm/model-health.ts`
+
+Runtime behavior:
+
+1. Resolver builds route-specific candidate chains.
+2. Capability constraints (vision/audio/tools/search/reasoning) are enforced when metadata is available.
+3. Optional tenant allowlists filter candidate sets.
+4. Candidate order is health-weighted using rolling outcome history.
+5. Detailed selection telemetry (candidate decisions + fallback reasons) is recorded in runtime budget metadata.
+
+---
+
+## 7) Tenant Overrides + Canary Guardrails
+
+Primary files:
+
+- `src/core/agentRuntime/tenantPolicy.ts`
+- `src/core/agentRuntime/canaryPolicy.ts`
+- `src/core/agentRuntime/agentRuntime.ts`
+
+Runtime behavior:
+
+1. Tenant policy (`AGENTIC_TENANT_POLICY_JSON`) can override:
+   - graph parallelism,
+   - critic config,
+   - tool policy flags/blocklist,
+   - allowed models.
+2. Canary policy controls rollout and rollback:
+   - deterministic sampling (`AGENTIC_CANARY_PERCENT`),
+   - route allowlist,
+   - rolling error-budget windows,
+   - cooldown when failure rate crosses threshold.
+3. When canary denies agentic path, runtime safely falls back to legacy expert runner.
+
+---
+
+## 8) Tracing, Replay, and Release Gates
+
+Primary files:
+
+- `src/core/agentRuntime/agent-trace-repo.ts`
+- `src/core/agentRuntime/replayHarness.ts`
+- `src/core/agentRuntime/outcomeScorer.ts`
+- `src/scripts/replay-gate.ts`
+
+Runtime behavior:
+
+1. `AgentTrace` persists router, experts, graph/events, quality, budget, and tool payloads.
+2. Replay harness scores recent traces and aggregates route-level quality metrics.
+3. Replay gate script enforces rollout thresholds:
+   - `REPLAY_GATE_MIN_AVG_SCORE`
+   - `REPLAY_GATE_MIN_SUCCESS_RATE`
+4. CI release-readiness runs migrations then executes `npm run release:agentic-check`.
+
+Recommended pre-release command:
+
+```bash
+npm run release:agentic-check
 ```
 
-### Trigger signals
-
-The router routes to `search` when it detects:
-
-| Signal Type | Examples |
-| :--- | :--- |
-| **Temporal keywords** | "current", "latest", "today", "now", "recent" |
-| **Lookup verbs** | "search", "look up", "google", "find out" |
-| **Real-time data** | "price of", "weather", "stock", "news", "score" |
-| **URLs** | Any message containing `http://` or `https://` |
-
-### Example queries
-
-- "What's the current price of Bitcoin?"
-- "Search for the latest AI news"
-- "Look up Python async tutorials"
-- "What's the weather in Tokyo?"
-
 ---
 
-<a id="related-documentation"></a>
+## Related Documentation
 
-## 🔗 Related documentation
-
-- [🧠 Memory system](memory_system.md)
-- [💾 Database architecture](database.md)
-- [🤖 Agentic architecture](../AGENTIC_ARCHITECTURE.md)
+- [Agentic Architecture](../AGENTIC_ARCHITECTURE.md)
+- [Configuration Reference](../CONFIGURATION.md)
+- [Operations Runbook](../operations/runbook.md)
+- [Release Process](../RELEASE.md)

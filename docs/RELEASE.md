@@ -37,6 +37,7 @@ This project follows **Semantic Versioning (SemVer)**: `MAJOR.MINOR.PATCH`.
    - `npm run build`
    - Run `npm run doctor` to check compatibility.
    - `npm run test`
+   - `npm run agentic:replay-gate`
    - `npm pack`
 
 3. **Review database migrations** (if applicable)
@@ -55,7 +56,8 @@ This project follows **Semantic Versioning (SemVer)**: `MAJOR.MINOR.PATCH`.
 
 ```bash
 npm ci
-NODE_ENV=test DISCORD_TOKEN=test-token DISCORD_APP_ID=test-app-id DATABASE_URL=file:./test.db npm run release:check
+NODE_ENV=test DISCORD_TOKEN=test-token DISCORD_APP_ID=test-app-id DATABASE_URL=postgresql://postgres:password@127.0.0.1:5432/sage?schema=public REPLAY_GATE_REQUIRE_DATA=0 npx prisma migrate deploy
+NODE_ENV=test DISCORD_TOKEN=test-token DISCORD_APP_ID=test-app-id DATABASE_URL=postgresql://postgres:password@127.0.0.1:5432/sage?schema=public REPLAY_GATE_REQUIRE_DATA=0 npm run release:agentic-check
 ```
 
 ### Windows (PowerShell)
@@ -65,8 +67,10 @@ npm ci
 $env:NODE_ENV="test"
 $env:DISCORD_TOKEN="test-token"
 $env:DISCORD_APP_ID="test-app-id"
-$env:DATABASE_URL="file:./test.db"
-npm run release:check
+$env:DATABASE_URL="postgresql://postgres:password@127.0.0.1:5432/sage?schema=public"
+$env:REPLAY_GATE_REQUIRE_DATA="0"
+npx prisma migrate deploy
+npm run release:agentic-check
 ```
 
 ---
@@ -76,7 +80,7 @@ npm run release:check
 ## 🔍 Release readiness check (recommended)
 
 ```bash
-npm run release:check
+npm run release:agentic-check
 ```
 
 ---

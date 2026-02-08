@@ -3,6 +3,8 @@ import { ToolRegistry, ToolExecutionContext } from './toolRegistry';
 import { logger } from '../utils/logger';
 import { executeToolWithTimeout, ToolResult } from './toolCallExecution';
 import { looksLikeJson, parseToolCallEnvelope, RETRY_PROMPT } from './toolCallParser';
+import { evaluateToolPolicy, ToolPolicyConfig } from './toolPolicy';
+import { ToolResultCache } from './toolCache';
 
 
 /** Configure loop bounds and tool timeout behavior. */
@@ -13,12 +15,18 @@ export interface ToolCallLoopConfig {
   maxCallsPerRound?: number;
 
   toolTimeoutMs?: number;
+
+  cacheEnabled?: boolean;
+
+  cacheMaxEntries?: number;
 }
 
 const DEFAULT_CONFIG: Required<ToolCallLoopConfig> = {
   maxRounds: 2,
   maxCallsPerRound: 3,
   toolTimeoutMs: 10_000,
+  cacheEnabled: true,
+  cacheMaxEntries: 50,
 };
 
 
@@ -35,6 +43,7 @@ function getValidatedConfig(config: Required<ToolCallLoopConfig>): Required<Tool
   assertPositiveInteger(config.maxRounds, 'maxRounds');
   assertPositiveInteger(config.maxCallsPerRound, 'maxCallsPerRound');
   assertPositiveInteger(config.toolTimeoutMs, 'toolTimeoutMs');
+  assertPositiveInteger(config.cacheMaxEntries, 'cacheMaxEntries');
   return config;
 }
 
@@ -112,6 +121,8 @@ export interface ToolCallLoopParams {
   apiKey?: string;
 
   config?: ToolCallLoopConfig;
+
+  toolPolicy?: ToolPolicyConfig;
 }
 
 
@@ -145,6 +156,7 @@ export async function runToolCallLoop(params: ToolCallLoopParams): Promise<ToolC
   const config = getValidatedConfig({ ...DEFAULT_CONFIG, ...params.config });
 
   const messages = [...params.messages];
+  const cache = config.cacheEnabled ? new ToolResultCache(config.cacheMaxEntries) : null;
   let roundsCompleted = 0;
   const allToolResults: ToolResult[] = [];
   let retryAttempted = false;
@@ -220,8 +232,43 @@ export async function runToolCallLoop(params: ToolCallLoopParams): Promise<ToolC
 
     const roundResults: ToolResult[] = [];
     for (const call of calls) {
+      const cached = cache?.get(call.name, call.args) ?? null;
+      if (cached) {
+        roundResults.push({
+          name: call.name,
+          success: true,
+          result: cached.result,
+          latencyMs: 0,
+        });
+        continue;
+      }
+
+      const policyDecision = evaluateToolPolicy(call.name, params.toolPolicy);
+      if (!policyDecision.allow) {
+        logger.warn(
+          {
+            traceId: ctx.traceId,
+            toolName: call.name,
+            risk: policyDecision.risk,
+            reason: policyDecision.reason,
+          },
+          'Tool call denied by policy',
+        );
+        roundResults.push({
+          name: call.name,
+          success: false,
+          error: policyDecision.reason ?? `Tool "${call.name}" denied by policy`,
+          errorType: 'validation',
+          latencyMs: 0,
+        });
+        continue;
+      }
+
       const result = await executeToolWithTimeout(registry, call, ctx, config.toolTimeoutMs);
       roundResults.push(result);
+      if (result.success && cache) {
+        cache.set(call.name, call.args, result.result);
+      }
     }
 
     allToolResults.push(...roundResults);

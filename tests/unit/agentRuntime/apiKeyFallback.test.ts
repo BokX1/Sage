@@ -48,13 +48,22 @@ vi.mock('../../../src/core/orchestration/llmRouter', () => ({
 vi.mock('../../../src/core/orchestration/runExperts', () => ({
   runExperts: vi.fn().mockResolvedValue([]),
 }));
-vi.mock('../../../src/core/llm/modelResolver', () => ({
+vi.mock('../../../src/core/llm/model-resolver', () => ({
   resolveModelForRequest: vi.fn().mockResolvedValue('kimi'),
+  resolveModelForRequestDetailed: vi.fn().mockResolvedValue({
+    model: 'kimi',
+    route: 'qa',
+    requirements: {},
+    allowlistApplied: false,
+    candidates: ['kimi'],
+    decisions: [{ model: 'kimi', accepted: true, reason: 'selected', healthScore: 0.5 }],
+  }),
 }));
 vi.mock('../../../src/core/utils/logger');
 vi.mock('../../../src/core/agentRuntime/agent-trace-repo', () => ({
   upsertTraceStart: vi.fn(),
   updateTraceEnd: vi.fn(),
+  replaceAgentRuns: vi.fn(),
 }));
 vi.mock('../../../src/core/settings/guildSettingsRepo', () => ({
   getGuildApiKey: vi.fn(),

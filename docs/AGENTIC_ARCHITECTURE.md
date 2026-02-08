@@ -1,408 +1,217 @@
-# 🤖 Agentic Architecture
+# Agentic Architecture
 
-<p align="center">
-  <img src="https://img.shields.io/badge/🧠-Agentic%20AI-8a2be2?style=for-the-badge&labelColor=6a0dad" alt="Agentic AI" />
-  <img src="https://img.shields.io/badge/Self--Learning-Memory-2d5016?style=for-the-badge&labelColor=4a7c23" alt="Self-Learning" />
-</p>
+Sage is a planner-led, safety-governed, multi-agent Discord runtime.
 
-**Sage is not just a chatbot — it’s a fully agentic Discord companion that thinks, learns, and adapts.**
-
-This document explains what makes Sage different from traditional bots and how its agentic architecture works.
+This page explains the current architecture and what makes the runtime agentic in production, not only in demos.
 
 ---
 
-## 🧭 On this page
+## Quick Navigation
 
-- [What is “agentic AI”?](#-what-is-agentic-ai)
-- [The five pillars](#-the-five-pillars-of-sages-intelligence)
-- [How Sage learns](#-how-sage-learns)
-- [Social intelligence](#-social-intelligence)
-- [Voice companion (beta)](#-voice-companion-beta)
-- [Routing and experts](#-intelligent-routing)
-- [Self-correcting tool loop](#-self-correcting-agent-loop)
-- [Observability](#-observability)
-- [Technical architecture map](#-technical-architecture)
+- [What "Agentic" Means in Sage](#what-agentic-means-in-sage)
+- [Core Runtime Pillars](#core-runtime-pillars)
+- [Execution Lifecycle](#execution-lifecycle)
+- [Governance and Safety](#governance-and-safety)
+- [Observability and Evaluation](#observability-and-evaluation)
+- [Architecture Map](#architecture-map)
 
 ---
 
-<a id="-what-is-agentic-ai"></a>
+## What "Agentic" Means in Sage
 
-## 🎯 What is "Agentic AI"?
+In Sage, "agentic" means the runtime can:
 
-An **agentic AI** is an AI system that can:
-
-| Capability | Traditional Bot | Agentic Bot (Sage) |
-| :--- | :--- | :--- |
-| **Memory** | Forgets after each message | Remembers and learns over time |
-| **Autonomy** | Only responds to commands | Can observe, think, and act proactively |
-| **Context** | Limited to current message | Understands conversation history and relationships |
-| **Adaptation** | Static responses | Evolves understanding of each user |
-| **Error Recovery** | Crashes or fails silently | Self-corrects and tries alternative approaches |
+1. Plan work as a graph of specialist tasks.
+2. Execute with retries/timeouts and controlled parallelism.
+3. Share typed artifacts through a blackboard.
+4. Self-critique and revise when quality is below threshold.
+5. Enforce deterministic policy for tools and rollout risk.
+6. Measure outcomes and gate releases with replay signals.
 
 ---
 
-<a id="-the-five-pillars-of-sages-intelligence"></a>
+## Core Runtime Pillars
 
-## 🧠 The Five Pillars of Sage's Intelligence
+### 1) Planner + Graph Executor
 
-```mermaid
-mindmap
-  root((Sage))
-    Self-Learning Memory
-      User Profiles
-      Conversation Context
-      Long-term Preferences
-    Social Awareness
-      Relationship Tiers
-      Interaction Patterns
-      Group Dynamics
-    Intelligent Routing
-      LLM Classifier
-      Expert Selection
-      Context Resolution
-      Search-Augmented Generation
-    Autonomous Tool Loop
-      Tool Execution
-      Error Recovery
-      Self-Correction
-    Multimodal
-      Text Understanding
-      Image Understanding (Vision)
-      Image Generation & Editing
-      File Processing
-      Voice Companion (Beta)
-```
+- Router decides route + experts.
+- Planner constructs dependency-aware DAG/fanout/linear plans.
+- Graph validator blocks invalid graphs before execution.
+- Executor runs nodes with budgeted retries and timeouts.
 
----
+### 2) Blackboard Artifacts
 
-## 🆚 Sage vs Traditional Bots
+- Each node writes artifacts with provenance and confidence.
+- Synthesis uses blackboard output, not implicit hidden state.
 
-### Scenario: A user frequently talks about TypeScript
+### 3) Tool Governance
 
-| Aspect | Traditional Bot | Sage |
-| :--- | :--- | :--- |
-| **Day 1** | "What is TypeScript?" → Generic explanation | Same → Generic explanation |
-| **Day 7** | Same question → Same generic answer | Notices pattern, asks: "Working on your TypeScript project again?" |
-| **Day 30** | No memory of past help | Remembers preferences, code style, common issues |
-| **Relationship** | All users treated identically | "Best Friend" status = more personalized help |
+- Tool loop supports bounded rounds and recovery prompts.
+- Policy classes: `read_only`, `external_write`, `high_risk`.
+- Blocklist/permission gates are applied before execution.
+- Per-turn cache deduplicates repeated tool calls.
 
-### Scenario: User asks "Can you help with that thing?"
+### 4) Quality Loop
 
-| Traditional Bot | Sage |
-| :--- | :--- |
-| ❌ "I don't understand what 'that thing' means" | ✅ Checks recent context: "You mean the API rate limiting issue we discussed earlier?" |
-| ❌ "I cannot see images" | ✅ Analyzes shared images: "I see a React component in that screenshot—want me to debug it?" |
+- Critic scoring evaluates draft quality.
+- If below threshold, runtime requests revision.
+- Critic can trigger targeted expert redispatch before rewrite.
+
+### 5) Model Policy
+
+- Route-aware model candidate chains.
+- Capability filters (vision/audio/search/reasoning/tool use).
+- Tenant allowlists can constrain selected models.
+- Model health outcomes influence fallback ordering over time.
+
+### 6) Rollout Governance
+
+- Canary sampling controls agentic rollout percent.
+- Route allowlist limits where agentic path is active.
+- Error-budget window trips cooldown when failure rate rises.
+- Runtime falls back to legacy expert runner when canary blocks/opens circuit.
 
 ---
 
-<a id="-how-sage-learns"></a>
-
-## 🔄 How Sage Learns
-
-```mermaid
-sequenceDiagram
-    autonumber
-    participant User
-    participant Sage
-    participant Memory
-    participant Profile
-
-    User->>Sage: Message
-    Sage->>Memory: Fetch recent context
-    Memory-->>Sage: Last 15 messages + user profile
-
-    Sage->>Sage: Generate response with full context
-    Sage->>User: Personalized reply
-
-    rect rgb(45, 45, 45)
-        Note over Sage,Profile: Asynchronous Learning Loop (Every 5 messages)
-        Sage->>Profile: Update user profile
-        Profile->>Profile: Consolidate facts
-        Profile->>Profile: Detect intent patterns
-        Profile-->>Memory: Save updated profile
-    end
-```
-
-### What Sage Remembers
-
-| Category | Examples |
-| :--- | :--- |
-| **Preferences** | Favorite programming languages, preferred explanations style |
-| **Context** | Current projects, recent discussions, ongoing problems |
-| **Relationships** | Who talks to whom, interaction frequency, closeness |
-| **Patterns** | Common questions, active hours, communication style |
-
-### What Sage Forgets
-
-| Category | Reason |
-| :--- | :--- |
-| **Raw messages** | Summarized into profiles (privacy by design) |
-| **Sensitive data** | Never stored in profiles |
-| **Old context** | Replaced with consolidated summaries |
-
----
-
-<a id="-social-intelligence"></a>
-
-## 🎭 Social Intelligence
-
-Sage understands **who you are** to each other.
-
-### Relationship Tiers
-
-```text
-👑 Best Friend (0.9+)
-   └─ Very personalized, remembers everything
-
-💚 Close Friend (0.7-0.9)
-   └─ Warm and familiar, good context
-
-🤝 Friend (0.5-0.7)
-   └─ Friendly, growing understanding
-
-👋 Acquaintance (0.3-0.5)
-   └─ Polite, learning about you
-
-👤 Stranger (<0.3)
-   └─ New friend, neutral and helpful
-```
-
-### How Relationships Form
-
-Sage builds relationships naturally through:
-
-- **Message interactions** — Replies, mentions, conversations
-- **Voice presence** — Time spent together in voice channels
-- **Shared activities** — Group discussions, collaborative problem-solving
-
-> [!TIP]
-> Use `/sage whoiswho` to see your relationship status.
-
----
-
-<a id="-voice-companion-beta"></a>
-
-## 🎤 Voice Companion (Beta)
-
-Sage introduces a **"Text-in, Voice-out"** architecture for a seamless voice experience.
-
-### Decoupled Intelligence
-
-Unlike traditional voice bots that struggle with speech-to-text accuracy, Sage decouples the "Brain" from the "Mouth".
-
-1. **The Brain (Chat Agent):** You type to Sage in text. This uses Sage’s memory, tools, and social context without degradation.
-2. **The Mouth (TTS Agent):** Sage replies in text *and* simultaneously speaks the response in your voice channel.
-
-### Dynamic Persona
-
-Sage analyzes conversation style and intent to dynamically select a voice persona (e.g., “Deep Narrator”, “Energetic Friend”) and instructs the TTS model accordingly.
-
-```mermaid
-sequenceDiagram
-    autonumber
-    actor User
-    participant ChatBrain as 🧠 Chat Brain
-    participant TTS as 🗣️ TTS Agent
-    participant VoiceChannel as 🔊 Voice Channel
-
-    User->>ChatBrain: "Tell me a scary story" (Text)
-    ChatBrain->>ChatBrain: Selects 'Onyx' Voice (Narrator)
-    ChatBrain->>ChatBrain: Generates Story Script
-    ChatBrain->>TTS: "Read this with a scary tone"
-
-    par Sync Response
-        ChatBrain->>User: Sends Text Reply
-        TTS->>VoiceChannel: Plays Audio
-    end
-```
-
----
-
-<a id="-intelligent-routing"></a>
-
-## 🧭 Intelligent Routing
-
-Sage uses an **LLM-powered router** to understand questions and choose experts.
+## Execution Lifecycle
 
 ```mermaid
 flowchart TD
-    %% Router selects experts, then builds a single prompt for the LLM.
-    classDef user fill:#f96,stroke:#333,stroke-width:2px,color:black
-    classDef router fill:#b9f,stroke:#333,stroke-width:2px,color:black
-    classDef expert fill:#f3e5f5,stroke:#4a148c,color:black
-    classDef context fill:#ff9,stroke:#333,stroke-width:2px,color:black
-    classDef llm fill:#9d9,stroke:#333,stroke-width:2px,color:black
+    A[Incoming Message] --> B[Route Decision]
+    B --> C[Canary Decision]
 
-    U[User message]:::user --> R{LLM Router}:::router
+    C -->|allow| D[Planner Builds Graph]
+    C -->|deny| E[Legacy Expert Runner]
 
-    R -->|selects| S[📊 Summarizer]:::expert
-    R -->|selects| G[👥 SocialGraph]:::expert
-    R -->|selects| V[🎤 VoiceAnalytics]:::expert
-    R -->|selects| M[🧠 Memory]:::expert
-    R -->|selects| IG[🎨 ImageGenerator]:::expert
-    R -->|selects| IG[🎨 ImageGenerator]:::expert
-    R -->|selects| SR[🔍 Search/SAG]:::expert
-    R -->|selects| C[💻 Coding/Reasoning]:::expert
+    D --> F[Graph Validator]
+    F --> G[Graph Executor]
+    G --> H[Blackboard Artifacts]
 
-    subgraph Context["Context Builder"]
-        direction TB
-        CTX[Assemble context blocks]:::context
-        BUDGET[Apply token budgets]:::context
-    end
+    E --> I[Expert Packets]
+    H --> J[Context Builder]
+    I --> J
 
-    S --> CTX
-    G --> CTX
-    V --> CTX
-    M --> CTX
-    IG --> CTX
-    SR --> CTX
+    J --> K[Model Resolver]
+    K --> L[LLM Draft]
+    L --> M{Tool Calls}
+    M -->|yes| N[Tool Loop + Policy + Cache]
+    M -->|no| O[Draft Ready]
+    N --> O
 
-    CTX --> BUDGET --> LLM[🤖 LLM]:::llm --> OUT["Reply\n(text + optional attachments)"]:::user
-```
+    O --> P{Critic Enabled}
+    P -->|yes| Q[Critic + Optional Redispatch]
+    P -->|no| R[Final Reply]
+    Q --> R
 
-### Why This Matters
-
-| Query | Traditional Bot | Sage |
-| :--- | :--- | :--- |
-| "Who was in voice last night?" | ❌ "I can't access voice data" | ✅ Routes to Voice Expert → "Alice, Bob, and Charlie were in General for 2 hours" |
-| "Summarize what we talked about" | ❌ "What conversation?" | ✅ Routes to Summarizer → Provides channel summary |
-| "What did Sarah say about TypeScript?" | ❌ "I don't know Sarah" | ✅ Routes to Memory → Recalls Sarah's recent TypeScript discussions |
-| "What's the current price of Bitcoin?" | ❌ "I don't have real-time data" | ✅ Routes to Search → Fetches live price via Perplexity |
-| "Refactor this React component" | ❌ "Here is a generic answer" | ✅ Routes to Coding → Switches to **Kimi** (Reasoning Model) for high-quality code |
-
----
-
-<a id="-self-correcting-agent-loop"></a>
-
-## 🔁 Self-Correcting Agent Loop
-
-Sage doesn't just fail — it **adapts**.
-
-```mermaid
-flowchart LR
-    %% Styling
-    classDef start fill:#f9f9f9,stroke:#333,stroke-width:2px,color:black
-    classDef action fill:#bbdefb,stroke:#1565c0,stroke-width:2px,color:black
-    classDef success fill:#c8e6c9,stroke:#2e7d32,stroke-width:2px,color:black
-    classDef failure fill:#ffcdd2,stroke:#c62828,stroke-width:2px,color:black
-    classDef retry fill:#fff9c4,stroke:#fbc02d,stroke-width:2px,color:black
-
-    A[Request]:::start --> B[Attempt Action]:::action
-    B --> C{Success?}
-    C -->|Yes| D[Return Result]:::success
-    C -->|No| E[Analyze Error]:::failure
-    E --> F[Try Alternative]:::retry
-    F --> C
-```
-
-### Error Recovery Example
-
-```text
-User: "Summarize the #dev channel"
-
-Attempt 1: Query channel summary
-  → Error: No recent summary exists
-
-Attempt 2: Trigger on-demand summarization
-  → Error: Rate limited
-
-Attempt 3: Use channel transcript directly
-  → Success: Generates summary from raw messages
-
-Reply: "Here's what happened in #dev today..."
+    R --> S[Trace + AgentRun Persistence]
+    S --> T[Discord Reply]
 ```
 
 ---
 
-<a id="-observability"></a>
+## Governance and Safety
 
-## 📊 Observability
+### Tenant Policy Layer
 
-Admins can inspect how Sage reasoned about a request.
+`AGENTIC_TENANT_POLICY_JSON` supports `default` and per-guild overrides for:
 
-### Trace Viewing
+- graph parallelism,
+- critic settings,
+- tool risk permissions/blocklists,
+- model allowlists.
 
-```text
-/sage admin trace
-```
+### Canary and Rollback Layer
 
-Shows:
+Canary controls include:
 
-- 🧭 Router decision — which experts were selected and why
-- 📦 Context used — what information Sage considered
-- 🔧 Tool calls — what actions were attempted
-- 💭 Reasoning — how the final response was generated
+- rollout percentage,
+- route allowlist,
+- failure-rate threshold,
+- rolling sample window,
+- cooldown period.
+
+When thresholds are breached, runtime automatically cools down to safer behavior.
+
+### Release Gate Layer
+
+`npm run agentic:replay-gate` evaluates recent traces and enforces quality thresholds before promotion.
+
+CI release-readiness runs this gate after migrations.
 
 ---
 
-<a id="-technical-architecture"></a>
+## Observability and Evaluation
 
-## 🏗️ Technical Architecture
+Trace persistence includes:
+
+- route decision payloads,
+- graph and event streams,
+- quality and budget metadata,
+- tool execution metadata,
+- per-node runtime rows (`AgentRun`).
+
+Replay harness and outcome scoring provide:
+
+- average quality score,
+- success-likely ratio,
+- route-level quality slices,
+- repeatable release gate inputs.
+
+---
+
+## Architecture Map
 
 ```mermaid
 flowchart TB
-    %% Layered view of the agentic runtime (simplified).
-    classDef input fill:#e1f5fe,stroke:#01579b,color:black
-    classDef awareness fill:#e0f2f1,stroke:#00695c,color:black
-    classDef orch fill:#f3e5f5,stroke:#7b1fa2,color:black
-    classDef runtime fill:#fff3e0,stroke:#e65100,color:black
-    classDef db fill:#eceff1,stroke:#37474f,color:black
-    classDef output fill:#a5d6a7,stroke:#1b5e20,color:black
-
-    subgraph Input["Input layer"]
-        direction TB
-        D[Discord events]:::input --> IH[Event handlers]:::input
+    subgraph Input
+      A[Discord Event]
+      B[Chat Engine]
     end
 
-    subgraph Awareness["Awareness layer"]
-        direction TB
-        IH --> RB[Ring buffer]:::awareness
-        IH --> MS[Message store]:::awareness
-        RB --> TB[Transcript builder]:::awareness
+    subgraph Orchestration
+      C[Router]
+      D[Canary Gate]
+      E[Planner]
+      F[Graph Policy]
+      G[Graph Executor]
+      H[Blackboard]
     end
 
-    subgraph Orchestration["Orchestration layer"]
-        direction TB
-        TB --> RT[LLM router]:::orch
-        RT --> EX[Expert pool]:::orch
-        EX --> SG[Social graph]:::orch
-        EX --> VA[Voice analytics]:::orch
-        EX --> SM[Summarizer]:::orch
-        EX --> MM[Memory]:::orch
+    subgraph Generation
+      I[Context Builder]
+      J[Model Resolver + Health]
+      K[LLM]
+      L[Tool Loop + Policy]
+      M[Critic Loop]
     end
 
-    subgraph Runtime["Agent runtime"]
-        direction TB
-        EX --> CB[Context builder]:::runtime
-        CB --> BG[Budget manager]:::runtime
-        BG --> PC[Prompt composer]:::runtime
-        PC --> LLM[LLM client]:::runtime
-        LLM --> TL[Tool loop]:::runtime
-        TL --> RP[Response]:::output
+    subgraph Persistence
+      N[(AgentTrace)]
+      O[(AgentRun)]
+      P[(Profiles/Summaries/Relationships)]
     end
 
-    subgraph Persistence["Persistence"]
-        direction TB
-        DB[(PostgreSQL)]:::db
-        MS --> DB
-        MM --> DB
-        SG --> DB
+    subgraph Evaluation
+      Q[Replay Harness]
+      R[Replay Gate]
+      S[CI Release Readiness]
     end
 
-    RP --> D
+    A --> B --> C --> D
+    D --> E --> F --> G --> H --> I --> J --> K
+    K --> L --> M
+    M --> N
+    G --> O
+    B --> P
+    N --> Q --> R --> S
 ```
 
 ---
 
-## 🎓 Learn More
+## Related Docs
 
-- [Memory System Deep-Dive](architecture/memory_system.md)
-- [Pipeline Architecture](architecture/pipeline.md)
+- [Runtime Pipeline](architecture/pipeline.md)
 - [Configuration Reference](CONFIGURATION.md)
-- [Database Schema](architecture/database.md)
-
----
-
-<p align="center">
-  <em>Sage: The Discord companion that actually <strong>gets it</strong>.</em>
-</p>
+- [Operations Runbook](operations/runbook.md)
+- [Release Process](RELEASE.md)
+- [Database Architecture](architecture/database.md)
