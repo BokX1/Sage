@@ -8,30 +8,21 @@ const ROUTER_MODEL = 'deepseek';
 const ROUTER_TEMPERATURE = 0.1;
 const ROUTER_TIMEOUT_MS = 45_000;
 
-export type RouteKind =
-    | 'summarize'
-    | 'qa'
-    | 'admin'
-    | 'voice_analytics'
-    | 'social_graph'
-    | 'memory'
-    | 'image_generate'
-    | 'search'
-    | 'coding';
+export type RouteKind = 'chat' | 'coding' | 'search' | 'art' | 'analyze' | 'manage';
 
 export interface RouteDecision {
     kind: RouteKind;
-    experts: ExpertName[];
+    experts?: ExpertName[];
     allowTools: boolean;
     temperature: number;
-    reasoningText?: string;
+    reasoningText: string;
 }
 
 export interface LLMRouterParams {
     userText: string;
     invokedBy: 'mention' | 'reply' | 'wakeword' | 'autopilot' | 'command';
     hasGuild: boolean;
-    conversationHistory?: LLMChatMessage[];
+    conversationHistory: LLMChatMessage[];
     replyReferenceContent?: string | null;
     apiKey?: string;
 }
@@ -53,75 +44,55 @@ You are an intent classification engine. Your ONLY job is to analyze the user's 
 
 | Route | Purpose | Primary Signals |
 |-------|---------|-----------------|
-| \`coding\` | Software development, debugging, code generation | "write a script", "fix this bug", "python", "js", "error", "implementation", "api", "function" |
-| \`image_generate\` | Create, edit, or modify images | "draw", "paint", "sketch", "generate image", "create art", "make a picture", "visualize", "illustrate", "design" |
-| \`voice_analytics\` | Voice channel statistics and presence | "who is in voice", "vc stats", "voice time", "how long in voice", "voice activity" |
-| \`social_graph\` | Relationship and social dynamics | "who are my friends", "relationship", "vibe check", "who do I talk to", "social connections" |
-| \`memory\` | User profile and memory operations | "what do you know about me", "remember", "forget me", "my profile", "my preferences" |
-| \`summarize\` | Conversation or content summarization | "summarize", "tldr", "tl;dr", "recap", "catch me up", "what did I miss", "summary" |
-| \`search\` | Real-time information retrieval | "search", "look up", "google", "find out", "what's the price", "latest news", URLs, current events |
-| \`admin\` | Bot configuration and debugging | "configure", "settings", "debug", "admin", "bot config" |
-| \`qa\` | General conversation, Q&A, chat | DEFAULT - anything not matching above |
+| \`coding\` | Software development, debugging, code generation | "write a script", "fix this bug", "python", "js", "error", "api", "function" |
+| \`art\` | Create, edit, or modify images | "draw", "paint", "sketch", "generate image", "make a picture", "visualize" |
+| \`analyze\` | Data analysis, summarization, and stats | "summarize", "tldr", "catch me up", "voice stats", "who is in vc", "analysis" |
+| \`search\` | Real-time information, news, and facts | "search", "look up", "google", "find out", "price of", "weather", "latest news", URLs |
+| \`manage\` | Bot configuration and debugging | "configure", "settings", "debug", "admin", "change model" |
+| \`chat\` | General conversation, Q&A, social | DEFAULT - "hello", "how are you", "what do you think", creative writing, banter |
 
 ## CLASSIFICATION RULES
 
 ### Rule 1: Explicit Trigger Words
-If the message contains EXPLICIT route keywords, use that route:
-- "draw me a cat" → \`image_generate\`
+- "draw me a cat" → \`art\`
 - "write a python script" → \`coding\`
-- "summarize this channel" → \`summarize\`
+- "summarize this channel" → \`analyze\`
+- "who is in voice" → \`analyze\`
 - "search for Python tutorials" → \`search\`
 
 ### Rule 2: Context Continuation
-Check conversation history for context:
-- If last bot message was an image AND user says "make it darker" → \`image_generate\`
-- If discussing a topic AND user says "can you look that up?" → \`search\`
+- If last bot message was an image AND user says "make it darker" → \`art\`
 - If discussing code AND user says "optimize it" → \`coding\`
 
 ### Rule 3: Temporal Signals → search
-Keywords indicating real-time or recent information:
-- "today", "yesterday", "this week", "latest", "current", "now", "recent"
-- "price of", "stock", "weather", "news", "score"
-- Any URL (http, https, www)
+- "today", "yesterday", "current", "now", "price of", "stock", "weather"
 
-### Rule 4: Knowledge vs Lookup
-- Conceptual/educational: "What is machine learning?" → \`qa\` (or \`coding\` if technical)
-- Factual/time-sensitive: "When was GPT-4 released?" → \`search\`
-- Opinion/creative: "What do you think about AI?" → \`qa\`
-
-### Rule 5: Default to qa
-When uncertain, route to \`qa\`. It handles:
-- General conversation and banter
-- Creative writing
-- Anything not clearly matching other routes
+### Rule 4: Default to chat
+When uncertain, route to \`chat\`. It handles general conversation, social context, and memory.
 
 ## TEMPERATURE GUIDELINES
 
 | Route | Recommended Temperature | Rationale |
-|-------|------------------------|-----------|
-| \`coding\` | 0.2 | High precision for code |
-| \`image_generate\` | 0.9-1.0 | High creativity for art |
-| \`voice_analytics\` | 0.3 | Factual data presentation |
-| \`social_graph\` | 0.5 | Balanced interpretation |
-| \`memory\` | 0.4 | Accurate recall |
-| \`summarize\` | 0.3 | Faithful compression |
-| \`search\` | 0.4 | Factual synthesis |
-| \`admin\` | 0.2 | Precise configuration |
-| \`qa\` | 0.8 | Conversational flexibility |
+|_\`coding\`| 0.2 | Precision and syntax correctness |
+| \`art\` | 1.0 | Creativity and visual variety |
+| \`analyze\`| 0.1 | Factual accuracy and strict summarization |
+| \`search\` | 0.3 | Factual grounding |
+| \`manage\` | 0.0 | Deterministic configuration |
+| \`chat\` | 0.8 | Natural, engaging conversation |
 
 ## OUTPUT FORMAT
 
 Respond with ONLY valid JSON (no markdown, no extra text):
 {
   "reasoning": "Your classification logic here",
-  "route": "qa",
+  "route": "chat",
   "temperature": 0.7
 }
 
 ## EXAMPLES
 
 User: "hey sage draw me a cyberpunk samurai"
-→ {"reasoning": "Explicit 'draw' keyword requesting image creation.", "route": "image_generate", "temperature": 0.95}
+→ {"reasoning": "Explicit 'draw' keyword requesting image creation.", "route": "art", "temperature": 0.95}
 
 User: "can you fix this typescript error"
 → {"reasoning": "Request to fix code/error.", "route": "coding", "temperature": 0.2}
@@ -130,21 +101,21 @@ User: "what's the current price of bitcoin"
 → {"reasoning": "Temporal signal 'current' + real-time data request.", "route": "search", "temperature": 0.4}
 
 User: "explain how neural networks work"
-→ {"reasoning": "Educational question about concepts.", "route": "qa", "temperature": 0.7}
+→ {"reasoning": "Educational question about concepts.", "route": "chat", "temperature": 0.7}
 
 User: "who's in vc right now"
-→ {"reasoning": "Voice channel presence query.", "route": "voice_analytics", "temperature": 0.3}
+→ {"reasoning": "Voice channel presence query.", "route": "analyze", "temperature": 0.3}
 
 User: "make it more vibrant" (after image generation)
-→ {"reasoning": "Context continuation from previous image, modification request.", "route": "image_generate", "temperature": 0.9}`;
+→ {"reasoning": "Context continuation from previous image, modification request.", "route": "art", "temperature": 0.9}`;
 
 // ... types and constants
-const DEFAULT_QA_ROUTE: RouteDecision = {
-    kind: 'qa',
+const DEFAULT_CHAT_ROUTE: RouteDecision = {
+    kind: 'chat',
     experts: ['Memory'],
     allowTools: true,
     temperature: 0.8,
-    reasoningText: 'Default Q&A route (fallback)',
+    reasoningText: 'Default Chat route (fallback)',
 };
 
 interface RouterLLMResponse {
@@ -161,7 +132,7 @@ export async function decideRoute(params: LLMRouterParams): Promise<RouteDecisio
     // Fast path: admin route for slash commands
     if (invokedBy === 'command' && hasGuild) {
         return {
-            kind: 'admin',
+            kind: 'manage',
             experts: ['SocialGraph', 'VoiceAnalytics', 'Memory'],
             allowTools: true,
             temperature: 0.4,
@@ -212,36 +183,17 @@ export async function decideRoute(params: LLMRouterParams): Promise<RouteDecisio
 
         if (!parsed) {
             logger.warn({ responseContent: response.content }, 'Router: Failed to parse LLM response');
-            return DEFAULT_QA_ROUTE;
+            return DEFAULT_CHAT_ROUTE;
         }
 
         // Validate route kind
-        const validRoutes: RouteKind[] = ['summarize', 'qa', 'admin', 'voice_analytics', 'social_graph', 'memory', 'image_generate', 'search', 'coding'];
+        const validRoutes: RouteKind[] = ['chat', 'coding', 'search', 'art', 'analyze', 'manage'];
         const routeKind = validRoutes.includes(parsed.route as RouteKind)
             ? (parsed.route as RouteKind)
-            : 'qa';
-
-        // Deterministic Expert Selection (TS Logic)
-        const experts: ExpertName[] = ['Memory']; // Memory is ALWAYS included
-
-        switch (routeKind) {
-            case 'summarize':
-                experts.push('Summarizer');
-                break;
-            case 'voice_analytics':
-                experts.push('VoiceAnalytics');
-                break;
-            case 'social_graph':
-                experts.push('SocialGraph');
-                break;
-            case 'image_generate':
-                experts.push('ImageGenerator');
-                break;
-            // coding, qa, search, memory, admin -> Memory is already added
-        }
+            : 'chat';
 
         // Determine allowTools based on route
-        const allowTools = routeKind === 'qa' || routeKind === 'admin' || routeKind === 'coding';
+        const allowTools = routeKind === 'chat' || routeKind === 'manage' || routeKind === 'coding';
 
         // Use provided temperature or route-based default
         const temperature = typeof parsed.temperature === 'number'
@@ -250,7 +202,6 @@ export async function decideRoute(params: LLMRouterParams): Promise<RouteDecisio
 
         const decision: RouteDecision = {
             kind: routeKind,
-            experts: Array.from(new Set(experts)), // Dedupe just in case
             allowTools,
             temperature,
             reasoningText: parsed.reasoning || `LLM classified as ${routeKind}`,
@@ -261,7 +212,7 @@ export async function decideRoute(params: LLMRouterParams): Promise<RouteDecisio
 
     } catch (error) {
         logger.warn({ error }, 'Router: LLM call failed, using default route');
-        return DEFAULT_QA_ROUTE;
+        return DEFAULT_CHAT_ROUTE;
     }
 }
 
@@ -297,15 +248,12 @@ function parseRouterResponse(content: string): RouterLLMResponse | null {
 
 function getDefaultTemperature(route: RouteKind): number {
     switch (route) {
-        case 'summarize': return 0.3;
-        case 'voice_analytics': return 0.5;
-        case 'social_graph': return 0.5;
-        case 'memory': return 0.6;
-        case 'admin': return 0.4;
-        case 'search': return 0.4; // Lower temperature for factual search
-        case 'image_generate': return 0.9; // Higher creativity for image prompts
+        case 'analyze': return 0.2;
+        case 'manage': return 0.0;
+        case 'search': return 0.3; // Lower temperature for factual search
+        case 'art': return 1.0; // Higher creativity for image prompts
         case 'coding': return 0.2; // Low temperature for code precision
-        case 'qa': return 1.0;
-        default: return 0.8;
+        case 'chat': return 0.8;
+        default: return 0.7;
     }
 }

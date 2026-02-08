@@ -119,13 +119,13 @@ Sage will append `/chat/completions` internally. If you accidentally include `/c
 These are **defaults** you can customize:
 
 ```env
-# Main chat model
+# Main chat model (routes: chat, coding, manage)
 CHAT_MODEL=kimi
 
-# Profile/memory updates
+# Profile/memory updates (route: analyze)
 PROFILE_CHAT_MODEL=deepseek
 
-# Channel summaries
+# Channel summaries (route: analyze)
 SUMMARY_MODEL=openai-large
 
 # Structured JSON formatting

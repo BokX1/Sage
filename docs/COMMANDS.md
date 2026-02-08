@@ -103,7 +103,7 @@ Sage can fetch live information from the web using Search-Augmented Generation. 
 **How it works**
 
 1. Sage detects temporal signals ("current", "latest", "price of", etc.)
-2. Routes to the `search` handler using Perplexity-Reasoning
+2. Routes to the `search` handler using Gemini-Search or Perplexity
 3. Injects live search data into context
 4. Responds naturally with up-to-date information
 

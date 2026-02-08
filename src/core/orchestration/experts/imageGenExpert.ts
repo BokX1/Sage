@@ -2,6 +2,7 @@ import { ExpertPacket } from './expert-types';
 import { LLMMessageContent, LLMChatMessage } from '../../llm/llm-types';
 import { logger } from '../../../core/utils/logger';
 import { getLLMClient } from '../../llm';
+import { resolveModelForRequest, getPreferredModel } from '../../llm/model-resolver';
 import { config } from '../../../config';
 
 export interface ImageGenParams {
@@ -208,9 +209,16 @@ async function refinePrompt(
             });
         }
 
+        const refinerModel = await resolveModelForRequest({
+            guildId: null,
+            messages,
+            route: 'manage', // Use admin route for fast instruction following
+            allowedModels: ['gemini-fast', 'openai-fast'], // Allow fast reasoning models
+        });
+
         const response = await client.chat({
             messages,
-            model: 'gemini-fast', // Explicitly use Gemini Fast for reasoning/vision
+            model: refinerModel,
             temperature: 1.2, // High creativity
             maxTokens: 1000,
             apiKey,
@@ -266,7 +274,7 @@ export async function runImageGenExpert(params: ImageGenParams): Promise<ExpertP
         const imageBaseUrl = normalizeImageBaseUrl(
             config.LLM_IMAGE_BASE_URL || config.LLM_BASE_URL
         );
-        const model = 'klein-large';
+        const model = getPreferredModel('art') || 'imagen-4';
         const seed = Math.floor(Math.random() * 1_000_000);
         const url = buildImageGenUrl({
             baseUrl: imageBaseUrl,

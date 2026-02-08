@@ -131,7 +131,7 @@ These settings control the planner/executor safety rails, per-tenant overrides, 
 | :--- | :--- | :--- |
 | `AGENTIC_CANARY_ENABLED` | Enables rollout sampling and error-budget guardrails | `true` |
 | `AGENTIC_CANARY_PERCENT` | Percent of eligible traffic that uses agentic graph execution (0-100) | `100` |
-| `AGENTIC_CANARY_ROUTE_ALLOWLIST_CSV` | Comma-separated routes eligible for agentic execution | `qa,coding,search,summarize,admin,social_graph,voice_analytics,memory,image_generate` |
+| `AGENTIC_CANARY_ROUTE_ALLOWLIST_CSV` | Comma-separated routes eligible for agentic execution | `chat,coding,search,analyze,manage,art` |
 | `AGENTIC_CANARY_MAX_FAILURE_RATE` | Failure-rate threshold that trips cooldown | `0.30` |
 | `AGENTIC_CANARY_MIN_SAMPLES` | Minimum samples before evaluating failure rate | `20` |
 | `AGENTIC_CANARY_COOLDOWN_SEC` | Cooldown duration after error-budget breach | `300` |
@@ -313,7 +313,7 @@ AGENTIC_CRITIC_MIN_SCORE=0.72
 AGENTIC_CRITIC_MAX_LOOPS=1
 AGENTIC_CANARY_ENABLED=true
 AGENTIC_CANARY_PERCENT=100
-AGENTIC_CANARY_ROUTE_ALLOWLIST_CSV=qa,coding,search,summarize,admin,social_graph,voice_analytics,memory,image_generate
+AGENTIC_CANARY_ROUTE_ALLOWLIST_CSV=chat,coding,search,analyze,manage,art
 AGENTIC_CANARY_MAX_FAILURE_RATE=0.30
 AGENTIC_CANARY_MIN_SAMPLES=20
 AGENTIC_CANARY_COOLDOWN_SEC=300

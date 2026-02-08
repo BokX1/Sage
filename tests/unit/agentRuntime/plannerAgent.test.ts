@@ -7,7 +7,7 @@ import {
 describe('plannerAgent', () => {
   it('omits Memory when skipMemory is enabled', () => {
     const graph = buildLinearExpertGraph({
-      routeKind: 'qa',
+      routeKind: 'chat',
       experts: ['Memory', 'SocialGraph'],
       skipMemory: true,
     });
@@ -18,7 +18,7 @@ describe('plannerAgent', () => {
 
   it('creates deterministic linear dependencies', () => {
     const graph = buildLinearExpertGraph({
-      routeKind: 'summarize',
+      routeKind: 'analyze',
       experts: ['Memory', 'Summarizer', 'SocialGraph'],
       skipMemory: false,
     });
@@ -33,7 +33,7 @@ describe('plannerAgent', () => {
 
   it('uses fanout planning when parallel mode is enabled', () => {
     const graph = buildPlannedExpertGraph({
-      routeKind: 'admin',
+      routeKind: 'manage',
       experts: ['Memory', 'SocialGraph', 'VoiceAnalytics'],
       skipMemory: false,
       enableParallel: true,
@@ -49,7 +49,7 @@ describe('plannerAgent', () => {
 
   it('uses fanout planning for routes not using dependency-aware strategy', () => {
     const graph = buildPlannedExpertGraph({
-      routeKind: 'qa',
+      routeKind: 'chat',
       experts: ['Memory', 'SocialGraph', 'VoiceAnalytics'],
       skipMemory: false,
       enableParallel: true,

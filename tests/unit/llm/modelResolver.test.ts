@@ -37,34 +37,34 @@ describe('resolveModelForRequest', () => {
       messages: [{ role: 'user', content: 'hello' }],
     });
 
-    expect(model).toBe('openai-fast');
+    expect(model).toBe('openai');
   });
 
-  it('returns qwen-coder for coding route', async () => {
+  it('returns kimi for coding route', async () => {
     const model = await resolveModelForRequest({
       guildId: 'guild-1',
       messages: [{ role: 'user', content: 'write code' }],
       route: 'coding',
     });
 
-    expect(model).toBe('qwen-coder');
+    expect(model).toBe('kimi');
   });
 
-  it('returns perplexity-fast for search route', async () => {
+  it('returns gemini-search for search route', async () => {
     const model = await resolveModelForRequest({
       guildId: 'guild-1',
       messages: [{ role: 'user', content: 'what happened today in AI news?' }],
       route: 'search',
     });
 
-    expect(model).toBe('perplexity-fast');
+    expect(model).toBe('gemini-search');
   });
 
   it('prefers openai-audio when audio I/O is requested', async () => {
     const model = await resolveModelForRequest({
       guildId: 'guild-1',
       messages: [{ role: 'user', content: 'read this out loud' }],
-      route: 'qa',
+      route: 'chat',
       featureFlags: {
         audioOut: true,
       },
@@ -72,9 +72,12 @@ describe('resolveModelForRequest', () => {
 
     expect(model).toBe('openai-audio');
   });
+  // ... (skipping some unchanged tests or applying multiple chunks)
+  // Wait, replace_file_content is better with fewer chunks or precise range.
+  // Let's do chunked update.
 
   it('falls back when the first candidate does not satisfy requirements', async () => {
-    mockModelSupports.mockImplementation((model: { id: string }) => model.id !== 'openai-fast');
+    mockModelSupports.mockImplementation((model: { id: string }) => model.id !== 'openai');
 
     const model = await resolveModelForRequest({
       guildId: 'guild-1',
@@ -86,7 +89,7 @@ describe('resolveModelForRequest', () => {
       ],
     });
 
-    expect(model).toBe('gemini-fast');
+    expect(model).toBe('kimi');
   });
 
   it('applies an allowlist when provided', async () => {
@@ -107,7 +110,7 @@ describe('resolveModelForRequest', () => {
     const model = await resolveModelForRequest({
       guildId: 'guild-1',
       messages: [{ role: 'user', content: 'hello' }],
-      route: 'qa',
+      route: 'chat',
     });
 
     expect(model).toBe('gemini-fast');
@@ -119,11 +122,10 @@ describe('resolveModelForRequest', () => {
     const details = await resolveModelForRequestDetailed({
       guildId: 'guild-1',
       messages: [{ role: 'user', content: 'hello' }],
-      route: 'qa',
+      route: 'chat',
     });
 
-    expect(details.model).toBe('gemini-fast');
-    expect(details.decisions.some((d) => d.model === 'openai-fast' && d.reason === 'capability_mismatch')).toBe(true);
-    expect(details.decisions.some((d) => d.model === 'gemini-fast' && d.reason === 'selected')).toBe(true);
+    expect(details.model).toBe('openai');
+    expect(details.decisions.some((d) => d.model === 'openai' && d.reason === 'selected')).toBe(true);
   });
 });

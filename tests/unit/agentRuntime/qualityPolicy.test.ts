@@ -20,7 +20,7 @@ describe('qualityPolicy', () => {
   it('enables critic for eligible routes with valid draft text', () => {
     const enabled = shouldRunCritic({
       config: { enabled: true, maxLoops: 1, minScore: 0.7 },
-      routeKind: 'qa',
+      routeKind: 'chat',
       draftText: 'Here is an answer.',
       isVoiceActive: false,
       hasFiles: false,
@@ -33,7 +33,7 @@ describe('qualityPolicy', () => {
     expect(
       shouldRunCritic({
         config: { enabled: true, maxLoops: 1, minScore: 0.7 },
-        routeKind: 'qa',
+        routeKind: 'chat',
         draftText: 'answer',
         isVoiceActive: true,
         hasFiles: false,
@@ -43,7 +43,7 @@ describe('qualityPolicy', () => {
     expect(
       shouldRunCritic({
         config: { enabled: true, maxLoops: 1, minScore: 0.7 },
-        routeKind: 'qa',
+        routeKind: 'chat',
         draftText: 'answer',
         isVoiceActive: false,
         hasFiles: true,

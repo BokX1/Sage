@@ -73,6 +73,25 @@ function filterExperts(experts: ExpertName[], skipMemory: boolean): ExpertName[]
   return experts.filter((expert) => !(skipMemory && expert === 'Memory'));
 }
 
+export function getStandardExpertsForRoute(routeKind: string): ExpertName[] {
+  const experts: ExpertName[] = ['Memory'];
+
+  switch (routeKind) {
+    case 'analyze':
+      return [...experts, 'Summarizer', 'VoiceAnalytics'];
+    case 'art':
+      return [...experts, 'ImageGenerator'];
+    case 'chat':
+      // Chat uses SocialGraph for context
+      return [...experts, 'SocialGraph'];
+    case 'manage':
+      return [...experts, 'SocialGraph', 'VoiceAnalytics'];
+    default:
+      // coding, search -> just Memory (tools handle the rest)
+      return experts;
+  }
+}
+
 export function buildLinearExpertGraph(params: {
   routeKind: string;
   experts: ExpertName[];
@@ -100,9 +119,9 @@ export function buildLinearExpertGraph(params: {
     nodes.length <= 1
       ? []
       : nodes.slice(1).map((node, index) => ({
-          from: nodes[index].id,
-          to: node.id,
-        }));
+        from: nodes[index].id,
+        to: node.id,
+      }));
 
   return {
     version: 'v1',
@@ -158,7 +177,7 @@ function dependencyAwareDependsOn(
     dependencies.add('Memory');
   }
 
-  if (expert === 'SocialGraph' && routeKind === 'summarize' && allExperts.includes('Summarizer')) {
+  if (expert === 'SocialGraph' && routeKind === 'analyze' && allExperts.includes('Summarizer')) {
     dependencies.add('Summarizer');
   }
 
@@ -221,7 +240,7 @@ function shouldUseDependencyAware(params: {
   if (!params.experts.includes('Memory')) return false;
   if (params.experts.includes('ImageGenerator')) return false;
 
-  return ['admin', 'summarize', 'social_graph', 'voice_analytics'].includes(params.routeKind);
+  return ['manage', 'analyze'].includes(params.routeKind);
 }
 
 function shouldUseFanout(params: {
@@ -236,30 +255,34 @@ function shouldUseFanout(params: {
   if (params.experts.includes('ImageGenerator')) return false;
 
   return [
-    'qa',
+    'chat',
     'coding',
     'search',
-    'admin',
-    'summarize',
-    'social_graph',
-    'voice_analytics',
-    'memory',
+    'manage',
+    'analyze',
+    'art' // Should be linear usually but just in case
   ].includes(params.routeKind);
 }
 
 export function buildPlannedExpertGraph(params: {
   routeKind: string;
-  experts: ExpertName[];
+  experts?: ExpertName[];
   skipMemory: boolean;
-  enableParallel: boolean;
+  enableParallel?: boolean;
 }): AgentGraph {
-  const filteredExperts = filterExperts(params.experts, params.skipMemory);
+  const { routeKind, skipMemory, enableParallel = true } = params;
+
+  // Use provided experts or fallback to standard assignment
+  const experts = params.experts && params.experts.length > 0
+    ? params.experts
+    : getStandardExpertsForRoute(routeKind);
+  const filteredExperts = filterExperts(experts, skipMemory);
 
   if (
     shouldUseDependencyAware({
-      routeKind: params.routeKind,
+      routeKind,
       experts: filteredExperts,
-      enableParallel: params.enableParallel,
+      enableParallel,
     })
   ) {
     return buildDependencyAwareExpertGraph({
@@ -271,9 +294,9 @@ export function buildPlannedExpertGraph(params: {
 
   if (
     shouldUseFanout({
-      routeKind: params.routeKind,
+      routeKind,
       experts: filteredExperts,
-      enableParallel: params.enableParallel,
+      enableParallel,
     })
   ) {
     return buildFanoutExpertGraph({

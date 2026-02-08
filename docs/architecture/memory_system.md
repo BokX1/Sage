@@ -101,7 +101,7 @@ When a message is processed, `buildContextMessages` assembles the prompt by prio
 - Channel profile summary (long-term)
 - Relationship hints (social graph edges with emoji tiers)
 - Rolling channel summary (short-term)
-- Narrative expert packets (router-selected lookups)
+- Narrative expert packets (planner-selected lookups)
 - Recent transcript (raw message log)
 - Intent hint / reply context
 - User message

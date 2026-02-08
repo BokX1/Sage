@@ -34,8 +34,8 @@ In Sage, "agentic" means the runtime can:
 
 ### 1) Planner + Graph Executor
 
-- Router decides route + experts.
-- Planner constructs dependency-aware DAG/fanout/linear plans.
+- Router decides route (intent).
+- Planner decides experts and constructs dependency-aware DAG/fanout/linear plans.
 - Graph validator blocks invalid graphs before execution.
 - Executor runs nodes with budgeted retries and timeouts.
 

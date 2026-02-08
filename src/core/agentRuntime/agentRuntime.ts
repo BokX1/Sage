@@ -33,7 +33,7 @@ import { resolveModelForRequestDetailed } from '../llm/model-resolver';
 import { recordModelOutcome } from '../llm/model-health';
 import { getGuildApiKey } from '../settings/guildSettingsRepo';
 import { getWelcomeMessage } from '../../bot/handlers/welcomeMessage';
-import { buildPlannedExpertGraph } from './plannerAgent';
+import { buildPlannedExpertGraph, getStandardExpertsForRoute } from './plannerAgent';
 import { executeAgentGraph } from './graphExecutor';
 import { renderExpertPacketContext } from './blackboard';
 import { evaluateDraftWithCritic } from './criticAgent';
@@ -235,7 +235,7 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
   const runLegacyExperts = async (params: { mode: string; reason: string; eventType: string }) => {
     try {
       expertPackets = await runExperts({
-        experts: route.experts,
+        experts: route.experts ?? getStandardExpertsForRoute(route.kind),
         guildId,
         channelId,
         userId,
@@ -539,7 +539,7 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
         const historyText = historySlice
           .map(m => `${m.role.toUpperCase()}: ${typeof m.content === 'string' ? m.content : '[media]'}`)
           .join('\n');
-        
+
         systemContent += `\n\n## CONVERSATION HISTORY (Context Only)\n${historyText}`;
       }
 
@@ -547,7 +547,7 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
 
       // 2. Build User Content
       let completeUserContent = userText;
-      
+
       // Prepend Reply Context to User Content if exists
       if (replyReferenceContent) {
         const replyContent = typeof replyReferenceContent === 'string'
@@ -720,7 +720,8 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
       experts.add('Summarizer');
     }
 
-    return [...experts].filter((expert) => route.experts.includes(expert));
+    const allowedExperts = route.experts ?? getStandardExpertsForRoute(route.kind);
+    return [...experts].filter((expert) => allowedExperts.includes(expert));
   };
 
   if (
@@ -885,10 +886,10 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
   const qualityJson =
     criticAssessments.length > 0
       ? {
-          critic: criticAssessments,
-          revised: criticAssessments.some((assessment) => assessment.verdict === 'revise'),
-          criticRedispatches: criticRedispatches.length > 0 ? criticRedispatches : undefined,
-        }
+        critic: criticAssessments,
+        revised: criticAssessments.some((assessment) => assessment.verdict === 'revise'),
+        criticRedispatches: criticRedispatches.length > 0 ? criticRedispatches : undefined,
+      }
       : undefined;
   const canarySnapshot = getAgenticCanarySnapshot();
   const finalBudgetJson: Record<string, unknown> = {
@@ -933,9 +934,9 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
         toolJson:
           toolsExecuted || criticAssessments.length > 0
             ? {
-                executed: toolsExecuted,
-                critic: criticAssessments.length > 0 ? criticAssessments : undefined,
-              }
+              executed: toolsExecuted,
+              critic: criticAssessments.length > 0 ? criticAssessments : undefined,
+            }
             : undefined,
         qualityJson,
         budgetJson: finalBudgetJson,

@@ -68,6 +68,11 @@ flowchart LR
     U((User)):::user -->|"Message / reply / mention"| B[Sage Bot]:::bot
     B --> R{LLM Router}:::router
 
+    subgraph Orchestration
+        R{LLM Router}:::router
+        P[Planner]:::context
+    end
+
     subgraph Experts
         direction TB
         S[📊 Summarizer]:::expert
@@ -78,14 +83,13 @@ flowchart LR
         SR[🔍 Search]:::expert
     end
 
-    R --> S
-    R --> G
-    R --> V
-    R --> M
-
-
-    R --> I
-    R --> SR
+    R --> P
+    P --> S
+    P --> G
+    P --> V
+    P --> M
+    P --> I
+    P --> SR
     S --> C[Context Builder]:::context
     G --> C
     V --> C
@@ -110,7 +114,7 @@ flowchart LR
 | :--- | :--- |
 | 🧠 **Agentic Memory** | Builds long-term preferences and throttles updates for efficiency |
 | 👁️ **Vision Support** | Analyzes images (Vision) and creates art (Agentic Generation) |
-| 🔍 **Real-Time Search** | Fetches live information via Perplexity for time-sensitive queries |
+| 🔍 **Real-Time Search** | Fetches live information via Gemini-Search/Perplexity for time-sensitive queries |
 | 📄 **File Analysis** | Share `.ts`, `.py`, `.txt` files for instant review or discussion |
 | 🎤 **Voice Companion (Beta)** | Text-to-speech companion with dynamic personas (BYOP required) |
 | 📊 **Voice Insights** | Tracks presence and duration, translating raw data into natural language |

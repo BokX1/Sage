@@ -19,6 +19,7 @@ export interface EvaluateDraftWithCriticParams {
   allowedModels?: string[];
   apiKey?: string;
   timeoutMs?: number;
+  conversationHistory?: LLMChatMessage[];
 }
 
 function extractJsonObject(raw: string): string {
@@ -63,7 +64,7 @@ function parseAssessment(raw: string, model: string): CriticAssessment | null {
   }
 }
 
-const CRITIC_SYSTEM_PROMPT = `You are a strict answer-quality critic.
+const CRITIC_SYSTEM_PROMPT_DEFAULT = `You are a strict answer-quality critic.
 Evaluate the candidate answer for:
 1) factuality,
 2) completeness for the user's request,
@@ -83,6 +84,25 @@ Rules:
 - rewritePrompt must be specific and actionable.
 - Never include markdown.`;
 
+const CRITIC_SYSTEM_PROMPT_QA = `You are a conversational quality critic.
+Evaluate the candidate answer for:
+1) Natural flow and tone,
+2) Relevance to the last user message,
+3) Consistency with conversation history.
+
+Return ONLY JSON:
+{
+  "score": 0.0,
+  "verdict": "pass|revise",
+  "issues": ["short issue list"],
+  "rewritePrompt": "guidance on tone or flow"
+}
+
+Rules:
+- score is between 0 and 1.
+- Use "revise" ONLY if the answer is completely off-topic, halluncinated, or rude.
+- Allow for casual banter and creativity.`;
+
 export async function evaluateDraftWithCritic(
   params: EvaluateDraftWithCriticParams,
 ): Promise<CriticAssessment | null> {
@@ -95,15 +115,23 @@ export async function evaluateDraftWithCritic(
       featureFlags: { reasoning: true },
     });
 
+    const systemPrompt =
+      params.routeKind === 'chat'
+        ? CRITIC_SYSTEM_PROMPT_QA
+        : CRITIC_SYSTEM_PROMPT_DEFAULT;
+
     const criticMessages: LLMChatMessage[] = [
       {
         role: 'system',
-        content: CRITIC_SYSTEM_PROMPT,
+        content: systemPrompt,
       },
       {
         role: 'user',
         content: [
           `Route: ${params.routeKind}`,
+          ...(params.routeKind === 'chat' && params.conversationHistory && params.conversationHistory.length > 0
+            ? [`Conversation History:\n${params.conversationHistory.map((m) => `${m.role}: ${m.content}`).join('\n')}`]
+            : []),
           `User request:\n${params.userText}`,
           `Candidate answer:\n${params.draftText}`,
         ].join('\n\n'),

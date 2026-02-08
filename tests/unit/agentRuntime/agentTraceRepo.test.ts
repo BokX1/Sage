@@ -61,8 +61,8 @@ describe('AgentTraceRepo', () => {
         guildId: 'guild-1',
         channelId: 'channel-1',
         userId: 'user-1',
-        routeKind: 'qa',
-        routerJson: { kind: 'qa', temperature: 0.7 },
+        routeKind: 'chat',
+        routerJson: { kind: 'chat', temperature: 0.7 },
         expertsJson: [{ name: 'Memory' }],
       });
 
@@ -70,11 +70,11 @@ describe('AgentTraceRepo', () => {
         where: { id: 'trace-123' },
         create: expect.objectContaining({
           id: 'trace-123',
-          routeKind: 'qa',
+          routeKind: 'chat',
           reasoningText: null,
         }),
         update: expect.objectContaining({
-          routeKind: 'qa',
+          routeKind: 'chat',
           reasoningText: null,
         }),
       });
@@ -88,8 +88,8 @@ describe('AgentTraceRepo', () => {
         guildId: 'guild-1',
         channelId: 'channel-1',
         userId: 'user-1',
-        routeKind: 'qa',
-        routerJson: { kind: 'qa' },
+        routeKind: 'chat',
+        routerJson: { kind: 'chat' },
         expertsJson: [{ name: 'Memory' }],
         tokenJson: { baseline: 1 },
         agentGraphJson: { nodes: [{ id: 'memory-1' }] },
@@ -135,8 +135,8 @@ describe('AgentTraceRepo', () => {
         guildId: 'guild-1',
         channelId: 'channel-1',
         userId: 'user-1',
-        routeKind: 'qa',
-        routerJson: { kind: 'qa' },
+        routeKind: 'chat',
+        routerJson: { kind: 'chat' },
         expertsJson: [{ name: 'Memory' }],
         agentGraphJson: { nodes: [] },
       });
@@ -258,12 +258,11 @@ describe('AgentTraceRepo', () => {
       expect(mockLoggerWarn).toHaveBeenCalled();
     });
   });
-
   describe('getTraceById', () => {
     it('should fetch trace by ID', async () => {
       const mockTrace = {
         id: 'trace-123',
-        routeKind: 'summarize',
+        routeKind: 'analyze',
         createdAt: new Date(),
       };
 
@@ -281,8 +280,8 @@ describe('AgentTraceRepo', () => {
   describe('listRecentTraces', () => {
     it('should list recent traces for a guild', async () => {
       const mockTraces = [
-        { id: 'trace-1', routeKind: 'qa', createdAt: new Date() },
-        { id: 'trace-2', routeKind: 'summarize', createdAt: new Date() },
+        { id: 'trace-1', routeKind: 'chat', createdAt: new Date() },
+        { id: 'trace-2', routeKind: 'analyze', createdAt: new Date() },
       ];
 
       mockFindMany.mockResolvedValue(mockTraces);

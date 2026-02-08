@@ -35,7 +35,7 @@ describe('graphExecutor', () => {
     ]);
 
     const graph = buildLinearExpertGraph({
-      routeKind: 'qa',
+      routeKind: 'chat',
       experts: ['Memory', 'SocialGraph'],
       skipMemory: false,
     });
@@ -71,7 +71,7 @@ describe('graphExecutor', () => {
       ]);
 
     const graph = buildLinearExpertGraph({
-      routeKind: 'qa',
+      routeKind: 'chat',
       experts: ['Memory', 'SocialGraph'],
       skipMemory: false,
     });
@@ -107,7 +107,7 @@ describe('graphExecutor', () => {
     });
 
     const graph = buildPlannedExpertGraph({
-      routeKind: 'admin',
+      routeKind: 'manage',
       experts: ['Memory', 'SocialGraph', 'VoiceAnalytics'],
       skipMemory: false,
       enableParallel: true,
@@ -141,7 +141,7 @@ describe('graphExecutor', () => {
     });
 
     const graph = buildPlannedExpertGraph({
-      routeKind: 'admin',
+      routeKind: 'manage',
       experts: ['Memory', 'SocialGraph', 'VoiceAnalytics'],
       skipMemory: false,
       enableParallel: true,

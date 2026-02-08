@@ -54,15 +54,12 @@ export interface ModelResolutionDetails {
 }
 
 const ROUTE_MODEL_CHAINS: Record<string, string[]> = {
-  coding: ['qwen-coder', 'kimi', 'deepseek'],
-  search: ['perplexity-fast', 'deepseek', 'openai-fast'],
-  summarize: ['openai', 'deepseek', 'openai-fast'],
-  memory: ['deepseek', 'openai', 'glm'],
-  social_graph: ['openai', 'deepseek', 'claude-fast'],
-  voice_analytics: ['deepseek', 'openai-fast'],
-  image_generate: ['openai-fast', 'gemini-fast', 'openai'],
-  admin: ['openai-fast', 'deepseek', 'minimax'],
-  qa: ['openai-fast', 'gemini-fast', 'claude-fast'],
+  coding: ['kimi', 'qwen-coder', 'deepseek'],
+  search: ['gemini-search', 'perplexity-fast', 'perplexity-reasoning', 'nomnom'],
+  analyze: ['openai-large', 'gemini-fast', 'mistral', 'kimi'], // Merged summarize + voice
+  chat: ['openai', 'kimi', 'gemini-fast', 'claude-fast'], // Merged qa + memory + social
+  art: ['imagen-4', 'flux', 'flux-2-dev', 'klein'], // Renamed from image_generate
+  manage: ['gemini-fast', 'openai-fast'], // Renamed from admin
 };
 
 function hasPart(messages: LLMChatMessage[], type: 'image_url' | 'input_audio'): boolean {
@@ -100,8 +97,8 @@ function dedupe(values: string[]): string[] {
 }
 
 function buildBaseCandidateChain(params: ResolveModelParams): string[] {
-  const route = (params.route ?? 'qa').toLowerCase();
-  const defaultChain = ROUTE_MODEL_CHAINS[route] ?? ROUTE_MODEL_CHAINS.qa;
+  const route = (params.route ?? 'chat').toLowerCase();
+  const defaultChain = ROUTE_MODEL_CHAINS[route] ?? ROUTE_MODEL_CHAINS.chat;
   const isLongForm = estimateUserPromptChars(params.messages) >= 1200;
   const hasVisionInput = hasPart(params.messages, 'image_url');
   const hasAudioInput = hasPart(params.messages, 'input_audio') || !!params.featureFlags?.audioIn;
@@ -109,7 +106,7 @@ function buildBaseCandidateChain(params: ResolveModelParams): string[] {
 
   const candidates: string[] = [...defaultChain];
 
-  if (route === 'qa' && isLongForm) {
+  if (route === 'chat' && isLongForm) {
     candidates.unshift('openai');
   }
 
@@ -127,6 +124,11 @@ function buildBaseCandidateChain(params: ResolveModelParams): string[] {
 
   candidates.push(getDefaultModelId());
   return dedupe(candidates);
+}
+
+export function getPreferredModel(route: string): string {
+  const chain = ROUTE_MODEL_CHAINS[route] ?? ROUTE_MODEL_CHAINS['chat'];
+  return chain[0] ?? getDefaultModelId();
 }
 
 function applyAllowedModels(

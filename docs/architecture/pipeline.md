@@ -63,13 +63,14 @@ Primary files:
 
 Runtime behavior:
 
-1. `decideRoute` classifies request intent and expert set.
-2. `buildPlannedExpertGraph` constructs the execution plan.
-3. Planner strategy is route-aware:
+1. `decideRoute` classifies request intent (e.g., `chat`, `analyze`, `search`).
+2. `getStandardExpertsForRoute` (in Planner) determines the necessary experts.
+3. `buildPlannedExpertGraph` constructs the execution plan.
+4. Planner strategy is route-aware:
    - dependency-aware DAG for multi-expert routes that benefit from partial ordering,
    - fanout graph for independent experts,
    - linear graph fallback when needed.
-4. `validateAgentGraph` enforces acyclic graph and budget ceilings before execution.
+5. `validateAgentGraph` enforces acyclic graph and budget ceilings before execution.
 
 ---
 

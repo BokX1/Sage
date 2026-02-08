@@ -2,11 +2,11 @@ import { RouteKind } from '../orchestration/llmRouter';
 import { CriticAssessment } from './criticAgent';
 
 const CRITIC_ELIGIBLE_ROUTES = new Set<RouteKind>([
-  'qa',
+  'chat',
   'coding',
   'search',
-  'summarize',
-  'admin',
+  'analyze',
+  'manage',
 ]);
 
 export interface CriticRuntimeConfig {
