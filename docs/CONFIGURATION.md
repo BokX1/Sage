@@ -339,6 +339,3 @@ ADMIN_USER_IDS_CSV=123456789012345678
 - [Pollinations Integration](POLLINATIONS.md) — Provider + model configuration
 - [Memory System](architecture/memory_system.md) — How context budgets are applied
 - [Operations Runbook](operations/runbook.md) — Production deployment notes
-
-
-
