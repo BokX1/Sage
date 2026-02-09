@@ -6,6 +6,9 @@ import { logger } from '../utils/logger';
 const ROUTER_MODEL = 'deepseek';
 const ROUTER_TEMPERATURE = 0.1;
 const ROUTER_TIMEOUT_MS = 45_000;
+const CHAT_DEFAULT_TEMPERATURE = 1.2;
+const CHAT_MIN_TEMPERATURE = 1.0;
+const CHAT_MAX_TEMPERATURE = 1.4;
 
 export type AgentKind = 'chat' | 'coding' | 'search' | 'creative';
 
@@ -59,7 +62,12 @@ You are an intent routing engine. Select exactly one best agent for the current 
 | \`coding\` | 0.2 |
 | \`creative\` | 1.0 |
 | \`search\` | 0.3 |
-| \`chat\` | 0.8 |
+| \`chat\` | 1.0-1.4 (default 1.2) |
+
+For \`chat\`:
+- Use 1.0 for serious, precise, or sensitive responses.
+- Use 1.4 for playful/creative conversational responses.
+- Use 1.2 as the default when tone is neutral.
 
 ## Output format
 
@@ -67,7 +75,7 @@ Return only valid JSON:
 {
   "reasoning": "brief explanation",
   "agent": "chat|coding|search|creative",
-  "temperature": 0.7
+  "temperature": 1.2
 }
 
 No markdown. No extra text.`;
@@ -76,7 +84,7 @@ const DEFAULT_CHAT_AGENT: AgentDecision = {
   kind: 'chat',
   contextProviders: ['Memory'],
   allowTools: true,
-  temperature: 0.8,
+  temperature: CHAT_DEFAULT_TEMPERATURE,
   reasoningText: 'Default Chat agent (fallback)',
 };
 
@@ -123,10 +131,15 @@ function getDefaultTemperature(agent: AgentKind): number {
     case 'coding':
       return 0.2;
     case 'chat':
-      return 0.8;
+      return CHAT_DEFAULT_TEMPERATURE;
     default:
       return 0.7;
   }
+}
+
+function clampChatTemperature(value: number): number {
+  if (!Number.isFinite(value)) return CHAT_DEFAULT_TEMPERATURE;
+  return Math.max(CHAT_MIN_TEMPERATURE, Math.min(CHAT_MAX_TEMPERATURE, value));
 }
 
 function normalizeAgentKind(raw: unknown): AgentKind {
@@ -148,7 +161,7 @@ export async function decideAgent(params: AgentSelectorParams): Promise<AgentDec
       kind: 'chat',
       contextProviders: ['SocialGraph', 'VoiceAnalytics', 'Memory'],
       allowTools: true,
-      temperature: 0.4,
+      temperature: CHAT_DEFAULT_TEMPERATURE,
       reasoningText: 'Slash command context detected - routing to chat agent',
     };
   }
@@ -202,10 +215,12 @@ export async function decideAgent(params: AgentSelectorParams): Promise<AgentDec
         ? clampTemperature(parsedTemperature, fallbackTemperature)
         : fallbackTemperature;
 
+    const enforcedTemperature = agentKind === 'chat' ? clampChatTemperature(temperature) : temperature;
+
     const decision: AgentDecision = {
       kind: agentKind,
       allowTools,
-      temperature,
+      temperature: enforcedTemperature,
       reasoningText: parsed.reasoning || `LLM selected agent: ${agentKind}`,
     };
 

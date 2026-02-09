@@ -597,7 +597,7 @@ async function main() {
     const catalog = await loadModelCatalog();
     const sortedModels = Object.values(catalog).sort((a, b) => a.id.localeCompare(b.id));
 
-    const existingModel = values.get('CHAT_MODEL') || 'kimi';
+    const existingModel = values.get('CHAT_MODEL') || 'openai-large';
     let selectedModel = existingModel;
 
     if (!args.model) {

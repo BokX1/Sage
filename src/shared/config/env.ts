@@ -82,7 +82,7 @@ const testDefaults: Record<string, string> = {
   LLM_PROVIDER: 'pollinations',
   LLM_BASE_URL: 'https://text.pollinations.ai/',
   LLM_IMAGE_BASE_URL: 'https://image.pollinations.ai/',
-  CHAT_MODEL: 'openai',
+  CHAT_MODEL: 'openai-large',
   LLM_API_KEY: '',
   LLM_MODEL_LIMITS_JSON: '{}',
   PROFILE_PROVIDER: 'pollinations',

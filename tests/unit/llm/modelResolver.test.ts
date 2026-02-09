@@ -37,7 +37,7 @@ describe('resolveModelForRequest', () => {
       messages: [{ role: 'user', content: 'hello' }],
     });
 
-    expect(model).toBe('openai');
+    expect(model).toBe('openai-large');
   });
 
   it('returns kimi for coding route', async () => {
@@ -72,12 +72,8 @@ describe('resolveModelForRequest', () => {
 
     expect(model).toBe('openai-audio');
   });
-  // ... (skipping some unchanged tests or applying multiple chunks)
-  // Wait, replace_file_content is better with fewer chunks or precise range.
-  // Let's do chunked update.
-
   it('falls back when the first candidate does not satisfy requirements', async () => {
-    mockModelSupports.mockImplementation((model: { id: string }) => model.id !== 'openai');
+    mockModelSupports.mockImplementation((model: { id: string }) => model.id !== 'openai-large');
 
     const model = await resolveModelForRequest({
       guildId: 'guild-1',
@@ -104,8 +100,8 @@ describe('resolveModelForRequest', () => {
   });
 
   it('prefers healthier candidates when capability is equivalent', async () => {
-    recordModelOutcome({ model: 'openai-fast', success: false });
-    recordModelOutcome({ model: 'gemini-fast', success: true, latencyMs: 2000 });
+    recordModelOutcome({ model: 'openai-large', success: false });
+    recordModelOutcome({ model: 'claude-fast', success: true, latencyMs: 2000 });
 
     const model = await resolveModelForRequest({
       guildId: 'guild-1',
@@ -113,11 +109,11 @@ describe('resolveModelForRequest', () => {
       route: 'chat',
     });
 
-    expect(model).toBe('gemini-fast');
+    expect(model).toBe('claude-fast');
   });
 
   it('returns detailed fallback reasons for candidate selection', async () => {
-    mockModelSupports.mockImplementation((model: { id: string }) => model.id !== 'openai-fast');
+    mockModelSupports.mockImplementation((model: { id: string }) => model.id !== 'openai-large');
 
     const details = await resolveModelForRequestDetailed({
       guildId: 'guild-1',
@@ -125,7 +121,10 @@ describe('resolveModelForRequest', () => {
       route: 'chat',
     });
 
-    expect(details.model).toBe('openai');
-    expect(details.decisions.some((d) => d.model === 'openai' && d.reason === 'selected')).toBe(true);
+    expect(details.model).toBe('kimi');
+    expect(details.decisions.some((d) => d.model === 'openai-large' && d.reason === 'capability_mismatch')).toBe(
+      true,
+    );
+    expect(details.decisions.some((d) => d.model === 'kimi' && d.reason === 'selected')).toBe(true);
   });
 });

@@ -57,7 +57,7 @@ All runtime settings are configured in `.env` and validated by `src/shared/confi
 | `LLM_PROVIDER` | Provider id (currently `pollinations`) | `pollinations` |
 | `LLM_BASE_URL` | Chat API base URL | `https://gen.pollinations.ai/v1` |
 | `LLM_IMAGE_BASE_URL` | Image API base URL | `https://gen.pollinations.ai` |
-| `CHAT_MODEL` | Base chat model (route resolver may select alternates) | `openai` |
+| `CHAT_MODEL` | Base chat model (route resolver may select alternates) | `openai-large` |
 | `LLM_API_KEY` | Optional global fallback key | *(empty)* |
 | `LLM_MODEL_LIMITS_JSON` | Optional model limit map (JSON string) | `""` |
 | `PROFILE_PROVIDER` | Optional profile-provider override | *(empty)* |
@@ -253,7 +253,7 @@ SECRET_ENCRYPTION_KEY=0123456789abcdef0123456789abcdef0123456789abcdef0123456789
 LLM_PROVIDER=pollinations
 LLM_BASE_URL=https://gen.pollinations.ai/v1
 LLM_IMAGE_BASE_URL=https://gen.pollinations.ai
-CHAT_MODEL=openai
+CHAT_MODEL=openai-large
 LLM_API_KEY=
 
 AUTOPILOT_MODE=manual

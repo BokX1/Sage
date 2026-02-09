@@ -683,11 +683,13 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
 
     const startedAt = Date.now();
     try {
+      const verificationTemperature =
+        params.routeKind === 'chat' ? agentDecision.temperature : Math.max(0.2, agentDecision.temperature - 0.15);
       const response = await client.chat({
         messages: verificationMessages,
         model: verificationModel,
         apiKey,
-        temperature: Math.max(0.2, agentDecision.temperature - 0.15),
+        temperature: verificationTemperature,
         timeout: appConfig.TIMEOUT_CHAT_MS,
       });
       recordModelOutcome({
@@ -754,11 +756,13 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
 
     const startedAt = Date.now();
     try {
+      const compareTemperature =
+        params.routeKind === 'chat' ? agentDecision.temperature : Math.max(0.15, agentDecision.temperature - 0.2);
       const response = await client.chat({
         messages: comparisonMessages,
         model: compareModel,
         apiKey,
-        temperature: Math.max(0.15, agentDecision.temperature - 0.2),
+        temperature: compareTemperature,
         timeout: appConfig.TIMEOUT_CHAT_MS,
       });
       recordModelOutcome({
@@ -1008,6 +1012,7 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
               ctx: { traceId, userId, channelId },
               model: resolvedModel,
               apiKey,
+              temperature: agentDecision.temperature,
               initialAssistantResponseText: draftText,
               toolPolicy: {
                 allowExternalWrite: !!effectiveToolAllowExternalWrite,
@@ -1269,7 +1274,8 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
           messages: revisionMessages,
           model: revisionModel,
           apiKey,
-          temperature: Math.max(0.1, agentDecision.temperature - 0.2),
+          temperature:
+            agentDecision.kind === 'chat' ? agentDecision.temperature : Math.max(0.1, agentDecision.temperature - 0.2),
           timeout: appConfig.TIMEOUT_CHAT_MS,
         });
         recordModelOutcome({

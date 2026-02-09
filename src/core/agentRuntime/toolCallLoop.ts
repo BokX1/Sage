@@ -120,6 +120,8 @@ export interface ToolCallLoopParams {
 
   apiKey?: string;
 
+  temperature?: number;
+
   /**
    * Optional pre-fetched assistant response content to consume as the first
    * loop turn. Useful when the caller already received a tool envelope.
@@ -160,6 +162,7 @@ export interface ToolCallLoopResult {
 export async function runToolCallLoop(params: ToolCallLoopParams): Promise<ToolCallLoopResult> {
   const { client, registry, ctx, model, apiKey } = params;
   const config = getValidatedConfig({ ...DEFAULT_CONFIG, ...params.config });
+  const loopTemperature = Number.isFinite(params.temperature) ? Math.max(0, params.temperature as number) : 0.7;
 
   const messages = [...params.messages];
   const cache = config.cacheEnabled ? new ToolResultCache(config.cacheMaxEntries) : null;
@@ -177,7 +180,7 @@ export async function runToolCallLoop(params: ToolCallLoopParams): Promise<ToolC
               messages,
               model,
               apiKey,
-              temperature: 0.7,
+              temperature: loopTemperature,
             })
           ).content;
     seededResponseText = undefined;
@@ -198,7 +201,7 @@ export async function runToolCallLoop(params: ToolCallLoopParams): Promise<ToolC
         messages,
         model,
         apiKey,
-        temperature: 0,
+        temperature: loopTemperature,
       });
 
       envelope = parseToolCallEnvelope(retryResponse.content);
@@ -293,7 +296,7 @@ export async function runToolCallLoop(params: ToolCallLoopParams): Promise<ToolC
     messages,
     model,
     apiKey,
-    temperature: 0.7,
+    temperature: loopTemperature,
   });
 
   return {

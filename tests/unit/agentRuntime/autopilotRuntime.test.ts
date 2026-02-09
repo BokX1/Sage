@@ -45,7 +45,7 @@ describe('Autopilot Runtime', () => {
       kind: 'chat',
       contextProviders: ['Memory'],
       allowTools: true,
-      temperature: 0.8,
+      temperature: 1.2,
       reasoningText: 'test decision',
     });
   });
@@ -113,7 +113,7 @@ describe('Autopilot Runtime', () => {
       kind: 'chat',
       contextProviders: ['Memory'],
       allowTools: false,
-      temperature: 0.8,
+      temperature: 1.2,
       reasoningText: 'disable tool protocol for direct text test',
     });
     mockLLM.chat.mockResolvedValue({

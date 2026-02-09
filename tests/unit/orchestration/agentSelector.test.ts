@@ -46,6 +46,50 @@ describe('agentSelector', () => {
     expect(decision.temperature).toBeCloseTo(0.4);
   });
 
+  it('clamps chat temperature to minimum 1.0 when selector returns lower value', async () => {
+    mockChat.mockResolvedValue({
+      content: JSON.stringify({
+        agent: 'chat',
+        reasoning: 'General conversation request.',
+        temperature: 0.2,
+      }),
+    });
+
+    const decision = await decideAgent({
+      userText: 'let us chat casually',
+      invokedBy: 'mention',
+      hasGuild: true,
+      conversationHistory: [],
+      replyReferenceContent: null,
+      apiKey: 'api-key',
+    });
+
+    expect(decision.kind).toBe('chat');
+    expect(decision.temperature).toBe(1.0);
+  });
+
+  it('clamps chat temperature to maximum 1.4 when selector returns higher value', async () => {
+    mockChat.mockResolvedValue({
+      content: JSON.stringify({
+        agent: 'chat',
+        reasoning: 'Creative chat request.',
+        temperature: 1.49,
+      }),
+    });
+
+    const decision = await decideAgent({
+      userText: 'tell me a vivid and imaginative story',
+      invokedBy: 'mention',
+      hasGuild: true,
+      conversationHistory: [],
+      replyReferenceContent: null,
+      apiKey: 'api-key',
+    });
+
+    expect(decision.kind).toBe('chat');
+    expect(decision.temperature).toBe(1.4);
+  });
+
   it('routes guild command invocations directly to chat without LLM', async () => {
     const decision = await decideAgent({
       userText: '/sage settings',
@@ -58,6 +102,7 @@ describe('agentSelector', () => {
 
     expect(decision.kind).toBe('chat');
     expect(decision.allowTools).toBe(true);
+    expect(decision.temperature).toBe(1.2);
     expect(mockChat).not.toHaveBeenCalled();
   });
 
@@ -76,6 +121,6 @@ describe('agentSelector', () => {
     });
 
     expect(decision.kind).toBe('chat');
-    expect(decision.temperature).toBe(0.8);
+    expect(decision.temperature).toBe(1.2);
   });
 });
