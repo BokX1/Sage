@@ -108,7 +108,7 @@ Runtime behavior:
 2. Deterministic tool policy gates classify risk (`read_only`, `external_write`, `high_risk`).
 3. Blocklists and risk permissions are enforced before any execution.
 4. Per-turn cache deduplicates repeated calls.
-5. Verification intents (`verify_search_again`, `verify_chat_again`, `verify_code_again`) trigger independent re-answer + compare passes when executable tools are unavailable or route asks for verification.
+5. Verification and factual revision are handled by the critic loop and targeted provider/search refreshes.
 6. Runtime forces plain-text fallback if verification responses keep returning tool envelopes.
 7. Runtime injects a capability manifest into the system prompt that reflects route, context providers, and only policy-allowed tools for that turn.
 

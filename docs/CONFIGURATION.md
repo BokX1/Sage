@@ -198,21 +198,21 @@ Used by `npm run agentic:replay-gate` and release checks.
 
 | Variable | Description | `.env.example` |
 | :--- | :--- | :--- |
-| `CONTEXT_MAX_INPUT_TOKENS` | Max input token budget | `65536` |
-| `CONTEXT_RESERVED_OUTPUT_TOKENS` | Reserved output tokens | `8192` |
-| `SYSTEM_PROMPT_MAX_TOKENS` | System prompt budget | `6000` |
-| `CONTEXT_USER_MAX_TOKENS` | User block budget | `24000` |
+| `CONTEXT_MAX_INPUT_TOKENS` | Max input token budget | `120000` |
+| `CONTEXT_RESERVED_OUTPUT_TOKENS` | Reserved output tokens | `12000` |
+| `SYSTEM_PROMPT_MAX_TOKENS` | System prompt budget | `12000` |
+| `CONTEXT_USER_MAX_TOKENS` | User block budget | `60000` |
 
 ### Block Budgets
 
 | Variable | Description | `.env.example` |
 | :--- | :--- | :--- |
-| `CONTEXT_BLOCK_MAX_TOKENS_TRANSCRIPT` | Transcript budget | `8000` |
-| `CONTEXT_BLOCK_MAX_TOKENS_ROLLING_SUMMARY` | Rolling summary budget | `4800` |
-| `CONTEXT_BLOCK_MAX_TOKENS_PROFILE_SUMMARY` | Profile summary budget | `4800` |
-| `CONTEXT_BLOCK_MAX_TOKENS_MEMORY` | Memory block budget | `6000` |
-| `CONTEXT_BLOCK_MAX_TOKENS_REPLY_CONTEXT` | Reply/intention context budget | `3200` |
-| `CONTEXT_BLOCK_MAX_TOKENS_PROVIDERS` | Context packets budget | `4800` |
+| `CONTEXT_BLOCK_MAX_TOKENS_TRANSCRIPT` | Transcript budget | `20000` |
+| `CONTEXT_BLOCK_MAX_TOKENS_ROLLING_SUMMARY` | Rolling summary budget | `12000` |
+| `CONTEXT_BLOCK_MAX_TOKENS_PROFILE_SUMMARY` | Profile summary budget | `12000` |
+| `CONTEXT_BLOCK_MAX_TOKENS_MEMORY` | Memory block budget | `12000` |
+| `CONTEXT_BLOCK_MAX_TOKENS_REPLY_CONTEXT` | Reply/intention context budget | `8000` |
+| `CONTEXT_BLOCK_MAX_TOKENS_PROVIDERS` | Context packets budget | `12000` |
 
 ### Estimation
 
@@ -271,6 +271,17 @@ LLM_API_KEY=
 AUTOPILOT_MODE=manual
 WAKE_WORDS_CSV=sage
 TRACE_ENABLED=true
+
+CONTEXT_MAX_INPUT_TOKENS=120000
+CONTEXT_RESERVED_OUTPUT_TOKENS=12000
+SYSTEM_PROMPT_MAX_TOKENS=12000
+CONTEXT_BLOCK_MAX_TOKENS_TRANSCRIPT=20000
+CONTEXT_BLOCK_MAX_TOKENS_ROLLING_SUMMARY=12000
+CONTEXT_BLOCK_MAX_TOKENS_PROFILE_SUMMARY=12000
+CONTEXT_BLOCK_MAX_TOKENS_MEMORY=12000
+CONTEXT_BLOCK_MAX_TOKENS_REPLY_CONTEXT=8000
+CONTEXT_BLOCK_MAX_TOKENS_PROVIDERS=12000
+CONTEXT_USER_MAX_TOKENS=60000
 
 AGENTIC_GRAPH_PARALLEL_ENABLED=true
 AGENTIC_GRAPH_MAX_PARALLEL=2

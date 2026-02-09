@@ -12,6 +12,9 @@ const DEFAULT_SAFETY_MARGIN = 200;
 const DEFAULT_IMAGE_TOKENS = 1200;
 const DEFAULT_MESSAGE_OVERHEAD = 4;
 const DEFAULT_ATTACHMENT_MAX_TOKENS = Math.floor(config.contextUserMaxTokens * 0.4);
+const OPENAI_LARGE_CONTEXT_FLOOR = 120_000;
+const OPENAI_LARGE_OUTPUT_FLOOR = 12_000;
+const OPENAI_LARGE_ATTACHMENT_FLOOR = 36_000;
 
 const BASE_ESTIMATION: TokenEstimateOptions = {
   charsPerToken: config.tokenHeuristicCharsPerToken,
@@ -40,6 +43,14 @@ const BUILTIN_MODEL_OVERRIDES: Record<string, Partial<ModelBudgetConfig>> = {
   },
   'openai-large': {
     visionEnabled: false,
+    maxContextTokens: Math.max(config.contextMaxInputTokens, OPENAI_LARGE_CONTEXT_FLOOR),
+    maxOutputTokens: Math.max(config.contextReservedOutputTokens, OPENAI_LARGE_OUTPUT_FLOOR),
+    safetyMarginTokens: 400,
+    attachmentTextMaxTokens: Math.max(
+      DEFAULT_ATTACHMENT_MAX_TOKENS,
+      OPENAI_LARGE_ATTACHMENT_FLOOR,
+    ),
+    visionFadeKeepLastUserImages: 0,
   },
   'qwen-coder': {
     visionEnabled: false,

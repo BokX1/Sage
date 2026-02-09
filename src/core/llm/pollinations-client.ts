@@ -25,6 +25,51 @@ interface PollinationsPayload {
   audio?: { voice: string; format: string };
 }
 
+function extractSystemText(content: LLMRequest['messages'][number]['content']): string {
+  if (typeof content === 'string') {
+    return content;
+  }
+  return content
+    .map((part) => {
+      if (part.type === 'text') return part.text;
+      return '';
+    })
+    .filter((value) => value.length > 0)
+    .join('\n');
+}
+
+/**
+ * Ensure provider calls receive one consolidated system prompt block.
+ * This prevents scattered system instructions from being dropped or reordered.
+ */
+function collapseSystemMessages(messages: LLMRequest['messages']): LLMRequest['messages'] {
+  const systemParts: string[] = [];
+  const nonSystemMessages: LLMRequest['messages'] = [];
+
+  for (const message of messages) {
+    if (message.role === 'system') {
+      const systemText = extractSystemText(message.content).trim();
+      if (systemText.length > 0) {
+        systemParts.push(systemText);
+      }
+      continue;
+    }
+    nonSystemMessages.push(message);
+  }
+
+  if (systemParts.length === 0) {
+    return nonSystemMessages;
+  }
+
+  return [
+    {
+      role: 'system',
+      content: systemParts.join('\n\n'),
+    },
+    ...nonSystemMessages,
+  ];
+}
+
 function assertSafeBaseUrl(rawBaseUrl: string): string {
   const trimmed = rawBaseUrl.trim().replace(/\/$/, '').replace(/\/chat\/completions$/, '');
   const parsed = new URL(trimmed);
@@ -87,11 +132,12 @@ export class PollinationsClient implements LLMClient {
 
     // 1. Normalize messages to enforce strict alternation (S? -> U -> A -> U...)
     // This fixes "400 Bad Request" from strict models like Perplexity when contextBuilder produces (U, U) or (A, U).
+    const messagesWithSingleSystem = collapseSystemMessages(trimmed);
     const normalizedMessages: LLMRequest['messages'] = [];
 
     // 1a. Filter out empty content if necessary, but budgeter usually handles it.
     // 1b. Merge adjacent same-role messages.
-    for (const msg of trimmed) {
+    for (const msg of messagesWithSingleSystem) {
       if (normalizedMessages.length === 0) {
         normalizedMessages.push(msg);
         continue;

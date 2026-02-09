@@ -50,7 +50,7 @@ In Sage, "agentic" means the runtime can:
 - Tool execution is bounded by `runToolCallLoop`.
 - Deterministic policy gates apply blocklists and risk permissions (`external_write`, `high_risk`).
 - Per-turn cache avoids duplicate tool executions.
-- Runtime also exposes virtual verification intents (`verify_search_again`, `verify_chat_again`, `verify_code_again`) to force independent verification passes when needed.
+- Verification and factual revision are handled by the critic loop rather than virtual verification tools.
 - Runtime injects a capability manifest into the system prompt so the model only claims tools/context providers actually available in that turn.
 
 ### 4) Quality Loop

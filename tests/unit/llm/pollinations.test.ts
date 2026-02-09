@@ -46,6 +46,33 @@ describe('PollinationsClient', () => {
     );
   });
 
+  it('should collapse multiple system messages into one consolidated block', async () => {
+    const client = new PollinationsClient({ baseUrl: 'https://api.test/v1' });
+
+    (global.fetch as any).mockResolvedValue({
+      ok: true,
+      json: async () => ({ choices: [{ message: { content: 'ok' } }] }),
+    });
+
+    await client.chat({
+      messages: [
+        { role: 'system', content: 'System A' },
+        { role: 'user', content: 'User 1' },
+        { role: 'system', content: 'System B' },
+        { role: 'assistant', content: 'Assistant 1' },
+      ],
+    });
+
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+    const call = (global.fetch as any).mock.calls[0];
+    const body = JSON.parse(call[1].body);
+    const systemMessages = body.messages.filter((m: any) => m.role === 'system');
+    expect(systemMessages).toHaveLength(1);
+    expect(systemMessages[0].content).toContain('System A');
+    expect(systemMessages[0].content).toContain('System B');
+    expect(body.messages[0].role).toBe('system');
+  });
+
   it('should retry without response_format on 400 response_format error', async () => {
     const client = new PollinationsClient({ maxRetries: 1 });
 

@@ -53,14 +53,13 @@ import {
 } from './canaryPolicy';
 import { runImageGenAction } from '../actions/imageGenAction';
 import { parseToolCallEnvelope } from './toolCallParser';
+import { stripToolEnvelopeDraft } from './toolVerification';
 import {
-  buildToolIntentReason,
-  buildVerificationToolNames,
-  deriveVerificationIntent,
-  stripToolEnvelopeDraft,
-  VerificationIntent,
-} from './toolVerification';
-import { buildCapabilityPromptSection, RuntimeCapabilityTool } from './capabilityPrompt';
+  buildAgenticStateBlock,
+  buildCapabilityPromptSection,
+  BuildCapabilityPromptSectionParams,
+  RuntimeCapabilityTool,
+} from './capabilityPrompt';
 
 
 /** Execute one chat turn using routing, context, and tool follow-up metadata. */
@@ -478,21 +477,6 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
       ? agentDecision.searchMode ?? 'complex'
       : null;
 
-  const messages = buildContextMessages({
-    userProfileSummary,
-    replyToBotText,
-    replyReferenceContent,
-    userText,
-    userContent,
-    recentTranscript,
-    channelRollingSummary: rollingSummaryText,
-    channelProfileSummary: profileSummaryText,
-    intentHint: intent ?? null,
-    style,
-    contextPackets: contextPacketsText || null,
-    invokedBy,
-    voiceInstruction,
-  });
   const registeredToolSpecs = globalToolRegistry.listOpenAIToolSpecs();
   const registeredTools: RuntimeCapabilityTool[] = registeredToolSpecs.map((toolSpec) => ({
     name: toolSpec.function.name,
@@ -509,21 +493,24 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
   const registeredToolNames = usableRegisteredTools.map((tool) => tool.name);
   const activeContextProviders =
     agentDecision.contextProviders ?? getStandardProvidersForAgent(agentDecision.kind);
-  const virtualVerificationToolNames = buildVerificationToolNames(agentDecision.kind);
-  const advertisedToolNames = Array.from(
-    new Set([...registeredToolNames, ...virtualVerificationToolNames]),
-  );
-  const capabilityInstruction = buildCapabilityPromptSection({
+  const advertisedToolNames = registeredToolNames;
+  const capabilityPromptParams: BuildCapabilityPromptSectionParams = {
     routeKind: agentDecision.kind,
     searchMode: searchExecutionMode,
     allowTools: agentDecision.allowTools,
+    routerReasoning: agentDecision.reasoningText,
     contextProviders: activeContextProviders,
     tools: usableRegisteredTools,
-    verificationTools: virtualVerificationToolNames,
-  });
+  };
+  const capabilityInstruction = buildCapabilityPromptSection(capabilityPromptParams);
+  const includeAgenticState =
+    capabilityPromptParams.routeKind === 'chat' || capabilityPromptParams.routeKind === 'coding';
+  const agenticStateInstruction = includeAgenticState
+    ? buildAgenticStateBlock(capabilityPromptParams)
+    : null;
   const shouldUseToolProtocol = agentDecision.allowTools && advertisedToolNames.length > 0;
   const toolProtocolInstruction = shouldUseToolProtocol
-    ? 'Tool protocol: if verification or tool assistance is needed, output ONLY valid JSON in this exact shape:\n' +
+    ? 'Tool protocol: if tool assistance is needed, output ONLY valid JSON in this exact shape:\n' +
       '{\n' +
       '  "type": "tool_calls",\n' +
       '  "calls": [{ "name": "<tool_name>", "args": { ... } }]\n' +
@@ -531,26 +518,25 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
       'If no tool is needed, answer normally.\n' +
       `Available tools: ${advertisedToolNames.join(', ')}.`
     : null;
-  const runtimeInstructionBlocks = [capabilityInstruction, toolProtocolInstruction]
+  const runtimeInstructionBlocks = [capabilityInstruction, agenticStateInstruction, toolProtocolInstruction]
     .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
     .join('\n\n');
-  let runtimeMessages: LLMChatMessage[] = messages;
-  if (
-    runtimeInstructionBlocks &&
-    messages.length > 0 &&
-    messages[0].role === 'system' &&
-    typeof messages[0].content === 'string'
-  ) {
-    runtimeMessages = [
-      {
-        ...messages[0],
-        content: `${messages[0].content}\n\n${runtimeInstructionBlocks}`,
-      },
-      ...messages.slice(1),
-    ];
-  } else if (runtimeInstructionBlocks) {
-    runtimeMessages = [...messages, { role: 'system' as const, content: runtimeInstructionBlocks }];
-  }
+  const runtimeMessages = buildContextMessages({
+    userProfileSummary,
+    runtimeInstruction: runtimeInstructionBlocks || null,
+    replyToBotText,
+    replyReferenceContent,
+    userText,
+    userContent,
+    recentTranscript,
+    channelRollingSummary: rollingSummaryText,
+    channelProfileSummary: profileSummaryText,
+    intentHint: intent ?? null,
+    style,
+    contextPackets: contextPacketsText || null,
+    invokedBy,
+    voiceInstruction,
+  });
 
   logger.debug(
     { traceId, agentDecision, contextProviderCount: contextPackets.length },
@@ -569,13 +555,12 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
   let toolsExecuted = false;
   let latestToolLoopResult: ToolCallLoopResult | undefined;
   const modelResolutionEvents: Array<Record<string, unknown>> = [];
-  const toolVerificationRedispatches: Array<Record<string, unknown>> = [];
+  const toolEnvelopeRecoveries: Array<Record<string, unknown>> = [];
   const runSearchPass = async (params: {
     phase: string;
     iteration?: number;
     revisionInstruction?: string;
     priorDraft?: string;
-    allowToolEnvelope?: boolean;
   }): Promise<string> => {
     const contextNotes: string[] = [];
     const boundedSearchTemperature = (() => {
@@ -583,10 +568,7 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
         agentDecision.kind === 'search' ? agentDecision.temperature : 0.3;
       return Math.max(0.1, Math.min(1.4, base));
     })();
-    const searchTemperature =
-      params.allowToolEnvelope === false
-        ? Math.max(0.1, boundedSearchTemperature - 0.1)
-        : boundedSearchTemperature;
+    const searchTemperature = Math.max(0.1, boundedSearchTemperature - 0.1);
 
     if (contextPacketsText.trim()) {
       const contextSnapshot = contextPacketsText.trim().slice(0, 3_000);
@@ -637,18 +619,9 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
 
       const searchClient = createLLMClient('pollinations', { chatModel: selectedModel });
       const searchSystemPrompt =
-        params.allowToolEnvelope === false
-          ? 'You are a search-focused assistant. Answer using the freshest reliable information available. ' +
-            'When possible, include concise source cues (site/domain names or URLs). If uncertain, say so directly. ' +
-            'Return a direct plain-text answer only. Do not output JSON or tool_calls envelopes.'
-          : 'You are a search-focused assistant. Answer using the freshest reliable information available. ' +
-            'When possible, include concise source cues (site/domain names or URLs). If uncertain, say so directly. ' +
-            'If you need another verification pass before finalizing, output ONLY valid JSON in this exact shape:\n' +
-            '{\n' +
-            '  "type": "tool_calls",\n' +
-            '  "calls": [{ "name": "verify_search_again", "args": { "reason": "<short reason>" } }]\n' +
-            '}\n' +
-            'If no verification pass is needed, return plain text only.';
+        'You are a search-focused assistant. Answer using the freshest reliable information available. ' +
+        'When possible, include concise source cues (site/domain names or URLs). If uncertain, say so directly. ' +
+        'Return a direct plain-text answer only. Do not output JSON or tool_calls envelopes.';
       const searchMessages: LLMChatMessage[] = [
         {
           role: 'system',
@@ -798,13 +771,12 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
         phase: params.phase,
         revisionInstruction: params.verificationReason,
         priorDraft: params.priorDraft,
-        allowToolEnvelope: false,
       });
     }
 
     const priorDraft = stripToolEnvelopeDraft(params.priorDraft);
     const verificationMessages: LLMChatMessage[] = [
-      ...messages,
+      ...runtimeMessages,
       ...(priorDraft
         ? [{ role: 'assistant' as const, content: priorDraft }]
         : []),
@@ -863,211 +835,6 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
     }
   };
 
-  const runVerificationComparePass = async (params: {
-    phase: string;
-    routeKind: 'chat' | 'coding' | 'search';
-    verificationReason: string;
-    draftA: string;
-    draftB: string;
-  }): Promise<string> => {
-    const draftA = stripToolEnvelopeDraft(params.draftA) ?? 'Candidate draft A did not provide a direct answer.';
-    const draftB = stripToolEnvelopeDraft(params.draftB) ?? 'Candidate draft B did not provide a direct answer.';
-    const comparisonMessages: LLMChatMessage[] = [
-      ...messages,
-      {
-        role: 'system',
-        content:
-          'Compare the two candidate drafts for factual correctness, completeness, and consistency. ' +
-          'Resolve conflicts and return one verified final answer only. ' +
-          'Return plain text only, never JSON or tool_calls envelopes.',
-      },
-      {
-        role: 'user',
-        content:
-          `Verification focus:\n${params.verificationReason}\n\n` +
-          `Candidate draft A:\n${draftA}\n\n` +
-          `Candidate draft B:\n${draftB}`,
-      },
-    ];
-
-    const compareModelDetails = await resolveModelForRequestDetailed({
-      guildId,
-      messages: comparisonMessages,
-      route: params.routeKind,
-      allowedModels: tenantPolicy.allowedModels,
-      featureFlags: {
-        reasoning: true,
-        tools: false,
-      },
-    });
-    const compareModel = compareModelDetails.model;
-    modelResolutionEvents.push({
-      phase: params.phase,
-      route: compareModelDetails.route,
-      selected: compareModelDetails.model,
-      candidates: compareModelDetails.candidates,
-      decisions: compareModelDetails.decisions,
-      allowlistApplied: compareModelDetails.allowlistApplied,
-    });
-
-    const startedAt = Date.now();
-    try {
-      const compareTemperature =
-        params.routeKind === 'chat' ? agentDecision.temperature : Math.max(0.15, agentDecision.temperature - 0.2);
-      const response = await client.chat({
-        messages: comparisonMessages,
-        model: compareModel,
-        apiKey,
-        temperature: compareTemperature,
-        timeout: appConfig.TIMEOUT_CHAT_MS,
-      });
-      recordModelOutcome({
-        model: compareModel,
-        success: true,
-        latencyMs: Date.now() - startedAt,
-      });
-      return response.content;
-    } catch (error) {
-      recordModelOutcome({
-        model: compareModel,
-        success: false,
-      });
-      throw error;
-    }
-  };
-
-  const ensurePlainVerificationAnswer = async (params: {
-    routeKind: 'chat' | 'coding' | 'search';
-    verificationReason: string;
-    candidate: string;
-    fallbackDraft?: string;
-  }): Promise<string> => {
-    const candidateDraft = stripToolEnvelopeDraft(params.candidate);
-    if (candidateDraft) return candidateDraft;
-
-    const fallbackDraft = stripToolEnvelopeDraft(params.fallbackDraft);
-    if (fallbackDraft) return fallbackDraft;
-
-    const forcedRetry = await runRouteVerificationPass({
-      phase: 'tool_verify_plaintext_fallback',
-      routeKind: params.routeKind,
-      verificationReason:
-        `${params.verificationReason}\n` +
-        'Return a final plain-text answer only. Do not output JSON or tool_calls envelopes.',
-    });
-    return (
-      stripToolEnvelopeDraft(forcedRetry) ??
-      "I couldn't complete verification cleanly. Please ask again and I will retry with a fresh pass."
-    );
-  };
-
-  const runToolTriggeredVerification = async (params: {
-    routeKind: 'chat' | 'coding' | 'search';
-    toolIntentReason: string;
-    verificationIntent: VerificationIntent;
-    initialDraft: string;
-  }): Promise<string> => {
-    const initialDraft = stripToolEnvelopeDraft(params.initialDraft) ?? undefined;
-    const runRouteTwoPassVerification = async (phasePrefix: string): Promise<string> => {
-      const firstPass = await runRouteVerificationPass({
-        phase: `${phasePrefix}_a`,
-        routeKind: params.routeKind,
-        verificationReason: params.toolIntentReason,
-        priorDraft: initialDraft,
-      });
-      const secondPass = await runRouteVerificationPass({
-        phase: `${phasePrefix}_b`,
-        routeKind: params.routeKind,
-        verificationReason: params.toolIntentReason,
-        priorDraft: firstPass,
-      });
-      const compared = await runVerificationComparePass({
-        phase: `${phasePrefix}_compare`,
-        routeKind: params.routeKind,
-        verificationReason: params.toolIntentReason,
-        draftA: firstPass,
-        draftB: secondPass,
-      });
-      return ensurePlainVerificationAnswer({
-        routeKind: params.routeKind,
-        verificationReason: params.toolIntentReason,
-        candidate: compared,
-        fallbackDraft: secondPass || firstPass || initialDraft,
-      });
-    };
-
-    if (params.routeKind === 'search') {
-      return runRouteTwoPassVerification('tool_verify_search');
-    }
-
-    const routePass = params.verificationIntent.wantsRouteCrosscheck
-      ? await runRouteVerificationPass({
-          phase: 'tool_verify_route_pass',
-          routeKind: params.routeKind,
-          verificationReason: params.toolIntentReason,
-          priorDraft: initialDraft,
-        })
-      : null;
-
-    const searchPass = params.verificationIntent.wantsSearchRefresh
-      ? await runSearchPass({
-          phase: 'tool_verify_search_pass',
-          revisionInstruction: params.toolIntentReason,
-          priorDraft: routePass ?? initialDraft,
-          allowToolEnvelope: false,
-        })
-      : null;
-
-    if (routePass && searchPass) {
-      const compared = await runVerificationComparePass({
-        phase: 'tool_verify_cross_compare',
-        routeKind: params.routeKind,
-        verificationReason: `${params.toolIntentReason}\nCross-check with fresh search evidence.`,
-        draftA: routePass,
-        draftB: searchPass,
-      });
-      return ensurePlainVerificationAnswer({
-        routeKind: params.routeKind,
-        verificationReason: params.toolIntentReason,
-        candidate: compared,
-        fallbackDraft: searchPass || routePass || initialDraft,
-      });
-    }
-
-    if (searchPass) {
-      return ensurePlainVerificationAnswer({
-        routeKind: params.routeKind,
-        verificationReason: params.toolIntentReason,
-        candidate: searchPass,
-        fallbackDraft: routePass || initialDraft,
-      });
-    }
-
-    if (routePass) {
-      const secondRoutePass = await runRouteVerificationPass({
-        phase: 'tool_verify_route_pass_b',
-        routeKind: params.routeKind,
-        verificationReason: params.toolIntentReason,
-        priorDraft: routePass,
-      });
-      const compared = await runVerificationComparePass({
-        phase: 'tool_verify_route_compare',
-        routeKind: params.routeKind,
-        verificationReason: params.toolIntentReason,
-        draftA: routePass,
-        draftB: secondRoutePass,
-      });
-      return ensurePlainVerificationAnswer({
-        routeKind: params.routeKind,
-        verificationReason: params.toolIntentReason,
-        candidate: compared,
-        fallbackDraft: secondRoutePass || routePass || initialDraft,
-      });
-    }
-
-    return runRouteTwoPassVerification('tool_verify_fallback');
-  };
-
   // --- SEARCH AGENT ---
   if (agentDecision.kind === 'search') {
     logger.info({ traceId, userText, searchExecutionMode }, 'Agent Runtime: Executing Search Agent');
@@ -1075,39 +842,40 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
       draftText = await runSearchPass({ phase: 'search_initial' });
       const searchToolEnvelope = parseToolCallEnvelope(draftText);
       if (searchToolEnvelope) {
-        const toolIntentReason = buildToolIntentReason(searchToolEnvelope.calls);
-        const verificationIntent = deriveVerificationIntent('search', searchToolEnvelope.calls);
-        logger.info(
+        logger.warn(
           {
             traceId,
             toolCalls: searchToolEnvelope.calls.map((call) => call.name),
-            verificationIntent,
+            route: 'search',
           },
-          'Search route requested tool verification; running verification redispatch',
+          'Search route produced unexpected tool_calls envelope; recovering with plain-text retry',
         );
-        draftText = await runToolTriggeredVerification({
+        const recovered = await runRouteVerificationPass({
+          phase: 'search_tool_envelope_plaintext_recovery',
           routeKind: 'search',
-          toolIntentReason,
-          verificationIntent,
-          initialDraft: draftText,
+          verificationReason:
+            'Do not emit tool calls. Provide a direct plain-text search answer with concise source cues.',
+          priorDraft: draftText,
         });
-        toolVerificationRedispatches.push({
+        draftText =
+          stripToolEnvelopeDraft(recovered) ??
+          "I couldn't complete the search response cleanly. Please ask again and I will answer directly.";
+        toolEnvelopeRecoveries.push({
           route: 'search',
           toolCalls: searchToolEnvelope.calls.map((call) => call.name),
-          verificationIntent,
+          mode: 'plain_text_retry',
         });
         if (Array.isArray(agentEventsJson)) {
           agentEventsJson.push({
-                type: 'tool_verify_redispatch',
-                timestamp: new Date().toISOString(),
-                details: {
-                  route: 'search',
-                  toolCalls: searchToolEnvelope.calls.map((call) => call.name),
-                  verificationIntent,
-                },
-              });
+            type: 'tool_envelope_recovery',
+            timestamp: new Date().toISOString(),
+            details: {
+              route: 'search',
+              toolCalls: searchToolEnvelope.calls.map((call) => call.name),
+              mode: 'plain_text_retry',
+            },
+          });
         }
-        toolsExecuted = true;
       }
 
       if (searchExecutionMode === 'complex') {
@@ -1202,44 +970,45 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
             latestToolLoopResult = toolLoop;
             toolsExecuted = true;
           } else {
-            const toolIntentReason = buildToolIntentReason(envelope.calls);
-            const verificationIntent = deriveVerificationIntent(agentDecision.kind, envelope.calls);
-            logger.info(
+            logger.warn(
               {
                 traceId,
                 toolCalls: envelope.calls.map((call) => call.name),
-                verificationIntent,
+                route: agentDecision.kind,
               },
-              'Tool verification requested without executable tools; redispatching verification cycle',
+              'Tool envelope requested unavailable tools; recovering with plain-text retry',
             );
             if (agentDecision.kind !== 'chat' && agentDecision.kind !== 'coding') {
               throw new Error(
-                `Tool verification redispatch only supported for chat/coding in this branch (got ${agentDecision.kind})`,
+                `Tool envelope recovery only supported for chat/coding in this branch (got ${agentDecision.kind})`,
               );
             }
-            draftText = await runToolTriggeredVerification({
+            const recovered = await runRouteVerificationPass({
+              phase: 'main_tool_envelope_plaintext_recovery',
               routeKind: agentDecision.kind,
-              toolIntentReason,
-              verificationIntent,
-              initialDraft: draftText,
+              verificationReason:
+                'Tool calls are unavailable for this turn. Provide a direct plain-text answer using available context only.',
+              priorDraft: draftText,
             });
-            toolVerificationRedispatches.push({
+            draftText =
+              stripToolEnvelopeDraft(recovered) ??
+              "I couldn't complete the response cleanly. Please ask again and I will answer directly.";
+            toolEnvelopeRecoveries.push({
               route: agentDecision.kind,
               toolCalls: envelope.calls.map((call) => call.name),
-              verificationIntent,
+              mode: 'plain_text_retry',
             });
             if (Array.isArray(agentEventsJson)) {
               agentEventsJson.push({
-                type: 'tool_verify_redispatch',
+                type: 'tool_envelope_recovery',
                 timestamp: new Date().toISOString(),
                 details: {
                   route: agentDecision.kind,
                   toolCalls: envelope.calls.map((call) => call.name),
-                  verificationIntent,
+                  mode: 'plain_text_retry',
                 },
               });
             }
-            toolsExecuted = true;
           }
         }
       }
@@ -1339,7 +1108,6 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
             iteration,
             revisionInstruction,
             priorDraft: draftText,
-            allowToolEnvelope: false,
           });
           if (searchExecutionMode === 'complex') {
             try {
@@ -1531,7 +1299,7 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
     ...budgetJson,
     ...(searchExecutionMode ? { searchExecutionMode } : {}),
     toolsExecuted,
-    toolVerificationRedispatches: toolVerificationRedispatches.length,
+    toolEnvelopeRecoveries: toolEnvelopeRecoveries.length,
     criticIterations: criticAssessments.length,
     criticRedispatches: criticRedispatches.length,
     modelResolution: modelResolutionEvents,
@@ -1569,11 +1337,11 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
       await updateTraceEnd({
         id: traceId,
         toolJson:
-          toolsExecuted || criticAssessments.length > 0 || toolVerificationRedispatches.length > 0
+          toolsExecuted || criticAssessments.length > 0 || toolEnvelopeRecoveries.length > 0
             ? {
                 executed: toolsExecuted,
-                verificationRedispatches:
-                  toolVerificationRedispatches.length > 0 ? toolVerificationRedispatches : undefined,
+                envelopeRecoveries:
+                  toolEnvelopeRecoveries.length > 0 ? toolEnvelopeRecoveries : undefined,
                 critic: criticAssessments.length > 0 ? criticAssessments : undefined,
               }
             : undefined,

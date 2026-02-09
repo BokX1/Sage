@@ -13,6 +13,54 @@ const CHAT_MAX_TEMPERATURE = 1.4;
 export type AgentKind = 'chat' | 'coding' | 'search' | 'creative';
 export type SearchExecutionMode = 'simple' | 'complex';
 
+export interface AgentCapabilityDescriptor {
+  kind: AgentKind;
+  purpose: string;
+  primarySignals: string;
+  runtimeCapabilities: string;
+}
+
+export const AGENT_CAPABILITY_DESCRIPTORS: AgentCapabilityDescriptor[] = [
+  {
+    kind: 'coding',
+    purpose: 'Write, debug, explain, or refactor software/code',
+    primarySignals: '"fix this bug", "write function", stack traces, code blocks, APIs, tests',
+    runtimeCapabilities:
+      'Implement and debug code, reason about architecture and tests, and produce precise technical guidance.',
+  },
+  {
+    kind: 'creative',
+    purpose: 'Generate or edit images/visuals',
+    primarySignals: '"draw", "generate image", "edit this picture", "make it darker"',
+    runtimeCapabilities:
+      'Run image-generation and image-editing workflows, then return asset-oriented responses.',
+  },
+  {
+    kind: 'search',
+    purpose: 'Fresh, time-sensitive, web-verifiable facts',
+    primarySignals: '"latest", "today", "current", prices, weather, releases, news, URLs',
+    runtimeCapabilities:
+      'Run freshness-focused research, verification redispatch, and multi-pass synthesis when needed.',
+  },
+  {
+    kind: 'chat',
+    purpose: 'General discussion, analysis, discord/community/admin requests',
+    primarySignals: 'default fallback',
+    runtimeCapabilities:
+      'Handle conversational support, server/community context, and policy-aware verification passes.',
+  },
+];
+
+function buildAgentCapabilityTable(): string {
+  const header = '| Agent | Purpose | Primary signals |';
+  const divider = '|-------|---------|-----------------|';
+  const rows = AGENT_CAPABILITY_DESCRIPTORS.map(
+    (capability) =>
+      `| \`${capability.kind}\` | ${capability.purpose} | ${capability.primarySignals} |`,
+  );
+  return [header, divider, ...rows].join('\n');
+}
+
 export interface AgentDecision {
   kind: AgentKind;
   contextProviders?: ContextProviderName[];
@@ -37,12 +85,7 @@ You are an intent routing engine. Select exactly one best agent for the current 
 
 ## Available agents
 
-| Agent | Purpose | Primary signals |
-|-------|---------|-----------------|
-| \`coding\` | Write, debug, explain, or refactor software/code | "fix this bug", "write function", stack traces, code blocks, APIs, tests |
-| \`creative\` | Generate or edit images/visuals | "draw", "generate image", "edit this picture", "make it darker" |
-| \`search\` | Fresh, time-sensitive, web-verifiable facts | "latest", "today", "current", prices, weather, releases, news, URLs |
-| \`chat\` | General discussion, analysis, discord/community/admin requests | default fallback |
+${buildAgentCapabilityTable()}
 
 ## Routing rules
 
@@ -56,6 +99,16 @@ You are an intent routing engine. Select exactly one best agent for the current 
    - Code follow-up iterations -> \`coding\`
 5. Discord operational/community tasks (voice presence, summaries, settings, moderation/admin) -> \`chat\`
 6. If uncertain, choose \`chat\`.
+
+## Downstream loop awareness
+
+Your route choice controls one unified runtime loop:
+
+1. Context providers are gathered for this turn (Memory is baseline; chat commonly adds SocialGraph and VoiceAnalytics).
+2. The runtime may run verification/tool steps before finalizing.
+3. A critic may request revision when quality is insufficient.
+
+Choose the route that best matches how this full loop should solve the request, not only the first model response.
 
 ## Temperature guidance
 

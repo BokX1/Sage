@@ -1,5 +1,11 @@
 import { config as newConfig } from '../../config';
 
+const isOpenAILargeDefault = newConfig.CHAT_MODEL.trim().toLowerCase() === 'openai-large';
+
+function withOpenAILargeFloor(value: number, floor: number): number {
+  return isOpenAILargeDefault ? Math.max(value, floor) : value;
+}
+
 /**
  * Expose configuration values using the legacy shape expected by older modules.
  *
@@ -33,23 +39,38 @@ export const config = {
   llmApiKey: newConfig.LLM_API_KEY,
   chatModel: newConfig.CHAT_MODEL,
   llmModelLimitsJson: newConfig.LLM_MODEL_LIMITS_JSON,
-  contextMaxInputTokens: newConfig.CONTEXT_MAX_INPUT_TOKENS,
-  contextReservedOutputTokens: newConfig.CONTEXT_RESERVED_OUTPUT_TOKENS,
-  systemPromptMaxTokens: newConfig.SYSTEM_PROMPT_MAX_TOKENS,
+  contextMaxInputTokens: withOpenAILargeFloor(newConfig.CONTEXT_MAX_INPUT_TOKENS, 110_000),
+  contextReservedOutputTokens: withOpenAILargeFloor(newConfig.CONTEXT_RESERVED_OUTPUT_TOKENS, 12_000),
+  systemPromptMaxTokens: withOpenAILargeFloor(newConfig.SYSTEM_PROMPT_MAX_TOKENS, 12_000),
   tokenEstimator: newConfig.TOKEN_ESTIMATOR,
   tokenHeuristicCharsPerToken: newConfig.TOKEN_HEURISTIC_CHARS_PER_TOKEN,
-  contextBlockMaxTokensTranscript: newConfig.CONTEXT_BLOCK_MAX_TOKENS_TRANSCRIPT,
-  contextBlockMaxTokensRollingSummary: newConfig.CONTEXT_BLOCK_MAX_TOKENS_ROLLING_SUMMARY,
-  contextBlockMaxTokensProfileSummary: newConfig.CONTEXT_BLOCK_MAX_TOKENS_PROFILE_SUMMARY,
-  contextBlockMaxTokensMemory: newConfig.CONTEXT_BLOCK_MAX_TOKENS_MEMORY,
-  contextBlockMaxTokensReplyContext: newConfig.CONTEXT_BLOCK_MAX_TOKENS_REPLY_CONTEXT,
-  contextUserMaxTokens: newConfig.CONTEXT_USER_MAX_TOKENS,
+  contextBlockMaxTokensTranscript: withOpenAILargeFloor(
+    newConfig.CONTEXT_BLOCK_MAX_TOKENS_TRANSCRIPT,
+    20_000,
+  ),
+  contextBlockMaxTokensRollingSummary: withOpenAILargeFloor(
+    newConfig.CONTEXT_BLOCK_MAX_TOKENS_ROLLING_SUMMARY,
+    12_000,
+  ),
+  contextBlockMaxTokensProfileSummary: withOpenAILargeFloor(
+    newConfig.CONTEXT_BLOCK_MAX_TOKENS_PROFILE_SUMMARY,
+    12_000,
+  ),
+  contextBlockMaxTokensMemory: withOpenAILargeFloor(newConfig.CONTEXT_BLOCK_MAX_TOKENS_MEMORY, 12_000),
+  contextBlockMaxTokensReplyContext: withOpenAILargeFloor(
+    newConfig.CONTEXT_BLOCK_MAX_TOKENS_REPLY_CONTEXT,
+    8_000,
+  ),
+  contextUserMaxTokens: withOpenAILargeFloor(newConfig.CONTEXT_USER_MAX_TOKENS, 60_000),
   contextTruncationNotice: newConfig.CONTEXT_TRUNCATION_NOTICE,
 
 
   adminRoleIds: newConfig.ADMIN_ROLE_IDS_CSV,
   adminUserIds: newConfig.ADMIN_USER_IDS_CSV,
-  contextBlockMaxTokensProviders: newConfig.CONTEXT_BLOCK_MAX_TOKENS_PROVIDERS,
+  contextBlockMaxTokensProviders: withOpenAILargeFloor(
+    newConfig.CONTEXT_BLOCK_MAX_TOKENS_PROVIDERS,
+    12_000,
+  ),
   traceEnabled: newConfig.TRACE_ENABLED,
   profileProvider: newConfig.PROFILE_PROVIDER,
   profileChatModel: newConfig.PROFILE_CHAT_MODEL,

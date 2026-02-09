@@ -12,6 +12,7 @@ import { LLMMessageContent } from '../llm/llm-types';
 /** Identify supported context block classes used by the runtime builder. */
 export type ContextBlockId =
   | 'base_system'
+  | 'runtime_instruction'
   | 'memory'
   | 'profile_summary'
   | 'rolling_summary'

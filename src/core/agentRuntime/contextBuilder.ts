@@ -7,6 +7,7 @@ import { StyleProfile } from './styleClassifier';
 /** Carry all optional context inputs used to construct a turn prompt. */
 export interface BuildContextMessagesParams {
   userProfileSummary: string | null;
+  runtimeInstruction?: string | null;
   channelRollingSummary?: string | null;
   channelProfileSummary?: string | null;
   replyToBotText: string | null;
@@ -39,6 +40,7 @@ export interface BuildContextMessagesParams {
 export function buildContextMessages(params: BuildContextMessagesParams): LLMChatMessage[] {
   const {
     userProfileSummary,
+    runtimeInstruction,
     channelRollingSummary,
     channelProfileSummary,
     replyToBotText,
@@ -93,6 +95,16 @@ If you have nothing to add, output '[SILENCE]' (without quotes).`;
       truncatable: false,
     },
   ];
+
+  if (runtimeInstruction?.trim()) {
+    blocks.push({
+      id: 'runtime_instruction',
+      role: 'system',
+      content: runtimeInstruction.trim(),
+      priority: 95,
+      truncatable: false,
+    });
+  }
 
   if (channelProfileSummary) {
     blocks.push({

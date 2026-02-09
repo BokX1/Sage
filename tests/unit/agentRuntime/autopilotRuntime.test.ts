@@ -145,7 +145,7 @@ describe('Autopilot Runtime', () => {
     mockLLM.chat.mockResolvedValue({
       content: JSON.stringify({
         type: 'tool_calls',
-        calls: [{ name: 'verify_search_again', args: { reason: 'freshness' } }],
+        calls: [{ name: 'unavailable_tool', args: { reason: 'freshness' } }],
       }),
     });
 
@@ -196,6 +196,11 @@ describe('Autopilot Runtime', () => {
 
     expect(result.replyText).toBe('Austin weather is 72F and sunny. source: weather.com');
     expect(mockLLM.chat).not.toHaveBeenCalled();
+    const searchCall = mockSearchLLM.chat.mock.calls[0]?.[0] as {
+      messages: Array<{ role: string; content: string }>;
+    };
+    expect(searchCall.messages[0].role).toBe('system');
+    expect(searchCall.messages[0].content).not.toContain('## Agentic State (JSON)');
   });
 
   it('runs chat summarization pass for search_mode complex', async () => {
@@ -330,8 +335,9 @@ describe('Autopilot Runtime', () => {
     expect(systemMessage?.content).toContain('## Runtime Capabilities');
     expect(systemMessage?.content).toContain('Active route: chat.');
     expect(systemMessage?.content).toContain('get_weather: Retrieve weather for a city.');
+    expect(systemMessage?.content).toContain('## Agentic State (JSON)');
     expect(systemMessage?.content).toContain('Never claim or imply capabilities');
-    expect(systemMessage?.content).toContain('Tool protocol: if verification or tool assistance is needed');
+    expect(systemMessage?.content).toContain('Tool protocol: if tool assistance is needed');
 
     listSpecsSpy.mockRestore();
   });
