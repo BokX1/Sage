@@ -3,7 +3,7 @@
  *
  * Responsibilities:
  * - Route the request to an Agent, gather context via Providers, and call the LLM.
- * - Execute context fan-out and optional tool-call follow-up.
+ * - Execute context fan-out and route-aware verification/critic refinement.
  * - Return reply text plus optional attachments and diagnostics.
  *
  * Non-goals:
@@ -19,8 +19,6 @@ import { LLMChatMessage, LLMMessageContent } from '../llm/llm-types';
 import { isLoggingEnabled } from '../settings/guildChannelSettings';
 import { logger } from '../utils/logger';
 import { buildContextMessages } from './contextBuilder';
-import { globalToolRegistry } from './toolRegistry';
-import { runToolCallLoop, ToolCallLoopResult } from './toolCallLoop';
 import { getChannelSummaryStore } from '../summary/channelSummaryStoreRegistry';
 
 import { classifyStyle, analyzeUserStyle } from './styleClassifier';
@@ -42,7 +40,6 @@ import {
   shouldRequestRevision,
   shouldRunCritic,
 } from './qualityPolicy';
-import { evaluateToolPolicy, parseToolBlocklistCsv } from './toolPolicy';
 import { resolveTenantPolicy } from './tenantPolicy';
 import {
   evaluateAgenticCanary,
@@ -52,13 +49,10 @@ import {
   recordAgenticOutcome,
 } from './canaryPolicy';
 import { runImageGenAction } from '../actions/imageGenAction';
-import { parseToolCallEnvelope } from './toolCallParser';
-import { stripToolEnvelopeDraft } from './toolVerification';
 import {
   buildAgenticStateBlock,
   buildCapabilityPromptSection,
   BuildCapabilityPromptSectionParams,
-  RuntimeCapabilityTool,
 } from './capabilityPrompt';
 
 
@@ -86,8 +80,6 @@ export interface RunChatTurnResult {
   styleHint?: string;
   voice?: string;
   debug?: {
-    toolsExecuted?: boolean;
-    toolLoopResult?: ToolCallLoopResult;
     messages?: LLMChatMessage[];
   };
   files?: Array<{
@@ -149,16 +141,6 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
   const effectiveGraphMaxParallel = tenantPolicy.maxParallel ?? appConfig.AGENTIC_GRAPH_MAX_PARALLEL;
   const effectiveGraphParallelEnabled =
     appConfig.AGENTIC_GRAPH_PARALLEL_ENABLED && effectiveGraphMaxParallel > 1;
-  const effectiveToolAllowExternalWrite =
-    tenantPolicy.toolAllowExternalWrite ?? appConfig.AGENTIC_TOOL_ALLOW_EXTERNAL_WRITE;
-  const effectiveToolAllowHighRisk =
-    tenantPolicy.toolAllowHighRisk ?? appConfig.AGENTIC_TOOL_ALLOW_HIGH_RISK;
-  const effectiveToolBlockedTools = Array.from(
-    new Set([
-      ...parseToolBlocklistCsv(appConfig.AGENTIC_TOOL_BLOCKLIST_CSV),
-      ...(tenantPolicy.toolBlockedTools ?? []),
-    ]),
-  );
   const criticConfig = normalizeCriticConfig({
     enabled: tenantPolicy.criticEnabled ?? appConfig.AGENTIC_CRITIC_ENABLED,
     maxLoops: tenantPolicy.criticMaxLoops ?? appConfig.AGENTIC_CRITIC_MAX_LOOPS,
@@ -477,30 +459,13 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
       ? agentDecision.searchMode ?? 'complex'
       : null;
 
-  const registeredToolSpecs = globalToolRegistry.listOpenAIToolSpecs();
-  const registeredTools: RuntimeCapabilityTool[] = registeredToolSpecs.map((toolSpec) => ({
-    name: toolSpec.function.name,
-    description: toolSpec.function.description,
-  }));
-  const toolPolicyForPrompt = {
-    allowExternalWrite: !!effectiveToolAllowExternalWrite,
-    allowHighRisk: !!effectiveToolAllowHighRisk,
-    blockedTools: effectiveToolBlockedTools,
-  };
-  const usableRegisteredTools: RuntimeCapabilityTool[] = agentDecision.allowTools
-    ? registeredTools.filter((tool) => evaluateToolPolicy(tool.name, toolPolicyForPrompt).allow)
-    : [];
-  const registeredToolNames = usableRegisteredTools.map((tool) => tool.name);
   const activeContextProviders =
     agentDecision.contextProviders ?? getStandardProvidersForAgent(agentDecision.kind);
-  const advertisedToolNames = registeredToolNames;
   const capabilityPromptParams: BuildCapabilityPromptSectionParams = {
     routeKind: agentDecision.kind,
     searchMode: searchExecutionMode,
-    allowTools: agentDecision.allowTools,
     routerReasoning: agentDecision.reasoningText,
     contextProviders: activeContextProviders,
-    tools: usableRegisteredTools,
   };
   const capabilityInstruction = buildCapabilityPromptSection(capabilityPromptParams);
   const includeAgenticState =
@@ -508,17 +473,7 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
   const agenticStateInstruction = includeAgenticState
     ? buildAgenticStateBlock(capabilityPromptParams)
     : null;
-  const shouldUseToolProtocol = agentDecision.allowTools && advertisedToolNames.length > 0;
-  const toolProtocolInstruction = shouldUseToolProtocol
-    ? 'Tool protocol: if tool assistance is needed, output ONLY valid JSON in this exact shape:\n' +
-      '{\n' +
-      '  "type": "tool_calls",\n' +
-      '  "calls": [{ "name": "<tool_name>", "args": { ... } }]\n' +
-      '}\n' +
-      'If no tool is needed, answer normally.\n' +
-      `Available tools: ${advertisedToolNames.join(', ')}.`
-    : null;
-  const runtimeInstructionBlocks = [capabilityInstruction, agenticStateInstruction, toolProtocolInstruction]
+  const runtimeInstructionBlocks = [capabilityInstruction, agenticStateInstruction]
     .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
     .join('\n\n');
   const runtimeMessages = buildContextMessages({
@@ -552,10 +507,11 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
   }
 
   let draftText = '';
-  let toolsExecuted = false;
-  let latestToolLoopResult: ToolCallLoopResult | undefined;
   const modelResolutionEvents: Array<Record<string, unknown>> = [];
-  const toolEnvelopeRecoveries: Array<Record<string, unknown>> = [];
+  const cleanDraftText = (text: string | null | undefined): string | null => {
+    const trimmed = typeof text === 'string' ? text.trim() : '';
+    return trimmed.length > 0 ? trimmed : null;
+  };
   const runSearchPass = async (params: {
     phase: string;
     iteration?: number;
@@ -581,7 +537,7 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
         .join('\n');
       contextNotes.push(`Recent conversation:\n${history}`);
     }
-    const usablePriorDraft = stripToolEnvelopeDraft(params.priorDraft);
+    const usablePriorDraft = cleanDraftText(params.priorDraft);
     if (usablePriorDraft) {
       contextNotes.push(`Previous draft to improve:\n${usablePriorDraft}`);
     }
@@ -621,7 +577,7 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
       const searchSystemPrompt =
         'You are a search-focused assistant. Answer using the freshest reliable information available. ' +
         'When possible, include concise source cues (site/domain names or URLs). If uncertain, say so directly. ' +
-        'Return a direct plain-text answer only. Do not output JSON or tool_calls envelopes.';
+        'Return a direct plain-text answer only.';
       const searchMessages: LLMChatMessage[] = [
         {
           role: 'system',
@@ -662,15 +618,7 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
     summaryReason?: string;
   }): Promise<string> => {
     const buildSearchFindingsBlob = (draft: string): string => {
-      const trimmedDraft = draft.trim();
-      const strippedDraft = stripToolEnvelopeDraft(trimmedDraft);
-
-      // If we unexpectedly receive a verification envelope here, avoid sending raw JSON as "findings".
-      const baseFindings =
-        strippedDraft ??
-        (parseToolCallEnvelope(trimmedDraft)
-          ? 'No plain-text search findings were available. Re-synthesize from the request and preserve uncertainty cues.'
-          : trimmedDraft);
+      const baseFindings = draft.trim();
 
       const maxChars = 32_000;
       if (baseFindings.length <= maxChars) {
@@ -703,7 +651,6 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
       allowedModels: tenantPolicy.allowedModels,
       featureFlags: {
         reasoning: true,
-        tools: false,
       },
     });
     const summaryModel = summaryModelDetails.model;
@@ -760,123 +707,11 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
     }
   };
 
-  const runRouteVerificationPass = async (params: {
-    phase: string;
-    routeKind: 'chat' | 'coding' | 'search';
-    verificationReason: string;
-    priorDraft?: string;
-  }): Promise<string> => {
-    if (params.routeKind === 'search') {
-      return runSearchPass({
-        phase: params.phase,
-        revisionInstruction: params.verificationReason,
-        priorDraft: params.priorDraft,
-      });
-    }
-
-    const priorDraft = stripToolEnvelopeDraft(params.priorDraft);
-    const verificationMessages: LLMChatMessage[] = [
-      ...runtimeMessages,
-      ...(priorDraft
-        ? [{ role: 'assistant' as const, content: priorDraft }]
-        : []),
-      {
-        role: 'system',
-        content:
-          'Independent verification pass. Re-answer from scratch for the same user request. ' +
-          `Focus: ${params.verificationReason}\n` +
-          'Return a direct plain-text answer only. Do not output JSON or tool_calls envelopes.',
-      },
-    ];
-
-    const verificationModelDetails = await resolveModelForRequestDetailed({
-      guildId,
-      messages: verificationMessages,
-      route: params.routeKind,
-      allowedModels: tenantPolicy.allowedModels,
-      featureFlags: {
-        reasoning: true,
-        tools: false,
-      },
-    });
-    const verificationModel = verificationModelDetails.model;
-    modelResolutionEvents.push({
-      phase: params.phase,
-      route: verificationModelDetails.route,
-      selected: verificationModelDetails.model,
-      candidates: verificationModelDetails.candidates,
-      decisions: verificationModelDetails.decisions,
-      allowlistApplied: verificationModelDetails.allowlistApplied,
-    });
-
-    const startedAt = Date.now();
-    try {
-      const verificationTemperature =
-        params.routeKind === 'chat' ? agentDecision.temperature : Math.max(0.2, agentDecision.temperature - 0.15);
-      const response = await client.chat({
-        messages: verificationMessages,
-        model: verificationModel,
-        apiKey,
-        temperature: verificationTemperature,
-        timeout: appConfig.TIMEOUT_CHAT_MS,
-      });
-      recordModelOutcome({
-        model: verificationModel,
-        success: true,
-        latencyMs: Date.now() - startedAt,
-      });
-      return response.content;
-    } catch (error) {
-      recordModelOutcome({
-        model: verificationModel,
-        success: false,
-      });
-      throw error;
-    }
-  };
-
   // --- SEARCH AGENT ---
   if (agentDecision.kind === 'search') {
     logger.info({ traceId, userText, searchExecutionMode }, 'Agent Runtime: Executing Search Agent');
     try {
       draftText = await runSearchPass({ phase: 'search_initial' });
-      const searchToolEnvelope = parseToolCallEnvelope(draftText);
-      if (searchToolEnvelope) {
-        logger.warn(
-          {
-            traceId,
-            toolCalls: searchToolEnvelope.calls.map((call) => call.name),
-            route: 'search',
-          },
-          'Search route produced unexpected tool_calls envelope; recovering with plain-text retry',
-        );
-        const recovered = await runRouteVerificationPass({
-          phase: 'search_tool_envelope_plaintext_recovery',
-          routeKind: 'search',
-          verificationReason:
-            'Do not emit tool calls. Provide a direct plain-text search answer with concise source cues.',
-          priorDraft: draftText,
-        });
-        draftText =
-          stripToolEnvelopeDraft(recovered) ??
-          "I couldn't complete the search response cleanly. Please ask again and I will answer directly.";
-        toolEnvelopeRecoveries.push({
-          route: 'search',
-          toolCalls: searchToolEnvelope.calls.map((call) => call.name),
-          mode: 'plain_text_retry',
-        });
-        if (Array.isArray(agentEventsJson)) {
-          agentEventsJson.push({
-            type: 'tool_envelope_recovery',
-            timestamp: new Date().toISOString(),
-            details: {
-              route: 'search',
-              toolCalls: searchToolEnvelope.calls.map((call) => call.name),
-              mode: 'plain_text_retry',
-            },
-          });
-        }
-      }
 
       if (searchExecutionMode === 'complex') {
         try {
@@ -912,9 +747,6 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
         messages: runtimeMessages,
         route: agentDecision.kind, // Pass agent kind as route
         allowedModels: tenantPolicy.allowedModels,
-        featureFlags: {
-          tools: shouldUseToolProtocol,
-        },
       });
       const resolvedModel = resolvedModelDetails.model;
       lastPrimaryModel = resolvedModel;
@@ -942,76 +774,6 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
       });
 
       draftText = response.content;
-
-      if (shouldUseToolProtocol) {
-        const envelope = parseToolCallEnvelope(draftText);
-        if (envelope) {
-          const executableCalls = envelope.calls.filter((call) => globalToolRegistry.has(call.name));
-          if (executableCalls.length > 0) {
-            logger.debug({ traceId }, 'Tool calls detected, running loop');
-
-            const toolLoop = await runToolCallLoop({
-              client,
-              messages: runtimeMessages,
-              registry: globalToolRegistry,
-              ctx: { traceId, userId, channelId },
-              model: resolvedModel,
-              apiKey,
-              temperature: agentDecision.temperature,
-              initialAssistantResponseText: draftText,
-              toolPolicy: {
-                allowExternalWrite: !!effectiveToolAllowExternalWrite,
-                allowHighRisk: !!effectiveToolAllowHighRisk,
-                blockedTools: effectiveToolBlockedTools,
-              },
-            });
-
-            draftText = toolLoop.replyText;
-            latestToolLoopResult = toolLoop;
-            toolsExecuted = true;
-          } else {
-            logger.warn(
-              {
-                traceId,
-                toolCalls: envelope.calls.map((call) => call.name),
-                route: agentDecision.kind,
-              },
-              'Tool envelope requested unavailable tools; recovering with plain-text retry',
-            );
-            if (agentDecision.kind !== 'chat' && agentDecision.kind !== 'coding') {
-              throw new Error(
-                `Tool envelope recovery only supported for chat/coding in this branch (got ${agentDecision.kind})`,
-              );
-            }
-            const recovered = await runRouteVerificationPass({
-              phase: 'main_tool_envelope_plaintext_recovery',
-              routeKind: agentDecision.kind,
-              verificationReason:
-                'Tool calls are unavailable for this turn. Provide a direct plain-text answer using available context only.',
-              priorDraft: draftText,
-            });
-            draftText =
-              stripToolEnvelopeDraft(recovered) ??
-              "I couldn't complete the response cleanly. Please ask again and I will answer directly.";
-            toolEnvelopeRecoveries.push({
-              route: agentDecision.kind,
-              toolCalls: envelope.calls.map((call) => call.name),
-              mode: 'plain_text_retry',
-            });
-            if (Array.isArray(agentEventsJson)) {
-              agentEventsJson.push({
-                type: 'tool_envelope_recovery',
-                timestamp: new Date().toISOString(),
-                details: {
-                  route: agentDecision.kind,
-                  toolCalls: envelope.calls.map((call) => call.name),
-                  mode: 'plain_text_retry',
-                },
-              });
-            }
-          }
-        }
-      }
     } catch (err) {
       if (lastPrimaryModel) {
         recordModelOutcome({
@@ -1277,15 +1039,7 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
     }
   }
 
-  const finalText = draftText;
-  const strippedFinalText = stripToolEnvelopeDraft(finalText);
-  const finalTextWasToolEnvelope = finalText.trim().length > 0 && strippedFinalText === null;
-  const safeFinalText = finalTextWasToolEnvelope
-    ? "I couldn't complete the final tool response cleanly. Please ask again and I'll retry with a direct answer."
-    : finalText;
-  if (finalTextWasToolEnvelope) {
-    logger.warn({ traceId }, 'Final draft was a tool_calls envelope; applying plain-text fallback');
-  }
+  const safeFinalText = draftText;
   const qualityJson =
     criticAssessments.length > 0
       ? {
@@ -1298,8 +1052,6 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
   const finalBudgetJson: Record<string, unknown> = {
     ...budgetJson,
     ...(searchExecutionMode ? { searchExecutionMode } : {}),
-    toolsExecuted,
-    toolEnvelopeRecoveries: toolEnvelopeRecoveries.length,
     criticIterations: criticAssessments.length,
     criticRedispatches: criticRedispatches.length,
     modelResolution: modelResolutionEvents,
@@ -1309,19 +1061,11 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
         tenantPolicy.maxParallel !== undefined ||
         tenantPolicy.criticEnabled !== undefined ||
         tenantPolicy.criticMaxLoops !== undefined ||
-        tenantPolicy.criticMinScore !== undefined ||
-        tenantPolicy.toolAllowExternalWrite !== undefined ||
-        tenantPolicy.toolAllowHighRisk !== undefined ||
-        tenantPolicy.toolBlockedTools !== undefined,
+        tenantPolicy.criticMinScore !== undefined,
       allowedModels: tenantPolicy.allowedModels,
       graph: {
         parallelEnabled: effectiveGraphParallelEnabled,
         maxParallel: effectiveGraphMaxParallel,
-      },
-      tools: {
-        allowExternalWrite: effectiveToolAllowExternalWrite,
-        allowHighRisk: effectiveToolAllowHighRisk,
-        blockedTools: effectiveToolBlockedTools,
       },
       critic: criticConfig,
       canary: {
@@ -1336,15 +1080,6 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
     try {
       await updateTraceEnd({
         id: traceId,
-        toolJson:
-          toolsExecuted || criticAssessments.length > 0 || toolEnvelopeRecoveries.length > 0
-            ? {
-                executed: toolsExecuted,
-                envelopeRecoveries:
-                  toolEnvelopeRecoveries.length > 0 ? toolEnvelopeRecoveries : undefined,
-                critic: criticAssessments.length > 0 ? criticAssessments : undefined,
-              }
-            : undefined,
         qualityJson,
         budgetJson: finalBudgetJson,
         replyText: safeFinalText,
@@ -1360,7 +1095,7 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
     logger.info({ traceId }, 'Agent chose silence');
     return {
       replyText: '',
-      debug: { messages: runtimeMessages, toolsExecuted, toolLoopResult: latestToolLoopResult },
+      debug: { messages: runtimeMessages },
     };
   }
 
@@ -1380,7 +1115,7 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
     replyText: cleanedText,
     styleHint: styleMimicry,
     voice,
-    debug: { messages: runtimeMessages, toolsExecuted, toolLoopResult: latestToolLoopResult },
+    debug: { messages: runtimeMessages },
     files,
   };
 }

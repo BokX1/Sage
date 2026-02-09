@@ -102,8 +102,7 @@ Return ONLY JSON:
 Rules:
 - score is between 0 and 1.
 - Use "revise" ONLY if the answer is off-topic, hallucinated, contradictory, unsafe, or rude.
-- Allow for casual banter and creativity when still relevant.
-- If candidate answer is only a tool_calls JSON envelope, verdict must be "revise".`;
+- Allow for casual banter and creativity when still relevant.`;
 
 const CRITIC_SYSTEM_PROMPT_CODING = `You are a code-quality critic.
 Evaluate the candidate answer for:
@@ -123,7 +122,6 @@ Rules:
 - score is between 0 and 1.
 - Use "revise" if code is likely broken, incomplete, insecure, or ignores user constraints.
 - Flag missing edge cases, missing imports/dependencies, and incorrect commands.
-- If candidate answer is only a tool_calls JSON envelope, verdict must be "revise".
 - Never include markdown.`;
 
 const CRITIC_SYSTEM_PROMPT_SEARCH = `You are a factuality and freshness critic for search responses.
@@ -144,7 +142,6 @@ Rules:
 - score is between 0 and 1.
 - Use "revise" when claims are uncertain, stale, unverifiable, or missing key facts.
 - Require concise source cues (site/domain names or URLs) for external factual claims.
-- If candidate answer is only a tool_calls JSON envelope, verdict must be "revise".
 - Never include markdown.`;
 
 function getCriticSystemPrompt(routeKind: AgentKind): string {

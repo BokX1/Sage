@@ -64,7 +64,6 @@ function buildAgentCapabilityTable(): string {
 export interface AgentDecision {
   kind: AgentKind;
   contextProviders?: ContextProviderName[];
-  allowTools: boolean;
   temperature: number;
   searchMode?: SearchExecutionMode;
   reasoningText: string;
@@ -148,7 +147,6 @@ No markdown. No extra text.`;
 const DEFAULT_CHAT_AGENT: AgentDecision = {
   kind: 'chat',
   contextProviders: ['Memory'],
-  allowTools: true,
   temperature: CHAT_DEFAULT_TEMPERATURE,
   reasoningText: 'Default Chat agent (fallback)',
 };
@@ -236,7 +234,6 @@ export async function decideAgent(params: AgentSelectorParams): Promise<AgentDec
     return {
       kind: 'chat',
       contextProviders: ['SocialGraph', 'VoiceAnalytics', 'Memory'],
-      allowTools: true,
       temperature: CHAT_DEFAULT_TEMPERATURE,
       reasoningText: 'Slash command context detected - routing to chat agent',
     };
@@ -278,7 +275,6 @@ export async function decideAgent(params: AgentSelectorParams): Promise<AgentDec
     }
 
     const agentKind = normalizeAgentKind(parsed.agent ?? parsed.kind);
-    const allowTools = agentKind === 'chat' || agentKind === 'coding';
     const fallbackTemperature = getDefaultTemperature(agentKind);
     const parsedTemperature =
       typeof parsed.temperature === 'number'
@@ -301,7 +297,6 @@ export async function decideAgent(params: AgentSelectorParams): Promise<AgentDec
 
     const decision: AgentDecision = {
       kind: agentKind,
-      allowTools,
       temperature: enforcedTemperature,
       searchMode,
       reasoningText: parsed.reasoning || `LLM selected agent: ${agentKind}`,

@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { runChatTurn } from '../../../src/core/agentRuntime/agentRuntime';
 import { createLLMClient, getLLMClient } from '../../../src/core/llm';
-import { globalToolRegistry } from '../../../src/core/agentRuntime/toolRegistry';
 
 const mockDecideAgent = vi.hoisted(() => vi.fn());
 const mockResolveModelForRequestDetailed = vi.hoisted(() => vi.fn());
@@ -70,7 +69,6 @@ describe('Autopilot Runtime', () => {
     mockDecideAgent.mockResolvedValue({
       kind: 'chat',
       contextProviders: ['Memory'],
-      allowTools: true,
       temperature: 1.2,
       reasoningText: 'test decision',
     });
@@ -134,45 +132,10 @@ describe('Autopilot Runtime', () => {
     expect(result.replyText).toBe('');
   });
 
-  it('should fallback to safe text when final draft is a tool_calls envelope', async () => {
-    mockDecideAgent.mockResolvedValue({
-      kind: 'chat',
-      contextProviders: ['Memory'],
-      allowTools: false,
-      temperature: 1.2,
-      reasoningText: 'disable tool protocol for direct text test',
-    });
-    mockLLM.chat.mockResolvedValue({
-      content: JSON.stringify({
-        type: 'tool_calls',
-        calls: [{ name: 'unavailable_tool', args: { reason: 'freshness' } }],
-      }),
-    });
-
-    const result = await runChatTurn({
-      traceId: 'test-trace',
-      userId: 'test-user',
-      channelId: 'test-channel',
-      guildId: 'test-guild',
-      messageId: 'msg-1',
-      userText: 'Hello',
-      userProfileSummary: null,
-      replyToBotText: null,
-      intent: 'autopilot',
-      invokedBy: 'autopilot',
-      isVoiceActive: true,
-    });
-
-    expect(result.replyText).toBe(
-      "I couldn't complete the final tool response cleanly. Please ask again and I'll retry with a direct answer.",
-    );
-  });
-
   it('returns raw search output for search_mode simple without chat summarization', async () => {
     mockDecideAgent.mockResolvedValue({
       kind: 'search',
       contextProviders: ['Memory'],
-      allowTools: false,
       temperature: 0.3,
       searchMode: 'simple',
       reasoningText: 'search simple route',
@@ -207,7 +170,6 @@ describe('Autopilot Runtime', () => {
     mockDecideAgent.mockResolvedValue({
       kind: 'search',
       contextProviders: ['Memory'],
-      allowTools: false,
       temperature: 0.3,
       searchMode: 'complex',
       reasoningText: 'search complex route',
@@ -256,7 +218,6 @@ describe('Autopilot Runtime', () => {
     mockDecideAgent.mockResolvedValue({
       kind: 'search',
       contextProviders: ['Memory'],
-      allowTools: false,
       temperature: 0.3,
       searchMode: 'complex',
       reasoningText: 'search complex route with large findings',
@@ -293,23 +254,9 @@ describe('Autopilot Runtime', () => {
   });
 
   it('injects runtime capability manifest into the system prompt', async () => {
-    const listSpecsSpy = vi
-      .spyOn(globalToolRegistry, 'listOpenAIToolSpecs')
-      .mockReturnValue([
-        {
-          type: 'function',
-          function: {
-            name: 'get_weather',
-            description: 'Retrieve weather for a city.',
-            parameters: {},
-          },
-        },
-      ]);
-
     mockDecideAgent.mockResolvedValue({
       kind: 'chat',
       contextProviders: ['Memory', 'SocialGraph'],
-      allowTools: true,
       temperature: 1.2,
       reasoningText: 'capability manifest test',
     });
@@ -333,12 +280,11 @@ describe('Autopilot Runtime', () => {
     };
     const systemMessage = firstCall.messages.find((message) => message.role === 'system');
     expect(systemMessage?.content).toContain('## Runtime Capabilities');
-    expect(systemMessage?.content).toContain('Active route: chat.');
-    expect(systemMessage?.content).toContain('get_weather: Retrieve weather for a city.');
+    expect(systemMessage?.content).toContain('Active route (selected by router for this turn): chat.');
+    expect(systemMessage?.content).toContain('Router can choose these routes per turn: chat, coding, search, creative.');
     expect(systemMessage?.content).toContain('## Agentic State (JSON)');
     expect(systemMessage?.content).toContain('Never claim or imply capabilities');
-    expect(systemMessage?.content).toContain('Tool protocol: if tool assistance is needed');
-
-    listSpecsSpy.mockRestore();
+    expect(systemMessage?.content).not.toContain('Tool protocol: if tool assistance is needed');
+    expect(systemMessage?.content).not.toContain('Available tools:');
   });
 });

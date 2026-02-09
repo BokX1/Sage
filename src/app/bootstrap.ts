@@ -5,7 +5,6 @@ import { registerMessageCreateHandler } from '../bot/handlers/messageCreate';
 import { registerReadyHandler } from '../bot/handlers/ready';
 import { registerVoiceStateUpdateHandler } from '../bot/handlers/voiceStateUpdate';
 import { config } from '../config';
-import { registerRuntimeTools } from '../core/agentRuntime/runtime-tools';
 import { registerShutdownHooks } from '../core/runtime/shutdown';
 import { initChannelSummaryScheduler } from '../core/summary/channelSummaryScheduler';
 import { AppError } from '../shared/errors/app-error';
@@ -13,10 +12,6 @@ import { logger } from '../shared/logging/logger';
 
 export async function bootstrapApp(): Promise<void> {
   try {
-    const registeredTools = registerRuntimeTools();
-    logger.info({ tools: registeredTools }, 'Runtime tool protocol enabled');
-    logger.info('Voice join/leave tool calls are disabled; use slash commands for voice control.');
-
     registerMessageCreateHandler();
     registerInteractionCreateHandler();
     registerVoiceStateUpdateHandler();

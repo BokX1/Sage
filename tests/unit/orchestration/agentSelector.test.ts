@@ -42,7 +42,6 @@ describe('agentSelector', () => {
     });
 
     expect(decision.kind).toBe('coding');
-    expect(decision.allowTools).toBe(true);
     expect(decision.temperature).toBeCloseTo(0.4);
   });
 
@@ -101,7 +100,6 @@ describe('agentSelector', () => {
     });
 
     expect(decision.kind).toBe('chat');
-    expect(decision.allowTools).toBe(true);
     expect(decision.temperature).toBe(1.2);
     expect(mockChat).not.toHaveBeenCalled();
   });

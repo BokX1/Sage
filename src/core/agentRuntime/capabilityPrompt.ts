@@ -1,11 +1,6 @@
 import { ContextProviderName } from '../context/context-types';
 import { AgentKind, SearchExecutionMode } from '../orchestration/agentSelector';
 
-export interface RuntimeCapabilityTool {
-  name: string;
-  description: string;
-}
-
 const RUNTIME_AGENT_CAPABILITY_DESCRIPTORS: Array<{
   kind: AgentKind;
   purpose: string;
@@ -40,10 +35,8 @@ const RUNTIME_AGENT_CAPABILITY_DESCRIPTORS: Array<{
 export interface BuildCapabilityPromptSectionParams {
   routeKind: AgentKind;
   searchMode: SearchExecutionMode | null;
-  allowTools: boolean;
   routerReasoning?: string | null;
   contextProviders: ContextProviderName[];
-  tools: RuntimeCapabilityTool[];
 }
 
 function formatRouteLabel(params: {
@@ -54,14 +47,6 @@ function formatRouteLabel(params: {
     return `search (${params.searchMode ?? 'complex'} mode)`;
   }
   return params.routeKind;
-}
-
-function formatToolLines(tools: RuntimeCapabilityTool[]): string {
-  if (tools.length === 0) return '- none';
-  return tools
-    .slice(0, 24)
-    .map((tool) => `- ${tool.name}: ${tool.description || 'No description provided.'}`)
-    .join('\n');
 }
 
 function formatListLine(values: string[]): string {
@@ -101,19 +86,21 @@ function formatRouterReasoning(reasoning: string | null | undefined): string {
   return `- Router rationale: ${normalized}`;
 }
 
+const ROUTER_ROUTE_OPTIONS: AgentKind[] = ['chat', 'coding', 'search', 'creative'];
+
 export function buildAgenticStateBlock(params: BuildCapabilityPromptSectionParams): string {
   const state = {
-    route: params.routeKind,
+    route_selected_by: 'router',
+    current_route: params.routeKind,
+    available_routes: ROUTER_ROUTE_OPTIONS,
     search_mode: params.routeKind === 'search' ? (params.searchMode ?? 'complex') : null,
     router_reasoning: normalizeRouterReasoning(params.routerReasoning),
     context_providers: params.contextProviders,
-    tool_calling_enabled: params.allowTools,
-    callable_tools: params.tools.map((tool) => tool.name),
     verification_owner: 'critic',
     loop_stages: [
       'router_decision',
       'context_grounding',
-      'tool_execution_or_critic_revision',
+      'critic_revision_or_redispatch',
       'final_answer',
     ],
   };
@@ -129,24 +116,21 @@ export function buildCapabilityPromptSection(
     searchMode: params.searchMode,
   });
   const contextProviderLine = formatListLine(params.contextProviders);
-  const toolCallingStatus = params.allowTools ? 'enabled' : 'disabled';
+  const routeOptionsLine = formatListLine(ROUTER_ROUTE_OPTIONS);
 
   return [
     '## Agent Capability Matrix',
     formatAgentCapabilityMatrix(),
     '## Runtime Capabilities',
-    `- Active route: ${routeLabel}.`,
+    `- Active route (selected by router for this turn): ${routeLabel}.`,
+    `- Router can choose these routes per turn: ${routeOptionsLine}.`,
     formatActiveRouteCapability(params.routeKind),
     formatRouterReasoning(params.routerReasoning),
     `- Context providers available this turn: ${contextProviderLine}.`,
-    `- Tool calling: ${toolCallingStatus}.`,
-    '### Callable Tools',
-    formatToolLines(params.tools),
     '- Verification and factual revision are handled by the critic loop, not as callable tools.',
     '## Agentic Loop Contract',
-    '- This turn is part of one agentic loop: router decision -> context grounding -> optional tool/verification steps -> final answer.',
-    '- Use context providers and listed capabilities together; do not treat them as unrelated systems.',
-    '- If you emit a tool_calls envelope, wait for follow-up tool results and then continue toward a direct user answer.',
+    '- This turn is part of one agentic loop: router decision -> context grounding -> critic revision/redispatch (if needed) -> final answer.',
+    '- Routes share one context and memory substrate; keep decisions consistent with gathered evidence and prior loop state.',
     '- Complete the loop by returning a final answer consistent with the active route and gathered evidence.',
     '## Capability Behavior',
     '- Use listed capabilities when they materially improve correctness or user outcome.',
