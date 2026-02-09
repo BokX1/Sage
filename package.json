@@ -1,6 +1,7 @@
 {
   "name": "sage",
   "version": "1.0.0",
+  "private": true,
   "description": "An intelligent Discord bot with persistent memory, powered by Pollinations.ai. Remembers conversations, understands community relationships, and delivers personalized AI responses.",
   "main": "dist/index.js",
   "keywords": [
@@ -35,7 +36,7 @@
     "check": "npm run lint && npm run typecheck && npm run test"
   },
   "author": "",
-  "license": "BUSL-1.1",
+  "license": "UNLICENSED",
   "type": "commonjs",
   "dependencies": {
     "@discordjs/voice": "^0.19.0",
