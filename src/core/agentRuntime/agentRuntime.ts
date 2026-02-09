@@ -24,7 +24,7 @@ import { runToolCallLoop, ToolCallLoopResult } from './toolCallLoop';
 import { getChannelSummaryStore } from '../summary/channelSummaryStoreRegistry';
 
 import { classifyStyle, analyzeUserStyle } from './styleClassifier';
-import { decideAgent } from '../orchestration/agentSelector';
+import { decideAgent, SearchExecutionMode } from '../orchestration/agentSelector';
 import { runContextProviders } from '../context/runContext';
 import { replaceAgentRuns, upsertTraceStart, updateTraceEnd } from './agent-trace-repo';
 import { ContextPacket, ContextProviderName } from '../context/context-types';
@@ -42,7 +42,7 @@ import {
   shouldRequestRevision,
   shouldRunCritic,
 } from './qualityPolicy';
-import { parseToolBlocklistCsv } from './toolPolicy';
+import { evaluateToolPolicy, parseToolBlocklistCsv } from './toolPolicy';
 import { resolveTenantPolicy } from './tenantPolicy';
 import {
   evaluateAgenticCanary,
@@ -60,6 +60,7 @@ import {
   stripToolEnvelopeDraft,
   VerificationIntent,
 } from './toolVerification';
+import { buildCapabilityPromptSection, RuntimeCapabilityTool } from './capabilityPrompt';
 
 
 /** Execute one chat turn using routing, context, and tool follow-up metadata. */
@@ -472,6 +473,10 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
     .filter((m) => m.role === 'user')
     .map((m) => (typeof m.content === 'string' ? m.content : ''));
   const styleMimicry = analyzeUserStyle([...userHistory, userText]);
+  const searchExecutionMode: SearchExecutionMode | null =
+    agentDecision.kind === 'search'
+      ? agentDecision.searchMode ?? 'complex'
+      : null;
 
   const messages = buildContextMessages({
     userProfileSummary,
@@ -488,11 +493,34 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
     invokedBy,
     voiceInstruction,
   });
-  const registeredToolNames = globalToolRegistry.listNames();
+  const registeredToolSpecs = globalToolRegistry.listOpenAIToolSpecs();
+  const registeredTools: RuntimeCapabilityTool[] = registeredToolSpecs.map((toolSpec) => ({
+    name: toolSpec.function.name,
+    description: toolSpec.function.description,
+  }));
+  const toolPolicyForPrompt = {
+    allowExternalWrite: !!effectiveToolAllowExternalWrite,
+    allowHighRisk: !!effectiveToolAllowHighRisk,
+    blockedTools: effectiveToolBlockedTools,
+  };
+  const usableRegisteredTools: RuntimeCapabilityTool[] = agentDecision.allowTools
+    ? registeredTools.filter((tool) => evaluateToolPolicy(tool.name, toolPolicyForPrompt).allow)
+    : [];
+  const registeredToolNames = usableRegisteredTools.map((tool) => tool.name);
+  const activeContextProviders =
+    agentDecision.contextProviders ?? getStandardProvidersForAgent(agentDecision.kind);
   const virtualVerificationToolNames = buildVerificationToolNames(agentDecision.kind);
   const advertisedToolNames = Array.from(
     new Set([...registeredToolNames, ...virtualVerificationToolNames]),
   );
+  const capabilityInstruction = buildCapabilityPromptSection({
+    routeKind: agentDecision.kind,
+    searchMode: searchExecutionMode,
+    allowTools: agentDecision.allowTools,
+    contextProviders: activeContextProviders,
+    tools: usableRegisteredTools,
+    verificationTools: virtualVerificationToolNames,
+  });
   const shouldUseToolProtocol = agentDecision.allowTools && advertisedToolNames.length > 0;
   const toolProtocolInstruction = shouldUseToolProtocol
     ? 'Tool protocol: if verification or tool assistance is needed, output ONLY valid JSON in this exact shape:\n' +
@@ -503,9 +531,12 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
       'If no tool is needed, answer normally.\n' +
       `Available tools: ${advertisedToolNames.join(', ')}.`
     : null;
+  const runtimeInstructionBlocks = [capabilityInstruction, toolProtocolInstruction]
+    .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+    .join('\n\n');
   let runtimeMessages: LLMChatMessage[] = messages;
   if (
-    toolProtocolInstruction &&
+    runtimeInstructionBlocks &&
     messages.length > 0 &&
     messages[0].role === 'system' &&
     typeof messages[0].content === 'string'
@@ -513,12 +544,12 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
     runtimeMessages = [
       {
         ...messages[0],
-        content: `${messages[0].content}\n\n${toolProtocolInstruction}`,
+        content: `${messages[0].content}\n\n${runtimeInstructionBlocks}`,
       },
       ...messages.slice(1),
     ];
-  } else if (toolProtocolInstruction) {
-    runtimeMessages = [...messages, { role: 'system' as const, content: toolProtocolInstruction }];
+  } else if (runtimeInstructionBlocks) {
+    runtimeMessages = [...messages, { role: 'system' as const, content: runtimeInstructionBlocks }];
   }
 
   logger.debug(
@@ -547,6 +578,20 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
     allowToolEnvelope?: boolean;
   }): Promise<string> => {
     const contextNotes: string[] = [];
+    const boundedSearchTemperature = (() => {
+      const base =
+        agentDecision.kind === 'search' ? agentDecision.temperature : 0.3;
+      return Math.max(0.1, Math.min(1.4, base));
+    })();
+    const searchTemperature =
+      params.allowToolEnvelope === false
+        ? Math.max(0.1, boundedSearchTemperature - 0.1)
+        : boundedSearchTemperature;
+
+    if (contextPacketsText.trim()) {
+      const contextSnapshot = contextPacketsText.trim().slice(0, 3_000);
+      contextNotes.push(`Retrieved context:\n${contextSnapshot}`);
+    }
     if (conversationHistory.length > 0) {
       const history = conversationHistory
         .slice(-6)
@@ -598,7 +643,12 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
             'Return a direct plain-text answer only. Do not output JSON or tool_calls envelopes.'
           : 'You are a search-focused assistant. Answer using the freshest reliable information available. ' +
             'When possible, include concise source cues (site/domain names or URLs). If uncertain, say so directly. ' +
-            'If you need another verification pass before finalizing, output ONLY a tool_calls JSON envelope.';
+            'If you need another verification pass before finalizing, output ONLY valid JSON in this exact shape:\n' +
+            '{\n' +
+            '  "type": "tool_calls",\n' +
+            '  "calls": [{ "name": "verify_search_again", "args": { "reason": "<short reason>" } }]\n' +
+            '}\n' +
+            'If no verification pass is needed, return plain text only.';
       const searchMessages: LLMChatMessage[] = [
         {
           role: 'system',
@@ -612,6 +662,7 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
         messages: searchMessages,
         model: selectedModel,
         apiKey,
+        temperature: searchTemperature,
         timeout: 120_000,
       });
       recordModelOutcome({
@@ -627,6 +678,83 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
           success: false,
         });
       }
+      throw error;
+    }
+  };
+
+  const runSearchSummaryPass = async (params: {
+    phase: string;
+    iteration?: number;
+    searchDraft: string;
+    summaryReason?: string;
+  }): Promise<string> => {
+    const summaryModelDetails = await resolveModelForRequestDetailed({
+      guildId,
+      messages: [
+        {
+          role: 'user',
+          content:
+            `Original user request:\n${userText}\n\n` +
+            `Search findings:\n${(stripToolEnvelopeDraft(params.searchDraft) ?? params.searchDraft).slice(0, 12_000)}`,
+        },
+      ],
+      route: 'chat',
+      allowedModels: tenantPolicy.allowedModels,
+      featureFlags: {
+        reasoning: true,
+        tools: false,
+      },
+    });
+    const summaryModel = summaryModelDetails.model;
+    modelResolutionEvents.push({
+      phase: params.phase,
+      iteration: params.iteration,
+      route: summaryModelDetails.route,
+      selected: summaryModelDetails.model,
+      candidates: summaryModelDetails.candidates,
+      decisions: summaryModelDetails.decisions,
+      allowlistApplied: summaryModelDetails.allowlistApplied,
+      purpose: 'search_complex_summary',
+    });
+
+    const summaryMessages: LLMChatMessage[] = [
+      {
+        role: 'system',
+        content:
+          'You are a synthesis assistant. Convert search findings into a clean final response for the user. ' +
+          'Do not invent facts. Keep uncertain claims clearly marked as uncertain. ' +
+          'Preserve or improve concise source cues (domains or URLs) for external factual claims. ' +
+          'Return plain text only.',
+      },
+      {
+        role: 'user',
+        content:
+          `Original user request:\n${userText}\n\n` +
+          `Search findings:\n${(stripToolEnvelopeDraft(params.searchDraft) ?? params.searchDraft).slice(0, 12_000)}` +
+          (params.summaryReason?.trim() ? `\n\nFocus:\n${params.summaryReason.trim()}` : ''),
+      },
+    ];
+
+    const startedAt = Date.now();
+    try {
+      const summaryResponse = await client.chat({
+        messages: summaryMessages,
+        model: summaryModel,
+        apiKey,
+        temperature: 1.0,
+        timeout: appConfig.TIMEOUT_CHAT_MS,
+      });
+      recordModelOutcome({
+        model: summaryModel,
+        success: true,
+        latencyMs: Date.now() - startedAt,
+      });
+      return summaryResponse.content;
+    } catch (error) {
+      recordModelOutcome({
+        model: summaryModel,
+        success: false,
+      });
       throw error;
     }
   };
@@ -914,7 +1042,7 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
 
   // --- SEARCH AGENT ---
   if (agentDecision.kind === 'search') {
-    logger.info({ traceId, userText }, 'Agent Runtime: Executing Search Agent');
+    logger.info({ traceId, userText, searchExecutionMode }, 'Agent Runtime: Executing Search Agent');
     try {
       draftText = await runSearchPass({ phase: 'search_initial' });
       const searchToolEnvelope = parseToolCallEnvelope(draftText);
@@ -952,6 +1080,27 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
               });
         }
         toolsExecuted = true;
+      }
+
+      if (searchExecutionMode === 'complex') {
+        try {
+          draftText = await runSearchSummaryPass({
+            phase: 'search_complex_summary_initial',
+            searchDraft: draftText,
+            summaryReason: 'Summarize findings into a concise, structured, user-facing answer.',
+          });
+          if (Array.isArray(agentEventsJson)) {
+            agentEventsJson.push({
+              type: 'search_complex_summary',
+              timestamp: new Date().toISOString(),
+            });
+          }
+        } catch (summaryError) {
+          logger.warn(
+            { error: summaryError, traceId },
+            'Search complex summary failed; returning raw search answer',
+          );
+        }
       }
     } catch (searchError) {
       logger.error({ error: searchError, traceId }, 'Search Agent failed');
@@ -1164,6 +1313,36 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
             priorDraft: draftText,
             allowToolEnvelope: false,
           });
+          if (searchExecutionMode === 'complex') {
+            try {
+              draftText = await runSearchSummaryPass({
+                phase: 'critic_search_refresh_summary',
+                iteration,
+                searchDraft: draftText,
+                summaryReason: revisionInstruction,
+              });
+              criticRedispatches.push({
+                iteration,
+                mode: 'search_refresh_summary',
+                issueCount: assessment.issues.length,
+              });
+              if (Array.isArray(agentEventsJson)) {
+                agentEventsJson.push({
+                  type: 'critic_search_refresh_summary',
+                  timestamp: new Date().toISOString(),
+                  details: {
+                    iteration,
+                    issueCount: assessment.issues.length,
+                  },
+                });
+              }
+            } catch (summaryError) {
+              logger.warn(
+                { error: summaryError, traceId, iteration },
+                'Critic search refresh summary failed; keeping refreshed search draft',
+              );
+            }
+          }
           criticRedispatches.push({
             iteration,
             mode: 'search_refresh',
@@ -1322,6 +1501,7 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
   const canarySnapshot = getAgenticCanarySnapshot();
   const finalBudgetJson: Record<string, unknown> = {
     ...budgetJson,
+    ...(searchExecutionMode ? { searchExecutionMode } : {}),
     toolsExecuted,
     toolVerificationRedispatches: toolVerificationRedispatches.length,
     criticIterations: criticAssessments.length,

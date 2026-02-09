@@ -11,12 +11,14 @@ const CHAT_MIN_TEMPERATURE = 1.0;
 const CHAT_MAX_TEMPERATURE = 1.4;
 
 export type AgentKind = 'chat' | 'coding' | 'search' | 'creative';
+export type SearchExecutionMode = 'simple' | 'complex';
 
 export interface AgentDecision {
   kind: AgentKind;
   contextProviders?: ContextProviderName[];
   allowTools: boolean;
   temperature: number;
+  searchMode?: SearchExecutionMode;
   reasoningText: string;
 }
 
@@ -69,13 +71,23 @@ For \`chat\`:
 - Use 1.4 for playful/creative conversational responses.
 - Use 1.2 as the default when tone is neutral.
 
+## Search execution mode
+
+When agent is \`search\`, you MUST also choose \`search_mode\`:
+- \`simple\`: direct lookup/short factual answer can be returned as-is.
+- \`complex\`: multi-step research, comparison, synthesis, or long-form explanation where search findings should be summarized for readability.
+- If unsure between \`simple\` and \`complex\`, choose \`complex\`.
+
+When agent is not \`search\`, set \`search_mode\` to null.
+
 ## Output format
 
 Return only valid JSON:
 {
   "reasoning": "brief explanation",
   "agent": "chat|coding|search|creative",
-  "temperature": 1.2
+  "temperature": 1.2,
+  "search_mode": "simple|complex|null"
 }
 
 No markdown. No extra text.`;
@@ -94,6 +106,9 @@ interface AgentSelectorResponse {
   experts?: string[];
   reasoning?: string;
   temperature?: number | string;
+  search_mode?: string | null;
+  searchMode?: string | null;
+  complexity?: string | null;
 }
 
 function parseAgentResponse(content: string): AgentSelectorResponse | null {
@@ -151,6 +166,14 @@ function normalizeAgentKind(raw: unknown): AgentKind {
 function clampTemperature(value: number, fallback: number): number {
   if (!Number.isFinite(value)) return fallback;
   return Math.max(0, Math.min(1.5, value));
+}
+
+function normalizeSearchMode(raw: unknown): SearchExecutionMode | null {
+  const normalized = typeof raw === 'string' ? raw.trim().toLowerCase() : '';
+  if (normalized === 'simple' || normalized === 'complex') {
+    return normalized;
+  }
+  return null;
 }
 
 export async function decideAgent(params: AgentSelectorParams): Promise<AgentDecision> {
@@ -216,11 +239,18 @@ export async function decideAgent(params: AgentSelectorParams): Promise<AgentDec
         : fallbackTemperature;
 
     const enforcedTemperature = agentKind === 'chat' ? clampChatTemperature(temperature) : temperature;
+    const parsedSearchModeRaw = parsed.search_mode ?? parsed.searchMode ?? parsed.complexity;
+    const normalizedSearchMode = normalizeSearchMode(parsedSearchModeRaw);
+    const searchMode =
+      agentKind === 'search'
+        ? normalizedSearchMode ?? 'complex'
+        : undefined;
 
     const decision: AgentDecision = {
       kind: agentKind,
       allowTools,
       temperature: enforcedTemperature,
+      searchMode,
       reasoningText: parsed.reasoning || `LLM selected agent: ${agentKind}`,
     };
 

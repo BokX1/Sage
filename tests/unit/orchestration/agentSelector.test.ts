@@ -106,6 +106,74 @@ describe('agentSelector', () => {
     expect(mockChat).not.toHaveBeenCalled();
   });
 
+  it('captures router-provided search mode for search agent responses', async () => {
+    mockChat.mockResolvedValue({
+      content: JSON.stringify({
+        agent: 'search',
+        reasoning: 'Fresh multi-step research request.',
+        temperature: 0.3,
+        search_mode: 'complex',
+      }),
+    });
+
+    const decision = await decideAgent({
+      userText: 'Compare latest GPU prices across vendors and summarize the best value.',
+      invokedBy: 'mention',
+      hasGuild: true,
+      conversationHistory: [],
+      replyReferenceContent: null,
+      apiKey: 'api-key',
+    });
+
+    expect(decision.kind).toBe('search');
+    expect(decision.searchMode).toBe('complex');
+  });
+
+  it('defaults search mode to complex when omitted for search agent responses', async () => {
+    mockChat.mockResolvedValue({
+      content: JSON.stringify({
+        agent: 'search',
+        reasoning: 'Fresh direct lookup request.',
+        temperature: 0.3,
+      }),
+    });
+
+    const decision = await decideAgent({
+      userText: 'what is the weather in austin right now',
+      invokedBy: 'mention',
+      hasGuild: true,
+      conversationHistory: [],
+      replyReferenceContent: null,
+      apiKey: 'api-key',
+    });
+
+    expect(decision.kind).toBe('search');
+    expect(decision.searchMode).toBe('complex');
+  });
+
+  it('defaults search mode to complex when router returns invalid mode for search', async () => {
+    mockChat.mockResolvedValue({
+      content: JSON.stringify({
+        agent: 'search',
+        reasoning: 'Not sure if this is simple or complex.',
+        temperature: 0.3,
+        search_mode: 'unsure',
+      }),
+    });
+
+    const decision = await decideAgent({
+      userText: 'latest cloud pricing changes',
+      invokedBy: 'mention',
+      hasGuild: true,
+      conversationHistory: [],
+      replyReferenceContent: null,
+      apiKey: 'api-key',
+    });
+
+    expect(decision.kind).toBe('search');
+    expect(decision.searchMode).toBe('complex');
+  });
+
   it('falls back to default chat decision when response is not parseable', async () => {
     mockChat.mockResolvedValue({
       content: 'this is not valid json',

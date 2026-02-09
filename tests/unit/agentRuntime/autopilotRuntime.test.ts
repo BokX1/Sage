@@ -1,10 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { runChatTurn } from '../../../src/core/agentRuntime/agentRuntime';
-import { getLLMClient } from '../../../src/core/llm';
+import { createLLMClient, getLLMClient } from '../../../src/core/llm';
+import { globalToolRegistry } from '../../../src/core/agentRuntime/toolRegistry';
 
 const mockDecideAgent = vi.hoisted(() => vi.fn());
+const mockResolveModelForRequestDetailed = vi.hoisted(() => vi.fn());
 
 vi.mock('../../../src/core/llm');
+vi.mock('../../../src/core/llm/model-resolver', () => ({
+  resolveModelForRequestDetailed: mockResolveModelForRequestDetailed,
+  resolveModelForRequest: vi.fn().mockResolvedValue('openai-large'),
+}));
 vi.mock('../../../src/core/orchestration/agentSelector', () => ({
   decideAgent: mockDecideAgent,
 }));
@@ -35,11 +41,31 @@ describe('Autopilot Runtime', () => {
   const mockLLM = {
     chat: vi.fn(),
   };
+  const mockSearchLLM = {
+    chat: vi.fn(),
+  };
 
   beforeEach(() => {
     vi.clearAllMocks();
     (getLLMClient as unknown as { mockReturnValue: (value: unknown) => void }).mockReturnValue(
       mockLLM,
+    );
+    (createLLMClient as unknown as { mockReturnValue: (value: unknown) => void }).mockReturnValue(
+      mockSearchLLM,
+    );
+    mockResolveModelForRequestDetailed.mockImplementation(
+      async (params: { route?: string }) => {
+        const route = (params.route ?? 'chat').toLowerCase();
+        const model = route === 'search' ? 'gemini-search' : 'openai-large';
+        return {
+          model,
+          route,
+          requirements: {},
+          allowlistApplied: false,
+          candidates: [model],
+          decisions: [{ model, accepted: true, reason: 'selected', healthScore: 0.8 }],
+        };
+      },
     );
     mockDecideAgent.mockResolvedValue({
       kind: 'chat',
@@ -140,5 +166,125 @@ describe('Autopilot Runtime', () => {
     expect(result.replyText).toBe(
       "I couldn't complete the final tool response cleanly. Please ask again and I'll retry with a direct answer.",
     );
+  });
+
+  it('returns raw search output for search_mode simple without chat summarization', async () => {
+    mockDecideAgent.mockResolvedValue({
+      kind: 'search',
+      contextProviders: ['Memory'],
+      allowTools: false,
+      temperature: 0.3,
+      searchMode: 'simple',
+      reasoningText: 'search simple route',
+    });
+    mockSearchLLM.chat.mockResolvedValue({
+      content: 'Austin weather is 72F and sunny. source: weather.com',
+    });
+
+    const result = await runChatTurn({
+      traceId: 'test-trace',
+      userId: 'test-user',
+      channelId: 'test-channel',
+      guildId: 'test-guild',
+      messageId: 'msg-1',
+      userText: 'what is weather in austin now',
+      userProfileSummary: null,
+      replyToBotText: null,
+      invokedBy: 'mention',
+      isVoiceActive: true,
+    });
+
+    expect(result.replyText).toBe('Austin weather is 72F and sunny. source: weather.com');
+    expect(mockLLM.chat).not.toHaveBeenCalled();
+  });
+
+  it('runs chat summarization pass for search_mode complex', async () => {
+    mockDecideAgent.mockResolvedValue({
+      kind: 'search',
+      contextProviders: ['Memory'],
+      allowTools: false,
+      temperature: 0.3,
+      searchMode: 'complex',
+      reasoningText: 'search complex route',
+    });
+    mockSearchLLM.chat.mockResolvedValue({
+      content:
+        'Raw findings: Vendor A $499, Vendor B $529, Vendor C $479, mixed shipping and warranty data.',
+    });
+    mockLLM.chat.mockResolvedValue({
+      content: 'Best value is Vendor C at $479 after shipping; Vendor A is second. Sources: vendor pages.',
+    });
+
+    const result = await runChatTurn({
+      traceId: 'test-trace',
+      userId: 'test-user',
+      channelId: 'test-channel',
+      guildId: 'test-guild',
+      messageId: 'msg-1',
+      userText: 'compare latest gpu prices and tell me best value',
+      userProfileSummary: null,
+      replyToBotText: null,
+      invokedBy: 'mention',
+      isVoiceActive: true,
+    });
+
+    expect(result.replyText).toBe(
+      'Best value is Vendor C at $479 after shipping; Vendor A is second. Sources: vendor pages.',
+    );
+    expect(mockLLM.chat).toHaveBeenCalledTimes(1);
+    const usedRoutes = mockResolveModelForRequestDetailed.mock.calls.map(
+      (call: [{ route?: string }]) => call[0]?.route,
+    );
+    expect(usedRoutes).toContain('search');
+    expect(usedRoutes).toContain('chat');
+  });
+
+  it('injects runtime capability manifest into the system prompt', async () => {
+    const listSpecsSpy = vi
+      .spyOn(globalToolRegistry, 'listOpenAIToolSpecs')
+      .mockReturnValue([
+        {
+          type: 'function',
+          function: {
+            name: 'get_weather',
+            description: 'Retrieve weather for a city.',
+            parameters: {},
+          },
+        },
+      ]);
+
+    mockDecideAgent.mockResolvedValue({
+      kind: 'chat',
+      contextProviders: ['Memory', 'SocialGraph'],
+      allowTools: true,
+      temperature: 1.2,
+      reasoningText: 'capability manifest test',
+    });
+    mockLLM.chat.mockResolvedValue({ content: 'ok' });
+
+    await runChatTurn({
+      traceId: 'test-trace',
+      userId: 'test-user',
+      channelId: 'test-channel',
+      guildId: 'test-guild',
+      messageId: 'msg-1',
+      userText: 'help me with today plan',
+      userProfileSummary: null,
+      replyToBotText: null,
+      invokedBy: 'mention',
+      isVoiceActive: true,
+    });
+
+    const firstCall = mockLLM.chat.mock.calls[0]?.[0] as {
+      messages: Array<{ role: string; content: string }>;
+    };
+    const systemMessage = firstCall.messages.find((message) => message.role === 'system');
+    expect(systemMessage?.content).toContain('## Runtime Capabilities');
+    expect(systemMessage?.content).toContain('Active route: chat.');
+    expect(systemMessage?.content).toContain('get_weather: Retrieve weather for a city.');
+    expect(systemMessage?.content).toContain('Never claim or imply capabilities');
+    expect(systemMessage?.content).toContain('Tool protocol: if verification or tool assistance is needed');
+
+    listSpecsSpy.mockRestore();
   });
 });
