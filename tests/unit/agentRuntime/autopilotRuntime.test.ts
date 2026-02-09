@@ -166,6 +166,71 @@ describe('Autopilot Runtime', () => {
     expect(searchCall.messages[0].content).not.toContain('## Agentic State (JSON)');
   });
 
+  it('retries guarded search models and keeps search allowlist strict', async () => {
+    mockDecideAgent.mockResolvedValue({
+      kind: 'search',
+      contextProviders: ['Memory'],
+      temperature: 0.3,
+      searchMode: 'simple',
+      reasoningText: 'search retry route',
+    });
+    mockResolveModelForRequestDetailed.mockImplementation(async (params: { route?: string }) => {
+      const route = (params.route ?? 'chat').toLowerCase();
+      if (route === 'search') {
+        return {
+          model: 'gemini-search',
+          route,
+          requirements: {},
+          allowlistApplied: true,
+          candidates: ['gemini-search', 'perplexity-fast', 'perplexity-reasoning', 'openai-large'],
+          decisions: [{ model: 'gemini-search', accepted: true, reason: 'selected', healthScore: 0.8 }],
+        };
+      }
+      return {
+        model: 'openai-large',
+        route,
+        requirements: {},
+        allowlistApplied: false,
+        candidates: ['openai-large'],
+        decisions: [{ model: 'openai-large', accepted: true, reason: 'selected', healthScore: 0.8 }],
+      };
+    });
+    mockSearchLLM.chat
+      .mockRejectedValueOnce(new Error('Pollinations Model Error: gemini-search failed'))
+      .mockResolvedValueOnce({
+        content: 'Recovered via perplexity-fast with sources.',
+      });
+
+    const result = await runChatTurn({
+      traceId: 'test-trace',
+      userId: 'test-user',
+      channelId: 'test-channel',
+      guildId: 'test-guild',
+      messageId: 'msg-1',
+      userText: 'latest ai release updates',
+      userProfileSummary: null,
+      replyToBotText: null,
+      invokedBy: 'mention',
+      isVoiceActive: true,
+    });
+
+    expect(result.replyText).toBe('Recovered via perplexity-fast with sources.');
+    expect(mockSearchLLM.chat).toHaveBeenCalledTimes(2);
+    const firstAttempt = mockSearchLLM.chat.mock.calls[0]?.[0] as { model: string };
+    const secondAttempt = mockSearchLLM.chat.mock.calls[1]?.[0] as { model: string };
+    expect(firstAttempt.model).toBe('gemini-search');
+    expect(secondAttempt.model).toBe('perplexity-fast');
+
+    const searchResolveCall = mockResolveModelForRequestDetailed.mock.calls.find(
+      (call: [{ route?: string; allowedModels?: string[] }]) => call[0]?.route === 'search',
+    )?.[0];
+    expect(searchResolveCall?.allowedModels).toEqual([
+      'gemini-search',
+      'perplexity-fast',
+      'perplexity-reasoning',
+    ]);
+  });
+
   it('runs chat summarization pass for search_mode complex', async () => {
     mockDecideAgent.mockResolvedValue({
       kind: 'search',
@@ -212,6 +277,19 @@ describe('Autopilot Runtime', () => {
     );
     expect(usedRoutes).toContain('search');
     expect(usedRoutes).toContain('chat');
+
+    const searchResolve = mockResolveModelForRequestDetailed.mock.calls.find(
+      (call: [{ route?: string; featureFlags?: { search?: boolean; reasoning?: boolean } }]) =>
+        call[0]?.route === 'search',
+    )?.[0];
+    expect(searchResolve?.featureFlags?.search).toBe(true);
+    expect(searchResolve?.featureFlags?.reasoning).toBeUndefined();
+
+    const summaryResolve = mockResolveModelForRequestDetailed.mock.calls.find(
+      (call: [{ route?: string; featureFlags?: { search?: boolean; reasoning?: boolean } }]) =>
+        call[0]?.route === 'chat',
+    )?.[0];
+    expect(summaryResolve?.featureFlags).toBeUndefined();
   });
 
   it('keeps both head and tail of large search findings in complex summary handoff', async () => {

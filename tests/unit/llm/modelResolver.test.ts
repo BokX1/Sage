@@ -60,6 +60,21 @@ describe('resolveModelForRequest', () => {
     expect(model).toBe('gemini-search');
   });
 
+  it('keeps search route candidates search-native when reasoning is requested', async () => {
+    const details = await resolveModelForRequestDetailed({
+      guildId: 'guild-1',
+      messages: [{ role: 'user', content: 'latest ai release notes' }],
+      route: 'search',
+      featureFlags: {
+        search: true,
+        reasoning: true,
+      },
+    });
+
+    expect(details.candidates).not.toContain('deepseek');
+    expect(details.candidates[0]).toBe('gemini-search');
+  });
+
   it('prefers openai-audio when audio I/O is requested', async () => {
     const model = await resolveModelForRequest({
       guildId: 'guild-1',
@@ -126,5 +141,119 @@ describe('resolveModelForRequest', () => {
       true,
     );
     expect(details.decisions.some((d) => d.model === 'kimi' && d.reason === 'selected')).toBe(true);
+  });
+
+  it('falls back to route-default search model when no candidates satisfy capabilities', async () => {
+    mockModelSupports.mockReturnValue(false);
+    recordModelOutcome({ model: 'perplexity-fast', success: true });
+    recordModelOutcome({ model: 'perplexity-fast', success: true });
+
+    const details = await resolveModelForRequestDetailed({
+      guildId: 'guild-1',
+      messages: [{ role: 'user', content: 'latest ai updates' }],
+      route: 'search',
+      featureFlags: {
+        search: true,
+        reasoning: true,
+      },
+    });
+
+    expect(details.model).toBe('gemini-search');
+    const lastDecision = details.decisions[details.decisions.length - 1];
+    expect(lastDecision.model).toBe('gemini-search');
+    expect(lastDecision.reason).toBe('fallback_first_candidate');
+  });
+
+  it('falls back to route-default chat model even when deepseek has higher health', async () => {
+    mockModelSupports.mockReturnValue(false);
+    recordModelOutcome({ model: 'deepseek', success: true });
+    recordModelOutcome({ model: 'deepseek', success: true, latencyMs: 1000 });
+
+    const details = await resolveModelForRequestDetailed({
+      guildId: 'guild-1',
+      messages: [{ role: 'user', content: 'summarize this clearly' }],
+      route: 'chat',
+      featureFlags: {
+        reasoning: true,
+      },
+    });
+
+    expect(details.candidates[0]).toBe('deepseek');
+    expect(details.model).toBe('openai-large');
+    const lastDecision = details.decisions[details.decisions.length - 1];
+    expect(lastDecision.model).toBe('openai-large');
+    expect(lastDecision.reason).toBe('fallback_first_candidate');
+  });
+
+  it('rejects unknown catalog candidates in strict capability mode', async () => {
+    mockFindModelInCatalog.mockImplementation(async (modelId: string) => {
+      if (modelId === 'deepseek') {
+        return {
+          model: null,
+          catalog: {},
+          refreshed: true,
+        };
+      }
+      return {
+        model: {
+          id: modelId,
+          caps: {},
+          inputModalities: ['text', 'image', 'audio'],
+          outputModalities: ['text', 'audio'],
+        },
+        catalog: {},
+        refreshed: false,
+      };
+    });
+    mockModelSupports.mockReturnValue(true);
+
+    const details = await resolveModelForRequestDetailed({
+      guildId: 'guild-1',
+      messages: [{ role: 'user', content: 'reason carefully' }],
+      route: 'chat',
+      featureFlags: {
+        reasoning: true,
+      },
+    });
+
+    expect(details.model).toBe('openai-large');
+    const deepseekDecision = details.decisions.find((d) => d.model === 'deepseek');
+    expect(deepseekDecision?.reason).toBe('capability_mismatch');
+    expect(deepseekDecision?.accepted).toBe(false);
+  });
+
+  it('keeps unknown-model acceptance in non-strict mode for alias compatibility', async () => {
+    mockFindModelInCatalog.mockImplementation(async (modelId: string) => {
+      if (modelId === 'openai-large') {
+        return {
+          model: null,
+          catalog: {},
+          refreshed: false,
+        };
+      }
+      return {
+        model: {
+          id: modelId,
+          caps: {},
+          inputModalities: ['text', 'image', 'audio'],
+          outputModalities: ['text', 'audio'],
+        },
+        catalog: {},
+        refreshed: false,
+      };
+    });
+    mockModelSupports.mockReturnValue(true);
+
+    const details = await resolveModelForRequestDetailed({
+      guildId: 'guild-1',
+      messages: [{ role: 'user', content: 'hello' }],
+      route: 'chat',
+    });
+
+    expect(details.model).toBe('openai-large');
+    const decision = details.decisions[0];
+    expect(decision.model).toBe('openai-large');
+    expect(decision.reason).toBe('catalog_miss_accept_unknown');
+    expect(decision.accepted).toBe(true);
   });
 });

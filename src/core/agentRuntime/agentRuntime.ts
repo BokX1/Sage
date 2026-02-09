@@ -512,6 +512,27 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
     const trimmed = typeof text === 'string' ? text.trim() : '';
     return trimmed.length > 0 ? trimmed : null;
   };
+  const GUARDED_SEARCH_MODELS = ['gemini-search', 'perplexity-fast', 'perplexity-reasoning'] as const;
+  const normalizeModelId = (value: string): string => value.trim().toLowerCase();
+  const dedupeModelIds = (values: string[]): string[] => {
+    const seen = new Set<string>();
+    const output: string[] = [];
+    for (const value of values) {
+      const normalized = normalizeModelId(value);
+      if (!normalized || seen.has(normalized)) continue;
+      seen.add(normalized);
+      output.push(normalized);
+    }
+    return output;
+  };
+  const resolveGuardedSearchAllowlist = (allowedModels: string[] | undefined): string[] => {
+    if (!allowedModels || allowedModels.length === 0) {
+      return [...GUARDED_SEARCH_MODELS];
+    }
+
+    const allowedSet = new Set(allowedModels.map((model) => normalizeModelId(model)));
+    return GUARDED_SEARCH_MODELS.filter((model) => allowedSet.has(model));
+  };
   const runSearchPass = async (params: {
     phase: string;
     iteration?: number;
@@ -550,65 +571,122 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
         ? `User request:\n${userText}\n\n${contextNotes.join('\n\n')}`
         : userText;
 
-    let selectedModel: string | null = null;
-    try {
-      const searchModelDetails = await resolveModelForRequestDetailed({
-        guildId,
-        messages: [{ role: 'user', content: searchUserPrompt }],
-        route: 'search',
-        allowedModels: tenantPolicy.allowedModels,
-        featureFlags: {
-          search: true,
-          reasoning: true,
-        },
-      });
-      selectedModel = searchModelDetails.model;
-      modelResolutionEvents.push({
-        phase: params.phase,
-        iteration: params.iteration,
-        route: searchModelDetails.route,
-        selected: searchModelDetails.model,
-        candidates: searchModelDetails.candidates,
-        decisions: searchModelDetails.decisions,
-        allowlistApplied: searchModelDetails.allowlistApplied,
-      });
+    const guardedSearchAllowlist = resolveGuardedSearchAllowlist(tenantPolicy.allowedModels);
+    if (guardedSearchAllowlist.length === 0) {
+      throw new Error(
+        `Search route requires one of: ${GUARDED_SEARCH_MODELS.join(', ')}. ` +
+        'Current tenant allowedModels excludes all guarded search models.',
+      );
+    }
 
-      const searchClient = createLLMClient('pollinations', { chatModel: selectedModel });
-      const searchSystemPrompt =
-        'You are a search-focused assistant. Answer using the freshest reliable information available. ' +
-        'When possible, include concise source cues (site/domain names or URLs). If uncertain, say so directly. ' +
-        'Return a direct plain-text answer only.';
-      const searchMessages: LLMChatMessage[] = [
-        {
-          role: 'system',
-          content: searchSystemPrompt,
-        },
-        { role: 'user', content: searchUserPrompt },
-      ];
+    const searchModelDetails = await resolveModelForRequestDetailed({
+      guildId,
+      messages: [{ role: 'user', content: searchUserPrompt }],
+      route: 'search',
+      allowedModels: guardedSearchAllowlist,
+      featureFlags: {
+        search: true,
+      },
+    });
 
+    const attemptOrder = dedupeModelIds([
+      searchModelDetails.model,
+      ...searchModelDetails.candidates,
+      ...guardedSearchAllowlist,
+    ]).filter((model) => guardedSearchAllowlist.includes(model));
+
+    if (attemptOrder.length === 0) {
+      throw new Error('No eligible guarded search model candidates were produced.');
+    }
+
+    modelResolutionEvents.push({
+      phase: params.phase,
+      iteration: params.iteration,
+      route: searchModelDetails.route,
+      selected: searchModelDetails.model,
+      candidates: searchModelDetails.candidates,
+      decisions: searchModelDetails.decisions,
+      allowlistApplied: searchModelDetails.allowlistApplied,
+      guardrailAllowlist: guardedSearchAllowlist,
+      guardrailAttemptOrder: attemptOrder,
+    });
+
+    const searchSystemPrompt =
+      'You are a search-focused assistant. Answer using the freshest reliable information available. ' +
+      'When possible, include concise source cues (site/domain names or URLs). If uncertain, say so directly. ' +
+      'Return a direct plain-text answer only.';
+    const searchMessages: LLMChatMessage[] = [
+      {
+        role: 'system',
+        content: searchSystemPrompt,
+      },
+      { role: 'user', content: searchUserPrompt },
+    ];
+
+    let lastError: unknown = null;
+    for (let attemptIndex = 0; attemptIndex < attemptOrder.length; attemptIndex += 1) {
+      const attemptModel = attemptOrder[attemptIndex];
+      const searchClient = createLLMClient('pollinations', { chatModel: attemptModel });
       const startedAt = Date.now();
-      const searchResponse = await searchClient.chat({
-        messages: searchMessages,
-        model: selectedModel,
-        apiKey,
-        temperature: searchTemperature,
-        timeout: 180_000,
-      });
-      recordModelOutcome({
-        model: selectedModel,
-        success: true,
-        latencyMs: Date.now() - startedAt,
-      });
-      return searchResponse.content;
-    } catch (error) {
-      if (selectedModel) {
+      try {
+        const searchResponse = await searchClient.chat({
+          messages: searchMessages,
+          model: attemptModel,
+          apiKey,
+          temperature: searchTemperature,
+          timeout: 180_000,
+        });
         recordModelOutcome({
-          model: selectedModel,
+          model: attemptModel,
+          success: true,
+          latencyMs: Date.now() - startedAt,
+        });
+        modelResolutionEvents.push({
+          phase: params.phase,
+          iteration: params.iteration,
+          route: 'search',
+          selected: attemptModel,
+          purpose: 'search_guardrail_attempt',
+          attempt: attemptIndex + 1,
+          attemptsTotal: attemptOrder.length,
+          status: 'success',
+        });
+        return searchResponse.content;
+      } catch (error) {
+        lastError = error;
+        recordModelOutcome({
+          model: attemptModel,
           success: false,
         });
+        modelResolutionEvents.push({
+          phase: params.phase,
+          iteration: params.iteration,
+          route: 'search',
+          selected: attemptModel,
+          purpose: 'search_guardrail_attempt',
+          attempt: attemptIndex + 1,
+          attemptsTotal: attemptOrder.length,
+          status: 'failed',
+          errorText: error instanceof Error ? error.message : String(error),
+        });
+        logger.warn(
+          {
+            traceId,
+            phase: params.phase,
+            iteration: params.iteration,
+            model: attemptModel,
+            attempt: attemptIndex + 1,
+            attemptsTotal: attemptOrder.length,
+            error,
+          },
+          'Search model attempt failed; trying next guarded search model',
+        );
       }
-      throw error;
     }
+
+    throw lastError instanceof Error
+      ? lastError
+      : new Error('Search model attempts exhausted without success.');
   };
 
   const runSearchSummaryPass = async (params: {
@@ -649,9 +727,6 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
       ],
       route: 'chat',
       allowedModels: tenantPolicy.allowedModels,
-      featureFlags: {
-        reasoning: true,
-      },
     });
     const summaryModel = summaryModelDetails.model;
     modelResolutionEvents.push({

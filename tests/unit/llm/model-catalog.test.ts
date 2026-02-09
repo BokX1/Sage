@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { modelSupports, findModelInCatalog, suggestModelIds, type ModelInfo } from '../../../src/core/llm/model-catalog';
+import {
+    modelSupports,
+    findModelInCatalog,
+    suggestModelIds,
+    inferSearchCapabilityFromMetadata,
+    type ModelInfo
+} from '../../../src/core/llm/model-catalog';
 
 describe('modelCatalog', () => {
     describe('modelSupports', () => {
@@ -30,6 +36,20 @@ describe('modelCatalog', () => {
             };
 
             expect(modelSupports(info, { vision: true })).toBe(false);
+        });
+
+        it('enforces explicit search capability requirement', () => {
+            const searchInfo: ModelInfo = {
+                id: 'gemini-search',
+                caps: { search: true },
+            };
+            const plainInfo: ModelInfo = {
+                id: 'openai-large',
+                caps: {},
+            };
+
+            expect(modelSupports(searchInfo, { search: true })).toBe(true);
+            expect(modelSupports(plainInfo, { search: true })).toBe(false);
         });
     });
 
@@ -62,6 +82,23 @@ describe('modelCatalog', () => {
 
             const suggestions = suggestModelIds('kimi', catalog);
             expect(suggestions).toContain('kimi');
+        });
+
+        it('infers search capability from provider metadata text', () => {
+            expect(
+                inferSearchCapabilityFromMetadata({
+                    id: 'gemini-search',
+                    aliases: ['gemini-2.5-flash-search'],
+                    description: 'Google Gemini with Web Search'
+                })
+            ).toBe(true);
+            expect(
+                inferSearchCapabilityFromMetadata({
+                    id: 'openai-large',
+                    aliases: ['gpt-5.2'],
+                    description: 'Most powerful model'
+                })
+            ).toBe(false);
         });
     });
 });

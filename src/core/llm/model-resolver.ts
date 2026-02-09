@@ -55,7 +55,7 @@ export interface ModelResolutionDetails {
 
 const ROUTE_MODEL_CHAINS: Record<string, string[]> = {
   coding: ['kimi', 'qwen-coder', 'deepseek'],
-  search: ['gemini-search', 'perplexity-fast', 'perplexity-reasoning', 'nomnom'],
+  search: ['gemini-search', 'perplexity-fast', 'perplexity-reasoning'],
   chat: ['openai-large', 'kimi', 'claude-fast'],
   image: ['imagen-4', 'flux', 'flux-2-dev', 'klein'],
 };
@@ -108,7 +108,9 @@ function buildBaseCandidateChain(params: ResolveModelParams): string[] {
     candidates.unshift('openai-large');
   }
 
-  if (params.featureFlags?.reasoning && route !== 'coding') {
+  // Keep search route model order search-native. Search-specific chains already
+  // include reasoning-capable candidates where available.
+  if (params.featureFlags?.reasoning && route !== 'coding' && route !== 'search') {
     candidates.unshift('deepseek');
   }
 
@@ -127,6 +129,26 @@ function buildBaseCandidateChain(params: ResolveModelParams): string[] {
 export function getPreferredModel(route: string): string {
   const chain = ROUTE_MODEL_CHAINS[route] ?? ROUTE_MODEL_CHAINS['chat'];
   return chain[0] ?? getDefaultModelId();
+}
+
+function selectRoutePreferredFallback(params: {
+  route: string;
+  candidates: string[];
+  allowedSet: Set<string> | null;
+}): string {
+  const routeChain = ROUTE_MODEL_CHAINS[params.route] ?? ROUTE_MODEL_CHAINS.chat;
+  const routeScoped =
+    params.allowedSet && params.allowedSet.size > 0
+      ? routeChain.filter((candidate) => params.allowedSet!.has(candidate))
+      : routeChain;
+
+  for (const preferred of routeScoped) {
+    if (params.candidates.includes(preferred)) {
+      return preferred;
+    }
+  }
+
+  return params.candidates[0] ?? getDefaultModelId();
 }
 
 function applyAllowedModels(
@@ -195,6 +217,20 @@ function buildRequirements(params: ResolveModelParams): ModelRequirement {
   };
 }
 
+function requiresStrictCapabilityVerification(requirements: ModelRequirement): boolean {
+  return !!(
+    requirements.vision ||
+    requirements.audioIn ||
+    requirements.audioOut ||
+    requirements.tools ||
+    requirements.search ||
+    requirements.reasoning ||
+    requirements.codeExec ||
+    (requirements.inputModalities && requirements.inputModalities.length > 0) ||
+    (requirements.outputModalities && requirements.outputModalities.length > 0)
+  );
+}
+
 /**
  * Resolves the model id used for a chat request.
  *
@@ -208,6 +244,7 @@ export async function resolveModelForRequestDetailed(
   const allowed = applyAllowedModels(baseCandidates, params.allowedModels);
   const candidates = rankByHealth(allowed.candidates);
   const requirements = buildRequirements(params);
+  const strictCapabilityVerification = requiresStrictCapabilityVerification(requirements);
   const decisions: ModelCandidateDecision[] = [];
 
   if (allowed.allowlistApplied && allowed.allowedSet) {
@@ -224,9 +261,24 @@ export async function resolveModelForRequestDetailed(
   }
 
   for (const candidate of candidates) {
-    const lookup = await findModelInCatalog(candidate, { refreshIfMissing: false });
+    const lookup = await findModelInCatalog(candidate, {
+      refreshIfMissing: strictCapabilityVerification,
+    });
     if (!lookup.model) {
-      // Unknown model ids can still be valid aliases on the provider side.
+      // In strict capability mode (search/tools/reasoning/etc), unknown catalog
+      // entries are treated as capability mismatches so we do not silently bypass
+      // capability gates.
+      if (strictCapabilityVerification) {
+        decisions.push({
+          model: candidate,
+          accepted: false,
+          reason: 'capability_mismatch',
+          healthScore: getModelHealthScore(candidate),
+        });
+        continue;
+      }
+
+      // In non-strict mode, unknown model ids can still be valid aliases.
       decisions.push({
         model: candidate,
         accepted: true,
@@ -268,7 +320,11 @@ export async function resolveModelForRequestDetailed(
     });
   }
 
-  const fallback = candidates[0] ?? getDefaultModelId();
+  const fallback = selectRoutePreferredFallback({
+    route,
+    candidates,
+    allowedSet: allowed.allowedSet,
+  });
   decisions.push({
     model: fallback,
     accepted: true,

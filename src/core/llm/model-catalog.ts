@@ -91,6 +91,41 @@ function normalizeModalities(value: unknown): string[] | undefined {
   return undefined;
 }
 
+function normalizeStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => String(item).trim().toLowerCase())
+    .filter((item) => item.length > 0);
+}
+
+export function inferSearchCapabilityFromMetadata(params: {
+  id: string;
+  aliases?: string[];
+  description?: string | null;
+}): boolean {
+  const searchableBlob = [
+    params.id.trim().toLowerCase(),
+    ...(params.aliases ?? []).map((value) => value.trim().toLowerCase()),
+    (params.description ?? '').trim().toLowerCase(),
+  ]
+    .filter((value) => value.length > 0)
+    .join(' ');
+
+  // Provider metadata does not always expose an explicit search flag.
+  // Infer from stable search-oriented naming/description patterns.
+  return /\b(gemini-search|perplexity-fast|perplexity-reasoning|sonar|search|web[-\s]?search|web[-\s]?research|scrape|crawl)\b/.test(
+    searchableBlob,
+  );
+}
+
+function inferSearchCapability(raw: Record<string, unknown>, normalizedId: string): boolean {
+  return inferSearchCapabilityFromMetadata({
+    id: normalizedId,
+    aliases: normalizeStringArray(raw.aliases),
+    description: typeof raw.description === 'string' ? raw.description : '',
+  });
+}
+
 function parseFallbackHintModelIds(): string[] {
   const raw = config.llmModelLimitsJson?.trim();
   if (!raw) return [];
@@ -126,7 +161,9 @@ function buildFallbackCatalog(): Record<string, ModelInfo> {
     catalog[hintId] = {
       id: hintId,
       displayName: hintId,
-      caps: {},
+      caps: {
+        search: inferSearchCapability({ aliases: [], description: '' }, hintId) || undefined,
+      },
       raw: { fallbackHint: true },
     };
   }
@@ -162,6 +199,8 @@ async function fetchRuntimeCatalog(): Promise<Record<string, ModelInfo>> {
     const id = normalizeModelId(String(idValue));
     if (!id) continue;
 
+    const explicitSearchCap = readBoolean(raw, ['search', 'web_search', 'webSearch']);
+    const inferredSearchCap = inferSearchCapability(raw, id);
     const info: ModelInfo = {
       id,
       displayName: (raw.display_name ?? raw.displayName ?? raw.name) as string | undefined,
@@ -170,7 +209,7 @@ async function fetchRuntimeCatalog(): Promise<Record<string, ModelInfo>> {
         audioIn: readBoolean(raw, ['audio_in', 'audioIn']),
         audioOut: readBoolean(raw, ['audio_out', 'audioOut']),
         tools: readBoolean(raw, ['tools', 'tool_calls', 'toolCalls']),
-        search: readBoolean(raw, ['search', 'web_search', 'webSearch']),
+        search: explicitSearchCap ?? (inferredSearchCap ? true : undefined),
         reasoning: readBoolean(raw, ['reasoning']),
         codeExec: readBoolean(raw, ['code_exec', 'codeExec']),
       },
