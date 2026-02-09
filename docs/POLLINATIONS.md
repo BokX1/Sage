@@ -103,7 +103,7 @@ Minimum Pollinations settings (see `.env.example` for the full list):
 ```env
 LLM_PROVIDER=pollinations
 LLM_BASE_URL=https://gen.pollinations.ai/v1
-CHAT_MODEL=kimi
+CHAT_MODEL=openai-large
 
 # Optional: Global fallback key (used if no BYOP key is set for the server)
 LLM_API_KEY=
@@ -119,7 +119,7 @@ These are **defaults** you can customize:
 
 ```env
 # Main baseline chat model (route policy may switch models per turn)
-CHAT_MODEL=kimi
+CHAT_MODEL=openai-large
 
 # Profile/memory updates
 PROFILE_CHAT_MODEL=deepseek
@@ -148,7 +148,7 @@ When users attach an image, Sage can send multimodal content:
 
 ```json
 {
-  "model": "kimi",
+  "model": "openai-large",
   "messages": [
     {
       "role": "user",
@@ -246,7 +246,7 @@ curl -sS https://gen.pollinations.ai/account/profile   -H "Authorization: Bearer
 
 ```bash
 curl -sS https://gen.pollinations.ai/v1/chat/completions   -H "Authorization: Bearer sk_YOUR_KEY"   -H "Content-Type: application/json"   -d '{
-    "model": "kimi",
+    "model": "openai-large",
     "messages": [{"role":"user","content":"Say hello in one sentence."}]
   }' | head
 ```

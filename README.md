@@ -49,7 +49,7 @@ Sage is a **fully agentic Discord companion** that goes beyond simple chat comma
 - 👁️ **Vision + Image Generation**: Ingests images for visual understanding, and can generate/edit images from prompts.
 - 📄 **Knowledge Base**: Ingests code files and text documents to provide high-context analysis.
 - 💬 **Intelligent Routing**: Uses a high-precision LLM classifier to resolve pronouns and context.
-- ⚡ **Adaptive Models**: Switches between **Gemini Fast** (speed) and **Kimi** (reasoning) based on intent.
+- ⚡ **Adaptive Models**: Uses route-aware model resolution with `openai-large` as the chat baseline and healthy fallbacks (for example `kimi`, `claude-fast`) based on intent and capability needs.
 
 **Perfect for:** Coding communities • Gaming groups • Research teams • Any Discord that wants a bot that "gets it."
 
@@ -114,7 +114,7 @@ flowchart LR
 | :--- | :--- |
 | 🧠 **Agentic Memory** | Builds long-term preferences and throttles updates for efficiency |
 | 👁️ **Vision Support** | Analyzes images (Vision) and creates art (Agentic Generation) |
-| 🔍 **Real-Time Search** | Fetches live information via Gemini-Search/Perplexity for time-sensitive queries |
+| 🔍 **Real-Time Search** | Uses route-aware search models for fresh facts, with complex tasks summarized into polished chat responses |
 | 📄 **File Analysis** | Share `.ts`, `.py`, `.txt` files for instant review or discussion |
 | 🎤 **Voice Companion (Beta)** | Text-to-speech companion with dynamic personas (BYOP required) |
 | 📊 **Voice Insights** | Tracks presence and duration, translating raw data into natural language |

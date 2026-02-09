@@ -64,13 +64,14 @@ Primary files:
 
 Runtime behavior:
 
-1. `decideAgent` classifies each request as `chat`, `coding`, `search`, or `creative`.
-2. `getStandardProvidersForAgent` assigns baseline context providers (route-aware).
-3. `buildContextGraph` builds:
+1. `decideAgent` classifies each request as `chat`, `coding`, `search`, or `creative`, and returns route temperature.
+2. For `search`, router also returns `search_mode` (`simple` or `complex`); if missing/invalid, runtime defaults to `complex`.
+3. `getStandardProvidersForAgent` assigns baseline context providers (route-aware).
+4. `buildContextGraph` builds:
    - fanout graph when parallel provider fetch is allowed,
    - linear graph when parallelism is disabled or unnecessary.
-4. Canary (`evaluateAgenticCanary`) decides if graph execution is used this turn.
-5. If canary denies agentic path, runtime uses provider runner fallback directly (`runContextProviders`).
+5. Canary (`evaluateAgenticCanary`) decides if graph execution is used this turn.
+6. If canary denies agentic path, runtime uses provider runner fallback directly (`runContextProviders`).
 
 ---
 
@@ -109,6 +110,7 @@ Runtime behavior:
 4. Per-turn cache deduplicates repeated calls.
 5. Verification intents (`verify_search_again`, `verify_chat_again`, `verify_code_again`) trigger independent re-answer + compare passes when executable tools are unavailable or route asks for verification.
 6. Runtime forces plain-text fallback if verification responses keep returning tool envelopes.
+7. Runtime injects a capability manifest into the system prompt that reflects route, context providers, and only policy-allowed tools for that turn.
 
 Note:
 
@@ -131,8 +133,9 @@ Runtime behavior:
 2. Critic runs only on eligible routes (`chat`, `coding`, `search`) and skips voice/file turns.
 3. If quality is below threshold, runtime requests revision.
 4. For search route, critic can trigger a fresh search pass (`shouldRefreshSearchFromCritic`).
-5. For non-search revisions, runtime can redispatch targeted context providers before rewrite.
-6. Critic outcomes and redispatch metadata are persisted in trace quality/budget payloads.
+5. Search route execution mode controls finalization: `simple` returns search output directly, while `complex` runs a chat synthesis pass over search findings before final response.
+6. For non-search revisions, runtime can redispatch targeted context providers before rewrite.
+7. Critic outcomes and redispatch metadata are persisted in trace quality/budget payloads.
 
 ---
 

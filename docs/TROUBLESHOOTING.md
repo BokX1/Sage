@@ -239,7 +239,7 @@ RAW_MESSAGE_TTL_DAYS=1                     # Reduce from 3
 
 | Factor | Optimization |
 | :--- | :--- |
-| Model | Use a faster model: `CHAT_MODEL=kimi` |
+| Model | Default is `CHAT_MODEL=openai-large`; use `CHAT_MODEL=kimi` only when you need faster but lighter responses |
 | Context | Reduce `CONTEXT_MAX_INPUT_TOKENS` |
 | Network | Check Pollinations API status |
 

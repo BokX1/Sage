@@ -65,6 +65,16 @@ All runtime settings are configured in `.env` and validated by `src/shared/confi
 | `SUMMARY_MODEL` | Channel summary model | `openai-large` |
 | `FORMATTER_MODEL` | JSON formatter model | `qwen-coder` |
 
+### Routing Temperature Policy (Built In)
+
+These values are currently code-level policy (not `.env` knobs):
+
+- Router model runs at `0.1` temperature for stable classification.
+- Chat responses use router-provided temperature, clamped to `1.0` - `1.4`.
+- Chat default/fallback temperature is `1.2`.
+- If router omits non-chat temperatures, defaults are `coding=0.2`, `search=0.3`, `creative=1.0`.
+- Critic evaluation uses fixed `0.1` temperature.
+
 ---
 
 <a id="behavior-and-triggering"></a>
@@ -96,6 +106,8 @@ Autopilot modes:
 ## Agentic Runtime Governance
 
 These settings control graph execution, tool policy, critic behavior, canary rollout, and per-tenant overrides.
+
+Search execution mode (`simple` vs `complex`) is selected turn-by-turn by the router and is not currently exposed as an environment variable. If router output is invalid or missing for search mode, runtime falls back to `complex`.
 
 ### Graph + Tool + Critic + Tenant Policy
 

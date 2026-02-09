@@ -169,14 +169,14 @@ The wizard will ask for:
 | **DISCORD_APP_ID** | Application ID from Step 2.2 |
 | **DATABASE_URL** | Type `2` to use the Docker default |
 | **LLM_API_KEY** | Optional global key (or set per server later via `/sage key set`) |
-| **CHAT_MODEL** | Choose a default chat model |
+| **CHAT_MODEL** | Use `openai-large` (recommended baseline) unless you have a specific override |
 
 > ✅ `npm run setup` is kept as a legacy alias for the onboarding wizard.
 
 **Non-interactive option (CI/automation):**
 
 ```bash
-npm run onboard --   --discord-token "YOUR_TOKEN"   --discord-app-id "YOUR_APP_ID"   --database-url "postgresql://..."   --api-key "YOUR_POLLINATIONS_KEY"   --model kimi   --yes   --non-interactive
+npm run onboard --   --discord-token "YOUR_TOKEN"   --discord-app-id "YOUR_APP_ID"   --database-url "postgresql://..."   --api-key "YOUR_POLLINATIONS_KEY"   --model openai-large   --yes   --non-interactive
 ```
 
 > ℹ️ `--api-key` is optional. If you skip it, set a server key later with `/sage key set`.

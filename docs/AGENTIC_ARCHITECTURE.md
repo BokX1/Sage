@@ -21,10 +21,10 @@ This page documents the current production architecture as implemented in `src/c
 
 In Sage, "agentic" means the runtime can:
 
-1. Select an execution route (`chat`, `coding`, `search`, `creative`) per turn.
+1. Select an execution route (`chat`, `coding`, `search`, `creative`) per turn, including route temperature and search execution mode when applicable.
 2. Build and execute a context-provider graph (or safe provider fallback).
 3. Share provider artifacts through blackboard-style packet composition.
-4. Run bounded tool loops with policy controls and cache.
+4. Run bounded tool loops with policy controls and cache, while advertising only policy-allowed capabilities in the runtime prompt.
 5. Trigger verification redispatches and critic-driven revisions when quality is low.
 6. Persist trace metadata and enforce replay gates before promotion.
 
@@ -34,7 +34,7 @@ In Sage, "agentic" means the runtime can:
 
 ### 1) Agent Selector + Context Graph
 
-- `decideAgent` selects route kind and base tool policy.
+- `decideAgent` selects route kind, temperature, and (for search) `search_mode` (`simple` or `complex`).
 - `buildContextGraph` builds fanout or linear provider graphs.
 - `executeAgentGraph` runs provider tasks with retries/timeouts and captures events.
 - When canary blocks agentic execution (or graph execution fails), Sage falls back to `runContextProviders`.
@@ -51,12 +51,14 @@ In Sage, "agentic" means the runtime can:
 - Deterministic policy gates apply blocklists and risk permissions (`external_write`, `high_risk`).
 - Per-turn cache avoids duplicate tool executions.
 - Runtime also exposes virtual verification intents (`verify_search_again`, `verify_chat_again`, `verify_code_again`) to force independent verification passes when needed.
+- Runtime injects a capability manifest into the system prompt so the model only claims tools/context providers actually available in that turn.
 
 ### 4) Quality Loop
 
 - Critic scoring is controlled by `AGENTIC_CRITIC_*`.
 - If quality is below threshold, Sage revises with critic instructions.
 - Search route can run an additional search refresh when issues indicate staleness/factual risk.
+- When search mode is `complex`, runtime runs a second chat synthesis pass (`search -> chat summary`) before returning the final answer.
 - Non-search routes can redispatch targeted context providers before rewrite.
 
 ### 5) Model Policy
@@ -146,9 +148,9 @@ CI release-readiness runs this gate after migrations.
 
 Trace persistence includes:
 
-- agent selector decisions (`routeKind`, `routerJson`, `reasoningText`),
+- agent selector decisions (`routeKind`, `routerJson`, `reasoningText`, search mode),
 - context packet payloads (`expertsJson` field name retained for schema compatibility),
-- graph/events and budget metadata,
+- graph/events and budget metadata (including resolved `searchExecutionMode` when search route is used),
 - tool + critic metadata,
 - per-node runtime rows (`AgentRun`).
 

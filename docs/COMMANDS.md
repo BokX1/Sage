@@ -102,10 +102,11 @@ Sage can fetch live information from the web using Search-Augmented Generation. 
 
 **How it works**
 
-1. Sage detects temporal signals ("current", "latest", "price of", etc.)
-2. Routes to the `search` handler using Gemini-Search or Perplexity
-3. Injects live search data into context
-4. Responds naturally with up-to-date information
+1. Router selects the `search` route for fresh/time-sensitive requests.
+2. Router also sets `search_mode` (`simple` for direct lookups, `complex` for multi-step comparisons/synthesis).
+3. In `simple` mode, Sage returns search output directly.
+4. In `complex` mode, Sage runs `search -> chat summarization` so the final answer is cleaner and easier to read.
+5. If router is uncertain, Sage falls back to `complex` mode for consistency.
 
 > [!TIP]
 > Search works best for factual, time-sensitive queries. For conceptual explanations, Sage uses its built-in knowledge.
