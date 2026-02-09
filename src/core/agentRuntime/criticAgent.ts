@@ -2,6 +2,7 @@ import { LLMChatMessage } from '../llm/llm-types';
 import { getLLMClient } from '../llm';
 import { resolveModelForRequest } from '../llm/model-resolver';
 import { logger } from '../utils/logger';
+import { AgentKind } from '../orchestration/agentSelector';
 
 export interface CriticAssessment {
   score: number;
@@ -13,7 +14,7 @@ export interface CriticAssessment {
 
 export interface EvaluateDraftWithCriticParams {
   guildId: string | null;
-  routeKind: string;
+  routeKind: AgentKind;
   userText: string;
   draftText: string;
   allowedModels?: string[];
@@ -84,11 +85,11 @@ Rules:
 - rewritePrompt must be specific and actionable.
 - Never include markdown.`;
 
-const CRITIC_SYSTEM_PROMPT_QA = `You are a conversational quality critic.
+const CRITIC_SYSTEM_PROMPT_CHAT = `You are a conversational quality critic for a Discord chat agent.
 Evaluate the candidate answer for:
 1) Natural flow and tone,
 2) Relevance to the last user message,
-3) Consistency with conversation history.
+3) Consistency with conversation history and user intent.
 
 Return ONLY JSON:
 {
@@ -100,8 +101,77 @@ Return ONLY JSON:
 
 Rules:
 - score is between 0 and 1.
-- Use "revise" ONLY if the answer is completely off-topic, hallucinated, or rude.
-- Allow for casual banter and creativity.`;
+- Use "revise" ONLY if the answer is off-topic, hallucinated, contradictory, unsafe, or rude.
+- Allow for casual banter and creativity when still relevant.
+- If candidate answer is only a tool_calls JSON envelope, verdict must be "revise".`;
+
+const CRITIC_SYSTEM_PROMPT_CODING = `You are a code-quality critic.
+Evaluate the candidate answer for:
+1) Technical correctness,
+2) Completeness of implementation guidance,
+3) Safety and practical executability.
+
+Return ONLY JSON:
+{
+  "score": 0.0,
+  "verdict": "pass|revise",
+  "issues": ["short issue list"],
+  "rewritePrompt": "precise revision guidance"
+}
+
+Rules:
+- score is between 0 and 1.
+- Use "revise" if code is likely broken, incomplete, insecure, or ignores user constraints.
+- Flag missing edge cases, missing imports/dependencies, and incorrect commands.
+- If candidate answer is only a tool_calls JSON envelope, verdict must be "revise".
+- Never include markdown.`;
+
+const CRITIC_SYSTEM_PROMPT_SEARCH = `You are a factuality and freshness critic for search responses.
+Evaluate the candidate answer for:
+1) Factual correctness,
+2) Freshness for time-sensitive claims,
+3) Completeness and source-grounding.
+
+Return ONLY JSON:
+{
+  "score": 0.0,
+  "verdict": "pass|revise",
+  "issues": ["short issue list"],
+  "rewritePrompt": "precise revision guidance"
+}
+
+Rules:
+- score is between 0 and 1.
+- Use "revise" when claims are uncertain, stale, unverifiable, or missing key facts.
+- Require concise source cues (site/domain names or URLs) for external factual claims.
+- If candidate answer is only a tool_calls JSON envelope, verdict must be "revise".
+- Never include markdown.`;
+
+function getCriticSystemPrompt(routeKind: AgentKind): string {
+  switch (routeKind) {
+    case 'chat':
+      return CRITIC_SYSTEM_PROMPT_CHAT;
+    case 'coding':
+      return CRITIC_SYSTEM_PROMPT_CODING;
+    case 'search':
+      return CRITIC_SYSTEM_PROMPT_SEARCH;
+    default:
+      return CRITIC_SYSTEM_PROMPT_DEFAULT;
+  }
+}
+
+function serializeMessageContent(content: LLMChatMessage['content']): string {
+  if (typeof content === 'string') return content;
+  if (!Array.isArray(content)) return '';
+  return content
+    .map((part) => {
+      if (part.type === 'text') return part.text;
+      if (part.type === 'image_url') return '[image]';
+      if (part.type === 'input_audio') return '[audio]';
+      return '[content]';
+    })
+    .join('');
+}
 
 export async function evaluateDraftWithCritic(
   params: EvaluateDraftWithCriticParams,
@@ -115,10 +185,7 @@ export async function evaluateDraftWithCritic(
       featureFlags: { reasoning: true },
     });
 
-    const systemPrompt =
-      params.routeKind === 'chat'
-        ? CRITIC_SYSTEM_PROMPT_QA
-        : CRITIC_SYSTEM_PROMPT_DEFAULT;
+    const systemPrompt = getCriticSystemPrompt(params.routeKind);
 
     const criticMessages: LLMChatMessage[] = [
       {
@@ -130,7 +197,11 @@ export async function evaluateDraftWithCritic(
         content: [
           `Route: ${params.routeKind}`,
           ...(params.routeKind === 'chat' && params.conversationHistory && params.conversationHistory.length > 0
-            ? [`Conversation History:\n${params.conversationHistory.map((m) => `${m.role}: ${m.content}`).join('\n')}`]
+            ? [
+                `Conversation History:\n${params.conversationHistory
+                  .map((m) => `${m.role}: ${serializeMessageContent(m.content)}`)
+                  .join('\n')}`,
+              ]
             : []),
           `User request:\n${params.userText}`,
           `Candidate answer:\n${params.draftText}`,

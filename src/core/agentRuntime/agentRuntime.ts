@@ -53,7 +53,13 @@ import {
 } from './canaryPolicy';
 import { runImageGenAction } from '../actions/imageGenAction';
 import { parseToolCallEnvelope } from './toolCallParser';
-import { buildToolIntentReason, buildVerificationToolNames, stripToolEnvelopeDraft } from './toolVerification';
+import {
+  buildToolIntentReason,
+  buildVerificationToolNames,
+  deriveVerificationIntent,
+  stripToolEnvelopeDraft,
+  VerificationIntent,
+} from './toolVerification';
 
 
 /** Execute one chat turn using routing, context, and tool follow-up metadata. */
@@ -798,35 +804,108 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
   const runToolTriggeredVerification = async (params: {
     routeKind: 'chat' | 'coding' | 'search';
     toolIntentReason: string;
+    verificationIntent: VerificationIntent;
     initialDraft: string;
   }): Promise<string> => {
     const initialDraft = stripToolEnvelopeDraft(params.initialDraft) ?? undefined;
-    const firstPass = await runRouteVerificationPass({
-      phase: 'tool_verify_pass_a',
-      routeKind: params.routeKind,
-      verificationReason: params.toolIntentReason,
-      priorDraft: initialDraft,
-    });
-    const secondPass = await runRouteVerificationPass({
-      phase: 'tool_verify_pass_b',
-      routeKind: params.routeKind,
-      verificationReason: params.toolIntentReason,
-      priorDraft: firstPass,
-    });
+    const runRouteTwoPassVerification = async (phasePrefix: string): Promise<string> => {
+      const firstPass = await runRouteVerificationPass({
+        phase: `${phasePrefix}_a`,
+        routeKind: params.routeKind,
+        verificationReason: params.toolIntentReason,
+        priorDraft: initialDraft,
+      });
+      const secondPass = await runRouteVerificationPass({
+        phase: `${phasePrefix}_b`,
+        routeKind: params.routeKind,
+        verificationReason: params.toolIntentReason,
+        priorDraft: firstPass,
+      });
+      const compared = await runVerificationComparePass({
+        phase: `${phasePrefix}_compare`,
+        routeKind: params.routeKind,
+        verificationReason: params.toolIntentReason,
+        draftA: firstPass,
+        draftB: secondPass,
+      });
+      return ensurePlainVerificationAnswer({
+        routeKind: params.routeKind,
+        verificationReason: params.toolIntentReason,
+        candidate: compared,
+        fallbackDraft: secondPass || firstPass || initialDraft,
+      });
+    };
 
-    const compared = await runVerificationComparePass({
-      phase: 'tool_verify_compare',
-      routeKind: params.routeKind,
-      verificationReason: params.toolIntentReason,
-      draftA: firstPass,
-      draftB: secondPass,
-    });
-    return ensurePlainVerificationAnswer({
-      routeKind: params.routeKind,
-      verificationReason: params.toolIntentReason,
-      candidate: compared,
-      fallbackDraft: secondPass || firstPass || initialDraft,
-    });
+    if (params.routeKind === 'search') {
+      return runRouteTwoPassVerification('tool_verify_search');
+    }
+
+    const routePass = params.verificationIntent.wantsRouteCrosscheck
+      ? await runRouteVerificationPass({
+          phase: 'tool_verify_route_pass',
+          routeKind: params.routeKind,
+          verificationReason: params.toolIntentReason,
+          priorDraft: initialDraft,
+        })
+      : null;
+
+    const searchPass = params.verificationIntent.wantsSearchRefresh
+      ? await runSearchPass({
+          phase: 'tool_verify_search_pass',
+          revisionInstruction: params.toolIntentReason,
+          priorDraft: routePass ?? initialDraft,
+          allowToolEnvelope: false,
+        })
+      : null;
+
+    if (routePass && searchPass) {
+      const compared = await runVerificationComparePass({
+        phase: 'tool_verify_cross_compare',
+        routeKind: params.routeKind,
+        verificationReason: `${params.toolIntentReason}\nCross-check with fresh search evidence.`,
+        draftA: routePass,
+        draftB: searchPass,
+      });
+      return ensurePlainVerificationAnswer({
+        routeKind: params.routeKind,
+        verificationReason: params.toolIntentReason,
+        candidate: compared,
+        fallbackDraft: searchPass || routePass || initialDraft,
+      });
+    }
+
+    if (searchPass) {
+      return ensurePlainVerificationAnswer({
+        routeKind: params.routeKind,
+        verificationReason: params.toolIntentReason,
+        candidate: searchPass,
+        fallbackDraft: routePass || initialDraft,
+      });
+    }
+
+    if (routePass) {
+      const secondRoutePass = await runRouteVerificationPass({
+        phase: 'tool_verify_route_pass_b',
+        routeKind: params.routeKind,
+        verificationReason: params.toolIntentReason,
+        priorDraft: routePass,
+      });
+      const compared = await runVerificationComparePass({
+        phase: 'tool_verify_route_compare',
+        routeKind: params.routeKind,
+        verificationReason: params.toolIntentReason,
+        draftA: routePass,
+        draftB: secondRoutePass,
+      });
+      return ensurePlainVerificationAnswer({
+        routeKind: params.routeKind,
+        verificationReason: params.toolIntentReason,
+        candidate: compared,
+        fallbackDraft: secondRoutePass || routePass || initialDraft,
+      });
+    }
+
+    return runRouteTwoPassVerification('tool_verify_fallback');
   };
 
   // --- SEARCH AGENT ---
@@ -837,28 +916,36 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
       const searchToolEnvelope = parseToolCallEnvelope(draftText);
       if (searchToolEnvelope) {
         const toolIntentReason = buildToolIntentReason(searchToolEnvelope.calls);
+        const verificationIntent = deriveVerificationIntent('search', searchToolEnvelope.calls);
         logger.info(
-          { traceId, toolCalls: searchToolEnvelope.calls.map((call) => call.name) },
+          {
+            traceId,
+            toolCalls: searchToolEnvelope.calls.map((call) => call.name),
+            verificationIntent,
+          },
           'Search route requested tool verification; running verification redispatch',
         );
         draftText = await runToolTriggeredVerification({
           routeKind: 'search',
           toolIntentReason,
+          verificationIntent,
           initialDraft: draftText,
         });
         toolVerificationRedispatches.push({
           route: 'search',
           toolCalls: searchToolEnvelope.calls.map((call) => call.name),
+          verificationIntent,
         });
         if (Array.isArray(agentEventsJson)) {
           agentEventsJson.push({
-            type: 'tool_verify_redispatch',
-            timestamp: new Date().toISOString(),
-            details: {
-              route: 'search',
-              toolCalls: searchToolEnvelope.calls.map((call) => call.name),
-            },
-          });
+                type: 'tool_verify_redispatch',
+                timestamp: new Date().toISOString(),
+                details: {
+                  route: 'search',
+                  toolCalls: searchToolEnvelope.calls.map((call) => call.name),
+                  verificationIntent,
+                },
+              });
         }
         toolsExecuted = true;
       }
@@ -934,8 +1021,13 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
             toolsExecuted = true;
           } else {
             const toolIntentReason = buildToolIntentReason(envelope.calls);
+            const verificationIntent = deriveVerificationIntent(agentDecision.kind, envelope.calls);
             logger.info(
-              { traceId, toolCalls: envelope.calls.map((call) => call.name) },
+              {
+                traceId,
+                toolCalls: envelope.calls.map((call) => call.name),
+                verificationIntent,
+              },
               'Tool verification requested without executable tools; redispatching verification cycle',
             );
             if (agentDecision.kind !== 'chat' && agentDecision.kind !== 'coding') {
@@ -946,11 +1038,13 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
             draftText = await runToolTriggeredVerification({
               routeKind: agentDecision.kind,
               toolIntentReason,
+              verificationIntent,
               initialDraft: draftText,
             });
             toolVerificationRedispatches.push({
               route: agentDecision.kind,
               toolCalls: envelope.calls.map((call) => call.name),
+              verificationIntent,
             });
             if (Array.isArray(agentEventsJson)) {
               agentEventsJson.push({
@@ -959,6 +1053,7 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
                 details: {
                   route: agentDecision.kind,
                   toolCalls: envelope.calls.map((call) => call.name),
+                  verificationIntent,
                 },
               });
             }

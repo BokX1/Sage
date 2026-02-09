@@ -65,4 +65,80 @@ describe('criticAgent', () => {
 
     expect(result).toBeNull();
   });
+
+  it('uses coding-specific critic prompt for coding route', async () => {
+    mockChat.mockResolvedValue({
+      content: JSON.stringify({
+        score: 0.6,
+        verdict: 'revise',
+        issues: ['Missing edge case'],
+        rewritePrompt: 'Handle invalid input explicitly.',
+      }),
+    });
+
+    await evaluateDraftWithCritic({
+      guildId: 'guild-1',
+      routeKind: 'coding',
+      userText: 'Write a parser',
+      draftText: 'function parse() {}',
+    });
+
+    const request = mockChat.mock.calls[0]?.[0] as { messages: Array<{ content: string }> };
+    expect(request.messages[0].content).toContain('code-quality critic');
+    expect(request.messages[0].content).toContain('missing imports/dependencies');
+  });
+
+  it('uses search-specific critic prompt for search route', async () => {
+    mockChat.mockResolvedValue({
+      content: JSON.stringify({
+        score: 0.55,
+        verdict: 'revise',
+        issues: ['No source cues'],
+        rewritePrompt: 'Add domain-level citations.',
+      }),
+    });
+
+    await evaluateDraftWithCritic({
+      guildId: 'guild-1',
+      routeKind: 'search',
+      userText: 'What is the latest Node.js LTS?',
+      draftText: 'Node.js LTS is 20.',
+    });
+
+    const request = mockChat.mock.calls[0]?.[0] as { messages: Array<{ content: string }> };
+    expect(request.messages[0].content).toContain('factuality and freshness critic');
+    expect(request.messages[0].content).toContain('source cues');
+  });
+
+  it('serializes non-text chat history content in critic payload', async () => {
+    mockChat.mockResolvedValue({
+      content: JSON.stringify({
+        score: 0.9,
+        verdict: 'pass',
+        issues: [],
+        rewritePrompt: '',
+      }),
+    });
+
+    await evaluateDraftWithCritic({
+      guildId: 'guild-1',
+      routeKind: 'chat',
+      userText: 'thoughts?',
+      draftText: 'Looks good.',
+      conversationHistory: [
+        {
+          role: 'assistant',
+          content: [{ type: 'image_url', image_url: { url: 'https://example.com/cat.png' } }],
+        },
+        {
+          role: 'user',
+          content: [{ type: 'text', text: 'Nice image' }],
+        },
+      ],
+    });
+
+    const request = mockChat.mock.calls[0]?.[0] as { messages: Array<{ content: string }> };
+    expect(request.messages[1].content).toContain('assistant: [image]');
+    expect(request.messages[1].content).toContain('user: Nice image');
+  });
 });

@@ -1,9 +1,21 @@
 import { AgentKind } from '../orchestration/agentSelector';
 import { parseToolCallEnvelope } from './toolCallParser';
 
-const SEARCH_VERIFY_TOOL = 'verify_search_again';
-const CHAT_VERIFY_TOOL = 'verify_chat_again';
-const CODE_VERIFY_TOOL = 'verify_code_again';
+export const SEARCH_VERIFY_TOOL = 'verify_search_again';
+export const CHAT_VERIFY_TOOL = 'verify_chat_again';
+export const CODE_VERIFY_TOOL = 'verify_code_again';
+
+export interface VerificationCall {
+  name: string;
+  args: Record<string, unknown>;
+}
+
+export interface VerificationIntent {
+  wantsSearchRefresh: boolean;
+  wantsRouteCrosscheck: boolean;
+  requestedVirtualTools: string[];
+  unknownTools: string[];
+}
 
 export function buildVerificationToolNames(routeKind: AgentKind): string[] {
   switch (routeKind) {
@@ -16,6 +28,37 @@ export function buildVerificationToolNames(routeKind: AgentKind): string[] {
     default:
       return [];
   }
+}
+
+export function deriveVerificationIntent(
+  routeKind: AgentKind,
+  calls: VerificationCall[],
+): VerificationIntent {
+  const allowedVirtualTools = new Set(buildVerificationToolNames(routeKind));
+  const requestedVirtualTools: string[] = [];
+  const unknownTools: string[] = [];
+
+  for (const call of calls) {
+    if (allowedVirtualTools.has(call.name)) {
+      requestedVirtualTools.push(call.name);
+    } else {
+      unknownTools.push(call.name);
+    }
+  }
+
+  const hasSearchCall = requestedVirtualTools.includes(SEARCH_VERIFY_TOOL);
+  const hasRouteSpecificCall =
+    (routeKind === 'chat' && requestedVirtualTools.includes(CHAT_VERIFY_TOOL)) ||
+    (routeKind === 'coding' && requestedVirtualTools.includes(CODE_VERIFY_TOOL)) ||
+    routeKind === 'search';
+  const fallbackRouteCrosscheck = routeKind === 'chat' || routeKind === 'coding';
+
+  return {
+    wantsSearchRefresh: hasSearchCall || (routeKind === 'search' && (calls.length > 0 || unknownTools.length > 0)),
+    wantsRouteCrosscheck: hasRouteSpecificCall || fallbackRouteCrosscheck,
+    requestedVirtualTools,
+    unknownTools,
+  };
 }
 
 export function buildToolIntentReason(

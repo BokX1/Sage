@@ -28,39 +28,29 @@ export interface AgentSelectorParams {
 
 const AGENT_SELECTOR_PROMPT = `# Sage Agent Selector
 
-You are an intent classification engine. Your only job is to analyze the user message and select the best agent.
+You are an intent routing engine. Select exactly one best agent for the current user turn.
 
 ## Available agents
 
 | Agent | Purpose | Primary signals |
 |-------|---------|-----------------|
-| \`coding\` | Software development, debugging, and code generation | "write a script", "fix this bug", "python", "js", "error", "api", "function" |
-| \`creative\` | Create, edit, or modify images | "draw", "paint", "sketch", "generate image", "make a picture", "visualize" |
-| \`search\` | Time-sensitive facts and current information | "search", "look up", "google", "find out", "price of", "weather", "latest news", URLs |
-| \`chat\` | General conversation, social context, admin, and analysis | default fallback |
+| \`coding\` | Write, debug, explain, or refactor software/code | "fix this bug", "write function", stack traces, code blocks, APIs, tests |
+| \`creative\` | Generate or edit images/visuals | "draw", "generate image", "edit this picture", "make it darker" |
+| \`search\` | Fresh, time-sensitive, web-verifiable facts | "latest", "today", "current", prices, weather, releases, news, URLs |
+| \`chat\` | General discussion, analysis, discord/community/admin requests | default fallback |
 
-## Classification rules
+## Routing rules
 
-1. Explicit trigger words:
-- "draw me a cat" -> \`creative\`
-- "write a python script" -> \`coding\`
-- "search for Python tutorials" -> \`search\`
-
-2. Capabilities mapping:
-- "summarize this channel" -> \`chat\`
-- "who is in voice" -> \`chat\`
-- "change settings" -> \`chat\`
-- "admin stats" -> \`chat\`
-
-3. Context continuation:
-- If last bot message was an image and user says "make it darker" -> \`creative\`
-- If discussing code and user says "optimize it" -> \`coding\`
-
-4. Temporal/current signals:
-- "today", "yesterday", "current", "now", "price of", "stock", "weather" -> \`search\`
-
-5. Fallback:
-- When uncertain, select \`chat\`.
+1. Choose by primary user intent for this turn, not by isolated keywords.
+2. Prefer \`search\` for requests requiring up-to-date external facts.
+3. For mixed coding + freshness requests:
+   - Choose \`search\` when the user first needs current factual verification.
+   - Choose \`coding\` when the main ask is implementation/debugging and freshness is secondary.
+4. Continue prior context when explicit:
+   - Image follow-up edits -> \`creative\`
+   - Code follow-up iterations -> \`coding\`
+5. Discord operational/community tasks (voice presence, summaries, settings, moderation/admin) -> \`chat\`
+6. If uncertain, choose \`chat\`.
 
 ## Temperature guidance
 
@@ -78,7 +68,9 @@ Return only valid JSON:
   "reasoning": "brief explanation",
   "agent": "chat|coding|search|creative",
   "temperature": 0.7
-}`;
+}
+
+No markdown. No extra text.`;
 
 const DEFAULT_CHAT_AGENT: AgentDecision = {
   kind: 'chat',
@@ -90,9 +82,10 @@ const DEFAULT_CHAT_AGENT: AgentDecision = {
 
 interface AgentSelectorResponse {
   agent?: string;
-  experts?: string[]; // Legacy field ignored for backwards compatibility.
+  kind?: string;
+  experts?: string[];
   reasoning?: string;
-  temperature?: number;
+  temperature?: number | string;
 }
 
 function parseAgentResponse(content: string): AgentSelectorResponse | null {
@@ -134,6 +127,12 @@ function getDefaultTemperature(agent: AgentKind): number {
     default:
       return 0.7;
   }
+}
+
+function normalizeAgentKind(raw: unknown): AgentKind {
+  const validAgents: AgentKind[] = ['chat', 'coding', 'search', 'creative'];
+  const normalized = typeof raw === 'string' ? raw.trim().toLowerCase() : '';
+  return validAgents.includes(normalized as AgentKind) ? (normalized as AgentKind) : 'chat';
 }
 
 function clampTemperature(value: number, fallback: number): number {
@@ -189,15 +188,18 @@ export async function decideAgent(params: AgentSelectorParams): Promise<AgentDec
       return DEFAULT_CHAT_AGENT;
     }
 
-    const validAgents: AgentKind[] = ['chat', 'coding', 'search', 'creative'];
-    const agentKind = validAgents.includes(parsed.agent as AgentKind)
-      ? (parsed.agent as AgentKind)
-      : 'chat';
+    const agentKind = normalizeAgentKind(parsed.agent ?? parsed.kind);
     const allowTools = agentKind === 'chat' || agentKind === 'coding';
     const fallbackTemperature = getDefaultTemperature(agentKind);
-    const temperature =
+    const parsedTemperature =
       typeof parsed.temperature === 'number'
-        ? clampTemperature(parsed.temperature, fallbackTemperature)
+        ? parsed.temperature
+        : typeof parsed.temperature === 'string'
+          ? Number(parsed.temperature)
+          : Number.NaN;
+    const temperature =
+      Number.isFinite(parsedTemperature)
+        ? clampTemperature(parsedTemperature, fallbackTemperature)
         : fallbackTemperature;
 
     const decision: AgentDecision = {
