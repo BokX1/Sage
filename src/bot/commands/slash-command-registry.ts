@@ -3,6 +3,7 @@ import { config } from '../../core/config/legacy-config-adapter';
 import { logger } from '../../core/utils/logger';
 import { voiceCommands } from './voice-channel-handlers';
 
+/** Static slash command definitions registered with Discord at startup. */
 const commandDefinitions = [
   new SlashCommandBuilder().setName('ping').setDescription('Replies with Pong!'),
   new SlashCommandBuilder()
@@ -109,11 +110,14 @@ const commandDefinitions = [
     ),
 ];
 
-/** Discord slash-command payloads registered at startup. */
+/** Discord slash-command payloads serialized for REST registration. */
 export const commandPayloads = commandDefinitions.map((command) => command.toJSON());
 
 /**
- * Register slash commands either globally or per development guild.
+ * Register slash commands either globally or per development guild(s).
+ *
+ * @returns Promise resolved once all registration calls complete.
+ * @throws Error Re-throws Discord REST failures after logging for upstream handling.
  */
 export async function registerCommands() {
   const rest = new REST({ version: '10' }).setToken(config.discordToken);
@@ -140,5 +144,6 @@ export async function registerCommands() {
     }
   } catch (error) {
     logger.error(error);
+    throw error;
   }
 }

@@ -129,7 +129,7 @@ interface RouterLLMResponse {
 export async function decideRoute(params: LLMRouterParams): Promise<RouteDecision> {
     const { userText, invokedBy, hasGuild, conversationHistory, replyReferenceContent, apiKey } = params;
 
-    // Fast path: admin route for slash commands
+    // Fast path: manage route for slash commands
     if (invokedBy === 'command' && hasGuild) {
         return {
             kind: 'manage',

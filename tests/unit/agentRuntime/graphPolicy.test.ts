@@ -5,7 +5,7 @@ import { AgentGraph } from '../../../src/core/agentRuntime/agent-types';
 function baseGraph(): AgentGraph {
   return {
     version: 'v1',
-    routeKind: 'qa',
+    routeKind: 'chat',
     createdAt: new Date().toISOString(),
     nodes: [
       {

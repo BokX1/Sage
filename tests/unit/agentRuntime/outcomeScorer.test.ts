@@ -4,7 +4,7 @@ import { scoreTraceOutcome } from '../../../src/core/agentRuntime/outcomeScorer'
 describe('outcomeScorer', () => {
   it('flags empty fallback replies as low confidence', () => {
     const score = scoreTraceOutcome({
-      routeKind: 'qa',
+      routeKind: 'chat',
       replyText: "I'm having trouble connecting right now. Please try again later.",
       budgetJson: { failedTasks: 2 },
     });
@@ -17,7 +17,7 @@ describe('outcomeScorer', () => {
 
   it('scores healthy responses positively', () => {
     const score = scoreTraceOutcome({
-      routeKind: 'qa',
+      routeKind: 'chat',
       replyText: 'Here is a concrete answer with clear steps.',
       toolJson: { executed: true },
       qualityJson: { critic: [{ score: 0.9, verdict: 'pass' }] },

@@ -212,7 +212,7 @@ async function refinePrompt(
         const refinerModel = await resolveModelForRequest({
             guildId: null,
             messages,
-            route: 'manage', // Use admin route for fast instruction following
+            route: 'manage', // Use manage route for fast instruction following
             allowedModels: ['gemini-fast', 'openai-fast'], // Allow fast reasoning models
         });
 

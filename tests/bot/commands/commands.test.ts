@@ -5,7 +5,8 @@ vi.mock('discord.js', async () => {
 
   class MockREST {
     static instances: MockREST[] = [];
-    put = vi.fn().mockResolvedValue(undefined);
+    static putImpl = vi.fn().mockResolvedValue(undefined);
+    put = vi.fn((...args: unknown[]) => MockREST.putImpl(...args));
     token?: string;
 
     constructor() {
@@ -54,6 +55,7 @@ describe('Discord command registry', () => {
     if (restCtor.instances) {
       restCtor.instances.length = 0;
     }
+    (REST as unknown as { putImpl: ReturnType<typeof vi.fn> }).putImpl = vi.fn().mockResolvedValue(undefined);
   });
 
   it('does not include removed model commands', async () => {
@@ -69,10 +71,9 @@ describe('Discord command registry', () => {
   });
 
   it('registers commands without network calls', async () => {
-    // Explicitly set DEV_GUILD_ID to trigger the dual-registration path
     process.env.DEV_GUILD_ID = 'test-guild-id';
 
-    const { registerCommands, commandPayloads } = await import('../../../src/bot/commands/slash-command-registry');
+    const { registerCommands } = await import('../../../src/bot/commands/slash-command-registry');
     await expect(registerCommands()).resolves.toBeUndefined();
 
     const { REST } = await import('discord.js');
@@ -80,7 +81,6 @@ describe('Discord command registry', () => {
     expect(instances).toHaveLength(1);
 
     const restInstance = instances[0] as { put: ReturnType<typeof vi.fn> };
-    // Expect 2 calls: one for guild commands, one to clear global commands
     expect(restInstance.put).toHaveBeenCalledTimes(2);
     expect(restInstance.put).toHaveBeenNthCalledWith(
       1,
@@ -93,4 +93,20 @@ describe('Discord command registry', () => {
       expect.objectContaining({ body: [] }),
     );
   });
+
+  it('rethrows registration failures after logging', async () => {
+    process.env.DEV_GUILD_ID = 'test-guild-id';
+
+    const { registerCommands } = await import('../../../src/bot/commands/slash-command-registry');
+
+    const { REST } = await import('discord.js');
+    const instances = (REST as unknown as { instances?: unknown[] }).instances ?? [];
+    expect(instances).toHaveLength(0);
+
+    const failure = new Error('network down');
+    (REST as unknown as { putImpl: ReturnType<typeof vi.fn> }).putImpl = vi.fn().mockRejectedValue(failure);
+
+    await expect(registerCommands()).rejects.toThrow('network down');
+  });
+
 });

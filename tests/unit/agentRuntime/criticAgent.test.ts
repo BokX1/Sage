@@ -39,7 +39,7 @@ describe('criticAgent', () => {
 
     const result = await evaluateDraftWithCritic({
       guildId: 'guild-1',
-      routeKind: 'qa',
+      routeKind: 'chat',
       userText: 'Explain X',
       draftText: 'Answer',
       apiKey: 'key',
@@ -58,7 +58,7 @@ describe('criticAgent', () => {
 
     const result = await evaluateDraftWithCritic({
       guildId: 'guild-1',
-      routeKind: 'qa',
+      routeKind: 'chat',
       userText: 'Explain X',
       draftText: 'Answer',
     });

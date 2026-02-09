@@ -20,7 +20,7 @@ describe('canaryPolicy', () => {
 
     const decision = evaluateAgenticCanary({
       traceId: 'trace-1',
-      routeKind: 'qa',
+      routeKind: 'chat',
       guildId: 'guild-1',
       config,
       nowMs: 1_000,
@@ -34,7 +34,7 @@ describe('canaryPolicy', () => {
     const config = normalizeCanaryConfig({
       enabled: true,
       rolloutPercent: 100,
-      routeAllowlist: parseRouteAllowlistCsv('qa,coding'),
+      routeAllowlist: parseRouteAllowlistCsv('chat,coding'),
     });
 
     const decision = evaluateAgenticCanary({
@@ -57,7 +57,7 @@ describe('canaryPolicy', () => {
 
     const decision = evaluateAgenticCanary({
       traceId: 'trace-3',
-      routeKind: 'qa',
+      routeKind: 'chat',
       guildId: 'guild-1',
       config,
       nowMs: 3_000,
@@ -84,7 +84,7 @@ describe('canaryPolicy', () => {
 
     const decision = evaluateAgenticCanary({
       traceId: 'trace-4',
-      routeKind: 'qa',
+      routeKind: 'chat',
       guildId: 'guild-1',
       config,
       nowMs: 10_301,

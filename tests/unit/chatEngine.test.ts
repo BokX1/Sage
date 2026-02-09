@@ -86,7 +86,7 @@ vi.mock('../../src/core/llm/model-resolver', () => ({
   resolveModelForRequest: vi.fn().mockResolvedValue('kimi'),
   resolveModelForRequestDetailed: vi.fn().mockResolvedValue({
     model: 'kimi',
-    route: 'qa',
+    route: 'chat',
     requirements: {},
     allowlistApplied: false,
     candidates: ['kimi'],

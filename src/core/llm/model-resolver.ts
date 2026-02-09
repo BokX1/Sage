@@ -56,10 +56,10 @@ export interface ModelResolutionDetails {
 const ROUTE_MODEL_CHAINS: Record<string, string[]> = {
   coding: ['kimi', 'qwen-coder', 'deepseek'],
   search: ['gemini-search', 'perplexity-fast', 'perplexity-reasoning', 'nomnom'],
-  analyze: ['openai-large', 'gemini-fast', 'mistral', 'kimi'], // Merged summarize + voice
-  chat: ['openai', 'kimi', 'gemini-fast', 'claude-fast'], // Merged qa + memory + social
-  art: ['imagen-4', 'flux', 'flux-2-dev', 'klein'], // Renamed from image_generate
-  manage: ['gemini-fast', 'openai-fast'], // Renamed from admin
+  analyze: ['openai-large', 'gemini-fast', 'mistral', 'kimi'],
+  chat: ['openai', 'kimi', 'gemini-fast', 'claude-fast'],
+  art: ['imagen-4', 'flux', 'flux-2-dev', 'klein'],
+  manage: ['gemini-fast', 'openai-fast'],
 };
 
 function hasPart(messages: LLMChatMessage[], type: 'image_url' | 'input_audio'): boolean {
@@ -205,7 +205,7 @@ function buildRequirements(params: ResolveModelParams): ModelRequirement {
 export async function resolveModelForRequestDetailed(
   params: ResolveModelParams,
 ): Promise<ModelResolutionDetails> {
-  const route = (params.route ?? 'qa').toLowerCase();
+  const route = (params.route ?? 'chat').toLowerCase();
   const baseCandidates = buildBaseCandidateChain(params);
   const allowed = applyAllowedModels(baseCandidates, params.allowedModels);
   const candidates = rankByHealth(allowed.candidates);
