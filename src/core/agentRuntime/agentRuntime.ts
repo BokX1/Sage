@@ -688,6 +688,34 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
     searchDraft: string;
     summaryReason?: string;
   }): Promise<string> => {
+    const buildSearchFindingsBlob = (draft: string): string => {
+      const trimmedDraft = draft.trim();
+      const strippedDraft = stripToolEnvelopeDraft(trimmedDraft);
+
+      // If we unexpectedly receive a verification envelope here, avoid sending raw JSON as "findings".
+      const baseFindings =
+        strippedDraft ??
+        (parseToolCallEnvelope(trimmedDraft)
+          ? 'No plain-text search findings were available. Re-synthesize from the request and preserve uncertainty cues.'
+          : trimmedDraft);
+
+      const maxChars = 32_000;
+      if (baseFindings.length <= maxChars) {
+        return baseFindings;
+      }
+
+      // Preserve both the beginning and end because conclusions often appear in the tail.
+      const headChars = 20_000;
+      const tailChars = 10_000;
+      const omitted = Math.max(0, baseFindings.length - headChars - tailChars);
+      return (
+        `${baseFindings.slice(0, headChars).trimEnd()}\n\n` +
+        `[... ${omitted.toLocaleString()} chars omitted ...]\n\n` +
+        `${baseFindings.slice(-tailChars).trimStart()}`
+      );
+    };
+
+    const searchFindingsBlob = buildSearchFindingsBlob(params.searchDraft);
     const summaryModelDetails = await resolveModelForRequestDetailed({
       guildId,
       messages: [
@@ -695,7 +723,7 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
           role: 'user',
           content:
             `Original user request:\n${userText}\n\n` +
-            `Search findings:\n${(stripToolEnvelopeDraft(params.searchDraft) ?? params.searchDraft).slice(0, 12_000)}`,
+            `Search findings:\n${searchFindingsBlob}`,
         },
       ],
       route: 'chat',
@@ -730,7 +758,7 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
         role: 'user',
         content:
           `Original user request:\n${userText}\n\n` +
-          `Search findings:\n${(stripToolEnvelopeDraft(params.searchDraft) ?? params.searchDraft).slice(0, 12_000)}` +
+          `Search findings:\n${searchFindingsBlob}` +
           (params.summaryReason?.trim() ? `\n\nFocus:\n${params.summaryReason.trim()}` : ''),
       },
     ];

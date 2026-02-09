@@ -232,11 +232,59 @@ describe('Autopilot Runtime', () => {
       'Best value is Vendor C at $479 after shipping; Vendor A is second. Sources: vendor pages.',
     );
     expect(mockLLM.chat).toHaveBeenCalledTimes(1);
+    const summaryRequest = mockLLM.chat.mock.calls[0]?.[0] as {
+      messages: Array<{ role: string; content: string }>;
+    };
+    expect(summaryRequest.messages).toHaveLength(2);
+    expect(summaryRequest.messages[1].role).toBe('user');
+    expect(summaryRequest.messages[1].content).toContain(
+      'Search findings:\nRaw findings: Vendor A $499, Vendor B $529, Vendor C $479',
+    );
     const usedRoutes = mockResolveModelForRequestDetailed.mock.calls.map(
       (call: [{ route?: string }]) => call[0]?.route,
     );
     expect(usedRoutes).toContain('search');
     expect(usedRoutes).toContain('chat');
+  });
+
+  it('keeps both head and tail of large search findings in complex summary handoff', async () => {
+    mockDecideAgent.mockResolvedValue({
+      kind: 'search',
+      contextProviders: ['Memory'],
+      allowTools: false,
+      temperature: 0.3,
+      searchMode: 'complex',
+      reasoningText: 'search complex route with large findings',
+    });
+    const tailMarker = 'TAIL_FINDING_VENDOR_Z';
+    const longSearchFindings = `Lead findings start.\n${'A'.repeat(45_000)}\n${tailMarker}`;
+    mockSearchLLM.chat.mockResolvedValue({
+      content: longSearchFindings,
+    });
+    mockLLM.chat.mockResolvedValue({
+      content: 'Synthesized result.',
+    });
+
+    await runChatTurn({
+      traceId: 'test-trace',
+      userId: 'test-user',
+      channelId: 'test-channel',
+      guildId: 'test-guild',
+      messageId: 'msg-1',
+      userText: 'compare latest gpu prices and tell me best value',
+      userProfileSummary: null,
+      replyToBotText: null,
+      invokedBy: 'mention',
+      isVoiceActive: true,
+    });
+
+    const summaryRequest = mockLLM.chat.mock.calls[0]?.[0] as {
+      messages: Array<{ role: string; content: string }>;
+    };
+    const summaryUserContent = summaryRequest.messages[1]?.content ?? '';
+    expect(summaryUserContent).toContain('Search findings:\n');
+    expect(summaryUserContent).toContain(tailMarker);
+    expect(summaryUserContent).toContain('chars omitted');
   });
 
   it('injects runtime capability manifest into the system prompt', async () => {
