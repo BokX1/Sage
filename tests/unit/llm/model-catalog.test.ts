@@ -99,6 +99,13 @@ describe('modelCatalog', () => {
                     description: 'Most powerful model'
                 })
             ).toBe(false);
+            expect(
+                inferSearchCapabilityFromMetadata({
+                    id: 'nomnom',
+                    aliases: [],
+                    description: 'General model'
+                })
+            ).toBe(true);
         });
     });
 });

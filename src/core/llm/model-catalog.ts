@@ -113,7 +113,7 @@ export function inferSearchCapabilityFromMetadata(params: {
 
   // Provider metadata does not always expose an explicit search flag.
   // Infer from stable search-oriented naming/description patterns.
-  return /\b(gemini-search|perplexity-fast|perplexity-reasoning|sonar|search|web[-\s]?search|web[-\s]?research|scrape|crawl)\b/.test(
+  return /\b(gemini-search|perplexity-fast|perplexity-reasoning|nomnom|sonar|search|web[-\s]?search|web[-\s]?research|scrape|crawl)\b/.test(
     searchableBlob,
   );
 }

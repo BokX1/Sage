@@ -216,10 +216,12 @@ describe('Autopilot Runtime', () => {
 
     expect(result.replyText).toBe('Recovered via perplexity-fast with sources.');
     expect(mockSearchLLM.chat).toHaveBeenCalledTimes(2);
-    const firstAttempt = mockSearchLLM.chat.mock.calls[0]?.[0] as { model: string };
-    const secondAttempt = mockSearchLLM.chat.mock.calls[1]?.[0] as { model: string };
+    const firstAttempt = mockSearchLLM.chat.mock.calls[0]?.[0] as { model: string; timeout: number };
+    const secondAttempt = mockSearchLLM.chat.mock.calls[1]?.[0] as { model: string; timeout: number };
     expect(firstAttempt.model).toBe('gemini-search');
     expect(secondAttempt.model).toBe('perplexity-fast');
+    expect(firstAttempt.timeout).toBe(300_000);
+    expect(secondAttempt.timeout).toBe(300_000);
 
     const searchResolveCall = mockResolveModelForRequestDetailed.mock.calls.find(
       (call: [{ route?: string; allowedModels?: string[] }]) => call[0]?.route === 'search',
@@ -229,6 +231,78 @@ describe('Autopilot Runtime', () => {
       'perplexity-fast',
       'perplexity-reasoning',
     ]);
+  });
+
+  it('enables nomnom only when the user message contains a link', async () => {
+    mockDecideAgent.mockResolvedValue({
+      kind: 'search',
+      contextProviders: ['Memory'],
+      temperature: 0.3,
+      searchMode: 'simple',
+      reasoningText: 'search with direct link',
+    });
+    mockResolveModelForRequestDetailed.mockImplementation(async (params: { route?: string }) => {
+      const route = (params.route ?? 'chat').toLowerCase();
+      if (route === 'search') {
+        return {
+          model: 'gemini-search',
+          route,
+          requirements: {},
+          allowlistApplied: true,
+          candidates: ['gemini-search', 'perplexity-fast', 'perplexity-reasoning'],
+          decisions: [{ model: 'gemini-search', accepted: true, reason: 'selected', healthScore: 0.8 }],
+        };
+      }
+      return {
+        model: 'openai-large',
+        route,
+        requirements: {},
+        allowlistApplied: false,
+        candidates: ['openai-large'],
+        decisions: [{ model: 'openai-large', accepted: true, reason: 'selected', healthScore: 0.8 }],
+      };
+    });
+    mockSearchLLM.chat.mockResolvedValue({
+      content: 'Scraped and summarized page content.',
+    });
+
+    const result = await runChatTurn({
+      traceId: 'test-trace',
+      userId: 'test-user',
+      channelId: 'test-channel',
+      guildId: 'test-guild',
+      messageId: 'msg-1',
+      userText: 'summarize this link https://example.com/report',
+      userProfileSummary: null,
+      replyToBotText: null,
+      invokedBy: 'mention',
+      isVoiceActive: true,
+    });
+
+    expect(result.replyText).toBe('Scraped and summarized page content.');
+    const firstAttempt = mockSearchLLM.chat.mock.calls[0]?.[0] as { model: string; timeout: number };
+    expect(firstAttempt.model).toBe('nomnom');
+    expect(firstAttempt.timeout).toBe(480_000);
+
+    const searchResolveCall = mockResolveModelForRequestDetailed.mock.calls.find(
+      (
+        call: [
+          {
+            route?: string;
+            allowedModels?: string[];
+            featureFlags?: { search?: boolean; reasoning?: boolean; linkScrape?: boolean };
+          },
+        ],
+      ) => call[0]?.route === 'search',
+    )?.[0];
+    expect(searchResolveCall?.allowedModels).toEqual([
+      'gemini-search',
+      'perplexity-fast',
+      'perplexity-reasoning',
+      'nomnom',
+    ]);
+    expect(searchResolveCall?.featureFlags?.search).toBe(true);
+    expect(searchResolveCall?.featureFlags?.linkScrape).toBe(true);
   });
 
   it('runs chat summarization pass for search_mode complex', async () => {

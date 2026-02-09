@@ -75,6 +75,21 @@ describe('resolveModelForRequest', () => {
     expect(details.candidates[0]).toBe('gemini-search');
   });
 
+  it('adds nomnom for search route when link scraping is requested', async () => {
+    const details = await resolveModelForRequestDetailed({
+      guildId: 'guild-1',
+      messages: [{ role: 'user', content: 'summarize https://example.com/release-notes' }],
+      route: 'search',
+      featureFlags: {
+        search: true,
+        linkScrape: true,
+      },
+    });
+
+    expect(details.candidates[0]).toBe('nomnom');
+    expect(details.candidates).toContain('gemini-search');
+  });
+
   it('prefers openai-audio when audio I/O is requested', async () => {
     const model = await resolveModelForRequest({
       guildId: 'guild-1',

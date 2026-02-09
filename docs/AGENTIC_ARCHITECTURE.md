@@ -69,6 +69,7 @@ In Sage, "agentic" means the runtime can:
 - Capability filters cover tools/search/reasoning/vision/audio constraints.
 - Tenant allowlists (`AGENTIC_TENANT_POLICY_JSON`) can constrain model selection.
 - Health telemetry adjusts fallback ordering over time.
+- Search runtime guardrails keep normal search on `gemini-search`, `perplexity-fast`, and `perplexity-reasoning`; `nomnom` is only enabled when the user prompt contains a URL and is prioritized for that turn.
 
 ### 6) Rollout Governance
 

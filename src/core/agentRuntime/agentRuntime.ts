@@ -513,6 +513,18 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
     return trimmed.length > 0 ? trimmed : null;
   };
   const GUARDED_SEARCH_MODELS = ['gemini-search', 'perplexity-fast', 'perplexity-reasoning'] as const;
+  const SEARCH_SCRAPER_MODEL = 'nomnom' as const;
+  const URL_IN_TEXT_PATTERN = /\b(?:https?:\/\/|www\.)[^\s<>()]+/i;
+  const userTextHasLink = URL_IN_TEXT_PATTERN.test(userText);
+  const BASE_SEARCH_TIMEOUT_MS = Math.max(
+    appConfig.TIMEOUT_SEARCH_MS,
+    appConfig.TIMEOUT_CHAT_MS,
+    300_000,
+  );
+  const SCRAPER_SEARCH_TIMEOUT_MS = Math.max(
+    appConfig.TIMEOUT_SEARCH_SCRAPER_MS,
+    BASE_SEARCH_TIMEOUT_MS,
+  );
   const normalizeModelId = (value: string): string => value.trim().toLowerCase();
   const dedupeModelIds = (values: string[]): string[] => {
     const seen = new Set<string>();
@@ -525,13 +537,19 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
     }
     return output;
   };
-  const resolveGuardedSearchAllowlist = (allowedModels: string[] | undefined): string[] => {
+  const resolveGuardedSearchAllowlist = (
+    allowedModels: string[] | undefined,
+    guardedModels: readonly string[],
+  ): string[] => {
     if (!allowedModels || allowedModels.length === 0) {
-      return [...GUARDED_SEARCH_MODELS];
+      return [...guardedModels];
     }
 
     const allowedSet = new Set(allowedModels.map((model) => normalizeModelId(model)));
-    return GUARDED_SEARCH_MODELS.filter((model) => allowedSet.has(model));
+    return guardedModels.filter((model) => allowedSet.has(model));
+  };
+  const resolveSearchTimeoutMs = (modelId: string): number => {
+    return modelId === SEARCH_SCRAPER_MODEL ? SCRAPER_SEARCH_TIMEOUT_MS : BASE_SEARCH_TIMEOUT_MS;
   };
   const runSearchPass = async (params: {
     phase: string;
@@ -571,10 +589,16 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
         ? `User request:\n${userText}\n\n${contextNotes.join('\n\n')}`
         : userText;
 
-    const guardedSearchAllowlist = resolveGuardedSearchAllowlist(tenantPolicy.allowedModels);
+    const searchGuardrailModels = userTextHasLink
+      ? [...GUARDED_SEARCH_MODELS, SEARCH_SCRAPER_MODEL]
+      : [...GUARDED_SEARCH_MODELS];
+    const guardedSearchAllowlist = resolveGuardedSearchAllowlist(
+      tenantPolicy.allowedModels,
+      searchGuardrailModels,
+    );
     if (guardedSearchAllowlist.length === 0) {
       throw new Error(
-        `Search route requires one of: ${GUARDED_SEARCH_MODELS.join(', ')}. ` +
+        `Search route requires one of: ${searchGuardrailModels.join(', ')}. ` +
         'Current tenant allowedModels excludes all guarded search models.',
       );
     }
@@ -586,10 +610,16 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
       allowedModels: guardedSearchAllowlist,
       featureFlags: {
         search: true,
+        linkScrape: userTextHasLink || undefined,
       },
     });
 
+    const preferredAttemptOrder = userTextHasLink
+      ? [SEARCH_SCRAPER_MODEL, ...searchGuardrailModels]
+      : [...searchGuardrailModels];
+
     const attemptOrder = dedupeModelIds([
+      ...preferredAttemptOrder,
       searchModelDetails.model,
       ...searchModelDetails.candidates,
       ...guardedSearchAllowlist,
@@ -607,6 +637,7 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
       candidates: searchModelDetails.candidates,
       decisions: searchModelDetails.decisions,
       allowlistApplied: searchModelDetails.allowlistApplied,
+      linkDetected: userTextHasLink,
       guardrailAllowlist: guardedSearchAllowlist,
       guardrailAttemptOrder: attemptOrder,
     });
@@ -626,6 +657,7 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
     let lastError: unknown = null;
     for (let attemptIndex = 0; attemptIndex < attemptOrder.length; attemptIndex += 1) {
       const attemptModel = attemptOrder[attemptIndex];
+      const attemptTimeoutMs = resolveSearchTimeoutMs(attemptModel);
       const searchClient = createLLMClient('pollinations', { chatModel: attemptModel });
       const startedAt = Date.now();
       try {
@@ -634,7 +666,7 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
           model: attemptModel,
           apiKey,
           temperature: searchTemperature,
-          timeout: 180_000,
+          timeout: attemptTimeoutMs,
         });
         recordModelOutcome({
           model: attemptModel,
@@ -649,6 +681,7 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
           purpose: 'search_guardrail_attempt',
           attempt: attemptIndex + 1,
           attemptsTotal: attemptOrder.length,
+          timeoutMs: attemptTimeoutMs,
           status: 'success',
         });
         return searchResponse.content;
@@ -666,6 +699,7 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
           purpose: 'search_guardrail_attempt',
           attempt: attemptIndex + 1,
           attemptsTotal: attemptOrder.length,
+          timeoutMs: attemptTimeoutMs,
           status: 'failed',
           errorText: error instanceof Error ? error.message : String(error),
         });
@@ -677,6 +711,7 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
             model: attemptModel,
             attempt: attemptIndex + 1,
             attemptsTotal: attemptOrder.length,
+            timeoutMs: attemptTimeoutMs,
             error,
           },
           'Search model attempt failed; trying next guarded search model',

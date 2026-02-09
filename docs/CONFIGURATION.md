@@ -233,6 +233,8 @@ Used by `npm run agentic:replay-gate` and release checks.
 | `RATE_LIMIT_MAX` | Max responses per window | `5` |
 | `RATE_LIMIT_WINDOW_SEC` | Rate-limit window seconds | `10` |
 | `TIMEOUT_CHAT_MS` | Chat/model request timeout | `300000` |
+| `TIMEOUT_SEARCH_MS` | Search-pass timeout baseline (normal search models) | `300000` |
+| `TIMEOUT_SEARCH_SCRAPER_MS` | Search-pass timeout for scraper model (`nomnom`) | `480000` |
 | `TIMEOUT_MEMORY_MS` | Memory/summarization timeout | `600000` |
 
 ---
@@ -295,6 +297,11 @@ AGENTIC_CANARY_ENABLED=true
 AGENTIC_CANARY_PERCENT=100
 AGENTIC_CANARY_ROUTE_ALLOWLIST_CSV=chat,coding,search,creative
 AGENTIC_TENANT_POLICY_JSON={}
+
+TIMEOUT_CHAT_MS=300000
+TIMEOUT_SEARCH_MS=300000
+TIMEOUT_SEARCH_SCRAPER_MS=480000
+TIMEOUT_MEMORY_MS=600000
 
 REPLAY_GATE_LIMIT=200
 REPLAY_GATE_MIN_AVG_SCORE=0.65

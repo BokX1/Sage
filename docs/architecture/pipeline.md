@@ -156,6 +156,7 @@ Runtime behavior:
 3. Optional tenant allowlists filter candidate sets.
 4. Candidate order is health-weighted using rolling outcome history.
 5. Selection telemetry (candidate decisions + fallback reasons) is stored in runtime budget metadata.
+6. Search execution applies runtime guardrails: default attempts are `gemini-search`, `perplexity-fast`, and `perplexity-reasoning`; `nomnom` is injected and prioritized only when the prompt contains a URL.
 
 ---
 

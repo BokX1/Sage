@@ -18,6 +18,7 @@ export type ResolveModelParams = {
   featureFlags?: {
     tools?: boolean;
     search?: boolean;
+    linkScrape?: boolean;
     reasoning?: boolean;
     audioIn?: boolean;
     audioOut?: boolean;
@@ -103,6 +104,10 @@ function buildBaseCandidateChain(params: ResolveModelParams): string[] {
   const hasAudioOutput = !!params.featureFlags?.audioOut;
 
   const candidates: string[] = [...defaultChain];
+
+  if (route === 'search' && params.featureFlags?.linkScrape) {
+    candidates.unshift('nomnom');
+  }
 
   if (route === 'chat' && isLongForm) {
     candidates.unshift('openai-large');
