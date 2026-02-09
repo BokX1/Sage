@@ -183,4 +183,3 @@ CREATE INDEX "AgentRun_traceId_nodeId_idx" ON "AgentRun"("traceId", "nodeId");
 
 -- CreateIndex
 CREATE INDEX "AgentRun_agent_createdAt_idx" ON "AgentRun"("agent", "createdAt");
-
