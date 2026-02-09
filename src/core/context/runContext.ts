@@ -14,6 +14,28 @@ export interface RunContextParams {
   skipMemory?: boolean;
 }
 
+const PROVIDER_TIMEOUT_MS = 30_000;
+
+async function runWithProviderTimeout<T>(
+  providerName: ContextProviderName,
+  operation: Promise<T>,
+  timeoutMs = PROVIDER_TIMEOUT_MS,
+): Promise<T> {
+  let timeoutId: NodeJS.Timeout | undefined;
+  try {
+    return await Promise.race([
+      operation,
+      new Promise<T>((_, reject) => {
+        timeoutId = setTimeout(() => {
+          reject(new Error(`Context provider "${providerName}" timed out after ${timeoutMs}ms`));
+        }, timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
+}
+
 /**
  * Execute a single provider and return its context packet.
  * Handles per-provider error isolation.
@@ -88,7 +110,7 @@ export async function runContextProviders(params: RunContextParams): Promise<Con
   const { providers, traceId } = params;
 
   // Execute all providers in parallel
-  const providerPromises = providers.map((name) => executeProvider(name, params));
+  const providerPromises = providers.map((name) => runWithProviderTimeout(name, executeProvider(name, params)));
   const results = await Promise.allSettled(providerPromises);
 
   // Collect successful results, filter out nulls

@@ -663,7 +663,7 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
         model: selectedModel,
         apiKey,
         temperature: searchTemperature,
-        timeout: 120_000,
+        timeout: 180_000,
       });
       recordModelOutcome({
         model: selectedModel,
@@ -1274,7 +1274,7 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
         draftText,
         allowedModels: tenantPolicy.allowedModels,
         apiKey,
-        timeoutMs: Math.min(90_000, appConfig.TIMEOUT_CHAT_MS),
+        timeoutMs: Math.min(240_000, appConfig.TIMEOUT_CHAT_MS),
         conversationHistory,
       });
 

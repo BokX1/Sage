@@ -87,7 +87,7 @@ These values are currently code-level policy (not `.env` knobs):
 | `WAKE_WORD_PREFIXES_CSV` | Optional prefixes before wake word | *(empty)* |
 | `AUTOPILOT_MODE` | `manual`, `reserved`, or `talkative` | `manual` |
 | `PROFILE_UPDATE_INTERVAL` | Messages between background profile updates | `5` |
-| `WAKEWORD_COOLDOWN_SEC` | Per-user cooldown between responses | `20` |
+| `WAKEWORD_COOLDOWN_SEC` | Per-user cooldown between responses | `10` |
 | `WAKEWORD_MAX_RESPONSES_PER_MIN_PER_CHANNEL` | Per-channel response cap per minute | `6` |
 | `PROACTIVE_POSTING_ENABLED` | Enables autonomous posting behavior | `true` |
 
@@ -132,7 +132,7 @@ Search execution mode (`simple` vs `complex`) is selected turn-by-turn by the ro
 | `AGENTIC_CANARY_ROUTE_ALLOWLIST_CSV` | Routes eligible for agentic graph | `chat,coding,search,creative` |
 | `AGENTIC_CANARY_MAX_FAILURE_RATE` | Failure rate threshold for cooldown | `0.20` |
 | `AGENTIC_CANARY_MIN_SAMPLES` | Min samples before budget evaluation | `50` |
-| `AGENTIC_CANARY_COOLDOWN_SEC` | Cooldown duration after breach | `900` |
+| `AGENTIC_CANARY_COOLDOWN_SEC` | Cooldown duration after breach | `300` |
 | `AGENTIC_CANARY_WINDOW_SIZE` | Rolling sample window | `250` |
 
 ---

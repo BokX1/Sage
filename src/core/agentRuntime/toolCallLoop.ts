@@ -24,7 +24,7 @@ export interface ToolCallLoopConfig {
 const DEFAULT_CONFIG: Required<ToolCallLoopConfig> = {
   maxRounds: 2,
   maxCallsPerRound: 3,
-  toolTimeoutMs: 10_000,
+  toolTimeoutMs: 45_000,
   cacheEnabled: true,
   cacheMaxEntries: 50,
 };

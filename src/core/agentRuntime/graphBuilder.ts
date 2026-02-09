@@ -3,7 +3,7 @@ import { AgentGraph, AgentTaskBudget, AgentTaskNode } from './agent-types';
 import { AgentKind } from '../orchestration/agentSelector';
 
 const DEFAULT_BUDGET: AgentTaskBudget = {
-  maxLatencyMs: 20_000,
+  maxLatencyMs: 30_000,
   maxRetries: 1,
   maxInputTokens: 2_000,
   maxOutputTokens: 2_000,
@@ -11,19 +11,19 @@ const DEFAULT_BUDGET: AgentTaskBudget = {
 
 const PROVIDER_BUDGET_OVERRIDES: Partial<Record<ContextProviderName, Partial<AgentTaskBudget>>> = {
   Memory: {
-    maxLatencyMs: 8_000,
+    maxLatencyMs: 15_000,
     maxRetries: 0,
   },
   Summarizer: {
-    maxLatencyMs: 10_000,
+    maxLatencyMs: 20_000,
     maxRetries: 1,
   },
   SocialGraph: {
-    maxLatencyMs: 12_000,
+    maxLatencyMs: 25_000,
     maxRetries: 1,
   },
   VoiceAnalytics: {
-    maxLatencyMs: 12_000,
+    maxLatencyMs: 25_000,
     maxRetries: 1,
   },
 };

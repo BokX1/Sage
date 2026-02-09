@@ -39,7 +39,7 @@ Instructions:
 - **Image Handling**: If an image is provided, use it as the base reference. If no image is provided, interpret the text request to the best of your ability.
 - **Output**: Output ONLY the final English prompt text. No conversational filler.`;
 
-const DEFAULT_IMAGE_GEN_TIMEOUT_MS = 180_000;
+const DEFAULT_IMAGE_GEN_TIMEOUT_MS = 360_000;
 const IMAGE_ROUTE = '/image/{prompt}';
 
 export function normalizeImageBaseUrl(baseUrl: string): string {

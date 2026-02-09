@@ -215,7 +215,7 @@ export async function evaluateDraftWithCritic(
       apiKey: params.apiKey,
       temperature: 0.1,
       responseFormat: 'json_object',
-      timeout: params.timeoutMs ?? 60_000,
+      timeout: params.timeoutMs ?? 180_000,
     });
 
     return parseAssessment(response.content, criticModel);

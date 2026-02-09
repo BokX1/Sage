@@ -35,7 +35,7 @@ let catalogCache: Record<string, ModelInfo> | null = null;
 let catalogState: CatalogState = { source: 'fallback', lastError: null };
 let pendingFetch: Promise<Record<string, ModelInfo>> | null = null;
 
-const MODEL_CATALOG_TIMEOUT_MS = 15_000;
+const MODEL_CATALOG_TIMEOUT_MS = 30_000;
 
 function assertSafeCatalogBaseUrl(baseUrl: string): string {
   const normalized = normalizeBaseUrl(baseUrl);

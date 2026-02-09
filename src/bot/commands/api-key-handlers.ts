@@ -13,7 +13,7 @@ interface PollinationsProfile {
  * Validate a Pollinations API key by requesting the authenticated profile.
  */
 const API_KEY_MAX_LENGTH = 256;
-const PROFILE_TIMEOUT_MS = 15_000;
+const PROFILE_TIMEOUT_MS = 30_000;
 
 async function fetchPollinationsProfile(apiKey: string): Promise<PollinationsProfile | null> {
   const controller = new AbortController();

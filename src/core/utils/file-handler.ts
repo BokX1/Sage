@@ -14,7 +14,7 @@ export type FetchAttachmentResult =
   | { kind: 'error'; message: string }
   | { kind: 'ok'; text: string };
 
-const DEFAULT_TIMEOUT_MS = 30_000;
+const DEFAULT_TIMEOUT_MS = 60_000;
 const MAX_FILENAME_LENGTH = 200;
 const ALLOWED_EXTENSIONS = new Set([
   'txt',

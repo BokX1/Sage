@@ -144,7 +144,7 @@ export async function handleMessageCreate(message: Message) {
         };
       } else {
         attachmentResult = await fetchAttachmentText(attachment.url ?? '', attachmentName, {
-          timeoutMs: 30_000,
+          timeoutMs: 60_000,
           maxBytes,
           maxChars,
           truncateStrategy: 'head_tail',

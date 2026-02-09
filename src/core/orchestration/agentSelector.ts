@@ -5,7 +5,7 @@ import { logger } from '../utils/logger';
 
 const ROUTER_MODEL = 'deepseek';
 const ROUTER_TEMPERATURE = 0.1;
-const ROUTER_TIMEOUT_MS = 45_000;
+const ROUTER_TIMEOUT_MS = 60_000;
 const CHAT_DEFAULT_TEMPERATURE = 1.2;
 const CHAT_MIN_TEMPERATURE = 1.0;
 const CHAT_MAX_TEMPERATURE = 1.4;
