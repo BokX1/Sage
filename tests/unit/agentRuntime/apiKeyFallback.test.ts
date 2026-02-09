@@ -39,7 +39,7 @@ vi.mock('../../../src/core/summary/channelSummaryStoreRegistry', () => ({
 }));
 vi.mock('../../../src/core/orchestration/llmRouter', () => ({
   decideRoute: vi.fn().mockResolvedValue({
-    kind: 'qa',
+    kind: 'chat',
     experts: [],
     allowTools: false,
     temperature: 0.7,
@@ -52,7 +52,7 @@ vi.mock('../../../src/core/llm/model-resolver', () => ({
   resolveModelForRequest: vi.fn().mockResolvedValue('kimi'),
   resolveModelForRequestDetailed: vi.fn().mockResolvedValue({
     model: 'kimi',
-    route: 'qa',
+    route: 'chat',
     requirements: {},
     allowlistApplied: false,
     candidates: ['kimi'],

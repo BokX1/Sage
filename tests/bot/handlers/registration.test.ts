@@ -30,22 +30,18 @@ import { registerMessageCreateHandler } from '../../../src/bot/handlers/messageC
 describe('Handler Registration', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    // Reset global symbol
     const registrationKey = Symbol.for('sage.handlers.messageCreate.registered');
     delete (globalThis as any)[registrationKey];
   });
 
   it('should register the message create handler exactly once', () => {
-    // cast to any to access mock methods
     (client.listenerCount as any).mockReturnValue(1);
 
-    // First call
     registerMessageCreateHandler();
     expect(client.on).toHaveBeenCalledTimes(1);
     expect(client.on).toHaveBeenCalledWith(Events.MessageCreate, expect.any(Function));
 
-    // Second call
     registerMessageCreateHandler();
-    expect(client.on).toHaveBeenCalledTimes(1); // Still 1
+    expect(client.on).toHaveBeenCalledTimes(1);
   });
 });

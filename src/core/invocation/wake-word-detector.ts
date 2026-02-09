@@ -1,7 +1,7 @@
 export type Invocation = {
   kind: 'mention' | 'reply' | 'wakeword' | 'autopilot';
   cleanedText: string;
-  intent: 'summarize' | 'qa' | 'action' | 'admin' | 'autopilot' | 'unknown';
+  intent: 'autopilot' | 'unknown';
 };
 
 export type DetectInvocationParams = {
@@ -27,9 +27,6 @@ function stripLeadingPunctuation(text: string): string {
   return text.replace(/^[\p{P}\p{S}]+/u, '');
 }
 
-function detectIntent(): Invocation['intent'] {
-  return 'unknown';
-}
 
 function cleanupText(text: string): string {
   return text.trim();
@@ -116,7 +113,7 @@ export function detectInvocation(params: DetectInvocationParams): Invocation | n
     return {
       kind: 'reply',
       cleanedText: cleanedBase,
-      intent: detectIntent(),
+      intent: 'unknown',
     };
   }
 
@@ -127,7 +124,7 @@ export function detectInvocation(params: DetectInvocationParams): Invocation | n
     return {
       kind: 'mention',
       cleanedText: cleanedBase,
-      intent: detectIntent(),
+      intent: 'unknown',
     };
   }
 
@@ -140,6 +137,6 @@ export function detectInvocation(params: DetectInvocationParams): Invocation | n
   return {
     kind: 'wakeword',
     cleanedText,
-    intent: detectIntent(),
+    intent: 'unknown',
   };
 }

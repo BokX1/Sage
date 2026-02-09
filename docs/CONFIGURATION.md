@@ -131,11 +131,11 @@ These settings control the planner/executor safety rails, per-tenant overrides, 
 | :--- | :--- | :--- |
 | `AGENTIC_CANARY_ENABLED` | Enables rollout sampling and error-budget guardrails | `true` |
 | `AGENTIC_CANARY_PERCENT` | Percent of eligible traffic that uses agentic graph execution (0-100) | `100` |
-| `AGENTIC_CANARY_ROUTE_ALLOWLIST_CSV` | Comma-separated routes eligible for agentic execution | `chat,coding,search,analyze,manage,art` |
+| `AGENTIC_CANARY_ROUTE_ALLOWLIST_CSV` | Comma-separated routes eligible for agentic execution | `chat,coding,search,art,analyze,manage` |
 | `AGENTIC_CANARY_MAX_FAILURE_RATE` | Failure-rate threshold that trips cooldown | `0.30` |
-| `AGENTIC_CANARY_MIN_SAMPLES` | Minimum samples before evaluating failure rate | `20` |
-| `AGENTIC_CANARY_COOLDOWN_SEC` | Cooldown duration after error-budget breach | `300` |
-| `AGENTIC_CANARY_WINDOW_SIZE` | Rolling sample window size for failure-rate checks | `100` |
+| `AGENTIC_CANARY_MIN_SAMPLES` | Minimum samples before evaluating failure rate | `50` |
+| `AGENTIC_CANARY_COOLDOWN_SEC` | Cooldown duration after error-budget breach | `900` |
+| `AGENTIC_CANARY_WINDOW_SIZE` | Rolling sample window size for failure-rate checks | `250` |
 
 ### Replay Gate Controls
 
@@ -143,10 +143,10 @@ Used by `npm run agentic:replay-gate` (and CI release readiness).
 
 | Variable | Description | Default |
 | :--- | :--- | :--- |
-| `REPLAY_GATE_LIMIT` | Number of recent traces evaluated | `50` |
-| `REPLAY_GATE_MIN_AVG_SCORE` | Minimum average replay score (0-1) | `0.62` |
-| `REPLAY_GATE_MIN_SUCCESS_RATE` | Minimum success-likely ratio (0-1) | `0.70` |
-| `REPLAY_GATE_REQUIRE_DATA` | Fails gate when no traces exist (`1`/`0`) | `0` |
+| `REPLAY_GATE_LIMIT` | Number of recent traces evaluated | `200` |
+| `REPLAY_GATE_MIN_AVG_SCORE` | Minimum average replay score (0-1) | `0.65` |
+| `REPLAY_GATE_MIN_SUCCESS_RATE` | Minimum success-likely ratio (0-1) | `0.75` |
+| `REPLAY_GATE_REQUIRE_DATA` | Fails gate when no traces exist (`1`/`0`) | `1` |
 | `REPLAY_GATE_GUILD_ID` | Optional guild scope for evaluation | *(empty)* |
 | `REPLAY_GATE_CHANNEL_ID` | Optional channel scope for evaluation | *(empty)* |
 
@@ -313,16 +313,16 @@ AGENTIC_CRITIC_MIN_SCORE=0.72
 AGENTIC_CRITIC_MAX_LOOPS=1
 AGENTIC_CANARY_ENABLED=true
 AGENTIC_CANARY_PERCENT=100
-AGENTIC_CANARY_ROUTE_ALLOWLIST_CSV=chat,coding,search,analyze,manage,art
+AGENTIC_CANARY_ROUTE_ALLOWLIST_CSV=chat,coding,search,art,analyze,manage
 AGENTIC_CANARY_MAX_FAILURE_RATE=0.30
-AGENTIC_CANARY_MIN_SAMPLES=20
-AGENTIC_CANARY_COOLDOWN_SEC=300
-AGENTIC_CANARY_WINDOW_SIZE=100
+AGENTIC_CANARY_MIN_SAMPLES=50
+AGENTIC_CANARY_COOLDOWN_SEC=900
+AGENTIC_CANARY_WINDOW_SIZE=250
 AGENTIC_TENANT_POLICY_JSON={}
-REPLAY_GATE_LIMIT=50
-REPLAY_GATE_MIN_AVG_SCORE=0.62
-REPLAY_GATE_MIN_SUCCESS_RATE=0.70
-REPLAY_GATE_REQUIRE_DATA=0
+REPLAY_GATE_LIMIT=200
+REPLAY_GATE_MIN_AVG_SCORE=0.65
+REPLAY_GATE_MIN_SUCCESS_RATE=0.75
+REPLAY_GATE_REQUIRE_DATA=1
 LOG_LEVEL=info
 
 # =============================================================================

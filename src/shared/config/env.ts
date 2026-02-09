@@ -3,6 +3,12 @@ import { z } from 'zod';
 
 dotenv.config();
 
+/**
+ * Check whether a hostname resolves to localhost or RFC1918 private network ranges.
+ *
+ * @param hostname Hostname (IPv4/IPv6 or DNS label) to validate.
+ * @returns True when the host is local/private and should be rejected for outbound public URLs.
+ */
 export function isPrivateOrLocalHostname(hostname: string): boolean {
   const normalized = hostname.toLowerCase();
   const unwrappedIpv6 = normalized.replace(/^\[/, '').replace(/\]$/, '');
@@ -96,7 +102,7 @@ const testDefaults: Record<string, string> = {
   AGENTIC_TOOL_BLOCKLIST_CSV: '',
   AGENTIC_CANARY_ENABLED: 'true',
   AGENTIC_CANARY_PERCENT: '100',
-  AGENTIC_CANARY_ROUTE_ALLOWLIST_CSV: 'qa,coding,search,summarize,admin,social_graph,voice_analytics,memory,image_generate',
+  AGENTIC_CANARY_ROUTE_ALLOWLIST_CSV: 'chat,coding,search,art,analyze,manage',
   AGENTIC_CANARY_MAX_FAILURE_RATE: '0.30',
   AGENTIC_CANARY_MIN_SAMPLES: '20',
   AGENTIC_CANARY_COOLDOWN_SEC: '300',

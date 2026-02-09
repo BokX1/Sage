@@ -16,7 +16,7 @@ describe('replayHarness', () => {
     mockListRecentTraces.mockResolvedValue([
       {
         id: 'trace-1',
-        routeKind: 'qa',
+        routeKind: 'chat',
         replyText: 'Good answer',
         toolJson: { executed: true },
         qualityJson: { critic: [{ score: 0.9 }] },
@@ -40,7 +40,7 @@ describe('replayHarness', () => {
 
     expect(report.total).toBe(2);
     expect(report.rows).toHaveLength(2);
-    expect(report.byRoute.qa.total).toBe(1);
+    expect(report.byRoute.chat.total).toBe(1);
     expect(report.byRoute.search.total).toBe(1);
     expect(report.successLikelyCount).toBe(1);
     expect(report.avgScore).toBeGreaterThan(0);
