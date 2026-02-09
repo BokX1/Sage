@@ -33,4 +33,20 @@ describe('smartSplit', () => {
     expect(parts[0]).toBe('first line');
     expect(parts[1].startsWith('second line')).toBe(true);
   });
+
+  it('never returns chunks above maxLength when code fences are reopened', () => {
+    const input = [
+      '```ts',
+      'const veryLongLine = "' + 'x'.repeat(120) + '";',
+      '```',
+      '',
+      'tail',
+    ].join('\n');
+
+    const maxLength = 50;
+    const parts = smartSplit(input, maxLength);
+
+    expect(parts.length).toBeGreaterThan(1);
+    expect(parts.every((part) => part.length <= maxLength)).toBe(true);
+  });
 });
