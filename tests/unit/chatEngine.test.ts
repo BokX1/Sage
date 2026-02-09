@@ -75,7 +75,7 @@ vi.mock('../../src/core/settings/guildSettingsRepo', () => ({
 }));
 
 vi.mock('../../src/core/orchestration/llmRouter', () => ({
-  decideRoute: vi.fn().mockResolvedValue({ kind: 'simple', temperature: 0.7, experts: [], allowTools: true }),
+  decideRoute: vi.fn().mockResolvedValue({ kind: 'simple', temperature: 0.7, experts: [] }),
 }));
 
 vi.mock('../../src/core/orchestration/runExperts', () => ({

@@ -41,7 +41,6 @@ vi.mock('../../../src/core/orchestration/llmRouter', () => ({
   decideRoute: vi.fn().mockResolvedValue({
     kind: 'chat',
     experts: [],
-    allowTools: false,
     temperature: 0.7,
   }),
 }));
