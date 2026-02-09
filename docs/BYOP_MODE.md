@@ -1,6 +1,6 @@
 # 🌸 Bring Your Own Pollen (BYOP)
 
-Sage uses a community-friendly model: **the bot is free to host, and communities provide the “brain power” (API key).**
+Sage uses a BYOP model: communities provide the AI key (API key). Software licensing is separate; Sage itself is proprietary and requires written permission/commercial licensing from the copyright owner.
 
 This keeps Sage sustainable and enables higher limits for your server.
 
@@ -96,16 +96,4 @@ That’s it — Sage is active for the whole server. 🎉
 ## ❓ FAQ
 
 **Q: Do my members need to pay?**  
-**A:** No. The key you provide covers everyone. Pollinations.ai offers free tiers, so it’s often free for many communities.
-
-**Q: Is this safe?**  
-**A:** The key is stored in Sage’s database and is used to make requests on behalf of your server.
-
-**Q: How do I remove a key?**  
-**A:** Run `/sage key clear`.
-
----
-
-<p align="center">
-  <sub>Powered by <a href="https://pollinations.ai">Pollinations.ai</a> 🐝</sub>
-</p>
+**A:** The server key covers member AI usage. Pollinations.ai offers free tiers, so AI usage may be low-cost, but Sage software licensing terms still apply separately.

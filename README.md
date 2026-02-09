@@ -16,6 +16,9 @@
   <strong>Sage is a self-learning AI companion that grows with your community, observes social vibes, and delivers intelligent, context-aware responses.</strong>
 </p>
 
+> [!IMPORTANT]
+> Sage is proprietary software (All Rights Reserved). Running, modifying, or distributing Sage requires written permission or a commercial license from the copyright owner. See LICENSE and COPYRIGHT.
+
 <p align="center">
   <strong>🎮 <a href="docs/QUICKSTART.md">I just want to run the bot</a></strong> · <strong>💻 <a href="#-developer-quick-start">I'm a developer</a></strong>
 </p>

@@ -29,13 +29,13 @@ Yes. Start with the **[⚡ Quick Start Guide](QUICKSTART.md)** for a minimal, co
 <details>
 <summary><strong>Will this cost me money?</strong></summary>
 
-Sage is designed to be **free to run**:
+Sage is **proprietary software**.
 
-- **Software:** Free & Open Source.
-- **AI Credits:** Sage uses **Bring Your Own Pollen (BYOP)**.
+- **Software licensing:** You need a valid commercial license or written permission from the copyright owner to run/self-host Sage.
+- **AI credits:** Sage uses **Bring Your Own Pollen (BYOP)**.
   - Server admins generate a key from [Pollinations.ai](https://pollinations.ai).
-  - That key is used by the server for Sage’s AI requests.
-- **Hosting:** If you self-host, you pay only for your own infrastructure (if any).
+  - That key is used by the server for Sage's AI requests.
+- **Hosting:** If you self-host, you also pay your own infrastructure costs (if any).
 
 </details>
 
@@ -45,7 +45,7 @@ Sage is designed to be **free to run**:
 Sage is built to be transparent and controllable:
 
 - 🔒 **You control settings** (logging, tracing, retention)
-- 👁️ **Open source** — behavior is reviewable
+- 👁️ **Auditable operation** — traces/logging can be reviewed by operators
 - ⚙️ **Privacy controls** — you can disable ingestion/logging
 
 See **[Security &amp; Privacy](security_privacy.md)** for concrete details on what’s stored and how to disable it.
@@ -84,7 +84,7 @@ Sage is a fully agentic AI companion. Unlike simple chatbots, Sage aims to behav
 <details>
 <summary><strong>Is Sage free to use?</strong></summary>
 
-Yes — Sage is free and open source. It uses [Pollinations.ai](https://pollinations.ai) for AI capabilities, which offers free API access. If you self-host, you only pay for your own hosting costs (which can be $0).
+No. Sage is proprietary and all rights reserved. Running, modifying, or distributing Sage requires a valid written license from the copyright owner. Pollinations API pricing/tiers are separate from Sage software licensing.
 
 </details>
 

@@ -32,7 +32,7 @@ If you’re not sure, start with **Option 1**.
 
 ### 2) Activate BYOP (server-wide key)
 
-Sage uses **Bring Your Own Pollen (BYOP)**: hosting is free, and your server provides a Pollinations key.
+Sage uses **Bring Your Own Pollen (BYOP)**: your server provides a Pollinations key for AI usage. Sage software licensing is separate and proprietary.
 
 As a server admin (or someone with **Manage Guild** permission):
 

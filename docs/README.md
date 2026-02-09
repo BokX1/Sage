@@ -9,6 +9,9 @@ Sage documentation is organized to support two common goals:
 - 🎮 **Run Sage quickly** (public bot or minimal setup)
 - 💻 **Self-host and develop** (from source, with full configuration control)
 
+> [!IMPORTANT]
+> Sage is proprietary software (All Rights Reserved). Usage, modification, or distribution requires written permission or a commercial license from the copyright owner. See ../LICENSE and ../COPYRIGHT.
+
 ---
 
 ## 🚀 Quick Navigation

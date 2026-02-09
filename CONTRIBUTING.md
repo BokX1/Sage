@@ -2,6 +2,12 @@
 
 Thanks for helping improve Sage! This guide covers the local workflow, expectations, and safety notes.
 
+## License and contribution terms
+
+- Sage is proprietary software (All Rights Reserved).
+- By submitting code, docs, or assets, you agree your contribution may be used, modified, and distributed by the project owner under Sage's proprietary licensing model.
+- Contributions do not grant redistribution rights to the Sage codebase outside terms explicitly granted by the copyright owner.
+
 ## Prerequisites
 
 - **Node.js**: Use an LTS version (CI runs on Node 18.x and 20.x).
