@@ -171,7 +171,7 @@ Used by `npm run agentic:replay-gate` and release checks.
 | `RAW_MESSAGE_TTL_DAYS` | In-memory transcript retention days | `3` |
 | `RING_BUFFER_MAX_MESSAGES_PER_CHANNEL` | In-memory transcript size cap | `200` |
 | `CONTEXT_TRANSCRIPT_MAX_MESSAGES` | Transcript message cap per prompt | `15` |
-| `CONTEXT_TRANSCRIPT_MAX_CHARS` | Transcript char cap per prompt | `12000` |
+| `CONTEXT_TRANSCRIPT_MAX_CHARS` | Transcript char cap per prompt | `24000` |
 
 ---
 

@@ -142,6 +142,11 @@ Sage uses Pollinations via the OpenAI-compatible endpoint:
 
 - `POST https://gen.pollinations.ai/v1/chat/completions`
 
+Runtime request shaping:
+
+- Sage consolidates multiple system instructions into one system message block before sending.
+- Sage then normalizes message sequencing for strict providers (for example to avoid invalid role alternation).
+
 ### Vision message shape (conceptual)
 
 When users attach an image, Sage can send multimodal content:

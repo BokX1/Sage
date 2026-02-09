@@ -9,7 +9,7 @@ This document describes the current end-to-end runtime implemented in `src/core/
 - [1) End-to-End Flow](#1-end-to-end-flow)
 - [2) Agent Selection + Context Graph Construction](#2-agent-selection--context-graph-construction)
 - [3) Graph Execution + Context Packets](#3-graph-execution--context-packets)
-- [4) Tools, Verification Redispatch, and Cache](#4-tools-verification-redispatch-and-cache)
+- [4) Tools, Envelope Recovery, and Cache](#4-tools-envelope-recovery-and-cache)
 - [5) Critic Loop + Targeted Refresh](#5-critic-loop--targeted-refresh)
 - [6) Model Selection + Health Fallbacks](#6-model-selection--health-fallbacks)
 - [7) Tenant Overrides + Canary Guardrails](#7-tenant-overrides--canary-guardrails)
@@ -38,7 +38,7 @@ flowchart TD
     K --> L[LLM draft]
     L --> M{Tool envelope?}
     M -->|Executable tools| N[runToolCallLoop]
-    M -->|Verify-only intents| O[Verification redispatch]
+    M -->|Non-executable tools| O[Plain-text recovery pass]
     M -->|No| P[Draft ready]
     N --> P
     O --> P
@@ -90,10 +90,12 @@ Runtime behavior:
 3. Node outputs are normalized into context packets (`Memory`, `SocialGraph`, `VoiceAnalytics`, `Summarizer`).
 4. Event stream captures graph lifecycle (`graph_started`, `node_completed`, `node_failed`, `graph_completed`).
 5. Per-node runtime rows are persisted as `AgentRun` records.
+6. `buildContextMessages` assembles prompt blocks in order: base system -> runtime instruction -> profile summary -> rolling summary -> context packets -> transcript -> intent hint -> reply context/reference -> latest user.
+7. System blocks are merged into one system message before model dispatch, with provider-level defensive consolidation of system blocks.
 
 ---
 
-## 4) Tools, Verification Redispatch, and Cache
+## 4) Tools, Envelope Recovery, and Cache
 
 Primary files:
 
@@ -109,12 +111,13 @@ Runtime behavior:
 3. Blocklists and risk permissions are enforced before any execution.
 4. Per-turn cache deduplicates repeated calls.
 5. Verification and factual revision are handled by the critic loop and targeted provider/search refreshes.
-6. Runtime forces plain-text fallback if verification responses keep returning tool envelopes.
+6. When a tool envelope contains only unavailable/non-executable tools, runtime runs a plain-text recovery pass instead of redispatching virtual verification tools.
 7. Runtime injects a capability manifest into the system prompt that reflects route, context providers, and only policy-allowed tools for that turn.
+8. Runtime includes `## Agentic State (JSON)` only for `chat` and `coding` routes.
 
 Note:
 
-- Runtime tools are intentionally minimal right now (`DEFAULT_RUNTIME_TOOLS` is empty), so many verification intents resolve via redispatch logic rather than concrete tool handlers.
+- Runtime tools are intentionally minimal right now (`DEFAULT_RUNTIME_TOOLS` is empty), and non-executable tool envelopes are recovered via plain-text retry.
 - Voice join/leave are currently slash-command operations (`/join`, `/leave`), not runtime tool calls.
 
 ---

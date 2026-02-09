@@ -25,7 +25,7 @@ In Sage, "agentic" means the runtime can:
 2. Build and execute a context-provider graph (or safe provider fallback).
 3. Share provider artifacts through blackboard-style packet composition.
 4. Run bounded tool loops with policy controls and cache, while advertising only policy-allowed capabilities in the runtime prompt.
-5. Trigger verification redispatches and critic-driven revisions when quality is low.
+5. Use critic-driven revisions (and targeted refresh) when quality is low, plus plain-text recovery when a non-executable tool envelope is emitted.
 6. Persist trace metadata and enforce replay gates before promotion.
 
 ---
@@ -43,6 +43,7 @@ In Sage, "agentic" means the runtime can:
 
 - Providers emit typed packets (`Memory`, `SocialGraph`, `VoiceAnalytics`, `Summarizer`).
 - Packets are merged into `buildContextMessages` with transcript and summary blocks under token budgets.
+- Prompt assembly keeps one ordered system block (`base_system`, then runtime capability instruction, then summaries/providers/transcript).
 - Creative route can add image-generation packets/files through `runImageGenAction`.
 
 ### 3) Tool Governance
@@ -52,6 +53,7 @@ In Sage, "agentic" means the runtime can:
 - Per-turn cache avoids duplicate tool executions.
 - Verification and factual revision are handled by the critic loop rather than virtual verification tools.
 - Runtime injects a capability manifest into the system prompt so the model only claims tools/context providers actually available in that turn.
+- Runtime includes `## Agentic State (JSON)` only for `chat` and `coding` routes.
 
 ### 4) Quality Loop
 
@@ -97,7 +99,7 @@ flowchart TD
 
     J --> K{Tool envelope?}
     K -->|yes, executable tools| L[Tool Loop + Policy + Cache]
-    K -->|yes, verify-only intents| M[Verification Redispatch]
+    K -->|yes, non-executable tools| M[Plain-text Recovery Pass]
     K -->|no| N[Draft Ready]
     L --> N
     M --> N
@@ -185,7 +187,7 @@ flowchart TB
       I[Context Builder]
       J[Model Resolver + Health]
       K[LLM]
-      L[Tool Loop + Verification Redispatch]
+      L[Tool Loop + Plain-text Recovery]
       M[Critic Loop]
     end
 

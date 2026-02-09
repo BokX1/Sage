@@ -42,7 +42,7 @@ This document describes how Sage stores, summarizes, and injects memory into run
   - `RING_BUFFER_MAX_MESSAGES_PER_CHANNEL` (default in `.env.example`: `200`)
 - **DB transcript window** used for prompt context is bounded by:
   - `CONTEXT_TRANSCRIPT_MAX_MESSAGES` (default in `.env.example`: `15`)
-  - `CONTEXT_TRANSCRIPT_MAX_CHARS` (default in `.env.example`: `12000`)
+  - `CONTEXT_TRANSCRIPT_MAX_CHARS` (default in `.env.example`: `24000`)
 
 Transcript usage is size/window bounded. For longer context, increase transcript limits carefully.
 
@@ -99,12 +99,15 @@ flowchart LR
 `buildContextMessages` composes turn context in prioritized blocks:
 
 - Base system prompt (`composeSystemPrompt`)
+- Runtime instruction block (capability matrix, active-route capabilities, optional agentic state, tool protocol)
 - Channel profile summary
 - Rolling channel summary
 - Context packets from providers/actions (`contextPackets`)
 - Recent transcript
 - Intent hint + reply context/reference
 - Current user message/content
+
+All system blocks are merged into one system message before provider calls.
 
 Context is budgeted by `contextBudgeter` using these key limits:
 
