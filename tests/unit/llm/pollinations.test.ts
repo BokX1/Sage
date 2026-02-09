@@ -137,8 +137,8 @@ describe('PollinationsClient', () => {
     expect(global.fetch).toHaveBeenCalledTimes(1);
   });
 
-  it('should preemptively disable response_format and inject prompts when tools + json_object are requested', async () => {
-    const client = new PollinationsClient();
+  it('should preemptively disable response_format and inject prompts for gemini-search when tools + json_object are requested', async () => {
+    const client = new PollinationsClient({ model: 'gemini-search' });
 
     (global.fetch as any).mockResolvedValue({
       ok: true,
@@ -167,5 +167,53 @@ describe('PollinationsClient', () => {
     expect(systemMsg).toBeDefined();
     expect(systemMsg.content).toContain('IMPORTANT: You must output strictly valid JSON only');
     expect(systemMsg.content).toContain('You have access to google_search tool');
+  });
+
+  it('should preemptively disable response_format for gemini-search without tools', async () => {
+    const client = new PollinationsClient({ model: 'gemini-search' });
+
+    (global.fetch as any).mockResolvedValue({
+      ok: true,
+      json: async () => ({ choices: [{ message: { content: '{}' } }] }),
+    });
+
+    await client.chat({
+      messages: [{ role: 'user', content: 'test' }],
+      responseFormat: 'json_object',
+    });
+
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+    const call = (global.fetch as any).mock.calls[0];
+    const body = JSON.parse(call[1].body);
+
+    expect(body).not.toHaveProperty('response_format');
+
+    const systemMsg = body.messages.find((m: any) => m.role === 'system');
+    expect(systemMsg).toBeDefined();
+    expect(systemMsg.content).toContain('IMPORTANT: You must output strictly valid JSON only');
+    expect(systemMsg.content).not.toContain('You have access to google_search tool');
+  });
+
+  it('should keep native response_format for non-gemini models when tools + json_object are requested', async () => {
+    const client = new PollinationsClient({ model: 'openai-large' });
+
+    (global.fetch as any).mockResolvedValue({
+      ok: true,
+      json: async () => ({ choices: [{ message: { content: '{}' } }] }),
+    });
+
+    await client.chat({
+      messages: [{ role: 'user', content: 'test' }],
+      responseFormat: 'json_object',
+      tools: [{ type: 'function', function: { name: 'google_search' } }] as any,
+    });
+
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+    const call = (global.fetch as any).mock.calls[0];
+    const body = JSON.parse(call[1].body);
+
+    expect(body).toHaveProperty('response_format');
+    expect(body.response_format).toEqual({ type: 'json_object' });
+    expect(body.messages.some((m: any) => m.role === 'system')).toBe(false);
   });
 });

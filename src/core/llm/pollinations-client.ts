@@ -25,6 +25,37 @@ interface PollinationsPayload {
   audio?: { voice: string; format: string };
 }
 
+function isGeminiSearchModel(model: string): boolean {
+  const normalized = model.trim().toLowerCase();
+  return normalized === 'gemini-search';
+}
+
+function withSystemInstruction(
+  messages: LLMRequest['messages'],
+  instruction: string,
+): LLMRequest['messages'] {
+  const cloned = messages.map((message) => ({ ...message }));
+  const systemMessage = cloned.find((message) => message.role === 'system');
+
+  if (systemMessage) {
+    if (typeof systemMessage.content === 'string') {
+      if (!systemMessage.content.includes(instruction.trim())) {
+        systemMessage.content += instruction;
+      }
+    } else if (Array.isArray(systemMessage.content)) {
+      const alreadyPresent = systemMessage.content.some(
+        (part) => part.type === 'text' && part.text.includes(instruction.trim()),
+      );
+      if (!alreadyPresent) {
+        systemMessage.content = [...systemMessage.content, { type: 'text', text: instruction.trim() }];
+      }
+    }
+    return cloned;
+  }
+
+  return [{ role: 'system', content: instruction.trim() }, ...cloned];
+}
+
 function extractSystemText(content: LLMRequest['messages'][number]['content']): string {
   if (typeof content === 'string') {
     return content;
@@ -233,38 +264,25 @@ export class PollinationsClient implements LLMClient {
       payload.audio = { voice: 'alloy', format: 'wav' };
     }
 
-    // WORKAROUND: Gemini/Vertex AI crashes if both tools and response_format='json_object' are sent.
-    // We detect this case, disable API-level JSON mode, and enforce it via system prompt instead.
-    if (
-      payload.response_format?.type === 'json_object' &&
-      payload.tools &&
-      payload.tools.length > 0
-    ) {
+    // WORKAROUND: gemini-search models reject response_format='json_object'.
+    // Apply the shim only for gemini-search family so other models keep native JSON mode.
+    if (isGeminiSearchModel(model) && payload.response_format?.type === 'json_object') {
       logger.info(
-        { model },
-        '[Pollinations] Detected Tools + JSON Mode. Disabling API JSON mode and injecting prompt instructions to prevent upstream crash.',
+        { model, hasTools: !!payload.tools?.length },
+        '[Pollinations] gemini-search does not support JSON mode. Disabling API JSON mode and injecting prompt instructions.',
       );
 
-      // 1. Disable API-level JSON mode
       delete payload.response_format;
 
-      // 2. Clone messages to avoid mutating the original array
-      payload.messages = payload.messages.map((m) => ({ ...m }));
-
-      // 3. Inject instructions into system message
       const jsonInstruction =
         ' IMPORTANT: You must output strictly valid JSON only. Do not wrap in markdown blocks. No other text.';
       const toolInstruction =
         ' You have access to google_search tool for real-time info/web. Never deny using it.';
-
-      const systemMsg = payload.messages.find((m) => m.role === 'system');
-      if (systemMsg) {
-        if (typeof systemMsg.content === 'string') {
-          systemMsg.content += toolInstruction + jsonInstruction;
-        }
-      } else {
-        payload.messages.unshift({ role: 'system', content: toolInstruction + jsonInstruction });
-      }
+      const instruction =
+        payload.tools && payload.tools.length > 0
+          ? `${toolInstruction}${jsonInstruction}`
+          : jsonInstruction;
+      payload.messages = withSystemInstruction(payload.messages, instruction);
     }
 
     // Safe URL logging (no headers)
