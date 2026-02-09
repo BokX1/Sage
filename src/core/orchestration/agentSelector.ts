@@ -104,7 +104,7 @@ ${buildAgentCapabilityTable()}
 Your route choice controls one unified runtime loop:
 
 1. Context providers are gathered for this turn (Memory is baseline; chat commonly adds SocialGraph and VoiceAnalytics).
-2. The runtime may run verification/tool steps before finalizing.
+2. The runtime may run verification and critic revision steps before finalizing.
 3. A critic may request revision when quality is insufficient.
 
 Choose the route that best matches how this full loop should solve the request, not only the first model response.
