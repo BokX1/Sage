@@ -1297,6 +1297,14 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
   }
 
   const finalText = draftText;
+  const strippedFinalText = stripToolEnvelopeDraft(finalText);
+  const finalTextWasToolEnvelope = finalText.trim().length > 0 && strippedFinalText === null;
+  const safeFinalText = finalTextWasToolEnvelope
+    ? "I couldn't complete the final tool response cleanly. Please ask again and I'll retry with a direct answer."
+    : finalText;
+  if (finalTextWasToolEnvelope) {
+    logger.warn({ traceId }, 'Final draft was a tool_calls envelope; applying plain-text fallback');
+  }
   const qualityJson =
     criticAssessments.length > 0
       ? {
@@ -1357,7 +1365,7 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
             : undefined,
         qualityJson,
         budgetJson: finalBudgetJson,
-        replyText: finalText,
+        replyText: safeFinalText,
       });
     } catch (error) {
       logger.warn({ error, traceId }, 'Failed to persist trace end');
@@ -1366,7 +1374,7 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
 
   logger.debug({ traceId }, 'Chat turn complete');
 
-  if (finalText.trim().includes('[SILENCE]')) {
+  if (safeFinalText.trim().includes('[SILENCE]')) {
     logger.info({ traceId }, 'Agent chose silence');
     return {
       replyText: '',
@@ -1374,7 +1382,7 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
     };
   }
 
-  let cleanedText = finalText;
+  let cleanedText = safeFinalText;
   if (files.length > 0) {
     const jsonActionRegex = /```(?:json)?\s*\{(?:.|\n)*?"action"\s*:(?:.|\n)*?\}\s*```/yi;
     const rawJsonRegex = /\{(?:.|\n)*?"action"\s*:(?:.|\n)*?\}/yi;

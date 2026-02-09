@@ -94,7 +94,34 @@ describe('Discord command registry', () => {
     );
   });
 
-  it('rethrows registration failures after logging', async () => {
+  it('clears guild-scoped commands in global mode to prevent duplicate entries', async () => {
+    const { registerCommands } = await import('../../../src/bot/commands/slash-command-registry');
+    await expect(registerCommands({ knownGuildIds: ['guild-a', 'guild-b', 'guild-a'] })).resolves.toBeUndefined();
+
+    const { REST } = await import('discord.js');
+    const instances = (REST as unknown as { instances?: unknown[] }).instances ?? [];
+    expect(instances).toHaveLength(1);
+
+    const restInstance = instances[0] as { put: ReturnType<typeof vi.fn> };
+    expect(restInstance.put).toHaveBeenCalledTimes(3);
+    expect(restInstance.put).toHaveBeenNthCalledWith(
+      1,
+      expect.any(String),
+      expect.objectContaining({ body: expect.any(Array) }),
+    );
+    expect(restInstance.put).toHaveBeenNthCalledWith(
+      2,
+      expect.any(String),
+      expect.objectContaining({ body: [] }),
+    );
+    expect(restInstance.put).toHaveBeenNthCalledWith(
+      3,
+      expect.any(String),
+      expect.objectContaining({ body: [] }),
+    );
+  });
+
+  it('logs and swallows registration failures', async () => {
     process.env.DEV_GUILD_ID = 'test-guild-id';
 
     const { registerCommands } = await import('../../../src/bot/commands/slash-command-registry');
@@ -106,7 +133,7 @@ describe('Discord command registry', () => {
     const failure = new Error('network down');
     (REST as unknown as { putImpl: ReturnType<typeof vi.fn> }).putImpl = vi.fn().mockRejectedValue(failure);
 
-    await expect(registerCommands()).rejects.toThrow('network down');
+    await expect(registerCommands()).resolves.toBeUndefined();
   });
 
 });

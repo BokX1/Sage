@@ -113,20 +113,52 @@ const commandDefinitions = [
 /** Discord slash-command payloads serialized for REST registration. */
 export const commandPayloads = commandDefinitions.map((command) => command.toJSON());
 
+interface RegisterCommandsOptions {
+  knownGuildIds?: string[];
+}
+
+function normalizeGuildIds(guildIds: string[]): string[] {
+  return Array.from(
+    new Set(
+      guildIds
+        .map((guildId) => guildId.trim())
+        .filter((guildId) => guildId.length > 0),
+    ),
+  );
+}
+
+async function clearGuildScopedCommands(params: {
+  rest: REST;
+  guildIds: string[];
+  appId: string;
+  reason: string;
+}) {
+  for (const guildId of params.guildIds) {
+    try {
+      logger.info({ guildId, reason: params.reason }, 'Clearing guild-scoped commands');
+      await params.rest.put(Routes.applicationGuildCommands(params.appId, guildId), { body: [] });
+    } catch (error) {
+      logger.warn(
+        { error, guildId, reason: params.reason },
+        'Failed to clear guild-scoped commands (continuing)',
+      );
+    }
+  }
+}
+
 /**
  * Register slash commands either globally or per development guild(s).
  *
  * @returns Promise resolved once all registration calls complete.
- * @throws Error Re-throws Discord REST failures after logging for upstream handling.
  */
-export async function registerCommands() {
+export async function registerCommands(options: RegisterCommandsOptions = {}) {
   const rest = new REST({ version: '10' }).setToken(config.discordToken);
+  const knownGuildIds = normalizeGuildIds(options.knownGuildIds ?? []);
+  const devGuildIds = normalizeGuildIds((config.devGuildId ?? '').split(','));
 
   try {
-    if (config.devGuildId) {
-      const guildIds = config.devGuildId.split(',').map((id) => id.trim()).filter(Boolean);
-
-      for (const guildId of guildIds) {
+    if (devGuildIds.length > 0) {
+      for (const guildId of devGuildIds) {
         logger.info(`Refreshing application (/) commands for DEV guild: ${guildId}`);
         await rest.put(Routes.applicationGuildCommands(config.discordAppId, guildId), {
           body: commandPayloads,
@@ -137,13 +169,31 @@ export async function registerCommands() {
       logger.info('Clearing GLOBAL commands to prevent duplicates...');
       await rest.put(Routes.applicationCommands(config.discordAppId), { body: [] });
       logger.info('Successfully cleared GLOBAL commands.');
+
+      const staleGuildIds = knownGuildIds.filter((guildId) => !devGuildIds.includes(guildId));
+      if (staleGuildIds.length > 0) {
+        await clearGuildScopedCommands({
+          rest,
+          guildIds: staleGuildIds,
+          appId: config.discordAppId,
+          reason: 'outside configured DEV_GUILD_ID',
+        });
+      }
     } else {
       logger.info('Refreshing application (/) commands GLOBALLY (may take ~1h to cache).');
       await rest.put(Routes.applicationCommands(config.discordAppId), { body: commandPayloads });
       logger.info('Successfully reloaded application (/) commands GLOBALLY.');
+
+      if (knownGuildIds.length > 0) {
+        await clearGuildScopedCommands({
+          rest,
+          guildIds: knownGuildIds,
+          appId: config.discordAppId,
+          reason: 'global command mode duplicate prevention',
+        });
+      }
     }
   } catch (error) {
-    logger.error(error);
-    throw error;
+    logger.error({ error }, 'Slash command registration failed');
   }
 }

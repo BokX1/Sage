@@ -14,7 +14,12 @@ export function registerReadyHandler(client: Client) {
   client.once(Events.ClientReady, async (c) => {
     try {
       logger.info(`Logged in as ${c.user.tag}!`);
-      await registerCommands();
+      const knownGuildIds = [...c.guilds.cache.keys()];
+      try {
+        await registerCommands({ knownGuildIds });
+      } catch (error) {
+        logger.warn({ error }, 'Slash command registration failed; continuing startup initialization');
+      }
 
       // D1: Backfill history for proactive channels
       // We only backfill channels that are allowed for logging
