@@ -35,7 +35,7 @@ Sage documentation is organized to support two common goals:
 | :--- | :--- |
 | [🤖 Agentic Architecture](AGENTIC_ARCHITECTURE.md) | What makes Sage “agentic” (high-level) |
 | [🧠 Memory System](architecture/memory_system.md) | How Sage stores/summarizes context |
-| [🔀 Runtime Pipeline](architecture/pipeline.md) | How messages route through experts and tools |
+| [🔀 Runtime Pipeline](architecture/pipeline.md) | How messages flow through agent selection, context providers, and tools |
 | [💾 Database](architecture/database.md) | Storage model + schema overview |
 
 ### Operations & Security

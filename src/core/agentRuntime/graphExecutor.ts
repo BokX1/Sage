@@ -1,12 +1,12 @@
 import { LLMChatMessage, LLMMessageContent } from '../llm/llm-types';
 import { logger } from '../utils/logger';
-import { ExpertName, ExpertPacket } from '../orchestration/experts/expert-types';
-import { runExperts } from '../orchestration/runExperts';
+import { ContextProviderName, ContextPacket } from '../context/context-types';
+import { runContextProviders } from '../context/runContext';
 import { AgentEvent, createAgentEventFactory } from './agent-events';
 import {
   addUnresolvedQuestion,
   createBlackboardState,
-  expertPacketsToArtifacts,
+  contextPacketsToArtifacts,
   markTaskStarted,
   recordTaskResult,
   BlackboardState,
@@ -31,7 +31,7 @@ export interface ExecuteAgentGraphParams {
 export interface ExecuteAgentGraphResult {
   blackboard: BlackboardState;
   events: AgentEvent[];
-  packets: ExpertPacket[];
+  packets: ContextPacket[];
   nodeRuns: AgentNodeRun[];
 }
 
@@ -48,16 +48,15 @@ export interface AgentNodeRun {
   metadataJson?: Record<string, unknown>;
 }
 
-const EXPERT_NAMES: ExpertName[] = [
+const PROVIDER_NAMES: ContextProviderName[] = [
   'Memory',
   'Summarizer',
   'SocialGraph',
   'VoiceAnalytics',
-  'ImageGenerator',
 ];
 
-function asExpertName(agent: AgentTaskNode['agent']): ExpertName | null {
-  return EXPERT_NAMES.includes(agent as ExpertName) ? (agent as ExpertName) : null;
+function asProviderName(agent: AgentTaskNode['agent']): ContextProviderName | null {
+  return PROVIDER_NAMES.includes(agent as ContextProviderName) ? (agent as ContextProviderName) : null;
 }
 
 function timeoutError(nodeId: string, timeoutMs: number): Error {
@@ -89,35 +88,30 @@ async function executeNode(params: {
   replyReferenceContent?: LLMMessageContent | null;
   conversationHistory?: LLMChatMessage[];
   apiKey?: string;
-}): Promise<{ packets: ExpertPacket[]; summary: string; confidence: number }> {
-  const expertName = asExpertName(params.node.agent);
+}): Promise<{ packets: ContextPacket[]; summary: string; confidence: number }> {
+  const providerName = asProviderName(params.node.agent);
 
-  if (!expertName) {
+  if (!providerName) {
     return {
       packets: [],
-      summary: `No execution adapter registered for agent "${params.node.agent}".`,
+      summary: `No execution adapter registered for provider "${params.node.agent}".`,
       confidence: 0,
     };
   }
 
-  const packets = await runExperts({
-    experts: [expertName],
+  const packets = await runContextProviders({
+    providers: [providerName],
     guildId: params.guildId,
     channelId: params.channelId,
     userId: params.userId,
     traceId: params.traceId,
     skipMemory: false,
-    userText: params.userText,
-    userContent: params.userContent,
-    replyReferenceContent: params.replyReferenceContent,
-    conversationHistory: params.conversationHistory,
-    apiKey: params.apiKey,
   });
 
   if (packets.length === 0) {
     return {
       packets,
-      summary: `${expertName} returned no packet.`,
+      summary: `${providerName} returned no packet.`,
       confidence: 0.4,
     };
   }
@@ -129,8 +123,8 @@ async function executeNode(params: {
   return {
     packets,
     summary: hadError
-      ? `${expertName} returned degraded output with recoverable issues.`
-      : `${expertName} completed successfully.`,
+      ? `${providerName} returned degraded output with recoverable issues.`
+      : `${providerName} completed successfully.`,
     confidence: hadError ? 0.4 : 0.8,
   };
 }
@@ -196,7 +190,7 @@ async function executeNodeWithRetries(params: {
       );
 
       const finishedAt = new Date().toISOString();
-      const artifacts = expertPacketsToArtifacts({
+      const artifacts = contextPacketsToArtifacts({
         taskId: params.node.id,
         agent: params.node.agent,
         packets: nodeExecution.packets,
@@ -271,7 +265,7 @@ export async function executeAgentGraph(params: ExecuteAgentGraphParams): Promis
     graph: params.graph,
   });
   const events: AgentEvent[] = [];
-  const packets: ExpertPacket[] = [];
+  const packets: ContextPacket[] = [];
   const nodeRuns: AgentNodeRun[] = [];
   const eventFactory = createAgentEventFactory(params.traceId);
 

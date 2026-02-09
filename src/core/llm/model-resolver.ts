@@ -56,10 +56,8 @@ export interface ModelResolutionDetails {
 const ROUTE_MODEL_CHAINS: Record<string, string[]> = {
   coding: ['kimi', 'qwen-coder', 'deepseek'],
   search: ['gemini-search', 'perplexity-fast', 'perplexity-reasoning', 'nomnom'],
-  analyze: ['openai-large', 'gemini-fast', 'mistral', 'kimi'],
   chat: ['openai', 'kimi', 'gemini-fast', 'claude-fast'],
-  art: ['imagen-4', 'flux', 'flux-2-dev', 'klein'],
-  manage: ['gemini-fast', 'openai-fast'],
+  image: ['imagen-4', 'flux', 'flux-2-dev', 'klein'],
 };
 
 function hasPart(messages: LLMChatMessage[], type: 'image_url' | 'input_audio'): boolean {

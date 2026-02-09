@@ -1,9 +1,9 @@
 # ⚙️ Configuration Reference
 
-A complete reference for Sage configuration. All settings are configured in your `.env` file and loaded through a single validated config module (`src/shared/config/env.ts`). Do not access `process.env` directly in runtime modules.
+All runtime settings are configured in `.env` and validated by `src/shared/config/env.ts`.
 
 > [!TIP]
-> After changing `.env`, restart Sage for settings to take effect.
+> After changing `.env`, restart Sage so configuration is reloaded.
 
 ---
 
@@ -11,15 +11,16 @@ A complete reference for Sage configuration. All settings are configured in your
 
 - [How to Use This Page](#how-to-use-this-page)
 - [Essential (Required)](#essential-required)
-- [AI Models](#ai-models)
-- [Behavior & Agentic Triggers](#behavior-agentic-triggers)
+- [Runtime and Model Configuration](#runtime-and-model-configuration)
+- [Behavior and Triggering](#behavior-and-triggering)
 - [Agentic Runtime Governance](#agentic-runtime-governance)
-- [Message Ingestion & Storage](#message-ingestion-storage)
+- [Replay Gate Controls](#replay-gate-controls)
+- [Message Ingestion and Retention](#message-ingestion-and-retention)
 - [Channel Summaries](#channel-summaries)
 - [Context Budgeting](#context-budgeting)
-- [Relationship Graph](#relationship-graph)
-- [Rate Limits & Timeouts](#rate-limits-timeouts)
-- [Admin Access Control](#admin-access-control)
+- [Rate Limits and Timeouts](#rate-limits-and-timeouts)
+- [Admin Access and Observability](#admin-access-and-observability)
+- [Example `.env` Snippet](#example-env-snippet)
 
 ---
 
@@ -27,9 +28,9 @@ A complete reference for Sage configuration. All settings are configured in your
 
 ## ✅ How to Use This Page
 
-- **Required** settings are the minimum needed for Sage to start.
-- Most users can keep defaults and only adjust **Behavior**, **Admin Access**, and **Logging/Retention**.
-- If you’re new to `.env` files, start with the example at the bottom and edit from there.
+- Keep required values valid first.
+- Start with `.env.example` defaults, then tune only what your server needs.
+- For route/tool/critic behavior, adjust Agentic Runtime Governance settings.
 
 ---
 
@@ -37,71 +38,56 @@ A complete reference for Sage configuration. All settings are configured in your
 
 ## 🔴 Essential (Required)
 
-These settings are required for Sage to start.
-
 | Variable | Description | Example |
 | :--- | :--- | :--- |
-| `DISCORD_TOKEN` | Bot token from the Discord Developer Portal | `MTIz...abc` |
+| `DISCORD_TOKEN` | Bot token from Discord Developer Portal | `MTIz...abc` |
 | `DISCORD_APP_ID` | Discord application ID | `1234567890123456789` |
 | `DATABASE_URL` | PostgreSQL connection string | `postgresql://postgres:password@localhost:5432/sage?schema=public` |
+| `SECRET_ENCRYPTION_KEY` | 64-hex key for encrypting stored API keys | `0123...abcd` |
 
 ---
 
-<a id="ai-models"></a>
+<a id="runtime-and-model-configuration"></a>
 
-## 🤖 AI Models
+## 🤖 Runtime and Model Configuration
 
-Sage uses specialized models for different tasks.
-
-### Primary Configuration
-
-| Variable | Description | Default |
+| Variable | Description | `.env.example` |
 | :--- | :--- | :--- |
-| `LLM_PROVIDER` | AI provider | `pollinations` |
-| `LLM_BASE_URL` | API endpoint | `https://gen.pollinations.ai/v1` |
-| `LLM_IMAGE_BASE_URL` | Image generation endpoint | `https://gen.pollinations.ai` |
-| `CHAT_MODEL` | Primary chat model (Sage automatically switches to `kimi` for coding/reasoning tasks) | `gemini-fast` |
-| `LLM_API_KEY` | Global LLM key. Optional fallback (useful for self-hosting). We recommend **BYOP** (server-wide keys) for communities. | *(empty)* |
-
-### Specialized System Models
-
-| Variable | Description | Default |
-| :--- | :--- | :--- |
-| `PROFILE_PROVIDER` | Provider override for profile analysis | *(empty)* |
-| `PROFILE_CHAT_MODEL` | Model for user profile analysis | `deepseek` |
-| `SUMMARY_MODEL` | Model for channel summaries | `openai-large` |
-| `FORMATTER_MODEL` | Model for reliable JSON formatting | `qwen-coder` |
-
-### Model Limits
-
-| Variable | Description | Default |
-| :--- | :--- | :--- |
-| `LLM_MODEL_LIMITS_JSON` | Custom token limits per model (JSON string) | *(empty)* |
+| `NODE_ENV` | Runtime mode (`development`, `production`, `test`) | `production` |
+| `LLM_PROVIDER` | Provider id (currently `pollinations`) | `pollinations` |
+| `LLM_BASE_URL` | Chat API base URL | `https://gen.pollinations.ai/v1` |
+| `LLM_IMAGE_BASE_URL` | Image API base URL | `https://gen.pollinations.ai` |
+| `CHAT_MODEL` | Base chat model (route resolver may select alternates) | `openai` |
+| `LLM_API_KEY` | Optional global fallback key | *(empty)* |
+| `LLM_MODEL_LIMITS_JSON` | Optional model limit map (JSON string) | `""` |
+| `PROFILE_PROVIDER` | Optional profile-provider override | *(empty)* |
+| `PROFILE_CHAT_MODEL` | Profile analysis model | `deepseek` |
+| `SUMMARY_MODEL` | Channel summary model | `openai-large` |
+| `FORMATTER_MODEL` | JSON formatter model | `qwen-coder` |
 
 ---
 
-<a id="behavior-agentic-triggers"></a>
+<a id="behavior-and-triggering"></a>
 
-## 💬 Behavior & Agentic Triggers
+## 💬 Behavior and Triggering
 
-Control how Sage responds in chat.
-
-| Variable | Description | Default |
+| Variable | Description | `.env.example` |
 | :--- | :--- | :--- |
-| `WAKE_WORDS_CSV` | Words that trigger Sage at start of message | `sage` |
-| `WAKE_WORD_PREFIXES_CSV` | Optional prefixes (e.g., “hey sage”) | *(empty)* |
-| `AUTOPILOT_MODE` | Response mode: `manual`, `reserved`, or `talkative` | `manual` |
+| `WAKE_WORDS_CSV` | Trigger words at start of message | `sage` |
+| `WAKE_WORD_PREFIXES_CSV` | Optional prefixes before wake word | *(empty)* |
+| `AUTOPILOT_MODE` | `manual`, `reserved`, or `talkative` | `manual` |
 | `PROFILE_UPDATE_INTERVAL` | Messages between background profile updates | `5` |
-| `WAKEWORD_COOLDOWN_SEC` | Cooldown per user between responses (seconds) | `20` |
-| `WAKEWORD_MAX_RESPONSES_PER_MIN_PER_CHANNEL` | Max responses per minute per channel | `6` |
+| `WAKEWORD_COOLDOWN_SEC` | Per-user cooldown between responses | `20` |
+| `WAKEWORD_MAX_RESPONSES_PER_MIN_PER_CHANNEL` | Per-channel response cap per minute | `6` |
+| `PROACTIVE_POSTING_ENABLED` | Enables autonomous posting behavior | `true` |
 
-### Autopilot Modes Explained
+Autopilot modes:
 
-| Mode | Behavior | API Usage |
-| :--- | :--- | :--- |
-| `manual` | Responds only on wake word, @mention, or reply | 🟢 **Low** |
-| `reserved` | Occasionally joins relevant conversations | 🟡 **Medium** |
-| `talkative` | Actively participates without prompts | 🔴 **High** |
+| Mode | Behavior |
+| :--- | :--- |
+| `manual` | Replies only on wake word, mention, or reply |
+| `reserved` | Selectively joins when likely useful |
+| `talkative` | More proactive participation |
 
 ---
 
@@ -109,72 +95,71 @@ Control how Sage responds in chat.
 
 ## Agentic Runtime Governance
 
-These settings control the planner/executor safety rails, per-tenant overrides, and rollout behavior.
+These settings control graph execution, tool policy, critic behavior, canary rollout, and per-tenant overrides.
 
-### Graph, Tool, Critic, and Tenant Overrides
+### Graph + Tool + Critic + Tenant Policy
 
-| Variable | Description | Default |
+| Variable | Description | `.env.example` |
 | :--- | :--- | :--- |
-| `AGENTIC_GRAPH_PARALLEL_ENABLED` | Enables parallel graph execution when dependencies allow | `true` |
-| `AGENTIC_GRAPH_MAX_PARALLEL` | Upper bound for concurrent graph nodes | `3` |
-| `AGENTIC_TOOL_ALLOW_EXTERNAL_WRITE` | Allows tools with external side effects | `false` |
-| `AGENTIC_TOOL_ALLOW_HIGH_RISK` | Allows high-risk tools | `false` |
-| `AGENTIC_TOOL_BLOCKLIST_CSV` | Comma-separated blocked tool names | *(empty)* |
-| `AGENTIC_CRITIC_ENABLED` | Enables bounded critic loops | `false` |
-| `AGENTIC_CRITIC_MIN_SCORE` | Critic score threshold before revision | `0.72` |
-| `AGENTIC_CRITIC_MAX_LOOPS` | Max critic-driven revisions | `1` |
-| `AGENTIC_TENANT_POLICY_JSON` | JSON policy registry for `default` and per-`guilds` overrides (max parallel, critic, tool policy, allowed models) | `{}` |
+| `AGENTIC_GRAPH_PARALLEL_ENABLED` | Allow parallel context-provider execution | `true` |
+| `AGENTIC_GRAPH_MAX_PARALLEL` | Max concurrent graph nodes | `2` |
+| `AGENTIC_TOOL_ALLOW_EXTERNAL_WRITE` | Allow external side-effect tools | `false` |
+| `AGENTIC_TOOL_ALLOW_HIGH_RISK` | Allow high-risk tools | `false` |
+| `AGENTIC_TOOL_BLOCKLIST_CSV` | Comma-separated blocked tools | `join_voice_channel,leave_voice_channel` |
+| `AGENTIC_CRITIC_ENABLED` | Enable bounded critic loops | `true` |
+| `AGENTIC_CRITIC_MIN_SCORE` | Critic threshold before revision | `0.78` |
+| `AGENTIC_CRITIC_MAX_LOOPS` | Max critic revisions | `1` |
+| `AGENTIC_TENANT_POLICY_JSON` | JSON registry for `default` and per-guild overrides | `{}` |
 
-### Canary and Rollback Controls
+### Canary + Rollback
 
-| Variable | Description | Default |
+| Variable | Description | `.env.example` |
 | :--- | :--- | :--- |
-| `AGENTIC_CANARY_ENABLED` | Enables rollout sampling and error-budget guardrails | `true` |
-| `AGENTIC_CANARY_PERCENT` | Percent of eligible traffic that uses agentic graph execution (0-100) | `100` |
-| `AGENTIC_CANARY_ROUTE_ALLOWLIST_CSV` | Comma-separated routes eligible for agentic execution | `chat,coding,search,art,analyze,manage` |
-| `AGENTIC_CANARY_MAX_FAILURE_RATE` | Failure-rate threshold that trips cooldown | `0.30` |
-| `AGENTIC_CANARY_MIN_SAMPLES` | Minimum samples before evaluating failure rate | `50` |
-| `AGENTIC_CANARY_COOLDOWN_SEC` | Cooldown duration after error-budget breach | `900` |
-| `AGENTIC_CANARY_WINDOW_SIZE` | Rolling sample window size for failure-rate checks | `250` |
-
-### Replay Gate Controls
-
-Used by `npm run agentic:replay-gate` (and CI release readiness).
-
-| Variable | Description | Default |
-| :--- | :--- | :--- |
-| `REPLAY_GATE_LIMIT` | Number of recent traces evaluated | `200` |
-| `REPLAY_GATE_MIN_AVG_SCORE` | Minimum average replay score (0-1) | `0.65` |
-| `REPLAY_GATE_MIN_SUCCESS_RATE` | Minimum success-likely ratio (0-1) | `0.75` |
-| `REPLAY_GATE_REQUIRE_DATA` | Fails gate when no traces exist (`1`/`0`) | `1` |
-| `REPLAY_GATE_GUILD_ID` | Optional guild scope for evaluation | *(empty)* |
-| `REPLAY_GATE_CHANNEL_ID` | Optional channel scope for evaluation | *(empty)* |
+| `AGENTIC_CANARY_ENABLED` | Enable rollout/error-budget guardrails | `true` |
+| `AGENTIC_CANARY_PERCENT` | % of eligible turns using graph path | `100` |
+| `AGENTIC_CANARY_ROUTE_ALLOWLIST_CSV` | Routes eligible for agentic graph | `chat,coding,search,creative` |
+| `AGENTIC_CANARY_MAX_FAILURE_RATE` | Failure rate threshold for cooldown | `0.20` |
+| `AGENTIC_CANARY_MIN_SAMPLES` | Min samples before budget evaluation | `50` |
+| `AGENTIC_CANARY_COOLDOWN_SEC` | Cooldown duration after breach | `900` |
+| `AGENTIC_CANARY_WINDOW_SIZE` | Rolling sample window | `250` |
 
 ---
 
-<a id="message-ingestion-storage"></a>
+<a id="replay-gate-controls"></a>
 
-## 📥 Message Ingestion & Storage
+## Replay Gate Controls
 
-Control what Sage logs and stores.
+Used by `npm run agentic:replay-gate` and release checks.
 
-| Variable | Description | Default |
+| Variable | Description | `.env.example` |
+| :--- | :--- | :--- |
+| `REPLAY_GATE_LIMIT` | Number of recent traces evaluated | `200` |
+| `REPLAY_GATE_MIN_AVG_SCORE` | Minimum average score (0-1) | `0.65` |
+| `REPLAY_GATE_MIN_SUCCESS_RATE` | Minimum success ratio (0-1) | `0.75` |
+| `REPLAY_GATE_REQUIRE_DATA` | Fail when no traces exist (`1`/`0`) | `1` |
+| `REPLAY_GATE_MIN_TOTAL` | Minimum trace count before pass allowed | `10` |
+| `REPLAY_GATE_REQUIRED_ROUTES_CSV` | Routes that must have coverage | `chat,coding,search,creative` |
+| `REPLAY_GATE_MIN_ROUTE_SAMPLES` | Minimum samples per required route | `1` |
+| `REPLAY_GATE_GUILD_ID` | Optional guild scope | *(empty)* |
+| `REPLAY_GATE_CHANNEL_ID` | Optional channel scope | *(empty)* |
+
+---
+
+<a id="message-ingestion-and-retention"></a>
+
+## 📥 Message Ingestion and Retention
+
+| Variable | Description | `.env.example` |
 | :--- | :--- | :--- |
 | `INGESTION_ENABLED` | Enable message/voice ingestion | `true` |
 | `INGESTION_MODE` | `all` or `allowlist` | `all` |
-| `INGESTION_ALLOWLIST_CHANNEL_IDS_CSV` | Comma-separated channel IDs to log (if allowlist) | *(empty)* |
-| `INGESTION_BLOCKLIST_CHANNEL_IDS_CSV` | Comma-separated channel IDs to exclude | *(empty)* |
-| `MESSAGE_DB_STORAGE_ENABLED` | Persist messages to database | `true` |
-| `PROACTIVE_POSTING_ENABLED` | Allow autonomous message posting | `true` |
-
-### Retention Settings
-
-| Variable | Description | Default |
-| :--- | :--- | :--- |
-| `RAW_MESSAGE_TTL_DAYS` | In-memory transcript retention (days) | `3` |
-| `RING_BUFFER_MAX_MESSAGES_PER_CHANNEL` | Max messages in memory per channel | `200` |
-| `CONTEXT_TRANSCRIPT_MAX_MESSAGES` | Max recent messages included in the transcript window (used in prompts) | `15` |
-| `CONTEXT_TRANSCRIPT_MAX_CHARS` | Max characters per transcript block | `12000` |
+| `INGESTION_ALLOWLIST_CHANNEL_IDS_CSV` | Channels to include in allowlist mode | *(empty)* |
+| `INGESTION_BLOCKLIST_CHANNEL_IDS_CSV` | Channels to exclude | *(empty)* |
+| `MESSAGE_DB_STORAGE_ENABLED` | Persist messages to `ChannelMessage` table | `true` |
+| `RAW_MESSAGE_TTL_DAYS` | In-memory transcript retention days | `3` |
+| `RING_BUFFER_MAX_MESSAGES_PER_CHANNEL` | In-memory transcript size cap | `200` |
+| `CONTEXT_TRANSCRIPT_MAX_MESSAGES` | Transcript message cap per prompt | `15` |
+| `CONTEXT_TRANSCRIPT_MAX_CHARS` | Transcript char cap per prompt | `12000` |
 
 ---
 
@@ -182,16 +167,14 @@ Control what Sage logs and stores.
 
 ## 📊 Channel Summaries
 
-Configure automatic channel summarization.
-
-| Variable | Description | Default |
+| Variable | Description | `.env.example` |
 | :--- | :--- | :--- |
-| `SUMMARY_ROLLING_WINDOW_MIN` | Rolling window duration (minutes) | `60` |
-| `SUMMARY_ROLLING_MIN_MESSAGES` | Min messages before triggering summary | `20` |
-| `SUMMARY_ROLLING_MIN_INTERVAL_SEC` | Min seconds between summaries | `300` |
-| `SUMMARY_PROFILE_MIN_INTERVAL_SEC` | Min seconds between profile summaries | `21600` (6h) |
-| `SUMMARY_MAX_CHARS` | Max characters per summary | `4000` in `.env.example`, `1800` in runtime defaults when unset |
-| `SUMMARY_SCHED_TICK_SEC` | Summary scheduler tick interval | `60` |
+| `SUMMARY_ROLLING_WINDOW_MIN` | Rolling summary window (minutes) | `60` |
+| `SUMMARY_ROLLING_MIN_MESSAGES` | Min new messages before summary | `20` |
+| `SUMMARY_ROLLING_MIN_INTERVAL_SEC` | Min seconds between rolling summaries | `300` |
+| `SUMMARY_PROFILE_MIN_INTERVAL_SEC` | Min seconds between profile summaries | `21600` |
+| `SUMMARY_MAX_CHARS` | Max chars in summary output | `1800` |
+| `SUMMARY_SCHED_TICK_SEC` | Scheduler tick interval | `60` |
 
 ---
 
@@ -199,143 +182,111 @@ Configure automatic channel summarization.
 
 ## 🧠 Context Budgeting
 
-Control token allocation for LLM requests.
+### Global
 
-### Global Limits
-
-| Variable | Description | Default |
+| Variable | Description | `.env.example` |
 | :--- | :--- | :--- |
-| `CONTEXT_MAX_INPUT_TOKENS` | Total input token budget | `65536` |
-| `CONTEXT_RESERVED_OUTPUT_TOKENS` | Reserved tokens for output | `8192` |
-| `SYSTEM_PROMPT_MAX_TOKENS` | Max tokens for system prompt | `6000` |
-| `CONTEXT_USER_MAX_TOKENS` | Max tokens for user message | `24000` |
+| `CONTEXT_MAX_INPUT_TOKENS` | Max input token budget | `65536` |
+| `CONTEXT_RESERVED_OUTPUT_TOKENS` | Reserved output tokens | `8192` |
+| `SYSTEM_PROMPT_MAX_TOKENS` | System prompt budget | `6000` |
+| `CONTEXT_USER_MAX_TOKENS` | User block budget | `24000` |
 
 ### Block Budgets
 
-| Variable | Description | Default |
+| Variable | Description | `.env.example` |
 | :--- | :--- | :--- |
-| `CONTEXT_BLOCK_MAX_TOKENS_TRANSCRIPT` | Budget for raw transcript | `8000` |
-| `CONTEXT_BLOCK_MAX_TOKENS_ROLLING_SUMMARY` | Budget for rolling summary | `4800` |
-| `CONTEXT_BLOCK_MAX_TOKENS_PROFILE_SUMMARY` | Budget for profile summary | `4800` |
-| `CONTEXT_BLOCK_MAX_TOKENS_MEMORY` | Budget for memory data | `6000` |
-| `CONTEXT_BLOCK_MAX_TOKENS_REPLY_CONTEXT` | Budget for reply context | `3200` |
-| `CONTEXT_BLOCK_MAX_TOKENS_EXPERTS` | Budget for expert packets | `4800` |
-| `CONTEXT_BLOCK_MAX_TOKENS_RELATIONSHIP_HINTS` | Budget for relationship hints | `2400` |
+| `CONTEXT_BLOCK_MAX_TOKENS_TRANSCRIPT` | Transcript budget | `8000` |
+| `CONTEXT_BLOCK_MAX_TOKENS_ROLLING_SUMMARY` | Rolling summary budget | `4800` |
+| `CONTEXT_BLOCK_MAX_TOKENS_PROFILE_SUMMARY` | Profile summary budget | `4800` |
+| `CONTEXT_BLOCK_MAX_TOKENS_MEMORY` | Memory block budget | `6000` |
+| `CONTEXT_BLOCK_MAX_TOKENS_REPLY_CONTEXT` | Reply/intention context budget | `3200` |
+| `CONTEXT_BLOCK_MAX_TOKENS_PROVIDERS` | Context packets budget | `4800` |
 
-### Token Estimation
+### Estimation
 
-| Variable | Description | Default |
+| Variable | Description | `.env.example` |
 | :--- | :--- | :--- |
-| `TOKEN_ESTIMATOR` | Token counting method | `heuristic` |
-| `TOKEN_HEURISTIC_CHARS_PER_TOKEN` | Characters per token estimate | `4` |
-| `CONTEXT_TRUNCATION_NOTICE` | Show truncation notice in context | `true` |
+| `TOKEN_ESTIMATOR` | Token estimation mode | `heuristic` |
+| `TOKEN_HEURISTIC_CHARS_PER_TOKEN` | Chars-per-token estimate | `4` |
+| `CONTEXT_TRUNCATION_NOTICE` | Emit truncation hints in context | `true` |
 
 ---
 
-<a id="relationship-graph"></a>
+<a id="rate-limits-and-timeouts"></a>
 
-## 🤝 Relationship Graph
+## 🔒 Rate Limits and Timeouts
 
-Tune social relationship calculations.
-
-| Variable | Description | Default |
-| :--- | :--- | :--- |
-| `RELATIONSHIP_HINTS_MAX_EDGES` | Max relationship edges to include | `10` |
-| `RELATIONSHIP_DECAY_LAMBDA` | Time decay factor | `0.06` |
-| `RELATIONSHIP_WEIGHT_K` | Weight scaling constant | `0.2` |
-| `RELATIONSHIP_CONFIDENCE_C` | Confidence scaling constant | `0.25` |
-
----
-
-<a id="rate-limits-timeouts"></a>
-
-## 🔒 Rate Limits & Timeouts
-
-Prevent spam and manage latency.
-
-| Variable | Description | Default |
+| Variable | Description | `.env.example` |
 | :--- | :--- | :--- |
 | `RATE_LIMIT_MAX` | Max responses per window | `5` |
-| `RATE_LIMIT_WINDOW_SEC` | Window duration (seconds) | `10` |
-| `TIMEOUT_CHAT_MS` | Timeout for chat requests | `300000` (5 min) |
-| `TIMEOUT_MEMORY_MS` | Timeout for memory operations | `600000` (10 min) |
+| `RATE_LIMIT_WINDOW_SEC` | Rate-limit window seconds | `10` |
+| `TIMEOUT_CHAT_MS` | Chat/model request timeout | `300000` |
+| `TIMEOUT_MEMORY_MS` | Memory/summarization timeout | `600000` |
 
 ---
 
-<a id="admin-access-control"></a>
+<a id="admin-access-and-observability"></a>
 
-## 👑 Admin Access Control
+## 👑 Admin Access and Observability
 
-| Variable | Description | Default |
+| Variable | Description | `.env.example` |
 | :--- | :--- | :--- |
-| `ADMIN_ROLE_IDS_CSV` | Comma-separated role IDs with admin access | *(empty)* |
-| `ADMIN_USER_IDS_CSV` | Comma-separated user IDs with admin access | *(empty)* |
-
----
-
-## 🔍 Observability & Debugging
-
-| Variable | Description | Default |
-| :--- | :--- | :--- |
-| `NODE_ENV` | `development`, `production`, `test` | `development` |
+| `ADMIN_ROLE_IDS_CSV` | Roles with admin access | *(empty)* |
+| `ADMIN_USER_IDS_CSV` | Users with admin access | *(empty)* |
+| `TRACE_ENABLED` | Persist runtime traces | `true` |
 | `LOG_LEVEL` | `debug`, `info`, `warn`, `error` | `info` |
-| `TRACE_ENABLED` | Store processing traces in database | `true` |
-| `DEV_GUILD_ID` | Guild ID for fast command registration (dev only) | *(empty)* |
-| `LLM_DOCTOR_PING` | Enable LLM ping in `npm run doctor` (set to `1`) | `0` |
+| `DEV_GUILD_ID` | Dev guild for instant command registration | *(empty)* |
+| `LLM_DOCTOR_PING` | Enable LLM ping during `npm run doctor` (`1`/`0`) | `0` |
 
 ---
 
-## 📝 Example `.env`
+<a id="example-env-snippet"></a>
+
+## 📝 Example `.env` Snippet
 
 ```env
-# =============================================================================
-# Required
-# =============================================================================
 DISCORD_TOKEN=your_bot_token_here
 DISCORD_APP_ID=your_app_id_here
 DATABASE_URL=postgresql://postgres:password@localhost:5432/sage?schema=public
+SECRET_ENCRYPTION_KEY=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
 
-# =============================================================================
-# Recommended
-# =============================================================================
-LLM_API_KEY=sk_... # Optional global key (or set a server key via /sage key set)
+LLM_PROVIDER=pollinations
+LLM_BASE_URL=https://gen.pollinations.ai/v1
+LLM_IMAGE_BASE_URL=https://gen.pollinations.ai
+CHAT_MODEL=openai
+LLM_API_KEY=
+
 AUTOPILOT_MODE=manual
-PROFILE_UPDATE_INTERVAL=5
 WAKE_WORDS_CSV=sage
 TRACE_ENABLED=true
+
 AGENTIC_GRAPH_PARALLEL_ENABLED=true
-AGENTIC_GRAPH_MAX_PARALLEL=3
+AGENTIC_GRAPH_MAX_PARALLEL=2
 AGENTIC_TOOL_ALLOW_EXTERNAL_WRITE=false
 AGENTIC_TOOL_ALLOW_HIGH_RISK=false
-AGENTIC_TOOL_BLOCKLIST_CSV=
-AGENTIC_CRITIC_ENABLED=false
-AGENTIC_CRITIC_MIN_SCORE=0.72
+AGENTIC_TOOL_BLOCKLIST_CSV=join_voice_channel,leave_voice_channel
+AGENTIC_CRITIC_ENABLED=true
+AGENTIC_CRITIC_MIN_SCORE=0.78
 AGENTIC_CRITIC_MAX_LOOPS=1
 AGENTIC_CANARY_ENABLED=true
 AGENTIC_CANARY_PERCENT=100
-AGENTIC_CANARY_ROUTE_ALLOWLIST_CSV=chat,coding,search,art,analyze,manage
-AGENTIC_CANARY_MAX_FAILURE_RATE=0.30
-AGENTIC_CANARY_MIN_SAMPLES=50
-AGENTIC_CANARY_COOLDOWN_SEC=900
-AGENTIC_CANARY_WINDOW_SIZE=250
+AGENTIC_CANARY_ROUTE_ALLOWLIST_CSV=chat,coding,search,creative
 AGENTIC_TENANT_POLICY_JSON={}
+
 REPLAY_GATE_LIMIT=200
 REPLAY_GATE_MIN_AVG_SCORE=0.65
 REPLAY_GATE_MIN_SUCCESS_RATE=0.75
 REPLAY_GATE_REQUIRE_DATA=1
-LOG_LEVEL=info
-
-# =============================================================================
-# Admin Access (add your Discord user ID)
-# =============================================================================
-ADMIN_USER_IDS_CSV=123456789012345678
+REPLAY_GATE_MIN_TOTAL=10
+REPLAY_GATE_REQUIRED_ROUTES_CSV=chat,coding,search,creative
+REPLAY_GATE_MIN_ROUTE_SAMPLES=1
 ```
 
 ---
 
 ## 🔗 Related Documentation
 
-- [Getting Started](GETTING_STARTED.md) — Full setup walkthrough
-- [Pollinations Integration](POLLINATIONS.md) — Provider + model configuration
-- [Memory System](architecture/memory_system.md) — How context budgets are applied
-- [Operations Runbook](operations/runbook.md) — Production deployment notes
+- [Getting Started](GETTING_STARTED.md)
+- [Pollinations Integration](POLLINATIONS.md)
+- [Memory System](architecture/memory_system.md)
+- [Operations Runbook](operations/runbook.md)

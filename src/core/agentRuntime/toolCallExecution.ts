@@ -59,14 +59,24 @@ export async function executeToolWithTimeout(
     }, timeoutMs);
   });
 
-  const executionPromise = registry.executeValidated(call, ctxWithSignal).then((result) => ({
-    name: call.name,
-    success: result.success,
-    result: result.success ? result.result : undefined,
-    error: result.success ? undefined : result.error,
-    errorType: result.success ? undefined : result.errorType,
-    latencyMs: Date.now() - start,
-  }));
+  const executionPromise = registry.executeValidated(call, ctxWithSignal).then((result) => {
+    const latencyMs = Date.now() - start;
+    if (result.success) {
+      return {
+        name: call.name,
+        success: true,
+        result: result.result,
+        latencyMs,
+      };
+    }
+    return {
+      name: call.name,
+      success: false,
+      error: result.error,
+      errorType: result.errorType,
+      latencyMs,
+    };
+  });
 
   const result = await Promise.race([executionPromise, timeoutPromise]);
   if (timeoutHandle) {

@@ -75,25 +75,25 @@ function getRecoverySuggestion(errorType: ToolErrorType, toolName: string): stri
 
 
 function formatToolResultsMessage(results: ToolResult[]): LLMChatMessage {
-  const successResults = results.filter(r => r.success);
-  const failedResults = results.filter(r => !r.success);
+  const successResults = results.filter((r) => r.success);
+  const failedResults = results.filter((r) => !r.success);
 
   const parts: string[] = [];
 
 
   if (successResults.length > 0) {
-    const successTexts = successResults.map(r =>
-      `✅ Tool "${r.name}" succeeded: ${JSON.stringify(r.result)}`
+    const successTexts = successResults.map((r) =>
+      `[OK] Tool "${r.name}" succeeded: ${JSON.stringify(r.result)}`
     );
     parts.push(successTexts.join('\n'));
   }
 
 
   if (failedResults.length > 0) {
-    const failedTexts = failedResults.map(r => {
+    const failedTexts = failedResults.map((r) => {
       const errorType = classifyErrorType(r.error || 'unknown');
       const suggestion = getRecoverySuggestion(errorType, r.name);
-      return `❌ Tool "${r.name}" failed (${errorType}): ${r.error}\n   💡 Suggestion: ${suggestion}`;
+      return `[ERROR] Tool "${r.name}" failed (${errorType}): ${r.error}\nSuggestion: ${suggestion}`;
     });
     parts.push(failedTexts.join('\n'));
   }
@@ -119,6 +119,12 @@ export interface ToolCallLoopParams {
   model?: string;
 
   apiKey?: string;
+
+  /**
+   * Optional pre-fetched assistant response content to consume as the first
+   * loop turn. Useful when the caller already received a tool envelope.
+   */
+  initialAssistantResponseText?: string;
 
   config?: ToolCallLoopConfig;
 
@@ -160,16 +166,21 @@ export async function runToolCallLoop(params: ToolCallLoopParams): Promise<ToolC
   let roundsCompleted = 0;
   const allToolResults: ToolResult[] = [];
   let retryAttempted = false;
+  let seededResponseText = params.initialAssistantResponseText;
 
   while (roundsCompleted < config.maxRounds) {
-    const response = await client.chat({
-      messages,
-      model,
-      apiKey,
-      temperature: 0.7,
-    });
-
-    const responseText = response.content;
+    const responseText =
+      typeof seededResponseText === 'string'
+        ? seededResponseText
+        : (
+            await client.chat({
+              messages,
+              model,
+              apiKey,
+              temperature: 0.7,
+            })
+          ).content;
+    seededResponseText = undefined;
 
     let envelope = parseToolCallEnvelope(responseText);
 

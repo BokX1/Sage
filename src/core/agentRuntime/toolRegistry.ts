@@ -171,7 +171,9 @@ export class ToolRegistry {
   ): Promise<ToolExecutionResult> {
     const validation = this.validateToolCall<TArgs>(call);
     if (!validation.success) {
-      return { success: false, error: validation.error, errorType: 'validation' };
+      // TS should narrow this, but if not, we access error safely
+      const error = 'error' in validation ? validation.error : 'Validation failed';
+      return { success: false, error, errorType: 'validation' };
     }
 
     const tool = this.tools.get(call.name)!;

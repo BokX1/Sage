@@ -1,9 +1,8 @@
-import { ExpertPacket } from './expert-types';
-import { LLMMessageContent, LLMChatMessage } from '../../llm/llm-types';
-import { logger } from '../../../core/utils/logger';
-import { getLLMClient } from '../../llm';
-import { resolveModelForRequest, getPreferredModel } from '../../llm/model-resolver';
-import { config } from '../../../config';
+import { LLMMessageContent, LLMChatMessage } from '../llm/llm-types';
+import { logger } from '../utils/logger';
+import { getLLMClient } from '../llm';
+import { resolveModelForRequest, getPreferredModel } from '../llm/model-resolver';
+import { config } from '../../config';
 
 export interface ImageGenParams {
     userText: string;
@@ -11,6 +10,18 @@ export interface ImageGenParams {
     replyReferenceContent?: LLMMessageContent | null;
     conversationHistory?: LLMChatMessage[];
     apiKey?: string;
+}
+
+export interface ImageGenActionResult {
+    name: 'ImageGenerator';
+    content: string;
+    json?: unknown;
+    tokenEstimate?: number;
+    binary?: {
+        data: Buffer;
+        filename: string;
+        mimetype: string;
+    };
 }
 
 const IMAGE_REFINER_SYSTEM_PROMPT = `You are a Lead AI Art Director and Prompt Engineer.
@@ -212,7 +223,7 @@ async function refinePrompt(
         const refinerModel = await resolveModelForRequest({
             guildId: null,
             messages,
-            route: 'manage', // Use manage route for fast instruction following
+            route: 'chat', // Use chat route for fast instruction following
             allowedModels: ['gemini-fast', 'openai-fast'], // Allow fast reasoning models
         });
 
@@ -237,14 +248,14 @@ async function refinePrompt(
 }
 
 /**
- * Image Generation Expert
+ * Image Generation Action
  * 
  * Responsibilities:
  * 1. Gather context (text + images)
  * 2. Refine prompt via LLM
  * 3. Fetch image bytes from Pollinations (flux/klein)
  */
-export async function runImageGenExpert(params: ImageGenParams): Promise<ExpertPacket> {
+export async function runImageGenAction(params: ImageGenParams): Promise<ImageGenActionResult> {
     const { userText, userContent, replyReferenceContent, conversationHistory = [], apiKey } = params;
 
     try {
@@ -274,7 +285,7 @@ export async function runImageGenExpert(params: ImageGenParams): Promise<ExpertP
         const imageBaseUrl = normalizeImageBaseUrl(
             config.LLM_IMAGE_BASE_URL || config.LLM_BASE_URL
         );
-        const model = getPreferredModel('art') || 'imagen-4';
+        const model = getPreferredModel('image') || 'imagen-4';
         const seed = Math.floor(Math.random() * 1_000_000);
         const url = buildImageGenUrl({
             baseUrl: imageBaseUrl,
@@ -415,7 +426,7 @@ NOT: "{ action: ... }"`,
         logger.error({ error }, '[ImageGen] Failed to generate image');
         return {
             name: 'ImageGenerator',
-            content: `[ImageGenerator] Failed to generate image: ${error instanceof Error ? error.message : String(error)}`,
+            content: `[ImageGen] Failed to generate image: ${error instanceof Error ? error.message : String(error)}`,
             tokenEstimate: 20
         };
     }

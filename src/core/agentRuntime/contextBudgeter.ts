@@ -16,7 +16,7 @@ export type ContextBlockId =
   | 'profile_summary'
   | 'rolling_summary'
   | 'relationship_hints'
-  | 'expert_packets'
+  | 'context_packets'
   | 'transcript'
   | 'intent_hint'
   | 'reply_context'
@@ -287,7 +287,7 @@ function findBlock(blocks: ContextBlock[], id: ContextBlockId): ContextBlock | u
 
 const TRUNCATION_ORDER: ContextBlockId[] = [
   'transcript',
-  'expert_packets',
+  'context_packets',
   'rolling_summary',
   'profile_summary',
   'relationship_hints',

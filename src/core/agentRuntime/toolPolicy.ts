@@ -14,6 +14,9 @@ export interface ToolPolicyDecision {
 }
 
 const DEFAULT_TOOL_RISK: Record<string, ToolRiskClass> = {
+  join_voice_channel: 'external_write',
+  leave_voice_channel: 'external_write',
+  // Backward-compatible aliases used in older tests/prompts.
   join_voice: 'external_write',
   leave_voice: 'external_write',
 };

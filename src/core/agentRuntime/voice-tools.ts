@@ -4,6 +4,10 @@ import { client } from '../../bot/client';
 import { VoiceManager } from '../voice/voiceManager';
 import { logger } from '../../core/utils/logger';
 
+/**
+ * Voice tool definitions are kept for compatibility, but are intentionally
+ * not registered at bootstrap. Voice join/leave is command-only.
+ */
 export const joinVoiceTool: ToolDefinition = {
   name: 'join_voice_channel',
   description: 'Join the user\'s current voice channel. Use this when the user asks you to join voice, hop in vc, or speak to them.',

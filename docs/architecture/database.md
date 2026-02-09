@@ -1,9 +1,9 @@
 # 💾 Sage Database Architecture
 
-Sage uses **PostgreSQL** (via Prisma) to persist long-term memory, social relationships, and processing traces.
+Sage uses **PostgreSQL** (via Prisma) to persist memory, social state, voice activity, and runtime traces.
 
 > [!NOTE]
-> The ERD below is a simplified overview intended for orientation. The schema in `prisma/schema.prisma` is the authoritative reference.
+> The ERD below is a simplified orientation map. `prisma/schema.prisma` is the authoritative schema.
 
 ---
 
@@ -20,56 +20,98 @@ Sage uses **PostgreSQL** (via Prisma) to persist long-term memory, social relati
 
 ```mermaid
 erDiagram
-    %% Simplified ERD (see prisma/schema.prisma for the authoritative schema)
+    %% Simplified logical ERD based on prisma/schema.prisma
     GuildSettings {
         string guildId PK
-        json settings
+        string pollinationsApiKey
+        datetime createdAt
+        datetime updatedAt
     }
 
     UserProfile {
-        string id PK
-        json facts
-        string persona
-    }
-
-    RelationshipEdge {
-        string sourceId FK
-        string targetId FK
-        float weight
+        string userId PK
+        string summary
+        string pollinationsApiKey
+        datetime createdAt
+        datetime updatedAt
     }
 
     ChannelMessage {
         string messageId PK
+        string guildId
+        string channelId
         string authorId
+        datetime timestamp
         string content
     }
 
     ChannelSummary {
         string id PK
+        string guildId
         string channelId
-        json summary
+        string kind
+        datetime windowStart
+        datetime windowEnd
+        string summaryText
+        datetime updatedAt
+    }
+
+    RelationshipEdge {
+        string id PK
+        string guildId
+        string userA
+        string userB
+        float weight
+        float confidence
     }
 
     VoiceSession {
         string id PK
-        datetime joinedAt
-        datetime leftAt
+        string guildId
+        string channelId
+        string userId
+        datetime startedAt
+        datetime endedAt
+    }
+
+    AdminAudit {
+        string id PK
+        string guildId
+        string adminId
+        string command
+        string paramsHash
+        datetime createdAt
     }
 
     AgentTrace {
         string id PK
+        string guildId
+        string channelId
+        string userId
+        string routeKind
         json routerJson
-        json toolJson
+        json expertsJson
+        json agentGraphJson
+        json agentEventsJson
+        json budgetJson
+        datetime createdAt
     }
 
-    GuildSettings ||--o{ UserProfile : "scopes"
-    GuildSettings ||--o{ ChannelSummary : "contains"
+    AgentRun {
+        string id PK
+        string traceId
+        string nodeId
+        string agent
+        string status
+        int attempts
+        datetime startedAt
+        datetime finishedAt
+    }
 
-    UserProfile ||--o{ VoiceSession : "participates"
-    UserProfile ||--o{ ChannelMessage : "sends (logical)"
-
-    RelationshipEdge }o--|| UserProfile : "source"
-    RelationshipEdge }o--|| UserProfile : "target"
+    AgentTrace ||--o{ AgentRun : "traceId"
+    UserProfile ||--o{ VoiceSession : "userId (logical)"
+    UserProfile ||--o{ ChannelMessage : "authorId (logical)"
+    UserProfile ||--o{ RelationshipEdge : "userA/userB (logical)"
 ```
 
 ---
@@ -80,8 +122,17 @@ erDiagram
 
 | Table | Purpose |
 | :--- | :--- |
-| `UserProfile` | Stores agentic personalities and user preferences. |
-| `RelationshipEdge` | Stores social interaction weights and tiers. |
-| `AgentTrace` | Stores LLM reasoning and routing decisions for audit. |
-| `ChannelSummary` | Stores long-term and rolling conversation recaps. |
-| `VoiceSession` | Stores presence history for voice awareness. |
+| `GuildSettings` | Per-guild configuration and encrypted BYOP key references. |
+| `UserProfile` | Long-term user summary memory and optional user-scoped key. |
+| `ChannelMessage` | Stored message transcript rows (when DB storage is enabled). |
+| `ChannelSummary` | Rolling and profile summary snapshots per channel. |
+| `RelationshipEdge` | Weighted social links derived from interactions. |
+| `VoiceSession` | Voice join/leave duration history. |
+| `AdminAudit` | Audit trail for privileged command usage. |
+| `AgentTrace` | Per-turn runtime trace payload (route, context metadata, events, quality, budget). |
+| `AgentRun` | Per-node execution telemetry tied to an `AgentTrace`. |
+
+Notes:
+
+- `AgentTrace.expertsJson` is a legacy field name retained for compatibility; it stores context packet/action metadata in the current architecture.
+- Most "relationships" in the ERD are logical (by matching ids), not strict Prisma FK constraints.

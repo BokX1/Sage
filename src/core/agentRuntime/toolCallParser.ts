@@ -60,7 +60,9 @@ export function parseToolCallEnvelope(text: string): ToolCallEnvelope | null {
           typeof c === 'object' &&
           c !== null &&
           typeof (c as { name?: unknown }).name === 'string' &&
-          typeof (c as { args?: unknown }).args === 'object',
+          typeof (c as { args?: unknown }).args === 'object' &&
+          (c as { args?: unknown }).args !== null &&
+          !Array.isArray((c as { args?: unknown }).args),
       );
       if (validCalls) {
         return parsed as ToolCallEnvelope;

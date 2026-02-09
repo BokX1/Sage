@@ -24,7 +24,6 @@ This document is written for:
 - [🎨 Image generation + image editing](#-image-generation--image-editing)
 - [🔊 Voice (TTS) via Pollinations](#-voice-tts-via-pollinations)
 - [✅ Verify Pollinations upstream (smoke tests)](#-verify-pollinations-upstream-smoke-tests)
-- [🧩 Applying to be featured on pollinations.ai/apps](#-applying-to-be-featured-on-pollinationsaiapps)
 - [🧯 Troubleshooting](#-troubleshooting)
 - [🔗 Resources](#-resources)
 
@@ -119,13 +118,13 @@ Sage will append `/chat/completions` internally. If you accidentally include `/c
 These are **defaults** you can customize:
 
 ```env
-# Main chat model (routes: chat, coding, manage)
+# Main baseline chat model (route policy may switch models per turn)
 CHAT_MODEL=kimi
 
-# Profile/memory updates (route: analyze)
+# Profile/memory updates
 PROFILE_CHAT_MODEL=deepseek
 
-# Channel summaries (route: analyze)
+# Channel summaries
 SUMMARY_MODEL=openai-large
 
 # Structured JSON formatting

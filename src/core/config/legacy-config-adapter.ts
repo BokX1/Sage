@@ -45,14 +45,11 @@ export const config = {
   contextBlockMaxTokensReplyContext: newConfig.CONTEXT_BLOCK_MAX_TOKENS_REPLY_CONTEXT,
   contextUserMaxTokens: newConfig.CONTEXT_USER_MAX_TOKENS,
   contextTruncationNotice: newConfig.CONTEXT_TRUNCATION_NOTICE,
-  contextBlockMaxTokensRelationshipHints: newConfig.CONTEXT_BLOCK_MAX_TOKENS_RELATIONSHIP_HINTS,
-  relationshipHintsMaxEdges: newConfig.RELATIONSHIP_HINTS_MAX_EDGES,
-  relationshipDecayLambda: newConfig.RELATIONSHIP_DECAY_LAMBDA,
-  relationshipWeightK: newConfig.RELATIONSHIP_WEIGHT_K,
-  relationshipConfidenceC: newConfig.RELATIONSHIP_CONFIDENCE_C,
+
+
   adminRoleIds: newConfig.ADMIN_ROLE_IDS_CSV,
   adminUserIds: newConfig.ADMIN_USER_IDS_CSV,
-  contextBlockMaxTokensExperts: newConfig.CONTEXT_BLOCK_MAX_TOKENS_EXPERTS,
+  contextBlockMaxTokensProviders: newConfig.CONTEXT_BLOCK_MAX_TOKENS_PROVIDERS,
   traceEnabled: newConfig.TRACE_ENABLED,
   profileProvider: newConfig.PROFILE_PROVIDER,
   profileChatModel: newConfig.PROFILE_CHAT_MODEL,

@@ -1,8 +1,8 @@
 import { whoIsInVoice, howLongInVoiceToday } from '../../voice/voiceQueries';
 import { estimateTokens } from '../../agentRuntime/tokenEstimate';
-import { ExpertPacket } from './expert-types';
+import { ContextPacket } from '../context-types';
 
-export interface RunVoiceAnalyticsExpertParams {
+export interface RunVoiceAnalyticsProviderParams {
   guildId: string;
   userId: string;
   maxChars?: number;
@@ -44,12 +44,12 @@ function getActivityLevel(ms: number): string {
 }
 
 /**
- * Voice analytics expert: retrieves voice presence and session data.
+ * Voice analytics provider: retrieves voice presence and session data.
  * Returns narrative descriptions of voice activity.
  */
-export async function runVoiceAnalyticsExpert(
-  params: RunVoiceAnalyticsExpertParams,
-): Promise<ExpertPacket> {
+export async function runVoiceAnalyticsProvider(
+  params: RunVoiceAnalyticsProviderParams,
+): Promise<ContextPacket> {
   const { guildId, userId, maxChars = 1200 } = params;
 
   try {

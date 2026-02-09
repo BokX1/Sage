@@ -1,8 +1,8 @@
 import { getEdgesForUser } from '../../relationships/relationshipGraph';
 import { estimateTokens } from '../../agentRuntime/tokenEstimate';
-import { ExpertPacket } from './expert-types';
+import { ContextPacket } from '../context-types';
 
-export interface RunSocialGraphExpertParams {
+export interface RunSocialGraphProviderParams {
   guildId: string;
   userId: string;
   maxEdges?: number;
@@ -73,12 +73,12 @@ function formatEvidenceNarrative(features: {
 }
 
 /**
- * Social graph expert: retrieves top relationship edges for a user.
+ * Social graph provider: retrieves top relationship edges for a user.
  * Returns narrative descriptions with relationship tiers.
  */
-export async function runSocialGraphExpert(
-  params: RunSocialGraphExpertParams,
-): Promise<ExpertPacket> {
+export async function runSocialGraphProvider(
+  params: RunSocialGraphProviderParams,
+): Promise<ContextPacket> {
   const { guildId, userId, maxEdges = 10, maxChars = 1200 } = params;
 
   try {

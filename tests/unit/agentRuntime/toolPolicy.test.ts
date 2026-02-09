@@ -7,6 +7,8 @@ import {
 
 describe('toolPolicy', () => {
   it('classifies known side-effect tools', () => {
+    expect(classifyToolRisk('join_voice_channel')).toBe('external_write');
+    expect(classifyToolRisk('leave_voice_channel')).toBe('external_write');
     expect(classifyToolRisk('join_voice')).toBe('external_write');
     expect(classifyToolRisk('leave_voice')).toBe('external_write');
     expect(classifyToolRisk('get_time')).toBe('read_only');
@@ -27,6 +29,14 @@ describe('toolPolicy', () => {
     });
     expect(sideEffect.allow).toBe(false);
     expect(sideEffect.risk).toBe('external_write');
+
+    const sideEffectCurrentName = evaluateToolPolicy('join_voice_channel', {
+      allowExternalWrite: false,
+      allowHighRisk: false,
+      blockedTools: [],
+    });
+    expect(sideEffectCurrentName.allow).toBe(false);
+    expect(sideEffectCurrentName.risk).toBe('external_write');
   });
 
   it('parses blocklist csv safely', () => {

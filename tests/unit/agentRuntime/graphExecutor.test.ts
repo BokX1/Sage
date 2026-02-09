@@ -1,14 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { executeAgentGraph } from '../../../src/core/agentRuntime/graphExecutor';
 import {
-  buildLinearExpertGraph,
-  buildPlannedExpertGraph,
-} from '../../../src/core/agentRuntime/plannerAgent';
+  buildContextGraph,
+  buildLinearContextGraph,
+} from '../../../src/core/agentRuntime/graphBuilder';
 
-const mockRunExperts = vi.hoisted(() => vi.fn());
+const mockRunContextProviders = vi.hoisted(() => vi.fn());
 
-vi.mock('../../../src/core/orchestration/runExperts', () => ({
-  runExperts: mockRunExperts,
+vi.mock('../../../src/core/context/runContext', () => ({
+  runContextProviders: mockRunContextProviders,
 }));
 
 vi.mock('../../../src/core/utils/logger', () => ({
@@ -26,17 +26,17 @@ describe('graphExecutor', () => {
   });
 
   it('executes a linear graph and writes blackboard artifacts', async () => {
-    mockRunExperts.mockImplementation(async ({ experts }: { experts: string[] }) => [
+    mockRunContextProviders.mockImplementation(async ({ providers }: { providers: string[] }) => [
       {
-        name: experts[0],
-        content: `${experts[0]} packet`,
+        name: providers[0],
+        content: `${providers[0]} packet`,
         tokenEstimate: 10,
       },
     ]);
 
-    const graph = buildLinearExpertGraph({
-      routeKind: 'chat',
-      experts: ['Memory', 'SocialGraph'],
+    const graph = buildLinearContextGraph({
+      agentKind: 'chat',
+      providers: ['Memory', 'SocialGraph'],
       skipMemory: false,
     });
 
@@ -60,7 +60,7 @@ describe('graphExecutor', () => {
   });
 
   it('records node failure and continues downstream execution', async () => {
-    mockRunExperts
+    mockRunContextProviders
       .mockRejectedValueOnce(new Error('memory failed'))
       .mockResolvedValueOnce([
         {
@@ -70,9 +70,9 @@ describe('graphExecutor', () => {
         },
       ]);
 
-    const graph = buildLinearExpertGraph({
-      routeKind: 'chat',
-      experts: ['Memory', 'SocialGraph'],
+    const graph = buildLinearContextGraph({
+      agentKind: 'chat',
+      providers: ['Memory', 'SocialGraph'],
       skipMemory: false,
     });
 
@@ -95,20 +95,20 @@ describe('graphExecutor', () => {
   });
 
   it('runs ready nodes in parallel for fanout graphs', async () => {
-    mockRunExperts.mockImplementation(async ({ experts }: { experts: string[] }) => {
+    mockRunContextProviders.mockImplementation(async ({ providers }: { providers: string[] }) => {
       await new Promise((resolve) => setTimeout(resolve, 70));
       return [
         {
-          name: experts[0],
-          content: `${experts[0]} packet`,
+          name: providers[0],
+          content: `${providers[0]} packet`,
           tokenEstimate: 10,
         },
       ];
     });
 
-    const graph = buildPlannedExpertGraph({
-      routeKind: 'manage',
-      experts: ['Memory', 'SocialGraph', 'VoiceAnalytics'],
+    const graph = buildContextGraph({
+      agentKind: 'chat',
+      providers: ['Memory', 'SocialGraph', 'VoiceAnalytics'],
       skipMemory: false,
       enableParallel: true,
     });
@@ -129,20 +129,20 @@ describe('graphExecutor', () => {
   });
 
   it('respects maxParallel execution limits', async () => {
-    mockRunExperts.mockImplementation(async ({ experts }: { experts: string[] }) => {
+    mockRunContextProviders.mockImplementation(async ({ providers }: { providers: string[] }) => {
       await new Promise((resolve) => setTimeout(resolve, 65));
       return [
         {
-          name: experts[0],
-          content: `${experts[0]} packet`,
+          name: providers[0],
+          content: `${providers[0]} packet`,
           tokenEstimate: 10,
         },
       ];
     });
 
-    const graph = buildPlannedExpertGraph({
-      routeKind: 'manage',
-      experts: ['Memory', 'SocialGraph', 'VoiceAnalytics'],
+    const graph = buildContextGraph({
+      agentKind: 'chat',
+      providers: ['Memory', 'SocialGraph', 'VoiceAnalytics'],
       skipMemory: false,
       enableParallel: true,
     });

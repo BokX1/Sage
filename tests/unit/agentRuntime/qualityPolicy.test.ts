@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   normalizeCriticConfig,
+  shouldRefreshSearchFromCritic,
   shouldRequestRevision,
   shouldRunCritic,
 } from '../../../src/core/agentRuntime/qualityPolicy';
@@ -77,5 +78,25 @@ describe('qualityPolicy', () => {
         minScore: 0.7,
       }),
     ).toBe(true);
+  });
+
+  it('triggers search refresh on critic factuality issues', () => {
+    expect(
+      shouldRefreshSearchFromCritic({
+        routeKind: 'search',
+        issues: ['Missing source citation and likely outdated claim.'],
+        rewritePrompt: '',
+      }),
+    ).toBe(true);
+  });
+
+  it('does not trigger search refresh for non-search routes', () => {
+    expect(
+      shouldRefreshSearchFromCritic({
+        routeKind: 'chat',
+        issues: ['Could be clearer.'],
+        rewritePrompt: 'Improve tone.',
+      }),
+    ).toBe(false);
   });
 });

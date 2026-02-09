@@ -1,15 +1,14 @@
-import { ExpertName, ExpertPacket } from '../orchestration/experts/expert-types';
+import { ContextProviderName, ContextPacket } from '../context/context-types';
 
 /**
  * Canonical runtime agent identities.
- * Expert agents map 1:1 to existing expert modules for incremental adoption.
  */
-export type AgentName = ExpertName | 'Planner' | 'Critic' | 'Synthesizer';
+export type AgentName = ContextProviderName | 'Planner' | 'Critic' | 'Synthesizer' | 'ChatAgent' | 'CodingAgent' | 'SearchAgent' | 'CreativeAgent';
 
 export type AgentResultStatus = 'ok' | 'retryable_error' | 'fatal_error' | 'skipped';
 
 export type ArtifactKind =
-  | 'expert_packet'
+  | 'context_packet'
   | 'tool_result'
   | 'diagnostic'
   | 'answer_draft'
@@ -48,7 +47,7 @@ export interface AgentGraph {
 
 export interface ArtifactProvenance {
   source: string;
-  type: 'expert' | 'tool' | 'system' | 'user';
+  type: 'provider' | 'tool' | 'system' | 'user';
   timestamp: string;
 }
 
@@ -60,7 +59,7 @@ export interface BlackboardArtifact {
   confidence: number;
   sourceAgent: AgentName;
   provenance: ArtifactProvenance[];
-  packet?: ExpertPacket;
+  packet?: ContextPacket;
   json?: unknown;
 }
 
@@ -74,7 +73,7 @@ export interface AgentResult {
   summary: string;
   confidence: number;
   artifacts: BlackboardArtifact[];
-  packets: ExpertPacket[];
+  packets: ContextPacket[];
   error?: string;
   retryHint?: string;
   metadata?: Record<string, unknown>;

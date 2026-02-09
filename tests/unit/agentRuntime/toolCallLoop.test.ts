@@ -90,6 +90,29 @@ describe('toolCallLoop', () => {
   });
 
   describe('tool_calls envelope handling', () => {
+    it('should consume a pre-fetched envelope without an extra first-round LLM call', async () => {
+      mockChat.mockResolvedValueOnce({
+        content: 'The current time is 12:00 PM.',
+      });
+
+      const result = await runToolCallLoop({
+        client: mockClient,
+        messages: [{ role: 'user', content: 'What time is it?' }],
+        registry,
+        ctx: testCtx,
+        initialAssistantResponseText: JSON.stringify({
+          type: 'tool_calls',
+          calls: [{ name: 'get_time', args: {} }],
+        }),
+      });
+
+      expect(result.toolsExecuted).toBe(true);
+      expect(result.roundsCompleted).toBe(1);
+      expect(result.toolResults).toHaveLength(1);
+      expect(result.replyText).toBe('The current time is 12:00 PM.');
+      expect(mockChat).toHaveBeenCalledTimes(1);
+    });
+
     it('should execute tools when response is a valid envelope', async () => {
       // First call returns tool_calls envelope
       mockChat.mockResolvedValueOnce({

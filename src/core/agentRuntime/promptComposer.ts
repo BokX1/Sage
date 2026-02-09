@@ -7,7 +7,7 @@
  *
  * Non-goals:
  * - Enforce token budgets.
- * - Inject transcript or expert packet content.
+ * - Inject transcript or context packet content.
  */
 import { StyleProfile } from './styleClassifier';
 

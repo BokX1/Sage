@@ -1,20 +1,20 @@
 import { getChannelSummaryStore } from '../../summary/channelSummaryStoreRegistry';
 import { estimateTokens } from '../../agentRuntime/tokenEstimate';
-import { ExpertPacket } from './expert-types';
+import { ContextPacket } from '../context-types';
 
-export interface RunSummarizerExpertParams {
+export interface RunSummarizerProviderParams {
   guildId: string;
   channelId: string;
   maxChars?: number;
 }
 
 /**
- * Summarizer expert: gathers best available summary context.
- * This expert does NOT run an LLM - it just retrieves stored summaries.
+ * Summarizer provider: gathers best available summary context.
+ * This provider does NOT run an LLM - it just retrieves stored summaries.
  */
-export async function runSummarizerExpert(
-  params: RunSummarizerExpertParams,
-): Promise<ExpertPacket> {
+export async function runSummarizerProvider(
+  params: RunSummarizerProviderParams,
+): Promise<ContextPacket> {
   const { guildId, channelId, maxChars = 600 } = params;
 
   try {

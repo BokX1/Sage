@@ -151,7 +151,7 @@ export function trimChannelMessages(params: {
  */
 export function deleteOlderThan(cutoffMs: number): number {
   let deleted = 0;
-  for (const [key, buffer] of channelBuffers.entries()) {
+  for (const [key, buffer] of Array.from(channelBuffers.entries())) {
     deleted += pruneByTtl(buffer, cutoffMs);
     if (buffer.length === 0) {
       channelBuffers.delete(key);

@@ -51,7 +51,7 @@ When deploying Sage:
 
 ### API Keys
 
-- Keep your `POLLINATIONS_API_KEY` private
+- Keep your `LLM_API_KEY` (or BYOP server key) private
 - Generate keys with minimal required permissions
 - Revoke and regenerate keys periodically
 

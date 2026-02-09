@@ -1,13 +1,14 @@
-import { RouteKind } from '../orchestration/llmRouter';
+import { AgentKind } from '../orchestration/agentSelector';
 import { CriticAssessment } from './criticAgent';
 
-const CRITIC_ELIGIBLE_ROUTES = new Set<RouteKind>([
+const CRITIC_ELIGIBLE_ROUTES = new Set<AgentKind>([
   'chat',
   'coding',
   'search',
-  'analyze',
-  'manage',
 ]);
+
+const SEARCH_REFRESH_ISSUE_PATTERN =
+  /(fact|factual|accuracy|accurate|hallucin|citation|source|evidence|verify|outdated|latest|current|incomplete|missing|unclear|stale|wrong|incorrect)/i;
 
 export interface CriticRuntimeConfig {
   enabled: boolean;
@@ -30,7 +31,7 @@ export function normalizeCriticConfig(config: CriticRuntimeConfig): CriticRuntim
 
 export function shouldRunCritic(params: {
   config: CriticRuntimeConfig;
-  routeKind: RouteKind;
+  routeKind: AgentKind;
   draftText: string;
   isVoiceActive?: boolean;
   hasFiles?: boolean;
@@ -52,4 +53,15 @@ export function shouldRequestRevision(params: {
   const threshold = Math.max(0, Math.min(1, params.minScore));
   if (params.assessment.verdict === 'revise') return true;
   return params.assessment.score < threshold;
+}
+
+export function shouldRefreshSearchFromCritic(params: {
+  routeKind: AgentKind;
+  issues: string[];
+  rewritePrompt?: string;
+}): boolean {
+  if (params.routeKind !== 'search') return false;
+  const issueBlob = `${params.rewritePrompt ?? ''} ${params.issues.join(' ')}`.trim();
+  if (!issueBlob) return false;
+  return SEARCH_REFRESH_ISSUE_PATTERN.test(issueBlob);
 }

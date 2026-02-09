@@ -100,7 +100,7 @@ Return ONLY JSON:
 
 Rules:
 - score is between 0 and 1.
-- Use "revise" ONLY if the answer is completely off-topic, halluncinated, or rude.
+- Use "revise" ONLY if the answer is completely off-topic, hallucinated, or rude.
 - Allow for casual banter and creativity.`;
 
 export async function evaluateDraftWithCritic(

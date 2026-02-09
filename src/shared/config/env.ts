@@ -74,19 +74,16 @@ const testDefaults: Record<string, string> = {
   CONTEXT_BLOCK_MAX_TOKENS_REPLY_CONTEXT: '1000',
   CONTEXT_USER_MAX_TOKENS: '8000',
   CONTEXT_TRUNCATION_NOTICE: 'true',
-  CONTEXT_BLOCK_MAX_TOKENS_EXPERTS: '2000',
+  CONTEXT_BLOCK_MAX_TOKENS_PROVIDERS: '2000',
   TRACE_ENABLED: 'false',
-  CONTEXT_BLOCK_MAX_TOKENS_RELATIONSHIP_HINTS: '500',
-  RELATIONSHIP_HINTS_MAX_EDGES: '5',
-  RELATIONSHIP_DECAY_LAMBDA: '0.01',
-  RELATIONSHIP_WEIGHT_K: '1.0',
-  RELATIONSHIP_CONFIDENCE_C: '0.5',
+
   ADMIN_ROLE_IDS_CSV: '',
   ADMIN_USER_IDS_CSV: '',
   LLM_PROVIDER: 'pollinations',
   LLM_BASE_URL: 'https://text.pollinations.ai/',
   LLM_IMAGE_BASE_URL: 'https://image.pollinations.ai/',
   CHAT_MODEL: 'openai',
+  LLM_API_KEY: '',
   LLM_MODEL_LIMITS_JSON: '{}',
   PROFILE_PROVIDER: 'pollinations',
   PROFILE_CHAT_MODEL: 'openai',
@@ -102,13 +99,13 @@ const testDefaults: Record<string, string> = {
   AGENTIC_TOOL_BLOCKLIST_CSV: '',
   AGENTIC_CANARY_ENABLED: 'true',
   AGENTIC_CANARY_PERCENT: '100',
-  AGENTIC_CANARY_ROUTE_ALLOWLIST_CSV: 'chat,coding,search,art,analyze,manage',
+  AGENTIC_CANARY_ROUTE_ALLOWLIST_CSV: 'chat,coding,search,creative',
   AGENTIC_CANARY_MAX_FAILURE_RATE: '0.30',
   AGENTIC_CANARY_MIN_SAMPLES: '20',
   AGENTIC_CANARY_COOLDOWN_SEC: '300',
   AGENTIC_CANARY_WINDOW_SIZE: '100',
   AGENTIC_TENANT_POLICY_JSON: '{}',
-  AGENTIC_CRITIC_ENABLED: 'false',
+  AGENTIC_CRITIC_ENABLED: 'true',
   AGENTIC_CRITIC_MIN_SCORE: '0.72',
   AGENTIC_CRITIC_MAX_LOOPS: '1',
   SECRET_ENCRYPTION_KEY: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
@@ -157,13 +154,9 @@ const envSchema = z.object({
   CONTEXT_BLOCK_MAX_TOKENS_REPLY_CONTEXT: z.coerce.number().int().positive(),
   CONTEXT_USER_MAX_TOKENS: z.coerce.number().int().positive(),
   CONTEXT_TRUNCATION_NOTICE: z.enum(['true', 'false']).transform((v) => v === 'true'),
-  CONTEXT_BLOCK_MAX_TOKENS_EXPERTS: z.coerce.number().int().positive(),
+  CONTEXT_BLOCK_MAX_TOKENS_PROVIDERS: z.coerce.number().int().positive(),
   TRACE_ENABLED: z.enum(['true', 'false']).transform((v) => v === 'true'),
-  CONTEXT_BLOCK_MAX_TOKENS_RELATIONSHIP_HINTS: z.coerce.number().int().positive(),
-  RELATIONSHIP_HINTS_MAX_EDGES: z.coerce.number().int().positive(),
-  RELATIONSHIP_DECAY_LAMBDA: z.coerce.number().positive(),
-  RELATIONSHIP_WEIGHT_K: z.coerce.number().positive(),
-  RELATIONSHIP_CONFIDENCE_C: z.coerce.number().positive(),
+
   ADMIN_ROLE_IDS_CSV: z.string().regex(/^[0-9,\s]*$/, 'Must contain only Discord snowflake IDs separated by commas.'),
   ADMIN_USER_IDS_CSV: z.string().regex(/^[0-9,\s]*$/, 'Must contain only Discord snowflake IDs separated by commas.'),
   LLM_PROVIDER: z.enum(['pollinations']),
@@ -192,7 +185,7 @@ const envSchema = z.object({
   AGENTIC_CANARY_COOLDOWN_SEC: z.coerce.number().int().min(1).max(86400).default(300),
   AGENTIC_CANARY_WINDOW_SIZE: z.coerce.number().int().min(10).max(10000).default(100),
   AGENTIC_TENANT_POLICY_JSON: z.string().default('{}'),
-  AGENTIC_CRITIC_ENABLED: z.enum(['true', 'false']).default('false').transform((v) => v === 'true'),
+  AGENTIC_CRITIC_ENABLED: z.enum(['true', 'false']).default('true').transform((v) => v === 'true'),
   AGENTIC_CRITIC_MIN_SCORE: z.coerce.number().min(0).max(1).default(0.72),
   AGENTIC_CRITIC_MAX_LOOPS: z.coerce.number().int().min(0).max(2).default(1),
   SECRET_ENCRYPTION_KEY: z.string().regex(/^[0-9a-fA-F]{64}$/),
@@ -206,7 +199,7 @@ const mergedEnv = {
 const parsed = envSchema.safeParse(mergedEnv);
 
 if (!parsed.success) {
-  console.error('❌ Invalid environment configuration:', parsed.error.format());
+  console.error('Invalid environment configuration:', parsed.error.format());
   process.exit(1);
 }
 
@@ -217,3 +210,4 @@ export const config = {
 };
 
 export type AppConfig = typeof config;
+

@@ -3,7 +3,7 @@ import {
   buildImageGenUrl,
   fetchWithTimeout,
   getImageExtensionFromContentType,
-} from '../../../src/core/orchestration/experts/imageGenExpert';
+} from '../../../src/core/actions/imageGenAction';
 
 describe('buildImageGenUrl', () => {
   it('builds a generate URL with encoded prompt', () => {

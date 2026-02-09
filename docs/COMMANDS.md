@@ -267,8 +267,8 @@ View recent agent processing traces for debugging.
 
 **Shows:**
 
-- LLM router decisions
-- Expert routing
+- Agent selector decision and route kind
+- Context packet/runtime event metadata
 - Context used
 - Response generation details
 
@@ -331,6 +331,9 @@ Manually set relationship level between two users.
 ## 🎤 Voice Commands (Beta)
 
 Control Sage's voice presence.
+
+> [!NOTE]
+> Voice join/leave are command-driven (`/join`, `/leave`). They are intentionally not exposed as runtime tools.
 
 ### `/join`
 

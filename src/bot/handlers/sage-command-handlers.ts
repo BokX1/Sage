@@ -310,14 +310,18 @@ export async function handleAdminTrace(interaction: ChatInputCommandInteraction)
         return;
       }
 
-      const router = trace.routerJson as { temperature?: number, experts?: string[] };
+      const router = trace.routerJson as {
+        temperature?: number;
+        experts?: string[];
+        contextProviders?: string[];
+      };
       // const _experts = trace.expertsJson as any;
 
       const lines = [
         `**Trace: \`${trace.id}\`**`,
         `**Route**: ${trace.routeKind}`,
         `**Temp**: ${router.temperature ?? 'N/A'}`,
-        `**Experts**: ${router.experts?.join(', ') ?? 'none'}`,
+        `**Providers**: ${router.contextProviders?.join(', ') ?? router.experts?.join(', ') ?? 'none'}`,
         `**Created**: ${trace.createdAt.toISOString()}`,
       ];
 

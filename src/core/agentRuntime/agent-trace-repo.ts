@@ -58,7 +58,7 @@ function isSchemaMismatchError(error: unknown): boolean {
 }
 
 /**
- * Create or update trace start (router + experts execution).
+ * Create or update trace start (selector + provider execution).
  */
 export async function upsertTraceStart(data: TraceStartData): Promise<void> {
   const buildTokenPayload = (): Prisma.InputJsonValue => {

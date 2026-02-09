@@ -44,7 +44,7 @@ Sage is a **fully agentic Discord companion** that goes beyond simple chat comma
 - 🧠 **Self-Learning Memory**: Remembers past conversations to build personalized user contexts.
 - 👥 **Socially Aware**: Understands relationship tiers (Best Friend, Acquaintance) and interaction "vibes."
 - 👁️ **Vision + Image Generation**: Ingests images for visual understanding, and can generate/edit images from prompts.
-- 📄 **Knowledge Base**: Ingests code files and text documents to provide expert-level analysis.
+- 📄 **Knowledge Base**: Ingests code files and text documents to provide high-context analysis.
 - 💬 **Intelligent Routing**: Uses a high-precision LLM classifier to resolve pronouns and context.
 - ⚡ **Adaptive Models**: Switches between **Gemini Fast** (speed) and **Kimi** (reasoning) based on intent.
 
@@ -58,50 +58,47 @@ Sage is a **fully agentic Discord companion** that goes beyond simple chat comma
 
 ```mermaid
 flowchart LR
-    %% Keep the diagram left-to-right to reduce vertical scroll on GitHub.
     classDef user fill:#f96,stroke:#333,stroke-width:2px,color:black
     classDef bot fill:#9d9,stroke:#333,stroke-width:2px,color:black
-    classDef router fill:#b9f,stroke:#333,stroke-width:2px,color:black
-    classDef expert fill:#fff,stroke:#333,stroke-width:1px,stroke-dasharray: 5 5,color:black
-    classDef context fill:#ff9,stroke:#333,stroke-width:2px,color:black
+    classDef route fill:#b9f,stroke:#333,stroke-width:2px,color:black
+    classDef provider fill:#fff,stroke:#333,stroke-width:1px,stroke-dasharray: 5 5,color:black
+    classDef runtime fill:#ff9,stroke:#333,stroke-width:2px,color:black
 
     U((User)):::user -->|"Message / reply / mention"| B[Sage Bot]:::bot
-    B --> R{LLM Router}:::router
+    B --> R{Agent Selector}:::route
+    R --> C[Canary + Policy]:::runtime
 
-    subgraph Orchestration
-        R{LLM Router}:::router
-        P[Planner]:::context
-    end
-
-    subgraph Experts
+    subgraph ContextProviders
         direction TB
-        S[📊 Summarizer]:::expert
-        G[👥 Social Graph]:::expert
-        V[🎤 Voice Analytics]:::expert
-        M[🧠 Memory]:::expert
-        I[🎨 Image Generator]:::expert
-        SR[🔍 Search]:::expert
+        M[Memory]:::provider
+        G[SocialGraph]:::provider
+        V[VoiceAnalytics]:::provider
+        S[Summarizer]:::provider
     end
 
-    R --> P
-    P --> S
-    P --> G
-    P --> V
-    P --> M
-    P --> I
-    P --> SR
-    S --> C[Context Builder]:::context
-    G --> C
-    V --> C
-    M --> C
+    C -->|agentic path| X[Context Graph Executor]:::runtime
+    C -->|fallback path| Y[Provider Runner]:::runtime
+    X --> M
+    X --> G
+    X --> V
+    X --> S
+    Y --> M
+    Y --> G
+    Y --> V
+    Y --> S
 
-    I --> C
-    SR --> C
-    C --> L[LLM Brain]:::router --> B
-    B -->|"Chat response"| U
+    M --> K[Context Builder]:::runtime
+    G --> K
+    V --> K
+    S --> K
 
-    B -->|"Voice trigger"| T[TTS Generator]:::bot --> VC[(Voice Channel)]:::user
-    VC -.-> U
+    K --> L[Model Resolver + LLM]:::route
+    L --> T{Tool or Verify}:::runtime
+    T --> Q[Critic + Revision]:::runtime
+    Q --> B
+    B -->|"Reply / files"| U
+
+    B -->|"Voice via slash commands"| VC[(Voice Channel)]:::user
 ```
 
 ---

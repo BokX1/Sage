@@ -78,8 +78,8 @@ export {
   appendArtifacts,
   recordTaskResult,
   addUnresolvedQuestion,
-  expertPacketsToArtifacts,
-  renderExpertPacketContext,
+  contextPacketsToArtifacts,
+  renderContextPacketContext,
 } from './blackboard';
 
 export {
@@ -89,16 +89,17 @@ export {
 } from './agent-events';
 
 export {
-  buildLinearExpertGraph,
-  buildFanoutExpertGraph,
-  buildDependencyAwareExpertGraph,
-  buildPlannedExpertGraph,
-} from './plannerAgent';
+  buildLinearContextGraph,
+  buildFanoutContextGraph,
+  buildContextGraph,
+  getStandardProvidersForAgent,
+} from './graphBuilder';
 export { validateAgentGraph, type GraphValidationResult } from './graphPolicy';
 export { executeAgentGraph, type ExecuteAgentGraphParams, type ExecuteAgentGraphResult } from './graphExecutor';
 export { evaluateDraftWithCritic, type CriticAssessment, type EvaluateDraftWithCriticParams } from './criticAgent';
 export {
   normalizeCriticConfig,
+  shouldRefreshSearchFromCritic,
   shouldRequestRevision,
   shouldRunCritic,
   type CriticRuntimeConfig,

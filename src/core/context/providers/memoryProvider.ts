@@ -1,17 +1,17 @@
 import { getUserProfile } from '../../memory/userProfileRepo';
 import { estimateTokens } from '../../agentRuntime/tokenEstimate';
-import { ExpertPacket } from './expert-types';
+import { ContextPacket } from '../context-types';
 
-export interface RunMemoryExpertParams {
+export interface RunMemoryProviderParams {
   userId: string;
   maxChars?: number;
 }
 
 /**
- * Memory expert: retrieves user profile summary.
+ * Memory provider: retrieves user profile summary.
  * Returns a bounded, compressed memory packet.
  */
-export async function runMemoryExpert(params: RunMemoryExpertParams): Promise<ExpertPacket> {
+export async function runMemoryProvider(params: RunMemoryProviderParams): Promise<ContextPacket> {
   const { userId, maxChars = 1000 } = params;
 
   try {

@@ -1,4 +1,4 @@
-import { ExpertPacket } from '../orchestration/experts/expert-types';
+import { ContextPacket } from '../context/context-types';
 import { estimateTokens } from './tokenEstimate';
 import {
   AgentGraph,
@@ -136,10 +136,10 @@ export function addUnresolvedQuestion(state: BlackboardState, question: string):
   state.updatedAt = new Date().toISOString();
 }
 
-export function expertPacketsToArtifacts(params: {
+export function contextPacketsToArtifacts(params: {
   taskId: string;
   agent: AgentTaskNode['agent'];
-  packets: ExpertPacket[];
+  packets: ContextPacket[];
   now: string;
 }): BlackboardArtifact[] {
   const { taskId, agent, packets, now } = params;
@@ -151,7 +151,7 @@ export function expertPacketsToArtifacts(params: {
 
     return {
       id,
-      kind: 'expert_packet',
+      kind: 'context_packet', // Renamed from expert_packet
       label: packet.name,
       content: packet.content,
       confidence,
@@ -159,7 +159,7 @@ export function expertPacketsToArtifacts(params: {
       provenance: [
         {
           source: packet.name,
-          type: 'expert',
+          type: 'provider', // Renamed from expert
           timestamp: now,
         },
       ],
@@ -169,11 +169,11 @@ export function expertPacketsToArtifacts(params: {
   });
 }
 
-export function renderExpertPacketContext(state: BlackboardState): string {
+export function renderContextPacketContext(state: BlackboardState): string {
   const packets = state.artifacts
-    .filter((artifact) => artifact.kind === 'expert_packet')
+    .filter((artifact) => artifact.kind === 'context_packet')
     .map((artifact) => artifact.packet)
-    .filter((packet): packet is ExpertPacket => !!packet);
+    .filter((packet): packet is ContextPacket => !!packet);
 
   if (packets.length === 0) return '';
   return packets.map((packet) => `[${packet.name}] ${packet.content}`).join('\n\n');

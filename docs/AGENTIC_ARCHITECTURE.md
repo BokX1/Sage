@@ -1,8 +1,8 @@
 # Agentic Architecture
 
-Sage is a planner-led, safety-governed, multi-agent Discord runtime.
+Sage is an agent-selector-driven, safety-governed Discord runtime.
 
-This page explains the current architecture and what makes the runtime agentic in production, not only in demos.
+This page documents the current production architecture as implemented in `src/core/agentRuntime`, `src/core/orchestration`, and related modules.
 
 ---
 
@@ -21,55 +21,57 @@ This page explains the current architecture and what makes the runtime agentic i
 
 In Sage, "agentic" means the runtime can:
 
-1. Plan work as a graph of specialist tasks.
-2. Execute with retries/timeouts and controlled parallelism.
-3. Share typed artifacts through a blackboard.
-4. Self-critique and revise when quality is below threshold.
-5. Enforce deterministic policy for tools and rollout risk.
-6. Measure outcomes and gate releases with replay signals.
+1. Select an execution route (`chat`, `coding`, `search`, `creative`) per turn.
+2. Build and execute a context-provider graph (or safe provider fallback).
+3. Share provider artifacts through blackboard-style packet composition.
+4. Run bounded tool loops with policy controls and cache.
+5. Trigger verification redispatches and critic-driven revisions when quality is low.
+6. Persist trace metadata and enforce replay gates before promotion.
 
 ---
 
 ## Core Runtime Pillars
 
-### 1) Planner + Graph Executor
+### 1) Agent Selector + Context Graph
 
-- Router decides route (intent).
-- Planner decides experts and constructs dependency-aware DAG/fanout/linear plans.
-- Graph validator blocks invalid graphs before execution.
-- Executor runs nodes with budgeted retries and timeouts.
+- `decideAgent` selects route kind and base tool policy.
+- `buildContextGraph` builds fanout or linear provider graphs.
+- `executeAgentGraph` runs provider tasks with retries/timeouts and captures events.
+- When canary blocks agentic execution (or graph execution fails), Sage falls back to `runContextProviders`.
 
-### 2) Blackboard Artifacts
+### 2) Context Packets + Builder
 
-- Each node writes artifacts with provenance and confidence.
-- Synthesis uses blackboard output, not implicit hidden state.
+- Providers emit typed packets (`Memory`, `SocialGraph`, `VoiceAnalytics`, `Summarizer`).
+- Packets are merged into `buildContextMessages` with transcript and summary blocks under token budgets.
+- Creative route can add image-generation packets/files through `runImageGenAction`.
 
 ### 3) Tool Governance
 
-- Tool loop supports bounded rounds and recovery prompts.
-- Policy classes: `read_only`, `external_write`, `high_risk`.
-- Blocklist/permission gates are applied before execution.
-- Per-turn cache deduplicates repeated tool calls.
+- Tool execution is bounded by `runToolCallLoop`.
+- Deterministic policy gates apply blocklists and risk permissions (`external_write`, `high_risk`).
+- Per-turn cache avoids duplicate tool executions.
+- Runtime also exposes virtual verification intents (`verify_search_again`, `verify_chat_again`, `verify_code_again`) to force independent verification passes when needed.
 
 ### 4) Quality Loop
 
-- Critic scoring evaluates draft quality.
-- If below threshold, runtime requests revision.
-- Critic can trigger targeted expert redispatch before rewrite.
+- Critic scoring is controlled by `AGENTIC_CRITIC_*`.
+- If quality is below threshold, Sage revises with critic instructions.
+- Search route can run an additional search refresh when issues indicate staleness/factual risk.
+- Non-search routes can redispatch targeted context providers before rewrite.
 
 ### 5) Model Policy
 
-- Route-aware model candidate chains.
-- Capability filters (vision/audio/search/reasoning/tool use).
-- Tenant allowlists can constrain selected models.
-- Model health outcomes influence fallback ordering over time.
+- Route-aware candidate chains are resolved by `resolveModelForRequestDetailed`.
+- Capability filters cover tools/search/reasoning/vision/audio constraints.
+- Tenant allowlists (`AGENTIC_TENANT_POLICY_JSON`) can constrain model selection.
+- Health telemetry adjusts fallback ordering over time.
 
 ### 6) Rollout Governance
 
-- Canary sampling controls agentic rollout percent.
-- Route allowlist limits where agentic path is active.
-- Error-budget window trips cooldown when failure rate rises.
-- Runtime falls back to legacy expert runner when canary blocks/opens circuit.
+- Canary sampling controls how often graph execution is used.
+- Route allowlist limits which routes can use agentic graph path.
+- Error-budget windows trigger cooldown when failure rates spike.
+- Runtime records canary decisions/outcomes per turn.
 
 ---
 
@@ -77,34 +79,34 @@ In Sage, "agentic" means the runtime can:
 
 ```mermaid
 flowchart TD
-    A[Incoming Message] --> B[Route Decision]
+    A[Incoming Message] --> B[Agent Selector]
     B --> C[Canary Decision]
 
-    C -->|allow| D[Planner Builds Graph]
-    C -->|deny| E[Legacy Expert Runner]
+    C -->|allow| D[Build Context Graph]
+    C -->|deny| E[Run Context Providers]
 
-    D --> F[Graph Validator]
-    F --> G[Graph Executor]
-    G --> H[Blackboard Artifacts]
+    D --> F[Graph Executor]
+    F --> G[Context Packets + Events]
+    E --> G
 
-    E --> I[Expert Packets]
-    H --> J[Context Builder]
-    I --> J
+    G --> H[Context Builder]
+    H --> I[Model Resolver]
+    I --> J[LLM Draft]
 
-    J --> K[Model Resolver]
-    K --> L[LLM Draft]
-    L --> M{Tool Calls}
-    M -->|yes| N[Tool Loop + Policy + Cache]
-    M -->|no| O[Draft Ready]
-    N --> O
+    J --> K{Tool envelope?}
+    K -->|yes, executable tools| L[Tool Loop + Policy + Cache]
+    K -->|yes, verify-only intents| M[Verification Redispatch]
+    K -->|no| N[Draft Ready]
+    L --> N
+    M --> N
 
-    O --> P{Critic Enabled}
-    P -->|yes| Q[Critic + Optional Redispatch]
-    P -->|no| R[Final Reply]
-    Q --> R
+    N --> O{Critic enabled?}
+    O -->|yes| P[Critic + Optional Redispatch/Refresh]
+    O -->|no| Q[Final Reply]
+    P --> Q
 
-    R --> S[Trace + AgentRun Persistence]
-    S --> T[Discord Reply]
+    Q --> R[Trace + AgentRun Persistence]
+    R --> S[Discord Reply]
 ```
 
 ---
@@ -117,8 +119,8 @@ flowchart TD
 
 - graph parallelism,
 - critic settings,
-- tool risk permissions/blocklists,
-- model allowlists.
+- tool permissions/blocklists,
+- allowed model sets.
 
 ### Canary and Rollback Layer
 
@@ -130,11 +132,11 @@ Canary controls include:
 - rolling sample window,
 - cooldown period.
 
-When thresholds are breached, runtime automatically cools down to safer behavior.
+When thresholds are breached, runtime automatically cools down to safer provider-only behavior.
 
 ### Release Gate Layer
 
-`npm run agentic:replay-gate` evaluates recent traces and enforces quality thresholds before promotion.
+`npm run agentic:replay-gate` evaluates recent traces and enforces score/success thresholds before promotion.
 
 CI release-readiness runs this gate after migrations.
 
@@ -144,10 +146,10 @@ CI release-readiness runs this gate after migrations.
 
 Trace persistence includes:
 
-- route decision payloads,
-- graph and event streams,
-- quality and budget metadata,
-- tool execution metadata,
+- agent selector decisions (`routeKind`, `routerJson`, `reasoningText`),
+- context packet payloads (`expertsJson` field name retained for schema compatibility),
+- graph/events and budget metadata,
+- tool + critic metadata,
 - per-node runtime rows (`AgentRun`).
 
 Replay harness and outcome scoring provide:
@@ -169,19 +171,19 @@ flowchart TB
     end
 
     subgraph Orchestration
-      C[Router]
+      C[Agent Selector]
       D[Canary Gate]
-      E[Planner]
-      F[Graph Policy]
-      G[Graph Executor]
-      H[Blackboard]
+      E[Context Graph Builder]
+      F[Graph Executor]
+      G[Provider Runner Fallback]
+      H[Context Packets]
     end
 
     subgraph Generation
       I[Context Builder]
       J[Model Resolver + Health]
       K[LLM]
-      L[Tool Loop + Policy]
+      L[Tool Loop + Verification Redispatch]
       M[Critic Loop]
     end
 
@@ -198,10 +200,10 @@ flowchart TB
     end
 
     A --> B --> C --> D
-    D --> E --> F --> G --> H --> I --> J --> K
-    K --> L --> M
-    M --> N
-    G --> O
+    D --> E --> F --> H
+    D --> G --> H
+    H --> I --> J --> K --> L --> M --> N
+    F --> O
     B --> P
     N --> Q --> R --> S
 ```

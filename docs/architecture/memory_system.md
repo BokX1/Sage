@@ -1,6 +1,6 @@
 # 🧠 Sage Memory System Architecture
 
-This document describes how Sage stores, summarizes, and injects memory into LLM requests. It reflects the current runtime behavior in `src/core`.
+This document describes how Sage stores, summarizes, and injects memory into runtime prompts. It reflects current behavior in `src/core`.
 
 ---
 
@@ -13,7 +13,7 @@ This document describes how Sage stores, summarizes, and injects memory into LLM
 - [5) Short-term memory: rolling channel summary](#5-short-term-memory-rolling-channel-summary)
 - [6) Long-term memory: channel profile](#6-long-term-memory-channel-profile)
 - [7) Throttled user profile updates](#7-throttled-user-profile-updates)
-- [8) Relationship graph & social tiers](#8-relationship-graph-social-tiers)
+- [8) Relationship graph and social tiers](#8-relationship-graph-and-social-tiers)
 - [9) Voice awareness in memory](#9-voice-awareness-in-memory)
 - [🔗 Related documentation](#related-documentation)
 
@@ -25,11 +25,11 @@ This document describes how Sage stores, summarizes, and injects memory into LLM
 
 | Memory type | Purpose | Storage | Key files |
 | :--- | :--- | :--- | :--- |
-| **User profile** | Long-term personalization facts for a user. | `UserProfile` table. | `src/core/memory/profileUpdater.ts`, `src/core/memory/userProfileRepo.ts` |
-| **Channel summaries** | Rolling + long-term summaries for a channel. | `ChannelSummary` table. | `src/core/summary/*` |
-| **Raw transcript** | Recent messages for short-term context. | In-memory ring buffer; optional DB storage. | `src/core/awareness/*`, `src/core/ingest/ingestEvent.ts` |
-| **Relationship graph** | Probabilistic user connections from messages + voice overlap. | `RelationshipEdge` table. | `src/core/relationships/*` |
-| **Voice sessions** | Presence history and time-in-voice analytics. | `VoiceSession` table. | `src/core/voice/*` |
+| **User profile** | Long-term personalization summary per user. | `UserProfile` table. | `src/core/memory/profileUpdater.ts`, `src/core/memory/userProfileRepo.ts` |
+| **Channel summaries** | Rolling + long-term channel context. | `ChannelSummary` table. | `src/core/summary/*` |
+| **Raw transcript** | Recent messages for short-term context. | Ring buffer + optional `ChannelMessage` table storage. | `src/core/awareness/*`, `src/core/ingest/ingestEvent.ts` |
+| **Relationship graph** | Probabilistic user connections from mentions/replies/voice overlap. | `RelationshipEdge` table. | `src/core/relationships/*`, `src/core/context/providers/socialGraphProvider.ts` |
+| **Voice sessions** | Presence history and voice-duration analytics. | `VoiceSession` table. | `src/core/voice/*`, `src/core/context/providers/voiceAnalyticsProvider.ts` |
 
 ---
 
@@ -38,12 +38,13 @@ This document describes how Sage stores, summarizes, and injects memory into LLM
 ## 2) Data retention (transcripts)
 
 - **In-memory ring buffer** uses:
-  - `RAW_MESSAGE_TTL_DAYS` (default: 3 days)
-  - `RING_BUFFER_MAX_MESSAGES_PER_CHANNEL` (default: 200)
-- **DB transcript storage** (`ChannelMessage` table) is trimmed per channel to:
-  - `CONTEXT_TRANSCRIPT_MAX_MESSAGES` (default: 15)
+  - `RAW_MESSAGE_TTL_DAYS` (default in `.env.example`: `3`)
+  - `RING_BUFFER_MAX_MESSAGES_PER_CHANNEL` (default in `.env.example`: `200`)
+- **DB transcript window** used for prompt context is bounded by:
+  - `CONTEXT_TRANSCRIPT_MAX_MESSAGES` (default in `.env.example`: `15`)
+  - `CONTEXT_TRANSCRIPT_MAX_CHARS` (default in `.env.example`: `12000`)
 
-The DB store is **size-bounded**, not time-based. If you want longer retention, increase `CONTEXT_TRANSCRIPT_MAX_MESSAGES`.
+Transcript usage is size/window bounded. For longer context, increase transcript limits carefully.
 
 ---
 
@@ -53,9 +54,8 @@ The DB store is **size-bounded**, not time-based. If you want longer retention, 
 
 ```mermaid
 flowchart LR
-    %% How persistent + short-term context is assembled into an LLM prompt.
     classDef storage fill:#cfd8dc,stroke:#455a64,color:black
-    classDef expert fill:#d1c4e9,stroke:#512da8,color:black
+    classDef provider fill:#d1c4e9,stroke:#512da8,color:black
     classDef builder fill:#bbdefb,stroke:#1976d2,color:black
     classDef llm fill:#c8e6c9,stroke:#388e3c,color:black
 
@@ -64,27 +64,28 @@ flowchart LR
         RB[Ring Buffer]:::storage
     end
 
-    subgraph Experts
-        SE[👥 Social]:::expert
-        VE[🎤 Voice]:::expert
-        ME[🧠 Memory]:::expert
+    subgraph Providers
+        MP[Memory]:::provider
+        SP[SocialGraph]:::provider
+        VP[VoiceAnalytics]:::provider
+        SU[Summarizer]:::provider
     end
 
     subgraph Context_Builder["Context Builder"]
-        MB[Context Assembler]:::builder
-        Budget[Token Budgeter]:::builder
+        MB[buildContextMessages]:::builder
+        Budget[contextBudgeter]:::builder
     end
 
-    DB --> SE
-    DB --> VE
-    DB --> ME
-
+    DB --> MP
+    DB --> SP
+    DB --> VP
+    DB --> SU
     RB --> MB
-    SE --> MB
-    VE --> MB
-    ME --> MB
-
-    MB --> Budget --> LLM[LLM Brain]:::llm
+    MP --> MB
+    SP --> MB
+    VP --> MB
+    SU --> MB
+    MB --> Budget --> LLM[LLM Request]:::llm
 ```
 
 ---
@@ -95,31 +96,30 @@ flowchart LR
 
 **File:** `src/core/agentRuntime/contextBuilder.ts`
 
-When a message is processed, `buildContextMessages` assembles the prompt by prioritizing structured context blocks. Key inputs include:
+`buildContextMessages` composes turn context in prioritized blocks:
 
-- Base system prompt (includes user profile + style hints via `composeSystemPrompt`)
-- Channel profile summary (long-term)
-- Relationship hints (social graph edges with emoji tiers)
-- Rolling channel summary (short-term)
-- Narrative expert packets (planner-selected lookups)
-- Recent transcript (raw message log)
-- Intent hint / reply context
-- User message
+- Base system prompt (`composeSystemPrompt`)
+- Channel profile summary
+- Rolling channel summary
+- Context packets from providers/actions (`contextPackets`)
+- Recent transcript
+- Intent hint + reply context/reference
+- Current user message/content
 
-Context is budgeted by `contextBudgeter` using the following defaults (configurable in `.env`):
+Context is budgeted by `contextBudgeter` using these key limits:
 
-| Budget | Default | Env var |
-| :--- | :--- | :--- |
-| Max input tokens | 65,536 | `CONTEXT_MAX_INPUT_TOKENS` |
-| Reserved output tokens | 8,192 | `CONTEXT_RESERVED_OUTPUT_TOKENS` |
-| System prompt max | 6,000 | `SYSTEM_PROMPT_MAX_TOKENS` |
-| Transcript block max | 8,000 | `CONTEXT_BLOCK_MAX_TOKENS_TRANSCRIPT` |
-| Rolling summary max | 4,800 | `CONTEXT_BLOCK_MAX_TOKENS_ROLLING_SUMMARY` |
-| Profile summary max | 4,800 | `CONTEXT_BLOCK_MAX_TOKENS_PROFILE_SUMMARY` |
-| Reply context max | 3,200 | `CONTEXT_BLOCK_MAX_TOKENS_REPLY_CONTEXT` |
-| Expert packets max | 4,800 | `CONTEXT_BLOCK_MAX_TOKENS_EXPERTS` |
-| Relationship hints max | 2,400 | `CONTEXT_BLOCK_MAX_TOKENS_RELATIONSHIP_HINTS` |
-| User message max | 24,000 | `CONTEXT_USER_MAX_TOKENS` |
+| Budget | Env var |
+| :--- | :--- |
+| Max input tokens | `CONTEXT_MAX_INPUT_TOKENS` |
+| Reserved output tokens | `CONTEXT_RESERVED_OUTPUT_TOKENS` |
+| System prompt max | `SYSTEM_PROMPT_MAX_TOKENS` |
+| Transcript block max | `CONTEXT_BLOCK_MAX_TOKENS_TRANSCRIPT` |
+| Rolling summary max | `CONTEXT_BLOCK_MAX_TOKENS_ROLLING_SUMMARY` |
+| Profile summary max | `CONTEXT_BLOCK_MAX_TOKENS_PROFILE_SUMMARY` |
+| Memory block max | `CONTEXT_BLOCK_MAX_TOKENS_MEMORY` |
+| Reply context max | `CONTEXT_BLOCK_MAX_TOKENS_REPLY_CONTEXT` |
+| Provider/action packets max | `CONTEXT_BLOCK_MAX_TOKENS_PROVIDERS` |
+| User message max | `CONTEXT_USER_MAX_TOKENS` |
 
 ---
 
@@ -132,23 +132,14 @@ Context is budgeted by `contextBudgeter` using the following defaults (configura
 - `src/core/summary/channelSummaryScheduler.ts`
 - `src/core/summary/summarizeChannelWindow.ts`
 
-**Trigger:** The scheduler runs every `SUMMARY_SCHED_TICK_SEC` (default: 60s) and only processes channels with new messages.
+Scheduler behavior:
 
-**Conditions:**
+- Tick interval: `SUMMARY_SCHED_TICK_SEC` (default `60`)
+- Requires at least `SUMMARY_ROLLING_MIN_MESSAGES` new messages (default `20`)
+- Requires at least `SUMMARY_ROLLING_MIN_INTERVAL_SEC` since last summary (default `300`)
+- Uses rolling window `SUMMARY_ROLLING_WINDOW_MIN` (default `60`)
 
-- At least `SUMMARY_ROLLING_MIN_MESSAGES` new messages (default: 20)
-- At least `SUMMARY_ROLLING_MIN_INTERVAL_SEC` since last summary (default: 300s)
-
-**Window:**
-
-- Rolling window length: `SUMMARY_ROLLING_WINDOW_MIN` (default: 60 minutes)
-- Fetches up to 800 recent messages, bounded to 80,000 characters
-
-**Output:** a `StructuredSummary` JSON object containing:
-
-- `summaryText`, `topics`, `threads`, `decisions`, `actionItems`, `sentiment`, `unresolved`, `glossary`
-
-**Storage:** `ChannelSummary` with `kind = 'rolling'`.
+Output is stored as `ChannelSummary` with `kind = 'rolling'`.
 
 ---
 
@@ -158,12 +149,12 @@ Context is budgeted by `contextBudgeter` using the following defaults (configura
 
 **File:** `src/core/summary/summarizeChannelWindow.ts`
 
-After a rolling summary, Sage optionally updates the long-term profile if:
+Long-term profile summary updates when:
 
-- `SUMMARY_PROFILE_MIN_INTERVAL_SEC` has elapsed (default: 6 hours), or
-- the summary is forced via the admin command.
+- `SUMMARY_PROFILE_MIN_INTERVAL_SEC` has elapsed (default `21600` in `.env.example`), or
+- an admin manually triggers summarize command.
 
-The profile merges the previous long-term summary with the latest rolling summary, and stores the result in `ChannelSummary` with `kind = 'profile'`.
+Output is stored as `ChannelSummary` with `kind = 'profile'`.
 
 ---
 
@@ -171,61 +162,38 @@ The profile merges the previous long-term summary with the latest rolling summar
 
 ## 7) Throttled user profile updates
 
-**File:** `src/core/chat/chatEngine.ts` & `src/core/memory/profileUpdater.ts`
+**Files:** `src/core/chat-engine.ts`, `src/core/memory/profileUpdater.ts`
 
-Sage updates user profiles asynchronously. To reduce cost and duplicate work, updates are **throttled**:
+Sage updates user profiles asynchronously with throttling:
 
-- **Update interval:** `PROFILE_UPDATE_INTERVAL` (default: 5 messages)
-- **Process:**
-  1. **Analyst pass** (`PROFILE_CHAT_MODEL`, default: `deepseek`) produces updated profile text.
-  2. **Formatter pass** (`FORMATTER_MODEL`, default: `qwen-coder`) wraps the text into JSON for validation.
+- Update interval: `PROFILE_UPDATE_INTERVAL` (default `5`)
+- Two-step pipeline:
+  1. Analyst pass (`PROFILE_CHAT_MODEL`) updates profile narrative.
+  2. Formatter pass (`FORMATTER_MODEL`) wraps into strict JSON.
+- Per-user sequential guard prevents concurrent profile races.
 
-The result is stored in `UserProfile.summary`. If the formatter fails, the previous summary is preserved.
+Result is persisted to `UserProfile.summary`; failed formatter output keeps prior summary.
 
 ---
 
-<a id="8-relationship-graph-social-tiers"></a>
+<a id="8-relationship-graph-and-social-tiers"></a>
 
-## 8) Relationship graph & social tiers
+## 8) Relationship graph and social tiers
 
 **Files:**
 
 - `src/core/relationships/relationshipGraph.ts`
-- `src/core/orchestration/experts/socialGraphExpert.ts`
+- `src/core/context/providers/socialGraphProvider.ts`
 
-Relationship edges are updated from **mentions** and **voice overlap**. The Social Graph Expert translates interaction metrics into human-readable tiers:
+Relationship edges are updated from mentions/replies/voice overlap and rendered as narrative tiers:
 
-- **Best Friend** 🌟 (Highest interaction weight)
-- **Close Friend** ✨
-- **Friend** 👋
-- **Acquaintance** 👤
+- Best Friend
+- Close Friend
+- Friend
+- Acquaintance
+- New Connection
 
-```mermaid
-flowchart LR
-    %% Relationship tiers are derived from interaction signals.
-    classDef tier fill:#fff9c4,stroke:#fbc02d,color:black
-    classDef input fill:#e1f5fe,stroke:#0277bd,color:black
-    classDef logic fill:#e0f2f1,stroke:#00695c,color:black
-
-    subgraph Tier_Scale["Relationship tier scale"]
-        direction LR
-        A[Stranger 🧊]:::tier --> B[Acquaintance 👤]:::tier --> C[Friend 👋]:::tier --> D[Close Friend ✨]:::tier --> E[Best Friend 🌟]:::tier
-    end
-
-    subgraph Signals
-        direction TB
-        F[Mentions]:::input
-        G[Replies]:::input
-        H[Voice overlap]:::input
-    end
-
-    F --> W[Weight / score]:::logic
-    G --> W
-    H --> W
-    W --> T[Tier selection]:::logic
-```
-
-These tiers are injected into the LLM context to adjust tone and familiarity.
+These social signals are injected as `SocialGraph` context packets to tune tone and familiarity.
 
 ---
 
@@ -233,7 +201,15 @@ These tiers are injected into the LLM context to adjust tone and familiarity.
 
 ## 9) Voice awareness in memory
 
-Voice events are ingested and stored as `VoiceSession` entries. The **Voice Analytics Expert** translates sessions into natural language insights (e.g., “Active in voice for 45 minutes today”) which are then used by the LLM to answer presence-related questions.
+Voice events are stored in `VoiceSession`.
+
+`VoiceAnalytics` provider summarizes:
+
+- who is currently in voice,
+- how long the user has been active today,
+- lightweight activity signals for response context.
+
+Sage tracks voice presence and session duration only; it does not transcribe voice conversations.
 
 ---
 
@@ -243,4 +219,4 @@ Voice events are ingested and stored as `VoiceSession` entries. The **Voice Anal
 
 - [🔀 Runtime pipeline](pipeline.md)
 - [💾 Database architecture](database.md)
-- [🔒 Security & privacy](../security_privacy.md)
+- [🔒 Security and privacy](../security_privacy.md)

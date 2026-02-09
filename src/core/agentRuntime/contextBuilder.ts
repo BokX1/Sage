@@ -15,9 +15,8 @@ export interface BuildContextMessagesParams {
   userContent?: LLMMessageContent;
   recentTranscript?: string | null;
   intentHint?: string | null;
-  relationshipHints?: string | null;
   style?: StyleProfile;
-  expertPackets?: string | null;
+  contextPackets?: string | null;
   invokedBy?: 'mention' | 'reply' | 'wakeword' | 'autopilot' | 'command';
   voiceInstruction?: string;
 }
@@ -48,9 +47,8 @@ export function buildContextMessages(params: BuildContextMessagesParams): LLMCha
     userContent,
     recentTranscript,
     intentHint,
-    relationshipHints,
     style,
-    expertPackets,
+    contextPackets,
     invokedBy,
     voiceInstruction,
   } = params;
@@ -118,24 +116,15 @@ If you have nothing to add, output '[SILENCE]' (without quotes).`;
     });
   }
 
-  if (relationshipHints) {
-    blocks.push({
-      id: 'relationship_hints',
-      role: 'system',
-      content: relationshipHints,
-      priority: 65,
-      hardMaxTokens: config.contextBlockMaxTokensRelationshipHints,
-      truncatable: true,
-    });
-  }
 
-  if (expertPackets) {
+
+  if (contextPackets) {
     blocks.push({
-      id: 'expert_packets',
+      id: 'context_packets',
       role: 'system',
-      content: expertPackets,
+      content: contextPackets,
       priority: 55,
-      hardMaxTokens: config.contextBlockMaxTokensExperts,
+      hardMaxTokens: config.contextBlockMaxTokensProviders,
       truncatable: true,
     });
   }

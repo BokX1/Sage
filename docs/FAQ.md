@@ -91,13 +91,13 @@ Yes — Sage is free and open source. It uses [Pollinations.ai](https://pollinat
 <details>
 <summary><strong>What AI models does Sage use?</strong></summary>
 
-Sage uses a multi-model pipeline:
+Sage uses a route-aware multi-model pipeline:
 
-- **Router:** `deepseek` (Pollinations) for intent classification and expert selection.
-- **Chat:** Adaptive (`gemini-fast` for speed, `kimi` for coding/complex reasoning).
-- **Analysis:** `deepseek` for user profile synthesis (configurable via `PROFILE_CHAT_MODEL`).
-- **Summaries:** `openai-large` for rolling channel summaries (configurable via `SUMMARY_MODEL`).
-- **Formatting:** `qwen-coder` for structured JSON output (configurable via `FORMATTER_MODEL`).
+- **Agent Selector:** `deepseek` (Pollinations) to classify route intent (`chat`, `coding`, `search`, `creative`).
+- **Chat/Coding/Search:** selected by model policy at runtime based on route + capabilities + health.
+- **Profile updates:** `PROFILE_CHAT_MODEL` (default `deepseek`).
+- **Summaries:** `SUMMARY_MODEL` (default `openai-large`).
+- **Formatting:** `FORMATTER_MODEL` (default `qwen-coder`) for strict JSON formatting.
 
 You can change defaults in **[Configuration](CONFIGURATION.md)**.
 
@@ -130,9 +130,7 @@ Yes.
 - **Generate:** `Sage, draw a futuristic city in the rain`
 - **Edit:** reply to an image: `Sage, make this more cinematic`
 
-Under the hood, Sage runs an **Image Generator expert** (prompt refinement → Pollinations image endpoint) and returns the result as a **Discord attachment**.
-
-</details>
+Under the hood, Sage runs a **creative route image action** (prompt refinement -> Pollinations image endpoint) and returns the result as a **Discord attachment**.
 
 </details>
 
@@ -253,7 +251,7 @@ Things to try:
 | :--- | :--- |
 | **User Profiles** | LLM-generated long-term summary of a user (throttled for efficiency). |
 | **Relationship Tiers** | Interaction-based tiers (e.g., “Best Friend”) with emojis. |
-| **Traces** | Router `reasoningText` and related metadata to explain why Sage responded the way it did. |
+| **Traces** | Agent selector `reasoningText`, route metadata, and runtime diagnostics for auditing responses. |
 
 For a full breakdown (tables, retention, and deletion), see **[Security &amp; Privacy](security_privacy.md)**.
 

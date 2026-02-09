@@ -30,7 +30,7 @@ This document describes what Sage stores and how to control retention. Implement
 | Relationship edges | `RelationshipEdge` | Probabilistic relationship weights from mentions/replies/voice overlap. |
 | Voice sessions | `VoiceSession` | Join/leave session history per user/channel. |
 | Admin audits | `AdminAudit` | Records admin command usage with hashed params. |
-| Agent traces | `AgentTrace` | Router/expert data and the final reply text (if tracing is enabled). |
+| Agent traces | `AgentTrace` | Agent selector payload, context packet metadata, and final reply text (if tracing is enabled). |
 
 ---
 
