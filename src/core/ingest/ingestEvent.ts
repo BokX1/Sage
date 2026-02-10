@@ -86,11 +86,16 @@ export async function ingestEvent(event: Event): Promise<void> {
       appendMessage(message);
 
       if (config.MESSAGE_DB_STORAGE_ENABLED) {
+        const dbRetentionLimit = Math.max(
+          1,
+          (config.MESSAGE_DB_MAX_MESSAGES_PER_CHANNEL as number | undefined) ??
+            config.CONTEXT_TRANSCRIPT_MAX_MESSAGES,
+        );
         await prismaMessageStore.append(message);
         await prismaMessageStore.pruneChannelToLimit({
           guildId: message.guildId,
           channelId: message.channelId,
-          limit: config.CONTEXT_TRANSCRIPT_MAX_MESSAGES,
+          limit: dbRetentionLimit,
         });
       }
 

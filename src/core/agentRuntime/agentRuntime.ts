@@ -22,7 +22,7 @@ import { buildContextMessages } from './contextBuilder';
 import { getChannelSummaryStore } from '../summary/channelSummaryStoreRegistry';
 
 import { classifyStyle, analyzeUserStyle } from './styleClassifier';
-import { decideAgent, SearchExecutionMode } from '../orchestration/agentSelector';
+import { AgentKind, decideAgent, SearchExecutionMode } from '../orchestration/agentSelector';
 import { runContextProviders } from '../context/runContext';
 import { replaceAgentRuns, upsertTraceStart, updateTraceEnd } from './agent-trace-repo';
 import { ContextPacket, ContextProviderName } from '../context/context-types';
@@ -55,6 +55,10 @@ import {
   buildCapabilityPromptSection,
   BuildCapabilityPromptSectionParams,
 } from './capabilityPrompt';
+import { ToolRegistry, globalToolRegistry } from './toolRegistry';
+import { runToolCallLoop } from './toolCallLoop';
+import { parseToolBlocklistCsv } from './toolPolicy';
+import { stripToolEnvelopeDraft } from './toolVerification';
 
 
 /** Execute one chat turn using routing, context, and tool follow-up metadata. */
@@ -98,6 +102,219 @@ function selectVoicePersona(text: string, profile: string | null): string {
   if (/(serious|news|anchor)/.test(t)) return 'echo';
 
   return 'alloy';
+}
+
+function toPositiveInt(value: number | undefined, fallback: number): number {
+  if (Number.isFinite(value) && value && value > 0) {
+    return Math.max(1, Math.floor(value));
+  }
+  return fallback;
+}
+
+function resolveRouteOutputMaxTokens(params: {
+  route: 'chat' | 'coding' | 'search' | 'creative';
+  appConfig: typeof appConfig;
+}): number {
+  switch (params.route) {
+    case 'coding':
+      return toPositiveInt(
+        (params.appConfig.CODING_MAX_OUTPUT_TOKENS as number | undefined),
+        4_200,
+      );
+    case 'search':
+      return toPositiveInt(
+        (params.appConfig.SEARCH_MAX_OUTPUT_TOKENS as number | undefined),
+        2_000,
+      );
+    case 'creative':
+      return toPositiveInt(
+        (params.appConfig.CHAT_MAX_OUTPUT_TOKENS as number | undefined),
+        1_800,
+      );
+    case 'chat':
+    default:
+      return toPositiveInt(
+        (params.appConfig.CHAT_MAX_OUTPUT_TOKENS as number | undefined),
+        1_800,
+      );
+  }
+}
+
+function resolveCriticOutputMaxTokens(config: typeof appConfig): number {
+  return toPositiveInt((config.CRITIC_MAX_OUTPUT_TOKENS as number | undefined), 1_800);
+}
+
+function resolveSearchMaxAttempts(params: {
+  mode: SearchExecutionMode | null;
+  config: typeof appConfig;
+}): number {
+  if (params.mode === 'simple') {
+    return toPositiveInt((params.config.SEARCH_MAX_ATTEMPTS_SIMPLE as number | undefined), 2);
+  }
+  return toPositiveInt((params.config.SEARCH_MAX_ATTEMPTS_COMPLEX as number | undefined), 4);
+}
+
+const ROUTE_TOOL_ALLOWLIST: Record<AgentKind, string[]> = {
+  chat: [
+    'get_current_datetime',
+    'web_search',
+    'web_scrape',
+    'wikipedia_lookup',
+    'github_repo_lookup',
+    'npm_package_lookup',
+  ],
+  coding: [
+    'get_current_datetime',
+    'web_search',
+    'web_scrape',
+    'github_repo_lookup',
+    'github_file_lookup',
+    'npm_package_lookup',
+    'stack_overflow_search',
+    'local_llm_models',
+    'local_llm_infer',
+  ],
+  search: [
+    'get_current_datetime',
+    'web_search',
+    'web_scrape',
+    'wikipedia_lookup',
+    'stack_overflow_search',
+    'github_repo_lookup',
+    'github_file_lookup',
+    'npm_package_lookup',
+  ],
+  creative: [],
+};
+
+function selectRouteToolNames(routeKind: AgentKind, globalToolNames: string[]): string[] {
+  const allowed = ROUTE_TOOL_ALLOWLIST[routeKind] ?? [];
+  const available = new Set(globalToolNames);
+  return allowed.filter((toolName) => available.has(toolName));
+}
+
+function buildScopedToolRegistry(toolNames: string[]): ToolRegistry {
+  const scopedRegistry = new ToolRegistry();
+  for (const toolName of toolNames) {
+    const tool = globalToolRegistry.get(toolName);
+    if (!tool) continue;
+    scopedRegistry.register(tool);
+  }
+  return scopedRegistry;
+}
+
+function buildToolProtocolInstruction(params: {
+  routeKind: AgentKind;
+  searchMode: SearchExecutionMode | null;
+  toolNames: string[];
+}): string {
+  const hasTool = (name: string): boolean => params.toolNames.includes(name);
+  const routeSpecificGuidance =
+    params.routeKind === 'search'
+      ? [
+          'Search route behavior:',
+          '- Use tools for externally verifiable claims.',
+          hasTool('web_search')
+            ? '- Call web_search before finalizing factual/time-sensitive answers.'
+            : '- Prefer available retrieval tools before finalizing factual/time-sensitive answers.',
+          hasTool('web_scrape')
+            ? '- If user provides URLs, call web_scrape on those URLs.'
+            : '- If user provides URLs, use available retrieval tools to verify URL content when possible.',
+          params.searchMode === 'complex'
+            ? '- In complex mode, compare multiple sources before concluding.'
+            : '- In simple mode, keep the answer concise and directly scoped.',
+        ].join('\n')
+      : params.routeKind === 'coding'
+        ? [
+            'Coding route behavior:',
+            '- Use tools when correctness depends on package versions, API behavior, docs, or exact commands.',
+            hasTool('npm_package_lookup')
+              ? '- Use npm_package_lookup for package version and metadata validation.'
+              : '- Use available package/doc tools to validate package versions when uncertain.',
+            hasTool('github_repo_lookup') || hasTool('github_file_lookup')
+              ? '- Use GitHub lookup tools to confirm repository/docs claims before citing them.'
+              : '- Use available retrieval tools to validate repository/docs claims before citing them.',
+            hasTool('stack_overflow_search')
+              ? '- Use stack_overflow_search for known error signatures or implementation pitfalls.'
+              : '- Use available retrieval tools when debugging known error signatures.',
+          ].join('\n')
+        : params.routeKind === 'chat'
+          ? [
+              'Chat route behavior:',
+              '- Use tools for factual, time-sensitive, or externally verifiable claims.',
+              hasTool('web_search')
+                ? '- For current events/news/prices/releases/weather, call web_search before finalizing.'
+                : '- For current events/news/prices/releases/weather, rely on available tools before finalizing.',
+              hasTool('web_scrape')
+                ? '- If the user shares URL(s), call web_scrape before summarizing or quoting page content.'
+                : '- If the user shares URL(s), use available tools to validate page content before summarizing.',
+            ].join('\n')
+          : '';
+  return [
+    '## Tool Protocol',
+    'You may call tools when they materially improve correctness.',
+    'Never invent tool outputs. If a tool fails, acknowledge the limitation and proceed safely.',
+    'If a tool is needed, output ONLY valid JSON in this exact format:',
+    '{',
+    '  "type": "tool_calls",',
+    '  "calls": [{ "name": "<tool_name>", "args": { ... } }]',
+    '}',
+    'Do not include markdown or any extra text when returning tool_calls JSON.',
+    `Available tools: ${params.toolNames.join(', ')}`,
+    routeSpecificGuidance,
+    'If no tool is needed, answer normally in plain text.',
+  ]
+    .filter((line) => line.trim().length > 0)
+    .join('\n');
+}
+
+const TOOL_HARD_GATE_TIME_SENSITIVE_PATTERN =
+  /(latest|today|current|now|right now|as of|recent|fresh|newest|release|version|price|weather|news|score)/i;
+const TOOL_HARD_GATE_SOURCE_REQUEST_PATTERN = /(source|sources|citation|cite|reference|references|link|url)/i;
+const TOOL_HARD_GATE_CODING_VERIFICATION_PATTERN =
+  /(npm|pnpm|yarn|package|dependency|dependencies|install|version|api|sdk|docs|documentation|changelog|migration|deprecated|cli|command|stack trace|error|exception|runtime)/i;
+
+function shouldRequireToolEvidenceForTurn(params: {
+  routeKind: AgentKind;
+  userText: string;
+  searchMode: SearchExecutionMode | null;
+}): boolean {
+  const text = params.userText.trim();
+  if (!text) return false;
+
+  const asksFreshness = TOOL_HARD_GATE_TIME_SENSITIVE_PATTERN.test(text);
+  const asksSources = TOOL_HARD_GATE_SOURCE_REQUEST_PATTERN.test(text);
+
+  if (params.routeKind === 'search') {
+    return true;
+  }
+  if (params.routeKind === 'coding') {
+    return asksFreshness || asksSources || TOOL_HARD_GATE_CODING_VERIFICATION_PATTERN.test(text);
+  }
+  if (params.routeKind === 'chat') {
+    return asksFreshness || asksSources;
+  }
+  return false;
+}
+
+function buildToolHardGateInstruction(params: {
+  routeKind: AgentKind;
+  searchMode: SearchExecutionMode | null;
+  minSuccessfulCalls: number;
+  toolNames: string[];
+}): string {
+  const routeLabel =
+    params.routeKind === 'search'
+      ? `search (${params.searchMode ?? 'complex'} mode)`
+      : params.routeKind;
+  return [
+    '## Tool Evidence Hard Gate',
+    `Route: ${routeLabel}`,
+    `Before final answer, execute at least ${params.minSuccessfulCalls} successful tool call(s) relevant to the user request.`,
+    'Do not finalize with unverified external/time-sensitive/versioned claims.',
+    'If tools fail, explicitly state the limitation and avoid confident unsupported assertions.',
+    `Available tools: ${params.toolNames.join(', ') || 'none'}`,
+  ].join('\n');
 }
 
 /**
@@ -459,6 +676,34 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
     agentDecision.kind === 'search'
       ? agentDecision.searchMode ?? 'complex'
       : null;
+  const globalToolNames = globalToolRegistry.listNames();
+  const activeToolNames = selectRouteToolNames(agentDecision.kind, globalToolNames);
+  const toolLoopEnabled =
+    !!(appConfig.AGENTIC_TOOL_LOOP_ENABLED as boolean | undefined) &&
+    activeToolNames.length > 0 &&
+    (agentDecision.kind === 'chat' || agentDecision.kind === 'coding' || agentDecision.kind === 'search');
+  const toolHardGateEnabled = !!(appConfig.AGENTIC_TOOL_HARD_GATE_ENABLED as boolean | undefined);
+  const toolHardGateMinSuccessfulCalls = toPositiveInt(
+    (appConfig.AGENTIC_TOOL_HARD_GATE_MIN_SUCCESSFUL_CALLS as number | undefined),
+    1,
+  );
+  const scopedToolRegistry = toolLoopEnabled ? buildScopedToolRegistry(activeToolNames) : null;
+  const requiresToolEvidenceThisTurn =
+    toolHardGateEnabled &&
+    toolLoopEnabled &&
+    !!scopedToolRegistry &&
+    shouldRequireToolEvidenceForTurn({
+      routeKind: agentDecision.kind,
+      userText,
+      searchMode: searchExecutionMode,
+    });
+  const toolProtocolInstruction = toolLoopEnabled
+    ? buildToolProtocolInstruction({
+        routeKind: agentDecision.kind,
+        searchMode: searchExecutionMode,
+        toolNames: activeToolNames,
+      })
+    : null;
 
   const activeContextProviders =
     agentDecision.contextProviders ?? getStandardProvidersForAgent(agentDecision.kind);
@@ -467,6 +712,7 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
     searchMode: searchExecutionMode,
     routerReasoning: agentDecision.reasoningText,
     contextProviders: activeContextProviders,
+    activeTools: activeToolNames,
   };
   const capabilityInstruction = buildCapabilityPromptSection(capabilityPromptParams);
   const includeAgenticState =
@@ -474,7 +720,7 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
   const agenticStateInstruction = includeAgenticState
     ? buildAgenticStateBlock(capabilityPromptParams)
     : null;
-  const runtimeInstructionBlocks = [capabilityInstruction, agenticStateInstruction]
+  const runtimeInstructionBlocks = [capabilityInstruction, agenticStateInstruction, toolProtocolInstruction]
     .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
     .join('\n\n');
   const runtimeMessages = buildContextMessages({
@@ -509,6 +755,11 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
 
   let draftText = '';
   const modelResolutionEvents: Array<Record<string, unknown>> = [];
+  const routeOutputMaxTokens = resolveRouteOutputMaxTokens({
+    route: agentDecision.kind,
+    appConfig,
+  });
+  const criticOutputMaxTokens = resolveCriticOutputMaxTokens(appConfig);
   const cleanDraftText = (text: string | null | undefined): string | null => {
     const trimmed = typeof text === 'string' ? text.trim() : '';
     return trimmed.length > 0 ? trimmed : null;
@@ -517,15 +768,18 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
   const SEARCH_SCRAPER_MODEL = 'nomnom' as const;
   const URL_IN_TEXT_PATTERN = /\b(?:https?:\/\/|www\.)[^\s<>()]+/i;
   const userTextHasLink = URL_IN_TEXT_PATTERN.test(userText);
-  const BASE_SEARCH_TIMEOUT_MS = Math.max(
-    appConfig.TIMEOUT_SEARCH_MS,
-    appConfig.TIMEOUT_CHAT_MS,
-    300_000,
+  const BASE_SEARCH_TIMEOUT_MS = toPositiveInt(
+    (appConfig.TIMEOUT_SEARCH_MS as number | undefined) ?? appConfig.TIMEOUT_CHAT_MS,
+    120_000,
   );
-  const SCRAPER_SEARCH_TIMEOUT_MS = Math.max(
-    appConfig.TIMEOUT_SEARCH_SCRAPER_MS,
+  const SCRAPER_SEARCH_TIMEOUT_MS = toPositiveInt(
+    (appConfig.TIMEOUT_SEARCH_SCRAPER_MS as number | undefined) ?? BASE_SEARCH_TIMEOUT_MS,
     BASE_SEARCH_TIMEOUT_MS,
   );
+  const SEARCH_MAX_ATTEMPTS = resolveSearchMaxAttempts({
+    mode: searchExecutionMode,
+    config: appConfig,
+  });
   const normalizeModelId = (value: string): string => value.trim().toLowerCase();
   const dedupeModelIds = (values: string[]): string[] => {
     const seen = new Set<string>();
@@ -631,8 +885,9 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
       ...searchModelDetails.candidates,
       ...guardedSearchAllowlist,
     ]).filter((model) => guardedSearchAllowlist.includes(model));
+    const cappedAttemptOrder = attemptOrder.slice(0, SEARCH_MAX_ATTEMPTS);
 
-    if (attemptOrder.length === 0) {
+    if (cappedAttemptOrder.length === 0) {
       throw new Error('No eligible guarded search model candidates were produced.');
     }
 
@@ -646,7 +901,8 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
       allowlistApplied: searchModelDetails.allowlistApplied,
       linkDetected: userTextHasLink,
       guardrailAllowlist: guardedSearchAllowlist,
-      guardrailAttemptOrder: attemptOrder,
+      guardrailAttemptOrder: cappedAttemptOrder,
+      searchMaxAttempts: SEARCH_MAX_ATTEMPTS,
     });
 
     const searchSystemPrompt = `You are a search-focused assistant. Answer using the freshest reliable information available.
@@ -675,8 +931,8 @@ Checked on: <YYYY-MM-DD> (only when required)`;
     ];
 
     let lastError: unknown = null;
-    for (let attemptIndex = 0; attemptIndex < attemptOrder.length; attemptIndex += 1) {
-      const attemptModel = attemptOrder[attemptIndex];
+    for (let attemptIndex = 0; attemptIndex < cappedAttemptOrder.length; attemptIndex += 1) {
+      const attemptModel = cappedAttemptOrder[attemptIndex];
       const attemptTimeoutMs = resolveSearchTimeoutMs(attemptModel);
       const searchClient = createLLMClient('pollinations', { chatModel: attemptModel });
       const startedAt = Date.now();
@@ -687,6 +943,7 @@ Checked on: <YYYY-MM-DD> (only when required)`;
           apiKey,
           temperature: searchTemperature,
           timeout: attemptTimeoutMs,
+          maxTokens: routeOutputMaxTokens,
         });
         recordModelOutcome({
           model: attemptModel,
@@ -696,19 +953,19 @@ Checked on: <YYYY-MM-DD> (only when required)`;
         modelResolutionEvents.push({
           phase: params.phase,
           iteration: params.iteration,
-          route: 'search',
-          selected: attemptModel,
-          purpose: 'search_guardrail_attempt',
-          attempt: attemptIndex + 1,
-          attemptsTotal: attemptOrder.length,
-          timeoutMs: attemptTimeoutMs,
-          status: 'success',
-        });
+            route: 'search',
+            selected: attemptModel,
+            purpose: 'search_guardrail_attempt',
+            attempt: attemptIndex + 1,
+            attemptsTotal: cappedAttemptOrder.length,
+            timeoutMs: attemptTimeoutMs,
+            status: 'success',
+          });
         const content = searchResponse.content ?? '';
         // Guardrail: when possible, require at least one source URL from the search model.
         // If a model returns a clean answer without any URLs, try the next candidate (bounded).
         const hasSourceUrl = /https?:\/\/[^\s<>()]+/i.test(content);
-        if (!hasSourceUrl && attemptIndex < attemptOrder.length - 1) {
+        if (!hasSourceUrl && attemptIndex < cappedAttemptOrder.length - 1) {
           modelResolutionEvents.push({
             phase: params.phase,
             iteration: params.iteration,
@@ -716,7 +973,7 @@ Checked on: <YYYY-MM-DD> (only when required)`;
             selected: attemptModel,
             purpose: 'search_guardrail_attempt',
             attempt: attemptIndex + 1,
-            attemptsTotal: attemptOrder.length,
+            attemptsTotal: cappedAttemptOrder.length,
             timeoutMs: attemptTimeoutMs,
             status: 'rejected_missing_sources',
           });
@@ -728,7 +985,11 @@ Checked on: <YYYY-MM-DD> (only when required)`;
           const hasCheckedOn = /checked on:\s*\d{4}-\d{2}-\d{2}/i.test(content);
           const urlMatches = content.match(/https?:\/\/[^\s<>()]+/gi) ?? [];
           const uniqueUrlCount = new Set(urlMatches.map((url) => url.toLowerCase())).size;
-          if ((!hasCheckedOn || uniqueUrlCount < 2) && attemptIndex < attemptOrder.length - 1) {
+          const minRequiredSources = searchExecutionMode === 'complex' ? 2 : 1;
+          if (
+            (!hasCheckedOn || uniqueUrlCount < minRequiredSources) &&
+            attemptIndex < cappedAttemptOrder.length - 1
+          ) {
             modelResolutionEvents.push({
               phase: params.phase,
               iteration: params.iteration,
@@ -736,12 +997,13 @@ Checked on: <YYYY-MM-DD> (only when required)`;
               selected: attemptModel,
               purpose: 'search_guardrail_attempt',
               attempt: attemptIndex + 1,
-              attemptsTotal: attemptOrder.length,
+              attemptsTotal: cappedAttemptOrder.length,
               timeoutMs: attemptTimeoutMs,
               status: 'rejected_weak_freshness_grounding',
               details: {
                 hasCheckedOn,
                 uniqueUrlCount,
+                minRequiredSources,
               },
             });
             continue;
@@ -750,17 +1012,19 @@ Checked on: <YYYY-MM-DD> (only when required)`;
 
         // Dual-search cross-check for time-sensitive queries in complex mode.
         // This improves correctness by giving the summarizer conflicting/confirming evidence to reconcile.
-        if (isTimeSensitiveQuery && searchExecutionMode === 'complex' && attemptOrder.length > 1) {
-          const secondaryModel = attemptOrder.find((model) => model !== attemptModel) ?? null;
+        if (isTimeSensitiveQuery && searchExecutionMode === 'complex' && cappedAttemptOrder.length > 1) {
+          const secondaryModel = cappedAttemptOrder.find((model) => model !== attemptModel) ?? null;
           if (secondaryModel) {
             try {
               const secondaryClient = createLLMClient('pollinations', { chatModel: secondaryModel });
+              const crossCheckTimeoutMs = Math.min(attemptTimeoutMs, 60_000);
               const secondaryResponse = await secondaryClient.chat({
                 messages: searchMessages,
                 model: secondaryModel,
                 apiKey,
                 temperature: searchTemperature,
-                timeout: attemptTimeoutMs,
+                timeout: crossCheckTimeoutMs,
+                maxTokens: routeOutputMaxTokens,
               });
               const secondaryContent = secondaryResponse.content ?? '';
               const secondaryHasUrl = /https?:\/\/[^\s<>()]+/i.test(secondaryContent);
@@ -790,7 +1054,7 @@ Checked on: <YYYY-MM-DD> (only when required)`;
           selected: attemptModel,
           purpose: 'search_guardrail_attempt',
           attempt: attemptIndex + 1,
-          attemptsTotal: attemptOrder.length,
+          attemptsTotal: cappedAttemptOrder.length,
           timeoutMs: attemptTimeoutMs,
           status: 'failed',
           errorText: error instanceof Error ? error.message : String(error),
@@ -802,7 +1066,7 @@ Checked on: <YYYY-MM-DD> (only when required)`;
             iteration: params.iteration,
             model: attemptModel,
             attempt: attemptIndex + 1,
-            attemptsTotal: attemptOrder.length,
+            attemptsTotal: cappedAttemptOrder.length,
             timeoutMs: attemptTimeoutMs,
             error,
           },
@@ -906,6 +1170,7 @@ Checked on: <YYYY-MM-DD> (only when required)`;
         apiKey,
         temperature: 0.4,
         timeout: appConfig.TIMEOUT_CHAT_MS,
+        maxTokens: routeOutputMaxTokens,
       });
       recordModelOutcome({
         model: summaryModel,
@@ -921,12 +1186,222 @@ Checked on: <YYYY-MM-DD> (only when required)`;
       throw error;
     }
   };
+  let toolLoopBudgetJson: Record<string, unknown> | undefined;
+  const buildToolLoopConfig = () => ({
+    maxRounds: toPositiveInt(
+      (appConfig.AGENTIC_TOOL_MAX_ROUNDS as number | undefined),
+      2,
+    ),
+    maxCallsPerRound: toPositiveInt(
+      (appConfig.AGENTIC_TOOL_MAX_CALLS_PER_ROUND as number | undefined),
+      3,
+    ),
+    toolTimeoutMs: toPositiveInt(
+      (appConfig.AGENTIC_TOOL_TIMEOUT_MS as number | undefined),
+      45_000,
+    ),
+    maxToolResultChars: toPositiveInt(
+      (appConfig.AGENTIC_TOOL_RESULT_MAX_CHARS as number | undefined),
+      4_000,
+    ),
+    parallelReadOnlyTools:
+      (appConfig.AGENTIC_TOOL_PARALLEL_READ_ONLY_ENABLED as boolean | undefined) ?? true,
+    maxParallelReadOnlyTools: toPositiveInt(
+      (appConfig.AGENTIC_TOOL_MAX_PARALLEL_READ_ONLY as number | undefined),
+      3,
+    ),
+    cacheEnabled: true,
+    cacheMaxEntries: 50,
+  });
+  const buildToolPolicy = () => ({
+    allowExternalWrite: !!(appConfig.AGENTIC_TOOL_ALLOW_EXTERNAL_WRITE as boolean | undefined),
+    allowHighRisk: !!(appConfig.AGENTIC_TOOL_ALLOW_HIGH_RISK as boolean | undefined),
+    blockedTools: parseToolBlocklistCsv(
+      (appConfig.AGENTIC_TOOL_BLOCKLIST_CSV as string | undefined) ?? '',
+    ),
+  });
+  const runSearchToolPass = async (params: {
+    phase: string;
+    iteration?: number;
+    revisionInstruction?: string;
+    priorDraft?: string;
+  }): Promise<{
+    draft: string;
+    loopBudget: Record<string, unknown>;
+  }> => {
+    if (!toolLoopEnabled || !scopedToolRegistry) {
+      throw new Error('Search tool loop is disabled or has no scoped registry.');
+    }
+
+    const supplementalHints: string[] = [
+      'Search route tool requirements:',
+      '- Use tools for externally verifiable facts.',
+      '- Call web_search before finalizing factual or freshness-sensitive answers.',
+      '- When user provides URL(s), call web_scrape on those URL(s).',
+      '- Keep source-backed claims tied to URLs.',
+      '- If user asks latest/current/now, include "Checked on: YYYY-MM-DD".',
+    ];
+    if (searchExecutionMode === 'complex') {
+      supplementalHints.push('- Compare and reconcile multiple sources before concluding.');
+    }
+    if (params.revisionInstruction?.trim()) {
+      supplementalHints.push(`Critic focus: ${params.revisionInstruction.trim()}`);
+    }
+    const priorDraft = cleanDraftText(params.priorDraft);
+    if (priorDraft) {
+      supplementalHints.push(`Prior draft to improve:\n${priorDraft}`);
+    }
+    supplementalHints.push(`Current date: ${new Date().toISOString().slice(0, 10)}`);
+
+    const searchMessages: LLMChatMessage[] = [
+      ...runtimeMessages,
+      {
+        role: 'system',
+        content: supplementalHints.join('\n'),
+      },
+    ];
+
+    const searchModelDetails = await resolveModelForRequestDetailed({
+      guildId,
+      messages: searchMessages,
+      route: 'search',
+      allowedModels: tenantPolicy.allowedModels,
+      featureFlags: {
+        search: true,
+        tools: true,
+        linkScrape: userTextHasLink || undefined,
+      },
+    });
+    const searchModel = searchModelDetails.model;
+    modelResolutionEvents.push({
+      phase: params.phase,
+      iteration: params.iteration,
+      route: searchModelDetails.route,
+      selected: searchModelDetails.model,
+      candidates: searchModelDetails.candidates,
+      decisions: searchModelDetails.decisions,
+      allowlistApplied: searchModelDetails.allowlistApplied,
+      purpose: 'search_tool_loop',
+      scopedTools: activeToolNames,
+    });
+
+    const scopedToolSpecs = scopedToolRegistry
+      .listOpenAIToolSpecs()
+      .map((tool) => ({
+        type: tool.type,
+        function: {
+          ...tool.function,
+          parameters: tool.function.parameters as Record<string, unknown>,
+        },
+      }));
+
+    const searchCallStartedAt = Date.now();
+    const initialResponse = await client.chat({
+      messages: searchMessages,
+      model: searchModel,
+      apiKey,
+      temperature: Math.max(0.1, (agentDecision.temperature ?? 0.3) - 0.1),
+      timeout: appConfig.TIMEOUT_CHAT_MS,
+      maxTokens: routeOutputMaxTokens,
+      tools: scopedToolSpecs,
+      toolChoice: scopedToolSpecs.length > 0 ? 'auto' : undefined,
+    });
+    recordModelOutcome({
+      model: searchModel,
+      success: true,
+      latencyMs: Date.now() - searchCallStartedAt,
+    });
+
+    const loopStartedAt = Date.now();
+    const loopResult = await runToolCallLoop({
+      client,
+      messages: searchMessages,
+      registry: scopedToolRegistry,
+      ctx: {
+        traceId,
+        userId,
+        channelId,
+        guildId,
+        apiKey,
+      },
+      model: searchModel,
+      apiKey,
+      temperature: Math.max(0.1, (agentDecision.temperature ?? 0.3) - 0.1),
+      timeoutMs: appConfig.TIMEOUT_CHAT_MS,
+      maxTokens: toPositiveInt(
+        (appConfig.AGENTIC_TOOL_MAX_OUTPUT_TOKENS as number | undefined),
+        1_200,
+      ),
+      initialAssistantResponseText: initialResponse.content,
+      config: buildToolLoopConfig(),
+      toolPolicy: buildToolPolicy(),
+    });
+
+    const successfulToolCount = loopResult.toolResults.filter((toolResult) => toolResult.success).length;
+    if (successfulToolCount === 0) {
+      throw new Error('Search tool loop produced no successful tool calls.');
+    }
+
+    const cleanedReply =
+      cleanDraftText(stripToolEnvelopeDraft(loopResult.replyText) ?? loopResult.replyText) ?? '';
+    if (!cleanedReply) {
+      throw new Error('Search tool loop returned empty final text.');
+    }
+
+    return {
+      draft: cleanedReply,
+      loopBudget: {
+        enabled: true,
+        route: 'search',
+        toolsExecuted: loopResult.toolsExecuted,
+        roundsCompleted: loopResult.roundsCompleted,
+        toolResultCount: loopResult.toolResults.length,
+        successfulToolCount,
+        scopedTools: activeToolNames,
+        latencyMs: Date.now() - loopStartedAt,
+      },
+    };
+  };
+  const runSearchPassWithFallback = async (params: {
+    phase: string;
+    iteration?: number;
+    revisionInstruction?: string;
+    priorDraft?: string;
+  }): Promise<string> => {
+    if (toolLoopEnabled && scopedToolRegistry) {
+      try {
+        const toolPass = await runSearchToolPass(params);
+        if (params.phase === 'search_initial') {
+          toolLoopBudgetJson = {
+            ...toolPass.loopBudget,
+            hardGateRequired: requiresToolEvidenceThisTurn,
+            hardGateSatisfied: true,
+            hardGateMinSuccessfulCalls: toolHardGateMinSuccessfulCalls,
+          };
+        }
+        return toolPass.draft;
+      } catch (error) {
+        if (requiresToolEvidenceThisTurn && agentDecision.kind === 'search') {
+          throw new Error(
+            `Search hard gate unmet: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          );
+        }
+        logger.warn(
+          { error, traceId, phase: params.phase, iteration: params.iteration },
+          'Search tool loop pass failed; falling back to guarded search model pass',
+        );
+      }
+    }
+    return runSearchPass(params);
+  };
 
   // --- SEARCH AGENT ---
   if (agentDecision.kind === 'search') {
     logger.info({ traceId, userText, searchExecutionMode }, 'Agent Runtime: Executing Search Agent');
     try {
-      draftText = await runSearchPass({ phase: 'search_initial' });
+      draftText = await runSearchPassWithFallback({ phase: 'search_initial' });
 
       if (searchExecutionMode === 'complex') {
         try {
@@ -950,7 +1425,10 @@ Checked on: <YYYY-MM-DD> (only when required)`;
       }
     } catch (searchError) {
       logger.error({ error: searchError, traceId }, 'Search Agent failed');
-      draftText = "I couldn't complete the search request at this time.";
+      const searchErrorText = searchError instanceof Error ? searchError.message.toLowerCase() : String(searchError);
+      draftText = searchErrorText.includes('hard gate')
+        ? "I couldn't verify this request with tools right now, so I won't provide an unverified answer. Please try again."
+        : "I couldn't complete the search request at this time.";
     }
   } else {
 
@@ -962,6 +1440,7 @@ Checked on: <YYYY-MM-DD> (only when required)`;
         messages: runtimeMessages,
         route: agentDecision.kind, // Pass agent kind as route
         allowedModels: tenantPolicy.allowedModels,
+        featureFlags: toolLoopEnabled ? { tools: true } : undefined,
       });
       const resolvedModel = resolvedModelDetails.model;
       lastPrimaryModel = resolvedModel;
@@ -973,6 +1452,15 @@ Checked on: <YYYY-MM-DD> (only when required)`;
         decisions: resolvedModelDetails.decisions,
         allowlistApplied: resolvedModelDetails.allowlistApplied,
       });
+      const toolSpecs = toolLoopEnabled && scopedToolRegistry
+        ? scopedToolRegistry.listOpenAIToolSpecs().map((tool) => ({
+          type: tool.type,
+          function: {
+            ...tool.function,
+            parameters: tool.function.parameters as Record<string, unknown>,
+          },
+        }))
+        : undefined;
 
       const mainCallStartedAt = Date.now();
       const response = await client.chat({
@@ -981,6 +1469,9 @@ Checked on: <YYYY-MM-DD> (only when required)`;
         apiKey,
         temperature: agentDecision.temperature,
         timeout: appConfig.TIMEOUT_CHAT_MS,
+        maxTokens: routeOutputMaxTokens,
+        tools: toolSpecs,
+        toolChoice: toolSpecs ? 'auto' : undefined,
       });
       recordModelOutcome({
         model: resolvedModel,
@@ -989,6 +1480,250 @@ Checked on: <YYYY-MM-DD> (only when required)`;
       });
 
       draftText = response.content;
+
+      if (toolLoopEnabled && scopedToolRegistry) {
+        const toolLoopStartedAt = Date.now();
+        const toolLoopConfig = buildToolLoopConfig();
+        const toolPolicy = buildToolPolicy();
+        const toolEvidenceRequiredForMainPass =
+          requiresToolEvidenceThisTurn &&
+          (agentDecision.kind === 'chat' || agentDecision.kind === 'coding');
+        const forcedGateInstruction = buildToolHardGateInstruction({
+          routeKind: agentDecision.kind,
+          searchMode: searchExecutionMode,
+          minSuccessfulCalls: toolHardGateMinSuccessfulCalls,
+          toolNames: activeToolNames,
+        });
+
+        const runForcedToolEvidencePass = async (priorDraft: string): Promise<{
+          replyText: string;
+          budget: Record<string, unknown>;
+        }> => {
+          if (!scopedToolRegistry) {
+            throw new Error('Tool hard gate requested without an active tool registry.');
+          }
+          const scopedToolSpecs = scopedToolRegistry
+            .listOpenAIToolSpecs()
+            .map((tool) => ({
+              type: tool.type,
+              function: {
+                ...tool.function,
+                parameters: tool.function.parameters as Record<string, unknown>,
+              },
+            }));
+          if (scopedToolSpecs.length === 0) {
+            throw new Error('Tool hard gate requested but no scoped tools are available.');
+          }
+
+          const forcedMessages: LLMChatMessage[] = [
+            ...runtimeMessages,
+            { role: 'assistant', content: priorDraft },
+            {
+              role: 'system',
+              content:
+                forcedGateInstruction +
+                '\nUse tools now before finalizing. If tools fail, explicitly mention the limitation.',
+            },
+          ];
+
+          const forcedStartedAt = Date.now();
+          const initialForcedResponse = await client.chat({
+            messages: forcedMessages,
+            model: resolvedModel,
+            apiKey,
+            temperature: agentDecision.temperature,
+            timeout: appConfig.TIMEOUT_CHAT_MS,
+            maxTokens: routeOutputMaxTokens,
+            tools: scopedToolSpecs,
+            toolChoice: 'auto',
+          });
+          recordModelOutcome({
+            model: resolvedModel,
+            success: true,
+            latencyMs: Date.now() - forcedStartedAt,
+          });
+
+          const forcedLoopStartedAt = Date.now();
+          const forcedLoopResult = await runToolCallLoop({
+            client,
+            messages: forcedMessages,
+            registry: scopedToolRegistry,
+            ctx: {
+              traceId,
+              userId,
+              channelId,
+              guildId,
+              apiKey,
+            },
+            model: resolvedModel,
+            apiKey,
+            temperature: agentDecision.temperature,
+            timeoutMs: appConfig.TIMEOUT_CHAT_MS,
+            maxTokens: toPositiveInt(
+              (appConfig.AGENTIC_TOOL_MAX_OUTPUT_TOKENS as number | undefined),
+              1_200,
+            ),
+            initialAssistantResponseText: initialForcedResponse.content,
+            config: toolLoopConfig,
+            toolPolicy,
+          });
+
+          const successfulToolCount = forcedLoopResult.toolResults.filter((toolResult) => toolResult.success).length;
+          if (successfulToolCount < toolHardGateMinSuccessfulCalls) {
+            throw new Error(
+              `Tool hard gate unmet in forced pass. Required=${toolHardGateMinSuccessfulCalls}, got=${successfulToolCount}.`,
+            );
+          }
+
+          const cleanedReply = cleanDraftText(
+            stripToolEnvelopeDraft(forcedLoopResult.replyText) ?? forcedLoopResult.replyText,
+          );
+          if (!cleanedReply) {
+            throw new Error('Tool hard gate forced pass returned empty reply.');
+          }
+
+          return {
+            replyText: cleanedReply,
+            budget: {
+              mode: 'hard_gate_forced_pass',
+              toolsExecuted: forcedLoopResult.toolsExecuted,
+              roundsCompleted: forcedLoopResult.roundsCompleted,
+              toolResultCount: forcedLoopResult.toolResults.length,
+              successfulToolCount,
+              latencyMs: Date.now() - forcedLoopStartedAt,
+            },
+          };
+        };
+
+        try {
+          const loopResult = await runToolCallLoop({
+            client,
+            messages: runtimeMessages,
+            registry: scopedToolRegistry,
+            ctx: {
+              traceId,
+              userId,
+              channelId,
+              guildId,
+              apiKey,
+            },
+            model: resolvedModel,
+            apiKey,
+            temperature: agentDecision.temperature,
+            timeoutMs: appConfig.TIMEOUT_CHAT_MS,
+            maxTokens: toPositiveInt(
+              (appConfig.AGENTIC_TOOL_MAX_OUTPUT_TOKENS as number | undefined),
+              1_200,
+            ),
+            initialAssistantResponseText: response.content,
+            config: toolLoopConfig,
+            toolPolicy,
+          });
+
+          draftText = loopResult.replyText;
+          const successfulToolCount = loopResult.toolResults.filter((toolResult) => toolResult.success).length;
+          let hardGateSatisfied = !toolEvidenceRequiredForMainPass;
+          let hardGateForcedBudget: Record<string, unknown> | undefined;
+
+          if (toolEvidenceRequiredForMainPass && successfulToolCount < toolHardGateMinSuccessfulCalls) {
+            logger.warn(
+              {
+                traceId,
+                successfulToolCount,
+                required: toolHardGateMinSuccessfulCalls,
+                routeKind: agentDecision.kind,
+              },
+              'Tool hard gate unmet on initial pass; forcing tool-backed verification pass',
+            );
+            try {
+              const forcedResult = await runForcedToolEvidencePass(
+                cleanDraftText(draftText) ?? cleanDraftText(response.content) ?? draftText,
+              );
+              draftText = forcedResult.replyText;
+              hardGateSatisfied = true;
+              hardGateForcedBudget = forcedResult.budget;
+            } catch (hardGateError) {
+              hardGateSatisfied = false;
+              logger.warn(
+                {
+                  error: hardGateError,
+                  traceId,
+                  routeKind: agentDecision.kind,
+                },
+                'Tool hard gate forced pass failed',
+              );
+              draftText =
+                "I couldn't verify this with tools right now, so I won't provide an unverified answer. Please try again.";
+            }
+          } else if (toolEvidenceRequiredForMainPass) {
+            hardGateSatisfied = true;
+          }
+
+          toolLoopBudgetJson = {
+            enabled: true,
+            toolsExecuted: loopResult.toolsExecuted,
+            roundsCompleted: loopResult.roundsCompleted,
+            toolResultCount: loopResult.toolResults.length,
+            successfulToolCount,
+            latencyMs: Date.now() - toolLoopStartedAt,
+            hardGateRequired: toolEvidenceRequiredForMainPass,
+            hardGateSatisfied,
+            hardGateMinSuccessfulCalls: toolHardGateMinSuccessfulCalls,
+            hardGateForcedPass: hardGateForcedBudget,
+          };
+          modelResolutionEvents.push({
+            phase: 'tool_loop',
+            route: resolvedModelDetails.route,
+            selected: resolvedModel,
+            toolsExecuted: loopResult.toolsExecuted,
+            roundsCompleted: loopResult.roundsCompleted,
+            toolResultCount: loopResult.toolResults.length,
+            successfulToolCount,
+            hardGateRequired: toolEvidenceRequiredForMainPass,
+            hardGateSatisfied,
+          });
+          if (Array.isArray(agentEventsJson)) {
+            agentEventsJson.push({
+              type: 'tool_loop',
+              timestamp: new Date().toISOString(),
+              details: {
+                toolsExecuted: loopResult.toolsExecuted,
+                roundsCompleted: loopResult.roundsCompleted,
+                toolResultCount: loopResult.toolResults.length,
+                successfulToolCount,
+                hardGateRequired: toolEvidenceRequiredForMainPass,
+                hardGateSatisfied,
+              },
+            });
+          }
+        } catch (toolLoopError) {
+          logger.warn(
+            { error: toolLoopError, traceId },
+            'Tool loop failed; keeping initial model response',
+          );
+          toolLoopBudgetJson = {
+            enabled: true,
+            failed: true,
+            latencyMs: Date.now() - toolLoopStartedAt,
+            errorText: toolLoopError instanceof Error ? toolLoopError.message : String(toolLoopError),
+            hardGateRequired: toolEvidenceRequiredForMainPass,
+            hardGateSatisfied: !toolEvidenceRequiredForMainPass,
+            hardGateMinSuccessfulCalls: toolHardGateMinSuccessfulCalls,
+          };
+          if (toolEvidenceRequiredForMainPass) {
+            draftText =
+              "I couldn't verify this with tools right now, so I won't provide an unverified answer. Please try again.";
+          }
+        }
+      }
+
+      const cleanedToolLoopDraft = stripToolEnvelopeDraft(draftText);
+      if (!cleanedToolLoopDraft) {
+        draftText =
+          'I completed part of the request but could not format a final response. Please ask me to try once more.';
+      } else {
+        draftText = cleanedToolLoopDraft;
+      }
     } catch (err) {
       if (lastPrimaryModel) {
         recordModelOutcome({
@@ -1010,8 +1745,33 @@ Checked on: <YYYY-MM-DD> (only when required)`;
     rewritePrompt: string;
   }> = [];
   const criticRedispatches: Array<Record<string, unknown>> = [];
+  const criticToolLoopBudgets: Array<Record<string, unknown>> = [];
   let revisionAttempts = 0;
   let revisionApplied = 0;
+
+  const buildCriticToolExecutionSummary = (): string | null => {
+    const summary: Record<string, unknown> = {
+      toolsAvailable: activeToolNames,
+      toolLoopEnabled,
+    };
+    if (toolLoopBudgetJson) {
+      summary.initialToolLoop = toolLoopBudgetJson;
+    }
+    if (criticToolLoopBudgets.length > 0) {
+      summary.criticToolLoops = criticToolLoopBudgets.slice(-3);
+    }
+    return JSON.stringify(summary);
+  };
+
+  const shouldUseToolBackedRevision = (issues: string[], rewritePrompt: string): boolean => {
+    if (!toolLoopEnabled || !scopedToolRegistry) return false;
+    if (agentDecision.kind === 'creative') return false;
+    const hintBlob = `${issues.join(' ')} ${rewritePrompt}`.toLowerCase();
+    if (!hintBlob.trim()) return false;
+    const verificationPattern =
+      /(verify|verification|source|citation|fact|factual|latest|current|version|package|dependency|api|docs?|command|install|runtime|outdated|stale|incorrect|wrong|insecure)/i;
+    return verificationPattern.test(hintBlob);
+  };
 
   const deriveCriticRedispatchProviders = (issues: string[]): ContextProviderName[] => {
     const issueText = issues.join(' ').toLowerCase();
@@ -1049,9 +1809,12 @@ Checked on: <YYYY-MM-DD> (only when required)`;
         routeKind: agentDecision.kind,
         userText,
         draftText,
+        availableTools: activeToolNames,
+        toolExecutionSummary: buildCriticToolExecutionSummary(),
         allowedModels: tenantPolicy.allowedModels,
         apiKey,
         timeoutMs: Math.min(240_000, appConfig.TIMEOUT_CHAT_MS),
+        maxTokens: criticOutputMaxTokens,
         conversationHistory,
       });
 
@@ -1075,12 +1838,12 @@ Checked on: <YYYY-MM-DD> (only when required)`;
            try {
              const priorDraftForComparison = draftText;
              revisionAttempts += 1;
-             draftText = await runSearchPass({
-               phase: 'critic_search_refresh_on_null',
-               iteration,
-               revisionInstruction,
-               priorDraft: draftText,
-             });
+             draftText = await runSearchPassWithFallback({
+                phase: 'critic_search_refresh_on_null',
+                iteration,
+                revisionInstruction,
+                priorDraft: draftText,
+              });
              revisionApplied += 1;
 
              if (searchExecutionMode === 'complex') {
@@ -1163,12 +1926,12 @@ Checked on: <YYYY-MM-DD> (only when required)`;
          try {
            const priorDraftForComparison = draftText;
            revisionAttempts += 1;
-           draftText = await runSearchPass({
-             phase: 'critic_search_refresh',
-             iteration,
-             revisionInstruction,
-             priorDraft: draftText,
-           });
+           draftText = await runSearchPassWithFallback({
+              phase: 'critic_search_refresh',
+              iteration,
+              revisionInstruction,
+              priorDraft: draftText,
+            });
            revisionApplied += 1;
            if (searchExecutionMode === 'complex') {
              try {
@@ -1288,6 +2051,17 @@ Checked on: <YYYY-MM-DD> (only when required)`;
             '- Keep scope aligned to the user request; do not bloat with unrelated optional hardening.\n' +
             '- Never use insecure secret fallbacks or weaken existing safeguards.'
           : '';
+      const toolBackedRevisionRequested = shouldUseToolBackedRevision(
+        assessment.issues,
+        assessment.rewritePrompt,
+      ) || requiresToolEvidenceThisTurn;
+      const revisionToolContract =
+        toolBackedRevisionRequested && toolLoopEnabled && scopedToolRegistry
+          ? '\n\nTool-backed revision contract:\n' +
+            '- You may call tools to verify or fix critic-flagged issues.\n' +
+            '- If the critic flagged factual/version/source/command issues, call at least one relevant tool before finalizing.\n' +
+            '- Never invent tool outputs; use only observed tool results.'
+          : '';
 
       const revisionMessages: LLMChatMessage[] = [
         ...runtimeMessages,
@@ -1301,6 +2075,7 @@ Checked on: <YYYY-MM-DD> (only when required)`;
               : '\n\nCritic issues to address:\n- Improve correctness/completeness while preserving useful parts.') +
             '\n\nAddress every listed issue before returning your final answer.' +
             routeSpecificRevisionContract +
+            revisionToolContract +
             (redispatchContext ? `\n\nAdditional provider refresh:\n${redispatchContext}` : ''),
         },
       ];
@@ -1326,23 +2101,130 @@ Checked on: <YYYY-MM-DD> (only when required)`;
           allowlistApplied: revisionModelDetails.allowlistApplied,
         });
 
-        const revisionStartedAt = Date.now();
         revisionAttempts += 1;
-        const revisedResponse = await client.chat({
-          messages: revisionMessages,
-          model: revisionModel,
-          apiKey,
-          temperature:
-            agentDecision.kind === 'chat' ? agentDecision.temperature : Math.max(0.1, agentDecision.temperature - 0.2),
-          timeout: appConfig.TIMEOUT_CHAT_MS,
-        });
-        recordModelOutcome({
-          model: revisionModel,
-          success: true,
-          latencyMs: Date.now() - revisionStartedAt,
-        });
+        const revisionTemperature =
+          agentDecision.kind === 'chat' ? agentDecision.temperature : Math.max(0.1, agentDecision.temperature - 0.2);
 
-        const revisedText = cleanDraftText(revisedResponse.content);
+        const runDirectRevisionPass = async (): Promise<string | null> => {
+          const revisionStartedAt = Date.now();
+          const revisedResponse = await client.chat({
+            messages: revisionMessages,
+            model: revisionModel,
+            apiKey,
+            temperature: revisionTemperature,
+            timeout: appConfig.TIMEOUT_CHAT_MS,
+            maxTokens: routeOutputMaxTokens,
+          });
+          recordModelOutcome({
+            model: revisionModel,
+            success: true,
+            latencyMs: Date.now() - revisionStartedAt,
+          });
+          return cleanDraftText(revisedResponse.content);
+        };
+
+        let revisedText: string | null = null;
+        if (toolBackedRevisionRequested && toolLoopEnabled && scopedToolRegistry) {
+          const scopedToolSpecs = scopedToolRegistry
+            .listOpenAIToolSpecs()
+            .map((tool) => ({
+              type: tool.type,
+              function: {
+                ...tool.function,
+                parameters: tool.function.parameters as Record<string, unknown>,
+              },
+            }));
+          if (scopedToolSpecs.length > 0) {
+            const toolRevisionStartedAt = Date.now();
+            try {
+              const initialResponse = await client.chat({
+                messages: revisionMessages,
+                model: revisionModel,
+                apiKey,
+                temperature: revisionTemperature,
+                timeout: appConfig.TIMEOUT_CHAT_MS,
+                maxTokens: routeOutputMaxTokens,
+                tools: scopedToolSpecs,
+                toolChoice: 'auto',
+              });
+              recordModelOutcome({
+                model: revisionModel,
+                success: true,
+                latencyMs: Date.now() - toolRevisionStartedAt,
+              });
+
+              const loopStartedAt = Date.now();
+              const loopResult = await runToolCallLoop({
+                client,
+                messages: revisionMessages,
+                registry: scopedToolRegistry,
+                ctx: {
+                  traceId,
+                  userId,
+                  channelId,
+                  guildId,
+                  apiKey,
+                },
+                model: revisionModel,
+                apiKey,
+                temperature: revisionTemperature,
+                timeoutMs: appConfig.TIMEOUT_CHAT_MS,
+                maxTokens: toPositiveInt(
+                  (appConfig.AGENTIC_TOOL_MAX_OUTPUT_TOKENS as number | undefined),
+                  1_200,
+                ),
+                initialAssistantResponseText: initialResponse.content,
+                config: buildToolLoopConfig(),
+                toolPolicy: buildToolPolicy(),
+              });
+
+              const cleanedLoopReply = cleanDraftText(
+                stripToolEnvelopeDraft(loopResult.replyText) ?? loopResult.replyText,
+              );
+              const toolLoopBudget = {
+                iteration,
+                mode: 'critic_tool_loop_revision',
+                toolsExecuted: loopResult.toolsExecuted,
+                roundsCompleted: loopResult.roundsCompleted,
+                toolResultCount: loopResult.toolResults.length,
+                successfulToolCount: loopResult.toolResults.filter((toolResult) => toolResult.success).length,
+                latencyMs: Date.now() - loopStartedAt,
+              };
+              criticToolLoopBudgets.push(toolLoopBudget);
+              criticRedispatches.push(toolLoopBudget);
+              if (Array.isArray(agentEventsJson)) {
+                agentEventsJson.push({
+                  type: 'critic_tool_loop_revision',
+                  timestamp: new Date().toISOString(),
+                  details: toolLoopBudget,
+                });
+              }
+
+              if (cleanedLoopReply) {
+                revisedText = cleanedLoopReply;
+              } else {
+                logger.warn(
+                  { traceId, iteration, revisionModel },
+                  'Critic tool-backed revision returned empty content; falling back to direct revision pass',
+                );
+              }
+            } catch (toolLoopError) {
+              recordModelOutcome({
+                model: revisionModel,
+                success: false,
+              });
+              logger.warn(
+                { error: toolLoopError, traceId, iteration },
+                'Critic tool-backed revision failed; falling back to direct revision pass',
+              );
+            }
+          }
+        }
+
+        if (!revisedText) {
+          revisedText = await runDirectRevisionPass();
+        }
+
         if (!revisedText) {
           logger.warn(
             { traceId, iteration, revisionModel },
@@ -1379,15 +2261,20 @@ Checked on: <YYYY-MM-DD> (only when required)`;
           revisionAttempts,
           revisionApplied,
           criticRedispatches: criticRedispatches.length > 0 ? criticRedispatches : undefined,
+          criticToolLoops: criticToolLoopBudgets.length > 0 ? criticToolLoopBudgets : undefined,
         }
       : undefined;
   const canarySnapshot = getAgenticCanarySnapshot();
   const finalBudgetJson: Record<string, unknown> = {
     ...budgetJson,
     ...(searchExecutionMode ? { searchExecutionMode } : {}),
+    routeOutputMaxTokens,
+    criticOutputMaxTokens,
     criticIterations: criticAssessments.length,
     criticRedispatches: criticRedispatches.length,
+    criticToolLoops: criticToolLoopBudgets.length,
     modelResolution: modelResolutionEvents,
+    toolLoop: toolLoopBudgetJson,
     policy: {
       tenantPolicyApplied:
         tenantPolicy.allowedModels !== undefined ||
@@ -1400,6 +2287,11 @@ Checked on: <YYYY-MM-DD> (only when required)`;
         parallelEnabled: effectiveGraphParallelEnabled,
         maxParallel: effectiveGraphMaxParallel,
       },
+      toolHardGate: {
+        enabled: toolHardGateEnabled,
+        minSuccessfulCalls: toolHardGateMinSuccessfulCalls,
+        requiredThisTurn: requiresToolEvidenceThisTurn,
+      },
       critic: criticConfig,
       canary: {
         ...canaryConfig,
@@ -1411,8 +2303,19 @@ Checked on: <YYYY-MM-DD> (only when required)`;
 
   if (appConfig.TRACE_ENABLED) {
     try {
+      const toolJsonPayload: Record<string, unknown> = {
+        enabled: toolLoopEnabled,
+        routeTools: activeToolNames,
+      };
+      if (toolLoopBudgetJson) {
+        toolJsonPayload.main = toolLoopBudgetJson;
+      }
+      if (criticToolLoopBudgets.length > 0) {
+        toolJsonPayload.critic = criticToolLoopBudgets;
+      }
       await updateTraceEnd({
         id: traceId,
+        toolJson: toolJsonPayload,
         qualityJson,
         budgetJson: finalBudgetJson,
         replyText: safeFinalText,

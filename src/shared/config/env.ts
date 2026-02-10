@@ -33,6 +33,25 @@ const httpsUrlSchema = z.string().trim().url().refine((value) => {
   }
 }, 'Must be a public HTTPS URL.');
 
+const httpOrHttpsUrlSchema = z.string().trim().url().refine((value) => {
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}, 'Must be an HTTP(S) URL.');
+
+const optionalHttpOrHttpsUrlSchema = z.string().trim().optional().refine((value) => {
+  if (value === undefined || value.length === 0) return true;
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}, 'Must be an HTTP(S) URL.');
+
 const testDefaults: Record<string, string> = {
   DISCORD_TOKEN: 'test-discord-token',
   DISCORD_APP_ID: 'test-discord-app-id',
@@ -54,6 +73,7 @@ const testDefaults: Record<string, string> = {
   CONTEXT_TRANSCRIPT_MAX_MESSAGES: '10',
   CONTEXT_TRANSCRIPT_MAX_CHARS: '1000',
   MESSAGE_DB_STORAGE_ENABLED: 'false',
+  MESSAGE_DB_MAX_MESSAGES_PER_CHANNEL: '200',
   PROACTIVE_POSTING_ENABLED: 'false',
   SUMMARY_ROLLING_WINDOW_MIN: '15',
   SUMMARY_ROLLING_MIN_MESSAGES: '5',
@@ -93,12 +113,48 @@ const testDefaults: Record<string, string> = {
   TIMEOUT_SEARCH_MS: '300000',
   TIMEOUT_SEARCH_SCRAPER_MS: '480000',
   TIMEOUT_MEMORY_MS: '600000',
+  SEARCH_MAX_ATTEMPTS_SIMPLE: '2',
+  SEARCH_MAX_ATTEMPTS_COMPLEX: '4',
+  TOOL_WEB_SEARCH_PROVIDER_ORDER: 'tavily,exa,searxng,pollinations',
+  TOOL_WEB_SEARCH_TIMEOUT_MS: '45000',
+  TOOL_WEB_SEARCH_MAX_RESULTS: '6',
+  TOOL_WEB_SCRAPE_PROVIDER_ORDER: 'firecrawl,crawl4ai,jina,raw_fetch',
+  TOOL_WEB_SCRAPE_TIMEOUT_MS: '45000',
+  TOOL_WEB_SCRAPE_MAX_CHARS: '12000',
+  TAVILY_API_KEY: '',
+  EXA_API_KEY: '',
+  SEARXNG_BASE_URL: '',
+  SEARXNG_SEARCH_PATH: '/search',
+  SEARXNG_CATEGORIES: 'general',
+  SEARXNG_LANGUAGE: 'en-US',
+  FIRECRAWL_API_KEY: '',
+  FIRECRAWL_BASE_URL: 'https://api.firecrawl.dev/v1',
+  CRAWL4AI_BASE_URL: '',
+  CRAWL4AI_BEARER_TOKEN: '',
+  JINA_READER_BASE_URL: 'https://r.jina.ai/http://',
+  GITHUB_TOKEN: '',
+  OLLAMA_BASE_URL: 'http://127.0.0.1:11434',
+  OLLAMA_MODEL: 'llama3.1:8b',
+  CHAT_MAX_OUTPUT_TOKENS: '1800',
+  CODING_MAX_OUTPUT_TOKENS: '4200',
+  SEARCH_MAX_OUTPUT_TOKENS: '2000',
+  CRITIC_MAX_OUTPUT_TOKENS: '1800',
   LLM_DOCTOR_PING: '0',
   AGENTIC_GRAPH_PARALLEL_ENABLED: 'true',
   AGENTIC_GRAPH_MAX_PARALLEL: '3',
   AGENTIC_TOOL_ALLOW_EXTERNAL_WRITE: 'false',
   AGENTIC_TOOL_ALLOW_HIGH_RISK: 'false',
   AGENTIC_TOOL_BLOCKLIST_CSV: '',
+  AGENTIC_TOOL_LOOP_ENABLED: 'true',
+  AGENTIC_TOOL_HARD_GATE_ENABLED: 'true',
+  AGENTIC_TOOL_HARD_GATE_MIN_SUCCESSFUL_CALLS: '1',
+  AGENTIC_TOOL_MAX_ROUNDS: '2',
+  AGENTIC_TOOL_MAX_CALLS_PER_ROUND: '3',
+  AGENTIC_TOOL_TIMEOUT_MS: '45000',
+  AGENTIC_TOOL_MAX_OUTPUT_TOKENS: '1200',
+  AGENTIC_TOOL_RESULT_MAX_CHARS: '4000',
+  AGENTIC_TOOL_PARALLEL_READ_ONLY_ENABLED: 'true',
+  AGENTIC_TOOL_MAX_PARALLEL_READ_ONLY: '3',
   AGENTIC_CANARY_ENABLED: 'true',
   AGENTIC_CANARY_PERCENT: '100',
   AGENTIC_CANARY_ROUTE_ALLOWLIST_CSV: 'chat,coding,search,creative',
@@ -137,6 +193,7 @@ const envSchema = z.object({
   CONTEXT_TRANSCRIPT_MAX_MESSAGES: z.coerce.number().int().positive(),
   CONTEXT_TRANSCRIPT_MAX_CHARS: z.coerce.number().int().positive(),
   MESSAGE_DB_STORAGE_ENABLED: z.enum(['true', 'false']).transform((v) => v === 'true'),
+  MESSAGE_DB_MAX_MESSAGES_PER_CHANNEL: z.coerce.number().int().positive().max(50000).default(500),
   PROACTIVE_POSTING_ENABLED: z.enum(['true', 'false']).transform((v) => v === 'true'),
   SUMMARY_ROLLING_WINDOW_MIN: z.coerce.number().int().positive(),
   SUMMARY_ROLLING_MIN_MESSAGES: z.coerce.number().int().positive(),
@@ -176,12 +233,54 @@ const envSchema = z.object({
   TIMEOUT_SEARCH_MS: z.coerce.number().int().positive().max(900000).default(300000),
   TIMEOUT_SEARCH_SCRAPER_MS: z.coerce.number().int().positive().max(900000).default(480000),
   TIMEOUT_MEMORY_MS: z.coerce.number().int().positive().max(600000),
+  SEARCH_MAX_ATTEMPTS_SIMPLE: z.coerce.number().int().min(1).max(8).default(2),
+  SEARCH_MAX_ATTEMPTS_COMPLEX: z.coerce.number().int().min(1).max(8).default(4),
+  TOOL_WEB_SEARCH_PROVIDER_ORDER: z.string().default('tavily,exa,searxng,pollinations'),
+  TOOL_WEB_SEARCH_TIMEOUT_MS: z.coerce.number().int().min(1000).max(180000).default(45000),
+  TOOL_WEB_SEARCH_MAX_RESULTS: z.coerce.number().int().min(1).max(10).default(6),
+  TOOL_WEB_SCRAPE_PROVIDER_ORDER: z.string().default('firecrawl,crawl4ai,jina,raw_fetch'),
+  TOOL_WEB_SCRAPE_TIMEOUT_MS: z.coerce.number().int().min(1000).max(180000).default(45000),
+  TOOL_WEB_SCRAPE_MAX_CHARS: z.coerce.number().int().min(500).max(50000).default(12000),
+  TAVILY_API_KEY: z.string().optional(),
+  EXA_API_KEY: z.string().optional(),
+  SEARXNG_BASE_URL: optionalHttpOrHttpsUrlSchema,
+  SEARXNG_SEARCH_PATH: z.string().default('/search'),
+  SEARXNG_CATEGORIES: z.string().default('general'),
+  SEARXNG_LANGUAGE: z.string().default('en-US'),
+  FIRECRAWL_API_KEY: z.string().optional(),
+  FIRECRAWL_BASE_URL: httpOrHttpsUrlSchema.default('https://api.firecrawl.dev/v1'),
+  CRAWL4AI_BASE_URL: optionalHttpOrHttpsUrlSchema,
+  CRAWL4AI_BEARER_TOKEN: z.string().optional(),
+  JINA_READER_BASE_URL: z.string().default('https://r.jina.ai/http://'),
+  GITHUB_TOKEN: z.string().optional(),
+  OLLAMA_BASE_URL: httpOrHttpsUrlSchema.default('http://127.0.0.1:11434'),
+  OLLAMA_MODEL: z.string().default('llama3.1:8b'),
+  CHAT_MAX_OUTPUT_TOKENS: z.coerce.number().int().min(128).max(16000).default(1800),
+  CODING_MAX_OUTPUT_TOKENS: z.coerce.number().int().min(256).max(32000).default(4200),
+  SEARCH_MAX_OUTPUT_TOKENS: z.coerce.number().int().min(128).max(16000).default(2000),
+  CRITIC_MAX_OUTPUT_TOKENS: z.coerce.number().int().min(128).max(16000).default(1800),
   LLM_DOCTOR_PING: z.enum(['0', '1']).default('0'),
   AGENTIC_GRAPH_PARALLEL_ENABLED: z.enum(['true', 'false']).default('true').transform((v) => v === 'true'),
   AGENTIC_GRAPH_MAX_PARALLEL: z.coerce.number().int().min(1).max(16).default(3),
   AGENTIC_TOOL_ALLOW_EXTERNAL_WRITE: z.enum(['true', 'false']).default('false').transform((v) => v === 'true'),
   AGENTIC_TOOL_ALLOW_HIGH_RISK: z.enum(['true', 'false']).default('false').transform((v) => v === 'true'),
   AGENTIC_TOOL_BLOCKLIST_CSV: z.string().default(''),
+  AGENTIC_TOOL_LOOP_ENABLED: z.enum(['true', 'false']).default('true').transform((v) => v === 'true'),
+  AGENTIC_TOOL_HARD_GATE_ENABLED: z
+    .enum(['true', 'false'])
+    .default('true')
+    .transform((v) => v === 'true'),
+  AGENTIC_TOOL_HARD_GATE_MIN_SUCCESSFUL_CALLS: z.coerce.number().int().min(1).max(3).default(1),
+  AGENTIC_TOOL_MAX_ROUNDS: z.coerce.number().int().min(1).max(6).default(2),
+  AGENTIC_TOOL_MAX_CALLS_PER_ROUND: z.coerce.number().int().min(1).max(10).default(3),
+  AGENTIC_TOOL_TIMEOUT_MS: z.coerce.number().int().min(1000).max(120000).default(45000),
+  AGENTIC_TOOL_MAX_OUTPUT_TOKENS: z.coerce.number().int().min(128).max(8000).default(1200),
+  AGENTIC_TOOL_RESULT_MAX_CHARS: z.coerce.number().int().min(500).max(50000).default(4000),
+  AGENTIC_TOOL_PARALLEL_READ_ONLY_ENABLED: z
+    .enum(['true', 'false'])
+    .default('true')
+    .transform((v) => v === 'true'),
+  AGENTIC_TOOL_MAX_PARALLEL_READ_ONLY: z.coerce.number().int().min(1).max(10).default(3),
   AGENTIC_CANARY_ENABLED: z.enum(['true', 'false']).default('true').transform((v) => v === 'true'),
   AGENTIC_CANARY_PERCENT: z.coerce.number().min(0).max(100).default(100),
   AGENTIC_CANARY_ROUTE_ALLOWLIST_CSV: z.string().default(''),

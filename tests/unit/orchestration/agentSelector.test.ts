@@ -127,7 +127,7 @@ describe('agentSelector', () => {
     expect(decision.searchMode).toBe('complex');
   });
 
-  it('defaults search mode to complex when omitted for search agent responses', async () => {
+  it('defaults search mode to simple for direct lookup when omitted for search agent responses', async () => {
     mockChat.mockResolvedValue({
       content: JSON.stringify({
         agent: 'search',
@@ -146,10 +146,10 @@ describe('agentSelector', () => {
     });
 
     expect(decision.kind).toBe('search');
-    expect(decision.searchMode).toBe('complex');
+    expect(decision.searchMode).toBe('simple');
   });
 
-  it('defaults search mode to complex when router returns invalid mode for search', async () => {
+  it('defaults search mode to complex when router returns invalid mode for broad search', async () => {
     mockChat.mockResolvedValue({
       content: JSON.stringify({
         agent: 'search',
@@ -170,6 +170,29 @@ describe('agentSelector', () => {
 
     expect(decision.kind).toBe('search');
     expect(decision.searchMode).toBe('complex');
+  });
+
+  it('overrides router complex mode to simple for high-confidence direct lookup prompts', async () => {
+    mockChat.mockResolvedValue({
+      content: JSON.stringify({
+        agent: 'search',
+        reasoning: 'Up-to-date lookup',
+        temperature: 0.3,
+        search_mode: 'complex',
+      }),
+    });
+
+    const decision = await decideAgent({
+      userText: 'what is the weather in austin right now',
+      invokedBy: 'mention',
+      hasGuild: true,
+      conversationHistory: [],
+      replyReferenceContent: null,
+      apiKey: 'api-key',
+    });
+
+    expect(decision.kind).toBe('search');
+    expect(decision.searchMode).toBe('simple');
   });
 
   it('falls back to default chat decision when response is not parseable', async () => {

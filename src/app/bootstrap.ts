@@ -5,6 +5,7 @@ import { registerMessageCreateHandler } from '../bot/handlers/messageCreate';
 import { registerReadyHandler } from '../bot/handlers/ready';
 import { registerVoiceStateUpdateHandler } from '../bot/handlers/voiceStateUpdate';
 import { config } from '../config';
+import { registerDefaultAgenticTools } from '../core/agentRuntime';
 import { registerShutdownHooks } from '../core/runtime/shutdown';
 import { initChannelSummaryScheduler } from '../core/summary/channelSummaryScheduler';
 import { AppError } from '../shared/errors/app-error';
@@ -12,6 +13,7 @@ import { logger } from '../shared/logging/logger';
 
 export async function bootstrapApp(): Promise<void> {
   try {
+    registerDefaultAgenticTools();
     registerMessageCreateHandler();
     registerInteractionCreateHandler();
     registerVoiceStateUpdateHandler();

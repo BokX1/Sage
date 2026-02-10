@@ -53,14 +53,18 @@ export async function backfillChannelHistory(
     }
 
     if (appConfig.MESSAGE_DB_STORAGE_ENABLED) {
+      const dbRetentionLimit = Math.max(
+        1,
+        (appConfig.MESSAGE_DB_MAX_MESSAGES_PER_CHANNEL as number | undefined) ?? limit,
+      );
       const prunedDb = await prismaMessageStore.pruneChannelToLimit({
         guildId: channel.guildId,
         channelId: channel.id,
-        limit,
+        limit: dbRetentionLimit,
       });
       if (prunedDb > 0) {
         logger.info(
-          { channelId, removed: prunedDb, limit },
+          { channelId, removed: prunedDb, limit: dbRetentionLimit },
           'Pruned stored transcript history after backfill',
         );
       }

@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mockConfig = vi.hoisted(() => ({
   CONTEXT_TRANSCRIPT_MAX_MESSAGES: 15,
+  MESSAGE_DB_MAX_MESSAGES_PER_CHANNEL: 15,
   MESSAGE_DB_STORAGE_ENABLED: true,
 }));
 
@@ -117,6 +118,7 @@ describe('historyBackfill', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockConfig.CONTEXT_TRANSCRIPT_MAX_MESSAGES = 15;
+    mockConfig.MESSAGE_DB_MAX_MESSAGES_PER_CHANNEL = 15;
     mockConfig.MESSAGE_DB_STORAGE_ENABLED = true;
     mockChannelMessages.rows = [];
   });
@@ -141,6 +143,7 @@ describe('historyBackfill', () => {
 
   it('honors a configured transcript cap override', async () => {
     mockConfig.CONTEXT_TRANSCRIPT_MAX_MESSAGES = 20;
+    mockConfig.MESSAGE_DB_MAX_MESSAGES_PER_CHANNEL = 20;
     seedMessages(50, 'channel-1', 'guild-1');
 
     const fetchMessages = vi.fn().mockResolvedValue(new Map());
@@ -156,5 +159,25 @@ describe('historyBackfill', () => {
 
     expect(fetchMessages).toHaveBeenCalledWith({ limit: 20 });
     expect(mockChannelMessages.rows).toHaveLength(20);
+  });
+
+  it('allows DB retention to be larger than prompt transcript startup limit', async () => {
+    mockConfig.CONTEXT_TRANSCRIPT_MAX_MESSAGES = 10;
+    mockConfig.MESSAGE_DB_MAX_MESSAGES_PER_CHANNEL = 25;
+    seedMessages(50, 'channel-1', 'guild-1');
+
+    const fetchMessages = vi.fn().mockResolvedValue(new Map());
+    mockFetchChannel.mockResolvedValue(
+      new TextChannel({
+        id: 'channel-1',
+        guildId: 'guild-1',
+        messages: { fetch: fetchMessages },
+      }),
+    );
+
+    await backfillChannelHistory('channel-1');
+
+    expect(fetchMessages).toHaveBeenCalledWith({ limit: 10 });
+    expect(mockChannelMessages.rows).toHaveLength(25);
   });
 });

@@ -1,0 +1,34 @@
+services:
+  searxng:
+    image: searxng/searxng:latest
+    container_name: sage-searxng
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - ./searxng/settings.yml:/etc/searxng/settings.yml
+    environment:
+      SEARXNG_BASE_URL: http://127.0.0.1:8080/
+      SEARXNG_LIMITER: "false"
+      SEARXNG_PUBLIC_INSTANCE: "false"
+
+  crawl4ai:
+    image: unclecode/crawl4ai:latest
+    container_name: sage-crawl4ai
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:11235:11235"
+    environment:
+      CRAWL4AI_API_MODE: "true"
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: sage-ollama
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+
+volumes:
+  ollama_data:

@@ -1,0 +1,20 @@
+use_default_settings: true
+
+general:
+  instance_name: "Sage SearXNG"
+
+search:
+  safe_search: 0
+  formats:
+    - html
+    - json
+    - rss
+
+server:
+  bind_address: "0.0.0.0"
+  port: 8080
+  base_url: "http://127.0.0.1:8080/"
+  secret_key: "sage-searxng-local-key-2026-02-10"
+  limiter: false
+  public_instance: false
+  method: "GET"

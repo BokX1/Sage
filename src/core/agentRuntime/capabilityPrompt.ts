@@ -37,6 +37,7 @@ export interface BuildCapabilityPromptSectionParams {
   searchMode: SearchExecutionMode | null;
   routerReasoning?: string | null;
   contextProviders: ContextProviderName[];
+  activeTools?: string[];
 }
 
 function formatRouteLabel(params: {
@@ -89,6 +90,8 @@ function formatRouterReasoning(reasoning: string | null | undefined): string {
 const ROUTER_ROUTE_OPTIONS: AgentKind[] = ['chat', 'coding', 'search', 'creative'];
 
 export function buildAgenticStateBlock(params: BuildCapabilityPromptSectionParams): string {
+  const activeTools =
+    params.activeTools?.map((tool) => tool.trim()).filter((tool) => tool.length > 0) ?? [];
   const state = {
     route_selected_by: 'router',
     current_route: params.routeKind,
@@ -96,10 +99,13 @@ export function buildAgenticStateBlock(params: BuildCapabilityPromptSectionParam
     search_mode: params.routeKind === 'search' ? (params.searchMode ?? 'complex') : null,
     router_reasoning: normalizeRouterReasoning(params.routerReasoning),
     context_providers: params.contextProviders,
+    tool_execution_owner: 'runtime_assistant',
+    tools_available: activeTools,
     verification_owner: 'critic',
     loop_stages: [
       'router_decision',
       'context_grounding',
+      'tool_assistance_if_needed',
       'critic_revision_or_redispatch',
       'final_answer',
     ],
@@ -117,6 +123,9 @@ export function buildCapabilityPromptSection(
   });
   const contextProviderLine = formatListLine(params.contextProviders);
   const routeOptionsLine = formatListLine(ROUTER_ROUTE_OPTIONS);
+  const activeToolLine = formatListLine(
+    params.activeTools?.map((tool) => tool.trim()).filter((tool) => tool.length > 0) ?? [],
+  );
 
   return [
     '## Agent Capability Matrix',
@@ -127,13 +136,16 @@ export function buildCapabilityPromptSection(
     formatActiveRouteCapability(params.routeKind),
     formatRouterReasoning(params.routerReasoning),
     `- Context providers available this turn: ${contextProviderLine}.`,
-    '- Verification and factual revision are handled by the critic loop, not as callable tools.',
+    `- Runtime tools available this turn: ${activeToolLine}.`,
+    '- Tool calls are executed by the runtime assistant; the critic does not execute tools directly.',
+    '- The critic can still require tool-backed revision/redispatch when evidence is weak or stale.',
     '## Agentic Loop Contract',
-    '- This turn is part of one agentic loop: router decision -> context grounding -> critic revision/redispatch (if needed) -> final answer.',
+    '- This turn is part of one agentic loop: router decision -> context grounding -> tool assistance (if needed) -> critic revision/redispatch (if needed) -> final answer.',
     '- Routes share one context and memory substrate; keep decisions consistent with gathered evidence and prior loop state.',
     '- Complete the loop by returning a final answer consistent with the active route and gathered evidence.',
     '## Capability Behavior',
     '- Use listed capabilities when they materially improve correctness or user outcome.',
+    '- For factual/versioned/external claims, prefer tool-backed evidence before finalizing.',
     '- If relevant, add one short next-step suggestion at the end of your answer.',
     '- Never claim or imply capabilities that are not listed above.',
   ].join('\n');

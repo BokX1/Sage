@@ -199,6 +199,24 @@ Wait ~10 seconds, then run:
 npx prisma db push
 ```
 
+Optional: start the local tool stack (self-host search/scrape/infer):
+
+```bash
+docker compose -f config/self-host/docker-compose.tools.yml up -d
+```
+
+If using local tools first, set these `.env` values:
+
+```env
+TOOL_WEB_SEARCH_PROVIDER_ORDER=searxng,tavily,exa,pollinations
+TOOL_WEB_SCRAPE_PROVIDER_ORDER=crawl4ai,firecrawl,jina,raw_fetch
+SEARXNG_BASE_URL=http://127.0.0.1:8080
+CRAWL4AI_BASE_URL=http://127.0.0.1:11235
+OLLAMA_BASE_URL=http://127.0.0.1:11434
+```
+
+For full details, see [operations/tool_stack.md](operations/tool_stack.md).
+
 ---
 
 <a id="step-5-start-sage"></a>

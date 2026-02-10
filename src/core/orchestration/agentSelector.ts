@@ -128,7 +128,8 @@ For \`chat\`:
 When agent is \`search\`, you MUST also choose \`search_mode\`:
 - \`simple\`: direct lookup/short factual answer can be returned as-is.
 - \`complex\`: multi-step research, comparison, synthesis, or long-form explanation where search findings should be summarized for readability.
-- If unsure between \`simple\` and \`complex\`, choose \`complex\`.
+- Prefer \`simple\` for direct fact lookups (single target, short answer, no comparison).
+- Use \`complex\` when the request requires comparing options, reconciling conflicting sources, or multi-step synthesis.
 
 When agent is not \`search\`, set \`search_mode\` to null.
 
@@ -227,6 +228,45 @@ function normalizeSearchMode(raw: unknown): SearchExecutionMode | null {
   return null;
 }
 
+function inferSearchModeHeuristic(userText: string): { mode: SearchExecutionMode; confidence: 'low' | 'high' } {
+  const text = userText.trim().toLowerCase();
+  const wordCount = text.split(/\s+/).filter((part) => part.length > 0).length;
+
+  const complexSignals = [
+    /\bcompare\b/,
+    /\bversus\b/,
+    /\bvs\b/,
+    /\btrade[- ]?off\b/,
+    /\bpros?\b/,
+    /\bcons?\b/,
+    /\brank\b/,
+    /\bbenchmark\b/,
+    /\bdeep dive\b/,
+    /\banaly[sz]e\b/,
+    /\bsummarize\b/,
+    /\broadmap\b/,
+    /\bmultiple\b/,
+    /\bbest .* for\b/,
+  ];
+  if (complexSignals.some((pattern) => pattern.test(text)) || wordCount > 24) {
+    return { mode: 'complex', confidence: 'high' };
+  }
+
+  const directLookupSignals = [
+    /^\s*(what|who|when|where|is|are|did|does|do)\b/,
+    /\b(weather|temperature|forecast)\b/,
+    /\b(price|stock|market cap)\b/,
+    /\blatest stable\b/,
+    /\brelease date\b/,
+    /\bversion\b/,
+  ];
+  if (directLookupSignals.some((pattern) => pattern.test(text)) && wordCount <= 24) {
+    return { mode: 'simple', confidence: 'high' };
+  }
+
+  return { mode: 'complex', confidence: 'low' };
+}
+
 export async function decideAgent(params: AgentSelectorParams): Promise<AgentDecision> {
   const { userText, invokedBy, hasGuild, conversationHistory, replyReferenceContent, apiKey } = params;
 
@@ -290,9 +330,16 @@ export async function decideAgent(params: AgentSelectorParams): Promise<AgentDec
     const enforcedTemperature = agentKind === 'chat' ? clampChatTemperature(temperature) : temperature;
     const parsedSearchModeRaw = parsed.search_mode ?? parsed.searchMode ?? parsed.complexity;
     const normalizedSearchMode = normalizeSearchMode(parsedSearchModeRaw);
+    const heuristicSearchMode = inferSearchModeHeuristic(userText);
     const searchMode =
       agentKind === 'search'
-        ? normalizedSearchMode ?? 'complex'
+        ? normalizedSearchMode === 'simple'
+          ? 'simple'
+          : normalizedSearchMode === 'complex' &&
+              heuristicSearchMode.mode === 'simple' &&
+              heuristicSearchMode.confidence === 'high'
+            ? 'simple'
+            : normalizedSearchMode ?? heuristicSearchMode.mode
         : undefined;
 
     const decision: AgentDecision = {

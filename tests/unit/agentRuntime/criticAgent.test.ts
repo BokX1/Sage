@@ -130,12 +130,16 @@ describe('criticAgent', () => {
       routeKind: 'coding',
       userText: 'Write a parser',
       draftText: 'function parse() {}',
+      availableTools: ['npm_package_lookup', 'github_repo_lookup'],
     });
 
     const request = mockChat.mock.calls[0]?.[0] as { messages: Array<{ content: string }> };
     expect(request.messages[0].content).toContain('code-quality critic');
     expect(request.messages[0].content).toContain('missing imports/dependencies');
     expect(request.messages[0].content).toContain('Do NOT require unrelated hardening extras');
+    expect(request.messages[0].content).toContain('Tool-awareness');
+    expect(request.messages[1].content).toContain('Available tools:');
+    expect(request.messages[1].content).toContain('npm_package_lookup');
   });
 
   it('uses search-specific critic prompt for search route', async () => {
@@ -153,12 +157,16 @@ describe('criticAgent', () => {
       routeKind: 'search',
       userText: 'What is the latest Node.js LTS?',
       draftText: 'Node.js LTS is 20.',
+      availableTools: ['web_search', 'web_scrape'],
+      toolExecutionSummary: '{"toolsExecuted":false}',
     });
 
     const request = mockChat.mock.calls[0]?.[0] as { messages: Array<{ content: string }> };
     expect(request.messages[0].content).toContain('search-routed');
     expect(request.messages[0].content).toContain('Checked on');
     expect(request.messages[0].content).toContain('source URL');
+    expect(request.messages[0].content).toContain('Tool-awareness');
+    expect(request.messages[1].content).toContain('Tool execution summary');
   });
 
   it('serializes non-text chat history content in critic payload', async () => {

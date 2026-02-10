@@ -17,9 +17,12 @@ export interface EvaluateDraftWithCriticParams {
   routeKind: AgentKind;
   userText: string;
   draftText: string;
+  availableTools?: string[];
+  toolExecutionSummary?: string | null;
   allowedModels?: string[];
   apiKey?: string;
   timeoutMs?: number;
+  maxTokens?: number;
   conversationHistory?: LLMChatMessage[];
 }
 
@@ -151,7 +154,8 @@ const CRITIC_SYSTEM_PROMPT_CHAT = `You are a conversational quality critic for a
 Evaluate the candidate answer for:
 1) Natural flow and tone,
 2) Relevance to the last user message,
-3) Consistency with conversation history and user intent.
+3) Consistency with conversation history and user intent,
+4) Grounding quality when external factual claims are made.
 
 Return ONLY JSON:
 {
@@ -165,13 +169,19 @@ Rules:
 - score is between 0 and 1.
 - If verdict is "pass", score MUST be >= 0.85. If verdict is "revise", score MUST be < 0.85.
 - Use "revise" ONLY if the answer is off-topic, hallucinated, contradictory, unsafe, or rude.
-- Allow for casual banter and creativity when still relevant.`;
+- Allow for casual banter and creativity when still relevant.
+- Tool-awareness:
+  - You do not execute tools directly.
+  - If the answer contains external/time-sensitive factual claims but lacks evidence quality, set verdict to "revise".
+  - When revising for evidence quality, rewritePrompt should request a tool-backed revision and name 1-2 relevant tools from "Available tools" when possible.
+- Never include markdown.`;
 
 const CRITIC_SYSTEM_PROMPT_CODING = `You are a code-quality critic.
 Evaluate the candidate answer for:
 1) Technical correctness,
 2) Completeness of implementation guidance,
-3) Safety and practical executability.
+3) Safety and practical executability,
+4) Reliability of versioned/API/package claims.
 
 Return ONLY JSON:
 {
@@ -191,7 +201,11 @@ Return ONLY JSON:
  - If verdict is "pass", issues MUST be empty or minor-only, and rewritePrompt MUST be an empty string.
  - Do NOT require unrelated hardening extras unless explicitly requested by the user (for example: refresh-token rotation, full observability stack, CSP tuning, advanced rate-limit key strategies).
  - If the core request is satisfied with a secure, executable baseline, return "pass" and optionally list minor improvements in issues.
- - Never include markdown.`;
+  - Tool-awareness:
+    - You do not execute tools directly.
+    - If the answer makes versioned/package/API/CLI claims that need verification and evidence is weak, verdict MUST be "revise".
+    - rewritePrompt should request tool-backed verification and name relevant tools from "Available tools" when possible.
+  - Never include markdown.`;
 
 const CRITIC_SYSTEM_PROMPT_SEARCH = `You are a critic for search-routed responses.
 
@@ -224,7 +238,10 @@ If time-sensitive:
   - Use "revise" for clear factual errors (especially stable/common-knowledge facts) or missing key details.
 
 rewritePrompt guidance:
-- If verdict is "revise", rewritePrompt must be specific and actionable (what to add/remove/verify, and what sources to cite).`;
+- If verdict is "revise", rewritePrompt must be specific and actionable (what to add/remove/verify, and what sources to cite).
+- Tool-awareness:
+  - You do not execute tools directly.
+  - If source grounding or freshness hygiene is weak, rewritePrompt should request a tool-backed refresh and name relevant tools from "Available tools" when possible.`;
 
 function getCriticSystemPrompt(routeKind: AgentKind): string {
   switch (routeKind) {
@@ -252,6 +269,18 @@ function serializeMessageContent(content: LLMChatMessage['content']): string {
     .join('');
 }
 
+function normalizeAvailableTools(tools: string[] | undefined): string[] {
+  if (!Array.isArray(tools) || tools.length === 0) return [];
+  const deduped = new Set<string>();
+  for (const tool of tools) {
+    const normalized = tool.trim();
+    if (normalized.length > 0) {
+      deduped.add(normalized);
+    }
+  }
+  return [...deduped];
+}
+
 export async function evaluateDraftWithCritic(
   params: EvaluateDraftWithCriticParams,
 ): Promise<CriticAssessment | null> {
@@ -271,6 +300,7 @@ export async function evaluateDraftWithCritic(
     });
 
     const systemPrompt = getCriticSystemPrompt(params.routeKind);
+    const availableTools = normalizeAvailableTools(params.availableTools);
 
     const criticMessages: LLMChatMessage[] = [
       {
@@ -288,6 +318,10 @@ export async function evaluateDraftWithCritic(
                   .join('\n')}`,
               ]
             : []),
+          `Available tools:\n${availableTools.length > 0 ? availableTools.join(', ') : 'none'}`,
+          ...(params.toolExecutionSummary && params.toolExecutionSummary.trim().length > 0
+            ? [`Tool execution summary:\n${params.toolExecutionSummary.trim()}`]
+            : []),
           `User request:\n${params.userText}`,
           `Candidate answer:\n${params.draftText}`,
         ].join('\n\n'),
@@ -301,6 +335,7 @@ export async function evaluateDraftWithCritic(
       temperature: 0.1,
       responseFormat: 'json_object',
       timeout: params.timeoutMs ?? 180_000,
+      maxTokens: params.maxTokens ?? 1_200,
     });
 
     return parseAssessment(response.content, criticModel);

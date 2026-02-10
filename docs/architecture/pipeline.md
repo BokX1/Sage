@@ -65,7 +65,7 @@ Primary files:
 Runtime behavior:
 
 1. `decideAgent` classifies each request as `chat`, `coding`, `search`, or `creative`, and returns route temperature.
-2. For `search`, router also returns `search_mode` (`simple` or `complex`); if missing/invalid, runtime defaults to `complex`.
+2. For `search`, router also returns `search_mode` (`simple` or `complex`); if missing/invalid, runtime applies a deterministic fallback heuristic (`simple` for direct lookups, `complex` for comparison/synthesis prompts).
 3. `getStandardProvidersForAgent` assigns baseline context providers (route-aware).
 4. `buildContextGraph` builds:
    - fanout graph when parallel provider fetch is allowed,
@@ -113,11 +113,13 @@ Runtime behavior:
 5. Verification and factual revision are handled by the critic loop and targeted provider/search refreshes.
 6. When a tool envelope contains only unavailable/non-executable tools, runtime runs a plain-text recovery pass instead of redispatching virtual verification tools.
 7. Runtime injects a capability manifest into the system prompt that reflects route, context providers, and only policy-allowed tools for that turn.
-8. Runtime includes `## Agentic State (JSON)` only for `chat` and `coding` routes.
+8. Tool registry is route-scoped (`chat`, `coding`, `search`, `creative`) so each route only sees relevant tools.
+9. `search` route runs a tool-first pass (web_search/web_scrape/etc.); when hard gate is required, fallback is blocked and runtime returns a verified-only failure response instead of unverified output.
+10. Runtime includes `## Agentic State (JSON)` only for `chat` and `coding` routes.
 
 Note:
 
-- Runtime tools are intentionally minimal right now (`DEFAULT_RUNTIME_TOOLS` is empty), and non-executable tool envelopes are recovered via plain-text retry.
+- Runtime tools include `get_current_datetime`, `web_search`, `web_scrape`, `github_repo_lookup`, `github_file_lookup`, `npm_package_lookup`, `wikipedia_lookup`, `stack_overflow_search`, `local_llm_models`, and `local_llm_infer` (registered at bootstrap).
 - Voice join/leave are currently slash-command operations (`/join`, `/leave`), not runtime tool calls.
 
 ---
@@ -139,7 +141,8 @@ Runtime behavior:
 5. For `search`, revision typically triggers a fresh guarded search pass (and in `complex` mode, a second synthesis pass to produce the final answer).
 6. Search guardrails enforce grounding hygiene (source URLs for key claims; time-sensitive queries should include `Checked on: YYYY-MM-DD` and multiple distinct URLs) and will retry alternate search models when requirements are not met.
 7. For non-search revisions, runtime can redispatch targeted context providers before rewrite.
-8. Critic outcomes and redispatch metadata are persisted in trace quality/budget payloads.
+8. For `chat` and `coding`, critic-requested revisions can run a tool-backed revision loop when evidence or verification is needed.
+9. Critic outcomes and redispatch metadata are persisted in trace quality/budget payloads.
 
 ---
 

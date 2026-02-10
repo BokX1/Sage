@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { config } from '../../../src/config';
 import { runChatTurn } from '../../../src/core/agentRuntime/agentRuntime';
 import { createLLMClient, getLLMClient } from '../../../src/core/llm';
 
@@ -227,8 +228,8 @@ describe('Autopilot Runtime', () => {
     const secondAttempt = mockSearchLLM.chat.mock.calls[1]?.[0] as { model: string; timeout: number };
     expect(firstAttempt.model).toBe('gemini-search');
     expect(secondAttempt.model).toBe('perplexity-fast');
-    expect(firstAttempt.timeout).toBe(300_000);
-    expect(secondAttempt.timeout).toBe(300_000);
+    expect(firstAttempt.timeout).toBe(config.TIMEOUT_SEARCH_MS);
+    expect(secondAttempt.timeout).toBe(config.TIMEOUT_SEARCH_MS);
 
     const searchResolveCall = mockResolveModelForRequestDetailed.mock.calls.find(
       (call: [{ route?: string; allowedModels?: string[] }]) => call[0]?.route === 'search',
@@ -289,7 +290,7 @@ describe('Autopilot Runtime', () => {
     expect(result.replyText).toBe('Scraped and summarized page content.');
     const firstAttempt = mockSearchLLM.chat.mock.calls[0]?.[0] as { model: string; timeout: number };
     expect(firstAttempt.model).toBe('nomnom');
-    expect(firstAttempt.timeout).toBe(480_000);
+    expect(firstAttempt.timeout).toBe(config.TIMEOUT_SEARCH_SCRAPER_MS);
 
     const searchResolveCall = mockResolveModelForRequestDetailed.mock.calls.find(
       (

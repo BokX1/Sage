@@ -107,7 +107,7 @@ Autopilot modes:
 
 These settings control graph execution, tool policy, critic behavior, canary rollout, and per-tenant overrides.
 
-Search execution mode (`simple` vs `complex`) is selected turn-by-turn by the router and is not currently exposed as an environment variable. If router output is invalid or missing for search mode, runtime falls back to `complex`.
+Search execution mode (`simple` vs `complex`) is selected turn-by-turn by the router and is not currently exposed as an environment variable. If router output is invalid or missing, runtime applies a deterministic heuristic fallback (direct lookups bias to `simple`, multi-step/comparison prompts bias to `complex`).
 
 ### Graph + Tool + Critic + Tenant Policy
 
@@ -118,10 +118,25 @@ Search execution mode (`simple` vs `complex`) is selected turn-by-turn by the ro
 | `AGENTIC_TOOL_ALLOW_EXTERNAL_WRITE` | Allow external side-effect tools | `false` |
 | `AGENTIC_TOOL_ALLOW_HIGH_RISK` | Allow high-risk tools | `false` |
 | `AGENTIC_TOOL_BLOCKLIST_CSV` | Comma-separated blocked tools | `join_voice_channel,leave_voice_channel` |
+| `AGENTIC_TOOL_LOOP_ENABLED` | Enable iterative tool-call loop for chat/coding routes when tools are registered | `true` |
+| `AGENTIC_TOOL_HARD_GATE_ENABLED` | Enforce tool-backed evidence on freshness/source-sensitive turns | `true` |
+| `AGENTIC_TOOL_HARD_GATE_MIN_SUCCESSFUL_CALLS` | Minimum successful tool calls required when hard gate triggers | `1` |
+| `AGENTIC_TOOL_MAX_ROUNDS` | Max tool-call rounds per turn | `2` |
+| `AGENTIC_TOOL_MAX_CALLS_PER_ROUND` | Max tool calls in one round | `3` |
+| `AGENTIC_TOOL_TIMEOUT_MS` | Per-tool execution timeout | `45000` |
+| `AGENTIC_TOOL_MAX_OUTPUT_TOKENS` | Max model output tokens during tool-loop turns | `1200` |
+| `AGENTIC_TOOL_RESULT_MAX_CHARS` | Max serialized chars per tool result block fed back to the model | `4000` |
+| `AGENTIC_TOOL_PARALLEL_READ_ONLY_ENABLED` | Execute multiple read-only tool calls in parallel | `true` |
+| `AGENTIC_TOOL_MAX_PARALLEL_READ_ONLY` | Max concurrent read-only tool executions | `3` |
 | `AGENTIC_CRITIC_ENABLED` | Enable bounded critic loops | `true` |
 | `AGENTIC_CRITIC_MIN_SCORE` | Critic threshold before revision | `0.78` |
 | `AGENTIC_CRITIC_MAX_LOOPS` | Max critic revisions | `2` |
 | `AGENTIC_TENANT_POLICY_JSON` | JSON registry for `default` and per-guild overrides | `{}` |
+
+Hard-gate behavior summary:
+
+- `search`: runs tool-first and requires tool evidence; if unmet, Sage refuses to return unverified claims.
+- `chat`/`coding`: hard gate triggers on freshness/source/version-sensitive prompts, can force a second tool-backed pass, and refuses unverified output if still unmet.
 
 ### Canary + Rollback
 
@@ -168,6 +183,7 @@ Used by `npm run agentic:replay-gate` and release checks.
 | `INGESTION_ALLOWLIST_CHANNEL_IDS_CSV` | Channels to include in allowlist mode | *(empty)* |
 | `INGESTION_BLOCKLIST_CHANNEL_IDS_CSV` | Channels to exclude | *(empty)* |
 | `MESSAGE_DB_STORAGE_ENABLED` | Persist messages to `ChannelMessage` table | `true` |
+| `MESSAGE_DB_MAX_MESSAGES_PER_CHANNEL` | Per-channel DB retention cap (separate from prompt transcript cap) | `500` |
 | `RAW_MESSAGE_TTL_DAYS` | In-memory transcript retention days | `3` |
 | `RING_BUFFER_MAX_MESSAGES_PER_CHANNEL` | In-memory transcript size cap | `200` |
 | `CONTEXT_TRANSCRIPT_MAX_MESSAGES` | Transcript message cap per prompt | `15` |
@@ -202,6 +218,10 @@ Used by `npm run agentic:replay-gate` and release checks.
 | `CONTEXT_RESERVED_OUTPUT_TOKENS` | Reserved output tokens | `12000` |
 | `SYSTEM_PROMPT_MAX_TOKENS` | System prompt budget | `12000` |
 | `CONTEXT_USER_MAX_TOKENS` | User block budget | `60000` |
+| `CHAT_MAX_OUTPUT_TOKENS` | Max reply tokens for chat turns | `1800` |
+| `CODING_MAX_OUTPUT_TOKENS` | Max reply tokens for coding turns | `4200` |
+| `SEARCH_MAX_OUTPUT_TOKENS` | Max reply tokens for search turns | `2000` |
+| `CRITIC_MAX_OUTPUT_TOKENS` | Max output tokens for critic assessments | `1800` |
 
 ### Block Budgets
 
@@ -232,10 +252,63 @@ Used by `npm run agentic:replay-gate` and release checks.
 | :--- | :--- | :--- |
 | `RATE_LIMIT_MAX` | Max responses per window | `5` |
 | `RATE_LIMIT_WINDOW_SEC` | Rate-limit window seconds | `10` |
-| `TIMEOUT_CHAT_MS` | Chat/model request timeout | `300000` |
-| `TIMEOUT_SEARCH_MS` | Search-pass timeout baseline (normal search models) | `300000` |
-| `TIMEOUT_SEARCH_SCRAPER_MS` | Search-pass timeout for scraper model (`nomnom`) | `480000` |
-| `TIMEOUT_MEMORY_MS` | Memory/summarization timeout | `600000` |
+| `TIMEOUT_CHAT_MS` | Chat/model request timeout | `180000` |
+| `TIMEOUT_SEARCH_MS` | Search-pass timeout baseline (normal search models) | `90000` |
+| `TIMEOUT_SEARCH_SCRAPER_MS` | Search-pass timeout for scraper model (`nomnom`) | `150000` |
+| `TIMEOUT_MEMORY_MS` | Memory/summarization timeout | `300000` |
+| `SEARCH_MAX_ATTEMPTS_SIMPLE` | Max guarded search model attempts when router picks simple search mode | `2` |
+| `SEARCH_MAX_ATTEMPTS_COMPLEX` | Max guarded search model attempts when router picks complex search mode | `4` |
+| `TOOL_WEB_SEARCH_TIMEOUT_MS` | External web-search tool timeout | `45000` |
+| `TOOL_WEB_SEARCH_MAX_RESULTS` | Max returned results from `web_search` retrieval providers | `6` |
+| `TOOL_WEB_SCRAPE_TIMEOUT_MS` | External web-scrape tool timeout | `45000` |
+| `TOOL_WEB_SCRAPE_PROVIDER_ORDER` | Ordered provider chain for `web_scrape` (`firecrawl,crawl4ai,jina,raw_fetch`) | `firecrawl,crawl4ai,jina,raw_fetch` |
+| `TOOL_WEB_SCRAPE_MAX_CHARS` | Max extracted chars returned by web-scrape tool | `12000` |
+
+---
+
+<a id="external-tool-providers"></a>
+
+## External Tool Providers
+
+| Variable | Description | `.env.example` |
+| :--- | :--- | :--- |
+| `TOOL_WEB_SEARCH_PROVIDER_ORDER` | Ordered provider chain for `web_search` tool (`tavily,exa,searxng,pollinations`) | `tavily,exa,searxng,pollinations` |
+| `TAVILY_API_KEY` | Tavily API key for high-quality web retrieval | *(empty)* |
+| `EXA_API_KEY` | Exa API key for semantic web retrieval | *(empty)* |
+| `SEARXNG_BASE_URL` | Optional SearXNG base URL (self-hosted search aggregation) | *(empty)* |
+| `SEARXNG_SEARCH_PATH` | SearXNG search path (usually `/search`) | `/search` |
+| `SEARXNG_CATEGORIES` | SearXNG categories parameter | `general` |
+| `SEARXNG_LANGUAGE` | SearXNG language parameter | `en-US` |
+| `FIRECRAWL_API_KEY` | Firecrawl API key for robust page extraction | *(empty)* |
+| `FIRECRAWL_BASE_URL` | Firecrawl API base URL | `https://api.firecrawl.dev/v1` |
+| `CRAWL4AI_BASE_URL` | Optional Crawl4AI base URL (self-hosted scraping fallback) | *(empty)* |
+| `CRAWL4AI_BEARER_TOKEN` | Optional bearer token for Crawl4AI endpoint | *(empty)* |
+| `JINA_READER_BASE_URL` | Jina reader base URL used by scrape fallback | `https://r.jina.ai/http://` |
+| `GITHUB_TOKEN` | Optional GitHub token for higher API limits | *(empty)* |
+| `OLLAMA_BASE_URL` | Local Ollama base URL for private/offline infer tools | `http://127.0.0.1:11434` |
+| `OLLAMA_MODEL` | Default local Ollama model for `local_llm_infer` | `llama3.1:8b` |
+
+Self-host-first profile (with hosted fallback):
+
+```env
+TOOL_WEB_SEARCH_PROVIDER_ORDER=searxng,tavily,exa,pollinations
+TOOL_WEB_SCRAPE_PROVIDER_ORDER=crawl4ai,firecrawl,jina,raw_fetch
+SEARXNG_BASE_URL=http://127.0.0.1:8080
+CRAWL4AI_BASE_URL=http://127.0.0.1:11235
+OLLAMA_BASE_URL=http://127.0.0.1:11434
+```
+
+Run local services with:
+
+```bash
+docker compose -f config/self-host/docker-compose.tools.yml up -d
+```
+
+Validate with:
+
+```bash
+npm run tools:smoke
+```
 
 ---
 
@@ -284,12 +357,26 @@ CONTEXT_BLOCK_MAX_TOKENS_MEMORY=12000
 CONTEXT_BLOCK_MAX_TOKENS_REPLY_CONTEXT=8000
 CONTEXT_BLOCK_MAX_TOKENS_PROVIDERS=12000
 CONTEXT_USER_MAX_TOKENS=60000
+CHAT_MAX_OUTPUT_TOKENS=1800
+CODING_MAX_OUTPUT_TOKENS=4200
+SEARCH_MAX_OUTPUT_TOKENS=2000
+CRITIC_MAX_OUTPUT_TOKENS=1800
 
 AGENTIC_GRAPH_PARALLEL_ENABLED=true
 AGENTIC_GRAPH_MAX_PARALLEL=2
 AGENTIC_TOOL_ALLOW_EXTERNAL_WRITE=false
 AGENTIC_TOOL_ALLOW_HIGH_RISK=false
 AGENTIC_TOOL_BLOCKLIST_CSV=join_voice_channel,leave_voice_channel
+AGENTIC_TOOL_LOOP_ENABLED=true
+AGENTIC_TOOL_HARD_GATE_ENABLED=true
+AGENTIC_TOOL_HARD_GATE_MIN_SUCCESSFUL_CALLS=1
+AGENTIC_TOOL_MAX_ROUNDS=2
+AGENTIC_TOOL_MAX_CALLS_PER_ROUND=3
+AGENTIC_TOOL_TIMEOUT_MS=45000
+AGENTIC_TOOL_MAX_OUTPUT_TOKENS=1200
+AGENTIC_TOOL_RESULT_MAX_CHARS=4000
+AGENTIC_TOOL_PARALLEL_READ_ONLY_ENABLED=true
+AGENTIC_TOOL_MAX_PARALLEL_READ_ONLY=3
 AGENTIC_CRITIC_ENABLED=true
 AGENTIC_CRITIC_MIN_SCORE=0.78
 AGENTIC_CRITIC_MAX_LOOPS=2
@@ -298,10 +385,32 @@ AGENTIC_CANARY_PERCENT=100
 AGENTIC_CANARY_ROUTE_ALLOWLIST_CSV=chat,coding,search,creative
 AGENTIC_TENANT_POLICY_JSON={}
 
-TIMEOUT_CHAT_MS=300000
-TIMEOUT_SEARCH_MS=300000
-TIMEOUT_SEARCH_SCRAPER_MS=480000
-TIMEOUT_MEMORY_MS=600000
+TIMEOUT_CHAT_MS=180000
+TIMEOUT_SEARCH_MS=90000
+TIMEOUT_SEARCH_SCRAPER_MS=150000
+TIMEOUT_MEMORY_MS=300000
+SEARCH_MAX_ATTEMPTS_SIMPLE=2
+SEARCH_MAX_ATTEMPTS_COMPLEX=4
+TOOL_WEB_SEARCH_PROVIDER_ORDER=tavily,exa,searxng,pollinations
+TOOL_WEB_SEARCH_TIMEOUT_MS=45000
+TOOL_WEB_SEARCH_MAX_RESULTS=6
+TOOL_WEB_SCRAPE_PROVIDER_ORDER=firecrawl,crawl4ai,jina,raw_fetch
+TOOL_WEB_SCRAPE_TIMEOUT_MS=45000
+TOOL_WEB_SCRAPE_MAX_CHARS=12000
+TAVILY_API_KEY=
+EXA_API_KEY=
+SEARXNG_BASE_URL=
+SEARXNG_SEARCH_PATH=/search
+SEARXNG_CATEGORIES=general
+SEARXNG_LANGUAGE=en-US
+FIRECRAWL_API_KEY=
+FIRECRAWL_BASE_URL=https://api.firecrawl.dev/v1
+CRAWL4AI_BASE_URL=
+CRAWL4AI_BEARER_TOKEN=
+JINA_READER_BASE_URL=https://r.jina.ai/http://
+GITHUB_TOKEN=
+OLLAMA_BASE_URL=http://127.0.0.1:11434
+OLLAMA_MODEL=llama3.1:8b
 
 REPLAY_GATE_LIMIT=200
 REPLAY_GATE_MIN_AVG_SCORE=0.65

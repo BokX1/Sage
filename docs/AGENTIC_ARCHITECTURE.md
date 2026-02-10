@@ -51,6 +51,7 @@ In Sage, "agentic" means the runtime can:
 - Tool execution is bounded by `runToolCallLoop`.
 - Deterministic policy gates apply blocklists and risk permissions (`external_write`, `high_risk`).
 - Per-turn cache avoids duplicate tool executions.
+- Hard gate (`AGENTIC_TOOL_HARD_GATE_*`) can require successful tool evidence on freshness/source-sensitive turns before finalizing.
 - Verification and factual revision are handled by the critic loop rather than virtual verification tools.
 - Runtime injects a capability manifest into the system prompt so the model only claims tools/context providers actually available in that turn.
 - Runtime includes `## Agentic State (JSON)` only for `chat` and `coding` routes.
@@ -60,6 +61,7 @@ In Sage, "agentic" means the runtime can:
 - Critic scoring is controlled by `AGENTIC_CRITIC_*`.
 - If quality is below threshold, Sage revises with critic instructions.
 - For `chat` and `coding`, revisions are new LLM rewrite passes; the revised draft replaces the previous draft (no merging).
+- For `chat` and `coding`, critic-requested revisions can execute a tool-backed revision loop when verification is required.
 - Search route can run an additional search refresh when issues indicate staleness/factual risk and uses guardrails to require source grounding for key claims.
 - When search mode is `complex`, runtime runs a second chat synthesis pass (`search -> chat summary`) before returning the final answer (this is where multiple search findings can be reconciled).
 - Non-search routes can redispatch targeted context providers before rewrite.

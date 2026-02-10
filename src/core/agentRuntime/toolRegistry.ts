@@ -11,6 +11,8 @@ export interface ToolExecutionContext {
   traceId: string;
   userId: string;
   channelId: string;
+  guildId?: string | null;
+  apiKey?: string;
   /** Optional abort signal to check for timeout/cancellation. Tools should check signal.aborted periodically. */
   signal?: AbortSignal;
 }

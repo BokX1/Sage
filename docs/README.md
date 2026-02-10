@@ -46,6 +46,7 @@ Sage documentation is organized to support two common goals:
 | Document | Best For |
 | :--- | :--- |
 | [📋 Operations Runbook](operations/runbook.md) | Operating Sage in production |
+| [🧰 Self-Hosted Tool Stack](operations/tool_stack.md) | Run SearXNG/Crawl4AI/Ollama with hosted fallbacks |
 | [🔒 Security & Privacy](security_privacy.md) | What Sage stores and how to control it |
 | [🐝 Pollinations Integration](POLLINATIONS.md) | Provider overview (text/vision/images) + BYOP key flow |
 | [🌸 BYOP Mode](BYOP_MODE.md) | Bring-Your-Own-Pollen setup (keys) |
@@ -64,7 +65,8 @@ Sage documentation is organized to support two common goals:
 
 1. **[Getting Started](GETTING_STARTED.md)** — Create bot, configure `.env`, run locally
 2. **[Configuration](CONFIGURATION.md)** — Tune behavior and budgets
-3. **[Operations Runbook](operations/runbook.md)** — Production notes
+3. **[Self-Hosted Tool Stack](operations/tool_stack.md)** — Local search/scrape/infer tool layer
+4. **[Operations Runbook](operations/runbook.md)** — Production notes
 
 ### "I want to understand how Sage works"
 

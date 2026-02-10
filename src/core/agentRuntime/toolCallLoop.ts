@@ -5,6 +5,7 @@ import { executeToolWithTimeout, ToolResult } from './toolCallExecution';
 import { looksLikeJson, parseToolCallEnvelope, RETRY_PROMPT } from './toolCallParser';
 import { evaluateToolPolicy, ToolPolicyConfig } from './toolPolicy';
 import { ToolResultCache } from './toolCache';
+import { limitConcurrency } from '../utils/concurrency';
 
 
 /** Configure loop bounds and tool timeout behavior. */
@@ -19,6 +20,12 @@ export interface ToolCallLoopConfig {
   cacheEnabled?: boolean;
 
   cacheMaxEntries?: number;
+
+  parallelReadOnlyTools?: boolean;
+
+  maxParallelReadOnlyTools?: number;
+
+  maxToolResultChars?: number;
 }
 
 const DEFAULT_CONFIG: Required<ToolCallLoopConfig> = {
@@ -27,6 +34,9 @@ const DEFAULT_CONFIG: Required<ToolCallLoopConfig> = {
   toolTimeoutMs: 45_000,
   cacheEnabled: true,
   cacheMaxEntries: 50,
+  parallelReadOnlyTools: true,
+  maxParallelReadOnlyTools: 3,
+  maxToolResultChars: 4_000,
 };
 
 
@@ -44,6 +54,8 @@ function getValidatedConfig(config: Required<ToolCallLoopConfig>): Required<Tool
   assertPositiveInteger(config.maxCallsPerRound, 'maxCallsPerRound');
   assertPositiveInteger(config.toolTimeoutMs, 'toolTimeoutMs');
   assertPositiveInteger(config.cacheMaxEntries, 'cacheMaxEntries');
+  assertPositiveInteger(config.maxParallelReadOnlyTools, 'maxParallelReadOnlyTools');
+  assertPositiveInteger(config.maxToolResultChars, 'maxToolResultChars');
   return config;
 }
 
@@ -74,7 +86,27 @@ function getRecoverySuggestion(errorType: ToolErrorType, toolName: string): stri
 }
 
 
-function formatToolResultsMessage(results: ToolResult[]): LLMChatMessage {
+function truncateText(value: string, maxChars: number): string {
+  if (value.length <= maxChars) return value;
+  const headChars = Math.max(300, Math.floor(maxChars * 0.65));
+  const tailChars = Math.max(120, Math.floor(maxChars * 0.25));
+  const omittedChars = Math.max(0, value.length - headChars - tailChars);
+  return (
+    `${value.slice(0, headChars).trimEnd()}\n` +
+    `[... ${omittedChars.toLocaleString()} chars omitted ...]\n` +
+    `${value.slice(-tailChars).trimStart()}`
+  );
+}
+
+function stringifyResult(value: unknown): string {
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return '[unserializable tool result]';
+  }
+}
+
+function formatToolResultsMessage(results: ToolResult[], maxToolResultChars: number): LLMChatMessage {
   const successResults = results.filter((r) => r.success);
   const failedResults = results.filter((r) => !r.success);
 
@@ -82,9 +114,10 @@ function formatToolResultsMessage(results: ToolResult[]): LLMChatMessage {
 
 
   if (successResults.length > 0) {
-    const successTexts = successResults.map((r) =>
-      `[OK] Tool "${r.name}" succeeded: ${JSON.stringify(r.result)}`
-    );
+    const successTexts = successResults.map((r) => {
+      const serialized = stringifyResult(r.result);
+      return `[OK] Tool "${r.name}" succeeded: ${truncateText(serialized, maxToolResultChars)}`;
+    });
     parts.push(successTexts.join('\n'));
   }
 
@@ -93,7 +126,8 @@ function formatToolResultsMessage(results: ToolResult[]): LLMChatMessage {
     const failedTexts = failedResults.map((r) => {
       const errorType = classifyErrorType(r.error || 'unknown');
       const suggestion = getRecoverySuggestion(errorType, r.name);
-      return `[ERROR] Tool "${r.name}" failed (${errorType}): ${r.error}\nSuggestion: ${suggestion}`;
+      const errorText = truncateText(r.error ?? 'Unknown tool error', Math.max(240, Math.floor(maxToolResultChars / 2)));
+      return `[ERROR] Tool "${r.name}" failed (${errorType}): ${errorText}\nSuggestion: ${suggestion}`;
     });
     parts.push(failedTexts.join('\n'));
   }
@@ -121,6 +155,10 @@ export interface ToolCallLoopParams {
   apiKey?: string;
 
   temperature?: number;
+
+  timeoutMs?: number;
+
+  maxTokens?: number;
 
   /**
    * Optional pre-fetched assistant response content to consume as the first
@@ -163,6 +201,16 @@ export async function runToolCallLoop(params: ToolCallLoopParams): Promise<ToolC
   const { client, registry, ctx, model, apiKey } = params;
   const config = getValidatedConfig({ ...DEFAULT_CONFIG, ...params.config });
   const loopTemperature = Number.isFinite(params.temperature) ? Math.max(0, params.temperature as number) : 0.7;
+  const openAiToolSpecs = registry.listOpenAIToolSpecs();
+  const toolSpecs = openAiToolSpecs.length > 0
+    ? openAiToolSpecs.map((tool) => ({
+      type: tool.type,
+      function: {
+        ...tool.function,
+        parameters: tool.function.parameters as Record<string, unknown>,
+      },
+    }))
+    : undefined;
 
   const messages = [...params.messages];
   const cache = config.cacheEnabled ? new ToolResultCache(config.cacheMaxEntries) : null;
@@ -181,6 +229,10 @@ export async function runToolCallLoop(params: ToolCallLoopParams): Promise<ToolC
               model,
               apiKey,
               temperature: loopTemperature,
+              timeout: params.timeoutMs,
+              maxTokens: params.maxTokens,
+              tools: toolSpecs,
+              toolChoice: toolSpecs ? 'auto' : undefined,
             })
           ).content;
     seededResponseText = undefined;
@@ -202,6 +254,10 @@ export async function runToolCallLoop(params: ToolCallLoopParams): Promise<ToolC
         model,
         apiKey,
         temperature: loopTemperature,
+        timeout: params.timeoutMs,
+        maxTokens: params.maxTokens,
+        tools: toolSpecs,
+        toolChoice: toolSpecs ? 'auto' : undefined,
       });
 
       envelope = parseToolCallEnvelope(retryResponse.content);
@@ -244,16 +300,33 @@ export async function runToolCallLoop(params: ToolCallLoopParams): Promise<ToolC
       );
     }
 
-    const roundResults: ToolResult[] = [];
-    for (const call of calls) {
+    type PendingCall = {
+      index: number;
+      call: (typeof calls)[number];
+    };
+
+    const roundResultsByIndex: Array<ToolResult | null> = new Array(calls.length).fill(null);
+    const readOnlyPending: PendingCall[] = [];
+    const sideEffectPending: PendingCall[] = [];
+
+    const executePendingCall = async (pending: PendingCall): Promise<void> => {
+      const result = await executeToolWithTimeout(registry, pending.call, ctx, config.toolTimeoutMs);
+      roundResultsByIndex[pending.index] = result;
+      if (result.success && cache) {
+        cache.set(pending.call.name, pending.call.args, result.result);
+      }
+    };
+
+    for (let index = 0; index < calls.length; index += 1) {
+      const call = calls[index];
       const cached = cache?.get(call.name, call.args) ?? null;
       if (cached) {
-        roundResults.push({
+        roundResultsByIndex[index] = {
           name: call.name,
           success: true,
           result: cached.result,
           latencyMs: 0,
-        });
+        };
         continue;
       }
 
@@ -268,28 +341,44 @@ export async function runToolCallLoop(params: ToolCallLoopParams): Promise<ToolC
           },
           'Tool call denied by policy',
         );
-        roundResults.push({
+        roundResultsByIndex[index] = {
           name: call.name,
           success: false,
           error: policyDecision.reason ?? `Tool "${call.name}" denied by policy`,
           errorType: 'validation',
           latencyMs: 0,
-        });
+        };
         continue;
       }
 
-      const result = await executeToolWithTimeout(registry, call, ctx, config.toolTimeoutMs);
-      roundResults.push(result);
-      if (result.success && cache) {
-        cache.set(call.name, call.args, result.result);
+      if (config.parallelReadOnlyTools && policyDecision.risk === 'read_only') {
+        readOnlyPending.push({ index, call });
+      } else {
+        sideEffectPending.push({ index, call });
       }
     }
 
+    if (readOnlyPending.length > 0) {
+      if (config.parallelReadOnlyTools && readOnlyPending.length > 1) {
+        const runWithLimit = limitConcurrency(config.maxParallelReadOnlyTools);
+        await Promise.all(readOnlyPending.map((pending) => runWithLimit(() => executePendingCall(pending))));
+      } else {
+        for (const pending of readOnlyPending) {
+          await executePendingCall(pending);
+        }
+      }
+    }
+
+    for (const pending of sideEffectPending) {
+      await executePendingCall(pending);
+    }
+
+    const roundResults = roundResultsByIndex.filter((result): result is ToolResult => result !== null);
     allToolResults.push(...roundResults);
     roundsCompleted++;
 
     messages.push({ role: 'assistant', content: responseText });
-    messages.push(formatToolResultsMessage(roundResults));
+    messages.push(formatToolResultsMessage(roundResults, config.maxToolResultChars));
   }
 
   const finalResponse = await client.chat({
@@ -297,6 +386,10 @@ export async function runToolCallLoop(params: ToolCallLoopParams): Promise<ToolC
     model,
     apiKey,
     temperature: loopTemperature,
+    timeout: params.timeoutMs,
+    maxTokens: params.maxTokens,
+    tools: toolSpecs,
+    toolChoice: toolSpecs ? 'auto' : undefined,
   });
 
   return {

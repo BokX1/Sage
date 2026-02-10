@@ -21,6 +21,7 @@ export {
   type ToolValidationResult,
   type OpenAIToolSpec,
 } from './toolRegistry';
+export { registerDefaultAgenticTools } from './defaultTools';
 
 export {
   runToolCallLoop,
