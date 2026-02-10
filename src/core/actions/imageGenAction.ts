@@ -175,7 +175,7 @@ function extractText(content?: LLMMessageContent | null): string | undefined {
 }
 
 /**
- * Refine the user's prompt using an LLM (Gemini).
+ * Refine the user's prompt using an LLM.
  */
 async function refinePrompt(
     userText: string,

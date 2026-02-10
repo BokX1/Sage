@@ -99,7 +99,7 @@ Before starting Sage, verify:
 | `ADMIN_USER_IDS_CSV` | To enable admin commands |
 | `LOG_LEVEL=debug` | When troubleshooting |
 
-See [Configuration Reference](../CONFIGURATION.md) for all options.
+See [Configuration Reference](../reference/CONFIGURATION.md) for all options.
 
 ---
 
@@ -231,6 +231,24 @@ Restarting Sage is safe:
 <a id="common-issues"></a>
 
 ## 🆘 Common Issues
+
+```mermaid
+flowchart TD
+    classDef question fill:#fff3cd,stroke:#856404,color:black
+    classDef action fill:#d4edda,stroke:#155724,color:black
+    classDef check fill:#cce5ff,stroke:#004085,color:black
+
+    A["Sage not working?"]:::question
+    A -->|"Can't connect to DB"| B["Is Docker running?"]:::check
+    B -->|No| B1["Start Docker Desktop"]:::action
+    B -->|Yes| B2["docker compose up -d db"]:::action
+
+    A -->|"Invalid token"| C["Reset token in Dev Portal"]:::action
+    A -->|"Bot silent"| D["Check wake word / permissions"]:::check
+    D -->|"Still silent"| D1["npm run doctor"]:::action
+
+    A -->|"Commands missing"| E["Wait 1h or set DEV_GUILD_ID"]:::action
+```
 
 ### “Cannot connect to database”
 

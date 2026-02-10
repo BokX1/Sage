@@ -220,6 +220,6 @@ Sage tracks voice presence and session duration only; it does not transcribe voi
 
 ## 🔗 Related documentation
 
-- [🔀 Runtime pipeline](pipeline.md)
-- [💾 Database architecture](database.md)
-- [🔒 Security and privacy](../security_privacy.md)
+- [🔀 Runtime pipeline](PIPELINE.md)
+- [💾 Database architecture](DATABASE.md)
+- [🔒 Security and privacy](../security/SECURITY_PRIVACY.md)

@@ -2,19 +2,41 @@
 
 Thanks for helping improve Sage! This guide covers the local workflow, expectations, and safety notes.
 
-## License and contribution terms
+---
 
-- Sage is proprietary software (All Rights Reserved).
+## 📋 Quick Reference
+
+| Action | Command |
+| :--- | :--- |
+| Install deps | `npm install && npm run setup` |
+| Dev server | `npm run dev` |
+| Lint | `npm run lint` |
+| Build | `npm run build` |
+| Test | `npm run test` |
+| Health check | `npm run doctor` |
+| DB sync | `npx prisma db push` |
+
+---
+
+## ⚖️ License and Contribution Terms
+
+- Sage is **proprietary software** (All Rights Reserved).
 - By submitting code, docs, or assets, you agree your contribution may be used, modified, and distributed by the project owner under Sage's proprietary licensing model.
 - Contributions do not grant redistribution rights to the Sage codebase outside terms explicitly granted by the copyright owner.
 
-## Prerequisites
+---
 
-- **Node.js**: Use an LTS version (CI runs on Node 18.x and 20.x).
-- **Database**: Prisma is configured for PostgreSQL by default (see `prisma/schema.prisma`). Set `DATABASE_URL` in your `.env`.
-- **Discord app credentials**: Provide `DISCORD_TOKEN` and `DISCORD_APP_ID` in your `.env` for local bot runs.
+## 🔧 Prerequisites
 
-## Setup
+| Requirement | Details |
+| :--- | :--- |
+| **Node.js** | LTS version (CI runs on Node 18.x and 20.x) |
+| **Database** | PostgreSQL via Docker (see `prisma/schema.prisma`) |
+| **Discord creds** | `DISCORD_TOKEN` and `DISCORD_APP_ID` in `.env` |
+
+---
+
+## 🚀 Setup
 
 ```bash
 npm install
@@ -27,50 +49,119 @@ If you need to sync the database schema locally (no migrations):
 npx prisma db push
 ```
 
-To reset the schema (deletes data):
+To reset the schema (⚠️ deletes data):
 
 ```bash
 npx prisma db push --force-reset --accept-data-loss
 ```
 
-## Development scripts
+---
 
-- `npm run dev` — run the bot with `nodemon` + `ts-node`
-- `npm run lint` — run ESLint
-- `npm run build` — compile TypeScript
-- `npm run test` — run unit tests with Vitest
-- `npm run doctor` — sanity checks for configuration
+## 🔄 Development Workflow
 
-## Branching + PR guidance
+```mermaid
+flowchart LR
+    classDef action fill:#d4edda,stroke:#155724,color:black
+    classDef check fill:#cce5ff,stroke:#004085,color:black
+    classDef submit fill:#fff3cd,stroke:#856404,color:black
+
+    A["Branch from master"]:::action --> B["Write code + tests"]:::action
+    B --> C["npm run lint"]:::check
+    C --> D["npm run build"]:::check
+    D --> E["npm run test"]:::check
+    E --> F["Open PR"]:::submit
+    F --> G["CI passes"]:::check
+    G --> H["Review + Merge"]:::submit
+```
+
+### Branching
 
 - Create feature branches from `master`.
 - Keep PRs focused and avoid unrelated refactors.
 - Include clear, testable descriptions of changes and any operational impacts.
-- For behavior changes, add or update tests.
 
-## Code style
+---
 
-- Follow the existing ESLint and Prettier configuration (located in `config/ci/`).
-- Favor small, well-named modules and pure functions for core logic.
+## 🏗️ Architecture Overview (for Contributors)
+
+Understanding the codebase structure helps you contribute effectively:
+
+```
+src/
+├── core/
+│   ├── orchestration/     # Agent selector, runtime, canary, critics
+│   ├── llm/               # Model resolver, catalog, health tracking
+│   ├── context-providers/ # Memory, social, voice, summary providers
+│   ├── tools/             # Search, scrape, GitHub, npm, wiki tools
+│   └── voice/             # Voice presence, sessions, analytics
+├── services/              # Pollinations, ingestion, formatting
+└── shared/
+    └── config/            # Environment validation (Zod schemas)
+```
+
+> [!TIP]
+> Start with `src/core/orchestration/agentRuntime.ts` — it's the main entry point for understanding how messages flow through Sage.
+
+---
+
+## 🎨 Code Style
+
+- Follow the existing **ESLint** and **Prettier** configuration (located in `config/ci/`).
+- Favor **small, well-named modules** and pure functions for core logic.
 - Avoid introducing new prompt strings or altering existing prompt templates unless fixing a bug.
 
-## Adding features safely
+Run the formatter:
+
+```bash
+npm run lint -- --fix
+```
+
+---
+
+## ✅ Pull Request Checklist
+
+Before opening a PR, verify each item:
+
+- [ ] Code compiles: `npm run build`
+- [ ] All tests pass: `npm run test`
+- [ ] Linting passes: `npm run lint`
+- [ ] New features include tests
+- [ ] No secrets committed (`.env` must remain ignored)
+- [ ] Documentation updated if behavior changed
+- [ ] Commit messages are descriptive
+
+---
+
+## 🛡️ Adding Features Safely
 
 - Add tests for core logic and any new tool execution paths.
 - Ensure provider payloads remain backward compatible.
 - Validate inputs and handle failures gracefully.
+- For behavior changes, add or update tests.
 
-## Security notes
+---
 
-- **Never commit secrets**. `.env` must remain ignored.
+## 🔒 Security Notes
+
+- **Never commit secrets.** `.env` must remain in `.gitignore`.
 - Use placeholders in `.env.example` only.
+- Report vulnerabilities to the project owner — see [`SECURITY.md`](docs/security/SECURITY_PRIVACY.md).
 
-## CI expectations
+---
 
-The CI workflow runs `lint`, `build`, and `test`. Run these locally before opening a PR:
+## 🤖 CI Expectations
+
+The CI workflow runs <kbd>lint</kbd> → <kbd>build</kbd> → <kbd>test</kbd>. Run these locally before opening a PR:
 
 ```bash
-npm run lint
-npm run build
-npm run test
+npm run lint && npm run build && npm run test
 ```
+
+---
+
+## 📚 Further Reading
+
+- [📖 Getting Started](docs/guides/GETTING_STARTED.md) — Full setup walkthrough
+- [🤖 Architecture Overview](docs/architecture/OVERVIEW.md) — Agentic design
+- [⚙️ Configuration Reference](docs/reference/CONFIGURATION.md) — All env vars
+- [🔀 Runtime Pipeline](docs/architecture/PIPELINE.md) — Message flow

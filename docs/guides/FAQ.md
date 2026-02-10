@@ -48,7 +48,7 @@ Sage is built to be transparent and controllable:
 - 👁️ **Auditable operation** — traces/logging can be reviewed by operators
 - ⚙️ **Privacy controls** — you can disable ingestion/logging
 
-See **[Security &amp; Privacy](security_privacy.md)** for concrete details on what’s stored and how to disable it.
+See **[Security &amp; Privacy](../security/SECURITY_PRIVACY.md)** for concrete details on what’s stored and how to disable it.
 
 </details>
 
@@ -99,7 +99,7 @@ Sage uses a route-aware multi-model pipeline:
 - **Summaries:** `SUMMARY_MODEL` (default `openai-large`).
 - **Formatting:** `FORMATTER_MODEL` (default `qwen-coder`) for strict JSON formatting.
 
-You can change defaults in **[Configuration](CONFIGURATION.md)**.
+You can change defaults in **[Configuration](../reference/CONFIGURATION.md)**.
 
 </details>
 
@@ -253,6 +253,6 @@ Things to try:
 | **Relationship Tiers** | Interaction-based tiers (e.g., “Best Friend”) with emojis. |
 | **Traces** | Agent selector `reasoningText`, route metadata, and runtime diagnostics for auditing responses. |
 
-For a full breakdown (tables, retention, and deletion), see **[Security &amp; Privacy](security_privacy.md)**.
+For a full breakdown (tables, retention, and deletion), see **[Security &amp; Privacy](../security/../security/SECURITY_PRIVACY.md)**.
 
 </details>

@@ -12,6 +12,18 @@ This document is written for:
 > [!IMPORTANT]
 > Pollinations has gone through an auth migration: **token/key management moved to `enter.pollinations.ai`** and the old `auth.pollinations.ai` service is deprecated.
 
+```mermaid
+flowchart LR
+    classDef sage fill:#cce5ff,stroke:#004085,color:black
+    classDef api fill:#d4edda,stroke:#155724,color:black
+    classDef mgmt fill:#fff3cd,stroke:#856404,color:black
+
+    S[Sage Bot]:::sage --> T["gen.pollinations.ai/v1/chat/completions"]:::api
+    S --> I["gen.pollinations.ai/image/{prompt}"]:::api
+    S --> P["gen.pollinations.ai/account/profile"]:::mgmt
+    A[Admin] --> D["enter.pollinations.ai"]:::mgmt
+```
+
 ---
 
 ## 🧭 Quick navigation
@@ -199,7 +211,7 @@ Sage fetches raw image bytes from Pollinations:
 
 Sage appends query parameters:
 
-- `model` (default in code: `klein-large`)
+- `model` (default in code: `imagen-4`)
 - `seed` (random per request)
 - `nologo=true`
 - `key=sk_...` (only when BYOP/global key is available)
@@ -259,7 +271,7 @@ curl -sS https://gen.pollinations.ai/v1/chat/completions   -H "Authorization: Be
 ### 3) Image generation
 
 ```bash
-curl -L "https://gen.pollinations.ai/image/a%20cat%20wearing%20sunglasses?model=klein-large&seed=123&nologo=true&key=sk_YOUR_KEY"   --output test_image
+curl -L "https://gen.pollinations.ai/image/a%20cat%20wearing%20sunglasses?model=imagen-4&seed=123&nologo=true&key=sk_YOUR_KEY"   --output test_image
 ```
 
 ---

@@ -8,8 +8,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
-- **Dynamic Model Switching**: Sage now intelligently switches between `gemini-fast` (default) for speed and `kimi` (for coding/complex tasks).
-- **Search Prompt Optimization**: Improved robustness against context poisoning in search queries using strict system prompts and context isolation.
+- **World-Class Documentation** — Restructured all docs into `guides/`, `reference/`, `architecture/`, `operations/`, `security/` with 4 new documents (`MODELS.md`, `SEARCH.md`, `VOICE.md`, `DEPLOYMENT.md`), Mermaid diagrams, tech stack badges, and advanced GitHub Markdown features (footnotes, `<kbd>` tags, `diff` migration blocks).
+- **API Examples Reference** — Annotated `curl` examples for all Pollinations API interactions (`docs/reference/API_EXAMPLES.md`).
+
+### Changed
+
+- **Architecture Rename** — Refactored "Experts" → "ContextProviders" and "Routes" → "Agents" across the entire codebase for clarity.
+- **Model Strategy Update** — Default chat model switched from `gemini-fast` to `openai-large`. Route-based model chains updated with `kimi`, `qwen-coder`, `deepseek`, and `claude-fast` as candidates.
+- **Search Prompt Optimization** — Improved robustness against context poisoning using strict system prompts and context isolation.
+- **Legacy Cleanup** — Removed all regex fast-path routing; all intents now processed through the LLM router.
 
 ---
 
@@ -27,7 +34,7 @@ Sage reaches 1.0.0 as a fully agentic Discord companion with self-learning memor
 - Event ingestion that logs messages/voice activity, updates relationship data, and feeds rolling/channel summaries for context-aware replies.
 - Persistent memory primitives backed by Postgres: user profiles, channel summaries, voice sessions, relationship edges, admin audits, and agent traces.
 - Agent-selector + context-provider orchestration with trace storage to classify requests and enrich responses with memory, social, voice, and summary context.
-- Voice presence/session tracking with analytics helpers for “who is in voice” and “how long today” queries.
+- Voice presence/session tracking with analytics helpers for "who is in voice" and "how long today" queries.
 - Context budgeting and truncation controls to fit transcripts, summaries, and memory into LLM input limits.
 
 ### Changed

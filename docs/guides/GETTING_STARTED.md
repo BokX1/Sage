@@ -2,7 +2,12 @@
 
 Set up Sage from source — even if you’ve never built a Discord bot before.
 
-**Time:** ~15–20 minutes  
+<p align="center">
+  <img src="https://img.shields.io/badge/Time-~20%20min-blue?style=flat-square" alt="Time" />
+  <img src="https://img.shields.io/badge/Difficulty-Beginner-brightgreen?style=flat-square" alt="Difficulty" />
+  <img src="https://img.shields.io/badge/Steps-7-orange?style=flat-square" alt="Steps" />
+</p>
+
 **Outcome:** A running Sage instance + a working invite link + a configured Pollinations key (BYOP)
 
 ---
@@ -60,7 +65,7 @@ flowchart LR
 
 <a id="step-1-install-required-software"></a>
 
-## Step 1: Install Required Software
+## 1️⃣ Install Required Software
 
 ### 1.1 Install Node.js
 
@@ -99,7 +104,7 @@ Git downloads Sage’s code.
 
 <a id="step-2-create-your-discord-bot"></a>
 
-## Step 2: Create Your Discord Bot
+## 2️⃣ Create Your Discord Bot
 
 ### 2.1 Create a Discord Application
 
@@ -134,7 +139,7 @@ Click **Save Changes**.
 
 <a id="step-3-download-and-configure-sage"></a>
 
-## Step 3: Download and Configure Sage
+## 3️⃣ Download and Configure Sage
 
 ### 3.1 Download Sage
 
@@ -185,7 +190,7 @@ npm run onboard --   --discord-token "YOUR_TOKEN"   --discord-app-id "YOUR_APP_I
 
 <a id="step-4-start-the-database"></a>
 
-## Step 4: Start the Database
+## 4️⃣ Start the Database
 
 Make sure Docker Desktop is running, then:
 
@@ -215,13 +220,13 @@ CRAWL4AI_BASE_URL=http://127.0.0.1:11235
 OLLAMA_BASE_URL=http://127.0.0.1:11434
 ```
 
-For full details, see [operations/tool_stack.md](operations/tool_stack.md).
+For full details, see [operations/TOOL_STACK.md](../operations/TOOL_STACK.md).
 
 ---
 
 <a id="step-5-start-sage"></a>
 
-## Step 5: Start Sage
+## 5️⃣ Start Sage
 
 ```bash
 npm run dev
@@ -240,7 +245,7 @@ Keep this terminal window open.
 
 <a id="step-6-invite-sage-to-your-server"></a>
 
-## Step 6: Invite Sage to Your Server
+## 6️⃣ Invite Sage to Your Server
 
 ### 6.1 Generate the Invite Link
 
@@ -276,7 +281,7 @@ Keep this terminal window open.
 
 <a id="step-7-activate-your-api-key-byop"></a>
 
-## Step 7: Activate Your API Key (BYOP)
+## 7️⃣ Activate Your API Key (BYOP)
 
 Once Sage is in your server, set up your Pollinations API key:
 

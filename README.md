@@ -13,6 +13,15 @@
 </p>
 
 <p align="center">
+  <img src="https://img.shields.io/badge/TypeScript-3178C6?style=flat-square&logo=typescript&logoColor=white" alt="TypeScript" />
+  <img src="https://img.shields.io/badge/Node.js-339933?style=flat-square&logo=nodedotjs&logoColor=white" alt="Node.js" />
+  <img src="https://img.shields.io/badge/Discord.js-5865F2?style=flat-square&logo=discord&logoColor=white" alt="Discord.js" />
+  <img src="https://img.shields.io/badge/PostgreSQL-4169E1?style=flat-square&logo=postgresql&logoColor=white" alt="PostgreSQL" />
+  <img src="https://img.shields.io/badge/Prisma-2D3748?style=flat-square&logo=prisma&logoColor=white" alt="Prisma" />
+  <img src="https://img.shields.io/badge/Docker-2496ED?style=flat-square&logo=docker&logoColor=white" alt="Docker" />
+</p>
+
+<p align="center">
   <strong>Sage is a self-learning AI companion that grows with your community, observes social vibes, and delivers intelligent, context-aware responses.</strong>
 </p>
 
@@ -20,7 +29,7 @@
 > Sage is proprietary software (All Rights Reserved). Running, modifying, or distributing Sage requires written permission or a commercial license from the copyright owner. See LICENSE and COPYRIGHT.
 
 <p align="center">
-  <strong>🎮 <a href="docs/QUICKSTART.md">I just want to run the bot</a></strong> · <strong>💻 <a href="#-developer-quick-start">I'm a developer</a></strong>
+  <strong>🎮 <a href="docs/guides/QUICKSTART.md">I just want to run the bot</a></strong> · <strong>💻 <a href="#-developer-quick-start">I'm a developer</a></strong>
 </p>
 
 ---
@@ -110,18 +119,76 @@ flowchart LR
 
 ## ✨ Features
 
-| Feature | Description |
-| :--- | :--- |
-| 🧠 **Agentic Memory** | Builds long-term preferences and throttles updates for efficiency |
-| 👁️ **Vision Support** | Analyzes images (Vision) and creates art (Agentic Generation) |
-| 🔍 **Real-Time Search** | Uses route-aware search models for fresh facts, with complex tasks summarized into polished chat responses |
-| 🧰 **Tool Stack (Web + Dev)** | Tool-aware runtime with web search/scrape, GitHub/npm/wiki/Stack Overflow lookups, and optional local Ollama inference |
-| 📄 **File Analysis** | Share `.ts`, `.py`, `.txt` files for instant review or discussion |
-| 🎤 **Voice Companion (Beta)** | Text-to-speech companion with dynamic personas (BYOP required) |
-| 📊 **Voice Insights** | Tracks presence and duration, translating raw data into natural language |
-| 🤝 **Social Graph** | Visualizes relationship tiers and interaction patterns with emojis |
-| 🚀 **Self-Correcting** | Autonomous tool loop with error recovery for high reliability |
-| ⚡ **Powered by Pollinations.ai** | Fast, high-throughput multi-model AI access |
+<table>
+<tr>
+<td width="50%">
+
+### 🧠 Self-Learning Memory
+
+Builds long-term user profiles and throttles updates for efficiency. Every conversation makes Sage smarter.
+
+</td>
+<td width="50%">
+
+### 👁️ Vision + Image Generation
+
+Analyzes attached images with multimodal vision, generates art from prompts, and edits images in-thread.
+
+</td>
+</tr>
+<tr>
+<td width="50%">
+
+### 🔍 Real-Time Web Search
+
+Route-aware search models fetch live facts and summarize complex results into polished responses.
+
+</td>
+<td width="50%">
+
+### 🤖 Intelligent Routing
+
+LLM-powered agent selector classifies intent and routes to the optimal model per request.
+
+</td>
+</tr>
+<tr>
+<td width="50%">
+
+### 🧰 Tool Stack
+
+Web search, scraping, GitHub/npm/wiki lookups, Stack Overflow, and optional local Ollama inference.
+
+</td>
+<td width="50%">
+
+### 🎤 Voice Companion
+
+Text-to-speech companion with dynamic personas, presence tracking, and voice analytics (Beta).
+
+</td>
+</tr>
+<tr>
+<td width="50%">
+
+### 🤝 Social Graph
+
+Tracks relationship tiers (Best Friend → Stranger) and adapts tone based on interaction history.
+
+</td>
+<td width="50%">
+
+### 🚀 Self-Correcting Runtime
+
+Autonomous tool loop with critic + revision, error recovery, and canary-gated rollouts.
+
+</td>
+</tr>
+</table>
+
+<p align="center">
+  <sub>⚡ Powered by <a href="https://pollinations.ai">Pollinations.ai</a> — fast, high-throughput multi-model AI access</sub>
+</p>
 
 ---
 
@@ -141,13 +208,13 @@ flowchart LR
    - Run `/sage key set <your_key>` to activate Sage for the entire server.
 
 > [!TIP]
-> Prefer least-privilege permissions? Generate a custom invite URL in the Discord Developer Portal (see [Getting Started → Invite Bot](docs/GETTING_STARTED.md#step-6-invite-sage-to-your-server)).
+> Prefer least-privilege permissions? Generate a custom invite URL in the Discord Developer Portal (see [Getting Started → Invite Bot](docs/guides/GETTING_STARTED.md#step-6-invite-sage-to-your-server)).
 
 ### Option B: Self-host from source
 
-Follow **[📖 Getting Started](docs/GETTING_STARTED.md)** for a full walkthrough (Node.js, Docker/Postgres, onboarding wizard, and invite generation).
+Follow **[📖 Getting Started](docs/guides/GETTING_STARTED.md)** for a full walkthrough (Node.js, Docker/Postgres, onboarding wizard, and invite generation).
 
-For local-first tooling (SearXNG/Crawl4AI/Ollama) with hosted fallback, see **[🧰 Self-Hosted Tool Stack](docs/operations/tool_stack.md)**.
+For local-first tooling (SearXNG/Crawl4AI/Ollama) with hosted fallback, see **[🧰 Self-Hosted Tool Stack](docs/operations/TOOL_STACK.md)**.
 
 ---
 
@@ -156,7 +223,7 @@ For local-first tooling (SearXNG/Crawl4AI/Ollama) with hosted fallback, see **[�
 ## 💻 Developer Quick Start
 
 > [!NOTE]
-> This is a fast path. For a complete setup (including creating a Discord app), use [Getting Started](docs/GETTING_STARTED.md).
+> This is a fast path. For a complete setup (including creating a Discord app), use [Getting Started](docs/guides/GETTING_STARTED.md).
 
  ```bash
  git clone https://github.com/BokX1/Sage.git
@@ -231,7 +298,7 @@ PROFILE_UPDATE_INTERVAL=5  # Update user knowledge every 5 messages
 TRACE_ENABLED=true         # enable observability for admins
 ```
 
-See [Configuration Reference](docs/CONFIGURATION.md) for full details.
+See [Configuration Reference](docs/reference/CONFIGURATION.md) for full details.
 
 ---
 
@@ -241,19 +308,19 @@ See [Configuration Reference](docs/CONFIGURATION.md) for full details.
 
 | Document | Description |
 | :--- | :--- |
-| [📚 Documentation Hub](docs/README.md) | **Start here** — Complete navigation index |
-| [⚡ Quick Start](docs/QUICKSTART.md) | 5-minute setup for new users |
-| [📖 Getting Started](docs/GETTING_STARTED.md) | Complete beginner walkthrough |
-| [🎮 Commands](docs/COMMANDS.md) | Full slash command reference |
-| [❓ FAQ](docs/FAQ.md) | Frequently asked questions |
-| [🔧 Troubleshooting](docs/TROUBLESHOOTING.md) | Error resolution guide |
-| [⚙️ Configuration](docs/CONFIGURATION.md) | All settings explained |
-| [🤖 Agentic Architecture](docs/AGENTIC_ARCHITECTURE.md) | What makes Sage different |
+| [📚 Documentation Hub](docs/INDEX.md) | **Start here** — Complete navigation index |
+| [⚡ Quick Start](docs/guides/QUICKSTART.md) | 5-minute setup for new users |
+| [📖 Getting Started](docs/guides/GETTING_STARTED.md) | Complete beginner walkthrough |
+| [🎮 Commands](docs/guides/COMMANDS.md) | Full slash command reference |
+| [❓ FAQ](docs/guides/FAQ.md) | Frequently asked questions |
+| [🔧 Troubleshooting](docs/guides/TROUBLESHOOTING.md) | Error resolution guide |
+| [⚙️ Configuration](docs/reference/CONFIGURATION.md) | All settings explained |
+| [🤖 Agentic Architecture](docs/architecture/OVERVIEW.md) | What makes Sage different |
 | [🏗️ Architecture](docs/architecture/) | Technical deep-dives |
-| [🔒 Security & Privacy](docs/security_privacy.md) | Data handling and privacy |
-| [🐝 Pollinations](docs/POLLINATIONS.md) | AI provider details |
-| [🧰 Self-Hosted Tool Stack](docs/operations/tool_stack.md) | Local SearXNG/Crawl4AI/Ollama + hosted fallback setup |
-| [📋 Operations](docs/operations/runbook.md) | Deployment guide |
+| [🔒 Security & Privacy](docs/security/SECURITY_PRIVACY.md) | Data handling and privacy |
+| [🐝 Pollinations](docs/reference/POLLINATIONS.md) | AI provider details |
+| [🧰 Self-Hosted Tool Stack](docs/operations/TOOL_STACK.md) | Local SearXNG/Crawl4AI/Ollama + hosted fallback setup |
+| [📋 Operations](docs/operations/RUNBOOK.md) | Deployment guide |
 
 ---
 
@@ -269,4 +336,4 @@ See [Configuration Reference](docs/CONFIGURATION.md) for full details.
 | **Error Recovery** | Fails silently | Self-corrects with retry loops |
 | **Adaptation** | Static responses | Evolves with your community |
 
-[Learn more about Sage's Agentic Architecture →](docs/AGENTIC_ARCHITECTURE.md)
+[Learn more about Sage's Agentic Architecture →](docs/architecture/OVERVIEW.md)

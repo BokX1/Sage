@@ -27,15 +27,15 @@ A complete reference for Sage slash commands and interaction methods.
 
 | Goal | Command / Action |
 | :--- | :--- |
-| Check bot is alive | `/ping` |
-| Ping LLM provider (admin) | `/llm_ping` |
-| See relationship tiers | `/sage whoiswho [user]` |
-| Get Pollinations key link | `/sage key login` |
-| Set server-wide key (admin) | `/sage key set <api_key>` |
-| Check key status (admin) | `/sage key check` |
-| Clear server key (admin) | `/sage key clear` |
-| Join voice (beta) | `/join` |
-| Leave voice (beta) | `/leave` |
+| Check bot is alive | <kbd>/ping</kbd> |
+| Ping LLM provider (admin) | <kbd>/llm_ping</kbd> |
+| See relationship tiers | <kbd>/sage whoiswho [user]</kbd> |
+| Get Pollinations key link | <kbd>/sage key login</kbd> |
+| Set server-wide key (admin) | <kbd>/sage key set &lt;api_key&gt;</kbd> |
+| Check key status (admin) | <kbd>/sage key check</kbd> |
+| Clear server key (admin) | <kbd>/sage key clear</kbd> |
+| Join voice (beta) | <kbd>/join</kbd> |
+| Leave voice (beta) | <kbd>/leave</kbd> |
 
 ---
 
@@ -380,6 +380,6 @@ Test LLM connectivity. This command is restricted to admins.
 
 ## 📝 Related Documentation
 
-- [Configuration](CONFIGURATION.md) — Admin access + behavior settings
-- [BYOP Mode](BYOP_MODE.md) — BYOP setup guide
+- [Configuration](../reference/CONFIGURATION.md) — Admin access + behavior settings
+- [BYOP Mode](BYOP.md) — BYOP setup guide
 - [FAQ](FAQ.md) — Common questions

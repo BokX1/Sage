@@ -2,6 +2,12 @@
 
 All runtime settings are configured in `.env` and validated by `src/shared/config/env.ts`.
 
+<p align="center">
+  <img src="https://img.shields.io/badge/Variables-80+-blue?style=flat-square" alt="Variables" />
+  <img src="https://img.shields.io/badge/Validated-Zod-orange?style=flat-square" alt="Validated" />
+  <img src="https://img.shields.io/badge/Source-.env-green?style=flat-square" alt="Source" />
+</p>
+
 > [!TIP]
 > After changing `.env`, restart Sage so configuration is reloaded.
 
@@ -31,6 +37,15 @@ All runtime settings are configured in `.env` and validated by `src/shared/confi
 - Keep required values valid first.
 - Start with `.env.example` defaults, then tune only what your server needs.
 - For route/tool/critic behavior, adjust Agentic Runtime Governance settings.
+
+### 🎯 Priority Configuration (Most Impactful)
+
+| Priority | Variable | Why It Matters |
+| :--- | :--- | :--- |
+| 🔴 Required | `DISCORD_TOKEN`, `DATABASE_URL` | Bot won't start without these |
+| 🟠 High | `CHAT_MODEL`, `AUTOPILOT_MODE` | Core behavior and model selection |
+| 🟡 Medium | `ADMIN_USER_IDS_CSV`, `TRACE_ENABLED` | Observability and admin access |
+| 🟢 Optional | Context budgets, canary settings | Fine-tuning for advanced users |
 
 ---
 
@@ -423,9 +438,54 @@ REPLAY_GATE_MIN_ROUTE_SAMPLES=1
 
 ---
 
+## 🔄 Common Migration Examples
+
+When upgrading or changing your setup, use these as a diff reference:
+
+<details>
+<summary><strong>Switch from development to production</strong></summary>
+
+```diff
+-NODE_ENV=development
++NODE_ENV=production
+-LOG_LEVEL=debug
++LOG_LEVEL=info
+-DEV_GUILD_ID=123456789
++DEV_GUILD_ID=
+```
+
+</details>
+
+<details>
+<summary><strong>Enable canary rollouts</strong></summary>
+
+```diff
+-AGENTIC_CANARY_ENABLED=false
++AGENTIC_CANARY_ENABLED=true
++AGENTIC_CANARY_PERCENT=25
++AGENTIC_CANARY_MAX_FAILURE_RATE=0.30
+```
+
+</details>
+
+<details>
+<summary><strong>Enable full observability</strong></summary>
+
+```diff
+-TRACE_ENABLED=false
++TRACE_ENABLED=true
++LOG_LEVEL=info
++ADMIN_USER_IDS_CSV=YOUR_DISCORD_ID
+```
+
+</details>
+
+---
+
 ## 🔗 Related Documentation
 
-- [Getting Started](GETTING_STARTED.md)
+- [Getting Started](../guides/GETTING_STARTED.md)
+- [Model Reference](MODELS.md)
 - [Pollinations Integration](POLLINATIONS.md)
-- [Memory System](architecture/memory_system.md)
-- [Operations Runbook](operations/runbook.md)
+- [Memory System](../architecture/MEMORY.md)
+- [Operations Runbook](../operations/RUNBOOK.md)
