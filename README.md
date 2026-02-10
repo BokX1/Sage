@@ -1,189 +1,272 @@
 <p align="center">
-  <img src="https://img.shields.io/badge/Sage-Discord%20Agentic%20Runtime-2d5016?style=for-the-badge&labelColor=4a7c23" alt="Sage" />
+  <img src="https://img.shields.io/badge/🌿-Sage-2d5016?style=for-the-badge&labelColor=4a7c23" alt="Sage Logo" />
 </p>
 
 <h1 align="center">Sage</h1>
-<h3 align="center">Agentic Discord runtime with routing, tools, critic loops, and replay gates</h3>
+<h3 align="center">Fully Agentic Intelligence for Discord</h3>
 
 <p align="center">
+  <a href="https://pollinations.ai"><img src="https://img.shields.io/badge/Built%20with-Pollinations.ai-8a2be2?style=for-the-badge&logo=data:image/svg+xml,%3Csvg%20xmlns%3D%22http://www.w3.org/2000/svg%22%20viewBox%3D%220%200%20124%20124%22%3E%3Ccircle%20cx%3D%2262%22%20cy%3D%2262%22%20r%3D%2262%22%20fill%3D%22%23ffffff%22/%3E%3C/svg%3E&logoColor=white&labelColor=6a0dad" alt="Built with Pollinations" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Proprietary-red?style=for-the-badge" alt="License" /></a>
   <a href="https://github.com/BokX1/Sage/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/BokX1/Sage/ci.yml?style=for-the-badge&label=Build" alt="CI Status" /></a>
   <img src="https://img.shields.io/badge/Version-1.0.0-green?style=for-the-badge" alt="Version" />
 </p>
 
+<p align="center">
+  <strong>Sage is a self-learning AI companion that grows with your community, observes social vibes, and delivers intelligent, context-aware responses.</strong>
+</p>
+
 > [!IMPORTANT]
-> Sage is proprietary software (All Rights Reserved). Running, modifying, or distributing Sage requires written permission or a commercial license from the copyright owner. See `LICENSE` and `COPYRIGHT`.
+> Sage is proprietary software (All Rights Reserved). Running, modifying, or distributing Sage requires written permission or a commercial license from the copyright owner. See LICENSE and COPYRIGHT.
+
+<p align="center">
+  <strong>🎮 <a href="docs/QUICKSTART.md">I just want to run the bot</a></strong> · <strong>💻 <a href="#-developer-quick-start">I'm a developer</a></strong>
+</p>
 
 ---
 
-## What Sage Is
+## 🧭 Quick navigation
 
-Sage is a Discord bot runtime that routes each turn to specialized paths (`chat`, `coding`, `search`, `creative`), then executes bounded agentic workflows with context providers, tool calls, and critic-based quality control.
-
-Core behaviors in the current codebase:
-
-- Route-aware orchestration with search-mode selection (`simple` or `complex`)
-- Context graph execution with canary controls and safe fallback
-- Bounded tool-call loop with policy gates, blocklists, and per-turn cache
-- Tool evidence hard-gate for freshness/source-sensitive turns
-- Critic loop with revision, targeted redispatch, and optional tool-backed revisions
-- Trace persistence, replay scoring, and release gate checks
+- [🎯 What is Sage?](#what-is-sage)
+- [🏛️ High-Level Architecture](#high-level-architecture)
+- [✨ Features](#features)
+- [🚀 Getting Started](#getting-started)
+- [💻 Developer Quick Start](#developer-quick-start)
+- [🛠️ Configuration](#configuration)
+- [📚 Documentation](#documentation)
+- [💚 Why Choose Sage?](#why-choose-sage)
 
 ---
 
-## Built-in Runtime Tools
+<a id="what-is-sage"></a>
 
-Sage registers these agentic tools at bootstrap:
+## 🎯 What is Sage?
 
-- `get_current_datetime`
-- `web_search`
-- `web_scrape`
-- `github_repo_lookup`
-- `github_file_lookup`
-- `npm_package_lookup`
-- `wikipedia_lookup`
-- `stack_overflow_search`
-- `local_llm_models`
-- `local_llm_infer`
+Sage is a **fully agentic Discord companion** that goes beyond simple chat commands. Unlike traditional bots, Sage is designed to be a friendly member of your community who **listens and evolves alongside you**:
 
-Provider/fallback support includes:
+- 🧠 **Self-Learning Memory**: Remembers past conversations to build personalized user contexts.
+- 👥 **Socially Aware**: Understands relationship tiers (Best Friend, Acquaintance) and interaction "vibes."
+- 👁️ **Vision + Image Generation**: Ingests images for visual understanding, and can generate/edit images from prompts.
+- 📄 **Knowledge Base**: Ingests code files and text documents to provide high-context analysis.
+- 💬 **Intelligent Routing**: Uses a high-precision LLM classifier to resolve pronouns and context.
+- ⚡ **Adaptive Models**: Uses route-aware model resolution with `openai-large` as the chat baseline and healthy fallbacks (for example `kimi`, `claude-fast`) based on intent and capability needs.
 
-- Search: Tavily, Exa, SearXNG, Pollinations
-- Scrape: Firecrawl, Crawl4AI, Jina reader, raw fetch fallback
-- Local inference: Ollama
+**Perfect for:** Coding communities • Gaming groups • Research teams • Any Discord that wants a bot that "gets it."
 
 ---
 
-## Quick Start
+<a id="high-level-architecture"></a>
 
-### Use the public bot
+## 🏛️ High-Level Architecture
 
-- Follow `docs/QUICKSTART.md`
-- For BYOP key flow, use `/sage key login` then `/sage key set <key>`
+```mermaid
+flowchart LR
+    classDef user fill:#f96,stroke:#333,stroke-width:2px,color:black
+    classDef bot fill:#9d9,stroke:#333,stroke-width:2px,color:black
+    classDef route fill:#b9f,stroke:#333,stroke-width:2px,color:black
+    classDef provider fill:#fff,stroke:#333,stroke-width:1px,stroke-dasharray: 5 5,color:black
+    classDef runtime fill:#ff9,stroke:#333,stroke-width:2px,color:black
 
-### Self-host from source
+    U((User)):::user -->|"Message / reply / mention"| B[Sage Bot]:::bot
+    B --> R{Agent Selector}:::route
+    R --> C[Canary + Policy]:::runtime
 
-```bash
-git clone https://github.com/BokX1/Sage.git
-cd Sage
-npm ci
-npm run onboard
-docker compose -f config/ci/docker-compose.yml up -d db
-npm run db:push
-npm run dev
+    subgraph ContextProviders
+        direction TB
+        M[Memory]:::provider
+        G[SocialGraph]:::provider
+        V[VoiceAnalytics]:::provider
+        S[Summarizer]:::provider
+    end
+
+    C -->|agentic path| X[Context Graph Executor]:::runtime
+    C -->|fallback path| Y[Provider Runner]:::runtime
+    X --> M
+    X --> G
+    X --> V
+    X --> S
+    Y --> M
+    Y --> G
+    Y --> V
+    Y --> S
+
+    M --> K[Context Builder]:::runtime
+    G --> K
+    V --> K
+    S --> K
+
+    K --> L[Model Resolver + LLM]:::route
+    L --> T{Tool or Verify}:::runtime
+    T --> Q[Critic + Revision]:::runtime
+    Q --> B
+    B -->|"Reply / files"| U
+
+    B -->|"Voice via slash commands"| VC[(Voice Channel)]:::user
 ```
 
-Expected startup logs:
+---
+
+<a id="features"></a>
+
+## ✨ Features
+
+| Feature | Description |
+| :--- | :--- |
+| 🧠 **Agentic Memory** | Builds long-term preferences and throttles updates for efficiency |
+| 👁️ **Vision Support** | Analyzes images (Vision) and creates art (Agentic Generation) |
+| 🔍 **Real-Time Search** | Uses route-aware search models for fresh facts, with complex tasks summarized into polished chat responses |
+| 🧰 **Tool Stack (Web + Dev)** | Tool-aware runtime with web search/scrape, GitHub/npm/wiki/Stack Overflow lookups, and optional local Ollama inference |
+| 📄 **File Analysis** | Share `.ts`, `.py`, `.txt` files for instant review or discussion |
+| 🎤 **Voice Companion (Beta)** | Text-to-speech companion with dynamic personas (BYOP required) |
+| 📊 **Voice Insights** | Tracks presence and duration, translating raw data into natural language |
+| 🤝 **Social Graph** | Visualizes relationship tiers and interaction patterns with emojis |
+| 🚀 **Self-Correcting** | Autonomous tool loop with error recovery for high reliability |
+| ⚡ **Powered by Pollinations.ai** | Fast, high-throughput multi-model AI access |
+
+---
+
+<a id="getting-started"></a>
+
+## 🚀 Getting Started
+
+### Option A: Use the public bot
+
+1. **Invite Sage**
+
+   [**Click here to invite Sage to your server**](https://discord.com/oauth2/authorize?client_id=1462117382398017667&scope=bot%20applications.commands&permissions=8)
+
+2. **Activate BYOP (recommended for higher limits)**
+
+   - Run `/sage key login` to get your Pollinations key.
+   - Run `/sage key set <your_key>` to activate Sage for the entire server.
+
+> [!TIP]
+> Prefer least-privilege permissions? Generate a custom invite URL in the Discord Developer Portal (see [Getting Started → Invite Bot](docs/GETTING_STARTED.md#step-6-invite-sage-to-your-server)).
+
+### Option B: Self-host from source
+
+Follow **[📖 Getting Started](docs/GETTING_STARTED.md)** for a full walkthrough (Node.js, Docker/Postgres, onboarding wizard, and invite generation).
+
+For local-first tooling (SearXNG/Crawl4AI/Ollama) with hosted fallback, see **[🧰 Self-Hosted Tool Stack](docs/operations/tool_stack.md)**.
+
+---
+
+<a id="developer-quick-start"></a>
+
+## 💻 Developer Quick Start
+
+> [!NOTE]
+> This is a fast path. For a complete setup (including creating a Discord app), use [Getting Started](docs/GETTING_STARTED.md).
+
+ ```bash
+ git clone https://github.com/BokX1/Sage.git
+ cd Sage
+ npm ci
+ npm run onboard
+ docker compose -f config/ci/docker-compose.yml up -d db
+ npm run db:push
+ npm run check
+ npm run dev
+ ```
+
+Optional local tool stack:
+
+```bash
+docker compose -f config/self-host/docker-compose.tools.yml up -d
+```
+
+When Sage starts, you should see:
 
 ```text
 [info] Logged in as Sage#1234
 [info] Ready!
 ```
 
----
+### Quality gate
 
-## Production Start
+```bash
+npm run check
+```
+
+`npm run check` runs lint + typecheck + tests and is the required pre-merge gate.
+
+### Agentic release gate
+
+```bash
+npm run agentic:replay-gate
+```
+
+This evaluates recent trace outcomes and enforces replay thresholds before promotion.
+
+### Production run
 
 ```bash
 npm run build
 npm start
 ```
 
+## 🗂️ Project Structure
+
+ ```text
+ src/                 # Bot runtime, handlers, core logic, scripts
+ tests/               # Vitest test suites
+ docs/                # User, operations, and architecture documentation
+ prisma/              # Prisma schema (synced via `prisma db push`)
+ config/ci/           # Shared lint, test, TypeScript, Docker CI config
+ config/self-host/    # Optional local tool-stack services (SearXNG/Crawl4AI/Ollama)
+ ```
+
 ---
 
-## Optional Local Tool Stack (Self-host-first)
+<a id="configuration"></a>
 
-Start local tool services:
+## 🛠️ Configuration
 
-```bash
-docker compose -f config/self-host/docker-compose.tools.yml up -d
-```
-
-Recommended `.env` profile:
+Sage is optimized for community interaction out of the box.
 
 ```env
-TOOL_WEB_SEARCH_PROVIDER_ORDER=searxng,tavily,exa,pollinations
-TOOL_WEB_SCRAPE_PROVIDER_ORDER=crawl4ai,firecrawl,jina,raw_fetch
-SEARXNG_BASE_URL=http://127.0.0.1:8080
-CRAWL4AI_BASE_URL=http://127.0.0.1:11235
-OLLAMA_BASE_URL=http://127.0.0.1:11434
+# behavior
+AUTOPILOT_MODE=manual      # Recommended for stability
+PROFILE_UPDATE_INTERVAL=5  # Update user knowledge every 5 messages
+TRACE_ENABLED=true         # enable observability for admins
 ```
 
-Validate tool wiring:
-
-```bash
-npm run tools:smoke
-```
-
-Full guide: `docs/operations/tool_stack.md`
+See [Configuration Reference](docs/CONFIGURATION.md) for full details.
 
 ---
 
-## Developer Commands
+<a id="documentation"></a>
 
-```bash
-npm run dev                 # run in watch mode (ts-node + nodemon)
-npm run build               # compile TypeScript
-npm start                   # run compiled bot
-npm run check               # lint + typecheck + tests
-npm run test                # run vitest suite
-npm run db:push             # sync Prisma schema
-npm run db:reset            # reset DB and re-sync schema
-npm run tools:smoke         # smoke-test tool providers
-npm run agentic:replay-gate # replay quality gate
-npm run release:agentic-check
-```
+## 📚 Documentation
 
----
-
-## Configuration
-
-Main runtime config is in `.env` and validated by `src/shared/config/env.ts`.
-
-Start from `.env.example`, then tune:
-
-- Route/tool/critic policy: `AGENTIC_*`
-- Context and output budgets: `CONTEXT_*`, `*_MAX_OUTPUT_TOKENS`
-- Tool provider order/timeouts: `TOOL_WEB_*`, `SEARXNG_*`, `FIRECRAWL_*`, `CRAWL4AI_*`, `OLLAMA_*`
-
-Reference: `docs/CONFIGURATION.md`
+| Document | Description |
+| :--- | :--- |
+| [📚 Documentation Hub](docs/README.md) | **Start here** — Complete navigation index |
+| [⚡ Quick Start](docs/QUICKSTART.md) | 5-minute setup for new users |
+| [📖 Getting Started](docs/GETTING_STARTED.md) | Complete beginner walkthrough |
+| [🎮 Commands](docs/COMMANDS.md) | Full slash command reference |
+| [❓ FAQ](docs/FAQ.md) | Frequently asked questions |
+| [🔧 Troubleshooting](docs/TROUBLESHOOTING.md) | Error resolution guide |
+| [⚙️ Configuration](docs/CONFIGURATION.md) | All settings explained |
+| [🤖 Agentic Architecture](docs/AGENTIC_ARCHITECTURE.md) | What makes Sage different |
+| [🏗️ Architecture](docs/architecture/) | Technical deep-dives |
+| [🔒 Security & Privacy](docs/security_privacy.md) | Data handling and privacy |
+| [🐝 Pollinations](docs/POLLINATIONS.md) | AI provider details |
+| [🧰 Self-Hosted Tool Stack](docs/operations/tool_stack.md) | Local SearXNG/Crawl4AI/Ollama + hosted fallback setup |
+| [📋 Operations](docs/operations/runbook.md) | Deployment guide |
 
 ---
 
-## Architecture Docs
+<a id="why-choose-sage"></a>
 
-- High-level: `docs/AGENTIC_ARCHITECTURE.md`
-- Runtime pipeline: `docs/architecture/pipeline.md`
-- Memory system: `docs/architecture/memory_system.md`
-- Database schema: `docs/architecture/database.md`
-- Operations runbook: `docs/operations/runbook.md`
-- Docs hub: `docs/README.md`
+## 💚 Why Choose Sage?
 
----
+| Feature | Traditional Bots | Sage |
+| :--- | :--- | :--- |
+| **Memory** | Forgets after each message | Remembers and learns over time |
+| **Social Awareness** | Treats all users the same | Understands relationships and vibes |
+| **Context** | Limited to current message | Full conversation + user history |
+| **Error Recovery** | Fails silently | Self-corrects with retry loops |
+| **Adaptation** | Static responses | Evolves with your community |
 
-## Project Structure
-
-```text
-src/                 bot runtime and agentic core
-src/core/agentRuntime route orchestration, tool loop, critic, tracing
-tests/               unit and integration tests (Vitest)
-prisma/              Prisma schema and DB model
-docs/                user, ops, and architecture documentation
-config/              CI + self-host tool stack configs
-```
-
----
-
-## Security and Data
-
-See:
-
-- `docs/security_privacy.md`
-- `SECURITY.md`
-
----
-
-## Contributing and Conduct
-
-- `CONTRIBUTING.md`
-- `CODE_OF_CONDUCT.md`
+[Learn more about Sage's Agentic Architecture →](docs/AGENTIC_ARCHITECTURE.md)
