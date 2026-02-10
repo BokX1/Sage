@@ -20,7 +20,7 @@ This project follows **Semantic Versioning (SemVer)**: `MAJOR.MINOR.PATCH`.
 
 - Update `CHANGELOG.md` for every user-facing change.
 - Group entries by version and date.
-- Note any migrations, configuration changes, or breaking behavior.
+- Note any database schema changes, configuration changes, or breaking behavior.
 
 ---
 
@@ -40,7 +40,7 @@ This project follows **Semantic Versioning (SemVer)**: `MAJOR.MINOR.PATCH`.
    - `npm run agentic:replay-gate`
    - `npm pack`
 
-3. **Review database migrations** (if applicable)
+3. **Review database schema changes** (if applicable)
    - Document required steps in `CHANGELOG.md` and/or docs.
 
 4. **Confirm configuration changes**
@@ -56,7 +56,7 @@ This project follows **Semantic Versioning (SemVer)**: `MAJOR.MINOR.PATCH`.
 
 ```bash
 npm ci
-NODE_ENV=test DISCORD_TOKEN=test-token DISCORD_APP_ID=test-app-id DATABASE_URL=postgresql://postgres:password@127.0.0.1:5432/sage?schema=public REPLAY_GATE_REQUIRE_DATA=0 npx prisma migrate deploy
+NODE_ENV=test DISCORD_TOKEN=test-token DISCORD_APP_ID=test-app-id DATABASE_URL=postgresql://postgres:password@127.0.0.1:5432/sage?schema=public REPLAY_GATE_REQUIRE_DATA=0 npx prisma db push
 NODE_ENV=test DISCORD_TOKEN=test-token DISCORD_APP_ID=test-app-id DATABASE_URL=postgresql://postgres:password@127.0.0.1:5432/sage?schema=public REPLAY_GATE_REQUIRE_DATA=0 npm run release:agentic-check
 ```
 
@@ -69,7 +69,7 @@ $env:DISCORD_TOKEN="test-token"
 $env:DISCORD_APP_ID="test-app-id"
 $env:DATABASE_URL="postgresql://postgres:password@127.0.0.1:5432/sage?schema=public"
 $env:REPLAY_GATE_REQUIRE_DATA="0"
-npx prisma migrate deploy
+npx prisma db push
 npm run release:agentic-check
 ```
 

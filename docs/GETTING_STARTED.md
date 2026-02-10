@@ -196,7 +196,7 @@ docker compose -f config/ci/docker-compose.yml up -d db
 Wait ~10 seconds, then run:
 
 ```bash
-npm run db:migrate
+npx prisma db push
 ```
 
 ---

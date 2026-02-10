@@ -59,8 +59,9 @@ In Sage, "agentic" means the runtime can:
 
 - Critic scoring is controlled by `AGENTIC_CRITIC_*`.
 - If quality is below threshold, Sage revises with critic instructions.
-- Search route can run an additional search refresh when issues indicate staleness/factual risk.
-- When search mode is `complex`, runtime runs a second chat synthesis pass (`search -> chat summary`) before returning the final answer.
+- For `chat` and `coding`, revisions are new LLM rewrite passes; the revised draft replaces the previous draft (no merging).
+- Search route can run an additional search refresh when issues indicate staleness/factual risk and uses guardrails to require source grounding for key claims.
+- When search mode is `complex`, runtime runs a second chat synthesis pass (`search -> chat summary`) before returning the final answer (this is where multiple search findings can be reconciled).
 - Non-search routes can redispatch targeted context providers before rewrite.
 
 ### 5) Model Policy
@@ -143,7 +144,7 @@ When thresholds are breached, runtime automatically cools down to safer provider
 
 `npm run agentic:replay-gate` evaluates recent traces and enforces score/success thresholds before promotion.
 
-CI release-readiness runs this gate after migrations.
+CI release-readiness runs this gate after schema sync (for example: `npx prisma db push`).
 
 ---
 

@@ -107,6 +107,7 @@ Sage can fetch live information from the web using Search-Augmented Generation. 
 3. In `simple` mode, Sage returns search output directly.
 4. In `complex` mode, Sage runs `search -> chat summarization` so the final answer is cleaner and easier to read.
 5. If router is uncertain, Sage falls back to `complex` mode for consistency.
+6. Search answers include source URLs, and time-sensitive answers may include a `Checked on: YYYY-MM-DD` line.
 
 > [!TIP]
 > Search works best for factual, time-sensitive queries. For conceptual explanations, Sage uses its built-in knowledge.

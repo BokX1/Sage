@@ -120,7 +120,7 @@ Search execution mode (`simple` vs `complex`) is selected turn-by-turn by the ro
 | `AGENTIC_TOOL_BLOCKLIST_CSV` | Comma-separated blocked tools | `join_voice_channel,leave_voice_channel` |
 | `AGENTIC_CRITIC_ENABLED` | Enable bounded critic loops | `true` |
 | `AGENTIC_CRITIC_MIN_SCORE` | Critic threshold before revision | `0.78` |
-| `AGENTIC_CRITIC_MAX_LOOPS` | Max critic revisions | `1` |
+| `AGENTIC_CRITIC_MAX_LOOPS` | Max critic revisions | `2` |
 | `AGENTIC_TENANT_POLICY_JSON` | JSON registry for `default` and per-guild overrides | `{}` |
 
 ### Canary + Rollback
@@ -292,7 +292,7 @@ AGENTIC_TOOL_ALLOW_HIGH_RISK=false
 AGENTIC_TOOL_BLOCKLIST_CSV=join_voice_channel,leave_voice_channel
 AGENTIC_CRITIC_ENABLED=true
 AGENTIC_CRITIC_MIN_SCORE=0.78
-AGENTIC_CRITIC_MAX_LOOPS=1
+AGENTIC_CRITIC_MAX_LOOPS=2
 AGENTIC_CANARY_ENABLED=true
 AGENTIC_CANARY_PERCENT=100
 AGENTIC_CANARY_ROUTE_ALLOWLIST_CSV=chat,coding,search,creative

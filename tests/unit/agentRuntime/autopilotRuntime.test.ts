@@ -198,7 +198,10 @@ describe('Autopilot Runtime', () => {
     mockSearchLLM.chat
       .mockRejectedValueOnce(new Error('Pollinations Model Error: gemini-search failed'))
       .mockResolvedValueOnce({
-        content: 'Recovered via perplexity-fast with sources.',
+        content:
+          'Recovered via perplexity-fast with sources. ' +
+          'Source URLs: https://example.com/a https://example.com/b ' +
+          'Checked on: 2026-02-10',
       });
 
     const result = await runChatTurn({
@@ -214,7 +217,11 @@ describe('Autopilot Runtime', () => {
       isVoiceActive: true,
     });
 
-    expect(result.replyText).toBe('Recovered via perplexity-fast with sources.');
+    expect(result.replyText).toBe(
+      'Recovered via perplexity-fast with sources. ' +
+        'Source URLs: https://example.com/a https://example.com/b ' +
+        'Checked on: 2026-02-10',
+    );
     expect(mockSearchLLM.chat).toHaveBeenCalledTimes(2);
     const firstAttempt = mockSearchLLM.chat.mock.calls[0]?.[0] as { model: string; timeout: number };
     const secondAttempt = mockSearchLLM.chat.mock.calls[1]?.[0] as { model: string; timeout: number };

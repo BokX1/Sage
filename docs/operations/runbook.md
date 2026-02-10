@@ -40,7 +40,7 @@ npm run agentic:replay-gate  # Replay quality gate
 ### Database operations
 
 ```bash
-npm run db:migrate       # Apply database changes
+npx prisma db push       # Sync schema (no migrations)
 npm run db:studio        # Open visual database browser
 ```
 
@@ -107,15 +107,15 @@ See [Configuration Reference](../CONFIGURATION.md) for all options.
 
 ## 🗄️ Database Management
 
-### Apply migrations
+### Sync schema (no migrations)
 
 After updates or a fresh install:
 
 ```bash
-npm run db:migrate
+npx prisma db push
 ```
 
-**What it does:** Creates or updates database tables to match Sage’s requirements.
+**What it does:** Syncs database tables to match `prisma/schema.prisma` without generating/applying migrations.
 
 ### Browse data
 
@@ -130,9 +130,15 @@ npm run db:studio
 ⚠️ **Warning:** This deletes all data.
 
 ```bash
+npx prisma db push --force-reset --accept-data-loss
+```
+
+If you are using the Docker Compose Postgres volume and want to wipe it entirely:
+
+```bash
 docker compose -f config/ci/docker-compose.yml down -v   # Remove containers and volumes
 docker compose -f config/ci/docker-compose.yml up -d db  # Start fresh database
-npm run db:migrate                                       # Recreate tables
+npx prisma db push                                       # Recreate tables
 ```
 
 ---

@@ -155,16 +155,16 @@ Follow **[📖 Getting Started](docs/GETTING_STARTED.md)** for a full walkthroug
 > [!NOTE]
 > This is a fast path. For a complete setup (including creating a Discord app), use [Getting Started](docs/GETTING_STARTED.md).
 
-```bash
-git clone https://github.com/BokX1/Sage.git
-cd Sage
-npm ci
-npm run onboard
-docker compose -f config/ci/docker-compose.yml up -d db
-npm run db:migrate
-npm run check
-npm run dev
-```
+ ```bash
+ git clone https://github.com/BokX1/Sage.git
+ cd Sage
+ npm ci
+ npm run onboard
+ docker compose -f config/ci/docker-compose.yml up -d db
+ npx prisma db push
+ npm run check
+ npm run dev
+ ```
 
 When Sage starts, you should see:
 
@@ -191,13 +191,13 @@ This evaluates recent trace outcomes and enforces replay thresholds before promo
 
 ## 🗂️ Project Structure
 
-```text
-src/                 # Bot runtime, handlers, core logic, scripts
-tests/               # Vitest test suites
-docs/                # User, operations, and architecture documentation
-prisma/              # Prisma schema and migrations
-config/ci/           # Shared lint, test, TypeScript, Docker CI config
-```
+ ```text
+ src/                 # Bot runtime, handlers, core logic, scripts
+ tests/               # Vitest test suites
+ docs/                # User, operations, and architecture documentation
+ prisma/              # Prisma schema (synced via `prisma db push`)
+ config/ci/           # Shared lint, test, TypeScript, Docker CI config
+ ```
 
 ---
 

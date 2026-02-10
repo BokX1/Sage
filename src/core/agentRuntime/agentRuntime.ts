@@ -36,6 +36,7 @@ import { renderContextPacketContext } from './blackboard';
 import { evaluateDraftWithCritic } from './criticAgent';
 import {
   normalizeCriticConfig,
+  shouldForceSearchRefreshFromDraft,
   shouldRefreshSearchFromCritic,
   shouldRequestRevision,
   shouldRunCritic,
@@ -576,6 +577,8 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
         .join('\n');
       contextNotes.push(`Recent conversation:\n${history}`);
     }
+    // Help search models anchor "right now/latest" without guessing.
+    contextNotes.push(`Current date: ${new Date().toISOString().slice(0, 10)}`);
     const usablePriorDraft = cleanDraftText(params.priorDraft);
     if (usablePriorDraft) {
       contextNotes.push(`Previous draft to improve:\n${usablePriorDraft}`);
@@ -588,6 +591,10 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
       contextNotes.length > 0
         ? `User request:\n${userText}\n\n${contextNotes.join('\n\n')}`
         : userText;
+    const isTimeSensitiveQuery =
+      /(latest|today|current|now|right now|as of|recent|fresh|newest|release|version|price|weather|news|score)/i.test(
+        userText,
+      );
 
     const searchGuardrailModels = userTextHasLink
       ? [...GUARDED_SEARCH_MODELS, SEARCH_SCRAPER_MODEL]
@@ -642,10 +649,23 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
       guardrailAttemptOrder: attemptOrder,
     });
 
-    const searchSystemPrompt =
-      'You are a search-focused assistant. Answer using the freshest reliable information available. ' +
-      'When possible, include concise source cues (site/domain names or URLs). If uncertain, say so directly. ' +
-      'Return a direct plain-text answer only.';
+    const searchSystemPrompt = `You are a search-focused assistant. Answer using the freshest reliable information available.
+
+Hard requirements:
+- Return plain text only.
+- Include at least one source URL (https://...) supporting the main factual claim.
+- Prefer primary sources (official sites) over third-party posts.
+- Answer only what the user asked; avoid extra details unless requested.
+- If you include a specific version number/date/time, include a source URL that explicitly contains it and quote the exact value when possible.
+- For "latest" claims, tie "latest" to what is shown on the cited source(s); if you cannot definitively confirm, qualify the claim and say how to verify.
+- For software versions/releases, prefer stable machine-readable sources (e.g., official JSON release indexes) and include the relevant field names/values when possible.
+- If you cannot find a reliable source URL for a claim, explicitly say so and avoid overconfident assertions.
+- If the question is time-sensitive (latest/current/now/today) OR the user asks for sources/citations/links, include: "Checked on: YYYY-MM-DD" using the current date provided.
+
+Output format:
+Answer: <your answer>
+Source URLs: <one or more URLs>
+Checked on: <YYYY-MM-DD> (only when required)`;
     const searchMessages: LLMChatMessage[] = [
       {
         role: 'system',
@@ -684,7 +704,79 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
           timeoutMs: attemptTimeoutMs,
           status: 'success',
         });
-        return searchResponse.content;
+        const content = searchResponse.content ?? '';
+        // Guardrail: when possible, require at least one source URL from the search model.
+        // If a model returns a clean answer without any URLs, try the next candidate (bounded).
+        const hasSourceUrl = /https?:\/\/[^\s<>()]+/i.test(content);
+        if (!hasSourceUrl && attemptIndex < attemptOrder.length - 1) {
+          modelResolutionEvents.push({
+            phase: params.phase,
+            iteration: params.iteration,
+            route: 'search',
+            selected: attemptModel,
+            purpose: 'search_guardrail_attempt',
+            attempt: attemptIndex + 1,
+            attemptsTotal: attemptOrder.length,
+            timeoutMs: attemptTimeoutMs,
+            status: 'rejected_missing_sources',
+          });
+          continue;
+        }
+
+        // Freshness guardrail: for "latest/current/now" requests, require a check date and multiple sources.
+        if (isTimeSensitiveQuery) {
+          const hasCheckedOn = /checked on:\s*\d{4}-\d{2}-\d{2}/i.test(content);
+          const urlMatches = content.match(/https?:\/\/[^\s<>()]+/gi) ?? [];
+          const uniqueUrlCount = new Set(urlMatches.map((url) => url.toLowerCase())).size;
+          if ((!hasCheckedOn || uniqueUrlCount < 2) && attemptIndex < attemptOrder.length - 1) {
+            modelResolutionEvents.push({
+              phase: params.phase,
+              iteration: params.iteration,
+              route: 'search',
+              selected: attemptModel,
+              purpose: 'search_guardrail_attempt',
+              attempt: attemptIndex + 1,
+              attemptsTotal: attemptOrder.length,
+              timeoutMs: attemptTimeoutMs,
+              status: 'rejected_weak_freshness_grounding',
+              details: {
+                hasCheckedOn,
+                uniqueUrlCount,
+              },
+            });
+            continue;
+          }
+        }
+
+        // Dual-search cross-check for time-sensitive queries in complex mode.
+        // This improves correctness by giving the summarizer conflicting/confirming evidence to reconcile.
+        if (isTimeSensitiveQuery && searchExecutionMode === 'complex' && attemptOrder.length > 1) {
+          const secondaryModel = attemptOrder.find((model) => model !== attemptModel) ?? null;
+          if (secondaryModel) {
+            try {
+              const secondaryClient = createLLMClient('pollinations', { chatModel: secondaryModel });
+              const secondaryResponse = await secondaryClient.chat({
+                messages: searchMessages,
+                model: secondaryModel,
+                apiKey,
+                temperature: searchTemperature,
+                timeout: attemptTimeoutMs,
+              });
+              const secondaryContent = secondaryResponse.content ?? '';
+              const secondaryHasUrl = /https?:\/\/[^\s<>()]+/i.test(secondaryContent);
+              if (secondaryHasUrl) {
+                return `Primary search findings:\n${content}\n\nSecondary cross-check:\n${secondaryContent}`;
+              }
+            } catch (secondaryError) {
+              logger.warn(
+                { error: secondaryError, traceId, phase: params.phase, iteration: params.iteration },
+                'Secondary search cross-check failed; returning primary search findings',
+              );
+            }
+          }
+        }
+
+        return content;
       } catch (error) {
         lastError = error;
         recordModelOutcome({
@@ -729,6 +821,7 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
     iteration?: number;
     searchDraft: string;
     summaryReason?: string;
+    priorDraft?: string;
   }): Promise<string> => {
     const buildSearchFindingsBlob = (draft: string): string => {
       const baseFindings = draft.trim();
@@ -750,6 +843,7 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
     };
 
     const searchFindingsBlob = buildSearchFindingsBlob(params.searchDraft);
+    const priorDraftForComparison = cleanDraftText(params.priorDraft);
     const summaryModelDetails = await resolveModelForRequestDetailed({
       guildId,
       messages: [
@@ -757,7 +851,8 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
           role: 'user',
           content:
             `Original user request:\n${userText}\n\n` +
-            `Search findings:\n${searchFindingsBlob}`,
+            `Search findings:\n${searchFindingsBlob}` +
+            (priorDraftForComparison ? `\n\nPrevious draft to compare:\n${priorDraftForComparison}` : ''),
         },
       ],
       route: 'chat',
@@ -780,8 +875,17 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
         role: 'system',
         content:
           'You are a synthesis assistant. Convert search findings into a clean final response for the user. ' +
-          'Do not invent facts. Keep uncertain claims clearly marked as uncertain. ' +
-          'Preserve or improve concise source cues (domains or URLs) for external factual claims. ' +
+          'Use ONLY the information present in "Search findings" as ground truth; do not introduce new facts. ' +
+          'When a previous draft is provided, compare it against refreshed findings: keep only validated points and remove or fix invalid points. ' +
+          'If a needed detail is not present in the findings, omit it or mark it as unknown. ' +
+          'Preserve or improve concise source cues (domains or URLs) for external factual claims and keep them attached to the relevant claims. ' +
+          'If the findings include a "Checked on: YYYY-MM-DD" line, preserve it. ' +
+          'Prefer eliminating contradictions over combining them. ' +
+          'When sources conflict, prefer primary/official sources and discard third-party trackers/blog claims. ' +
+          'Output format (plain text):\n' +
+          'Answer: <final answer>\n' +
+          'Source URLs: <one or more URLs>\n' +
+          'Checked on: <YYYY-MM-DD> (only when available/required) ' +
           'Return plain text only.',
       },
       {
@@ -789,6 +893,7 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
         content:
           `Original user request:\n${userText}\n\n` +
           `Search findings:\n${searchFindingsBlob}` +
+          (priorDraftForComparison ? `\n\nPrevious draft to compare:\n${priorDraftForComparison}` : '') +
           (params.summaryReason?.trim() ? `\n\nFocus:\n${params.summaryReason.trim()}` : ''),
       },
     ];
@@ -799,7 +904,7 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
         messages: summaryMessages,
         model: summaryModel,
         apiKey,
-        temperature: 1.0,
+        temperature: 0.4,
         timeout: appConfig.TIMEOUT_CHAT_MS,
       });
       recordModelOutcome({
@@ -902,8 +1007,11 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
     verdict: 'pass' | 'revise';
     model: string;
     issues: string[];
+    rewritePrompt: string;
   }> = [];
   const criticRedispatches: Array<Record<string, unknown>> = [];
+  let revisionAttempts = 0;
+  let revisionApplied = 0;
 
   const deriveCriticRedispatchProviders = (issues: string[]): ContextProviderName[] => {
     const issueText = issues.join(' ').toLowerCase();
@@ -947,17 +1055,92 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
         conversationHistory,
       });
 
-      if (!assessment) break;
+      if (!assessment) {
+        // If the critic fails to return valid JSON, don't silently skip quality controls on search.
+        // Prefer a fresh search pass to recover (bounded by maxLoops).
+        if (agentDecision.kind === 'search') {
+           criticAssessments.push({
+             iteration,
+             score: 0,
+             verdict: 'revise',
+             model: 'unknown',
+             issues: ['Critic assessment failed (invalid JSON).'],
+             rewritePrompt: '',
+           });
 
-      criticAssessments.push({
-        iteration,
-        score: assessment.score,
-        verdict: assessment.verdict,
-        model: assessment.model,
-        issues: assessment.issues,
+          const revisionInstruction =
+            'Critic assessment failed (invalid JSON). Re-run search verification and return a source-grounded answer. ' +
+            'Include concise source cues (domains or URLs) for key factual claims. Avoid unsupported certainty.';
+
+           try {
+             const priorDraftForComparison = draftText;
+             revisionAttempts += 1;
+             draftText = await runSearchPass({
+               phase: 'critic_search_refresh_on_null',
+               iteration,
+               revisionInstruction,
+               priorDraft: draftText,
+             });
+             revisionApplied += 1;
+
+             if (searchExecutionMode === 'complex') {
+               try {
+                 revisionAttempts += 1;
+                 draftText = await runSearchSummaryPass({
+                   phase: 'critic_search_refresh_on_null_summary',
+                   iteration,
+                   searchDraft: draftText,
+                   summaryReason: revisionInstruction,
+                   priorDraft: priorDraftForComparison,
+                 });
+                 revisionApplied += 1;
+               } catch (summaryError) {
+                 logger.warn(
+                   { error: summaryError, traceId, iteration },
+                   'Critic-null search refresh summary failed; keeping refreshed search draft',
+                );
+              }
+            }
+
+            criticRedispatches.push({
+              iteration,
+              mode: 'search_refresh_on_null',
+            });
+            if (Array.isArray(agentEventsJson)) {
+              agentEventsJson.push({
+                type: 'critic_search_refresh_on_null',
+                timestamp: new Date().toISOString(),
+                details: { iteration },
+              });
+            }
+            continue;
+          } catch (error) {
+            logger.warn({ error, traceId, iteration }, 'Critic-null search refresh failed; stopping critic loop');
+          }
+        }
+
+        break;
+      }
+
+       criticAssessments.push({
+         iteration,
+         score: assessment.score,
+         verdict: assessment.verdict,
+         model: assessment.model,
+         issues: assessment.issues,
+         rewritePrompt: assessment.rewritePrompt,
+       });
+
+      const shouldReviseFromCritic = shouldRequestRevision({
+        assessment,
+        minScore: criticConfig.minScore,
       });
-
-      if (!shouldRequestRevision({ assessment, minScore: criticConfig.minScore })) {
+      const shouldForceSearchRefresh = shouldForceSearchRefreshFromDraft({
+        routeKind: agentDecision.kind,
+        userText,
+        draftText,
+      });
+      if (!shouldReviseFromCritic && !shouldForceSearchRefresh) {
         break;
       }
 
@@ -965,34 +1148,44 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
         assessment.rewritePrompt.trim() ||
         (assessment.issues.length > 0
           ? `Fix the following issues: ${assessment.issues.join('; ')}`
-          : 'Improve factual precision and completeness while preserving tone.');
+          : shouldForceSearchRefresh
+            ? 'Re-run search verification. Produce a fresher, source-grounded answer and include concise source cues.'
+            : 'Improve factual precision and completeness while preserving tone.');
 
-      if (
-        shouldRefreshSearchFromCritic({
-          routeKind: agentDecision.kind,
-          issues: assessment.issues,
-          rewritePrompt: assessment.rewritePrompt,
-        })
-      ) {
-        try {
-          draftText = await runSearchPass({
-            phase: 'critic_search_refresh',
-            iteration,
-            revisionInstruction,
-            priorDraft: draftText,
-          });
-          if (searchExecutionMode === 'complex') {
-            try {
-              draftText = await runSearchSummaryPass({
-                phase: 'critic_search_refresh_summary',
-                iteration,
-                searchDraft: draftText,
-                summaryReason: revisionInstruction,
-              });
-              criticRedispatches.push({
-                iteration,
-                mode: 'search_refresh_summary',
-                issueCount: assessment.issues.length,
+       if (
+         shouldForceSearchRefresh ||
+         shouldRefreshSearchFromCritic({
+           routeKind: agentDecision.kind,
+           issues: assessment.issues,
+           rewritePrompt: assessment.rewritePrompt,
+         })
+       ) {
+         try {
+           const priorDraftForComparison = draftText;
+           revisionAttempts += 1;
+           draftText = await runSearchPass({
+             phase: 'critic_search_refresh',
+             iteration,
+             revisionInstruction,
+             priorDraft: draftText,
+           });
+           revisionApplied += 1;
+           if (searchExecutionMode === 'complex') {
+             try {
+               revisionAttempts += 1;
+               draftText = await runSearchSummaryPass({
+                 phase: 'critic_search_refresh_summary',
+                 iteration,
+                 searchDraft: draftText,
+                 summaryReason: revisionInstruction,
+                 priorDraft: priorDraftForComparison,
+               });
+               revisionApplied += 1;
+               criticRedispatches.push({
+                 iteration,
+                 mode: 'search_refresh_summary',
+                 issueCount: assessment.issues.length,
+                forcedByDraftGuardrail: shouldForceSearchRefresh,
               });
               if (Array.isArray(agentEventsJson)) {
                 agentEventsJson.push({
@@ -1001,6 +1194,7 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
                   details: {
                     iteration,
                     issueCount: assessment.issues.length,
+                    forcedByDraftGuardrail: shouldForceSearchRefresh,
                   },
                 });
               }
@@ -1015,6 +1209,7 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
             iteration,
             mode: 'search_refresh',
             issueCount: assessment.issues.length,
+            forcedByDraftGuardrail: shouldForceSearchRefresh,
           });
           if (Array.isArray(agentEventsJson)) {
             agentEventsJson.push({
@@ -1023,6 +1218,7 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
               details: {
                 iteration,
                 issueCount: assessment.issues.length,
+                forcedByDraftGuardrail: shouldForceSearchRefresh,
               },
             });
           }
@@ -1084,6 +1280,15 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
         }
       }
 
+      const routeSpecificRevisionContract =
+        agentDecision.kind === 'coding'
+          ? '\n\nCoding revision contract:\n' +
+            '- Return a complete, runnable answer (no TODO placeholders).\n' +
+            '- Fix all blocking security/correctness issues explicitly called out by the critic.\n' +
+            '- Keep scope aligned to the user request; do not bloat with unrelated optional hardening.\n' +
+            '- Never use insecure secret fallbacks or weaken existing safeguards.'
+          : '';
+
       const revisionMessages: LLMChatMessage[] = [
         ...runtimeMessages,
         { role: 'assistant', content: draftText },
@@ -1091,6 +1296,11 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
           role: 'system',
           content:
             `Critic requested revision:\n${revisionInstruction}` +
+            (assessment.issues.length > 0
+              ? `\n\nCritic issues to address:\n- ${assessment.issues.join('\n- ')}`
+              : '\n\nCritic issues to address:\n- Improve correctness/completeness while preserving useful parts.') +
+            '\n\nAddress every listed issue before returning your final answer.' +
+            routeSpecificRevisionContract +
             (redispatchContext ? `\n\nAdditional provider refresh:\n${redispatchContext}` : ''),
         },
       ];
@@ -1117,6 +1327,7 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
         });
 
         const revisionStartedAt = Date.now();
+        revisionAttempts += 1;
         const revisedResponse = await client.chat({
           messages: revisionMessages,
           model: revisionModel,
@@ -1131,7 +1342,17 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
           latencyMs: Date.now() - revisionStartedAt,
         });
 
-        draftText = revisedResponse.content;
+        const revisedText = cleanDraftText(revisedResponse.content);
+        if (!revisedText) {
+          logger.warn(
+            { traceId, iteration, revisionModel },
+            'Critic revision returned empty content; keeping previous draft and stopping critic loop',
+          );
+          break;
+        }
+
+        draftText = revisedText;
+        revisionApplied += 1;
       } catch (error) {
         const revisionEvents = modelResolutionEvents.filter(
           (entry) => entry.phase === 'critic_revision',
@@ -1154,7 +1375,9 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
     criticAssessments.length > 0
       ? {
           critic: criticAssessments,
-          revised: criticAssessments.some((assessment) => assessment.verdict === 'revise'),
+          revised: revisionApplied > 0,
+          revisionAttempts,
+          revisionApplied,
           criticRedispatches: criticRedispatches.length > 0 ? criticRedispatches : undefined,
         }
       : undefined;

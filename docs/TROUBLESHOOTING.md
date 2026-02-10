@@ -216,7 +216,7 @@ Possible causes:
 
 ```bash
 npx prisma db push        # Development
-npx prisma migrate deploy # Production
+npx prisma db push        # Production (avoid --accept-data-loss)
 ```
 
 ---

@@ -23,16 +23,78 @@ export interface EvaluateDraftWithCriticParams {
   conversationHistory?: LLMChatMessage[];
 }
 
-function extractJsonObject(raw: string): string {
-  const trimmed = raw.trim();
-  const fenced =
-    trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i)?.[1] ??
-    trimmed.match(/```(?:json)?\s*([\s\S]*?)\s*```/i)?.[1];
-  if (fenced) return fenced.trim();
+function extractFirstJsonObject(content: string): string | null {
+  const startIdx = content.indexOf('{');
+  if (startIdx === -1) return null;
 
-  const objectMatch = trimmed.match(/\{[\s\S]*\}/);
-  if (objectMatch) return objectMatch[0];
-  return trimmed;
+  let depth = 0;
+  let inString = false;
+  let escapeNext = false;
+
+  for (let i = startIdx; i < content.length; i++) {
+    const char = content[i];
+
+    if (escapeNext) {
+      escapeNext = false;
+      continue;
+    }
+
+    if (char === '\\' && inString) {
+      escapeNext = true;
+      continue;
+    }
+
+    if (char === '"') {
+      inString = !inString;
+      continue;
+    }
+
+    if (!inString) {
+      if (char === '{') {
+        depth += 1;
+      } else if (char === '}') {
+        depth -= 1;
+        if (depth === 0) {
+          return content.slice(startIdx, i + 1);
+        }
+      }
+    }
+  }
+
+  return null;
+}
+
+function extractBalancedJson(raw: string): string | null {
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+
+  const fenced =
+    trimmed.match(/```(?:json)?\s*([\s\S]*?)\s*```/i)?.[1]?.trim() ?? null;
+  const candidate = fenced ?? trimmed;
+  return extractFirstJsonObject(candidate);
+}
+
+function parseJsonLenient(raw: string): Record<string, unknown> | null {
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+
+  const attempts = [
+    trimmed,
+    // Common failure: trailing commas
+    trimmed.replace(/,\s*([}\]])/g, '$1'),
+  ];
+
+  for (const attempt of attempts) {
+    try {
+      const parsed = JSON.parse(attempt) as unknown;
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+      return parsed as Record<string, unknown>;
+    } catch {
+      // continue
+    }
+  }
+
+  return null;
 }
 
 function normalizeScore(score: unknown): number {
@@ -44,25 +106,24 @@ function normalizeScore(score: unknown): number {
 }
 
 function parseAssessment(raw: string, model: string): CriticAssessment | null {
-  try {
-    const parsed = JSON.parse(extractJsonObject(raw)) as Record<string, unknown>;
-    const verdictRaw = String(parsed.verdict ?? '').trim().toLowerCase();
-    const verdict: 'pass' | 'revise' = verdictRaw === 'revise' ? 'revise' : 'pass';
-    const issues = Array.isArray(parsed.issues)
-      ? parsed.issues.map((item) => String(item)).filter((item) => item.trim().length > 0)
-      : [];
-    const rewritePrompt = typeof parsed.rewritePrompt === 'string' ? parsed.rewritePrompt : '';
+  const extracted = extractBalancedJson(raw) ?? raw.trim();
+  const parsed = parseJsonLenient(extracted);
+  if (!parsed) return null;
 
-    return {
-      score: normalizeScore(parsed.score),
-      verdict,
-      issues,
-      rewritePrompt,
-      model,
-    };
-  } catch {
-    return null;
-  }
+  const verdictRaw = String(parsed.verdict ?? '').trim().toLowerCase();
+  const verdict: 'pass' | 'revise' = verdictRaw === 'revise' ? 'revise' : 'pass';
+  const issues = Array.isArray(parsed.issues)
+    ? parsed.issues.map((item) => String(item)).filter((item) => item.trim().length > 0)
+    : [];
+  const rewritePrompt = typeof parsed.rewritePrompt === 'string' ? parsed.rewritePrompt : '';
+
+  return {
+    score: normalizeScore(parsed.score),
+    verdict,
+    issues,
+    rewritePrompt,
+    model,
+  };
 }
 
 const CRITIC_SYSTEM_PROMPT_DEFAULT = `You are a strict answer-quality critic.
@@ -81,6 +142,7 @@ Return ONLY JSON:
 
 Rules:
 - score is between 0 and 1.
+- If verdict is "pass", score MUST be >= 0.85. If verdict is "revise", score MUST be < 0.85.
 - Use "revise" when important facts are missing, unclear, or likely incorrect.
 - rewritePrompt must be specific and actionable.
 - Never include markdown.`;
@@ -101,6 +163,7 @@ Return ONLY JSON:
 
 Rules:
 - score is between 0 and 1.
+- If verdict is "pass", score MUST be >= 0.85. If verdict is "revise", score MUST be < 0.85.
 - Use "revise" ONLY if the answer is off-topic, hallucinated, contradictory, unsafe, or rude.
 - Allow for casual banter and creativity when still relevant.`;
 
@@ -118,17 +181,19 @@ Return ONLY JSON:
   "rewritePrompt": "precise revision guidance"
 }
 
-Rules:
-- score is between 0 and 1.
-- Use "revise" if code is likely broken, incomplete, insecure, or ignores user constraints.
-- Flag missing edge cases, missing imports/dependencies, and incorrect commands.
-- Never include markdown.`;
+ Rules:
+ - score is between 0 and 1.
+ - If verdict is "pass", score MUST be >= 0.85. If verdict is "revise", score MUST be < 0.85.
+ - Use "revise" if code is likely broken, incomplete, insecure, or ignores user constraints.
+ - Flag missing edge cases, missing imports/dependencies, and incorrect commands.
+  - Prioritize blocking issues first (security bugs, broken code paths, unmet explicit user constraints).
+ - If you identify any BLOCKING issue (e.g., code/commands will not run as written, missing required dependency/import, violates explicit constraints, security vulnerability), verdict MUST be "revise".
+ - If verdict is "pass", issues MUST be empty or minor-only, and rewritePrompt MUST be an empty string.
+ - Do NOT require unrelated hardening extras unless explicitly requested by the user (for example: refresh-token rotation, full observability stack, CSP tuning, advanced rate-limit key strategies).
+ - If the core request is satisfied with a secure, executable baseline, return "pass" and optionally list minor improvements in issues.
+ - Never include markdown.`;
 
-const CRITIC_SYSTEM_PROMPT_SEARCH = `You are a factuality and freshness critic for search responses.
-Evaluate the candidate answer for:
-1) Factual correctness,
-2) Freshness for time-sensitive claims,
-3) Completeness and source-grounding.
+const CRITIC_SYSTEM_PROMPT_SEARCH = `You are a critic for search-routed responses.
 
 Return ONLY JSON:
 {
@@ -138,11 +203,28 @@ Return ONLY JSON:
   "rewritePrompt": "precise revision guidance"
 }
 
-Rules:
+Global rules:
 - score is between 0 and 1.
-- Use "revise" when claims are uncertain, stale, unverifiable, or missing key facts.
-- Require concise source cues (site/domain names or URLs) for external factual claims.
-- Never include markdown.`;
+- If verdict is "pass", score MUST be >= 0.85. If verdict is "revise", score MUST be < 0.85.
+- Never include markdown.
+
+Step-by-step rubric:
+
+1) Determine if the user request is time-sensitive (contains words like: latest, current, now, today, right now, as of, recent, newest, release, version, price, weather, news, score).
+If time-sensitive:
+  - If the answer does NOT include a line like "Checked on: YYYY-MM-DD": verdict MUST be "revise".
+  - Count distinct source URLs (https://...). If fewer than 2: verdict MUST be "revise".
+  - If the answer contains suspicious certainty terms (trust me/definitely/always/never/guaranteed/100%): verdict MUST be "revise".
+  - Otherwise: verdict MUST be "pass". You may list minor improvements in issues, but do not block with "revise".
+  - Do NOT label the underlying facts as "wrong" based solely on your own prior knowledge; focus on source-grounding and freshness hygiene.
+
+2) If NOT time-sensitive:
+  - Evaluate factual correctness, completeness for the user request, and clarity.
+  - If the user asked for sources/citations/links and none are provided: verdict MUST be "revise".
+  - Use "revise" for clear factual errors (especially stable/common-knowledge facts) or missing key details.
+
+rewritePrompt guidance:
+- If verdict is "revise", rewritePrompt must be specific and actionable (what to add/remove/verify, and what sources to cite).`;
 
 function getCriticSystemPrompt(routeKind: AgentKind): string {
   switch (routeKind) {
@@ -174,12 +256,18 @@ export async function evaluateDraftWithCritic(
   params: EvaluateDraftWithCriticParams,
 ): Promise<CriticAssessment | null> {
   try {
+    // Critic model selection should be JSON-reliable and does not need web-search capability.
+    // Using the search route chain here can pick search-native models (e.g., gemini-search) that are
+    // less consistent in structured JSON output, causing avoidable critic parse failures.
+    const modelResolutionRoute = params.routeKind === 'search' ? 'chat' : params.routeKind;
+    const requireReasoning = params.routeKind !== 'search';
+
     const criticModel = await resolveModelForRequest({
       guildId: params.guildId,
       messages: [{ role: 'user', content: params.userText }],
-      route: params.routeKind,
+      route: modelResolutionRoute,
       allowedModels: params.allowedModels,
-      featureFlags: { reasoning: true },
+      featureFlags: requireReasoning ? { reasoning: true } : undefined,
     });
 
     const systemPrompt = getCriticSystemPrompt(params.routeKind);

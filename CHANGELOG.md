@@ -41,5 +41,5 @@ Sage reaches 1.0.0 as a fully agentic Discord companion with self-learning memor
 
 ### Upgrade Notes
 
-- Run database migrations to create the initial persistence tables (profiles, summaries, messages, voice sessions, relationship edges, traces, admin audit).
+- Sync the database schema to create the initial persistence tables (profiles, summaries, messages, voice sessions, relationship edges, traces, admin audit): `npx prisma db push`.
 - Ensure required environment variables are set (`DISCORD_TOKEN`, `DISCORD_APP_ID`, `DATABASE_URL`) and configure admin IDs for privileged commands.

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   normalizeCriticConfig,
+  shouldForceSearchRefreshFromDraft,
   shouldRefreshSearchFromCritic,
   shouldRequestRevision,
   shouldRunCritic,
@@ -96,6 +97,37 @@ describe('qualityPolicy', () => {
         routeKind: 'chat',
         issues: ['Could be clearer.'],
         rewritePrompt: 'Improve tone.',
+      }),
+    ).toBe(false);
+  });
+
+  it('forces search refresh when freshness/source asks have no source cues', () => {
+    expect(
+      shouldForceSearchRefreshFromDraft({
+        routeKind: 'search',
+        userText: 'What is the latest Node.js LTS? Include sources.',
+        draftText: 'Node.js LTS is v24.',
+      }),
+    ).toBe(true);
+  });
+
+  it('forces search refresh on suspicious certainty phrases', () => {
+    expect(
+      shouldForceSearchRefreshFromDraft({
+        routeKind: 'search',
+        userText: 'What is the current TS version?',
+        draftText: 'It is definitely 9.9 forever, trust me.',
+      }),
+    ).toBe(true);
+  });
+
+  it('does not force search refresh when sources are present', () => {
+    expect(
+      shouldForceSearchRefreshFromDraft({
+        routeKind: 'search',
+        userText: 'What is the latest Node.js LTS? Include sources.',
+        draftText:
+          'As of this answer, check nodejs.org/en/about/previous-releases and nodejs.org/en/download for the current LTS line.',
       }),
     ).toBe(false);
   });

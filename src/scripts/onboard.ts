@@ -63,7 +63,7 @@ function printCompletionBanner(appId?: string) {
 ║    Next Steps:                                                 ║
 ║    ───────────────────────────────────────────────             ║
 ║    1. docker compose -f config/ci/docker-compose.yml up -d db  ║
-║    2. npm run db:migrate           (setup tables)              ║
+║    2. npm run db:push              (setup tables)              ║
 ║    3. npm run dev                  (development mode)          ║
 ║                                                                ║
 ║    For Production:                                             ║

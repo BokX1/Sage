@@ -9,6 +9,13 @@ const CRITIC_ELIGIBLE_ROUTES = new Set<AgentKind>([
 
 const SEARCH_REFRESH_ISSUE_PATTERN =
   /(fact|factual|accuracy|accurate|hallucin|citation|source|evidence|verify|outdated|latest|current|incomplete|missing|unclear|stale|wrong|incorrect)/i;
+const SEARCH_TIME_SENSITIVE_USER_PATTERN =
+  /(latest|today|current|now|right now|as of|recent|fresh|newest|release|version|price|weather|news|score)/i;
+const SEARCH_SOURCE_REQUEST_PATTERN = /(source|sources|citation|cite|reference|references|link|url)/i;
+const SEARCH_SOURCE_CUE_PATTERN =
+  /(?:https?:\/\/|www\.)[^\s<>()]+|(?:^|\s)(?:[a-z0-9-]+\.)+(?:com|org|net|gov|edu|io|ai|dev|co|us|uk|ca|de|fr|jp|au|in)(?:\b|\/)/i;
+const SEARCH_SUSPICIOUS_CERTAINTY_PATTERN =
+  /(trust me|definitely|always|never|forever|guaranteed|100%|no need to verify)/i;
 
 export interface CriticRuntimeConfig {
   enabled: boolean;
@@ -64,4 +71,24 @@ export function shouldRefreshSearchFromCritic(params: {
   const issueBlob = `${params.rewritePrompt ?? ''} ${params.issues.join(' ')}`.trim();
   if (!issueBlob) return false;
   return SEARCH_REFRESH_ISSUE_PATTERN.test(issueBlob);
+}
+
+export function shouldForceSearchRefreshFromDraft(params: {
+  routeKind: AgentKind;
+  userText: string;
+  draftText: string;
+}): boolean {
+  if (params.routeKind !== 'search') return false;
+  const userText = params.userText.trim();
+  const draftText = params.draftText.trim();
+  if (!userText || !draftText) return false;
+
+  const asksFreshness = SEARCH_TIME_SENSITIVE_USER_PATTERN.test(userText);
+  const asksSources = SEARCH_SOURCE_REQUEST_PATTERN.test(userText);
+  const hasSourceCue = SEARCH_SOURCE_CUE_PATTERN.test(draftText);
+  const hasSuspiciousCertainty = SEARCH_SUSPICIOUS_CERTAINTY_PATTERN.test(draftText);
+
+  if (hasSuspiciousCertainty) return true;
+  if ((asksFreshness || asksSources) && !hasSourceCue) return true;
+  return false;
 }

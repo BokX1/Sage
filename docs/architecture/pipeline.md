@@ -135,10 +135,11 @@ Runtime behavior:
 1. Critic loop is bounded by `AGENTIC_CRITIC_MAX_LOOPS`.
 2. Critic runs only on eligible routes (`chat`, `coding`, `search`) and skips voice/file turns.
 3. If quality is below threshold, runtime requests revision.
-4. For search route, critic can trigger a fresh search pass (`shouldRefreshSearchFromCritic`).
-5. Search route execution mode controls finalization: `simple` returns search output directly, while `complex` runs a chat synthesis pass over search findings before final response.
-6. For non-search revisions, runtime can redispatch targeted context providers before rewrite.
-7. Critic outcomes and redispatch metadata are persisted in trace quality/budget payloads.
+4. For `chat` and `coding`, revision is a new LLM call that rewrites the answer; the revised draft replaces the previous draft (no merging).
+5. For `search`, revision typically triggers a fresh guarded search pass (and in `complex` mode, a second synthesis pass to produce the final answer).
+6. Search guardrails enforce grounding hygiene (source URLs for key claims; time-sensitive queries should include `Checked on: YYYY-MM-DD` and multiple distinct URLs) and will retry alternate search models when requirements are not met.
+7. For non-search revisions, runtime can redispatch targeted context providers before rewrite.
+8. Critic outcomes and redispatch metadata are persisted in trace quality/budget payloads.
 
 ---
 
@@ -204,7 +205,7 @@ Runtime behavior:
    - `REPLAY_GATE_MIN_TOTAL`
    - `REPLAY_GATE_REQUIRED_ROUTES_CSV`
    - `REPLAY_GATE_MIN_ROUTE_SAMPLES`
-5. CI release-readiness runs migrations then executes `npm run release:agentic-check`.
+5. CI release-readiness syncs schema (for example: `npx prisma db push`) then executes `npm run release:agentic-check`.
 
 Recommended pre-release command:
 

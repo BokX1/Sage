@@ -51,6 +51,55 @@ describe('criticAgent', () => {
     expect(result?.model).toBe('deepseek');
   });
 
+  it('extracts valid JSON when wrapped in extra text or code fences', async () => {
+    mockChat.mockResolvedValue({
+      content:
+        'Here is my assessment:\\n```json\\n' +
+        JSON.stringify({
+          score: 0.91,
+          verdict: 'pass',
+          issues: [],
+          rewritePrompt: '',
+        }) +
+        '\\n```\\nThanks.',
+    });
+
+    const result = await evaluateDraftWithCritic({
+      guildId: 'guild-1',
+      routeKind: 'chat',
+      userText: 'Explain X',
+      draftText: 'Answer',
+      apiKey: 'key',
+    });
+
+    expect(result).not.toBeNull();
+    expect(result?.score).toBe(0.91);
+    expect(result?.verdict).toBe('pass');
+  });
+
+  it('parses JSON with a trailing comma (lenient parse)', async () => {
+    mockChat.mockResolvedValue({
+      content:
+        '{' +
+        '\"score\": 0.8,' +
+        '\"verdict\": \"pass\",' +
+        '\"issues\": [],' +
+        '\"rewritePrompt\": \"\",' +
+        '}', // trailing comma after issues should be tolerated by lenient parser above
+    });
+
+    const result = await evaluateDraftWithCritic({
+      guildId: 'guild-1',
+      routeKind: 'chat',
+      userText: 'Explain X',
+      draftText: 'Answer',
+      apiKey: 'key',
+    });
+
+    expect(result).not.toBeNull();
+    expect(result?.verdict).toBe('pass');
+  });
+
   it('returns null for invalid JSON', async () => {
     mockChat.mockResolvedValue({
       content: 'not json',
@@ -86,6 +135,7 @@ describe('criticAgent', () => {
     const request = mockChat.mock.calls[0]?.[0] as { messages: Array<{ content: string }> };
     expect(request.messages[0].content).toContain('code-quality critic');
     expect(request.messages[0].content).toContain('missing imports/dependencies');
+    expect(request.messages[0].content).toContain('Do NOT require unrelated hardening extras');
   });
 
   it('uses search-specific critic prompt for search route', async () => {
@@ -106,8 +156,9 @@ describe('criticAgent', () => {
     });
 
     const request = mockChat.mock.calls[0]?.[0] as { messages: Array<{ content: string }> };
-    expect(request.messages[0].content).toContain('factuality and freshness critic');
-    expect(request.messages[0].content).toContain('source cues');
+    expect(request.messages[0].content).toContain('search-routed');
+    expect(request.messages[0].content).toContain('Checked on');
+    expect(request.messages[0].content).toContain('source URL');
   });
 
   it('serializes non-text chat history content in critic payload', async () => {

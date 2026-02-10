@@ -21,10 +21,16 @@ npm install
 npm run setup
 ```
 
-If you need database migrations locally:
+If you need to sync the database schema locally (no migrations):
 
 ```bash
-npm run db:migrate
+npx prisma db push
+```
+
+To reset the schema (deletes data):
+
+```bash
+npx prisma db push --force-reset --accept-data-loss
 ```
 
 ## Development scripts

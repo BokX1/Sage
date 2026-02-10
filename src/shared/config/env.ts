@@ -108,8 +108,9 @@ const testDefaults: Record<string, string> = {
   AGENTIC_CANARY_WINDOW_SIZE: '100',
   AGENTIC_TENANT_POLICY_JSON: '{}',
   AGENTIC_CRITIC_ENABLED: 'true',
-  AGENTIC_CRITIC_MIN_SCORE: '0.72',
-  AGENTIC_CRITIC_MAX_LOOPS: '1',
+  AGENTIC_CRITIC_MIN_SCORE: '0.78',
+  // Default to 2 so the runtime can re-critic after a revision/refresh pass.
+  AGENTIC_CRITIC_MAX_LOOPS: '2',
   SECRET_ENCRYPTION_KEY: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
 };
 
@@ -190,8 +191,8 @@ const envSchema = z.object({
   AGENTIC_CANARY_WINDOW_SIZE: z.coerce.number().int().min(10).max(10000).default(100),
   AGENTIC_TENANT_POLICY_JSON: z.string().default('{}'),
   AGENTIC_CRITIC_ENABLED: z.enum(['true', 'false']).default('true').transform((v) => v === 'true'),
-  AGENTIC_CRITIC_MIN_SCORE: z.coerce.number().min(0).max(1).default(0.72),
-  AGENTIC_CRITIC_MAX_LOOPS: z.coerce.number().int().min(0).max(2).default(1),
+  AGENTIC_CRITIC_MIN_SCORE: z.coerce.number().min(0).max(1).default(0.78),
+  AGENTIC_CRITIC_MAX_LOOPS: z.coerce.number().int().min(0).max(2).default(2),
   SECRET_ENCRYPTION_KEY: z.string().regex(/^[0-9a-fA-F]{64}$/),
 });
 
