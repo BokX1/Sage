@@ -87,7 +87,7 @@ flowchart TD
 
 Sage tracks model health scores at runtime. When a model's error rate exceeds thresholds, it's automatically deprioritized:
 
-```
+```text
 Model Request → Success? → Update Health Score
                   ↓ No
              Mark Degraded → Skip in Future Chains

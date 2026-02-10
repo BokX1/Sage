@@ -21,7 +21,7 @@ Pick the journey that fits your role:
 
 ### 🎮 "I just want to use the bot"
 
-```
+```text
 Invite → Activate → Chat
 ```
 
@@ -35,7 +35,7 @@ Invite → Activate → Chat
 
 ### 💻 "I want to self-host Sage"
 
-```
+```text
 Clone → Configure → Deploy → Operate
 ```
 
@@ -50,7 +50,7 @@ Clone → Configure → Deploy → Operate
 
 ### 🏗️ "I want to understand how Sage works"
 
-```
+```text
 Architecture → Pipeline → Memory → Database
 ```
 
@@ -115,7 +115,7 @@ Architecture → Pipeline → Memory → Database
 
 ## 🆘 Need Help?
 
-```
+```text
 npm run doctor → Troubleshooting → FAQ → GitHub Issue
 ```
 

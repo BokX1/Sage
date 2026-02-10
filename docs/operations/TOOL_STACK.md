@@ -118,7 +118,7 @@ FIRECRAWL_API_KEY=fc-...
 
 The `PROVIDER_ORDER` variables control which provider is tried first. Providers are tried left-to-right; the first one that succeeds wins:
 
-```
+```text
 searxng → tavily → exa → pollinations
   ↑ local       ↑ hosted fallbacks
 ```

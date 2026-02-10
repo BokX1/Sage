@@ -86,7 +86,7 @@ flowchart LR
 
 Understanding the codebase structure helps you contribute effectively:
 
-```
+```text
 src/
 ├── core/
 │   ├── orchestration/     # Agent selector, runtime, canary, critics

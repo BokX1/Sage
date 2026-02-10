@@ -21,7 +21,7 @@ How Sage fetches live information from the web using Search-Augmented Generation
 
 Sage uses **Search-Augmented Generation (SAG)** to answer time-sensitive or factual queries. Instead of relying solely on training data, Sage can search the web, scrape pages, and synthesize results into a polished response.
 
-```
+```text
 User asks time-sensitive question
     → Router classifies as "search" route
     → Search models fetch live data

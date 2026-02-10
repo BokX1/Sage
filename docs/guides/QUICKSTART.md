@@ -29,7 +29,7 @@ Get Sage running in your Discord server in under 5 minutes.
 
 Sage uses **Bring Your Own Pollen (BYOP)** — your server provides a Pollinations API key for AI usage.
 
-```
+```text
 /sage key login     ← Get your API key link
 /sage key set sk_…  ← Activate for entire server
 ```
