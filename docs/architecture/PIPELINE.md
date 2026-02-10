@@ -220,7 +220,7 @@ npm run release:agentic-check
 
 ## Related Documentation
 
-- [Agentic Architecture](../AGENTIC_ARCHITECTURE.md)
-- [Configuration Reference](../CONFIGURATION.md)
-- [Operations Runbook](../operations/runbook.md)
-- [Release Process](../RELEASE.md)
+- [Agentic Architecture](OVERVIEW.md)
+- [Configuration Reference](../reference/CONFIGURATION.md)
+- [Operations Runbook](../operations/RUNBOOK.md)
+- [Release Process](../reference/RELEASE.md)

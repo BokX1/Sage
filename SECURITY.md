@@ -72,7 +72,7 @@ Sage stores the following data:
 - Voice channel session data
 - Relationship graph data
 
-See [Security & Privacy](docs/security_privacy.md) for full details.
+See [Security & Privacy](docs/security/SECURITY_PRIVACY.md) for full details.
 
 ### Third-Party Services
 

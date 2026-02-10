@@ -220,8 +220,8 @@ flowchart TB
 
 ## Related Docs
 
-- [Runtime Pipeline](architecture/pipeline.md)
-- [Configuration Reference](CONFIGURATION.md)
-- [Operations Runbook](operations/runbook.md)
-- [Release Process](RELEASE.md)
-- [Database Architecture](architecture/database.md)
+- [Runtime Pipeline](PIPELINE.md)
+- [Configuration Reference](../reference/CONFIGURATION.md)
+- [Operations Runbook](../operations/RUNBOOK.md)
+- [Release Process](../reference/RELEASE.md)
+- [Database Architecture](DATABASE.md)
