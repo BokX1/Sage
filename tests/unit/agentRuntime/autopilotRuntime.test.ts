@@ -250,8 +250,8 @@ describe('Autopilot Runtime', () => {
 
     expect(result.replyText).toBe(
       'Recovered via perplexity-fast with sources. ' +
-        'Source URLs: https://example.com/a https://example.com/b ' +
-        'Checked on: 2026-02-10',
+      'Source URLs: https://example.com/a https://example.com/b ' +
+      'Checked on: 2026-02-10',
     );
     expect(mockSearchLLM.chat).toHaveBeenCalledTimes(2);
     const firstAttempt = mockSearchLLM.chat.mock.calls[0]?.[0] as { model: string; timeout: number };

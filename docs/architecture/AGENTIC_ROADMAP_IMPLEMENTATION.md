@@ -46,6 +46,7 @@ Phases 0â€“9 have been completed and are no longer tracked in this document
 | 10 - Deferred / Frontier Follow-ons | pending | P3 | Deferred until Phase 9 completion and release hardening. |
 
 ---
+
 ## Status Semantics
 
 | Status | Definition | Minimum evidence required |
