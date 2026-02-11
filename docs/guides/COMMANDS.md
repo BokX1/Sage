@@ -70,6 +70,24 @@ Sage can be triggered in three ways:
 
 ---
 
+### 📎 File ingestion & recall (natural language)
+
+Sage can parse non-image file attachments and remember them in channel file memory.
+
+Examples:
+
+- Upload a file and ask: `Sage, summarize this attachment`
+- Follow-up later: `Sage, what files did I upload earlier?`
+- Target a file: `Sage, check the config-live-2.json file and explain it`
+
+Behavior:
+
+1. Non-image attachments are extracted and cached.
+2. Transcript stores cache notes, not full file bodies.
+3. Sage retrieves full file text only when needed/requested.
+
+---
+
 ### 🎨 Image generation & editing (natural language)
 
 Sage can generate images (text → image) and do simple edits (image → image). No slash command required — just ask.

@@ -2,12 +2,14 @@ import { getChannelSummaryStore } from '../../summary/channelSummaryStoreRegistr
 import { ChannelSummary } from '../../summary/channelSummaryStore';
 import { estimateTokens } from '../../agentRuntime/tokenEstimate';
 import { ContextPacket } from '../context-types';
+import { listRecentIngestedAttachments } from '../../attachments/ingestedAttachmentRepo';
 
 export interface RunChannelMemoryProviderParams {
   guildId: string;
   channelId: string;
   maxChars?: number;
   maxItemsPerList?: number;
+  maxRecentFiles?: number;
 }
 
 function formatAge(updatedAt: Date, nowMs = Date.now()): string {
@@ -89,14 +91,21 @@ function truncateWithEllipsis(value: string, maxChars: number): { text: string; 
 export async function runChannelMemoryProvider(
   params: RunChannelMemoryProviderParams,
 ): Promise<ContextPacket> {
-  const { guildId, channelId, maxChars = 1800, maxItemsPerList = 5 } = params;
+  const { guildId, channelId, maxChars = 1800, maxItemsPerList = 5, maxRecentFiles = 5 } = params;
 
   try {
     const summaryStore = getChannelSummaryStore();
 
-    const [rollingSummary, profileSummary] = await Promise.all([
+    const recentAttachmentPromise = listRecentIngestedAttachments({
+      guildId,
+      channelId,
+      limit: Math.max(1, Math.min(20, maxRecentFiles)),
+    }).catch(() => []);
+
+    const [rollingSummary, profileSummary, recentAttachments] = await Promise.all([
       summaryStore.getLatestSummary({ guildId, channelId, kind: 'rolling' }),
       summaryStore.getLatestSummary({ guildId, channelId, kind: 'profile' }),
+      recentAttachmentPromise,
     ]);
 
     const parts: string[] = [];
@@ -122,12 +131,22 @@ export async function runChannelMemoryProvider(
       );
     }
 
+    if (recentAttachments.length > 0) {
+      if (parts.length > 0) parts.push('');
+      parts.push('Recent cached files (retrieve full text with channel_file_lookup when needed):');
+      for (const attachment of recentAttachments.slice(0, maxRecentFiles)) {
+        parts.push(
+          `- ${attachment.filename} (msg:${attachment.messageId}, status=${attachment.status}, extractor=${attachment.extractor ?? 'none'}, cached ${formatAge(attachment.createdAt)} ago)`,
+        );
+      }
+    }
+
     if (parts.length === 0) {
       return {
         name: 'ChannelMemory',
         content:
           'Channel memory (STM+LTM): no stored channel summaries available yet. Use transcript and current turn context.',
-        json: { rollingSummary: null, profileSummary: null },
+        json: { rollingSummary: null, profileSummary: null, recentAttachmentCount: 0 },
         tokenEstimate: 20,
       };
     }
@@ -147,6 +166,14 @@ export async function runChannelMemoryProvider(
       json: {
         hasRolling: !!rollingSummary,
         hasProfile: !!profileSummary,
+        recentAttachmentCount: recentAttachments.length,
+        recentAttachments: recentAttachments.slice(0, maxRecentFiles).map((attachment) => ({
+          filename: attachment.filename,
+          messageId: attachment.messageId,
+          status: attachment.status,
+          extractor: attachment.extractor,
+          createdAt: attachment.createdAt.toISOString(),
+        })),
         rollingUpdatedAt: rollingSummary?.updatedAt?.toISOString() ?? null,
         profileUpdatedAt: profileSummary?.updatedAt?.toISOString() ?? null,
         rollingLikelyStale: rollingAgeHours !== null ? rollingAgeHours > 24 : null,

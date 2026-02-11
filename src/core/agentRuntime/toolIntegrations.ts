@@ -2,6 +2,7 @@ import { config } from '../../config';
 import { isPrivateOrLocalHostname } from '../../shared/config/env';
 import { createLLMClient } from '../llm';
 import { logger } from '../utils/logger';
+import { findIngestedAttachmentsForLookup } from '../attachments/ingestedAttachmentRepo';
 
 const URL_PATTERN = /https?:\/\/[^\s<>()]+/gi;
 const DEFAULT_WEB_SEARCH_TIMEOUT_MS = 45_000;
@@ -747,6 +748,75 @@ export async function lookupGitHubFile(params: { repo: string; path: string; ref
     content: truncated.text,
     truncated: truncated.truncated,
     lineCount: decoded.split(/\r?\n/).length,
+  };
+}
+
+export async function lookupChannelFileCache(params: {
+  guildId: string | null | undefined;
+  channelId: string;
+  messageId?: string;
+  filename?: string;
+  query?: string;
+  limit?: number;
+  includeContent?: boolean;
+  maxChars?: number;
+}): Promise<Record<string, unknown>> {
+  const limit = toInt(params.limit, 3, 1, 10);
+  const includeContent = params.includeContent !== false;
+  const maxChars = toInt(
+    params.maxChars ?? (config.TOOL_WEB_SCRAPE_MAX_CHARS as number | undefined),
+    DEFAULT_WEB_SCRAPE_MAX_CHARS,
+    500,
+    50_000,
+  );
+
+  const records = await findIngestedAttachmentsForLookup({
+    guildId: params.guildId ?? null,
+    channelId: params.channelId,
+    messageId: params.messageId?.trim() || undefined,
+    filename: params.filename?.trim() || undefined,
+    query: params.query?.trim() || undefined,
+    limit,
+  });
+
+  const items = records.map((record) => {
+    const truncated = truncateWithNotice(record.extractedText ?? '', maxChars);
+    return {
+      id: record.id,
+      messageId: record.messageId,
+      filename: record.filename,
+      contentType: record.contentType,
+      status: record.status,
+      extractor: record.extractor,
+      declaredSizeBytes: record.declaredSizeBytes,
+      readSizeBytes: record.readSizeBytes,
+      extractedTextChars: record.extractedTextChars,
+      createdAt: record.createdAt.toISOString(),
+      updatedAt: record.updatedAt.toISOString(),
+      ...(includeContent
+        ? { content: truncated.text, contentTruncated: truncated.truncated }
+        : {
+            snippet: truncated.text.slice(0, Math.min(400, truncated.text.length)),
+            contentIncluded: false,
+          }),
+      ...(record.errorText ? { errorText: record.errorText } : {}),
+    };
+  });
+
+  return {
+    guildId: params.guildId ?? null,
+    channelId: params.channelId,
+    count: items.length,
+    query: params.query ?? null,
+    messageId: params.messageId ?? null,
+    filename: params.filename ?? null,
+    includeContent,
+    maxChars,
+    items,
+    guidance:
+      items.length > 0
+        ? 'Use filename/messageId to target a specific cached file. Ask follow-up questions after retrieval for analysis.'
+        : 'No cached files matched this query in the current channel.',
   };
 }
 

@@ -37,6 +37,31 @@ model ChannelMessage {
   @@index([guildId, channelId, timestamp])
 }
 
+model IngestedAttachment {
+  id                String   @id @default(cuid())
+  guildId           String?
+  channelId         String
+  messageId         String
+  attachmentIndex   Int
+  filename          String
+  sourceUrl         String
+  contentType       String?
+  declaredSizeBytes Int?
+  readSizeBytes     Int?
+  extractor         String?
+  status            String
+  errorText         String?
+  extractedText     String?  @db.Text
+  extractedTextChars Int     @default(0)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@unique([messageId, attachmentIndex])
+  @@index([guildId, channelId, createdAt])
+  @@index([channelId, createdAt])
+  @@index([messageId])
+}
+
 model ChannelSummary {
   id              String   @id @default(cuid())
   guildId         String

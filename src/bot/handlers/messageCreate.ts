@@ -6,18 +6,19 @@ import { isRateLimited } from '../../core/rate-limiter';
 import { generateChatReply } from '../../core/chat-engine';
 import { ingestEvent } from '../../core/ingest/ingestEvent';
 import { config as appConfig } from '../../config';
+import { isLoggingEnabled } from '../../core/settings/guildChannelSettings';
 import { detectInvocation } from '../../core/invocation/wake-word-detector';
 import { shouldAllowInvocation } from '../../core/invocation/invocation-rate-limiter';
 import { fetchAttachmentText, type FetchAttachmentResult } from '../../core/utils/file-handler';
 import { smartSplit } from '../../core/utils/message-splitter';
 import { VoiceManager } from '../../core/voice/voiceManager';
+import { upsertIngestedAttachment } from '../../core/attachments/ingestedAttachmentRepo';
 import {
-  appendAttachmentToText,
+  appendAttachmentBlocksToText,
   buildAttachmentBlockFromResult,
   buildMessageContent,
-  deriveAttachmentLimits,
-  getNonImageAttachment,
-  isImageAttachment,
+  deriveAttachmentBudget,
+  getNonImageAttachments,
 } from './attachment-parser';
 
 const processedMessagesKey = Symbol.for('sage.handlers.messageCreate.processed');
@@ -40,6 +41,8 @@ let lastCleanupTime = Date.now();
 // Cache parsed wake words at module level to avoid reparsing on every message
 let cachedWakeWords: string[] | null = null;
 let cachedWakeWordPrefixes: string[] | null = null;
+const ATTACHMENT_INTENT_PATTERN =
+  /\b(attachment|attached|file|files|document|doc|pdf|read|review|analy[sz]e|summari[sz]e|inspect|parse|look at)\b/i;
 
 function getWakeWords(): string[] {
   if (!cachedWakeWords) {
@@ -57,6 +60,16 @@ function getWakeWordPrefixes(): string[] {
       .filter(Boolean);
   }
   return cachedWakeWordPrefixes;
+}
+
+function shouldInlineAttachmentBlocks(params: {
+  invokedBy: 'mention' | 'reply' | 'wakeword' | 'autopilot' | 'command';
+  cleanedText: string;
+  hasAttachmentBlocks: boolean;
+}): boolean {
+  if (!params.hasAttachmentBlocks) return false;
+  if (params.invokedBy !== 'autopilot') return true;
+  return ATTACHMENT_INTENT_PATTERN.test(params.cleanedText);
 }
 
 
@@ -121,46 +134,148 @@ export async function handleMessageCreate(message: Message) {
       ? buildMessageContent(referencedMessage, { prefix: '[In reply to]: ' })
       : null;
 
-    const attachment = getNonImageAttachment(message);
-    const attachmentName = attachment?.name ?? '';
-    const attachmentContentType = attachment?.contentType ?? null;
-    const hasImageAttachment = isImageAttachment(attachment);
-    let attachmentBlock: string | null = null;
+    const nonImageAttachments = getNonImageAttachments(message);
+    const maxAttachmentsPerMessage = Math.max(1, appConfig.FILE_INGEST_MAX_ATTACHMENTS_PER_MESSAGE);
+    const selectedAttachments = nonImageAttachments.slice(0, maxAttachmentsPerMessage);
+    const skippedByLimitCount = Math.max(0, nonImageAttachments.length - selectedAttachments.length);
+    const attachmentBlocks: string[] = [];
+    const ingestAttachmentNotes: string[] = [];
+    const cachedAttachmentNames: string[] = [];
+    let cachedExtractableCount = 0;
+    const shouldPersistAttachmentCache =
+      !!message.guildId && isLoggingEnabled(message.guildId, message.channelId);
 
-    if (attachment && !hasImageAttachment && attachmentName.trim().length > 0) {
-      const { maxChars, maxBytes, headChars, tailChars } = deriveAttachmentLimits({
-        baseText: message.content ?? '',
-        filename: attachmentName,
-        authorDisplayName,
-        authorId: message.author.id,
-        timestamp: message.createdAt,
-      });
+    const attachmentBudget = deriveAttachmentBudget({
+      baseText: message.content ?? '',
+    });
+    let remainingAttachmentChars = attachmentBudget.maxChars;
+    let remainingAttachmentBytes = appConfig.FILE_INGEST_MAX_TOTAL_BYTES_PER_MESSAGE;
+
+    for (let index = 0; index < selectedAttachments.length; index += 1) {
+      const attachment = selectedAttachments[index];
+      const attachmentName = attachment?.name ?? '';
+      if (attachmentName.trim().length === 0) {
+        continue;
+      }
+
+      const attachmentsRemaining = Math.max(1, selectedAttachments.length - index);
+      const maxChars = Math.floor(remainingAttachmentChars / attachmentsRemaining);
+      const maxBytesFromChars = Math.max(0, Math.floor(maxChars * 4));
+      const maxBytes = Math.max(
+        0,
+        Math.min(appConfig.FILE_INGEST_MAX_BYTES_PER_FILE, remainingAttachmentBytes, maxBytesFromChars),
+      );
+      const headChars = Math.floor(maxChars * 0.7);
+      const tailChars = Math.max(0, maxChars - headChars);
 
       let attachmentResult: FetchAttachmentResult;
       if (maxChars <= 0 || maxBytes <= 0) {
         attachmentResult = {
           kind: 'too_large',
           message: `[System: File '${attachmentName}' omitted due to context limits.]`,
+          extractor: 'none',
         };
       } else {
         attachmentResult = await fetchAttachmentText(attachment.url ?? '', attachmentName, {
-          timeoutMs: 60_000,
+          timeoutMs: appConfig.FILE_INGEST_TIMEOUT_MS,
           maxBytes,
           maxChars,
           truncateStrategy: 'head_tail',
           headChars,
           tailChars,
+          contentType: attachment.contentType ?? null,
+          declaredSizeBytes: attachment.size ?? null,
+          tikaBaseUrl: appConfig.FILE_INGEST_TIKA_BASE_URL,
+          ocrEnabled: appConfig.FILE_INGEST_OCR_ENABLED,
         });
       }
 
-      attachmentBlock = buildAttachmentBlockFromResult(
+      const attachmentBlock = buildAttachmentBlockFromResult(
         attachmentName,
         attachmentResult,
-        attachmentContentType,
+        attachment.contentType ?? null,
+        { sizeBytes: attachment.size ?? null, includeSkipped: false },
+      );
+
+      if (attachmentBlock) {
+        attachmentBlocks.push(attachmentBlock);
+        remainingAttachmentChars = Math.max(0, remainingAttachmentChars - attachmentBlock.length);
+      }
+
+      const attachmentStatus = attachmentResult.kind;
+      const extractedText =
+        attachmentStatus === 'ok' || attachmentStatus === 'truncated' ? attachmentResult.text : null;
+      const errorText =
+        attachmentStatus === 'skip'
+          ? attachmentResult.reason
+          : attachmentStatus === 'too_large' || attachmentStatus === 'error'
+            ? attachmentResult.message
+            : null;
+      if (extractedText) {
+        cachedExtractableCount += 1;
+        cachedAttachmentNames.push(attachmentName);
+      }
+
+      if (shouldPersistAttachmentCache) {
+        try {
+          await upsertIngestedAttachment({
+            guildId: message.guildId ?? null,
+            channelId: message.channelId,
+            messageId: message.id,
+            attachmentIndex: index,
+            filename: attachmentName,
+            sourceUrl: attachment.url ?? '',
+            contentType: attachmentResult.mimeType ?? attachment.contentType ?? null,
+            declaredSizeBytes: attachment.size ?? null,
+            readSizeBytes: attachmentResult.byteLength ?? null,
+            extractor: attachmentResult.extractor,
+            status: attachmentStatus,
+            errorText,
+            extractedText,
+          });
+        } catch (error) {
+          logger.warn(
+            { error, msgId: message.id, channelId: message.channelId, attachment: attachmentName },
+            'Attachment cache persist failed (non-fatal)',
+          );
+        }
+      }
+
+      const consumedBytes =
+        typeof attachmentResult.byteLength === 'number' && Number.isFinite(attachmentResult.byteLength)
+          ? attachmentResult.byteLength
+          : typeof attachment.size === 'number' && Number.isFinite(attachment.size)
+            ? attachment.size
+            : 0;
+      remainingAttachmentBytes = Math.max(0, remainingAttachmentBytes - consumedBytes);
+    }
+
+    if (selectedAttachments.length > 0) {
+      if (shouldPersistAttachmentCache) {
+        ingestAttachmentNotes.push(
+          `[System: Attachment cache processed ${selectedAttachments.length} non-image attachment(s); extractable cached files: ${cachedExtractableCount}.]`,
+        );
+        if (cachedAttachmentNames.length > 0) {
+          const preview = cachedAttachmentNames.slice(0, 3).join(', ');
+          const overflow = cachedAttachmentNames.length - 3;
+          ingestAttachmentNotes.push(
+            `[System: Cached file references: ${preview}${overflow > 0 ? ` (+${overflow} more)` : ''}. Full file content is retrievable on demand.]`,
+          );
+        }
+      } else {
+        ingestAttachmentNotes.push(
+          `[System: Processed ${selectedAttachments.length} non-image attachment(s) for this turn. Persistent attachment cache is unavailable in this channel.]`,
+        );
+      }
+    }
+
+    if (skippedByLimitCount > 0) {
+      ingestAttachmentNotes.push(
+        `[System: Skipped ${skippedByLimitCount} attachment(s) due to per-message limit (${maxAttachmentsPerMessage}).]`,
       );
     }
 
-    const ingestContent = appendAttachmentToText(message.content ?? '', attachmentBlock);
+    const ingestContent = appendAttachmentBlocksToText(message.content ?? '', ingestAttachmentNotes);
 
     // ================================================================
     // D1: Ingest event BEFORE reply gating
@@ -246,9 +361,23 @@ export async function handleMessageCreate(message: Message) {
       }, 8000);
 
       // Generate Chat Reply
-      const userTextWithAttachments = appendAttachmentToText(
+      const includeAttachmentBlocks = shouldInlineAttachmentBlocks({
+        invokedBy: invocation.kind,
+        cleanedText: invocation.cleanedText,
+        hasAttachmentBlocks: attachmentBlocks.length > 0,
+      });
+      const runtimeAttachmentBlocks = includeAttachmentBlocks
+        ? attachmentBlocks
+        : attachmentBlocks.length > 0
+          ? [
+              shouldPersistAttachmentCache
+                ? '[System: Non-image attachments were cached. If needed, retrieve file content from the channel attachment cache.]'
+                : '[System: Non-image attachments were processed for this turn only. Persistent cache is unavailable in this channel.]',
+            ]
+          : [];
+      const userTextWithAttachments = appendAttachmentBlocksToText(
         invocation.cleanedText,
-        attachmentBlock,
+        runtimeAttachmentBlocks,
       );
       const userContent = buildMessageContent(message, {
         allowEmpty: true,

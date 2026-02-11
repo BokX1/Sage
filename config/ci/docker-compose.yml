@@ -12,5 +12,11 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
+  tika:
+    image: apache/tika:3.2.3.0
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:9998:9998"
+
 volumes:
   postgres_data:

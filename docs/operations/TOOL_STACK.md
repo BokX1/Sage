@@ -43,6 +43,7 @@ flowchart LR
     S[Sage Bot]:::sage --> WS{web_search}
     S --> WC{web_scrape}
     S --> LI{local_llm_infer}
+    S --> FI{file_ingest}
 
     WS --> S1[SearXNG]:::local
     WS --> S2[Tavily]:::hosted
@@ -55,6 +56,7 @@ flowchart LR
     WC --> C4[Raw Fetch]:::hosted
 
     LI --> O1[Ollama]:::local
+    FI --> T1[Apache Tika]:::local
 ```
 
 > [!TIP]
@@ -79,6 +81,7 @@ This starts:
 | SearXNG | `sage-searxng` | `http://127.0.0.1:8080` | Meta-search aggregator |
 | Crawl4AI | `sage-crawl4ai` | `http://127.0.0.1:11235` | AI-powered web scraper |
 | Ollama | `sage-ollama` | `http://127.0.0.1:11434` | Local LLM inference |
+| Tika | `sage-tika` | `http://127.0.0.1:9998` | Attachment/document text extraction |
 
 ### 2️⃣ Pull an Ollama model
 
@@ -98,6 +101,7 @@ SEARXNG_BASE_URL=http://127.0.0.1:8080
 CRAWL4AI_BASE_URL=http://127.0.0.1:11235
 OLLAMA_BASE_URL=http://127.0.0.1:11434
 OLLAMA_MODEL=llama3.1:8b
+FILE_INGEST_TIKA_BASE_URL=http://127.0.0.1:9998
 ```
 
 ### 4️⃣ (Optional) Add hosted fallback keys
@@ -171,6 +175,17 @@ The smoke script checks:
 | `stack_overflow_search` | Required |
 | `local_llm_models` | Optional (warns if Ollama is down) |
 
+Attachment extraction health check (Tika):
+
+```bash
+curl -sS -X PUT "http://127.0.0.1:9998/tika" \
+  -H "Accept: text/plain" \
+  -H "Content-Type: text/plain" \
+  --data "hello from sage"
+```
+
+Expected output contains `hello from sage`.
+
 ---
 
 <a id="management"></a>
@@ -193,6 +208,12 @@ docker compose -f config/self-host/docker-compose.tools.yml logs -f
 
 ```bash
 docker compose -f config/self-host/docker-compose.tools.yml restart sage-searxng
+```
+
+Attachment extraction service restart:
+
+```bash
+docker compose -f config/self-host/docker-compose.tools.yml restart sage-tika
 ```
 
 ---

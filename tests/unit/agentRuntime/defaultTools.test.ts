@@ -10,6 +10,7 @@ describe('default agentic tools', () => {
     registerDefaultAgenticTools(registry);
 
     expect(registry.listNames().sort()).toEqual([
+      'channel_file_lookup',
       'get_current_datetime',
       'github_file_lookup',
       'github_repo_lookup',

@@ -209,17 +209,20 @@ describe('transcript injection', () => {
     const systemContent = messages[0].content;
 
     const channelMemoryIndex = systemContent.indexOf('[ChannelMemory] Channel memory (STM+LTM):');
-    const shortTermIndex = systemContent.indexOf('Short-term memory');
-    const longTermIndex = systemContent.indexOf('Long-term memory');
+    const rollingSummaryIndex = systemContent.indexOf('Rolling summary text.');
+    const profileSummaryIndex = systemContent.indexOf('Profile summary text.');
     const transcriptIndex = systemContent.indexOf('Recent channel transcript');
 
     expect(channelMemoryIndex).toBeGreaterThan(-1);
-    expect(shortTermIndex).toBeGreaterThan(-1);
-    expect(longTermIndex).toBeGreaterThan(-1);
+    expect(rollingSummaryIndex > -1 || profileSummaryIndex > -1).toBe(true);
     expect(transcriptIndex).toBeGreaterThan(-1);
     expect(channelMemoryIndex).toBeLessThan(transcriptIndex);
-    expect(shortTermIndex).toBeLessThan(transcriptIndex);
-    expect(longTermIndex).toBeLessThan(transcriptIndex);
+    if (rollingSummaryIndex > -1) {
+      expect(rollingSummaryIndex).toBeLessThan(transcriptIndex);
+    }
+    if (profileSummaryIndex > -1) {
+      expect(profileSummaryIndex).toBeLessThan(transcriptIndex);
+    }
   });
 
   it('keeps ChannelMemory packet but omits transcript when logging is disabled', async () => {

@@ -161,6 +161,7 @@ function resolveSearchMaxAttempts(params: {
 const ROUTE_TOOL_ALLOWLIST: Record<AgentKind, string[]> = {
   chat: [
     'get_current_datetime',
+    'channel_file_lookup',
     'web_search',
     'web_scrape',
     'wikipedia_lookup',
@@ -169,6 +170,7 @@ const ROUTE_TOOL_ALLOWLIST: Record<AgentKind, string[]> = {
   ],
   coding: [
     'get_current_datetime',
+    'channel_file_lookup',
     'web_search',
     'web_scrape',
     'github_repo_lookup',
@@ -180,6 +182,7 @@ const ROUTE_TOOL_ALLOWLIST: Record<AgentKind, string[]> = {
   ],
   search: [
     'get_current_datetime',
+    'channel_file_lookup',
     'web_search',
     'web_scrape',
     'wikipedia_lookup',
@@ -224,6 +227,9 @@ function buildToolProtocolInstruction(params: {
           hasTool('web_scrape')
             ? '- If user provides URLs, call web_scrape on those URLs.'
             : '- If user provides URLs, use available retrieval tools to verify URL content when possible.',
+          hasTool('channel_file_lookup')
+            ? '- If user asks about previously uploaded files/attachments in this channel, call channel_file_lookup before answering.'
+            : '- If user asks about previously uploaded files/attachments in this channel, acknowledge that direct file retrieval is unavailable.',
           params.searchMode === 'complex'
             ? '- In complex mode, compare multiple sources before concluding.'
             : '- In simple mode, keep the answer concise and directly scoped.',
@@ -241,6 +247,9 @@ function buildToolProtocolInstruction(params: {
             hasTool('stack_overflow_search')
               ? '- Use stack_overflow_search for known error signatures or implementation pitfalls.'
               : '- Use available retrieval tools when debugging known error signatures.',
+            hasTool('channel_file_lookup')
+              ? '- If coding guidance depends on previously uploaded files in this channel, call channel_file_lookup to retrieve the file content first.'
+              : '- If coding guidance depends on previously uploaded files in this channel, state that file retrieval is unavailable.',
           ].join('\n')
         : params.routeKind === 'chat'
           ? [
@@ -252,6 +261,9 @@ function buildToolProtocolInstruction(params: {
               hasTool('web_scrape')
                 ? '- If the user shares URL(s), call web_scrape before summarizing or quoting page content.'
                 : '- If the user shares URL(s), use available tools to validate page content before summarizing.',
+              hasTool('channel_file_lookup')
+                ? '- If the user asks what files were uploaded/remembered or asks to analyze earlier attachments, call channel_file_lookup before answering.'
+                : '- If the user asks what files were uploaded/remembered, state that file retrieval is unavailable in this run.',
             ].join('\n')
           : '';
   return [
@@ -277,26 +289,36 @@ const TOOL_HARD_GATE_TIME_SENSITIVE_PATTERN =
 const TOOL_HARD_GATE_SOURCE_REQUEST_PATTERN = /(source|sources|citation|cite|reference|references|link|url)/i;
 const TOOL_HARD_GATE_CODING_VERIFICATION_PATTERN =
   /(npm|pnpm|yarn|package|dependency|dependencies|install|version|api|sdk|docs|documentation|changelog|migration|deprecated|cli|command|stack trace|error|exception|runtime)/i;
+const TOOL_HARD_GATE_ATTACHMENT_RECALL_PATTERN =
+  /(attachment|attached|uploaded|upload|cached|remember(?:ed)?|previous file|earlier file|that file|that attachment)/i;
 
 function shouldRequireToolEvidenceForTurn(params: {
   routeKind: AgentKind;
   userText: string;
   searchMode: SearchExecutionMode | null;
+  hasChannelFileLookup: boolean;
 }): boolean {
   const text = params.userText.trim();
   if (!text) return false;
 
   const asksFreshness = TOOL_HARD_GATE_TIME_SENSITIVE_PATTERN.test(text);
   const asksSources = TOOL_HARD_GATE_SOURCE_REQUEST_PATTERN.test(text);
+  const asksAttachmentRecall =
+    params.hasChannelFileLookup && TOOL_HARD_GATE_ATTACHMENT_RECALL_PATTERN.test(text);
 
   if (params.routeKind === 'search') {
     return true;
   }
   if (params.routeKind === 'coding') {
-    return asksFreshness || asksSources || TOOL_HARD_GATE_CODING_VERIFICATION_PATTERN.test(text);
+    return (
+      asksFreshness ||
+      asksSources ||
+      asksAttachmentRecall ||
+      TOOL_HARD_GATE_CODING_VERIFICATION_PATTERN.test(text)
+    );
   }
   if (params.routeKind === 'chat') {
-    return asksFreshness || asksSources;
+    return asksFreshness || asksSources || asksAttachmentRecall;
   }
   return false;
 }
@@ -714,6 +736,7 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
       routeKind: agentDecision.kind,
       userText,
       searchMode: searchExecutionMode,
+      hasChannelFileLookup: activeToolNames.includes('channel_file_lookup'),
     });
   const toolProtocolInstruction = toolLoopEnabled
     ? buildToolProtocolInstruction({
@@ -1805,6 +1828,9 @@ Checked on: <YYYY-MM-DD> (only when required)`;
       providers.add('VoiceAnalytics');
     }
     if (/(summary|summar|context|missing context|thread)/.test(issueText)) {
+      providers.add('ChannelMemory');
+    }
+    if (/(attachment|attached|uploaded file|cached file|file recall|file retrieval)/.test(issueText)) {
       providers.add('ChannelMemory');
     }
 

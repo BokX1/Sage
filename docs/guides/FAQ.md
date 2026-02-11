@@ -106,12 +106,12 @@ You can change defaults in **[Configuration](../reference/CONFIGURATION.md)**.
 <details>
 <summary><strong>Can Sage read files?</strong></summary>
 
-Yes. Sage supports file ingestion for:
+Yes. Sage ingests multiple non-image Discord attachments per message.
 
-- Code files (`.ts`, `.js`, `.py`, etc.)
-- Text documents (`.txt`, `.md`)
+- Native text/code fallback for plain text formats (`.txt`, `.md`, source files, JSON/YAML, logs, etc.)
+- Broad document extraction through Apache Tika (for example PDF and Office documents)
 
-Sage uses file contents to help answer questions (e.g., code review, explanations). *PDF support is planned for a future update.*
+Sage caches extracted non-image file content in channel attachment memory, then retrieves full text on demand. Transcript history stores lightweight cache markers, not full file bodies, so old files do not bloat every prompt.
 
 </details>
 

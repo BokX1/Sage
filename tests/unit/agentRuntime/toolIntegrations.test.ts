@@ -1,7 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { config } from '../../../src/config';
+const { mockFindIngestedAttachmentsForLookup } = vi.hoisted(() => ({
+  mockFindIngestedAttachmentsForLookup: vi.fn(),
+}));
+vi.mock('../../../src/core/attachments/ingestedAttachmentRepo', () => ({
+  findIngestedAttachmentsForLookup: mockFindIngestedAttachmentsForLookup,
+}));
 import {
   listLocalOllamaModels,
+  lookupChannelFileCache,
   lookupGitHubFile,
   lookupNpmPackage,
   runWebSearch,
@@ -20,6 +27,7 @@ describe('toolIntegrations', () => {
 
   beforeEach(() => {
     vi.resetAllMocks();
+    mockFindIngestedAttachmentsForLookup.mockReset();
     config.TOOL_WEB_SEARCH_PROVIDER_ORDER = originalSearchOrder;
     config.SEARXNG_BASE_URL = originalSearxngBase;
     config.TOOL_WEB_SCRAPE_PROVIDER_ORDER = originalScrapeOrder;
@@ -228,6 +236,55 @@ describe('toolIntegrations', () => {
       expect.arrayContaining([
         expect.objectContaining({
           name: 'llama3.1:8b',
+        }),
+      ]),
+    );
+  });
+
+  it('looks up cached channel files', async () => {
+    mockFindIngestedAttachmentsForLookup.mockResolvedValueOnce([
+      {
+        id: 'att-1',
+        guildId: 'guild-1',
+        channelId: 'channel-1',
+        messageId: 'msg-100',
+        attachmentIndex: 0,
+        filename: 'report.md',
+        sourceUrl: 'https://cdn.discordapp.com/report.md',
+        contentType: 'text/markdown',
+        declaredSizeBytes: 128,
+        readSizeBytes: 128,
+        extractor: 'tika',
+        status: 'ok',
+        errorText: null,
+        extractedText: 'hello from cache',
+        extractedTextChars: 16,
+        createdAt: new Date('2026-02-11T00:00:00.000Z'),
+        updatedAt: new Date('2026-02-11T00:00:00.000Z'),
+      },
+    ]);
+
+    const result = await lookupChannelFileCache({
+      guildId: 'guild-1',
+      channelId: 'channel-1',
+      query: 'report',
+      includeContent: true,
+    });
+
+    expect(mockFindIngestedAttachmentsForLookup).toHaveBeenCalledWith(
+      expect.objectContaining({
+        guildId: 'guild-1',
+        channelId: 'channel-1',
+        query: 'report',
+      }),
+    );
+    expect(result.count).toBe(1);
+    expect(result.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          filename: 'report.md',
+          messageId: 'msg-100',
+          content: 'hello from cache',
         }),
       ]),
     );

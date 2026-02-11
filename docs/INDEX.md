@@ -43,7 +43,7 @@ Clone → Configure → Deploy → Operate
 | :--- | :--- | :--- |
 | 1️⃣ | [📖 Getting Started](guides/GETTING_STARTED.md) — Discord app, `.env`, database, onboarding | ~30 min |
 | 2️⃣ | [⚙️ Configuration](reference/CONFIGURATION.md) — Tune behavior, memory, and limits | ~15 min |
-| 3️⃣ | [🧰 Self-Hosted Tool Stack](operations/TOOL_STACK.md) — Local SearXNG/Crawl4AI/Ollama | ~20 min |
+| 3️⃣ | [🧰 Self-Hosted Tool Stack](operations/TOOL_STACK.md) — Local SearXNG/Crawl4AI/Ollama/Tika | ~20 min |
 | 4️⃣ | [📋 Operations Runbook](operations/RUNBOOK.md) — Production monitoring + maintenance | Reference |
 
 ---
@@ -103,7 +103,7 @@ Architecture → Pipeline → Memory → Database
 | :--- | :--- |
 | [📋 Operations Runbook](operations/RUNBOOK.md) | Production operations, monitoring, and recovery |
 | [🚀 Deployment Guide](operations/DEPLOYMENT.md) | Deploy to production with Docker or Node.js |
-| [🧰 Self-Hosted Tool Stack](operations/TOOL_STACK.md) | SearXNG, Crawl4AI, Ollama — local-first with hosted fallback |
+| [🧰 Self-Hosted Tool Stack](operations/TOOL_STACK.md) | SearXNG, Crawl4AI, Ollama, Tika — local-first with hosted fallback |
 
 ### 📓 Security
 

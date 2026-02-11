@@ -195,7 +195,7 @@ npm run onboard --   --discord-token "YOUR_TOKEN"   --discord-app-id "YOUR_APP_I
 Make sure Docker Desktop is running, then:
 
 ```bash
-docker compose -f config/ci/docker-compose.yml up -d db
+docker compose -f config/ci/docker-compose.yml up -d db tika
 ```
 
 Wait ~10 seconds, then run:

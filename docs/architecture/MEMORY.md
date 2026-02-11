@@ -28,6 +28,7 @@ This document describes how Sage stores, summarizes, and injects memory into run
 | **User profile** | Long-term personalization summary per user. | `UserProfile` table. | `src/core/memory/profileUpdater.ts`, `src/core/memory/userProfileRepo.ts` |
 | **Channel summaries** | Rolling + long-term channel context. | `ChannelSummary` table. | `src/core/summary/*` |
 | **Raw transcript** | Recent messages for short-term context. | Ring buffer + optional `ChannelMessage` table storage. | `src/core/awareness/*`, `src/core/ingest/ingestEvent.ts` |
+| **Attachment cache** | Persisted non-image file extraction (text + metadata) for on-demand retrieval. | `IngestedAttachment` table. | `src/core/attachments/ingestedAttachmentRepo.ts`, `src/bot/handlers/messageCreate.ts` |
 | **Relationship graph** | Probabilistic user connections from mentions/replies/voice overlap. | `RelationshipEdge` table. | `src/core/relationships/*`, `src/core/context/providers/socialGraphProvider.ts` |
 | **Voice sessions** | Presence history and voice-duration analytics. | `VoiceSession` table. | `src/core/voice/*`, `src/core/context/providers/voiceAnalyticsProvider.ts` |
 
@@ -45,6 +46,11 @@ This document describes how Sage stores, summarizes, and injects memory into run
   - `CONTEXT_TRANSCRIPT_MAX_CHARS` (default in `.env.example`: `24000`)
 
 Transcript usage is size/window bounded. For longer context, increase transcript limits carefully.
+
+Attachment behavior:
+
+- Transcript rows store attachment-cache notes, not full historical file bodies.
+- Full file content is loaded on demand through the runtime tool loop (`channel_file_lookup`).
 
 ---
 
@@ -112,6 +118,8 @@ Provider selection notes:
 - Recent transcript
 - Intent hint + reply context/reference
 - Current user message/content
+
+Attachment note: historical file content is not replayed from transcript by default; file text is retrieved from cache on demand when requested.
 
 All system blocks are merged into one system message before provider calls.
 

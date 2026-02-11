@@ -56,7 +56,7 @@ Sage is a **fully agentic Discord companion** that goes beyond simple chat comma
 - 🧠 **Self-Learning Memory**: Remembers past conversations to build personalized user contexts.
 - 👥 **Socially Aware**: Understands relationship tiers (Best Friend, Acquaintance) and interaction "vibes."
 - 👁️ **Vision + Image Generation**: Ingests images for visual understanding, and can generate/edit images from prompts.
-- 📄 **Knowledge Base**: Ingests code files and text documents to provide high-context analysis.
+- 📄 **Knowledge Base**: Ingests multiple Discord file types (text, code, docs, and more via Tika), caches extracted content, and retrieves file text on demand without replaying full file bodies every turn.
 - 💬 **Intelligent Routing**: Uses a high-precision LLM classifier to resolve pronouns and context.
 - ⚡ **Adaptive Models**: Uses route-aware model resolution with `openai-large` as the chat baseline and healthy fallbacks (for example `kimi`, `claude-fast`) based on intent and capability needs.
 
@@ -233,7 +233,7 @@ For local-first tooling (SearXNG/Crawl4AI/Ollama) with hosted fallback, see **[�
  cd Sage
  npm ci
  npm run onboard
- docker compose -f config/ci/docker-compose.yml up -d db
+ docker compose -f config/ci/docker-compose.yml up -d db tika
  npm run db:push
  npm run check
  npm run dev

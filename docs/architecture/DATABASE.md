@@ -45,6 +45,17 @@ erDiagram
         string content
     }
 
+    IngestedAttachment {
+        string id PK
+        string guildId
+        string channelId
+        string messageId
+        int attachmentIndex
+        string filename
+        string status
+        datetime createdAt
+    }
+
     ChannelSummary {
         string id PK
         string guildId
@@ -111,6 +122,7 @@ erDiagram
     AgentTrace ||--o{ AgentRun : "traceId"
     UserProfile ||--o{ VoiceSession : "userId (logical)"
     UserProfile ||--o{ ChannelMessage : "authorId (logical)"
+    ChannelMessage ||--o{ IngestedAttachment : "messageId (logical)"
     UserProfile ||--o{ RelationshipEdge : "userA/userB (logical)"
 ```
 
@@ -125,6 +137,7 @@ erDiagram
 | `GuildSettings` | Per-guild configuration and encrypted BYOP key references. |
 | `UserProfile` | Long-term user summary memory and optional user-scoped key. |
 | `ChannelMessage` | Stored message transcript rows (when DB storage is enabled). |
+| `IngestedAttachment` | Cached non-image attachment extraction text/metadata for on-demand retrieval. |
 | `ChannelSummary` | Rolling and profile summary snapshots per channel. |
 | `RelationshipEdge` | Weighted social links derived from interactions. |
 | `VoiceSession` | Voice join/leave duration history. |

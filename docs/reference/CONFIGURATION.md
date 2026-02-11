@@ -203,6 +203,24 @@ Used by `npm run agentic:replay-gate` and release checks.
 | `RING_BUFFER_MAX_MESSAGES_PER_CHANNEL` | In-memory transcript size cap | `200` |
 | `CONTEXT_TRANSCRIPT_MAX_MESSAGES` | Transcript message cap per prompt | `15` |
 | `CONTEXT_TRANSCRIPT_MAX_CHARS` | Transcript char cap per prompt | `24000` |
+| `FILE_INGEST_TIKA_BASE_URL` | Apache Tika server base URL used for document extraction | `http://127.0.0.1:9998` |
+| `FILE_INGEST_TIMEOUT_MS` | Timeout for file fetch + extraction operations | `45000` |
+| `FILE_INGEST_MAX_ATTACHMENTS_PER_MESSAGE` | Maximum non-image attachments processed from one Discord message | `4` |
+| `FILE_INGEST_MAX_BYTES_PER_FILE` | Hard byte cap per attachment before extraction | `10485760` |
+| `FILE_INGEST_MAX_TOTAL_BYTES_PER_MESSAGE` | Combined byte cap across processed attachments per message | `20971520` |
+| `FILE_INGEST_OCR_ENABLED` | Enable OCR in Tika extraction flow (`true`/`false`) | `false` |
+
+Attachment ingestion behavior:
+
+- Non-image files are extracted and cached in `IngestedAttachment` rows (per channel/message).
+- Transcript/message history stores cache notes, not full file bodies, to avoid prompt replay bloat.
+- Runtime retrieves cached file content on demand via `channel_file_lookup` during tool loops.
+
+For attachment ingestion, start Tika with:
+
+```bash
+docker compose -f config/ci/docker-compose.yml up -d tika
+```
 
 ---
 
@@ -376,6 +394,13 @@ CHAT_MAX_OUTPUT_TOKENS=1800
 CODING_MAX_OUTPUT_TOKENS=4200
 SEARCH_MAX_OUTPUT_TOKENS=2000
 CRITIC_MAX_OUTPUT_TOKENS=1800
+
+FILE_INGEST_TIKA_BASE_URL=http://127.0.0.1:9998
+FILE_INGEST_TIMEOUT_MS=45000
+FILE_INGEST_MAX_ATTACHMENTS_PER_MESSAGE=4
+FILE_INGEST_MAX_BYTES_PER_FILE=10485760
+FILE_INGEST_MAX_TOTAL_BYTES_PER_MESSAGE=20971520
+FILE_INGEST_OCR_ENABLED=false
 
 AGENTIC_GRAPH_PARALLEL_ENABLED=true
 AGENTIC_GRAPH_MAX_PARALLEL=2

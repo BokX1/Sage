@@ -42,6 +42,7 @@ npm run agentic:replay-gate  # Replay quality gate
 ```bash
 npx prisma db push       # Sync schema (no migrations)
 npm run db:studio        # Open visual database browser
+docker compose -f config/ci/docker-compose.yml up -d db tika  # Start DB + Tika
 ```
 
 ---
@@ -56,6 +57,7 @@ Before starting Sage, verify:
 | :--- | :--- | :--- |
 | Docker running | Open Docker Desktop | Green “Running” status |
 | Database up | `docker compose -f config/ci/docker-compose.yml up -d db` | Container starts |
+| Tika up (file ingestion) | `docker compose -f config/ci/docker-compose.yml up -d tika` | `sage-tika` is running on port `9998` |
 | Config valid | `npm run doctor` | All checks pass |
 | Token correct | Check `.env` file | No spaces/quotes in token |
 
@@ -166,6 +168,15 @@ npm run doctor
 - ✅ Database connection works
 - ✅ Discord token valid
 - ✅ LLM connectivity (if `LLM_DOCTOR_PING=1`)
+
+Optional Tika check (recommended when file ingestion is enabled):
+
+```bash
+curl -sS -X PUT "http://127.0.0.1:9998/tika" \
+  -H "Accept: text/plain" \
+  -H "Content-Type: text/plain" \
+  --data "healthcheck"
+```
 
 ---
 

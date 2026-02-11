@@ -26,6 +26,7 @@ This document describes what Sage stores and how to control retention. Implement
 | --- | --- | --- |
 | User profile summaries | `UserProfile` | LLM-generated long-term summary of a user. |
 | Channel messages | `ChannelMessage` | Stored only if `MESSAGE_DB_STORAGE_ENABLED=true`. |
+| Ingested attachments | `IngestedAttachment` | Non-image attachment extraction cache (text + metadata) for on-demand retrieval. |
 | Channel summaries | `ChannelSummary` | Rolling + profile summaries, plus metadata (topics, decisions, etc.). |
 | Relationship edges | `RelationshipEdge` | Probabilistic relationship weights from mentions/replies/voice overlap. |
 | Voice sessions | `VoiceSession` | Join/leave session history per user/channel. |
@@ -54,6 +55,7 @@ These settings control what Sage ingests and logs:
   - `RAW_MESSAGE_TTL_DAYS`
   - `RING_BUFFER_MAX_MESSAGES_PER_CHANNEL`
 - **DB transcripts** are trimmed per channel to `CONTEXT_TRANSCRIPT_MAX_MESSAGES`.
+- **Attachment cache** persists extracted non-image file text/metadata in `IngestedAttachment` until deleted manually.
 - **Summaries and profiles** persist until deleted manually.
 - **Agent traces** are stored only when `TRACE_ENABLED=true`.
 
@@ -71,7 +73,8 @@ When generating replies, Sage sends:
 - The user’s message content
 - Reply references (if the user replied to another message)
 - Recent transcript + summaries (if logging is enabled)
-- Attachment text blocks for supported text/code files
+- Attachment text blocks for the current turn when inline analysis is needed
+- Attachment-cache retrieval results when tool loop calls `channel_file_lookup`
 - Image URLs for vision-capable requests
 
 Sage does **not** log API keys or tokens. Keep `.env` out of version control.

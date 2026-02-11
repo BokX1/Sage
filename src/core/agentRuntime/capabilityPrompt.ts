@@ -123,9 +123,10 @@ export function buildCapabilityPromptSection(
   });
   const contextProviderLine = formatListLine(params.contextProviders);
   const routeOptionsLine = formatListLine(ROUTER_ROUTE_OPTIONS);
-  const activeToolLine = formatListLine(
-    params.activeTools?.map((tool) => tool.trim()).filter((tool) => tool.length > 0) ?? [],
-  );
+  const normalizedTools =
+    params.activeTools?.map((tool) => tool.trim()).filter((tool) => tool.length > 0) ?? [];
+  const activeToolLine = formatListLine(normalizedTools);
+  const hasChannelFileLookup = normalizedTools.includes('channel_file_lookup');
 
   return [
     '## Agent Capability Matrix',
@@ -137,6 +138,9 @@ export function buildCapabilityPromptSection(
     formatRouterReasoning(params.routerReasoning),
     `- Context providers available this turn: ${contextProviderLine}.`,
     `- Runtime tools available this turn: ${activeToolLine}.`,
+    hasChannelFileLookup
+      ? '- Attachment memory behavior: historical non-image files are cached outside transcript; use channel_file_lookup to retrieve file content on demand.'
+      : '- Attachment memory behavior: historical file retrieval tool is not available this turn.',
     '- Tool calls are executed by the runtime assistant; the critic does not execute tools directly.',
     '- The critic can still require tool-backed revision/redispatch when evidence is weak or stale.',
     '## Agentic Loop Contract',

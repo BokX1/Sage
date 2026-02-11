@@ -68,6 +68,12 @@ const testDefaults: Record<string, string> = {
   INGESTION_MODE: 'all',
   INGESTION_ALLOWLIST_CHANNEL_IDS_CSV: '',
   INGESTION_BLOCKLIST_CHANNEL_IDS_CSV: '',
+  FILE_INGEST_TIKA_BASE_URL: 'http://127.0.0.1:9998',
+  FILE_INGEST_TIMEOUT_MS: '45000',
+  FILE_INGEST_MAX_ATTACHMENTS_PER_MESSAGE: '4',
+  FILE_INGEST_MAX_BYTES_PER_FILE: '10485760',
+  FILE_INGEST_MAX_TOTAL_BYTES_PER_MESSAGE: '20971520',
+  FILE_INGEST_OCR_ENABLED: 'false',
   RAW_MESSAGE_TTL_DAYS: '7',
   RING_BUFFER_MAX_MESSAGES_PER_CHANNEL: '50',
   CONTEXT_TRANSCRIPT_MAX_MESSAGES: '10',
@@ -188,6 +194,17 @@ const envSchema = z.object({
   INGESTION_MODE: z.enum(['all', 'allowlist']),
   INGESTION_ALLOWLIST_CHANNEL_IDS_CSV: z.string(),
   INGESTION_BLOCKLIST_CHANNEL_IDS_CSV: z.string(),
+  FILE_INGEST_TIKA_BASE_URL: httpOrHttpsUrlSchema.default('http://127.0.0.1:9998'),
+  FILE_INGEST_TIMEOUT_MS: z.coerce.number().int().min(1000).max(180000).default(45000),
+  FILE_INGEST_MAX_ATTACHMENTS_PER_MESSAGE: z.coerce.number().int().min(1).max(20).default(4),
+  FILE_INGEST_MAX_BYTES_PER_FILE: z.coerce.number().int().min(1024).max(104857600).default(10485760),
+  FILE_INGEST_MAX_TOTAL_BYTES_PER_MESSAGE: z.coerce
+    .number()
+    .int()
+    .min(1024)
+    .max(209715200)
+    .default(20971520),
+  FILE_INGEST_OCR_ENABLED: z.enum(['true', 'false']).default('false').transform((v) => v === 'true'),
   RAW_MESSAGE_TTL_DAYS: z.coerce.number().int().positive().max(365),
   RING_BUFFER_MAX_MESSAGES_PER_CHANNEL: z.coerce.number().int().positive().max(5000),
   CONTEXT_TRANSCRIPT_MAX_MESSAGES: z.coerce.number().int().positive(),

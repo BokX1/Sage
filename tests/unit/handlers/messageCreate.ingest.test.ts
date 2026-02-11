@@ -2,17 +2,22 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { Message, User, TextChannel } from 'discord.js';
 
 // Hoist mocks
-const { mockGenerateChatReply, mockClient } = vi.hoisted(() => {
+const { mockGenerateChatReply, mockClient, mockFetchAttachmentText } = vi.hoisted(() => {
   const mockGenerateChatReply = vi.fn();
   const mockClientUser = { id: 'bot-123', tag: 'SageBot#0001' } as any;
   const mockClient = { user: mockClientUser };
+  const mockFetchAttachmentText = vi.fn();
 
-  return { mockGenerateChatReply, mockClient };
+  return { mockGenerateChatReply, mockClient, mockFetchAttachmentText };
 });
 
 // Mock chatEngine
 vi.mock('../../../src/core/chat-engine', () => ({
   generateChatReply: mockGenerateChatReply,
+}));
+
+vi.mock('../../../src/core/utils/file-handler', () => ({
+  fetchAttachmentText: mockFetchAttachmentText,
 }));
 
 // Mock safety
@@ -52,6 +57,10 @@ vi.mock('../../../src/core/ingest/ingestEvent', () => ({
   ingestEvent: vi.fn().mockResolvedValue(undefined),
 }));
 
+vi.mock('../../../src/core/attachments/ingestedAttachmentRepo', () => ({
+  upsertIngestedAttachment: vi.fn().mockResolvedValue(undefined),
+}));
+
 // Mock config to use manual autopilot mode (so non-mentions don't trigger AI)
 vi.mock('../../../src/config', async () => {
   const actual = await vi.importActual<typeof import('../../../src/config')>('../../../src/config');
@@ -79,6 +88,13 @@ describe('messageCreate - Ingest Flow', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockGenerateChatReply.mockResolvedValue({ replyText: 'Test response' });
+    mockFetchAttachmentText.mockResolvedValue({
+      kind: 'ok',
+      text: 'default file text',
+      extractor: 'tika',
+      byteLength: 16,
+      mimeType: 'text/plain',
+    });
     resetInvocationCooldowns();
     vi.useRealTimers();
   });
@@ -321,5 +337,71 @@ describe('messageCreate - Ingest Flow', () => {
 
     // But no reply
     expect(mockGenerateChatReply).not.toHaveBeenCalled();
+  });
+
+  it('should ingest and forward multiple non-image attachments', async () => {
+    mockFetchAttachmentText
+      .mockResolvedValueOnce({
+        kind: 'ok',
+        text: 'alpha body',
+        extractor: 'tika',
+        byteLength: 20,
+        mimeType: 'text/plain',
+      })
+      .mockResolvedValueOnce({
+        kind: 'ok',
+        text: 'beta body',
+        extractor: 'tika',
+        byteLength: 24,
+        mimeType: 'text/markdown',
+      });
+
+    const message = createMockMessage({
+      content: '<@bot-123> review these',
+      channelId: 'channel-files',
+      mentions: {
+        has: vi.fn((user: User) => user.id === 'bot-123'),
+      } as any,
+      attachments: {
+        values: vi.fn(() => [
+          {
+            name: 'alpha.txt',
+            url: 'https://cdn.discordapp.com/alpha.txt',
+            contentType: 'text/plain',
+            size: 20,
+          },
+          {
+            name: 'beta.md',
+            url: 'https://cdn.discordapp.com/beta.md',
+            contentType: 'text/markdown',
+            size: 24,
+          },
+        ]),
+      } as any,
+    });
+
+    await handleMessageCreate(message);
+
+    expect(mockFetchAttachmentText).toHaveBeenCalledTimes(2);
+    expect(mockGenerateChatReply).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userText: expect.stringContaining('BEGIN FILE ATTACHMENT: alpha.txt'),
+      }),
+    );
+    expect(mockGenerateChatReply).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userText: expect.stringContaining('BEGIN FILE ATTACHMENT: beta.md'),
+      }),
+    );
+    expect(ingestEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: expect.stringContaining('Attachment cache processed 2 non-image attachment(s)'),
+      }),
+    );
+    expect(ingestEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: expect.not.stringContaining('BEGIN FILE ATTACHMENT'),
+      }),
+    );
   });
 });

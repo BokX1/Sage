@@ -173,6 +173,7 @@ Rules:
 - Tool-awareness:
   - You do not execute tools directly.
   - If the answer contains external/time-sensitive factual claims but lacks evidence quality, set verdict to "revise".
+  - If the user asks about previously uploaded/attached files and the answer does not retrieve file evidence, set verdict to "revise".
   - When revising for evidence quality, rewritePrompt should request a tool-backed revision and name 1-2 relevant tools from "Available tools" when possible.
 - Never include markdown.`;
 
@@ -204,6 +205,7 @@ Return ONLY JSON:
   - Tool-awareness:
     - You do not execute tools directly.
     - If the answer makes versioned/package/API/CLI claims that need verification and evidence is weak, verdict MUST be "revise".
+    - If the request depends on previously uploaded/attached channel files and the answer does not retrieve file evidence, verdict MUST be "revise".
     - rewritePrompt should request tool-backed verification and name relevant tools from "Available tools" when possible.
   - Never include markdown.`;
 
@@ -241,7 +243,8 @@ rewritePrompt guidance:
 - If verdict is "revise", rewritePrompt must be specific and actionable (what to add/remove/verify, and what sources to cite).
 - Tool-awareness:
   - You do not execute tools directly.
-  - If source grounding or freshness hygiene is weak, rewritePrompt should request a tool-backed refresh and name relevant tools from "Available tools" when possible.`;
+  - If source grounding or freshness hygiene is weak, rewritePrompt should request a tool-backed refresh and name relevant tools from "Available tools" when possible.
+  - If the user asks about previously uploaded/attached files and evidence is missing, verdict SHOULD be "revise".`;
 
 function getCriticSystemPrompt(routeKind: AgentKind): string {
   switch (routeKind) {

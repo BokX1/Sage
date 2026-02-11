@@ -51,7 +51,7 @@ docker compose -f config/ci/docker-compose.yml up -d
 ### Option 3: With Self-Hosted Tool Stack
 
 ```bash
-# Start local SearXNG, Crawl4AI, Ollama alongside Sage
+# Start local SearXNG, Crawl4AI, Ollama, and Tika alongside Sage
 docker compose -f config/ci/docker-compose.yml up -d
 docker compose -f config/self-host/docker-compose.tools.yml up -d
 ```
@@ -82,6 +82,9 @@ POLLINATIONS_API_BASE_URL=https://text.pollinations.ai/openai
 AUTOPILOT_MODE=manual
 TRACE_ENABLED=true
 LOG_LEVEL=info
+
+# Attachment extraction (recommended when file ingestion is enabled)
+FILE_INGEST_TIKA_BASE_URL=http://127.0.0.1:9998
 
 # Security
 ADMIN_USER_IDS_CSV=your_discord_user_id
@@ -141,6 +144,7 @@ Use this checklist before going live:
 - [ ] **Tracing is enabled** (`TRACE_ENABLED=true`)
 - [ ] **Log level** is appropriate (`LOG_LEVEL=info`)
 - [ ] **BYOP key** is set for at least one server
+- [ ] **Tika is running** when file ingestion is enabled (`FILE_INGEST_TIKA_BASE_URL`)
 - [ ] **Process manager** is configured (PM2, systemd, Docker restart policy)
 - [ ] **Database backups** are scheduled
 

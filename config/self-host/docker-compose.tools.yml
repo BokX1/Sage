@@ -30,5 +30,12 @@ services:
     volumes:
       - ollama_data:/root/.ollama
 
+  tika:
+    image: apache/tika:3.2.3.0
+    container_name: sage-tika
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:9998:9998"
+
 volumes:
   ollama_data:

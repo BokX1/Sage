@@ -17,7 +17,6 @@ const IMAGE_EXTENSIONS = new Set([
 
 const ATTACHMENT_CONTEXT_NOTE =
   '(System Note: The user attached the file above. Analyze it based on their request.)';
-const TRANSCRIPT_HEADER = 'Recent channel transcript (most recent last):';
 
 export function isImageAttachment(attachment?: {
   contentType?: string | null;
@@ -54,8 +53,8 @@ export function getImageAttachment(message: Message) {
   return getMessageAttachments(message).find((attachment) => isImageAttachment(attachment));
 }
 
-export function getNonImageAttachment(message: Message) {
-  return getMessageAttachments(message).find((attachment) => !isImageAttachment(attachment));
+export function getNonImageAttachments(message: Message) {
+  return getMessageAttachments(message).filter((attachment) => !isImageAttachment(attachment));
 }
 
 export function buildMessageContent(
@@ -90,6 +89,13 @@ export function appendAttachmentToText(baseText: string, attachmentBlock: string
   return `${baseText}${separator}${attachmentBlock}`;
 }
 
+export function appendAttachmentBlocksToText(baseText: string, attachmentBlocks: string[]): string {
+  if (attachmentBlocks.length === 0) {
+    return baseText;
+  }
+  return appendAttachmentToText(baseText, attachmentBlocks.join('\n\n'));
+}
+
 export function formatAttachmentBlock(
   filename: string,
   body: string,
@@ -105,56 +111,67 @@ export function formatAttachmentBlock(
   return lines.filter((line) => line !== undefined && line !== null).join('\n');
 }
 
-export function deriveAttachmentLimits(params: {
+export function deriveAttachmentBudget(params: {
   baseText: string;
-  filename: string;
-  authorDisplayName: string;
-  authorId: string;
-  timestamp: Date;
-}): { maxChars: number; maxBytes: number; headChars: number; tailChars: number } {
-  const linePrefix = `- @${params.authorDisplayName} (id:${params.authorId}) [${params.timestamp.toISOString()}]: `;
-  const transcriptMaxContent = Math.max(
-    0,
-    appConfig.CONTEXT_TRANSCRIPT_MAX_CHARS - TRANSCRIPT_HEADER.length - 1 - linePrefix.length,
-  );
-  const attachmentOverhead = formatAttachmentBlock(params.filename, '').length;
-  const remainingTranscriptChars = Math.max(
-    0,
-    transcriptMaxContent - params.baseText.length - attachmentOverhead,
-  );
-  const overheadTokens = estimateTokens(formatAttachmentBlock(params.filename, ''));
+}): { maxChars: number; maxBytes: number } {
   const availableTokens = Math.max(
     0,
-    appConfig.CONTEXT_USER_MAX_TOKENS - estimateTokens(params.baseText) - overheadTokens,
+    appConfig.CONTEXT_USER_MAX_TOKENS - estimateTokens(params.baseText),
   );
-  const remainingBudgetChars = Math.floor(
-    availableTokens * appConfig.TOKEN_HEURISTIC_CHARS_PER_TOKEN,
+  const maxChars = Math.max(
+    0,
+    Math.floor(availableTokens * appConfig.TOKEN_HEURISTIC_CHARS_PER_TOKEN),
   );
-  const maxChars = Math.max(0, Math.min(remainingBudgetChars, remainingTranscriptChars));
   const maxBytes = Math.max(0, Math.floor(maxChars * 4));
-  const headChars = Math.floor(maxChars * 0.7);
-  const tailChars = Math.max(0, maxChars - headChars);
-  return { maxChars, maxBytes, headChars, tailChars };
+  return { maxChars, maxBytes };
+}
+
+function formatBytes(value?: number | null): string | null {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
+    return null;
+  }
+  if (value < 1024) return `${value} B`;
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
+  return `${(value / (1024 * 1024)).toFixed(2)} MB`;
 }
 
 export function buildAttachmentBlockFromResult(
   filename: string,
   result: FetchAttachmentResult,
   contentType?: string | null,
+  options?: { sizeBytes?: number | null; includeSkipped?: boolean },
 ): string | null {
-  if (result.kind === 'skip') {
+  if (result.kind === 'skip' && !options?.includeSkipped) {
     return null;
   }
 
   const notes: string[] = [];
+  const resolvedMimeType = result.mimeType ?? contentType ?? null;
+  const extractor = result.extractor !== 'none' ? result.extractor : null;
+  const declaredSize = formatBytes(options?.sizeBytes);
+  const readSize = formatBytes(result.byteLength);
+
+  const metadataBits: string[] = [];
+  if (resolvedMimeType) metadataBits.push(`mime=${resolvedMimeType}`);
+  if (extractor) metadataBits.push(`extractor=${extractor}`);
+  if (declaredSize) metadataBits.push(`declared_size=${declaredSize}`);
+  if (readSize) metadataBits.push(`read_size=${readSize}`);
+  if (metadataBits.length > 0) {
+    notes.push(`[System: Attachment metadata: ${metadataBits.join(', ')}.]`);
+  }
+
   if (result.kind === 'truncated') {
     notes.push(result.message);
   }
 
-  if (contentType?.toLowerCase().startsWith('application/octet-stream')) {
+  if (resolvedMimeType?.toLowerCase().startsWith('application/octet-stream')) {
     notes.push(
       '(System Note: Attachment content-type was application/octet-stream; treated as text based on file extension.)',
     );
+  }
+
+  if (result.kind === 'skip') {
+    return formatAttachmentBlock(filename, result.reason, notes);
   }
 
   if (result.kind === 'too_large' || result.kind === 'error') {

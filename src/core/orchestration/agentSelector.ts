@@ -106,6 +106,7 @@ Your route choice controls one unified runtime loop:
 1. Context providers are gathered for this turn (UserMemory + ChannelMemory are mandatory baseline; SocialGraph and VoiceAnalytics are optional enhancers, often used on chat).
 2. The runtime may run verification and critic revision steps before finalizing.
 3. A critic may request revision when quality is insufficient.
+4. Historical non-image attachments are cached separately from transcript and can be retrieved via tool loop when needed.
 
 Choose the route that best matches how this full loop should solve the request, not only the first model response.
 

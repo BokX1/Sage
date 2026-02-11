@@ -3,6 +3,7 @@ import { ToolDefinition, ToolRegistry, globalToolRegistry } from './toolRegistry
 import {
   type SearchDepth,
   listLocalOllamaModels,
+  lookupChannelFileCache,
   lookupGitHubFile,
   lookupGitHubRepo,
   lookupNpmPackage,
@@ -181,6 +182,39 @@ const npmPackageLookupTool: ToolDefinition<{
   },
 };
 
+const channelFileLookupTool: ToolDefinition<{
+  query?: string;
+  messageId?: string;
+  filename?: string;
+  limit?: number;
+  includeContent?: boolean;
+  maxChars?: number;
+}> = {
+  name: 'channel_file_lookup',
+  description:
+    'Retrieve cached non-image Discord attachment content for this channel by filename/message id. Use when users ask about previously uploaded files.',
+  schema: z.object({
+    query: z.string().trim().min(1).max(200).optional(),
+    messageId: z.string().trim().min(1).max(64).optional(),
+    filename: z.string().trim().min(1).max(255).optional(),
+    limit: z.number().int().min(1).max(10).optional(),
+    includeContent: z.boolean().optional(),
+    maxChars: z.number().int().min(500).max(50_000).optional(),
+  }),
+  execute: async ({ query, messageId, filename, limit, includeContent, maxChars }, ctx) => {
+    return lookupChannelFileCache({
+      guildId: ctx.guildId ?? null,
+      channelId: ctx.channelId,
+      query,
+      messageId,
+      filename,
+      limit,
+      includeContent,
+      maxChars,
+    });
+  },
+};
+
 const wikipediaLookupTool: ToolDefinition<{
   query: string;
   language?: string;
@@ -264,6 +298,7 @@ const localLlmInferTool: ToolDefinition<{
 
 const DEFAULT_TOOL_DEFINITIONS = [
   getCurrentDateTimeTool,
+  channelFileLookupTool,
   webSearchTool,
   webScrapeTool,
   githubRepoLookupTool,
