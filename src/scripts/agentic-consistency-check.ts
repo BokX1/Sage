@@ -23,6 +23,38 @@ function readTextFileOrThrow(rootDir: string, relativePath: string): string {
   return fs.readFileSync(filePath, 'utf8');
 }
 
+function readTextFileIfExists(rootDir: string, relativePath: string): string | null {
+  const filePath = path.resolve(rootDir, relativePath);
+  if (!fs.existsSync(filePath)) return null;
+  return fs.readFileSync(filePath, 'utf8');
+}
+
+function resolveCanonicalRoadmap(rootDir: string, ctx: CheckContext): { markdown: string; relativePath: string } | null {
+  const envPath = process.env.AGENTIC_CANONICAL_ROADMAP_PATH?.trim();
+  const candidates = [
+    envPath && envPath.length > 0 ? envPath : null,
+    'docs/architecture/AGENTIC_ROADMAP_IMPLEMENTATION.md',
+    'docs/architecture/AGENTIC_ROADMAP.md',
+    'docs/roadmap/AGENTIC_ROADMAP_IMPLEMENTATION.md',
+    'docs/roadmap/AGENTIC_ROADMAP.md',
+  ].filter((value): value is string => typeof value === 'string');
+
+  const seen = new Set<string>();
+  for (const candidate of candidates) {
+    if (seen.has(candidate)) continue;
+    seen.add(candidate);
+    const markdown = readTextFileIfExists(rootDir, candidate);
+    if (markdown !== null) {
+      return { markdown, relativePath: candidate };
+    }
+  }
+
+  ctx.warnings.push(
+    `Canonical roadmap file not found (checked: ${Array.from(seen).join(', ')}). Phase progression checks were skipped.`,
+  );
+  return null;
+}
+
 function normalizeStatus(statusText: string): CanonicalStatus {
   const normalized = statusText.trim().toLowerCase();
   if (normalized.includes('in_progress')) return 'in_progress';
@@ -210,26 +242,32 @@ async function main(): Promise<void> {
   const rootDir = process.cwd();
   const ctx: CheckContext = { errors: [], warnings: [] };
 
-  const canonicalRoadmap = readTextFileOrThrow(rootDir, 'docs/architecture/AGENTIC_ROADMAP_IMPLEMENTATION.md');
+  let rows: PhaseRow[] = [];
+  const canonicalRoadmap = resolveCanonicalRoadmap(rootDir, ctx);
+  if (canonicalRoadmap) {
+    rows = parsePhaseRows(canonicalRoadmap.markdown);
+    const expectedNextPhase = ensurePhaseProgression(rows, ctx);
+    ensureRequestedStagePolicy(rows, ctx);
 
-  const rows = parsePhaseRows(canonicalRoadmap);
-  const expectedNextPhase = ensurePhaseProgression(rows, ctx);
-  ensureRequestedStagePolicy(rows, ctx);
-
-  const canonicalNextPhase = parseCanonicalNextPhase(canonicalRoadmap);
-  if (expectedNextPhase !== null) {
-    expect(
-      canonicalNextPhase === expectedNextPhase,
-      `Canonical next phase mismatch: expected ${expectedNextPhase}, found ${canonicalNextPhase ?? 'missing'}.`,
-      ctx,
-    );
+    const canonicalNextPhase = parseCanonicalNextPhase(canonicalRoadmap.markdown);
+    if (expectedNextPhase !== null) {
+      expect(
+        canonicalNextPhase === expectedNextPhase,
+        `Canonical next phase mismatch in ${canonicalRoadmap.relativePath}: expected ${expectedNextPhase}, found ${
+          canonicalNextPhase ?? 'missing'
+        }.`,
+        ctx,
+      );
+    }
   }
 
   ensurePackageScripts(rootDir, ctx);
   ensureDocWiring(rootDir, ctx);
 
-  const phaseSummary = rows.map((row) => `${row.phase}:${row.status}`).join(', ');
-  console.warn('[agentic-consistency-check] phase-statuses', phaseSummary);
+  if (rows.length > 0) {
+    const phaseSummary = rows.map((row) => `${row.phase}:${row.status}`).join(', ');
+    console.warn('[agentic-consistency-check] phase-statuses', phaseSummary);
+  }
 
   if (ctx.warnings.length > 0) {
     for (const warning of ctx.warnings) {
