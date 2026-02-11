@@ -5,7 +5,7 @@ import {
   modelSupports,
   ModelCaps,
 } from './model-catalog';
-import { getModelHealthScore } from './model-health';
+import { getModelHealthScores } from './model-health';
 
 /**
  * Inputs available when selecting an LLM model for a request.
@@ -184,13 +184,13 @@ function applyAllowedModels(
   };
 }
 
-function rankByHealth(candidates: string[]): string[] {
+function rankByHealth(candidates: string[], healthScores: Record<string, number>): string[] {
   if (candidates.length <= 1) return candidates;
   const maxIndex = Math.max(1, candidates.length - 1);
 
   return [...candidates]
     .map((candidate, index) => {
-      const healthScore = getModelHealthScore(candidate);
+      const healthScore = healthScores[candidate] ?? 0.5;
       const priorityScore = 1 - index / maxIndex;
       const weighted = healthScore * 0.85 + priorityScore * 0.15;
       return {
@@ -247,7 +247,8 @@ export async function resolveModelForRequestDetailed(
   const route = (params.route ?? 'chat').toLowerCase();
   const baseCandidates = buildBaseCandidateChain(params);
   const allowed = applyAllowedModels(baseCandidates, params.allowedModels);
-  const candidates = rankByHealth(allowed.candidates);
+  const healthScores = await getModelHealthScores([...baseCandidates, ...allowed.candidates]);
+  const candidates = rankByHealth(allowed.candidates, healthScores);
   const requirements = buildRequirements(params);
   const strictCapabilityVerification = requiresStrictCapabilityVerification(requirements);
   const decisions: ModelCandidateDecision[] = [];
@@ -259,7 +260,7 @@ export async function resolveModelForRequestDetailed(
           model: candidate,
           accepted: false,
           reason: 'allowlist_filtered',
-          healthScore: getModelHealthScore(candidate),
+          healthScore: healthScores[candidate] ?? 0.5,
         });
       }
     }
@@ -278,7 +279,7 @@ export async function resolveModelForRequestDetailed(
           model: candidate,
           accepted: false,
           reason: 'capability_mismatch',
-          healthScore: getModelHealthScore(candidate),
+          healthScore: healthScores[candidate] ?? 0.5,
         });
         continue;
       }
@@ -288,7 +289,7 @@ export async function resolveModelForRequestDetailed(
         model: candidate,
         accepted: true,
         reason: 'catalog_miss_accept_unknown',
-        healthScore: getModelHealthScore(candidate),
+        healthScore: healthScores[candidate] ?? 0.5,
       });
       return {
         model: candidate,
@@ -305,7 +306,7 @@ export async function resolveModelForRequestDetailed(
         model: candidate,
         accepted: true,
         reason: 'selected',
-        healthScore: getModelHealthScore(candidate),
+        healthScore: healthScores[candidate] ?? 0.5,
       });
       return {
         model: candidate,
@@ -321,7 +322,7 @@ export async function resolveModelForRequestDetailed(
       model: candidate,
       accepted: false,
       reason: 'capability_mismatch',
-      healthScore: getModelHealthScore(candidate),
+      healthScore: healthScores[candidate] ?? 0.5,
     });
   }
 
@@ -334,7 +335,7 @@ export async function resolveModelForRequestDetailed(
     model: fallback,
     accepted: true,
     reason: 'fallback_first_candidate',
-    healthScore: getModelHealthScore(fallback),
+    healthScore: healthScores[fallback] ?? 0.5,
   });
 
   return {

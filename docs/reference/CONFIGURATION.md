@@ -133,6 +133,7 @@ Search execution mode (`simple` vs `complex`) is selected turn-by-turn by the ro
 | `AGENTIC_TOOL_ALLOW_EXTERNAL_WRITE` | Allow external side-effect tools | `false` |
 | `AGENTIC_TOOL_ALLOW_HIGH_RISK` | Allow high-risk tools | `false` |
 | `AGENTIC_TOOL_BLOCKLIST_CSV` | Comma-separated blocked tools | `join_voice_channel,leave_voice_channel` |
+| `AGENTIC_TOOL_POLICY_JSON` | Optional global policy object (`allowNetworkRead`, `allowDataExfiltrationRisk`, `blockedTools`, `riskOverrides`) merged with legacy flags and tenant overrides | *(empty)* |
 | `AGENTIC_TOOL_LOOP_ENABLED` | Enable iterative tool-call loop for chat/coding routes when tools are registered | `true` |
 | `AGENTIC_TOOL_HARD_GATE_ENABLED` | Enforce tool-backed evidence on freshness/source-sensitive turns | `true` |
 | `AGENTIC_TOOL_HARD_GATE_MIN_SUCCESSFUL_CALLS` | Minimum successful tool calls required when hard gate triggers | `1` |
@@ -144,9 +145,20 @@ Search execution mode (`simple` vs `complex`) is selected turn-by-turn by the ro
 | `AGENTIC_TOOL_PARALLEL_READ_ONLY_ENABLED` | Execute multiple read-only tool calls in parallel | `true` |
 | `AGENTIC_TOOL_MAX_PARALLEL_READ_ONLY` | Max concurrent read-only tool executions | `3` |
 | `AGENTIC_CRITIC_ENABLED` | Enable bounded critic loops | `true` |
-| `AGENTIC_CRITIC_MIN_SCORE` | Critic threshold before revision | `0.78` |
+| `AGENTIC_CRITIC_MIN_SCORE` | Critic threshold before revision | `0.82` |
 | `AGENTIC_CRITIC_MAX_LOOPS` | Max critic revisions | `2` |
-| `AGENTIC_TENANT_POLICY_JSON` | JSON registry for `default` and per-guild overrides | `{}` |
+| `AGENTIC_VALIDATORS_ENABLED` | Enable deterministic response validators before trace finalization | `true` |
+| `AGENTIC_VALIDATION_POLICY_JSON` | Optional route-level validator policy overrides (`strictness`, `checkUnsupportedCertainty`, `checkSearchSourceUrls`, etc.) | *(empty)* |
+| `AGENTIC_VALIDATION_AUTO_REPAIR_ENABLED` | Attempt one bounded corrective repair pass on blocking validation failures | `true` |
+| `AGENTIC_VALIDATION_AUTO_REPAIR_MAX_ATTEMPTS` | Max validation repair attempts per turn (0-1) | `1` |
+| `AGENTIC_MANAGER_WORKER_ENABLED` | Enable manager-worker decomposition for complex coding/search turns | `false` |
+| `AGENTIC_MANAGER_WORKER_MAX_WORKERS` | Max worker tasks run per manager-worker pass | `3` |
+| `AGENTIC_MANAGER_WORKER_MAX_PLANNER_LOOPS` | Max planner loops per turn | `1` |
+| `AGENTIC_MANAGER_WORKER_MAX_TOKENS` | Max output tokens per worker response | `900` |
+| `AGENTIC_MANAGER_WORKER_MAX_INPUT_CHARS` | Max total input chars budgeted into each worker prompt | `32000` |
+| `AGENTIC_MANAGER_WORKER_TIMEOUT_MS` | Timeout per worker response | `60000` |
+| `AGENTIC_MANAGER_WORKER_MIN_COMPLEXITY_SCORE` | Minimum complexity score (0-1) required to trigger manager-worker on coding route | `0.55` |
+| `AGENTIC_TENANT_POLICY_JSON` | JSON registry for `default` and per-guild overrides (graph, critic, tool-policy flags/blocklist/riskOverrides, model allowlist) | `{}` |
 
 Hard-gate behavior summary:
 
@@ -164,6 +176,7 @@ Hard-gate behavior summary:
 | `AGENTIC_CANARY_MIN_SAMPLES` | Min samples before budget evaluation | `50` |
 | `AGENTIC_CANARY_COOLDOWN_SEC` | Cooldown duration after breach | `300` |
 | `AGENTIC_CANARY_WINDOW_SIZE` | Rolling sample window | `250` |
+| `AGENTIC_PERSIST_STATE_ENABLED` | Persist canary/model-health state in DB; auto-fallback to memory if DB unavailable | `true` |
 
 ---
 
@@ -178,12 +191,63 @@ Used by `npm run agentic:replay-gate` and release checks.
 | `REPLAY_GATE_LIMIT` | Number of recent traces evaluated | `200` |
 | `REPLAY_GATE_MIN_AVG_SCORE` | Minimum average score (0-1) | `0.65` |
 | `REPLAY_GATE_MIN_SUCCESS_RATE` | Minimum success ratio (0-1) | `0.75` |
+| `REPLAY_GATE_MIN_TOOL_EXECUTION_RATE` | Minimum ratio of traces with tools executed (0-1) | `0.00` |
+| `REPLAY_GATE_MAX_HARD_GATE_FAILURE_RATE` | Maximum ratio of unmet hard-gated traces (0-1) | `1.00` |
 | `REPLAY_GATE_REQUIRE_DATA` | Fail when no traces exist (`1`/`0`) | `1` |
 | `REPLAY_GATE_MIN_TOTAL` | Minimum trace count before pass allowed | `10` |
 | `REPLAY_GATE_REQUIRED_ROUTES_CSV` | Routes that must have coverage | `chat,coding,search,creative` |
 | `REPLAY_GATE_MIN_ROUTE_SAMPLES` | Minimum samples per required route | `1` |
+| `REPLAY_GATE_ROUTE_THRESHOLDS_JSON` | Optional per-route threshold overrides (`minAvgScore`, `minSuccessRate`, `minToolExecutionRate`, `maxHardGateFailureRate`, `minSamples`) | *(empty)* |
 | `REPLAY_GATE_GUILD_ID` | Optional guild scope | *(empty)* |
 | `REPLAY_GATE_CHANNEL_ID` | Optional channel scope | *(empty)* |
+
+Evaluation run / gate knobs:
+
+| Variable | Description | Typical |
+| :--- | :--- | :--- |
+| `EVAL_RUN_LIMIT` | Number of traces to evaluate in one `eval:run` pass | `40` |
+| `EVAL_RUN_CONCURRENCY` | Concurrent judge pipelines for `eval:run` | `2` |
+| `EVAL_RUN_REQUIRE_DATA` | Fail `eval:run` if no eligible traces (`1`/`0`) | `1` |
+| `EVAL_RUN_CLEANUP_EXISTING` | Delete prior rows for same trace/rubric before insert (`1`/`0`) | `1` |
+| `EVAL_RUN_FAIL_ON_ERROR` | Fail script when any trace evaluation errors (`1`/`0`) | `1` |
+| `EVAL_RUN_RUBRIC_VERSION` | Rubric id recorded with each evaluation row | `v1` |
+| `EVAL_RUN_TIMEOUT_MS` | Judge model timeout per pass | `120000` |
+| `EVAL_RUN_MAX_TOKENS` | Judge model max output tokens | `1200` |
+| `EVAL_RUN_GUILD_ID` | Optional guild scope | *(empty)* |
+| `EVAL_RUN_CHANNEL_ID` | Optional channel scope | *(empty)* |
+| `EVAL_RUN_ROUTES_CSV` | Optional route filter (`chat,coding,search,creative`) | *(empty)* |
+| `EVAL_RUN_OUTPUT_JSON` | Optional output artifact path | *(empty)* |
+| `EVAL_RUN_API_KEY` | Optional override API key for judge calls | *(empty)* |
+| `EVAL_RUN_PRIMARY_MODEL` | Optional primary judge model override | *(empty)* |
+| `EVAL_RUN_SECONDARY_MODEL` | Optional secondary judge model override | *(empty)* |
+| `EVAL_RUN_ADJUDICATOR_MODEL` | Optional adjudicator judge model override | *(empty)* |
+| `EVAL_GATE_LIMIT` | Number of recent evaluation rows to gate | `60` |
+| `EVAL_GATE_REQUIRE_DATA` | Fail `eval:gate` when no rows (`1`/`0`) | `1` |
+| `EVAL_GATE_MIN_TOTAL` | Minimum evaluation rows required | `1` |
+| `EVAL_GATE_RUBRIC_VERSION` | Rubric version filter for gate query | `v1` |
+| `EVAL_GATE_MIN_AVG_SCORE` | Minimum average judge score | `0.75` |
+| `EVAL_GATE_MIN_PASS_RATE` | Minimum `pass` verdict rate | `0.70` |
+| `EVAL_GATE_MAX_DISAGREEMENT_RATE` | Maximum primary/secondary disagreement rate | `0.40` |
+| `EVAL_GATE_MIN_CONFIDENCE` | Minimum average judge confidence | `0.50` |
+| `EVAL_GATE_GUILD_ID` | Optional guild scope | *(empty)* |
+| `EVAL_GATE_CHANNEL_ID` | Optional channel scope | *(empty)* |
+| `EVAL_GATE_ROUTE_KIND` | Optional route scope | *(empty)* |
+| `EVAL_GATE_LATEST_PER_TRACE` | Deduplicate to latest row per trace before gating (`1`/`0`) | `1` |
+| `EVAL_GATE_REQUIRED_ROUTES_CSV` | Routes that must meet route-level thresholds | *(empty)* |
+| `EVAL_GATE_MIN_ROUTE_SAMPLES` | Minimum rows per required route | `1` |
+| `EVAL_GATE_ROUTE_THRESHOLDS_JSON` | Optional per-route overrides (`minAvgScore`, `minPassRate`, `maxDisagreementRate`, `minConfidence`, `minSamples`) | *(empty)* |
+
+Simulation/tuning self-judge knobs:
+
+| Variable | Description | Typical |
+| :--- | :--- | :--- |
+| `SIM_JUDGE_ENABLED` | Enable model-as-judge scoring during `agentic:simulate` | `1` |
+| `SIM_JUDGE_WEIGHT` | Blend weight for judge score vs heuristic score (0-1) | `0.55` |
+| `SIM_REQUIRE_JUDGE_RESULTS` | Fail simulation if judge produced no scored rows | `1` |
+| `SIM_MIN_JUDGE_AVG_SCORE` | Optional minimum average judge score | `0.68` |
+| `SIM_MAX_JUDGE_REVISE_RATE` | Optional maximum judge revise-rate | `0.45` |
+| `TUNE_JUDGE_ENABLED` | Enable judge path in `agentic:tune` variant sweeps | `1` |
+| `TUNE_JUDGE_WEIGHT` | Passed to simulation judge weight for tuning runs | `0.55` |
 
 ---
 
@@ -407,6 +471,7 @@ AGENTIC_GRAPH_MAX_PARALLEL=2
 AGENTIC_TOOL_ALLOW_EXTERNAL_WRITE=false
 AGENTIC_TOOL_ALLOW_HIGH_RISK=false
 AGENTIC_TOOL_BLOCKLIST_CSV=join_voice_channel,leave_voice_channel
+AGENTIC_TOOL_POLICY_JSON=
 AGENTIC_TOOL_LOOP_ENABLED=true
 AGENTIC_TOOL_HARD_GATE_ENABLED=true
 AGENTIC_TOOL_HARD_GATE_MIN_SUCCESSFUL_CALLS=1
@@ -418,11 +483,23 @@ AGENTIC_TOOL_RESULT_MAX_CHARS=4000
 AGENTIC_TOOL_PARALLEL_READ_ONLY_ENABLED=true
 AGENTIC_TOOL_MAX_PARALLEL_READ_ONLY=3
 AGENTIC_CRITIC_ENABLED=true
-AGENTIC_CRITIC_MIN_SCORE=0.78
+AGENTIC_CRITIC_MIN_SCORE=0.82
 AGENTIC_CRITIC_MAX_LOOPS=2
+AGENTIC_VALIDATORS_ENABLED=true
+AGENTIC_VALIDATION_POLICY_JSON=
+AGENTIC_VALIDATION_AUTO_REPAIR_ENABLED=true
+AGENTIC_VALIDATION_AUTO_REPAIR_MAX_ATTEMPTS=1
+AGENTIC_MANAGER_WORKER_ENABLED=false
+AGENTIC_MANAGER_WORKER_MAX_WORKERS=3
+AGENTIC_MANAGER_WORKER_MAX_PLANNER_LOOPS=1
+AGENTIC_MANAGER_WORKER_MAX_TOKENS=900
+AGENTIC_MANAGER_WORKER_MAX_INPUT_CHARS=32000
+AGENTIC_MANAGER_WORKER_TIMEOUT_MS=60000
+AGENTIC_MANAGER_WORKER_MIN_COMPLEXITY_SCORE=0.55
 AGENTIC_CANARY_ENABLED=true
 AGENTIC_CANARY_PERCENT=100
 AGENTIC_CANARY_ROUTE_ALLOWLIST_CSV=chat,coding,search,creative
+AGENTIC_PERSIST_STATE_ENABLED=true
 AGENTIC_TENANT_POLICY_JSON={}
 
 TIMEOUT_CHAT_MS=180000
@@ -455,6 +532,8 @@ OLLAMA_MODEL=llama3.1:8b
 REPLAY_GATE_LIMIT=200
 REPLAY_GATE_MIN_AVG_SCORE=0.65
 REPLAY_GATE_MIN_SUCCESS_RATE=0.75
+REPLAY_GATE_MIN_TOOL_EXECUTION_RATE=0.00
+REPLAY_GATE_MAX_HARD_GATE_FAILURE_RATE=1.00
 REPLAY_GATE_REQUIRE_DATA=1
 REPLAY_GATE_MIN_TOTAL=10
 REPLAY_GATE_REQUIRED_ROUTES_CSV=chat,coding,search,creative

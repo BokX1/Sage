@@ -18,6 +18,8 @@ export {
   globalToolRegistry,
   type ToolDefinition,
   type ToolExecutionContext,
+  type ToolMetadata,
+  type ToolRiskClassValue,
   type ToolValidationResult,
   type OpenAIToolSpec,
 } from './toolRegistry';
@@ -28,6 +30,7 @@ export {
   type ToolCallLoopConfig,
   type ToolCallLoopParams,
   type ToolCallLoopResult,
+  type ToolPolicyTraceDecision,
 } from './toolCallLoop';
 
 export { type ToolCallEnvelope } from './toolCallParser';
@@ -36,9 +39,12 @@ export { ToolResultCache, buildToolCacheKey, type ToolCacheEntry } from './toolC
 export {
   classifyToolRisk,
   evaluateToolPolicy,
+  mergeToolPolicyConfig,
+  parseToolPolicyJson,
   parseToolBlocklistCsv,
   type ToolRiskClass,
   type ToolPolicyConfig,
+  type ToolPolicyDecisionCode,
   type ToolPolicyDecision,
 } from './toolPolicy';
 export {
@@ -106,8 +112,70 @@ export {
   type CriticRuntimeConfig,
 } from './qualityPolicy';
 export { scoreTraceOutcome, type OutcomeScorerInput, type OutcomeScore } from './outcomeScorer';
+export { parseTraceToolTelemetry, type TraceToolTelemetry } from './toolTelemetry';
+export {
+  validateResponseForRoute,
+  buildValidationRepairInstruction,
+  type ResponseValidationIssue,
+  type ResponseValidationIssueCode,
+  type ResponseValidationResult,
+} from './responseValidators';
+export {
+  resolveRouteValidationPolicy,
+  type RouteValidationPolicy,
+  type ValidationStrictness,
+} from './validationPolicy';
 export {
   evaluateRecentTraceOutcomes,
   type ReplayEvaluationRow,
   type ReplayEvaluationReport,
+  type ReplayToolingAggregate,
+  type ReplayRouteBucket,
 } from './replayHarness';
+export {
+  normalizeManagerWorkerConfig,
+  planManagerWorker,
+  type ManagerWorkerConfig,
+  type ManagerWorkerTask,
+  type ManagerWorkerPlan,
+  type ManagerWorkerPlanningResult,
+  type ManagerWorkerRoute,
+  type ManagerWorkerKind,
+} from './taskPlanner';
+export { executeManagerWorkerPlan, type ExecuteManagerWorkerPlanParams } from './workerExecutor';
+export { aggregateManagerWorkerArtifacts } from './workerAggregator';
+export {
+  type ManagerWorkerArtifact,
+  type ManagerWorkerExecutionResult,
+  type ManagerWorkerAggregate,
+} from './managerWorkerTypes';
+export {
+  type EvalDimensionKey,
+  type EvalDimensionScores,
+  type EvalScoreWeights,
+  type EvalAggregateScore,
+  DEFAULT_EVAL_SCORE_WEIGHTS,
+  normalizeEvalDimensionScores,
+  computeEvalOverallScore,
+  evaluateAggregateScore,
+} from './evalScorer';
+export {
+  type EvalRubric,
+  DEFAULT_EVAL_RUBRIC,
+  getEvalRubric,
+  buildEvalJudgePrompt,
+} from './evalRubrics';
+export {
+  runLlmJudge,
+  type LlmJudgeInput,
+  type LlmJudgeAssessment,
+  type LlmJudgeResult,
+  type JudgeModelInvoker,
+} from './llmJudge';
+export {
+  insertAgentEvaluation,
+  listRecentAgentEvaluations,
+  cleanupAgentEvaluationsByTrace,
+  type AgentEvaluationWriteData,
+  type AgentEvaluationRow,
+} from './agent-eval-repo';

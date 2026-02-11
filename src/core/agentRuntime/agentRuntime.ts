@@ -31,7 +31,7 @@ import {
   withRequiredContextProviders,
 } from '../context/context-types';
 import { resolveModelForRequestDetailed } from '../llm/model-resolver';
-import { recordModelOutcome } from '../llm/model-health';
+import { getModelHealthRuntimeStatus, recordModelOutcome } from '../llm/model-health';
 import { getGuildApiKey } from '../settings/guildSettingsRepo';
 import { getWelcomeMessage } from '../../bot/handlers/welcomeMessage';
 import { buildContextGraph, getStandardProvidersForAgent } from './graphBuilder';
@@ -52,6 +52,7 @@ import {
   normalizeCanaryConfig,
   parseRouteAllowlistCsv,
   recordAgenticOutcome,
+  type AgenticCanaryOutcomeReason,
 } from './canaryPolicy';
 import { runImageGenAction } from '../actions/imageGenAction';
 import {
@@ -61,8 +62,22 @@ import {
 } from './capabilityPrompt';
 import { ToolRegistry, globalToolRegistry } from './toolRegistry';
 import { runToolCallLoop } from './toolCallLoop';
-import { parseToolBlocklistCsv } from './toolPolicy';
+import { ToolResult } from './toolCallExecution';
+import {
+  mergeToolPolicyConfig,
+  parseToolBlocklistCsv,
+  parseToolPolicyJson,
+  type ToolPolicyConfig,
+} from './toolPolicy';
 import { stripToolEnvelopeDraft } from './toolVerification';
+import {
+  buildValidationRepairInstruction,
+  validateResponseForRoute,
+} from './responseValidators';
+import { resolveRouteValidationPolicy } from './validationPolicy';
+import { normalizeManagerWorkerConfig, planManagerWorker } from './taskPlanner';
+import { executeManagerWorkerPlan } from './workerExecutor';
+import { aggregateManagerWorkerArtifacts } from './workerAggregator';
 
 
 /** Execute one chat turn using routing, context, and tool follow-up metadata. */
@@ -111,6 +126,13 @@ function selectVoicePersona(text: string, profile: string | null): string {
 function toPositiveInt(value: number | undefined, fallback: number): number {
   if (Number.isFinite(value) && value && value > 0) {
     return Math.max(1, Math.floor(value));
+  }
+  return fallback;
+}
+
+function toNonNegativeInt(value: number | undefined, fallback: number): number {
+  if (Number.isFinite(value) && value !== undefined && value >= 0) {
+    return Math.max(0, Math.floor(value));
   }
   return fallback;
 }
@@ -291,6 +313,88 @@ const TOOL_HARD_GATE_CODING_VERIFICATION_PATTERN =
   /(npm|pnpm|yarn|package|dependency|dependencies|install|version|api|sdk|docs|documentation|changelog|migration|deprecated|cli|command|stack trace|error|exception|runtime)/i;
 const TOOL_HARD_GATE_ATTACHMENT_RECALL_PATTERN =
   /(attachment|attached|uploaded|upload|cached|remember(?:ed)?|previous file|earlier file|that file|that attachment)/i;
+const SEARCH_RESPONSE_URL_PATTERN = /https?:\/\/[^\s<>()]+/i;
+const SEARCH_RESPONSE_URL_PATTERN_GLOBAL = /https?:\/\/[^\s<>()]+/gi;
+const SEARCH_RESPONSE_CHECKED_ON_PATTERN = /checked on:\s*\d{4}-\d{2}-\d{2}/i;
+const SEARCH_RESPONSE_SOURCE_LABEL_PATTERN = /source urls?:/i;
+const SEARCH_RESPONSE_MAX_EMITTED_URLS = 6;
+
+function extractSearchSourceUrls(text: string): string[] {
+  const matches = text.match(SEARCH_RESPONSE_URL_PATTERN_GLOBAL) ?? [];
+  return Array.from(new Set(matches.map((url) => url.trim()))).slice(0, SEARCH_RESPONSE_MAX_EMITTED_URLS);
+}
+
+function normalizeSearchReplyText(params: {
+  userText: string;
+  replyText: string;
+  currentDateIso: string;
+  sourceUrls?: string[];
+}): string {
+  const base = params.replyText.trim();
+  if (!base) return base;
+
+  const mergedUrls = Array.from(
+    new Set([...extractSearchSourceUrls(base), ...(params.sourceUrls ?? [])]),
+  ).slice(0, SEARCH_RESPONSE_MAX_EMITTED_URLS);
+  const asksFreshnessOrSources =
+    TOOL_HARD_GATE_TIME_SENSITIVE_PATTERN.test(params.userText) ||
+    TOOL_HARD_GATE_SOURCE_REQUEST_PATTERN.test(params.userText);
+
+  let normalized = base;
+  if (mergedUrls.length > 0 && !SEARCH_RESPONSE_SOURCE_LABEL_PATTERN.test(normalized)) {
+    normalized = `${normalized}\n\nSource URLs: ${mergedUrls.join(' ')}`;
+  }
+  if (SEARCH_RESPONSE_SOURCE_LABEL_PATTERN.test(normalized) && mergedUrls.length > 0) {
+    const existing = new Set(extractSearchSourceUrls(normalized));
+    const missing = mergedUrls.filter((url) => !existing.has(url));
+    if (missing.length > 0) {
+      normalized = `${normalized}\nAdditional Source URLs: ${missing.join(' ')}`;
+    }
+  }
+  if (
+    asksFreshnessOrSources &&
+    mergedUrls.length > 0 &&
+    !SEARCH_RESPONSE_CHECKED_ON_PATTERN.test(normalized)
+  ) {
+    normalized = `${normalized}\nChecked on: ${params.currentDateIso}`;
+  }
+  return normalized;
+}
+
+function collectUrlsFromUnknown(value: unknown, sink: Set<string>, depth = 0): void {
+  if (sink.size >= SEARCH_RESPONSE_MAX_EMITTED_URLS) return;
+  if (depth > 5) return;
+  if (typeof value === 'string') {
+    const matches = value.match(SEARCH_RESPONSE_URL_PATTERN_GLOBAL) ?? [];
+    for (const match of matches) {
+      sink.add(match.trim());
+      if (sink.size >= SEARCH_RESPONSE_MAX_EMITTED_URLS) return;
+    }
+    return;
+  }
+  if (Array.isArray(value)) {
+    for (const entry of value) {
+      collectUrlsFromUnknown(entry, sink, depth + 1);
+      if (sink.size >= SEARCH_RESPONSE_MAX_EMITTED_URLS) return;
+    }
+    return;
+  }
+  if (!value || typeof value !== 'object') return;
+  for (const entry of Object.values(value as Record<string, unknown>)) {
+    collectUrlsFromUnknown(entry, sink, depth + 1);
+    if (sink.size >= SEARCH_RESPONSE_MAX_EMITTED_URLS) return;
+  }
+}
+
+function extractSourceUrlsFromToolResults(toolResults: ToolResult[]): string[] {
+  const urls = new Set<string>();
+  for (const toolResult of toolResults) {
+    if (!toolResult.success || toolResult.result === undefined) continue;
+    collectUrlsFromUnknown(toolResult.result, urls);
+    if (urls.size >= SEARCH_RESPONSE_MAX_EMITTED_URLS) break;
+  }
+  return [...urls].slice(0, SEARCH_RESPONSE_MAX_EMITTED_URLS);
+}
 
 function shouldRequireToolEvidenceForTurn(params: {
   routeKind: AgentKind;
@@ -398,7 +502,12 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
     minSamples: appConfig.AGENTIC_CANARY_MIN_SAMPLES,
     cooldownMs: appConfig.AGENTIC_CANARY_COOLDOWN_SEC * 1000,
     windowSize: appConfig.AGENTIC_CANARY_WINDOW_SIZE,
+    persistStateEnabled: appConfig.AGENTIC_PERSIST_STATE_ENABLED,
   });
+  const validatorRepairMaxAttempts = toNonNegativeInt(
+    (appConfig.AGENTIC_VALIDATION_AUTO_REPAIR_MAX_ATTEMPTS as number | undefined),
+    1,
+  );
 
   // Extract text from replyReferenceContent for router (it can be string or LLMContentPart[])
   const extractReplyText = (content: LLMMessageContent | null | undefined): string | null => {
@@ -423,6 +532,11 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
   });
 
   logger.debug({ traceId, agentDecision }, 'Agent Selector decision');
+  const routeValidationPolicy = resolveRouteValidationPolicy({
+    routeKind: agentDecision.kind,
+    validatorsEnabled: appConfig.AGENTIC_VALIDATORS_ENABLED,
+    policyJson: appConfig.AGENTIC_VALIDATION_POLICY_JSON,
+  });
   const resolvedContextProviders = resolveContextProviderSet({
     providers: agentDecision.contextProviders,
     fallback: getStandardProvidersForAgent(agentDecision.kind),
@@ -453,12 +567,16 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
     errorText: string | null;
     metadataJson?: Record<string, unknown>;
   }> = [];
-  const canaryDecision = evaluateAgenticCanary({
+  const canaryDecision = await evaluateAgenticCanary({
     traceId,
     guildId,
     routeKind: agentDecision.kind,
     config: canaryConfig,
   });
+  let graphFailedTasks = 0;
+  let graphExecutionFailed = false;
+  let canaryHardGateUnmet = false;
+  let canaryToolLoopFailed = false;
 
   const buildCanaryEvent = () => ({
     type: 'canary_decision',
@@ -532,10 +650,7 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
         apiKey,
         maxParallel: effectiveGraphMaxParallel,
       });
-      recordAgenticOutcome({
-        success: true,
-        config: canaryConfig,
-      });
+      graphFailedTasks = graphExecution.blackboard.counters.failedTasks;
 
       contextPackets = graphExecution.packets;
       agentEventsJson = [buildCanaryEvent(), ...graphExecution.events];
@@ -553,10 +668,7 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
         canaryDecision,
       };
     } catch (err) {
-      recordAgenticOutcome({
-        success: false,
-        config: canaryConfig,
-      });
+      graphExecutionFailed = true;
       logger.warn({ error: err, traceId }, 'Agent graph execution failed; falling back to provider runner');
       await runLegacyProviders({
         mode: 'legacy_provider_runner',
@@ -762,22 +874,56 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
   const runtimeInstructionBlocks = [capabilityInstruction, agenticStateInstruction, toolProtocolInstruction]
     .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
     .join('\n\n');
-  const runtimeMessages = buildContextMessages({
-    userProfileSummary,
-    runtimeInstruction: runtimeInstructionBlocks || null,
-    replyToBotText,
-    replyReferenceContent,
-    userText,
-    userContent,
-    recentTranscript,
-    channelRollingSummary: rollingSummaryText,
-    channelProfileSummary: profileSummaryText,
-    intentHint: intent ?? null,
-    style,
-    contextPackets: contextPacketsText || null,
-    invokedBy,
-    voiceInstruction,
+  const managerWorkerConfig = normalizeManagerWorkerConfig({
+    enabled: appConfig.AGENTIC_MANAGER_WORKER_ENABLED,
+    maxWorkers: appConfig.AGENTIC_MANAGER_WORKER_MAX_WORKERS,
+    maxPlannerLoops: appConfig.AGENTIC_MANAGER_WORKER_MAX_PLANNER_LOOPS,
+    maxWorkerTokens: appConfig.AGENTIC_MANAGER_WORKER_MAX_TOKENS,
+    maxWorkerInputChars: appConfig.AGENTIC_MANAGER_WORKER_MAX_INPUT_CHARS,
+    timeoutMs: appConfig.AGENTIC_MANAGER_WORKER_TIMEOUT_MS,
+    minComplexityScore: appConfig.AGENTIC_MANAGER_WORKER_MIN_COMPLEXITY_SCORE,
   });
+  const managerWorkerPlanning = planManagerWorker({
+    config: managerWorkerConfig,
+    routeKind: agentDecision.kind,
+    searchMode: searchExecutionMode,
+    userText,
+  });
+  const managerWorkerCanaryAllowed = canaryDecision.allowAgentic;
+  const managerWorkerShouldRun = managerWorkerPlanning.shouldRun && managerWorkerCanaryAllowed;
+  let managerWorkerRuntime: Record<string, unknown> = {
+    enabled: managerWorkerConfig.enabled,
+    eligibleRoute: managerWorkerPlanning.eligibleRoute,
+    plannerSuggestedRun: managerWorkerPlanning.shouldRun,
+    shouldRun: managerWorkerShouldRun,
+    allowAgentic: managerWorkerCanaryAllowed,
+    routeKind: managerWorkerPlanning.routeKind,
+    complexityScore: managerWorkerPlanning.complexityScore,
+    rationale: managerWorkerPlanning.rationale,
+    maxWorkers: managerWorkerConfig.maxWorkers,
+    maxPlannerLoops: managerWorkerConfig.maxPlannerLoops,
+    maxWorkerTokens: managerWorkerConfig.maxWorkerTokens,
+    maxWorkerInputChars: managerWorkerConfig.maxWorkerInputChars,
+  };
+  let effectiveContextPacketsText = contextPacketsText || null;
+  const buildRuntimeMessages = (contextText: string | null): LLMChatMessage[] =>
+    buildContextMessages({
+      userProfileSummary,
+      runtimeInstruction: runtimeInstructionBlocks || null,
+      replyToBotText,
+      replyReferenceContent,
+      userText,
+      userContent,
+      recentTranscript,
+      channelRollingSummary: rollingSummaryText,
+      channelProfileSummary: profileSummaryText,
+      intentHint: intent ?? null,
+      style,
+      contextPackets: contextText,
+      invokedBy,
+      voiceInstruction,
+    });
+  let runtimeMessages = buildRuntimeMessages(effectiveContextPacketsText);
 
   logger.debug(
     { traceId, agentDecision, contextProviderCount: contextPackets.length },
@@ -791,6 +937,87 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
       replyText: getWelcomeMessage(),
     };
   }
+
+  if (managerWorkerShouldRun && managerWorkerPlanning.plan) {
+    try {
+      const managerWorkerExecution = await executeManagerWorkerPlan({
+        traceId,
+        guildId,
+        apiKey,
+        userText,
+        contextText: contextPacketsText || '',
+        plan: managerWorkerPlanning.plan,
+        client,
+        maxParallel: managerWorkerConfig.maxWorkers,
+        maxTokens: managerWorkerConfig.maxWorkerTokens,
+        maxInputChars: managerWorkerConfig.maxWorkerInputChars,
+        timeoutMs: managerWorkerConfig.timeoutMs,
+      });
+      const managerWorkerAggregate = aggregateManagerWorkerArtifacts({
+        artifacts: managerWorkerExecution.artifacts,
+      });
+      if (managerWorkerAggregate.contextBlock) {
+        effectiveContextPacketsText = [contextPacketsText, managerWorkerAggregate.contextBlock]
+          .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+          .join('\n\n');
+        runtimeMessages = buildRuntimeMessages(effectiveContextPacketsText);
+      }
+
+      managerWorkerRuntime = {
+        ...managerWorkerRuntime,
+        executed: true,
+        totalWorkers: managerWorkerExecution.totalWorkers,
+        failedWorkers: managerWorkerExecution.failedWorkers,
+        successfulWorkers: managerWorkerAggregate.successfulWorkers,
+        citationCount: managerWorkerAggregate.citationCount,
+        contextInjected: managerWorkerAggregate.contextBlock.length > 0,
+      };
+      if (Array.isArray(agentEventsJson)) {
+        agentEventsJson.push({
+          type: 'manager_worker',
+          timestamp: new Date().toISOString(),
+          details: managerWorkerRuntime,
+        });
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      logger.warn({ error: errorMessage, traceId }, 'Manager-worker orchestration failed (non-fatal)');
+      managerWorkerRuntime = {
+        ...managerWorkerRuntime,
+        executed: false,
+        error: errorMessage,
+      };
+      if (Array.isArray(agentEventsJson)) {
+        agentEventsJson.push({
+          type: 'manager_worker_failed',
+          timestamp: new Date().toISOString(),
+          details: {
+            error: errorMessage,
+          },
+        });
+      }
+    }
+  } else if (managerWorkerPlanning.shouldRun && !managerWorkerCanaryAllowed) {
+    managerWorkerRuntime = {
+      ...managerWorkerRuntime,
+      executed: false,
+      skipped: true,
+      skippedReason: 'canary_disallow_agentic',
+    };
+    if (Array.isArray(agentEventsJson)) {
+      agentEventsJson.push({
+        type: 'manager_worker_skipped',
+        timestamp: new Date().toISOString(),
+        details: {
+          reason: 'canary_disallow_agentic',
+        },
+      });
+    }
+  }
+  budgetJson = {
+    ...budgetJson,
+    managerWorker: managerWorkerRuntime,
+  };
 
   let draftText = '';
   const modelResolutionEvents: Array<Record<string, unknown>> = [];
@@ -884,6 +1111,7 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
       contextNotes.length > 0
         ? `User request:\n${userText}\n\n${contextNotes.join('\n\n')}`
         : userText;
+    const currentDateIso = new Date().toISOString().slice(0, 10);
     const isTimeSensitiveQuery =
       /(latest|today|current|now|right now|as of|recent|fresh|newest|release|version|price|weather|news|score)/i.test(
         userText,
@@ -1000,10 +1228,14 @@ Checked on: <YYYY-MM-DD> (only when required)`;
             timeoutMs: attemptTimeoutMs,
             status: 'success',
           });
-        const content = searchResponse.content ?? '';
+        const content = normalizeSearchReplyText({
+          userText,
+          replyText: searchResponse.content ?? '',
+          currentDateIso,
+        });
         // Guardrail: when possible, require at least one source URL from the search model.
         // If a model returns a clean answer without any URLs, try the next candidate (bounded).
-        const hasSourceUrl = /https?:\/\/[^\s<>()]+/i.test(content);
+        const hasSourceUrl = SEARCH_RESPONSE_URL_PATTERN.test(content);
         if (!hasSourceUrl && attemptIndex < cappedAttemptOrder.length - 1) {
           modelResolutionEvents.push({
             phase: params.phase,
@@ -1021,9 +1253,8 @@ Checked on: <YYYY-MM-DD> (only when required)`;
 
         // Freshness guardrail: for "latest/current/now" requests, require a check date and multiple sources.
         if (isTimeSensitiveQuery) {
-          const hasCheckedOn = /checked on:\s*\d{4}-\d{2}-\d{2}/i.test(content);
-          const urlMatches = content.match(/https?:\/\/[^\s<>()]+/gi) ?? [];
-          const uniqueUrlCount = new Set(urlMatches.map((url) => url.toLowerCase())).size;
+          const hasCheckedOn = SEARCH_RESPONSE_CHECKED_ON_PATTERN.test(content);
+          const uniqueUrlCount = extractSearchSourceUrls(content).length;
           const minRequiredSources = searchExecutionMode === 'complex' ? 2 : 1;
           if (
             (!hasCheckedOn || uniqueUrlCount < minRequiredSources) &&
@@ -1065,8 +1296,12 @@ Checked on: <YYYY-MM-DD> (only when required)`;
                 timeout: crossCheckTimeoutMs,
                 maxTokens: routeOutputMaxTokens,
               });
-              const secondaryContent = secondaryResponse.content ?? '';
-              const secondaryHasUrl = /https?:\/\/[^\s<>()]+/i.test(secondaryContent);
+              const secondaryContent = normalizeSearchReplyText({
+                userText,
+                replyText: secondaryResponse.content ?? '',
+                currentDateIso,
+              });
+              const secondaryHasUrl = SEARCH_RESPONSE_URL_PATTERN.test(secondaryContent);
               if (secondaryHasUrl) {
                 return `Primary search findings:\n${content}\n\nSecondary cross-check:\n${secondaryContent}`;
               }
@@ -1216,7 +1451,12 @@ Checked on: <YYYY-MM-DD> (only when required)`;
         success: true,
         latencyMs: Date.now() - startedAt,
       });
-      return summaryResponse.content;
+      return normalizeSearchReplyText({
+        userText,
+        replyText: summaryResponse.content,
+        currentDateIso: new Date().toISOString().slice(0, 10),
+        sourceUrls: extractSearchSourceUrls(searchFindingsBlob),
+      });
     } catch (error) {
       recordModelOutcome({
         model: summaryModel,
@@ -1252,13 +1492,33 @@ Checked on: <YYYY-MM-DD> (only when required)`;
     cacheEnabled: true,
     cacheMaxEntries: 50,
   });
-  const buildToolPolicy = () => ({
-    allowExternalWrite: !!(appConfig.AGENTIC_TOOL_ALLOW_EXTERNAL_WRITE as boolean | undefined),
-    allowHighRisk: !!(appConfig.AGENTIC_TOOL_ALLOW_HIGH_RISK as boolean | undefined),
-    blockedTools: parseToolBlocklistCsv(
-      (appConfig.AGENTIC_TOOL_BLOCKLIST_CSV as string | undefined) ?? '',
-    ),
-  });
+  const globalToolPolicy = parseToolPolicyJson(
+    (appConfig.AGENTIC_TOOL_POLICY_JSON as string | undefined) ?? '',
+  );
+  const buildToolPolicy = (): ToolPolicyConfig => {
+    const legacyPolicy: ToolPolicyConfig = {
+      allowNetworkRead: true,
+      allowDataExfiltrationRisk: true,
+      allowExternalWrite: !!(appConfig.AGENTIC_TOOL_ALLOW_EXTERNAL_WRITE as boolean | undefined),
+      allowHighRisk: !!(appConfig.AGENTIC_TOOL_ALLOW_HIGH_RISK as boolean | undefined),
+      blockedTools: parseToolBlocklistCsv(
+        (appConfig.AGENTIC_TOOL_BLOCKLIST_CSV as string | undefined) ?? '',
+      ),
+    };
+    const tenantPolicyOverrides: ToolPolicyConfig = {
+      allowNetworkRead: tenantPolicy.toolAllowNetworkRead,
+      allowDataExfiltrationRisk: tenantPolicy.toolAllowDataExfiltrationRisk,
+      allowExternalWrite: tenantPolicy.toolAllowExternalWrite,
+      allowHighRisk: tenantPolicy.toolAllowHighRisk,
+      blockedTools: tenantPolicy.toolBlockedTools,
+      riskOverrides: tenantPolicy.toolRiskOverrides,
+    };
+    return mergeToolPolicyConfig(
+      mergeToolPolicyConfig(legacyPolicy, globalToolPolicy),
+      tenantPolicyOverrides,
+    );
+  };
+  const effectiveToolPolicy = buildToolPolicy();
   const runSearchToolPass = async (params: {
     phase: string;
     iteration?: number;
@@ -1373,7 +1633,7 @@ Checked on: <YYYY-MM-DD> (only when required)`;
       ),
       initialAssistantResponseText: initialResponse.content,
       config: buildToolLoopConfig(),
-      toolPolicy: buildToolPolicy(),
+      toolPolicy: effectiveToolPolicy,
     });
 
     const successfulToolCount = loopResult.toolResults.filter((toolResult) => toolResult.success).length;
@@ -1381,14 +1641,20 @@ Checked on: <YYYY-MM-DD> (only when required)`;
       throw new Error('Search tool loop produced no successful tool calls.');
     }
 
-    const cleanedReply =
-      cleanDraftText(stripToolEnvelopeDraft(loopResult.replyText) ?? loopResult.replyText) ?? '';
+    const cleanedReply = cleanDraftText(stripToolEnvelopeDraft(loopResult.replyText) ?? loopResult.replyText) ?? '';
     if (!cleanedReply) {
       throw new Error('Search tool loop returned empty final text.');
     }
+    const supplementalSourceUrls = extractSourceUrlsFromToolResults(loopResult.toolResults);
+    const normalizedReply = normalizeSearchReplyText({
+      userText,
+      replyText: cleanedReply,
+      currentDateIso: new Date().toISOString().slice(0, 10),
+      sourceUrls: supplementalSourceUrls,
+    });
 
     return {
-      draft: cleanedReply,
+      draft: normalizedReply,
       loopBudget: {
         enabled: true,
         route: 'search',
@@ -1396,6 +1662,8 @@ Checked on: <YYYY-MM-DD> (only when required)`;
         roundsCompleted: loopResult.roundsCompleted,
         toolResultCount: loopResult.toolResults.length,
         successfulToolCount,
+        policyDecisions: loopResult.policyDecisions,
+        sourceUrls: supplementalSourceUrls,
         scopedTools: activeToolNames,
         latencyMs: Date.now() - loopStartedAt,
       },
@@ -1420,7 +1688,9 @@ Checked on: <YYYY-MM-DD> (only when required)`;
         }
         return toolPass.draft;
       } catch (error) {
+        canaryToolLoopFailed = true;
         if (requiresToolEvidenceThisTurn && agentDecision.kind === 'search') {
+          canaryHardGateUnmet = true;
           throw new Error(
             `Search hard gate unmet: ${
               error instanceof Error ? error.message : String(error)
@@ -1465,6 +1735,9 @@ Checked on: <YYYY-MM-DD> (only when required)`;
     } catch (searchError) {
       logger.error({ error: searchError, traceId }, 'Search Agent failed');
       const searchErrorText = searchError instanceof Error ? searchError.message.toLowerCase() : String(searchError);
+      if (searchErrorText.includes('hard gate')) {
+        canaryHardGateUnmet = true;
+      }
       draftText = searchErrorText.includes('hard gate')
         ? "I couldn't verify this request with tools right now, so I won't provide an unverified answer. Please try again."
         : "I couldn't complete the search request at this time.";
@@ -1523,7 +1796,7 @@ Checked on: <YYYY-MM-DD> (only when required)`;
       if (toolLoopEnabled && scopedToolRegistry) {
         const toolLoopStartedAt = Date.now();
         const toolLoopConfig = buildToolLoopConfig();
-        const toolPolicy = buildToolPolicy();
+        const toolPolicy = effectiveToolPolicy;
         const toolEvidenceRequiredForMainPass =
           requiresToolEvidenceThisTurn &&
           (agentDecision.kind === 'chat' || agentDecision.kind === 'coding');
@@ -1629,6 +1902,7 @@ Checked on: <YYYY-MM-DD> (only when required)`;
               roundsCompleted: forcedLoopResult.roundsCompleted,
               toolResultCount: forcedLoopResult.toolResults.length,
               successfulToolCount,
+              policyDecisions: forcedLoopResult.policyDecisions,
               latencyMs: Date.now() - forcedLoopStartedAt,
             },
           };
@@ -1683,6 +1957,8 @@ Checked on: <YYYY-MM-DD> (only when required)`;
               hardGateForcedBudget = forcedResult.budget;
             } catch (hardGateError) {
               hardGateSatisfied = false;
+              canaryHardGateUnmet = true;
+              canaryToolLoopFailed = true;
               logger.warn(
                 {
                   error: hardGateError,
@@ -1704,6 +1980,7 @@ Checked on: <YYYY-MM-DD> (only when required)`;
             roundsCompleted: loopResult.roundsCompleted,
             toolResultCount: loopResult.toolResults.length,
             successfulToolCount,
+            policyDecisions: loopResult.policyDecisions,
             latencyMs: Date.now() - toolLoopStartedAt,
             hardGateRequired: toolEvidenceRequiredForMainPass,
             hardGateSatisfied,
@@ -1718,6 +1995,7 @@ Checked on: <YYYY-MM-DD> (only when required)`;
             roundsCompleted: loopResult.roundsCompleted,
             toolResultCount: loopResult.toolResults.length,
             successfulToolCount,
+            policyDecisionCount: loopResult.policyDecisions.length,
             hardGateRequired: toolEvidenceRequiredForMainPass,
             hardGateSatisfied,
           });
@@ -1730,12 +2008,14 @@ Checked on: <YYYY-MM-DD> (only when required)`;
                 roundsCompleted: loopResult.roundsCompleted,
                 toolResultCount: loopResult.toolResults.length,
                 successfulToolCount,
+                policyDecisionCount: loopResult.policyDecisions.length,
                 hardGateRequired: toolEvidenceRequiredForMainPass,
                 hardGateSatisfied,
               },
             });
           }
         } catch (toolLoopError) {
+          canaryToolLoopFailed = true;
           logger.warn(
             { error: toolLoopError, traceId },
             'Tool loop failed; keeping initial model response',
@@ -1750,6 +2030,7 @@ Checked on: <YYYY-MM-DD> (only when required)`;
             hardGateMinSuccessfulCalls: toolHardGateMinSuccessfulCalls,
           };
           if (toolEvidenceRequiredForMainPass) {
+            canaryHardGateUnmet = true;
             draftText =
               "I couldn't verify this with tools right now, so I won't provide an unverified answer. Please try again.";
           }
@@ -2219,7 +2500,7 @@ Checked on: <YYYY-MM-DD> (only when required)`;
                 ),
                 initialAssistantResponseText: initialResponse.content,
                 config: buildToolLoopConfig(),
-                toolPolicy: buildToolPolicy(),
+                toolPolicy: effectiveToolPolicy,
               });
 
               const cleanedLoopReply = cleanDraftText(
@@ -2232,6 +2513,7 @@ Checked on: <YYYY-MM-DD> (only when required)`;
                 roundsCompleted: loopResult.roundsCompleted,
                 toolResultCount: loopResult.toolResults.length,
                 successfulToolCount: loopResult.toolResults.filter((toolResult) => toolResult.success).length,
+                policyDecisions: loopResult.policyDecisions,
                 latencyMs: Date.now() - loopStartedAt,
               };
               criticToolLoopBudgets.push(toolLoopBudget);
@@ -2253,6 +2535,7 @@ Checked on: <YYYY-MM-DD> (only when required)`;
                 );
               }
             } catch (toolLoopError) {
+              canaryToolLoopFailed = true;
               recordModelOutcome({
                 model: revisionModel,
                 success: false,
@@ -2296,21 +2579,261 @@ Checked on: <YYYY-MM-DD> (only when required)`;
     }
   }
 
-  const safeFinalText = draftText;
-  const qualityJson =
-    criticAssessments.length > 0
-      ? {
-          critic: criticAssessments,
-          revised: revisionApplied > 0,
-          revisionAttempts,
-          revisionApplied,
-          criticRedispatches: criticRedispatches.length > 0 ? criticRedispatches : undefined,
-          criticToolLoops: criticToolLoopBudgets.length > 0 ? criticToolLoopBudgets : undefined,
+  const routeValidationEnabled = routeValidationPolicy.strictness !== 'off';
+  const initialValidationResult = validateResponseForRoute({
+    routeKind: agentDecision.kind,
+    userText,
+    replyText: draftText,
+    policy: routeValidationPolicy,
+  });
+  const initialValidationIssueCodes = initialValidationResult.issues.map((issue) => issue.code);
+  let validationResult = initialValidationResult;
+  let validationRepairAttempts = 0;
+  let validationRepaired = false;
+  let validationBlocked = false;
+
+  const runDirectValidationRepair = async (
+    instruction: string,
+    attempt: number,
+  ): Promise<string | null> => {
+    const revisionMessages: LLMChatMessage[] = [
+      ...runtimeMessages,
+      { role: 'assistant', content: draftText },
+      {
+        role: 'system',
+        content:
+          `${instruction}\n` +
+          'Return one final user-facing answer in plain text only. Do not return JSON or tool-call envelopes.',
+      },
+    ];
+    const revisionModelDetails = await resolveModelForRequestDetailed({
+      guildId,
+      messages: revisionMessages,
+      route: agentDecision.kind,
+      allowedModels: tenantPolicy.allowedModels,
+      featureFlags: toolLoopEnabled ? { tools: true, reasoning: true } : { reasoning: true },
+    });
+    const revisionModel = revisionModelDetails.model;
+    modelResolutionEvents.push({
+      phase: 'validator_repair',
+      iteration: attempt,
+      route: revisionModelDetails.route,
+      selected: revisionModelDetails.model,
+      candidates: revisionModelDetails.candidates,
+      decisions: revisionModelDetails.decisions,
+      allowlistApplied: revisionModelDetails.allowlistApplied,
+    });
+    const repairStartedAt = Date.now();
+    const revisedResponse = await client.chat({
+      messages: revisionMessages,
+      model: revisionModel,
+      apiKey,
+      temperature: Math.max(0.1, (agentDecision.temperature ?? 0.7) - 0.1),
+      timeout: appConfig.TIMEOUT_CHAT_MS,
+      maxTokens: routeOutputMaxTokens,
+    });
+    recordModelOutcome({
+      model: revisionModel,
+      success: true,
+      latencyMs: Date.now() - repairStartedAt,
+    });
+    return cleanDraftText(stripToolEnvelopeDraft(revisedResponse.content) ?? revisedResponse.content);
+  };
+
+  if (
+    routeValidationEnabled &&
+    appConfig.AGENTIC_VALIDATION_AUTO_REPAIR_ENABLED &&
+    validatorRepairMaxAttempts > 0 &&
+    validationResult.blockingIssues.length > 0
+  ) {
+    for (let attempt = 1; attempt <= validatorRepairMaxAttempts; attempt += 1) {
+      const issueCodes = validationResult.blockingIssues.map((issue) => issue.code);
+      const repairInstruction = buildValidationRepairInstruction({
+        routeKind: agentDecision.kind,
+        userText,
+        issueCodes,
+        currentDateIso: new Date().toISOString().slice(0, 10),
+      });
+      validationRepairAttempts += 1;
+      try {
+        if (agentDecision.kind === 'search' && toolLoopEnabled && scopedToolRegistry) {
+          const priorDraftForComparison = draftText;
+          draftText = await runSearchPassWithFallback({
+            phase: 'validator_repair_search',
+            iteration: attempt,
+            revisionInstruction: repairInstruction,
+            priorDraft: draftText,
+          });
+          if (searchExecutionMode === 'complex') {
+            try {
+              draftText = await runSearchSummaryPass({
+                phase: 'validator_repair_search_summary',
+                iteration: attempt,
+                searchDraft: draftText,
+                summaryReason: repairInstruction,
+                priorDraft: priorDraftForComparison,
+              });
+            } catch (summaryError) {
+              logger.warn(
+                { error: summaryError, traceId, attempt },
+                'Validator repair summary pass failed; keeping repaired search draft',
+              );
+            }
+          }
+        } else {
+          const revised = await runDirectValidationRepair(repairInstruction, attempt);
+          if (revised) {
+            draftText = revised;
+          }
         }
-      : undefined;
-  const canarySnapshot = getAgenticCanarySnapshot();
+      } catch (error) {
+        logger.warn({ error, traceId, attempt }, 'Validation repair attempt failed');
+      }
+
+      validationResult = validateResponseForRoute({
+        routeKind: agentDecision.kind,
+        userText,
+        replyText: draftText,
+        policy: routeValidationPolicy,
+      });
+      if (validationResult.blockingIssues.length === 0) {
+        validationRepaired = true;
+        break;
+      }
+    }
+  }
+
+  if (routeValidationEnabled && validationResult.blockingIssues.length > 0) {
+    validationBlocked = true;
+    draftText =
+      "I couldn't safely validate this response against runtime checks, so I won't provide a potentially incorrect answer right now. Please try again.";
+  }
+
+  if (routeValidationEnabled && Array.isArray(agentEventsJson)) {
+    agentEventsJson.push({
+      type: 'response_validation',
+      timestamp: new Date().toISOString(),
+      details: {
+        strictness: routeValidationPolicy.strictness,
+        initialIssueCodes: initialValidationIssueCodes,
+        finalIssueCodes: validationResult.issues.map((issue) => issue.code),
+        blockingIssueCodes: validationResult.blockingIssues.map((issue) => issue.code),
+        warningIssueCodes: validationResult.warningIssues.map((issue) => issue.code),
+        repairAttempts: validationRepairAttempts,
+        repaired: validationRepaired,
+        blocked: validationBlocked,
+      },
+    });
+  }
+
+  const safeFinalText = draftText;
+  const hardGateRequiredFromBudget = toolLoopBudgetJson?.hardGateRequired === true;
+  const hardGateSatisfiedFromBudget = toolLoopBudgetJson?.hardGateSatisfied === true;
+  if (hardGateRequiredFromBudget && !hardGateSatisfiedFromBudget) {
+    canaryHardGateUnmet = true;
+  }
+  if (toolLoopBudgetJson?.failed === true) {
+    canaryToolLoopFailed = true;
+  }
+
+  const canaryReasonCodes = new Set<AgenticCanaryOutcomeReason>();
+  if (graphExecutionFailed || graphFailedTasks > 0) {
+    canaryReasonCodes.add('graph_failed_tasks');
+  }
+  if (canaryHardGateUnmet) {
+    canaryReasonCodes.add('hard_gate_unmet');
+  }
+  if (canaryToolLoopFailed) {
+    canaryReasonCodes.add('tool_loop_failed');
+  }
+
+  let canaryOutcome: {
+    recorded: boolean;
+    success: boolean | null;
+    reasonCodes: AgenticCanaryOutcomeReason[];
+  } = {
+    recorded: false,
+    success: null,
+    reasonCodes: [],
+  };
+  if (canaryDecision.allowAgentic) {
+    const outcomeReasons = [...canaryReasonCodes];
+    const canarySuccess = outcomeReasons.length === 0;
+    await recordAgenticOutcome({
+      success: canarySuccess,
+      reasonCodes: outcomeReasons,
+      config: canaryConfig,
+    });
+    canaryOutcome = {
+      recorded: true,
+      success: canarySuccess,
+      reasonCodes: outcomeReasons,
+    };
+    if (Array.isArray(agentEventsJson)) {
+      agentEventsJson.push({
+        type: 'canary_outcome',
+        success: canarySuccess,
+        reasonCodes: outcomeReasons,
+        timestamp: new Date().toISOString(),
+      });
+    }
+  }
+
+  const qualityJsonPayload: Record<string, unknown> = {};
+  if (criticAssessments.length > 0) {
+    qualityJsonPayload.critic = criticAssessments;
+    qualityJsonPayload.revised = revisionApplied > 0;
+    qualityJsonPayload.revisionAttempts = revisionAttempts;
+    qualityJsonPayload.revisionApplied = revisionApplied;
+    if (criticRedispatches.length > 0) {
+      qualityJsonPayload.criticRedispatches = criticRedispatches;
+    }
+    if (criticToolLoopBudgets.length > 0) {
+      qualityJsonPayload.criticToolLoops = criticToolLoopBudgets;
+    }
+  }
+  if (routeValidationEnabled) {
+    qualityJsonPayload.validation = {
+      strictness: routeValidationPolicy.strictness,
+      initialIssueCodes: initialValidationIssueCodes,
+      finalIssueCodes: validationResult.issues.map((issue) => issue.code),
+      blockingIssueCodes: validationResult.blockingIssues.map((issue) => issue.code),
+      warningIssueCodes: validationResult.warningIssues.map((issue) => issue.code),
+      repairAttempts: validationRepairAttempts,
+      repaired: validationRepaired,
+      blocked: validationBlocked,
+      passed: validationResult.passed,
+    };
+  }
+  const qualityJson = Object.keys(qualityJsonPayload).length > 0 ? qualityJsonPayload : undefined;
+  const canarySnapshot = await getAgenticCanarySnapshot({ config: canaryConfig });
+  const modelHealthRuntime = getModelHealthRuntimeStatus();
+  if (canarySnapshot.degradedMode && Array.isArray(agentEventsJson)) {
+    agentEventsJson.push({
+      type: 'degraded_mode',
+      subsystem: 'canary',
+      mode: canarySnapshot.persistenceMode,
+      error: canarySnapshot.lastPersistenceError,
+      timestamp: new Date().toISOString(),
+    });
+  }
+  if (modelHealthRuntime.degradedMode && Array.isArray(agentEventsJson)) {
+    agentEventsJson.push({
+      type: 'degraded_mode',
+      subsystem: 'model_health',
+      mode: modelHealthRuntime.persistenceMode,
+      error: modelHealthRuntime.lastPersistenceError,
+      timestamp: new Date().toISOString(),
+    });
+  }
+  const promptUserText =
+    userText.length <= 6_000
+      ? userText
+      : `${userText.slice(0, 6_000)}...`;
   const finalBudgetJson: Record<string, unknown> = {
     ...budgetJson,
+    promptUserText,
+    promptUserTextTruncated: userText.length > 6_000,
     ...(searchExecutionMode ? { searchExecutionMode } : {}),
     routeOutputMaxTokens,
     criticOutputMaxTokens,
@@ -2325,23 +2848,56 @@ Checked on: <YYYY-MM-DD> (only when required)`;
         tenantPolicy.maxParallel !== undefined ||
         tenantPolicy.criticEnabled !== undefined ||
         tenantPolicy.criticMaxLoops !== undefined ||
-        tenantPolicy.criticMinScore !== undefined,
+        tenantPolicy.criticMinScore !== undefined ||
+        tenantPolicy.toolAllowNetworkRead !== undefined ||
+        tenantPolicy.toolAllowDataExfiltrationRisk !== undefined ||
+        tenantPolicy.toolAllowExternalWrite !== undefined ||
+        tenantPolicy.toolAllowHighRisk !== undefined ||
+        tenantPolicy.toolBlockedTools !== undefined ||
+        tenantPolicy.toolRiskOverrides !== undefined,
       allowedModels: tenantPolicy.allowedModels,
       graph: {
         parallelEnabled: effectiveGraphParallelEnabled,
         maxParallel: effectiveGraphMaxParallel,
+      },
+      toolPolicy: {
+        allowNetworkRead: effectiveToolPolicy.allowNetworkRead ?? true,
+        allowDataExfiltrationRisk: effectiveToolPolicy.allowDataExfiltrationRisk ?? true,
+        allowExternalWrite: effectiveToolPolicy.allowExternalWrite ?? false,
+        allowHighRisk: effectiveToolPolicy.allowHighRisk ?? false,
+        blockedTools: effectiveToolPolicy.blockedTools ?? [],
+        riskOverrides: effectiveToolPolicy.riskOverrides ?? {},
       },
       toolHardGate: {
         enabled: toolHardGateEnabled,
         minSuccessfulCalls: toolHardGateMinSuccessfulCalls,
         requiredThisTurn: requiresToolEvidenceThisTurn,
       },
+      validation: {
+        enabled: routeValidationEnabled,
+        strictness: routeValidationPolicy.strictness,
+        autoRepairEnabled: appConfig.AGENTIC_VALIDATION_AUTO_REPAIR_ENABLED,
+        autoRepairMaxAttempts: validatorRepairMaxAttempts,
+      },
+      managerWorker: {
+        enabled: managerWorkerConfig.enabled,
+        allowAgentic: managerWorkerCanaryAllowed,
+        maxWorkers: managerWorkerConfig.maxWorkers,
+        maxPlannerLoops: managerWorkerConfig.maxPlannerLoops,
+        maxWorkerTokens: managerWorkerConfig.maxWorkerTokens,
+        maxWorkerInputChars: managerWorkerConfig.maxWorkerInputChars,
+        timeoutMs: managerWorkerConfig.timeoutMs,
+        minComplexityScore: managerWorkerConfig.minComplexityScore,
+      },
       critic: criticConfig,
       canary: {
         ...canaryConfig,
         decision: canaryDecision,
+        outcome: canaryOutcome,
+        graphFailedTasks,
         snapshot: canarySnapshot,
       },
+      modelHealth: modelHealthRuntime,
     },
   };
 
@@ -2350,6 +2906,14 @@ Checked on: <YYYY-MM-DD> (only when required)`;
       const toolJsonPayload: Record<string, unknown> = {
         enabled: toolLoopEnabled,
         routeTools: activeToolNames,
+        policy: {
+          allowNetworkRead: effectiveToolPolicy.allowNetworkRead ?? true,
+          allowDataExfiltrationRisk: effectiveToolPolicy.allowDataExfiltrationRisk ?? true,
+          allowExternalWrite: effectiveToolPolicy.allowExternalWrite ?? false,
+          allowHighRisk: effectiveToolPolicy.allowHighRisk ?? false,
+          blockedTools: effectiveToolPolicy.blockedTools ?? [],
+          riskOverrides: effectiveToolPolicy.riskOverrides ?? {},
+        },
       };
       if (toolLoopBudgetJson) {
         toolJsonPayload.main = toolLoopBudgetJson;
@@ -2362,6 +2926,7 @@ Checked on: <YYYY-MM-DD> (only when required)`;
         toolJson: toolJsonPayload,
         qualityJson,
         budgetJson: finalBudgetJson,
+        agentEventsJson,
         replyText: safeFinalText,
       });
     } catch (error) {

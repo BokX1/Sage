@@ -18,7 +18,16 @@ describe('replayHarness', () => {
         id: 'trace-1',
         routeKind: 'chat',
         replyText: 'Good answer',
-        toolJson: { executed: true },
+        toolJson: {
+          enabled: true,
+          main: {
+            toolsExecuted: true,
+            successfulToolCount: 1,
+            toolResultCount: 1,
+            hardGateRequired: true,
+            hardGateSatisfied: true,
+          },
+        },
         qualityJson: { critic: [{ score: 0.9 }] },
         budgetJson: { failedTasks: 0 },
         tokenJson: {},
@@ -44,5 +53,8 @@ describe('replayHarness', () => {
     expect(report.byRoute.search.total).toBe(1);
     expect(report.successLikelyCount).toBe(1);
     expect(report.avgScore).toBeGreaterThan(0);
+    expect(report.tooling.tracesWithToolsExecuted).toBe(1);
+    expect(report.tooling.totalSuccessfulToolCalls).toBe(1);
+    expect(report.byRoute.chat.tooling.tracesWithHardGateSatisfied).toBe(1);
   });
 });

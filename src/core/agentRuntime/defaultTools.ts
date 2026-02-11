@@ -26,6 +26,7 @@ const getCurrentDateTimeTool: ToolDefinition<{
   schema: z.object({
     utcOffsetMinutes: z.number().int().min(-720).max(840).optional(),
   }),
+  metadata: { riskClass: 'read_only' },
   execute: async ({ utcOffsetMinutes }) => {
     const now = new Date();
     if (typeof utcOffsetMinutes !== 'number') {
@@ -66,6 +67,7 @@ const webSearchTool: ToolDefinition<{
     depth: z.enum(['quick', 'balanced', 'deep']).optional(),
     maxResults: z.number().int().min(1).max(10).optional(),
   }),
+  metadata: { riskClass: 'network_read' },
   execute: async ({ query, depth, maxResults }, ctx) => {
     return runWebSearch({
       query,
@@ -92,6 +94,7 @@ const webScrapeTool: ToolDefinition<{
       .refine((value) => /^https?:\/\//i.test(value), 'URL must start with http:// or https://'),
     maxChars: z.number().int().min(500).max(50_000).optional(),
   }),
+  metadata: { riskClass: 'network_read' },
   execute: async ({ url, maxChars }) => {
     const sanitizedUrl = sanitizePublicUrl(url);
     if (!sanitizedUrl) {
@@ -120,6 +123,7 @@ const githubRepoLookupTool: ToolDefinition<{
       .refine((value) => REPO_PATTERN.test(value), 'repo must be in owner/name format'),
     includeReadme: z.boolean().optional(),
   }),
+  metadata: { riskClass: 'network_read' },
   execute: async ({ repo, includeReadme }) => {
     return lookupGitHubRepo({
       repo,
@@ -153,6 +157,7 @@ const githubFileLookupTool: ToolDefinition<{
     ref: z.string().trim().min(1).max(120).optional(),
     maxChars: z.number().int().min(500).max(50_000).optional(),
   }),
+  metadata: { riskClass: 'network_read' },
   execute: async ({ repo, path, ref, maxChars }) => {
     return lookupGitHubFile({
       repo,
@@ -174,6 +179,7 @@ const npmPackageLookupTool: ToolDefinition<{
     packageName: z.string().trim().min(1).max(214),
     version: z.string().trim().min(1).max(80).optional(),
   }),
+  metadata: { riskClass: 'network_read' },
   execute: async ({ packageName, version }) => {
     return lookupNpmPackage({
       packageName,
@@ -201,6 +207,7 @@ const channelFileLookupTool: ToolDefinition<{
     includeContent: z.boolean().optional(),
     maxChars: z.number().int().min(500).max(50_000).optional(),
   }),
+  metadata: { riskClass: 'data_exfiltration_risk' },
   execute: async ({ query, messageId, filename, limit, includeContent, maxChars }, ctx) => {
     return lookupChannelFileCache({
       guildId: ctx.guildId ?? null,
@@ -228,6 +235,7 @@ const wikipediaLookupTool: ToolDefinition<{
     language: z.string().trim().min(2).max(16).optional(),
     maxResults: z.number().int().min(1).max(10).optional(),
   }),
+  metadata: { riskClass: 'network_read' },
   execute: async ({ query, language, maxResults }) => {
     return lookupWikipedia({
       query,
@@ -250,6 +258,7 @@ const stackOverflowSearchTool: ToolDefinition<{
     maxResults: z.number().int().min(1).max(15).optional(),
     tagged: z.string().trim().min(1).max(120).optional(),
   }),
+  metadata: { riskClass: 'network_read' },
   execute: async ({ query, maxResults, tagged }) => {
     return searchStackOverflow({
       query,
@@ -263,6 +272,7 @@ const localLlmModelsTool: ToolDefinition<Record<string, never>> = {
   name: 'local_llm_models',
   description: 'List available local Ollama models and metadata from the configured OLLAMA_BASE_URL.',
   schema: z.object({}),
+  metadata: { riskClass: 'read_only' },
   execute: async () => {
     return listLocalOllamaModels();
   },
@@ -285,6 +295,7 @@ const localLlmInferTool: ToolDefinition<{
     temperature: z.number().min(0).max(2).optional(),
     maxTokens: z.number().int().min(64).max(4_096).optional(),
   }),
+  metadata: { riskClass: 'data_exfiltration_risk' },
   execute: async ({ prompt, system, model, temperature, maxTokens }) => {
     return runLocalLlmInfer({
       prompt,

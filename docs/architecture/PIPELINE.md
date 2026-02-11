@@ -108,7 +108,7 @@ Primary files:
 Runtime behavior:
 
 1. Tool calls execute through a bounded loop with malformed-envelope recovery prompts.
-2. Deterministic tool policy gates classify risk (`read_only`, `external_write`, `high_risk`).
+2. Deterministic tool policy gates classify risk (`read_only`, `network_read`, `data_exfiltration_risk`, `external_write`, `high_risk`).
 3. Blocklists and risk permissions are enforced before any execution.
 4. Per-turn cache deduplicates repeated calls.
 5. Verification and factual revision are handled by the critic loop and targeted provider/search refreshes.

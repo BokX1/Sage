@@ -3,7 +3,13 @@ import { ToolRegistry, ToolExecutionContext } from './toolRegistry';
 import { logger } from '../utils/logger';
 import { executeToolWithTimeout, ToolResult } from './toolCallExecution';
 import { looksLikeJson, parseToolCallEnvelope, RETRY_PROMPT } from './toolCallParser';
-import { evaluateToolPolicy, ToolPolicyConfig } from './toolPolicy';
+import {
+  classifyToolRisk,
+  evaluateToolPolicy,
+  ToolPolicyConfig,
+  ToolPolicyDecisionCode,
+  ToolRiskClass,
+} from './toolPolicy';
 import { ToolResultCache } from './toolCache';
 import { limitConcurrency } from '../utils/concurrency';
 
@@ -173,6 +179,17 @@ export interface ToolCallLoopParams {
 
 
 /** Return final response and execution telemetry for the tool loop. */
+export interface ToolPolicyTraceDecision {
+  round: number;
+  callIndex: number;
+  toolName: string;
+  allowed: boolean;
+  risk: ToolRiskClass;
+  code: ToolPolicyDecisionCode;
+  reason: string;
+}
+
+/** Return final response and execution telemetry for the tool loop. */
 export interface ToolCallLoopResult {
 
   replyText: string;
@@ -182,6 +199,8 @@ export interface ToolCallLoopResult {
   roundsCompleted: number;
 
   toolResults: ToolResult[];
+
+  policyDecisions: ToolPolicyTraceDecision[];
 }
 
 
@@ -216,6 +235,7 @@ export async function runToolCallLoop(params: ToolCallLoopParams): Promise<ToolC
   const cache = config.cacheEnabled ? new ToolResultCache(config.cacheMaxEntries) : null;
   let roundsCompleted = 0;
   const allToolResults: ToolResult[] = [];
+  const policyDecisions: ToolPolicyTraceDecision[] = [];
   let retryAttempted = false;
   let seededResponseText = params.initialAssistantResponseText;
 
@@ -272,6 +292,7 @@ export async function runToolCallLoop(params: ToolCallLoopParams): Promise<ToolC
           toolsExecuted: false,
           roundsCompleted,
           toolResults: allToolResults,
+          policyDecisions,
         };
       }
     }
@@ -288,16 +309,31 @@ export async function runToolCallLoop(params: ToolCallLoopParams): Promise<ToolC
         toolsExecuted: allToolResults.length > 0,
         roundsCompleted,
         toolResults: allToolResults,
+        policyDecisions,
       };
     }
 
 
-    const calls = envelope.calls.slice(0, config.maxCallsPerRound);
-    if (envelope.calls.length > config.maxCallsPerRound) {
+    const requestedCalls = envelope.calls;
+    const calls = requestedCalls.slice(0, config.maxCallsPerRound);
+    if (requestedCalls.length > config.maxCallsPerRound) {
       logger.warn(
-        { requested: envelope.calls.length, limit: config.maxCallsPerRound },
+        { requested: requestedCalls.length, limit: config.maxCallsPerRound },
         'Truncating tool calls to limit',
       );
+      for (let truncatedIndex = config.maxCallsPerRound; truncatedIndex < requestedCalls.length; truncatedIndex += 1) {
+        const truncatedCall = requestedCalls[truncatedIndex];
+        const declaredRisk = registry.get(truncatedCall.name)?.metadata?.riskClass;
+        policyDecisions.push({
+          round: roundsCompleted + 1,
+          callIndex: truncatedIndex,
+          toolName: truncatedCall.name,
+          allowed: false,
+          risk: classifyToolRisk(truncatedCall.name, params.toolPolicy, declaredRisk),
+          code: 'max_calls_per_round_truncated',
+          reason: `Tool call "${truncatedCall.name}" was not executed because maxCallsPerRound=${config.maxCallsPerRound}.`,
+        });
+      }
     }
 
     type PendingCall = {
@@ -319,18 +355,17 @@ export async function runToolCallLoop(params: ToolCallLoopParams): Promise<ToolC
 
     for (let index = 0; index < calls.length; index += 1) {
       const call = calls[index];
-      const cached = cache?.get(call.name, call.args) ?? null;
-      if (cached) {
-        roundResultsByIndex[index] = {
-          name: call.name,
-          success: true,
-          result: cached.result,
-          latencyMs: 0,
-        };
-        continue;
-      }
-
-      const policyDecision = evaluateToolPolicy(call.name, params.toolPolicy);
+      const declaredRisk = registry.get(call.name)?.metadata?.riskClass;
+      const policyDecision = evaluateToolPolicy(call.name, params.toolPolicy, declaredRisk);
+      policyDecisions.push({
+        round: roundsCompleted + 1,
+        callIndex: index,
+        toolName: call.name,
+        allowed: policyDecision.allow,
+        risk: policyDecision.risk,
+        code: policyDecision.code,
+        reason: policyDecision.reason,
+      });
       if (!policyDecision.allow) {
         logger.warn(
           {
@@ -351,7 +386,23 @@ export async function runToolCallLoop(params: ToolCallLoopParams): Promise<ToolC
         continue;
       }
 
-      if (config.parallelReadOnlyTools && policyDecision.risk === 'read_only') {
+      const cached = cache?.get(call.name, call.args) ?? null;
+      if (cached) {
+        roundResultsByIndex[index] = {
+          name: call.name,
+          success: true,
+          result: cached.result,
+          latencyMs: 0,
+        };
+        continue;
+      }
+
+      if (
+        config.parallelReadOnlyTools &&
+        (policyDecision.risk === 'read_only' ||
+          policyDecision.risk === 'network_read' ||
+          policyDecision.risk === 'data_exfiltration_risk')
+      ) {
         readOnlyPending.push({ index, call });
       } else {
         sideEffectPending.push({ index, call });
@@ -397,5 +448,6 @@ export async function runToolCallLoop(params: ToolCallLoopParams): Promise<ToolC
     toolsExecuted: allToolResults.length > 0,
     roundsCompleted,
     toolResults: allToolResults,
+    policyDecisions,
   };
 }

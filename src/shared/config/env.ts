@@ -151,6 +151,7 @@ const testDefaults: Record<string, string> = {
   AGENTIC_TOOL_ALLOW_EXTERNAL_WRITE: 'false',
   AGENTIC_TOOL_ALLOW_HIGH_RISK: 'false',
   AGENTIC_TOOL_BLOCKLIST_CSV: '',
+  AGENTIC_TOOL_POLICY_JSON: '',
   AGENTIC_TOOL_LOOP_ENABLED: 'true',
   AGENTIC_TOOL_HARD_GATE_ENABLED: 'true',
   AGENTIC_TOOL_HARD_GATE_MIN_SUCCESSFUL_CALLS: '1',
@@ -168,11 +169,25 @@ const testDefaults: Record<string, string> = {
   AGENTIC_CANARY_MIN_SAMPLES: '20',
   AGENTIC_CANARY_COOLDOWN_SEC: '300',
   AGENTIC_CANARY_WINDOW_SIZE: '100',
+  AGENTIC_PERSIST_STATE_ENABLED: 'false',
   AGENTIC_TENANT_POLICY_JSON: '{}',
   AGENTIC_CRITIC_ENABLED: 'true',
-  AGENTIC_CRITIC_MIN_SCORE: '0.78',
-  // Default to 2 so the runtime can re-critic after a revision/refresh pass.
+  // Quality-first baseline from latest judge-enabled tuning sweep.
+  AGENTIC_CRITIC_MIN_SCORE: '0.82',
+  // Default to 2 based on larger-sample live tuning.
   AGENTIC_CRITIC_MAX_LOOPS: '2',
+  // Keep validation disabled in test defaults to avoid brittle route/output fixtures.
+  AGENTIC_VALIDATORS_ENABLED: 'false',
+  AGENTIC_VALIDATION_POLICY_JSON: '',
+  AGENTIC_VALIDATION_AUTO_REPAIR_ENABLED: 'true',
+  AGENTIC_VALIDATION_AUTO_REPAIR_MAX_ATTEMPTS: '1',
+  AGENTIC_MANAGER_WORKER_ENABLED: 'false',
+  AGENTIC_MANAGER_WORKER_MAX_WORKERS: '3',
+  AGENTIC_MANAGER_WORKER_MAX_PLANNER_LOOPS: '1',
+  AGENTIC_MANAGER_WORKER_MAX_TOKENS: '900',
+  AGENTIC_MANAGER_WORKER_MAX_INPUT_CHARS: '32000',
+  AGENTIC_MANAGER_WORKER_TIMEOUT_MS: '60000',
+  AGENTIC_MANAGER_WORKER_MIN_COMPLEXITY_SCORE: '0.55',
   SECRET_ENCRYPTION_KEY: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
 };
 
@@ -282,6 +297,7 @@ const envSchema = z.object({
   AGENTIC_TOOL_ALLOW_EXTERNAL_WRITE: z.enum(['true', 'false']).default('false').transform((v) => v === 'true'),
   AGENTIC_TOOL_ALLOW_HIGH_RISK: z.enum(['true', 'false']).default('false').transform((v) => v === 'true'),
   AGENTIC_TOOL_BLOCKLIST_CSV: z.string().default(''),
+  AGENTIC_TOOL_POLICY_JSON: z.string().default(''),
   AGENTIC_TOOL_LOOP_ENABLED: z.enum(['true', 'false']).default('true').transform((v) => v === 'true'),
   AGENTIC_TOOL_HARD_GATE_ENABLED: z
     .enum(['true', 'false'])
@@ -305,10 +321,34 @@ const envSchema = z.object({
   AGENTIC_CANARY_MIN_SAMPLES: z.coerce.number().int().min(1).max(10000).default(20),
   AGENTIC_CANARY_COOLDOWN_SEC: z.coerce.number().int().min(1).max(86400).default(300),
   AGENTIC_CANARY_WINDOW_SIZE: z.coerce.number().int().min(10).max(10000).default(100),
+  AGENTIC_PERSIST_STATE_ENABLED: z.enum(['true', 'false']).default('true').transform((v) => v === 'true'),
   AGENTIC_TENANT_POLICY_JSON: z.string().default('{}'),
   AGENTIC_CRITIC_ENABLED: z.enum(['true', 'false']).default('true').transform((v) => v === 'true'),
-  AGENTIC_CRITIC_MIN_SCORE: z.coerce.number().min(0).max(1).default(0.78),
+  AGENTIC_CRITIC_MIN_SCORE: z.coerce.number().min(0).max(1).default(0.82),
   AGENTIC_CRITIC_MAX_LOOPS: z.coerce.number().int().min(0).max(2).default(2),
+  AGENTIC_VALIDATORS_ENABLED: z.enum(['true', 'false']).default('true').transform((v) => v === 'true'),
+  AGENTIC_VALIDATION_POLICY_JSON: z.string().default(''),
+  AGENTIC_VALIDATION_AUTO_REPAIR_ENABLED: z
+    .enum(['true', 'false'])
+    .default('true')
+    .transform((v) => v === 'true'),
+  AGENTIC_VALIDATION_AUTO_REPAIR_MAX_ATTEMPTS: z.coerce.number().int().min(0).max(1).default(1),
+  AGENTIC_MANAGER_WORKER_ENABLED: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((v) => v === 'true'),
+  AGENTIC_MANAGER_WORKER_MAX_WORKERS: z.coerce.number().int().min(1).max(8).default(3),
+  AGENTIC_MANAGER_WORKER_MAX_PLANNER_LOOPS: z.coerce.number().int().min(1).max(4).default(1),
+  AGENTIC_MANAGER_WORKER_MAX_TOKENS: z.coerce.number().int().min(128).max(4000).default(900),
+  AGENTIC_MANAGER_WORKER_MAX_INPUT_CHARS: z
+    .coerce
+    .number()
+    .int()
+    .min(4000)
+    .max(200000)
+    .default(32000),
+  AGENTIC_MANAGER_WORKER_TIMEOUT_MS: z.coerce.number().int().min(1000).max(180000).default(60000),
+  AGENTIC_MANAGER_WORKER_MIN_COMPLEXITY_SCORE: z.coerce.number().min(0).max(1).default(0.55),
   SECRET_ENCRYPTION_KEY: z.string().regex(/^[0-9a-fA-F]{64}$/),
 });
 

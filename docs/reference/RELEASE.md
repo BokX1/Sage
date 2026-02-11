@@ -38,6 +38,9 @@ This project follows **Semantic Versioning (SemVer)**: `MAJOR.MINOR.PATCH`.
    - Run `npm run doctor` to check compatibility.
    - `npm run test`
    - `npm run agentic:replay-gate`
+   - `npm run eval:gate`
+   - `npm run agentic:consistency-check`
+   - `npm run release:agentic-check` (recommended single command)
    - `npm pack`
 
 3. **Review database schema changes** (if applicable)
@@ -56,8 +59,9 @@ This project follows **Semantic Versioning (SemVer)**: `MAJOR.MINOR.PATCH`.
 
 ```bash
 npm ci
-NODE_ENV=test DISCORD_TOKEN=test-token DISCORD_APP_ID=test-app-id DATABASE_URL=postgresql://postgres:password@127.0.0.1:5432/sage?schema=public REPLAY_GATE_REQUIRE_DATA=0 npx prisma db push
-NODE_ENV=test DISCORD_TOKEN=test-token DISCORD_APP_ID=test-app-id DATABASE_URL=postgresql://postgres:password@127.0.0.1:5432/sage?schema=public REPLAY_GATE_REQUIRE_DATA=0 npm run release:agentic-check
+NODE_ENV=test DISCORD_TOKEN=test-token DISCORD_APP_ID=test-app-id DATABASE_URL=postgresql://postgres:password@127.0.0.1:5432/sage?schema=public REPLAY_GATE_REQUIRE_DATA=0 EVAL_GATE_REQUIRE_DATA=0 EVAL_GATE_MIN_TOTAL=0 npx prisma db push
+NODE_ENV=test DISCORD_TOKEN=test-token DISCORD_APP_ID=test-app-id DATABASE_URL=postgresql://postgres:password@127.0.0.1:5432/sage?schema=public npm run agentic:consistency-check
+NODE_ENV=test DISCORD_TOKEN=test-token DISCORD_APP_ID=test-app-id DATABASE_URL=postgresql://postgres:password@127.0.0.1:5432/sage?schema=public REPLAY_GATE_REQUIRE_DATA=0 EVAL_GATE_REQUIRE_DATA=0 EVAL_GATE_MIN_TOTAL=0 npm run release:agentic-check
 ```
 
 ### Windows (PowerShell)
@@ -69,7 +73,10 @@ $env:DISCORD_TOKEN="test-token"
 $env:DISCORD_APP_ID="test-app-id"
 $env:DATABASE_URL="postgresql://postgres:password@127.0.0.1:5432/sage?schema=public"
 $env:REPLAY_GATE_REQUIRE_DATA="0"
+$env:EVAL_GATE_REQUIRE_DATA="0"
+$env:EVAL_GATE_MIN_TOTAL="0"
 npx prisma db push
+npm run agentic:consistency-check
 npm run release:agentic-check
 ```
 
@@ -82,6 +89,13 @@ npm run release:agentic-check
 ```bash
 npm run release:agentic-check
 ```
+
+This command enforces:
+
+- lint/build/unit test suite
+- Stage 9 cross-phase consistency gate
+- replay quality gate
+- model-judge eval gate
 
 ---
 

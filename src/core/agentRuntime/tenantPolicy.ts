@@ -1,3 +1,5 @@
+import type { ToolRiskClass } from './toolPolicy';
+
 export interface TenantAgenticPolicy {
   maxParallel?: number;
   critic?: {
@@ -6,9 +8,12 @@ export interface TenantAgenticPolicy {
     minScore?: number;
   };
   tools?: {
+    allowNetworkRead?: boolean;
+    allowDataExfiltrationRisk?: boolean;
     allowExternalWrite?: boolean;
     allowHighRisk?: boolean;
     blockedTools?: string[];
+    riskOverrides?: Record<string, ToolRiskClass>;
   };
   allowedModels?: string[];
 }
@@ -23,9 +28,12 @@ export interface ResolvedTenantPolicy {
   criticEnabled?: boolean;
   criticMaxLoops?: number;
   criticMinScore?: number;
+  toolAllowNetworkRead?: boolean;
+  toolAllowDataExfiltrationRisk?: boolean;
   toolAllowExternalWrite?: boolean;
   toolAllowHighRisk?: boolean;
   toolBlockedTools?: string[];
+  toolRiskOverrides?: Record<string, ToolRiskClass>;
   allowedModels?: string[];
 }
 
@@ -76,6 +84,24 @@ function normalizeToolList(tools: string[] | undefined): string[] | undefined {
   return deduped.length > 0 ? deduped : undefined;
 }
 
+function normalizeRiskOverrides(
+  riskOverrides: Record<string, ToolRiskClass> | undefined,
+): Record<string, ToolRiskClass> | undefined {
+  if (!riskOverrides) return undefined;
+  const validRiskClasses = new Set<ToolRiskClass>([
+    'read_only',
+    'network_read',
+    'data_exfiltration_risk',
+    'external_write',
+    'high_risk',
+  ]);
+  const deduped = Object.entries(riskOverrides)
+    .map(([toolName, risk]) => [toolName.trim().toLowerCase(), risk] as const)
+    .filter(([toolName, risk]) => toolName.length > 0 && validRiskClasses.has(risk));
+  if (deduped.length === 0) return undefined;
+  return Object.fromEntries(deduped);
+}
+
 function normalizeInteger(value: number | undefined, min: number, max: number): number | undefined {
   if (value === undefined || value === null) return undefined;
   const numeric = Number(value);
@@ -109,6 +135,14 @@ export function resolveTenantPolicy(params: {
     tools: {
       ...(defaultPolicy.tools ?? {}),
       ...(guildPolicy?.tools ?? {}),
+      blockedTools: [
+        ...((defaultPolicy.tools?.blockedTools ?? []).filter((entry) => typeof entry === 'string')),
+        ...((guildPolicy?.tools?.blockedTools ?? []).filter((entry) => typeof entry === 'string')),
+      ],
+      riskOverrides: {
+        ...(defaultPolicy.tools?.riskOverrides ?? {}),
+        ...(guildPolicy?.tools?.riskOverrides ?? {}),
+      },
     },
   };
 
@@ -117,9 +151,12 @@ export function resolveTenantPolicy(params: {
     criticEnabled: merged.critic?.enabled,
     criticMaxLoops: normalizeInteger(merged.critic?.maxLoops, 0, 2),
     criticMinScore: normalizeScore(merged.critic?.minScore),
+    toolAllowNetworkRead: merged.tools?.allowNetworkRead,
+    toolAllowDataExfiltrationRisk: merged.tools?.allowDataExfiltrationRisk,
     toolAllowExternalWrite: merged.tools?.allowExternalWrite,
     toolAllowHighRisk: merged.tools?.allowHighRisk,
     toolBlockedTools: normalizeToolList(merged.tools?.blockedTools),
+    toolRiskOverrides: normalizeRiskOverrides(merged.tools?.riskOverrides),
     allowedModels: normalizeModelList(merged.allowedModels),
   };
 }

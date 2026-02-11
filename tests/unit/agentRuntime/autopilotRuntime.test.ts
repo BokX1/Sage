@@ -5,6 +5,8 @@ import { createLLMClient, getLLMClient } from '../../../src/core/llm';
 
 const mockDecideAgent = vi.hoisted(() => vi.fn());
 const mockResolveModelForRequestDetailed = vi.hoisted(() => vi.fn());
+const mockExecuteManagerWorkerPlan = vi.hoisted(() => vi.fn());
+const mockAggregateManagerWorkerArtifacts = vi.hoisted(() => vi.fn());
 
 vi.mock('../../../src/core/llm');
 vi.mock('../../../src/core/llm/model-resolver', () => ({
@@ -33,6 +35,12 @@ vi.mock('../../../src/core/orchestration/governor', () => ({
   })),
 }));
 vi.mock('../../../src/core/agentRuntime/agent-trace-repo');
+vi.mock('../../../src/core/agentRuntime/workerExecutor', () => ({
+  executeManagerWorkerPlan: mockExecuteManagerWorkerPlan,
+}));
+vi.mock('../../../src/core/agentRuntime/workerAggregator', () => ({
+  aggregateManagerWorkerArtifacts: mockAggregateManagerWorkerArtifacts,
+}));
 vi.mock('../../../src/core/settings/guildSettingsRepo', () => ({
   getGuildApiKey: vi.fn().mockResolvedValue('test-key'),
 }));
@@ -73,6 +81,28 @@ describe('Autopilot Runtime', () => {
       temperature: 1.2,
       reasoningText: 'test decision',
     });
+    mockExecuteManagerWorkerPlan.mockResolvedValue({
+      plan: {
+        routeKind: 'search',
+        complexityScore: 0.8,
+        rationale: ['search_complex_mode'],
+        loops: 1,
+        tasks: [],
+      },
+      artifacts: [],
+      totalWorkers: 0,
+      failedWorkers: 0,
+    });
+    mockAggregateManagerWorkerArtifacts.mockReturnValue({
+      contextBlock: '',
+      successfulWorkers: 0,
+      failedWorkers: 0,
+      citationCount: 0,
+    });
+    config.AGENTIC_MANAGER_WORKER_ENABLED = false;
+    config.AGENTIC_MANAGER_WORKER_MAX_INPUT_CHARS = 32_000;
+    config.AGENTIC_CANARY_ENABLED = true;
+    config.AGENTIC_CANARY_ROUTE_ALLOWLIST_CSV = 'chat,coding,search,creative';
   });
 
   it('should return empty string when LLM outputs [SILENCE]', async () => {
@@ -476,6 +506,116 @@ describe('Autopilot Runtime', () => {
     const systemMessage = firstCall.messages.find((message) => message.role === 'system');
     expect(systemMessage?.content).toContain(
       'Context providers available this turn: UserMemory, ChannelMemory, SocialGraph.',
+    );
+  });
+
+  it('skips manager-worker orchestration when canary disallows agentic', async () => {
+    config.AGENTIC_MANAGER_WORKER_ENABLED = true;
+    config.AGENTIC_CANARY_ROUTE_ALLOWLIST_CSV = 'chat';
+    mockDecideAgent.mockResolvedValue({
+      kind: 'search',
+      contextProviders: ['UserMemory'],
+      temperature: 0.3,
+      searchMode: 'complex',
+      reasoningText: 'manager worker canary skip',
+    });
+    mockSearchLLM.chat.mockResolvedValue({
+      content: 'Raw findings from search phase.',
+    });
+    mockLLM.chat.mockResolvedValue({
+      content: 'Final answer from summary phase.',
+    });
+
+    await runChatTurn({
+      traceId: 'test-trace-canary-skip',
+      userId: 'test-user',
+      channelId: 'test-channel',
+      guildId: 'test-guild',
+      messageId: 'msg-1',
+      userText: 'compare latest gpu prices across vendors',
+      userProfileSummary: null,
+      replyToBotText: null,
+      invokedBy: 'mention',
+      isVoiceActive: true,
+    });
+
+    expect(mockExecuteManagerWorkerPlan).not.toHaveBeenCalled();
+  });
+
+  it('passes configured worker input budget into manager-worker executor', async () => {
+    config.AGENTIC_MANAGER_WORKER_ENABLED = true;
+    config.AGENTIC_MANAGER_WORKER_MAX_INPUT_CHARS = 54_321;
+    config.AGENTIC_CANARY_ROUTE_ALLOWLIST_CSV = 'chat,coding,search,creative';
+    mockDecideAgent.mockResolvedValue({
+      kind: 'search',
+      contextProviders: ['UserMemory'],
+      temperature: 0.3,
+      searchMode: 'complex',
+      reasoningText: 'manager worker config wiring',
+    });
+    mockExecuteManagerWorkerPlan.mockResolvedValue({
+      plan: {
+        routeKind: 'search',
+        complexityScore: 0.9,
+        rationale: ['search_complex_mode'],
+        loops: 1,
+        tasks: [
+          {
+            id: 'research-1',
+            worker: 'research',
+            objective: 'collect',
+          },
+        ],
+      },
+      artifacts: [
+        {
+          taskId: 'research-1',
+          worker: 'research',
+          objective: 'collect',
+          model: 'gemini-search',
+          summary: 'found facts',
+          keyPoints: ['k1'],
+          openQuestions: [],
+          citations: ['https://example.com'],
+          confidence: 0.8,
+          latencyMs: 120,
+          failed: false,
+          rawText: '{}',
+        },
+      ],
+      totalWorkers: 1,
+      failedWorkers: 0,
+    });
+    mockAggregateManagerWorkerArtifacts.mockReturnValue({
+      contextBlock: '## Manager-Worker Findings\n[research] found facts',
+      successfulWorkers: 1,
+      failedWorkers: 0,
+      citationCount: 1,
+    });
+    mockSearchLLM.chat.mockResolvedValue({
+      content: 'Raw findings from search phase.',
+    });
+    mockLLM.chat.mockResolvedValue({
+      content: 'Final answer from summary phase.',
+    });
+
+    await runChatTurn({
+      traceId: 'test-trace-manager-worker-budget',
+      userId: 'test-user',
+      channelId: 'test-channel',
+      guildId: 'test-guild',
+      messageId: 'msg-1',
+      userText: 'compare latest sdk migration tradeoffs and verify edge cases',
+      userProfileSummary: null,
+      replyToBotText: null,
+      invokedBy: 'mention',
+      isVoiceActive: true,
+    });
+
+    expect(mockExecuteManagerWorkerPlan).toHaveBeenCalledWith(
+      expect.objectContaining({
+        maxInputChars: 54_321,
+      }),
     );
   });
 });

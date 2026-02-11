@@ -45,6 +45,8 @@ async function main(): Promise<void> {
     for (let sample = 1; sample <= perRoute; sample += 1) {
       const traceId = `seed-${runId}-${route}-${sample}`;
       const channelId = `${channelPrefix}-${route}`;
+      const toolsExecuted = route === 'coding' || route === 'chat' || route === 'search';
+      const hardGateRequired = route === 'search' || route === 'chat' || route === 'coding';
 
       await upsertTraceStart({
         id: traceId,
@@ -72,7 +74,18 @@ async function main(): Promise<void> {
       await updateTraceEnd({
         id: traceId,
         toolJson: {
-          executed: route === 'coding' || route === 'chat',
+          enabled: true,
+          routeTools: route === 'creative' ? [] : ['web_search', 'web_scrape'],
+          main: {
+            enabled: true,
+            toolsExecuted,
+            roundsCompleted: toolsExecuted ? 1 : 0,
+            toolResultCount: toolsExecuted ? 1 : 0,
+            successfulToolCount: toolsExecuted ? 1 : 0,
+            hardGateRequired,
+            hardGateSatisfied: !hardGateRequired || toolsExecuted,
+            hardGateMinSuccessfulCalls: 1,
+          },
         },
         qualityJson: {
           critic: [

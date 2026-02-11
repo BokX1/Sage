@@ -175,6 +175,7 @@ describe('AgentTraceRepo', () => {
         toolJson: { executed: true },
         qualityJson: { critic: [{ score: 0.9 }] },
         budgetJson: { graphNodes: 2 },
+        agentEventsJson: [{ type: 'manager_worker' }],
         replyText: 'Final reply text',
       });
 
@@ -185,6 +186,7 @@ describe('AgentTraceRepo', () => {
           toolJson: { executed: true },
           qualityJson: expect.any(Object),
           budgetJson: expect.any(Object),
+          agentEventsJson: expect.any(Array),
         }),
       });
     });

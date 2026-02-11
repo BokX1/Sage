@@ -167,3 +167,52 @@ model AgentRun {
   @@index([traceId, nodeId])
   @@index([agent, createdAt])
 }
+
+model AgentEvaluation {
+  id                   String   @id @default(cuid())
+  traceId              String
+  guildId              String?
+  channelId            String
+  userId               String
+  routeKind            String
+  model                String
+  rubricVersion        String
+  primaryJudgeModel    String
+  secondaryJudgeModel  String
+  adjudicatorJudgeModel String?
+  overallScore         Float
+  confidence           Float
+  verdict              String
+  disagreement         Boolean
+  arbitrationUsed      Boolean
+  judgeAgreement       Boolean
+  dimensionScoresJson  Json
+  issuesJson           Json
+  summaryText          String?  @db.Text
+  judgeJson            Json?
+  createdAt            DateTime @default(now())
+
+  @@index([traceId, createdAt])
+  @@index([guildId, createdAt])
+  @@index([channelId, createdAt])
+  @@index([routeKind, createdAt])
+  @@index([rubricVersion, createdAt])
+}
+
+model AgenticCanaryState {
+  id            String   @id
+  outcomesJson  Json
+  cooldownUntil DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model ModelHealthState {
+  modelId   String   @id
+  score     Float
+  samples   Int
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([updatedAt])
+}

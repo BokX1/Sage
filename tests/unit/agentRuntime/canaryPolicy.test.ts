@@ -9,16 +9,16 @@ import {
 } from '../../../src/core/agentRuntime/canaryPolicy';
 
 describe('canaryPolicy', () => {
-  beforeEach(() => {
-    resetAgenticCanaryState();
+  beforeEach(async () => {
+    await resetAgenticCanaryState();
   });
 
-  it('allows execution when canary is disabled', () => {
+  it('allows execution when canary is disabled', async () => {
     const config = normalizeCanaryConfig({
       enabled: false,
     });
 
-    const decision = evaluateAgenticCanary({
+    const decision = await evaluateAgenticCanary({
       traceId: 'trace-1',
       routeKind: 'chat',
       guildId: 'guild-1',
@@ -30,14 +30,14 @@ describe('canaryPolicy', () => {
     expect(decision.reason).toBe('disabled');
   });
 
-  it('blocks routes outside allowlist', () => {
+  it('blocks routes outside allowlist', async () => {
     const config = normalizeCanaryConfig({
       enabled: true,
       rolloutPercent: 100,
       routeAllowlist: parseRouteAllowlistCsv('chat,coding'),
     });
 
-    const decision = evaluateAgenticCanary({
+    const decision = await evaluateAgenticCanary({
       traceId: 'trace-2',
       routeKind: 'search',
       guildId: 'guild-1',
@@ -49,13 +49,13 @@ describe('canaryPolicy', () => {
     expect(decision.reason).toBe('route_not_allowlisted');
   });
 
-  it('respects rollout percent sampling', () => {
+  it('respects rollout percent sampling', async () => {
     const config = normalizeCanaryConfig({
       enabled: true,
       rolloutPercent: 0,
     });
 
-    const decision = evaluateAgenticCanary({
+    const decision = await evaluateAgenticCanary({
       traceId: 'trace-3',
       routeKind: 'chat',
       guildId: 'guild-1',
@@ -67,7 +67,7 @@ describe('canaryPolicy', () => {
     expect(decision.reason).toBe('out_of_rollout_sample');
   });
 
-  it('trips cooldown when failure rate exceeds threshold', () => {
+  it('trips cooldown when failure rate exceeds threshold', async () => {
     const config = normalizeCanaryConfig({
       enabled: true,
       rolloutPercent: 100,
@@ -77,12 +77,12 @@ describe('canaryPolicy', () => {
       windowSize: 4,
     });
 
-    recordAgenticOutcome({ success: false, config, nowMs: 10_000 });
-    recordAgenticOutcome({ success: false, config, nowMs: 10_100 });
-    recordAgenticOutcome({ success: false, config, nowMs: 10_200 });
-    recordAgenticOutcome({ success: true, config, nowMs: 10_300 });
+    await recordAgenticOutcome({ success: false, config, nowMs: 10_000 });
+    await recordAgenticOutcome({ success: false, config, nowMs: 10_100 });
+    await recordAgenticOutcome({ success: false, config, nowMs: 10_200 });
+    await recordAgenticOutcome({ success: true, config, nowMs: 10_300 });
 
-    const decision = evaluateAgenticCanary({
+    const decision = await evaluateAgenticCanary({
       traceId: 'trace-4',
       routeKind: 'chat',
       guildId: 'guild-1',
@@ -93,9 +93,59 @@ describe('canaryPolicy', () => {
     expect(decision.allowAgentic).toBe(false);
     expect(decision.reason).toBe('error_budget_cooldown');
 
-    const snapshot = getAgenticCanarySnapshot(10_301);
+    const snapshot = await getAgenticCanarySnapshot({ nowMs: 10_301, config });
     expect(snapshot.totalSamples).toBe(4);
     expect(snapshot.totalFailures).toBe(3);
     expect(snapshot.tripped).toBe(true);
+    expect(snapshot.recentFailureReasonCounts).toEqual({
+      graph_failed_tasks: 0,
+      hard_gate_unmet: 0,
+      tool_loop_failed: 0,
+    });
+    expect(snapshot.latestOutcome?.success).toBe(true);
+    expect(snapshot.latestOutcome?.reasonCodes).toEqual([]);
+    expect(typeof snapshot.latestOutcome?.recordedAt).toBe('string');
+  });
+
+  it('tracks structured failure reason diagnostics in snapshot payload', async () => {
+    const config = normalizeCanaryConfig({
+      enabled: true,
+      rolloutPercent: 100,
+      maxFailureRate: 0.8,
+      minSamples: 2,
+      cooldownMs: 60_000,
+      windowSize: 10,
+    });
+
+    await recordAgenticOutcome({
+      success: false,
+      reasonCodes: ['graph_failed_tasks', 'hard_gate_unmet', 'hard_gate_unmet'],
+      config,
+      nowMs: 20_000,
+    });
+    await recordAgenticOutcome({
+      success: false,
+      reasonCodes: ['tool_loop_failed'],
+      config,
+      nowMs: 20_100,
+    });
+    await recordAgenticOutcome({
+      success: true,
+      reasonCodes: ['hard_gate_unmet'],
+      config,
+      nowMs: 20_200,
+    });
+
+    const snapshot = await getAgenticCanarySnapshot({ nowMs: 20_300, config });
+    expect(snapshot.recentFailureReasonCounts).toEqual({
+      graph_failed_tasks: 1,
+      hard_gate_unmet: 1,
+      tool_loop_failed: 1,
+    });
+    expect(snapshot.latestOutcome).toMatchObject({
+      success: true,
+      reasonCodes: [],
+    });
+    expect(typeof snapshot.latestOutcome?.recordedAt).toBe('string');
   });
 });

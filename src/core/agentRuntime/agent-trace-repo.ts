@@ -23,6 +23,7 @@ export interface TraceEndData {
   toolJson?: unknown;
   qualityJson?: unknown;
   budgetJson?: unknown;
+  agentEventsJson?: unknown;
   replyText: string;
 }
 
@@ -186,6 +187,9 @@ export async function updateTraceEnd(data: TraceEndData): Promise<void> {
   }
   if (data.budgetJson !== undefined) {
     updateData.budgetJson = jsonMap(data.budgetJson);
+  }
+  if (data.agentEventsJson !== undefined) {
+    updateData.agentEventsJson = jsonMap(data.agentEventsJson);
   }
 
   try {

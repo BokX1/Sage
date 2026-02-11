@@ -35,6 +35,9 @@ npm run build && npm start  # Production
 ```bash
 npm run doctor           # Check configuration and database
 npm run agentic:replay-gate  # Replay quality gate
+npm run eval:gate        # Judge-eval quality gate
+npm run agentic:consistency-check  # Stage 9 cross-phase consistency gate
+npm run release:agentic-check  # Full release gate (check + consistency + replay + eval)
 ```
 
 ### Database operations
@@ -91,7 +94,37 @@ Before starting Sage, verify:
 | `AGENTIC_CANARY_ENABLED` | `true` | Enables rollout guardrails |
 | `AGENTIC_CANARY_PERCENT` | `100` in stable, lower during canary | Control traffic exposure |
 | `AGENTIC_CANARY_MAX_FAILURE_RATE` | `0.30` (or stricter) | Triggers automatic cooldown on regressions |
+| `AGENTIC_VALIDATORS_ENABLED` | `true` | Blocks deterministic response regressions |
+| `AGENTIC_PERSIST_STATE_ENABLED` | `true` | Keeps canary/model-health state stable across restarts |
+| `AGENTIC_MANAGER_WORKER_ENABLED` | `false` by default; enable only in scoped rollout | Controls advanced decomposition blast radius |
 | `AGENTIC_TENANT_POLICY_JSON` | Explicit per-guild policy JSON | Per-tenant model/tool/critic governance |
+
+### Agentic staged rollout order
+
+Use this route order for rollout and promotion:
+
+1. `search`
+2. `coding`
+3. `chat`
+4. `creative`
+
+Per stage:
+
+1. Set `AGENTIC_CANARY_ROUTE_ALLOWLIST_CSV` to the active route set.
+2. Keep `AGENTIC_CANARY_PERCENT` conservative for first deployment of each stage.
+3. Keep `AGENTIC_MANAGER_WORKER_ENABLED=false` unless the stage explicitly includes manager-worker validation.
+4. Run `npm run release:agentic-check`.
+5. Promote only if all gates pass and no degraded-mode events are observed.
+
+### Stage 9 consistency gate
+
+Run this before enabling Stage 10 work:
+
+```bash
+npm run agentic:consistency-check
+```
+
+This verifies roadmap/docs/script consistency across all implemented stages and fails on drift.
 
 ### Optional enhancements
 
@@ -347,4 +380,5 @@ npm start
 - [ ] Secure database credentials
 - [ ] Set up a process manager (pm2) for auto-restart
 - [ ] Set canary policy values for your rollout stage
-- [ ] Run `npm run agentic:replay-gate` before promoting builds
+- [ ] Run `npm run agentic:consistency-check` and resolve any drift findings
+- [ ] Run `npm run release:agentic-check` before promoting builds

@@ -17,11 +17,25 @@ export interface ToolExecutionContext {
   signal?: AbortSignal;
 }
 
+/** Supported risk classes used by deterministic tool policy gates. */
+export type ToolRiskClassValue =
+  | 'read_only'
+  | 'network_read'
+  | 'data_exfiltration_risk'
+  | 'external_write'
+  | 'high_risk';
+
+/** Optional metadata attached to each tool definition for policy/eval decisions. */
+export interface ToolMetadata {
+  riskClass?: ToolRiskClassValue;
+}
+
 /** Define one runtime tool with schema validation and async execution. */
 export interface ToolDefinition<TArgs = unknown> {
   name: string;
   description: string;
   schema: z.ZodType<TArgs>;
+  metadata?: ToolMetadata;
   execute: (args: TArgs, ctx: ToolExecutionContext) => Promise<unknown>;
 }
 

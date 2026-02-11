@@ -24,5 +24,8 @@ prisma/*.db-journal
 /.prettierrc
 /scripts/
 
+# Agentic roadmap (local planning document)
+docs/architecture/AGENTIC_ROADMAP_IMPLEMENTATION.md
+
 # Package artifacts
 *.tgz

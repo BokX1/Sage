@@ -181,6 +181,33 @@ describe('toolCallLoop', () => {
       expect(result.replyText).toBe('Hello! How can I help you today?');
       expect(mockChat).toHaveBeenCalledTimes(1);
     });
+
+    it('can return a leaked envelope on final model response after rounds complete', async () => {
+      mockChat.mockResolvedValueOnce({
+        content: JSON.stringify({
+          type: 'tool_calls',
+          calls: [{ name: 'get_time', args: {} }],
+        }),
+      });
+      mockChat.mockResolvedValueOnce({
+        content: JSON.stringify({
+          type: 'tool_calls',
+          calls: [{ name: 'get_time', args: {} }],
+        }),
+      });
+
+      const result = await runToolCallLoop({
+        client: mockClient,
+        messages: [{ role: 'user', content: 'What time is it?' }],
+        registry,
+        ctx: testCtx,
+        config: { maxRounds: 1 },
+      });
+
+      expect(result.toolsExecuted).toBe(true);
+      expect(result.roundsCompleted).toBe(1);
+      expect(result.replyText).toContain('"type":"tool_calls"');
+    });
   });
 
   describe('limits enforcement', () => {
@@ -246,6 +273,10 @@ describe('toolCallLoop', () => {
 
       // Only 3 tools should have been executed
       expect(result.toolResults).toHaveLength(3);
+      expect(result.policyDecisions).toHaveLength(5);
+      expect(
+        result.policyDecisions.filter((decision) => decision.code === 'max_calls_per_round_truncated'),
+      ).toHaveLength(2);
     });
   });
 
@@ -373,6 +404,49 @@ describe('toolCallLoop', () => {
   });
 
   describe('tool policy gating', () => {
+    it('blocks metadata-classified network read tools when policy disallows them', async () => {
+      const fetchDocsExecute = vi.fn().mockResolvedValue({ ok: true });
+      registry.register({
+        name: 'fetch_docs',
+        description: 'Fetch docs from network',
+        schema: z.object({}),
+        metadata: { riskClass: 'network_read' },
+        execute: fetchDocsExecute,
+      });
+
+      mockChat.mockResolvedValueOnce({
+        content: JSON.stringify({
+          type: 'tool_calls',
+          calls: [{ name: 'fetch_docs', args: {} }],
+        }),
+      });
+
+      mockChat.mockResolvedValueOnce({
+        content: 'Cannot fetch docs right now.',
+      });
+
+      const result = await runToolCallLoop({
+        client: mockClient,
+        messages: [{ role: 'user', content: 'Fetch docs now' }],
+        registry,
+        ctx: testCtx,
+        toolPolicy: {
+          allowNetworkRead: false,
+          allowDataExfiltrationRisk: true,
+          allowExternalWrite: false,
+          allowHighRisk: false,
+          blockedTools: [],
+        },
+      });
+
+      expect(result.toolResults).toHaveLength(1);
+      expect(result.toolResults[0].success).toBe(false);
+      expect(result.toolResults[0].error).toContain('network reads');
+      expect(result.policyDecisions).toHaveLength(1);
+      expect(result.policyDecisions[0].code).toBe('network_read_disabled');
+      expect(fetchDocsExecute).not.toHaveBeenCalled();
+    });
+
     it('blocks external side-effect tools when policy disallows them', async () => {
       const leaveVoiceExecute = vi.fn().mockResolvedValue({ ok: true });
       registry.register({
@@ -399,6 +473,8 @@ describe('toolCallLoop', () => {
         registry,
         ctx: testCtx,
         toolPolicy: {
+          allowNetworkRead: true,
+          allowDataExfiltrationRisk: true,
           allowExternalWrite: false,
           allowHighRisk: false,
           blockedTools: [],
@@ -408,6 +484,8 @@ describe('toolCallLoop', () => {
       expect(result.toolResults).toHaveLength(1);
       expect(result.toolResults[0].success).toBe(false);
       expect(result.toolResults[0].error).toContain('external side effects');
+      expect(result.policyDecisions).toHaveLength(1);
+      expect(result.policyDecisions[0].code).toBe('external_write_disabled');
       expect(leaveVoiceExecute).not.toHaveBeenCalled();
     });
   });
@@ -446,6 +524,10 @@ describe('toolCallLoop', () => {
       expect(result.roundsCompleted).toBe(2);
       expect(result.toolResults).toHaveLength(2);
       expect(result.toolResults.every((item) => item.success)).toBe(true);
+      expect(result.policyDecisions).toHaveLength(2);
+      expect(result.policyDecisions.every((decision) => decision.code === 'allow_unconfigured')).toBe(
+        true,
+      );
       expect(getTimeExecute).toHaveBeenCalledTimes(1);
     });
   });

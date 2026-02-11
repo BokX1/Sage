@@ -268,6 +268,52 @@ npm run agentic:replay-gate
 
 This evaluates recent trace outcomes and enforces replay thresholds before promotion.
 
+`npm run release:agentic-check` now enforces consistency gate + replay gate + eval gate (`eval:gate`).
+
+### Model-judge evaluation pipeline
+
+```bash
+EVAL_RUN_LIMIT=40 EVAL_RUN_CONCURRENCY=2 npm run eval:run
+```
+
+Runs dual-judge (+ adjudicator-on-disagreement) evaluation over recent traces and persists rows to `AgentEvaluation`.
+
+```bash
+EVAL_GATE_LIMIT=60 EVAL_GATE_MIN_AVG_SCORE=0.75 EVAL_GATE_MIN_PASS_RATE=0.70 npm run eval:gate
+```
+
+Applies release thresholds to recent persisted evaluation rows.
+
+### Agentic simulation (live traces)
+
+```bash
+SIM_RUNS=120 SIM_CONCURRENCY=8 npm run agentic:simulate
+```
+
+Runs autonomous multi-route turns, scores outcomes, and reports latency/tool-loop telemetry.
+
+```bash
+SIM_RUNS=120 SIM_CONCURRENCY=8 SIM_JUDGE_ENABLED=1 SIM_JUDGE_WEIGHT=0.55 npm run agentic:simulate
+```
+
+Optional self-judge thresholds:
+
+```bash
+SIM_REQUIRE_JUDGE_RESULTS=1 SIM_MIN_JUDGE_AVG_SCORE=0.68 SIM_MAX_JUDGE_REVISE_RATE=0.45 npm run agentic:simulate
+```
+
+### Agentic tuning sweep
+
+```bash
+TUNE_RUNS_PER_VARIANT=40 TUNE_CONCURRENCY=8 npm run agentic:tune
+```
+
+Sweeps runtime variants (critic/tool gate knobs), runs live simulations, and writes a ranked recommendation artifact.
+
+```bash
+TUNE_RUNS_PER_VARIANT=60 TUNE_CONCURRENCY=8 TUNE_JUDGE_ENABLED=1 TUNE_JUDGE_WEIGHT=0.55 npm run agentic:tune
+```
+
 ### Production run
 
 ```bash

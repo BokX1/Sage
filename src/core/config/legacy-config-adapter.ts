@@ -88,6 +88,7 @@ export const config = {
   agenticCanaryMinSamples: newConfig.AGENTIC_CANARY_MIN_SAMPLES,
   agenticCanaryCooldownSec: newConfig.AGENTIC_CANARY_COOLDOWN_SEC,
   agenticCanaryWindowSize: newConfig.AGENTIC_CANARY_WINDOW_SIZE,
+  agenticPersistStateEnabled: newConfig.AGENTIC_PERSIST_STATE_ENABLED,
   agenticTenantPolicyJson: newConfig.AGENTIC_TENANT_POLICY_JSON,
   agenticCriticEnabled: newConfig.AGENTIC_CRITIC_ENABLED,
   agenticCriticMinScore: newConfig.AGENTIC_CRITIC_MIN_SCORE,
