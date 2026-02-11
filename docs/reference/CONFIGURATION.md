@@ -1,6 +1,7 @@
 # ⚙️ Configuration Reference
 
-All runtime settings are configured in `.env` and validated by `src/shared/config/env.ts`.
+Core runtime settings are configured in `.env` and validated by `src/shared/config/env.ts`.  
+Simulation/tuning scripts also support one-off `SIM_*` and `TUNE_*` environment overrides.
 
 <p align="center">
   <img src="https://img.shields.io/badge/Variables-80+-blue?style=flat-square" alt="Variables" />
@@ -237,17 +238,50 @@ Evaluation run / gate knobs:
 | `EVAL_GATE_MIN_ROUTE_SAMPLES` | Minimum rows per required route | `1` |
 | `EVAL_GATE_ROUTE_THRESHOLDS_JSON` | Optional per-route overrides (`minAvgScore`, `minPassRate`, `maxDisagreementRate`, `minConfidence`, `minSamples`) | *(empty)* |
 
-Simulation/tuning self-judge knobs:
+Simulation and tuning run controls (script-level overrides):
 
 | Variable | Description | Typical |
 | :--- | :--- | :--- |
-| `SIM_JUDGE_ENABLED` | Enable model-as-judge scoring during `agentic:simulate` | `1` |
+| `SIM_RUNS` | Number of turns executed by `agentic:simulate` | `80` |
+| `SIM_CONCURRENCY` | Concurrent simulation turns | `6` |
+| `SIM_ROUTE_WEIGHTS_CSV` | Route distribution weights (`chat:3,coding:2,search:3,creative:1`) | `chat:3,coding:2,search:3,creative:1` |
+| `SIM_GUILD_ID` | Optional guild scope for simulation traces | *(empty)* |
+| `SIM_CHANNEL_PREFIX` | Channel id prefix used in simulation trace metadata | `sim-agentic` |
+| `SIM_USER_PREFIX` | User id prefix used in simulation trace metadata | `sim-user` |
+| `SIM_TRACE_PREFIX` | Trace id prefix used in simulation rows | `sim-agentic` |
+| `SIM_OUTPUT_JSON` | Optional output artifact file path | *(empty)* |
+| `SIM_REQUIRE_TRACE` | Require persisted trace rows (`1`/`0`) | `1` |
+| `SIM_SEED` | Optional deterministic RNG seed | current timestamp |
+| `SIM_MIN_AVG_SCORE` | Optional minimum blended score gate (0-1) | `0` |
+| `SIM_MIN_SUCCESS_RATE` | Optional minimum success-likely rate gate (0-1) | `0` |
+| `SIM_MIN_TOOL_EXECUTION_RATE` | Optional minimum tool execution rate gate (0-1) | `0` |
+| `SIM_MAX_ERROR_RATE` | Optional maximum simulation error-rate gate (0-1) | `1` |
+| `TUNE_RUNS_PER_VARIANT` | Runs per candidate variant in `agentic:tune` | `120` |
+| `TUNE_CONCURRENCY` | Concurrency passed to each tuning simulation variant | `6` |
+| `TUNE_MAX_VARIANTS` | Maximum variants evaluated in one tuning run | `8` |
+| `TUNE_KEEP_VARIANT_ROWS` | Keep per-variant JSON outputs (`1`/`0`) | `1` |
+| `TUNE_VARIANTS_JSON` | Optional JSON override for variant list/env patches | built-in defaults |
+| `TUNE_OUTPUT_DIR` | Optional output folder override for tuning artifacts | `.agent/simulations/tuning/<runId>` |
+
+Simulation/tuning self-judge knobs (script-level overrides):
+
+| Variable | Description | Typical |
+| :--- | :--- | :--- |
+| `SIM_JUDGE_ENABLED` | Enable model-as-judge scoring during `agentic:simulate` | `0` |
 | `SIM_JUDGE_WEIGHT` | Blend weight for judge score vs heuristic score (0-1) | `0.55` |
-| `SIM_REQUIRE_JUDGE_RESULTS` | Fail simulation if judge produced no scored rows | `1` |
-| `SIM_MIN_JUDGE_AVG_SCORE` | Optional minimum average judge score | `0.68` |
-| `SIM_MAX_JUDGE_REVISE_RATE` | Optional maximum judge revise-rate | `0.45` |
+| `SIM_JUDGE_TIMEOUT_MS` | Timeout per simulation judge call | `120000` |
+| `SIM_JUDGE_MAX_TOKENS` | Max tokens per simulation judge call | `900` |
+| `SIM_JUDGE_API_KEY` | Optional API key override for judge calls (falls back to `LLM_API_KEY`) | *(empty)* |
+| `SIM_REQUIRE_JUDGE_RESULTS` | Fail simulation if judge produced no scored rows | `0` |
+| `SIM_MIN_JUDGE_AVG_SCORE` | Optional minimum average judge score gate | `0` |
+| `SIM_MAX_JUDGE_REVISE_RATE` | Optional maximum judge revise-rate gate | `1` |
 | `TUNE_JUDGE_ENABLED` | Enable judge path in `agentic:tune` variant sweeps | `1` |
 | `TUNE_JUDGE_WEIGHT` | Passed to simulation judge weight for tuning runs | `0.55` |
+| `TUNE_JUDGE_TIMEOUT_MS` | Timeout per judge call in tuning sweeps | `120000` |
+| `TUNE_JUDGE_MAX_TOKENS` | Max tokens per judge call in tuning sweeps | `900` |
+| `TUNE_REQUIRE_JUDGE_RESULTS` | Require judge-scored rows for tuning pass/fail | `0` |
+| `TUNE_MIN_JUDGE_AVG_SCORE` | Optional minimum judge average score gate for tuning | `0` |
+| `TUNE_MAX_JUDGE_REVISE_RATE` | Optional maximum judge revise-rate gate for tuning | `1` |
 
 ---
 

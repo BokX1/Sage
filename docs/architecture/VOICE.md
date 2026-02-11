@@ -100,11 +100,15 @@ When enabled, Sage can join a voice channel and respond with speech:
 
 ## ⚙️ Configuration
 
+Voice does not currently expose dedicated `VOICE_*` environment variables.
+
+Relevant runtime configuration comes from:
+
 | Variable | Description | Default |
 | :--- | :--- | :--- |
-| `VOICE_STT_MODEL` | Speech-to-text model | `openai-audio` |
-| `VOICE_TTS_MODEL` | Text-to-speech model | — |
-| `VOICE_MAX_DURATION_SEC` | Max session duration | — |
+| `LLM_API_KEY` | Global fallback key used for voice companion TTS when no guild BYOP key is set | *(empty)* |
+| `CHAT_MODEL` | Base model setting for text routes (voice awareness context is injected into normal turns) | `openai-large` |
+| `AUTOPILOT_MODE` | Controls when Sage replies in channels; voice companion join/leave remains command-driven | `manual` |
 
 ---
 

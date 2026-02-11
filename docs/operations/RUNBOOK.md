@@ -235,7 +235,7 @@ LOG_LEVEL=error   # Errors only
 | Message | Meaning |
 | :--- | :--- |
 | `Logged in as Sage#1234` | Successfully connected to Discord |
-| `Ready!` | Bot is fully operational |
+| `Successfully reloaded application (/) commands GLOBALLY.` | Slash commands finished registering for runtime use |
 | `Agent Selector decision` | How a message was classified by route |
 | `Agent runtime: built context` | Context being sent to AI |
 | `Channel summary scheduler tick` | Automatic summary processing |

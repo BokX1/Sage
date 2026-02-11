@@ -248,8 +248,8 @@ docker compose -f config/self-host/docker-compose.tools.yml up -d
 When Sage starts, you should see:
 
 ```text
-[info] Logged in as Sage#1234
-[info] Ready!
+[info] Logged in as Sage#1234!
+[info] Successfully reloaded application (/) commands GLOBALLY.
 ```
 
 ### Quality gate

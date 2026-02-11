@@ -120,7 +120,7 @@ Runtime behavior:
 
 Note:
 
-- Runtime tools include `get_current_datetime`, `web_search`, `web_scrape`, `github_repo_lookup`, `github_file_lookup`, `npm_package_lookup`, `wikipedia_lookup`, `stack_overflow_search`, `local_llm_models`, and `local_llm_infer` (registered at bootstrap).
+- Runtime tools include `get_current_datetime`, `channel_file_lookup`, `web_search`, `web_scrape`, `github_repo_lookup`, `github_file_lookup`, `npm_package_lookup`, `wikipedia_lookup`, `stack_overflow_search`, `local_llm_models`, and `local_llm_infer` (registered at bootstrap).
 - Voice join/leave are currently slash-command operations (`/join`, `/leave`), not runtime tool calls.
 
 ---

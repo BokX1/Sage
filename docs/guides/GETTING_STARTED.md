@@ -235,8 +235,8 @@ npm run dev
 You should see:
 
 ```text
-[info] Logged in as Sage#1234
-[info] Ready!
+[info] Logged in as Sage#1234!
+[info] Successfully reloaded application (/) commands GLOBALLY.
 ```
 
 Keep this terminal window open.

@@ -69,10 +69,12 @@ For full tool stack details, see **[🧰 Self-Hosted Tool Stack](../operations/T
 ```env
 # Core
 DISCORD_TOKEN=your_discord_bot_token
+DISCORD_APP_ID=your_discord_app_id
 DATABASE_URL=postgresql://user:password@host:5432/sage
 
 # LLM (at minimum)
-POLLINATIONS_API_BASE_URL=https://text.pollinations.ai/openai
+LLM_PROVIDER=pollinations
+LLM_BASE_URL=https://gen.pollinations.ai/v1
 ```
 
 ### Recommended Production Variables
@@ -171,7 +173,7 @@ Sage uses structured logging. Key log patterns to watch:
 | Pattern | Meaning |
 | :--- | :--- |
 | `[info] Logged in as Sage#1234` | Bot started successfully |
-| `[info] Ready!` | Bot is fully operational |
+| `[info] Successfully reloaded application (/) commands GLOBALLY.` | Slash commands are registered and runtime is operational |
 | `[error] P1001` | Database connection lost |
 | `[warn] Model degraded` | A model is experiencing errors |
 
