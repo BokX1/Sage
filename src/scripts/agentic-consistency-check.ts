@@ -34,9 +34,6 @@ function resolveCanonicalRoadmap(rootDir: string, ctx: CheckContext): { markdown
   const candidates = [
     envPath && envPath.length > 0 ? envPath : null,
     'docs/architecture/AGENTIC_ROADMAP_IMPLEMENTATION.md',
-    'docs/architecture/AGENTIC_ROADMAP.md',
-    'docs/roadmap/AGENTIC_ROADMAP_IMPLEMENTATION.md',
-    'docs/roadmap/AGENTIC_ROADMAP.md',
   ].filter((value): value is string => typeof value === 'string');
 
   const seen = new Set<string>();
@@ -49,8 +46,8 @@ function resolveCanonicalRoadmap(rootDir: string, ctx: CheckContext): { markdown
     }
   }
 
-  ctx.warnings.push(
-    `Canonical roadmap file not found (checked: ${Array.from(seen).join(', ')}). Phase progression checks were skipped.`,
+  ctx.errors.push(
+    `Canonical roadmap file not found (checked: ${Array.from(seen).join(', ')}).`,
   );
   return null;
 }

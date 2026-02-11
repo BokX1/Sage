@@ -27,6 +27,5 @@ prisma/*.db-journal
 # Package artifacts
 *.tgz
 
-# Local roadmap working docs
-docs/architecture/AGENTIC_ROADMAP_IMPLEMENTATION.md
+# Legacy duplicate roadmap path (canonical roadmap lives in docs/architecture)
 docs/roadmap/AGENTIC_ROADMAP_IMPLEMENTATION.md
