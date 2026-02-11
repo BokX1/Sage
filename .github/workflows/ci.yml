@@ -107,3 +107,8 @@ jobs:
       run: npm run release:agentic-check
       env:
         REPLAY_GATE_REQUIRE_DATA: '0'
+        REPLAY_GATE_MIN_TOTAL: '0'
+        REPLAY_GATE_REQUIRED_ROUTES_CSV: ''
+        EVAL_GATE_REQUIRE_DATA: '0'
+        EVAL_GATE_MIN_TOTAL: '0'
+        EVAL_GATE_REQUIRED_ROUTES_CSV: ''

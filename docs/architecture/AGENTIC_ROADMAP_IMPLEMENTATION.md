@@ -83,7 +83,7 @@ Transform the tool call phase from a fixed multi-shot batch into a dynamic ReAct
 
 ### Implementation Plan
 
-#### [MODIFY] [toolCallLoop.ts](file:///c:/Users/ahazi/OneDrive/Desktop/Github/Sage/src/core/agentRuntime/toolCallLoop.ts)
+#### [MODIFY] [toolCallLoop.ts](../../src/core/agentRuntime/toolCallLoop.ts)
 
 1. **Add ReAct loop configuration** to `ToolCallLoopParams`:
 
@@ -133,7 +133,7 @@ Transform the tool call phase from a fixed multi-shot batch into a dynamic ReAct
    }
    ```
 
-#### [MODIFY] [agentRuntime.ts](file:///c:/Users/ahazi/OneDrive/Desktop/Github/Sage/src/core/agentRuntime/agentRuntime.ts)
+#### [MODIFY] [agentRuntime.ts](../../src/core/agentRuntime/agentRuntime.ts)
 
 1. Wire `reactConfig` into `runChatTurn`:
    - For `search` and `coding` routes, enable ReAct by default with `maxIterations: 6`.
@@ -142,7 +142,7 @@ Transform the tool call phase from a fixed multi-shot batch into a dynamic ReAct
 
 2. Pass accumulated `ReActObservation[]` into trace metadata for observability.
 
-#### [MODIFY] [tenantPolicy.ts](file:///c:/Users/ahazi/OneDrive/Desktop/Github/Sage/src/core/agentRuntime/tenantPolicy.ts)
+#### [MODIFY] [tenantPolicy.ts](../../src/core/agentRuntime/tenantPolicy.ts)
 
 1. Add `react` section to `TenantAgenticPolicy`:
 
@@ -155,12 +155,12 @@ Transform the tool call phase from a fixed multi-shot batch into a dynamic ReAct
 
 2. Merge into `ResolvedTenantPolicy` with guild-level overrides.
 
-#### [MODIFY] [toolTelemetry.ts](file:///c:/Users/ahazi/OneDrive/Desktop/Github/Sage/src/core/agentRuntime/toolTelemetry.ts)
+#### [MODIFY] [toolTelemetry.ts](../../src/core/agentRuntime/toolTelemetry.ts)
 
 1. Add `reactIterations: number` and `reactThoughts: string[]` to `TraceToolTelemetry`.
 2. Parse from `toolJson.react` in `parseTraceToolTelemetry`.
 
-#### [NEW] [tests/unit/agentRuntime/reactLoop.test.ts](file:///c:/Users/ahazi/OneDrive/Desktop/Github/Sage/tests/unit/agentRuntime/reactLoop.test.ts)
+#### [NEW] `tests/unit/agentRuntime/reactLoop.test.ts`
 
 Unit tests covering:
 
@@ -196,7 +196,7 @@ Introduce a persistent `AgentSession` entity that allows the agent to remember i
 
 ### Implementation Plan
 
-#### [NEW] [src/core/agentRuntime/agentSession.ts](file:///c:/Users/ahazi/OneDrive/Desktop/Github/Sage/src/core/agentRuntime/agentSession.ts)
+#### [NEW] `src/core/agentRuntime/agentSession.ts`
 
 1. **Define `AgentSession` interface**:
 
@@ -243,13 +243,13 @@ Introduce a persistent `AgentSession` entity that allows the agent to remember i
    - `compressSessionContext(session, maxTokens)` â€” summarizes tool history and reasoning to fit within token budget.
    - `expireStaleSession(session)` â€” marks sessions older than `expiresAt` as abandoned.
 
-#### [NEW] [src/core/agentRuntime/agentSessionRepo.ts](file:///c:/Users/ahazi/OneDrive/Desktop/Github/Sage/src/core/agentRuntime/agentSessionRepo.ts)
+#### [NEW] `src/core/agentRuntime/agentSessionRepo.ts`
 
 1. Database CRUD functions backed by new Prisma model.
 2. Implements `upsertSession`, `getActiveSession`, `expireSessions`.
 3. Graceful degradation: if table doesn't exist (pre-migration), falls back to in-memory Map with TTL.
 
-#### [MODIFY] [prisma/schema.prisma](file:///c:/Users/ahazi/OneDrive/Desktop/Github/Sage/prisma/schema.prisma)
+#### [MODIFY] [prisma/schema.prisma](../../prisma/schema.prisma)
 
 1. Add new `AgentSession` model:
 
@@ -272,7 +272,7 @@ Introduce a persistent `AgentSession` entity that allows the agent to remember i
    }
    ```
 
-#### [MODIFY] [contextBuilder.ts](file:///c:/Users/ahazi/OneDrive/Desktop/Github/Sage/src/core/agentRuntime/contextBuilder.ts)
+#### [MODIFY] [contextBuilder.ts](../../src/core/agentRuntime/contextBuilder.ts)
 
 1. Add `sessionContext?: string | null` to `BuildContextMessagesParams`.
 2. Insert as a new `ContextBlock` with priority `52` (between context_packets at 55 and transcript at 50):
@@ -290,14 +290,14 @@ Introduce a persistent `AgentSession` entity that allows the agent to remember i
    }
    ```
 
-#### [MODIFY] [agentRuntime.ts](file:///c:/Users/ahazi/OneDrive/Desktop/Github/Sage/src/core/agentRuntime/agentRuntime.ts)
+#### [MODIFY] [agentRuntime.ts](../../src/core/agentRuntime/agentRuntime.ts)
 
 1. At the start of `runChatTurn`, call `getOrCreateSession(channelId, userId)`.
 2. Call `compressSessionContext(session, tokenBudget)` and pass result to `buildContextMessages`.
 3. After the turn completes, call `updateSessionAfterTurn(session, result)` to persist.
 4. Gate behind `AGENTIC_SESSION_MEMORY_ENABLED` env var (default: `false` initially).
 
-#### [NEW] [tests/unit/agentRuntime/agentSession.test.ts](file:///c:/Users/ahazi/OneDrive/Desktop/Github/Sage/tests/unit/agentRuntime/agentSession.test.ts)
+#### [NEW] `tests/unit/agentRuntime/agentSession.test.ts`
 
 Unit tests for session lifecycle, compression, expiry, and context injection.
 
@@ -329,7 +329,7 @@ Build a context engineering layer that maximizes information density within the 
 
 ### Implementation Plan
 
-#### [NEW] [src/core/agentRuntime/contextCompactor.ts](file:///c:/Users/ahazi/OneDrive/Desktop/Github/Sage/src/core/agentRuntime/contextCompactor.ts)
+#### [NEW] `src/core/agentRuntime/contextCompactor.ts`
 
 1. **`compactContext(blocks, maxTokens)`**: when total context exceeds budget, intelligently compress:
 
@@ -367,7 +367,7 @@ Build a context engineering layer that maximizes information density within the 
 
 4. **Compaction uses the router model** (small, fast) for summarization â€” zero additional latency cost.
 
-#### [NEW] [src/core/agentRuntime/agentScratchpad.ts](file:///c:/Users/ahazi/OneDrive/Desktop/Github/Sage/src/core/agentRuntime/agentScratchpad.ts)
+#### [NEW] `src/core/agentRuntime/agentScratchpad.ts`
 
 1. **Scratchpad for agent working memory**:
 
@@ -393,19 +393,19 @@ Build a context engineering layer that maximizes information density within the 
 2. Agents can write scratchpad notes between tool calls to preserve key findings, hypotheses, and open questions outside the main context window.
 3. Scratchpad is injected as a `ContextBlock` with priority `60` (high â€” agent's own notes are very relevant).
 
-#### [MODIFY] [contextBuilder.ts](file:///c:/Users/ahazi/OneDrive/Desktop/Github/Sage/src/core/agentRuntime/contextBuilder.ts)
+#### [MODIFY] [contextBuilder.ts](../../src/core/agentRuntime/contextBuilder.ts)
 
 1. Add `compactionEnabled?: boolean` and `scratchpad?: AgentScratchpad` to `BuildContextMessagesParams`.
 2. Before final assembly, run `compactContext` if total tokens exceed budget.
 3. Insert scratchpad as a new block type.
 4. Add `contextEditingEnabled?: boolean` â€” when true, tool results from earlier iterations are auto-replaced with placeholders.
 
-#### [MODIFY] [toolCallLoop.ts](file:///c:/Users/ahazi/OneDrive/Desktop/Github/Sage/src/core/agentRuntime/toolCallLoop.ts)
+#### [MODIFY] [toolCallLoop.ts](../../src/core/agentRuntime/toolCallLoop.ts)
 
 1. After each ReAct iteration (Phase 1), pass previous tool results through `compactToolResult` to replace with summaries.
 2. Allow the agent's reasoning step to write scratchpad notes (parsed from structured output).
 
-#### [NEW] [tests/unit/agentRuntime/contextCompactor.test.ts](file:///c:/Users/ahazi/OneDrive/Desktop/Github/Sage/tests/unit/agentRuntime/contextCompactor.test.ts)
+#### [NEW] `tests/unit/agentRuntime/contextCompactor.test.ts`
 
 Tests for compaction strategies, living summary, tool result replacement, scratchpad lifecycle, and token budget adherence.
 
@@ -438,7 +438,7 @@ Transform Sage's retrieval from single-shot to agentic iterative retrieval with 
 
 ### Implementation Plan
 
-#### [NEW] [src/core/agentRuntime/agenticRetrieval.ts](file:///c:/Users/ahazi/OneDrive/Desktop/Github/Sage/src/core/agentRuntime/agenticRetrieval.ts)
+#### [NEW] `src/core/agentRuntime/agenticRetrieval.ts`
 
 1. **Retrieval sufficiency assessment**:
 
@@ -479,7 +479,7 @@ Transform Sage's retrieval from single-shot to agentic iterative retrieval with 
 
 4. **Query decomposition for complex queries**: break multi-part questions into sub-queries and retrieve for each independently, then merge results.
 
-#### [NEW] [src/core/agentRuntime/retrievalStrategy.ts](file:///c:/Users/ahazi/OneDrive/Desktop/Github/Sage/src/core/agentRuntime/retrievalStrategy.ts)
+#### [NEW] `src/core/agentRuntime/retrievalStrategy.ts`
 
 1. **Adaptive source selection**:
 
@@ -498,20 +498,20 @@ Transform Sage's retrieval from single-shot to agentic iterative retrieval with 
 
 3. **Parallel retrieval**: fire multiple sources simultaneously when the query is broad, merge and deduplicate results.
 
-#### [MODIFY] [toolCallLoop.ts](file:///c:/Users/ahazi/OneDrive/Desktop/Github/Sage/src/core/agentRuntime/toolCallLoop.ts)
+#### [MODIFY] [toolCallLoop.ts](../../src/core/agentRuntime/toolCallLoop.ts)
 
 1. When a `web_search` tool call returns results, optionally run `assessRetrievalSufficiency`.
 2. If insufficient and within iteration budget, automatically trigger a follow-up search with reformulated query.
 3. Merge results and provide the combined set to the agent.
 
-#### [MODIFY] [defaultTools.ts](file:///c:/Users/ahazi/OneDrive/Desktop/Github/Sage/src/core/agentRuntime/defaultTools.ts)
+#### [MODIFY] [defaultTools.ts](../../src/core/agentRuntime/defaultTools.ts)
 
 1. Add `agentic_search` meta-tool that wraps the iterative retrieval loop:
    - Accepts the original query and search mode.
    - Returns merged, deduplicated results with sufficiency assessment.
    - Falls back to single `web_search` if agentic retrieval is disabled.
 
-#### [MODIFY] [tenantPolicy.ts](file:///c:/Users/ahazi/OneDrive/Desktop/Github/Sage/src/core/agentRuntime/tenantPolicy.ts)
+#### [MODIFY] [tenantPolicy.ts](../../src/core/agentRuntime/tenantPolicy.ts)
 
 1. Add `retrieval` section to `TenantAgenticPolicy`:
 
@@ -523,7 +523,7 @@ Transform Sage's retrieval from single-shot to agentic iterative retrieval with 
    };
    ```
 
-#### [NEW] [tests/unit/agentRuntime/agenticRetrieval.test.ts](file:///c:/Users/ahazi/OneDrive/Desktop/Github/Sage/tests/unit/agentRuntime/agenticRetrieval.test.ts)
+#### [NEW] `tests/unit/agentRuntime/agenticRetrieval.test.ts`
 
 Tests for sufficiency assessment, query reformulation, iterative retrieval, source selection, and result merging.
 
@@ -554,7 +554,7 @@ Provide production-grade visibility into agent behavior through both Discord com
 
 ### Implementation Plan
 
-#### [NEW] [src/core/agentRuntime/traceInspector.ts](file:///c:/Users/ahazi/OneDrive/Desktop/Github/Sage/src/core/agentRuntime/traceInspector.ts)
+#### [NEW] `src/core/agentRuntime/traceInspector.ts`
 
 1. **`inspectTrace(traceId)`**: fetches `AgentTrace` + `AgentRun` rows, returns structured summary:
 
@@ -605,7 +605,7 @@ Provide production-grade visibility into agent behavior through both Discord com
    - Tool failure rate exceeding threshold.
    - Critic loop hitting max iterations frequently.
 
-#### [MODIFY] [replayHarness.ts](file:///c:/Users/ahazi/OneDrive/Desktop/Github/Sage/src/core/agentRuntime/replayHarness.ts)
+#### [MODIFY] [replayHarness.ts](../../src/core/agentRuntime/replayHarness.ts)
 
 1. Add per-route independent thresholds to `ReplayEvaluationReport`:
 
@@ -628,7 +628,7 @@ Provide production-grade visibility into agent behavior through both Discord com
    };
    ```
 
-#### [MODIFY] [outcomeScorer.ts](file:///c:/Users/ahazi/OneDrive/Desktop/Github/Sage/src/core/agentRuntime/outcomeScorer.ts)
+#### [MODIFY] [outcomeScorer.ts](../../src/core/agentRuntime/outcomeScorer.ts)
 
 1. Add cost estimation to `OutcomeScore`:
 
@@ -645,7 +645,7 @@ Provide production-grade visibility into agent behavior through both Discord com
 1. `/admin trace <traceId>`: calls `inspectTrace()`, formats as Discord embed with fields for route, latency, tools, quality, cost.
 2. `/admin dashboard`: calls `generateDashboardReport()`, formats as paginated Discord embed showing route breakdown, quality trends, cost summary.
 
-#### [NEW] [tests/unit/agentRuntime/traceInspector.test.ts](file:///c:/Users/ahazi/OneDrive/Desktop/Github/Sage/tests/unit/agentRuntime/traceInspector.test.ts)
+#### [NEW] `tests/unit/agentRuntime/traceInspector.test.ts`
 
 Tests for inspection formatting, dashboard aggregation, and anomaly detection.
 
@@ -675,7 +675,7 @@ Replace static template-based planning with LLM-driven dynamic task decompositio
 
 ### Implementation Plan
 
-#### [MODIFY] [taskPlanner.ts](file:///c:/Users/ahazi/OneDrive/Desktop/Github/Sage/src/core/agentRuntime/taskPlanner.ts)
+#### [MODIFY] [taskPlanner.ts](../../src/core/agentRuntime/taskPlanner.ts)
 
 1. **Replace `estimateComplexity` with LLM call**:
    - Piggyback on the routing call in `agentSelector.ts` by adding a `complexity` field to the router's JSON output format:
@@ -714,19 +714,19 @@ Replace static template-based planning with LLM-driven dynamic task decompositio
    - If a research worker returns "insufficient data" or low confidence, add a follow-up research task.
    - Bounded to 1 replan iteration to prevent unbounded loops.
 
-#### [MODIFY] [agentSelector.ts](file:///c:/Users/ahazi/OneDrive/Desktop/Github/Sage/src/core/orchestration/agentSelector.ts)
+#### [MODIFY] [agentSelector.ts](../../src/core/orchestration/agentSelector.ts)
 
 1. Add `complexity` field to `AGENT_SELECTOR_PROMPT` output format.
 2. Parse and normalize in `parseAgentResponse`.
 3. Pass through `AgentDecision` to downstream planning.
 
-#### [MODIFY] [workerExecutor.ts](file:///c:/Users/ahazi/OneDrive/Desktop/Github/Sage/src/core/agentRuntime/workerExecutor.ts)
+#### [MODIFY] [workerExecutor.ts](../../src/core/agentRuntime/workerExecutor.ts)
 
 1. Add post-execution confidence check:
    - If worker result confidence < 0.4 and replan budget allows, emit `replan_suggested` event.
 2. Pass accumulated worker results to replanning function.
 
-#### [NEW] [tests/unit/agentRuntime/adaptivePlanner.test.ts](file:///c:/Users/ahazi/OneDrive/Desktop/Github/Sage/tests/unit/agentRuntime/adaptivePlanner.test.ts)
+#### [NEW] `tests/unit/agentRuntime/adaptivePlanner.test.ts`
 
 Tests for LLM complexity estimation, dynamic decomposition, fallback to templates, and replanning.
 
@@ -758,7 +758,7 @@ Three related safety gaps:
 
 #### Human-in-the-Loop Checkpoints
 
-##### [MODIFY] [toolPolicy.ts](file:///c:/Users/ahazi/OneDrive/Desktop/Github/Sage/src/core/agentRuntime/toolPolicy.ts)
+##### [MODIFY] [toolPolicy.ts](../../src/core/agentRuntime/toolPolicy.ts)
 
 1. Add `human_approval_required` decision code to `ToolPolicyDecisionCode`:
 
@@ -781,14 +781,14 @@ Three related safety gaps:
 
 3. When tool risk matches `requireApprovalForRisk` list, return `human_approval_required` decision.
 
-##### [NEW] [src/core/agentRuntime/humanApproval.ts](file:///c:/Users/ahazi/OneDrive/Desktop/Github/Sage/src/core/agentRuntime/humanApproval.ts)
+##### [NEW] `src/core/agentRuntime/humanApproval.ts`
 
 1. **`requestHumanApproval(params)`**: emits a Discord embed with approve/reject buttons.
 2. **`awaitApprovalDecision(requestId, timeoutMs)`**: waits for button interaction or timeout.
 3. **Decision recording**: logs all approval decisions in `AgentTrace.toolJson` for auditability.
 4. **Configurable default on timeout**: `TenantAgenticPolicy.humanApproval.defaultOnTimeout: 'approve' | 'deny'`.
 
-##### [MODIFY] [toolCallLoop.ts](file:///c:/Users/ahazi/OneDrive/Desktop/Github/Sage/src/core/agentRuntime/toolCallLoop.ts)
+##### [MODIFY] [toolCallLoop.ts](../../src/core/agentRuntime/toolCallLoop.ts)
 
 1. When `evaluateToolPolicy` returns `human_approval_required`, pause the tool loop.
 2. Call `requestHumanApproval` and `awaitApprovalDecision`.
@@ -796,7 +796,7 @@ Three related safety gaps:
 
 #### Parallel Guardrails
 
-##### [NEW] [src/core/agentRuntime/safetyClassifier.ts](file:///c:/Users/ahazi/OneDrive/Desktop/Github/Sage/src/core/agentRuntime/safetyClassifier.ts)
+##### [NEW] `src/core/agentRuntime/safetyClassifier.ts`
 
 1. **`classifyInputSafety(userText)`**: lightweight LLM call (or rules-based) that runs concurrently with the main generation:
 
@@ -812,7 +812,7 @@ Three related safety gaps:
 2. Uses a small, fast model (e.g., the router model) to minimize latency.
 3. If classification returns `safe: false` with high confidence, the main generation is cancelled and a safe fallback response is returned.
 
-##### [MODIFY] [agentRuntime.ts](file:///c:/Users/ahazi/OneDrive/Desktop/Github/Sage/src/core/agentRuntime/agentRuntime.ts)
+##### [MODIFY] [agentRuntime.ts](../../src/core/agentRuntime/agentRuntime.ts)
 
 1. Launch `classifyInputSafety(userText)` in parallel with `buildContextMessages` and the main LLM call using `Promise.allSettled`.
 2. If safety check completes before main generation and returns unsafe, abort the main generation via the existing `AbortSignal` mechanism.
@@ -820,7 +820,7 @@ Three related safety gaps:
 
 #### Enhanced Error Recovery
 
-##### [MODIFY] [toolErrors.ts](file:///c:/Users/ahazi/OneDrive/Desktop/Github/Sage/src/core/agentRuntime/toolErrors.ts)
+##### [MODIFY] [toolErrors.ts](../../src/core/agentRuntime/toolErrors.ts)
 
 1. Add new error types:
 
@@ -834,7 +834,7 @@ Three related safety gaps:
      | 'partial_failure'; // NEW: some results but incomplete
    ```
 
-##### [MODIFY] [toolCallLoop.ts](file:///c:/Users/ahazi/OneDrive/Desktop/Github/Sage/src/core/agentRuntime/toolCallLoop.ts)
+##### [MODIFY] [toolCallLoop.ts](../../src/core/agentRuntime/toolCallLoop.ts)
 
 1. **Exponential backoff**: for `rate_limited` and `unavailable` errors, retry with exponential backoff (100ms â†’ 200ms â†’ 400ms) up to 3 attempts.
 2. **Tool fallback chains**: define fallback mappings in tool registry:
@@ -886,7 +886,7 @@ Add confidence estimation, uncertainty propagation, and abstention capabilities 
 
 ### Implementation Plan
 
-#### [NEW] [src/core/agentRuntime/confidenceEstimator.ts](file:///c:/Users/ahazi/OneDrive/Desktop/Github/Sage/src/core/agentRuntime/confidenceEstimator.ts)
+#### [NEW] `src/core/agentRuntime/confidenceEstimator.ts`
 
 1. **Multi-signal confidence scoring**:
 
@@ -915,7 +915,7 @@ Add confidence estimation, uncertainty propagation, and abstention capabilities 
    - Compound uncertainty: overall confidence decays with each uncertain step.
    - Flag chains of reasoning built on uncertain intermediate results.
 
-#### [NEW] [src/core/agentRuntime/abstentionPolicy.ts](file:///c:/Users/ahazi/OneDrive/Desktop/Github/Sage/src/core/agentRuntime/abstentionPolicy.ts)
+#### [NEW] `src/core/agentRuntime/abstentionPolicy.ts`
 
 1. **Abstention decision logic**:
 
@@ -935,19 +935,19 @@ Add confidence estimation, uncertainty propagation, and abstention capabilities 
 
 3. **Configurable thresholds** via tenant policy and env var `AGENTIC_ABSTENTION_THRESHOLD`.
 
-#### [MODIFY] [agentRuntime.ts](file:///c:/Users/ahazi/OneDrive/Desktop/Github/Sage/src/core/agentRuntime/agentRuntime.ts)
+#### [MODIFY] [agentRuntime.ts](../../src/core/agentRuntime/agentRuntime.ts)
 
 1. After draft generation (and optional critic loop), run `estimateConfidence`.
 2. If `shouldAbstain === true`, replace the draft with a honest uncertainty response.
 3. Include confidence metadata in `AgentTrace` for quality analysis.
 4. Gate behind `AGENTIC_CONFIDENCE_ENABLED` env var (default: `false`).
 
-#### [MODIFY] [outcomeScorer.ts](file:///c:/Users/ahazi/OneDrive/Desktop/Github/Sage/src/core/agentRuntime/outcomeScorer.ts)
+#### [MODIFY] [outcomeScorer.ts](../../src/core/agentRuntime/outcomeScorer.ts)
 
 1. Add `confidenceEstimate?: ConfidenceEstimate` to `OutcomeScore`.
 2. Reward honest abstention (abstaining when sources are absent) and penalize overconfident hallucination.
 
-#### [NEW] [tests/unit/agentRuntime/confidenceEstimator.test.ts](file:///c:/Users/ahazi/OneDrive/Desktop/Github/Sage/tests/unit/agentRuntime/confidenceEstimator.test.ts)
+#### [NEW] `tests/unit/agentRuntime/confidenceEstimator.test.ts`
 
 Tests for multi-signal confidence scoring, uncertainty propagation, abstention decisions, and trace logging.
 
@@ -982,7 +982,7 @@ Five related quality and efficiency improvements:
 
 #### Voting/Ensemble for High-Stakes Routes
 
-##### [NEW] [src/core/agentRuntime/ensembleGenerator.ts](file:///c:/Users/ahazi/OneDrive/Desktop/Github/Sage/src/core/agentRuntime/ensembleGenerator.ts)
+##### [NEW] `src/core/agentRuntime/ensembleGenerator.ts`
 
 1. **`generateEnsemble(params)`**: for `coding` and complex `search` routes, generate 2â€“3 candidate drafts using different models or temperatures.
 2. **`selectBestDraft(candidates, userText)`**: use a lightweight LLM call (or the critic model) to select the best candidate.
@@ -991,7 +991,7 @@ Five related quality and efficiency improvements:
 
 #### Progressive Critic Tracking
 
-##### [MODIFY] [criticAgent.ts](file:///c:/Users/ahazi/OneDrive/Desktop/Github/Sage/src/core/agentRuntime/criticAgent.ts)
+##### [MODIFY] [criticAgent.ts](../../src/core/agentRuntime/criticAgent.ts)
 
 1. Track scores across revision iterations:
 
@@ -1012,7 +1012,7 @@ Five related quality and efficiency improvements:
 
 #### Prompt Chaining for Coding
 
-##### [MODIFY] [agentRuntime.ts](file:///c:/Users/ahazi/OneDrive/Desktop/Github/Sage/src/core/agentRuntime/agentRuntime.ts)
+##### [MODIFY] [agentRuntime.ts](../../src/core/agentRuntime/agentRuntime.ts)
 
 1. For `coding` route with complexity `complex`+:
    - Step 1: Generate outline/approach (short LLM call).
@@ -1023,7 +1023,7 @@ Five related quality and efficiency improvements:
 
 #### Streaming Progress Indicators
 
-##### [MODIFY] [agentRuntime.ts](file:///c:/Users/ahazi/OneDrive/Desktop/Github/Sage/src/core/agentRuntime/agentRuntime.ts)
+##### [MODIFY] [agentRuntime.ts](../../src/core/agentRuntime/agentRuntime.ts)
 
 1. Emit Discord typing indicators during long operations.
 2. For tool-heavy turns, send a brief "Working on it..." message that gets edited with the final response.
@@ -1065,7 +1065,7 @@ Define a capability-based agent registry that allows dynamic worker discovery an
 
 ### Implementation Plan
 
-#### [NEW] [src/core/agentRuntime/agentCapabilityRegistry.ts](file:///c:/Users/ahazi/OneDrive/Desktop/Github/Sage/src/core/agentRuntime/agentCapabilityRegistry.ts)
+#### [NEW] `src/core/agentRuntime/agentCapabilityRegistry.ts`
 
 1. **Define capability protocol**:
 
@@ -1101,7 +1101,7 @@ Define a capability-based agent registry that allows dynamic worker discovery an
    - `verificationWorker` â†’ capabilities: `['fact_checking', 'source_verification']`
    - `synthesisWorker` â†’ capabilities: `['summarization', 'answer_composition']`
 
-#### [MODIFY] [taskPlanner.ts](file:///c:/Users/ahazi/OneDrive/Desktop/Github/Sage/src/core/agentRuntime/taskPlanner.ts)
+#### [MODIFY] [taskPlanner.ts](../../src/core/agentRuntime/taskPlanner.ts)
 
 1. Instead of `buildTasksForRoute`, query the capability registry:
 
@@ -1112,7 +1112,7 @@ Define a capability-based agent registry that allows dynamic worker discovery an
 
 2. Task assignment uses capability matching instead of hardcoded type mapping.
 
-#### [MODIFY] [blackboard.ts](file:///c:/Users/ahazi/OneDrive/Desktop/Github/Sage/src/core/agentRuntime/blackboard.ts)
+#### [MODIFY] [blackboard.ts](../../src/core/agentRuntime/blackboard.ts)
 
 1. Add typed inter-agent message channel to `BlackboardState`:
 
@@ -1131,7 +1131,7 @@ Define a capability-based agent registry that allows dynamic worker discovery an
 
 2. Workers can read messages from the blackboard to coordinate.
 
-#### [NEW] [tests/unit/agentRuntime/agentCapabilityRegistry.test.ts](file:///c:/Users/ahazi/OneDrive/Desktop/Github/Sage/tests/unit/agentRuntime/agentCapabilityRegistry.test.ts)
+#### [NEW] `tests/unit/agentRuntime/agentCapabilityRegistry.test.ts`
 
 Tests for registration, capability lookup, route matching, and health-based selection.
 
@@ -1173,7 +1173,7 @@ Systematically calibrate all configurable parameters across the entire agentic p
 
 ### Implementation Plan
 
-#### [NEW] [src/scripts/parameter-sweep.ts](file:///c:/Users/ahazi/OneDrive/Desktop/Github/Sage/src/scripts/parameter-sweep.ts)
+#### [NEW] `src/scripts/parameter-sweep.ts`
 
 1. **Systematic parameter sweep framework**:
 
@@ -1212,7 +1212,7 @@ Systematically calibrate all configurable parameters across the entire agentic p
 | Ensemble candidate count | 3 | 2â€“5 | quality vs. cost |
 | Safety classifier threshold | 0.8 | 0.6â€“0.95 | false-positive rate |
 
-#### [NEW] [src/scripts/calibration-report.ts](file:///c:/Users/ahazi/OneDrive/Desktop/Github/Sage/src/scripts/calibration-report.ts)
+#### [NEW] `src/scripts/calibration-report.ts`
 
 1. **Generate comprehensive calibration report**:
    - Per-parameter optimal values with confidence intervals.
@@ -1225,7 +1225,7 @@ Systematically calibrate all configurable parameters across the entire agentic p
    - Outputs report to `docs/architecture/CALIBRATION_REPORT.md`.
    - Can be run incrementally (resume from last checkpoint).
 
-#### [MODIFY] [package.json](file:///c:/Users/ahazi/OneDrive/Desktop/Github/Sage/package.json)
+#### [MODIFY] [package.json](../../package.json)
 
 1. Add scripts:
 
@@ -1249,7 +1249,7 @@ Systematically calibrate all configurable parameters across the entire agentic p
 
 3. **Cost audit**: calculate total API cost of the calibration process and document.
 
-#### [NEW] [tests/integration/fullPipeline.test.ts](file:///c:/Users/ahazi/OneDrive/Desktop/Github/Sage/tests/integration/fullPipeline.test.ts)
+#### [NEW] `tests/integration/fullPipeline.test.ts`
 
 Integration tests validating cross-phase interactions with all features enabled.
 
@@ -1338,7 +1338,7 @@ This creates the first agent that gets measurably better with every batch of con
 
 ### Implementation Plan
 
-#### [NEW] [src/agentic/metacognition/experienceBuffer.ts](file:///c:/Users/ahazi/OneDrive/Desktop/Github/Sage/src/agentic/metacognition/experienceBuffer.ts)
+#### [NEW] `src/agentic/metacognition/experienceBuffer.ts`
 
 1. **Experience trace capture**: extend `AgentTrace` to include outcome classification:
 
@@ -1376,7 +1376,7 @@ This creates the first agent that gets measurably better with every batch of con
 
 3. **Configurable retention**: `AGENTIC_EXPERIENCE_BUFFER_SIZE` (default: 10000, env var) â€” circular buffer with quality-weighted sampling for analysis.
 
-#### [NEW] [src/agentic/metacognition/environmentModel.ts](file:///c:/Users/ahazi/OneDrive/Desktop/Github/Sage/src/agentic/metacognition/environmentModel.ts)
+#### [NEW] `src/agentic/metacognition/environmentModel.ts`
 
 1. **Community profile construction** â€” the agent's "embodied understanding" of its environment:
 
@@ -1408,7 +1408,7 @@ This creates the first agent that gets measurably better with every batch of con
 
 3. **Drift detection**: when the community profile changes significantly (topic shift, new users, style change), trigger **accommodation** â€” flag that existing strategies may need revision.
 
-#### [NEW] [src/agentic/metacognition/metacognitiveAnalyzer.ts](file:///c:/Users/ahazi/OneDrive/Desktop/Github/Sage/src/agentic/metacognition/metacognitiveAnalyzer.ts)
+#### [NEW] `src/agentic/metacognition/metacognitiveAnalyzer.ts`
 
 The core breakthrough â€” the "prefrontal cortex" of the system:
 
@@ -1470,7 +1470,7 @@ The core breakthrough â€” the "prefrontal cortex" of the system:
 
 4. **Analysis cadence**: configurable via `AGENTIC_METACOG_ANALYSIS_INTERVAL` (default: every 100 conversations or once daily, whichever comes first). This is the agent's "sleep cycle" â€” the consolidation phase where experience becomes knowledge.
 
-#### [NEW] [src/agentic/metacognition/promptEvolutionEngine.ts](file:///c:/Users/ahazi/OneDrive/Desktop/Github/Sage/src/agentic/metacognition/promptEvolutionEngine.ts)
+#### [NEW] `src/agentic/metacognition/promptEvolutionEngine.ts`
 
 Safe, auditable self-improvement at the prompt level:
 
@@ -1505,7 +1505,7 @@ Safe, auditable self-improvement at the prompt level:
 
 4. **Rollback safety**: every prompt change has a `parentVersion` pointer. If quality degrades after promotion, automatic rollback to the parent version within one analysis cycle.
 
-#### [NEW] [src/agentic/metacognition/environmentalAdaptation.ts](file:///c:/Users/ahazi/OneDrive/Desktop/Github/Sage/src/agentic/metacognition/environmentalAdaptation.ts)
+#### [NEW] `src/agentic/metacognition/environmentalAdaptation.ts`
 
 The Vygotskian social learning layer:
 
@@ -1532,24 +1532,24 @@ The Vygotskian social learning layer:
    - "Users here respond well to analogies and metaphors"
    - These schemas are stored as structured data, not hidden in weights â€” fully transparent and auditable.
 
-#### [MODIFY] [src/core/orchestration/agentRuntime.ts](file:///c:/Users/ahazi/OneDrive/Desktop/Github/Sage/src/core/orchestration/agentRuntime.ts)
+#### [MODIFY] `src/core/orchestration/agentRuntime.ts`
 
 1. After each conversation completion, emit an `ExperienceTrace` to the experience buffer.
 2. Before generating a response, inject `EnvironmentModel` context into the system prompt if `AGENTIC_METACOG_ENABLED=true`.
 3. At startup, initialize the metacognitive analysis scheduler.
 
-#### [MODIFY] [src/core/orchestration/contextBuilder.ts](file:///c:/Users/ahazi/OneDrive/Desktop/Github/Sage/src/core/orchestration/contextBuilder.ts)
+#### [MODIFY] `src/core/orchestration/contextBuilder.ts`
 
 1. Add optional `communityContext` section to the context assembly pipeline.
 2. When `AGENTIC_METACOG_ENABLED=true`, prepend environment-aware instructions based on the `EnvironmentModel`.
 
-#### [MODIFY] [src/data/schema.prisma](file:///c:/Users/ahazi/OneDrive/Desktop/Github/Sage/src/data/schema.prisma)
+#### [MODIFY] `src/data/schema.prisma`
 
 1. Add `ExperienceTrace` model for persistent storage.
 2. Add `PromptEvolution` model for version-controlled prompt history.
 3. Add `EnvironmentModel` model for per-guild community profiles.
 
-#### [MODIFY] [.env.example](file:///c:/Users/ahazi/OneDrive/Desktop/Github/Sage/.env.example)
+#### [MODIFY] [.env.example](../../.env.example)
 
 1. Add environment variables:
 
@@ -1561,7 +1561,7 @@ The Vygotskian social learning layer:
    AGENTIC_METACOG_AUTO_PROMOTE=false          # Auto-promote significant improvements (vs. human review)
    ```
 
-#### [NEW] [tests/unit/metacognition/metacognitiveAnalyzer.test.ts](file:///c:/Users/ahazi/OneDrive/Desktop/Github/Sage/tests/unit/metacognition/metacognitiveAnalyzer.test.ts)
+#### [NEW] `tests/unit/metacognition/metacognitiveAnalyzer.test.ts`
 
 Unit tests covering:
 
