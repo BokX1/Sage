@@ -93,7 +93,7 @@ npm run release:agentic-check
 This command enforces:
 
 - lint/build/unit test suite
-- Stage 9 cross-phase consistency gate
+- roadmap consistency gate (Phase 0 foundation)
 - replay quality gate
 - model-judge eval gate
 

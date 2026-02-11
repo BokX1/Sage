@@ -36,7 +36,7 @@ npm run build && npm start  # Production
 npm run doctor           # Check configuration and database
 npm run agentic:replay-gate  # Replay quality gate
 npm run eval:gate        # Judge-eval quality gate
-npm run agentic:consistency-check  # Stage 9 cross-phase consistency gate
+npm run agentic:consistency-check  # Roadmap consistency gate (Phase 0 foundation)
 npm run release:agentic-check  # Full release gate (check + consistency + replay + eval)
 ```
 
@@ -116,9 +116,9 @@ Per stage:
 4. Run `npm run release:agentic-check`.
 5. Promote only if all gates pass and no degraded-mode events are observed.
 
-### Stage 9 consistency gate
+### Roadmap consistency gate
 
-Run this before enabling Stage 10 work:
+Run this before promoting the next roadmap phase:
 
 ```bash
 npm run agentic:consistency-check

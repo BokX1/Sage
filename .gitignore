@@ -26,3 +26,7 @@ prisma/*.db-journal
 
 # Package artifacts
 *.tgz
+
+# Local roadmap working docs
+docs/architecture/AGENTIC_ROADMAP_IMPLEMENTATION.md
+docs/roadmap/AGENTIC_ROADMAP_IMPLEMENTATION.md

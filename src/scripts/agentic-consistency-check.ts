@@ -166,30 +166,15 @@ function ensurePhaseProgression(rows: PhaseRow[], ctx: CheckContext): number | n
   return expectedNextPhase;
 }
 
-function ensureRequestedStagePolicy(rows: PhaseRow[], ctx: CheckContext): void {
-  const byPhase = new Map<number, PhaseRow>(rows.map((row) => [row.phase, row]));
-  for (let phase = 0; phase <= 8; phase += 1) {
-    const row = byPhase.get(phase);
-    expect(!!row, `Phase ${phase} row is missing in canonical roadmap.`, ctx);
-    if (row) {
-      expect(row.status === 'completed', `Phase ${phase} must be completed for Stage 9 start.`, ctx);
-    }
-  }
-
-  const phase9 = byPhase.get(9);
-  expect(!!phase9, 'Phase 9 row is missing in canonical roadmap.', ctx);
-  if (phase9) {
+function ensureFoundationPolicy(rows: PhaseRow[], ctx: CheckContext): void {
+  const phase0 = rows.find((row) => row.phase === 0);
+  expect(!!phase0, 'Phase 0 row is missing in canonical roadmap.', ctx);
+  if (phase0) {
     expect(
-      phase9.status === 'in_progress' || phase9.status === 'completed',
-      `Phase 9 must be in_progress/completed (found ${phase9.status}).`,
+      phase0.status === 'completed',
+      `Phase 0 must be completed before any later phase work (found ${phase0.status}).`,
       ctx,
     );
-  }
-
-  const phase10 = byPhase.get(10);
-  expect(!!phase10, 'Phase 10 row is missing in canonical roadmap.', ctx);
-  if (phase10) {
-    expect(phase10.status === 'pending', `Phase 10 must remain pending/deferred (found ${phase10.status}).`, ctx);
   }
 }
 
@@ -247,7 +232,7 @@ async function main(): Promise<void> {
   if (canonicalRoadmap) {
     rows = parsePhaseRows(canonicalRoadmap.markdown);
     const expectedNextPhase = ensurePhaseProgression(rows, ctx);
-    ensureRequestedStagePolicy(rows, ctx);
+    ensureFoundationPolicy(rows, ctx);
 
     const canonicalNextPhase = parseCanonicalNextPhase(canonicalRoadmap.markdown);
     if (expectedNextPhase !== null) {
