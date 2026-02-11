@@ -1,7 +1,7 @@
-# Agentic Roadmap â€” Implementation Plan & Execution Guide
+# Agentic Roadmap — Implementation Plan & Execution Guide
 
 Last updated: 2026-02-11
-Source: Architecture audit + cutting-edge research survey (2025â€“2026), reorganized for optimal execution order.
+Source: Architecture audit + cutting-edge research survey (2025–2026), reorganized for optimal execution order.
 
 ## Document Control
 
@@ -13,7 +13,7 @@ Source: Architecture audit + cutting-edge research survey (2025â€“2026), re
 | Review cadence | At least once per release candidate and after each major phase PR. |
 | Related checks | `npm run agentic:consistency-check`, `npm run release:agentic-check` |
 | Audit ref | Architecture audit (2026-02-11) benchmarking against Anthropic, Azure, LangChain, Google Cloud, and OpenAI best practices. |
-| Research ref | Cutting-edge agent research survey (2025â€“2026) covering context engineering, GoT reasoning, speculative execution, confidence calibration, agentic RAG, MIRROR self-reflection, and self-evolving benchmarks. |
+| Research ref | Cutting-edge agent research survey (2025–2026) covering context engineering, GoT reasoning, speculative execution, confidence calibration, agentic RAG, MIRROR self-reflection, and self-evolving benchmarks. |
 
 ## Source of Truth Rules
 
@@ -23,27 +23,21 @@ Source: Architecture audit + cutting-edge research survey (2025â€“2026), re
 
 ---
 
-## Completed Foundation (Phases 0â€“9)
-
-Phases 0â€“9 have been completed and are no longer tracked in this document. They established: baseline metrics, governance correctness, canary truthfulness, deterministic validators, tool policy engine, model-judge evaluation pipeline, distributed runtime state, manager-worker orchestration, rollout hardening, and cross-phase consistency auditing. All evidence is captured in the Evidence Register below.
-
----
-
 ## Status Summary
 
 | Phase | Status | Priority | Notes |
 | :--- | :--- | :--- | :--- |
-| 0 - Foundation & Baseline | completed | P0 | Baseline metrics, governance, and initial hardening complete. |
-| 1 - ReAct Adaptive Reasoning Loop | completed | P0 | ReAct-style reason-act loop integrated and validated. |
-| 2 - Persistent Agent Session Memory | completed | P0 | Session memory persistence and retrieval shipped. |
-| 3 - Context Engineering and Compaction Engine | completed | P1 | Context compaction and budget controls implemented. |
-| 4 - Agentic RAG and Dynamic Retrieval | completed | P1 | Dynamic retrieval and retrieval quality controls landed. |
-| 5 - Observability and Tracing Dashboard | completed | P1 | Trace and operational visibility foundation in place. |
-| 6 - Adaptive Task Planning | completed | P1 | Planner and execution policy hardening complete. |
-| 7 - Safety and Guardrail Hardening | completed | P2 | Safety policy, guards, and gating reinforcement complete. |
-| 8 - Confidence Calibration and Abstention | completed | P2 | Confidence/abstention policy integrated and tuned. |
-| 9 - Quality Loop Enhancements | in_progress | P2 | Active release-quality hardening and calibration pass. |
-| 10 - Deferred / Frontier Follow-ons | pending | P3 | Deferred until Phase 9 completion and release hardening. |
+| 0 - Foundation & Baseline | pending | P0 | Planned; baseline metrics and governance setup not started. |
+| 1 - ReAct Adaptive Reasoning Loop | pending | P0 | Planned; implementation not started. |
+| 2 - Persistent Agent Session Memory | pending | P0 | Planned; implementation not started. |
+| 3 - Context Engineering and Compaction Engine | pending | P1 | Planned; implementation not started. |
+| 4 - Agentic RAG and Dynamic Retrieval | pending | P1 | Planned; implementation not started. |
+| 5 - Observability and Tracing Dashboard | pending | P1 | Planned; implementation not started. |
+| 6 - Adaptive Task Planning | pending | P1 | Planned; implementation not started. |
+| 7 - Safety and Guardrail Hardening | pending | P2 | Planned; implementation not started. |
+| 8 - Confidence Calibration and Abstention | pending | P2 | Planned; implementation not started. |
+| 9 - Quality Loop Enhancements | pending | P2 | Planned; implementation not started. |
+| 10 - Deferred / Frontier Follow-ons | pending | P3 | Planned; deferred until core phases begin. |
 
 ---
 
@@ -59,21 +53,21 @@ Note: keep status values restricted to `pending`, `in_progress`, or `completed`.
 
 ## Current Execution Position
 
-- Canonical next phase in sequence: **Phase 9**.
-- Phase 9 is the active in-progress phase; earlier phases are completed.
-- Release promotion remains blocked by replay quality threshold until quality tuning is approved.
-- Phase 12 (Metacognitive Self-Improvement) is the frontier capstone â€” must be implemented after all other phases.
+- Canonical next phase in sequence: **Phase 1**.
+- No roadmap phases have started yet; Phase 1 is currently pending.
+- Release promotion is not in progress; implementation and validation phases are pending.
+- Phase 12 (Metacognitive Self-Improvement) is the frontier capstone — must be implemented after all other phases.
 
 ---
 
-## Phase 1 â€” ReAct Adaptive Reasoning Loop
+## Phase 1 — ReAct Adaptive Reasoning Loop
 
-**Priority:** P0 (Critical) Â· **Audit ref:** Gap #2
+**Priority:** P0 (Critical) · **Audit ref:** Gap #2
 **Industry sources:** Anthropic (Agent loop), Azure (ReAct pattern), OpenAI (Agentic loop)
 
 ### Problem Statement
 
-Sage's current flow is a fixed pipeline: route â†’ context â†’ draft â†’ tool loop â†’ critic â†’ reply. The tool call loop in `toolCallLoop.ts` has a bounded 2-round limit and processes tool calls as a batch within a single draft. There is no interleaved "reason about tool results â†’ decide next action â†’ execute â†’ observe â†’ reason again" cycle.
+Sage's current flow is a fixed pipeline: route → context → draft → tool loop → critic → reply. The tool call loop in `toolCallLoop.ts` has a bounded 2-round limit and processes tool calls as a batch within a single draft. There is no interleaved "reason about tool results → decide next action → execute → observe → reason again" cycle.
 
 The manager-worker pattern in `taskPlanner.ts` partially addresses this for complex queries, but it pre-plans all tasks upfront using template-based `buildTasksForRoute()` rather than adapting dynamically based on intermediate tool results.
 
@@ -164,8 +158,8 @@ Transform the tool call phase from a fixed multi-shot batch into a dynamic ReAct
 
 Unit tests covering:
 
-- ReAct disabled â†’ existing behavior unchanged.
-- ReAct enabled â†’ iterates through reason-act cycles.
+- ReAct disabled → existing behavior unchanged.
+- ReAct enabled → iterates through reason-act cycles.
 - Max iterations respected.
 - Final answer extraction.
 - Observation accumulation.
@@ -181,14 +175,14 @@ Unit tests covering:
 
 ---
 
-## Phase 2 â€” Persistent Agent Session Memory
+## Phase 2 — Persistent Agent Session Memory
 
-**Priority:** P0 (Critical) Â· **Audit ref:** Gap #1
+**Priority:** P0 (Critical) · **Audit ref:** Gap #1
 **Industry sources:** OpenAI (Session memory), Google Cloud (Agent coordination), Anthropic (Multi-turn agents)
 
 ### Problem Statement
 
-Sage has excellent user/channel memory (`UserProfile`, `ChannelSummary`, `RelationshipEdge`) but has **zero agent-level session state**. Each turn of `runChatTurn` is fully stateless from the agent's perspective â€” the manager-worker plan is recomputed from scratch, tool results from previous turns are unavailable, and the agent cannot reference its own prior reasoning or decisions.
+Sage has excellent user/channel memory (`UserProfile`, `ChannelSummary`, `RelationshipEdge`) but has **zero agent-level session state**. Each turn of `runChatTurn` is fully stateless from the agent's perspective — the manager-worker plan is recomputed from scratch, tool results from previous turns are unavailable, and the agent cannot reference its own prior reasoning or decisions.
 
 ### Goal
 
@@ -238,10 +232,10 @@ Introduce a persistent `AgentSession` entity that allows the agent to remember i
    ```
 
 2. **Session lifecycle functions**:
-   - `getOrCreateSession(channelId, userId)` â€” retrieves active session or creates new.
-   - `updateSessionAfterTurn(session, turnResult)` â€” appends tool history, updates plan state, bumps `updatedAt`.
-   - `compressSessionContext(session, maxTokens)` â€” summarizes tool history and reasoning to fit within token budget.
-   - `expireStaleSession(session)` â€” marks sessions older than `expiresAt` as abandoned.
+   - `getOrCreateSession(channelId, userId)` — retrieves active session or creates new.
+   - `updateSessionAfterTurn(session, turnResult)` — appends tool history, updates plan state, bumps `updatedAt`.
+   - `compressSessionContext(session, maxTokens)` — summarizes tool history and reasoning to fit within token budget.
+   - `expireStaleSession(session)` — marks sessions older than `expiresAt` as abandoned.
 
 #### [NEW] `src/core/agentRuntime/agentSessionRepo.ts`
 
@@ -311,15 +305,15 @@ Unit tests for session lifecycle, compression, expiry, and context injection.
 
 ---
 
-## Phase 3 â€” Context Engineering and Compaction Engine
+## Phase 3 — Context Engineering and Compaction Engine
 
-**Priority:** P1 Â· **Research ref:** Context Engineering Survey (2025â€“2026)
+**Priority:** P1 · **Research ref:** Context Engineering Survey (2025–2026)
 **Industry sources:** Anthropic (Context engineering, Compaction, Scratchpad), LangChain (Context window optimization), Galileo (Context rot prevention)
 **Depends on:** Phase 1 (ReAct), Phase 2 (Session Memory)
 
 ### Problem Statement
 
-Sage's `contextBuilder.ts` implements a priority-based block system that truncates low-priority blocks when the token budget is exceeded. However, it has no **compaction** mechanism â€” it cannot summarize older context to preserve information density. There is no **scratchpad** for the agent to store intermediate reasoning between tool calls. Long-running ReAct loops (Phase 1) and session memory (Phase 2) will rapidly exhaust the context window without intelligent compression.
+Sage's `contextBuilder.ts` implements a priority-based block system that truncates low-priority blocks when the token budget is exceeded. However, it has no **compaction** mechanism — it cannot summarize older context to preserve information density. There is no **scratchpad** for the agent to store intermediate reasoning between tool calls. Long-running ReAct loops (Phase 1) and session memory (Phase 2) will rapidly exhaust the context window without intelligent compression.
 
 Additionally, the current context system treats all tool call results equally. A web search returning 5000 tokens of results occupies the same space as a simple lookup returning 50 tokens. There is no **context editing** to replace verbose tool outputs with condensed summaries after they've been processed.
 
@@ -365,7 +359,7 @@ Build a context engineering layer that maximizes information density within the 
    }
    ```
 
-4. **Compaction uses the router model** (small, fast) for summarization â€” zero additional latency cost.
+4. **Compaction uses the router model** (small, fast) for summarization — zero additional latency cost.
 
 #### [NEW] `src/core/agentRuntime/agentScratchpad.ts`
 
@@ -391,14 +385,14 @@ Build a context engineering layer that maximizes information density within the 
    ```
 
 2. Agents can write scratchpad notes between tool calls to preserve key findings, hypotheses, and open questions outside the main context window.
-3. Scratchpad is injected as a `ContextBlock` with priority `60` (high â€” agent's own notes are very relevant).
+3. Scratchpad is injected as a `ContextBlock` with priority `60` (high — agent's own notes are very relevant).
 
 #### [MODIFY] [contextBuilder.ts](../../src/core/agentRuntime/contextBuilder.ts)
 
 1. Add `compactionEnabled?: boolean` and `scratchpad?: AgentScratchpad` to `BuildContextMessagesParams`.
 2. Before final assembly, run `compactContext` if total tokens exceed budget.
 3. Insert scratchpad as a new block type.
-4. Add `contextEditingEnabled?: boolean` â€” when true, tool results from earlier iterations are auto-replaced with placeholders.
+4. Add `contextEditingEnabled?: boolean` — when true, tool results from earlier iterations are auto-replaced with placeholders.
 
 #### [MODIFY] [toolCallLoop.ts](../../src/core/agentRuntime/toolCallLoop.ts)
 
@@ -420,15 +414,15 @@ Tests for compaction strategies, living summary, tool result replacement, scratc
 
 ---
 
-## Phase 4 â€” Agentic RAG and Dynamic Retrieval
+## Phase 4 — Agentic RAG and Dynamic Retrieval
 
-**Priority:** P1 Â· **Research ref:** Agentic RAG Survey (2025â€“2026)
+**Priority:** P1 · **Research ref:** Agentic RAG Survey (2025–2026)
 **Industry sources:** W&B (Agentic RAG), zBrain (Dynamic retrieval), Anthropic (Retrieval-augmented agents)
 **Depends on:** Phase 1 (ReAct), Phase 3 (Context Engineering)
 
 ### Problem Statement
 
-Sage's search agents perform **single-shot retrieval** â€” the `web_search` tool is called once with the user's query, and the results are passed directly to the LLM. There is no assessment of retrieval sufficiency, no query reformulation when results are poor, and no iterative refinement. When the first search returns irrelevant or insufficient results, the agent either halluccinates to fill gaps or produces a thin response.
+Sage's search agents perform **single-shot retrieval** — the `web_search` tool is called once with the user's query, and the results are passed directly to the LLM. There is no assessment of retrieval sufficiency, no query reformulation when results are poor, and no iterative refinement. When the first search returns irrelevant or insufficient results, the agent either halluccinates to fill gaps or produces a thin response.
 
 Additionally, there is no **hybrid retrieval** strategy. All searches go through the same `web_search` tool. For different query types (factual lookup vs. comparison vs. how-to), different retrieval strategies would be more effective.
 
@@ -445,7 +439,7 @@ Transform Sage's retrieval from single-shot to agentic iterative retrieval with 
    ```typescript
    interface RetrievalAssessment {
      isSufficient: boolean;
-     coverage: number;          // 0.0â€“1.0, how much of the query is answered
+     coverage: number;          // 0.0–1.0, how much of the query is answered
      gaps: string[];            // specific aspects not covered
      suggestedReformulations: string[];  // alternative queries to try
      sourcesDiverse: boolean;   // are results from multiple domains?
@@ -538,11 +532,11 @@ Tests for sufficiency assessment, query reformulation, iterative retrieval, sour
 
 ---
 
-## Phase 5 â€” Observability and Tracing Dashboard
+## Phase 5 — Observability and Tracing Dashboard
 
-**Priority:** P1 Â· **Audit ref:** Gap #5
+**Priority:** P1 · **Audit ref:** Gap #5
 **Industry sources:** LangChain (Tracing as #1 must-have), Azure (Agent monitoring)
-**Depends on:** Phase 1 (ReAct) â€” to trace ReAct iterations
+**Depends on:** Phase 1 (ReAct) — to trace ReAct iterations
 
 ### Problem Statement
 
@@ -601,7 +595,7 @@ Provide production-grade visibility into agent behavior through both Discord com
 
 3. **`detectAnomalies(traces)`**: flags unusual patterns:
    - Sudden quality score drops (>15% below rolling average).
-   - Latency spikes (>2Ïƒ above mean).
+   - Latency spikes (>2σ above mean).
    - Tool failure rate exceeding threshold.
    - Critic loop hitting max iterations frequently.
 
@@ -640,7 +634,7 @@ Provide production-grade visibility into agent behavior through both Discord com
 
 2. Parse token counts from `budgetJson` and estimate cost using model-specific rates.
 
-#### [NEW] [Discord admin commands] â€” `/admin trace <traceId>` and `/admin dashboard`
+#### [NEW] [Discord admin commands] — `/admin trace <traceId>` and `/admin dashboard`
 
 1. `/admin trace <traceId>`: calls `inspectTrace()`, formats as Discord embed with fields for route, latency, tools, quality, cost.
 2. `/admin dashboard`: calls `generateDashboardReport()`, formats as paginated Discord embed showing route breakdown, quality trends, cost summary.
@@ -659,15 +653,15 @@ Tests for inspection formatting, dashboard aggregation, and anomaly detection.
 
 ---
 
-## Phase 6 â€” Adaptive Task Planning
+## Phase 6 — Adaptive Task Planning
 
-**Priority:** P1 Â· **Audit refs:** Gap #6 (static plans), Gap #7 (regex complexity estimation)
+**Priority:** P1 · **Audit refs:** Gap #6 (static plans), Gap #7 (regex complexity estimation)
 **Industry sources:** Anthropic (Orchestrator-workers), Azure (Planning pattern), OpenAI (Planning agents)
 **Depends on:** Phase 1 (ReAct), Phase 2 (Session Memory), Phase 5 (Observability)
 
 ### Problem Statement
 
-`taskPlanner.ts` uses `buildTasksForRoute()` to create tasks from fixed templates per route (`buildSearchTasks`, `buildCodingTasks`). The plan doesn't adapt based on actual query content, context from prior workers' findings, or quality of intermediate results. Additionally, `estimateComplexity()` uses keyword pattern matching (`/compare|versus|pros.*cons/i`) to determine if the manager-worker path should activate â€” no LLM-driven complexity estimation exists.
+`taskPlanner.ts` uses `buildTasksForRoute()` to create tasks from fixed templates per route (`buildSearchTasks`, `buildCodingTasks`). The plan doesn't adapt based on actual query content, context from prior workers' findings, or quality of intermediate results. Additionally, `estimateComplexity()` uses keyword pattern matching (`/compare|versus|pros.*cons/i`) to determine if the manager-worker path should activate — no LLM-driven complexity estimation exists.
 
 ### Goal
 
@@ -740,11 +734,11 @@ Tests for LLM complexity estimation, dynamic decomposition, fallback to template
 
 ---
 
-## Phase 7 â€” Safety and Guardrail Hardening
+## Phase 7 — Safety and Guardrail Hardening
 
-**Priority:** P2 Â· **Audit refs:** Gap #3 (human-in-the-loop), Gap #8 (parallel guardrails), Gap #10 (error recovery)
+**Priority:** P2 · **Audit refs:** Gap #3 (human-in-the-loop), Gap #8 (parallel guardrails), Gap #10 (error recovery)
 **Industry sources:** LangChain (Human approval), Anthropic (Parallel guardrails, Error recovery), Azure (Safety operations)
-**Depends on:** Phase 5 (Observability) â€” to trace safety decisions
+**Depends on:** Phase 5 (Observability) — to trace safety decisions
 
 ### Problem Statement
 
@@ -836,7 +830,7 @@ Three related safety gaps:
 
 ##### [MODIFY] [toolCallLoop.ts](../../src/core/agentRuntime/toolCallLoop.ts)
 
-1. **Exponential backoff**: for `rate_limited` and `unavailable` errors, retry with exponential backoff (100ms â†’ 200ms â†’ 400ms) up to 3 attempts.
+1. **Exponential backoff**: for `rate_limited` and `unavailable` errors, retry with exponential backoff (100ms → 200ms → 400ms) up to 3 attempts.
 2. **Tool fallback chains**: define fallback mappings in tool registry:
 
    ```typescript
@@ -866,15 +860,15 @@ Three related safety gaps:
 
 ---
 
-## Phase 8 â€” Confidence Calibration and Abstention
+## Phase 8 — Confidence Calibration and Abstention
 
-**Priority:** P2 Â· **Research ref:** Confidence Calibration Survey (2025â€“2026)
+**Priority:** P2 · **Research ref:** Confidence Calibration Survey (2025–2026)
 **Industry sources:** arXiv HTC (Holistic Trajectory Calibration), ACL MICE (Model-Internal Confidence Estimators), SAUP (Situation-Awareness Uncertainty Propagation)
-**Depends on:** Phase 7 (Safety) â€” extends safety with uncertainty estimation
+**Depends on:** Phase 7 (Safety) — extends safety with uncertainty estimation
 
 ### Problem Statement
 
-Sage's agent has no mechanism for estimating its confidence in a response. The critic loop in `criticAgent.ts` scores quality but doesn't estimate whether the agent "knows" its answer is correct. LLMs are notoriously overconfident â€” they express high certainty even when incorrect. This leads to:
+Sage's agent has no mechanism for estimating its confidence in a response. The critic loop in `criticAgent.ts` scores quality but doesn't estimate whether the agent "knows" its answer is correct. LLMs are notoriously overconfident — they express high certainty even when incorrect. This leads to:
 
 1. **Hallucination without warning**: the agent presents uncertain information with the same confidence as certain information.
 2. **No abstention capability**: the agent never says "I don't know" or "I'm not confident enough to answer this."
@@ -892,7 +886,7 @@ Add confidence estimation, uncertainty propagation, and abstention capabilities 
 
    ```typescript
    interface ConfidenceEstimate {
-     overall: number;             // 0.0â€“1.0
+     overall: number;             // 0.0–1.0
      signals: {
        sourceQuality: number;     // based on tool result quality/count
        reasoningCoherence: number; // self-consistency across iterations
@@ -962,11 +956,11 @@ Tests for multi-signal confidence scoring, uncertainty propagation, abstention d
 
 ---
 
-## Phase 9 â€” Quality Loop Enhancements
+## Phase 9 — Quality Loop Enhancements
 
-**Priority:** P2 Â· **Audit refs:** Gap #11 (voting/ensemble), Gap #12 (prompt chaining), Gap #13 (critic progress tracking), Gap #14 (streaming), Gap #15 (cost-aware routing)
+**Priority:** P2 · **Audit refs:** Gap #11 (voting/ensemble), Gap #12 (prompt chaining), Gap #13 (critic progress tracking), Gap #14 (streaming), Gap #15 (cost-aware routing)
 **Industry sources:** Anthropic (Voting, Prompt chaining), OpenAI (Cost-aware routing)
-**Depends on:** Phase 6 (Adaptive Planning) â€” uses complexity classification
+**Depends on:** Phase 6 (Adaptive Planning) — uses complexity classification
 
 ### Problem Statement
 
@@ -984,7 +978,7 @@ Five related quality and efficiency improvements:
 
 ##### [NEW] `src/core/agentRuntime/ensembleGenerator.ts`
 
-1. **`generateEnsemble(params)`**: for `coding` and complex `search` routes, generate 2â€“3 candidate drafts using different models or temperatures.
+1. **`generateEnsemble(params)`**: for `coding` and complex `search` routes, generate 2–3 candidate drafts using different models or temperatures.
 2. **`selectBestDraft(candidates, userText)`**: use a lightweight LLM call (or the critic model) to select the best candidate.
 3. Gate behind `AGENTIC_ENSEMBLE_ENABLED` env var and route-specific config.
 4. Bounded cost: only for routes where `complexity >= complex` (from Phase 6).
@@ -1004,9 +998,9 @@ Five related quality and efficiency improvements:
    ```
 
 2. After each critic pass, compare score to previous iteration:
-   - If score improved â†’ continue with revised draft.
-   - If score declined â†’ revert to the previous (higher-scoring) draft and stop.
-   - If scores are within 0.05 â†’ stop (diminishing returns).
+   - If score improved → continue with revised draft.
+   - If score declined → revert to the previous (higher-scoring) draft and stop.
+   - If scores are within 0.05 → stop (diminishing returns).
 
 3. Persist progress data in `AgentTrace.qualityJson` for tracking.
 
@@ -1027,7 +1021,7 @@ Five related quality and efficiency improvements:
 
 1. Emit Discord typing indicators during long operations.
 2. For tool-heavy turns, send a brief "Working on it..." message that gets edited with the final response.
-3. Progress stages: ðŸ” Searching â†’ âœï¸ Drafting â†’ ðŸ”„ Refining â†’ âœ… Done.
+3. Progress stages: 🔍 Searching → ✍️ Drafting → 🔄 Refining → ✅ Done.
 
 #### Cost-Aware Model Selection
 
@@ -1040,24 +1034,24 @@ Five related quality and efficiency improvements:
 
 ### Exit Criteria
 
-- [ ] Ensemble generation produces 2â€“3 candidates for complex coding queries.
+- [ ] Ensemble generation produces 2–3 candidates for complex coding queries.
 - [ ] Critic reverts to best draft when quality degrades.
-- [ ] Coding prompt chaining produces outline â†’ implementation.
+- [ ] Coding prompt chaining produces outline → implementation.
 - [ ] Progress indicators show during long operations.
 - [ ] Cost tracking visible in trace data.
 - [ ] `npm run check` passes.
 
 ---
 
-## Phase 10 â€” Agent Capability Registry and A2A Protocol
+## Phase 10 — Agent Capability Registry and A2A Protocol
 
-**Priority:** P3 Â· **Audit ref:** Gap #4
+**Priority:** P3 · **Audit ref:** Gap #4
 **Industry sources:** Google Cloud (A2A protocol), Azure (Multi-agent networks), OpenAI (Agent handoffs)
-**Depends on:** Phase 6 (Adaptive Planning) â€” replaces hardcoded task assignment
+**Depends on:** Phase 6 (Adaptive Planning) — replaces hardcoded task assignment
 
 ### Problem Statement
 
-The manager-worker system uses hardcoded worker types (`research`, `verification`, `synthesis` in `workers/`) with no protocol for dynamic agent discovery, capability advertisement, or inter-agent message passing beyond the fixed plan â†’ result pipeline. Adding new worker specializations requires code changes to `taskPlanner.ts`.
+The manager-worker system uses hardcoded worker types (`research`, `verification`, `synthesis` in `workers/`) with no protocol for dynamic agent discovery, capability advertisement, or inter-agent message passing beyond the fixed plan → result pipeline. Adding new worker specializations requires code changes to `taskPlanner.ts`.
 
 ### Goal
 
@@ -1097,9 +1091,9 @@ Define a capability-based agent registry that allows dynamic worker discovery an
    ```
 
 2. **Migrate existing workers** to register capabilities:
-   - `researchWorker` â†’ capabilities: `['web_research', 'document_analysis']`
-   - `verificationWorker` â†’ capabilities: `['fact_checking', 'source_verification']`
-   - `synthesisWorker` â†’ capabilities: `['summarization', 'answer_composition']`
+   - `researchWorker` → capabilities: `['web_research', 'document_analysis']`
+   - `verificationWorker` → capabilities: `['fact_checking', 'source_verification']`
+   - `synthesisWorker` → capabilities: `['summarization', 'answer_composition']`
 
 #### [MODIFY] [taskPlanner.ts](../../src/core/agentRuntime/taskPlanner.ts)
 
@@ -1145,11 +1139,11 @@ Tests for registration, capability lookup, route matching, and health-based sele
 
 ---
 
-## Phase 11 â€” Comprehensive Fine-Tuning and Calibration
+## Phase 11 — Comprehensive Fine-Tuning and Calibration
 
-**Priority:** P-Final (Must be last) Â· **Research ref:** Evaluation & Calibration Survey (2025â€“2026)
+**Priority:** P-Final (Must be last) · **Research ref:** Evaluation & Calibration Survey (2025–2026)
 **Industry sources:** Anthropic (Threshold tuning), OpenAI (Model evaluation), AgentBench (Multi-dimensional scoring)
-**Depends on:** All prior phases (1â€“10) â€” requires all subsystems to be implemented and stable
+**Depends on:** All prior phases (1–10) — requires all subsystems to be implemented and stable
 
 ### Problem Statement
 
@@ -1165,7 +1159,7 @@ After implementing all prior phases, the system will have numerous configurable 
 - Ensemble generation count and selection criteria
 - Safety classifier confidence thresholds
 
-Currently, `avgScore=0.6468` falls below `minAvgScore=0.6500`, blocking release promotion. Fine-tuning these parameters requires **hundreds to thousands of API calls** to systematically explore the parameter space and find optimal values â€” this is why it must be the final phase.
+Currently, `avgScore=0.6468` falls below `minAvgScore=0.6500`, blocking release promotion. Fine-tuning these parameters requires **hundreds to thousands of API calls** to systematically explore the parameter space and find optimal values — this is why it must be the final phase.
 
 ### Goal
 
@@ -1203,14 +1197,14 @@ Systematically calibrate all configurable parameters across the entire agentic p
 
 | Parameter | Current Value | Sweep Range | Primary Metric |
 | :--- | :--- | :--- | :--- |
-| `AGENTIC_REACT_MAX_ITERATIONS` | 6 | 3â€“10 | avgScore |
-| `AGENTIC_CRITIC_MIN_SCORE` | 0.82 | 0.70â€“0.90 | avgScore vs. latency |
-| `AGENTIC_ABSTENTION_THRESHOLD` | 0.3 | 0.2â€“0.5 | false-positive abstention rate |
-| `retrieval.sufficiencyThreshold` | 0.7 | 0.5â€“0.9 | retrieval quality |
-| `compaction.recentTurnsToKeep` | 3 | 2â€“5 | context quality |
-| `replay-gate minAvgScore` | 0.6500 | 0.6000â€“0.7000 | release gate pass rate |
-| Ensemble candidate count | 3 | 2â€“5 | quality vs. cost |
-| Safety classifier threshold | 0.8 | 0.6â€“0.95 | false-positive rate |
+| `AGENTIC_REACT_MAX_ITERATIONS` | 6 | 3–10 | avgScore |
+| `AGENTIC_CRITIC_MIN_SCORE` | 0.82 | 0.70–0.90 | avgScore vs. latency |
+| `AGENTIC_ABSTENTION_THRESHOLD` | 0.3 | 0.2–0.5 | false-positive abstention rate |
+| `retrieval.sufficiencyThreshold` | 0.7 | 0.5–0.9 | retrieval quality |
+| `compaction.recentTurnsToKeep` | 3 | 2–5 | context quality |
+| `replay-gate minAvgScore` | 0.6500 | 0.6000–0.7000 | release gate pass rate |
+| Ensemble candidate count | 3 | 2–5 | quality vs. cost |
+| Safety classifier threshold | 0.8 | 0.6–0.95 | false-positive rate |
 
 #### [NEW] `src/scripts/calibration-report.ts`
 
@@ -1239,11 +1233,11 @@ Systematically calibrate all configurable parameters across the entire agentic p
 #### Cross-Phase Integration Testing
 
 1. **End-to-end scenario tests**: run representative queries through the full pipeline with all phases enabled:
-   - Simple chat query â†’ should use minimal resources.
-   - Complex search query â†’ should trigger ReAct + agentic RAG + context compaction.
-   - Multi-turn conversation â†’ should use session memory + compaction.
-   - Uncertain query â†’ should trigger abstention.
-   - High-risk tool call â†’ should trigger human approval.
+   - Simple chat query → should use minimal resources.
+   - Complex search query → should trigger ReAct + agentic RAG + context compaction.
+   - Multi-turn conversation → should use session memory + compaction.
+   - Uncertain query → should trigger abstention.
+   - High-risk tool call → should trigger human approval.
 
 2. **Regression sweep**: after applying optimal parameters, re-run the full replay evaluation to confirm `avgScore >= minAvgScore`.
 
@@ -1266,9 +1260,9 @@ Integration tests validating cross-phase interactions with all features enabled.
 
 ---
 
-## Phase 12 â€” Environmentally-Enacted Metacognitive Self-Improvement Engine
+## Phase 12 — Environmentally-Enacted Metacognitive Self-Improvement Engine
 
-**Priority:** P-Frontier (Capstone) Â· **Research ref:** 4E Cognition, Metacognitive Learning, Continuous Agent Improvement
+**Priority:** P-Frontier (Capstone) · **Research ref:** 4E Cognition, Metacognitive Learning, Continuous Agent Improvement
 **Scientific foundations:** 4E Cognition (Varela, Thompson & Rosch), Piaget (Constructivism), Vygotsky (Social Constructivism), Gibson (Ecological Psychology), arXiv:2506.05109 (Intrinsic Metacognitive Learning)
 **Industry sources:** OpenAI (recursive self-improvement), Anthropic (context engineering), DeepMind (continuous learning), Microsoft (PromptWizard)
 
@@ -1276,11 +1270,11 @@ Integration tests validating cross-phase interactions with all features enabled.
 
 Sage processes every conversation as an isolated event. The agent starts each interaction with the same prompts, the same thresholds, the same strategies. It never learns from its own successes or failures. Conversation #10,000 is answered with the exact same cognitive blueprint as conversation #1.
 
-This mirrors a fundamental gap that neuroscience identified decades ago: **intelligence is not brain-bound â€” it is environmentally enacted**. The human brain does not compute in isolation; it is shaped by, embedded in, and extended through its environment. A child raised in a musical household develops different cognitive patterns than one raised in a mathematical household â€” not because of different brains, but because of different environments. The environment doesn't just provide input; it *sculpts the cognitive architecture itself*.
+This mirrors a fundamental gap that neuroscience identified decades ago: **intelligence is not brain-bound — it is environmentally enacted**. The human brain does not compute in isolation; it is shaped by, embedded in, and extended through its environment. A child raised in a musical household develops different cognitive patterns than one raised in a mathematical household — not because of different brains, but because of different environments. The environment doesn't just provide input; it *sculpts the cognitive architecture itself*.
 
-Sage lives in a Discord environment â€” a rich social ecosystem with community culture, conversational norms, topic preferences, expertise domains, temporal patterns, and collective knowledge. Yet it treats this environment as a dumb I/O pipe: messages in, messages out. It has no awareness of the community it serves, no memory of what works in this specific context, no ability to adapt its cognitive patterns to its environment.
+Sage lives in a Discord environment — a rich social ecosystem with community culture, conversational norms, topic preferences, expertise domains, temporal patterns, and collective knowledge. Yet it treats this environment as a dumb I/O pipe: messages in, messages out. It has no awareness of the community it serves, no memory of what works in this specific context, no ability to adapt its cognitive patterns to its environment.
 
-**The breakthrough insight**: Discord is not just Sage's deployment target â€” it is Sage's *embodied environment*. Just as the human mind is shaped by its world, Sage should be shaped by its community. This is the path to the first truly environment-aware, self-improving AI agent.
+**The breakthrough insight**: Discord is not just Sage's deployment target — it is Sage's *embodied environment*. Just as the human mind is shaped by its world, Sage should be shaped by its community. This is the path to the first truly environment-aware, self-improving AI agent.
 
 ### Theoretical Foundation: How the Human Brain Does This
 
@@ -1290,29 +1284,29 @@ This phase is grounded in five pillars of cognitive science:
 
 The dominant framework in modern cognitive science (Varela, Thompson & Rosch, 1991; extended by many). It posits that cognition is:
 
-- **Embodied**: shaped by the physical form that interacts with the world. For Sage, the Discord API is its "body" â€” defining what it can perceive (messages, reactions, threads, user roles) and how it can act (replies, embeds, tool calls).
+- **Embodied**: shaped by the physical form that interacts with the world. For Sage, the Discord API is its "body" — defining what it can perceive (messages, reactions, threads, user roles) and how it can act (replies, embeds, tool calls).
 - **Embedded**: situated in and constrained by the environment. Sage's cognition should be constrained and enhanced by the specific server's culture, rules, topic distribution, and interaction patterns.
-- **Extended**: cognitive processes extend beyond the brain into environmental tools. Sage's conversation history, user profiles, and server knowledge base are extensions of its cognition â€” not just data sources.
+- **Extended**: cognitive processes extend beyond the brain into environmental tools. Sage's conversation history, user profiles, and server knowledge base are extensions of its cognition — not just data sources.
 - **Enacted**: the agent doesn't passively process a pre-given world but actively "brings forth" its world through interaction. Sage's understanding of its community should emerge from its history of interactions, not from a static prompt.
 
-#### 2. Piaget's Constructivism â€” Learning Through Environment Interaction
+#### 2. Piaget's Constructivism — Learning Through Environment Interaction
 
 Jean Piaget showed that intelligence develops through **schemas** (mental structures) that are continuously modified via:
 
 - **Assimilation**: incorporating new experiences into existing schemas ("this question is like others I've handled well")
-- **Accommodation**: modifying schemas when existing ones fail ("my usual approach failed for this type of question â€” I need a new strategy")
+- **Accommodation**: modifying schemas when existing ones fail ("my usual approach failed for this type of question — I need a new strategy")
 
-For Sage: every conversation is an opportunity for schema construction. Successful interactions reinforce existing strategies; failures trigger accommodation â€” the creation of new, better strategies.
+For Sage: every conversation is an opportunity for schema construction. Successful interactions reinforce existing strategies; failures trigger accommodation — the creation of new, better strategies.
 
-#### 3. Vygotsky's Social Constructivism â€” Learning Through Community
+#### 3. Vygotsky's Social Constructivism — Learning Through Community
 
-Lev Vygotsky demonstrated that cognition is fundamentally social â€” knowledge is constructed through interaction with others, mediated by cultural tools (especially language). His **Zone of Proximal Development (ZPD)** concept shows that growth happens at the boundary between what an agent can do alone and what it can do with guidance.
+Lev Vygotsky demonstrated that cognition is fundamentally social — knowledge is constructed through interaction with others, mediated by cultural tools (especially language). His **Zone of Proximal Development (ZPD)** concept shows that growth happens at the boundary between what an agent can do alone and what it can do with guidance.
 
-For Sage: the Discord community IS the social context. User feedback (explicit reactions, follow-up questions, re-asks) provides the social signal. The community's collective expertise defines Sage's ZPD â€” areas where it should push to improve.
+For Sage: the Discord community IS the social context. User feedback (explicit reactions, follow-up questions, re-asks) provides the social signal. The community's collective expertise defines Sage's ZPD — areas where it should push to improve.
 
-#### 4. Gibson's Ecological Psychology â€” Environmental Affordances
+#### 4. Gibson's Ecological Psychology — Environmental Affordances
 
-James Gibson showed that environments offer **affordances** â€” possibilities for action that are directly perceivable. The environment is never neutral; it shapes what actions are possible and useful.
+James Gibson showed that environments offer **affordances** — possibilities for action that are directly perceivable. The environment is never neutral; it shapes what actions are possible and useful.
 
 For Sage: a coding-focused Discord server affords different cognitive patterns than a creative writing server. The server's channel structure, topic distribution, user expertise levels, and interaction patterns are all affordances that should shape how Sage thinks and responds.
 
@@ -1322,7 +1316,7 @@ Liu & van der Schaar formalized what human metacognition does computationally:
 
 - **Metacognitive Knowledge**: the agent's understanding of its own capabilities ("I excel at factual queries but struggle with comparison queries")
 - **Metacognitive Planning**: deciding what and how to learn ("I should focus on improving multi-source synthesis")
-- **Metacognitive Evaluation**: reflecting on learning outcomes to improve future learning ("my last prompt revision improved coding but degraded chat â€” revert chat changes")
+- **Metacognitive Evaluation**: reflecting on learning outcomes to improve future learning ("my last prompt revision improved coding but degraded chat — revert chat changes")
 
 ### Goal
 
@@ -1334,7 +1328,7 @@ Build a continuous, autonomous self-improvement engine where Sage:
 4. **Evaluates** the impact of adaptations (A/B testing, quality tracking)
 5. **Develops** environment-shaped cognitive patterns (community-aware personality and expertise)
 
-This creates the first agent that gets measurably better with every batch of conversations â€” not through retraining, but through environmentally-enacted metacognitive self-improvement.
+This creates the first agent that gets measurably better with every batch of conversations — not through retraining, but through environmentally-enacted metacognitive self-improvement.
 
 ### Implementation Plan
 
@@ -1374,11 +1368,11 @@ This creates the first agent that gets measurably better with every batch of con
 
 2. **Experience persistence**: store traces in a structured SQLite table (or Prisma model) with indexed queries by `guildId`, `routeKind`, `qualityScore`, and `timestamp`.
 
-3. **Configurable retention**: `AGENTIC_EXPERIENCE_BUFFER_SIZE` (default: 10000, env var) â€” circular buffer with quality-weighted sampling for analysis.
+3. **Configurable retention**: `AGENTIC_EXPERIENCE_BUFFER_SIZE` (default: 10000, env var) — circular buffer with quality-weighted sampling for analysis.
 
 #### [NEW] `src/agentic/metacognition/environmentModel.ts`
 
-1. **Community profile construction** â€” the agent's "embodied understanding" of its environment:
+1. **Community profile construction** — the agent's "embodied understanding" of its environment:
 
    ```typescript
    interface EnvironmentModel {
@@ -1388,9 +1382,9 @@ This creates the first agent that gets measurably better with every batch of con
        expertiseDistribution: { domain: string; depth: 'beginner' | 'intermediate' | 'expert' }[];
        conversationStyle: {
          avgMessageLength: number;
-         formalityLevel: number;          // 0.0 casual â†” 1.0 formal
-         technicalDepth: number;          // 0.0 surface â†” 1.0 deep-dive
-         humorTolerance: number;          // 0.0 strictly factual â†” 1.0 playful
+         formalityLevel: number;          // 0.0 casual ↔ 1.0 formal
+         technicalDepth: number;          // 0.0 surface ↔ 1.0 deep-dive
+         humorTolerance: number;          // 0.0 strictly factual ↔ 1.0 playful
        };
        peakActivityWindows: { dayOfWeek: number; hour: number; volume: number }[];
        topContributors: { userId: string; interactionCount: number; satisfactionTrend: number }[];
@@ -1398,21 +1392,21 @@ This creates the first agent that gets measurably better with every batch of con
      affordances: {
        availableTools: string[];
        channelPurposes: { channelId: string; inferredPurpose: string }[];
-       commonWorkflows: string[];        // e.g., "search â†’ code â†’ explain" patterns
+       commonWorkflows: string[];        // e.g., "search → code → explain" patterns
      };
      lastUpdated: Date;
    }
    ```
 
-2. **Incremental update**: every N conversations (configurable), rebuild the community profile from the experience buffer. This is Piaget's **assimilation** â€” incorporating new experiences into the environment model.
+2. **Incremental update**: every N conversations (configurable), rebuild the community profile from the experience buffer. This is Piaget's **assimilation** — incorporating new experiences into the environment model.
 
-3. **Drift detection**: when the community profile changes significantly (topic shift, new users, style change), trigger **accommodation** â€” flag that existing strategies may need revision.
+3. **Drift detection**: when the community profile changes significantly (topic shift, new users, style change), trigger **accommodation** — flag that existing strategies may need revision.
 
 #### [NEW] `src/agentic/metacognition/metacognitiveAnalyzer.ts`
 
-The core breakthrough â€” the "prefrontal cortex" of the system:
+The core breakthrough — the "prefrontal cortex" of the system:
 
-1. **Metacognitive Knowledge** â€” self-assessment of capabilities:
+1. **Metacognitive Knowledge** — self-assessment of capabilities:
 
    ```typescript
    interface MetacognitiveKnowledge {
@@ -1437,7 +1431,7 @@ The core breakthrough â€” the "prefrontal cortex" of the system:
    }
    ```
 
-2. **Metacognitive Planning** â€” deciding what to improve:
+2. **Metacognitive Planning** — deciding what to improve:
 
    ```typescript
    interface ImprovementPlan {
@@ -1453,7 +1447,7 @@ The core breakthrough â€” the "prefrontal cortex" of the system:
    }
    ```
 
-3. **Metacognitive Evaluation** â€” reflecting on whether improvements worked:
+3. **Metacognitive Evaluation** — reflecting on whether improvements worked:
 
    ```typescript
    interface ImprovementEvaluation {
@@ -1468,7 +1462,7 @@ The core breakthrough â€” the "prefrontal cortex" of the system:
    }
    ```
 
-4. **Analysis cadence**: configurable via `AGENTIC_METACOG_ANALYSIS_INTERVAL` (default: every 100 conversations or once daily, whichever comes first). This is the agent's "sleep cycle" â€” the consolidation phase where experience becomes knowledge.
+4. **Analysis cadence**: configurable via `AGENTIC_METACOG_ANALYSIS_INTERVAL` (default: every 100 conversations or once daily, whichever comes first). This is the agent's "sleep cycle" — the consolidation phase where experience becomes knowledge.
 
 #### [NEW] `src/agentic/metacognition/promptEvolutionEngine.ts`
 
@@ -1499,7 +1493,7 @@ Safe, auditable self-improvement at the prompt level:
    - Technical communities get more precise, detailed responses.
    - Casual communities get warmer, more conversational responses.
    - Expert communities get deeper analysis with less hand-holding.
-   - This is Gibson's **affordances** in action â€” the environment shapes the cognitive response.
+   - This is Gibson's **affordances** in action — the environment shapes the cognitive response.
 
 3. **A/B testing on replay**: before any prompt change goes to production, test it against the existing replay harness. Only promote changes that show statistically significant improvement (p < 0.05).
 
@@ -1510,8 +1504,8 @@ Safe, auditable self-improvement at the prompt level:
 The Vygotskian social learning layer:
 
 1. **Community feedback interpretation**: infer user satisfaction from natural signals:
-   - **Positive signals**: reactions (ðŸ‘, âœ…, â¤ï¸), thread resolved, no follow-up needed
-   - **Negative signals**: re-ask of same question, explicit correction, ðŸ‘Ž reactions, message deletion
+   - **Positive signals**: reactions (👍, ✅, ❤️), thread resolved, no follow-up needed
+   - **Negative signals**: re-ask of same question, explicit correction, 👎 reactions, message deletion
    - **Neutral signals**: conversation continuation without explicit feedback
 
 2. **Zone of Proximal Development tracking**: identify areas where the agent is close to competence but needs improvement:
@@ -1530,7 +1524,7 @@ The Vygotskian social learning layer:
    - "In this server, users prefer concise code snippets over explanations"
    - "This community values sourced citations for factual claims"
    - "Users here respond well to analogies and metaphors"
-   - These schemas are stored as structured data, not hidden in weights â€” fully transparent and auditable.
+   - These schemas are stored as structured data, not hidden in weights — fully transparent and auditable.
 
 #### [MODIFY] `src/core/orchestration/agentRuntime.ts`
 
@@ -1576,38 +1570,38 @@ Unit tests covering:
 ### The Cognitive Loop Visualized
 
 ```text
-  â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
-  â”‚                     SAGE'S COGNITIVE LOOP                          â”‚
-  â”‚                   (inspired by human metacognition)                â”‚
-  â”‚                                                                    â”‚
-  â”‚  â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”    â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”    â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”      â”‚
-  â”‚  â”‚ PERCEIVE   â”‚    â”‚ EXPERIENCE     â”‚    â”‚ ENVIRONMENT      â”‚      â”‚
-  â”‚  â”‚ (Discord   â”‚â”€â”€â”€â–¶â”‚ BUFFER         â”‚â”€â”€â”€â–¶â”‚ MODEL            â”‚      â”‚
-  â”‚  â”‚ interactions)   â”‚ (traces, scores)â”‚   â”‚ (community       â”‚      â”‚
-  â”‚  â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜    â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜    â”‚  profile,        â”‚      â”‚
-  â”‚                                          â”‚  affordances)    â”‚      â”‚
-  â”‚                                          â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”˜      â”‚
-  â”‚       â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜               â”‚
-  â”‚       â–¼                                                            â”‚
-  â”‚  â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”    â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”    â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”   â”‚
-  â”‚  â”‚ METACOGNITIVE  â”‚    â”‚ IMPROVEMENT    â”‚    â”‚ PROMPT          â”‚   â”‚
-  â”‚  â”‚ ANALYZER       â”‚â”€â”€â”€â–¶â”‚ PLAN           â”‚â”€â”€â”€â–¶â”‚ EVOLUTION       â”‚   â”‚
-  â”‚  â”‚ (knowledge,    â”‚    â”‚ (hypotheses,   â”‚    â”‚ ENGINE          â”‚   â”‚
-  â”‚  â”‚  planning,     â”‚    â”‚  interventions)â”‚    â”‚ (A/B test,      â”‚   â”‚
-  â”‚  â”‚  evaluation)   â”‚    â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜    â”‚  promote/reject)â”‚   â”‚
-  â”‚  â””â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”˜                          â””â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”˜   â”‚
-  â”‚          â”‚                                            â”‚            â”‚
-  â”‚          â””â”€â”€â”€â”€ meta-meta-learning â—€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜            â”‚
-  â”‚                (learn from learning attempts)                      â”‚
-  â”‚                                                                    â”‚
-  â”‚  â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”    â”‚
-  â”‚  â”‚                   ENACTION CYCLE                           â”‚    â”‚
-  â”‚  â”‚  The agent doesn't just USE the environment â€”              â”‚    â”‚
-  â”‚  â”‚  it CO-CREATES its cognitive world through interaction.    â”‚    â”‚
-  â”‚  â”‚  Each conversation shapes the agent. The agent shapes      â”‚    â”‚
-  â”‚  â”‚  the community experience. Both evolve together.           â”‚    â”‚
-  â”‚  â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜    â”‚
-  â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │                     SAGE'S COGNITIVE LOOP                          │
+  │                   (inspired by human metacognition)                │
+  │                                                                    │
+  │  ┌────────────┐    ┌────────────────┐    ┌──────────────────┐      │
+  │  │ PERCEIVE   │    │ EXPERIENCE     │    │ ENVIRONMENT      │      │
+  │  │ (Discord   │───▶│ BUFFER         │───▶│ MODEL            │      │
+  │  │ interactions)   │ (traces, scores)│   │ (community       │      │
+  │  └────────────┘    └────────────────┘    │  profile,        │      │
+  │                                          │  affordances)    │      │
+  │                                          └─────────┬────────┘      │
+  │       ┌────────────────────────────────────────────┘               │
+  │       ▼                                                            │
+  │  ┌────────────────┐    ┌────────────────┐    ┌─────────────────┐   │
+  │  │ METACOGNITIVE  │    │ IMPROVEMENT    │    │ PROMPT          │   │
+  │  │ ANALYZER       │───▶│ PLAN           │───▶│ EVOLUTION       │   │
+  │  │ (knowledge,    │    │ (hypotheses,   │    │ ENGINE          │   │
+  │  │  planning,     │    │  interventions)│    │ (A/B test,      │   │
+  │  │  evaluation)   │    └────────────────┘    │  promote/reject)│   │
+  │  └───────┬────────┘                          └────────┬────────┘   │
+  │          │                                            │            │
+  │          └──── meta-meta-learning ◀───────────────────┘            │
+  │                (learn from learning attempts)                      │
+  │                                                                    │
+  │  ┌────────────────────────────────────────────────────────────┐    │
+  │  │                   ENACTION CYCLE                           │    │
+  │  │  The agent doesn't just USE the environment —              │    │
+  │  │  it CO-CREATES its cognitive world through interaction.    │    │
+  │  │  Each conversation shapes the agent. The agent shapes      │    │
+  │  │  the community experience. Both evolve together.           │    │
+  │  └────────────────────────────────────────────────────────────┘    │
+  └──────────────────────────────────────────────────────────────────────┘
 ```
 
 ### Why This Is a Breakthrough on the Road to AGI
@@ -1628,7 +1622,7 @@ Unit tests covering:
 - [ ] Experience buffer captures traces for all conversations with outcome classification.
 - [ ] Environment model built and updated for at least one guild.
 - [ ] Metacognitive analyzer generates capability map and improvement plans.
-- [ ] At least one prompt evolution cycle completed (candidate â†’ A/B test â†’ promote or reject).
+- [ ] At least one prompt evolution cycle completed (candidate → A/B test → promote or reject).
 - [ ] Community-aware context injection produces measurably different responses for different server profiles.
 - [ ] Quality scores show statistically significant improvement after 3+ analysis cycles.
 - [ ] All prompt changes have version history with rollback capability.
@@ -1644,10 +1638,10 @@ The following enhancements are derived from the cutting-edge research survey and
 
 | Phase | Enhancement | Research Source |
 | :--- | :--- | :--- |
-| 1 (ReAct) | **Graph-of-Thought option**: for multi-source synthesis, model reasoning as a DAG where branches can merge and loop rather than linear chain | GoT papers (2024â€“2025) |
+| 1 (ReAct) | **Graph-of-Thought option**: for multi-source synthesis, model reasoning as a DAG where branches can merge and loop rather than linear chain | GoT papers (2024–2025) |
 | 1 (ReAct) | **Speculative execution**: predict likely next tool calls using router model, execute in parallel, validate after | Speculative execution for agents (2025) |
 | 2 (Session) | **Initializer/coding agent pattern**: on first turn, create structured progress files; subsequent turns read and update them | Anthropic (2025) |
-| 2 (Session) | **File-based hierarchical memory**: treat session state like git history â€” structured, version-controllable, transparent | Anthropic (2025) |
+| 2 (Session) | **File-based hierarchical memory**: treat session state like git history — structured, version-controllable, transparent | Anthropic (2025) |
 | 5 (Observability) | **HTC trajectory analysis**: extract process-level features across the agent's full operational trajectory for reliability analysis | arXiv HTC (2025) |
 | 6 (Planning) | **Speculative parallel task execution**: optimistically execute likely-needed tasks in parallel, discard if plan changes | Speculative execution (2025) |
 | 7 (Safety) | **SAUP uncertainty propagation**: propagate uncertainty through multi-step reasoning to identify fragile reasoning chains | ACL SAUP (2025) |
@@ -1671,10 +1665,10 @@ The following enhancements are derived from the cutting-edge research survey and
 ### Phase Execution Policies
 
 - Each phase is independent and can be started without completing prior phases (unless a dependency is listed).
-- Recommended execution order follows the phase numbering (1 â†’ 11).
+- Recommended execution order follows the phase numbering (1 → 11).
 - Each phase must pass `npm run check` before merge.
 - Phases with new env vars default to disabled (`false`) for safe rollout.
-- Rollout order for feature enablement: `search â†’ coding â†’ chat â†’ creative`.
+- Rollout order for feature enablement: `search → coding → chat → creative`.
 
 ---
 
@@ -1700,7 +1694,7 @@ The following enhancements are derived from the cutting-edge research survey and
 | E-004 | 2026-02-11 | `npm run eval:run` | Surgical live smoke pass; one row persisted. | `.agent/simulations/eval_smoke_20260211.json` |
 | E-005 | 2026-02-11 | `npm run eval:gate` | Strict eval gate pass after smoke row. | Eval gate report. |
 | E-006 | 2026-02-11 | Architecture audit | 15 gaps identified against industry best practices. | `sage_agentic_architecture_audit.md` |
-| E-007 | 2026-02-11 | Research survey | 12 web searches covering cutting-edge agent research (2025â€“2026). | `cutting_edge_research_findings.md` |
+| E-007 | 2026-02-11 | Research survey | 12 web searches covering cutting-edge agent research (2025–2026). | `cutting_edge_research_findings.md` |
 
 ## Phase-to-Artifact Traceability
 
@@ -1776,24 +1770,26 @@ The following enhancements are derived from the cutting-edge research survey and
 ## Recommended Execution Order
 
 ```text
-Phase 1 (ReAct) â”€â”€â”
-                   â”œâ”€â”€â–¶ Phase 3 (Context) â”€â”€â–¶ Phase 4 (Agentic RAG)
-Phase 2 (Session) â”€â”˜         â”‚
-                              â–¼
+Phase 1 (ReAct) ──┐
+                   ├──▶ Phase 3 (Context) ──▶ Phase 4 (Agentic RAG)
+Phase 2 (Session) ─┘         │
+                              ▼
                     Phase 5 (Observability)
-                              â”‚
-              â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¼â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
-              â–¼               â–¼               â–¼
+                              │
+              ┌───────────────┼───────────────┐
+              ▼               ▼               ▼
     Phase 6 (Planning)   Phase 7 (Safety)  Phase 8 (Confidence)
-              â”‚               â”‚
-              â–¼               â–¼
+              │               │
+              ▼               ▼
     Phase 9 (Quality)    Phase 10 (A2A Registry)
-              â”‚
-              â–¼
+              │
+              ▼
     Phase 11 (Fine-Tuning)
-              â”‚
-              â–¼
-    Phase 12 (Metacognitive Self-Improvement) â—€â”€â”€ FRONTIER CAPSTONE
+              │
+              ▼
+    Phase 12 (Metacognitive Self-Improvement) ◀── FRONTIER CAPSTONE
 ```
 
-Phases 1 and 2 can run in parallel as they modify different subsystems. Phase 3 (Context Engineering) prevents context exhaustion from Phases 1 and 2. Phase 4 (Agentic RAG) enhances search quality. Phase 5 (Observability) provides visibility into all prior phases. Phases 6â€“10 can proceed in any order based on priority. Phase 11 (Fine-Tuning) calibrates all parameters. **Phase 12 (Metacognitive Self-Improvement) must be last** â€” it requires all subsystems to be implemented so it can learn from the complete pipeline. It is the frontier capstone that makes the entire system continuously self-improving.
+Phases 1 and 2 can run in parallel as they modify different subsystems. Phase 3 (Context Engineering) prevents context exhaustion from Phases 1 and 2. Phase 4 (Agentic RAG) enhances search quality. Phase 5 (Observability) provides visibility into all prior phases. Phases 6–10 can proceed in any order based on priority. Phase 11 (Fine-Tuning) calibrates all parameters. **Phase 12 (Metacognitive Self-Improvement) must be last** — it requires all subsystems to be implemented so it can learn from the complete pipeline. It is the frontier capstone that makes the entire system continuously self-improving.
+
+
