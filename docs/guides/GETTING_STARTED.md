@@ -201,7 +201,7 @@ docker compose -f config/ci/docker-compose.yml up -d db tika
 Wait ~10 seconds, then run:
 
 ```bash
-npx prisma db push
+npx prisma migrate deploy
 ```
 
 Optional: start the local tool stack (self-host search/scrape/infer):

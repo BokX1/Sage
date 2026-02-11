@@ -148,7 +148,7 @@ When thresholds are breached, runtime automatically cools down to safer provider
 
 `npm run agentic:replay-gate` evaluates recent traces and enforces score/success thresholds before promotion.
 
-CI release-readiness runs this gate after schema sync (for example: `npx prisma db push`).
+CI release-readiness runs this gate after migrations are applied (for example: `npx prisma migrate deploy`).
 
 ---
 

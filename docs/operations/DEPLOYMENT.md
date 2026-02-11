@@ -108,10 +108,7 @@ See **[⚙️ Configuration Reference](../reference/CONFIGURATION.md)** for all 
 ### Initial Setup
 
 ```bash
-# Push schema to database (development)
-npm run db:push
-
-# Or generate and run migrations (production)
+# Apply tracked migrations
 npx prisma migrate deploy
 ```
 
@@ -122,7 +119,7 @@ When upgrading Sage:
 ```bash
 git pull
 npm ci
-npm run db:push    # Sync schema changes
+npx prisma migrate deploy    # Apply schema changes from committed migrations
 npm run build
 npm start
 ```

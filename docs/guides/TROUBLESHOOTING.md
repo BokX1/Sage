@@ -85,7 +85,7 @@ flowchart TD
 
 1. Verify PostgreSQL is running
 2. Check `DATABASE_URL` format: `postgresql://user:password@host:5432/sage`
-3. Run `npx prisma db push` to sync schema
+3. Run `npx prisma migrate deploy` to apply schema migrations
 
 ---
 
@@ -215,8 +215,8 @@ Possible causes:
 **Fix:**
 
 ```bash
-npx prisma db push        # Development
-npx prisma db push        # Production (avoid --accept-data-loss)
+npx prisma migrate deploy                     # Apply tracked migrations
+npx prisma migrate reset --force --skip-generate  # Development-only full reset
 ```
 
 ---

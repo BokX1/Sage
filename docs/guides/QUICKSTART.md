@@ -74,7 +74,7 @@ git clone https://github.com/BokX1/Sage.git && cd Sage
 npm ci
 npm run onboard           # ← Interactive setup wizard
 docker compose -f config/ci/docker-compose.yml up -d db
-npm run db:push
+npm run db:migrate
 npm run dev               # ← Start in development mode
 ```
 

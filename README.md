@@ -234,7 +234,7 @@ For local-first tooling (SearXNG/Crawl4AI/Ollama) with hosted fallback, see **[ð
  npm ci
  npm run onboard
  docker compose -f config/ci/docker-compose.yml up -d db tika
- npm run db:push
+ npm run db:migrate
  npm run check
  npm run dev
  ```
@@ -327,7 +327,7 @@ npm start
  src/                 # Bot runtime, handlers, core logic, scripts
  tests/               # Vitest test suites
  docs/                # User, operations, and architecture documentation
- prisma/              # Prisma schema (synced via `prisma db push`)
+ prisma/              # Prisma schema + migrations (applied via `prisma migrate deploy`)
  config/ci/           # Shared lint, test, TypeScript, Docker CI config
  config/self-host/    # Optional local tool-stack services (SearXNG/Crawl4AI/Ollama)
  ```

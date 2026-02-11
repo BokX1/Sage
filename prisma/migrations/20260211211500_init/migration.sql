@@ -36,6 +36,29 @@ CREATE TABLE "ChannelMessage" (
 );
 
 -- CreateTable
+CREATE TABLE "IngestedAttachment" (
+    "id" TEXT NOT NULL,
+    "guildId" TEXT,
+    "channelId" TEXT NOT NULL,
+    "messageId" TEXT NOT NULL,
+    "attachmentIndex" INTEGER NOT NULL,
+    "filename" TEXT NOT NULL,
+    "sourceUrl" TEXT NOT NULL,
+    "contentType" TEXT,
+    "declaredSizeBytes" INTEGER,
+    "readSizeBytes" INTEGER,
+    "extractor" TEXT,
+    "status" TEXT NOT NULL,
+    "errorText" TEXT,
+    "extractedText" TEXT,
+    "extractedTextChars" INTEGER NOT NULL DEFAULT 0,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "IngestedAttachment_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
 CREATE TABLE "ChannelSummary" (
     "id" TEXT NOT NULL,
     "guildId" TEXT NOT NULL,
@@ -139,8 +162,70 @@ CREATE TABLE "AgentRun" (
     CONSTRAINT "AgentRun_pkey" PRIMARY KEY ("id")
 );
 
+-- CreateTable
+CREATE TABLE "AgentEvaluation" (
+    "id" TEXT NOT NULL,
+    "traceId" TEXT NOT NULL,
+    "guildId" TEXT,
+    "channelId" TEXT NOT NULL,
+    "userId" TEXT NOT NULL,
+    "routeKind" TEXT NOT NULL,
+    "model" TEXT NOT NULL,
+    "rubricVersion" TEXT NOT NULL,
+    "primaryJudgeModel" TEXT NOT NULL,
+    "secondaryJudgeModel" TEXT NOT NULL,
+    "adjudicatorJudgeModel" TEXT,
+    "overallScore" DOUBLE PRECISION NOT NULL,
+    "confidence" DOUBLE PRECISION NOT NULL,
+    "verdict" TEXT NOT NULL,
+    "disagreement" BOOLEAN NOT NULL,
+    "arbitrationUsed" BOOLEAN NOT NULL,
+    "judgeAgreement" BOOLEAN NOT NULL,
+    "dimensionScoresJson" JSONB NOT NULL,
+    "issuesJson" JSONB NOT NULL,
+    "summaryText" TEXT,
+    "judgeJson" JSONB,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "AgentEvaluation_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "AgenticCanaryState" (
+    "id" TEXT NOT NULL,
+    "outcomesJson" JSONB NOT NULL,
+    "cooldownUntil" TIMESTAMP(3),
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "AgenticCanaryState_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "ModelHealthState" (
+    "modelId" TEXT NOT NULL,
+    "score" DOUBLE PRECISION NOT NULL,
+    "samples" INTEGER NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "ModelHealthState_pkey" PRIMARY KEY ("modelId")
+);
+
 -- CreateIndex
 CREATE INDEX "ChannelMessage_guildId_channelId_timestamp_idx" ON "ChannelMessage"("guildId", "channelId", "timestamp");
+
+-- CreateIndex
+CREATE INDEX "IngestedAttachment_guildId_channelId_createdAt_idx" ON "IngestedAttachment"("guildId", "channelId", "createdAt");
+
+-- CreateIndex
+CREATE INDEX "IngestedAttachment_channelId_createdAt_idx" ON "IngestedAttachment"("channelId", "createdAt");
+
+-- CreateIndex
+CREATE INDEX "IngestedAttachment_messageId_idx" ON "IngestedAttachment"("messageId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "IngestedAttachment_messageId_attachmentIndex_key" ON "IngestedAttachment"("messageId", "attachmentIndex");
 
 -- CreateIndex
 CREATE INDEX "ChannelSummary_guildId_channelId_updatedAt_idx" ON "ChannelSummary"("guildId", "channelId", "updatedAt");
@@ -183,3 +268,22 @@ CREATE INDEX "AgentRun_traceId_nodeId_idx" ON "AgentRun"("traceId", "nodeId");
 
 -- CreateIndex
 CREATE INDEX "AgentRun_agent_createdAt_idx" ON "AgentRun"("agent", "createdAt");
+
+-- CreateIndex
+CREATE INDEX "AgentEvaluation_traceId_createdAt_idx" ON "AgentEvaluation"("traceId", "createdAt");
+
+-- CreateIndex
+CREATE INDEX "AgentEvaluation_guildId_createdAt_idx" ON "AgentEvaluation"("guildId", "createdAt");
+
+-- CreateIndex
+CREATE INDEX "AgentEvaluation_channelId_createdAt_idx" ON "AgentEvaluation"("channelId", "createdAt");
+
+-- CreateIndex
+CREATE INDEX "AgentEvaluation_routeKind_createdAt_idx" ON "AgentEvaluation"("routeKind", "createdAt");
+
+-- CreateIndex
+CREATE INDEX "AgentEvaluation_rubricVersion_createdAt_idx" ON "AgentEvaluation"("rubricVersion", "createdAt");
+
+-- CreateIndex
+CREATE INDEX "ModelHealthState_updatedAt_idx" ON "ModelHealthState"("updatedAt");
+

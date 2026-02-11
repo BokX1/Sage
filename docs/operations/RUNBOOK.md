@@ -43,8 +43,8 @@ npm run release:agentic-check  # Full release gate (check + consistency + replay
 ### Database operations
 
 ```bash
-npx prisma db push       # Sync schema (no migrations)
-npm run db:studio        # Open visual database browser
+npx prisma migrate deploy  # Apply tracked schema migrations
+npm run db:studio          # Open visual database browser
 docker compose -f config/ci/docker-compose.yml up -d db tika  # Start DB + Tika
 ```
 
@@ -142,15 +142,15 @@ See [Configuration Reference](../reference/CONFIGURATION.md) for all options.
 
 ## 🗄️ Database Management
 
-### Sync schema (no migrations)
+### Apply migrations
 
 After updates or a fresh install:
 
 ```bash
-npx prisma db push
+npx prisma migrate deploy
 ```
 
-**What it does:** Syncs database tables to match `prisma/schema.prisma` without generating/applying migrations.
+**What it does:** Applies committed migrations from `prisma/migrations` to bring the database schema to the expected version.
 
 ### Browse data
 
@@ -165,7 +165,7 @@ npm run db:studio
 ⚠️ **Warning:** This deletes all data.
 
 ```bash
-npx prisma db push --force-reset --accept-data-loss
+npx prisma migrate reset --force --skip-generate
 ```
 
 If you are using the Docker Compose Postgres volume and want to wipe it entirely:
@@ -173,7 +173,7 @@ If you are using the Docker Compose Postgres volume and want to wipe it entirely
 ```bash
 docker compose -f config/ci/docker-compose.yml down -v   # Remove containers and volumes
 docker compose -f config/ci/docker-compose.yml up -d db  # Start fresh database
-npx prisma db push                                       # Recreate tables
+npx prisma migrate deploy                                # Recreate schema from tracked migrations
 ```
 
 ---

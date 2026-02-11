@@ -209,7 +209,7 @@ Runtime behavior:
    - `REPLAY_GATE_MIN_TOTAL`
    - `REPLAY_GATE_REQUIRED_ROUTES_CSV`
    - `REPLAY_GATE_MIN_ROUTE_SAMPLES`
-5. CI release-readiness syncs schema (for example: `npx prisma db push`) then executes `npm run release:agentic-check`.
+5. CI release-readiness applies tracked migrations (for example: `npx prisma migrate deploy`) then executes `npm run release:agentic-check`.
 
 Recommended pre-release command:
 

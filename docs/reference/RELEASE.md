@@ -59,7 +59,7 @@ This project follows **Semantic Versioning (SemVer)**: `MAJOR.MINOR.PATCH`.
 
 ```bash
 npm ci
-NODE_ENV=test DISCORD_TOKEN=test-token DISCORD_APP_ID=test-app-id DATABASE_URL=postgresql://postgres:password@127.0.0.1:5432/sage?schema=public REPLAY_GATE_REQUIRE_DATA=0 EVAL_GATE_REQUIRE_DATA=0 EVAL_GATE_MIN_TOTAL=0 npx prisma db push
+NODE_ENV=test DISCORD_TOKEN=test-token DISCORD_APP_ID=test-app-id DATABASE_URL=postgresql://postgres:password@127.0.0.1:5432/sage?schema=public npx prisma migrate deploy
 NODE_ENV=test DISCORD_TOKEN=test-token DISCORD_APP_ID=test-app-id DATABASE_URL=postgresql://postgres:password@127.0.0.1:5432/sage?schema=public npm run agentic:consistency-check
 NODE_ENV=test DISCORD_TOKEN=test-token DISCORD_APP_ID=test-app-id DATABASE_URL=postgresql://postgres:password@127.0.0.1:5432/sage?schema=public REPLAY_GATE_REQUIRE_DATA=0 EVAL_GATE_REQUIRE_DATA=0 EVAL_GATE_MIN_TOTAL=0 npm run release:agentic-check
 ```
@@ -75,7 +75,7 @@ $env:DATABASE_URL="postgresql://postgres:password@127.0.0.1:5432/sage?schema=pub
 $env:REPLAY_GATE_REQUIRE_DATA="0"
 $env:EVAL_GATE_REQUIRE_DATA="0"
 $env:EVAL_GATE_MIN_TOTAL="0"
-npx prisma db push
+npx prisma migrate deploy
 npm run agentic:consistency-check
 npm run release:agentic-check
 ```
