@@ -1,4 +1,4 @@
-﻿CREATE TABLE "AgenticCanaryState" (
+CREATE TABLE "AgenticCanaryState" (
     "id" TEXT NOT NULL,
     "outcomesJson" JSONB NOT NULL,
     "cooldownUntil" TIMESTAMP(3),
