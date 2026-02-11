@@ -1,4 +1,4 @@
-﻿CREATE TABLE "AgentEvaluation" (
+CREATE TABLE "AgentEvaluation" (
     "id" TEXT NOT NULL,
     "traceId" TEXT NOT NULL,
     "guildId" TEXT,
