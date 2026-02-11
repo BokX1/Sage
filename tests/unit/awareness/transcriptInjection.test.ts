@@ -153,7 +153,7 @@ describe('transcript injection', () => {
     expect(hasTranscript).toBe(false);
   });
 
-  it('includes rolling and profile summaries before the transcript', async () => {
+  it('includes ChannelMemory packet before the transcript', async () => {
     const now = new Date();
     await summaryStore.upsertSummary({
       guildId: 'guild-1',
@@ -208,18 +208,21 @@ describe('transcript injection', () => {
     const messages = call.messages as { role: string; content: string }[];
     const systemContent = messages[0].content;
 
-    const rollingIndex = systemContent.indexOf('Channel rolling summary');
-    const profileIndex = systemContent.indexOf('Channel profile');
+    const channelMemoryIndex = systemContent.indexOf('[ChannelMemory] Channel memory (STM+LTM):');
+    const shortTermIndex = systemContent.indexOf('Short-term memory');
+    const longTermIndex = systemContent.indexOf('Long-term memory');
     const transcriptIndex = systemContent.indexOf('Recent channel transcript');
 
-    expect(rollingIndex).toBeGreaterThan(-1);
-    expect(profileIndex).toBeGreaterThan(-1);
+    expect(channelMemoryIndex).toBeGreaterThan(-1);
+    expect(shortTermIndex).toBeGreaterThan(-1);
+    expect(longTermIndex).toBeGreaterThan(-1);
     expect(transcriptIndex).toBeGreaterThan(-1);
-    expect(profileIndex).toBeLessThan(rollingIndex);
-    expect(rollingIndex).toBeLessThan(transcriptIndex);
+    expect(channelMemoryIndex).toBeLessThan(transcriptIndex);
+    expect(shortTermIndex).toBeLessThan(transcriptIndex);
+    expect(longTermIndex).toBeLessThan(transcriptIndex);
   });
 
-  it('omits summaries when logging is disabled', async () => {
+  it('keeps ChannelMemory packet but omits transcript when logging is disabled', async () => {
     vi.mocked(isLoggingEnabled).mockReturnValue(false);
     const now = new Date();
     await summaryStore.upsertSummary({
@@ -247,16 +250,16 @@ describe('transcript injection', () => {
     });
 
     const call = mockChat.chat.mock.calls[0][0];
-    const hasRollingSummary = call.messages.some(
+    const hasChannelMemoryPacket = call.messages.some(
       (message: { role: string; content: string }) =>
-        message.role === 'system' && message.content.startsWith('Channel rolling summary'),
+        message.role === 'system' && message.content.includes('[ChannelMemory] Channel memory (STM+LTM):'),
     );
-    const hasProfileSummary = call.messages.some(
+    const hasTranscript = call.messages.some(
       (message: { role: string; content: string }) =>
-        message.role === 'system' && message.content.startsWith('Channel profile'),
+        message.role === 'system' && message.content.includes('Recent channel transcript'),
     );
 
-    expect(hasRollingSummary).toBe(false);
-    expect(hasProfileSummary).toBe(false);
+    expect(hasChannelMemoryPacket).toBe(true);
+    expect(hasTranscript).toBe(false);
   });
 });

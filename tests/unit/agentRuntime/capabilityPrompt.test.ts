@@ -10,7 +10,7 @@ describe('capabilityPrompt', () => {
       routeKind: 'chat',
       searchMode: null,
       routerReasoning: 'User asked a general server question that needs social context.',
-      contextProviders: ['Memory', 'SocialGraph'],
+      contextProviders: ['UserMemory', 'ChannelMemory', 'SocialGraph'],
       activeTools: ['web_search', 'web_scrape'],
     });
 
@@ -21,7 +21,9 @@ describe('capabilityPrompt', () => {
     expect(prompt).toContain('Router can choose these routes per turn: chat, coding, search, creative.');
     expect(prompt).toContain('Active route capability focus: Handle conversational support');
     expect(prompt).toContain('Router rationale: User asked a general server question');
-    expect(prompt).toContain('Context providers available this turn: Memory, SocialGraph.');
+    expect(prompt).toContain(
+      'Context providers available this turn: UserMemory, ChannelMemory, SocialGraph.',
+    );
     expect(prompt).toContain('Runtime tools available this turn: web_search, web_scrape.');
     expect(prompt).toContain('critic does not execute tools directly');
     expect(prompt).toContain('## Agentic Loop Contract');
@@ -33,7 +35,7 @@ describe('capabilityPrompt', () => {
     const prompt = buildCapabilityPromptSection({
       routeKind: 'search',
       searchMode: 'complex',
-      contextProviders: ['Memory'],
+      contextProviders: ['UserMemory', 'ChannelMemory'],
       activeTools: ['web_search'],
     });
 
@@ -46,7 +48,7 @@ describe('capabilityPrompt', () => {
       routeKind: 'search',
       searchMode: 'complex',
       routerReasoning: 'Fresh external facts required.',
-      contextProviders: ['Memory'],
+      contextProviders: ['UserMemory', 'ChannelMemory'],
       activeTools: ['web_search', 'web_scrape'],
     });
 

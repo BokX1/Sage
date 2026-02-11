@@ -82,10 +82,10 @@ flowchart LR
 
     subgraph ContextProviders
         direction TB
-        M[Memory]:::provider
+        M[UserMemory]:::provider
         G[SocialGraph]:::provider
         V[VoiceAnalytics]:::provider
-        S[Summarizer]:::provider
+        S[ChannelMemory]:::provider
     end
 
     C -->|agentic path| X[Context Graph Executor]:::runtime
@@ -112,6 +112,9 @@ flowchart LR
 
     B -->|"Voice via slash commands"| VC[(Voice Channel)]:::user
 ```
+
+> [!NOTE]
+> Chat turns always include `UserMemory` and `ChannelMemory`. `SocialGraph` and `VoiceAnalytics` are optional context enhancers.
 
 ---
 

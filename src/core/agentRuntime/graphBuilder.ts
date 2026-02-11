@@ -1,4 +1,8 @@
-import { ContextProviderName } from '../context/context-types';
+import {
+  ContextProviderName,
+  resolveContextProviderSet,
+  withRequiredContextProviders,
+} from '../context/context-types';
 import { AgentGraph, AgentTaskBudget, AgentTaskNode } from './agent-types';
 import { AgentKind } from '../orchestration/agentSelector';
 
@@ -9,12 +13,14 @@ const DEFAULT_BUDGET: AgentTaskBudget = {
   maxOutputTokens: 2_000,
 };
 
-const PROVIDER_BUDGET_OVERRIDES: Partial<Record<ContextProviderName, Partial<AgentTaskBudget>>> = {
-  Memory: {
+const PROVIDER_BUDGET_OVERRIDES: Partial<
+  Record<ContextProviderName, Partial<AgentTaskBudget>>
+> = {
+  UserMemory: {
     maxLatencyMs: 15_000,
     maxRetries: 0,
   },
-  Summarizer: {
+  ChannelMemory: {
     maxLatencyMs: 20_000,
     maxRetries: 1,
   },
@@ -27,6 +33,8 @@ const PROVIDER_BUDGET_OVERRIDES: Partial<Record<ContextProviderName, Partial<Age
     maxRetries: 1,
   },
 };
+
+const CHAT_REQUIRED_PROVIDERS: ContextProviderName[] = ['UserMemory', 'ChannelMemory'];
 
 function normalizeNodeId(provider: ContextProviderName, index: number): string {
   return `${provider.toLowerCase()}-${index + 1}`;
@@ -42,10 +50,10 @@ function toTaskBudget(provider: ContextProviderName): AgentTaskBudget {
 
 function objectiveForProvider(provider: ContextProviderName, agentKind: string): string {
   switch (provider) {
-    case 'Memory':
-      return 'Retrieve stable memory/profile facts relevant to this request.';
-    case 'Summarizer':
-      return 'Provide concise channel context summaries for this turn.';
+    case 'UserMemory':
+      return 'Retrieve stable user profile memory relevant to this turn.';
+    case 'ChannelMemory':
+      return 'Provide short-term and long-term channel memory context for this turn.';
     case 'SocialGraph':
       return 'Provide relationship context that can improve response personalization.';
     case 'VoiceAnalytics':
@@ -59,22 +67,30 @@ function successCriteriaForProvider(): string[] {
   return ['returns_context_packet'];
 }
 
-function filterProviders(providers: ContextProviderName[], skipMemory: boolean): ContextProviderName[] {
-  return providers.filter((p) => !(skipMemory && p === 'Memory'));
+function filterProviders(
+  providers: ContextProviderName[],
+  skipMemory: boolean,
+): ContextProviderName[] {
+  const resolvedProviders = resolveContextProviderSet({
+    providers,
+    fallback: [],
+  });
+
+  return resolvedProviders.filter((provider) => !(skipMemory && provider === 'UserMemory'));
 }
 
 export function getStandardProvidersForAgent(agentKind: AgentKind): ContextProviderName[] {
-  const providers: ContextProviderName[] = ['Memory'];
+  const baseProviders: ContextProviderName[] = ['UserMemory', 'ChannelMemory'];
 
   switch (agentKind) {
     case 'chat':
-      // Chat uses SocialGraph for context, and potentially Summarizer/Voice via tools/dynamic selection
-      // But standard baseline is Memory + SocialGraph
-      return [...providers, 'SocialGraph', 'VoiceAnalytics'];
-    // Coding and Search rely primarily on Memory + Tools + their specialized nature
-    // Creative relies on Memory
+      return [...baseProviders, 'SocialGraph', 'VoiceAnalytics'];
+    case 'coding':
+    case 'search':
+    case 'creative':
+      return baseProviders;
     default:
-      return providers;
+      return baseProviders;
   }
 }
 
@@ -171,9 +187,17 @@ export function buildContextGraph(params: {
   const { agentKind, skipMemory, enableParallel = true } = params;
 
   // Use provided providers or fallback to standard assignment
-  const providers = params.providers && params.providers.length > 0
-    ? params.providers
-    : getStandardProvidersForAgent(agentKind);
+  const resolvedProviders = resolveContextProviderSet({
+    providers: params.providers,
+    fallback: getStandardProvidersForAgent(agentKind),
+  });
+  const providers =
+    agentKind === 'chat'
+      ? withRequiredContextProviders({
+          providers: resolvedProviders,
+          required: CHAT_REQUIRED_PROVIDERS,
+        })
+      : resolvedProviders;
 
   if (
     shouldUseFanout({

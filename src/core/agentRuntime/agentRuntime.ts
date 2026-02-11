@@ -25,7 +25,11 @@ import { classifyStyle, analyzeUserStyle } from './styleClassifier';
 import { AgentKind, decideAgent, SearchExecutionMode } from '../orchestration/agentSelector';
 import { runContextProviders } from '../context/runContext';
 import { replaceAgentRuns, upsertTraceStart, updateTraceEnd } from './agent-trace-repo';
-import { ContextPacket, ContextProviderName } from '../context/context-types';
+import {
+  ContextPacket,
+  resolveContextProviderSet,
+  withRequiredContextProviders,
+} from '../context/context-types';
 import { resolveModelForRequestDetailed } from '../llm/model-resolver';
 import { recordModelOutcome } from '../llm/model-health';
 import { getGuildApiKey } from '../settings/guildSettingsRepo';
@@ -397,6 +401,18 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
   });
 
   logger.debug({ traceId, agentDecision }, 'Agent Selector decision');
+  const resolvedContextProviders = resolveContextProviderSet({
+    providers: agentDecision.contextProviders,
+    fallback: getStandardProvidersForAgent(agentDecision.kind),
+  });
+  const activeContextProviders =
+    agentDecision.kind === 'chat'
+      ? withRequiredContextProviders({
+          providers: resolvedContextProviders,
+          required: ['UserMemory', 'ChannelMemory'],
+        })
+      : resolvedContextProviders;
+  const hasChannelMemoryProvider = activeContextProviders.includes('ChannelMemory');
 
   let contextPackets: ContextPacket[] = [];
   let contextPacketsText = '';
@@ -433,7 +449,7 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
   const runLegacyProviders = async (params: { mode: string; reason: string; eventType: string }) => {
     try {
       contextPackets = await runContextProviders({
-        providers: agentDecision.contextProviders ?? getStandardProvidersForAgent(agentDecision.kind),
+        providers: activeContextProviders,
         guildId,
         channelId,
         userId,
@@ -475,7 +491,7 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
     try {
       const graph = buildContextGraph({
         agentKind: agentDecision.kind,
-        providers: agentDecision.contextProviders,
+        providers: activeContextProviders,
         skipMemory: !!userProfileSummary,
         enableParallel: effectiveGraphParallelEnabled,
       });
@@ -519,7 +535,7 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
         success: false,
         config: canaryConfig,
       });
-      logger.warn({ error: err, traceId }, 'Agent graph execution failed; falling back to legacy providers');
+      logger.warn({ error: err, traceId }, 'Agent graph execution failed; falling back to provider runner');
       await runLegacyProviders({
         mode: 'legacy_provider_runner',
         reason: String(err),
@@ -619,38 +635,40 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
 
     recentTranscript = buildTranscriptBlock(recentMessages, appConfig.CONTEXT_TRANSCRIPT_MAX_CHARS);
 
-    try {
-      const summaryStore = getChannelSummaryStore();
-      const [rollingSummary, profileSummary] = await Promise.all([
-        summaryStore.getLatestSummary({ guildId, channelId, kind: 'rolling' }),
-        summaryStore.getLatestSummary({ guildId, channelId, kind: 'profile' }),
-      ]);
+    if (!hasChannelMemoryProvider) {
+      try {
+        const summaryStore = getChannelSummaryStore();
+        const [rollingSummary, profileSummary] = await Promise.all([
+          summaryStore.getLatestSummary({ guildId, channelId, kind: 'rolling' }),
+          summaryStore.getLatestSummary({ guildId, channelId, kind: 'profile' }),
+        ]);
 
-      if (rollingSummary) {
-        rollingSummaryText = `Channel rolling summary (last ${appConfig.SUMMARY_ROLLING_WINDOW_MIN}m):\n${formatSummaryAsText({
-          ...rollingSummary,
-          topics: rollingSummary.topics ?? [],
-          threads: rollingSummary.threads ?? [],
-          unresolved: rollingSummary.unresolved ?? [],
-          decisions: rollingSummary.decisions ?? [],
-          actionItems: rollingSummary.actionItems ?? [],
-          glossary: rollingSummary.glossary ?? {},
-        })}`;
-      }
+        if (rollingSummary) {
+          rollingSummaryText = `Channel rolling summary (last ${appConfig.SUMMARY_ROLLING_WINDOW_MIN}m):\n${formatSummaryAsText({
+            ...rollingSummary,
+            topics: rollingSummary.topics ?? [],
+            threads: rollingSummary.threads ?? [],
+            unresolved: rollingSummary.unresolved ?? [],
+            decisions: rollingSummary.decisions ?? [],
+            actionItems: rollingSummary.actionItems ?? [],
+            glossary: rollingSummary.glossary ?? {},
+          })}`;
+        }
 
-      if (profileSummary) {
-        profileSummaryText = `Channel profile (long-term):\n${formatSummaryAsText({
-          ...profileSummary,
-          topics: profileSummary.topics ?? [],
-          threads: profileSummary.threads ?? [],
-          unresolved: profileSummary.unresolved ?? [],
-          decisions: profileSummary.decisions ?? [],
-          actionItems: profileSummary.actionItems ?? [],
-          glossary: profileSummary.glossary ?? {},
-        })}`;
+        if (profileSummary) {
+          profileSummaryText = `Channel profile (long-term):\n${formatSummaryAsText({
+            ...profileSummary,
+            topics: profileSummary.topics ?? [],
+            threads: profileSummary.threads ?? [],
+            unresolved: profileSummary.unresolved ?? [],
+            decisions: profileSummary.decisions ?? [],
+            actionItems: profileSummary.actionItems ?? [],
+            glossary: profileSummary.glossary ?? {},
+          })}`;
+        }
+      } catch (error) {
+        logger.warn({ error, guildId, channelId }, 'Failed to load channel summaries (non-fatal)');
       }
-    } catch (error) {
-      logger.warn({ error, guildId, channelId }, 'Failed to load channel summaries (non-fatal)');
     }
   }
 
@@ -705,8 +723,6 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
       })
     : null;
 
-  const activeContextProviders =
-    agentDecision.contextProviders ?? getStandardProvidersForAgent(agentDecision.kind);
   const capabilityPromptParams: BuildCapabilityPromptSectionParams = {
     routeKind: agentDecision.kind,
     searchMode: searchExecutionMode,
@@ -1773,12 +1789,14 @@ Checked on: <YYYY-MM-DD> (only when required)`;
     return verificationPattern.test(hintBlob);
   };
 
-  const deriveCriticRedispatchProviders = (issues: string[]): ContextProviderName[] => {
+  const deriveCriticRedispatchProviders = (
+    issues: string[],
+  ): (typeof activeContextProviders)[number][] => {
     const issueText = issues.join(' ').toLowerCase();
-    const providers = new Set<ContextProviderName>();
+    const providers = new Set<(typeof activeContextProviders)[number]>();
 
     if (/(fact|factual|correct|accuracy|halluc|citation|source|verify|evidence)/.test(issueText)) {
-      providers.add('Memory');
+      providers.add('UserMemory');
     }
     if (/(relationship|friend|social|tone|persona|community)/.test(issueText)) {
       providers.add('SocialGraph');
@@ -1787,10 +1805,10 @@ Checked on: <YYYY-MM-DD> (only when required)`;
       providers.add('VoiceAnalytics');
     }
     if (/(summary|summar|context|missing context|thread)/.test(issueText)) {
-      providers.add('Summarizer');
+      providers.add('ChannelMemory');
     }
 
-    const allowedProviders = agentDecision.contextProviders ?? getStandardProvidersForAgent(agentDecision.kind);
+    const allowedProviders = activeContextProviders;
     return [...providers].filter((provider) => allowedProviders.includes(provider));
   };
 

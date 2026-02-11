@@ -66,12 +66,13 @@ Runtime behavior:
 
 1. `decideAgent` classifies each request as `chat`, `coding`, `search`, or `creative`, and returns route temperature.
 2. For `search`, router also returns `search_mode` (`simple` or `complex`); if missing/invalid, runtime applies a deterministic fallback heuristic (`simple` for direct lookups, `complex` for comparison/synthesis prompts).
-3. `getStandardProvidersForAgent` assigns baseline context providers (route-aware).
-4. `buildContextGraph` builds:
+3. `getStandardProvidersForAgent` assigns route-aware baseline providers; chat always includes `UserMemory` + `ChannelMemory`.
+4. `SocialGraph` and `VoiceAnalytics` are optional enhancers included only when selected for that turn.
+5. `buildContextGraph` builds:
    - fanout graph when parallel provider fetch is allowed,
    - linear graph when parallelism is disabled or unnecessary.
-5. Canary (`evaluateAgenticCanary`) decides if graph execution is used this turn.
-6. If canary denies agentic path, runtime uses provider runner fallback directly (`runContextProviders`).
+6. Canary (`evaluateAgenticCanary`) decides if graph execution is used this turn.
+7. If canary denies agentic path, runtime uses provider runner fallback directly (`runContextProviders`).
 
 ---
 
@@ -87,7 +88,7 @@ Runtime behavior:
 
 1. Graph executor runs nodes with per-node retry/timeout budgets.
 2. Parallel execution is bounded by `AGENTIC_GRAPH_MAX_PARALLEL`.
-3. Node outputs are normalized into context packets (`Memory`, `SocialGraph`, `VoiceAnalytics`, `Summarizer`).
+3. Node outputs are normalized into context packets (`UserMemory`, `ChannelMemory`, `SocialGraph`, `VoiceAnalytics`).
 4. Event stream captures graph lifecycle (`graph_started`, `node_completed`, `node_failed`, `graph_completed`).
 5. Per-node runtime rows are persisted as `AgentRun` records.
 6. `buildContextMessages` assembles prompt blocks in order: base system -> runtime instruction -> profile summary -> rolling summary -> context packets -> transcript -> intent hint -> reply context/reference -> latest user.

@@ -58,7 +58,8 @@ async function main(): Promise<void> {
           source: 'seed-replay-traces',
         },
         expertsJson: [
-          { name: 'Memory', json: { seeded: true } },
+          { name: 'UserMemory', json: { seeded: true } },
+          { name: 'ChannelMemory', json: { seeded: true } },
           { name: 'SocialGraph', json: { seeded: route === 'chat' } },
         ],
         reasoningText: `Seeded ${route} trace sample ${sample}`,

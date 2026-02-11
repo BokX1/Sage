@@ -36,7 +36,7 @@ describe('graphExecutor', () => {
 
     const graph = buildLinearContextGraph({
       agentKind: 'chat',
-      providers: ['Memory', 'SocialGraph'],
+      providers: ['UserMemory', 'SocialGraph'],
       skipMemory: false,
     });
 
@@ -72,7 +72,7 @@ describe('graphExecutor', () => {
 
     const graph = buildLinearContextGraph({
       agentKind: 'chat',
-      providers: ['Memory', 'SocialGraph'],
+      providers: ['UserMemory', 'SocialGraph'],
       skipMemory: false,
     });
 
@@ -108,7 +108,7 @@ describe('graphExecutor', () => {
 
     const graph = buildContextGraph({
       agentKind: 'chat',
-      providers: ['Memory', 'SocialGraph', 'VoiceAnalytics'],
+      providers: ['UserMemory', 'SocialGraph', 'VoiceAnalytics'],
       skipMemory: false,
       enableParallel: true,
     });
@@ -124,7 +124,13 @@ describe('graphExecutor', () => {
     });
     const elapsedMs = Date.now() - startedAt;
 
-    expect(result.packets).toHaveLength(3);
+    expect(result.packets).toHaveLength(4);
+    expect(result.packets.map((packet) => packet.name)).toEqual([
+      'UserMemory',
+      'ChannelMemory',
+      'SocialGraph',
+      'VoiceAnalytics',
+    ]);
     expect(elapsedMs).toBeLessThan(220);
   });
 
@@ -142,7 +148,7 @@ describe('graphExecutor', () => {
 
     const graph = buildContextGraph({
       agentKind: 'chat',
-      providers: ['Memory', 'SocialGraph', 'VoiceAnalytics'],
+      providers: ['UserMemory', 'SocialGraph', 'VoiceAnalytics'],
       skipMemory: false,
       enableParallel: true,
     });

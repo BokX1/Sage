@@ -41,7 +41,9 @@ In Sage, "agentic" means the runtime can:
 
 ### 2) Context Packets + Builder
 
-- Providers emit typed packets (`Memory`, `SocialGraph`, `VoiceAnalytics`, `Summarizer`).
+- Providers emit typed packets (`UserMemory`, `ChannelMemory`, `SocialGraph`, `VoiceAnalytics`).
+- Chat route enforces `UserMemory` + `ChannelMemory` as required baseline providers.
+- `SocialGraph` and `VoiceAnalytics` are optional providers added per-turn when selected.
 - Packets are merged into `buildContextMessages` with transcript and summary blocks under token budgets.
 - Prompt assembly keeps one ordered system block (`base_system`, then runtime capability instruction, then summaries/providers/transcript).
 - Creative route can add image-generation packets/files through `runImageGenAction`.

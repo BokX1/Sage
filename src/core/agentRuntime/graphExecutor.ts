@@ -1,6 +1,10 @@
 import { LLMChatMessage, LLMMessageContent } from '../llm/llm-types';
 import { logger } from '../utils/logger';
-import { ContextProviderName, ContextPacket } from '../context/context-types';
+import {
+  ContextProviderName,
+  ContextPacket,
+  isContextProviderName,
+} from '../context/context-types';
 import { runContextProviders } from '../context/runContext';
 import { AgentEvent, createAgentEventFactory } from './agent-events';
 import {
@@ -48,15 +52,9 @@ export interface AgentNodeRun {
   metadataJson?: Record<string, unknown>;
 }
 
-const PROVIDER_NAMES: ContextProviderName[] = [
-  'Memory',
-  'Summarizer',
-  'SocialGraph',
-  'VoiceAnalytics',
-];
-
 function asProviderName(agent: AgentTaskNode['agent']): ContextProviderName | null {
-  return PROVIDER_NAMES.includes(agent as ContextProviderName) ? (agent as ContextProviderName) : null;
+  if (!isContextProviderName(agent)) return null;
+  return agent;
 }
 
 function timeoutError(nodeId: string, timeoutMs: number): Error {

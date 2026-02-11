@@ -65,10 +65,10 @@ flowchart LR
     end
 
     subgraph Providers
-        MP[Memory]:::provider
+        MP[UserMemory]:::provider
         SP[SocialGraph]:::provider
         VP[VoiceAnalytics]:::provider
-        SU[Summarizer]:::provider
+        SU[ChannelMemory]:::provider
     end
 
     subgraph Context_Builder["Context Builder"]
@@ -87,6 +87,12 @@ flowchart LR
     SU --> MB
     MB --> Budget --> LLM[LLM Request]:::llm
 ```
+
+Provider selection notes:
+
+- Chat route always includes `UserMemory` and `ChannelMemory`.
+- `SocialGraph` and `VoiceAnalytics` are optional and only included when selected for the turn.
+- Legacy provider aliases are removed; only canonical provider names are valid.
 
 ---
 

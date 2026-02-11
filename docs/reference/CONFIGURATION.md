@@ -270,7 +270,7 @@ Used by `npm run agentic:replay-gate` and release checks.
 | `TIMEOUT_CHAT_MS` | Chat/model request timeout | `180000` |
 | `TIMEOUT_SEARCH_MS` | Search-pass timeout baseline (normal search models) | `90000` |
 | `TIMEOUT_SEARCH_SCRAPER_MS` | Search-pass timeout for scraper model (`nomnom`) | `150000` |
-| `TIMEOUT_MEMORY_MS` | Memory/summarization timeout | `300000` |
+| `TIMEOUT_MEMORY_MS` | User/channel memory provider timeout (`UserMemory`, `ChannelMemory`) | `300000` |
 | `SEARCH_MAX_ATTEMPTS_SIMPLE` | Max guarded search model attempts when router picks simple search mode | `2` |
 | `SEARCH_MAX_ATTEMPTS_COMPLEX` | Max guarded search model attempts when router picks complex search mode | `4` |
 | `TOOL_WEB_SEARCH_TIMEOUT_MS` | External web-search tool timeout | `45000` |

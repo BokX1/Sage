@@ -9,10 +9,6 @@ export interface RunSocialGraphProviderParams {
   maxChars?: number;
 }
 
-/**
- * Relationship tier labels based on weight.
- * Provides human-readable context for the LLM.
- */
 type RelationshipTier = 'Best Friend' | 'Close Friend' | 'Friend' | 'Acquaintance' | 'New Connection';
 
 function getRelationshipTier(weight: number): RelationshipTier {
@@ -23,73 +19,62 @@ function getRelationshipTier(weight: number): RelationshipTier {
   return 'New Connection';
 }
 
-function getRelationshipEmoji(tier: RelationshipTier): string {
-  switch (tier) {
-    case 'Best Friend': return '💜';
-    case 'Close Friend': return '💙';
-    case 'Friend': return '💚';
-    case 'Acquaintance': return '🤝';
-    case 'New Connection': return '👋';
-  }
+function formatHours(ms: number): string {
+  if (ms <= 0) return '0.0h';
+  return `${(ms / 3_600_000).toFixed(1)}h`;
 }
 
-/**
- * Format evidence into a natural language description.
- */
-function formatEvidenceNarrative(features: {
+function formatRecency(epochMs: number | undefined, nowMs: number): string {
+  if (!epochMs || epochMs <= 0) return 'unknown';
+  const deltaMs = Math.max(0, nowMs - epochMs);
+  const minutes = Math.floor(deltaMs / 60_000);
+  if (minutes < 1) return 'just now';
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h`;
+  const days = Math.floor(hours / 24);
+  return `${days}d`;
+}
+
+function formatSignals(features: {
   mentions?: { count?: number };
   replies?: { count?: number };
   voice?: { overlapMs?: number };
 }): string {
-  const parts: string[] = [];
-
   const mentionsCount = features.mentions?.count ?? 0;
-  if (mentionsCount > 0) {
-    if (mentionsCount >= 50) parts.push('frequently mentions each other');
-    else if (mentionsCount >= 20) parts.push('regularly interact via mentions');
-    else if (mentionsCount >= 5) parts.push('occasionally mention each other');
-    else parts.push('have exchanged a few mentions');
-  }
-
   const repliesCount = features.replies?.count ?? 0;
-  if (repliesCount > 0) {
-    if (repliesCount >= 30) parts.push('have many conversations');
-    else if (repliesCount >= 10) parts.push('engage in discussions');
-    else parts.push('have replied to each other');
-  }
-
   const overlapMs = features.voice?.overlapMs ?? 0;
-  if (overlapMs > 0) {
-    const hours = overlapMs / 3600000;
-    if (hours >= 10) parts.push('spend significant time together in voice');
-    else if (hours >= 2) parts.push('hang out in voice regularly');
-    else if (hours >= 0.5) parts.push('have shared voice time');
-    else parts.push('have been in voice together briefly');
-  }
+  return `mentions=${mentionsCount}, replies=${repliesCount}, voice_overlap=${formatHours(overlapMs)}`;
+}
 
-  if (parts.length === 0) return 'minimal recorded interaction';
-
-  return parts.join(', ');
+function truncateWithEllipsis(text: string, maxChars: number): { value: string; truncated: boolean } {
+  if (text.length <= maxChars) return { value: text, truncated: false };
+  return {
+    value: `${text.slice(0, Math.max(0, maxChars - 3)).trimEnd()}...`,
+    truncated: true,
+  };
 }
 
 /**
  * Social graph provider: retrieves top relationship edges for a user.
- * Returns narrative descriptions with relationship tiers.
+ * Returns compact relationship signals for personalized tone calibration.
  */
 export async function runSocialGraphProvider(
   params: RunSocialGraphProviderParams,
 ): Promise<ContextPacket> {
-  const { guildId, userId, maxEdges = 10, maxChars = 1200 } = params;
+  const { guildId, userId, maxEdges = 10, maxChars = 1800 } = params;
 
   try {
     const edges = await getEdgesForUser({ guildId, userId, limit: maxEdges });
+    const nowMs = Date.now();
 
     if (edges.length === 0) {
       return {
         name: 'SocialGraph',
-        content: 'Social context: This user is new or has no recorded relationships yet. They may be getting to know the community.',
+        content:
+          'Social graph memory: no relationship edges found for this user yet. Treat social familiarity as unknown and avoid over-personalized assumptions.',
         json: { edges: [], tier: 'none' },
-        tokenEstimate: 20,
+        tokenEstimate: 25,
       };
     }
 
@@ -97,34 +82,40 @@ export async function runSocialGraphProvider(
     for (const edge of edges) {
       const otherId = edge.userA === userId ? edge.userB : edge.userA;
       const tier = getRelationshipTier(edge.weight);
-      const emoji = getRelationshipEmoji(tier);
-      const narrative = formatEvidenceNarrative(edge.featuresJson);
+      const lastSignalAt = Math.max(
+        edge.featuresJson.mentions?.lastAt ?? 0,
+        edge.featuresJson.replies?.lastAt ?? 0,
+        edge.featuresJson.voice?.lastAt ?? 0,
+      );
+      const recency = formatRecency(lastSignalAt, nowMs);
+      const signals = formatSignals(edge.featuresJson);
 
-      lines.push(`${emoji} <@${otherId}> is a "${tier}" — ${narrative}`);
+      lines.push(
+        `- <@${otherId}>: tier=${tier}, strength=${edge.weight.toFixed(2)}, confidence=${edge.confidence.toFixed(2)}, recency=${recency}, signals=${signals}`,
+      );
     }
 
-    // Build narrative summary
-    const bestFriends = edges.filter(e => e.weight >= 0.8).length;
-    const closeFriends = edges.filter(e => e.weight >= 0.6 && e.weight < 0.8).length;
+    const bestFriends = edges.filter((e) => e.weight >= 0.8).length;
+    const closeFriends = edges.filter((e) => e.weight >= 0.6 && e.weight < 0.8).length;
+    const friends = edges.filter((e) => e.weight >= 0.4 && e.weight < 0.6).length;
 
-    let summary = 'Social context: ';
-    if (bestFriends > 0) {
-      summary += `User has ${bestFriends} best friend${bestFriends > 1 ? 's' : ''} in this server. `;
+    let guidance = 'Keep tone neutral unless social cues are explicit.';
+    if (bestFriends > 0 || closeFriends > 0) {
+      guidance =
+        'You can use a warmer, familiar tone when mentioning established relationships; avoid inventing personal details.';
+    } else if (friends > 0) {
+      guidance = 'Use lightly familiar tone, but keep claims conservative.';
     }
-    if (closeFriends > 0) {
-      summary += `They also have ${closeFriends} close friend${closeFriends > 1 ? 's' : ''}. `;
-    }
-    if (bestFriends === 0 && closeFriends === 0) {
-      summary += 'User is still building deeper connections. ';
-    }
-    summary += '\n\nRelationships:\n' + lines.join('\n');
 
-    let content = summary;
-
-    // Truncate if needed
-    if (content.length > maxChars) {
-      content = content.slice(0, maxChars).trim() + '\n(truncated)';
-    }
+    const built = [
+      'Social graph memory:',
+      `- Edge count: ${edges.length}`,
+      `- Tier mix: best=${bestFriends}, close=${closeFriends}, friend=${friends}`,
+      `- Guidance: ${guidance}`,
+      'Relationships:',
+      ...lines,
+    ].join('\n');
+    const { value: content, truncated } = truncateWithEllipsis(built, maxChars);
 
     return {
       name: 'SocialGraph',
@@ -133,14 +124,27 @@ export async function runSocialGraphProvider(
         edgeCount: edges.length,
         bestFriends,
         closeFriends,
-        topEdges: edges.slice(0, 5)
+        friends,
+        topEdges: edges.slice(0, 5).map((edge) => {
+          const otherId = edge.userA === userId ? edge.userB : edge.userA;
+          return {
+            otherId,
+            tier: getRelationshipTier(edge.weight),
+            weight: edge.weight,
+            confidence: edge.confidence,
+            mentions: edge.featuresJson.mentions?.count ?? 0,
+            replies: edge.featuresJson.replies?.count ?? 0,
+            voiceOverlapMs: edge.featuresJson.voice?.overlapMs ?? 0,
+          };
+        }),
+        truncated,
       },
       tokenEstimate: estimateTokens(content),
     };
   } catch (error) {
     return {
       name: 'SocialGraph',
-      content: 'Social context: Unable to load relationship data at this time.',
+      content: 'Social graph memory: unable to load relationship data at this time.',
       json: { error: String(error) },
       tokenEstimate: 15,
     };

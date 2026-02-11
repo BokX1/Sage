@@ -69,7 +69,7 @@ describe('Autopilot Runtime', () => {
     );
     mockDecideAgent.mockResolvedValue({
       kind: 'chat',
-      contextProviders: ['Memory'],
+      contextProviders: ['UserMemory'],
       temperature: 1.2,
       reasoningText: 'test decision',
     });
@@ -136,7 +136,7 @@ describe('Autopilot Runtime', () => {
   it('returns raw search output for search_mode simple without chat summarization', async () => {
     mockDecideAgent.mockResolvedValue({
       kind: 'search',
-      contextProviders: ['Memory'],
+      contextProviders: ['UserMemory'],
       temperature: 0.3,
       searchMode: 'simple',
       reasoningText: 'search simple route',
@@ -170,7 +170,7 @@ describe('Autopilot Runtime', () => {
   it('retries guarded search models and keeps search allowlist strict', async () => {
     mockDecideAgent.mockResolvedValue({
       kind: 'search',
-      contextProviders: ['Memory'],
+      contextProviders: ['UserMemory'],
       temperature: 0.3,
       searchMode: 'simple',
       reasoningText: 'search retry route',
@@ -244,7 +244,7 @@ describe('Autopilot Runtime', () => {
   it('enables nomnom only when the user message contains a link', async () => {
     mockDecideAgent.mockResolvedValue({
       kind: 'search',
-      contextProviders: ['Memory'],
+      contextProviders: ['UserMemory'],
       temperature: 0.3,
       searchMode: 'simple',
       reasoningText: 'search with direct link',
@@ -316,7 +316,7 @@ describe('Autopilot Runtime', () => {
   it('runs chat summarization pass for search_mode complex', async () => {
     mockDecideAgent.mockResolvedValue({
       kind: 'search',
-      contextProviders: ['Memory'],
+      contextProviders: ['UserMemory'],
       temperature: 0.3,
       searchMode: 'complex',
       reasoningText: 'search complex route',
@@ -377,7 +377,7 @@ describe('Autopilot Runtime', () => {
   it('keeps both head and tail of large search findings in complex summary handoff', async () => {
     mockDecideAgent.mockResolvedValue({
       kind: 'search',
-      contextProviders: ['Memory'],
+      contextProviders: ['UserMemory'],
       temperature: 0.3,
       searchMode: 'complex',
       reasoningText: 'search complex route with large findings',
@@ -416,7 +416,7 @@ describe('Autopilot Runtime', () => {
   it('injects runtime capability manifest into the system prompt', async () => {
     mockDecideAgent.mockResolvedValue({
       kind: 'chat',
-      contextProviders: ['Memory', 'SocialGraph'],
+      contextProviders: ['UserMemory', 'SocialGraph'],
       temperature: 1.2,
       reasoningText: 'capability manifest test',
     });
@@ -446,5 +446,36 @@ describe('Autopilot Runtime', () => {
     expect(systemMessage?.content).toContain('Never claim or imply capabilities');
     expect(systemMessage?.content).not.toContain('Tool protocol: if tool assistance is needed');
     expect(systemMessage?.content).not.toContain('Available tools:');
+  });
+
+  it('enforces UserMemory and ChannelMemory for chat when router provides partial providers', async () => {
+    mockDecideAgent.mockResolvedValue({
+      kind: 'chat',
+      contextProviders: ['SocialGraph'],
+      temperature: 1.2,
+      reasoningText: 'provider enforcement test',
+    });
+    mockLLM.chat.mockResolvedValue({ content: 'ok' });
+
+    await runChatTurn({
+      traceId: 'test-trace',
+      userId: 'test-user',
+      channelId: 'test-channel',
+      guildId: 'test-guild',
+      messageId: 'msg-1',
+      userText: 'help me plan the week',
+      userProfileSummary: null,
+      replyToBotText: null,
+      invokedBy: 'mention',
+      isVoiceActive: false,
+    });
+
+    const firstCall = mockLLM.chat.mock.calls[0]?.[0] as {
+      messages: Array<{ role: string; content: string }>;
+    };
+    const systemMessage = firstCall.messages.find((message) => message.role === 'system');
+    expect(systemMessage?.content).toContain(
+      'Context providers available this turn: UserMemory, ChannelMemory, SocialGraph.',
+    );
   });
 });

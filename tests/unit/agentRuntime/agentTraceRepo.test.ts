@@ -63,7 +63,7 @@ describe('AgentTraceRepo', () => {
         userId: 'user-1',
         routeKind: 'chat',
         routerJson: { kind: 'chat', temperature: 0.7 },
-        expertsJson: [{ name: 'Memory' }],
+        expertsJson: [{ name: 'UserMemory' }],
       });
 
       expect(mockUpsert).toHaveBeenCalledWith({
@@ -90,7 +90,7 @@ describe('AgentTraceRepo', () => {
         userId: 'user-1',
         routeKind: 'chat',
         routerJson: { kind: 'chat' },
-        expertsJson: [{ name: 'Memory' }],
+        expertsJson: [{ name: 'UserMemory' }],
         tokenJson: { baseline: 1 },
         agentGraphJson: { nodes: [{ id: 'memory-1' }] },
         agentEventsJson: [{ type: 'node_completed' }],
@@ -137,7 +137,7 @@ describe('AgentTraceRepo', () => {
         userId: 'user-1',
         routeKind: 'chat',
         routerJson: { kind: 'chat' },
-        expertsJson: [{ name: 'Memory' }],
+        expertsJson: [{ name: 'UserMemory' }],
         agentGraphJson: { nodes: [] },
       });
 
@@ -215,7 +215,7 @@ describe('AgentTraceRepo', () => {
         {
           traceId: 'trace-1',
           nodeId: 'memory-1',
-          agent: 'Memory',
+          agent: 'UserMemory',
           status: 'ok',
           attempts: 1,
           startedAt: '2026-02-08T00:00:00.000Z',
@@ -232,7 +232,7 @@ describe('AgentTraceRepo', () => {
           expect.objectContaining({
             traceId: 'trace-1',
             nodeId: 'memory-1',
-            agent: 'Memory',
+            agent: 'UserMemory',
             status: 'ok',
             attempts: 1,
             latencyMs: 1000,
@@ -248,7 +248,7 @@ describe('AgentTraceRepo', () => {
         {
           traceId: 'trace-2',
           nodeId: 'memory-1',
-          agent: 'Memory',
+          agent: 'UserMemory',
           status: 'ok',
           attempts: 1,
           startedAt: '2026-02-08T00:00:00.000Z',

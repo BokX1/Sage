@@ -1,4 +1,4 @@
-import { whoIsInVoice, howLongInVoiceToday } from '../../voice/voiceQueries';
+import { howLongInVoiceToday, whoIsInVoice } from '../../voice/voiceQueries';
 import { estimateTokens } from '../../agentRuntime/tokenEstimate';
 import { ContextPacket } from '../context-types';
 
@@ -8,49 +8,39 @@ export interface RunVoiceAnalyticsProviderParams {
   maxChars?: number;
 }
 
-/**
- * Format milliseconds into human-readable duration.
- */
 function formatDuration(ms: number): string {
-  if (ms === 0) return 'no time';
+  if (ms <= 0) return '0m';
+  const totalMinutes = Math.floor(ms / 60_000);
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  if (hours > 0) return `${hours}h ${minutes}m`;
+  return `${minutes}m`;
+}
 
-  const hours = Math.floor(ms / 3600000);
-  const minutes = Math.floor((ms % 3600000) / 60000);
+function classifyActivity(ms: number): string {
+  const hours = ms / 3_600_000;
+  if (hours >= 4) return 'high';
+  if (hours >= 2) return 'active';
+  if (hours >= 0.5) return 'moderate';
+  if (hours > 0) return 'light';
+  return 'none';
+}
 
-  if (hours >= 1) {
-    if (minutes > 0) {
-      return `${hours} hour${hours > 1 ? 's' : ''} and ${minutes} minute${minutes > 1 ? 's' : ''}`;
-    }
-    return `${hours} hour${hours > 1 ? 's' : ''}`;
-  }
-
-  if (minutes > 0) {
-    return `${minutes} minute${minutes > 1 ? 's' : ''}`;
-  }
-
-  return 'less than a minute';
+function truncateWithEllipsis(value: string, maxChars: number): { text: string; truncated: boolean } {
+  if (value.length <= maxChars) return { text: value, truncated: false };
+  return {
+    text: `${value.slice(0, Math.max(0, maxChars - 3)).trimEnd()}...`,
+    truncated: true,
+  };
 }
 
 /**
- * Get activity level description based on voice time.
- */
-function getActivityLevel(ms: number): string {
-  const hours = ms / 3600000;
-  if (hours >= 4) return '🔥 Very active';
-  if (hours >= 2) return '✨ Active';
-  if (hours >= 0.5) return '👍 Moderately active';
-  if (ms > 0) return '👋 Briefly active';
-  return '💤 Not active in voice today';
-}
-
-/**
- * Voice analytics provider: retrieves voice presence and session data.
- * Returns narrative descriptions of voice activity.
+ * Voice analytics provider: retrieves current voice presence and today's user voice activity.
  */
 export async function runVoiceAnalyticsProvider(
   params: RunVoiceAnalyticsProviderParams,
 ): Promise<ContextPacket> {
-  const { guildId, userId, maxChars = 1200 } = params;
+  const { guildId, userId, maxChars = 1800 } = params;
 
   try {
     const [presence, todayData] = await Promise.all([
@@ -58,67 +48,74 @@ export async function runVoiceAnalyticsProvider(
       howLongInVoiceToday({ guildId, userId }),
     ]);
 
-    const sections: string[] = [];
+    const lines: string[] = ['Voice analytics memory:'];
+    const activeChannels = presence.filter((channel) => channel.members.length > 0);
+    const totalMembers = activeChannels.reduce((sum, channel) => sum + channel.members.length, 0);
+    const userPresenceChannel = activeChannels.find((channel) =>
+      channel.members.some((member) => member.userId === userId),
+    );
+    const userPresenceMember = userPresenceChannel?.members.find((member) => member.userId === userId);
 
-    // Current voice presence narrative
-    const totalMembers = presence.reduce((sum, ch) => sum + ch.members.length, 0);
-
-    if (totalMembers === 0) {
-      sections.push('🔇 **Voice Status**: No one is currently in voice channels.');
+    lines.push(
+      `- Current voice presence: ${totalMembers} member(s) across ${activeChannels.length} active channel(s).`,
+    );
+    if (activeChannels.length === 0) {
+      lines.push('- Active channels: none.');
     } else {
-      const channelDescriptions = presence
-        .filter(ch => ch.members.length > 0)
-        .map(ch => {
-          const memberCount = ch.members.length;
-          const memberList = ch.members.slice(0, 3).map(m => `<@${m.userId}>`).join(', ');
-          const extra = memberCount > 3 ? ` and ${memberCount - 3} more` : '';
-          return `  • **Channel ${ch.channelId}**: ${memberList}${extra}`;
-        });
-
-      sections.push(
-        `🎤 **Voice Status**: ${totalMembers} member${totalMembers > 1 ? 's' : ''} currently in voice:\n${channelDescriptions.join('\n')}`
-      );
+      lines.push('- Active channels:');
+      for (const channel of activeChannels) {
+        const visibleMembers = channel.members.slice(0, 4).map((member) => `<@${member.userId}>`);
+        const overflow = channel.members.length - visibleMembers.length;
+        const memberList =
+          overflow > 0 ? `${visibleMembers.join(', ')} (+${overflow} more)` : visibleMembers.join(', ');
+        lines.push(`  - <#${channel.channelId}>: ${memberList}`);
+      }
     }
 
-    // User's voice activity narrative
-    const activityLevel = getActivityLevel(todayData.ms);
-    const durationText = formatDuration(todayData.ms);
+    const sessions = todayData.sessions;
+    const now = new Date();
+    const longestSessionMs = sessions.reduce((maxMs, session) => {
+      const endAt = session.endedAt ?? now;
+      const duration = Math.max(0, endAt.getTime() - session.startedAt.getTime());
+      return Math.max(maxMs, duration);
+    }, 0);
+    const activity = classifyActivity(todayData.ms);
 
-    if (todayData.ms === 0) {
-      sections.push(`\n📊 **Your Voice Activity Today**: ${activityLevel}\nYou haven't joined any voice channels today.`);
-    } else {
-      sections.push(`\n📊 **Your Voice Activity Today**: ${activityLevel}\nYou've spent ${durationText} in voice today.`);
+    lines.push(`- User daily voice time (UTC day): ${formatDuration(todayData.ms)}.`);
+    lines.push(`- User daily session count: ${sessions.length}.`);
+    lines.push(`- User longest session today: ${formatDuration(longestSessionMs)}.`);
+    lines.push(`- User activity band: ${activity}.`);
+    lines.push(`- User currently in voice: ${userPresenceChannel ? 'yes' : 'no'}.`);
+
+    if (userPresenceChannel && userPresenceMember) {
+      const currentSessionMs = Math.max(0, Date.now() - userPresenceMember.joinedAt.getTime());
+      lines.push(`- User current channel: <#${userPresenceChannel.channelId}>.`);
+      lines.push(`- User current session duration: ${formatDuration(currentSessionMs)}.`);
     }
 
-    // Check if user is currently in voice
-    const userInVoice = presence.find(ch => ch.members.some(m => m.userId === userId));
-    if (userInVoice) {
-      sections.push(`\n🎧 **Currently In**: You're in a voice channel right now.`);
-    }
-
-    let content = sections.join('\n');
-
-    // Truncate if needed
-    if (content.length > maxChars) {
-      content = content.slice(0, maxChars).trim() + '\n(truncated)';
-    }
+    const built = lines.join('\n');
+    const { text: content, truncated } = truncateWithEllipsis(built, maxChars);
 
     return {
       name: 'VoiceAnalytics',
       content,
       json: {
-        channelCount: presence.length,
+        activeChannelCount: activeChannels.length,
         totalMembers,
         userTodayMs: todayData.ms,
-        userCurrentlyInVoice: !!userInVoice,
-        currentChannelId: userInVoice?.channelId || null,
+        userTodaySessionCount: sessions.length,
+        userLongestSessionMs: longestSessionMs,
+        userActivityBand: activity,
+        userCurrentlyInVoice: !!userPresenceChannel,
+        currentChannelId: userPresenceChannel?.channelId ?? null,
+        truncated,
       },
       tokenEstimate: estimateTokens(content),
     };
   } catch (error) {
     return {
       name: 'VoiceAnalytics',
-      content: 'Voice analytics: Unable to load voice data at this time.',
+      content: 'Voice analytics memory: unable to load voice data at this time.',
       json: { error: String(error) },
       tokenEstimate: 15,
     };

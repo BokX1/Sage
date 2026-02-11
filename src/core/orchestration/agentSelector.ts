@@ -103,7 +103,7 @@ ${buildAgentCapabilityTable()}
 
 Your route choice controls one unified runtime loop:
 
-1. Context providers are gathered for this turn (Memory is baseline; chat commonly adds SocialGraph and VoiceAnalytics).
+1. Context providers are gathered for this turn (UserMemory + ChannelMemory are mandatory baseline; SocialGraph and VoiceAnalytics are optional enhancers, often used on chat).
 2. The runtime may run verification and critic revision steps before finalizing.
 3. A critic may request revision when quality is insufficient.
 
@@ -147,7 +147,7 @@ No markdown. No extra text.`;
 
 const DEFAULT_CHAT_AGENT: AgentDecision = {
   kind: 'chat',
-  contextProviders: ['Memory'],
+  contextProviders: ['UserMemory', 'ChannelMemory', 'SocialGraph', 'VoiceAnalytics'],
   temperature: CHAT_DEFAULT_TEMPERATURE,
   reasoningText: 'Default Chat agent (fallback)',
 };
@@ -273,7 +273,7 @@ export async function decideAgent(params: AgentSelectorParams): Promise<AgentDec
   if (invokedBy === 'command' && hasGuild) {
     return {
       kind: 'chat',
-      contextProviders: ['SocialGraph', 'VoiceAnalytics', 'Memory'],
+      contextProviders: ['UserMemory', 'ChannelMemory', 'SocialGraph', 'VoiceAnalytics'],
       temperature: CHAT_DEFAULT_TEMPERATURE,
       reasoningText: 'Slash command context detected - routing to chat agent',
     };

@@ -10,7 +10,7 @@ function baseGraph(): AgentGraph {
     nodes: [
       {
         id: 'memory-1',
-        agent: 'Memory',
+        agent: 'UserMemory',
         objective: 'memory',
         inputs: ['user_input'],
         successCriteria: ['returns_context_packet'],

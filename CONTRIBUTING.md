@@ -91,7 +91,7 @@ src/
 ├── core/
 │   ├── orchestration/     # Agent selector, runtime, canary, critics
 │   ├── llm/               # Model resolver, catalog, health tracking
-│   ├── context-providers/ # Memory, social, voice, summary providers
+│   ├── context/           # Context packet providers (UserMemory, ChannelMemory, SocialGraph, VoiceAnalytics)
 │   ├── tools/             # Search, scrape, GitHub, npm, wiki tools
 │   └── voice/             # Voice presence, sessions, analytics
 ├── services/              # Pollinations, ingestion, formatting
@@ -100,7 +100,7 @@ src/
 ```
 
 > [!TIP]
-> Start with `src/core/orchestration/agentRuntime.ts` — it's the main entry point for understanding how messages flow through Sage.
+> Start with `src/core/agentRuntime/agentRuntime.ts` — it's the main entry point for understanding how messages flow through Sage.
 
 ---
 

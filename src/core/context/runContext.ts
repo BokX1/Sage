@@ -1,9 +1,12 @@
 import { logger } from '../utils/logger';
-import { ContextProviderName, ContextPacket } from './context-types';
-import { runMemoryProvider } from './providers/memoryProvider';
+import {
+  ContextProviderName,
+  ContextPacket,
+} from './context-types';
+import { runUserMemoryProvider } from './providers/userMemoryProvider';
 import { runSocialGraphProvider } from './providers/socialGraphProvider';
 import { runVoiceAnalyticsProvider } from './providers/voiceAnalyticsProvider';
-import { runSummarizerProvider } from './providers/summarizerProvider';
+import { runChannelMemoryProvider } from './providers/channelMemoryProvider';
 
 export interface RunContextParams {
   providers: ContextProviderName[];
@@ -48,11 +51,11 @@ async function executeProvider(
 
   try {
     switch (providerName) {
-      case 'Memory':
+      case 'UserMemory':
         if (params.skipMemory) {
           return null; // Skip - already loaded
         }
-        return await runMemoryProvider({ userId });
+        return await runUserMemoryProvider({ userId });
 
       case 'SocialGraph':
         if (!guildId) {
@@ -74,15 +77,15 @@ async function executeProvider(
         }
         return await runVoiceAnalyticsProvider({ guildId, userId });
 
-      case 'Summarizer':
+      case 'ChannelMemory':
         if (!guildId) {
           return {
-            name: 'Summarizer',
-            content: 'Summarization context: Not available in DM context.',
+            name: 'ChannelMemory',
+            content: 'Channel memory: Not available in DM context.',
             tokenEstimate: 10,
           };
         }
-        return await runSummarizerProvider({ guildId, channelId });
+        return await runChannelMemoryProvider({ guildId, channelId });
 
       default:
         logger.warn({ providerName, traceId }, 'Unknown context provider name');
