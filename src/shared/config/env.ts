@@ -1,7 +1,14 @@
 import dotenv from 'dotenv';
 import { z } from 'zod';
 
-dotenv.config();
+const isTestRuntime =
+  process.env.NODE_ENV === 'test' ||
+  process.env.VITEST === 'true' ||
+  process.env.VITEST_WORKER_ID !== undefined;
+
+if (!isTestRuntime) {
+  dotenv.config();
+}
 
 /**
  * Check whether a hostname resolves to localhost or RFC1918 private network ranges.
