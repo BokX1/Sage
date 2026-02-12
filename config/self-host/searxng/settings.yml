@@ -13,7 +13,7 @@ search:
 server:
   bind_address: "0.0.0.0"
   port: 8080
-  base_url: "http://127.0.0.1:8080/"
+  base_url: "http://127.0.0.1:18080/"
   secret_key: "sage-searxng-local-key-2026-02-10"
   limiter: false
   public_instance: false

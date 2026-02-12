@@ -4,11 +4,11 @@ services:
     container_name: sage-searxng
     restart: unless-stopped
     ports:
-      - "127.0.0.1:8080:8080"
+      - "127.0.0.1:${SEARXNG_HOST_PORT:-18080}:8080"
     volumes:
       - ./searxng/settings.yml:/etc/searxng/settings.yml
     environment:
-      SEARXNG_BASE_URL: http://127.0.0.1:8080/
+      SEARXNG_BASE_URL: http://127.0.0.1:${SEARXNG_HOST_PORT:-18080}/
       SEARXNG_LIMITER: "false"
       SEARXNG_PUBLIC_INSTANCE: "false"
 

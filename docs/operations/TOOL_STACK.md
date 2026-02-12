@@ -78,7 +78,7 @@ This starts:
 
 | Service | Container | URL | Purpose |
 | :--- | :--- | :--- | :--- |
-| SearXNG | `sage-searxng` | `http://127.0.0.1:8080` | Meta-search aggregator |
+| SearXNG | `sage-searxng` | `http://127.0.0.1:18080` | Meta-search aggregator |
 | Crawl4AI | `sage-crawl4ai` | `http://127.0.0.1:11235` | AI-powered web scraper |
 | Ollama | `sage-ollama` | `http://127.0.0.1:11434` | Local LLM inference |
 | Tika | `sage-tika` | `http://127.0.0.1:9998` | Attachment/document text extraction |
@@ -97,7 +97,7 @@ TOOL_WEB_SEARCH_PROVIDER_ORDER=searxng,tavily,exa,pollinations
 TOOL_WEB_SCRAPE_PROVIDER_ORDER=crawl4ai,firecrawl,jina,raw_fetch
 
 # Local endpoints
-SEARXNG_BASE_URL=http://127.0.0.1:8080
+SEARXNG_BASE_URL=http://127.0.0.1:18080
 CRAWL4AI_BASE_URL=http://127.0.0.1:11235
 OLLAMA_BASE_URL=http://127.0.0.1:11434
 OLLAMA_MODEL=llama3.1:8b
