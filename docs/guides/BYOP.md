@@ -1,6 +1,6 @@
 # 🌸 Bring Your Own Pollen (BYOP)
 
-Sage uses a BYOP model: communities provide the AI key (API key). Software licensing is separate; Sage itself is proprietary and requires written permission/commercial licensing from the copyright owner.
+Sage uses a BYOP model: communities provide the AI key (API key). Software licensing is separate; Sage is source-available under PolyForm Strict 1.0.0 (noncommercial use only). Commercial/business use requires a separate written license (Ahazihak03@gmail.com).
 
 This keeps Sage sustainable and enables higher limits for your server.
 

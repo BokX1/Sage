@@ -29,9 +29,9 @@ Yes. Start with the **[⚡ Quick Start Guide](QUICKSTART.md)** for a minimal, co
 <details>
 <summary><strong>Will this cost me money?</strong></summary>
 
-Sage is **proprietary software**.
+Sage is **source-available** under **PolyForm Strict 1.0.0**.
 
-- **Software licensing:** You need a valid commercial license or written permission from the copyright owner to run/self-host Sage.
+- **Software licensing:** Noncommercial run/self-host use is allowed under `LICENSE`. Commercial/business use requires a separate written license (`Ahazihak03@gmail.com`).
 - **AI credits:** Sage uses **Bring Your Own Pollen (BYOP)**.
   - Server admins generate a key from [Pollinations.ai](https://pollinations.ai).
   - That key is used by the server for Sage's AI requests.
@@ -84,7 +84,7 @@ Sage is a fully agentic AI companion. Unlike simple chatbots, Sage aims to behav
 <details>
 <summary><strong>Is Sage free to use?</strong></summary>
 
-No. Sage is proprietary and all rights reserved. Running, modifying, or distributing Sage requires a valid written license from the copyright owner. Pollinations API pricing/tiers are separate from Sage software licensing.
+For noncommercial use, Sage can be run under PolyForm Strict 1.0.0 without a paid software license. Commercial/business use requires a separate written license (`Ahazihak03@gmail.com`). Pollinations API pricing/tiers are separate from Sage software licensing.
 
 </details>
 

@@ -3,7 +3,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/🌿-Sage%20Docs-2d5016?style=for-the-badge&labelColor=4a7c23" alt="Sage Documentation" />
   <img src="https://img.shields.io/badge/Version-1.0.0-green?style=for-the-badge" alt="Version" />
-  <img src="https://img.shields.io/badge/License-Proprietary-red?style=for-the-badge" alt="License" />
+  <img src="https://img.shields.io/badge/License-PolyForm%20Strict%201.0.0-red?style=for-the-badge" alt="License" />
 </p>
 
 <p align="center">
@@ -11,7 +11,7 @@
 </p>
 
 > [!IMPORTANT]
-> Sage is proprietary software (All Rights Reserved). Usage, modification, or distribution requires written permission or a commercial license from the copyright owner. See [LICENSE](../LICENSE) and [COPYRIGHT](../COPYRIGHT).
+> Sage is source-available under PolyForm Strict 1.0.0. Noncommercial use is permitted. Redistribution, modification, and derivative works are not permitted under the public license. Commercial/business use requires a separate written license (Ahazihak03@gmail.com). See [LICENSE](../LICENSE) and [COPYRIGHT](../COPYRIGHT).
 
 ---
 

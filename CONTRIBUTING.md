@@ -20,9 +20,10 @@ Thanks for helping improve Sage! This guide covers the local workflow, expectati
 
 ## ⚖️ License and Contribution Terms
 
-- Sage is **proprietary software** (All Rights Reserved).
-- By submitting code, docs, or assets, you agree your contribution may be used, modified, and distributed by the project owner under Sage's proprietary licensing model.
-- Contributions do not grant redistribution rights to the Sage codebase outside terms explicitly granted by the copyright owner.
+- Sage is source-available under **PolyForm Strict 1.0.0** (`LICENSE`).
+- The public license permits noncommercial use only and does not permit redistribution, modification, or derivative works.
+- The copyright owner grants a limited additional permission to create modifications solely to prepare and submit pull requests to this repository.
+- By submitting code, docs, or assets, you grant the project owner the right to use, modify, relicense, and distribute your contribution under Sage's licensing model (including commercial licensing).
 
 ---
 
