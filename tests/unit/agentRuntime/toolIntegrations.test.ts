@@ -7,6 +7,7 @@ vi.mock('../../../src/core/attachments/ingestedAttachmentRepo', () => ({
   findIngestedAttachmentsForLookup: mockFindIngestedAttachmentsForLookup,
 }));
 import {
+  __resetLocalProviderCooldownForTests,
   listLocalOllamaModels,
   lookupChannelFileCache,
   lookupGitHubFile,
@@ -28,6 +29,7 @@ describe('toolIntegrations', () => {
 
   beforeEach(() => {
     vi.resetAllMocks();
+    __resetLocalProviderCooldownForTests();
     mockFindIngestedAttachmentsForLookup.mockReset();
     config.TOOL_WEB_SEARCH_PROVIDER_ORDER = originalSearchOrder;
     config.SEARXNG_BASE_URL = originalSearxngBase;
@@ -235,6 +237,74 @@ describe('toolIntegrations', () => {
     expect(result.provider).toBe('raw_fetch');
     expect(result.content).toContain('raw fallback content');
     expect(global.fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('cooldowns unreachable local searxng provider and skips it on next call', async () => {
+    config.SEARXNG_BASE_URL = 'http://127.0.0.1:8080';
+
+    (global.fetch as unknown as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new TypeError('fetch failed: connect ECONNREFUSED 127.0.0.1:8080'),
+    );
+
+    await expect(
+      runWebSearch({
+        query: 'sage docs',
+        depth: 'quick',
+        maxResults: 3,
+        providerOrder: ['searxng'],
+        allowLlmFallback: false,
+      }),
+    ).rejects.toThrow('Providers attempted: searxng');
+
+    const firstCallCount = (global.fetch as unknown as ReturnType<typeof vi.fn>).mock.calls.length;
+    expect(firstCallCount).toBe(2);
+
+    await expect(
+      runWebSearch({
+        query: 'sage docs',
+        depth: 'quick',
+        maxResults: 3,
+        providerOrder: ['searxng'],
+        allowLlmFallback: false,
+      }),
+    ).rejects.toThrow('Skipped local providers: searxng');
+
+    const secondCallCount = (global.fetch as unknown as ReturnType<typeof vi.fn>).mock.calls.length;
+    expect(secondCallCount).toBe(firstCallCount);
+  });
+
+  it('cooldowns unreachable local crawl4ai provider and skips it on next scrape', async () => {
+    config.CRAWL4AI_BASE_URL = 'http://127.0.0.1:11235';
+    let crawlCalls = 0;
+
+    (global.fetch as unknown as ReturnType<typeof vi.fn>).mockImplementation(async (input: unknown) => {
+      const url = String(input);
+      if (url.includes('127.0.0.1:11235')) {
+        crawlCalls += 1;
+        throw new TypeError('fetch failed: connect ECONNREFUSED 127.0.0.1:11235');
+      }
+      return {
+        ok: true,
+        status: 200,
+        text: async () => '<html><body>raw fallback content</body></html>',
+      };
+    });
+
+    const first = await scrapeWebPage({
+      url: 'https://example.com',
+      maxChars: 1_000,
+      providerOrder: ['crawl4ai', 'raw_fetch'],
+    });
+    expect(first.provider).toBe('raw_fetch');
+    expect(crawlCalls).toBe(1);
+
+    const second = await scrapeWebPage({
+      url: 'https://example.com',
+      maxChars: 1_000,
+      providerOrder: ['crawl4ai', 'raw_fetch'],
+    });
+    expect(second.provider).toBe('raw_fetch');
+    expect(crawlCalls).toBe(1);
   });
 
   it('decodes GitHub file content', async () => {

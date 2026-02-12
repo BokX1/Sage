@@ -9,6 +9,7 @@ const DEFAULT_WEB_SEARCH_TIMEOUT_MS = 45_000;
 const DEFAULT_WEB_SCRAPE_TIMEOUT_MS = 45_000;
 const DEFAULT_WEB_SCRAPE_MAX_CHARS = 12_000;
 const DEFAULT_WEB_SEARCH_MAX_RESULTS = 6;
+const LOCAL_PROVIDER_COOLDOWN_MS = 5 * 60_000;
 const DEFAULT_TAVILY_SEARCH_URL = 'https://api.tavily.com/search';
 const DEFAULT_EXA_SEARCH_URL = 'https://api.exa.ai/search';
 const DEFAULT_FIRECRAWL_BASE_URL = 'https://api.firecrawl.dev/v1';
@@ -17,6 +18,11 @@ const DEFAULT_JINA_READER_BASE_URL = 'https://r.jina.ai/http://';
 export type SearchDepth = 'quick' | 'balanced' | 'deep';
 type SearchProviderId = 'tavily' | 'exa' | 'searxng' | 'pollinations';
 type ScrapeProviderId = 'firecrawl' | 'crawl4ai' | 'jina' | 'raw_fetch';
+type LocalProviderId = 'searxng' | 'crawl4ai';
+type LocalProviderCooldownState = {
+  untilMs: number;
+  reason: string;
+};
 
 type SearchResult = {
   title: string;
@@ -34,6 +40,68 @@ type SearchOutcome = {
   model?: string;
   rawContent?: string;
 };
+
+const localProviderCooldowns = new Map<LocalProviderId, LocalProviderCooldownState>();
+
+const LOCAL_PROVIDER_CONNECTIVITY_MARKERS = [
+  'econnrefused',
+  'enotfound',
+  'ehostunreach',
+  'etimedout',
+  'econnreset',
+  'socket hang up',
+  'fetch failed',
+  'networkerror',
+  'network error',
+] as const;
+
+function errorText(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function isLocalProviderConnectivityError(error: unknown): boolean {
+  const lower = errorText(error).toLowerCase();
+  if (/\bhttp\s+\d{3}\b/i.test(lower)) return false;
+  return LOCAL_PROVIDER_CONNECTIVITY_MARKERS.some((marker) => lower.includes(marker));
+}
+
+function getLocalProviderCooldown(provider: LocalProviderId): LocalProviderCooldownState | null {
+  const state = localProviderCooldowns.get(provider);
+  if (!state) return null;
+  if (state.untilMs <= Date.now()) {
+    localProviderCooldowns.delete(provider);
+    return null;
+  }
+  return state;
+}
+
+function clearLocalProviderCooldown(provider: LocalProviderId): void {
+  localProviderCooldowns.delete(provider);
+}
+
+function markLocalProviderCooldown(provider: LocalProviderId, error: unknown): void {
+  if (!isLocalProviderConnectivityError(error)) return;
+  const reason = errorText(error);
+  const untilMs = Date.now() + LOCAL_PROVIDER_COOLDOWN_MS;
+  localProviderCooldowns.set(provider, { untilMs, reason });
+  logger.warn(
+    {
+      provider,
+      cooldownUntil: new Date(untilMs).toISOString(),
+      reason,
+    },
+    'Local provider unreachable; entering cooldown',
+  );
+}
+
+function formatCooldownState(state: LocalProviderCooldownState): string {
+  const remainingMs = Math.max(0, state.untilMs - Date.now());
+  return `${Math.ceil(remainingMs / 1000)}s remaining (${state.reason})`;
+}
+
+export function __resetLocalProviderCooldownForTests(): void {
+  localProviderCooldowns.clear();
+}
 
 function toInt(value: number | undefined, fallback: number, min: number, max: number): number {
   if (!Number.isFinite(value)) return fallback;
@@ -481,9 +549,18 @@ export async function runWebSearch(params: {
     },
   );
   const providersTried: string[] = [];
+  const providersSkipped: string[] = [];
   const errors: string[] = [];
 
   for (const provider of providerOrder) {
+    if (provider === 'searxng') {
+      const cooldown = getLocalProviderCooldown('searxng');
+      if (cooldown) {
+        providersSkipped.push(provider);
+        errors.push(`${provider}: skipped (${formatCooldownState(cooldown)})`);
+        continue;
+      }
+    }
     providersTried.push(provider);
     try {
       const outcome =
@@ -495,12 +572,17 @@ export async function runWebSearch(params: {
               ? await searchWithSearxng(params.query, maxResults, timeoutMs)
               : await searchWithPollinations(params.query, params.depth, timeoutMs, maxOutputTokens, params.apiKey);
 
+      if (provider === 'searxng') {
+        clearLocalProviderCooldown('searxng');
+      }
+
       return {
         query: params.query,
         depth: params.depth,
         checkedOn: new Date().toISOString().slice(0, 10),
         provider: outcome.provider,
         providersTried,
+        providersSkipped,
         sourceUrls: outcome.sourceUrls,
         answer: outcome.answer,
         results: outcome.results.slice(0, maxResults),
@@ -508,11 +590,20 @@ export async function runWebSearch(params: {
         rawContent: outcome.rawContent,
       };
     } catch (error) {
+      if (provider === 'searxng') {
+        markLocalProviderCooldown('searxng', error);
+      }
       errors.push(`${provider}: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
-  throw new Error(`web_search failed. Providers attempted: ${providersTried.join(', ')}. ${errors.join(' | ')}`);
+  const skippedSuffix =
+    providersSkipped.length > 0
+      ? ` Skipped local providers: ${providersSkipped.join(', ')}.`
+      : '';
+  throw new Error(
+    `web_search failed. Providers attempted: ${providersTried.join(', ')}.${skippedSuffix} ${errors.join(' | ')}`.trim(),
+  );
 }
 
 function extractScrapeContent(record: Record<string, unknown>): { title?: string; content: string } | null {
@@ -646,7 +737,18 @@ export async function scrapeWebPage(params: {
   }
 
   const errors: string[] = [];
+  const providersTried: string[] = [];
+  const providersSkipped: string[] = [];
   for (const provider of finalOrder) {
+    if (provider === 'crawl4ai') {
+      const cooldown = getLocalProviderCooldown('crawl4ai');
+      if (cooldown) {
+        providersSkipped.push(provider);
+        errors.push(`${provider}: skipped (${formatCooldownState(cooldown)})`);
+        continue;
+      }
+    }
+    providersTried.push(provider);
     try {
       const outcome =
         provider === 'firecrawl'
@@ -656,19 +758,31 @@ export async function scrapeWebPage(params: {
             : provider === 'jina'
               ? await scrapeWithJina(sanitizedUrl, maxChars, timeoutMs)
               : await scrapeWithRawFetch(sanitizedUrl, maxChars, timeoutMs);
+      if (provider === 'crawl4ai') {
+        clearLocalProviderCooldown('crawl4ai');
+      }
       return {
         url: sanitizedUrl,
         provider: outcome.provider,
+        providersTried,
+        providersSkipped,
         title: 'title' in outcome ? outcome.title : undefined,
         content: outcome.content,
         truncated: outcome.truncated,
       };
     } catch (error) {
+      if (provider === 'crawl4ai') {
+        markLocalProviderCooldown('crawl4ai', error);
+      }
       errors.push(`${provider}: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
-  throw new Error(`web_scrape failed: ${errors.join(' | ')}`);
+  const skippedSuffix =
+    providersSkipped.length > 0
+      ? ` Skipped local providers: ${providersSkipped.join(', ')}.`
+      : '';
+  throw new Error(`web_scrape failed:${skippedSuffix} ${errors.join(' | ')}`.trim());
 }
 
 function buildGitHubHeaders(token?: string): Record<string, string> {
