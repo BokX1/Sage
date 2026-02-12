@@ -69,7 +69,12 @@ import {
   parseToolPolicyJson,
   type ToolPolicyConfig,
 } from './toolPolicy';
-import { stripToolEnvelopeDraft } from './toolVerification';
+import {
+  containsLikelyToolEnvelopeFragment,
+  isIntentionalToolEnvelopeExampleRequest,
+  removeLikelyToolEnvelopeFragments,
+  stripToolEnvelopeDraft,
+} from './toolVerification';
 import {
   buildValidationRepairInstruction,
   validateResponseForRoute,
@@ -2570,7 +2575,7 @@ Checked on: <YYYY-MM-DD> (only when required)`;
             success: true,
             latencyMs: Date.now() - revisionStartedAt,
           });
-          return cleanDraftText(revisedResponse.content);
+          return cleanDraftText(stripToolEnvelopeDraft(revisedResponse.content) ?? revisedResponse.content);
         };
 
         let revisedText: string | null = null;
@@ -2851,7 +2856,25 @@ Checked on: <YYYY-MM-DD> (only when required)`;
     });
   }
 
-  const safeFinalText = draftText;
+  let safeFinalText = draftText;
+  const allowIntentionalToolEnvelopeExample = isIntentionalToolEnvelopeExampleRequest(userText);
+  if (containsLikelyToolEnvelopeFragment(safeFinalText) && !allowIntentionalToolEnvelopeExample) {
+    const redactedText = removeLikelyToolEnvelopeFragments(safeFinalText);
+    if (redactedText && !containsLikelyToolEnvelopeFragment(redactedText)) {
+      logger.warn(
+        { traceId, routeKind: agentDecision.kind },
+        'Removed leaked tool-call payload from final draft',
+      );
+      safeFinalText = redactedText;
+    } else {
+      logger.warn(
+        { traceId, routeKind: agentDecision.kind },
+        'Final draft contained leaked tool-call payload; replacing with safe fallback text',
+      );
+      safeFinalText =
+        'I completed part of the request but could not format a final response. Please ask me to try once more.';
+    }
+  }
   const hardGateRequiredFromBudget = toolLoopBudgetJson?.hardGateRequired === true;
   const hardGateSatisfiedFromBudget = toolLoopBudgetJson?.hardGateSatisfied === true;
   if (hardGateRequiredFromBudget && !hardGateSatisfiedFromBudget) {

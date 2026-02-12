@@ -197,6 +197,100 @@ describe('Autopilot Runtime', () => {
     expect(searchCall.messages[0].content).not.toContain('## Agentic State (JSON)');
   });
 
+  it('replaces leaked tool-call payloads with safe fallback text', async () => {
+    mockDecideAgent.mockResolvedValue({
+      kind: 'search',
+      contextProviders: ['UserMemory'],
+      temperature: 0.3,
+      searchMode: 'simple',
+      reasoningText: 'search payload leak regression',
+    });
+    mockSearchLLM.chat.mockResolvedValue({
+      content: JSON.stringify({
+        type: 'tool_calls',
+        calls: [{ name: 'web_search', args: { q: 'latest tools' } }],
+      }),
+    });
+
+    const result = await runChatTurn({
+      traceId: 'test-trace',
+      userId: 'test-user',
+      channelId: 'test-channel',
+      guildId: 'test-guild',
+      messageId: 'msg-1',
+      userText: 'check out the tools please',
+      userProfileSummary: null,
+      replyToBotText: null,
+      invokedBy: 'mention',
+      isVoiceActive: false,
+    });
+
+    expect(result.replyText).toBe(
+      'I completed part of the request but could not format a final response. Please ask me to try once more.',
+    );
+  });
+
+  it('redacts embedded tool-call payloads while keeping surrounding answer text', async () => {
+    mockDecideAgent.mockResolvedValue({
+      kind: 'search',
+      contextProviders: ['UserMemory'],
+      temperature: 0.3,
+      searchMode: 'simple',
+      reasoningText: 'search payload redaction regression',
+    });
+    mockSearchLLM.chat.mockResolvedValue({
+      content:
+        'Short answer before payload.\n```json\n{"type":"tool_calls","calls":[{"name":"web_search","args":{"q":"latest tools"}}]}\n```\nShort answer after payload.',
+    });
+
+    const result = await runChatTurn({
+      traceId: 'test-trace',
+      userId: 'test-user',
+      channelId: 'test-channel',
+      guildId: 'test-guild',
+      messageId: 'msg-1',
+      userText: 'check out the tools please',
+      userProfileSummary: null,
+      replyToBotText: null,
+      invokedBy: 'mention',
+      isVoiceActive: false,
+    });
+
+    expect(result.replyText).toBe('Short answer before payload.\n\nShort answer after payload.');
+  });
+
+  it('allows intentional tool-call JSON examples when explicitly requested', async () => {
+    mockDecideAgent.mockResolvedValue({
+      kind: 'search',
+      contextProviders: ['UserMemory'],
+      temperature: 0.3,
+      searchMode: 'simple',
+      reasoningText: 'intentional tool example request',
+    });
+    const toolEnvelope = JSON.stringify({
+      type: 'tool_calls',
+      calls: [{ name: 'web_search', args: { q: 'hello' } }],
+    });
+    mockSearchLLM.chat.mockResolvedValue({
+      content: toolEnvelope,
+    });
+
+    const result = await runChatTurn({
+      traceId: 'test-trace',
+      userId: 'test-user',
+      channelId: 'test-channel',
+      guildId: 'test-guild',
+      messageId: 'msg-1',
+      userText: 'show exact tool_calls json example',
+      userProfileSummary: null,
+      replyToBotText: null,
+      invokedBy: 'mention',
+      isVoiceActive: false,
+    });
+
+    expect(result.replyText).toBe(toolEnvelope);
+  });
+
   it('retries guarded search models and keeps search allowlist strict', async () => {
     mockDecideAgent.mockResolvedValue({
       kind: 'search',

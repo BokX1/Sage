@@ -13,7 +13,8 @@ export const RETRY_PROMPT = `Your previous response was not valid JSON. Output O
   "type": "tool_calls",
   "calls": [{ "name": "<tool_name>", "args": { ... } }]
 }
-OR respond with a plain text answer if you don't need to use tools.`;
+OR respond with the final user-facing answer in plain text.
+Do not mention tools, JSON, or internal protocol details in the plain text answer.`;
 
 function stripCodeFences(text: string): string {
   const fencePattern = /^```(?:json)?\s*\n?([\s\S]*?)\n?```$/;

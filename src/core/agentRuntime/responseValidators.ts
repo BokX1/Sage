@@ -1,5 +1,8 @@
 import { AgentKind } from '../orchestration/agentSelector';
-import { parseToolCallEnvelope } from './toolCallParser';
+import {
+  containsLikelyToolEnvelopeFragment,
+  isIntentionalToolEnvelopeExampleRequest,
+} from './toolVerification';
 import {
   RouteValidationPolicy,
   ValidationStrictness,
@@ -51,6 +54,7 @@ function collectIssues(params: {
 }): ResponseValidationIssue[] {
   const issues: ResponseValidationIssue[] = [];
   const trimmedReply = params.replyText.trim();
+  const allowIntentionalToolEnvelopeExample = isIntentionalToolEnvelopeExampleRequest(params.userText);
 
   if (params.policy.checkEmptyReply && trimmedReply.length === 0) {
     issues.push({
@@ -62,7 +66,8 @@ function collectIssues(params: {
   if (
     params.policy.checkToolEnvelopeLeak &&
     trimmedReply.length > 0 &&
-    parseToolCallEnvelope(trimmedReply)
+    containsLikelyToolEnvelopeFragment(trimmedReply) &&
+    !allowIntentionalToolEnvelopeExample
   ) {
     issues.push({
       code: 'tool_envelope_leak',

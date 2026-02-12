@@ -111,6 +111,74 @@ describe('responseValidators', () => {
     ]);
   });
 
+  it('detects malformed tool-call envelope leakage', () => {
+    const policy = resolveRouteValidationPolicy({
+      routeKind: 'chat',
+      validatorsEnabled: true,
+      policyJson: JSON.stringify({
+        chat: {
+          strictness: 'enforce',
+        },
+      }),
+    });
+    const result = validateResponseForRoute({
+      routeKind: 'chat',
+      userText: 'hello',
+      replyText: '{"type":"tool_calls","calls":[{"name":"web_search","args":{"q":"hello"}},]',
+      policy,
+    });
+
+    expect(result.passed).toBe(false);
+    expect(result.blockingIssues.map((issue) => issue.code)).toEqual([
+      'tool_envelope_leak',
+    ]);
+  });
+
+  it('detects embedded tool-call envelope leakage in prose', () => {
+    const policy = resolveRouteValidationPolicy({
+      routeKind: 'chat',
+      validatorsEnabled: true,
+      policyJson: JSON.stringify({
+        chat: {
+          strictness: 'enforce',
+        },
+      }),
+    });
+    const result = validateResponseForRoute({
+      routeKind: 'chat',
+      userText: 'hello',
+      replyText:
+        'Here is the internal payload:\n```json\n{"type":"tool_calls","calls":[{"name":"web_search","args":{"q":"hello"}}]}\n```',
+      policy,
+    });
+
+    expect(result.passed).toBe(false);
+    expect(result.blockingIssues.map((issue) => issue.code)).toEqual([
+      'tool_envelope_leak',
+    ]);
+  });
+
+  it('allows tool-call examples when the user explicitly requests them', () => {
+    const policy = resolveRouteValidationPolicy({
+      routeKind: 'chat',
+      validatorsEnabled: true,
+      policyJson: JSON.stringify({
+        chat: {
+          strictness: 'enforce',
+        },
+      }),
+    });
+    const result = validateResponseForRoute({
+      routeKind: 'chat',
+      userText: 'show exact tool_calls json example',
+      replyText: '{"type":"tool_calls","calls":[{"name":"web_search","args":{"q":"hello"}}]}',
+      policy,
+    });
+
+    expect(result.passed).toBe(true);
+    expect(result.blockingIssues).toHaveLength(0);
+  });
+
   it('builds deterministic repair instruction text with issue codes', () => {
     const instruction = buildValidationRepairInstruction({
       routeKind: 'search',
