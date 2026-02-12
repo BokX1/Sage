@@ -321,7 +321,7 @@ const TOOL_HARD_GATE_ATTACHMENT_RECALL_PATTERN =
 const SEARCH_RESPONSE_URL_PATTERN = /https?:\/\/[^\s<>()]+/i;
 const SEARCH_RESPONSE_URL_PATTERN_GLOBAL = /https?:\/\/[^\s<>()]+/gi;
 const SEARCH_RESPONSE_CHECKED_ON_PATTERN = /checked on:\s*\d{4}-\d{2}-\d{2}/i;
-const SEARCH_RESPONSE_SOURCE_LABEL_PATTERN = /source urls?:/i;
+const SEARCH_RESPONSE_SOURCE_LABEL_PATTERN = /(?:source urls?|sources):/i;
 const SEARCH_RESPONSE_MAX_EMITTED_URLS = 6;
 
 function extractSearchSourceUrls(text: string): string[] {
@@ -1240,23 +1240,53 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
       searchMaxAttempts: SEARCH_MAX_ATTEMPTS,
     });
 
-    const searchSystemPrompt = `You are a search-focused assistant. Answer using the freshest reliable information available.
+    const searchSystemPrompt = `You are Sage, a search-focused autonomous Discord agent.
+You utilize the freshest reliable information to answer questions.
+
+Structure your response into the following sections:
+## Answer
+<Concise direct answer>
+
+## Key points
+<Bullet points summarizing key details (max 5)>
+
+## Evidence
+<Quotes or specific data points from sources>
+
+## Sources
+<List of source URLs used>
+
+## Next step
+<Suggestion for what to explore next>
 
 Hard requirements:
-- Return plain text only.
+- Return plain text (Markdown allowed).
 - Include at least one source URL (https://...) supporting the main factual claim.
-- Prefer primary sources (official sites) over third-party posts.
-- Answer only what the user asked; avoid extra details unless requested.
+- Prefer primary sources (official sites).
 - If you include a specific version number/date/time, include a source URL that explicitly contains it and quote the exact value when possible.
 - For "latest" claims, tie "latest" to what is shown on the cited source(s); if you cannot definitively confirm, qualify the claim and say how to verify.
 - For software versions/releases, prefer stable machine-readable sources (e.g., official JSON release indexes) and include the relevant field names/values when possible.
 - If you cannot find a reliable source URL for a claim, explicitly say so and avoid overconfident assertions.
-- If the question is time-sensitive (latest/current/now/today) OR the user asks for sources/citations/links, include: "Checked on: YYYY-MM-DD" using the current date provided.
+- For time-sensitive queries, include "Checked on: YYYY-MM-DD" at the end.
 
-Output format:
-Answer: <your answer>
-Source URLs: <one or more URLs>
-Checked on: <YYYY-MM-DD> (only when required)`;
+Output format example:
+## Answer
+The sky is blue due to Rayleigh scattering.
+
+## Key points
+- Sunlight is scattered by molecules.
+- Blue light scatters more than red.
+
+## Evidence
+"Blue light is scattered in all directions by the tiny molecules of air in Earth's atmosphere." (NASA)
+
+## Sources
+https://science.nasa.gov/earth/
+
+## Next step
+Ask about why sunsets are red.
+
+Checked on: YYYY-MM-DD`;
     const searchMessages: LLMChatMessage[] = [
       {
         role: 'system',
@@ -1480,7 +1510,7 @@ Checked on: <YYYY-MM-DD> (only when required)`;
       {
         role: 'system',
         content:
-          'You are a synthesis assistant. Convert search findings into a clean final response for the user. ' +
+          'You are Sage, a synthesis assistant. Convert search findings into a structured final response for the user. ' +
           'Use ONLY the information present in "Search findings" as ground truth; do not introduce new facts. ' +
           'When a previous draft is provided, compare it against refreshed findings: keep only validated points and remove or fix invalid points. ' +
           'If a needed detail is not present in the findings, omit it or mark it as unknown. ' +
@@ -1488,10 +1518,18 @@ Checked on: <YYYY-MM-DD> (only when required)`;
           'If the findings include a "Checked on: YYYY-MM-DD" line, preserve it. ' +
           'Prefer eliminating contradictions over combining them. ' +
           'When sources conflict, prefer primary/official sources and discard third-party trackers/blog claims. ' +
-          'Output format (plain text):\n' +
-          'Answer: <final answer>\n' +
-          'Source URLs: <one or more URLs>\n' +
-          'Checked on: <YYYY-MM-DD> (only when available/required) ' +
+          'Structure your response into the following sections:\n' +
+          '## Answer\n' +
+          '<Concise direct answer>\n\n' +
+          '## Key points\n' +
+          '<Bullet points summarizing key details (max 5)>\n\n' +
+          '## Evidence\n' +
+          '<Quotes or specific data points from sources>\n\n' +
+          '## Sources\n' +
+          '<List of source URLs used>\n\n' +
+          '## Next step\n' +
+          '<Suggestion for what to explore next>\n\n' +
+          'Checked on: <YYYY-MM-DD> (only when available/required)\n' +
           'Return plain text only.',
       },
       {
@@ -1621,6 +1659,12 @@ Checked on: <YYYY-MM-DD> (only when required)`;
       '- When user provides URL(s), call web_scrape on those URL(s).',
       '- Keep source-backed claims tied to URLs.',
       '- If user asks latest/current/now, include "Checked on: YYYY-MM-DD".',
+      'Structure your response into the following sections:',
+      '## Answer',
+      '## Key points',
+      '## Evidence',
+      '## Sources',
+      '## Next step',
     ];
     if (searchExecutionMode === 'complex') {
       supplementalHints.push('- Compare and reconcile multiple sources before concluding.');

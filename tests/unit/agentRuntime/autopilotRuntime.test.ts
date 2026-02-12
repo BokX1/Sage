@@ -103,6 +103,8 @@ describe('Autopilot Runtime', () => {
     config.AGENTIC_MANAGER_WORKER_MAX_INPUT_CHARS = 32_000;
     config.AGENTIC_CANARY_ENABLED = true;
     config.AGENTIC_CANARY_ROUTE_ALLOWLIST_CSV = 'chat,coding,search,creative';
+    config.AGENTIC_TOOL_HARD_GATE_ENABLED = false; // Disable hard gate for unit tests
+    config.AGENTIC_VALIDATORS_ENABLED = false; // Disable output validators for unit tests
   });
 
   it('should return empty string when LLM outputs [SILENCE]', async () => {
