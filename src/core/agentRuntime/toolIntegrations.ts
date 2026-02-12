@@ -16,6 +16,7 @@ const DEFAULT_JINA_READER_BASE_URL = 'https://r.jina.ai/http://';
 
 export type SearchDepth = 'quick' | 'balanced' | 'deep';
 type SearchProviderId = 'tavily' | 'exa' | 'searxng' | 'pollinations';
+type ScrapeProviderId = 'firecrawl' | 'crawl4ai' | 'jina' | 'raw_fetch';
 
 type SearchResult = {
   title: string;
@@ -158,20 +159,41 @@ async function fetchJson(url: string, init: RequestInit, timeoutMs: number): Pro
   return parsed as Record<string, unknown>;
 }
 
-function parseSearchProviderOrder(csv: string | undefined): SearchProviderId[] {
-  const fallback: SearchProviderId[] = ['tavily', 'exa', 'searxng', 'pollinations'];
-  if (!csv || !csv.trim()) return fallback;
-  const valid = new Set<SearchProviderId>(['tavily', 'exa', 'searxng', 'pollinations']);
-  const parsed = csv
-    .split(',')
+function parseSearchProviderOrder(
+  csv: string | undefined,
+  options?: {
+    preferredOrder?: SearchProviderId[];
+    allowPollinationsFallback?: boolean;
+  },
+): SearchProviderId[] {
+  const allowPollinationsFallback = options?.allowPollinationsFallback !== false;
+  const fallback: SearchProviderId[] = allowPollinationsFallback
+    ? ['tavily', 'exa', 'searxng', 'pollinations']
+    : ['tavily', 'exa', 'searxng'];
+  const valid = new Set<SearchProviderId>(
+    allowPollinationsFallback
+      ? ['tavily', 'exa', 'searxng', 'pollinations']
+      : ['tavily', 'exa', 'searxng'],
+  );
+  const preferredOrder = options?.preferredOrder ?? [];
+  const sourceValues =
+    preferredOrder.length > 0
+      ? preferredOrder
+      : csv
+        ? csv.split(',').map((value) => value.trim())
+        : [];
+  const parsed = sourceValues
     .map((value) => value.trim().toLowerCase())
     .filter((value): value is SearchProviderId => valid.has(value as SearchProviderId));
   const seen = new Set<SearchProviderId>();
   const deduped: SearchProviderId[] = [];
-  for (const provider of [...parsed, 'pollinations' as const] as SearchProviderId[]) {
+  for (const provider of parsed) {
     if (seen.has(provider)) continue;
     seen.add(provider);
     deduped.push(provider);
+  }
+  if (allowPollinationsFallback && !seen.has('pollinations')) {
+    deduped.push('pollinations');
   }
   return deduped.length > 0 ? deduped : fallback;
 }
@@ -443,12 +465,21 @@ export async function runWebSearch(params: {
   depth: SearchDepth;
   maxResults?: number;
   apiKey?: string;
+  providerOrder?: SearchProviderId[];
+  allowLlmFallback?: boolean;
 }): Promise<Record<string, unknown>> {
   const timeoutMs = toInt((config.TOOL_WEB_SEARCH_TIMEOUT_MS as number | undefined), DEFAULT_WEB_SEARCH_TIMEOUT_MS, 5_000, 180_000);
   const maxOutputTokens = toInt((config.AGENTIC_TOOL_MAX_OUTPUT_TOKENS as number | undefined), 1_200, 128, 8_000);
   const configuredMaxResults = toInt((config.TOOL_WEB_SEARCH_MAX_RESULTS as number | undefined), DEFAULT_WEB_SEARCH_MAX_RESULTS, 1, 10);
   const maxResults = toInt(params.maxResults ?? configuredMaxResults, configuredMaxResults, 1, 10);
-  const providerOrder = parseSearchProviderOrder(config.TOOL_WEB_SEARCH_PROVIDER_ORDER as string | undefined);
+  const allowLlmFallback = params.allowLlmFallback !== false;
+  const providerOrder = parseSearchProviderOrder(
+    config.TOOL_WEB_SEARCH_PROVIDER_ORDER as string | undefined,
+    {
+      preferredOrder: params.providerOrder,
+      allowPollinationsFallback: allowLlmFallback,
+    },
+  );
   const providersTried: string[] = [];
   const errors: string[] = [];
 
@@ -582,7 +613,11 @@ async function scrapeWithRawFetch(url: string, maxChars: number, timeoutMs: numb
   return { provider: 'raw_fetch', content: truncated.text, truncated: truncated.truncated };
 }
 
-export async function scrapeWebPage(params: { url: string; maxChars?: number }): Promise<Record<string, unknown>> {
+export async function scrapeWebPage(params: {
+  url: string;
+  maxChars?: number;
+  providerOrder?: ScrapeProviderId[];
+}): Promise<Record<string, unknown>> {
   const sanitizedUrl = sanitizePublicUrl(params.url);
   if (!sanitizedUrl) {
     throw new Error('URL must be a public HTTP(S) URL.');
@@ -591,14 +626,19 @@ export async function scrapeWebPage(params: { url: string; maxChars?: number }):
   const configuredMaxChars = toInt((config.TOOL_WEB_SCRAPE_MAX_CHARS as number | undefined), DEFAULT_WEB_SCRAPE_MAX_CHARS, 500, 50_000);
   const maxChars = toInt(params.maxChars ?? configuredMaxChars, configuredMaxChars, 500, 50_000);
   const source = (config.TOOL_WEB_SCRAPE_PROVIDER_ORDER as string | undefined)?.trim() || 'firecrawl,crawl4ai,jina,raw_fetch';
-  const providerOrder = source
+  const configuredProviderOrder = source
     .split(',')
     .map((value) => value.trim().toLowerCase())
-    .filter((value): value is 'firecrawl' | 'crawl4ai' | 'jina' | 'raw_fetch' => ['firecrawl', 'crawl4ai', 'jina', 'raw_fetch'].includes(value));
-  const fallbackOrder: Array<'firecrawl' | 'crawl4ai' | 'jina' | 'raw_fetch'> = ['firecrawl', 'crawl4ai', 'jina', 'raw_fetch'];
-  const seedOrder = providerOrder.length > 0 ? providerOrder : fallbackOrder;
+    .filter((value): value is ScrapeProviderId => ['firecrawl', 'crawl4ai', 'jina', 'raw_fetch'].includes(value));
+  const fallbackOrder: ScrapeProviderId[] = ['firecrawl', 'crawl4ai', 'jina', 'raw_fetch'];
+  const seedOrder =
+    params.providerOrder && params.providerOrder.length > 0
+      ? params.providerOrder
+      : configuredProviderOrder.length > 0
+        ? configuredProviderOrder
+        : fallbackOrder;
   const seenProviders = new Set<string>();
-  const finalOrder: Array<'firecrawl' | 'crawl4ai' | 'jina' | 'raw_fetch'> = [];
+  const finalOrder: ScrapeProviderId[] = [];
   for (const provider of [...seedOrder, 'raw_fetch'] as const) {
     if (seenProviders.has(provider)) continue;
     seenProviders.add(provider);

@@ -60,7 +60,7 @@ import {
   buildCapabilityPromptSection,
   BuildCapabilityPromptSectionParams,
 } from './capabilityPrompt';
-import { ToolRegistry, globalToolRegistry } from './toolRegistry';
+import { ToolRegistry, globalToolRegistry, type ToolExecutionContext } from './toolRegistry';
 import { runToolCallLoop } from './toolCallLoop';
 import { ToolResult } from './toolCallExecution';
 import {
@@ -1039,6 +1039,7 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
   };
   const GUARDED_SEARCH_MODELS = ['gemini-search', 'perplexity-fast', 'perplexity-reasoning'] as const;
   const SEARCH_SCRAPER_MODEL = 'nomnom' as const;
+  const COMPLEX_SEARCH_TOOL_ORCHESTRATOR_MODEL = 'openai-large' as const;
   const URL_IN_TEXT_PATTERN = /\b(?:https?:\/\/|www\.)[^\s<>()]+/i;
   const userTextHasLink = URL_IN_TEXT_PATTERN.test(userText);
   const BASE_SEARCH_TIMEOUT_MS = toPositiveInt(
@@ -1526,6 +1527,20 @@ Checked on: <YYYY-MM-DD> (only when required)`;
     );
   };
   const effectiveToolPolicy = buildToolPolicy();
+  const toolExecutionProfile: ToolExecutionContext['toolExecutionProfile'] =
+    agentDecision.kind === 'search' && searchExecutionMode === 'complex'
+      ? 'search_complex'
+      : 'default';
+  const buildToolExecutionContext = (): ToolExecutionContext => ({
+    traceId,
+    userId,
+    channelId,
+    guildId,
+    apiKey,
+    routeKind: agentDecision.kind,
+    searchMode: searchExecutionMode,
+    toolExecutionProfile,
+  });
   const runSearchToolPass = async (params: {
     phase: string;
     iteration?: number;
@@ -1549,6 +1564,10 @@ Checked on: <YYYY-MM-DD> (only when required)`;
     ];
     if (searchExecutionMode === 'complex') {
       supplementalHints.push('- Compare and reconcile multiple sources before concluding.');
+      supplementalHints.push(
+        '- Complex search profile: prefer non-LLM retrieval tools first (web_search via searxng/tavily/exa, web_scrape via crawl4ai/jina/raw_fetch).',
+      );
+      supplementalHints.push('- Avoid AI-search fallbacks unless explicitly required.');
     }
     if (params.revisionInstruction?.trim()) {
       supplementalHints.push(`Critic focus: ${params.revisionInstruction.trim()}`);
@@ -1567,29 +1586,65 @@ Checked on: <YYYY-MM-DD> (only when required)`;
       },
     ];
 
-    const searchModelDetails = await resolveModelForRequestDetailed({
-      guildId,
-      messages: searchMessages,
-      route: 'search',
-      allowedModels: tenantPolicy.allowedModels,
-      featureFlags: {
-        search: true,
-        tools: true,
-        linkScrape: userTextHasLink || undefined,
-      },
-    });
-    const searchModel = searchModelDetails.model;
-    modelResolutionEvents.push({
-      phase: params.phase,
-      iteration: params.iteration,
-      route: searchModelDetails.route,
-      selected: searchModelDetails.model,
-      candidates: searchModelDetails.candidates,
-      decisions: searchModelDetails.decisions,
-      allowlistApplied: searchModelDetails.allowlistApplied,
-      purpose: 'search_tool_loop',
-      scopedTools: activeToolNames,
-    });
+    let searchModel = '';
+    if (searchExecutionMode === 'complex') {
+      const tenantAllowedModels = tenantPolicy.allowedModels;
+      if (
+        Array.isArray(tenantAllowedModels) &&
+        tenantAllowedModels.length > 0 &&
+        !tenantAllowedModels.some(
+          (modelId) =>
+            modelId.trim().toLowerCase() === COMPLEX_SEARCH_TOOL_ORCHESTRATOR_MODEL,
+        )
+      ) {
+        throw new Error(
+          `Complex search tool orchestrator requires "${COMPLEX_SEARCH_TOOL_ORCHESTRATOR_MODEL}", ` +
+          'but tenant allowedModels excludes it.',
+        );
+      }
+      searchModel = COMPLEX_SEARCH_TOOL_ORCHESTRATOR_MODEL;
+      modelResolutionEvents.push({
+        phase: params.phase,
+        iteration: params.iteration,
+        route: 'search',
+        selected: searchModel,
+        candidates: [searchModel],
+        decisions: [
+          {
+            model: searchModel,
+            accepted: true,
+            reason: 'selected',
+          },
+        ],
+        allowlistApplied: Array.isArray(tenantPolicy.allowedModels) && tenantPolicy.allowedModels.length > 0,
+        purpose: 'search_tool_loop_complex_orchestrator',
+        scopedTools: activeToolNames,
+      });
+    } else {
+      const searchModelDetails = await resolveModelForRequestDetailed({
+        guildId,
+        messages: searchMessages,
+        route: 'search',
+        allowedModels: tenantPolicy.allowedModels,
+        featureFlags: {
+          search: true,
+          tools: true,
+          linkScrape: userTextHasLink || undefined,
+        },
+      });
+      searchModel = searchModelDetails.model;
+      modelResolutionEvents.push({
+        phase: params.phase,
+        iteration: params.iteration,
+        route: searchModelDetails.route,
+        selected: searchModelDetails.model,
+        candidates: searchModelDetails.candidates,
+        decisions: searchModelDetails.decisions,
+        allowlistApplied: searchModelDetails.allowlistApplied,
+        purpose: 'search_tool_loop',
+        scopedTools: activeToolNames,
+      });
+    }
 
     const scopedToolSpecs = scopedToolRegistry
       .listOpenAIToolSpecs()
@@ -1629,13 +1684,7 @@ Checked on: <YYYY-MM-DD> (only when required)`;
       client,
       messages: searchMessages,
       registry: scopedToolRegistry,
-      ctx: {
-        traceId,
-        userId,
-        channelId,
-        guildId,
-        apiKey,
-      },
+      ctx: buildToolExecutionContext(),
       model: searchModel,
       apiKey,
       temperature: searchToolTemperature,
@@ -1710,13 +1759,7 @@ Checked on: <YYYY-MM-DD> (only when required)`;
         client,
         messages: forcedMessages,
         registry: scopedToolRegistry,
-        ctx: {
-          traceId,
-          userId,
-          channelId,
-          guildId,
-          apiKey,
-        },
+        ctx: buildToolExecutionContext(),
         model: searchModel,
         apiKey,
         temperature: searchToolTemperature,
@@ -1972,13 +2015,7 @@ Checked on: <YYYY-MM-DD> (only when required)`;
             client,
             messages: forcedMessages,
             registry: scopedToolRegistry,
-            ctx: {
-              traceId,
-              userId,
-              channelId,
-              guildId,
-              apiKey,
-            },
+            ctx: buildToolExecutionContext(),
             model: resolvedModel,
             apiKey,
             temperature: agentDecision.temperature,
@@ -2025,13 +2062,7 @@ Checked on: <YYYY-MM-DD> (only when required)`;
             client,
             messages: runtimeMessages,
             registry: scopedToolRegistry,
-            ctx: {
-              traceId,
-              userId,
-              channelId,
-              guildId,
-              apiKey,
-            },
+            ctx: buildToolExecutionContext(),
             model: resolvedModel,
             apiKey,
             temperature: agentDecision.temperature,
@@ -2613,13 +2644,7 @@ Checked on: <YYYY-MM-DD> (only when required)`;
                 client,
                 messages: revisionMessages,
                 registry: scopedToolRegistry,
-                ctx: {
-                  traceId,
-                  userId,
-                  channelId,
-                  guildId,
-                  apiKey,
-                },
+                ctx: buildToolExecutionContext(),
                 model: revisionModel,
                 apiKey,
                 temperature: revisionTemperature,

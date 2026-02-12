@@ -16,6 +16,8 @@ import {
 } from './toolIntegrations';
 
 const REPO_PATTERN = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
+const COMPLEX_SEARCH_WEB_PROVIDER_ORDER = ['searxng', 'tavily', 'exa'] as const;
+const COMPLEX_SEARCH_SCRAPE_PROVIDER_ORDER = ['crawl4ai', 'jina', 'raw_fetch', 'firecrawl'] as const;
 
 const getCurrentDateTimeTool: ToolDefinition<{
   utcOffsetMinutes?: number;
@@ -69,11 +71,16 @@ const webSearchTool: ToolDefinition<{
   }),
   metadata: { riskClass: 'network_read' },
   execute: async ({ query, depth, maxResults }, ctx) => {
+    const useComplexSearchProfile =
+      ctx.routeKind === 'search' &&
+      (ctx.searchMode === 'complex' || ctx.toolExecutionProfile === 'search_complex');
     return runWebSearch({
       query,
-      depth: depth ?? 'balanced',
+      depth: depth ?? (useComplexSearchProfile ? 'deep' : 'balanced'),
       maxResults,
       apiKey: ctx.apiKey,
+      providerOrder: useComplexSearchProfile ? [...COMPLEX_SEARCH_WEB_PROVIDER_ORDER] : undefined,
+      allowLlmFallback: useComplexSearchProfile ? false : undefined,
     });
   },
 };
@@ -95,14 +102,18 @@ const webScrapeTool: ToolDefinition<{
     maxChars: z.number().int().min(500).max(50_000).optional(),
   }),
   metadata: { riskClass: 'network_read' },
-  execute: async ({ url, maxChars }) => {
+  execute: async ({ url, maxChars }, ctx) => {
     const sanitizedUrl = sanitizePublicUrl(url);
     if (!sanitizedUrl) {
       throw new Error('Invalid URL');
     }
+    const useComplexSearchProfile =
+      ctx.routeKind === 'search' &&
+      (ctx.searchMode === 'complex' || ctx.toolExecutionProfile === 'search_complex');
     return scrapeWebPage({
       url: sanitizedUrl,
       maxChars,
+      providerOrder: useComplexSearchProfile ? [...COMPLEX_SEARCH_SCRAPE_PROVIDER_ORDER] : undefined,
     });
   },
 };

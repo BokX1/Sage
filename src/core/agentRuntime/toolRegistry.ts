@@ -13,6 +13,15 @@ export interface ToolExecutionContext {
   channelId: string;
   guildId?: string | null;
   apiKey?: string;
+  /** Optional route metadata for route-aware tool behavior. */
+  routeKind?: 'chat' | 'coding' | 'search' | 'creative';
+  /** Optional search-mode metadata for route-aware tool behavior. */
+  searchMode?: 'simple' | 'complex' | null;
+  /**
+   * Optional execution profile used to enforce deterministic provider/tooling
+   * behavior for specific runtime paths (for example search complex mode).
+   */
+  toolExecutionProfile?: 'default' | 'search_complex';
   /** Optional abort signal to check for timeout/cancellation. Tools should check signal.aborted periodically. */
   signal?: AbortSignal;
 }

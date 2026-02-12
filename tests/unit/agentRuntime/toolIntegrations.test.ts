@@ -23,6 +23,7 @@ describe('toolIntegrations', () => {
   const originalSearchOrder = config.TOOL_WEB_SEARCH_PROVIDER_ORDER;
   const originalSearxngBase = config.SEARXNG_BASE_URL;
   const originalScrapeOrder = config.TOOL_WEB_SCRAPE_PROVIDER_ORDER;
+  const originalCrawl4aiBase = config.CRAWL4AI_BASE_URL;
   const originalOllamaBase = config.OLLAMA_BASE_URL;
 
   beforeEach(() => {
@@ -31,6 +32,7 @@ describe('toolIntegrations', () => {
     config.TOOL_WEB_SEARCH_PROVIDER_ORDER = originalSearchOrder;
     config.SEARXNG_BASE_URL = originalSearxngBase;
     config.TOOL_WEB_SCRAPE_PROVIDER_ORDER = originalScrapeOrder;
+    config.CRAWL4AI_BASE_URL = originalCrawl4aiBase;
     config.OLLAMA_BASE_URL = originalOllamaBase;
   });
 
@@ -186,6 +188,52 @@ describe('toolIntegrations', () => {
         }),
       ]),
     );
+    expect(global.fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('disables pollinations fallback when allowLlmFallback is false', async () => {
+    config.TOOL_WEB_SEARCH_PROVIDER_ORDER = 'pollinations';
+
+    let thrown: unknown = null;
+    try {
+      await runWebSearch({
+        query: 'sage docs',
+        depth: 'quick',
+        maxResults: 3,
+        allowLlmFallback: false,
+      });
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(Error);
+    const errorText = (thrown as Error).message;
+    expect(errorText).toContain('Providers attempted: tavily, exa, searxng');
+    expect(errorText).not.toContain('pollinations');
+  });
+
+  it('uses explicit scrape providerOrder override with local-first behavior', async () => {
+    config.CRAWL4AI_BASE_URL = 'http://localhost:11235';
+    (global.fetch as unknown as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 500,
+        text: async () => 'crawl4ai down',
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () => '<html><body>raw fallback content</body></html>',
+      });
+
+    const result = await scrapeWebPage({
+      url: 'https://example.com',
+      maxChars: 1_000,
+      providerOrder: ['crawl4ai', 'raw_fetch'],
+    });
+
+    expect(result.provider).toBe('raw_fetch');
+    expect(result.content).toContain('raw fallback content');
     expect(global.fetch).toHaveBeenCalledTimes(2);
   });
 
