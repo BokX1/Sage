@@ -18,6 +18,8 @@ describe('resolveModelForRequest', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     resetModelHealth();
+    
+    mockFindModelInCatalog.mockReset();
     mockFindModelInCatalog.mockImplementation(async (modelId: string) => ({
       model: {
         id: modelId,
@@ -28,6 +30,8 @@ describe('resolveModelForRequest', () => {
       catalog: {},
       refreshed: false,
     }));
+    
+    mockModelSupports.mockReset();
     mockModelSupports.mockReturnValue(true);
   });
 
@@ -144,6 +148,10 @@ describe('resolveModelForRequest', () => {
 
   it('returns detailed fallback reasons for candidate selection', async () => {
     mockModelSupports.mockImplementation((model: { id: string }) => model.id !== 'openai-large');
+    // Ensure deterministic health ranking: openai-large (index 0) > kimi (index 1) > claude-fast (index 2)
+    recordModelOutcome({ model: 'openai-large', success: true });
+    recordModelOutcome({ model: 'kimi', success: true });
+    recordModelOutcome({ model: 'claude-fast', success: false }); // Penalty
 
     const details = await resolveModelForRequestDetailed({
       guildId: 'guild-1',
