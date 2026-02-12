@@ -53,6 +53,19 @@ describe('qualityPolicy', () => {
     ).toBe(false);
   });
 
+  it('disables critic when runtime marks the draft as terminal fallback', () => {
+    expect(
+      shouldRunCritic({
+        config: { enabled: true, maxLoops: 1, minScore: 0.7 },
+        routeKind: 'search',
+        draftText: "I couldn't complete the search request at this time.",
+        isVoiceActive: false,
+        hasFiles: false,
+        skip: true,
+      }),
+    ).toBe(false);
+  });
+
   it('requests revision on low score or revise verdict', () => {
     expect(
       shouldRequestRevision({

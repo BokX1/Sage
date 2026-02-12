@@ -7,6 +7,10 @@ export const logger = pino({
     env: config.NODE_ENV,
     service: 'sage',
   },
+  serializers: {
+    err: pino.stdSerializers.err,
+    error: pino.stdSerializers.err,
+  },
   redact: {
     paths: [
       'req.headers.authorization',

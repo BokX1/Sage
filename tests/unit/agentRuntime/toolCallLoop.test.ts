@@ -182,7 +182,7 @@ describe('toolCallLoop', () => {
       expect(mockChat).toHaveBeenCalledTimes(1);
     });
 
-    it('can return a leaked envelope on final model response after rounds complete', async () => {
+    it('runs a plain-text finalization pass when final model response is still an envelope', async () => {
       mockChat.mockResolvedValueOnce({
         content: JSON.stringify({
           type: 'tool_calls',
@@ -194,6 +194,9 @@ describe('toolCallLoop', () => {
           type: 'tool_calls',
           calls: [{ name: 'get_time', args: {} }],
         }),
+      });
+      mockChat.mockResolvedValueOnce({
+        content: 'Final plain-text answer after tool rounds.',
       });
 
       const result = await runToolCallLoop({
@@ -206,7 +209,39 @@ describe('toolCallLoop', () => {
 
       expect(result.toolsExecuted).toBe(true);
       expect(result.roundsCompleted).toBe(1);
-      expect(result.replyText).toContain('"type":"tool_calls"');
+      expect(result.replyText).toBe('Final plain-text answer after tool rounds.');
+      expect(mockChat).toHaveBeenCalledTimes(3);
+      expect(mockChat.mock.calls[2][0].tools).toBeUndefined();
+    });
+
+    it('returns a safe fallback when plain-text finalization pass fails', async () => {
+      mockChat.mockResolvedValueOnce({
+        content: JSON.stringify({
+          type: 'tool_calls',
+          calls: [{ name: 'get_time', args: {} }],
+        }),
+      });
+      mockChat.mockResolvedValueOnce({
+        content: JSON.stringify({
+          type: 'tool_calls',
+          calls: [{ name: 'get_time', args: {} }],
+        }),
+      });
+      mockChat.mockRejectedValueOnce(new Error('finalization timeout'));
+
+      const result = await runToolCallLoop({
+        client: mockClient,
+        messages: [{ role: 'user', content: 'What time is it?' }],
+        registry,
+        ctx: testCtx,
+        config: { maxRounds: 1 },
+      });
+
+      expect(result.toolsExecuted).toBe(true);
+      expect(result.roundsCompleted).toBe(1);
+      expect(result.replyText).toBe(
+        'I could not finalize a plain-text answer after tool execution. Please try again.',
+      );
     });
   });
 

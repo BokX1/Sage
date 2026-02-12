@@ -442,9 +442,51 @@ export async function runToolCallLoop(params: ToolCallLoopParams): Promise<ToolC
     tools: toolSpecs,
     toolChoice: toolSpecs ? 'auto' : undefined,
   });
+  let finalReplyText = finalResponse.content;
+  if (parseToolCallEnvelope(finalReplyText)) {
+    logger.warn(
+      { traceId: ctx.traceId, roundsCompleted, maxRounds: config.maxRounds },
+      'Tool loop reached round limit with another tool envelope; forcing a plain-text finalization pass',
+    );
+    try {
+      const plainTextFinalization = await client.chat({
+        messages: [
+          ...messages,
+          { role: 'assistant', content: finalReplyText },
+          {
+            role: 'system',
+            content:
+              'Tool-call rounds are exhausted. Do not call tools. ' +
+              'Return one final plain-text answer grounded only in prior tool results and context.',
+          },
+        ],
+        model,
+        apiKey,
+        temperature: Math.max(0, loopTemperature - 0.1),
+        timeout: params.timeoutMs,
+        maxTokens: params.maxTokens,
+      });
+      finalReplyText = plainTextFinalization.content;
+    } catch (finalizationError) {
+      logger.warn(
+        { traceId: ctx.traceId, roundsCompleted, maxRounds: config.maxRounds, error: finalizationError },
+        'Tool loop plain-text finalization pass failed; returning a safe fallback message',
+      );
+      finalReplyText =
+        'I could not finalize a plain-text answer after tool execution. Please try again.';
+    }
+    if (parseToolCallEnvelope(finalReplyText)) {
+      logger.warn(
+        { traceId: ctx.traceId, roundsCompleted, maxRounds: config.maxRounds },
+        'Tool loop plain-text finalization still returned an envelope; returning a safe fallback message',
+      );
+      finalReplyText =
+        'I could not finalize a plain-text answer after tool execution. Please try again.';
+    }
+  }
 
   return {
-    replyText: finalResponse.content,
+    replyText: finalReplyText,
     toolsExecuted: allToolResults.length > 0,
     roundsCompleted,
     toolResults: allToolResults,

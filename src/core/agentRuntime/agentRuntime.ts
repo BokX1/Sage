@@ -1020,6 +1020,8 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
   };
 
   let draftText = '';
+  let skipCriticLoop = false;
+  let criticSkipReason: string | null = null;
   const modelResolutionEvents: Array<Record<string, unknown>> = [];
   const routeOutputMaxTokens = resolveRouteOutputMaxTokens({
     route: agentDecision.kind,
@@ -1594,12 +1596,18 @@ Checked on: <YYYY-MM-DD> (only when required)`;
         },
       }));
 
+    const searchToolTemperature = Math.max(0.1, (agentDecision.temperature ?? 0.3) - 0.1);
+    const searchToolMaxTokens = toPositiveInt(
+      (appConfig.AGENTIC_TOOL_MAX_OUTPUT_TOKENS as number | undefined),
+      1_200,
+    );
+    const toolLoopConfig = buildToolLoopConfig();
     const searchCallStartedAt = Date.now();
     const initialResponse = await client.chat({
       messages: searchMessages,
       model: searchModel,
       apiKey,
-      temperature: Math.max(0.1, (agentDecision.temperature ?? 0.3) - 0.1),
+      temperature: searchToolTemperature,
       timeout: appConfig.TIMEOUT_CHAT_MS,
       maxTokens: routeOutputMaxTokens,
       tools: scopedToolSpecs,
@@ -1612,7 +1620,7 @@ Checked on: <YYYY-MM-DD> (only when required)`;
     });
 
     const loopStartedAt = Date.now();
-    const loopResult = await runToolCallLoop({
+    const initialLoopResult = await runToolCallLoop({
       client,
       messages: searchMessages,
       registry: scopedToolRegistry,
@@ -1625,18 +1633,112 @@ Checked on: <YYYY-MM-DD> (only when required)`;
       },
       model: searchModel,
       apiKey,
-      temperature: Math.max(0.1, (agentDecision.temperature ?? 0.3) - 0.1),
+      temperature: searchToolTemperature,
       timeoutMs: appConfig.TIMEOUT_CHAT_MS,
-      maxTokens: toPositiveInt(
-        (appConfig.AGENTIC_TOOL_MAX_OUTPUT_TOKENS as number | undefined),
-        1_200,
-      ),
+      maxTokens: searchToolMaxTokens,
       initialAssistantResponseText: initialResponse.content,
-      config: buildToolLoopConfig(),
+      config: toolLoopConfig,
       toolPolicy: effectiveToolPolicy,
     });
 
-    const successfulToolCount = loopResult.toolResults.filter((toolResult) => toolResult.success).length;
+    let loopResult = initialLoopResult;
+    let successfulToolCount = loopResult.toolResults.filter((toolResult) => toolResult.success).length;
+    let hardGateForcedBudget: Record<string, unknown> | undefined;
+    if (
+      requiresToolEvidenceThisTurn &&
+      successfulToolCount < toolHardGateMinSuccessfulCalls
+    ) {
+      logger.warn(
+        {
+          traceId,
+          phase: params.phase,
+          iteration: params.iteration,
+          routeKind: agentDecision.kind,
+          successfulToolCount,
+          required: toolHardGateMinSuccessfulCalls,
+        },
+        'Search tool hard gate unmet on initial pass; forcing a tool-backed retry',
+      );
+      const forcedGateInstruction =
+        buildToolHardGateInstruction({
+          routeKind: agentDecision.kind,
+          searchMode: searchExecutionMode,
+          minSuccessfulCalls: toolHardGateMinSuccessfulCalls,
+          toolNames: activeToolNames,
+        }) +
+        '\nUse tools now before finalizing. If tools fail, explicitly mention the limitation.';
+      const priorDraftForForcedPass =
+        cleanDraftText(stripToolEnvelopeDraft(loopResult.replyText) ?? loopResult.replyText) ??
+        cleanDraftText(stripToolEnvelopeDraft(initialResponse.content) ?? initialResponse.content) ??
+        'Previous pass did not produce a final answer.';
+      const forcedMessages: LLMChatMessage[] = [
+        ...searchMessages,
+        { role: 'assistant', content: priorDraftForForcedPass },
+        { role: 'system', content: forcedGateInstruction },
+      ];
+      const forcedSearchStartedAt = Date.now();
+      const forcedInitialResponse = await client.chat({
+        messages: forcedMessages,
+        model: searchModel,
+        apiKey,
+        temperature: searchToolTemperature,
+        timeout: appConfig.TIMEOUT_CHAT_MS,
+        maxTokens: routeOutputMaxTokens,
+        tools: scopedToolSpecs,
+        toolChoice: scopedToolSpecs.length > 0 ? 'auto' : undefined,
+      });
+      recordModelOutcome({
+        model: searchModel,
+        success: true,
+        latencyMs: Date.now() - forcedSearchStartedAt,
+      });
+      modelResolutionEvents.push({
+        phase: params.phase,
+        iteration: params.iteration,
+        route: 'search',
+        selected: searchModel,
+        purpose: 'search_tool_loop_forced_retry',
+        required: toolHardGateMinSuccessfulCalls,
+      });
+      const forcedLoopStartedAt = Date.now();
+      const forcedLoopResult = await runToolCallLoop({
+        client,
+        messages: forcedMessages,
+        registry: scopedToolRegistry,
+        ctx: {
+          traceId,
+          userId,
+          channelId,
+          guildId,
+          apiKey,
+        },
+        model: searchModel,
+        apiKey,
+        temperature: searchToolTemperature,
+        timeoutMs: appConfig.TIMEOUT_CHAT_MS,
+        maxTokens: searchToolMaxTokens,
+        initialAssistantResponseText: forcedInitialResponse.content,
+        config: toolLoopConfig,
+        toolPolicy: effectiveToolPolicy,
+      });
+      const forcedSuccessfulToolCount = forcedLoopResult.toolResults.filter((toolResult) => toolResult.success).length;
+      if (forcedSuccessfulToolCount < toolHardGateMinSuccessfulCalls) {
+        throw new Error(
+          `Search tool hard gate unmet after forced retry. Required=${toolHardGateMinSuccessfulCalls}, got=${forcedSuccessfulToolCount}.`,
+        );
+      }
+      loopResult = forcedLoopResult;
+      successfulToolCount = forcedSuccessfulToolCount;
+      hardGateForcedBudget = {
+        mode: 'search_hard_gate_forced_retry',
+        toolsExecuted: forcedLoopResult.toolsExecuted,
+        roundsCompleted: forcedLoopResult.roundsCompleted,
+        toolResultCount: forcedLoopResult.toolResults.length,
+        successfulToolCount: forcedSuccessfulToolCount,
+        policyDecisions: forcedLoopResult.policyDecisions,
+        latencyMs: Date.now() - forcedLoopStartedAt,
+      };
+    }
     if (successfulToolCount === 0) {
       throw new Error('Search tool loop produced no successful tool calls.');
     }
@@ -1666,6 +1768,7 @@ Checked on: <YYYY-MM-DD> (only when required)`;
         sourceUrls: supplementalSourceUrls,
         scopedTools: activeToolNames,
         latencyMs: Date.now() - loopStartedAt,
+        hardGateForcedPass: hardGateForcedBudget,
       },
     };
   };
@@ -1735,8 +1838,12 @@ Checked on: <YYYY-MM-DD> (only when required)`;
     } catch (searchError) {
       logger.error({ error: searchError, traceId }, 'Search Agent failed');
       const searchErrorText = searchError instanceof Error ? searchError.message.toLowerCase() : String(searchError);
+      skipCriticLoop = true;
       if (searchErrorText.includes('hard gate')) {
         canaryHardGateUnmet = true;
+        criticSkipReason = 'search_hard_gate_unmet';
+      } else {
+        criticSkipReason = 'search_agent_failed';
       }
       draftText = searchErrorText.includes('hard gate')
         ? "I couldn't verify this request with tools right now, so I won't provide an unverified answer. Please try again."
@@ -2119,6 +2226,23 @@ Checked on: <YYYY-MM-DD> (only when required)`;
     return [...providers].filter((provider) => allowedProviders.includes(provider));
   };
 
+  if (skipCriticLoop) {
+    logger.info(
+      { traceId, routeKind: agentDecision.kind, reason: criticSkipReason },
+      'Skipping critic loop after terminal search fallback',
+    );
+    if (Array.isArray(agentEventsJson)) {
+      agentEventsJson.push({
+        type: 'critic_skipped',
+        timestamp: new Date().toISOString(),
+        details: {
+          reason: criticSkipReason,
+          routeKind: agentDecision.kind,
+        },
+      });
+    }
+  }
+
   if (
     shouldRunCritic({
       config: criticConfig,
@@ -2126,6 +2250,7 @@ Checked on: <YYYY-MM-DD> (only when required)`;
       draftText,
       isVoiceActive,
       hasFiles: files.length > 0,
+      skip: skipCriticLoop,
     })
   ) {
     for (let iteration = 1; iteration <= criticConfig.maxLoops; iteration += 1) {

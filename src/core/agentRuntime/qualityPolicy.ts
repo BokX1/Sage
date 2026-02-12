@@ -42,8 +42,10 @@ export function shouldRunCritic(params: {
   draftText: string;
   isVoiceActive?: boolean;
   hasFiles?: boolean;
+  skip?: boolean;
 }): boolean {
   const normalized = normalizeCriticConfig(params.config);
+  if (params.skip) return false;
   if (!normalized.enabled || normalized.maxLoops <= 0) return false;
   if (!CRITIC_ELIGIBLE_ROUTES.has(params.routeKind)) return false;
   if (!params.draftText.trim()) return false;
