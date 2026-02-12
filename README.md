@@ -97,25 +97,23 @@ Sage is a Discord-native AI runtime designed for real communities, not just one-
 
 ## 🎯 Real Community Use Cases
 
-1. **Engineering triage in a busy dev server**  
-User asks: `compare prisma migrate options for prod with rollback risk`  
-Sage behavior: routes to `coding`, pulls tool evidence, applies critic revision, returns an implementation-ready recommendation.  
-Outcome: faster issue resolution with fewer risky suggestions.
+If you're evaluating Sage for your server, start with one of these high-signal scenarios:
 
-2. **Research roundup with source hygiene**  
-User asks: `what changed in AI model pricing this week`  
-Sage behavior: routes to `search`, gathers live findings, runs quality checks, and synthesizes a grounded answer.  
-Outcome: fewer stale claims and better decision confidence.
+| If you need to... | Try this prompt in Discord | Sage helps by... | You get... |
+| :--- | :--- | :--- | :--- |
+| 🧑‍💻 Make a safer engineering decision during incident pressure | `compare prisma migrate options for prod with rollback risk` | Routing to `coding`, gathering tool evidence, and running critic revision before final response | Faster decisions with clearer tradeoffs and fewer risky guesses |
+| 🧪 Summarize a time-sensitive topic with better grounding | `what changed in AI model pricing this week` | Routing to `search`, collecting live findings, and applying quality/grounding checks | Lower risk of stale or ungrounded claims |
+| 📄 Keep continuity across attachments and ongoing discussions | `summarize the architecture doc we uploaded yesterday and compare with today’s plan` | Retrieving cached attachment text on demand and combining it with channel/user memory | Less repeated context and fewer re-uploads |
+| 👥 Communicate clearly in your community's tone | `how should I explain this to the team?` | Blending user profile + channel context + social signals to tune phrasing | Replies that feel community-aware instead of generic |
+| 🛡️ Roll out runtime changes with less operational risk | `we're rolling out changes; how do we reduce runtime risk?` | Supporting canary policy, tenant policy, and replay-gate workflows in operations | More controlled rollouts, fewer all-or-nothing changes |
 
-3. **Attachment-aware team memory**  
-User asks: `summarize the architecture doc we uploaded yesterday and compare with today’s plan`  
-Sage behavior: retrieves cached attachment content on demand and combines it with channel context.  
-Outcome: no need to re-upload files or repeat prior context.
+**Copy/paste starter prompts:**
 
-4. **Community-aware responses, not generic bot replies**  
-User asks: `how should I explain this to the team?`  
-Sage behavior: blends user profile + channel memory + social context to tune tone and clarity.  
-Outcome: responses feel aligned with the community, not generic AI output.
+- `compare two options and tell me which is safer for production`
+- `summarize what we decided in this channel this week`
+- `use the file I uploaded earlier and give me a rollout checklist`
+
+Tip: goal-first prompts (what you need + constraints) generally produce better responses than open-ended prompts.
 
 ---
 
