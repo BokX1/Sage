@@ -210,8 +210,26 @@ describe('toolIntegrations', () => {
 
     expect(thrown).toBeInstanceOf(Error);
     const errorText = (thrown as Error).message;
-    expect(errorText).toContain('Providers attempted: tavily, exa, searxng');
+    expect(errorText).toContain('Providers attempted: tavily, exa');
+    expect(errorText).toContain('Skipped local providers: searxng');
     expect(errorText).not.toContain('pollinations');
+  });
+
+  it('skips local searxng when not configured', async () => {
+    config.SEARXNG_BASE_URL = '';
+    config.TOOL_WEB_SEARCH_PROVIDER_ORDER = 'searxng';
+
+    await expect(
+      runWebSearch({
+        query: 'sage docs',
+        depth: 'quick',
+        maxResults: 3,
+        providerOrder: ['searxng'],
+        allowLlmFallback: false,
+      }),
+    ).rejects.toThrow('searxng: skipped (not configured');
+
+    expect(global.fetch).toHaveBeenCalledTimes(0);
   });
 
   it('uses explicit scrape providerOrder override with local-first behavior', async () => {
@@ -237,6 +255,25 @@ describe('toolIntegrations', () => {
     expect(result.provider).toBe('raw_fetch');
     expect(result.content).toContain('raw fallback content');
     expect(global.fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('skips local crawl4ai when not configured and uses raw fallback', async () => {
+    config.CRAWL4AI_BASE_URL = '';
+    (global.fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      text: async () => '<html><body>raw fallback content</body></html>',
+    });
+
+    const result = await scrapeWebPage({
+      url: 'https://example.com',
+      maxChars: 1_000,
+      providerOrder: ['crawl4ai', 'raw_fetch'],
+    });
+
+    expect(result.provider).toBe('raw_fetch');
+    expect(result.providersSkipped).toEqual(expect.arrayContaining(['crawl4ai']));
+    expect(global.fetch).toHaveBeenCalledTimes(1);
   });
 
   it('cooldowns unreachable local searxng provider and skips it on next call', async () => {

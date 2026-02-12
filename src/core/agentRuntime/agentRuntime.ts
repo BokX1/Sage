@@ -61,7 +61,7 @@ import {
   BuildCapabilityPromptSectionParams,
 } from './capabilityPrompt';
 import { ToolRegistry, globalToolRegistry, type ToolExecutionContext } from './toolRegistry';
-import { runToolCallLoop } from './toolCallLoop';
+import { runToolCallLoop, type ToolPolicyTraceDecision } from './toolCallLoop';
 import { ToolResult } from './toolCallExecution';
 import {
   mergeToolPolicyConfig,
@@ -399,6 +399,66 @@ function extractSourceUrlsFromToolResults(toolResults: ToolResult[]): string[] {
     if (urls.size >= SEARCH_RESPONSE_MAX_EMITTED_URLS) break;
   }
   return [...urls].slice(0, SEARCH_RESPONSE_MAX_EMITTED_URLS);
+}
+
+function summarizeSearchPipelineToolExecution(params: {
+  toolResults: ToolResult[];
+  policyDecisions: ToolPolicyTraceDecision[];
+  deduplicatedCallCount?: number;
+}): Record<string, unknown> {
+  const successfulTools = new Set<string>();
+  const failedTools = new Set<string>();
+  const providerCounts = new Map<string, number>();
+  const providersTried = new Set<string>();
+  const providersSkipped = new Set<string>();
+
+  for (const toolResult of params.toolResults) {
+    if (toolResult.success) {
+      successfulTools.add(toolResult.name);
+    } else {
+      failedTools.add(toolResult.name);
+    }
+
+    if (!toolResult.success || !toolResult.result || typeof toolResult.result !== 'object') {
+      continue;
+    }
+    const record = toolResult.result as Record<string, unknown>;
+    const provider = typeof record.provider === 'string' ? record.provider.trim().toLowerCase() : '';
+    if (provider) {
+      providerCounts.set(provider, (providerCounts.get(provider) ?? 0) + 1);
+    }
+    const tried = Array.isArray(record.providersTried)
+      ? record.providersTried
+          .map((entry) => (typeof entry === 'string' ? entry.trim().toLowerCase() : ''))
+          .filter((entry) => entry.length > 0)
+      : [];
+    for (const entry of tried) {
+      providersTried.add(entry);
+    }
+    const skipped = Array.isArray(record.providersSkipped)
+      ? record.providersSkipped
+          .map((entry) => (typeof entry === 'string' ? entry.trim().toLowerCase() : ''))
+          .filter((entry) => entry.length > 0)
+      : [];
+    for (const entry of skipped) {
+      providersSkipped.add(entry);
+    }
+  }
+
+  const deniedToolCalls = params.policyDecisions
+    .filter((decision) => !decision.allowed)
+    .map((decision) => decision.toolName);
+
+  return {
+    successfulToolNames: [...successfulTools],
+    failedToolNames: [...failedTools],
+    providerCounts: Object.fromEntries(providerCounts),
+    providersTried: [...providersTried],
+    providersSkipped: [...providersSkipped],
+    policyDecisionCount: params.policyDecisions.length,
+    policyDeniedToolCalls: deniedToolCalls,
+    deduplicatedCallCount: params.deduplicatedCallCount ?? 0,
+  };
 }
 
 function shouldRequireToolEvidenceForTurn(params: {
@@ -1784,6 +1844,12 @@ Checked on: <YYYY-MM-DD> (only when required)`;
         toolResultCount: forcedLoopResult.toolResults.length,
         successfulToolCount: forcedSuccessfulToolCount,
         policyDecisions: forcedLoopResult.policyDecisions,
+        toolExecutionSummary: summarizeSearchPipelineToolExecution({
+          toolResults: forcedLoopResult.toolResults,
+          policyDecisions: forcedLoopResult.policyDecisions,
+          deduplicatedCallCount: forcedLoopResult.deduplicatedCallCount,
+        }),
+        deduplicatedCallCount: forcedLoopResult.deduplicatedCallCount ?? 0,
         latencyMs: Date.now() - forcedLoopStartedAt,
       };
     }
@@ -1808,11 +1874,20 @@ Checked on: <YYYY-MM-DD> (only when required)`;
       loopBudget: {
         enabled: true,
         route: 'search',
+        mode: searchExecutionMode,
+        toolExecutionProfile,
+        orchestratorModel: searchModel,
         toolsExecuted: loopResult.toolsExecuted,
         roundsCompleted: loopResult.roundsCompleted,
         toolResultCount: loopResult.toolResults.length,
         successfulToolCount,
         policyDecisions: loopResult.policyDecisions,
+        toolExecutionSummary: summarizeSearchPipelineToolExecution({
+          toolResults: loopResult.toolResults,
+          policyDecisions: loopResult.policyDecisions,
+          deduplicatedCallCount: loopResult.deduplicatedCallCount,
+        }),
+        deduplicatedCallCount: loopResult.deduplicatedCallCount ?? 0,
         sourceUrls: supplementalSourceUrls,
         scopedTools: activeToolNames,
         latencyMs: Date.now() - loopStartedAt,
@@ -2216,6 +2291,13 @@ Checked on: <YYYY-MM-DD> (only when required)`;
     const summary: Record<string, unknown> = {
       toolsAvailable: activeToolNames,
       toolLoopEnabled,
+      searchPipeline:
+        agentDecision.kind === 'search'
+          ? {
+              mode: searchExecutionMode,
+              toolExecutionProfile,
+            }
+          : undefined,
     };
     if (toolLoopBudgetJson) {
       summary.initialToolLoop = toolLoopBudgetJson;
@@ -2664,11 +2746,20 @@ Checked on: <YYYY-MM-DD> (only when required)`;
               const toolLoopBudget = {
                 iteration,
                 mode: 'critic_tool_loop_revision',
+                route: agentDecision.kind,
+                searchMode: searchExecutionMode,
+                toolExecutionProfile,
                 toolsExecuted: loopResult.toolsExecuted,
                 roundsCompleted: loopResult.roundsCompleted,
                 toolResultCount: loopResult.toolResults.length,
                 successfulToolCount: loopResult.toolResults.filter((toolResult) => toolResult.success).length,
                 policyDecisions: loopResult.policyDecisions,
+                toolExecutionSummary: summarizeSearchPipelineToolExecution({
+                  toolResults: loopResult.toolResults,
+                  policyDecisions: loopResult.policyDecisions,
+                  deduplicatedCallCount: loopResult.deduplicatedCallCount,
+                }),
+                deduplicatedCallCount: loopResult.deduplicatedCallCount ?? 0,
                 latencyMs: Date.now() - loopStartedAt,
               };
               criticToolLoopBudgets.push(toolLoopBudget);

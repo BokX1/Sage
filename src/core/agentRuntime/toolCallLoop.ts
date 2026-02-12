@@ -10,7 +10,7 @@ import {
   ToolPolicyDecisionCode,
   ToolRiskClass,
 } from './toolPolicy';
-import { ToolResultCache } from './toolCache';
+import { buildToolCacheKey, ToolResultCache } from './toolCache';
 import { limitConcurrency } from '../utils/concurrency';
 
 
@@ -201,6 +201,8 @@ export interface ToolCallLoopResult {
   toolResults: ToolResult[];
 
   policyDecisions: ToolPolicyTraceDecision[];
+
+  deduplicatedCallCount?: number;
 }
 
 
@@ -236,6 +238,7 @@ export async function runToolCallLoop(params: ToolCallLoopParams): Promise<ToolC
   let roundsCompleted = 0;
   const allToolResults: ToolResult[] = [];
   const policyDecisions: ToolPolicyTraceDecision[] = [];
+  let deduplicatedCallCount = 0;
   let retryAttempted = false;
   let seededResponseText = params.initialAssistantResponseText;
 
@@ -293,6 +296,7 @@ export async function runToolCallLoop(params: ToolCallLoopParams): Promise<ToolC
           roundsCompleted,
           toolResults: allToolResults,
           policyDecisions,
+          deduplicatedCallCount,
         };
       }
     }
@@ -310,6 +314,7 @@ export async function runToolCallLoop(params: ToolCallLoopParams): Promise<ToolC
         roundsCompleted,
         toolResults: allToolResults,
         policyDecisions,
+        deduplicatedCallCount,
       };
     }
 
@@ -344,12 +349,25 @@ export async function runToolCallLoop(params: ToolCallLoopParams): Promise<ToolC
     const roundResultsByIndex: Array<ToolResult | null> = new Array(calls.length).fill(null);
     const readOnlyPending: PendingCall[] = [];
     const sideEffectPending: PendingCall[] = [];
+    const dedupePrimaryIndexByKey = new Map<string, number>();
+    const dedupeFollowerIndexesByKey = new Map<string, number[]>();
+
+    const isReadOnlyRisk = (risk: ToolRiskClass): boolean =>
+      risk === 'read_only' || risk === 'network_read' || risk === 'data_exfiltration_risk';
 
     const executePendingCall = async (pending: PendingCall): Promise<void> => {
       const result = await executeToolWithTimeout(registry, pending.call, ctx, config.toolTimeoutMs);
       roundResultsByIndex[pending.index] = result;
       if (result.success && cache) {
         cache.set(pending.call.name, pending.call.args, result.result);
+      }
+      const dedupeKey = buildToolCacheKey(pending.call.name, pending.call.args);
+      const followerIndexes = dedupeFollowerIndexesByKey.get(dedupeKey) ?? [];
+      for (const followerIndex of followerIndexes) {
+        roundResultsByIndex[followerIndex] = {
+          ...result,
+          latencyMs: 0,
+        };
       }
     };
 
@@ -397,11 +415,23 @@ export async function runToolCallLoop(params: ToolCallLoopParams): Promise<ToolC
         continue;
       }
 
+      const dedupeEligible = isReadOnlyRisk(policyDecision.risk);
+      if (dedupeEligible) {
+        const dedupeKey = buildToolCacheKey(call.name, call.args);
+        const primaryIndex = dedupePrimaryIndexByKey.get(dedupeKey);
+        if (primaryIndex !== undefined) {
+          const followers = dedupeFollowerIndexesByKey.get(dedupeKey) ?? [];
+          followers.push(index);
+          dedupeFollowerIndexesByKey.set(dedupeKey, followers);
+          deduplicatedCallCount += 1;
+          continue;
+        }
+        dedupePrimaryIndexByKey.set(dedupeKey, index);
+      }
+
       if (
         config.parallelReadOnlyTools &&
-        (policyDecision.risk === 'read_only' ||
-          policyDecision.risk === 'network_read' ||
-          policyDecision.risk === 'data_exfiltration_risk')
+        isReadOnlyRisk(policyDecision.risk)
       ) {
         readOnlyPending.push({ index, call });
       } else {
@@ -491,5 +521,6 @@ export async function runToolCallLoop(params: ToolCallLoopParams): Promise<ToolC
     roundsCompleted,
     toolResults: allToolResults,
     policyDecisions,
+    deduplicatedCallCount,
   };
 }

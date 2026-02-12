@@ -565,5 +565,45 @@ describe('toolCallLoop', () => {
       );
       expect(getTimeExecute).toHaveBeenCalledTimes(1);
     });
+
+    it('deduplicates identical read-only tool calls within the same round', async () => {
+      mockChat
+        .mockResolvedValueOnce({
+          content: JSON.stringify({
+            type: 'tool_calls',
+            calls: [
+              { name: 'get_time', args: {} },
+              { name: 'get_time', args: {} },
+              { name: 'get_time', args: {} },
+            ],
+          }),
+        })
+        .mockResolvedValueOnce({
+          content: 'Done.',
+        });
+
+      const result = await runToolCallLoop({
+        client: mockClient,
+        messages: [{ role: 'user', content: 'call get_time three times' }],
+        registry,
+        ctx: testCtx,
+        toolPolicy: {
+          allowNetworkRead: true,
+          allowDataExfiltrationRisk: true,
+          allowExternalWrite: false,
+          allowHighRisk: false,
+          blockedTools: [],
+          riskOverrides: {
+            get_time: 'read_only',
+          },
+        },
+      });
+
+      expect(result.roundsCompleted).toBe(1);
+      expect(result.toolResults).toHaveLength(3);
+      expect(result.toolResults.every((item) => item.success)).toBe(true);
+      expect(result.deduplicatedCallCount).toBe(2);
+      expect(getTimeExecute).toHaveBeenCalledTimes(1);
+    });
   });
 });

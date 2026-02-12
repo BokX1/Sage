@@ -23,6 +23,13 @@ type LocalProviderCooldownState = {
   untilMs: number;
   reason: string;
 };
+type LocalProviderRuntimeStatus = {
+  provider: LocalProviderId;
+  configured: boolean;
+  coolingDown: boolean;
+  cooldownUntil: string | null;
+  cooldownReason: string | null;
+};
 
 type SearchResult = {
   title: string;
@@ -101,6 +108,27 @@ function formatCooldownState(state: LocalProviderCooldownState): string {
 
 export function __resetLocalProviderCooldownForTests(): void {
   localProviderCooldowns.clear();
+}
+
+function isLocalProviderConfigured(provider: LocalProviderId): boolean {
+  if (provider === 'searxng') {
+    return !!(config.SEARXNG_BASE_URL as string | undefined)?.trim();
+  }
+  return !!(config.CRAWL4AI_BASE_URL as string | undefined)?.trim();
+}
+
+export function getLocalProviderRuntimeStatus(): LocalProviderRuntimeStatus[] {
+  const providers: LocalProviderId[] = ['searxng', 'crawl4ai'];
+  return providers.map((provider) => {
+    const cooldown = getLocalProviderCooldown(provider);
+    return {
+      provider,
+      configured: isLocalProviderConfigured(provider),
+      coolingDown: !!cooldown,
+      cooldownUntil: cooldown ? new Date(cooldown.untilMs).toISOString() : null,
+      cooldownReason: cooldown?.reason ?? null,
+    };
+  });
 }
 
 function toInt(value: number | undefined, fallback: number, min: number, max: number): number {
@@ -550,14 +578,24 @@ export async function runWebSearch(params: {
   );
   const providersTried: string[] = [];
   const providersSkipped: string[] = [];
+  const providersSkipReasons: Record<string, string> = {};
   const errors: string[] = [];
 
   for (const provider of providerOrder) {
     if (provider === 'searxng') {
+      if (!isLocalProviderConfigured('searxng')) {
+        providersSkipped.push(provider);
+        const reason = 'not configured (SEARXNG_BASE_URL is empty)';
+        providersSkipReasons[provider] = reason;
+        errors.push(`${provider}: skipped (${reason})`);
+        continue;
+      }
       const cooldown = getLocalProviderCooldown('searxng');
       if (cooldown) {
         providersSkipped.push(provider);
-        errors.push(`${provider}: skipped (${formatCooldownState(cooldown)})`);
+        const reason = formatCooldownState(cooldown);
+        providersSkipReasons[provider] = reason;
+        errors.push(`${provider}: skipped (${reason})`);
         continue;
       }
     }
@@ -583,6 +621,8 @@ export async function runWebSearch(params: {
         provider: outcome.provider,
         providersTried,
         providersSkipped,
+        providersSkipReasons,
+        localProviderStatus: getLocalProviderRuntimeStatus(),
         sourceUrls: outcome.sourceUrls,
         answer: outcome.answer,
         results: outcome.results.slice(0, maxResults),
@@ -739,12 +779,22 @@ export async function scrapeWebPage(params: {
   const errors: string[] = [];
   const providersTried: string[] = [];
   const providersSkipped: string[] = [];
+  const providersSkipReasons: Record<string, string> = {};
   for (const provider of finalOrder) {
     if (provider === 'crawl4ai') {
+      if (!isLocalProviderConfigured('crawl4ai')) {
+        providersSkipped.push(provider);
+        const reason = 'not configured (CRAWL4AI_BASE_URL is empty)';
+        providersSkipReasons[provider] = reason;
+        errors.push(`${provider}: skipped (${reason})`);
+        continue;
+      }
       const cooldown = getLocalProviderCooldown('crawl4ai');
       if (cooldown) {
         providersSkipped.push(provider);
-        errors.push(`${provider}: skipped (${formatCooldownState(cooldown)})`);
+        const reason = formatCooldownState(cooldown);
+        providersSkipReasons[provider] = reason;
+        errors.push(`${provider}: skipped (${reason})`);
         continue;
       }
     }
@@ -766,6 +816,8 @@ export async function scrapeWebPage(params: {
         provider: outcome.provider,
         providersTried,
         providersSkipped,
+        providersSkipReasons,
+        localProviderStatus: getLocalProviderRuntimeStatus(),
         title: 'title' in outcome ? outcome.title : undefined,
         content: outcome.content,
         truncated: outcome.truncated,
