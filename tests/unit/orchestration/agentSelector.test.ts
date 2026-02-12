@@ -149,6 +149,29 @@ describe('agentSelector', () => {
     expect(decision.searchMode).toBe('simple');
   });
 
+  it('defaults search mode to complex for freshness queries requesting explicit verification and sources', async () => {
+    mockChat.mockResolvedValue({
+      content: JSON.stringify({
+        agent: 'search',
+        reasoning: 'Direct lookup request.',
+        temperature: 0.3,
+      }),
+    });
+
+    const decision = await decideAgent({
+      userText:
+        'what is the latest node.js lts right now? verify with at least two sources and include checked-on date',
+      invokedBy: 'mention',
+      hasGuild: true,
+      conversationHistory: [],
+      replyReferenceContent: null,
+      apiKey: 'api-key',
+    });
+
+    expect(decision.kind).toBe('search');
+    expect(decision.searchMode).toBe('complex');
+  });
+
   it('defaults search mode to complex when router returns invalid mode for broad search', async () => {
     mockChat.mockResolvedValue({
       content: JSON.stringify({

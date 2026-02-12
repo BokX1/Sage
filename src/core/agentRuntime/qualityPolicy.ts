@@ -9,6 +9,10 @@ const CRITIC_ELIGIBLE_ROUTES = new Set<AgentKind>([
 
 const SEARCH_REFRESH_ISSUE_PATTERN =
   /(fact|factual|accuracy|accurate|hallucin|citation|source|evidence|verify|outdated|latest|current|incomplete|missing|unclear|stale|wrong|incorrect)/i;
+const SEARCH_REFRESH_STRONG_SIGNAL_PATTERN =
+  /(fact|factual|accuracy|accurate|hallucin|citation|source|evidence|verify|outdated|latest|current|stale|wrong|incorrect)/i;
+const SEARCH_PROVIDER_RUNTIME_ISSUE_PATTERN =
+  /(provider|searxng|crawl4ai|tavily|exa|firecrawl|jina|pollinations|timeout|timed out|econnrefused|network|connection|unreachable|fallback)/i;
 const SEARCH_TIME_SENSITIVE_USER_PATTERN =
   /(latest|today|current|now|right now|as of|recent|fresh|newest|release|version|price|weather|news|score)/i;
 const SEARCH_SOURCE_REQUEST_PATTERN = /(source|sources|citation|cite|reference|references|link|url)/i;
@@ -72,6 +76,13 @@ export function shouldRefreshSearchFromCritic(params: {
   if (params.routeKind !== 'search') return false;
   const issueBlob = `${params.rewritePrompt ?? ''} ${params.issues.join(' ')}`.trim();
   if (!issueBlob) return false;
+  // Do not thrash search refresh loops for pure provider/runtime outages.
+  if (
+    SEARCH_PROVIDER_RUNTIME_ISSUE_PATTERN.test(issueBlob) &&
+    !SEARCH_REFRESH_STRONG_SIGNAL_PATTERN.test(issueBlob)
+  ) {
+    return false;
+  }
   return SEARCH_REFRESH_ISSUE_PATTERN.test(issueBlob);
 }
 

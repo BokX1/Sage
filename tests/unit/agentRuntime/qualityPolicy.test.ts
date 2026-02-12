@@ -114,6 +114,26 @@ describe('qualityPolicy', () => {
     ).toBe(false);
   });
 
+  it('does not trigger search refresh for provider-runtime outages without factual issues', () => {
+    expect(
+      shouldRefreshSearchFromCritic({
+        routeKind: 'search',
+        issues: ['SearXNG provider timed out; network unreachable.'],
+        rewritePrompt: 'Retry provider fallback only.',
+      }),
+    ).toBe(false);
+  });
+
+  it('still triggers search refresh when runtime outages also include factual/source concerns', () => {
+    expect(
+      shouldRefreshSearchFromCritic({
+        routeKind: 'search',
+        issues: ['Provider timed out and source citations are missing for latest claim.'],
+        rewritePrompt: '',
+      }),
+    ).toBe(true);
+  });
+
   it('forces search refresh when freshness/source asks have no source cues', () => {
     expect(
       shouldForceSearchRefreshFromDraft({

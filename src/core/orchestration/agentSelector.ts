@@ -232,6 +232,15 @@ function normalizeSearchMode(raw: unknown): SearchExecutionMode | null {
 function inferSearchModeHeuristic(userText: string): { mode: SearchExecutionMode; confidence: 'low' | 'high' } {
   const text = userText.trim().toLowerCase();
   const wordCount = text.split(/\s+/).filter((part) => part.length > 0).length;
+  const asksFreshness = /\b(latest|today|current|now|as of|recent|newest|release|version)\b/.test(text);
+  const asksVerificationDepth =
+    /\b(verify|verification|double[- ]?check|cross[- ]?check|validate|evidence)\b/.test(text) ||
+    /\b(source|sources|citation|cite|references?|links?|urls?)\b/.test(text) ||
+    /\b(at least (?:two|2)\s+sources|multiple sources|checked[- ]on)\b/.test(text);
+
+  if (asksFreshness && asksVerificationDepth) {
+    return { mode: 'complex', confidence: 'high' };
+  }
 
   const complexSignals = [
     /\bcompare\b/,
