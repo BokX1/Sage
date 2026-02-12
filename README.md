@@ -3,7 +3,7 @@
 </p>
 
 <h1 align="center">Sage</h1>
-<h3 align="center">Governed Agentic Intelligence for Discord Communities</h3>
+<h3 align="center">Governed AI runtime for Discord communities</h3>
 
 <p align="center">
   <a href="https://pollinations.ai"><img src="https://img.shields.io/badge/Built%20with-Pollinations.ai-8a2be2?style=for-the-badge&logo=data:image/svg+xml,%3Csvg%20xmlns%3D%22http://www.w3.org/2000/svg%22%20viewBox%3D%220%200%20124%20124%22%3E%3Ccircle%20cx%3D%2262%22%20cy%3D%2262%22%20r%3D%2262%22%20fill%3D%22%23ffffff%22/%3E%3C/svg%3E&logoColor=white&labelColor=6a0dad" alt="Built with Pollinations" /></a>
@@ -33,7 +33,7 @@
 </p>
 
 <p align="center">
-  <sub>Not another slash-command wrapper: Sage combines community memory, verified tooling, and rollout guardrails.</sub>
+  <sub>Not another slash-command wrapper: Sage combines community memory, governed tooling, and rollout guardrails.</sub>
 </p>
 
 ---
@@ -44,11 +44,8 @@
 - [💎 What Makes Sage Different](#what-makes-sage-different)
 - [⚡ 30-Second Snapshot](#30-second-snapshot)
 - [🎯 Real Community Use Cases](#real-community-use-cases)
-- [🏛️ High-Level Architecture](#high-level-architecture)
-- [✨ Capabilities That Matter](#capabilities-that-matter)
 - [🚀 Getting Started](#getting-started)
 - [💻 Developer Quick Start](#developer-quick-start)
-- [🛠️ Configuration](#configuration)
 - [📚 Documentation](#documentation)
 - [💚 Why Teams Choose Sage](#why-teams-choose-sage)
 
@@ -58,15 +55,17 @@
 
 ## 🎯 What Is Sage?
 
-Sage is a Discord-native AI runtime designed for real communities, not just one-off command responses.
+Sage is a Discord-native AI runtime built for real communities—where context matters, decisions have consequences, and “just chat” isn’t enough.
 
-- 🧠 It remembers meaningful context across users, channels, and attachments.
-- 🛡️ It applies policy and quality guardrails before shipping answers.
-- 🔀 It routes each request by intent (`chat`, `coding`, `search`, `creative`).
-- 🔍 It can retrieve live information and reconcile sources before replying.
-- ⚙️ It gives operators control over rollout, quality, and risk.
+It’s designed to feel like a helpful in-server teammate, while still giving operators the controls they need:
 
-**Best fit:** engineering communities, research teams, creator communities, and high-signal servers that need reliable AI support.
+- 🛡️ **Governed runtime:** canary rollout + tenant policy + replay/release gates so changes ship safely.
+- 🧠 **Community memory stack:** uses user/channel memory, summaries, and attachment context to keep continuity.
+- 🔍 **Verified tooling loop:** route-scoped tools with policy/risk controls, plus critic-driven revision before replies.
+- 🔀 **Route-aware execution:** selects `chat`, `coding`, `search`, or `creative` behavior with model policy.
+- 🧰 **Operator flexibility:** BYOP (bring your own provider) and local-first tool stack options, with hosted fallback.
+
+**Best fit:** engineering communities, research teams, creator communities, and high-signal servers that need reliable AI support (not vibe-only chat).
 
 ---
 
@@ -74,9 +73,9 @@ Sage is a Discord-native AI runtime designed for real communities, not just one-
 
 ## ⚡ 30-Second Snapshot
 
-- **For server admins:** canary-governed rollout and replay-gated quality checks reduce bad updates.
-- **For operators/mods:** policy-governed tool execution and deterministic fallbacks reduce answer risk.
-- **For members:** memory-aware responses keep continuity across discussions, files, and ongoing topics.
+- **For server admins:** controlled rollout (canary + replay gates) reduces “bad bot updates” and regressions.
+- **For operators/mods:** policy-governed tool execution + critic revision reduces risky or sloppy answers.
+- **For members:** memory-aware replies keep continuity across ongoing threads, files, and repeated questions.
 
 ---
 
@@ -97,29 +96,58 @@ Sage is a Discord-native AI runtime designed for real communities, not just one-
 
 ## 🎯 Real Community Use Cases
 
-If you're evaluating Sage for your server, start with one of these high-signal scenarios:
+If you’re evaluating Sage for your server, pick one scenario and copy/paste the prompt. These are written to surface the *governed runtime + memory + tools* loop quickly.
 
-| If you need to... | Try this prompt in Discord | Sage helps by... | You get... |
+| If you need to… | Try this prompt in Discord | Sage helps by… | You get… |
 | :--- | :--- | :--- | :--- |
-| 🧑‍💻 Make a safer engineering decision during incident pressure | `compare prisma migrate options for prod with rollback risk` | Routing to `coding`, gathering tool evidence, and running critic revision before final response | Faster decisions with clearer tradeoffs and fewer risky guesses |
-| 🧪 Summarize a time-sensitive topic with better grounding | `what changed in AI model pricing this week` | Routing to `search`, collecting live findings, and applying quality/grounding checks | Lower risk of stale or ungrounded claims |
-| 📄 Keep continuity across attachments and ongoing discussions | `summarize the architecture doc we uploaded yesterday and compare with today’s plan` | Retrieving cached attachment text on demand and combining it with channel/user memory | Less repeated context and fewer re-uploads |
-| 👥 Communicate clearly in your community's tone | `how should I explain this to the team?` | Blending user profile + channel context + social signals to tune phrasing | Replies that feel community-aware instead of generic |
-| 🛡️ Roll out runtime changes with less operational risk | `we're rolling out changes; how do we reduce runtime risk?` | Supporting canary policy, tenant policy, and replay-gate workflows in operations | More controlled rollouts, fewer all-or-nothing changes |
+| 🧑‍💻 Make a safer decision during incident pressure | `compare prisma migrate options for prod. include rollback risk + a recommended path.` | Routing to `coding`, gathering tool evidence where available, then running critic revision before replying | Clear tradeoffs and a decision you can act on |
+| 📄 Turn an uploaded doc into an ops-ready plan | `use the file I uploaded. produce a rollout checklist with gates, monitoring, and rollback steps.` | Using attachment context + channel memory, then structuring an operator-ready checklist | A practical plan instead of a generic summary |
+| 🧪 Reduce stale answers on time-sensitive topics | `what changed in AI model pricing this week? include the most important deltas and what to verify.` | Routing to `search`, collecting live findings, applying grounding/quality checks | Lower risk of outdated or ungrounded claims |
+| 🛡️ Keep tool use safe in higher-risk turns | `before you run any tools, tell me what you'd run + why. flag anything risky.` | Enforcing route-scoped tools and deterministic risk policy; prompting for confirmation when appropriate | Safer automation without surprise side effects |
+| 👥 Communicate clearly in your community’s tone | `draft an announcement for this channel about <topic>. keep it concise and match our tone.` | Blending channel context + social signals to tune phrasing and format | Messages that feel community-aware (not generic) |
+| 🚦 Roll out runtime changes with less operational risk | `we're rolling out changes. propose a canary plan and what replay gates to check before promotion.` | Supporting canary policy + tenant overrides + replay-gate workflows in operations | More controlled rollouts, fewer all-or-nothing changes |
 
-**Copy/paste starter prompts:**
+**Copy/paste starter prompts**
 
-- `compare two options and tell me which is safer for production`
-- `summarize what we decided in this channel this week`
-- `use the file I uploaded earlier and give me a rollout checklist`
+- `summarize what we decided in this channel this week + list open questions`
+- `compare two options and recommend the safer production path`
+- `use the file I uploaded earlier and turn it into a checklist`
+- `before you use tools, explain what you'll do and what could go wrong`
 
-Tip: goal-first prompts (what you need + constraints) generally produce better responses than open-ended prompts.
+Tip: goal-first prompts (what you need + constraints) usually work better than open-ended prompts.
+
+<details>
+<summary><strong>Version 1 (operator/admin focused)</strong></summary>
+
+| Operator goal | Prompt | Output you should expect |
+| :--- | :--- | :--- |
+| Canary a change safely | `design a canary rollout for <change>. include % rollout, success metrics, and rollback criteria.` | Phased rollout plan + concrete gates |
+| Validate readiness before promotion | `what should we verify in replay before promoting this release? list checks in order.` | Ordered checklist + “stop/continue” criteria |
+| Reduce tool risk | `for this task, list allowed tools + disallowed tools. explain the risk tradeoffs.` | A policy lens you can copy into an ops runbook |
+| Keep a weekly ops log | `summarize this week in #ops: decisions, incidents, action items, owners.` | Meeting-minutes style recap you can post |
+
+</details>
+
+<details>
+<summary><strong>Version 2 (community/member focused)</strong></summary>
+
+| Member goal | Prompt | Output you should expect |
+| :--- | :--- | :--- |
+| Catch up fast | `i was away—summarize what happened in this channel since monday. include key decisions.` | High-signal recap + next steps |
+| Learn from shared docs | `summarize the file we shared and explain the recommendation in plain english.` | Accessible explanation grounded in the doc |
+| Get help without re-explaining | `remember my context: i'm working on <project>. ask me only what you need.` | Fewer back-and-forth clarifiers |
+| Write better messages | `rewrite this message to be clearer and calmer: <paste>` | A tone-matched rewrite |
+
+</details>
 
 ---
 
 <a id="high-level-architecture"></a>
 
 ## 🏛️ High-Level Architecture
+
+<details>
+<summary><strong>View diagram</strong></summary>
 
 ```mermaid
 flowchart LR
@@ -164,6 +192,7 @@ flowchart LR
     B -->|"Reply / files"| U
 ```
 
+</details>
 > [!NOTE]
 > Chat turns always include `UserMemory` and `ChannelMemory`. `SocialGraph` and `VoiceAnalytics` are optional context enhancers.
 
@@ -177,12 +206,12 @@ flowchart LR
 | :--- | :--- | :--- |
 | 🧠 Long-term memory | Builds user and channel memory over time | Less repeated context, better continuity |
 | 📄 Attachment intelligence | Ingests and caches non-image file content for lookup | Better doc-aware discussions in-channel |
-| 👁️ Vision + image generation | Understands images and can generate/edit images | Better multimodal workflows |
+| 👁️ Vision + image generation | Understands images and can generate images (and edit where supported) | Better multimodal workflows |
 | 🔍 Live search + synthesis | Uses search tools and route-aware search models | More current, decision-ready answers |
 | 🤖 Intent routing | Chooses route and model policy per request | Better quality across mixed workloads |
 | 🛡️ Tool risk governance | Enforces tool policy and route-scoped tool access | Lower operational risk |
 | 🧪 Quality control loop | Critic-driven revisions and replay-based release readiness | Higher answer consistency over time |
-| 🎤 Voice awareness | Voice analytics can inform context; voice companion support available | Better continuity between voice and text interactions |
+| 🎤 Voice awareness | Voice analytics can inform context; voice companion support can be enabled depending on deployment | Better continuity between voice and text interactions |
 
 <p align="center">
   <sub>⚡ Powered by <a href="https://pollinations.ai">Pollinations.ai</a> for high-throughput multi-model access.</sub>
