@@ -86,6 +86,7 @@ Establish reliable governance and baseline audit wiring before feature-phase exe
 - Roadmap status table marks Phase 0 as `completed` and Phase 1 as the canonical next phase.
 
 ---
+
 ## Phase 1 â€” ReAct Adaptive Reasoning Loop
 
 **Priority:** P0 (Critical) Â· **Audit ref:** Gap #2
@@ -1818,7 +1819,3 @@ Phase 2 (Session) â”€â”˜         â”‚
 ```
 
 Phases 1 and 2 can run in parallel as they modify different subsystems. Phase 3 (Context Engineering) prevents context exhaustion from Phases 1 and 2. Phase 4 (Agentic RAG) enhances search quality. Phase 5 (Observability) provides visibility into all prior phases. Phases 6â€“10 can proceed in any order based on priority. Phase 11 (Fine-Tuning) calibrates all parameters. **Phase 12 (Metacognitive Self-Improvement) must be last** â€” it requires all subsystems to be implemented so it can learn from the complete pipeline. It is the frontier capstone that makes the entire system continuously self-improving.
-
-
-
-
