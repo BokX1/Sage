@@ -1,9 +1,9 @@
 <p align="center">
-  <img src="https://img.shields.io/badge/🌿-Sage-2d5016?style=for-the-badge&labelColor=4a7c23" alt="Sage Logo" />
+  <img src="https://img.shields.io/badge/%F0%9F%8C%BF-Sage-2d5016?style=for-the-badge&labelColor=4a7c23" alt="Sage Logo" />
 </p>
 
 <h1 align="center">Sage</h1>
-<h3 align="center">Fully Agentic Intelligence for Discord</h3>
+<h3 align="center">Governed Agentic Intelligence for Discord Communities</h3>
 
 <p align="center">
   <a href="https://pollinations.ai"><img src="https://img.shields.io/badge/Built%20with-Pollinations.ai-8a2be2?style=for-the-badge&logo=data:image/svg+xml,%3Csvg%20xmlns%3D%22http://www.w3.org/2000/svg%22%20viewBox%3D%220%200%20124%20124%22%3E%3Ccircle%20cx%3D%2262%22%20cy%3D%2262%22%20r%3D%2262%22%20fill%3D%22%23ffffff%22/%3E%3C/svg%3E&logoColor=white&labelColor=6a0dad" alt="Built with Pollinations" /></a>
@@ -22,45 +22,100 @@
 </p>
 
 <p align="center">
-  <strong>Sage is a self-learning AI companion that grows with your community, observes social vibes, and delivers intelligent, context-aware responses.</strong>
+  <strong>Sage is a memory-rich, policy-governed AI companion that helps Discord communities make better decisions with less noise.</strong>
 </p>
 
 > [!IMPORTANT]
 > Sage is source-available under PolyForm Strict 1.0.0. You may run/use Sage for noncommercial purposes only. Redistribution, modification, and derivative works are not allowed under the public license. Commercial/business use requires a separate written license (Ahazihak03@gmail.com). See LICENSE and COPYRIGHT.
 
 <p align="center">
-  <strong>🎮 <a href="docs/guides/QUICKSTART.md">I just want to run the bot</a></strong> · <strong>💻 <a href="#-developer-quick-start">I'm a developer</a></strong>
+  <strong>🎮 <a href="docs/guides/QUICKSTART.md">I just want to run the bot</a></strong> · <strong>💻 <a href="#developer-quick-start">I'm a developer</a></strong>
+</p>
+
+<p align="center">
+  <sub>Not another slash-command wrapper: Sage combines community memory, verified tooling, and rollout guardrails.</sub>
 </p>
 
 ---
 
-## 🧭 Quick navigation
+## 🧭 Quick Navigation
 
 - [🎯 What is Sage?](#what-is-sage)
+- [💎 What Makes Sage Different](#what-makes-sage-different)
+- [⚡ 30-Second Snapshot](#30-second-snapshot)
+- [🎯 Real Community Use Cases](#real-community-use-cases)
 - [🏛️ High-Level Architecture](#high-level-architecture)
-- [✨ Features](#features)
+- [✨ Capabilities That Matter](#capabilities-that-matter)
 - [🚀 Getting Started](#getting-started)
 - [💻 Developer Quick Start](#developer-quick-start)
 - [🛠️ Configuration](#configuration)
 - [📚 Documentation](#documentation)
-- [💚 Why Choose Sage?](#why-choose-sage)
+- [💚 Why Teams Choose Sage](#why-teams-choose-sage)
 
 ---
 
 <a id="what-is-sage"></a>
 
-## 🎯 What is Sage?
+## 🎯 What Is Sage?
 
-Sage is a **fully agentic Discord companion** that goes beyond simple chat commands. Unlike traditional bots, Sage is designed to be a friendly member of your community who **listens and evolves alongside you**:
+Sage is a Discord-native AI runtime designed for real communities, not just one-off command responses.
 
-- 🧠 **Self-Learning Memory**: Remembers past conversations to build personalized user contexts.
-- 👥 **Socially Aware**: Understands relationship tiers (Best Friend, Acquaintance) and interaction "vibes."
-- 👁️ **Vision + Image Generation**: Ingests images for visual understanding, and can generate/edit images from prompts.
-- 📄 **Knowledge Base**: Ingests multiple Discord file types (text, code, docs, and more via Tika), caches extracted content, and retrieves file text on demand without replaying full file bodies every turn.
-- 💬 **Intelligent Routing**: Uses a high-precision LLM classifier to resolve pronouns and context.
-- ⚡ **Adaptive Models**: Uses route-aware model resolution with `openai-large` as the chat baseline and healthy fallbacks (for example `kimi`, `claude-fast`) based on intent and capability needs.
+- 🧠 It remembers meaningful context across users, channels, and attachments.
+- 🛡️ It applies policy and quality guardrails before shipping answers.
+- 🔀 It routes each request by intent (`chat`, `coding`, `search`, `creative`).
+- 🔍 It can retrieve live information and reconcile sources before replying.
+- ⚙️ It gives operators control over rollout, quality, and risk.
 
-**Perfect for:** Coding communities • Gaming groups • Research teams • Any Discord that wants a bot that "gets it."
+**Best fit:** engineering communities, research teams, creator communities, and high-signal servers that need reliable AI support.
+
+---
+
+<a id="30-second-snapshot"></a>
+
+## ⚡ 30-Second Snapshot
+
+- **For server admins:** canary-governed rollout and replay-gated quality checks reduce bad updates.
+- **For operators/mods:** policy-governed tool execution and deterministic fallbacks reduce answer risk.
+- **For members:** memory-aware responses keep continuity across discussions, files, and ongoing topics.
+
+---
+
+<a id="what-makes-sage-different"></a>
+
+## 💎 What Makes Sage Different
+
+| Pillar | What Sage does today | Why it matters |
+| :--- | :--- | :--- |
+| 🛡️ Governed Runtime | Canary-gated agentic path, tenant policy overrides, replay quality gate before promotion | Safer rollouts and fewer silent regressions |
+| 🧠 Community Memory Stack | User memory, channel memory, summaries, attachment cache, social graph, voice analytics | Responses reflect server context instead of stateless chat |
+| 🔍 Verified Tooling Loop | Route-scoped tools, deterministic risk policy, hard-gate behavior for freshness-sensitive turns, critic-driven revision | Better trust for factual and time-sensitive answers |
+| 🧰 Operator Flexibility | BYOP key model, local-first tool stack options, hosted fallback path | Better control over cost, privacy posture, and uptime |
+
+---
+
+<a id="real-community-use-cases"></a>
+
+## 🎯 Real Community Use Cases
+
+1. **Engineering triage in a busy dev server**  
+User asks: `compare prisma migrate options for prod with rollback risk`  
+Sage behavior: routes to `coding`, pulls tool evidence, applies critic revision, returns an implementation-ready recommendation.  
+Outcome: faster issue resolution with fewer risky suggestions.
+
+2. **Research roundup with source hygiene**  
+User asks: `what changed in AI model pricing this week`  
+Sage behavior: routes to `search`, gathers live findings, runs quality checks, and synthesizes a grounded answer.  
+Outcome: fewer stale claims and better decision confidence.
+
+3. **Attachment-aware team memory**  
+User asks: `summarize the architecture doc we uploaded yesterday and compare with today’s plan`  
+Sage behavior: retrieves cached attachment content on demand and combines it with channel context.  
+Outcome: no need to re-upload files or repeat prior context.
+
+4. **Community-aware responses, not generic bot replies**  
+User asks: `how should I explain this to the team?`  
+Sage behavior: blends user profile + channel memory + social context to tune tone and clarity.  
+Outcome: responses feel aligned with the community, not generic AI output.
 
 ---
 
@@ -109,8 +164,6 @@ flowchart LR
     T --> Q[Critic + Revision]:::runtime
     Q --> B
     B -->|"Reply / files"| U
-
-    B -->|"Voice via slash commands"| VC[(Voice Channel)]:::user
 ```
 
 > [!NOTE]
@@ -118,79 +171,23 @@ flowchart LR
 
 ---
 
-<a id="features"></a>
+<a id="capabilities-that-matter"></a>
 
-## ✨ Features
+## ✨ Capabilities That Matter
 
-<table>
-<tr>
-<td width="50%">
-
-### 🧠 Self-Learning Memory
-
-Builds long-term user profiles and throttles updates for efficiency. Every conversation makes Sage smarter.
-
-</td>
-<td width="50%">
-
-### 👁️ Vision + Image Generation
-
-Analyzes attached images with multimodal vision, generates art from prompts, and edits images in-thread.
-
-</td>
-</tr>
-<tr>
-<td width="50%">
-
-### 🔍 Real-Time Web Search
-
-Route-aware search models fetch live facts and summarize complex results into polished responses.
-
-</td>
-<td width="50%">
-
-### 🤖 Intelligent Routing
-
-LLM-powered agent selector classifies intent and routes to the optimal model per request.
-
-</td>
-</tr>
-<tr>
-<td width="50%">
-
-### 🧰 Tool Stack
-
-Web search, scraping, GitHub/npm/wiki lookups, Stack Overflow, and optional local Ollama inference.
-
-</td>
-<td width="50%">
-
-### 🎤 Voice Companion
-
-Text-to-speech companion with dynamic personas, presence tracking, and voice analytics (Beta).
-
-</td>
-</tr>
-<tr>
-<td width="50%">
-
-### 🤝 Social Graph
-
-Tracks relationship tiers (Best Friend → Stranger) and adapts tone based on interaction history.
-
-</td>
-<td width="50%">
-
-### 🚀 Self-Correcting Runtime
-
-Autonomous tool loop with critic + revision, error recovery, and canary-gated rollouts.
-
-</td>
-</tr>
-</table>
+| Capability | Current behavior | Community value |
+| :--- | :--- | :--- |
+| 🧠 Long-term memory | Builds user and channel memory over time | Less repeated context, better continuity |
+| 📄 Attachment intelligence | Ingests and caches non-image file content for lookup | Better doc-aware discussions in-channel |
+| 👁️ Vision + image generation | Understands images and can generate/edit images | Better multimodal workflows |
+| 🔍 Live search + synthesis | Uses search tools and route-aware search models | More current, decision-ready answers |
+| 🤖 Intent routing | Chooses route and model policy per request | Better quality across mixed workloads |
+| 🛡️ Tool risk governance | Enforces tool policy and route-scoped tool access | Lower operational risk |
+| 🧪 Quality control loop | Critic-driven revisions and replay-based release readiness | Higher answer consistency over time |
+| 🎤 Voice awareness | Voice analytics can inform context; voice companion support available | Better continuity between voice and text interactions |
 
 <p align="center">
-  <sub>⚡ Powered by <a href="https://pollinations.ai">Pollinations.ai</a> — fast, high-throughput multi-model AI access</sub>
+  <sub>⚡ Powered by <a href="https://pollinations.ai">Pollinations.ai</a> for high-throughput multi-model access.</sub>
 </p>
 
 ---
@@ -201,21 +198,18 @@ Autonomous tool loop with critic + revision, error recovery, and canary-gated ro
 
 ### Option A: Use the public bot
 
-1. **Invite Sage**
+1. **Invite Sage**  
+[**Click here to invite Sage to your server**](https://discord.com/oauth2/authorize?client_id=1462117382398017667&scope=bot%20applications.commands&permissions=8)
 
-   [**Click here to invite Sage to your server**](https://discord.com/oauth2/authorize?client_id=1462117382398017667&scope=bot%20applications.commands&permissions=8)
-
-2. **Activate BYOP (recommended for higher limits)**
-
-   - Run `/sage key login` to get your Pollinations key.
-   - Run `/sage key set <your_key>` to activate Sage for the entire server.
+2. **Activate BYOP (recommended for higher limits)**  
+Run `/sage key login` to get your Pollinations key. Then run `/sage key set <your_key>` to activate Sage for the server.
 
 > [!TIP]
 > Prefer least-privilege permissions? Generate a custom invite URL in the Discord Developer Portal (see [Getting Started → Invite Bot](docs/guides/GETTING_STARTED.md#step-6-invite-sage-to-your-server)).
 
 ### Option B: Self-host from source
 
-Follow **[📖 Getting Started](docs/guides/GETTING_STARTED.md)** for a full walkthrough (Node.js, Docker/Postgres, onboarding wizard, and invite generation).
+Follow **[📖 Getting Started](docs/guides/GETTING_STARTED.md)** for full setup (Node.js, Docker/Postgres, onboarding, and invite flow).
 
 For local-first tooling (SearXNG/Crawl4AI/Ollama) with hosted fallback, see **[🧰 Self-Hosted Tool Stack](docs/operations/TOOL_STACK.md)**.
 
@@ -226,18 +220,18 @@ For local-first tooling (SearXNG/Crawl4AI/Ollama) with hosted fallback, see **[�
 ## 💻 Developer Quick Start
 
 > [!NOTE]
-> This is a fast path. For a complete setup (including creating a Discord app), use [Getting Started](docs/guides/GETTING_STARTED.md).
+> Fast path below. For full setup (including Discord app creation), use [Getting Started](docs/guides/GETTING_STARTED.md).
 
- ```bash
- git clone https://github.com/BokX1/Sage.git
- cd Sage
- npm ci
- npm run onboard
- docker compose -f config/ci/docker-compose.yml up -d db tika
- npm run db:migrate
- npm run check
- npm run dev
- ```
+```bash
+git clone https://github.com/BokX1/Sage.git
+cd Sage
+npm ci
+npm run onboard
+docker compose -f config/ci/docker-compose.yml up -d db tika
+npm run db:migrate
+npm run check
+npm run dev
+```
 
 Optional local tool stack:
 
@@ -245,92 +239,19 @@ Optional local tool stack:
 docker compose -f config/self-host/docker-compose.tools.yml up -d
 ```
 
-When Sage starts, you should see:
-
-```text
-[info] Logged in as Sage#1234!
-[info] Successfully reloaded application (/) commands GLOBALLY.
-```
-
-### Quality gate
+Essential gates:
 
 ```bash
 npm run check
-```
-
-`npm run check` runs lint + typecheck + tests and is the required pre-merge gate.
-
-### Agentic release gate
-
-```bash
-npm run agentic:replay-gate
-```
-
-This evaluates recent trace outcomes and enforces replay thresholds before promotion.
-
-`npm run release:agentic-check` now enforces consistency gate + replay gate + eval gate (`eval:gate`).
-
-### Model-judge evaluation pipeline
-
-```bash
-EVAL_RUN_LIMIT=40 EVAL_RUN_CONCURRENCY=2 npm run eval:run
-```
-
-Runs dual-judge (+ adjudicator-on-disagreement) evaluation over recent traces and persists rows to `AgentEvaluation`.
-
-```bash
-EVAL_GATE_LIMIT=60 EVAL_GATE_MIN_AVG_SCORE=0.75 EVAL_GATE_MIN_PASS_RATE=0.70 npm run eval:gate
-```
-
-Applies release thresholds to recent persisted evaluation rows.
-
-### Agentic simulation (live traces)
-
-```bash
-SIM_RUNS=120 SIM_CONCURRENCY=8 npm run agentic:simulate
-```
-
-Runs autonomous multi-route turns, scores outcomes, and reports latency/tool-loop telemetry.
-
-```bash
-SIM_RUNS=120 SIM_CONCURRENCY=8 SIM_JUDGE_ENABLED=1 SIM_JUDGE_WEIGHT=0.55 npm run agentic:simulate
-```
-
-Optional self-judge thresholds:
-
-```bash
-SIM_REQUIRE_JUDGE_RESULTS=1 SIM_MIN_JUDGE_AVG_SCORE=0.68 SIM_MAX_JUDGE_REVISE_RATE=0.45 npm run agentic:simulate
-```
-
-### Agentic tuning sweep
-
-```bash
-TUNE_RUNS_PER_VARIANT=40 TUNE_CONCURRENCY=8 npm run agentic:tune
-```
-
-Sweeps runtime variants (critic/tool gate knobs), runs live simulations, and writes a ranked recommendation artifact.
-
-```bash
-TUNE_RUNS_PER_VARIANT=60 TUNE_CONCURRENCY=8 TUNE_JUDGE_ENABLED=1 TUNE_JUDGE_WEIGHT=0.55 npm run agentic:tune
-```
-
-### Production run
-
-```bash
 npm run build
 npm start
 ```
 
-## 🗂️ Project Structure
+Advanced release gating, eval pipelines, simulation, and tuning live in:
 
- ```text
- src/                 # Bot runtime, handlers, core logic, scripts
- tests/               # Vitest test suites
- docs/                # User, operations, and architecture documentation
- prisma/              # Prisma schema + migrations (applied via `prisma migrate deploy`)
- config/ci/           # Shared lint, test, TypeScript, Docker CI config
- config/self-host/    # Optional local tool-stack services (SearXNG/Crawl4AI/Ollama)
- ```
+- `docs/reference/RELEASE.md`
+- `docs/operations/RUNBOOK.md`
+- `docs/architecture/OVERVIEW.md`
 
 ---
 
@@ -342,12 +263,12 @@ Sage is optimized for community interaction out of the box.
 
 ```env
 # behavior
-AUTOPILOT_MODE=manual      # Recommended for stability
-PROFILE_UPDATE_INTERVAL=5  # Update user knowledge every 5 messages
-TRACE_ENABLED=true         # enable observability for admins
+AUTOPILOT_MODE=manual
+PROFILE_UPDATE_INTERVAL=5
+TRACE_ENABLED=true
 ```
 
-See [Configuration Reference](docs/reference/CONFIGURATION.md) for full details.
+See [Configuration Reference](docs/reference/CONFIGURATION.md) for complete settings.
 
 ---
 
@@ -357,32 +278,32 @@ See [Configuration Reference](docs/reference/CONFIGURATION.md) for full details.
 
 | Document | Description |
 | :--- | :--- |
-| [📚 Documentation Hub](docs/INDEX.md) | **Start here** — Complete navigation index |
+| [📚 Documentation Hub](docs/INDEX.md) | Start here for complete navigation |
 | [⚡ Quick Start](docs/guides/QUICKSTART.md) | 5-minute setup for new users |
-| [📖 Getting Started](docs/guides/GETTING_STARTED.md) | Complete beginner walkthrough |
+| [📖 Getting Started](docs/guides/GETTING_STARTED.md) | Full beginner walkthrough |
 | [🎮 Commands](docs/guides/COMMANDS.md) | Full slash command reference |
-| [❓ FAQ](docs/guides/FAQ.md) | Frequently asked questions |
+| [❓ FAQ](docs/guides/FAQ.md) | Common questions and answers |
 | [🔧 Troubleshooting](docs/guides/TROUBLESHOOTING.md) | Error resolution guide |
-| [⚙️ Configuration](docs/reference/CONFIGURATION.md) | All settings explained |
-| [🤖 Agentic Architecture](docs/architecture/OVERVIEW.md) | What makes Sage different |
-| [🏗️ Architecture](docs/architecture/) | Technical deep-dives |
-| [🔒 Security & Privacy](docs/security/SECURITY_PRIVACY.md) | Data handling and privacy |
-| [🐝 Pollinations](docs/reference/POLLINATIONS.md) | AI provider details |
-| [🧰 Self-Hosted Tool Stack](docs/operations/TOOL_STACK.md) | Local SearXNG/Crawl4AI/Ollama + hosted fallback setup |
-| [📋 Operations](docs/operations/RUNBOOK.md) | Deployment guide |
+| [⚙️ Configuration](docs/reference/CONFIGURATION.md) | All env vars and defaults |
+| [🤖 Agentic Architecture](docs/architecture/OVERVIEW.md) | Runtime design and governance |
+| [🔍 Search Architecture](docs/architecture/SEARCH.md) | Search behavior and tool flow |
+| [🧠 Memory Architecture](docs/architecture/MEMORY.md) | Memory model and context assembly |
+| [🔒 Security & Privacy](docs/security/SECURITY_PRIVACY.md) | Data handling and privacy controls |
+| [🧰 Self-Hosted Tool Stack](docs/operations/TOOL_STACK.md) | Local SearXNG/Crawl4AI/Ollama stack |
+| [📋 Operations Runbook](docs/operations/RUNBOOK.md) | Operational and release procedures |
 
 ---
 
-<a id="why-choose-sage"></a>
+<a id="why-teams-choose-sage"></a>
 
-## 💚 Why Choose Sage?
+## 💚 Why Teams Choose Sage
 
-| Feature | Traditional Bots | Sage |
+| Category | Typical bot experience | Sage experience |
 | :--- | :--- | :--- |
-| **Memory** | Forgets after each message | Remembers and learns over time |
-| **Social Awareness** | Treats all users the same | Understands relationships and vibes |
-| **Context** | Limited to current message | Full conversation + user history |
-| **Error Recovery** | Fails silently | Self-corrects with retry loops |
-| **Adaptation** | Static responses | Evolves with your community |
+| Context | Mostly stateless chat turns | Memory-aware replies grounded in community context |
+| Reliability | Best-effort outputs | Critic loop, tool policy, and governed fallbacks |
+| Freshness | Often generic or stale summaries | Route-aware search and source-oriented synthesis |
+| Operations | Limited rollout controls | Canary policy, tenant policy, replay-based readiness |
+| Team fit | One-size-fits-all behavior | Socially and contextually adaptive responses |
 
-[Learn more about Sage's Agentic Architecture →](docs/architecture/OVERVIEW.md)
+[Learn more about Sage’s runtime architecture →](docs/architecture/OVERVIEW.md)
