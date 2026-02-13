@@ -64,7 +64,8 @@ export class CircuitBreaker {
   isOpen(): boolean {
     if (this.state === CircuitState.OPEN) {
       if (Date.now() - this.lastFailureTime > this.config.resetTimeoutMs) {
-        return false; // Actually HALF_OPEN logic will trigger on next execute, but effectively it's retriable
+        this.state = CircuitState.HALF_OPEN;
+        return false;
       }
       return true;
     }

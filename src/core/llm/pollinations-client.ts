@@ -397,10 +397,19 @@ export class PollinationsClient implements LLMClient {
           const envelope = {
             type: 'tool_calls',
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            calls: toolCalls.map((tc: any) => ({
-              name: tc.function.name,
-              args: JSON.parse(tc.function.arguments),
-            })),
+            calls: toolCalls.map((tc: any) => {
+              let args: unknown;
+              try {
+                args = JSON.parse(tc.function.arguments);
+              } catch {
+                args = {};
+                logger.warn(
+                  { toolName: tc.function.name, rawArgs: String(tc.function.arguments).slice(0, 200) },
+                  '[Pollinations] Malformed tool call arguments JSON, defaulting to empty object',
+                );
+              }
+              return { name: tc.function.name, args };
+            }),
           };
 
           // If tool calls are present, we MUST return strict JSON for the agentRuntime to parse.

@@ -7,6 +7,10 @@ import {
   RouteValidationPolicy,
   ValidationStrictness,
 } from './validationPolicy';
+import {
+  TIME_SENSITIVE_QUERY_PATTERN,
+  SOURCE_REQUEST_PATTERN,
+} from './patterns';
 
 export type ResponseValidationIssueCode =
   | 'empty_reply'
@@ -29,10 +33,8 @@ export interface ResponseValidationResult {
   warningIssues: ResponseValidationIssue[];
 }
 
-const SEARCH_TIME_SENSITIVE_USER_PATTERN =
-  /(latest|today|current|now|right now|as of|recent|fresh|newest|release|version|price|weather|news|score)/i;
-const SEARCH_SOURCE_REQUEST_PATTERN =
-  /(source|sources|citation|cite|reference|references|link|url)/i;
+const SEARCH_TIME_SENSITIVE_USER_PATTERN = TIME_SENSITIVE_QUERY_PATTERN;
+const SEARCH_SOURCE_REQUEST_PATTERN = SOURCE_REQUEST_PATTERN;
 const SEARCH_SOURCE_URL_PATTERN = /https?:\/\/[^\s<>()]+/i;
 const SEARCH_SOURCE_LABEL_PATTERN = /source urls?:/i;
 const SEARCH_CHECKED_ON_PATTERN = /checked on:\s*([0-9]{4}-[0-9]{2}-[0-9]{2})/i;

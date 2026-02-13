@@ -83,6 +83,12 @@ import { resolveRouteValidationPolicy } from './validationPolicy';
 import { normalizeManagerWorkerConfig, planManagerWorker } from './taskPlanner';
 import { executeManagerWorkerPlan } from './workerExecutor';
 import { aggregateManagerWorkerArtifacts } from './workerAggregator';
+import {
+  TIME_SENSITIVE_QUERY_PATTERN,
+  SOURCE_REQUEST_PATTERN,
+  CODING_VERIFICATION_PATTERN,
+  ATTACHMENT_RECALL_PATTERN,
+} from './patterns';
 
 
 /** Execute one chat turn using routing, context, and tool follow-up metadata. */
@@ -129,7 +135,7 @@ function selectVoicePersona(text: string, profile: string | null): string {
 }
 
 function toPositiveInt(value: number | undefined, fallback: number): number {
-  if (Number.isFinite(value) && value && value > 0) {
+  if (Number.isFinite(value) && value !== undefined && value > 0) {
     return Math.max(1, Math.floor(value));
   }
   return fallback;
@@ -246,52 +252,52 @@ function buildToolProtocolInstruction(params: {
   const routeSpecificGuidance =
     params.routeKind === 'search'
       ? [
-          'Search route behavior:',
-          '- Use tools for externally verifiable claims.',
-          hasTool('web_search')
-            ? '- Call web_search before finalizing factual/time-sensitive answers.'
-            : '- Prefer available retrieval tools before finalizing factual/time-sensitive answers.',
-          hasTool('web_scrape')
-            ? '- If user provides URLs, call web_scrape on those URLs.'
-            : '- If user provides URLs, use available retrieval tools to verify URL content when possible.',
-          hasTool('channel_file_lookup')
-            ? '- If user asks about previously uploaded files/attachments in this channel, call channel_file_lookup before answering.'
-            : '- If user asks about previously uploaded files/attachments in this channel, acknowledge that direct file retrieval is unavailable.',
-          params.searchMode === 'complex'
-            ? '- In complex mode, compare multiple sources before concluding.'
-            : '- In simple mode, keep the answer concise and directly scoped.',
-        ].join('\n')
+        'Search route behavior:',
+        '- Use tools for externally verifiable claims.',
+        hasTool('web_search')
+          ? '- Call web_search before finalizing factual/time-sensitive answers.'
+          : '- Prefer available retrieval tools before finalizing factual/time-sensitive answers.',
+        hasTool('web_scrape')
+          ? '- If user provides URLs, call web_scrape on those URLs.'
+          : '- If user provides URLs, use available retrieval tools to verify URL content when possible.',
+        hasTool('channel_file_lookup')
+          ? '- If user asks about previously uploaded files/attachments in this channel, call channel_file_lookup before answering.'
+          : '- If user asks about previously uploaded files/attachments in this channel, acknowledge that direct file retrieval is unavailable.',
+        params.searchMode === 'complex'
+          ? '- In complex mode, compare multiple sources before concluding.'
+          : '- In simple mode, keep the answer concise and directly scoped.',
+      ].join('\n')
       : params.routeKind === 'coding'
         ? [
-            'Coding route behavior:',
-            '- Use tools when correctness depends on package versions, API behavior, docs, or exact commands.',
-            hasTool('npm_package_lookup')
-              ? '- Use npm_package_lookup for package version and metadata validation.'
-              : '- Use available package/doc tools to validate package versions when uncertain.',
-            hasTool('github_repo_lookup') || hasTool('github_file_lookup')
-              ? '- Use GitHub lookup tools to confirm repository/docs claims before citing them.'
-              : '- Use available retrieval tools to validate repository/docs claims before citing them.',
-            hasTool('stack_overflow_search')
-              ? '- Use stack_overflow_search for known error signatures or implementation pitfalls.'
-              : '- Use available retrieval tools when debugging known error signatures.',
-            hasTool('channel_file_lookup')
-              ? '- If coding guidance depends on previously uploaded files in this channel, call channel_file_lookup to retrieve the file content first.'
-              : '- If coding guidance depends on previously uploaded files in this channel, state that file retrieval is unavailable.',
-          ].join('\n')
+          'Coding route behavior:',
+          '- Use tools when correctness depends on package versions, API behavior, docs, or exact commands.',
+          hasTool('npm_package_lookup')
+            ? '- Use npm_package_lookup for package version and metadata validation.'
+            : '- Use available package/doc tools to validate package versions when uncertain.',
+          hasTool('github_repo_lookup') || hasTool('github_file_lookup')
+            ? '- Use GitHub lookup tools to confirm repository/docs claims before citing them.'
+            : '- Use available retrieval tools to validate repository/docs claims before citing them.',
+          hasTool('stack_overflow_search')
+            ? '- Use stack_overflow_search for known error signatures or implementation pitfalls.'
+            : '- Use available retrieval tools when debugging known error signatures.',
+          hasTool('channel_file_lookup')
+            ? '- If coding guidance depends on previously uploaded files in this channel, call channel_file_lookup to retrieve the file content first.'
+            : '- If coding guidance depends on previously uploaded files in this channel, state that file retrieval is unavailable.',
+        ].join('\n')
         : params.routeKind === 'chat'
           ? [
-              'Chat route behavior:',
-              '- Use tools for factual, time-sensitive, or externally verifiable claims.',
-              hasTool('web_search')
-                ? '- For current events/news/prices/releases/weather, call web_search before finalizing.'
-                : '- For current events/news/prices/releases/weather, rely on available tools before finalizing.',
-              hasTool('web_scrape')
-                ? '- If the user shares URL(s), call web_scrape before summarizing or quoting page content.'
-                : '- If the user shares URL(s), use available tools to validate page content before summarizing.',
-              hasTool('channel_file_lookup')
-                ? '- If the user asks what files were uploaded/remembered or asks to analyze earlier attachments, call channel_file_lookup before answering.'
-                : '- If the user asks what files were uploaded/remembered, state that file retrieval is unavailable in this run.',
-            ].join('\n')
+            'Chat route behavior:',
+            '- Use tools for factual, time-sensitive, or externally verifiable claims.',
+            hasTool('web_search')
+              ? '- For current events/news/prices/releases/weather, call web_search before finalizing.'
+              : '- For current events/news/prices/releases/weather, rely on available tools before finalizing.',
+            hasTool('web_scrape')
+              ? '- If the user shares URL(s), call web_scrape before summarizing or quoting page content.'
+              : '- If the user shares URL(s), use available tools to validate page content before summarizing.',
+            hasTool('channel_file_lookup')
+              ? '- If the user asks what files were uploaded/remembered or asks to analyze earlier attachments, call channel_file_lookup before answering.'
+              : '- If the user asks what files were uploaded/remembered, state that file retrieval is unavailable in this run.',
+          ].join('\n')
           : '';
   return [
     '## Tool Protocol',
@@ -311,13 +317,10 @@ function buildToolProtocolInstruction(params: {
     .join('\n');
 }
 
-const TOOL_HARD_GATE_TIME_SENSITIVE_PATTERN =
-  /(latest|today|current|now|right now|as of|recent|fresh|newest|release|version|price|weather|news|score)/i;
-const TOOL_HARD_GATE_SOURCE_REQUEST_PATTERN = /(source|sources|citation|cite|reference|references|link|url)/i;
-const TOOL_HARD_GATE_CODING_VERIFICATION_PATTERN =
-  /(npm|pnpm|yarn|package|dependency|dependencies|install|version|api|sdk|docs|documentation|changelog|migration|deprecated|cli|command|stack trace|error|exception|runtime)/i;
-const TOOL_HARD_GATE_ATTACHMENT_RECALL_PATTERN =
-  /(attachment|attached|uploaded|upload|cached|remember(?:ed)?|previous file|earlier file|that file|that attachment)/i;
+const TOOL_HARD_GATE_TIME_SENSITIVE_PATTERN = TIME_SENSITIVE_QUERY_PATTERN;
+const TOOL_HARD_GATE_SOURCE_REQUEST_PATTERN = SOURCE_REQUEST_PATTERN;
+const TOOL_HARD_GATE_CODING_VERIFICATION_PATTERN = CODING_VERIFICATION_PATTERN;
+const TOOL_HARD_GATE_ATTACHMENT_RECALL_PATTERN = ATTACHMENT_RECALL_PATTERN;
 const SEARCH_RESPONSE_URL_PATTERN = /https?:\/\/[^\s<>()]+/i;
 const SEARCH_RESPONSE_URL_PATTERN_GLOBAL = /https?:\/\/[^\s<>()]+/gi;
 const SEARCH_RESPONSE_CHECKED_ON_PATTERN = /checked on:\s*\d{4}-\d{2}-\d{2}/i;
@@ -429,16 +432,16 @@ function summarizeSearchPipelineToolExecution(params: {
     }
     const tried = Array.isArray(record.providersTried)
       ? record.providersTried
-          .map((entry) => (typeof entry === 'string' ? entry.trim().toLowerCase() : ''))
-          .filter((entry) => entry.length > 0)
+        .map((entry) => (typeof entry === 'string' ? entry.trim().toLowerCase() : ''))
+        .filter((entry) => entry.length > 0)
       : [];
     for (const entry of tried) {
       providersTried.add(entry);
     }
     const skipped = Array.isArray(record.providersSkipped)
       ? record.providersSkipped
-          .map((entry) => (typeof entry === 'string' ? entry.trim().toLowerCase() : ''))
-          .filter((entry) => entry.length > 0)
+        .map((entry) => (typeof entry === 'string' ? entry.trim().toLowerCase() : ''))
+        .filter((entry) => entry.length > 0)
       : [];
     for (const entry of skipped) {
       providersSkipped.add(entry);
@@ -609,9 +612,9 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
   const activeContextProviders =
     agentDecision.kind === 'chat'
       ? withRequiredContextProviders({
-          providers: resolvedContextProviders,
-          required: ['UserMemory', 'ChannelMemory'],
-        })
+        providers: resolvedContextProviders,
+        required: ['UserMemory', 'ChannelMemory'],
+      })
       : resolvedContextProviders;
   const hasChannelMemoryProvider = activeContextProviders.includes('ChannelMemory');
 
@@ -917,10 +920,10 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
     });
   const toolProtocolInstruction = toolLoopEnabled
     ? buildToolProtocolInstruction({
-        routeKind: agentDecision.kind,
-        searchMode: searchExecutionMode,
-        toolNames: activeToolNames,
-      })
+      routeKind: agentDecision.kind,
+      searchMode: searchExecutionMode,
+      toolNames: activeToolNames,
+    })
     : null;
 
   const capabilityPromptParams: BuildCapabilityPromptSectionParams = {
@@ -1180,10 +1183,7 @@ Your response will be spoken aloud by a TTS model (${voice} voice).
         ? `User request:\n${userText}\n\n${contextNotes.join('\n\n')}`
         : userText;
     const currentDateIso = new Date().toISOString().slice(0, 10);
-    const isTimeSensitiveQuery =
-      /(latest|today|current|now|right now|as of|recent|fresh|newest|release|version|price|weather|news|score)/i.test(
-        userText,
-      );
+    const isTimeSensitiveQuery = TIME_SENSITIVE_QUERY_PATTERN.test(userText);
 
     const searchGuardrailModels = userTextHasLink
       ? [...GUARDED_SEARCH_MODELS, SEARCH_SCRAPER_MODEL]
@@ -1318,14 +1318,14 @@ Checked on: YYYY-MM-DD`;
         modelResolutionEvents.push({
           phase: params.phase,
           iteration: params.iteration,
-            route: 'search',
-            selected: attemptModel,
-            purpose: 'search_guardrail_attempt',
-            attempt: attemptIndex + 1,
-            attemptsTotal: cappedAttemptOrder.length,
-            timeoutMs: attemptTimeoutMs,
-            status: 'success',
-          });
+          route: 'search',
+          selected: attemptModel,
+          purpose: 'search_guardrail_attempt',
+          attempt: attemptIndex + 1,
+          attemptsTotal: cappedAttemptOrder.length,
+          timeoutMs: attemptTimeoutMs,
+          status: 'success',
+        });
         const content = normalizeSearchReplyText({
           userText,
           replyText: searchResponse.content ?? '',
@@ -1962,8 +1962,7 @@ Checked on: YYYY-MM-DD`;
         if (requiresToolEvidenceThisTurn && agentDecision.kind === 'search') {
           canaryHardGateUnmet = true;
           throw new Error(
-            `Search hard gate unmet: ${
-              error instanceof Error ? error.message : String(error)
+            `Search hard gate unmet: ${error instanceof Error ? error.message : String(error)
             }`,
           );
         }
@@ -2338,9 +2337,9 @@ Checked on: YYYY-MM-DD`;
       searchPipeline:
         agentDecision.kind === 'search'
           ? {
-              mode: searchExecutionMode,
-              toolExecutionProfile,
-            }
+            mode: searchExecutionMode,
+            toolExecutionProfile,
+          }
           : undefined,
     };
     if (toolLoopBudgetJson) {
@@ -2434,45 +2433,45 @@ Checked on: YYYY-MM-DD`;
         // If the critic fails to return valid JSON, don't silently skip quality controls on search.
         // Prefer a fresh search pass to recover (bounded by maxLoops).
         if (agentDecision.kind === 'search') {
-           criticAssessments.push({
-             iteration,
-             score: 0,
-             verdict: 'revise',
-             model: 'unknown',
-             issues: ['Critic assessment failed (invalid JSON).'],
-             rewritePrompt: '',
-           });
+          criticAssessments.push({
+            iteration,
+            score: 0,
+            verdict: 'revise',
+            model: 'unknown',
+            issues: ['Critic assessment failed (invalid JSON).'],
+            rewritePrompt: '',
+          });
 
           const revisionInstruction =
             'Critic assessment failed (invalid JSON). Re-run search verification and return a source-grounded answer. ' +
             'Include concise source cues (domains or URLs) for key factual claims. Avoid unsupported certainty.';
 
-           try {
-             const priorDraftForComparison = draftText;
-             revisionAttempts += 1;
-             draftText = await runSearchPassWithFallback({
-                phase: 'critic_search_refresh_on_null',
-                iteration,
-                revisionInstruction,
-                priorDraft: draftText,
-              });
-             revisionApplied += 1;
+          try {
+            const priorDraftForComparison = draftText;
+            revisionAttempts += 1;
+            draftText = await runSearchPassWithFallback({
+              phase: 'critic_search_refresh_on_null',
+              iteration,
+              revisionInstruction,
+              priorDraft: draftText,
+            });
+            revisionApplied += 1;
 
-             if (searchExecutionMode === 'complex') {
-               try {
-                 revisionAttempts += 1;
-                 draftText = await runSearchSummaryPass({
-                   phase: 'critic_search_refresh_on_null_summary',
-                   iteration,
-                   searchDraft: draftText,
-                   summaryReason: revisionInstruction,
-                   priorDraft: priorDraftForComparison,
-                 });
-                 revisionApplied += 1;
-               } catch (summaryError) {
-                 logger.warn(
-                   { error: summaryError, traceId, iteration },
-                   'Critic-null search refresh summary failed; keeping refreshed search draft',
+            if (searchExecutionMode === 'complex') {
+              try {
+                revisionAttempts += 1;
+                draftText = await runSearchSummaryPass({
+                  phase: 'critic_search_refresh_on_null_summary',
+                  iteration,
+                  searchDraft: draftText,
+                  summaryReason: revisionInstruction,
+                  priorDraft: priorDraftForComparison,
+                });
+                revisionApplied += 1;
+              } catch (summaryError) {
+                logger.warn(
+                  { error: summaryError, traceId, iteration },
+                  'Critic-null search refresh summary failed; keeping refreshed search draft',
                 );
               }
             }
@@ -2497,14 +2496,14 @@ Checked on: YYYY-MM-DD`;
         break;
       }
 
-       criticAssessments.push({
-         iteration,
-         score: assessment.score,
-         verdict: assessment.verdict,
-         model: assessment.model,
-         issues: assessment.issues,
-         rewritePrompt: assessment.rewritePrompt,
-       });
+      criticAssessments.push({
+        iteration,
+        score: assessment.score,
+        verdict: assessment.verdict,
+        model: assessment.model,
+        issues: assessment.issues,
+        rewritePrompt: assessment.rewritePrompt,
+      });
 
       const shouldReviseFromCritic = shouldRequestRevision({
         assessment,
@@ -2527,39 +2526,39 @@ Checked on: YYYY-MM-DD`;
             ? 'Re-run search verification. Produce a fresher, source-grounded answer and include concise source cues.'
             : 'Improve factual precision and completeness while preserving tone.');
 
-       if (
-         shouldForceSearchRefresh ||
-         shouldRefreshSearchFromCritic({
-           routeKind: agentDecision.kind,
-           issues: assessment.issues,
-           rewritePrompt: assessment.rewritePrompt,
-         })
-       ) {
-         try {
-           const priorDraftForComparison = draftText;
-           revisionAttempts += 1;
-           draftText = await runSearchPassWithFallback({
-              phase: 'critic_search_refresh',
-              iteration,
-              revisionInstruction,
-              priorDraft: draftText,
-            });
-           revisionApplied += 1;
-           if (searchExecutionMode === 'complex') {
-             try {
-               revisionAttempts += 1;
-               draftText = await runSearchSummaryPass({
-                 phase: 'critic_search_refresh_summary',
-                 iteration,
-                 searchDraft: draftText,
-                 summaryReason: revisionInstruction,
-                 priorDraft: priorDraftForComparison,
-               });
-               revisionApplied += 1;
-               criticRedispatches.push({
-                 iteration,
-                 mode: 'search_refresh_summary',
-                 issueCount: assessment.issues.length,
+      if (
+        shouldForceSearchRefresh ||
+        shouldRefreshSearchFromCritic({
+          routeKind: agentDecision.kind,
+          issues: assessment.issues,
+          rewritePrompt: assessment.rewritePrompt,
+        })
+      ) {
+        try {
+          const priorDraftForComparison = draftText;
+          revisionAttempts += 1;
+          draftText = await runSearchPassWithFallback({
+            phase: 'critic_search_refresh',
+            iteration,
+            revisionInstruction,
+            priorDraft: draftText,
+          });
+          revisionApplied += 1;
+          if (searchExecutionMode === 'complex') {
+            try {
+              revisionAttempts += 1;
+              draftText = await runSearchSummaryPass({
+                phase: 'critic_search_refresh_summary',
+                iteration,
+                searchDraft: draftText,
+                summaryReason: revisionInstruction,
+                priorDraft: priorDraftForComparison,
+              });
+              revisionApplied += 1;
+              criticRedispatches.push({
+                iteration,
+                mode: 'search_refresh_summary',
+                issueCount: assessment.issues.length,
                 forcedByDraftGuardrail: shouldForceSearchRefresh,
               });
               if (Array.isArray(agentEventsJson)) {
@@ -2658,10 +2657,10 @@ Checked on: YYYY-MM-DD`;
       const routeSpecificRevisionContract =
         agentDecision.kind === 'coding'
           ? '\n\nCoding revision contract:\n' +
-            '- Return a complete, runnable answer (no TODO placeholders).\n' +
-            '- Fix all blocking security/correctness issues explicitly called out by the critic.\n' +
-            '- Keep scope aligned to the user request; do not bloat with unrelated optional hardening.\n' +
-            '- Never use insecure secret fallbacks or weaken existing safeguards.'
+          '- Return a complete, runnable answer (no TODO placeholders).\n' +
+          '- Fix all blocking security/correctness issues explicitly called out by the critic.\n' +
+          '- Keep scope aligned to the user request; do not bloat with unrelated optional hardening.\n' +
+          '- Never use insecure secret fallbacks or weaken existing safeguards.'
           : '';
       const toolBackedRevisionRequested = shouldUseToolBackedRevision(
         assessment.issues,
@@ -2670,9 +2669,9 @@ Checked on: YYYY-MM-DD`;
       const revisionToolContract =
         toolBackedRevisionRequested && toolLoopEnabled && scopedToolRegistry
           ? '\n\nTool-backed revision contract:\n' +
-            '- You may call tools to verify or fix critic-flagged issues.\n' +
-            '- If the critic flagged factual/version/source/command issues, call at least one relevant tool before finalizing.\n' +
-            '- Never invent tool outputs; use only observed tool results.'
+          '- You may call tools to verify or fix critic-flagged issues.\n' +
+          '- If the critic flagged factual/version/source/command issues, call at least one relevant tool before finalizing.\n' +
+          '- Never invent tool outputs; use only observed tool results.'
           : '';
 
       const revisionMessages: LLMChatMessage[] = [
