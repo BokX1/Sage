@@ -130,7 +130,7 @@ Search execution mode (`simple` vs `complex`) is selected turn-by-turn by the ro
 | Variable | Description | `.env.example` |
 | :--- | :--- | :--- |
 | `AGENTIC_GRAPH_PARALLEL_ENABLED` | Allow parallel context-provider execution | `true` |
-| `AGENTIC_GRAPH_MAX_PARALLEL` | Max concurrent graph nodes | `2` |
+| `AGENTIC_GRAPH_MAX_PARALLEL` | Max concurrent graph nodes | `3` |
 | `AGENTIC_TOOL_ALLOW_EXTERNAL_WRITE` | Allow external side-effect tools | `false` |
 | `AGENTIC_TOOL_ALLOW_HIGH_RISK` | Allow high-risk tools | `false` |
 | `AGENTIC_TOOL_BLOCKLIST_CSV` | Comma-separated blocked tools | `join_voice_channel,leave_voice_channel` |
@@ -173,10 +173,10 @@ Hard-gate behavior summary:
 | `AGENTIC_CANARY_ENABLED` | Enable rollout/error-budget guardrails | `true` |
 | `AGENTIC_CANARY_PERCENT` | % of eligible turns using graph path | `100` |
 | `AGENTIC_CANARY_ROUTE_ALLOWLIST_CSV` | Routes eligible for agentic graph | `chat,coding,search,creative` |
-| `AGENTIC_CANARY_MAX_FAILURE_RATE` | Failure rate threshold for cooldown | `0.20` |
-| `AGENTIC_CANARY_MIN_SAMPLES` | Min samples before budget evaluation | `50` |
+| `AGENTIC_CANARY_MAX_FAILURE_RATE` | Failure rate threshold for cooldown | `0.30` |
+| `AGENTIC_CANARY_MIN_SAMPLES` | Min samples before budget evaluation | `20` |
 | `AGENTIC_CANARY_COOLDOWN_SEC` | Cooldown duration after breach | `300` |
-| `AGENTIC_CANARY_WINDOW_SIZE` | Rolling sample window | `250` |
+| `AGENTIC_CANARY_WINDOW_SIZE` | Rolling sample window | `100` |
 | `AGENTIC_PERSIST_STATE_ENABLED` | Persist canary/model-health state in DB; auto-fallback to memory if DB unavailable | `true` |
 
 ---
@@ -384,9 +384,9 @@ docker compose -f config/ci/docker-compose.yml up -d tika
 | `RATE_LIMIT_MAX` | Max responses per window | `5` |
 | `RATE_LIMIT_WINDOW_SEC` | Rate-limit window seconds | `10` |
 | `TIMEOUT_CHAT_MS` | Chat/model request timeout | `180000` |
-| `TIMEOUT_SEARCH_MS` | Search-pass timeout baseline (normal search models) | `90000` |
-| `TIMEOUT_SEARCH_SCRAPER_MS` | Search-pass timeout for scraper model (`nomnom`) | `150000` |
-| `TIMEOUT_MEMORY_MS` | User/channel memory provider timeout (`UserMemory`, `ChannelMemory`) | `300000` |
+| `TIMEOUT_SEARCH_MS` | Search-pass timeout baseline (normal search models) | `300000` |
+| `TIMEOUT_SEARCH_SCRAPER_MS` | Search-pass timeout for scraper model (`nomnom`) | `480000` |
+| `TIMEOUT_MEMORY_MS` | User/channel memory provider timeout (`UserMemory`, `ChannelMemory`) | `600000` |
 | `SEARCH_MAX_ATTEMPTS_SIMPLE` | Max guarded search model attempts when router picks simple search mode | `2` |
 | `SEARCH_MAX_ATTEMPTS_COMPLEX` | Max guarded search model attempts when router picks complex search mode | `4` |
 | `TOOL_WEB_SEARCH_TIMEOUT_MS` | External web-search tool timeout | `45000` |
@@ -501,7 +501,7 @@ FILE_INGEST_MAX_TOTAL_BYTES_PER_MESSAGE=20971520
 FILE_INGEST_OCR_ENABLED=false
 
 AGENTIC_GRAPH_PARALLEL_ENABLED=true
-AGENTIC_GRAPH_MAX_PARALLEL=2
+AGENTIC_GRAPH_MAX_PARALLEL=3
 AGENTIC_TOOL_ALLOW_EXTERNAL_WRITE=false
 AGENTIC_TOOL_ALLOW_HIGH_RISK=false
 AGENTIC_TOOL_BLOCKLIST_CSV=join_voice_channel,leave_voice_channel
@@ -537,9 +537,9 @@ AGENTIC_PERSIST_STATE_ENABLED=true
 AGENTIC_TENANT_POLICY_JSON={}
 
 TIMEOUT_CHAT_MS=180000
-TIMEOUT_SEARCH_MS=90000
-TIMEOUT_SEARCH_SCRAPER_MS=150000
-TIMEOUT_MEMORY_MS=300000
+TIMEOUT_SEARCH_MS=300000
+TIMEOUT_SEARCH_SCRAPER_MS=480000
+TIMEOUT_MEMORY_MS=600000
 SEARCH_MAX_ATTEMPTS_SIMPLE=2
 SEARCH_MAX_ATTEMPTS_COMPLEX=4
 TOOL_WEB_SEARCH_PROVIDER_ORDER=tavily,exa,searxng,pollinations

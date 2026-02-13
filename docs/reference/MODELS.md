@@ -149,6 +149,6 @@ You can override model defaults via environment variables:
 
 ---
 
-[^1]: [`src/core/llm/model-resolver.ts`](../../src/core/llm/model-resolver.ts), lines 50–55
+[^1]: [`src/core/llm/model-resolver.ts`](../../src/core/llm/model-resolver.ts), lines 57–62
 [^2]: [`src/core/llm/model-health.ts`](../../src/core/llm/model-health.ts)
 [^3]: [`src/core/llm/model-catalog.ts`](../../src/core/llm/model-catalog.ts)

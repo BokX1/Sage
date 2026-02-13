@@ -120,10 +120,39 @@ erDiagram
     }
 
     AgentTrace ||--o{ AgentRun : "traceId"
+    AgentTrace ||--o{ AgentEvaluation : "traceId"
     UserProfile ||--o{ VoiceSession : "userId (logical)"
     UserProfile ||--o{ ChannelMessage : "authorId (logical)"
     ChannelMessage ||--o{ IngestedAttachment : "messageId (logical)"
     UserProfile ||--o{ RelationshipEdge : "userA/userB (logical)"
+
+    AgentEvaluation {
+        string id PK
+        string traceId
+        string routeKind
+        string model
+        float overallScore
+        float confidence
+        string verdict
+        boolean disagreement
+        datetime createdAt
+    }
+
+    AgenticCanaryState {
+        string id PK
+        json outcomesJson
+        datetime cooldownUntil
+        datetime createdAt
+        datetime updatedAt
+    }
+
+    ModelHealthState {
+        string modelId PK
+        float score
+        int samples
+        datetime createdAt
+        datetime updatedAt
+    }
 ```
 
 ---
@@ -144,6 +173,9 @@ erDiagram
 | `AdminAudit` | Audit trail for privileged command usage. |
 | `AgentTrace` | Per-turn runtime trace payload (route, context metadata, events, quality, budget). |
 | `AgentRun` | Per-node execution telemetry tied to an `AgentTrace`. |
+| `AgentEvaluation` | Model-judge evaluation rows linked to an `AgentTrace`. |
+| `AgenticCanaryState` | Persisted canary rollout/error-budget state across restarts. |
+| `ModelHealthState` | Per-model health scores used for fallback ranking. |
 
 Notes:
 
