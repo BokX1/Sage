@@ -1,0 +1,83 @@
+name: ✨ Feature Request
+description: Suggest a new feature or enhancement for Sage
+title: "[Feature]: "
+labels: ["enhancement", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve Sage! Please describe your feature request below.
+
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: Pre-flight Checklist
+      options:
+        - label: I have searched existing issues and this feature hasn't been requested
+          required: true
+        - label: This feature aligns with Sage's vision as an agentic Discord companion
+          required: false
+
+  - type: dropdown
+    id: category
+    attributes:
+      label: Feature Category
+      description: What area of Sage does this relate to?
+      options:
+        - Memory/Learning System
+        - Social Awareness
+        - Voice Features
+        - New Expert/Skill
+        - Chat Quality
+        - Admin/Observability
+        - Developer Experience
+        - Documentation
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem Statement
+      description: What problem are you trying to solve? Why is this feature needed?
+      placeholder: I often find myself needing to... but currently Sage can't...
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed Solution
+      description: How do you envision this feature working?
+      placeholder: |
+        Sage could...
+        The command would be...
+        The output would look like...
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: Have you considered any alternative solutions or workarounds?
+
+  - type: dropdown
+    id: contribution
+    attributes:
+      label: Contribution Interest
+      description: Would you be interested in contributing this feature?
+      options:
+        - "Yes, I'd like to implement this"
+        - "Yes, but I need guidance"
+        - "No, but I'd like to help test"
+        - "No, just a suggestion"
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional Context
+      description: Add any other context, mockups, or screenshots

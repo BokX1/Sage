@@ -1,0 +1,264 @@
+# ❓ Frequently Asked Questions
+
+<p align="center">
+  <img src="https://img.shields.io/badge/%F0%9F%8C%BF-Sage%20FAQ-2d5016?style=for-the-badge&labelColor=4a7c23" alt="FAQ" />
+</p>
+
+Common questions about Sage, setup, and behavior.
+
+---
+
+## 🧭 Quick navigation
+
+- [🌟 First-Timer Questions](#first-timer-questions)
+- [📖 About Sage](#about-sage)
+- [🔧 Setup & Configuration](#setup-configuration)
+- [💬 Using Sage](#using-sage)
+- [🔴 Troubleshooting](#troubleshooting)
+- [🔐 Privacy & Data](#privacy-data)
+
+---
+
+<a id="first-timer-questions"></a>
+
+## 🌟 First-Timer Questions
+
+<details>
+<summary><strong>I'm not technical — can I still use Sage?</strong></summary>
+
+Yes. Start with the **[⚡ Quick Start Guide](QUICKSTART.md)** for a minimal, copy/paste setup.
+
+</details>
+
+<details>
+<summary><strong>Will this cost me money?</strong></summary>
+
+Sage is **source-available** under **PolyForm Strict 1.0.0**.
+
+- **Software licensing:** Noncommercial run/self-host use is allowed under `LICENSE`. Commercial/business use requires a separate written license (`Ahazihak03@gmail.com`).
+- **AI credits:** Sage uses **Bring Your Own Pollen (BYOP)**.
+  - Server admins generate a key from [Pollinations.ai](https://pollinations.ai).
+  - That key is used by the server for Sage's AI requests.
+- **Hosting:** If you self-host, you also pay your own infrastructure costs (if any).
+
+</details>
+
+<details>
+<summary><strong>Is this safe for my Discord server?</strong></summary>
+
+Sage is built to be transparent and controllable:
+
+- 🔒 **You control settings** (logging, tracing, retention)
+- 👁️ **Auditable operation** — traces/logging can be reviewed by operators
+- ⚙️ **Privacy controls** — you can disable ingestion/logging
+
+See **[Security &amp; Privacy](../security/SECURITY_PRIVACY.md)** for concrete details on what’s stored and how to disable it.
+
+</details>
+
+<details>
+<summary><strong>What if I get stuck during setup?</strong></summary>
+
+Try these in order:
+
+1. Run `npm run doctor`
+2. Check **[Troubleshooting](TROUBLESHOOTING.md)**
+3. Re-run the onboarding wizard: `npm run onboard`
+4. If still blocked, open a GitHub issue
+
+</details>
+
+---
+
+<a id="about-sage"></a>
+
+## 📖 About Sage
+
+<details>
+<summary><strong>What is Sage?</strong></summary>
+
+Sage is a fully agentic AI companion. Unlike simple chatbots, Sage aims to behave like a helpful community member who **listens and evolves alongside you**.
+
+- 🧠 **Personalized touch**: Remembers context to respond more helpfully over time.
+- 👥 **Socially aware**: Understands relationships and the “vibe” of a server.
+- 📄 **Knowledgeable**: Can ingest files and discuss them with the community.
+
+</details>
+
+<details>
+<summary><strong>Is Sage free to use?</strong></summary>
+
+For noncommercial use, Sage can be run under PolyForm Strict 1.0.0 without a paid software license. Commercial/business use requires a separate written license (`Ahazihak03@gmail.com`). Pollinations API pricing/tiers are separate from Sage software licensing.
+
+</details>
+
+<details>
+<summary><strong>What AI models does Sage use?</strong></summary>
+
+Sage uses a route-aware multi-model pipeline:
+
+- **Chat/Coding/Search:** selected by model policy at runtime based on capabilities + health.
+- **Profile updates:** `PROFILE_CHAT_MODEL` (default `deepseek`).
+- **Summaries:** `SUMMARY_MODEL` (default `deepseek`).
+- **JSON Parsing:** Processed natively using `jsonrepair`.
+
+You can change defaults in **[Configuration](../reference/CONFIGURATION.md)**.
+
+</details>
+
+<details>
+<summary><strong>Can Sage read files?</strong></summary>
+
+Yes. Sage ingests multiple non-image Discord attachments per message.
+
+- Native text/code extraction first for plain text formats (`.txt`, `.md`, source files, JSON/YAML, logs, etc.), with Tika fallback when needed
+- Broad document extraction through Apache Tika (for example PDF and Office documents)
+
+Sage caches extracted non-image file content in channel attachment memory, then retrieves full text on demand. Transcript history stores lightweight cache markers, not full file bodies, so old files do not bloat every prompt.
+
+</details>
+
+<details>
+<summary><strong>Can Sage see images?</strong></summary>
+
+Yes. If you attach an image (or reply to one) and trigger Sage, the bot forwards it as a vision input (`image_url`) to Pollinations-compatible vision models.
+
+</details>
+
+<details>
+<summary><strong>Can Sage generate or edit images?</strong></summary>
+
+Yes.
+
+- **Generate:** `Sage, draw a futuristic city in the rain`
+- **Edit:** reply to an image: `Sage, make this more cinematic`
+
+Under the hood, Sage runs a **image_generate tool action** (prompt refinement -> Pollinations image endpoint) and returns the result as a **Discord attachment**.
+
+</details>
+
+<details>
+<summary><strong>Does Sage work with voice chat?</strong></summary>
+
+Sage has **Voice Awareness**: it can answer questions like who is in voice and how long someone has been in voice.
+
+Use `/join` and `/leave` to control when Sage is connected to a voice channel.
+
+Optional: if voice transcription is enabled, Sage can transcribe in-channel audio while connected and persist **summary-only** voice session memory when it leaves voice.
+
+</details>
+
+---
+
+<a id="setup-configuration"></a>
+
+## 🔧 Setup & Configuration
+
+<details>
+<summary><strong>How do I change Sage's wake word?</strong></summary>
+
+Edit `.env`:
+
+```env
+WAKE_WORDS_CSV=sage
+```
+
+Restart Sage after changing `.env`.
+
+</details>
+
+<details>
+<summary><strong>How do I make Sage respond without being mentioned?</strong></summary>
+
+Set `AUTOPILOT_MODE`:
+
+| Mode | Behavior | API Usage |
+| :--- | :--- | :--- |
+| `manual` | Only responds on wake word/@mention/reply (default) | 🟢 Low |
+| `reserved` | Occasionally joins relevant conversations | 🟡 Medium |
+| `talkative` | Actively participates without prompts | 🔴 High |
+
+Example:
+
+```env
+AUTOPILOT_MODE=manual
+```
+
+</details>
+
+---
+
+<a id="using-sage"></a>
+
+## 💬 Using Sage
+
+<details>
+<summary><strong>How do I talk to Sage?</strong></summary>
+
+Use any of these:
+
+1. **Wake word**: start with “Sage” (e.g., “Sage, what’s the weather?”)
+2. **Mention**: tag the bot (`@Sage`)
+3. **Reply**: reply to one of Sage’s messages
+
+</details>
+
+<details>
+<summary><strong>What commands are available?</strong></summary>
+
+See **[Commands Reference](COMMANDS.md)**. Highlights:
+
+**Public:**
+
+- `/ping`
+- `/sage key login`
+
+**Admin / setup:**
+
+- `/sage key login`, `/sage key set`
+- `/sage admin stats`
+
+</details>
+
+---
+
+<a id="troubleshooting"></a>
+
+## 🔴 Troubleshooting
+
+<details>
+<summary><strong>Sage is slow to respond</strong></summary>
+
+Possible causes:
+
+- High-precision routing (resolving context across history)
+- Large context ingestion (e.g., long files)
+- Provider load
+
+Things to try:
+
+- Wait a few seconds (complex requests take longer)
+- Ensure a BYOP key is set for higher limits / priority
+
+</details>
+
+---
+
+<a id="privacy-data"></a>
+
+## 🔐 Privacy & Data
+
+<details>
+<summary><strong>What data does Sage store?</strong></summary>
+
+| Data Type | Description |
+| :--- | :--- |
+| **User Profiles** | LLM-generated long-term summary of a user (throttled for efficiency). |
+| **Relationship Tiers** | Interaction-based tiers (e.g., “Best Friend”) with emojis. |
+| **Ingested Attachments** | Cached extracted text from non-image Discord attachments (per-channel). |
+| **Channel Summaries** | Rolling LLM-generated summaries of channel conversations. |
+| **Traces** | Agent selector `reasoningText`, route metadata, and runtime diagnostics for auditing responses. |
+
+For a full breakdown (tables, retention, and deletion), see **[Security &amp; Privacy](../security/../security/SECURITY_PRIVACY.md)**.
+
+</details>

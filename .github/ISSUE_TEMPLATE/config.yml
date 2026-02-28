@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Documentation Hub
+    url: https://github.com/BokX1/Sage/blob/master/docs/INDEX.md
+    about: Start with documentation before filing a new issue.
+  - name: Security Policy
+    url: https://github.com/BokX1/Sage/blob/master/SECURITY.md
+    about: Report security vulnerabilities privately using the SECURITY.md process.
+  - name: Discussions
+    url: https://github.com/BokX1/Sage/discussions
+    about: Ask questions, share ideas, or discuss proposals before opening issues.

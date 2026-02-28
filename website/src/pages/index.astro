@@ -1,0 +1,400 @@
+---
+import Layout from '../layouts/Layout.astro';
+import HeroDemo from '../components/HeroDemo.jsx';
+import TechStackGrid from '../components/TechStackGrid.jsx';
+import ToolGrid from '../components/ToolGrid.jsx';
+import ShowcaseTerminal from '../components/ShowcaseTerminal.jsx';
+import MemoryPipelineFlow from '../components/MemoryPipelineFlow.jsx';
+import ImageRefinementDemo from '../components/ImageRefinementDemo.jsx';
+import ConversationalGovernance from '../components/ConversationalGovernance.jsx';
+import SovereigntyShowcase from '../components/SovereigntyShowcase.jsx';
+import TrustBadges from '../components/TrustBadges.jsx';
+import EvalPipeline from '../components/EvalPipeline.jsx';
+import StatsStrip from '../components/StatsStrip.jsx';
+import QuickStart from '../components/QuickStart.jsx';
+import BackToTop from '../components/BackToTop.jsx';
+import ThoughtCompanion from '../components/ThoughtCompanion.jsx';
+import CommandPalette from '../components/CommandPalette.jsx';
+import ConfigSimulator from '../components/ConfigSimulator.jsx';
+import GraphBackground from '../components/GraphBackground.jsx';
+import VoiceVisualizer from '../components/VoiceVisualizer.jsx';
+---
+
+<Layout 
+	title="Sage | The First Autonomous AI Community Engineer — Cognitive Runtime for Discord" 
+	description="Meet the AI that doesn't just respond — it reasons. Sage is an autonomous cognitive runtime with 20+ native tools, GraphRAG social intelligence, a 7-stage memory pipeline, and zero-prompt automation. Built for communities that refuse to compromise.">
+	
+	<main class="w-full min-h-screen pt-24 pb-0 overflow-hidden">
+		
+		<!-- Navigation Bar -->
+		<nav class="fixed top-0 left-0 right-0 z-50 px-6 py-4 glass-panel border-b border-white/5">
+			<div class="max-w-7xl mx-auto flex justify-between items-center">
+				<div class="flex items-center gap-3">
+					<div class="w-8 h-8 rounded-lg bg-gradient-to-br from-[#78b846] to-[#2d4530] flex items-center justify-center font-bold text-[#050608] shadow-[0_0_15px_rgba(120,184,70,0.5)]">S</div>
+					<span class="font-sans font-bold text-xl tracking-tight text-white">Sage</span>
+				</div>
+				<div class="flex items-center gap-6 text-sm font-medium">
+					<a href="#tech-stack" class="text-slate-400 hover:text-[#78b846] transition-colors hidden sm:inline">Stack</a>
+					<a href="#tools" class="text-slate-400 hover:text-[#78b846] transition-colors hidden sm:inline">Tools</a>
+					<a href="#architecture" class="text-slate-400 hover:text-[#78b846] transition-colors hidden sm:inline">Architecture</a>
+					<a href="https://github.com/BokX1/Sage" target="_blank" rel="noopener noreferrer" class="px-5 py-2.5 rounded-full bg-white/10 hover:bg-white/20 border border-white/10 transition-all">
+						View on GitHub
+					</a>
+				</div>
+			</div>
+		</nav>
+
+		<!-- ═══════════════════════════════════════ -->
+		<!--  1. HERO SECTION                       -->
+		<!-- ═══════════════════════════════════════ -->
+		<section class="relative max-w-7xl mx-auto px-6 pt-20 lg:pt-32 pb-16 grid grid-cols-1 lg:grid-cols-2 gap-12 items-center min-h-[85vh]">
+			<!-- Ambient gradient mesh (behind content) -->
+			<div class="absolute inset-0 overflow-hidden pointer-events-none">
+				<div class="absolute top-[-20%] left-[-10%] w-[600px] h-[600px] rounded-full bg-[#78b846]/[0.04] blur-[120px]"></div>
+				<div class="absolute bottom-[-10%] right-[-10%] w-[500px] h-[500px] rounded-full bg-[#7AA2F7]/[0.03] blur-[100px]"></div>
+				<GraphBackground client:only="react" />
+			</div>
+
+			<div class="z-10 flex flex-col items-start text-left">
+				<div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#141a23] border border-[#2d4530] text-[#a9df7c] text-xs font-mono mb-6">
+					<span class="w-2 h-2 rounded-full bg-[#78b846] animate-pulse"></span>
+					System Runtime: Active
+				</div>
+				
+				<h1 class="text-5xl lg:text-7xl font-extrabold tracking-tight text-white leading-[1.1] mb-6">
+					The First <span class="text-transparent bg-clip-text bg-gradient-to-r from-[#78b846] to-[#a9df7c] text-glow">Autonomous</span><br/>
+					Community Engineer.
+				</h1>
+				
+				<p class="text-xl text-slate-400 mb-10 max-w-xl font-light leading-relaxed">
+					Stop managing. Start orchestrating. Sage is the cognitive runtime that turns your Discord server into a self-operating community — powered by graph-native social intelligence, a 7-stage memory pipeline, and 26 autonomous tools that fire without a single prompt.
+				</p>
+				
+				<div class="flex flex-wrap items-center gap-4 mb-10">
+					<a href="https://github.com/BokX1/Sage" class="px-8 py-4 rounded-full bg-[#78b846] text-[#050608] font-semibold hover:bg-[#a9df7c] transition-all border-glow shadow-[0_0_30px_rgba(120,184,70,0.3)]">
+						Deploy Agent
+					</a>
+					<a href="#architecture" class="px-8 py-4 rounded-full bg-transparent text-white font-medium hover:bg-white/5 border border-white/10 transition-all">
+						Explore Architecture
+					</a>
+				</div>
+
+				<!-- Social Proof Metrics -->
+				<div class="flex items-center gap-8 text-sm">
+					<div class="flex flex-col">
+						<span class="font-bold text-white text-2xl">26</span>
+						<span class="text-slate-500 text-xs">Autonomous Tools</span>
+					</div>
+					<div class="w-px h-8 bg-white/10"></div>
+					<div class="flex flex-col">
+						<span class="font-bold text-white text-2xl">13</span>
+						<span class="text-slate-500 text-xs">Technologies</span>
+					</div>
+					<div class="w-px h-8 bg-white/10"></div>
+					<div class="flex flex-col">
+						<span class="font-bold text-white text-2xl">7</span>
+						<span class="text-slate-500 text-xs">Pipeline Stages</span>
+					</div>
+				</div>
+			</div>
+			
+			<!-- Interactive Product Demo -->
+			<div class="relative w-full h-[500px] lg:h-[560px] rounded-3xl glass-panel overflow-hidden border border-white/5 shadow-2xl">
+				<div class="absolute inset-0 bg-gradient-to-br from-[#4a7c23]/5 to-transparent z-0 pointer-events-none"></div>
+				<HeroDemo client:load />
+				<div class="sr-only">Interactive demo showing Sage responding to a user question in Discord, with tool calls and streaming text.</div>
+			</div>
+		</section>
+
+		<!-- ── Gradient Divider ── -->
+		<div class="w-full h-px bg-gradient-to-r from-transparent via-[#78b846]/20 to-transparent"></div>
+
+		<!-- ═══════════════════════════════════════ -->
+		<!--  STATS STRIP — Animated Counters       -->
+		<!-- ═══════════════════════════════════════ -->
+		<StatsStrip client:visible />
+
+		<!-- ── Gradient Divider ── -->
+		<div class="w-full h-px bg-gradient-to-r from-transparent via-[#7AA2F7]/20 to-transparent"></div>
+
+		<!-- ═══════════════════════════════════════ -->
+		<!--  2. TECH STACK                         -->
+		<!-- ═══════════════════════════════════════ -->
+		<div class="relative">
+			<div class="absolute top-[20%] right-[-10%] w-[400px] h-[400px] rounded-full bg-[#BB9AF7]/[0.03] blur-[100px] pointer-events-none"></div>
+			<TechStackGrid client:visible />
+		</div>
+
+		<!-- ── Gradient Divider ── -->
+		<div class="w-full h-px bg-gradient-to-r from-transparent via-[#BB9AF7]/20 to-transparent"></div>
+
+		<!-- ═══════════════════════════════════════ -->
+		<!--  3. TOOL REGISTRY                      -->
+		<!-- ═══════════════════════════════════════ -->
+		<div class="relative">
+			<div class="absolute bottom-[10%] left-[-5%] w-[350px] h-[350px] rounded-full bg-[#E0AF68]/[0.03] blur-[100px] pointer-events-none"></div>
+			<ToolGrid client:visible />
+		</div>
+
+		<!-- ── Gradient Divider ── -->
+		<div class="w-full h-px bg-gradient-to-r from-transparent via-[#E0AF68]/20 to-transparent"></div>
+
+		<!-- ═══════════════════════════════════════ -->
+		<!--  4. LIVE AGENT TRACE                   -->
+		<!-- ═══════════════════════════════════════ -->
+		<div id="architecture" class="relative">
+			<div class="absolute top-[30%] left-[50%] -translate-x-1/2 w-[500px] h-[500px] rounded-full bg-[#78b846]/[0.02] blur-[120px] pointer-events-none"></div>
+			<ShowcaseTerminal client:visible />
+		</div>
+
+		<!-- ── Gradient Divider ── -->
+		<div class="w-full h-px bg-gradient-to-r from-transparent via-[#78b846]/20 to-transparent"></div>
+
+		<!-- ═══════════════════════════════════════ -->
+		<!--  5. MEMORY PIPELINE                    -->
+		<!-- ═══════════════════════════════════════ -->
+		<div class="relative">
+			<div class="absolute top-[10%] right-[-5%] w-[400px] h-[400px] rounded-full bg-[#7AA2F7]/[0.03] blur-[100px] pointer-events-none"></div>
+			<MemoryPipelineFlow client:visible />
+		</div>
+
+		<!-- ── Gradient Divider ── -->
+		<div class="w-full h-px bg-gradient-to-r from-transparent via-[#7AA2F7]/20 to-transparent"></div>
+
+		<!-- ═══════════════════════════════════════ -->
+		<!--  5.5 MULTIMODAL VOICE SYSTEM           -->
+		<!-- ═══════════════════════════════════════ -->
+		<section class="relative max-w-7xl mx-auto px-6 py-24 grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
+			<div class="absolute top-[20%] left-[-10%] w-[400px] h-[400px] rounded-full bg-[#78b846]/[0.03] blur-[100px] pointer-events-none"></div>
+			
+			<div class="z-10 order-2 lg:order-1 lg:pr-12">
+				<div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#141a23] border border-[#2d4530] text-[#a9df7c] text-xs font-mono mb-6">
+					<span class="w-2 h-2 rounded-full bg-[#78b846]"></span>
+					Multimodal Processing
+				</div>
+				<h2 class="text-4xl lg:text-5xl font-bold text-white mb-6 leading-tight">
+					Native <span class="text-transparent bg-clip-text bg-gradient-to-r from-[#78b846] to-[#a9df7c]">Voice</span> Intelligence
+				</h2>
+				<p class="text-lg text-slate-400 font-light leading-relaxed mb-6">
+					Sage doesn't just read, it listens. With a built-in transcription pipeline, Sage can join voice channels and recover high-signal context for real-time coordination.
+				</p>
+				<ul class="space-y-3 font-mono text-sm text-slate-300">
+					<li class="flex items-center gap-3">
+						<span class="text-[#78b846]">▹</span> Automatic Voice transcription
+					</li>
+					<li class="flex items-center gap-3">
+						<span class="text-[#78b846]">▹</span> Summary-only session memory
+					</li>
+					<li class="flex items-center gap-3">
+						<span class="text-[#78b846]">▹</span> Multi-user speaker separation
+					</li>
+				</ul>
+			</div>
+
+			<div class="z-10 order-1 lg:order-2">
+				<VoiceVisualizer client:visible />
+			</div>
+		</section>
+
+		<!-- ── Gradient Divider ── -->
+		<div class="w-full h-px bg-gradient-to-r from-transparent via-[#78b846]/20 to-transparent"></div>
+
+		<!-- ═══════════════════════════════════════ -->
+		<!--  6. CREATIVE INTELLIGENCE              -->
+		<!-- ═══════════════════════════════════════ -->
+		<div class="relative">
+			<div class="absolute bottom-[20%] left-[-5%] w-[300px] h-[300px] rounded-full bg-[#BB9AF7]/[0.04] blur-[80px] pointer-events-none"></div>
+			<ImageRefinementDemo client:visible />
+		</div>
+
+		<!-- ── Gradient Divider ── -->
+		<div class="w-full h-px bg-gradient-to-r from-transparent via-[#BB9AF7]/20 to-transparent"></div>
+
+		<!-- ═══════════════════════════════════════ -->
+		<!--  7. CONVERSATIONAL GOVERNANCE          -->
+		<!-- ═══════════════════════════════════════ -->
+		<ConversationalGovernance client:visible />
+
+		<!-- ── Gradient Divider ── -->
+		<div class="w-full h-px bg-gradient-to-r from-transparent via-[#E0AF68]/20 to-transparent"></div>
+
+		<!-- ═══════════════════════════════════════ -->
+		<!--  8. BYOP SOVEREIGNTY                   -->
+		<!-- ═══════════════════════════════════════ -->
+		<div class="relative">
+			<div class="absolute top-[40%] right-[-8%] w-[400px] h-[400px] rounded-full bg-[#78b846]/[0.03] blur-[100px] pointer-events-none"></div>
+			<SovereigntyShowcase client:visible />
+		</div>
+
+		<!-- ── Gradient Divider ── -->
+		<div class="w-full h-px bg-gradient-to-r from-transparent via-[#78b846]/20 to-transparent"></div>
+
+		<!-- ═══════════════════════════════════════ -->
+		<!--  9. TRUST & QUALITY                    -->
+		<!-- ═══════════════════════════════════════ -->
+		<section class="relative max-w-7xl mx-auto px-6 py-24">
+			<div class="absolute top-[20%] left-[50%] -translate-x-1/2 w-[600px] h-[400px] rounded-full bg-[#78b846]/[0.02] blur-[120px] pointer-events-none"></div>
+			<div class="text-center mb-12">
+				<div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#141a23] border border-[#2d4530] text-[#a9df7c] text-xs font-mono mb-6">
+					<span class="w-2 h-2 rounded-full bg-[#78b846] animate-pulse"></span>
+					Trust & Quality
+				</div>
+				<h2 class="text-4xl lg:text-5xl font-extrabold text-white mb-4">
+					Enterprise-Grade <span class="text-transparent bg-clip-text bg-gradient-to-r from-[#78b846] to-[#a9df7c]">Assurance</span>
+				</h2>
+				<p class="text-lg text-slate-400 max-w-2xl mx-auto font-light">
+					Privacy controls, granular data governance, and AI-judged quality pipelines — built in from day one.
+				</p>
+			</div>
+			<div class="space-y-4">
+				<TrustBadges client:visible />
+				<EvalPipeline client:visible />
+			</div>
+		</section>
+
+		<!-- ── Gradient Divider ── -->
+		<div class="w-full h-px bg-gradient-to-r from-transparent via-[#78b846]/30 to-transparent"></div>
+
+		<!-- ═══════════════════════════════════════ -->
+		<!--  10. CONFIGURATION PLAYGROUND          -->
+		<!-- ═══════════════════════════════════════ -->
+		<section class="relative max-w-7xl mx-auto px-6 py-24">
+			<div class="absolute top-[50%] right-[10%] w-[400px] h-[400px] rounded-full bg-[#E0AF68]/[0.03] blur-[100px] pointer-events-none"></div>
+			<div class="text-center mb-12">
+				<div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#141a23] border border-[#2d4530] text-[#a9df7c] text-xs font-mono mb-6">
+					<span class="w-2 h-2 rounded-full bg-[#78b846]"></span>
+					Deep Customization
+				</div>
+				<h2 class="text-4xl lg:text-5xl font-extrabold text-white mb-4">
+					Shape the <span class="text-transparent bg-clip-text bg-gradient-to-r from-[#78b846] to-[#a9df7c]">Runtime</span>
+				</h2>
+				<p class="text-lg text-slate-400 max-w-2xl mx-auto font-light">
+					Sage scales from a simple copilot to a fully autonomous engineer. Try toggling features below.
+				</p>
+			</div>
+			
+			<ConfigSimulator client:visible />
+		</section>
+
+		<!-- ── Gradient Divider ── -->
+		<div class="w-full h-px bg-gradient-to-r from-transparent via-[#E0AF68]/30 to-transparent"></div>
+
+		<!-- ═══════════════════════════════════════ -->
+		<!--  11. QUICK START                       -->
+		<!-- ═══════════════════════════════════════ -->
+		<QuickStart client:visible />
+
+		<!-- ── Gradient Divider ── -->
+		<div class="w-full h-px bg-gradient-to-r from-transparent via-[#78b846]/30 to-transparent"></div>
+		<!-- ═══════════════════════════════════════ -->
+		<section class="relative max-w-4xl mx-auto px-6 py-32 text-center">
+			<div class="absolute top-[30%] left-[50%] -translate-x-1/2 w-[500px] h-[500px] rounded-full bg-[#78b846]/[0.04] blur-[120px] pointer-events-none"></div>
+			<h2 class="text-4xl lg:text-6xl font-extrabold text-white mb-6 relative z-10">
+				Ready to <span class="text-transparent bg-clip-text bg-gradient-to-r from-[#78b846] to-[#a9df7c] text-glow">Deploy</span>?
+			</h2>
+			<p class="text-xl text-slate-400 mb-10 max-w-2xl mx-auto font-light relative z-10">
+				Your community deserves an intelligence layer, not a chatbot. Choose your deployment path.
+			</p>
+			<div class="flex flex-wrap justify-center gap-4 relative z-10">
+				<a href="https://github.com/BokX1/Sage" class="px-10 py-5 rounded-full bg-[#78b846] text-[#050608] font-bold text-lg hover:bg-[#a9df7c] transition-all border-glow shadow-[0_0_40px_rgba(120,184,70,0.3)]">
+					Deploy Agent
+				</a>
+				<a href="https://github.com/BokX1/Sage" class="px-10 py-5 rounded-full bg-white/5 text-white font-medium text-lg hover:bg-white/10 border border-white/10 transition-all">
+					Self-Host Runtime
+				</a>
+			</div>
+		</section>
+
+	</main>
+
+	<!-- Back to Top -->
+	<BackToTop client:load />
+
+	<!-- Thought Companion -->
+	<ThoughtCompanion client:load />
+
+	<!-- Command Palette -->
+	<CommandPalette client:load />
+
+	<!-- ═══════════════════════════════════════ -->
+	<!--  FOOTER                                -->
+	<!-- ═══════════════════════════════════════ -->
+	<footer class="relative border-t border-white/5 bg-[#06080d]">
+		<div class="max-w-7xl mx-auto px-6 py-16">
+			<div class="grid grid-cols-1 md:grid-cols-4 gap-12 mb-12">
+				<!-- Brand -->
+				<div class="md:col-span-1">
+					<div class="flex items-center gap-3 mb-4">
+						<div class="w-8 h-8 rounded-lg bg-gradient-to-br from-[#78b846] to-[#2d4530] flex items-center justify-center font-bold text-[#050608] shadow-[0_0_15px_rgba(120,184,70,0.5)]">S</div>
+						<span class="font-sans font-bold text-xl tracking-tight text-white">Sage</span>
+					</div>
+					<p class="text-sm text-slate-500 leading-relaxed mb-4">
+						The Cognitive Runtime for Digital Communities. Source-available. Self-hosted. Sovereign.
+					</p>
+					<div class="flex items-center gap-3">
+						<a href="https://github.com/BokX1/Sage" target="_blank" rel="noopener noreferrer" class="w-9 h-9 rounded-lg bg-white/5 border border-white/5 flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/10 transition-all" aria-label="GitHub">
+							<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
+						</a>
+						<a href="https://discord.gg" target="_blank" rel="noopener noreferrer" class="w-9 h-9 rounded-lg bg-white/5 border border-white/5 flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/10 transition-all" aria-label="Discord">
+							<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M20.317 4.3698a19.7913 19.7913 0 00-4.8851-1.5152.0741.0741 0 00-.0785.0371c-.211.3753-.4447.8648-.6083 1.2495-1.8447-.2762-3.68-.2762-5.4868 0-.1636-.3933-.4058-.8742-.6177-1.2495a.077.077 0 00-.0785-.037 19.7363 19.7363 0 00-4.8852 1.515.0699.0699 0 00-.0321.0277C.5334 9.0458-.319 13.5799.0992 18.0578a.0824.0824 0 00.0312.0561c2.0528 1.5076 4.0413 2.4228 5.9929 3.0294a.0777.0777 0 00.0842-.0276c.4616-.6304.8731-1.2952 1.226-1.9942a.076.076 0 00-.0416-.1057c-.6528-.2476-1.2743-.5495-1.8722-.8923a.077.077 0 01-.0076-.1277c.1258-.0943.2517-.1923.3718-.2914a.0743.0743 0 01.0776-.0105c3.9278 1.7933 8.18 1.7933 12.0614 0a.0739.0739 0 01.0785.0095c.1202.099.246.1981.3728.2924a.077.077 0 01-.0066.1276 12.2986 12.2986 0 01-1.873.8914.0766.0766 0 00-.0407.1067c.3604.698.7719 1.3628 1.225 1.9932a.076.076 0 00.0842.0286c1.961-.6067 3.9495-1.5219 6.0023-3.0294a.077.077 0 00.0313-.0552c.5004-5.177-.8382-9.6739-3.5485-13.6604a.061.061 0 00-.0312-.0286z"/></svg>
+						</a>
+					</div>
+				</div>
+
+				<!-- Architecture -->
+				<div>
+					<h4 class="font-semibold text-white text-sm mb-4">Architecture</h4>
+					<ul class="space-y-2.5 text-sm">
+						<li><a href="#tech-stack" class="text-slate-500 hover:text-[#a9df7c] transition-colors">Tech Stack</a></li>
+						<li><a href="#architecture" class="text-slate-500 hover:text-[#a9df7c] transition-colors">Agent Trace</a></li>
+						<li><a href="https://github.com/BokX1/Sage/tree/master/docs/architecture" target="_blank" rel="noopener noreferrer" class="text-slate-500 hover:text-[#a9df7c] transition-colors">Memory Pipeline</a></li>
+						<li><a href="https://github.com/BokX1/Sage/blob/master/docs/architecture/SOCIAL_GRAPH.md" target="_blank" rel="noopener noreferrer" class="text-slate-500 hover:text-[#a9df7c] transition-colors">Social Graph</a></li>
+					</ul>
+				</div>
+
+				<!-- Resources -->
+				<div>
+					<h4 class="font-semibold text-white text-sm mb-4">Resources</h4>
+					<ul class="space-y-2.5 text-sm">
+						<li><a href="https://github.com/BokX1/Sage/blob/master/docs/guides/QUICKSTART.md" target="_blank" rel="noopener noreferrer" class="text-slate-500 hover:text-[#a9df7c] transition-colors">Quick Start</a></li>
+						<li><a href="https://github.com/BokX1/Sage/blob/master/docs/guides/BYOP.md" target="_blank" rel="noopener noreferrer" class="text-slate-500 hover:text-[#a9df7c] transition-colors">BYOP Guide</a></li>
+						<li><a href="https://github.com/BokX1/Sage/blob/master/docs/reference/CONFIGURATION.md" target="_blank" rel="noopener noreferrer" class="text-slate-500 hover:text-[#a9df7c] transition-colors">Configuration</a></li>
+						<li><a href="https://github.com/BokX1/Sage/blob/master/docs/guides/FAQ.md" target="_blank" rel="noopener noreferrer" class="text-slate-500 hover:text-[#a9df7c] transition-colors">FAQ</a></li>
+					</ul>
+				</div>
+
+				<!-- Open Source -->
+				<div>
+					<h4 class="font-semibold text-white text-sm mb-4">Open Source</h4>
+					<ul class="space-y-2.5 text-sm">
+						<li><a href="https://github.com/BokX1/Sage" target="_blank" rel="noopener noreferrer" class="text-slate-500 hover:text-[#a9df7c] transition-colors">GitHub Repository</a></li>
+						<li><a href="https://github.com/BokX1/Sage/blob/master/LICENSE" target="_blank" rel="noopener noreferrer" class="text-slate-500 hover:text-[#a9df7c] transition-colors">PolyForm Strict License</a></li>
+						<li><a href="https://github.com/BokX1/Sage/issues" target="_blank" rel="noopener noreferrer" class="text-slate-500 hover:text-[#a9df7c] transition-colors">Report Issues</a></li>
+						<li><a href="https://github.com/BokX1/Sage/blob/master/docs/security/SECURITY_PRIVACY.md" target="_blank" rel="noopener noreferrer" class="text-slate-500 hover:text-[#a9df7c] transition-colors">Security & Privacy</a></li>
+					</ul>
+				</div>
+			</div>
+
+			<!-- Bottom Bar -->
+			<div class="border-t border-white/5 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+				<p class="text-xs text-slate-600">
+					© 2026 Sage. Source-available under the PolyForm Strict License 1.0.0.
+				</p>
+				<div class="flex items-center gap-3">
+					<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-[#78b846]/10 border border-[#78b846]/20 text-[10px] font-mono text-[#a9df7c]">
+						<span class="w-1.5 h-1.5 rounded-full bg-[#78b846]"></span>
+						TypeScript
+					</span>
+					<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-[#7AA2F7]/10 border border-[#7AA2F7]/20 text-[10px] font-mono text-[#7AA2F7]">
+						<span class="w-1.5 h-1.5 rounded-full bg-[#7AA2F7]"></span>
+						PostgreSQL
+					</span>
+					<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-[#BB9AF7]/10 border border-[#BB9AF7]/20 text-[10px] font-mono text-[#BB9AF7]">
+						<span class="w-1.5 h-1.5 rounded-full bg-[#BB9AF7]"></span>
+						Memgraph
+					</span>
+				</div>
+			</div>
+		</div>
+	</footer>
+</Layout>

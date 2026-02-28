@@ -1,0 +1,33 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+    groups:
+      prisma-stack:
+        patterns:
+          - "@prisma/client"
+          - "prisma"
+      production-dependencies:
+        dependency-type: production
+        exclude-patterns:
+          - "@prisma/client"
+      development-dependencies:
+        dependency-type: development
+        exclude-patterns:
+          - "prisma"
+    ignore:
+      - dependency-name: "@prisma/client"
+        update-types:
+          - "version-update:semver-major"
+      - dependency-name: "prisma"
+        update-types:
+          - "version-update:semver-major"
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10

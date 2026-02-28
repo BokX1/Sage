@@ -1,0 +1,160 @@
+name: CI
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+  merge_group:
+    branches: [ master ]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      NODE_ENV: test
+      DISCORD_TOKEN: test-token-for-ci
+      DISCORD_APP_ID: test-app-id-for-ci
+      DATABASE_URL: postgresql://postgres:password@127.0.0.1:5432/sage?schema=public
+
+    strategy:
+      matrix:
+        node-version: [22.x, 24.x]
+
+    steps:
+    - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      with:
+        persist-credentials: false
+    
+    - name: Use Node.js ${{ matrix.node-version }}
+      uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
+      with:
+        node-version: ${{ matrix.node-version }}
+        cache: 'npm'
+        cache-dependency-path: package-lock.json
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Lint
+      run: npm run lint
+
+    - name: Build
+      run: npm run build
+
+    - name: Test
+      run: npm run test
+
+  release-readiness:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      NODE_ENV: test
+      DISCORD_TOKEN: test-token-for-ci
+      DISCORD_APP_ID: test-app-id-for-ci
+      DATABASE_URL: postgresql://postgres:password@127.0.0.1:5432/sage?schema=public
+    steps:
+    - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      with:
+        persist-credentials: false
+
+    - name: Use Node.js 22.x
+      uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
+      with:
+        node-version: 22.x
+        cache: 'npm'
+        cache-dependency-path: package-lock.json
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Trust gate
+      run: npm run check:trust
+
+  dependency-review:
+    if: github.event_name == 'pull_request' && vars.ENABLE_DEPENDENCY_REVIEW == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+    - name: Check dependency graph status
+      id: dependency-graph
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        set -euo pipefail
+        response="$(curl -fsSL \
+          -H "Authorization: Bearer ${GH_TOKEN}" \
+          -H "Accept: application/vnd.github+json" \
+          "https://api.github.com/repos/${{ github.repository }}")"
+        dependency_graph_status="$(echo "${response}" | jq -r '.security_and_analysis.dependency_graph.status // "unknown"')"
+        echo "status=${dependency_graph_status}" >> "${GITHUB_OUTPUT}"
+        if [[ "${dependency_graph_status}" == "enabled" ]]; then
+          echo "run_dependency_review=true" >> "${GITHUB_OUTPUT}"
+          exit 0
+        fi
+        echo "run_dependency_review=false" >> "${GITHUB_OUTPUT}"
+        echo "::notice::Skipping dependency review because Dependency Graph is not enabled (status=${dependency_graph_status})."
+
+    - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      if: steps.dependency-graph.outputs.run_dependency_review == 'true'
+      with:
+        persist-credentials: false
+
+    - name: Dependency review
+      if: steps.dependency-graph.outputs.run_dependency_review == 'true'
+      uses: actions/dependency-review-action@05fe4576374b728f0c523d6a13d64c25081e0803 # v4.8.3
+
+  docs-markdownlint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+    - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      with:
+        persist-credentials: false
+
+    - name: Lint Markdown files
+      uses: DavidAnson/markdownlint-cli2-action@07035fd053f7be764496c0f8d8f9f41f98305101 # v22.0.0
+      with:
+        config: config/ci/markdownlint.markdownlint-cli2.jsonc
+        globs: |
+          **/*.md
+          !node_modules/**
+
+  docs-linkcheck:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+    - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      with:
+        persist-credentials: false
+
+    - name: Check for broken links
+      uses: lycheeverse/lychee-action@8646ba30535128ac92d33dfc9133794bfdd9b411 # v2
+      with:
+        args: >-
+          --verbose --no-progress
+          --max-retries 6
+          --retry-wait-time 4
+          --max-concurrency 4
+          --exclude 'node_modules'
+          --exclude 'https://skillicons\.dev'
+          --exclude 'https://www\.contributor-covenant\.org'
+          --exclude 'https://github\.com/BokX1/Sage/issues'
+          --exclude 'https://github\.com/BokX1/Sage/graphs/contributors'
+          --exclude 'https://github\.com/BokX1/Sage/network/members'
+          --exclude 'https://github\.com/BokX1/Sage/security/advisories'
+          '**/*.md'
+        fail: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

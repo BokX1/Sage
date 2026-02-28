@@ -1,0 +1,16 @@
+# Sage AI - Autonomous Community Engineer
+
+> The GraphRAG-Powered Autonomous Agent for Discord.
+
+Sage is an enterprise-grade autonomous system designed to orchestrate and manage digital communities. It leverages a hybrid PostgreSQL and Memgraph architecture, functioning as a Cognitive Runtime rather than a basic bot.
+
+## Architecture Data
+
+*   **Database Stack**: PostgreSQL (Long-Term Memory profiles & summaries), Memgraph (9-pillar GNN Social Graph for real-time PageRank and Dunbar layers).
+*   **Infrastructure Context**: Sage retrieves context dynamically via tool calls rather than prepending massive raw transcripts.
+*   **Capabilities**: Multi-Agent Orchestration, GraphRAG Community Management, Knowledge Graph Moderation, End-to-End Workflow Execution.
+
+## References
+
+*   **GitHub**: https://github.com/BokX1/Sage
+*   **Technologies**: Discord API, Memgraph, PostgreSQL, Pollinations.ai.

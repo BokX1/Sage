@@ -1,0 +1,296 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model UserProfile {
+  userId             String   @id
+  summary            String   @default("") // Compressed memory: preferences, stable facts
+  pollinationsApiKey String? // User-provided BYOP key
+  updatedAt          DateTime @updatedAt
+  createdAt          DateTime @default(now())
+
+  // Relations
+  archives UserProfileArchive[]
+}
+
+model UserProfileArchive {
+  id        String   @id @default(cuid())
+  userId    String
+  summary   String   @db.Text
+  createdAt DateTime @default(now())
+
+  user UserProfile @relation(fields: [userId], references: [userId], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+}
+
+model GuildSettings {
+  guildId            String   @id
+  pollinationsApiKey String? // Guild-provided BYOP key (fallback for users)
+  updatedAt          DateTime @updatedAt
+  createdAt          DateTime @default(now())
+}
+
+model GuildMemory {
+  guildId          String   @id
+  memoryText       String   @db.Text
+  version          Int      @default(1)
+  updatedByAdminId String?
+  updatedAt        DateTime @updatedAt
+  createdAt        DateTime @default(now())
+}
+
+model GuildMemoryArchive {
+  id               String   @id @default(cuid())
+  guildId          String
+  version          Int
+  memoryText       String   @db.Text
+  updatedByAdminId String?
+  createdAt        DateTime @default(now())
+
+  @@index([guildId, createdAt])
+}
+
+model PendingAdminAction {
+  id          String   @id @default(cuid())
+  guildId     String
+  channelId   String
+  requestedBy String
+  kind        String
+  payloadJson Json
+  status      String
+  expiresAt   DateTime
+  decidedBy   String?
+  decidedAt   DateTime?
+  executedAt  DateTime?
+  resultJson  Json?
+  errorText   String?  @db.Text
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([guildId, createdAt])
+  @@index([status, expiresAt])
+}
+
+model ChannelMessage {
+  messageId         String   @id
+  guildId           String?
+  channelId         String
+  authorId          String
+  authorDisplayName String
+  authorIsBot       Boolean  @default(false)
+  timestamp         DateTime
+  content           String   @db.Text
+  replyToMessageId  String?
+  mentionsUserIds   Json
+  mentionsBot       Boolean  @default(false)
+  embedding         ChannelMessageEmbedding?
+
+  @@index([guildId, channelId, timestamp])
+  @@index([guildId, channelId, authorIsBot, timestamp])
+}
+
+model IngestedAttachment {
+  id                 String   @id @default(cuid())
+  guildId            String?
+  channelId          String
+  messageId          String
+  attachmentIndex    Int
+  filename           String
+  sourceUrl          String
+  contentType        String?
+  declaredSizeBytes  Int?
+  readSizeBytes      Int?
+  extractor          String?
+  status             String
+  errorText          String?
+  extractedText      String?  @db.Text
+  extractedTextChars Int      @default(0)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@unique([messageId, attachmentIndex])
+  @@index([guildId, channelId, createdAt])
+  @@index([channelId, createdAt])
+  @@index([messageId])
+}
+
+model ChannelSummary {
+  id              String   @id @default(cuid())
+  guildId         String
+  channelId       String
+  kind            String
+  windowStart     DateTime
+  windowEnd       DateTime
+  summaryText     String
+  topicsJson      Json?
+  threadsJson     Json?
+  unresolvedJson  Json?
+  decisionsJson   Json?
+  actionItemsJson Json?
+  sentiment       String?
+  glossaryJson    Json?
+  updatedAt       DateTime @updatedAt
+
+  @@unique([guildId, channelId, kind])
+  @@index([guildId, channelId, updatedAt])
+}
+
+model VoiceSession {
+  id          String    @id @default(cuid())
+  guildId     String
+  channelId   String
+  userId      String
+  displayName String?
+  startedAt   DateTime
+  endedAt     DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([guildId, channelId, startedAt])
+  @@index([guildId, userId, startedAt])
+  @@index([guildId, userId, endedAt])
+}
+
+model VoiceConversationSummary {
+  id               String   @id @default(cuid())
+  guildId          String
+  voiceChannelId   String
+  voiceChannelName String?
+  initiatedByUserId String
+  startedAt        DateTime
+  endedAt          DateTime
+  speakerStatsJson Json
+  summaryText      String   @db.Text
+  topicsJson       Json?
+  threadsJson      Json?
+  decisionsJson    Json?
+  actionItemsJson  Json?
+  unresolvedJson   Json?
+  sentiment        String?
+  glossaryJson     Json?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([guildId, endedAt])
+  @@index([guildId, voiceChannelId, endedAt])
+}
+
+model RelationshipEdge {
+  id             String   @id @default(cuid())
+  guildId        String
+  userA          String // Always userA < userB (lexicographically)
+  userB          String
+  weight         Float    @default(0) // 0.0-1.0 relationship strength
+  confidence     Float    @default(0) // 0.0-1.0 evidence strength
+  featuresJson   Json // { mentions, replies, voice, meta }
+  manualOverride Float? // Admin-set override (0.0-1.0)
+  updatedAt      DateTime @updatedAt
+  createdAt      DateTime @default(now())
+
+  @@unique([guildId, userA, userB])
+  @@index([guildId, updatedAt])
+}
+
+model AdminAudit {
+  id         String   @id @default(cuid())
+  guildId    String
+  adminId    String
+  command    String
+  paramsHash String // SHA256 of normalized params JSON
+  createdAt  DateTime @default(now())
+
+  @@index([guildId, createdAt])
+}
+
+model AgentTrace {
+  id              String   @id
+  guildId         String?
+  channelId       String
+  userId          String
+  routeKind       String
+  agentEventsJson Json?
+  qualityJson     Json?
+  budgetJson      Json?
+  toolJson        Json?
+  tokenJson       Json?
+  reasoningText   String?  @db.Text
+  replyText       String   @db.Text
+  createdAt       DateTime @default(now())
+
+  @@index([guildId, createdAt])
+  @@index([channelId, createdAt])
+  @@index([userId, createdAt])
+}
+
+model AgentEvaluation {
+  id                    String   @id @default(cuid())
+  traceId               String
+  guildId               String?
+  channelId             String
+  userId                String
+  routeKind             String
+  model                 String
+  rubricVersion         String
+  primaryJudgeModel     String
+  secondaryJudgeModel   String
+  adjudicatorJudgeModel String?
+  overallScore          Float
+  confidence            Float
+  verdict               String
+  disagreement          Boolean
+  arbitrationUsed       Boolean
+  judgeAgreement        Boolean
+  dimensionScoresJson   Json
+  issuesJson            Json
+  summaryText           String?  @db.Text
+  judgeJson             Json?
+  createdAt             DateTime @default(now())
+
+  @@index([traceId, createdAt])
+  @@index([guildId, createdAt])
+  @@index([channelId, createdAt])
+  @@index([routeKind, createdAt])
+  @@index([rubricVersion, createdAt])
+}
+
+model ModelHealthState {
+  modelId   String   @id
+  score     Float
+  samples   Int
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([updatedAt])
+}
+
+model AttachmentChunk {
+  id           String                      @id @default(cuid())
+  attachmentId String
+  chunkIndex   Int
+  content      String                      @db.Text
+  tokenCount   Int
+  embedding    Unsupported("vector(256)")?
+  createdAt    DateTime                    @default(now())
+
+  @@unique([attachmentId, chunkIndex])
+  @@index([attachmentId])
+}
+
+model ChannelMessageEmbedding {
+  messageId String                      @id
+  guildId   String?
+  channelId String
+  embedding Unsupported("vector(256)")?
+  createdAt DateTime                    @default(now())
+
+  message ChannelMessage @relation(fields: [messageId], references: [messageId], onDelete: Cascade)
+
+  @@index([channelId])
+  @@index([guildId, channelId])
+}

@@ -1,0 +1,41 @@
+# Runtime and build artifacts
+node_modules/
+dist/
+coverage/
+*.tgz
+data/
+
+# Local environment and secrets
+.env
+.env.*
+*.env
+!.env.example
+
+# Local logs
+npm-debug.log*
+pnpm-debug.log*
+
+# OS and tooling artifacts
+.DS_Store
+
+# Local workspace (untracked)
+.agent/
+
+# Python
+__pycache__/
+*.pyc
+
+
+# Local Prisma development databases
+prisma/*.db
+prisma/*.db-journal
+# Track Prisma migration files in VCS.
+!prisma/migrations/
+!prisma/migrations/**
+
+# Root-local compatibility shims (canonical shared configs live in config/ci)
+/tsconfig.json
+/vitest.config.mjs
+/docker-compose.yml
+/.prettierrc
+/scripts/

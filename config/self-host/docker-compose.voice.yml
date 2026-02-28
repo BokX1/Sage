@@ -1,0 +1,21 @@
+services:
+  voice:
+    # Local STT service for Discord voice.
+    #
+    # Endpoints:
+    # - GET  /health
+    # - POST /v1/stt/transcribe  (multipart audio=wav)
+    build:
+      context: ../../services/voice
+      dockerfile: Dockerfile
+    container_name: sage-voice
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:11333:11333"
+    environment:
+      # STT
+      VOICE_STT_MODEL_ID: ${VOICE_STT_MODEL_ID:-deepdml/faster-whisper-large-v3-turbo-ct2}
+      VOICE_STT_COMPUTE_TYPE: ${VOICE_STT_COMPUTE_TYPE:-int8}
+    volumes:
+      # Optional: persist HF/model cache between restarts.
+      - ../../data/voice/models:/app/.cache

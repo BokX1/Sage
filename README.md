@@ -1,0 +1,387 @@
+<a name="top"></a>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/%F0%9F%8C%BF-Sage-2d5016?style=for-the-badge&labelColor=4a7c23" alt="Sage Logo" />
+</p>
+
+<h1 align="center">Sage</h1>
+<h3 align="center">The open-source AI agent for Discord communities</h3>
+
+<p align="center">
+  <strong>Your Discord server's autonomous co-pilot. Sage leverages deep community memory, live internet research, and zero-prompt automation to scale your support, workflows, and engagement.</strong>
+</p>
+
+<p align="center">
+  <sub>Move beyond basic slash commands. From immersive roleplay and world-building to 24/7 automated support and live internet research, Sage is the autonomous, memory-rich AI teammate that adapts to any community.</sub>
+</p>
+
+<p align="center">
+  <a href="https://pollinations.ai"><img src="https://img.shields.io/badge/Built%20with-Pollinations.ai-8a2be2?style=for-the-badge&logo=data:image/svg+xml,%3Csvg%20xmlns%3D%22http://www.w3.org/2000/svg%22%20viewBox%3D%220%200%20124%20124%22%3E%3Ccircle%20cx%3D%2262%22%20cy%3D%2262%22%20r%3D%2262%22%20fill%3D%22%23ffffff%22/%3E%3C/svg%3E&logoColor=white&labelColor=6a0dad" alt="Built with Pollinations" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-PolyForm%20Strict%201.0.0-red?style=for-the-badge" alt="License" /></a>
+  <a href="https://github.com/BokX1/Sage/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/BokX1/Sage/ci.yml?style=for-the-badge&label=Build" alt="CI Status" /></a>
+  <img src="https://img.shields.io/badge/Version-1.0.0-green?style=for-the-badge" alt="Version" />
+</p>
+
+<p align="center">
+  <a href="https://github.com/BokX1/Sage/stargazers"><img src="https://img.shields.io/github/stars/BokX1/Sage?style=for-the-badge&color=f5c542&logo=github" alt="Stars" /></a>
+  <a href="https://github.com/BokX1/Sage/network/members"><img src="https://img.shields.io/github/forks/BokX1/Sage?style=for-the-badge&color=4a90d9" alt="Forks" /></a>
+  <a href="https://github.com/BokX1/Sage/issues"><img src="https://img.shields.io/github/issues/BokX1/Sage?style=for-the-badge&color=d94a4a" alt="Issues" /></a>
+  <img src="https://img.shields.io/github/last-commit/BokX1/Sage?style=for-the-badge&color=4a7c23" alt="Last Commit" />
+</p>
+
+<p align="center">
+  <img src="https://skillicons.dev/icons?i=ts,nodejs,discord,postgres,prisma,docker" alt="Tech Stack" />
+  <br>
+  <img src="https://img.shields.io/badge/Memgraph-FF3366?style=for-the-badge&logo=memgraph&logoColor=white" alt="Memgraph" />
+</p>
+
+<p align="center">
+  <strong>🎮 <a href="docs/guides/QUICKSTART.md">Add Sage to Discord</a></strong> · <strong>💻 <a href="#developer-quick-start">Build & Deploy (Dev Guide)</a></strong>
+</p>
+
+---
+
+## 🧭 Quick Navigation
+
+- [🎯 What Is Sage?](#what-is-sage)
+- [💡 Why Choose Sage?](#why-choose-sage)
+- [💎 What Makes Sage Different](#what-makes-sage-different)
+- [🎯 Real Community Use Cases](#real-community-use-cases)
+- [🏛️ High-Level Architecture](#high-level-architecture)
+- [✨ Capabilities That Matter](#capabilities-that-matter)
+- [🚀 Getting Started](#getting-started)
+- [💻 Developer Quick Start](#developer-quick-start)
+- [🛠️ Configuration](#configuration)
+- [📚 Documentation](#documentation)
+- [💚 Why Teams Choose Sage](#why-teams-choose-sage)
+
+---
+
+<a id="what-is-sage"></a>
+
+## 🎯 What Is Sage?
+
+Sage is a Discord-native AI runtime built for active communities—where context matters, creativity is celebrated, and traditional "chatbot" commands are obsolete.
+
+It's designed to feel like an intelligent, ever-present teammate that adapts to your server's unique needs:
+
+- 🧠 **Infinite Memory:** Leverages user and channel historical context, file attachments, and a dynamic Memgraph social graph to maintain perfect conversational continuity without requiring you to re-explain yourself.
+- 🌐 **Live Internet Research:** Built-in search capabilities allow Sage to pull real-time data, API documentation, or news directly into the chat when answering complex technical queries.
+- 🎨 **Creative Generation:** From generating immersive roleplay environments to creating custom images on command, Sage acts as a generative engine for your community's imagination.
+- 🔀 **Autonomous Automation:** Seamlessly executing multi-step workflows, from formatting data into checklists to answering support tickets, utilizing a unified tool-driven pipeline.
+- 🧰 **Total Sovereignty:** Build on your terms with BYOP (bring your own pollen/provider). Host Sage yourself to swap underlying LLMs at will, or use our hosted bot and bring your own Pollinations key to maximize performance for your community.
+
+**Best fit:** Gaming communities, creative hubs, development teams, and any server scaling beyond simple "vibe-only" chat into genuine AI collaboration.
+
+### How It Works
+
+```mermaid
+flowchart LR
+    A["📩 User Message"] --> B{"🧠 Autonomous Agent Router"}
+    
+    B -->|"Retrieval"| C["📚 Memory & Graph (Memgraph/Postgres)"]
+    B -->|"Research"| D["🌐 Live Internet Search Tools"]
+    B -->|"Action"| E["⚡ Execute Custom Workflows"]
+    B -->|"Creative"| F["🎨 Generate Media & Code"]
+    
+    C --> G["💬 Synthesized Action & Reply"]
+    D --> G
+    E --> G
+    F --> G
+    B -->|"Direct Chat"| G
+```
+
+<p align="center">
+  <a href="https://github.com/BokX1/Sage/stargazers"><img src="https://img.shields.io/github/stars/BokX1/Sage?style=for-the-badge&color=f5c542&logo=github" alt="Stars" /></a>
+  <a href="https://github.com/BokX1/Sage/network/members"><img src="https://img.shields.io/github/forks/BokX1/Sage?style=for-the-badge&color=4a90d9" alt="Forks" /></a>
+  <a href="https://github.com/BokX1/Sage/issues"><img src="https://img.shields.io/github/issues/BokX1/Sage?style=for-the-badge&color=d94a4a" alt="Issues" /></a>
+  <img src="https://img.shields.io/github/last-commit/BokX1/Sage?style=for-the-badge&color=4a7c23" alt="Last Commit" />
+</p>
+
+---
+
+<a id="why-choose-sage"></a>
+
+## 💡 Why Choose Sage?
+
+- **For Server Owners:** Scale your community seamlessly. Automate onboarding, technical support, and complex workflows with a single, highly-capable autonomous agent.
+- **For Operators & Mods:** Reduce repetitive tasks. Let Sage act as your 24/7 co-pilot, surfacing live internet research and generating weekly ecosystem summaries.
+- **For Community Members:** Enjoy frictionless interaction. From deep roleplay and custom image generation to collaborative coding, Sage remembers your historical context so you never have to repeat yourself.
+
+---
+
+<a id="what-makes-sage-different"></a>
+
+## 💎 What Makes Sage Different
+
+- 🛡️ **Sovereign Runtime Core:** Built on a unified agentic tool loop with transparent trace data. Sage doesn't just "chat"—it reasoningly executes multi-step plans with absolute predictability.
+- 🧠 **Infinite Community Memory:** A hybrid LTM stack combining rolling summaries, user profiles, attachment RAG, and a live Memgraph social graph. Sage knows your server's lore as well as your own teammates do.
+- 🔍 **Dynamic Internet Synthesis:** Real-time web search and deep scraping capabilities ensure Sage isn't limited to a training cutoff. It researches, verifies, and cites its findings in every reply.
+- 🧰 **Pure Operator Freedom:** Total BYOP (Bring Your Own Pollen/Provider) sovereignty. Deploy on your terms, use any OpenAI-compatible LLM, and self-host your entire tool stack for maximum privacy.
+
+<p align="right"><a href="#top">⬆️ Back to top</a></p>
+
+---
+
+<a id="real-community-use-cases"></a>
+
+## 🎯 Real Community Use Cases
+
+Stop reading about features—see Sage in action. Here is how leading servers leverage the runtime today:
+
+- 🎭 **Immersive Roleplay**  
+  > `Act as the Tavern Keeper from our server's lore. Welcome the new players who just joined and generate a custom image of their starting location.`
+- 📈 **Autonomous Community Scaling**  
+  > `Summarize the top 5 feature requests discussed in #dev-talk this week, then format them into a Jira-ready ticket list.`
+- 🛠️ **Live Technical Support**  
+  > `A user is getting a Next.js hydration error in #help. Search the latest React documentation and provide a step-by-step fix including code blocks.`
+- 👋 **Hyper-Contextual Onboarding**  
+  > `I just joined! What are the main server rules, and based on the recent chatter in #general, what's everyone currently hyped about?`
+- 🎨 **Generative Content Workflows**  
+  > `Write a sci-fi themed announcement for our upcoming tournament and generate a 16:9 cinematic banner image matching our server aesthetic.`
+
+---
+
+<a id="high-level-architecture"></a>
+
+## 🏛️ High-Level Architecture
+
+How a message flows through Sage's runtime — from user input to verified reply:
+
+<p align="center">
+  <img src="./diagram.svg" alt="Repository Architecture" width="100%">
+</p>
+
+```mermaid
+flowchart LR
+    classDef user fill:#FF9E64,stroke:#333,stroke-width:2px,color:black
+    classDef bot fill:#9ECE6A,stroke:#333,stroke-width:2px,color:black
+    classDef memory fill:#7AA2F7,stroke:#333,stroke-width:2px,color:black
+    classDef tools fill:#BB9AF7,stroke:#333,stroke-width:2px,color:black
+    classDef runtime fill:#E0AF68,stroke:#333,stroke-width:2px,color:black
+
+    U((User Message)):::user --> B[Sage Runtime]:::bot
+    
+    subgraph Engine["Autonomous Agent Loop"]
+        direction TB
+        B --> R{"Tool Router"}:::runtime
+        R --> C[Context Builder]:::runtime
+        C --> M[(LTM: Postgres)]:::memory
+        C --> G[(Social: Memgraph)]:::memory
+        
+        M --> S[Synthesis]:::runtime
+        G --> S
+        
+        S --> T{Tool Needed?}:::tools
+    end
+
+    T -->|"Yes"| L[Live Search / API / Code]:::tools
+    L -->|"Evidence"| B
+    
+    T -->|"No"| P[Generate Response]:::bot
+    P --> U
+```
+
+> [!NOTE]
+> `UserMemory`, `ChannelMemory`, and `SocialGraph` (backed by Memgraph) are not blindly injected. They are fetched dynamically by the autonomous agent tool-loop exactly when needed, keeping the context window incredibly clean constraint-free.
+
+<p align="right"><a href="#top">⬆️ Back to top</a></p>
+
+---
+
+<a id="capabilities-that-matter"></a>
+
+## ✨ Capabilities That Matter
+
+- **🧠 Deep Community Memory**: Automatically persists user and channel interactions across sessions so your community never repeats itself.
+- **📄 Attachment Intelligence**: Ingests, caches, and understands non-image file content for seamless doc-aware discussions in-channel.
+- **👁️ Multimodal Vision & Generation**: Natively understands images and dynamically generates or edits visuals using Pollinations.ai.
+- **🔍 Live Internet Research**: Arms the agent with real-time web search and verified synthesis to provide high-signal answers with zero hallucinations.
+- **🤖 Zero-Prompt Tool Automation**: Dynamically selects the exact tools needed (search, memory lookup, analytics) based on raw community intent.
+- **🛡️ Enterprise-Grade Reliability**: Built with explicit telemetry traces and strict graph-first validations to drastically reduce operational risks.
+- **🧪 Production-Ready Quality**: Supported by robust build, test, and automated evaluation release pipelines for consistent long-term behavior.
+- **🎤 Immersive Voice Awareness**: Optionally leverages voice analytics to bridge the gap between text history and live voice sessions.
+
+<p align="center">
+  <sub>⚡ Powered by <a href="https://pollinations.ai">Pollinations.ai</a> for high-throughput multi-model access.</sub>
+</p>
+
+---
+
+<a id="getting-started"></a>
+
+## 🚀 Getting Started
+
+### 🟢 Option A: Use the Hosted Bot
+
+The fastest way to experience Sage—zero infrastructure required.
+
+**1. Invite the Agent**  
+[![Add to Discord](https://img.shields.io/badge/Add_Sage_to_Discord-5865F2?style=for-the-badge&logo=discord&logoColor=white)](https://discord.com/oauth2/authorize?client_id=1462117382398017667&scope=bot%20applications.commands&permissions=8)
+
+**2. Activate BYOP (Bring Your Own Pollen)**  
+*(Recommended for higher generation limits via Pollinations.ai)*
+
+```bash
+/sage key login
+/sage key set <your_key>
+```
+
+> [!TIP]
+> Prefer least-privilege permissions? Generate a custom invite URL in the Discord Developer Portal (see [Getting Started → Invite Bot](docs/guides/GETTING_STARTED.md#step-6-invite-sage-to-your-server)).
+
+### 🛠️ Option B: Self-Host From Source
+
+Full control over your data, models, and tool stack.
+
+**1. Review Prerequisites**  
+Node.js >=22.12, Docker, PostgreSQL, and Memgraph.
+
+**2. Follow the Setup Guide**  
+👉 **[📖 Getting Started](docs/guides/GETTING_STARTED.md)** (Covers database initialization, onboarding, and Discord invite flow).
+
+**3. Activate BYOP (Bring Your Own Provider)**  
+Change your `LLM_API_KEY` and `LLM_BASE_URL` in your `.env` to natively support any OpenAI-compatible API format (e.g., OpenAI, Ollama, vLLM, DeepSeek).
+
+**4. Optional: Local Tool Services**  
+For localized web search and scraping (SearXNG/Crawl4AI), check out the **[🧰 Self-Hosted Tool Stack](docs/operations/TOOL_STACK.md)** guide.
+
+<p align="right"><a href="#top">⬆️ Back to top</a></p>
+
+---
+
+<a id="developer-quick-start"></a>
+
+## 💻 Developer Quick Start
+
+> [!NOTE]
+> Fast path below. For full setup (including Discord app creation) and detailed local deployment instructions, use the **[📖 Getting Started Guide](docs/guides/GETTING_STARTED.md)**.
+
+**1. Clone & Install**
+
+```bash
+git clone https://github.com/BokX1/Sage.git
+cd Sage
+npm ci
+```
+
+**2. Initialize Infrastructure & Database**
+
+```bash
+npm run onboard
+docker compose -f config/ci/docker-compose.yml up -d db tika
+npm run db:migrate
+```
+
+`npm run onboard` also supports automation flags for headless setup: `--start-docker --migrate --doctor`.
+
+**3. Build & Run**
+
+```bash
+npm run check:trust
+npm run dev
+```
+
+**Optional: Stand up Local Tool Services**  
+*(SearXNG, Crawl4AI)*
+
+```bash
+docker compose -f config/self-host/docker-compose.tools.yml up -d
+```
+
+**Essential Release Gates:**
+
+```bash
+npm run check:trust
+npm run build
+npm start
+```
+
+Advanced release gating, eval pipelines, simulation, and tuning live in:
+
+- `docs/reference/RELEASE.md`
+- `docs/operations/RUNBOOK.md`
+- `docs/architecture/OVERVIEW.md`
+
+---
+
+<a id="configuration"></a>
+
+## 🛠️ Configuration
+
+Sage is tuned for highly autonomous community interaction out-of-the-box, but you can tweak its core behavior via your `.env` file:
+
+- ⚙️ **`AUTOPILOT_MODE`**: Set to `manual`, `reserved`, or `talkative` to control how often Sage autonomously replies to community conversations without being directly pinged.
+- ⏱️ **`PROFILE_UPDATE_INTERVAL`**: Controls how often (in messages) a user's long-term behavioral profile is re-analyzed.
+- 📡 **`TRACE_ENABLED`**: Toggles deep observability logging for debugging tool executions.
+
+See the **[⚙️ Configuration Reference](docs/reference/CONFIGURATION.md)** for a complete index of all adjustable settings.
+
+---
+
+<a id="documentation"></a>
+
+## 📚 Documentation
+
+**🚀 Getting Started & Guides**
+
+- **[📚 Documentation Hub](docs/INDEX.md)**: Start here for complete navigation
+- **[⚡ Quick Start](docs/guides/QUICKSTART.md)**: 5-minute setup for new users
+- **[📖 Getting Started](docs/guides/GETTING_STARTED.md)**: Full beginner walkthrough
+- **[🎮 Commands](docs/guides/COMMANDS.md)**: Full slash command reference
+- **[❓ FAQ](docs/guides/FAQ.md)** & **[🔧 Troubleshooting](docs/guides/TROUBLESHOOTING.md)**: Common answers and error resolution
+
+**⚙️ Configuration & Operations**
+
+- **[⚙️ Configuration](docs/reference/CONFIGURATION.md)**: All env vars and defaults
+- **[🗂️ Config Layout](config/README.md)**: CI and self-host config file ownership
+- **[🧰 Self-Hosted Tool Stack](docs/operations/TOOL_STACK.md)**: Local SearXNG/Crawl4AI/Ollama stack
+- **[📋 Operations Runbook](docs/operations/RUNBOOK.md)**: Operational and release procedures
+
+**🧠 Architecture & Security**
+
+- **[🤖 Agentic Architecture](docs/architecture/OVERVIEW.md)**: Runtime design and execution flow
+- **[🔍 Search Architecture](docs/architecture/SEARCH.md)**: Search behavior and tool flow
+- **[🧠 Memory Architecture](docs/architecture/MEMORY.md)**: Memory model and context assembly
+- **[🔒 Security & Privacy](docs/security/SECURITY_PRIVACY.md)**: Data handling and privacy controls
+
+<p align="right"><a href="#top">⬆️ Back to top</a></p>
+
+---
+
+<a id="why-teams-choose-sage"></a>
+
+## 🌟 Community & Contributors
+
+A massive thank you to everyone who has helped build Sage.
+
+<a href="https://github.com/BokX1/Sage/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=BokX1/Sage" alt="Sage Contributors" />
+</a>
+
+<br/>
+
+### Star History
+
+<a href="https://starchart.cc/BokX1/Sage">
+  <img src="https://starchart.cc/BokX1/Sage.svg?variant=adaptive" alt="Star History Chart" />
+</a>
+
+<p align="center">
+  <strong>Unlock your server's full potential.</strong><br />
+  <a href="https://discord.com/oauth2/authorize?client_id=1462117382398017667&scope=bot%20applications.commands&permissions=8"><strong>🚀 Add Sage to Discord</strong></a> · <a href="docs/guides/GETTING_STARTED.md"><strong>📖 Read the Docs</strong></a> · <a href="docs/architecture/OVERVIEW.md"><strong>🏛️ Explore Architecture</strong></a>
+</p>
+
+---
+
+<p align="center">
+  <a href="CONTRIBUTING.md"><strong>Contributing</strong></a> · <a href="CODE_OF_CONDUCT.md"><strong>Code of Conduct</strong></a> · <a href="SECURITY.md"><strong>Security</strong></a> · <a href="LICENSE"><strong>License</strong></a>
+</p>
+
+<p align="center">
+  Built with 💚 using <a href="https://pollinations.ai">Pollinations.ai</a>
+</p>
+
+<p align="center">
+  <a href="#top">⬆️ Back to top</a>
+</p>

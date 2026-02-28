@@ -1,0 +1,21 @@
+use_default_settings: true
+
+general:
+  instance_name: "Sage SearXNG"
+
+search:
+  safe_search: 0
+  formats:
+    - html
+    - json
+    - rss
+
+server:
+  bind_address: "0.0.0.0"
+  port: 8080
+  base_url: "http://127.0.0.1:18080/"
+  # Local development placeholder only. Replace this before exposing SearXNG on a network.
+  secret_key: "replace-with-random-64-char-secret"
+  limiter: false
+  public_instance: false
+  method: "GET"

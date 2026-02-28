@@ -1,0 +1,15 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://bokx1.github.io/Sage/sitemap-index.xml
+Host: bokx1.github.io
+
+# Be transparent with AI Crawlers
+User-agent: GPTBot
+Allow: /
+
+User-agent: ClaudeBot
+Allow: /
+
+User-agent: PerplexityBot
+Allow: /

@@ -1,0 +1,30 @@
+name: Repo Visualizer
+on:
+  workflow_dispatch:
+
+jobs:
+  update_diagram:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Update diagram
+        uses: githubocto/repo-visualizer@a999615bdab757559bf94bda1fe6eef232765f85 # 0.9.1
+        with:
+          output_file: "diagram.svg"
+          excluded_globs: "node_modules/**;dist/**;coverage/**;.git/**;.github/**;package-lock.json;bin/**;*.tgz;cmd.exe;prisma/migrations/**"
+          file_colors: |
+            {"ts": "#7AA2F7", "js": "#E0AF68", "md": "#BB9AF7", "yml": "#FF9E64", "json": "#9ECE6A", "prisma": "#F7768E", "py": "#2AC3DE", "sql": "#B4F9F8"}
+          should_push: false
+
+      - name: Dark Mode Processor
+        run: |
+          sed -i 's/background:white/background:#0d1117/g' diagram.svg
+          sed -i 's/fill="#374151"/fill="#c9d1d9"/g' diagram.svg
+          sed -i 's/stroke="white"/stroke="#0d1117"/g' diagram.svg
+          sed -i 's/fill="white"/fill="rgba(255,255,255,0.05)"/g' diagram.svg
