@@ -20,6 +20,7 @@ pnpm-debug.log*
 
 # Local workspace (untracked)
 .agent/
+/AGENTS.md
 
 # Python
 __pycache__/
