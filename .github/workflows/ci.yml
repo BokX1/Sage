@@ -154,6 +154,7 @@ jobs:
           --exclude 'https://github\.com/BokX1/Sage/graphs/contributors'
           --exclude 'https://github\.com/BokX1/Sage/network/members'
           --exclude 'https://github\.com/BokX1/Sage/security/advisories'
+          --exclude 'https://github\.com/BokX1/Sage/actions/workflows/ci\.yml'
           '**/*.md'
         fail: true
       env:
