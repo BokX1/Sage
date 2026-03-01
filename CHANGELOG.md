@@ -25,12 +25,15 @@
 ## [Unreleased]
 
 ### Added
+
 - _No entries yet._
 
 ### Changed
-- _No entries yet._
+
+- Refactored the onboarding welcome message (`src/bot/handlers/welcomeMessage.ts` and `src/bot/handlers/guildCreate.ts`) to use rich Discord Embeds.
 
 ### Fixed
+
 - _No entries yet._
 
 ---
@@ -40,6 +43,7 @@
 ## [1.0.0] - 2026-02-28
 
 ### Added
+
 - Initial public release of Sage.
 - Discord bot foundation with slash commands, interaction handlers, moderation and admin workflows, and operational scripts.
 - Agent runtime with tool-call loop, context budgeting, prompt composition, evaluation scoring, telemetry, and replay harness support.

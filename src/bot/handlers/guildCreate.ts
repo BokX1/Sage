@@ -35,7 +35,7 @@ export async function handleGuildCreate(guild: Guild) {
       return;
     }
 
-    await channel.send(getWelcomeMessage());
+    await channel.send({ embeds: [getWelcomeMessage()] });
     logger.info({ guildId: guild.id, channelId: channel.id }, 'Proactive welcome message sent');
   } catch (err) {
     logger.error({ err, guildId: guild.id }, 'GuildCreate handler failed');
