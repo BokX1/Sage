@@ -2,18 +2,8 @@ import { useState, useMemo, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 const tools = [
-    // Memory & Social (cyan)
-    { name: 'discord_search_channel_files', short: 'File Search', desc: 'Semantic search over cached attachment chunks', cat: 'memory', color: '#7AA2F7' },
-    { name: 'discord_get_channel_memory', short: 'Channel Memory', desc: 'Retrieve rolling + profile summaries for a channel', cat: 'memory', color: '#7AA2F7' },
-    { name: 'discord_search_channel_messages', short: 'Message Search', desc: 'Semantic + lexical search across channel history', cat: 'memory', color: '#7AA2F7' },
-    { name: 'discord_lookup_channel_files', short: 'File Lookup', desc: 'RAG over ingested attachments with vector search', cat: 'memory', color: '#7AA2F7' },
-    { name: 'discord_get_social_graph', short: 'Social Graph', desc: 'Query Dunbar layers, PageRank, and reciprocity', cat: 'memory', color: '#7AA2F7' },
-    { name: 'discord_get_voice_analytics', short: 'Voice Analytics', desc: 'Voice session data, overlap, and presence history', cat: 'memory', color: '#7AA2F7' },
-    { name: 'discord_get_voice_session_summaries', short: 'Session Summaries', desc: 'Summary-only memory for recent voice sessions', cat: 'memory', color: '#7AA2F7' },
-    { name: 'discord_get_channel_message', short: 'Message Context', desc: 'Lookup surrounding messages by message ID', cat: 'memory', color: '#7AA2F7' },
-    { name: 'discord_search_channel_archived_summaries', short: 'Archived Summaries', desc: 'Search historical rolling summary archives', cat: 'memory', color: '#7AA2F7' },
-    { name: 'discord_get_user_memory', short: 'User Memory', desc: 'Retrieve long-term user memory profiles', cat: 'memory', color: '#7AA2F7' },
-    { name: 'discord_get_server_memory', short: 'Server Memory', desc: 'Retrieve admin-authored server configurations', cat: 'memory', color: '#7AA2F7' },
+    // Discord (cyan)
+    { name: 'discord', short: 'Discord', desc: 'Unified Discord tool (memory, retrieval, analytics, safe interactions, approvals)', cat: 'memory', color: '#7AA2F7' },
     // Search (amber)
     { name: 'web_search', short: 'Web Search', desc: 'Multi-provider search (Tavily → Exa → SearXNG)', cat: 'search', color: '#E0AF68' },
     { name: 'web_extract', short: 'Web Extract', desc: 'Deep page scraping with provider fallback chain', cat: 'search', color: '#E0AF68' },
@@ -25,11 +15,8 @@ const tools = [
     { name: 'github_get_file', short: 'Get File', desc: 'Read specific files from GitHub repos', cat: 'dev', color: '#BB9AF7' },
     { name: 'github_get_repository', short: 'Repo Info', desc: 'Get repository metadata and structure', cat: 'dev', color: '#BB9AF7' },
     { name: 'npm_get_package', short: 'NPM Package', desc: 'Lookup npm package details and versions', cat: 'dev', color: '#BB9AF7' },
-    // Generation & Admin (green/orange)
+    // Generation (green)
     { name: 'image_generate', short: 'Image Gen', desc: 'Generate images with agentic prompt refinement', cat: 'gen', color: '#78b846' },
-    { name: 'discord_queue_moderation_action', short: 'Moderation', desc: 'Queue moderation actions for admin approval', cat: 'admin', color: '#FF9E64' },
-    { name: 'discord_execute_interaction', short: 'Interaction', desc: 'Execute Discord interactions autonomously', cat: 'admin', color: '#FF9E64' },
-    { name: 'discord_queue_server_memory_update', short: 'Update Memory', desc: 'Queue an admin-approved server memory update', cat: 'admin', color: '#FF9E64' },
     // System (green)
     { name: 'system_internal_reflection', short: 'Reflection', desc: 'Internal reasoning step before complex actions', cat: 'system', color: '#78b846' },
     { name: 'system_get_current_datetime', short: 'DateTime', desc: 'Get current date, time, and UTC offset', cat: 'system', color: '#78b846' },
@@ -41,7 +28,6 @@ const categories = [
     { key: 'search', label: 'Search', count: tools.filter(t => t.cat === 'search').length, color: '#E0AF68' },
     { key: 'dev', label: 'Developer', count: tools.filter(t => t.cat === 'dev').length, color: '#BB9AF7' },
     { key: 'gen', label: 'Creative', count: tools.filter(t => t.cat === 'gen').length, color: '#78b846' },
-    { key: 'admin', label: 'Admin', count: tools.filter(t => t.cat === 'admin').length, color: '#FF9E64' },
     { key: 'system', label: 'System', count: tools.filter(t => t.cat === 'system').length, color: '#78b846' },
 ];
 

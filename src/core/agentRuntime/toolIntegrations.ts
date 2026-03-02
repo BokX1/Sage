@@ -2378,10 +2378,10 @@ export async function searchChannelMessages(params: {
     semanticAvailable,
     historyStats,
     resultCount: items.length,
-    items,
-    scope: 'raw_channel_messages',
-    guidance:
-      'Use discord_get_channel_message with messageId to fetch surrounding messages before finalizing a precise answer.',
+      items,
+      scope: 'raw_channel_messages',
+      guidance:
+      'Use `discord` action messages.get_context with messageId to fetch surrounding messages before finalizing a precise answer.',
   };
 }
 
@@ -2410,7 +2410,7 @@ export async function lookupChannelMessage(params: {
       content: 'Channel message lookup is unavailable because MESSAGE_DB_STORAGE_ENABLED=false.',
       items: [],
       scope: 'raw_channel_messages',
-      guidance: 'Enable DB transcript storage to use discord_get_channel_message.',
+      guidance: 'Enable DB transcript storage to use `discord` action messages.get_context.',
     };
   }
 
@@ -2535,7 +2535,7 @@ export async function searchAttachmentChunksInChannel(params: {
     channelId: params.channelId,
     resultCount: items.length,
     items,
-    guidance: 'Use attachmentId with discord_lookup_channel_files to inspect the source file metadata/content.',
+    guidance: 'Use messageId/filename with `discord` action files.lookup_channel to inspect the source file metadata/content.',
   };
 }
 
@@ -2628,7 +2628,7 @@ export async function searchAttachmentChunksInGuild(params: {
     resultCount: items.length,
     items,
     scope: 'guild_attachment_chunks',
-    guidance: 'Use attachmentId with discord_lookup_server_files to inspect the source file metadata/content.',
+    guidance: 'Use messageId/filename with `discord` action files.lookup_server to inspect the source file metadata/content.',
   };
 }
 
@@ -2672,7 +2672,7 @@ export async function searchChannelArchives(params: {
       items: [],
       scope: 'channel_archive_profiles',
       guidance:
-        'Use discord_search_channel_messages for raw historical message retrieval when transcript-level evidence is needed.',
+        'Use `discord` action messages.search_history for raw historical message retrieval when transcript-level evidence is needed.',
     };
   }
 
@@ -2721,7 +2721,7 @@ export async function searchChannelArchives(params: {
     items,
     scope: 'channel_archive_profiles',
     guidance:
-      'Archive results are weekly profile summaries, not raw message transcripts. Use discord_search_channel_messages for exact historical messages.',
+      'Archive results are weekly profile summaries, not raw message transcripts. Use `discord` action messages.search_history for exact historical messages.',
   };
 }
 
@@ -2815,7 +2815,7 @@ export async function lookupChannelMemory(params: {
   }
   if (recentAttachments.length > 0) {
     if (parts.length > 0) parts.push('');
-    parts.push('Recent cached files (retrieve full text with discord_lookup_channel_files when needed):');
+    parts.push('Recent cached files (retrieve full text with `discord` action files.lookup_channel when needed):');
     for (const attachment of recentAttachments.slice(0, maxRecentFiles)) {
       parts.push(
         `- ${attachment.filename} (msg:${attachment.messageId}, status=${attachment.status}, extractor=${attachment.extractor ?? 'none'}, cached ${formatRelativeAge(attachment.createdAt)} ago)`,
@@ -2831,7 +2831,7 @@ export async function lookupChannelMemory(params: {
       recentAttachmentCount: 0,
       scope: 'channel_summary_memory',
       guidance:
-        'Use discord_search_channel_messages for raw historical transcript retrieval when you need exact message-level evidence.',
+        'Use `discord` action messages.search_history for raw historical transcript retrieval when you need exact message-level evidence.',
     };
   }
 
@@ -2857,7 +2857,7 @@ export async function lookupChannelMemory(params: {
     })),
     scope: 'channel_summary_memory',
     guidance:
-      'For exact historical messages, use discord_search_channel_messages and then discord_get_channel_message.',
+      'For exact historical messages, use `discord` action messages.search_history and then messages.get_context.',
   };
 }
 

@@ -20,14 +20,19 @@ describe('default tools cross-channel message history', () => {
     mockLookupChannelMessage.mockResolvedValue({ ok: true });
   });
 
-  it('passes channelId through for discord_search_channel_messages', async () => {
+  it('passes channelId through for messages.search_history', async () => {
     const registry = new ToolRegistry();
     registerDefaultAgenticTools(registry);
 
     const result = await registry.executeValidated(
       {
-        name: 'discord_search_channel_messages',
-        args: { think: 'search other channel', channelId: 'channel-2', query: 'hello world' },
+        name: 'discord',
+        args: {
+          think: 'search other channel',
+          action: 'messages.search_history',
+          channelId: 'channel-2',
+          query: 'hello world',
+        },
       },
       {
         traceId: 'trace',
@@ -49,14 +54,19 @@ describe('default tools cross-channel message history', () => {
     );
   });
 
-  it('blocks cross-channel discord_search_channel_messages in autopilot turns', async () => {
+  it('blocks cross-channel messages.search_history in autopilot turns', async () => {
     const registry = new ToolRegistry();
     registerDefaultAgenticTools(registry);
 
     const result = await registry.executeValidated(
       {
-        name: 'discord_search_channel_messages',
-        args: { think: 'autopilot should block', channelId: 'channel-2', query: 'hello world' },
+        name: 'discord',
+        args: {
+          think: 'autopilot should block',
+          action: 'messages.search_history',
+          channelId: 'channel-2',
+          query: 'hello world',
+        },
       },
       {
         traceId: 'trace',
@@ -74,14 +84,19 @@ describe('default tools cross-channel message history', () => {
     expect(mockSearchChannelMessages).not.toHaveBeenCalled();
   });
 
-  it('passes channelId through for discord_get_channel_message', async () => {
+  it('passes channelId through for messages.get_context', async () => {
     const registry = new ToolRegistry();
     registerDefaultAgenticTools(registry);
 
     const result = await registry.executeValidated(
       {
-        name: 'discord_get_channel_message',
-        args: { think: 'lookup other channel message', channelId: 'channel-2', messageId: 'msg-123' },
+        name: 'discord',
+        args: {
+          think: 'lookup other channel message',
+          action: 'messages.get_context',
+          channelId: 'channel-2',
+          messageId: 'msg-123',
+        },
       },
       {
         traceId: 'trace',
@@ -103,14 +118,19 @@ describe('default tools cross-channel message history', () => {
     );
   });
 
-  it('blocks cross-channel discord_get_channel_message in autopilot turns', async () => {
+  it('blocks cross-channel messages.get_context in autopilot turns', async () => {
     const registry = new ToolRegistry();
     registerDefaultAgenticTools(registry);
 
     const result = await registry.executeValidated(
       {
-        name: 'discord_get_channel_message',
-        args: { think: 'autopilot should block', channelId: 'channel-2', messageId: 'msg-123' },
+        name: 'discord',
+        args: {
+          think: 'autopilot should block',
+          action: 'messages.get_context',
+          channelId: 'channel-2',
+          messageId: 'msg-123',
+        },
       },
       {
         traceId: 'trace',
@@ -128,4 +148,3 @@ describe('default tools cross-channel message history', () => {
     expect(mockLookupChannelMessage).not.toHaveBeenCalled();
   });
 });
-

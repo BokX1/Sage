@@ -28,8 +28,7 @@ export function buildCapabilityPromptSection(
   const normalizedTools =
     params.activeTools?.map((tool) => tool.trim()).filter((tool) => tool.length > 0) ?? [];
   const activeToolLine = formatListLine(normalizedTools);
-  const hasChannelFileLookup = normalizedTools.includes('discord_lookup_channel_files');
-  const hasServerFileLookup = normalizedTools.includes('discord_lookup_server_files');
+  const hasDiscordTool = normalizedTools.includes('discord');
   const hasGenerateImage = normalizedTools.includes('image_generate');
 
   return [
@@ -37,8 +36,11 @@ export function buildCapabilityPromptSection(
     '- Architecture: single-agent orchestrator with iterative tool calling.',
     `- Active model: ${params.model?.trim() || 'unspecified'}.`,
     `- Runtime tools available this turn: ${activeToolLine}.`,
-    hasChannelFileLookup || hasServerFileLookup
-      ? `- Attachment memory behavior: historical non-image files are cached outside transcript; use ${hasServerFileLookup ? 'discord_lookup_server_files (server-wide, permission-filtered)' : 'discord_lookup_channel_files'} to retrieve file content on demand.`
+    hasDiscordTool
+      ? '- Discord tool behavior: use the `discord` tool with action-based calls for memory, retrieval, and safe interactions. Admin-only actions and writes may require approval.'
+      : '- Discord tool behavior: you do not have access to Discord memory/actions via tools this turn.',
+    hasDiscordTool
+      ? '- Attachment memory behavior: historical non-image files are cached outside transcript; use `discord` actions `files.lookup_channel` or `files.lookup_server` (server-wide is permission-filtered) to retrieve file content on demand.'
       : '- Attachment memory behavior: you do not have access to retrieve historical files this turn.',
     hasGenerateImage
       ? '- Image generation behavior: use image_generate for image creation/edit requests; attachments are returned by the runtime.'

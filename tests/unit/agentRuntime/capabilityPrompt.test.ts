@@ -28,13 +28,14 @@ describe('capabilityPrompt', () => {
     it('renders guidance for channel file lookup when tool is active', () => {
       // Arrange
       const params = {
-        activeTools: ['discord_lookup_channel_files'],
+        activeTools: ['discord'],
       };
 
       // Act
       const prompt = buildCapabilityPromptSection(params);
 
       // Assert
+      expect(prompt).toContain('Discord tool behavior: use the `discord` tool with action-based calls');
       expect(prompt).toContain('Attachment memory behavior: historical non-image files are cached outside transcript');
     });
 

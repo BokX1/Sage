@@ -362,11 +362,53 @@ export async function runToolCallLoop(params: ToolCallLoopParams): Promise<ToolC
     const dedupePrimaryIndexByKey = new Map<string, number>();
     const dedupeFollowerIndexesByKey = new Map<string, number[]>();
 
-    const isReadOnlyTool = (toolName: string): boolean =>
-      registry.get(toolName)?.metadata?.readOnly === true;
+    const isReadOnlyToolCall = (call: { name: string; args: unknown }): boolean => {
+      const tool = registry.get(call.name);
+      const metadata = tool?.metadata;
+      if (!metadata) return false;
+
+      if (typeof metadata.readOnlyPredicate === 'function') {
+        try {
+          return metadata.readOnlyPredicate(call.args, ctx) === true;
+        } catch (err) {
+          const errorMessage = err instanceof Error ? err.message : String(err);
+          logger.warn(
+            { traceId: ctx.traceId, toolName: call.name, errorMessage },
+            'Read-only predicate threw; treating tool call as side-effecting',
+          );
+          return false;
+        }
+      }
+
+      return metadata.readOnly === true;
+    };
 
     const executePendingCall = async (pending: PendingCall): Promise<void> => {
-      const result = await executeToolWithTimeout(registry, pending.call, ctx, config.toolTimeoutMs);
+      const readOnly = isReadOnlyToolCall(pending.call);
+
+      const runOnce = () =>
+        executeToolWithTimeout(registry, pending.call, ctx, config.toolTimeoutMs);
+
+      let result = await runOnce();
+
+      if (!result.success && readOnly && !ctx.signal?.aborted) {
+        const errorText = result.error ?? '';
+        const classified = classifyErrorType(errorText);
+        const retryable = result.errorType !== 'validation' && (classified === 'timeout' || classified === 'rate_limited');
+
+        if (retryable) {
+          const delayMs = classified === 'rate_limited' ? 250 : 0;
+          logger.warn(
+            { traceId: ctx.traceId, toolName: pending.call.name, errorType: classified, delayMs },
+            'Retrying read-only tool call once',
+          );
+          if (delayMs > 0) {
+            await new Promise((resolve) => setTimeout(resolve, delayMs));
+          }
+          result = await runOnce();
+        }
+      }
+
       roundResultsByIndex[pending.index] = result;
       if (result.success && cache) {
         cache.set(pending.call.name, pending.call.args, result.result);
@@ -395,7 +437,7 @@ export async function runToolCallLoop(params: ToolCallLoopParams): Promise<ToolC
         continue;
       }
 
-      const dedupeEligible = isReadOnlyTool(call.name);
+      const dedupeEligible = isReadOnlyToolCall(call);
       if (dedupeEligible) {
         const dedupeKey = buildToolCacheKey(call.name, call.args);
         const primaryIndex = dedupePrimaryIndexByKey.get(dedupeKey);

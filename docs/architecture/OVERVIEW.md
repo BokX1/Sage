@@ -175,24 +175,13 @@ The tool protocol is communicated to the LLM via a structured instruction block,
 
 <a id="registered-tools"></a>
 
-## 🧰 Registered Tools (28 Total)
+## 🧰 Registered Tools (13 Total)
 
-### 🧠 Memory & Context (12 tools)
+### 🧠 Memory & Context (1 tool)
 
 | Tool | Description | Access |
 |:---|:---|:---|
-| `discord_get_user_memory` | Long-term user profile summary | Public |
-| `discord_get_channel_memory` | Rolling + profile channel summaries | Public |
-| `discord_get_social_graph` | Relationship edges and familiarity signals | Public |
-| `discord_get_voice_analytics` | Voice presence and activity metrics | Public |
-| `discord_get_voice_session_summaries` | Summary-only memory of recent voice sessions | Public |
-| `discord_lookup_channel_files` | Cached non-image attachment content | Public |
-| `discord_lookup_server_files` | Cached non-image attachment content (server-wide, permission-filtered) | Public |
-| `discord_search_channel_files` | Semantic search over attachment chunks | Public |
-| `discord_search_server_files` | Semantic search over attachment chunks (server-wide, permission-filtered) | Public |
-| `discord_search_channel_messages` | Hybrid semantic/lexical message search (optional `channelId`, permission-gated) | Public |
-| `discord_get_channel_message` | Lookup specific message by ID with context (optional `channelId`, permission-gated) | Public |
-| `discord_search_channel_archived_summaries` | Semantic search over archived weekly summaries | Public |
+| `discord` | Unified Discord tool: memory, retrieval, analytics, safe interactions, and admin approval flows (action-based) | Public (some actions Admin) |
 
 ### 🌐 Search & Research (5 tools)
 
@@ -219,14 +208,12 @@ The tool protocol is communicated to the LLM via a structured instruction block,
 |:---|:---|:---|
 | `image_generate` | Generate/edit images via Pollinations | Public |
 
-### 🛡️ Admin & Discord (4 tools)
+### 🛡️ Admin & Discord (via `discord` actions)
 
-| Tool | Description | Access |
-|:---|:---|:---|
-| `discord_get_server_memory` | Retrieve admin-authored server memory | Admin |
-| `discord_queue_server_memory_update` | Queue server memory updates (requires approval) | Admin |
-| `discord_queue_moderation_action` | Queue moderation actions (requires approval) | Admin |
-| `discord_execute_interaction` | Execute non-destructive Discord interactions (incl. cross-channel sends) | Public |
+Admin-only capabilities are exposed as actions on the `discord` tool:
+- `memory.queue_server_update` (approval-gated)
+- `moderation.queue` (approval-gated)
+- `rest` (admin-only; GET executes immediately, non-GET requires approval)
 
 ### ⚙️ System (2 tools)
 

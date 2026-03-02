@@ -114,7 +114,7 @@ flowchart LR
 **Key behaviors:**
 
 - **Bounded rounds:** Max `AGENTIC_TOOL_MAX_ROUNDS` (default: `6`) iterations.
-- **Calls per round:** Max `AGENTIC_TOOL_MAX_CALLS_PER_ROUND` (default: `3`) tool calls per iteration.
+- **Calls per round:** Max `AGENTIC_TOOL_MAX_CALLS_PER_ROUND` (default: `5`) tool calls per iteration.
 - **Parallel read-only:** Tools marked `readOnly` execute concurrently (up to `AGENTIC_TOOL_MAX_PARALLEL_READ_ONLY`).
 - **Timeout:** Per-tool timeout `AGENTIC_TOOL_TIMEOUT_MS` (default: `45000` ms).
 - **Result truncation:** Tool output capped at `AGENTIC_TOOL_RESULT_MAX_CHARS` (default: `8000`).
@@ -152,18 +152,18 @@ All memory and context data is loaded **on demand** through tools:
 
 | Data | Tool | Storage |
 |:---|:---|:---|
-| User profile | `discord_get_user_memory` | PostgreSQL (`UserProfile`) |
-| Channel summaries | `discord_get_channel_memory` | PostgreSQL (`ChannelSummary`) |
-| Social relationships | `discord_get_social_graph` | PostgreSQL (`RelationshipEdge`) + Memgraph |
-| Voice analytics | `discord_get_voice_analytics` | PostgreSQL (`VoiceSession`) |
-| Voice session summaries | `discord_get_voice_session_summaries` | PostgreSQL (`VoiceConversationSummary`) |
-| Cached file content | `discord_lookup_channel_files` | PostgreSQL (`IngestedAttachment`) |
-| Cached file content (server-wide) | `discord_lookup_server_files` | PostgreSQL (`IngestedAttachment`) |
-| Semantic file search | `discord_search_channel_files` | pgvector (`AttachmentChunk`) |
-| Semantic file search (server-wide) | `discord_search_server_files` | pgvector (`AttachmentChunk`) |
-| Message history | `discord_search_channel_messages` (optional `channelId`, permission-gated) | pgvector (`ChannelMessageEmbedding`) |
-| Archived summaries | `discord_search_channel_archived_summaries` | pgvector embeddings |
-| Server memory | `discord_get_server_memory` | PostgreSQL (`GuildMemory`) |
+| User profile | `discord` (`action: "memory.get_user"`) | PostgreSQL (`UserProfile`) |
+| Channel summaries | `discord` (`action: "memory.get_channel"`) | PostgreSQL (`ChannelSummary`) |
+| Social relationships | `discord` (`action: "analytics.get_social_graph"`) | PostgreSQL (`RelationshipEdge`) + Memgraph |
+| Voice analytics | `discord` (`action: "analytics.get_voice_analytics"`) | PostgreSQL (`VoiceSession`) |
+| Voice session summaries | `discord` (`action: "analytics.get_voice_session_summaries"`) | PostgreSQL (`VoiceConversationSummary`) |
+| Cached file content | `discord` (`action: "files.lookup_channel"`) | PostgreSQL (`IngestedAttachment`) |
+| Cached file content (server-wide) | `discord` (`action: "files.lookup_server"`) | PostgreSQL (`IngestedAttachment`) |
+| Semantic file search | `discord` (`action: "files.search_channel"`) | pgvector (`AttachmentChunk`) |
+| Semantic file search (server-wide) | `discord` (`action: "files.search_server"`) | pgvector (`AttachmentChunk`) |
+| Message history | `discord` (`action: "messages.search_history"`, optional `channelId`, permission-gated) | pgvector (`ChannelMessageEmbedding`) |
+| Archived summaries | `discord` (`action: "memory.search_channel_archives"`) | pgvector embeddings |
+| Server memory | `discord` (`action: "memory.get_server"`) | PostgreSQL (`GuildMemory`) |
 
 Image generation runs through `image_generate` and returns attachment payloads. No preflight context graph execution is used.
 
@@ -178,11 +178,11 @@ Image generation runs through `image_generate` and returns attachment payloads. 
 | `CHAT_MODEL` | Runtime chat model for `runChatTurn` | `kimi` |
 | `AGENTIC_TOOL_LOOP_ENABLED` | Enable/disable tool loop | `true` |
 | `AGENTIC_TOOL_MAX_ROUNDS` | Max tool loop iterations | `6` |
-| `AGENTIC_TOOL_MAX_CALLS_PER_ROUND` | Max tool calls per iteration | `3` |
+| `AGENTIC_TOOL_MAX_CALLS_PER_ROUND` | Max tool calls per iteration | `5` |
 | `AGENTIC_TOOL_TIMEOUT_MS` | Per-tool execution timeout | `45000` |
 | `AGENTIC_TOOL_RESULT_MAX_CHARS` | Max chars per tool result | `8000` |
 | `AGENTIC_TOOL_PARALLEL_READ_ONLY_ENABLED` | Enable parallel read-only execution | `true` |
-| `AGENTIC_TOOL_MAX_PARALLEL_READ_ONLY` | Max concurrent read-only tools | `3` |
+| `AGENTIC_TOOL_MAX_PARALLEL_READ_ONLY` | Max concurrent read-only tools | `4` |
 | `TRACE_ENABLED` | Enable trace persistence | `true` |
 
 ---

@@ -4,7 +4,9 @@
 import { z } from 'zod';
 import { sanitizeJsonSchemaForProvider } from '../utils/json-schema';
 
-const MAX_ARGS_SIZE = 10 * 1024;
+// Guardrail against runaway or malicious tool payloads (for example oversized base64 blobs).
+// Must be large enough to support legitimate multipart/file workflows.
+const MAX_ARGS_SIZE = 256 * 1024;
 
 /** Carry immutable context passed into every tool execution. */
 export interface ToolExecutionContext {
@@ -35,6 +37,14 @@ export interface ToolMetadata {
    * Missing metadata defaults to non-read-only execution.
    */
   readOnly?: boolean;
+  /**
+   * Optional per-call read-only predicate. When provided, it supersedes the static
+   * `readOnly` flag and is evaluated against the untrusted tool args payload.
+   *
+   * Implementations must be side-effect free and conservative: return `true`
+   * only when the call is guaranteed to be read-only.
+   */
+  readOnlyPredicate?: (args: unknown, ctx: ToolExecutionContext) => boolean;
   /** Access tier for tool visibility and invocation. Missing value defaults to public. */
   access?: 'public' | 'admin';
 }

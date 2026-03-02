@@ -26,16 +26,23 @@
 
 ### Added
 
-- _No entries yet._
+- Unified `discord` tool that consolidates Discord memory, retrieval, analytics, safe interactions, and admin approval workflows behind one action-based interface (including an admin-only REST passthrough for complete Discord API coverage).
+- Added multipart file upload support for the admin-only `discord` action `rest`, enabling attachments/files to be uploaded to Discord REST endpoints (for example, posting message attachments).
 
 ### Changed
 
 - Refactored the onboarding welcome message (`src/bot/handlers/welcomeMessage.ts` and `src/bot/handlers/guildCreate.ts`) to use rich Discord Embeds.
+- Replaced individual `discord_*` runtime tools with a single `discord` tool; Discord tool calls must now use `discord` with an `action` field instead of separate tool names.
+- Increased default tool-loop throughput by raising `AGENTIC_TOOL_MAX_CALLS_PER_ROUND` (from `3` to `5`) and `AGENTIC_TOOL_MAX_PARALLEL_READ_ONLY` (from `3` to `4`).
+- Enabled per-call read-only classification for action-based tools (including `discord`) so safe reads can be deduplicated and parallelized within a round.
+- Increased the maximum tool-argument payload size guardrail (from `10KB` to `256KB`) to support multipart uploads and other larger tool payloads.
 
 ### Fixed
 
 - Updated BYOP key status messaging so servers without a configured key now show setup guidance (`/sage key login` then `/sage key set <your_key>`) instead of claiming shared quota fallback.
 - Removed legacy no-key runtime fallback in chat turns: when neither a server key nor `LLM_API_KEY` is configured, Sage now returns explicit setup guidance instead of attempting anonymous provider calls.
+- Retried read-only tool calls once on timeout/rate-limit failures to reduce flaky tool-loop errors.
+- Automatically retry Discord REST passthrough requests once on HTTP `429` responses, respecting Discord-provided `retry_after` delays (capped).
 
 ---
 

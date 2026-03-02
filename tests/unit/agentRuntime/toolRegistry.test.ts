@@ -177,8 +177,8 @@ describe('ToolRegistry', () => {
     });
 
     it('should reject args exceeding size limit', () => {
-      // Create args that exceed 10KB
-      const largeString = 'x'.repeat(15_000);
+      // Create args that exceed the tool args guardrail.
+      const largeString = 'x'.repeat(300_000);
 
       const result = registry.validateToolCall({
         name: 'echo',

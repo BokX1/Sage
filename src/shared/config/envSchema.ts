@@ -171,13 +171,13 @@ export const testDefaults: Record<string, string> = {
   LLM_DOCTOR_PING: '0',
   AGENTIC_TOOL_LOOP_ENABLED: 'true',
   AGENTIC_TOOL_MAX_ROUNDS: '6',
-  AGENTIC_TOOL_MAX_CALLS_PER_ROUND: '3',
+  AGENTIC_TOOL_MAX_CALLS_PER_ROUND: '5',
   AGENTIC_TOOL_TIMEOUT_MS: '45000',
   AGENTIC_TOOL_MAX_OUTPUT_TOKENS: '1200',
   AGENTIC_TOOL_RESULT_MAX_CHARS: '8000',
   AGENTIC_TOOL_GITHUB_GROUNDED_MODE: 'true',
   AGENTIC_TOOL_PARALLEL_READ_ONLY_ENABLED: 'true',
-  AGENTIC_TOOL_MAX_PARALLEL_READ_ONLY: '3',
+  AGENTIC_TOOL_MAX_PARALLEL_READ_ONLY: '4',
 
   REPLAY_SEED_GUILD_ID: '',
   REPLAY_SEED_CHANNEL_PREFIX: 'seed-replay',
@@ -388,7 +388,7 @@ export const envSchema = z.object({
   LLM_DOCTOR_PING: z.enum(['0', '1']).default('0'),
   AGENTIC_TOOL_LOOP_ENABLED: z.enum(['true', 'false']).default('true').transform((v) => v === 'true'),
   AGENTIC_TOOL_MAX_ROUNDS: z.coerce.number().int().min(1).max(10).default(6),
-  AGENTIC_TOOL_MAX_CALLS_PER_ROUND: z.coerce.number().int().min(1).max(10).default(3),
+  AGENTIC_TOOL_MAX_CALLS_PER_ROUND: z.coerce.number().int().min(1).max(10).default(5),
   AGENTIC_TOOL_TIMEOUT_MS: z.coerce.number().int().min(1000).max(120000).default(45000),
   AGENTIC_TOOL_MAX_OUTPUT_TOKENS: z.coerce.number().int().min(128).max(8000).default(1200),
   AGENTIC_TOOL_RESULT_MAX_CHARS: z.coerce.number().int().min(500).max(50000).default(8000),
@@ -400,7 +400,7 @@ export const envSchema = z.object({
     .enum(['true', 'false'])
     .default('true')
     .transform((v) => v === 'true'),
-  AGENTIC_TOOL_MAX_PARALLEL_READ_ONLY: z.coerce.number().int().min(1).max(10).default(3),
+  AGENTIC_TOOL_MAX_PARALLEL_READ_ONLY: z.coerce.number().int().min(1).max(10).default(4),
 
   REPLAY_SEED_GUILD_ID: z.string().default(''),
   REPLAY_SEED_CHANNEL_PREFIX: z.string().default('seed-replay'),

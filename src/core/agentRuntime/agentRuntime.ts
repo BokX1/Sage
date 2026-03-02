@@ -75,10 +75,7 @@ function buildScopedToolRegistry(toolNames: string[]): ToolRegistry {
 }
 
 function buildToolProtocolInstruction(toolNames: string[]): string {
-  const hasChannelMemory = toolNames.includes('discord_get_channel_memory');
-  const hasChannelArchives = toolNames.includes('discord_search_channel_archived_summaries');
-  const hasChannelMessageSearch = toolNames.includes('discord_search_channel_messages');
-  const hasChannelMessageLookup = toolNames.includes('discord_get_channel_message');
+  const hasDiscordTool = toolNames.includes('discord');
 
   const lines = [
     '## Tool Protocol',
@@ -98,24 +95,13 @@ function buildToolProtocolInstruction(toolNames: string[]): string {
     'If no tool is needed, answer normally in plain text.',
   ];
 
-  if (hasChannelMemory || hasChannelArchives || hasChannelMessageSearch || hasChannelMessageLookup) {
-    lines.push('Memory scope guardrails:');
-    if (hasChannelMemory) {
-      lines.push('- discord_get_channel_memory returns rolling/profile summaries and file pointers, not full raw transcript history.');
-    }
-    if (hasChannelArchives) {
-      lines.push('- discord_search_channel_archived_summaries returns archived weekly profile summaries, not raw message-level transcript rows.');
-    }
-    if (hasChannelMessageSearch) {
-      lines.push(
-        '- discord_search_channel_messages is the primary tool for exact historical message retrieval (optionally pass channelId to target another channel you and the bot can access).',
-      );
-    }
-    if (hasChannelMessageLookup) {
-      lines.push(
-        '- discord_get_channel_message expands context around a known messageId from discord_search_channel_messages results (optionally pass channelId when the message is from another channel).',
-      );
-    }
+  if (hasDiscordTool) {
+    lines.push('Discord tool guardrails:');
+    lines.push('- Use the `discord` tool with an action-based payload (for example: memory.get_channel, messages.search_history, files.lookup_channel).');
+    lines.push('- `discord` action memory.get_channel returns rolling/profile summaries and file pointers, not full raw transcript history.');
+    lines.push('- `discord` action memory.search_channel_archives returns archived weekly profile summaries, not raw message-level transcript rows.');
+    lines.push('- `discord` action messages.search_history is the primary tool for exact historical message retrieval (optional channelId is permission-gated; cross-channel is disabled in autopilot turns).');
+    lines.push('- `discord` action messages.get_context expands context around a known messageId from messages.search_history (optional channelId is permission-gated; cross-channel is disabled in autopilot turns).');
   }
 
   return lines.join('\n');
@@ -169,7 +155,7 @@ function buildToolLoopConfig() {
     ),
     maxCallsPerRound: toPositiveInt(
       appConfig.AGENTIC_TOOL_MAX_CALLS_PER_ROUND as number | undefined,
-      3,
+      5,
     ),
     toolTimeoutMs: toPositiveInt(
       appConfig.AGENTIC_TOOL_TIMEOUT_MS as number | undefined,
@@ -183,7 +169,7 @@ function buildToolLoopConfig() {
       (appConfig.AGENTIC_TOOL_PARALLEL_READ_ONLY_ENABLED as boolean | undefined) ?? true,
     maxParallelReadOnlyTools: toPositiveInt(
       appConfig.AGENTIC_TOOL_MAX_PARALLEL_READ_ONLY as number | undefined,
-      3,
+      4,
     ),
     cacheEnabled: true,
     cacheMaxEntries: 50,

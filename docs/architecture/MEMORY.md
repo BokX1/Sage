@@ -54,7 +54,7 @@ Transcript usage is size/window bounded. For longer context, increase transcript
 Attachment behavior:
 
 - Transcript rows store attachment-cache notes, not full historical file bodies.
-- Full file content is loaded on demand through the runtime tool loop (`discord_lookup_channel_files` for same-channel lookups, or `discord_lookup_server_files` for server-wide lookups with permission filtering).
+- Full file content is loaded on demand through the runtime tool loop (`discord` action `files.lookup_channel` for same-channel lookups, or `files.lookup_server` for server-wide lookups with permission filtering).
 
 ---
 
@@ -75,10 +75,10 @@ flowchart LR
     end
 
     subgraph Tools
-        MP[discord_get_user_memory]:::tools
-        SP[discord_get_social_graph]:::tools
-        VP[discord_get_voice_analytics]:::tools
-        SU[discord_get_channel_memory]:::tools
+        MP[discord: memory.get_user]:::tools
+        SP[discord: analytics.get_social_graph]:::tools
+        VP[discord: analytics.get_voice_analytics]:::tools
+        SU[discord: memory.get_channel]:::tools
     end
 
     subgraph Context_Builder["Context Builder"]
@@ -211,7 +211,7 @@ Relationship edges are updated from mentions/replies/voice overlap and rendered 
 - Acquaintance
 - New Connection
 
-These social signals are returned through `discord_get_social_graph` when the model requests them.
+These social signals are returned through `discord` action `analytics.get_social_graph` when the model requests them.
 
 ---
 
@@ -221,7 +221,7 @@ These social signals are returned through `discord_get_social_graph` when the mo
 
 Voice presence events are stored in `VoiceSession` (join/leave + duration only).
 
-`discord_get_voice_analytics` summarizes:
+`discord` action `analytics.get_voice_analytics` summarizes:
 
 - who is currently in voice,
 - how long the user has been active today,
@@ -232,7 +232,7 @@ Optional voice session summary memory:
 - If voice transcription is enabled, Sage can transcribe in-channel audio while connected.
 - Utterance transcripts are kept **in-memory only** and are discarded when the session ends.
 - On leave/disconnect, Sage can persist a **summary-only** record to `VoiceConversationSummary` (topics/decisions/action items).
-- These summaries are retrievable via `discord_get_voice_session_summaries`.
+- These summaries are retrievable via `discord` action `analytics.get_voice_session_summaries`.
 
 ---
 

@@ -24,6 +24,12 @@ import { clearGuildMemory, getGuildMemoryRecord, upsertGuildMemory } from '../..
 import { computeParamsHash, logAdminAction } from '../../core/relationships/adminAuditRepo';
 import { logger } from '../../core/utils/logger';
 import { smartSplit } from '../../core/utils/message-splitter';
+import {
+  discordRestRequest,
+  type DiscordRestFileInput,
+  type DiscordRestMethod,
+  type DiscordRestMultipartBodyMode,
+} from '../../core/discord/discordRest';
 import { isAdmin } from '../handlers/sage-command-handlers';
 import { client } from '../client';
 
@@ -183,6 +189,21 @@ type ServerMemoryPendingPayload = {
 
 type DiscordActionPendingPayload = {
   action: QueuedDiscordAction;
+};
+
+export type DiscordRestWriteRequest = {
+  method: DiscordRestMethod;
+  path: string;
+  query?: Record<string, string | number | boolean | null>;
+  body?: unknown;
+  multipartBodyMode?: DiscordRestMultipartBodyMode;
+  files?: DiscordRestFileInput[];
+  reason?: string;
+  maxResponseChars?: number;
+};
+
+type DiscordRestWritePendingPayload = {
+  request: DiscordRestWriteRequest;
 };
 
 function hashForAudit(value: string): string {
@@ -516,6 +537,54 @@ function buildDiscordActionSummary(action: QueuedDiscordAction): string[] {
     default:
       return ['Type: unknown'];
   }
+}
+
+function buildDiscordRestWriteSummary(request: DiscordRestWriteRequest): string[] {
+  const lines: string[] = [
+    'Type: discord_rest_write',
+    `Method: ${request.method}`,
+    `Path: ${request.path}`,
+  ];
+
+  if (request.multipartBodyMode) {
+    lines.push(`Multipart body mode: ${request.multipartBodyMode}`);
+  }
+
+  if (request.reason?.trim()) {
+    lines.push(`Reason: ${request.reason.trim()}`);
+  }
+
+  const queryKeys = request.query ? Object.keys(request.query) : [];
+  if (queryKeys.length > 0) {
+    const queryPreview = truncateWithFlag(JSON.stringify(request.query), 350);
+    lines.push(`Query: ${queryPreview.text}`);
+  }
+
+  if (request.body !== undefined) {
+    const bodyPreview = truncateWithFlag(JSON.stringify(request.body), 700);
+    lines.push(`Body: ${bodyPreview.text}`);
+  }
+
+  const files = request.files ?? [];
+  if (files.length > 0) {
+    lines.push(`Files: ${files.length}`);
+    const preview = files.slice(0, 4);
+    for (let index = 0; index < preview.length; index += 1) {
+      const file = preview[index];
+      const fieldName = file.fieldName?.trim() || `files[${index}]`;
+      const sourcePreview = (() => {
+        if (file.source.type === 'url') return truncateWithFlag(file.source.url, 220).text;
+        if (file.source.type === 'text') return `text (${file.source.text.length} chars)`;
+        return `base64 (${file.source.base64.length} chars)`;
+      })();
+      lines.push(`- ${fieldName}: ${file.filename} (${file.source.type}: ${sourcePreview})`);
+    }
+    if (files.length > preview.length) {
+      lines.push(`- …and ${files.length - preview.length} more`);
+    }
+  }
+
+  return lines;
 }
 
 type ChannelPermissionRequirement = {
@@ -1144,6 +1213,44 @@ async function executePendingAction(params: {
     });
   }
 
+  if (params.action.kind === 'discord_rest_write') {
+    const payload = params.action.payloadJson as DiscordRestWritePendingPayload;
+    const request = payload.request;
+    const auditReasonBase = request.reason?.trim() || `${request.method} ${request.path}`;
+    const auditReason = withAuditReason(
+      auditReasonBase,
+      params.action.id,
+      params.action.requestedBy,
+      params.approvedBy,
+    );
+
+    const result = await discordRestRequest({
+      method: request.method,
+      path: request.path,
+      query: request.query,
+      body: request.body,
+      multipartBodyMode: request.multipartBodyMode,
+      files: request.files,
+      reason: auditReason,
+      maxResponseChars: request.maxResponseChars,
+    });
+
+    if (!result.ok) {
+      const status = String(result.status ?? 'unknown');
+      const statusText = String(result.statusText ?? '');
+      const errorText = String(result.error ?? 'Unknown error');
+      throw new Error(`Discord REST write failed (${status} ${statusText}): ${errorText}`);
+    }
+
+    return {
+      action: 'discord_rest_write',
+      status: 'executed',
+      method: request.method,
+      path: request.path,
+      result,
+    };
+  }
+
   throw new Error(`Unknown pending action kind: ${params.action.kind}`);
 }
 
@@ -1308,6 +1415,55 @@ export async function requestDiscordAdminActionForTool(params: {
     status: 'pending_approval',
     actionId: pending.id,
     action: params.request.action,
+    expiresAtIso: expiresAt.toISOString(),
+    approvalMessageId,
+  };
+}
+
+export async function requestDiscordRestWriteForTool(params: {
+  guildId: string;
+  channelId: string;
+  requestedBy: string;
+  request: DiscordRestWriteRequest;
+}): Promise<Record<string, unknown>> {
+  const expiresAt = new Date(Date.now() + APPROVAL_TTL_MS);
+  const pending = await createPendingAdminAction({
+    guildId: params.guildId,
+    channelId: params.channelId,
+    requestedBy: params.requestedBy,
+    kind: 'discord_rest_write',
+    payloadJson: {
+      request: params.request,
+    } satisfies DiscordRestWritePendingPayload,
+    expiresAt,
+  });
+
+  const approvalMessageId = await postApprovalCard({
+    guildId: params.guildId,
+    channelId: params.channelId,
+    actionId: pending.id,
+    title: 'Discord REST Write Approval',
+    details: buildDiscordRestWriteSummary(params.request),
+    requestedBy: params.requestedBy,
+    expiresAt,
+  });
+
+  await logAdminAction({
+    guildId: params.guildId,
+    adminId: params.requestedBy,
+    command: 'tool_discord_rest_write',
+    paramsHash: computeParamsHash({
+      actionId: pending.id,
+      method: params.request.method,
+      path: params.request.path,
+    }),
+  });
+
+  return {
+    status: 'pending_approval',
+    actionId: pending.id,
+    method: params.request.method,
+    path: params.request.path,
     expiresAtIso: expiresAt.toISOString(),
     approvalMessageId,
   };

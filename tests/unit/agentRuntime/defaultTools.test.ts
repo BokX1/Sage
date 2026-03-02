@@ -10,31 +10,16 @@ describe('default agentic tools', () => {
     registerDefaultAgenticTools(registry);
 
     expect(registry.listNames().sort()).toEqual([
-      'web_extract',
-      'discord_lookup_channel_files',
-      'discord_lookup_server_files',
-      'discord_get_channel_message',
-      'discord_queue_moderation_action',
-      'discord_execute_interaction',
-      'image_generate',
-      'discord_get_channel_memory',
-      'system_get_current_datetime',
-      'discord_get_server_memory',
-      'discord_get_social_graph',
-      'discord_get_user_memory',
-      'discord_get_voice_analytics',
-      'discord_get_voice_session_summaries',
-      'github_search_code',
+      'discord',
       'github_get_file',
       'github_get_repository',
-      'system_internal_reflection',
+      'github_search_code',
+      'image_generate',
       'npm_get_package',
-      'discord_queue_server_memory_update',
-      'discord_search_channel_files',
-      'discord_search_server_files',
-      'discord_search_channel_archived_summaries',
-      'discord_search_channel_messages',
       'stack_overflow_search',
+      'system_get_current_datetime',
+      'system_internal_reflection',
+      'web_extract',
       'web_get_page_text',
       'web_search',
       'wikipedia_search',
@@ -67,20 +52,17 @@ describe('default agentic tools', () => {
     );
   });
 
-  it('blocks discord_execute_interaction in autopilot turns', async () => {
+  it('blocks Discord write actions in autopilot turns', async () => {
     const registry = new ToolRegistry();
     registerDefaultAgenticTools(registry);
 
     const result = await registry.executeValidated(
       {
-        name: 'discord_execute_interaction',
+        name: 'discord',
         args: {
           think: 'Verify autopilot guard',
-          request: {
-            action: 'create_poll',
-            question: 'Lunch?',
-            answers: ['Pizza', 'Salad'],
-          },
+          action: 'messages.send',
+          content: 'Hello from autopilot',
         },
       },
       {
@@ -98,20 +80,22 @@ describe('default agentic tools', () => {
     expect(result.error).toContain('autopilot');
   });
 
-  it('rejects non-moderation actions in discord_queue_moderation_action', async () => {
+  it('rejects non-moderation actions in discord moderation queue', async () => {
     const registry = new ToolRegistry();
     registerDefaultAgenticTools(registry);
 
     const result = await registry.executeValidated(
       {
-        name: 'discord_queue_moderation_action',
+        name: 'discord',
         args: {
           think: 'Should fail schema validation',
+          action: 'moderation.queue',
           request: {
+            // wrong schema on purpose: this is an interaction, not a moderation action
             action: 'create_poll',
             question: 'Lunch?',
             answers: ['Pizza', 'Salad'],
-          },
+          } as never,
         },
       },
       {
@@ -135,9 +119,10 @@ describe('default agentic tools', () => {
 
     const result = await registry.executeValidated(
       {
-        name: 'discord_queue_server_memory_update',
+        name: 'discord',
         args: {
           think: 'Verify non-command admin context is allowed to reach guild guard',
+          action: 'memory.queue_server_update',
           request: {
             operation: 'set',
             text: 'Server policy',

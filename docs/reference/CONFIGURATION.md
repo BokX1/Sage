@@ -56,8 +56,8 @@ Complete index of all environment variables used by Sage, with descriptions and 
 | Variable | Description | Default |
 |:---|:---|:---|
 | `LLM_PROVIDER` | LLM provider identifier | `pollinations` |
-| `LLM_BASE_URL` | OpenAI-compatible API base URL | `https://gen.pollinations.ai/v1` |
-| `LLM_IMAGE_BASE_URL` | Image generation endpoint base | `https://gen.pollinations.ai` |
+| `LLM_BASE_URL` | OpenAI-compatible API base URL | <code>https&#58;//gen.pollinations.ai/v1</code> |
+| `LLM_IMAGE_BASE_URL` | Image generation endpoint base | <code>https&#58;//gen.pollinations.ai</code> |
 | `CHAT_MODEL` | Primary chat model | `kimi` |
 | `LLM_API_KEY` | Global fallback API key (or per-server via BYOP) | *(empty)* |
 | `LLM_MODEL_LIMITS_JSON` | JSON override for model token limits | *(empty)* |
@@ -127,7 +127,7 @@ These settings control Sage's optional Discord voice features. The local voice s
 
 | Variable | Description | Default |
 |:---|:---|:---|
-| `VOICE_SERVICE_BASE_URL` | Base URL for the local voice service | `http://127.0.0.1:11333` |
+| `VOICE_SERVICE_BASE_URL` | Base URL for the local voice service | <code>http&#58;//127.0.0.1:11333</code> |
 | `VOICE_STT_ENABLED` | Enable voice transcription while Sage is connected | `false` |
 | `VOICE_STT_MODEL_ID` | Local STT model id used by the voice service | `deepdml/faster-whisper-large-v3-turbo-ct2` |
 | `VOICE_STT_COMPUTE_TYPE` | `faster-whisper` compute type | `int8` |
@@ -153,7 +153,7 @@ These settings control Sage's optional Discord voice features. The local voice s
 
 | Variable | Description | Default |
 |:---|:---|:---|
-| `FILE_INGEST_TIKA_BASE_URL` | Apache Tika endpoint for document extraction | `http://127.0.0.1:9998` |
+| `FILE_INGEST_TIKA_BASE_URL` | Apache Tika endpoint for document extraction | <code>http&#58;//127.0.0.1:9998</code> |
 | `FILE_INGEST_TIMEOUT_MS` | Per-file extraction timeout | `45000` |
 | `FILE_INGEST_MAX_ATTACHMENTS_PER_MESSAGE` | Max files per Discord message | `4` |
 | `FILE_INGEST_MAX_BYTES_PER_FILE` | Max file size (10 MB) | `10485760` |
@@ -228,13 +228,13 @@ These settings control Sage's optional Discord voice features. The local voice s
 | `TRACE_ENABLED` | Enable trace persistence | `true` |
 | `AGENTIC_TOOL_LOOP_ENABLED` | Enable the tool call loop | `true` |
 | `AGENTIC_TOOL_MAX_ROUNDS` | Max tool loop iterations | `6` |
-| `AGENTIC_TOOL_MAX_CALLS_PER_ROUND` | Max tool calls per round | `3` |
+| `AGENTIC_TOOL_MAX_CALLS_PER_ROUND` | Max tool calls per round | `5` |
 | `AGENTIC_TOOL_TIMEOUT_MS` | Per-tool execution timeout | `45000` |
 | `AGENTIC_TOOL_MAX_OUTPUT_TOKENS` | Max output tokens for tool responses | `1200` |
 | `AGENTIC_TOOL_RESULT_MAX_CHARS` | Max chars per tool result | `8000` |
 | `AGENTIC_TOOL_GITHUB_GROUNDED_MODE` | Enable GitHub grounded search | `true` |
 | `AGENTIC_TOOL_PARALLEL_READ_ONLY_ENABLED` | Enable parallel read-only tool execution | `true` |
-| `AGENTIC_TOOL_MAX_PARALLEL_READ_ONLY` | Max concurrent read-only tools | `3` |
+| `AGENTIC_TOOL_MAX_PARALLEL_READ_ONLY` | Max concurrent read-only tools | `4` |
 
 ---
 
@@ -272,10 +272,10 @@ These settings control Sage's optional Discord voice features. The local voice s
 | `SEARXNG_CATEGORIES` | SearXNG search categories | `general` |
 | `SEARXNG_LANGUAGE` | SearXNG result language | `en-US` |
 | `FIRECRAWL_API_KEY` | Firecrawl API key | *(empty)* |
-| `FIRECRAWL_BASE_URL` | Firecrawl API base | `https://api.firecrawl.dev/v1` |
+| `FIRECRAWL_BASE_URL` | Firecrawl API base | <code>https&#58;//api.firecrawl.dev/v1</code> |
 | `CRAWL4AI_BASE_URL` | Crawl4AI instance URL | *(empty)* |
 | `CRAWL4AI_BEARER_TOKEN` | Crawl4AI auth token | *(empty)* |
-| `JINA_READER_BASE_URL` | Jina Reader base URL | `https://r.jina.ai/http://` |
+| `JINA_READER_BASE_URL` | Jina Reader base URL | <code>https&#58;//r.jina.ai/http&#58;//</code> |
 | `GITHUB_TOKEN` | GitHub personal access token | *(empty)* |
 | `GITHUB_CODE_SEARCH_MAX_CANDIDATES` | Max GitHub code search candidates | `30` |
 | `GITHUB_REGEX_MAX_FILES` | Max files for GitHub regex search | `20` |

@@ -569,6 +569,43 @@ describe('toolCallLoop', () => {
       expect(leaveVoiceExecute).toHaveBeenCalledTimes(1);
     });
 
+    it('retries failed read-only tool calls once for timeout/rate-limit errors', async () => {
+      const flakyReadExecute = vi
+        .fn()
+        .mockRejectedValueOnce(new Error('timed out'))
+        .mockResolvedValueOnce({ ok: true });
+
+      registry.register({
+        name: 'flaky_read',
+        description: 'Read-only tool that may transiently fail',
+        schema: z.object({}),
+        metadata: { readOnly: true },
+        execute: flakyReadExecute,
+      });
+
+      mockChat
+        .mockResolvedValueOnce({
+          content: JSON.stringify({
+            type: 'tool_calls',
+            calls: [{ name: 'flaky_read', args: {} }],
+          }),
+        })
+        .mockResolvedValueOnce({
+          content: 'Done.',
+        });
+
+      const result = await runToolCallLoop({
+        client: mockClient,
+        messages: [{ role: 'user', content: 'Call flaky read tool' }],
+        registry,
+        ctx: testCtx,
+      });
+
+      expect(result.toolResults).toHaveLength(1);
+      expect(result.toolResults[0].success).toBe(true);
+      expect(flakyReadExecute).toHaveBeenCalledTimes(2);
+    });
+
     it('does not deduplicate tools without readOnly metadata', async () => {
       const statefulExecute = vi.fn().mockResolvedValue({ ok: true });
       registry.register({
@@ -671,6 +708,51 @@ describe('toolCallLoop', () => {
       expect(result.toolResults.every((item) => item.success)).toBe(true);
       expect(result.deduplicatedCallCount).toBe(2);
       expect(getTimeExecute).toHaveBeenCalledTimes(1);
+    });
+
+    it('deduplicates read-only tool calls when readOnlyPredicate returns true', async () => {
+      const multiModeExecute = vi.fn().mockResolvedValue({ ok: true });
+      registry.register({
+        name: 'multi_mode',
+        description: 'Multi-mode tool',
+        schema: z.object({ mode: z.enum(['read', 'write']) }),
+        metadata: {
+          readOnlyPredicate: (args) =>
+            !!args &&
+            typeof args === 'object' &&
+            !Array.isArray(args) &&
+            (args as Record<string, unknown>).mode === 'read',
+        },
+        execute: multiModeExecute,
+      });
+
+      mockChat
+        .mockResolvedValueOnce({
+          content: JSON.stringify({
+            type: 'tool_calls',
+            calls: [
+              { name: 'multi_mode', args: { mode: 'read' } },
+              { name: 'multi_mode', args: { mode: 'read' } },
+              { name: 'multi_mode', args: { mode: 'read' } },
+            ],
+          }),
+        })
+        .mockResolvedValueOnce({
+          content: 'Done.',
+        });
+
+      const result = await runToolCallLoop({
+        client: mockClient,
+        messages: [{ role: 'user', content: 'call multi-mode read tool three times' }],
+        registry,
+        ctx: testCtx,
+      });
+
+      expect(result.roundsCompleted).toBe(1);
+      expect(result.toolResults).toHaveLength(3);
+      expect(result.toolResults.every((item) => item.success)).toBe(true);
+      expect(result.deduplicatedCallCount).toBe(2);
+      expect(multiModeExecute).toHaveBeenCalledTimes(1);
     });
 
     it('deduplicates read-only calls when only think differs', async () => {
