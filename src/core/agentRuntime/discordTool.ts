@@ -26,6 +26,12 @@ import {
 } from '../../bot/admin/adminActionService';
 import { discordRestRequest } from '../discord/discordRest';
 import { config } from '../../config';
+import {
+  DISCORD_ACTION_CATALOG,
+  DISCORD_GUARDRAILS,
+  formatDiscordActionIndexLines,
+  getAllDiscordActions,
+} from './discordToolCatalog';
 
 const requiredThinkField = z
   .string()
@@ -521,10 +527,13 @@ export const discordTool: ToolDefinition<DiscordToolArgs> = {
     [
       'Unified Discord tool for Sage: memory, retrieval, safe interactions, moderation queue, and admin-only REST passthrough.',
       '<USE_ONLY_WHEN> You need to read or change Discord state, or query Sage’s Discord-backed memory (summaries/files/messages/social graph/voice analytics). </USE_ONLY_WHEN>',
+      'Action index (by access):',
+      ...formatDiscordActionIndexLines().map((line) => `- ${line}`),
       'Safety:',
       '- Autopilot turns must not perform writes.',
       '- Moderation and server-memory updates require admin privileges and are approval-gated.',
       '- REST passthrough is admin-only; GET executes immediately, non-GET requires approval.',
+      '- If you are unsure which action to use or which fields are required, call `discord` action `help`.',
     ].join('\n'),
   schema: discordToolSchema,
   metadata: {
@@ -533,43 +542,14 @@ export const discordTool: ToolDefinition<DiscordToolArgs> = {
   execute: async (args, ctx) => {
     switch (args.action) {
       case 'help': {
+        const actions = getAllDiscordActions();
         return {
           tool: 'discord',
-          actions: [
-            'memory.get_user',
-            'memory.get_channel',
-            'memory.search_channel_archives',
-            'memory.get_server',
-            'memory.queue_server_update',
-            'files.lookup_channel',
-            'files.lookup_server',
-            'files.search_channel',
-            'files.search_server',
-            'messages.search_history',
-            'messages.get_context',
-            'analytics.get_social_graph',
-            'analytics.get_voice_analytics',
-            'analytics.get_voice_session_summaries',
-            'messages.send',
-            'messages.edit',
-            'messages.delete',
-            'messages.pin',
-            'messages.unpin',
-            'channels.create',
-            'channels.edit',
-            'roles.create',
-            'roles.edit',
-            'roles.delete',
-            'members.add_role',
-            'members.remove_role',
-            'oauth2.get_bot_invite_url',
-            'polls.create',
-            'threads.create',
-            'reactions.add',
-            'reactions.remove_self',
-            'moderation.queue',
-            'rest',
-          ],
+          actions,
+          read_only_actions: [...DISCORD_ACTION_CATALOG.read_only],
+          write_actions: [...DISCORD_ACTION_CATALOG.writes],
+          admin_only_actions: [...DISCORD_ACTION_CATALOG.admin_only],
+          guardrails: [...DISCORD_GUARDRAILS],
           notes: [
             'Some actions require a guild context.',
             'Server-wide file actions and REST are disabled in autopilot turns.',

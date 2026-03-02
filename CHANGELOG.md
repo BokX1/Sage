@@ -39,6 +39,7 @@
 - Increased default tool-loop throughput by raising `AGENTIC_TOOL_MAX_CALLS_PER_ROUND` (from `3` to `5`) and `AGENTIC_TOOL_MAX_PARALLEL_READ_ONLY` (from `3` to `4`).
 - Enabled per-call read-only classification for action-based tools (including `discord`) so safe reads can be deduplicated and parallelized within a round.
 - Increased the maximum tool-argument payload size guardrail (from `10KB` to `256KB`) to support multipart uploads and other larger tool payloads.
+- Added an explicit `discord` action index (read/write/admin) to the runtime prompt and the `discord` tool description/`help` output so models can reliably discover all supported Discord capabilities.
 
 ### Fixed
 

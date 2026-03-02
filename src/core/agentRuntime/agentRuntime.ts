@@ -245,6 +245,13 @@ Your response will be spoken aloud in a Discord voice channel.
   }
   const model = (appConfig.CHAT_MODEL || 'kimi').trim();
   const toolLoopEnabled = (appConfig.AGENTIC_TOOL_LOOP_ENABLED as boolean | undefined) ?? true;
+  const toolLoopConfig = buildToolLoopConfig();
+  const toolLoopLimits = {
+    maxRounds: toolLoopConfig.maxRounds,
+    maxCallsPerRound: toolLoopConfig.maxCallsPerRound,
+    parallelReadOnlyTools: toolLoopConfig.parallelReadOnlyTools,
+    maxParallelReadOnlyTools: toolLoopConfig.maxParallelReadOnlyTools,
+  };
 
   const activeToolNames = resolveActiveToolNames({ isAdmin, invokedBy });
   const scopedToolRegistry = buildScopedToolRegistry(activeToolNames);
@@ -260,8 +267,22 @@ Your response will be spoken aloud in a Discord voice channel.
       : undefined;
 
   const runtimeInstruction = [
-    buildCapabilityPromptSection({ activeTools: activeToolNames, model }),
-    buildAgenticStateBlock({ activeTools: activeToolNames, model }),
+    buildCapabilityPromptSection({
+      activeTools: activeToolNames,
+      model,
+      invokedBy,
+      invokerIsAdmin: isAdmin,
+      inGuild: guildId !== null,
+      toolLoopLimits,
+    }),
+    buildAgenticStateBlock({
+      activeTools: activeToolNames,
+      model,
+      invokedBy,
+      invokerIsAdmin: isAdmin,
+      inGuild: guildId !== null,
+      toolLoopLimits,
+    }),
     buildToolProtocolInstruction(activeToolNames),
   ].join('\n\n');
 
@@ -364,7 +385,7 @@ Your response will be spoken aloud in a Discord voice channel.
           1_200,
         ),
         initialAssistantResponseText: response.content,
-        config: buildToolLoopConfig(),
+        config: toolLoopConfig,
       });
       draftText = loopResult.replyText;
       toolResults = loopResult.toolResults;

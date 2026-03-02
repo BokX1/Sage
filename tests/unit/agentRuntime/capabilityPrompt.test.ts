@@ -37,6 +37,10 @@ describe('capabilityPrompt', () => {
       // Assert
       expect(prompt).toContain('Discord tool behavior: use the `discord` tool with action-based calls');
       expect(prompt).toContain('Attachment memory behavior: historical non-image files are cached outside transcript');
+      expect(prompt).toContain('Discord actions (read-only):');
+      expect(prompt).toContain('Discord actions (writes; not autopilot):');
+      expect(prompt).toContain('Discord actions (admin-only):');
+      expect(prompt).toContain('messages.send');
     });
 
     it('renders guidance for image generation when tool is active', () => {
@@ -83,6 +87,24 @@ describe('capabilityPrompt', () => {
       expect(stateBlock).toContain('"model": "kimi"');
       expect(stateBlock).toContain('"web_search"');
       expect(stateBlock).toContain('"web_get_page_text"');
+    });
+
+    it('includes discord tool capabilities when discord is active', () => {
+      // Arrange
+      const params = {
+        model: 'kimi',
+        activeTools: ['discord'],
+      };
+
+      // Act
+      const stateBlock = buildAgenticStateBlock(params);
+
+      // Assert
+      expect(stateBlock).toContain('"tool_capabilities"');
+      expect(stateBlock).toContain('"discord"');
+      expect(stateBlock).toContain('"read_only_actions"');
+      expect(stateBlock).toContain('"write_actions"');
+      expect(stateBlock).toContain('"admin_only_actions"');
     });
 
     it('handles missing params gracefully', () => {
