@@ -155,7 +155,7 @@ jobs:
           --exclude 'https://github\.com/BokX1/Sage/network/members'
           --exclude 'https://github\.com/BokX1/Sage/security/advisories'
           --exclude 'https://github\.com/BokX1/Sage/actions/workflows/ci\.yml'
-          --exclude 'http://127\.0\.0\.1:11333'
+          --exclude 'http://127\.0\.0\.1'
           --exclude 'https://api\.firecrawl\.dev/v1'
           --exclude 'https://gen\.pollinations\.ai/v1'
           --exclude 'https://r\.jina\.ai/http'
