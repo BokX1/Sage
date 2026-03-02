@@ -2,8 +2,43 @@ import { useState, useMemo, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 const tools = [
-    // Discord (cyan)
-    { name: 'discord', short: 'Discord', desc: 'Unified Discord tool (memory, retrieval, analytics, safe interactions, approvals)', cat: 'memory', color: '#7AA2F7' },
+    // Discord (cyan) - Read Only
+    { name: 'help', short: 'Help', desc: 'Get usage instructions and command help', cat: 'discord', color: '#7AA2F7' },
+    { name: 'memory.get_user', short: 'Get User', desc: 'Retrieve detailed information about a Discord user', cat: 'discord', color: '#7AA2F7' },
+    { name: 'memory.get_channel', short: 'Get Channel', desc: 'Retrieve detailed information about a Discord channel', cat: 'discord', color: '#7AA2F7' },
+    { name: 'memory.search_channel_archives', short: 'Search Archives', desc: 'Search deep channel history and archived threads', cat: 'discord', color: '#7AA2F7' },
+    { name: 'memory.get_server', short: 'Get Server', desc: 'Retrieve guild and server metadata', cat: 'discord', color: '#7AA2F7' },
+    { name: 'files.lookup_channel', short: 'Channel Files', desc: 'Look up files shared in a specific channel', cat: 'discord', color: '#7AA2F7' },
+    { name: 'files.lookup_server', short: 'Server Files', desc: 'Look up files shared across the entire server', cat: 'discord', color: '#7AA2F7' },
+    { name: 'files.search_channel', short: 'Search Ch. Files', desc: 'Search for specific file types or names in a channel', cat: 'discord', color: '#7AA2F7' },
+    { name: 'files.search_server', short: 'Search Sv. Files', desc: 'Search for specific file types or names in the server', cat: 'discord', color: '#7AA2F7' },
+    { name: 'messages.search_history', short: 'Search History', desc: 'Fuzzy search message history context', cat: 'discord', color: '#7AA2F7' },
+    { name: 'messages.get_context', short: 'Get Context', desc: 'Fetch surrounding message context for a given ID', cat: 'discord', color: '#7AA2F7' },
+    { name: 'analytics.get_social_graph', short: 'Social Graph', desc: 'Analyze user interaction graphs and network centrality', cat: 'discord', color: '#7AA2F7' },
+    { name: 'analytics.get_voice_analytics', short: 'Voice Analytics', desc: 'Retrieve voice channel participation analytics', cat: 'discord', color: '#7AA2F7' },
+    { name: 'analytics.get_voice_session_summaries', short: 'Voice Summaries', desc: 'Get summarized transcripts from voice sessions', cat: 'discord', color: '#7AA2F7' },
+    { name: 'oauth2.get_bot_invite_url', short: 'Invite URL', desc: 'Generate a bot installation invite link', cat: 'discord', color: '#7AA2F7' },
+    // Discord (cyan) - Writes
+    { name: 'messages.send', short: 'Send Message', desc: 'Send a new message or rich embed to a channel', cat: 'discord', color: '#7AA2F7' },
+    { name: 'polls.create', short: 'Create Poll', desc: 'Create an interactive Discord poll', cat: 'discord', color: '#7AA2F7' },
+    { name: 'threads.create', short: 'Create Thread', desc: 'Start a new conversation thread', cat: 'discord', color: '#7AA2F7' },
+    { name: 'reactions.add', short: 'Add Reaction', desc: 'Add emoji reactions to existing messages', cat: 'discord', color: '#7AA2F7' },
+    { name: 'reactions.remove_self', short: 'Remove Reaction', desc: 'Remove own emoji reactions from messages', cat: 'discord', color: '#7AA2F7' },
+    // Discord (cyan) - Admin Only
+    { name: 'memory.queue_server_update', short: 'Sync Server', desc: 'Queue a full background sync of server memory', cat: 'discord', color: '#7AA2F7' },
+    { name: 'moderation.queue', short: 'Mod Queue', desc: 'Queue moderation actions based on policy', cat: 'discord', color: '#7AA2F7' },
+    { name: 'messages.edit', short: 'Edit Message', desc: 'Modify contents of an existing bot message', cat: 'discord', color: '#7AA2F7' },
+    { name: 'messages.delete', short: 'Delete Message', desc: 'Delete an offending message (Admin only)', cat: 'discord', color: '#7AA2F7' },
+    { name: 'messages.pin', short: 'Pin Message', desc: 'Pin an important message to the channel', cat: 'discord', color: '#7AA2F7' },
+    { name: 'messages.unpin', short: 'Unpin Message', desc: 'Unpin a message from the channel', cat: 'discord', color: '#7AA2F7' },
+    { name: 'channels.create', short: 'Create Channel', desc: 'Create a new text or voice channel', cat: 'discord', color: '#7AA2F7' },
+    { name: 'channels.edit', short: 'Edit Channel', desc: 'Modify channel settings or permissions', cat: 'discord', color: '#7AA2F7' },
+    { name: 'roles.create', short: 'Create Role', desc: 'Create a new server role', cat: 'discord', color: '#7AA2F7' },
+    { name: 'roles.edit', short: 'Edit Role', desc: 'Modify existing server role permissions', cat: 'discord', color: '#7AA2F7' },
+    { name: 'roles.delete', short: 'Delete Role', desc: 'Delete a server role', cat: 'discord', color: '#7AA2F7' },
+    { name: 'members.add_role', short: 'Add Role', desc: 'Assign a role to a server member', cat: 'discord', color: '#7AA2F7' },
+    { name: 'members.remove_role', short: 'Remove Role', desc: 'Remove a role from a server member', cat: 'discord', color: '#7AA2F7' },
+    { name: 'rest', short: 'REST Raw', desc: 'Arbitrary Discord REST API execution', cat: 'discord', color: '#7AA2F7' },
     // Search (amber)
     { name: 'web_search', short: 'Web Search', desc: 'Multi-provider search (Tavily → Exa → SearXNG)', cat: 'search', color: '#E0AF68' },
     { name: 'web_extract', short: 'Web Extract', desc: 'Deep page scraping with provider fallback chain', cat: 'search', color: '#E0AF68' },
@@ -24,7 +59,7 @@ const tools = [
 
 const categories = [
     { key: 'all', label: 'All Tools', count: tools.length, color: '#78b846' },
-    { key: 'memory', label: 'Memory', count: tools.filter(t => t.cat === 'memory').length, color: '#7AA2F7' },
+    { key: 'discord', label: 'Discord', count: tools.filter(t => t.cat === 'discord').length, color: '#7AA2F7' },
     { key: 'search', label: 'Search', count: tools.filter(t => t.cat === 'search').length, color: '#E0AF68' },
     { key: 'dev', label: 'Developer', count: tools.filter(t => t.cat === 'dev').length, color: '#BB9AF7' },
     { key: 'gen', label: 'Creative', count: tools.filter(t => t.cat === 'gen').length, color: '#78b846' },
@@ -161,7 +196,7 @@ function ToolCard({ tool }) {
 
 export default function ToolGrid() {
     const [activeFilter, setActiveFilter] = useState('all');
-    const [expandedSections, setExpandedSections] = useState(['memory']); // Open memory by default
+    const [expandedSections, setExpandedSections] = useState(['discord']); // Open discord by default
 
     const activeColor = useMemo(() => {
         return categories.find(c => c.key === activeFilter)?.color || '#78b846';
