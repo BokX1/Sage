@@ -539,30 +539,63 @@ function buildDiscordActionSummary(action: QueuedDiscordAction): string[] {
   }
 }
 
-function buildDiscordRestWriteSummary(request: DiscordRestWriteRequest): string[] {
+export function buildDiscordRestWriteSummary(request: DiscordRestWriteRequest): string[] {
   const lines: string[] = [
     'Type: discord_rest_write',
     `Method: ${request.method}`,
     `Path: ${request.path}`,
   ];
 
+  const summarizeKeys = (keys: string[], max: number): string => {
+    if (keys.length === 0) return '';
+    const preview = keys.slice(0, max).join(', ');
+    return keys.length > max ? `${preview}, …+${keys.length - max}` : preview;
+  };
+
+  const describeJsonShape = (value: unknown): string => {
+    if (value === null) return 'null';
+    if (value === undefined) return 'undefined';
+    if (typeof value === 'string') return `string (${value.length} chars)`;
+    if (typeof value === 'number') return Number.isFinite(value) ? `number (${value})` : 'number (non-finite)';
+    if (typeof value === 'boolean') return `boolean (${value ? 'true' : 'false'})`;
+    if (Array.isArray(value)) return `array (${value.length} item(s))`;
+    if (typeof value === 'object') {
+      const keys = Object.keys(value as Record<string, unknown>).sort();
+      if (keys.length === 0) return 'object (no keys)';
+      return `object keys: ${summarizeKeys(keys, 16)}`;
+    }
+    return typeof value;
+  };
+
+  const stripUrlForDisplay = (raw: string): string => {
+    try {
+      const parsed = new URL(raw);
+      parsed.username = '';
+      parsed.password = '';
+      parsed.search = '';
+      parsed.hash = '';
+      return parsed.toString();
+    } catch {
+      return '[invalid url]';
+    }
+  };
+
   if (request.multipartBodyMode) {
     lines.push(`Multipart body mode: ${request.multipartBodyMode}`);
   }
 
   if (request.reason?.trim()) {
-    lines.push(`Reason: ${request.reason.trim()}`);
+    const safeReason = String(sanitizeObjectForDisplay(request.reason.trim()));
+    lines.push(`Reason: ${safeReason}`);
   }
 
   const queryKeys = request.query ? Object.keys(request.query) : [];
   if (queryKeys.length > 0) {
-    const queryPreview = truncateWithFlag(JSON.stringify(request.query), 350);
-    lines.push(`Query: ${queryPreview.text}`);
+    lines.push(`Query keys: ${summarizeKeys(queryKeys.sort(), 20)}`);
   }
 
   if (request.body !== undefined) {
-    const bodyPreview = truncateWithFlag(JSON.stringify(request.body), 700);
-    lines.push(`Body: ${bodyPreview.text}`);
+    lines.push(`Body: ${describeJsonShape(request.body)}`);
   }
 
   const files = request.files ?? [];
@@ -573,7 +606,7 @@ function buildDiscordRestWriteSummary(request: DiscordRestWriteRequest): string[
       const file = preview[index];
       const fieldName = file.fieldName?.trim() || `files[${index}]`;
       const sourcePreview = (() => {
-        if (file.source.type === 'url') return truncateWithFlag(file.source.url, 220).text;
+        if (file.source.type === 'url') return truncateWithFlag(stripUrlForDisplay(file.source.url), 220).text;
         if (file.source.type === 'text') return `text (${file.source.text.length} chars)`;
         return `base64 (${file.source.base64.length} chars)`;
       })();
@@ -585,6 +618,58 @@ function buildDiscordRestWriteSummary(request: DiscordRestWriteRequest): string[
   }
 
   return lines;
+}
+
+const SENSITIVE_KEY_PATTERN = /(?:authorization|api[_-]?key|token|secret|password|cookie|session)/i;
+
+function sanitizeObjectForDisplay(value: unknown, depth = 0): unknown {
+  if (depth >= 6) return '[…]';
+  if (value === null || value === undefined) return value;
+  if (typeof value === 'string') {
+    const normalized = value
+      .replace(/\bBearer\s+[A-Za-z0-9._~+/=-]+\b/gi, 'Bearer [REDACTED]')
+      .replace(/\bBot\s+[A-Za-z0-9._~+/=-]+\b/gi, 'Bot [REDACTED]');
+    if (normalized.length <= 400) return normalized;
+    return `${normalized.slice(0, 399)}…`;
+  }
+  if (typeof value === 'number' || typeof value === 'boolean') return value;
+  if (Array.isArray(value)) {
+    const preview = value.slice(0, 20).map((item) => sanitizeObjectForDisplay(item, depth + 1));
+    if (value.length > preview.length) {
+      preview.push(`[…+${value.length - preview.length} more]`);
+    }
+    return preview;
+  }
+  if (typeof value === 'object') {
+    const record = value as Record<string, unknown>;
+    const out: Record<string, unknown> = {};
+    const keys = Object.keys(record).sort();
+    const previewKeys = keys.slice(0, 60);
+    for (const key of previewKeys) {
+      if (SENSITIVE_KEY_PATTERN.test(key)) {
+        out[key] = '[REDACTED]';
+      } else {
+        out[key] = sanitizeObjectForDisplay(record[key], depth + 1);
+      }
+    }
+    if (keys.length > previewKeys.length) {
+      out['…'] = `[+${keys.length - previewKeys.length} more keys]`;
+    }
+    return out;
+  }
+  return String(value);
+}
+
+function buildJsonPreviewForDisplay(value: unknown, maxChars: number): { text: string; truncated: boolean } {
+  const sanitized = sanitizeObjectForDisplay(value);
+  const json = JSON.stringify(sanitized, null, 2);
+  return truncateWithFlag(json, maxChars);
+}
+
+function truncateDiscordMessage(value: string, maxChars = 1900): string {
+  if (value.length <= maxChars) return value;
+  const truncated = truncateWithFlag(value, maxChars);
+  return truncated.text;
 }
 
 type ChannelPermissionRequirement = {
@@ -1631,9 +1716,13 @@ export async function handleAdminActionButtonInteraction(
       actionId: action.id,
       decision: parsed.decision,
       actorId: interaction.user.id,
-      outcome: `Result: executed successfully.\n\`\`\`json\n${JSON.stringify(result, null, 2)}\n\`\`\``,
+      outcome: (() => {
+        const preview = buildJsonPreviewForDisplay(result, 900);
+        const suffix = preview.truncated ? '\n(Preview truncated)' : '';
+        return `Result: executed successfully.\n\`\`\`json\n${preview.text}\n\`\`\`${suffix}`;
+      })(),
     });
-    await interaction.update({ content, components: [] });
+    await interaction.update({ content: truncateDiscordMessage(content), components: [] });
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     await markPendingAdminActionFailed({
@@ -1647,9 +1736,9 @@ export async function handleAdminActionButtonInteraction(
       actionId: action.id,
       decision: parsed.decision,
       actorId: interaction.user.id,
-      outcome: `Result: failed.\nError: ${errorMessage}`,
+      outcome: `Result: failed.\nError: ${truncateDiscordMessage(errorMessage, 900)}`,
     });
-    await interaction.update({ content, components: [] });
+    await interaction.update({ content: truncateDiscordMessage(content), components: [] });
   }
 
   return true;

@@ -1,5 +1,14 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { stubFetch, type FetchMock } from '../../testkit/fetch';
+
+const { mockLookupAll } = vi.hoisted(() => ({
+  mockLookupAll: vi.fn(),
+}));
+
+vi.mock('@/core/utils/dnsLookup', () => ({
+  lookupAll: mockLookupAll,
+}));
+
 import { discordRestRequest } from '@/core/discord/discordRest';
 
 function makeHeaders(values: Record<string, string>): { get: (name: string) => string | null } {
@@ -16,8 +25,11 @@ describe('discordRestRequest multipart uploads', () => {
   let fetchMock: FetchMock;
 
   beforeEach(() => {
+    vi.restoreAllMocks();
     fetchMock = stubFetch();
     fetchMock.mockReset();
+    mockLookupAll.mockReset();
+    mockLookupAll.mockResolvedValue([{ address: '93.184.216.34', family: 4 }]);
   });
 
   it('sends multipart/form-data with payload_json and files[n] parts', async () => {
@@ -158,6 +170,95 @@ describe('discordRestRequest multipart uploads', () => {
       }),
     ).rejects.toThrow('public');
     expect(fetchMock).toHaveBeenCalledTimes(0);
+  });
+
+  it('rejects link-local metadata IPs for file sources', async () => {
+    await expect(
+      discordRestRequest({
+        method: 'POST',
+        path: '/channels/123/messages',
+        body: { content: 'hi' },
+        files: [
+          {
+            filename: 'test.txt',
+            source: { type: 'url', url: 'http://169.254.169.254/latest/meta-data/' },
+          },
+        ],
+      }),
+    ).rejects.toThrow('public');
+    expect(fetchMock).toHaveBeenCalledTimes(0);
+  });
+
+  it('blocks redirects to private/local hosts for file downloads', async () => {
+    fetchMock.mockImplementation(async (input: unknown) => {
+      const url = String(input);
+
+      if (url === 'https://files.example/redirect') {
+        return {
+          ok: false,
+          status: 302,
+          statusText: 'Found',
+          headers: makeHeaders({ location: 'http://localhost/private' }),
+          text: async () => '',
+        } satisfies {
+          ok: boolean;
+          status: number;
+          statusText: string;
+          headers: { get: (name: string) => string | null };
+          text: () => Promise<string>;
+        };
+      }
+
+      throw new Error(`Unexpected fetch URL: ${url}`);
+    });
+
+    await expect(
+      discordRestRequest({
+        method: 'POST',
+        path: '/channels/123/messages',
+        body: { content: 'hi' },
+        files: [
+          {
+            filename: 'test.txt',
+            source: { type: 'url', url: 'https://files.example/redirect' },
+          },
+        ],
+      }),
+    ).rejects.toThrow('public');
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects hostnames that resolve to private/local addresses', async () => {
+    mockLookupAll.mockResolvedValueOnce([{ address: '127.0.0.1', family: 4 }]);
+
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      statusText: 'OK',
+      headers: makeHeaders({ 'content-type': 'application/json' }),
+      text: async () => JSON.stringify({ id: 'msg-1' }),
+    } satisfies {
+      ok: boolean;
+      status: number;
+      statusText: string;
+      headers: { get: (name: string) => string | null };
+      text: () => Promise<string>;
+    });
+
+    await expect(
+      discordRestRequest({
+        method: 'POST',
+        path: '/channels/123/messages',
+        body: { content: 'hi' },
+        files: [
+          {
+            filename: 'test.txt',
+            source: { type: 'url', url: 'https://rebind.example/test.txt' },
+          },
+        ],
+      }),
+    ).rejects.toThrow('DNS');
   });
 
   it('retries once on Discord 429 responses', async () => {

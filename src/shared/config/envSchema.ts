@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import net from 'node:net';
 
 /**
  * Check whether a hostname resolves to localhost or RFC1918 private network ranges.
@@ -7,18 +8,158 @@ import { z } from 'zod';
  * @returns True when the host is local/private and should be rejected for outbound public URLs.
  */
 export function isPrivateOrLocalHostname(hostname: string): boolean {
-  const normalized = hostname.toLowerCase();
+  const normalized = hostname.trim().toLowerCase();
+  if (!normalized) return false;
+
   const unwrappedIpv6 = normalized.replace(/^\[/, '').replace(/\]$/, '');
 
-  return (
-    normalized === 'localhost' ||
-    normalized.startsWith('127.') ||
-    unwrappedIpv6 === '::1' ||
-    unwrappedIpv6.startsWith('::ffff:127.') ||
-    normalized.startsWith('10.') ||
-    normalized.startsWith('192.168.') ||
-    /^172\.(1[6-9]|2\d|3[0-1])\./.test(normalized)
-  );
+  if (normalized === 'localhost' || normalized.endsWith('.localhost')) return true;
+
+  const ipFamily = net.isIP(unwrappedIpv6);
+  if (ipFamily === 4) {
+    return isNonPublicIpv4Address(unwrappedIpv6);
+  }
+  if (ipFamily === 6) {
+    return isNonPublicIpv6Address(unwrappedIpv6);
+  }
+
+  return false;
+}
+
+function parseIpv4Octets(ip: string): [number, number, number, number] | null {
+  const parts = ip.split('.');
+  if (parts.length !== 4) return null;
+  const octets: number[] = [];
+  for (const part of parts) {
+    if (!/^\d{1,3}$/.test(part)) return null;
+    const value = Number.parseInt(part, 10);
+    if (!Number.isFinite(value) || value < 0 || value > 255) return null;
+    octets.push(value);
+  }
+  return [octets[0]!, octets[1]!, octets[2]!, octets[3]!];
+}
+
+function isNonPublicIpv4Address(ip: string): boolean {
+  const octets = parseIpv4Octets(ip);
+  if (!octets) return true;
+  const [a, b, c, d] = octets;
+
+  // Loopback 127.0.0.0/8
+  if (a === 127) return true;
+  // Unspecified / "this network" 0.0.0.0/8
+  if (a === 0) return true;
+  // RFC1918 private ranges
+  if (a === 10) return true;
+  if (a === 192 && b === 168) return true;
+  if (a === 172 && b >= 16 && b <= 31) return true;
+  // Link-local 169.254.0.0/16
+  if (a === 169 && b === 254) return true;
+  // Carrier-grade NAT 100.64.0.0/10
+  if (a === 100 && b >= 64 && b <= 127) return true;
+  // Documentation/test ranges
+  if (a === 192 && b === 0 && c === 2) return true;
+  if (a === 198 && b === 51 && c === 100) return true;
+  if (a === 203 && b === 0 && c === 113) return true;
+  // Benchmarking 198.18.0.0/15
+  if (a === 198 && (b === 18 || b === 19)) return true;
+  // Multicast 224.0.0.0/4 and reserved 240.0.0.0/4
+  if (a >= 224) return true;
+  // Limited broadcast 255.255.255.255
+  if (a === 255 && b === 255 && c === 255 && d === 255) return true;
+
+  return false;
+}
+
+function parseIpv6ToBytes(value: string): Uint8Array | null {
+  const withoutZone = value.split('%')[0] ?? value;
+  const input = withoutZone.toLowerCase();
+  if (!input) return null;
+
+  const parts = input.split('::');
+  if (parts.length > 2) return null;
+  const leftRaw = parts[0] ?? '';
+  const rightRaw = parts.length === 2 ? parts[1] ?? '' : '';
+
+  const left = leftRaw.length > 0 ? leftRaw.split(':').filter((s) => s.length > 0) : [];
+  const right = rightRaw.length > 0 ? rightRaw.split(':').filter((s) => s.length > 0) : [];
+
+  const convertIpv4Token = (token: string): string[] | null => {
+    if (!token.includes('.')) return null;
+    const octets = parseIpv4Octets(token);
+    if (!octets) return null;
+    const [a, b, c, d] = octets;
+    return [((a << 8) | b).toString(16), ((c << 8) | d).toString(16)];
+  };
+
+  const maybeReplaceIpv4 = (groups: string[]): string[] | null => {
+    if (groups.length === 0) return groups;
+    const last = groups[groups.length - 1]!;
+    const replacement = convertIpv4Token(last);
+    if (!replacement) return groups;
+    return [...groups.slice(0, -1), ...replacement];
+  };
+
+  const leftGroups = maybeReplaceIpv4(left);
+  if (!leftGroups) return null;
+  const rightGroups = maybeReplaceIpv4(right);
+  if (!rightGroups) return null;
+
+  const totalGroups = leftGroups.length + rightGroups.length;
+  if (parts.length === 1) {
+    if (totalGroups !== 8) return null;
+  } else {
+    if (totalGroups > 8) return null;
+  }
+
+  const zerosToInsert = parts.length === 2 ? 8 - totalGroups : 0;
+  const groups = [...leftGroups, ...new Array(zerosToInsert).fill('0'), ...rightGroups];
+  if (groups.length !== 8) return null;
+
+  const bytes = new Uint8Array(16);
+  for (let i = 0; i < 8; i += 1) {
+    const token = groups[i]!;
+    if (!/^[0-9a-f]{1,4}$/.test(token)) return null;
+    const word = Number.parseInt(token, 16);
+    if (!Number.isFinite(word) || word < 0 || word > 0xffff) return null;
+    bytes[i * 2] = (word >> 8) & 0xff;
+    bytes[i * 2 + 1] = word & 0xff;
+  }
+  return bytes;
+}
+
+function isNonPublicIpv6Address(ip: string): boolean {
+  const bytes = parseIpv6ToBytes(ip);
+  if (!bytes) return true;
+
+  const isAllZero = bytes.every((b) => b === 0);
+  if (isAllZero) return true; // ::
+
+  const isLoopback = bytes.slice(0, 15).every((b) => b === 0) && bytes[15] === 1;
+  if (isLoopback) return true; // ::1
+
+  // IPv4-mapped address ::ffff:a.b.c.d
+  const isV4Mapped =
+    bytes.slice(0, 10).every((b) => b === 0) &&
+    bytes[10] === 0xff &&
+    bytes[11] === 0xff;
+  if (isV4Mapped) {
+    const ipv4 = `${bytes[12]}.${bytes[13]}.${bytes[14]}.${bytes[15]}`;
+    return isNonPublicIpv4Address(ipv4);
+  }
+
+  // Unique local addresses fc00::/7
+  if ((bytes[0] & 0xfe) === 0xfc) return true;
+
+  // Link-local fe80::/10
+  if (bytes[0] === 0xfe && (bytes[1] & 0xc0) === 0x80) return true;
+
+  // Multicast ff00::/8
+  if (bytes[0] === 0xff) return true;
+
+  // Documentation 2001:db8::/32
+  if (bytes[0] === 0x20 && bytes[1] === 0x01 && bytes[2] === 0x0d && bytes[3] === 0xb8) return true;
+
+  return false;
 }
 
 const httpsUrlSchema = z.string().trim().url().refine((value) => {

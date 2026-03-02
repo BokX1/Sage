@@ -46,6 +46,11 @@
 - Retried read-only tool calls once on timeout/rate-limit failures to reduce flaky tool-loop errors.
 - Automatically retry Discord REST passthrough requests once on HTTP `429` responses, respecting Discord-provided `retry_after` delays (capped).
 
+### Security
+
+- Hardened URL-sourced multipart uploads for `discord rest` by blocking additional non-public IP ranges, validating DNS resolution, and rejecting redirects to private/local hosts.
+- Redacted sensitive Discord REST approval/result previews (queries, bodies, signed URLs, tokens) to reduce accidental leakage in channel-visible admin approval messages.
+
 ---
 
 <a id="v1-0-0"></a>

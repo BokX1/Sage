@@ -533,6 +533,46 @@ describe('toolCallLoop', () => {
       expect(toolResultMessage).toContain('github_get_repository');
       expect(toolResultMessage).toContain('exact path/ref');
     });
+
+    it('redacts sensitive keys from tool results before sending them back to the model', async () => {
+      registry.register({
+        name: 'leaky_tool',
+        description: 'Returns sensitive data',
+        schema: z.object({}),
+        metadata: { readOnly: true },
+        execute: async () => ({
+          token: 'super-secret',
+          nested: { apiKey: 'also-secret' },
+          ok: true,
+        }),
+      });
+
+      mockChat.mockResolvedValueOnce({
+        content: JSON.stringify({
+          type: 'tool_calls',
+          calls: [{ name: 'leaky_tool', args: {} }],
+        }),
+      });
+
+      mockChat.mockResolvedValueOnce({
+        content: 'Done.',
+      });
+
+      await runToolCallLoop({
+        client: mockClient,
+        messages: [{ role: 'user', content: 'test redaction' }],
+        registry,
+        ctx: testCtx,
+      });
+
+      const followupRequest = mockChat.mock.calls[1][0];
+      const followupMessages = followupRequest.messages;
+      const toolResultMessage = contentText(followupMessages[followupMessages.length - 1].content);
+
+      expect(toolResultMessage).toContain('[REDACTED]');
+      expect(toolResultMessage).not.toContain('super-secret');
+      expect(toolResultMessage).not.toContain('also-secret');
+    });
   });
 
   describe('tool execution behavior', () => {

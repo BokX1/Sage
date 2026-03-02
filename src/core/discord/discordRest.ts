@@ -1,6 +1,7 @@
 import { config } from '../../config';
 import { isPrivateOrLocalHostname } from '../../shared/config/env';
 import { logger } from '../utils/logger';
+import { lookupAll } from '../utils/dnsLookup';
 
 export type DiscordRestMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 export type DiscordRestMultipartBodyMode = 'payload_json' | 'fields';
@@ -72,6 +73,9 @@ function sanitizePublicHttpUrl(value: string): string {
   }
   if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
     throw new Error('File URL must start with http:// or https://');
+  }
+  if (parsed.username || parsed.password) {
+    throw new Error('File URL must not include credentials.');
   }
   if (isPrivateOrLocalHostname(parsed.hostname)) {
     throw new Error('File URL must be a public address (private/local hosts are blocked).');
@@ -228,6 +232,73 @@ function decodeBase64Payload(payload: string): Uint8Array {
   return buffer;
 }
 
+async function assertUrlHostnameResolvesToPublic(hostname: string): Promise<void> {
+  if (!hostname.trim()) {
+    throw new Error('File URL hostname must not be empty.');
+  }
+  if (isPrivateOrLocalHostname(hostname)) {
+    throw new Error('File URL must be a public address (private/local hosts are blocked).');
+  }
+
+  // If hostname is an IP literal, the check above is sufficient.
+  // Otherwise, resolve DNS and ensure all returned addresses are public.
+  try {
+    const records = await lookupAll(hostname);
+    if (!records || records.length === 0) {
+      throw new Error('No DNS records found.');
+    }
+    for (const record of records) {
+      if (isPrivateOrLocalHostname(record.address)) {
+        throw new Error('Hostname resolves to a private/local address.');
+      }
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    throw new Error(`File URL DNS validation failed: ${message}`, { cause: err });
+  }
+}
+
+function isRedirectStatus(status: number): boolean {
+  return status === 301 || status === 302 || status === 303 || status === 307 || status === 308;
+}
+
+async function fetchPublicUrlWithRedirects(params: {
+  url: string;
+  signal?: AbortSignal;
+  maxRedirects?: number;
+}): Promise<{ finalUrl: string; response: Response }> {
+  const maxRedirects = Math.max(0, Math.min(params.maxRedirects ?? 3, 5));
+  let current = new URL(sanitizePublicHttpUrl(params.url));
+
+  for (let hop = 0; hop <= maxRedirects; hop += 1) {
+    await assertUrlHostnameResolvesToPublic(current.hostname);
+
+    const response = await fetch(current.toString(), {
+      method: 'GET',
+      headers: { 'User-Agent': 'Sage (https://github.com/BokX1/Sage)' },
+      signal: params.signal,
+      redirect: 'manual',
+    });
+
+    if (isRedirectStatus(response.status)) {
+      const location = response.headers.get('location')?.trim();
+      if (!location) {
+        throw new Error(`File download redirect missing Location header (HTTP ${response.status}).`);
+      }
+      const next = new URL(location, current);
+      if (next.protocol !== 'http:' && next.protocol !== 'https:') {
+        throw new Error(`File download redirect must use http(s), got ${next.protocol}`);
+      }
+      current = new URL(sanitizePublicHttpUrl(next.toString()));
+      continue;
+    }
+
+    return { finalUrl: current.toString(), response };
+  }
+
+  throw new Error(`File download exceeded redirect limit (${maxRedirects}).`);
+}
+
 async function resolveMultipartFileBytes(params: {
   file: DiscordRestFileInput;
   maxBytes: number;
@@ -257,18 +328,17 @@ async function resolveMultipartFileBytes(params: {
       };
     }
     case 'url': {
-      const url = sanitizePublicHttpUrl(params.file.source.url);
-      const response = await fetch(url, {
-        method: 'GET',
-        headers: { 'User-Agent': 'Sage (https://github.com/BokX1/Sage)' },
+      const { finalUrl, response } = await fetchPublicUrlWithRedirects({
+        url: params.file.source.url,
         signal: params.signal,
+        maxRedirects: 3,
       });
       if (!response.ok) {
         throw new Error(`File download failed (${response.status} ${response.statusText}).`);
       }
       const bytes = await readResponseBytesWithLimit(response, params.maxBytes);
       const contentType = response.headers.get('content-type')?.trim() || undefined;
-      return { bytes, contentType, sourceLabel: formatUrlForLogs(url) };
+      return { bytes, contentType, sourceLabel: formatUrlForLogs(finalUrl) };
     }
     default: {
       const exhaustive: never = params.file.source;

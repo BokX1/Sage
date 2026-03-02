@@ -119,10 +119,37 @@ function truncateText(value: string, maxChars: number): string {
 
 function stringifyResult(value: unknown): string {
   try {
-    return JSON.stringify(value);
+    return JSON.stringify(sanitizeToolResultForModel(value));
   } catch {
     return '[unserializable tool result]';
   }
+}
+
+const SENSITIVE_TOOL_KEY_PATTERN = /(?:authorization|api[_-]?key|token|secret|password|cookie|session)/i;
+
+function sanitizeToolResultForModel(value: unknown, depth = 0): unknown {
+  if (depth >= 6) return '[…]';
+  if (value === null || value === undefined) return value;
+  if (typeof value === 'string') {
+    return value
+      .replace(/\bBearer\s+[A-Za-z0-9._~+/=-]+\b/gi, 'Bearer [REDACTED]')
+      .replace(/\bBot\s+[A-Za-z0-9._~+/=-]+\b/gi, 'Bot [REDACTED]');
+  }
+  if (typeof value === 'number' || typeof value === 'boolean') return value;
+  if (Array.isArray(value)) {
+    return value.map((item) => sanitizeToolResultForModel(item, depth + 1));
+  }
+  if (typeof value === 'object') {
+    const record = value as Record<string, unknown>;
+    const out: Record<string, unknown> = {};
+    for (const [key, entry] of Object.entries(record)) {
+      out[key] = SENSITIVE_TOOL_KEY_PATTERN.test(key)
+        ? '[REDACTED]'
+        : sanitizeToolResultForModel(entry, depth + 1);
+    }
+    return out;
+  }
+  return String(value);
 }
 
 function escapeXmlContent(value: string): string {
