@@ -21,6 +21,7 @@ const DEFAULT_PROFILE_TIMEOUT_MS = 30_000;
 const MIN_PROFILE_TIMEOUT_MS = 1_000;
 const MAX_PROFILE_TIMEOUT_MS = 120_000;
 const POLLINATIONS_PROFILE_URL = 'https://gen.pollinations.ai/account/profile';
+const KEY_SETUP_GUIDANCE = 'Run `/sage key login`, then `/sage key set <your_key>`.';
 
 export function resolveProfileTimeoutMs(timeoutMs: number | undefined): number {
   return normalizeTimeoutMs(timeoutMs, {
@@ -291,7 +292,9 @@ export async function handleKeyCheck(interaction: ChatInputCommandInteraction) {
         );
       }
     } else {
-      await interaction.editReply(`ℹ️ **No server key set.** Sage is running on the bot's shared quota.`);
+      await interaction.editReply(
+        `ℹ️ **No server key set.** Sage can’t respond in this server until a key is configured.\n${KEY_SETUP_GUIDANCE}`,
+      );
     }
   } catch (error) {
     logger.error({ error, guildId }, 'Failed to check API key');
@@ -316,7 +319,9 @@ export async function handleKeyClear(interaction: ChatInputCommandInteraction) {
 
   try {
     await upsertGuildApiKey(guildId, null);
-    await interaction.editReply('🗑️ **Server-wide API Key removed.** Sage will fall back to the bot\'s shared quota.');
+    await interaction.editReply(
+      `🗑️ **Server-wide API Key removed.** Sage can’t respond in this server until a new key is set.\n${KEY_SETUP_GUIDANCE}`,
+    );
   } catch (error) {
     if ((error as { code?: string })?.code === 'P2025') {
       await interaction.editReply('ℹ️ You didn\'t have a key set.');

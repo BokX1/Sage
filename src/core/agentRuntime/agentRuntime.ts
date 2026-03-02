@@ -235,6 +235,20 @@ Your response will be spoken aloud in a Discord voice channel.
       : null;
 
   const guildApiKey = guildId ? await getGuildApiKey(guildId) : undefined;
+  const apiKey = (guildApiKey ?? appConfig.LLM_API_KEY)?.trim();
+  if (!apiKey) {
+    logger.warn(
+      { guildId, channelId, userId },
+      'No API key configured for chat turn; returning setup guidance response',
+    );
+    clearToolCaches();
+    return {
+      replyText: guildId
+        ? '⚠️ I need a server API key before I can respond here. Ask an admin to run `/sage key login` and `/sage key set <your_key>`.'
+        : '⚠️ I need an API key before I can respond. Configure `LLM_API_KEY` for this bot instance.',
+    };
+  }
+
   let guildMemory: string | null = null;
   if (guildId) {
     try {
@@ -243,7 +257,6 @@ Your response will be spoken aloud in a Discord voice channel.
       logger.warn({ error, guildId }, 'Failed to load guild memory (non-fatal)');
     }
   }
-  const apiKey = guildApiKey ?? appConfig.LLM_API_KEY;
   const model = (appConfig.CHAT_MODEL || 'kimi').trim();
   const toolLoopEnabled = (appConfig.AGENTIC_TOOL_LOOP_ENABLED as boolean | undefined) ?? true;
 

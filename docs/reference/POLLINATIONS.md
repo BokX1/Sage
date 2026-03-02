@@ -61,9 +61,9 @@ Pollinations positions itself as a **unified API** for multiple modalities (text
 
 Sage uses these Pollinations hosts:
 
-- **Dashboard + accounts + keys**: `https://enter.pollinations.ai` (manage keys, usage, account)
-- **OpenAI-compatible API base**: `https://gen.pollinations.ai/v1`
-- **Image bytes endpoint**: `https://gen.pollinations.ai/image/{prompt}`
+- **Dashboard + accounts + keys**: <https://enter.pollinations.ai> (manage keys, usage, account)
+- **OpenAI-compatible API base**: `gen.pollinations.ai/v1`
+- **Image bytes endpoint**: `gen.pollinations.ai/image/{prompt}`
 
 > [!NOTE]
 > You may still find older docs or examples using different hosts/subdomains. Sage’s current integration assumes the **enter + gen** split above, and the deprecated auth host should not be used.
@@ -84,9 +84,9 @@ Sage supports **Bring Your Own Pollen (BYOP)**: a **server admin** sets a Pollin
 
 1. Run: `/sage key login`
 2. Sage gives an auth link to Pollinations:
-   - `https://enter.pollinations.ai/authorize?redirect_url=https://pollinations.ai/&permissions=profile,balance,usage`
+   - <https://enter.pollinations.ai/authorize?redirect_url=https://pollinations.ai/&permissions=profile,balance,usage>
 3. After you sign in, Pollinations redirects you to a URL containing:
-   - `https://pollinations.ai/#api_key=sk_...`
+   - <https://pollinations.ai/#api_key=sk_...>
 4. Copy the `sk_...` part and run:
    - `/sage key set <sk_...>`
 
@@ -94,7 +94,7 @@ Sage supports **Bring Your Own Pollen (BYOP)**: a **server admin** sets a Pollin
 
 Before storing, Sage verifies the key by calling:
 
-- `GET https://gen.pollinations.ai/account/profile` with header `Authorization: Bearer sk_...`
+- `GET gen.pollinations.ai/account/profile` with header `Authorization: Bearer sk_...`
 
 If that succeeds, Sage stores the key **scoped to the current Discord server**.
 Sage accepts successful authenticated profile responses and extracts account fields (`id`, `username`, balance) when available.
@@ -105,7 +105,7 @@ When Sage needs a key, it resolves in this order:
 
 1. **Server key** (set via `/sage key set`)
 2. **Host-level fallback** (`LLM_API_KEY` in `.env`)
-3. If neither exists, Sage may run on a **shared quota** (feature-dependent)
+3. If neither exists, Sage returns setup guidance and cannot complete chat requests until a key is configured.
 
 ---
 
@@ -115,7 +115,7 @@ Minimum Pollinations settings (see `.env.example` for the full list):
 
 ```env
 LLM_PROVIDER=pollinations
-LLM_BASE_URL=https://gen.pollinations.ai/v1
+LLM_BASE_URL=<pollinations-v1-base-url>
 CHAT_MODEL=kimi
 
 # Optional: Global fallback key (used if no BYOP key is set for the server)
@@ -150,7 +150,7 @@ SUMMARY_MODEL=deepseek
 
 Sage uses Pollinations via the OpenAI-compatible endpoint:
 
-- `POST https://gen.pollinations.ai/v1/chat/completions`
+- `POST gen.pollinations.ai/v1/chat/completions`
 
 Runtime request shaping:
 
@@ -170,7 +170,7 @@ When users attach an image, Sage can send multimodal content:
       "role": "user",
       "content": [
         { "type": "text", "text": "Describe this image." },
-        { "type": "image_url", "image_url": { "url": "https://..." } }
+        { "type": "image_url", "image_url": { "url": "<image-url>" } }
       ]
     }
   ]
@@ -206,7 +206,7 @@ No slash command is required.
 
 Sage fetches raw image bytes from Pollinations:
 
-- `GET https://gen.pollinations.ai/image/{prompt}`
+- `GET gen.pollinations.ai/image/{prompt}`
 
 Sage appends query parameters:
 
@@ -249,13 +249,15 @@ These are fast checks you can run outside Discord to confirm upstream connectivi
 ### 1) Check your key is valid
 
 ```bash
-curl -sS https://gen.pollinations.ai/account/profile   -H "Authorization: Bearer sk_YOUR_KEY" | head
+POLLINATIONS_API="https://gen.pollinations.ai"
+curl -sS "$POLLINATIONS_API/account/profile" -H "Authorization: Bearer sk_YOUR_KEY" | head
 ```
 
 ### 2) Chat completion
 
 ```bash
-curl -sS https://gen.pollinations.ai/v1/chat/completions   -H "Authorization: Bearer sk_YOUR_KEY"   -H "Content-Type: application/json"   -d '{
+POLLINATIONS_API="https://gen.pollinations.ai"
+curl -sS "$POLLINATIONS_API/v1/chat/completions" -H "Authorization: Bearer sk_YOUR_KEY" -H "Content-Type: application/json" -d '{
     "model": "kimi",
     "messages": [{"role":"user","content":"Say hello in one sentence."}]
   }' | head
@@ -264,7 +266,8 @@ curl -sS https://gen.pollinations.ai/v1/chat/completions   -H "Authorization: Be
 ### 3) Image generation
 
 ```bash
-curl -L "https://gen.pollinations.ai/image/a%20cat%20wearing%20sunglasses?model=imagen-4&seed=123&nologo=true&key=sk_YOUR_KEY"   --output test_image
+POLLINATIONS_API="https://gen.pollinations.ai"
+curl -L "$POLLINATIONS_API/image/a%20cat%20wearing%20sunglasses?model=imagen-4&seed=123&nologo=true&key=sk_YOUR_KEY" --output test_image
 ```
 
 ---

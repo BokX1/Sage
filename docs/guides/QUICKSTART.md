@@ -95,7 +95,7 @@ Follow **[📖 Getting Started](GETTING_STARTED.md)** for the complete walkthrou
 
 | Symptom | Fix |
 | :--- | :--- |
-| Rate limits / shared quota | Set a BYOP key: `/sage key login` → `/sage key set` |
+| Missing key / no responses | Set a BYOP key: `/sage key login` → `/sage key set` |
 | Invalid API key | Make sure you copied the full `sk_...` value from the URL |
 | Bot online but silent | Check wake word/mentions and verify channel permissions |
 | Slash commands missing | Restart the bot; wait up to 1 hour for global propagation |

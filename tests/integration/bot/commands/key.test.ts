@@ -201,6 +201,34 @@ describe('key command handlers', () => {
     );
   });
 
+  it('prompts admins to set a key when none exists for the server', async () => {
+    getGuildApiKeyMock.mockResolvedValue(null);
+
+    const interaction = createInteraction();
+    const { handleKeyCheck } = await import('@/bot/commands/api-key-handlers');
+
+    await handleKeyCheck(interaction);
+
+    const message = (interaction.editReply as ReturnType<typeof vi.fn>).mock.calls.at(-1)?.[0];
+    expect(message).toContain('No server key set');
+    expect(message).toContain('/sage key login');
+    expect(message).toContain('/sage key set <your_key>');
+    expect(message).not.toContain('shared quota');
+  });
+
+  it('guides admins to reconfigure a key after clearing it', async () => {
+    const interaction = createInteraction();
+    const { handleKeyClear } = await import('@/bot/commands/api-key-handlers');
+
+    await handleKeyClear(interaction);
+
+    const message = (interaction.editReply as ReturnType<typeof vi.fn>).mock.calls.at(-1)?.[0];
+    expect(message).toContain('Server-wide API Key removed');
+    expect(message).toContain('/sage key login');
+    expect(message).toContain('/sage key set <your_key>');
+    expect(message).not.toContain('shared quota');
+  });
+
   it('treats profile checks as verified when profile object has no identity fields', async () => {
     getGuildApiKeyMock.mockResolvedValue('sk_abcdefgh12345678');
     fetchMock.mockResolvedValueOnce({

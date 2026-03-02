@@ -32,7 +32,7 @@ export async function bootstrapApp(): Promise<void> {
     registerShutdownHooks({ client });
 
     if (!config.LLM_API_KEY) {
-      logger.warn('No LLM API key found. Running with limited/anonymous access if supported.');
+      logger.warn('No LLM_API_KEY found. Servers must configure BYOP keys before Sage can respond.');
     }
 
     await client.login(config.DISCORD_TOKEN);

@@ -86,9 +86,8 @@ describe('agent runtime API key fallback', () => {
     );
   });
 
-  it('still calls the model when no keys are available', async () => {
+  it('returns setup guidance when no keys are available', async () => {
     mockConfig.LLM_API_KEY = '';
-    mockLLM.chat.mockResolvedValueOnce({ content: 'ok-without-key' });
     mockGetGuildApiKey.mockResolvedValueOnce(undefined);
 
     const result = await runChatTurn({
@@ -102,11 +101,8 @@ describe('agent runtime API key fallback', () => {
       replyToBotText: null,
     });
 
-    expect(result.replyText).toBe('ok-without-key');
-    expect(mockLLM.chat).toHaveBeenCalledWith(
-      expect.objectContaining({
-        apiKey: '',
-      }),
-    );
+    expect(result.replyText).toContain('I need a server API key before I can respond here');
+    expect(result.replyText).toContain('/sage key login');
+    expect(mockLLM.chat).not.toHaveBeenCalled();
   });
 });
