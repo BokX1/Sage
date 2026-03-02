@@ -27,7 +27,7 @@ const steps = [
     {
         num: '03',
         title: 'Start Talking',
-        desc: 'Mention @Sage in any channel. It remembers context, calls 26 tools, and learns your community.',
+        desc: 'Mention @Sage in any channel. It remembers context, calls tools when helpful, and learns your community.',
         command: '@Sage what happened?',
         commandDisplay: '@Sage what happened?',
         color: '#BB9AF7',

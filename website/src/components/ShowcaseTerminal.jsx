@@ -12,7 +12,6 @@ const scenarios = [
             { tool: 'web_extract', status: 'ok', text: 'Extracting top answer from stackoverflow.com/q/71706...' },
             { tool: 'web_search', status: 'fallback', text: 'tavily ✗ → exa ✗ → searxng ✓ "Next.js 15 hydration fix"' },
             { tool: 'web_get_page_text', status: 'ok', text: 'Reading nextjs.org/docs/messages/react-hydration-error' },
-            { tool: 'system_format_response', status: 'ok', text: 'Compiling 3 sources into structured answer...' },
         ],
     },
     {
@@ -24,7 +23,6 @@ const scenarios = [
             { tool: 'discord', status: 'ok', text: 'action=analytics.get_voice_analytics → Found 2 sessions: #general-voice (45min), #dev-talk (20min)' },
             { tool: 'discord', status: 'ok', text: 'action=memory.get_channel → Loading rolling summary for #general around session timestamp' },
             { tool: 'discord', status: 'ok', text: 'action=messages.search_history → Semantic search: messages near voice session window' },
-            { tool: 'system_format_response', status: 'ok', text: 'Cross-referencing voice overlap with message context...' },
         ],
     },
     {
@@ -37,7 +35,6 @@ const scenarios = [
             { tool: 'github_search_code', status: 'ok', text: 'query: "agentRuntime" → 3 files found' },
             { tool: 'github_get_file', status: 'ok', text: 'Reading src/core/agentRuntime/agentRuntime.ts (412 lines)' },
             { tool: 'github_get_file', status: 'ok', text: 'Reading src/core/agentRuntime/defaultTools.ts (13 tools)' },
-            { tool: 'system_format_response', status: 'ok', text: 'Building architecture diagram from source analysis...' },
         ],
     },
 ];
@@ -48,7 +45,6 @@ const toolIcons = {
     web_extract: '🌐',
     web_search: '🔍',
     web_get_page_text: '📄',
-    system_format_response: '✨',
     discord: '💬',
     github_get_repository: '📦',
     github_search_code: '🔍',

@@ -37,7 +37,7 @@ const techLayers = {
       { name: 'Node.js', role: 'Single-agent runtime with TypeScript (v5.9)', color: '#78b846', icon: Icons.NodeJs },
       { name: 'discord.js', role: 'Discord gateway & voice bindings', color: '#BB9AF7', icon: Icons.Discord },
       { name: 'Docker', role: 'Container orchestration & networking', color: '#7AA2F7', icon: Icons.Docker },
-      { name: 'Zod', role: 'Strict schema validation for 26 tools', color: '#BB9AF7', icon: Icons.Zod }
+      { name: 'Zod', role: 'Strict schema validation for tool inputs', color: '#BB9AF7', icon: Icons.Zod }
     ]
   },
   intelligence: {
