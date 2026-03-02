@@ -100,11 +100,42 @@ const removeBotReactionRequestSchema = z.object({
   reason: z.string().trim().max(500).optional(),
 });
 
+const sendMessageFileSourceSchema = z.discriminatedUnion('type', [
+  z.object({
+    type: z.literal('url'),
+    url: z.string().trim().url().max(2_048),
+  }),
+  z.object({
+    type: z.literal('text'),
+    text: z.string().max(20_000),
+  }),
+  z.object({
+    type: z.literal('base64'),
+    base64: z.string().max(50_000),
+  }),
+]);
+
+const sendMessageFileInputSchema = z.object({
+  filename: z.string().trim().min(1).max(255),
+  contentType: z.string().trim().min(1).max(200).optional(),
+  source: sendMessageFileSourceSchema,
+});
+
 const sendMessageRequestSchema = z.object({
   action: z.literal('send_message'),
   channelId: z.string().trim().min(1).max(64),
-  content: z.string().trim().min(1).max(8_000),
+  content: z.string().trim().min(1).max(8_000).optional(),
+  files: z.array(sendMessageFileInputSchema).min(1).max(4).optional(),
   reason: z.string().trim().max(500).optional(),
+}).superRefine((value, ctx) => {
+  const hasContent = value.content !== undefined;
+  const hasFiles = Boolean(value.files?.length);
+  if (!hasContent && !hasFiles) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'send_message requires content or files.',
+    });
+  }
 });
 
 const removeUserReactionRequestSchema = z.object({
@@ -858,13 +889,53 @@ async function executeImmediateDiscordAction(params: {
       });
     }
 
-    const chunks = smartSplit(params.action.content, 2000);
     const messageIds: string[] = [];
-    for (const chunk of chunks) {
-      const sent = await channel.send({
-        content: chunk,
-        allowedMentions: { parse: [] },
+
+    const files = params.action.files?.length ? params.action.files : [];
+    const chunks = params.action.content?.trim().length
+      ? smartSplit(params.action.content, 2000)
+      : [];
+
+    if (files.length > 0) {
+      const firstChunk = chunks.shift() ?? '';
+      const restResponse = await discordRestRequest({
+        method: 'POST',
+        path: `/channels/${channel.id}/messages`,
+        body: {
+          content: firstChunk,
+          allowed_mentions: { parse: [] },
+          attachments: files.map((file, index) => ({
+            id: index,
+            filename: file.filename,
+          })),
+        },
+        files: files.map((file) => ({
+          filename: file.filename,
+          contentType: file.contentType,
+          source: file.source,
+        } satisfies DiscordRestFileInput)),
+        reason: params.action.reason,
       });
+
+      if (!restResponse.ok) {
+        throw new Error(`Failed to send message with attachments (${restResponse.status} ${restResponse.statusText}).`);
+      }
+
+      const messageId = (
+        restResponse.data &&
+        typeof restResponse.data === 'object' &&
+        !Array.isArray(restResponse.data) &&
+        typeof (restResponse.data as Record<string, unknown>).id === 'string'
+      )
+        ? (restResponse.data as Record<string, unknown>).id as string
+        : null;
+      if (messageId) {
+        messageIds.push(messageId);
+      }
+    }
+
+    for (const chunk of chunks) {
+      const sent = await channel.send({ content: chunk, allowedMentions: { parse: [] } });
       messageIds.push(sent.id);
     }
 

@@ -33,6 +33,34 @@ const requiredThinkField = z
     'Mandatory internal reasoning explaining exactly why you are generating this payload and how it fulfills the active goal.',
   );
 
+const discordFileSourceSchema = z.discriminatedUnion('type', [
+  z.object({
+    type: z.literal('url'),
+    url: z.string().trim().url().max(2_048),
+  }),
+  z.object({
+    type: z.literal('text'),
+    text: z.string().max(20_000),
+  }),
+  z.object({
+    type: z.literal('base64'),
+    base64: z.string().max(50_000),
+  }),
+]);
+
+const discordMessageFileInputSchema = z.object({
+  filename: z.string().trim().min(1).max(255),
+  contentType: z.string().trim().min(1).max(200).optional(),
+  source: discordFileSourceSchema,
+});
+
+const discordRestFileInputSchema = z.object({
+  fieldName: z.string().trim().min(1).max(120).optional(),
+  filename: z.string().trim().min(1).max(255),
+  contentType: z.string().trim().min(1).max(200).optional(),
+  source: discordFileSourceSchema,
+});
+
 const discordToolSchema = z.discriminatedUnion('action', [
   z.object({
     think: requiredThinkField,
@@ -176,8 +204,18 @@ const discordToolSchema = z.discriminatedUnion('action', [
     think: requiredThinkField,
     action: z.literal('messages.send'),
     channelId: z.string().trim().min(1).max(64).optional(),
-    content: z.string().trim().min(1).max(8_000),
+    content: z.string().trim().min(1).max(8_000).optional(),
+    files: z.array(discordMessageFileInputSchema).min(1).max(4).optional(),
     reason: z.string().trim().max(500).optional(),
+  }).superRefine((value, ctx) => {
+    const hasContent = value.content !== undefined;
+    const hasFiles = Boolean(value.files?.length);
+    if (!hasContent && !hasFiles) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'messages.send requires content or files.',
+      });
+    }
   }),
 
   z.object({
@@ -354,25 +392,7 @@ const discordToolSchema = z.discriminatedUnion('action', [
     multipartBodyMode: z.enum(['payload_json', 'fields']).optional(),
     files: z
       .array(
-        z.object({
-          fieldName: z.string().trim().min(1).max(120).optional(),
-          filename: z.string().trim().min(1).max(255),
-          contentType: z.string().trim().min(1).max(200).optional(),
-          source: z.discriminatedUnion('type', [
-            z.object({
-              type: z.literal('url'),
-              url: z.string().trim().url().max(2_048),
-            }),
-            z.object({
-              type: z.literal('text'),
-              text: z.string().max(20_000),
-            }),
-            z.object({
-              type: z.literal('base64'),
-              base64: z.string().max(50_000),
-            }),
-          ]),
-        }),
+        discordRestFileInputSchema,
       )
       .min(1)
       .max(10)
@@ -729,6 +749,7 @@ export const discordTool: ToolDefinition<DiscordToolArgs> = {
             action: 'send_message',
             channelId,
             content: args.content,
+            files: args.files,
             reason: args.reason,
           },
         });
