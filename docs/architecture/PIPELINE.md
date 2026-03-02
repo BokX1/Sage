@@ -115,7 +115,7 @@ flowchart LR
 
 - **Bounded rounds:** Max `AGENTIC_TOOL_MAX_ROUNDS` (default: `6`) iterations.
 - **Calls per round:** Max `AGENTIC_TOOL_MAX_CALLS_PER_ROUND` (default: `5`) tool calls per iteration.
-- **Parallel read-only:** Tools marked `readOnly` execute concurrently (up to `AGENTIC_TOOL_MAX_PARALLEL_READ_ONLY`).
+- **Parallel read-only:** Read-only tools (static `readOnly` or per-call `readOnlyPredicate`) can execute concurrently (up to `AGENTIC_TOOL_MAX_PARALLEL_READ_ONLY`).
 - **Timeout:** Per-tool timeout `AGENTIC_TOOL_TIMEOUT_MS` (default: `45000` ms).
 - **Result truncation:** Tool output capped at `AGENTIC_TOOL_RESULT_MAX_CHARS` (default: `8000`).
 - **File collection:** Image generation and other file-producing tools return `Buffer` attachments merged into the final response.

@@ -157,14 +157,18 @@ Tools are the primary extension mechanism. Each tool is defined with:
 
 - A **Zod schema** for input validation
 - An **`execute` function** for async execution
-- **Metadata** (`readOnly`, `access`) for parallelization and permission control
+- **Metadata** (`readOnly`, `readOnlyPredicate`, `access`) for parallelization and permission control
 
 ```typescript
 interface ToolDefinition<TArgs> {
   name: string;
   description: string;
   schema: z.ZodType<TArgs>;
-  metadata?: { readOnly?: boolean; access?: 'public' | 'admin' };
+  metadata?: {
+    readOnly?: boolean;
+    readOnlyPredicate?: (args: unknown, ctx: ToolExecutionContext) => boolean;
+    access?: 'public' | 'admin';
+  };
   execute: (args: TArgs, ctx: ToolExecutionContext) => Promise<unknown>;
 }
 ```
@@ -214,6 +218,10 @@ Admin-only capabilities are exposed as actions on the `discord` tool:
 - `memory.queue_server_update` (approval-gated)
 - `moderation.queue` (approval-gated)
 - `rest` (admin-only; GET executes immediately, non-GET requires approval)
+- Typed REST write wrappers (approval-gated): `messages.edit/delete/pin/unpin`, `channels.create/edit`, `roles.create/edit/delete`, `members.add_role/remove_role`
+
+Read-only helpers are also exposed via `discord` actions:
+- `oauth2.get_bot_invite_url` (builds a bot invite URL using `DISCORD_APP_ID`)
 
 ### ⚙️ System (2 tools)
 

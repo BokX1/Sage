@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { ToolDefinition } from './toolRegistry';
+import type { ToolDefinition, ToolExecutionContext } from './toolRegistry';
 import {
   lookupUserMemory,
   lookupChannelMemory,
@@ -22,8 +22,10 @@ import {
   requestServerMemoryUpdateForTool,
   serverMemoryUpdateRequestSchema,
   requestDiscordRestWriteForTool,
+  type DiscordRestWriteRequest,
 } from '../../bot/admin/adminActionService';
 import { discordRestRequest } from '../discord/discordRest';
+import { config } from '../../config';
 
 const requiredThinkField = z
   .string()
@@ -180,6 +182,118 @@ const discordToolSchema = z.discriminatedUnion('action', [
 
   z.object({
     think: requiredThinkField,
+    action: z.literal('messages.edit'),
+    channelId: z.string().trim().min(1).max(64).optional(),
+    messageId: z.string().trim().min(1).max(64),
+    content: z.string().trim().min(1).max(2_000),
+    reason: z.string().trim().max(500).optional(),
+  }),
+
+  z.object({
+    think: requiredThinkField,
+    action: z.literal('messages.delete'),
+    channelId: z.string().trim().min(1).max(64).optional(),
+    messageId: z.string().trim().min(1).max(64),
+    reason: z.string().trim().max(500).optional(),
+  }),
+
+  z.object({
+    think: requiredThinkField,
+    action: z.literal('messages.pin'),
+    channelId: z.string().trim().min(1).max(64).optional(),
+    messageId: z.string().trim().min(1).max(64),
+    reason: z.string().trim().max(500).optional(),
+  }),
+
+  z.object({
+    think: requiredThinkField,
+    action: z.literal('messages.unpin'),
+    channelId: z.string().trim().min(1).max(64).optional(),
+    messageId: z.string().trim().min(1).max(64),
+    reason: z.string().trim().max(500).optional(),
+  }),
+
+  z.object({
+    think: requiredThinkField,
+    action: z.literal('channels.create'),
+    name: z.string().trim().min(1).max(100),
+    type: z.enum(['text', 'voice', 'category']).optional(),
+    parentId: z.string().trim().min(1).max(64).optional(),
+    topic: z.string().trim().max(1_024).optional(),
+    nsfw: z.boolean().optional(),
+    rateLimitPerUser: z.number().int().min(0).max(21_600).optional(),
+    reason: z.string().trim().max(500).optional(),
+  }),
+
+  z.object({
+    think: requiredThinkField,
+    action: z.literal('channels.edit'),
+    channelId: z.string().trim().min(1).max(64),
+    name: z.string().trim().min(1).max(100).optional(),
+    parentId: z.string().trim().min(1).max(64).optional(),
+    topic: z.string().trim().max(1_024).optional(),
+    nsfw: z.boolean().optional(),
+    rateLimitPerUser: z.number().int().min(0).max(21_600).optional(),
+    reason: z.string().trim().max(500).optional(),
+  }),
+
+  z.object({
+    think: requiredThinkField,
+    action: z.literal('roles.create'),
+    name: z.string().trim().min(1).max(100),
+    colorHex: z.string().trim().regex(/^#?[0-9a-fA-F]{6}$/).optional(),
+    hoist: z.boolean().optional(),
+    mentionable: z.boolean().optional(),
+    permissions: z.string().trim().regex(/^\d+$/).optional(),
+    reason: z.string().trim().max(500).optional(),
+  }),
+
+  z.object({
+    think: requiredThinkField,
+    action: z.literal('roles.edit'),
+    roleId: z.string().trim().min(1).max(64),
+    name: z.string().trim().min(1).max(100).optional(),
+    colorHex: z.string().trim().regex(/^#?[0-9a-fA-F]{6}$/).optional(),
+    hoist: z.boolean().optional(),
+    mentionable: z.boolean().optional(),
+    permissions: z.string().trim().regex(/^\d+$/).optional(),
+    reason: z.string().trim().max(500).optional(),
+  }),
+
+  z.object({
+    think: requiredThinkField,
+    action: z.literal('roles.delete'),
+    roleId: z.string().trim().min(1).max(64),
+    reason: z.string().trim().max(500).optional(),
+  }),
+
+  z.object({
+    think: requiredThinkField,
+    action: z.literal('members.add_role'),
+    userId: z.string().trim().min(1).max(64),
+    roleId: z.string().trim().min(1).max(64),
+    reason: z.string().trim().max(500).optional(),
+  }),
+
+  z.object({
+    think: requiredThinkField,
+    action: z.literal('members.remove_role'),
+    userId: z.string().trim().min(1).max(64),
+    roleId: z.string().trim().min(1).max(64),
+    reason: z.string().trim().max(500).optional(),
+  }),
+
+  z.object({
+    think: requiredThinkField,
+    action: z.literal('oauth2.get_bot_invite_url'),
+    permissions: z.union([z.string().trim().regex(/^\d+$/), z.number().int().min(0)]).optional(),
+    scopes: z.array(z.enum(['bot', 'applications.commands'])).min(1).max(4).optional(),
+    guildId: z.string().trim().min(1).max(64).optional(),
+    disableGuildSelect: z.boolean().optional(),
+  }),
+
+  z.object({
+    think: requiredThinkField,
     action: z.literal('polls.create'),
     channelId: z.string().trim().min(1).max(64).optional(),
     question: z.string().trim().min(1).max(300),
@@ -289,6 +403,67 @@ function assertAdmin(invokerIsAdmin: boolean | undefined): void {
   }
 }
 
+function normalizeDiscordPermissions(permissions: string | number | undefined): string {
+  if (permissions === undefined) return '0';
+  if (typeof permissions === 'number') {
+    if (!Number.isFinite(permissions) || permissions < 0) {
+      throw new Error('permissions must be a non-negative integer.');
+    }
+    return String(Math.trunc(permissions));
+  }
+  return permissions.trim();
+}
+
+function buildDiscordBotInviteUrl(params: {
+  clientId: string;
+  permissions: string;
+  scopes: string[];
+  guildId?: string;
+  disableGuildSelect?: boolean;
+}): string {
+  const url = new URL('https://discord.com/oauth2/authorize');
+  url.searchParams.set('client_id', params.clientId);
+  url.searchParams.set('scope', params.scopes.join(' '));
+  if (params.scopes.includes('bot')) {
+    url.searchParams.set('permissions', params.permissions);
+  }
+  if (params.guildId) {
+    url.searchParams.set('guild_id', params.guildId);
+  }
+  if (params.disableGuildSelect === true) {
+    url.searchParams.set('disable_guild_select', 'true');
+  }
+  return url.toString();
+}
+
+function parseHexColor(value: string): number {
+  const normalized = value.trim().replace(/^#/, '');
+  const parsed = Number.parseInt(normalized, 16);
+  if (!Number.isFinite(parsed) || Number.isNaN(parsed)) {
+    throw new Error('colorHex must be a valid hex color (RRGGBB).');
+  }
+  if (parsed < 0 || parsed > 0xffffff) {
+    throw new Error('colorHex must be between 000000 and FFFFFF.');
+  }
+  return parsed;
+}
+
+function queueDiscordRestWrite(params: {
+  ctx: ToolExecutionContext;
+  actionLabel: string;
+  request: DiscordRestWriteRequest;
+}): Promise<Record<string, unknown>> {
+  assertAdmin(params.ctx.invokerIsAdmin);
+  assertNotAutopilot(params.ctx.invokedBy, params.actionLabel);
+  const guildId = requireGuildContext(params.ctx.guildId);
+  return requestDiscordRestWriteForTool({
+    guildId,
+    channelId: params.ctx.channelId,
+    requestedBy: params.ctx.userId,
+    request: params.request,
+  });
+}
+
 function isReadOnlyDiscordToolCall(args: unknown): boolean {
   if (!args || typeof args !== 'object' || Array.isArray(args)) return false;
   const action = (args as Record<string, unknown>).action;
@@ -309,6 +484,7 @@ function isReadOnlyDiscordToolCall(args: unknown): boolean {
     case 'analytics.get_social_graph':
     case 'analytics.get_voice_analytics':
     case 'analytics.get_voice_session_summaries':
+    case 'oauth2.get_bot_invite_url':
       return true;
     case 'rest': {
       const method = (args as Record<string, unknown>).method;
@@ -355,6 +531,18 @@ export const discordTool: ToolDefinition<DiscordToolArgs> = {
             'analytics.get_voice_analytics',
             'analytics.get_voice_session_summaries',
             'messages.send',
+            'messages.edit',
+            'messages.delete',
+            'messages.pin',
+            'messages.unpin',
+            'channels.create',
+            'channels.edit',
+            'roles.create',
+            'roles.edit',
+            'roles.delete',
+            'members.add_role',
+            'members.remove_role',
+            'oauth2.get_bot_invite_url',
             'polls.create',
             'threads.create',
             'reactions.add',
@@ -544,6 +732,249 @@ export const discordTool: ToolDefinition<DiscordToolArgs> = {
             reason: args.reason,
           },
         });
+      }
+
+      case 'messages.edit': {
+        const targetChannelId = (args.channelId?.trim() || ctx.channelId).trim();
+        return queueDiscordRestWrite({
+          ctx,
+          actionLabel: 'messages.edit',
+          request: {
+            method: 'PATCH',
+            path: `/channels/${targetChannelId}/messages/${args.messageId}`,
+            body: {
+              content: args.content,
+              allowed_mentions: { parse: [] },
+            },
+            reason: args.reason,
+          },
+        });
+      }
+
+      case 'messages.delete': {
+        const targetChannelId = (args.channelId?.trim() || ctx.channelId).trim();
+        return queueDiscordRestWrite({
+          ctx,
+          actionLabel: 'messages.delete',
+          request: {
+            method: 'DELETE',
+            path: `/channels/${targetChannelId}/messages/${args.messageId}`,
+            reason: args.reason,
+          },
+        });
+      }
+
+      case 'messages.pin': {
+        const targetChannelId = (args.channelId?.trim() || ctx.channelId).trim();
+        return queueDiscordRestWrite({
+          ctx,
+          actionLabel: 'messages.pin',
+          request: {
+            method: 'PUT',
+            path: `/channels/${targetChannelId}/pins/${args.messageId}`,
+            reason: args.reason,
+          },
+        });
+      }
+
+      case 'messages.unpin': {
+        const targetChannelId = (args.channelId?.trim() || ctx.channelId).trim();
+        return queueDiscordRestWrite({
+          ctx,
+          actionLabel: 'messages.unpin',
+          request: {
+            method: 'DELETE',
+            path: `/channels/${targetChannelId}/pins/${args.messageId}`,
+            reason: args.reason,
+          },
+        });
+      }
+
+      case 'channels.create': {
+        const type = args.type ?? 'text';
+        const typeId = type === 'voice' ? 2 : type === 'category' ? 4 : 0;
+        const body: Record<string, unknown> = {
+          name: args.name,
+          type: typeId,
+        };
+        if (args.parentId) {
+          body.parent_id = args.parentId;
+        }
+        if (args.nsfw !== undefined) {
+          body.nsfw = args.nsfw;
+        }
+        if (type === 'text') {
+          if (args.topic !== undefined) {
+            body.topic = args.topic;
+          }
+          if (args.rateLimitPerUser !== undefined) {
+            body.rate_limit_per_user = args.rateLimitPerUser;
+          }
+        }
+
+        const guildId = requireGuildContext(ctx.guildId);
+        return queueDiscordRestWrite({
+          ctx,
+          actionLabel: 'channels.create',
+          request: {
+            method: 'POST',
+            path: `/guilds/${guildId}/channels`,
+            body,
+            reason: args.reason,
+          },
+        });
+      }
+
+      case 'channels.edit': {
+        const body: Record<string, unknown> = {};
+        if (args.name !== undefined) {
+          body.name = args.name;
+        }
+        if (args.parentId !== undefined) {
+          body.parent_id = args.parentId;
+        }
+        if (args.topic !== undefined) {
+          body.topic = args.topic;
+        }
+        if (args.nsfw !== undefined) {
+          body.nsfw = args.nsfw;
+        }
+        if (args.rateLimitPerUser !== undefined) {
+          body.rate_limit_per_user = args.rateLimitPerUser;
+        }
+
+        return queueDiscordRestWrite({
+          ctx,
+          actionLabel: 'channels.edit',
+          request: {
+            method: 'PATCH',
+            path: `/channels/${args.channelId}`,
+            body,
+            reason: args.reason,
+          },
+        });
+      }
+
+      case 'roles.create': {
+        const guildId = requireGuildContext(ctx.guildId);
+        const body: Record<string, unknown> = { name: args.name };
+        if (args.colorHex) {
+          body.color = parseHexColor(args.colorHex);
+        }
+        if (args.hoist !== undefined) {
+          body.hoist = args.hoist;
+        }
+        if (args.mentionable !== undefined) {
+          body.mentionable = args.mentionable;
+        }
+        if (args.permissions) {
+          body.permissions = args.permissions;
+        }
+
+        return queueDiscordRestWrite({
+          ctx,
+          actionLabel: 'roles.create',
+          request: {
+            method: 'POST',
+            path: `/guilds/${guildId}/roles`,
+            body,
+            reason: args.reason,
+          },
+        });
+      }
+
+      case 'roles.edit': {
+        const guildId = requireGuildContext(ctx.guildId);
+        const body: Record<string, unknown> = {};
+        if (args.name !== undefined) {
+          body.name = args.name;
+        }
+        if (args.colorHex !== undefined) {
+          body.color = parseHexColor(args.colorHex);
+        }
+        if (args.hoist !== undefined) {
+          body.hoist = args.hoist;
+        }
+        if (args.mentionable !== undefined) {
+          body.mentionable = args.mentionable;
+        }
+        if (args.permissions !== undefined) {
+          body.permissions = args.permissions;
+        }
+
+        return queueDiscordRestWrite({
+          ctx,
+          actionLabel: 'roles.edit',
+          request: {
+            method: 'PATCH',
+            path: `/guilds/${guildId}/roles/${args.roleId}`,
+            body,
+            reason: args.reason,
+          },
+        });
+      }
+
+      case 'roles.delete': {
+        const guildId = requireGuildContext(ctx.guildId);
+        return queueDiscordRestWrite({
+          ctx,
+          actionLabel: 'roles.delete',
+          request: {
+            method: 'DELETE',
+            path: `/guilds/${guildId}/roles/${args.roleId}`,
+            reason: args.reason,
+          },
+        });
+      }
+
+      case 'members.add_role': {
+        const guildId = requireGuildContext(ctx.guildId);
+        return queueDiscordRestWrite({
+          ctx,
+          actionLabel: 'members.add_role',
+          request: {
+            method: 'PUT',
+            path: `/guilds/${guildId}/members/${args.userId}/roles/${args.roleId}`,
+            reason: args.reason,
+          },
+        });
+      }
+
+      case 'members.remove_role': {
+        const guildId = requireGuildContext(ctx.guildId);
+        return queueDiscordRestWrite({
+          ctx,
+          actionLabel: 'members.remove_role',
+          request: {
+            method: 'DELETE',
+            path: `/guilds/${guildId}/members/${args.userId}/roles/${args.roleId}`,
+            reason: args.reason,
+          },
+        });
+      }
+
+      case 'oauth2.get_bot_invite_url': {
+        const clientId = config.DISCORD_APP_ID.trim();
+        if (!clientId) {
+          throw new Error('DISCORD_APP_ID is required to generate an OAuth2 invite URL.');
+        }
+        const permissions = normalizeDiscordPermissions(args.permissions);
+        const scopes = args.scopes?.length ? args.scopes : ['bot', 'applications.commands'];
+        const url = buildDiscordBotInviteUrl({
+          clientId,
+          permissions,
+          scopes,
+          guildId: args.guildId?.trim() || undefined,
+          disableGuildSelect: args.disableGuildSelect,
+        });
+        return {
+          ok: true,
+          action: 'oauth2.get_bot_invite_url',
+          clientId,
+          scopes,
+          permissions: scopes.includes('bot') ? permissions : undefined,
+          url,
+        };
       }
 
       case 'polls.create': {
