@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ToolExecutionContext } from '@/core/agentRuntime/toolRegistry';
+import { config } from '@/config';
 
 const mocks = vi.hoisted(() => ({
   requestDiscordRestWriteForTool: vi.fn(),
@@ -142,9 +143,8 @@ describe('discord tool typed REST wrappers', () => {
     const url = new URL((result as { url: string }).url);
     expect(url.hostname).toBe('discord.com');
     expect(url.pathname).toBe('/oauth2/authorize');
-    expect(url.searchParams.get('client_id')).toBe('test-discord-app-id');
+    expect(url.searchParams.get('client_id')).toBe(config.DISCORD_APP_ID.trim());
     expect(url.searchParams.get('scope')).toBe('bot applications.commands');
     expect(url.searchParams.get('permissions')).toBe('0');
   });
 });
-

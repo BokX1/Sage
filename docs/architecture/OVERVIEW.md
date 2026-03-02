@@ -215,12 +215,14 @@ The tool protocol is communicated to the LLM via a structured instruction block,
 ### 🛡️ Admin & Discord (via `discord` actions)
 
 Admin-only capabilities are exposed as actions on the `discord` tool:
+
 - `memory.queue_server_update` (approval-gated)
 - `moderation.queue` (approval-gated)
 - `rest` (admin-only; GET executes immediately, non-GET requires approval)
 - Typed REST write wrappers (approval-gated): `messages.edit/delete/pin/unpin`, `channels.create/edit`, `roles.create/edit/delete`, `members.add_role/remove_role`
 
 Read-only helpers are also exposed via `discord` actions:
+
 - `oauth2.get_bot_invite_url` (builds a bot invite URL using `DISCORD_APP_ID`)
 
 ### ⚙️ System (2 tools)
