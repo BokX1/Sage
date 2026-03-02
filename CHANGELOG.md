@@ -48,6 +48,10 @@
 - Retried read-only tool calls once on timeout/rate-limit failures to reduce flaky tool-loop errors.
 - Automatically retry Discord REST passthrough requests once on HTTP `429` responses, respecting Discord-provided `retry_after` delays (capped).
 
+### Removed
+
+- Removed four unreferenced legacy modules (`src/core/agentRuntime/agent-events.ts`, `src/core/agentRuntime/patterns.ts`, `src/core/config/doctor.ts`, `src/core/voice/index.ts`) to reduce dead maintenance surface and stale internal APIs.
+
 ### Security
 
 - Hardened URL-sourced multipart uploads for `discord rest` by blocking additional non-public IP ranges, validating DNS resolution, and rejecting redirects to private/local hosts.
