@@ -55,6 +55,7 @@
 
 ### Security
 
+- Guild-scoped the admin-only `discord rest` passthrough and queued REST writes to prevent cross-guild bot control; blocked bot-wide endpoints (for example, `/users/@me`), blocked dot-segment path traversal, and redacted sensitive fields (for example, webhook tokens) in REST outputs.
 - Hardened URL-sourced multipart uploads for `discord rest` by blocking additional non-public IP ranges, validating DNS resolution, and rejecting redirects to private/local hosts.
 - Redacted sensitive Discord REST approval/result previews (queries, bodies, signed URLs, tokens) to reduce accidental leakage in channel-visible admin approval messages.
 

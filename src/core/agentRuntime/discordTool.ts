@@ -24,7 +24,7 @@ import {
   requestDiscordRestWriteForTool,
   type DiscordRestWriteRequest,
 } from '../../bot/admin/adminActionService';
-import { discordRestRequest } from '../discord/discordRest';
+import { discordRestRequestGuildScoped } from '../discord/discordRestPolicy';
 import { config } from '../../config';
 import {
   DISCORD_ACTION_CATALOG,
@@ -532,7 +532,9 @@ export const discordTool: ToolDefinition<DiscordToolArgs> = {
       'Safety:',
       '- Autopilot turns must not perform writes.',
       '- Moderation and server-memory updates require admin privileges and are approval-gated.',
-      '- REST passthrough is admin-only; GET executes immediately, non-GET requires approval.',
+      '- REST passthrough is admin-only and guild-scoped; GET executes immediately, non-GET requires approval.',
+      '- REST passthrough blocks bot-wide endpoints (for example /users/@me) and direct /webhooks/* routes.',
+      '- REST passthrough redacts sensitive fields (tokens/secrets) from results.',
       '- If you are unsure which action to use or which fields are required, call `discord` action `help`.',
     ].join('\n'),
   schema: discordToolSchema,
@@ -553,7 +555,10 @@ export const discordTool: ToolDefinition<DiscordToolArgs> = {
           notes: [
             'Some actions require a guild context.',
             'Server-wide file actions and REST are disabled in autopilot turns.',
+            'REST passthrough is guild-scoped (active guild only).',
             'Non-GET REST requests require admin approval.',
+            'Direct /webhooks/* routes and bot-wide endpoints (for example /users/@me) are blocked.',
+            'REST results redact sensitive fields (tokens/secrets).',
           ],
         };
       }
@@ -1074,7 +1079,8 @@ export const discordTool: ToolDefinition<DiscordToolArgs> = {
           if (args.files?.length) {
             throw new Error('discord.rest GET requests cannot include files.');
           }
-          return discordRestRequest({
+          return discordRestRequestGuildScoped({
+            guildId: ctx.guildId!,
             method: args.method,
             path: args.path,
             query: args.query,

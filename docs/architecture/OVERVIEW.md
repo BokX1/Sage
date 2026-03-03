@@ -218,7 +218,7 @@ Admin-only capabilities are exposed as actions on the `discord` tool:
 
 - `memory.queue_server_update` (approval-gated)
 - `moderation.queue` (approval-gated)
-- `rest` (admin-only; GET executes immediately, non-GET requires approval)
+- `rest` (admin-only; guild-scoped; GET executes immediately, non-GET requires approval)
 - Typed REST write wrappers (approval-gated): `messages.edit/delete/pin/unpin`, `channels.create/edit`, `roles.create/edit/delete`, `members.add_role/remove_role`
 
 Read-only helpers are also exposed via `discord` actions:

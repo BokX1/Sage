@@ -43,7 +43,9 @@ export const DISCORD_ACTION_CATALOG = {
 
 export const DISCORD_GUARDRAILS = [
   'Writes are disallowed in autopilot turns.',
-  'Admin-only actions require admin context; REST writes and moderation are approval-gated.',
+  'Admin-only actions require admin context; REST is guild-scoped and approval-gated for non-GET writes.',
+  'REST passthrough blocks bot-wide endpoints (for example /users/@me) and direct /webhooks/* routes.',
+  'REST passthrough redacts sensitive fields (tokens/secrets) from results.',
   'Some actions require a guild context (guildId). If no guildId is available, avoid guild-only actions.',
   'When possible, batch independent read-only tool calls into a single tool_calls envelope to reduce round-trips.',
 ] as const;

@@ -30,6 +30,10 @@ import {
   type DiscordRestMethod,
   type DiscordRestMultipartBodyMode,
 } from '../../core/discord/discordRest';
+import {
+  assertDiscordRestRequestGuildScoped,
+  discordRestRequestGuildScoped,
+} from '../../core/discord/discordRestPolicy';
 import { isAdmin } from '../handlers/sage-command-handlers';
 import { client } from '../client';
 
@@ -1380,7 +1384,8 @@ async function executePendingAction(params: {
       params.approvedBy,
     );
 
-    const result = await discordRestRequest({
+    const result = await discordRestRequestGuildScoped({
+      guildId: params.action.guildId,
       method: request.method,
       path: request.path,
       query: request.query,
@@ -1582,6 +1587,12 @@ export async function requestDiscordRestWriteForTool(params: {
   requestedBy: string;
   request: DiscordRestWriteRequest;
 }): Promise<Record<string, unknown>> {
+  await assertDiscordRestRequestGuildScoped({
+    guildId: params.guildId,
+    method: params.request.method,
+    path: params.request.path,
+  });
+
   const expiresAt = new Date(Date.now() + APPROVAL_TTL_MS);
   const pending = await createPendingAdminAction({
     guildId: params.guildId,
