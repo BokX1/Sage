@@ -143,4 +143,4 @@ This reads all `RelationshipEdge` rows from PostgreSQL and publishes synthetic i
 
 - [🕸️ Social Graph Architecture](../architecture/SOCIAL_GRAPH.md) — How the GNN pipeline works
 - [🚀 Deployment Guide](DEPLOYMENT.md) — General production deployment
-- [🧰 Self-Hosted Tool Stack](TOOL_STACK.md) — SearXNG, Crawl4AI, Ollama, Tika
+- [🧰 Self-Hosted Tool Stack](TOOL_STACK.md) — SearXNG, Crawl4AI, Tika

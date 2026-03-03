@@ -38,7 +38,7 @@ This document describes what Sage stores and how to control retention. Implement
 | Voice sessions | `VoiceSession` | Join/leave session history per user/channel. |
 | Voice session summaries | `VoiceConversationSummary` | Summary-only memory of transcribed voice sessions (optional; no raw transcript stored in DB). |
 | Admin audits | `AdminAudit` | Records admin command usage with hashed params. |
-| Agent traces | `AgentTrace` | Agent selector payload, context packet metadata, and final reply text (if tracing is enabled). |
+| Agent traces | `AgentTrace` | Agent trace payload, context budget metadata, and final reply text (if tracing is enabled). |
 
 ---
 

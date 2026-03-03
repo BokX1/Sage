@@ -56,7 +56,7 @@ Architecture → Pipeline → Memory → Database
 
 | Step | Document | Time |
 | :--- | :--- | :--- |
-| 1️⃣ | [🤖 Agentic Architecture](architecture/OVERVIEW.md) — Single-agent design, 26 tools, and runtime flow | ~15 min |
+| 1️⃣ | [🤖 Agentic Architecture](architecture/OVERVIEW.md) — Single-agent design, 13 tools, and runtime flow | ~15 min |
 | 2️⃣ | [🔀 Runtime Pipeline](architecture/PIPELINE.md) — Message flow through agent + tool loop | ~20 min |
 | 3️⃣ | [🧠 Memory System](architecture/MEMORY.md) — Summaries, profiles, context budgeting | ~15 min |
 | 4️⃣ | [💾 Database Schema](architecture/DATABASE.md) — 18 tables, relationships, ERD | ~10 min |
@@ -91,7 +91,7 @@ Architecture → Pipeline → Memory → Database
 
 | Document | Description |
 | :--- | :--- |
-| [🤖 Agentic Overview](architecture/OVERVIEW.md) | Single-agent design, 26 tools, tool registry, and reliability model |
+| [🤖 Agentic Overview](architecture/OVERVIEW.md) | Single-agent design, 13 tools, tool registry, and reliability model |
 | [🔀 Runtime Pipeline](architecture/PIPELINE.md) | Message flow, context assembly, tool call loop, and trace outputs |
 | [🔍 Search Architecture](architecture/SEARCH.md) | SAG flow, search modes, tool providers |
 | [🧠 Memory System](architecture/MEMORY.md) | How Sage stores, summarizes, and injects memory |

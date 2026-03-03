@@ -40,7 +40,6 @@ User asks time-sensitive question
 ```mermaid
 sequenceDiagram
     participant U as User
-    participant R as Agent Selector
     participant S as Search Engine
     participant B as Bot
 

@@ -97,7 +97,7 @@ flowchart TD
 | **Prompt Composer** | `src/core/agentRuntime/promptComposer.ts` | Assembles the final system prompt with personality, capabilities, and tool protocol |
 | **Tool Call Loop** | `src/core/agentRuntime/toolCallLoop.ts` | Iterative tool execution with bounded rounds, parallel read-only optimization, and timeout enforcement |
 | **Tool Registry** | `src/core/agentRuntime/toolRegistry.ts` | Zod-validated tool definitions with OpenAI-compatible spec generation |
-| **Default Tools** | `src/core/agentRuntime/defaultTools.ts` | All 26 built-in tool definitions |
+| **Default Tools** | `src/core/agentRuntime/defaultTools.ts` | All 13 built-in tool definitions |
 | **Style Classifier** | `src/core/agentRuntime/styleClassifier.ts` | Analyzes user communication style for adaptive response tone |
 
 ---
@@ -264,7 +264,7 @@ src/core/
 │   ├── promptComposer.ts       # System prompt assembly
 │   ├── toolCallLoop.ts         # Iterative tool execution loop
 │   ├── toolRegistry.ts         # Zod-based tool definition registry
-│   ├── defaultTools.ts         # All 26 built-in tools
+│   ├── defaultTools.ts         # All 13 built-in tools
 │   ├── toolIntegrations.ts     # Tool backend implementations
 │   ├── toolCallParser.ts       # Parse tool calls from LLM output
 │   ├── toolCallExecution.ts    # Execute + validate tool calls
