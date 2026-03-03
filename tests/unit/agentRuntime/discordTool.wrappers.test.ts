@@ -1,3 +1,7 @@
+/**
+ * @module tests/unit/agentRuntime/discordTool.wrappers.test
+ * @description Defines the discord tool.wrappers.test module.
+ */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ToolExecutionContext } from '@/core/agentRuntime/toolRegistry';
 import { config } from '@/config';

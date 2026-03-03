@@ -1,3 +1,7 @@
+/**
+ * @module src/shared/config/env
+ * @description Defines the env module.
+ */
 import dotenv from 'dotenv';
 import { isPrivateOrLocalHostname, parseEnvSafe } from './envSchema';
 
@@ -17,11 +21,17 @@ if (!parsed.success) {
   process.exit(1);
 }
 
+/**
+ * Declares exported bindings: config.
+ */
 export const config = {
   ...parsed.data,
   isDev: parsed.data.NODE_ENV === 'development',
   isProd: parsed.data.NODE_ENV === 'production',
 };
 
+/**
+ * Represents the AppConfig type.
+ */
 export type AppConfig = typeof config;
 export { isPrivateOrLocalHostname };

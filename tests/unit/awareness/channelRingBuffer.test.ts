@@ -1,3 +1,7 @@
+/**
+ * @module tests/unit/awareness/channelRingBuffer.test
+ * @description Defines the channel ring buffer.test module.
+ */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import type { ChannelMessage } from '@/core/awareness/awareness-types';
 
@@ -43,6 +47,8 @@ function buildMessage(overrides: Partial<ChannelMessage>): ChannelMessage {
 describe('channelRingBuffer', () => {
   beforeEach(() => {
     clearChannel({ guildId: 'guild-1', channelId: 'channel-1' });
+    mockConfig.RAW_MESSAGE_TTL_DAYS = 1;
+    mockConfig.RING_BUFFER_MAX_MESSAGES_PER_CHANNEL = 2;
     messageCounter = 0;
   });
 
@@ -78,5 +84,32 @@ describe('channelRingBuffer', () => {
 
     expect(recent).toHaveLength(2);
     expect(recent.map((msg) => msg.messageId)).toEqual(['two', 'three']);
+  });
+
+  it('treats negative max-size config as zero instead of looping indefinitely', () => {
+    mockConfig.RING_BUFFER_MAX_MESSAGES_PER_CHANNEL = -1;
+
+    appendMessage(buildMessage({ messageId: 'one' }));
+    appendMessage(buildMessage({ messageId: 'two' }));
+
+    const recent = getRecentMessages({
+      guildId: 'guild-1',
+      channelId: 'channel-1',
+      limit: 10,
+    });
+
+    expect(recent).toEqual([]);
+  });
+
+  it('returns empty results for non-positive limits', () => {
+    appendMessage(buildMessage({ messageId: 'one' }));
+
+    const recent = getRecentMessages({
+      guildId: 'guild-1',
+      channelId: 'channel-1',
+      limit: 0,
+    });
+
+    expect(recent).toEqual([]);
   });
 });

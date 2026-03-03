@@ -1,3 +1,7 @@
+/**
+ * @module src/core/embeddings/attachmentRAG
+ * @description Defines the attachment rag module.
+ */
 import { prisma } from '../db/prisma-client';
 import { logger } from '../utils/logger';
 import { embedText, embedTexts } from './embeddingEngine';
@@ -12,6 +16,9 @@ type DbSearchRow = {
   score: number;
 };
 
+/**
+ * Represents the SearchResult contract.
+ */
 export interface SearchResult {
   chunkId: string;
   attachmentId: string;
@@ -21,6 +28,14 @@ export interface SearchResult {
 
 let embeddingColumnCheckDone = false;
 let embeddingColumnAvailable = false;
+
+/** Clamp search result limits to safe bounded integers. */
+function toBoundedLimit(value: number, fallback: number, min: number, max: number): number {
+  if (!Number.isFinite(value)) {
+    return fallback;
+  }
+  return Math.max(min, Math.min(max, Math.floor(value)));
+}
 
 async function hasEmbeddingColumn(): Promise<boolean> {
   if (embeddingColumnCheckDone) {
@@ -57,6 +72,13 @@ function mapRows(rows: DbSearchRow[]): SearchResult[] {
   }));
 }
 
+/**
+ * Runs ingestAttachmentText.
+ *
+ * @param attachmentId - Describes the attachmentId input.
+ * @param extractedText - Describes the extractedText input.
+ * @returns Returns the function result.
+ */
 export async function ingestAttachmentText(
   attachmentId: string,
   extractedText: string,
@@ -130,18 +152,31 @@ export async function ingestAttachmentText(
   return chunks.length;
 }
 
+/**
+ * Runs searchAttachments.
+ *
+ * @param query - Describes the query input.
+ * @param topK - Describes the topK input.
+ * @param scope - Describes the scope input.
+ * @returns Returns the function result.
+ */
 export async function searchAttachments(
   query: string,
   topK: number = DEFAULT_TOP_K,
   scope?: { guildId?: string | null; channelId?: string | null },
 ): Promise<SearchResult[]> {
-  const limit = Math.max(1, Math.min(20, Math.floor(topK)));
+  const normalizedQuery = query.trim();
+  if (!normalizedQuery) {
+    return [];
+  }
+
+  const limit = toBoundedLimit(topK, DEFAULT_TOP_K, 1, 20);
   const guildId = scope?.guildId ?? null;
   const channelId = scope?.channelId ?? null;
   const canUseVectors = await hasEmbeddingColumn();
 
   if (canUseVectors) {
-    const queryVector = await embedText(query, 'query');
+    const queryVector = await embedText(normalizedQuery, 'query');
     const vectorString = `[${queryVector.join(',')}]`;
 
     const rows = await prisma.$queryRaw<DbSearchRow[]>`
@@ -166,7 +201,7 @@ export async function searchAttachments(
     return mapRows(rows);
   }
 
-  const searchTerm = `%${query.trim()}%`;
+  const searchTerm = `%${normalizedQuery}%`;
   const rows = await prisma.$queryRaw<DbSearchRow[]>`
     SELECT
       c."id",
@@ -192,6 +227,12 @@ export async function searchAttachments(
   return mapRows(rows);
 }
 
+/**
+ * Runs deleteAttachmentChunks.
+ *
+ * @param attachmentId - Describes the attachmentId input.
+ * @returns Returns the function result.
+ */
 export async function deleteAttachmentChunks(attachmentId: string): Promise<void> {
   await prisma.$executeRaw`
     DELETE FROM "AttachmentChunk" WHERE "attachmentId" = ${attachmentId}
@@ -205,6 +246,11 @@ function generateChunkId(): string {
   return `ck${timestamp}${random}`;
 }
 
+/**
+ * Runs __resetAttachmentRagCapabilitiesForTests.
+ *
+ * @returns Returns the function result.
+ */
 export function __resetAttachmentRagCapabilitiesForTests(): void {
   embeddingColumnCheckDone = false;
   embeddingColumnAvailable = false;

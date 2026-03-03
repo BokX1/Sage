@@ -1,7 +1,17 @@
+/**
+ * @module src/core/attachments/ingestedAttachmentRepo
+ * @description Defines the ingested attachment repo module.
+ */
 import { prisma } from '../db/prisma-client';
 
+/**
+ * Represents the IngestedAttachmentStatus type.
+ */
 export type IngestedAttachmentStatus = 'ok' | 'truncated' | 'too_large' | 'error' | 'skip';
 
+/**
+ * Represents the IngestedAttachmentRecord contract.
+ */
 export interface IngestedAttachmentRecord {
   id: string;
   guildId: string | null;
@@ -46,6 +56,15 @@ function toIntOrNull(value: number | null | undefined): number | null {
   return Math.max(0, Math.floor(value));
 }
 
+/** Clamp a numeric input into a bounded integer range with fallback on invalid values. */
+function toBoundedInt(value: number, fallback: number, min: number, max: number): number {
+  if (!Number.isFinite(value)) {
+    return fallback;
+  }
+  const normalized = Math.floor(value);
+  return Math.max(min, Math.min(max, normalized));
+}
+
 function normalizeText(value: string | null | undefined): string | null {
   if (typeof value !== 'string') return null;
   const normalized = value.replace(/\r\n/g, '\n').trimEnd();
@@ -74,6 +93,12 @@ function mapRow(row: Record<string, unknown>): IngestedAttachmentRecord {
   };
 }
 
+/**
+ * Runs upsertIngestedAttachment.
+ *
+ * @param params - Describes the params input.
+ * @returns Returns the function result.
+ */
 export async function upsertIngestedAttachment(params: {
   guildId: string | null;
   channelId: string;
@@ -95,7 +120,12 @@ export async function upsertIngestedAttachment(params: {
     guildId: params.guildId,
     channelId: params.channelId,
     messageId: params.messageId,
-    attachmentIndex: Math.max(0, Math.floor(params.attachmentIndex)),
+    attachmentIndex: toBoundedInt(
+      params.attachmentIndex,
+      0,
+      0,
+      Number.MAX_SAFE_INTEGER,
+    ),
     filename: params.filename.trim(),
     sourceUrl: params.sourceUrl,
     contentType: params.contentType ?? null,
@@ -122,13 +152,19 @@ export async function upsertIngestedAttachment(params: {
   return mapRow(row);
 }
 
+/**
+ * Runs listRecentIngestedAttachments.
+ *
+ * @param params - Describes the params input.
+ * @returns Returns the function result.
+ */
 export async function listRecentIngestedAttachments(params: {
   guildId: string | null;
   channelId: string;
   limit: number;
 }): Promise<IngestedAttachmentRecord[]> {
   const ingestedAttachment = getIngestedAttachmentClient();
-  const take = Math.max(1, Math.min(50, Math.floor(params.limit)));
+  const take = toBoundedInt(params.limit, 1, 1, 50);
   const rows = await ingestedAttachment.findMany({
     where: {
       guildId: params.guildId,
@@ -163,6 +199,12 @@ function rankLookupHit(params: {
   return score;
 }
 
+/**
+ * Runs findIngestedAttachmentsForLookup.
+ *
+ * @param params - Describes the params input.
+ * @returns Returns the function result.
+ */
 export async function findIngestedAttachmentsForLookup(params: {
   guildId: string | null;
   channelId: string;
@@ -172,7 +214,7 @@ export async function findIngestedAttachmentsForLookup(params: {
   limit: number;
 }): Promise<IngestedAttachmentRecord[]> {
   const ingestedAttachment = getIngestedAttachmentClient();
-  const requestedLimit = Math.max(1, Math.min(10, Math.floor(params.limit)));
+  const requestedLimit = toBoundedInt(params.limit, 1, 1, 10);
   const query = params.query?.trim();
   const filename = params.filename?.trim();
 
@@ -226,6 +268,12 @@ export async function findIngestedAttachmentsForLookup(params: {
   return mapped.slice(0, requestedLimit);
 }
 
+/**
+ * Runs findIngestedAttachmentsForLookupInGuild.
+ *
+ * @param params - Describes the params input.
+ * @returns Returns the function result.
+ */
 export async function findIngestedAttachmentsForLookupInGuild(params: {
   guildId: string;
   messageId?: string;
@@ -234,7 +282,7 @@ export async function findIngestedAttachmentsForLookupInGuild(params: {
   limit: number;
 }): Promise<IngestedAttachmentRecord[]> {
   const ingestedAttachment = getIngestedAttachmentClient();
-  const requestedLimit = Math.max(1, Math.min(50, Math.floor(params.limit)));
+  const requestedLimit = toBoundedInt(params.limit, 1, 1, 50);
   const query = params.query?.trim();
   const filename = params.filename?.trim();
 
@@ -287,6 +335,12 @@ export async function findIngestedAttachmentsForLookupInGuild(params: {
   return mapped.slice(0, requestedLimit);
 }
 
+/**
+ * Runs listIngestedAttachmentsByIds.
+ *
+ * @param ids - Describes the ids input.
+ * @returns Returns the function result.
+ */
 export async function listIngestedAttachmentsByIds(ids: string[]): Promise<IngestedAttachmentRecord[]> {
   const uniqueIds = Array.from(new Set(ids.map((id) => id.trim()).filter((id) => id.length > 0)));
   if (uniqueIds.length === 0) return [];

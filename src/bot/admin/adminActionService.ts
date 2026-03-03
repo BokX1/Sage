@@ -1,3 +1,7 @@
+/**
+ * @module src/bot/admin/adminActionService
+ * @description Defines the admin action service module.
+ */
 import crypto from 'crypto';
 import {
   ActionRowBuilder,
@@ -56,12 +60,18 @@ const sendPollsFlag = (
 
 type PendingDecision = 'approve' | 'reject';
 
+/**
+ * Declares exported bindings: serverMemoryUpdateRequestSchema.
+ */
 export const serverMemoryUpdateRequestSchema = z.object({
   operation: z.enum(['set', 'append', 'clear']),
   text: z.string().trim().max(MAX_SERVER_MEMORY_CHARS).optional(),
   reason: z.string().trim().min(3).max(500),
 });
 
+/**
+ * Represents the ServerMemoryUpdateRequest type.
+ */
 export type ServerMemoryUpdateRequest = z.infer<typeof serverMemoryUpdateRequestSchema>;
 
 const createPollRequestSchema = z.object({
@@ -191,6 +201,9 @@ const unbanMemberRequestSchema = z.object({
   reason: z.string().trim().min(3).max(500),
 });
 
+/**
+ * Declares exported bindings: discordInteractionRequestSchema.
+ */
 export const discordInteractionRequestSchema = z.discriminatedUnion('action', [
   createPollRequestSchema,
   createThreadRequestSchema,
@@ -199,8 +212,14 @@ export const discordInteractionRequestSchema = z.discriminatedUnion('action', [
   sendMessageRequestSchema,
 ]);
 
+/**
+ * Represents the DiscordInteractionRequest type.
+ */
 export type DiscordInteractionRequest = z.infer<typeof discordInteractionRequestSchema>;
 
+/**
+ * Declares exported bindings: discordModerationActionRequestSchema.
+ */
 export const discordModerationActionRequestSchema = z.discriminatedUnion('action', [
   removeUserReactionRequestSchema,
   clearReactionsRequestSchema,
@@ -211,6 +230,9 @@ export const discordModerationActionRequestSchema = z.discriminatedUnion('action
   unbanMemberRequestSchema,
 ]);
 
+/**
+ * Represents the DiscordModerationActionRequest type.
+ */
 export type DiscordModerationActionRequest = z.infer<typeof discordModerationActionRequestSchema>;
 type ImmediateDiscordAction = DiscordInteractionRequest;
 type QueuedDiscordAction = DiscordModerationActionRequest;
@@ -226,6 +248,9 @@ type DiscordActionPendingPayload = {
   action: QueuedDiscordAction;
 };
 
+/**
+ * Represents the DiscordRestWriteRequest type.
+ */
 export type DiscordRestWriteRequest = {
   method: DiscordRestMethod;
   path: string;
@@ -574,6 +599,12 @@ function buildDiscordActionSummary(action: QueuedDiscordAction): string[] {
   }
 }
 
+/**
+ * Runs buildDiscordRestWriteSummary.
+ *
+ * @param request - Describes the request input.
+ * @returns Returns the function result.
+ */
 export function buildDiscordRestWriteSummary(request: DiscordRestWriteRequest): string[] {
   const lines: string[] = [
     'Type: discord_rest_write',
@@ -1415,6 +1446,12 @@ async function executePendingAction(params: {
   throw new Error(`Unknown pending action kind: ${params.action.kind}`);
 }
 
+/**
+ * Runs lookupServerMemoryForTool.
+ *
+ * @param params - Describes the params input.
+ * @returns Returns the function result.
+ */
 export async function lookupServerMemoryForTool(params: {
   guildId: string;
   maxChars?: number;
@@ -1441,6 +1478,12 @@ export async function lookupServerMemoryForTool(params: {
   };
 }
 
+/**
+ * Runs requestServerMemoryUpdateForTool.
+ *
+ * @param params - Describes the params input.
+ * @returns Returns the function result.
+ */
 export async function requestServerMemoryUpdateForTool(params: {
   guildId: string;
   channelId: string;
@@ -1534,6 +1577,12 @@ export async function requestServerMemoryUpdateForTool(params: {
   };
 }
 
+/**
+ * Runs requestDiscordAdminActionForTool.
+ *
+ * @param params - Describes the params input.
+ * @returns Returns the function result.
+ */
 export async function requestDiscordAdminActionForTool(params: {
   guildId: string;
   channelId: string;
@@ -1581,6 +1630,12 @@ export async function requestDiscordAdminActionForTool(params: {
   };
 }
 
+/**
+ * Runs requestDiscordRestWriteForTool.
+ *
+ * @param params - Describes the params input.
+ * @returns Returns the function result.
+ */
 export async function requestDiscordRestWriteForTool(params: {
   guildId: string;
   channelId: string;
@@ -1636,6 +1691,12 @@ export async function requestDiscordRestWriteForTool(params: {
   };
 }
 
+/**
+ * Runs requestDiscordInteractionForTool.
+ *
+ * @param params - Describes the params input.
+ * @returns Returns the function result.
+ */
 export async function requestDiscordInteractionForTool(params: {
   guildId: string;
   channelId: string;
@@ -1684,6 +1745,12 @@ function buildResolvedMessageContent(params: {
   ].join('\n');
 }
 
+/**
+ * Runs handleAdminActionButtonInteraction.
+ *
+ * @param interaction - Describes the interaction input.
+ * @returns Returns the function result.
+ */
 export async function handleAdminActionButtonInteraction(
   interaction: ButtonInteraction,
 ): Promise<boolean> {

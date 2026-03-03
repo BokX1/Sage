@@ -1,8 +1,15 @@
+/**
+ * @module src/core/agentRuntime/toolGrounding
+ * @description Defines the tool grounding module.
+ */
 import { ToolResult } from './toolCallExecution';
 
 const BACKTICK_PATH_PATTERN = /`([^`\r\n]+)`/g;
 const PLAIN_PATH_PATTERN = /\b(?:[A-Za-z0-9_.-]+\/)+[A-Za-z0-9_.-]+\.[A-Za-z0-9._-]{1,15}\b/g;
 
+/**
+ * Represents the GitHubGroundingEnforcementResult contract.
+ */
 export interface GitHubGroundingEnforcementResult {
   replyText: string;
   modified: boolean;
@@ -118,6 +125,13 @@ function buildFallbackReply(ungroundedPaths: string[], successfulPaths: string[]
   return lines.join('\n');
 }
 
+/**
+ * Runs enforceGitHubFileGrounding.
+ *
+ * @param replyText - Describes the replyText input.
+ * @param toolResults - Describes the toolResults input.
+ * @returns Returns the function result.
+ */
 export function enforceGitHubFileGrounding(
   replyText: string,
   toolResults: ToolResult[],

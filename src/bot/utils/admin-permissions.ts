@@ -1,7 +1,17 @@
+/**
+ * @module src/bot/utils/admin-permissions
+ * @description Defines the admin permissions module.
+ */
 import { PermissionsBitField } from 'discord.js';
 
 type PermissionSource = PermissionsBitField | string | bigint | null | undefined;
 
+/**
+ * Runs hasAdminPermissions.
+ *
+ * @param source - Describes the source input.
+ * @returns Returns the function result.
+ */
 export function hasAdminPermissions(source: PermissionSource): boolean {
   if (source === null || source === undefined) {
     return false;
@@ -18,6 +28,12 @@ export function hasAdminPermissions(source: PermissionSource): boolean {
   );
 }
 
+/**
+ * Runs isAdminFromMember.
+ *
+ * @param member - Describes the member input.
+ * @returns Returns the function result.
+ */
 export function isAdminFromMember(member: unknown): boolean {
   if (!member || typeof member !== 'object' || !('permissions' in member)) {
     return false;

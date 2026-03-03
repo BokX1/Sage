@@ -1,3 +1,7 @@
+/**
+ * @module tests/unit/agentRuntime/agentTracePreflight.test
+ * @description Defines the agent trace preflight.test module.
+ */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const queryRawUnsafeMock = vi.hoisted(() => vi.fn());

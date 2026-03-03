@@ -1,3 +1,7 @@
+/**
+ * @module src/core/awareness/channelRingBuffer
+ * @description Defines the channel ring buffer module.
+ */
 import { config } from '../../config';
 import { ChannelMessage } from './awareness-types';
 
@@ -10,20 +14,24 @@ function makeChannelKey(guildId: string | null, channelId: string): ChannelKey {
 }
 
 function pruneByTtl(messages: ChannelMessage[], cutoffMs: number): number {
-  let removed = 0;
-  while (messages.length > 0 && messages[0].timestamp.getTime() < cutoffMs) {
-    messages.shift();
-    removed += 1;
+  let firstRetainedIndex = 0;
+  while (
+    firstRetainedIndex < messages.length &&
+    messages[firstRetainedIndex].timestamp.getTime() < cutoffMs
+  ) {
+    firstRetainedIndex += 1;
   }
-  return removed;
+  if (firstRetainedIndex > 0) {
+    messages.splice(0, firstRetainedIndex);
+  }
+  return firstRetainedIndex;
 }
 
 function enforceMax(messages: ChannelMessage[], maxMessages: number): number {
-  let removed = 0;
-  while (messages.length > maxMessages) {
-    messages.shift();
-    removed += 1;
-  }
+  const normalizedMax = Number.isFinite(maxMessages) ? Math.max(0, Math.floor(maxMessages)) : 0;
+  const removed = messages.length - normalizedMax;
+  if (removed <= 0) return 0;
+  messages.splice(0, removed);
   return removed;
 }
 
@@ -75,21 +83,30 @@ export function getRecentMessages(params: {
   sinceMs?: number;
 }): ChannelMessage[] {
   const { guildId, channelId, limit, sinceMs } = params;
+  const normalizedLimit = Number.isFinite(limit) ? Math.max(0, Math.floor(limit)) : 0;
+  if (normalizedLimit === 0) return [];
+
   const key = makeChannelKey(guildId, channelId);
   const buffer = channelBuffers.get(key) ?? [];
 
   const cutoffMs = Date.now() - config.RAW_MESSAGE_TTL_DAYS * 24 * 60 * 60 * 1000;
   pruneByTtl(buffer, cutoffMs);
+  if (buffer.length === 0) {
+    channelBuffers.delete(key);
+    return [];
+  }
 
-  const filtered = sinceMs
-    ? buffer.filter((message) => message.timestamp.getTime() >= sinceMs)
+  const hasSinceMs = Number.isFinite(sinceMs);
+  const minimumTimestampMs = hasSinceMs ? Math.floor(sinceMs as number) : null;
+  const filtered = hasSinceMs
+    ? buffer.filter((message) => message.timestamp.getTime() >= (minimumTimestampMs as number))
     : buffer;
 
-  if (filtered.length <= limit) {
+  if (filtered.length <= normalizedLimit) {
     return [...filtered];
   }
 
-  return filtered.slice(filtered.length - limit);
+  return filtered.slice(filtered.length - normalizedLimit);
 }
 
 /**
@@ -151,12 +168,10 @@ export function trimChannelMessages(params: {
  */
 export function deleteOlderThan(cutoffMs: number): number {
   let deleted = 0;
-  for (const [key, buffer] of Array.from(channelBuffers.entries())) {
+  for (const [key, buffer] of channelBuffers.entries()) {
     deleted += pruneByTtl(buffer, cutoffMs);
     if (buffer.length === 0) {
       channelBuffers.delete(key);
-    } else {
-      channelBuffers.set(key, buffer);
     }
   }
   return deleted;

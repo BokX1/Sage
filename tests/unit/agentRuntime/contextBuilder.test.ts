@@ -1,3 +1,7 @@
+/**
+ * @module tests/unit/agentRuntime/contextBuilder.test
+ * @description Defines the context builder.test module.
+ */
 import { describe, it, expect } from 'vitest';
 import { buildContextMessages } from '@/core/agentRuntime/contextBuilder';
 

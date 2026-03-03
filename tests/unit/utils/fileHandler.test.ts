@@ -1,3 +1,7 @@
+/**
+ * @module tests/unit/utils/fileHandler.test
+ * @description Defines the file handler.test module.
+ */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { fetchAttachmentText } from '../../../src/core/utils/file-handler';
 
@@ -207,6 +211,23 @@ describe('fetchAttachmentText', () => {
     });
 
     expect(result.kind).toBe('ok');
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns a timeout-specific error when fetch is aborted by deadline', async () => {
+    const mockFetch = createDelayedAbortAwareFetchMock(1_200);
+    vi.stubGlobal('fetch', mockFetch);
+
+    const result = await fetchAttachmentText('https://cdn.discordapp.com/file.txt', 'file.txt', {
+      timeoutMs: 1_000,
+      maxBytes: 4096,
+      tikaBaseUrl: '',
+    });
+
+    expect(result.kind).toBe('error');
+    if (result.kind === 'error') {
+      expect(result.message).toContain('timed out');
+    }
     expect(mockFetch).toHaveBeenCalledTimes(1);
   });
 });

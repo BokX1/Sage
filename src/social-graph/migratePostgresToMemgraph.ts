@@ -1,9 +1,14 @@
+/**
+ * @module src/social-graph/migratePostgresToMemgraph
+ * @description Defines the migrate postgres to memgraph module.
+ */
 import { logger } from '../core/utils/logger';
 import { prisma } from '../core/db/prisma-client';
 import {
   ensureKafkaProducerAvailable,
   publishInteractionStrict,
   publishVoiceSessionStrict,
+  shutdownKafkaProducer,
   type InteractionType,
 } from './kafkaProducer';
 
@@ -153,6 +158,11 @@ async function publishInteractionCopies(params: {
   return sent;
 }
 
+/**
+ * Runs migratePostgresToMemgraph.
+ *
+ * @returns Returns the function result.
+ */
 export async function migratePostgresToMemgraph(): Promise<void> {
   const startMs = Date.now();
   logger.info('Starting Postgres → Memgraph migration');
@@ -170,116 +180,123 @@ export async function migratePostgresToMemgraph(): Promise<void> {
     return;
   }
 
-  await ensureKafkaProducerAvailable();
-
   let publishedCount = 0;
   let errorCount = 0;
+  try {
+    await ensureKafkaProducerAvailable();
 
-  for (const edge of edges) {
+    for (const edge of edges) {
+      try {
+        const features = edge.featuresJson;
+        const fallbackTimestamp = edge.updatedAt.toISOString();
+        const seed = `${edge.guildId}:${edge.userA}:${edge.userB}`;
+
+        const mentionCount = toNonNegativeInt(features.mentions?.count);
+        if (mentionCount > 0) {
+          const mentionTimestamp = toIsoTimestamp(features.mentions?.lastAt, fallbackTimestamp);
+          const mentionSplit = splitUndirectedCount(mentionCount, `${seed}:mentions`);
+          // Preserve guild isolation in Memgraph channel topology during replay.
+          const channelId = getMigrationChannelId(edge.guildId);
+          publishedCount += await publishInteractionCopies({
+            count: mentionSplit.forward,
+            type: 'MENTION',
+            guildId: edge.guildId,
+            sourceUserId: edge.userA,
+            targetUserId: edge.userB,
+            channelId,
+            timestamp: mentionTimestamp,
+          });
+          publishedCount += await publishInteractionCopies({
+            count: mentionSplit.reverse,
+            type: 'MENTION',
+            guildId: edge.guildId,
+            sourceUserId: edge.userB,
+            targetUserId: edge.userA,
+            channelId,
+            timestamp: mentionTimestamp,
+          });
+        }
+
+        const replyCount = toNonNegativeInt(features.replies?.count);
+        if (replyCount > 0) {
+          const replyTimestamp = toIsoTimestamp(features.replies?.lastAt, fallbackTimestamp);
+          const { forward: forwardReplies, reverse: reverseReplies } = splitReplyDirection({
+            totalCount: replyCount,
+            replies: features.replies,
+            seed,
+          });
+          // Preserve guild isolation in Memgraph channel topology during replay.
+          const channelId = getMigrationChannelId(edge.guildId);
+
+          publishedCount += await publishInteractionCopies({
+            count: forwardReplies,
+            type: 'REPLY',
+            guildId: edge.guildId,
+            sourceUserId: edge.userA,
+            targetUserId: edge.userB,
+            channelId,
+            timestamp: replyTimestamp,
+          });
+
+          publishedCount += await publishInteractionCopies({
+            count: reverseReplies,
+            type: 'REPLY',
+            guildId: edge.guildId,
+            sourceUserId: edge.userB,
+            targetUserId: edge.userA,
+            channelId,
+            timestamp: replyTimestamp,
+          });
+        }
+
+        const voiceOverlapMs = toNonNegativeInt(features.voice?.overlapMs);
+        if (voiceOverlapMs > 0) {
+          const voiceTimestamp = toIsoTimestamp(features.voice?.lastAt, fallbackTimestamp);
+          const voiceSplit = splitUndirectedCount(voiceOverlapMs, `${seed}:voice`);
+
+          if (voiceSplit.forward > 0) {
+            await publishVoiceSessionStrict({
+              guildId: edge.guildId,
+              userA: edge.userA,
+              userB: edge.userB,
+              durationMs: voiceSplit.forward,
+              timestamp: voiceTimestamp,
+            });
+            publishedCount += 1;
+          }
+
+          if (voiceSplit.reverse > 0) {
+            await publishVoiceSessionStrict({
+              guildId: edge.guildId,
+              userA: edge.userB,
+              userB: edge.userA,
+              durationMs: voiceSplit.reverse,
+              timestamp: voiceTimestamp,
+            });
+            publishedCount += 1;
+          }
+        }
+      } catch (error) {
+        errorCount++;
+        logger.warn(
+          { error, userA: edge.userA, userB: edge.userB },
+          'Failed to migrate edge (non-fatal)',
+        );
+      }
+    }
+
+    const elapsedMs = Date.now() - startMs;
+    logger.info(
+      { elapsedMs, edgeCount: edges.length, publishedCount, errorCount },
+      'Postgres → Memgraph migration completed',
+    );
+  } finally {
     try {
-      const features = edge.featuresJson;
-      const fallbackTimestamp = edge.updatedAt.toISOString();
-      const seed = `${edge.guildId}:${edge.userA}:${edge.userB}`;
-
-      const mentionCount = toNonNegativeInt(features.mentions?.count);
-      if (mentionCount > 0) {
-        const mentionTimestamp = toIsoTimestamp(features.mentions?.lastAt, fallbackTimestamp);
-        const mentionSplit = splitUndirectedCount(mentionCount, `${seed}:mentions`);
-        // Preserve guild isolation in Memgraph channel topology during replay.
-        const channelId = getMigrationChannelId(edge.guildId);
-        publishedCount += await publishInteractionCopies({
-          count: mentionSplit.forward,
-          type: 'MENTION',
-          guildId: edge.guildId,
-          sourceUserId: edge.userA,
-          targetUserId: edge.userB,
-          channelId,
-          timestamp: mentionTimestamp,
-        });
-        publishedCount += await publishInteractionCopies({
-          count: mentionSplit.reverse,
-          type: 'MENTION',
-          guildId: edge.guildId,
-          sourceUserId: edge.userB,
-          targetUserId: edge.userA,
-          channelId,
-          timestamp: mentionTimestamp,
-        });
-      }
-
-      const replyCount = toNonNegativeInt(features.replies?.count);
-      if (replyCount > 0) {
-        const replyTimestamp = toIsoTimestamp(features.replies?.lastAt, fallbackTimestamp);
-        const { forward: forwardReplies, reverse: reverseReplies } = splitReplyDirection({
-          totalCount: replyCount,
-          replies: features.replies,
-          seed,
-        });
-        // Preserve guild isolation in Memgraph channel topology during replay.
-        const channelId = getMigrationChannelId(edge.guildId);
-
-        publishedCount += await publishInteractionCopies({
-          count: forwardReplies,
-          type: 'REPLY',
-          guildId: edge.guildId,
-          sourceUserId: edge.userA,
-          targetUserId: edge.userB,
-          channelId,
-          timestamp: replyTimestamp,
-        });
-
-        publishedCount += await publishInteractionCopies({
-          count: reverseReplies,
-          type: 'REPLY',
-          guildId: edge.guildId,
-          sourceUserId: edge.userB,
-          targetUserId: edge.userA,
-          channelId,
-          timestamp: replyTimestamp,
-        });
-      }
-
-      const voiceOverlapMs = toNonNegativeInt(features.voice?.overlapMs);
-      if (voiceOverlapMs > 0) {
-        const voiceTimestamp = toIsoTimestamp(features.voice?.lastAt, fallbackTimestamp);
-        const voiceSplit = splitUndirectedCount(voiceOverlapMs, `${seed}:voice`);
-
-        if (voiceSplit.forward > 0) {
-          await publishVoiceSessionStrict({
-            guildId: edge.guildId,
-            userA: edge.userA,
-            userB: edge.userB,
-            durationMs: voiceSplit.forward,
-            timestamp: voiceTimestamp,
-          });
-          publishedCount += 1;
-        }
-
-        if (voiceSplit.reverse > 0) {
-          await publishVoiceSessionStrict({
-            guildId: edge.guildId,
-            userA: edge.userB,
-            userB: edge.userA,
-            durationMs: voiceSplit.reverse,
-            timestamp: voiceTimestamp,
-          });
-          publishedCount += 1;
-        }
-      }
+      await shutdownKafkaProducer();
     } catch (error) {
-      errorCount++;
-      logger.warn(
-        { error, userA: edge.userA, userB: edge.userB },
-        'Failed to migrate edge (non-fatal)',
-      );
+      logger.warn({ error }, 'Failed to shutdown Kafka producer after migration');
     }
   }
-
-  const elapsedMs = Date.now() - startMs;
-  logger.info(
-    { elapsedMs, edgeCount: edges.length, publishedCount, errorCount },
-    'Postgres → Memgraph migration completed',
-  );
 }
 
 if (require.main === module) {

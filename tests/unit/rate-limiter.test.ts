@@ -1,3 +1,7 @@
+/**
+ * @module tests/unit/rate-limiter.test
+ * @description Defines the rate limiter.test module.
+ */
 import { describe, it, expect } from 'vitest';
 import { isRateLimited } from '../../src/core/rate-limiter';
 import { config } from '../../src/config';

@@ -1,3 +1,7 @@
+/**
+ * @module src/bot/handlers/attachment-parser
+ * @description Defines the attachment parser module.
+ */
 import { Message } from 'discord.js';
 import { LLMMessageContent } from '../../core/llm/llm-types';
 import { estimateTokens } from '../../core/agentRuntime/tokenEstimate';
@@ -18,6 +22,12 @@ const IMAGE_EXTENSIONS = new Set([
 const ATTACHMENT_CONTEXT_NOTE =
   '(System Note: The user attached the file above. Analyze it based on their request.)';
 
+/**
+ * Runs isImageAttachment.
+ *
+ * @param attachment - Describes the attachment input.
+ * @returns Returns the function result.
+ */
 export function isImageAttachment(attachment?: {
   contentType?: string | null;
   name?: string | null;
@@ -34,6 +44,12 @@ export function isImageAttachment(attachment?: {
   return extension ? IMAGE_EXTENSIONS.has(extension) : false;
 }
 
+/**
+ * Runs getMessageAttachments.
+ *
+ * @param message - Describes the message input.
+ * @returns Returns the function result.
+ */
 export function getMessageAttachments(message: Message) {
   const attachments = message.attachments;
   if (!attachments) {
@@ -49,14 +65,33 @@ export function getMessageAttachments(message: Message) {
   return [];
 }
 
+/**
+ * Runs getImageAttachment.
+ *
+ * @param message - Describes the message input.
+ * @returns Returns the function result.
+ */
 export function getImageAttachment(message: Message) {
   return getMessageAttachments(message).find((attachment) => isImageAttachment(attachment));
 }
 
+/**
+ * Runs getNonImageAttachments.
+ *
+ * @param message - Describes the message input.
+ * @returns Returns the function result.
+ */
 export function getNonImageAttachments(message: Message) {
   return getMessageAttachments(message).filter((attachment) => !isImageAttachment(attachment));
 }
 
+/**
+ * Runs buildMessageContent.
+ *
+ * @param message - Describes the message input.
+ * @param options - Describes the options input.
+ * @returns Returns the function result.
+ */
 export function buildMessageContent(
   message: Message,
   options?: { prefix?: string; allowEmpty?: boolean; textOverride?: string },
@@ -81,6 +116,13 @@ export function buildMessageContent(
   ];
 }
 
+/**
+ * Runs appendAttachmentToText.
+ *
+ * @param baseText - Describes the baseText input.
+ * @param attachmentBlock - Describes the attachmentBlock input.
+ * @returns Returns the function result.
+ */
 export function appendAttachmentToText(baseText: string, attachmentBlock: string | null): string {
   if (!attachmentBlock) {
     return baseText;
@@ -89,6 +131,13 @@ export function appendAttachmentToText(baseText: string, attachmentBlock: string
   return `${baseText}${separator}${attachmentBlock}`;
 }
 
+/**
+ * Runs appendAttachmentBlocksToText.
+ *
+ * @param baseText - Describes the baseText input.
+ * @param attachmentBlocks - Describes the attachmentBlocks input.
+ * @returns Returns the function result.
+ */
 export function appendAttachmentBlocksToText(baseText: string, attachmentBlocks: string[]): string {
   if (attachmentBlocks.length === 0) {
     return baseText;
@@ -96,6 +145,14 @@ export function appendAttachmentBlocksToText(baseText: string, attachmentBlocks:
   return appendAttachmentToText(baseText, attachmentBlocks.join('\n\n'));
 }
 
+/**
+ * Runs formatAttachmentBlock.
+ *
+ * @param filename - Describes the filename input.
+ * @param body - Describes the body input.
+ * @param extraNotes - Describes the extraNotes input.
+ * @returns Returns the function result.
+ */
 export function formatAttachmentBlock(
   filename: string,
   body: string,
@@ -111,16 +168,28 @@ export function formatAttachmentBlock(
   return lines.filter((line) => line !== undefined && line !== null).join('\n');
 }
 
+/**
+ * Runs deriveAttachmentBudget.
+ *
+ * @param params - Describes the params input.
+ * @returns Returns the function result.
+ */
 export function deriveAttachmentBudget(params: {
   baseText: string;
 }): { maxChars: number; maxBytes: number } {
+  const contextUserMaxTokens = Number.isFinite(appConfig.CONTEXT_USER_MAX_TOKENS)
+    ? Math.max(0, appConfig.CONTEXT_USER_MAX_TOKENS)
+    : 0;
+  const charsPerToken = Number.isFinite(appConfig.TOKEN_HEURISTIC_CHARS_PER_TOKEN)
+    ? Math.max(1, appConfig.TOKEN_HEURISTIC_CHARS_PER_TOKEN)
+    : 4;
   const availableTokens = Math.max(
     0,
-    appConfig.CONTEXT_USER_MAX_TOKENS - estimateTokens(params.baseText),
+    contextUserMaxTokens - estimateTokens(params.baseText),
   );
   const maxChars = Math.max(
     0,
-    Math.floor(availableTokens * appConfig.TOKEN_HEURISTIC_CHARS_PER_TOKEN),
+    Math.floor(availableTokens * charsPerToken),
   );
   const maxBytes = Math.max(0, Math.floor(maxChars * 4));
   return { maxChars, maxBytes };
@@ -135,6 +204,15 @@ function formatBytes(value?: number | null): string | null {
   return `${(value / (1024 * 1024)).toFixed(2)} MB`;
 }
 
+/**
+ * Runs buildAttachmentBlockFromResult.
+ *
+ * @param filename - Describes the filename input.
+ * @param result - Describes the result input.
+ * @param contentType - Describes the contentType input.
+ * @param options - Describes the options input.
+ * @returns Returns the function result.
+ */
 export function buildAttachmentBlockFromResult(
   filename: string,
   result: FetchAttachmentResult,

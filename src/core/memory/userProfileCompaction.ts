@@ -1,3 +1,7 @@
+/**
+ * @module src/core/memory/userProfileCompaction
+ * @description Defines the user profile compaction module.
+ */
 import { logger } from '../utils/logger';
 import { updateProfileSummary } from './profileUpdater';
 import { prisma } from '../db/prisma-client';
@@ -79,4 +83,7 @@ export async function compactUserProfile(params: {
     }
 }
 
+/**
+ * Declares exported bindings: USER_COMPACTION_INTERVAL_DAYS.
+ */
 export const USER_COMPACTION_INTERVAL_DAYS = COMPACTION_INTERVAL_DAYS;

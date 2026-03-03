@@ -1,3 +1,7 @@
+/**
+ * @module tests/unit/agentRuntime/toolCache.test
+ * @description Defines the tool cache.test module.
+ */
 import { describe, expect, it } from 'vitest';
 import { ToolResultCache, buildToolCacheKey } from '../../../src/core/agentRuntime/toolCache';
 
@@ -40,6 +44,14 @@ describe('toolCache', () => {
     expect(cache.get('c', {})?.result).toBe(3);
   });
 
+  it('falls back to a safe max entry limit when maxEntries is not finite', () => {
+    const cache = new ToolResultCache(Number.NaN, 60_000);
+    for (let index = 0; index <= 50; index += 1) {
+      cache.set(`tool-${index}`, {}, index);
+    }
+    expect(cache.get('tool-0', {})).toBeNull();
+  });
+
   it('expires entries older than the configured TTL', () => {
     const ttlMs = 5_000;
     const cache = new ToolResultCache(10, ttlMs);
@@ -54,6 +66,21 @@ describe('toolCache', () => {
     // Stub Date.now to simulate time passing beyond TTL
     const originalDateNow = Date.now;
     Date.now = () => now + ttlMs + 1;
+
+    try {
+      expect(cache.get('get_time', {})).toBeNull();
+    } finally {
+      Date.now = originalDateNow;
+    }
+  });
+
+  it('falls back to a safe TTL when ttlMs is not finite', () => {
+    const cache = new ToolResultCache(10, Number.NaN);
+    const now = Date.now();
+    cache.set('get_time', {}, { time: '12:00 PM' });
+
+    const originalDateNow = Date.now;
+    Date.now = () => now + 120_001;
 
     try {
       expect(cache.get('get_time', {})).toBeNull();

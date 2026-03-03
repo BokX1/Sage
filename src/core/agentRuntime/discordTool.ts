@@ -1,3 +1,7 @@
+/**
+ * @module src/core/agentRuntime/discordTool
+ * @description Defines the discord tool module.
+ */
 import { z } from 'zod';
 import type { ToolDefinition, ToolExecutionContext } from './toolRegistry';
 import {
@@ -408,6 +412,9 @@ const discordToolSchema = z.discriminatedUnion('action', [
   }),
 ]);
 
+/**
+ * Represents the DiscordToolArgs type.
+ */
 export type DiscordToolArgs = z.infer<typeof discordToolSchema>;
 
 function requireGuildContext(guildId?: string | null): string {
@@ -521,6 +528,9 @@ function isReadOnlyDiscordToolCall(args: unknown): boolean {
   }
 }
 
+/**
+ * Declares exported bindings: discordTool.
+ */
 export const discordTool: ToolDefinition<DiscordToolArgs> = {
   name: 'discord',
   description:

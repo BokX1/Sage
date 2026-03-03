@@ -1,9 +1,16 @@
+/**
+ * @module src/core/voice/voicePresenceIndex
+ * @description Defines the voice presence index module.
+ */
 export type VoicePresenceMember = {
   userId: string;
   displayName?: string;
   joinedAt: Date;
 };
 
+/**
+ * Represents the VoicePresenceChannel type.
+ */
 export type VoicePresenceChannel = {
   channelId: string;
   members: VoicePresenceMember[];
@@ -20,6 +27,12 @@ function getGuildMap(guildId: string): Map<string, Map<string, VoicePresenceMemb
   return guildMap;
 }
 
+/**
+ * Runs applyChange.
+ *
+ * @param params - Describes the params input.
+ * @returns Returns the function result.
+ */
 export function applyChange(params: {
   guildId: string;
   userId: string;
@@ -55,6 +68,12 @@ export function applyChange(params: {
   }
 }
 
+/**
+ * Runs getGuildPresence.
+ *
+ * @param guildId - Describes the guildId input.
+ * @returns Returns the function result.
+ */
 export function getGuildPresence(guildId: string): VoicePresenceChannel[] {
   const guildMap = guildPresence.get(guildId);
   if (!guildMap) return [];
@@ -65,6 +84,11 @@ export function getGuildPresence(guildId: string): VoicePresenceChannel[] {
   }));
 }
 
+/**
+ * Runs clearAll.
+ *
+ * @returns Returns the function result.
+ */
 export function clearAll(): void {
   guildPresence.clear();
 }

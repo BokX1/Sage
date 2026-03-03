@@ -1,3 +1,7 @@
+/**
+ * @module src/core/voice/voiceOverlapTracker
+ * @description Defines the voice overlap tracker module.
+ */
 import { logger } from '../../core/utils/logger';
 import { getGuildPresence } from './voicePresenceIndex';
 import { publishVoiceSession } from '../../social-graph/kafkaProducer';

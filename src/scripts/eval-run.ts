@@ -1,3 +1,7 @@
+/**
+ * @module src/scripts/eval-run
+ * @description Defines the eval run module.
+ */
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { config } from '../config';

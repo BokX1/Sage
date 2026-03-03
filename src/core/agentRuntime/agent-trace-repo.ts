@@ -1,6 +1,13 @@
+/**
+ * @module src/core/agentRuntime/agent-trace-repo
+ * @description Defines the agent trace repo module.
+ */
 import { Prisma } from '@prisma/client';
 import { prisma } from '../../core/db/prisma-client';
 
+/**
+ * Represents the TraceStartData contract.
+ */
 export interface TraceStartData {
   id: string;
   guildId: string | null;
@@ -14,6 +21,9 @@ export interface TraceStartData {
   budgetJson?: unknown;
 }
 
+/**
+ * Represents the TraceEndData contract.
+ */
 export interface TraceEndData {
   id: string;
   toolJson?: unknown;

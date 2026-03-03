@@ -1,3 +1,7 @@
+/**
+ * @module src/index
+ * @description Defines the index module.
+ */
 import { bootstrapApp } from './bootstrap';
 import { toErrorWithCode } from './shared/errors/app-error';
 import { logger } from './shared/logging/logger';

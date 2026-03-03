@@ -1,3 +1,7 @@
+/**
+ * @module tests/unit/agentRuntime/defaultTools.searchProfile.test
+ * @description Defines the default tools.search profile.test module.
+ */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const {

@@ -1,8 +1,22 @@
+/**
+ * @module src/core/llm/schema-call
+ * @description Executes schema-constrained LLM calls with one repair retry.
+ */
 import { ZodSchema, z } from 'zod';
 import { LLMClient, LLMChatMessage } from './llm-types';
 import { logger } from '../utils/logger';
 import { sanitizeJsonSchemaForProvider } from '../utils/json-schema';
 
+/**
+ * Call the LLM with a strict JSON schema and validate the parsed result.
+ *
+ * @param client - LLM client implementation.
+ * @param schema - Zod schema expected from the model output.
+ * @param messages - Conversation messages preceding the schema call.
+ * @param systemInstructions - Optional additional system guidance.
+ * @param apiKey - Optional API key override for the request.
+ * @returns Parsed and validated output, or `null` when both attempts fail.
+ */
 export async function callWithSchema<T>(
   client: LLMClient,
   schema: ZodSchema<T>,
@@ -44,6 +58,7 @@ Do not wrap the output in markdown blocks. Output raw JSON only.
       client,
       schema,
       messages,
+      systemPrompt,
       error instanceof Error ? error.message : String(error),
       apiKey,
     );
@@ -54,6 +69,7 @@ async function repairJsonOnce<T>(
   client: LLMClient,
   schema: ZodSchema<T>,
   originalMessages: LLMChatMessage[],
+  systemPrompt: string,
   errorMsg: string,
   apiKey?: string,
 ): Promise<T | null> {
@@ -62,6 +78,7 @@ async function repairJsonOnce<T>(
 
   // Let's append to the conversation.
   const repairMessages: LLMChatMessage[] = [
+    { role: 'system', content: systemPrompt },
     ...originalMessages,
     {
       role: 'user',
@@ -71,7 +88,7 @@ async function repairJsonOnce<T>(
 
   try {
     const response = await client.chat({
-      messages: repairMessages, // Note: Retrying without re-injecting system prompt if missing.
+      messages: repairMessages,
       responseFormat: 'json_object',
       apiKey,
     });

@@ -1,3 +1,7 @@
+/**
+ * @module src/core/voice/voiceSessionSummarizer
+ * @description Defines the voice session summarizer module.
+ */
 import { jsonrepair } from 'jsonrepair';
 import { config as appConfig } from '../../config';
 import { createLLMClient } from '../llm';
@@ -8,6 +12,9 @@ import { VoiceConversationSession } from './voiceConversationSessionStore';
 const MAX_INPUT_UTTERANCES = 1500;
 const MAX_INPUT_CHARS = 100_000;
 
+/**
+ * Represents the StructuredVoiceSummary contract.
+ */
 export interface StructuredVoiceSummary {
   summaryText: string;
   topics: string[];
@@ -99,6 +106,12 @@ function formatUtterances(session: VoiceConversationSession): string {
   return lines.join('\n');
 }
 
+/**
+ * Runs summarizeVoiceConversationSession.
+ *
+ * @param params - Describes the params input.
+ * @returns Returns the function result.
+ */
 export async function summarizeVoiceConversationSession(params: {
   session: VoiceConversationSession;
   apiKey?: string;

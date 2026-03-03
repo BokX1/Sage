@@ -1,8 +1,15 @@
+/**
+ * @module src/social-graph/socialGraphQuery
+ * @description Defines the social graph query module.
+ */
 import neo4j from 'neo4j-driver';
 import { logger } from '../core/utils/logger';
 import { getDunbarLabel } from './graphAnalyticsPulse';
 import { createMemgraphClient } from './memgraphClient';
 
+/**
+ * Represents the SocialGraphEdge type.
+ */
 export type SocialGraphEdge = {
   userId: string;
   outgoingCount: number;
@@ -22,6 +29,9 @@ export type SocialGraphEdge = {
   lastInteractionAt: string | null;
 };
 
+/**
+ * Represents the SocialGraphSummary type.
+ */
 export type SocialGraphSummary = {
   userPagerank: number;
   userCommunityId: number | null;
@@ -29,6 +39,9 @@ export type SocialGraphSummary = {
   edges: SocialGraphEdge[];
 };
 
+/**
+ * Represents the SocialGraphPairEdge type.
+ */
 export type SocialGraphPairEdge = {
   userA: string;
   userB: string;
@@ -39,18 +52,39 @@ export type SocialGraphPairEdge = {
   totalInteractions: number;
 };
 
-function toNumber(value: unknown): number {
-  if (value === null || value === undefined) return 0;
-  if (typeof value === 'number') return value;
-  if (typeof value === 'object' && value !== null && 'toNumber' in value) {
-    return (value as { toNumber: () => number }).toNumber();
+function parseFiniteNumber(value: unknown): number | null {
+  if (value === null || value === undefined) return null;
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : null;
   }
-  return Number(value) || 0;
+  if (typeof value === 'bigint') {
+    const bounded =
+      value > BigInt(Number.MAX_SAFE_INTEGER) ? BigInt(Number.MAX_SAFE_INTEGER) : value;
+    return Number(bounded);
+  }
+  if (
+    typeof value === 'object' &&
+    value !== null &&
+    'toNumber' in value &&
+    typeof (value as { toNumber?: unknown }).toNumber === 'function'
+  ) {
+    try {
+      const normalized = (value as { toNumber: () => number }).toNumber();
+      return Number.isFinite(normalized) ? normalized : null;
+    } catch {
+      return null;
+    }
+  }
+  const normalized = Number(value);
+  return Number.isFinite(normalized) ? normalized : null;
+}
+
+function toNumber(value: unknown): number {
+  return parseFiniteNumber(value) ?? 0;
 }
 
 function toNumberOrNull(value: unknown): number | null {
-  if (value === null || value === undefined) return null;
-  return toNumber(value);
+  return parseFiniteNumber(value);
 }
 
 function dunbarLayerFromRank(rank: number): number {
@@ -61,6 +95,14 @@ function dunbarLayerFromRank(rank: number): number {
   return 5;
 }
 
+/**
+ * Runs querySocialGraph.
+ *
+ * @param guildId - Describes the guildId input.
+ * @param userId - Describes the userId input.
+ * @param limit - Describes the limit input.
+ * @returns Returns the function result.
+ */
 export async function querySocialGraph(
   guildId: string,
   userId: string,
@@ -242,6 +284,13 @@ export async function querySocialGraph(
   }
 }
 
+/**
+ * Runs queryTopSocialGraphEdges.
+ *
+ * @param guildId - Describes the guildId input.
+ * @param limit - Describes the limit input.
+ * @returns Returns the function result.
+ */
 export async function queryTopSocialGraphEdges(
   guildId: string,
   limit = 15,

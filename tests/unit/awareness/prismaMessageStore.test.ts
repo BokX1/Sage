@@ -1,3 +1,7 @@
+/**
+ * @module tests/unit/awareness/prismaMessageStore.test
+ * @description Defines the prisma message store.test module.
+ */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { PrismaMessageStore } from '../../../src/core/awareness/prismaMessageStore';
 
@@ -128,6 +132,65 @@ describe('PrismaMessageStore', () => {
       orderBy: { timestamp: 'desc' },
       take: 10,
     });
+  });
+
+  it('applies sinceMs when it is zero', async () => {
+    mockFindMany.mockResolvedValue([]);
+
+    await store.fetchRecent({
+      guildId: 'guild-1',
+      channelId: 'channel-1',
+      limit: 10,
+      sinceMs: 0,
+    });
+
+    expect(mockFindMany).toHaveBeenCalledWith({
+      where: {
+        guildId: 'guild-1',
+        channelId: 'channel-1',
+        timestamp: { gte: new Date(0) },
+      },
+      orderBy: { timestamp: 'desc' },
+      take: 10,
+    });
+  });
+
+  it('returns empty results without querying when limit is non-positive', async () => {
+    const result = await store.fetchRecent({
+      guildId: 'guild-1',
+      channelId: 'channel-1',
+      limit: 0,
+    });
+
+    expect(result).toEqual([]);
+    expect(mockFindMany).not.toHaveBeenCalled();
+  });
+
+  it('coerces null mentionsBot values to false', async () => {
+    mockFindMany.mockResolvedValue([
+      {
+        messageId: 'msg-1',
+        guildId: 'guild-1',
+        channelId: 'channel-1',
+        authorId: 'user-1',
+        authorDisplayName: 'User One',
+        authorIsBot: false,
+        timestamp: new Date('2024-01-01T00:00:00.000Z'),
+        content: 'hello',
+        replyToMessageId: null,
+        mentionsUserIds: [],
+        mentionsBot: null,
+      },
+    ]);
+
+    const result = await store.fetchRecent({
+      guildId: 'guild-1',
+      channelId: 'channel-1',
+      limit: 5,
+    });
+
+    expect(result).toHaveLength(1);
+    expect(result[0].mentionsBot).toBe(false);
   });
 
   it('deletes messages older than cutoff', async () => {

@@ -1,9 +1,16 @@
+/**
+ * @module src/core/embeddings/channelMessageRAG
+ * @description Defines the channel message rag module.
+ */
 import { config } from '../../config';
 import { prisma } from '../db/prisma-client';
 import { logger } from '../utils/logger';
 import { limitConcurrency } from '../utils/concurrency';
 import { embedText } from './embeddingEngine';
 
+/**
+ * Represents the ChannelMessageSearchMode type.
+ */
 export type ChannelMessageSearchMode = 'semantic' | 'lexical' | 'regex';
 
 type MessageSearchRow = {
@@ -31,6 +38,9 @@ type HistoryStatsRow = {
   newest: Date | string | null;
 };
 
+/**
+ * Represents the ChannelMessageSearchResult contract.
+ */
 export interface ChannelMessageSearchResult {
   messageId: string;
   authorId: string;
@@ -41,6 +51,9 @@ export interface ChannelMessageSearchResult {
   score: number;
 }
 
+/**
+ * Represents the ChannelMessageHistoryStats contract.
+ */
 export interface ChannelMessageHistoryStats {
   storedCount: number;
   retentionCap: number;
@@ -54,6 +67,22 @@ let embeddingColumnAvailable = false;
 
 const embedLimiter = limitConcurrency(2);
 const inFlightEmbeddingJobs = new Map<string, Promise<void>>();
+
+/** Normalize positive integer limits with fallback on non-finite inputs. */
+function toPositiveInt(value: number, fallback: number): number {
+  if (!Number.isFinite(value)) {
+    return fallback;
+  }
+  return Math.max(1, Math.floor(value));
+}
+
+/** Normalize non-negative integer limits with fallback on non-finite inputs. */
+function toNonNegativeInt(value: number, fallback: number): number {
+  if (!Number.isFinite(value)) {
+    return fallback;
+  }
+  return Math.max(0, Math.floor(value));
+}
 
 function toIso(value: Date | string | null): string | null {
   if (!value) return null;
@@ -111,10 +140,21 @@ async function hasMessageEmbeddingColumn(): Promise<boolean> {
   return embeddingColumnAvailable;
 }
 
+/**
+ * Runs supportsChannelMessageSemanticSearch.
+ *
+ * @returns Returns the function result.
+ */
 export async function supportsChannelMessageSemanticSearch(): Promise<boolean> {
   return hasMessageEmbeddingColumn();
 }
 
+/**
+ * Runs queueChannelMessageEmbedding.
+ *
+ * @param params - Describes the params input.
+ * @returns Returns the function result.
+ */
 export function queueChannelMessageEmbedding(params: {
   messageId: string;
   guildId: string | null;
@@ -169,6 +209,12 @@ export function queueChannelMessageEmbedding(params: {
   void task;
 }
 
+/**
+ * Runs searchChannelMessagesLexical.
+ *
+ * @param params - Describes the params input.
+ * @returns Returns the function result.
+ */
 export async function searchChannelMessagesLexical(params: {
   guildId: string | null;
   channelId: string;
@@ -177,6 +223,7 @@ export async function searchChannelMessagesLexical(params: {
   since?: Date;
   until?: Date;
 }): Promise<ChannelMessageSearchResult[]> {
+  const limit = toPositiveInt(params.topK, 10);
   const rows = await prisma.$queryRaw<MessageSearchRow[]>`
     SELECT
       m."messageId",
@@ -196,11 +243,17 @@ export async function searchChannelMessagesLexical(params: {
       AND (${params.until ?? null}::timestamp IS NULL OR m."timestamp" <= ${params.until ?? null})
       AND to_tsvector('simple', m."content") @@ websearch_to_tsquery('simple', ${params.query})
     ORDER BY "score" DESC, m."timestamp" DESC
-    LIMIT ${params.topK}
+    LIMIT ${limit}
   `;
   return mapSearchRows(rows);
 }
 
+/**
+ * Runs searchChannelMessagesRegex.
+ *
+ * @param params - Describes the params input.
+ * @returns Returns the function result.
+ */
 export async function searchChannelMessagesRegex(params: {
   guildId: string | null;
   channelId: string;
@@ -209,6 +262,7 @@ export async function searchChannelMessagesRegex(params: {
   since?: Date;
   until?: Date;
 }): Promise<ChannelMessageSearchResult[]> {
+  const limit = toPositiveInt(params.topK, 10);
   const rows = await prisma.$queryRaw<MessageSearchRow[]>`
     SELECT
       m."messageId",
@@ -225,11 +279,17 @@ export async function searchChannelMessagesRegex(params: {
       AND (${params.until ?? null}::timestamp IS NULL OR m."timestamp" <= ${params.until ?? null})
       AND m."content" ~* ${params.pattern}
     ORDER BY m."timestamp" DESC
-    LIMIT ${params.topK}
+    LIMIT ${limit}
   `;
   return mapSearchRows(rows);
 }
 
+/**
+ * Runs searchChannelMessagesSemantic.
+ *
+ * @param params - Describes the params input.
+ * @returns Returns the function result.
+ */
 export async function searchChannelMessagesSemantic(params: {
   guildId: string | null;
   channelId: string;
@@ -242,6 +302,7 @@ export async function searchChannelMessagesSemantic(params: {
   if (!canEmbed) {
     return [];
   }
+  const limit = toPositiveInt(params.topK, 10);
 
   const queryVector = await embedText(params.query, 'query');
   const vectorString = `[${queryVector.join(',')}]`;
@@ -262,11 +323,17 @@ export async function searchChannelMessagesSemantic(params: {
       AND (${params.since ?? null}::timestamp IS NULL OR m."timestamp" >= ${params.since ?? null})
       AND (${params.until ?? null}::timestamp IS NULL OR m."timestamp" <= ${params.until ?? null})
     ORDER BY e."embedding" <=> ${vectorString}::vector
-    LIMIT ${params.topK}
+    LIMIT ${limit}
   `;
   return mapSearchRows(rows);
 }
 
+/**
+ * Runs getChannelMessageHistoryStats.
+ *
+ * @param params - Describes the params input.
+ * @returns Returns the function result.
+ */
 export async function getChannelMessageHistoryStats(params: {
   guildId: string | null;
   channelId: string;
@@ -283,7 +350,7 @@ export async function getChannelMessageHistoryStats(params: {
 
   const first = rows[0];
   const storedCount = parseCount(first?.count ?? 0);
-  const retentionCap = Math.max(1, config.MESSAGE_DB_MAX_MESSAGES_PER_CHANNEL);
+  const retentionCap = toPositiveInt(config.MESSAGE_DB_MAX_MESSAGES_PER_CHANNEL, 1);
 
   return {
     storedCount,
@@ -294,6 +361,12 @@ export async function getChannelMessageHistoryStats(params: {
   };
 }
 
+/**
+ * Runs getChannelMessageWindowById.
+ *
+ * @param params - Describes the params input.
+ * @returns Returns the function result.
+ */
 export async function getChannelMessageWindowById(params: {
   guildId: string | null;
   channelId: string;
@@ -301,6 +374,8 @@ export async function getChannelMessageWindowById(params: {
   before: number;
   after: number;
 }): Promise<ChannelMessageSearchResult[]> {
+  const beforeLimit = toNonNegativeInt(params.before, 0);
+  const afterLimit = toNonNegativeInt(params.after, 0);
   const targets = await prisma.$queryRaw<MessageBaseRow[]>`
     SELECT
       m."messageId",
@@ -320,7 +395,7 @@ export async function getChannelMessageWindowById(params: {
   if (!target) return [];
 
   const beforeRows =
-    params.before > 0
+    beforeLimit > 0
       ? await prisma.$queryRaw<MessageBaseRow[]>`
           SELECT
             m."messageId",
@@ -334,11 +409,11 @@ export async function getChannelMessageWindowById(params: {
             AND (${params.guildId}::text IS NULL OR m."guildId" = ${params.guildId})
             AND m."timestamp" < ${target.timestamp}
           ORDER BY m."timestamp" DESC
-          LIMIT ${params.before}
+          LIMIT ${beforeLimit}
         `
       : [];
   const afterRows =
-    params.after > 0
+    afterLimit > 0
       ? await prisma.$queryRaw<MessageBaseRow[]>`
           SELECT
             m."messageId",
@@ -352,7 +427,7 @@ export async function getChannelMessageWindowById(params: {
             AND (${params.guildId}::text IS NULL OR m."guildId" = ${params.guildId})
             AND m."timestamp" > ${target.timestamp}
           ORDER BY m."timestamp" ASC
-          LIMIT ${params.after}
+          LIMIT ${afterLimit}
         `
       : [];
 
@@ -368,6 +443,11 @@ export async function getChannelMessageWindowById(params: {
   }));
 }
 
+/**
+ * Runs __resetChannelMessageRagCapabilitiesForTests.
+ *
+ * @returns Returns the function result.
+ */
 export function __resetChannelMessageRagCapabilitiesForTests(): void {
   embeddingColumnCheckDone = false;
   embeddingColumnAvailable = false;

@@ -1,3 +1,7 @@
+/**
+ * @module src/shared/config/envSchema
+ * @description Defines the env schema module.
+ */
 import { z } from 'zod';
 import net from 'node:net';
 
@@ -190,6 +194,9 @@ const optionalHttpOrHttpsUrlSchema = z.string().trim().optional().refine((value)
   }
 }, 'Must be an HTTP(S) URL.');
 
+/**
+ * Declares exported bindings: testDefaults.
+ */
 export const testDefaults: Record<string, string> = {
   NODE_ENV: 'test',
   DISCORD_TOKEN: 'test-discord-token',
@@ -391,6 +398,9 @@ export const testDefaults: Record<string, string> = {
   SECRET_ENCRYPTION_KEY: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
 };
 
+/**
+ * Declares exported bindings: envSchema.
+ */
 export const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']),
   DISCORD_TOKEN: z.string().min(1),
@@ -615,8 +625,17 @@ export const envSchema = z.object({
   SECRET_ENCRYPTION_KEY: z.string().regex(/^[0-9a-fA-F]{64}$/),
 });
 
+/**
+ * Represents the EnvSchema type.
+ */
 export type EnvSchema = z.infer<typeof envSchema>;
 
+/**
+ * Runs mergeEnvWithTestDefaults.
+ *
+ * @param processEnv - Describes the processEnv input.
+ * @returns Returns the function result.
+ */
 export function mergeEnvWithTestDefaults(
   processEnv: NodeJS.ProcessEnv,
 ): Record<string, string | undefined> {
@@ -626,6 +645,12 @@ export function mergeEnvWithTestDefaults(
   };
 }
 
+/**
+ * Runs parseEnvSafe.
+ *
+ * @param processEnv - Describes the processEnv input.
+ * @returns Returns the function result.
+ */
 export function parseEnvSafe(processEnv: NodeJS.ProcessEnv) {
   return envSchema.safeParse(mergeEnvWithTestDefaults(processEnv));
 }

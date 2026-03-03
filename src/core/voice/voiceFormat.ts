@@ -1,3 +1,7 @@
+/**
+ * @module src/core/voice/voiceFormat
+ * @description Defines the voice format module.
+ */
 import { VoicePresenceChannel } from './voicePresenceIndex';
 
 function formatDuration(ms: number): string {
@@ -16,6 +20,12 @@ function formatDuration(ms: number): string {
   return `${seconds}s`;
 }
 
+/**
+ * Runs formatWhoInVoice.
+ *
+ * @param presence - Describes the presence input.
+ * @returns Returns the function result.
+ */
 export function formatWhoInVoice(presence: VoicePresenceChannel[]): string {
   if (presence.length === 0) {
     return 'No one is in voice right now.';
@@ -32,6 +42,12 @@ export function formatWhoInVoice(presence: VoicePresenceChannel[]): string {
   return lines.join('\n');
 }
 
+/**
+ * Runs formatHowLongToday.
+ *
+ * @param params - Describes the params input.
+ * @returns Returns the function result.
+ */
 export function formatHowLongToday(params: { userId: string; ms: number }): string {
   const duration = formatDuration(params.ms);
   return `<@${params.userId}> has been in voice for ~${duration} today (UTC).`;

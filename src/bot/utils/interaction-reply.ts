@@ -1,3 +1,7 @@
+/**
+ * @module src/bot/utils/interaction-reply
+ * @description Defines the interaction reply module.
+ */
 import type { ChatInputCommandInteraction } from 'discord.js';
 
 interface CommandReplyPayload {
@@ -5,6 +9,13 @@ interface CommandReplyPayload {
   ephemeral?: boolean;
 }
 
+/**
+ * Runs sendCommandReply.
+ *
+ * @param interaction - Describes the interaction input.
+ * @param payload - Describes the payload input.
+ * @returns Returns the function result.
+ */
 export async function sendCommandReply(
   interaction: ChatInputCommandInteraction,
   payload: CommandReplyPayload,

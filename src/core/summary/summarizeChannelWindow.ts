@@ -1,3 +1,7 @@
+/**
+ * @module src/core/summary/summarizeChannelWindow
+ * @description Defines the summarize channel window module.
+ */
 import { config as appConfig } from '../../config';
 import { createLLMClient } from '../llm';
 import { LLMClient, LLMRequest } from '../llm/llm-types';
@@ -8,6 +12,9 @@ import { jsonrepair } from 'jsonrepair';
 const MAX_INPUT_MESSAGES = 800;
 const MAX_INPUT_CHARS = 80_000;
 
+/**
+ * Represents the StructuredSummary contract.
+ */
 export interface StructuredSummary {
   windowStart: Date;
   windowEnd: Date;
@@ -267,6 +274,12 @@ function buildMessageLines(messages: ChannelMessage[]): string {
   return lines.join('\n');
 }
 
+/**
+ * Runs formatSummaryAsText.
+ *
+ * @param summary - Describes the summary input.
+ * @returns Returns the function result.
+ */
 export function formatSummaryAsText(summary: StructuredSummary): string {
   const parts: string[] = [summary.summaryText];
 
@@ -297,6 +310,12 @@ export function formatSummaryAsText(summary: StructuredSummary): string {
 
   return parts.join('\n\n');
 }
+/**
+ * Runs cleanJsonOutput.
+ *
+ * @param content - Describes the content input.
+ * @returns Returns the function result.
+ */
 export function cleanJsonOutput(content: string): string {
   let text = content;
   const codeBlockMatch = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/);

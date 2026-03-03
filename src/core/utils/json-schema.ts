@@ -1,3 +1,7 @@
+/**
+ * @module src/core/utils/json-schema
+ * @description Defines the json schema module.
+ */
 function sanitizeJsonSchemaValue(value: unknown): unknown {
   if (Array.isArray(value)) {
     return value.map(sanitizeJsonSchemaValue);

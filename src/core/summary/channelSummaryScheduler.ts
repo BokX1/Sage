@@ -1,3 +1,7 @@
+/**
+ * @module src/core/summary/channelSummaryScheduler
+ * @description Defines the channel summary scheduler module.
+ */
 import { config as appConfig } from '../../config';
 import { MessageStore, InMemoryMessageStore } from '../awareness/messageStore';
 import { PrismaMessageStore } from '../awareness/prismaMessageStore';
@@ -12,6 +16,9 @@ import {
 } from './summarizeChannelWindow';
 import { getGuildApiKey } from '../settings/guildSettingsRepo';
 
+/**
+ * Represents the DirtyChannelParams contract.
+ */
 export interface DirtyChannelParams {
   guildId: string | null;
   channelId: string;
@@ -33,6 +40,9 @@ type SummarizeChannelProfileFn = typeof summarizeChannelProfile;
 
 type NowFn = () => number;
 
+/**
+ * Defines the ChannelSummaryScheduler class.
+ */
 export class ChannelSummaryScheduler {
   private dirtyChannels = new Map<string, DirtyChannelState>();
   private summaryStore: ChannelSummaryStore;
@@ -320,6 +330,12 @@ function createDefaultMessageStore(): MessageStore {
   return new InMemoryMessageStore();
 }
 
+/**
+ * Runs initChannelSummaryScheduler.
+ *
+ * @param params - Describes the params input.
+ * @returns Returns the function result.
+ */
 export function initChannelSummaryScheduler(params?: {
   summaryStore?: ChannelSummaryStore;
   messageStore?: MessageStore;
@@ -347,10 +363,20 @@ export function initChannelSummaryScheduler(params?: {
   return schedulerInstance;
 }
 
+/**
+ * Runs getChannelSummaryScheduler.
+ *
+ * @returns Returns the function result.
+ */
 export function getChannelSummaryScheduler(): ChannelSummaryScheduler | null {
   return schedulerInstance;
 }
 
+/**
+ * Runs stopChannelSummaryScheduler.
+ *
+ * @returns Returns the function result.
+ */
 export function stopChannelSummaryScheduler(): void {
   if (schedulerTimer) {
     clearInterval(schedulerTimer);

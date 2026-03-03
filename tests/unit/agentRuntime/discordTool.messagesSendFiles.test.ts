@@ -1,3 +1,7 @@
+/**
+ * @module tests/unit/agentRuntime/discordTool.messagesSendFiles.test
+ * @description Defines the discord tool.messages send files.test module.
+ */
 import { describe, expect, it, vi } from 'vitest';
 import type { ToolExecutionContext } from '@/core/agentRuntime/toolRegistry';
 

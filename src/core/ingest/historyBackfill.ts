@@ -1,3 +1,7 @@
+/**
+ * @module src/core/ingest/historyBackfill
+ * @description Defines the history backfill module.
+ */
 import { TextChannel, Message } from 'discord.js';
 import { client } from '../../bot/client';
 import { logger } from '../utils/logger';
@@ -8,6 +12,20 @@ import { PrismaMessageStore } from '../awareness/prismaMessageStore';
 import { trimChannelMessages } from '../awareness/channelRingBuffer';
 
 const prismaMessageStore = new PrismaMessageStore();
+
+/** Normalize numeric limits to a positive integer with a safe fallback. */
+function toPositiveInt(value: number | undefined, fallback: number): number {
+  if (!Number.isFinite(value)) {
+    return fallback;
+  }
+  return Math.max(1, Math.floor(value as number));
+}
+
+/** Resolve persisted message retention cap from config with startup-limit fallback. */
+function resolveDbRetentionLimit(fallbackLimit: number): number {
+  const normalizedFallback = toPositiveInt(fallbackLimit, 1);
+  return toPositiveInt(appConfig.MESSAGE_DB_MAX_MESSAGES_PER_CHANNEL as number | undefined, normalizedFallback);
+}
 
 /**
  * Backfill historical messages for a channel.
@@ -53,10 +71,7 @@ export async function backfillChannelHistory(
     }
 
     if (appConfig.MESSAGE_DB_STORAGE_ENABLED) {
-      const dbRetentionLimit = Math.max(
-        1,
-        (appConfig.MESSAGE_DB_MAX_MESSAGES_PER_CHANNEL as number | undefined) ?? limit,
-      );
+      const dbRetentionLimit = resolveDbRetentionLimit(limit);
       const prunedDb = await prismaMessageStore.pruneChannelToLimit({
         guildId: channel.guildId,
         channelId: channel.id,

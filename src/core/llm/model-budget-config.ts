@@ -1,7 +1,14 @@
+/**
+ * @module src/core/llm/model-budget-config
+ * @description Defines the model budget config module.
+ */
 import { config } from '../../config';
 import { logger } from '../utils/logger';
 import { ModelLimits, TokenEstimateOptions } from './context-budgeter';
 
+/**
+ * Represents the ModelBudgetConfig type.
+ */
 export type ModelBudgetConfig = ModelLimits & {
   estimation: TokenEstimateOptions;
   attachmentTextMaxTokens: number;
@@ -86,6 +93,12 @@ function mergeConfig(
   };
 }
 
+/**
+ * Runs getModelBudgetConfig.
+ *
+ * @param model - Describes the model input.
+ * @returns Returns the function result.
+ */
 export function getModelBudgetConfig(model?: string): ModelBudgetConfig {
   const normalized = normalizeModelName(model);
   const envOverrides = parseModelOverridesFromEnv();

@@ -1,3 +1,7 @@
+/**
+ * @module src/core/utils/message-splitter
+ * @description Defines the message splitter module.
+ */
 function findSplitIndex(text: string, limit: number): number {
   if (text.length <= limit) return text.length;
   let splitIndex = text.lastIndexOf('\n', limit);
@@ -15,6 +19,13 @@ function hardSplit(text: string, maxLength: number): string[] {
   return chunks;
 }
 
+/**
+ * Runs smartSplit.
+ *
+ * @param text - Describes the text input.
+ * @param maxLength - Describes the maxLength input.
+ * @returns Returns the function result.
+ */
 export function smartSplit(text: string, maxLength = 2000): string[] {
   if (!Number.isInteger(maxLength) || maxLength < 1) {
     throw new RangeError('maxLength must be a positive integer');

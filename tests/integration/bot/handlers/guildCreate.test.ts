@@ -1,3 +1,7 @@
+/**
+ * @module tests/integration/bot/handlers/guildCreate.test
+ * @description Defines the guild create.test module.
+ */
 import type { Client, Guild, TextChannel } from 'discord.js';
 import { ChannelType, Events } from 'discord.js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';

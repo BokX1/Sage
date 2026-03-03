@@ -1,9 +1,16 @@
+/**
+ * @module src/core/agentRuntime/evalRubrics
+ * @description Defines the eval rubrics module.
+ */
 import {
   DEFAULT_EVAL_SCORE_WEIGHTS,
   EvalDimensionKey,
   EvalScoreWeights,
 } from './evalScorer';
 
+/**
+ * Represents the EvalRubric contract.
+ */
 export interface EvalRubric {
   version: string;
   dimensions: EvalDimensionKey[];
@@ -22,6 +29,9 @@ const DEFAULT_EVAL_DIMENSIONS: EvalDimensionKey[] = [
   'temporal_correctness',
 ];
 
+/**
+ * Declares exported bindings: DEFAULT_EVAL_RUBRIC.
+ */
 export const DEFAULT_EVAL_RUBRIC: EvalRubric = {
   version: 'v1',
   dimensions: DEFAULT_EVAL_DIMENSIONS,
@@ -30,6 +40,12 @@ export const DEFAULT_EVAL_RUBRIC: EvalRubric = {
   hardFailThreshold: 0.45,
 };
 
+/**
+ * Runs getEvalRubric.
+ *
+ * @param version - Describes the version input.
+ * @returns Returns the function result.
+ */
 export function getEvalRubric(version?: string): EvalRubric {
   const normalized = version?.trim().toLowerCase() ?? DEFAULT_EVAL_RUBRIC.version;
   if (!normalized || normalized === 'v1') return DEFAULT_EVAL_RUBRIC;
@@ -71,6 +87,12 @@ function routeSpecificGuidance(routeKind: string): string {
   }
 }
 
+/**
+ * Runs buildEvalJudgePrompt.
+ *
+ * @param params - Describes the params input.
+ * @returns Returns the function result.
+ */
 export function buildEvalJudgePrompt(params: {
   rubric: EvalRubric;
   routeKind: string;

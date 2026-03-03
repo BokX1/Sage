@@ -1,3 +1,7 @@
+/**
+ * @module tests/unit/embeddings/embeddingEngine.test
+ * @description Defines the embedding engine.test module.
+ */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const mockLogger = {

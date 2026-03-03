@@ -1,8 +1,15 @@
+/**
+ * @module src/core/utils/discord-channel-access
+ * @description Defines the discord channel access module.
+ */
 import { PermissionsBitField, type GuildBasedChannel } from 'discord.js';
 import { client } from '../../bot/client';
 import { limitConcurrency } from './concurrency';
 import { logger } from './logger';
 
+/**
+ * Represents the ChannelPermissionRequirement type.
+ */
 export type ChannelPermissionRequirement = {
   flag: bigint;
   label: string;
@@ -20,6 +27,12 @@ function hasAllPermissions(
   return true;
 }
 
+/**
+ * Runs filterChannelIdsByMemberAccess.
+ *
+ * @param params - Describes the params input.
+ * @returns Returns the function result.
+ */
 export async function filterChannelIdsByMemberAccess(params: {
   guildId: string;
   userId: string;

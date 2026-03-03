@@ -1,3 +1,7 @@
+/**
+ * @module tests/integration/bot/commands/voice-channel-handlers.test
+ * @description Defines the voice channel handlers.test module.
+ */
 import type { ChatInputCommandInteraction, GuildMember, VoiceChannel } from 'discord.js';
 import { ChannelType } from 'discord.js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';

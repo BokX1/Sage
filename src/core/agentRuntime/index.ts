@@ -1,3 +1,7 @@
+/**
+ * @module src/core/agentRuntime/index
+ * @description Defines the index module.
+ */
 export { runChatTurn, type RunChatTurnParams, type RunChatTurnResult } from './agentRuntime';
 
 export {

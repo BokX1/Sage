@@ -1,13 +1,23 @@
+/**
+ * @module src/core/llm/model-health
+ * @description Defines the model health module.
+ */
 import { config } from '../../config';
 import { logger } from '../utils/logger';
 import { clearModelHealthStates, listModelHealthStates, upsertModelHealthState } from './model-health-repo';
 
+/**
+ * Represents the RecordModelOutcomeParams contract.
+ */
 export interface RecordModelOutcomeParams {
   model: string;
   success: boolean;
   latencyMs?: number;
 }
 
+/**
+ * Represents the ModelHealthEntry contract.
+ */
 export interface ModelHealthEntry {
   score: number;
   samples: number;
@@ -91,6 +101,12 @@ function scoreOutcome(params: RecordModelOutcomeParams): number {
   return 0.6;
 }
 
+/**
+ * Runs recordModelOutcome.
+ *
+ * @param params - Describes the params input.
+ * @returns Returns the function result.
+ */
 export function recordModelOutcome(params: RecordModelOutcomeParams): void {
   const model = normalizeModelId(params.model);
   if (!model) return;
@@ -129,6 +145,12 @@ export function recordModelOutcome(params: RecordModelOutcomeParams): void {
   }
 }
 
+/**
+ * Runs getModelHealthScore.
+ *
+ * @param model - Describes the model input.
+ * @returns Returns the function result.
+ */
 export async function getModelHealthScore(model: string): Promise<number> {
   const normalized = normalizeModelId(model);
   if (!normalized) return DEFAULT_HEALTH_SCORE;
@@ -136,6 +158,12 @@ export async function getModelHealthScore(model: string): Promise<number> {
   return modelHealth.get(normalized)?.score ?? DEFAULT_HEALTH_SCORE;
 }
 
+/**
+ * Runs getModelHealthScores.
+ *
+ * @param models - Describes the models input.
+ * @returns Returns the function result.
+ */
 export async function getModelHealthScores(models: string[]): Promise<Record<string, number>> {
   await hydrateModelsFromPersistence(models);
   const scores: Record<string, number> = {};
@@ -147,6 +175,12 @@ export async function getModelHealthScores(models: string[]): Promise<Record<str
   return scores;
 }
 
+/**
+ * Runs getModelHealthSnapshot.
+ *
+ * @param models - Describes the models input.
+ * @returns Returns the function result.
+ */
 export function getModelHealthSnapshot(models?: string[]): Record<string, ModelHealthEntry> {
   const ids = models && models.length > 0 ? models.map(normalizeModelId) : [...modelHealth.keys()];
   const unique = Array.from(new Set(ids.filter((id) => id.length > 0)));
@@ -173,6 +207,11 @@ export function getModelHealthSnapshot(models?: string[]): Record<string, ModelH
   return snapshot;
 }
 
+/**
+ * Runs resetModelHealth.
+ *
+ * @returns Returns the function result.
+ */
 export function resetModelHealth(): void {
   modelHealth.clear();
   hydratedModelIds.clear();
@@ -184,6 +223,11 @@ export function resetModelHealth(): void {
   }
 }
 
+/**
+ * Runs getModelHealthRuntimeStatus.
+ *
+ * @returns Returns the function result.
+ */
 export function getModelHealthRuntimeStatus(): {
   persistenceEnabled: boolean;
   persistenceMode: 'db' | 'memory';

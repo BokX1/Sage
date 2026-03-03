@@ -1,3 +1,7 @@
+/**
+ * @module src/core/agentRuntime/contextBuilder
+ * @description Defines the context builder module.
+ */
 import { LLMChatMessage, LLMMessageContent } from '../llm/llm-types';
 import { composeSystemPrompt } from './promptComposer';
 import { config } from '../../config';

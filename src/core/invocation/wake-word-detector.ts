@@ -1,9 +1,16 @@
+/**
+ * @module src/core/invocation/wake-word-detector
+ * @description Defines the wake word detector module.
+ */
 export type Invocation = {
   kind: 'mention' | 'reply' | 'wakeword' | 'autopilot';
   cleanedText: string;
   intent: 'autopilot' | 'unknown';
 };
 
+/**
+ * Represents the DetectInvocationParams type.
+ */
 export type DetectInvocationParams = {
   rawContent: string;
   isMentioned: boolean;
@@ -100,6 +107,12 @@ function detectWakeWord(
   return { cleanedText };
 }
 
+/**
+ * Runs detectInvocation.
+ *
+ * @param params - Describes the params input.
+ * @returns Returns the function result.
+ */
 export function detectInvocation(params: DetectInvocationParams): Invocation | null {
   const { rawContent, isMentioned, isReplyToBot, wakeWords, prefixes } = params;
 

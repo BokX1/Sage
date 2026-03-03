@@ -1,3 +1,7 @@
+/**
+ * @module tests/unit/admin/adminActionService.discordRestSummary.test
+ * @description Defines the admin action service.discord rest summary.test module.
+ */
 import { describe, expect, it } from 'vitest';
 import { buildDiscordRestWriteSummary, type DiscordRestWriteRequest } from '@/bot/admin/adminActionService';
 

@@ -1,3 +1,7 @@
+/**
+ * @module tests/unit/handlers/messageCreate.ingest.test
+ * @description Defines the message create.ingest.test module.
+ */
 import type { Message, TextChannel, User } from 'discord.js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 

@@ -1,3 +1,7 @@
+/**
+ * @module tests/unit/shared/resilience.test
+ * @description Defines the resilience.test module.
+ */
 import { describe, expect, it } from 'vitest';
 import { AppError } from '../../../src/shared/errors/app-error';
 import { retry, withTimeout } from '../../../src/shared/async/resilience';

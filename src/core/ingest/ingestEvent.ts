@@ -1,3 +1,7 @@
+/**
+ * @module src/core/ingest/ingestEvent
+ * @description Defines the ingest event module.
+ */
 import { logger } from '../../core/utils/logger';
 import { config } from '../../config';
 import { appendMessage } from '../awareness/channelRingBuffer';
@@ -48,6 +52,23 @@ export type Event = MessageEvent | VoiceEvent;
 
 const prismaMessageStore = new PrismaMessageStore();
 
+/** Normalize numeric limits to a positive integer with a safe fallback. */
+function toPositiveInt(value: number | undefined, fallback: number): number {
+  if (!Number.isFinite(value)) {
+    return fallback;
+  }
+  return Math.max(1, Math.floor(value as number));
+}
+
+/** Resolve persisted message retention cap with transcript-limit fallback. */
+function resolveDbRetentionLimit(): number {
+  const fallbackLimit = toPositiveInt(config.CONTEXT_TRANSCRIPT_MAX_MESSAGES, 1);
+  return toPositiveInt(config.MESSAGE_DB_MAX_MESSAGES_PER_CHANNEL as number | undefined, fallbackLimit);
+}
+
+/**
+ * Represents the IngestEventOptions contract.
+ */
 export interface IngestEventOptions {
   publishSocialGraph?: boolean;
 }
@@ -98,11 +119,7 @@ export async function ingestEvent(event: Event, options: IngestEventOptions = {}
       }
 
       if (config.MESSAGE_DB_STORAGE_ENABLED) {
-        const dbRetentionLimit = Math.max(
-          1,
-          (config.MESSAGE_DB_MAX_MESSAGES_PER_CHANNEL as number | undefined) ??
-            config.CONTEXT_TRANSCRIPT_MAX_MESSAGES,
-        );
+        const dbRetentionLimit = resolveDbRetentionLimit();
         await prismaMessageStore.append(message);
         queueChannelMessageEmbedding({
           messageId: message.messageId,

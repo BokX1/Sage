@@ -1,3 +1,7 @@
+/**
+ * @module src/core/utils/perKeyConcurrency
+ * @description Defines the per key concurrency module.
+ */
 import { limitConcurrency } from './concurrency';
 
 interface KeyLimiterEntry {

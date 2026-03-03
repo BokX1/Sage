@@ -1,3 +1,7 @@
+/**
+ * @module src/bot/handlers/welcomeMessage
+ * @description Defines the welcome message module.
+ */
 import { EmbedBuilder } from 'discord.js';
 
 /**

@@ -1,3 +1,7 @@
+/**
+ * @module tests/unit/agentRuntime/replayHarness.test
+ * @description Defines the replay harness.test module.
+ */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { evaluateRecentTraceOutcomes } from '../../../src/core/agentRuntime/replayHarness';
 

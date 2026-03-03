@@ -1,3 +1,7 @@
+/**
+ * @module tests/integration/bot/handlers/sage-command-handlers.test
+ * @description Defines the sage command handlers.test module.
+ */
 import type { ChatInputCommandInteraction } from 'discord.js';
 import { PermissionsBitField } from 'discord.js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';

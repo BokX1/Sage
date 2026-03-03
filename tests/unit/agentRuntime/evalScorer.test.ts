@@ -1,3 +1,7 @@
+/**
+ * @module tests/unit/agentRuntime/evalScorer.test
+ * @description Defines the eval scorer.test module.
+ */
 import { describe, expect, it } from 'vitest';
 import {
   computeEvalOverallScore,

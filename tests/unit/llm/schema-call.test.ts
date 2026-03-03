@@ -1,3 +1,7 @@
+/**
+ * @module tests/unit/llm/schema-call.test
+ * @description Defines the schema call.test module.
+ */
 import { describe, it, expect, vi } from 'vitest';
 import { z } from 'zod';
 import { callWithSchema } from '../../../src/core/llm/schema-call';
@@ -31,5 +35,35 @@ describe('callWithSchema', () => {
     expect(systemPrompt).toContain('"type": "object"');
     expect(systemPrompt).toContain('"summary"');
     expect(systemPrompt).not.toContain('"$schema"');
+  });
+
+  it('retries with the schema-bearing system prompt after an initial failure', async () => {
+    const chat = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('invalid json'))
+      .mockResolvedValueOnce({
+        content: JSON.stringify({ summary: 'repaired' }),
+      });
+
+    const client: LLMClient = {
+      chat,
+    };
+
+    const result = await callWithSchema(
+      client,
+      z.object({
+        summary: z.string(),
+      }),
+      [{ role: 'user', content: 'Summarize this' }],
+      'Use concise wording.',
+    );
+
+    expect(result).toEqual({ summary: 'repaired' });
+    expect(chat).toHaveBeenCalledTimes(2);
+
+    const repairRequest = chat.mock.calls[1][0];
+    expect(repairRequest.messages[0].role).toBe('system');
+    expect(repairRequest.messages[0].content).toContain('Use concise wording.');
+    expect(repairRequest.messages[0].content).toContain('"type": "object"');
   });
 });

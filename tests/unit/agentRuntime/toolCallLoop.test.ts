@@ -1,3 +1,7 @@
+/**
+ * @module tests/unit/agentRuntime/toolCallLoop.test
+ * @description Defines the tool call loop.test module.
+ */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { z } from 'zod';
 import { ToolRegistry, type ToolExecutionContext } from '@/core/agentRuntime/toolRegistry';

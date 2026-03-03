@@ -1,3 +1,7 @@
+/**
+ * @module tests/unit/llm/model-catalog.test
+ * @description Defines the model catalog.test module.
+ */
 import { describe, it, expect } from 'vitest';
 import {
     findModelInCatalog,

@@ -1,3 +1,7 @@
+/**
+ * @module src/core/summary/inMemoryChannelSummaryStore
+ * @description Defines the in memory channel summary store module.
+ */
 import { ChannelSummary, ChannelSummaryKind, ChannelSummaryStore } from './channelSummaryStore';
 
 type SummaryKey = string;
@@ -6,6 +10,9 @@ function makeKey(guildId: string, channelId: string, kind: string): SummaryKey {
   return `${guildId}:${channelId}:${kind}`;
 }
 
+/**
+ * Defines the InMemoryChannelSummaryStore class.
+ */
 export class InMemoryChannelSummaryStore implements ChannelSummaryStore {
   private summaries = new Map<SummaryKey, ChannelSummary>();
 

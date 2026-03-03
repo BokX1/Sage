@@ -1,3 +1,7 @@
+/**
+ * @module tests/integration/bot/handlers/ready.test
+ * @description Defines the ready.test module.
+ */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Events, type Client } from 'discord.js';
 

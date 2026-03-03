@@ -1,6 +1,13 @@
+/**
+ * @module src/core/voice/voiceTracker
+ * @description Defines the voice tracker module.
+ */
 import { VoicePresenceChannel } from './voicePresenceIndex';
 import { computeVoiceOverlapForUser } from './voiceOverlapTracker';
 
+/**
+ * Represents the VoiceChange type.
+ */
 export type VoiceChange = {
   guildId: string;
   userId: string;
@@ -10,8 +17,14 @@ export type VoiceChange = {
   at: Date;
 };
 
+/**
+ * Represents the VoiceChangeKind type.
+ */
 export type VoiceChangeKind = 'join' | 'leave' | 'move' | 'noop';
 
+/**
+ * Represents the VoicePresenceIndex type.
+ */
 export type VoicePresenceIndex = {
   applyChange: (params: {
     guildId: string;
@@ -24,6 +37,9 @@ export type VoicePresenceIndex = {
   getGuildPresence?: (guildId: string) => VoicePresenceChannel[];
 };
 
+/**
+ * Represents the VoiceSessionRepo type.
+ */
 export type VoiceSessionRepo = {
   startSession: (params: {
     guildId: string;
@@ -35,11 +51,20 @@ export type VoiceSessionRepo = {
   endOpenSession: (params: { guildId: string; userId: string; endedAt: Date }) => Promise<void>;
 };
 
+/**
+ * Represents the VoiceTrackerLogger type.
+ */
 export type VoiceTrackerLogger = {
   warn: (obj: Record<string, unknown>, msg: string) => void;
   error: (obj: Record<string, unknown>, msg: string) => void;
 };
 
+/**
+ * Runs classifyVoiceChange.
+ *
+ * @param change - Describes the change input.
+ * @returns Returns the function result.
+ */
 export function classifyVoiceChange(change: VoiceChange): VoiceChangeKind {
   if (!change.oldChannelId && change.newChannelId) return 'join';
   if (change.oldChannelId && !change.newChannelId) return 'leave';
@@ -49,6 +74,13 @@ export function classifyVoiceChange(change: VoiceChange): VoiceChangeKind {
   return 'noop';
 }
 
+/**
+ * Runs handleVoiceChange.
+ *
+ * @param change - Describes the change input.
+ * @param deps - Describes the deps input.
+ * @returns Returns the function result.
+ */
 export async function handleVoiceChange(
   change: VoiceChange,
   deps: {

@@ -1,9 +1,14 @@
+/**
+ * @module tests/unit/social-graph/migratePostgresToMemgraph.test
+ * @description Defines the migrate postgres to memgraph.test module.
+ */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mockFindMany = vi.hoisted(() => vi.fn());
 const mockPublishInteractionStrict = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
 const mockPublishVoiceSessionStrict = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
 const mockEnsureKafkaProducerAvailable = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
+const mockShutdownKafkaProducer = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
 
 vi.mock('@/core/db/prisma-client', () => ({
   prisma: {
@@ -17,12 +22,14 @@ vi.mock('@/social-graph/kafkaProducer', () => ({
   ensureKafkaProducerAvailable: mockEnsureKafkaProducerAvailable,
   publishInteractionStrict: mockPublishInteractionStrict,
   publishVoiceSessionStrict: mockPublishVoiceSessionStrict,
+  shutdownKafkaProducer: mockShutdownKafkaProducer,
 }));
 
 describe('migratePostgresToMemgraph', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockEnsureKafkaProducerAvailable.mockResolvedValue(undefined);
+    mockShutdownKafkaProducer.mockResolvedValue(undefined);
   });
 
   it('replays counts and reciprocal directions from relationship features', async () => {
@@ -132,6 +139,7 @@ describe('migratePostgresToMemgraph', () => {
         }),
       ]),
     );
+    expect(mockShutdownKafkaProducer).toHaveBeenCalledTimes(1);
   });
 
   it('prefers explicit directional reply counters when exporting REPLY events', async () => {
@@ -179,6 +187,7 @@ describe('migratePostgresToMemgraph', () => {
       ),
     ).toHaveLength(4);
     expect(replyEvents.every((event) => event.channelId === 'migration:guild-2')).toBe(true);
+    expect(mockShutdownKafkaProducer).toHaveBeenCalledTimes(1);
   });
 
   it('uses neutral splitting when reply direction hints are missing', async () => {
@@ -218,6 +227,7 @@ describe('migratePostgresToMemgraph', () => {
       targetUserId: 'a',
       channelId: 'migration:x',
     });
+    expect(mockShutdownKafkaProducer).toHaveBeenCalledTimes(1);
   });
 
   it('aborts when kafka producer is unavailable before replay starts', async () => {
@@ -244,5 +254,6 @@ describe('migratePostgresToMemgraph', () => {
     expect(mockEnsureKafkaProducerAvailable).toHaveBeenCalledTimes(1);
     expect(mockPublishInteractionStrict).not.toHaveBeenCalled();
     expect(mockPublishVoiceSessionStrict).not.toHaveBeenCalled();
+    expect(mockShutdownKafkaProducer).toHaveBeenCalledTimes(1);
   });
 });

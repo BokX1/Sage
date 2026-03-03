@@ -1,3 +1,7 @@
+/**
+ * @module src/core/agentRuntime/toolCallExecution
+ * @description Defines the tool call execution module.
+ */
 /** Execute validated tool calls with timeout and structured result logging. */
 import { ToolExecutionContext, ToolRegistry } from './toolRegistry';
 import { logger } from '../utils/logger';
@@ -12,6 +16,9 @@ export interface ToolAttachment {
   mimetype?: string;
 }
 
+/**
+ * Represents the ToolResult contract.
+ */
 export interface ToolResult {
   name: string;
   success: boolean;
@@ -95,6 +102,7 @@ export async function executeToolWithTimeout(
         latencyMs: timeoutMs,
       });
     }, timeoutMs);
+    timeoutHandle.unref?.();
   });
 
   const executionPromise = registry.executeValidated(call, ctxWithSignal).then((result) => {

@@ -1,3 +1,7 @@
+/**
+ * @module src/bot/handlers/sage-command-handlers
+ * @description Defines the sage command handlers module.
+ */
 import { ButtonInteraction, ChatInputCommandInteraction } from 'discord.js';
 import pkg from '../../../package.json';
 import { logger } from '../../core/utils/logger';
@@ -17,6 +21,12 @@ export function isAdmin(
   return isAdminFromMember(interaction.member);
 }
 
+/**
+ * Runs handleAdminStats.
+ *
+ * @param interaction - Describes the interaction input.
+ * @returns Returns the function result.
+ */
 export async function handleAdminStats(interaction: ChatInputCommandInteraction) {
   if (!isAdmin(interaction)) {
     await sendCommandReply(interaction, { content: '❌ Admin only.', ephemeral: true });

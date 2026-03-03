@@ -1,3 +1,7 @@
+/**
+ * @module src/bot/handlers/voiceStateUpdate
+ * @description Defines the voice state update module.
+ */
 import { VoiceState, Events } from 'discord.js';
 import { client } from '../client';
 import { logger } from '../../core/utils/logger';
@@ -9,6 +13,13 @@ import { classifyVoiceChange, handleVoiceChange } from '../../core/voice/voiceTr
 
 const registrationKey = Symbol.for('sage.handlers.voiceStateUpdate.registered');
 
+/**
+ * Runs handleVoiceStateUpdate.
+ *
+ * @param oldState - Describes the oldState input.
+ * @param newState - Describes the newState input.
+ * @returns Returns the function result.
+ */
 export async function handleVoiceStateUpdate(
   oldState: VoiceState,
   newState: VoiceState,
@@ -65,6 +76,11 @@ export async function handleVoiceStateUpdate(
   }
 }
 
+/**
+ * Runs registerVoiceStateUpdateHandler.
+ *
+ * @returns Returns the function result.
+ */
 export function registerVoiceStateUpdateHandler() {
   const g = globalThis as unknown as { [key: symbol]: boolean };
   if (g[registrationKey]) {

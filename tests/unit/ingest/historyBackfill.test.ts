@@ -1,3 +1,7 @@
+/**
+ * @module tests/unit/ingest/historyBackfill.test
+ * @description Defines the history backfill.test module.
+ */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mockConfig = vi.hoisted(() => ({
@@ -176,6 +180,26 @@ describe('historyBackfill', () => {
 
     expect(fetchMessages).toHaveBeenCalledWith({ limit: 10 });
     expect(mockChannelMessages.rows).toHaveLength(25);
+  });
+
+  it('falls back to startup limit when DB retention config is non-finite', async () => {
+    mockConfig.CONTEXT_TRANSCRIPT_MAX_MESSAGES = 12;
+    mockConfig.MESSAGE_DB_MAX_MESSAGES_PER_CHANNEL = Number.NaN as unknown as number;
+    seedMessages(40, 'channel-1', 'guild-1');
+
+    const fetchMessages = vi.fn().mockResolvedValue(new Map());
+    mockFetchChannel.mockResolvedValue(
+      new TestTextChannel({
+        id: 'channel-1',
+        guildId: 'guild-1',
+        messages: { fetch: fetchMessages },
+      }),
+    );
+
+    await backfillChannelHistory('channel-1');
+
+    expect(fetchMessages).toHaveBeenCalledWith({ limit: 12 });
+    expect(mockChannelMessages.rows).toHaveLength(12);
   });
 
   it('disables social graph publishing during backfill ingestion', async () => {

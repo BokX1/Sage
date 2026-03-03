@@ -1,3 +1,7 @@
+/**
+ * @module src/core/voice/audioPcm
+ * @description Defines the audio pcm module.
+ */
 export function pcmStereoToMono(pcmStereo: Buffer): Buffer {
   // Input: signed 16-bit LE stereo PCM interleaved (L,R)
   if (pcmStereo.length < 4) return Buffer.alloc(0);
@@ -16,6 +20,12 @@ export function pcmStereoToMono(pcmStereo: Buffer): Buffer {
   return out;
 }
 
+/**
+ * Runs buildWavPcm16.
+ *
+ * @param params - Describes the params input.
+ * @returns Returns the function result.
+ */
 export function buildWavPcm16(params: { pcm: Buffer; channels: number; sampleRate: number }): Buffer {
   const { pcm, channels, sampleRate } = params;
   const bitsPerSample = 16;
@@ -41,6 +51,12 @@ export function buildWavPcm16(params: { pcm: Buffer; channels: number; sampleRat
   return Buffer.concat([header, pcm]);
 }
 
+/**
+ * Runs estimateDurationMsFromPcm.
+ *
+ * @param params - Describes the params input.
+ * @returns Returns the function result.
+ */
 export function estimateDurationMsFromPcm(params: { pcmBytes: number; channels: number; sampleRate: number }): number {
   const bytesPerFrame = params.channels * 2;
   if (bytesPerFrame <= 0 || params.sampleRate <= 0) return 0;

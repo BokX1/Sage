@@ -1,3 +1,7 @@
+/**
+ * @module tests/unit/summary/channelSummaryScheduler.test
+ * @description Defines the channel summary scheduler.test module.
+ */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { ChannelMessage } from '@/core/awareness/awareness-types';
 

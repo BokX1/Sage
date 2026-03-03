@@ -1,3 +1,7 @@
+/**
+ * @module src/bot/handlers/ready
+ * @description Defines the ready module.
+ */
 import { Client, Events } from 'discord.js';
 import { logger } from '../../core/utils/logger';
 import { backfillChannelHistory } from '../../core/ingest/historyBackfill';
@@ -6,6 +10,12 @@ import { config as appConfig } from '../../config';
 
 const HANDLED_KEY = Symbol.for('sage.handlers.ready');
 
+/**
+ * Runs registerReadyHandler.
+ *
+ * @param client - Describes the client input.
+ * @returns Returns the function result.
+ */
 export function registerReadyHandler(client: Client) {
   const g = globalThis as unknown as { [key: symbol]: boolean };
   if (g[HANDLED_KEY]) return;

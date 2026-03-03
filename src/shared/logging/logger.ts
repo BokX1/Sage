@@ -1,6 +1,20 @@
+/**
+ * @module src/shared/logging/logger
+ * @description Configures the shared structured logger and child logger factory.
+ */
 import pino from 'pino';
 import { config } from '../config/env';
 
+/**
+ * Enable pretty transport only for local interactive development sessions.
+ */
+function shouldUsePrettyTransport(): boolean {
+  return config.NODE_ENV === 'development' && Boolean(process.stdout.isTTY);
+}
+
+/**
+ * Create the process-wide logger.
+ */
 export const logger = pino({
   level: config.LOG_LEVEL,
   base: {
@@ -23,16 +37,21 @@ export const logger = pino({
     ],
     remove: true,
   },
-  transport:
-    config.NODE_ENV === 'test'
-      ? undefined
-      : {
-          target: 'pino-pretty',
-          options: {
-            colorize: true,
-            ignore: 'pid,hostname',
-          },
+  transport: shouldUsePrettyTransport()
+    ? {
+        target: 'pino-pretty',
+        options: {
+          colorize: true,
+          ignore: 'pid,hostname',
         },
+      }
+    : undefined,
 });
 
+/**
+ * Create a contextual child logger.
+ *
+ * @param bindings - Structured fields added to every emitted log line.
+ * @returns A logger that inherits root logger configuration.
+ */
 export const childLogger = (bindings: Record<string, unknown>) => logger.child(bindings);

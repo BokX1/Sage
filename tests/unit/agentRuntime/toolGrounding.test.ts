@@ -1,3 +1,7 @@
+/**
+ * @module tests/unit/agentRuntime/toolGrounding.test
+ * @description Defines the tool grounding.test module.
+ */
 import { describe, expect, it } from 'vitest';
 import { enforceGitHubFileGrounding } from '@/core/agentRuntime/toolGrounding';
 import type { ToolResult } from '@/core/agentRuntime/toolCallExecution';

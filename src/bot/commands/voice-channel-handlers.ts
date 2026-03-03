@@ -1,3 +1,7 @@
+/**
+ * @module src/bot/commands/voice-channel-handlers
+ * @description Defines the voice channel handlers module.
+ */
 import {
   ChatInputCommandInteraction,
   SlashCommandBuilder,

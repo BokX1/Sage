@@ -1,3 +1,7 @@
+/**
+ * @module tests/unit/llm/pollinations.test
+ * @description Defines the pollinations.test module.
+ */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { PollinationsClient } from '@/core/llm/pollinations-client';
 import { stubFetch, type FetchMock } from '../../testkit/fetch';

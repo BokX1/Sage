@@ -1,3 +1,7 @@
+/**
+ * @module tests/unit/llm/budgeter.test
+ * @description Defines the budgeter.test module.
+ */
 import { describe, expect, it } from 'vitest';
 import type { LLMChatMessage } from '@/core/llm/llm-types';
 import {

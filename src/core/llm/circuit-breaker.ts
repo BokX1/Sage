@@ -1,5 +1,12 @@
+/**
+ * @module src/core/llm/circuit-breaker
+ * @description Implements a basic circuit breaker for external LLM calls.
+ */
 import { logger } from '../utils/logger';
 
+/**
+ * Enumerates values for CircuitState.
+ */
 export enum CircuitState {
   CLOSED = 'CLOSED',
   OPEN = 'OPEN',
@@ -11,6 +18,21 @@ interface CircuitConfig {
   resetTimeoutMs: number;
 }
 
+const DEFAULT_FAILURE_THRESHOLD = 5;
+const DEFAULT_RESET_TIMEOUT_MS = 60_000;
+
+function normalizePositiveInt(value: number | undefined, fallback: number): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return fallback;
+  }
+
+  const normalized = Math.floor(value);
+  return normalized > 0 ? normalized : fallback;
+}
+
+/**
+ * Defines the CircuitBreaker class.
+ */
 export class CircuitBreaker {
   private state: CircuitState = CircuitState.CLOSED;
   private failures = 0;
@@ -19,8 +41,8 @@ export class CircuitBreaker {
 
   constructor(config: Partial<CircuitConfig> = {}) {
     this.config = {
-      failureThreshold: config.failureThreshold || 5,
-      resetTimeoutMs: config.resetTimeoutMs || 60000, // 1 minute
+      failureThreshold: normalizePositiveInt(config.failureThreshold, DEFAULT_FAILURE_THRESHOLD),
+      resetTimeoutMs: normalizePositiveInt(config.resetTimeoutMs, DEFAULT_RESET_TIMEOUT_MS),
     };
   }
 

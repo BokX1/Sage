@@ -1,3 +1,7 @@
+/**
+ * @module tests/unit/admin/adminActionService.interactions.test
+ * @description Defines the admin action service.interactions.test module.
+ */
 import { describe, expect, it } from 'vitest';
 import { discordInteractionRequestSchema } from '@/bot/admin/adminActionService';
 

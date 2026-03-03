@@ -1,3 +1,7 @@
+/**
+ * @module tests/vitest.setup
+ * @description Defines the vitest.setup module.
+ */
 import { afterEach, beforeAll, beforeEach, vi } from 'vitest';
 
 type EnvSnapshot = Record<string, string | undefined>;

@@ -1,6 +1,13 @@
+/**
+ * @module src/core/admin/pendingAdminActionRepo
+ * @description Defines the pending admin action repo module.
+ */
 import { prisma } from '../../core/db/prisma-client';
 import { Prisma } from '@prisma/client';
 
+/**
+ * Declares exported bindings: PENDING_ADMIN_ACTION_STATUSES.
+ */
 export const PENDING_ADMIN_ACTION_STATUSES = [
   'pending',
   'approved',
@@ -10,8 +17,14 @@ export const PENDING_ADMIN_ACTION_STATUSES = [
   'expired',
 ] as const;
 
+/**
+ * Represents the PendingAdminActionStatus type.
+ */
 export type PendingAdminActionStatus = typeof PENDING_ADMIN_ACTION_STATUSES[number];
 
+/**
+ * Represents the PendingAdminActionRecord contract.
+ */
 export interface PendingAdminActionRecord {
   id: string;
   guildId: string;
@@ -72,6 +85,12 @@ function toRecord(value: {
   };
 }
 
+/**
+ * Runs createPendingAdminAction.
+ *
+ * @param params - Describes the params input.
+ * @returns Returns the function result.
+ */
 export async function createPendingAdminAction(params: {
   guildId: string;
   channelId: string;
@@ -95,6 +114,12 @@ export async function createPendingAdminAction(params: {
   return toRecord(created);
 }
 
+/**
+ * Runs getPendingAdminActionById.
+ *
+ * @param id - Describes the id input.
+ * @returns Returns the function result.
+ */
 export async function getPendingAdminActionById(
   id: string,
 ): Promise<PendingAdminActionRecord | null> {
@@ -102,6 +127,12 @@ export async function getPendingAdminActionById(
   return row ? toRecord(row) : null;
 }
 
+/**
+ * Runs markPendingAdminActionExpired.
+ *
+ * @param id - Describes the id input.
+ * @returns Returns the function result.
+ */
 export async function markPendingAdminActionExpired(id: string): Promise<void> {
   await prisma.pendingAdminAction.update({
     where: { id },
@@ -112,6 +143,12 @@ export async function markPendingAdminActionExpired(id: string): Promise<void> {
   });
 }
 
+/**
+ * Runs markPendingAdminActionDecision.
+ *
+ * @param params - Describes the params input.
+ * @returns Returns the function result.
+ */
 export async function markPendingAdminActionDecision(params: {
   id: string;
   decidedBy: string;
@@ -128,6 +165,12 @@ export async function markPendingAdminActionDecision(params: {
   return toRecord(updated);
 }
 
+/**
+ * Runs markPendingAdminActionExecuted.
+ *
+ * @param params - Describes the params input.
+ * @returns Returns the function result.
+ */
 export async function markPendingAdminActionExecuted(params: {
   id: string;
   resultJson: unknown;
@@ -144,6 +187,12 @@ export async function markPendingAdminActionExecuted(params: {
   return toRecord(updated);
 }
 
+/**
+ * Runs markPendingAdminActionFailed.
+ *
+ * @param params - Describes the params input.
+ * @returns Returns the function result.
+ */
 export async function markPendingAdminActionFailed(params: {
   id: string;
   errorText: string;

@@ -1,3 +1,7 @@
+/**
+ * @module src/core/chat-engine
+ * @description Defines the chat engine module.
+ */
 import { getUserProfileRecord, upsertUserProfile } from './memory/userProfileRepo';
 import { getGuildApiKey } from './settings/guildSettingsRepo';
 import { updateProfileSummary } from './memory/profileUpdater';
@@ -22,6 +26,15 @@ const userInteractionCounts = new Map<string, InteractionEntry>();
 const INTERACTION_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 let lastInteractionCleanupMs = Date.now();
 const userCompactionTasks = new Map<string, Promise<void>>();
+
+/** Resolve profile update interval to a safe positive integer. */
+function resolveProfileUpdateInterval(): number {
+  const configured = config.PROFILE_UPDATE_INTERVAL;
+  if (!Number.isFinite(configured)) {
+    return 1;
+  }
+  return Math.max(1, Math.floor(configured));
+}
 
 /**
  * Generate a chat reply using the agent runtime.
@@ -155,6 +168,7 @@ export async function generateChatReply(params: {
 
     if (apiKey) {
       const nowMs = Date.now();
+      const profileUpdateInterval = resolveProfileUpdateInterval();
 
       // Periodic cleanup of stale interaction entries (every hour)
       if (nowMs - lastInteractionCleanupMs > 60 * 60 * 1000) {
@@ -171,14 +185,14 @@ export async function generateChatReply(params: {
       const currentCount = (existing?.count || 0) + 1;
       userInteractionCounts.set(userId, { count: currentCount, lastActiveAt: nowMs });
 
-      const shouldUpdateProfile = currentCount >= config.PROFILE_UPDATE_INTERVAL;
+      const shouldUpdateProfile = currentCount >= profileUpdateInterval;
 
       if (shouldUpdateProfile) {
         // Reset counter before update
         userInteractionCounts.set(userId, { count: 0, lastActiveAt: nowMs });
 
         logger.debug(
-          { userId, messageCount: currentCount, interval: config.PROFILE_UPDATE_INTERVAL },
+          { userId, messageCount: currentCount, interval: profileUpdateInterval },
           'Profile update triggered (throttled)'
         );
 
@@ -203,7 +217,7 @@ export async function generateChatReply(params: {
           });
       } else {
         logger.debug(
-          { userId, messageCount: currentCount, threshold: config.PROFILE_UPDATE_INTERVAL },
+          { userId, messageCount: currentCount, threshold: profileUpdateInterval },
           'Profile update skipped (throttled)'
         );
       }
@@ -216,6 +230,11 @@ export async function generateChatReply(params: {
   });
 }
 
+/**
+ * Runs __resetChatEngineStateForTests.
+ *
+ * @returns Returns the function result.
+ */
 export function __resetChatEngineStateForTests(): void {
   userInteractionCounts.clear();
   userCompactionTasks.clear();

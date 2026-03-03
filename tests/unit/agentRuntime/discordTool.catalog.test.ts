@@ -1,3 +1,7 @@
+/**
+ * @module tests/unit/agentRuntime/discordTool.catalog.test
+ * @description Defines the discord tool.catalog.test module.
+ */
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { discordTool } from '@/core/agentRuntime/discordTool';

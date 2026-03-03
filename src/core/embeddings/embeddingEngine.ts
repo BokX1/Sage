@@ -1,3 +1,7 @@
+/**
+ * @module src/core/embeddings/embeddingEngine
+ * @description Defines the embedding engine module.
+ */
 import { logger } from '../utils/logger';
 import { config } from '../../shared/config/env';
 
@@ -119,5 +123,11 @@ export function cosineSimilarity(a: number[], b: number[]): number {
   return denominator === 0 ? 0 : dotProduct / denominator;
 }
 
+/**
+ * Declares exported bindings: EMBEDDING_DIMENSIONS.
+ */
 export const EMBEDDING_DIMENSIONS = TARGET_DIMENSIONS;
+/**
+ * Declares exported bindings: EMBEDDING_MODEL.
+ */
 export const EMBEDDING_MODEL = MODEL_ID;

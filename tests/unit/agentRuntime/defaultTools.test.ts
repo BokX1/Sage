@@ -1,3 +1,7 @@
+/**
+ * @module tests/unit/agentRuntime/defaultTools.test
+ * @description Defines the default tools.test module.
+ */
 import { describe, expect, it } from 'vitest';
 import { ToolRegistry } from '../../../src/core/agentRuntime/toolRegistry';
 import { registerDefaultAgenticTools } from '../../../src/core/agentRuntime/defaultTools';

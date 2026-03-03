@@ -1,3 +1,7 @@
+/**
+ * @module src/core/summary/prismaChannelSummaryStore
+ * @description Defines the prisma channel summary store module.
+ */
 import { prisma } from '../../core/db/prisma-client';
 import { ChannelSummary, ChannelSummaryKind, ChannelSummaryStore } from './channelSummaryStore';
 
@@ -41,6 +45,9 @@ function mapRow(row: Record<string, unknown>): ChannelSummary {
   };
 }
 
+/**
+ * Defines the PrismaChannelSummaryStore class.
+ */
 export class PrismaChannelSummaryStore implements ChannelSummaryStore {
   async upsertSummary(params: {
     guildId: string;

@@ -1,3 +1,7 @@
+/**
+ * @module tests/unit/bootstrap.test
+ * @description Defines the bootstrap.test module.
+ */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mockClient = vi.hoisted(() => ({

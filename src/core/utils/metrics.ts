@@ -1,4 +1,8 @@
 /**
+ * @module src/core/utils/metrics
+ * @description Defines the metrics module.
+ */
+/**
  * Track lightweight in-memory counters for debugging and diagnostics.
  *
  * Details: stores counters in-process with label serialization for simple

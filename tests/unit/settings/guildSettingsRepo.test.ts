@@ -1,3 +1,7 @@
+/**
+ * @module tests/unit/settings/guildSettingsRepo.test
+ * @description Defines the guild settings repo.test module.
+ */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const findUniqueMock = vi.fn();
@@ -60,10 +64,26 @@ describe('guildSettingsRepo.upsertGuildApiKey', () => {
     await upsertGuildApiKey('g1', 'sk_secret');
 
     expect(encryptSecretMock).toHaveBeenCalledWith('sk_secret');
+    expect(encryptSecretMock).toHaveBeenCalledTimes(1);
     expect(upsertMock).toHaveBeenCalledWith({
       where: { guildId: 'g1' },
       create: { guildId: 'g1', pollinationsApiKey: 'enc:v1:sk_secret' },
       update: { pollinationsApiKey: 'enc:v1:sk_secret' },
+    });
+  });
+
+  it('reuses one encrypted value for both create and update paths', async () => {
+    encryptSecretMock.mockImplementationOnce(() => 'enc:v1:unique');
+    upsertMock.mockResolvedValue({});
+
+    const { upsertGuildApiKey } = await import('../../../src/core/settings/guildSettingsRepo');
+    await upsertGuildApiKey('g1', 'sk_secret');
+
+    expect(encryptSecretMock).toHaveBeenCalledTimes(1);
+    expect(upsertMock).toHaveBeenCalledWith({
+      where: { guildId: 'g1' },
+      create: { guildId: 'g1', pollinationsApiKey: 'enc:v1:unique' },
+      update: { pollinationsApiKey: 'enc:v1:unique' },
     });
   });
 

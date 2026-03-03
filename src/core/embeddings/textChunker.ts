@@ -1,3 +1,7 @@
+/**
+ * @module src/core/embeddings/textChunker
+ * @description Defines the text chunker module.
+ */
 // ============================================
 // Recursive Text Chunker for RAG Pipeline
 // ============================================
@@ -24,6 +28,26 @@ const SEPARATORS = [
     ' ',      // word boundary
 ];
 
+/** Normalize chunk sizing params to safe integer bounds. */
+function normalizeChunkParams(chunkSize: number, overlap: number): {
+    chunkSize: number;
+    overlap: number;
+} {
+    const safeChunkSize = Number.isFinite(chunkSize)
+        ? Math.max(1, Math.floor(chunkSize))
+        : DEFAULT_CHUNK_SIZE;
+    const rawOverlap = Number.isFinite(overlap)
+        ? Math.max(0, Math.floor(overlap))
+        : DEFAULT_CHUNK_OVERLAP;
+    return {
+        chunkSize: safeChunkSize,
+        overlap: Math.min(rawOverlap, Math.max(0, safeChunkSize - 1)),
+    };
+}
+
+/**
+ * Represents the TextChunk contract.
+ */
 export interface TextChunk {
     content: string;
     index: number;
@@ -111,8 +135,9 @@ export function chunkText(
         return [];
     }
 
-    const maxChars = chunkSize * CHARS_PER_TOKEN;
-    const overlapChars = overlap * CHARS_PER_TOKEN;
+    const normalized = normalizeChunkParams(chunkSize, overlap);
+    const maxChars = normalized.chunkSize * CHARS_PER_TOKEN;
+    const overlapChars = normalized.overlap * CHARS_PER_TOKEN;
 
     // Step 1: Recursive split into raw segments
     const rawSegments = recursiveSplit(text.trim(), SEPARATORS, maxChars);

@@ -1,8 +1,24 @@
+/**
+ * @module src/core/agentRuntime/toolCache
+ * @description Defines the tool cache module.
+ */
 export interface ToolCacheEntry {
   key: string;
   name: string;
   result: unknown;
   createdAt: number;
+}
+
+const DEFAULT_CACHE_MAX_ENTRIES = 50;
+const DEFAULT_CACHE_TTL_MS = 120_000;
+const MIN_CACHE_MAX_ENTRIES = 1;
+const MIN_CACHE_TTL_MS = 1_000;
+
+function normalizePositiveInteger(value: number, fallback: number, min: number): number {
+  if (!Number.isFinite(value)) {
+    return fallback;
+  }
+  return Math.max(min, Math.floor(value));
 }
 
 function stripNonSemanticArgs(value: unknown): unknown {
@@ -38,18 +54,28 @@ function stableStringify(value: unknown): string {
   return `{${parts.join(',')}}`;
 }
 
+/**
+ * Runs buildToolCacheKey.
+ *
+ * @param name - Describes the name input.
+ * @param args - Describes the args input.
+ * @returns Returns the function result.
+ */
 export function buildToolCacheKey(name: string, args: unknown): string {
   return `${name}::${stableStringify(stripNonSemanticArgs(args))}`;
 }
 
+/**
+ * Defines the ToolResultCache class.
+ */
 export class ToolResultCache {
   private readonly maxEntries: number;
   private readonly ttlMs: number;
   private readonly entries: Map<string, ToolCacheEntry>;
 
-  constructor(maxEntries = 50, ttlMs = 120_000) {
-    this.maxEntries = Math.max(1, Math.floor(maxEntries));
-    this.ttlMs = Math.max(1_000, ttlMs);
+  constructor(maxEntries = DEFAULT_CACHE_MAX_ENTRIES, ttlMs = DEFAULT_CACHE_TTL_MS) {
+    this.maxEntries = normalizePositiveInteger(maxEntries, DEFAULT_CACHE_MAX_ENTRIES, MIN_CACHE_MAX_ENTRIES);
+    this.ttlMs = normalizePositiveInteger(ttlMs, DEFAULT_CACHE_TTL_MS, MIN_CACHE_TTL_MS);
     this.entries = new Map();
   }
 

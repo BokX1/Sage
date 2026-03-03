@@ -37,6 +37,46 @@
 
 ### Changed
 
+- Hardened ingest retention controls: message ingestion and startup history backfill now sanitize non-finite DB retention limits and fall back to safe transcript defaults, preventing invalid prune limits from degrading transcript persistence.
+
+- Hardened attachment-ingestion repository query guards: attachment indexes and lookup/list limits now sanitize non-finite inputs to safe bounded integers, preventing invalid Prisma `take`/index values from surfacing at runtime.
+
+- Hardened embeddings pipeline guards: attachment search now ignores blank queries and normalizes non-finite `topK` limits to safe defaults, and text chunking now sanitizes invalid chunk size/overlap values to avoid pathological split loops.
+
+- Hardened channel-message RAG limit normalization: lexical/regex/semantic search limits, context window bounds, and history retention caps now sanitize non-finite inputs to safe integers before query execution.
+
+- Hardened chat/runtime scheduling internals: profile update throttling now sanitizes non-finite interval config to a safe minimum, and Kafka publish-drain timeout handles now use non-blocking timers to avoid keeping shutdown open.
+
+- Hardened message-ingest attachment guards: attachment parsing and ingest now sanitize non-finite size/timeout/budget config values to safe integer bounds, and long-lived typing intervals now use non-blocking timers so they cannot prolong process shutdown.
+
+- Hardened social-graph query normalization: invalid/non-finite Memgraph numeric fields are now coerced to safe defaults (`0`/`null`) before response shaping, avoiding unstable graph summaries when upstream metrics are malformed.
+
+- Hardened BYOP key verification timeout handling: Pollinations profile-check abort timers now use non-blocking timer handles so pending key checks do not keep process shutdown open.
+
+- Hardened Postgres→Memgraph migration lifecycle: migration runs now always attempt Kafka producer shutdown in `finally`, preventing lingering producer resources after successful or failed replay runs.
+
+- Hardened voice and Discord REST timer behavior: voice-service request timeouts, voice transcription hard-stop timers, and Discord REST 429 retry backoff waits now use non-blocking timer handles so pending retries/timeouts do not keep process shutdown open.
+
+- Hardened live voice transcript context formatting: non-finite voice context config values now fall back to safe defaults instead of propagating `NaN` into lookback/window calculations.
+
+- Hardened wakeword invocation throttling: cooldown and per-minute limiter settings now sanitize non-finite values to safe defaults, avoiding silent limiter bypass or unstable behavior under malformed runtime config.
+
+- Hardened guild API key persistence in settings: guild key upserts now encrypt once and reuse the same ciphertext for both create/update paths, reducing redundant crypto work per write while preserving secret-at-rest behavior.
+
+- Hardened memory profile update deduplication: trailing history messages are now removed only when author identity matches the expected speaker (bot for assistant reply, current user for user message), preventing accidental context loss when different speakers send identical text.
+
+- Hardened awareness message retention internals: in-memory channel buffers now use linear-time front pruning and guard against invalid negative/non-finite limits, and Prisma-backed recent-message fetches now correctly honor `sinceMs=0`, normalize invalid limits, and coerce nullable `mentionsBot` fields safely.
+
+- Hardened agent-runtime execution internals: tool execution, retry-backoff, and integration fetch timeout timers now use non-blocking handles; tool-call cache constructors now sanitize non-finite limits/TTLs; and tool-call envelope validation now rejects blank tool names earlier for cleaner tool routing.
+
+- Hardened LLM client reliability: circuit-breaker configuration now sanitizes invalid thresholds/timeouts, Pollinations request and retry timers now use non-blocking timer behavior, runtime model-catalog fetch timeout no longer keeps process shutdown open, and schema-call repair retries now preserve system schema instructions for stronger JSON recovery.
+
+- Hardened core utility infrastructure: concurrency queues now avoid `Array.shift` hot-path overhead, timeout normalization now clamps to JavaScript timer-safe bounds, attachment fetch/Tika extraction now use non-blocking timeout timers with clearer timeout diagnostics and early response-body cancellation, and DNS lookups now have bounded timeout protection.
+
+- Hardened shared foundation utilities: timeout/retry helpers now use non-blocking timer behavior, `AppError` construction now preserves proper prototype/stack semantics, secret encryption key parsing is cached per process, and production logging now defaults to structured JSON while keeping pretty logs for interactive development.
+
+- Standardized TypeScript documentation coverage across the codebase by adding module headers and exported-symbol JSDoc comments to all `src/**` and `tests/**` TypeScript files, improving maintainability and operator auditability without changing runtime behavior.
+
 - Renamed 16 agentic tools and components across the codebase, ensuring explicit purpose (e.g. `web_get_page_text` ➡️ `web_read`, `system_internal_reflection` ➡️ `system_plan`, `'rest'` ➡️ `'discord.api'`). Added rigorous `.describe()` docstrings mapping directly to the underlying schemas for absolute LLM clarity.
 
 - Expanded website `ToolGrid` showcase to explicitly document the full catalog of 34 native Discord capabilities under a unified category, replacing the single placeholder "Discord" item.

@@ -1,3 +1,7 @@
+/**
+ * @module src/social-graph/setupSocialGraph
+ * @description Defines the setup social graph module.
+ */
 import { config } from '../config';
 import { logger } from '../core/utils/logger';
 import { createMemgraphClient } from './memgraphClient';

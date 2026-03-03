@@ -1,3 +1,7 @@
+/**
+ * @module src/core/agentRuntime/toolCallParser
+ * @description Defines the tool call parser module.
+ */
 /** Parse and validate structured tool-call envelopes emitted by the model. */
 export interface ToolCallEnvelope {
   type: 'tool_calls';
@@ -20,6 +24,30 @@ function stripCodeFences(text: string): string {
   const fencePattern = /^```(?:json)?\s*\n?([\s\S]*?)\n?```$/;
   const match = text.trim().match(fencePattern);
   return match ? match[1].trim() : text.trim();
+}
+
+function isValidCall(value: unknown): value is ToolCallEnvelope['calls'][number] {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const call = value as { name?: unknown; args?: unknown };
+  if (typeof call.name !== 'string' || call.name.trim().length === 0) return false;
+  if (!call.args || typeof call.args !== 'object' || Array.isArray(call.args)) return false;
+  return true;
+}
+
+function asValidToolCallEnvelope(parsed: unknown): ToolCallEnvelope | null {
+  if (
+    typeof parsed !== 'object' ||
+    parsed === null ||
+    (parsed as { type?: unknown }).type !== 'tool_calls' ||
+    !Array.isArray((parsed as { calls?: unknown }).calls)
+  ) {
+    return null;
+  }
+  const calls = (parsed as { calls: unknown[] }).calls;
+  if (!calls.every((call) => isValidCall(call))) {
+    return null;
+  }
+  return parsed as ToolCallEnvelope;
 }
 
 /**
@@ -94,52 +122,14 @@ export function parseToolCallEnvelope(text: string): ToolCallEnvelope | null {
   try {
     const stripped = stripCodeFences(text);
     const parsed = JSON.parse(stripped);
-
-    if (
-      typeof parsed === 'object' &&
-      parsed !== null &&
-      parsed.type === 'tool_calls' &&
-      Array.isArray(parsed.calls)
-    ) {
-      const validCalls = parsed.calls.every(
-        (c: unknown) =>
-          typeof c === 'object' &&
-          c !== null &&
-          typeof (c as { name?: unknown }).name === 'string' &&
-          typeof (c as { args?: unknown }).args === 'object' &&
-          (c as { args?: unknown }).args !== null &&
-          !Array.isArray((c as { args?: unknown }).args),
-      );
-      if (validCalls) {
-        return parsed as ToolCallEnvelope;
-      }
-    }
-    return null;
+    return asValidToolCallEnvelope(parsed);
   } catch {
     // Full-text parse failed — try extracting envelope from mixed content
     const extracted = extractEnvelopeFromMixedContent(text);
     if (extracted) {
       try {
         const parsed = JSON.parse(extracted);
-        if (
-          typeof parsed === 'object' &&
-          parsed !== null &&
-          parsed.type === 'tool_calls' &&
-          Array.isArray(parsed.calls)
-        ) {
-          const validCalls = parsed.calls.every(
-            (c: unknown) =>
-              typeof c === 'object' &&
-              c !== null &&
-              typeof (c as { name?: unknown }).name === 'string' &&
-              typeof (c as { args?: unknown }).args === 'object' &&
-              (c as { args?: unknown }).args !== null &&
-              !Array.isArray((c as { args?: unknown }).args),
-          );
-          if (validCalls) {
-            return parsed as ToolCallEnvelope;
-          }
-        }
+        return asValidToolCallEnvelope(parsed);
       } catch {
         // Extracted content also failed to parse — give up
       }

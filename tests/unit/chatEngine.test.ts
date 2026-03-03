@@ -1,3 +1,7 @@
+/**
+ * @module tests/unit/chatEngine.test
+ * @description Defines the chat engine.test module.
+ */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mockRunChatTurn = vi.hoisted(() => vi.fn());
@@ -177,5 +181,21 @@ describe('ChatEngine', () => {
 
     resolveCompaction('Compacted Summary');
     await Promise.resolve();
+  });
+
+  it('falls back to safe profile update interval when config is non-finite', async () => {
+    mockConfig.PROFILE_UPDATE_INTERVAL = Number.NaN as unknown as number;
+
+    await generateChatReply({
+      traceId: 'test',
+      userId: 'user1',
+      channelId: 'chan1',
+      guildId: 'guild1',
+      messageId: 'msg1',
+      userText: 'hello',
+    });
+
+    await Promise.resolve();
+    expect(mockUpdateProfileSummary).toHaveBeenCalledTimes(1);
   });
 });

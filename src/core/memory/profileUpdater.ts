@@ -1,3 +1,7 @@
+/**
+ * @module src/core/memory/profileUpdater
+ * @description Defines the profile updater module.
+ */
 import { createLLMClient } from '../llm';
 import { config as appConfig } from '../../config';
 import { logger } from '../utils/logger';
@@ -36,6 +40,21 @@ Output ONLY the JSON object.`;
 
 // Cached analyst client
 let analystClientCache: { client: LLMClient; provider: LLMProviderName } | null = null;
+
+function isTrailingAssistantMatch(
+  message: { content: string; authorIsBot: boolean },
+  assistantReply: string,
+): boolean {
+  return message.authorIsBot === true && message.content.trim() === assistantReply.trim();
+}
+
+function isTrailingUserMatch(
+  message: { content: string; authorId: string; authorIsBot: boolean },
+  userId: string,
+  userMessage: string,
+): boolean {
+  return message.authorIsBot !== true && message.authorId === userId && message.content.trim() === userMessage.trim();
+}
 
 /**
  * Get the LLM client for the Analyst phase.
@@ -109,7 +128,7 @@ export async function updateProfileSummary(params: {
       // 1. Check/Remove Assistant Reply (if it made it to the buffer)
       if (historyMessages.length > 0) {
         const last = historyMessages[historyMessages.length - 1];
-        if (last.content.trim() === assistantReply.trim()) {
+        if (isTrailingAssistantMatch(last, assistantReply)) {
           historyMessages.pop();
         }
       }
@@ -117,7 +136,7 @@ export async function updateProfileSummary(params: {
       // 2. Check/Remove User Message (if it made it to the buffer)
       if (historyMessages.length > 0) {
         const last = historyMessages[historyMessages.length - 1];
-        if (last.content.trim() === userMessage.trim()) {
+        if (isTrailingUserMatch(last, userId, userMessage)) {
           historyMessages.pop();
         }
       }

@@ -1,5 +1,12 @@
+/**
+ * @module src/core/llm/context-budgeter
+ * @description Defines the context budgeter module.
+ */
 import { LLMChatMessage, LLMContentPart, LLMMessageContent } from './llm-types';
 
+/**
+ * Represents the ModelLimits type.
+ */
 export type ModelLimits = {
   model: string;
   maxContextTokens: number;
@@ -8,12 +15,18 @@ export type ModelLimits = {
   visionEnabled?: boolean;
 };
 
+/**
+ * Represents the BudgetPlan type.
+ */
 export type BudgetPlan = {
   limits: ModelLimits;
   reservedOutputTokens: number;
   availableInputTokens: number;
 };
 
+/**
+ * Represents the TrimStats type.
+ */
 export type TrimStats = {
   beforeCount: number;
   afterCount: number;
@@ -24,6 +37,9 @@ export type TrimStats = {
   notes: string[];
 };
 
+/**
+ * Represents the TokenEstimateOptions type.
+ */
 export type TokenEstimateOptions = {
   charsPerToken: number;
   codeCharsPerToken: number;
@@ -31,6 +47,9 @@ export type TokenEstimateOptions = {
   messageOverheadTokens: number;
 };
 
+/**
+ * Represents the TrimMessagesOptions type.
+ */
 export type TrimMessagesOptions = {
   keepSystemMessages?: boolean;
   keepLastUserTurns?: number;
@@ -50,6 +69,13 @@ const DEFAULT_TOKEN_ESTIMATOR: TokenEstimateOptions = {
 
 const REPLY_REFERENCE_PREFIX = '[In reply to]:';
 
+/**
+ * Runs planBudget.
+ *
+ * @param limits - Describes the limits input.
+ * @param opts - Describes the opts input.
+ * @returns Returns the function result.
+ */
 export function planBudget(
   limits: ModelLimits,
   opts?: { reservedOutputTokens?: number },
@@ -143,6 +169,13 @@ function isLikelyCodeOrJson(text: string): boolean {
   return density >= 0.3;
 }
 
+/**
+ * Runs estimateTextTokens.
+ *
+ * @param text - Describes the text input.
+ * @param opts - Describes the opts input.
+ * @returns Returns the function result.
+ */
 export function estimateTextTokens(text: string, opts?: TokenEstimateOptions): number {
   const estimator = opts ?? DEFAULT_TOKEN_ESTIMATOR;
   const ratio = isLikelyCodeOrJson(text) ? estimator.codeCharsPerToken : estimator.charsPerToken;
@@ -152,6 +185,13 @@ export function estimateTextTokens(text: string, opts?: TokenEstimateOptions): n
   return Math.ceil(text.length / ratio);
 }
 
+/**
+ * Runs estimateMessageTokens.
+ *
+ * @param message - Describes the message input.
+ * @param opts - Describes the opts input.
+ * @returns Returns the function result.
+ */
 export function estimateMessageTokens(
   message: LLMChatMessage,
   opts?: TokenEstimateOptions,
@@ -172,6 +212,13 @@ export function estimateMessageTokens(
   return total;
 }
 
+/**
+ * Runs estimateMessagesTokens.
+ *
+ * @param messages - Describes the messages input.
+ * @param opts - Describes the opts input.
+ * @returns Returns the function result.
+ */
 export function estimateMessagesTokens(
   messages: LLMChatMessage[],
   opts?: TokenEstimateOptions,
@@ -505,6 +552,14 @@ function ensureNonEmptyMessages(messages: LLMChatMessage[]): LLMChatMessage[] {
   return [{ role: 'user', content: ' ' }];
 }
 
+/**
+ * Runs trimMessagesToBudget.
+ *
+ * @param messages - Describes the messages input.
+ * @param plan - Describes the plan input.
+ * @param opts - Describes the opts input.
+ * @returns Returns the function result.
+ */
 export function trimMessagesToBudget(
   messages: LLMChatMessage[],
   plan: BudgetPlan,

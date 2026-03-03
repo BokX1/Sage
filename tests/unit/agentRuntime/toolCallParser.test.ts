@@ -1,3 +1,7 @@
+/**
+ * @module tests/unit/agentRuntime/toolCallParser.test
+ * @description Defines the tool call parser.test module.
+ */
 import { describe, expect, it } from 'vitest';
 import { parseToolCallEnvelope } from '../../../src/core/agentRuntime/toolCallParser';
 
@@ -61,6 +65,13 @@ describe('toolCallParser', () => {
     it('returns null for envelope with invalid call shape', () => {
         const result = parseToolCallEnvelope(
             '{"type": "tool_calls", "calls": [{"name": 123}]}',
+        );
+        expect(result).toBeNull();
+    });
+
+    it('returns null for envelope with blank tool names', () => {
+        const result = parseToolCallEnvelope(
+            '{"type": "tool_calls", "calls": [{"name": "   ", "args": {}}]}',
         );
         expect(result).toBeNull();
     });

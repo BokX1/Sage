@@ -1,3 +1,7 @@
+/**
+ * @module src/core/voice/voiceMessageTranscriber
+ * @description Defines the voice message transcriber module.
+ */
 import { Readable } from 'stream';
 import prism from 'prism-media';
 import { type FetchAttachmentResult, fetchDiscordAttachmentBytes } from '../utils/file-handler';
@@ -104,6 +108,12 @@ async function decodeOggOpusToPcm(params: { oggBytes: Buffer; channels: number; 
   });
 }
 
+/**
+ * Runs transcribeDiscordVoiceMessageAttachment.
+ *
+ * @param params - Describes the params input.
+ * @returns Returns the function result.
+ */
 export async function transcribeDiscordVoiceMessageAttachment(params: {
   url: string;
   filename: string;

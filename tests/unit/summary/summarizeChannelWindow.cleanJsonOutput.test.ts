@@ -1,3 +1,7 @@
+/**
+ * @module tests/unit/summary/summarizeChannelWindow.cleanJsonOutput.test
+ * @description Defines the summarize channel window.clean json output.test module.
+ */
 import { describe, it, expect } from 'vitest';
 import { cleanJsonOutput } from '@/core/summary/summarizeChannelWindow';
 

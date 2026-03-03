@@ -1,3 +1,7 @@
+/**
+ * @module src/core/agentRuntime/discordToolCatalog
+ * @description Defines the discord tool catalog module.
+ */
 export const DISCORD_ACTION_CATALOG = {
   read_only: [
     'help',
@@ -41,6 +45,9 @@ export const DISCORD_ACTION_CATALOG = {
   ],
 } as const;
 
+/**
+ * Declares exported bindings: DISCORD_GUARDRAILS.
+ */
 export const DISCORD_GUARDRAILS = [
   'Writes are disallowed in autopilot turns.',
   'Admin-only actions require admin context; API calls are guild-scoped and approval-gated for non-GET writes.',
@@ -50,6 +57,9 @@ export const DISCORD_GUARDRAILS = [
   'When possible, batch independent read-only tool calls into a single tool_calls envelope to reduce round-trips.',
 ] as const;
 
+/**
+ * Represents the DiscordActionCatalog type.
+ */
 export type DiscordActionCatalog = typeof DISCORD_ACTION_CATALOG;
 
 function dedupePreserveOrder(values: readonly string[]): string[] {
@@ -63,6 +73,11 @@ function dedupePreserveOrder(values: readonly string[]): string[] {
   return out;
 }
 
+/**
+ * Runs getAllDiscordActions.
+ *
+ * @returns Returns the function result.
+ */
 export function getAllDiscordActions(): string[] {
   return dedupePreserveOrder([
     ...DISCORD_ACTION_CATALOG.read_only,
@@ -75,6 +90,11 @@ function formatActionList(values: readonly string[]): string {
   return values.join(', ');
 }
 
+/**
+ * Runs formatDiscordActionIndexLines.
+ *
+ * @returns Returns the function result.
+ */
 export function formatDiscordActionIndexLines(): string[] {
   return [
     `Discord actions (read-only): ${formatActionList(DISCORD_ACTION_CATALOG.read_only)}`,
@@ -83,6 +103,11 @@ export function formatDiscordActionIndexLines(): string[] {
   ];
 }
 
+/**
+ * Runs formatDiscordGuardrailsLines.
+ *
+ * @returns Returns the function result.
+ */
 export function formatDiscordGuardrailsLines(): string[] {
   return DISCORD_GUARDRAILS.map((line) => `Discord guardrail: ${line}`);
 }

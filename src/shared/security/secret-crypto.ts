@@ -1,3 +1,7 @@
+/**
+ * @module src/shared/security/secret-crypto
+ * @description Encrypts and decrypts persisted secrets with AES-256-GCM.
+ */
 import { createCipheriv, createDecipheriv, randomBytes } from 'crypto';
 import { config } from '../config/env';
 
@@ -5,16 +9,29 @@ const ALGO = 'aes-256-gcm';
 const IV_BYTES = 12;
 const TAG_BYTES = 16;
 const PREFIX = 'enc:v1:';
+let cachedKey: Buffer | undefined;
 
+/** Resolve and cache the configured encryption key. */
 function getKey(): Buffer {
+  if (cachedKey) {
+    return cachedKey;
+  }
+
   const hex = config.SECRET_ENCRYPTION_KEY.trim();
   if (!/^[0-9a-fA-F]{64}$/.test(hex)) {
     throw new Error('SECRET_ENCRYPTION_KEY must be 64 hex chars (32 bytes).');
   }
 
-  return Buffer.from(hex, 'hex');
+  cachedKey = Buffer.from(hex, 'hex');
+  return cachedKey;
 }
 
+/**
+ * Encrypt a plaintext secret for storage.
+ *
+ * @param plaintext - Raw secret value.
+ * @returns An authenticated ciphertext with `enc:v1:` prefix.
+ */
 export function encryptSecret(plaintext: string): string {
   const key = getKey();
 
@@ -25,6 +42,13 @@ export function encryptSecret(plaintext: string): string {
   return `${PREFIX}${Buffer.concat([iv, tag, encrypted]).toString('base64')}`;
 }
 
+/**
+ * Decrypt a stored secret value.
+ *
+ * @param value - Prefixed encrypted payload.
+ * @returns The original plaintext secret.
+ * @throws {Error} When payload format or authentication is invalid.
+ */
 export function decryptSecret(value: string): string {
   const key = getKey();
   if (!value.startsWith(PREFIX)) {

@@ -1,3 +1,7 @@
+/**
+ * @module tests/unit/awareness/transcriptInjection.test
+ * @description Defines the transcript injection.test module.
+ */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 const mockConfig = vi.hoisted(() => ({

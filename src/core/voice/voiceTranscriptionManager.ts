@@ -1,3 +1,7 @@
+/**
+ * @module src/core/voice/voiceTranscriptionManager
+ * @description Defines the voice transcription manager module.
+ */
 import { EndBehaviorType, VoiceConnection } from '@discordjs/voice';
 import type { Guild } from 'discord.js';
 import { Readable } from 'stream';
@@ -60,6 +64,12 @@ async function transcribeAndStore(params: {
   }
 }
 
+/**
+ * Runs startVoiceTranscription.
+ *
+ * @param params - Describes the params input.
+ * @returns Returns the function result.
+ */
 export function startVoiceTranscription(params: {
   guildId: string;
   voiceChannelId: string;
@@ -160,6 +170,7 @@ export function startVoiceTranscription(params: {
         // ignore
       }
     }, maxMs + 250);
+    hardStopTimer.unref?.();
 
     pcmStream.on('data', (chunk: Buffer) => {
       chunks.push(chunk);
@@ -206,6 +217,12 @@ export function startVoiceTranscription(params: {
   logger.info({ guildId: params.guildId, voiceChannelId: params.voiceChannelId }, 'Voice transcription started');
 }
 
+/**
+ * Runs stopVoiceTranscription.
+ *
+ * @param guildId - Describes the guildId input.
+ * @returns Returns the function result.
+ */
 export function stopVoiceTranscription(guildId: string): void {
   const state = active.get(guildId);
   if (!state) return;

@@ -1,3 +1,7 @@
+/**
+ * @module src/core/runtime/shutdown
+ * @description Defines the shutdown module.
+ */
 import type { Client } from 'discord.js';
 import { logger } from '../utils/logger';
 import { prisma } from '../db/prisma-client';
@@ -48,6 +52,12 @@ async function runShutdown(signal: ShutdownSignal, client: Client): Promise<void
   return shutdownInFlight;
 }
 
+/**
+ * Runs registerShutdownHooks.
+ *
+ * @param { client } - Describes the { client } input.
+ * @returns Returns the function result.
+ */
 export function registerShutdownHooks({ client }: RegisterShutdownHooksParams): void {
   const handleSignal = (signal: NodeJS.Signals) => {
     void runShutdown(signal, client)

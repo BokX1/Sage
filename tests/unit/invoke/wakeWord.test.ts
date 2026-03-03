@@ -1,3 +1,7 @@
+/**
+ * @module tests/unit/invoke/wakeWord.test
+ * @description Defines the wake word.test module.
+ */
 import { describe, it, expect } from 'vitest';
 import { detectInvocation, type DetectInvocationParams } from '../../../src/core/invocation/wake-word-detector';
 

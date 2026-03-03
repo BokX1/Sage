@@ -1,3 +1,7 @@
+/**
+ * @module tests/integration/bot/handlers/registration.test
+ * @description Defines the registration.test module.
+ */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { Events } from 'discord.js';
 

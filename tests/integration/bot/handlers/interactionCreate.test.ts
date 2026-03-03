@@ -1,3 +1,7 @@
+/**
+ * @module tests/integration/bot/handlers/interactionCreate.test
+ * @description Defines the interaction create.test module.
+ */
 import type { ChatInputCommandInteraction } from 'discord.js';
 import { Events } from 'discord.js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';

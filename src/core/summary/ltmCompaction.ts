@@ -1,3 +1,7 @@
+/**
+ * @module src/core/summary/ltmCompaction
+ * @description Defines the ltm compaction module.
+ */
 import { config } from '../../shared/config/env';
 import { logger } from '../utils/logger';
 import { ChannelSummaryKind, ChannelSummaryStore } from './channelSummaryStore';
@@ -28,6 +32,15 @@ export function getISOWeekString(date: Date): string {
   return `${isoYear}-W${String(weekNumber).padStart(2, '0')}`;
 }
 
+/**
+ * Runs compactChannelProfile.
+ *
+ * @param guildId - Describes the guildId input.
+ * @param channelId - Describes the channelId input.
+ * @param store - Describes the store input.
+ * @param options - Describes the options input.
+ * @returns Returns the function result.
+ */
 export async function compactChannelProfile(
   guildId: string,
   channelId: string,
@@ -125,6 +138,11 @@ function isWithinCompactionWindow(now: Date): boolean {
   );
 }
 
+/**
+ * Runs startCompactionScheduler.
+ *
+ * @returns Returns the function result.
+ */
 export function startCompactionScheduler(): void {
   if (!config.LTM_COMPACTION_ENABLED) {
     logger.info('[Compaction] LTM compaction is disabled via config');
@@ -152,6 +170,11 @@ export function startCompactionScheduler(): void {
   logger.info('LTM compaction scheduler started (Sunday 23:50 UTC)');
 }
 
+/**
+ * Runs stopCompactionScheduler.
+ *
+ * @returns Returns the function result.
+ */
 export function stopCompactionScheduler(): void {
   if (compactionTimer) {
     clearInterval(compactionTimer);
@@ -233,6 +256,11 @@ export async function runWeeklyCompaction(now: Date = new Date()): Promise<void>
   }
 }
 
+/**
+ * Runs __resetCompactionStateForTests.
+ *
+ * @returns Returns the function result.
+ */
 export function __resetCompactionStateForTests(): void {
   stopCompactionScheduler();
   compactionInFlight = null;

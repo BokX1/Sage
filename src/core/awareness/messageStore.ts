@@ -1,3 +1,7 @@
+/**
+ * @module src/core/awareness/messageStore
+ * @description Defines the message store module.
+ */
 import { appendMessage, deleteOlderThan, getRecentMessages } from './channelRingBuffer';
 import { ChannelMessage } from './awareness-types';
 

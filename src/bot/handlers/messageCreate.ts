@@ -1,3 +1,7 @@
+/**
+ * @module src/bot/handlers/messageCreate
+ * @description Defines the message create module.
+ */
 import { Message, Events } from 'discord.js';
 import { client } from '../client';
 import { logger } from '../../core/utils/logger';
@@ -46,6 +50,22 @@ let cachedWakeWords: string[] | null = null;
 let cachedWakeWordPrefixes: string[] | null = null;
 const ATTACHMENT_INTENT_PATTERN =
   /\b(attachment|attached|file|files|document|doc|pdf|read|review|analy[sz]e|summari[sz]e|inspect|parse|look at)\b/i;
+
+/** Normalize integer config values with non-negative lower bound. */
+function toNonNegativeInt(value: number, fallback: number): number {
+  if (!Number.isFinite(value)) {
+    return fallback;
+  }
+  return Math.max(0, Math.floor(value));
+}
+
+/** Normalize integer config values with positive lower bound. */
+function toPositiveInt(value: number, fallback: number): number {
+  if (!Number.isFinite(value)) {
+    return fallback;
+  }
+  return Math.max(1, Math.floor(value));
+}
 
 function getWakeWords(): string[] {
   if (!cachedWakeWords) {
@@ -245,6 +265,12 @@ async function resolveReferencedMessage(message: Message): Promise<Message | nul
   }
 }
 
+/**
+ * Runs handleMessageCreate.
+ *
+ * @param message - Describes the message input.
+ * @returns Returns the function result.
+ */
 export async function handleMessageCreate(message: Message) {
   let typingInterval: NodeJS.Timeout | null = null;
   try {
@@ -306,7 +332,18 @@ export async function handleMessageCreate(message: Message) {
       : null;
 
     const nonImageAttachments = getNonImageAttachments(message);
-    const maxAttachmentsPerMessage = Math.max(1, appConfig.FILE_INGEST_MAX_ATTACHMENTS_PER_MESSAGE);
+    const maxAttachmentsPerMessage = toPositiveInt(
+      appConfig.FILE_INGEST_MAX_ATTACHMENTS_PER_MESSAGE,
+      1,
+    );
+    const perFileMaxBytes = toNonNegativeInt(appConfig.FILE_INGEST_MAX_BYTES_PER_FILE, 0);
+    const perMessageMaxBytes = toNonNegativeInt(
+      appConfig.FILE_INGEST_MAX_TOTAL_BYTES_PER_MESSAGE,
+      0,
+    );
+    const ingestTimeoutMs = toPositiveInt(appConfig.FILE_INGEST_TIMEOUT_MS, 45_000);
+    const voiceSttMaxBytes = toNonNegativeInt(appConfig.VOICE_MESSAGE_STT_MAX_BYTES, perFileMaxBytes);
+    const voiceSttMaxSeconds = toPositiveInt(appConfig.VOICE_MESSAGE_STT_MAX_SECONDS, 120);
     const selectedAttachments = nonImageAttachments.slice(0, maxAttachmentsPerMessage);
     const skippedByLimitCount = Math.max(0, nonImageAttachments.length - selectedAttachments.length);
     const attachmentBlocks: string[] = [];
@@ -324,7 +361,7 @@ export async function handleMessageCreate(message: Message) {
       baseText: message.content ?? '',
     });
     let remainingAttachmentChars = attachmentBudget.maxChars;
-    let remainingAttachmentBytes = appConfig.FILE_INGEST_MAX_TOTAL_BYTES_PER_MESSAGE;
+    let remainingAttachmentBytes = perMessageMaxBytes;
 
     for (let index = 0; index < selectedAttachments.length; index += 1) {
       const attachment = selectedAttachments[index];
@@ -348,7 +385,7 @@ export async function handleMessageCreate(message: Message) {
       } else if (shouldTranscribeVoiceMessages) {
         const voiceMaxBytes = Math.max(
           0,
-          Math.min(appConfig.VOICE_MESSAGE_STT_MAX_BYTES, remainingAttachmentBytes, appConfig.FILE_INGEST_MAX_BYTES_PER_FILE),
+          Math.min(voiceSttMaxBytes, remainingAttachmentBytes, perFileMaxBytes),
         );
         if (voiceMaxBytes <= 0) {
           attachmentResult = {
@@ -364,9 +401,9 @@ export async function handleMessageCreate(message: Message) {
             contentType: attachment.contentType ?? null,
             declaredSizeBytes: attachment.size ?? null,
             durationSeconds: attachment.duration ?? null,
-            timeoutMs: appConfig.FILE_INGEST_TIMEOUT_MS,
+            timeoutMs: ingestTimeoutMs,
             maxBytes: voiceMaxBytes,
-            maxSeconds: appConfig.VOICE_MESSAGE_STT_MAX_SECONDS,
+            maxSeconds: voiceSttMaxSeconds,
             maxChars,
           });
         }
@@ -374,7 +411,7 @@ export async function handleMessageCreate(message: Message) {
         const maxBytesFromChars = Math.max(0, Math.floor(maxChars * 4));
         const maxBytes = Math.max(
           0,
-          Math.min(appConfig.FILE_INGEST_MAX_BYTES_PER_FILE, remainingAttachmentBytes, maxBytesFromChars),
+          Math.min(perFileMaxBytes, remainingAttachmentBytes, maxBytesFromChars),
         );
         if (maxBytes <= 0) {
           attachmentResult = {
@@ -384,7 +421,7 @@ export async function handleMessageCreate(message: Message) {
           };
         } else {
         attachmentResult = await fetchAttachmentText(attachment.url ?? '', attachmentName, {
-          timeoutMs: appConfig.FILE_INGEST_TIMEOUT_MS,
+          timeoutMs: ingestTimeoutMs,
           maxBytes,
           maxChars,
           truncateStrategy: 'head_tail',
@@ -535,6 +572,7 @@ export async function handleMessageCreate(message: Message) {
           // Ignore typing errors (for example, missing permissions or deleted channels).
         });
       }, 8000);
+      typingInterval.unref?.();
 
       const includeAttachmentBlocks = shouldInlineAttachmentBlocks({
         invokedBy: invocation.kind,
@@ -629,6 +667,11 @@ export async function handleMessageCreate(message: Message) {
   }
 }
 
+/**
+ * Runs registerMessageCreateHandler.
+ *
+ * @returns Returns the function result.
+ */
 export function registerMessageCreateHandler() {
   const g = globalThis as GlobalScope;
   if (g[registrationKey]) {

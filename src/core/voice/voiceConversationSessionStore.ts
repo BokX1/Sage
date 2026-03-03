@@ -1,6 +1,13 @@
+/**
+ * @module src/core/voice/voiceConversationSessionStore
+ * @description Defines the voice conversation session store module.
+ */
 import { config } from '../../config';
 import { logger } from '../utils/logger';
 
+/**
+ * Represents the VoiceUtterance type.
+ */
 export type VoiceUtterance = {
   at: Date;
   userId: string;
@@ -8,6 +15,9 @@ export type VoiceUtterance = {
   text: string;
 };
 
+/**
+ * Represents the VoiceConversationSession type.
+ */
 export type VoiceConversationSession = {
   guildId: string;
   voiceChannelId: string;
@@ -23,7 +33,21 @@ type ActiveSession = Omit<VoiceConversationSession, 'endedAt'>;
 const activeSessions = new Map<string, ActiveSession>();
 
 const MAX_UTTERANCES_PER_SESSION = 2000;
+const DEFAULT_VOICE_LIVE_CONTEXT_LOOKBACK_SEC = 0;
+const DEFAULT_VOICE_LIVE_CONTEXT_MAX_CHARS = 200;
+const DEFAULT_VOICE_LIVE_CONTEXT_MAX_UTTERANCES = 5;
 
+function toPositiveInt(value: number | undefined, fallback: number, min: number): number {
+  if (!Number.isFinite(value)) return fallback;
+  return Math.max(min, Math.floor(value as number));
+}
+
+/**
+ * Runs startVoiceConversationSession.
+ *
+ * @param params - Describes the params input.
+ * @returns Returns the function result.
+ */
 export function startVoiceConversationSession(params: {
   guildId: string;
   voiceChannelId: string;
@@ -41,10 +65,22 @@ export function startVoiceConversationSession(params: {
   });
 }
 
+/**
+ * Runs getActiveVoiceConversationSession.
+ *
+ * @param guildId - Describes the guildId input.
+ * @returns Returns the function result.
+ */
 export function getActiveVoiceConversationSession(guildId: string): ActiveSession | null {
   return activeSessions.get(guildId) ?? null;
 }
 
+/**
+ * Runs appendVoiceUtterance.
+ *
+ * @param params - Describes the params input.
+ * @returns Returns the function result.
+ */
 export function appendVoiceUtterance(params: {
   guildId: string;
   at: Date;
@@ -74,6 +110,12 @@ function formatSpeakerLabel(utterance: VoiceUtterance): string {
   return utterance.displayName?.trim() ? `@${utterance.displayName}` : `<@${utterance.userId}>`;
 }
 
+/**
+ * Runs formatLiveVoiceContext.
+ *
+ * @param params - Describes the params input.
+ * @returns Returns the function result.
+ */
 export function formatLiveVoiceContext(params: {
   guildId: string;
   voiceChannelId: string;
@@ -84,13 +126,26 @@ export function formatLiveVoiceContext(params: {
   if (session.voiceChannelId !== params.voiceChannelId) return null;
 
   const now = params.now ?? new Date();
-  const lookbackMs = Math.max(0, config.VOICE_LIVE_CONTEXT_LOOKBACK_SEC) * 1000;
+  const lookbackSec = toPositiveInt(
+    config.VOICE_LIVE_CONTEXT_LOOKBACK_SEC as number | undefined,
+    DEFAULT_VOICE_LIVE_CONTEXT_LOOKBACK_SEC,
+    0,
+  );
+  const lookbackMs = lookbackSec * 1000;
   const cutoffMs = now.getTime() - lookbackMs;
   const recent = session.utterances.filter((u) => u.at.getTime() >= cutoffMs);
   if (recent.length === 0) return null;
 
-  const maxChars = Math.max(200, config.VOICE_LIVE_CONTEXT_MAX_CHARS);
-  const maxUtterances = Math.max(5, config.VOICE_LIVE_CONTEXT_MAX_UTTERANCES);
+  const maxChars = toPositiveInt(
+    config.VOICE_LIVE_CONTEXT_MAX_CHARS as number | undefined,
+    DEFAULT_VOICE_LIVE_CONTEXT_MAX_CHARS,
+    200,
+  );
+  const maxUtterances = toPositiveInt(
+    config.VOICE_LIVE_CONTEXT_MAX_UTTERANCES as number | undefined,
+    DEFAULT_VOICE_LIVE_CONTEXT_MAX_UTTERANCES,
+    5,
+  );
 
   const header = `Live voice transcript context (last ~${Math.round(lookbackMs / 1000)}s, most recent last):`;
   const lines: string[] = [header];
@@ -109,6 +164,12 @@ export function formatLiveVoiceContext(params: {
   return lines.join('\n');
 }
 
+/**
+ * Runs stopVoiceConversationSession.
+ *
+ * @param params - Describes the params input.
+ * @returns Returns the function result.
+ */
 export function stopVoiceConversationSession(params: { guildId: string; endedAt: Date }): VoiceConversationSession | null {
   const session = activeSessions.get(params.guildId);
   if (!session) return null;
@@ -119,7 +180,12 @@ export function stopVoiceConversationSession(params: { guildId: string; endedAt:
   };
 }
 
+/**
+ * Runs clearVoiceConversationSession.
+ *
+ * @param guildId - Describes the guildId input.
+ * @returns Returns the function result.
+ */
 export function clearVoiceConversationSession(guildId: string): void {
   activeSessions.delete(guildId);
 }
-

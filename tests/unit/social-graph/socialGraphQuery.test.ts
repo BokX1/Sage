@@ -1,3 +1,7 @@
+/**
+ * @module tests/unit/social-graph/socialGraphQuery.test
+ * @description Defines the social graph query.test module.
+ */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mockRun = vi.hoisted(() => vi.fn());
@@ -191,5 +195,81 @@ describe('querySocialGraph', () => {
       communityId: 2,
     });
     expect(mockRun).toHaveBeenCalledTimes(3);
+  });
+
+  it('sanitizes non-finite or invalid numeric graph fields to safe defaults', async () => {
+    mockRun
+      .mockResolvedValueOnce({
+        records: [
+          {
+            get: (key: string) => {
+              const map: Record<string, unknown> = {
+                other_id: 'user-2',
+                outgoing_count: Number.POSITIVE_INFINITY,
+                incoming_count: 'not-a-number',
+                reciprocity: Number.NaN,
+                avg_sentiment: 'bad',
+                mention_count: '7',
+                reply_count: null,
+                react_count: undefined,
+                voice_count: { toNumber: () => Number.NaN },
+              };
+              if (key in map) return map[key];
+              return null;
+            },
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        records: [
+          {
+            get: (key: string) => {
+              const map: Record<string, unknown> = {
+                user_id: 'user-1',
+                guild_pagerank: 'bad',
+                guild_community_id: 'bad',
+              };
+              if (key in map) return map[key];
+              return null;
+            },
+          },
+          {
+            get: (key: string) => {
+              const map: Record<string, unknown> = {
+                user_id: 'user-2',
+                guild_pagerank: 0.3,
+                guild_community_id: 6,
+              };
+              if (key in map) return map[key];
+              return null;
+            },
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        records: [],
+      });
+
+    const { querySocialGraph } = await import('@/social-graph/socialGraphQuery');
+    const result = await querySocialGraph('guild-1', 'user-1', 5);
+
+    expect(result).not.toBeNull();
+    expect(result?.userPagerank).toBe(0);
+    expect(result?.userCommunityId).toBeNull();
+    expect(result?.edges[0]).toMatchObject({
+      userId: 'user-2',
+      outgoingCount: 0,
+      incomingCount: 0,
+      reciprocity: 0,
+      avgSentiment: 0,
+      pagerank: 0.3,
+      communityId: 6,
+      interactionBreakdown: {
+        mentions: 7,
+        replies: 0,
+        reacts: 0,
+        voiceSessions: 0,
+      },
+    });
   });
 });

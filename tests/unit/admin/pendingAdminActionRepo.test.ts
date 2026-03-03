@@ -1,3 +1,7 @@
+/**
+ * @module tests/unit/admin/pendingAdminActionRepo.test
+ * @description Defines the pending admin action repo.test module.
+ */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const createMock = vi.hoisted(() => vi.fn());

@@ -1,3 +1,7 @@
+/**
+ * @module tests/unit/social-graph/kafkaProducer.shutdown.test
+ * @description Defines the kafka producer.shutdown.test module.
+ */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 describe('kafkaProducer shutdown draining', () => {

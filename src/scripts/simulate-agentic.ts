@@ -1,3 +1,7 @@
+/**
+ * @module src/scripts/simulate-agentic
+ * @description Defines the simulate agentic module.
+ */
 /* eslint-disable no-console */
 
 import { randomUUID } from 'node:crypto';

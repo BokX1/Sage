@@ -1,6 +1,13 @@
+/**
+ * @module src/core/llm/model-health-repo
+ * @description Defines the model health repo module.
+ */
 import { prisma } from '../../core/db/prisma-client';
 import { logger } from '../utils/logger';
 
+/**
+ * Represents the ModelHealthStateRow contract.
+ */
 export interface ModelHealthStateRow {
   modelId: string;
   score: number;
@@ -25,6 +32,12 @@ function isSchemaMismatchError(error: unknown): boolean {
   );
 }
 
+/**
+ * Runs listModelHealthStates.
+ *
+ * @param modelIds - Describes the modelIds input.
+ * @returns Returns the function result.
+ */
 export async function listModelHealthStates(modelIds?: string[]): Promise<ModelHealthStateRow[]> {
   try {
     const ids =
@@ -50,6 +63,12 @@ export async function listModelHealthStates(modelIds?: string[]): Promise<ModelH
   }
 }
 
+/**
+ * Runs upsertModelHealthState.
+ *
+ * @param params - Describes the params input.
+ * @returns Returns the function result.
+ */
 export async function upsertModelHealthState(params: {
   modelId: string;
   score: number;
@@ -71,6 +90,11 @@ export async function upsertModelHealthState(params: {
   });
 }
 
+/**
+ * Runs clearModelHealthStates.
+ *
+ * @returns Returns the function result.
+ */
 export async function clearModelHealthStates(): Promise<void> {
   try {
     await prisma.modelHealthState.deleteMany({});

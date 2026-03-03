@@ -1,3 +1,7 @@
+/**
+ * @module src/scripts/seed-replay-traces
+ * @description Defines the seed replay traces module.
+ */
 /* eslint-disable no-console */
 
 import { upsertTraceStart, updateTraceEnd } from '../core/agentRuntime/agent-trace-repo';

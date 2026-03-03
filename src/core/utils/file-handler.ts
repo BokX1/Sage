@@ -1,7 +1,17 @@
+/**
+ * @module src/core/utils/file-handler
+ * @description Defines the file handler module.
+ */
 import { normalizeTimeoutMs } from './timeout';
 
+/**
+ * Represents the AttachmentExtractor type.
+ */
 export type AttachmentExtractor = 'native' | 'tika' | 'voice_stt' | 'none';
 
+/**
+ * Represents the FetchAttachmentTextOptions type.
+ */
 export type FetchAttachmentTextOptions = {
   timeoutMs: number;
   maxBytes: number;
@@ -21,6 +31,9 @@ type ResultMeta = {
   byteLength?: number;
 };
 
+/**
+ * Represents the FetchAttachmentResult type.
+ */
 export type FetchAttachmentResult =
   | ({ kind: 'skip'; reason: string } & ResultMeta)
   | ({ kind: 'too_large'; message: string } & ResultMeta)
@@ -28,6 +41,9 @@ export type FetchAttachmentResult =
   | ({ kind: 'error'; message: string } & ResultMeta)
   | ({ kind: 'ok'; text: string } & ResultMeta);
 
+/**
+ * Represents the FetchDiscordAttachmentBytesOptions type.
+ */
 export type FetchDiscordAttachmentBytesOptions = {
   timeoutMs: number;
   maxBytes: number;
@@ -35,6 +51,9 @@ export type FetchDiscordAttachmentBytesOptions = {
   contentType?: string | null;
 };
 
+/**
+ * Represents the FetchDiscordAttachmentBytesResult type.
+ */
 export type FetchDiscordAttachmentBytesResult =
   | { kind: 'skip'; reason: string; mimeType?: string | null; byteLength?: number }
   | { kind: 'too_large'; message: string; mimeType?: string | null; byteLength?: number }
@@ -274,6 +293,19 @@ function stripNul(value: string): string {
   return value.replaceAll('\0', '');
 }
 
+/** Best-effort response body cancellation to release network resources early. */
+function cancelResponseBody(response: Response): void {
+  void response.body?.cancel().catch(() => undefined);
+}
+
+/** Determine whether a thrown fetch error corresponds to an abort signal. */
+function isAbortError(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+  return error.name === 'AbortError' || error.message.toLowerCase().includes('aborted');
+}
+
 function extractTextNative(buffer: Buffer): string {
   const decoder = new TextDecoder('utf-8');
   const decoded = decoder.decode(buffer);
@@ -351,10 +383,12 @@ async function fetchAttachmentBytes(
 
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), opts.timeoutMs);
+  timeoutId.unref?.();
 
   try {
     const response = await fetch(url, { signal: controller.signal });
     if (!response.ok) {
+      cancelResponseBody(response);
       return {
         kind: 'error',
         message: buildSystemMessage(
@@ -365,6 +399,7 @@ async function fetchAttachmentBytes(
 
     const contentType = normalizeMimeType(response.headers.get('content-type') ?? opts.contentType);
     if (contentType?.startsWith('image/')) {
+      cancelResponseBody(response);
       return {
         kind: 'skip',
         reason: buildSystemMessage(`Attachment '${filename}' is an image; skipped.`),
@@ -375,6 +410,7 @@ async function fetchAttachmentBytes(
     if (contentLength) {
       const length = Number(contentLength);
       if (Number.isFinite(length) && length > opts.maxBytes) {
+        cancelResponseBody(response);
         return {
           kind: 'too_large',
           message: buildSystemMessage(
@@ -386,6 +422,7 @@ async function fetchAttachmentBytes(
 
     const bodyResult = await readResponseBodyWithinLimit(response, opts.maxBytes);
     if (bodyResult.kind === 'too_large') {
+      cancelResponseBody(response);
       return {
         kind: 'too_large',
         message: buildSystemMessage(
@@ -401,6 +438,14 @@ async function fetchAttachmentBytes(
       byteLength: bodyResult.buffer.byteLength,
     };
   } catch (error) {
+    if (isAbortError(error)) {
+      return {
+        kind: 'error',
+        message: buildSystemMessage(
+          `Failed to read file '${filename}': request timed out after ${opts.timeoutMs.toLocaleString()}ms.`,
+        ),
+      };
+    }
     const message = error instanceof Error ? error.message : 'Unknown error';
     return {
       kind: 'error',
@@ -448,6 +493,7 @@ async function extractTextWithTika(
 
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), params.timeoutMs);
+  timeoutId.unref?.();
   const headers: Record<string, string> = {
     Accept: 'text/plain',
     'Content-Type': params.contentType ?? 'application/octet-stream',
@@ -481,6 +527,12 @@ async function extractTextWithTika(
     const text = stripNul(await response.text());
     return { kind: 'ok', text };
   } catch (error) {
+    if (isAbortError(error)) {
+      return {
+        kind: 'error',
+        message: `Tika extraction timed out after ${params.timeoutMs.toLocaleString()}ms.`,
+      };
+    }
     const message = error instanceof Error ? error.message : 'Unknown error';
     return { kind: 'error', message: `Tika extraction failed: ${message}.` };
   } finally {
@@ -488,6 +540,14 @@ async function extractTextWithTika(
   }
 }
 
+/**
+ * Runs fetchAttachmentText.
+ *
+ * @param url - Describes the url input.
+ * @param filename - Describes the filename input.
+ * @param opts - Describes the opts input.
+ * @returns Returns the function result.
+ */
 export async function fetchAttachmentText(
   url: string,
   filename: string,
@@ -648,6 +708,14 @@ export async function fetchAttachmentText(
   };
 }
 
+/**
+ * Runs fetchDiscordAttachmentBytes.
+ *
+ * @param url - Describes the url input.
+ * @param filename - Describes the filename input.
+ * @param opts - Describes the opts input.
+ * @returns Returns the function result.
+ */
 export async function fetchDiscordAttachmentBytes(
   url: string,
   filename: string,

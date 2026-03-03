@@ -1,3 +1,7 @@
+/**
+ * @module src/core/agentRuntime/llmJudge
+ * @description Defines the llm judge module.
+ */
 import { getLLMClient } from '../llm';
 import { LLMChatMessage } from '../llm/llm-types';
 import { config } from '../../config';
@@ -11,6 +15,9 @@ import {
 } from './evalScorer';
 import { parseTraceToolTelemetry } from './toolTelemetry';
 
+/**
+ * Represents the LlmJudgeInput contract.
+ */
 export interface LlmJudgeInput {
   guildId: string | null;
   routeKind: string;
@@ -28,6 +35,9 @@ export interface LlmJudgeInput {
   adjudicatorModel?: string;
 }
 
+/**
+ * Represents the LlmJudgeAssessment contract.
+ */
 export interface LlmJudgeAssessment extends EvalAggregateScore {
   model: string;
   scores: EvalDimensionScores;
@@ -35,6 +45,9 @@ export interface LlmJudgeAssessment extends EvalAggregateScore {
   summary: string;
 }
 
+/**
+ * Represents the LlmJudgeResult contract.
+ */
 export interface LlmJudgeResult {
   rubricVersion: string;
   routeKind: string;
@@ -61,6 +74,9 @@ interface ResolvedJudgeModels {
   adjudicator: string;
 }
 
+/**
+ * Represents the JudgeModelInvoker type.
+ */
 export type JudgeModelInvoker = (params: {
   role: JudgeRole;
   model: string;
@@ -316,6 +332,13 @@ async function runJudgePass(params: {
   }
 }
 
+/**
+ * Runs runLlmJudge.
+ *
+ * @param input - Describes the input input.
+ * @param deps - Describes the deps input.
+ * @returns Returns the function result.
+ */
 export async function runLlmJudge(
   input: LlmJudgeInput,
   deps?: { invoker?: JudgeModelInvoker },

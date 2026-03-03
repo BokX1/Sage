@@ -1,3 +1,7 @@
+/**
+ * @module src/core/awareness/prismaMessageStore
+ * @description Defines the prisma message store module.
+ */
 import { prisma } from '../../core/db/prisma-client';
 import { MessageStore } from './messageStore';
 import { ChannelMessage } from './awareness-types';
@@ -84,19 +88,24 @@ export class PrismaMessageStore implements MessageStore {
     limit: number;
     sinceMs?: number;
   }): Promise<ChannelMessage[]> {
+    const normalizedLimit = Number.isFinite(params.limit) ? Math.max(0, Math.floor(params.limit)) : 0;
+    if (normalizedLimit === 0) {
+      return [];
+    }
+
     const channelMessage = getChannelMessageClient();
     const where: Record<string, unknown> = {
       guildId: params.guildId,
       channelId: params.channelId,
     };
-    if (params.sinceMs) {
-      where.timestamp = { gte: new Date(params.sinceMs) };
+    if (Number.isFinite(params.sinceMs)) {
+      where.timestamp = { gte: new Date(params.sinceMs as number) };
     }
 
     const rows = await channelMessage.findMany({
       where,
       orderBy: { timestamp: 'desc' },
-      take: params.limit,
+      take: normalizedLimit,
     });
 
     return rows.reverse().map((row) => ({
@@ -110,7 +119,7 @@ export class PrismaMessageStore implements MessageStore {
       content: row.content as string,
       replyToMessageId: (row.replyToMessageId as string | null) ?? undefined,
       mentionsUserIds: (row.mentionsUserIds as string[]) ?? [],
-      mentionsBot: row.mentionsBot as boolean,
+      mentionsBot: (row.mentionsBot as boolean | null) ?? false,
     }));
   }
 

@@ -1,16 +1,32 @@
+/**
+ * @module src/core/discord/discordRest
+ * @description Defines the discord rest module.
+ */
 import { config } from '../../config';
 import { isPrivateOrLocalHostname } from '../../shared/config/env';
 import { logger } from '../utils/logger';
 import { lookupAll } from '../utils/dnsLookup';
 
+/**
+ * Represents the DiscordRestMethod type.
+ */
 export type DiscordRestMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+/**
+ * Represents the DiscordRestMultipartBodyMode type.
+ */
 export type DiscordRestMultipartBodyMode = 'payload_json' | 'fields';
 
+/**
+ * Represents the DiscordRestFileSource type.
+ */
 export type DiscordRestFileSource =
   | { type: 'url'; url: string }
   | { type: 'text'; text: string }
   | { type: 'base64'; base64: string };
 
+/**
+ * Represents the DiscordRestFileInput type.
+ */
 export type DiscordRestFileInput = {
   fieldName?: string;
   filename: string;
@@ -168,6 +184,13 @@ async function safeReadResponseBody(response: Response): Promise<{ parsed: unkno
 function trimToMaxChars(value: string, maxChars: number): { text: string; truncated: boolean } {
   if (value.length <= maxChars) return { text: value, truncated: false };
   return { text: `${value.slice(0, Math.max(1, maxChars - 1))}…`, truncated: true };
+}
+
+function sleep(delayMs: number): Promise<void> {
+  return new Promise((resolve) => {
+    const delayHandle = setTimeout(resolve, delayMs);
+    delayHandle.unref?.();
+  });
 }
 
 async function readResponseBytesWithLimit(response: Response, maxBytes: number): Promise<Uint8Array> {
@@ -414,6 +437,12 @@ async function buildMultipartBody(params: {
   return form;
 }
 
+/**
+ * Runs discordRestRequest.
+ *
+ * @param params - Describes the params input.
+ * @returns Returns the function result.
+ */
 export async function discordRestRequest(params: {
   method: DiscordRestMethod | string;
   path: string;
@@ -537,7 +566,7 @@ export async function discordRestRequest(params: {
       );
 
       if (waitMs > 0) {
-        await new Promise((resolve) => setTimeout(resolve, waitMs));
+        await sleep(waitMs);
       }
       continue;
     }

@@ -1,3 +1,7 @@
+/**
+ * @module src/core/voice/voiceManager
+ * @description Defines the voice manager module.
+ */
 import {
   joinVoiceChannel,
   VoiceConnection,
@@ -20,6 +24,9 @@ import { summarizeVoiceConversationSession } from './voiceSessionSummarizer';
 import { voiceServiceHealth } from './voiceServiceClient';
 import { startVoiceTranscription, stopVoiceTranscription } from './voiceTranscriptionManager';
 
+/**
+ * Defines the VoiceManager class.
+ */
 export class VoiceManager extends EventEmitter {
   private static instance: VoiceManager;
   private connections: Map<string, VoiceConnection> = new Map();

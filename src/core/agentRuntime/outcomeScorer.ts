@@ -1,5 +1,12 @@
+/**
+ * @module src/core/agentRuntime/outcomeScorer
+ * @description Defines the outcome scorer module.
+ */
 import { parseTraceToolTelemetry } from './toolTelemetry';
 
+/**
+ * Represents the OutcomeScorerInput contract.
+ */
 export interface OutcomeScorerInput {
   routeKind: string;
   replyText: string;
@@ -8,6 +15,9 @@ export interface OutcomeScorerInput {
   budgetJson?: unknown;
 }
 
+/**
+ * Represents the OutcomeScore contract.
+ */
 export interface OutcomeScore {
   score: number;
   successLikely: boolean;
@@ -33,6 +43,12 @@ function readNumber(obj: unknown, key: string): number | null {
   return num;
 }
 
+/**
+ * Runs scoreTraceOutcome.
+ *
+ * @param input - Describes the input input.
+ * @returns Returns the function result.
+ */
 export function scoreTraceOutcome(input: OutcomeScorerInput): OutcomeScore {
   const riskFlags: string[] = [];
   const notes: string[] = [];

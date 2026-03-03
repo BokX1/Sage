@@ -1,10 +1,26 @@
+/**
+ * @module src/core/voice/voiceQueries
+ * @description Defines the voice queries module.
+ */
 import { getGuildPresence } from './voicePresenceIndex';
 import { getUserSessionsInRange, VoiceSession } from './voiceSessionRepo';
 
+/**
+ * Runs whoIsInVoice.
+ *
+ * @param params - Describes the params input.
+ * @returns Returns the function result.
+ */
 export async function whoIsInVoice(params: { guildId: string }) {
   return getGuildPresence(params.guildId);
 }
 
+/**
+ * Runs howLongInVoiceToday.
+ *
+ * @param params - Describes the params input.
+ * @returns Returns the function result.
+ */
 export async function howLongInVoiceToday(params: {
   guildId: string;
   userId: string;

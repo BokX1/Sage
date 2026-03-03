@@ -1,3 +1,7 @@
+/**
+ * @module tests/unit/shared/env-hostname-guard.test
+ * @description Defines the env hostname guard.test module.
+ */
 import { describe, expect, it } from 'vitest';
 import { isPrivateOrLocalHostname } from '../../../src/shared/config/env';
 

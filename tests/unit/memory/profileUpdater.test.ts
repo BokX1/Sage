@@ -1,3 +1,7 @@
+/**
+ * @module tests/unit/memory/profileUpdater.test
+ * @description Defines the profile updater.test module.
+ */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { updateProfileSummary, extractBalancedJson } from '../../../src/core/memory/profileUpdater';
 
@@ -141,9 +145,9 @@ describe('ProfileUpdater', () => {
     it('should deduplicate user and assistant messages if they appear trailing in history', async () => {
       // Setup history mock to include the very messages we're updating for
       mockGetRecentMessages.mockReturnValueOnce([
-        { authorId: 'U1', authorDisplayName: 'User', content: 'older context', timestamp: new Date() },
-        { authorId: 'U1', authorDisplayName: 'User', content: 'What about dogs?', timestamp: new Date() },
-        { authorId: 'B1', authorDisplayName: 'Bot', content: 'Dogs are cool.', timestamp: new Date() },
+        { authorId: 'U1', authorDisplayName: 'User', authorIsBot: false, content: 'older context', timestamp: new Date() },
+        { authorId: 'U1', authorDisplayName: 'User', authorIsBot: false, content: 'What about dogs?', timestamp: new Date() },
+        { authorId: 'B1', authorDisplayName: 'Bot', authorIsBot: true, content: 'Dogs are cool.', timestamp: new Date() },
       ]);
 
       mockChatFn.mockResolvedValueOnce({
@@ -173,6 +177,35 @@ describe('ProfileUpdater', () => {
       const recentHistoryBlock = userPrompt.split('Latest Interaction (Focus):')[0];
       expect(recentHistoryBlock).not.toContain('What about dogs?');
       expect(recentHistoryBlock).not.toContain('Dogs are cool.');
+    });
+
+    it('does not drop trailing history lines when text matches but authors do not', async () => {
+      mockGetRecentMessages.mockReturnValueOnce([
+        { authorId: 'U1', authorDisplayName: 'User', authorIsBot: false, content: 'older context', timestamp: new Date() },
+        { authorId: 'U2', authorDisplayName: 'Other User', authorIsBot: false, content: 'same text', timestamp: new Date() },
+      ]);
+
+      mockChatFn.mockResolvedValueOnce({
+        content: '{"summary": "Keeps context safely."}',
+      });
+
+      const result = await updateProfileSummary({
+        previousSummary: 'Existing summary',
+        userMessage: 'new user message',
+        assistantReply: 'same text',
+        channelId: 'C1',
+        guildId: 'G1',
+        userId: 'U1',
+      });
+
+      expect(result).toBe('Keeps context safely.');
+
+      const analystCall = mockChatFn.mock.calls[0][0];
+      const messages = analystCall.messages as ChatMessage[];
+      const userPrompt = messages.find((message) => message.role === 'user')?.content ?? '';
+      const recentHistoryBlock = userPrompt.split('Latest Interaction (Focus):')[0];
+      expect(recentHistoryBlock).toContain('older context');
+      expect(recentHistoryBlock).toContain('same text');
     });
   });
 

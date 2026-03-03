@@ -1,3 +1,7 @@
+/**
+ * @module src/core/llm/pollinations-client
+ * @description Defines the pollinations client module.
+ */
 import { LLMClient, LLMRequest, LLMResponse, ToolDefinition } from './llm-types';
 import { CircuitBreaker } from './circuit-breaker';
 import { logger } from '../../core/utils/logger';
@@ -25,6 +29,18 @@ interface PollinationsPayload {
   tool_choice?: string | object;
 }
 
+type ProviderToolCall = {
+  function?: {
+    name?: string;
+    arguments?: string;
+  };
+};
+
+type ProviderMessage = {
+  content?: string;
+  tool_calls?: ProviderToolCall[];
+};
+
 const DEFAULT_TIMEOUT_MS = 180_000;
 const MIN_TIMEOUT_MS = 1_000;
 const MAX_TIMEOUT_MS = 300_000;
@@ -46,6 +62,14 @@ function resolveMaxRetries(rawMaxRetries: number | undefined): number {
   }
 
   return Math.min(normalized, MAX_RETRIES);
+}
+
+/** Wait for retry backoff without keeping the Node.js process alive by itself. */
+function sleep(delayMs: number): Promise<void> {
+  return new Promise((resolve) => {
+    const timeoutId = setTimeout(resolve, delayMs);
+    timeoutId.unref?.();
+  });
 }
 
 function isGeminiSearchModel(model: string): boolean {
@@ -147,6 +171,9 @@ function sanitizeToolDefinitionsForProvider(tools: ToolDefinition[] | undefined)
   }));
 }
 
+/**
+ * Defines the PollinationsClient class.
+ */
 export class PollinationsClient implements LLMClient {
   private config: PollinationsConfig;
   private breaker: CircuitBreaker;
@@ -339,6 +366,7 @@ export class PollinationsClient implements LLMClient {
           maxMs: MAX_TIMEOUT_MS,
         });
         const id = setTimeout(() => controller.abort(), timeout);
+        id.unref?.();
 
         let response: Response;
         try {
@@ -417,15 +445,14 @@ export class PollinationsClient implements LLMClient {
         }
 
         const data = (await response.json()) as {
-          choices?: { message?: { content?: string } }[];
+          choices?: { message?: ProviderMessage }[];
           usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number };
         };
         const message = data.choices?.[0]?.message;
-        let content = message?.content || '';
+        let content = typeof message?.content === 'string' ? message.content : '';
 
         // Handle native tool calls from OpenAI-compatible APIs
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const toolCalls = (message as any)?.tool_calls;
+        const toolCalls = Array.isArray(message?.tool_calls) ? message.tool_calls : undefined;
 
         if (toolCalls && Array.isArray(toolCalls) && toolCalls.length > 0) {
           // Preserve the model's reasoning/thought chain if present alongside tool calls.
@@ -445,19 +472,20 @@ export class PollinationsClient implements LLMClient {
 
           const envelope: Record<string, unknown> = {
             type: 'tool_calls',
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            calls: toolCalls.map((tc: any) => {
+            calls: toolCalls.map((toolCall) => {
+              const toolName = toolCall.function?.name?.trim() || 'unknown_tool';
+              const rawArgs = toolCall.function?.arguments ?? '{}';
               let args: unknown;
               try {
-                args = JSON.parse(tc.function.arguments);
+                args = JSON.parse(rawArgs);
               } catch {
                 args = {};
                 logger.warn(
-                  { toolName: tc.function.name, rawArgs: String(tc.function.arguments).slice(0, 200) },
+                  { toolName, rawArgs: String(rawArgs).slice(0, 200) },
                   '[Pollinations] Malformed tool call arguments JSON, defaulting to empty object',
                 );
               }
-              return { name: tc.function.name, args };
+              return { name: toolName, args };
             }),
           };
 
@@ -498,7 +526,7 @@ export class PollinationsClient implements LLMClient {
           logger.warn({ attempt, error: lastError.message }, '[Pollinations] Retry');
 
           // Simple backoff
-          await new Promise((resolve) => setTimeout(resolve, 500 * Math.pow(2, attempt)));
+          await sleep(500 * Math.pow(2, attempt));
         }
       }
     }

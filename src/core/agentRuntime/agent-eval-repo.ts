@@ -1,8 +1,15 @@
+/**
+ * @module src/core/agentRuntime/agent-eval-repo
+ * @description Defines the agent eval repo module.
+ */
 import { Prisma } from '@prisma/client';
 import { prisma } from '../../core/db/prisma-client';
 import { logger } from '../utils/logger';
 import { EvalDimensionScores } from './evalScorer';
 
+/**
+ * Represents the AgentEvaluationWriteData contract.
+ */
 export interface AgentEvaluationWriteData {
   traceId: string;
   guildId: string | null;
@@ -26,6 +33,9 @@ export interface AgentEvaluationWriteData {
   judgeJson?: unknown;
 }
 
+/**
+ * Represents the AgentEvaluationRow contract.
+ */
 export interface AgentEvaluationRow {
   id: string;
   traceId: string;
@@ -61,6 +71,12 @@ function nullableJson(value: unknown): Prisma.InputJsonValue | Prisma.NullableJs
   return value as Prisma.InputJsonValue;
 }
 
+/**
+ * Runs insertAgentEvaluation.
+ *
+ * @param data - Describes the data input.
+ * @returns Returns the function result.
+ */
 export async function insertAgentEvaluation(data: AgentEvaluationWriteData): Promise<void> {
   await prisma.agentEvaluation.create({
     data: {
@@ -88,6 +104,12 @@ export async function insertAgentEvaluation(data: AgentEvaluationWriteData): Pro
   });
 }
 
+/**
+ * Runs listRecentAgentEvaluations.
+ *
+ * @param params - Describes the params input.
+ * @returns Returns the function result.
+ */
 export async function listRecentAgentEvaluations(params: {
   limit: number;
   guildId?: string;
@@ -137,6 +159,12 @@ export async function listRecentAgentEvaluations(params: {
   return deduped;
 }
 
+/**
+ * Runs cleanupAgentEvaluationsByTrace.
+ *
+ * @param params - Describes the params input.
+ * @returns Returns the function result.
+ */
 export async function cleanupAgentEvaluationsByTrace(params: {
   traceIds: string[];
   rubricVersion: string;

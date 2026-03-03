@@ -1,3 +1,7 @@
+/**
+ * @module src/bot/commands/api-key-handlers
+ * @description Defines the api key handlers module.
+ */
 import { ChatInputCommandInteraction } from 'discord.js';
 import { logger } from '../../core/utils/logger';
 import { isAdmin } from '../handlers/sage-command-handlers';
@@ -23,6 +27,12 @@ const MAX_PROFILE_TIMEOUT_MS = 120_000;
 const POLLINATIONS_PROFILE_URL = 'https://gen.pollinations.ai/account/profile';
 const KEY_SETUP_GUIDANCE = 'Run `/sage key login`, then `/sage key set <your_key>`.';
 
+/**
+ * Runs resolveProfileTimeoutMs.
+ *
+ * @param timeoutMs - Describes the timeoutMs input.
+ * @returns Returns the function result.
+ */
 export function resolveProfileTimeoutMs(timeoutMs: number | undefined): number {
   return normalizeTimeoutMs(timeoutMs, {
     fallbackMs: DEFAULT_PROFILE_TIMEOUT_MS,
@@ -138,6 +148,7 @@ async function fetchPollinationsProfile(
   const boundedTimeoutMs = resolveProfileTimeoutMs(timeoutMs);
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), boundedTimeoutMs);
+  timeoutId.unref?.();
 
   try {
     const res = await fetch(POLLINATIONS_PROFILE_URL, {
@@ -187,6 +198,12 @@ async function fetchPollinationsProfile(
   }
 }
 
+/**
+ * Runs handleKeyLogin.
+ *
+ * @param interaction - Describes the interaction input.
+ * @returns Returns the function result.
+ */
 export async function handleKeyLogin(interaction: ChatInputCommandInteraction) {
   const authUrl = `https://enter.pollinations.ai/authorize?redirect_url=https://pollinations.ai/&permissions=profile,balance,usage`;
 
@@ -208,6 +225,12 @@ export async function handleKeyLogin(interaction: ChatInputCommandInteraction) {
   });
 }
 
+/**
+ * Runs handleKeySet.
+ *
+ * @param interaction - Describes the interaction input.
+ * @returns Returns the function result.
+ */
 export async function handleKeySet(interaction: ChatInputCommandInteraction) {
   const apiKey = normalizeApiKey(interaction.options.getString('api_key', true));
   const guildId = interaction.guildId;
@@ -250,6 +273,12 @@ export async function handleKeySet(interaction: ChatInputCommandInteraction) {
   }
 }
 
+/**
+ * Runs handleKeyCheck.
+ *
+ * @param interaction - Describes the interaction input.
+ * @returns Returns the function result.
+ */
 export async function handleKeyCheck(interaction: ChatInputCommandInteraction) {
   const guildId = interaction.guildId;
 
@@ -302,6 +331,12 @@ export async function handleKeyCheck(interaction: ChatInputCommandInteraction) {
   }
 }
 
+/**
+ * Runs handleKeyClear.
+ *
+ * @param interaction - Describes the interaction input.
+ * @returns Returns the function result.
+ */
 export async function handleKeyClear(interaction: ChatInputCommandInteraction) {
   const guildId = interaction.guildId;
 

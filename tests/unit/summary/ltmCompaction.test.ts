@@ -1,3 +1,7 @@
+/**
+ * @module tests/unit/summary/ltmCompaction.test
+ * @description Defines the ltm compaction.test module.
+ */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mockStore = vi.hoisted(() => ({

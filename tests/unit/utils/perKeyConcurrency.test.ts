@@ -1,3 +1,7 @@
+/**
+ * @module tests/unit/utils/perKeyConcurrency.test
+ * @description Defines the per key concurrency.test module.
+ */
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { clearKeyLimit, limitByKey } from '../../../src/core/utils/perKeyConcurrency';

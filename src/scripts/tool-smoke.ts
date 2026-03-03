@@ -1,3 +1,7 @@
+/**
+ * @module src/scripts/tool-smoke
+ * @description Defines the tool smoke module.
+ */
 /* eslint-disable no-console */
 
 import {

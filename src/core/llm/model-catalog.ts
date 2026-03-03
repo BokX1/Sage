@@ -1,7 +1,14 @@
+/**
+ * @module src/core/llm/model-catalog
+ * @description Defines the model catalog module.
+ */
 import { config } from '../../config';
 import { logger } from '../../core/utils/logger';
 import { getModelBudgetConfig } from './model-budget-config';
 
+/**
+ * Represents the ModelCaps type.
+ */
 export type ModelCaps = {
   vision?: boolean;
   audioIn?: boolean;
@@ -12,6 +19,9 @@ export type ModelCaps = {
   codeExec?: boolean;
 };
 
+/**
+ * Represents the ModelInfo type.
+ */
 export type ModelInfo = {
   id: string;
   displayName?: string;
@@ -39,6 +49,9 @@ const MANUAL_CAPABILITY_OVERRIDES: Record<string, ModelCaps> = {
 
 const normalizedDefaultModel = (config.CHAT_MODEL || 'kimi').trim().toLowerCase();
 
+/**
+ * Declares exported bindings: defaultModelId.
+ */
 export const defaultModelId = normalizedDefaultModel || 'kimi';
 
 let catalogCache: Record<string, ModelInfo> | null = null;
@@ -128,6 +141,7 @@ async function fetchRuntimeCatalog(): Promise<Record<string, ModelInfo>> {
   const url = `${baseUrl}/models`;
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), MODEL_CATALOG_TIMEOUT_MS);
+  timeoutId.unref?.();
   const response = await fetch(url, { signal: controller.signal }).finally(() => clearTimeout(timeoutId));
   if (!response.ok) {
     throw new Error(`Model catalog fetch failed: ${response.status} ${response.statusText}`);
@@ -176,10 +190,20 @@ async function fetchRuntimeCatalog(): Promise<Record<string, ModelInfo>> {
   return catalog;
 }
 
+/**
+ * Runs getDefaultModelId.
+ *
+ * @returns Returns the function result.
+ */
 export function getDefaultModelId(): string {
   return defaultModelId;
 }
 
+/**
+ * Runs loadModelCatalog.
+ *
+ * @returns Returns the function result.
+ */
 export async function loadModelCatalog(): Promise<Record<string, ModelInfo>> {
   if (catalogCache) return catalogCache;
   if (pendingFetch) return pendingFetch;
@@ -214,11 +238,21 @@ export async function loadModelCatalog(): Promise<Record<string, ModelInfo>> {
   return pendingFetch;
 }
 
+/**
+ * Runs refreshModelCatalog.
+ *
+ * @returns Returns the function result.
+ */
 export async function refreshModelCatalog(): Promise<Record<string, ModelInfo>> {
   catalogCache = null;
   return loadModelCatalog();
 }
 
+/**
+ * Runs getModelCatalogState.
+ *
+ * @returns Returns the function result.
+ */
 export function getModelCatalogState(): CatalogState {
   return { ...catalogState };
 }
@@ -229,6 +263,13 @@ type FindModelCatalogOptions = {
   refreshCatalog?: () => Promise<Record<string, ModelInfo>>;
 };
 
+/**
+ * Runs findModelInCatalog.
+ *
+ * @param modelId - Describes the modelId input.
+ * @param options - Describes the options input.
+ * @returns Returns the function result.
+ */
 export async function findModelInCatalog(
   modelId: string,
   options: FindModelCatalogOptions = {},
@@ -273,6 +314,14 @@ function levenshteinDistance(a: string, b: string): number {
   return matrix[a.length][b.length];
 }
 
+/**
+ * Runs suggestModelIds.
+ *
+ * @param query - Describes the query input.
+ * @param catalog - Describes the catalog input.
+ * @param limit - Describes the limit input.
+ * @returns Returns the function result.
+ */
 export function suggestModelIds(
   query: string,
   catalog: Record<string, ModelInfo>,
@@ -299,14 +348,25 @@ export function suggestModelIds(
     .map((entry) => entry.id);
 }
 
+/**
+ * Runs getModelInfo.
+ *
+ * @param id - Describes the id input.
+ * @returns Returns the function result.
+ */
 export async function getModelInfo(id: string): Promise<ModelInfo | null> {
   const catalog = await loadModelCatalog();
   const normalized = normalizeModelId(id);
   return catalog[normalized] ?? null;
 }
 
+/**
+ * Runs isKnownModel.
+ *
+ * @param id - Describes the id input.
+ * @returns Returns the function result.
+ */
 export async function isKnownModel(id: string): Promise<boolean> {
   const info = await getModelInfo(id);
   return !!info;
 }
-

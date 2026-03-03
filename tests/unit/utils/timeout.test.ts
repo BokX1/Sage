@@ -1,3 +1,7 @@
+/**
+ * @module tests/unit/utils/timeout.test
+ * @description Defines the timeout.test module.
+ */
 import { describe, expect, it } from 'vitest';
 import { normalizeTimeoutMs } from '@/core/utils/timeout';
 
@@ -48,5 +52,13 @@ describe('normalizeTimeoutMs', () => {
         maxMs: 120_000,
       }),
     ).toBe(4_500);
+  });
+
+  it('clamps to JS timer-safe max when no explicit max is provided', () => {
+    expect(
+      normalizeTimeoutMs(Number.MAX_SAFE_INTEGER, {
+        fallbackMs: 30_000,
+      }),
+    ).toBe(2_147_483_647);
   });
 });

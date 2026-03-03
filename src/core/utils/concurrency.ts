@@ -1,4 +1,8 @@
 /**
+ * @module src/core/utils/concurrency
+ * @description Provides a lightweight in-memory concurrency limiter.
+ */
+/**
  * Limit concurrent async executions.
  *
  * Details: queues tasks beyond the configured concurrency. This mirrors p-limit
@@ -11,43 +15,64 @@
  * @returns Function that enforces the concurrency limit for tasks.
  */
 export function limitConcurrency(concurrency: number) {
-    if (!Number.isInteger(concurrency) || concurrency < 1) {
-        throw new RangeError('concurrency must be a positive integer');
+  if (!Number.isInteger(concurrency) || concurrency < 1) {
+    throw new RangeError('concurrency must be a positive integer');
+  }
+
+  const queue: Array<(() => void) | undefined> = [];
+  let queueHead = 0;
+  let activeCount = 0;
+
+  function enqueue(job: () => void): void {
+    queue.push(job);
+  }
+
+  function dequeue(): (() => void) | undefined {
+    if (queueHead >= queue.length) {
+      return undefined;
     }
 
-    const queue: (() => void)[] = [];
-    let activeCount = 0;
+    const job = queue[queueHead];
+    queue[queueHead] = undefined;
+    queueHead += 1;
 
-    const next = () => {
-        activeCount--;
-        if (queue.length > 0) {
-            const job = queue.shift();
-            job?.();
-        }
-    };
+    // Compact consumed queue entries periodically to avoid unbounded sparse growth.
+    if (queueHead > 1024 && queueHead * 2 >= queue.length) {
+      queue.splice(0, queueHead);
+      queueHead = 0;
+    }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const run = async (fn: () => Promise<any>, resolve: (value: any) => void, reject: (reason?: any) => void) => {
-        activeCount++;
-        try {
-            const result = await fn();
-            resolve(result);
-        } catch (error) {
-            reject(error);
-        } finally {
-            next();
-        }
-    };
+    return job;
+  }
 
-    return <T>(fn: () => Promise<T>): Promise<T> => {
-        return new Promise((resolve, reject) => {
-            const job = () => run(fn, resolve, reject);
+  function next(): void {
+    activeCount -= 1;
+    dequeue()?.();
+  }
 
-            if (activeCount < concurrency) {
-                job();
-            } else {
-                queue.push(job);
-            }
-        });
-    };
+  async function runTask<T>(
+    fn: () => Promise<T>,
+    resolve: (value: T | PromiseLike<T>) => void,
+    reject: (reason?: unknown) => void,
+  ): Promise<void> {
+    activeCount += 1;
+    try {
+      const result = await fn();
+      resolve(result);
+    } catch (error) {
+      reject(error);
+    } finally {
+      next();
+    }
+  }
+
+  return <T>(fn: () => Promise<T>): Promise<T> =>
+    new Promise((resolve, reject) => {
+      const job = () => void runTask(fn, resolve, reject);
+      if (activeCount < concurrency) {
+        job();
+      } else {
+        enqueue(job);
+      }
+    });
 }

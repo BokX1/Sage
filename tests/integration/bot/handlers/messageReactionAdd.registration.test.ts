@@ -1,3 +1,7 @@
+/**
+ * @module tests/integration/bot/handlers/messageReactionAdd.registration.test
+ * @description Defines the message reaction add.registration.test module.
+ */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Events } from 'discord.js';
 

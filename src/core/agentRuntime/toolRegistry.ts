@@ -1,4 +1,8 @@
 /**
+ * @module src/core/agentRuntime/toolRegistry
+ * @description Defines the tool registry module.
+ */
+/**
  * Register, validate, and expose tool definitions for runtime execution.
  */
 import { z } from 'zod';

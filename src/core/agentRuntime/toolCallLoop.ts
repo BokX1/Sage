@@ -1,3 +1,7 @@
+/**
+ * @module src/core/agentRuntime/toolCallLoop
+ * @description Defines the tool call loop module.
+ */
 import { LLMChatMessage, LLMClient } from '../llm/llm-types';
 import { ToolRegistry, ToolExecutionContext } from './toolRegistry';
 import { logger } from '../utils/logger';
@@ -62,6 +66,13 @@ function getValidatedConfig(config: Required<ToolCallLoopConfig>): Required<Tool
   assertPositiveInteger(config.maxToolResultChars, 'maxToolResultChars');
   assertPositiveInteger(config.maxLoopDurationMs, 'maxLoopDurationMs');
   return config;
+}
+
+function sleep(delayMs: number): Promise<void> {
+  return new Promise((resolve) => {
+    const delayHandle = setTimeout(resolve, delayMs);
+    delayHandle.unref?.();
+  });
 }
 
 
@@ -452,7 +463,7 @@ export async function runToolCallLoop(params: ToolCallLoopParams): Promise<ToolC
             'Retrying read-only tool call once with backoff',
           );
           if (delayMs > 0) {
-            await new Promise((resolve) => setTimeout(resolve, delayMs));
+            await sleep(delayMs);
           }
           result = await runOnce();
         }

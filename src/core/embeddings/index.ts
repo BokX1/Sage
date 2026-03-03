@@ -1,3 +1,7 @@
+/**
+ * @module src/core/embeddings/index
+ * @description Defines the index module.
+ */
 export { embedText, embedTexts, cosineSimilarity, EMBEDDING_DIMENSIONS, EMBEDDING_MODEL } from './embeddingEngine';
 export { chunkText, type TextChunk } from './textChunker';
 export { ingestAttachmentText, searchAttachments, deleteAttachmentChunks, type SearchResult } from './attachmentRAG';

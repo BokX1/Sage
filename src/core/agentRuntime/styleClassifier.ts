@@ -1,4 +1,8 @@
 /**
+ * @module src/core/agentRuntime/styleClassifier
+ * @description Defines the style classifier module.
+ */
+/**
  * Infer stylistic guidance from user text samples.
  *
  * Responsibilities:
@@ -11,6 +15,9 @@
  */
 export type StyleLevel = 'low' | 'medium' | 'high';
 
+/**
+ * Represents the HumorLevel type.
+ */
 export type HumorLevel = 'none' | 'subtle' | 'normal' | 'high';
 
 /** Describe style dimensions consumed by prompt composition. */
