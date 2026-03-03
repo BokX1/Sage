@@ -190,7 +190,7 @@ Sage updates user profiles asynchronously with throttling:
 - Update interval: `PROFILE_UPDATE_INTERVAL` (default `5`)
 - Two-step pipeline:
   1. Analyst pass (`PROFILE_CHAT_MODEL`) updates profile narrative.
-  2. Formatter pass (`FORMATTER_MODEL`) wraps into strict JSON.
+  2. Local JSON repair (`jsonrepair`) wraps output into strict JSON.
 - Per-user sequential guard prevents concurrent profile races.
 
 Result is persisted to `UserProfile.summary`; failed formatter output keeps prior summary.

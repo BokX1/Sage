@@ -55,7 +55,7 @@ docker compose -f config/ci/docker-compose.yml up -d
 ### Option 3: With Self-Hosted Tool Stack
 
 ```bash
-# Start local SearXNG, Crawl4AI, Ollama, and Tika alongside Sage
+# Start local SearXNG, Crawl4AI, and Tika alongside Sage
 docker compose -f config/ci/docker-compose.yml up -d
 docker compose -f config/self-host/docker-compose.tools.yml up -d
 ```

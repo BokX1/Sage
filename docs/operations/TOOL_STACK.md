@@ -129,7 +129,7 @@ searxng → tavily → exa → pollinations
 | `TOOL_WEB_SCRAPE_PROVIDER_ORDER` | `crawl4ai,firecrawl,jina,nomnom,raw_fetch` | Scrape provider order |
 
 > [!NOTE]
-> Default is local-first. For API-first, put hosted providers (like `firecrawl`) before local providers.
+> The default search order is API-first (`tavily` first); the default scrape order is local-first (`crawl4ai` first). When running the self-hosted stack, set `TOOL_WEB_SEARCH_PROVIDER_ORDER=searxng,tavily,exa,pollinations` to prefer your local SearXNG instance.
 
 ### SearXNG Options
 
