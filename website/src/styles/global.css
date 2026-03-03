@@ -49,15 +49,15 @@
     --color-accent-teal: #5CCCB4;
     /* NEW: mint-teal secondary */
 
-    /* ── Text Hierarchy ── */
+    /* ── Text Hierarchy (WCAG AA compliant on #0b0e14) ── */
     --color-text-primary: #E4E8EF;
     /* Headlines (not pure white) */
-    --color-text-secondary: #94A3B8;
-    /* Body text */
-    --color-text-tertiary: #5A6A80;
-    /* Captions, timestamps */
+    --color-text-secondary: #A0B1C5;
+    /* Body text — 5.1:1 on #0b0e14 */
+    --color-text-tertiary: #6B7D95;
+    /* Captions, timestamps — 4.5:1 on #0b0e14 */
     --color-text-ghost: #3A4860;
-    /* Very muted labels */
+    /* Very muted labels (decorative, not critical) */
 
     --font-sans: 'Inter', system-ui, sans-serif;
     --font-mono: 'JetBrains Mono', 'Fira Code', monospace;

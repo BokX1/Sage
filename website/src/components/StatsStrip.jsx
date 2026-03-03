@@ -6,7 +6,7 @@ const stats = [
     { label: 'Prisma Tables', value: 17, suffix: '', color: '#7AA2F7' },
     { label: 'Technologies', value: 13, suffix: '', color: '#BB9AF7' },
     { label: 'Search Providers', value: 4, suffix: '', color: '#E0AF68' },
-    { label: 'LLM Providers', value: 100, suffix: '+', color: '#FF9E64' },
+    { label: 'OpenAI Compatible', value: null, suffix: '', color: '#FF9E64' },
 ];
 
 function AnimatedCounter({ target, suffix, duration = 1.5, isVisible }) {
@@ -70,11 +70,13 @@ export default function StatsStrip() {
                             className="text-3xl lg:text-4xl font-extrabold mb-1 font-mono"
                             style={{ color: stat.color }}
                         >
-                            <AnimatedCounter
-                                target={stat.value}
-                                suffix={stat.suffix}
-                                isVisible={isInView}
-                            />
+                            {stat.value !== null ? (
+                                <AnimatedCounter
+                                    target={stat.value}
+                                    suffix={stat.suffix}
+                                    isVisible={isInView}
+                                />
+                            ) : '✓'}
                         </div>
                         <div className="text-xs text-slate-500 uppercase tracking-wider font-medium">
                             {stat.label}

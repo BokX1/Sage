@@ -187,7 +187,7 @@ function DiscordMockup({ activeStep }) {
                                 avatarColor="#78b846"
                                 author="Sage"
                                 time="Today at 12:00 PM"
-                                content="Hello there! 👋 I am Sage, an autonomous AI Community Engineer. I've successfully connected to your server architecture."
+                                content="Hello there! 👋 I am Sage, an agentic AI community engineer. I've successfully connected to your server architecture."
                             />
                             <DiscordMessage
                                 isBot={true}
@@ -304,7 +304,7 @@ export default function QuickStart() {
                     </span>
                 </h2>
                 <p className="text-lg text-slate-400 max-w-xl lg:mx-auto font-light">
-                    From zero to a fully autonomous community engineer — absolutely zero infrastructure required.
+                    From zero to a fully agentic community engineer — absolutely zero infrastructure required.
                 </p>
             </motion.div>
 

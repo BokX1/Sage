@@ -18,9 +18,9 @@ const schemas = [
     "@type": "SoftwareApplication",
     "name": "Sage",
     "applicationCategory": "DeveloperApplication",
-    "applicationSubCategory": "Autonomous AI Community Agent",
+    "applicationSubCategory": "Agentic AI Community Engineer",
     "operatingSystem": "Docker, Node.js 20+",
-    "description": "Sage is the first autonomous AI community engineer — a cognitive runtime with 20+ native tools, hybrid memory (PostgreSQL + Memgraph), social graph reasoning, and zero-prompt automation for digital communities.",
+    "description": "Sage is the first agentic AI community engineer — a cognitive runtime with 46+ native tools, hybrid memory (PostgreSQL + Memgraph), social graph reasoning, and zero-prompt automation for digital communities.",
     "offers": {
       "@type": "Offer",
       "price": "0.00",
@@ -28,10 +28,10 @@ const schemas = [
       "availability": "https://schema.org/InStock"
     },
     "featureList": [
-      "20+ native autonomous tools",
+      "46+ native agentic tools",
       "GraphRAG social graph with Memgraph",
       "7-stage memory pipeline",
-      "Multi-provider LLM support (OpenAI, DeepSeek, Ollama)",
+      "OpenAI-compatible LLM API via Pollinations.ai",
       "Dual-judge evaluation pipeline",
       "Real-time voice analytics",
       "Agentic image generation with prompt refinement",
@@ -47,7 +47,7 @@ const schemas = [
   {
     "@context": "https://schema.org",
     "@type": "WebSite",
-    "name": "Sage — Autonomous AI Community Engineer",
+    "name": "Sage — Agentic AI Community Engineer",
     "url": "https://bokx1.github.io/Sage/",
     "description": description,
     "potentialAction": {
@@ -65,7 +65,7 @@ const schemas = [
         "name": "What is Sage?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "Sage is an autonomous AI community engineer — a cognitive runtime that manages Discord servers with 20+ native tools, hybrid memory (PostgreSQL + Memgraph graph database), social graph reasoning, and zero-prompt automation."
+          "text": "Sage is an agentic AI community engineer — a cognitive runtime that manages Discord servers with 46+ native tools, hybrid memory (PostgreSQL + Memgraph graph database), social graph reasoning, and zero-prompt automation."
         }
       },
       {
@@ -81,7 +81,7 @@ const schemas = [
         "name": "What technologies does Sage use?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "Sage is built with TypeScript, PostgreSQL with pgvector, Memgraph graph database, Prisma ORM, Docker, discord.js v14, GSAP, and supports multiple LLM providers including OpenAI, DeepSeek, and Ollama."
+          "text": "Sage is built with TypeScript, PostgreSQL with pgvector, Memgraph graph database, Prisma ORM, Docker, discord.js v14, GSAP, and uses an OpenAI-compatible API via Pollinations.ai — meaning it works with any OpenAI-compatible LLM provider."
         }
       }
     ]
@@ -106,7 +106,7 @@ const schemas = [
 		<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
 
 		<!-- SEO Keywords -->
-		<meta name="keywords" content="autonomous AI agent, Discord bot, community engineer, GraphRAG, cognitive runtime, social graph, hybrid memory, AI automation, Memgraph, TypeScript bot, self-hosted AI, zero-prompt automation" />
+		<meta name="keywords" content="agentic AI, Discord bot, community engineer, GraphRAG, cognitive runtime, social graph, hybrid memory, AI automation, Memgraph, TypeScript bot, self-hosted AI, zero-prompt automation" />
 		<meta name="author" content="BokX1" />
 
 		<!-- Open Graph -->
@@ -135,6 +135,18 @@ const schemas = [
 		{schemas.map(schema => (
 			<script type="application/ld+json" set:html={JSON.stringify(schema)} />
 		))}
+
+		{/* Speculation Rules API — prefetch/prerender GitHub for instant navigation */}
+		<script type="speculationrules" set:html={JSON.stringify({
+			prerender: [{
+				urls: ["https://github.com/BokX1/Sage"],
+				referrer_policy: "no-referrer"
+			}],
+			prefetch: [{
+				urls: ["https://github.com/BokX1/Sage"],
+				referrer_policy: "no-referrer"
+			}]
+		})} />
 	</head>
 	<body class="bg-[#0b0e14] text-[#E4E8EF] antialiased selection:bg-[#78b846] selection:text-[#06080d]">
 		<!-- Aurora Animated Background -->

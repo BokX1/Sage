@@ -1,14 +1,44 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 
+const BASE = "https://github.com/BokX1/Sage/blob/master/docs";
+
 const pages = [
-    { title: "Quickstart Guide", url: "https://github.com/BokX1/Sage/blob/master/docs/guides/QUICKSTART.md", icon: "⚡" },
-    { title: "Configuration Reference", url: "https://github.com/BokX1/Sage/blob/master/docs/reference/CONFIGURATION.md", icon: "⚙️" },
-    { title: "Agentic Architecture", url: "https://github.com/BokX1/Sage/blob/master/docs/architecture/OVERVIEW.md", icon: "🤖" },
-    { title: "Memory System", url: "https://github.com/BokX1/Sage/blob/master/docs/architecture/MEMORY.md", icon: "🧠" },
-    { title: "Commands Reference", url: "https://github.com/BokX1/Sage/blob/master/docs/guides/COMMANDS.md", icon: "🎮" },
-    { title: "Social Graph", url: "https://github.com/BokX1/Sage/blob/master/docs/architecture/SOCIAL_GRAPH.md", icon: "🕸️" },
-    { title: "FAQ", url: "https://github.com/BokX1/Sage/blob/master/docs/guides/FAQ.md", icon: "❓" }
+    // ── Guides ──
+    { title: "Quickstart Guide", url: `${BASE}/guides/QUICKSTART.md`, icon: "⚡", cat: "guide" },
+    { title: "Getting Started", url: `${BASE}/guides/GETTING_STARTED.md`, icon: "🚀", cat: "guide" },
+    { title: "Commands Reference", url: `${BASE}/guides/COMMANDS.md`, icon: "🎮", cat: "guide" },
+    { title: "BYOP Setup", url: `${BASE}/guides/BYOP.md`, icon: "🔑", cat: "guide" },
+    { title: "FAQ", url: `${BASE}/guides/FAQ.md`, icon: "❓", cat: "guide" },
+    { title: "Troubleshooting", url: `${BASE}/guides/TROUBLESHOOTING.md`, icon: "🔧", cat: "guide" },
+
+    // ── Architecture ──
+    { title: "Architecture Overview", url: `${BASE}/architecture/OVERVIEW.md`, icon: "🏗️", cat: "architecture" },
+    { title: "Memory Pipeline", url: `${BASE}/architecture/MEMORY.md`, icon: "🧠", cat: "architecture" },
+    { title: "Database Schema", url: `${BASE}/architecture/DATABASE.md`, icon: "🗄️", cat: "architecture" },
+    { title: "Processing Pipeline", url: `${BASE}/architecture/PIPELINE.md`, icon: "⚙️", cat: "architecture" },
+    { title: "Social Graph", url: `${BASE}/architecture/SOCIAL_GRAPH.md`, icon: "🕸️", cat: "architecture" },
+    { title: "Search Architecture", url: `${BASE}/architecture/SEARCH.md`, icon: "🔍", cat: "architecture" },
+    { title: "Voice System", url: `${BASE}/architecture/VOICE.md`, icon: "🎙️", cat: "architecture" },
+
+    // ── Operations ──
+    { title: "Deployment Guide", url: `${BASE}/operations/DEPLOYMENT.md`, icon: "📦", cat: "operations" },
+    { title: "Runbook", url: `${BASE}/operations/RUNBOOK.md`, icon: "📋", cat: "operations" },
+    { title: "Social Graph Setup", url: `${BASE}/operations/SOCIAL_GRAPH_SETUP.md`, icon: "🔗", cat: "operations" },
+    { title: "Tool Stack", url: `${BASE}/operations/TOOL_STACK.md`, icon: "🛠️", cat: "operations" },
+
+    // ── Reference ──
+    { title: "Configuration Reference", url: `${BASE}/reference/CONFIGURATION.md`, icon: "⚙️", cat: "reference" },
+    { title: "API Examples", url: `${BASE}/reference/API_EXAMPLES.md`, icon: "📡", cat: "reference" },
+    { title: "Models Reference", url: `${BASE}/reference/MODELS.md`, icon: "🤖", cat: "reference" },
+    { title: "Pollinations Integration", url: `${BASE}/reference/POLLINATIONS.md`, icon: "🐝", cat: "reference" },
+    { title: "Release Notes", url: `${BASE}/reference/RELEASE.md`, icon: "📝", cat: "reference" },
+
+    // ── Security ──
+    { title: "Security & Privacy", url: `${BASE}/security/SECURITY_PRIVACY.md`, icon: "🔒", cat: "security" },
+
+    // ── Index ──
+    { title: "Documentation Index", url: `${BASE}/INDEX.md`, icon: "📚", cat: "index" },
 ];
 
 const CommandPalette = () => {
@@ -48,7 +78,8 @@ const CommandPalette = () => {
         };
     }, [isOpen]);
 
-    const filteredPages = pages.filter(p => p.title.toLowerCase().includes(query.toLowerCase()));
+    const q = query.toLowerCase();
+    const filteredPages = pages.filter(p => p.title.toLowerCase().includes(q) || p.cat.includes(q));
 
     return (
         <>
@@ -122,8 +153,11 @@ const CommandPalette = () => {
                                                 >
                                                     <span className="text-xl opacity-80 group-hover:opacity-100">{page.icon}</span>
                                                     <div className="flex-1">
-                                                        <span className="text-slate-300 font-medium group-hover:text-white block">{page.title}</span>
-                                                        <span className="text-xs text-slate-500 font-mono mt-0.5 block truncate">{page.url.replace("https://github.com/BokX1/Sage/blob/master/", "")}</span>
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="text-slate-300 font-medium group-hover:text-white">{page.title}</span>
+                                                            <span className="text-[9px] font-mono uppercase tracking-widest px-1.5 py-0.5 rounded bg-white/5 text-slate-500">{page.cat}</span>
+                                                        </div>
+                                                        <span className="text-xs text-slate-500 font-mono mt-0.5 block truncate">{page.url.replace(`${BASE}/`, "")}</span>
                                                     </div>
                                                     <span className="text-slate-600 group-hover:text-[#a9df7c] opacity-0 group-hover:opacity-100 transition-opacity">↗</span>
                                                 </a>

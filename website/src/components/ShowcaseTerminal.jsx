@@ -146,7 +146,7 @@ export default function ShowcaseTerminal() {
                     Watch Sage <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#78b846] to-[#a9df7c]">Execute</span>
                 </h2>
                 <p className="text-lg text-slate-400 max-w-2xl mx-auto font-light">
-                    Select a payload. Watch the autonomous cognitive loop chain tools in real-time.
+                    Select a payload. Watch the agentic cognitive loop chain tools in real-time.
                 </p>
             </motion.div>
 
@@ -187,8 +187,8 @@ export default function ShowcaseTerminal() {
                             whileHover={{ scale: 1.02 }}
                             whileTap={{ scale: 0.98 }}
                             className={`relative text-left p-4 rounded-xl border backdrop-blur-sm transition-all overflow-hidden group ${activeScenario === i
-                                    ? 'bg-[#141a23]/60 border-[#78b846]/40 shadow-[0_0_20px_rgba(120,184,70,0.1)]'
-                                    : 'bg-white/5 border-white/5 hover:bg-white/10 hover:border-white/20'
+                                ? 'bg-[#141a23]/60 border-[#78b846]/40 shadow-[0_0_20px_rgba(120,184,70,0.1)]'
+                                : 'bg-white/5 border-white/5 hover:bg-white/10 hover:border-white/20'
                                 }`}
                         >
                             {/* Background glow on active */}

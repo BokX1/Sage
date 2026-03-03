@@ -24,14 +24,14 @@ const modes = [
         badge: 'Sovereign',
         icon: '🏛️',
         heading: 'Bring Your Own Provider',
-        desc: 'Self-host Sage and choose your LLM backend — Pollinations, OpenAI-compatible endpoints, DeepSeek, Ollama, or any provider.',
+        desc: 'Self-host Sage with an OpenAI-compatible API backend via Pollinations.ai. Set your base URL and key — done.',
         color: '#7AA2F7',
         bg: 'from-[#7AA2F7]/10 to-transparent',
         features: [
-            { text: 'Pollinations (default)', icon: '🌸' },
-            { text: 'Any OpenAI-compatible API', icon: '⚡' },
-            { text: 'DeepSeek (data sovereignty)', icon: '🔒' },
-            { text: 'Ollama (fully air-gapped)', icon: '🏠' },
+            { text: 'Pollinations.ai (default)', icon: '🐝' },
+            { text: 'OpenAI-compatible API', icon: '⚡' },
+            { text: 'Any /v1 endpoint', icon: '�' },
+            { text: 'Full data sovereignty', icon: '�' },
         ],
     },
 ];
@@ -41,7 +41,7 @@ export default function SovereigntyShowcase() {
     const mode = modes.find(m => m.key === active) ?? modes[0];
 
     return (
-        <section className="relative max-w-7xl mx-auto px-6 py-24">
+        <section className="relative max-w-7xl mx-auto px-6 py-24" >
             <motion.div
                 className="text-center mb-12"
                 initial={{ opacity: 0, y: 20 }}
@@ -164,6 +164,6 @@ export default function SovereigntyShowcase() {
                     </motion.div>
                 </div>
             </motion.div>
-        </section>
+        </section >
     );
 }
