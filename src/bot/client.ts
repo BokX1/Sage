@@ -1,7 +1,3 @@
-/**
- * @module src/bot/client
- * @description Defines the client module.
- */
 import { Client, GatewayIntentBits, Partials } from 'discord.js';
 
 /**

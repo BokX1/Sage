@@ -1,7 +1,3 @@
-/**
- * @module src/core/agentRuntime/agent-trace-preflight
- * @description Defines the agent trace preflight module.
- */
 import { prisma } from '../../core/db/prisma-client';
 
 const AGENT_TRACE_SCHEMA_PROBE_SQL = `
@@ -30,11 +26,6 @@ function toErrorMessage(error: unknown): string {
   return String(error);
 }
 
-/**
- * Runs assertAgentTraceSchemaReady.
- *
- * @returns Returns the function result.
- */
 export async function assertAgentTraceSchemaReady(): Promise<void> {
   try {
     await prisma.$queryRawUnsafe(AGENT_TRACE_SCHEMA_PROBE_SQL);

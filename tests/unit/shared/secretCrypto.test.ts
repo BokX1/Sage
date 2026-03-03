@@ -1,7 +1,3 @@
-/**
- * @module tests/unit/shared/secretCrypto.test
- * @description Defines the secret crypto.test module.
- */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 describe('secret crypto', () => {

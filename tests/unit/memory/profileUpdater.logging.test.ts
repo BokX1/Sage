@@ -1,7 +1,3 @@
-/**
- * @module tests/unit/memory/profileUpdater.logging.test
- * @description Defines the profile updater.logging.test module.
- */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { logger } from '@/core/utils/logger';
 

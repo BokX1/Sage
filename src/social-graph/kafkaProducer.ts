@@ -1,7 +1,3 @@
-/**
- * @module src/social-graph/kafkaProducer
- * @description Defines the kafka producer module.
- */
 import { config } from '../config';
 import { logger } from '../core/utils/logger';
 import type { Producer } from 'kafkajs';
@@ -141,22 +137,10 @@ async function sendJson(topic: string, payload: unknown): Promise<void> {
   }
 }
 
-/**
- * Runs setSocialGraphPublisherForTests.
- *
- * @param publisher - Describes the publisher input.
- * @returns Returns the function result.
- */
 export function setSocialGraphPublisherForTests(publisher: SocialGraphPublisher | null): void {
   publisherOverride = publisher;
 }
 
-/**
- * Runs publishInteraction.
- *
- * @param event - Describes the event input.
- * @returns Returns the function result.
- */
 export async function publishInteraction(event: SocialInteractionEvent): Promise<void> {
   const task = (async () => {
     if (publisherOverride) {
@@ -174,12 +158,6 @@ export async function publishInteraction(event: SocialInteractionEvent): Promise
   return trackPendingPublish(task);
 }
 
-/**
- * Runs publishVoiceSession.
- *
- * @param event - Describes the event input.
- * @returns Returns the function result.
- */
 export async function publishVoiceSession(event: VoiceSessionEvent): Promise<void> {
   const task = (async () => {
     if (publisherOverride) {
@@ -197,12 +175,6 @@ export async function publishVoiceSession(event: VoiceSessionEvent): Promise<voi
   return trackPendingPublish(task);
 }
 
-/**
- * Runs publishInteractionStrict.
- *
- * @param event - Describes the event input.
- * @returns Returns the function result.
- */
 export async function publishInteractionStrict(event: SocialInteractionEvent): Promise<void> {
   const task = (async () => {
     if (publisherOverride) {
@@ -224,12 +196,6 @@ export async function publishInteractionStrict(event: SocialInteractionEvent): P
   return trackPendingPublish(task);
 }
 
-/**
- * Runs publishVoiceSessionStrict.
- *
- * @param event - Describes the event input.
- * @returns Returns the function result.
- */
 export async function publishVoiceSessionStrict(event: VoiceSessionEvent): Promise<void> {
   const task = (async () => {
     if (publisherOverride) {
@@ -251,11 +217,6 @@ export async function publishVoiceSessionStrict(event: VoiceSessionEvent): Promi
   return trackPendingPublish(task);
 }
 
-/**
- * Runs ensureKafkaProducerAvailable.
- *
- * @returns Returns the function result.
- */
 export async function ensureKafkaProducerAvailable(): Promise<void> {
   if (publisherOverride) return;
 
@@ -267,12 +228,6 @@ export async function ensureKafkaProducerAvailable(): Promise<void> {
   }
 }
 
-/**
- * Runs awaitPendingPublishes.
- *
- * @param timeoutMs - Describes the timeoutMs input.
- * @returns Returns the function result.
- */
 export async function awaitPendingPublishes(
   timeoutMs = DEFAULT_PENDING_DRAIN_TIMEOUT_MS,
 ): Promise<void> {
@@ -318,11 +273,6 @@ export async function awaitPendingPublishes(
   }
 }
 
-/**
- * Runs shutdownKafkaProducer.
- *
- * @returns Returns the function result.
- */
 export async function shutdownKafkaProducer(): Promise<void> {
   await awaitPendingPublishes();
 

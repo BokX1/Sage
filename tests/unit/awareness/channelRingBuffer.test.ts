@@ -1,7 +1,3 @@
-/**
- * @module tests/unit/awareness/channelRingBuffer.test
- * @description Defines the channel ring buffer.test module.
- */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import type { ChannelMessage } from '@/core/awareness/awareness-types';
 

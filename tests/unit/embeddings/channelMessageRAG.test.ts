@@ -1,5 +1,4 @@
 /**
- * @module tests/unit/embeddings/channelMessageRAG.test
  * @description Validates channel-message RAG limit normalization behavior.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';

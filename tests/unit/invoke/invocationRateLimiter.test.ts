@@ -1,7 +1,3 @@
-/**
- * @module tests/unit/invoke/invocationRateLimiter.test
- * @description Defines the invocation rate limiter.test module.
- */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mockConfig = vi.hoisted(() => ({

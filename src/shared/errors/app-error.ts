@@ -1,7 +1,3 @@
-/**
- * @module src/shared/errors/app-error
- * @description Defines shared typed errors and normalization helpers.
- */
 export type ErrorCode =
   | 'CONFIG_INVALID'
   | 'BOOTSTRAP_FAILED'

@@ -1,7 +1,3 @@
-/**
- * @module src/core/invocation/invocation-rate-limiter
- * @description Defines the invocation rate limiter module.
- */
 import { config } from '../../config';
 
 const wakewordCooldowns = new Map<string, number>();
@@ -12,12 +8,6 @@ function toNonNegativeInt(value: number | undefined, fallback: number): number {
   return Math.max(0, Math.floor(value as number));
 }
 
-/**
- * Runs shouldAllowInvocation.
- *
- * @param params - Describes the params input.
- * @returns Returns the function result.
- */
 export function shouldAllowInvocation(params: {
   channelId: string;
   userId: string;
@@ -58,11 +48,6 @@ export function shouldAllowInvocation(params: {
   return true;
 }
 
-/**
- * Runs resetInvocationCooldowns.
- *
- * @returns Returns the function result.
- */
 export function resetInvocationCooldowns(): void {
   wakewordCooldowns.clear();
   channelWakewordHistory.clear();

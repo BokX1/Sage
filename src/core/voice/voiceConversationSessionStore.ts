@@ -1,7 +1,3 @@
-/**
- * @module src/core/voice/voiceConversationSessionStore
- * @description Defines the voice conversation session store module.
- */
 import { config } from '../../config';
 import { logger } from '../utils/logger';
 
@@ -42,12 +38,6 @@ function toPositiveInt(value: number | undefined, fallback: number, min: number)
   return Math.max(min, Math.floor(value as number));
 }
 
-/**
- * Runs startVoiceConversationSession.
- *
- * @param params - Describes the params input.
- * @returns Returns the function result.
- */
 export function startVoiceConversationSession(params: {
   guildId: string;
   voiceChannelId: string;
@@ -65,22 +55,10 @@ export function startVoiceConversationSession(params: {
   });
 }
 
-/**
- * Runs getActiveVoiceConversationSession.
- *
- * @param guildId - Describes the guildId input.
- * @returns Returns the function result.
- */
 export function getActiveVoiceConversationSession(guildId: string): ActiveSession | null {
   return activeSessions.get(guildId) ?? null;
 }
 
-/**
- * Runs appendVoiceUtterance.
- *
- * @param params - Describes the params input.
- * @returns Returns the function result.
- */
 export function appendVoiceUtterance(params: {
   guildId: string;
   at: Date;
@@ -110,12 +88,6 @@ function formatSpeakerLabel(utterance: VoiceUtterance): string {
   return utterance.displayName?.trim() ? `@${utterance.displayName}` : `<@${utterance.userId}>`;
 }
 
-/**
- * Runs formatLiveVoiceContext.
- *
- * @param params - Describes the params input.
- * @returns Returns the function result.
- */
 export function formatLiveVoiceContext(params: {
   guildId: string;
   voiceChannelId: string;
@@ -164,12 +136,6 @@ export function formatLiveVoiceContext(params: {
   return lines.join('\n');
 }
 
-/**
- * Runs stopVoiceConversationSession.
- *
- * @param params - Describes the params input.
- * @returns Returns the function result.
- */
 export function stopVoiceConversationSession(params: { guildId: string; endedAt: Date }): VoiceConversationSession | null {
   const session = activeSessions.get(params.guildId);
   if (!session) return null;
@@ -180,12 +146,6 @@ export function stopVoiceConversationSession(params: { guildId: string; endedAt:
   };
 }
 
-/**
- * Runs clearVoiceConversationSession.
- *
- * @param guildId - Describes the guildId input.
- * @returns Returns the function result.
- */
 export function clearVoiceConversationSession(guildId: string): void {
   activeSessions.delete(guildId);
 }

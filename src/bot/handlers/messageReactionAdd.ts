@@ -1,7 +1,3 @@
-/**
- * @module src/bot/handlers/messageReactionAdd
- * @description Defines the message reaction add module.
- */
 import { Events, MessageReaction, PartialMessageReaction, PartialUser, User } from 'discord.js';
 import { client } from '../client';
 import { logger } from '../../core/utils/logger';
@@ -11,13 +7,6 @@ import { getEmojiSentiment } from '../../social-graph/emojiSentiment';
 
 const registrationKey = Symbol.for('sage.handlers.messageReactionAdd.registered');
 
-/**
- * Runs handleMessageReactionAdd.
- *
- * @param reaction - Describes the reaction input.
- * @param user - Describes the user input.
- * @returns Returns the function result.
- */
 export async function handleMessageReactionAdd(
   reaction: MessageReaction | PartialMessageReaction,
   user: User | PartialUser,
@@ -83,11 +72,6 @@ export async function handleMessageReactionAdd(
   }
 }
 
-/**
- * Runs registerMessageReactionAddHandler.
- *
- * @returns Returns the function result.
- */
 export function registerMessageReactionAddHandler(): void {
   const g = globalThis as unknown as { [key: symbol]: boolean };
   if (g[registrationKey]) return;

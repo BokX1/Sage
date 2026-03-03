@@ -1,7 +1,3 @@
-/**
- * @module src/shared/config/env
- * @description Defines the env module.
- */
 import dotenv from 'dotenv';
 import { isPrivateOrLocalHostname, parseEnvSafe } from './envSchema';
 

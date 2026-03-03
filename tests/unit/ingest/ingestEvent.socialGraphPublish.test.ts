@@ -1,7 +1,3 @@
-/**
- * @module tests/unit/ingest/ingestEvent.socialGraphPublish.test
- * @description Defines the ingest event.social graph publish.test module.
- */
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 
 const mockIsLoggingEnabled = vi.hoisted(() => vi.fn(() => true));

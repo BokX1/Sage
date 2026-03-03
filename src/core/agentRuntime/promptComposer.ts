@@ -1,8 +1,4 @@
 /**
- * @module src/core/agentRuntime/promptComposer
- * @description Defines the prompt composer module.
- */
-/**
  * Compose the base system prompt for agent-runtime calls.
  *
  * Responsibilities:

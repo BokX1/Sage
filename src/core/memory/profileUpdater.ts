@@ -1,7 +1,3 @@
-/**
- * @module src/core/memory/profileUpdater
- * @description Defines the profile updater module.
- */
 import { createLLMClient } from '../llm';
 import { config as appConfig } from '../../config';
 import { logger } from '../utils/logger';
@@ -122,10 +118,10 @@ export async function updateProfileSummary(params: {
       // STRICT DEDUPLICATION
       // ========================================
       // We inject (userMessage, assistantReply) explicitly as "Latest Interaction".
-      // We must remove them from "recentMessages" if they exist there to prevent double-vision.
+      // Remove trailing duplicates from recentMessages so the same exchange is not counted twice.
       const historyMessages = [...recentMessages];
 
-      // 1. Check/Remove Assistant Reply (if it made it to the buffer)
+      // 1) Drop the trailing assistant message if it matches assistantReply.
       if (historyMessages.length > 0) {
         const last = historyMessages[historyMessages.length - 1];
         if (isTrailingAssistantMatch(last, assistantReply)) {
@@ -133,7 +129,7 @@ export async function updateProfileSummary(params: {
         }
       }
 
-      // 2. Check/Remove User Message (if it made it to the buffer)
+      // 2) Drop the trailing user message if it matches userMessage from this turn.
       if (historyMessages.length > 0) {
         const last = historyMessages[historyMessages.length - 1];
         if (isTrailingUserMatch(last, userId, userMessage)) {

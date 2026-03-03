@@ -1,7 +1,3 @@
-/**
- * @module src/bot/handlers/guildCreate
- * @description Defines the guild create module.
- */
 import { ChannelType, Client, Events, Guild, TextChannel } from 'discord.js';
 import { logger } from '../../core/utils/logger';
 import { getWelcomeMessage } from './welcomeMessage';
@@ -29,12 +25,6 @@ function resolveWelcomeChannel(guild: Guild): TextChannel | null {
   );
 }
 
-/**
- * Runs handleGuildCreate.
- *
- * @param guild - Describes the guild input.
- * @returns Returns the function result.
- */
 export async function handleGuildCreate(guild: Guild) {
   try {
     logger.info({ guildId: guild.id, guildName: guild.name }, 'Sage joined a new guild');
@@ -52,12 +42,6 @@ export async function handleGuildCreate(guild: Guild) {
   }
 }
 
-/**
- * Runs registerGuildCreateHandler.
- *
- * @param client - Describes the client input.
- * @returns Returns the function result.
- */
 export function registerGuildCreateHandler(client: Client) {
   const g = globalThis as unknown as { [key: symbol]: boolean };
   if (g[registrationKey]) {

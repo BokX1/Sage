@@ -1,7 +1,3 @@
-/**
- * @module tests/unit/chatEngine.test
- * @description Defines the chat engine.test module.
- */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mockRunChatTurn = vi.hoisted(() => vi.fn());

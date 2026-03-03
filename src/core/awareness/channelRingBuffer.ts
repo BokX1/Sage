@@ -1,7 +1,3 @@
-/**
- * @module src/core/awareness/channelRingBuffer
- * @description Defines the channel ring buffer module.
- */
 import { config } from '../../config';
 import { ChannelMessage } from './awareness-types';
 

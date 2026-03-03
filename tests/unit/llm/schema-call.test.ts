@@ -1,7 +1,3 @@
-/**
- * @module tests/unit/llm/schema-call.test
- * @description Defines the schema call.test module.
- */
 import { describe, it, expect, vi } from 'vitest';
 import { z } from 'zod';
 import { callWithSchema } from '../../../src/core/llm/schema-call';

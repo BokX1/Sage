@@ -1,7 +1,3 @@
-/**
- * @module tests/unit/voice/voiceTracker.test
- * @description Defines the voice tracker.test module.
- */
 import { describe, expect, it, vi } from 'vitest';
 import { classifyVoiceChange, handleVoiceChange } from '../../../src/core/voice/voiceTracker';
 

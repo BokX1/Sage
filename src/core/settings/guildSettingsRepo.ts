@@ -1,16 +1,6 @@
-/**
- * @module src/core/settings/guildSettingsRepo
- * @description Defines the guild settings repo module.
- */
 import { prisma } from '../../core/db/prisma-client';
 import { decryptSecret, encryptSecret } from '../../shared/security/secret-crypto';
 
-/**
- * Runs getGuildApiKey.
- *
- * @param guildId - Describes the guildId input.
- * @returns Returns the function result.
- */
 export async function getGuildApiKey(guildId: string): Promise<string | undefined> {
   const settings = await prisma.guildSettings.findUnique({
     where: { guildId },
@@ -25,13 +15,6 @@ export async function getGuildApiKey(guildId: string): Promise<string | undefine
   return decryptSecret(raw);
 }
 
-/**
- * Runs upsertGuildApiKey.
- *
- * @param guildId - Describes the guildId input.
- * @param apiKey - Describes the apiKey input.
- * @returns Returns the function result.
- */
 export async function upsertGuildApiKey(guildId: string, apiKey: string | null): Promise<void> {
   if (apiKey === null) {
     // If setting to null, we can strictly update or delete. Upsert with null is valid if record exists.

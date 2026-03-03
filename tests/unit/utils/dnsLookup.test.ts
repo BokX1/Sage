@@ -1,5 +1,4 @@
 /**
- * @module tests/unit/utils/dnsLookup.test
  * @description Verifies bounded DNS lookup behavior for utility consumers.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';

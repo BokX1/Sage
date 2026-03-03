@@ -1,7 +1,3 @@
-/**
- * @module src/bot/handlers/interactionCreate
- * @description Defines the interaction create module.
- */
 import { Events, Interaction } from 'discord.js';
 import { client } from '../client';
 import { logger } from '../../core/utils/logger';

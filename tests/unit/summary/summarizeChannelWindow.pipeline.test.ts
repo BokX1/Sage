@@ -1,7 +1,3 @@
-/**
- * @module tests/unit/summary/summarizeChannelWindow.pipeline.test
- * @description Defines the summarize channel window.pipeline.test module.
- */
 import type { ChannelMessage } from '@/core/awareness/awareness-types';
 import type { LLMRequest, LLMResponse } from '@/core/llm/llm-types';
 import { beforeEach, describe, expect, it, vi } from 'vitest';

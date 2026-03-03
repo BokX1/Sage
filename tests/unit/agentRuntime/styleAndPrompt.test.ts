@@ -1,7 +1,3 @@
-/**
- * @module tests/unit/agentRuntime/styleAndPrompt.test
- * @description Defines the style and prompt.test module.
- */
 import { describe, it, expect } from 'vitest';
 import { classifyStyle } from '../../../src/core/agentRuntime/styleClassifier';
 import { composeSystemPrompt } from '../../../src/core/agentRuntime/promptComposer';

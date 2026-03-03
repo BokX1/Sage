@@ -1,7 +1,3 @@
-/**
- * @module tests/unit/awareness/prismaMessageStore.test
- * @description Defines the prisma message store.test module.
- */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { PrismaMessageStore } from '../../../src/core/awareness/prismaMessageStore';
 

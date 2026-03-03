@@ -1,7 +1,3 @@
-/**
- * @module src/social-graph/socialGraphQuery
- * @description Defines the social graph query module.
- */
 import neo4j from 'neo4j-driver';
 import { logger } from '../core/utils/logger';
 import { getDunbarLabel } from './graphAnalyticsPulse';
@@ -95,14 +91,6 @@ function dunbarLayerFromRank(rank: number): number {
   return 5;
 }
 
-/**
- * Runs querySocialGraph.
- *
- * @param guildId - Describes the guildId input.
- * @param userId - Describes the userId input.
- * @param limit - Describes the limit input.
- * @returns Returns the function result.
- */
 export async function querySocialGraph(
   guildId: string,
   userId: string,
@@ -284,13 +272,6 @@ export async function querySocialGraph(
   }
 }
 
-/**
- * Runs queryTopSocialGraphEdges.
- *
- * @param guildId - Describes the guildId input.
- * @param limit - Describes the limit input.
- * @returns Returns the function result.
- */
 export async function queryTopSocialGraphEdges(
   guildId: string,
   limit = 15,

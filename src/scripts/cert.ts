@@ -1,7 +1,3 @@
-/**
- * @module src/scripts/cert
- * @description Defines the cert module.
- */
 import { execSync } from 'child_process';
 /* eslint-disable no-console */
 

@@ -1,5 +1,4 @@
 /**
- * @module tests/unit/embeddings/attachmentRAG.test
  * @description Validates attachment RAG search normalization paths.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';

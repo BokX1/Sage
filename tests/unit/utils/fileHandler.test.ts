@@ -1,7 +1,3 @@
-/**
- * @module tests/unit/utils/fileHandler.test
- * @description Defines the file handler.test module.
- */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { fetchAttachmentText } from '../../../src/core/utils/file-handler';
 

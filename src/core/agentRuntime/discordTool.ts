@@ -1,7 +1,3 @@
-/**
- * @module src/core/agentRuntime/discordTool
- * @description Defines the discord tool module.
- */
 import { z } from 'zod';
 import type { ToolDefinition, ToolExecutionContext } from './toolRegistry';
 import {

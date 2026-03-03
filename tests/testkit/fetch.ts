@@ -1,7 +1,3 @@
-/**
- * @module tests/testkit/fetch
- * @description Defines the fetch module.
- */
 import { vi } from 'vitest';
 
 /**
@@ -9,11 +5,6 @@ import { vi } from 'vitest';
  */
 export type FetchMock = ReturnType<typeof vi.fn>;
 
-/**
- * Runs stubFetch.
- *
- * @returns Returns the function result.
- */
 export function stubFetch(): FetchMock {
   const fetchMock = vi.fn();
   vi.stubGlobal('fetch', fetchMock);

@@ -1,7 +1,3 @@
-/**
- * @module src/core/discord/discordRestPolicy
- * @description Defines the discord rest policy module.
- */
 import {
   discordRestRequest,
   type DiscordRestFileInput,
@@ -197,12 +193,6 @@ async function resolveChannelGuildId(params: {
   return guildId;
 }
 
-/**
- * Runs assertDiscordRestRequestGuildScoped.
- *
- * @param params - Describes the params input.
- * @returns Returns the function result.
- */
 export async function assertDiscordRestRequestGuildScoped(params: {
   guildId: string;
   method: DiscordRestMethod | string;
@@ -272,12 +262,6 @@ export async function assertDiscordRestRequestGuildScoped(params: {
   );
 }
 
-/**
- * Runs discordRestRequestGuildScoped.
- *
- * @param params - Describes the params input.
- * @returns Returns the function result.
- */
 export async function discordRestRequestGuildScoped(params: {
   guildId: string;
   method: DiscordRestMethod | string;

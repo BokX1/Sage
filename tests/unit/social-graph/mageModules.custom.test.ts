@@ -1,7 +1,3 @@
-/**
- * @module tests/unit/social-graph/mageModules.custom.test
- * @description Defines the mage modules.custom.test module.
- */
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 

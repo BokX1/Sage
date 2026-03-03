@@ -1,5 +1,4 @@
 /**
- * @module src/core/utils/dnsLookup
  * @description Provides DNS resolution helpers with bounded lookup latency.
  */
 import * as dns from 'node:dns/promises';

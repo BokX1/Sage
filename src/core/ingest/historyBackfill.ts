@@ -1,7 +1,3 @@
-/**
- * @module src/core/ingest/historyBackfill
- * @description Defines the history backfill module.
- */
 import { TextChannel, Message } from 'discord.js';
 import { client } from '../../bot/client';
 import { logger } from '../utils/logger';

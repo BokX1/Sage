@@ -1,7 +1,3 @@
-/**
- * @module src/core/chat-engine
- * @description Defines the chat engine module.
- */
 import { getUserProfileRecord, upsertUserProfile } from './memory/userProfileRepo';
 import { getGuildApiKey } from './settings/guildSettingsRepo';
 import { updateProfileSummary } from './memory/profileUpdater';
@@ -230,11 +226,6 @@ export async function generateChatReply(params: {
   });
 }
 
-/**
- * Runs __resetChatEngineStateForTests.
- *
- * @returns Returns the function result.
- */
 export function __resetChatEngineStateForTests(): void {
   userInteractionCounts.clear();
   userCompactionTasks.clear();

@@ -1,5 +1,4 @@
 /**
- * @module src/core/utils/timeout
  * @description Normalizes timeout values into safe bounded milliseconds.
  */
 export type TimeoutNormalizationOptions = {

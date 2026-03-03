@@ -1,7 +1,3 @@
-/**
- * @module tests/unit/utils/timeout.test
- * @description Defines the timeout.test module.
- */
 import { describe, expect, it } from 'vitest';
 import { normalizeTimeoutMs } from '@/core/utils/timeout';
 

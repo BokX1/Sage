@@ -1,5 +1,4 @@
 /**
- * @module src/shared/logging/logger
  * @description Configures the shared structured logger and child logger factory.
  */
 import pino from 'pino';

@@ -1,7 +1,3 @@
-/**
- * @module tests/unit/agentRuntime/toolIntegrations.test
- * @description Defines the tool integrations.test module.
- */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { config } from '@/config';
 import * as llm from '@/core/llm';

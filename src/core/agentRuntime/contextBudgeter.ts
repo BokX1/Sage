@@ -1,8 +1,4 @@
 /**
- * @module src/core/agentRuntime/contextBudgeter
- * @description Defines the context budgeter module.
- */
-/**
  * Enforce prompt token budgets across ordered context blocks.
  *
  * Responsibilities:

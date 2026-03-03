@@ -1,7 +1,3 @@
-/**
- * @module tests/unit/agentRuntime/toolCallParser.test
- * @description Defines the tool call parser.test module.
- */
 import { describe, expect, it } from 'vitest';
 import { parseToolCallEnvelope } from '../../../src/core/agentRuntime/toolCallParser';
 

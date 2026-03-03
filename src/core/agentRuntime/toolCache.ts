@@ -1,7 +1,3 @@
-/**
- * @module src/core/agentRuntime/toolCache
- * @description Defines the tool cache module.
- */
 export interface ToolCacheEntry {
   key: string;
   name: string;
@@ -54,13 +50,6 @@ function stableStringify(value: unknown): string {
   return `{${parts.join(',')}}`;
 }
 
-/**
- * Runs buildToolCacheKey.
- *
- * @param name - Describes the name input.
- * @param args - Describes the args input.
- * @returns Returns the function result.
- */
 export function buildToolCacheKey(name: string, args: unknown): string {
   return `${name}::${stableStringify(stripNonSemanticArgs(args))}`;
 }

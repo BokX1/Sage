@@ -1,7 +1,3 @@
-/**
- * @module tests/unit/social-graph/migratePostgresToMemgraph.test
- * @description Defines the migrate postgres to memgraph.test module.
- */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mockFindMany = vi.hoisted(() => vi.fn());

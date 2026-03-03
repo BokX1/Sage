@@ -1,7 +1,3 @@
-/**
- * @module tests/unit/agentRuntime/llmJudge.test
- * @description Defines the llm judge.test module.
- */
 import { describe, expect, it } from 'vitest';
 import { JudgeModelInvoker, runLlmJudge } from '../../../src/core/agentRuntime/llmJudge';
 

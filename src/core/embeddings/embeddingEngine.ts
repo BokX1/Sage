@@ -1,7 +1,3 @@
-/**
- * @module src/core/embeddings/embeddingEngine
- * @description Defines the embedding engine module.
- */
 import { logger } from '../utils/logger';
 import { config } from '../../shared/config/env';
 

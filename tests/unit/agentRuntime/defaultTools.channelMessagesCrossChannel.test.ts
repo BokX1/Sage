@@ -1,7 +1,3 @@
-/**
- * @module tests/unit/agentRuntime/defaultTools.channelMessagesCrossChannel.test
- * @description Defines the default tools.channel messages cross channel.test module.
- */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { mockSearchChannelMessages, mockLookupChannelMessage } = vi.hoisted(() => ({

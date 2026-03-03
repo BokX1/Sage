@@ -1,5 +1,4 @@
 /**
- * @module src/shared/async/resilience
  * @description Provides shared timeout and retry helpers for external calls.
  */
 import { AppError } from '../errors/app-error';

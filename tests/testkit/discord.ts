@@ -1,16 +1,6 @@
-/**
- * @module tests/testkit/discord
- * @description Defines the discord module.
- */
 import type { ChatInputCommandInteraction, Message, TextChannel, User } from 'discord.js';
 import { vi } from 'vitest';
 
-/**
- * Runs makeUser.
- *
- * @param overrides - Describes the overrides input.
- * @returns Returns the function result.
- */
 export function makeUser(overrides: Partial<User> = {}): User {
   return {
     id: 'user-1',
@@ -20,12 +10,6 @@ export function makeUser(overrides: Partial<User> = {}): User {
   } as unknown as User;
 }
 
-/**
- * Runs makeTextChannel.
- *
- * @param overrides - Describes the overrides input.
- * @returns Returns the function result.
- */
 export function makeTextChannel(overrides: Partial<TextChannel> = {}): TextChannel {
   return {
     send: vi.fn(),
@@ -34,12 +18,6 @@ export function makeTextChannel(overrides: Partial<TextChannel> = {}): TextChann
   } as unknown as TextChannel;
 }
 
-/**
- * Runs makeMessage.
- *
- * @param overrides - Describes the overrides input.
- * @returns Returns the function result.
- */
 export function makeMessage(overrides: Partial<Message> = {}): Message {
   const author = makeUser();
   const channel = makeTextChannel();
@@ -70,12 +48,6 @@ type ChatInputCommandInteractionOverrides = Partial<
   Omit<ChatInputCommandInteraction, 'valueOf'>
 >;
 
-/**
- * Runs makeChatInputCommandInteraction.
- *
- * @param overrides - Describes the overrides input.
- * @returns Returns the function result.
- */
 export function makeChatInputCommandInteraction(
   overrides: ChatInputCommandInteractionOverrides = {},
 ): ChatInputCommandInteraction {

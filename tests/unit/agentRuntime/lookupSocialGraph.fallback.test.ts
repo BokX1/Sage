@@ -1,7 +1,3 @@
-/**
- * @module tests/unit/agentRuntime/lookupSocialGraph.fallback.test
- * @description Defines the lookup social graph.fallback.test module.
- */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mockQuerySocialGraph = vi.hoisted(() => vi.fn());

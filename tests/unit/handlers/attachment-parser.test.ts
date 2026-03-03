@@ -1,5 +1,4 @@
 /**
- * @module tests/unit/handlers/attachment-parser.test
  * @description Validates attachment parser budget normalization behavior.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';

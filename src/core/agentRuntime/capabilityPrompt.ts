@@ -1,12 +1,5 @@
-/**
- * @module src/core/agentRuntime/capabilityPrompt
- * @description Defines the capability prompt module.
- */
 import { DISCORD_ACTION_CATALOG, formatDiscordActionIndexLines, formatDiscordGuardrailsLines } from './discordToolCatalog';
 
-/**
- * Represents the BuildCapabilityPromptSectionParams contract.
- */
 export interface BuildCapabilityPromptSectionParams {
   activeTools?: string[];
   model?: string | null;

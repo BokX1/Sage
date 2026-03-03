@@ -1,7 +1,3 @@
-/**
- * @module src/core/summary/prismaChannelSummaryStore
- * @description Defines the prisma channel summary store module.
- */
 import { prisma } from '../../core/db/prisma-client';
 import { ChannelSummary, ChannelSummaryKind, ChannelSummaryStore } from './channelSummaryStore';
 

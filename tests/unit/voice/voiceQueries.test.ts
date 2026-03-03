@@ -1,7 +1,3 @@
-/**
- * @module tests/unit/voice/voiceQueries.test
- * @description Defines the voice queries.test module.
- */
 import { describe, expect, it, vi } from 'vitest';
 import { howLongInVoiceToday } from '../../../src/core/voice/voiceQueries';
 

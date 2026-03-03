@@ -1,7 +1,3 @@
-/**
- * @module src/scripts/test-trust
- * @description Defines the test trust module.
- */
 /* eslint-disable no-console */
 
 import { spawn } from 'node:child_process';

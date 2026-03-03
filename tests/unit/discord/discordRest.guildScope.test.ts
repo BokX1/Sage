@@ -1,7 +1,3 @@
-/**
- * @module tests/unit/discord/discordRest.guildScope.test
- * @description Defines the discord rest.guild scope.test module.
- */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { stubFetch, type FetchMock } from '../../testkit/fetch';
 import { discordRestRequestGuildScoped } from '@/core/discord/discordRestPolicy';

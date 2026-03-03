@@ -1,7 +1,3 @@
-/**
- * @module tests/unit/utils/concurrency.test
- * @description Defines the concurrency.test module.
- */
 import { describe, expect, it } from 'vitest';
 
 import { limitConcurrency } from '../../../src/core/utils/concurrency';

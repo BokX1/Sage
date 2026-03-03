@@ -1,7 +1,3 @@
-/**
- * @module src/shared/config/envSchema
- * @description Defines the env schema module.
- */
 import { z } from 'zod';
 import net from 'node:net';
 
@@ -630,12 +626,6 @@ export const envSchema = z.object({
  */
 export type EnvSchema = z.infer<typeof envSchema>;
 
-/**
- * Runs mergeEnvWithTestDefaults.
- *
- * @param processEnv - Describes the processEnv input.
- * @returns Returns the function result.
- */
 export function mergeEnvWithTestDefaults(
   processEnv: NodeJS.ProcessEnv,
 ): Record<string, string | undefined> {
@@ -645,12 +635,6 @@ export function mergeEnvWithTestDefaults(
   };
 }
 
-/**
- * Runs parseEnvSafe.
- *
- * @param processEnv - Describes the processEnv input.
- * @returns Returns the function result.
- */
 export function parseEnvSafe(processEnv: NodeJS.ProcessEnv) {
   return envSchema.safeParse(mergeEnvWithTestDefaults(processEnv));
 }

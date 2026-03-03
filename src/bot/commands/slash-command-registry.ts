@@ -1,7 +1,3 @@
-/**
- * @module src/bot/commands/slash-command-registry
- * @description Defines the slash command registry module.
- */
 import { REST, Routes, SlashCommandBuilder } from 'discord.js';
 import { config } from '../../config';
 import { logger } from '../../core/utils/logger';

@@ -1,7 +1,3 @@
-/**
- * @module tests/unit/shared/env-embedding-dim.test
- * @description Defines the env embedding dim.test module.
- */
 import { describe, expect, it, vi } from 'vitest';
 import { importFresh } from '../../testkit/importFresh';
 import { withEnv } from '../../testkit/env';

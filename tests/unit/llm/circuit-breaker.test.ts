@@ -1,5 +1,4 @@
 /**
- * @module tests/unit/llm/circuit-breaker.test
  * @description Validates circuit breaker guardrails and config normalization.
  */
 import { describe, expect, it } from 'vitest';

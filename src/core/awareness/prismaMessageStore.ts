@@ -1,7 +1,3 @@
-/**
- * @module src/core/awareness/prismaMessageStore
- * @description Defines the prisma message store module.
- */
 import { prisma } from '../../core/db/prisma-client';
 import { MessageStore } from './messageStore';
 import { ChannelMessage } from './awareness-types';

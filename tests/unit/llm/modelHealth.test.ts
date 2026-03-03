@@ -1,7 +1,3 @@
-/**
- * @module tests/unit/llm/modelHealth.test
- * @description Defines the model health.test module.
- */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 interface ModelHealthTestLoadOptions {

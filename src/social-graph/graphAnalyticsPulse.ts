@@ -1,7 +1,3 @@
-/**
- * @module src/social-graph/graphAnalyticsPulse
- * @description Defines the graph analytics pulse module.
- */
 import { logger } from '../core/utils/logger';
 import { createMemgraphClient } from './memgraphClient';
 
@@ -12,11 +8,6 @@ const DUNBAR_LAYERS = [
   { maxRank: 150, layer: 4, label: 'acquaintance' },
 ] as const;
 
-/**
- * Runs runGraphAnalyticsPulse.
- *
- * @returns Returns the function result.
- */
 export async function runGraphAnalyticsPulse(): Promise<void> {
   const startMs = Date.now();
   const memgraph = createMemgraphClient();
@@ -144,12 +135,6 @@ export async function runGraphAnalyticsPulse(): Promise<void> {
   }
 }
 
-/**
- * Runs getDunbarLabel.
- *
- * @param layer - Describes the layer input.
- * @returns Returns the function result.
- */
 export function getDunbarLabel(layer: number): string {
   const found = DUNBAR_LAYERS.find((d) => d.layer === layer);
   return found?.label ?? 'distant';

@@ -1,7 +1,3 @@
-/**
- * @module src/core/relationships/adminAuditRepo
- * @description Defines the admin audit repo module.
- */
 import { prisma } from '../../core/db/prisma-client';
 import crypto from 'crypto';
 

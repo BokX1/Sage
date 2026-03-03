@@ -1,7 +1,3 @@
-/**
- * @module tests/unit/agentRuntime/toolTelemetry.test
- * @description Defines the tool telemetry.test module.
- */
 import { describe, expect, it } from 'vitest';
 import { parseTraceToolTelemetry } from '../../../src/core/agentRuntime/toolTelemetry';
 

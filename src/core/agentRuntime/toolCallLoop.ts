@@ -1,7 +1,3 @@
-/**
- * @module src/core/agentRuntime/toolCallLoop
- * @description Defines the tool call loop module.
- */
 import { LLMChatMessage, LLMClient } from '../llm/llm-types';
 import { ToolRegistry, ToolExecutionContext } from './toolRegistry';
 import { logger } from '../utils/logger';

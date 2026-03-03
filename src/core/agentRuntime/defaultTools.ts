@@ -1,7 +1,3 @@
-/**
- * @module src/core/agentRuntime/defaultTools
- * @description Defines the default tools module.
- */
 import { z } from 'zod';
 import { ToolDefinition, ToolRegistry, globalToolRegistry } from './toolRegistry';
 import { discordTool } from './discordTool';
@@ -449,12 +445,6 @@ function registerIfMissing(registry: ToolRegistry, tool: ToolDefinition<unknown>
   }
 }
 
-/**
- * Runs registerDefaultAgenticTools.
- *
- * @param registry - Describes the registry input.
- * @returns Returns the function result.
- */
 export function registerDefaultAgenticTools(registry: ToolRegistry = globalToolRegistry): void {
   for (const tool of DEFAULT_TOOL_DEFINITIONS) {
     registerIfMissing(registry, tool as ToolDefinition<unknown>);

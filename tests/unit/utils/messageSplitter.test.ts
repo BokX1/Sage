@@ -1,7 +1,3 @@
-/**
- * @module tests/unit/utils/messageSplitter.test
- * @description Defines the message splitter.test module.
- */
 import { describe, expect, it } from 'vitest';
 import { smartSplit } from '../../../src/core/utils/message-splitter';
 

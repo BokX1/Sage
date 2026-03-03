@@ -1,7 +1,3 @@
-/**
- * @module src/core/agentRuntime/toolTelemetry
- * @description Defines the tool telemetry module.
- */
 interface ParsedToolBudget {
   toolsExecuted: boolean;
   successfulToolCount: number;
@@ -9,9 +5,6 @@ interface ParsedToolBudget {
   failed: boolean;
 }
 
-/**
- * Represents the TraceToolTelemetry contract.
- */
 export interface TraceToolTelemetry {
   signalPresent: boolean;
   enabled: boolean | null;
@@ -62,12 +55,6 @@ function parseBudget(value: unknown): ParsedToolBudget | null {
   };
 }
 
-/**
- * Runs parseTraceToolTelemetry.
- *
- * @param toolJson - Describes the toolJson input.
- * @returns Returns the function result.
- */
 export function parseTraceToolTelemetry(toolJson: unknown): TraceToolTelemetry {
   const root = asRecord(toolJson);
   if (!root) {

@@ -1,7 +1,3 @@
-/**
- * @module src/social-graph/migratePostgresToMemgraph
- * @description Defines the migrate postgres to memgraph module.
- */
 import { logger } from '../core/utils/logger';
 import { prisma } from '../core/db/prisma-client';
 import {
@@ -158,11 +154,6 @@ async function publishInteractionCopies(params: {
   return sent;
 }
 
-/**
- * Runs migratePostgresToMemgraph.
- *
- * @returns Returns the function result.
- */
 export async function migratePostgresToMemgraph(): Promise<void> {
   const startMs = Date.now();
   logger.info('Starting Postgres → Memgraph migration');

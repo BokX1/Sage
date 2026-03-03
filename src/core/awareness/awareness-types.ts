@@ -1,8 +1,4 @@
 /**
- * @module src/core/awareness/awareness-types
- * @description Defines the awareness types module.
- */
-/**
  * Describe a channel message stored for awareness features.
  *
  * Details: captures metadata needed for transcript building and message recall.

@@ -1,7 +1,3 @@
-/**
- * @module src/core/settings/guildChannelSettings
- * @description Defines the guild channel settings module.
- */
 import { config } from '../../config';
 
 /**

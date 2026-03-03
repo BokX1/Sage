@@ -1,7 +1,3 @@
-/**
- * @module src/social-graph/emojiSentiment
- * @description Defines the emoji sentiment module.
- */
 const EMOJI_VALENCE: Record<string, number> = {
   // ── Strongly Positive (+0.8 to +1.0) ──
   '❤️': 1.0,
@@ -97,12 +93,6 @@ const EMOJI_VALENCE: Record<string, number> = {
   '😈': -0.3, // often playful on Discord
 };
 
-/**
- * Runs getEmojiSentiment.
- *
- * @param emoji - Describes the emoji input.
- * @returns Returns the function result.
- */
 export function getEmojiSentiment(emoji: string): number {
   // Direct lookup
   const direct = EMOJI_VALENCE[emoji];

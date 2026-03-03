@@ -1,5 +1,4 @@
 /**
- * @module tests/unit/embeddings/textChunker.test
  * @description Validates text chunker normalization and edge-case behavior.
  */
 import { describe, expect, it } from 'vitest';

@@ -1,5 +1,4 @@
 /**
- * @module src/core/utils/concurrency
  * @description Provides a lightweight in-memory concurrency limiter.
  */
 /**

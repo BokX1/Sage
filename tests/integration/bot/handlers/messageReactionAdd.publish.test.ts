@@ -1,7 +1,3 @@
-/**
- * @module tests/integration/bot/handlers/messageReactionAdd.publish.test
- * @description Defines the message reaction add.publish.test module.
- */
 import type { MessageReaction, PartialUser, User } from 'discord.js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 

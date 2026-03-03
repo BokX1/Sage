@@ -1,7 +1,3 @@
-/**
- * @module src/scripts/eval-gate
- * @description Defines the eval gate module.
- */
 import { listRecentAgentEvaluations } from '../core/agentRuntime/agent-eval-repo';
 import { prisma } from '../core/db/prisma-client';
 

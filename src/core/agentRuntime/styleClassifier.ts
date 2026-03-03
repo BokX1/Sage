@@ -1,8 +1,4 @@
 /**
- * @module src/core/agentRuntime/styleClassifier
- * @description Defines the style classifier module.
- */
-/**
  * Infer stylistic guidance from user text samples.
  *
  * Responsibilities:

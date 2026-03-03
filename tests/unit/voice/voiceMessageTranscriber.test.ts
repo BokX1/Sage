@@ -1,7 +1,3 @@
-/**
- * @module tests/unit/voice/voiceMessageTranscriber.test
- * @description Defines the voice message transcriber.test module.
- */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { mockFetchDiscordAttachmentBytes, mockTranscribeWav } = vi.hoisted(() => ({

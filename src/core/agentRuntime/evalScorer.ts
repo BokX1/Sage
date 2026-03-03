@@ -1,7 +1,3 @@
-/**
- * @module src/core/agentRuntime/evalScorer
- * @description Defines the eval scorer module.
- */
 export type EvalDimensionKey =
   | 'factual_grounding'
   | 'instruction_adherence'
@@ -11,9 +7,6 @@ export type EvalDimensionKey =
   | 'source_quality'
   | 'temporal_correctness';
 
-/**
- * Represents the EvalDimensionScores contract.
- */
 export interface EvalDimensionScores {
   factual_grounding: number;
   instruction_adherence: number;
@@ -29,9 +22,6 @@ export interface EvalDimensionScores {
  */
 export type EvalScoreWeights = EvalDimensionScores;
 
-/**
- * Represents the EvalAggregateScore contract.
- */
 export interface EvalAggregateScore {
   overallScore: number;
   verdict: 'pass' | 'revise';
@@ -70,12 +60,6 @@ function round(value: number, precision = 4): number {
   return Math.round(value * factor) / factor;
 }
 
-/**
- * Runs normalizeEvalDimensionScores.
- *
- * @param value - Describes the value input.
- * @returns Returns the function result.
- */
 export function normalizeEvalDimensionScores(value: unknown): EvalDimensionScores {
   const record = value && typeof value === 'object' && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -91,13 +75,6 @@ export function normalizeEvalDimensionScores(value: unknown): EvalDimensionScore
   };
 }
 
-/**
- * Runs computeEvalOverallScore.
- *
- * @param scores - Describes the scores input.
- * @param weights - Describes the weights input.
- * @returns Returns the function result.
- */
 export function computeEvalOverallScore(
   scores: EvalDimensionScores,
   weights: EvalScoreWeights = DEFAULT_EVAL_SCORE_WEIGHTS,
@@ -124,12 +101,6 @@ export function computeEvalOverallScore(
   return clamp01(weightedTotal / totalWeight);
 }
 
-/**
- * Runs evaluateAggregateScore.
- *
- * @param params - Describes the params input.
- * @returns Returns the function result.
- */
 export function evaluateAggregateScore(params: {
   scores: EvalDimensionScores;
   confidence: number;

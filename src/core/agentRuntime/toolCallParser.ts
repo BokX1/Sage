@@ -1,7 +1,3 @@
-/**
- * @module src/core/agentRuntime/toolCallParser
- * @description Defines the tool call parser module.
- */
 /** Parse and validate structured tool-call envelopes emitted by the model. */
 export interface ToolCallEnvelope {
   type: 'tool_calls';

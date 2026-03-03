@@ -1,7 +1,3 @@
-/**
- * @module tests/unit/agentRuntime/toolCallExecution.test
- * @description Defines the tool call execution.test module.
- */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { logger } from '@/core/utils/logger';

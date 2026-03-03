@@ -1,7 +1,3 @@
-/**
- * @module tests/unit/voice/voiceConversationSessionStore.test
- * @description Defines the voice conversation session store.test module.
- */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mockConfig = vi.hoisted(() => ({

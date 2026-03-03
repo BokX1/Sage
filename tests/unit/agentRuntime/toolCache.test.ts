@@ -1,7 +1,3 @@
-/**
- * @module tests/unit/agentRuntime/toolCache.test
- * @description Defines the tool cache.test module.
- */
 import { describe, expect, it } from 'vitest';
 import { ToolResultCache, buildToolCacheKey } from '../../../src/core/agentRuntime/toolCache';
 

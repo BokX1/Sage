@@ -1,5 +1,4 @@
 /**
- * @module src/shared/security/secret-crypto
  * @description Encrypts and decrypts persisted secrets with AES-256-GCM.
  */
 import { createCipheriv, createDecipheriv, randomBytes } from 'crypto';

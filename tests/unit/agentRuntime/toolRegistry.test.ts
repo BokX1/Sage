@@ -1,7 +1,3 @@
-/**
- * @module tests/unit/agentRuntime/toolRegistry.test
- * @description Defines the tool registry.test module.
- */
 import { describe, it, expect, beforeEach } from 'vitest';
 import { z } from 'zod';
 import { ToolRegistry } from '../../../src/core/agentRuntime/toolRegistry';

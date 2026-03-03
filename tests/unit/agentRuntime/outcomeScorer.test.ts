@@ -1,7 +1,3 @@
-/**
- * @module tests/unit/agentRuntime/outcomeScorer.test
- * @description Defines the outcome scorer.test module.
- */
 import { describe, expect, it } from 'vitest';
 import { scoreTraceOutcome } from '../../../src/core/agentRuntime/outcomeScorer';
 

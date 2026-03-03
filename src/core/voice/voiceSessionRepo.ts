@@ -1,7 +1,3 @@
-/**
- * @module src/core/voice/voiceSessionRepo
- * @description Defines the voice session repo module.
- */
 import { prisma } from '../../core/db/prisma-client';
 
 /**
@@ -40,12 +36,6 @@ function getVoiceSessionClient(): PrismaVoiceSessionClient {
   return (prisma as unknown as { voiceSession: PrismaVoiceSessionClient }).voiceSession;
 }
 
-/**
- * Runs startSession.
- *
- * @param params - Describes the params input.
- * @returns Returns the function result.
- */
 export async function startSession(params: {
   guildId: string;
   channelId: string;
@@ -92,12 +82,6 @@ export async function startSession(params: {
   );
 }
 
-/**
- * Runs endOpenSession.
- *
- * @param params - Describes the params input.
- * @returns Returns the function result.
- */
 export async function endOpenSession(params: {
   guildId: string;
   userId: string;
@@ -114,12 +98,6 @@ export async function endOpenSession(params: {
   });
 }
 
-/**
- * Runs listOpenSessions.
- *
- * @param params - Describes the params input.
- * @returns Returns the function result.
- */
 export async function listOpenSessions(params: { guildId: string }): Promise<VoiceSession[]> {
   const client = getVoiceSessionClient();
   const rows = await client.findMany({
@@ -142,12 +120,6 @@ export async function listOpenSessions(params: { guildId: string }): Promise<Voi
   }));
 }
 
-/**
- * Runs getUserSessionsInRange.
- *
- * @param params - Describes the params input.
- * @returns Returns the function result.
- */
 export async function getUserSessionsInRange(params: {
   guildId: string;
   userId: string;

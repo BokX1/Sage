@@ -1,7 +1,3 @@
-/**
- * @module src/scripts/doctor
- * @description Defines the doctor module.
- */
 /* eslint-disable no-console */
 import { PrismaClient } from '@prisma/client';
 import { execSync } from 'child_process';

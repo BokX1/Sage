@@ -1,7 +1,3 @@
-/**
- * @module src/core/agentRuntime/agentRuntime
- * @description Defines the agent runtime module.
- */
 import { config as appConfig } from '../../config';
 import { getRecentMessages } from '../awareness/channelRingBuffer';
 import { buildTranscriptBlock } from '../awareness/transcriptBuilder';
@@ -32,9 +28,6 @@ import { formatLiveVoiceContext } from '../voice/voiceConversationSessionStore';
 
 const SINGLE_ROUTE_KIND = 'single';
 
-/**
- * Represents the RunChatTurnParams contract.
- */
 export interface RunChatTurnParams {
   traceId: string;
   userId: string;
@@ -54,9 +47,6 @@ export interface RunChatTurnParams {
   isAdmin?: boolean;
 }
 
-/**
- * Represents the RunChatTurnResult contract.
- */
 export interface RunChatTurnResult {
   replyText: string;
   debug?: {
@@ -198,12 +188,6 @@ function buildToolLoopConfig() {
   };
 }
 
-/**
- * Runs runChatTurn.
- *
- * @param params - Describes the params input.
- * @returns Returns the function result.
- */
 export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTurnResult> {
   const {
     traceId,

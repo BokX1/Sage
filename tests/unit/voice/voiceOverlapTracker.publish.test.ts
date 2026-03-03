@@ -1,7 +1,3 @@
-/**
- * @module tests/unit/voice/voiceOverlapTracker.publish.test
- * @description Defines the voice overlap tracker.publish.test module.
- */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mockGetGuildPresence = vi.hoisted(() => vi.fn());

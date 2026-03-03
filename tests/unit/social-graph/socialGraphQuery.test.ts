@@ -1,7 +1,3 @@
-/**
- * @module tests/unit/social-graph/socialGraphQuery.test
- * @description Defines the social graph query.test module.
- */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mockRun = vi.hoisted(() => vi.fn());

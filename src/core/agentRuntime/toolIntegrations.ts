@@ -1,7 +1,3 @@
-/**
- * @module src/core/agentRuntime/toolIntegrations
- * @description Defines the tool integrations module.
- */
 import { config } from '../../config';
 import { isPrivateOrLocalHostname } from '../../shared/config/env';
 import { PermissionsBitField } from 'discord.js';
@@ -170,11 +166,6 @@ function formatCooldownState(state: LocalProviderCooldownState): string {
   return `${Math.ceil(remainingMs / 1000)}s remaining (${state.reason})`;
 }
 
-/**
- * Runs __resetLocalProviderCooldownForTests.
- *
- * @returns Returns the function result.
- */
 export function __resetLocalProviderCooldownForTests(): void {
   localProviderCooldowns.clear();
 }
@@ -186,11 +177,6 @@ function isLocalProviderConfigured(provider: LocalProviderId): boolean {
   return !!(config.CRAWL4AI_BASE_URL as string | undefined)?.trim();
 }
 
-/**
- * Runs getLocalProviderRuntimeStatus.
- *
- * @returns Returns the function result.
- */
 export function getLocalProviderRuntimeStatus(): LocalProviderRuntimeStatus[] {
   const providers: LocalProviderId[] = ['searxng', 'crawl4ai'];
   return providers.map((provider) => {
@@ -386,12 +372,6 @@ function buildBaseUrl(baseUrl: string, path: string): string {
   return `${base}${p}`;
 }
 
-/**
- * Runs sanitizeUrl.
- *
- * @param value - Describes the value input.
- * @returns Returns the function result.
- */
 export function sanitizeUrl(value: string): string | null {
   const raw = value.trim();
   if (!raw) return null;
@@ -405,12 +385,6 @@ export function sanitizeUrl(value: string): string | null {
   }
 }
 
-/**
- * Runs sanitizePublicUrl.
- *
- * @param value - Describes the value input.
- * @returns Returns the function result.
- */
 export function sanitizePublicUrl(value: string): string | null {
   const sanitized = sanitizeUrl(value);
   if (!sanitized) return null;
@@ -423,12 +397,6 @@ export function sanitizePublicUrl(value: string): string | null {
   }
 }
 
-/**
- * Runs uniqueUrls.
- *
- * @param text - Describes the text input.
- * @returns Returns the function result.
- */
 export function uniqueUrls(text: string): string[] {
   const matches = text.match(URL_PATTERN) ?? [];
   const seen = new Set<string>();
@@ -666,12 +634,6 @@ async function searchWithPollinations(
   throw new Error(lastError ? `Pollinations fallback failed: ${lastError.message}` : 'Pollinations fallback failed');
 }
 
-/**
- * Runs runWebSearch.
- *
- * @param params - Describes the params input.
- * @returns Returns the function result.
- */
 export async function runWebSearch(params: {
   query: string;
   depth: SearchDepth;
@@ -893,12 +855,6 @@ async function scrapeWithNomnom(url: string, maxChars: number, timeoutMs: number
   }
 }
 
-/**
- * Runs runAgenticWebScrape.
- *
- * @param params - Describes the params input.
- * @returns Returns the function result.
- */
 export async function runAgenticWebScrape(params: {
   url: string;
   instruction: string;
@@ -951,12 +907,6 @@ export async function runAgenticWebScrape(params: {
   }
 }
 
-/**
- * Runs scrapeWebPage.
- *
- * @param params - Describes the params input.
- * @returns Returns the function result.
- */
 export async function scrapeWebPage(params: {
   url: string;
   maxChars?: number;
@@ -1075,23 +1025,12 @@ function getGitHubFileCache(traceId: string | undefined): Map<string, GitHubFile
   return created;
 }
 
-/**
- * Runs clearGitHubFileLookupCacheForTrace.
- *
- * @param traceId - Describes the traceId input.
- * @returns Returns the function result.
- */
 export function clearGitHubFileLookupCacheForTrace(traceId: string): void {
   const normalizedTraceId = traceId.trim();
   if (!normalizedTraceId) return;
   githubFileCacheByTrace.delete(normalizedTraceId);
 }
 
-/**
- * Runs __resetGitHubFileLookupCacheForTests.
- *
- * @returns Returns the function result.
- */
 export function __resetGitHubFileLookupCacheForTests(): void {
   githubFileCacheByTrace.clear();
 }
@@ -1324,12 +1263,6 @@ async function loadGitHubFileContent(params: {
   return entry;
 }
 
-/**
- * Runs lookupGitHubRepo.
- *
- * @param params - Describes the params input.
- * @returns Returns the function result.
- */
 export async function lookupGitHubRepo(params: { repo: string; includeReadme?: boolean }): Promise<Record<string, unknown>> {
   const timeoutMs = toInt((config.TOOL_WEB_SCRAPE_TIMEOUT_MS as number | undefined), DEFAULT_WEB_SCRAPE_TIMEOUT_MS, 5_000, 180_000);
   const token = (config.GITHUB_TOKEN as string | undefined)?.trim();
@@ -1385,12 +1318,6 @@ export async function lookupGitHubRepo(params: { repo: string; includeReadme?: b
   };
 }
 
-/**
- * Runs lookupGitHubFile.
- *
- * @param params - Describes the params input.
- * @returns Returns the function result.
- */
 export async function lookupGitHubFile(params: {
   repo: string;
   path: string;
@@ -1500,12 +1427,6 @@ function buildRegexMatcher(regex: RegExp): RegExp {
   return new RegExp(regex.source, flags);
 }
 
-/**
- * Runs lookupGitHubCodeSearch.
- *
- * @param params - Describes the params input.
- * @returns Returns the function result.
- */
 export async function lookupGitHubCodeSearch(params: {
   repo: string;
   query: string;
@@ -1736,12 +1657,6 @@ export async function lookupGitHubCodeSearch(params: {
   }
 }
 
-/**
- * Runs lookupChannelFileCache.
- *
- * @param params - Describes the params input.
- * @returns Returns the function result.
- */
 export async function lookupChannelFileCache(params: {
   guildId: string | null | undefined;
   channelId: string;
@@ -1816,12 +1731,6 @@ const CHANNEL_ACCESS_REQUIREMENTS_READ_HISTORY: ChannelPermissionRequirement[] =
   { flag: PermissionsBitField.Flags.ReadMessageHistory, label: 'ReadMessageHistory' },
 ];
 
-/**
- * Runs lookupServerFileCache.
- *
- * @param params - Describes the params input.
- * @returns Returns the function result.
- */
 export async function lookupServerFileCache(params: {
   guildId: string | null | undefined;
   requesterUserId: string;
@@ -1913,12 +1822,6 @@ export async function lookupServerFileCache(params: {
   };
 }
 
-/**
- * Runs lookupNpmPackage.
- *
- * @param params - Describes the params input.
- * @returns Returns the function result.
- */
 export async function lookupNpmPackage(params: { packageName: string; version?: string }): Promise<Record<string, unknown>> {
   const timeoutMs = toInt((config.TOOL_WEB_SCRAPE_TIMEOUT_MS as number | undefined), DEFAULT_WEB_SCRAPE_TIMEOUT_MS, 5_000, 180_000);
   const payload = await fetchJson(
@@ -2009,12 +1912,6 @@ async function fetchWikipediaPages(params: {
   }
 }
 
-/**
- * Runs lookupWikipedia.
- *
- * @param params - Describes the params input.
- * @returns Returns the function result.
- */
 export async function lookupWikipedia(params: {
   query: string;
   language?: string;
@@ -2055,12 +1952,6 @@ function unixSecondsToIso(value: number | null): string | null {
   return new Date(value * 1000).toISOString();
 }
 
-/**
- * Runs searchStackOverflow.
- *
- * @param params - Describes the params input.
- * @returns Returns the function result.
- */
 export async function searchStackOverflow(params: {
   query: string;
   maxResults?: number;
@@ -2298,12 +2189,6 @@ function rrfFuseMessageSearchResults(params: {
     }));
 }
 
-/**
- * Runs searchChannelMessages.
- *
- * @param params - Describes the params input.
- * @returns Returns the function result.
- */
 export async function searchChannelMessages(params: {
   guildId: string | null;
   channelId: string;
@@ -2504,12 +2389,6 @@ export async function searchChannelMessages(params: {
   };
 }
 
-/**
- * Runs lookupChannelMessage.
- *
- * @param params - Describes the params input.
- * @returns Returns the function result.
- */
 export async function lookupChannelMessage(params: {
   guildId: string | null;
   channelId: string;
@@ -2614,12 +2493,6 @@ export async function lookupChannelMessage(params: {
   };
 }
 
-/**
- * Runs searchAttachmentChunksInChannel.
- *
- * @param params - Describes the params input.
- * @returns Returns the function result.
- */
 export async function searchAttachmentChunksInChannel(params: {
   guildId: string | null;
   channelId: string;
@@ -2670,12 +2543,6 @@ export async function searchAttachmentChunksInChannel(params: {
   };
 }
 
-/**
- * Runs searchAttachmentChunksInGuild.
- *
- * @param params - Describes the params input.
- * @returns Returns the function result.
- */
 export async function searchAttachmentChunksInGuild(params: {
   guildId: string | null;
   requesterUserId: string;
@@ -2769,12 +2636,6 @@ export async function searchAttachmentChunksInGuild(params: {
   };
 }
 
-/**
- * Runs searchChannelArchives.
- *
- * @param params - Describes the params input.
- * @returns Returns the function result.
- */
 export async function searchChannelArchives(params: {
   guildId: string | null;
   channelId: string;
@@ -2877,12 +2738,6 @@ function classifyActivity(ms: number): 'none' | 'light' | 'moderate' | 'active' 
   return 'none';
 }
 
-/**
- * Runs lookupUserMemory.
- *
- * @param params - Describes the params input.
- * @returns Returns the function result.
- */
 export async function lookupUserMemory(params: {
   userId: string;
   maxChars?: number;
@@ -2929,12 +2784,6 @@ export async function lookupUserMemory(params: {
   };
 }
 
-/**
- * Runs lookupChannelMemory.
- *
- * @param params - Describes the params input.
- * @returns Returns the function result.
- */
 export async function lookupChannelMemory(params: {
   guildId: string | null;
   channelId: string;
@@ -3028,12 +2877,6 @@ function formatRecency(epochMs: number | undefined, nowMs: number): string {
   return `${days}d`;
 }
 
-/**
- * Runs lookupSocialGraph.
- *
- * @param params - Describes the params input.
- * @returns Returns the function result.
- */
 export async function lookupSocialGraph(params: {
   guildId: string | null;
   userId: string;
@@ -3125,12 +2968,6 @@ export async function lookupSocialGraph(params: {
   }
 }
 
-/**
- * Runs lookupVoiceAnalytics.
- *
- * @param params - Describes the params input.
- * @returns Returns the function result.
- */
 export async function lookupVoiceAnalytics(params: {
   guildId: string | null;
   userId: string;
@@ -3187,12 +3024,6 @@ export async function lookupVoiceAnalytics(params: {
   };
 }
 
-/**
- * Runs lookupVoiceSessionSummaries.
- *
- * @param params - Describes the params input.
- * @returns Returns the function result.
- */
 export async function lookupVoiceSessionSummaries(params: {
   guildId: string | null;
   voiceChannelId?: string | null;
@@ -3343,12 +3174,6 @@ async function safeReadResponseText(response: Response): Promise<string | null> 
   }
 }
 
-/**
- * Runs generateImage.
- *
- * @param params - Describes the params input.
- * @returns Returns the function result.
- */
 export async function generateImage(params: {
   prompt: string;
   model?: string;

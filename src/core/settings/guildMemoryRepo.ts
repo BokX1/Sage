@@ -1,14 +1,7 @@
-/**
- * @module src/core/settings/guildMemoryRepo
- * @description Defines the guild memory repo module.
- */
 import { prisma } from '../../core/db/prisma-client';
 
 const CACHE_TTL_MS = 30_000;
 
-/**
- * Represents the GuildMemoryRecord contract.
- */
 export interface GuildMemoryRecord {
   guildId: string;
   memoryText: string;
@@ -50,12 +43,6 @@ function normalizeMemoryText(value: string): string {
   return value.replace(/\r\n/g, '\n').trim();
 }
 
-/**
- * Runs getGuildMemoryRecord.
- *
- * @param guildId - Describes the guildId input.
- * @returns Returns the function result.
- */
 export async function getGuildMemoryRecord(guildId: string): Promise<GuildMemoryRecord | null> {
   const cached = readCachedValue(guildId);
   if (cached !== undefined) {
@@ -81,23 +68,11 @@ export async function getGuildMemoryRecord(guildId: string): Promise<GuildMemory
   return record;
 }
 
-/**
- * Runs getGuildMemoryText.
- *
- * @param guildId - Describes the guildId input.
- * @returns Returns the function result.
- */
 export async function getGuildMemoryText(guildId: string): Promise<string | null> {
   const record = await getGuildMemoryRecord(guildId);
   return record?.memoryText ?? null;
 }
 
-/**
- * Runs upsertGuildMemory.
- *
- * @param params - Describes the params input.
- * @returns Returns the function result.
- */
 export async function upsertGuildMemory(params: {
   guildId: string;
   memoryText: string;
@@ -152,12 +127,6 @@ export async function upsertGuildMemory(params: {
   return normalized;
 }
 
-/**
- * Runs clearGuildMemory.
- *
- * @param params - Describes the params input.
- * @returns Returns the function result.
- */
 export async function clearGuildMemory(params: {
   guildId: string;
   adminId: string;
@@ -189,11 +158,6 @@ export async function clearGuildMemory(params: {
   return deleted;
 }
 
-/**
- * Runs __clearGuildMemoryCacheForTests.
- *
- * @returns Returns the function result.
- */
 export function __clearGuildMemoryCacheForTests(): void {
   guildMemoryCache.clear();
 }

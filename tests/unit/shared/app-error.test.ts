@@ -1,5 +1,4 @@
 /**
- * @module tests/unit/shared/app-error.test
  * @description Verifies AppError construction and unknown-error normalization.
  */
 import { describe, expect, it } from 'vitest';

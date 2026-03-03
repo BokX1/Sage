@@ -1,7 +1,3 @@
-/**
- * @module tests/unit/ingest/ingestEvent.dbRetention.test
- * @description Defines ingestEvent DB retention limit normalization tests.
- */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mockConfig = vi.hoisted(() => ({

@@ -1,7 +1,3 @@
-/**
- * @module src/core/voice/voiceManager
- * @description Defines the voice manager module.
- */
 import {
   joinVoiceChannel,
   VoiceConnection,

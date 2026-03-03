@@ -1,7 +1,3 @@
-/**
- * @module src/core/voice/voiceConversationSummaryRepo
- * @description Defines the voice conversation summary repo module.
- */
 import { prisma } from '../../core/db/prisma-client';
 
 /**
@@ -65,12 +61,6 @@ function mapRow(row: Record<string, unknown>): VoiceConversationSummaryRow {
   };
 }
 
-/**
- * Runs createVoiceConversationSummary.
- *
- * @param params - Describes the params input.
- * @returns Returns the function result.
- */
 export async function createVoiceConversationSummary(params: {
   guildId: string;
   voiceChannelId: string;
@@ -110,12 +100,6 @@ export async function createVoiceConversationSummary(params: {
   });
 }
 
-/**
- * Runs listVoiceConversationSummaries.
- *
- * @param params - Describes the params input.
- * @returns Returns the function result.
- */
 export async function listVoiceConversationSummaries(params: {
   guildId: string;
   voiceChannelId?: string;

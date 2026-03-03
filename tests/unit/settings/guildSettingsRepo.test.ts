@@ -1,7 +1,3 @@
-/**
- * @module tests/unit/settings/guildSettingsRepo.test
- * @description Defines the guild settings repo.test module.
- */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const findUniqueMock = vi.fn();

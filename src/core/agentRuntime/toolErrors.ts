@@ -1,7 +1,3 @@
-/**
- * @module src/core/agentRuntime/toolErrors
- * @description Defines the tool errors module.
- */
 /** Model typed error categories emitted by tool execution stages. */
 export type ToolErrorKind = 'validation' | 'execution' | 'timeout';
 

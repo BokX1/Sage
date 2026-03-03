@@ -1,7 +1,3 @@
-/**
- * @module src/scripts/onboard
- * @description Defines the onboard module.
- */
 /* eslint-disable no-console */
 import { randomBytes } from 'crypto';
 import { execSync } from 'child_process';

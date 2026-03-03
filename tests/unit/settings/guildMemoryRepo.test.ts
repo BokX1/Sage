@@ -1,7 +1,3 @@
-/**
- * @module tests/unit/settings/guildMemoryRepo.test
- * @description Defines the guild memory repo.test module.
- */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const findUniqueMock = vi.hoisted(() => vi.fn());

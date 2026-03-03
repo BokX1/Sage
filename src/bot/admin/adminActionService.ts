@@ -1,7 +1,3 @@
-/**
- * @module src/bot/admin/adminActionService
- * @description Defines the admin action service module.
- */
 import crypto from 'crypto';
 import {
   ActionRowBuilder,
@@ -599,12 +595,6 @@ function buildDiscordActionSummary(action: QueuedDiscordAction): string[] {
   }
 }
 
-/**
- * Runs buildDiscordRestWriteSummary.
- *
- * @param request - Describes the request input.
- * @returns Returns the function result.
- */
 export function buildDiscordRestWriteSummary(request: DiscordRestWriteRequest): string[] {
   const lines: string[] = [
     'Type: discord_rest_write',
@@ -1446,12 +1436,6 @@ async function executePendingAction(params: {
   throw new Error(`Unknown pending action kind: ${params.action.kind}`);
 }
 
-/**
- * Runs lookupServerMemoryForTool.
- *
- * @param params - Describes the params input.
- * @returns Returns the function result.
- */
 export async function lookupServerMemoryForTool(params: {
   guildId: string;
   maxChars?: number;
@@ -1478,12 +1462,6 @@ export async function lookupServerMemoryForTool(params: {
   };
 }
 
-/**
- * Runs requestServerMemoryUpdateForTool.
- *
- * @param params - Describes the params input.
- * @returns Returns the function result.
- */
 export async function requestServerMemoryUpdateForTool(params: {
   guildId: string;
   channelId: string;
@@ -1577,12 +1555,6 @@ export async function requestServerMemoryUpdateForTool(params: {
   };
 }
 
-/**
- * Runs requestDiscordAdminActionForTool.
- *
- * @param params - Describes the params input.
- * @returns Returns the function result.
- */
 export async function requestDiscordAdminActionForTool(params: {
   guildId: string;
   channelId: string;
@@ -1630,12 +1602,6 @@ export async function requestDiscordAdminActionForTool(params: {
   };
 }
 
-/**
- * Runs requestDiscordRestWriteForTool.
- *
- * @param params - Describes the params input.
- * @returns Returns the function result.
- */
 export async function requestDiscordRestWriteForTool(params: {
   guildId: string;
   channelId: string;
@@ -1691,12 +1657,6 @@ export async function requestDiscordRestWriteForTool(params: {
   };
 }
 
-/**
- * Runs requestDiscordInteractionForTool.
- *
- * @param params - Describes the params input.
- * @returns Returns the function result.
- */
 export async function requestDiscordInteractionForTool(params: {
   guildId: string;
   channelId: string;
@@ -1745,12 +1705,6 @@ function buildResolvedMessageContent(params: {
   ].join('\n');
 }
 
-/**
- * Runs handleAdminActionButtonInteraction.
- *
- * @param interaction - Describes the interaction input.
- * @returns Returns the function result.
- */
 export async function handleAdminActionButtonInteraction(
   interaction: ButtonInteraction,
 ): Promise<boolean> {

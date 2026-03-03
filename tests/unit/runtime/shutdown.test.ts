@@ -1,7 +1,3 @@
-/**
- * @module tests/unit/runtime/shutdown.test
- * @description Defines the shutdown.test module.
- */
 import type { Client } from 'discord.js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 

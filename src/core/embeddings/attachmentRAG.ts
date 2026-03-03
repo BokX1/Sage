@@ -1,7 +1,3 @@
-/**
- * @module src/core/embeddings/attachmentRAG
- * @description Defines the attachment rag module.
- */
 import { prisma } from '../db/prisma-client';
 import { logger } from '../utils/logger';
 import { embedText, embedTexts } from './embeddingEngine';
@@ -16,9 +12,6 @@ type DbSearchRow = {
   score: number;
 };
 
-/**
- * Represents the SearchResult contract.
- */
 export interface SearchResult {
   chunkId: string;
   attachmentId: string;
@@ -72,13 +65,6 @@ function mapRows(rows: DbSearchRow[]): SearchResult[] {
   }));
 }
 
-/**
- * Runs ingestAttachmentText.
- *
- * @param attachmentId - Describes the attachmentId input.
- * @param extractedText - Describes the extractedText input.
- * @returns Returns the function result.
- */
 export async function ingestAttachmentText(
   attachmentId: string,
   extractedText: string,
@@ -152,14 +138,6 @@ export async function ingestAttachmentText(
   return chunks.length;
 }
 
-/**
- * Runs searchAttachments.
- *
- * @param query - Describes the query input.
- * @param topK - Describes the topK input.
- * @param scope - Describes the scope input.
- * @returns Returns the function result.
- */
 export async function searchAttachments(
   query: string,
   topK: number = DEFAULT_TOP_K,
@@ -227,12 +205,6 @@ export async function searchAttachments(
   return mapRows(rows);
 }
 
-/**
- * Runs deleteAttachmentChunks.
- *
- * @param attachmentId - Describes the attachmentId input.
- * @returns Returns the function result.
- */
 export async function deleteAttachmentChunks(attachmentId: string): Promise<void> {
   await prisma.$executeRaw`
     DELETE FROM "AttachmentChunk" WHERE "attachmentId" = ${attachmentId}
@@ -246,11 +218,6 @@ function generateChunkId(): string {
   return `ck${timestamp}${random}`;
 }
 
-/**
- * Runs __resetAttachmentRagCapabilitiesForTests.
- *
- * @returns Returns the function result.
- */
 export function __resetAttachmentRagCapabilitiesForTests(): void {
   embeddingColumnCheckDone = false;
   embeddingColumnAvailable = false;

@@ -1,7 +1,3 @@
-/**
- * @module tests/unit/agentRuntime/toolIntegrations.channelMessageAccess.test
- * @description Defines the tool integrations.channel message access.test module.
- */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { config } from '@/config';
 

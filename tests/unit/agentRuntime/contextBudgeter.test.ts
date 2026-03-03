@@ -1,7 +1,3 @@
-/**
- * @module tests/unit/agentRuntime/contextBudgeter.test
- * @description Defines the context budgeter.test module.
- */
 import { describe, it, expect } from 'vitest';
 import {
   budgetContextBlocks,

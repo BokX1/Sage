@@ -1,7 +1,3 @@
-/**
- * @module src/core/awareness/transcriptBuilder
- * @description Defines the transcript builder module.
- */
 import { ChannelMessage } from './awareness-types';
 
 /**

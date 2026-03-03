@@ -1,7 +1,3 @@
-/**
- * @module src/bot/handlers/messageCreate
- * @description Defines the message create module.
- */
 import { Message, Events } from 'discord.js';
 import { client } from '../client';
 import { logger } from '../../core/utils/logger';
@@ -265,12 +261,6 @@ async function resolveReferencedMessage(message: Message): Promise<Message | nul
   }
 }
 
-/**
- * Runs handleMessageCreate.
- *
- * @param message - Describes the message input.
- * @returns Returns the function result.
- */
 export async function handleMessageCreate(message: Message) {
   let typingInterval: NodeJS.Timeout | null = null;
   try {
@@ -667,11 +657,6 @@ export async function handleMessageCreate(message: Message) {
   }
 }
 
-/**
- * Runs registerMessageCreateHandler.
- *
- * @returns Returns the function result.
- */
 export function registerMessageCreateHandler() {
   const g = globalThis as GlobalScope;
   if (g[registrationKey]) {

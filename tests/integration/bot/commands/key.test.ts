@@ -1,7 +1,3 @@
-/**
- * @module tests/integration/bot/commands/key.test
- * @description Defines the key.test module.
- */
 import type { ChatInputCommandInteraction } from 'discord.js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { stubFetch, type FetchMock } from '../../../testkit/fetch';

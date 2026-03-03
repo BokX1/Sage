@@ -1,7 +1,3 @@
-/**
- * @module tests/unit/agentRuntime/apiKeyFallback.test
- * @description Defines the api key fallback.test module.
- */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mockConfig = vi.hoisted(() => ({

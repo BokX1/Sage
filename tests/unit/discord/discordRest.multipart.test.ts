@@ -1,7 +1,3 @@
-/**
- * @module tests/unit/discord/discordRest.multipart.test
- * @description Defines the discord rest.multipart.test module.
- */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { stubFetch, type FetchMock } from '../../testkit/fetch';
 

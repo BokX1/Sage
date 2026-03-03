@@ -1,5 +1,4 @@
 /**
- * @module src/core/llm/schema-call
  * @description Executes schema-constrained LLM calls with one repair retry.
  */
 import { ZodSchema, z } from 'zod';

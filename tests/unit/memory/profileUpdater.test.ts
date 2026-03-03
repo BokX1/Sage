@@ -1,7 +1,3 @@
-/**
- * @module tests/unit/memory/profileUpdater.test
- * @description Defines the profile updater.test module.
- */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { updateProfileSummary, extractBalancedJson } from '../../../src/core/memory/profileUpdater';
 

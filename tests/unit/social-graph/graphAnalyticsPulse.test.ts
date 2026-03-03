@@ -1,7 +1,3 @@
-/**
- * @module tests/unit/social-graph/graphAnalyticsPulse.test
- * @description Defines the graph analytics pulse.test module.
- */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mockRun = vi.hoisted(() => vi.fn());

@@ -1,7 +1,3 @@
-/**
- * @module src/core/llm/pollinations-client
- * @description Defines the pollinations client module.
- */
 import { LLMClient, LLMRequest, LLMResponse, ToolDefinition } from './llm-types';
 import { CircuitBreaker } from './circuit-breaker';
 import { logger } from '../../core/utils/logger';

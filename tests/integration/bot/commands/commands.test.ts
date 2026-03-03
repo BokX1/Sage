@@ -1,7 +1,3 @@
-/**
- * @module tests/integration/bot/commands/commands.test
- * @description Defines the commands.test module.
- */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('discord.js', async () => {

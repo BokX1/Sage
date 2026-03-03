@@ -1,8 +1,4 @@
 /**
- * @module src/core/llm/llm-types
- * @description Defines the llm types module.
- */
-/**
  * Define supported LLM message roles.
  *
  * Details: matches the role values expected by the LLM client.

@@ -1,7 +1,3 @@
-/**
- * @module src/core/ingest/ingestEvent
- * @description Defines the ingest event module.
- */
 import { logger } from '../../core/utils/logger';
 import { config } from '../../config';
 import { appendMessage } from '../awareness/channelRingBuffer';
@@ -66,9 +62,6 @@ function resolveDbRetentionLimit(): number {
   return toPositiveInt(config.MESSAGE_DB_MAX_MESSAGES_PER_CHANNEL as number | undefined, fallbackLimit);
 }
 
-/**
- * Represents the IngestEventOptions contract.
- */
 export interface IngestEventOptions {
   publishSocialGraph?: boolean;
 }
@@ -185,9 +178,8 @@ export async function ingestEvent(event: Event, options: IngestEventOptions = {}
       const syntheticMessage: ChannelMessage = {
         messageId: `voice-${event.timestamp.getTime()}-${event.userId}`,
         guildId: event.guildId,
-        channelId: event.channelId, // Note: associates log with VOICE channel.
-        // Future: Could broadcast to main text channel.
-        // For now, key by voice channel ID.
+        // Keep voice activity scoped to the originating voice channel transcript.
+        channelId: event.channelId,
         authorId: 'SYSTEM',
         authorDisplayName: 'System',
         authorIsBot: false,
@@ -199,9 +191,7 @@ export async function ingestEvent(event: Event, options: IngestEventOptions = {}
 
       appendMessage(syntheticMessage);
 
-      // We usually don't persist synthetic voice logs to DB as "messages",
-      // but we could if we wanted a permanent record.
-      // For now, in-memory transcript is enough for awareness.
+      // Keep synthetic voice activity ephemeral in memory; only user-authored messages are persisted.
     }
   } catch (err) {
     // CRITICAL: Never let ingestion errors break the handler

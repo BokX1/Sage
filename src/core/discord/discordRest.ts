@@ -1,7 +1,3 @@
-/**
- * @module src/core/discord/discordRest
- * @description Defines the discord rest module.
- */
 import { config } from '../../config';
 import { isPrivateOrLocalHostname } from '../../shared/config/env';
 import { logger } from '../utils/logger';
@@ -437,12 +433,6 @@ async function buildMultipartBody(params: {
   return form;
 }
 
-/**
- * Runs discordRestRequest.
- *
- * @param params - Describes the params input.
- * @returns Returns the function result.
- */
 export async function discordRestRequest(params: {
   method: DiscordRestMethod | string;
   path: string;

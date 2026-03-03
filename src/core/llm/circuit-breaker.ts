@@ -1,5 +1,4 @@
 /**
- * @module src/core/llm/circuit-breaker
  * @description Implements a basic circuit breaker for external LLM calls.
  */
 import { logger } from '../utils/logger';

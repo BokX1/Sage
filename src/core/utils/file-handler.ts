@@ -1,7 +1,3 @@
-/**
- * @module src/core/utils/file-handler
- * @description Defines the file handler module.
- */
 import { normalizeTimeoutMs } from './timeout';
 
 /**
@@ -540,14 +536,6 @@ async function extractTextWithTika(
   }
 }
 
-/**
- * Runs fetchAttachmentText.
- *
- * @param url - Describes the url input.
- * @param filename - Describes the filename input.
- * @param opts - Describes the opts input.
- * @returns Returns the function result.
- */
 export async function fetchAttachmentText(
   url: string,
   filename: string,
@@ -708,14 +696,6 @@ export async function fetchAttachmentText(
   };
 }
 
-/**
- * Runs fetchDiscordAttachmentBytes.
- *
- * @param url - Describes the url input.
- * @param filename - Describes the filename input.
- * @param opts - Describes the opts input.
- * @returns Returns the function result.
- */
 export async function fetchDiscordAttachmentBytes(
   url: string,
   filename: string,

@@ -1,7 +1,3 @@
-/**
- * @module src/core/embeddings/channelMessageRAG
- * @description Defines the channel message rag module.
- */
 import { config } from '../../config';
 import { prisma } from '../db/prisma-client';
 import { logger } from '../utils/logger';
@@ -38,9 +34,6 @@ type HistoryStatsRow = {
   newest: Date | string | null;
 };
 
-/**
- * Represents the ChannelMessageSearchResult contract.
- */
 export interface ChannelMessageSearchResult {
   messageId: string;
   authorId: string;
@@ -51,9 +44,6 @@ export interface ChannelMessageSearchResult {
   score: number;
 }
 
-/**
- * Represents the ChannelMessageHistoryStats contract.
- */
 export interface ChannelMessageHistoryStats {
   storedCount: number;
   retentionCap: number;
@@ -140,21 +130,10 @@ async function hasMessageEmbeddingColumn(): Promise<boolean> {
   return embeddingColumnAvailable;
 }
 
-/**
- * Runs supportsChannelMessageSemanticSearch.
- *
- * @returns Returns the function result.
- */
 export async function supportsChannelMessageSemanticSearch(): Promise<boolean> {
   return hasMessageEmbeddingColumn();
 }
 
-/**
- * Runs queueChannelMessageEmbedding.
- *
- * @param params - Describes the params input.
- * @returns Returns the function result.
- */
 export function queueChannelMessageEmbedding(params: {
   messageId: string;
   guildId: string | null;
@@ -209,12 +188,6 @@ export function queueChannelMessageEmbedding(params: {
   void task;
 }
 
-/**
- * Runs searchChannelMessagesLexical.
- *
- * @param params - Describes the params input.
- * @returns Returns the function result.
- */
 export async function searchChannelMessagesLexical(params: {
   guildId: string | null;
   channelId: string;
@@ -248,12 +221,6 @@ export async function searchChannelMessagesLexical(params: {
   return mapSearchRows(rows);
 }
 
-/**
- * Runs searchChannelMessagesRegex.
- *
- * @param params - Describes the params input.
- * @returns Returns the function result.
- */
 export async function searchChannelMessagesRegex(params: {
   guildId: string | null;
   channelId: string;
@@ -284,12 +251,6 @@ export async function searchChannelMessagesRegex(params: {
   return mapSearchRows(rows);
 }
 
-/**
- * Runs searchChannelMessagesSemantic.
- *
- * @param params - Describes the params input.
- * @returns Returns the function result.
- */
 export async function searchChannelMessagesSemantic(params: {
   guildId: string | null;
   channelId: string;
@@ -328,12 +289,6 @@ export async function searchChannelMessagesSemantic(params: {
   return mapSearchRows(rows);
 }
 
-/**
- * Runs getChannelMessageHistoryStats.
- *
- * @param params - Describes the params input.
- * @returns Returns the function result.
- */
 export async function getChannelMessageHistoryStats(params: {
   guildId: string | null;
   channelId: string;
@@ -361,12 +316,6 @@ export async function getChannelMessageHistoryStats(params: {
   };
 }
 
-/**
- * Runs getChannelMessageWindowById.
- *
- * @param params - Describes the params input.
- * @returns Returns the function result.
- */
 export async function getChannelMessageWindowById(params: {
   guildId: string | null;
   channelId: string;
@@ -443,11 +392,6 @@ export async function getChannelMessageWindowById(params: {
   }));
 }
 
-/**
- * Runs __resetChannelMessageRagCapabilitiesForTests.
- *
- * @returns Returns the function result.
- */
 export function __resetChannelMessageRagCapabilitiesForTests(): void {
   embeddingColumnCheckDone = false;
   embeddingColumnAvailable = false;

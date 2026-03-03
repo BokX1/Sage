@@ -1,7 +1,3 @@
-/**
- * @module src/core/rate-limiter
- * @description Defines the rate limiter module.
- */
 import { config } from '../config';
 
 const limits = new Map<string, number[]>();
@@ -11,12 +7,6 @@ const DEFAULT_RATE_LIMIT_MAX = 5;
 const CLEANUP_INTERVAL_MS = 60_000; // 1 minute
 let lastCleanup = Date.now();
 
-/**
- * Runs isRateLimited.
- *
- * @param channelId - Describes the channelId input.
- * @returns Returns the function result.
- */
 export function isRateLimited(channelId: string): boolean {
   const now = Date.now();
   const windowSec = config.RATE_LIMIT_WINDOW_SEC || DEFAULT_RATE_LIMIT_WINDOW_SEC;

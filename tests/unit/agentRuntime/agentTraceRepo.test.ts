@@ -1,7 +1,3 @@
-/**
- * @module tests/unit/agentRuntime/agentTraceRepo.test
- * @description Defines the agent trace repo.test module.
- */
 import { Prisma } from '@prisma/client';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 

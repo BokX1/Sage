@@ -1,7 +1,3 @@
-/**
- * @module tests/unit/ingest/historyBackfill.test
- * @description Defines the history backfill.test module.
- */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mockConfig = vi.hoisted(() => ({

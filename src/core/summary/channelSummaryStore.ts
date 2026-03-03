@@ -1,12 +1,5 @@
-/**
- * @module src/core/summary/channelSummaryStore
- * @description Defines the channel summary store module.
- */
 export type ChannelSummaryKind = 'rolling' | 'profile' | `archive:${string}`;
 
-/**
- * Represents the ChannelSummary contract.
- */
 export interface ChannelSummary {
   id?: string;
   guildId: string;
@@ -25,9 +18,6 @@ export interface ChannelSummary {
   updatedAt?: Date;
 }
 
-/**
- * Represents the ChannelSummaryStore contract.
- */
 export interface ChannelSummaryStore {
   upsertSummary(params: {
     guildId: string;

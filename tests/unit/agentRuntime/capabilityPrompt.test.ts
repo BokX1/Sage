@@ -1,7 +1,3 @@
-/**
- * @module tests/unit/agentRuntime/capabilityPrompt.test
- * @description Defines the capability prompt.test module.
- */
 import { describe, expect, it } from 'vitest';
 import {
   buildAgenticStateBlock,

@@ -1,7 +1,3 @@
-/**
- * @module src/core/attachments/ingestedAttachmentRepo
- * @description Defines the ingested attachment repo module.
- */
 import { prisma } from '../db/prisma-client';
 
 /**
@@ -9,9 +5,6 @@ import { prisma } from '../db/prisma-client';
  */
 export type IngestedAttachmentStatus = 'ok' | 'truncated' | 'too_large' | 'error' | 'skip';
 
-/**
- * Represents the IngestedAttachmentRecord contract.
- */
 export interface IngestedAttachmentRecord {
   id: string;
   guildId: string | null;
@@ -93,12 +86,6 @@ function mapRow(row: Record<string, unknown>): IngestedAttachmentRecord {
   };
 }
 
-/**
- * Runs upsertIngestedAttachment.
- *
- * @param params - Describes the params input.
- * @returns Returns the function result.
- */
 export async function upsertIngestedAttachment(params: {
   guildId: string | null;
   channelId: string;
@@ -152,12 +139,6 @@ export async function upsertIngestedAttachment(params: {
   return mapRow(row);
 }
 
-/**
- * Runs listRecentIngestedAttachments.
- *
- * @param params - Describes the params input.
- * @returns Returns the function result.
- */
 export async function listRecentIngestedAttachments(params: {
   guildId: string | null;
   channelId: string;
@@ -199,12 +180,6 @@ function rankLookupHit(params: {
   return score;
 }
 
-/**
- * Runs findIngestedAttachmentsForLookup.
- *
- * @param params - Describes the params input.
- * @returns Returns the function result.
- */
 export async function findIngestedAttachmentsForLookup(params: {
   guildId: string | null;
   channelId: string;
@@ -268,12 +243,6 @@ export async function findIngestedAttachmentsForLookup(params: {
   return mapped.slice(0, requestedLimit);
 }
 
-/**
- * Runs findIngestedAttachmentsForLookupInGuild.
- *
- * @param params - Describes the params input.
- * @returns Returns the function result.
- */
 export async function findIngestedAttachmentsForLookupInGuild(params: {
   guildId: string;
   messageId?: string;
@@ -335,12 +304,6 @@ export async function findIngestedAttachmentsForLookupInGuild(params: {
   return mapped.slice(0, requestedLimit);
 }
 
-/**
- * Runs listIngestedAttachmentsByIds.
- *
- * @param ids - Describes the ids input.
- * @returns Returns the function result.
- */
 export async function listIngestedAttachmentsByIds(ids: string[]): Promise<IngestedAttachmentRecord[]> {
   const uniqueIds = Array.from(new Set(ids.map((id) => id.trim()).filter((id) => id.length > 0)));
   if (uniqueIds.length === 0) return [];

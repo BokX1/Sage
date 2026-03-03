@@ -1,7 +1,3 @@
-/**
- * @module src/core/voice/voiceTracker
- * @description Defines the voice tracker module.
- */
 import { VoicePresenceChannel } from './voicePresenceIndex';
 import { computeVoiceOverlapForUser } from './voiceOverlapTracker';
 
@@ -59,12 +55,6 @@ export type VoiceTrackerLogger = {
   error: (obj: Record<string, unknown>, msg: string) => void;
 };
 
-/**
- * Runs classifyVoiceChange.
- *
- * @param change - Describes the change input.
- * @returns Returns the function result.
- */
 export function classifyVoiceChange(change: VoiceChange): VoiceChangeKind {
   if (!change.oldChannelId && change.newChannelId) return 'join';
   if (change.oldChannelId && !change.newChannelId) return 'leave';
@@ -74,13 +64,6 @@ export function classifyVoiceChange(change: VoiceChange): VoiceChangeKind {
   return 'noop';
 }
 
-/**
- * Runs handleVoiceChange.
- *
- * @param change - Describes the change input.
- * @param deps - Describes the deps input.
- * @returns Returns the function result.
- */
 export async function handleVoiceChange(
   change: VoiceChange,
   deps: {

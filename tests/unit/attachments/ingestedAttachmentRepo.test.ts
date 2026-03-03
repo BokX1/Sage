@@ -1,5 +1,4 @@
 /**
- * @module tests/unit/attachments/ingestedAttachmentRepo.test
  * @description Covers attachment repository normalization behavior.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';

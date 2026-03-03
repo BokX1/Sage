@@ -1,7 +1,3 @@
-/**
- * @module src/bot/handlers/ready
- * @description Defines the ready module.
- */
 import { Client, Events } from 'discord.js';
 import { logger } from '../../core/utils/logger';
 import { backfillChannelHistory } from '../../core/ingest/historyBackfill';
@@ -10,12 +6,6 @@ import { config as appConfig } from '../../config';
 
 const HANDLED_KEY = Symbol.for('sage.handlers.ready');
 
-/**
- * Runs registerReadyHandler.
- *
- * @param client - Describes the client input.
- * @returns Returns the function result.
- */
 export function registerReadyHandler(client: Client) {
   const g = globalThis as unknown as { [key: symbol]: boolean };
   if (g[HANDLED_KEY]) return;
@@ -31,10 +21,7 @@ export function registerReadyHandler(client: Client) {
         logger.warn({ error }, 'Slash command registration failed; continuing startup initialization');
       }
 
-      // D1: Backfill history for proactive channels
-      // We only backfill channels that are allowed for logging
-      // For now, let's just backfill the Dev Guild's channels or any channel in the allowlist?
-      // A safe default is to iterate all cached channels and check `isLoggingEnabled` (handled inside backfill)
+      // Backfill all cached guild text channels; backfillChannelHistory enforces logging policy per channel.
 
       const contextTranscriptLimitSource = appConfig.NODE_ENV === 'test' ? 'test-default' : 'env';
       const startupBacklogLimit = appConfig.CONTEXT_TRANSCRIPT_MAX_MESSAGES;

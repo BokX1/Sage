@@ -1,7 +1,3 @@
-/**
- * @module src/core/embeddings/textChunker
- * @description Defines the text chunker module.
- */
 // ============================================
 // Recursive Text Chunker for RAG Pipeline
 // ============================================
@@ -45,9 +41,6 @@ function normalizeChunkParams(chunkSize: number, overlap: number): {
     };
 }
 
-/**
- * Represents the TextChunk contract.
- */
 export interface TextChunk {
     content: string;
     index: number;

@@ -1,7 +1,3 @@
-/**
- * @module src/bootstrap
- * @description Defines the bootstrap module.
- */
 import { client } from './bot/client';
 import { registerGuildCreateHandler } from './bot/handlers/guildCreate';
 import { registerInteractionCreateHandler } from './bot/handlers/interactionCreate';
@@ -18,11 +14,6 @@ import { startCompactionScheduler } from './core/summary/ltmCompaction';
 import { AppError } from './shared/errors/app-error';
 import { logger } from './shared/logging/logger';
 
-/**
- * Runs bootstrapApp.
- *
- * @returns Returns the function result.
- */
 export async function bootstrapApp(): Promise<void> {
   try {
     if (config.TRACE_ENABLED) {

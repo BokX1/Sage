@@ -1,7 +1,3 @@
-/**
- * @module src/scripts/test-audit
- * @description Defines the test audit module.
- */
 /* eslint-disable no-console */
 
 import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';

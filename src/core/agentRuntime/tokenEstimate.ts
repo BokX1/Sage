@@ -1,7 +1,3 @@
-/**
- * @module src/core/agentRuntime/tokenEstimate
- * @description Defines the token estimate module.
- */
 import { config } from '../../config';
 
 /**

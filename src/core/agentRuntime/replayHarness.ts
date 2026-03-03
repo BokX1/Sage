@@ -1,14 +1,7 @@
-/**
- * @module src/core/agentRuntime/replayHarness
- * @description Defines the replay harness module.
- */
 import { listRecentTraces } from './agent-trace-repo';
 import { scoreTraceOutcome, OutcomeScore } from './outcomeScorer';
 import { parseTraceToolTelemetry, TraceToolTelemetry } from './toolTelemetry';
 
-/**
- * Represents the ReplayToolingAggregate contract.
- */
 export interface ReplayToolingAggregate {
   tracesWithTelemetry: number;
   tracesWithToolsExecuted: number;
@@ -17,9 +10,6 @@ export interface ReplayToolingAggregate {
   tracesWithToolLoopFailed: number;
 }
 
-/**
- * Represents the ReplayEvaluationRow contract.
- */
 export interface ReplayEvaluationRow {
   traceId: string;
   routeKind: string;
@@ -28,9 +18,6 @@ export interface ReplayEvaluationRow {
   score: OutcomeScore;
 }
 
-/**
- * Represents the ReplayRouteBucket contract.
- */
 export interface ReplayRouteBucket {
   total: number;
   successLikelyCount: number;
@@ -38,9 +25,6 @@ export interface ReplayRouteBucket {
   tooling: ReplayToolingAggregate;
 }
 
-/**
- * Represents the ReplayEvaluationReport contract.
- */
 export interface ReplayEvaluationReport {
   total: number;
   successLikelyCount: number;
@@ -79,12 +63,6 @@ function applyToolingSample(aggregate: ReplayToolingAggregate, telemetry: TraceT
   }
 }
 
-/**
- * Runs evaluateRecentTraceOutcomes.
- *
- * @param params - Describes the params input.
- * @returns Returns the function result.
- */
 export async function evaluateRecentTraceOutcomes(params: {
   limit: number;
   guildId?: string;

@@ -1,7 +1,3 @@
-/**
- * @module tests/unit/awareness/loggingPolicy.test
- * @description Defines the logging policy.test module.
- */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 const mockConfig = vi.hoisted(() => ({

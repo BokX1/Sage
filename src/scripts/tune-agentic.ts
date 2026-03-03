@@ -1,7 +1,3 @@
-/**
- * @module src/scripts/tune-agentic
- * @description Defines the tune agentic module.
- */
 /* eslint-disable no-console */
 
 import { spawn } from 'node:child_process';

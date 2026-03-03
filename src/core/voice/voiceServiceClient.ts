@@ -1,7 +1,3 @@
-/**
- * @module src/core/voice/voiceServiceClient
- * @description Defines the voice service client module.
- */
 import { config } from '../../config';
 import { logger } from '../utils/logger';
 
@@ -34,11 +30,6 @@ async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: numbe
   }
 }
 
-/**
- * Runs voiceServiceHealth.
- *
- * @returns Returns the function result.
- */
 export async function voiceServiceHealth(): Promise<{ ok: boolean; details?: unknown }> {
   const baseUrl = normalizeBaseUrl(config.VOICE_SERVICE_BASE_URL);
   const url = `${baseUrl}/health`;
@@ -54,12 +45,6 @@ export async function voiceServiceHealth(): Promise<{ ok: boolean; details?: unk
   }
 }
 
-/**
- * Runs transcribeWav.
- *
- * @param params - Describes the params input.
- * @returns Returns the function result.
- */
 export async function transcribeWav(params: {
   wavBytes: Buffer;
   language?: string;
@@ -102,11 +87,6 @@ export async function transcribeWav(params: {
   };
 }
 
-/**
- * Runs logVoiceServiceConfig.
- *
- * @returns Returns the function result.
- */
 export function logVoiceServiceConfig(): void {
   logger.debug(
     {

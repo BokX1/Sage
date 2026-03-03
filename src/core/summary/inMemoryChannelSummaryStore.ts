@@ -1,7 +1,3 @@
-/**
- * @module src/core/summary/inMemoryChannelSummaryStore
- * @description Defines the in memory channel summary store module.
- */
 import { ChannelSummary, ChannelSummaryKind, ChannelSummaryStore } from './channelSummaryStore';
 
 type SummaryKey = string;
