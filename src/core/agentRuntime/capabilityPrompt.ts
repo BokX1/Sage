@@ -1,4 +1,4 @@
-import { DISCORD_ACTION_CATALOG, formatDiscordActionIndexLines } from './discordToolCatalog';
+import { DISCORD_ACTION_CATALOG, formatDiscordActionIndexLines, formatDiscordGuardrailsLines } from './discordToolCatalog';
 
 export interface BuildCapabilityPromptSectionParams {
   activeTools?: string[];
@@ -19,6 +19,14 @@ function formatListLine(values: string[]): string {
   return values.join(', ');
 }
 
+/**
+ * Build a compact machine-readable agent state JSON.
+ *
+ * This is embedded as a structured block inside the consolidated
+ * capability prompt so the model can reference exact capabilities.
+ *
+ * @returns XML-wrapped JSON block.
+ */
 export function buildAgenticStateBlock(params: BuildCapabilityPromptSectionParams): string {
   const activeTools =
     params.activeTools?.map((tool) => tool.trim()).filter((tool) => tool.length > 0) ?? [];
@@ -28,7 +36,6 @@ export function buildAgenticStateBlock(params: BuildCapabilityPromptSectionParam
     orchestrator: 'runtime_assistant',
     model: params.model?.trim() || null,
     tools_available: activeTools,
-    loop_stages: ['model_call', 'tool_calls_if_needed', 'final_answer'],
     invoked_by: params.invokedBy ?? null,
     invoker_is_admin: params.invokerIsAdmin ?? null,
     in_guild: params.inGuild ?? null,
@@ -47,6 +54,15 @@ export function buildAgenticStateBlock(params: BuildCapabilityPromptSectionParam
   return ['<agent_state>', JSON.stringify(state, null, 2), '</agent_state>'].join('\n');
 }
 
+/**
+ * Build the consolidated capability prompt section.
+ *
+ * Merges execution rules, tool selection guidance, and reasoning protocol
+ * into a single <agent_config> block. This eliminates the previous duplication
+ * between execution_rules and agent_state blocks.
+ *
+ * @returns XML-wrapped agent configuration prompt.
+ */
 export function buildCapabilityPromptSection(
   params: BuildCapabilityPromptSectionParams,
 ): string {
@@ -56,6 +72,7 @@ export function buildCapabilityPromptSection(
   const hasDiscordTool = normalizedTools.includes('discord');
   const hasGenerateImage = normalizedTools.includes('image_generate');
 
+  // --- Invocation context ---
   const invocationParts: string[] = [];
   if (params.invokedBy) invocationParts.push(`invokedBy=${params.invokedBy}`);
   if (params.inGuild !== undefined) invocationParts.push(`inGuild=${params.inGuild}`);
@@ -63,17 +80,22 @@ export function buildCapabilityPromptSection(
   const invocationLine =
     invocationParts.length > 0 ? `- Invocation context: ${invocationParts.join(', ')}.` : null;
 
+  // --- Tool loop limits ---
   const toolLoopLimitsLine = params.toolLoopLimits
     ? `- Tool loop limits: maxRounds=${params.toolLoopLimits.maxRounds}, maxCallsPerRound=${params.toolLoopLimits.maxCallsPerRound}, parallelReadOnlyTools=${params.toolLoopLimits.parallelReadOnlyTools}, maxParallelReadOnlyTools=${params.toolLoopLimits.maxParallelReadOnlyTools}.`
     : null;
 
+  // --- Discord action index + guardrails ---
   const discordActionIndexLines = hasDiscordTool
     ? formatDiscordActionIndexLines().map((line) => `- ${line}`)
     : [];
+  const discordGuardrailLines = hasDiscordTool
+    ? formatDiscordGuardrailsLines().map((line) => `- ${line}`)
+    : [];
 
-  return [
+  // --- Execution rules ---
+  const executionRules = [
     '<execution_rules>',
-    '- Architecture: single-agent orchestrator with iterative tool calling.',
     `- Active model: ${params.model?.trim() || 'unspecified'}.`,
     `- Runtime tools available this turn: ${activeToolLine}.`,
     ...(invocationLine ? [invocationLine] : []),
@@ -85,15 +107,100 @@ export function buildCapabilityPromptSection(
       ? '- Attachment memory behavior: historical non-image files are cached outside transcript; use `discord` actions `files.lookup_channel` or `files.lookup_server` (server-wide is permission-filtered) to retrieve file content on demand.'
       : '- Attachment memory behavior: you do not have access to retrieve historical files this turn.',
     ...discordActionIndexLines,
+    ...discordGuardrailLines,
     hasGenerateImage
       ? '- Image generation behavior: use image_generate for image creation/edit requests; attachments are returned by the runtime.'
       : '- Image generation behavior: you do not have image generation capabilities this turn.',
-    '- Tool calls are executed by the runtime assistant.',
-    '- This turn follows one loop: model response -> tool assistance (if needed) -> final answer.',
-    '- If tools fail, acknowledge limitations and continue with the safest possible answer.',
-    '- Finalize with plain text once tool gathering is sufficient.',
-    '- Only utilize the tools explicitly listed above when they materially improve correctness.',
-    '- For factual, versioned, or external claims, you must gather tool-backed evidence before finalizing.',
     '</execution_rules>',
   ].join('\n');
+
+  // --- Tool selection decision tree ---
+  const toolSelectionGuide = normalizedTools.length > 0 ? buildToolSelectionGuide(normalizedTools) : '';
+
+  // --- Reasoning protocol ---
+  const reasoningProtocol = normalizedTools.length > 0 ? `
+<reasoning_protocol>
+For every tool call, use the \`think\` field to document:
+1. What information you need and why.
+2. Why this specific tool/action is the right choice.
+3. What you expect to learn from the result.
+
+After receiving tool results:
+- Verify the data answers the original question.
+- If insufficient, plan and execute the next tool call.
+- If sufficient, synthesize a natural-language response.
+- Only utilize tools when they materially improve correctness.
+- Finalize with plain text once tool gathering is sufficient.
+</reasoning_protocol>` : '';
+
+  return [executionRules, toolSelectionGuide, reasoningProtocol]
+    .filter((section) => section.length > 0)
+    .join('\n\n');
+}
+
+/**
+ * Build a structured tool selection guide based on active tools.
+ *
+ * This decision tree helps Kimi K2.5 route to the correct tool on first attempt.
+ */
+function buildToolSelectionGuide(activeTools: string[]): string {
+  const lines: string[] = ['<tool_selection_guide>'];
+  lines.push('Follow this decision tree to select the right tool:');
+  lines.push('');
+
+  if (activeTools.includes('system_get_current_datetime')) {
+    lines.push('TIME/DATE NEEDED? → system_get_current_datetime');
+  }
+
+  if (activeTools.includes('discord')) {
+    lines.push('DISCORD MEMORY/DATA?');
+    lines.push('  User profile → discord: memory.get_user');
+    lines.push('  Channel summary → discord: memory.get_channel');
+    lines.push('  Server overview → discord: memory.get_server');
+    lines.push('  Archived summaries → discord: memory.search_channel_archives');
+    lines.push('  Exact message quotes → discord: messages.search_history');
+    lines.push('  Message context → discord: messages.get_context');
+    lines.push('  Channel files → discord: files.lookup_channel / files.search_channel');
+    lines.push('  Server files → discord: files.lookup_server / files.search_server');
+    lines.push('  Social graph → discord: analytics.get_social_graph');
+    lines.push('  Voice stats → discord: analytics.get_voice_analytics');
+    lines.push('  Voice sessions → discord: analytics.get_voice_session_summaries');
+    lines.push('  Bot invite URL → discord: oauth2.get_bot_invite_url');
+  }
+
+  if (activeTools.includes('web_search') || activeTools.includes('web_get_page_text') || activeTools.includes('web_extract')) {
+    lines.push('REAL-TIME WEB INFO?');
+    if (activeTools.includes('web_search')) lines.push('  Search the web → web_search');
+    if (activeTools.includes('web_get_page_text')) lines.push('  Read a specific URL → web_get_page_text');
+    if (activeTools.includes('web_extract')) lines.push('  Extract specific data from URL → web_extract (targeted extraction, not full dump)');
+  }
+
+  if (activeTools.includes('github_get_repository') || activeTools.includes('github_search_code') || activeTools.includes('github_get_file')) {
+    lines.push('GITHUB DATA?');
+    if (activeTools.includes('github_get_repository')) lines.push('  Repo overview → github_get_repository');
+    if (activeTools.includes('github_search_code')) lines.push('  Find code across files → github_search_code');
+    if (activeTools.includes('github_get_file')) lines.push('  Read specific file → github_get_file (use line ranges for large files)');
+  }
+
+  if (activeTools.includes('npm_get_package')) {
+    lines.push('NPM PACKAGE INFO? → npm_get_package');
+  }
+  if (activeTools.includes('wikipedia_search')) {
+    lines.push('ENCYCLOPEDIA FACTS? → wikipedia_search');
+  }
+  if (activeTools.includes('stack_overflow_search')) {
+    lines.push('CODING Q&A? → stack_overflow_search');
+  }
+  if (activeTools.includes('image_generate')) {
+    lines.push('IMAGE CREATION? → image_generate');
+  }
+  if (activeTools.includes('system_internal_reflection')) {
+    lines.push('COMPLEX PLANNING? → system_internal_reflection first, then execute');
+  }
+
+  lines.push('');
+  lines.push('MULTIPLE READ-ONLY TOOLS NEEDED? → Batch them in a single tool_calls envelope for parallel execution.');
+  lines.push('</tool_selection_guide>');
+
+  return lines.join('\n');
 }

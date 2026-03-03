@@ -31,6 +31,7 @@
 - Added optional `files` support to `discord` action `messages.send` so Sage can send attachments in normal (non-admin) turns when appropriate (still blocked in autopilot turns).
 - Added typed, approval-gated `discord` admin actions for common Discord REST writes (message edit/delete/pin, channel create/edit, role create/edit/delete, member role add/remove).
 - Added `discord` action `oauth2.get_bot_invite_url` to generate a bot invite URL using the configured `DISCORD_APP_ID`.
+- Added `AGENTIC_TOOL_LOOP_TIMEOUT_MS` to bound total tool-loop wall-clock time per turn (default `120000` ms), reducing long-running orchestration stalls.
 
 ### Changed
 
@@ -41,6 +42,9 @@
 - Enabled per-call read-only classification for action-based tools (including `discord`) so safe reads can be deduplicated and parallelized within a round.
 - Increased the maximum tool-argument payload size guardrail (from `10KB` to `256KB`) to support multipart uploads and other larger tool payloads.
 - Added an explicit `discord` action index (read/write/admin) to the runtime prompt and the `discord` tool description/`help` output so models can reliably discover all supported Discord capabilities.
+- Consolidated runtime capability/tool protocol prompting with explicit tool-selection guidance and reasoning protocol instructions, improving first-pass tool routing and reducing malformed tool outputs.
+- Hardened tool-result synthesis instructions so model turns treat tool outputs as untrusted external data and ignore embedded instructions.
+- Added in-memory observability metrics for tool execution, latency, and cache hit/miss behavior to improve operator visibility into agentic loop performance.
 
 ### Fixed
 
@@ -48,6 +52,9 @@
 - Removed legacy no-key runtime fallback in chat turns: when neither a server key nor `LLM_API_KEY` is configured, Sage now returns explicit setup guidance instead of attempting anonymous provider calls.
 - Retried read-only tool calls once on timeout/rate-limit failures to reduce flaky tool-loop errors.
 - Automatically retry Discord REST passthrough requests once on HTTP `429` responses, respecting Discord-provided `retry_after` delays (capped).
+- Improved tool-call envelope parsing to recover valid `tool_calls` JSON from mixed prose + JSON model outputs, reducing false plain-text fallbacks.
+- Preserved model reasoning text alongside native provider tool calls in the serialized tool envelope for better trace/debug context.
+- Added TTL expiry to per-turn tool result caching so stale cached reads are naturally evicted during long-running loops.
 
 ### Removed
 

@@ -1,6 +1,7 @@
 /** Execute validated tool calls with timeout and structured result logging. */
 import { ToolExecutionContext, ToolRegistry } from './toolRegistry';
 import { logger } from '../utils/logger';
+import { metrics } from '../utils/metrics';
 import { ToolExecutionError, ToolTimeoutError, ToolValidationError, ToolErrorKind } from './toolErrors';
 
 
@@ -188,6 +189,13 @@ export async function executeToolWithTimeout(
       'Tool invocation succeeded',
     );
   }
+
+  // Emit structured metrics for observability
+  metrics.increment('tool_execution_total', {
+    tool: call.name,
+    status: finalResult.success ? 'success' : (finalResult.errorType ?? 'unknown'),
+  });
+  metrics.histogram('tool_latency_ms', finalResult.latencyMs, { tool: call.name });
 
   return finalResult;
 }

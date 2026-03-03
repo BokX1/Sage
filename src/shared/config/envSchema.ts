@@ -319,6 +319,7 @@ export const testDefaults: Record<string, string> = {
   AGENTIC_TOOL_GITHUB_GROUNDED_MODE: 'true',
   AGENTIC_TOOL_PARALLEL_READ_ONLY_ENABLED: 'true',
   AGENTIC_TOOL_MAX_PARALLEL_READ_ONLY: '4',
+  AGENTIC_TOOL_LOOP_TIMEOUT_MS: '120000',
 
   REPLAY_SEED_GUILD_ID: '',
   REPLAY_SEED_CHANNEL_PREFIX: 'seed-replay',
@@ -542,6 +543,7 @@ export const envSchema = z.object({
     .default('true')
     .transform((v) => v === 'true'),
   AGENTIC_TOOL_MAX_PARALLEL_READ_ONLY: z.coerce.number().int().min(1).max(10).default(4),
+  AGENTIC_TOOL_LOOP_TIMEOUT_MS: z.coerce.number().int().min(10_000).max(300_000).default(120_000),
 
   REPLAY_SEED_GUILD_ID: z.string().default(''),
   REPLAY_SEED_CHANNEL_PREFIX: z.string().default('seed-replay'),

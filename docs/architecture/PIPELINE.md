@@ -117,6 +117,7 @@ flowchart LR
 - **Calls per round:** Max `AGENTIC_TOOL_MAX_CALLS_PER_ROUND` (default: `5`) tool calls per iteration.
 - **Parallel read-only:** Read-only tools (static `readOnly` or per-call `readOnlyPredicate`) can execute concurrently (up to `AGENTIC_TOOL_MAX_PARALLEL_READ_ONLY`).
 - **Timeout:** Per-tool timeout `AGENTIC_TOOL_TIMEOUT_MS` (default: `45000` ms).
+- **Loop wall-clock cap:** End-to-end tool loop duration is bounded by `AGENTIC_TOOL_LOOP_TIMEOUT_MS` (default: `120000` ms).
 - **Result truncation:** Tool output capped at `AGENTIC_TOOL_RESULT_MAX_CHARS` (default: `8000`).
 - **File collection:** Image generation and other file-producing tools return `Buffer` attachments merged into the final response.
 
@@ -180,6 +181,7 @@ Image generation runs through `image_generate` and returns attachment payloads. 
 | `AGENTIC_TOOL_MAX_ROUNDS` | Max tool loop iterations | `6` |
 | `AGENTIC_TOOL_MAX_CALLS_PER_ROUND` | Max tool calls per iteration | `5` |
 | `AGENTIC_TOOL_TIMEOUT_MS` | Per-tool execution timeout | `45000` |
+| `AGENTIC_TOOL_LOOP_TIMEOUT_MS` | Max wall-clock duration for one tool loop turn | `120000` |
 | `AGENTIC_TOOL_RESULT_MAX_CHARS` | Max chars per tool result | `8000` |
 | `AGENTIC_TOOL_PARALLEL_READ_ONLY_ENABLED` | Enable parallel read-only execution | `true` |
 | `AGENTIC_TOOL_MAX_PARALLEL_READ_ONLY` | Max concurrent read-only tools | `4` |

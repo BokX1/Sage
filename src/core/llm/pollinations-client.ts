@@ -428,9 +428,22 @@ export class PollinationsClient implements LLMClient {
         const toolCalls = (message as any)?.tool_calls;
 
         if (toolCalls && Array.isArray(toolCalls) && toolCalls.length > 0) {
+          // Preserve the model's reasoning/thought chain if present alongside tool calls.
+          // Previously this was discarded, losing valuable CoT context.
+          const reasoningText = typeof content === 'string' && content.trim().length > 0
+            ? content.trim()
+            : null;
+
+          if (reasoningText) {
+            logger.debug(
+              { reasoningLength: reasoningText.length },
+              '[Pollinations] Preserving model reasoning alongside native tool calls',
+            );
+          }
+
           logger.debug({ count: toolCalls.length }, '[Pollinations] Native tool calls detected, serializing to envelope');
 
-          const envelope = {
+          const envelope: Record<string, unknown> = {
             type: 'tool_calls',
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             calls: toolCalls.map((tc: any) => {
@@ -448,9 +461,14 @@ export class PollinationsClient implements LLMClient {
             }),
           };
 
+          // Include reasoning in the envelope so the tool loop can access it for tracing.
+          if (reasoningText) {
+            envelope.reasoning = reasoningText;
+          }
+
           // If tool calls are present, we MUST return strict JSON for the agentRuntime to parse.
-          // Any text content (thought chain) must be discarded because agentRuntime expects 
-          // either pure text OR a JSON envelope, not both.
+          // Any text content (thought chain) is now preserved in the envelope's `reasoning` field
+          // rather than being discarded.
           content = JSON.stringify(envelope, null, 2);
         }
         logger.debug({ usage: data.usage }, '[Pollinations] Success');

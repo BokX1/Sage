@@ -18,11 +18,42 @@ describe('capabilityPrompt', () => {
 
       // Assert
       expect(prompt).toContain('<execution_rules>');
-      expect(prompt).toContain('- Architecture: single-agent orchestrator with iterative tool calling.');
-      expect(prompt).toContain('- Active model: kimi.');
-      expect(prompt).toContain('- Runtime tools available this turn: web_search, web_get_page_text.');
+      expect(prompt).toContain('Active model: kimi.');
+      expect(prompt).toContain('Runtime tools available this turn: web_search, web_get_page_text.');
       expect(prompt).toContain('Attachment memory behavior: you do not have access to retrieve historical files this turn.');
       expect(prompt).toContain('Image generation behavior: you do not have image generation capabilities this turn.');
+    });
+
+    it('renders tool selection guide for available tools', () => {
+      // Arrange
+      const params = {
+        model: 'kimi',
+        activeTools: ['web_search', 'system_get_current_datetime'],
+      };
+
+      // Act
+      const prompt = buildCapabilityPromptSection(params);
+
+      // Assert
+      expect(prompt).toContain('<tool_selection_guide>');
+      expect(prompt).toContain('TIME/DATE NEEDED?');
+      expect(prompt).toContain('REAL-TIME WEB INFO?');
+      expect(prompt).toContain('</tool_selection_guide>');
+    });
+
+    it('renders reasoning protocol when tools are active', () => {
+      // Arrange
+      const params = {
+        activeTools: ['web_search'],
+      };
+
+      // Act
+      const prompt = buildCapabilityPromptSection(params);
+
+      // Assert
+      expect(prompt).toContain('<reasoning_protocol>');
+      expect(prompt).toContain('think');
+      expect(prompt).toContain('</reasoning_protocol>');
     });
 
     it('renders guidance for channel file lookup when tool is active', () => {
@@ -41,6 +72,44 @@ describe('capabilityPrompt', () => {
       expect(prompt).toContain('Discord actions (writes; not autopilot):');
       expect(prompt).toContain('Discord actions (admin-only):');
       expect(prompt).toContain('messages.send');
+      // Guardrails from discordToolCatalog must be surfaced
+      expect(prompt).toContain('Discord guardrail:');
+      expect(prompt).toContain('Writes are disallowed in autopilot turns');
+    });
+
+    it('renders discord tool selection guide when discord is active', () => {
+      // Arrange
+      const params = {
+        activeTools: ['discord'],
+      };
+
+      // Act
+      const prompt = buildCapabilityPromptSection(params);
+
+      // Assert
+      expect(prompt).toContain('DISCORD MEMORY/DATA?');
+      expect(prompt).toContain('discord: memory.get_user');
+      expect(prompt).toContain('discord: memory.get_channel');
+      expect(prompt).toContain('discord: memory.get_server');
+      expect(prompt).toContain('discord: messages.search_history');
+      expect(prompt).toContain('discord: analytics.get_voice_session_summaries');
+      expect(prompt).toContain('discord: oauth2.get_bot_invite_url');
+    });
+
+    it('renders web tool selection with all sub-tools', () => {
+      // Arrange
+      const params = {
+        activeTools: ['web_search', 'web_get_page_text', 'web_extract'],
+      };
+
+      // Act
+      const prompt = buildCapabilityPromptSection(params);
+
+      // Assert
+      expect(prompt).toContain('REAL-TIME WEB INFO?');
+      expect(prompt).toContain('web_search');
+      expect(prompt).toContain('web_get_page_text');
+      expect(prompt).toContain('web_extract');
     });
 
     it('renders guidance for image generation when tool is active', () => {
@@ -64,8 +133,11 @@ describe('capabilityPrompt', () => {
       const prompt = buildCapabilityPromptSection(params);
 
       // Assert
-      expect(prompt).toContain('- Active model: unspecified.');
-      expect(prompt).toContain('- Runtime tools available this turn: none.');
+      expect(prompt).toContain('Active model: unspecified.');
+      expect(prompt).toContain('Runtime tools available this turn: none.');
+      // No tool_selection_guide or reasoning_protocol when no tools
+      expect(prompt).not.toContain('<tool_selection_guide>');
+      expect(prompt).not.toContain('<reasoning_protocol>');
     });
   });
 

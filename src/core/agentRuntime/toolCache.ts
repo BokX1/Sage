@@ -44,16 +44,25 @@ export function buildToolCacheKey(name: string, args: unknown): string {
 
 export class ToolResultCache {
   private readonly maxEntries: number;
+  private readonly ttlMs: number;
   private readonly entries: Map<string, ToolCacheEntry>;
 
-  constructor(maxEntries = 50) {
+  constructor(maxEntries = 50, ttlMs = 120_000) {
     this.maxEntries = Math.max(1, Math.floor(maxEntries));
+    this.ttlMs = Math.max(1_000, ttlMs);
     this.entries = new Map();
   }
 
   get(name: string, args: unknown): ToolCacheEntry | null {
     const key = buildToolCacheKey(name, args);
-    return this.entries.get(key) ?? null;
+    const entry = this.entries.get(key);
+    if (!entry) return null;
+    // TTL-based expiry: treat stale entries as cache misses
+    if (Date.now() - entry.createdAt > this.ttlMs) {
+      this.entries.delete(key);
+      return null;
+    }
+    return entry;
   }
 
   set(name: string, args: unknown, result: unknown): ToolCacheEntry {

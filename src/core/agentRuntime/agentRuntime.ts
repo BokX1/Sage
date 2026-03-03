@@ -13,6 +13,7 @@ import { runToolCallLoop } from './toolCallLoop';
 import { ToolResult } from './toolCallExecution';
 import { enforceGitHubFileGrounding } from './toolGrounding';
 import { clearGitHubFileLookupCacheForTrace } from './toolIntegrations';
+import { DISCORD_GUARDRAILS } from './discordToolCatalog';
 import {
   buildAgenticStateBlock,
   buildCapabilityPromptSection,
@@ -78,31 +79,38 @@ function buildToolProtocolInstruction(toolNames: string[]): string {
   const hasDiscordTool = toolNames.includes('discord');
 
   const lines = [
-    '## Tool Protocol',
+    '<tool_protocol>',
     'You may call tools when they materially improve correctness.',
-    'Never invent tool outputs. If a tool fails, acknowledge the limitation and proceed safely.',
-    'If a tool is needed, output ONLY valid JSON in this exact format:',
-    '{',
-    '  "type": "tool_calls",',
-    '  "calls": [{ "name": "<tool_name>", "args": { ... } }]',
-    '}',
-    'Do not include markdown or extra text when returning tool_calls JSON.',
-    'When repo path is unknown, use github_search_code first to locate candidate files.',
-    'For large files, use github_get_file with line ranges (startLine/endLine) instead of full dumps.',
-    'For GitHub file retrieval: if github_get_file fails, do not claim file contents or paths as verified.',
-    'Retry with corrected repo/path/ref or ask for exact path/branch when uncertainty remains.',
-    `Available tools: ${toolNames.join(', ') || 'none'}`,
-    'If no tool is needed, answer normally in plain text.',
+    '',
+    'FORMAT: When calling tools, output ONLY valid JSON:',
+    '{"type": "tool_calls", "calls": [{"name": "<tool_name>", "args": {...}}]}',
+    '',
+    'RULES:',
+    '- No markdown wrapping around tool_calls JSON.',
+    '- Batch multiple read-only tools in one envelope for parallel execution.',
+    '- Never invent tool outputs. If a tool fails, acknowledge and proceed.',
+    '- When repo path is unknown: github_search_code first, then github_get_file.',
+    '- For large files: use github_get_file with startLine/endLine ranges.',
+    '- If github_get_file fails: do NOT claim paths as verified.',
+    '- After gathering sufficient data: respond in plain text.',
+    '- If no tool is needed, answer normally in plain text.',
   ];
 
   if (hasDiscordTool) {
-    lines.push('Discord tool guardrails:');
-    lines.push('- Use the `discord` tool with an action-based payload (for example: memory.get_channel, messages.search_history, files.lookup_channel).');
-    lines.push('- `discord` action memory.get_channel returns rolling/profile summaries and file pointers, not full raw transcript history.');
-    lines.push('- `discord` action memory.search_channel_archives returns archived weekly profile summaries, not raw message-level transcript rows.');
-    lines.push('- `discord` action messages.search_history is the primary tool for exact historical message retrieval (optional channelId is permission-gated; cross-channel is disabled in autopilot turns).');
-    lines.push('- `discord` action messages.get_context expands context around a known messageId from messages.search_history (optional channelId is permission-gated; cross-channel is disabled in autopilot turns).');
+    lines.push('');
+    lines.push('DISCORD ACTIONS GUIDE:');
+    lines.push('- Use `discord` tool with action-based payloads (e.g., memory.get_channel, messages.search_history).');
+    lines.push('- memory.get_channel → returns summaries, NOT raw transcript.');
+    lines.push('- memory.search_channel_archives → returns archived weekly summaries, NOT raw messages.');
+    lines.push('- messages.search_history → primary tool for exact historical message retrieval.');
+    lines.push('- messages.get_context → expands context around a known messageId.');
+    // Guardrails injected from single-source-of-truth (discordToolCatalog.ts)
+    for (const guardrail of DISCORD_GUARDRAILS) {
+      lines.push(`- ${guardrail}`);
+    }
   }
+
+  lines.push('</tool_protocol>');
 
   return lines.join('\n');
 }
@@ -173,6 +181,10 @@ function buildToolLoopConfig() {
     ),
     cacheEnabled: true,
     cacheMaxEntries: 50,
+    maxLoopDurationMs: toPositiveInt(
+      appConfig.AGENTIC_TOOL_LOOP_TIMEOUT_MS as number | undefined,
+      120_000,
+    ),
   };
 }
 
@@ -266,23 +278,18 @@ Your response will be spoken aloud in a Discord voice channel.
       }))
       : undefined;
 
+  const capabilityParams = {
+    activeTools: activeToolNames,
+    model,
+    invokedBy,
+    invokerIsAdmin: isAdmin,
+    inGuild: guildId !== null,
+    toolLoopLimits,
+  };
+
   const runtimeInstruction = [
-    buildCapabilityPromptSection({
-      activeTools: activeToolNames,
-      model,
-      invokedBy,
-      invokerIsAdmin: isAdmin,
-      inGuild: guildId !== null,
-      toolLoopLimits,
-    }),
-    buildAgenticStateBlock({
-      activeTools: activeToolNames,
-      model,
-      invokedBy,
-      invokerIsAdmin: isAdmin,
-      inGuild: guildId !== null,
-      toolLoopLimits,
-    }),
+    buildCapabilityPromptSection(capabilityParams),
+    buildAgenticStateBlock(capabilityParams),
     buildToolProtocolInstruction(activeToolNames),
   ].join('\n\n');
 
@@ -351,7 +358,7 @@ Your response will be spoken aloud in a Discord voice channel.
       messages: runtimeMessages,
       model,
       apiKey,
-      temperature: 0.8,
+      temperature: 0.6,
       timeout: appConfig.TIMEOUT_CHAT_MS,
       maxTokens,
       tools: toolSpecs,
@@ -378,7 +385,7 @@ Your response will be spoken aloud in a Discord voice channel.
         } satisfies ToolExecutionContext,
         model,
         apiKey,
-        temperature: 0.8,
+        temperature: 0.6,
         timeoutMs: appConfig.TIMEOUT_CHAT_MS,
         maxTokens: toPositiveInt(
           appConfig.AGENTIC_TOOL_MAX_OUTPUT_TOKENS as number | undefined,
