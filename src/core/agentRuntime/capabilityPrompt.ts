@@ -34,6 +34,7 @@ export function buildAgenticStateBlock(params: BuildCapabilityPromptSectionParam
   const state = {
     architecture: 'single_agent',
     orchestrator: 'runtime_assistant',
+    current_time_utc: new Date().toISOString(),
     model: params.model?.trim() || null,
     tools_available: activeTools,
     invoked_by: params.invokedBy ?? null,
@@ -149,7 +150,7 @@ function buildToolSelectionGuide(activeTools: string[]): string {
   lines.push('');
 
   if (activeTools.includes('system_time')) {
-    lines.push('TIME/DATE NEEDED? → system_time');
+    lines.push('TIME/DATE OFFSET CALCULATION? → system_time (NOTE: UTC time is already in your agent_state)');
   }
 
   if (activeTools.includes('discord')) {

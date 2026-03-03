@@ -26,6 +26,8 @@
 
 ### Added
 
+- Added explicit exact UTC date and time injection (`current_time_utc`) permanently into the `<agent_state>` XML payload. The agent runtime is now strictly temporally aware at boot, eliminating training-cutoff date hallucination issues without requiring a tool call.
+
 - Unified `discord` tool that consolidates Discord memory, retrieval, analytics, safe interactions, and admin approval workflows behind one action-based interface (including an admin-only REST passthrough for complete Discord API coverage).
 - Added multipart file upload support for the admin-only `discord` action `rest`, enabling attachments/files to be uploaded to Discord REST endpoints (for example, posting message attachments).
 - Added optional `files` support to `discord` action `messages.send` so Sage can send attachments in normal (non-admin) turns when appropriate (still blocked in autopilot turns).

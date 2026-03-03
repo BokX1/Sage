@@ -36,7 +36,7 @@ describe('capabilityPrompt', () => {
 
       // Assert
       expect(prompt).toContain('<tool_selection_guide>');
-      expect(prompt).toContain('TIME/DATE NEEDED?');
+      expect(prompt).toContain('TIME/DATE OFFSET CALCULATION?');
       expect(prompt).toContain('REAL-TIME WEB INFO?');
       expect(prompt).toContain('</tool_selection_guide>');
     });
@@ -156,6 +156,7 @@ describe('capabilityPrompt', () => {
       expect(stateBlock).toContain('<agent_state>');
       expect(stateBlock).toContain('"architecture": "single_agent"');
       expect(stateBlock).toContain('"orchestrator": "runtime_assistant"');
+      expect(stateBlock).toContain('"current_time_utc"');
       expect(stateBlock).toContain('"model": "kimi"');
       expect(stateBlock).toContain('"web_search"');
       expect(stateBlock).toContain('"web_read"');
