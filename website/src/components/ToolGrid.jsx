@@ -6,18 +6,18 @@ const tools = [
     { name: 'help', short: 'Help', desc: 'Get usage instructions and command help', cat: 'discord', color: '#7AA2F7' },
     { name: 'memory.get_user', short: 'Get User', desc: 'Retrieve detailed information about a Discord user', cat: 'discord', color: '#7AA2F7' },
     { name: 'memory.get_channel', short: 'Get Channel', desc: 'Retrieve detailed information about a Discord channel', cat: 'discord', color: '#7AA2F7' },
-    { name: 'memory.search_channel_archives', short: 'Search Archives', desc: 'Search deep channel history and archived threads', cat: 'discord', color: '#7AA2F7' },
+    { name: 'memory.channel_archives', short: 'Search Archives', desc: 'Search deep channel history and archived threads', cat: 'discord', color: '#7AA2F7' },
     { name: 'memory.get_server', short: 'Get Server', desc: 'Retrieve guild and server metadata', cat: 'discord', color: '#7AA2F7' },
-    { name: 'files.lookup_channel', short: 'Channel Files', desc: 'Look up files shared in a specific channel', cat: 'discord', color: '#7AA2F7' },
-    { name: 'files.lookup_server', short: 'Server Files', desc: 'Look up files shared across the entire server', cat: 'discord', color: '#7AA2F7' },
-    { name: 'files.search_channel', short: 'Search Ch. Files', desc: 'Search for specific file types or names in a channel', cat: 'discord', color: '#7AA2F7' },
-    { name: 'files.search_server', short: 'Search Sv. Files', desc: 'Search for specific file types or names in the server', cat: 'discord', color: '#7AA2F7' },
+    { name: 'files.list_channel', short: 'Channel Files', desc: 'Look up files shared in a specific channel', cat: 'discord', color: '#7AA2F7' },
+    { name: 'files.list_server', short: 'Server Files', desc: 'Look up files shared across the entire server', cat: 'discord', color: '#7AA2F7' },
+    { name: 'files.find_channel', short: 'Search Ch. Files', desc: 'Search for specific file types or names in a channel', cat: 'discord', color: '#7AA2F7' },
+    { name: 'files.find_server', short: 'Search Sv. Files', desc: 'Search for specific file types or names in the server', cat: 'discord', color: '#7AA2F7' },
     { name: 'messages.search_history', short: 'Search History', desc: 'Fuzzy search message history context', cat: 'discord', color: '#7AA2F7' },
     { name: 'messages.get_context', short: 'Get Context', desc: 'Fetch surrounding message context for a given ID', cat: 'discord', color: '#7AA2F7' },
     { name: 'analytics.get_social_graph', short: 'Social Graph', desc: 'Analyze user interaction graphs and network centrality', cat: 'discord', color: '#7AA2F7' },
     { name: 'analytics.get_voice_analytics', short: 'Voice Analytics', desc: 'Retrieve voice channel participation analytics', cat: 'discord', color: '#7AA2F7' },
-    { name: 'analytics.get_voice_session_summaries', short: 'Voice Summaries', desc: 'Get summarized transcripts from voice sessions', cat: 'discord', color: '#7AA2F7' },
-    { name: 'oauth2.get_bot_invite_url', short: 'Invite URL', desc: 'Generate a bot installation invite link', cat: 'discord', color: '#7AA2F7' },
+    { name: 'analytics.voice_summaries', short: 'Voice Summaries', desc: 'Get summarized transcripts from voice sessions', cat: 'discord', color: '#7AA2F7' },
+    { name: 'oauth2.invite_url', short: 'Invite URL', desc: 'Generate a bot installation invite link', cat: 'discord', color: '#7AA2F7' },
     // Discord (cyan) - Writes
     { name: 'messages.send', short: 'Send Message', desc: 'Send a new message or rich embed to a channel', cat: 'discord', color: '#7AA2F7' },
     { name: 'polls.create', short: 'Create Poll', desc: 'Create an interactive Discord poll', cat: 'discord', color: '#7AA2F7' },
@@ -25,8 +25,8 @@ const tools = [
     { name: 'reactions.add', short: 'Add Reaction', desc: 'Add emoji reactions to existing messages', cat: 'discord', color: '#7AA2F7' },
     { name: 'reactions.remove_self', short: 'Remove Reaction', desc: 'Remove own emoji reactions from messages', cat: 'discord', color: '#7AA2F7' },
     // Discord (cyan) - Admin Only
-    { name: 'memory.queue_server_update', short: 'Sync Server', desc: 'Queue a full background sync of server memory', cat: 'discord', color: '#7AA2F7' },
-    { name: 'moderation.queue', short: 'Mod Queue', desc: 'Queue moderation actions based on policy', cat: 'discord', color: '#7AA2F7' },
+    { name: 'memory.update_server', short: 'Sync Server', desc: 'Queue a full background sync of server memory', cat: 'discord', color: '#7AA2F7' },
+    { name: 'moderation.submit', short: 'Mod Queue', desc: 'Queue moderation actions based on policy', cat: 'discord', color: '#7AA2F7' },
     { name: 'messages.edit', short: 'Edit Message', desc: 'Modify contents of an existing bot message', cat: 'discord', color: '#7AA2F7' },
     { name: 'messages.delete', short: 'Delete Message', desc: 'Delete an offending message (Admin only)', cat: 'discord', color: '#7AA2F7' },
     { name: 'messages.pin', short: 'Pin Message', desc: 'Pin an important message to the channel', cat: 'discord', color: '#7AA2F7' },
@@ -41,20 +41,20 @@ const tools = [
     { name: 'rest', short: 'REST Raw', desc: 'Arbitrary Discord REST API execution', cat: 'discord', color: '#7AA2F7' },
     // Search (amber)
     { name: 'web_search', short: 'Web Search', desc: 'Multi-provider search (Tavily → Exa → SearXNG)', cat: 'search', color: '#E0AF68' },
-    { name: 'web_extract', short: 'Web Extract', desc: 'Deep page scraping with provider fallback chain', cat: 'search', color: '#E0AF68' },
-    { name: 'web_get_page_text', short: 'Page Text', desc: 'Extract clean text from any URL', cat: 'search', color: '#E0AF68' },
+    { name: 'web_scrape', short: 'Web Extract', desc: 'Deep page scraping with provider fallback chain', cat: 'search', color: '#E0AF68' },
+    { name: 'web_read', short: 'Page Text', desc: 'Extract clean text from any URL', cat: 'search', color: '#E0AF68' },
     { name: 'wikipedia_search', short: 'Wikipedia', desc: 'Search and extract Wikipedia articles', cat: 'search', color: '#E0AF68' },
     { name: 'stack_overflow_search', short: 'Stack Overflow', desc: 'Search Stack Overflow for code solutions', cat: 'search', color: '#E0AF68' },
     // Dev (purple)
     { name: 'github_search_code', short: 'Code Search', desc: 'Search code across GitHub repositories', cat: 'dev', color: '#BB9AF7' },
     { name: 'github_get_file', short: 'Get File', desc: 'Read specific files from GitHub repos', cat: 'dev', color: '#BB9AF7' },
-    { name: 'github_get_repository', short: 'Repo Info', desc: 'Get repository metadata and structure', cat: 'dev', color: '#BB9AF7' },
-    { name: 'npm_get_package', short: 'NPM Package', desc: 'Lookup npm package details and versions', cat: 'dev', color: '#BB9AF7' },
+    { name: 'github_repo', short: 'Repo Info', desc: 'Get repository metadata and structure', cat: 'dev', color: '#BB9AF7' },
+    { name: 'npm_info', short: 'NPM Package', desc: 'Lookup npm package details and versions', cat: 'dev', color: '#BB9AF7' },
     // Generation (green)
     { name: 'image_generate', short: 'Image Gen', desc: 'Generate images with agentic prompt refinement', cat: 'gen', color: '#78b846' },
     // System (green)
-    { name: 'system_internal_reflection', short: 'Reflection', desc: 'Internal reasoning step before complex actions', cat: 'system', color: '#78b846' },
-    { name: 'system_get_current_datetime', short: 'DateTime', desc: 'Get current date, time, and UTC offset', cat: 'system', color: '#78b846' },
+    { name: 'system_plan', short: 'Reflection', desc: 'Internal reasoning step before complex actions', cat: 'system', color: '#78b846' },
+    { name: 'system_time', short: 'DateTime', desc: 'Get current date, time, and UTC offset', cat: 'system', color: '#78b846' },
 ];
 
 const categories = [

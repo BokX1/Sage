@@ -70,12 +70,12 @@ const discordRestFileInputSchema = z.object({
 const discordToolSchema = z.discriminatedUnion('action', [
   z.object({
     think: requiredThinkField,
-    action: z.literal('help'),
+    action: z.literal('help').describe('Get a list of all available Discord actions and their required access levels.'),
   }),
 
   z.object({
     think: requiredThinkField,
-    action: z.literal('memory.get_user'),
+    action: z.literal('memory.get_user').describe('Fetch the comprehensive memory profile for a specific user.'),
     userId: z.string().trim().min(1).max(64).optional(),
     maxChars: z.number().int().min(200).max(8_000).optional(),
     maxItemsPerSection: z.number().int().min(1).max(10).optional(),
@@ -83,7 +83,7 @@ const discordToolSchema = z.discriminatedUnion('action', [
 
   z.object({
     think: requiredThinkField,
-    action: z.literal('memory.get_channel'),
+    action: z.literal('memory.get_channel').describe('Fetch the memory profile for a specific channel.'),
     maxChars: z.number().int().min(200).max(12_000).optional(),
     maxItemsPerList: z.number().int().min(1).max(12).optional(),
     maxRecentFiles: z.number().int().min(1).max(20).optional(),
@@ -91,7 +91,7 @@ const discordToolSchema = z.discriminatedUnion('action', [
 
   z.object({
     think: requiredThinkField,
-    action: z.literal('memory.search_channel_archives'),
+    action: z.literal('memory.channel_archives').describe('Search through long-term channel archives via text query.'),
     query: z.string().trim().min(2).max(500),
     topK: z.number().int().min(1).max(20).optional(),
     maxChars: z.number().int().min(300).max(12_000).optional(),
@@ -99,19 +99,19 @@ const discordToolSchema = z.discriminatedUnion('action', [
 
   z.object({
     think: requiredThinkField,
-    action: z.literal('memory.get_server'),
+    action: z.literal('memory.get_server').describe('Fetch the overall memory profile for the current server.'),
     maxChars: z.number().int().min(200).max(12_000).optional(),
   }),
 
   z.object({
     think: requiredThinkField,
-    action: z.literal('memory.queue_server_update'),
+    action: z.literal('memory.update_server').describe('Submit an admin request to update the core server configuration/memory.'),
     request: serverMemoryUpdateRequestSchema,
   }),
 
   z.object({
     think: requiredThinkField,
-    action: z.literal('files.lookup_channel'),
+    action: z.literal('files.list_channel').describe('List recently cached files in a specific channel.'),
     query: z.string().trim().min(1).max(200).optional(),
     messageId: z.string().trim().min(1).max(64).optional(),
     filename: z.string().trim().min(1).max(255).optional(),
@@ -122,7 +122,7 @@ const discordToolSchema = z.discriminatedUnion('action', [
 
   z.object({
     think: requiredThinkField,
-    action: z.literal('files.lookup_server'),
+    action: z.literal('files.list_server').describe('List recently cached files across the entire server.'),
     query: z.string().trim().min(1).max(200).optional(),
     messageId: z.string().trim().min(1).max(64).optional(),
     filename: z.string().trim().min(1).max(255).optional(),
@@ -133,7 +133,7 @@ const discordToolSchema = z.discriminatedUnion('action', [
 
   z.object({
     think: requiredThinkField,
-    action: z.literal('files.search_channel'),
+    action: z.literal('files.find_channel').describe('Search for specific file content or attachments within a channel using a text query.'),
     query: z.string().trim().min(2).max(500),
     topK: z.number().int().min(1).max(20).optional(),
     maxChars: z.number().int().min(300).max(12_000).optional(),
@@ -141,7 +141,7 @@ const discordToolSchema = z.discriminatedUnion('action', [
 
   z.object({
     think: requiredThinkField,
-    action: z.literal('files.search_server'),
+    action: z.literal('files.find_server').describe('Search for specific file content or attachments across the entire server using a text query.'),
     query: z.string().trim().min(2).max(500),
     topK: z.number().int().min(1).max(20).optional(),
     maxChars: z.number().int().min(300).max(12_000).optional(),
@@ -149,7 +149,7 @@ const discordToolSchema = z.discriminatedUnion('action', [
 
   z.object({
     think: requiredThinkField,
-    action: z.literal('messages.search_history'),
+    action: z.literal('messages.search_history').describe('Search via hybrid, semantic, lexical, or regex patterns through channel message history.'),
     channelId: z
       .string()
       .trim()
@@ -168,7 +168,7 @@ const discordToolSchema = z.discriminatedUnion('action', [
 
   z.object({
     think: requiredThinkField,
-    action: z.literal('messages.get_context'),
+    action: z.literal('messages.get_context').describe('Retrieve specific messages before and after a given message ID.'),
     channelId: z
       .string()
       .trim()
@@ -184,7 +184,7 @@ const discordToolSchema = z.discriminatedUnion('action', [
 
   z.object({
     think: requiredThinkField,
-    action: z.literal('analytics.get_social_graph'),
+    action: z.literal('analytics.get_social_graph').describe('Retrieve the social graph relationships for a specific user.'),
     userId: z.string().trim().min(1).max(64).optional(),
     maxEdges: z.number().int().min(1).max(30).optional(),
     maxChars: z.number().int().min(200).max(12_000).optional(),
@@ -192,14 +192,14 @@ const discordToolSchema = z.discriminatedUnion('action', [
 
   z.object({
     think: requiredThinkField,
-    action: z.literal('analytics.get_voice_analytics'),
+    action: z.literal('analytics.get_voice_analytics').describe('Retrieve voice connection and usage analytics.'),
     userId: z.string().trim().min(1).max(64).optional(),
     maxChars: z.number().int().min(200).max(12_000).optional(),
   }),
 
   z.object({
     think: requiredThinkField,
-    action: z.literal('analytics.get_voice_session_summaries'),
+    action: z.literal('analytics.voice_summaries').describe('Retrieve summary transcripts for recent voice sessions.'),
     voiceChannelId: z.string().trim().min(1).max(64).optional(),
     sinceHours: z.number().int().min(1).max(2_160).optional(),
     limit: z.number().int().min(1).max(10).optional(),
@@ -208,7 +208,7 @@ const discordToolSchema = z.discriminatedUnion('action', [
 
   z.object({
     think: requiredThinkField,
-    action: z.literal('messages.send'),
+    action: z.literal('messages.send').describe('Send a new message with text or files to a channel.'),
     channelId: z.string().trim().min(1).max(64).optional(),
     content: z.string().trim().min(1).max(8_000).optional(),
     files: z.array(discordMessageFileInputSchema).min(1).max(4).optional(),
@@ -226,7 +226,7 @@ const discordToolSchema = z.discriminatedUnion('action', [
 
   z.object({
     think: requiredThinkField,
-    action: z.literal('messages.edit'),
+    action: z.literal('messages.edit').describe('Edit the content of an existing message.'),
     channelId: z.string().trim().min(1).max(64).optional(),
     messageId: z.string().trim().min(1).max(64),
     content: z.string().trim().min(1).max(2_000),
@@ -235,7 +235,7 @@ const discordToolSchema = z.discriminatedUnion('action', [
 
   z.object({
     think: requiredThinkField,
-    action: z.literal('messages.delete'),
+    action: z.literal('messages.delete').describe('Delete an existing message.'),
     channelId: z.string().trim().min(1).max(64).optional(),
     messageId: z.string().trim().min(1).max(64),
     reason: z.string().trim().max(500).optional(),
@@ -243,7 +243,7 @@ const discordToolSchema = z.discriminatedUnion('action', [
 
   z.object({
     think: requiredThinkField,
-    action: z.literal('messages.pin'),
+    action: z.literal('messages.pin').describe('Pin a message to the channel.'),
     channelId: z.string().trim().min(1).max(64).optional(),
     messageId: z.string().trim().min(1).max(64),
     reason: z.string().trim().max(500).optional(),
@@ -251,7 +251,7 @@ const discordToolSchema = z.discriminatedUnion('action', [
 
   z.object({
     think: requiredThinkField,
-    action: z.literal('messages.unpin'),
+    action: z.literal('messages.unpin').describe('Unpin a message from the channel.'),
     channelId: z.string().trim().min(1).max(64).optional(),
     messageId: z.string().trim().min(1).max(64),
     reason: z.string().trim().max(500).optional(),
@@ -259,7 +259,7 @@ const discordToolSchema = z.discriminatedUnion('action', [
 
   z.object({
     think: requiredThinkField,
-    action: z.literal('channels.create'),
+    action: z.literal('channels.create').describe('Create a new Discord channel or category.'),
     name: z.string().trim().min(1).max(100),
     type: z.enum(['text', 'voice', 'category']).optional(),
     parentId: z.string().trim().min(1).max(64).optional(),
@@ -271,7 +271,7 @@ const discordToolSchema = z.discriminatedUnion('action', [
 
   z.object({
     think: requiredThinkField,
-    action: z.literal('channels.edit'),
+    action: z.literal('channels.edit').describe('Edit the settings of an existing channel.'),
     channelId: z.string().trim().min(1).max(64),
     name: z.string().trim().min(1).max(100).optional(),
     parentId: z.string().trim().min(1).max(64).optional(),
@@ -283,7 +283,7 @@ const discordToolSchema = z.discriminatedUnion('action', [
 
   z.object({
     think: requiredThinkField,
-    action: z.literal('roles.create'),
+    action: z.literal('roles.create').describe('Create a new server role.'),
     name: z.string().trim().min(1).max(100),
     colorHex: z.string().trim().regex(/^#?[0-9a-fA-F]{6}$/).optional(),
     hoist: z.boolean().optional(),
@@ -294,7 +294,7 @@ const discordToolSchema = z.discriminatedUnion('action', [
 
   z.object({
     think: requiredThinkField,
-    action: z.literal('roles.edit'),
+    action: z.literal('roles.edit').describe('Edit the settings of an existing role.'),
     roleId: z.string().trim().min(1).max(64),
     name: z.string().trim().min(1).max(100).optional(),
     colorHex: z.string().trim().regex(/^#?[0-9a-fA-F]{6}$/).optional(),
@@ -306,14 +306,14 @@ const discordToolSchema = z.discriminatedUnion('action', [
 
   z.object({
     think: requiredThinkField,
-    action: z.literal('roles.delete'),
+    action: z.literal('roles.delete').describe('Delete a server role.'),
     roleId: z.string().trim().min(1).max(64),
     reason: z.string().trim().max(500).optional(),
   }),
 
   z.object({
     think: requiredThinkField,
-    action: z.literal('members.add_role'),
+    action: z.literal('members.add_role').describe('Give a user a specific role.'),
     userId: z.string().trim().min(1).max(64),
     roleId: z.string().trim().min(1).max(64),
     reason: z.string().trim().max(500).optional(),
@@ -321,7 +321,7 @@ const discordToolSchema = z.discriminatedUnion('action', [
 
   z.object({
     think: requiredThinkField,
-    action: z.literal('members.remove_role'),
+    action: z.literal('members.remove_role').describe('Remove a role from a user.'),
     userId: z.string().trim().min(1).max(64),
     roleId: z.string().trim().min(1).max(64),
     reason: z.string().trim().max(500).optional(),
@@ -329,7 +329,7 @@ const discordToolSchema = z.discriminatedUnion('action', [
 
   z.object({
     think: requiredThinkField,
-    action: z.literal('oauth2.get_bot_invite_url'),
+    action: z.literal('oauth2.invite_url').describe('Generate a bot invite URL dynamically.'),
     permissions: z.union([z.string().trim().regex(/^\d+$/), z.number().int().min(0)]).optional(),
     scopes: z.array(z.enum(['bot', 'applications.commands'])).min(1).max(4).optional(),
     guildId: z.string().trim().min(1).max(64).optional(),
@@ -338,7 +338,7 @@ const discordToolSchema = z.discriminatedUnion('action', [
 
   z.object({
     think: requiredThinkField,
-    action: z.literal('polls.create'),
+    action: z.literal('polls.create').describe('Create a new poll in a channel.'),
     channelId: z.string().trim().min(1).max(64).optional(),
     question: z.string().trim().min(1).max(300),
     answers: z.array(z.string().trim().min(1).max(55)).min(2).max(10),
@@ -349,7 +349,7 @@ const discordToolSchema = z.discriminatedUnion('action', [
 
   z.object({
     think: requiredThinkField,
-    action: z.literal('threads.create'),
+    action: z.literal('threads.create').describe('Start a new thread off a message.'),
     channelId: z.string().trim().min(1).max(64).optional(),
     name: z.string().trim().min(1).max(100),
     messageId: z.string().trim().min(1).max(64).optional(),
@@ -364,7 +364,7 @@ const discordToolSchema = z.discriminatedUnion('action', [
 
   z.object({
     think: requiredThinkField,
-    action: z.literal('reactions.add'),
+    action: z.literal('reactions.add').describe('Add an emoji reaction to a message.'),
     channelId: z.string().trim().min(1).max(64).optional(),
     messageId: z.string().trim().min(1).max(64),
     emoji: z.string().trim().min(1).max(128),
@@ -373,7 +373,7 @@ const discordToolSchema = z.discriminatedUnion('action', [
 
   z.object({
     think: requiredThinkField,
-    action: z.literal('reactions.remove_self'),
+    action: z.literal('reactions.remove_self').describe('Remove your own emoji reaction from a message.'),
     channelId: z.string().trim().min(1).max(64).optional(),
     messageId: z.string().trim().min(1).max(64),
     emoji: z.string().trim().min(1).max(128),
@@ -382,13 +382,13 @@ const discordToolSchema = z.discriminatedUnion('action', [
 
   z.object({
     think: requiredThinkField,
-    action: z.literal('moderation.queue'),
+    action: z.literal('moderation.submit').describe('Submit a moderation action (kick/ban/timeout) for admin approval.'),
     request: discordModerationActionRequestSchema,
   }),
 
   z.object({
     think: requiredThinkField,
-    action: z.literal('rest'),
+    action: z.literal('discord.api').describe('Execute raw REST API calls against the Discord API.'),
     method: z.enum(['GET', 'POST', 'PUT', 'PATCH', 'DELETE']),
     path: z.string().trim().min(1).max(2_000),
     query: z
@@ -499,20 +499,20 @@ function isReadOnlyDiscordToolCall(args: unknown): boolean {
     case 'help':
     case 'memory.get_user':
     case 'memory.get_channel':
-    case 'memory.search_channel_archives':
+    case 'memory.channel_archives':
     case 'memory.get_server':
-    case 'files.lookup_channel':
-    case 'files.lookup_server':
-    case 'files.search_channel':
-    case 'files.search_server':
+    case 'files.list_channel':
+    case 'files.list_server':
+    case 'files.find_channel':
+    case 'files.find_server':
     case 'messages.search_history':
     case 'messages.get_context':
     case 'analytics.get_social_graph':
     case 'analytics.get_voice_analytics':
-    case 'analytics.get_voice_session_summaries':
-    case 'oauth2.get_bot_invite_url':
+    case 'analytics.voice_summaries':
+    case 'oauth2.invite_url':
       return true;
-    case 'rest': {
+    case 'discord.api': {
       const method = (args as Record<string, unknown>).method;
       return typeof method === 'string' && method.toUpperCase() === 'GET';
     }
@@ -525,16 +525,16 @@ export const discordTool: ToolDefinition<DiscordToolArgs> = {
   name: 'discord',
   description:
     [
-      'Unified Discord tool for Sage: memory, retrieval, safe interactions, moderation queue, and admin-only REST passthrough.',
+      'Unified Discord tool for Sage: memory, retrieval, safe interactions, moderation queue, and admin-only API passthrough.',
       '<USE_ONLY_WHEN> You need to read or change Discord state, or query Sage’s Discord-backed memory (summaries/files/messages/social graph/voice analytics). </USE_ONLY_WHEN>',
       'Action index (by access):',
       ...formatDiscordActionIndexLines().map((line) => `- ${line}`),
       'Safety:',
       '- Autopilot turns must not perform writes.',
       '- Moderation and server-memory updates require admin privileges and are approval-gated.',
-      '- REST passthrough is admin-only and guild-scoped; GET executes immediately, non-GET requires approval.',
-      '- REST passthrough blocks bot-wide endpoints (for example /users/@me) and direct /webhooks/* routes.',
-      '- REST passthrough redacts sensitive fields (tokens/secrets) from results.',
+      '- API passthrough is admin-only and guild-scoped; GET executes immediately, non-GET requires approval.',
+      '- API passthrough blocks bot-wide endpoints (for example /users/@me) and direct /webhooks/* routes.',
+      '- API results redact sensitive fields (tokens/secrets) from results.',
       '- If you are unsure which action to use or which fields are required, call `discord` action `help`.',
     ].join('\n'),
   schema: discordToolSchema,
@@ -554,11 +554,11 @@ export const discordTool: ToolDefinition<DiscordToolArgs> = {
           guardrails: [...DISCORD_GUARDRAILS],
           notes: [
             'Some actions require a guild context.',
-            'Server-wide file actions and REST are disabled in autopilot turns.',
-            'REST passthrough is guild-scoped (active guild only).',
-            'Non-GET REST requests require admin approval.',
+            'Server-wide file actions and API calls are disabled in autopilot turns.',
+            'API passthrough is guild-scoped (active guild only).',
+            'Non-GET API requests require admin approval.',
             'Direct /webhooks/* routes and bot-wide endpoints (for example /users/@me) are blocked.',
-            'REST results redact sensitive fields (tokens/secrets).',
+            'API results redact sensitive fields (tokens/secrets).',
           ],
         };
       }
@@ -581,7 +581,7 @@ export const discordTool: ToolDefinition<DiscordToolArgs> = {
         });
       }
 
-      case 'memory.search_channel_archives': {
+      case 'memory.channel_archives': {
         return searchChannelArchives({
           guildId: ctx.guildId ?? null,
           channelId: ctx.channelId,
@@ -599,9 +599,9 @@ export const discordTool: ToolDefinition<DiscordToolArgs> = {
         });
       }
 
-      case 'memory.queue_server_update': {
+      case 'memory.update_server': {
         assertAdmin(ctx.invokerIsAdmin);
-        assertNotAutopilot(ctx.invokedBy, 'memory.queue_server_update');
+        assertNotAutopilot(ctx.invokedBy, 'memory.update_server');
         const guildId = requireGuildContext(ctx.guildId);
         return requestServerMemoryUpdateForTool({
           guildId,
@@ -611,7 +611,7 @@ export const discordTool: ToolDefinition<DiscordToolArgs> = {
         });
       }
 
-      case 'files.lookup_channel': {
+      case 'files.list_channel': {
         return lookupChannelFileCache({
           guildId: ctx.guildId ?? null,
           channelId: ctx.channelId,
@@ -624,8 +624,8 @@ export const discordTool: ToolDefinition<DiscordToolArgs> = {
         });
       }
 
-      case 'files.lookup_server': {
-        assertNotAutopilot(ctx.invokedBy, 'files.lookup_server');
+      case 'files.list_server': {
+        assertNotAutopilot(ctx.invokedBy, 'files.list_server');
         return lookupServerFileCache({
           guildId: ctx.guildId ?? null,
           requesterUserId: ctx.userId,
@@ -638,7 +638,7 @@ export const discordTool: ToolDefinition<DiscordToolArgs> = {
         });
       }
 
-      case 'files.search_channel': {
+      case 'files.find_channel': {
         return searchAttachmentChunksInChannel({
           guildId: ctx.guildId ?? null,
           channelId: ctx.channelId,
@@ -648,8 +648,8 @@ export const discordTool: ToolDefinition<DiscordToolArgs> = {
         });
       }
 
-      case 'files.search_server': {
-        assertNotAutopilot(ctx.invokedBy, 'files.search_server');
+      case 'files.find_server': {
+        assertNotAutopilot(ctx.invokedBy, 'files.find_server');
         return searchAttachmentChunksInGuild({
           guildId: ctx.guildId ?? null,
           requesterUserId: ctx.userId,
@@ -711,7 +711,7 @@ export const discordTool: ToolDefinition<DiscordToolArgs> = {
         });
       }
 
-      case 'analytics.get_voice_session_summaries': {
+      case 'analytics.voice_summaries': {
         return lookupVoiceSessionSummaries({
           guildId: ctx.guildId ?? null,
           voiceChannelId: args.voiceChannelId?.trim() || undefined,
@@ -959,7 +959,7 @@ export const discordTool: ToolDefinition<DiscordToolArgs> = {
         });
       }
 
-      case 'oauth2.get_bot_invite_url': {
+      case 'oauth2.invite_url': {
         const clientId = config.DISCORD_APP_ID.trim();
         if (!clientId) {
           throw new Error('DISCORD_APP_ID is required to generate an OAuth2 invite URL.');
@@ -975,7 +975,7 @@ export const discordTool: ToolDefinition<DiscordToolArgs> = {
         });
         return {
           ok: true,
-          action: 'oauth2.get_bot_invite_url',
+          action: 'oauth2.invite_url',
           clientId,
           scopes,
           permissions: scopes.includes('bot') ? permissions : undefined,
@@ -1058,9 +1058,9 @@ export const discordTool: ToolDefinition<DiscordToolArgs> = {
         });
       }
 
-      case 'moderation.queue': {
+      case 'moderation.submit': {
         assertAdmin(ctx.invokerIsAdmin);
-        assertNotAutopilot(ctx.invokedBy, 'moderation.queue');
+        assertNotAutopilot(ctx.invokedBy, 'moderation.submit');
         const guildId = requireGuildContext(ctx.guildId);
         return requestDiscordAdminActionForTool({
           guildId,
@@ -1070,14 +1070,14 @@ export const discordTool: ToolDefinition<DiscordToolArgs> = {
         });
       }
 
-      case 'rest': {
+      case 'discord.api': {
         assertAdmin(ctx.invokerIsAdmin);
-        assertNotAutopilot(ctx.invokedBy, 'discord.rest');
+        assertNotAutopilot(ctx.invokedBy, 'discord.discord.api');
         requireGuildContext(ctx.guildId);
 
         if (args.method === 'GET') {
           if (args.files?.length) {
-            throw new Error('discord.rest GET requests cannot include files.');
+            throw new Error('discord.discord.api GET requests cannot include files.');
           }
           return discordRestRequestGuildScoped({
             guildId: ctx.guildId!,

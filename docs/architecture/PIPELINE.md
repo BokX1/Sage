@@ -157,13 +157,13 @@ All memory and context data is loaded **on demand** through tools:
 | Channel summaries | `discord` (`action: "memory.get_channel"`) | PostgreSQL (`ChannelSummary`) |
 | Social relationships | `discord` (`action: "analytics.get_social_graph"`) | PostgreSQL (`RelationshipEdge`) + Memgraph |
 | Voice analytics | `discord` (`action: "analytics.get_voice_analytics"`) | PostgreSQL (`VoiceSession`) |
-| Voice session summaries | `discord` (`action: "analytics.get_voice_session_summaries"`) | PostgreSQL (`VoiceConversationSummary`) |
-| Cached file content | `discord` (`action: "files.lookup_channel"`) | PostgreSQL (`IngestedAttachment`) |
-| Cached file content (server-wide) | `discord` (`action: "files.lookup_server"`) | PostgreSQL (`IngestedAttachment`) |
-| Semantic file search | `discord` (`action: "files.search_channel"`) | pgvector (`AttachmentChunk`) |
-| Semantic file search (server-wide) | `discord` (`action: "files.search_server"`) | pgvector (`AttachmentChunk`) |
+| Voice session summaries | `discord` (`action: "analytics.voice_summaries"`) | PostgreSQL (`VoiceConversationSummary`) |
+| Cached file content | `discord` (`action: "files.list_channel"`) | PostgreSQL (`IngestedAttachment`) |
+| Cached file content (server-wide) | `discord` (`action: "files.list_server"`) | PostgreSQL (`IngestedAttachment`) |
+| Semantic file search | `discord` (`action: "files.find_channel"`) | pgvector (`AttachmentChunk`) |
+| Semantic file search (server-wide) | `discord` (`action: "files.find_server"`) | pgvector (`AttachmentChunk`) |
 | Message history | `discord` (`action: "messages.search_history"`, optional `channelId`, permission-gated) | pgvector (`ChannelMessageEmbedding`) |
-| Archived summaries | `discord` (`action: "memory.search_channel_archives"`) | pgvector embeddings |
+| Archived summaries | `discord` (`action: "memory.channel_archives"`) | pgvector embeddings |
 | Server memory | `discord` (`action: "memory.get_server"`) | PostgreSQL (`GuildMemory`) |
 
 Image generation runs through `image_generate` and returns attachment payloads. No preflight context graph execution is used.

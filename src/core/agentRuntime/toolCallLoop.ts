@@ -104,7 +104,7 @@ function getToolSpecificRecoverySuggestion(
     lowerErrorText.includes('not found');
 
   if (isGitHubFileLookup && isNotFound) {
-    return 'GitHub file lookup failed. Use github_search_code (or github_get_repository) to find candidate paths/branch details, then retry github_get_file with exact path/ref and line ranges when needed. If still missing, ask the user for exact repo/path/ref.';
+    return 'GitHub file lookup failed. Use github_search_code (or github_repo) to find candidate paths/branch details, then retry github_get_file with exact path/ref and line ranges when needed. If still missing, ask the user for exact repo/path/ref.';
   }
 
   return getRecoverySuggestion(errorType);

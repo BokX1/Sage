@@ -7,11 +7,11 @@ const scenarios = [
         desc: 'Trace web search and error resolution',
         userMsg: 'Sage, I keep getting a hydration mismatch error in my Next.js app. Can you help?',
         trace: [
-            { tool: 'system_internal_reflection', status: 'ok', text: 'Analyzing: hydration mismatch → likely SSR/CSR discrepancy' },
+            { tool: 'system_plan', status: 'ok', text: 'Analyzing: hydration mismatch → likely SSR/CSR discrepancy' },
             { tool: 'stack_overflow_search', status: 'ok', text: 'query: "Next.js hydration mismatch error"' },
-            { tool: 'web_extract', status: 'ok', text: 'Extracting top answer from stackoverflow.com/q/71706...' },
+            { tool: 'web_scrape', status: 'ok', text: 'Extracting top answer from stackoverflow.com/q/71706...' },
             { tool: 'web_search', status: 'fallback', text: 'tavily ✗ → exa ✗ → searxng ✓ "Next.js 15 hydration fix"' },
-            { tool: 'web_get_page_text', status: 'ok', text: 'Reading nextjs.org/docs/messages/react-hydration-error' },
+            { tool: 'web_read', status: 'ok', text: 'Reading nextjs.org/docs/messages/react-hydration-error' },
         ],
     },
     {
@@ -19,7 +19,7 @@ const scenarios = [
         desc: 'Extracting temporal conversational data',
         userMsg: "Sage, what did we discuss in voice chat yesterday?",
         trace: [
-            { tool: 'system_internal_reflection', status: 'ok', text: 'User wants voice session context from yesterday' },
+            { tool: 'system_plan', status: 'ok', text: 'User wants voice session context from yesterday' },
             { tool: 'discord', status: 'ok', text: 'action=analytics.get_voice_analytics → Found 2 sessions: #general-voice (45min), #dev-talk (20min)' },
             { tool: 'discord', status: 'ok', text: 'action=memory.get_channel → Loading rolling summary for #general around session timestamp' },
             { tool: 'discord', status: 'ok', text: 'action=messages.search_history → Semantic search: messages near voice session window' },
@@ -30,8 +30,8 @@ const scenarios = [
         desc: 'Static analysis of external git repository',
         userMsg: 'Sage, can you look at the BokX1/Sage repo and explain the architecture?',
         trace: [
-            { tool: 'system_internal_reflection', status: 'ok', text: 'User wants repo architecture breakdown' },
-            { tool: 'github_get_repository', status: 'ok', text: 'Fetching BokX1/Sage metadata: 14 dirs, TypeScript, MIT' },
+            { tool: 'system_plan', status: 'ok', text: 'User wants repo architecture breakdown' },
+            { tool: 'github_repo', status: 'ok', text: 'Fetching BokX1/Sage metadata: 14 dirs, TypeScript, MIT' },
             { tool: 'github_search_code', status: 'ok', text: 'query: "agentRuntime" → 3 files found' },
             { tool: 'github_get_file', status: 'ok', text: 'Reading src/core/agentRuntime/agentRuntime.ts (412 lines)' },
             { tool: 'github_get_file', status: 'ok', text: 'Reading src/core/agentRuntime/defaultTools.ts (13 tools)' },
@@ -40,13 +40,13 @@ const scenarios = [
 ];
 
 const toolIcons = {
-    system_internal_reflection: '🧠',
+    system_plan: '🧠',
     stack_overflow_search: '📚',
-    web_extract: '🌐',
+    web_scrape: '🌐',
     web_search: '🔍',
-    web_get_page_text: '📄',
+    web_read: '📄',
     discord: '💬',
-    github_get_repository: '📦',
+    github_repo: '📦',
     github_search_code: '🔍',
     github_get_file: '📂',
 };

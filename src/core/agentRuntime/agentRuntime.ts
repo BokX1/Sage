@@ -101,7 +101,7 @@ function buildToolProtocolInstruction(toolNames: string[]): string {
     lines.push('DISCORD ACTIONS GUIDE:');
     lines.push('- Use `discord` tool with action-based payloads (e.g., memory.get_channel, messages.search_history).');
     lines.push('- memory.get_channel → returns summaries, NOT raw transcript.');
-    lines.push('- memory.search_channel_archives → returns archived weekly summaries, NOT raw messages.');
+    lines.push('- memory.channel_archives → returns archived weekly summaries, NOT raw messages.');
     lines.push('- messages.search_history → primary tool for exact historical message retrieval.');
     lines.push('- messages.get_context → expands context around a known messageId.');
     // Guardrails injected from single-source-of-truth (discordToolCatalog.ts)

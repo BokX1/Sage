@@ -45,7 +45,7 @@ flowchart LR
     classDef sage fill:#cce5ff,stroke:#004085,color:black
 
     S[Sage Bot]:::sage --> WS{web_search}
-    S --> WC{web_get_page_text}
+    S --> WC{web_read}
     S --> FI{file_ingest}
 
     WS --> S1[SearXNG]:::local
@@ -157,10 +157,10 @@ The smoke script checks:
 | Tool | Status |
 | :--- | :--- |
 | `web_search` | Required |
-| `web_get_page_text` | Required |
+| `web_read` | Required |
 | `wikipedia_search` | Required |
-| `github_get_repository` | Required |
-| `npm_get_package` | Required |
+| `github_repo` | Required |
+| `npm_info` | Required |
 | `stack_overflow_search` | Required |
 
 Attachment extraction health check (Tika):

@@ -54,7 +54,7 @@ Transcript usage is size/window bounded. For longer context, increase transcript
 Attachment behavior:
 
 - Transcript rows store attachment-cache notes, not full historical file bodies.
-- Full file content is loaded on demand through the runtime tool loop (`discord` action `files.lookup_channel` for same-channel lookups, or `files.lookup_server` for server-wide lookups with permission filtering).
+- Full file content is loaded on demand through the runtime tool loop (`discord` action `files.list_channel` for same-channel lookups, or `files.list_server` for server-wide lookups with permission filtering).
 
 ---
 
@@ -232,7 +232,7 @@ Optional voice session summary memory:
 - If voice transcription is enabled, Sage can transcribe in-channel audio while connected.
 - Utterance transcripts are kept **in-memory only** and are discarded when the session ends.
 - On leave/disconnect, Sage can persist a **summary-only** record to `VoiceConversationSummary` (topics/decisions/action items).
-- These summaries are retrievable via `discord` action `analytics.get_voice_session_summaries`.
+- These summaries are retrievable via `discord` action `analytics.voice_summaries`.
 
 ---
 

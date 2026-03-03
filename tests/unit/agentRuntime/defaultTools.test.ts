@@ -12,27 +12,27 @@ describe('default agentic tools', () => {
     expect(registry.listNames().sort()).toEqual([
       'discord',
       'github_get_file',
-      'github_get_repository',
+      'github_repo',
       'github_search_code',
       'image_generate',
-      'npm_get_package',
+      'npm_info',
       'stack_overflow_search',
-      'system_get_current_datetime',
-      'system_internal_reflection',
-      'web_extract',
-      'web_get_page_text',
+      'system_time',
+      'system_plan',
+      'web_scrape',
+      'web_read',
       'web_search',
       'wikipedia_search',
     ].sort());
   });
 
-  it('executes system_get_current_datetime tool', async () => {
+  it('executes system_time tool', async () => {
     const registry = new ToolRegistry();
     registerDefaultAgenticTools(registry);
 
     const result = await registry.executeValidated(
       {
-        name: 'system_get_current_datetime',
+        name: 'system_time',
         args: { think: 'Testing datetime execution' },
       },
       {
@@ -89,7 +89,7 @@ describe('default agentic tools', () => {
         name: 'discord',
         args: {
           think: 'Should fail schema validation',
-          action: 'moderation.queue',
+          action: 'moderation.submit',
           request: {
             // wrong schema on purpose: this is an interaction, not a moderation action
             action: 'create_poll',
@@ -122,7 +122,7 @@ describe('default agentic tools', () => {
         name: 'discord',
         args: {
           think: 'Verify non-command admin context is allowed to reach guild guard',
-          action: 'memory.queue_server_update',
+          action: 'memory.update_server',
           request: {
             operation: 'set',
             text: 'Server policy',

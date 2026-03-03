@@ -530,7 +530,7 @@ describe('toolCallLoop', () => {
       const followupMessages = followupRequest.messages;
       const toolResultMessage = contentText(followupMessages[followupMessages.length - 1].content);
 
-      expect(toolResultMessage).toContain('github_get_repository');
+      expect(toolResultMessage).toContain('github_repo');
       expect(toolResultMessage).toContain('exact path/ref');
     });
 

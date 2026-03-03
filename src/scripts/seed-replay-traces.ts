@@ -63,7 +63,7 @@ async function main(): Promise<void> {
         id: traceId,
         toolJson: {
           enabled: true,
-          routeTools: ['web_search', 'web_get_page_text'],
+          routeTools: ['web_search', 'web_read'],
           main: {
             enabled: true,
             toolsExecuted,

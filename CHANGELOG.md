@@ -35,6 +35,8 @@
 
 ### Changed
 
+- Renamed 16 agentic tools and components across the codebase, ensuring explicit purpose (e.g. `web_get_page_text` ➡️ `web_read`, `system_internal_reflection` ➡️ `system_plan`, `'rest'` ➡️ `'discord.api'`). Added rigorous `.describe()` docstrings mapping directly to the underlying schemas for absolute LLM clarity.
+
 - Expanded website `ToolGrid` showcase to explicitly document the full catalog of 34 native Discord capabilities under a unified category, replacing the single placeholder "Discord" item.
 - Refactored the onboarding welcome message (`src/bot/handlers/welcomeMessage.ts` and `src/bot/handlers/guildCreate.ts`) to use rich Discord Embeds.
 - Replaced individual `discord_*` runtime tools with a single `discord` tool; Discord tool calls must now use `discord` with an `action` field instead of separate tool names.

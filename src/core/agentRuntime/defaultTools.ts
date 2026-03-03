@@ -25,7 +25,7 @@ const getCurrentDateTimeTool: ToolDefinition<{
   think: string;
   utcOffsetMinutes?: number;
 }> = {
-  name: 'system_get_current_datetime',
+  name: 'system_time',
   description:
     'Get the current date and time.\n<USE_ONLY_WHEN> You explicitly need to know the current date, time, or "today" to accurately answer a scheduling or time-sensitive query. </USE_ONLY_WHEN>',
   schema: z.object({
@@ -71,7 +71,7 @@ const webSearchTool: ToolDefinition<{
     'Search the web with provider-backed retrieval (Tavily/Exa + fallback) and return source-grounded results.\n<USE_ONLY_WHEN> You need up-to-date information from the internet that is not in your training data or cached memory. </USE_ONLY_WHEN>',
   schema: z.object({
     think: z.string().describe('Mandatory internal reasoning explaining exactly why you are generating this payload and how it fulfills the active goal.'),
-    query: z.string().trim().min(2).max(400),
+    query: z.string().trim().min(2).max(400).describe('The specific explicit search query to run.'),
     depth: z.enum(['quick', 'balanced', 'deep']).optional(),
     maxResults: z.number().int().min(1).max(10).optional(),
   }),
@@ -104,7 +104,7 @@ const generateImageTool: ToolDefinition<{
     'Generate an image with Pollinations and return it as an attachment payload for the final runtime response.\n<USE_ONLY_WHEN> The user explicitly requests generating or drawing an image. </USE_ONLY_WHEN>',
   schema: z.object({
     think: z.string().describe('Mandatory internal reasoning explaining exactly why you are generating this payload and how it fulfills the active goal.'),
-    prompt: z.string().trim().min(3).max(2_000),
+    prompt: z.string().trim().min(3).max(2_000).describe('The detailed text prompt to generate the image from.'),
     model: z.string().trim().min(1).max(120).optional(),
     seed: z.number().int().min(0).max(9_999_999).optional(),
     width: z.number().int().min(64).max(2_048).optional(),
@@ -130,7 +130,7 @@ const webScrapeTool: ToolDefinition<{
   url: string;
   maxChars?: number;
 }> = {
-  name: 'web_get_page_text',
+  name: 'web_read',
   description:
     'Fetch and extract the main content from a URL using Crawl4AI/Firecrawl/Jina/raw fallback for grounded summarization.\n<USE_ONLY_WHEN> You have a specific URL and need to extract its raw webpage or article text content. </USE_ONLY_WHEN>',
   schema: z.object({
@@ -165,7 +165,7 @@ const agenticWebScrapeTool: ToolDefinition<{
   instruction: string;
   maxChars?: number;
 }> = {
-  name: 'web_extract',
+  name: 'web_scrape',
   description:
     'Agentic web scraper.\n<USE_ONLY_WHEN> You need to extract highly specific data from a URL, bypass complex page layouts, or have a webpage summarized based on explicit instructions. Do NOT use this for generic full-page dumps. </USE_ONLY_WHEN>',
   schema: z.object({
@@ -194,7 +194,7 @@ const githubRepoLookupTool: ToolDefinition<{
   repo: string;
   includeReadme?: boolean;
 }> = {
-  name: 'github_get_repository',
+  name: 'github_repo',
   description:
     'Lookup GitHub repository metadata (stars, default branch, language, topics) and optionally include a trimmed README.\n<USE_ONLY_WHEN> You need high-level structural metadata or the README content of a specific GitHub repository. </USE_ONLY_WHEN>',
   schema: z.object({
@@ -204,7 +204,8 @@ const githubRepoLookupTool: ToolDefinition<{
       .trim()
       .min(3)
       .max(200)
-      .refine((value) => REPO_PATTERN.test(value), 'repo must be in owner/name format'),
+      .refine((value) => REPO_PATTERN.test(value), 'repo must be in owner/name format')
+      .describe('The repository name in owner/repo format (e.g. microsoft/TypeScript).'),
     includeReadme: z.boolean().optional(),
   }),
   metadata: { readOnly: true },
@@ -236,13 +237,15 @@ const githubFileLookupTool: ToolDefinition<{
       .trim()
       .min(3)
       .max(200)
-      .refine((value) => REPO_PATTERN.test(value), 'repo must be in owner/name format'),
+      .refine((value) => REPO_PATTERN.test(value), 'repo must be in owner/name format')
+      .describe('The repository name in owner/repo format (e.g. microsoft/TypeScript).'),
     path: z
       .string()
       .trim()
       .min(1)
       .max(500)
-      .refine((value) => !value.includes('..'), 'path must not contain ".." segments'),
+      .refine((value) => !value.includes('..'), 'path must not contain ".." segments')
+      .describe('The precise file path within the repository.'),
     ref: z.string().trim().min(1).max(120).optional(),
     maxChars: z.number().int().min(500).max(50_000).optional(),
     startLine: z.number().int().min(1).max(2_000_000).optional(),
@@ -303,7 +306,8 @@ const githubCodeSearchTool: ToolDefinition<{
       .trim()
       .min(3)
       .max(200)
-      .refine((value) => REPO_PATTERN.test(value), 'repo must be in owner/name format'),
+      .refine((value) => REPO_PATTERN.test(value), 'repo must be in owner/name format')
+      .describe('The repository name in owner/repo format (e.g. microsoft/TypeScript).'),
     query: z.string().trim().min(2).max(300),
     ref: z.string().trim().min(1).max(120).optional(),
     regex: z.string().trim().min(1).max(500).optional(),
@@ -336,12 +340,12 @@ const npmPackageLookupTool: ToolDefinition<{
   packageName: string;
   version?: string;
 }> = {
-  name: 'npm_get_package',
+  name: 'npm_info',
   description:
     'Lookup npm package metadata (latest version, publish time, dependency surface, maintainers, repository).\n<USE_ONLY_WHEN> You need to retrieve specific metadata, versioning, or dependency info for an npm package. </USE_ONLY_WHEN>',
   schema: z.object({
     think: z.string().describe('Mandatory internal reasoning explaining exactly why you are generating this payload and how it fulfills the active goal.'),
-    packageName: z.string().trim().min(1).max(214),
+    packageName: z.string().trim().min(1).max(214).describe('The exact npm package name.'),
     version: z.string().trim().min(1).max(80).optional(),
   }),
   metadata: { readOnly: true },
@@ -364,7 +368,7 @@ const wikipediaLookupTool: ToolDefinition<{
     'Lookup Wikipedia pages with snippets and canonical links for broad factual topics and fast grounding.\n<USE_ONLY_WHEN> You explicitly need historical, broadly factual, or canonical encyclopedia data. </USE_ONLY_WHEN>',
   schema: z.object({
     think: z.string().describe('Mandatory internal reasoning explaining exactly why you are generating this payload and how it fulfills the active goal.'),
-    query: z.string().trim().min(2).max(300),
+    query: z.string().trim().min(2).max(300).describe('The topic or query to search for on Wikipedia.'),
     language: z.string().trim().min(2).max(16).optional(),
     maxResults: z.number().int().min(1).max(10).optional(),
   }),
@@ -389,7 +393,7 @@ const stackOverflowSearchTool: ToolDefinition<{
     'Search Stack Overflow questions with accepted status and scoring metadata for coding support.\n<USE_ONLY_WHEN> You need to find proven coding solutions, debugging help, or programming Q&A. </USE_ONLY_WHEN>',
   schema: z.object({
     think: z.string().describe('Mandatory internal reasoning explaining exactly why you are generating this payload and how it fulfills the active goal.'),
-    query: z.string().trim().min(2).max(350),
+    query: z.string().trim().min(2).max(350).describe('The explicit coding problem to search StackOverflow for.'),
     maxResults: z.number().int().min(1).max(15).optional(),
     tagged: z.string().trim().min(1).max(120).optional(),
   }),
@@ -407,7 +411,7 @@ const internalReflectionTool: ToolDefinition<{
   think: string;
   hypothesis: string;
 }> = {
-  name: 'system_internal_reflection',
+  name: 'system_plan',
   description: 'Use this tool to pause and think logically when faced with an ambiguous situation.\n<USE_ONLY_WHEN> The user request is highly complex and you need a dedicated scratchpad to plan before answering. </USE_ONLY_WHEN>',
   schema: z.object({
     think: z.string().describe('Mandatory internal reasoning explaining exactly why you are generating this payload and how it fulfills the active goal.'),

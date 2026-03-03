@@ -104,7 +104,7 @@ export function buildCapabilityPromptSection(
       ? '- Discord tool behavior: use the `discord` tool with action-based calls for memory, retrieval, and safe interactions. Admin-only actions and writes may require approval.'
       : '- Discord tool behavior: you do not have access to Discord memory/actions via tools this turn.',
     hasDiscordTool
-      ? '- Attachment memory behavior: historical non-image files are cached outside transcript; use `discord` actions `files.lookup_channel` or `files.lookup_server` (server-wide is permission-filtered) to retrieve file content on demand.'
+      ? '- Attachment memory behavior: historical non-image files are cached outside transcript; use `discord` actions `files.list_channel` or `files.list_server` (server-wide is permission-filtered) to retrieve file content on demand.'
       : '- Attachment memory behavior: you do not have access to retrieve historical files this turn.',
     ...discordActionIndexLines,
     ...discordGuardrailLines,
@@ -148,8 +148,8 @@ function buildToolSelectionGuide(activeTools: string[]): string {
   lines.push('Follow this decision tree to select the right tool:');
   lines.push('');
 
-  if (activeTools.includes('system_get_current_datetime')) {
-    lines.push('TIME/DATE NEEDED? → system_get_current_datetime');
+  if (activeTools.includes('system_time')) {
+    lines.push('TIME/DATE NEEDED? → system_time');
   }
 
   if (activeTools.includes('discord')) {
@@ -157,33 +157,33 @@ function buildToolSelectionGuide(activeTools: string[]): string {
     lines.push('  User profile → discord: memory.get_user');
     lines.push('  Channel summary → discord: memory.get_channel');
     lines.push('  Server overview → discord: memory.get_server');
-    lines.push('  Archived summaries → discord: memory.search_channel_archives');
+    lines.push('  Archived summaries → discord: memory.channel_archives');
     lines.push('  Exact message quotes → discord: messages.search_history');
     lines.push('  Message context → discord: messages.get_context');
-    lines.push('  Channel files → discord: files.lookup_channel / files.search_channel');
-    lines.push('  Server files → discord: files.lookup_server / files.search_server');
+    lines.push('  Channel files → discord: files.list_channel / files.find_channel');
+    lines.push('  Server files → discord: files.list_server / files.find_server');
     lines.push('  Social graph → discord: analytics.get_social_graph');
     lines.push('  Voice stats → discord: analytics.get_voice_analytics');
-    lines.push('  Voice sessions → discord: analytics.get_voice_session_summaries');
-    lines.push('  Bot invite URL → discord: oauth2.get_bot_invite_url');
+    lines.push('  Voice sessions → discord: analytics.voice_summaries');
+    lines.push('  Bot invite URL → discord: oauth2.invite_url');
   }
 
-  if (activeTools.includes('web_search') || activeTools.includes('web_get_page_text') || activeTools.includes('web_extract')) {
+  if (activeTools.includes('web_search') || activeTools.includes('web_read') || activeTools.includes('web_scrape')) {
     lines.push('REAL-TIME WEB INFO?');
     if (activeTools.includes('web_search')) lines.push('  Search the web → web_search');
-    if (activeTools.includes('web_get_page_text')) lines.push('  Read a specific URL → web_get_page_text');
-    if (activeTools.includes('web_extract')) lines.push('  Extract specific data from URL → web_extract (targeted extraction, not full dump)');
+    if (activeTools.includes('web_read')) lines.push('  Read a specific URL → web_read');
+    if (activeTools.includes('web_scrape')) lines.push('  Extract specific data from URL → web_scrape (targeted extraction, not full dump)');
   }
 
-  if (activeTools.includes('github_get_repository') || activeTools.includes('github_search_code') || activeTools.includes('github_get_file')) {
+  if (activeTools.includes('github_repo') || activeTools.includes('github_search_code') || activeTools.includes('github_get_file')) {
     lines.push('GITHUB DATA?');
-    if (activeTools.includes('github_get_repository')) lines.push('  Repo overview → github_get_repository');
+    if (activeTools.includes('github_repo')) lines.push('  Repo overview → github_repo');
     if (activeTools.includes('github_search_code')) lines.push('  Find code across files → github_search_code');
     if (activeTools.includes('github_get_file')) lines.push('  Read specific file → github_get_file (use line ranges for large files)');
   }
 
-  if (activeTools.includes('npm_get_package')) {
-    lines.push('NPM PACKAGE INFO? → npm_get_package');
+  if (activeTools.includes('npm_info')) {
+    lines.push('NPM PACKAGE INFO? → npm_info');
   }
   if (activeTools.includes('wikipedia_search')) {
     lines.push('ENCYCLOPEDIA FACTS? → wikipedia_search');
@@ -194,8 +194,8 @@ function buildToolSelectionGuide(activeTools: string[]): string {
   if (activeTools.includes('image_generate')) {
     lines.push('IMAGE CREATION? → image_generate');
   }
-  if (activeTools.includes('system_internal_reflection')) {
-    lines.push('COMPLEX PLANNING? → system_internal_reflection first, then execute');
+  if (activeTools.includes('system_plan')) {
+    lines.push('COMPLEX PLANNING? → system_plan first, then execute');
   }
 
   lines.push('');

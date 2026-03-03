@@ -125,13 +125,13 @@ describe('default tools search-high execution profile', () => {
     );
   });
 
-  it('forces local-first web_get_page_text providers for search-high profile', async () => {
+  it('forces local-first web_read providers for search-high profile', async () => {
     const registry = new ToolRegistry();
     registerDefaultAgenticTools(registry);
 
     const result = await registry.executeValidated(
       {
-        name: 'web_get_page_text',
+        name: 'web_read',
         args: { think: 'Scraping docs page', url: 'https://example.com/docs' },
       },
       {

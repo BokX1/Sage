@@ -192,8 +192,8 @@ The tool protocol is communicated to the LLM via a structured instruction block,
 | Tool | Description | Access |
 |:---|:---|:---|
 | `web_search` | Provider-backed web search (Tavily/Exa/SearXNG/Pollinations) | Public |
-| `web_get_page_text` | Extract page text (Crawl4AI/Firecrawl/Jina/raw) | Public |
-| `web_extract` | Agentic web scraper with specific instructions | Public |
+| `web_read` | Extract page text (Crawl4AI/Firecrawl/Jina/raw) | Public |
+| `web_scrape` | Agentic web scraper with specific instructions | Public |
 | `wikipedia_search` | Wikipedia article lookup | Public |
 | `stack_overflow_search` | Stack Overflow Q&A search | Public |
 
@@ -201,10 +201,10 @@ The tool protocol is communicated to the LLM via a structured instruction block,
 
 | Tool | Description | Access |
 |:---|:---|:---|
-| `github_get_repository` | GitHub repo metadata + optional README | Public |
+| `github_repo` | GitHub repo metadata + optional README | Public |
 | `github_get_file` | Fetch file contents from GitHub | Public |
 | `github_search_code` | Search code across a GitHub repository | Public |
-| `npm_get_package` | npm package metadata lookup | Public |
+| `npm_info` | npm package metadata lookup | Public |
 
 ### 🎨 Generation (1 tool)
 
@@ -216,21 +216,21 @@ The tool protocol is communicated to the LLM via a structured instruction block,
 
 Admin-only capabilities are exposed as actions on the `discord` tool:
 
-- `memory.queue_server_update` (approval-gated)
-- `moderation.queue` (approval-gated)
+- `memory.update_server` (approval-gated)
+- `moderation.submit` (approval-gated)
 - `rest` (admin-only; guild-scoped; GET executes immediately, non-GET requires approval)
 - Typed REST write wrappers (approval-gated): `messages.edit/delete/pin/unpin`, `channels.create/edit`, `roles.create/edit/delete`, `members.add_role/remove_role`
 
 Read-only helpers are also exposed via `discord` actions:
 
-- `oauth2.get_bot_invite_url` (builds a bot invite URL using `DISCORD_APP_ID`)
+- `oauth2.invite_url` (builds a bot invite URL using `DISCORD_APP_ID`)
 
 ### ⚙️ System (2 tools)
 
 | Tool | Description | Access |
 |:---|:---|:---|
-| `system_get_current_datetime` | Get current date/time with timezone offset | Public |
-| `system_internal_reflection` | Internal reasoning scratchpad | Public |
+| `system_time` | Get current date/time with timezone offset | Public |
+| `system_plan` | Internal reasoning scratchpad | Public |
 
 ---
 

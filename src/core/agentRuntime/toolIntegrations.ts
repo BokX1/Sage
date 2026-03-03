@@ -846,7 +846,7 @@ async function scrapeWithNomnom(url: string, maxChars: number, timeoutMs: number
     return { provider: 'nomnom', content: truncated.text, truncated: truncated.truncated };
   } catch (error) {
     const errorObj = error instanceof Error ? error : new Error(String(error));
-    logger.warn({ error: errorObj, url }, 'web_get_page_text nomnom attempt failed');
+    logger.warn({ error: errorObj, url }, 'web_read nomnom attempt failed');
     throw new Error(`Nomnom scraping failed: ${errorObj.message}`, { cause: error });
   }
 }
@@ -898,7 +898,7 @@ export async function runAgenticWebScrape(params: {
     };
   } catch (error) {
     const errorObj = error instanceof Error ? error : new Error(String(error));
-    logger.warn({ error: errorObj, url: sanitizedUrl }, 'web_extract attempt failed');
+    logger.warn({ error: errorObj, url: sanitizedUrl }, 'web_scrape attempt failed');
     throw new Error(`Agentic scraping failed: ${errorObj.message}`, { cause: error });
   }
 }
@@ -995,7 +995,7 @@ export async function scrapeWebPage(params: {
     providersSkipped.length > 0
       ? ` Skipped local providers: ${providersSkipped.join(', ')}.`
       : '';
-  throw new Error(`web_get_page_text failed:${skippedSuffix} ${errors.join(' | ')}`.trim());
+  throw new Error(`web_read failed:${skippedSuffix} ${errors.join(' | ')}`.trim());
 }
 
 function buildGitHubHeaders(token?: string): Record<string, string> {
@@ -1292,7 +1292,7 @@ export async function lookupGitHubRepo(params: { repo: string; includeReadme?: b
         readme = truncateWithNotice(Buffer.from(encoded.replace(/\n/g, ''), 'base64').toString('utf8'), 8_000).text;
       }
     } catch (error) {
-      logger.warn({ error, repo: params.repo }, 'github_get_repository: failed to fetch README; returning metadata only');
+      logger.warn({ error, repo: params.repo }, 'github_repo: failed to fetch README; returning metadata only');
     }
   }
 
@@ -2535,7 +2535,7 @@ export async function searchAttachmentChunksInChannel(params: {
     channelId: params.channelId,
     resultCount: items.length,
     items,
-    guidance: 'Use messageId/filename with `discord` action files.lookup_channel to inspect the source file metadata/content.',
+    guidance: 'Use messageId/filename with `discord` action files.list_channel to inspect the source file metadata/content.',
   };
 }
 
@@ -2628,7 +2628,7 @@ export async function searchAttachmentChunksInGuild(params: {
     resultCount: items.length,
     items,
     scope: 'guild_attachment_chunks',
-    guidance: 'Use messageId/filename with `discord` action files.lookup_server to inspect the source file metadata/content.',
+    guidance: 'Use messageId/filename with `discord` action files.list_server to inspect the source file metadata/content.',
   };
 }
 
@@ -2815,7 +2815,7 @@ export async function lookupChannelMemory(params: {
   }
   if (recentAttachments.length > 0) {
     if (parts.length > 0) parts.push('');
-    parts.push('Recent cached files (retrieve full text with `discord` action files.lookup_channel when needed):');
+    parts.push('Recent cached files (retrieve full text with `discord` action files.list_channel when needed):');
     for (const attachment of recentAttachments.slice(0, maxRecentFiles)) {
       parts.push(
         `- ${attachment.filename} (msg:${attachment.messageId}, status=${attachment.status}, extractor=${attachment.extractor ?? 'none'}, cached ${formatRelativeAge(attachment.createdAt)} ago)`,

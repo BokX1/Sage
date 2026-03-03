@@ -49,7 +49,7 @@ async function main(): Promise<void> {
       },
     },
     {
-      name: 'web_get_page_text',
+      name: 'web_read',
       run: async () => {
         const result = await scrapeWebPage({
           url: 'https://example.com',
@@ -72,7 +72,7 @@ async function main(): Promise<void> {
       },
     },
     {
-      name: 'github_get_repository',
+      name: 'github_repo',
       run: async () => {
         const result = await lookupGitHubRepo({
           repo: 'openai/openai-node',
@@ -82,7 +82,7 @@ async function main(): Promise<void> {
       },
     },
     {
-      name: 'npm_get_package',
+      name: 'npm_info',
       run: async () => {
         const result = await lookupNpmPackage({
           packageName: 'zod',

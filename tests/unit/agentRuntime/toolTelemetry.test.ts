@@ -5,7 +5,7 @@ describe('toolTelemetry', () => {
   it('parses modern main tool budgets', () => {
     const telemetry = parseTraceToolTelemetry({
       enabled: true,
-      routeTools: ['web_search', 'web_get_page_text'],
+      routeTools: ['web_search', 'web_read'],
       main: {
         toolsExecuted: true,
         successfulToolCount: 1,

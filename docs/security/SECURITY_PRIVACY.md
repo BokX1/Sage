@@ -84,7 +84,7 @@ When generating replies, Sage sends:
 - Recent transcript + summaries (if logging is enabled)
 - Stored message-history retrieval results when tool loop calls `discord` actions `messages.search_history` / `messages.get_context` (permission-gated; optional `channelId` can target other channels)
 - Attachment text blocks for the current turn when inline analysis is needed
-- Attachment-cache retrieval results when tool loop calls `discord` actions `files.lookup_channel` or `files.lookup_server` (server-wide results are permission-filtered)
+- Attachment-cache retrieval results when tool loop calls `discord` actions `files.list_channel` or `files.list_server` (server-wide results are permission-filtered)
 - When an admin authorizes `discord` action `rest` calls that include multipart `files` sourced from a URL, Sage will fetch those files from public HTTP(S) URLs to upload them to Discord (private/local hosts are blocked).
 - Image URLs for vision-capable requests
 - When voice session summary is enabled, Sage may send an utterance-level transcript (text) to the LLM provider to generate a summary. Voice audio is sent only to the local voice service (STT), not to the LLM provider.

@@ -124,7 +124,7 @@ describe('discord tool typed REST wrappers', () => {
     const result = await discordTool.execute(
       {
         think: 'Generate invite URL',
-        action: 'oauth2.get_bot_invite_url',
+        action: 'oauth2.invite_url',
       },
       {
         traceId: 'trace',
@@ -136,7 +136,7 @@ describe('discord tool typed REST wrappers', () => {
     expect(result).toEqual(
       expect.objectContaining({
         ok: true,
-        action: 'oauth2.get_bot_invite_url',
+        action: 'oauth2.invite_url',
         url: expect.any(String),
       }),
     );
