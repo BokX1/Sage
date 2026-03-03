@@ -105,8 +105,9 @@ describe('budgeter', () => {
     expect(updated).toContain('Attachment');
     expect(updated).toContain('truncated');
     const match = updated.match(
-      /--- BEGIN FILE ATTACHMENT: test\\.txt ---\\n([\\s\\S]*?)\\n--- END FILE ATTACHMENT ---/,
+      /--- BEGIN FILE ATTACHMENT: test\.txt ---\n([\s\S]*?)\n--- END FILE ATTACHMENT ---/,
     );
+    expect(match).not.toBeNull();
     expect(match?.[1]?.length ?? 0).toBeLessThanOrEqual(10);
   });
 

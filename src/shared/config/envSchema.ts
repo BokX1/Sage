@@ -42,7 +42,7 @@ function parseIpv4Octets(ip: string): [number, number, number, number] | null {
 function isNonPublicIpv4Address(ip: string): boolean {
   const octets = parseIpv4Octets(ip);
   if (!octets) return true;
-  const [a, b, c, d] = octets;
+  const [a, b, c] = octets;
 
   // Loopback 127.0.0.0/8
   if (a === 127) return true;
@@ -62,10 +62,8 @@ function isNonPublicIpv4Address(ip: string): boolean {
   if (a === 203 && b === 0 && c === 113) return true;
   // Benchmarking 198.18.0.0/15
   if (a === 198 && (b === 18 || b === 19)) return true;
-  // Multicast 224.0.0.0/4 and reserved 240.0.0.0/4
+  // Multicast 224.0.0.0/4, reserved 240.0.0.0/4, and limited broadcast 255.255.255.255
   if (a >= 224) return true;
-  // Limited broadcast 255.255.255.255
-  if (a === 255 && b === 255 && c === 255 && d === 255) return true;
 
   return false;
 }

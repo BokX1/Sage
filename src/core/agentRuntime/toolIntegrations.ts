@@ -255,25 +255,34 @@ function summarizeLabeledList(
     .join('\n');
 }
 
+const BASIC_HTML_ENTITIES: Record<string, string> = {
+  amp: '&',
+  lt: '<',
+  gt: '>',
+  quot: '"',
+  nbsp: ' ',
+  '#39': "'",
+};
+
 function stripHtml(html: string): string {
   return html
-    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
-    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<script\b[\s\S]*?<\/script\s*>/gi, ' ')
+    .replace(/<style\b[\s\S]*?<\/style\s*>/gi, ' ')
     .replace(/<[^>]+>/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 }
 
 function decodeHtmlEntities(value: string): string {
-  return value
-    .replace(/&#(\d+);/g, (_, dec: string) => String.fromCodePoint(Number.parseInt(dec, 10)))
-    .replace(/&#x([0-9a-f]+);/gi, (_, hex: string) => String.fromCodePoint(Number.parseInt(hex, 16)))
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&#39;/g, "'");
+  return value.replace(
+    /&#(\d+);|&#x([0-9a-f]+);|&(amp|lt|gt|quot|nbsp|#39);/gi,
+    (match: string, dec: string | undefined, hex: string | undefined, named: string | undefined) => {
+      if (dec !== undefined) return String.fromCodePoint(Number.parseInt(dec, 10));
+      if (hex !== undefined) return String.fromCodePoint(Number.parseInt(hex, 16));
+      if (!named) return match;
+      return BASIC_HTML_ENTITIES[named.toLowerCase()] ?? match;
+    },
+  );
 }
 
 function extractAnswerSection(content: string): string {

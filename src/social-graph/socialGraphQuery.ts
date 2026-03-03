@@ -60,7 +60,6 @@ function parseFiniteNumber(value: unknown): number | null {
   }
   if (
     typeof value === 'object' &&
-    value !== null &&
     'toNumber' in value &&
     typeof (value as { toNumber?: unknown }).toNumber === 'function'
   ) {

@@ -276,7 +276,7 @@ function extractFirstJsonObject(content: string): string | null {
       continue;
     }
 
-    if (char === '"' && !escapeNext) {
+    if (char === '"') {
       inString = !inString;
       continue;
     }

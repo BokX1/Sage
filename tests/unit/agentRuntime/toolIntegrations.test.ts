@@ -40,6 +40,7 @@ import {
   sanitizePublicUrl,
   sanitizeUrl,
   scrapeWebPage,
+  searchStackOverflow,
 } from '@/core/agentRuntime/toolIntegrations';
 
 describe('toolIntegrations', () => {
@@ -115,6 +116,40 @@ describe('toolIntegrations', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it('decodes stack overflow title entities in a single pass', async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      statusText: 'OK',
+      text: async () =>
+        JSON.stringify({
+          items: [
+            {
+              title: 'AT&amp;T &lt;3 and &amp;lt;code&amp;gt;',
+              link: 'https://stackoverflow.com/questions/1/example',
+              score: 7,
+              answer_count: 2,
+              is_answered: true,
+            },
+          ],
+        }),
+    } satisfies {
+      ok: boolean;
+      status: number;
+      statusText: string;
+      text: () => Promise<string>;
+    });
+
+    const result = await searchStackOverflow({ query: 'entity decode', maxResults: 1 });
+
+    const typed = result as { results: Array<{ title: string }> };
+    expect(typed.results).toHaveLength(1);
+    expect(typed.results[0]?.title).toContain('AT&T <3');
+    expect(typed.results[0]?.title).toContain('&lt;code&gt;');
+    expect(typed.results[0]?.title).not.toContain('<code>');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it('scrapes content via Jina fallback when Firecrawl/Crawl4AI are unavailable', async () => {
     config.TOOL_WEB_SCRAPE_PROVIDER_ORDER = 'jina';
     fetchMock.mockResolvedValueOnce({
@@ -187,6 +222,37 @@ describe('toolIntegrations', () => {
     expect(typed.provider).toBe('raw_fetch');
     expect(String(typed.content)).toContain('Fallback content');
     expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it('strips script/style blocks with whitespace-padded closing tags in raw fetch', async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      statusText: 'OK',
+      text: async () =>
+        '<html><body>Before<script>first()</script >Visible<style>.x{color:red}</style   >After</body></html>',
+    } satisfies {
+      ok: boolean;
+      status: number;
+      statusText: string;
+      text: () => Promise<string>;
+    });
+
+    const result = await scrapeWebPage({
+      url: 'https://example.com',
+      maxChars: 1_000,
+      providerOrder: ['raw_fetch'],
+    });
+
+    const typed = result as { provider: string; content: unknown };
+    expect(typed.provider).toBe('raw_fetch');
+    const content = String(typed.content);
+    expect(content).toContain('Before');
+    expect(content).toContain('Visible');
+    expect(content).toContain('After');
+    expect(content).not.toContain('first()');
+    expect(content).not.toContain('.x{color:red}');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it('runs agentic web scrape with instruction and sanitized URL', async () => {

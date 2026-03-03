@@ -94,6 +94,11 @@
 
 ### Fixed
 
+- Hardened web content text extraction in agent runtime HTML stripping: script/style block removal now also handles closing tags with trailing whitespace (for example `</script >`, `</style   >`), preventing embedded script/style payload text from leaking into scraped summaries.
+- Hardened agent-runtime HTML entity decoding to single-pass semantics so doubly encoded payloads (for example `&amp;lt;code&amp;gt;`) remain text (`&lt;code&gt;`) instead of being unescaped into synthetic tag-like tokens.
+- Simplified profile updater JSON-object extraction logic by removing an unreachable quote-toggle guard, reducing parser complexity without changing extraction behavior.
+- Simplified social-graph numeric normalization guards by removing an unreachable null comparison in the `toNumber`-capable object branch, reducing dead-condition noise without changing runtime output.
+- Simplified non-public IPv4 classification guards by removing an unreachable limited-broadcast check already covered by the broader `224.0.0.0/4`+ range rule, reducing dead-condition warnings without changing host filtering behavior.
 - Updated BYOP key status messaging so servers without a configured key now show setup guidance (`/sage key login` then `/sage key set <your_key>`) instead of claiming shared quota fallback.
 - Removed legacy no-key runtime fallback in chat turns: when neither a server key nor `LLM_API_KEY` is configured, Sage now returns explicit setup guidance instead of attempting anonymous provider calls.
 - Retried read-only tool calls once on timeout/rate-limit failures to reduce flaky tool-loop errors.
