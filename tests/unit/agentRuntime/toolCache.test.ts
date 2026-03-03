@@ -72,11 +72,10 @@ describe('toolCache', () => {
 
   it('falls back to a safe TTL when ttlMs is not finite', () => {
     const cache = new ToolResultCache(10, Number.NaN);
-    const now = Date.now();
-    cache.set('get_time', {}, { time: '12:00 PM' });
+    const entry = cache.set('get_time', {}, { time: '12:00 PM' });
 
     const originalDateNow = Date.now;
-    Date.now = () => now + 120_001;
+    Date.now = () => entry.createdAt + 120_001;
 
     try {
       expect(cache.get('get_time', {})).toBeNull();

@@ -62,7 +62,15 @@ jobs:
       DISCORD_APP_ID: test-app-id-for-ci
       DATABASE_URL: postgresql://postgres:password@127.0.0.1:5432/sage?schema=public
     steps:
-    - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+    - id: checkout_primary
+      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      continue-on-error: true
+      with:
+        persist-credentials: false
+
+    - name: Retry checkout after transient GitHub fetch failure
+      if: steps.checkout_primary.outcome == 'failure'
+      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       with:
         persist-credentials: false
 
