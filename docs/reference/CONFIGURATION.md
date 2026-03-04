@@ -202,8 +202,6 @@ These settings control Sage's optional Discord voice features. The local voice s
 |:---|:---|:---|
 | `CONTEXT_MAX_INPUT_TOKENS` | Max total input tokens | `120000` |
 | `CONTEXT_RESERVED_OUTPUT_TOKENS` | Reserved output tokens | `12000` |
-| `SYSTEM_PROMPT_MAX_TOKENS` | Max system prompt tokens | `12000` |
-| `TOKEN_ESTIMATOR` | Token estimator mode | `heuristic` |
 | `TOKEN_HEURISTIC_CHARS_PER_TOKEN` | Chars per token for heuristic estimator | `4` |
 | `CONTEXT_BLOCK_MAX_TOKENS_TRANSCRIPT` | Transcript block budget | `20000` |
 | `CONTEXT_BLOCK_MAX_TOKENS_ROLLING_SUMMARY` | Rolling summary block budget | `12000` |
@@ -214,8 +212,6 @@ These settings control Sage's optional Discord voice features. The local voice s
 | `CONTEXT_USER_MAX_TOKENS` | Max tokens for user message | `60000` |
 | `CONTEXT_TRUNCATION_NOTICE` | Show truncation notice | `true` |
 | `CHAT_MAX_OUTPUT_TOKENS` | Max output tokens for chat | `1800` |
-| `CODING_MAX_OUTPUT_TOKENS` | Max output tokens for coding | `4200` |
-| `SEARCH_MAX_OUTPUT_TOKENS` | Max output tokens for search | `2000` |
 
 ---
 
@@ -246,8 +242,6 @@ These settings control Sage's optional Discord voice features. The local voice s
 | Variable | Description | Default |
 |:---|:---|:---|
 | `TIMEOUT_CHAT_MS` | Chat turn timeout | `180000` |
-| `TIMEOUT_SEARCH_MS` | Search pipeline timeout | `300000` |
-| `TIMEOUT_SEARCH_SCRAPER_MS` | Scraper timeout | `480000` |
 | `TIMEOUT_MEMORY_MS` | Memory operation timeout | `600000` |
 
 ---
@@ -258,7 +252,6 @@ These settings control Sage's optional Discord voice features. The local voice s
 
 | Variable | Description | Default |
 |:---|:---|:---|
-| `SEARCH_MAX_ATTEMPTS` | Max guarded fallback attempts | `4` |
 | `TOOL_WEB_SEARCH_PROVIDER_ORDER` | Search provider priority | `tavily,exa,searxng,pollinations` |
 | `TOOL_WEB_SEARCH_TIMEOUT_MS` | Per-provider search timeout | `45000` |
 | `TOOL_WEB_SEARCH_MAX_RESULTS` | Results per search call | `6` |

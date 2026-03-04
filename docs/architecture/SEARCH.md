@@ -110,9 +110,6 @@ Sage supports multiple search and scraping providers with automatic fallback:
 
 | Variable | Description | Default |
 | :--- | :--- | :--- |
-| `TIMEOUT_SEARCH_MS` | Search timeout | `300000` |
-| `TIMEOUT_SEARCH_SCRAPER_MS` | Scraper timeout | `480000` |
-| `SEARCH_MAX_ATTEMPTS` | Max guarded fallback attempts for search pipeline retries | `4` |
 | `TOOL_WEB_SEARCH_TIMEOUT_MS` | Per-provider search timeout | `45000` |
 | `TOOL_WEB_SEARCH_MAX_RESULTS` | Results per search call | `6` |
 | `TOOL_WEB_SCRAPE_TIMEOUT_MS` | Per-provider scrape timeout | `45000` |

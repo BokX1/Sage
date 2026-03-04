@@ -192,10 +192,13 @@ const optionalHttpOrHttpsUrlSchema = z.string().trim().optional().refine((value)
  * Declares exported bindings: testDefaults.
  */
 export const testDefaults: Record<string, string> = {
+  // Core / Discord
   NODE_ENV: 'test',
   DISCORD_TOKEN: 'test-discord-token',
   DISCORD_APP_ID: 'test-discord-app-id',
   DATABASE_URL: 'test-database-url',
+
+  // Social Graph
   MEMGRAPH_HOST: 'localhost',
   MEMGRAPH_PORT: '7687',
   MEMGRAPH_USER: '',
@@ -204,7 +207,10 @@ export const testDefaults: Record<string, string> = {
   KAFKA_BROKERS: '',
   KAFKA_INTERACTIONS_TOPIC: 'sage.social.interactions',
   KAFKA_VOICE_TOPIC: 'sage.social.voice-sessions',
+
   DEV_GUILD_ID: '',
+
+  // Bot Behavior
   LOG_LEVEL: 'info',
   RATE_LIMIT_MAX: '100',
   RATE_LIMIT_WINDOW_SEC: '60',
@@ -214,6 +220,7 @@ export const testDefaults: Record<string, string> = {
   WAKEWORD_COOLDOWN_SEC: '10',
   WAKEWORD_MAX_RESPONSES_PER_MIN_PER_CHANNEL: '5',
 
+  // Voice
   VOICE_SERVICE_BASE_URL: 'http://127.0.0.1:11333',
   VOICE_STT_ENABLED: 'false',
   VOICE_STT_MODEL_ID: 'deepdml/faster-whisper-large-v3-turbo-ct2',
@@ -228,6 +235,8 @@ export const testDefaults: Record<string, string> = {
   VOICE_MESSAGE_STT_ENABLED: 'false',
   VOICE_MESSAGE_STT_MAX_SECONDS: '120',
   VOICE_MESSAGE_STT_MAX_BYTES: '5000000',
+
+  // Message Storage / Ingestion
   INGESTION_ENABLED: 'true',
   INGESTION_MODE: 'all',
   INGESTION_ALLOWLIST_CHANNEL_IDS_CSV: '',
@@ -245,6 +254,8 @@ export const testDefaults: Record<string, string> = {
   MESSAGE_DB_STORAGE_ENABLED: 'false',
   MESSAGE_DB_MAX_MESSAGES_PER_CHANNEL: '200',
   PROACTIVE_POSTING_ENABLED: 'false',
+
+  // Channel Summaries
   SUMMARY_ROLLING_WINDOW_MIN: '15',
   SUMMARY_ROLLING_MIN_MESSAGES: '5',
   SUMMARY_ROLLING_MIN_INTERVAL_SEC: '60',
@@ -252,10 +263,10 @@ export const testDefaults: Record<string, string> = {
   SUMMARY_MAX_CHARS: '1500',
   SUMMARY_SCHED_TICK_SEC: '60',
   SUMMARY_MODEL: 'deepseek',
+
+  // Context Budgets
   CONTEXT_MAX_INPUT_TOKENS: '16000',
   CONTEXT_RESERVED_OUTPUT_TOKENS: '4000',
-  SYSTEM_PROMPT_MAX_TOKENS: '2000',
-  TOKEN_ESTIMATOR: 'heuristic',
   TOKEN_HEURISTIC_CHARS_PER_TOKEN: '4',
   CONTEXT_BLOCK_MAX_TOKENS_TRANSCRIPT: '4000',
   CONTEXT_BLOCK_MAX_TOKENS_ROLLING_SUMMARY: '2000',
@@ -265,6 +276,8 @@ export const testDefaults: Record<string, string> = {
   CONTEXT_USER_MAX_TOKENS: '8000',
   CONTEXT_TRUNCATION_NOTICE: 'true',
   CONTEXT_BLOCK_MAX_TOKENS_PROVIDERS: '2000',
+
+  // Agentic Runtime / Embeddings / LLM
   TRACE_ENABLED: 'false',
   EMBEDDING_MODEL: 'nomic-ai/nomic-embed-text-v1.5',
   EMBEDDING_DIMENSIONS: '256',
@@ -279,11 +292,12 @@ export const testDefaults: Record<string, string> = {
   PROFILE_PROVIDER: 'pollinations',
   PROFILE_CHAT_MODEL: 'deepseek',
   PROFILE_UPDATE_INTERVAL: '5',
+
+  // Runtime Timeouts
   TIMEOUT_CHAT_MS: '300000',
-  TIMEOUT_SEARCH_MS: '300000',
-  TIMEOUT_SEARCH_SCRAPER_MS: '480000',
   TIMEOUT_MEMORY_MS: '600000',
-  SEARCH_MAX_ATTEMPTS: '4',
+
+  // Tool Providers
   TOOL_WEB_SEARCH_PROVIDER_ORDER: 'tavily,exa,searxng,pollinations',
   TOOL_WEB_SEARCH_TIMEOUT_MS: '45000',
   TOOL_WEB_SEARCH_MAX_RESULTS: '6',
@@ -307,9 +321,9 @@ export const testDefaults: Record<string, string> = {
   GITHUB_REGEX_MAX_FILES: '20',
   GITHUB_REGEX_MAX_MATCHES: '120',
   GITHUB_FILE_LOOKUP_MAX_LINE_SPAN: '800',
+
+  // Output / Runtime Control
   CHAT_MAX_OUTPUT_TOKENS: '1800',
-  CODING_MAX_OUTPUT_TOKENS: '4200',
-  SEARCH_MAX_OUTPUT_TOKENS: '2000',
   LLM_DOCTOR_PING: '0',
   AGENTIC_TOOL_LOOP_ENABLED: 'true',
   AGENTIC_TOOL_MAX_ROUNDS: '6',
@@ -322,6 +336,7 @@ export const testDefaults: Record<string, string> = {
   AGENTIC_TOOL_MAX_PARALLEL_READ_ONLY: '4',
   AGENTIC_TOOL_LOOP_TIMEOUT_MS: '120000',
 
+  // Replay / Evaluation
   REPLAY_SEED_GUILD_ID: '',
   REPLAY_SEED_CHANNEL_PREFIX: 'seed-replay',
   REPLAY_SEED_USER_ID: 'seed-user',
@@ -389,6 +404,7 @@ export const testDefaults: Record<string, string> = {
   TUNE_VARIANTS_JSON: '',
   TUNE_OUTPUT_DIR: '',
 
+  // Security
   SECRET_ENCRYPTION_KEY: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
 };
 
@@ -396,10 +412,13 @@ export const testDefaults: Record<string, string> = {
  * Declares exported bindings: envSchema.
  */
 export const envSchema = z.object({
+  // Core / Discord
   NODE_ENV: z.enum(['development', 'production', 'test']),
   DISCORD_TOKEN: z.string().min(1),
   DISCORD_APP_ID: z.string().min(1),
   DATABASE_URL: z.string().min(1),
+
+  // Social Graph
   MEMGRAPH_HOST: z.string().default('localhost'),
   MEMGRAPH_PORT: z.coerce.number().int().positive().default(7687),
   MEMGRAPH_USER: z.string().default(''),
@@ -408,7 +427,10 @@ export const envSchema = z.object({
   KAFKA_BROKERS: z.string().default(''),
   KAFKA_INTERACTIONS_TOPIC: z.string().default('sage.social.interactions'),
   KAFKA_VOICE_TOPIC: z.string().default('sage.social.voice-sessions'),
+
   DEV_GUILD_ID: z.string().optional(),
+
+  // Bot Behavior
   LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']),
   RATE_LIMIT_MAX: z.coerce.number().int().positive().max(1000),
   RATE_LIMIT_WINDOW_SEC: z.coerce.number().int().positive().max(3600),
@@ -418,6 +440,7 @@ export const envSchema = z.object({
   WAKEWORD_COOLDOWN_SEC: z.coerce.number().int().min(0),
   WAKEWORD_MAX_RESPONSES_PER_MIN_PER_CHANNEL: z.coerce.number().int().min(0),
 
+  // Voice
   VOICE_SERVICE_BASE_URL: httpOrHttpsUrlSchema.default('http://127.0.0.1:11333'),
   VOICE_STT_ENABLED: z.enum(['true', 'false']).default('false').transform((v) => v === 'true'),
   VOICE_STT_MODEL_ID: z.string().default('deepdml/faster-whisper-large-v3-turbo-ct2'),
@@ -432,6 +455,8 @@ export const envSchema = z.object({
   VOICE_MESSAGE_STT_ENABLED: z.enum(['true', 'false']).default('false').transform((v) => v === 'true'),
   VOICE_MESSAGE_STT_MAX_SECONDS: z.coerce.number().int().min(10).max(600).default(120),
   VOICE_MESSAGE_STT_MAX_BYTES: z.coerce.number().int().min(1024).max(104857600).default(5000000),
+
+  // Message Storage / Ingestion
   INGESTION_ENABLED: z.enum(['true', 'false']).transform((v) => v === 'true'),
   INGESTION_MODE: z.enum(['all', 'allowlist']),
   INGESTION_ALLOWLIST_CHANNEL_IDS_CSV: z.string(),
@@ -454,6 +479,8 @@ export const envSchema = z.object({
   MESSAGE_DB_STORAGE_ENABLED: z.enum(['true', 'false']).transform((v) => v === 'true'),
   MESSAGE_DB_MAX_MESSAGES_PER_CHANNEL: z.coerce.number().int().positive().max(50000).default(500),
   PROACTIVE_POSTING_ENABLED: z.enum(['true', 'false']).transform((v) => v === 'true'),
+
+  // Channel Summaries
   SUMMARY_ROLLING_WINDOW_MIN: z.coerce.number().int().positive(),
   SUMMARY_ROLLING_MIN_MESSAGES: z.coerce.number().int().positive(),
   SUMMARY_ROLLING_MIN_INTERVAL_SEC: z.coerce.number().int().positive(),
@@ -461,10 +488,10 @@ export const envSchema = z.object({
   SUMMARY_MAX_CHARS: z.coerce.number().int().positive(),
   SUMMARY_SCHED_TICK_SEC: z.coerce.number().int().positive(),
   SUMMARY_MODEL: z.string(),
+
+  // Context Budgets
   CONTEXT_MAX_INPUT_TOKENS: z.coerce.number().int().positive(),
   CONTEXT_RESERVED_OUTPUT_TOKENS: z.coerce.number().int().positive(),
-  SYSTEM_PROMPT_MAX_TOKENS: z.coerce.number().int().positive(),
-  TOKEN_ESTIMATOR: z.enum(['heuristic']),
   TOKEN_HEURISTIC_CHARS_PER_TOKEN: z.coerce.number().int().positive(),
   CONTEXT_BLOCK_MAX_TOKENS_TRANSCRIPT: z.coerce.number().int().positive(),
   CONTEXT_BLOCK_MAX_TOKENS_ROLLING_SUMMARY: z.coerce.number().int().positive(),
@@ -474,6 +501,8 @@ export const envSchema = z.object({
   CONTEXT_USER_MAX_TOKENS: z.coerce.number().int().positive(),
   CONTEXT_TRUNCATION_NOTICE: z.enum(['true', 'false']).transform((v) => v === 'true'),
   CONTEXT_BLOCK_MAX_TOKENS_PROVIDERS: z.coerce.number().int().positive(),
+
+  // Agentic Runtime / Embeddings / LLM
   TRACE_ENABLED: z.enum(['true', 'false']).transform((v) => v === 'true'),
   EMBEDDING_MODEL: z.string().default('nomic-ai/nomic-embed-text-v1.5'),
   EMBEDDING_DIMENSIONS: z.coerce
@@ -500,11 +529,12 @@ export const envSchema = z.object({
   PROFILE_PROVIDER: z.string(),
   PROFILE_CHAT_MODEL: z.string(),
   PROFILE_UPDATE_INTERVAL: z.coerce.number().int().positive(),
+
+  // Runtime Timeouts
   TIMEOUT_CHAT_MS: z.coerce.number().int().positive().max(300000),
-  TIMEOUT_SEARCH_MS: z.coerce.number().int().positive().max(900000).default(300000),
-  TIMEOUT_SEARCH_SCRAPER_MS: z.coerce.number().int().positive().max(900000).default(480000),
   TIMEOUT_MEMORY_MS: z.coerce.number().int().positive().max(600000),
-  SEARCH_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(8).default(4),
+
+  // Tool Providers
   TOOL_WEB_SEARCH_PROVIDER_ORDER: z.string().default('tavily,exa,searxng,pollinations'),
   TOOL_WEB_SEARCH_TIMEOUT_MS: z.coerce.number().int().min(1000).max(180000).default(45000),
   TOOL_WEB_SEARCH_MAX_RESULTS: z.coerce.number().int().min(1).max(10).default(6),
@@ -528,9 +558,9 @@ export const envSchema = z.object({
   GITHUB_REGEX_MAX_FILES: z.coerce.number().int().min(1).max(100).default(20),
   GITHUB_REGEX_MAX_MATCHES: z.coerce.number().int().min(1).max(1000).default(120),
   GITHUB_FILE_LOOKUP_MAX_LINE_SPAN: z.coerce.number().int().min(10).max(5000).default(800),
+
+  // Output / Runtime Control
   CHAT_MAX_OUTPUT_TOKENS: z.coerce.number().int().min(128).max(16000).default(1800),
-  CODING_MAX_OUTPUT_TOKENS: z.coerce.number().int().min(256).max(32000).default(4200),
-  SEARCH_MAX_OUTPUT_TOKENS: z.coerce.number().int().min(128).max(16000).default(2000),
   LLM_DOCTOR_PING: z.enum(['0', '1']).default('0'),
   AGENTIC_TOOL_LOOP_ENABLED: z.enum(['true', 'false']).default('true').transform((v) => v === 'true'),
   AGENTIC_TOOL_MAX_ROUNDS: z.coerce.number().int().min(1).max(10).default(6),
@@ -549,6 +579,7 @@ export const envSchema = z.object({
   AGENTIC_TOOL_MAX_PARALLEL_READ_ONLY: z.coerce.number().int().min(1).max(10).default(4),
   AGENTIC_TOOL_LOOP_TIMEOUT_MS: z.coerce.number().int().min(10_000).max(300_000).default(120_000),
 
+  // Replay / Evaluation
   REPLAY_SEED_GUILD_ID: z.string().default(''),
   REPLAY_SEED_CHANNEL_PREFIX: z.string().default('seed-replay'),
   REPLAY_SEED_USER_ID: z.string().default('seed-user'),
@@ -616,6 +647,7 @@ export const envSchema = z.object({
   TUNE_VARIANTS_JSON: z.string().default(''),
   TUNE_OUTPUT_DIR: z.string().default(''),
 
+  // Security
   SECRET_ENCRYPTION_KEY: z.string().regex(/^[0-9a-fA-F]{64}$/),
 });
 

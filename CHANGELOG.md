@@ -77,6 +77,12 @@
 
 - Hardened shared foundation utilities: timeout/retry helpers now use non-blocking timer behavior, `AppError` construction now preserves proper prototype/stack semantics, secret encryption key parsing is cached per process, and production logging now defaults to structured JSON while keeping pretty logs for interactive development.
 
+- Removed seven unused environment variables from runtime config parsing (`SYSTEM_PROMPT_MAX_TOKENS`, `TOKEN_ESTIMATOR`, `CODING_MAX_OUTPUT_TOKENS`, `SEARCH_MAX_OUTPUT_TOKENS`, `TIMEOUT_SEARCH_MS`, `TIMEOUT_SEARCH_SCRAPER_MS`, `SEARCH_MAX_ATTEMPTS`) and updated docs/templates accordingly, reducing operator confusion from no-op settings.
+
+- Reorganized `.env.example` and local `.env` layout to a single canonical section order, while preserving local-only legacy keys under an explicit retained section for safer upgrades without losing existing operator values.
+
+- Standardized environment-comment structure across config source (`envSchema` group headings), `.env.example`, and local `.env` template sync so operators get consistent units/format guidance without changing runtime behavior.
+
 - Standardized TypeScript documentation coverage across the codebase by adding module headers and exported-symbol JSDoc comments to all `src/**` and `tests/**` TypeScript files, improving maintainability and operator auditability without changing runtime behavior.
 
 - Renamed 16 agentic tools and components across the codebase, ensuring explicit purpose (e.g. `web_get_page_text` ➡️ `web_read`, `system_internal_reflection` ➡️ `system_plan`, `'rest'` ➡️ `'discord.api'`). Added rigorous `.describe()` docstrings mapping directly to the underlying schemas for absolute LLM clarity.

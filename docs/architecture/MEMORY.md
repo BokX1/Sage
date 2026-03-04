@@ -133,7 +133,6 @@ Context is budgeted by `contextBudgeter` using these key limits:
 | :--- | :--- |
 | Max input tokens | `CONTEXT_MAX_INPUT_TOKENS` |
 | Reserved output tokens | `CONTEXT_RESERVED_OUTPUT_TOKENS` |
-| System prompt max | `SYSTEM_PROMPT_MAX_TOKENS` |
 | Transcript block max | `CONTEXT_BLOCK_MAX_TOKENS_TRANSCRIPT` |
 | Rolling summary max | `CONTEXT_BLOCK_MAX_TOKENS_ROLLING_SUMMARY` |
 | Profile summary max | `CONTEXT_BLOCK_MAX_TOKENS_PROFILE_SUMMARY` |
