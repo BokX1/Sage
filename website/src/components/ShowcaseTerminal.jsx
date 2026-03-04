@@ -22,7 +22,7 @@ const scenarios = [
             { tool: 'system_plan', status: 'ok', text: 'User wants voice session context from yesterday' },
             { tool: 'discord', status: 'ok', text: 'action=analytics.get_voice_analytics → Found 2 sessions: #general-voice (45min), #dev-talk (20min)' },
             { tool: 'discord', status: 'ok', text: 'action=memory.get_channel → Loading rolling summary for #general around session timestamp' },
-            { tool: 'discord', status: 'ok', text: 'action=messages.search_history → Semantic search: messages near voice session window' },
+            { tool: 'discord', status: 'ok', text: 'action=messages.search_with_context → Semantic search + context: messages near voice session window' },
         ],
     },
     {

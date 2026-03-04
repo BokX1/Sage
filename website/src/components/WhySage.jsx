@@ -11,7 +11,7 @@ const pillars = [
     {
         icon: '⚡',
         title: 'Acts Before You Ask',
-        desc: '46+ autonomous tools activate proactively. Sage perceives intent, selects tools, and executes — zero-prompt automation.',
+        desc: '48+ autonomous tools activate proactively. Sage perceives intent, selects tools, and executes — zero-prompt automation.',
         accent: '#7AA2F7',
     },
     {
