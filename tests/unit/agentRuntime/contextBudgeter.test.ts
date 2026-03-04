@@ -25,16 +25,16 @@ function buildBlocks(overrides: Partial<ContextBlock>[] = []): ContextBlock[] {
       truncatable: true,
     },
     {
-      id: 'profile_summary',
+      id: 'runtime_instruction',
       role: 'system',
-      content: 'Profile summary content.',
+      content: 'Runtime instruction content.',
       priority: 70,
       truncatable: true,
     },
     {
-      id: 'rolling_summary',
+      id: 'voice_context',
       role: 'system',
-      content: 'Rolling summary content.',
+      content: 'Voice context content.',
       priority: 60,
       truncatable: true,
     },
@@ -94,8 +94,8 @@ describe('budgetContextBlocks', () => {
 
   it('drops transcript before summaries', () => {
     const transcript = 'T'.repeat(2000);
-    const rollingSummary = 'Rolling summary content.';
-    const blocks = buildBlocks([{}, {}, {}, { content: rollingSummary }, { content: transcript }]);
+    const voiceContext = 'Voice context content.';
+    const blocks = buildBlocks([{}, {}, {}, { content: voiceContext }, { content: transcript }]);
 
     const result = budgetContextBlocks(blocks, {
       maxInputTokens: 200,
@@ -104,9 +104,9 @@ describe('budgetContextBlocks', () => {
     });
 
     const transcriptBlock = result.find((block) => block.id === 'transcript');
-    const rollingBlock = result.find((block) => block.id === 'rolling_summary');
+    const voiceBlock = result.find((block) => block.id === 'voice_context');
 
-    expect(rollingBlock).toBeDefined();
+    expect(voiceBlock).toBeDefined();
     expect(transcriptBlock).toBeUndefined();
   });
 
@@ -127,8 +127,8 @@ describe('budgetContextBlocks', () => {
     const blocks = buildBlocks([
       { content: 'Base system prompt.'.repeat(50) },
       { content: 'Memory block content.'.repeat(50) },
-      { content: 'Profile summary content.'.repeat(50) },
-      { content: 'Rolling summary content.'.repeat(50) },
+      { content: 'Runtime instruction content.'.repeat(50) },
+      { content: 'Voice context content.'.repeat(50) },
       { content: 'Transcript content.'.repeat(200) },
       { content: 'Reply context content.'.repeat(50) },
       { content: 'User message content.'.repeat(50) },

@@ -21,7 +21,7 @@ const getCurrentDateTimeTool: ToolDefinition<{
 }> = {
   name: 'system_time',
   description:
-    'You DO NOT NEED to call this to find out the current UTC date and time—that is already constantly provided to you in your <agent_state>. However, you can call this tool to supply a strict offset calculation if you are performing complex scheduling.',
+    'Calculate timezone offsets for complex scheduling. Note: current UTC time is already in <agent_state> — only call this when you need explicit offset math (e.g., converting between timezones).',
   schema: z.object({
     think: z.string().describe('Mandatory internal reasoning explaining exactly why you are generating this payload and how it fulfills the active goal.'),
     utcOffsetMinutes: z.number().int().min(-720).max(840).optional(),

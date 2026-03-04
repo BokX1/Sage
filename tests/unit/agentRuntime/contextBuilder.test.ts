@@ -9,36 +9,32 @@ function getSystemContent(messages: ReturnType<typeof buildContextMessages>): st
   return content;
 }
 
-describe('contextBuilder with provider context packets', () => {
-  it('should include context packets when provided', () => {
+describe('contextBuilder core message assembly', () => {
+  it('should produce a system message with user context', () => {
     const messages = buildContextMessages({
-      userProfileSummary: null,
+      userProfileSummary: 'Active developer, prefers concise code',
       replyToBotText: null,
       userText: 'Hello',
-      contextPackets: 'Context packet: Memory summary',
     });
 
     expect(messages[0].role).toBe('system');
-    expect(getSystemContent(messages)).toContain('Context packet: Memory summary');
+    expect(getSystemContent(messages)).toContain('Active developer');
   });
 
-  it('should omit context packets when null', () => {
+  it('should show placeholder when no user profile', () => {
     const messages = buildContextMessages({
       userProfileSummary: null,
       replyToBotText: null,
       userText: 'Hello',
-      contextPackets: null,
     });
 
-    expect(getSystemContent(messages)).not.toContain('Context packet:');
+    expect(getSystemContent(messages)).toContain('No specific user data available yet');
   });
 
-  it('should order blocks correctly with context packets', () => {
+  it('should order blocks correctly with transcript and guild memory', () => {
     const messages = buildContextMessages({
       userProfileSummary: 'User summary',
-      channelProfileSummary: 'Channel profile',
-      channelRollingSummary: 'Rolling summary',
-      contextPackets: 'Context packet',
+      guildMemory: 'Server mode: QA bot',
       recentTranscript: 'Transcript',
       replyToBotText: null,
       userText: 'Hello',
@@ -46,24 +42,21 @@ describe('contextBuilder with provider context packets', () => {
 
     const systemContent = getSystemContent(messages);
 
-    const contextIdx = systemContent.indexOf('Context packet');
-    const profileIdx = systemContent.indexOf('Channel profile');
+    const guildMemoryIdx = systemContent.indexOf('Server mode: QA bot');
     const transcriptIdx = systemContent.indexOf('Transcript');
 
-    expect(contextIdx).toBeGreaterThan(-1);
-    expect(profileIdx).toBeGreaterThan(-1);
+    expect(guildMemoryIdx).toBeGreaterThan(-1);
     expect(transcriptIdx).toBeGreaterThan(-1);
 
-    expect(contextIdx).toBeGreaterThan(profileIdx);
-    expect(transcriptIdx).toBeGreaterThan(contextIdx);
+    // transcript comes after guild memory (lower priority)
+    expect(transcriptIdx).toBeGreaterThan(guildMemoryIdx);
   });
 
   it('places runtime instruction directly after base system content', () => {
     const messages = buildContextMessages({
       userProfileSummary: null,
       runtimeInstruction: '<runtime_instruction>\n- Active route: chat.\n</runtime_instruction>',
-      channelProfileSummary: 'Channel profile',
-      contextPackets: 'Context packet',
+      guildMemory: 'Server mode: QA bot',
       recentTranscript: 'Transcript',
       replyToBotText: null,
       userText: 'Hello',
@@ -72,13 +65,13 @@ describe('contextBuilder with provider context packets', () => {
     const systemContent = getSystemContent(messages);
     const userContextIdx = systemContent.indexOf('<user_context>');
     const runtimeIdx = systemContent.indexOf('<runtime_instruction>');
-    const profileIdx = systemContent.indexOf('Channel profile');
+    const guildMemoryIdx = systemContent.indexOf('Server mode: QA bot');
 
     expect(userContextIdx).toBeGreaterThan(-1);
     expect(runtimeIdx).toBeGreaterThan(-1);
-    expect(profileIdx).toBeGreaterThan(-1);
+    expect(guildMemoryIdx).toBeGreaterThan(-1);
     expect(runtimeIdx).toBeGreaterThan(userContextIdx);
-    expect(profileIdx).toBeGreaterThan(runtimeIdx);
+    expect(guildMemoryIdx).toBeGreaterThan(runtimeIdx);
   });
 
   it('injects guild memory after runtime instruction', () => {
@@ -86,7 +79,6 @@ describe('contextBuilder with provider context packets', () => {
       userProfileSummary: null,
       runtimeInstruction: '<runtime_instruction>\n- Runtime rule.\n</runtime_instruction>',
       guildMemory: 'Server mode: QA bot',
-      channelProfileSummary: 'Channel profile',
       replyToBotText: null,
       userText: 'Hello',
     });
@@ -94,13 +86,10 @@ describe('contextBuilder with provider context packets', () => {
     const systemContent = getSystemContent(messages);
     const runtimeIdx = systemContent.indexOf('<runtime_instruction>');
     const guildMemoryIdx = systemContent.indexOf('<guild_memory>');
-    const profileIdx = systemContent.indexOf('Channel profile');
 
     expect(runtimeIdx).toBeGreaterThan(-1);
     expect(guildMemoryIdx).toBeGreaterThan(-1);
-    expect(profileIdx).toBeGreaterThan(-1);
     expect(guildMemoryIdx).toBeGreaterThan(runtimeIdx);
-    expect(profileIdx).toBeGreaterThan(guildMemoryIdx);
   });
 
   it('keeps reply context before the latest user message', () => {

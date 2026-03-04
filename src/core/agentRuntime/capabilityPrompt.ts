@@ -110,7 +110,7 @@ export function buildCapabilityPromptSection(
     ...discordActionIndexLines,
     ...discordGuardrailLines,
     hasGenerateImage
-      ? '- Image generation behavior: use image_generate for image creation/edit requests; attachments are returned by the runtime.'
+      ? '- Image generation behavior: use image_generate for image creation requests (supports optional reference image); attachments are returned by the runtime.'
       : '- Image generation behavior: you do not have image generation capabilities this turn.',
     '</execution_rules>',
   ].join('\n');
@@ -158,8 +158,6 @@ If the query is ambiguous:
 
 /**
  * Build a structured tool selection guide based on active tools.
- *
- * This decision tree helps Kimi K2.5 route to the correct tool on first attempt.
  */
 function buildToolSelectionGuide(activeTools: string[]): string {
   const lines: string[] = ['<tool_selection_guide>'];
@@ -167,7 +165,8 @@ function buildToolSelectionGuide(activeTools: string[]): string {
   lines.push('');
 
   if (activeTools.includes('system_time')) {
-    lines.push('ADVANCED TIMEZONE/CALENDAR MATH? → system_time (For relative time like "tomorrow", calculate it yourself using current_time_utc in agent_state)');
+    lines.push('TIMEZONE OFFSET MATH (explicit utcOffset conversion)? → system_time');
+    lines.push('  Basic "what time is it?" → Use current_time_utc from <agent_state> directly, do NOT call system_time');
   }
 
   if (activeTools.includes('system_tool_stats')) {
@@ -177,23 +176,25 @@ function buildToolSelectionGuide(activeTools: string[]): string {
   if (activeTools.includes('discord')) {
     lines.push('DISCORD MEMORY/DATA?');
     lines.push('  User profile → discord: memory.get_user');
-    lines.push('  Channel summary → discord: memory.get_channel');
+    lines.push('  Channel summary (rolling) → discord: memory.get_channel');
     lines.push('  Server overview → discord: memory.get_server');
-    lines.push('  Archived summaries → discord: memory.channel_archives');
+    lines.push('  Archived weekly summaries (semantic search) → discord: memory.channel_archives');
     lines.push('  Exact message quotes → discord: messages.search_history');
     lines.push('  One-shot search+context → discord: messages.search_with_context');
     lines.push('  Message context → discord: messages.get_context (requires messageId)');
     lines.push('  Server-wide search → discord: messages.search_guild (not autopilot)');
     lines.push('  User timeline → discord: messages.user_timeline (not autopilot)');
-    lines.push('  Channel files → discord: files.list_channel / files.find_channel');
-    lines.push('  Server files → discord: files.list_server / files.find_server');
+    lines.push('  List recent files (chronological) → discord: files.list_channel / files.list_server');
+    lines.push('  Find file content (semantic search) → discord: files.find_channel / files.find_server');
     lines.push('  Read attachment (paged) → discord: files.read_attachment');
     lines.push('  Social graph → discord: analytics.get_social_graph');
     lines.push('  Top relationships → discord: analytics.top_relationships (not autopilot)');
     lines.push('  Voice stats → discord: analytics.get_voice_analytics');
     lines.push('  Voice sessions → discord: analytics.voice_summaries');
+    lines.push('  Discord Writes (react, pin, poll, thread, etc.) → see write_actions in `agent_state.tool_capabilities` JSON');
+    lines.push('ADMIN UTILITIES?');
     lines.push('  Bot invite URL → discord: oauth2.invite_url (admin only)');
-    lines.push('  Discord Writes & Admin Actions (react, pin, create channels, etc.) → see exact list in `agent_state.tool_capabilities` JSON');
+    lines.push('  Admin actions (channels, roles, moderation, API) → see admin_only_actions in `agent_state.tool_capabilities` JSON');
   }
 
   if (activeTools.includes('web')) {

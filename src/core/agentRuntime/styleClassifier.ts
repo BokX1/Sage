@@ -2,8 +2,7 @@
  * Infer stylistic guidance from user text samples.
  *
  * Responsibilities:
- * - Classify immediate style signals from the latest prompt.
- * - Build an optional mimicry hint from recent user history.
+ * - Classify immediate style signals from the latest user message.
  *
  * Non-goals:
  * - Persist user preferences.
@@ -14,7 +13,7 @@ export type StyleLevel = 'low' | 'medium' | 'high';
 /**
  * Represents the HumorLevel type.
  */
-export type HumorLevel = 'none' | 'subtle' | 'normal' | 'high';
+export type HumorLevel = 'none' | 'normal' | 'high';
 
 /** Describe style dimensions consumed by prompt composition. */
 export interface StyleProfile {
@@ -61,10 +60,10 @@ export function classifyStyle(text: string): StyleProfile {
   }
 
   let formality: StyleLevel = 'medium';
-  if (/\b(sir|madam|please|kindly|regards|thank you)\b/.test(lower)) {
-    formality = 'high';
-  } else if (/\b(yo|sup|dude|bro|bruh|u|ur|plz)\b/.test(lower)) {
+  if (/\b(yo|sup|dude|bro|bruh|plz)\b/.test(lower) || /(?:^|\s)(u|ur)(?:\s|$)/.test(lower)) {
     formality = 'low';
+  } else if (/\b(sir|madam|kindly|regards|thank you)\b/.test(lower)) {
+    formality = 'high';
   }
 
   let directness: StyleLevel = 'medium';
@@ -73,68 +72,4 @@ export function classifyStyle(text: string): StyleProfile {
   }
 
   return { verbosity, formality, humor, directness };
-}
-
-/**
- * Generate a lightweight style mimicry instruction from user history.
- *
- * @param history - Recent user-authored messages ordered chronologically.
- * @returns A single instruction sentence or an empty string when no signal exists.
- *
- * Side effects:
- * - None.
- *
- * Error behavior:
- * - Never throws.
- *
- * Invariants:
- * - Output is safe to append to prompt context as plain text.
- */
-export function analyzeUserStyle(history: string[]): string {
-  if (!history || history.length === 0) return '';
-
-  const total = history.length;
-  let lowercaseCount = 0;
-  let emojiCount = 0;
-  let slangCount = 0;
-  let shortCount = 0;
-  let punctuationCount = 0;
-
-  const emojiRegex = /[\p{Emoji_Presentation}\p{Extended_Pictographic}]/u;
-  const slangRegex = /\b(lol|lmao|idk|rn|ur|u|pls|plz|thx|ty|omg|bruh|sup|yo|nah|yea)\b/i;
-
-  for (const msg of history) {
-    if (msg === msg.toLowerCase() && msg !== msg.toUpperCase()) lowercaseCount++;
-    if (emojiRegex.test(msg)) emojiCount++;
-    if (slangRegex.test(msg)) slangCount++;
-    if (msg.split(/\s+/).length < 6) shortCount++;
-    if (/[.!?]$/.test(msg.trim())) punctuationCount++;
-  }
-
-  const traits: string[] = [];
-
-  if (lowercaseCount / total > 0.6) {
-    traits.push('use all lowercase');
-  }
-
-  if (slangCount / total > 0.3) {
-    traits.push('be very casual and use slang (lol, rn, ur)');
-  } else if (punctuationCount / total > 0.8 && history.some((m) => m.length > 50)) {
-    traits.push('be polite and use proper punctuation');
-  } else {
-    traits.push('be conversational');
-  }
-
-  if (emojiCount / total > 0.4) {
-    traits.push('use emojis frequently 🌟');
-  } else if (emojiCount > 0) {
-    traits.push('use emojis occasionally');
-  }
-
-  if (shortCount / total > 0.7) {
-    traits.push('keep responses short and punchy');
-  }
-
-  if (traits.length === 0) return '';
-  return `Mirror the user's style: ${traits.join(', ')}.`;
 }

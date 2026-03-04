@@ -14,7 +14,7 @@ import { runToolCallLoop } from './toolCallLoop';
 import { ToolResult } from './toolCallExecution';
 import { enforceGitHubFileGrounding } from './toolGrounding';
 import { clearGitHubFileLookupCacheForTrace } from './toolIntegrations';
-import { DISCORD_GUARDRAILS } from './discordToolCatalog';
+
 import {
   buildAgenticStateBlock,
   buildCapabilityPromptSection,
@@ -28,6 +28,9 @@ import { classifyStyle } from './styleClassifier';
 import { formatLiveVoiceContext } from '../voice/voiceConversationSessionStore';
 
 const SINGLE_ROUTE_KIND = 'single';
+
+/** Default model identifier when CHAT_MODEL is not configured. */
+const DEFAULT_CHAT_MODEL = 'kimi';
 
 export interface RunChatTurnParams {
   traceId: string;
@@ -92,16 +95,7 @@ function buildToolProtocolInstruction(toolNames: string[]): string {
 
   if (hasDiscordTool) {
     lines.push('');
-    lines.push('DISCORD ACTIONS GUIDE:');
-    lines.push('- Use `discord` tool with action-based payloads (e.g., memory.get_channel, messages.search_history).');
-    lines.push('- memory.get_channel → returns summaries, NOT raw transcript.');
-    lines.push('- memory.channel_archives → returns archived weekly summaries, NOT raw messages.');
-    lines.push('- messages.search_history → primary tool for exact historical message retrieval.');
-    lines.push('- messages.get_context → expands context around a known messageId.');
-    // Guardrails injected from single-source-of-truth (discordToolCatalog.ts)
-    for (const guardrail of DISCORD_GUARDRAILS) {
-      lines.push(`- ${guardrail}`);
-    }
+    lines.push('DISCORD: Use `discord` tool with action-based payloads. See <tool_selection_guide> for action routing and <execution_rules> for guardrails.');
   }
 
   lines.push('</tool_protocol>');
@@ -262,7 +256,7 @@ Your response will be spoken aloud in a Discord voice channel.
       logger.warn({ error, guildId }, 'Failed to load guild memory (non-fatal)');
     }
   }
-  const model = (appConfig.CHAT_MODEL || 'kimi').trim();
+  const model = (appConfig.CHAT_MODEL || DEFAULT_CHAT_MODEL).trim();
   const toolLoopEnabled = (appConfig.AGENTIC_TOOL_LOOP_ENABLED as boolean | undefined) ?? true;
   const toolLoopConfig = buildToolLoopConfig();
   const toolLoopLimits = {
@@ -301,11 +295,9 @@ Your response will be spoken aloud in a Discord voice channel.
   ].join('\n\n');
 
   const runtimeMessages = buildContextMessages({
-    userProfileSummary: null,
+    userProfileSummary: params.userProfileSummary,
     runtimeInstruction,
     guildMemory,
-    channelRollingSummary: null,
-    channelProfileSummary: null,
     replyToBotText,
     replyReferenceContent,
     userText,
@@ -314,7 +306,6 @@ Your response will be spoken aloud in a Discord voice channel.
     intentHint: intent,
     style,
     voiceContext: liveVoiceContext,
-    contextPackets: null,
     invokedBy,
     voiceInstruction,
   });

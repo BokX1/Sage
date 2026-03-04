@@ -14,10 +14,6 @@ export type ContextBlockId =
   | 'base_system'
   | 'runtime_instruction'
   | 'memory'
-  | 'profile_summary'
-  | 'rolling_summary'
-  | 'relationship_hints'
-  | 'context_packets'
   | 'voice_context'
   | 'transcript'
   | 'intent_hint'
@@ -220,9 +216,6 @@ function truncateBlockContent(
           safeTruncateText(contentText, maxTokens, estimator),
         ),
       };
-    case 'profile_summary':
-    case 'rolling_summary':
-    case 'relationship_hints':
     case 'base_system':
     case 'trunc_notice':
     default:
@@ -290,10 +283,6 @@ function findBlock(blocks: ContextBlock[], id: ContextBlockId): ContextBlock | u
 const TRUNCATION_ORDER: ContextBlockId[] = [
   'transcript',
   'voice_context',
-  'context_packets',
-  'rolling_summary',
-  'profile_summary',
-  'relationship_hints',
   'intent_hint',
   'reply_context',
   'reply_reference',
@@ -466,4 +455,4 @@ export function budgetContextBlocks(
 
 /** Provide default notice injected when prompt content was truncated. */
 export const DEFAULT_TRUNCATION_NOTICE =
-  'Note: Context was truncated to fit the model window. Some older transcript/summary content may be omitted.';
+  'Note: Context was truncated to fit the model window. Some older transcript or context content may be omitted.';

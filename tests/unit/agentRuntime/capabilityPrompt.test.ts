@@ -36,7 +36,7 @@ describe('capabilityPrompt', () => {
 
       // Assert
       expect(prompt).toContain('<tool_selection_guide>');
-      expect(prompt).toContain('ADVANCED TIMEZONE/CALENDAR MATH?');
+      expect(prompt).toContain('TIMEZONE OFFSET MATH');
       expect(prompt).toContain('REAL-TIME WEB INFO?');
       expect(prompt).toContain('</tool_selection_guide>');
     });
@@ -122,7 +122,7 @@ describe('capabilityPrompt', () => {
       const prompt = buildCapabilityPromptSection(params);
 
       // Assert
-      expect(prompt).toContain('Image generation behavior: use image_generate for image creation/edit requests');
+      expect(prompt).toContain('Image generation behavior: use image_generate for image creation requests (supports optional reference image)');
     });
 
     it('handles empty or missing model/tools gracefully', () => {

@@ -9,8 +9,6 @@ export interface BuildContextMessagesParams {
   userProfileSummary: string | null;
   runtimeInstruction?: string | null;
   guildMemory?: string | null;
-  channelRollingSummary?: string | null;
-  channelProfileSummary?: string | null;
   replyToBotText: string | null;
   replyReferenceContent?: LLMMessageContent | null;
   userText: string;
@@ -19,7 +17,6 @@ export interface BuildContextMessagesParams {
   intentHint?: string | null;
   style?: StyleProfile;
   voiceContext?: string | null;
-  contextPackets?: string | null;
   invokedBy?: 'mention' | 'reply' | 'wakeword' | 'autopilot' | 'command';
   voiceInstruction?: string;
 }
@@ -44,8 +41,6 @@ export function buildContextMessages(params: BuildContextMessagesParams): LLMCha
     userProfileSummary,
     runtimeInstruction,
     guildMemory,
-    channelRollingSummary,
-    channelProfileSummary,
     replyToBotText,
     replyReferenceContent,
     userText,
@@ -54,7 +49,6 @@ export function buildContextMessages(params: BuildContextMessagesParams): LLMCha
     intentHint,
     style,
     voiceContext,
-    contextPackets,
     invokedBy,
     voiceInstruction,
   } = params;
@@ -76,6 +70,9 @@ Otherwise output '[SILENCE]'.
     }
   }
 
+  // Voice and autopilot instructions are small (~40-50 tokens each) and
+  // critical for correct behavior, so they're embedded in the non-truncatable
+  // base_system block rather than separate context blocks.
   const baseSystemContent =
     composeSystemPrompt({
       userProfileSummary,
@@ -95,11 +92,10 @@ Otherwise output '[SILENCE]'.
   ];
 
   if (runtimeInstruction?.trim()) {
-    const modelPreamble = 'You excel at multi-step reasoning and autonomous tool orchestration. Use tools proactively when they improve accuracy. Answer directly when confident and no tool adds value.';
     blocks.push({
       id: 'runtime_instruction',
       role: 'system',
-      content: `<runtime_instruction>\n${modelPreamble}\n\n${runtimeInstruction.trim()}\n</runtime_instruction>`,
+      content: `<runtime_instruction>\n${runtimeInstruction.trim()}\n</runtime_instruction>`,
       priority: 95,
       truncatable: false,
     });
@@ -116,41 +112,6 @@ Otherwise output '[SILENCE]'.
         `</guild_memory>`,
       priority: 92,
       hardMaxTokens: config.CONTEXT_BLOCK_MAX_TOKENS_MEMORY,
-      truncatable: true,
-    });
-  }
-
-  if (channelProfileSummary) {
-    blocks.push({
-      id: 'profile_summary',
-      role: 'system',
-      content: `<channel_profile>\n${channelProfileSummary}\n</channel_profile>`,
-      priority: 70,
-      hardMaxTokens: config.CONTEXT_BLOCK_MAX_TOKENS_PROFILE_SUMMARY,
-      truncatable: true,
-    });
-  }
-
-  if (channelRollingSummary) {
-    blocks.push({
-      id: 'rolling_summary',
-      role: 'system',
-      content: `<rolling_summary>\n${channelRollingSummary}\n</rolling_summary>`,
-      priority: 60,
-      hardMaxTokens: config.CONTEXT_BLOCK_MAX_TOKENS_ROLLING_SUMMARY,
-      truncatable: true,
-    });
-  }
-
-
-
-  if (contextPackets) {
-    blocks.push({
-      id: 'context_packets',
-      role: 'system',
-      content: `<system_injected_documents>\n${contextPackets}\n</system_injected_documents>`,
-      priority: 55,
-      hardMaxTokens: config.CONTEXT_BLOCK_MAX_TOKENS_PROVIDERS,
       truncatable: true,
     });
   }
@@ -215,7 +176,9 @@ Otherwise output '[SILENCE]'.
     role: 'user',
     content: typeof userContent === 'string'
       ? `<user_input>\n${userContent}\n</user_input>`
-      : (userContent ?? userText),
+      : userContent
+        ? userContent
+        : `<user_input>\n${userText}\n</user_input>`,
     priority: 110,
     hardMaxTokens: config.CONTEXT_USER_MAX_TOKENS,
     truncatable: true,
