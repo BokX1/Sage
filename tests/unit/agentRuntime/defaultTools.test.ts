@@ -11,17 +11,15 @@ describe('default agentic tools', () => {
 
     expect(registry.listNames().sort()).toEqual([
       'discord',
-      'github_get_file',
-      'github_repo',
-      'github_search_code',
+      'github',
       'image_generate',
       'npm_info',
       'stack_overflow_search',
+      'system_tool_stats',
       'system_time',
       'system_plan',
-      'web_scrape',
-      'web_read',
-      'web_search',
+      'workflow',
+      'web',
       'wikipedia_search',
     ].sort());
   });

@@ -44,19 +44,18 @@ flowchart LR
     classDef hosted fill:#fff3cd,stroke:#856404,color:black
     classDef sage fill:#cce5ff,stroke:#004085,color:black
 
-    S[Sage Bot]:::sage --> WS{web_search}
-    S --> WC{web_read}
+    S[Sage Bot]:::sage --> W{web\n(actions)}:::sage
     S --> FI{file_ingest}
 
-    WS --> S1[SearXNG]:::local
-    WS --> S2[Tavily]:::hosted
-    WS --> S3[Exa]:::hosted
-    WS --> S4[Pollinations]:::hosted
+    W -->|search| S1[SearXNG]:::local
+    W -->|search| S2[Tavily]:::hosted
+    W -->|search| S3[Exa]:::hosted
+    W -->|search| S4[Pollinations]:::hosted
 
-    WC --> C1[Crawl4AI]:::local
-    WC --> C2[Firecrawl]:::hosted
-    WC --> C3[Jina Reader]:::hosted
-    WC --> C4[Raw Fetch]:::hosted
+    W -->|read / extract| C1[Crawl4AI]:::local
+    W -->|read / extract| C2[Firecrawl]:::hosted
+    W -->|read / extract| C3[Jina Reader]:::hosted
+    W -->|read / extract| C4[Raw Fetch]:::hosted
 
     FI --> T1[Apache Tika]:::local
 ```
@@ -83,9 +82,9 @@ This starts:
 
 | Service | Container | URL | Purpose |
 | :--- | :--- | :--- | :--- |
-| SearXNG | `sage-searxng` | `http://127.0.0.1:18080` | Meta-search aggregator |
-| Crawl4AI | `sage-crawl4ai` | `http://127.0.0.1:11235` | AI-powered web scraper |
-| Tika | `sage-tika` | `http://127.0.0.1:9998` | Attachment/document text extraction |
+| SearXNG | `sage-searxng` | http://127.0.0.1:18080 | Meta-search aggregator |
+| Crawl4AI | `sage-crawl4ai` | http://127.0.0.1:11235 | AI-powered web scraper |
+| Tika | `sage-tika` | http://127.0.0.1:9998 | Attachment/document text extraction |
 
 ### 2️⃣ Configure `.env`
 
@@ -156,10 +155,10 @@ The smoke script checks:
 
 | Tool | Status |
 | :--- | :--- |
-| `web_search` | Required |
-| `web_read` | Required |
+| `web.search` | Required |
+| `web.read` | Required |
 | `wikipedia_search` | Required |
-| `github_repo` | Required |
+| `github.repo.get` | Required |
 | `npm_info` | Required |
 | `stack_overflow_search` | Required |
 

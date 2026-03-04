@@ -1,5 +1,6 @@
 import { config } from '../../config';
 import { logger } from '../utils/logger';
+import { normalizeAtLeastInt } from '../utils/numbers';
 
 /**
  * Represents the VoiceUtterance type.
@@ -32,11 +33,6 @@ const MAX_UTTERANCES_PER_SESSION = 2000;
 const DEFAULT_VOICE_LIVE_CONTEXT_LOOKBACK_SEC = 0;
 const DEFAULT_VOICE_LIVE_CONTEXT_MAX_CHARS = 200;
 const DEFAULT_VOICE_LIVE_CONTEXT_MAX_UTTERANCES = 5;
-
-function toPositiveInt(value: number | undefined, fallback: number, min: number): number {
-  if (!Number.isFinite(value)) return fallback;
-  return Math.max(min, Math.floor(value as number));
-}
 
 export function startVoiceConversationSession(params: {
   guildId: string;
@@ -98,7 +94,7 @@ export function formatLiveVoiceContext(params: {
   if (session.voiceChannelId !== params.voiceChannelId) return null;
 
   const now = params.now ?? new Date();
-  const lookbackSec = toPositiveInt(
+  const lookbackSec = normalizeAtLeastInt(
     config.VOICE_LIVE_CONTEXT_LOOKBACK_SEC as number | undefined,
     DEFAULT_VOICE_LIVE_CONTEXT_LOOKBACK_SEC,
     0,
@@ -108,12 +104,12 @@ export function formatLiveVoiceContext(params: {
   const recent = session.utterances.filter((u) => u.at.getTime() >= cutoffMs);
   if (recent.length === 0) return null;
 
-  const maxChars = toPositiveInt(
+  const maxChars = normalizeAtLeastInt(
     config.VOICE_LIVE_CONTEXT_MAX_CHARS as number | undefined,
     DEFAULT_VOICE_LIVE_CONTEXT_MAX_CHARS,
     200,
   );
-  const maxUtterances = toPositiveInt(
+  const maxUtterances = normalizeAtLeastInt(
     config.VOICE_LIVE_CONTEXT_MAX_UTTERANCES as number | undefined,
     DEFAULT_VOICE_LIVE_CONTEXT_MAX_UTTERANCES,
     5,

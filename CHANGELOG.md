@@ -34,6 +34,16 @@
 - Added typed, approval-gated `discord` admin actions for common Discord REST writes (message edit/delete/pin, channel create/edit, role create/edit/delete, member role add/remove).
 - Added `discord` action `oauth2.get_bot_invite_url` to generate a bot invite URL using the configured `DISCORD_APP_ID`.
 - Added `AGENTIC_TOOL_LOOP_TIMEOUT_MS` to bound total tool-loop wall-clock time per turn (default `120000` ms), reducing long-running orchestration stalls.
+- Added unified `web` tool (action-based): `search`, `read`, `extract`, `research` (includes search-result age enrichment and one-shot `research`).
+- Added `web` action `read.page` for paged URL reads with continuation tokens, preventing large web pages from becoming all-or-nothing tool results.
+- Added unified `github` tool (action-based): repo metadata, code search (with match previews), paged/bulk file reads, issue/PR search, and recent commit listing.
+- Added in-memory-only cross-turn tool memoization (`AGENTIC_TOOL_MEMO_*`) with bounded TTL/size and per-call metadata (`latencyMs`, `cacheHit`) to reduce repetitive dereferencing hops.
+- Added `system_tool_stats` tool to inspect in-process tool telemetry (latency averages, cache/memo hit rates, failures). Stats are process-local and reset on restart (no Redis/DB).
+- Added `workflow` tool (starting with `npm.github_code_search`) to chain npm lookup → GitHub code search in a single tool call, reducing multi-hop latency.
+- Added Discord retrieval ergonomics: transcript anchors (`msg:<id>`), `messages.search_with_context`, `messages.search_guild`, `messages.user_timeline`, `files.read_attachment` paging, `analytics.top_relationships`, and `sinceHours`/`sinceDays` convenience filters.
+- Added runtime tool-result compression: when a tool payload is too large, the runtime injects a compact summary block alongside the truncated raw result to reduce context window pressure.
+- Added optional bounded link-following to `web` action `research` (`followLinks` + `followQueue`) for guided research with fewer manual hops.
+- Added stable attachment cache references (`attachment:<id>`) in transcript notes so cached file content can be retrieved directly via `discord` action `files.read_attachment`.
 
 ### Changed
 
@@ -85,7 +95,7 @@
 
 - Standardized TypeScript documentation coverage across the codebase by adding module headers and exported-symbol JSDoc comments to all `src/**` and `tests/**` TypeScript files, improving maintainability and operator auditability without changing runtime behavior.
 
-- Renamed 16 agentic tools and components across the codebase, ensuring explicit purpose (e.g. `web_get_page_text` ➡️ `web_read`, `system_internal_reflection` ➡️ `system_plan`, `'rest'` ➡️ `'discord.api'`). Added rigorous `.describe()` docstrings mapping directly to the underlying schemas for absolute LLM clarity.
+- Unified and modernized the agentic tool surface to reduce multi-hop workflows: consolidated legacy web/GitHub tools into the action-based `web` and `github` tools, with smart defaults for paging, bulk ranges, and match previews.
 
 - Expanded website `ToolGrid` showcase to explicitly document the full catalog of 34 native Discord capabilities under a unified category, replacing the single placeholder "Discord" item.
 - Refactored the onboarding welcome message (`src/bot/handlers/welcomeMessage.ts` and `src/bot/handlers/guildCreate.ts`) to use rich Discord Embeds.
@@ -97,6 +107,8 @@
 - Consolidated runtime capability/tool protocol prompting with explicit tool-selection guidance and reasoning protocol instructions, improving first-pass tool routing and reducing malformed tool outputs.
 - Hardened tool-result synthesis instructions so model turns treat tool outputs as untrusted external data and ignore embedded instructions.
 - Added in-memory observability metrics for tool execution, latency, and cache hit/miss behavior to improve operator visibility into agentic loop performance.
+- Expanded `npm_info` results with normalized repo hints (`repositoryUrlNormalized`, `githubRepo`) so agents can jump from npm metadata to `github` actions without manual parsing.
+- Expanded `stack_overflow_search` with optional accepted-answer body retrieval (`includeAcceptedAnswer`) to reduce follow-up `web.read` hops for common coding fixes.
 
 ### Fixed
 
@@ -108,6 +120,8 @@
 - Updated BYOP key status messaging so servers without a configured key now show setup guidance (`/sage key login` then `/sage key set <your_key>`) instead of claiming shared quota fallback.
 - Removed legacy no-key runtime fallback in chat turns: when neither a server key nor `LLM_API_KEY` is configured, Sage now returns explicit setup guidance instead of attempting anonymous provider calls.
 - Retried read-only tool calls once on timeout/rate-limit failures to reduce flaky tool-loop errors.
+- Improved tool failure transparency by attaching structured error details (HTTP status, provider/host, retry-after where available) to tool results so the runtime can make better recovery decisions.
+- Preserved tool-call execution ordering when mixing side-effect and read-only calls so post-write reads cannot race ahead of their writes when parallel read-only execution is enabled.
 - Automatically retry Discord REST passthrough requests once on HTTP `429` responses, respecting Discord-provided `retry_after` delays (capped).
 - Improved tool-call envelope parsing to recover valid `tool_calls` JSON from mixed prose + JSON model outputs, reducing false plain-text fallbacks.
 - Preserved model reasoning text alongside native provider tool calls in the serialized tool envelope for better trace/debug context.
@@ -116,6 +130,7 @@
 ### Removed
 
 - Removed four unreferenced legacy modules (`src/core/agentRuntime/agent-events.ts`, `src/core/agentRuntime/patterns.ts`, `src/core/config/doctor.ts`, `src/core/voice/index.ts`) to reduce dead maintenance surface and stale internal APIs.
+- Removed legacy agentic tool names `web_search`, `web_read`, `web_scrape`, `github_repo`, `github_get_file`, `github_search_code` in favor of unified `web` and `github` action-based tools.
 
 ### Security
 

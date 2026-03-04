@@ -335,6 +335,10 @@ export const testDefaults: Record<string, string> = {
   AGENTIC_TOOL_PARALLEL_READ_ONLY_ENABLED: 'true',
   AGENTIC_TOOL_MAX_PARALLEL_READ_ONLY: '4',
   AGENTIC_TOOL_LOOP_TIMEOUT_MS: '120000',
+  AGENTIC_TOOL_MEMO_ENABLED: 'true',
+  AGENTIC_TOOL_MEMO_TTL_MS: '900000',
+  AGENTIC_TOOL_MEMO_MAX_ENTRIES: '250',
+  AGENTIC_TOOL_MEMO_MAX_RESULT_JSON_CHARS: '200000',
 
   // Replay / Evaluation
   REPLAY_SEED_GUILD_ID: '',
@@ -578,6 +582,10 @@ export const envSchema = z.object({
     .transform((v) => v === 'true'),
   AGENTIC_TOOL_MAX_PARALLEL_READ_ONLY: z.coerce.number().int().min(1).max(10).default(4),
   AGENTIC_TOOL_LOOP_TIMEOUT_MS: z.coerce.number().int().min(10_000).max(300_000).default(120_000),
+  AGENTIC_TOOL_MEMO_ENABLED: z.enum(['true', 'false']).default('true').transform((v) => v === 'true'),
+  AGENTIC_TOOL_MEMO_TTL_MS: z.coerce.number().int().min(1_000).max(6 * 60 * 60_000).default(900_000),
+  AGENTIC_TOOL_MEMO_MAX_ENTRIES: z.coerce.number().int().min(1).max(5_000).default(250),
+  AGENTIC_TOOL_MEMO_MAX_RESULT_JSON_CHARS: z.coerce.number().int().min(1_000).max(2_000_000).default(200_000),
 
   // Replay / Evaluation
   REPLAY_SEED_GUILD_ID: z.string().default(''),

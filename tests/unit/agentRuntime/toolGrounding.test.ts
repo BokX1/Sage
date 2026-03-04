@@ -4,7 +4,7 @@ import type { ToolResult } from '@/core/agentRuntime/toolCallExecution';
 
 function githubSuccess(path: string, repo = 'AjayAntoIsDev/Riko'): ToolResult {
   return {
-    name: 'github_get_file',
+    name: 'github',
     success: true,
     result: {
       repo,
@@ -15,9 +15,11 @@ function githubSuccess(path: string, repo = 'AjayAntoIsDev/Riko'): ToolResult {
   };
 }
 
-function githubFailure(message = 'Tool execution failed: HTTP 404: Not Found'): ToolResult {
+function githubFailure(
+  message = 'Tool execution failed: github.file.get failed for repo "acme/repo" path "missing/file.txt": HTTP 404: Not Found',
+): ToolResult {
   return {
-    name: 'github_get_file',
+    name: 'github',
     success: false,
     error: message,
     errorType: 'execution',
@@ -26,7 +28,7 @@ function githubFailure(message = 'Tool execution failed: HTTP 404: Not Found'): 
 }
 
 describe('enforceGitHubFileGrounding', () => {
-  it('replaces reply when an unverified file path is claimed after github_get_file failures', () => {
+  it('replaces reply when an unverified file path is claimed after github file.get failures', () => {
     const result = enforceGitHubFileGrounding(
       'Found it in `src/prompts.ts` and here is the content.',
       [githubFailure(), githubSuccess('prompts/system-prompt.txt')],
@@ -48,7 +50,7 @@ describe('enforceGitHubFileGrounding', () => {
     expect(result.replyText).toBe('The prompt is in `prompts/system-prompt.txt`.');
   });
 
-  it('does not replace reply when there are no github_get_file failures', () => {
+  it('does not replace reply when there are no github file.get failures', () => {
     const result = enforceGitHubFileGrounding(
       'The prompt is in `src/prompts.ts`.',
       [githubSuccess('src/prompts.ts')],

@@ -3,6 +3,7 @@
  */
 import { z } from 'zod';
 import { sanitizeJsonSchemaForProvider } from '../utils/json-schema';
+import { buildToolErrorDetails, extractToolErrorDetails, type ToolErrorDetails } from './toolErrors';
 
 // Guardrail against runaway or malicious tool payloads (for example oversized base64 blobs).
 // Must be large enough to support legitimate multipart/file workflows.
@@ -66,7 +67,12 @@ export type ToolValidationResult<TArgs = unknown> =
 /** Return shape for tool execution outcomes. */
 export type ToolExecutionResult =
   | { success: true; result: unknown }
-  | { success: false; error: string; errorType: 'validation' | 'execution' };
+  | {
+      success: false;
+      error: string;
+      errorType: 'validation' | 'execution';
+      errorDetails?: ToolErrorDetails;
+    };
 
 /** Describe tool schema format expected by OpenAI-compatible providers. */
 export interface OpenAIToolSpec {
@@ -203,7 +209,12 @@ export class ToolRegistry {
     if (!validation.success) {
       // TS should narrow this, but if not, we access error safely
       const error = 'error' in validation ? validation.error : 'Validation failed';
-      return { success: false, error, errorType: 'validation' };
+      return {
+        success: false,
+        error,
+        errorType: 'validation',
+        errorDetails: buildToolErrorDetails({ category: 'validation' }),
+      };
     }
 
     const tool = this.tools.get(call.name)!;
@@ -212,10 +223,12 @@ export class ToolRegistry {
       return { success: true, result };
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
+      const errorDetails = extractToolErrorDetails(err) ?? undefined;
       return {
         success: false,
         error: `Tool execution failed: ${message}`,
         errorType: 'execution',
+        errorDetails,
       };
     }
   }

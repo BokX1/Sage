@@ -40,21 +40,19 @@ const tools = [
     { name: 'members.remove_role', short: 'Remove Role', desc: 'Remove a role from a server member', cat: 'discord', color: '#7AA2F7' },
     { name: 'rest', short: 'REST Raw', desc: 'Arbitrary Discord REST API execution', cat: 'discord', color: '#7AA2F7' },
     // Search (amber)
-    { name: 'web_search', short: 'Web Search', desc: 'Multi-provider search (Tavily → Exa → SearXNG)', cat: 'search', color: '#E0AF68' },
-    { name: 'web_scrape', short: 'Web Extract', desc: 'Deep page scraping with provider fallback chain', cat: 'search', color: '#E0AF68' },
-    { name: 'web_read', short: 'Page Text', desc: 'Extract clean text from any URL', cat: 'search', color: '#E0AF68' },
+    { name: 'web', short: 'Web', desc: 'Unified web research (search/read/extract/research) with provider fallback', cat: 'search', color: '#E0AF68' },
     { name: 'wikipedia_search', short: 'Wikipedia', desc: 'Search and extract Wikipedia articles', cat: 'search', color: '#E0AF68' },
     { name: 'stack_overflow_search', short: 'Stack Overflow', desc: 'Search Stack Overflow for code solutions', cat: 'search', color: '#E0AF68' },
     // Dev (purple)
-    { name: 'github_search_code', short: 'Code Search', desc: 'Search code across GitHub repositories', cat: 'dev', color: '#BB9AF7' },
-    { name: 'github_get_file', short: 'Get File', desc: 'Read specific files from GitHub repos', cat: 'dev', color: '#BB9AF7' },
-    { name: 'github_repo', short: 'Repo Info', desc: 'Get repository metadata and structure', cat: 'dev', color: '#BB9AF7' },
+    { name: 'github', short: 'GitHub', desc: 'Unified GitHub (repo/code/file paging+ranges/issues+PRs/commits)', cat: 'dev', color: '#BB9AF7' },
     { name: 'npm_info', short: 'NPM Package', desc: 'Lookup npm package details and versions', cat: 'dev', color: '#BB9AF7' },
+    { name: 'workflow', short: 'Workflow', desc: 'Composable one-shot workflows (e.g. npm → GitHub code search)', cat: 'dev', color: '#BB9AF7' },
     // Generation (green)
     { name: 'image_generate', short: 'Image Gen', desc: 'Generate images with agentic prompt refinement', cat: 'gen', color: '#78b846' },
     // System (green)
     { name: 'system_plan', short: 'Reflection', desc: 'Internal reasoning step before complex actions', cat: 'system', color: '#78b846' },
     { name: 'system_time', short: 'DateTime', desc: 'Get current date, time, and UTC offset', cat: 'system', color: '#78b846' },
+    { name: 'system_tool_stats', short: 'Tool Stats', desc: 'Inspect in-process tool latency, caching, and failure stats', cat: 'system', color: '#78b846' },
 ];
 
 const categories = [

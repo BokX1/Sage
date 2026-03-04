@@ -6,21 +6,14 @@ import { isLoggingEnabled } from '../settings/guildChannelSettings';
 import { config as appConfig } from '../../config';
 import { PrismaMessageStore } from '../awareness/prismaMessageStore';
 import { trimChannelMessages } from '../awareness/channelRingBuffer';
+import { normalizePositiveInt } from '../utils/numbers';
 
 const prismaMessageStore = new PrismaMessageStore();
 
-/** Normalize numeric limits to a positive integer with a safe fallback. */
-function toPositiveInt(value: number | undefined, fallback: number): number {
-  if (!Number.isFinite(value)) {
-    return fallback;
-  }
-  return Math.max(1, Math.floor(value as number));
-}
-
 /** Resolve persisted message retention cap from config with startup-limit fallback. */
 function resolveDbRetentionLimit(fallbackLimit: number): number {
-  const normalizedFallback = toPositiveInt(fallbackLimit, 1);
-  return toPositiveInt(appConfig.MESSAGE_DB_MAX_MESSAGES_PER_CHANNEL as number | undefined, normalizedFallback);
+  const normalizedFallback = normalizePositiveInt(fallbackLimit, 1);
+  return normalizePositiveInt(appConfig.MESSAGE_DB_MAX_MESSAGES_PER_CHANNEL as number | undefined, normalizedFallback);
 }
 
 /**

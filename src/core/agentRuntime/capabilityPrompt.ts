@@ -105,7 +105,7 @@ export function buildCapabilityPromptSection(
       ? '- Discord tool behavior: use the `discord` tool with action-based calls for memory, retrieval, and safe interactions. Admin-only actions and writes may require approval.'
       : '- Discord tool behavior: you do not have access to Discord memory/actions via tools this turn.',
     hasDiscordTool
-      ? '- Attachment memory behavior: historical non-image files are cached outside transcript; use `discord` actions `files.list_channel` or `files.list_server` (server-wide is permission-filtered) to retrieve file content on demand.'
+      ? '- Attachment memory behavior: historical non-image files are cached outside transcript; when transcript notes include `attachment:<id>` you can call `discord` action `files.read_attachment` directly. Otherwise use `files.list_channel`/`files.list_server` or `files.find_channel` to locate attachments.'
       : '- Attachment memory behavior: you do not have access to retrieve historical files this turn.',
     ...discordActionIndexLines,
     ...discordGuardrailLines,
@@ -170,6 +170,10 @@ function buildToolSelectionGuide(activeTools: string[]): string {
     lines.push('ADVANCED TIMEZONE/CALENDAR MATH? → system_time (For relative time like "tomorrow", calculate it yourself using current_time_utc in agent_state)');
   }
 
+  if (activeTools.includes('system_tool_stats')) {
+    lines.push('TOOL LATENCY/CACHE DEBUG? → system_tool_stats');
+  }
+
   if (activeTools.includes('discord')) {
     lines.push('DISCORD MEMORY/DATA?');
     lines.push('  User profile → discord: memory.get_user');
@@ -177,38 +181,50 @@ function buildToolSelectionGuide(activeTools: string[]): string {
     lines.push('  Server overview → discord: memory.get_server');
     lines.push('  Archived summaries → discord: memory.channel_archives');
     lines.push('  Exact message quotes → discord: messages.search_history');
-    lines.push('  Message context → discord: messages.get_context (requires message_id from search_history)');
+    lines.push('  One-shot search+context → discord: messages.search_with_context');
+    lines.push('  Message context → discord: messages.get_context (requires messageId)');
+    lines.push('  Server-wide search → discord: messages.search_guild (not autopilot)');
+    lines.push('  User timeline → discord: messages.user_timeline (not autopilot)');
     lines.push('  Channel files → discord: files.list_channel / files.find_channel');
     lines.push('  Server files → discord: files.list_server / files.find_server');
+    lines.push('  Read attachment (paged) → discord: files.read_attachment');
     lines.push('  Social graph → discord: analytics.get_social_graph');
+    lines.push('  Top relationships → discord: analytics.top_relationships (not autopilot)');
     lines.push('  Voice stats → discord: analytics.get_voice_analytics');
     lines.push('  Voice sessions → discord: analytics.voice_summaries');
     lines.push('  Bot invite URL → discord: oauth2.invite_url (admin only)');
     lines.push('  Discord Writes & Admin Actions (react, pin, create channels, etc.) → see exact list in `agent_state.tool_capabilities` JSON');
   }
 
-  if (activeTools.includes('web_search') || activeTools.includes('web_read') || activeTools.includes('web_scrape')) {
+  if (activeTools.includes('web')) {
     lines.push('REAL-TIME WEB INFO?');
-    if (activeTools.includes('web_search')) lines.push('  Search the web → web_search');
-    if (activeTools.includes('web_read')) lines.push('  Read a specific URL → web_read');
-    if (activeTools.includes('web_scrape')) lines.push('  Extract specific data from URL → web_scrape (targeted extraction, not full dump)');
+    lines.push('  Search the web → web (action=search)');
+    lines.push('  Read a specific URL → web (action=read)');
+    lines.push('  Read a large URL (paged) → web (action=read.page)');
+    lines.push('  Extract specific data from URL → web (action=extract)');
+    lines.push('  One-shot search+read (optional link-follow) → web (action=research)');
   }
 
-  if (activeTools.includes('github_repo') || activeTools.includes('github_search_code') || activeTools.includes('github_get_file')) {
+  if (activeTools.includes('github')) {
     lines.push('GITHUB DATA?');
-    if (activeTools.includes('github_repo')) lines.push('  Repo overview → github_repo');
-    if (activeTools.includes('github_search_code')) lines.push('  Find code across files → github_search_code');
-    if (activeTools.includes('github_get_file')) lines.push('  Read specific file → github_get_file (use line ranges for large files)');
+    lines.push('  Repo overview → github (action=repo.get)');
+    lines.push('  Find code across files → github (action=code.search)');
+    lines.push('  Read file → github (action=file.get / file.page / file.ranges / file.snippet)');
+    lines.push('  Issues/PRs → github (action=issues.search / prs.search)');
+    lines.push('  Recent commits → github (action=commits.list)');
   }
 
   if (activeTools.includes('npm_info')) {
     lines.push('NPM PACKAGE INFO? → npm_info');
   }
+  if (activeTools.includes('workflow')) {
+    lines.push('COMPOSED WORKFLOWS? → workflow (e.g. action=npm.github_code_search)');
+  }
   if (activeTools.includes('wikipedia_search')) {
     lines.push('ENCYCLOPEDIA FACTS? → wikipedia_search');
   }
   if (activeTools.includes('stack_overflow_search')) {
-    lines.push('CODING Q&A? → stack_overflow_search');
+    lines.push('CODING Q&A? → stack_overflow_search (set includeAcceptedAnswer=true for answer body)');
   }
   if (activeTools.includes('image_generate')) {
     lines.push('IMAGE CREATION? → image_generate');
@@ -234,8 +250,8 @@ function buildToolSelectionGuide(activeTools: string[]): string {
   if (activeTools.includes('discord')) {
     lines.push('- Do NOT call memory.get_channel when user wants specific quotes → use messages.search_history');
   }
-  if (activeTools.includes('web_search') && activeTools.includes('discord')) {
-    lines.push('- Do NOT call web_search for Discord-internal questions → use discord memory tools');
+  if (activeTools.includes('web') && activeTools.includes('discord')) {
+    lines.push('- Do NOT call web for Discord-internal questions → use discord memory tools');
   }
   lines.push('- Do NOT call multiple tools that return the same data → pick the most specific one');
 

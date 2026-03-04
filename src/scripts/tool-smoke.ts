@@ -36,7 +36,7 @@ async function runCheck(check: SmokeCheck): Promise<{ passed: boolean; optional:
 async function main(): Promise<void> {
   const checks: SmokeCheck[] = [
     {
-      name: 'web_search',
+      name: 'web.search',
       run: async () => {
         const result = await runWebSearch({
           query: 'latest OpenAI release notes',
@@ -49,7 +49,7 @@ async function main(): Promise<void> {
       },
     },
     {
-      name: 'web_read',
+      name: 'web.read',
       run: async () => {
         const result = await scrapeWebPage({
           url: 'https://example.com',
@@ -72,7 +72,7 @@ async function main(): Promise<void> {
       },
     },
     {
-      name: 'github_repo',
+      name: 'github.repo.get',
       run: async () => {
         const result = await lookupGitHubRepo({
           repo: 'openai/openai-node',

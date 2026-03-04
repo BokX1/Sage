@@ -1,5 +1,6 @@
 import { logger } from '../core/utils/logger';
 import { prisma } from '../core/db/prisma-client';
+import { normalizeNonNegativeInt } from '../core/utils/numbers';
 import {
   ensureKafkaProducerAvailable,
   publishInteractionStrict,
@@ -38,10 +39,7 @@ function getRelationshipEdgeClient(): PrismaRelationshipEdgeClient {
 
 function toNonNegativeInt(value: unknown): number {
   const parsed = typeof value === 'number' ? value : Number(value);
-  if (!Number.isFinite(parsed) || parsed <= 0) {
-    return 0;
-  }
-  return Math.floor(parsed);
+  return normalizeNonNegativeInt(Number.isFinite(parsed) ? parsed : undefined, 0);
 }
 
 function toIsoTimestamp(epochMs: unknown, fallbackIso: string): string {

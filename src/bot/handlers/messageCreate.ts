@@ -15,6 +15,7 @@ import { VoiceManager } from '../../core/voice/voiceManager';
 import { transcribeDiscordVoiceMessageAttachment } from '../../core/voice/voiceMessageTranscriber';
 import { upsertIngestedAttachment } from '../../core/attachments/ingestedAttachmentRepo';
 import { deleteAttachmentChunks, ingestAttachmentText } from '../../core/embeddings';
+import { normalizeNonNegativeInt, normalizePositiveInt } from '../../core/utils/numbers';
 import {
   appendAttachmentBlocksToText,
   buildAttachmentBlockFromResult,
@@ -46,22 +47,6 @@ let cachedWakeWords: string[] | null = null;
 let cachedWakeWordPrefixes: string[] | null = null;
 const ATTACHMENT_INTENT_PATTERN =
   /\b(attachment|attached|file|files|document|doc|pdf|read|review|analy[sz]e|summari[sz]e|inspect|parse|look at)\b/i;
-
-/** Normalize integer config values with non-negative lower bound. */
-function toNonNegativeInt(value: number, fallback: number): number {
-  if (!Number.isFinite(value)) {
-    return fallback;
-  }
-  return Math.max(0, Math.floor(value));
-}
-
-/** Normalize integer config values with positive lower bound. */
-function toPositiveInt(value: number, fallback: number): number {
-  if (!Number.isFinite(value)) {
-    return fallback;
-  }
-  return Math.max(1, Math.floor(value));
-}
 
 function getWakeWords(): string[] {
   if (!cachedWakeWords) {
@@ -95,7 +80,7 @@ function buildAttachmentIngestNotes(params: {
   selectedAttachmentCount: number;
   shouldPersistAttachmentCache: boolean;
   cachedExtractableCount: number;
-  cachedAttachmentNames: string[];
+  cachedAttachmentRefs: Array<{ filename: string; attachmentId: string }>;
   skippedByLimitCount: number;
   maxAttachmentsPerMessage: number;
 }): string[] {
@@ -106,11 +91,14 @@ function buildAttachmentIngestNotes(params: {
       notes.push(
         `[System: Attachment cache processed ${params.selectedAttachmentCount} non-image attachment(s); extractable cached files: ${params.cachedExtractableCount}.]`,
       );
-      if (params.cachedAttachmentNames.length > 0) {
-        const preview = params.cachedAttachmentNames.slice(0, 3).join(', ');
-        const overflow = params.cachedAttachmentNames.length - 3;
+      if (params.cachedAttachmentRefs.length > 0) {
+        const preview = params.cachedAttachmentRefs
+          .slice(0, 3)
+          .map((ref) => `${ref.filename} (attachment:${ref.attachmentId})`)
+          .join(', ');
+        const overflow = params.cachedAttachmentRefs.length - 3;
         notes.push(
-          `[System: Cached file references: ${preview}${overflow > 0 ? ` (+${overflow} more)` : ''}. Full file content is retrievable on demand.]`,
+          `[System: Cached file references: ${preview}${overflow > 0 ? ` (+${overflow} more)` : ''}. Read content via discord files.read_attachment using attachmentId.]`,
         );
       }
     } else {
@@ -133,6 +121,7 @@ function buildRuntimeAttachmentBlocks(params: {
   includeAttachmentBlocks: boolean;
   attachmentBlocks: string[];
   shouldPersistAttachmentCache: boolean;
+  cachedAttachmentRefs: Array<{ filename: string; attachmentId: string }>;
 }): string[] {
   if (params.includeAttachmentBlocks) {
     return params.attachmentBlocks;
@@ -142,11 +131,24 @@ function buildRuntimeAttachmentBlocks(params: {
     return [];
   }
 
-  return [
+  const blocks: string[] = [
     params.shouldPersistAttachmentCache
       ? '[System: Non-image attachments were cached. If needed, retrieve file content from the channel attachment cache.]'
       : '[System: Non-image attachments were processed for this turn only. Persistent cache is unavailable in this channel.]',
   ];
+
+  if (params.shouldPersistAttachmentCache && params.cachedAttachmentRefs.length > 0) {
+    const preview = params.cachedAttachmentRefs
+      .slice(0, 3)
+      .map((ref) => `${ref.filename} (attachment:${ref.attachmentId})`)
+      .join(', ');
+    const overflow = params.cachedAttachmentRefs.length - 3;
+    blocks.push(
+      `[System: Cached file references: ${preview}${overflow > 0 ? ` (+${overflow} more)` : ''}. Read via discord files.read_attachment using attachmentId.]`,
+    );
+  }
+
+  return blocks;
 }
 
 function queueAttachmentChunkIngestion(params: {
@@ -183,7 +185,7 @@ async function persistAttachmentCache(params: {
   attachmentResult: FetchAttachmentResult;
   extractedText: string | null;
   errorText: string | null;
-}): Promise<void> {
+}): Promise<string | null> {
   try {
     const ingestedRecord = await upsertIngestedAttachment({
       guildId: params.message.guildId ?? null,
@@ -209,6 +211,7 @@ async function persistAttachmentCache(params: {
         channelId: params.message.channelId,
       });
     }
+    return ingestedRecord?.id ?? null;
   } catch (error) {
     logger.warn(
       {
@@ -219,6 +222,7 @@ async function persistAttachmentCache(params: {
       },
       'Attachment cache persist failed (non-fatal)',
     );
+    return null;
   }
 }
 
@@ -322,24 +326,23 @@ export async function handleMessageCreate(message: Message) {
       : null;
 
     const nonImageAttachments = getNonImageAttachments(message);
-    const maxAttachmentsPerMessage = toPositiveInt(
+    const maxAttachmentsPerMessage = normalizePositiveInt(
       appConfig.FILE_INGEST_MAX_ATTACHMENTS_PER_MESSAGE,
       1,
     );
-    const perFileMaxBytes = toNonNegativeInt(appConfig.FILE_INGEST_MAX_BYTES_PER_FILE, 0);
-    const perMessageMaxBytes = toNonNegativeInt(
+    const perFileMaxBytes = normalizeNonNegativeInt(appConfig.FILE_INGEST_MAX_BYTES_PER_FILE, 0);
+    const perMessageMaxBytes = normalizeNonNegativeInt(
       appConfig.FILE_INGEST_MAX_TOTAL_BYTES_PER_MESSAGE,
       0,
     );
-    const ingestTimeoutMs = toPositiveInt(appConfig.FILE_INGEST_TIMEOUT_MS, 45_000);
-    const voiceSttMaxBytes = toNonNegativeInt(appConfig.VOICE_MESSAGE_STT_MAX_BYTES, perFileMaxBytes);
-    const voiceSttMaxSeconds = toPositiveInt(appConfig.VOICE_MESSAGE_STT_MAX_SECONDS, 120);
+    const ingestTimeoutMs = normalizePositiveInt(appConfig.FILE_INGEST_TIMEOUT_MS, 45_000);
+    const voiceSttMaxBytes = normalizeNonNegativeInt(appConfig.VOICE_MESSAGE_STT_MAX_BYTES, perFileMaxBytes);
+    const voiceSttMaxSeconds = normalizePositiveInt(appConfig.VOICE_MESSAGE_STT_MAX_SECONDS, 120);
     const selectedAttachments = nonImageAttachments.slice(0, maxAttachmentsPerMessage);
     const skippedByLimitCount = Math.max(0, nonImageAttachments.length - selectedAttachments.length);
     const attachmentBlocks: string[] = [];
     const ingestAttachmentNotes: string[] = [];
-    const cachedAttachmentNames: string[] = [];
-    let cachedExtractableCount = 0;
+    const cachedAttachmentRefs: Array<{ filename: string; attachmentId: string }> = [];
     const shouldPersistAttachmentCache =
       !!message.guildId && isLoggingEnabled(message.guildId, message.channelId);
     const shouldTranscribeVoiceMessages =
@@ -446,13 +449,8 @@ export async function handleMessageCreate(message: Message) {
           : attachmentStatus === 'too_large' || attachmentStatus === 'error'
             ? attachmentResult.message
             : null;
-      if (extractedText) {
-        cachedExtractableCount += 1;
-        cachedAttachmentNames.push(attachmentName);
-      }
-
       if (shouldPersistAttachmentCache) {
-        await persistAttachmentCache({
+        const persistedAttachmentId = await persistAttachmentCache({
           message,
           index,
           attachmentName,
@@ -463,6 +461,9 @@ export async function handleMessageCreate(message: Message) {
           extractedText,
           errorText,
         });
+        if (extractedText && persistedAttachmentId) {
+          cachedAttachmentRefs.push({ filename: attachmentName, attachmentId: persistedAttachmentId });
+        }
       }
 
       const consumedBytes =
@@ -474,12 +475,13 @@ export async function handleMessageCreate(message: Message) {
       remainingAttachmentBytes = Math.max(0, remainingAttachmentBytes - consumedBytes);
     }
 
+    const cachedExtractableCount = cachedAttachmentRefs.length;
     ingestAttachmentNotes.push(
       ...buildAttachmentIngestNotes({
         selectedAttachmentCount: selectedAttachments.length,
         shouldPersistAttachmentCache,
         cachedExtractableCount,
-        cachedAttachmentNames,
+        cachedAttachmentRefs,
         skippedByLimitCount,
         maxAttachmentsPerMessage,
       }),
@@ -573,6 +575,7 @@ export async function handleMessageCreate(message: Message) {
         includeAttachmentBlocks,
         attachmentBlocks,
         shouldPersistAttachmentCache,
+        cachedAttachmentRefs,
       });
       const userTextWithAttachments = appendAttachmentBlocksToText(
         invocation.cleanedText,

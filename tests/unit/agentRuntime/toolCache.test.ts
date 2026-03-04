@@ -51,17 +51,15 @@ describe('toolCache', () => {
   it('expires entries older than the configured TTL', () => {
     const ttlMs = 5_000;
     const cache = new ToolResultCache(10, ttlMs);
-    const now = Date.now();
 
-    // Manually inject an entry with a past createdAt
-    cache.set('get_time', {}, { time: '12:00 PM' });
+    const entry = cache.set('get_time', {}, { time: '12:00 PM' });
 
     // Immediately available
     expect(cache.get('get_time', {})?.result).toEqual({ time: '12:00 PM' });
 
     // Stub Date.now to simulate time passing beyond TTL
     const originalDateNow = Date.now;
-    Date.now = () => now + ttlMs + 1;
+    Date.now = () => entry.createdAt + ttlMs + 1;
 
     try {
       expect(cache.get('get_time', {})).toBeNull();

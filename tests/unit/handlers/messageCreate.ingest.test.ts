@@ -14,7 +14,9 @@ const mockIsRateLimited = vi.hoisted(() => vi.fn(() => false));
 const mockIsLoggingEnabled = vi.hoisted(() => vi.fn(() => true));
 const mockGenerateTraceId = vi.hoisted(() => vi.fn(() => 'test-trace-id'));
 const mockIngestEvent = vi.hoisted(() => vi.fn());
-const mockUpsertIngestedAttachment = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
+const mockUpsertIngestedAttachment = vi.hoisted(() =>
+  vi.fn().mockResolvedValue({ id: 'attachment-row-default' }),
+);
 const mockDeleteAttachmentChunks = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
 const mockIngestAttachmentText = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
 
@@ -424,6 +426,9 @@ describe('messageCreate - ingest + reply gating', () => {
         byteLength: 24,
         mimeType: 'text/markdown',
       });
+    mockUpsertIngestedAttachment
+      .mockResolvedValueOnce({ id: 'attachment-row-alpha' })
+      .mockResolvedValueOnce({ id: 'attachment-row-beta' });
 
     const message = createMockMessage({
       content: '<@123> review these',
@@ -468,6 +473,8 @@ describe('messageCreate - ingest + reply gating', () => {
     expect(mockIngestEvent).toHaveBeenCalledTimes(1);
     const ingestPayload = mockIngestEvent.mock.calls[0]?.[0] as { content?: string };
     expect(ingestPayload.content).toContain('Attachment cache processed 2 non-image attachment(s)');
+    expect(ingestPayload.content).toContain('Cached file references');
+    expect(ingestPayload.content).toContain('attachment:attachment-row-alpha');
     expect(ingestPayload.content).not.toContain('BEGIN FILE ATTACHMENT');
   });
 

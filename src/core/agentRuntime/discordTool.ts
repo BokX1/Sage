@@ -5,14 +5,18 @@ import {
   lookupChannelMemory,
   searchChannelArchives,
   searchChannelMessages,
+  searchGuildMessages,
   lookupChannelMessage,
   lookupChannelFileCache,
   lookupServerFileCache,
+  readIngestedAttachmentText,
   searchAttachmentChunksInChannel,
   searchAttachmentChunksInGuild,
   lookupSocialGraph,
+  lookupTopSocialGraphEdges,
   lookupVoiceAnalytics,
   lookupVoiceSessionSummaries,
+  lookupUserMessageTimeline,
 } from './toolIntegrations';
 import {
   discordModerationActionRequestSchema,
@@ -149,6 +153,14 @@ const discordToolSchema = z.discriminatedUnion('action', [
 
   z.object({
     think: requiredThinkField,
+    action: z.literal('files.read_attachment').describe('Read cached attachment text content in pages (no streaming; use continuation fields).'),
+    attachmentId: z.string().trim().min(1).max(64),
+    startChar: z.number().int().min(0).max(50_000_000).optional(),
+    maxChars: z.number().int().min(200).max(20_000).optional(),
+  }),
+
+  z.object({
+    think: requiredThinkField,
     action: z.literal('messages.search_history').describe('Search via hybrid, semantic, lexical, or regex patterns through channel message history.'),
     channelId: z
       .string()
@@ -164,6 +176,56 @@ const discordToolSchema = z.discriminatedUnion('action', [
     regexPattern: z.string().trim().min(1).max(500).optional(),
     sinceIso: z.string().trim().min(1).max(80).optional(),
     untilIso: z.string().trim().min(1).max(80).optional(),
+    sinceHours: z.number().int().min(1).max(2_160).optional(),
+    sinceDays: z.number().int().min(1).max(365).optional(),
+  }).superRefine((value, ctx) => {
+    const hasSinceIso = value.sinceIso !== undefined;
+    const hasSinceHours = value.sinceHours !== undefined;
+    const hasSinceDays = value.sinceDays !== undefined;
+    const sinceVariants = [hasSinceIso, hasSinceHours, hasSinceDays].filter(Boolean).length;
+    if (sinceVariants > 1) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Provide at most one of sinceIso, sinceHours, or sinceDays.',
+        path: ['sinceIso'],
+      });
+    }
+  }),
+
+  z.object({
+    think: requiredThinkField,
+    action: z.literal('messages.search_with_context').describe('Search channel history and immediately expand context around the best match.'),
+    channelId: z
+      .string()
+      .trim()
+      .min(1)
+      .max(64)
+      .optional()
+      .describe('Optional target channelId. Defaults to the current channel.'),
+    query: z.string().trim().min(2).max(500),
+    topK: z.number().int().min(1).max(20).optional(),
+    maxChars: z.number().int().min(300).max(12_000).optional(),
+    mode: z.enum(['hybrid', 'semantic', 'lexical', 'regex']).optional(),
+    regexPattern: z.string().trim().min(1).max(500).optional(),
+    sinceIso: z.string().trim().min(1).max(80).optional(),
+    untilIso: z.string().trim().min(1).max(80).optional(),
+    sinceHours: z.number().int().min(1).max(2_160).optional(),
+    sinceDays: z.number().int().min(1).max(365).optional(),
+    before: z.number().int().min(0).max(20).optional(),
+    after: z.number().int().min(0).max(20).optional(),
+    contextMaxChars: z.number().int().min(300).max(12_000).optional(),
+  }).superRefine((value, ctx) => {
+    const hasSinceIso = value.sinceIso !== undefined;
+    const hasSinceHours = value.sinceHours !== undefined;
+    const hasSinceDays = value.sinceDays !== undefined;
+    const sinceVariants = [hasSinceIso, hasSinceHours, hasSinceDays].filter(Boolean).length;
+    if (sinceVariants > 1) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Provide at most one of sinceIso, sinceHours, or sinceDays.',
+        path: ['sinceIso'],
+      });
+    }
   }),
 
   z.object({
@@ -184,9 +246,66 @@ const discordToolSchema = z.discriminatedUnion('action', [
 
   z.object({
     think: requiredThinkField,
+    action: z.literal('messages.search_guild').describe('Search raw message history across the entire server (results are permission-filtered).'),
+    query: z.string().trim().min(2).max(500),
+    topK: z.number().int().min(1).max(20).optional(),
+    maxChars: z.number().int().min(300).max(12_000).optional(),
+    mode: z.enum(['hybrid', 'semantic', 'lexical', 'regex']).optional(),
+    regexPattern: z.string().trim().min(1).max(500).optional(),
+    sinceIso: z.string().trim().min(1).max(80).optional(),
+    untilIso: z.string().trim().min(1).max(80).optional(),
+    sinceHours: z.number().int().min(1).max(2_160).optional(),
+    sinceDays: z.number().int().min(1).max(365).optional(),
+  }).superRefine((value, ctx) => {
+    const hasSinceIso = value.sinceIso !== undefined;
+    const hasSinceHours = value.sinceHours !== undefined;
+    const hasSinceDays = value.sinceDays !== undefined;
+    const sinceVariants = [hasSinceIso, hasSinceHours, hasSinceDays].filter(Boolean).length;
+    if (sinceVariants > 1) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Provide at most one of sinceIso, sinceHours, or sinceDays.',
+        path: ['sinceIso'],
+      });
+    }
+  }),
+
+  z.object({
+    think: requiredThinkField,
+    action: z.literal('messages.user_timeline').describe('Show recent messages from a user across the server (results are permission-filtered).'),
+    userId: z.string().trim().min(1).max(64).optional(),
+    limit: z.number().int().min(1).max(50).optional(),
+    maxChars: z.number().int().min(200).max(6_000).optional(),
+    sinceIso: z.string().trim().min(1).max(80).optional(),
+    untilIso: z.string().trim().min(1).max(80).optional(),
+    sinceHours: z.number().int().min(1).max(2_160).optional(),
+    sinceDays: z.number().int().min(1).max(365).optional(),
+  }).superRefine((value, ctx) => {
+    const hasSinceIso = value.sinceIso !== undefined;
+    const hasSinceHours = value.sinceHours !== undefined;
+    const hasSinceDays = value.sinceDays !== undefined;
+    const sinceVariants = [hasSinceIso, hasSinceHours, hasSinceDays].filter(Boolean).length;
+    if (sinceVariants > 1) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Provide at most one of sinceIso, sinceHours, or sinceDays.',
+        path: ['sinceIso'],
+      });
+    }
+  }),
+
+  z.object({
+    think: requiredThinkField,
     action: z.literal('analytics.get_social_graph').describe('Retrieve the social graph relationships for a specific user.'),
     userId: z.string().trim().min(1).max(64).optional(),
     maxEdges: z.number().int().min(1).max(30).optional(),
+    maxChars: z.number().int().min(200).max(12_000).optional(),
+  }),
+
+  z.object({
+    think: requiredThinkField,
+    action: z.literal('analytics.top_relationships').describe('Show the top interaction pairs in this server (who hangs out with whom).'),
+    limit: z.number().int().min(1).max(30).optional(),
     maxChars: z.number().int().min(200).max(12_000).optional(),
   }),
 
@@ -477,6 +596,22 @@ function parseHexColor(value: string): number {
   return parsed;
 }
 
+function deriveSinceIso(params: {
+  sinceIso?: string;
+  sinceHours?: number;
+  sinceDays?: number;
+}): string | undefined {
+  const sinceIso = params.sinceIso?.trim();
+  if (sinceIso) return sinceIso;
+  if (typeof params.sinceHours === 'number' && Number.isFinite(params.sinceHours)) {
+    return new Date(Date.now() - params.sinceHours * 60 * 60 * 1000).toISOString();
+  }
+  if (typeof params.sinceDays === 'number' && Number.isFinite(params.sinceDays)) {
+    return new Date(Date.now() - params.sinceDays * 24 * 60 * 60 * 1000).toISOString();
+  }
+  return undefined;
+}
+
 function queueDiscordRestWrite(params: {
   ctx: ToolExecutionContext;
   actionLabel: string;
@@ -508,9 +643,14 @@ function isReadOnlyDiscordToolCall(args: unknown): boolean {
     case 'files.list_server':
     case 'files.find_channel':
     case 'files.find_server':
+    case 'files.read_attachment':
     case 'messages.search_history':
+    case 'messages.search_with_context':
     case 'messages.get_context':
+    case 'messages.search_guild':
+    case 'messages.user_timeline':
     case 'analytics.get_social_graph':
+    case 'analytics.top_relationships':
     case 'analytics.get_voice_analytics':
     case 'analytics.voice_summaries':
     case 'oauth2.invite_url':
@@ -665,11 +805,27 @@ export const discordTool: ToolDefinition<DiscordToolArgs> = {
         });
       }
 
+      case 'files.read_attachment': {
+        assertNotAutopilot(ctx.invokedBy, 'files.read_attachment');
+        return readIngestedAttachmentText({
+          guildId: ctx.guildId ?? null,
+          requesterUserId: ctx.userId,
+          attachmentId: args.attachmentId,
+          startChar: args.startChar,
+          maxChars: args.maxChars,
+        });
+      }
+
       case 'messages.search_history': {
         const targetChannelId = (args.channelId?.trim() || ctx.channelId).trim();
         if (ctx.invokedBy === 'autopilot' && targetChannelId !== ctx.channelId) {
           throw new Error('Cross-channel message history search is disabled in autopilot turns.');
         }
+        const sinceIso = deriveSinceIso({
+          sinceIso: args.sinceIso,
+          sinceHours: args.sinceHours,
+          sinceDays: args.sinceDays,
+        });
         return searchChannelMessages({
           guildId: ctx.guildId ?? null,
           channelId: targetChannelId,
@@ -679,9 +835,65 @@ export const discordTool: ToolDefinition<DiscordToolArgs> = {
           maxChars: args.maxChars,
           mode: args.mode,
           regexPattern: args.regexPattern,
-          sinceIso: args.sinceIso,
+          sinceIso,
           untilIso: args.untilIso,
         });
+      }
+
+      case 'messages.search_with_context': {
+        const targetChannelId = (args.channelId?.trim() || ctx.channelId).trim();
+        if (ctx.invokedBy === 'autopilot' && targetChannelId !== ctx.channelId) {
+          throw new Error('Cross-channel message history search is disabled in autopilot turns.');
+        }
+        const sinceIso = deriveSinceIso({
+          sinceIso: args.sinceIso,
+          sinceHours: args.sinceHours,
+          sinceDays: args.sinceDays,
+        });
+        const search = await searchChannelMessages({
+          guildId: ctx.guildId ?? null,
+          channelId: targetChannelId,
+          requesterUserId: ctx.userId,
+          query: args.query,
+          topK: args.topK,
+          maxChars: args.maxChars,
+          mode: args.mode,
+          regexPattern: args.regexPattern,
+          sinceIso,
+          untilIso: args.untilIso,
+        });
+
+        const items = search.items;
+        const bestMessageId =
+          Array.isArray(items) && items.length > 0 && items[0] && typeof items[0] === 'object'
+            ? ((items[0] as Record<string, unknown>).messageId as string | undefined)
+            : undefined;
+
+        if (!bestMessageId) {
+          return {
+            ...search,
+            context: null,
+          };
+        }
+
+        const context = await lookupChannelMessage({
+          guildId: ctx.guildId ?? null,
+          channelId: targetChannelId,
+          requesterUserId: ctx.userId,
+          messageId: bestMessageId,
+          before: args.before ?? 5,
+          after: args.after ?? 5,
+          maxChars: args.contextMaxChars ?? args.maxChars,
+        });
+
+        return {
+          found: true,
+          action: 'messages.search_with_context',
+          channelId: targetChannelId,
+          query: args.query,
+          search,
+          context,
+        };
       }
 
       case 'messages.get_context': {
@@ -700,11 +912,59 @@ export const discordTool: ToolDefinition<DiscordToolArgs> = {
         });
       }
 
+      case 'messages.search_guild': {
+        assertNotAutopilot(ctx.invokedBy, 'messages.search_guild');
+        const sinceIso = deriveSinceIso({
+          sinceIso: args.sinceIso,
+          sinceHours: args.sinceHours,
+          sinceDays: args.sinceDays,
+        });
+        return searchGuildMessages({
+          guildId: ctx.guildId ?? null,
+          requesterUserId: ctx.userId,
+          query: args.query,
+          topK: args.topK,
+          maxChars: args.maxChars,
+          mode: args.mode,
+          regexPattern: args.regexPattern,
+          sinceIso,
+          untilIso: args.untilIso,
+        });
+      }
+
+      case 'messages.user_timeline': {
+        assertNotAutopilot(ctx.invokedBy, 'messages.user_timeline');
+        const userId = args.userId?.trim() || ctx.userId;
+        const sinceIso = deriveSinceIso({
+          sinceIso: args.sinceIso,
+          sinceHours: args.sinceHours,
+          sinceDays: args.sinceDays,
+        });
+        return lookupUserMessageTimeline({
+          guildId: ctx.guildId ?? null,
+          requesterUserId: ctx.userId,
+          userId,
+          limit: args.limit,
+          maxChars: args.maxChars,
+          sinceIso,
+          untilIso: args.untilIso,
+        });
+      }
+
       case 'analytics.get_social_graph': {
         return lookupSocialGraph({
           guildId: ctx.guildId ?? null,
           userId: args.userId?.trim() || ctx.userId,
           maxEdges: args.maxEdges,
+          maxChars: args.maxChars,
+        });
+      }
+
+      case 'analytics.top_relationships': {
+        assertNotAutopilot(ctx.invokedBy, 'analytics.top_relationships');
+        return lookupTopSocialGraphEdges({
+          guildId: ctx.guildId ?? null,
+          limit: args.limit,
           maxChars: args.maxChars,
         });
       }

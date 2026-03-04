@@ -10,7 +10,7 @@ describe('capabilityPrompt', () => {
       // Arrange
       const params = {
         model: 'kimi',
-        activeTools: ['web_search', 'web_read'],
+        activeTools: ['web'],
       };
 
       // Act
@@ -19,7 +19,7 @@ describe('capabilityPrompt', () => {
       // Assert
       expect(prompt).toContain('<execution_rules>');
       expect(prompt).toContain('Active model: kimi.');
-      expect(prompt).toContain('Runtime tools available this turn: web_search, web_read.');
+      expect(prompt).toContain('Runtime tools available this turn: web.');
       expect(prompt).toContain('Attachment memory behavior: you do not have access to retrieve historical files this turn.');
       expect(prompt).toContain('Image generation behavior: you do not have image generation capabilities this turn.');
     });
@@ -28,7 +28,7 @@ describe('capabilityPrompt', () => {
       // Arrange
       const params = {
         model: 'kimi',
-        activeTools: ['web_search', 'system_time'],
+        activeTools: ['web', 'system_time'],
       };
 
       // Act
@@ -44,7 +44,7 @@ describe('capabilityPrompt', () => {
     it('renders reasoning protocol when tools are active', () => {
       // Arrange
       const params = {
-        activeTools: ['web_search'],
+        activeTools: ['web'],
       };
 
       // Act
@@ -99,7 +99,7 @@ describe('capabilityPrompt', () => {
     it('renders web tool selection with all sub-tools', () => {
       // Arrange
       const params = {
-        activeTools: ['web_search', 'web_read', 'web_scrape'],
+        activeTools: ['web'],
       };
 
       // Act
@@ -107,9 +107,9 @@ describe('capabilityPrompt', () => {
 
       // Assert
       expect(prompt).toContain('REAL-TIME WEB INFO?');
-      expect(prompt).toContain('web_search');
-      expect(prompt).toContain('web_read');
-      expect(prompt).toContain('web_scrape');
+      expect(prompt).toContain('web (action=search)');
+      expect(prompt).toContain('web (action=read)');
+      expect(prompt).toContain('web (action=extract)');
     });
 
     it('renders guidance for image generation when tool is active', () => {
@@ -146,7 +146,7 @@ describe('capabilityPrompt', () => {
       // Arrange
       const params = {
         model: 'kimi',
-        activeTools: ['web_search', 'web_read'],
+        activeTools: ['web'],
       };
 
       // Act
@@ -158,8 +158,7 @@ describe('capabilityPrompt', () => {
       expect(stateBlock).toContain('"orchestrator": "runtime_assistant"');
       expect(stateBlock).toContain('"current_time_utc"');
       expect(stateBlock).toContain('"model": "kimi"');
-      expect(stateBlock).toContain('"web_search"');
-      expect(stateBlock).toContain('"web_read"');
+      expect(stateBlock).toContain('"web"');
     });
 
     it('includes discord tool capabilities when discord is active', () => {

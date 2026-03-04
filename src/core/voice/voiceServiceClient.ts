@@ -1,5 +1,6 @@
 import { config } from '../../config';
 import { logger } from '../utils/logger';
+import { normalizeBoundedInt } from '../utils/numbers';
 
 type TranscribeResult = {
   text: string;
@@ -11,12 +12,6 @@ type TranscribeResult = {
 function normalizeBaseUrl(raw: string): string {
   const trimmed = raw.trim();
   return trimmed.endsWith('/') ? trimmed.slice(0, -1) : trimmed;
-}
-
-function toPositiveInt(value: number | undefined, fallback: number, min: number, max: number): number {
-  if (!Number.isFinite(value) || value === undefined) return fallback;
-  const v = Math.floor(value);
-  return Math.max(min, Math.min(max, v));
 }
 
 async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: number): Promise<Response> {
@@ -52,7 +47,12 @@ export async function transcribeWav(params: {
 }): Promise<TranscribeResult> {
   const baseUrl = normalizeBaseUrl(config.VOICE_SERVICE_BASE_URL);
   const url = `${baseUrl}/v1/stt/transcribe`;
-  const timeoutMs = toPositiveInt(config.TIMEOUT_CHAT_MS as number | undefined, 45_000, 1_000, 180_000);
+  const timeoutMs = normalizeBoundedInt(
+    config.TIMEOUT_CHAT_MS as number | undefined,
+    45_000,
+    1_000,
+    180_000,
+  );
 
   const form = new FormData();
   // TS lib.dom's BlobPart typing doesn't accept Node's Buffer<ArrayBufferLike> cleanly.

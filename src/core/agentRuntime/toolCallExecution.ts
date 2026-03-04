@@ -2,7 +2,14 @@
 import { ToolExecutionContext, ToolRegistry } from './toolRegistry';
 import { logger } from '../utils/logger';
 import { metrics } from '../utils/metrics';
-import { ToolExecutionError, ToolTimeoutError, ToolValidationError, ToolErrorKind } from './toolErrors';
+import {
+  buildToolErrorDetails,
+  ToolExecutionError,
+  type ToolErrorDetails,
+  ToolTimeoutError,
+  ToolValidationError,
+  ToolErrorKind,
+} from './toolErrors';
 
 
 /** Represent one completed tool invocation result. */
@@ -19,7 +26,11 @@ export interface ToolResult {
   attachments?: ToolAttachment[];
   error?: string;
   errorType?: ToolErrorKind;
+  errorDetails?: ToolErrorDetails;
   latencyMs: number;
+  cacheHit?: boolean;
+  cacheKind?: 'round' | 'global' | 'dedupe';
+  cacheScopeKey?: string;
 }
 
 function sanitizeErrorMessage(value: string | undefined): string | undefined {
@@ -92,6 +103,7 @@ export async function executeToolWithTimeout(
         success: false,
         error: timeoutError.message,
         errorType: timeoutError.kind,
+        errorDetails: buildToolErrorDetails({ category: 'timeout', timeoutMs }),
         latencyMs: timeoutMs,
       });
     }, timeoutMs);
@@ -127,6 +139,7 @@ export async function executeToolWithTimeout(
       success: false,
       error: result.error,
       errorType: result.errorType,
+      errorDetails: result.errorDetails,
       latencyMs,
     };
   });

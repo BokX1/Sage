@@ -1,12 +1,8 @@
 import { config } from '../../config';
+import { normalizeNonNegativeInt } from '../utils/numbers';
 
 const wakewordCooldowns = new Map<string, number>();
 const channelWakewordHistory = new Map<string, number[]>();
-
-function toNonNegativeInt(value: number | undefined, fallback: number): number {
-  if (!Number.isFinite(value)) return fallback;
-  return Math.max(0, Math.floor(value as number));
-}
 
 export function shouldAllowInvocation(params: {
   channelId: string;
@@ -20,9 +16,9 @@ export function shouldAllowInvocation(params: {
 
   const now = Date.now();
   const key = `${channelId}:${userId}`;
-  const cooldownSec = toNonNegativeInt(config.WAKEWORD_COOLDOWN_SEC as number | undefined, 0);
+  const cooldownSec = normalizeNonNegativeInt(config.WAKEWORD_COOLDOWN_SEC as number | undefined, 0);
   const cooldownMs = cooldownSec * 1000;
-  const maxPerMinute = toNonNegativeInt(
+  const maxPerMinute = normalizeNonNegativeInt(
     config.WAKEWORD_MAX_RESPONSES_PER_MIN_PER_CHANNEL as number | undefined,
     0,
   );

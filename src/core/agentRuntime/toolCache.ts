@@ -1,3 +1,5 @@
+import { normalizeAtLeastInt } from '../utils/numbers';
+
 export interface ToolCacheEntry {
   key: string;
   name: string;
@@ -9,13 +11,6 @@ const DEFAULT_CACHE_MAX_ENTRIES = 50;
 const DEFAULT_CACHE_TTL_MS = 120_000;
 const MIN_CACHE_MAX_ENTRIES = 1;
 const MIN_CACHE_TTL_MS = 1_000;
-
-function normalizePositiveInteger(value: number, fallback: number, min: number): number {
-  if (!Number.isFinite(value)) {
-    return fallback;
-  }
-  return Math.max(min, Math.floor(value));
-}
 
 function stripNonSemanticArgs(value: unknown): unknown {
   if (value === null || typeof value !== 'object') {
@@ -63,8 +58,8 @@ export class ToolResultCache {
   private readonly entries: Map<string, ToolCacheEntry>;
 
   constructor(maxEntries = DEFAULT_CACHE_MAX_ENTRIES, ttlMs = DEFAULT_CACHE_TTL_MS) {
-    this.maxEntries = normalizePositiveInteger(maxEntries, DEFAULT_CACHE_MAX_ENTRIES, MIN_CACHE_MAX_ENTRIES);
-    this.ttlMs = normalizePositiveInteger(ttlMs, DEFAULT_CACHE_TTL_MS, MIN_CACHE_TTL_MS);
+    this.maxEntries = normalizeAtLeastInt(maxEntries, DEFAULT_CACHE_MAX_ENTRIES, MIN_CACHE_MAX_ENTRIES);
+    this.ttlMs = normalizeAtLeastInt(ttlMs, DEFAULT_CACHE_TTL_MS, MIN_CACHE_TTL_MS);
     this.entries = new Map();
   }
 

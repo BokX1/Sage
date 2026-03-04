@@ -7,6 +7,7 @@ import { getGuildApiKey } from '../settings/guildSettingsRepo';
 import { getGuildMemoryText } from '../settings/guildMemoryRepo';
 import { isLoggingEnabled } from '../settings/guildChannelSettings';
 import { logger } from '../utils/logger';
+import { normalizeStrictlyPositiveInt } from '../utils/numbers';
 import { upsertTraceStart, updateTraceEnd } from './agent-trace-repo';
 import { buildContextMessages } from './contextBuilder';
 import { runToolCallLoop } from './toolCallLoop';
@@ -58,13 +59,6 @@ export interface RunChatTurnResult {
   }>;
 }
 
-function toPositiveInt(value: number | undefined, fallback: number): number {
-  if (Number.isFinite(value) && value !== undefined && value > 0) {
-    return Math.max(1, Math.floor(value));
-  }
-  return fallback;
-}
-
 function buildScopedToolRegistry(toolNames: string[]): ToolRegistry {
   const scopedRegistry = new ToolRegistry();
   for (const toolName of toolNames) {
@@ -89,9 +83,9 @@ function buildToolProtocolInstruction(toolNames: string[]): string {
     '- No markdown wrapping around tool_calls JSON.',
     '- Batch multiple read-only tools in one envelope for parallel execution.',
     '- Never invent tool outputs. If a tool fails, acknowledge and proceed.',
-    '- When repo path is unknown: github_search_code first, then github_get_file.',
-    '- For large files: use github_get_file with startLine/endLine ranges.',
-    '- If github_get_file fails: do NOT claim paths as verified.',
+    '- When repo path is unknown: github action code.search first, then github action file.get.',
+    '- For large files: use github action file.get with startLine/endLine ranges, or github action file.page.',
+    '- If github action file.get fails: do NOT claim paths as verified.',
     '- After gathering sufficient data: respond in plain text.',
     '- If no tool is needed, answer normally in plain text.',
   ];
@@ -157,31 +151,44 @@ function collectFilesFromToolResults(toolResults: ToolResult[]): Array<{ attachm
 
 function buildToolLoopConfig() {
   return {
-    maxRounds: toPositiveInt(
+    maxRounds: normalizeStrictlyPositiveInt(
       appConfig.AGENTIC_TOOL_MAX_ROUNDS as number | undefined,
       6,
     ),
-    maxCallsPerRound: toPositiveInt(
+    maxCallsPerRound: normalizeStrictlyPositiveInt(
       appConfig.AGENTIC_TOOL_MAX_CALLS_PER_ROUND as number | undefined,
       5,
     ),
-    toolTimeoutMs: toPositiveInt(
+    toolTimeoutMs: normalizeStrictlyPositiveInt(
       appConfig.AGENTIC_TOOL_TIMEOUT_MS as number | undefined,
       45_000,
     ),
-    maxToolResultChars: toPositiveInt(
+    maxToolResultChars: normalizeStrictlyPositiveInt(
       appConfig.AGENTIC_TOOL_RESULT_MAX_CHARS as number | undefined,
       8_000,
     ),
     parallelReadOnlyTools:
       (appConfig.AGENTIC_TOOL_PARALLEL_READ_ONLY_ENABLED as boolean | undefined) ?? true,
-    maxParallelReadOnlyTools: toPositiveInt(
+    maxParallelReadOnlyTools: normalizeStrictlyPositiveInt(
       appConfig.AGENTIC_TOOL_MAX_PARALLEL_READ_ONLY as number | undefined,
       4,
     ),
     cacheEnabled: true,
     cacheMaxEntries: 50,
-    maxLoopDurationMs: toPositiveInt(
+    memoEnabled: (appConfig.AGENTIC_TOOL_MEMO_ENABLED as boolean | undefined) ?? true,
+    memoMaxEntries: normalizeStrictlyPositiveInt(
+      appConfig.AGENTIC_TOOL_MEMO_MAX_ENTRIES as number | undefined,
+      250,
+    ),
+    memoTtlMs: normalizeStrictlyPositiveInt(
+      appConfig.AGENTIC_TOOL_MEMO_TTL_MS as number | undefined,
+      15 * 60_000,
+    ),
+    memoMaxResultJsonChars: normalizeStrictlyPositiveInt(
+      appConfig.AGENTIC_TOOL_MEMO_MAX_RESULT_JSON_CHARS as number | undefined,
+      200_000,
+    ),
+    maxLoopDurationMs: normalizeStrictlyPositiveInt(
       appConfig.AGENTIC_TOOL_LOOP_TIMEOUT_MS as number | undefined,
       120_000,
     ),
@@ -350,7 +357,7 @@ Your response will be spoken aloud in a Discord voice channel.
   let toolResults: ToolResult[] = [];
 
   try {
-    const maxTokens = toPositiveInt(
+    const maxTokens = normalizeStrictlyPositiveInt(
       appConfig.CHAT_MAX_OUTPUT_TOKENS as number | undefined,
       1_800,
     );
@@ -387,7 +394,7 @@ Your response will be spoken aloud in a Discord voice channel.
         apiKey,
         temperature: 0.6,
         timeoutMs: appConfig.TIMEOUT_CHAT_MS,
-        maxTokens: toPositiveInt(
+        maxTokens: normalizeStrictlyPositiveInt(
           appConfig.AGENTIC_TOOL_MAX_OUTPUT_TOKENS as number | undefined,
           1_200,
         ),

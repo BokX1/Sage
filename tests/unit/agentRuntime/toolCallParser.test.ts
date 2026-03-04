@@ -15,22 +15,22 @@ describe('toolCallParser', () => {
     });
 
     it('parses an envelope wrapped in code fences', () => {
-        const input = '```json\n{"type":"tool_calls","calls":[{"name":"web_search","args":{"query":"test"}}]}\n```';
+        const input = '```json\n{"type":"tool_calls","calls":[{"name":"web","args":{"action":"search","query":"test"}}]}\n```';
         const result = parseToolCallEnvelope(input);
         expect(result).not.toBeNull();
-        expect(result!.calls[0].name).toBe('web_search');
+        expect(result!.calls[0].name).toBe('web');
     });
 
     it('extracts an envelope from mixed text + JSON content', () => {
         const input =
             'Let me search for that information.\n\n' +
-            '{"type":"tool_calls","calls":[{"name":"web_search","args":{"query":"latest news"}}]}\n\n' +
+            '{"type":"tool_calls","calls":[{"name":"web","args":{"action":"search","query":"latest news"}}]}\n\n' +
             'I will analyze the results.';
         const result = parseToolCallEnvelope(input);
         expect(result).not.toBeNull();
         expect(result!.calls).toHaveLength(1);
-        expect(result!.calls[0].name).toBe('web_search');
-        expect(result!.calls[0].args).toEqual({ query: 'latest news' });
+        expect(result!.calls[0].name).toBe('web');
+        expect(result!.calls[0].args).toEqual({ action: 'search', query: 'latest news' });
     });
 
     it('extracts an envelope from code fences embedded in prose', () => {

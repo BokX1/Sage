@@ -72,7 +72,7 @@ function collectSuccessfulLookupPaths(toolResults: ToolResult[]): {
   const successfulPaths = new Set<string>();
 
   for (const result of toolResults) {
-    if (!result.success || result.name !== 'github_get_file') continue;
+    if (!result.success || result.name !== 'github') continue;
     if (!result.result || typeof result.result !== 'object' || Array.isArray(result.result)) continue;
 
     const record = result.result as Record<string, unknown>;
@@ -112,7 +112,7 @@ function buildFallbackReply(ungroundedPaths: string[], successfulPaths: string[]
     successfulPaths.length > 0
       ? `Verified GitHub file path${successfulPaths.length > 1 ? 's' : ''} in this turn: ${verifiedLabel}.`
       : 'No GitHub file path was successfully retrieved in this turn.',
-    'Please provide the exact repo/path/ref, or ask me to inspect the repo structure first.',
+    'Please provide the exact repo/path/ref, or ask me to inspect the repo structure first (github action repo.get / code.search).',
   ];
 
   return lines.join('\n');
@@ -122,10 +122,11 @@ export function enforceGitHubFileGrounding(
   replyText: string,
   toolResults: ToolResult[],
 ): GitHubGroundingEnforcementResult {
-  const githubLookupResults = toolResults.filter(
-    (result) => result.name === 'github_get_file',
-  );
-  const hasGitHubLookupFailures = githubLookupResults.some((result) => !result.success);
+  const hasGitHubLookupFailures = toolResults.some((result) => {
+    if (result.name !== 'github' || result.success) return false;
+    const error = (result.error ?? '').toLowerCase();
+    return error.includes('github.file.get failed') || error.includes('github_get_file failed');
+  });
 
   if (!hasGitHubLookupFailures) {
     return {

@@ -2,6 +2,7 @@
  * @description Implements a basic circuit breaker for external LLM calls.
  */
 import { logger } from '../utils/logger';
+import { normalizePositiveIntOrFallback } from '../utils/numbers';
 
 /**
  * Enumerates values for CircuitState.
@@ -20,15 +21,6 @@ interface CircuitConfig {
 const DEFAULT_FAILURE_THRESHOLD = 5;
 const DEFAULT_RESET_TIMEOUT_MS = 60_000;
 
-function normalizePositiveInt(value: number | undefined, fallback: number): number {
-  if (typeof value !== 'number' || !Number.isFinite(value)) {
-    return fallback;
-  }
-
-  const normalized = Math.floor(value);
-  return normalized > 0 ? normalized : fallback;
-}
-
 /**
  * Defines the CircuitBreaker class.
  */
@@ -40,8 +32,8 @@ export class CircuitBreaker {
 
   constructor(config: Partial<CircuitConfig> = {}) {
     this.config = {
-      failureThreshold: normalizePositiveInt(config.failureThreshold, DEFAULT_FAILURE_THRESHOLD),
-      resetTimeoutMs: normalizePositiveInt(config.resetTimeoutMs, DEFAULT_RESET_TIMEOUT_MS),
+      failureThreshold: normalizePositiveIntOrFallback(config.failureThreshold, DEFAULT_FAILURE_THRESHOLD),
+      resetTimeoutMs: normalizePositiveIntOrFallback(config.resetTimeoutMs, DEFAULT_RESET_TIMEOUT_MS),
     };
   }
 

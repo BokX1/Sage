@@ -16,24 +16,39 @@ import { ChannelMessage } from './awareness-types';
 export function buildTranscriptBlock(messages: ChannelMessage[], maxChars: number): string | null {
   if (messages.length === 0) return null;
 
-  const header = 'Recent channel transcript (most recent last):';
+  const header =
+    'Recent channel transcript (most recent last). Reference lines by [#] or msg:<id>:';
   if (header.length >= maxChars) return null;
 
-  const lines: string[] = [];
+  const selected: Array<{ message: ChannelMessage; normalizedContent: string }> = [];
   let totalChars = header.length;
 
+  const placeholderIndexLabel = '#000000';
   for (let i = messages.length - 1; i >= 0; i -= 1) {
     const message = messages[i];
-    const line = `- @${message.authorDisplayName} (id:${message.authorId}) [${message.timestamp.toISOString()}]: ${message.content}`;
-    const nextTotal = totalChars + 1 + line.length;
+    const normalizedContent = message.content.replace(/\s+/g, ' ').trim();
+    const placeholderLine =
+      `- [${placeholderIndexLabel} msg:${message.messageId}] ` +
+      `@${message.authorDisplayName} (user:${message.authorId}) ` +
+      `[${message.timestamp.toISOString()}]: ${normalizedContent}`;
+    const nextTotal = totalChars + 1 + placeholderLine.length;
     if (nextTotal > maxChars) {
       break;
     }
-    lines.push(line);
+    selected.push({ message, normalizedContent });
     totalChars = nextTotal;
   }
 
-  if (lines.length === 0) return null;
+  if (selected.length === 0) return null;
 
-  return `${header}\n${lines.reverse().join('\n')}`;
+  selected.reverse();
+  const lines = selected.map(({ message, normalizedContent }, index) => {
+    return (
+      `- [#${index + 1} msg:${message.messageId}] ` +
+      `@${message.authorDisplayName} (user:${message.authorId}) ` +
+      `[${message.timestamp.toISOString()}]: ${normalizedContent}`
+    );
+  });
+
+  return `${header}\n${lines.join('\n')}`;
 }

@@ -12,7 +12,7 @@ describe('executeToolWithTimeout', () => {
   it('logs execution failures with an explicit errorMessage payload', async () => {
     const registry = new ToolRegistry();
     registry.register({
-      name: 'github_get_file',
+      name: 'github',
       description: 'Mock GitHub file lookup',
       schema: z.object({}),
       execute: async () => {
@@ -22,7 +22,7 @@ describe('executeToolWithTimeout', () => {
 
     const result = await executeToolWithTimeout(
       registry,
-      { name: 'github_get_file', args: {} },
+      { name: 'github', args: {} },
       {
         traceId: 'trace-1',
         userId: 'user-1',
@@ -35,7 +35,7 @@ describe('executeToolWithTimeout', () => {
     expect(logger.warn).toHaveBeenCalledWith(
       expect.objectContaining({
         traceId: 'trace-1',
-        toolName: 'github_get_file',
+        toolName: 'github',
         errorType: 'execution',
         errorName: 'ToolExecutionError',
         errorMessage: expect.stringContaining('Tool execution failed: HTTP 404: Not Found'),

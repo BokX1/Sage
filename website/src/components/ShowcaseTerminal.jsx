@@ -9,9 +9,9 @@ const scenarios = [
         trace: [
             { tool: 'system_plan', status: 'ok', text: 'Analyzing: hydration mismatch → likely SSR/CSR discrepancy' },
             { tool: 'stack_overflow_search', status: 'ok', text: 'query: "Next.js hydration mismatch error"' },
-            { tool: 'web_scrape', status: 'ok', text: 'Extracting top answer from stackoverflow.com/q/71706...' },
-            { tool: 'web_search', status: 'fallback', text: 'tavily ✗ → exa ✗ → searxng ✓ "Next.js 15 hydration fix"' },
-            { tool: 'web_read', status: 'ok', text: 'Reading nextjs.org/docs/messages/react-hydration-error' },
+            { tool: 'web', status: 'ok', text: 'action=extract → Extracting top answer from stackoverflow.com/q/71706...' },
+            { tool: 'web', status: 'fallback', text: 'action=search → tavily ✗ → exa ✗ → searxng ✓ "Next.js 15 hydration fix"' },
+            { tool: 'web', status: 'ok', text: 'action=read → Reading nextjs.org/docs/messages/react-hydration-error' },
         ],
     },
     {
@@ -31,10 +31,10 @@ const scenarios = [
         userMsg: 'Sage, can you look at the BokX1/Sage repo and explain the architecture?',
         trace: [
             { tool: 'system_plan', status: 'ok', text: 'User wants repo architecture breakdown' },
-            { tool: 'github_repo', status: 'ok', text: 'Fetching BokX1/Sage metadata: 14 dirs, TypeScript, MIT' },
-            { tool: 'github_search_code', status: 'ok', text: 'query: "agentRuntime" → 3 files found' },
-            { tool: 'github_get_file', status: 'ok', text: 'Reading src/core/agentRuntime/agentRuntime.ts (412 lines)' },
-            { tool: 'github_get_file', status: 'ok', text: 'Reading src/core/agentRuntime/defaultTools.ts (13 tools)' },
+            { tool: 'github', status: 'ok', text: 'action=repo.get → Fetching BokX1/Sage metadata: 14 dirs, TypeScript, MIT' },
+            { tool: 'github', status: 'ok', text: 'action=code.search → query: "agentRuntime" → 3 files found' },
+            { tool: 'github', status: 'ok', text: 'action=file.page → Reading src/core/agentRuntime/agentRuntime.ts (paged)' },
+            { tool: 'github', status: 'ok', text: 'action=file.page → Reading src/core/agentRuntime/defaultTools.ts (paged)' },
         ],
     },
 ];
@@ -42,13 +42,9 @@ const scenarios = [
 const toolIcons = {
     system_plan: '🧠',
     stack_overflow_search: '📚',
-    web_scrape: '🌐',
-    web_search: '🔍',
-    web_read: '📄',
+    web: '🌐',
     discord: '💬',
-    github_repo: '📦',
-    github_search_code: '🔍',
-    github_get_file: '📂',
+    github: '📦',
 };
 
 export default function ShowcaseTerminal() {

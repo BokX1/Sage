@@ -113,6 +113,8 @@ describe('toolIntegrations', () => {
     expect(result.latestVersion).toBe('1.2.3');
     expect(result.dependencyCount).toBe(2);
     expect(result.repositoryUrl).toBe('https://github.com/acme/pkg');
+    expect(result.repositoryUrlNormalized).toBe('https://github.com/acme/pkg');
+    expect(result.githubRepo).toBe('acme/pkg');
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
@@ -148,6 +150,81 @@ describe('toolIntegrations', () => {
     expect(typed.results[0]?.title).toContain('&lt;code&gt;');
     expect(typed.results[0]?.title).not.toContain('<code>');
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('can include the accepted answer body when requested', async () => {
+    fetchMock
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        text: async () =>
+          JSON.stringify({
+            items: [
+              {
+                title: 'Example',
+                link: 'https://stackoverflow.com/questions/42/example',
+                score: 10,
+                answer_count: 3,
+                accepted_answer_id: 123,
+                is_answered: true,
+                creation_date: 1,
+                last_activity_date: 2,
+              },
+            ],
+          }),
+      } satisfies {
+        ok: boolean;
+        status: number;
+        statusText: string;
+        text: () => Promise<string>;
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        text: async () =>
+          JSON.stringify({
+            items: [
+              {
+                link: 'https://stackoverflow.com/a/123',
+                score: 5,
+                creation_date: 3,
+                last_activity_date: 4,
+                body: '<p>Try this:</p><pre><code>console.log(&quot;hi&quot;)\\n</code></pre>',
+              },
+            ],
+          }),
+      } satisfies {
+        ok: boolean;
+        status: number;
+        statusText: string;
+        text: () => Promise<string>;
+      });
+
+    const result = await searchStackOverflow({
+      query: 'include accepted answer',
+      maxResults: 1,
+      includeAcceptedAnswer: true,
+      maxAcceptedAnswerChars: 2_000,
+    });
+
+    const typed = result as {
+      acceptedAnswer?: { answerId?: number; url?: string | null; body?: string; truncated?: boolean } | null;
+      acceptedAnswerError?: string | null;
+    };
+
+    expect(typed.acceptedAnswerError).toBeNull();
+    expect(typed.acceptedAnswer).toEqual(
+      expect.objectContaining({
+        answerId: 123,
+        url: 'https://stackoverflow.com/a/123',
+        truncated: false,
+      }),
+    );
+    expect(String(typed.acceptedAnswer?.body ?? '')).toContain('```');
+    expect(String(typed.acceptedAnswer?.body ?? '')).toContain('console.log("hi")');
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
   it('scrapes content via Jina fallback when Firecrawl/Crawl4AI are unavailable', async () => {
@@ -735,7 +812,7 @@ describe('toolIntegrations', () => {
         path: 'missing/file.txt',
       }),
     ).rejects.toThrow(
-      'github_get_file failed for repo "acme/repo" path "missing/file.txt"',
+      'github.file.get failed for repo "acme/repo" path "missing/file.txt"',
     );
   });
 
@@ -939,7 +1016,7 @@ describe('toolIntegrations', () => {
         query: 'marker',
         regex: '[',
       }),
-    ).rejects.toThrow('github_search_code failed for repo "acme/repo" query "marker"');
+    ).rejects.toThrow('github.code.search failed for repo "acme/repo" query "marker"');
     expect(fetchMock).toHaveBeenCalledTimes(0);
   });
 

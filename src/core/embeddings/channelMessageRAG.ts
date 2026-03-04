@@ -2,6 +2,7 @@ import { config } from '../../config';
 import { prisma } from '../db/prisma-client';
 import { logger } from '../utils/logger';
 import { limitConcurrency } from '../utils/concurrency';
+import { normalizeNonNegativeInt, normalizePositiveInt } from '../utils/numbers';
 import { embedText } from './embeddingEngine';
 
 /**
@@ -57,22 +58,6 @@ let embeddingColumnAvailable = false;
 
 const embedLimiter = limitConcurrency(2);
 const inFlightEmbeddingJobs = new Map<string, Promise<void>>();
-
-/** Normalize positive integer limits with fallback on non-finite inputs. */
-function toPositiveInt(value: number, fallback: number): number {
-  if (!Number.isFinite(value)) {
-    return fallback;
-  }
-  return Math.max(1, Math.floor(value));
-}
-
-/** Normalize non-negative integer limits with fallback on non-finite inputs. */
-function toNonNegativeInt(value: number, fallback: number): number {
-  if (!Number.isFinite(value)) {
-    return fallback;
-  }
-  return Math.max(0, Math.floor(value));
-}
 
 function toIso(value: Date | string | null): string | null {
   if (!value) return null;
@@ -196,7 +181,7 @@ export async function searchChannelMessagesLexical(params: {
   since?: Date;
   until?: Date;
 }): Promise<ChannelMessageSearchResult[]> {
-  const limit = toPositiveInt(params.topK, 10);
+  const limit = normalizePositiveInt(params.topK, 10);
   const rows = await prisma.$queryRaw<MessageSearchRow[]>`
     SELECT
       m."messageId",
@@ -229,7 +214,7 @@ export async function searchChannelMessagesRegex(params: {
   since?: Date;
   until?: Date;
 }): Promise<ChannelMessageSearchResult[]> {
-  const limit = toPositiveInt(params.topK, 10);
+  const limit = normalizePositiveInt(params.topK, 10);
   const rows = await prisma.$queryRaw<MessageSearchRow[]>`
     SELECT
       m."messageId",
@@ -263,7 +248,7 @@ export async function searchChannelMessagesSemantic(params: {
   if (!canEmbed) {
     return [];
   }
-  const limit = toPositiveInt(params.topK, 10);
+  const limit = normalizePositiveInt(params.topK, 10);
 
   const queryVector = await embedText(params.query, 'query');
   const vectorString = `[${queryVector.join(',')}]`;
@@ -305,7 +290,7 @@ export async function getChannelMessageHistoryStats(params: {
 
   const first = rows[0];
   const storedCount = parseCount(first?.count ?? 0);
-  const retentionCap = toPositiveInt(config.MESSAGE_DB_MAX_MESSAGES_PER_CHANNEL, 1);
+  const retentionCap = normalizePositiveInt(config.MESSAGE_DB_MAX_MESSAGES_PER_CHANNEL, 1);
 
   return {
     storedCount,
@@ -323,8 +308,8 @@ export async function getChannelMessageWindowById(params: {
   before: number;
   after: number;
 }): Promise<ChannelMessageSearchResult[]> {
-  const beforeLimit = toNonNegativeInt(params.before, 0);
-  const afterLimit = toNonNegativeInt(params.after, 0);
+  const beforeLimit = normalizeNonNegativeInt(params.before, 0);
+  const afterLimit = normalizeNonNegativeInt(params.after, 0);
   const targets = await prisma.$queryRaw<MessageBaseRow[]>`
     SELECT
       m."messageId",

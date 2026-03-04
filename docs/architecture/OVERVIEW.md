@@ -97,7 +97,7 @@ flowchart TD
 | **Prompt Composer** | `src/core/agentRuntime/promptComposer.ts` | Assembles the final system prompt with personality, capabilities, and tool protocol |
 | **Tool Call Loop** | `src/core/agentRuntime/toolCallLoop.ts` | Iterative tool execution with bounded rounds, parallel read-only optimization, and timeout enforcement |
 | **Tool Registry** | `src/core/agentRuntime/toolRegistry.ts` | Zod-validated tool definitions with OpenAI-compatible spec generation |
-| **Default Tools** | `src/core/agentRuntime/defaultTools.ts` | All 13 built-in tool definitions |
+| **Default Tools** | `src/core/agentRuntime/defaultTools.ts` | All 15 built-in tool definitions |
 | **Style Classifier** | `src/core/agentRuntime/styleClassifier.ts` | Analyzes user communication style for adaptive response tone |
 
 ---
@@ -179,7 +179,7 @@ The tool protocol is communicated to the LLM via a structured instruction block,
 
 <a id="registered-tools"></a>
 
-## 🧰 Registered Tools (13 Total)
+## 🧰 Registered Tools (9 Total)
 
 ### 🧠 Memory & Context (1 tool)
 
@@ -187,24 +187,21 @@ The tool protocol is communicated to the LLM via a structured instruction block,
 |:---|:---|:---|
 | `discord` | Unified Discord tool: memory, retrieval, analytics, safe interactions, and admin approval flows (action-based) | Public (some actions Admin) |
 
-### 🌐 Search & Research (5 tools)
+### 🌐 Search & Research (3 tools)
 
 | Tool | Description | Access |
 |:---|:---|:---|
-| `web_search` | Provider-backed web search (Tavily/Exa/SearXNG/Pollinations) | Public |
-| `web_read` | Extract page text (Crawl4AI/Firecrawl/Jina/raw) | Public |
-| `web_scrape` | Agentic web scraper with specific instructions | Public |
+| `web` | Unified web tool (actions): `search`, `read`, `read.page`, `extract`, `research` | Public |
 | `wikipedia_search` | Wikipedia article lookup | Public |
 | `stack_overflow_search` | Stack Overflow Q&A search | Public |
 
-### 💻 Developer (4 tools)
+### 💻 Developer (3 tools)
 
 | Tool | Description | Access |
 |:---|:---|:---|
-| `github_repo` | GitHub repo metadata + optional README | Public |
-| `github_get_file` | Fetch file contents from GitHub | Public |
-| `github_search_code` | Search code across a GitHub repository | Public |
+| `github` | Unified GitHub tool (actions): repo metadata, code search, file reads (paged/bulk), issues/PRs, commits | Public |
 | `npm_info` | npm package metadata lookup | Public |
+| `workflow` | Composable workflow tool that chains common multi-hop operations into one call | Public |
 
 ### 🎨 Generation (1 tool)
 
@@ -224,12 +221,18 @@ Admin-only capabilities are exposed as actions on the `discord` tool:
 Read-only helpers are also exposed via `discord` actions:
 
 - `oauth2.invite_url` (builds a bot invite URL using `DISCORD_APP_ID`)
+- `messages.search_with_context` (one-shot match + surrounding messages)
+- `messages.search_guild` (guild-wide search; approval-gated outside Autopilot)
+- `messages.user_timeline` (recent activity for a user; approval-gated outside Autopilot)
+- `files.read_attachment` (paged read of ingested attachment text)
+- `analytics.top_relationships` (top social-graph edges for a time window)
 
-### ⚙️ System (2 tools)
+### ⚙️ System (3 tools)
 
 | Tool | Description | Access |
 |:---|:---|:---|
 | `system_time` | Get current date/time with timezone offset | Public |
+| `system_tool_stats` | Inspect in-process tool telemetry (latency/caching/failures; in-memory only) | Public |
 | `system_plan` | Internal reasoning scratchpad | Public |
 
 ---
@@ -242,7 +245,7 @@ Read-only helpers are also exposed via `discord` actions:
 |:---|:---|
 | **Tool validation** | Zod schema validation + size limits before execution |
 | **Bounded execution** | Max rounds, calls per round, and per-tool timeout |
-| **Error classification** | `validation` vs `execution` error types with structured feedback to LLM |
+| **Error classification** | Execution-stage kind (`validation`/`execution`/`timeout`) plus actionable categories (HTTP status, rate limit, network error, etc.) surfaced to the LLM |
 | **Model health tracking** | Rolling success/failure scores per model with degraded-mode signaling |
 | **Trace persistence** | Route, budget, tool, and quality metadata stored per turn |
 | **Build/test gates** | `check:trust` runs lint + typecheck + test audit + shuffled test validation |
@@ -264,7 +267,7 @@ src/core/
 │   ├── promptComposer.ts       # System prompt assembly
 │   ├── toolCallLoop.ts         # Iterative tool execution loop
 │   ├── toolRegistry.ts         # Zod-based tool definition registry
-│   ├── defaultTools.ts         # All 13 built-in tools
+│   ├── defaultTools.ts         # All 15 built-in tools
 │   ├── toolIntegrations.ts     # Tool backend implementations
 │   ├── toolCallParser.ts       # Parse tool calls from LLM output
 │   ├── toolCallExecution.ts    # Execute + validate tool calls

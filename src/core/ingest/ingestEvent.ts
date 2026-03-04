@@ -7,6 +7,7 @@ import { isLoggingEnabled } from '../settings/guildChannelSettings';
 import { getChannelSummaryScheduler } from '../summary/channelSummaryScheduler';
 import { publishInteraction } from '../../social-graph/kafkaProducer';
 import { queueChannelMessageEmbedding } from '../embeddings';
+import { normalizePositiveInt } from '../utils/numbers';
 
 /**
  * Message event captured from Discord.
@@ -48,18 +49,10 @@ export type Event = MessageEvent | VoiceEvent;
 
 const prismaMessageStore = new PrismaMessageStore();
 
-/** Normalize numeric limits to a positive integer with a safe fallback. */
-function toPositiveInt(value: number | undefined, fallback: number): number {
-  if (!Number.isFinite(value)) {
-    return fallback;
-  }
-  return Math.max(1, Math.floor(value as number));
-}
-
 /** Resolve persisted message retention cap with transcript-limit fallback. */
 function resolveDbRetentionLimit(): number {
-  const fallbackLimit = toPositiveInt(config.CONTEXT_TRANSCRIPT_MAX_MESSAGES, 1);
-  return toPositiveInt(config.MESSAGE_DB_MAX_MESSAGES_PER_CHANNEL as number | undefined, fallbackLimit);
+  const fallbackLimit = normalizePositiveInt(config.CONTEXT_TRANSCRIPT_MAX_MESSAGES, 1);
+  return normalizePositiveInt(config.MESSAGE_DB_MAX_MESSAGES_PER_CHANNEL as number | undefined, fallbackLimit);
 }
 
 export interface IngestEventOptions {

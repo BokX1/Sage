@@ -1,25 +1,19 @@
 import { z } from 'zod';
 import { ToolDefinition, ToolRegistry, globalToolRegistry } from './toolRegistry';
 import { discordTool } from './discordTool';
+import { webTool } from './webTool';
+import { githubTool } from './githubTool';
+import { workflowTool } from './workflowTool';
+import { globalToolMemoStore } from './toolMemoStore';
+import { globalPagedTextStore } from './pagedTextStore';
+import { metrics } from '../utils/metrics';
 import {
-  type SearchDepth,
   generateImage,
-  lookupGitHubFile,
-  lookupGitHubCodeSearch,
-  lookupGitHubRepo,
   lookupNpmPackage,
   lookupWikipedia,
-  runWebSearch,
-  sanitizePublicUrl,
   searchStackOverflow,
-  scrapeWebPage,
-  runAgenticWebScrape,
 } from './toolIntegrations';
 
-
-const REPO_PATTERN = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
-const COMPLEX_SEARCH_WEB_PROVIDER_ORDER = ['searxng', 'tavily', 'exa'] as const;
-const COMPLEX_SEARCH_SCRAPE_PROVIDER_ORDER = ['crawl4ai', 'jina', 'raw_fetch', 'firecrawl'] as const;
 
 const getCurrentDateTimeTool: ToolDefinition<{
   think: string;
@@ -60,33 +54,129 @@ const getCurrentDateTimeTool: ToolDefinition<{
   },
 };
 
-const webSearchTool: ToolDefinition<{
+function parseMetricKey(key: string): { name: string; labels: Record<string, string> } {
+  const braceIndex = key.indexOf('{');
+  if (braceIndex < 0) return { name: key, labels: {} };
+  const name = key.slice(0, braceIndex);
+  const raw = key.endsWith('}') ? key.slice(braceIndex + 1, -1) : key.slice(braceIndex + 1);
+  const labels: Record<string, string> = {};
+  for (const part of raw.split(',')) {
+    const [k, v] = part.split('=');
+    if (!k || !v) continue;
+    labels[k] = v;
+  }
+  return { name, labels };
+}
+
+type ToolStatsRow = {
+  tool: string;
+  executions: number;
+  successes: number;
+  failures: Record<string, number>;
+  avgLatencyMs: number | null;
+  cacheHits: number;
+  cacheMisses: number;
+  memoHits: number;
+  memoMisses: number;
+  memoStores: number;
+};
+
+function buildToolStatsRows(): ToolStatsRow[] {
+  const rows = new Map<string, ToolStatsRow>();
+
+  const ensure = (tool: string): ToolStatsRow => {
+    const existing = rows.get(tool);
+    if (existing) return existing;
+    const created: ToolStatsRow = {
+      tool,
+      executions: 0,
+      successes: 0,
+      failures: {},
+      avgLatencyMs: null,
+      cacheHits: 0,
+      cacheMisses: 0,
+      memoHits: 0,
+      memoMisses: 0,
+      memoStores: 0,
+    };
+    rows.set(tool, created);
+    return created;
+  };
+
+  for (const [key, value] of metrics.counters.entries()) {
+    const parsedValue = typeof value === 'number' && Number.isFinite(value) ? value : 0;
+    const { name, labels } = parseMetricKey(key);
+    const tool = labels.tool;
+    if (!tool) continue;
+
+    if (name === 'tool_execution_total') {
+      const row = ensure(tool);
+      row.executions += parsedValue;
+      const status = labels.status ?? 'unknown';
+      if (status === 'success') {
+        row.successes += parsedValue;
+      } else {
+        row.failures[status] = (row.failures[status] ?? 0) + parsedValue;
+      }
+      continue;
+    }
+
+    const row = ensure(tool);
+    if (name === 'tool_cache_hit_total') row.cacheHits += parsedValue;
+    if (name === 'tool_cache_miss_total') row.cacheMisses += parsedValue;
+    if (name === 'tool_memo_hit_total') row.memoHits += parsedValue;
+    if (name === 'tool_memo_miss_total') row.memoMisses += parsedValue;
+    if (name === 'tool_memo_store_total') row.memoStores += parsedValue;
+  }
+
+  for (const [key, value] of metrics.histograms.entries()) {
+    const { name, labels } = parseMetricKey(key);
+    if (name !== 'tool_latency_ms') continue;
+    const tool = labels.tool;
+    if (!tool) continue;
+    const row = ensure(tool);
+    const sum = typeof value.sum === 'number' && Number.isFinite(value.sum) ? value.sum : 0;
+    const count = typeof value.count === 'number' && Number.isFinite(value.count) ? value.count : 0;
+    row.avgLatencyMs = count > 0 ? Number((sum / count).toFixed(1)) : null;
+  }
+
+  return Array.from(rows.values());
+}
+
+const toolStatsTool: ToolDefinition<{
   think: string;
-  query: string;
-  depth?: SearchDepth;
-  maxResults?: number;
+  topN?: number;
+  includeRaw?: boolean;
 }> = {
-  name: 'web_search',
+  name: 'system_tool_stats',
   description:
-    'Search the web with provider-backed retrieval (Tavily/Exa + fallback) and return source-grounded results.\n<USE_ONLY_WHEN> You need up-to-date information from the internet that is not in your training data or cached memory. </USE_ONLY_WHEN>',
+    [
+      'Inspect in-process tool telemetry (latency averages, failures, cache/memo hits).',
+      'Note: all stats are in-memory only (process-local); resets on restart and is not shared across instances.',
+      '<USE_ONLY_WHEN> You need to debug latency/caching/error patterns for tools. </USE_ONLY_WHEN>',
+    ].join('\n'),
   schema: z.object({
     think: z.string().describe('Mandatory internal reasoning explaining exactly why you are generating this payload and how it fulfills the active goal.'),
-    query: z.string().trim().min(2).max(400).describe('The specific explicit search query to run.'),
-    depth: z.enum(['quick', 'balanced', 'deep']).optional(),
-    maxResults: z.number().int().min(1).max(10).optional(),
+    topN: z.number().int().min(1).max(50).optional().describe('Maximum number of tools to return (sorted by executions).'),
+    includeRaw: z.boolean().optional().describe('If true, include the raw metrics.dump() string for debugging.'),
   }),
   metadata: { readOnly: true },
-  execute: async ({ query, depth, maxResults }, ctx) => {
-    const useHighSearchProfile =
-      ctx.routeKind === 'search' && ctx.toolExecutionProfile === 'search_high';
-    return runWebSearch({
-      query,
-      depth: depth ?? (useHighSearchProfile ? 'deep' : 'balanced'),
-      maxResults,
-      apiKey: ctx.apiKey,
-      providerOrder: useHighSearchProfile ? [...COMPLEX_SEARCH_WEB_PROVIDER_ORDER] : undefined,
-      allowLlmFallback: useHighSearchProfile ? false : undefined,
-    });
+  execute: async ({ topN, includeRaw }) => {
+    const now = new Date();
+    const rows = buildToolStatsRows();
+    rows.sort((a, b) => b.executions - a.executions);
+    const limited = rows.slice(0, topN ?? 15);
+
+    return {
+      generatedAtIso: now.toISOString(),
+      scope: 'process',
+      note:
+        'All tool stats/caches are in-memory only. Multi-instance deployments do not share memoization without Redis/DB (by design).',
+      memo: globalToolMemoStore.stats(now.getTime()),
+      pagedText: globalPagedTextStore.stats(now.getTime()),
+      tools: limited,
+      raw: includeRaw ? metrics.dump() : undefined,
+    };
   },
 };
 
@@ -121,216 +211,6 @@ const generateImageTool: ToolDefinition<{
       height,
       referenceImageUrl,
       apiKey: ctx.apiKey,
-    });
-  },
-};
-
-const webScrapeTool: ToolDefinition<{
-  think: string;
-  url: string;
-  maxChars?: number;
-}> = {
-  name: 'web_read',
-  description:
-    'Fetch and extract the main content from a URL using Crawl4AI/Firecrawl/Jina/raw fallback for grounded summarization.\n<USE_ONLY_WHEN> You have a specific URL and need to extract its raw webpage or article text content. </USE_ONLY_WHEN>',
-  schema: z.object({
-    think: z.string().describe('Mandatory internal reasoning explaining exactly why you are generating this payload and how it fulfills the active goal.'),
-    url: z
-      .string()
-      .trim()
-      .url()
-      .max(2_048)
-      .refine((value) => /^https?:\/\//i.test(value), 'URL must start with http:// or https://'),
-    maxChars: z.number().int().min(500).max(50_000).optional(),
-  }),
-  metadata: { readOnly: true },
-  execute: async ({ url, maxChars }, ctx) => {
-    const sanitizedUrl = sanitizePublicUrl(url);
-    if (!sanitizedUrl) {
-      throw new Error('Invalid URL');
-    }
-    const useHighSearchProfile =
-      ctx.routeKind === 'search' && ctx.toolExecutionProfile === 'search_high';
-    return scrapeWebPage({
-      url: sanitizedUrl,
-      maxChars,
-      providerOrder: useHighSearchProfile ? [...COMPLEX_SEARCH_SCRAPE_PROVIDER_ORDER] : undefined,
-    });
-  },
-};
-
-const agenticWebScrapeTool: ToolDefinition<{
-  think: string;
-  url: string;
-  instruction: string;
-  maxChars?: number;
-}> = {
-  name: 'web_scrape',
-  description:
-    'Agentic web scraper.\n<USE_ONLY_WHEN> You need to extract highly specific data from a URL, bypass complex page layouts, or have a webpage summarized based on explicit instructions. Do NOT use this for generic full-page dumps. </USE_ONLY_WHEN>',
-  schema: z.object({
-    think: z.string().describe('Mandatory internal reasoning explaining exactly why you are generating this payload and how it fulfills the active goal.'),
-    url: z
-      .string()
-      .trim()
-      .url()
-      .max(2_048)
-      .refine((value) => /^https?:\/\//i.test(value), 'URL must start with http:// or https://'),
-    instruction: z.string().trim().min(5).max(1_000).describe('Specific instructions for what data to extract or how to interpret the webpage.'),
-    maxChars: z.number().int().min(500).max(50_000).optional(),
-  }),
-  metadata: { readOnly: true },
-  execute: async ({ url, instruction, maxChars }) => {
-    return runAgenticWebScrape({
-      url,
-      instruction,
-      maxChars,
-    });
-  },
-};
-
-const githubRepoLookupTool: ToolDefinition<{
-  think: string;
-  repo: string;
-  includeReadme?: boolean;
-}> = {
-  name: 'github_repo',
-  description:
-    'Lookup GitHub repository metadata (stars, default branch, language, topics) and optionally include a trimmed README.\n<USE_ONLY_WHEN> You need high-level structural metadata or the README content of a specific GitHub repository. </USE_ONLY_WHEN>',
-  schema: z.object({
-    think: z.string().describe('Mandatory internal reasoning explaining exactly why you are generating this payload and how it fulfills the active goal.'),
-    repo: z
-      .string()
-      .trim()
-      .min(3)
-      .max(200)
-      .refine((value) => REPO_PATTERN.test(value), 'repo must be in owner/name format')
-      .describe('The repository name in owner/repo format (e.g. microsoft/TypeScript).'),
-    includeReadme: z.boolean().optional(),
-  }),
-  metadata: { readOnly: true },
-  execute: async ({ repo, includeReadme }) => {
-    return lookupGitHubRepo({
-      repo,
-      includeReadme,
-    });
-  },
-};
-
-const githubFileLookupTool: ToolDefinition<{
-  think: string;
-  repo: string;
-  path: string;
-  ref?: string;
-  maxChars?: number;
-  startLine?: number;
-  endLine?: number;
-  includeLineNumbers?: boolean;
-}> = {
-  name: 'github_get_file',
-  description:
-    'Fetch file contents from a public GitHub repo (or private repo with token) for targeted code/document inspection.\n<USE_ONLY_WHEN> You know the exact file path within a GitHub repository and need to read its entire source code. </USE_ONLY_WHEN>',
-  schema: z.object({
-    think: z.string().describe('Mandatory internal reasoning explaining exactly why you are generating this payload and how it fulfills the active goal.'),
-    repo: z
-      .string()
-      .trim()
-      .min(3)
-      .max(200)
-      .refine((value) => REPO_PATTERN.test(value), 'repo must be in owner/name format')
-      .describe('The repository name in owner/repo format (e.g. microsoft/TypeScript).'),
-    path: z
-      .string()
-      .trim()
-      .min(1)
-      .max(500)
-      .refine((value) => !value.includes('..'), 'path must not contain ".." segments')
-      .describe('The precise file path within the repository.'),
-    ref: z.string().trim().min(1).max(120).optional(),
-    maxChars: z.number().int().min(500).max(50_000).optional(),
-    startLine: z.number().int().min(1).max(2_000_000).optional(),
-    endLine: z.number().int().min(1).max(2_000_000).optional(),
-    includeLineNumbers: z.boolean().optional(),
-  }).superRefine((value, ctx) => {
-    const hasStart = value.startLine !== undefined;
-    const hasEnd = value.endLine !== undefined;
-    if (hasStart !== hasEnd) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: 'startLine and endLine must both be provided for ranged lookup',
-        path: hasStart ? ['endLine'] : ['startLine'],
-      });
-      return;
-    }
-    if (hasStart && hasEnd && (value.endLine as number) < (value.startLine as number)) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: 'endLine must be greater than or equal to startLine',
-        path: ['endLine'],
-      });
-    }
-  }),
-  metadata: { readOnly: true },
-  execute: async ({ repo, path, ref, maxChars, startLine, endLine, includeLineNumbers }, ctx) => {
-    return lookupGitHubFile({
-      repo,
-      path,
-      ref,
-      maxChars,
-      startLine,
-      endLine,
-      includeLineNumbers,
-      traceId: ctx.traceId,
-    });
-  },
-};
-
-const githubCodeSearchTool: ToolDefinition<{
-  think: string;
-  repo: string;
-  query: string;
-  ref?: string;
-  regex?: string;
-  pathFilter?: string;
-  maxCandidates?: number;
-  maxFilesToScan?: number;
-  maxMatches?: number;
-}> = {
-  name: 'github_search_code',
-  description:
-    'Search files across a GitHub repository and optionally refine with regex to locate exact code matches.\n<USE_ONLY_WHEN> You know the repository but not the exact file path, or you need to find code patterns across multiple files. </USE_ONLY_WHEN>',
-  schema: z.object({
-    think: z.string().describe('Mandatory internal reasoning explaining exactly why you are generating this payload and how it fulfills the active goal.'),
-    repo: z
-      .string()
-      .trim()
-      .min(3)
-      .max(200)
-      .refine((value) => REPO_PATTERN.test(value), 'repo must be in owner/name format')
-      .describe('The repository name in owner/repo format (e.g. microsoft/TypeScript).'),
-    query: z.string().trim().min(2).max(300),
-    ref: z.string().trim().min(1).max(120).optional(),
-    regex: z.string().trim().min(1).max(500).optional(),
-    pathFilter: z.string().trim().min(1).max(300).optional(),
-    maxCandidates: z.number().int().min(1).max(100).optional(),
-    maxFilesToScan: z.number().int().min(1).max(100).optional(),
-    maxMatches: z.number().int().min(1).max(1_000).optional(),
-  }),
-  metadata: { readOnly: true },
-  execute: async (
-    { repo, query, ref, regex, pathFilter, maxCandidates, maxFilesToScan, maxMatches },
-    ctx,
-  ) => {
-    return lookupGitHubCodeSearch({
-      repo,
-      query,
-      ref,
-      regex,
-      pathFilter,
-      maxCandidates,
-      maxFilesToScan,
-      maxMatches,
-      traceId: ctx.traceId,
     });
   },
 };
@@ -387,22 +267,28 @@ const stackOverflowSearchTool: ToolDefinition<{
   query: string;
   maxResults?: number;
   tagged?: string;
+  includeAcceptedAnswer?: boolean;
+  maxAcceptedAnswerChars?: number;
 }> = {
   name: 'stack_overflow_search',
   description:
-    'Search Stack Overflow questions with accepted status and scoring metadata for coding support.\n<USE_ONLY_WHEN> You need to find proven coding solutions, debugging help, or programming Q&A. </USE_ONLY_WHEN>',
+    'Search Stack Overflow questions with accepted status and scoring metadata for coding support.\nOptionally fetch the accepted answer body for the top accepted result.\n<USE_ONLY_WHEN> You need to find proven coding solutions, debugging help, or programming Q&A. </USE_ONLY_WHEN>',
   schema: z.object({
     think: z.string().describe('Mandatory internal reasoning explaining exactly why you are generating this payload and how it fulfills the active goal.'),
     query: z.string().trim().min(2).max(350).describe('The explicit coding problem to search StackOverflow for.'),
     maxResults: z.number().int().min(1).max(15).optional(),
     tagged: z.string().trim().min(1).max(120).optional(),
+    includeAcceptedAnswer: z.boolean().optional().describe('If true, fetch the accepted answer body for the top accepted match (when available).'),
+    maxAcceptedAnswerChars: z.number().int().min(500).max(20_000).optional().describe('Maximum chars for the accepted answer body (when includeAcceptedAnswer=true).'),
   }),
   metadata: { readOnly: true },
-  execute: async ({ query, maxResults, tagged }) => {
+  execute: async ({ query, maxResults, tagged, includeAcceptedAnswer, maxAcceptedAnswerChars }) => {
     return searchStackOverflow({
       query,
       maxResults,
       tagged,
+      includeAcceptedAnswer,
+      maxAcceptedAnswerChars,
     });
   },
 };
@@ -425,14 +311,12 @@ const internalReflectionTool: ToolDefinition<{
 
 const DEFAULT_TOOL_DEFINITIONS = [
   getCurrentDateTimeTool,
+  toolStatsTool,
   discordTool,
   generateImageTool,
-  webSearchTool,
-  webScrapeTool,
-  agenticWebScrapeTool,
-  githubRepoLookupTool,
-  githubCodeSearchTool,
-  githubFileLookupTool,
+  webTool,
+  githubTool,
+  workflowTool,
   npmPackageLookupTool,
   wikipediaLookupTool,
   stackOverflowSearchTool,
