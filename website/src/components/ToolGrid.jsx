@@ -42,7 +42,7 @@ const tools = [
     { name: 'roles.delete', short: 'Delete Role', desc: 'Delete a server role', cat: 'discord', color: '#7AA2F7' },
     { name: 'members.add_role', short: 'Add Role', desc: 'Assign a role to a server member', cat: 'discord', color: '#7AA2F7' },
     { name: 'members.remove_role', short: 'Remove Role', desc: 'Remove a role from a server member', cat: 'discord', color: '#7AA2F7' },
-    { name: 'rest', short: 'REST Raw', desc: 'Arbitrary Discord REST API execution', cat: 'discord', color: '#7AA2F7' },
+    { name: 'discord.api', short: 'Discord API', desc: 'Raw Discord REST passthrough (admin-only, guild-scoped)', cat: 'discord', color: '#7AA2F7' },
     // Search (amber)
     { name: 'web', short: 'Web', desc: 'Unified web research (search/read/extract/research) with provider fallback', cat: 'search', color: '#E0AF68' },
     { name: 'wikipedia_search', short: 'Wikipedia', desc: 'Search and extract Wikipedia articles', cat: 'search', color: '#E0AF68' },

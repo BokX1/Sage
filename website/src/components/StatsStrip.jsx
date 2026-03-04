@@ -2,7 +2,7 @@ import { useRef, useEffect, useState } from 'react';
 import { motion, useInView } from 'framer-motion';
 
 const stats = [
-    { label: 'Native Tools', value: 46, suffix: '+', color: '#78b846' },
+    { label: 'Native Tools', value: 48, suffix: '+', color: '#78b846' },
     { label: 'Prisma Tables', value: 17, suffix: '', color: '#7AA2F7' },
     { label: 'Technologies', value: 13, suffix: '', color: '#BB9AF7' },
     { label: 'Search Providers', value: 4, suffix: '', color: '#E0AF68' },

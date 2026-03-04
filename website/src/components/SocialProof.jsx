@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { motion, useInView } from 'framer-motion';
 
 const stats = [
-    { label: 'Native Tools', value: 46, suffix: '+', icon: '⚡' },
+    { label: 'Native Tools', value: 48, suffix: '+', icon: '⚡' },
     { label: 'Core Technologies', value: 13, suffix: '', icon: '🧬' },
     { label: 'Pipeline Stages', value: 7, suffix: '', icon: '🔗' },
     { label: 'OpenAI Compatible', value: null, suffix: '', icon: '🧠' },
