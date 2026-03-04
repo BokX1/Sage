@@ -11,9 +11,15 @@ import {
 const REPO_PATTERN = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
 
 function normalizeGitHubRepoSpecifier(value: string): string | null {
-  const raw = value.trim();
+  let raw = value.trim();
   if (!raw) return null;
-  if (REPO_PATTERN.test(raw)) return raw;
+
+  const shorthandCandidate = raw.split('#')[0]?.split('?')[0]?.trim().replace(/\.git$/i, '');
+  if (shorthandCandidate && REPO_PATTERN.test(shorthandCandidate)) return shorthandCandidate;
+
+  if (/^github:/i.test(raw)) {
+    raw = raw.replace(/^github:/i, 'https://github.com/');
+  }
 
   let candidate = raw.replace(/^git\+/i, '');
   if (/^git@github\.com:/i.test(candidate)) {
@@ -54,11 +60,12 @@ const githubRepoSchema = z
   )
   .describe('The repository in owner/repo format (e.g. microsoft/TypeScript) or a github.com URL to it.');
 
-const requiredThinkField = z
+const thinkField = z
   .string()
   .describe(
-    'Mandatory internal reasoning explaining exactly why you are generating this payload and how it fulfills the active goal.',
-  );
+    'Optional internal reasoning explaining why you are generating this payload and how it fulfills the active goal.',
+  )
+  .optional();
 
 const githubFileRangeSchema = z
   .object({
@@ -77,14 +84,20 @@ const githubFileRangeSchema = z
 
 const githubToolSchema = z.discriminatedUnion('action', [
   z.object({
-    think: requiredThinkField,
+    think: thinkField,
+    action: z.literal('help').describe('Show available GitHub actions and example payloads.'),
+    includeExamples: z.boolean().optional().describe('If true, include example payloads for common actions.'),
+  }),
+
+  z.object({
+    think: thinkField,
     action: z.literal('repo.get').describe('Lookup GitHub repository metadata and optionally include README.'),
     repo: githubRepoSchema,
     includeReadme: z.boolean().optional(),
   }),
 
   z.object({
-    think: requiredThinkField,
+    think: thinkField,
     action: z.literal('code.search').describe('Search code across a GitHub repository.'),
     repo: githubRepoSchema,
     query: z.string().trim().min(2).max(300),
@@ -98,7 +111,7 @@ const githubToolSchema = z.discriminatedUnion('action', [
   }),
 
   z.object({
-    think: requiredThinkField,
+    think: thinkField,
     action: z.literal('file.get').describe('Fetch file contents from a GitHub repo (supports line ranges for large files).'),
     repo: githubRepoSchema,
     path: z
@@ -134,7 +147,7 @@ const githubToolSchema = z.discriminatedUnion('action', [
   }),
 
   z.object({
-    think: requiredThinkField,
+    think: thinkField,
     action: z.literal('file.page').describe('Read a file in pages to avoid all-or-nothing large outputs.'),
     repo: githubRepoSchema,
     path: z
@@ -152,7 +165,7 @@ const githubToolSchema = z.discriminatedUnion('action', [
   }),
 
   z.object({
-    think: requiredThinkField,
+    think: thinkField,
     action: z.literal('file.ranges').describe('Fetch multiple disjoint line ranges from a file in one call.'),
     repo: githubRepoSchema,
     path: z
@@ -169,7 +182,7 @@ const githubToolSchema = z.discriminatedUnion('action', [
   }),
 
   z.object({
-    think: requiredThinkField,
+    think: thinkField,
     action: z.literal('file.snippet').describe('Fetch a tight code snippet around a line number.'),
     repo: githubRepoSchema,
     path: z
@@ -188,7 +201,7 @@ const githubToolSchema = z.discriminatedUnion('action', [
   }),
 
   z.object({
-    think: requiredThinkField,
+    think: thinkField,
     action: z.literal('issues.search').describe('Search issues in a GitHub repository.'),
     repo: githubRepoSchema,
     query: z.string().trim().min(2).max(350),
@@ -197,7 +210,7 @@ const githubToolSchema = z.discriminatedUnion('action', [
   }),
 
   z.object({
-    think: requiredThinkField,
+    think: thinkField,
     action: z.literal('prs.search').describe('Search pull requests in a GitHub repository.'),
     repo: githubRepoSchema,
     query: z.string().trim().min(2).max(350),
@@ -206,7 +219,7 @@ const githubToolSchema = z.discriminatedUnion('action', [
   }),
 
   z.object({
-    think: requiredThinkField,
+    think: thinkField,
     action: z.literal('commits.list').describe('List recent commits for a repo/ref (optionally scoped to a path).'),
     repo: githubRepoSchema,
     ref: z.string().trim().min(1).max(120).optional(),
@@ -222,6 +235,7 @@ export const githubTool: ToolDefinition<z.infer<typeof githubToolSchema>> = {
     [
       'Unified GitHub tool with action-based calls.',
       'Actions:',
+      '- help: show action index and example payloads',
       '- repo.get: repo metadata (+ optional README)',
       '- code.search: search across files (includes match previews when available)',
       '- file.get: read file (supports line ranges)',
@@ -235,6 +249,72 @@ export const githubTool: ToolDefinition<z.infer<typeof githubToolSchema>> = {
   schema: githubToolSchema,
   metadata: { readOnly: true },
   execute: async (args, ctx) => {
+    if (args.action === 'help') {
+      const includeExamples = args.includeExamples !== false;
+      return {
+        tool: 'github',
+        actions: [
+          'repo.get',
+          'code.search',
+          'file.get',
+          'file.page',
+          'file.ranges',
+          'file.snippet',
+          'issues.search',
+          'prs.search',
+          'commits.list',
+        ],
+        notes: [
+          'repo accepts owner/repo or a github.com URL and is normalized to owner/repo.',
+          'code.search supports match previews (text_matches) when includeTextMatches=true (default).',
+          'Prefer file.page/file.snippet/file.ranges to avoid all-or-nothing large file reads.',
+          'The think field is optional; omit it to reduce tool-call verbosity.',
+        ],
+        examples: includeExamples
+          ? {
+              'repo.get': {
+                think: 'Fetch repository metadata and README.',
+                action: 'repo.get',
+                repo: 'microsoft/TypeScript',
+                includeReadme: true,
+              },
+              'code.search': {
+                think: 'Locate usages of a symbol and get match previews.',
+                action: 'code.search',
+                repo: 'microsoft/TypeScript',
+                query: 'createProgram',
+                includeTextMatches: true,
+              },
+              'file.page': {
+                think: 'Page through a large file deterministically.',
+                action: 'file.page',
+                repo: 'microsoft/TypeScript',
+                path: 'src/compiler/program.ts',
+                startLine: 1,
+                maxLines: 200,
+              },
+              'file.ranges': {
+                think: 'Fetch multiple disjoint chunks in one call.',
+                action: 'file.ranges',
+                repo: 'microsoft/TypeScript',
+                path: 'src/compiler/program.ts',
+                ranges: [
+                  { startLine: 10, endLine: 20 },
+                  { startLine: 200, endLine: 220 },
+                ],
+              },
+              'issues.search': {
+                think: 'Find issues discussing a specific problem.',
+                action: 'issues.search',
+                repo: 'microsoft/TypeScript',
+                query: 'incremental build regression',
+                state: 'open',
+              },
+            }
+          : undefined,
+      };
+    }
+
     const repo = normalizeGitHubRepoSpecifier(args.repo);
     if (!repo) {
       throw new Error('repo must be in owner/repo format or a github.com URL.');

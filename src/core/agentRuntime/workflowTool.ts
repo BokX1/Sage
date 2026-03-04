@@ -3,15 +3,22 @@ import type { ToolDefinition } from './toolRegistry';
 import { lookupGitHubCodeSearch, lookupNpmPackage } from './toolIntegrations';
 import { ToolDetailedError } from './toolErrors';
 
-const requiredThinkField = z
+const thinkField = z
   .string()
   .describe(
-    'Mandatory internal reasoning explaining exactly why you are generating this payload and how it fulfills the active goal.',
-  );
+    'Optional internal reasoning explaining why you are generating this payload and how it fulfills the active goal.',
+  )
+  .optional();
 
 const workflowToolSchema = z.discriminatedUnion('action', [
   z.object({
-    think: requiredThinkField,
+    think: thinkField,
+    action: z.literal('help').describe('Show available workflow actions and example payloads.'),
+    includeExamples: z.boolean().optional().describe('If true, include example payloads for each workflow action.'),
+  }),
+
+  z.object({
+    think: thinkField,
     action: z
       .literal('npm.github_code_search')
       .describe('One-shot: npm_info -> resolve githubRepo -> github code.search (reduces multi-hop chains).'),
@@ -34,6 +41,7 @@ export const workflowTool: ToolDefinition<z.infer<typeof workflowToolSchema>> = 
     [
       'Composable workflow tool that chains common multi-hop operations into one call.',
       'Actions:',
+      '- help: show action index and example payloads',
       '- npm.github_code_search: fetch npm metadata and run GitHub code search on its repository',
       '<USE_ONLY_WHEN> You want to reduce multi-hop tool chains and latency. </USE_ONLY_WHEN>',
     ].join('\n'),
@@ -41,6 +49,30 @@ export const workflowTool: ToolDefinition<z.infer<typeof workflowToolSchema>> = 
   metadata: { readOnly: true },
   execute: async (args, ctx) => {
     switch (args.action) {
+      case 'help': {
+        const includeExamples = args.includeExamples !== false;
+        return {
+          tool: 'workflow',
+          actions: ['npm.github_code_search'],
+          notes: [
+            'Workflows are one-shot helpers that reduce multi-hop chains (latency + failure points).',
+            'If an npm package does not expose a GitHub repository, npm.github_code_search will fail with not_found.',
+            'The think field is optional; omit it to reduce tool-call verbosity.',
+          ],
+          examples: includeExamples
+            ? {
+                'npm.github_code_search': {
+                  think: 'Locate a symbol in a package repo without manual npm → GitHub parsing.',
+                  action: 'npm.github_code_search',
+                  packageName: 'zod',
+                  query: 'safeParse',
+                  includeTextMatches: true,
+                },
+              }
+            : undefined,
+        };
+      }
+
       case 'npm.github_code_search': {
         const npmInfo = await lookupNpmPackage({
           packageName: args.packageName,
@@ -82,4 +114,3 @@ export const workflowTool: ToolDefinition<z.infer<typeof workflowToolSchema>> = 
     }
   },
 };
-

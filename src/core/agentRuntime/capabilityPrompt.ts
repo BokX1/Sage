@@ -175,12 +175,14 @@ function buildToolSelectionGuide(activeTools: string[]): string {
 
   if (activeTools.includes('discord')) {
     lines.push('DISCORD MEMORY/DATA?');
+    lines.push('  Schema/action help → discord: help');
     lines.push('  User profile → discord: memory.get_user');
     lines.push('  Channel summary (rolling) → discord: memory.get_channel');
     lines.push('  Server overview → discord: memory.get_server');
     lines.push('  Archived weekly summaries (semantic search) → discord: memory.channel_archives');
     lines.push('  Exact message quotes → discord: messages.search_history');
     lines.push('  One-shot search+context → discord: messages.search_with_context');
+    lines.push('  Time-windowed search → messages.search_history/search_with_context (sinceHours/sinceDays/sinceIso/untilIso)');
     lines.push('  Message context → discord: messages.get_context (requires messageId)');
     lines.push('  Server-wide search → discord: messages.search_guild (not autopilot)');
     lines.push('  User timeline → discord: messages.user_timeline (not autopilot)');
@@ -199,6 +201,7 @@ function buildToolSelectionGuide(activeTools: string[]): string {
 
   if (activeTools.includes('web')) {
     lines.push('REAL-TIME WEB INFO?');
+    lines.push('  Schema/action help → web (action=help)');
     lines.push('  Search the web → web (action=search)');
     lines.push('  Read a specific URL → web (action=read)');
     lines.push('  Read a large URL (paged) → web (action=read.page)');
@@ -208,6 +211,7 @@ function buildToolSelectionGuide(activeTools: string[]): string {
 
   if (activeTools.includes('github')) {
     lines.push('GITHUB DATA?');
+    lines.push('  Schema/action help → github (action=help)');
     lines.push('  Repo overview → github (action=repo.get)');
     lines.push('  Find code across files → github (action=code.search)');
     lines.push('  Read file → github (action=file.get / file.page / file.ranges / file.snippet)');
@@ -216,10 +220,10 @@ function buildToolSelectionGuide(activeTools: string[]): string {
   }
 
   if (activeTools.includes('npm_info')) {
-    lines.push('NPM PACKAGE INFO? → npm_info');
+    lines.push('NPM PACKAGE INFO? → npm_info (returns githubRepo when available)');
   }
   if (activeTools.includes('workflow')) {
-    lines.push('COMPOSED WORKFLOWS? → workflow (e.g. action=npm.github_code_search)');
+    lines.push('COMPOSED WORKFLOWS? → workflow (action=help; e.g. action=npm.github_code_search)');
   }
   if (activeTools.includes('wikipedia_search')) {
     lines.push('ENCYCLOPEDIA FACTS? → wikipedia_search');

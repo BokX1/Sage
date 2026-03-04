@@ -23,11 +23,14 @@ import ComparisonTable from '../components/ComparisonTable.jsx';
 import ScrollProgress from '../components/ScrollProgress.jsx';
 import WhySage from '../components/WhySage.jsx';
 import VoiceVisualizer from '../components/VoiceVisualizer.jsx';
+import { nativeToolCount } from '../lib/nativeTools.js';
+
+const nativeToolsLabel = `${nativeToolCount}+`;
 ---
 
 <Layout 
  	title="Sage — Agentic AI Community Engineer for Discord" 
-	description="Meet the AI that doesn't just respond — it reasons, remembers, and acts. Sage is an agentic cognitive runtime with 48+ native tools, GraphRAG social intelligence, a 7-stage memory pipeline, and zero-prompt automation. Built for communities that refuse to compromise.">
+	description={`Meet the AI that doesn't just respond — it reasons, remembers, and acts. Sage is an agentic cognitive runtime with ${nativeToolsLabel} native tools, GraphRAG social intelligence, a 7-stage memory pipeline, and zero-prompt automation. Built for communities that refuse to compromise.`}>
 	
 	<!-- Scroll Progress Indicator -->
 	<ScrollProgress client:load />
@@ -77,7 +80,7 @@ import VoiceVisualizer from '../components/VoiceVisualizer.jsx';
 				</h1>
 				
 				<p class="text-xl text-slate-400 mb-10 max-w-xl font-light leading-relaxed">
-					Stop managing. Start orchestrating. Sage is a cognitive runtime that transforms your Discord server into a self-operating community — driven by graph-native social intelligence, a 7-stage memory pipeline, and 48+ tools that act without a single prompt.
+					Stop managing. Start orchestrating. Sage is a cognitive runtime that transforms your Discord server into a self-operating community — driven by graph-native social intelligence, a 7-stage memory pipeline, and {nativeToolsLabel} tools that act without a single prompt.
 				</p>
 				
 				<div class="flex flex-wrap items-center gap-4 mb-10">
@@ -92,7 +95,7 @@ import VoiceVisualizer from '../components/VoiceVisualizer.jsx';
 				<!-- Social Proof Metrics -->
 				<div class="flex items-center gap-8 text-sm">
 					<div class="flex flex-col">
-						<span class="font-bold text-white text-2xl">48+</span>
+						<span class="font-bold text-white text-2xl">{nativeToolsLabel}</span>
 						<span class="text-slate-500 text-xs">Autonomous Tools</span>
 					</div>
 					<div class="w-px h-8 bg-white/10"></div>

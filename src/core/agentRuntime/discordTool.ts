@@ -40,8 +40,9 @@ import {
 const requiredThinkField = z
   .string()
   .describe(
-    'Mandatory internal reasoning explaining exactly why you are generating this payload and how it fulfills the active goal.',
-  );
+    'Optional internal reasoning explaining why you are generating this payload and how it fulfills the active goal.',
+  )
+  .optional();
 
 const discordFileSourceSchema = z.discriminatedUnion('type', [
   z.object({
@@ -694,11 +695,13 @@ export const discordTool: ToolDefinition<DiscordToolArgs> = {
           guardrails: [...DISCORD_GUARDRAILS],
           notes: [
             'Some actions require a guild context.',
+            'Time-windowed message search: use sinceHours/sinceDays (relative) or sinceIso/untilIso (absolute) on messages.search_* actions.',
             'Server-wide file actions and API calls are disabled in autopilot turns.',
             'API passthrough is guild-scoped (active guild only).',
             'Non-GET API requests require admin approval.',
             'Direct /webhooks/* routes and bot-wide endpoints (for example /users/@me) are blocked.',
             'API results redact sensitive fields (tokens/secrets).',
+            'The think field is optional; omit it to reduce tool-call verbosity.',
           ],
         };
       }

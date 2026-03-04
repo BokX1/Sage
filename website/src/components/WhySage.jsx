@@ -1,5 +1,8 @@
 import { useRef } from 'react';
 import { motion, useInView } from 'framer-motion';
+import { nativeToolCount } from '../lib/nativeTools.js';
+
+const nativeToolsLabel = `${nativeToolCount}+`;
 
 const pillars = [
     {
@@ -11,7 +14,7 @@ const pillars = [
     {
         icon: '⚡',
         title: 'Acts Before You Ask',
-        desc: '48+ autonomous tools activate proactively. Sage perceives intent, selects tools, and executes — zero-prompt automation.',
+        desc: `${nativeToolsLabel} autonomous tools activate proactively. Sage perceives intent, selects tools, and executes — zero-prompt automation.`,
         accent: '#7AA2F7',
     },
     {

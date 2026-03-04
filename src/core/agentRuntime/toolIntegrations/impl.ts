@@ -2210,6 +2210,10 @@ function normalizeRepositoryUrl(value: string | null): string | null {
   let normalized = raw;
   normalized = normalized.replace(/^git\+/i, '');
 
+  if (/^github:/i.test(normalized)) {
+    normalized = normalized.replace(/^github:/i, 'https://github.com/');
+  }
+
   if (/^git@github\.com:/i.test(normalized)) {
     normalized = normalized.replace(/^git@github\.com:/i, 'https://github.com/');
   }

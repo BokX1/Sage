@@ -9,6 +9,85 @@ import { buildToolErrorDetails, extractToolErrorDetails, type ToolErrorDetails }
 // Must be large enough to support legitimate multipart/file workflows.
 const MAX_ARGS_SIZE = 256 * 1024;
 
+function formatZodIssuePath(path: PropertyKey[]): string {
+  if (path.length === 0) return '(root)';
+  return path.map((part) => String(part)).join('.');
+}
+
+function formatZodIssues(issues: z.ZodIssue[], maxIssues = 10): { text: string; truncated: boolean } {
+  const formatted: string[] = [];
+  const seen = new Set<string>();
+  let truncated = false;
+
+  const push = (path: PropertyKey[], message: string): void => {
+    if (formatted.length >= maxIssues) {
+      truncated = true;
+      return;
+    }
+    const normalized = message.trim();
+    if (!normalized) return;
+    const line = `${formatZodIssuePath(path)}: ${normalized}`;
+    if (seen.has(line)) return;
+    seen.add(line);
+    formatted.push(line);
+  };
+
+  const visit = (issue: z.ZodIssue): void => {
+    if (formatted.length >= maxIssues) {
+      truncated = true;
+      return;
+    }
+
+    const unionErrors = (issue as unknown as { unionErrors?: Array<{ issues?: z.ZodIssue[] }> }).unionErrors;
+    if (Array.isArray(unionErrors) && unionErrors.length > 0) {
+      for (const unionError of unionErrors) {
+        const nestedIssues = Array.isArray(unionError?.issues) ? unionError.issues : [];
+        for (const nestedIssue of nestedIssues) {
+          visit(nestedIssue);
+          if (formatted.length >= maxIssues) {
+            truncated = true;
+            return;
+          }
+        }
+      }
+      return;
+    }
+
+    push(issue.path, issue.message);
+  };
+
+  for (const issue of issues) {
+    visit(issue);
+    if (formatted.length >= maxIssues) {
+      truncated = true;
+      break;
+    }
+  }
+
+  if (formatted.length === 0) {
+    return { text: 'Invalid input.', truncated: false };
+  }
+
+  return { text: formatted.join('; '), truncated };
+}
+
+function buildValidationHint(toolName: string): string | undefined {
+  const normalized = toolName.trim().toLowerCase();
+  if (normalized === 'discord') {
+    return 'Try: { action: "help" } to see available actions and required fields.';
+  }
+  if (normalized === 'github') {
+    return 'Try: { action: "help" } to see available actions and example payloads.';
+  }
+  if (normalized === 'web') {
+    return 'Try: { action: "help" } to see available actions and example payloads.';
+  }
+  if (normalized === 'workflow') {
+    return 'Try: { action: "help" } to see available workflows and example payloads.';
+  }
+  return undefined;
+}
+
 /** Carry immutable context passed into every tool execution. */
 export interface ToolExecutionContext {
   traceId: string;
@@ -179,9 +258,8 @@ export class ToolRegistry {
 
     const parseResult = tool.schema.safeParse(args);
     if (!parseResult.success) {
-      const issues = parseResult.error.issues
-        .map((i) => `${i.path.join('.')}: ${i.message}`)
-        .join('; ');
+      const formatted = formatZodIssues(parseResult.error.issues);
+      const issues = formatted.truncated ? `${formatted.text}; (+more)` : formatted.text;
       return {
         success: false,
         error: `Invalid arguments for tool "${name}": ${issues}`,
@@ -213,7 +291,7 @@ export class ToolRegistry {
         success: false,
         error,
         errorType: 'validation',
-        errorDetails: buildToolErrorDetails({ category: 'validation' }),
+        errorDetails: buildToolErrorDetails({ category: 'validation', hint: buildValidationHint(call.name) }),
       };
     }
 
