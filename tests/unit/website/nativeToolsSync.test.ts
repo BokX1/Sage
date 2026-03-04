@@ -7,8 +7,8 @@ import { getAllDiscordActions } from '../../../src/core/agentRuntime/discordTool
 type NativeToolRow = { name: string };
 
 async function loadWebsiteNativeTools(): Promise<NativeToolRow[]> {
-  const moduleUrl = new URL('../../../website/src/lib/nativeTools.js', import.meta.url).toString();
-  const mod = (await import(moduleUrl)) as { nativeTools?: unknown };
+  const modulePath = '../../../website/src/lib/nativeTools.js';
+  const mod = (await import(modulePath)) as { nativeTools?: unknown };
   const rows = Array.isArray(mod.nativeTools) ? (mod.nativeTools as NativeToolRow[]) : [];
   return rows;
 }
@@ -48,4 +48,3 @@ describe('website native tools list', () => {
     expect(missing).toEqual([]);
   });
 });
-
