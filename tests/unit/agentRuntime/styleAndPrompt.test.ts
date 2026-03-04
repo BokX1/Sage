@@ -47,6 +47,6 @@ describe('Prompt Composer Integration', () => {
       userProfileSummary: 'User loves cats',
     });
     expect(prompt).toContain('User loves cats');
-    expect(prompt).toContain('Priority');
+    expect(prompt).toContain('prioritize explicit instructions');
   });
 });

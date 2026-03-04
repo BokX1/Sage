@@ -50,7 +50,6 @@ export const DISCORD_GUARDRAILS = [
   'API passthrough blocks bot-wide endpoints (for example /users/@me) and direct /webhooks/* routes.',
   'API passthrough redacts sensitive fields (tokens/secrets) from results.',
   'Some actions require a guild context (guildId). If no guildId is available, avoid guild-only actions.',
-  'When possible, batch independent read-only tool calls into a single tool_calls envelope to reduce round-trips.',
 ] as const;
 
 /**

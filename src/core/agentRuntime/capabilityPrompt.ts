@@ -121,20 +121,37 @@ export function buildCapabilityPromptSection(
   // --- Reasoning protocol ---
   const reasoningProtocol = normalizedTools.length > 0 ? `
 <reasoning_protocol>
-For every tool call, use the \`think\` field to document:
-1. What information you need and why.
-2. Why this specific tool/action is the right choice.
-3. What you expect to learn from the result.
+For every turn, follow this reasoning cycle:
 
-After receiving tool results:
-- Verify the data answers the original question.
-- If insufficient, plan and execute the next tool call.
-- If sufficient, synthesize a natural-language response.
-- Only utilize tools when they materially improve correctness.
-- Finalize with plain text once tool gathering is sufficient.
+BEFORE calling tools — use the \`think\` field to reason:
+1. INTENT — What is the user actually asking? Restate in your own words.
+2. PLAN — What information do I need? Which tools will get it?
+3. TOOL CHOICE — Why this specific tool/action? What do I expect to learn?
+
+AFTER receiving tool results:
+1. VERIFY — Does this data answer the original question?
+2. CROSS-CHECK — If the result seems surprising, can I corroborate it?
+3. DECIDE — If insufficient, plan and execute the next tool call. If sufficient, synthesize.
+
+WHEN TO STOP:
+- Stop calling tools once you have enough information to answer confidently.
+- Do NOT call additional tools just to "be thorough" if the answer is already clear.
+- Finalize with plain text once your reasoning is complete.
 </reasoning_protocol>` : '';
 
-  return [executionRules, toolSelectionGuide, reasoningProtocol]
+  const errorRecovery = normalizedTools.length > 0 ? `
+<error_recovery>
+If a tool call fails:
+1. Acknowledge the failure honestly to the user.
+2. Try an alternative approach (different tool, different parameters).
+3. If no alternative exists, answer with what you know and note the limitation.
+
+If the query is ambiguous:
+- MISSING PARAMETERS: If the user refers to a specific entity (e.g., "that guy", "the file") but provides ZERO searchable context, you MUST ask for clarification BEFORE guessing and calling tools.
+- MULTIPLE MEANINGS: Answer the most likely interpretation, briefly note other possibilities, and offer to clarify.
+</error_recovery>` : '';
+
+  return [executionRules, toolSelectionGuide, reasoningProtocol, errorRecovery]
     .filter((section) => section.length > 0)
     .join('\n\n');
 }
@@ -150,7 +167,7 @@ function buildToolSelectionGuide(activeTools: string[]): string {
   lines.push('');
 
   if (activeTools.includes('system_time')) {
-    lines.push('TIME/DATE OFFSET CALCULATION? → system_time (NOTE: UTC time is already in your agent_state)');
+    lines.push('ADVANCED TIMEZONE/CALENDAR MATH? → system_time (For relative time like "tomorrow", calculate it yourself using current_time_utc in agent_state)');
   }
 
   if (activeTools.includes('discord')) {
@@ -160,13 +177,14 @@ function buildToolSelectionGuide(activeTools: string[]): string {
     lines.push('  Server overview → discord: memory.get_server');
     lines.push('  Archived summaries → discord: memory.channel_archives');
     lines.push('  Exact message quotes → discord: messages.search_history');
-    lines.push('  Message context → discord: messages.get_context');
+    lines.push('  Message context → discord: messages.get_context (requires message_id from search_history)');
     lines.push('  Channel files → discord: files.list_channel / files.find_channel');
     lines.push('  Server files → discord: files.list_server / files.find_server');
     lines.push('  Social graph → discord: analytics.get_social_graph');
     lines.push('  Voice stats → discord: analytics.get_voice_analytics');
     lines.push('  Voice sessions → discord: analytics.voice_summaries');
-    lines.push('  Bot invite URL → discord: oauth2.invite_url');
+    lines.push('  Bot invite URL → discord: oauth2.invite_url (admin only)');
+    lines.push('  Discord Writes & Admin Actions (react, pin, create channels, etc.) → see exact list in `agent_state.tool_capabilities` JSON');
   }
 
   if (activeTools.includes('web_search') || activeTools.includes('web_read') || activeTools.includes('web_scrape')) {
@@ -201,6 +219,26 @@ function buildToolSelectionGuide(activeTools: string[]): string {
 
   lines.push('');
   lines.push('MULTIPLE READ-ONLY TOOLS NEEDED? → Batch them in a single tool_calls envelope for parallel execution.');
+
+  if (activeTools.includes('discord')) {
+    lines.push('');
+    lines.push('DISAMBIGUATION RULES:');
+    lines.push('- "What did X say?" → messages.search_history (NOT memory.get_channel)');
+    lines.push('- "What\'s been happening?" → memory.get_channel (rolling summary, NOT raw messages)');
+    lines.push('- "Who is X?" → memory.get_user first, then social graph if relationships needed');
+    lines.push('- "Find the file about..." → files.find_channel (semantic) before files.list_channel (chronological)');
+  }
+
+  lines.push('');
+  lines.push('COMMON ANTI-PATTERNS — AVOID:');
+  if (activeTools.includes('discord')) {
+    lines.push('- Do NOT call memory.get_channel when user wants specific quotes → use messages.search_history');
+  }
+  if (activeTools.includes('web_search') && activeTools.includes('discord')) {
+    lines.push('- Do NOT call web_search for Discord-internal questions → use discord memory tools');
+  }
+  lines.push('- Do NOT call multiple tools that return the same data → pick the most specific one');
+
   lines.push('</tool_selection_guide>');
 
   return lines.join('\n');

@@ -36,7 +36,7 @@ describe('capabilityPrompt', () => {
 
       // Assert
       expect(prompt).toContain('<tool_selection_guide>');
-      expect(prompt).toContain('TIME/DATE OFFSET CALCULATION?');
+      expect(prompt).toContain('ADVANCED TIMEZONE/CALENDAR MATH?');
       expect(prompt).toContain('REAL-TIME WEB INFO?');
       expect(prompt).toContain('</tool_selection_guide>');
     });
