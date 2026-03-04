@@ -187,15 +187,34 @@ function getToolSpecificRecoverySuggestion(
 
 
 function truncateText(value: string, maxChars: number): string {
-  if (value.length <= maxChars) return value;
-  const headChars = Math.max(300, Math.floor(maxChars * 0.65));
-  const tailChars = Math.max(120, Math.floor(maxChars * 0.25));
+  const cap = Math.max(1, Math.floor(maxChars));
+  if (value.length <= cap) return value;
+  if (cap < 120) {
+    return `${value.slice(0, Math.max(0, cap - 1))}…`;
+  }
+
+  const buildNotice = (omittedChars: number): string =>
+    `[... ${Math.max(0, omittedChars).toLocaleString()} chars omitted ...]`;
+
+  const initialHead = Math.max(1, Math.floor(cap * 0.6));
+  const initialTail = Math.max(1, Math.floor(cap * 0.2));
+  const initialNotice = buildNotice(value.length - initialHead - initialTail);
+  const budgetForText = cap - initialNotice.length - 2;
+  if (budgetForText < 20) {
+    return `${value.slice(0, Math.max(0, cap - 1))}…`;
+  }
+
+  const headChars = Math.max(1, Math.floor(budgetForText * 0.7));
+  const tailChars = Math.max(1, budgetForText - headChars);
   const omittedChars = Math.max(0, value.length - headChars - tailChars);
-  return (
+  const notice = buildNotice(omittedChars);
+  const truncated =
     `${value.slice(0, headChars).trimEnd()}\n` +
-    `[... ${omittedChars.toLocaleString()} chars omitted ...]\n` +
-    `${value.slice(-tailChars).trimStart()}`
-  );
+    `${notice}\n` +
+    `${value.slice(-tailChars).trimStart()}`;
+
+  if (truncated.length <= cap) return truncated;
+  return `${value.slice(0, Math.max(0, cap - 1))}…`;
 }
 
 function stringifyResult(value: unknown): string {
@@ -313,6 +332,31 @@ function summarizeToolResultPayload(value: unknown, maxChars: number): string | 
   return truncateText(serialized, maxChars);
 }
 
+function computeToolResultPayloadBudgets(maxToolResultChars: number): {
+  summaryBudget: number;
+  rawBudget: number;
+} {
+  const cap = Math.max(1, Math.floor(maxToolResultChars));
+  const envelopeReserve = Math.min(200, Math.max(80, Math.floor(cap * 0.2)));
+  const maxSummaryBudget = cap - envelopeReserve - 200;
+
+  if (maxSummaryBudget < 200) {
+    return {
+      summaryBudget: 0,
+      rawBudget: cap,
+    };
+  }
+
+  const preferredSummaryBudget = Math.min(1_200, Math.max(200, Math.floor(cap * 0.25)));
+  const summaryBudget = Math.min(maxSummaryBudget, preferredSummaryBudget);
+  const rawBudget = Math.max(1, cap - summaryBudget - envelopeReserve);
+
+  return {
+    summaryBudget,
+    rawBudget,
+  };
+}
+
 function escapeXmlContent(value: string): string {
   return value
     .replace(/&/g, '&amp;')
@@ -342,10 +386,11 @@ function formatToolResultsMessage(results: ToolResult[], maxToolResultChars: num
   if (successResults.length > 0) {
     const successTexts = successResults.map((r) => {
       const serialized = stringifyResult(r.result);
-      const summaryBudget = Math.min(1_200, Math.max(600, Math.floor(maxToolResultChars * 0.25)));
-      const rawBudget = Math.max(800, maxToolResultChars - summaryBudget - 200);
+      const budgets = computeToolResultPayloadBudgets(maxToolResultChars);
+      const summaryBudget = budgets.summaryBudget;
+      const rawBudget = budgets.rawBudget;
       const summary =
-        serialized.length > rawBudget
+        summaryBudget > 0 && serialized.length > rawBudget
           ? summarizeToolResultPayload(r.result, summaryBudget)
           : null;
       const rawTruncated = truncateText(serialized, summary ? rawBudget : maxToolResultChars);
@@ -488,6 +533,7 @@ export async function runToolCallLoop(params: ToolCallLoopParams): Promise<ToolC
   let retryAttempted = false;
   let seededResponseText = params.initialAssistantResponseText;
   const loopStartTime = Date.now();
+  let sideEffectExecutedInLoop = false;
 
   while (roundsCompleted < config.maxRounds) {
     // Wall-clock guard: abort loop if total elapsed time exceeds limit
@@ -589,12 +635,15 @@ export async function runToolCallLoop(params: ToolCallLoopParams): Promise<ToolC
       index: number;
       call: (typeof calls)[number];
       parallelReadOnlyEligible: boolean;
+      dedupeKey?: string;
     };
 
     const roundResultsByIndex: Array<ToolResult | null> = new Array(calls.length).fill(null);
     const pendingCallsInOrder: PendingCall[] = [];
     const dedupePrimaryIndexByKey = new Map<string, number>();
     const dedupeFollowerIndexesByKey = new Map<string, number[]>();
+    let readOnlySegmentId = 0;
+    let hasPriorSideEffectCall = false;
 
     const isReadOnlyToolCall = (call: { name: string; args: unknown }): boolean => {
       const tool = registry.get(call.name);
@@ -677,40 +726,47 @@ export async function runToolCallLoop(params: ToolCallLoopParams): Promise<ToolC
           metrics.increment('tool_memo_store_total', { tool: pending.call.name });
         }
       }
-      const dedupeKey = buildToolCacheKey(pending.call.name, pending.call.args);
-      const followerIndexes = dedupeFollowerIndexesByKey.get(dedupeKey) ?? [];
-      for (const followerIndex of followerIndexes) {
-        roundResultsByIndex[followerIndex] = {
-          ...result,
-          latencyMs: 0,
-          cacheHit: true,
-          cacheKind: 'dedupe',
-        };
+      if (pending.dedupeKey) {
+        const followerIndexes = dedupeFollowerIndexesByKey.get(pending.dedupeKey) ?? [];
+        for (const followerIndex of followerIndexes) {
+          roundResultsByIndex[followerIndex] = {
+            ...result,
+            latencyMs: 0,
+            cacheHit: true,
+            cacheKind: 'dedupe',
+          };
+        }
       }
     };
 
     for (let index = 0; index < calls.length; index += 1) {
       const call = calls[index];
-
-      const cached = cache?.get(call.name, call.args) ?? null;
-      if (cached) {
-        metrics.increment('tool_cache_hit_total', { tool: call.name });
-        roundResultsByIndex[index] = {
-          name: call.name,
-          success: true,
-          result: cached.result,
-          latencyMs: 0,
-          cacheHit: true,
-          cacheKind: 'round',
-        };
-        continue;
-      }
-      if (cache) {
-        metrics.increment('tool_cache_miss_total', { tool: call.name });
-      }
-
       const dedupeEligible = isReadOnlyToolCall(call);
-      if (dedupeEligible && memoStore && call.name.trim().toLowerCase() !== 'system_time') {
+      const canReuseCachedRead =
+        dedupeEligible &&
+        !hasPriorSideEffectCall &&
+        !sideEffectExecutedInLoop;
+
+      if (canReuseCachedRead) {
+        const cached = cache?.get(call.name, call.args) ?? null;
+        if (cached) {
+          metrics.increment('tool_cache_hit_total', { tool: call.name });
+          roundResultsByIndex[index] = {
+            name: call.name,
+            success: true,
+            result: cached.result,
+            latencyMs: 0,
+            cacheHit: true,
+            cacheKind: 'round',
+          };
+          continue;
+        }
+        if (cache) {
+          metrics.increment('tool_cache_miss_total', { tool: call.name });
+        }
+      }
+
+      if (canReuseCachedRead && memoStore && call.name.trim().toLowerCase() !== 'system_time') {
         const scopeKey = buildToolMemoScopeKey(call.name, ctx);
         const memoHit = memoStore.get(scopeKey, call.name, call.args);
         if (memoHit) {
@@ -728,8 +784,10 @@ export async function runToolCallLoop(params: ToolCallLoopParams): Promise<ToolC
         }
         metrics.increment('tool_memo_miss_total', { tool: call.name });
       }
+
+      let dedupeKey: string | undefined;
       if (dedupeEligible) {
-        const dedupeKey = buildToolCacheKey(call.name, call.args);
+        dedupeKey = `${readOnlySegmentId}::${buildToolCacheKey(call.name, call.args)}`;
         const primaryIndex = dedupePrimaryIndexByKey.get(dedupeKey);
         if (primaryIndex !== undefined) {
           const followers = dedupeFollowerIndexesByKey.get(dedupeKey) ?? [];
@@ -745,9 +803,15 @@ export async function runToolCallLoop(params: ToolCallLoopParams): Promise<ToolC
         config.parallelReadOnlyTools &&
         dedupeEligible
       ) {
-        pendingCallsInOrder.push({ index, call, parallelReadOnlyEligible: true });
+        pendingCallsInOrder.push({ index, call, parallelReadOnlyEligible: true, dedupeKey });
       } else {
-        pendingCallsInOrder.push({ index, call, parallelReadOnlyEligible: false });
+        pendingCallsInOrder.push({ index, call, parallelReadOnlyEligible: false, dedupeKey });
+      }
+
+      if (!dedupeEligible) {
+        hasPriorSideEffectCall = true;
+        readOnlySegmentId += 1;
+        sideEffectExecutedInLoop = true;
       }
     }
 

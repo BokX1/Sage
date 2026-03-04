@@ -122,6 +122,8 @@
 - Retried read-only tool calls once on timeout/rate-limit failures to reduce flaky tool-loop errors.
 - Improved tool failure transparency by attaching structured error details (HTTP status, provider/host, retry-after where available) to tool results so the runtime can make better recovery decisions.
 - Preserved tool-call execution ordering when mixing side-effect and read-only calls so post-write reads cannot race ahead of their writes when parallel read-only execution is enabled.
+- Fixed read-only tool deduplication/cache reuse to respect side-effect barriers: identical reads on both sides of a write no longer reuse stale pre-write results, and read-cache reuse is disabled after writes for the remainder of the same turn.
+- Fixed tool-result truncation budgeting so summary+raw untrusted-data payload blocks stay within configured per-tool output limits, improving context-window predictability for operators.
 - Automatically retry Discord REST passthrough requests once on HTTP `429` responses, respecting Discord-provided `retry_after` delays (capped).
 - Improved tool-call envelope parsing to recover valid `tool_calls` JSON from mixed prose + JSON model outputs, reducing false plain-text fallbacks.
 - Preserved model reasoning text alongside native provider tool calls in the serialized tool envelope for better trace/debug context.
