@@ -1,4 +1,4 @@
-import { DISCORD_ACTION_CATALOG, formatDiscordActionIndexLines, formatDiscordGuardrailsLines } from './discordToolCatalog';
+import { DISCORD_ACTION_CATALOG, formatDiscordGuardrailsLines } from './discordToolCatalog';
 
 export interface BuildCapabilityPromptSectionParams {
   activeTools?: string[];
@@ -86,10 +86,7 @@ export function buildCapabilityPromptSection(
     ? `- Tool loop limits: maxRounds=${params.toolLoopLimits.maxRounds}, maxCallsPerRound=${params.toolLoopLimits.maxCallsPerRound}, parallelReadOnlyTools=${params.toolLoopLimits.parallelReadOnlyTools}, maxParallelReadOnlyTools=${params.toolLoopLimits.maxParallelReadOnlyTools}.`
     : null;
 
-  // --- Discord action index + guardrails ---
-  const discordActionIndexLines = hasDiscordTool
-    ? formatDiscordActionIndexLines().map((line) => `- ${line}`)
-    : [];
+  // --- Discord guardrails ---
   const discordGuardrailLines = hasDiscordTool
     ? formatDiscordGuardrailsLines().map((line) => `- ${line}`)
     : [];
@@ -101,19 +98,30 @@ export function buildCapabilityPromptSection(
     `- Runtime tools available this turn: ${activeToolLine}.`,
     ...(invocationLine ? [invocationLine] : []),
     ...(toolLoopLimitsLine ? [toolLoopLimitsLine] : []),
+    '- Call tools only when they materially improve correctness. When confident, answer directly.',
+    '- Never fabricate tool outputs. If a tool fails, acknowledge honestly and adapt.',
+    '- Batch multiple read-only tools in a single tool_calls envelope for parallel execution.',
     hasDiscordTool
-      ? '- Discord tool behavior: use the `discord` tool with action-based calls for memory, retrieval, and safe interactions. Admin-only actions and writes may require approval.'
+      ? '- Discord tool behavior: use the `discord` tool with action-based calls. Non-admin writes (send, react, poll, thread) are available to all users. Admin-only actions require admin context and may need approval.'
       : '- Discord tool behavior: you do not have access to Discord memory/actions via tools this turn.',
     hasDiscordTool
       ? '- Attachment memory behavior: historical non-image files are cached outside transcript; when transcript notes include `attachment:<id>` you can call `discord` action `files.read_attachment` directly. Otherwise use `files.list_channel`/`files.list_server` or `files.find_channel` to locate attachments.'
       : '- Attachment memory behavior: you do not have access to retrieve historical files this turn.',
-    ...discordActionIndexLines,
+    hasDiscordTool
+      ? '- Guild memory: the <guild_memory> block (if present) contains admin-configured server memory. To update it, use discord: memory.update_server (admin only). Changes take effect on the next turn.'
+      : '',
+    hasDiscordTool && params.invokedBy === 'autopilot'
+      ? '- Autopilot-restricted reads: files.read_attachment, files.list_server, files.find_server, messages.search_guild, messages.user_timeline, analytics.top_relationships.'
+      : '',
     ...discordGuardrailLines,
     hasGenerateImage
       ? '- Image generation behavior: use image_generate for image creation requests (supports optional reference image); attachments are returned by the runtime.'
       : '- Image generation behavior: you do not have image generation capabilities this turn.',
+    normalizedTools.includes('github')
+      ? '- GitHub file strategy: when repo path is unknown, use code.search first then file.get. For large files, use file.get with startLine/endLine or file.page. If file.get fails, do NOT claim paths as verified.'
+      : '',
     '</execution_rules>',
-  ].join('\n');
+  ].filter(line => line.length > 0).join('\n');
 
   // --- Tool selection decision tree ---
   const toolSelectionGuide = normalizedTools.length > 0 ? buildToolSelectionGuide(normalizedTools) : '';
@@ -151,7 +159,9 @@ If the query is ambiguous:
 - MULTIPLE MEANINGS: Answer the most likely interpretation, briefly note other possibilities, and offer to clarify.
 </error_recovery>` : '';
 
-  return [executionRules, toolSelectionGuide, reasoningProtocol, errorRecovery]
+  const agentStateBlock = buildAgenticStateBlock(params);
+
+  return [executionRules, agentStateBlock, toolSelectionGuide, reasoningProtocol, errorRecovery]
     .filter((section) => section.length > 0)
     .join('\n\n');
 }
@@ -161,106 +171,132 @@ If the query is ambiguous:
  */
 function buildToolSelectionGuide(activeTools: string[]): string {
   const lines: string[] = ['<tool_selection_guide>'];
-  lines.push('Follow this decision tree to select the right tool:');
+  lines.push('Use this decision tree to select the right tool. Match the FIRST applicable branch.');
   lines.push('');
 
+  // --- Time ---
   if (activeTools.includes('system_time')) {
-    lines.push('TIMEZONE OFFSET MATH (explicit utcOffset conversion)? → system_time');
-    lines.push('  Basic "what time is it?" → Use current_time_utc from <agent_state> directly, do NOT call system_time');
+    lines.push('IF timezone conversion for a specific utcOffset → system_time (the current UTC time is already in <agent_state>, use it directly for basic time questions)');
+    lines.push('');
   }
 
+  // --- Telemetry ---
   if (activeTools.includes('system_tool_stats')) {
-    lines.push('TOOL LATENCY/CACHE DEBUG? → system_tool_stats');
+    lines.push('IF tool latency/cache debugging:');
+    lines.push('  → system_tool_stats');
+    lines.push('');
   }
 
+  // --- Discord ---
   if (activeTools.includes('discord')) {
-    lines.push('DISCORD MEMORY/DATA?');
-    lines.push('  Schema/action help → discord: help');
-    lines.push('  User profile → discord: memory.get_user');
-    lines.push('  Channel summary (rolling) → discord: memory.get_channel');
-    lines.push('  Server overview → discord: memory.get_server');
-    lines.push('  Archived weekly summaries (semantic search) → discord: memory.channel_archives');
-    lines.push('  Exact message quotes → discord: messages.search_history');
-    lines.push('  One-shot search+context → discord: messages.search_with_context');
-    lines.push('  Time-windowed search → messages.search_history/search_with_context (sinceHours/sinceDays/sinceIso/untilIso)');
-    lines.push('  Message context → discord: messages.get_context (requires messageId)');
-    lines.push('  Server-wide search → discord: messages.search_guild (not autopilot)');
-    lines.push('  User timeline → discord: messages.user_timeline (not autopilot)');
-    lines.push('  List recent files (chronological) → discord: files.list_channel / files.list_server');
-    lines.push('  Find file content (semantic search) → discord: files.find_channel / files.find_server');
-    lines.push('  Read attachment (paged) → discord: files.read_attachment');
-    lines.push('  Social graph → discord: analytics.get_social_graph');
-    lines.push('  Top relationships → discord: analytics.top_relationships (not autopilot)');
-    lines.push('  Voice stats → discord: analytics.get_voice_analytics');
-    lines.push('  Voice sessions → discord: analytics.voice_summaries');
-    lines.push('  Discord Writes (react, pin, poll, thread, etc.) → see write_actions in `agent_state.tool_capabilities` JSON');
-    lines.push('ADMIN UTILITIES?');
-    lines.push('  Bot invite URL → discord: oauth2.invite_url (admin only)');
-    lines.push('  Admin actions (channels, roles, moderation, API) → see admin_only_actions in `agent_state.tool_capabilities` JSON');
+    lines.push('IF Discord memory/data:');
+    lines.push('  ├─ schema or action help       → discord: help');
+    lines.push('  ├─ user profile                 → discord: memory.get_user');
+    lines.push('  ├─ channel summary (rolling)    → discord: memory.get_channel');
+    lines.push('  ├─ server overview              → discord: memory.get_server');
+    lines.push('  ├─ archived weekly summaries    → discord: memory.channel_archives');
+    lines.push('  ├─ exact message quotes         → discord: messages.search_history');
+    lines.push('  ├─ one-shot search + context    → discord: messages.search_with_context');
+    lines.push('  ├─ time-windowed search         → messages.search_history (sinceHours/sinceDays/sinceIso/untilIso)');
+    lines.push('  ├─ message context by ID        → discord: messages.get_context');
+    lines.push('  ├─ server-wide search           → discord: messages.search_guild');
+    lines.push('  ├─ user timeline                → discord: messages.user_timeline');
+    lines.push('  ├─ list recent files            → discord: files.list_channel / files.list_server');
+    lines.push('  ├─ find file content (semantic) → discord: files.find_channel / files.find_server');
+    lines.push('  ├─ read cached attachment        → discord: files.read_attachment');
+    lines.push('  ├─ social graph analytics       → discord: analytics.get_social_graph');
+    lines.push('  ├─ top relationships            → discord: analytics.top_relationships');
+    lines.push('  ├─ voice stats                  → discord: analytics.get_voice_analytics');
+    lines.push('  ├─ voice sessions               → discord: analytics.voice_summaries');
+    lines.push('  └─ bot invite URL               → discord: oauth2.invite_url');
+    lines.push('');
+    lines.push('  IF Discord writes (any user):');
+    lines.push('    ├─ send a message              → discord: messages.send');
+    lines.push('    ├─ react / unreact             → discord: reactions.add / reactions.remove_self');
+    lines.push('    ├─ create a poll               → discord: polls.create');
+    lines.push('    └─ start a thread              → discord: threads.create');
+    lines.push('');
+    lines.push('  IF Discord admin operations (admin only):');
+    lines.push('    ├─ edit / delete messages       → discord: messages.edit / messages.delete');
+    lines.push('    ├─ pin / unpin messages         → discord: messages.pin / messages.unpin');
+    lines.push('    ├─ channel CRUD                 → discord: channels.create / channels.edit');
+    lines.push('    ├─ role CRUD                    → discord: roles.create / roles.edit / roles.delete');
+    lines.push('    ├─ role assignment              → discord: members.add_role / members.remove_role');
+    lines.push('    ├─ moderation (kick/ban/timeout) → discord: moderation.submit');
+    lines.push('    ├─ update server memory/config  → discord: memory.update_server');
+    lines.push('    └─ raw API passthrough          → discord: discord.api');
+    lines.push('');
   }
 
+  // --- Web ---
   if (activeTools.includes('web')) {
-    lines.push('REAL-TIME WEB INFO?');
-    lines.push('  Schema/action help → web (action=help)');
-    lines.push('  Search the web → web (action=search)');
-    lines.push('  Read a specific URL → web (action=read)');
-    lines.push('  Read a large URL (paged) → web (action=read.page)');
-    lines.push('  Extract specific data from URL → web (action=extract)');
-    lines.push('  One-shot search+read (optional link-follow) → web (action=research)');
+    lines.push('IF real-time web information:');
+    lines.push('  ├─ schema/action help           → web (action=help)');
+    lines.push('  ├─ search the web               → web (action=search)');
+    lines.push('  ├─ read a URL (raw scrape)      → web (action=read)  ← fast, cheap');
+    lines.push('  ├─ read a large URL (paged)     → web (action=read.page)');
+    lines.push('  ├─ extract data (LLM-powered)   → web (action=extract)  ← use only when raw read cannot answer');
+    lines.push('  └─ one-shot search+read         → web (action=research)');
+    lines.push('');
   }
 
+  // --- GitHub ---
   if (activeTools.includes('github')) {
-    lines.push('GITHUB DATA?');
-    lines.push('  Schema/action help → github (action=help)');
-    lines.push('  Repo overview → github (action=repo.get)');
-    lines.push('  Find code across files → github (action=code.search)');
-    lines.push('  Read file → github (action=file.get / file.page / file.ranges / file.snippet)');
-    lines.push('  Issues/PRs → github (action=issues.search / prs.search)');
-    lines.push('  Recent commits → github (action=commits.list)');
+    lines.push('IF GitHub data:');
+    lines.push('  ├─ schema/action help           → github (action=help)');
+    lines.push('  ├─ repo overview                → github (action=repo.get)');
+    lines.push('  ├─ find code across files       → github (action=code.search)');
+    lines.push('  ├─ read file                    → github (action=file.get / file.page / file.ranges / file.snippet)');
+    lines.push('  ├─ issues/PRs                   → github (action=issues.search / prs.search)');
+    lines.push('  └─ recent commits               → github (action=commits.list)');
+    lines.push('');
   }
 
+  // --- Other tools ---
   if (activeTools.includes('npm_info')) {
-    lines.push('NPM PACKAGE INFO? → npm_info (returns githubRepo when available)');
+    lines.push('IF npm package info → npm_info (returns githubRepo when available)');
   }
   if (activeTools.includes('workflow')) {
-    lines.push('COMPOSED WORKFLOWS? → workflow (action=help; e.g. action=npm.github_code_search)');
+    lines.push('IF composed workflows → workflow (action=help; e.g. action=npm.github_code_search)');
   }
   if (activeTools.includes('wikipedia_search')) {
-    lines.push('ENCYCLOPEDIA FACTS? → wikipedia_search');
+    lines.push('IF encyclopedia facts → wikipedia_search');
   }
   if (activeTools.includes('stack_overflow_search')) {
-    lines.push('CODING Q&A? → stack_overflow_search (set includeAcceptedAnswer=true for answer body)');
+    lines.push('IF coding Q&A → stack_overflow_search (set includeAcceptedAnswer=true for answer body)');
   }
   if (activeTools.includes('image_generate')) {
-    lines.push('IMAGE CREATION? → image_generate');
+    lines.push('IF image creation → image_generate');
   }
   if (activeTools.includes('system_plan')) {
-    lines.push('COMPLEX PLANNING? → system_plan first, then execute');
+    lines.push('IF complex multi-step reasoning → system_plan (reasoning scratchpad — logs your hypothesis for reference; does NOT execute anything)');
   }
 
-  lines.push('');
-  lines.push('MULTIPLE READ-ONLY TOOLS NEEDED? → Batch them in a single tool_calls envelope for parallel execution.');
-
+  // --- Disambiguation ---
   if (activeTools.includes('discord')) {
     lines.push('');
-    lines.push('DISAMBIGUATION RULES:');
-    lines.push('- "What did X say?" → messages.search_history (NOT memory.get_channel)');
-    lines.push('- "What\'s been happening?" → memory.get_channel (rolling summary, NOT raw messages)');
-    lines.push('- "Who is X?" → memory.get_user first, then social graph if relationships needed');
-    lines.push('- "Find the file about..." → files.find_channel (semantic) before files.list_channel (chronological)');
+    lines.push('DISAMBIGUATION:');
+    lines.push('  "What did X say?"         → messages.search_history (NOT memory.get_channel)');
+    lines.push('  "What\'s been happening?" → memory.get_channel (rolling summary, NOT raw messages)');
+    lines.push('  "Who is X?"              → memory.get_user first, then social graph if needed');
+    lines.push('  "Find the file about..." → files.find_channel (semantic) before files.list_channel');
   }
 
+  // --- Anti-patterns ---
   lines.push('');
-  lines.push('COMMON ANTI-PATTERNS — AVOID:');
+  lines.push('ANTI-PATTERNS — AVOID:');
   if (activeTools.includes('discord')) {
-    lines.push('- Do NOT call memory.get_channel when user wants specific quotes → use messages.search_history');
+    lines.push('  ✗ memory.get_channel when user wants specific quotes → use messages.search_history');
   }
   if (activeTools.includes('web') && activeTools.includes('discord')) {
-    lines.push('- Do NOT call web for Discord-internal questions → use discord memory tools');
+    lines.push('  ✗ web for Discord-internal questions → use discord memory tools');
   }
-  lines.push('- Do NOT call multiple tools that return the same data → pick the most specific one');
+  if (activeTools.includes('web')) {
+    lines.push('  ✗ web extract for simple page reads → use web read (raw scrape, faster/cheaper)');
+    lines.push('  ✗ web read when you need structured extraction from messy pages → use web extract (LLM-powered)');
+  }
+  lines.push('  ✗ multiple tools that return the same data → pick the most specific one');
 
   lines.push('</tool_selection_guide>');
-
   return lines.join('\n');
 }

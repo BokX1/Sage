@@ -1,7 +1,6 @@
 export type Invocation = {
   kind: 'mention' | 'reply' | 'wakeword' | 'autopilot';
   cleanedText: string;
-  intent: 'autopilot' | 'unknown';
 };
 
 /**
@@ -116,7 +115,6 @@ export function detectInvocation(params: DetectInvocationParams): Invocation | n
     return {
       kind: 'reply',
       cleanedText: cleanedBase,
-      intent: 'unknown',
     };
   }
 
@@ -127,7 +125,6 @@ export function detectInvocation(params: DetectInvocationParams): Invocation | n
     return {
       kind: 'mention',
       cleanedText: cleanedBase,
-      intent: 'unknown',
     };
   }
 
@@ -140,6 +137,5 @@ export function detectInvocation(params: DetectInvocationParams): Invocation | n
   return {
     kind: 'wakeword',
     cleanedText,
-    intent: 'unknown',
   };
 }

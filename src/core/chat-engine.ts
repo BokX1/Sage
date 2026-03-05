@@ -51,7 +51,6 @@ export async function generateChatReply(params: {
   userContent?: LLMMessageContent;
   replyToBotText?: string | null;
   replyReferenceContent?: LLMMessageContent | null;
-  intent?: string | null;
   mentionedUserIds?: string[];
   invokedBy?: 'mention' | 'reply' | 'wakeword' | 'autopilot' | 'command';
   isVoiceActive?: boolean;
@@ -75,7 +74,6 @@ export async function generateChatReply(params: {
       userContent,
       replyToBotText,
       replyReferenceContent,
-      intent,
       mentionedUserIds,
       invokedBy = 'mention',
       isVoiceActive,
@@ -108,7 +106,6 @@ export async function generateChatReply(params: {
       userProfileSummary: profileSummary,
       replyToBotText: replyToBotText ?? null,
       replyReferenceContent: replyReferenceContent ?? null,
-      intent: intent ?? null,
       mentionedUserIds,
       invokedBy,
       isVoiceActive,

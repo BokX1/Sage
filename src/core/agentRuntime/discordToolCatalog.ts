@@ -19,6 +19,7 @@ export const DISCORD_ACTION_CATALOG = {
     'analytics.top_relationships',
     'analytics.get_voice_analytics',
     'analytics.voice_summaries',
+    'oauth2.invite_url',
   ],
   writes: [
     'messages.send',
@@ -41,7 +42,6 @@ export const DISCORD_ACTION_CATALOG = {
     'roles.delete',
     'members.add_role',
     'members.remove_role',
-    'oauth2.invite_url',
     'discord.api',
   ],
 } as const;
@@ -79,18 +79,6 @@ export function getAllDiscordActions(): string[] {
     ...DISCORD_ACTION_CATALOG.writes,
     ...DISCORD_ACTION_CATALOG.admin_only,
   ]);
-}
-
-function formatActionList(values: readonly string[]): string {
-  return values.join(', ');
-}
-
-export function formatDiscordActionIndexLines(): string[] {
-  return [
-    `Discord actions (read-only): ${formatActionList(DISCORD_ACTION_CATALOG.read_only)}`,
-    `Discord actions (writes; not autopilot): ${formatActionList(DISCORD_ACTION_CATALOG.writes)}`,
-    `Discord actions (admin-only): ${formatActionList(DISCORD_ACTION_CATALOG.admin_only)}`,
-  ];
 }
 
 export function formatDiscordGuardrailsLines(): string[] {

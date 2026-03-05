@@ -2,7 +2,7 @@ import { LLMChatMessage, LLMMessageContent } from '../llm/llm-types';
 import { composeSystemPrompt } from './promptComposer';
 import { config } from '../../config';
 import { budgetContextBlocks, ContextBlock } from './contextBudgeter';
-import { StyleProfile } from './styleClassifier';
+
 
 /** Carry all optional context inputs used to construct a turn prompt. */
 export interface BuildContextMessagesParams {
@@ -14,11 +14,10 @@ export interface BuildContextMessagesParams {
   userText: string;
   userContent?: LLMMessageContent;
   recentTranscript?: string | null;
-  intentHint?: string | null;
-  style?: StyleProfile;
+
   voiceContext?: string | null;
   invokedBy?: 'mention' | 'reply' | 'wakeword' | 'autopilot' | 'command';
-  voiceInstruction?: string;
+  isVoiceActive?: boolean;
 }
 
 /**
@@ -46,40 +45,27 @@ export function buildContextMessages(params: BuildContextMessagesParams): LLMCha
     userText,
     userContent,
     recentTranscript,
-    intentHint,
-    style,
     voiceContext,
     invokedBy,
-    voiceInstruction,
+    isVoiceActive,
   } = params;
 
-  let autopilotInstruction = '';
-  if (invokedBy === 'autopilot') {
-    if (config.AUTOPILOT_MODE === 'reserved') {
-      autopilotInstruction = `
-<autopilot_mode>
-RESERVED mode: Output [SILENCE] unless the user explicitly needs help, you can provide a critical correction, or the conversation is stuck.
-Do NOT respond to general chatter or greetings. Output '[SILENCE]' to remain silent.
-</autopilot_mode>`;
-    } else if (config.AUTOPILOT_MODE === 'talkative') {
-      autopilotInstruction = `
-<autopilot_mode>
-TALKATIVE mode: Join if you have something interesting, funny, or helpful to add.
-Otherwise output '[SILENCE]'.
-</autopilot_mode>`;
-    }
-  }
+  // Determine autopilot mode (only applies when invoked by autopilot)
+  const autopilotMode =
+    invokedBy === 'autopilot'
+      ? (config.AUTOPILOT_MODE === 'reserved' ? 'reserved' as const
+        : config.AUTOPILOT_MODE === 'talkative' ? 'talkative' as const
+          : null)
+      : null;
 
   // Voice and autopilot instructions are small (~40-50 tokens each) and
-  // critical for correct behavior, so they're embedded in the non-truncatable
-  // base_system block rather than separate context blocks.
-  const baseSystemContent =
-    composeSystemPrompt({
-      userProfileSummary,
-      style,
-    }) +
-    autopilotInstruction +
-    (voiceInstruction || '');
+  // critical for correct behavior, so they're embedded inside the
+  // <system_persona> block via composeSystemPrompt rather than separate context blocks.
+  const baseSystemContent = composeSystemPrompt({
+    userProfileSummary,
+    voiceMode: isVoiceActive ?? false,
+    autopilotMode,
+  });
 
   const blocks: ContextBlock[] = [
     {
@@ -131,23 +117,14 @@ Otherwise output '[SILENCE]'.
     blocks.push({
       id: 'transcript',
       role: 'system',
-      content: `<channel_history>\n${recentTranscript}\n</channel_history>`,
+      content: `<recent_transcript>\n${recentTranscript}\n</recent_transcript>`,
       priority: 50,
       hardMaxTokens: config.CONTEXT_BLOCK_MAX_TOKENS_TRANSCRIPT,
       truncatable: true,
     });
   }
 
-  if (intentHint) {
-    blocks.push({
-      id: 'intent_hint',
-      role: 'system',
-      content: `<intent_hint>${intentHint}</intent_hint>`,
-      priority: 45,
-      hardMaxTokens: config.CONTEXT_BLOCK_MAX_TOKENS_REPLY_CONTEXT,
-      truncatable: true,
-    });
-  }
+
 
   if (replyToBotText) {
     blocks.push({

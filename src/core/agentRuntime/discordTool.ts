@@ -33,7 +33,6 @@ import { config } from '../../config';
 import {
   DISCORD_ACTION_CATALOG,
   DISCORD_GUARDRAILS,
-  formatDiscordActionIndexLines,
   getAllDiscordActions,
 } from './discordToolCatalog';
 
@@ -674,8 +673,6 @@ export const discordTool: ToolDefinition<DiscordToolArgs> = {
     [
       'Unified Discord tool for Sage: memory, retrieval, safe interactions, moderation queue, and admin-only API passthrough.',
       '<USE_ONLY_WHEN> You need to read or change Discord state, or query Sage’s Discord-backed memory (summaries/files/messages/social graph/voice analytics). </USE_ONLY_WHEN>',
-      'Action index (by access):',
-      ...formatDiscordActionIndexLines().map((line) => `- ${line}`),
       'Safety: See <execution_rules> for full guardrails. If unsure which action or fields to use, call discord action help.',
     ].join('\n'),
   schema: discordToolSchema,
@@ -1335,12 +1332,12 @@ export const discordTool: ToolDefinition<DiscordToolArgs> = {
 
       case 'discord.api': {
         assertAdmin(ctx.invokerIsAdmin);
-        assertNotAutopilot(ctx.invokedBy, 'discord.discord.api');
+        assertNotAutopilot(ctx.invokedBy, 'discord.api');
         requireGuildContext(ctx.guildId);
 
         if (args.method === 'GET') {
           if (args.files?.length) {
-            throw new Error('discord.discord.api GET requests cannot include files.');
+            throw new Error('discord.api GET requests cannot include files.');
           }
           return discordRestRequestGuildScoped({
             guildId: ctx.guildId!,

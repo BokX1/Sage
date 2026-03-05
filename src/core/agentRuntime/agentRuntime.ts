@@ -16,7 +16,6 @@ import { enforceGitHubFileGrounding } from './toolGrounding';
 import { clearGitHubFileLookupCacheForTrace } from './toolIntegrations';
 
 import {
-  buildAgenticStateBlock,
   buildCapabilityPromptSection,
 } from './capabilityPrompt';
 import {
@@ -24,7 +23,7 @@ import {
   globalToolRegistry,
   type ToolExecutionContext,
 } from './toolRegistry';
-import { classifyStyle } from './styleClassifier';
+
 import { formatLiveVoiceContext } from '../voice/voiceConversationSessionStore';
 
 const SINGLE_ROUTE_KIND = 'single';
@@ -44,7 +43,6 @@ export interface RunChatTurnParams {
   userProfileSummary: string | null;
   replyToBotText: string | null;
   replyReferenceContent?: LLMMessageContent | null;
-  intent?: string | null;
   mentionedUserIds?: string[];
   invokedBy?: 'mention' | 'reply' | 'wakeword' | 'autopilot' | 'command';
   isVoiceActive?: boolean;
@@ -73,32 +71,19 @@ function buildScopedToolRegistry(toolNames: string[]): ToolRegistry {
 }
 
 function buildToolProtocolInstruction(toolNames: string[]): string {
-  const hasDiscordTool = toolNames.includes('discord');
+  if (toolNames.length === 0) return '';
 
   const lines = [
     '<tool_protocol>',
-    'You may call tools when they materially improve correctness.',
-    '',
-    'FORMAT: When calling tools, output ONLY valid JSON:',
+    'FORMAT: When calling tools, output ONLY valid JSON (no markdown wrapping):',
     '{"type": "tool_calls", "calls": [{"name": "<tool_name>", "args": {...}}]}',
     '',
-    'RULES:',
-    '- No markdown wrapping around tool_calls JSON.',
-    '- Batch multiple read-only tools in one envelope for parallel execution.',
-    '- Never invent tool outputs. If a tool fails, acknowledge and proceed.',
-    '- When repo path is unknown: github action code.search first, then github action file.get.',
-    '- For large files: use github action file.get with startLine/endLine ranges, or github action file.page.',
-    '- If github action file.get fails: do NOT claim paths as verified.',
-    '- After gathering sufficient data: respond in plain text.',
-    '- If no tool is needed, answer normally in plain text.',
+    'After gathering sufficient data, respond in plain text.',
+    'If no tool is needed, answer normally in plain text.',
+    '',
+    'Behavioral rules (batching, tool selection, guardrails) are in <execution_rules> and <tool_selection_guide>.',
+    '</tool_protocol>',
   ];
-
-  if (hasDiscordTool) {
-    lines.push('');
-    lines.push('DISCORD: Use `discord` tool with action-based payloads. See <tool_selection_guide> for action routing and <execution_rules> for guardrails.');
-  }
-
-  lines.push('</tool_protocol>');
 
   return lines.join('\n');
 }
@@ -200,7 +185,6 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
     userContent,
     replyToBotText,
     replyReferenceContent,
-    intent,
     invokedBy = 'mention',
     isVoiceActive,
     isAdmin = false,
@@ -216,17 +200,9 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
     )
     : null;
 
-  const style = classifyStyle(userText);
 
-  const voiceInstruction = isVoiceActive
-    ? `
-<voice_mode>
-Your response will be spoken aloud in a Discord voice channel.
-- Use natural spoken language.
-- Avoid markdown, code fences, tables, and long URLs.
-- Keep sentences short and easy to say out loud.
-</voice_mode>`
-    : undefined;
+
+
 
   const liveVoiceContext =
     guildId && isVoiceActive && voiceChannelId
@@ -290,7 +266,6 @@ Your response will be spoken aloud in a Discord voice channel.
 
   const runtimeInstruction = [
     buildCapabilityPromptSection(capabilityParams),
-    buildAgenticStateBlock(capabilityParams),
     buildToolProtocolInstruction(activeToolNames),
   ].join('\n\n');
 
@@ -303,11 +278,9 @@ Your response will be spoken aloud in a Discord voice channel.
     userText,
     userContent,
     recentTranscript: transcriptBlock,
-    intentHint: intent,
-    style,
     voiceContext: liveVoiceContext,
     invokedBy,
-    voiceInstruction,
+    isVoiceActive,
   });
 
   if (appConfig.TRACE_ENABLED) {
@@ -464,7 +437,6 @@ Your response will be spoken aloud in a Discord voice channel.
         qualityJson: {
           model,
           route: SINGLE_ROUTE_KIND,
-          style,
         },
         budgetJson,
         agentEventsJson: [
@@ -485,7 +457,7 @@ Your response will be spoken aloud in a Discord voice channel.
     }
   }
 
-  if (safeFinalText.trim().includes('[SILENCE]')) {
+  if (safeFinalText.trim() === '[SILENCE]') {
     logger.info({ traceId }, 'Agent chose silence');
     clearToolCaches();
     return {

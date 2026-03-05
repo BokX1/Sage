@@ -36,8 +36,8 @@ describe('capabilityPrompt', () => {
 
       // Assert
       expect(prompt).toContain('<tool_selection_guide>');
-      expect(prompt).toContain('TIMEZONE OFFSET MATH');
-      expect(prompt).toContain('REAL-TIME WEB INFO?');
+      expect(prompt).toContain('timezone conversion for a specific utcOffset');
+      expect(prompt).toContain('real-time web information');
       expect(prompt).toContain('</tool_selection_guide>');
     });
 
@@ -68,9 +68,6 @@ describe('capabilityPrompt', () => {
       // Assert
       expect(prompt).toContain('Discord tool behavior: use the `discord` tool with action-based calls');
       expect(prompt).toContain('Attachment memory behavior: historical non-image files are cached outside transcript');
-      expect(prompt).toContain('Discord actions (read-only):');
-      expect(prompt).toContain('Discord actions (writes; not autopilot):');
-      expect(prompt).toContain('Discord actions (admin-only):');
       expect(prompt).toContain('messages.send');
       // Guardrails from discordToolCatalog must be surfaced
       expect(prompt).toContain('Discord guardrail:');
@@ -87,7 +84,7 @@ describe('capabilityPrompt', () => {
       const prompt = buildCapabilityPromptSection(params);
 
       // Assert
-      expect(prompt).toContain('DISCORD MEMORY/DATA?');
+      expect(prompt).toContain('Discord memory/data');
       expect(prompt).toContain('discord: memory.get_user');
       expect(prompt).toContain('discord: memory.get_channel');
       expect(prompt).toContain('discord: memory.get_server');
@@ -106,7 +103,7 @@ describe('capabilityPrompt', () => {
       const prompt = buildCapabilityPromptSection(params);
 
       // Assert
-      expect(prompt).toContain('REAL-TIME WEB INFO?');
+      expect(prompt).toContain('real-time web information');
       expect(prompt).toContain('web (action=search)');
       expect(prompt).toContain('web (action=read)');
       expect(prompt).toContain('web (action=extract)');

@@ -21,7 +21,6 @@ type SimulationScenario = {
   id: string;
   route: RouteKind;
   userText: string;
-  intent?: string | null;
 };
 
 type SimulationRunRow = {
@@ -298,7 +297,6 @@ async function runSingleSimulation(params: {
       guildId,
       messageId,
       userText: scenario.userText,
-      intent: scenario.intent ?? null,
       userProfileSummary: null,
       replyToBotText: null,
       invokedBy: 'command',

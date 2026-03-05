@@ -97,8 +97,7 @@ flowchart TD
 | **Prompt Composer** | `src/core/agentRuntime/promptComposer.ts` | Assembles the final system prompt with personality, capabilities, and tool protocol |
 | **Tool Call Loop** | `src/core/agentRuntime/toolCallLoop.ts` | Iterative tool execution with bounded rounds, parallel read-only optimization, and timeout enforcement |
 | **Tool Registry** | `src/core/agentRuntime/toolRegistry.ts` | Zod-validated tool definitions with OpenAI-compatible spec generation |
-| **Default Tools** | `src/core/agentRuntime/defaultTools.ts` | All 15 built-in tool definitions |
-| **Style Classifier** | `src/core/agentRuntime/styleClassifier.ts` | Analyzes user communication style for adaptive response tone |
+| **Default Tools** | `src/core/agentRuntime/defaultTools.ts` | All 11 built-in tool definitions |
 
 ---
 
@@ -179,7 +178,7 @@ The tool protocol is communicated to the LLM via a structured instruction block,
 
 <a id="registered-tools"></a>
 
-## 🧰 Registered Tools (9 Total)
+## 🧰 Registered Tools (11 Total)
 
 ### 🧠 Memory & Context (1 tool)
 
@@ -215,15 +214,15 @@ Admin-only capabilities are exposed as actions on the `discord` tool:
 
 - `memory.update_server` (approval-gated)
 - `moderation.submit` (approval-gated)
-- `rest` (admin-only; guild-scoped; GET executes immediately, non-GET requires approval)
+- `discord.api` (admin-only; guild-scoped; GET executes immediately, non-GET requires approval)
 - Typed REST write wrappers (approval-gated): `messages.edit/delete/pin/unpin`, `channels.create/edit`, `roles.create/edit/delete`, `members.add_role/remove_role`
 
 Read-only helpers are also exposed via `discord` actions:
 
 - `oauth2.invite_url` (builds a bot invite URL using `DISCORD_APP_ID`)
 - `messages.search_with_context` (one-shot match + surrounding messages)
-- `messages.search_guild` (guild-wide search; approval-gated outside Autopilot)
-- `messages.user_timeline` (recent activity for a user; approval-gated outside Autopilot)
+- `messages.search_guild` (guild-wide search; not available in Autopilot)
+- `messages.user_timeline` (recent activity for a user; not available in Autopilot)
 - `files.read_attachment` (paged read of ingested attachment text)
 - `analytics.top_relationships` (top social-graph edges for a time window)
 
@@ -272,7 +271,6 @@ src/core/
 │   ├── toolCallParser.ts       # Parse tool calls from LLM output
 │   ├── toolCallExecution.ts    # Execute + validate tool calls
 │   ├── toolGrounding.ts        # GitHub grounded search mode
-│   ├── styleClassifier.ts      # User style analysis
 │   └── agent-trace-repo.ts     # Trace persistence
 ├── llm/                        # Model resolver, catalog, health
 ├── memory/                     # Profile updater, user profile repo

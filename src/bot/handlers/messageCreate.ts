@@ -413,18 +413,18 @@ export async function handleMessageCreate(message: Message) {
             extractor: 'none',
           };
         } else {
-        attachmentResult = await fetchAttachmentText(attachment.url ?? '', attachmentName, {
-          timeoutMs: ingestTimeoutMs,
-          maxBytes,
-          maxChars,
-          truncateStrategy: 'head_tail',
-          headChars,
-          tailChars,
-          contentType: attachment.contentType ?? null,
-          declaredSizeBytes: attachment.size ?? null,
-          tikaBaseUrl: appConfig.FILE_INGEST_TIKA_BASE_URL,
-          ocrEnabled: appConfig.FILE_INGEST_OCR_ENABLED,
-        });
+          attachmentResult = await fetchAttachmentText(attachment.url ?? '', attachmentName, {
+            timeoutMs: ingestTimeoutMs,
+            maxBytes,
+            maxChars,
+            truncateStrategy: 'head_tail',
+            headChars,
+            tailChars,
+            contentType: attachment.contentType ?? null,
+            declaredSizeBytes: attachment.size ?? null,
+            tikaBaseUrl: appConfig.FILE_INGEST_TIKA_BASE_URL,
+            ocrEnabled: appConfig.FILE_INGEST_OCR_ENABLED,
+          });
         }
       }
 
@@ -530,14 +530,13 @@ export async function handleMessageCreate(message: Message) {
         invocation = {
           kind: 'autopilot',
           cleanedText: message.content,
-          intent: 'autopilot',
         };
       } else {
         return;
       }
     }
 
-    logger.debug({ type: invocation.kind, intent: invocation.intent }, 'Invocation decided');
+    logger.debug({ type: invocation.kind }, 'Invocation decided');
 
     const traceId = generateTraceId();
     const loggerWithTrace = logger.child({ traceId });
@@ -607,7 +606,6 @@ export async function handleMessageCreate(message: Message) {
         userContent: userContent ?? userTextWithAttachments,
         replyToBotText: invocation.kind === 'reply' ? replyToBotText : null,
         replyReferenceContent,
-        intent: invocation.intent,
         mentionedUserIds,
         invokedBy: invocation.kind,
         isVoiceActive,
@@ -632,7 +630,6 @@ export async function handleMessageCreate(message: Message) {
       } else {
         loggerWithTrace.info(
           {
-            intent: invocation.intent,
             hasFiles: false,
             replyLength: 0,
           },
