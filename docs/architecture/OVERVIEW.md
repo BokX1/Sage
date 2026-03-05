@@ -266,7 +266,7 @@ src/core/
 │   ├── promptComposer.ts       # System prompt assembly
 │   ├── toolCallLoop.ts         # Iterative tool execution loop
 │   ├── toolRegistry.ts         # Zod-based tool definition registry
-│   ├── defaultTools.ts         # All 15 built-in tools
+│   ├── defaultTools.ts         # All 11 built-in tools
 │   ├── toolIntegrations.ts     # Tool backend implementations
 │   ├── toolCallParser.ts       # Parse tool calls from LLM output
 │   ├── toolCallExecution.ts    # Execute + validate tool calls
