@@ -121,7 +121,7 @@
 
 ### Fixed
 
-- Restored additive Prisma migration history for admin-approval card tracking: existing installations now apply a dedicated follow-up migration for `PendingAdminAction` message-id columns instead of rewriting the baseline `init` migration.
+- Consolidated `PendingAdminAction` message-id columns into the baseline Prisma `init` migration so new environments bootstrap from a single migration file with the current admin-approval schema.
 - Fixed `src/scripts/simulate-agentic.ts` to remove stale `intent` payload fields after runtime contract cleanup, restoring `npm run build` compatibility for simulation runs.
 - Hardened web content text extraction in agent runtime HTML stripping: script/style block removal now also handles closing tags with trailing whitespace (for example `</script >`, `</style   >`), preventing embedded script/style payload text from leaking into scraped summaries.
 - Fixed `npm_info` GitHub repo extraction for packages that use `github:` shorthand repository URLs, improving npm → GitHub tool handoffs and workflows.

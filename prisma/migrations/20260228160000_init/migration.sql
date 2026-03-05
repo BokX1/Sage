@@ -63,6 +63,8 @@ CREATE TABLE "PendingAdminAction" (
     "id" TEXT NOT NULL,
     "guildId" TEXT NOT NULL,
     "channelId" TEXT NOT NULL,
+    "approvalMessageId" TEXT,
+    "requestMessageId" TEXT,
     "requestedBy" TEXT NOT NULL,
     "kind" TEXT NOT NULL,
     "payloadJson" JSONB NOT NULL,
