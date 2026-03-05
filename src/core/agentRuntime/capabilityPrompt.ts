@@ -129,22 +129,37 @@ export function buildCapabilityPromptSection(
   // --- Reasoning protocol ---
   const reasoningProtocol = normalizedTools.length > 0 ? `
 <reasoning_protocol>
-For every turn, follow this reasoning cycle:
+For every turn, use the \`think\` field to execute this reasoning loop before calling any tool:
 
-BEFORE calling tools — use the \`think\` field to reason:
-1. INTENT — What is the user actually asking? Restate in your own words.
-2. PLAN — What information do I need? Which tools will get it?
-3. TOOL CHOICE — Why this specific tool/action? What do I expect to learn?
+[STEP 1 — PAUSE AND RESTATE]
+Restate what the user is asking. State the single most likely misinterpretation and how you will avoid it.
+If the answer is already known and no tool is needed, skip directly to your response.
+
+[STEP 2 — GROUND CONSTRAINTS]
+List the 2-3 most relevant constraints for this request (e.g., user permissions, channel scope, admin-only rules). State them as positive requirements you must satisfy.
+
+[STEP 3 — SELECT TOOL PATH]
+If multiple tools could apply, compare them briefly:
+  - What does each return?
+  - What could go wrong with each?
+  - Select the one most likely to return useful data.
+If only one tool fits, state why it is the right choice.
+
+[STEP 4 — VERIFY BEFORE EXECUTING]
+Confirm:
+  - Does this action comply with the constraints from Step 2?
+  - Are all required parameters available?
+  - If a parameter is missing, do NOT guess — ask the user.
+If any check fails, STOP. Do not call the tool. Explain to the user why.
 
 AFTER receiving tool results:
 1. VERIFY — Does this data answer the original question?
 2. CROSS-CHECK — If the result seems surprising, can I corroborate it?
-3. DECIDE — If insufficient, plan and execute the next tool call. If sufficient, synthesize.
+3. DECIDE — If insufficient, plan the next tool call. If sufficient, synthesise a response.
 
 WHEN TO STOP:
-- Stop calling tools once you have enough information to answer confidently.
-- Do NOT call additional tools just to "be thorough" if the answer is already clear.
-- Finalize with plain text once your reasoning is complete.
+- Stop once you have enough information to answer confidently.
+- Do not call extra tools just to be thorough if the answer is already clear.
 </reasoning_protocol>` : '';
 
   const errorRecovery = normalizedTools.length > 0 ? `

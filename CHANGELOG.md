@@ -24,6 +24,14 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Upgraded agent reasoning protocol from a 3-step (INTENT → PLAN → TOOL CHOICE) loop to a structured 4-step cognitive loop (Pause and Restate → Ground Constraints → Select Tool Path → Verify Before Executing) with a fast-exit clause for trivial queries and an explicit halt gate on failed constraint checks, improving tool-selection accuracy and reducing hallucination.
+
+### Removed
+
+- Removed the "Trust & Quality" section from the website homepage and deleted the `TrustBadges.jsx` component.
+
 ### Added
 
 - Added explicit exact UTC date and time injection (`current_time_utc`) permanently into the `<agent_state>` XML payload. The agent runtime is now strictly temporally aware at boot, eliminating training-cutoff date hallucination issues without requiring a tool call.
