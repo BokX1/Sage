@@ -102,7 +102,7 @@ describe('attachment-parser getVisionImageUrl', () => {
       },
     });
 
-    expect(getVisionImageUrl(message as Parameters<typeof getVisionImageUrl>[0])).toBe(
+    expect(getVisionImageUrl(message as unknown as Parameters<typeof getVisionImageUrl>[0])).toBe(
       'https://media.discordapp.net/stickers/example.webp',
     );
   });
@@ -112,7 +112,7 @@ describe('attachment-parser getVisionImageUrl', () => {
       content: 'look at this https://example.com/direct.png.',
     });
 
-    expect(getVisionImageUrl(message as Parameters<typeof getVisionImageUrl>[0])).toBe(
+    expect(getVisionImageUrl(message as unknown as Parameters<typeof getVisionImageUrl>[0])).toBe(
       'https://example.com/direct.png',
     );
   });
