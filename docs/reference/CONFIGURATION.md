@@ -339,30 +339,6 @@ These settings control Sage's optional Discord voice features. The local voice s
 
 </details>
 
-<details>
-<summary><strong>Simulation Controls (<code>npm run agentic:simulate</code>)</strong></summary>
-
-| Variable | Description | Default |
-|:---|:---|:---|
-| `SIM_RUNS` | Number of simulation runs | `80` |
-| `SIM_CONCURRENCY` | Parallel simulation workers | `6` |
-| `SIM_JUDGE_ENABLED` | Enable LLM judge scoring | `0` |
-| `SIM_JUDGE_WEIGHT` | Judge score weight | `0.55` |
-
-</details>
-
-<details>
-<summary><strong>Tuning Controls (<code>npm run agentic:tune</code>)</strong></summary>
-
-| Variable | Description | Default |
-|:---|:---|:---|
-| `TUNE_RUNS_PER_VARIANT` | Runs per variant | `120` |
-| `TUNE_CONCURRENCY` | Parallel tuning workers | `6` |
-| `TUNE_MAX_VARIANTS` | Max variants to test | `8` |
-| `TUNE_JUDGE_ENABLED` | Enable LLM judge scoring | `1` |
-
-</details>
-
 ---
 
 <a id="doctor-utility"></a>

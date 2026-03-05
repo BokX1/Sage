@@ -42,8 +42,6 @@
     "eval:run": "npm run build && node dist/scripts/eval-run.js",
     "eval:gate": "npm run build && node dist/scripts/eval-gate.js",
     "agentic:seed-replay-data": "ts-node -P config/ci/tsconfig.json src/scripts/seed-replay-traces.ts",
-    "agentic:simulate": "ts-node -P config/ci/tsconfig.json src/scripts/simulate-agentic.ts",
-    "agentic:tune": "npm run build && node dist/scripts/tune-agentic.js",
     "postinstall": "prisma generate",
     "prepack": "npm run build",
     "prepare": "husky",

@@ -174,7 +174,7 @@ flowchart TD
     classDef resolve fill:#d4edda,stroke:#155724,color:black
 
     A[Incident Detected]:::detect --> B[Capture trace IDs + logs]:::investigate
-    B --> C[Reproduce with agentic:simulate]:::investigate
+    B --> C[Reproduce with replay/eval tooling]:::investigate
     C --> D{Schema-related?}:::investigate
     D -->|Yes| E[Run prisma migrate deploy]:::resolve
     D -->|No| F[Analyze trace + tool data]:::investigate
@@ -189,7 +189,7 @@ flowchart TD
 **Response steps:**
 
 1. **Capture** trace IDs and relevant logs
-2. **Reproduce** with `npm run agentic:simulate` for deterministic investigation
+2. **Reproduce** with `npm run agentic:seed-replay-data` (when you need fresh replay fixtures) and `npm run eval:run` for deterministic investigation
 3. **Diagnose** — check if schema-related: run `npx prisma migrate deploy` and re-check
 4. **Roll back** by deploying the previous app artifact and verified database state if needed
 5. **Document** the incident and resolution

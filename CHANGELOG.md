@@ -142,6 +142,7 @@
 
 ### Removed
 
+- Removed legacy agentic simulation/tuning tooling end-to-end: deleted `src/scripts/simulate-agentic.ts` and `src/scripts/tune-agentic.ts`, removed npm commands (`agentic:simulate`, `agentic:tune`), and dropped all `SIM_*` / `TUNE_*` environment template-schema references from active operator docs.
 - Removed four unreferenced legacy modules (`src/core/agentRuntime/agent-events.ts`, `src/core/agentRuntime/patterns.ts`, `src/core/config/doctor.ts`, `src/core/voice/index.ts`) to reduce dead maintenance surface and stale internal APIs.
 - Removed legacy agentic tool names `web_search`, `web_read`, `web_scrape`, `github_repo`, `github_get_file`, `github_search_code` in favor of unified `web` and `github` action-based tools.
 
