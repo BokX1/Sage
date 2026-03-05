@@ -20,6 +20,7 @@ const ATTACHMENT_CONTEXT_NOTE =
   '(System Note: The user attached the file above. Analyze it based on their request.)';
 
 const URL_PATTERN = /https?:\/\/[^\s<>()[\]{}"']+/gi;
+const TRAILING_URL_PUNCTUATION_PATTERN = /[.,!?;:]+$/u;
 
 function sanitizePublicHttpUrl(value: string): string | null {
   const raw = value.trim();
@@ -52,6 +53,10 @@ function getUrlExtension(url: string): string | null {
 function isLikelyImageUrl(url: string): boolean {
   const extension = getUrlExtension(url);
   return extension ? IMAGE_EXTENSIONS.has(extension) : false;
+}
+
+function trimTrailingUrlPunctuation(value: string): string {
+  return value.replace(TRAILING_URL_PUNCTUATION_PATTERN, '');
 }
 
 export function isImageAttachment(attachment?: {
@@ -136,7 +141,7 @@ export function getVisionImageUrl(message: Message): string | null {
   const content = message.content ?? '';
   const matches = content.match(URL_PATTERN) ?? [];
   for (const match of matches) {
-    const sanitized = sanitizePublicHttpUrl(match);
+    const sanitized = sanitizePublicHttpUrl(trimTrailingUrlPunctuation(match));
     if (!sanitized) continue;
     if (isLikelyImageUrl(sanitized)) {
       return sanitized;

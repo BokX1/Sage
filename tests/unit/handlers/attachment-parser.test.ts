@@ -9,6 +9,7 @@ const mockConfig = vi.hoisted(() => ({
 }));
 
 const mockEstimateTokens = vi.hoisted(() => vi.fn(() => 0));
+const mockIsPrivateOrLocalHostname = vi.hoisted(() => vi.fn(() => false));
 
 vi.mock('../../../src/config', () => ({
   config: mockConfig,
@@ -18,7 +19,25 @@ vi.mock('../../../src/core/agentRuntime/tokenEstimate', () => ({
   estimateTokens: mockEstimateTokens,
 }));
 
-import { deriveAttachmentBudget } from '../../../src/bot/handlers/attachment-parser';
+vi.mock('../../../src/shared/config/env', () => ({
+  isPrivateOrLocalHostname: mockIsPrivateOrLocalHostname,
+}));
+
+import {
+  deriveAttachmentBudget,
+  getVisionImageUrl,
+} from '../../../src/bot/handlers/attachment-parser';
+
+function createMockMessage(overrides: Record<string, unknown> = {}) {
+  return {
+    content: '',
+    attachments: {
+      first: vi.fn(() => null),
+      values: vi.fn(() => []),
+    },
+    ...overrides,
+  };
+}
 
 describe('attachment-parser deriveAttachmentBudget', () => {
   beforeEach(() => {
@@ -65,5 +84,36 @@ describe('attachment-parser deriveAttachmentBudget', () => {
       maxChars: 5,
       maxBytes: 20,
     });
+  });
+});
+
+describe('attachment-parser getVisionImageUrl', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockIsPrivateOrLocalHostname.mockReturnValue(false);
+  });
+
+  it('uses sticker URLs as vision input when available', () => {
+    const message = createMockMessage({
+      stickers: {
+        values: vi.fn(() => [
+          { url: 'https://media.discordapp.net/stickers/example.webp' },
+        ]),
+      },
+    });
+
+    expect(getVisionImageUrl(message as Parameters<typeof getVisionImageUrl>[0])).toBe(
+      'https://media.discordapp.net/stickers/example.webp',
+    );
+  });
+
+  it('trims trailing punctuation from direct image URLs in message content', () => {
+    const message = createMockMessage({
+      content: 'look at this https://example.com/direct.png.',
+    });
+
+    expect(getVisionImageUrl(message as Parameters<typeof getVisionImageUrl>[0])).toBe(
+      'https://example.com/direct.png',
+    );
   });
 });
