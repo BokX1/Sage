@@ -8,7 +8,6 @@ const features = [
     { name: 'OpenAI-Compatible LLM API', sage: true, traditional: false, desc: 'Works with any OpenAI-compatible provider via Pollinations' },
     { name: 'Voice Channel Transcription', sage: true, traditional: false, desc: 'Auto-transcribe and summarize voice' },
     { name: 'AI Image Generation', sage: true, traditional: false, desc: 'Prompt refinement + generation pipeline' },
-    { name: 'Dual-Judge Eval Pipeline', sage: true, traditional: false, desc: 'AI-judged response quality scoring' },
     { name: 'Conversational Configuration', sage: true, traditional: false, desc: 'Change settings via natural language' },
     { name: 'Self-Hosted / Sovereign', sage: true, traditional: false, desc: 'Your data never leaves your infra' },
     { name: 'Basic Moderation', sage: true, traditional: true, desc: 'Kick, ban, mute, timeouts' },
