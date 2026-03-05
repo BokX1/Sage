@@ -51,6 +51,7 @@
 - Simplified agent-runtime invocation plumbing by removing legacy per-turn `intent`/style-classifier wiring and deriving autopilot/voice behavior directly from invocation mode plus runtime flags, reducing conflicting prompt directives and keeping handler/runtime/script contracts aligned.
 - Updated runtime prompt assembly to include `<agent_state>` through the capability prompt block and switched transcript continuity references to `<recent_transcript>`, improving instruction consistency for quote-aware replies.
 - Refined Discord capability guidance from static action indexes to a decision-tree selection guide with explicit read/write/admin routing notes, reducing prompt noise while preserving action discoverability.
+- Reduced Discord admin-approval clutter: Sage posts a requester-facing status message per queued admin action, edits it with the final outcome (approved/rejected/executed/failed/expired), and auto-deletes the resolved approval card after ~60 seconds (including after restarts).
 - Improved tool validation error ergonomics by surfacing schema hints (for tools that support `action=help`) and including retryability metadata in tool-loop error blocks.
 - Made tool-call `think` fields optional across the runtime toolset to reduce validation friction and token overhead (still accepted when provided for debugging).
 - Refined agent-runtime prompt/context assembly to reduce duplicated Discord guardrails and deprecated context blocks, while clarifying tool-selection guidance (especially timezone/system-time usage), improving first-pass tool routing and lowering prompt noise for operators.
@@ -120,6 +121,7 @@
 
 ### Fixed
 
+- Restored additive Prisma migration history for admin-approval card tracking: existing installations now apply a dedicated follow-up migration for `PendingAdminAction` message-id columns instead of rewriting the baseline `init` migration.
 - Fixed `src/scripts/simulate-agentic.ts` to remove stale `intent` payload fields after runtime contract cleanup, restoring `npm run build` compatibility for simulation runs.
 - Hardened web content text extraction in agent runtime HTML stripping: script/style block removal now also handles closing tags with trailing whitespace (for example `</script >`, `</style   >`), preventing embedded script/style payload text from leaking into scraped summaries.
 - Fixed `npm_info` GitHub repo extraction for packages that use `github:` shorthand repository URLs, improving npm → GitHub tool handoffs and workflows.

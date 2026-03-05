@@ -217,6 +217,12 @@ Admin-only capabilities are exposed as actions on the `discord` tool:
 - `discord.api` (admin-only; guild-scoped; GET executes immediately, non-GET requires approval)
 - Typed REST write wrappers (approval-gated): `messages.edit/delete/pin/unpin`, `channels.create/edit`, `roles.create/edit/delete`, `members.add_role/remove_role`
 
+Approval UX:
+
+- Sage posts a requester-facing status message per queued admin action (includes the `Action ID`).
+- When an action resolves (approve/reject/execute/fail/expire), Sage edits that status message with the outcome.
+- Resolved approval cards auto-delete after ~60 seconds to avoid channel clutter (including after restarts via DB-backed cleanup).
+
 Read-only helpers are also exposed via `discord` actions:
 
 - `oauth2.invite_url` (builds a bot invite URL using `DISCORD_APP_ID`)

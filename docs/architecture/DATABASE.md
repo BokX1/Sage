@@ -358,9 +358,11 @@ Queued admin actions awaiting approval via Discord buttons.
 |:---|:---|:---|
 | `id` | `String` (PK) | CUID |
 | `guildId` / `channelId` | `String` | Action scope |
+| `approvalMessageId` | `String?` | Discord message id for the admin approval card (auto-deleted after resolution; persisted for restart-safe cleanup) |
+| `requestMessageId` | `String?` | Discord message id for Sage's requester-facing status message (edited on resolution) |
 | `kind` | `String` | Action type (e.g., `server_memory_update`, `moderation`) |
 | `payloadJson` | `Json` | Action parameters |
-| `status` | `String` | `pending` / `approved` / `rejected` / `expired` |
+| `status` | `String` | `pending` / `approved` / `rejected` / `executed` / `failed` / `expired` |
 | `expiresAt` | `DateTime` | Auto-expiry deadline |
 | `decidedBy` / `decidedAt` | `String?` / `DateTime?` | Admin decision metadata |
 

@@ -14,6 +14,7 @@ import { runToolCallLoop } from './toolCallLoop';
 import { ToolResult } from './toolCallExecution';
 import { enforceGitHubFileGrounding } from './toolGrounding';
 import { clearGitHubFileLookupCacheForTrace } from './toolIntegrations';
+import { collectPendingAdminActionIds } from './pendingApprovals';
 
 import {
   buildCapabilityPromptSection,
@@ -58,6 +59,7 @@ export interface RunChatTurnResult {
     attachment: Buffer;
     name: string;
   }>;
+  pendingAdminActionIds?: string[];
 }
 
 function buildScopedToolRegistry(toolNames: string[]): ToolRegistry {
@@ -414,6 +416,7 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
   }
 
   const files = collectFilesFromToolResults(toolResults);
+  const pendingAdminActionIds = collectPendingAdminActionIds(toolResults);
   const budgetJson: Record<string, unknown> = {
     route: SINGLE_ROUTE_KIND,
     model,
@@ -463,6 +466,7 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
     return {
       replyText: '',
       debug: { messages: runtimeMessages },
+      pendingAdminActionIds,
     };
   }
 
@@ -481,5 +485,6 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
     replyText: cleanedText,
     debug: { messages: runtimeMessages },
     files,
+    pendingAdminActionIds,
   };
 }

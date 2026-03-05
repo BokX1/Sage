@@ -57,21 +57,23 @@ model GuildMemoryArchive {
 }
 
 model PendingAdminAction {
-  id          String   @id @default(cuid())
-  guildId     String
-  channelId   String
-  requestedBy String
-  kind        String
-  payloadJson Json
-  status      String
-  expiresAt   DateTime
-  decidedBy   String?
-  decidedAt   DateTime?
-  executedAt  DateTime?
-  resultJson  Json?
-  errorText   String?  @db.Text
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id               String   @id @default(cuid())
+  guildId          String
+  channelId        String
+  approvalMessageId String?
+  requestMessageId String?
+  requestedBy      String
+  kind             String
+  payloadJson      Json
+  status           String
+  expiresAt        DateTime
+  decidedBy        String?
+  decidedAt        DateTime?
+  executedAt       DateTime?
+  resultJson       Json?
+  errorText        String?  @db.Text
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
   @@index([guildId, createdAt])
   @@index([status, expiresAt])

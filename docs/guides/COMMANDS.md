@@ -148,6 +148,7 @@ Examples:
 
 > [!IMPORTANT]
 > Destructive operations still require explicit approval through admin action buttons.
+> Sage posts a per-action status message (with the `Action ID`), edits it with the outcome when resolved, and auto-deletes the resolved approval card after ~60 seconds to keep channels clean (including after restarts).
 
 ---
 

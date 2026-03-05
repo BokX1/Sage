@@ -59,6 +59,7 @@ export async function generateChatReply(params: {
 }): Promise<{
   replyText: string;
   files?: Array<{ attachment: Buffer; name: string }>;
+  pendingAdminActionIds?: string[];
 }> {
   // Enforce sequential processing per user
   const limit = limitByKey(params.userId, 1);
@@ -218,7 +219,8 @@ export async function generateChatReply(params: {
 
     return {
       replyText,
-      files: result.files
+      files: result.files,
+      pendingAdminActionIds: result.pendingAdminActionIds,
     };
   });
 }

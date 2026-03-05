@@ -22,6 +22,8 @@ export interface PendingAdminActionRecord {
   id: string;
   guildId: string;
   channelId: string;
+  approvalMessageId: string | null;
+  requestMessageId: string | null;
   requestedBy: string;
   kind: string;
   payloadJson: unknown;
@@ -40,6 +42,8 @@ function toRecord(value: {
   id: string;
   guildId: string;
   channelId: string;
+  approvalMessageId: string | null;
+  requestMessageId: string | null;
   requestedBy: string;
   kind: string;
   payloadJson: unknown;
@@ -63,6 +67,8 @@ function toRecord(value: {
     id: value.id,
     guildId: value.guildId,
     channelId: value.channelId,
+    approvalMessageId: value.approvalMessageId,
+    requestMessageId: value.requestMessageId,
     requestedBy: value.requestedBy,
     kind: value.kind,
     payloadJson: value.payloadJson,
@@ -171,4 +177,70 @@ export async function markPendingAdminActionFailed(params: {
       },
   });
   return toRecord(updated);
+}
+
+export async function attachPendingAdminActionRequestMessageId(params: {
+  id: string;
+  requestMessageId: string;
+}): Promise<PendingAdminActionRecord> {
+  const requestMessageId = params.requestMessageId.trim();
+  if (!requestMessageId) {
+    throw new Error('requestMessageId must be a non-empty string.');
+  }
+
+  const updated = await prisma.pendingAdminAction.update({
+    where: { id: params.id },
+    data: { requestMessageId },
+  });
+
+  return toRecord(updated);
+}
+
+export async function attachPendingAdminActionApprovalMessageId(params: {
+  id: string;
+  approvalMessageId: string;
+}): Promise<PendingAdminActionRecord> {
+  const approvalMessageId = params.approvalMessageId.trim();
+  if (!approvalMessageId) {
+    throw new Error('approvalMessageId must be a non-empty string.');
+  }
+
+  const updated = await prisma.pendingAdminAction.update({
+    where: { id: params.id },
+    data: { approvalMessageId },
+  });
+
+  return toRecord(updated);
+}
+
+export async function clearPendingAdminActionApprovalMessageId(id: string): Promise<PendingAdminActionRecord> {
+  const updated = await prisma.pendingAdminAction.update({
+    where: { id },
+    data: { approvalMessageId: null },
+  });
+
+  return toRecord(updated);
+}
+
+export async function listPendingAdminActionsWithApprovalCardsReadyForDeletion(params: {
+  resolvedBefore: Date;
+  limit?: number;
+}): Promise<PendingAdminActionRecord[]> {
+  const limit = Math.max(1, Math.min(params.limit ?? 50, 250));
+
+  const rows = await prisma.pendingAdminAction.findMany({
+    where: {
+      approvalMessageId: { not: null },
+      OR: [
+        { status: 'rejected', decidedAt: { lte: params.resolvedBefore } },
+        { status: 'expired', decidedAt: { lte: params.resolvedBefore } },
+        { status: 'executed', executedAt: { lte: params.resolvedBefore } },
+        { status: 'failed', executedAt: { lte: params.resolvedBefore } },
+      ],
+    },
+    orderBy: { updatedAt: 'asc' },
+    take: limit,
+  });
+
+  return rows.map(toRecord);
 }

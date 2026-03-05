@@ -13,7 +13,9 @@ import {
 import { z } from 'zod';
 import {
   createPendingAdminAction,
+  attachPendingAdminActionApprovalMessageId,
   getPendingAdminActionById,
+  clearPendingAdminActionApprovalMessageId,
   markPendingAdminActionDecision,
   markPendingAdminActionExecuted,
   markPendingAdminActionExpired,
@@ -38,6 +40,7 @@ import { isAdmin } from '../handlers/sage-command-handlers';
 import { client } from '../client';
 
 const APPROVAL_TTL_MS = 10 * 60 * 1_000;
+const RESOLVED_APPROVAL_CARD_DELETE_DELAY_MS = 60_000;
 const MAX_SERVER_MEMORY_CHARS = 8_000;
 const DEFAULT_SERVER_MEMORY_MAX_CHARS = 4_000;
 const ADMIN_ACTION_CUSTOM_ID_PREFIX = 'sage:admin_action:';
@@ -1531,6 +1534,15 @@ export async function requestServerMemoryUpdateForTool(params: {
     expiresAt,
   });
 
+  if (approvalMessageId) {
+    await attachPendingAdminActionApprovalMessageId({
+      id: pending.id,
+      approvalMessageId,
+    }).catch((error) => {
+      logger.warn({ error, actionId: pending.id }, 'Failed to persist approval message id for server memory update');
+    });
+  }
+
   await logAdminAction({
     guildId: params.guildId,
     adminId: params.requestedBy,
@@ -1582,6 +1594,15 @@ export async function requestDiscordAdminActionForTool(params: {
     requestedBy: params.requestedBy,
     expiresAt,
   });
+
+  if (approvalMessageId) {
+    await attachPendingAdminActionApprovalMessageId({
+      id: pending.id,
+      approvalMessageId,
+    }).catch((error) => {
+      logger.warn({ error, actionId: pending.id }, 'Failed to persist approval message id for moderation action');
+    });
+  }
 
   await logAdminAction({
     guildId: params.guildId,
@@ -1636,6 +1657,15 @@ export async function requestDiscordRestWriteForTool(params: {
     expiresAt,
   });
 
+  if (approvalMessageId) {
+    await attachPendingAdminActionApprovalMessageId({
+      id: pending.id,
+      approvalMessageId,
+    }).catch((error) => {
+      logger.warn({ error, actionId: pending.id }, 'Failed to persist approval message id for Discord REST write');
+    });
+  }
+
   await logAdminAction({
     guildId: params.guildId,
     adminId: params.requestedBy,
@@ -1689,6 +1719,64 @@ export async function requestDiscordInteractionForTool(params: {
   return result;
 }
 
+export function buildPendingAdminActionResolutionNotice(action: PendingAdminActionRecord): string {
+  const decidedBy = action.decidedBy?.trim();
+  const decidedByLine = decidedBy ? `By: <@${decidedBy}>` : null;
+
+  const lines: string[] = [];
+  switch (action.status) {
+    case 'pending': {
+      lines.push('Admin action awaiting approval.');
+      break;
+    }
+    case 'approved': {
+      lines.push('Admin action approved. Executing...');
+      break;
+    }
+    case 'rejected': {
+      lines.push('Admin action rejected.');
+      break;
+    }
+    case 'executed': {
+      lines.push('Admin action approved and executed.');
+      break;
+    }
+    case 'failed': {
+      lines.push('Admin action approved, but execution failed.');
+      break;
+    }
+    case 'expired': {
+      lines.push('Admin action expired before approval.');
+      break;
+    }
+  }
+
+  lines.push(`Action ID: \`${action.id}\``);
+  if (decidedByLine) {
+    lines.push(decidedByLine);
+  }
+
+  if (action.status === 'executed') {
+    const preview = buildJsonPreviewForDisplay(action.resultJson, 900);
+    const suffix = preview.truncated ? '\n(Preview truncated)' : '';
+    lines.push(`Result: executed successfully.\n\`\`\`json\n${preview.text}\n\`\`\`${suffix}`);
+  } else if (action.status === 'failed') {
+    const errorText = truncateDiscordMessage(action.errorText ?? 'Unknown error', 900);
+    lines.push(`Result: failed.\nError: ${errorText}`);
+    if (action.resultJson) {
+      const preview = buildJsonPreviewForDisplay(action.resultJson, 700);
+      const suffix = preview.truncated ? '\n(Preview truncated)' : '';
+      lines.push(`\`\`\`json\n${preview.text}\n\`\`\`${suffix}`);
+    }
+  } else if (action.status === 'rejected') {
+    lines.push('Result: rejected.');
+  } else if (action.status === 'expired') {
+    lines.push('Result: expired before approval.');
+  }
+
+  return truncateDiscordMessage(lines.join('\n'));
+}
+
 function buildResolvedMessageContent(params: {
   base: string;
   actionId: string;
@@ -1703,6 +1791,125 @@ function buildResolvedMessageContent(params: {
     `Action ID: \`${params.actionId}\``,
     params.outcome,
   ].join('\n');
+}
+
+async function deleteApprovalCardForAction(action: PendingAdminActionRecord): Promise<void> {
+  const approvalMessageId = action.approvalMessageId?.trim();
+  if (!approvalMessageId) {
+    return;
+  }
+
+  try {
+    const result = await discordRestRequestGuildScoped({
+      guildId: action.guildId,
+      method: 'DELETE',
+      path: `/channels/${action.channelId}/messages/${approvalMessageId}`,
+      reason: `[sage action:${action.id}] auto-delete resolved approval card`,
+      maxResponseChars: 500,
+    });
+
+    const status = typeof result.status === 'number' ? result.status : null;
+    const shouldClear =
+      result.ok === true ||
+      status === 404 ||
+      status === 403;
+
+    if (shouldClear) {
+      await clearPendingAdminActionApprovalMessageId(action.id).catch((error) => {
+        logger.warn({ error, actionId: action.id }, 'Failed to clear approval message id after deletion attempt');
+      });
+      return;
+    }
+
+    if (status !== 429) {
+      logger.warn(
+        {
+          actionId: action.id,
+          guildId: action.guildId,
+          channelId: action.channelId,
+          approvalMessageId,
+          status,
+          statusText: typeof result.statusText === 'string' ? result.statusText : undefined,
+          errorText: typeof result.error === 'string' ? result.error : undefined,
+        },
+        'Failed to delete resolved approval card message',
+      );
+    }
+  } catch (error) {
+    logger.warn(
+      { error, actionId: action.id, guildId: action.guildId, channelId: action.channelId },
+      'Resolved approval card deletion threw; clearing id to avoid repeated attempts',
+    );
+    await clearPendingAdminActionApprovalMessageId(action.id).catch(() => {
+      // Ignore cleanup failures.
+    });
+  }
+}
+
+async function deleteResolvedApprovalCardForActionId(actionId: string): Promise<void> {
+  const action = await getPendingAdminActionById(actionId);
+  if (!action) return;
+  await deleteApprovalCardForAction(action);
+}
+
+function scheduleResolvedApprovalCardDeletion(actionId: string): void {
+  const timer = setTimeout(() => {
+    void deleteResolvedApprovalCardForActionId(actionId).catch((error) => {
+      logger.warn({ error, actionId }, 'Failed to auto-delete resolved approval card');
+    });
+  }, RESOLVED_APPROVAL_CARD_DELETE_DELAY_MS);
+  timer.unref?.();
+}
+
+async function updateRequesterMessageForResolvedAction(action: PendingAdminActionRecord): Promise<void> {
+  const requestMessageId = action.requestMessageId?.trim();
+  if (!requestMessageId) {
+    return;
+  }
+
+  const content = buildPendingAdminActionResolutionNotice(action);
+  const result = await discordRestRequestGuildScoped({
+    guildId: action.guildId,
+    method: 'PATCH',
+    path: `/channels/${action.channelId}/messages/${requestMessageId}`,
+    body: {
+      content,
+      allowed_mentions: { parse: [] },
+    },
+  });
+
+  if (result.ok) {
+    return;
+  }
+
+  const status = String(result.status ?? 'unknown');
+  const statusText = String(result.statusText ?? '');
+  const errorText = String(result.error ?? 'Unknown error');
+  logger.warn(
+    {
+      actionId: action.id,
+      guildId: action.guildId,
+      channelId: action.channelId,
+      requestMessageId,
+      status,
+      statusText,
+      errorText,
+    },
+    'Failed to update requester message for admin action',
+  );
+
+  try {
+    const channel = await fetchGuildChannel(action.guildId, action.channelId);
+    if (!isSendableGuildChannel(channel)) {
+      return;
+    }
+    await channel.send({ content, allowedMentions: { parse: [] } });
+  } catch (fallbackError) {
+    logger.warn(
+      { error: fallbackError, actionId: action.id, guildId: action.guildId, channelId: action.channelId },
+      'Failed to post admin action resolution fallback message',
+    );
+  }
 }
 
 export async function handleAdminActionButtonInteraction(
@@ -1723,7 +1930,7 @@ export async function handleAdminActionButtonInteraction(
     return true;
   }
 
-  const action = await getPendingAdminActionById(parsed.actionId);
+  let action = await getPendingAdminActionById(parsed.actionId);
   if (!action) {
     await interaction.reply({ content: 'Action not found.', ephemeral: true });
     return true;
@@ -1739,8 +1946,25 @@ export async function handleAdminActionButtonInteraction(
     return true;
   }
 
+  if (!action.approvalMessageId?.trim() && interaction.message?.id) {
+    const updated = await attachPendingAdminActionApprovalMessageId({
+      id: action.id,
+      approvalMessageId: interaction.message.id,
+    }).catch((error) => {
+      logger.warn({ error, actionId: action?.id }, 'Failed to attach approval card message id while handling decision');
+      return null;
+    });
+
+    if (updated) {
+      action = updated;
+    } else {
+      action = { ...action, approvalMessageId: interaction.message.id };
+    }
+  }
+
   if (action.expiresAt.getTime() <= Date.now()) {
     await markPendingAdminActionExpired(action.id);
+    const expired = await getPendingAdminActionById(action.id).catch(() => null);
     const content = buildResolvedMessageContent({
       base: interaction.message.content,
       actionId: action.id,
@@ -1749,6 +1973,12 @@ export async function handleAdminActionButtonInteraction(
       outcome: 'Result: expired before approval.',
     });
     await interaction.update({ content, components: [] });
+    if (expired) {
+      void updateRequesterMessageForResolvedAction(expired).catch((error) => {
+        logger.warn({ error, actionId: expired.id }, 'Failed to update requester message after admin action expiry');
+      });
+    }
+    scheduleResolvedApprovalCardDeletion(action.id);
     return true;
   }
 
@@ -1768,7 +1998,7 @@ export async function handleAdminActionButtonInteraction(
   }
 
   if (parsed.decision === 'reject') {
-    await markPendingAdminActionDecision({
+    const rejected = await markPendingAdminActionDecision({
       id: action.id,
       decidedBy: interaction.user.id,
       status: 'rejected',
@@ -1788,6 +2018,10 @@ export async function handleAdminActionButtonInteraction(
       outcome: 'Result: rejected.',
     });
     await interaction.update({ content, components: [] });
+    void updateRequesterMessageForResolvedAction(rejected).catch((error) => {
+      logger.warn({ error, actionId: rejected.id }, 'Failed to update requester message after admin action rejection');
+    });
+    scheduleResolvedApprovalCardDeletion(action.id);
     return true;
   }
 
@@ -1802,7 +2036,7 @@ export async function handleAdminActionButtonInteraction(
       action,
       approvedBy: interaction.user.id,
     });
-    await markPendingAdminActionExecuted({
+    const executed = await markPendingAdminActionExecuted({
       id: action.id,
       resultJson: result,
     });
@@ -1826,9 +2060,13 @@ export async function handleAdminActionButtonInteraction(
       })(),
     });
     await interaction.update({ content: truncateDiscordMessage(content), components: [] });
+    void updateRequesterMessageForResolvedAction(executed).catch((error) => {
+      logger.warn({ error, actionId: executed.id }, 'Failed to update requester message after admin action execution');
+    });
+    scheduleResolvedApprovalCardDeletion(action.id);
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
-    await markPendingAdminActionFailed({
+    const failed = await markPendingAdminActionFailed({
       id: action.id,
       errorText: errorMessage,
     });
@@ -1842,6 +2080,13 @@ export async function handleAdminActionButtonInteraction(
       outcome: `Result: failed.\nError: ${truncateDiscordMessage(errorMessage, 900)}`,
     });
     await interaction.update({ content: truncateDiscordMessage(content), components: [] });
+    void updateRequesterMessageForResolvedAction(failed).catch((notifyError) => {
+      logger.warn(
+        { error: notifyError, actionId: failed.id },
+        'Failed to update requester message after admin action failure',
+      );
+    });
+    scheduleResolvedApprovalCardDeletion(action.id);
   }
 
   return true;

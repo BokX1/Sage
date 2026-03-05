@@ -17,6 +17,10 @@ import { upsertIngestedAttachment } from '../../core/attachments/ingestedAttachm
 import { deleteAttachmentChunks, ingestAttachmentText } from '../../core/embeddings';
 import { normalizeNonNegativeInt, normalizePositiveInt } from '../../core/utils/numbers';
 import {
+  attachPendingAdminActionRequestMessageId,
+  getPendingAdminActionById,
+} from '../../core/admin/pendingAdminActionRepo';
+import {
   appendAttachmentBlocksToText,
   buildAttachmentBlockFromResult,
   buildMessageContent,
@@ -24,6 +28,7 @@ import {
   getNonImageAttachments,
 } from './attachment-parser';
 import { isAdminFromMember } from '../utils/admin-permissions';
+import { buildPendingAdminActionResolutionNotice } from '../admin/adminActionService';
 
 const processedMessagesKey = Symbol.for('sage.handlers.messageCreate.processed');
 const registrationKey = Symbol.for('sage.handlers.messageCreate.registered');
@@ -228,7 +233,10 @@ async function persistAttachmentCache(params: {
 
 type SendableTypingChannel = {
   sendTyping: () => Promise<unknown>;
-  send: (content: string) => Promise<unknown>;
+  // Minimal subset of the Discord.js send API used by this handler.
+  send: (
+    options: string | { content: string; allowedMentions?: { parse?: string[] } },
+  ) => Promise<Message>;
 };
 
 function isSendableTypingChannel(
@@ -613,19 +621,90 @@ export async function handleMessageCreate(message: Message) {
         isAdmin: isAdminFromMember(message.member),
       });
 
-      if (result.replyText || (result.files && result.files.length > 0)) {
-        const chunks = smartSplit(result.replyText || '', 2000);
+      const pendingActionIds = result.pendingAdminActionIds ?? [];
+      const replyText = result.replyText || '';
+
+      let didSendAnything = false;
+
+      if (replyText || (result.files && result.files.length > 0)) {
+        const chunks = smartSplit(replyText, 2000);
         const [firstChunk, ...restChunks] = chunks;
+
         if (firstChunk || (result.files && result.files.length > 0)) {
           await message.reply({
             content: firstChunk,
             allowedMentions: { repliedUser: false },
             files: result.files,
           });
+          didSendAnything = true;
         }
+
         for (const chunk of restChunks) {
           await discordChannel.send(chunk);
+          didSendAnything = true;
         }
+      }
+
+      const reconcileApprovalStatusMessage = async (actionId: string, statusMessage: Message): Promise<void> => {
+        const updated = await attachPendingAdminActionRequestMessageId({
+          id: actionId,
+          requestMessageId: statusMessage.id,
+        });
+
+        if (updated.status !== 'pending' && updated.status !== 'approved') {
+          const resolved = buildPendingAdminActionResolutionNotice(updated);
+          await statusMessage.edit({ content: resolved, allowedMentions: { parse: [] } });
+          return;
+        }
+
+        if (updated.status !== 'approved') {
+          return;
+        }
+
+        let attempts = 0;
+        const interval = setInterval(() => {
+          void (async () => {
+            attempts += 1;
+            try {
+              const refreshed = await getPendingAdminActionById(actionId);
+              if (!refreshed || refreshed.status === 'pending' || refreshed.status === 'approved') {
+                if (attempts >= 15) {
+                  clearInterval(interval);
+                }
+                return;
+              }
+              clearInterval(interval);
+              const resolved = buildPendingAdminActionResolutionNotice(refreshed);
+              await statusMessage.edit({ content: resolved, allowedMentions: { parse: [] } });
+            } catch {
+              if (attempts >= 15) {
+                clearInterval(interval);
+              }
+            }
+          })();
+        }, 2000);
+        interval.unref?.();
+      };
+
+      let usedReplyForApprovalStatus = false;
+      for (const actionId of pendingActionIds) {
+        const content = `Queued admin action for approval.\nAction ID: \`${actionId}\``;
+
+        try {
+          const statusMessage = (!didSendAnything && !usedReplyForApprovalStatus)
+            ? await message.reply({ content, allowedMentions: { repliedUser: false } })
+            : await discordChannel.send({ content, allowedMentions: { parse: [] } });
+
+          didSendAnything = true;
+          usedReplyForApprovalStatus = true;
+
+          await reconcileApprovalStatusMessage(actionId, statusMessage);
+        } catch (error) {
+          loggerWithTrace.warn({ error, actionId }, 'Failed to publish approval status message');
+        }
+      }
+
+      if (didSendAnything) {
         loggerWithTrace.info('Response sent');
       } else {
         loggerWithTrace.info(

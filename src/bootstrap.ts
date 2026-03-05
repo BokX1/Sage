@@ -5,6 +5,7 @@ import { registerMessageCreateHandler } from './bot/handlers/messageCreate';
 import { registerMessageReactionAddHandler } from './bot/handlers/messageReactionAdd';
 import { registerReadyHandler } from './bot/handlers/ready';
 import { registerVoiceStateUpdateHandler } from './bot/handlers/voiceStateUpdate';
+import { initApprovalCardCleanupScheduler } from './bot/admin/approvalCardCleanupScheduler';
 import { config } from './config';
 import { assertAgentTraceSchemaReady } from './core/agentRuntime/agent-trace-preflight';
 import { registerDefaultAgenticTools } from './core/agentRuntime';
@@ -29,6 +30,7 @@ export async function bootstrapApp(): Promise<void> {
     registerGuildCreateHandler(client);
     initChannelSummaryScheduler();
     startCompactionScheduler();
+    initApprovalCardCleanupScheduler();
     registerShutdownHooks({ client });
 
     if (!config.LLM_API_KEY) {
