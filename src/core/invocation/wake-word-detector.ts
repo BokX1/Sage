@@ -13,6 +13,7 @@ export type DetectInvocationParams = {
   botUserId?: string;
   wakeWords: string[];
   prefixes: string[];
+  allowEmpty?: boolean;
 };
 
 const MENTION_REGEX = /<@!?\d+>/g;
@@ -65,6 +66,7 @@ function detectWakeWord(
   text: string,
   wakeWords: string[],
   prefixes: string[],
+  allowEmpty: boolean,
 ): { cleanedText: string } | null {
   const trimmed = cleanupText(text);
   if (!trimmed) {
@@ -96,7 +98,7 @@ function detectWakeWord(
   const remainder = withoutLeadingPunctuation.slice(match[0].length);
   const cleanedText = remainder.replace(/^[\s\p{P}\p{S}]+/u, '').trim();
   if (!cleanedText) {
-    return null;
+    return allowEmpty ? { cleanedText: '' } : null;
   }
 
   return { cleanedText };
@@ -104,14 +106,13 @@ function detectWakeWord(
 
 export function detectInvocation(params: DetectInvocationParams): Invocation | null {
   const { rawContent, isMentioned, isReplyToBot, wakeWords, prefixes } = params;
+  const allowEmpty = params.allowEmpty ?? false;
 
   const withoutMentions = stripMentions(rawContent);
   const cleanedBase = cleanupText(withoutMentions);
 
   if (isReplyToBot) {
-    if (!cleanedBase) {
-      return null;
-    }
+    if (!cleanedBase && !allowEmpty) return null;
     return {
       kind: 'reply',
       cleanedText: cleanedBase,
@@ -119,16 +120,14 @@ export function detectInvocation(params: DetectInvocationParams): Invocation | n
   }
 
   if (isMentioned) {
-    if (!cleanedBase) {
-      return null;
-    }
+    if (!cleanedBase && !allowEmpty) return null;
     return {
       kind: 'mention',
       cleanedText: cleanedBase,
     };
   }
 
-  const wakewordMatch = detectWakeWord(cleanedBase, wakeWords, prefixes);
+  const wakewordMatch = detectWakeWord(cleanedBase, wakeWords, prefixes, allowEmpty);
   if (!wakewordMatch) {
     return null;
   }

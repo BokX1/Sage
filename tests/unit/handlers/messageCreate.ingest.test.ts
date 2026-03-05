@@ -167,6 +167,32 @@ describe('messageCreate - ingest + reply gating', () => {
     expect((message as unknown as { reply: ReturnType<typeof vi.fn> }).reply).toHaveBeenCalled();
   });
 
+  it('calls generateChatReply for wakeword-only image messages (default prompt)', async () => {
+    const message = createMockMessage({
+      content: 'sage',
+      attachments: {
+        values: vi.fn(() => [
+          {
+            name: 'image.png',
+            url: 'https://cdn.discordapp.com/attachments/1/2/image.png',
+            contentType: 'image/png',
+            size: 1234,
+          },
+        ]),
+        first: vi.fn(() => null),
+      },
+    });
+
+    await handleMessageCreate(message);
+
+    expect(mockGenerateChatReply).toHaveBeenCalledTimes(1);
+    expect(mockGenerateChatReply).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userText: 'Describe the image and answer any implied question.',
+      }),
+    );
+  });
+
   it('applies wakeword cooldown per user/channel', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2024-01-01T00:00:00.000Z'));
@@ -217,6 +243,84 @@ describe('messageCreate - ingest + reply gating', () => {
     );
     expect(mockGenerateChatReply).toHaveBeenCalledTimes(1);
     expect((message as unknown as { reply: ReturnType<typeof vi.fn> }).reply).toHaveBeenCalled();
+  });
+
+  it('calls generateChatReply for mention-only image messages (default prompt)', async () => {
+    const message = createMockMessage({
+      content: '<@123>',
+      mentions: {
+        has: vi.fn((user: User) => user.id === '123'),
+        users: new Map<string, User>(),
+      },
+      attachments: {
+        values: vi.fn(() => [
+          {
+            name: 'image.png',
+            url: 'https://cdn.discordapp.com/attachments/1/2/image.png',
+            contentType: 'image/png',
+            size: 1234,
+          },
+        ]),
+        first: vi.fn(() => null),
+      },
+    });
+
+    await handleMessageCreate(message);
+
+    expect(mockGenerateChatReply).toHaveBeenCalledTimes(1);
+    const call = mockGenerateChatReply.mock.calls[0]?.[0] as { userText?: string; userContent?: unknown };
+    expect(call.userText).toBe('Describe the image and answer any implied question.');
+    expect(Array.isArray(call.userContent)).toBe(true);
+    const parts = call.userContent as Array<{ type?: string; image_url?: { url?: string } }>;
+    expect(parts.some((part) => part.type === 'image_url')).toBe(true);
+    expect(
+      parts.find((part) => part.type === 'image_url')?.image_url?.url,
+    ).toBe('https://cdn.discordapp.com/attachments/1/2/image.png');
+  });
+
+  it('includes embed image URLs as multimodal content', async () => {
+    const message = createMockMessage({
+      content: '<@123> what is this?',
+      mentions: {
+        has: vi.fn((user: User) => user.id === '123'),
+        users: new Map<string, User>(),
+      },
+      embeds: [
+        {
+          image: { url: 'https://example.com/embed.png' },
+        },
+      ],
+    });
+
+    await handleMessageCreate(message);
+
+    expect(mockGenerateChatReply).toHaveBeenCalledTimes(1);
+    const call = mockGenerateChatReply.mock.calls[0]?.[0] as { userContent?: unknown };
+    expect(Array.isArray(call.userContent)).toBe(true);
+    const parts = call.userContent as Array<{ type?: string; image_url?: { url?: string } }>;
+    expect(
+      parts.find((part) => part.type === 'image_url')?.image_url?.url,
+    ).toBe('https://example.com/embed.png');
+  });
+
+  it('includes direct image URLs as multimodal content', async () => {
+    const message = createMockMessage({
+      content: '<@123> https://example.com/direct.png',
+      mentions: {
+        has: vi.fn((user: User) => user.id === '123'),
+        users: new Map<string, User>(),
+      },
+    });
+
+    await handleMessageCreate(message);
+
+    expect(mockGenerateChatReply).toHaveBeenCalledTimes(1);
+    const call = mockGenerateChatReply.mock.calls[0]?.[0] as { userContent?: unknown };
+    expect(Array.isArray(call.userContent)).toBe(true);
+    const parts = call.userContent as Array<{ type?: string; image_url?: { url?: string } }>;
+    expect(
+      parts.find((part) => part.type === 'image_url')?.image_url?.url,
+    ).toBe('https://example.com/direct.png');
   });
 
   it('skips reply generation when channel cannot send typing updates', async () => {

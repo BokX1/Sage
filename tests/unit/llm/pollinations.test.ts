@@ -165,6 +165,74 @@ describe('PollinationsClient', () => {
     expect(body.messages[0]?.role).toBe('system');
   });
 
+  it('merges multimodal + text user messages without stringifying image parts', async () => {
+    const client = new PollinationsClient({ baseUrl: 'https://api.test/v1', maxRetries: 0 });
+
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      statusText: 'OK',
+      json: async () => ({ choices: [{ message: { content: 'ok' } }] }),
+      text: async () => 'ok',
+    } satisfies { ok: boolean; status: number; statusText: string; json: () => Promise<unknown>; text: () => Promise<string> });
+
+    await client.chat({
+      messages: [
+        { role: 'system', content: 'System' },
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: '[In reply to]: First turn' },
+            { type: 'image_url', image_url: { url: 'https://example.com/1.png' } },
+          ],
+        },
+        { role: 'user', content: 'Second turn' },
+      ],
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const body = parseRequestBody(fetchMock, 0);
+    const userMessages = body.messages.filter((m) => m.role === 'user');
+    expect(userMessages).toHaveLength(1);
+    expect(Array.isArray(userMessages[0]?.content)).toBe(true);
+    const parts = userMessages[0]?.content as Array<{ type?: string }>;
+    expect(parts.some((part) => part.type === 'image_url')).toBe(true);
+  });
+
+  it('merges text + multimodal user messages without stringifying image parts', async () => {
+    const client = new PollinationsClient({ baseUrl: 'https://api.test/v1', maxRetries: 0 });
+
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      statusText: 'OK',
+      json: async () => ({ choices: [{ message: { content: 'ok' } }] }),
+      text: async () => 'ok',
+    } satisfies { ok: boolean; status: number; statusText: string; json: () => Promise<unknown>; text: () => Promise<string> });
+
+    await client.chat({
+      messages: [
+        { role: 'system', content: 'System' },
+        { role: 'user', content: 'First turn' },
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: 'Second turn' },
+            { type: 'image_url', image_url: { url: 'https://example.com/2.png' } },
+          ],
+        },
+      ],
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const body = parseRequestBody(fetchMock, 0);
+    const userMessages = body.messages.filter((m) => m.role === 'user');
+    expect(userMessages).toHaveLength(1);
+    expect(Array.isArray(userMessages[0]?.content)).toBe(true);
+    const parts = userMessages[0]?.content as Array<{ type?: string }>;
+    expect(parts.some((part) => part.type === 'image_url')).toBe(true);
+  });
+
   it('strips unsupported $schema keys from tool parameters before sending requests', async () => {
     const client = new PollinationsClient({ baseUrl: 'https://api.test/v1' });
 

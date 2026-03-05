@@ -3,6 +3,7 @@ import { LLMMessageContent } from '../../core/llm/llm-types';
 import { estimateTokens } from '../../core/agentRuntime/tokenEstimate';
 import { config as appConfig } from '../../config';
 import { FetchAttachmentResult } from '../../core/utils/file-handler';
+import { isPrivateOrLocalHostname } from '../../shared/config/env';
 
 const IMAGE_EXTENSIONS = new Set([
   'png',
@@ -17,6 +18,41 @@ const IMAGE_EXTENSIONS = new Set([
 
 const ATTACHMENT_CONTEXT_NOTE =
   '(System Note: The user attached the file above. Analyze it based on their request.)';
+
+const URL_PATTERN = /https?:\/\/[^\s<>()[\]{}"']+/gi;
+
+function sanitizePublicHttpUrl(value: string): string | null {
+  const raw = value.trim();
+  if (!raw) return null;
+  try {
+    const parsed = new URL(raw);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null;
+    if (isPrivateOrLocalHostname(parsed.hostname)) return null;
+    parsed.hash = '';
+    return parsed.toString();
+  } catch {
+    return null;
+  }
+}
+
+function getUrlExtension(url: string): string | null {
+  try {
+    const parsed = new URL(url);
+    const lastSegment = parsed.pathname.split('/').pop() ?? '';
+    const parts = lastSegment.split('.');
+    if (parts.length < 2) {
+      return null;
+    }
+    return parts.pop()?.toLowerCase() ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function isLikelyImageUrl(url: string): boolean {
+  const extension = getUrlExtension(url);
+  return extension ? IMAGE_EXTENSIONS.has(extension) : false;
+}
 
 export function isImageAttachment(attachment?: {
   contentType?: string | null;
@@ -57,6 +93,59 @@ export function getNonImageAttachments(message: Message) {
   return getMessageAttachments(message).filter((attachment) => !isImageAttachment(attachment));
 }
 
+export function getVisionImageUrl(message: Message): string | null {
+  const attachment = getImageAttachment(message);
+  if (attachment?.url) {
+    const sanitized = sanitizePublicHttpUrl(attachment.url);
+    if (sanitized) {
+      return sanitized;
+    }
+  }
+
+  const stickers = (message as unknown as { stickers?: unknown }).stickers;
+  if (stickers && typeof (stickers as { values?: unknown }).values === 'function') {
+    try {
+      for (const sticker of (stickers as { values: () => Iterable<unknown> }).values()) {
+        const urlCandidate = (sticker as { url?: unknown }).url;
+        if (typeof urlCandidate !== 'string') continue;
+        const sanitized = sanitizePublicHttpUrl(urlCandidate);
+        if (!sanitized) continue;
+        if (isLikelyImageUrl(sanitized)) {
+          return sanitized;
+        }
+      }
+    } catch {
+      // Ignore sticker iteration errors.
+    }
+  }
+
+  const embeds = (message as unknown as { embeds?: unknown[] }).embeds;
+  if (Array.isArray(embeds)) {
+    for (const embed of embeds) {
+      const urlCandidate =
+        (embed as { image?: { url?: unknown } }).image?.url ??
+        (embed as { thumbnail?: { url?: unknown } }).thumbnail?.url;
+      if (typeof urlCandidate !== 'string') continue;
+      const sanitized = sanitizePublicHttpUrl(urlCandidate);
+      if (sanitized) {
+        return sanitized;
+      }
+    }
+  }
+
+  const content = message.content ?? '';
+  const matches = content.match(URL_PATTERN) ?? [];
+  for (const match of matches) {
+    const sanitized = sanitizePublicHttpUrl(match);
+    if (!sanitized) continue;
+    if (isLikelyImageUrl(sanitized)) {
+      return sanitized;
+    }
+  }
+
+  return null;
+}
+
 export function buildMessageContent(
   message: Message,
   options?: { prefix?: string; allowEmpty?: boolean; textOverride?: string },
@@ -64,10 +153,10 @@ export function buildMessageContent(
   const prefix = options?.prefix ?? '';
   const text = options?.textOverride ?? message.content ?? '';
   const combinedText = `${prefix}${text}`;
-  const attachment = getImageAttachment(message);
-  const hasImage = isImageAttachment(attachment);
+  const imageUrl = getVisionImageUrl(message);
+  const hasImage = typeof imageUrl === 'string' && imageUrl.length > 0;
 
-  if (!hasImage || !attachment?.url) {
+  if (!hasImage) {
     if (!options?.allowEmpty && combinedText.trim().length === 0) {
       return null;
     }
@@ -77,7 +166,7 @@ export function buildMessageContent(
   const textPart = combinedText.trim().length > 0 ? combinedText : ' ';
   return [
     { type: 'text', text: textPart },
-    { type: 'image_url', image_url: { url: attachment.url } },
+    { type: 'image_url', image_url: { url: imageUrl } },
   ];
 }
 

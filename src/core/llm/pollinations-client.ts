@@ -1,4 +1,4 @@
-import { LLMClient, LLMRequest, LLMResponse, ToolDefinition } from './llm-types';
+import { LLMClient, LLMContentPart, LLMMessageContent, LLMRequest, LLMResponse, ToolDefinition } from './llm-types';
 import { CircuitBreaker } from './circuit-breaker';
 import { logger } from '../../core/utils/logger';
 import { metrics } from '../../core/utils/metrics';
@@ -144,6 +144,28 @@ function collapseSystemMessages(messages: LLMRequest['messages']): LLMRequest['m
   ];
 }
 
+function toContentParts(content: LLMMessageContent): LLMContentPart[] {
+  if (Array.isArray(content)) {
+    return content;
+  }
+  return [{ type: 'text', text: content }];
+}
+
+function mergeMessageContents(prev: LLMMessageContent, next: LLMMessageContent): LLMMessageContent {
+  if (typeof prev === 'string' && typeof next === 'string') {
+    return `${prev}\n\n${next}`;
+  }
+
+  const prevParts = toContentParts(prev);
+  const nextParts = toContentParts(next);
+
+  const merged: LLMContentPart[] = [];
+  merged.push(...prevParts);
+  merged.push({ type: 'text', text: '\n\n' });
+  merged.push(...nextParts);
+  return merged;
+}
+
 function assertSafeBaseUrl(rawBaseUrl: string): string {
   const trimmed = rawBaseUrl.trim().replace(/\/$/, '').replace(/\/chat\/completions$/, '');
   const parsed = new URL(trimmed);
@@ -255,16 +277,7 @@ export class PollinationsClient implements LLMClient {
 
       // Merge adjacent same-role messages.
       if (prev.role === msg.role) {
-        if (Array.isArray(prev.content) && Array.isArray(msg.content)) {
-          prev.content = [...prev.content, ...msg.content];
-        } else if (typeof prev.content === 'string' && typeof msg.content === 'string') {
-          prev.content += '\n\n' + msg.content;
-        } else {
-          // Mixed types are stringified so both payloads are retained.
-          const prevText = typeof prev.content === 'string' ? prev.content : JSON.stringify(prev.content);
-          const currText = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content);
-          prev.content = `${prevText}\n\n${currText}`;
-        }
+        prev.content = mergeMessageContents(prev.content, msg.content);
       } else {
         normalizedMessages.push(msg);
       }

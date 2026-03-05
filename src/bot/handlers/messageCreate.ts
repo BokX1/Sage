@@ -26,6 +26,7 @@ import {
   buildMessageContent,
   deriveAttachmentBudget,
   getNonImageAttachments,
+  getVisionImageUrl,
 } from './attachment-parser';
 import { isAdminFromMember } from '../utils/admin-permissions';
 import { buildPendingAdminActionResolutionNotice } from '../admin/adminActionService';
@@ -52,6 +53,8 @@ let cachedWakeWords: string[] | null = null;
 let cachedWakeWordPrefixes: string[] | null = null;
 const ATTACHMENT_INTENT_PATTERN =
   /\b(attachment|attached|file|files|document|doc|pdf|read|review|analy[sz]e|summari[sz]e|inspect|parse|look at)\b/i;
+
+const DEFAULT_IMAGE_ONLY_PROMPT = 'Describe the image and answer any implied question.';
 
 function getWakeWords(): string[] {
   if (!cachedWakeWords) {
@@ -333,6 +336,10 @@ export async function handleMessageCreate(message: Message) {
       ? buildMessageContent(referencedMessage, { prefix: '[In reply to]: ' })
       : null;
 
+    const messageVisionImageUrl = getVisionImageUrl(message);
+    const referencedVisionImageUrl = referencedMessage ? getVisionImageUrl(referencedMessage) : null;
+    const allowEmptyInvocation = !!messageVisionImageUrl || !!referencedVisionImageUrl;
+
     const nonImageAttachments = getNonImageAttachments(message);
     const maxAttachmentsPerMessage = normalizePositiveInt(
       appConfig.FILE_INGEST_MAX_ATTACHMENTS_PER_MESSAGE,
@@ -520,6 +527,7 @@ export async function handleMessageCreate(message: Message) {
       botUserId: client.user?.id,
       wakeWords: getWakeWords(),
       prefixes: getWakeWordPrefixes(),
+      allowEmpty: allowEmptyInvocation,
     });
 
     if (
@@ -542,6 +550,10 @@ export async function handleMessageCreate(message: Message) {
       } else {
         return;
       }
+    }
+
+    if (allowEmptyInvocation && invocation.cleanedText.trim().length === 0) {
+      invocation = { ...invocation, cleanedText: DEFAULT_IMAGE_ONLY_PROMPT };
     }
 
     logger.debug({ type: invocation.kind }, 'Invocation decided');

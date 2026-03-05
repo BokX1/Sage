@@ -287,7 +287,8 @@ curl -L "$POLLINATIONS_API/image/a%20cat%20wearing%20sunglasses?model=imagen-4&s
 ### Image edit didn’t use the image I replied to
 
 - Make sure you used Discord **Reply** (not just quoted text).
-- Sage only uses direct attachments or reply attachments for edit context.
+- Sage uses images from: message attachments, replied-to message attachments, stickers, embed preview images (when available), and direct image URLs ending in common extensions (for example, `.png`, `.jpg`, `.webp`, `.gif`).
+- If you invoke Sage with an image but no text (mention/wakeword only), Sage will apply a default “describe the image” prompt.
 
 ### Voice transcription does nothing
 
