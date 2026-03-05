@@ -29,7 +29,6 @@ Complete index of all environment variables used by Sage, with descriptions and 
 - [Timeouts](#timeouts)
 - [Tool Providers](#tool-providers)
 - [Social Graph](#social-graph)
-- [Replay / Evaluation](#replay--evaluation)
 - [Doctor Utility](#doctor-utility)
 
 ---
@@ -295,49 +294,6 @@ These settings control Sage's optional Discord voice features. The local voice s
 
 > [!TIP]
 > Set `KAFKA_BROKERS=` (empty) to disable social graph export entirely.
-
----
-
-<a id="replay--evaluation"></a>
-
-## 🧪 Replay / Evaluation
-
-<details>
-<summary><strong>Replay Seed Controls (<code>npm run agentic:seed-replay-data</code>)</strong></summary>
-
-| Variable | Description | Default |
-|:---|:---|:---|
-| `REPLAY_SEED_GUILD_ID` | Target guild ID | *(empty)* |
-| `REPLAY_SEED_CHANNEL_PREFIX` | Channel name prefix | `seed-replay` |
-| `REPLAY_SEED_USER_ID` | Seed user ID | `seed-user` |
-
-</details>
-
-<details>
-<summary><strong>Evaluation Run Controls (<code>npm run eval:run</code>)</strong></summary>
-
-| Variable | Description | Default |
-|:---|:---|:---|
-| `EVAL_RUN_LIMIT` | Max traces to evaluate | `40` |
-| `EVAL_RUN_CONCURRENCY` | Parallel evaluation workers | `2` |
-| `EVAL_RUN_RUBRIC_VERSION` | Rubric version | `v1` |
-| `EVAL_RUN_TIMEOUT_MS` | Per-evaluation timeout | `120000` |
-| `EVAL_RUN_MAX_TOKENS` | Max tokens per evaluation | `1200` |
-
-</details>
-
-<details>
-<summary><strong>Evaluation Gate Controls (<code>npm run eval:gate</code>)</strong></summary>
-
-| Variable | Description | Default |
-|:---|:---|:---|
-| `EVAL_GATE_LIMIT` | Max traces to gate | `60` |
-| `EVAL_GATE_MIN_AVG_SCORE` | Minimum average score | `0.75` |
-| `EVAL_GATE_MIN_PASS_RATE` | Minimum pass rate | `0.70` |
-| `EVAL_GATE_MAX_DISAGREEMENT_RATE` | Max judge disagreement rate | `0.40` |
-| `EVAL_GATE_MIN_CONFIDENCE` | Minimum confidence threshold | `0.50` |
-
-</details>
 
 ---
 

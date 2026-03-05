@@ -16,7 +16,7 @@ Sage uses PostgreSQL with Prisma ORM. This document covers all tables, relations
 - [Core Tables](#core-tables)
 - [Memory & Context Tables](#memory--context-tables)
 - [Embeddings & Search Tables](#embeddings--search-tables)
-- [Telemetry & Evaluation Tables](#telemetry--evaluation-tables)
+- [Telemetry Tables](#telemetry-tables)
 - [Admin & Operations Tables](#admin--operations-tables)
 - [Common Operations](#common-operations)
 - [Related Documentation](#related-documentation)
@@ -314,9 +314,9 @@ Vector embeddings of channel messages for hybrid semantic/lexical search.
 
 ---
 
-<a id="telemetry--evaluation-tables"></a>
+<a id="telemetry-tables"></a>
 
-## 📡 Telemetry & Evaluation Tables
+## 📡 Telemetry Tables
 
 ### `AgentTrace`
 
@@ -333,21 +333,6 @@ Per-turn telemetry for debugging and observability.
 | `qualityJson` | `Json?` | Quality metrics |
 | `reasoningText` | `Text?` | Agent reasoning/selector text |
 | `replyText` | `Text` | Final reply |
-
-### `AgentEvaluation`
-
-Model-judge evaluation outcomes for release/readiness workflows.
-
-| Column | Type | Notes |
-|:---|:---|:---|
-| `traceId` | `String` | Linked to `AgentTrace` |
-| `model` / `rubricVersion` | `String` | Evaluation context |
-| `primaryJudgeModel` / `secondaryJudgeModel` | `String` | Dual-judge models |
-| `adjudicatorJudgeModel` | `String?` | Tie-breaking judge |
-| `overallScore` / `confidence` | `Float` | Evaluation metrics |
-| `verdict` | `String` | pass/fail/revise |
-| `disagreement` / `arbitrationUsed` / `judgeAgreement` | `Boolean` | Judge agreement tracking |
-| `dimensionScoresJson` / `issuesJson` | `Json` | Detailed scoring breakdown |
 
 ### `ModelHealthState`
 

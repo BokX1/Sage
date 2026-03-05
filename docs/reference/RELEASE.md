@@ -39,7 +39,7 @@ All release work starts from the same baseline local gate:
 npm run check:trust
 ```
 
-`npm run check:trust` is the canonical local trust gate and does not require live API eval infrastructure.
+`npm run check:trust` is the canonical local trust gate and does not require optional external gating tooling.
 It runs lint/typecheck, static test quality audit, and repeated/shuffled test validation.
 
 ---

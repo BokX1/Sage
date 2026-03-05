@@ -199,7 +199,7 @@ flowchart LR
 - **🔍 Live Internet Research**: Arms the agent with real-time web search and verified synthesis to provide high-signal answers with zero hallucinations.
 - **🤖 Zero-Prompt Tool Automation**: Dynamically selects the exact tools needed (search, memory lookup, analytics) based on raw community intent.
 - **🛡️ Enterprise-Grade Reliability**: Built with explicit telemetry traces and strict graph-first validations to drastically reduce operational risks.
-- **🧪 Production-Ready Quality**: Supported by robust build, test, and automated evaluation release pipelines for consistent long-term behavior.
+- **🧪 Production-Ready Quality**: Supported by robust build, test, and trust-gate validation for consistent long-term behavior.
 - **🎤 Immersive Voice Awareness**: Optionally leverages voice analytics to bridge the gap between text history and live voice sessions.
 
 <p align="center">
@@ -297,7 +297,7 @@ npm run build
 npm start
 ```
 
-Advanced release gating, eval pipelines, simulation, and tuning live in:
+Advanced release gating and operational runbooks live in:
 
 - `docs/reference/RELEASE.md`
 - `docs/operations/RUNBOOK.md`

@@ -248,7 +248,6 @@ Read-only helpers are also exposed via `discord` actions:
 | **Model health tracking** | Rolling success/failure scores per model with degraded-mode signaling |
 | **Trace persistence** | Route, budget, tool, and quality metadata stored per turn |
 | **Build/test gates** | `check:trust` runs lint + typecheck + test audit + shuffled test validation |
-| **Eval pipeline** | Model-judge evaluations with dual-judge + adjudicator pattern |
 
 ---
 

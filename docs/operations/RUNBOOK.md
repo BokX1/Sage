@@ -158,11 +158,6 @@ Then run `.github/workflows/release-supply-chain.yml` for:
 - CycloneDX SBOM
 - Build provenance attestation
 
-> [!NOTE]
-> Live API evaluation gates are intentionally excluded from the default local runbook. See [Release Process](../reference/RELEASE.md) for the full gated pipeline.
-
----
-
 <a id="incident-response"></a>
 
 ## 🚨 Incident Response
@@ -174,7 +169,7 @@ flowchart TD
     classDef resolve fill:#d4edda,stroke:#155724,color:black
 
     A[Incident Detected]:::detect --> B[Capture trace IDs + logs]:::investigate
-    B --> C[Reproduce with replay/eval tooling]:::investigate
+    B --> C[Reproduce on canonical runtime path]:::investigate
     C --> D{Schema-related?}:::investigate
     D -->|Yes| E[Run prisma migrate deploy]:::resolve
     D -->|No| F[Analyze trace + tool data]:::investigate
@@ -189,7 +184,7 @@ flowchart TD
 **Response steps:**
 
 1. **Capture** trace IDs and relevant logs
-2. **Reproduce** with `npm run agentic:seed-replay-data` (when you need fresh replay fixtures) and `npm run eval:run` for deterministic investigation
+2. **Reproduce** with the captured inputs on the canonical runtime path and run `npm run check:trust` for deterministic validation
 3. **Diagnose** — check if schema-related: run `npx prisma migrate deploy` and re-check
 4. **Roll back** by deploying the previous app artifact and verified database state if needed
 5. **Document** the incident and resolution
