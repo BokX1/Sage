@@ -15,12 +15,7 @@ const mockLogger = vi.hoisted(() => {
 
 const mockChildLogger = vi.hoisted(() => vi.fn(() => mockLogger));
 
-vi.mock('@/shared/logging/logger', () => ({
-  logger: mockLogger,
-  childLogger: mockChildLogger,
-}));
-
-vi.mock('@/core/utils/logger', () => ({
+vi.mock('@/platform/logging/logger', () => ({
   logger: mockLogger,
   childLogger: mockChildLogger,
 }));

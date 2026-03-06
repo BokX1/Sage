@@ -11,7 +11,55 @@ const noDirectEnvRule = [
   {
     object: 'process',
     property: 'env',
-    message: 'Use the central config module (src/shared/config/env.ts) instead of process.env directly.',
+    message: 'Use the central config module (src/platform/config/env.ts) instead of process.env directly.',
+  },
+];
+
+const disallowAppImports = [
+  'error',
+  {
+    patterns: [
+      {
+        regex: '^@/app/',
+        message: 'Only app-layer modules may import from src/app.',
+      },
+      {
+        regex: '^(?:\\.\\./)+app/',
+        message: 'Only app-layer modules may import from src/app.',
+      },
+    ],
+  },
+];
+
+const disallowFeatureImports = [
+  'error',
+  {
+    patterns: [
+      {
+        regex: '^@/(?:app|features)/',
+        message: 'Platform-layer modules must not depend on app or feature modules.',
+      },
+      {
+        regex: '^(?:\\.\\./)+(?:app|features)/',
+        message: 'Platform-layer modules must not depend on app or feature modules.',
+      },
+    ],
+  },
+];
+
+const disallowSharedUpstreamImports = [
+  'error',
+  {
+    patterns: [
+      {
+        regex: '^@/(?:app|features|platform)/',
+        message: 'Shared modules must remain dependency-free from app, feature, and platform layers.',
+      },
+      {
+        regex: '^(?:\\.\\./)+(?:app|features|platform)/',
+        message: 'Shared modules must remain dependency-free from app, feature, and platform layers.',
+      },
+    ],
   },
 ];
 
@@ -41,7 +89,7 @@ export default [
   },
   {
     files: ['../../src/**/*.ts'],
-    ignores: ['../../src/shared/config/env.ts', '../../src/scripts/onboard.ts'],
+    ignores: ['../../src/platform/config/env.ts', '../../src/cli/onboard.ts'],
     languageOptions: {
       parserOptions: {
         project: './tsconfig.app.json',
@@ -59,6 +107,24 @@ export default [
           caughtErrorsIgnorePattern: '^_',
         },
       ],
+    },
+  },
+  {
+    files: ['../../src/features/**/*.ts'],
+    rules: {
+      'no-restricted-imports': disallowAppImports,
+    },
+  },
+  {
+    files: ['../../src/platform/**/*.ts'],
+    rules: {
+      'no-restricted-imports': disallowFeatureImports,
+    },
+  },
+  {
+    files: ['../../src/shared/**/*.ts'],
+    rules: {
+      'no-restricted-imports': disallowSharedUpstreamImports,
     },
   },
   {

@@ -89,14 +89,14 @@ flowchart TD
 
 | Component | File | Purpose |
 |:---|:---|:---|
-| **Chat Engine** | `src/core/chat-engine.ts` | Entry point — receives Discord events, orchestrates `runChatTurn` |
-| **Agent Runtime** | `src/core/agentRuntime/agentRuntime.ts` | The single `runChatTurn` function: model resolution, prompt assembly, tool loop, trace persistence |
-| **Context Builder** | `src/core/agentRuntime/contextBuilder.ts` | Composes prioritized message blocks (system prompt, runtime instructions, optional guild memory/voice context, transcript, reply context) |
-| **Context Budgeter** | `src/core/agentRuntime/contextBudgeter.ts` | Token-aware block sizing with configurable per-block budgets |
-| **Prompt Composer** | `src/core/agentRuntime/promptComposer.ts` | Assembles the final system prompt with personality, capabilities, and tool protocol |
-| **Tool Call Loop** | `src/core/agentRuntime/toolCallLoop.ts` | Iterative tool execution with bounded rounds, parallel read-only optimization, and timeout enforcement |
-| **Tool Registry** | `src/core/agentRuntime/toolRegistry.ts` | Zod-validated tool definitions with OpenAI-compatible spec generation |
-| **Default Tools** | `src/core/agentRuntime/defaultTools.ts` | All 11 built-in tool definitions |
+| **Chat Engine** | `src/features/chat/chat-engine.ts` | Entry point — receives Discord events, orchestrates `runChatTurn` |
+| **Agent Runtime** | `src/features/agent-runtime/agentRuntime.ts` | The single `runChatTurn` function: model resolution, prompt assembly, tool loop, trace persistence |
+| **Context Builder** | `src/features/agent-runtime/contextBuilder.ts` | Composes prioritized message blocks (system prompt, runtime instructions, optional guild memory/voice context, transcript, reply context) |
+| **Context Budgeter** | `src/features/agent-runtime/contextBudgeter.ts` | Token-aware block sizing with configurable per-block budgets |
+| **Prompt Composer** | `src/features/agent-runtime/promptComposer.ts` | Assembles the final system prompt with personality, capabilities, and tool protocol |
+| **Tool Call Loop** | `src/features/agent-runtime/toolCallLoop.ts` | Iterative tool execution with bounded rounds, parallel read-only optimization, and timeout enforcement |
+| **Tool Registry** | `src/features/agent-runtime/toolRegistry.ts` | Zod-validated tool definitions with OpenAI-compatible spec generation |
+| **Default Tools** | `src/features/agent-runtime/defaultTools.ts` | All 11 built-in tool definitions |
 
 ---
 
@@ -261,29 +261,19 @@ Read-only helpers are also exposed via `discord` actions:
 ## 📂 Key Source Files
 
 ```text
-src/core/
-├── chat-engine.ts              # Entry point: Discord → runtime
-├── agentRuntime/
-│   ├── agentRuntime.ts         # runChatTurn — the single execution path
-│   ├── contextBuilder.ts       # Prioritized context message composition
-│   ├── contextBudgeter.ts      # Token-budget enforcement per block
-│   ├── promptComposer.ts       # System prompt assembly
-│   ├── toolCallLoop.ts         # Iterative tool execution loop
-│   ├── toolRegistry.ts         # Zod-based tool definition registry
-│   ├── defaultTools.ts         # All 11 built-in tools
-│   ├── toolIntegrations.ts     # Tool backend implementations
-│   ├── toolCallParser.ts       # Parse tool calls from LLM output
-│   ├── toolCallExecution.ts    # Execute + validate tool calls
-│   ├── toolGrounding.ts        # GitHub grounded search mode
-│   └── agent-trace-repo.ts     # Trace persistence
-├── llm/                        # Model resolver, catalog, health
-├── memory/                     # Profile updater, user profile repo
-├── summary/                    # Channel summary scheduler + summarizer
-├── relationships/              # Social graph edge tracking
-├── voice/                      # Voice presence, sessions, analytics
-├── awareness/                  # Ring buffer, transcript builder
-├── attachments/                # Non-image file extraction cache
-└── embeddings/                 # Local vector embeddings (RAG)
+src/
+├── app/                        # Bootstrap, Discord event wiring, lifecycle hooks
+├── features/
+│   ├── agent-runtime/          # runChatTurn, tool loop, prompt/context assembly
+│   ├── chat/                   # Chat orchestration and rate limiting
+│   ├── memory/                 # Profiles and memory update flows
+│   ├── summary/                # Channel summarization and compaction
+│   ├── social-graph/           # Query/migration/setup logic and analytics
+│   ├── voice/                  # Voice presence, sessions, analytics
+│   └── ...                     # Awareness, settings, ingest, embeddings, admin
+├── platform/                   # Discord, DB, LLM, config, logging, security adapters
+├── shared/                     # Pure cross-cutting helpers and error utilities
+└── cli/                        # Operational entrypoints and diagnostics
 ```
 
 ---

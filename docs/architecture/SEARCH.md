@@ -69,7 +69,7 @@ Search execution applies runtime guardrails to ensure the right models are used:
 - Sage runs tool orchestration first and only falls back to guarded search models when needed.
 - Source/date normalization and capability validation still apply to search outputs.
 
-**Source:** [`src/core/agentRuntime/agentRuntime.ts`](../../src/core/agentRuntime/agentRuntime.ts) and [`src/core/agentRuntime/toolIntegrations.ts`](../../src/core/agentRuntime/toolIntegrations.ts)
+**Source:** [`src/features/agent-runtime/agentRuntime.ts`](../../src/features/agent-runtime/agentRuntime.ts) and [`src/features/agent-runtime/toolIntegrations.ts`](../../src/features/agent-runtime/toolIntegrations.ts)
 
 ---
 

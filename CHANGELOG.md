@@ -26,6 +26,7 @@
 
 ### Changed
 
+- Reorganized the codebase into a feature-first layout under `src/app`, `src/features`, `src/platform`, `src/shared`, and `src/cli`, mirrored the new ownership model across `tests/**`, and moved the self-hosted social-graph stack to `config/services/self-host/` plus `services/social-graph/` so operators and contributors can navigate runtime, tooling, and service assets with one consistent structure while keeping existing npm entrypoints stable.
 - Realigned the tracked documentation with the current single-agent runtime, tool catalog, invite flow, config surface, and compose stacks, removing stale hosted-bot, Ollama, and legacy social-graph automation guidance so operators can follow the checked-in docs without code drift.
 - Reorganized tracked config and CI automation around `config/tooling/`, `config/services/`, reusable GitHub Actions gates, pinned Pages actions, and repo-owned Husky/docs scripts, reducing workflow drift and making local and CI validation use the same commands.
 - Upgraded agent reasoning protocol from a 3-step (INTENT → PLAN → TOOL CHOICE) loop to a structured 4-step cognitive loop (Pause and Restate → Ground Constraints → Select Tool Path → Verify Before Executing) with a fast-exit clause for trivial queries and an explicit halt gate on failed constraint checks, improving tool-selection accuracy and reducing hallucination.
@@ -124,7 +125,7 @@
 - Unified and modernized the agentic tool surface to reduce multi-hop workflows: consolidated legacy web/GitHub tools into the action-based `web` and `github` tools, with smart defaults for paging, bulk ranges, and match previews.
 
 - Expanded website `ToolGrid` showcase to explicitly document the full catalog of 34 native Discord capabilities under a unified category, replacing the single placeholder "Discord" item.
-- Refactored the onboarding welcome message (`src/bot/handlers/welcomeMessage.ts` and `src/bot/handlers/guildCreate.ts`) to use rich Discord Embeds.
+- Refactored the onboarding welcome message (`src/app/discord/handlers/welcomeMessage.ts` and `src/app/discord/handlers/guildCreate.ts`) to use rich Discord Embeds.
 - Replaced individual `discord_*` runtime tools with a single `discord` tool; Discord tool calls must now use `discord` with an `action` field instead of separate tool names.
 - Increased default tool-loop throughput by raising `AGENTIC_TOOL_MAX_CALLS_PER_ROUND` (from `3` to `5`) and `AGENTIC_TOOL_MAX_PARALLEL_READ_ONLY` (from `3` to `4`).
 - Enabled per-call read-only classification for action-based tools (including `discord`) so safe reads can be deduplicated and parallelized within a round.
@@ -139,7 +140,7 @@
 ### Fixed
 
 - Consolidated `PendingAdminAction` message-id columns into the baseline Prisma `init` migration so new environments bootstrap from a single migration file with the current admin-approval schema.
-- Fixed `src/scripts/simulate-agentic.ts` to remove stale `intent` payload fields after runtime contract cleanup, restoring `npm run build` compatibility for simulation runs.
+- Fixed `src/cli/simulate-agentic.ts` to remove stale `intent` payload fields after runtime contract cleanup, restoring `npm run build` compatibility for simulation runs.
 - Hardened web content text extraction in agent runtime HTML stripping: script/style block removal now also handles closing tags with trailing whitespace (for example `</script >`, `</style   >`), preventing embedded script/style payload text from leaking into scraped summaries.
 - Fixed `npm_info` GitHub repo extraction for packages that use `github:` shorthand repository URLs, improving npm → GitHub tool handoffs and workflows.
 - Fixed `github` repo normalization to accept `github:` specifiers and common `owner/repo#...` shorthands for fewer validation failures.
@@ -162,7 +163,7 @@
 ### Removed
 
 - Removed legacy replay/evaluation tooling end-to-end: deleted npm commands (`agentic:seed-replay-data`, `eval:run`, `eval:gate`, `release:agentic-check`), removed associated scripts/runtime modules/tests/env surfaces, and folded `AgentEvaluation` removal into the baseline migration so fresh environments migrate with a single file. Operators should remove any automation or runbooks that still invoke these commands.
-- Removed legacy agentic simulation/tuning tooling end-to-end: deleted `src/scripts/simulate-agentic.ts` and `src/scripts/tune-agentic.ts`, removed npm commands (`agentic:simulate`, `agentic:tune`), and dropped all `SIM_*` / `TUNE_*` environment template-schema references from active operator docs.
+- Removed legacy agentic simulation/tuning tooling end-to-end: deleted `src/cli/simulate-agentic.ts` and `src/cli/tune-agentic.ts`, removed npm commands (`agentic:simulate`, `agentic:tune`), and dropped all `SIM_*` / `TUNE_*` environment template-schema references from active operator docs.
 - Removed four unreferenced legacy modules (`src/core/agentRuntime/agent-events.ts`, `src/core/agentRuntime/patterns.ts`, `src/core/config/doctor.ts`, `src/core/voice/index.ts`) to reduce dead maintenance surface and stale internal APIs.
 - Removed legacy agentic tool names `web_search`, `web_read`, `web_scrape`, `github_repo`, `github_get_file`, `github_search_code` in favor of unified `web` and `github` action-based tools.
 

@@ -23,7 +23,7 @@ Operational guide for deploying and managing the optional Memgraph + Redpanda so
 ## 1. Start infrastructure
 
 ```powershell
-docker compose -f docker-compose.social-graph.yml up -d
+docker compose -f config/services/self-host/docker-compose.social-graph.yml up -d
 Start-Sleep -Seconds 5
 ```
 
@@ -97,7 +97,7 @@ RETURN name;
 
 ## 5. Run analytics and GNN modules
 
-The repo ships `src/social-graph/graphAnalyticsPulse.ts`, but Sage does **not** schedule it automatically.
+The repo ships `src/cli/social-graph/graphAnalyticsPulse.ts`, but Sage does **not** schedule it automatically.
 
 What that means in practice:
 
@@ -124,7 +124,7 @@ If you want periodic analytics, wrap `runGraphAnalyticsPulse()` in your own sche
 To warm the graph with pre-existing PostgreSQL relationship data:
 
 ```powershell
-npx ts-node -P config/tooling/tsconfig.app.json src/social-graph/migratePostgresToMemgraph.ts
+npx ts-node -P config/tooling/tsconfig.app.json src/cli/social-graph/migratePostgresToMemgraph.ts
 ```
 
 This reads `RelationshipEdge` rows from PostgreSQL and publishes synthetic interaction events through the same Kafka pipeline used by the live runtime.
@@ -137,7 +137,7 @@ This reads `RelationshipEdge` rows from PostgreSQL and publishes synthetic inter
 | :--- | :--- |
 | Streams stuck at 0 messages | Check `MEMGRAPH_KAFKA_BOOTSTRAP_SERVERS` points to the Docker-internal broker (`redpanda:9092`) |
 | Sage logs say Kafka producer unavailable | Verify `KAFKA_BROKERS` points at the host-facing broker (`localhost:19092`) and Redpanda is reachable |
-| MAGE modules not found | Verify the image and volume mounts in `docker-compose.social-graph.yml` |
+| MAGE modules not found | Verify the image and volume mounts in `config/services/self-host/docker-compose.social-graph.yml` |
 | PyTorch errors in MAGE | Use the Memgraph image bundled for MAGE support, not a plain Memgraph image |
 | Bot publishes but graph stays empty | Re-run `npm run social-graph:setup` and inspect `SHOW STREAMS;` in Memgraph Lab |
 

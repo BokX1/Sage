@@ -215,7 +215,7 @@ npx prisma migrate reset --force --skip-generate
 npm run social-graph:setup
 
 # Migrate historical PostgreSQL data to Memgraph
-npx ts-node -P config/tooling/tsconfig.app.json src/social-graph/migratePostgresToMemgraph.ts
+npx ts-node -P config/tooling/tsconfig.app.json src/cli/social-graph/migratePostgresToMemgraph.ts
 ```
 
 ### Tool Stack

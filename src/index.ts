@@ -1,6 +1,6 @@
-import { bootstrapApp } from './bootstrap';
+import { bootstrapApp } from './app/bootstrap';
 import { toErrorWithCode } from './shared/errors/app-error';
-import { logger } from './shared/logging/logger';
+import { logger } from './platform/logging/logger';
 
 void bootstrapApp().catch((error) => {
   const appError = toErrorWithCode(error, 'BOOTSTRAP_FAILED');

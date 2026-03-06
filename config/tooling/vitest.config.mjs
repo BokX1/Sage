@@ -11,12 +11,27 @@ export default defineConfig({
     },
   },
   test: {
-    include: ['tests/**/*.test.ts', 'tests/**/*.spec.ts'],
     exclude: ['dist/**', 'node_modules/**'],
     setupFiles: ['tests/vitest.setup.ts'],
     clearMocks: true,
     mockReset: true,
     restoreMocks: true,
     unstubGlobals: true,
+    projects: [
+      {
+        extends: true,
+        test: {
+          name: 'unit',
+          include: ['tests/unit/**/*.test.ts', 'tests/unit/**/*.spec.ts'],
+        },
+      },
+      {
+        extends: true,
+        test: {
+          name: 'integration',
+          include: ['tests/integration/**/*.test.ts', 'tests/integration/**/*.spec.ts'],
+        },
+      },
+    ],
   },
 });

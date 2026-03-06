@@ -29,13 +29,13 @@ This document describes how Sage stores memory and makes it available to the run
 
 | Memory type | Purpose | Storage | Key files |
 | :--- | :--- | :--- | :--- |
-| **User profile** | Long-term personalization summary per user, with archive history. | `UserProfile`, `UserProfileArchive` | `src/core/memory/profileUpdater.ts`, `src/core/memory/userProfileRepo.ts` |
-| **Guild memory** | Admin-authored server memory and archive history. | `GuildMemory`, `GuildMemoryArchive` | `src/core/admin/*`, `src/core/agentRuntime/discordTool.ts` |
-| **Channel summaries** | Rolling and profile summaries for channels. | `ChannelSummary` | `src/core/summary/*` |
-| **Raw transcript** | Recent message history for prompt context and retrieval. | Ring buffer plus optional `ChannelMessage` persistence | `src/core/awareness/*`, `src/core/ingest/ingestEvent.ts` |
-| **Attachment cache** | Persisted non-image file extraction for on-demand retrieval. | `IngestedAttachment`, `AttachmentChunk` | `src/core/attachments/*`, `src/bot/handlers/messageCreate.ts` |
-| **Relationship graph** | Relationship weights derived from mentions, replies, reactions, and voice overlap. | `RelationshipEdge`, optional Memgraph export | `src/core/relationships/*`, `src/social-graph/*` |
-| **Voice sessions** | Voice join/leave history and optional summary-only session memory. | `VoiceSession`, `VoiceConversationSummary` | `src/core/voice/*` |
+| **User profile** | Long-term personalization summary per user, with archive history. | `UserProfile`, `UserProfileArchive` | `src/features/memory/profileUpdater.ts`, `src/features/memory/userProfileRepo.ts` |
+| **Guild memory** | Admin-authored server memory and archive history. | `GuildMemory`, `GuildMemoryArchive` | `src/features/admin/*`, `src/features/agent-runtime/discordTool.ts` |
+| **Channel summaries** | Rolling and profile summaries for channels. | `ChannelSummary` | `src/features/summary/*` |
+| **Raw transcript** | Recent message history for prompt context and retrieval. | Ring buffer plus optional `ChannelMessage` persistence | `src/features/awareness/*`, `src/features/ingest/ingestEvent.ts` |
+| **Attachment cache** | Persisted non-image file extraction for on-demand retrieval. | `IngestedAttachment`, `AttachmentChunk` | `src/features/attachments/*`, `src/app/discord/handlers/messageCreate.ts` |
+| **Relationship graph** | Relationship weights derived from mentions, replies, reactions, and voice overlap. | `RelationshipEdge`, optional Memgraph export | `src/features/relationships/*`, `src/features/social-graph/*` |
+| **Voice sessions** | Voice join/leave history and optional summary-only session memory. | `VoiceSession`, `VoiceConversationSummary` | `src/features/voice/*` |
 
 ---
 
@@ -124,7 +124,7 @@ Runtime notes:
 
 ## 4) Working memory (context builder)
 
-**File:** `src/core/agentRuntime/contextBuilder.ts`
+**File:** `src/features/agent-runtime/contextBuilder.ts`
 
 `buildContextMessages` composes turn context in these prioritized blocks:
 
@@ -171,8 +171,8 @@ Context is budgeted by `contextBudgeter` using these key limits:
 
 **Files:**
 
-- `src/core/summary/channelSummaryScheduler.ts`
-- `src/core/summary/summarizeChannelWindow.ts`
+- `src/features/summary/channelSummaryScheduler.ts`
+- `src/features/summary/summarizeChannelWindow.ts`
 
 Scheduler behavior:
 
@@ -189,7 +189,7 @@ Output is stored in `ChannelSummary` with `kind = 'rolling'`.
 
 ## 6) Long-term memory: channel profile
 
-**File:** `src/core/summary/summarizeChannelWindow.ts`
+**File:** `src/features/summary/summarizeChannelWindow.ts`
 
 Long-term channel profile summaries are scheduler-driven:
 
@@ -205,7 +205,7 @@ There is no dedicated summarize slash command in the current command set.
 
 ## 7) Throttled user profile updates
 
-**Files:** `src/core/chat-engine.ts`, `src/core/memory/profileUpdater.ts`
+**Files:** `src/features/chat/chat-engine.ts`, `src/features/memory/profileUpdater.ts`
 
 Sage updates user profiles asynchronously with throttling:
 
@@ -222,7 +222,7 @@ The latest profile is stored in `UserProfile.summary`, and prior versions can be
 
 ## 8) Relationship graph and social layers
 
-**Files:** `src/core/relationships/*`, `src/social-graph/socialGraphQuery.ts`
+**Files:** `src/features/relationships/*`, `src/features/social-graph/socialGraphQuery.ts`
 
 Relationship edges are updated from mentions, replies, reactions, and voice overlap. At query time, Sage maps ranked relationships into Dunbar-style labels:
 

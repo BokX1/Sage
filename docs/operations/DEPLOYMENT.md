@@ -79,7 +79,7 @@ This adds local SearXNG, Crawl4AI, and Tika-backed extraction paths. Sage still 
 Optional social-graph infrastructure is separate:
 
 ```bash
-docker compose -f docker-compose.social-graph.yml up -d
+docker compose -f config/services/self-host/docker-compose.social-graph.yml up -d
 ```
 
 ---

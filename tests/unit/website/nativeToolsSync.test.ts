@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
-import { ToolRegistry } from '../../../src/core/agentRuntime/toolRegistry';
-import { registerDefaultAgenticTools } from '../../../src/core/agentRuntime/defaultTools';
-import { getAllDiscordActions } from '../../../src/core/agentRuntime/discordToolCatalog';
+import { ToolRegistry } from '../../../src/features/agent-runtime/toolRegistry';
+import { registerDefaultAgenticTools } from '../../../src/features/agent-runtime/defaultTools';
+import { getAllDiscordActions } from '../../../src/features/agent-runtime/discordToolCatalog';
 
 type NativeToolRow = { name: string };
 

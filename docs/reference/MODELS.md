@@ -26,7 +26,7 @@ For chat turns, Sage resolves a single runtime model from configuration:
 - Falls back to `kimi` when `CHAT_MODEL` is empty
 - Executes tool calls inside the same runtime loop rather than switching to route-specific runtimes
 
-This behavior is implemented in `runChatTurn` in `src/core/agentRuntime/agentRuntime.ts`.
+This behavior is implemented in `runChatTurn` in `src/features/agent-runtime/agentRuntime.ts`.
 
 ---
 
@@ -111,9 +111,9 @@ When runtime catalog fetch fails, Sage uses fallback model metadata plus manual 
 
 ## 🔗 Implementation References
 
-- [`src/core/agentRuntime/agentRuntime.ts`](../../src/core/agentRuntime/agentRuntime.ts)
-- [`src/core/llm/model-health.ts`](../../src/core/llm/model-health.ts)
-- [`src/core/llm/model-catalog.ts`](../../src/core/llm/model-catalog.ts)
+- [`src/features/agent-runtime/agentRuntime.ts`](../../src/features/agent-runtime/agentRuntime.ts)
+- [`src/platform/llm/model-health.ts`](../../src/platform/llm/model-health.ts)
+- [`src/platform/llm/model-catalog.ts`](../../src/platform/llm/model-catalog.ts)
 
 ## 🔗 Related Documentation
 

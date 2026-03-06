@@ -30,11 +30,11 @@ What is available today:
 
 | Capability | Status | Source |
 | :--- | :--- | :--- |
-| Interaction export to Kafka/Redpanda | Active when `KAFKA_BROKERS` is non-empty | `src/social-graph/kafkaProducer.ts` |
-| Memgraph setup (topics, streams, indexes) | Active via setup script | `src/social-graph/setupSocialGraph.ts` |
-| Runtime social-graph reads | Active | `src/social-graph/socialGraphQuery.ts` |
-| PageRank, Dunbar, reciprocity pulse | Implemented but **not auto-scheduled by Sage bootstrap** | `src/social-graph/graphAnalyticsPulse.ts` |
-| MAGE module procedures | Available in the social-graph compose stack | `docker-compose.social-graph.yml` |
+| Interaction export to Kafka/Redpanda | Active when `KAFKA_BROKERS` is non-empty | `src/platform/social-graph/kafkaProducer.ts` |
+| Memgraph setup (topics, streams, indexes) | Active via setup script | `src/features/social-graph/setupSocialGraph.ts` |
+| Runtime social-graph reads | Active | `src/features/social-graph/socialGraphQuery.ts` |
+| PageRank, Dunbar, reciprocity pulse | Implemented but **not auto-scheduled by Sage bootstrap** | `src/features/social-graph/graphAnalyticsPulse.ts` |
+| MAGE module procedures | Available in the social-graph compose stack | `config/services/self-host/docker-compose.social-graph.yml` |
 | Guild community IDs | Intentionally omitted for now | `graphAnalyticsPulse.ts` |
 
 > [!IMPORTANT]
@@ -107,13 +107,13 @@ The analytics pulse can call into Memgraph and write graph metrics, but it is no
 
 | Component | File | Purpose |
 | :--- | :--- | :--- |
-| Kafka producer | `src/social-graph/kafkaProducer.ts` | Publishes interaction and voice events to Redpanda |
-| Setup script | `src/social-graph/setupSocialGraph.ts` | Creates Kafka topics, Memgraph indexes, and streams |
-| Analytics pulse | `src/social-graph/graphAnalyticsPulse.ts` | Batch job for PageRank, Dunbar labels, and reciprocity |
-| Social graph query | `src/social-graph/socialGraphQuery.ts` | Memgraph-backed reader used by runtime analytics actions |
-| Emoji sentiment | `src/social-graph/emojiSentiment.ts` | Reaction valence lookup |
-| Migration | `src/social-graph/migratePostgresToMemgraph.ts` | Replays PostgreSQL relationship data through the event pipeline |
-| Memgraph client | `src/social-graph/memgraphClient.ts` | Thin Bolt client wrapper |
+| Kafka producer | `src/platform/social-graph/kafkaProducer.ts` | Publishes interaction and voice events to Redpanda |
+| Setup script | `src/features/social-graph/setupSocialGraph.ts` | Creates Kafka topics, Memgraph indexes, and streams |
+| Analytics pulse | `src/features/social-graph/graphAnalyticsPulse.ts` | Batch job for PageRank, Dunbar labels, and reciprocity |
+| Social graph query | `src/features/social-graph/socialGraphQuery.ts` | Memgraph-backed reader used by runtime analytics actions |
+| Emoji sentiment | `src/features/social-graph/emojiSentiment.ts` | Reaction valence lookup |
+| Migration | `src/features/social-graph/migratePostgresToMemgraph.ts` | Replays PostgreSQL relationship data through the event pipeline |
+| Memgraph client | `src/platform/social-graph/memgraphClient.ts` | Thin Bolt client wrapper |
 
 ---
 

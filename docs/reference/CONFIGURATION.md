@@ -10,7 +10,7 @@ Complete index of all environment variables used by Sage, with descriptions and 
 > [!TIP]
 > Use `.env.example` as your starting template. Run `npm run onboard` for interactive setup.
 > [!NOTE]
-> Values in the tables below match the committed `.env.example` template. The runtime also has schema-level fallbacks in `src/shared/config/envSchema.ts` when variables are omitted entirely.
+> Values in the tables below match the committed `.env.example` template. The runtime also has schema-level fallbacks in `src/platform/config/envSchema.ts` when variables are omitted entirely.
 
 ---
 
