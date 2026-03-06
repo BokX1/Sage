@@ -72,11 +72,11 @@ flowchart LR
 ### 1️⃣ Start local services
 
 ```bash
-docker compose -f config/self-host/docker-compose.tools.yml up -d
+docker compose -f config/services/self-host/docker-compose.tools.yml up -d
 ```
 
 > [!IMPORTANT]
-> `config/self-host/searxng/settings.yml` is a local-dev template. Replace `server.secret_key` before exposing SearXNG beyond localhost.
+> `config/services/self-host/searxng/settings.yml` is a local-dev template. Replace `server.secret_key` before exposing SearXNG beyond localhost.
 
 This starts:
 
@@ -182,25 +182,25 @@ Expected output contains `hello from sage`.
 ### Stop services
 
 ```bash
-docker compose -f config/self-host/docker-compose.tools.yml down
+docker compose -f config/services/self-host/docker-compose.tools.yml down
 ```
 
 ### View logs
 
 ```bash
-docker compose -f config/self-host/docker-compose.tools.yml logs -f
+docker compose -f config/services/self-host/docker-compose.tools.yml logs -f
 ```
 
 ### Restart a specific service
 
 ```bash
-docker compose -f config/self-host/docker-compose.tools.yml restart sage-searxng
+docker compose -f config/services/self-host/docker-compose.tools.yml restart sage-searxng
 ```
 
 Attachment extraction service restart:
 
 ```bash
-docker compose -f config/self-host/docker-compose.tools.yml restart sage-tika
+docker compose -f config/services/self-host/docker-compose.tools.yml restart sage-tika
 ```
 
 ---

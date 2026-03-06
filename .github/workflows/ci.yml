@@ -16,76 +16,46 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    env:
-      NODE_ENV: test
-      DISCORD_TOKEN: test-token-for-ci
-      DISCORD_APP_ID: test-app-id-for-ci
-      DATABASE_URL: postgresql://postgres:password@127.0.0.1:5432/sage?schema=public
-
+  build-test-matrix:
+    name: Build and test (${{ matrix.node-version }})
     strategy:
       matrix:
         node-version: [22.x, 24.x]
+    uses: ./.github/workflows/_repo-node-gate.yml
+    with:
+      node-version: ${{ matrix.node-version }}
+      run-command: npm run lint && npm run build && npm run test
+      timeout-minutes: 20
 
-    steps:
-    - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-      with:
-        persist-credentials: false
-    
-    - name: Use Node.js ${{ matrix.node-version }}
-      uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
-      with:
-        node-version: ${{ matrix.node-version }}
-        cache: 'npm'
-        cache-dependency-path: package-lock.json
+  trust-gate:
+    uses: ./.github/workflows/_repo-node-gate.yml
+    with:
+      node-version: 22.x
+      run-command: npm run check:trust
+      timeout-minutes: 35
 
-    - name: Install dependencies
-      run: npm ci
+  docs-lint:
+    uses: ./.github/workflows/_repo-node-gate.yml
+    with:
+      node-version: 22.x
+      run-command: npm run docs:lint
+      timeout-minutes: 15
 
-    - name: Lint
-      run: npm run lint
+  docs-links:
+    uses: ./.github/workflows/_repo-node-gate.yml
+    with:
+      node-version: 22.x
+      run-command: npm run docs:links
+      timeout-minutes: 20
 
-    - name: Build
-      run: npm run build
-
-    - name: Test
-      run: npm run test
-
-  release-readiness:
-    runs-on: ubuntu-latest
-    timeout-minutes: 35
-    env:
-      NODE_ENV: test
-      DISCORD_TOKEN: test-token-for-ci
-      DISCORD_APP_ID: test-app-id-for-ci
-      DATABASE_URL: postgresql://postgres:password@127.0.0.1:5432/sage?schema=public
-    steps:
-    - id: checkout_primary
-      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-      continue-on-error: true
-      with:
-        persist-credentials: false
-
-    - name: Retry checkout after transient GitHub fetch failure
-      if: steps.checkout_primary.outcome == 'failure'
-      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-      with:
-        persist-credentials: false
-
-    - name: Use Node.js 22.x
-      uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
-      with:
-        node-version: 22.x
-        cache: 'npm'
-        cache-dependency-path: package-lock.json
-
-    - name: Install dependencies
-      run: npm ci
-
-    - name: Trust gate
-      run: npm run check:trust
+  website-check:
+    uses: ./.github/workflows/_repo-node-gate.yml
+    with:
+      node-version: 22.x
+      working-directory: website
+      cache-dependency-path: website/package-lock.json
+      run-command: npm run check
+      timeout-minutes: 20
 
   dependency-review:
     if: github.event_name == 'pull_request' && vars.ENABLE_DEPENDENCY_REVIEW == 'true'
@@ -122,52 +92,3 @@ jobs:
     - name: Dependency review
       if: steps.dependency-graph.outputs.run_dependency_review == 'true'
       uses: actions/dependency-review-action@05fe4576374b728f0c523d6a13d64c25081e0803 # v4.8.3
-
-  docs-markdownlint:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-    - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-      with:
-        persist-credentials: false
-
-    - name: Lint Markdown files
-      uses: DavidAnson/markdownlint-cli2-action@07035fd053f7be764496c0f8d8f9f41f98305101 # v22.0.0
-      with:
-        config: config/ci/markdownlint.markdownlint-cli2.jsonc
-        globs: |
-          **/*.md
-          !node_modules/**
-
-  docs-linkcheck:
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-    - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-      with:
-        persist-credentials: false
-
-    - name: Check for broken links
-      uses: lycheeverse/lychee-action@8646ba30535128ac92d33dfc9133794bfdd9b411 # v2
-      with:
-        args: >-
-          --verbose --no-progress
-          --max-retries 6
-          --retry-wait-time 4
-          --max-concurrency 4
-          --exclude 'node_modules'
-          --exclude 'https://skillicons\.dev'
-          --exclude 'https://www\.contributor-covenant\.org'
-          --exclude 'https://github\.com/BokX1/Sage/issues'
-          --exclude 'https://github\.com/BokX1/Sage/graphs/contributors'
-          --exclude 'https://github\.com/BokX1/Sage/network/members'
-          --exclude 'https://github\.com/BokX1/Sage/security/advisories'
-          --exclude 'https://github\.com/BokX1/Sage/actions/workflows/ci\.yml'
-          --exclude 'http://127\.0\.0\.1'
-          --exclude 'https://api\.firecrawl\.dev/v1'
-          --exclude 'https://gen\.pollinations\.ai/v1'
-          --exclude 'https://r\.jina\.ai/http'
-          '**/*.md'
-        fail: true
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

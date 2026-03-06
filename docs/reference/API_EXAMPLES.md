@@ -157,7 +157,7 @@ The difference from generation is the `image=<url>` parameter, which provides th
 
 ## 🔊 Voice (STT)
 
-For local transcription, Sage uses a local HTTP voice service (see `config/self-host/docker-compose.voice.yml`):
+For local transcription, Sage uses a local HTTP voice service (see `config/services/self-host/docker-compose.voice.yml`):
 
 ```bash
 curl -sS http://127.0.0.1:11333/v1/stt/transcribe \

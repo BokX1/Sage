@@ -49,15 +49,15 @@ npm start
 
 ```bash
 # Start database + bot together
-docker compose -f config/ci/docker-compose.yml up -d
+docker compose -f config/services/core/docker-compose.yml up -d
 ```
 
 ### Option 3: With Self-Hosted Tool Stack
 
 ```bash
 # Start local SearXNG, Crawl4AI, and Tika alongside Sage
-docker compose -f config/ci/docker-compose.yml up -d
-docker compose -f config/self-host/docker-compose.tools.yml up -d
+docker compose -f config/services/core/docker-compose.yml up -d
+docker compose -f config/services/self-host/docker-compose.tools.yml up -d
 ```
 
 For full tool stack details, see **[🧰 Self-Hosted Tool Stack](../operations/TOOL_STACK.md)**.

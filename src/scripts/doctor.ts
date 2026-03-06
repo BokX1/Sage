@@ -371,7 +371,7 @@ function buildFixActions(ctx: DoctorContext, results: CheckResult[]): FixAction[
     actions.push({
       id: CHECK_IDS.dbConnect,
       description: 'Start local Postgres service via Docker compose',
-      command: 'docker compose -f config/ci/docker-compose.yml up -d db',
+      command: 'docker compose -f config/services/core/docker-compose.yml up -d db',
     });
   }
 
@@ -384,7 +384,7 @@ function buildFixActions(ctx: DoctorContext, results: CheckResult[]): FixAction[
     actions.push({
       id: CHECK_IDS.servicesTika,
       description: 'Start local Apache Tika service via Docker compose',
-      command: 'docker compose -f config/ci/docker-compose.yml up -d tika',
+      command: 'docker compose -f config/services/core/docker-compose.yml up -d tika',
     });
   }
 
@@ -648,7 +648,7 @@ function buildChecks(): CheckDefinition[] {
           return {
             status: 'fail',
             message: `Failed to connect to database ${redactDatabaseUrl(dbUrl)}`,
-            details: [String(error), 'If local, run `docker compose -f config/ci/docker-compose.yml up -d db`.'],
+            details: [String(error), 'If local, run `docker compose -f config/services/core/docker-compose.yml up -d db`.'],
           };
         } finally {
           await prisma.$disconnect();
@@ -758,7 +758,7 @@ function buildChecks(): CheckDefinition[] {
           return {
             status: 'warn',
             message: `Tika endpoint not reachable (${tikaUrl})`,
-            details: [String(error), 'Run `docker compose -f config/ci/docker-compose.yml up -d tika`.'],
+            details: [String(error), 'Run `docker compose -f config/services/core/docker-compose.yml up -d tika`.'],
           };
         }
       },

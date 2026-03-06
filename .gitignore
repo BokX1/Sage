@@ -34,9 +34,8 @@ prisma/*.db-journal
 !prisma/migrations/
 !prisma/migrations/**
 
-# Root-local compatibility shims (canonical shared configs live in config/ci)
+# Root-local compatibility shims (canonical shared configs live in config/tooling)
 /tsconfig.json
 /vitest.config.mjs
 /docker-compose.yml
 /.prettierrc
-/scripts/

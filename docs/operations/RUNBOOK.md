@@ -215,14 +215,14 @@ npx prisma migrate reset --force --skip-generate
 npm run social-graph:setup
 
 # Migrate historical PostgreSQL data to Memgraph
-npx ts-node -P config/ci/tsconfig.json src/social-graph/migratePostgresToMemgraph.ts
+npx ts-node -P config/tooling/tsconfig.app.json src/social-graph/migratePostgresToMemgraph.ts
 ```
 
 ### Tool Stack
 
 ```bash
 # Start local services (SearXNG, Crawl4AI, Tika)
-docker compose -f config/self-host/docker-compose.tools.yml up -d
+docker compose -f config/services/self-host/docker-compose.tools.yml up -d
 
 # Verify tool connectivity
 npm run tools:smoke

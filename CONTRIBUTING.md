@@ -20,6 +20,7 @@ Thanks for helping improve Sage! This guide covers the local workflow, expectati
 | Lint | `npm run lint` |
 | Build | `npm run build` |
 | Test | `npm run test` |
+| Docs gate | `npm run check:docs` |
 | Health check | `npm run doctor` |
 | DB migrations | `npx prisma migrate deploy` |
 
@@ -97,8 +98,8 @@ flowchart LR
 
 Sage uses Husky for fast local feedback:
 
-- `pre-commit` runs `npm run lint`
-- `pre-push` runs `npm run test`
+- `pre-commit` delegates to `npm run hooks:pre-commit` and runs `npm run lint` plus `npm run docs:lint` for touched Markdown
+- `pre-push` delegates to `npm run hooks:pre-push` and escalates across `npm run check`, `npm run build`, `npm run check:trust`, `npm run check:docs`, and `npm --prefix website run check` based on the touched files
 
 CI remains the merge gate authority.
 
@@ -128,7 +129,7 @@ src/
 
 ## 🎨 Code Style
 
-- Follow the existing **ESLint** and **Prettier** configuration (located in `config/ci/`).
+- Follow the existing **ESLint** and **Prettier** configuration (located in `config/tooling/`).
 - Keep tooling/config path changes aligned with [`config/README.md`](config/README.md).
 - Favor **small, well-named modules** and pure functions for core logic.
 - Avoid introducing new prompt strings or altering existing prompt templates unless fixing a bug.
@@ -177,17 +178,24 @@ Before opening a PR, verify each item:
 
 Required checks on PRs target these jobs:
 
-- `build` (Node 22.x and 24.x matrix)
-- `release-readiness` (runs `npm run check:trust`)
+- `build-test-matrix` (Node 22.x and 24.x matrix)
+- `trust-gate` (runs `npm run check:trust`)
+- `website-check`
 - `dependency-review` (runs when `ENABLE_DEPENDENCY_REVIEW=true` and Dependency Graph is enabled; otherwise intentionally skipped)
 - `CodeQL / Analyze (javascript-typescript)`
-- `docs-markdownlint`
-- `docs-linkcheck`
+- `docs-lint`
+- `docs-links`
 
 Run the trust gate locally before opening a PR:
 
 ```bash
 npm run check:trust
+```
+
+Run the tracked docs gate before opening a docs-heavy PR:
+
+```bash
+npm run check:docs
 ```
 
 ---

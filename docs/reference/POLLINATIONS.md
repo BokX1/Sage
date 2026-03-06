@@ -294,7 +294,7 @@ curl -L "$POLLINATIONS_API/image/a%20cat%20wearing%20sunglasses?model=imagen-4&s
 
 - Ensure the bot is in a voice channel (`/join`)
 - Ensure `VOICE_STT_ENABLED=true`
-- Ensure the local voice service is running and reachable at `VOICE_SERVICE_BASE_URL` (see `config/self-host/docker-compose.voice.yml`)
+- Ensure the local voice service is running and reachable at `VOICE_SERVICE_BASE_URL` (see `config/services/self-host/docker-compose.voice.yml`)
 
 ---
 

@@ -1,0 +1,24 @@
+{
+  "ignore_path_prefixes": [
+    ".agent/",
+    "node_modules/",
+    "website/node_modules/"
+  ],
+  "skip_external_patterns": [
+    "^https://skillicons\\.dev",
+    "^https://www\\.contributor-covenant\\.org",
+    "^https://github\\.com/BokX1/Sage/issues$",
+    "^https://github\\.com/BokX1/Sage/graphs/contributors$",
+    "^https://github\\.com/BokX1/Sage/network/members$",
+    "^https://github\\.com/BokX1/Sage/security/advisories$",
+    "^https://github\\.com/BokX1/Sage/actions/workflows/ci\\.yml$",
+    "^https://api\\.firecrawl\\.dev/v1",
+    "^https://gen\\.pollinations\\.ai/v1",
+    "^https://r\\.jina\\.ai/http"
+  ],
+  "skip_local_hosts": [
+    "127.0.0.1",
+    "localhost"
+  ],
+  "timeout_ms": 20000
+}

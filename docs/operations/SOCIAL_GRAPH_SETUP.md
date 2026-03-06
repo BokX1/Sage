@@ -120,7 +120,7 @@ YIELD representation, confidence, matched_archetype, is_cold_start;
 To warm the graph with pre-existing PostgreSQL relationship data:
 
 ```powershell
-npx ts-node -P config/ci/tsconfig.json src/social-graph/migratePostgresToMemgraph.ts
+npx ts-node -P config/tooling/tsconfig.app.json src/social-graph/migratePostgresToMemgraph.ts
 ```
 
 This reads all `RelationshipEdge` rows from PostgreSQL and publishes synthetic interaction events through the normal Kafka pipeline.

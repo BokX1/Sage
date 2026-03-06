@@ -209,7 +209,7 @@ function resolveComposeValue(value: string): string {
 }
 
 function getDockerComposeDefaults(repoRoot: string) {
-  const composePath = path.join(repoRoot, 'config', 'ci', 'docker-compose.yml');
+  const composePath = path.join(repoRoot, 'config', 'services', 'core', 'docker-compose.yml');
   if (!fs.existsSync(composePath)) return null;
 
   const content = fs.readFileSync(composePath, 'utf8');
@@ -621,7 +621,7 @@ async function main() {
   if (!args.dryRun && shouldStartDocker) {
     const s = prompts.spinner();
     s.start('Starting Docker services...');
-    runCommand('docker compose -f config/ci/docker-compose.yml up -d db tika', repoRoot);
+    runCommand('docker compose -f config/services/core/docker-compose.yml up -d db tika', repoRoot);
     s.stop('Docker services are running.');
   }
 

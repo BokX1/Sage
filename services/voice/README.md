@@ -52,7 +52,7 @@
 From the repository root:
 
 ```bash
-docker compose -f config/self-host/docker-compose.voice.yml up -d --build
+docker compose -f config/services/self-host/docker-compose.voice.yml up -d --build
 ```
 
 Optional quick check:

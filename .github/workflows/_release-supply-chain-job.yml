@@ -1,0 +1,83 @@
+name: Release Supply Chain Job
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  bundle-and-attest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    env:
+      NODE_ENV: test
+      DISCORD_TOKEN: test-token-for-ci
+      DISCORD_APP_ID: test-app-id-for-ci
+      DATABASE_URL: postgresql://postgres:password@127.0.0.1:5432/sage?schema=public
+    steps:
+      - id: checkout_primary
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        continue-on-error: true
+        with:
+          persist-credentials: false
+
+      - name: Retry checkout after transient GitHub fetch failure
+        if: steps.checkout_primary.outcome == 'failure'
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Use Node.js 22.x
+        uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
+        with:
+          node-version: 22.x
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Trust gate
+        run: npm run check:trust
+
+      - name: Build
+        run: npm run build
+
+      - name: Pack npm artifact
+        id: pack
+        shell: bash
+        run: |
+          npm pack --json > npm-pack.json
+          PACKAGE_FILE="$(node -e "const fs=require('fs');const rows=JSON.parse(fs.readFileSync('npm-pack.json','utf8'));process.stdout.write(rows[0].filename)")"
+          echo "package_file=$PACKAGE_FILE" >> "$GITHUB_OUTPUT"
+
+      - name: Generate CycloneDX SBOM
+        run: npm sbom --sbom-format cyclonedx --omit=dev > sbom.cdx.json
+
+      - name: Upload package artifact
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: npm-package
+          path: |
+            ${{ steps.pack.outputs.package_file }}
+            npm-pack.json
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload SBOM artifact
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: cyclonedx-sbom
+          path: sbom.cdx.json
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Attest package provenance
+        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
+        with:
+          subject-path: ${{ steps.pack.outputs.package_file }}

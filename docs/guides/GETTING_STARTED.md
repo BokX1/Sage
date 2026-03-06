@@ -209,7 +209,7 @@ npm run onboard -- \
 Make sure Docker Desktop is running, then:
 
 ```bash
-docker compose -f config/ci/docker-compose.yml up -d db tika
+docker compose -f config/services/core/docker-compose.yml up -d db tika
 ```
 
 Wait ~10 seconds, then run:
@@ -221,7 +221,7 @@ npx prisma migrate deploy
 Optional: start the local tool stack (self-host search/scrape/infer):
 
 ```bash
-docker compose -f config/self-host/docker-compose.tools.yml up -d
+docker compose -f config/services/self-host/docker-compose.tools.yml up -d
 ```
 
 If using local tools first, set these `.env` values:

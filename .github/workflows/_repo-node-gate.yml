@@ -1,0 +1,67 @@
+name: Repo Node Gate
+
+on:
+  workflow_call:
+    inputs:
+      node-version:
+        required: true
+        type: string
+      run-command:
+        required: true
+        type: string
+      working-directory:
+        required: false
+        default: .
+        type: string
+      cache-dependency-path:
+        required: false
+        default: package-lock.json
+        type: string
+      install-command:
+        required: false
+        default: npm ci
+        type: string
+      timeout-minutes:
+        required: false
+        default: 20
+        type: number
+
+permissions:
+  contents: read
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+    env:
+      NODE_ENV: test
+      DISCORD_TOKEN: test-token-for-ci
+      DISCORD_APP_ID: test-app-id-for-ci
+      DATABASE_URL: postgresql://postgres:password@127.0.0.1:5432/sage?schema=public
+    steps:
+      - id: checkout_primary
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        continue-on-error: true
+        with:
+          persist-credentials: false
+
+      - name: Retry checkout after transient GitHub fetch failure
+        if: steps.checkout_primary.outcome == 'failure'
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Use Node.js ${{ inputs.node-version }}
+        uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: npm
+          cache-dependency-path: ${{ inputs.cache-dependency-path }}
+
+      - name: Install dependencies
+        run: ${{ inputs.install-command }}
+        working-directory: ${{ inputs.working-directory }}
+
+      - name: Run gate command
+        run: ${{ inputs.run-command }}
+        working-directory: ${{ inputs.working-directory }}

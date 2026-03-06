@@ -1,0 +1,104 @@
+{
+  "lint_prefixes": [
+    "src/",
+    "tests/",
+    "services/",
+    "prisma/",
+    "config/",
+    "scripts/"
+  ],
+  "lint_exact": [
+    "package.json",
+    "package-lock.json"
+  ],
+  "build_prefixes": [
+    "src/",
+    "services/",
+    "prisma/",
+    "config/",
+    "scripts/"
+  ],
+  "build_exact": [
+    "package.json",
+    "package-lock.json"
+  ],
+  "trust_prefixes": [
+    "prisma/",
+    "config/tooling/",
+    "config/services/",
+    ".github/workflows/"
+  ],
+  "trust_exact": [
+    "package.json",
+    "package-lock.json"
+  ],
+  "website_prefixes": [
+    "website/"
+  ],
+  "website_exact": [
+    "website/package.json",
+    "website/package-lock.json"
+  ],
+  "docs_extensions": [
+    ".md"
+  ],
+  "docs_exact": [
+    "AGENTS.md",
+    "CHANGELOG.md"
+  ],
+  "commands": {
+    "pre_commit_lint": [
+      [
+        "npm",
+        "run",
+        "lint"
+      ]
+    ],
+    "pre_push_check": [
+      [
+        "npm",
+        "run",
+        "check"
+      ]
+    ],
+    "pre_push_build": [
+      [
+        "npm",
+        "run",
+        "build"
+      ]
+    ],
+    "pre_push_trust": [
+      [
+        "npm",
+        "run",
+        "check:trust"
+      ]
+    ],
+    "website_check": [
+      [
+        "npm",
+        "--prefix",
+        "website",
+        "run",
+        "check"
+      ]
+    ],
+    "docs_lint": [
+      [
+        "npm",
+        "run",
+        "docs:lint",
+        "--"
+      ]
+    ],
+    "docs_links": [
+      [
+        "npm",
+        "run",
+        "docs:links",
+        "--"
+      ]
+    ]
+  }
+}

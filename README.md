@@ -269,7 +269,7 @@ npm ci
 
 ```bash
 npm run onboard
-docker compose -f config/ci/docker-compose.yml up -d db tika
+docker compose -f config/services/core/docker-compose.yml up -d db tika
 npm run db:migrate
 ```
 
@@ -286,7 +286,7 @@ npm run dev
 *(SearXNG, Crawl4AI)*
 
 ```bash
-docker compose -f config/self-host/docker-compose.tools.yml up -d
+docker compose -f config/services/self-host/docker-compose.tools.yml up -d
 ```
 
 **Essential Release Gates:**

@@ -122,7 +122,7 @@ Complete index of all environment variables used by Sage, with descriptions and 
 
 ## 🎤 Voice (STT)
 
-These settings control Sage's optional Discord voice features. The local voice service can be run via `config/self-host/docker-compose.voice.yml`.
+These settings control Sage's optional Discord voice features. The local voice service can be run via `config/services/self-host/docker-compose.voice.yml`.
 
 | Variable | Description | Default |
 |:---|:---|:---|

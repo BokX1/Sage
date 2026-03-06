@@ -137,7 +137,7 @@ Key settings:
 To run the local voice service:
 
 ```bash
-docker compose -f config/self-host/docker-compose.voice.yml up -d --build
+docker compose -f config/services/self-host/docker-compose.voice.yml up -d --build
 ```
 
 ---
@@ -155,6 +155,6 @@ docker compose -f config/self-host/docker-compose.voice.yml up -d --build
 
 ## 🔗 Related Documentation
 
-- [🎮 Commands Reference](../guides/COMMANDS.md#voice-commands-beta) — Voice slash commands
+- [🎮 Commands Reference](../guides/COMMANDS.md#public-commands) — Voice slash commands
 - [🔀 Runtime Pipeline](PIPELINE.md) — How voice context enters the pipeline
 - [⚙️ Configuration](../reference/CONFIGURATION.md) — Voice environment variables

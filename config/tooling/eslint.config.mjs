@@ -44,7 +44,7 @@ export default [
     ignores: ['../../src/shared/config/env.ts', '../../src/scripts/onboard.ts'],
     languageOptions: {
       parserOptions: {
-        project: './tsconfig.json',
+        project: './tsconfig.app.json',
         tsconfigRootDir: __dirname,
       },
     },
