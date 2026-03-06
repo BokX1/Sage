@@ -4,7 +4,7 @@
   <img src="https://img.shields.io/badge/%F0%9F%8C%BF-Sage%20Social%20Graph%20Setup-2d5016?style=for-the-badge&labelColor=4a7c23" alt="Social Graph Setup" />
 </p>
 
-Operational guide for deploying and managing the Memgraph + Redpanda social graph infrastructure.
+Operational guide for deploying and managing the optional Memgraph + Redpanda social-graph stack.
 
 ---
 
@@ -14,7 +14,7 @@ Operational guide for deploying and managing the Memgraph + Redpanda social grap
 - [Configure environment](#2-configure-environment)
 - [Create topics and streams](#3-create-topics-and-streams)
 - [Verify](#4-verify)
-- [Run GNN modules](#5-run-gnn-modules)
+- [Run analytics and GNN modules](#5-run-analytics-and-gnn-modules)
 - [Historical migration](#6-historical-migration)
 - [Troubleshooting](#7-troubleshooting)
 
@@ -36,7 +36,7 @@ Start-Sleep -Seconds 5
 
 ## 2. Configure environment
 
-Add to `.env`:
+Add or confirm these values in `.env`:
 
 ```env
 MEMGRAPH_HOST=localhost
@@ -51,7 +51,7 @@ KAFKA_VOICE_TOPIC=sage.social.voice-sessions
 ```
 
 > [!TIP]
-> Set `KAFKA_BROKERS=` (empty) to disable social graph export entirely.
+> Set `KAFKA_BROKERS=` (empty) to disable social-graph export entirely.
 
 ---
 
@@ -67,11 +67,13 @@ This idempotently creates:
 - Memgraph indexes (`:User(id)`, `:Channel(id)`)
 - Memgraph Kafka streams and starts them
 
+`npm run social-graph:setup` expects `KAFKA_BROKERS` to be configured. The repo already includes `kafkajs` as a normal runtime dependency; no extra package install is required.
+
 ---
 
 ## 4. Verify
 
-Run the bot (`npm run dev`), then verify in Memgraph Lab:
+Run Sage (`npm run dev` or `npm start`), then verify in Memgraph Lab:
 
 ```cypher
 SHOW STREAMS;
@@ -79,17 +81,31 @@ MATCH (:User)-[r:INTERACTED]->(:User) RETURN r.type, count(*) ORDER BY count(*) 
 MATCH (:User)-[r:VOICE_SESSION]->(:User) RETURN count(r);
 ```
 
-Verify MAGE modules are loaded:
+Verify MAGE modules are available:
 
 ```cypher
-CALL mg.procedures() YIELD name WHERE name STARTS WITH 'tgn_memory' OR name STARTS WITH 'hyperbolic' RETURN name;
+CALL mg.procedures() YIELD name
+WHERE name STARTS WITH 'tgn_memory'
+   OR name STARTS WITH 'hyperbolic'
+   OR name STARTS WITH 'het_attention'
+   OR name STARTS WITH 'graph_transformer'
+   OR name STARTS WITH 'cold_start'
+RETURN name;
 ```
 
 ---
 
-## 5. Run GNN modules
+## 5. Run analytics and GNN modules
 
-The analytics pulse runs automatically on schedule via `graphAnalyticsPulse.ts`. To trigger GNN modules manually:
+The repo ships `src/social-graph/graphAnalyticsPulse.ts`, but Sage does **not** schedule it automatically.
+
+What that means in practice:
+
+- `npm run social-graph:setup` only provisions topics, streams, and indexes
+- the main Sage runtime exports events and can query Memgraph immediately
+- PageRank, Dunbar, and reciprocity refreshes require you to run or schedule the analytics pulse yourself
+
+Manual Memgraph procedure examples:
 
 ```cypher
 CALL tgn_memory.batch_update_memories(100) YIELD updated_count, elapsed_ms;
@@ -99,19 +115,7 @@ CALL graph_transformer.compute_global_attention(100) YIELD updated_count, elapse
 CALL cold_start.compute_archetypes(50) YIELD archetype_count, elapsed_ms;
 ```
 
-### Per-user queries
-
-```cypher
-CALL hyperbolic.compute_distance('user-a', 'user-b')
-YIELD distance, a_origin_dist, b_origin_dist;
-
-CALL graph_transformer.get_cross_clique_influence('user-a', 'user-b')
-YIELD influence_score, shared_attention_heads;
-
-CALL cold_start.bootstrap_user('new-user-id',
-  365.0, 7.0, false, true, false, 3, 2.0, 12)
-YIELD representation, confidence, matched_archetype, is_cold_start;
-```
+If you want periodic analytics, wrap `runGraphAnalyticsPulse()` in your own scheduler or task runner. There is no tracked npm script that starts it for you today.
 
 ---
 
@@ -123,7 +127,7 @@ To warm the graph with pre-existing PostgreSQL relationship data:
 npx ts-node -P config/tooling/tsconfig.app.json src/social-graph/migratePostgresToMemgraph.ts
 ```
 
-This reads all `RelationshipEdge` rows from PostgreSQL and publishes synthetic interaction events through the normal Kafka pipeline.
+This reads `RelationshipEdge` rows from PostgreSQL and publishes synthetic interaction events through the same Kafka pipeline used by the live runtime.
 
 ---
 
@@ -132,15 +136,15 @@ This reads all `RelationshipEdge` rows from PostgreSQL and publishes synthetic i
 | Symptom | Fix |
 | :--- | :--- |
 | Streams stuck at 0 messages | Check `MEMGRAPH_KAFKA_BOOTSTRAP_SERVERS` points to the Docker-internal broker (`redpanda:9092`) |
-| `kafkajs` import fails | Run `npm install kafkajs` — it's an optional peer dependency |
-| MAGE modules not found | Verify Docker volume mounts in `docker-compose.social-graph.yml` |
-| PyTorch errors in MAGE | Ensure you're using `memgraph/memgraph-mage` (not plain `memgraph/memgraph`) |
-| Bot publishes but graph empty | Check `KAFKA_BROKERS` uses the host-facing port (`localhost:19092`) |
+| Sage logs say Kafka producer unavailable | Verify `KAFKA_BROKERS` points at the host-facing broker (`localhost:19092`) and Redpanda is reachable |
+| MAGE modules not found | Verify the image and volume mounts in `docker-compose.social-graph.yml` |
+| PyTorch errors in MAGE | Use the Memgraph image bundled for MAGE support, not a plain Memgraph image |
+| Bot publishes but graph stays empty | Re-run `npm run social-graph:setup` and inspect `SHOW STREAMS;` in Memgraph Lab |
 
 ---
 
 ## 🔗 Related Documentation
 
-- [🕸️ Social Graph Architecture](../architecture/SOCIAL_GRAPH.md) — How the GNN pipeline works
+- [🕸️ Social Graph Architecture](../architecture/SOCIAL_GRAPH.md) — Runtime design and analytics behavior
 - [🚀 Deployment Guide](DEPLOYMENT.md) — General production deployment
-- [🧰 Self-Hosted Tool Stack](TOOL_STACK.md) — SearXNG, Crawl4AI, Tika
+- [🧰 Self-Hosted Tool Stack](TOOL_STACK.md) — SearXNG, Crawl4AI, and Tika

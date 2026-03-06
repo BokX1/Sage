@@ -161,7 +161,7 @@ cd Sage
 ### 3.2 Install Dependencies
 
 ```bash
-npm install
+npm ci
 ```
 
 ### 3.3 Run the Onboarding Wizard
@@ -228,7 +228,7 @@ If using local tools first, set these `.env` values:
 
 ```env
 TOOL_WEB_SEARCH_PROVIDER_ORDER=searxng,tavily,exa,pollinations
-TOOL_WEB_SCRAPE_PROVIDER_ORDER=crawl4ai,firecrawl,jina,raw_fetch
+TOOL_WEB_SCRAPE_PROVIDER_ORDER=crawl4ai,firecrawl,jina,nomnom,raw_fetch
 SEARXNG_BASE_URL=http://127.0.0.1:18080
 CRAWL4AI_BASE_URL=http://127.0.0.1:11235
 ```
@@ -266,6 +266,9 @@ Keep this terminal window open.
 2. Select your application
 3. Go to **OAuth2** → **URL Generator**
 
+> [!TIP]
+> `npm run onboard` prints the same recommended invite shape after setup using your configured `DISCORD_APP_ID`.
+
 ### 6.2 Select Scopes + Permissions
 
 **Scopes:**
@@ -280,9 +283,10 @@ Keep this terminal window open.
 | Send Messages | 2048 | Reply to users |
 | Read Message History | 65536 | Read conversation context |
 | View Channels | 1024 | See channels |
+| Embed Links | 16384 | Post embed-based onboarding and status messages |
 | Connect | 1048576 | Voice awareness |
 
-> 💡 **Permission Total:** 1117184 (sum of the permissions above)
+> 💡 **Permission Total:** 1133568 (sum of the permissions above)
 
 ### 6.3 Copy and Use the Link
 

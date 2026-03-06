@@ -54,6 +54,9 @@ Wake word prefixes like "hey" are also supported: `Hey Sage, help me!`
 
 ## 📌 Public Commands
 
+> [!NOTE]
+> Slash commands cover connectivity, key setup, admin health, and voice join/leave. Search, file analysis, summaries, and image generation are chat-first behaviors triggered by wake word, mention, or reply.
+
 ### `/ping`
 
 Check if Sage is online and responding.
@@ -140,11 +143,12 @@ Most admin actions are now chat-first. For admin users, admin tools are enabled 
 
 Examples:
 
-- `Sage, show recent traces for this guild`
 - `Sage, summarize what happened this week`
 - `Sage, update server memory with this policy`
 - `Sage, send this to #announcements: <message>`
 - `Sage, search message history in #support for: <query>`
+- `Sage, create a new #release-notes channel`
+- `Sage, give @User the Moderator role`
 
 > [!IMPORTANT]
 > Destructive operations still require explicit approval through admin action buttons.

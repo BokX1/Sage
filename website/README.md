@@ -1,6 +1,6 @@
 # Sage Website
 
-The marketing and documentation landing page for [Sage](https://github.com/BokX1/Sage) — the first autonomous AI community engineer.
+The marketing and documentation landing page for [Sage](https://github.com/BokX1/Sage).
 
 Built with [Astro](https://astro.build), React, Framer Motion, and Tailwind CSS v4.
 
@@ -10,7 +10,7 @@ All commands are run from the `website/` directory:
 
 | Command             | Action                                       |
 | :------------------ | :------------------------------------------- |
-| `npm install`       | Install dependencies                         |
+| `npm ci`            | Install dependencies from the lockfile       |
 | `npm run dev`       | Start local dev server at `localhost:4321`    |
 | `npm run build`     | Build production site to `./dist/`           |
 | `npm run typecheck` | Run TypeScript checks (`--noEmit`)           |

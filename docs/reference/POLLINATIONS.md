@@ -4,7 +4,7 @@
   <img src="https://img.shields.io/badge/%F0%9F%8C%BF-Sage%20Pollinations-2d5016?style=for-the-badge&labelColor=4a7c23" alt="Sage Pollinations" />
 </p>
 
-Sage runs on **Pollinations.ai** for **text**, **vision**, and **image generation**.
+By default, Sage uses **Pollinations.ai** for **text**, **vision**, **image generation**, and the built-in BYOP key flow.
 
 This document is written for:
 
@@ -14,7 +14,7 @@ This document is written for:
 - **Reviewers** (what Sage calls upstream, and how to verify it)
 
 > [!IMPORTANT]
-> Pollinations has gone through an auth migration: **token/key management moved to `enter.pollinations.ai`** and the old `auth.pollinations.ai` service is deprecated.
+> `LLM_BASE_URL` can be pointed at another chat-compatible endpoint for runtime chat requests, but Sage's built-in image generation and `/sage key` validation flow remain Pollinations-specific.
 
 ```mermaid
 flowchart LR
@@ -53,7 +53,7 @@ flowchart LR
 | **Image generation** | “Sage, draw …” → image attachment | `GET /image/{prompt}` on `gen.pollinations.ai` |
 | **Image editing** | Reply to an image: “make it watercolor” → edited image | Same image endpoint + `image=<url>` parameter |
 
-Pollinations positions itself as a **unified API** for multiple modalities (text/images/audio, etc.).
+In the current repo, Pollinations is the default upstream for chat, vision, images, and key validation.
 
 ---
 
@@ -66,7 +66,7 @@ Sage uses these Pollinations hosts:
 - **Image bytes endpoint**: `gen.pollinations.ai/image/{prompt}`
 
 > [!NOTE]
-> You may still find older docs or examples using different hosts/subdomains. Sage’s current integration assumes the **enter + gen** split above, and the deprecated auth host should not be used.
+> Sage's current integration uses the `enter.pollinations.ai` dashboard plus `gen.pollinations.ai` API endpoints.
 
 ---
 
@@ -131,7 +131,7 @@ Sage will append `/chat/completions` internally. If you accidentally include `/c
 These are **defaults** you can customize:
 
 ```env
-# Main baseline chat model (route policy may switch models per turn)
+# Main baseline chat model for runtime turns
 CHAT_MODEL=kimi
 
 # Profile/memory updates
@@ -274,12 +274,12 @@ curl -L "$POLLINATIONS_API/image/a%20cat%20wearing%20sunglasses?model=imagen-4&s
 
 ## 🧯 Troubleshooting
 
-### “Invalid API key” on set
+### "Invalid API key" on set
 
 - Re-run `/sage key login` and ensure you copied the exact `sk_...` token from the redirected URL.
-- Confirm `auth.pollinations.ai` is not being used anywhere (deprecated).
+- Confirm the key was created in the current Pollinations dashboard flow and not copied with extra characters.
 
-### Public bot is slow or rate-limited
+### Shared deployment is slow or rate-limited
 
 - Configure a server key via BYOP.
 - Pollinations traffic varies by model and load; retry can help.
@@ -304,7 +304,6 @@ curl -L "$POLLINATIONS_API/image/a%20cat%20wearing%20sunglasses?model=imagen-4&s
 - Dashboard (keys, usage): <https://enter.pollinations.ai>
 - API reference: <https://enter.pollinations.ai/api/docs>
 - Featured apps: <https://pollinations.ai/apps>
-- Deprecated auth notice: <https://auth.pollinations.ai/>
 
 ---
 

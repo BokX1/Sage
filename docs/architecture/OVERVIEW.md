@@ -4,7 +4,6 @@ How Sage processes every message — from raw Discord event to verified, tool-au
 
 <p align="center">
   <img src="https://img.shields.io/badge/%F0%9F%8C%BF-Sage%20Architecture-2d5016?style=for-the-badge&labelColor=4a7c23" alt="Sage Architecture" />
-  <img src="https://img.shields.io/badge/Runtime-Single--Agent-blue?style=for-the-badge" alt="Single-Agent" />
 </p>
 
 ---
@@ -92,7 +91,7 @@ flowchart TD
 |:---|:---|:---|
 | **Chat Engine** | `src/core/chat-engine.ts` | Entry point — receives Discord events, orchestrates `runChatTurn` |
 | **Agent Runtime** | `src/core/agentRuntime/agentRuntime.ts` | The single `runChatTurn` function: model resolution, prompt assembly, tool loop, trace persistence |
-| **Context Builder** | `src/core/agentRuntime/contextBuilder.ts` | Composes prioritized message blocks (system prompt, transcript, summaries, reply context) |
+| **Context Builder** | `src/core/agentRuntime/contextBuilder.ts` | Composes prioritized message blocks (system prompt, runtime instructions, optional guild memory/voice context, transcript, reply context) |
 | **Context Budgeter** | `src/core/agentRuntime/contextBudgeter.ts` | Token-aware block sizing with configurable per-block budgets |
 | **Prompt Composer** | `src/core/agentRuntime/promptComposer.ts` | Assembles the final system prompt with personality, capabilities, and tool protocol |
 | **Tool Call Loop** | `src/core/agentRuntime/toolCallLoop.ts` | Iterative tool execution with bounded rounds, parallel read-only optimization, and timeout enforcement |
@@ -117,7 +116,7 @@ sequenceDiagram
     U->>CE: Discord message
     CE->>RT: Invoke with context params
     RT->>RT: Resolve model (CHAT_MODEL → kimi fallback)
-    RT->>RT: Build context (transcript + summaries + prompt)
+    RT->>RT: Build context (system prompt + runtime blocks + transcript + current turn)
     RT->>RT: Budget tokens across blocks
     RT->>LLM: Send prompt + tool specs
     LLM->>RT: Response (text or tool calls)

@@ -26,7 +26,7 @@ Common questions about Sage, setup, and behavior.
 <details>
 <summary><strong>I'm not technical — can I still use Sage?</strong></summary>
 
-Yes. Start with the **[⚡ Quick Start Guide](QUICKSTART.md)** for a minimal, copy/paste setup.
+Yes. If someone already hosts Sage for your community, start with the **[⚡ Quick Start Guide](QUICKSTART.md)**. If you need to run it yourself, **[📖 Getting Started](GETTING_STARTED.md)** walks through the full setup from source.
 
 </details>
 
@@ -77,11 +77,11 @@ Try these in order:
 <details>
 <summary><strong>What is Sage?</strong></summary>
 
-Sage is a fully agentic AI companion. Unlike simple chatbots, Sage aims to behave like a helpful community member who **listens and evolves alongside you**.
+Sage is a Discord-native AI runtime built around one tool-enabled chat loop.
 
-- 🧠 **Personalized touch**: Remembers context to respond more helpfully over time.
-- 👥 **Socially aware**: Understands relationships and the “vibe” of a server.
-- 📄 **Knowledgeable**: Can ingest files and discuss them with the community.
+- 🧠 **Context-aware**: Uses recent transcript history, user profiles, channel summaries, and attachment cache data.
+- 🌐 **Research-capable**: Can search the web, read pages, and pull in external sources when needed.
+- 🛠️ **Action-capable**: Can perform approval-gated Discord admin actions for authorized users.
 
 </details>
 
@@ -95,12 +95,14 @@ For noncommercial use, Sage can be run under PolyForm Strict 1.0.0 without a pai
 <details>
 <summary><strong>What AI models does Sage use?</strong></summary>
 
-Sage uses a route-aware multi-model pipeline:
+Sage's main chat loop uses one runtime chat model per turn:
 
-- **Chat/Coding/Search:** selected by model policy at runtime based on capabilities + health.
-- **Profile updates:** `PROFILE_CHAT_MODEL` (default `deepseek`).
-- **Summaries:** `SUMMARY_MODEL` (default `deepseek`).
-- **JSON Parsing:** Processed natively using `jsonrepair`.
+- **Chat turns:** `CHAT_MODEL` (starter default: `kimi`)
+- **Profile updates:** `PROFILE_CHAT_MODEL` (starter default: `deepseek`)
+- **Channel summaries:** `SUMMARY_MODEL` (starter default: `deepseek`)
+- **Guarded search fallback:** Sage can use `gemini-search`, `perplexity-fast`, and `perplexity-reasoning`, with the order varying by search depth (`quick`, `balanced`, `deep`)
+
+There is no route-mapped multi-agent pipeline in the current runtime.
 
 You can change defaults in **[Configuration](../reference/CONFIGURATION.md)**.
 
@@ -212,11 +214,15 @@ See **[Commands Reference](COMMANDS.md)**. Highlights:
 
 - `/ping`
 - `/sage key login`
+- `/join`
+- `/leave`
 
 **Admin / setup:**
 
-- `/sage key login`, `/sage key set`
+- `/sage key set`, `/sage key check`, `/sage key clear`
 - `/sage admin stats`
+
+There are no slash commands for search, image generation, or summarization. Those are triggered through normal chat using wake word, mention, or reply.
 
 </details>
 
@@ -254,11 +260,13 @@ Things to try:
 | Data Type | Description |
 | :--- | :--- |
 | **User Profiles** | LLM-generated long-term summary of a user (throttled for efficiency). |
-| **Relationship Tiers** | Interaction-based tiers (e.g., “Best Friend”) with emojis. |
+| **Guild Settings / Server Key** | Server-scoped Pollinations BYOP configuration stored in `GuildSettings`. |
+| **Guild Memory** | Admin-authored server memory and its archive history. |
+| **Social Graph Edges** | Relationship weights and analytics-derived Dunbar labels such as `intimate`, `close`, `active`, `acquaintance`, and `distant`. |
 | **Ingested Attachments** | Cached extracted text from non-image Discord attachments (per-channel). |
 | **Channel Summaries** | Rolling LLM-generated summaries of channel conversations. |
 | **Traces** | Agent selector `reasoningText`, route metadata, and runtime diagnostics for auditing responses. |
 
-For a full breakdown (tables, retention, and deletion), see **[Security &amp; Privacy](../security/../security/SECURITY_PRIVACY.md)**.
+For a full breakdown (tables, retention, and deletion), see **[Security &amp; Privacy](../security/SECURITY_PRIVACY.md)**.
 
 </details>

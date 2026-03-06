@@ -8,11 +8,11 @@
 <h3 align="center">The open-source AI agent for Discord communities</h3>
 
 <p align="center">
-  <strong>Your Discord server's autonomous co-pilot. Sage leverages deep community memory, live internet research, and zero-prompt automation to scale your support, workflows, and engagement.</strong>
+  <strong>Discord-native AI runtime with long-term memory, live web research, optional voice tooling, and approval-gated admin actions.</strong>
 </p>
 
 <p align="center">
-  <sub>Move beyond basic slash commands. From immersive roleplay and world-building to 24/7 automated support and live internet research, Sage is the autonomous, memory-rich AI teammate that adapts to any community.</sub>
+  <sub>Sage combines transcript history, summaries, attachment retrieval, web tools, and optional social-graph services in one single-agent runtime.</sub>
 </p>
 
 <p align="center">
@@ -32,7 +32,7 @@
 <p align="center">
   <img src="https://skillicons.dev/icons?i=ts,nodejs,discord,postgres,prisma,docker" alt="Tech Stack" />
   <br>
-  <img src="https://img.shields.io/badge/Memgraph-FF3366?style=for-the-badge&logo=memgraph&logoColor=white" alt="Memgraph" />
+  <img src="https://img.shields.io/badge/Optional%20Memgraph-FF3366?style=for-the-badge&logo=memgraph&logoColor=white" alt="Optional Memgraph" />
 </p>
 
 <p align="center">
@@ -65,11 +65,11 @@ Sage is a Discord-native AI runtime built for active communities—where context
 
 It's designed to feel like an intelligent, ever-present teammate that adapts to your server's unique needs:
 
-- 🧠 **Infinite Memory:** Leverages user and channel historical context, file attachments, and a dynamic Memgraph social graph to maintain perfect conversational continuity without requiring you to re-explain yourself.
-- 🌐 **Live Internet Research:** Built-in search capabilities allow Sage to pull real-time data, API documentation, or news directly into the chat when answering complex technical queries.
-- 🎨 **Creative Generation:** From generating immersive roleplay environments to creating custom images on command, Sage acts as a generative engine for your community's imagination.
-- 🔀 **Autonomous Automation:** Seamlessly executing multi-step workflows, from formatting data into checklists to answering support tickets, utilizing a unified tool-driven pipeline.
-- 🧰 **Total Sovereignty:** Build on your terms with BYOP (bring your own pollen/provider). Host Sage yourself to swap underlying LLMs at will, or use our hosted bot and bring your own Pollinations key to maximize performance for your community.
+- 🧠 **Layered Memory:** Combines recent transcript history, background summaries, user profiles, and attachment retrieval, with optional Memgraph analytics when the social-graph stack is enabled.
+- 🌐 **Live Internet Research:** Uses built-in web and reference tools to pull in current documentation, search results, and cited pages when the runtime needs fresh information.
+- 🎨 **Creative Generation:** Supports vision-aware chat plus built-in image generation and editing through the same runtime loop.
+- 🔀 **Tool-Driven Automation:** Executes multi-step workflows through the unified tool loop instead of separate bots or hard-coded command trees.
+- 🧰 **Operator Controls:** Configure the chat endpoint with environment variables, keep Pollinations BYOP for the built-in image and key flows, and optionally self-host the search/scrape stack.
 
 **Best fit:** Gaming communities, creative hubs, development teams, and any server scaling beyond simple "vibe-only" chat into genuine AI collaboration.
 
@@ -79,7 +79,7 @@ It's designed to feel like an intelligent, ever-present teammate that adapts to 
 flowchart LR
     A["📩 User Message"] --> B{"🧠 Autonomous Agent Router"}
     
-    B -->|"Retrieval"| C["📚 Memory & Graph (Memgraph/Postgres)"]
+    B -->|"Retrieval"| C["📚 Memory & Context (Postgres + optional Memgraph)"]
     B -->|"Research"| D["🌐 Live Internet Search Tools"]
     B -->|"Action"| E["⚡ Execute Custom Workflows"]
     B -->|"Creative"| F["🎨 Generate Media & Code"]
@@ -114,10 +114,10 @@ flowchart LR
 
 ## 💎 What Makes Sage Different
 
-- 🛡️ **Sovereign Runtime Core:** Built on a unified agentic tool loop with transparent trace data. Sage doesn't just "chat"—it reasoningly executes multi-step plans with absolute predictability.
-- 🧠 **Infinite Community Memory:** A hybrid LTM stack combining rolling summaries, user profiles, attachment RAG, and a live Memgraph social graph. Sage knows your server's lore as well as your own teammates do.
-- 🔍 **Dynamic Internet Synthesis:** Real-time web search and deep scraping capabilities ensure Sage isn't limited to a training cutoff. It researches, verifies, and cites its findings in every reply.
-- 🧰 **Pure Operator Freedom:** Total BYOP (Bring Your Own Pollen/Provider) sovereignty. Deploy on your terms, use any OpenAI-compatible LLM, and self-host your entire tool stack for maximum privacy.
+- 🛡️ **Single-Agent Runtime:** One execution path (`runChatTurn`) handles prompt assembly, tool calls, and final replies, which keeps behavior inspectable and easier to debug.
+- 🧠 **Layered Memory:** Sage keeps recent transcript context in Postgres, updates user/channel summaries in the background, and fetches richer memory only when the tool loop needs it.
+- 🔍 **Tool-First Research:** Live web search, page reads, GitHub access, npm lookup, and file retrieval all run through the same tool loop instead of separate specialty bots.
+- 🧰 **Operator Choice:** The repo ships with Pollinations defaults, optional local search/scrape services, and an optional Memgraph/Redpanda stack for social-graph analytics.
 
 <p align="right"><a href="#top">⬆️ Back to top</a></p>
 
@@ -183,7 +183,7 @@ flowchart LR
 ```
 
 > [!NOTE]
-> `UserMemory`, `ChannelMemory`, and `SocialGraph` (backed by Memgraph) are not blindly injected. They are fetched dynamically by the autonomous agent tool-loop exactly when needed, keeping the context window incredibly clean constraint-free.
+> `UserMemory`, `ChannelMemory`, and `SocialGraph` data are not blindly injected. The runtime fetches them on demand through tools so the prompt stays smaller and easier to budget.
 
 <p align="right"><a href="#top">⬆️ Back to top</a></p>
 
@@ -193,12 +193,12 @@ flowchart LR
 
 ## ✨ Capabilities That Matter
 
-- **🧠 Deep Community Memory**: Automatically persists user and channel interactions across sessions so your community never repeats itself.
+- **🧠 Deep Community Memory**: Persists transcript history, summaries, and profile data so follow-up conversations can reuse prior context.
 - **📄 Attachment Intelligence**: Ingests, caches, and understands non-image file content for seamless doc-aware discussions in-channel.
 - **👁️ Multimodal Vision & Generation**: Natively understands images and dynamically generates or edits visuals using Pollinations.ai.
-- **🔍 Live Internet Research**: Arms the agent with real-time web search and verified synthesis to provide high-signal answers with zero hallucinations.
+- **🔍 Live Internet Research**: Adds real-time web search and page-reading tools for questions that need current external sources.
 - **🤖 Zero-Prompt Tool Automation**: Dynamically selects the exact tools needed (search, memory lookup, analytics) based on raw community intent.
-- **🛡️ Enterprise-Grade Reliability**: Built with explicit telemetry traces and strict graph-first validations to drastically reduce operational risks.
+- **🛡️ Runtime Observability**: Includes explicit trace data, model health tracking, and bounded tool execution for easier debugging and operations.
 - **🧪 Production-Ready Quality**: Supported by robust build, test, and trust-gate validation for consistent long-term behavior.
 - **🎤 Immersive Voice Awareness**: Optionally leverages voice analytics to bridge the gap between text history and live voice sessions.
 
@@ -212,12 +212,12 @@ flowchart LR
 
 ## 🚀 Getting Started
 
-### 🟢 Option A: Use the Hosted Bot
+### 🟢 Option A: Connect to an Existing Sage Deployment
 
-The fastest way to experience Sage—zero infrastructure required.
+The fastest way to try Sage if your team or community already runs an instance.
 
 **1. Invite the Agent**  
-[![Add to Discord](https://img.shields.io/badge/Add_Sage_to_Discord-5865F2?style=for-the-badge&logo=discord&logoColor=white)](https://discord.com/oauth2/authorize?client_id=1462117382398017667&scope=bot%20applications.commands&permissions=8)
+Use the current invite URL from the operator who hosts that deployment.
 
 **2. Activate BYOP (Bring Your Own Pollen)**  
 *(Recommended for higher generation limits via Pollinations.ai)*
@@ -228,20 +228,20 @@ The fastest way to experience Sage—zero infrastructure required.
 ```
 
 > [!TIP]
-> Prefer least-privilege permissions? Generate a custom invite URL in the Discord Developer Portal (see [Getting Started → Invite Bot](docs/guides/GETTING_STARTED.md#step-6-invite-sage-to-your-server)).
+> For self-hosted deployments, `npm run onboard` prints a recommended invite URL and the manual Discord Developer Portal flow is documented in [Getting Started](docs/guides/GETTING_STARTED.md#step-6-invite-sage-to-your-server).
 
 ### 🛠️ Option B: Self-Host From Source
 
 Full control over your data, models, and tool stack.
 
 **1. Review Prerequisites**  
-Node.js >=22.12, Docker, PostgreSQL, and Memgraph.
+Node.js >=22.12, Docker, and PostgreSQL. Memgraph/Redpanda are optional and only needed for the social-graph stack.
 
 **2. Follow the Setup Guide**  
 👉 **[📖 Getting Started](docs/guides/GETTING_STARTED.md)** (Covers database initialization, onboarding, and Discord invite flow).
 
-**3. Activate BYOP (Bring Your Own Provider)**  
-Change your `LLM_API_KEY` and `LLM_BASE_URL` in your `.env` to natively support any OpenAI-compatible API format (e.g., OpenAI, Ollama, vLLM, DeepSeek).
+**3. Configure Chat + BYOP**  
+Pollinations defaults are included in `.env.example`. You can override `LLM_BASE_URL` for chat-compatible endpoints, while Sage's built-in image generation and `/sage key` flow still use Pollinations.
 
 **4. Optional: Local Tool Services**  
 For localized web search and scraping (SearXNG/Crawl4AI), check out the **[🧰 Self-Hosted Tool Stack](docs/operations/TOOL_STACK.md)** guide.
@@ -283,7 +283,7 @@ npm run dev
 ```
 
 **Optional: Stand up Local Tool Services**  
-*(SearXNG, Crawl4AI)*
+*(SearXNG, Crawl4AI, Tika)*
 
 ```bash
 docker compose -f config/services/self-host/docker-compose.tools.yml up -d
@@ -335,7 +335,7 @@ See the **[⚙️ Configuration Reference](docs/reference/CONFIGURATION.md)** fo
 
 - **[⚙️ Configuration](docs/reference/CONFIGURATION.md)**: All env vars and defaults
 - **[🗂️ Config Layout](config/README.md)**: CI and self-host config file ownership
-- **[🧰 Self-Hosted Tool Stack](docs/operations/TOOL_STACK.md)**: Local SearXNG/Crawl4AI/Ollama stack
+- **[🧰 Self-Hosted Tool Stack](docs/operations/TOOL_STACK.md)**: Local SearXNG/Crawl4AI/Tika stack
 - **[📋 Operations Runbook](docs/operations/RUNBOOK.md)**: Operational and release procedures
 
 **🧠 Architecture & Security**
@@ -369,7 +369,7 @@ A massive thank you to everyone who has helped build Sage.
 
 <p align="center">
   <strong>Unlock your server's full potential.</strong><br />
-  <a href="https://discord.com/oauth2/authorize?client_id=1462117382398017667&scope=bot%20applications.commands&permissions=8"><strong>🚀 Add Sage to Discord</strong></a> · <a href="docs/guides/GETTING_STARTED.md"><strong>📖 Read the Docs</strong></a> · <a href="docs/architecture/OVERVIEW.md"><strong>🏛️ Explore Architecture</strong></a>
+  <a href="docs/guides/QUICKSTART.md"><strong>🚀 Quick Start</strong></a> · <a href="docs/guides/GETTING_STARTED.md"><strong>📖 Read the Docs</strong></a> · <a href="docs/architecture/OVERVIEW.md"><strong>🏛️ Explore Architecture</strong></a>
 </p>
 
 ---

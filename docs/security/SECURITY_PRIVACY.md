@@ -31,14 +31,20 @@ This document describes what Sage stores and how to control retention. Implement
 | Data | Table | Notes |
 | --- | --- | --- |
 | User profile summaries | `UserProfile` | LLM-generated long-term summary of a user. |
+| User profile archives | `UserProfileArchive` | Historical snapshots of user profiles. |
+| Guild settings | `GuildSettings` | Stores server-scoped BYOP key configuration. |
+| Guild memory | `GuildMemory` | Admin-authored server memory available to the runtime. |
+| Guild memory archives | `GuildMemoryArchive` | Historical snapshots of server memory updates. |
 | Channel messages | `ChannelMessage` | Stored only if `MESSAGE_DB_STORAGE_ENABLED=true`. |
 | Ingested attachments | `IngestedAttachment` | Non-image attachment extraction cache (text + metadata) for on-demand retrieval. |
 | Channel summaries | `ChannelSummary` | Rolling + profile summaries, plus metadata (topics, decisions, etc.). |
 | Relationship edges | `RelationshipEdge` | Probabilistic relationship weights from mentions/replies/voice overlap. |
 | Voice sessions | `VoiceSession` | Join/leave session history per user/channel. |
 | Voice session summaries | `VoiceConversationSummary` | Summary-only memory of transcribed voice sessions (optional; no raw transcript stored in DB). |
+| Pending admin actions | `PendingAdminAction` | Approval-gated admin action queue and status metadata. |
 | Admin audits | `AdminAudit` | Records admin command usage with hashed params. |
 | Agent traces | `AgentTrace` | Agent trace payload, context budget metadata, and final reply text (if tracing is enabled). |
+| Model health state | `ModelHealthState` | Rolling model health scores used for diagnostics. |
 
 ---
 
@@ -62,7 +68,8 @@ These settings control what Sage ingests and logs:
 - **In-memory transcripts** honor:
   - `RAW_MESSAGE_TTL_DAYS`
   - `RING_BUFFER_MAX_MESSAGES_PER_CHANNEL`
-- **DB transcripts** are trimmed per channel to `CONTEXT_TRANSCRIPT_MAX_MESSAGES`.
+- **DB transcripts** are trimmed per channel to `MESSAGE_DB_MAX_MESSAGES_PER_CHANNEL`.
+- **Prompt transcript windows** are separately bounded by `CONTEXT_TRANSCRIPT_MAX_MESSAGES` and `CONTEXT_TRANSCRIPT_MAX_CHARS`.
 - **Voice transcription utterances** are kept in-memory only and discarded when the voice session ends; only summary rows persist (when enabled).
 - **Attachment cache** persists extracted non-image file text/metadata (including optional voice-message transcripts) in `IngestedAttachment` until deleted manually.
 - **Summaries and profiles** persist until deleted manually.
@@ -81,7 +88,10 @@ When generating replies, Sage sends:
 
 - The user’s message content
 - Reply references (if the user replied to another message)
-- Recent transcript + summaries (if logging is enabled)
+- Recent transcript and optional live voice context when Sage is active in voice
+- User profile summary embedded inside the runtime system prompt
+- Guild memory when server memory is configured
+- Tool-fetched summaries, archives, social-graph data, or attachment cache results only when the tool loop requests them
 - Stored message-history retrieval results when tool loop calls `discord` actions `messages.search_history` / `messages.get_context` (permission-gated; optional `channelId` can target other channels)
 - Attachment text blocks for the current turn when inline analysis is needed
 - Attachment-cache retrieval results when tool loop calls `discord` actions `files.list_channel` or `files.list_server` (server-wide results are permission-filtered)

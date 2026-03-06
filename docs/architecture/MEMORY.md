@@ -4,7 +4,7 @@
   <img src="https://img.shields.io/badge/%F0%9F%8C%BF-Sage%20Memory-2d5016?style=for-the-badge&labelColor=4a7c23" alt="Sage Memory" />
 </p>
 
-This document describes how Sage stores, summarizes, and injects memory into runtime prompts. It reflects current behavior in `src/core`.
+This document describes how Sage stores memory and makes it available to the runtime. It reflects the current behavior under `src/core`.
 
 ---
 
@@ -17,7 +17,7 @@ This document describes how Sage stores, summarizes, and injects memory into run
 - [5) Short-term memory: rolling channel summary](#5-short-term-memory-rolling-channel-summary)
 - [6) Long-term memory: channel profile](#6-long-term-memory-channel-profile)
 - [7) Throttled user profile updates](#7-throttled-user-profile-updates)
-- [8) Relationship graph and social tiers](#8-relationship-graph-and-social-tiers)
+- [8) Relationship graph and social layers](#8-relationship-graph-and-social-layers)
 - [9) Voice awareness in memory](#9-voice-awareness-in-memory)
 - [🔗 Related documentation](#related-documentation)
 
@@ -29,12 +29,13 @@ This document describes how Sage stores, summarizes, and injects memory into run
 
 | Memory type | Purpose | Storage | Key files |
 | :--- | :--- | :--- | :--- |
-| **User profile** | Long-term personalization summary per user. | `UserProfile` table. | `src/core/memory/profileUpdater.ts`, `src/core/memory/userProfileRepo.ts` |
-| **Channel summaries** | Rolling + long-term channel context. | `ChannelSummary` table. | `src/core/summary/*` |
-| **Raw transcript** | Recent messages for short-term context. | Ring buffer + optional `ChannelMessage` table storage. | `src/core/awareness/*`, `src/core/ingest/ingestEvent.ts` |
-| **Attachment cache** | Persisted non-image file extraction (text + metadata) for on-demand retrieval. | `IngestedAttachment` table. | `src/core/attachments/ingestedAttachmentRepo.ts`, `src/bot/handlers/messageCreate.ts` |
-| **Relationship graph** | Probabilistic user connections from mentions/replies/voice overlap. | `RelationshipEdge` table. | `src/core/relationships/*`, `src/core/agentRuntime/toolIntegrations.ts` |
-| **Voice sessions** | Presence history and voice-duration analytics. | `VoiceSession` table. | `src/core/voice/*`, `src/core/agentRuntime/toolIntegrations.ts` |
+| **User profile** | Long-term personalization summary per user, with archive history. | `UserProfile`, `UserProfileArchive` | `src/core/memory/profileUpdater.ts`, `src/core/memory/userProfileRepo.ts` |
+| **Guild memory** | Admin-authored server memory and archive history. | `GuildMemory`, `GuildMemoryArchive` | `src/core/admin/*`, `src/core/agentRuntime/discordTool.ts` |
+| **Channel summaries** | Rolling and profile summaries for channels. | `ChannelSummary` | `src/core/summary/*` |
+| **Raw transcript** | Recent message history for prompt context and retrieval. | Ring buffer plus optional `ChannelMessage` persistence | `src/core/awareness/*`, `src/core/ingest/ingestEvent.ts` |
+| **Attachment cache** | Persisted non-image file extraction for on-demand retrieval. | `IngestedAttachment`, `AttachmentChunk` | `src/core/attachments/*`, `src/bot/handlers/messageCreate.ts` |
+| **Relationship graph** | Relationship weights derived from mentions, replies, reactions, and voice overlap. | `RelationshipEdge`, optional Memgraph export | `src/core/relationships/*`, `src/social-graph/*` |
+| **Voice sessions** | Voice join/leave history and optional summary-only session memory. | `VoiceSession`, `VoiceConversationSummary` | `src/core/voice/*` |
 
 ---
 
@@ -42,19 +43,27 @@ This document describes how Sage stores, summarizes, and injects memory into run
 
 ## 2) Data retention (transcripts)
 
-- **In-memory ring buffer** uses:
-  - `RAW_MESSAGE_TTL_DAYS` (default in `.env.example`: `3`)
-  - `RING_BUFFER_MAX_MESSAGES_PER_CHANNEL` (default in `.env.example`: `200`)
-- **DB transcript window** used for prompt context is bounded by:
-  - `CONTEXT_TRANSCRIPT_MAX_MESSAGES` (default in `.env.example`: `15`)
-  - `CONTEXT_TRANSCRIPT_MAX_CHARS` (default in `.env.example`: `24000`)
+- **In-memory transcript ring buffer**
+  - `RAW_MESSAGE_TTL_DAYS` starter value: `3`
+  - `RING_BUFFER_MAX_MESSAGES_PER_CHANNEL` starter value: `200`
+- **Database transcript retention**
+  - `MESSAGE_DB_STORAGE_ENABLED=true` persists messages into `ChannelMessage`
+  - `MESSAGE_DB_MAX_MESSAGES_PER_CHANNEL` starter value: `500` caps retained rows per channel
+- **Prompt transcript window**
+  - `CONTEXT_TRANSCRIPT_MAX_MESSAGES` starter value: `15`
+  - `CONTEXT_TRANSCRIPT_MAX_CHARS` starter value: `24000`
 
-Transcript usage is size/window bounded. For longer context, increase transcript limits carefully.
+Transcript storage and prompt budgeting are separate controls. A channel can retain more history in the database than any single prompt includes.
 
 Attachment behavior:
 
-- Transcript rows store attachment-cache notes, not full historical file bodies.
-- Full file content is loaded on demand through the runtime tool loop (`discord` action `files.list_channel` for same-channel lookups, or `files.list_server` for server-wide lookups with permission filtering).
+- Transcript rows store cache references and message metadata, not full historical file bodies.
+- Full file text is loaded on demand through `discord` tool actions such as `files.list_channel`, `files.list_server`, and `files.read_attachment`.
+
+Voice transcript behavior:
+
+- Live STT utterances are kept **in-memory only** during a voice session.
+- When voice session summaries are enabled, Sage stores only the structured summary row in `VoiceConversationSummary`, not the raw utterance transcript.
 
 ---
 
@@ -72,37 +81,42 @@ flowchart LR
     subgraph Storage
         DB[(PostgreSQL)]:::storage
         RB[Ring Buffer]:::storage
+        VS[Live Voice Session Store]:::storage
     end
 
     subgraph Tools
-        MP[discord: memory.get_user]:::tools
-        SP[discord: analytics.get_social_graph]:::tools
-        VP[discord: analytics.get_voice_analytics]:::tools
-        SU[discord: memory.get_channel]:::tools
+        U[discord: memory.get_user]:::tools
+        C[discord: memory.get_channel]:::tools
+        A[discord: memory.channel_archives]:::tools
+        G[discord: analytics.get_social_graph]:::tools
+        F[discord: files.read_attachment]:::tools
     end
 
-    subgraph Context_Builder["Context Builder"]
+    subgraph Builder["Context Builder"]
         MB[buildContextMessages]:::builder
         Budget[contextBudgeter]:::builder
     end
 
     RB --> MB
+    VS --> MB
     MB --> Budget --> LLM[LLM Request + Tool Loop]:::llm
-    DB --> MP
-    DB --> SP
-    DB --> VP
-    DB --> SU
-    LLM --> MP
-    LLM --> SP
-    LLM --> VP
-    LLM --> SU
+    DB --> U
+    DB --> C
+    DB --> A
+    DB --> G
+    DB --> F
+    LLM --> U
+    LLM --> C
+    LLM --> A
+    LLM --> G
+    LLM --> F
 ```
 
 Runtime notes:
 
-- Memory is not pre-fetched through a graph executor.
-- The model calls memory tools on demand when additional context is needed.
-- Tool results are injected back through the runtime tool loop.
+- Memory is not pre-fetched through a separate graph executor.
+- User profile summary is the only long-term memory block always embedded up front, and it is embedded inside the system prompt.
+- Channel summaries, archives, social-graph data, file cache data, and wider message history are fetched only if the model chooses the corresponding tool action.
 
 ---
 
@@ -112,20 +126,28 @@ Runtime notes:
 
 **File:** `src/core/agentRuntime/contextBuilder.ts`
 
-`buildContextMessages` composes turn context in prioritized blocks:
+`buildContextMessages` composes turn context in these prioritized blocks:
 
-- Base system prompt (`composeSystemPrompt`)
-- Runtime instruction block (single-agent capabilities, optional agentic state, tool protocol)
-- Channel profile summary
-- Rolling channel summary
-- Tool-driven context fetched on demand (not pre-injected as provider packets)
+- Base system prompt from `composeSystemPrompt`
+- Runtime instruction block
+- Optional guild memory
+- Optional live voice context
 - Recent transcript
-- Intent hint + reply context/reference
+- Prior Sage reply context
+- Reply reference content
 - Current user message/content
 
-Attachment note: historical file content is not replayed from transcript by default; file text is retrieved from cache on demand when requested (channel-scoped or server-wide, depending on the tool used).
+The user profile summary is embedded inside `<user_context>` in the system prompt produced by `composeSystemPrompt`.
 
-All system blocks are merged into one system message before provider calls.
+What is **not** preloaded:
+
+- channel summaries
+- archived summaries
+- social-graph results
+- attachment cache text
+- historical message search results
+
+These are returned only when the tool loop calls for them.
 
 Context is budgeted by `contextBudgeter` using these key limits:
 
@@ -134,11 +156,11 @@ Context is budgeted by `contextBudgeter` using these key limits:
 | Max input tokens | `CONTEXT_MAX_INPUT_TOKENS` |
 | Reserved output tokens | `CONTEXT_RESERVED_OUTPUT_TOKENS` |
 | Transcript block max | `CONTEXT_BLOCK_MAX_TOKENS_TRANSCRIPT` |
-| Rolling summary max | `CONTEXT_BLOCK_MAX_TOKENS_ROLLING_SUMMARY` |
-| Profile summary max | `CONTEXT_BLOCK_MAX_TOKENS_PROFILE_SUMMARY` |
+| Rolling summary block max | `CONTEXT_BLOCK_MAX_TOKENS_ROLLING_SUMMARY` |
+| Profile summary block max | `CONTEXT_BLOCK_MAX_TOKENS_PROFILE_SUMMARY` |
 | Memory block max | `CONTEXT_BLOCK_MAX_TOKENS_MEMORY` |
 | Reply context max | `CONTEXT_BLOCK_MAX_TOKENS_REPLY_CONTEXT` |
-| Provider/action packets max | `CONTEXT_BLOCK_MAX_TOKENS_PROVIDERS` |
+| Provider packet max | `CONTEXT_BLOCK_MAX_TOKENS_PROVIDERS` |
 | User message max | `CONTEXT_USER_MAX_TOKENS` |
 
 ---
@@ -154,12 +176,12 @@ Context is budgeted by `contextBudgeter` using these key limits:
 
 Scheduler behavior:
 
-- Tick interval: `SUMMARY_SCHED_TICK_SEC` (default `60`)
-- Requires at least `SUMMARY_ROLLING_MIN_MESSAGES` new messages (default `20`)
-- Requires at least `SUMMARY_ROLLING_MIN_INTERVAL_SEC` since last summary (default `300`)
-- Uses rolling window `SUMMARY_ROLLING_WINDOW_MIN` (default `60`)
+- Tick interval: `SUMMARY_SCHED_TICK_SEC` starter value `60`
+- Minimum messages before update: `SUMMARY_ROLLING_MIN_MESSAGES` starter value `20`
+- Minimum interval between updates: `SUMMARY_ROLLING_MIN_INTERVAL_SEC` starter value `300`
+- Rolling window size: `SUMMARY_ROLLING_WINDOW_MIN` starter value `60`
 
-Output is stored as `ChannelSummary` with `kind = 'rolling'`.
+Output is stored in `ChannelSummary` with `kind = 'rolling'`.
 
 ---
 
@@ -169,12 +191,13 @@ Output is stored as `ChannelSummary` with `kind = 'rolling'`.
 
 **File:** `src/core/summary/summarizeChannelWindow.ts`
 
-Long-term profile summary updates when:
+Long-term channel profile summaries are scheduler-driven:
 
-- `SUMMARY_PROFILE_MIN_INTERVAL_SEC` has elapsed (default `21600` in `.env.example`), or
-- an admin manually triggers summarize command.
+- `SUMMARY_PROFILE_MIN_INTERVAL_SEC` starter value `21600` gates profile updates
+- output is stored in `ChannelSummary` with `kind = 'profile'`
+- the runtime reads these summaries through `discord` tool actions when needed
 
-Output is stored as `ChannelSummary` with `kind = 'profile'`.
+There is no dedicated summarize slash command in the current command set.
 
 ---
 
@@ -186,31 +209,32 @@ Output is stored as `ChannelSummary` with `kind = 'profile'`.
 
 Sage updates user profiles asynchronously with throttling:
 
-- Update interval: `PROFILE_UPDATE_INTERVAL` (default `5`)
-- Two-step pipeline:
-  1. Analyst pass (`PROFILE_CHAT_MODEL`) updates profile narrative.
-  2. Local JSON repair (`jsonrepair`) wraps output into strict JSON.
-- Per-user sequential guard prevents concurrent profile races.
+- Update interval: `PROFILE_UPDATE_INTERVAL` starter value `5`
+- Analysis model: `PROFILE_CHAT_MODEL` starter value `deepseek`
+- Formatter/repair step: `jsonrepair` is used to recover strict JSON output
+- Concurrency guard: per-user sequential protection prevents overlapping profile updates
 
-Result is persisted to `UserProfile.summary`; failed formatter output keeps prior summary.
+The latest profile is stored in `UserProfile.summary`, and prior versions can be archived in `UserProfileArchive`.
 
 ---
 
-<a id="8-relationship-graph-and-social-tiers"></a>
+<a id="8-relationship-graph-and-social-layers"></a>
 
-## 8) Relationship graph and social tiers
+## 8) Relationship graph and social layers
 
-**Files:** `src/core/relationships/relationshipGraph.ts`, `src/core/agentRuntime/toolIntegrations.ts`
+**Files:** `src/core/relationships/*`, `src/social-graph/socialGraphQuery.ts`
 
-Relationship edges are updated from mentions/replies/voice overlap and rendered as narrative tiers:
+Relationship edges are updated from mentions, replies, reactions, and voice overlap. At query time, Sage maps ranked relationships into Dunbar-style labels:
 
-- Best Friend
-- Close Friend
-- Friend
-- Acquaintance
-- New Connection
+- `intimate`
+- `close`
+- `active`
+- `acquaintance`
+- `distant`
 
-These social signals are returned through `discord` action `analytics.get_social_graph` when the model requests them.
+These signals are returned through `discord` tool actions such as `analytics.get_social_graph` and `analytics.top_relationships`.
+
+If the optional Memgraph/Redpanda stack is enabled, Sage can also export interaction events and query richer graph analytics from Memgraph.
 
 ---
 
@@ -218,19 +242,19 @@ These social signals are returned through `discord` action `analytics.get_social
 
 ## 9) Voice awareness in memory
 
-Voice presence events are stored in `VoiceSession` (join/leave + duration only).
+Voice presence events are stored in `VoiceSession` as join/leave windows and durations.
 
 `discord` action `analytics.get_voice_analytics` summarizes:
 
-- who is currently in voice,
-- how long the user has been active today,
-- lightweight activity signals for response context.
+- who is currently in voice
+- how long a user has been active today
+- lightweight voice-activity signals for response context
 
 Optional voice session summary memory:
 
-- If voice transcription is enabled, Sage can transcribe in-channel audio while connected.
-- Utterance transcripts are kept **in-memory only** and are discarded when the session ends.
-- On leave/disconnect, Sage can persist a **summary-only** record to `VoiceConversationSummary` (topics/decisions/action items).
+- If `VOICE_STT_ENABLED=true`, Sage can transcribe in-channel audio while connected.
+- Utterance transcripts stay **in-memory only** in the live session store.
+- On leave/disconnect, Sage can persist a **summary-only** record to `VoiceConversationSummary`.
 - These summaries are retrievable via `discord` action `analytics.voice_summaries`.
 
 ---

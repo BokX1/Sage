@@ -10,24 +10,24 @@ Get Sage running in your Discord server in under 5 minutes.
 
 ## 🧭 Quick navigation
 
-- [Option 1: Use the public bot (recommended)](#option-1-use-the-public-bot-recommended)
+- [Option 1: Join an existing Sage deployment](#option-1-join-an-existing-sage-deployment)
 - [Option 2: Self-host (developers)](#option-2-self-host-developers)
 - [🆘 Troubleshooting](#troubleshooting-fast)
 
 ---
 
-<a id="option-1-use-the-public-bot-recommended"></a>
+<a id="option-1-join-an-existing-sage-deployment"></a>
 
-## Option 1: Use the public bot (recommended)
+## Option 1: Join an existing Sage deployment
 
-**Best for:** Most servers that want Sage running immediately.
+**Best for:** Servers that already have an operator running Sage.
 
 ### 1️⃣ Invite Sage
 
-[**Click here to invite Sage to your server**](https://discord.com/oauth2/authorize?client_id=1462117382398017667&scope=bot%20applications.commands&permissions=8)
+Ask the deployment operator for the current invite URL.
 
 > [!TIP]
-> Prefer least-privilege permissions? You can generate a custom invite URL with only the permissions you need (see [Getting Started → Invite Bot](GETTING_STARTED.md#step-6-invite-sage-to-your-server)).
+> If you are the operator, `npm run onboard` prints a recommended invite URL and the manual Discord Developer Portal flow is documented in [Getting Started](GETTING_STARTED.md#step-6-invite-sage-to-your-server).
 
 ### 2️⃣ Activate BYOP (server-wide key)
 
@@ -77,7 +77,7 @@ After this, Sage is active for the entire server.
 git clone https://github.com/BokX1/Sage.git && cd Sage
 npm ci
 npm run onboard           # ← Interactive setup wizard
-docker compose -f config/services/core/docker-compose.yml up -d db
+docker compose -f config/services/core/docker-compose.yml up -d db tika
 npm run db:migrate
 npm run dev               # ← Start in development mode
 ```
@@ -107,6 +107,7 @@ For deeper debugging, see **[🔧 Troubleshooting Guide](TROUBLESHOOTING.md)**.
 ## 📝 What's Next?
 
 - **[🎮 Commands Reference](COMMANDS.md)** — Full list of slash commands and natural language triggers
+- **[📖 Getting Started](GETTING_STARTED.md)** — Full source setup, Discord app creation, and invite flow
 - **[⚙️ Configuration](../reference/CONFIGURATION.md)** — Customize Sage's behavior, memory, and limits
 - **[❓ FAQ](FAQ.md)** — Answers to common questions
 

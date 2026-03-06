@@ -4,7 +4,7 @@
   <img src="https://img.shields.io/badge/%F0%9F%8C%BF-Sage%20Deployment-2d5016?style=for-the-badge&labelColor=4a7c23" alt="Sage Deployment" />
 </p>
 
-How to deploy Sage to production.
+How to run Sage in production with the current repo layout.
 
 ---
 
@@ -25,10 +25,15 @@ How to deploy Sage to production.
 
 | Requirement | Version | Notes |
 | :--- | :--- | :--- |
-| Node.js | >= 22.12 | LTS recommended |
-| PostgreSQL | ≥ 14.x | Or any Prisma-compatible database |
-| Discord Bot Token | — | From [Discord Developer Portal](https://discord.com/developers/applications) |
-| Pollinations API Key | — | Via `enter.pollinations.ai` or `/sage key login` |
+| Node.js | `>= 22.12.0` | Required for the Sage process |
+| PostgreSQL | Prisma-compatible | Required |
+| Discord Bot Token | - | From the Discord Developer Portal |
+| Discord App ID | - | Used for slash commands and invite generation |
+| Pollinations key or server BYOP flow | - | Required for Pollinations-backed chat/image usage |
+| Docker | Optional | Used by the repo's support-service compose files |
+
+> [!NOTE]
+> `config/services/core/docker-compose.yml` runs support services (`db` and `tika`). It does **not** run the Sage Node.js process for you.
 
 ---
 
@@ -36,31 +41,46 @@ How to deploy Sage to production.
 
 ## 🏗️ Deployment Options
 
-### Option 1: Direct (Node.js)
+### Option 1: Direct Node.js process
 
 ```bash
-git clone https://github.com/BokX1/Sage.git && cd Sage
-npm ci --production
+git clone https://github.com/BokX1/Sage.git
+cd Sage
+npm ci
 npm run build
 npm start
 ```
 
-### Option 2: Docker Compose (Recommended)
+### Option 2: Use the repo's core support services
 
 ```bash
-# Start database + bot together
-docker compose -f config/services/core/docker-compose.yml up -d
+npm ci
+docker compose -f config/services/core/docker-compose.yml up -d db tika
+npx prisma migrate deploy
+npm run build
+npm start
 ```
 
-### Option 3: With Self-Hosted Tool Stack
+This is the closest match to the repo's expected local/production shape: Postgres and Tika are containerized, while the Sage runtime itself runs as a normal Node.js process.
+
+### Option 3: Add the self-hosted tool stack
 
 ```bash
-# Start local SearXNG, Crawl4AI, and Tika alongside Sage
-docker compose -f config/services/core/docker-compose.yml up -d
+npm ci
+docker compose -f config/services/core/docker-compose.yml up -d db tika
 docker compose -f config/services/self-host/docker-compose.tools.yml up -d
+npx prisma migrate deploy
+npm run build
+npm start
 ```
 
-For full tool stack details, see **[🧰 Self-Hosted Tool Stack](../operations/TOOL_STACK.md)**.
+This adds local SearXNG, Crawl4AI, and Tika-backed extraction paths. Sage still runs as its own process.
+
+Optional social-graph infrastructure is separate:
+
+```bash
+docker compose -f docker-compose.social-graph.yml up -d
+```
 
 ---
 
@@ -68,40 +88,32 @@ For full tool stack details, see **[🧰 Self-Hosted Tool Stack](../operations/T
 
 ## ⚙️ Environment Setup
 
-### Required Variables
+### Required variables
 
 ```env
-# Core
 DISCORD_TOKEN=your_discord_bot_token
 DISCORD_APP_ID=your_discord_app_id
-DATABASE_URL=postgresql://user:password@host:5432/sage
-
-# LLM (at minimum)
+DATABASE_URL=postgresql://user:password@host:5432/sage?schema=public
 LLM_PROVIDER=pollinations
 LLM_BASE_URL=https://gen.pollinations.ai/v1
 ```
 
-### Recommended Production Variables
+### Recommended production variables
 
 ```env
-# Behavior
 AUTOPILOT_MODE=manual
 TRACE_ENABLED=true
 LOG_LEVEL=info
-
-# Attachment extraction (recommended when file ingestion is enabled)
 FILE_INGEST_TIKA_BASE_URL=http://127.0.0.1:9998
-
-# Security
-# Admin commands/tools use Discord-native permissions.
-# Grant Manage Server or Administrator to approved moderators/admins in Discord.
-
-# Performance
-CONTEXT_MAX_INPUT_TOKENS=120000
-CONTEXT_RESERVED_OUTPUT_TOKENS=12000
 ```
 
-See **[⚙️ Configuration Reference](../reference/CONFIGURATION.md)** for all available variables.
+Key notes:
+
+- If you do **not** set `LLM_API_KEY`, each server must configure a BYOP key with `/sage key set`.
+- Admin commands and approval-gated actions use Discord-native permissions. Grant `Manage Server` or `Administrator` only to approved operators.
+- Social-graph export is disabled by setting `KAFKA_BROKERS=`.
+
+See **[⚙️ Configuration Reference](../reference/CONFIGURATION.md)** for the full environment surface.
 
 ---
 
@@ -109,27 +121,26 @@ See **[⚙️ Configuration Reference](../reference/CONFIGURATION.md)** for all 
 
 ## 💾 Database Setup
 
-### Initial Setup
+### Initial setup
 
 ```bash
-# Apply tracked migrations
 npx prisma migrate deploy
 ```
 
-### Schema Updates
+### Upgrades
 
 When upgrading Sage:
 
 ```bash
 git pull
 npm ci
-npx prisma migrate deploy    # Apply schema changes from committed migrations
+npx prisma migrate deploy
 npm run build
 npm start
 ```
 
 > [!WARNING]
-> Always back up your database before running schema migrations in production.
+> Back up your database before production schema changes.
 
 ---
 
@@ -137,19 +148,17 @@ npm start
 
 ## ✅ Production Checklist
 
-Use this checklist before going live:
-
-- [ ] **Discord bot token** is set and valid
-- [ ] **Database** is running and accessible
-- [ ] **`npm run doctor`** passes all checks
-- [ ] **`npm run check:trust`** passes (lint + typecheck + trusted test audit)
-- [ ] **Admin roles/users** in Discord have `Manage Server` or `Administrator`
-- [ ] **Tracing is enabled** (`TRACE_ENABLED=true`)
-- [ ] **Log level** is appropriate (`LOG_LEVEL=info`)
-- [ ] **BYOP key** is set for at least one server
-- [ ] **Tika is running** when file ingestion is enabled (`FILE_INGEST_TIKA_BASE_URL`)
-- [ ] **Process manager** is configured (PM2, systemd, Docker restart policy)
-- [ ] **Database backups** are scheduled
+- [ ] `DISCORD_TOKEN` and `DISCORD_APP_ID` are set
+- [ ] PostgreSQL is reachable from `DATABASE_URL`
+- [ ] `npx prisma migrate deploy` completed successfully
+- [ ] `npm run doctor` passes
+- [ ] `npm run check:trust` passes on the release candidate
+- [ ] Tika is reachable when file ingestion is enabled
+- [ ] A global `LLM_API_KEY` is configured or operators know to use `/sage key set`
+- [ ] `TRACE_ENABLED=true` if you want runtime trace rows
+- [ ] Approved moderators/admins have `Manage Server` or `Administrator`
+- [ ] Process supervision is configured (`systemd`, PM2, container restart policy, or similar)
+- [ ] Database backups are scheduled
 
 ---
 
@@ -157,26 +166,29 @@ Use this checklist before going live:
 
 ## 📊 Monitoring
 
-### Health Checks
+### Health checks
 
 ```bash
-# Built-in diagnostics
 npm run doctor
+```
 
-# Admin-only Discord command
+Discord-side checks:
+
+```text
+/ping
 /sage admin stats
 ```
 
 ### Logs
 
-Sage uses structured logging. Key log patterns to watch:
+Useful log patterns:
 
 | Pattern | Meaning |
 | :--- | :--- |
-| `[info] Logged in as Sage#1234` | Bot started successfully |
-| `[info] Successfully reloaded application (/) commands GLOBALLY.` | Slash commands are registered and runtime is operational |
-| `[error] P1001` | Database connection lost |
-| `[warn] Model degraded` | A model is experiencing errors |
+| `[info] Logged in as` | Bot started successfully |
+| `[info] Successfully reloaded application (/) commands` | Slash commands registered |
+| `[error] P1001` | Database connection issue |
+| `[warn] Model degraded` | Model health has dropped |
 
 ### Traces
 
@@ -192,5 +204,5 @@ npm run db:studio
 
 - [📖 Getting Started](../guides/GETTING_STARTED.md) — Initial setup walkthrough
 - [⚙️ Configuration](../reference/CONFIGURATION.md) — All environment variables
-- [📋 Operations Runbook](../operations/RUNBOOK.md) — Day-to-day operations
-- [🧰 Self-Hosted Tool Stack](../operations/TOOL_STACK.md) — Local tool stack setup
+- [📋 Operations Runbook](RUNBOOK.md) — Day-to-day operations
+- [🧰 Self-Hosted Tool Stack](TOOL_STACK.md) — Local tool stack setup

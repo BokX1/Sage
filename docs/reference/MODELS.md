@@ -1,13 +1,9 @@
 # 🧩 Model Reference
 
-<p align="center">
-  <img src="https://img.shields.io/badge/%F0%9F%8C%BF-Sage%20Models-2d5016?style=for-the-badge&labelColor=4a7c23" alt="Sage Models" />
-</p>
-
 How Sage selects and tracks models in the current single-agent runtime.
 
 > [!NOTE]
-> Message handling now runs through one agent loop. Model behavior is primarily driven by `CHAT_MODEL` and tool availability.
+> Message handling now runs through one agent loop. The primary runtime model is controlled by `CHAT_MODEL`, while profile and summary work use their own background-model settings.
 
 ---
 
@@ -16,6 +12,7 @@ How Sage selects and tracks models in the current single-agent runtime.
 - [Default Runtime Model](#default-runtime-model)
 - [Model Resolution Flow](#model-resolution-flow)
 - [Health Tracking](#health-tracking)
+- [Search Fallback Models](#search-fallback-models)
 - [Model Capabilities](#model-capabilities)
 - [Configuration Overrides](#configuration-overrides)
 
@@ -25,9 +22,9 @@ How Sage selects and tracks models in the current single-agent runtime.
 
 For chat turns, Sage resolves a single runtime model from configuration:
 
-- Uses `CHAT_MODEL` when set.
-- Falls back to `kimi` when `CHAT_MODEL` is empty.
-- Executes tool calls (memory/search/image/etc.) inside the same runtime loop.
+- Uses `CHAT_MODEL` when set
+- Falls back to `kimi` when `CHAT_MODEL` is empty
+- Executes tool calls inside the same runtime loop rather than switching to route-specific runtimes
 
 This behavior is implemented in `runChatTurn` in `src/core/agentRuntime/agentRuntime.ts`.
 
@@ -51,25 +48,38 @@ flowchart TD
 
 ### Key Rules
 
-1. Model choice is single-agent, not route-mapped.
-2. Tool usage extends capability without switching to route-specific runtimes.
-3. Attachments from tools are returned with the final response payload.
+1. Chat turns use one runtime model per turn.
+2. Tool usage extends capability without changing the runtime into a different route or agent.
+3. Image and web capabilities come from tools plus model capabilities, not from a separate selector pipeline.
 
 ---
 
 ## 🏥 Health Tracking
 
-Sage records model outcomes (success/failure, optional latency) and maintains rolling health scores.
+Sage records model outcomes and maintains rolling health scores in `ModelHealthState`.
 
-- Health state is persisted when trace persistence is available.
-- Runtime falls back to in-memory mode if persistence is unavailable.
-- Health snapshots are exposed for diagnostics and operational checks.
+- Health snapshots are persisted only when `TRACE_ENABLED=true` and the database path is available.
+- If `TRACE_ENABLED=false`, health tracking is memory-only even with a healthy database.
+- The runtime also falls back to in-memory tracking if persistence fails.
+- Health data is used for diagnostics and degraded-mode signaling, not for multi-agent routing.
+
+---
+
+## 🔎 Search Fallback Models
+
+The main chat runtime still uses `CHAT_MODEL`, but the web stack has guarded fallback models for search-heavy recovery paths:
+
+- `gemini-search`
+- `perplexity-fast`
+- `perplexity-reasoning`
+
+Those fallbacks are used by the web/search integrations when needed; they are not separate top-level chat routes.
 
 ---
 
 ## 📊 Model Capabilities
 
-Model capability data comes from a runtime catalog with fallback definitions.
+Model capability data comes from the runtime catalog with fallback definitions.
 
 | Capability | Description |
 | :--- | :--- |
@@ -77,24 +87,25 @@ Model capability data comes from a runtime catalog with fallback definitions.
 | `audioIn` | Accepts audio inputs |
 | `audioOut` | Produces audio outputs |
 | `tools` | Supports function/tool calling |
-| `search` | Supports web/search-oriented behavior |
+| `search` | Supports search-oriented behavior |
 | `reasoning` | Better long-form or complex reasoning |
-| `codeExec` | Supports code execution flows (provider-dependent) |
+| `codeExec` | Supports code execution flows when the provider exposes them |
 
-When runtime catalog fetch fails, Sage uses fallback model metadata and manual capability overrides.
+When runtime catalog fetch fails, Sage uses fallback model metadata plus manual capability overrides from `model-catalog.ts`.
 
 ---
 
 ## ⚙️ Configuration Overrides
 
-| Variable | Description | Default |
+| Variable | Description | Starter value |
 | :--- | :--- | :--- |
 | `CHAT_MODEL` | Runtime chat model for `runChatTurn` | `kimi` |
 | `SUMMARY_MODEL` | Model for channel summaries | `deepseek` |
 | `PROFILE_CHAT_MODEL` | Model for user profile updates | `deepseek` |
+| `LLM_MODEL_LIMITS_JSON` | Manual token-limit override map | *(empty)* |
 
 > [!WARNING]
-> Changing `CHAT_MODEL` affects all chat turns because model selection is centralized in the single-agent runtime.
+> Changing `CHAT_MODEL` affects every chat turn because model selection is centralized in the single-agent runtime.
 
 ---
 

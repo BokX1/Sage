@@ -4,10 +4,10 @@
   <img src="https://img.shields.io/badge/%F0%9F%8C%BF-Sage%20API%20Examples-2d5016?style=for-the-badge&labelColor=4a7c23" alt="API Examples" />
 </p>
 
-Annotated examples of what Sage sends upstream to [Pollinations.ai](https://pollinations.ai), plus the optional local voice-service calls used for Discord voice.
+Annotated examples of the request shapes Sage uses with [Pollinations.ai](https://pollinations.ai), plus the optional local voice-service calls used for Discord voice.
 
 > [!NOTE]
-> Replace `sk_YOUR_KEY` with your actual Pollinations secret key for Pollinations examples. Voice-service examples do not require a Pollinations key. All examples use `curl` and can be run from any terminal.
+> Replace `sk_YOUR_KEY` with your actual Pollinations secret key for Pollinations examples. Voice-service examples do not require a Pollinations key. These are simplified request shapes; the real runtime also sends its full system prompt and tool definitions where applicable.
 
 ---
 
@@ -109,7 +109,7 @@ curl -sS https://gen.pollinations.ai/v1/chat/completions \
 ```
 
 > [!IMPORTANT]
-> The model must have `vision` capability. Sage's model resolver automatically selects a vision-capable model when image content is detected.
+> The model must have `vision` capability. The starter configuration uses `CHAT_MODEL=kimi`, which supports vision in Sage's model catalog.
 
 ---
 
@@ -204,6 +204,6 @@ Sage accepts a successful authenticated profile object response and reads identi
 ## 🔗 Related Documentation
 
 - [🐝 Pollinations Integration](POLLINATIONS.md) — Full integration reference
-- [🧩 Model Reference](MODELS.md) — How models are selected per route
+- [🧩 Model Reference](MODELS.md) — Current single-agent model selection and fallbacks
 - [⚙️ Configuration](CONFIGURATION.md) — Environment variables for LLM settings
 - [🌸 BYOP Guide](../guides/BYOP.md) — How to set up Bring-Your-Own-Pollen keys

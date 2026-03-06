@@ -1,6 +1,6 @@
 # 💾 Database Schema
 
-Sage uses PostgreSQL with Prisma ORM. This document covers all tables, relationships, and common query patterns.
+Sage uses PostgreSQL with Prisma ORM. The current Prisma schema defines 17 models; this document covers the active tables, relationships, and common query patterns.
 
 <p align="center">
   <img src="https://img.shields.io/badge/%F0%9F%8C%BF-Sage%20Database-2d5016?style=for-the-badge&labelColor=4a7c23" alt="Sage Database" />
@@ -26,6 +26,9 @@ Sage uses PostgreSQL with Prisma ORM. This document covers all tables, relations
 <a id="entity-relationship-diagram"></a>
 
 ## 📊 Entity Relationship Diagram
+
+> [!NOTE]
+> The ERD below is abbreviated to the core entities most readers need first. The later sections cover the full 17-model schema.
 
 ```mermaid
 erDiagram

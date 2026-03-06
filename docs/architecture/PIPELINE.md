@@ -1,10 +1,9 @@
 # 🔀 Runtime Pipeline
 
-How a single message flows through Sage's single-agent runtime — from Discord event to verified reply.
+How a single message flows through Sage's single-agent runtime from Discord event to final reply.
 
 <p align="center">
   <img src="https://img.shields.io/badge/%F0%9F%8C%BF-Sage%20Pipeline-2d5016?style=for-the-badge&labelColor=4a7c23" alt="Sage Pipeline" />
-  <img src="https://img.shields.io/badge/Mode-Single--Agent-blue?style=for-the-badge" alt="Single-Agent" />
 </p>
 
 ---
@@ -25,7 +24,7 @@ How a single message flows through Sage's single-agent runtime — from Discord 
 
 ## ⚡ Turn Flow
 
-Every message follows this exact sequence:
+Every text turn follows this sequence:
 
 ```mermaid
 flowchart TD
@@ -38,30 +37,30 @@ flowchart TD
     A[Discord Message]:::discord --> B[Chat Engine]:::runtime
     B --> C[runChatTurn]:::runtime
     C --> D[Resolve Model]:::runtime
-    D --> E["Build Context Messages<br/>(transcript + summaries + prompt)"]:::runtime
+    D --> E["Build Context Messages<br/>(system prompt + runtime blocks + transcript + current turn)"]:::runtime
     E --> F[Budget Tokens]:::runtime
-    F --> G[Send to LLM]:::llm
+    F --> G[Send to LLM with tool specs]:::llm
     G --> H{Tool calls?}:::llm
 
     H -->|Yes| I[Tool Call Loop]:::tools
-    I --> J["Execute Tools<br/>(validate → run → collect results)"]:::tools
-    J --> K[Feed Results Back to LLM]:::llm
+    I --> J["Validate and execute tools<br/>collect results and files"]:::tools
+    J --> K[Feed results back to LLM]:::llm
     K --> H
 
-    H -->|No| L[Clean Draft Text]:::runtime
-    L --> M[Persist Trace]:::runtime
-    M --> N[Return Reply + Attachments]:::output
+    H -->|No| L[Clean final draft]:::runtime
+    L --> M[Persist trace]:::runtime
+    M --> N[Return reply + attachments]:::output
 ```
 
-**Step-by-step:**
+**Step-by-step**
 
-1. **Model resolution** — `CHAT_MODEL` env var (fallback: `kimi`).
-2. **Context composition** — `buildContextMessages` assembles system prompt, transcript, summaries, reply context, and user message.
-3. **Token budgeting** — `contextBudgeter` enforces per-block token limits to keep the context window clean.
-4. **LLM request** — prompt + OpenAI-compatible tool specs sent to the provider.
-5. **Tool loop** — if the model emits tool call JSON, the loop validates, executes, and feeds results back. Repeats up to `AGENTIC_TOOL_MAX_ROUNDS`.
-6. **Final reply** — plain-text answer is cleaned, attachments from tool results are collected.
-7. **Trace persistence** — route, budget, tool, and quality metadata are stored (when `TRACE_ENABLED=true`).
+1. **Model resolution**: `runChatTurn` reads `CHAT_MODEL` and falls back to `kimi` when it is empty.
+2. **Context composition**: `buildContextMessages` assembles the system prompt, runtime instruction block, optional guild memory, optional live voice context, recent transcript, reply context/reference, and the current user message.
+3. **Token budgeting**: `contextBudgeter` trims blocks against the configured budgets before the provider call.
+4. **LLM request**: Sage sends the budgeted messages plus the OpenAI-compatible tool definitions.
+5. **Tool loop**: if the model returns tool calls, Sage validates them, executes them, and feeds results back into the same turn up to the configured round limit.
+6. **Final reply**: plain text is cleaned, tool-produced files are attached, and the final payload is returned to Discord.
+7. **Trace persistence**: route, tool, token, and quality metadata are stored when tracing is enabled.
 
 ---
 
@@ -69,22 +68,23 @@ flowchart TD
 
 ## 📦 Context Assembly
 
-`buildContextMessages` composes the turn context in this prioritized order:
+`buildContextMessages` composes the turn context in this order:
 
 | Priority | Block | Source |
-|:---:|:---|:---|
-| 1 | Base system prompt | `composeSystemPrompt` — personality, capabilities, tool protocol |
-| 2 | Runtime instructions | Single-agent capabilities, agentic state, tool protocol |
-| 3 | Channel profile summary | `ChannelSummary` (kind: `profile`) |
-| 4 | Rolling channel summary | `ChannelSummary` (kind: `rolling`) |
-| 5 | Recent transcript | Ring buffer + `ChannelMessage` table |
-| 6 | Intent hint + reply context | Reply reference content, if applicable |
-| 7 | Current user message | The triggering message/content |
+| :---: | :--- | :--- |
+| 1 | Base system prompt | `composeSystemPrompt` with the user profile summary embedded in `<user_context>` |
+| 2 | Runtime instructions | Single-agent capabilities, tool protocol, and runtime state |
+| 3 | Guild memory | `GuildMemory`, when present |
+| 4 | Live voice context | In-memory voice session context, only when Sage is active in voice |
+| 5 | Recent transcript | Ring buffer plus recent `ChannelMessage` history |
+| 6 | Prior Sage reply | Assistant reply context when the user is replying to Sage |
+| 7 | Reply reference | Replied-to message content, if present |
+| 8 | Current user message | Triggering text and multimodal content |
 
 > [!NOTE]
-> Memory, social graph, and voice data are **not** pre-injected. They are fetched dynamically through the tool loop when the model decides it needs them.
+> Channel summaries, archived summaries, social-graph data, attachment cache results, and wider message history are not preloaded into every turn. The model fetches them on demand through the `discord` tool when it decides they are needed.
 
-All system blocks are merged into a single system message before provider calls. This ensures clean message sequencing even with strict providers that enforce role alternation.
+All system-role blocks are merged into a single system message before the provider call. This keeps ordering valid for stricter providers while preserving the logical block boundaries in `budgetJson`.
 
 ---
 
@@ -99,27 +99,29 @@ flowchart LR
     classDef execute fill:#fff3cd,stroke:#333,color:black
     classDef result fill:#ffccbc,stroke:#333,color:black
 
-    A[LLM Response] --> B[Parse Tool Calls]:::parse
-    B --> C{Valid JSON?}:::parse
-    C -->|Yes| D[Validate with Zod Schema]:::validate
-    D --> E{Valid Args?}:::validate
-    E -->|Yes| F[Execute Tool]:::execute
-    E -->|No| G[Return Validation Error]:::result
-    C -->|No| H[Return Parse Error]:::result
-    F --> I[Collect Results + Files]:::result
+    A[LLM Response] --> B[Parse tool calls]:::parse
+    B --> C{Valid envelope?}:::parse
+    C -->|Yes| D[Validate args with Zod]:::validate
+    D --> E{Allowed and valid?}:::validate
+    E -->|Yes| F[Execute tool]:::execute
+    E -->|No| G[Return validation error]:::result
+    C -->|No| H[Return parse error]:::result
+    F --> I[Collect results and files]:::result
     G --> I
-    I --> J[Feed Back to LLM]:::result
+    H --> I
+    I --> J[Feed results back to LLM]:::result
 ```
 
-**Key behaviors:**
+**Key behaviors**
 
-- **Bounded rounds:** Max `AGENTIC_TOOL_MAX_ROUNDS` (default: `6`) iterations.
-- **Calls per round:** Max `AGENTIC_TOOL_MAX_CALLS_PER_ROUND` (default: `5`) tool calls per iteration.
-- **Parallel read-only:** Read-only tools (static `readOnly` or per-call `readOnlyPredicate`) can execute concurrently (up to `AGENTIC_TOOL_MAX_PARALLEL_READ_ONLY`).
-- **Timeout:** Per-tool timeout `AGENTIC_TOOL_TIMEOUT_MS` (default: `45000` ms).
-- **Loop wall-clock cap:** End-to-end tool loop duration is bounded by `AGENTIC_TOOL_LOOP_TIMEOUT_MS` (default: `120000` ms).
-- **Result truncation:** Tool output capped at `AGENTIC_TOOL_RESULT_MAX_CHARS` (default: `8000`).
-- **File collection:** Image generation and other file-producing tools return `Buffer` attachments merged into the final response.
+- **Bounded rounds**: `AGENTIC_TOOL_MAX_ROUNDS` limits how many back-and-forth tool iterations can occur in one turn.
+- **Calls per round**: `AGENTIC_TOOL_MAX_CALLS_PER_ROUND` caps the number of tool calls the model can issue at once.
+- **Parallel read-only execution**: read-only calls can run concurrently up to `AGENTIC_TOOL_MAX_PARALLEL_READ_ONLY`, but side-effecting actions still preserve ordering barriers.
+- **Per-tool timeout**: each tool call is bounded by `AGENTIC_TOOL_TIMEOUT_MS`.
+- **Loop wall-clock cap**: the whole orchestration phase is bounded by `AGENTIC_TOOL_LOOP_TIMEOUT_MS`.
+- **In-process memoization**: repeated read-only calls can hit the in-memory memo cache controlled by `AGENTIC_TOOL_MEMO_*`. The cache is per process and not shared across instances.
+- **Result truncation**: raw tool output is capped by `AGENTIC_TOOL_RESULT_MAX_CHARS`, with a compact summary block added when the raw payload is too large.
+- **File collection**: tools such as `image_generate` can return files that are merged into the final Discord response.
 
 ---
 
@@ -130,18 +132,18 @@ flowchart LR
 Each turn can persist the following to `AgentTrace`:
 
 | Field | Description |
-|:---|:---|
+| :--- | :--- |
 | `routeKind` | Canonical value: `single` |
-| `agentEventsJson` | Tool call events with timing metadata |
-| `budgetJson` | Token budget allocation per block |
-| `toolJson` | Tool call names, args, and results |
-| `tokenJson` | Token usage from provider response |
-| `qualityJson` | Quality metrics (when present) |
-| `reasoningText` | Agent reasoning text (when present) |
-| `replyText` | Final reply text |
+| `agentEventsJson` | Tool-call events with timing metadata |
+| `budgetJson` | Token-budget allocation per block |
+| `toolJson` | Tool names, args, statuses, and compacted results |
+| `tokenJson` | Provider token usage |
+| `qualityJson` | Quality metrics when available |
+| `reasoningText` | Model reasoning text when the provider exposes it |
+| `replyText` | Final reply text sent back to Discord |
 
 > [!TIP]
-> Use `npm run db:studio` to inspect traces via Prisma Studio, or the `/sage admin stats` command for runtime health.
+> Use `npm run db:studio` to inspect traces in Prisma Studio, or `/sage admin stats` for a quick runtime health snapshot in Discord.
 
 ---
 
@@ -149,24 +151,22 @@ Each turn can persist the following to `AgentTrace`:
 
 ## 🧰 Tool-Oriented Data Access
 
-All memory and context data is loaded **on demand** through tools:
+Most richer context is loaded on demand through the `discord` tool:
 
-| Data | Tool | Storage |
-|:---|:---|:---|
-| User profile | `discord` (`action: "memory.get_user"`) | PostgreSQL (`UserProfile`) |
-| Channel summaries | `discord` (`action: "memory.get_channel"`) | PostgreSQL (`ChannelSummary`) |
-| Social relationships | `discord` (`action: "analytics.get_social_graph"`) | PostgreSQL (`RelationshipEdge`) + Memgraph |
-| Voice analytics | `discord` (`action: "analytics.get_voice_analytics"`) | PostgreSQL (`VoiceSession`) |
-| Voice session summaries | `discord` (`action: "analytics.voice_summaries"`) | PostgreSQL (`VoiceConversationSummary`) |
-| Cached file content | `discord` (`action: "files.list_channel"`) | PostgreSQL (`IngestedAttachment`) |
-| Cached file content (server-wide) | `discord` (`action: "files.list_server"`) | PostgreSQL (`IngestedAttachment`) |
-| Semantic file search | `discord` (`action: "files.find_channel"`) | pgvector (`AttachmentChunk`) |
-| Semantic file search (server-wide) | `discord` (`action: "files.find_server"`) | pgvector (`AttachmentChunk`) |
-| Message history | `discord` (`action: "messages.search_history"`, optional `channelId`, permission-gated) | pgvector (`ChannelMessageEmbedding`) |
-| Archived summaries | `discord` (`action: "memory.channel_archives"`) | pgvector embeddings |
-| Server memory | `discord` (`action: "memory.get_server"`) | PostgreSQL (`GuildMemory`) |
+| Data | Tool action | Storage |
+| :--- | :--- | :--- |
+| User profile | `memory.get_user` | PostgreSQL (`UserProfile`) |
+| Channel summaries | `memory.get_channel` | PostgreSQL (`ChannelSummary`) |
+| Archived channel summaries | `memory.channel_archives` | PostgreSQL plus pgvector-backed archive search |
+| Server memory | `memory.get_server` | PostgreSQL (`GuildMemory`) |
+| Social graph | `analytics.get_social_graph`, `analytics.top_relationships` | PostgreSQL (`RelationshipEdge`) plus optional Memgraph |
+| Voice analytics | `analytics.get_voice_analytics`, `analytics.voice_summaries` | PostgreSQL (`VoiceSession`, `VoiceConversationSummary`) |
+| Cached file text | `files.list_channel`, `files.list_server`, `files.read_attachment` | PostgreSQL (`IngestedAttachment`) |
+| Semantic file search | `files.find_channel`, `files.find_server` | pgvector (`AttachmentChunk`) |
+| Message history | `messages.search_history`, `messages.search_with_context`, `messages.get_context`, `messages.search_guild`, `messages.user_timeline` | PostgreSQL (`ChannelMessage`) plus pgvector (`ChannelMessageEmbedding`) |
+| Invite generation | `oauth2.invite_url` | Computed from `DISCORD_APP_ID` |
 
-Image generation runs through `image_generate` and returns attachment payloads. No preflight context graph execution is used.
+Some read actions are blocked in Autopilot mode, and all write/admin actions remain permission-gated.
 
 ---
 
@@ -174,17 +174,24 @@ Image generation runs through `image_generate` and returns attachment payloads. 
 
 ## ⚙️ Configuration
 
-| Variable | Description | Default |
-|:---|:---|:---|
+These values reflect the starter values in `.env.example`:
+
+| Variable | Description | Starter value |
+| :--- | :--- | :--- |
 | `CHAT_MODEL` | Runtime chat model for `runChatTurn` | `kimi` |
-| `AGENTIC_TOOL_LOOP_ENABLED` | Enable/disable tool loop | `true` |
+| `AGENTIC_TOOL_LOOP_ENABLED` | Enable the tool call loop | `true` |
 | `AGENTIC_TOOL_MAX_ROUNDS` | Max tool loop iterations | `6` |
-| `AGENTIC_TOOL_MAX_CALLS_PER_ROUND` | Max tool calls per iteration | `5` |
+| `AGENTIC_TOOL_MAX_CALLS_PER_ROUND` | Max tool calls per round | `5` |
 | `AGENTIC_TOOL_TIMEOUT_MS` | Per-tool execution timeout | `45000` |
 | `AGENTIC_TOOL_LOOP_TIMEOUT_MS` | Max wall-clock duration for one tool loop turn | `120000` |
 | `AGENTIC_TOOL_RESULT_MAX_CHARS` | Max chars per tool result | `8000` |
+| `AGENTIC_TOOL_GITHUB_GROUNDED_MODE` | Enable grounded GitHub search mode | `true` |
 | `AGENTIC_TOOL_PARALLEL_READ_ONLY_ENABLED` | Enable parallel read-only execution | `true` |
-| `AGENTIC_TOOL_MAX_PARALLEL_READ_ONLY` | Max concurrent read-only tools | `4` |
+| `AGENTIC_TOOL_MAX_PARALLEL_READ_ONLY` | Max concurrent read-only tool calls | `4` |
+| `AGENTIC_TOOL_MEMO_ENABLED` | Enable in-process memoization for repeated read-only calls | `true` |
+| `AGENTIC_TOOL_MEMO_TTL_MS` | Memo cache TTL | `900000` |
+| `AGENTIC_TOOL_MEMO_MAX_ENTRIES` | Max cached memo entries | `250` |
+| `AGENTIC_TOOL_MEMO_MAX_RESULT_JSON_CHARS` | Max memoized JSON payload size | `200000` |
 | `TRACE_ENABLED` | Enable trace persistence | `true` |
 
 ---
@@ -194,9 +201,9 @@ Image generation runs through `image_generate` and returns attachment payloads. 
 ## 🔗 Related Documentation
 
 - [🤖 Agentic Architecture](OVERVIEW.md) — High-level design and tool registry
-- [🧠 Memory System](MEMORY.md) — How Sage stores and injects memory
+- [🧠 Memory System](MEMORY.md) — How Sage stores memory and fetches richer context
 - [🔍 Search Architecture](SEARCH.md) — SAG flow and search providers
 - [🧩 Model Reference](../reference/MODELS.md) — Model resolution and health tracking
-- [⚙️ Configuration](../reference/CONFIGURATION.md) — All environment variables
+- [⚙️ Configuration](../reference/CONFIGURATION.md) — Full environment variable reference
 
 <p align="right"><a href="#top">⬆️ Back to top</a></p>

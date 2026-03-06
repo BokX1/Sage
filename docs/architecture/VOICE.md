@@ -97,7 +97,7 @@ Sage can answer questions like:
 - *"How long has @User been in voice?"*
 - *"Who was in #general-voice earlier today?"*
 
-This works by injecting voice presence data into the LLM's context window via a **context provider**.
+When Sage is actively in a voice session, it can inject a compact live voice context block into the prompt. Outside of those sessions, voice analytics are fetched on demand through the `discord` tool.
 
 ### Voice Transcription + Summary Memory (Beta)
 

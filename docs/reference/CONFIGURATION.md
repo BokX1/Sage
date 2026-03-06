@@ -1,6 +1,6 @@
 # ⚙️ Configuration Reference
 
-Complete index of all environment variables used by Sage, with descriptions and defaults.
+Complete index of all environment variables used by Sage, with descriptions and starter values.
 
 <p align="center">
   <img src="https://img.shields.io/badge/%F0%9F%8C%BF-Sage%20Configuration-2d5016?style=for-the-badge&labelColor=4a7c23" alt="Sage Configuration" />
@@ -9,6 +9,8 @@ Complete index of all environment variables used by Sage, with descriptions and 
 
 > [!TIP]
 > Use `.env.example` as your starting template. Run `npm run onboard` for interactive setup.
+> [!NOTE]
+> Values in the tables below match the committed `.env.example` template. The runtime also has schema-level fallbacks in `src/shared/config/envSchema.ts` when variables are omitted entirely.
 
 ---
 
@@ -231,6 +233,10 @@ These settings control Sage's optional Discord voice features. The local voice s
 | `AGENTIC_TOOL_GITHUB_GROUNDED_MODE` | Enable GitHub grounded search | `true` |
 | `AGENTIC_TOOL_PARALLEL_READ_ONLY_ENABLED` | Enable parallel read-only tool execution | `true` |
 | `AGENTIC_TOOL_MAX_PARALLEL_READ_ONLY` | Max concurrent read-only tools | `4` |
+| `AGENTIC_TOOL_MEMO_ENABLED` | Enable in-process memoization for repeated read-only calls | `true` |
+| `AGENTIC_TOOL_MEMO_TTL_MS` | Memo cache TTL in milliseconds | `900000` |
+| `AGENTIC_TOOL_MEMO_MAX_ENTRIES` | Max memoized entries kept in memory | `250` |
+| `AGENTIC_TOOL_MEMO_MAX_RESULT_JSON_CHARS` | Max JSON payload size eligible for memoization | `200000` |
 
 ---
 

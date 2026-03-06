@@ -19,7 +19,7 @@
 
 Pick the journey that fits your role:
 
-### 🎮 "I just want to use the bot"
+### 🎮 "I want to use Sage in Discord"
 
 ```text
 Invite → Activate → Chat
@@ -27,9 +27,9 @@ Invite → Activate → Chat
 
 | Step | Document | Time |
 | :--- | :--- | :--- |
-| 1️⃣ | [⚡ Quick Start](guides/QUICKSTART.md) — Invite, activate BYOP, start chatting | ~5 min |
-| 2️⃣ | [🎮 Commands Reference](guides/COMMANDS.md) — All slash commands + image gen + search | ~10 min |
-| 3️⃣ | [❓ FAQ](guides/FAQ.md) — Common questions answered | As needed |
+| 1️⃣ | [⚡ Quick Start](guides/QUICKSTART.md) — Join an existing deployment or self-host quickly | ~5 min |
+| 2️⃣ | [🎮 Commands Reference](guides/COMMANDS.md) — Current slash commands, triggers, and admin action patterns | ~10 min |
+| 3️⃣ | [❓ FAQ](guides/FAQ.md) — Common questions about setup, behavior, and data storage | As needed |
 
 ---
 
@@ -41,10 +41,10 @@ Clone → Configure → Deploy → Operate
 
 | Step | Document | Time |
 | :--- | :--- | :--- |
-| 1️⃣ | [📖 Getting Started](guides/GETTING_STARTED.md) — Discord app, `.env`, database, onboarding | ~30 min |
-| 2️⃣ | [⚙️ Configuration](reference/CONFIGURATION.md) — Tune behavior, memory, and limits | ~15 min |
-| 3️⃣ | [🧰 Self-Hosted Tool Stack](operations/TOOL_STACK.md) — Local SearXNG/Crawl4AI/Tika | ~20 min |
-| 4️⃣ | [📋 Operations Runbook](operations/RUNBOOK.md) — Production monitoring + maintenance | Reference |
+| 1️⃣ | [📖 Getting Started](guides/GETTING_STARTED.md) — Discord app, `.env`, database, onboarding, invite flow | ~30 min |
+| 2️⃣ | [⚙️ Configuration](reference/CONFIGURATION.md) — 126 environment variables, grouped by subsystem | ~15 min |
+| 3️⃣ | [🧰 Self-Hosted Tool Stack](operations/TOOL_STACK.md) — Local SearXNG, Crawl4AI, and Tika | ~20 min |
+| 4️⃣ | [📋 Operations Runbook](operations/RUNBOOK.md) — Validation, monitoring, and maintenance | Reference |
 
 ---
 
@@ -56,11 +56,11 @@ Architecture → Pipeline → Memory → Database
 
 | Step | Document | Time |
 | :--- | :--- | :--- |
-| 1️⃣ | [🤖 Agentic Architecture](architecture/OVERVIEW.md) — Single-agent design, 13 tools, and runtime flow | ~15 min |
-| 2️⃣ | [🔀 Runtime Pipeline](architecture/PIPELINE.md) — Message flow through agent + tool loop | ~20 min |
-| 3️⃣ | [🧠 Memory System](architecture/MEMORY.md) — Summaries, profiles, context budgeting | ~15 min |
-| 4️⃣ | [💾 Database Schema](architecture/DATABASE.md) — 18 tables, relationships, ERD | ~10 min |
-| 5️⃣ | [🕸️ Social Graph](architecture/SOCIAL_GRAPH.md) — GNN pipeline, Memgraph, relationship intelligence | ~15 min |
+| 1️⃣ | [🤖 Agentic Architecture](architecture/OVERVIEW.md) — Single-agent design, 11 built-in tools, runtime flow | ~15 min |
+| 2️⃣ | [🔀 Runtime Pipeline](architecture/PIPELINE.md) — Context assembly, tool loop, and trace outputs | ~20 min |
+| 3️⃣ | [🧠 Memory System](architecture/MEMORY.md) — Transcript retention, summaries, profiles, and on-demand retrieval | ~15 min |
+| 4️⃣ | [💾 Database Schema](architecture/DATABASE.md) — 17 Prisma models and common operations | ~10 min |
+| 5️⃣ | [🕸️ Social Graph](architecture/SOCIAL_GRAPH.md) — Optional Memgraph/Redpanda export and analytics design | ~15 min |
 
 ---
 
@@ -70,10 +70,10 @@ Architecture → Pipeline → Memory → Database
 
 | Document | Description |
 | :--- | :--- |
-| [⚡ Quick Start](guides/QUICKSTART.md) | Run Sage in ~5 minutes |
+| [⚡ Quick Start](guides/QUICKSTART.md) | Fastest path to an existing deployment or a minimal self-host setup |
 | [📖 Getting Started](guides/GETTING_STARTED.md) | Full setup from source (step-by-step) |
-| [🎮 Commands Reference](guides/COMMANDS.md) | Slash commands, triggers, image gen, and search |
-| [❓ FAQ](guides/FAQ.md) | Common questions about setup and behavior |
+| [🎮 Commands Reference](guides/COMMANDS.md) | Slash commands, triggers, and approval-gated admin actions |
+| [❓ FAQ](guides/FAQ.md) | Common questions about setup, behavior, and privacy |
 | [🔧 Troubleshooting](guides/TROUBLESHOOTING.md) | Fixes for common failures and misconfigurations |
 | [🌸 BYOP Mode](guides/BYOP.md) | Bring-Your-Own-Pollen key setup |
 
@@ -81,32 +81,32 @@ Architecture → Pipeline → Memory → Database
 
 | Document | Description |
 | :--- | :--- |
-| [⚙️ Configuration](reference/CONFIGURATION.md) | All 100+ environment variables explained with defaults |
-| [🧩 Model Reference](reference/MODELS.md) | Model resolution, health tracking, and fallbacks |
-| [🐝 Pollinations Integration](reference/POLLINATIONS.md) | Provider overview (text/vision/images) + API details |
-| [🔌 API Examples](reference/API_EXAMPLES.md) | Annotated `curl` examples for Pollinations calls + optional voice-service STT calls |
+| [⚙️ Configuration](reference/CONFIGURATION.md) | Environment variables, grouped by runtime area |
+| [🧩 Model Reference](reference/MODELS.md) | Single-agent model resolution, health tracking, and search fallbacks |
+| [🐝 Pollinations Integration](reference/POLLINATIONS.md) | Current Pollinations chat, vision, image, and BYOP flows |
+| [🔌 API Examples](reference/API_EXAMPLES.md) | Annotated `curl` examples for Pollinations and the optional voice service |
 | [🚢 Release Process](reference/RELEASE.md) | SemVer workflow, changelog, and CI checks |
 
 ### 📙 Architecture
 
 | Document | Description |
 | :--- | :--- |
-| [🤖 Agentic Overview](architecture/OVERVIEW.md) | Single-agent design, 13 tools, tool registry, and reliability model |
-| [🔀 Runtime Pipeline](architecture/PIPELINE.md) | Message flow, context assembly, tool call loop, and trace outputs |
-| [🔍 Search Architecture](architecture/SEARCH.md) | SAG flow, search modes, tool providers |
-| [🧠 Memory System](architecture/MEMORY.md) | How Sage stores, summarizes, and injects memory |
-| [🎤 Voice System](architecture/VOICE.md) | Voice awareness + optional transcription |
-| [💾 Database Schema](architecture/DATABASE.md) | 18 PostgreSQL tables, ERD, and common operations |
-| [🕸️ Social Graph](architecture/SOCIAL_GRAPH.md) | GNN pipeline, Memgraph, and relationship intelligence |
+| [🤖 Agentic Overview](architecture/OVERVIEW.md) | Single-agent design, tool registry, and reliability model |
+| [🔀 Runtime Pipeline](architecture/PIPELINE.md) | Message flow, context assembly, tool loop, and trace outputs |
+| [🔍 Search Architecture](architecture/SEARCH.md) | SAG flow, web providers, and guarded search fallbacks |
+| [🧠 Memory System](architecture/MEMORY.md) | How Sage stores memory and fetches richer context on demand |
+| [🎤 Voice System](architecture/VOICE.md) | Voice awareness plus optional local transcription |
+| [💾 Database Schema](architecture/DATABASE.md) | PostgreSQL schema, ERD, and common operations |
+| [🕸️ Social Graph](architecture/SOCIAL_GRAPH.md) | Event export, Memgraph analytics, and query behavior |
 
 ### 📕 Operations
 
 | Document | Description |
 | :--- | :--- |
 | [📋 Operations Runbook](operations/RUNBOOK.md) | Production health checks, validation, and incident response |
-| [🚀 Deployment Guide](operations/DEPLOYMENT.md) | Deploy to production with Docker or Node.js |
-| [🧰 Self-Hosted Tool Stack](operations/TOOL_STACK.md) | SearXNG, Crawl4AI, Tika — local-first with hosted fallback |
-| [🛠️ Social Graph Setup](operations/SOCIAL_GRAPH_SETUP.md) | Memgraph + Redpanda infrastructure and GNN module ops |
+| [🚀 Deployment Guide](operations/DEPLOYMENT.md) | Run Sage with Node.js plus the repo's compose-managed support services |
+| [🧰 Self-Hosted Tool Stack](operations/TOOL_STACK.md) | SearXNG, Crawl4AI, and Tika with hosted fallback |
+| [🛠️ Social Graph Setup](operations/SOCIAL_GRAPH_SETUP.md) | Memgraph + Redpanda setup, topic creation, and manual analytics ops |
 
 ### 📓 Security
 
