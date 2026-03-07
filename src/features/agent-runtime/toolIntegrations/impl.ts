@@ -1,6 +1,7 @@
 import { config } from '../../../platform/config/env';
 import { isPrivateOrLocalHostname } from '../../../platform/config/env';
 import { PermissionsBitField } from 'discord.js';
+import { client } from '../../../platform/discord/client';
 import { createLLMClient } from '../../../platform/llm';
 import { prisma } from '../../../platform/db/prisma-client';
 import { logger } from '../../../platform/logging/logger';
@@ -8,11 +9,13 @@ import { normalizeTimeoutMs } from '../../../shared/utils/timeout';
 import { normalizeBoundedInt } from '../../../shared/utils/numbers';
 import { ToolDetailedError, classifyHttpStatus } from '../toolErrors';
 import {
+  type IngestedAttachmentRecord,
   findIngestedAttachmentsForLookup,
   findIngestedAttachmentsForLookupInGuild,
   listIngestedAttachmentsByIds,
   listRecentIngestedAttachments,
 } from '../../attachments/ingestedAttachmentRepo';
+import { requestDiscordInteractionForTool } from '../../admin/adminActionService';
 import { filterChannelIdsByMemberAccess, type ChannelPermissionRequirement } from '../../../platform/discord/channel-access';
 import {
   type ChannelMessageSearchResult,
@@ -1946,6 +1949,185 @@ export async function lookupGitHubCodeSearch(params: {
   }
 }
 
+function inferAttachmentType(record: IngestedAttachmentRecord): 'image' | 'file' {
+  const contentType = record.contentType?.toLowerCase() ?? '';
+  if (contentType.startsWith('image/')) {
+    return 'image';
+  }
+  return record.extractor === 'vision' ? 'image' : 'file';
+}
+
+function hasStoredAttachmentText(record: IngestedAttachmentRecord): boolean {
+  return typeof record.extractedText === 'string' && record.extractedText.length > 0;
+}
+
+function getAttachmentContentUnavailableGuidance(record: IngestedAttachmentRecord): string {
+  const noun = inferAttachmentType(record) === 'image' ? 'image recall text' : 'attachment text';
+
+  switch (record.status) {
+    case 'queued':
+      return `Stored ${noun} is queued for background processing. You can still resend the original attachment with \`discord\` action files.send_attachment.`;
+    case 'processing':
+      return `Stored ${noun} is still being generated. You can still resend the original attachment with \`discord\` action files.send_attachment.`;
+    case 'error':
+      return `Stored ${noun} is unavailable because extraction failed. You can still resend the original attachment with \`discord\` action files.send_attachment.`;
+    case 'skip':
+      return `Stored ${noun} is unavailable for this attachment. You can still resend the original attachment with \`discord\` action files.send_attachment.`;
+    default:
+      return `No stored ${noun} is available for this attachment. You can still resend the original attachment with \`discord\` action files.send_attachment.`;
+  }
+}
+
+function buildStoredAttachmentPage(params: {
+  record: IngestedAttachmentRecord;
+  startChar: number;
+  maxChars: number;
+}): {
+  readable: boolean;
+  content: string | null;
+  startChar: number;
+  maxChars: number;
+  returnedChars: number;
+  totalChars: number;
+  hasMore: boolean;
+  nextStartChar: number | null;
+  guidance: string;
+} {
+  if (!hasStoredAttachmentText(params.record)) {
+    return {
+      readable: false,
+      content: null,
+      startChar: 0,
+      maxChars: params.maxChars,
+      returnedChars: 0,
+      totalChars: params.record.extractedTextChars,
+      hasMore: false,
+      nextStartChar: null,
+      guidance: getAttachmentContentUnavailableGuidance(params.record),
+    };
+  }
+
+  const extractedText = params.record.extractedText ?? '';
+  const totalChars = extractedText.length;
+  const boundedStart = Math.max(0, Math.min(params.startChar, totalChars));
+  const endChar = Math.min(totalChars, boundedStart + params.maxChars);
+  const content = extractedText.slice(boundedStart, endChar);
+  const nextStartChar = endChar < totalChars ? endChar : null;
+
+  return {
+    readable: true,
+    content,
+    startChar: boundedStart,
+    maxChars: params.maxChars,
+    returnedChars: content.length,
+    totalChars,
+    hasMore: nextStartChar !== null,
+    nextStartChar,
+    guidance:
+      nextStartChar !== null
+        ? 'Call again with nextStartChar to continue paging stored attachment text.'
+        : 'End of stored attachment text.',
+  };
+}
+
+function formatAttachmentLookupItem(params: {
+  record: IngestedAttachmentRecord;
+  includeContent: boolean;
+  maxChars: number;
+}): Record<string, unknown> {
+  const { record, includeContent, maxChars } = params;
+  const hasStoredText = hasStoredAttachmentText(record);
+  const truncated = truncateWithNotice(record.extractedText ?? '', maxChars);
+
+  return {
+    id: record.id,
+    attachmentRef: `attachment:${record.id}`,
+    attachmentType: inferAttachmentType(record),
+    messageId: record.messageId,
+    channelId: record.channelId,
+    filename: record.filename,
+    contentType: record.contentType,
+    status: record.status,
+    extractor: record.extractor,
+    declaredSizeBytes: record.declaredSizeBytes,
+    readSizeBytes: record.readSizeBytes,
+    extractedTextChars: record.extractedTextChars,
+    contentAvailable: hasStoredText,
+    resendAvailable: true,
+    createdAt: record.createdAt.toISOString(),
+    updatedAt: record.updatedAt.toISOString(),
+    ...(includeContent
+      ? {
+        content: hasStoredText ? truncated.text : null,
+        contentTruncated: hasStoredText ? truncated.truncated : false,
+      }
+      : {
+        snippet: hasStoredText ? truncated.text.slice(0, Math.min(400, truncated.text.length)) : null,
+        contentIncluded: false,
+      }),
+    guidance: hasStoredText
+      ? 'Use `discord` action files.read_attachment for paged stored text or files.send_attachment to resend the original attachment.'
+      : getAttachmentContentUnavailableGuidance(record),
+    ...(record.errorText ? { errorText: record.errorText } : {}),
+  };
+}
+
+type MessageAttachmentLike = {
+  url?: string | null;
+};
+
+type MessageAttachmentCollectionLike = {
+  values?: () => Iterable<MessageAttachmentLike>;
+  first?: () => MessageAttachmentLike | null;
+};
+
+type ChannelMessageLike = {
+  attachments?: MessageAttachmentCollectionLike;
+};
+
+type MessageLookupChannelLike = {
+  guildId?: string;
+  isDMBased?: () => boolean;
+  messages?: {
+    fetch: (messageId: string) => Promise<ChannelMessageLike>;
+  };
+};
+
+async function resolveFreshAttachmentUrl(record: IngestedAttachmentRecord): Promise<string> {
+  try {
+    const channel = (await client.channels.fetch(record.channelId).catch(() => null)) as MessageLookupChannelLike | null;
+    if (!channel || channel.isDMBased?.()) {
+      return record.sourceUrl;
+    }
+    if (channel.guildId !== record.guildId) {
+      return record.sourceUrl;
+    }
+    if (!channel.messages?.fetch) {
+      return record.sourceUrl;
+    }
+
+    const message = await channel.messages.fetch(record.messageId).catch(() => null);
+    const attachments = message?.attachments;
+    let indexedAttachment: MessageAttachmentLike | undefined;
+    if (attachments?.values) {
+      indexedAttachment = Array.from(attachments.values())[record.attachmentIndex];
+    } else if (attachments?.first && record.attachmentIndex === 0) {
+      indexedAttachment = attachments.first() ?? undefined;
+    }
+
+    const refreshedUrl =
+      typeof indexedAttachment?.url === 'string' ? sanitizeUrl(indexedAttachment.url) : null;
+
+    return refreshedUrl ?? record.sourceUrl;
+  } catch (error) {
+    logger.debug(
+      { error, attachmentId: record.id, messageId: record.messageId },
+      'Falling back to stored attachment source URL',
+    );
+    return record.sourceUrl;
+  }
+}
+
 export async function lookupChannelFileCache(params: {
   guildId: string | null | undefined;
   channelId: string;
@@ -1974,29 +2156,13 @@ export async function lookupChannelFileCache(params: {
     limit,
   });
 
-  const items = records.map((record) => {
-    const truncated = truncateWithNotice(record.extractedText ?? '', maxChars);
-    return {
-      id: record.id,
-      messageId: record.messageId,
-      filename: record.filename,
-      contentType: record.contentType,
-      status: record.status,
-      extractor: record.extractor,
-      declaredSizeBytes: record.declaredSizeBytes,
-      readSizeBytes: record.readSizeBytes,
-      extractedTextChars: record.extractedTextChars,
-      createdAt: record.createdAt.toISOString(),
-      updatedAt: record.updatedAt.toISOString(),
-      ...(includeContent
-        ? { content: truncated.text, contentTruncated: truncated.truncated }
-        : {
-          snippet: truncated.text.slice(0, Math.min(400, truncated.text.length)),
-          contentIncluded: false,
-        }),
-      ...(record.errorText ? { errorText: record.errorText } : {}),
-    };
-  });
+  const items = records.map((record) =>
+    formatAttachmentLookupItem({
+      record,
+      includeContent,
+      maxChars,
+    }),
+  );
 
   return {
     guildId: params.guildId ?? null,
@@ -2010,8 +2176,8 @@ export async function lookupChannelFileCache(params: {
     items,
     guidance:
       items.length > 0
-        ? 'Use filename/messageId to target a specific cached file. Ask follow-up questions after retrieval for analysis.'
-        : 'No cached files matched this query in the current channel.',
+        ? 'Use attachmentId with `discord` action files.read_attachment for paged stored text or files.send_attachment to resend the original attachment.'
+        : 'No cached attachments matched this query in the current channel.',
   };
 }
 
@@ -2068,30 +2234,13 @@ export async function lookupServerFileCache(params: {
 
   const accessible = records.filter((record) => allowedChannelIds.has(record.channelId)).slice(0, limit);
 
-  const items = accessible.map((record) => {
-    const truncated = truncateWithNotice(record.extractedText ?? '', maxChars);
-    return {
-      id: record.id,
-      channelId: record.channelId,
-      messageId: record.messageId,
-      filename: record.filename,
-      contentType: record.contentType,
-      status: record.status,
-      extractor: record.extractor,
-      declaredSizeBytes: record.declaredSizeBytes,
-      readSizeBytes: record.readSizeBytes,
-      extractedTextChars: record.extractedTextChars,
-      createdAt: record.createdAt.toISOString(),
-      updatedAt: record.updatedAt.toISOString(),
-      ...(includeContent
-        ? { content: truncated.text, contentTruncated: truncated.truncated }
-        : {
-          snippet: truncated.text.slice(0, Math.min(400, truncated.text.length)),
-          contentIncluded: false,
-        }),
-      ...(record.errorText ? { errorText: record.errorText } : {}),
-    };
-  });
+  const items = accessible.map((record) =>
+    formatAttachmentLookupItem({
+      record,
+      includeContent,
+      maxChars,
+    }),
+  );
 
   return {
     found: items.length > 0,
@@ -2106,8 +2255,8 @@ export async function lookupServerFileCache(params: {
     scope: 'guild_cached_files',
     guidance:
       items.length > 0
-        ? 'Results are filtered to channels you can access. Use filename/messageId to target a specific cached file.'
-        : 'No accessible cached files matched this query in the current server.',
+        ? 'Results are filtered to channels you can access. Use attachmentId with `discord` action files.read_attachment for paged stored text or files.send_attachment to resend the original attachment.'
+        : 'No accessible cached attachments matched this query in the current server.',
   };
 }
 
@@ -2173,17 +2322,17 @@ export async function readIngestedAttachmentText(params: {
     };
   }
 
-  const extractedText = record.extractedText ?? '';
-  const totalChars = extractedText.length;
-  const boundedStart = Math.max(0, Math.min(startChar, totalChars));
-  const endChar = Math.min(totalChars, boundedStart + maxChars);
-  const content = extractedText.slice(boundedStart, endChar);
-  const returnedChars = content.length;
-  const nextStartChar = endChar < totalChars ? endChar : null;
+  const page = buildStoredAttachmentPage({
+    record,
+    startChar,
+    maxChars,
+  });
 
   return {
     found: true,
     attachmentId: record.id,
+    attachmentRef: `attachment:${record.id}`,
+    attachmentType: inferAttachmentType(record),
     guildId: record.guildId,
     channelId: record.channelId,
     messageId: record.messageId,
@@ -2192,14 +2341,146 @@ export async function readIngestedAttachmentText(params: {
     status: record.status,
     extractor: record.extractor,
     extractedTextChars: record.extractedTextChars,
-    startChar: boundedStart,
-    maxChars,
-    returnedChars,
-    totalChars,
-    hasMore: nextStartChar !== null,
-    nextStartChar,
-    content,
-    guidance: nextStartChar !== null ? 'Call again with nextStartChar to continue paging.' : 'End of attachment content.',
+    resendAvailable: true,
+    readable: page.readable,
+    startChar: page.startChar,
+    maxChars: page.maxChars,
+    returnedChars: page.returnedChars,
+    totalChars: page.totalChars,
+    hasMore: page.hasMore,
+    nextStartChar: page.nextStartChar,
+    content: page.content,
+    guidance: page.guidance,
+    ...(record.errorText ? { errorText: record.errorText } : {}),
+  };
+}
+
+export async function sendCachedAttachment(params: {
+  guildId: string | null | undefined;
+  requesterUserId: string;
+  requesterChannelId: string;
+  invokedBy?: 'mention' | 'reply' | 'wakeword' | 'autopilot' | 'command';
+  attachmentId: string;
+  channelId?: string;
+  content?: string;
+  reason?: string;
+  startChar?: number;
+  maxChars?: number;
+}): Promise<Record<string, unknown>> {
+  if (!params.guildId) {
+    return {
+      found: false,
+      attachmentId: params.attachmentId,
+      content: 'Attachment resend is unavailable in DM context.',
+      scope: 'guild_cached_files',
+    };
+  }
+
+  const attachmentId = params.attachmentId.trim();
+  if (!attachmentId) {
+    throw new Error('attachmentId must not be empty');
+  }
+
+  const record = (await listIngestedAttachmentsByIds([attachmentId]))[0] ?? null;
+  if (!record) {
+    return {
+      found: false,
+      attachmentId,
+      content: 'Attachment not found in cached file store.',
+      scope: 'guild_cached_files',
+    };
+  }
+
+  if (record.guildId !== params.guildId) {
+    return {
+      found: false,
+      attachmentId,
+      content: 'Attachment was found but does not belong to the current server context.',
+      scope: 'guild_cached_files',
+    };
+  }
+
+  const allowedSourceChannelIds = await filterChannelIdsByMemberAccess({
+    guildId: params.guildId,
+    userId: params.requesterUserId,
+    channelIds: [record.channelId],
+    requirements: CHANNEL_ACCESS_REQUIREMENTS_READ_HISTORY,
+  }).catch((error) => {
+    logger.warn({ error, guildId: params.guildId, attachmentId }, 'Attachment source access checks failed (non-fatal)');
+    return new Set<string>();
+  });
+
+  if (!allowedSourceChannelIds.has(record.channelId)) {
+    return {
+      found: false,
+      attachmentId,
+      content: 'Permission denied: you and the bot must have ViewChannel + ReadMessageHistory access to the source channel to resend this attachment.',
+      scope: 'guild_cached_files',
+    };
+  }
+
+  const targetChannelId = params.channelId?.trim() || params.requesterChannelId;
+  const resolvedUrl = await resolveFreshAttachmentUrl(record);
+  if (!resolvedUrl.trim()) {
+    return {
+      found: false,
+      attachmentId,
+      content: 'The cached attachment is missing a usable source URL, so it cannot be resent.',
+      scope: 'guild_cached_files',
+    };
+  }
+  const sendResult = await requestDiscordInteractionForTool({
+    guildId: params.guildId,
+    channelId: params.requesterChannelId,
+    requestedBy: params.requesterUserId,
+    invokedBy: params.invokedBy,
+    request: {
+      action: 'send_message',
+      channelId: targetChannelId,
+      content: params.content?.trim() || undefined,
+      reason: params.reason?.trim() || undefined,
+      files: [
+        {
+          filename: record.filename,
+          contentType: record.contentType ?? undefined,
+          source: {
+            type: 'url',
+            url: resolvedUrl,
+          },
+        },
+      ],
+    },
+  });
+
+  const page = buildStoredAttachmentPage({
+    record,
+    startChar: toInt(params.startChar, 0, 0, 50_000_000),
+    maxChars: toInt(params.maxChars, 4_000, 200, 20_000),
+  });
+
+  return {
+    found: true,
+    attachmentId: record.id,
+    attachmentRef: `attachment:${record.id}`,
+    attachmentType: inferAttachmentType(record),
+    sourceChannelId: record.channelId,
+    targetChannelId,
+    messageId: record.messageId,
+    filename: record.filename,
+    contentType: record.contentType,
+    status: record.status,
+    extractor: record.extractor,
+    resendAvailable: true,
+    sendResult,
+    storedContentReadable: page.readable,
+    storedContent: page.content,
+    storedContentStartChar: page.startChar,
+    storedContentReturnedChars: page.returnedChars,
+    storedContentTotalChars: page.totalChars,
+    storedContentHasMore: page.hasMore,
+    storedContentNextStartChar: page.nextStartChar,
+    storedContentGuidance: page.guidance,
+    ...(record.errorText ? { errorText: record.errorText } : {}),
   };
 }
 
@@ -3544,6 +3825,8 @@ export async function searchAttachmentChunksInChannel(params: {
     return {
       chunkId: row.chunkId,
       attachmentId: row.attachmentId,
+      attachmentRef: `attachment:${row.attachmentId}`,
+      attachmentType: attachment ? inferAttachmentType(attachment) : null,
       channelId: params.channelId,
       messageId: attachment?.messageId ?? null,
       filename: attachment?.filename ?? null,
@@ -3559,7 +3842,7 @@ export async function searchAttachmentChunksInChannel(params: {
     channelId: params.channelId,
     resultCount: items.length,
     items,
-    guidance: 'Use attachmentId with `discord` action files.read_attachment for paged content, or files.list_channel to inspect metadata.',
+    guidance: 'Use attachmentId with `discord` action files.read_attachment for paged stored text or files.send_attachment to resend the original attachment.',
   };
 }
 
@@ -3624,6 +3907,8 @@ export async function searchAttachmentChunksInGuild(params: {
       return {
         chunkId: row.chunkId,
         attachmentId: row.attachmentId,
+        attachmentRef: `attachment:${row.attachmentId}`,
+        attachmentType: inferAttachmentType(attachment),
         channelId: attachment.channelId,
         messageId: attachment.messageId,
         filename: attachment.filename,
@@ -3652,7 +3937,7 @@ export async function searchAttachmentChunksInGuild(params: {
     resultCount: items.length,
     items,
     scope: 'guild_attachment_chunks',
-    guidance: 'Use attachmentId with `discord` action files.read_attachment for paged content, or files.list_server to inspect metadata.',
+    guidance: 'Use attachmentId with `discord` action files.read_attachment for paged stored text or files.send_attachment to resend the original attachment.',
   };
 }
 
@@ -3839,10 +4124,10 @@ export async function lookupChannelMemory(params: {
   }
   if (recentAttachments.length > 0) {
     if (parts.length > 0) parts.push('');
-    parts.push('Recent cached files (retrieve full text with `discord` action files.list_channel when needed):');
+    parts.push('Recent cached attachments (read stored text with `discord` action files.read_attachment or resend originals with `discord` action files.send_attachment when needed):');
     for (const attachment of recentAttachments.slice(0, maxRecentFiles)) {
       parts.push(
-        `- ${attachment.filename} (msg:${attachment.messageId}, status=${attachment.status}, extractor=${attachment.extractor ?? 'none'}, cached ${formatRelativeAge(attachment.createdAt)} ago)`,
+        `- ${attachment.filename} (attachment:${attachment.id}, msg:${attachment.messageId}, status=${attachment.status}, extractor=${attachment.extractor ?? 'none'}, cached ${formatRelativeAge(attachment.createdAt)} ago)`,
       );
     }
   }
@@ -3861,7 +4146,7 @@ export async function lookupChannelMemory(params: {
 
   const built = [
     'Channel memory (STM+LTM summaries):',
-    'Scope: rolling/profile summaries and recent cached file pointers only (not raw message transcripts).',
+    'Scope: rolling/profile summaries and recent cached attachment pointers only (not raw message transcripts).',
     ...parts,
   ].join('\n');
   const trimmed = trimToChars(built, maxChars);

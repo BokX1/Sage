@@ -22,6 +22,7 @@ export const nativeTools = [
   { name: 'oauth2.invite_url', short: 'Invite URL', desc: 'Generate a bot installation invite link', cat: 'discord', color: '#7AA2F7' },
 
   // Discord (cyan) - Writes
+  { name: 'files.send_attachment', short: 'Send Attachment', desc: 'Resend a cached file or image while returning its stored recall text', cat: 'discord', color: '#7AA2F7' },
   { name: 'messages.send', short: 'Send Message', desc: 'Send a new message or rich embed to a channel', cat: 'discord', color: '#7AA2F7' },
   { name: 'polls.create', short: 'Create Poll', desc: 'Create an interactive Discord poll', cat: 'discord', color: '#7AA2F7' },
   { name: 'threads.create', short: 'Create Thread', desc: 'Start a new conversation thread', cat: 'discord', color: '#7AA2F7' },
@@ -64,4 +65,3 @@ export const nativeTools = [
 ];
 
 export const nativeToolCount = nativeTools.length;
-

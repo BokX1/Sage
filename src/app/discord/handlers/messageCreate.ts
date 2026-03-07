@@ -15,6 +15,7 @@ import { VoiceManager } from '../../../features/voice/voiceManager';
 import { transcribeDiscordVoiceMessageAttachment } from '../../../features/voice/voiceMessageTranscriber';
 import { upsertIngestedAttachment } from '../../../features/attachments/ingestedAttachmentRepo';
 import { deleteAttachmentChunks, ingestAttachmentText } from '../../../features/embeddings';
+import { queueImageAttachmentRecall } from '../../../features/attachments/imageAttachmentRecallWorker';
 import { normalizeNonNegativeInt, normalizePositiveInt } from '../../../shared/utils/numbers';
 import {
   attachPendingAdminActionRequestMessageId,
@@ -25,7 +26,8 @@ import {
   buildAttachmentBlockFromResult,
   buildMessageContent,
   deriveAttachmentBudget,
-  getNonImageAttachments,
+  getMessageAttachments,
+  isImageAttachment,
   getVisionImageUrl,
 } from './attachment-parser';
 import { isAdminFromMember } from '../../../platform/discord/admin-permissions';
@@ -87,7 +89,7 @@ function shouldInlineAttachmentBlocks(params: {
 function buildAttachmentIngestNotes(params: {
   selectedAttachmentCount: number;
   shouldPersistAttachmentCache: boolean;
-  cachedExtractableCount: number;
+  cachedAttachmentCount: number;
   cachedAttachmentRefs: Array<{ filename: string; attachmentId: string }>;
   skippedByLimitCount: number;
   maxAttachmentsPerMessage: number;
@@ -97,7 +99,7 @@ function buildAttachmentIngestNotes(params: {
   if (params.selectedAttachmentCount > 0) {
     if (params.shouldPersistAttachmentCache) {
       notes.push(
-        `[System: Attachment cache processed ${params.selectedAttachmentCount} non-image attachment(s); extractable cached files: ${params.cachedExtractableCount}.]`,
+        `[System: Attachment cache processed ${params.selectedAttachmentCount} attachment(s); cached attachments: ${params.cachedAttachmentCount}.]`,
       );
       if (params.cachedAttachmentRefs.length > 0) {
         const preview = params.cachedAttachmentRefs
@@ -106,12 +108,12 @@ function buildAttachmentIngestNotes(params: {
           .join(', ');
         const overflow = params.cachedAttachmentRefs.length - 3;
         notes.push(
-          `[System: Cached file references: ${preview}${overflow > 0 ? ` (+${overflow} more)` : ''}. Read content via discord files.read_attachment using attachmentId.]`,
+          `[System: Cached attachment references: ${preview}${overflow > 0 ? ` (+${overflow} more)` : ''}. Read content via discord files.read_attachment or resend via discord files.send_attachment using attachmentId.]`,
         );
       }
     } else {
       notes.push(
-        `[System: Processed ${params.selectedAttachmentCount} non-image attachment(s) for this turn. Persistent attachment cache is unavailable in this channel.]`,
+        `[System: Processed ${params.selectedAttachmentCount} attachment(s) for this turn. Persistent attachment cache is unavailable in this channel.]`,
       );
     }
   }
@@ -131,18 +133,18 @@ function buildRuntimeAttachmentBlocks(params: {
   shouldPersistAttachmentCache: boolean;
   cachedAttachmentRefs: Array<{ filename: string; attachmentId: string }>;
 }): string[] {
-  if (params.includeAttachmentBlocks) {
+  if (params.includeAttachmentBlocks && params.attachmentBlocks.length > 0) {
     return params.attachmentBlocks;
   }
 
-  if (params.attachmentBlocks.length === 0) {
+  if (params.attachmentBlocks.length === 0 && params.cachedAttachmentRefs.length === 0) {
     return [];
   }
 
   const blocks: string[] = [
     params.shouldPersistAttachmentCache
-      ? '[System: Non-image attachments were cached. If needed, retrieve file content from the channel attachment cache.]'
-      : '[System: Non-image attachments were processed for this turn only. Persistent cache is unavailable in this channel.]',
+      ? '[System: Attachments were cached. If needed, retrieve stored content from the channel attachment cache or resend the original attachment.]'
+      : '[System: Attachments were processed for this turn only. Persistent cache is unavailable in this channel.]',
   ];
 
   if (params.shouldPersistAttachmentCache && params.cachedAttachmentRefs.length > 0) {
@@ -152,8 +154,12 @@ function buildRuntimeAttachmentBlocks(params: {
       .join(', ');
     const overflow = params.cachedAttachmentRefs.length - 3;
     blocks.push(
-      `[System: Cached file references: ${preview}${overflow > 0 ? ` (+${overflow} more)` : ''}. Read via discord files.read_attachment using attachmentId.]`,
+      `[System: Cached attachment references: ${preview}${overflow > 0 ? ` (+${overflow} more)` : ''}. Read via discord files.read_attachment or resend via discord files.send_attachment using attachmentId.]`,
     );
+  }
+
+  if (params.attachmentBlocks.length > 0) {
+    blocks.unshift(...params.attachmentBlocks);
   }
 
   return blocks;
@@ -229,6 +235,47 @@ async function persistAttachmentCache(params: {
         attachment: params.attachmentName,
       },
       'Attachment cache persist failed (non-fatal)',
+    );
+    return null;
+  }
+}
+
+async function persistQueuedImageAttachment(params: {
+  message: Message;
+  index: number;
+  attachmentName: string;
+  attachmentUrl: string;
+  contentType: string | null;
+  declaredSizeBytes: number | null;
+  status: 'queued' | 'skip';
+  errorText: string | null;
+}): Promise<string | null> {
+  try {
+    const ingestedRecord = await upsertIngestedAttachment({
+      guildId: params.message.guildId ?? null,
+      channelId: params.message.channelId,
+      messageId: params.message.id,
+      attachmentIndex: params.index,
+      filename: params.attachmentName,
+      sourceUrl: params.attachmentUrl,
+      contentType: params.contentType,
+      declaredSizeBytes: params.declaredSizeBytes,
+      readSizeBytes: null,
+      extractor: 'vision',
+      status: params.status,
+      errorText: params.errorText,
+      extractedText: null,
+    });
+    return ingestedRecord?.id ?? null;
+  } catch (error) {
+    logger.warn(
+      {
+        error,
+        msgId: params.message.id,
+        channelId: params.message.channelId,
+        attachment: params.attachmentName,
+      },
+      'Image attachment cache persist failed (non-fatal)',
     );
     return null;
   }
@@ -340,7 +387,7 @@ export async function handleMessageCreate(message: Message) {
     const referencedVisionImageUrl = referencedMessage ? getVisionImageUrl(referencedMessage) : null;
     const allowEmptyInvocation = !!messageVisionImageUrl || !!referencedVisionImageUrl;
 
-    const nonImageAttachments = getNonImageAttachments(message);
+    const allAttachments = getMessageAttachments(message);
     const maxAttachmentsPerMessage = normalizePositiveInt(
       appConfig.FILE_INGEST_MAX_ATTACHMENTS_PER_MESSAGE,
       1,
@@ -353,8 +400,8 @@ export async function handleMessageCreate(message: Message) {
     const ingestTimeoutMs = normalizePositiveInt(appConfig.FILE_INGEST_TIMEOUT_MS, 45_000);
     const voiceSttMaxBytes = normalizeNonNegativeInt(appConfig.VOICE_MESSAGE_STT_MAX_BYTES, perFileMaxBytes);
     const voiceSttMaxSeconds = normalizePositiveInt(appConfig.VOICE_MESSAGE_STT_MAX_SECONDS, 120);
-    const selectedAttachments = nonImageAttachments.slice(0, maxAttachmentsPerMessage);
-    const skippedByLimitCount = Math.max(0, nonImageAttachments.length - selectedAttachments.length);
+    const selectedAttachments = allAttachments.slice(0, maxAttachmentsPerMessage);
+    const skippedByLimitCount = Math.max(0, allAttachments.length - selectedAttachments.length);
     const attachmentBlocks: string[] = [];
     const ingestAttachmentNotes: string[] = [];
     const cachedAttachmentRefs: Array<{ filename: string; attachmentId: string }> = [];
@@ -370,6 +417,7 @@ export async function handleMessageCreate(message: Message) {
     });
     let remainingAttachmentChars = attachmentBudget.maxChars;
     let remainingAttachmentBytes = perMessageMaxBytes;
+    let queuedImageRecallWork = false;
 
     for (let index = 0; index < selectedAttachments.length; index += 1) {
       const attachment = selectedAttachments[index];
@@ -378,7 +426,35 @@ export async function handleMessageCreate(message: Message) {
         continue;
       }
 
-      const attachmentsRemaining = Math.max(1, selectedAttachments.length - index);
+      if (isImageAttachment(attachment)) {
+        if (shouldPersistAttachmentCache) {
+          const imageRecallEnabled = !!appConfig.FILE_INGEST_IMAGE_ENABLED;
+          const persistedAttachmentId = await persistQueuedImageAttachment({
+            message,
+            index,
+            attachmentName,
+            attachmentUrl: attachment.url ?? '',
+            contentType: attachment.contentType ?? null,
+            declaredSizeBytes: attachment.size ?? null,
+            status: imageRecallEnabled ? 'queued' : 'skip',
+            errorText: imageRecallEnabled
+              ? '[System: Image recall queued for background processing.]'
+              : '[System: Local image recall ingest is disabled.]',
+          });
+          if (persistedAttachmentId) {
+            cachedAttachmentRefs.push({ filename: attachmentName, attachmentId: persistedAttachmentId });
+            if (imageRecallEnabled) {
+              queuedImageRecallWork = true;
+            }
+          }
+        }
+        continue;
+      }
+
+      const attachmentsRemaining = Math.max(
+        1,
+        selectedAttachments.slice(index).filter((candidate) => !isImageAttachment(candidate)).length,
+      );
       const maxChars = Math.floor(remainingAttachmentChars / attachmentsRemaining);
       const headChars = Math.floor(maxChars * 0.7);
       const tailChars = Math.max(0, maxChars - headChars);
@@ -476,7 +552,7 @@ export async function handleMessageCreate(message: Message) {
           extractedText,
           errorText,
         });
-        if (extractedText && persistedAttachmentId) {
+        if (persistedAttachmentId) {
           cachedAttachmentRefs.push({ filename: attachmentName, attachmentId: persistedAttachmentId });
         }
       }
@@ -490,12 +566,16 @@ export async function handleMessageCreate(message: Message) {
       remainingAttachmentBytes = Math.max(0, remainingAttachmentBytes - consumedBytes);
     }
 
-    const cachedExtractableCount = cachedAttachmentRefs.length;
+    if (queuedImageRecallWork) {
+      queueImageAttachmentRecall();
+    }
+
+    const cachedAttachmentCount = cachedAttachmentRefs.length;
     ingestAttachmentNotes.push(
       ...buildAttachmentIngestNotes({
         selectedAttachmentCount: selectedAttachments.length,
         shouldPersistAttachmentCache,
-        cachedExtractableCount,
+        cachedAttachmentCount,
         cachedAttachmentRefs,
         skippedByLimitCount,
         maxAttachmentsPerMessage,

@@ -12,6 +12,7 @@ import { registerDefaultAgenticTools } from '../features/agent-runtime';
 import { registerShutdownHooks } from './runtime/shutdown';
 import { initChannelSummaryScheduler } from '../features/summary/channelSummaryScheduler';
 import { startCompactionScheduler } from '../features/summary/ltmCompaction';
+import { initImageAttachmentRecallWorker } from '../features/attachments/imageAttachmentRecallWorker';
 import { AppError } from '../shared/errors/app-error';
 import { logger } from '../platform/logging/logger';
 
@@ -30,6 +31,7 @@ export async function bootstrapApp(): Promise<void> {
     registerGuildCreateHandler(client);
     initChannelSummaryScheduler();
     startCompactionScheduler();
+    initImageAttachmentRecallWorker();
     initApprovalCardCleanupScheduler();
     registerShutdownHooks({ client });
 

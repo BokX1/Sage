@@ -19,6 +19,7 @@ const mockUpsertIngestedAttachment = vi.hoisted(() =>
 );
 const mockDeleteAttachmentChunks = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
 const mockIngestAttachmentText = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
+const mockQueueImageAttachmentRecall = vi.hoisted(() => vi.fn());
 
 vi.mock('@/features/chat/chat-engine', () => ({
   generateChatReply: mockGenerateChatReply,
@@ -51,6 +52,10 @@ vi.mock('@/features/attachments/ingestedAttachmentRepo', () => ({
 vi.mock('@/features/embeddings', () => ({
   deleteAttachmentChunks: mockDeleteAttachmentChunks,
   ingestAttachmentText: mockIngestAttachmentText,
+}));
+
+vi.mock('@/features/attachments/imageAttachmentRecallWorker', () => ({
+  queueImageAttachmentRecall: mockQueueImageAttachmentRecall,
 }));
 
 vi.mock('@/platform/discord/client', () => ({
@@ -118,6 +123,14 @@ describe('messageCreate - ingest + reply gating', () => {
     delete g[processedKey];
     delete g[registrationKey];
 
+    mockGenerateChatReply.mockReset();
+    mockFetchAttachmentText.mockReset();
+    mockIsRateLimited.mockReset();
+    mockIsLoggingEnabled.mockReset();
+    mockIngestEvent.mockReset();
+    mockUpsertIngestedAttachment.mockReset();
+    mockDeleteAttachmentChunks.mockReset();
+    mockIngestAttachmentText.mockReset();
     mockGenerateChatReply.mockResolvedValue({ replyText: 'Test response' });
     mockFetchAttachmentText.mockResolvedValue({
       kind: 'ok',
@@ -130,6 +143,8 @@ describe('messageCreate - ingest + reply gating', () => {
     mockIsLoggingEnabled.mockReturnValue(true);
     mockDeleteAttachmentChunks.mockResolvedValue(undefined);
     mockIngestAttachmentText.mockResolvedValue(undefined);
+    mockUpsertIngestedAttachment.mockResolvedValue({ id: 'attachment-row-default' });
+    mockQueueImageAttachmentRecall.mockReset();
 
     ({ resetInvocationCooldowns } = await import('@/features/invocation/invocation-rate-limiter'));
     resetInvocationCooldowns();
@@ -188,7 +203,7 @@ describe('messageCreate - ingest + reply gating', () => {
     expect(mockGenerateChatReply).toHaveBeenCalledTimes(1);
     expect(mockGenerateChatReply).toHaveBeenCalledWith(
       expect.objectContaining({
-        userText: 'Describe the image and answer any implied question.',
+        userText: expect.stringContaining('Describe the image and answer any implied question.'),
       }),
     );
   });
@@ -269,7 +284,8 @@ describe('messageCreate - ingest + reply gating', () => {
 
     expect(mockGenerateChatReply).toHaveBeenCalledTimes(1);
     const call = mockGenerateChatReply.mock.calls[0]?.[0] as { userText?: string; userContent?: unknown };
-    expect(call.userText).toBe('Describe the image and answer any implied question.');
+    expect(call.userText).toContain('Describe the image and answer any implied question.');
+    expect(call.userText).toContain('attachment:attachment-row-default');
     expect(Array.isArray(call.userContent)).toBe(true);
     const parts = call.userContent as Array<{ type?: string; image_url?: { url?: string } }>;
     expect(parts.some((part) => part.type === 'image_url')).toBe(true);
@@ -576,10 +592,87 @@ describe('messageCreate - ingest + reply gating', () => {
 
     expect(mockIngestEvent).toHaveBeenCalledTimes(1);
     const ingestPayload = mockIngestEvent.mock.calls[0]?.[0] as { content?: string };
-    expect(ingestPayload.content).toContain('Attachment cache processed 2 non-image attachment(s)');
-    expect(ingestPayload.content).toContain('Cached file references');
+    expect(ingestPayload.content).toContain('Attachment cache processed 2 attachment(s); cached attachments: 2.');
+    expect(ingestPayload.content).toContain('Cached attachment references');
     expect(ingestPayload.content).toContain('attachment:attachment-row-alpha');
     expect(ingestPayload.content).not.toContain('BEGIN FILE ATTACHMENT');
+  });
+
+  it('queues uploaded image attachments for durable recall in logged channels', async () => {
+    mockUpsertIngestedAttachment.mockResolvedValueOnce({ id: 'attachment-row-image' });
+
+    const message = createMockMessage({
+      content: 'random chat with image',
+      channelId: 'channel-images',
+      attachments: {
+        values: vi.fn(() => [
+          {
+            name: 'meme.png',
+            url: 'https://cdn.discordapp.com/meme.png',
+            contentType: 'image/png',
+            size: 1234,
+          },
+        ]),
+        first: vi.fn(() => null),
+      },
+    });
+
+    await handleMessageCreate(message);
+
+    expect(mockFetchAttachmentText).not.toHaveBeenCalled();
+    expect(mockUpsertIngestedAttachment).toHaveBeenCalledWith(
+      expect.objectContaining({
+        messageId: message.id,
+        filename: 'meme.png',
+        extractor: 'vision',
+        status: 'queued',
+        extractedText: null,
+      }),
+    );
+    expect(mockQueueImageAttachmentRecall).toHaveBeenCalledTimes(1);
+
+    const ingestPayload = mockIngestEvent.mock.calls[0]?.[0] as { content?: string };
+    expect(ingestPayload.content).toContain('Attachment cache processed 1 attachment(s); cached attachments: 1.');
+    expect(ingestPayload.content).toContain('attachment:attachment-row-image');
+    expect(mockGenerateChatReply).not.toHaveBeenCalled();
+  });
+
+  it('keeps cached image attachment references in runtime notes for invoked turns', async () => {
+    mockUpsertIngestedAttachment.mockResolvedValueOnce({ id: 'attachment-row-image' });
+
+    const message = createMockMessage({
+      content: '<@123> what is this image?',
+      channelId: 'channel-images',
+      mentions: {
+        has: vi.fn((user: User) => user.id === '123'),
+        users: new Map<string, User>(),
+      },
+      attachments: {
+        values: vi.fn(() => [
+          {
+            name: 'scene.png',
+            url: 'https://cdn.discordapp.com/scene.png',
+            contentType: 'image/png',
+            size: 2048,
+          },
+        ]),
+        first: vi.fn(() => null),
+      },
+    });
+
+    await handleMessageCreate(message);
+
+    expect(mockQueueImageAttachmentRecall).toHaveBeenCalledTimes(1);
+    expect(mockGenerateChatReply).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userText: expect.stringContaining('Attachments were cached.'),
+      }),
+    );
+    expect(mockGenerateChatReply).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userText: expect.stringContaining('attachment:attachment-row-image'),
+      }),
+    );
   });
 
   it('queues embedding updates after attachment cache persistence', async () => {

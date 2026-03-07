@@ -2,6 +2,7 @@ export {
   lookupChannelFileCache,
   lookupServerFileCache,
   readIngestedAttachmentText,
+  sendCachedAttachment,
   searchChannelMessages,
   searchGuildMessages,
   lookupUserMessageTimeline,
@@ -16,4 +17,3 @@ export {
   lookupVoiceAnalytics,
   lookupVoiceSessionSummaries,
 } from './impl';
-

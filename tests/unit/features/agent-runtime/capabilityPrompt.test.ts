@@ -67,8 +67,9 @@ describe('capabilityPrompt', () => {
 
       // Assert
       expect(prompt).toContain('Discord tool behavior: use the `discord` tool with action-based calls');
-      expect(prompt).toContain('Attachment memory behavior: historical non-image files are cached outside transcript');
+      expect(prompt).toContain('Attachment memory behavior: historical uploaded attachments are cached outside transcript');
       expect(prompt).toContain('messages.send');
+      expect(prompt).toContain('files.send_attachment');
       // Guardrails from discordToolCatalog must be surfaced
       expect(prompt).toContain('Discord guardrail:');
       expect(prompt).toContain('Writes are disallowed in autopilot turns');

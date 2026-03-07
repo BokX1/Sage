@@ -3,7 +3,7 @@ import { normalizeTimeoutMs } from '../../shared/utils/timeout';
 /**
  * Represents the AttachmentExtractor type.
  */
-export type AttachmentExtractor = 'native' | 'tika' | 'voice_stt' | 'none';
+export type AttachmentExtractor = 'native' | 'tika' | 'voice_stt' | 'vision' | 'none';
 
 /**
  * Represents the FetchAttachmentTextOptions type.
@@ -45,6 +45,7 @@ export type FetchDiscordAttachmentBytesOptions = {
   maxBytes: number;
   declaredSizeBytes?: number | null;
   contentType?: string | null;
+  allowImages?: boolean;
 };
 
 /**
@@ -365,6 +366,7 @@ async function fetchAttachmentBytes(
     maxBytes: number;
     declaredSizeBytes?: number | null;
     contentType?: string | null;
+    allowImages?: boolean;
   },
 ): Promise<AttachmentBytesResult> {
   const declaredSize = opts.declaredSizeBytes;
@@ -394,7 +396,7 @@ async function fetchAttachmentBytes(
     }
 
     const contentType = normalizeMimeType(response.headers.get('content-type') ?? opts.contentType);
-    if (contentType?.startsWith('image/')) {
+    if (contentType?.startsWith('image/') && !opts.allowImages) {
       cancelResponseBody(response);
       return {
         kind: 'skip',
@@ -585,6 +587,7 @@ export async function fetchAttachmentText(
     maxBytes,
     declaredSizeBytes: opts.declaredSizeBytes,
     contentType: opts.contentType,
+    allowImages: false,
   });
 
   if (fetched.kind === 'skip') {
@@ -742,6 +745,7 @@ export async function fetchDiscordAttachmentBytes(
     maxBytes,
     declaredSizeBytes: opts.declaredSizeBytes,
     contentType: opts.contentType,
+    allowImages: opts.allowImages,
   });
 
   if (fetched.kind === 'skip') {

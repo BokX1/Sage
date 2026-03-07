@@ -33,7 +33,7 @@ This document describes how Sage stores memory and makes it available to the run
 | **Guild memory** | Admin-authored server memory and archive history. | `GuildMemory`, `GuildMemoryArchive` | `src/features/admin/*`, `src/features/agent-runtime/discordTool.ts` |
 | **Channel summaries** | Rolling and profile summaries for channels. | `ChannelSummary` | `src/features/summary/*` |
 | **Raw transcript** | Recent message history for prompt context and retrieval. | Ring buffer plus optional `ChannelMessage` persistence | `src/features/awareness/*`, `src/features/ingest/ingestEvent.ts` |
-| **Attachment cache** | Persisted non-image file extraction for on-demand retrieval. | `IngestedAttachment`, `AttachmentChunk` | `src/features/attachments/*`, `src/app/discord/handlers/messageCreate.ts` |
+| **Attachment cache** | Persisted attachment recall text for on-demand retrieval and resend. Uploaded images store Florence-generated recall/OCR text; other files store extracted text. | `IngestedAttachment`, `AttachmentChunk` | `src/features/attachments/*`, `src/app/discord/handlers/messageCreate.ts` |
 | **Relationship graph** | Relationship weights derived from mentions, replies, reactions, and voice overlap. | `RelationshipEdge`, optional Memgraph export | `src/features/relationships/*`, `src/features/social-graph/*` |
 | **Voice sessions** | Voice join/leave history and optional summary-only session memory. | `VoiceSession`, `VoiceConversationSummary` | `src/features/voice/*` |
 
@@ -57,8 +57,9 @@ Transcript storage and prompt budgeting are separate controls. A channel can ret
 
 Attachment behavior:
 
-- Transcript rows store cache references and message metadata, not full historical file bodies.
-- Full file text is loaded on demand through `discord` tool actions such as `files.list_channel`, `files.list_server`, and `files.read_attachment`.
+- Transcript rows store cache references and message metadata, not full historical attachment bodies.
+- Stored attachment text is loaded on demand through `discord` tool actions such as `files.list_channel`, `files.list_server`, and `files.read_attachment`.
+- Sage can resend a cached original file or image through `discord` action `files.send_attachment`; the tool result also returns the stored recall/extracted text so the follow-up reply stays grounded.
 
 Voice transcript behavior:
 

@@ -22,6 +22,7 @@ export const DISCORD_ACTION_CATALOG = {
     'oauth2.invite_url',
   ],
   writes: [
+    'files.send_attachment',
     'messages.send',
     'polls.create',
     'threads.create',

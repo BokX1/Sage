@@ -10,6 +10,7 @@ import {
   lookupChannelFileCache,
   lookupServerFileCache,
   readIngestedAttachmentText,
+  sendCachedAttachment,
   searchAttachmentChunksInChannel,
   searchAttachmentChunksInGuild,
   lookupSocialGraph,
@@ -115,7 +116,7 @@ const discordToolSchema = z.discriminatedUnion('action', [
 
   z.object({
     think: requiredThinkField,
-    action: z.literal('files.list_channel').describe('List recently cached files in a specific channel.'),
+    action: z.literal('files.list_channel').describe('List recently cached attachments in a specific channel.'),
     query: z.string().trim().min(1).max(200).optional(),
     messageId: z.string().trim().min(1).max(64).optional(),
     filename: z.string().trim().min(1).max(255).optional(),
@@ -126,7 +127,7 @@ const discordToolSchema = z.discriminatedUnion('action', [
 
   z.object({
     think: requiredThinkField,
-    action: z.literal('files.list_server').describe('List recently cached files across the entire server.'),
+    action: z.literal('files.list_server').describe('List recently cached attachments across the entire server.'),
     query: z.string().trim().min(1).max(200).optional(),
     messageId: z.string().trim().min(1).max(64).optional(),
     filename: z.string().trim().min(1).max(255).optional(),
@@ -153,8 +154,19 @@ const discordToolSchema = z.discriminatedUnion('action', [
 
   z.object({
     think: requiredThinkField,
-    action: z.literal('files.read_attachment').describe('Read cached attachment text content in pages (no streaming; use continuation fields).'),
+    action: z.literal('files.read_attachment').describe('Read cached attachment text or image recall text in pages (no streaming; use continuation fields).'),
     attachmentId: z.string().trim().min(1).max(64),
+    startChar: z.number().int().min(0).max(50_000_000).optional(),
+    maxChars: z.number().int().min(200).max(20_000).optional(),
+  }),
+
+  z.object({
+    think: requiredThinkField,
+    action: z.literal('files.send_attachment').describe('Resend a cached attachment to a channel and return its stored recall/extracted text for grounding.'),
+    attachmentId: z.string().trim().min(1).max(64),
+    channelId: z.string().trim().min(1).max(64).optional(),
+    content: z.string().trim().min(1).max(8_000).optional(),
+    reason: z.string().trim().max(500).optional(),
     startChar: z.number().int().min(0).max(50_000_000).optional(),
     maxChars: z.number().int().min(200).max(20_000).optional(),
   }),
@@ -805,6 +817,22 @@ export const discordTool: ToolDefinition<DiscordToolArgs> = {
           guildId: ctx.guildId ?? null,
           requesterUserId: ctx.userId,
           attachmentId: args.attachmentId,
+          startChar: args.startChar,
+          maxChars: args.maxChars,
+        });
+      }
+
+      case 'files.send_attachment': {
+        assertNotAutopilot(ctx.invokedBy, 'files.send_attachment');
+        return sendCachedAttachment({
+          guildId: ctx.guildId ?? null,
+          requesterUserId: ctx.userId,
+          requesterChannelId: ctx.channelId,
+          invokedBy: ctx.invokedBy,
+          attachmentId: args.attachmentId,
+          channelId: args.channelId,
+          content: args.content,
+          reason: args.reason,
           startChar: args.startChar,
           maxChars: args.maxChars,
         });

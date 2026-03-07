@@ -1,5 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { fetchAttachmentText } from '../../../../src/platform/files/file-handler';
+import {
+  fetchAttachmentText,
+  fetchDiscordAttachmentBytes,
+} from '../../../../src/platform/files/file-handler';
 
 describe('fetchAttachmentText', () => {
   afterEach(() => {
@@ -62,6 +65,34 @@ describe('fetchAttachmentText', () => {
     });
 
     expect(result.kind).toBe('too_large');
+  });
+
+  it('keeps fetchAttachmentText image-skip behavior but allows raw image bytes through fetchDiscordAttachmentBytes', async () => {
+    const mockFetch = vi.fn().mockImplementation(
+      async () =>
+        new Response(Buffer.from([1, 2, 3, 4]), {
+          status: 200,
+          headers: { 'content-type': 'image/png' },
+        }),
+    );
+    vi.stubGlobal('fetch', mockFetch);
+
+    const skipped = await fetchAttachmentText('https://cdn.discordapp.com/file.png', 'file.png', {
+      maxBytes: 1024,
+    });
+    expect(skipped.kind).toBe('skip');
+
+    const raw = await fetchDiscordAttachmentBytes('https://cdn.discordapp.com/file.png', 'file.png', {
+      maxBytes: 1024,
+      allowImages: true,
+      contentType: 'image/png',
+      timeoutMs: 5_000,
+    });
+    expect(raw.kind).toBe('ok');
+    if (raw.kind === 'ok') {
+      expect(raw.buffer.equals(Buffer.from([1, 2, 3, 4]))).toBe(true);
+    }
+    expect(mockFetch).toHaveBeenCalledTimes(2);
   });
 
   it('truncates content that exceeds maxChars', async () => {

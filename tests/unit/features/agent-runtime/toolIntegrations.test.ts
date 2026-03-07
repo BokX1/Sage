@@ -27,11 +27,37 @@ vi.mock('@/platform/discord/channel-access', () => ({
   filterChannelIdsByMemberAccess: mockFilterChannelIdsByMemberAccess,
 }));
 
+const { mockRequestDiscordInteractionForTool } = vi.hoisted(() => ({
+  mockRequestDiscordInteractionForTool: vi.fn(),
+}));
+
+vi.mock('@/features/admin/adminActionService', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/features/admin/adminActionService')>();
+  return {
+    ...actual,
+    requestDiscordInteractionForTool: mockRequestDiscordInteractionForTool,
+  };
+});
+
+const { mockDiscordChannelFetch } = vi.hoisted(() => ({
+  mockDiscordChannelFetch: vi.fn(),
+}));
+
+vi.mock('@/platform/discord/client', () => ({
+  client: {
+    channels: {
+      fetch: mockDiscordChannelFetch,
+    },
+  },
+}));
+
 import {
   __resetGitHubFileLookupCacheForTests,
   __resetLocalProviderCooldownForTests,
   lookupChannelFileCache,
   lookupServerFileCache,
+  readIngestedAttachmentText,
+  sendCachedAttachment,
   lookupGitHubCodeSearch,
   lookupGitHubFile,
   lookupNpmPackage,
@@ -61,6 +87,8 @@ describe('toolIntegrations', () => {
     mockFindIngestedAttachmentsForLookupInGuild.mockReset();
     mockListIngestedAttachmentsByIds.mockReset();
     mockFilterChannelIdsByMemberAccess.mockReset();
+    mockRequestDiscordInteractionForTool.mockReset();
+    mockDiscordChannelFetch.mockReset();
     config.TOOL_WEB_SEARCH_PROVIDER_ORDER = originalSearchOrder;
     config.SEARXNG_BASE_URL = originalSearxngBase;
     config.TOOL_WEB_SCRAPE_PROVIDER_ORDER = originalScrapeOrder;
@@ -1144,5 +1172,157 @@ describe('toolIntegrations', () => {
         }),
       ]),
     );
+  });
+
+  it('reads stored image recall text from cached attachments', async () => {
+    mockListIngestedAttachmentsByIds.mockResolvedValueOnce([
+      {
+        id: 'att-image',
+        guildId: 'guild-1',
+        channelId: 'channel-1',
+        messageId: 'msg-100',
+        attachmentIndex: 0,
+        filename: 'meme.png',
+        sourceUrl: 'https://cdn.discordapp.com/meme.png',
+        contentType: 'image/png',
+        declaredSizeBytes: 256,
+        readSizeBytes: 256,
+        extractor: 'vision',
+        status: 'ok',
+        errorText: null,
+        extractedText: 'Image summary: cat meme\n\nVisible text: hello',
+        extractedTextChars: 43,
+        createdAt: new Date('2026-02-11T00:00:00.000Z'),
+        updatedAt: new Date('2026-02-11T00:00:00.000Z'),
+      },
+    ]);
+    mockFilterChannelIdsByMemberAccess.mockResolvedValueOnce(new Set(['channel-1']));
+
+    const result = await readIngestedAttachmentText({
+      guildId: 'guild-1',
+      requesterUserId: 'user-1',
+      attachmentId: 'att-image',
+      maxChars: 2_000,
+    });
+
+    expect((result as { found: boolean }).found).toBe(true);
+    expect((result as { readable: boolean }).readable).toBe(true);
+    expect((result as { attachmentType: string }).attachmentType).toBe('image');
+    expect((result as { content: string }).content).toContain('Image summary: cat meme');
+  });
+
+  it('returns resend guidance when attachment text is not ready yet', async () => {
+    mockListIngestedAttachmentsByIds.mockResolvedValueOnce([
+      {
+        id: 'att-image',
+        guildId: 'guild-1',
+        channelId: 'channel-1',
+        messageId: 'msg-100',
+        attachmentIndex: 0,
+        filename: 'meme.png',
+        sourceUrl: 'https://cdn.discordapp.com/meme.png',
+        contentType: 'image/png',
+        declaredSizeBytes: 256,
+        readSizeBytes: null,
+        extractor: 'vision',
+        status: 'queued',
+        errorText: '[System: Image recall queued for background processing.]',
+        extractedText: null,
+        extractedTextChars: 0,
+        createdAt: new Date('2026-02-11T00:00:00.000Z'),
+        updatedAt: new Date('2026-02-11T00:00:00.000Z'),
+      },
+    ]);
+    mockFilterChannelIdsByMemberAccess.mockResolvedValueOnce(new Set(['channel-1']));
+
+    const result = await readIngestedAttachmentText({
+      guildId: 'guild-1',
+      requesterUserId: 'user-1',
+      attachmentId: 'att-image',
+      maxChars: 2_000,
+    });
+
+    expect((result as { found: boolean }).found).toBe(true);
+    expect((result as { readable: boolean }).readable).toBe(false);
+    expect((result as { guidance: string }).guidance).toContain('files.send_attachment');
+    expect((result as { content: string | null }).content).toBeNull();
+  });
+
+  it('resends cached attachments and returns stored grounding text', async () => {
+    mockListIngestedAttachmentsByIds.mockResolvedValueOnce([
+      {
+        id: 'att-file',
+        guildId: 'guild-1',
+        channelId: 'channel-source',
+        messageId: 'msg-200',
+        attachmentIndex: 0,
+        filename: 'report.md',
+        sourceUrl: 'https://cdn.discordapp.com/report.md',
+        contentType: 'text/markdown',
+        declaredSizeBytes: 128,
+        readSizeBytes: 128,
+        extractor: 'tika',
+        status: 'ok',
+        errorText: null,
+        extractedText: 'hello from cache',
+        extractedTextChars: 16,
+        createdAt: new Date('2026-02-11T00:00:00.000Z'),
+        updatedAt: new Date('2026-02-11T00:00:00.000Z'),
+      },
+    ]);
+    mockFilterChannelIdsByMemberAccess.mockResolvedValueOnce(new Set(['channel-source']));
+    mockDiscordChannelFetch.mockResolvedValueOnce({
+      guildId: 'guild-1',
+      isDMBased: () => false,
+      messages: {
+        fetch: vi.fn().mockResolvedValue({
+          attachments: {
+            values: () => [{ url: 'https://cdn.discordapp.com/fresh-report.md' }],
+          },
+        }),
+      },
+    });
+    mockRequestDiscordInteractionForTool.mockResolvedValueOnce({
+      status: 'executed',
+      action: 'send_message',
+      channelId: 'channel-target',
+      messageIds: ['msg-sent'],
+    });
+
+    const result = await sendCachedAttachment({
+      guildId: 'guild-1',
+      requesterUserId: 'user-1',
+      requesterChannelId: 'channel-current',
+      invokedBy: 'mention',
+      attachmentId: 'att-file',
+      channelId: 'channel-target',
+      content: 'Here it is.',
+      maxChars: 2_000,
+    });
+
+    expect(mockRequestDiscordInteractionForTool).toHaveBeenCalledWith(
+      expect.objectContaining({
+        guildId: 'guild-1',
+        channelId: 'channel-current',
+        requestedBy: 'user-1',
+        invokedBy: 'mention',
+        request: expect.objectContaining({
+          action: 'send_message',
+          channelId: 'channel-target',
+          content: 'Here it is.',
+          files: [
+            expect.objectContaining({
+              filename: 'report.md',
+              source: {
+                type: 'url',
+                url: 'https://cdn.discordapp.com/fresh-report.md',
+              },
+            }),
+          ],
+        }),
+      }),
+    );
+    expect((result as { storedContent: string }).storedContent).toBe('hello from cache');
+    expect((result as { sendResult: { status: string } }).sendResult.status).toBe('executed');
   });
 });

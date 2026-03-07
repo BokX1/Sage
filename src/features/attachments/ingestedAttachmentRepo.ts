@@ -3,7 +3,14 @@ import { prisma } from '../../platform/db/prisma-client';
 /**
  * Represents the IngestedAttachmentStatus type.
  */
-export type IngestedAttachmentStatus = 'ok' | 'truncated' | 'too_large' | 'error' | 'skip';
+export type IngestedAttachmentStatus =
+  | 'queued'
+  | 'processing'
+  | 'ok'
+  | 'truncated'
+  | 'too_large'
+  | 'error'
+  | 'skip';
 
 export interface IngestedAttachmentRecord {
   id: string;
@@ -31,6 +38,14 @@ type PrismaIngestedAttachmentClient = {
     create: Record<string, unknown>;
     update: Record<string, unknown>;
   }) => Promise<Record<string, unknown>>;
+  update: (args: {
+    where: Record<string, unknown>;
+    data: Record<string, unknown>;
+  }) => Promise<Record<string, unknown>>;
+  updateMany: (args: {
+    where: Record<string, unknown>;
+    data: Record<string, unknown>;
+  }) => Promise<{ count: number }>;
   findMany: (args: {
     where: Record<string, unknown>;
     orderBy: Record<string, 'asc' | 'desc'>;
@@ -318,4 +333,89 @@ export async function listIngestedAttachmentsByIds(ids: string[]): Promise<Inges
   });
 
   return rows.map(mapRow);
+}
+
+export async function requeueStaleVisionAttachments(params: {
+  staleBefore: Date;
+}): Promise<number> {
+  const ingestedAttachment = getIngestedAttachmentClient();
+  const result = await ingestedAttachment.updateMany({
+    where: {
+      extractor: 'vision',
+      status: 'processing',
+      updatedAt: { lt: params.staleBefore },
+    },
+    data: {
+      status: 'queued',
+      errorText: '[System: Re-queued stale image recall task after worker interruption.]',
+    },
+  });
+  return result.count;
+}
+
+export async function claimNextQueuedVisionAttachment(): Promise<IngestedAttachmentRecord | null> {
+  const ingestedAttachment = getIngestedAttachmentClient();
+  const candidates = await ingestedAttachment.findMany({
+    where: {
+      extractor: 'vision',
+      status: 'queued',
+    },
+    orderBy: { createdAt: 'asc' },
+    take: 10,
+  });
+
+  for (const row of candidates) {
+    const id = typeof row.id === 'string' ? row.id : '';
+    if (!id) continue;
+
+    const claimed = await ingestedAttachment.updateMany({
+      where: {
+        id,
+        status: 'queued',
+      },
+      data: {
+        status: 'processing',
+        errorText: null,
+      },
+    });
+
+    if (claimed.count > 0) {
+      const [updated] = await ingestedAttachment.findMany({
+        where: { id },
+        orderBy: { createdAt: 'desc' },
+        take: 1,
+      });
+      return updated ? mapRow(updated) : null;
+    }
+  }
+
+  return null;
+}
+
+export async function updateIngestedAttachmentById(params: {
+  id: string;
+  status?: IngestedAttachmentStatus;
+  readSizeBytes?: number | null;
+  extractor?: string | null;
+  errorText?: string | null;
+  extractedText?: string | null;
+}): Promise<IngestedAttachmentRecord> {
+  const ingestedAttachment = getIngestedAttachmentClient();
+  const extractedText = normalizeText(params.extractedText);
+  const data: Record<string, unknown> = {};
+
+  if (params.status) data.status = params.status;
+  if (params.readSizeBytes !== undefined) data.readSizeBytes = toIntOrNull(params.readSizeBytes);
+  if (params.extractor !== undefined) data.extractor = params.extractor ?? null;
+  if (params.errorText !== undefined) data.errorText = params.errorText ?? null;
+  if (params.extractedText !== undefined) {
+    data.extractedText = extractedText;
+    data.extractedTextChars = extractedText?.length ?? 0;
+  }
+
+  const row = await ingestedAttachment.update({
+    where: { id: params.id.trim() },
+    data,
+  });
+  return mapRow(row);
 }

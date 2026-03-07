@@ -105,7 +105,7 @@ export function buildCapabilityPromptSection(
       ? '- Discord tool behavior: use the `discord` tool with action-based calls. Non-admin writes (send, react, poll, thread) are available to all users. Admin-only actions require admin context and may need approval.'
       : '- Discord tool behavior: you do not have access to Discord memory/actions via tools this turn.',
     hasDiscordTool
-      ? '- Attachment memory behavior: historical non-image files are cached outside transcript; when transcript notes include `attachment:<id>` you can call `discord` action `files.read_attachment` directly. Otherwise use `files.list_channel`/`files.list_server` or `files.find_channel` to locate attachments.'
+      ? '- Attachment memory behavior: historical uploaded attachments are cached outside transcript; when transcript notes include `attachment:<id>` you can call `discord` action `files.read_attachment` directly, or `files.send_attachment` when the user wants the original file/image shown again. Otherwise use `files.list_channel`/`files.list_server` or `files.find_channel` to locate attachments.'
       : '- Attachment memory behavior: you do not have access to retrieve historical files this turn.',
     hasDiscordTool
       ? '- Guild memory: the <guild_memory> block (if present) contains admin-configured server memory. To update it, use discord: memory.update_server (admin only). Changes take effect on the next turn.'
@@ -216,9 +216,10 @@ function buildToolSelectionGuide(activeTools: string[]): string {
     lines.push('  ├─ message context by ID        → discord: messages.get_context');
     lines.push('  ├─ server-wide search           → discord: messages.search_guild');
     lines.push('  ├─ user timeline                → discord: messages.user_timeline');
-    lines.push('  ├─ list recent files            → discord: files.list_channel / files.list_server');
-    lines.push('  ├─ find file content (semantic) → discord: files.find_channel / files.find_server');
-    lines.push('  ├─ read cached attachment        → discord: files.read_attachment');
+    lines.push('  ├─ list recent attachments      → discord: files.list_channel / files.list_server');
+    lines.push('  ├─ find attachment content      → discord: files.find_channel / files.find_server');
+    lines.push('  ├─ read cached attachment       → discord: files.read_attachment');
+    lines.push('  ├─ resend cached attachment     → discord: files.send_attachment');
     lines.push('  ├─ social graph analytics       → discord: analytics.get_social_graph');
     lines.push('  ├─ top relationships            → discord: analytics.top_relationships');
     lines.push('  ├─ voice stats                  → discord: analytics.get_voice_analytics');
@@ -295,6 +296,7 @@ function buildToolSelectionGuide(activeTools: string[]): string {
     lines.push('  "What\'s been happening?" → memory.get_channel (rolling summary, NOT raw messages)');
     lines.push('  "Who is X?"              → memory.get_user first, then social graph if needed');
     lines.push('  "Find the file about..." → files.find_channel (semantic) before files.list_channel');
+    lines.push('  "Show me that image/file again" → files.send_attachment');
   }
 
   // --- Anti-patterns ---
