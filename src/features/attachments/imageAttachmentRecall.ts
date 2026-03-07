@@ -27,7 +27,7 @@ type FlorenceRuntime = {
   AutoProcessor: {
     from_pretrained: (modelId: string) => Promise<FlorenceProcessor>;
   };
-  AutoModelForVision2Seq: {
+  AutoModelForImageTextToText: {
     from_pretrained: (
       modelId: string,
       options?: Record<string, unknown>,
@@ -149,7 +149,7 @@ function loadFlorenceRuntime(modelId: string): Promise<LoadedFlorenceRuntime> {
       : ((await import('@huggingface/transformers')) as unknown as FlorenceRuntime);
     const [processor, model] = await Promise.all([
       runtime.AutoProcessor.from_pretrained(modelId),
-      runtime.AutoModelForVision2Seq.from_pretrained(modelId, {
+      runtime.AutoModelForImageTextToText.from_pretrained(modelId, {
         dtype: DEFAULT_FLORENCE_DTYPE,
       }),
     ]);

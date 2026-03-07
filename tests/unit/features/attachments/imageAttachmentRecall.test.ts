@@ -20,7 +20,7 @@ describe('imageAttachmentRecall', () => {
       AutoProcessor: {
         from_pretrained: mockProcessorFromPretrained,
       },
-      AutoModelForVision2Seq: {
+      AutoModelForImageTextToText: {
         from_pretrained: mockModelFromPretrained,
       },
     }));
