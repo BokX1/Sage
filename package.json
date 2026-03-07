@@ -53,7 +53,7 @@
     "check": "npm run check:local"
   },
   "author": "",
-  "license": "SEE LICENSE IN LICENSE",
+  "license": "MIT",
   "type": "commonjs",
   "dependencies": {
     "@discordjs/voice": "^0.19.0",

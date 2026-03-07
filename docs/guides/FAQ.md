@@ -33,9 +33,9 @@ Yes. If someone already hosts Sage for your community, start with the **[⚡ Qui
 <details>
 <summary><strong>Will this cost me money?</strong></summary>
 
-Sage is **source-available** under **PolyForm Strict 1.0.0**.
+Sage is released under the **MIT License**.
 
-- **Software licensing:** Noncommercial run/self-host use is allowed under `LICENSE`. Commercial/business use requires a separate written license (`Ahazihak03@gmail.com`).
+- **Software licensing:** Sage is available under `LICENSE` with MIT terms.
 - **AI credits:** Sage uses **Bring Your Own Pollen (BYOP)**.
   - Server admins generate a key from [Pollinations.ai](https://pollinations.ai).
   - That key is used by the server for Sage's AI requests.
@@ -88,7 +88,7 @@ Sage is a Discord-native AI runtime built around one tool-enabled chat loop.
 <details>
 <summary><strong>Is Sage free to use?</strong></summary>
 
-For noncommercial use, Sage can be run under PolyForm Strict 1.0.0 without a paid software license. Commercial/business use requires a separate written license (`Ahazihak03@gmail.com`). Pollinations API pricing/tiers are separate from Sage software licensing.
+Yes. Sage is MIT-licensed. Pollinations API pricing/tiers and any self-hosted infrastructure costs are separate from Sage's software license.
 
 </details>
 

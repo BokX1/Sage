@@ -28,10 +28,8 @@ Thanks for helping improve Sage! This guide covers the local workflow, expectati
 
 ## ⚖️ License and Contribution Terms
 
-- Sage is source-available under **PolyForm Strict 1.0.0** (`LICENSE`).
-- The public license permits noncommercial use only and does not permit redistribution, modification, or derivative works.
-- The copyright owner grants a limited additional permission to create modifications solely to prepare and submit pull requests to this repository.
-- By submitting code, docs, or assets, you grant the project owner the right to use, modify, relicense, and distribute your contribution under Sage's licensing model (including commercial licensing).
+- Sage is released under the **MIT License** (`LICENSE`).
+- By submitting code, docs, or other project assets, you agree that your contribution is provided under the MIT License.
 
 ---
 

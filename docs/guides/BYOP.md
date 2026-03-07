@@ -4,7 +4,7 @@
   <img src="https://img.shields.io/badge/%F0%9F%8C%BF-Sage%20BYOP-2d5016?style=for-the-badge&labelColor=4a7c23" alt="BYOP" />
 </p>
 
-Sage uses a BYOP model: communities provide the AI key (API key). Software licensing is separate; Sage is source-available under PolyForm Strict 1.0.0 (noncommercial use only). Commercial/business use requires a separate written license (<Ahazihak03@gmail.com>).
+Sage uses a BYOP model: communities provide the AI key (API key). Sage itself is released under the MIT License; Pollinations usage and infrastructure costs remain separate from the software license.
 
 This keeps Sage sustainable and enables higher limits for your server.
 
@@ -100,7 +100,7 @@ That’s it — Sage is active for the whole server. 🎉
 ## ❓ FAQ
 
 **Q: Do my members need to pay?**  
-**A:** The server key covers member AI usage. Pollinations.ai offers free tiers, so AI usage may be low-cost, but Sage software licensing terms still apply separately.
+**A:** The server key covers member AI usage. Pollinations.ai offers free tiers, so AI usage may be low-cost, but provider usage and hosting costs are separate from Sage's MIT software license.
 
 ---
 

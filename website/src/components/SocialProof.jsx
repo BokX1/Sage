@@ -98,7 +98,7 @@ export default function SocialProof() {
                 transition={{ delay: 0.5, duration: 0.6 }}
                 className="text-center text-xs text-slate-600 mt-4 font-mono tracking-wide"
             >
-                Source-available · Self-hosted · Zero data exfiltration
+                Open source · Self-hosted · Zero data exfiltration
             </motion.p>
         </section>
     );
