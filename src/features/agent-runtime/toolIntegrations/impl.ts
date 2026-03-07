@@ -3129,6 +3129,7 @@ export async function searchChannelMessages(params: {
       return {
         found: false,
         query,
+        guildId: params.guildId,
         channelId: params.channelId,
         modeRequested: mode,
         modeUsed: 'semantic_unavailable',
@@ -3182,6 +3183,7 @@ export async function searchChannelMessages(params: {
     return {
       found: false,
       query,
+      guildId: params.guildId,
       channelId: params.channelId,
       modeRequested: mode,
       modeUsed,
@@ -3197,6 +3199,8 @@ export async function searchChannelMessages(params: {
     const truncated = truncateWithNotice(row.content, maxChars);
     return {
       messageId: row.messageId,
+      guildId: row.guildId,
+      channelId: row.channelId,
       authorId: row.authorId,
       authorDisplayName: row.authorDisplayName,
       authorIsBot: row.authorIsBot,
@@ -3210,15 +3214,16 @@ export async function searchChannelMessages(params: {
   return {
     found: true,
     query,
+    guildId: params.guildId,
     channelId: params.channelId,
     modeRequested: mode,
     modeUsed,
     semanticAvailable,
     historyStats,
     resultCount: items.length,
-      items,
-      scope: 'raw_channel_messages',
-      guidance:
+    items,
+    scope: 'raw_channel_messages',
+    guidance:
       'Use `discord` action messages.get_context with messageId to fetch surrounding messages before finalizing a precise answer.',
   };
 }
@@ -3796,6 +3801,7 @@ export async function lookupChannelMessage(params: {
   if (rows.length === 0) {
     return {
       found: false,
+      guildId: params.guildId,
       channelId: params.channelId,
       messageId,
       content: 'Message not found in stored channel history for this channel.',
@@ -3809,7 +3815,7 @@ export async function lookupChannelMessage(params: {
     const marker = row.messageId === messageId ? '*' : '-';
     const normalizedContent = row.content.replace(/\s+/g, ' ').trim();
     lines.push(
-      `${marker} [${row.timestamp}] @${row.authorDisplayName} (id:${row.authorId}, bot=${row.authorIsBot}, msg:${row.messageId}): ${normalizedContent}`,
+      `${marker} [${row.timestamp}] @${row.authorDisplayName} (id:${row.authorId}, bot=${row.authorIsBot}, guild:${row.guildId ?? '@me'} ch:${row.channelId} msg:${row.messageId}): ${normalizedContent}`,
     );
   }
   const built = lines.join('\n');
@@ -3817,6 +3823,7 @@ export async function lookupChannelMessage(params: {
 
   return {
     found: true,
+    guildId: params.guildId,
     channelId: params.channelId,
     messageId,
     before,
@@ -4170,7 +4177,7 @@ export async function lookupChannelMemory(params: {
     parts.push('Recent cached attachments (read stored text with `discord` action files.read_attachment or resend originals with `discord` action files.send_attachment when needed):');
     for (const attachment of recentAttachments.slice(0, maxRecentFiles)) {
       parts.push(
-        `- ${attachment.filename} (attachment:${attachment.id}, msg:${attachment.messageId}, status=${attachment.status}, extractor=${attachment.extractor ?? 'none'}, cached ${formatRelativeAge(attachment.createdAt)} ago)`,
+        `- ${attachment.filename} (attachment:${attachment.id}, guild:${params.guildId ?? '@me'} ch:${params.channelId} msg:${attachment.messageId}, status=${attachment.status}, extractor=${attachment.extractor ?? 'none'}, cached ${formatRelativeAge(attachment.createdAt)} ago)`,
       );
     }
   }

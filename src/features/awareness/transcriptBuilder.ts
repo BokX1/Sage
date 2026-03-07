@@ -17,7 +17,7 @@ export function buildTranscriptBlock(messages: ChannelMessage[], maxChars: numbe
   if (messages.length === 0) return null;
 
   const header =
-    'Recent channel transcript (most recent last). Reference lines by [#] or msg:<id>:';
+    'Recent channel transcript (most recent last). Each line includes guild, ch, and msg IDs — use them to build Discord message links (https://discord.com/channels/{guildId-or-@me}/{channelId}/{messageId}) when referencing messages:';
   if (header.length >= maxChars) return null;
 
   const selected: Array<{ message: ChannelMessage; normalizedContent: string }> = [];
@@ -28,7 +28,7 @@ export function buildTranscriptBlock(messages: ChannelMessage[], maxChars: numbe
     const message = messages[i];
     const normalizedContent = message.content.replace(/\s+/g, ' ').trim();
     const placeholderLine =
-      `- [${placeholderIndexLabel} msg:${message.messageId}] ` +
+      `- [#${placeholderIndexLabel} guild:${message.guildId ?? '@me'} ch:${message.channelId} msg:${message.messageId}] ` +
       `@${message.authorDisplayName} (user:${message.authorId}) ` +
       `[${message.timestamp.toISOString()}]: ${normalizedContent}`;
     const nextTotal = totalChars + 1 + placeholderLine.length;
@@ -44,7 +44,7 @@ export function buildTranscriptBlock(messages: ChannelMessage[], maxChars: numbe
   selected.reverse();
   const lines = selected.map(({ message, normalizedContent }, index) => {
     return (
-      `- [#${index + 1} msg:${message.messageId}] ` +
+      `- [#${index + 1} guild:${message.guildId ?? '@me'} ch:${message.channelId} msg:${message.messageId}] ` +
       `@${message.authorDisplayName} (user:${message.authorId}) ` +
       `[${message.timestamp.toISOString()}]: ${normalizedContent}`
     );

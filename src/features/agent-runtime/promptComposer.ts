@@ -88,7 +88,7 @@ RESPONSE STRUCTURE:
 
 CONVERSATION CONTINUITY:
 - Use the provided <recent_transcript> block for natural continuity instead of calling tools for recent messages. Reference prior context when relevant.
-- Reference transcript entries by their index [#N] or message ID (msg:<id>) when quoting or replying to specific messages.
+- When referencing or quoting a specific message, link to it using a Discord message URL: https://discord.com/channels/{guildId-or-@me}/{channelId}/{messageId}. The transcript lines and message-history tool results expose the needed identifiers; use @me instead of a guild ID for DMs.
 - Don't repeat information already visible in the transcript.
 - Treat each turn as part of an ongoing conversation, not an isolated query.
 

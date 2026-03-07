@@ -37,6 +37,8 @@
 - Fixed direct image URL detection in Discord messages when links are followed by sentence punctuation, so Sage still picks up the image for vision requests.
 - Fixed attachment-memory parity for uploaded Discord images: logged-channel image attachments are now cached like other attachments, indexed from local Florence recall/OCR text, and can be resent later with `discord` action `files.send_attachment` while returning the same stored grounding text to the model.
 - Fixed attachment recall resilience and resend targeting: timed-out Florence cold starts no longer poison later retries, historical mixed-attachment rows no longer refresh to the wrong live file when resending, and uncached image uploads no longer consume per-message file-ingest slots in channels without persistent attachment caching.
+- Fixed Discord message citations from history/context lookups: channel-scoped raw-message results now expose `guildId` alongside `channelId`/`messageId`, and DM jump-link placeholders now use Discord’s `@me` token so generated message URLs resolve reliably.
+- Fixed the tracked docs gate for Pollinations auth setup docs: link validation now skips the interactive `enter.pollinations.ai/authorize` OAuth URL so `npm run check:docs` no longer fails on a login-only endpoint.
 
 ### Removed
 

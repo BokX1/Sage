@@ -70,6 +70,8 @@ describe('toolIntegrations channel message access checks', () => {
     vi.spyOn(embeddings, 'searchChannelMessagesLexical').mockResolvedValueOnce([
       {
         messageId: 'msg-1',
+        guildId: 'guild-1',
+        channelId: 'channel-1',
         authorId: 'user-2',
         authorDisplayName: 'User',
         authorIsBot: false,
@@ -91,11 +93,18 @@ describe('toolIntegrations channel message access checks', () => {
     expect(result).toEqual(
       expect.objectContaining({
         found: true,
+        guildId: 'guild-1',
         channelId: 'channel-1',
         resultCount: 1,
       }),
     );
-    expect((result as { items?: Array<{ messageId: string }> }).items?.[0]?.messageId).toBe('msg-1');
+    expect(
+      (result as { items?: Array<{ messageId: string; guildId: string | null; channelId: string }> }).items?.[0],
+    ).toMatchObject({
+      messageId: 'msg-1',
+      guildId: 'guild-1',
+      channelId: 'channel-1',
+    });
   });
 
   it('denies lookupChannelMessage when requester lacks channel access', async () => {
@@ -128,6 +137,8 @@ describe('toolIntegrations channel message access checks', () => {
     vi.spyOn(embeddings, 'getChannelMessageWindowById').mockResolvedValueOnce([
       {
         messageId: 'msg-0',
+        guildId: 'guild-1',
+        channelId: 'channel-1',
         authorId: 'user-2',
         authorDisplayName: 'User',
         authorIsBot: false,
@@ -137,6 +148,8 @@ describe('toolIntegrations channel message access checks', () => {
       },
       {
         messageId: 'msg-1',
+        guildId: 'guild-1',
+        channelId: 'channel-1',
         authorId: 'user-3',
         authorDisplayName: 'Other',
         authorIsBot: false,
@@ -158,11 +171,18 @@ describe('toolIntegrations channel message access checks', () => {
     expect(result).toEqual(
       expect.objectContaining({
         found: true,
+        guildId: 'guild-1',
         channelId: 'channel-1',
         messageId: 'msg-1',
       }),
     );
     expect(String((result as { content?: string }).content ?? '')).toContain('Channel message window');
+    expect(
+      (result as { items?: Array<{ messageId: string; guildId: string | null; channelId: string }> }).items?.[1],
+    ).toMatchObject({
+      messageId: 'msg-1',
+      guildId: 'guild-1',
+      channelId: 'channel-1',
+    });
   });
 });
-

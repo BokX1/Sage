@@ -12,6 +12,8 @@ export type ChannelMessageSearchMode = 'semantic' | 'lexical' | 'regex';
 
 type MessageSearchRow = {
   messageId: string;
+  guildId: string | null;
+  channelId: string;
   authorId: string;
   authorDisplayName: string;
   authorIsBot: boolean;
@@ -22,6 +24,8 @@ type MessageSearchRow = {
 
 type MessageBaseRow = {
   messageId: string;
+  guildId: string | null;
+  channelId: string;
   authorId: string;
   authorDisplayName: string;
   authorIsBot: boolean;
@@ -37,6 +41,8 @@ type HistoryStatsRow = {
 
 export interface ChannelMessageSearchResult {
   messageId: string;
+  guildId: string | null;
+  channelId: string;
   authorId: string;
   authorDisplayName: string;
   authorIsBot: boolean;
@@ -80,6 +86,8 @@ function parseCount(value: number | bigint | string | null): number {
 function mapSearchRows(rows: MessageSearchRow[]): ChannelMessageSearchResult[] {
   return rows.map((row) => ({
     messageId: row.messageId,
+    guildId: row.guildId,
+    channelId: row.channelId,
     authorId: row.authorId,
     authorDisplayName: row.authorDisplayName,
     authorIsBot: !!row.authorIsBot,
@@ -185,6 +193,8 @@ export async function searchChannelMessagesLexical(params: {
   const rows = await prisma.$queryRaw<MessageSearchRow[]>`
     SELECT
       m."messageId",
+      m."guildId",
+      m."channelId",
       m."authorId",
       m."authorDisplayName",
       m."authorIsBot",
@@ -218,6 +228,8 @@ export async function searchChannelMessagesRegex(params: {
   const rows = await prisma.$queryRaw<MessageSearchRow[]>`
     SELECT
       m."messageId",
+      m."guildId",
+      m."channelId",
       m."authorId",
       m."authorDisplayName",
       m."authorIsBot",
@@ -255,6 +267,8 @@ export async function searchChannelMessagesSemantic(params: {
   const rows = await prisma.$queryRaw<MessageSearchRow[]>`
     SELECT
       m."messageId",
+      m."guildId",
+      m."channelId",
       m."authorId",
       m."authorDisplayName",
       m."authorIsBot",
@@ -313,6 +327,8 @@ export async function getChannelMessageWindowById(params: {
   const targets = await prisma.$queryRaw<MessageBaseRow[]>`
     SELECT
       m."messageId",
+      m."guildId",
+      m."channelId",
       m."authorId",
       m."authorDisplayName",
       m."authorIsBot",
@@ -333,6 +349,8 @@ export async function getChannelMessageWindowById(params: {
       ? await prisma.$queryRaw<MessageBaseRow[]>`
           SELECT
             m."messageId",
+            m."guildId",
+            m."channelId",
             m."authorId",
             m."authorDisplayName",
             m."authorIsBot",
@@ -351,6 +369,8 @@ export async function getChannelMessageWindowById(params: {
       ? await prisma.$queryRaw<MessageBaseRow[]>`
           SELECT
             m."messageId",
+            m."guildId",
+            m."channelId",
             m."authorId",
             m."authorDisplayName",
             m."authorIsBot",
@@ -368,6 +388,8 @@ export async function getChannelMessageWindowById(params: {
   const ordered = [...beforeRows.reverse(), target, ...afterRows];
   return ordered.map((row) => ({
     messageId: row.messageId,
+    guildId: row.guildId,
+    channelId: row.channelId,
     authorId: row.authorId,
     authorDisplayName: row.authorDisplayName,
     authorIsBot: !!row.authorIsBot,

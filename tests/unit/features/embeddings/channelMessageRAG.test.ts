@@ -54,6 +54,37 @@ describe('channelMessageRAG', () => {
     expect(limitParam).toBe(10);
   });
 
+  it('maps guildId and channelId onto lexical search results', async () => {
+    mockQueryRaw.mockResolvedValueOnce([
+      {
+        messageId: 'msg-1',
+        guildId: 'guild-1',
+        channelId: 'channel-1',
+        authorId: 'user-1',
+        authorDisplayName: 'User 1',
+        authorIsBot: false,
+        timestamp: '2024-01-01T00:00:00.000Z',
+        content: 'hello',
+        score: 0.75,
+      },
+    ]);
+
+    const rows = await searchChannelMessagesLexical({
+      guildId: 'guild-1',
+      channelId: 'channel-1',
+      query: 'hello',
+      topK: 1,
+    });
+
+    expect(rows).toEqual([
+      expect.objectContaining({
+        messageId: 'msg-1',
+        guildId: 'guild-1',
+        channelId: 'channel-1',
+      }),
+    ]);
+  });
+
   it('falls back to safe retention cap when configured DB cap is non-finite', async () => {
     mockConfig.MESSAGE_DB_MAX_MESSAGES_PER_CHANNEL = Number.NaN as unknown as number;
     mockQueryRaw.mockResolvedValueOnce([
@@ -80,6 +111,8 @@ describe('channelMessageRAG', () => {
     mockQueryRaw.mockResolvedValueOnce([
       {
         messageId: 'msg-1',
+        guildId: 'guild-1',
+        channelId: 'channel-1',
         authorId: 'user-1',
         authorDisplayName: 'User 1',
         authorIsBot: false,
@@ -100,6 +133,8 @@ describe('channelMessageRAG', () => {
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({
       messageId: 'msg-1',
+      guildId: 'guild-1',
+      channelId: 'channel-1',
       score: 1,
     });
   });
