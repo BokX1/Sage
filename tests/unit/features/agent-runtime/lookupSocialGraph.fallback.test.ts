@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { importFresh } from '../../../testkit/importFresh';
 
 const mockQuerySocialGraph = vi.hoisted(() => vi.fn());
 
@@ -8,13 +9,14 @@ vi.mock('@/features/social-graph/socialGraphQuery', () => ({
 
 describe('lookupSocialGraph fallback behavior', () => {
   beforeEach(() => {
+    vi.resetModules();
     vi.clearAllMocks();
   });
 
   it('returns unavailable when Memgraph query fails', async () => {
     mockQuerySocialGraph.mockRejectedValueOnce(new Error('memgraph unavailable'));
 
-    const { lookupSocialGraph } = await import('@/features/agent-runtime/toolIntegrations');
+    const { lookupSocialGraph } = await importFresh(() => import('@/features/agent-runtime/toolIntegrations'));
     const result = await lookupSocialGraph({
       guildId: 'guild-1',
       userId: 'user-a',
@@ -55,7 +57,7 @@ describe('lookupSocialGraph fallback behavior', () => {
       ],
     });
 
-    const { lookupSocialGraph } = await import('@/features/agent-runtime/toolIntegrations');
+    const { lookupSocialGraph } = await importFresh(() => import('@/features/agent-runtime/toolIntegrations'));
     const result = await lookupSocialGraph({
       guildId: 'guild-1',
       userId: 'user-a',

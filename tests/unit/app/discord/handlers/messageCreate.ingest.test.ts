@@ -62,10 +62,15 @@ vi.mock('@/platform/discord/client', () => ({
   client: mockClient,
 }));
 
-let handleMessageCreate: (message: Message) => Promise<void>;
-let resetInvocationCooldowns: () => void;
+import { config } from '@/platform/config/env';
+import {
+  __resetMessageCreateHandlerStateForTests,
+  handleMessageCreate,
+} from '@/app/discord/handlers/messageCreate';
+import { resetInvocationCooldowns } from '@/features/invocation/invocation-rate-limiter';
 
 let messageCounter = 0;
+const defaultMaxAttachmentsPerMessage = config.FILE_INGEST_MAX_ATTACHMENTS_PER_MESSAGE;
 
 function createMockMessage(overrides: Record<string, unknown> = {}): Message {
   messageCounter += 1;
@@ -115,14 +120,8 @@ async function flushMicrotasks(): Promise<void> {
 }
 
 describe('messageCreate - ingest + reply gating', () => {
-  beforeEach(async () => {
-    vi.resetModules();
-    const processedKey = Symbol.for('sage.handlers.messageCreate.processed');
-    const registrationKey = Symbol.for('sage.handlers.messageCreate.registered');
-    const g = globalThis as unknown as { [key: symbol]: unknown };
-    delete g[processedKey];
-    delete g[registrationKey];
-
+  beforeEach(() => {
+    __resetMessageCreateHandlerStateForTests();
     mockGenerateChatReply.mockReset();
     mockFetchAttachmentText.mockReset();
     mockIsRateLimited.mockReset();
@@ -145,11 +144,9 @@ describe('messageCreate - ingest + reply gating', () => {
     mockIngestAttachmentText.mockResolvedValue(undefined);
     mockUpsertIngestedAttachment.mockResolvedValue({ id: 'attachment-row-default' });
     mockQueueImageAttachmentRecall.mockReset();
-
-    ({ resetInvocationCooldowns } = await import('@/features/invocation/invocation-rate-limiter'));
+    config.FILE_INGEST_MAX_ATTACHMENTS_PER_MESSAGE = defaultMaxAttachmentsPerMessage;
+    messageCounter = 0;
     resetInvocationCooldowns();
-
-    ({ handleMessageCreate } = await import('@/app/discord/handlers/messageCreate'));
   });
 
   it('does not call generateChatReply for non-mention messages', async () => {
@@ -599,7 +596,6 @@ describe('messageCreate - ingest + reply gating', () => {
   });
 
   it('keeps uncached images out of the per-message file ingest cap', async () => {
-    const { config } = await import('@/platform/config/env');
     config.FILE_INGEST_MAX_ATTACHMENTS_PER_MESSAGE = 3;
     mockIsLoggingEnabled.mockReturnValue(false);
     mockFetchAttachmentText

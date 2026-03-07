@@ -39,6 +39,7 @@
 - Fixed attachment recall resilience and resend targeting: timed-out Florence cold starts no longer poison later retries, historical mixed-attachment rows no longer refresh to the wrong live file when resending, and uncached image uploads no longer consume per-message file-ingest slots in channels without persistent attachment caching.
 - Fixed Discord message citations from history/context lookups: channel-scoped raw-message results now expose `guildId` alongside `channelId`/`messageId`, and DM jump-link placeholders now use Discord’s `@me` token so generated message URLs resolve reliably.
 - Fixed the tracked docs gate for Pollinations auth setup docs: link validation now skips the interactive `enter.pollinations.ai/authorize` OAuth URL so `npm run check:docs` no longer fails on a login-only endpoint.
+- Fixed flaky trust-gate coverage around social-graph fallback and message-create ingest tests by resetting handler/module state explicitly instead of relying on slow or order-sensitive module reloads, making repeated/shuffled validation runs more reliable.
 
 ### Removed
 

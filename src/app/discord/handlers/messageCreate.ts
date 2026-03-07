@@ -831,6 +831,14 @@ export async function handleMessageCreate(message: Message) {
   }
 }
 
+export function __resetMessageCreateHandlerStateForTests(): void {
+  processedMessages.clear();
+  delete globalScope[registrationKey];
+  lastCleanupTime = Date.now();
+  cachedWakeWords = null;
+  cachedWakeWordPrefixes = null;
+}
+
 export function registerMessageCreateHandler() {
   const g = globalThis as GlobalScope;
   if (g[registrationKey]) {
