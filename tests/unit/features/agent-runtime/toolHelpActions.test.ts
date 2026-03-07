@@ -24,6 +24,7 @@ vi.mock('@/features/agent-runtime/toolIntegrations', () => ({
 }));
 
 import { ToolRegistry } from '../../../../src/features/agent-runtime/toolRegistry';
+import { discordTool } from '../../../../src/features/agent-runtime/discordTool';
 import { githubTool } from '../../../../src/features/agent-runtime/githubTool';
 import { webTool } from '../../../../src/features/agent-runtime/webTool';
 import { workflowTool } from '../../../../src/features/agent-runtime/workflowTool';
@@ -101,6 +102,41 @@ describe('tool help actions', () => {
     expect(payload.tool).toBe('workflow');
     expect(Array.isArray(payload.actions)).toBe(true);
     expect((payload.actions as string[]).includes('npm.github_code_search')).toBe(true);
+  });
+
+  it('discord help returns presentation guidance and raw REST access notes', async () => {
+    const registry = new ToolRegistry();
+    registry.register(discordTool);
+
+    const result = await registry.executeValidated(
+      {
+        name: 'discord',
+        args: { action: 'help' },
+      },
+      ctx,
+    );
+
+    expect(result.success).toBe(true);
+    if (!result.success) throw new Error(result.error);
+    const payload = result.result as Record<string, unknown>;
+    expect(payload.tool).toBe('discord');
+    expect((payload.actions as string[]).includes('messages.send')).toBe(true);
+    expect(payload.presentation_modes).toEqual(
+      expect.objectContaining({
+        plain: expect.any(String),
+        legacy_components: expect.any(String),
+        components_v2: expect.any(String),
+      }),
+    );
+    expect(payload.components_v2_blocks).toEqual(
+      expect.arrayContaining(['text', 'section', 'media_gallery', 'file', 'separator', 'action_row']),
+    );
+    expect(payload.raw_rest_access).toEqual(
+      expect.objectContaining({
+        non_admin_get: expect.any(String),
+        admin_write: expect.any(String),
+      }),
+    );
   });
 
   it('validation errors include a schema hint for known tools', async () => {

@@ -14,6 +14,16 @@ const CHANNEL_GUILD_CACHE_TTL_MS = 5 * 60 * 1000;
 const CHANNEL_GUILD_CACHE_MAX_ENTRIES = 512;
 const channelGuildCache = new Map<string, ChannelGuildCacheEntry>();
 const SENSITIVE_KEY_PATTERN = /(?:authorization|api[_-]?key|token|secret|password|cookie|session)/i;
+const NON_ADMIN_DISCORD_GET_BLOCKED_SEGMENTS = new Set([
+  'audit-logs',
+  'bans',
+  'invites',
+  'integrations',
+  'webhooks',
+  'followers',
+  'permissions',
+  'archived',
+]);
 
 function sanitizeDiscordRestString(value: string): string {
   return value
@@ -260,6 +270,42 @@ export async function assertDiscordRestRequestGuildScoped(params: {
   throw new Error(
     'Discord REST passthrough is restricted to guild-scoped routes. Allowed: /guilds/{guildId}/*, /channels/{channelId}/*, /stage-instances/{channelId}/*.',
   );
+}
+
+export function assertDiscordRestReadAllowedForNonAdmin(params: {
+  method: DiscordRestMethod | string;
+  path: string;
+}): void {
+  const method = String(params.method).trim().toUpperCase();
+  if (method !== 'GET') {
+    throw new Error('Non-admin Discord REST access is limited to GET requests.');
+  }
+
+  const segments = splitPathSegments(params.path);
+  const root = segments[0]?.toLowerCase();
+  if (!root) {
+    throw new Error('Discord REST path must not be empty.');
+  }
+
+  const blockedSegment = segments.find((segment, index) => {
+    if (index < 2) return false;
+    return NON_ADMIN_DISCORD_GET_BLOCKED_SEGMENTS.has(segment.toLowerCase());
+  });
+  if (blockedSegment) {
+    throw new Error(
+      `Non-admin Discord REST reads cannot access /${blockedSegment} routes. Prefer typed Discord actions or admin review for this data.`,
+    );
+  }
+
+  if (root === 'guilds') {
+    return;
+  }
+
+  if (root === 'channels' || root === 'stage-instances') {
+    return;
+  }
+
+  throw new Error('Non-admin Discord REST reads are restricted to guild-scoped guild/channel/stage routes.');
 }
 
 export async function discordRestRequestGuildScoped(params: {

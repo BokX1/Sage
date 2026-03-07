@@ -20,6 +20,8 @@ import {
   lookupUserMessageTimeline,
 } from './toolIntegrations';
 import {
+  discordComponentsV2MessageSchema,
+  discordLegacyInteractiveMessageSchema,
   discordModerationActionRequestSchema,
   requestDiscordAdminActionForTool,
   requestDiscordInteractionForTool,
@@ -29,7 +31,10 @@ import {
   requestDiscordRestWriteForTool,
   type DiscordRestWriteRequest,
 } from '../../features/admin/adminActionService';
-import { discordRestRequestGuildScoped } from '../../platform/discord/discordRestPolicy';
+import {
+  assertDiscordRestReadAllowedForNonAdmin,
+  discordRestRequestGuildScoped,
+} from '../../platform/discord/discordRestPolicy';
 import { config } from '../../platform/config/env';
 import {
   DISCORD_ACTION_CATALOG,
@@ -339,19 +344,129 @@ const discordToolSchema = z.discriminatedUnion('action', [
 
   z.object({
     think: requiredThinkField,
-    action: z.literal('messages.send').describe('Send a new message with text or files to a channel.'),
+    action: z.literal('messages.send').describe('Send a new message to a channel as plain text, legacy interactive UI, or a constrained Components V2 layout.'),
     channelId: z.string().trim().min(1).max(64).optional(),
+    presentation: z.enum(['plain', 'legacy_components', 'components_v2']).optional(),
     content: z.string().trim().min(1).max(8_000).optional(),
     files: z.array(discordMessageFileInputSchema).min(1).max(4).optional(),
+    legacyComponents: discordLegacyInteractiveMessageSchema.optional(),
+    componentsV2: discordComponentsV2MessageSchema.optional(),
     reason: z.string().trim().max(500).optional(),
   }).superRefine((value, ctx) => {
+    const presentation = value.presentation ?? 'plain';
     const hasContent = value.content !== undefined;
     const hasFiles = Boolean(value.files?.length);
-    if (!hasContent && !hasFiles) {
+    const attachmentNames = new Set((value.files ?? []).map((file) => file.filename));
+
+    if (presentation === 'plain') {
+      if (!hasContent && !hasFiles) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'messages.send requires content or files.',
+        });
+      }
+      if (value.legacyComponents) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'legacyComponents is only valid when presentation=legacy_components.',
+          path: ['legacyComponents'],
+        });
+      }
+      if (value.componentsV2) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'componentsV2 is only valid when presentation=components_v2.',
+          path: ['componentsV2'],
+        });
+      }
+      return;
+    }
+
+    if (presentation === 'legacy_components') {
+      if (!hasContent) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'messages.send with presentation=legacy_components requires content.',
+          path: ['content'],
+        });
+      }
+      if (hasFiles) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'messages.send with presentation=legacy_components does not support files.',
+          path: ['files'],
+        });
+      }
+      if (!value.legacyComponents) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'messages.send with presentation=legacy_components requires legacyComponents.',
+          path: ['legacyComponents'],
+        });
+      }
+      if (value.componentsV2) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'componentsV2 is only valid when presentation=components_v2.',
+          path: ['componentsV2'],
+        });
+      }
+      return;
+    }
+
+    if (hasContent) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: 'messages.send requires content or files.',
+        message: 'messages.send with presentation=components_v2 must not include content.',
+        path: ['content'],
       });
+    }
+    if (value.legacyComponents) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'legacyComponents is only valid when presentation=legacy_components.',
+        path: ['legacyComponents'],
+      });
+    }
+    if (!value.componentsV2) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'messages.send with presentation=components_v2 requires componentsV2.',
+        path: ['componentsV2'],
+      });
+      return;
+    }
+
+    for (const [blockIndex, block] of value.componentsV2.blocks.entries()) {
+      if (block.type === 'file' && !attachmentNames.has(block.attachmentName)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `componentsV2 file block references unknown attachment "${block.attachmentName}".`,
+          path: ['componentsV2', 'blocks', blockIndex, 'attachmentName'],
+        });
+      }
+      if (block.type === 'section' && block.accessory.type === 'thumbnail') {
+        const attachmentName = block.accessory.media.attachmentName;
+        if (attachmentName && !attachmentNames.has(attachmentName)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `componentsV2 section thumbnail references unknown attachment "${attachmentName}".`,
+            path: ['componentsV2', 'blocks', blockIndex, 'accessory', 'media', 'attachmentName'],
+          });
+        }
+      }
+      if (block.type === 'media_gallery') {
+        for (const [itemIndex, item] of block.items.entries()) {
+          const attachmentName = item.media.attachmentName;
+          if (attachmentName && !attachmentNames.has(attachmentName)) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: `componentsV2 media gallery item references unknown attachment "${attachmentName}".`,
+              path: ['componentsV2', 'blocks', blockIndex, 'items', itemIndex, 'media', 'attachmentName'],
+            });
+          }
+        }
+      }
     }
   }),
 
@@ -683,7 +798,8 @@ export const discordTool: ToolDefinition<DiscordToolArgs> = {
   name: 'discord',
   description:
     [
-      'Unified Discord tool for Sage: memory, retrieval, safe interactions, moderation queue, and admin-only API passthrough.',
+      'Unified Discord tool for Sage: memory, retrieval, safe interactions, rich message delivery, moderation queue, and scoped Discord API fallback.',
+      'This is Sage’s primary Discord-native operating surface for server memory, channel actions, richer message presentation, and Discord API reads when typed actions do not cover the job.',
       '<USE_ONLY_WHEN> You need to read or change Discord state, or query Sage’s Discord-backed memory (summaries/files/messages/social graph/voice analytics). </USE_ONLY_WHEN>',
       'Safety: See <execution_rules> for full guardrails. If unsure which action or fields to use, call discord action help.',
     ].join('\n'),
@@ -702,14 +818,32 @@ export const discordTool: ToolDefinition<DiscordToolArgs> = {
           write_actions: [...DISCORD_ACTION_CATALOG.writes],
           admin_only_actions: [...DISCORD_ACTION_CATALOG.admin_only],
           guardrails: [...DISCORD_GUARDRAILS],
+          presentation_modes: {
+            plain: 'Short conversational replies, simple updates, or file sends with no richer layout.',
+            legacy_components: 'Content plus a small link-button row when a full Components V2 layout is unnecessary.',
+            components_v2: 'Structured briefings, grouped evidence, media/file presentation, status blocks, or guided next actions.',
+          },
+          components_v2_blocks: ['text', 'section', 'media_gallery', 'file', 'separator', 'action_row'],
+          routing_preferences: [
+            'Prefer typed Discord actions first for common tasks, especially messages.send for final replies inside Discord.',
+            'Use discord.api as a fallback for unsupported Discord reads or advanced admin operations.',
+            'Do not use discord.api for normal message sending now that messages.send supports plain, legacy interactive, and Components V2 replies.',
+            'If messages.send already delivered the final answer, do not duplicate the same response in a normal assistant reply.',
+          ],
+          raw_rest_access: {
+            non_admin_get: 'Allowed only for safe guild-scoped GET routes under policy.',
+            admin_write: 'Non-GET requests remain admin-only and approval-gated.',
+          },
           notes: [
             'Some actions require a guild context.',
             'Time-windowed message search: use sinceHours/sinceDays (relative) or sinceIso/untilIso (absolute) on messages.search_* actions.',
             'Server-wide file actions and API calls are disabled in autopilot turns.',
             'API passthrough is guild-scoped (active guild only).',
+            'Non-admin discord.api calls are limited to safe guild-scoped GET routes.',
             'Non-GET API requests require admin approval.',
             'Direct /webhooks/* routes and bot-wide endpoints (for example /users/@me) are blocked.',
             'API results redact sensitive fields (tokens/secrets).',
+            'messages.send presentation=components_v2 currently supports blocks: text, section, media_gallery, file, separator, action_row.',
             'The think field is optional; omit it to reduce tool-call verbosity.',
           ],
         };
@@ -1021,8 +1155,11 @@ export const discordTool: ToolDefinition<DiscordToolArgs> = {
           request: {
             action: 'send_message',
             channelId,
+            presentation: args.presentation,
             content: args.content,
             files: args.files,
+            legacyComponents: args.legacyComponents,
+            componentsV2: args.componentsV2,
             reason: args.reason,
           },
         });
@@ -1359,11 +1496,16 @@ export const discordTool: ToolDefinition<DiscordToolArgs> = {
       }
 
       case 'discord.api': {
-        assertAdmin(ctx.invokerIsAdmin);
         assertNotAutopilot(ctx.invokedBy, 'discord.api');
         requireGuildContext(ctx.guildId);
 
         if (args.method === 'GET') {
+          if (!ctx.invokerIsAdmin) {
+            assertDiscordRestReadAllowedForNonAdmin({
+              method: args.method,
+              path: args.path,
+            });
+          }
           if (args.files?.length) {
             throw new Error('discord.api GET requests cannot include files.');
           }
@@ -1378,6 +1520,7 @@ export const discordTool: ToolDefinition<DiscordToolArgs> = {
           });
         }
 
+        assertAdmin(ctx.invokerIsAdmin);
         return requestDiscordRestWriteForTool({
           guildId: ctx.guildId!,
           channelId: ctx.channelId,

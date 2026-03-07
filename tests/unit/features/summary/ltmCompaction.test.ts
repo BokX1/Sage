@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mockStore = vi.hoisted(() => ({
   listActiveProfiles: vi.fn(),
@@ -57,6 +57,10 @@ describe('ltmCompaction', () => {
       actionItems: [],
       glossary: {},
     });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it('computes ISO weeks with UTC boundaries', () => {

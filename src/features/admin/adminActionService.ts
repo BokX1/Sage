@@ -7,9 +7,25 @@ import {
   Guild,
   GuildBasedChannel,
   GuildMember,
+  MessageFlags,
   PermissionsBitField,
   ThreadAutoArchiveDuration,
 } from 'discord.js';
+import {
+  ButtonStyle as ApiButtonStyle,
+  ComponentType,
+  type APIActionRowComponent,
+  type APIButtonComponent,
+  type APIContainerComponent,
+  type APIFileComponent,
+  type APIMediaGalleryComponent,
+  type APIMessageTopLevelComponent,
+  type APISectionComponent,
+  type APISeparatorComponent,
+  SeparatorSpacingSize,
+  type APITextDisplayComponent,
+  type APIThumbnailComponent,
+} from 'discord-api-types/payloads/v10';
 import { z } from 'zod';
 import {
   createPendingAdminAction,
@@ -134,20 +150,221 @@ const sendMessageFileInputSchema = z.object({
   source: sendMessageFileSourceSchema,
 });
 
+const messageLinkButtonSchema = z.object({
+  label: z.string().trim().min(1).max(80),
+  url: z.string().trim().url().max(2_048),
+});
+
+const componentsV2MediaRefSchema = z.object({
+  url: z.string().trim().url().max(2_048).optional(),
+  attachmentName: z.string().trim().min(1).max(255).optional(),
+}).superRefine((value, ctx) => {
+  const count = Number(value.url !== undefined) + Number(value.attachmentName !== undefined);
+  if (count !== 1) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Provide exactly one of url or attachmentName.',
+    });
+  }
+});
+
+const componentsV2ThumbnailAccessorySchema = z.object({
+  type: z.literal('thumbnail'),
+  media: componentsV2MediaRefSchema,
+  description: z.string().trim().max(1_024).optional(),
+  spoiler: z.boolean().optional(),
+});
+
+const componentsV2LinkButtonAccessorySchema = z.object({
+  type: z.literal('link_button'),
+  button: messageLinkButtonSchema,
+});
+
+const componentsV2TextBlockSchema = z.object({
+  type: z.literal('text'),
+  content: z.string().trim().min(1).max(4_000),
+});
+
+const componentsV2SectionBlockSchema = z.object({
+  type: z.literal('section'),
+  texts: z.array(z.string().trim().min(1).max(2_000)).min(1).max(3),
+  accessory: z.union([componentsV2ThumbnailAccessorySchema, componentsV2LinkButtonAccessorySchema]),
+});
+
+const componentsV2MediaGalleryBlockSchema = z.object({
+  type: z.literal('media_gallery'),
+  items: z.array(z.object({
+    media: componentsV2MediaRefSchema,
+    description: z.string().trim().max(1_024).optional(),
+    spoiler: z.boolean().optional(),
+  })).min(1).max(10),
+});
+
+const componentsV2FileBlockSchema = z.object({
+  type: z.literal('file'),
+  attachmentName: z.string().trim().min(1).max(255),
+  spoiler: z.boolean().optional(),
+});
+
+const componentsV2SeparatorBlockSchema = z.object({
+  type: z.literal('separator'),
+  divider: z.boolean().optional(),
+  spacing: z.enum(['small', 'large']).optional(),
+});
+
+const legacyOrComponentsButtonsSchema = z.array(messageLinkButtonSchema).min(1).max(5);
+
+const componentsV2ActionRowBlockSchema = z.object({
+  type: z.literal('action_row'),
+  buttons: legacyOrComponentsButtonsSchema,
+});
+
+const componentsV2BlockSchema = z.discriminatedUnion('type', [
+  componentsV2TextBlockSchema,
+  componentsV2SectionBlockSchema,
+  componentsV2MediaGalleryBlockSchema,
+  componentsV2FileBlockSchema,
+  componentsV2SeparatorBlockSchema,
+  componentsV2ActionRowBlockSchema,
+]);
+
+export const discordLegacyInteractiveMessageSchema = z.object({
+  buttons: legacyOrComponentsButtonsSchema,
+});
+
+export const discordComponentsV2MessageSchema = z.object({
+  accentColorHex: z.string().trim().regex(/^#?[0-9a-fA-F]{6}$/).optional(),
+  spoiler: z.boolean().optional(),
+  blocks: z.array(componentsV2BlockSchema).min(1).max(10),
+});
+
+export type DiscordComponentsV2Message = z.infer<typeof discordComponentsV2MessageSchema>;
+export type DiscordLegacyInteractiveMessage = z.infer<typeof discordLegacyInteractiveMessageSchema>;
+
 const sendMessageRequestSchema = z.object({
   action: z.literal('send_message'),
   channelId: z.string().trim().min(1).max(64),
+  presentation: z.enum(['plain', 'legacy_components', 'components_v2']).optional(),
   content: z.string().trim().min(1).max(8_000).optional(),
   files: z.array(sendMessageFileInputSchema).min(1).max(4).optional(),
+  legacyComponents: discordLegacyInteractiveMessageSchema.optional(),
+  componentsV2: discordComponentsV2MessageSchema.optional(),
   reason: z.string().trim().max(500).optional(),
 }).superRefine((value, ctx) => {
+  const presentation = value.presentation ?? 'plain';
   const hasContent = value.content !== undefined;
   const hasFiles = Boolean(value.files?.length);
-  if (!hasContent && !hasFiles) {
+  const attachmentNames = new Set((value.files ?? []).map((file) => file.filename));
+
+  if (presentation === 'plain') {
+    if (!hasContent && !hasFiles) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'send_message requires content or files.',
+      });
+    }
+    if (value.legacyComponents) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'legacyComponents is only valid when presentation=legacy_components.',
+        path: ['legacyComponents'],
+      });
+    }
+    if (value.componentsV2) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'componentsV2 is only valid when presentation=components_v2.',
+        path: ['componentsV2'],
+      });
+    }
+    return;
+  }
+
+  if (presentation === 'legacy_components') {
+    if (!hasContent) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'legacy_components requires content.',
+        path: ['content'],
+      });
+    }
+    if (hasFiles) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'legacy_components does not support files.',
+        path: ['files'],
+      });
+    }
+    if (!value.legacyComponents) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'legacy_components requires legacyComponents.',
+        path: ['legacyComponents'],
+      });
+    }
+    if (value.componentsV2) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'componentsV2 is only valid when presentation=components_v2.',
+        path: ['componentsV2'],
+      });
+    }
+    return;
+  }
+
+  if (hasContent) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
-      message: 'send_message requires content or files.',
+      message: 'components_v2 messages must not include content.',
+      path: ['content'],
     });
+  }
+  if (value.legacyComponents) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'legacyComponents is only valid when presentation=legacy_components.',
+      path: ['legacyComponents'],
+    });
+  }
+  if (!value.componentsV2) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'components_v2 requires componentsV2.',
+      path: ['componentsV2'],
+    });
+    return;
+  }
+
+  for (const [blockIndex, block] of value.componentsV2.blocks.entries()) {
+    if (block.type === 'file' && !attachmentNames.has(block.attachmentName)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `componentsV2 file block references unknown attachment "${block.attachmentName}".`,
+        path: ['componentsV2', 'blocks', blockIndex, 'attachmentName'],
+      });
+    }
+    if (block.type === 'section' && block.accessory?.type === 'thumbnail') {
+      const attachmentName = block.accessory.media.attachmentName;
+      if (attachmentName && !attachmentNames.has(attachmentName)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `componentsV2 section thumbnail references unknown attachment "${attachmentName}".`,
+          path: ['componentsV2', 'blocks', blockIndex, 'accessory', 'media', 'attachmentName'],
+        });
+      }
+    }
+    if (block.type === 'media_gallery') {
+      for (const [itemIndex, item] of block.items.entries()) {
+        const attachmentName = item.media.attachmentName;
+        if (attachmentName && !attachmentNames.has(attachmentName)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `componentsV2 media gallery item references unknown attachment "${attachmentName}".`,
+            path: ['componentsV2', 'blocks', blockIndex, 'items', itemIndex, 'media', 'attachmentName'],
+          });
+        }
+      }
+    }
   }
 });
 
@@ -725,6 +942,140 @@ function buildJsonPreviewForDisplay(value: unknown, maxChars: number): { text: s
   return truncateWithFlag(json, maxChars);
 }
 
+type SendMessageRequest = z.infer<typeof sendMessageRequestSchema>;
+
+function parseAccentColorHex(value: string | undefined): number | undefined {
+  const trimmed = value?.trim();
+  if (!trimmed) return undefined;
+  const normalized = trimmed.startsWith('#') ? trimmed.slice(1) : trimmed;
+  return Number.parseInt(normalized, 16);
+}
+
+function toAttachmentUrl(name: string): string {
+  return `attachment://${name}`;
+}
+
+function toMediaUrl(media: z.infer<typeof componentsV2MediaRefSchema>): string {
+  return media.attachmentName ? toAttachmentUrl(media.attachmentName) : media.url!;
+}
+
+function buildLinkButtonComponent(
+  button: z.infer<typeof messageLinkButtonSchema>,
+): APIButtonComponent {
+  return {
+    type: ComponentType.Button,
+    style: ApiButtonStyle.Link,
+    label: button.label,
+    url: button.url,
+  };
+}
+
+function buildLegacyActionRows(
+  payload: DiscordLegacyInteractiveMessage,
+): Array<ActionRowBuilder<ButtonBuilder>> {
+  const row = new ActionRowBuilder<ButtonBuilder>();
+  for (const button of payload.buttons) {
+    row.addComponents(
+      new ButtonBuilder()
+        .setStyle(ButtonStyle.Link)
+        .setLabel(button.label)
+        .setURL(button.url),
+    );
+  }
+  return [row];
+}
+
+function renderComponentsV2Block(
+  block: z.infer<typeof componentsV2BlockSchema>,
+): APIContainerComponent['components'][number] {
+  switch (block.type) {
+    case 'text':
+      return {
+        type: ComponentType.TextDisplay,
+        content: block.content,
+      } satisfies APITextDisplayComponent;
+    case 'section': {
+      const section: APISectionComponent = {
+        type: ComponentType.Section,
+        components: block.texts.map((text) => ({
+          type: ComponentType.TextDisplay,
+          content: text,
+        })) satisfies APITextDisplayComponent[],
+        accessory: block.accessory.type === 'thumbnail'
+          ? {
+              type: ComponentType.Thumbnail,
+              media: { url: toMediaUrl(block.accessory.media) },
+              description: block.accessory.description ?? undefined,
+              spoiler: block.accessory.spoiler ?? false,
+            } satisfies APIThumbnailComponent
+          : buildLinkButtonComponent(block.accessory.button),
+      };
+      return section;
+    }
+    case 'media_gallery':
+      return {
+        type: ComponentType.MediaGallery,
+        items: block.items.map((item) => ({
+          media: { url: toMediaUrl(item.media) },
+          description: item.description ?? undefined,
+          spoiler: item.spoiler ?? false,
+        })),
+      } satisfies APIMediaGalleryComponent;
+    case 'file':
+      return {
+        type: ComponentType.File,
+        file: { url: toAttachmentUrl(block.attachmentName) },
+        spoiler: block.spoiler ?? false,
+      } satisfies APIFileComponent;
+    case 'separator':
+      return {
+        type: ComponentType.Separator,
+        divider: block.divider ?? true,
+        spacing: block.spacing === 'large' ? SeparatorSpacingSize.Large : SeparatorSpacingSize.Small,
+      } satisfies APISeparatorComponent;
+    case 'action_row':
+      return {
+        type: ComponentType.ActionRow,
+        components: block.buttons.map((button) => buildLinkButtonComponent(button)),
+      } satisfies APIActionRowComponent<APIButtonComponent>;
+  }
+}
+
+export function buildDiscordComponentsV2MessagePayload(params: {
+  message: DiscordComponentsV2Message;
+  files?: Array<z.infer<typeof sendMessageFileInputSchema>>;
+}): {
+  flags: MessageFlags;
+  components: APIMessageTopLevelComponent[];
+  attachments?: Array<{ id: number; filename: string }>;
+} {
+  const components = params.message.blocks.map((block) => renderComponentsV2Block(block));
+  const attachments = params.files?.map((file, index) => ({
+    id: index,
+    filename: file.filename,
+  }));
+
+  if (params.message.accentColorHex || params.message.spoiler) {
+    const container: APIContainerComponent = {
+      type: ComponentType.Container,
+      accent_color: parseAccentColorHex(params.message.accentColorHex) ?? undefined,
+      spoiler: params.message.spoiler ?? false,
+      components,
+    };
+    return {
+      flags: MessageFlags.IsComponentsV2,
+      components: [container],
+      attachments: attachments && attachments.length > 0 ? attachments : undefined,
+    };
+  }
+
+  return {
+    flags: MessageFlags.IsComponentsV2,
+    components: components as APIMessageTopLevelComponent[],
+    attachments: attachments && attachments.length > 0 ? attachments : undefined,
+  };
+}
+
 function truncateDiscordMessage(value: string, maxChars = 1900): string {
   if (value.length <= maxChars) return value;
   const truncated = truncateWithFlag(value, maxChars);
@@ -918,10 +1269,109 @@ async function executeImmediateDiscordAction(params: {
     }
 
     const messageIds: string[] = [];
+    let sendAction: SendMessageRequest = params.action;
 
-    const files = params.action.files?.length ? params.action.files : [];
-    const chunks = params.action.content?.trim().length
-      ? smartSplit(params.action.content, 2000)
+    const files = sendAction.files?.map((file) => ({
+      filename: file.filename,
+      contentType: file.contentType,
+      source: file.source,
+    } satisfies DiscordRestFileInput)) ?? [];
+
+    if ((sendAction.presentation ?? 'plain') === 'components_v2') {
+      const payload = buildDiscordComponentsV2MessagePayload({
+        message: sendAction.componentsV2!,
+        files: sendAction.files,
+      });
+      const restResponse = await discordRestRequest({
+        method: 'POST',
+        path: `/channels/${channel.id}/messages`,
+        body: {
+          flags: payload.flags,
+          components: payload.components,
+          attachments: payload.attachments,
+          allowed_mentions: { parse: [] },
+        },
+        files,
+        reason: sendAction.reason,
+      });
+
+      if (!restResponse.ok) {
+        logger.warn(
+          {
+            guildId: params.guildId,
+            channelId: channel.id,
+            requestedBy: params.requestedBy,
+            status: restResponse.status,
+            statusText: restResponse.statusText,
+          },
+          'Components V2 send failed; retrying as plain text fallback',
+        );
+
+        const fallbackText = sendAction.componentsV2!.blocks
+          .flatMap((block) => {
+            switch (block.type) {
+              case 'text':
+                return [block.content];
+              case 'section':
+                return block.texts;
+              case 'media_gallery':
+                return block.items
+                  .map((item) => item.description?.trim())
+                  .filter((item): item is string => !!item);
+              case 'file':
+                return [`Attached file: ${block.attachmentName}`];
+              default:
+                return [];
+            }
+          })
+          .join('\n\n')
+          .trim();
+
+        sendAction = {
+          ...sendAction,
+          presentation: 'plain',
+          content: fallbackText || 'Shared a structured update.',
+        };
+      } else {
+        const messageId = (
+          restResponse.data &&
+          typeof restResponse.data === 'object' &&
+          !Array.isArray(restResponse.data) &&
+          typeof (restResponse.data as Record<string, unknown>).id === 'string'
+        )
+          ? (restResponse.data as Record<string, unknown>).id as string
+          : null;
+        if (messageId) messageIds.push(messageId);
+
+        return {
+          status: 'executed',
+          action: 'send_message',
+          channelId: channel.id,
+          messageIds,
+          presentation: 'components_v2',
+        };
+      }
+    }
+
+    if ((sendAction.presentation ?? 'plain') === 'legacy_components') {
+      const sent = await channel.send({
+        content: sendAction.content!,
+        allowedMentions: { parse: [] },
+        components: buildLegacyActionRows(sendAction.legacyComponents!),
+      });
+      messageIds.push(sent.id);
+
+      return {
+        status: 'executed',
+        action: 'send_message',
+        channelId: channel.id,
+        messageIds,
+        presentation: 'legacy_components',
+      };
+    }
+
+    const chunks = sendAction.content?.trim().length
+      ? smartSplit(sendAction.content, 2000)
       : [];
 
     if (files.length > 0) {
@@ -937,12 +1387,8 @@ async function executeImmediateDiscordAction(params: {
             filename: file.filename,
           })),
         },
-        files: files.map((file) => ({
-          filename: file.filename,
-          contentType: file.contentType,
-          source: file.source,
-        } satisfies DiscordRestFileInput)),
-        reason: params.action.reason,
+        files,
+        reason: sendAction.reason,
       });
 
       if (!restResponse.ok) {
@@ -972,6 +1418,7 @@ async function executeImmediateDiscordAction(params: {
       action: 'send_message',
       channelId: channel.id,
       messageIds,
+      presentation: sendAction.presentation ?? 'plain',
     };
   }
 

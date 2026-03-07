@@ -26,6 +26,9 @@
 
 ### Changed
 
+- Recast Sage’s in-product runtime identity around a guild-native “strategist-host” role, sharpening its Discord channel etiquette, server-context awareness, and richer Discord-native presentation guidance so operators get responses that better fit live server workflows instead of generic assistant behavior.
+- Expanded Sage’s Discord operating contract so the prompt and `discord` tool now explicitly teach when to use `messages.send` presentation modes versus raw Discord REST, while opening safe guild-scoped `discord.api` GET reads to non-admin turns and keeping mutating REST calls admin-gated.
+- Condensed Sage’s runtime prompt stack so the base persona and tool-guidance layers carry fewer duplicated rules, preserve the stable `<execution_rules>`/`<agent_state>` contract, clarify that tool `think` fields are optional, and align reply-length guidance with the existing automatic Discord message splitting behavior.
 - Reorganized the codebase into a feature-first layout under `src/app`, `src/features`, `src/platform`, `src/shared`, and `src/cli`, mirrored the new ownership model across `tests/**`, and moved the self-hosted social-graph stack to `config/services/self-host/` plus `services/social-graph/` so operators and contributors can navigate runtime, tooling, and service assets with one consistent structure while keeping existing npm entrypoints stable.
 - Realigned the tracked documentation with the current single-agent runtime, tool catalog, invite flow, config surface, and compose stacks, removing stale hosted-bot, Ollama, and legacy social-graph automation guidance so operators can follow the checked-in docs without code drift.
 - Reorganized tracked config and CI automation around `config/tooling/`, `config/services/`, reusable GitHub Actions gates, pinned Pages actions, and repo-owned Husky/docs scripts, reducing workflow drift and making local and CI validation use the same commands.
@@ -47,6 +50,7 @@
 
 ### Added
 
+- Added validated `messages.send` presentation modes for plain text, legacy interactive replies, and constrained Discord Components V2 layouts, including runtime rendering, attachment-aware schema checks, and safe fallback back to plain text when a Components V2 send cannot be delivered.
 - Added broader Discord vision image detection (stickers, embed images, and direct image URLs) and a default prompt for image-only invocations (mention/wakeword with no text).
 
 - Added explicit exact UTC date and time injection (`current_time_utc`) permanently into the `<agent_state>` XML payload. The agent runtime is now strictly temporally aware at boot, eliminating training-cutoff date hallucination issues without requiring a tool call.

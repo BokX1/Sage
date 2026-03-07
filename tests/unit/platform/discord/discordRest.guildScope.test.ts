@@ -1,6 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { stubFetch, type FetchMock } from '../../../testkit/fetch';
-import { discordRestRequestGuildScoped } from '@/platform/discord/discordRestPolicy';
+import {
+  assertDiscordRestReadAllowedForNonAdmin,
+  discordRestRequestGuildScoped,
+} from '@/platform/discord/discordRestPolicy';
 
 function makeHeaders(values: Record<string, string>): { get: (name: string) => string | null } {
   const lower = new Map<string, string>();
@@ -296,5 +299,46 @@ describe('discordRestRequestGuildScoped', () => {
         data: [{ id: 'wh-1', token: '[REDACTED]' }],
       }),
     );
+  });
+
+  it('allows safe non-admin guild-scoped GET reads', () => {
+    expect(() =>
+      assertDiscordRestReadAllowedForNonAdmin({
+        method: 'GET',
+        path: '/channels/channel-1/messages/message-1',
+      }),
+    ).not.toThrow();
+
+    expect(() =>
+      assertDiscordRestReadAllowedForNonAdmin({
+        method: 'GET',
+        path: '/guilds/guild-1/roles',
+      }),
+    ).not.toThrow();
+  });
+
+  it('blocks non-admin GET reads for sensitive route families', () => {
+    expect(() =>
+      assertDiscordRestReadAllowedForNonAdmin({
+        method: 'GET',
+        path: '/guilds/guild-1/audit-logs',
+      }),
+    ).toThrow(/non-admin/i);
+
+    expect(() =>
+      assertDiscordRestReadAllowedForNonAdmin({
+        method: 'GET',
+        path: '/channels/channel-1/webhooks',
+      }),
+    ).toThrow(/non-admin/i);
+  });
+
+  it('blocks non-admin non-GET requests', () => {
+    expect(() =>
+      assertDiscordRestReadAllowedForNonAdmin({
+        method: 'PATCH',
+        path: '/channels/channel-1/messages/message-1',
+      }),
+    ).toThrow(/get/i);
   });
 });

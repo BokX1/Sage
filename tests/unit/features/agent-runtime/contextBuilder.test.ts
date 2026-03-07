@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildContextMessages } from '@/features/agent-runtime/contextBuilder';
+import { buildContextMessages } from '../../../../src/features/agent-runtime/contextBuilder';
 
 function getSystemContent(messages: ReturnType<typeof buildContextMessages>): string {
   const content = messages[0]?.content;

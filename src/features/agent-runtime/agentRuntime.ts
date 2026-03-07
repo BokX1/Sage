@@ -80,7 +80,7 @@ function buildToolProtocolInstruction(toolNames: string[]): string {
     'FORMAT: When calling tools, output ONLY valid JSON (no markdown wrapping):',
     '{"type": "tool_calls", "calls": [{"name": "<tool_name>", "args": {...}}]}',
     '',
-    'After gathering sufficient data, respond in plain text.',
+    'After gathering sufficient data, either respond in plain text or use the appropriate Discord self-send action when the runtime guidance tells you to deliver the final answer through Discord.',
     'If no tool is needed, answer normally in plain text.',
     '',
     'Behavioral rules (batching, tool selection, guardrails) are in <execution_rules> and <tool_selection_guide>.',

@@ -1,5 +1,5 @@
 import type { Message, TextChannel, User } from 'discord.js';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { mockGenerateChatReply, mockClient, mockFetchAttachmentText } = vi.hoisted(() => {
   const mockGenerateChatReply = vi.fn();
@@ -147,6 +147,10 @@ describe('messageCreate - ingest + reply gating', () => {
     config.FILE_INGEST_MAX_ATTACHMENTS_PER_MESSAGE = defaultMaxAttachmentsPerMessage;
     messageCounter = 0;
     resetInvocationCooldowns();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it('does not call generateChatReply for non-mention messages', async () => {

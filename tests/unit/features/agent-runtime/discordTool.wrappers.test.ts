@@ -4,6 +4,7 @@ import { config } from '@/platform/config/env';
 
 const mocks = vi.hoisted(() => ({
   requestDiscordRestWriteForTool: vi.fn(),
+  discordRestRequestGuildScoped: vi.fn(),
 }));
 
 vi.mock('@/features/admin/adminActionService', async (importOriginal) => {
@@ -11,6 +12,14 @@ vi.mock('@/features/admin/adminActionService', async (importOriginal) => {
   return {
     ...actual,
     requestDiscordRestWriteForTool: mocks.requestDiscordRestWriteForTool,
+  };
+});
+
+vi.mock('@/platform/discord/discordRestPolicy', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/platform/discord/discordRestPolicy')>();
+  return {
+    ...actual,
+    discordRestRequestGuildScoped: mocks.discordRestRequestGuildScoped,
   };
 });
 
@@ -30,6 +39,11 @@ describe('discord tool typed REST wrappers', () => {
     mocks.requestDiscordRestWriteForTool.mockReset().mockResolvedValue({
       status: 'pending_approval',
       actionId: 'action-1',
+    });
+    mocks.discordRestRequestGuildScoped.mockReset().mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: { id: 'message-1' },
     });
   });
 
@@ -146,5 +160,48 @@ describe('discord tool typed REST wrappers', () => {
     expect(url.searchParams.get('client_id')).toBe(config.DISCORD_APP_ID.trim());
     expect(url.searchParams.get('scope')).toBe('bot applications.commands');
     expect(url.searchParams.get('permissions')).toBe('0');
+  });
+
+  it('allows non-admin discord.api GET requests for safe guild-scoped reads', async () => {
+    const result = await discordTool.execute(
+      {
+        action: 'discord.api',
+        method: 'GET',
+        path: '/channels/channel-1/messages/message-1',
+      },
+      {
+        traceId: 'trace',
+        userId: 'user-1',
+        channelId: 'channel-1',
+        guildId: 'guild-1',
+        invokedBy: 'mention',
+        invokerIsAdmin: false,
+      },
+    );
+
+    expect(result).toEqual(expect.objectContaining({ ok: true }));
+    expect(mocks.discordRestRequestGuildScoped).toHaveBeenCalledTimes(1);
+    expect(mocks.requestDiscordRestWriteForTool).toHaveBeenCalledTimes(0);
+  });
+
+  it('blocks non-admin discord.api writes', async () => {
+    await expect(
+      discordTool.execute(
+        {
+          action: 'discord.api',
+          method: 'PATCH',
+          path: '/channels/channel-1/messages/message-1',
+          body: { content: 'Updated' },
+        },
+        {
+          traceId: 'trace',
+          userId: 'user-1',
+          channelId: 'channel-1',
+          guildId: 'guild-1',
+          invokedBy: 'mention',
+          invokerIsAdmin: false,
+        },
+      ),
+    ).rejects.toThrow(/admin/i);
   });
 });

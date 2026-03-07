@@ -7,12 +7,12 @@ import { EmbedBuilder } from 'discord.js';
 export function getWelcomeMessage(): EmbedBuilder {
     return new EmbedBuilder()
         .setColor('#4a7c23')
-        .setTitle("👋 Hello! I'm Sage, your Fully Agentic AI Companion.")
-        .setDescription("I'm designed to be a friendly member of your community. I don't just respond; I listen and evolve alongside you.")
+        .setTitle("👋 Hello! I'm Sage, your server's strategist-host.")
+        .setDescription("I'm built for live Discord communities. I read the room, keep the thread moving, and turn noisy server context into useful action.")
         .addFields(
             {
                 name: "✨ What I Can Do",
-                value: "🧠 **Deep Memory**: I maintain perfect context of our conversations and server lore using my hybrid memory graph.\n🌐 **Live Web Search**: I can research real-time data, documentation, and news to answer complex questions.\n🎨 **Generative Content**: I can render custom images and brainstorm creative worlds on command.\n⚡ **Autonomous Tools**: I dynamically select tools (like ingesting attachments or formatting data) based on your intent.\n🎤 **Voice Awareness**: I know who's active in voice channels and for how long.",
+                value: "🧠 **Server Memory**: I keep track of people, conversations, files, and evolving server context.\n🌐 **Live Research**: I can pull current docs, news, and web sources when fresh information matters.\n🧩 **Discord-Native Presentation**: I can format answers as clean briefings, rich cards, and actionable updates when structure helps.\n⚡ **Autonomous Tools**: I choose tools based on the job, then bring back the useful part instead of dumping raw output.\n🎤 **Voice Awareness**: I can summarize voice activity and who has been active in channel sessions.",
             },
             {
                 name: "🚀 Activation Required",
