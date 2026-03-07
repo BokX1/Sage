@@ -144,7 +144,7 @@ Most admin actions are now chat-first. For admin users, admin tools are enabled 
 Examples:
 
 - `Sage, summarize what happened this week`
-- `Sage, update server memory with this policy`
+- `Sage, update server instructions with this policy`
 - `Sage, send this to #announcements: <message>`
 - `Sage, search message history in #support for: <query>`
 - `Sage, create a new #release-notes channel`

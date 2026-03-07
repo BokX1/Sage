@@ -55,7 +55,7 @@ flowchart TD
 **Step-by-step**
 
 1. **Model resolution**: `runChatTurn` reads `CHAT_MODEL` and falls back to `kimi` when it is empty.
-2. **Context composition**: `buildContextMessages` assembles the system prompt, runtime instruction block, optional guild memory, optional live voice context, recent transcript, reply context/reference, and the current user message.
+2. **Context composition**: `buildContextMessages` assembles the system prompt, runtime instruction block, optional server instructions, optional live voice context, recent transcript, `<assistant_context>`, `<reply_reference>`, and the current `<user_input>` message.
 3. **Token budgeting**: `contextBudgeter` trims blocks against the configured budgets before the provider call.
 4. **LLM request**: Sage sends the budgeted messages plus the OpenAI-compatible tool definitions.
 5. **Tool loop**: if the model returns tool calls, Sage validates them, executes them, and feeds results back into the same turn up to the configured round limit.
@@ -72,17 +72,18 @@ flowchart TD
 
 | Priority | Block | Source |
 | :---: | :--- | :--- |
-| 1 | Base system prompt | `composeSystemPrompt` with the user profile summary embedded in `<user_context>` |
+| 1 | Base system prompt | `composeSystemPrompt` with the user profile summary embedded in `<user_profile>` |
 | 2 | Runtime instructions | Single-agent capabilities, tool protocol, and runtime state |
-| 3 | Guild memory | `GuildMemory`, when present |
+| 3 | Server instructions | `GuildMemory`, when present |
 | 4 | Live voice context | In-memory voice session context, only when Sage is active in voice |
 | 5 | Recent transcript | Ring buffer plus recent `ChannelMessage` history |
-| 6 | Prior Sage reply | Assistant reply context when the user is replying to Sage |
-| 7 | Reply reference | Replied-to message content, if present |
-| 8 | Current user message | Triggering text and multimodal content |
+| 6 | Assistant context | Prior Sage output wrapped as `<assistant_context>` for continuity only |
+| 7 | Reply reference | Replied-to message content wrapped as `<reply_reference>`, if present |
+| 8 | Current user message | Triggering text and multimodal content wrapped as `<user_input>` |
 
 > [!NOTE]
 > Channel summaries, archived summaries, social-graph data, attachment cache results, and wider message history are not preloaded into every turn. The model fetches them on demand through the `discord` tool when it decides they are needed.
+> `summary.get_channel` is a continuity surface, not historical evidence. For exact verification Sage should use `messages.search_history`, `messages.search_with_context`, or `messages.get_context`.
 
 All system-role blocks are merged into a single system message before the provider call. This keeps ordering valid for stricter providers while preserving the logical block boundaries in `budgetJson`.
 
@@ -155,10 +156,10 @@ Most richer context is loaded on demand through the `discord` tool:
 
 | Data | Tool action | Storage |
 | :--- | :--- | :--- |
-| User profile | `memory.get_user` | PostgreSQL (`UserProfile`) |
-| Channel summaries | `memory.get_channel` | PostgreSQL (`ChannelSummary`) |
-| Archived channel summaries | `memory.channel_archives` | PostgreSQL plus pgvector-backed archive search |
-| Server memory | `memory.get_server` | PostgreSQL (`GuildMemory`) |
+| User profile | `profile.get_user` | PostgreSQL (`UserProfile`) |
+| Channel summaries | `summary.get_channel` | PostgreSQL (`ChannelSummary`) |
+| Archived channel summaries | `summary.search_channel_archives` | PostgreSQL plus pgvector-backed archive search |
+| Server instructions | `instructions.get_server` | PostgreSQL (`GuildMemory`) |
 | Social graph | `analytics.get_social_graph`, `analytics.top_relationships` | PostgreSQL (`RelationshipEdge`) plus optional Memgraph |
 | Voice analytics | `analytics.get_voice_analytics`, `analytics.voice_summaries` | PostgreSQL (`VoiceSession`, `VoiceConversationSummary`) |
 | Cached file text | `files.list_channel`, `files.list_server`, `files.read_attachment` | PostgreSQL (`IngestedAttachment`) |

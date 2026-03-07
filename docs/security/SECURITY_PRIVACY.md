@@ -33,8 +33,8 @@ This document describes what Sage stores and how to control retention. Implement
 | User profile summaries | `UserProfile` | LLM-generated long-term summary of a user. |
 | User profile archives | `UserProfileArchive` | Historical snapshots of user profiles. |
 | Guild settings | `GuildSettings` | Stores server-scoped BYOP key configuration. |
-| Guild memory | `GuildMemory` | Admin-authored server memory available to the runtime. |
-| Guild memory archives | `GuildMemoryArchive` | Historical snapshots of server memory updates. |
+| Server instructions | `GuildMemory` | Admin-authored server instructions available to the runtime. |
+| Server instruction archives | `GuildMemoryArchive` | Historical snapshots of server instruction updates. |
 | Channel messages | `ChannelMessage` | Stored only if `MESSAGE_DB_STORAGE_ENABLED=true`. |
 | Ingested attachments | `IngestedAttachment` | Non-image attachment extraction cache (text + metadata) for on-demand retrieval. |
 | Channel summaries | `ChannelSummary` | Rolling + profile summaries, plus metadata (topics, decisions, etc.). |
@@ -90,7 +90,7 @@ When generating replies, Sage sends:
 - Reply references (if the user replied to another message)
 - Recent transcript and optional live voice context when Sage is active in voice
 - User profile summary embedded inside the runtime system prompt
-- Guild memory when server memory is configured
+- Server instructions when guild-specific behavior has been configured
 - Tool-fetched summaries, archives, social-graph data, or attachment cache results only when the tool loop requests them
 - Stored message-history retrieval results when tool loop calls `discord` actions `messages.search_history` / `messages.get_context` (permission-gated; optional `channelId` can target other channels)
 - Attachment text blocks for the current turn when inline analysis is needed

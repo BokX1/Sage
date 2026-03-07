@@ -31,6 +31,7 @@ import {
   supportsChannelMessageSemanticSearch,
 } from '../../embeddings';
 import { getUserProfileRecord } from '../../memory/userProfileRepo';
+import { parseUserProfileSummary } from '../../memory/userProfileXml';
 import { getChannelSummaryStore } from '../../summary/channelSummaryStoreRegistry';
 import { ChannelSummary } from '../../summary/channelSummaryStore';
 import { howLongInVoiceToday, whoIsInVoice } from '../../voice/voiceQueries';
@@ -2872,19 +2873,6 @@ function trimToChars(value: string, maxChars: number): { text: string; truncated
   };
 }
 
-function parseMarkdownSection(summary: string, heading: string): string[] {
-  const escaped = heading.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const pattern = new RegExp(`###\\s*${escaped}\\s*\\n([\\s\\S]*?)(?=\\n###\\s|$)`, 'i');
-  const match = summary.match(pattern);
-  if (!match) return [];
-  return match[1]
-    .split('\n')
-    .map((line) => line.trim())
-    .map((line) => line.replace(/^[-*]\s+/, '').trim())
-    .map((line) => line.replace(/\s+/g, ' ').trim())
-    .filter((line) => line.length > 0);
-}
-
 function formatWindow(windowStart: Date, windowEnd: Date): string {
   return `${windowStart.toISOString()} -> ${windowEnd.toISOString()}`;
 }
@@ -4027,7 +4015,7 @@ export async function searchChannelArchives(params: {
       found: false,
       query,
       content:
-        'No archived weekly channel profile summaries were found for this channel (this tool does not search raw messages).',
+        'No archived weekly channel summary snapshots were found for this channel (this tool does not search raw messages).',
       items: [],
       scope: 'channel_archive_profiles',
       guidance:
@@ -4080,7 +4068,7 @@ export async function searchChannelArchives(params: {
     items,
     scope: 'channel_archive_profiles',
     guidance:
-      'Archive results are weekly profile summaries, not raw message transcripts. Use `discord` action messages.search_history for exact historical messages.',
+      'Archive results are weekly channel summary snapshots, not raw message transcripts. Use `discord` action messages.search_history for exact historical messages.',
   };
 }
 
@@ -4107,25 +4095,26 @@ export async function lookupUserMemory(params: {
     return {
       found: false,
       content:
-        'User memory profile: no stored personalization profile yet. Use this turn only and ask clarifying questions when needed.',
+        'User profile: no stored best-effort personalization profile yet. Use this turn only and ask clarifying questions when needed.',
       updatedAt: null,
     };
   }
 
-  const directives = parseMarkdownSection(summary, 'Directives');
-  const activeFocus = parseMarkdownSection(summary, 'Active Focus');
-  const userContext = parseMarkdownSection(summary, 'User Context');
-  const lines: string[] = ['User memory profile:'];
-  if (directives.length > 0) lines.push(`- Directives: ${directives.slice(0, maxItemsPerSection).join(' | ')}`);
+  const parsed = parseUserProfileSummary(summary);
+  const preferences = parsed?.preferences ?? [];
+  const activeFocus = parsed?.activeFocus ?? [];
+  const background = parsed?.background ?? [];
+  const lines: string[] = ['User profile:'];
+  if (preferences.length > 0) lines.push(`- Preferences: ${preferences.slice(0, maxItemsPerSection).join(' | ')}`);
   if (activeFocus.length > 0) lines.push(`- Active focus: ${activeFocus.slice(0, maxItemsPerSection).join(' | ')}`);
-  if (userContext.length > 0) lines.push(`- User context: ${userContext.slice(0, maxItemsPerSection).join(' | ')}`);
-  if (directives.length === 0 && activeFocus.length === 0 && userContext.length === 0) {
+  if (background.length > 0) lines.push(`- Background: ${background.slice(0, maxItemsPerSection).join(' | ')}`);
+  if (preferences.length === 0 && activeFocus.length === 0 && background.length === 0) {
     lines.push(`- Notes: ${summary.replace(/\s+/g, ' ').slice(0, 500)}`);
   }
   if (profile?.updatedAt) {
     lines.push(`- Freshness: profile updated ${formatRelativeAge(profile.updatedAt)} ago.`);
   }
-  lines.push('- Guidance: prefer these as soft personalization cues; prioritize explicit user instructions in this turn.');
+  lines.push('- Guidance: treat these as soft personalization cues: durable preferences/background plus current-but-fallible active focus. Prioritize explicit user instructions in this turn.');
   const built = lines.join('\n');
   const trimmed = trimToChars(built, maxChars);
   return {
@@ -4133,9 +4122,9 @@ export async function lookupUserMemory(params: {
     content: trimmed.text,
     truncated: trimmed.truncated,
     updatedAt: profile?.updatedAt?.toISOString() ?? null,
-    directives,
+    preferences,
     activeFocus,
-    userContext,
+    background,
   };
 }
 
@@ -4149,8 +4138,8 @@ export async function lookupChannelMemory(params: {
   if (!params.guildId) {
     return {
       found: false,
-      content: 'Channel memory is unavailable in DM context.',
-      scope: 'channel_summary_memory',
+      content: 'Channel summary is unavailable in DM context.',
+      scope: 'channel_summary',
     };
   }
 
@@ -4166,11 +4155,11 @@ export async function lookupChannelMemory(params: {
 
   const parts: string[] = [];
   if (rollingSummary) {
-    parts.push(...formatSummaryBlock({ label: 'Short-term memory', summary: rollingSummary, maxItemsPerList }));
+    parts.push(...formatSummaryBlock({ label: 'Short-term summary', summary: rollingSummary, maxItemsPerList }));
   }
   if (profileSummary) {
     if (parts.length > 0) parts.push('');
-    parts.push(...formatSummaryBlock({ label: 'Long-term memory', summary: profileSummary, maxItemsPerList }));
+    parts.push(...formatSummaryBlock({ label: 'Long-term summary', summary: profileSummary, maxItemsPerList }));
   }
   if (recentAttachments.length > 0) {
     if (parts.length > 0) parts.push('');
@@ -4186,17 +4175,17 @@ export async function lookupChannelMemory(params: {
     return {
       found: false,
       content:
-        'Channel memory (STM+LTM summaries): no stored channel summaries available yet. This tool does not return raw message history.',
+        'Channel summary: no stored rolling or long-term channel summary context is available yet. This tool does not return raw message history.',
       recentAttachmentCount: 0,
-      scope: 'channel_summary_memory',
+      scope: 'channel_summary',
       guidance:
         'Use `discord` action messages.search_history for raw historical transcript retrieval when you need exact message-level evidence.',
     };
   }
 
   const built = [
-    'Channel memory (STM+LTM summaries):',
-    'Scope: rolling/profile summaries and recent cached attachment pointers only (not raw message transcripts).',
+    'Channel summary:',
+    'Scope: rolling and long-term channel summary context plus recent cached attachment pointers only (not raw message transcripts).',
     ...parts,
   ].join('\n');
   const trimmed = trimToChars(built, maxChars);
@@ -4214,7 +4203,7 @@ export async function lookupChannelMemory(params: {
       extractor: attachment.extractor,
       createdAt: attachment.createdAt.toISOString(),
     })),
-    scope: 'channel_summary_memory',
+    scope: 'channel_summary',
     guidance:
       'For exact historical messages, use `discord` action messages.search_history and then messages.get_context.',
   };

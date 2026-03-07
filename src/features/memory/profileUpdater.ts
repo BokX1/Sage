@@ -6,6 +6,7 @@ import { limitByKey } from '../../shared/async/perKeyConcurrency';
 import { getRecentMessages } from '../awareness/channelRingBuffer';
 import { buildTranscriptBlock } from '../awareness/transcriptBuilder';
 import { jsonrepair } from 'jsonrepair';
+import { normalizeUserProfileSummary } from './userProfileXml';
 
 // Global request rate limiting is handled by the LLM client.
 // This module additionally enforces per-user sequential consistency.
@@ -19,17 +20,22 @@ Maintain a living model of the user.
 Return a JSON object: { "summary": "<string>" }
 The summary value must contain exactly three XML sections:
 
-1. <directives> — behavioral preferences, rules the user has set
+1. <preferences> — behavioral preferences, recurring tendencies, or stable interaction preferences that remain non-authoritative compared with the current message
 2. <active_focus> — current goals, work in progress, active interests
 3. <background> — environment, traits, background info
 
 Example:
-{ "summary": "<directives>Prefers concise answers</directives>\n<active_focus>Building a Discord bot</active_focus>\n<background>Software engineer, uses TypeScript</background>" }
+{ "summary": "<preferences>Prefers concise answers</preferences>\n<active_focus>Building a Discord bot</active_focus>\n<background>Software engineer, uses TypeScript</background>" }
 
 ## RULES
 - Prioritize latest interactions.
 - If new info contradicts old info, overwrite the old info.
+- Treat the profile as best-effort personalization that may become stale between updates.
+- Current user input always outranks stored profile content.
+- Overwrite or drop stale, contradicted, or no-longer-relevant preference and focus signals.
+- Do not turn one-off requests into stable preferences unless they appear durable or repeated.
 - Do NOT invent traits or preferences not clearly supported by the conversation.
+- If support is weak or ambiguous, omit the detail rather than inferring it.
 - If no updates are needed, return the Previous Summary unchanged inside the JSON.
 
 Output ONLY the JSON object.`;
@@ -91,12 +97,22 @@ export async function updateProfileSummary(params: {
   previousSummary: string | null;
   userMessage: string;
   assistantReply: string;
+  replyReferenceText?: string | null;
   channelId: string;
   guildId: string | null;
   userId: string;
   apiKey?: string;
 }): Promise<string | null> {
-  const { previousSummary, userMessage, assistantReply, channelId, guildId, userId, apiKey } = params;
+  const {
+    previousSummary,
+    userMessage,
+    assistantReply,
+    replyReferenceText,
+    channelId,
+    guildId,
+    userId,
+    apiKey,
+  } = params;
 
   try {
     // ========================================
@@ -107,6 +123,10 @@ export async function updateProfileSummary(params: {
     const limit = limitByKey(userId, 1);
 
     return limit(async () => {
+      const normalizedPreviousSummary = previousSummary
+        ? (normalizeUserProfileSummary(previousSummary) ?? previousSummary)
+        : null;
+
       // Fetch Recent Context (Window of ~15 messages)
       const recentMessages = getRecentMessages({
         guildId,
@@ -143,10 +163,11 @@ export async function updateProfileSummary(params: {
       // STEP 1: ANALYST (Outputs Updated Summary)
       // ========================================
       const updatedSummaryText = await runAnalyst({
-        previousSummary,
+        previousSummary: normalizedPreviousSummary,
         recentHistory,
         userMessage,
         assistantReply,
+        replyReferenceText: replyReferenceText?.trim() || null,
         apiKey,
       });
 
@@ -163,17 +184,22 @@ export async function updateProfileSummary(params: {
       const json = parseToJSON(updatedSummaryText);
 
       if (json && typeof json.summary === 'string') {
+        const normalizedSummary = normalizeUserProfileSummary(json.summary);
+        if (!normalizedSummary) {
+          logger.warn('Profile Update: Analyst returned malformed profile sections');
+          return normalizedPreviousSummary;
+        }
         logger.info('Profile Update: Pipeline succeeded (jsonrepair)');
-        return json.summary;
+        return normalizedSummary;
       }
 
       logger.warn('Profile Update: Formatter did not return valid summary');
-      return previousSummary; // Preserve existing on failure
+      return normalizedPreviousSummary; // Preserve existing on failure
     });
   } catch (error) {
     // Preserve the existing summary on unexpected runtime failures to avoid accidental profile erasure.
     logger.error({ error }, 'Error in profile update pipeline');
-    return previousSummary;
+    return previousSummary ? (normalizeUserProfileSummary(previousSummary) ?? previousSummary) : previousSummary;
   }
 }
 
@@ -188,9 +214,10 @@ async function runAnalyst(params: {
   recentHistory: string;
   userMessage: string;
   assistantReply: string;
+  replyReferenceText?: string | null;
   apiKey?: string;
 }): Promise<string | null> {
-  const { previousSummary, recentHistory, userMessage, assistantReply, apiKey } = params;
+  const { previousSummary, recentHistory, userMessage, assistantReply, replyReferenceText, apiKey } = params;
   const { client } = getAnalystClient();
 
   const userPrompt = `Previous Summary: ${previousSummary || 'None (new user)'}
@@ -198,11 +225,14 @@ async function runAnalyst(params: {
 Recent Conversation History (Chronological: Top=Oldest, Bottom=Newest):
 ${recentHistory}
 
+Supporting Reply/Reference Context:
+${replyReferenceText || 'None'}
+
 Latest Interaction (Focus):
 User: ${userMessage}
 Assistant: ${assistantReply}
 
-(Note: The interaction above is the LATEST event and is NOT included in the "Recent Conversation History" block.)
+(Note: The interaction above is the LATEST event and is NOT included in the "Recent Conversation History" block. Treat reply/reference context as supporting evidence only; do not let it override the current user message.)
 
 Output the updated summary:`;
 

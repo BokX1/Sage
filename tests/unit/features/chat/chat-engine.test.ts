@@ -127,6 +127,7 @@ describe('ChatEngine', () => {
       previousSummary: 'Old summary',
       userMessage: 'I like dark mode',
       assistantReply: 'Sure, updated.',
+      replyReferenceText: null,
       channelId: 'chan1',
       guildId: 'guild1',
       userId: 'user1',
@@ -193,5 +194,33 @@ describe('ChatEngine', () => {
 
     await Promise.resolve();
     expect(mockUpdateProfileSummary).toHaveBeenCalledTimes(1);
+  });
+
+  it('passes reply reference text into background profile updates', async () => {
+    mockGetUserProfileRecord.mockResolvedValueOnce({
+      userId: 'user1',
+      summary: '<preferences>Prefers concise answers</preferences>\n<active_focus>Refining runtime prompts</active_focus>\n<background>TypeScript maintainer</background>',
+      updatedAt: new Date('2025-01-01T00:00:00.000Z'),
+    });
+    mockRunChatTurn.mockResolvedValueOnce({ replyText: 'Working from the referenced note.' });
+
+    await generateChatReply({
+      traceId: 'test',
+      userId: 'user1',
+      channelId: 'chan1',
+      guildId: 'guild1',
+      messageId: 'msg1',
+      userText: 'Can you refine this?',
+      replyReferenceContent: [
+        { type: 'text', text: 'Referenced implementation note' },
+        { type: 'image_url', image_url: { url: 'https://example.com/image.png' } },
+      ],
+    });
+
+    expect(mockUpdateProfileSummary).toHaveBeenCalledWith(
+      expect.objectContaining({
+        replyReferenceText: 'Referenced implementation note',
+      }),
+    );
   });
 });

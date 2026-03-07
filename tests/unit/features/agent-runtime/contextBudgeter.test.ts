@@ -18,7 +18,7 @@ function buildBlocks(overrides: Partial<ContextBlock>[] = []): ContextBlock[] {
       truncatable: false,
     },
     {
-      id: 'memory',
+      id: 'server_instructions',
       role: 'system',
       content: 'Memory block content.',
       priority: 90,

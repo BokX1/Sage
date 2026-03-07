@@ -32,6 +32,20 @@ function resolveProfileUpdateInterval(): number {
   return Math.max(1, Math.floor(configured));
 }
 
+function extractTextForProfileContext(content: LLMMessageContent | null | undefined): string | null {
+  if (!content) return null;
+  if (typeof content === 'string') {
+    const trimmed = content.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  }
+  const text = content
+    .filter((part) => part.type === 'text')
+    .map((part) => part.text.trim())
+    .filter((part) => part.length > 0)
+    .join('\n');
+  return text.length > 0 ? text : null;
+}
+
 /**
  * Generate a chat reply using the agent runtime.
  * This is the main entry point for chat interactions.
@@ -194,6 +208,7 @@ export async function generateChatReply(params: {
           previousSummary: profileSummary,
           userMessage: userText,
           assistantReply: replyText,
+          replyReferenceText: extractTextForProfileContext(replyReferenceContent),
           channelId,
           guildId,
           userId,

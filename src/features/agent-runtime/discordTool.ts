@@ -25,9 +25,9 @@ import {
   discordModerationActionRequestSchema,
   requestDiscordAdminActionForTool,
   requestDiscordInteractionForTool,
-  lookupServerMemoryForTool,
-  requestServerMemoryUpdateForTool,
-  serverMemoryUpdateRequestSchema,
+  lookupServerInstructionsForTool,
+  requestServerInstructionsUpdateForTool,
+  serverInstructionsUpdateRequestSchema,
   requestDiscordRestWriteForTool,
   type DiscordRestWriteRequest,
 } from '../../features/admin/adminActionService';
@@ -85,7 +85,7 @@ const discordToolSchema = z.discriminatedUnion('action', [
 
   z.object({
     think: requiredThinkField,
-    action: z.literal('memory.get_user').describe('Fetch the comprehensive memory profile for a specific user.'),
+    action: z.literal('profile.get_user').describe('Fetch the best-effort personalization profile for a specific user.'),
     userId: z.string().trim().min(1).max(64).optional(),
     maxChars: z.number().int().min(200).max(8_000).optional(),
     maxItemsPerSection: z.number().int().min(1).max(10).optional(),
@@ -93,7 +93,7 @@ const discordToolSchema = z.discriminatedUnion('action', [
 
   z.object({
     think: requiredThinkField,
-    action: z.literal('memory.get_channel').describe('Fetch the memory profile for a specific channel.'),
+    action: z.literal('summary.get_channel').describe('Fetch rolling and long-term channel summary context for a specific channel.'),
     maxChars: z.number().int().min(200).max(12_000).optional(),
     maxItemsPerList: z.number().int().min(1).max(12).optional(),
     maxRecentFiles: z.number().int().min(1).max(20).optional(),
@@ -101,7 +101,7 @@ const discordToolSchema = z.discriminatedUnion('action', [
 
   z.object({
     think: requiredThinkField,
-    action: z.literal('memory.channel_archives').describe('Search through long-term channel archives via text query.'),
+    action: z.literal('summary.search_channel_archives').describe('Search through archived channel summaries via text query.'),
     query: z.string().trim().min(2).max(500),
     topK: z.number().int().min(1).max(20).optional(),
     maxChars: z.number().int().min(300).max(12_000).optional(),
@@ -109,14 +109,14 @@ const discordToolSchema = z.discriminatedUnion('action', [
 
   z.object({
     think: requiredThinkField,
-    action: z.literal('memory.get_server').describe('Fetch the overall memory profile for the current server.'),
+    action: z.literal('instructions.get_server').describe('Fetch the current admin-authored server instructions for this guild.'),
     maxChars: z.number().int().min(200).max(12_000).optional(),
   }),
 
   z.object({
     think: requiredThinkField,
-    action: z.literal('memory.update_server').describe('Submit an admin request to update the core server configuration/memory.'),
-    request: serverMemoryUpdateRequestSchema,
+    action: z.literal('instructions.update_server').describe('Submit an admin request to update the authoritative server instructions for this guild.'),
+    request: serverInstructionsUpdateRequestSchema,
   }),
 
   z.object({
@@ -762,10 +762,10 @@ function isReadOnlyDiscordToolCall(args: unknown): boolean {
 
   switch (action) {
     case 'help':
-    case 'memory.get_user':
-    case 'memory.get_channel':
-    case 'memory.channel_archives':
-    case 'memory.get_server':
+    case 'profile.get_user':
+    case 'summary.get_channel':
+    case 'summary.search_channel_archives':
+    case 'instructions.get_server':
     case 'files.list_channel':
     case 'files.list_server':
     case 'files.find_channel':
@@ -798,9 +798,9 @@ export const discordTool: ToolDefinition<DiscordToolArgs> = {
   name: 'discord',
   description:
     [
-      'Unified Discord tool for Sage: memory, retrieval, safe interactions, rich message delivery, moderation queue, and scoped Discord API fallback.',
-      'This is Sage’s primary Discord-native operating surface for server memory, channel actions, richer message presentation, and Discord API reads when typed actions do not cover the job.',
-      '<USE_ONLY_WHEN> You need to read or change Discord state, or query Sage’s Discord-backed memory (summaries/files/messages/social graph/voice analytics). </USE_ONLY_WHEN>',
+      'Unified Discord tool for Sage: profiles, summaries, server instructions, retrieval, safe interactions, rich message delivery, moderation queue, and scoped Discord API fallback.',
+      'This is Sage’s primary Discord-native operating surface for server instructions, channel actions, richer message presentation, and Discord API reads when typed actions do not cover the job.',
+      '<USE_ONLY_WHEN> You need to read or change Discord state, or query Sage’s Discord-backed profiles, summaries, server instructions, files, messages, social graph, or voice analytics. </USE_ONLY_WHEN>',
       'Safety: See <execution_rules> for full guardrails. If unsure which action or fields to use, call discord action help.',
     ].join('\n'),
   schema: discordToolSchema,
@@ -849,7 +849,7 @@ export const discordTool: ToolDefinition<DiscordToolArgs> = {
         };
       }
 
-      case 'memory.get_user': {
+      case 'profile.get_user': {
         return lookupUserMemory({
           userId: args.userId?.trim() || ctx.userId,
           maxChars: args.maxChars,
@@ -857,7 +857,7 @@ export const discordTool: ToolDefinition<DiscordToolArgs> = {
         });
       }
 
-      case 'memory.get_channel': {
+      case 'summary.get_channel': {
         return lookupChannelMemory({
           guildId: ctx.guildId ?? null,
           channelId: ctx.channelId,
@@ -867,7 +867,7 @@ export const discordTool: ToolDefinition<DiscordToolArgs> = {
         });
       }
 
-      case 'memory.channel_archives': {
+      case 'summary.search_channel_archives': {
         return searchChannelArchives({
           guildId: ctx.guildId ?? null,
           channelId: ctx.channelId,
@@ -877,19 +877,19 @@ export const discordTool: ToolDefinition<DiscordToolArgs> = {
         });
       }
 
-      case 'memory.get_server': {
+      case 'instructions.get_server': {
         const guildId = requireGuildContext(ctx.guildId);
-        return lookupServerMemoryForTool({
+        return lookupServerInstructionsForTool({
           guildId,
           maxChars: args.maxChars,
         });
       }
 
-      case 'memory.update_server': {
+      case 'instructions.update_server': {
         assertAdmin(ctx.invokerIsAdmin);
-        assertNotAutopilot(ctx.invokedBy, 'memory.update_server');
+        assertNotAutopilot(ctx.invokedBy, 'instructions.update_server');
         const guildId = requireGuildContext(ctx.guildId);
-        return requestServerMemoryUpdateForTool({
+        return requestServerInstructionsUpdateForTool({
           guildId,
           channelId: ctx.channelId,
           requestedBy: ctx.userId,

@@ -1,10 +1,10 @@
 export const DISCORD_ACTION_CATALOG = {
   read_only: [
     'help',
-    'memory.get_user',
-    'memory.get_channel',
-    'memory.channel_archives',
-    'memory.get_server',
+    'profile.get_user',
+    'summary.get_channel',
+    'summary.search_channel_archives',
+    'instructions.get_server',
     'files.list_channel',
     'files.list_server',
     'files.find_channel',
@@ -30,7 +30,7 @@ export const DISCORD_ACTION_CATALOG = {
     'reactions.remove_self',
   ],
   admin_only: [
-    'memory.update_server',
+    'instructions.update_server',
     'moderation.submit',
     'messages.edit',
     'messages.delete',

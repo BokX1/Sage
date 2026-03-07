@@ -13,7 +13,7 @@ import { LLMMessageContent } from '../../platform/llm/llm-types';
 export type ContextBlockId =
   | 'base_system'
   | 'runtime_instruction'
-  | 'memory'
+  | 'server_instructions'
   | 'voice_context'
   | 'transcript'
   | 'intent_hint'
@@ -208,7 +208,7 @@ function truncateBlockContent(
         content: applyTextToContent(block.content, `${notice}${truncatedContent}`.trimEnd()),
       };
     }
-    case 'memory':
+    case 'server_instructions':
       return {
         ...block,
         content: applyTextToContent(
@@ -286,7 +286,7 @@ const TRUNCATION_ORDER: ContextBlockId[] = [
   'intent_hint',
   'reply_context',
   'reply_reference',
-  'memory',
+  'server_instructions',
   'user',
 ];
 

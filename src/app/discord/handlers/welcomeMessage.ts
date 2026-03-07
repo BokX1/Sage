@@ -12,7 +12,7 @@ export function getWelcomeMessage(): EmbedBuilder {
         .addFields(
             {
                 name: "✨ What I Can Do",
-                value: "🧠 **Server Memory**: I keep track of people, conversations, files, and evolving server context.\n🌐 **Live Research**: I can pull current docs, news, and web sources when fresh information matters.\n🧩 **Discord-Native Presentation**: I can format answers as clean briefings, rich cards, and actionable updates when structure helps.\n⚡ **Autonomous Tools**: I choose tools based on the job, then bring back the useful part instead of dumping raw output.\n🎤 **Voice Awareness**: I can summarize voice activity and who has been active in channel sessions.",
+        value: "🧠 **Server Instructions**: Admins can steer my guild-specific role, persona, tone, and behavior.\n🌐 **Live Research**: I can pull current docs, news, and web sources when fresh information matters.\n🧩 **Discord-Native Presentation**: I can format answers as clean briefings, rich cards, and actionable updates when structure helps.\n⚡ **Autonomous Tools**: I choose tools based on the job, then bring back the useful part instead of dumping raw output.\n🎤 **Voice Awareness**: I can summarize voice activity and who has been active in channel sessions.",
             },
             {
                 name: "🚀 Activation Required",

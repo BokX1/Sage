@@ -80,7 +80,7 @@ export async function upsertGuildMemory(params: {
 }): Promise<GuildMemoryRecord> {
   const normalizedMemoryText = normalizeMemoryText(params.memoryText);
   if (!normalizedMemoryText) {
-    throw new Error('Guild memory text cannot be empty.');
+    throw new Error('Server instructions text cannot be empty.');
   }
 
   const record = await prisma.$transaction(async (tx) => {

@@ -91,7 +91,7 @@ flowchart TD
 |:---|:---|:---|
 | **Chat Engine** | `src/features/chat/chat-engine.ts` | Entry point — receives Discord events, orchestrates `runChatTurn` |
 | **Agent Runtime** | `src/features/agent-runtime/agentRuntime.ts` | The single `runChatTurn` function: model resolution, prompt assembly, tool loop, trace persistence |
-| **Context Builder** | `src/features/agent-runtime/contextBuilder.ts` | Composes prioritized message blocks (system prompt, runtime instructions, optional guild memory/voice context, transcript, reply context) |
+| **Context Builder** | `src/features/agent-runtime/contextBuilder.ts` | Composes prioritized message blocks (system prompt, runtime instructions, optional server instructions/voice context, transcript, reply context) |
 | **Context Budgeter** | `src/features/agent-runtime/contextBudgeter.ts` | Token-aware block sizing with configurable per-block budgets |
 | **Prompt Composer** | `src/features/agent-runtime/promptComposer.ts` | Assembles the final system prompt with personality, capabilities, and tool protocol |
 | **Tool Call Loop** | `src/features/agent-runtime/toolCallLoop.ts` | Iterative tool execution with bounded rounds, parallel read-only optimization, and timeout enforcement |
@@ -211,7 +211,7 @@ The tool protocol is communicated to the LLM via a structured instruction block,
 
 Admin-only capabilities are exposed as actions on the `discord` tool:
 
-- `memory.update_server` (approval-gated)
+- `instructions.update_server` (approval-gated)
 - `moderation.submit` (approval-gated)
 - `discord.api` (admin-only; guild-scoped; GET executes immediately, non-GET requires approval)
 - Typed REST write wrappers (approval-gated): `messages.edit/delete/pin/unpin`, `channels.create/edit`, `roles.create/edit/delete`, `members.add_role/remove_role`

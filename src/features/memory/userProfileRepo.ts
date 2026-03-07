@@ -1,5 +1,6 @@
 import { prisma } from '../../platform/db/prisma-client';
 import { decryptSecret } from '../../platform/security/secret-crypto';
+import { normalizeUserProfileSummary } from './userProfileXml';
 
 export interface UserProfileRecord {
   userId: string;
@@ -17,7 +18,10 @@ export async function getUserProfileRecord(userId: string): Promise<UserProfileR
     },
   });
   if (!profile) return null;
-  return profile;
+  return {
+    ...profile,
+    summary: normalizeUserProfileSummary(profile.summary) ?? profile.summary,
+  };
 }
 
 export async function getUserProfile(userId: string): Promise<string | null> {
@@ -33,9 +37,14 @@ export async function getUserApiKey(userId: string): Promise<string | undefined>
 }
 
 export async function upsertUserProfile(userId: string, summary: string): Promise<void> {
+  const normalizedSummary = normalizeUserProfileSummary(summary);
+  if (!normalizedSummary) {
+    throw new Error('User profile summary must contain exactly <preferences>, <active_focus>, and <background> sections.');
+  }
+
   await prisma.userProfile.upsert({
     where: { userId },
-    update: { summary },
-    create: { userId, summary },
+    update: { summary: normalizedSummary },
+    create: { userId, summary: normalizedSummary },
   });
 }

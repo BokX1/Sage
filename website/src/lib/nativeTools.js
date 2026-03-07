@@ -1,10 +1,10 @@
 export const nativeTools = [
   // Discord (cyan)
   { name: 'help', short: 'Help', desc: 'Get usage instructions and command help', cat: 'discord', color: '#7AA2F7' },
-  { name: 'memory.get_user', short: 'Get User', desc: 'Retrieve detailed information about a Discord user', cat: 'discord', color: '#7AA2F7' },
-  { name: 'memory.get_channel', short: 'Get Channel', desc: 'Retrieve detailed information about a Discord channel', cat: 'discord', color: '#7AA2F7' },
-  { name: 'memory.channel_archives', short: 'Search Archives', desc: 'Search deep channel history and archived threads', cat: 'discord', color: '#7AA2F7' },
-  { name: 'memory.get_server', short: 'Get Server', desc: 'Retrieve guild and server metadata', cat: 'discord', color: '#7AA2F7' },
+  { name: 'profile.get_user', short: 'User Profile', desc: 'Retrieve a user best-effort personalization profile and preferences', cat: 'discord', color: '#7AA2F7' },
+  { name: 'summary.get_channel', short: 'Channel Summary', desc: 'Retrieve rolling and long-term summary context for the current channel', cat: 'discord', color: '#7AA2F7' },
+  { name: 'summary.search_channel_archives', short: 'Search Summaries', desc: 'Search archived channel summaries and long-term context', cat: 'discord', color: '#7AA2F7' },
+  { name: 'instructions.get_server', short: 'Server Instructions', desc: 'Retrieve guild-specific bot instructions and persona rules', cat: 'discord', color: '#7AA2F7' },
   { name: 'files.list_channel', short: 'Channel Files', desc: 'Look up files shared in a specific channel', cat: 'discord', color: '#7AA2F7' },
   { name: 'files.list_server', short: 'Server Files', desc: 'Look up files shared across the entire server', cat: 'discord', color: '#7AA2F7' },
   { name: 'files.find_channel', short: 'Search Ch. Files', desc: 'Search for specific file types or names in a channel', cat: 'discord', color: '#7AA2F7' },
@@ -30,7 +30,7 @@ export const nativeTools = [
   { name: 'reactions.remove_self', short: 'Remove Reaction', desc: 'Remove own emoji reactions from messages', cat: 'discord', color: '#7AA2F7' },
 
   // Discord (cyan) - Admin Only
-  { name: 'memory.update_server', short: 'Sync Server', desc: 'Queue a full background sync of server memory', cat: 'discord', color: '#7AA2F7' },
+  { name: 'instructions.update_server', short: 'Update Instructions', desc: 'Queue an admin-approved update to server instructions', cat: 'discord', color: '#7AA2F7' },
   { name: 'moderation.submit', short: 'Mod Queue', desc: 'Queue moderation actions based on policy', cat: 'discord', color: '#7AA2F7' },
   { name: 'messages.edit', short: 'Edit Message', desc: 'Modify contents of an existing bot message', cat: 'discord', color: '#7AA2F7' },
   { name: 'messages.delete', short: 'Delete Message', desc: 'Delete an offending message (Admin only)', cat: 'discord', color: '#7AA2F7' },

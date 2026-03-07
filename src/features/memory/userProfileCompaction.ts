@@ -8,7 +8,7 @@ import { config } from '../../platform/config/env';
 // User Profile 30-Day Time Decay
 // ============================================
 // Compacts user profiles on a rolling TTL (configured in .env).
-// Retains core <directives> and <background>, decays stale <active_focus>.
+// Retains core <preferences> and <background>, decays stale <active_focus>.
 
 const COMPACTION_INTERVAL_DAYS = config.USER_PROFILE_COMPACTION_INTERVAL_DAYS;
 
@@ -18,7 +18,7 @@ const COMPACTION_INTERVAL_DAYS = config.USER_PROFILE_COMPACTION_INTERVAL_DAYS;
  */
 const COMPACTION_USER_MESSAGE = `[SYSTEM MAINTENANCE — 30-Day Profile Compaction]
 Please review and compact this user's profile:
-- RETAIN all <directives> and <background> sections unchanged.
+- RETAIN all <preferences> and <background> sections unchanged.
 - DECAY the <active_focus> section: remove any items that appear stale or completed.
 - If all items in <active_focus> still seem relevant, keep them.
 - Do NOT add new information. Only remove stale data.`;
@@ -61,6 +61,7 @@ export async function compactUserProfile(params: {
             previousSummary: params.previousSummary,
             userMessage: COMPACTION_USER_MESSAGE,
             assistantReply: COMPACTION_ASSISTANT_REPLY,
+            replyReferenceText: null,
             channelId: params.channelId,
             guildId: params.guildId,
             userId: params.userId,

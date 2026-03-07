@@ -120,7 +120,7 @@ describe('default agentic tools', () => {
         name: 'discord',
         args: {
           think: 'Verify non-command admin context is allowed to reach guild guard',
-          action: 'memory.update_server',
+          action: 'instructions.update_server',
           request: {
             operation: 'set',
             text: 'Server policy',

@@ -57,8 +57,8 @@ import { client } from '../../platform/discord/client';
 
 const APPROVAL_TTL_MS = 10 * 60 * 1_000;
 const RESOLVED_APPROVAL_CARD_DELETE_DELAY_MS = 60_000;
-const MAX_SERVER_MEMORY_CHARS = 8_000;
-const DEFAULT_SERVER_MEMORY_MAX_CHARS = 4_000;
+const MAX_SERVER_INSTRUCTIONS_CHARS = 8_000;
+const DEFAULT_SERVER_INSTRUCTIONS_MAX_CHARS = 4_000;
 const ADMIN_ACTION_CUSTOM_ID_PREFIX = 'sage:admin_action:';
 const DISCORD_INTERACTION_COOLDOWN_BY_ACTION_MS = {
   create_poll: 45_000,
@@ -76,18 +76,18 @@ const sendPollsFlag = (
 type PendingDecision = 'approve' | 'reject';
 
 /**
- * Declares exported bindings: serverMemoryUpdateRequestSchema.
+ * Declares exported bindings: serverInstructionsUpdateRequestSchema.
  */
-export const serverMemoryUpdateRequestSchema = z.object({
+export const serverInstructionsUpdateRequestSchema = z.object({
   operation: z.enum(['set', 'append', 'clear']),
-  text: z.string().trim().max(MAX_SERVER_MEMORY_CHARS).optional(),
+  text: z.string().trim().max(MAX_SERVER_INSTRUCTIONS_CHARS).optional(),
   reason: z.string().trim().min(3).max(500),
 });
 
 /**
- * Represents the ServerMemoryUpdateRequest type.
+ * Represents the ServerInstructionsUpdateRequest type.
  */
-export type ServerMemoryUpdateRequest = z.infer<typeof serverMemoryUpdateRequestSchema>;
+export type ServerInstructionsUpdateRequest = z.infer<typeof serverInstructionsUpdateRequestSchema>;
 
 const createPollRequestSchema = z.object({
   action: z.literal('create_poll'),
@@ -453,9 +453,9 @@ export type DiscordModerationActionRequest = z.infer<typeof discordModerationAct
 type ImmediateDiscordAction = DiscordInteractionRequest;
 type QueuedDiscordAction = DiscordModerationActionRequest;
 
-type ServerMemoryPendingPayload = {
-  operation: ServerMemoryUpdateRequest['operation'];
-  newMemoryText: string;
+type ServerInstructionsPendingPayload = {
+  operation: ServerInstructionsUpdateRequest['operation'];
+  newInstructionsText: string;
   reason: string;
   baseVersion: number;
 };
@@ -1796,13 +1796,13 @@ async function executePendingAction(params: {
   action: PendingAdminActionRecord;
   approvedBy: string;
 }): Promise<Record<string, unknown>> {
-  if (params.action.kind === 'server_memory_update') {
-    const payload = params.action.payloadJson as ServerMemoryPendingPayload;
+  if (params.action.kind === 'server_instructions_update') {
+    const payload = params.action.payloadJson as ServerInstructionsPendingPayload;
     const current = await getGuildMemoryRecord(params.action.guildId);
     const currentVersion = current?.version ?? 0;
     if (currentVersion !== payload.baseVersion) {
       throw new Error(
-        `Server memory changed since request creation (baseVersion=${payload.baseVersion}, currentVersion=${currentVersion}). Recreate and approve a fresh request.`,
+        `Server instructions changed since request creation (baseVersion=${payload.baseVersion}, currentVersion=${currentVersion}). Recreate and approve a fresh request.`,
       );
     }
 
@@ -1812,7 +1812,7 @@ async function executePendingAction(params: {
         adminId: params.approvedBy,
       });
       return {
-        action: 'server_memory_update',
+        action: 'server_instructions_update',
         operation: payload.operation,
         cleared,
       };
@@ -1820,12 +1820,12 @@ async function executePendingAction(params: {
 
     const updated = await upsertGuildMemory({
       guildId: params.action.guildId,
-      memoryText: payload.newMemoryText,
+      memoryText: payload.newInstructionsText,
       adminId: params.approvedBy,
     });
 
     return {
-      action: 'server_memory_update',
+      action: 'server_instructions_update',
       operation: payload.operation,
       version: updated.version,
       updatedAt: updated.updatedAt.toISOString(),
@@ -1886,18 +1886,18 @@ async function executePendingAction(params: {
   throw new Error(`Unknown pending action kind: ${params.action.kind}`);
 }
 
-export async function lookupServerMemoryForTool(params: {
+export async function lookupServerInstructionsForTool(params: {
   guildId: string;
   maxChars?: number;
 }): Promise<Record<string, unknown>> {
-  const maxChars = Math.max(200, Math.min(params.maxChars ?? DEFAULT_SERVER_MEMORY_MAX_CHARS, 12_000));
+  const maxChars = Math.max(200, Math.min(params.maxChars ?? DEFAULT_SERVER_INSTRUCTIONS_MAX_CHARS, 12_000));
   const record = await getGuildMemoryRecord(params.guildId);
   if (!record) {
     return {
       found: false,
       guildId: params.guildId,
-      memoryText: '',
-      content: 'No server memory has been configured for this guild.',
+      instructionsText: '',
+      content: 'No server instructions have been configured for this guild.',
     };
   }
 
@@ -1905,18 +1905,18 @@ export async function lookupServerMemoryForTool(params: {
   return {
     found: true,
     guildId: params.guildId,
-    memoryText: truncated.text,
+    instructionsText: truncated.text,
     truncated: truncated.truncated,
     version: record.version,
     updatedAtIso: record.updatedAt.toISOString(),
   };
 }
 
-export async function requestServerMemoryUpdateForTool(params: {
+export async function requestServerInstructionsUpdateForTool(params: {
   guildId: string;
   channelId: string;
   requestedBy: string;
-  request: ServerMemoryUpdateRequest;
+  request: ServerInstructionsUpdateRequest;
 }): Promise<Record<string, unknown>> {
   const current = await getGuildMemoryRecord(params.guildId);
   const currentText = current?.memoryText ?? '';
@@ -1938,8 +1938,8 @@ export async function requestServerMemoryUpdateForTool(params: {
     nextText = '';
   }
 
-  if (params.request.operation !== 'clear' && nextText.length > MAX_SERVER_MEMORY_CHARS) {
-    throw new Error(`Server memory exceeds max length (${MAX_SERVER_MEMORY_CHARS} chars).`);
+  if (params.request.operation !== 'clear' && nextText.length > MAX_SERVER_INSTRUCTIONS_CHARS) {
+    throw new Error(`Server instructions exceed max length (${MAX_SERVER_INSTRUCTIONS_CHARS} chars).`);
   }
 
   const expiresAt = new Date(Date.now() + APPROVAL_TTL_MS);
@@ -1948,13 +1948,13 @@ export async function requestServerMemoryUpdateForTool(params: {
     guildId: params.guildId,
     channelId: params.channelId,
     requestedBy: params.requestedBy,
-    kind: 'server_memory_update',
+    kind: 'server_instructions_update',
     payloadJson: {
       operation: params.request.operation,
-      newMemoryText: nextText,
+      newInstructionsText: nextText,
       reason: params.request.reason,
       baseVersion,
-    } satisfies ServerMemoryPendingPayload,
+    } satisfies ServerInstructionsPendingPayload,
     expiresAt,
   });
 
@@ -1975,7 +1975,7 @@ export async function requestServerMemoryUpdateForTool(params: {
     guildId: params.guildId,
     channelId: params.channelId,
     actionId: pending.id,
-    title: 'Server Memory Update Approval',
+    title: 'Server Instructions Update Approval',
     details,
     requestedBy: params.requestedBy,
     expiresAt,
@@ -1986,20 +1986,20 @@ export async function requestServerMemoryUpdateForTool(params: {
       id: pending.id,
       approvalMessageId,
     }).catch((error) => {
-      logger.warn({ error, actionId: pending.id }, 'Failed to persist approval message id for server memory update');
+    logger.warn({ error, actionId: pending.id }, 'Failed to persist approval message id for server instructions update');
     });
   }
 
   await logAdminAction({
     guildId: params.guildId,
     adminId: params.requestedBy,
-    command: 'tool_discord_queue_server_memory_update',
+    command: 'tool_discord_queue_server_instructions_update',
     paramsHash: computeParamsHash({
       actionId: pending.id,
       operation: params.request.operation,
       baseVersion,
       reasonHash: hashForAudit(params.request.reason),
-      memoryHash: hashForAudit(nextText),
+      instructionsHash: hashForAudit(nextText),
     }),
   });
 
@@ -2008,7 +2008,7 @@ export async function requestServerMemoryUpdateForTool(params: {
     actionId: pending.id,
     expiresAtIso: expiresAt.toISOString(),
     approvalMessageId,
-    memoryChars: nextText.length,
+    instructionsChars: nextText.length,
     preview: preview.text,
     previewTruncated: preview.truncated,
   };

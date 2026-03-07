@@ -68,7 +68,7 @@ describe('pendingAdminActionRepo', () => {
       approvalMessageId: null,
       requestMessageId: null,
       requestedBy: 'admin-1',
-      kind: 'server_memory_update',
+      kind: 'server_instructions_update',
       payloadJson: { operation: 'set' },
       status: 'executed',
       expiresAt: new Date('2026-02-26T12:10:00.000Z'),

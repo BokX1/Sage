@@ -261,7 +261,7 @@ Things to try:
 | :--- | :--- |
 | **User Profiles** | LLM-generated long-term summary of a user (throttled for efficiency). |
 | **Guild Settings / Server Key** | Server-scoped Pollinations BYOP configuration stored in `GuildSettings`. |
-| **Guild Memory** | Admin-authored server memory and its archive history. |
+| **Server Instructions** | Admin-authored server instructions and their archive history. |
 | **Social Graph Edges** | Relationship weights and analytics-derived Dunbar labels such as `intimate`, `close`, `active`, `acquaintance`, and `distant`. |
 | **Ingested Attachments** | Cached extracted text from non-image Discord attachments (per-channel). |
 | **Channel Summaries** | Rolling LLM-generated summaries of channel conversations. |

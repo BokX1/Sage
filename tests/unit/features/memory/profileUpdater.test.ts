@@ -41,7 +41,7 @@ describe('ProfileUpdater', () => {
     it('should complete pipeline: Analyst outputs JSON summary', async () => {
       // Step 1: Analyst outputs the updated summary as JSON
       mockChatFn.mockResolvedValueOnce({
-        content: '{"summary": "Loves cats. Enthusiastic about felines."}',
+        content: '{"summary": "<preferences>Loves cats</preferences>\\n<active_focus>Enthusiastic about felines</active_focus>\\n<background>Enjoys cozy spaces</background>"}',
       });
 
       const result = await updateProfileSummary({
@@ -53,23 +53,27 @@ describe('ProfileUpdater', () => {
         userId: 'U1',
       });
 
-      expect(result).toBe('Loves cats. Enthusiastic about felines.');
+      expect(result).toBe('<preferences>Loves cats</preferences>\n<active_focus>Enthusiastic about felines</active_focus>\n<background>Enjoys cozy spaces</background>');
       expect(mockChatFn).toHaveBeenCalledTimes(1);
 
       // Verify Step 1 (Analyst) enforces JSON format
       const analystCall = mockChatFn.mock.calls[0][0];
       expect(analystCall.responseFormat).toBe('json_object');
       expect(analystCall.temperature).toBe(0.3);
+      const analystSystemPrompt = analystCall.messages[0]?.content ?? '';
+      expect(analystSystemPrompt).toContain('stable interaction preferences');
+      expect(analystSystemPrompt).not.toContain('standing user rules');
+      expect(analystSystemPrompt).toContain('omit the detail rather than inferring it');
     });
 
     it('should preserve previous summary when adding new facts', async () => {
       // Analyst merges previous + new facts as JSON
       mockChatFn.mockResolvedValueOnce({
-        content: '{"summary": "Lives in Paris. Loves cats."}',
+        content: '{"summary": "<preferences>Prefers detailed travel tips</preferences>\\n<active_focus>Lives in Paris and loves cats</active_focus>\\n<background>Enjoys city guides</background>"}',
       });
 
       const result = await updateProfileSummary({
-        previousSummary: 'Lives in Paris',
+        previousSummary: '<preferences>Prefers detailed travel tips</preferences>\n<active_focus>Lives in Paris</active_focus>\n<background>Enjoys city guides</background>',
         userMessage: 'I love cats!',
         assistantReply: 'Cats are wonderful!',
         channelId: 'C1',
@@ -77,7 +81,7 @@ describe('ProfileUpdater', () => {
         userId: 'U1',
       });
 
-      expect(result).toBe('Lives in Paris. Loves cats.');
+      expect(result).toBe('<preferences>Prefers detailed travel tips</preferences>\n<active_focus>Lives in Paris and loves cats</active_focus>\n<background>Enjoys city guides</background>');
     });
 
 
@@ -89,7 +93,7 @@ describe('ProfileUpdater', () => {
       });
 
       const result = await updateProfileSummary({
-        previousSummary: 'Lives in Paris',
+        previousSummary: '<preferences>Prefers concise answers</preferences>\n<active_focus>Lives in Paris</active_focus>\n<background>Travels often</background>',
         userMessage: 'Hi',
         assistantReply: 'Hello!',
         channelId: 'C1',
@@ -98,7 +102,7 @@ describe('ProfileUpdater', () => {
       });
 
       // Should preserve existing memory
-      expect(result).toBe('Lives in Paris');
+      expect(result).toBe('<preferences>Prefers concise answers</preferences>\n<active_focus>Lives in Paris</active_focus>\n<background>Travels often</background>');
       expect(mockChatFn).toHaveBeenCalledTimes(1);
     });
 
@@ -125,7 +129,7 @@ describe('ProfileUpdater', () => {
       });
 
       const result = await updateProfileSummary({
-        previousSummary: 'Lives in Paris',
+        previousSummary: '<preferences>Prefers concise answers</preferences>\n<active_focus>Lives in Paris</active_focus>\n<background>Travels often</background>',
         userMessage: 'Hi',
         assistantReply: 'Hi',
         channelId: 'C1',
@@ -134,7 +138,7 @@ describe('ProfileUpdater', () => {
       });
 
       // Should preserve existing memory instead of returning null
-      expect(result).toBe('Lives in Paris');
+      expect(result).toBe('<preferences>Prefers concise answers</preferences>\n<active_focus>Lives in Paris</active_focus>\n<background>Travels often</background>');
       expect(mockChatFn).toHaveBeenCalledTimes(1);
     });
 
@@ -147,11 +151,11 @@ describe('ProfileUpdater', () => {
       ]);
 
       mockChatFn.mockResolvedValueOnce({
-        content: '{"summary": "Likes dogs."}',
+        content: '{"summary": "<preferences>Likes dogs</preferences>\\n<active_focus>Exploring pet care</active_focus>\\n<background>Owns a rescue dog</background>"}',
       });
 
       const result = await updateProfileSummary({
-        previousSummary: 'Likes cats',
+        previousSummary: '<preferences>Likes cats</preferences>\n<active_focus>Comparing pets</active_focus>\n<background>Lives with animals</background>',
         userMessage: 'What about dogs?', // exact match
         assistantReply: 'Dogs are cool.', // exact match
         channelId: 'C1',
@@ -159,7 +163,7 @@ describe('ProfileUpdater', () => {
         userId: 'U1',
       });
 
-      expect(result).toBe('Likes dogs.');
+      expect(result).toBe('<preferences>Likes dogs</preferences>\n<active_focus>Exploring pet care</active_focus>\n<background>Owns a rescue dog</background>');
       expect(mockGetRecentMessages).toHaveBeenCalledTimes(1);
 
       const analystCall = mockChatFn.mock.calls[0][0];
@@ -182,11 +186,11 @@ describe('ProfileUpdater', () => {
       ]);
 
       mockChatFn.mockResolvedValueOnce({
-        content: '{"summary": "Keeps context safely."}',
+        content: '{"summary": "<preferences>Keeps context safely</preferences>\\n<active_focus>Reviewing current thread</active_focus>\\n<background>Values attribution</background>"}',
       });
 
       const result = await updateProfileSummary({
-        previousSummary: 'Existing summary',
+        previousSummary: '<preferences>Existing preference</preferences>\n<active_focus>Existing focus</active_focus>\n<background>Existing background</background>',
         userMessage: 'new user message',
         assistantReply: 'same text',
         channelId: 'C1',
@@ -194,7 +198,7 @@ describe('ProfileUpdater', () => {
         userId: 'U1',
       });
 
-      expect(result).toBe('Keeps context safely.');
+      expect(result).toBe('<preferences>Keeps context safely</preferences>\n<active_focus>Reviewing current thread</active_focus>\n<background>Values attribution</background>');
 
       const analystCall = mockChatFn.mock.calls[0][0];
       const messages = analystCall.messages as ChatMessage[];
@@ -202,6 +206,69 @@ describe('ProfileUpdater', () => {
       const recentHistoryBlock = userPrompt.split('Latest Interaction (Focus):')[0];
       expect(recentHistoryBlock).toContain('older context');
       expect(recentHistoryBlock).toContain('same text');
+    });
+
+    it('normalizes legacy directives into preferences', async () => {
+      mockChatFn.mockResolvedValueOnce({
+        content: '{"summary": "<directives>Prefers concise answers</directives>\\n<active_focus>Refining prompts</active_focus>\\n<background>Maintains Sage</background>"}',
+      });
+
+      const result = await updateProfileSummary({
+        previousSummary: null,
+        userMessage: 'Keep it brief',
+        assistantReply: 'Will do.',
+        channelId: 'C1',
+        guildId: 'G1',
+        userId: 'U1',
+      });
+
+      expect(result).toBe('<preferences>Prefers concise answers</preferences>\n<active_focus>Refining prompts</active_focus>\n<background>Maintains Sage</background>');
+    });
+
+    it('preserves the previous summary when required profile sections are missing', async () => {
+      mockChatFn.mockResolvedValueOnce({
+        content: '{"summary": "<preferences>Prefers concise answers</preferences>\\n<background>Maintains Sage</background>"}',
+      });
+
+      const previousSummary = '<preferences>Prefers concise answers</preferences>\n<active_focus>Refining prompts</active_focus>\n<background>Maintains Sage</background>';
+      const result = await updateProfileSummary({
+        previousSummary,
+        userMessage: 'Keep it brief',
+        assistantReply: 'Will do.',
+        channelId: 'C1',
+        guildId: 'G1',
+        userId: 'U1',
+      });
+
+      expect(result).toBe(previousSummary);
+    });
+
+    it('includes reply reference text as supporting evidence in the analyst prompt', async () => {
+      mockChatFn.mockResolvedValueOnce({
+        content: '{"summary": "<preferences>Prefers concise answers</preferences>\\n<active_focus>Refining prompts</active_focus>\\n<background>Maintains Sage</background>"}',
+      });
+
+      await updateProfileSummary({
+        previousSummary: null,
+        userMessage: 'Keep it brief',
+        assistantReply: 'Will do.',
+        replyReferenceText: 'Earlier they asked for terse code comments.',
+        channelId: 'C1',
+        guildId: 'G1',
+        userId: 'U1',
+      });
+
+      const analystCall = mockChatFn.mock.calls[0][0];
+      const messages = analystCall.messages as ChatMessage[];
+      const userPrompt = messages.find((message) => message.role === 'user')?.content ?? '';
+      expect(userPrompt).toContain('Supporting Reply/Reference Context:');
+      expect(userPrompt).toContain('Earlier they asked for terse code comments.');
+      expect(userPrompt).toContain('supporting evidence only');
+      const analystSystemPrompt = messages.find((message) => message.role === 'system')?.content ?? '';
+      expect(analystSystemPrompt).toContain('best-effort personalization that may become stale between updates');
+      expect(analystSystemPrompt).toContain('Current user input always outranks stored profile content.');
+      expect(analystSystemPrompt).toContain('Do not turn one-off requests into stable preferences unless they appear durable or repeated.');
+      expect(analystSystemPrompt).toContain('omit the detail rather than inferring it');
     });
   });
 

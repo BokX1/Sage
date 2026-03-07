@@ -18,7 +18,9 @@ import { collectPendingAdminActionIds } from './pendingApprovals';
 
 import {
   buildCapabilityPromptSection,
+  type BuildCapabilityPromptSectionParams,
 } from './capabilityPrompt';
+import { resolveRuntimeAutopilotMode } from './autopilotMode';
 import {
   ToolRegistry,
   globalToolRegistry,
@@ -226,12 +228,12 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
     };
   }
 
-  let guildMemory: string | null = null;
+  let serverInstructions: string | null = null;
   if (guildId) {
     try {
-      guildMemory = await getGuildMemoryText(guildId);
+      serverInstructions = await getGuildMemoryText(guildId);
     } catch (error) {
-      logger.warn({ error, guildId }, 'Failed to load guild memory (non-fatal)');
+      logger.warn({ error, guildId }, 'Failed to load server instructions (non-fatal)');
     }
   }
   const model = (appConfig.CHAT_MODEL || DEFAULT_CHAT_MODEL).trim();
@@ -243,6 +245,10 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
     parallelReadOnlyTools: toolLoopConfig.parallelReadOnlyTools,
     maxParallelReadOnlyTools: toolLoopConfig.maxParallelReadOnlyTools,
   };
+  const autopilotMode = resolveRuntimeAutopilotMode({
+    invokedBy,
+    configuredMode: appConfig.AUTOPILOT_MODE,
+  });
 
   const activeToolNames = resolveActiveToolNames({ isAdmin, invokedBy });
   const scopedToolRegistry = buildScopedToolRegistry(activeToolNames);
@@ -257,12 +263,14 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
       }))
       : undefined;
 
-  const capabilityParams = {
+  const capabilityParams: BuildCapabilityPromptSectionParams = {
     activeTools: activeToolNames,
     model,
     invokedBy,
     invokerIsAdmin: isAdmin,
     inGuild: guildId !== null,
+    turnMode: isVoiceActive ? 'voice' : 'text',
+    autopilotMode,
     toolLoopLimits,
   };
 
@@ -274,7 +282,7 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
   const runtimeMessages = buildContextMessages({
     userProfileSummary: params.userProfileSummary,
     runtimeInstruction,
-    guildMemory,
+    serverInstructions,
     replyToBotText,
     replyReferenceContent,
     userText,
