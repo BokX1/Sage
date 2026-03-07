@@ -7,6 +7,7 @@ import {
   searchGitHubIssuesAndPullRequests,
   listGitHubCommits,
 } from './toolIntegrations';
+import { buildRoutedToolHelp } from './toolDocs';
 
 const REPO_PATTERN = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
 
@@ -250,69 +251,9 @@ export const githubTool: ToolDefinition<z.infer<typeof githubToolSchema>> = {
   metadata: { readOnly: true },
   execute: async (args, ctx) => {
     if (args.action === 'help') {
-      const includeExamples = args.includeExamples !== false;
-      return {
-        tool: 'github',
-        actions: [
-          'repo.get',
-          'code.search',
-          'file.get',
-          'file.page',
-          'file.ranges',
-          'file.snippet',
-          'issues.search',
-          'prs.search',
-          'commits.list',
-        ],
-        notes: [
-          'repo accepts owner/repo or a github.com URL and is normalized to owner/repo.',
-          'code.search supports match previews (text_matches) when includeTextMatches=true (default).',
-          'Prefer file.page/file.snippet/file.ranges to avoid all-or-nothing large file reads.',
-          'The think field is optional; omit it to reduce tool-call verbosity.',
-        ],
-        examples: includeExamples
-          ? {
-              'repo.get': {
-                think: 'Fetch repository metadata and README.',
-                action: 'repo.get',
-                repo: 'microsoft/TypeScript',
-                includeReadme: true,
-              },
-              'code.search': {
-                think: 'Locate usages of a symbol and get match previews.',
-                action: 'code.search',
-                repo: 'microsoft/TypeScript',
-                query: 'createProgram',
-                includeTextMatches: true,
-              },
-              'file.page': {
-                think: 'Page through a large file deterministically.',
-                action: 'file.page',
-                repo: 'microsoft/TypeScript',
-                path: 'src/compiler/program.ts',
-                startLine: 1,
-                maxLines: 200,
-              },
-              'file.ranges': {
-                think: 'Fetch multiple disjoint chunks in one call.',
-                action: 'file.ranges',
-                repo: 'microsoft/TypeScript',
-                path: 'src/compiler/program.ts',
-                ranges: [
-                  { startLine: 10, endLine: 20 },
-                  { startLine: 200, endLine: 220 },
-                ],
-              },
-              'issues.search': {
-                think: 'Find issues discussing a specific problem.',
-                action: 'issues.search',
-                repo: 'microsoft/TypeScript',
-                query: 'incremental build regression',
-                state: 'open',
-              },
-            }
-          : undefined,
-      };
+      return buildRoutedToolHelp('github', {
+        includeExamples: args.includeExamples !== false,
+      });
     }
 
     const repo = normalizeGitHubRepoSpecifier(args.repo);

@@ -1967,15 +1967,15 @@ function getAttachmentContentUnavailableGuidance(record: IngestedAttachmentRecor
 
   switch (record.status) {
     case 'queued':
-      return `Stored ${noun} is queued for background processing. You can still resend the original attachment with \`discord\` action files.send_attachment.`;
+      return `Stored ${noun} is queued for background processing. You can still resend the original attachment with \`discord_files\` action send_attachment.`;
     case 'processing':
-      return `Stored ${noun} is still being generated. You can still resend the original attachment with \`discord\` action files.send_attachment.`;
+      return `Stored ${noun} is still being generated. You can still resend the original attachment with \`discord_files\` action send_attachment.`;
     case 'error':
-      return `Stored ${noun} is unavailable because extraction failed. You can still resend the original attachment with \`discord\` action files.send_attachment.`;
+      return `Stored ${noun} is unavailable because extraction failed. You can still resend the original attachment with \`discord_files\` action send_attachment.`;
     case 'skip':
-      return `Stored ${noun} is unavailable for this attachment. You can still resend the original attachment with \`discord\` action files.send_attachment.`;
+      return `Stored ${noun} is unavailable for this attachment. You can still resend the original attachment with \`discord_files\` action send_attachment.`;
     default:
-      return `No stored ${noun} is available for this attachment. You can still resend the original attachment with \`discord\` action files.send_attachment.`;
+      return `No stored ${noun} is available for this attachment. You can still resend the original attachment with \`discord_files\` action send_attachment.`;
   }
 }
 
@@ -2067,7 +2067,7 @@ function formatAttachmentLookupItem(params: {
         contentIncluded: false,
       }),
     guidance: hasStoredText
-      ? 'Use `discord` action files.read_attachment for paged stored text or files.send_attachment to resend the original attachment.'
+      ? 'Use `discord_files` action read_attachment for paged stored text or send_attachment to resend the original attachment.'
       : getAttachmentContentUnavailableGuidance(record),
     ...(record.errorText ? { errorText: record.errorText } : {}),
   };
@@ -2220,7 +2220,7 @@ export async function lookupChannelFileCache(params: {
     items,
     guidance:
       items.length > 0
-        ? 'Use attachmentId with `discord` action files.read_attachment for paged stored text or files.send_attachment to resend the original attachment.'
+      ? 'Use attachmentId with `discord_files` action read_attachment for paged stored text or send_attachment to resend the original attachment.'
         : 'No cached attachments matched this query in the current channel.',
   };
 }
@@ -2299,7 +2299,7 @@ export async function lookupServerFileCache(params: {
     scope: 'guild_cached_files',
     guidance:
       items.length > 0
-        ? 'Results are filtered to channels you can access. Use attachmentId with `discord` action files.read_attachment for paged stored text or files.send_attachment to resend the original attachment.'
+      ? 'Results are filtered to channels you can access. Use attachmentId with `discord_files` action read_attachment for paged stored text or send_attachment to resend the original attachment.'
         : 'No accessible cached attachments matched this query in the current server.',
   };
 }
@@ -3212,7 +3212,7 @@ export async function searchChannelMessages(params: {
     items,
     scope: 'raw_channel_messages',
     guidance:
-      'Use `discord` action messages.get_context with messageId to fetch surrounding messages before finalizing a precise answer.',
+      'Use `discord_messages` action get_context with messageId to fetch surrounding messages before finalizing a precise answer.',
   };
 }
 
@@ -3600,7 +3600,7 @@ export async function searchGuildMessages(params: {
     items,
     scope: 'raw_guild_messages',
     guidance:
-      'Use `discord` action messages.get_context with channelId + messageId to fetch surrounding messages before quoting precisely.',
+      'Use `discord_messages` action get_context with channelId + messageId to fetch surrounding messages before quoting precisely.',
   };
 }
 
@@ -3714,7 +3714,7 @@ export async function lookupUserMessageTimeline(params: {
     items,
     scope: 'raw_guild_messages',
     guidance:
-      'Use `discord` action messages.get_context with channelId + messageId for exact surrounding context when needed.',
+      'Use `discord_messages` action get_context with channelId + messageId for exact surrounding context when needed.',
   };
 }
 
@@ -3743,7 +3743,7 @@ export async function lookupChannelMessage(params: {
       content: 'Channel message lookup is unavailable because MESSAGE_DB_STORAGE_ENABLED=false.',
       items: [],
       scope: 'raw_channel_messages',
-      guidance: 'Enable DB transcript storage to use `discord` action messages.get_context.',
+    guidance: 'Enable DB transcript storage to use `discord_messages` action get_context.',
     };
   }
 
@@ -3880,7 +3880,7 @@ export async function searchAttachmentChunksInChannel(params: {
     channelId: params.channelId,
     resultCount: items.length,
     items,
-    guidance: 'Use attachmentId with `discord` action files.read_attachment for paged stored text or files.send_attachment to resend the original attachment.',
+    guidance: 'Use attachmentId with `discord_files` action read_attachment for paged stored text or send_attachment to resend the original attachment.',
   };
 }
 
@@ -3975,7 +3975,7 @@ export async function searchAttachmentChunksInGuild(params: {
     resultCount: items.length,
     items,
     scope: 'guild_attachment_chunks',
-    guidance: 'Use attachmentId with `discord` action files.read_attachment for paged stored text or files.send_attachment to resend the original attachment.',
+    guidance: 'Use attachmentId with `discord_files` action read_attachment for paged stored text or send_attachment to resend the original attachment.',
   };
 }
 
@@ -4019,7 +4019,7 @@ export async function searchChannelArchives(params: {
       items: [],
       scope: 'channel_archive_profiles',
       guidance:
-        'Use `discord` action messages.search_history for raw historical message retrieval when transcript-level evidence is needed.',
+      'Use `discord_messages` action search_history for raw historical message retrieval when transcript-level evidence is needed.',
     };
   }
 
@@ -4068,7 +4068,7 @@ export async function searchChannelArchives(params: {
     items,
     scope: 'channel_archive_profiles',
     guidance:
-      'Archive results are weekly channel summary snapshots, not raw message transcripts. Use `discord` action messages.search_history for exact historical messages.',
+      'Archive results are weekly channel summary snapshots, not raw message transcripts. Use `discord_messages` action search_history for exact historical messages.',
   };
 }
 
@@ -4163,7 +4163,7 @@ export async function lookupChannelMemory(params: {
   }
   if (recentAttachments.length > 0) {
     if (parts.length > 0) parts.push('');
-    parts.push('Recent cached attachments (read stored text with `discord` action files.read_attachment or resend originals with `discord` action files.send_attachment when needed):');
+    parts.push('Recent cached attachments (read stored text with `discord_files` action read_attachment or resend originals with `discord_files` action send_attachment when needed):');
     for (const attachment of recentAttachments.slice(0, maxRecentFiles)) {
       parts.push(
         `- ${attachment.filename} (attachment:${attachment.id}, guild:${params.guildId ?? '@me'} ch:${params.channelId} msg:${attachment.messageId}, status=${attachment.status}, extractor=${attachment.extractor ?? 'none'}, cached ${formatRelativeAge(attachment.createdAt)} ago)`,
@@ -4179,7 +4179,7 @@ export async function lookupChannelMemory(params: {
       recentAttachmentCount: 0,
       scope: 'channel_summary',
       guidance:
-        'Use `discord` action messages.search_history for raw historical transcript retrieval when you need exact message-level evidence.',
+        'Use `discord_messages` action search_history for raw historical transcript retrieval when you need exact message-level evidence.',
     };
   }
 
@@ -4205,7 +4205,7 @@ export async function lookupChannelMemory(params: {
     })),
     scope: 'channel_summary',
     guidance:
-      'For exact historical messages, use `discord` action messages.search_history and then messages.get_context.',
+      'For exact historical messages, use `discord_messages` actions search_history and then get_context.',
   };
 }
 

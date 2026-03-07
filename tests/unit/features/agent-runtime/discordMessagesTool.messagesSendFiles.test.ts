@@ -16,8 +16,8 @@ vi.mock('@/features/admin/adminActionService', async (importOriginal) => {
 import { ToolRegistry } from '@/features/agent-runtime/toolRegistry';
 import { registerDefaultAgenticTools } from '@/features/agent-runtime/defaultTools';
 
-describe('discord tool messages.send attachments', () => {
-  it('allows non-admin messages.send with files (not autopilot)', async () => {
+describe('discord messages tool send attachments', () => {
+  it('allows non-admin send with files (not autopilot)', async () => {
     const registry = new ToolRegistry();
     registerDefaultAgenticTools(registry);
 
@@ -39,10 +39,10 @@ describe('discord tool messages.send attachments', () => {
 
     const result = await registry.executeValidated(
       {
-        name: 'discord',
+        name: 'discord_messages',
         args: {
           think: 'Send a file attachment',
-          action: 'messages.send',
+          action: 'send',
           files: [
             {
               filename: 'demo.txt',
@@ -107,10 +107,10 @@ describe('discord tool messages.send attachments', () => {
 
     const result = await registry.executeValidated(
       {
-        name: 'discord',
+        name: 'discord_messages',
         args: {
           think: 'Send a structured update card',
-          action: 'messages.send',
+          action: 'send',
           presentation: 'components_v2',
           files: [
             {

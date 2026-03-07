@@ -54,6 +54,16 @@ import {
 } from '../../platform/discord/discordRestPolicy';
 import { isAdmin } from '../../app/discord/handlers/sage-command-handlers';
 import { client } from '../../platform/discord/client';
+import {
+  discordComponentsV2BlockSchema as componentsV2BlockSchema,
+  discordComponentsV2MediaRefSchema as componentsV2MediaRefSchema,
+  discordComponentsV2MessageSchema,
+  discordMessageFileInputSchema,
+  discordMessageLinkButtonSchema as messageLinkButtonSchema,
+  discordMessagePresentationSchema,
+  type DiscordComponentsV2Message,
+  validateDiscordSendMessagePayload,
+} from '../discord/messageContract';
 
 const APPROVAL_TTL_MS = 10 * 60 * 1_000;
 const RESOLVED_APPROVAL_CARD_DELETE_DELAY_MS = 60_000;
@@ -129,243 +139,16 @@ const removeBotReactionRequestSchema = z.object({
   reason: z.string().trim().max(500).optional(),
 });
 
-const sendMessageFileSourceSchema = z.discriminatedUnion('type', [
-  z.object({
-    type: z.literal('url'),
-    url: z.string().trim().url().max(2_048),
-  }),
-  z.object({
-    type: z.literal('text'),
-    text: z.string().max(20_000),
-  }),
-  z.object({
-    type: z.literal('base64'),
-    base64: z.string().max(50_000),
-  }),
-]);
-
-const sendMessageFileInputSchema = z.object({
-  filename: z.string().trim().min(1).max(255),
-  contentType: z.string().trim().min(1).max(200).optional(),
-  source: sendMessageFileSourceSchema,
-});
-
-const messageLinkButtonSchema = z.object({
-  label: z.string().trim().min(1).max(80),
-  url: z.string().trim().url().max(2_048),
-});
-
-const componentsV2MediaRefSchema = z.object({
-  url: z.string().trim().url().max(2_048).optional(),
-  attachmentName: z.string().trim().min(1).max(255).optional(),
-}).superRefine((value, ctx) => {
-  const count = Number(value.url !== undefined) + Number(value.attachmentName !== undefined);
-  if (count !== 1) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: 'Provide exactly one of url or attachmentName.',
-    });
-  }
-});
-
-const componentsV2ThumbnailAccessorySchema = z.object({
-  type: z.literal('thumbnail'),
-  media: componentsV2MediaRefSchema,
-  description: z.string().trim().max(1_024).optional(),
-  spoiler: z.boolean().optional(),
-});
-
-const componentsV2LinkButtonAccessorySchema = z.object({
-  type: z.literal('link_button'),
-  button: messageLinkButtonSchema,
-});
-
-const componentsV2TextBlockSchema = z.object({
-  type: z.literal('text'),
-  content: z.string().trim().min(1).max(4_000),
-});
-
-const componentsV2SectionBlockSchema = z.object({
-  type: z.literal('section'),
-  texts: z.array(z.string().trim().min(1).max(2_000)).min(1).max(3),
-  accessory: z.union([componentsV2ThumbnailAccessorySchema, componentsV2LinkButtonAccessorySchema]),
-});
-
-const componentsV2MediaGalleryBlockSchema = z.object({
-  type: z.literal('media_gallery'),
-  items: z.array(z.object({
-    media: componentsV2MediaRefSchema,
-    description: z.string().trim().max(1_024).optional(),
-    spoiler: z.boolean().optional(),
-  })).min(1).max(10),
-});
-
-const componentsV2FileBlockSchema = z.object({
-  type: z.literal('file'),
-  attachmentName: z.string().trim().min(1).max(255),
-  spoiler: z.boolean().optional(),
-});
-
-const componentsV2SeparatorBlockSchema = z.object({
-  type: z.literal('separator'),
-  divider: z.boolean().optional(),
-  spacing: z.enum(['small', 'large']).optional(),
-});
-
-const legacyOrComponentsButtonsSchema = z.array(messageLinkButtonSchema).min(1).max(5);
-
-const componentsV2ActionRowBlockSchema = z.object({
-  type: z.literal('action_row'),
-  buttons: legacyOrComponentsButtonsSchema,
-});
-
-const componentsV2BlockSchema = z.discriminatedUnion('type', [
-  componentsV2TextBlockSchema,
-  componentsV2SectionBlockSchema,
-  componentsV2MediaGalleryBlockSchema,
-  componentsV2FileBlockSchema,
-  componentsV2SeparatorBlockSchema,
-  componentsV2ActionRowBlockSchema,
-]);
-
-export const discordLegacyInteractiveMessageSchema = z.object({
-  buttons: legacyOrComponentsButtonsSchema,
-});
-
-export const discordComponentsV2MessageSchema = z.object({
-  accentColorHex: z.string().trim().regex(/^#?[0-9a-fA-F]{6}$/).optional(),
-  spoiler: z.boolean().optional(),
-  blocks: z.array(componentsV2BlockSchema).min(1).max(10),
-});
-
-export type DiscordComponentsV2Message = z.infer<typeof discordComponentsV2MessageSchema>;
-export type DiscordLegacyInteractiveMessage = z.infer<typeof discordLegacyInteractiveMessageSchema>;
-
 const sendMessageRequestSchema = z.object({
   action: z.literal('send_message'),
   channelId: z.string().trim().min(1).max(64),
-  presentation: z.enum(['plain', 'legacy_components', 'components_v2']).optional(),
+  presentation: discordMessagePresentationSchema.optional(),
   content: z.string().trim().min(1).max(8_000).optional(),
-  files: z.array(sendMessageFileInputSchema).min(1).max(4).optional(),
-  legacyComponents: discordLegacyInteractiveMessageSchema.optional(),
+  files: z.array(discordMessageFileInputSchema).min(1).max(4).optional(),
   componentsV2: discordComponentsV2MessageSchema.optional(),
   reason: z.string().trim().max(500).optional(),
-}).superRefine((value, ctx) => {
-  const presentation = value.presentation ?? 'plain';
-  const hasContent = value.content !== undefined;
-  const hasFiles = Boolean(value.files?.length);
-  const attachmentNames = new Set((value.files ?? []).map((file) => file.filename));
-
-  if (presentation === 'plain') {
-    if (!hasContent && !hasFiles) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: 'send_message requires content or files.',
-      });
-    }
-    if (value.legacyComponents) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: 'legacyComponents is only valid when presentation=legacy_components.',
-        path: ['legacyComponents'],
-      });
-    }
-    if (value.componentsV2) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: 'componentsV2 is only valid when presentation=components_v2.',
-        path: ['componentsV2'],
-      });
-    }
-    return;
-  }
-
-  if (presentation === 'legacy_components') {
-    if (!hasContent) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: 'legacy_components requires content.',
-        path: ['content'],
-      });
-    }
-    if (hasFiles) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: 'legacy_components does not support files.',
-        path: ['files'],
-      });
-    }
-    if (!value.legacyComponents) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: 'legacy_components requires legacyComponents.',
-        path: ['legacyComponents'],
-      });
-    }
-    if (value.componentsV2) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: 'componentsV2 is only valid when presentation=components_v2.',
-        path: ['componentsV2'],
-      });
-    }
-    return;
-  }
-
-  if (hasContent) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: 'components_v2 messages must not include content.',
-      path: ['content'],
-    });
-  }
-  if (value.legacyComponents) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: 'legacyComponents is only valid when presentation=legacy_components.',
-      path: ['legacyComponents'],
-    });
-  }
-  if (!value.componentsV2) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: 'components_v2 requires componentsV2.',
-      path: ['componentsV2'],
-    });
-    return;
-  }
-
-  for (const [blockIndex, block] of value.componentsV2.blocks.entries()) {
-    if (block.type === 'file' && !attachmentNames.has(block.attachmentName)) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: `componentsV2 file block references unknown attachment "${block.attachmentName}".`,
-        path: ['componentsV2', 'blocks', blockIndex, 'attachmentName'],
-      });
-    }
-    if (block.type === 'section' && block.accessory?.type === 'thumbnail') {
-      const attachmentName = block.accessory.media.attachmentName;
-      if (attachmentName && !attachmentNames.has(attachmentName)) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: `componentsV2 section thumbnail references unknown attachment "${attachmentName}".`,
-          path: ['componentsV2', 'blocks', blockIndex, 'accessory', 'media', 'attachmentName'],
-        });
-      }
-    }
-    if (block.type === 'media_gallery') {
-      for (const [itemIndex, item] of block.items.entries()) {
-        const attachmentName = item.media.attachmentName;
-        if (attachmentName && !attachmentNames.has(attachmentName)) {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            message: `componentsV2 media gallery item references unknown attachment "${attachmentName}".`,
-            path: ['componentsV2', 'blocks', blockIndex, 'items', itemIndex, 'media', 'attachmentName'],
-          });
-        }
-      }
-    }
-  }
+}).strict().superRefine((value, ctx) => {
+  validateDiscordSendMessagePayload(value, ctx, { actionLabel: 'send_message' });
 });
 
 const removeUserReactionRequestSchema = z.object({
@@ -970,21 +753,6 @@ function buildLinkButtonComponent(
   };
 }
 
-function buildLegacyActionRows(
-  payload: DiscordLegacyInteractiveMessage,
-): Array<ActionRowBuilder<ButtonBuilder>> {
-  const row = new ActionRowBuilder<ButtonBuilder>();
-  for (const button of payload.buttons) {
-    row.addComponents(
-      new ButtonBuilder()
-        .setStyle(ButtonStyle.Link)
-        .setLabel(button.label)
-        .setURL(button.url),
-    );
-  }
-  return [row];
-}
-
 function renderComponentsV2Block(
   block: z.infer<typeof componentsV2BlockSchema>,
 ): APIContainerComponent['components'][number] {
@@ -1043,7 +811,7 @@ function renderComponentsV2Block(
 
 export function buildDiscordComponentsV2MessagePayload(params: {
   message: DiscordComponentsV2Message;
-  files?: Array<z.infer<typeof sendMessageFileInputSchema>>;
+  files?: Array<z.infer<typeof discordMessageFileInputSchema>>;
 }): {
   flags: MessageFlags;
   components: APIMessageTopLevelComponent[];
@@ -1351,23 +1119,6 @@ async function executeImmediateDiscordAction(params: {
           presentation: 'components_v2',
         };
       }
-    }
-
-    if ((sendAction.presentation ?? 'plain') === 'legacy_components') {
-      const sent = await channel.send({
-        content: sendAction.content!,
-        allowedMentions: { parse: [] },
-        components: buildLegacyActionRows(sendAction.legacyComponents!),
-      });
-      messageIds.push(sent.id);
-
-      return {
-        status: 'executed',
-        action: 'send_message',
-        channelId: channel.id,
-        messageIds,
-        presentation: 'legacy_components',
-      };
     }
 
     const chunks = sendAction.content?.trim().length

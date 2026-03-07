@@ -10,6 +10,7 @@ import {
   sanitizePublicUrl,
   uniqueUrls,
 } from './toolIntegrations';
+import { buildRoutedToolHelp } from './toolDocs';
 
 type WebSearchProviderId = 'tavily' | 'exa' | 'searxng' | 'pollinations';
 type WebScrapeProviderId = 'firecrawl' | 'crawl4ai' | 'jina' | 'raw_fetch' | 'nomnom';
@@ -175,43 +176,9 @@ export const webTool: ToolDefinition<z.infer<typeof webToolSchema>> = {
 
     switch (args.action) {
       case 'help': {
-        const includeExamples = args.includeExamples !== false;
-        return {
-          tool: 'web',
-          actions: ['search', 'read', 'read.page', 'extract', 'research'],
-          notes: [
-            'Prefer research for one-shot search+read when you need grounding quickly.',
-            'Use read.page for very large pages (continuation-friendly; no streaming).',
-            'Search results include ageDays when publishedDate is available.',
-            'The think field is optional; omit it to reduce tool-call verbosity.',
-          ],
-          examples: includeExamples
-            ? {
-                search: {
-                  think: 'Find recent guidance with multiple sources.',
-                  action: 'search',
-                  query: 'Next.js hydration mismatch error how to fix',
-                  depth: 'balanced',
-                  maxResults: 5,
-                },
-                'read.page': {
-                  think: 'Read a long page without all-or-nothing output.',
-                  action: 'read.page',
-                  url: 'https://example.com/docs',
-                  maxChars: 2000,
-                },
-                research: {
-                  think: 'Search and immediately read top sources, then optionally follow links.',
-                  action: 'research',
-                  query: 'What is HTTP status 429 and how should clients retry?',
-                  maxSources: 3,
-                  perSourceMaxChars: 4000,
-                  followLinks: true,
-                  maxFollowedLinks: 3,
-                },
-              }
-            : undefined,
-        };
+        return buildRoutedToolHelp('web', {
+          includeExamples: args.includeExamples !== false,
+        });
       }
 
       case 'search': {

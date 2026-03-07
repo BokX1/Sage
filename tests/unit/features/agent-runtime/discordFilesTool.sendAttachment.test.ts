@@ -16,7 +16,7 @@ vi.mock('@/features/agent-runtime/toolIntegrations', async (importOriginal) => {
 import { ToolRegistry } from '@/features/agent-runtime/toolRegistry';
 import { registerDefaultAgenticTools } from '@/features/agent-runtime/defaultTools';
 
-describe('discord tool files.send_attachment', () => {
+describe('discord files tool send_attachment', () => {
   it('allows non-admin resend requests outside autopilot and returns stored grounding text', async () => {
     const registry = new ToolRegistry();
     registerDefaultAgenticTools(registry);
@@ -40,10 +40,10 @@ describe('discord tool files.send_attachment', () => {
 
     const result = await registry.executeValidated(
       {
-        name: 'discord',
+        name: 'discord_files',
         args: {
           think: 'Resend the cached attachment the user asked for',
-          action: 'files.send_attachment',
+          action: 'send_attachment',
           attachmentId: 'att-1',
           channelId: 'channel-2',
           content: 'Here it is.',

@@ -57,25 +57,18 @@ describe('adminActionService interaction schemas', () => {
     ).toThrow('requires content or files');
   });
 
-  it('accepts legacy interactive send_message payloads', () => {
-    const parsed = discordInteractionRequestSchema.parse({
-      action: 'send_message',
-      channelId: '<#1234567890>',
-      presentation: 'legacy_components',
-      content: 'Pick one',
-      legacyComponents: {
-        buttons: [{ label: 'Open docs', url: 'https://example.com/docs' }],
-      },
-    });
-
-    expect(parsed).toEqual(
-      expect.objectContaining({
+  it('rejects legacy interactive send_message payloads', () => {
+    expect(() =>
+      discordInteractionRequestSchema.parse({
+        action: 'send_message',
+        channelId: '<#1234567890>',
         presentation: 'legacy_components',
+        content: 'Pick one',
         legacyComponents: {
           buttons: [{ label: 'Open docs', url: 'https://example.com/docs' }],
         },
       }),
-    );
+    ).toThrow();
   });
 
   it('accepts components_v2 send_message payloads with attachment-backed media', () => {

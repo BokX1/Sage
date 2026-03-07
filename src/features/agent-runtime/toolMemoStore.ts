@@ -50,7 +50,12 @@ export function buildToolMemoScopeKey(toolName: string, ctx: ToolExecutionContex
   const guildId = (ctx.guildId ?? 'dm').trim();
   const profile = (ctx.toolExecutionProfile ?? 'default').trim();
 
-  if (normalizedTool === 'discord') {
+  if (
+    normalizedTool === 'discord_context' ||
+    normalizedTool === 'discord_messages' ||
+    normalizedTool === 'discord_files' ||
+    normalizedTool === 'discord_admin'
+  ) {
     return `discord::${guildId}::${ctx.channelId.trim()}::${ctx.userId.trim()}::${profile}`;
   }
 

@@ -23,9 +23,9 @@ vi.mock('@/platform/discord/discordRestPolicy', async (importOriginal) => {
   };
 });
 
-import { discordTool } from '@/features/agent-runtime/discordTool';
+import { discordAdminTool } from '@/features/agent-runtime/discordDomainTools';
 
-describe('discord tool typed REST wrappers', () => {
+describe('discord admin domain typed REST wrappers', () => {
   const adminCtx: ToolExecutionContext = {
     traceId: 'trace',
     userId: 'user-1',
@@ -47,11 +47,11 @@ describe('discord tool typed REST wrappers', () => {
     });
   });
 
-  it('queues messages.edit as an approval-gated REST write', async () => {
-    const result = await discordTool.execute(
+  it('queues edit_message as an approval-gated REST write', async () => {
+    const result = await discordAdminTool.execute(
       {
         think: 'Edit a message safely',
-        action: 'messages.edit',
+        action: 'edit_message',
         messageId: 'msg-1',
         content: 'Updated',
       },
@@ -81,10 +81,10 @@ describe('discord tool typed REST wrappers', () => {
   });
 
   it('queues channels.create and ignores text-only fields for voice channels', async () => {
-    await discordTool.execute(
+    await discordAdminTool.execute(
       {
         think: 'Create a voice channel',
-        action: 'channels.create',
+        action: 'create_channel',
         name: 'Voice Lounge',
         type: 'voice',
         topic: 'should be ignored',
@@ -108,10 +108,10 @@ describe('discord tool typed REST wrappers', () => {
   });
 
   it('queues roles.create and converts colorHex to Discord integer color', async () => {
-    await discordTool.execute(
+    await discordAdminTool.execute(
       {
         think: 'Create a new role',
-        action: 'roles.create',
+        action: 'create_role',
         name: 'Moderators',
         colorHex: '#ff0000',
         permissions: '8',
@@ -135,10 +135,10 @@ describe('discord tool typed REST wrappers', () => {
   });
 
   it('generates an OAuth2 invite URL using the configured app id', async () => {
-    const result = await discordTool.execute(
+    const result = await discordAdminTool.execute(
       {
         think: 'Generate invite URL',
-        action: 'oauth2.invite_url',
+        action: 'get_invite_url',
       },
       {
         traceId: 'trace',
@@ -150,7 +150,7 @@ describe('discord tool typed REST wrappers', () => {
     expect(result).toEqual(
       expect.objectContaining({
         ok: true,
-        action: 'oauth2.invite_url',
+        action: 'get_invite_url',
         url: expect.any(String),
       }),
     );
@@ -162,33 +162,33 @@ describe('discord tool typed REST wrappers', () => {
     expect(url.searchParams.get('permissions')).toBe('0');
   });
 
-  it('allows non-admin discord.api GET requests for safe guild-scoped reads', async () => {
-    const result = await discordTool.execute(
-      {
-        action: 'discord.api',
-        method: 'GET',
-        path: '/channels/channel-1/messages/message-1',
-      },
-      {
-        traceId: 'trace',
-        userId: 'user-1',
-        channelId: 'channel-1',
-        guildId: 'guild-1',
-        invokedBy: 'mention',
-        invokerIsAdmin: false,
-      },
-    );
-
-    expect(result).toEqual(expect.objectContaining({ ok: true }));
-    expect(mocks.discordRestRequestGuildScoped).toHaveBeenCalledTimes(1);
+  it('blocks non-admin api GET requests', async () => {
+    await expect(
+      discordAdminTool.execute(
+        {
+          action: 'api',
+          method: 'GET',
+          path: '/channels/channel-1/messages/message-1',
+        },
+        {
+          traceId: 'trace',
+          userId: 'user-1',
+          channelId: 'channel-1',
+          guildId: 'guild-1',
+          invokedBy: 'mention',
+          invokerIsAdmin: false,
+        },
+      ),
+    ).rejects.toThrow(/admin/i);
+    expect(mocks.discordRestRequestGuildScoped).toHaveBeenCalledTimes(0);
     expect(mocks.requestDiscordRestWriteForTool).toHaveBeenCalledTimes(0);
   });
 
-  it('blocks non-admin discord.api writes', async () => {
+  it('blocks non-admin api writes', async () => {
     await expect(
-      discordTool.execute(
+      discordAdminTool.execute(
         {
-          action: 'discord.api',
+          action: 'api',
           method: 'PATCH',
           path: '/channels/channel-1/messages/message-1',
           body: { content: 'Updated' },

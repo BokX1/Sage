@@ -2,6 +2,7 @@ import { z } from 'zod';
 import type { ToolDefinition } from './toolRegistry';
 import { lookupGitHubCodeSearch, lookupNpmPackage } from './toolIntegrations';
 import { ToolDetailedError } from './toolErrors';
+import { buildRoutedToolHelp } from './toolDocs';
 
 const thinkField = z
   .string()
@@ -50,27 +51,9 @@ export const workflowTool: ToolDefinition<z.infer<typeof workflowToolSchema>> = 
   execute: async (args, ctx) => {
     switch (args.action) {
       case 'help': {
-        const includeExamples = args.includeExamples !== false;
-        return {
-          tool: 'workflow',
-          actions: ['npm.github_code_search'],
-          notes: [
-            'Workflows are one-shot helpers that reduce multi-hop chains (latency + failure points).',
-            'If an npm package does not expose a GitHub repository, npm.github_code_search will fail with not_found.',
-            'The think field is optional; omit it to reduce tool-call verbosity.',
-          ],
-          examples: includeExamples
-            ? {
-                'npm.github_code_search': {
-                  think: 'Locate a symbol in a package repo without manual npm → GitHub parsing.',
-                  action: 'npm.github_code_search',
-                  packageName: 'zod',
-                  query: 'safeParse',
-                  includeTextMatches: true,
-                },
-              }
-            : undefined,
-        };
+        return buildRoutedToolHelp('workflow', {
+          includeExamples: args.includeExamples !== false,
+        });
       }
 
       case 'npm.github_code_search': {

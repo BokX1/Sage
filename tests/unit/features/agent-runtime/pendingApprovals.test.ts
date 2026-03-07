@@ -5,7 +5,7 @@ describe('collectPendingAdminActionIds', () => {
   it('collects pending approval action ids from tool results', () => {
     const ids = collectPendingAdminActionIds([
       {
-        name: 'discord',
+        name: 'discord_admin',
         success: true,
         result: { status: 'pending_approval', actionId: 'action-1' },
         latencyMs: 10,
@@ -17,19 +17,19 @@ describe('collectPendingAdminActionIds', () => {
         latencyMs: 5,
       },
       {
-        name: 'discord',
+        name: 'discord_admin',
         success: true,
         result: { status: 'pending_approval', actionId: ' action-2 ' },
         latencyMs: 7,
       },
       {
-        name: 'discord',
+        name: 'discord_admin',
         success: false,
         error: 'nope',
         latencyMs: 1,
       },
       {
-        name: 'discord',
+        name: 'discord_admin',
         success: true,
         result: { status: 'pending_approval', actionId: 'action-1' },
         latencyMs: 2,
@@ -42,7 +42,7 @@ describe('collectPendingAdminActionIds', () => {
   it('returns an empty list when no pending approvals exist', () => {
     const ids = collectPendingAdminActionIds([
       {
-        name: 'discord',
+        name: 'discord_admin',
         success: true,
         result: { ok: true },
         latencyMs: 1,

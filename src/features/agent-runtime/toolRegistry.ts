@@ -73,7 +73,12 @@ function formatZodIssues(issues: z.ZodIssue[], maxIssues = 10): { text: string; 
 
 function buildValidationHint(toolName: string): string | undefined {
   const normalized = toolName.trim().toLowerCase();
-  if (normalized === 'discord') {
+  if (
+    normalized === 'discord_context' ||
+    normalized === 'discord_messages' ||
+    normalized === 'discord_files' ||
+    normalized === 'discord_admin'
+  ) {
     return 'Try: { action: "help" } to see available actions and required fields.';
   }
   if (normalized === 'github') {

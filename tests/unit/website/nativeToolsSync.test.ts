@@ -36,13 +36,13 @@ describe('website native tools list', () => {
     expect(missing).toEqual([]);
   });
 
-  it('includes all default tools (excluding discord, which is represented by actions)', async () => {
+  it('includes all default tools', async () => {
     const nativeTools = await loadWebsiteNativeTools();
     const names = new Set(nativeTools.map((row) => row.name));
 
     const registry = new ToolRegistry();
     registerDefaultAgenticTools(registry);
-    const toolNames = registry.listNames().filter((name) => name !== 'discord');
+    const toolNames = registry.listNames();
 
     const missing = toolNames.filter((toolName) => !names.has(toolName));
     expect(missing).toEqual([]);

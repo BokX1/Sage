@@ -1244,7 +1244,7 @@ describe('toolIntegrations', () => {
 
     expect((result as { found: boolean }).found).toBe(true);
     expect((result as { readable: boolean }).readable).toBe(false);
-    expect((result as { guidance: string }).guidance).toContain('files.send_attachment');
+    expect((result as { guidance: string }).guidance).toContain('send_attachment');
     expect((result as { content: string | null }).content).toBeNull();
   });
 

@@ -17,6 +17,12 @@ export {
   type OpenAIToolSpec,
 } from './toolRegistry';
 export { registerDefaultAgenticTools } from './defaultTools';
+export {
+  discordContextTool,
+  discordMessagesTool,
+  discordFilesTool,
+  discordAdminTool,
+} from './discordDomainTools';
 
 export {
   runToolCallLoop,

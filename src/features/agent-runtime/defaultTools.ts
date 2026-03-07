@@ -1,6 +1,11 @@
 import { z } from 'zod';
 import { ToolDefinition, ToolRegistry, globalToolRegistry } from './toolRegistry';
-import { discordTool } from './discordTool';
+import {
+  discordAdminTool,
+  discordContextTool,
+  discordFilesTool,
+  discordMessagesTool,
+} from './discordDomainTools';
 import { webTool } from './webTool';
 import { githubTool } from './githubTool';
 import { workflowTool } from './workflowTool';
@@ -319,7 +324,10 @@ const internalReflectionTool: ToolDefinition<{
 const DEFAULT_TOOL_DEFINITIONS = [
   getCurrentDateTimeTool,
   toolStatsTool,
-  discordTool,
+  discordContextTool,
+  discordMessagesTool,
+  discordFilesTool,
+  discordAdminTool,
   generateImageTool,
   webTool,
   githubTool,

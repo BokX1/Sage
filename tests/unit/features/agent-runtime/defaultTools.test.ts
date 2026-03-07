@@ -10,7 +10,10 @@ describe('default agentic tools', () => {
     registerDefaultAgenticTools(registry);
 
     expect(registry.listNames().sort()).toEqual([
-      'discord',
+      'discord_admin',
+      'discord_context',
+      'discord_files',
+      'discord_messages',
       'github',
       'image_generate',
       'npm_info',
@@ -56,10 +59,10 @@ describe('default agentic tools', () => {
 
     const result = await registry.executeValidated(
       {
-        name: 'discord',
+        name: 'discord_messages',
         args: {
           think: 'Verify autopilot guard',
-          action: 'messages.send',
+          action: 'send',
           content: 'Hello from autopilot',
         },
       },
@@ -84,10 +87,10 @@ describe('default agentic tools', () => {
 
     const result = await registry.executeValidated(
       {
-        name: 'discord',
+        name: 'discord_admin',
         args: {
           think: 'Should fail schema validation',
-          action: 'moderation.submit',
+          action: 'submit_moderation',
           request: {
             // wrong schema on purpose: this is an interaction, not a moderation action
             action: 'create_poll',
@@ -117,10 +120,10 @@ describe('default agentic tools', () => {
 
     const result = await registry.executeValidated(
       {
-        name: 'discord',
+        name: 'discord_admin',
         args: {
           think: 'Verify non-command admin context is allowed to reach guild guard',
-          action: 'instructions.update_server',
+          action: 'update_server_instructions',
           request: {
             operation: 'set',
             text: 'Server policy',

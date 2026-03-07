@@ -19,7 +19,7 @@ describe('capabilityPrompt', () => {
       // Assert
       expect(prompt).toContain('<execution_rules>');
       expect(prompt).toContain('Read exact runtime facts from <agent_state>');
-      expect(prompt).toContain('call that tool\'s `help` action before guessing');
+      expect(prompt).toContain('Routed tools expose action-level `help`: `web`.');
       expect(prompt).toContain('Attachment retrieval behavior: you do not have access to retrieve historical files this turn.');
       expect(prompt).toContain('Resolve conflicting guidance in this order: current user input, then <server_instructions>, then <user_profile>');
       expect(prompt).toContain('Treat <recent_transcript> as continuity context, not as a replacement for message-history verification');
@@ -28,8 +28,8 @@ describe('capabilityPrompt', () => {
       expect(prompt).toContain('<assistant_context> is prior Sage output included for continuity and disambiguation only; it may contain stale assumptions or superseded suggestions');
       expect(prompt).toContain('<server_instructions> can refine guild-specific behavior and persona, but they remain subordinate to <hard_rules>, safety constraints, and runtime/tool guardrails.');
       expect(prompt).toContain('<server_instructions> govern Sage\'s guild-specific behavior/persona, not factual truth about users, messages, or the outside world.');
-      expect(prompt).toContain('Treat `summary.get_channel` the same way: it provides rolling channel summary context, not exact historical evidence.');
-      expect(prompt).toContain('For exact historical verification, use Discord message-history tools such as `messages.search_history`, `messages.search_with_context`, or `messages.get_context`.');
+      expect(prompt).toContain('Treat `discord_context` action `get_channel_summary` the same way: it provides rolling channel summary context, not exact historical evidence.');
+      expect(prompt).toContain('For exact historical verification, exact Discord message-history tools are unavailable this turn.');
       expect(prompt).toContain('Image generation behavior: you do not have image generation capabilities this turn.');
     });
 
@@ -47,6 +47,7 @@ describe('capabilityPrompt', () => {
       expect(prompt).toContain('<tool_selection_guide>');
       expect(prompt).toContain('timezone conversion for a specific utcOffset');
       expect(prompt).toContain('public internet information or fresh sources');
+      expect(prompt).toContain('routed-tool actions or fields');
       expect(prompt).toContain('</tool_selection_guide>');
     });
 
@@ -67,47 +68,53 @@ describe('capabilityPrompt', () => {
     it('renders guidance for channel file lookup when tool is active', () => {
       // Arrange
       const params = {
-        activeTools: ['discord'],
+        activeTools: ['discord_context', 'discord_messages', 'discord_files', 'discord_admin'],
       };
 
       // Act
       const prompt = buildCapabilityPromptSection(params);
 
       // Assert
-      expect(prompt).toContain('Discord tool behavior: use the `discord` tool with action-based calls');
+      expect(prompt).toContain('Discord tool behavior: Discord surfaces are split by domain.');
       expect(prompt).toContain('Attachment retrieval behavior: historical uploaded attachments are cached outside transcript');
-      expect(prompt).toContain('If unsure which Discord action fits, call discord: help.');
-      expect(prompt).toContain('files.send_attachment');
+      expect(prompt).toContain('If the `send` payload shape is unclear, call `discord_messages` action `help` before guessing.');
+      expect(prompt).toContain('send_attachment');
       // Guardrails from discordToolCatalog must be surfaced
       expect(prompt).toContain('Discord guardrail:');
       expect(prompt).toContain('Writes are disallowed in autopilot turns');
       expect(prompt).toContain('<reply_format_policy>');
       expect(prompt).toContain('Components V2 may be used freely');
       expect(prompt).toContain('IS_COMPONENTS_V2');
-      expect(prompt).toContain('call `discord` action `messages.send` with `presentation="plain" | "legacy_components" | "components_v2"`');
+      expect(prompt).toContain('call `discord_messages` action `send` with `presentation="plain" | "components_v2"`');
       expect(prompt).toContain('do not repeat the same answer again as a normal assistant reply');
       expect(prompt).toContain('componentsV2.blocks` types: `text`, `section`, `media_gallery`, `file`, `separator`, `action_row`');
     });
 
-    it('renders discord tool selection guide when discord is active', () => {
+    it('renders Discord domain tool selection guide when Discord tools are active', () => {
       // Arrange
       const params = {
-        activeTools: ['discord'],
+        activeTools: ['discord_context', 'discord_messages', 'discord_files', 'discord_admin'],
       };
 
       // Act
       const prompt = buildCapabilityPromptSection(params);
 
       // Assert
-      expect(prompt).toContain('Discord-internal profiles, summaries, instructions, messages, files, social graph, or voice analytics');
-      expect(prompt).toContain('messages.search_history / messages.search_with_context');
-      expect(prompt).toContain('summary.get_channel');
-      expect(prompt).toContain('Rolling summary of what has been happening → summary.get_channel.');
-      expect(prompt).toContain('profile.get_user');
-      expect(prompt).toContain('files.read_attachment');
-      expect(prompt).toContain('files.send_attachment');
-      expect(prompt).toContain('Final Discord-native delivery in the channel → messages.send');
-      expect(prompt).toContain('Unsupported Discord reads after typed-action checks → discord.api GET');
+      expect(prompt).toContain('Discord-internal profiles, summaries, instruction reads, or analytics → discord_context.');
+      expect(prompt).toContain('exact Discord message evidence or Discord-native delivery → discord_messages.');
+      expect(prompt).toContain('Discord attachment discovery, paging, or resend flows → discord_files.');
+      expect(prompt).toContain('Discord admin writes or raw Discord REST fallback → discord_admin.');
+      expect(prompt).toContain('search_history / search_with_context');
+      expect(prompt).toContain('get_channel_summary');
+      expect(prompt).toContain('Rolling summary of what has been happening → get_channel_summary.');
+      expect(prompt).toContain('get_user_profile');
+      expect(prompt).toContain('read_attachment');
+      expect(prompt).toContain('send_attachment');
+      expect(prompt).toContain('Final Discord-native delivery in the channel → send with plain / components_v2 presentation.');
+      expect(prompt).toContain('Polls, threads, and reactions → create_poll / create_thread / add_reaction / remove_self_reaction.');
+      expect(prompt).toContain('Installation link generation → get_invite_url.');
+      expect(prompt).toContain('Unsupported admin-grade guild-scoped reads/writes after typed-action checks → api.');
+      expect(prompt).not.toContain('memory.get_channel');
     });
 
     it('renders web tool selection with all sub-tools', () => {
@@ -128,15 +135,15 @@ describe('capabilityPrompt', () => {
 
     it('keeps key anti-pattern guidance in the smaller tool guide', () => {
       const prompt = buildCapabilityPromptSection({
-        activeTools: ['discord', 'web', 'github'],
+        activeTools: ['discord_context', 'discord_messages', 'discord_files', 'discord_admin', 'web', 'github'],
       });
 
       expect(prompt).toContain('ANTI-PATTERNS');
       expect(prompt).toContain('exact quotes or message-level evidence');
-      expect(prompt).toContain('summary.get_channel when the user wants exact quotes or message-level evidence');
-      expect(prompt).toContain('Discord-internal questions');
-      expect(prompt).toContain('discord.api when a typed Discord action already covers the request');
-      expect(prompt).toContain('plain assistant prose for a final rich in-channel reply that should be delivered via messages.send');
+      expect(prompt).toContain('discord_context.get_channel_summary when the user wants exact quotes or message-level evidence');
+      expect(prompt).toContain('web for Discord-internal questions when Discord domain tools can answer them');
+      expect(prompt).toContain('discord_admin.api when a typed Discord action already covers the request');
+      expect(prompt).toContain('plain assistant prose for a final rich in-channel reply that should be delivered via send');
       expect(prompt).toContain('github file.get before code.search when the path is unknown');
       expect(prompt).toContain('extra tool calls after you already have enough evidence to answer');
     });
@@ -171,10 +178,10 @@ describe('capabilityPrompt', () => {
     it('is materially shorter than the previous verbose prompt shape', () => {
       const prompt = buildCapabilityPromptSection({
         model: 'kimi',
-        activeTools: ['discord', 'web', 'github', 'system_time', 'system_plan', 'image_generate'],
+        activeTools: ['discord_context', 'discord_messages', 'discord_files', 'discord_admin', 'web', 'github', 'system_time', 'system_plan', 'image_generate'],
       });
 
-      expect(prompt.length).toBeLessThan(9400);
+      expect(prompt.length).toBeLessThan(11050);
     });
   });
 
@@ -206,7 +213,7 @@ describe('capabilityPrompt', () => {
       // Arrange
       const params = {
         model: 'kimi',
-        activeTools: ['discord'],
+        activeTools: ['discord_messages'],
         invokedBy: 'autopilot',
         invokerIsAdmin: false,
         inGuild: true,
@@ -224,7 +231,7 @@ describe('capabilityPrompt', () => {
       const stateBlock = buildAgenticStateBlock(params);
 
       // Assert
-      expect(stateBlock).toContain('"discord"');
+      expect(stateBlock).toContain('"discord_messages"');
       expect(stateBlock).toContain('"invoked_by": "autopilot"');
       expect(stateBlock).toContain('"invoker_is_admin": false');
       expect(stateBlock).toContain('"in_guild": true');
@@ -239,7 +246,7 @@ describe('capabilityPrompt', () => {
     it('propagates voice and autopilot guidance into execution rules', () => {
       const prompt = buildCapabilityPromptSection({
         model: 'kimi',
-        activeTools: ['discord'],
+        activeTools: ['discord_messages'],
         turnMode: 'voice',
         autopilotMode: 'reserved',
       });
