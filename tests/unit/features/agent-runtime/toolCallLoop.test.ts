@@ -116,6 +116,62 @@ describe('toolCallLoop', () => {
       expect(mockChat).toHaveBeenCalledTimes(1);
     });
 
+    it('consumes an array-wrapped pre-fetched discord admin envelope without leaking raw JSON', async () => {
+      const discordAdminExecute = vi.fn().mockResolvedValue({
+        status: 'pending_approval',
+        actionId: 'action-123',
+      });
+      registry.register({
+        name: 'discord_admin',
+        description: 'Queue Discord admin actions',
+        schema: z.object({
+          action: z.literal('update_server_instructions'),
+          request: z.object({
+            operation: z.literal('replace'),
+            text: z.string(),
+            reason: z.string(),
+          }),
+        }),
+        execute: discordAdminExecute,
+      });
+
+      mockChat.mockResolvedValueOnce({
+        content: 'Queued the server instructions update for approval.',
+      });
+
+      const result = await runToolCallLoop({
+        client: mockClient,
+        messages: [{ role: 'user', content: 'Update the server instructions.' }],
+        registry,
+        ctx: testCtx,
+        initialAssistantResponseText: JSON.stringify([
+          {
+            type: 'tool_calls',
+            calls: [
+              {
+                name: 'discord_admin',
+                args: {
+                  action: 'update_server_instructions',
+                  request: {
+                    operation: 'replace',
+                    text: 'You are Monday in roast mode.',
+                    reason: 'User requested a persona update.',
+                  },
+                },
+              },
+            ],
+          },
+        ]),
+      });
+
+      expect(result.toolsExecuted).toBe(true);
+      expect(result.roundsCompleted).toBe(1);
+      expect(result.replyText).toBe('Queued the server instructions update for approval.');
+      expect(result.replyText).not.toContain('"tool_calls"');
+      expect(discordAdminExecute).toHaveBeenCalledTimes(1);
+      expect(mockChat).toHaveBeenCalledTimes(1);
+    });
+
     it('should execute tools when response is a valid envelope', async () => {
       mockChat.mockResolvedValueOnce({
         content: JSON.stringify({

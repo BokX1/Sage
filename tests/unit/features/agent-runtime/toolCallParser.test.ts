@@ -21,6 +21,77 @@ describe('toolCallParser', () => {
         expect(result!.calls[0].name).toBe('web');
     });
 
+    it('unwraps a singleton array-wrapped envelope for discord admin updates', () => {
+        const result = parseToolCallEnvelope(
+            JSON.stringify([
+                {
+                    type: 'tool_calls',
+                    calls: [
+                        {
+                            name: 'discord_admin',
+                            args: {
+                                action: 'update_server_instructions',
+                                request: {
+                                    operation: 'replace',
+                                    text: 'You are Monday in chaotic roast mode.',
+                                    reason: 'User requested roast-mode server instructions.',
+                                },
+                            },
+                        },
+                    ],
+                },
+            ]),
+        );
+        expect(result).not.toBeNull();
+        expect(result!.calls).toHaveLength(1);
+        expect(result!.calls[0].name).toBe('discord_admin');
+        expect(result!.calls[0].args).toEqual({
+            action: 'update_server_instructions',
+            request: {
+                operation: 'replace',
+                text: 'You are Monday in chaotic roast mode.',
+                reason: 'User requested roast-mode server instructions.',
+            },
+        });
+    });
+
+    it('unwraps a fenced singleton array-wrapped envelope for discord admin updates', () => {
+        const input = [
+            '```json',
+            JSON.stringify([
+                {
+                    type: 'tool_calls',
+                    calls: [
+                        {
+                            name: 'discord_admin',
+                            args: {
+                                action: 'update_server_instructions',
+                                request: {
+                                    operation: 'replace',
+                                    text: 'Keep the persona chaotic but not mean-spirited.',
+                                    reason: 'Refresh server instruction tone.',
+                                },
+                            },
+                        },
+                    ],
+                },
+            ]),
+            '```',
+        ].join('\n');
+        const result = parseToolCallEnvelope(input);
+        expect(result).not.toBeNull();
+        expect(result!.calls).toHaveLength(1);
+        expect(result!.calls[0].name).toBe('discord_admin');
+        expect(result!.calls[0].args).toEqual({
+            action: 'update_server_instructions',
+            request: {
+                operation: 'replace',
+                text: 'Keep the persona chaotic but not mean-spirited.',
+                reason: 'Refresh server instruction tone.',
+            },
+        });
+    });
+
     it('extracts an envelope from mixed text + JSON content', () => {
         const input =
             'Let me search for that information.\n\n' +
@@ -81,5 +152,21 @@ describe('toolCallParser', () => {
         const result = parseToolCallEnvelope(input);
         expect(result).not.toBeNull();
         expect(result!.calls[0].name).toBe('get_time');
+    });
+
+    it('rejects multi-item top-level arrays', () => {
+        const result = parseToolCallEnvelope(
+            JSON.stringify([
+                {
+                    type: 'tool_calls',
+                    calls: [{ name: 'get_time', args: {} }],
+                },
+                {
+                    type: 'tool_calls',
+                    calls: [{ name: 'web', args: { action: 'search', query: 'test' } }],
+                },
+            ]),
+        );
+        expect(result).toBeNull();
     });
 });

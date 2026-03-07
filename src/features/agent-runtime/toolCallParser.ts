@@ -31,6 +31,11 @@ function isValidCall(value: unknown): value is ToolCallEnvelope['calls'][number]
 }
 
 function asValidToolCallEnvelope(parsed: unknown): ToolCallEnvelope | null {
+  if (Array.isArray(parsed)) {
+    if (parsed.length !== 1) return null;
+    return asValidToolCallEnvelope(parsed[0]);
+  }
+
   if (
     typeof parsed !== 'object' ||
     parsed === null ||
