@@ -598,6 +598,93 @@ describe('messageCreate - ingest + reply gating', () => {
     expect(ingestPayload.content).not.toContain('BEGIN FILE ATTACHMENT');
   });
 
+  it('keeps uncached images out of the per-message file ingest cap', async () => {
+    const { config } = await import('@/platform/config/env');
+    config.FILE_INGEST_MAX_ATTACHMENTS_PER_MESSAGE = 3;
+    mockIsLoggingEnabled.mockReturnValue(false);
+    mockFetchAttachmentText
+      .mockResolvedValueOnce({
+        kind: 'ok',
+        text: 'alpha pdf',
+        extractor: 'tika',
+        byteLength: 20,
+        mimeType: 'application/pdf',
+      })
+      .mockResolvedValueOnce({
+        kind: 'ok',
+        text: 'beta pdf',
+        extractor: 'tika',
+        byteLength: 24,
+        mimeType: 'application/pdf',
+      })
+      .mockResolvedValueOnce({
+        kind: 'ok',
+        text: 'gamma pdf',
+        extractor: 'tika',
+        byteLength: 28,
+        mimeType: 'application/pdf',
+      });
+
+    const message = createMockMessage({
+      content: '<@123> review these files',
+      channelId: 'channel-no-cache',
+      mentions: {
+        has: vi.fn((user: User) => user.id === '123'),
+        users: new Map<string, User>(),
+      },
+      attachments: {
+        values: vi.fn(() => [
+          {
+            name: 'preview.png',
+            url: 'https://cdn.discordapp.com/preview.png',
+            contentType: 'image/png',
+            size: 12,
+          },
+          {
+            name: 'alpha.pdf',
+            url: 'https://cdn.discordapp.com/alpha.pdf',
+            contentType: 'application/pdf',
+            size: 20,
+          },
+          {
+            name: 'beta.pdf',
+            url: 'https://cdn.discordapp.com/beta.pdf',
+            contentType: 'application/pdf',
+            size: 24,
+          },
+          {
+            name: 'gamma.pdf',
+            url: 'https://cdn.discordapp.com/gamma.pdf',
+            contentType: 'application/pdf',
+            size: 28,
+          },
+        ]),
+        first: vi.fn(() => null),
+      },
+    });
+
+    await handleMessageCreate(message);
+
+    expect(mockFetchAttachmentText).toHaveBeenCalledTimes(3);
+    expect(mockFetchAttachmentText.mock.calls.map((call) => call[1])).toEqual([
+      'alpha.pdf',
+      'beta.pdf',
+      'gamma.pdf',
+    ]);
+    expect(mockUpsertIngestedAttachment).not.toHaveBeenCalled();
+    expect(mockGenerateChatReply).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userText: expect.stringContaining('BEGIN FILE ATTACHMENT: gamma.pdf'),
+      }),
+    );
+
+    const ingestPayload = mockIngestEvent.mock.calls[0]?.[0] as { content?: string };
+    expect(ingestPayload.content).toContain(
+      'Processed 3 attachment(s) for this turn. Persistent attachment cache is unavailable in this channel.',
+    );
+    expect(ingestPayload.content).not.toContain('Skipped 1 attachment(s) due to per-message limit');
+  });
+
   it('queues uploaded image attachments for durable recall in logged channels', async () => {
     mockUpsertIngestedAttachment.mockResolvedValueOnce({ id: 'attachment-row-image' });
 

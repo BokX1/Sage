@@ -1277,7 +1277,7 @@ describe('toolIntegrations', () => {
       messages: {
         fetch: vi.fn().mockResolvedValue({
           attachments: {
-            values: () => [{ url: 'https://cdn.discordapp.com/fresh-report.md' }],
+            values: () => [{ name: 'report.md', url: 'https://cdn.discordapp.com/fresh-report.md' }],
           },
         }),
       },
@@ -1324,5 +1324,77 @@ describe('toolIntegrations', () => {
     );
     expect((result as { storedContent: string }).storedContent).toBe('hello from cache');
     expect((result as { sendResult: { status: string } }).sendResult.status).toBe('executed');
+  });
+
+  it('matches historical mixed-attachment rows by filename before refreshing resend URLs', async () => {
+    mockListIngestedAttachmentsByIds.mockResolvedValueOnce([
+      {
+        id: 'att-file',
+        guildId: 'guild-1',
+        channelId: 'channel-source',
+        messageId: 'msg-100',
+        attachmentIndex: 0,
+        filename: 'report.md',
+        sourceUrl: 'https://cdn.discordapp.com/original-report.md',
+        contentType: 'text/markdown',
+        declaredSizeBytes: 128,
+        readSizeBytes: 128,
+        extractor: 'tika',
+        status: 'ok',
+        errorText: null,
+        extractedText: 'hello from cache',
+        extractedTextChars: 16,
+        createdAt: new Date('2026-02-11T00:00:00.000Z'),
+        updatedAt: new Date('2026-02-11T00:00:00.000Z'),
+      },
+    ]);
+    mockFilterChannelIdsByMemberAccess.mockResolvedValueOnce(new Set(['channel-source']));
+    mockDiscordChannelFetch.mockResolvedValueOnce({
+      guildId: 'guild-1',
+      isDMBased: () => false,
+      messages: {
+        fetch: vi.fn().mockResolvedValue({
+          attachments: {
+            values: () => [
+              { name: 'meme.png', url: 'https://cdn.discordapp.com/fresh-meme.png' },
+              { name: 'report.md', url: 'https://cdn.discordapp.com/fresh-report.md' },
+            ],
+          },
+        }),
+      },
+    });
+    mockRequestDiscordInteractionForTool.mockResolvedValueOnce({
+      status: 'executed',
+      action: 'send_message',
+      channelId: 'channel-target',
+      messageIds: ['msg-sent'],
+    });
+
+    await sendCachedAttachment({
+      guildId: 'guild-1',
+      requesterUserId: 'user-1',
+      requesterChannelId: 'channel-current',
+      invokedBy: 'mention',
+      attachmentId: 'att-file',
+      channelId: 'channel-target',
+      content: 'Here it is.',
+      maxChars: 2_000,
+    });
+
+    expect(mockRequestDiscordInteractionForTool).toHaveBeenCalledWith(
+      expect.objectContaining({
+        request: expect.objectContaining({
+          files: [
+            expect.objectContaining({
+              filename: 'report.md',
+              source: {
+                type: 'url',
+                url: 'https://cdn.discordapp.com/fresh-report.md',
+              },
+            }),
+          ],
+        }),
+      }),
+    );
   });
 });

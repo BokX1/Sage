@@ -400,13 +400,16 @@ export async function handleMessageCreate(message: Message) {
     const ingestTimeoutMs = normalizePositiveInt(appConfig.FILE_INGEST_TIMEOUT_MS, 45_000);
     const voiceSttMaxBytes = normalizeNonNegativeInt(appConfig.VOICE_MESSAGE_STT_MAX_BYTES, perFileMaxBytes);
     const voiceSttMaxSeconds = normalizePositiveInt(appConfig.VOICE_MESSAGE_STT_MAX_SECONDS, 120);
-    const selectedAttachments = allAttachments.slice(0, maxAttachmentsPerMessage);
-    const skippedByLimitCount = Math.max(0, allAttachments.length - selectedAttachments.length);
+    const shouldPersistAttachmentCache =
+      !!message.guildId && isLoggingEnabled(message.guildId, message.channelId);
+    const attachmentsForIngest = shouldPersistAttachmentCache
+      ? allAttachments
+      : allAttachments.filter((attachment) => !isImageAttachment(attachment));
+    const selectedAttachments = attachmentsForIngest.slice(0, maxAttachmentsPerMessage);
+    const skippedByLimitCount = Math.max(0, attachmentsForIngest.length - selectedAttachments.length);
     const attachmentBlocks: string[] = [];
     const ingestAttachmentNotes: string[] = [];
     const cachedAttachmentRefs: Array<{ filename: string; attachmentId: string }> = [];
-    const shouldPersistAttachmentCache =
-      !!message.guildId && isLoggingEnabled(message.guildId, message.channelId);
     const shouldTranscribeVoiceMessages =
       shouldPersistAttachmentCache &&
       appConfig.VOICE_MESSAGE_STT_ENABLED &&

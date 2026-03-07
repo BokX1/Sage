@@ -2074,6 +2074,7 @@ function formatAttachmentLookupItem(params: {
 
 type MessageAttachmentLike = {
   url?: string | null;
+  name?: string | null;
 };
 
 type MessageAttachmentCollectionLike = {
@@ -2093,6 +2094,25 @@ type MessageLookupChannelLike = {
   };
 };
 
+function listMessageAttachments(
+  attachments: MessageAttachmentCollectionLike | undefined,
+): MessageAttachmentLike[] {
+  if (attachments?.values) {
+    return Array.from(attachments.values());
+  }
+
+  const firstAttachment = attachments?.first?.() ?? null;
+  return firstAttachment ? [firstAttachment] : [];
+}
+
+function normalizeAttachmentName(name: string | null | undefined): string {
+  return typeof name === 'string' ? name.trim() : '';
+}
+
+function getAttachmentUrl(attachment: MessageAttachmentLike | undefined): string | null {
+  return typeof attachment?.url === 'string' ? sanitizeUrl(attachment.url) : null;
+}
+
 async function resolveFreshAttachmentUrl(record: IngestedAttachmentRecord): Promise<string> {
   try {
     const channel = (await client.channels.fetch(record.channelId).catch(() => null)) as MessageLookupChannelLike | null;
@@ -2107,18 +2127,41 @@ async function resolveFreshAttachmentUrl(record: IngestedAttachmentRecord): Prom
     }
 
     const message = await channel.messages.fetch(record.messageId).catch(() => null);
-    const attachments = message?.attachments;
-    let indexedAttachment: MessageAttachmentLike | undefined;
-    if (attachments?.values) {
-      indexedAttachment = Array.from(attachments.values())[record.attachmentIndex];
-    } else if (attachments?.first && record.attachmentIndex === 0) {
-      indexedAttachment = attachments.first() ?? undefined;
+    const attachmentList = listMessageAttachments(message?.attachments);
+    const recordSourceUrl = sanitizeUrl(record.sourceUrl);
+    const recordFilename = normalizeAttachmentName(record.filename);
+
+    const indexedAttachment = attachmentList[record.attachmentIndex];
+    const indexedUrl = getAttachmentUrl(indexedAttachment);
+    if (
+      indexedUrl &&
+      ((recordSourceUrl && indexedUrl === recordSourceUrl) ||
+        (recordFilename && normalizeAttachmentName(indexedAttachment?.name) === recordFilename))
+    ) {
+      return indexedUrl;
     }
 
-    const refreshedUrl =
-      typeof indexedAttachment?.url === 'string' ? sanitizeUrl(indexedAttachment.url) : null;
+    if (recordSourceUrl) {
+      const sourceMatch = attachmentList.find((attachment) => getAttachmentUrl(attachment) === recordSourceUrl);
+      const sourceMatchUrl = getAttachmentUrl(sourceMatch);
+      if (sourceMatchUrl) {
+        return sourceMatchUrl;
+      }
+    }
 
-    return refreshedUrl ?? record.sourceUrl;
+    if (recordFilename) {
+      const filenameMatches = attachmentList.filter(
+        (attachment) => normalizeAttachmentName(attachment.name) === recordFilename,
+      );
+      if (filenameMatches.length === 1) {
+        const filenameMatchUrl = getAttachmentUrl(filenameMatches[0]);
+        if (filenameMatchUrl) {
+          return filenameMatchUrl;
+        }
+      }
+    }
+
+    return record.sourceUrl;
   } catch (error) {
     logger.debug(
       { error, attachmentId: record.id, messageId: record.messageId },

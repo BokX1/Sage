@@ -52,6 +52,17 @@ let loadedRuntimePromise: Promise<LoadedFlorenceRuntime> | null = null;
 let loadedRuntimeModelId: string | null = null;
 let runtimeLoaderOverride: (() => Promise<FlorenceRuntime>) | null = null;
 
+function resetLoadedRuntimeCache(modelId: string, runtimePromise: Promise<LoadedFlorenceRuntime>): void {
+  if (loadedRuntimeModelId !== modelId) return;
+  if (loadedRuntimePromise !== runtimePromise) return;
+  loadedRuntimePromise = null;
+  loadedRuntimeModelId = null;
+}
+
+function isTimeoutError(error: unknown, label: string): boolean {
+  return error instanceof Error && error.message.startsWith(`${label} timed out after `);
+}
+
 function truncateInline(value: string, maxChars: number): string {
   const cap = Math.max(1, Math.floor(maxChars));
   if (value.length <= cap) return value;
@@ -125,13 +136,13 @@ function buildRecallText(summaryText: string, visibleText: string, maxChars: num
   return built.length > 0 ? truncateInline(built, totalBudget) : null;
 }
 
-async function loadFlorenceRuntime(modelId: string): Promise<LoadedFlorenceRuntime> {
+function loadFlorenceRuntime(modelId: string): Promise<LoadedFlorenceRuntime> {
   if (loadedRuntimePromise && loadedRuntimeModelId === modelId) {
     return loadedRuntimePromise;
   }
 
   loadedRuntimeModelId = modelId;
-  loadedRuntimePromise = (async () => {
+  const loadingPromise = (async () => {
     logger.info({ modelId }, 'Loading local Florence image recall model');
     const runtime = runtimeLoaderOverride
       ? await runtimeLoaderOverride()
@@ -149,13 +160,14 @@ async function loadFlorenceRuntime(modelId: string): Promise<LoadedFlorenceRunti
       model,
       RawImage: runtime.RawImage,
     };
-  })().catch((error) => {
-    loadedRuntimePromise = null;
-    loadedRuntimeModelId = null;
+  })();
+  const runtimePromise = loadingPromise.catch((error) => {
+    resetLoadedRuntimeCache(modelId, runtimePromise);
     throw error;
   });
 
-  return loadedRuntimePromise;
+  loadedRuntimePromise = runtimePromise;
+  return runtimePromise;
 }
 
 async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
@@ -200,7 +212,16 @@ export async function summarizeImageAttachmentForRecall(params: {
   timeoutMs: number;
   maxChars: number;
 }): Promise<ImageAttachmentRecallResult> {
-  const runtime = await withTimeout(loadFlorenceRuntime(params.modelId), params.timeoutMs, 'Florence model load');
+  const runtimePromise = loadFlorenceRuntime(params.modelId);
+  let runtime: LoadedFlorenceRuntime;
+  try {
+    runtime = await withTimeout(runtimePromise, params.timeoutMs, 'Florence model load');
+  } catch (error) {
+    if (isTimeoutError(error, 'Florence model load')) {
+      resetLoadedRuntimeCache(params.modelId, runtimePromise);
+    }
+    throw error;
+  }
   const blob = new Blob([new Uint8Array(params.buffer)], {
     type: params.contentType?.trim() || 'application/octet-stream',
   });

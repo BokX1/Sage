@@ -36,6 +36,7 @@
 - Fixed Discord vision inputs: Sage now preserves `image_url` multimodal parts when assembling Pollinations chat requests, so image attachments and replied-to images can be analyzed instead of being silently treated as plain text.
 - Fixed direct image URL detection in Discord messages when links are followed by sentence punctuation, so Sage still picks up the image for vision requests.
 - Fixed attachment-memory parity for uploaded Discord images: logged-channel image attachments are now cached like other attachments, indexed from local Florence recall/OCR text, and can be resent later with `discord` action `files.send_attachment` while returning the same stored grounding text to the model.
+- Fixed attachment recall resilience and resend targeting: timed-out Florence cold starts no longer poison later retries, historical mixed-attachment rows no longer refresh to the wrong live file when resending, and uncached image uploads no longer consume per-message file-ingest slots in channels without persistent attachment caching.
 
 ### Removed
 
