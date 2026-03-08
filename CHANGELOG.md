@@ -26,6 +26,7 @@
 
 ### Changed
 
+- Re-architected the `web` tool usage prompt to explicitly forbid sequential reading ping-pong. The capability and anti-pattern prompts now strongly enforce batching parallel `action=read` calls within a single JSON payload and prioritize `action=research` for broad open-ended questions, drastically reducing excessive conversational turn consumption.
 - Clarified Sage's provider story across onboarding and operations copy: README/docs/website now describe self-hosting as OpenAI-compatible and provider-flexible, while Discord command/help/welcome/startup messaging explicitly scopes Pollinations to the current built-in BYOP, hosted/default, and image-generation paths so operators no longer get conflicting setup guidance.
 - Re-licensed Sage under the MIT License and removed the prior PolyForm Strict/commercial-license messaging from the root license file, package metadata, contributor guidance, docs, and website content/structured metadata so the repository now presents one consistent open-source license contract end to end.
 - Removed the last two prompt-model contradictions from Sage’s Discord tooling contract: the static system prompt now stays capability-agnostic when Discord tools are absent, and `discord_admin.api` is now taught and enforced as a fully admin-only fallback instead of a mixed non-admin/admin surface.

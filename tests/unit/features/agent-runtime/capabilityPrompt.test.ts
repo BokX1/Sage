@@ -128,7 +128,7 @@ describe('capabilityPrompt', () => {
 
       // Assert
       expect(prompt).toContain('public internet information or fresh sources');
-      expect(prompt).toContain('web (action=search)');
+      expect(prompt).toContain('web (action=research)');
       expect(prompt).toContain('web (action=read)');
       expect(prompt).toContain('web (action=extract)');
     });

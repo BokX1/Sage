@@ -106,7 +106,7 @@ export function buildCapabilityPromptSection(
       : '',
     '- If a required parameter is missing, ask instead of guessing.',
     '- Use the minimum sufficient tool path, then stop once you have enough evidence to answer.',
-    '- Batch multiple read-only tools in a single tool_calls envelope for parallel execution.',
+    '- Batch multiple read-only tools (like web reads or GitHub file lookups) in a single `tool_calls` JSON envelope for parallel execution. Do NOT loop reading them one by one across multiple rounds.',
     hasAnyDiscordTool
       ? '- Discord tool behavior: Discord surfaces are split by domain. Use `discord_context` for profiles/summaries/instruction reads/analytics, `discord_messages` for message history and Discord-native delivery, `discord_files` for attachment recall, and `discord_admin` for admin actions or raw API fallback.'
       : '- Discord tool behavior: you do not have access to Discord profiles, summaries, instructions, messages, files, or actions via tools this turn.',
@@ -213,10 +213,10 @@ function buildToolSelectionGuide(activeTools: string[]): string {
   // --- Web ---
   if (activeTools.includes('web')) {
     lines.push('IF the question needs public internet information or fresh sources → web.');
-    lines.push('  - Search first when you need discovery or source selection → web (action=search).');
+    lines.push('  - For broad or open-ended questions, ALWAYS use web (action=research) to search and read multiple sources in a single payload round.');
     lines.push('  - Read a known page directly → web (action=read) or web (action=read.page) for long pages.');
-    lines.push('  - Use web (action=extract) only when raw page content is not enough and the user needs targeted extraction.');
-    lines.push('  - Use web (action=research) for one-shot search plus grounded reading.');
+    lines.push('  - If you must read multiple URLs from a search (action=search), ALWAYS batch multiple web (action=read) calls in parallel within the same JSON payload.');
+    lines.push('  - Use web (action=extract) only when raw page content is not enough and the user needs targeted agentic extraction.');
     lines.push('');
   }
 
@@ -273,6 +273,7 @@ function buildToolSelectionGuide(activeTools: string[]): string {
     lines.push('  ✗ web for Discord-internal questions when Discord domain tools can answer them');
   }
   if (activeTools.includes('web')) {
+    lines.push('  ✗ sequentially reading search results one by one across multiple rounds (use parallel batching or action=research instead)');
     lines.push('  ✗ web extract for simple page reads that web read can answer directly');
     lines.push('  ✗ web read when the user needs targeted extraction from a messy page');
   }
