@@ -4,7 +4,7 @@
   <img src="https://img.shields.io/badge/%F0%9F%8C%BF-Sage%20API%20Examples-2d5016?style=for-the-badge&labelColor=4a7c23" alt="API Examples" />
 </p>
 
-Annotated examples of the request shapes Sage uses with [Pollinations.ai](https://pollinations.ai), plus the optional local voice-service calls used for Discord voice.
+Annotated examples of the request shapes Sage uses for its current [Pollinations.ai](https://pollinations.ai) integration, plus the optional local voice-service calls used for Discord voice.
 
 > [!NOTE]
 > Replace `sk_YOUR_KEY` with your actual Pollinations secret key for Pollinations examples. Voice-service examples do not require a Pollinations key. These are simplified request shapes; the real runtime also sends its full system prompt and tool definitions where applicable.

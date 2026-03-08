@@ -16,7 +16,7 @@
 </p>
 
 <p align="center">
-  <a href="https://pollinations.ai"><img src="https://img.shields.io/badge/Built%20with-Pollinations.ai-8a2be2?style=for-the-badge&logo=data:image/svg+xml,%3Csvg%20xmlns%3D%22http://www.w3.org/2000/svg%22%20viewBox%3D%220%200%20124%20124%22%3E%3Ccircle%20cx%3D%2262%22%20cy%3D%2262%22%20r%3D%2262%22%20fill%3D%22%23ffffff%22/%3E%3C/svg%3E&logoColor=white&labelColor=6a0dad" alt="Built with Pollinations" /></a>
+  <img src="https://img.shields.io/badge/OpenAI-Compatible%20Runtime-0ea5e9?style=for-the-badge&labelColor=1e293b" alt="OpenAI-Compatible Runtime" />
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-green?style=for-the-badge" alt="License" /></a>
   <a href="https://github.com/BokX1/Sage/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/BokX1/Sage/ci.yml?style=for-the-badge&label=Build" alt="CI Status" /></a>
   <img src="https://img.shields.io/badge/Version-1.0.0-green?style=for-the-badge" alt="Version" />
@@ -69,7 +69,7 @@ It's designed to feel like an intelligent, ever-present teammate that adapts to 
 - 🌐 **Live Internet Research:** Uses built-in web and reference tools to pull in current documentation, search results, and cited pages when the runtime needs fresh information.
 - 🎨 **Creative Generation:** Supports vision-aware chat plus built-in image generation and editing through the same runtime loop.
 - 🔀 **Tool-Driven Automation:** Executes multi-step workflows through the unified tool loop instead of separate bots or hard-coded command trees.
-- 🧰 **Operator Controls:** Configure the chat endpoint with environment variables, keep Pollinations BYOP for the built-in image and key flows, and optionally self-host the search/scrape stack.
+- 🧰 **Operator Controls:** Point Sage at any OpenAI-compatible chat endpoint, use the built-in server-key and image flows when you want them, and optionally self-host the search/scrape stack.
 
 **Best fit:** Gaming communities, creative hubs, development teams, and any server scaling beyond simple "vibe-only" chat into genuine AI collaboration.
 
@@ -152,7 +152,7 @@ flowchart LR
 - 🛡️ **Single-Agent Runtime:** One execution path (`runChatTurn`) handles prompt assembly, tool calls, and final replies, which keeps behavior inspectable and easier to debug.
 - 🧠 **Layered Memory:** Sage keeps recent transcript context in Postgres, updates user/channel summaries in the background, and fetches richer memory only when the tool loop needs it.
 - 🔍 **Tool-First Research:** Live web search, page reads, GitHub access, npm lookup, and file retrieval all run through the same tool loop instead of separate specialty bots.
-- 🧰 **Operator Choice:** The repo ships with Pollinations defaults, optional local search/scrape services, and an optional Memgraph/Redpanda stack for social-graph analytics.
+- 🧰 **Operator Choice:** The repo ships with starter defaults, supports any OpenAI-compatible chat backend for self-hosting, and can add local search/scrape services plus an optional Memgraph/Redpanda stack.
 
 <p align="right"><a href="#top">⬆️ Back to top</a></p>
 
@@ -288,16 +288,12 @@ text + files + approval status cards"]:::discord
 
 - **🧠 Deep Community Memory**: Persists transcript history, summaries, and profile data so follow-up conversations can reuse prior context.
 - **📄 Attachment Intelligence**: Ingests, caches, and understands non-image file content for seamless doc-aware discussions in-channel.
-- **👁️ Multimodal Vision & Generation**: Natively understands images and dynamically generates or edits visuals using Pollinations.ai.
+- **👁️ Multimodal Vision & Generation**: Natively understands images and dynamically generates or edits visuals through Sage's built-in image workflow.
 - **🔍 Live Internet Research**: Adds real-time web search and page-reading tools for questions that need current external sources.
 - **🤖 Zero-Prompt Tool Automation**: Dynamically selects the exact tools needed (search, memory lookup, analytics) based on raw community intent.
 - **🛡️ Runtime Observability**: Includes explicit trace data, model health tracking, and bounded tool execution for easier debugging and operations.
 - **🧪 Production-Ready Quality**: Supported by robust build, test, and trust-gate validation for consistent long-term behavior.
 - **🎤 Immersive Voice Awareness**: Optionally leverages voice analytics to bridge the gap between text history and live voice sessions.
-
-<p align="center">
-  <sub>⚡ Powered by <a href="https://pollinations.ai">Pollinations.ai</a> for high-throughput multi-model access.</sub>
-</p>
 
 ---
 
@@ -312,8 +308,8 @@ The fastest way to try Sage if your team or community already runs an instance.
 **1. Invite the Agent**  
 Use the current invite URL from the operator who hosts that deployment.
 
-**2. Activate BYOP (Bring Your Own Pollen)**  
-*(Recommended for higher generation limits via Pollinations.ai)*
+**2. Activate BYOP (server key)**  
+*(The current hosted invite-bot flow uses BYOP.)*
 
 ```bash
 /sage key login
@@ -334,7 +330,7 @@ Node.js >=22.12, Docker, and PostgreSQL. Memgraph/Redpanda are optional and only
 👉 **[📖 Getting Started](docs/guides/GETTING_STARTED.md)** (Covers database initialization, onboarding, and Discord invite flow).
 
 **3. Configure Chat + BYOP**  
-Pollinations defaults are included in `.env.example`. You can override `LLM_BASE_URL` for chat-compatible endpoints, while Sage's built-in image generation and `/sage key` flow still use Pollinations.
+Starter defaults are included in `.env.example`, but self-hosted chat turns can target any OpenAI-compatible endpoint via `LLM_BASE_URL`. Sage's built-in image generation and `/sage key` validation flow still use the current hosted/default integration today.
 
 **4. Optional: Local Tool Services**  
 For localized web search and scraping (SearXNG/Crawl4AI), check out the **[🧰 Self-Hosted Tool Stack](docs/operations/TOOL_STACK.md)** guide.
@@ -469,10 +465,6 @@ A massive thank you to everyone who has helped build Sage.
 
 <p align="center">
   <a href="CONTRIBUTING.md"><strong>Contributing</strong></a> · <a href="CODE_OF_CONDUCT.md"><strong>Code of Conduct</strong></a> · <a href="SECURITY.md"><strong>Security</strong></a> · <a href="LICENSE"><strong>License</strong></a>
-</p>
-
-<p align="center">
-  Built with 💚 using <a href="https://pollinations.ai">Pollinations.ai</a>
 </p>
 
 <p align="center">

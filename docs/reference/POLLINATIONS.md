@@ -4,7 +4,7 @@
   <img src="https://img.shields.io/badge/%F0%9F%8C%BF-Sage%20Pollinations-2d5016?style=for-the-badge&labelColor=4a7c23" alt="Sage Pollinations" />
 </p>
 
-By default, Sage uses **Pollinations.ai** for **text**, **vision**, **image generation**, and the built-in BYOP key flow.
+This guide documents Sage's current **Pollinations.ai integration**: the hosted/default chat path, the built-in BYOP server-key flow, and the current built-in image generation/editing path.
 
 This document is written for:
 
@@ -14,7 +14,7 @@ This document is written for:
 - **Reviewers** (what Sage calls upstream, and how to verify it)
 
 > [!IMPORTANT]
-> `LLM_BASE_URL` can be pointed at another chat-compatible endpoint for runtime chat requests, but Sage's built-in image generation and `/sage key` validation flow remain Pollinations-specific.
+> Sage can target another OpenAI-compatible endpoint for self-hosted runtime chat requests via `LLM_BASE_URL`, but Sage's built-in image generation and `/sage key` validation flow remain Pollinations-specific today.
 
 ```mermaid
 flowchart LR
@@ -32,7 +32,7 @@ flowchart LR
 
 ## 🧭 Quick navigation
 
-- [✅ What Sage uses Pollinations for](#-what-sage-uses-pollinations-for)
+- [✅ What the current Pollinations integration covers](#-what-the-current-pollinations-integration-covers)
 - [🔗 Hosts and endpoints (the “unified” surface)](#-hosts-and-endpoints-the-unified-surface)
 - [🌸 BYOP: server-wide keys in Discord](#-byop-server-wide-keys-in-discord)
 - [⚙️ Self-host configuration (`.env`)](#-self-host-configuration-env)
@@ -44,7 +44,7 @@ flowchart LR
 
 ---
 
-## ✅ What Sage uses Pollinations for
+## ✅ What the current Pollinations integration covers
 
 | Capability | What users see in Discord | What Sage calls upstream |
 |---|---|---|
@@ -53,7 +53,7 @@ flowchart LR
 | **Image generation** | “Sage, draw …” → image attachment | `GET /image/{prompt}` on `gen.pollinations.ai` |
 | **Image editing** | Reply to an image: “make it watercolor” → edited image | Same image endpoint + `image=<url>` parameter |
 
-In the current repo, Pollinations is the default upstream for chat, vision, images, and key validation.
+In the current repo, Pollinations is the default upstream for hosted/default chat, vision, images, and key validation. Self-hosted chat turns can still point at another OpenAI-compatible provider.
 
 ---
 
@@ -72,7 +72,7 @@ Sage uses these Pollinations hosts:
 
 ## 🌸 BYOP: server-wide keys in Discord
 
-Sage supports **Bring Your Own Pollen (BYOP)**: a **server admin** sets a Pollinations **Secret key** once, and Sage uses it for that server.
+Sage supports **Bring Your Own Pollen (BYOP)** for its built-in Pollinations integration: a **server admin** sets a Pollinations **Secret key** once, and Sage uses it for that server.
 
 ### Key types (what to paste)
 
@@ -111,7 +111,7 @@ When Sage needs a key, it resolves in this order:
 
 ## ⚙️ Self-host configuration (`.env`)
 
-Minimum Pollinations settings (see `.env.example` for the full list):
+Minimum Pollinations settings for the current default integration (see `.env.example` for the full list):
 
 ```env
 LLM_PROVIDER=pollinations
@@ -148,7 +148,7 @@ SUMMARY_MODEL=deepseek
 
 ## 🧠 Text + vision (OpenAI-compatible chat)
 
-Sage uses Pollinations via the OpenAI-compatible endpoint:
+For the current Pollinations-backed default integration, Sage uses the OpenAI-compatible endpoint:
 
 - `POST gen.pollinations.ai/v1/chat/completions`
 
@@ -308,5 +308,5 @@ curl -L "$POLLINATIONS_API/image/a%20cat%20wearing%20sunglasses?model=imagen-4&s
 ---
 
 <p align="center">
-  <sub>Powered by <a href="https://pollinations.ai">Pollinations.ai</a> 🐝</sub>
+  <sub>This page documents Sage's current Pollinations-backed hosted/default integration, not the full set of OpenAI-compatible providers Sage can target when self-hosted.</sub>
 </p>

@@ -20,7 +20,7 @@ const pillars = [
     {
         icon: '🔒',
         title: 'Your Infrastructure, Your Data',
-        desc: 'Fully self-hosted with BYOP architecture. OpenAI-compatible API via Pollinations. No vendor lock-in, zero data exfiltration.',
+        desc: 'Fully self-hosted with a provider-flexible OpenAI-compatible runtime. No vendor lock-in, zero data exfiltration.',
         accent: '#B49CEC',
     },
 ];

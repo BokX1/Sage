@@ -4,7 +4,7 @@
   <img src="https://img.shields.io/badge/%F0%9F%8C%BF-Sage%20BYOP-2d5016?style=for-the-badge&labelColor=4a7c23" alt="BYOP" />
 </p>
 
-Sage uses a BYOP model: communities provide the AI key (API key). Sage itself is released under the MIT License; Pollinations usage and infrastructure costs remain separate from the software license.
+Sage's built-in hosted/server-key flow uses a BYOP model: communities provide a Pollinations API key for that integration path. Sage itself is released under the MIT License; Pollinations usage and infrastructure costs remain separate from the software license, and self-hosted chat turns can target other OpenAI-compatible providers.
 
 This keeps Sage sustainable and enables higher limits for your server.
 
@@ -23,7 +23,7 @@ This keeps Sage sustainable and enables higher limits for your server.
 
 ## 🔑 How It Works
 
-Sage needs an API key (“Pollen”) to generate responses. This can be provided in two ways:
+For the built-in Pollinations-backed BYOP flow, Sage needs an API key (“Pollen”) to generate responses. This can be provided in two ways:
 
 1. **Server-wide key (BYOP)**: **(Standard)** A server admin sets a specific key for their community using `/sage key set`.
 2. **Host-level key (`.env`)**: **(Optional)** The bot owner sets a default key for all servers.

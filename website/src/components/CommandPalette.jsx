@@ -31,7 +31,7 @@ const pages = [
     { title: "Configuration Reference", url: `${BASE}/reference/CONFIGURATION.md`, icon: "⚙️", cat: "reference" },
     { title: "API Examples", url: `${BASE}/reference/API_EXAMPLES.md`, icon: "📡", cat: "reference" },
     { title: "Models Reference", url: `${BASE}/reference/MODELS.md`, icon: "🤖", cat: "reference" },
-    { title: "Pollinations Integration", url: `${BASE}/reference/POLLINATIONS.md`, icon: "🐝", cat: "reference" },
+    { title: "Hosted Integration", url: `${BASE}/reference/POLLINATIONS.md`, icon: "🐝", cat: "reference" },
     { title: "Release Notes", url: `${BASE}/reference/RELEASE.md`, icon: "📝", cat: "reference" },
 
     // ── Security ──

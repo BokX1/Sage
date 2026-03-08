@@ -83,8 +83,8 @@ Architecture → Pipeline → Memory → Database
 | :--- | :--- |
 | [⚙️ Configuration](reference/CONFIGURATION.md) | Environment variables, grouped by runtime area |
 | [🧩 Model Reference](reference/MODELS.md) | Single-agent model resolution, health tracking, and search fallbacks |
-| [🐝 Pollinations Integration](reference/POLLINATIONS.md) | Current Pollinations chat, vision, image, and BYOP flows |
-| [🔌 API Examples](reference/API_EXAMPLES.md) | Annotated `curl` examples for Pollinations and the optional voice service |
+| [🐝 Pollinations Integration](reference/POLLINATIONS.md) | Current Pollinations-backed hosted/default flows plus built-in BYOP and image integration |
+| [🔌 API Examples](reference/API_EXAMPLES.md) | Annotated `curl` examples for the current Pollinations integration and the optional voice service |
 | [🚢 Release Process](reference/RELEASE.md) | SemVer workflow, changelog, and CI checks |
 
 ### 📙 Architecture
@@ -129,6 +129,6 @@ npm run doctor → Troubleshooting → FAQ → GitHub Issue
 
 ---
 
-*Built with 💚 using [Pollinations.ai](https://pollinations.ai)*
+*Provider-flexible runtime docs. Pollinations is documented here as Sage's current hosted/default integration and built-in BYOP/image path.*
 
 <p align="right"><a href="#top">⬆️ Back to top</a></p>

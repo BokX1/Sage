@@ -15,8 +15,8 @@ const steps = [
     },
     {
         num: '02',
-        title: 'Set Your Pollen Key',
-        desc: 'Get your key at enter.pollinations.ai, then activate Sage for your whole server.',
+        title: 'Activate Your Server',
+        desc: 'For the hosted bot, add your server API key and activate Sage for your whole server.',
         command: '/sage key set sk_...',
         commandDisplay: '/sage key set sk_...',
         color: '#78b846',
@@ -27,7 +27,7 @@ const steps = [
     {
         num: '03',
         title: 'Start Talking',
-        desc: 'Mention @Sage in any channel. It remembers context, calls tools when helpful, and learns your community.',
+        desc: 'Mention @Sage in any channel. It remembers context, calls tools when helpful, and works with the hosted flow or your own OpenAI-compatible setup.',
         command: '@Sage what happened?',
         commandDisplay: '@Sage what happened?',
         color: '#BB9AF7',
@@ -194,7 +194,7 @@ function DiscordMockup({ activeStep }) {
                                 avatarColor="#78b846"
                                 author="Sage"
                                 time="Today at 12:00 PM"
-                                content={<div className="bg-[#2B2D31] p-3 rounded border border-slate-700/50 mt-1"><span className="text-[#a9df7c] text-xs font-mono uppercase font-bold tracking-wider block mb-1">Status: Online</span><div className="text-slate-300">Run <span className="text-[#00A8FC] bg-black/30 px-1 rounded font-mono">/sage key set</span> to configure your API access and boot the neural core.</div></div>}
+                                content={<div className="bg-[#2B2D31] p-3 rounded border border-slate-700/50 mt-1"><span className="text-[#a9df7c] text-xs font-mono uppercase font-bold tracking-wider block mb-1">Status: Online</span><div className="text-slate-300">Run <span className="text-[#00A8FC] bg-black/30 px-1 rounded font-mono">/sage key set</span> to activate the hosted flow, or self-host Sage against any OpenAI-compatible provider.</div></div>}
                             />
                         </motion.div>
                     )}

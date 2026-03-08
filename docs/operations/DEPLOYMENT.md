@@ -29,7 +29,7 @@ How to run Sage in production with the current repo layout.
 | PostgreSQL | Prisma-compatible | Required |
 | Discord Bot Token | - | From the Discord Developer Portal |
 | Discord App ID | - | Used for slash commands and invite generation |
-| Pollinations key or server BYOP flow | - | Required for Pollinations-backed chat/image usage |
+| Provider API key or Pollinations server BYOP flow | - | Required for Sage to make upstream model requests |
 | Docker | Optional | Used by the repo's support-service compose files |
 
 > [!NOTE]
@@ -98,6 +98,8 @@ LLM_PROVIDER=pollinations
 LLM_BASE_URL=https://gen.pollinations.ai/v1
 ```
 
+These values show the current starter/default integration. For self-hosting, `LLM_BASE_URL` can point at any OpenAI-compatible chat endpoint.
+
 ### Recommended production variables
 
 ```env
@@ -109,7 +111,8 @@ FILE_INGEST_TIKA_BASE_URL=http://127.0.0.1:9998
 
 Key notes:
 
-- If you do **not** set `LLM_API_KEY`, each server must configure a BYOP key with `/sage key set`.
+- If you set `LLM_API_KEY`, Sage can use that host-level key with your configured OpenAI-compatible provider.
+- If you do **not** set `LLM_API_KEY`, each server must configure a Pollinations BYOP key with `/sage key set` to use Sage's built-in server-key flow.
 - Admin commands and approval-gated actions use Discord-native permissions. Grant `Manage Server` or `Administrator` only to approved operators.
 - Social-graph export is disabled by setting `KAFKA_BROKERS=`.
 
@@ -154,7 +157,7 @@ npm start
 - [ ] `npm run doctor` passes
 - [ ] `npm run check:trust` passes on the release candidate
 - [ ] Tika is reachable when file ingestion is enabled
-- [ ] A global `LLM_API_KEY` is configured or operators know to use `/sage key set`
+- [ ] A global `LLM_API_KEY` is configured for your chosen provider or operators know to use `/sage key set` for the built-in Pollinations BYOP flow
 - [ ] `TRACE_ENABLED=true` if you want runtime trace rows
 - [ ] Approved moderators/admins have `Manage Server` or `Administrator`
 - [ ] Process supervision is configured (`systemd`, PM2, container restart policy, or similar)

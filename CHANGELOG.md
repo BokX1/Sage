@@ -26,6 +26,7 @@
 
 ### Changed
 
+- Clarified Sage's provider story across onboarding and operations copy: README/docs/website now describe self-hosting as OpenAI-compatible and provider-flexible, while Discord command/help/welcome/startup messaging explicitly scopes Pollinations to the current built-in BYOP, hosted/default, and image-generation paths so operators no longer get conflicting setup guidance.
 - Re-licensed Sage under the MIT License and removed the prior PolyForm Strict/commercial-license messaging from the root license file, package metadata, contributor guidance, docs, and website content/structured metadata so the repository now presents one consistent open-source license contract end to end.
 - Removed the last two prompt-model contradictions from Sage’s Discord tooling contract: the static system prompt now stays capability-agnostic when Discord tools are absent, and `discord_admin.api` is now taught and enforced as a fully admin-only fallback instead of a mixed non-admin/admin surface.
 - Renamed the split Discord routed-tool actions to short local names, so Sage now sees and learns `discord_context.get_channel_summary`, `discord_messages.send`, `discord_files.read_attachment`, and `discord_admin.api` instead of redundant repeated namespaces like `messages.send` or `files.read_attachment`, reducing tool-selection ambiguity across prompt guidance, help payloads, tests, and website demos.

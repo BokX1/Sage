@@ -20,7 +20,7 @@ const commandDefinitions = [
         .addSubcommand((sub) =>
           sub
             .setName('set')
-            .setDescription('Set the Server-wide Pollinations API key (Admin only)')
+            .setDescription('Set the server-wide API key for the built-in BYOP flow (Admin only)')
             .addStringOption((opt) =>
               opt.setName('api_key').setDescription('Your API Key (sk_...)').setRequired(true),
             ),

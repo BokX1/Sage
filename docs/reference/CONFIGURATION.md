@@ -11,6 +11,8 @@ Complete index of all environment variables used by Sage, with descriptions and 
 > Use `.env.example` as your starting template. Run `npm run onboard` for interactive setup.
 > [!NOTE]
 > Values in the tables below match the committed `.env.example` template. The runtime also has schema-level fallbacks in `src/platform/config/envSchema.ts` when variables are omitted entirely.
+> [!IMPORTANT]
+> Sage can target any OpenAI-compatible chat endpoint through `LLM_BASE_URL`. The starter values below point at Pollinations because that is the current default hosted integration and the current built-in image/BYOP path.
 
 ---
 
@@ -56,11 +58,11 @@ Complete index of all environment variables used by Sage, with descriptions and 
 
 | Variable | Description | Default |
 |:---|:---|:---|
-| `LLM_PROVIDER` | LLM provider identifier | `pollinations` |
-| `LLM_BASE_URL` | OpenAI-compatible API base URL | <code>https&#58;//gen.pollinations.ai/v1</code> |
-| `LLM_IMAGE_BASE_URL` | Image generation endpoint base | <code>https&#58;//gen.pollinations.ai</code> |
+| `LLM_PROVIDER` | Starter provider identifier for the default integration | `pollinations` |
+| `LLM_BASE_URL` | OpenAI-compatible API base URL for chat turns | <code>https&#58;//gen.pollinations.ai/v1</code> |
+| `LLM_IMAGE_BASE_URL` | Current built-in image generation endpoint base | <code>https&#58;//gen.pollinations.ai</code> |
 | `CHAT_MODEL` | Primary chat model | `kimi` |
-| `LLM_API_KEY` | Global fallback API key (or per-server via BYOP) | *(empty)* |
+| `LLM_API_KEY` | Global fallback API key for the configured provider (or per-server via Pollinations BYOP) | *(empty)* |
 | `LLM_MODEL_LIMITS_JSON` | JSON override for model token limits | *(empty)* |
 
 ---

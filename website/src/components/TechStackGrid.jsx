@@ -14,7 +14,6 @@ const Icons = {
   Docker: (props) => <CdnIcon src="https://cdn.simpleicons.org/docker/white" alt="Docker" {...props} style={{ filter: 'none' }} />,
   Zod: (props) => <CdnIcon src="https://cdn.simpleicons.org/zod/white" alt="Zod" {...props} style={{ filter: 'none' }} />,
   Discord: (props) => <CdnIcon src="https://cdn.simpleicons.org/discord/white" alt="discord.js" {...props} style={{ filter: 'none' }} />,
-  Pollinations: (props) => <CdnIcon src="https://pollinations.ai/favicon.ico" alt="Pollinations.ai" {...props} />,
   SearXNG: (props) => <CdnIcon src="https://cdn.simpleicons.org/searxng/white" alt="SearXNG" {...props} style={{ filter: 'none' }} />,
   Crawl4AI: (props) => <svg viewBox="0 0 24 24" fill="currentColor" {...props}><path d="M12 2a2 2 0 0 1 2 2c0 .74-.4 1.39-1 1.73V7h1a7 7 0 0 1 7 7h1v2h-1v2h-2v-2h-1v-2h1c0-2.76-2.24-5-5-5h-4v2h2v4H9v-4h2V9H6c-2.76 0-5 2.24-5 5h1v2H1v2h-1v-2h2v-2h1a7 7 0 0 1 7-7h1V5.73A2.001 2.001 0 0 1 12 2z" /></svg>,
   HuggingFace: (props) => <CdnIcon src="https://cdn.simpleicons.org/huggingface/white" alt="HuggingFace" {...props} style={{ filter: 'none' }} />,
@@ -49,7 +48,7 @@ const techLayers = {
     color: '#78b846',
     side: 'right',
     nodes: [
-      { name: 'Pollinations.ai', role: 'Unified AI gateway (text/vision/audio)', color: '#78b846', icon: Icons.Pollinations },
+      { name: 'OpenAI-Compatible APIs', role: 'Provider-flexible chat layer for hosted or self-hosted deployments', color: '#78b846', icon: Icons.Zod },
       { name: 'SearXNG', role: 'Privacy-first self-hosted meta-search engine', color: '#78b846', icon: Icons.SearXNG },
       { name: 'Crawl4AI', role: 'AI-powered web scraper for deep RAG', color: '#78b846', icon: Icons.Crawl4AI },
       { name: 'HuggingFace', role: 'Local feature extraction & embeddings', color: '#E0AF68', icon: Icons.HuggingFace },

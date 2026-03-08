@@ -36,9 +36,9 @@ Yes. If someone already hosts Sage for your community, start with the **[⚡ Qui
 Sage is released under the **MIT License**.
 
 - **Software licensing:** Sage is available under `LICENSE` with MIT terms.
-- **AI credits:** Sage uses **Bring Your Own Pollen (BYOP)**.
-  - Server admins generate a key from [Pollinations.ai](https://pollinations.ai).
-  - That key is used by the server for Sage's AI requests.
+- **AI credits / providers:** Sage is provider-flexible when you self-host.
+  - The current hosted bot uses **Bring Your Own Pollen (BYOP)** with a server key from [Pollinations.ai](https://pollinations.ai).
+  - Self-hosted deployments can instead point Sage at any OpenAI-compatible provider with their own provider key/billing model.
 - **Hosting:** If you self-host, you also pay your own infrastructure costs (if any).
 
 </details>
@@ -88,7 +88,7 @@ Sage is a Discord-native AI runtime built around one tool-enabled chat loop.
 <details>
 <summary><strong>Is Sage free to use?</strong></summary>
 
-Yes. Sage is MIT-licensed. Pollinations API pricing/tiers and any self-hosted infrastructure costs are separate from Sage's software license.
+Yes. Sage is MIT-licensed. Provider costs are separate from Sage's software license; for the hosted bot's current BYOP path, that means Pollinations pricing/tiers, while self-hosted deployments can use any OpenAI-compatible provider you choose.
 
 </details>
 
@@ -123,7 +123,7 @@ Sage caches extracted non-image file content in channel attachment memory, then 
 <details>
 <summary><strong>Can Sage see images?</strong></summary>
 
-Yes. If you attach an image (or reply to one) and trigger Sage, the bot forwards it as a vision input (`image_url`) to Pollinations-compatible vision models.
+Yes. If you attach an image (or reply to one) and trigger Sage, the bot forwards it as a vision input (`image_url`) to the configured OpenAI-compatible vision path. In the current default/hosted integration, that path is Pollinations-backed.
 
 </details>
 
@@ -135,7 +135,7 @@ Yes.
 - **Generate:** `Sage, draw a futuristic city in the rain`
 - **Edit:** reply to an image: `Sage, make this more cinematic`
 
-Under the hood, Sage runs a **image_generate tool action** (prompt refinement -> Pollinations image endpoint) and returns the result as a **Discord attachment**.
+Under the hood, Sage runs an **image_generate tool action** (prompt refinement -> current Pollinations image endpoint) and returns the result as a **Discord attachment**.
 
 </details>
 

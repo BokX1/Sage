@@ -110,13 +110,14 @@ Check these in order:
 
 ### “No API key” error in guild
 
-**Cause:** Server needs a Pollinations API key.
+**Cause:** Sage has no usable provider credential for this server or host.
 
 **Fix:**
 
-1. Run `/sage key login`
-2. Follow login instructions
+1. If you are using Sage's hosted/default Pollinations-backed flow, run `/sage key login`
+2. Follow the Pollinations login instructions
 3. Run `/sage key set sk_your_key`
+4. If you self-host Sage against another OpenAI-compatible provider, set `LLM_API_KEY` in `.env` instead
 
 ### Response is truncated or cut off
 
@@ -245,7 +246,7 @@ RAW_MESSAGE_TTL_DAYS=1                     # Reduce from 3
 | :--- | :--- |
 | Model | Default is `CHAT_MODEL=kimi`; change only when you need a different quality/latency profile |
 | Context | Reduce `CONTEXT_MAX_INPUT_TOKENS` |
-| Network | Check Pollinations API status |
+| Network | Check your configured provider/API status |
 
 ---
 

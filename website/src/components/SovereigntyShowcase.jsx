@@ -7,12 +7,12 @@ const modes = [
         label: 'Bot Invite',
         badge: 'Hosted',
         icon: '🌸',
-        heading: 'Bring Your Own Pollen',
-        desc: 'Invite the hosted Sage bot — each server admin provides a Pollinations API key via /sage key set. Zero infrastructure needed.',
+        heading: 'Server-Key Activation',
+        desc: 'Invite the hosted Sage bot — each server admin provides a server API key via /sage key set. Zero infrastructure needed.',
         color: '#78b846',
         bg: 'from-[#78b846]/10 to-transparent',
         features: [
-            { text: 'Pollinations.ai unified gateway', icon: '☁️' },
+            { text: 'Current hosted Sage bot', icon: '☁️' },
             { text: 'Server-wide key via /sage key set', icon: '🔑' },
             { text: 'Free tier available', icon: '🎁' },
             { text: 'Text, vision, image gen, voice', icon: '🎨' },
@@ -24,14 +24,14 @@ const modes = [
         badge: 'Sovereign',
         icon: '🏛️',
         heading: 'Bring Your Own Provider',
-        desc: 'Self-host Sage with an OpenAI-compatible API backend via Pollinations.ai. Set your base URL and key — done.',
+        desc: 'Self-host Sage against any OpenAI-compatible chat backend. Set your base URL and key — done.',
         color: '#7AA2F7',
         bg: 'from-[#7AA2F7]/10 to-transparent',
         features: [
-            { text: 'Pollinations.ai (default)', icon: '🐝' },
+            { text: 'Starter defaults included', icon: '⚙️' },
             { text: 'OpenAI-compatible API', icon: '⚡' },
-            { text: 'Any /v1 endpoint', icon: '�' },
-            { text: 'Full data sovereignty', icon: '�' },
+            { text: 'Any /v1 endpoint', icon: '🔌' },
+            { text: 'Full data sovereignty', icon: '🛡️' },
         ],
     },
 ];
@@ -54,13 +54,13 @@ export default function SovereigntyShowcase() {
                     BYOP Architecture
                 </div>
                 <h2 className="text-4xl lg:text-5xl font-extrabold text-white mb-4">
-                    Your Pollen.{' '}
+                    Your Key.{' '}
                     <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#78b846] to-[#a9df7c]">
                         Your Provider.
                     </span>
                 </h2>
                 <p className="text-lg text-slate-400 max-w-2xl mx-auto font-light">
-                    BYOP = <strong className="text-white">Bring Your Own Pollen</strong> (hosted)
+                    BYOP = <strong className="text-white">server-key activation</strong> (hosted flow)
                     + <strong className="text-white">Bring Your Own Provider</strong> (self-hosted).
                     Choose how Sage connects to AI.
                 </p>
@@ -158,7 +158,7 @@ export default function SovereigntyShowcase() {
                         {/* Explainer */}
                         <p className="text-xs text-slate-600 font-mono mt-6 leading-relaxed">
                             {active === 'invite'
-                                ? 'Admins run /sage key login → sign in via Pollinations (GitHub) → /sage key set sk_... → Sage is active for the whole server.'
+                                ? 'Admins run /sage key login → complete the hosted key flow → /sage key set sk_... → the hosted Sage bot is active for the whole server.'
                                 : 'Set LLM_PROVIDER + LLM_BASE_URL + LLM_API_KEY in your .env to point Sage at any OpenAI-compatible endpoint.'}
                         </p>
                     </motion.div>

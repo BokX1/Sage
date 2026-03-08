@@ -25,8 +25,8 @@ A complete reference for Sage slash commands, triggers, and interaction methods.
 | Goal | Command / Action |
 | :--- | :--- |
 | Check bot is alive | `/ping` |
-| Get Pollinations key link | `/sage key login` |
-| Set server-wide key (admin) | `/sage key set <api_key>` |
+| Get hosted-BYOP key link | `/sage key login` |
+| Set hosted server key (admin) | `/sage key set <api_key>` |
 | Check key status (admin) | `/sage key check` |
 | Clear server key (admin) | `/sage key clear` |
 | View bot stats (admin) | `/sage admin stats` |
@@ -67,7 +67,7 @@ Check if Sage is online and responding.
 
 ### `/sage key login`
 
-Get a link to generate your Pollinations API key.
+Get a link to generate a Pollinations API key for Sage's built-in hosted/BYOP flow.
 
 ```text
 /sage key login
@@ -95,11 +95,13 @@ Disconnect Sage from the voice channel.
 
 Bring-Your-Own-Pollen (BYOP) commands for the server key.
 
+These commands manage Sage's current Pollinations-backed server-key flow. Self-hosted deployments can also use a host-level `LLM_API_KEY` with any OpenAI-compatible provider.
+
 `/sage key set`, `/sage key check`, and `/sage key clear` are admin-only.
 
 ### `/sage key set`
 
-Set the server-wide Pollinations API key.
+Set the server-wide Pollinations API key for the built-in BYOP flow.
 
 ```text
 /sage key set <api_key>

@@ -31,7 +31,7 @@ Ask the deployment operator for the current invite URL.
 
 ### 2️⃣ Activate BYOP (server-wide key)
 
-Sage uses **Bring Your Own Pollen (BYOP)** — your server provides a Pollinations API key for AI usage.
+The current hosted Sage deployment uses **Bring Your Own Pollen (BYOP)** — your server provides a Pollinations API key for that hosted bot.
 
 ```text
 /sage key login     ← Get your API key link
@@ -63,7 +63,7 @@ After this, Sage is active for the entire server.
 | 🔍 Search the web | `Sage, what's the current price of Bitcoin?` |
 
 > [!NOTE]
-> Image generation and editing require an active BYOP key.
+> Image generation and editing on the hosted bot require an active Pollinations-backed BYOP key.
 
 ---
 
@@ -85,7 +85,7 @@ npm run dev               # ← Start in development mode
 > [!TIP]
 > `npm run onboard` now supports optional automation flags for CI/headless flows: `--start-docker --migrate --doctor`.
 
-Follow **[📖 Getting Started](GETTING_STARTED.md)** for the complete walkthrough (Discord app creation, `.env` configuration, database setup, and invite generation).
+Self-hosted Sage can target any OpenAI-compatible chat provider through `LLM_BASE_URL`. Follow **[📖 Getting Started](GETTING_STARTED.md)** for the complete walkthrough (Discord app creation, `.env` configuration, database setup, provider setup, and invite generation).
 
 ---
 
@@ -112,7 +112,3 @@ For deeper debugging, see **[🔧 Troubleshooting Guide](TROUBLESHOOTING.md)**.
 - **[❓ FAQ](FAQ.md)** — Answers to common questions
 
 ---
-
-<p align="center">
-  <sub>Powered by <a href="https://pollinations.ai">Pollinations.ai</a> 🐝</sub>
-</p>

@@ -16,7 +16,7 @@ export function getWelcomeMessage(): EmbedBuilder {
             },
             {
                 name: "🚀 Activation Required",
-                value: "I run on a **Bring Your Own Pollen (BYOP)** model. This means I'm free to host, but I need an API key to \"power my brain.\"\n\n**Administrators: Please set up the server key:**\n1️⃣ Get a free key at [pollinations.ai](https://pollinations.ai/) (Login with Discord).\n2️⃣ Run `/sage key set <your_key>` in this server.",
+                value: "I can run in two modes:\n• **Self-hosted provider mode**: my operator configures a host-level `LLM_API_KEY` for any OpenAI-compatible provider.\n• **Built-in BYOP mode**: a server admin adds a Pollinations key for this server.\n\n**If this server is using the built-in BYOP flow:**\n1️⃣ Get a key at [pollinations.ai](https://pollinations.ai/).\n2️⃣ Run `/sage key set <your_key>` in this server.",
             },
             {
                 name: "💬 How to Chat",
