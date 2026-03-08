@@ -77,18 +77,53 @@ It's designed to feel like an intelligent, ever-present teammate that adapts to 
 
 ```mermaid
 flowchart LR
-    A["📩 User Message"] --> B{"🧠 Autonomous Agent Router"}
-    
-    B -->|"Retrieval"| C["📚 Memory & Context (Postgres + optional Memgraph)"]
-    B -->|"Research"| D["🌐 Live Internet Search Tools"]
-    B -->|"Action"| E["⚡ Execute Custom Workflows"]
-    B -->|"Creative"| F["🎨 Generate Media & Code"]
-    
-    C --> G["💬 Synthesized Action & Reply"]
-    D --> G
-    E --> G
-    F --> G
-    B -->|"Direct Chat"| G
+    classDef discord fill:#7c9f35,stroke:#2d5016,stroke-width:2px,color:#111
+    classDef runtime fill:#d7e8a8,stroke:#4a7c23,stroke-width:2px,color:#111
+    classDef memory fill:#b9d7f4,stroke:#356b95,stroke-width:2px,color:#111
+    classDef tools fill:#f0d8a8,stroke:#9b6a1d,stroke-width:2px,color:#111
+    classDef ops fill:#f3c7c1,stroke:#a24b43,stroke-width:2px,color:#111
+
+    subgraph Discord["Discord Community Surface"]
+        U["📩 Wake Word / Mention / Reply"]:::discord
+        X["🧾 Attachments / Images / References"]:::discord
+        V["🎤 Optional Live Voice Context"]:::discord
+        A["🛡️ Natural-Language Admin Requests"]:::discord
+    end
+
+    subgraph Runtime["Sage Single-Agent Runtime"]
+        CE["⚙️ Chat Engine"]:::runtime
+        RT["🧠 runChatTurn"]:::runtime
+        CB["📦 Context Builder + Token Budgeting"]:::runtime
+        TL{"🔁 Bounded Tool Loop"}:::runtime
+        SY["💬 Synthesis + Final Reply"]:::runtime
+    end
+
+    subgraph Data["On-Demand Memory + Research"]
+        M["📚 Profiles, Transcript, Summaries, Files"]:::memory
+        G["🕸️ Social Graph + Voice Analytics"]:::memory
+        W["🌐 Web / Docs / Search / GitHub / npm"]:::tools
+        C["🎨 Image + Creative Workflow Tools"]:::tools
+        P["✅ Approval Queue + Admin Action Status"]:::ops
+    end
+
+    U --> CE
+    X --> CE
+    V --> CE
+    A --> CE
+    CE --> RT --> CB --> TL
+    TL -->|"fetch only when needed"| M
+    TL -->|"query optional signals"| G
+    TL -->|"live research"| W
+    TL -->|"generate / transform"| C
+    TL -->|"queue gated actions"| P
+    M --> TL
+    G --> TL
+    W --> TL
+    C --> TL
+    P --> TL
+    TL --> SY
+    SY --> R["📤 Grounded Reply, Files, and Action Updates"]:::discord
+    SY --> T["📊 Trace + Runtime Health Telemetry"]:::ops
 ```
 
 <p align="center">
@@ -153,33 +188,91 @@ How a message flows through Sage's runtime — from user input to verified reply
 </p>
 
 ```mermaid
-flowchart LR
-    classDef user fill:#FF9E64,stroke:#333,stroke-width:2px,color:black
-    classDef bot fill:#9ECE6A,stroke:#333,stroke-width:2px,color:black
-    classDef memory fill:#7AA2F7,stroke:#333,stroke-width:2px,color:black
-    classDef tools fill:#BB9AF7,stroke:#333,stroke-width:2px,color:black
-    classDef runtime fill:#E0AF68,stroke:#333,stroke-width:2px,color:black
+flowchart TD
+    classDef discord fill:#7c9f35,stroke:#2d5016,stroke-width:2px,color:#111
+    classDef runtime fill:#d7e8a8,stroke:#4a7c23,stroke-width:2px,color:#111
+    classDef memory fill:#b9d7f4,stroke:#356b95,stroke-width:2px,color:#111
+    classDef tools fill:#f0d8a8,stroke:#9b6a1d,stroke-width:2px,color:#111
+    classDef ops fill:#f3c7c1,stroke:#a24b43,stroke-width:2px,color:#111
 
-    U((User Message)):::user --> B[Sage Runtime]:::bot
-    
-    subgraph Engine["Autonomous Agent Loop"]
-        direction TB
-        B --> R{"Tool Router"}:::runtime
-        R --> C[Context Builder]:::runtime
-        C --> M[(LTM: Postgres)]:::memory
-        C --> G[(Social: Memgraph)]:::memory
-        
-        M --> S[Synthesis]:::runtime
-        G --> S
-        
-        S --> T{Tool Needed?}:::tools
+    subgraph Inputs["Discord Inputs"]
+        MSG["Wake Word / Mention / Reply"]:::discord
+        CMD["Slash Commands + Voice Join/Leave"]:::discord
+        FILES["Images, Files, Reply References"]:::discord
+        AUTO["Autopilot / Proactive Triggers"]:::discord
     end
 
-    T -->|"Yes"| L[Live Search / API / Code]:::tools
-    L -->|"Evidence"| B
-    
-    T -->|"No"| P[Generate Response]:::bot
-    P --> U
+    subgraph Engine["Single-Agent Runtime"]
+        direction TB
+        CHAT["Chat Engine"]:::runtime
+        TURN["runChatTurn"]:::runtime
+        MODEL["Model Resolution + Health Fallbacks"]:::runtime
+        CTX["Context Assembly
+system prompt + user profile + server instructions + transcript + live voice"]:::runtime
+        BUDGET["Token Budgeting + Truncation"]:::runtime
+        LOOP{"Tool Loop
+max rounds, per-call limits, timeouts"}:::runtime
+        FINAL["Final Draft Cleanup + Attachments"]:::runtime
+    end
+
+    subgraph Retrieval["On-Demand Context Surfaces"]
+        direction LR
+        DB["Postgres
+profiles, messages, summaries, traces"]:::memory
+        ATT["Attachment Cache + Semantic File Search"]:::memory
+        VOICE["Voice Presence + Summary Memory"]:::memory
+        GRAPH["Relationship Edges + optional Memgraph"]:::memory
+    end
+
+    subgraph Tools["Tool System"]
+        direction LR
+        DISC["discord tool
+memory, search, files, analytics, admin wrappers"]:::tools
+        WEB["web / wikipedia / stack overflow"]:::tools
+        DEV["github / npm / workflow"]:::tools
+        GEN["image generation / editing"]:::tools
+    end
+
+    subgraph Controls["Safety + Operations"]
+        direction LR
+        APPROVAL["Approval-gated admin actions"]:::ops
+        POLICY["Ingestion policy + channel logging gates"]:::ops
+        TRACE["AgentTrace + tool telemetry"]:::ops
+    end
+
+    MSG --> CHAT
+    CMD --> CHAT
+    FILES --> CHAT
+    AUTO --> CHAT
+
+    CHAT --> TURN --> MODEL --> CTX --> BUDGET --> LOOP
+
+    LOOP --> DISC
+    LOOP --> WEB
+    LOOP --> DEV
+    LOOP --> GEN
+
+    DISC --> DB
+    DISC --> ATT
+    DISC --> VOICE
+    DISC --> GRAPH
+    GRAPH --> DISC
+    VOICE --> DISC
+    ATT --> DISC
+    DB --> DISC
+
+    DISC -->|"admin write requests"| APPROVAL
+    POLICY --> CHAT
+    POLICY --> DISC
+
+    WEB --> LOOP
+    DEV --> LOOP
+    GEN --> LOOP
+    DISC --> LOOP
+
+    LOOP --> FINAL --> OUT["Discord Reply
+text + files + approval status cards"]:::discord
+    FINAL --> TRACE
 ```
 
 > [!NOTE]
