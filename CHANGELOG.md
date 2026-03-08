@@ -50,6 +50,7 @@
 
 ### Fixed
 
+- Fixed flaky docs-link CI runs caused by intermittent aborts when validating the external contributor image at `contrib.rocks`; the tracked docs gate now skips that decorative image URL instead of failing otherwise healthy pushes.
 - Fixed a rare Discord runtime leak where array-wrapped `tool_calls` payloads, including server-instruction update requests, could be sent to chat as raw JSON instead of being executed and finalized into a normal reply.
 - Fixed Discord vision inputs: Sage now preserves `image_url` multimodal parts when assembling Pollinations chat requests, so image attachments and replied-to images can be analyzed instead of being silently treated as plain text.
 - Fixed direct image URL detection in Discord messages when links are followed by sentence punctuation, so Sage still picks up the image for vision requests.
