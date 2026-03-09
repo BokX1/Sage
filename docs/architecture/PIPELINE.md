@@ -74,7 +74,7 @@ flowchart TD
 | :---: | :--- | :--- |
 | 1 | Base system prompt | `composeSystemPrompt` with the user profile summary embedded in `<user_profile>` |
 | 2 | Runtime instructions | Single-agent capabilities, silent native tool-use rules, approval guardrails, and runtime state |
-| 3 | Server instructions | `GuildMemory`, when present |
+| 3 | Server instructions | `ServerInstructions`, when present |
 | 4 | Live voice context | In-memory voice session context, only when Sage is active in voice |
 | 5 | Recent transcript | Ring buffer plus recent `ChannelMessage` history |
 | 6 | Assistant context | Prior Sage output wrapped as `<assistant_context>` for continuity only |
@@ -160,7 +160,7 @@ Most richer context is loaded on demand through the split Discord tools:
 | User profile | `discord_context.get_user_profile` | PostgreSQL (`UserProfile`) |
 | Channel summaries | `discord_context.get_channel_summary` | PostgreSQL (`ChannelSummary`) |
 | Archived channel summaries | `discord_context.search_channel_summary_archives` | PostgreSQL plus pgvector-backed archive search |
-| Server instructions | `discord_context.get_server_instructions` | PostgreSQL (`GuildMemory`) |
+| Server instructions | `discord_context.get_server_instructions` | PostgreSQL (`ServerInstructions`) |
 | Social graph | `discord_context.get_social_graph`, `discord_context.get_top_relationships` | PostgreSQL (`RelationshipEdge`) plus optional Memgraph |
 | Voice analytics | `discord_context.get_voice_analytics`, `discord_context.get_voice_summaries` | PostgreSQL (`VoiceSession`, `VoiceConversationSummary`) |
 | Cached file text | `discord_files.list_channel`, `discord_files.list_server`, `discord_files.read_attachment` | PostgreSQL (`IngestedAttachment`) |

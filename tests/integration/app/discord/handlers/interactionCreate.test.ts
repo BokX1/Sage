@@ -5,6 +5,7 @@ import { makeChatInputCommandInteraction } from '../../../../testkit/discord';
 
 const onMock = vi.fn();
 const handleAdminActionButtonInteraction = vi.hoisted(() => vi.fn().mockResolvedValue(false));
+const handleAdminActionRejectModalSubmit = vi.hoisted(() => vi.fn().mockResolvedValue(false));
 const handleGuildApiKeyBootstrapButtonInteraction = vi.hoisted(() => vi.fn().mockResolvedValue(false));
 const handleGuildApiKeyBootstrapModalSubmit = vi.hoisted(() => vi.fn().mockResolvedValue(false));
 const handleInteractiveButtonSession = vi.hoisted(() => vi.fn().mockResolvedValue(false));
@@ -19,6 +20,7 @@ vi.mock('@/platform/discord/client', () => ({
 
 vi.mock('@/features/admin/adminActionService', () => ({
   handleAdminActionButtonInteraction,
+  handleAdminActionRejectModalSubmit,
 }));
 
 vi.mock('@/features/discord/byopBootstrap', () => ({
@@ -42,6 +44,7 @@ describe('interactionCreate handler', () => {
     vi.resetModules();
     onMock.mockReset();
     handleAdminActionButtonInteraction.mockReset().mockResolvedValue(false);
+    handleAdminActionRejectModalSubmit.mockReset().mockResolvedValue(false);
     handleGuildApiKeyBootstrapButtonInteraction.mockReset().mockResolvedValue(false);
     handleGuildApiKeyBootstrapModalSubmit.mockReset().mockResolvedValue(false);
     handleInteractiveButtonSession.mockReset().mockResolvedValue(false);

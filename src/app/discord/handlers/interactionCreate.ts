@@ -1,7 +1,10 @@
 import { Events, Interaction } from 'discord.js';
 import { client } from '../../../platform/discord/client';
 import { logger } from '../../../platform/logging/logger';
-import { handleAdminActionButtonInteraction } from '../../../features/admin/adminActionService';
+import {
+  handleAdminActionButtonInteraction,
+  handleAdminActionRejectModalSubmit,
+} from '../../../features/admin/adminActionService';
 import {
   handleGuildApiKeyBootstrapButtonInteraction,
   handleGuildApiKeyBootstrapModalSubmit,
@@ -66,6 +69,7 @@ export function registerInteractionCreateHandler() {
         interaction.isModalSubmit()
       ) {
         const handled =
+          (await handleAdminActionRejectModalSubmit(interaction)) ||
           (await handleGuildApiKeyBootstrapModalSubmit(interaction)) ||
           (await handleInteractiveModalSession(interaction));
         if (handled) {

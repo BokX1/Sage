@@ -18,10 +18,6 @@ import { deleteAttachmentChunks, ingestAttachmentText } from '../../../features/
 import { queueImageAttachmentRecall } from '../../../features/attachments/imageAttachmentRecallWorker';
 import { normalizeNonNegativeInt, normalizePositiveInt } from '../../../shared/utils/numbers';
 import {
-  attachPendingAdminActionRequestMessageId,
-  getPendingAdminActionById,
-} from '../../../features/admin/pendingAdminActionRepo';
-import {
   appendAttachmentBlocksToText,
   buildAttachmentBlockFromResult,
   buildMessageContent,
@@ -31,7 +27,7 @@ import {
   getVisionImageUrl,
 } from './attachment-parser';
 import { isAdminFromMember } from '../../../platform/discord/admin-permissions';
-import { buildPendingAdminActionResolutionNotice } from '../../../features/admin/adminActionService';
+import { publishPendingAdminActionRequesterStatusMessage } from '../../../features/admin/adminActionService';
 import { buildGuildApiKeyMissingResponse } from '../../../features/discord/byopBootstrap';
 
 const processedMessagesKey = Symbol.for('sage.handlers.messageCreate.processed');
@@ -717,7 +713,12 @@ export async function handleMessageCreate(message: Message) {
         isAdmin: isAdminFromMember(message.member),
       });
 
-      const pendingActionIds = result.pendingAdminActionIds ?? [];
+      const pendingAdminActions =
+        result.pendingAdminActions ??
+        (result.pendingAdminActionIds ?? []).map((actionId) => ({
+          actionId,
+          coalesced: false,
+        }));
       const replyText = result.replyText || '';
 
       let didSendAnything = false;
@@ -753,62 +754,21 @@ export async function handleMessageCreate(message: Message) {
         }
       }
 
-      const reconcileApprovalStatusMessage = async (actionId: string, statusMessage: Message): Promise<void> => {
-        const updated = await attachPendingAdminActionRequestMessageId({
-          id: actionId,
-          requestMessageId: statusMessage.id,
-        });
-
-        if (updated.status !== 'pending' && updated.status !== 'approved') {
-          const resolved = buildPendingAdminActionResolutionNotice(updated);
-          await statusMessage.edit({ content: resolved, allowedMentions: { parse: [] } });
-          return;
-        }
-
-        if (updated.status !== 'approved') {
-          return;
-        }
-
-        let attempts = 0;
-        const interval = setInterval(() => {
-          void (async () => {
-            attempts += 1;
-            try {
-              const refreshed = await getPendingAdminActionById(actionId);
-              if (!refreshed || refreshed.status === 'pending' || refreshed.status === 'approved') {
-                if (attempts >= 15) {
-                  clearInterval(interval);
-                }
-                return;
-              }
-              clearInterval(interval);
-              const resolved = buildPendingAdminActionResolutionNotice(refreshed);
-              await statusMessage.edit({ content: resolved, allowedMentions: { parse: [] } });
-            } catch {
-              if (attempts >= 15) {
-                clearInterval(interval);
-              }
-            }
-          })();
-        }, 2000);
-        interval.unref?.();
-      };
-
-      let usedReplyForApprovalStatus = false;
-      for (const actionId of pendingActionIds) {
-        const content = `Queued admin action for approval.\nAction ID: \`${actionId}\``;
-
+      let shouldReplyRequesterStatus = !didSendAnything;
+      for (const pendingAction of pendingAdminActions) {
         try {
-          const statusMessage = (!didSendAnything && !usedReplyForApprovalStatus)
-            ? await message.reply({ content, allowedMentions: { repliedUser: false } })
-            : await discordChannel.send({ content, allowedMentions: { parse: [] } });
-
+          await publishPendingAdminActionRequesterStatusMessage({
+            actionId: pendingAction.actionId,
+            coalesced: pendingAction.coalesced,
+            replyToMessageId: shouldReplyRequesterStatus ? message.id : undefined,
+          });
           didSendAnything = true;
-          usedReplyForApprovalStatus = true;
-
-          await reconcileApprovalStatusMessage(actionId, statusMessage);
+          shouldReplyRequesterStatus = false;
         } catch (error) {
-          loggerWithTrace.warn({ error, actionId }, 'Failed to publish approval status message');
+          loggerWithTrace.warn(
+            { error, actionId: pendingAction.actionId },
+            'Failed to publish governance requester status message',
+          );
         }
       }
 

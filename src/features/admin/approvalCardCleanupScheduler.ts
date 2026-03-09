@@ -43,7 +43,7 @@ export function initApprovalCardCleanupScheduler(): void {
           const result = await discordRestRequestGuildScoped({
             guildId: action.guildId,
             method: 'DELETE',
-            path: `/channels/${action.channelId}/messages/${approvalMessageId}`,
+            path: `/channels/${action.reviewChannelId}/messages/${approvalMessageId}`,
             reason: `[sage action:${action.id}] auto-delete resolved approval card`,
             maxResponseChars: 500,
           });
@@ -63,7 +63,7 @@ export function initApprovalCardCleanupScheduler(): void {
               {
                 actionId: action.id,
                 guildId: action.guildId,
-                channelId: action.channelId,
+                channelId: action.reviewChannelId,
                 approvalMessageId,
                 status,
                 statusText: typeof result.statusText === 'string' ? result.statusText : undefined,
@@ -74,7 +74,7 @@ export function initApprovalCardCleanupScheduler(): void {
           }
         } catch (error) {
           logger.warn(
-            { error, actionId: action.id, guildId: action.guildId, channelId: action.channelId },
+            { error, actionId: action.id, guildId: action.guildId, channelId: action.reviewChannelId },
             'Approval card cleanup threw; clearing id to avoid repeated attempts',
           );
 

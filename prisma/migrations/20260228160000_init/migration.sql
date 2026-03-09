@@ -1,5 +1,3 @@
-CREATE EXTENSION IF NOT EXISTS vector;
-
 -- CreateSchema
 CREATE SCHEMA IF NOT EXISTS "public";
 
@@ -28,6 +26,7 @@ CREATE TABLE "UserProfileArchive" (
 CREATE TABLE "GuildSettings" (
     "guildId" TEXT NOT NULL,
     "pollinationsApiKey" TEXT,
+    "approvalReviewChannelId" TEXT,
     "updatedAt" TIMESTAMP(3) NOT NULL,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
@@ -35,34 +34,35 @@ CREATE TABLE "GuildSettings" (
 );
 
 -- CreateTable
-CREATE TABLE "GuildMemory" (
+CREATE TABLE "ServerInstructions" (
     "guildId" TEXT NOT NULL,
-    "memoryText" TEXT NOT NULL,
+    "instructionsText" TEXT NOT NULL,
     "version" INTEGER NOT NULL DEFAULT 1,
     "updatedByAdminId" TEXT,
     "updatedAt" TIMESTAMP(3) NOT NULL,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
-    CONSTRAINT "GuildMemory_pkey" PRIMARY KEY ("guildId")
+    CONSTRAINT "ServerInstructions_pkey" PRIMARY KEY ("guildId")
 );
 
 -- CreateTable
-CREATE TABLE "GuildMemoryArchive" (
+CREATE TABLE "ServerInstructionsArchive" (
     "id" TEXT NOT NULL,
     "guildId" TEXT NOT NULL,
     "version" INTEGER NOT NULL,
-    "memoryText" TEXT NOT NULL,
+    "instructionsText" TEXT NOT NULL,
     "updatedByAdminId" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
-    CONSTRAINT "GuildMemoryArchive_pkey" PRIMARY KEY ("id")
+    CONSTRAINT "ServerInstructionsArchive_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
 CREATE TABLE "PendingAdminAction" (
     "id" TEXT NOT NULL,
     "guildId" TEXT NOT NULL,
-    "channelId" TEXT NOT NULL,
+    "sourceChannelId" TEXT NOT NULL,
+    "reviewChannelId" TEXT NOT NULL,
     "approvalMessageId" TEXT,
     "requestMessageId" TEXT,
     "requestedBy" TEXT NOT NULL,
@@ -74,11 +74,27 @@ CREATE TABLE "PendingAdminAction" (
     "decidedAt" TIMESTAMP(3),
     "executedAt" TIMESTAMP(3),
     "resultJson" JSONB,
+    "decisionReasonText" TEXT,
     "errorText" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
     CONSTRAINT "PendingAdminAction_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "DiscordInteractionSession" (
+    "id" TEXT NOT NULL,
+    "guildId" TEXT NOT NULL,
+    "channelId" TEXT NOT NULL,
+    "createdByUserId" TEXT NOT NULL,
+    "kind" TEXT NOT NULL,
+    "payloadJson" JSONB NOT NULL,
+    "expiresAt" TIMESTAMP(3) NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "DiscordInteractionSession_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -267,13 +283,22 @@ CREATE TABLE "ChannelMessageEmbedding" (
 CREATE INDEX "UserProfileArchive_userId_createdAt_idx" ON "UserProfileArchive"("userId", "createdAt");
 
 -- CreateIndex
-CREATE INDEX "GuildMemoryArchive_guildId_createdAt_idx" ON "GuildMemoryArchive"("guildId", "createdAt");
+CREATE INDEX "ServerInstructionsArchive_guildId_createdAt_idx" ON "ServerInstructionsArchive"("guildId", "createdAt");
 
 -- CreateIndex
 CREATE INDEX "PendingAdminAction_guildId_createdAt_idx" ON "PendingAdminAction"("guildId", "createdAt");
 
 -- CreateIndex
 CREATE INDEX "PendingAdminAction_status_expiresAt_idx" ON "PendingAdminAction"("status", "expiresAt");
+
+-- CreateIndex
+CREATE INDEX "PendingAdminAction_reviewChannelId_createdAt_idx" ON "PendingAdminAction"("reviewChannelId", "createdAt");
+
+-- CreateIndex
+CREATE INDEX "DiscordInteractionSession_guildId_createdAt_idx" ON "DiscordInteractionSession"("guildId", "createdAt");
+
+-- CreateIndex
+CREATE INDEX "DiscordInteractionSession_expiresAt_idx" ON "DiscordInteractionSession"("expiresAt");
 
 -- CreateIndex
 CREATE INDEX "ChannelMessage_guildId_channelId_timestamp_idx" ON "ChannelMessage"("guildId", "channelId", "timestamp");
@@ -352,3 +377,4 @@ ALTER TABLE "UserProfileArchive" ADD CONSTRAINT "UserProfileArchive_userId_fkey"
 
 -- AddForeignKey
 ALTER TABLE "ChannelMessageEmbedding" ADD CONSTRAINT "ChannelMessageEmbedding_messageId_fkey" FOREIGN KEY ("messageId") REFERENCES "ChannelMessage"("messageId") ON DELETE CASCADE ON UPDATE CASCADE;
+

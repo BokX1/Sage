@@ -31,7 +31,7 @@ vi.mock('@/platform/config/env', () => ({
 const mockChat = vi.hoisted(() => ({
   chat: vi.fn(),
 }));
-const mockGetGuildMemoryText = vi.hoisted(() => vi.fn());
+const mockGetServerInstructionsText = vi.hoisted(() => vi.fn());
 
 vi.mock('@/platform/llm', () => ({
   getLLMClient: () => mockChat,
@@ -45,8 +45,8 @@ vi.mock('@/features/settings/guildSettingsRepo', () => ({
   getGuildApiKey: vi.fn().mockResolvedValue('test-key'),
 }));
 
-vi.mock('@/features/settings/guildMemoryRepo', () => ({
-  getGuildMemoryText: mockGetGuildMemoryText,
+vi.mock('@/features/settings/serverInstructionsRepo', () => ({
+  getServerInstructionsText: mockGetServerInstructionsText,
 }));
 
 vi.mock('@/features/agent-runtime/agent-trace-repo', () => ({
@@ -67,7 +67,7 @@ describe('transcript injection', () => {
     clearChannel({ guildId: 'guild-1', channelId: 'channel-1' });
     mockChat.chat.mockClear();
     mockChat.chat.mockResolvedValue({ text: 'ok' });
-    mockGetGuildMemoryText.mockResolvedValue(null);
+    mockGetServerInstructionsText.mockResolvedValue(null);
     vi.mocked(isLoggingEnabled).mockReturnValue(true);
   });
 

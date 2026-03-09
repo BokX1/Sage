@@ -77,7 +77,10 @@ export const DISCORD_ADMIN_ACTION_CATALOG = {
   writes: [],
   admin_only: [
     'get_server_key_status',
+    'get_governance_review_status',
     'clear_server_api_key',
+    'set_governance_review_channel',
+    'clear_governance_review_channel',
     'send_key_setup_card',
     'update_server_instructions',
     'submit_moderation',

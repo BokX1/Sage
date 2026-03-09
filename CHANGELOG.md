@@ -26,12 +26,16 @@
 
 ### Added
 
+- Added a premium Discord-native governance surface for approval-gated actions: compact requester status cards now stay in the source channel, detailed reviewer cards can route to a dedicated governance review channel, rejections collect a short modal reason, and admin-only details move into an explicit `Details` view instead of the default message body.
+- Added persistent governance review routing metadata, including a new guild-level `approvalReviewChannelId` setting plus separate source/review channel tracking on pending admin actions, so approval cards, requester updates, coalescing, and restart-safe cleanup can operate across hybrid review surfaces.
 - Added a commandless interactive Discord UX layer: Sage can now emit stateful Components V2 buttons, launch modal-backed follow-up flows, persist interaction sessions, and continue chat turns from Sage-authored component clicks instead of relying on slash-command entrypoints.
 - Added a non-model bootstrap path for hosted Pollinations BYOP recovery, including admin-only setup-card buttons and a secure modal flow to set, check, or clear the current guild server key even when Sage has no usable provider key yet.
 - Added a dedicated `discord_voice` routed tool for live voice presence control so Sage can report voice status, join the invoker's current voice channel, and leave the active guild voice channel through normal chat turns.
 
 ### Changed
 
+- Hard-cut the development schema and governance persistence model: Prisma now uses a single clean baseline with required `sourceChannelId` and `reviewChannelId` fields on pending admin actions, and the server-instructions storage surface is now named `ServerInstructions` / `ServerInstructionsArchive` with `instructionsText` end to end.
+- Reworked approval-gated Discord governance end to end around shared Components V2 cards, hybrid requester/reviewer routing, and dedicated `discord_admin` review-channel management actions, while preserving the existing `pending_approval` runtime contract and same-turn retry suppression.
 - Hardened the single-agent runtime around silent native tool use: Sage no longer exposes reasoning-facing tool surfaces like `system_plan`/`think`, no longer persists provider reasoning text into new traces, and now scrubs tool/approval protocol chatter out of visible Discord replies before sending.
 - Tightened approval-gated admin workflows so equivalent unresolved server-instruction updates, moderation requests, and Discord REST writes now coalesce onto one pending approval/action ID instead of spawning duplicate cards, while the tool loop stops retrying the same approval-gated write again after `pending_approval`.
 - Made Sage fully chat-first in Discord: primary invocation is now wake word, mention, reply, and Sage-authored interactive follow-ups, while onboarding, welcome messaging, and hosted BYOP setup now direct operators to the in-chat setup card flow instead of slash commands.
@@ -89,6 +93,7 @@
 
 ### Removed
 
+- Removed the last development-only governance compatibility shims and storage aliases, including legacy `PendingAdminAction.channelId`, `GuildMemory` / `GuildMemoryArchive`, `memoryText`, and the governance plain-text downgrade path.
 - Removed the user-facing slash-command surface (`/ping`, `/join`, `/leave`, `/sage key ...`, `/sage admin stats`) along with command registration and the old command-handler paths, so Discord interaction routing is now focused on chat, buttons, and modals.
 - Removed the final `discord_messages.create_thread` compatibility alias from the routed-tool contract so `discord_server.create_thread` is the only canonical thread-creation path end to end.
 - Removed the last legacy interactive Discord message path (`legacy_components`) from Sage’s model-facing tool surface and runtime execution contract, so operators no longer have a stale third presentation mode that conflicts with the split-tool mental model.

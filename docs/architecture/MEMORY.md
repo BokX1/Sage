@@ -30,7 +30,7 @@ This document describes how Sage stores memory and makes it available to the run
 | Memory type | Purpose | Storage | Key files |
 | :--- | :--- | :--- | :--- |
 | **User profile** | Long-term personalization profile per user, stored as soft preferences, active focus, and durable background context. | `UserProfile`, `UserProfileArchive` | `src/features/memory/profileUpdater.ts`, `src/features/memory/userProfileRepo.ts` |
-| **Server instructions** | Admin-authored server instructions and archive history. | `GuildMemory`, `GuildMemoryArchive` | `src/features/admin/*`, `src/features/agent-runtime/discordDomainTools.ts`, `src/features/agent-runtime/discord/core.ts` |
+| **Server instructions** | Admin-authored server instructions and archive history. | `ServerInstructions`, `ServerInstructionsArchive` | `src/features/admin/*`, `src/features/agent-runtime/discordDomainTools.ts`, `src/features/agent-runtime/discord/core.ts` |
 | **Channel summaries** | Rolling and profile summaries for channels; continuity context rather than quote-level evidence. | `ChannelSummary` | `src/features/summary/*` |
 | **Raw transcript** | Recent message history for prompt context and retrieval. | Ring buffer plus optional `ChannelMessage` persistence | `src/features/awareness/*`, `src/features/ingest/ingestEvent.ts` |
 | **Attachment cache** | Persisted attachment recall text for on-demand retrieval and resend. Uploaded images store Florence-generated recall/OCR text; other files store extracted text. | `IngestedAttachment`, `AttachmentChunk` | `src/features/attachments/*`, `src/app/discord/handlers/messageCreate.ts` |

@@ -21,7 +21,8 @@ export type PendingAdminActionStatus = typeof PENDING_ADMIN_ACTION_STATUSES[numb
 export interface PendingAdminActionRecord {
   id: string;
   guildId: string;
-  channelId: string;
+  sourceChannelId: string;
+  reviewChannelId: string;
   approvalMessageId: string | null;
   requestMessageId: string | null;
   requestedBy: string;
@@ -33,6 +34,7 @@ export interface PendingAdminActionRecord {
   decidedAt: Date | null;
   executedAt: Date | null;
   resultJson: unknown;
+  decisionReasonText: string | null;
   errorText: string | null;
   createdAt: Date;
   updatedAt: Date;
@@ -41,7 +43,8 @@ export interface PendingAdminActionRecord {
 function toRecord(value: {
   id: string;
   guildId: string;
-  channelId: string;
+  sourceChannelId: string;
+  reviewChannelId: string;
   approvalMessageId: string | null;
   requestMessageId: string | null;
   requestedBy: string;
@@ -53,6 +56,7 @@ function toRecord(value: {
   decidedAt: Date | null;
   executedAt: Date | null;
   resultJson: unknown;
+  decisionReasonText: string | null;
   errorText: string | null;
   createdAt: Date;
   updatedAt: Date;
@@ -66,7 +70,8 @@ function toRecord(value: {
   return {
     id: value.id,
     guildId: value.guildId,
-    channelId: value.channelId,
+    sourceChannelId: value.sourceChannelId,
+    reviewChannelId: value.reviewChannelId,
     approvalMessageId: value.approvalMessageId,
     requestMessageId: value.requestMessageId,
     requestedBy: value.requestedBy,
@@ -78,6 +83,7 @@ function toRecord(value: {
     decidedAt: value.decidedAt,
     executedAt: value.executedAt,
     resultJson: value.resultJson,
+    decisionReasonText: value.decisionReasonText,
     errorText: value.errorText,
     createdAt: value.createdAt,
     updatedAt: value.updatedAt,
@@ -108,16 +114,26 @@ function canonicalizePayloadJson(value: unknown): string {
 
 export async function createPendingAdminAction(params: {
   guildId: string;
-  channelId: string;
+  sourceChannelId: string;
+  reviewChannelId: string;
   requestedBy: string;
   kind: string;
   payloadJson: unknown;
   expiresAt: Date;
 }): Promise<PendingAdminActionRecord> {
+  const sourceChannelId = params.sourceChannelId.trim();
+  const reviewChannelId = params.reviewChannelId.trim();
+  if (!sourceChannelId) {
+    throw new Error('sourceChannelId must be a non-empty string.');
+  }
+  if (!reviewChannelId) {
+    throw new Error('reviewChannelId must be a non-empty string.');
+  }
   const created = await prisma.pendingAdminAction.create({
     data: {
       guildId: params.guildId,
-      channelId: params.channelId,
+      sourceChannelId,
+      reviewChannelId,
       requestedBy: params.requestedBy,
       kind: params.kind,
       payloadJson: params.payloadJson as Prisma.InputJsonValue,
@@ -179,13 +195,16 @@ export async function markPendingAdminActionDecision(params: {
   id: string;
   decidedBy: string;
   status: 'approved' | 'rejected';
+  decisionReasonText?: string | null;
 }): Promise<PendingAdminActionRecord> {
+  const normalizedDecisionReasonText = params.decisionReasonText?.trim() || null;
   const updated = await prisma.pendingAdminAction.update({
     where: { id: params.id },
     data: {
       status: params.status,
       decidedBy: params.decidedBy,
       decidedAt: new Date(),
+      decisionReasonText: normalizedDecisionReasonText,
     },
   });
   return toRecord(updated);
@@ -223,6 +242,7 @@ export async function markPendingAdminActionFailed(params: {
       : {
         status: 'failed',
         executedAt: new Date(),
+        decisionReasonText: null,
         errorText: params.errorText,
         resultJson: params.resultJson as Prisma.InputJsonValue,
       },
@@ -259,6 +279,31 @@ export async function attachPendingAdminActionApprovalMessageId(params: {
   const updated = await prisma.pendingAdminAction.update({
     where: { id: params.id },
     data: { approvalMessageId },
+  });
+
+  return toRecord(updated);
+}
+
+export async function updatePendingAdminActionReviewSurface(params: {
+  id: string;
+  reviewChannelId: string;
+  approvalMessageId: string;
+}): Promise<PendingAdminActionRecord> {
+  const reviewChannelId = params.reviewChannelId.trim();
+  const approvalMessageId = params.approvalMessageId.trim();
+  if (!reviewChannelId) {
+    throw new Error('reviewChannelId must be a non-empty string.');
+  }
+  if (!approvalMessageId) {
+    throw new Error('approvalMessageId must be a non-empty string.');
+  }
+
+  const updated = await prisma.pendingAdminAction.update({
+    where: { id: params.id },
+    data: {
+      reviewChannelId,
+      approvalMessageId,
+    },
   });
 
   return toRecord(updated);

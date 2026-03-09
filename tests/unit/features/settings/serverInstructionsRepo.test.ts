@@ -6,70 +6,70 @@ const deleteMock = vi.hoisted(() => vi.fn());
 const archiveCreateMock = vi.hoisted(() => vi.fn());
 const transactionMock = vi.hoisted(() =>
   vi.fn(async (callback: (tx: {
-    guildMemory: {
+    serverInstructions: {
       findUnique: typeof findUniqueMock;
       upsert: typeof upsertMock;
       delete: typeof deleteMock;
     };
-    guildMemoryArchive: {
+    serverInstructionsArchive: {
       create: typeof archiveCreateMock;
     };
   }) => Promise<unknown>) =>
     callback({
-      guildMemory: {
+      serverInstructions: {
         findUnique: findUniqueMock,
         upsert: upsertMock,
         delete: deleteMock,
       },
-      guildMemoryArchive: {
+      serverInstructionsArchive: {
         create: archiveCreateMock,
       },
     })));
 
 vi.mock('@/platform/db/prisma-client', () => ({
   prisma: {
-    guildMemory: {
+    serverInstructions: {
       findUnique: findUniqueMock,
       upsert: upsertMock,
       delete: deleteMock,
     },
-    guildMemoryArchive: {
+    serverInstructionsArchive: {
       create: archiveCreateMock,
     },
     $transaction: transactionMock,
   },
 }));
 
-describe('guildMemoryRepo', () => {
+describe('serverInstructionsRepo', () => {
   beforeEach(async () => {
     vi.clearAllMocks();
-    const { __clearGuildMemoryCacheForTests } = await import('../../../../src/features/settings/guildMemoryRepo');
-    __clearGuildMemoryCacheForTests();
+    const { __clearServerInstructionsCacheForTests } = await import('../../../../src/features/settings/serverInstructionsRepo');
+    __clearServerInstructionsCacheForTests();
   });
 
-  it('caches guild memory lookups for the TTL window', async () => {
+  it('caches server-instructions lookups for the TTL window', async () => {
     findUniqueMock.mockResolvedValue({
       guildId: 'guild-1',
-      memoryText: 'QA bot mode',
+      instructionsText: 'QA bot mode',
       version: 2,
       updatedByAdminId: 'admin-1',
       updatedAt: new Date('2026-02-26T00:00:00.000Z'),
       createdAt: new Date('2026-02-25T00:00:00.000Z'),
     });
 
-    const { getGuildMemoryRecord } = await import('../../../../src/features/settings/guildMemoryRepo');
-    const first = await getGuildMemoryRecord('guild-1');
-    const second = await getGuildMemoryRecord('guild-1');
+    const { getServerInstructionsRecord } = await import('../../../../src/features/settings/serverInstructionsRepo');
+    const first = await getServerInstructionsRecord('guild-1');
+    const second = await getServerInstructionsRecord('guild-1');
 
-    expect(first?.memoryText).toBe('QA bot mode');
-    expect(second?.memoryText).toBe('QA bot mode');
+    expect(first?.instructionsText).toBe('QA bot mode');
+    expect(second?.instructionsText).toBe('QA bot mode');
     expect(findUniqueMock).toHaveBeenCalledTimes(1);
   });
 
-  it('archives previous memory when upserting', async () => {
+  it('archives previous instructions when upserting', async () => {
     findUniqueMock.mockResolvedValueOnce({
       guildId: 'guild-1',
-      memoryText: 'old memory',
+      instructionsText: 'old instructions',
       version: 3,
       updatedByAdminId: 'admin-old',
       updatedAt: new Date('2026-02-20T00:00:00.000Z'),
@@ -77,17 +77,17 @@ describe('guildMemoryRepo', () => {
     });
     upsertMock.mockResolvedValueOnce({
       guildId: 'guild-1',
-      memoryText: 'new memory',
+      instructionsText: 'new instructions',
       version: 4,
       updatedByAdminId: 'admin-new',
       updatedAt: new Date('2026-02-26T00:00:00.000Z'),
       createdAt: new Date('2026-02-19T00:00:00.000Z'),
     });
 
-    const { upsertGuildMemory } = await import('../../../../src/features/settings/guildMemoryRepo');
-    const result = await upsertGuildMemory({
+    const { upsertServerInstructions } = await import('../../../../src/features/settings/serverInstructionsRepo');
+    const result = await upsertServerInstructions({
       guildId: 'guild-1',
-      memoryText: 'new memory',
+      instructionsText: 'new instructions',
       adminId: 'admin-new',
     });
 
@@ -96,7 +96,7 @@ describe('guildMemoryRepo', () => {
       data: {
         guildId: 'guild-1',
         version: 3,
-        memoryText: 'old memory',
+        instructionsText: 'old instructions',
         updatedByAdminId: 'admin-old',
       },
     });

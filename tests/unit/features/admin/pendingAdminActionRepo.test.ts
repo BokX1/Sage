@@ -25,7 +25,8 @@ describe('pendingAdminActionRepo', () => {
     createMock.mockResolvedValue({
       id: 'action-1',
       guildId: 'guild-1',
-      channelId: 'channel-1',
+      sourceChannelId: 'channel-1',
+      reviewChannelId: 'channel-review',
       approvalMessageId: null,
       requestMessageId: null,
       requestedBy: 'admin-1',
@@ -37,6 +38,7 @@ describe('pendingAdminActionRepo', () => {
       decidedAt: null,
       executedAt: null,
       resultJson: null,
+      decisionReasonText: null,
       errorText: null,
       createdAt: new Date('2026-02-26T12:00:00.000Z'),
       updatedAt: new Date('2026-02-26T12:00:00.000Z'),
@@ -45,7 +47,8 @@ describe('pendingAdminActionRepo', () => {
     const { createPendingAdminAction } = await import('../../../../src/features/admin/pendingAdminActionRepo');
     const result = await createPendingAdminAction({
       guildId: 'guild-1',
-      channelId: 'channel-1',
+      sourceChannelId: 'channel-1',
+      reviewChannelId: 'channel-review',
       requestedBy: 'admin-1',
       kind: 'discord_queue_moderation_action',
       payloadJson: { action: 'delete_message' },
@@ -56,6 +59,8 @@ describe('pendingAdminActionRepo', () => {
     expect(createMock).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
+          sourceChannelId: 'channel-1',
+          reviewChannelId: 'channel-review',
           status: 'pending',
         }),
       }),
@@ -66,7 +71,8 @@ describe('pendingAdminActionRepo', () => {
     updateMock.mockResolvedValue({
       id: 'action-2',
       guildId: 'guild-1',
-      channelId: 'channel-1',
+      sourceChannelId: 'channel-1',
+      reviewChannelId: 'channel-review',
       approvalMessageId: null,
       requestMessageId: null,
       requestedBy: 'admin-1',
@@ -78,6 +84,7 @@ describe('pendingAdminActionRepo', () => {
       decidedAt: new Date('2026-02-26T12:01:00.000Z'),
       executedAt: new Date('2026-02-26T12:01:10.000Z'),
       resultJson: { version: 2 },
+      decisionReasonText: null,
       errorText: null,
       createdAt: new Date('2026-02-26T12:00:00.000Z'),
       updatedAt: new Date('2026-02-26T12:01:10.000Z'),
@@ -104,7 +111,8 @@ describe('pendingAdminActionRepo', () => {
     updateMock.mockResolvedValue({
       id: 'action-3',
       guildId: 'guild-1',
-      channelId: 'channel-1',
+      sourceChannelId: 'channel-1',
+      reviewChannelId: 'channel-review',
       approvalMessageId: null,
       requestMessageId: 'msg-123',
       requestedBy: 'admin-1',
@@ -116,6 +124,7 @@ describe('pendingAdminActionRepo', () => {
       decidedAt: null,
       executedAt: null,
       resultJson: null,
+      decisionReasonText: null,
       errorText: null,
       createdAt: new Date('2026-02-26T12:00:00.000Z'),
       updatedAt: new Date('2026-02-26T12:00:00.000Z'),
@@ -140,7 +149,8 @@ describe('pendingAdminActionRepo', () => {
     updateMock.mockResolvedValue({
       id: 'action-4',
       guildId: 'guild-1',
-      channelId: 'channel-1',
+      sourceChannelId: 'channel-1',
+      reviewChannelId: 'channel-review',
       approvalMessageId: 'approval-456',
       requestMessageId: null,
       requestedBy: 'admin-1',
@@ -152,6 +162,7 @@ describe('pendingAdminActionRepo', () => {
       decidedAt: null,
       executedAt: null,
       resultJson: null,
+      decisionReasonText: null,
       errorText: null,
       createdAt: new Date('2026-02-26T12:00:00.000Z'),
       updatedAt: new Date('2026-02-26T12:00:00.000Z'),
@@ -177,7 +188,8 @@ describe('pendingAdminActionRepo', () => {
       {
         id: 'action-5',
         guildId: 'guild-1',
-        channelId: 'channel-1',
+        sourceChannelId: 'channel-1',
+        reviewChannelId: 'channel-review',
         approvalMessageId: 'approval-1',
         requestMessageId: null,
         requestedBy: 'admin-1',
@@ -197,6 +209,7 @@ describe('pendingAdminActionRepo', () => {
         decidedAt: null,
         executedAt: null,
         resultJson: null,
+        decisionReasonText: null,
         errorText: null,
         createdAt: new Date('2026-02-26T12:00:00.000Z'),
         updatedAt: new Date('2026-02-26T12:00:00.000Z'),
@@ -238,7 +251,8 @@ describe('pendingAdminActionRepo', () => {
       {
         id: 'action-6',
         guildId: 'guild-1',
-        channelId: 'channel-1',
+        sourceChannelId: 'channel-1',
+        reviewChannelId: 'channel-review',
         approvalMessageId: null,
         requestMessageId: null,
         requestedBy: 'admin-1',
@@ -250,6 +264,7 @@ describe('pendingAdminActionRepo', () => {
         decidedAt: null,
         executedAt: null,
         resultJson: null,
+        decisionReasonText: null,
         errorText: null,
         createdAt: new Date('2026-02-26T12:00:00.000Z'),
         updatedAt: new Date('2026-02-26T12:00:00.000Z'),

@@ -63,7 +63,7 @@ describe('guildSettingsRepo.upsertGuildApiKey', () => {
     expect(encryptSecretMock).toHaveBeenCalledTimes(1);
     expect(upsertMock).toHaveBeenCalledWith({
       where: { guildId: 'g1' },
-      create: { guildId: 'g1', pollinationsApiKey: 'enc:v1:sk_secret' },
+      create: { guildId: 'g1', pollinationsApiKey: 'enc:v1:sk_secret', approvalReviewChannelId: null },
       update: { pollinationsApiKey: 'enc:v1:sk_secret' },
     });
   });
@@ -78,7 +78,7 @@ describe('guildSettingsRepo.upsertGuildApiKey', () => {
     expect(encryptSecretMock).toHaveBeenCalledTimes(1);
     expect(upsertMock).toHaveBeenCalledWith({
       where: { guildId: 'g1' },
-      create: { guildId: 'g1', pollinationsApiKey: 'enc:v1:unique' },
+      create: { guildId: 'g1', pollinationsApiKey: 'enc:v1:unique', approvalReviewChannelId: null },
       update: { pollinationsApiKey: 'enc:v1:unique' },
     });
   });
@@ -91,7 +91,7 @@ describe('guildSettingsRepo.upsertGuildApiKey', () => {
 
     expect(upsertMock).toHaveBeenCalledWith({
       where: { guildId: 'g1' },
-      create: { guildId: 'g1', pollinationsApiKey: null },
+      create: { guildId: 'g1', pollinationsApiKey: null, approvalReviewChannelId: null },
       update: { pollinationsApiKey: null },
     });
   });

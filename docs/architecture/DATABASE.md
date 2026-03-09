@@ -1,6 +1,6 @@
 # 💾 Database Schema
 
-Sage uses PostgreSQL with Prisma ORM. The current Prisma schema defines 17 models; this document covers the active tables, relationships, and common query patterns.
+Sage uses PostgreSQL with Prisma ORM. The current Prisma schema defines 18 models; this document covers the active tables, relationships, and common query patterns.
 
 <p align="center">
   <img src="https://img.shields.io/badge/%F0%9F%8C%BF-Sage%20Database-2d5016?style=for-the-badge&labelColor=4a7c23" alt="Sage Database" />
@@ -28,7 +28,7 @@ Sage uses PostgreSQL with Prisma ORM. The current Prisma schema defines 17 model
 ## 📊 Entity Relationship Diagram
 
 > [!NOTE]
-> The ERD below is abbreviated to the core entities most readers need first. The later sections cover the full 17-model schema.
+> The ERD below is abbreviated to the core entities most readers need first. The later sections cover the full 18-model schema.
 
 ```mermaid
 erDiagram
@@ -57,18 +57,18 @@ erDiagram
         datetime updatedAt
     }
 
-    GuildMemory {
+    ServerInstructions {
         string guildId PK
-        text memoryText
+        text instructionsText
         int version
         string updatedByAdminId
     }
 
-    GuildMemoryArchive {
+    ServerInstructionsArchive {
         string id PK
         string guildId
         int version
-        text memoryText
+        text instructionsText
     }
 
     ChannelMessage {
@@ -162,22 +162,20 @@ Per-guild configuration including server-wide BYOP key.
 |:---|:---|:---|
 | `guildId` | `String` (PK) | Discord guild ID |
 | `pollinationsApiKey` | `String?` | Guild BYOP key (set through Sage's setup card flow) |
+| `approvalReviewChannelId` | `String?` | Optional dedicated channel for detailed governance review cards; requester status still stays in the source channel |
 
-### `GuildMemory`
+### `ServerInstructions`
 
 Admin-authored server instructions text available to the bot.
-
-> [!NOTE]
-> The storage model still uses the legacy `GuildMemory` / `memoryText` naming to avoid a database migration. Runtime and admin-facing contracts describe this data as server instructions.
 
 | Column | Type | Notes |
 |:---|:---|:---|
 | `guildId` | `String` (PK) | One memory per guild |
-| `memoryText` | `Text` | Operator-defined server instructions, persona, and rules |
+| `instructionsText` | `Text` | Operator-defined server instructions, persona, and rules |
 | `version` | `Int` | Monotonically increasing |
 | `updatedByAdminId` | `String?` | Discord ID of last admin editor |
 
-### `GuildMemoryArchive`
+### `ServerInstructionsArchive`
 
 Historical snapshots of server instructions before updates.
 
@@ -185,7 +183,7 @@ Historical snapshots of server instructions before updates.
 |:---|:---|:---|
 | `id` | `String` (PK) | CUID |
 | `guildId` / `version` | `String` / `Int` | Indexed by `[guildId, createdAt]` |
-| `memoryText` | `Text` | Archived memory text |
+| `instructionsText` | `Text` | Archived server instructions text |
 
 ---
 
@@ -363,14 +361,17 @@ Queued admin actions awaiting approval via Discord buttons.
 | Column | Type | Notes |
 |:---|:---|:---|
 | `id` | `String` (PK) | CUID |
-| `guildId` / `channelId` | `String` | Action scope |
-| `approvalMessageId` | `String?` | Discord message id for the admin approval card (auto-deleted after resolution; persisted for restart-safe cleanup) |
-| `requestMessageId` | `String?` | Discord message id for Sage's requester-facing status message (edited on resolution) |
+| `guildId` | `String` | Guild scope |
+| `sourceChannelId` | `String` | Source/request channel used for compact requester-facing governance status cards |
+| `reviewChannelId` | `String` | Detailed reviewer card channel; defaults to the source channel when no dedicated review surface is configured |
+| `approvalMessageId` | `String?` | Discord message id for the reviewer governance card (auto-deleted after resolution; persisted for restart-safe cleanup) |
+| `requestMessageId` | `String?` | Discord message id for Sage's requester-facing status card (edited on resolution) |
 | `kind` | `String` | Action type (e.g., `server_instructions_update`, `moderation`) |
 | `payloadJson` | `Json` | Action parameters |
 | `status` | `String` | `pending` / `approved` / `rejected` / `executed` / `failed` / `expired` |
 | `expiresAt` | `DateTime` | Auto-expiry deadline |
 | `decidedBy` / `decidedAt` | `String?` / `DateTime?` | Admin decision metadata |
+| `decisionReasonText` | `String?` | Short rejection reason collected from the governance modal when present |
 
 ### `AdminAudit`
 

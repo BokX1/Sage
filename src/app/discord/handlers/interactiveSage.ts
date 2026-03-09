@@ -18,6 +18,7 @@ import {
 import { generateTraceId } from '../../../shared/observability/trace-id-generator';
 import { smartSplit } from '../../../shared/text/message-splitter';
 import { isAdminFromMember } from '../../../platform/discord/admin-permissions';
+import { publishPendingAdminActionRequesterStatusMessage } from '../../../features/admin/adminActionService';
 
 type RepliableInteraction = ButtonInteraction | ModalSubmitInteraction | ChatInputCommandInteraction;
 
@@ -51,7 +52,7 @@ async function publishChatResultToInteraction(params: {
   const chunks = smartSplit(params.result.replyText || '', 2_000);
   const [firstChunk, ...rest] = chunks;
   await sendInteractionReply(params.interaction, {
-    content: firstChunk || '\u200b',
+    content: firstChunk || ((params.result.pendingAdminActions?.length ?? 0) > 0 ? 'I queued that for review.' : '\u200b'),
     files: params.result.files,
   });
 
@@ -62,10 +63,10 @@ async function publishChatResultToInteraction(params: {
     });
   }
 
-  for (const actionId of params.result.pendingAdminActionIds ?? []) {
-    await params.interaction.followUp({
-      content: `Queued admin action for approval.\nAction ID: \`${actionId}\``,
-      flags: params.ephemeral ? MessageFlags.Ephemeral : undefined,
+  for (const pendingAction of params.result.pendingAdminActions ?? []) {
+    await publishPendingAdminActionRequesterStatusMessage({
+      actionId: pendingAction.actionId,
+      coalesced: pendingAction.coalesced,
     });
   }
 }

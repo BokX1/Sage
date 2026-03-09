@@ -219,6 +219,8 @@ The runtime teaches silent native tool usage via structured instruction blocks, 
 
 Admin-only capabilities are exposed on `discord_admin`:
 
+- `get_governance_review_status` (admin-only read)
+- `set_governance_review_channel` / `clear_governance_review_channel` (admin-only governance routing controls)
 - `update_server_instructions` (approval-gated)
 - `submit_moderation` (approval-gated)
 - `api` (admin-only; guild-scoped; `GET` executes immediately, non-`GET` requires approval)
@@ -226,10 +228,12 @@ Admin-only capabilities are exposed on `discord_admin`:
 
 Approval UX:
 
-- Sage posts one requester-facing status message per queued admin action.
-- Equivalent unresolved approval-gated requests are coalesced onto the same pending action and action ID instead of opening duplicate cards.
-- When an action resolves (approve/reject/execute/fail/expire), Sage edits that status message with the outcome.
-- Resolved approval cards auto-delete after ~60 seconds to avoid channel clutter (including after restarts via DB-backed cleanup).
+- Sage posts one compact requester-facing status card per queued admin action in the source channel.
+- Detailed reviewer cards route to the configured governance review channel when `approvalReviewChannelId` is set, or use the source channel by default when it is not.
+- Equivalent unresolved approval-gated requests are coalesced onto the same pending action and reviewer card instead of opening duplicate cards.
+- Rejecting an action collects a short modal reason and propagates that reason back to the requester-facing resolution card.
+- When an action resolves (approve/reject/execute/fail/expire), Sage edits the requester-facing status card with the outcome and updates the reviewer card state.
+- Resolved reviewer cards auto-delete after ~60 seconds to avoid channel clutter (including after restarts via DB-backed cleanup).
 - After a `pending_approval` tool result, the runtime stops retrying the same approval-gated action for the rest of that turn.
 
 Read-only helpers are also exposed across the routed Discord tools:

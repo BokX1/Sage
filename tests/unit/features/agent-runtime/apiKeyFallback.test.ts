@@ -13,7 +13,7 @@ const mockConfig = vi.hoisted(() => ({
 
 const mockGetLLMClient = vi.hoisted(() => vi.fn());
 const mockGetGuildApiKey = vi.hoisted(() => vi.fn());
-const mockGetGuildMemoryText = vi.hoisted(() => vi.fn());
+const mockGetServerInstructionsText = vi.hoisted(() => vi.fn());
 
 const mockLLM = {
   chat: vi.fn(),
@@ -59,8 +59,8 @@ vi.mock('@/features/settings/guildSettingsRepo', () => ({
   getGuildApiKey: mockGetGuildApiKey,
 }));
 
-vi.mock('@/features/settings/guildMemoryRepo', () => ({
-  getGuildMemoryText: mockGetGuildMemoryText,
+vi.mock('@/features/settings/serverInstructionsRepo', () => ({
+  getServerInstructionsText: mockGetServerInstructionsText,
 }));
 
 import { runChatTurn } from '@/features/agent-runtime/agentRuntime';
@@ -69,7 +69,7 @@ describe('agent runtime API key fallback', () => {
   beforeEach(() => {
     mockConfig.LLM_API_KEY = 'env-key';
     mockGetLLMClient.mockReturnValue(mockLLM);
-    mockGetGuildMemoryText.mockResolvedValue(null);
+    mockGetServerInstructionsText.mockResolvedValue(null);
     mockLLM.chat.mockReset();
   });
 

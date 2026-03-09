@@ -628,8 +628,21 @@ const adminGetServerKeyStatusSchema = z.object({
   action: z.literal('get_server_key_status').describe('Check the current server-wide API key status. Admin-only read.'),
 });
 
+const adminGetGovernanceReviewStatusSchema = z.object({
+  action: z.literal('get_governance_review_status').describe('Inspect where governance review cards are routed for this server. Admin-only read.'),
+});
+
 const adminClearServerApiKeySchema = z.object({
   action: z.literal('clear_server_api_key').describe('Clear the current server-wide API key immediately. Admin-only write. Disabled in autopilot turns.'),
+});
+
+const adminSetGovernanceReviewChannelSchema = z.object({
+  action: z.literal('set_governance_review_channel').describe('Route governance review cards to a specific text channel. Admin-only write. Disabled in autopilot turns.'),
+  channelId: z.string().trim().min(1).max(64),
+});
+
+const adminClearGovernanceReviewChannelSchema = z.object({
+  action: z.literal('clear_governance_review_channel').describe('Clear the dedicated governance review channel so reviews render in the source channel by default. Admin-only write. Disabled in autopilot turns.'),
 });
 
 const adminSendKeySetupCardSchema = z.object({
@@ -651,7 +664,10 @@ const discordApiSchema = z.object({
 const discordAdminToolSchema = z.discriminatedUnion('action', [
   helpActionSchema,
   adminGetServerKeyStatusSchema,
+  adminGetGovernanceReviewStatusSchema,
   adminClearServerApiKeySchema,
+  adminSetGovernanceReviewChannelSchema,
+  adminClearGovernanceReviewChannelSchema,
   adminSendKeySetupCardSchema,
   instructionsUpdateServerSchema,
   z.object({

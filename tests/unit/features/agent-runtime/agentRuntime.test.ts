@@ -5,6 +5,7 @@ const {
   upsertTraceStartMock,
   updateTraceEndMock,
   runToolCallLoopMock,
+  collectPendingAdminActionsMock,
   collectPendingAdminActionIdsMock,
   clearGitHubFileLookupCacheForTraceMock,
   buildContextMessagesMock,
@@ -14,6 +15,7 @@ const {
   upsertTraceStartMock: vi.fn(),
   updateTraceEndMock: vi.fn(),
   runToolCallLoopMock: vi.fn(),
+  collectPendingAdminActionsMock: vi.fn(() => []),
   collectPendingAdminActionIdsMock: vi.fn(() => []),
   clearGitHubFileLookupCacheForTraceMock: vi.fn(),
   buildContextMessagesMock: vi.fn(() => [{ role: 'user', content: 'hello' }]),
@@ -66,8 +68,8 @@ vi.mock('@/features/settings/guildSettingsRepo', () => ({
   getGuildApiKey: vi.fn(async () => null),
 }));
 
-vi.mock('@/features/settings/guildMemoryRepo', () => ({
-  getGuildMemoryText: vi.fn(async () => null),
+vi.mock('@/features/settings/serverInstructionsRepo', () => ({
+  getServerInstructionsText: vi.fn(async () => null),
 }));
 
 vi.mock('@/features/settings/guildChannelSettings', () => ({
@@ -109,6 +111,7 @@ vi.mock('@/features/agent-runtime/toolIntegrations', () => ({
 }));
 
 vi.mock('@/features/agent-runtime/pendingApprovals', () => ({
+  collectPendingAdminActions: collectPendingAdminActionsMock,
   collectPendingAdminActionIds: collectPendingAdminActionIdsMock,
 }));
 
@@ -136,6 +139,7 @@ describe('agentRuntime', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     buildContextMessagesMock.mockReturnValue([{ role: 'user', content: 'hello' }]);
+    collectPendingAdminActionsMock.mockReturnValue([]);
     collectPendingAdminActionIdsMock.mockReturnValue([]);
     globalToolRegistryMock.listNames.mockReturnValue([]);
     globalToolRegistryMock.get.mockReturnValue(undefined);
@@ -191,6 +195,7 @@ describe('agentRuntime', () => {
       },
       cancellationCount: 0,
     });
+    collectPendingAdminActionsMock.mockReturnValue([{ actionId: 'action-1', coalesced: false }] as never);
     collectPendingAdminActionIdsMock.mockReturnValue(['action-1'] as never);
 
     const result = await runChatTurn({
@@ -207,6 +212,7 @@ describe('agentRuntime', () => {
     });
 
     expect(result.replyText).toBe('I queued that for approval.');
+    expect(result.pendingAdminActions).toEqual([{ actionId: 'action-1', coalesced: false }]);
     expect(result.pendingAdminActionIds).toEqual(['action-1']);
   });
 

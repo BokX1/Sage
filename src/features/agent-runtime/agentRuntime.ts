@@ -4,7 +4,7 @@ import { buildTranscriptBlock } from '../awareness/transcriptBuilder';
 import { getLLMClient } from '../../platform/llm';
 import { LLMChatMessage, LLMMessageContent } from '../../platform/llm/llm-types';
 import { getGuildApiKey } from '../settings/guildSettingsRepo';
-import { getGuildMemoryText } from '../settings/guildMemoryRepo';
+import { getServerInstructionsText } from '../settings/serverInstructionsRepo';
 import { isLoggingEnabled } from '../settings/guildChannelSettings';
 import { logger } from '../../platform/logging/logger';
 import { normalizeStrictlyPositiveInt } from '../../shared/utils/numbers';
@@ -14,7 +14,7 @@ import { runToolCallLoop } from './toolCallLoop';
 import { ToolResult } from './toolCallExecution';
 import { enforceGitHubFileGrounding } from './toolGrounding';
 import { clearGitHubFileLookupCacheForTrace } from './toolIntegrations';
-import { collectPendingAdminActionIds } from './pendingApprovals';
+import { collectPendingAdminActionIds, collectPendingAdminActions, type PendingAdminActionNotice } from './pendingApprovals';
 
 import {
   buildCapabilityPromptSection,
@@ -64,6 +64,7 @@ export interface RunChatTurnResult {
     attachment: Buffer;
     name: string;
   }>;
+  pendingAdminActions?: PendingAdminActionNotice[];
   pendingAdminActionIds?: string[];
 }
 
@@ -277,7 +278,7 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
   let serverInstructions: string | null = null;
   if (guildId) {
     try {
-      serverInstructions = await getGuildMemoryText(guildId);
+      serverInstructions = await getServerInstructionsText(guildId);
     } catch (error) {
       logger.warn({ error, guildId }, 'Failed to load server instructions (non-fatal)');
     }
@@ -489,6 +490,7 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
   }
 
   const files = collectFilesFromToolResults(toolResults);
+  const pendingAdminActions = collectPendingAdminActions(toolResults);
   const pendingAdminActionIds = collectPendingAdminActionIds(toolResults);
   const cleanedReplyText = scrubFinalReplyText({
     replyText: safeFinalText,
@@ -549,6 +551,7 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
       replyText: '',
       meta: undefined,
       debug: { messages: runtimeMessages },
+      pendingAdminActions,
       pendingAdminActionIds,
     };
   }
@@ -559,6 +562,7 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
     meta: undefined,
     debug: { messages: runtimeMessages },
     files,
+    pendingAdminActions,
     pendingAdminActionIds,
   };
 }

@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   createPendingAdminAction: vi.fn(),
-  attachPendingAdminActionApprovalMessageId: vi.fn(),
+  attachPendingAdminActionRequestMessageId: vi.fn(),
   findMatchingPendingAdminAction: vi.fn(),
   getPendingAdminActionById: vi.fn(),
   clearPendingAdminActionApprovalMessageId: vi.fn(),
@@ -10,9 +10,12 @@ const mocks = vi.hoisted(() => ({
   markPendingAdminActionExecuted: vi.fn(),
   markPendingAdminActionExpired: vi.fn(),
   markPendingAdminActionFailed: vi.fn(),
-  clearGuildMemory: vi.fn(),
-  getGuildMemoryRecord: vi.fn(),
-  upsertGuildMemory: vi.fn(),
+  updatePendingAdminActionReviewSurface: vi.fn(),
+  clearServerInstructions: vi.fn(),
+  getServerInstructionsRecord: vi.fn(),
+  upsertServerInstructions: vi.fn(),
+  getGuildApprovalReviewChannelId: vi.fn(),
+  setGuildApprovalReviewChannelId: vi.fn(),
   computeParamsHash: vi.fn(() => 'hash'),
   logAdminAction: vi.fn(),
   assertDiscordRestRequestGuildScoped: vi.fn(),
@@ -22,7 +25,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('@/features/admin/pendingAdminActionRepo', () => ({
   createPendingAdminAction: mocks.createPendingAdminAction,
-  attachPendingAdminActionApprovalMessageId: mocks.attachPendingAdminActionApprovalMessageId,
+  attachPendingAdminActionRequestMessageId: mocks.attachPendingAdminActionRequestMessageId,
   findMatchingPendingAdminAction: mocks.findMatchingPendingAdminAction,
   getPendingAdminActionById: mocks.getPendingAdminActionById,
   clearPendingAdminActionApprovalMessageId: mocks.clearPendingAdminActionApprovalMessageId,
@@ -30,12 +33,18 @@ vi.mock('@/features/admin/pendingAdminActionRepo', () => ({
   markPendingAdminActionExecuted: mocks.markPendingAdminActionExecuted,
   markPendingAdminActionExpired: mocks.markPendingAdminActionExpired,
   markPendingAdminActionFailed: mocks.markPendingAdminActionFailed,
+  updatePendingAdminActionReviewSurface: mocks.updatePendingAdminActionReviewSurface,
 }));
 
-vi.mock('@/features/settings/guildMemoryRepo', () => ({
-  clearGuildMemory: mocks.clearGuildMemory,
-  getGuildMemoryRecord: mocks.getGuildMemoryRecord,
-  upsertGuildMemory: mocks.upsertGuildMemory,
+vi.mock('@/features/settings/guildSettingsRepo', () => ({
+  getGuildApprovalReviewChannelId: mocks.getGuildApprovalReviewChannelId,
+  setGuildApprovalReviewChannelId: mocks.setGuildApprovalReviewChannelId,
+}));
+
+vi.mock('@/features/settings/serverInstructionsRepo', () => ({
+  clearServerInstructions: mocks.clearServerInstructions,
+  getServerInstructionsRecord: mocks.getServerInstructionsRecord,
+  upsertServerInstructions: mocks.upsertServerInstructions,
 }));
 
 vi.mock('@/features/relationships/adminAuditRepo', () => ({
@@ -65,10 +74,11 @@ import {
 describe('adminActionService approval coalescing', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.getGuildMemoryRecord.mockResolvedValue({
-      memoryText: 'Current instructions',
+    mocks.getServerInstructionsRecord.mockResolvedValue({
+      instructionsText: 'Current instructions',
       version: 2,
     });
+    mocks.getGuildApprovalReviewChannelId.mockResolvedValue(null);
     mocks.logAdminAction.mockResolvedValue(undefined);
     mocks.assertDiscordRestRequestGuildScoped.mockResolvedValue(undefined);
   });
@@ -77,7 +87,8 @@ describe('adminActionService approval coalescing', () => {
     mocks.findMatchingPendingAdminAction.mockResolvedValue({
       id: 'action-existing',
       guildId: 'guild-1',
-      channelId: 'channel-1',
+      sourceChannelId: 'channel-1',
+      reviewChannelId: 'channel-9',
       approvalMessageId: 'approval-1',
       requestMessageId: null,
       requestedBy: 'admin-1',
@@ -89,6 +100,7 @@ describe('adminActionService approval coalescing', () => {
       decidedAt: null,
       executedAt: null,
       resultJson: null,
+      decisionReasonText: null,
       errorText: null,
       createdAt: new Date('2026-03-10T10:00:00.000Z'),
       updatedAt: new Date('2026-03-10T10:00:00.000Z'),
@@ -118,7 +130,8 @@ describe('adminActionService approval coalescing', () => {
     mocks.findMatchingPendingAdminAction.mockResolvedValue({
       id: 'action-mod',
       guildId: 'guild-1',
-      channelId: 'channel-1',
+      sourceChannelId: 'channel-1',
+      reviewChannelId: 'channel-9',
       approvalMessageId: 'approval-mod',
       requestMessageId: null,
       requestedBy: 'admin-1',
@@ -130,6 +143,7 @@ describe('adminActionService approval coalescing', () => {
       decidedAt: null,
       executedAt: null,
       resultJson: null,
+      decisionReasonText: null,
       errorText: null,
       createdAt: new Date('2026-03-10T10:00:00.000Z'),
       updatedAt: new Date('2026-03-10T10:00:00.000Z'),
@@ -160,7 +174,8 @@ describe('adminActionService approval coalescing', () => {
     mocks.findMatchingPendingAdminAction.mockResolvedValue({
       id: 'action-rest',
       guildId: 'guild-1',
-      channelId: 'channel-1',
+      sourceChannelId: 'channel-1',
+      reviewChannelId: 'channel-9',
       approvalMessageId: 'approval-rest',
       requestMessageId: null,
       requestedBy: 'admin-1',
@@ -172,6 +187,7 @@ describe('adminActionService approval coalescing', () => {
       decidedAt: null,
       executedAt: null,
       resultJson: null,
+      decisionReasonText: null,
       errorText: null,
       createdAt: new Date('2026-03-10T10:00:00.000Z'),
       updatedAt: new Date('2026-03-10T10:00:00.000Z'),

@@ -55,7 +55,10 @@ export const nativeTools = [
   // Discord (cyan) - Admin Only
   { name: 'update_server_instructions', short: 'Update Instructions', desc: 'Queue an admin-approved change to server instructions', cat: 'discord', color: '#7AA2F7' },
   { name: 'get_server_key_status', short: 'Key Status', desc: 'Admin-only status check for the current server API key', cat: 'discord', color: '#7AA2F7' },
+  { name: 'get_governance_review_status', short: 'Review Status', desc: 'Inspect where governance review cards are routed for this server', cat: 'discord', color: '#7AA2F7' },
   { name: 'clear_server_api_key', short: 'Clear Server Key', desc: 'Admin-only removal of the current server API key', cat: 'discord', color: '#7AA2F7' },
+  { name: 'set_governance_review_channel', short: 'Set Review Ch.', desc: 'Route detailed governance review cards to a dedicated admin channel', cat: 'discord', color: '#7AA2F7' },
+  { name: 'clear_governance_review_channel', short: 'Clear Review Ch.', desc: 'Return governance review cards to source-channel default routing', cat: 'discord', color: '#7AA2F7' },
   { name: 'send_key_setup_card', short: 'Send Setup Card', desc: 'Post the interactive server-key setup card into the current channel', cat: 'discord', color: '#7AA2F7' },
   { name: 'submit_moderation', short: 'Mod Queue', desc: 'Queue moderation actions based on policy', cat: 'discord', color: '#7AA2F7' },
   { name: 'edit_message', short: 'Edit Message', desc: 'Modify contents of an existing bot message', cat: 'discord', color: '#7AA2F7' },

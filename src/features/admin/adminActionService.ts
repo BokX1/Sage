@@ -1,14 +1,16 @@
 import crypto from 'crypto';
 import {
   ActionRowBuilder,
-  ButtonBuilder,
   ButtonInteraction,
-  ButtonStyle,
   Guild,
   GuildBasedChannel,
   GuildMember,
   MessageFlags,
+  ModalBuilder,
+  ModalSubmitInteraction,
   PermissionsBitField,
+  TextInputBuilder,
+  TextInputStyle,
   ThreadAutoArchiveDuration,
 } from 'discord.js';
 import {
@@ -29,7 +31,7 @@ import {
 import { z } from 'zod';
 import {
   createPendingAdminAction,
-  attachPendingAdminActionApprovalMessageId,
+  attachPendingAdminActionRequestMessageId,
   findMatchingPendingAdminAction,
   getPendingAdminActionById,
   clearPendingAdminActionApprovalMessageId,
@@ -38,8 +40,14 @@ import {
   markPendingAdminActionExpired,
   markPendingAdminActionFailed,
   PendingAdminActionRecord,
+  updatePendingAdminActionReviewSurface,
 } from './pendingAdminActionRepo';
-import { clearGuildMemory, getGuildMemoryRecord, upsertGuildMemory } from '../settings/guildMemoryRepo';
+import {
+  clearServerInstructions,
+  getServerInstructionsRecord,
+  upsertServerInstructions,
+} from '../settings/serverInstructionsRepo';
+import { getGuildApprovalReviewChannelId } from '../settings/guildSettingsRepo';
 import { computeParamsHash, logAdminAction } from '../relationships/adminAuditRepo';
 import { logger } from '../../platform/logging/logger';
 import { smartSplit } from '../../shared/text/message-splitter';
@@ -70,12 +78,19 @@ import {
   createInteractiveButtonSession,
 } from '../discord/interactiveComponentService';
 import { isAdminInteraction } from '../../platform/discord/admin-permissions';
+import {
+  buildPendingAdminActionDetailsText,
+  buildPendingAdminActionRequesterCardPayload,
+  buildPendingAdminActionReviewerCardPayload,
+} from './governanceCards';
 
 const APPROVAL_TTL_MS = 10 * 60 * 1_000;
 const RESOLVED_APPROVAL_CARD_DELETE_DELAY_MS = 60_000;
 const MAX_SERVER_INSTRUCTIONS_CHARS = 8_000;
 const DEFAULT_SERVER_INSTRUCTIONS_MAX_CHARS = 4_000;
 const ADMIN_ACTION_CUSTOM_ID_PREFIX = 'sage:admin_action:';
+const ADMIN_ACTION_REJECT_MODAL_CUSTOM_ID_PREFIX = 'sage:admin_action:reject_modal:';
+const ADMIN_ACTION_REJECT_REASON_FIELD_ID = 'rejection_reason';
 const DISCORD_INTERACTION_COOLDOWN_BY_ACTION_MS = {
   create_poll: 45_000,
   create_thread: 30_000,
@@ -94,7 +109,7 @@ const sendPollsFlag = (
   PermissionsBitField.Flags as Record<string, bigint | undefined>
 ).SendPolls;
 
-type PendingDecision = 'approve' | 'reject';
+type PendingButtonAction = 'approve' | 'reject' | 'details';
 
 /**
  * Declares exported bindings: serverInstructionsUpdateRequestSchema.
@@ -340,29 +355,71 @@ function truncateWithFlag(value: string, maxChars: number): { text: string; trun
   };
 }
 
-function formatDiscordTimestamp(date: Date): string {
-  const unixSeconds = Math.floor(date.getTime() / 1000);
-  return `<t:${unixSeconds}:f> (<t:${unixSeconds}:R>)`;
+function normalizeUnknownRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null;
+  }
+  return value as Record<string, unknown>;
 }
 
-function makeDecisionCustomId(decision: PendingDecision, actionId: string): string {
-  return `${ADMIN_ACTION_CUSTOM_ID_PREFIX}${decision}:${actionId}`;
+function asString(value: unknown): string | null {
+  if (typeof value !== 'string') {
+    return null;
+  }
+  const trimmed = value.trim();
+  return trimmed || null;
 }
 
-function parseDecisionCustomId(
+function makeAdminActionButtonCustomId(action: PendingButtonAction, actionId: string): string {
+  return `${ADMIN_ACTION_CUSTOM_ID_PREFIX}${action}:${actionId}`;
+}
+
+function makeAdminActionRejectModalCustomId(actionId: string): string {
+  return `${ADMIN_ACTION_REJECT_MODAL_CUSTOM_ID_PREFIX}${actionId}`;
+}
+
+function parseAdminActionButtonCustomId(
   customId: string,
-): { decision: PendingDecision; actionId: string } | null {
+): { action: PendingButtonAction; actionId: string } | null {
   if (!customId.startsWith(ADMIN_ACTION_CUSTOM_ID_PREFIX)) {
     return null;
   }
 
   const payload = customId.slice(ADMIN_ACTION_CUSTOM_ID_PREFIX.length);
-  const [decision, actionId] = payload.split(':');
-  if ((decision !== 'approve' && decision !== 'reject') || !actionId) {
+  const [action, actionId] = payload.split(':');
+  if (
+    (action !== 'approve' && action !== 'reject' && action !== 'details') ||
+    !actionId
+  ) {
     return null;
   }
 
-  return { decision, actionId };
+  return { action, actionId };
+}
+
+function parseAdminActionRejectModalCustomId(customId: string): string | null {
+  if (!customId.startsWith(ADMIN_ACTION_REJECT_MODAL_CUSTOM_ID_PREFIX)) {
+    return null;
+  }
+  const actionId = customId.slice(ADMIN_ACTION_REJECT_MODAL_CUSTOM_ID_PREFIX.length).trim();
+  return actionId || null;
+}
+
+function buildAdminActionRejectModal(actionId: string): ModalBuilder {
+  return new ModalBuilder()
+    .setCustomId(makeAdminActionRejectModalCustomId(actionId))
+    .setTitle('Reject Governance Action')
+    .addComponents(
+      new ActionRowBuilder<TextInputBuilder>().addComponents(
+        new TextInputBuilder()
+          .setCustomId(ADMIN_ACTION_REJECT_REASON_FIELD_ID)
+          .setLabel('Why are you rejecting this?')
+          .setRequired(true)
+          .setStyle(TextInputStyle.Paragraph)
+          .setMaxLength(500)
+          .setPlaceholder('Give the requester a short reason they can act on.'),
+      ),
+    );
 }
 
 type SendableGuildChannel = GuildBasedChannel & {
@@ -558,143 +615,119 @@ function withAuditReason(baseReason: string, actionId: string, requestedBy: stri
   return `${prefix}${baseReason}`.slice(0, 500);
 }
 
-async function postApprovalCard(params: {
+async function sendGovernanceSurfaceMessage(params: {
   guildId: string;
   channelId: string;
-  actionId: string;
-  title: string;
-  details: string[];
-  requestedBy: string;
-  expiresAt: Date;
-}): Promise<string | null> {
-  try {
-    const channel = await fetchGuildChannel(params.guildId, params.channelId);
-    if (!isSendableGuildChannel(channel)) {
-      return null;
+  body: { flags: MessageFlags; components: APIMessageTopLevelComponent[] };
+  replyToMessageId?: string;
+  reason?: string;
+}): Promise<string> {
+  const result = await discordRestRequestGuildScoped({
+    guildId: params.guildId,
+    method: 'POST',
+    path: `/channels/${params.channelId}/messages`,
+    body: {
+      flags: params.body.flags,
+      components: params.body.components,
+      allowed_mentions: { parse: [] },
+      ...(params.replyToMessageId
+        ? {
+            message_reference: {
+              message_id: params.replyToMessageId,
+              fail_if_not_exists: false,
+            },
+          }
+        : {}),
+    },
+    reason: params.reason,
+  });
+
+  if (result.ok) {
+    const data = normalizeUnknownRecord(result.data);
+    const messageId = asString(data?.id);
+    if (messageId) {
+      return messageId;
     }
 
-    const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
-      new ButtonBuilder()
-        .setCustomId(makeDecisionCustomId('approve', params.actionId))
-        .setLabel('Approve')
-        .setStyle(ButtonStyle.Success),
-      new ButtonBuilder()
-        .setCustomId(makeDecisionCustomId('reject', params.actionId))
-        .setLabel('Reject')
-        .setStyle(ButtonStyle.Danger),
-    );
-
-    const contentLines = [
-      `**${params.title}**`,
-      `Requested by <@${params.requestedBy}>`,
-      `Action ID: \`${params.actionId}\``,
-      `Expires: ${formatDiscordTimestamp(params.expiresAt)}`,
-      ...params.details,
-    ];
-
-    const message = await channel.send({
-      content: contentLines.join('\n'),
-      components: [row],
-    });
-    return message.id;
-  } catch (error) {
-    logger.warn(
-      { error, actionId: params.actionId, guildId: params.guildId, channelId: params.channelId },
-      'Failed to post admin approval card',
-    );
-    return null;
+    throw new Error('Governance surface send succeeded without returning a message id.');
   }
+
+  throw new Error(
+    `Governance surface send failed (${String(result.status ?? 'unknown')} ${String(result.statusText ?? '')}): ${String(result.error ?? 'Unknown error')}`,
+  );
+}
+
+async function editGovernanceSurfaceMessage(params: {
+  guildId: string;
+  channelId: string;
+  messageId: string;
+  body: { flags: MessageFlags; components: APIMessageTopLevelComponent[] };
+}): Promise<void> {
+  const result = await discordRestRequestGuildScoped({
+    guildId: params.guildId,
+    method: 'PATCH',
+    path: `/channels/${params.channelId}/messages/${params.messageId}`,
+    body: {
+      flags: params.body.flags,
+      components: params.body.components,
+      allowed_mentions: { parse: [] },
+    },
+  });
+
+  if (result.ok) {
+    return;
+  }
+
+  throw new Error(
+    `Governance surface edit failed (${String(result.status ?? 'unknown')} ${String(result.statusText ?? '')}): ${String(result.error ?? 'Unknown error')}`,
+  );
+}
+
+async function postApprovalCard(params: {
+  pending: PendingAdminActionRecord;
+}): Promise<{ reviewChannelId: string; approvalMessageId: string | null }> {
+  const reviewChannelId = params.pending.reviewChannelId;
+  const payload = buildPendingAdminActionReviewerCardPayload({
+    action: params.pending,
+    approveCustomId: makeAdminActionButtonCustomId('approve', params.pending.id),
+    rejectCustomId: makeAdminActionButtonCustomId('reject', params.pending.id),
+    detailsCustomId: makeAdminActionButtonCustomId('details', params.pending.id),
+  });
+  const approvalMessageId = await sendGovernanceSurfaceMessage({
+    guildId: params.pending.guildId,
+    channelId: reviewChannelId,
+    body: payload,
+    reason: `[sage action:${params.pending.id}] post governance review card`,
+  });
+  return { reviewChannelId, approvalMessageId };
 }
 
 async function ensureApprovalCardForPending(params: {
   pending: PendingAdminActionRecord;
-  channelId: string;
-  title: string;
-  details: string[];
-  requestedBy: string;
-  coalesced?: boolean;
 }): Promise<string | null> {
   const existingApprovalMessageId = params.pending.approvalMessageId?.trim() || null;
   if (existingApprovalMessageId) {
     return existingApprovalMessageId;
   }
-  if (params.coalesced) {
-    return null;
-  }
 
-  const approvalMessageId = await postApprovalCard({
-    guildId: params.pending.guildId,
-    channelId: params.channelId,
-    actionId: params.pending.id,
-    title: params.title,
-    details: params.details,
-    requestedBy: params.requestedBy,
-    expiresAt: params.pending.expiresAt,
+  const { reviewChannelId, approvalMessageId } = await postApprovalCard({
+    pending: params.pending,
   });
 
   if (approvalMessageId) {
-    await attachPendingAdminActionApprovalMessageId({
+    await updatePendingAdminActionReviewSurface({
       id: params.pending.id,
+      reviewChannelId,
       approvalMessageId,
     }).catch((error) => {
-      logger.warn({ error, actionId: params.pending.id }, 'Failed to persist approval message id for coalesced pending action');
+      logger.warn(
+        { error, actionId: params.pending.id },
+        'Failed to persist governance review card surface metadata',
+      );
     });
   }
 
   return approvalMessageId;
-}
-
-function buildDiscordActionSummary(action: QueuedDiscordAction): string[] {
-  switch (action.action) {
-    case 'remove_user_reaction':
-      return [
-        `Type: remove_user_reaction`,
-        `Message ID: ${action.messageId}`,
-        `Emoji: ${action.emoji}`,
-        `Target: <@${action.userId}>`,
-        `Reason: ${action.reason}`,
-      ];
-    case 'clear_reactions':
-      return [
-        `Type: clear_reactions`,
-        `Message ID: ${action.messageId}`,
-        `Reason: ${action.reason}`,
-      ];
-    case 'delete_message':
-      return [
-        `Type: delete_message`,
-        `Message ID: ${action.messageId}`,
-        `Reason: ${action.reason}`,
-      ];
-    case 'timeout_member':
-      return [
-        `Type: timeout_member`,
-        `Target: <@${action.userId}>`,
-        `Duration: ${action.durationMinutes} minute(s)`,
-        `Reason: ${action.reason}`,
-      ];
-    case 'kick_member':
-      return [
-        `Type: kick_member`,
-        `Target: <@${action.userId}>`,
-        `Reason: ${action.reason}`,
-      ];
-    case 'ban_member':
-      return [
-        `Type: ban_member`,
-        `Target: <@${action.userId}>`,
-        `Delete message seconds: ${action.deleteMessageSeconds ?? 0}`,
-        `Reason: ${action.reason}`,
-      ];
-    case 'unban_member':
-      return [
-        `Type: unban_member`,
-        `Target: <@${action.userId}>`,
-        `Reason: ${action.reason}`,
-      ];
-    default:
-      return ['Type: unknown'];
-  }
 }
 
 export function buildDiscordRestWriteSummary(request: DiscordRestWriteRequest): string[] {
@@ -816,12 +849,6 @@ function sanitizeObjectForDisplay(value: unknown, depth = 0): unknown {
     return out;
   }
   return String(value);
-}
-
-function buildJsonPreviewForDisplay(value: unknown, maxChars: number): { text: string; truncated: boolean } {
-  const sanitized = sanitizeObjectForDisplay(value);
-  const json = JSON.stringify(sanitized, null, 2);
-  return truncateWithFlag(json, maxChars);
 }
 
 type SendMessageRequest = z.infer<typeof sendMessageRequestSchema>;
@@ -977,12 +1004,6 @@ export async function buildDiscordComponentsV2MessagePayload(params: {
     components: components as APIMessageTopLevelComponent[],
     attachments: attachments && attachments.length > 0 ? attachments : undefined,
   };
-}
-
-function truncateDiscordMessage(value: string, maxChars = 1900): string {
-  if (value.length <= maxChars) return value;
-  const truncated = truncateWithFlag(value, maxChars);
-  return truncated.text;
 }
 
 type ChannelPermissionRequirement = {
@@ -1828,7 +1849,7 @@ async function executePendingAction(params: {
 }): Promise<Record<string, unknown>> {
   if (params.action.kind === 'server_instructions_update') {
     const payload = params.action.payloadJson as ServerInstructionsPendingPayload;
-    const current = await getGuildMemoryRecord(params.action.guildId);
+    const current = await getServerInstructionsRecord(params.action.guildId);
     const currentVersion = current?.version ?? 0;
     if (currentVersion !== payload.baseVersion) {
       throw new Error(
@@ -1837,7 +1858,7 @@ async function executePendingAction(params: {
     }
 
     if (payload.operation === 'clear') {
-      const cleared = await clearGuildMemory({
+      const cleared = await clearServerInstructions({
         guildId: params.action.guildId,
         adminId: params.approvedBy,
       });
@@ -1848,9 +1869,9 @@ async function executePendingAction(params: {
       };
     }
 
-    const updated = await upsertGuildMemory({
+    const updated = await upsertServerInstructions({
       guildId: params.action.guildId,
-      memoryText: payload.newInstructionsText,
+      instructionsText: payload.newInstructionsText,
       adminId: params.approvedBy,
     });
 
@@ -1867,7 +1888,7 @@ async function executePendingAction(params: {
     return executeQueuedDiscordAction({
       action: payload.action,
       guildId: params.action.guildId,
-      channelId: params.action.channelId,
+      channelId: params.action.sourceChannelId,
       actionId: params.action.id,
       requestedBy: params.action.requestedBy,
       approvedBy: params.approvedBy,
@@ -1921,7 +1942,7 @@ export async function lookupServerInstructionsForTool(params: {
   maxChars?: number;
 }): Promise<Record<string, unknown>> {
   const maxChars = Math.max(200, Math.min(params.maxChars ?? DEFAULT_SERVER_INSTRUCTIONS_MAX_CHARS, 12_000));
-  const record = await getGuildMemoryRecord(params.guildId);
+  const record = await getServerInstructionsRecord(params.guildId);
   if (!record) {
     return {
       found: false,
@@ -1931,7 +1952,7 @@ export async function lookupServerInstructionsForTool(params: {
     };
   }
 
-  const truncated = truncateWithFlag(record.memoryText, maxChars);
+  const truncated = truncateWithFlag(record.instructionsText, maxChars);
   return {
     found: true,
     guildId: params.guildId,
@@ -1948,8 +1969,8 @@ export async function requestServerInstructionsUpdateForTool(params: {
   requestedBy: string;
   request: ServerInstructionsUpdateRequest;
 }): Promise<Record<string, unknown>> {
-  const current = await getGuildMemoryRecord(params.guildId);
-  const currentText = current?.memoryText ?? '';
+  const current = await getServerInstructionsRecord(params.guildId);
+  const currentText = current?.instructionsText ?? '';
 
   let nextText: string;
   if (params.request.operation === 'set') {
@@ -1981,28 +2002,18 @@ export async function requestServerInstructionsUpdateForTool(params: {
   } satisfies ServerInstructionsPendingPayload;
 
   const preview = truncateWithFlag(nextText, 700);
-  const currentChars = currentText.length;
-  const nextChars = nextText.length;
-  const deltaChars = nextChars - currentChars;
-  const signedDelta = deltaChars >= 0 ? `+${deltaChars}` : String(deltaChars);
-  const details = [
-    `Operation: ${params.request.operation}`,
-    `Reason: ${params.request.reason}`,
-    `Base version: ${baseVersion}`,
-    `Current size: ${currentChars} chars`,
-    `Proposed size: ${nextChars} chars (${signedDelta})`,
-    `Preview:\n\`\`\`\n${preview.text || '[empty]'}\n\`\`\``,
-  ];
   const existingPending = await findMatchingPendingAdminAction({
     guildId: params.guildId,
     requestedBy: params.requestedBy,
     kind: 'server_instructions_update',
     payloadJson: payload,
   });
+  const reviewChannelId = await getGuildApprovalReviewChannelId(params.guildId) ?? params.channelId;
   const expiresAt = existingPending?.expiresAt ?? new Date(Date.now() + APPROVAL_TTL_MS);
   const pending = existingPending ?? await createPendingAdminAction({
     guildId: params.guildId,
-    channelId: params.channelId,
+    sourceChannelId: params.channelId,
+    reviewChannelId,
     requestedBy: params.requestedBy,
     kind: 'server_instructions_update',
     payloadJson: payload,
@@ -2011,11 +2022,6 @@ export async function requestServerInstructionsUpdateForTool(params: {
   const coalesced = existingPending !== null;
   const approvalMessageId = await ensureApprovalCardForPending({
     pending,
-    channelId: params.channelId,
-    title: 'Server Instructions Update Approval',
-    details,
-    requestedBy: params.requestedBy,
-    coalesced,
   });
 
   await logAdminAction({
@@ -2037,6 +2043,7 @@ export async function requestServerInstructionsUpdateForTool(params: {
     coalesced,
     expiresAtIso: expiresAt.toISOString(),
     approvalMessageId,
+    reviewChannelId: pending.reviewChannelId,
     instructionsChars: nextText.length,
     preview: preview.text,
     previewTruncated: preview.truncated,
@@ -2052,17 +2059,18 @@ export async function requestDiscordAdminActionForTool(params: {
   const payload = {
     action: params.request,
   } satisfies DiscordActionPendingPayload;
-  const details = buildDiscordActionSummary(params.request);
   const existingPending = await findMatchingPendingAdminAction({
     guildId: params.guildId,
     requestedBy: params.requestedBy,
     kind: 'discord_queue_moderation_action',
     payloadJson: payload,
   });
+  const reviewChannelId = await getGuildApprovalReviewChannelId(params.guildId) ?? params.channelId;
   const expiresAt = existingPending?.expiresAt ?? new Date(Date.now() + APPROVAL_TTL_MS);
   const pending = existingPending ?? await createPendingAdminAction({
     guildId: params.guildId,
-    channelId: params.channelId,
+    sourceChannelId: params.channelId,
+    reviewChannelId,
     requestedBy: params.requestedBy,
     kind: 'discord_queue_moderation_action',
     payloadJson: payload,
@@ -2071,11 +2079,6 @@ export async function requestDiscordAdminActionForTool(params: {
   const coalesced = existingPending !== null;
   const approvalMessageId = await ensureApprovalCardForPending({
     pending,
-    channelId: params.channelId,
-    title: 'Discord Moderation Action Approval',
-    details,
-    requestedBy: params.requestedBy,
-    coalesced,
   });
 
   await logAdminAction({
@@ -2095,6 +2098,7 @@ export async function requestDiscordAdminActionForTool(params: {
     coalesced,
     expiresAtIso: expiresAt.toISOString(),
     approvalMessageId,
+    reviewChannelId: pending.reviewChannelId,
   };
 }
 
@@ -2113,17 +2117,18 @@ export async function requestDiscordRestWriteForTool(params: {
   const payload = {
     request: params.request,
   } satisfies DiscordRestWritePendingPayload;
-  const details = buildDiscordRestWriteSummary(params.request);
   const existingPending = await findMatchingPendingAdminAction({
     guildId: params.guildId,
     requestedBy: params.requestedBy,
     kind: 'discord_rest_write',
     payloadJson: payload,
   });
+  const reviewChannelId = await getGuildApprovalReviewChannelId(params.guildId) ?? params.channelId;
   const expiresAt = existingPending?.expiresAt ?? new Date(Date.now() + APPROVAL_TTL_MS);
   const pending = existingPending ?? await createPendingAdminAction({
     guildId: params.guildId,
-    channelId: params.channelId,
+    sourceChannelId: params.channelId,
+    reviewChannelId,
     requestedBy: params.requestedBy,
     kind: 'discord_rest_write',
     payloadJson: payload,
@@ -2132,11 +2137,6 @@ export async function requestDiscordRestWriteForTool(params: {
   const coalesced = existingPending !== null;
   const approvalMessageId = await ensureApprovalCardForPending({
     pending,
-    channelId: params.channelId,
-    title: 'Discord REST Write Approval',
-    details,
-    requestedBy: params.requestedBy,
-    coalesced,
   });
 
   await logAdminAction({
@@ -2158,6 +2158,7 @@ export async function requestDiscordRestWriteForTool(params: {
     coalesced,
     expiresAtIso: expiresAt.toISOString(),
     approvalMessageId,
+    reviewChannelId: pending.reviewChannelId,
   };
 }
 
@@ -2193,80 +2194,6 @@ export async function requestDiscordInteractionForTool(params: {
   return result;
 }
 
-export function buildPendingAdminActionResolutionNotice(action: PendingAdminActionRecord): string {
-  const decidedBy = action.decidedBy?.trim();
-  const decidedByLine = decidedBy ? `By: <@${decidedBy}>` : null;
-
-  const lines: string[] = [];
-  switch (action.status) {
-    case 'pending': {
-      lines.push('Admin action awaiting approval.');
-      break;
-    }
-    case 'approved': {
-      lines.push('Admin action approved. Executing...');
-      break;
-    }
-    case 'rejected': {
-      lines.push('Admin action rejected.');
-      break;
-    }
-    case 'executed': {
-      lines.push('Admin action approved and executed.');
-      break;
-    }
-    case 'failed': {
-      lines.push('Admin action approved, but execution failed.');
-      break;
-    }
-    case 'expired': {
-      lines.push('Admin action expired before approval.');
-      break;
-    }
-  }
-
-  lines.push(`Action ID: \`${action.id}\``);
-  if (decidedByLine) {
-    lines.push(decidedByLine);
-  }
-
-  if (action.status === 'executed') {
-    const preview = buildJsonPreviewForDisplay(action.resultJson, 900);
-    const suffix = preview.truncated ? '\n(Preview truncated)' : '';
-    lines.push(`Result: executed successfully.\n\`\`\`json\n${preview.text}\n\`\`\`${suffix}`);
-  } else if (action.status === 'failed') {
-    const errorText = truncateDiscordMessage(action.errorText ?? 'Unknown error', 900);
-    lines.push(`Result: failed.\nError: ${errorText}`);
-    if (action.resultJson) {
-      const preview = buildJsonPreviewForDisplay(action.resultJson, 700);
-      const suffix = preview.truncated ? '\n(Preview truncated)' : '';
-      lines.push(`\`\`\`json\n${preview.text}\n\`\`\`${suffix}`);
-    }
-  } else if (action.status === 'rejected') {
-    lines.push('Result: rejected.');
-  } else if (action.status === 'expired') {
-    lines.push('Result: expired before approval.');
-  }
-
-  return truncateDiscordMessage(lines.join('\n'));
-}
-
-function buildResolvedMessageContent(params: {
-  base: string;
-  actionId: string;
-  decision: PendingDecision;
-  actorId: string;
-  outcome: string;
-}): string {
-  return [
-    params.base,
-    '',
-    `Resolved: ${params.decision.toUpperCase()} by <@${params.actorId}>`,
-    `Action ID: \`${params.actionId}\``,
-    params.outcome,
-  ].join('\n');
-}
-
 async function deleteApprovalCardForAction(action: PendingAdminActionRecord): Promise<void> {
   const approvalMessageId = action.approvalMessageId?.trim();
   if (!approvalMessageId) {
@@ -2277,7 +2204,7 @@ async function deleteApprovalCardForAction(action: PendingAdminActionRecord): Pr
     const result = await discordRestRequestGuildScoped({
       guildId: action.guildId,
       method: 'DELETE',
-      path: `/channels/${action.channelId}/messages/${approvalMessageId}`,
+      path: `/channels/${action.reviewChannelId}/messages/${approvalMessageId}`,
       reason: `[sage action:${action.id}] auto-delete resolved approval card`,
       maxResponseChars: 500,
     });
@@ -2300,7 +2227,7 @@ async function deleteApprovalCardForAction(action: PendingAdminActionRecord): Pr
         {
           actionId: action.id,
           guildId: action.guildId,
-          channelId: action.channelId,
+          channelId: action.reviewChannelId,
           approvalMessageId,
           status,
           statusText: typeof result.statusText === 'string' ? result.statusText : undefined,
@@ -2311,7 +2238,7 @@ async function deleteApprovalCardForAction(action: PendingAdminActionRecord): Pr
     }
   } catch (error) {
     logger.warn(
-      { error, actionId: action.id, guildId: action.guildId, channelId: action.channelId },
+      { error, actionId: action.id, guildId: action.guildId, channelId: action.reviewChannelId },
       'Resolved approval card deletion threw; clearing id to avoid repeated attempts',
     );
     await clearPendingAdminActionApprovalMessageId(action.id).catch(() => {
@@ -2335,61 +2262,113 @@ function scheduleResolvedApprovalCardDeletion(actionId: string): void {
   timer.unref?.();
 }
 
+async function updateReviewMessageForAction(action: PendingAdminActionRecord): Promise<void> {
+  const approvalMessageId = action.approvalMessageId?.trim();
+  if (!approvalMessageId) {
+    return;
+  }
+
+  const payload = buildPendingAdminActionReviewerCardPayload({
+    action,
+    approveCustomId: makeAdminActionButtonCustomId('approve', action.id),
+    rejectCustomId: makeAdminActionButtonCustomId('reject', action.id),
+    detailsCustomId: makeAdminActionButtonCustomId('details', action.id),
+  });
+  try {
+    await editGovernanceSurfaceMessage({
+      guildId: action.guildId,
+      channelId: action.reviewChannelId,
+      messageId: approvalMessageId,
+      body: payload,
+    });
+  } catch (error) {
+    logger.warn(
+      {
+        error,
+        actionId: action.id,
+        guildId: action.guildId,
+        reviewChannelId: action.reviewChannelId,
+        approvalMessageId,
+      },
+      'Failed to update governance review card',
+    );
+  }
+}
+
 async function updateRequesterMessageForResolvedAction(action: PendingAdminActionRecord): Promise<void> {
   const requestMessageId = action.requestMessageId?.trim();
   if (!requestMessageId) {
     return;
   }
 
-  const content = buildPendingAdminActionResolutionNotice(action);
-  const result = await discordRestRequestGuildScoped({
-    guildId: action.guildId,
-    method: 'PATCH',
-    path: `/channels/${action.channelId}/messages/${requestMessageId}`,
-    body: {
-      content,
-      allowed_mentions: { parse: [] },
-    },
+  const payload = buildPendingAdminActionRequesterCardPayload({
+    action,
   });
 
-  if (result.ok) {
-    return;
-  }
-
-  const status = String(result.status ?? 'unknown');
-  const statusText = String(result.statusText ?? '');
-  const errorText = String(result.error ?? 'Unknown error');
-  logger.warn(
-    {
-      actionId: action.id,
-      guildId: action.guildId,
-      channelId: action.channelId,
-      requestMessageId,
-      status,
-      statusText,
-      errorText,
-    },
-    'Failed to update requester message for admin action',
-  );
-
   try {
-    const channel = await fetchGuildChannel(action.guildId, action.channelId);
-    if (!isSendableGuildChannel(channel)) {
-      return;
-    }
-    await channel.send({ content, allowedMentions: { parse: [] } });
-  } catch (fallbackError) {
+    await editGovernanceSurfaceMessage({
+      guildId: action.guildId,
+      channelId: action.sourceChannelId,
+      messageId: requestMessageId,
+      body: payload,
+    });
+  } catch (error) {
     logger.warn(
-      { error: fallbackError, actionId: action.id, guildId: action.guildId, channelId: action.channelId },
-      'Failed to post admin action resolution fallback message',
+      {
+        error,
+        actionId: action.id,
+        guildId: action.guildId,
+        channelId: action.sourceChannelId,
+        requestMessageId,
+      },
+      'Failed to update requester message for admin action',
     );
   }
+}
+
+export async function publishPendingAdminActionRequesterStatusMessage(params: {
+  actionId: string;
+  replyToMessageId?: string;
+  coalesced?: boolean;
+}): Promise<PendingAdminActionRecord | null> {
+  const action = await getPendingAdminActionById(params.actionId);
+  if (!action) {
+    return null;
+  }
+
+  const payload = buildPendingAdminActionRequesterCardPayload({
+    action,
+    coalesced: params.coalesced,
+  });
+  const messageId = await sendGovernanceSurfaceMessage({
+    guildId: action.guildId,
+    channelId: action.sourceChannelId,
+    body: payload,
+    replyToMessageId: params.replyToMessageId,
+    reason: `[sage action:${action.id}] post requester governance status`,
+  });
+
+  const updated = await attachPendingAdminActionRequestMessageId({
+    id: action.id,
+    requestMessageId: messageId,
+  }).catch((error) => {
+    logger.warn({ error, actionId: action.id }, 'Failed to persist requester governance status message id');
+    return action;
+  });
+
+  if (updated.status !== 'pending' && updated.status !== 'approved') {
+    await updateRequesterMessageForResolvedAction(updated).catch((error) => {
+      logger.warn({ error, actionId: updated.id }, 'Failed to sync requester governance status after publish');
+    });
+  }
+
+  return updated;
 }
 
 export async function handleAdminActionButtonInteraction(
   interaction: ButtonInteraction,
 ): Promise<boolean> {
-  const parsed = parseDecisionCustomId(interaction.customId);
+  const parsed = parseAdminActionButtonCustomId(interaction.customId);
   if (!parsed) {
     return false;
   }
@@ -2421,8 +2400,9 @@ export async function handleAdminActionButtonInteraction(
   }
 
   if (!action.approvalMessageId?.trim() && interaction.message?.id) {
-    const updated = await attachPendingAdminActionApprovalMessageId({
+    const updated = await updatePendingAdminActionReviewSurface({
       id: action.id,
+      reviewChannelId: interaction.channelId,
       approvalMessageId: interaction.message.id,
     }).catch((error) => {
       logger.warn({ error, actionId: action?.id }, 'Failed to attach approval card message id while handling decision');
@@ -2432,22 +2412,18 @@ export async function handleAdminActionButtonInteraction(
     if (updated) {
       action = updated;
     } else {
-      action = { ...action, approvalMessageId: interaction.message.id };
+      action = { ...action, approvalMessageId: interaction.message.id, reviewChannelId: interaction.channelId };
     }
   }
 
   if (action.expiresAt.getTime() <= Date.now()) {
     await markPendingAdminActionExpired(action.id);
     const expired = await getPendingAdminActionById(action.id).catch(() => null);
-    const content = buildResolvedMessageContent({
-      base: interaction.message.content,
-      actionId: action.id,
-      decision: parsed.decision,
-      actorId: interaction.user.id,
-      outcome: 'Result: expired before approval.',
-    });
-    await interaction.update({ content, components: [] });
+    await interaction.deferUpdate();
     if (expired) {
+      await updateReviewMessageForAction(expired).catch((error) => {
+        logger.warn({ error, actionId: expired.id }, 'Failed to update governance review card after admin action expiry');
+      });
       void updateRequesterMessageForResolvedAction(expired).catch((error) => {
         logger.warn({ error, actionId: expired.id }, 'Failed to update requester message after admin action expiry');
       });
@@ -2456,7 +2432,20 @@ export async function handleAdminActionButtonInteraction(
     return true;
   }
 
-  if (parsed.decision === 'approve' && action.kind === 'discord_queue_moderation_action') {
+  if (parsed.action === 'details') {
+    await interaction.reply({
+      content: buildPendingAdminActionDetailsText(action),
+      ephemeral: true,
+    });
+    return true;
+  }
+
+  if (parsed.action === 'reject') {
+    await interaction.showModal(buildAdminActionRejectModal(action.id));
+    return true;
+  }
+
+  if (parsed.action === 'approve' && action.kind === 'discord_queue_moderation_action') {
     const payload = action.payloadJson as DiscordActionPendingPayload;
     const requiredPermission = requiredApproverPermission(payload.action);
     if (requiredPermission) {
@@ -2470,35 +2459,7 @@ export async function handleAdminActionButtonInteraction(
       }
     }
   }
-
-  if (parsed.decision === 'reject') {
-    const rejected = await markPendingAdminActionDecision({
-      id: action.id,
-      decidedBy: interaction.user.id,
-      status: 'rejected',
-    });
-    await logAdminAction({
-      guildId: action.guildId,
-      adminId: interaction.user.id,
-      command: 'admin_action_reject',
-      paramsHash: computeParamsHash({ actionId: action.id, kind: action.kind }),
-    });
-
-    const content = buildResolvedMessageContent({
-      base: interaction.message.content,
-      actionId: action.id,
-      decision: parsed.decision,
-      actorId: interaction.user.id,
-      outcome: 'Result: rejected.',
-    });
-    await interaction.update({ content, components: [] });
-    void updateRequesterMessageForResolvedAction(rejected).catch((error) => {
-      logger.warn({ error, actionId: rejected.id }, 'Failed to update requester message after admin action rejection');
-    });
-    scheduleResolvedApprovalCardDeletion(action.id);
-    return true;
-  }
-
+  await interaction.deferUpdate();
   await markPendingAdminActionDecision({
     id: action.id,
     decidedBy: interaction.user.id,
@@ -2521,19 +2482,9 @@ export async function handleAdminActionButtonInteraction(
       command: 'admin_action_execute',
       paramsHash: computeParamsHash({ actionId: action.id, kind: action.kind }),
     });
-
-    const content = buildResolvedMessageContent({
-      base: interaction.message.content,
-      actionId: action.id,
-      decision: parsed.decision,
-      actorId: interaction.user.id,
-      outcome: (() => {
-        const preview = buildJsonPreviewForDisplay(result, 900);
-        const suffix = preview.truncated ? '\n(Preview truncated)' : '';
-        return `Result: executed successfully.\n\`\`\`json\n${preview.text}\n\`\`\`${suffix}`;
-      })(),
+    await updateReviewMessageForAction(executed).catch((error) => {
+      logger.warn({ error, actionId: executed.id }, 'Failed to update governance review card after admin action execution');
     });
-    await interaction.update({ content: truncateDiscordMessage(content), components: [] });
     void updateRequesterMessageForResolvedAction(executed).catch((error) => {
       logger.warn({ error, actionId: executed.id }, 'Failed to update requester message after admin action execution');
     });
@@ -2545,15 +2496,9 @@ export async function handleAdminActionButtonInteraction(
       errorText: errorMessage,
     });
     logger.warn({ error, actionId: action.id }, 'Pending admin action execution failed');
-
-    const content = buildResolvedMessageContent({
-      base: interaction.message.content,
-      actionId: action.id,
-      decision: parsed.decision,
-      actorId: interaction.user.id,
-      outcome: `Result: failed.\nError: ${truncateDiscordMessage(errorMessage, 900)}`,
+    await updateReviewMessageForAction(failed).catch((notifyError) => {
+      logger.warn({ error: notifyError, actionId: failed.id }, 'Failed to update governance review card after admin action failure');
     });
-    await interaction.update({ content: truncateDiscordMessage(content), components: [] });
     void updateRequesterMessageForResolvedAction(failed).catch((notifyError) => {
       logger.warn(
         { error: notifyError, actionId: failed.id },
@@ -2563,5 +2508,72 @@ export async function handleAdminActionButtonInteraction(
     scheduleResolvedApprovalCardDeletion(action.id);
   }
 
+  return true;
+}
+
+export async function handleAdminActionRejectModalSubmit(
+  interaction: ModalSubmitInteraction,
+): Promise<boolean> {
+  const actionId = parseAdminActionRejectModalCustomId(interaction.customId);
+  if (!actionId) {
+    return false;
+  }
+
+  if (!interaction.inGuild()) {
+    await interaction.reply({ content: 'Admin action approvals are guild-only.', ephemeral: true });
+    return true;
+  }
+
+  if (!isAdminInteraction(interaction)) {
+    await interaction.reply({ content: '❌ Admin only.', ephemeral: true });
+    return true;
+  }
+
+  const action = await getPendingAdminActionById(actionId);
+  if (!action) {
+    await interaction.reply({ content: 'Action not found.', ephemeral: true });
+    return true;
+  }
+
+  if (action.guildId !== interaction.guildId) {
+    await interaction.reply({ content: 'This action belongs to a different guild.', ephemeral: true });
+    return true;
+  }
+
+  if (action.status !== 'pending') {
+    await interaction.reply({ content: `Action is already ${action.status}.`, ephemeral: true });
+    return true;
+  }
+
+  const rejectionReason = interaction.fields.getTextInputValue(ADMIN_ACTION_REJECT_REASON_FIELD_ID)?.trim();
+  if (!rejectionReason) {
+    await interaction.reply({ content: 'A rejection reason is required.', ephemeral: true });
+    return true;
+  }
+
+  await interaction.deferReply({ ephemeral: true });
+
+  const rejected = await markPendingAdminActionDecision({
+    id: action.id,
+    decidedBy: interaction.user.id,
+    status: 'rejected',
+    decisionReasonText: rejectionReason,
+  });
+  await logAdminAction({
+    guildId: action.guildId,
+    adminId: interaction.user.id,
+    command: 'admin_action_reject',
+    paramsHash: computeParamsHash({ actionId: action.id, kind: action.kind, rejectionReason }),
+  });
+
+  await updateReviewMessageForAction(rejected).catch((error) => {
+    logger.warn({ error, actionId: rejected.id }, 'Failed to update governance review card after admin action rejection');
+  });
+  void updateRequesterMessageForResolvedAction(rejected).catch((error) => {
+    logger.warn({ error, actionId: rejected.id }, 'Failed to update requester message after admin action rejection');
+  });
+  scheduleResolvedApprovalCardDeletion(action.id);
+
+  await interaction.editReply('Rejected. Sage updated the governance cards with your reason.');
   return true;
 }

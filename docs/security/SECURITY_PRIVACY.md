@@ -33,8 +33,8 @@ This document describes what Sage stores and how to control retention. Implement
 | User profile summaries | `UserProfile` | LLM-generated long-term summary of a user. |
 | User profile archives | `UserProfileArchive` | Historical snapshots of user profiles. |
 | Guild settings | `GuildSettings` | Stores server-scoped BYOP key configuration. |
-| Server instructions | `GuildMemory` | Admin-authored server instructions available to the runtime. |
-| Server instruction archives | `GuildMemoryArchive` | Historical snapshots of server instruction updates. |
+| Server instructions | `ServerInstructions` | Admin-authored server instructions available to the runtime. |
+| Server instruction archives | `ServerInstructionsArchive` | Historical snapshots of server instruction updates. |
 | Channel messages | `ChannelMessage` | Stored only if `MESSAGE_DB_STORAGE_ENABLED=true`. |
 | Ingested attachments | `IngestedAttachment` | Non-image attachment extraction cache (text + metadata) for on-demand retrieval. |
 | Channel summaries | `ChannelSummary` | Rolling + profile summaries, plus metadata (topics, decisions, etc.). |

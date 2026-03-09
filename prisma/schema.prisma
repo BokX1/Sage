@@ -30,26 +30,27 @@ model UserProfileArchive {
 }
 
 model GuildSettings {
-  guildId            String   @id
-  pollinationsApiKey String? // Guild-provided BYOP key (fallback for users)
-  updatedAt          DateTime @updatedAt
-  createdAt          DateTime @default(now())
+  guildId                 String   @id
+  pollinationsApiKey      String? // Guild-provided BYOP key (fallback for users)
+  approvalReviewChannelId String?
+  updatedAt               DateTime @updatedAt
+  createdAt               DateTime @default(now())
 }
 
-model GuildMemory {
+model ServerInstructions {
   guildId          String   @id
-  memoryText       String   @db.Text
+  instructionsText String   @db.Text
   version          Int      @default(1)
   updatedByAdminId String?
   updatedAt        DateTime @updatedAt
   createdAt        DateTime @default(now())
 }
 
-model GuildMemoryArchive {
+model ServerInstructionsArchive {
   id               String   @id @default(cuid())
   guildId          String
   version          Int
-  memoryText       String   @db.Text
+  instructionsText String   @db.Text
   updatedByAdminId String?
   createdAt        DateTime @default(now())
 
@@ -57,26 +58,29 @@ model GuildMemoryArchive {
 }
 
 model PendingAdminAction {
-  id               String   @id @default(cuid())
-  guildId          String
-  channelId        String
-  approvalMessageId String?
-  requestMessageId String?
-  requestedBy      String
-  kind             String
-  payloadJson      Json
-  status           String
-  expiresAt        DateTime
-  decidedBy        String?
-  decidedAt        DateTime?
-  executedAt       DateTime?
-  resultJson       Json?
-  errorText        String?  @db.Text
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  id                 String    @id @default(cuid())
+  guildId            String
+  sourceChannelId    String
+  reviewChannelId    String
+  approvalMessageId  String?
+  requestMessageId   String?
+  requestedBy        String
+  kind               String
+  payloadJson        Json
+  status             String
+  expiresAt          DateTime
+  decidedBy          String?
+  decidedAt          DateTime?
+  executedAt         DateTime?
+  resultJson         Json?
+  decisionReasonText String?   @db.Text
+  errorText          String?   @db.Text
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
 
   @@index([guildId, createdAt])
   @@index([status, expiresAt])
+  @@index([reviewChannelId, createdAt])
 }
 
 model DiscordInteractionSession {
@@ -95,17 +99,17 @@ model DiscordInteractionSession {
 }
 
 model ChannelMessage {
-  messageId         String   @id
+  messageId         String                   @id
   guildId           String?
   channelId         String
   authorId          String
   authorDisplayName String
-  authorIsBot       Boolean  @default(false)
+  authorIsBot       Boolean                  @default(false)
   timestamp         DateTime
-  content           String   @db.Text
+  content           String                   @db.Text
   replyToMessageId  String?
   mentionsUserIds   Json
-  mentionsBot       Boolean  @default(false)
+  mentionsBot       Boolean                  @default(false)
   embedding         ChannelMessageEmbedding?
 
   @@index([guildId, channelId, timestamp])
@@ -175,24 +179,24 @@ model VoiceSession {
 }
 
 model VoiceConversationSummary {
-  id               String   @id @default(cuid())
-  guildId          String
-  voiceChannelId   String
-  voiceChannelName String?
+  id                String   @id @default(cuid())
+  guildId           String
+  voiceChannelId    String
+  voiceChannelName  String?
   initiatedByUserId String
-  startedAt        DateTime
-  endedAt          DateTime
-  speakerStatsJson Json
-  summaryText      String   @db.Text
-  topicsJson       Json?
-  threadsJson      Json?
-  decisionsJson    Json?
-  actionItemsJson  Json?
-  unresolvedJson   Json?
-  sentiment        String?
-  glossaryJson     Json?
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  startedAt         DateTime
+  endedAt           DateTime
+  speakerStatsJson  Json
+  summaryText       String   @db.Text
+  topicsJson        Json?
+  threadsJson       Json?
+  decisionsJson     Json?
+  actionItemsJson   Json?
+  unresolvedJson    Json?
+  sentiment         String?
+  glossaryJson      Json?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
   @@index([guildId, endedAt])
   @@index([guildId, voiceChannelId, endedAt])
@@ -244,7 +248,6 @@ model AgentTrace {
   @@index([channelId, createdAt])
   @@index([userId, createdAt])
 }
-
 
 model ModelHealthState {
   modelId   String   @id

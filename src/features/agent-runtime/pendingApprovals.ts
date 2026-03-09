@@ -1,7 +1,12 @@
 import type { ToolResult } from './toolCallExecution';
 
-export function collectPendingAdminActionIds(toolResults: ToolResult[]): string[] {
-  const ids = new Set<string>();
+export type PendingAdminActionNotice = {
+  actionId: string;
+  coalesced: boolean;
+};
+
+export function collectPendingAdminActions(toolResults: ToolResult[]): PendingAdminActionNotice[] {
+  const actions = new Map<string, PendingAdminActionNotice>();
 
   for (const toolResult of toolResults) {
     if (!toolResult.success) continue;
@@ -19,9 +24,16 @@ export function collectPendingAdminActionIds(toolResults: ToolResult[]): string[
 
     const trimmed = actionId.trim();
     if (trimmed) {
-      ids.add(trimmed);
+      actions.set(trimmed, {
+        actionId: trimmed,
+        coalesced: record.coalesced === true,
+      });
     }
   }
 
-  return [...ids];
+  return [...actions.values()];
+}
+
+export function collectPendingAdminActionIds(toolResults: ToolResult[]): string[] {
+  return collectPendingAdminActions(toolResults).map((item) => item.actionId);
 }

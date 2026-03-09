@@ -1,7 +1,29 @@
 import { describe, expect, it } from 'vitest';
-import { collectPendingAdminActionIds } from '@/features/agent-runtime/pendingApprovals';
+import { collectPendingAdminActionIds, collectPendingAdminActions } from '@/features/agent-runtime/pendingApprovals';
 
-describe('collectPendingAdminActionIds', () => {
+describe('pendingApprovals helpers', () => {
+  it('collects pending approval action metadata from tool results', () => {
+    const actions = collectPendingAdminActions([
+      {
+        name: 'discord_admin',
+        success: true,
+        result: { status: 'pending_approval', actionId: 'action-1', coalesced: true },
+        latencyMs: 10,
+      },
+      {
+        name: 'discord_admin',
+        success: true,
+        result: { status: 'pending_approval', actionId: ' action-2 ' },
+        latencyMs: 7,
+      },
+    ]);
+
+    expect(actions).toEqual([
+      { actionId: 'action-1', coalesced: true },
+      { actionId: 'action-2', coalesced: false },
+    ]);
+  });
+
   it('collects pending approval action ids from tool results', () => {
     const ids = collectPendingAdminActionIds([
       {

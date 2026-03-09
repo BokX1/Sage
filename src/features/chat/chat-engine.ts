@@ -8,6 +8,7 @@ import {
 } from '../memory/userProfileCompaction';
 import { logger } from '../../platform/logging/logger';
 import { runChatTurn } from '../agent-runtime';
+import type { PendingAdminActionNotice } from '../agent-runtime/pendingApprovals';
 import { LLMMessageContent } from '../../platform/llm/llm-types';
 import { config } from '../../platform/config/env';
 
@@ -74,6 +75,7 @@ export async function generateChatReply(params: {
   replyText: string;
   meta?: { kind?: 'missing_api_key' };
   files?: Array<{ attachment: Buffer; name: string }>;
+  pendingAdminActions?: PendingAdminActionNotice[];
   pendingAdminActionIds?: string[];
 }> {
   // Enforce sequential processing per user
@@ -237,6 +239,7 @@ export async function generateChatReply(params: {
       replyText,
       meta: result.meta,
       files: result.files,
+      pendingAdminActions: result.pendingAdminActions,
       pendingAdminActionIds: result.pendingAdminActionIds,
     };
   });

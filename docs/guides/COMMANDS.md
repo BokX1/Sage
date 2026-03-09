@@ -94,7 +94,10 @@ Examples:
 - `Sage, moderate the last spam message`
 
 Destructive or sensitive operations still require explicit approval through Sage-authored buttons.
-Equivalent unresolved requests are coalesced, so repeated asks for the same admin action should point back to one pending approval and one action ID rather than spawning duplicates.
+Requester-facing governance cards stay compact in the source channel and move through states like queued, joined existing review, approved, executed, rejected, failed, or expired.
+If a server review channel is configured, Sage posts the detailed reviewer card there; otherwise the reviewer card stays in the source channel by default.
+Equivalent unresolved requests are coalesced, so repeated asks for the same admin action should point back to one pending approval and one reviewer card instead of spawning duplicates.
+Rejections collect a short reason through a modal and show that reason back on the requester-facing status card.
 Normal channel replies should stay operator-friendly: Sage should not paste raw tool payloads, approval commands, or internal retry chatter into chat while an approval is pending.
 
 ---

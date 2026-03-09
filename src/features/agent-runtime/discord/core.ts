@@ -46,6 +46,7 @@ import { VoiceManager } from '../../voice/voiceManager';
 import { isLoggingEnabled } from '../../settings/guildChannelSettings';
 import { buildGuildApiKeySetupCardContent, buildGuildApiKeyWelcomeActions } from '../../discord/byopBootstrap';
 import { clearGuildApiKey, getGuildApiKeyStatus } from '../../settings/guildApiKeyService';
+import { getGuildApprovalReviewChannelId, setGuildApprovalReviewChannelId } from '../../settings/guildSettingsRepo';
 
 export const discordRestFileInputSchema = z.object({
   fieldName: z.string().trim().min(1).max(120).optional(),
@@ -1617,6 +1618,19 @@ export async function executeDiscordAdminAction(
         status,
       };
     }
+    case 'get_governance_review_status': {
+      assertAdmin(ctx.invokerIsAdmin);
+      const guildId = requireGuildContext(ctx.guildId);
+      const reviewChannelId = await getGuildApprovalReviewChannelId(guildId);
+      return {
+        ok: true,
+        action: 'get_governance_review_status',
+        guildId,
+        approvalReviewChannelId: reviewChannelId,
+        effectiveReviewChannelId: reviewChannelId ?? ctx.channelId,
+        routingMode: reviewChannelId === null ? 'source_channel' : 'dedicated_review_channel',
+      };
+    }
     case 'clear_server_api_key': {
       assertAdmin(ctx.invokerIsAdmin);
       assertNotAutopilot(ctx.invokedBy, 'clear_server_api_key');
@@ -1626,6 +1640,39 @@ export async function executeDiscordAdminAction(
         action: 'clear_server_api_key',
         guildId: requireGuildContext(ctx.guildId),
         message: 'Server-wide API key removed.',
+      };
+    }
+    case 'set_governance_review_channel': {
+      assertAdmin(ctx.invokerIsAdmin);
+      assertNotAutopilot(ctx.invokedBy, 'set_governance_review_channel');
+      const data = asAction<{ channelId: string }>(args);
+      const guildId = requireGuildContext(ctx.guildId);
+      const channel = await client.channels.fetch(data.channelId);
+      if (!channel || channel.isDMBased() || !('guildId' in channel) || channel.guildId !== guildId) {
+        throw new Error('Review channel must be a guild channel in the active server.');
+      }
+      if (typeof channel.isTextBased !== 'function' || !channel.isTextBased()) {
+        throw new Error('Review channel must support text messages.');
+      }
+      await setGuildApprovalReviewChannelId(guildId, data.channelId);
+      return {
+        ok: true,
+        action: 'set_governance_review_channel',
+        guildId,
+        approvalReviewChannelId: data.channelId,
+        message: 'Governance reviews will now land in the selected review channel.',
+      };
+    }
+    case 'clear_governance_review_channel': {
+      assertAdmin(ctx.invokerIsAdmin);
+      assertNotAutopilot(ctx.invokedBy, 'clear_governance_review_channel');
+      const guildId = requireGuildContext(ctx.guildId);
+      await setGuildApprovalReviewChannelId(guildId, null);
+      return {
+        ok: true,
+        action: 'clear_governance_review_channel',
+        guildId,
+        message: 'Governance reviews will now render in the source channel by default.',
       };
     }
     case 'send_key_setup_card': {
