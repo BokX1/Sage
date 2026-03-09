@@ -2547,7 +2547,7 @@ export async function sendCachedAttachment(params: {
   guildId: string | null | undefined;
   requesterUserId: string;
   requesterChannelId: string;
-  invokedBy?: 'mention' | 'reply' | 'wakeword' | 'autopilot' | 'command';
+  invokedBy?: 'mention' | 'reply' | 'wakeword' | 'autopilot' | 'component';
   attachmentId: string;
   channelId?: string;
   content?: string;

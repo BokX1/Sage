@@ -4,18 +4,16 @@
   <img src="https://img.shields.io/badge/%F0%9F%8C%BF-Sage%20BYOP-2d5016?style=for-the-badge&labelColor=4a7c23" alt="BYOP" />
 </p>
 
-Sage's built-in hosted/server-key flow uses a BYOP model: communities provide a Pollinations API key for that integration path. Sage itself is released under the MIT License; Pollinations usage and infrastructure costs remain separate from the software license, and self-hosted chat turns can target other OpenAI-compatible providers.
-
-This keeps Sage sustainable and enables higher limits for your server.
+Sage's built-in hosted/server-key flow uses a BYOP model: communities provide a Pollinations API key for that integration path. Sage itself is MIT-licensed; Pollinations usage and hosting costs remain separate from the software license, and self-hosted chat turns can target other OpenAI-compatible providers.
 
 ---
 
 ## 🧭 Quick navigation
 
-- [🔑 How It Works](#how-it-works)
-- [🚀 Setup Guide (For Admins)](#setup-guide-for-admins)
-- [🔐 Key Safety Notes](#key-safety-notes)
-- [❓ FAQ](#faq)
+- [How It Works](#how-it-works)
+- [Setup Guide](#setup-guide-for-admins)
+- [Key Safety Notes](#key-safety-notes)
+- [FAQ](#faq)
 
 ---
 
@@ -23,33 +21,32 @@ This keeps Sage sustainable and enables higher limits for your server.
 
 ## 🔑 How It Works
 
-For the built-in Pollinations-backed BYOP flow, Sage needs an API key (“Pollen”) to generate responses. This can be provided in two ways:
+For the built-in Pollinations-backed flow, Sage needs a server key to answer in that guild. This can be provided in two ways:
 
-1. **Server-wide key (BYOP)**: **(Standard)** A server admin sets a specific key for their community using `/sage key set`.
-2. **Host-level key (`.env`)**: **(Optional)** The bot owner sets a default key for all servers.
+1. **Server-wide key (BYOP):** A server admin uses Sage's setup card and modal to store a Pollinations `sk_...` key for the community.
+2. **Host-level key (`LLM_API_KEY`):** The bot owner sets a default provider key for the whole deployment.
 
-This key is used for:
+This key powers:
 
-- 💬 Text chat (default)
-- 👁️ Vision (image understanding)
-- 🎨 Image generation & editing
-- 🎤 Voice-related features (where enabled)
+- 💬 Text chat
+- 👁️ Vision
+- 🎨 Image generation and editing
+- 🎤 Voice-related features when enabled
 
-### The Activation Lifecycle
+### Activation lifecycle
 
 ```mermaid
 flowchart LR
-    %% Admin-provided key enables server-wide access (BYOP mode).
     classDef start fill:#dcedc8,stroke:#33691e,stroke-width:2px,color:black
     classDef step fill:#e1f5fe,stroke:#01579b,stroke-width:2px,color:black
     classDef finish fill:#ffccbc,stroke:#bf360c,stroke-width:2px,color:black
 
     A[Invite Sage]:::start
-      --> B["Sage joins server"]:::step
-      --> C["/sage key login"]:::step
-      --> D["Get key from Pollinations"]:::step
-      --> E["/sage key set sk_..."]:::step
-      --> F["Sage active for everyone"]:::finish
+      --> B[Talk to Sage once]:::step
+      --> C[Missing-key setup card appears]:::step
+      --> D[Get Pollinations key]:::step
+      --> E[Set Server Key modal]:::step
+      --> F[Sage active for everyone]:::finish
 ```
 
 ---
@@ -58,30 +55,37 @@ flowchart LR
 
 ## 🚀 Setup Guide (For Admins)
 
-**Prerequisite:** You must be a Server Admin or have the **Manage Guild** permission.
+**Prerequisite:** You must be a server admin or have the **Manage Guild** permission.
 
-### Step 1: Get Your Key
+### Step 1: Trigger the setup card
 
-Run:
+Send a normal message that invokes Sage, such as:
 
 ```text
-/sage key login
+@Sage hello
 ```
 
-Open the link, sign in via Pollinations (GitHub), then copy the key from the URL (starts with `sk_`).
+If the guild does not yet have a usable key, Sage responds with the setup card.
+
+### Step 2: Get your Pollinations key
+
+Click `Get Pollinations Key`, complete the Pollinations login flow, and copy the `sk_...` token from the redirect URL.
 
 > [!TIP]
-> You can also manage/create keys directly from the Pollinations dashboard at `enter.pollinations.ai`.
+> You can also manage keys directly from the Pollinations dashboard at `enter.pollinations.ai`.
 
-### Step 2: Activate Sage (server-wide)
+### Step 3: Save the server key
 
-Run:
+Click `Set Server Key`, paste the `sk_...` token into the modal, and submit it.
 
-```text
-/sage key set <your_key>
-```
+Sage validates the key before storing it for the current guild.
 
-That’s it — Sage is active for the whole server. 🎉
+### Step 4: Check or clear later
+
+Use the same setup card controls:
+
+- `Check Key` verifies status
+- `Clear Key` removes the server-wide key
 
 ---
 
@@ -89,9 +93,10 @@ That’s it — Sage is active for the whole server. 🎉
 
 ## 🔐 Key Safety Notes
 
-- The key is **server-wide** and used for requests originating from that server.
+- The key is server-wide and used for requests originating from that server.
 - Treat your `sk_...` key like a password.
-- If you need to revoke access, run `/sage key clear` and/or rotate the key in Pollinations.
+- Sage's current setup flow uses buttons and modals instead of public command text, which helps avoid accidental channel leakage.
+- If you need to revoke access, clear the key in Sage and/or rotate it in Pollinations.
 
 ---
 
@@ -100,7 +105,7 @@ That’s it — Sage is active for the whole server. 🎉
 ## ❓ FAQ
 
 **Q: Do my members need to pay?**  
-**A:** The server key covers member AI usage. Pollinations.ai offers free tiers, so AI usage may be low-cost, but provider usage and hosting costs are separate from Sage's MIT software license.
+**A:** The server key covers member AI usage. Pollinations.ai may offer free tiers, but provider usage and hosting costs are separate from Sage's MIT software license.
 
 ---
 

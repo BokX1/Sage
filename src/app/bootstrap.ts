@@ -36,7 +36,7 @@ export async function bootstrapApp(): Promise<void> {
     registerShutdownHooks({ client });
 
     if (!config.LLM_API_KEY) {
-      logger.warn('No host-level LLM_API_KEY found. Sage can still respond if a server configures a Pollinations BYOP key with /sage key set.');
+      logger.warn('No host-level LLM_API_KEY found. Sage can still respond if a server configures a Pollinations BYOP key through the in-Discord setup controls.');
     }
 
     await client.login(config.DISCORD_TOKEN);

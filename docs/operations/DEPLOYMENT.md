@@ -28,7 +28,7 @@ How to run Sage in production with the current repo layout.
 | Node.js | `>= 22.12.0` | Required for the Sage process |
 | PostgreSQL | Prisma-compatible | Required |
 | Discord Bot Token | - | From the Discord Developer Portal |
-| Discord App ID | - | Used for slash commands and invite generation |
+| Discord App ID | - | Used for bot invite generation and Discord app identity |
 | Provider API key or Pollinations server BYOP flow | - | Required for Sage to make upstream model requests |
 | Docker | Optional | Used by the repo's support-service compose files |
 
@@ -112,8 +112,8 @@ FILE_INGEST_TIKA_BASE_URL=http://127.0.0.1:9998
 Key notes:
 
 - If you set `LLM_API_KEY`, Sage can use that host-level key with your configured OpenAI-compatible provider.
-- If you do **not** set `LLM_API_KEY`, each server must configure a Pollinations BYOP key with `/sage key set` to use Sage's built-in server-key flow.
-- Admin commands and approval-gated actions use Discord-native permissions. Grant `Manage Server` or `Administrator` only to approved operators.
+- If you do **not** set `LLM_API_KEY`, each server using the hosted Pollinations path must configure a server key through Sage's setup card and modal.
+- Admin actions and approval-gated flows use Discord-native permissions. Grant `Manage Server` or `Administrator` only to approved operators.
 - Social-graph export is disabled by setting `KAFKA_BROKERS=`.
 
 See **[⚙️ Configuration Reference](../reference/CONFIGURATION.md)** for the full environment surface.
@@ -157,7 +157,7 @@ npm start
 - [ ] `npm run doctor` passes
 - [ ] `npm run check:trust` passes on the release candidate
 - [ ] Tika is reachable when file ingestion is enabled
-- [ ] A global `LLM_API_KEY` is configured for your chosen provider or operators know to use `/sage key set` for the built-in Pollinations BYOP flow
+- [ ] A global `LLM_API_KEY` is configured for your chosen provider or operators know how to use Sage's hosted BYOP setup card flow
 - [ ] `TRACE_ENABLED=true` if you want runtime trace rows
 - [ ] Approved moderators/admins have `Manage Server` or `Administrator`
 - [ ] Process supervision is configured (`systemd`, PM2, container restart policy, or similar)
@@ -177,10 +177,9 @@ npm run doctor
 
 Discord-side checks:
 
-```text
-/ping
-/sage admin stats
-```
+- `@Sage health check`
+- `Sage, are you online?`
+- In a no-key hosted guild, trigger Sage once and verify the setup card appears
 
 ### Logs
 
@@ -189,7 +188,7 @@ Useful log patterns:
 | Pattern | Meaning |
 | :--- | :--- |
 | `[info] Logged in as` | Bot started successfully |
-| `[info] Successfully reloaded application (/) commands` | Slash commands registered |
+| `Sage is chat-first now...` | Legacy slash-command input is being redirected as expected |
 | `[error] P1001` | Database connection issue |
 | `[warn] Model degraded` | Model health has dropped |
 

@@ -79,6 +79,7 @@ describe('capabilityPrompt', () => {
       expect(prompt).toContain('Attachment retrieval behavior: historical uploaded attachments are cached outside transcript');
       expect(prompt).toContain('If the `send` payload shape is unclear, call `discord_messages` action `help` before guessing.');
       expect(prompt).toContain('send_attachment');
+      expect(prompt).not.toContain('`tool_calls` JSON envelope');
       // Guardrails from discordToolCatalog must be surfaced
       expect(prompt).toContain('Discord guardrail:');
       expect(prompt).toContain('Writes are disallowed in autopilot turns');
@@ -145,7 +146,7 @@ describe('capabilityPrompt', () => {
       expect(prompt).toContain('discord_context.get_channel_summary when the user wants exact quotes or message-level evidence');
       expect(prompt).toContain('web for Discord-internal questions when Discord domain tools can answer them');
       expect(prompt).toContain('discord_admin.api when a typed Discord action already covers the request');
-      expect(prompt).toContain('discord_messages.create_thread for new thread workflows when discord_server is available');
+      expect(prompt).not.toContain('discord_messages.create_thread');
       expect(prompt).toContain('plain assistant prose for a final rich in-channel reply that should be delivered via send');
       expect(prompt).toContain('github file.get before code.search when the path is unknown');
       expect(prompt).toContain('extra tool calls after you already have enough evidence to answer');

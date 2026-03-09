@@ -31,7 +31,7 @@ describe('discord admin domain typed REST wrappers', () => {
     userId: 'user-1',
     channelId: 'channel-1',
     guildId: 'guild-1',
-    invokedBy: 'command',
+    invokedBy: 'mention',
     invokerIsAdmin: true,
   };
 
@@ -158,7 +158,7 @@ describe('discord admin domain typed REST wrappers', () => {
     expect(url.hostname).toBe('discord.com');
     expect(url.pathname).toBe('/oauth2/authorize');
     expect(url.searchParams.get('client_id')).toBe(config.DISCORD_APP_ID.trim());
-    expect(url.searchParams.get('scope')).toBe('bot applications.commands');
+    expect(url.searchParams.get('scope')).toBe('bot');
     expect(url.searchParams.get('permissions')).toBe('0');
   });
 

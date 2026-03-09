@@ -17,7 +17,7 @@ export interface BuildContextMessagesParams {
   recentTranscript?: string | null;
 
   voiceContext?: string | null;
-  invokedBy?: 'mention' | 'reply' | 'wakeword' | 'autopilot' | 'command';
+  invokedBy?: 'mention' | 'reply' | 'wakeword' | 'autopilot' | 'component';
   isVoiceActive?: boolean;
 }
 

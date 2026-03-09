@@ -71,12 +71,14 @@ export function buildCapabilityPromptSection(
   const hasDiscordFilesTool = normalizedTools.includes('discord_files');
   const hasDiscordServerTool = normalizedTools.includes('discord_server');
   const hasDiscordAdminTool = normalizedTools.includes('discord_admin');
+  const hasDiscordVoiceTool = normalizedTools.includes('discord_voice');
   const hasAnyDiscordTool =
     hasDiscordContextTool ||
     hasDiscordMessagesTool ||
     hasDiscordFilesTool ||
     hasDiscordServerTool ||
-    hasDiscordAdminTool;
+    hasDiscordAdminTool ||
+    hasDiscordVoiceTool;
   const hasGenerateImage = normalizedTools.includes('image_generate');
 
   // --- Discord guardrails ---
@@ -111,9 +113,9 @@ export function buildCapabilityPromptSection(
       : '',
     '- If a required parameter is missing, ask instead of guessing.',
     '- Use the minimum sufficient tool path, then stop once you have enough evidence to answer.',
-    '- Batch multiple read-only tools (like web reads or GitHub file lookups) in a single `tool_calls` JSON envelope for parallel execution. Do NOT loop reading them one by one across multiple rounds.',
+    '- Batch multiple read-only tool calls in one provider-native tool-calling turn when possible. Do NOT loop reading them one by one across multiple rounds.',
     hasAnyDiscordTool
-      ? '- Discord tool behavior: Discord surfaces are split by domain. Use `discord_context` for profiles/summaries/instruction reads/analytics, `discord_messages` for message history and Discord-native delivery, `discord_files` for attachment recall, `discord_server` for guild resources and thread lifecycle, and `discord_admin` for approval-gated admin writes or raw API fallback.'
+      ? '- Discord tool behavior: Discord surfaces are split by domain. Use `discord_context` for profiles/summaries/instruction reads/analytics, `discord_messages` for message history and Discord-native delivery, `discord_files` for attachment recall, `discord_server` for guild resources and thread lifecycle, `discord_voice` for live voice control/status, and `discord_admin` for approval-gated admin writes or raw API fallback.'
       : '- Discord tool behavior: you do not have access to Discord profiles, summaries, instructions, messages, files, or actions via tools this turn.',
     hasDiscordMessagesTool
       ? '- When Sage chooses a Discord-native final reply format, call `discord_messages` action `send` with `presentation="plain" | "components_v2"` instead of replying only in prose.'
@@ -125,7 +127,7 @@ export function buildCapabilityPromptSection(
       ? '- If the `send` payload shape is unclear, call `discord_messages` action `help` before guessing.'
       : '',
     hasDiscordMessagesTool
-      ? '- `send` with `presentation="components_v2"` currently supports `componentsV2.blocks` types: `text`, `section`, `media_gallery`, `file`, `separator`, `action_row`.'
+      ? '- `send` with `presentation="components_v2"` currently supports `componentsV2.blocks` types: `text`, `section`, `media_gallery`, `file`, `separator`, `action_row`; action-row buttons may be links or Sage-managed interactive actions.'
       : '',
     hasDiscordFilesTool
       ? '- Attachment retrieval behavior: historical uploaded attachments are cached outside transcript; when transcript notes include `attachment:<id>` use `discord_files` action `read_attachment` directly, or `send_attachment` when the user wants the original file shown again. Otherwise use `list_*` or `find_*` first.'
@@ -220,6 +222,11 @@ function buildToolSelectionGuide(activeTools: string[]): string {
     lines.push('');
   }
 
+  if (activeTools.includes('discord_voice')) {
+    lines.push(...getRoutedToolSelectionHints('discord_voice').map((line) => line.replaceAll('->', '→')));
+    lines.push('');
+  }
+
   // --- Web ---
   if (activeTools.includes('web')) {
     lines.push('IF the question needs public internet information or fresh sources → web.');
@@ -267,9 +274,6 @@ function buildToolSelectionGuide(activeTools: string[]): string {
   }
   if (activeTools.includes('discord_admin')) {
     lines.push('  ✗ discord_admin.api when a typed Discord action already covers the request');
-  }
-  if (activeTools.includes('discord_messages') && activeTools.includes('discord_server')) {
-    lines.push('  ✗ discord_messages.create_thread for new thread workflows when discord_server is available');
   }
   if (activeTools.includes('discord_messages')) {
     lines.push('  ✗ plain assistant prose for a final rich in-channel reply that should be delivered via send');

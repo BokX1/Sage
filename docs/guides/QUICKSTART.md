@@ -29,41 +29,37 @@ Ask the deployment operator for the current invite URL.
 > [!TIP]
 > If you are the operator, `npm run onboard` prints a recommended invite URL and the manual Discord Developer Portal flow is documented in [Getting Started](GETTING_STARTED.md#step-6-invite-sage-to-your-server).
 
-### 2️⃣ Activate BYOP (server-wide key)
+### 2️⃣ Activate the hosted BYOP flow
 
-The current hosted Sage deployment uses **Bring Your Own Pollen (BYOP)** — your server provides a Pollinations API key for that hosted bot.
+If the hosted bot has no usable key for your server, just talk to Sage once in a guild channel:
 
-```text
-/sage key login     ← Get your API key link
-/sage key set sk_…  ← Activate for entire server
-```
+- `@Sage hello`
+- `Sage, are you online?`
 
-<details>
-<summary><strong>Step-by-step breakdown</strong></summary>
+Sage will respond with a server-key setup card.
 
-1. Run `/sage key login` in any channel
-2. Open the link → sign in via GitHub on Pollinations
-3. Copy the `sk_...` key from the URL
-4. Run `/sage key set <your_key>` as a server admin
+As a server admin:
 
-After this, Sage is active for the entire server.
+1. Click `Get Pollinations Key`
+2. Complete the Pollinations login flow
+3. Click `Set Server Key`
+4. Paste the `sk_...` key into the modal
 
-</details>
+After that, Sage is active for the entire server.
 
 ### 3️⃣ Try it out
 
 | Action | Example |
 | :--- | :--- |
-| 🏓 Check status | `/ping` |
-| 🔐 Check server key | `/sage key check` |
 | 💬 Wake word | `Sage, what's the best programming language?` |
 | 📎 Mention | `@Sage explain this code` |
 | 🎨 Generate image | `Sage, draw a surreal landscape in oil paint style` |
 | ✏️ Edit image | Reply to an image: `Sage, turn this into a watercolor` |
 | 🔍 Search the web | `Sage, what's the current price of Bitcoin?` |
+| 🎤 Voice control | `Sage, join my voice channel` |
 
 > [!NOTE]
-> Image generation and editing on the hosted bot require an active Pollinations-backed BYOP key.
+> Image generation and editing on the hosted bot require an active Pollinations-backed key path.
 
 ---
 
@@ -76,16 +72,16 @@ After this, Sage is active for the entire server.
 ```bash
 git clone https://github.com/BokX1/Sage.git && cd Sage
 npm ci
-npm run onboard           # ← Interactive setup wizard
+npm run onboard
 docker compose -f config/services/core/docker-compose.yml up -d db tika
 npm run db:migrate
-npm run dev               # ← Start in development mode
+npm run dev
 ```
 
 > [!TIP]
-> `npm run onboard` now supports optional automation flags for CI/headless flows: `--start-docker --migrate --doctor`.
+> `npm run onboard` supports optional automation flags for CI/headless flows: `--start-docker --migrate --doctor`.
 
-Self-hosted Sage can target any OpenAI-compatible chat provider through `LLM_BASE_URL`. Follow **[📖 Getting Started](GETTING_STARTED.md)** for the complete walkthrough (Discord app creation, `.env` configuration, database setup, provider setup, and invite generation).
+Self-hosted Sage can target any OpenAI-compatible chat provider through `LLM_BASE_URL`. Follow **[📖 Getting Started](GETTING_STARTED.md)** for the full walkthrough.
 
 ---
 
@@ -95,10 +91,10 @@ Self-hosted Sage can target any OpenAI-compatible chat provider through `LLM_BAS
 
 | Symptom | Fix |
 | :--- | :--- |
-| Missing key / no responses | Set a BYOP key: `/sage key login` → `/sage key set` |
-| Invalid API key | Make sure you copied the full `sk_...` value from the URL |
+| Missing key / no responses | Trigger Sage once, then use the setup card buttons and modal |
+| Invalid API key | Make sure you copied the full `sk_...` value from the Pollinations redirect |
 | Bot online but silent | Check wake word/mentions and verify channel permissions |
-| Slash commands missing | Restart the bot; wait up to 1 hour for global propagation |
+| Voice join does nothing | Ask Sage to join while you are already in a standard voice channel |
 
 For deeper debugging, see **[🔧 Troubleshooting Guide](TROUBLESHOOTING.md)**.
 
@@ -106,7 +102,7 @@ For deeper debugging, see **[🔧 Troubleshooting Guide](TROUBLESHOOTING.md)**.
 
 ## 📝 What's Next?
 
-- **[🎮 Commands Reference](COMMANDS.md)** — Full list of slash commands and natural language triggers
+- **[💬 Conversation & Controls](COMMANDS.md)** — Triggers, setup controls, and admin action patterns
 - **[📖 Getting Started](GETTING_STARTED.md)** — Full source setup, Discord app creation, and invite flow
 - **[⚙️ Configuration](../reference/CONFIGURATION.md)** — Customize Sage's behavior, memory, and limits
 - **[❓ FAQ](FAQ.md)** — Answers to common questions

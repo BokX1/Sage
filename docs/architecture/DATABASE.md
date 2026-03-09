@@ -161,7 +161,7 @@ Per-guild configuration including server-wide BYOP key.
 | Column | Type | Notes |
 |:---|:---|:---|
 | `guildId` | `String` (PK) | Discord guild ID |
-| `pollinationsApiKey` | `String?` | Guild BYOP key (set via `/sage key set`) |
+| `pollinationsApiKey` | `String?` | Guild BYOP key (set through Sage's setup card flow) |
 
 ### `GuildMemory`
 
@@ -262,7 +262,7 @@ Summary-only memory for a transcribed voice session (optional feature).
 | `id` | `String` (PK) | CUID |
 | `guildId` / `voiceChannelId` | `String` | Guild + voice channel scope |
 | `voiceChannelName` | `String?` | Channel display name at session time |
-| `initiatedByUserId` | `String` | User who invoked `/join` |
+| `initiatedByUserId` | `String` | User who triggered Sage's live voice join flow |
 | `startedAt` / `endedAt` | `DateTime` | Session window |
 | `speakerStatsJson` | `Json` | Per-speaker utterance counts (summary metadata) |
 | `summaryText` | `String` | LLM-generated narrative summary |
@@ -374,12 +374,12 @@ Queued admin actions awaiting approval via Discord buttons.
 
 ### `AdminAudit`
 
-Records admin command usage with hashed parameters.
+Records admin action usage with hashed parameters.
 
 | Column | Type | Notes |
 |:---|:---|:---|
 | `guildId` / `adminId` | `String` | Audit scope |
-| `command` | `String` | Command name |
+| `command` | `String` | Action name |
 | `paramsHash` | `String` | SHA256 of normalized params JSON |
 
 ---

@@ -27,10 +27,10 @@ Sage has two voice-related capabilities:
 | Feature | Status | Description |
 | :--- | :--- | :--- |
 | **Voice Awareness** | ✅ Stable | Tracks who is in voice, how long they've been there, and overlap data |
-| **Voice Transcription** | 🧪 Beta | Optional local STT while Sage is in-channel, with summary-only memory on leave |
+| **Voice Transcription** | 🧪 Beta | Optional local STT while Sage is connected, with summary-only memory on leave |
 
 > [!IMPORTANT]
-> By default, Sage does **not** listen to, record, or transcribe voice conversations. If you enable voice transcription (`VOICE_STT_ENABLED=true`) Sage will transcribe in-channel audio while connected, keep utterances in-memory, and persist **summary-only** memory when the session ends.
+> By default, Sage does **not** listen to, record, or transcribe voice conversations. If you enable voice transcription (`VOICE_STT_ENABLED=true`), Sage transcribes in-channel audio while connected, keeps utterances in-memory, and persists **summary-only** memory when the session ends.
 
 ---
 
@@ -69,7 +69,7 @@ flowchart TD
 
 | Component | File | Purpose |
 | :--- | :--- | :--- |
-| Voice Manager | `voiceManager.ts` | Discord voice channel join/leave via slash commands |
+| Voice Manager | `voiceManager.ts` | Discord voice channel join/leave and live connection lifecycle |
 | Voice Tracker | `voiceTracker.ts` | Tracks join/leave events and session durations |
 | Presence Index | `voicePresenceIndex.ts` | Real-time snapshot of who is in which channel |
 | Session Repo | `voiceSessionRepo.ts` | Persistence layer for voice session data |
@@ -78,7 +78,7 @@ flowchart TD
 | Voice Format | `voiceFormat.ts` | Formats voice data into natural language for LLM context |
 | Voice Service Client | `voiceServiceClient.ts` | HTTP client for local STT |
 | Transcription Manager | `voiceTranscriptionManager.ts` | Subscribes to Discord audio, chunks utterances, calls local STT |
-| Session Store | `voiceConversationSessionStore.ts` | In-memory utterance store + live context formatting |
+| Session Store | `voiceConversationSessionStore.ts` | In-memory utterance store plus live context formatting |
 | Summary Repo | `voiceConversationSummaryRepo.ts` | Persists summary-only voice session memory |
 | Session Summarizer | `voiceSessionSummarizer.ts` | Generates structured summaries from utterance transcripts |
 | Local Voice Service | `services/voice/` | Dockerized FastAPI service providing local STT |
@@ -97,26 +97,27 @@ Sage can answer questions like:
 - *"How long has @User been in voice?"*
 - *"Who was in #general-voice earlier today?"*
 
-When Sage is actively in a voice session, it can inject a compact live voice context block into the prompt. Outside of those sessions, voice analytics are fetched on demand through `discord_context`.
+When Sage is actively in a voice session, it can inject a compact live voice context block into the prompt. Outside those sessions, voice analytics are fetched on demand through `discord_context`.
 
 ### Voice Transcription + Summary Memory (Beta)
 
-When enabled, Sage can transcribe in-channel voice audio while connected and use it as short-lived context:
+When enabled, Sage can transcribe in-channel voice audio while connected and use it as short-lived context.
 
-| Command | Action |
-| :--- | :--- |
-| `/join` | Join the user's current voice channel |
-| `/leave` | Disconnect from voice |
+Live voice control is commandless:
+
+- `Sage, join my current voice channel`
+- `Sage, leave voice`
+- `Sage, are you in voice right now?`
 
 Operational behavior:
 
-- Join/leave is **command-driven**.
-- Audio is transcribed locally (STT) and kept **in-memory only**.
-- A small "live voice context" window can be injected into chat turns while in voice.
+- Join/leave/status flows are handled through the `discord_voice` tool path.
+- Audio is transcribed locally and kept **in-memory only**.
+- A small live voice context window can be injected into chat turns while Sage is in voice.
 - When Sage leaves voice, it can persist a **summary-only** record to the database (`VoiceConversationSummary`).
 
 > [!IMPORTANT]
-> Voice transcription is gated by channel logging policy: it only runs when `isLoggingEnabled(guildId, voiceChannelId)` is true (ingestion allowlist/blocklist).
+> Voice transcription is gated by channel logging policy: it only runs when `isLoggingEnabled(guildId, voiceChannelId)` is true.
 
 ---
 
@@ -146,15 +147,15 @@ docker compose -f config/services/self-host/docker-compose.voice.yml up -d --bui
 
 ## ⚠️ Limitations
 
-- Sage does not respond to voice input directly (no wake-word-in-voice).
-- Voice transcription is best-effort and is disabled by default.
+- Sage does not respond to raw voice input directly.
+- Voice transcription is best-effort and disabled by default.
 - Only **summary-only** voice memory is persisted; raw voice transcripts are not stored in the database.
-- Join/leave are **command-driven only** (`/join`, `/leave`) and are not exposed as runtime tools.
+- `discord_voice.join_current_channel` requires the invoker to already be in a standard voice channel.
 
 ---
 
 ## 🔗 Related Documentation
 
-- [🎮 Commands Reference](../guides/COMMANDS.md#public-commands) — Voice slash commands
+- [💬 Conversation & Controls](../guides/COMMANDS.md) — Chat-first invocation and setup flows
 - [🔀 Runtime Pipeline](PIPELINE.md) — How voice context enters the pipeline
 - [⚙️ Configuration](../reference/CONFIGURATION.md) — Voice environment variables

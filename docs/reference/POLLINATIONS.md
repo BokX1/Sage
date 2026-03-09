@@ -14,7 +14,7 @@ This document is written for:
 - **Reviewers** (what Sage calls upstream, and how to verify it)
 
 > [!IMPORTANT]
-> Sage can target another OpenAI-compatible endpoint for self-hosted runtime chat requests via `LLM_BASE_URL`, but Sage's built-in image generation and `/sage key` validation flow remain Pollinations-specific today.
+> Sage can target another OpenAI-compatible endpoint for self-hosted runtime chat requests via `LLM_BASE_URL`, but Sage's built-in image generation and hosted server-key validation flow remain Pollinations-specific today.
 
 ```mermaid
 flowchart LR
@@ -78,17 +78,16 @@ Sage supports **Bring Your Own Pollen (BYOP)** for its built-in Pollinations int
 
 - Use **Secret keys** that start with `sk_...`
 - Sage trims accidental leading/trailing whitespace before validating and storing a key.
-- Do **not** paste keys in public channels. Use Sage’s **ephemeral** command replies.
+- Do **not** paste keys in public channels. Use Sage’s setup modal and ephemeral admin-only responses.
 
-### How `/sage key login` works
+### How the hosted setup card flow works
 
-1. Run: `/sage key login`
+1. Trigger Sage in a guild with no usable key.
 2. Sage gives an auth link to Pollinations:
    - <https://enter.pollinations.ai/authorize?redirect_url=https://pollinations.ai/&permissions=profile,balance,usage>
 3. After you sign in, Pollinations redirects you to a URL containing:
    - <https://pollinations.ai/#api_key=sk_...>
-4. Copy the `sk_...` part and run:
-   - `/sage key set <sk_...>`
+4. Copy the `sk_...` part and submit it through `Set Server Key`
 
 ### How Sage validates your key
 
@@ -103,7 +102,7 @@ Sage accepts successful authenticated profile responses and extracts account fie
 
 When Sage needs a key, it resolves in this order:
 
-1. **Server key** (set via `/sage key set`)
+1. **Server key** (set through Sage's setup card + modal)
 2. **Host-level fallback** (`LLM_API_KEY` in `.env`)
 3. If neither exists, Sage returns setup guidance and cannot complete chat requests until a key is configured.
 
@@ -191,7 +190,7 @@ Sage can:
 
 ### What users do in Discord
 
-No slash command is required.
+No special command surface is required.
 
 **Generate**
 
@@ -276,7 +275,7 @@ curl -L "$POLLINATIONS_API/image/a%20cat%20wearing%20sunglasses?model=imagen-4&s
 
 ### "Invalid API key" on set
 
-- Re-run `/sage key login` and ensure you copied the exact `sk_...` token from the redirected URL.
+- Re-open Sage's setup card, click `Get Pollinations Key`, and ensure you copied the exact `sk_...` token from the redirected URL.
 - Confirm the key was created in the current Pollinations dashboard flow and not copied with extra characters.
 
 ### Shared deployment is slow or rate-limited
@@ -292,7 +291,7 @@ curl -L "$POLLINATIONS_API/image/a%20cat%20wearing%20sunglasses?model=imagen-4&s
 
 ### Voice transcription does nothing
 
-- Ensure the bot is in a voice channel (`/join`)
+- Ensure the bot is in a voice channel (`Sage, join my voice channel`)
 - Ensure `VOICE_STT_ENABLED=true`
 - Ensure the local voice service is running and reachable at `VOICE_SERVICE_BASE_URL` (see `config/services/self-host/docker-compose.voice.yml`)
 

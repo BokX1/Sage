@@ -1,6 +1,10 @@
 import { PermissionsBitField } from 'discord.js';
 
 type PermissionSource = PermissionsBitField | string | bigint | null | undefined;
+type GuildAdminInteractionLike = {
+  member?: unknown;
+  inGuild: () => boolean;
+};
 
 export function hasAdminPermissions(source: PermissionSource): boolean {
   if (source === null || source === undefined) {
@@ -25,4 +29,12 @@ export function isAdminFromMember(member: unknown): boolean {
 
   const source = (member as { permissions?: PermissionSource }).permissions;
   return hasAdminPermissions(source);
+}
+
+export function isAdminInteraction(interaction: GuildAdminInteractionLike): boolean {
+  if (!interaction.inGuild()) {
+    return false;
+  }
+
+  return isAdminFromMember(interaction.member);
 }

@@ -608,7 +608,7 @@ function buildLoopChatRequest(params: {
  * - Calls the LLM multiple times and executes registered tools.
  *
  * Error behavior:
- * - Invalid JSON envelopes trigger one retry prompt before falling back.
+ * - Provider/tool execution failures propagate to the caller after bounded retries/finalization handling.
  */
 export async function runToolCallLoop(params: ToolCallLoopParams): Promise<ToolCallLoopResult> {
   const { client, registry, ctx, model, apiKey } = params;

@@ -78,7 +78,8 @@ function buildValidationHint(toolName: string): string | undefined {
     normalized === 'discord_messages' ||
     normalized === 'discord_files' ||
     normalized === 'discord_server' ||
-    normalized === 'discord_admin'
+    normalized === 'discord_admin' ||
+    normalized === 'discord_voice'
   ) {
     return 'Try: { action: "help" } to see available actions and required fields.';
   }
@@ -104,7 +105,7 @@ export interface ToolExecutionContext {
   /** Whether the current turn was initiated by an admin-capable caller. */
   invokerIsAdmin?: boolean;
   /** Invocation source used for tool-policy decisions. */
-  invokedBy?: 'mention' | 'reply' | 'wakeword' | 'autopilot' | 'command';
+  invokedBy?: 'mention' | 'reply' | 'wakeword' | 'autopilot' | 'component';
   /** Optional route metadata for route-aware tool behavior. */
   routeKind?: string;
   /**

@@ -66,12 +66,13 @@ export async function generateChatReply(params: {
   replyToBotText?: string | null;
   replyReferenceContent?: LLMMessageContent | null;
   mentionedUserIds?: string[];
-  invokedBy?: 'mention' | 'reply' | 'wakeword' | 'autopilot' | 'command';
+  invokedBy?: 'mention' | 'reply' | 'wakeword' | 'autopilot' | 'component';
   isVoiceActive?: boolean;
   voiceChannelId?: string | null;
   isAdmin?: boolean;
 }): Promise<{
   replyText: string;
+  meta?: { kind?: 'missing_api_key' };
   files?: Array<{ attachment: Buffer; name: string }>;
   pendingAdminActionIds?: string[];
 }> {
@@ -234,6 +235,7 @@ export async function generateChatReply(params: {
 
     return {
       replyText,
+      meta: result.meta,
       files: result.files,
       pendingAdminActionIds: result.pendingAdminActionIds,
     };

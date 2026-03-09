@@ -208,8 +208,6 @@ export const testDefaults: Record<string, string> = {
   KAFKA_INTERACTIONS_TOPIC: 'sage.social.interactions',
   KAFKA_VOICE_TOPIC: 'sage.social.voice-sessions',
 
-  DEV_GUILD_ID: '',
-
   // Bot Behavior
   LOG_LEVEL: 'info',
   RATE_LIMIT_MAX: '100',
@@ -367,8 +365,6 @@ export const envSchema = z.object({
   KAFKA_BROKERS: z.string().default(''),
   KAFKA_INTERACTIONS_TOPIC: z.string().default('sage.social.interactions'),
   KAFKA_VOICE_TOPIC: z.string().default('sage.social.voice-sessions'),
-
-  DEV_GUILD_ID: z.string().optional(),
 
   // Bot Behavior
   LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']),

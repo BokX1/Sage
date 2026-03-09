@@ -1,12 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Events, type Client } from 'discord.js';
 
-const mockRegisterCommands = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
 const mockBackfillChannelHistory = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
-
-vi.mock('@/app/discord/commands/slash-command-registry', () => ({
-  registerCommands: mockRegisterCommands,
-}));
 
 vi.mock('@/app/discord/historyBackfill', () => ({
   backfillChannelHistory: mockBackfillChannelHistory,
@@ -20,24 +15,19 @@ vi.mock('@/platform/config/env', () => ({
 }));
 
 import { registerReadyHandler } from '@/app/discord/handlers/ready';
-import { logger } from '@/platform/logging/logger';
 
 describe('ready handler', () => {
   beforeEach(() => {
-    mockRegisterCommands.mockResolvedValue(undefined);
     mockBackfillChannelHistory.mockResolvedValue(undefined);
     const readyKey = Symbol.for('sage.handlers.ready');
     const g = globalThis as unknown as { [key: symbol]: unknown };
     delete g[readyKey];
   });
 
-  it('continues startup backfill when slash command registration fails', async () => {
-    mockRegisterCommands.mockRejectedValue(new Error('discord rest timeout'));
-
+  it('starts startup backfill without slash command registration', async () => {
     type ChannelStub = { isTextBased: () => boolean; isDMBased: () => boolean };
     type ReadyClientStub = {
       user: { tag: string };
-      guilds: { cache: Map<string, { id: string }> };
       channels: { cache: { filter: (predicate: (channel: ChannelStub) => boolean) => Map<string, ChannelStub> } };
     };
 
@@ -60,12 +50,6 @@ describe('ready handler', () => {
 
     const readyDiscordClient = {
       user: { tag: 'sage#0001' },
-      guilds: {
-        cache: new Map<string, { id: string }>([
-          ['guild-1', { id: 'guild-1' }],
-          ['guild-2', { id: 'guild-2' }],
-        ]),
-      },
       channels: {
         cache: {
           filter: (
@@ -84,14 +68,6 @@ describe('ready handler', () => {
 
     await (readyCallback as (client: ReadyClientStub) => Promise<void>)(readyDiscordClient);
 
-    expect(mockRegisterCommands).toHaveBeenCalledTimes(1);
-    expect(mockRegisterCommands).toHaveBeenCalledWith({
-      knownGuildIds: ['guild-1', 'guild-2'],
-    });
-    expect(logger.warn).toHaveBeenCalledWith(
-      expect.objectContaining({ error: expect.any(Error) }),
-      'Slash command registration failed; continuing startup initialization',
-    );
     expect(mockBackfillChannelHistory).toHaveBeenCalledTimes(2);
     expect(mockBackfillChannelHistory).toHaveBeenCalledWith('ch-1', 12);
     expect(mockBackfillChannelHistory).toHaveBeenCalledWith('ch-2', 12);

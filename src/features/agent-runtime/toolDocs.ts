@@ -205,7 +205,7 @@ export const discordContextToolDoc = registerRoutedToolDoc({
 export const discordMessagesToolDoc = registerRoutedToolDoc({
   tool: 'discord_messages',
   purpose:
-    'Read and write Discord message surfaces: message search/history, context windows, final in-channel replies, reactions, polls, and a deprecated thread-creation compatibility alias.',
+    'Read and write Discord message surfaces: message search/history, context windows, final in-channel replies, reactions, polls, and interactive Components V2 replies.',
   useWhen: [
     'The user needs exact message evidence or message-level actions.',
     'You want the final answer delivered directly into Discord.',
@@ -220,7 +220,7 @@ export const discordMessagesToolDoc = registerRoutedToolDoc({
   routingNotes: [
     'Use search_history or search_with_context for exact evidence.',
     'Use send for final Discord-native delivery.',
-    'Thread lifecycle now belongs to discord_server; create_thread remains a compatibility alias only.',
+    'Thread lifecycle belongs to discord_server.',
     'search_guild and get_user_timeline are disabled in autopilot turns.',
   ],
   selectionHints: [
@@ -230,8 +230,9 @@ export const discordMessagesToolDoc = registerRoutedToolDoc({
     '  - Server-wide historical search -> search_guild.',
     '  - Recent activity for one user -> get_user_timeline.',
     '  - Final Discord-native delivery in the channel -> send with plain / components_v2 presentation.',
+    '  - Interactive follow-up buttons or modal-backed flows -> send with components_v2 action_row buttons.',
     '  - Polls and reactions -> create_poll / add_reaction / remove_self_reaction.',
-    '  - Thread lifecycle -> discord_server (create_thread remains a compatibility alias only).',
+    '  - Thread lifecycle -> discord_server.',
     '  - If unsure which message action fits, call discord_messages: help.',
   ],
   actions: [
@@ -316,7 +317,7 @@ export const discordMessagesToolDoc = registerRoutedToolDoc({
           },
         },
       ],
-      commonMistakes: ['Do not use plain assistant prose when the final answer should appear as a Discord-native rich message.', 'Do not provide content with presentation=components_v2.', 'Every file/media attachmentName referenced in Components V2 must exist in files.'],
+      commonMistakes: ['Do not use plain assistant prose when the final answer should appear as a Discord-native rich message.', 'Do not provide content with presentation=components_v2.', 'Every file/media attachmentName referenced in Components V2 must exist in files.', 'Use action_row interactive buttons only when they materially improve the UX.'],
     },
     {
       action: 'create_poll',
@@ -326,16 +327,6 @@ export const discordMessagesToolDoc = registerRoutedToolDoc({
       optionalFields: ['channelId', 'durationHours', 'allowMultiselect', 'reason'],
       restrictions: ['Disabled in autopilot turns.', 'Requires guild context.'],
       examples: [{ action: 'create_poll', question: 'Ship on Friday?', answers: ['Yes', 'No'], durationHours: 24 }],
-    },
-    {
-      action: 'create_thread',
-      purpose: 'Deprecated compatibility alias for thread creation; prefer discord_server.create_thread.',
-      useWhen: ['Legacy payloads still request thread creation through discord_messages.'],
-      requiredFields: ['action', 'name'],
-      optionalFields: ['messageId', 'channelId', 'autoArchiveDurationMinutes', 'reason'],
-      restrictions: ['Disabled in autopilot turns.', 'Requires guild context.'],
-      examples: [{ action: 'create_thread', name: 'Release follow-up', messageId: '987654321' }],
-      commonMistakes: ['Prefer discord_server.create_thread for new implementations.'],
     },
     {
       action: 'add_reaction',
@@ -664,7 +655,7 @@ export const discordAdminToolDoc = registerRoutedToolDoc({
   ],
   selectionHints: [
     'IF the task requires Discord admin writes or raw Discord REST fallback -> discord_admin.',
-    '  - Server instruction updates, moderation, message edit/delete/pin, channels, roles, and member role changes -> typed discord_admin actions.',
+    '  - Server key status/clear/setup card, server instruction updates, moderation, message edit/delete/pin, channels, roles, and member role changes -> typed discord_admin actions.',
     '  - Installation link generation -> get_invite_url.',
     '  - Unsupported admin-grade guild-scoped reads/writes after typed-action checks -> api.',
     '  - If unsure which admin action fits, call discord_admin: help.',
@@ -676,6 +667,30 @@ export const discordAdminToolDoc = registerRoutedToolDoc({
       useWhen: ['The action or field contract is unclear.'],
       requiredFields: ['action'],
       examples: [{ action: 'help' }],
+    },
+    {
+      action: 'get_server_key_status',
+      purpose: 'Check the current server-wide BYOP key status.',
+      useWhen: ['An admin asks whether the server key is set or valid.'],
+      requiredFields: ['action'],
+      restrictions: ['Requires admin context.', 'Requires guild context.'],
+      examples: [{ action: 'get_server_key_status' }],
+    },
+    {
+      action: 'clear_server_api_key',
+      purpose: 'Clear the current server-wide BYOP key immediately.',
+      useWhen: ['An admin explicitly wants to remove the current server key.'],
+      requiredFields: ['action'],
+      restrictions: ['Requires admin context.', 'Disabled in autopilot turns.', 'Requires guild context.'],
+      examples: [{ action: 'clear_server_api_key' }],
+    },
+    {
+      action: 'send_key_setup_card',
+      purpose: 'Send the commandless interactive server-key setup card into the current channel.',
+      useWhen: ['An admin wants Sage to guide secure key setup without slash commands.'],
+      requiredFields: ['action'],
+      restrictions: ['Requires admin context.', 'Disabled in autopilot turns.', 'Requires guild context.'],
+      examples: [{ action: 'send_key_setup_card' }],
     },
     {
       action: 'update_server_instructions',
@@ -802,7 +817,7 @@ export const discordAdminToolDoc = registerRoutedToolDoc({
       useWhen: ['The user wants an installation link.'],
       requiredFields: ['action'],
       optionalFields: ['permissions', 'scopes', 'guildId', 'disableGuildSelect'],
-      defaults: ['scopes default to bot + applications.commands.', 'permissions default to 0 when bot scope is present.'],
+      defaults: ['scopes default to bot.', 'permissions default to 0 when bot scope is present.'],
       examples: [{ action: 'get_invite_url', guildId: '123', disableGuildSelect: true }],
     },
     {
@@ -816,6 +831,65 @@ export const discordAdminToolDoc = registerRoutedToolDoc({
       resultNotes: ['Sensitive fields are redacted from API results.'],
       examples: [{ action: 'api', method: 'GET', path: '/channels/123/messages/456' }],
       commonMistakes: ['Do not use api for normal message sending; use discord_messages send.', 'Do not assume api is available in non-admin turns.'],
+    },
+  ],
+});
+
+export const discordVoiceToolDoc = registerRoutedToolDoc({
+  tool: 'discord_voice',
+  purpose:
+    'Control Sage live voice presence in the current guild: inspect connection status, join the invoker current voice channel, or leave the active voice channel.',
+  useWhen: [
+    'The user wants Sage to join or leave voice without slash commands.',
+    'You need the current live voice connection state rather than voice analytics or summaries.',
+  ],
+  avoidWhen: [
+    'You need voice analytics or past voice summaries; use discord_context.',
+    'You need guild-resource metadata or thread lifecycle; use discord_server.',
+  ],
+  routingNotes: [
+    'Join and leave are disabled in autopilot turns.',
+    'join_current_channel requires the invoker to already be in a standard voice channel.',
+    'Stage channels are not supported.',
+  ],
+  selectionHints: [
+    'IF the request is about live voice presence or commandless voice control -> discord_voice.',
+    '  - Is Sage currently in voice? -> get_status.',
+    '  - Join my current voice channel -> join_current_channel.',
+    '  - Leave the active voice channel -> leave.',
+    '  - If unsure which voice action fits, call discord_voice: help.',
+  ],
+  actions: [
+    {
+      action: 'help',
+      purpose: 'Show action contracts for discord_voice.',
+      useWhen: ['The action or field contract is unclear.'],
+      requiredFields: ['action'],
+      examples: [{ action: 'help' }],
+    },
+    {
+      action: 'get_status',
+      purpose: 'Show the current live voice connection state for this guild.',
+      useWhen: ['The user asks whether Sage is currently connected to voice.'],
+      requiredFields: ['action'],
+      restrictions: ['Requires guild context.'],
+      examples: [{ action: 'get_status' }],
+    },
+    {
+      action: 'join_current_channel',
+      purpose: 'Join the invoker current standard voice channel.',
+      useWhen: ['The user explicitly asks Sage to join the voice channel they are already in.'],
+      requiredFields: ['action'],
+      restrictions: ['Disabled in autopilot turns.', 'Requires guild context.', 'Stage channels are not supported.'],
+      examples: [{ action: 'join_current_channel' }],
+    },
+    {
+      action: 'leave',
+      purpose: 'Leave the active guild voice channel.',
+      useWhen: ['The user explicitly asks Sage to leave voice.'],
+      requiredFields: ['action'],
+      restrictions: ['Disabled in autopilot turns.', 'Requires guild context.'],
+      examples: [{ action: 'leave' }],
     },
   ],
 });

@@ -368,6 +368,22 @@ describe('PollinationsClient', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it('does not retry after an abort error', async () => {
+    const client = new PollinationsClient({ maxRetries: 3 });
+    const abortError = new DOMException('The operation was aborted.', 'AbortError');
+
+    fetchMock.mockRejectedValueOnce(abortError);
+
+    await expect(
+      client.chat({
+        messages: [{ role: 'user', content: 'test' }],
+        signal: new AbortController().signal,
+      }),
+    ).rejects.toThrow(/aborted/i);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it('disables response_format and injects prompts for gemini-search when tools + json_object are requested', async () => {
     const client = new PollinationsClient({ model: 'gemini-search' });
 
@@ -516,5 +532,49 @@ describe('PollinationsClient', () => {
         args: { query: 'latest discord components v2' },
       },
     ]);
+  });
+
+  it('fails when the provider returns malformed tool-call argument JSON', async () => {
+    const client = new PollinationsClient({ model: 'kimi', maxRetries: 0 });
+
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      statusText: 'OK',
+      json: async () => ({
+        choices: [
+          {
+            message: {
+              content: 'Need a tool.',
+              tool_calls: [
+                {
+                  id: 'call-1',
+                  function: {
+                    name: 'google_search',
+                    arguments: '{"query":',
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      }),
+      text: async () => 'ok',
+    } satisfies { ok: boolean; status: number; statusText: string; json: () => Promise<unknown>; text: () => Promise<string> });
+
+    await expect(
+      client.chat({
+        messages: [{ role: 'user', content: 'test' }],
+        tools: [
+          {
+            type: 'function',
+            function: {
+              name: 'google_search',
+              parameters: { type: 'object', properties: {}, required: [] },
+            },
+          },
+        ],
+      }),
+    ).rejects.toThrow('malformed JSON arguments');
   });
 });

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { PermissionsBitField } from 'discord.js';
+import { ChannelType, PermissionsBitField } from 'discord.js';
 import type { ToolExecutionContext } from '@/features/agent-runtime/toolRegistry';
 
 const mocks = vi.hoisted(() => ({
@@ -37,7 +37,7 @@ vi.mock('@/platform/discord/client', () => ({
   },
 }));
 
-import { discordMessagesTool, discordServerTool } from '@/features/agent-runtime/discordDomainTools';
+import { discordServerTool, discordVoiceTool } from '@/features/agent-runtime/discordDomainTools';
 
 describe('discord server tool', () => {
   const publicCtx: ToolExecutionContext = {
@@ -139,39 +139,6 @@ describe('discord server tool', () => {
     );
   });
 
-  it('keeps discord_messages.create_thread as a compatibility alias', async () => {
-    mocks.requestDiscordInteractionForTool.mockResolvedValue({
-      status: 'executed',
-      action: 'create_thread',
-      channelId: 'channel-1',
-      threadId: 'thread-2',
-    });
-
-    const result = await discordMessagesTool.execute(
-      {
-        action: 'create_thread',
-        name: 'Legacy alias',
-      },
-      publicCtx,
-    );
-
-    expect(mocks.requestDiscordInteractionForTool).toHaveBeenCalledTimes(1);
-    expect(mocks.requestDiscordInteractionForTool).toHaveBeenCalledWith(
-      expect.objectContaining({
-        request: expect.objectContaining({
-          action: 'create_thread',
-          name: 'Legacy alias',
-        }),
-      }),
-    );
-    expect(result).toEqual(
-      expect.objectContaining({
-        status: 'executed',
-        action: 'create_thread',
-      }),
-    );
-  });
-
   it('returns admin-only permission snapshots for a member target', async () => {
     const permissions = new PermissionsBitField([
       PermissionsBitField.Flags.ViewChannel,
@@ -232,5 +199,83 @@ describe('discord server tool', () => {
         },
       ),
     ).rejects.toThrow(/autopilot/i);
+  });
+
+  it('requires parentChannelId when archived threads are requested', () => {
+    const parsed = discordServerTool.schema.safeParse({
+      action: 'list_threads',
+      includeArchived: true,
+    });
+
+    expect(parsed.success).toBe(false);
+    expect(parsed.error?.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          path: ['parentChannelId'],
+        }),
+      ]),
+    );
+  });
+
+  it('reports voice connection status through discord_voice', async () => {
+    mocks.guildFetch.mockResolvedValue({
+      channels: {
+        fetch: vi.fn().mockResolvedValue({ id: 'voice-1', name: 'Standup' }),
+      },
+    });
+
+    const { VoiceManager } = await import('@/features/voice/voiceManager');
+    const getConnectionSpy = vi.spyOn(VoiceManager.getInstance(), 'getConnection').mockReturnValue({
+      joinConfig: { channelId: 'voice-1' },
+    } as never);
+
+    const result = await discordVoiceTool.execute({ action: 'get_status' }, publicCtx);
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        ok: true,
+        action: 'get_status',
+        connected: true,
+        channelId: 'voice-1',
+        channelName: 'Standup',
+      }),
+    );
+
+    getConnectionSpy.mockRestore();
+  });
+
+  it('joins the invoker current voice channel through discord_voice', async () => {
+    const channel = {
+      id: 'voice-2',
+      name: 'Pairing',
+      type: ChannelType.GuildVoice,
+      guild: { id: 'guild-1' },
+    };
+    mocks.guildFetch.mockResolvedValue({
+      members: {
+        fetch: vi.fn().mockResolvedValue({
+          voice: { channel },
+        }),
+      },
+    });
+
+    const { VoiceManager } = await import('@/features/voice/voiceManager');
+    const joinSpy = vi.spyOn(VoiceManager.getInstance(), 'joinChannel').mockResolvedValue({} as never);
+
+    const result = await discordVoiceTool.execute({ action: 'join_current_channel' }, publicCtx);
+
+    expect(joinSpy).toHaveBeenCalledWith({
+      channel,
+      initiatedByUserId: 'user-1',
+    });
+    expect(result).toEqual(
+      expect.objectContaining({
+        ok: true,
+        action: 'join_current_channel',
+        channelId: 'voice-2',
+      }),
+    );
+
+    joinSpy.mockRestore();
   });
 });

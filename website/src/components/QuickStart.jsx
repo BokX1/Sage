@@ -6,7 +6,7 @@ const steps = [
         num: '01',
         title: 'Invite Sage',
         desc: 'Add the hosted Sage bot to your Discord server — zero infrastructure, one click.',
-        command: 'https://discord.com/oauth2/authorize?client_id=1462117382398017667&scope=bot%20applications.commands&permissions=8',
+        command: 'https://discord.com/oauth2/authorize?client_id=1462117382398017667&scope=bot&permissions=8',
         commandDisplay: 'discord.com/oauth2/authorize',
         color: '#7AA2F7',
         icon: (
@@ -16,9 +16,9 @@ const steps = [
     {
         num: '02',
         title: 'Activate Your Server',
-        desc: 'For the hosted bot, add your server API key and activate Sage for your whole server.',
-        command: '/sage key set sk_...',
-        commandDisplay: '/sage key set sk_...',
+        desc: 'For the hosted bot, trigger Sage once and use the setup card modal to activate your whole server.',
+        command: '@Sage hello',
+        commandDisplay: '@Sage hello',
         color: '#78b846',
         icon: (
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4" /></svg>
@@ -94,7 +94,7 @@ function CopyButton({ text, color }) {
         <button
             type="button"
             onClick={handleCopy}
-            aria-label={`Copy command: ${text}`}
+            aria-label={`Copy text: ${text}`}
             className="text-[10px] font-mono px-2 py-0.5 rounded-md transition-all cursor-pointer z-10"
             style={{
                 backgroundColor: copied ? color + '30' : 'rgba(255,255,255,0.05)',
@@ -194,7 +194,7 @@ function DiscordMockup({ activeStep }) {
                                 avatarColor="#78b846"
                                 author="Sage"
                                 time="Today at 12:00 PM"
-                                content={<div className="bg-[#2B2D31] p-3 rounded border border-slate-700/50 mt-1"><span className="text-[#a9df7c] text-xs font-mono uppercase font-bold tracking-wider block mb-1">Status: Online</span><div className="text-slate-300">Run <span className="text-[#00A8FC] bg-black/30 px-1 rounded font-mono">/sage key set</span> to activate the hosted flow, or self-host Sage against any OpenAI-compatible provider.</div></div>}
+                                content={<div className="bg-[#2B2D31] p-3 rounded border border-slate-700/50 mt-1"><span className="text-[#a9df7c] text-xs font-mono uppercase font-bold tracking-wider block mb-1">Status: Online</span><div className="text-slate-300">Talk to Sage once to open the setup card, or self-host Sage against any OpenAI-compatible provider.</div></div>}
                             />
                         </motion.div>
                     )}
@@ -206,15 +206,14 @@ function DiscordMockup({ activeStep }) {
                                 avatarColor="#5865F2"
                                 author="Admin"
                                 time="Today at 12:05 PM"
-                                isCommand={true}
-                                content="/sage key set sk_pollen_abc123..."
+                                content={<>@<span className="text-[#5865F2] bg-[#5865F2]/10 px-0.5 rounded">Sage</span> hello</>}
                             />
                             <DiscordMessage
                                 isBot={true}
                                 avatarColor="#78b846"
                                 author="Sage"
                                 time="Today at 12:05 PM"
-                                content="✅ API Key validated. Core runtime activated. I am now monitoring context and ready for complex tasks."
+                                content="✅ Server key validated. Hosted runtime activated for this guild. I am now ready for normal chat, tools, and voice control."
                             />
                         </motion.div>
                     )}
@@ -304,7 +303,7 @@ export default function QuickStart() {
                     </span>
                 </h2>
                 <p className="text-lg text-slate-400 max-w-xl lg:mx-auto font-light">
-                    From zero to a fully agentic community engineer — absolutely zero infrastructure required.
+                    From zero to a fully agentic community engineer with a chat-first setup flow.
                 </p>
             </motion.div>
 

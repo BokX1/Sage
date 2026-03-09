@@ -21,6 +21,8 @@ export {
   discordContextTool,
   discordMessagesTool,
   discordFilesTool,
+  discordServerTool,
+  discordVoiceTool,
   discordAdminTool,
 } from './discordDomainTools';
 
@@ -31,6 +33,5 @@ export {
   type ToolCallLoopResult,
 } from './toolCallLoop';
 
-export { type ToolCallEnvelope } from './toolCallParser';
 export { type ToolResult, type ToolAttachment } from './toolCallExecution';
 export { ToolResultCache, buildToolCacheKey, type ToolCacheEntry } from './toolCache';

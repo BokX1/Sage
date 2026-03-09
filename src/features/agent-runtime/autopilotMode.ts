@@ -1,6 +1,6 @@
 export type RuntimeAutopilotMode = 'reserved' | 'talkative' | null;
 
-type InvocationSource = 'mention' | 'reply' | 'wakeword' | 'autopilot' | 'command';
+type InvocationSource = 'mention' | 'reply' | 'wakeword' | 'autopilot' | 'component';
 type ConfiguredAutopilotMode = 'manual' | 'reserved' | 'talkative';
 
 export function resolveRuntimeAutopilotMode(params: {

@@ -47,13 +47,16 @@ export interface RunChatTurnParams {
   replyToBotText: string | null;
   replyReferenceContent?: LLMMessageContent | null;
   mentionedUserIds?: string[];
-  invokedBy?: 'mention' | 'reply' | 'wakeword' | 'autopilot' | 'command';
+  invokedBy?: 'mention' | 'reply' | 'wakeword' | 'autopilot' | 'component';
   isVoiceActive?: boolean;
   isAdmin?: boolean;
 }
 
 export interface RunChatTurnResult {
   replyText: string;
+  meta?: {
+    kind?: 'missing_api_key';
+  };
   debug?: {
     messages?: LLMChatMessage[];
   };
@@ -93,7 +96,7 @@ function buildToolUsageInstruction(toolNames: string[]): string {
 
 function resolveActiveToolNames(params: {
   isAdmin: boolean;
-  invokedBy: 'mention' | 'reply' | 'wakeword' | 'autopilot' | 'command';
+  invokedBy: 'mention' | 'reply' | 'wakeword' | 'autopilot' | 'component';
 }): string[] {
   const allToolNames = globalToolRegistry.listNames();
   return allToolNames.filter((toolName) => {
@@ -113,6 +116,22 @@ function cleanDraftText(value: string | null | undefined): string | null {
     .replace(/\r\n/g, '\n')
     .trim();
   return normalized.length > 0 ? normalized : null;
+}
+
+function collectTraceReasoningText(values: Array<string | null | undefined>): string | undefined {
+  const segments: string[] = [];
+  const seen = new Set<string>();
+
+  for (const value of values) {
+    const cleaned = cleanDraftText(value);
+    if (!cleaned || seen.has(cleaned)) {
+      continue;
+    }
+    seen.add(cleaned);
+    segments.push(cleaned);
+  }
+
+  return segments.length > 0 ? segments.join('\n\n') : undefined;
 }
 
 function collectFilesFromToolResults(toolResults: ToolResult[]): Array<{ attachment: Buffer; name: string }> {
@@ -222,8 +241,9 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
     clearToolCaches();
     return {
       replyText: guildId
-        ? '⚠️ I need a server API key before I can respond here. Ask an admin to run `/sage key login` and `/sage key set <your_key>`.'
+        ? '⚠️ I need a server API key before I can respond here.'
         : '⚠️ I need an API key before I can respond. Configure `LLM_API_KEY` for this bot instance.',
+      meta: guildId ? { kind: 'missing_api_key' } : undefined,
     };
   }
 
@@ -305,7 +325,6 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
           route: SINGLE_ROUTE_KIND,
           activeToolNames,
         },
-        reasoningText: 'Single-agent runtime (router/graph disabled)',
         budgetJson: {
           route: SINGLE_ROUTE_KIND,
           model,
@@ -330,6 +349,7 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
   let toolResults: ToolResult[] = [];
   let toolLoopTraceEvents: Record<string, unknown>[] = [];
   let initialReasoningText: string | undefined;
+  let traceReasoningText: string | undefined;
 
   try {
     const maxTokens = normalizeStrictlyPositiveInt(
@@ -348,6 +368,7 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
     });
     draftText = response.text;
     initialReasoningText = cleanDraftText(response.reasoningText) ?? undefined;
+    traceReasoningText = collectTraceReasoningText([initialReasoningText]);
 
     if (toolLoopEnabled && toolSpecs && activeToolNames.length > 0) {
       const loopStartedAt = Date.now();
@@ -414,6 +435,10 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
         ),
         latencyMs: Date.now() - loopStartedAt,
       };
+      traceReasoningText = collectTraceReasoningText([
+        initialReasoningText,
+        ...loopResult.roundEvents.map((event) => event.reasoningText),
+      ]);
     }
   } catch (error) {
     logger.error({ error, traceId }, 'Single-agent runtime call failed');
@@ -486,6 +511,7 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
             },
           },
         ],
+        reasoningText: traceReasoningText ?? null,
         replyText: safeFinalText,
       });
     } catch (error) {
@@ -498,6 +524,7 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
     clearToolCaches();
     return {
       replyText: '',
+      meta: undefined,
       debug: { messages: runtimeMessages },
       pendingAdminActionIds,
     };
@@ -516,6 +543,7 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
   clearToolCaches();
   return {
     replyText: cleanedText,
+    meta: undefined,
     debug: { messages: runtimeMessages },
     files,
     pendingAdminActionIds,

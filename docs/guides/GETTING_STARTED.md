@@ -62,7 +62,7 @@ flowchart LR
       --> S4["4) Start PostgreSQL"]:::step
       --> S5["5) Configure .env"]:::step
       --> S6["6) Start Sage"]:::step
-      --> S7["7) Invite bot & set key"]:::endNode
+      --> S7["7) Invite bot & activate hosted key flow if needed"]:::endNode
 ```
 
 ---
@@ -177,7 +177,7 @@ The wizard will ask for:
 | **DISCORD_TOKEN** | Bot token from Step 2.3 |
 | **DISCORD_APP_ID** | Application ID from Step 2.2 |
 | **DATABASE_URL** | Choose **Use local Docker default** for local setup |
-| **LLM_API_KEY** | Optional global key for your configured OpenAI-compatible provider (or set a Pollinations server key later via `/sage key set`) |
+| **LLM_API_KEY** | Optional global key for your configured OpenAI-compatible provider (or set a Pollinations server key later through Sage's setup card flow) |
 | **CHAT_MODEL** | Use `kimi` (recommended baseline) unless you have a specific override |
 
 > ✅ The wizard can also run optional post-setup steps for you (start Docker, run migrations, run doctor).
@@ -198,7 +198,7 @@ npm run onboard -- \
   --doctor
 ```
 
-> ℹ️ `--api-key` is optional. If you skip it, Sage can still use a server key later through the built-in Pollinations `/sage key` flow.
+> ℹ️ `--api-key` is optional. If you skip it, Sage can still use a server key later through the built-in Pollinations setup card flow.
 
 ---
 
@@ -249,7 +249,6 @@ You should see:
 
 ```text
 [info] Logged in as Sage#1234!
-[info] Successfully reloaded application (/) commands GLOBALLY.
 ```
 
 Keep this terminal window open.
@@ -274,7 +273,6 @@ Keep this terminal window open.
 **Scopes:**
 
 - ✅ `bot`
-- ✅ `applications.commands`
 
 **Bot Permissions:**
 
@@ -302,21 +300,21 @@ Keep this terminal window open.
 
 Use this step if you want Sage's built-in server-wide BYOP flow. If you already configured `LLM_API_KEY` for a self-hosted OpenAI-compatible provider, you can skip it.
 
-### 7.1 Get Your API Key
+### 7.1 Trigger the setup card
 
-1. Run `/sage key login` in any channel
-2. Click the link to sign in via Pollinations (GitHub)
-3. Copy the `sk_...` key from the URL
+1. Mention Sage or start a message with `Sage`
+2. If the guild has no usable key, Sage posts the setup card
+3. Click `Get Pollinations Key` and sign in via Pollinations (GitHub)
+4. Copy the `sk_...` key from the URL
 
 > [!TIP]
 > You can also manage/create keys from the Pollinations dashboard at `enter.pollinations.ai`.
 
 ### 7.2 Set the Server Key
 
-1. Run `/sage key set <your_key>`
-2. Sage will confirm the key is valid and show your account info
-
-> 💡 **Need a key?** The `/sage key login` command provides step-by-step instructions.
+1. Click `Set Server Key`
+2. Paste `<your_key>` into the modal
+3. Sage confirms the key is valid and shows account info
 
 ---
 
@@ -325,7 +323,7 @@ Use this step if you want Sage's built-in server-wide BYOP flow. If you already 
 ## ✅ Verification Checklist
 
 - [ ] Sage appears in your server member list
-- [ ] Run `/ping` — Sage should reply with **Pong!**
+- [ ] Mention Sage or use the wake word — Sage should reply in-channel
 - [ ] Chat with Sage in any of these ways:
   - **Wake word:** `Sage, hello!`
   - **Mention:** `@Sage what's up?`
@@ -366,7 +364,7 @@ Sage admin commands now use Discord-native permissions only.
 
 1. Open **Server Settings** → **Roles**.
 2. Ensure your role has **Manage Server** or **Administrator**.
-3. Restart Sage only if command definitions were just updated.
+3. Restart Sage only if you changed runtime configuration or deployment settings.
 
 ---
 

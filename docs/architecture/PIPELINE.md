@@ -100,16 +100,15 @@ flowchart LR
     classDef execute fill:#fff3cd,stroke:#333,color:black
     classDef result fill:#ffccbc,stroke:#333,color:black
 
-    A[LLM Response] --> B[Parse tool calls]:::parse
-    B --> C{Valid envelope?}:::parse
+    A[LLM Response] --> B[Read native tool calls]:::parse
+    B --> C{Calls present?}:::parse
     C -->|Yes| D[Validate args with Zod]:::validate
     D --> E{Allowed and valid?}:::validate
     E -->|Yes| F[Execute tool]:::execute
     E -->|No| G[Return validation error]:::result
-    C -->|No| H[Return parse error]:::result
+    C -->|No| H[Finalize plain-text answer]:::result
     F --> I[Collect results and files]:::result
     G --> I
-    H --> I
     I --> J[Feed results back to LLM]:::result
 ```
 
@@ -118,6 +117,7 @@ flowchart LR
 - **Bounded rounds**: `AGENTIC_TOOL_MAX_ROUNDS` limits how many back-and-forth tool iterations can occur in one turn.
 - **Calls per round**: `AGENTIC_TOOL_MAX_CALLS_PER_ROUND` caps the number of tool calls the model can issue at once.
 - **Parallel read-only execution**: read-only calls can run concurrently up to `AGENTIC_TOOL_MAX_PARALLEL_READ_ONLY`, but side-effecting actions still preserve ordering barriers.
+- **Native tool contract**: the runtime consumes structured provider tool calls directly; it no longer relies on text-parsed JSON envelopes.
 - **Per-tool timeout**: each tool call is bounded by `AGENTIC_TOOL_TIMEOUT_MS`.
 - **Loop wall-clock cap**: the whole orchestration phase is bounded by `AGENTIC_TOOL_LOOP_TIMEOUT_MS`.
 - **In-process memoization**: repeated read-only calls can hit the in-memory memo cache controlled by `AGENTIC_TOOL_MEMO_*`. The cache is per process and not shared across instances.
@@ -144,7 +144,7 @@ Each turn can persist the following to `AgentTrace`:
 | `replyText` | Final reply text sent back to Discord |
 
 > [!TIP]
-> Use `npm run db:studio` to inspect traces in Prisma Studio, or `/sage admin stats` for a quick runtime health snapshot in Discord.
+> Use `npm run db:studio` to inspect traces in Prisma Studio, or send a real chat ping in Discord for an end-to-end runtime health check.
 
 ---
 

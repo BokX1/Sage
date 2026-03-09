@@ -25,6 +25,7 @@ import {
   executeDiscordFilesAction,
   executeDiscordMessagesAction,
   executeDiscordServerAction,
+  executeDiscordVoiceAction,
 } from './discord/core';
 import type { ToolDefinition } from './toolRegistry';
 import {
@@ -301,7 +302,6 @@ const discordMessagesToolSchema = z.discriminatedUnion('action', [
   messagesUserTimelineSchema,
   messagesSendSchema,
   pollsCreateSchema,
-  threadsCreateSchema,
   reactionsAddSchema,
   reactionsRemoveSelfSchema,
 ]);
@@ -309,7 +309,7 @@ const discordMessagesToolSchema = z.discriminatedUnion('action', [
 export const discordMessagesTool: ToolDefinition<z.infer<typeof discordMessagesToolSchema>> = {
   name: 'discord_messages',
   description:
-    'Discord messages tool for exact message history, in-channel delivery, reactions, polls, and legacy thread creation compatibility.\n<USE_ONLY_WHEN> You need exact message evidence or message-level actions. </USE_ONLY_WHEN>',
+    'Discord messages tool for exact message history, in-channel delivery, reactions, and polls.\n<USE_ONLY_WHEN> You need exact message evidence or message-level actions. </USE_ONLY_WHEN>',
   schema: discordMessagesToolSchema,
   metadata: {
     readOnlyPredicate: (args) => isReadOnlyDiscordDomainCall('discord_messages', args),
@@ -430,6 +430,14 @@ const serverListThreadsSchema = z.object({
   parentChannelId: z.string().trim().min(1).max(64).optional(),
   includeArchived: z.boolean().optional(),
   limit: z.number().int().min(1).max(100).optional(),
+}).superRefine((value, ctx) => {
+  if (value.includeArchived === true && !value.parentChannelId) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'parentChannelId is required when includeArchived is true.',
+      path: ['parentChannelId'],
+    });
+  }
 });
 
 const serverGetThreadSchema = z.object({
@@ -666,6 +674,21 @@ const oauthInviteUrlSchema = z.object({
   disableGuildSelect: z.boolean().optional(),
 });
 
+const adminGetServerKeyStatusSchema = z.object({
+  think: discordThinkField,
+  action: z.literal('get_server_key_status').describe('Check the current server-wide API key status. Admin-only read.'),
+});
+
+const adminClearServerApiKeySchema = z.object({
+  think: discordThinkField,
+  action: z.literal('clear_server_api_key').describe('Clear the current server-wide API key immediately. Admin-only write. Disabled in autopilot turns.'),
+});
+
+const adminSendKeySetupCardSchema = z.object({
+  think: discordThinkField,
+  action: z.literal('send_key_setup_card').describe('Send an interactive server-key setup card in the current channel. Admin-only write. Disabled in autopilot turns.'),
+});
+
 const discordApiSchema = z.object({
   think: discordThinkField,
   action: z.literal('api').describe('Guild-scoped raw Discord API fallback for admin use only. Non-GET requests require approval.'),
@@ -681,6 +704,9 @@ const discordApiSchema = z.object({
 
 const discordAdminToolSchema = z.discriminatedUnion('action', [
   helpActionSchema,
+  adminGetServerKeyStatusSchema,
+  adminClearServerApiKeySchema,
+  adminSendKeySetupCardSchema,
   instructionsUpdateServerSchema,
   z.object({
     think: discordThinkField,
@@ -715,5 +741,43 @@ export const discordAdminTool: ToolDefinition<z.infer<typeof discordAdminToolSch
       return buildDiscordHelpPayload('discord_admin', args.includeExamples);
     }
     return executeDiscordAdminAction(args as Record<string, unknown> & { action: string }, ctx);
+  },
+};
+
+const voiceGetStatusSchema = z.object({
+  think: discordThinkField,
+  action: z.literal('get_status').describe('Show the bot voice connection status for this guild.'),
+});
+
+const voiceJoinCurrentChannelSchema = z.object({
+  think: discordThinkField,
+  action: z.literal('join_current_channel').describe('Join the invoker’s current voice channel. Disabled in autopilot turns.'),
+});
+
+const voiceLeaveSchema = z.object({
+  think: discordThinkField,
+  action: z.literal('leave').describe('Leave the active guild voice channel. Disabled in autopilot turns.'),
+});
+
+const discordVoiceToolSchema = z.discriminatedUnion('action', [
+  helpActionSchema,
+  voiceGetStatusSchema,
+  voiceJoinCurrentChannelSchema,
+  voiceLeaveSchema,
+]);
+
+export const discordVoiceTool: ToolDefinition<z.infer<typeof discordVoiceToolSchema>> = {
+  name: 'discord_voice',
+  description:
+    'Discord voice tool for live voice connection status and commandless join/leave control.\n<USE_ONLY_WHEN> You need live voice control or voice connection state rather than summaries/analytics. </USE_ONLY_WHEN>',
+  schema: discordVoiceToolSchema,
+  metadata: {
+    readOnlyPredicate: (args) => isReadOnlyDiscordDomainCall('discord_voice', args),
+  },
+  execute: async (args, ctx) => {
+    if (args.action === 'help') {
+      return buildDiscordHelpPayload('discord_voice', args.includeExamples);
+    }
+    return executeDiscordVoiceAction(args as Record<string, unknown> & { action: string }, ctx);
   },
 };

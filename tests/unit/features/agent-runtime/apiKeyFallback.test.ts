@@ -112,7 +112,7 @@ describe('agent runtime API key fallback', () => {
     });
 
     expect(result.replyText).toContain('I need a server API key before I can respond here');
-    expect(result.replyText).toContain('/sage key login');
+    expect(result.meta).toEqual({ kind: 'missing_api_key' });
     expect(mockLLM.chat).not.toHaveBeenCalled();
   });
 });

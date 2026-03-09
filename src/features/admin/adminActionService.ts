@@ -52,10 +52,10 @@ import {
   assertDiscordRestRequestGuildScoped,
   discordRestRequestGuildScoped,
 } from '../../platform/discord/discordRestPolicy';
-import { isAdmin } from '../../app/discord/handlers/sage-command-handlers';
 import { client } from '../../platform/discord/client';
 import {
   discordComponentsV2BlockSchema as componentsV2BlockSchema,
+  discordInteractiveActionButtonSchema,
   discordComponentsV2MediaRefSchema as componentsV2MediaRefSchema,
   discordComponentsV2MessageSchema,
   discordMessageFileInputSchema,
@@ -64,6 +64,11 @@ import {
   type DiscordComponentsV2Message,
   validateDiscordSendMessagePayload,
 } from '../discord/messageContract';
+import {
+  buildActionButtonComponent,
+  createInteractiveButtonSession,
+} from '../discord/interactiveComponentService';
+import { isAdminInteraction } from '../../platform/discord/admin-permissions';
 
 const APPROVAL_TTL_MS = 10 * 60 * 1_000;
 const RESOLVED_APPROVAL_CARD_DELETE_DELAY_MS = 60_000;
@@ -808,9 +813,14 @@ function buildLinkButtonComponent(
   };
 }
 
-function renderComponentsV2Block(
+async function renderComponentsV2Block(
   block: z.infer<typeof componentsV2BlockSchema>,
-): APIContainerComponent['components'][number] {
+  params: {
+    guildId: string;
+    channelId: string;
+    requestedBy: string;
+  },
+): Promise<APIContainerComponent['components'][number]> {
   switch (block.type) {
     case 'text':
       return {
@@ -856,23 +866,54 @@ function renderComponentsV2Block(
         divider: block.divider ?? true,
         spacing: block.spacing === 'large' ? SeparatorSpacingSize.Large : SeparatorSpacingSize.Small,
       } satisfies APISeparatorComponent;
-    case 'action_row':
+    case 'action_row': {
+      const components = await Promise.all(
+        block.buttons.map(async (button) => {
+          if ('url' in button) {
+            return buildLinkButtonComponent(button);
+          }
+
+          const parsed = discordInteractiveActionButtonSchema.parse(button);
+          const customId = await createInteractiveButtonSession({
+            guildId: params.guildId,
+            channelId: params.channelId,
+            createdByUserId: params.requestedBy,
+            action: parsed.interaction,
+          });
+          return buildActionButtonComponent({
+            customId,
+            label: parsed.label,
+            style: parsed.style,
+          });
+        }),
+      );
       return {
         type: ComponentType.ActionRow,
-        components: block.buttons.map((button) => buildLinkButtonComponent(button)),
+        components,
       } satisfies APIActionRowComponent<APIButtonComponent>;
+    }
   }
 }
 
-export function buildDiscordComponentsV2MessagePayload(params: {
+export async function buildDiscordComponentsV2MessagePayload(params: {
   message: DiscordComponentsV2Message;
   files?: Array<z.infer<typeof discordMessageFileInputSchema>>;
-}): {
+  guildId: string;
+  channelId: string;
+  requestedBy: string;
+}): Promise<{
   flags: MessageFlags;
   components: APIMessageTopLevelComponent[];
   attachments?: Array<{ id: number; filename: string }>;
-} {
-  const components = params.message.blocks.map((block) => renderComponentsV2Block(block));
+}> {
+  const components = await Promise.all(
+    params.message.blocks.map((block) =>
+      renderComponentsV2Block(block, {
+        guildId: params.guildId,
+        channelId: params.channelId,
+        requestedBy: params.requestedBy,
+      })),
+  );
   const attachments = params.files?.map((file, index) => ({
     id: index,
     filename: file.filename,
@@ -1104,11 +1145,14 @@ async function executeImmediateDiscordAction(params: {
       source: file.source,
     } satisfies DiscordRestFileInput)) ?? [];
 
-    if ((sendAction.presentation ?? 'plain') === 'components_v2') {
-      const payload = buildDiscordComponentsV2MessagePayload({
-        message: sendAction.componentsV2!,
-        files: sendAction.files,
-      });
+      if ((sendAction.presentation ?? 'plain') === 'components_v2') {
+        const payload = await buildDiscordComponentsV2MessagePayload({
+          message: sendAction.componentsV2!,
+          files: sendAction.files,
+          guildId: params.guildId,
+          channelId: channel.id,
+          requestedBy: params.requestedBy,
+        });
       const restResponse = await discordRestRequest({
         method: 'POST',
         path: `/channels/${channel.id}/messages`,
@@ -2085,7 +2129,7 @@ export async function requestDiscordInteractionForTool(params: {
   guildId: string;
   channelId: string;
   requestedBy: string;
-  invokedBy?: 'mention' | 'reply' | 'wakeword' | 'autopilot' | 'command';
+  invokedBy?: 'mention' | 'reply' | 'wakeword' | 'autopilot' | 'component';
   request: DiscordInteractionRequest;
 }): Promise<Record<string, unknown>> {
   if (params.invokedBy === 'autopilot') {
@@ -2319,7 +2363,7 @@ export async function handleAdminActionButtonInteraction(
     return true;
   }
 
-  if (!isAdmin(interaction)) {
+  if (!isAdminInteraction(interaction)) {
     await interaction.reply({ content: '❌ Admin only.', ephemeral: true });
     return true;
   }

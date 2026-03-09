@@ -1,4 +1,8 @@
 import { z } from 'zod';
+import {
+  interactiveButtonActionSchema,
+  interactiveModalFieldSchema,
+} from './interactiveComponentService';
 
 export const discordMessageFileSourceSchema = z.discriminatedUnion('type', [
   z.object({
@@ -24,7 +28,13 @@ export const discordMessageFileInputSchema = z.object({
 export const discordMessageLinkButtonSchema = z.object({
   label: z.string().trim().min(1).max(80),
   url: z.string().trim().url().max(2_048),
-});
+}).strict();
+
+export const discordInteractiveActionButtonSchema = z.object({
+  label: z.string().trim().min(1).max(80),
+  style: z.enum(['primary', 'secondary', 'success', 'danger']).optional(),
+  interaction: interactiveButtonActionSchema,
+}).strict();
 
 export const discordComponentsV2MediaRefSchema = z.object({
   url: z.string().trim().url().max(2_048).optional(),
@@ -88,7 +98,7 @@ const discordComponentsV2SeparatorBlockSchema = z.object({
 
 const discordComponentsV2ActionRowBlockSchema = z.object({
   type: z.literal('action_row'),
-  buttons: z.array(discordMessageLinkButtonSchema).min(1).max(5),
+  buttons: z.array(z.union([discordMessageLinkButtonSchema, discordInteractiveActionButtonSchema])).min(1).max(5),
 });
 
 export const discordComponentsV2BlockSchema = z.discriminatedUnion('type', [
@@ -111,6 +121,8 @@ export const discordComponentsV2MessageSchema = z.object({
 export type DiscordComponentsV2Message = z.infer<typeof discordComponentsV2MessageSchema>;
 export type DiscordMessageFileInput = z.infer<typeof discordMessageFileInputSchema>;
 export type DiscordMessagePresentation = z.infer<typeof discordMessagePresentationSchema>;
+export type DiscordInteractiveActionButton = z.infer<typeof discordInteractiveActionButtonSchema>;
+export type DiscordInteractiveModalField = z.infer<typeof interactiveModalFieldSchema>;
 
 export function validateDiscordSendMessagePayload(
   value: {

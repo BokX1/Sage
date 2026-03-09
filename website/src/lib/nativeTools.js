@@ -3,6 +3,7 @@ export const nativeTools = [
   { name: 'discord_messages', short: 'Discord Messages', desc: 'Exact message history, Discord-native delivery, reactions, and polls', cat: 'discord', color: '#7AA2F7' },
   { name: 'discord_files', short: 'Discord Files', desc: 'Attachment discovery, recall, paging, and resend flows', cat: 'discord', color: '#7AA2F7' },
   { name: 'discord_server', short: 'Discord Server', desc: 'Guild resources, scheduled events, AutoMod reads, and thread lifecycle', cat: 'discord', color: '#7AA2F7' },
+  { name: 'discord_voice', short: 'Discord Voice', desc: 'Live voice connection status and commandless join or leave control', cat: 'discord', color: '#7AA2F7' },
   { name: 'discord_admin', short: 'Discord Admin', desc: 'Admin writes, moderation, invite URLs, and raw Discord API fallback', cat: 'discord', color: '#7AA2F7' },
 
   // Discord (cyan)
@@ -53,6 +54,9 @@ export const nativeTools = [
 
   // Discord (cyan) - Admin Only
   { name: 'update_server_instructions', short: 'Update Instructions', desc: 'Queue an admin-approved update to server instructions', cat: 'discord', color: '#7AA2F7' },
+  { name: 'get_server_key_status', short: 'Key Status', desc: 'Admin-only status check for the current server API key', cat: 'discord', color: '#7AA2F7' },
+  { name: 'clear_server_api_key', short: 'Clear Server Key', desc: 'Admin-only removal of the current server API key', cat: 'discord', color: '#7AA2F7' },
+  { name: 'send_key_setup_card', short: 'Send Setup Card', desc: 'Post the interactive server-key setup card into the current channel', cat: 'discord', color: '#7AA2F7' },
   { name: 'submit_moderation', short: 'Mod Queue', desc: 'Queue moderation actions based on policy', cat: 'discord', color: '#7AA2F7' },
   { name: 'edit_message', short: 'Edit Message', desc: 'Modify contents of an existing bot message', cat: 'discord', color: '#7AA2F7' },
   { name: 'delete_message', short: 'Delete Message', desc: 'Delete an offending message (Admin only)', cat: 'discord', color: '#7AA2F7' },
@@ -66,6 +70,9 @@ export const nativeTools = [
   { name: 'add_member_role', short: 'Add Role', desc: 'Assign a role to a server member', cat: 'discord', color: '#7AA2F7' },
   { name: 'remove_member_role', short: 'Remove Role', desc: 'Remove a role from a server member', cat: 'discord', color: '#7AA2F7' },
   { name: 'api', short: 'Discord API', desc: 'Raw Discord REST passthrough (admin-only, guild-scoped)', cat: 'discord', color: '#7AA2F7' },
+  { name: 'get_status', short: 'Voice Status', desc: 'Check whether Sage is currently connected to voice', cat: 'discord', color: '#7AA2F7' },
+  { name: 'join_current_channel', short: 'Join Voice', desc: 'Join the invoker current standard voice channel', cat: 'discord', color: '#7AA2F7' },
+  { name: 'leave', short: 'Leave Voice', desc: 'Leave the active guild voice channel', cat: 'discord', color: '#7AA2F7' },
 
   // Search (amber)
   { name: 'web', short: 'Web', desc: 'Unified web research (search/read/extract/research) with provider fallback', cat: 'search', color: '#E0AF68' },

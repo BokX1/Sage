@@ -6,7 +6,7 @@ What Sage stores, how to control retention, and what goes to the LLM provider.
   <img src="https://img.shields.io/badge/%F0%9F%8C%BF-Sage%20Security-2d5016?style=for-the-badge&labelColor=4a7c23" alt="Sage Security" />
 </p>
 
-This document describes what Sage stores and how to control retention. Implementation references include `prisma/schema.prisma` and the ingestion pipeline under `src/core`.
+This document describes what Sage stores and how to control retention. Implementation references include `prisma/schema.prisma` and the ingestion/runtime pipeline under `src/features` and `src/platform`.
 
 > [!IMPORTANT]
 > If you run Sage, you are responsible for the data it stores in your database. Review the defaults below and adjust `.env` to match your server’s privacy expectations.
@@ -42,7 +42,7 @@ This document describes what Sage stores and how to control retention. Implement
 | Voice sessions | `VoiceSession` | Join/leave session history per user/channel. |
 | Voice session summaries | `VoiceConversationSummary` | Summary-only memory of transcribed voice sessions (optional; no raw transcript stored in DB). |
 | Pending admin actions | `PendingAdminAction` | Approval-gated admin action queue and status metadata. |
-| Admin audits | `AdminAudit` | Records admin command usage with hashed params. |
+| Admin audits | `AdminAudit` | Records admin action usage with hashed params. |
 | Agent traces | `AgentTrace` | Agent trace payload, context budget metadata, and final reply text (if tracing is enabled). |
 | Model health state | `ModelHealthState` | Rolling model health scores used for diagnostics. |
 
@@ -108,7 +108,7 @@ Sage does **not** log API keys or tokens. Keep `.env` out of version control.
 
 ## 🧹 Deletion / reset
 
-There is no built-in purge command. To delete data:
+There is no built-in purge UI. To delete data:
 
 1. Stop the bot.
 2. Delete rows from the relevant tables (or drop the schema) using Postgres tools.

@@ -50,7 +50,7 @@ flowchart TD
     subgraph Discord["Discord Layer"]
         ME[Message Events]:::discord
         VE[Voice Events]:::discord
-        SC[Slash Commands]:::discord
+        IC[Interactive Components]:::discord
     end
 
     subgraph Runtime["Single-Agent Runtime"]
@@ -78,7 +78,7 @@ flowchart TD
 
     ME --> CE --> RT
     VE --> CE
-    SC --> CE
+    IC --> CE
     RT --> CB --> BG
     BG --> PC --> LLM[LLM Provider]:::llm
     LLM --> TL
@@ -96,7 +96,7 @@ flowchart TD
 | **Prompt Composer** | `src/features/agent-runtime/promptComposer.ts` | Assembles the final system prompt with personality, capabilities, and tool protocol |
 | **Tool Call Loop** | `src/features/agent-runtime/toolCallLoop.ts` | Iterative tool execution with bounded rounds, parallel read-only optimization, and timeout enforcement |
 | **Tool Registry** | `src/features/agent-runtime/toolRegistry.ts` | Zod-validated tool definitions with OpenAI-compatible spec generation |
-| **Default Tools** | `src/features/agent-runtime/defaultTools.ts` | All 14 built-in top-level tool definitions |
+| **Default Tools** | `src/features/agent-runtime/defaultTools.ts` | All 16 built-in top-level tool definitions |
 
 ---
 
@@ -171,18 +171,18 @@ interface ToolDefinition<TArgs> {
 }
 ```
 
-The tool protocol is communicated to the LLM via a structured instruction block, and tool calls are parsed from the model's JSON output.
+The tool protocol is communicated to the LLM via a structured instruction block, and tool calls flow through the runtime's native structured tool-call contract.
 
 ---
 
 <a id="registered-tools"></a>
 
-## 🧰 Registered Tools (15 Total)
+## 🧰 Registered Tools (16 Total)
 
 > [!NOTE]
 > The runtime currently registers 15 top-level tools. The website/demo may show a larger capability count because it also lists routed Discord actions individually.
 
-### 🧠 Discord Domain Tools (5 tools)
+### 🧠 Discord Domain Tools (6 tools)
 
 | Tool | Description | Access |
 |:---|:---|:---|
@@ -190,6 +190,7 @@ The tool protocol is communicated to the LLM via a structured instruction block,
 | `discord_messages` | Exact message history, Discord-native delivery, polls, and reactions | Public |
 | `discord_files` | Attachment discovery, paged attachment reads, and attachment resend flows | Public |
 | `discord_server` | Guild resources, scheduled events, AutoMod reads, and thread lifecycle actions | Public (some reads Admin) |
+| `discord_voice` | Live voice connection status plus join or leave control | Public |
 | `discord_admin` | Admin instruction writes, moderation, channel/role/member admin actions, invite URLs, and raw Discord API fallback | Public (some actions Admin) |
 
 ### 🌐 Search & Research (3 tools)

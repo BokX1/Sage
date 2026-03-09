@@ -1,9 +1,14 @@
-import type { ChatInputCommandInteraction } from 'discord.js';
+import type { ButtonInteraction, ChatInputCommandInteraction } from 'discord.js';
 import { Events } from 'discord.js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { makeChatInputCommandInteraction } from '../../../../testkit/discord';
 
 const onMock = vi.fn();
+const handleAdminActionButtonInteraction = vi.hoisted(() => vi.fn().mockResolvedValue(false));
+const handleGuildApiKeyBootstrapButtonInteraction = vi.hoisted(() => vi.fn().mockResolvedValue(false));
+const handleGuildApiKeyBootstrapModalSubmit = vi.hoisted(() => vi.fn().mockResolvedValue(false));
+const handleInteractiveButtonSession = vi.hoisted(() => vi.fn().mockResolvedValue(false));
+const handleInteractiveModalSession = vi.hoisted(() => vi.fn().mockResolvedValue(false));
 
 vi.mock('@/platform/discord/client', () => ({
   client: {
@@ -12,30 +17,41 @@ vi.mock('@/platform/discord/client', () => ({
   },
 }));
 
-vi.mock('@/app/discord/handlers/sage-command-handlers', () => ({
-  handleAdminStats: vi.fn(),
+vi.mock('@/features/admin/adminActionService', () => ({
+  handleAdminActionButtonInteraction,
 }));
-vi.mock('@/app/discord/commands/api-key-handlers', () => ({
-  handleKeyCheck: vi.fn(),
-  handleKeyClear: vi.fn(),
-  handleKeyLogin: vi.fn(),
-  handleKeySet: vi.fn(),
+
+vi.mock('@/features/discord/byopBootstrap', () => ({
+  handleGuildApiKeyBootstrapButtonInteraction,
+  handleGuildApiKeyBootstrapModalSubmit,
 }));
-vi.mock('@/app/discord/commands/voice-channel-handlers', () => ({
-  handleJoinCommand: vi.fn(),
-  handleLeaveCommand: vi.fn(),
+
+vi.mock('@/app/discord/handlers/interactiveSage', () => ({
+  handleInteractiveButtonSession,
+  handleInteractiveModalSession,
+  sendCommandlessNotice: vi.fn(async (interaction: ChatInputCommandInteraction) => {
+    await interaction.reply({
+      content: 'Sage is chat-first now. Mention me, reply to me, or start with `Sage` instead of using slash commands.',
+      ephemeral: true,
+    });
+  }),
 }));
 
 describe('interactionCreate handler', () => {
   beforeEach(() => {
     vi.resetModules();
     onMock.mockReset();
+    handleAdminActionButtonInteraction.mockReset().mockResolvedValue(false);
+    handleGuildApiKeyBootstrapButtonInteraction.mockReset().mockResolvedValue(false);
+    handleGuildApiKeyBootstrapModalSubmit.mockReset().mockResolvedValue(false);
+    handleInteractiveButtonSession.mockReset().mockResolvedValue(false);
+    handleInteractiveModalSession.mockReset().mockResolvedValue(false);
     const registrationKey = Symbol.for('sage.handlers.interactionCreate.registered');
     const g = globalThis as unknown as { [key: symbol]: unknown };
     delete g[registrationKey];
   });
 
-  it('replies safely for unknown root commands', async () => {
+  it('replies with the commandless guidance for any slash command', async () => {
     const { registerInteractionCreateHandler } = await import('@/app/discord/handlers/interactionCreate');
     registerInteractionCreateHandler();
 
@@ -47,71 +63,42 @@ describe('interactionCreate handler', () => {
     const reply = vi.fn().mockResolvedValue(undefined);
     await handler(
       makeChatInputCommandInteraction({
-        commandName: 'unknown-root',
+        commandName: 'ping',
         reply: reply as unknown as ChatInputCommandInteraction['reply'],
       }),
     );
 
     expect(reply).toHaveBeenCalledWith({
-      content: 'Unknown command.',
+      content: 'Sage is chat-first now. Mention me, reply to me, or start with `Sage` instead of using slash commands.',
       ephemeral: true,
     });
   });
 
-  it('edits deferred interactions with a safe payload after command errors', async () => {
-    const voiceHandlers = await import('@/app/discord/commands/voice-channel-handlers');
-    vi.mocked(voiceHandlers.handleJoinCommand).mockRejectedValueOnce(new Error('join failed'));
+  it('stops after a bootstrap button handler succeeds', async () => {
+    handleGuildApiKeyBootstrapButtonInteraction.mockResolvedValueOnce(true);
 
     const { registerInteractionCreateHandler } = await import('@/app/discord/handlers/interactionCreate');
     registerInteractionCreateHandler();
 
-    expect(onMock).toHaveBeenCalledWith(Events.InteractionCreate, expect.any(Function));
     const handler = onMock.mock.calls[0]?.[1] as unknown as (
-      interaction: ChatInputCommandInteraction,
+      interaction: ButtonInteraction,
     ) => Promise<void>;
 
-    const editReply = vi.fn().mockResolvedValue(undefined);
-    const reply = vi.fn().mockResolvedValue(undefined);
+    const interaction = {
+      isButton: () => true,
+      isChatInputCommand: () => false,
+      customId: 'sage:bootstrap:key:set',
+      deferred: false,
+      replied: false,
+      reply: vi.fn(),
+      editReply: vi.fn(),
+      inGuild: () => true,
+    } as unknown as ButtonInteraction;
 
-    await handler(
-      makeChatInputCommandInteraction({
-        commandName: 'join',
-        deferred: true,
-        editReply: editReply as unknown as ChatInputCommandInteraction['editReply'],
-        reply: reply as unknown as ChatInputCommandInteraction['reply'],
-      }),
-    );
+    await handler(interaction);
 
-    expect(editReply).toHaveBeenCalledWith({ content: 'Something went wrong.' });
-    expect(reply).not.toHaveBeenCalled();
-  });
-
-  it('uses editReply for unknown subcommands when interaction is already deferred', async () => {
-    const { registerInteractionCreateHandler } = await import('@/app/discord/handlers/interactionCreate');
-    registerInteractionCreateHandler();
-
-    expect(onMock).toHaveBeenCalledWith(Events.InteractionCreate, expect.any(Function));
-    const handler = onMock.mock.calls[0]?.[1] as unknown as (
-      interaction: ChatInputCommandInteraction,
-    ) => Promise<void>;
-
-    const editReply = vi.fn().mockResolvedValue(undefined);
-    const reply = vi.fn().mockResolvedValue(undefined);
-
-    await handler(
-      makeChatInputCommandInteraction({
-        commandName: 'sage',
-        deferred: true,
-        editReply: editReply as unknown as ChatInputCommandInteraction['editReply'],
-        reply: reply as unknown as ChatInputCommandInteraction['reply'],
-        options: {
-          getSubcommandGroup: vi.fn(() => null),
-          getSubcommand: vi.fn(() => 'unknown'),
-        } as unknown as ChatInputCommandInteraction['options'],
-      }),
-    );
-
-    expect(editReply).toHaveBeenCalledWith({ content: 'Unknown subcommand.' });
-    expect(reply).not.toHaveBeenCalled();
+    expect(handleAdminActionButtonInteraction).toHaveBeenCalledTimes(1);
+    expect(handleGuildApiKeyBootstrapButtonInteraction).toHaveBeenCalledTimes(1);
+    expect(handleInteractiveButtonSession).not.toHaveBeenCalled();
   });
 });

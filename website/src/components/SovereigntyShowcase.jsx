@@ -8,12 +8,12 @@ const modes = [
         badge: 'Hosted',
         icon: '🌸',
         heading: 'Server-Key Activation',
-        desc: 'Invite the hosted Sage bot — each server admin provides a server API key via /sage key set. Zero infrastructure needed.',
+        desc: 'Invite the hosted Sage bot and activate it with Sage\'s in-Discord setup card. Zero infrastructure needed.',
         color: '#78b846',
         bg: 'from-[#78b846]/10 to-transparent',
         features: [
             { text: 'Current hosted Sage bot', icon: '☁️' },
-            { text: 'Server-wide key via /sage key set', icon: '🔑' },
+            { text: 'Server-wide key via setup card', icon: '🔑' },
             { text: 'Free tier available', icon: '🎁' },
             { text: 'Text, vision, image gen, voice', icon: '🎨' },
         ],
@@ -158,7 +158,7 @@ export default function SovereigntyShowcase() {
                         {/* Explainer */}
                         <p className="text-xs text-slate-600 font-mono mt-6 leading-relaxed">
                             {active === 'invite'
-                                ? 'Admins run /sage key login → complete the hosted key flow → /sage key set sk_... → the hosted Sage bot is active for the whole server.'
+                                ? 'Admins trigger Sage once, use the setup card to get a Pollinations key, then submit the key through the modal to activate the hosted bot for the whole server.'
                                 : 'Set LLM_PROVIDER + LLM_BASE_URL + LLM_API_KEY in your .env to point Sage at any OpenAI-compatible endpoint.'}
                         </p>
                     </motion.div>

@@ -159,6 +159,24 @@ describe('AgentTraceRepo', () => {
       });
     });
 
+    it('updates top-level reasoning text when provided at trace end', async () => {
+      mockUpdate.mockResolvedValue({});
+
+      await updateTraceEnd({
+        id: 'trace-123',
+        reasoningText: 'Need a quick lookup first.',
+        replyText: 'Final reply text',
+      });
+
+      expect(mockUpdate).toHaveBeenCalledWith({
+        where: { id: 'trace-123' },
+        data: expect.objectContaining({
+          reasoningText: 'Need a quick lookup first.',
+          replyText: 'Final reply text',
+        }),
+      });
+    });
+
     it('propagates trace end write failures', async () => {
       mockUpdate.mockRejectedValueOnce(new Error('P2022 column does not exist'));
 

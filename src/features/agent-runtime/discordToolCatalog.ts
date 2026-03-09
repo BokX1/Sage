@@ -26,7 +26,6 @@ export const DISCORD_MESSAGES_ACTION_CATALOG = {
   writes: [
     'send',
     'create_poll',
-    'create_thread',
     'add_reaction',
     'remove_self_reaction',
   ],
@@ -77,6 +76,9 @@ export const DISCORD_ADMIN_ACTION_CATALOG = {
   read_only: ['help', 'get_invite_url'],
   writes: [],
   admin_only: [
+    'get_server_key_status',
+    'clear_server_api_key',
+    'send_key_setup_card',
     'update_server_instructions',
     'submit_moderation',
     'edit_message',
@@ -94,12 +96,19 @@ export const DISCORD_ADMIN_ACTION_CATALOG = {
   ],
 } as const;
 
+export const DISCORD_VOICE_ACTION_CATALOG = {
+  read_only: ['help', 'get_status'],
+  writes: ['join_current_channel', 'leave'],
+  admin_only: [],
+} as const;
+
 export const DISCORD_TOOL_ACTION_CATALOG = {
   discord_context: DISCORD_CONTEXT_ACTION_CATALOG,
   discord_messages: DISCORD_MESSAGES_ACTION_CATALOG,
   discord_files: DISCORD_FILES_ACTION_CATALOG,
   discord_server: DISCORD_SERVER_ACTION_CATALOG,
   discord_admin: DISCORD_ADMIN_ACTION_CATALOG,
+  discord_voice: DISCORD_VOICE_ACTION_CATALOG,
 } as const;
 
 export const DISCORD_GUARDRAILS = [

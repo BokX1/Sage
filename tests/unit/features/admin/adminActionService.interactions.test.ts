@@ -173,8 +173,8 @@ describe('adminActionService interaction schemas', () => {
     ).toThrow('unknown attachment');
   });
 
-  it('builds Components V2 payloads with the required flag and component structure', () => {
-    const payload = buildDiscordComponentsV2MessagePayload({
+  it('builds Components V2 payloads with the required flag and component structure', async () => {
+    const payload = await buildDiscordComponentsV2MessagePayload({
       message: {
         accentColorHex: '#4a7c23',
         blocks: [
@@ -189,6 +189,9 @@ describe('adminActionService interaction schemas', () => {
           },
         ],
       },
+      guildId: 'guild-1',
+      channelId: 'channel-1',
+      requestedBy: 'user-1',
     });
 
     expect(payload.flags).toBe(MessageFlags.IsComponentsV2);

@@ -144,7 +144,7 @@ Under the hood, Sage runs an **image_generate tool action** (prompt refinement -
 
 Sage has **Voice Awareness**: it can answer questions like who is in voice and how long someone has been in voice.
 
-Use `/join` and `/leave` to control when Sage is connected to a voice channel.
+Ask Sage to join or leave voice in normal chat, for example `Sage, join my voice channel` or `Sage, leave voice`.
 
 Optional: if voice transcription is enabled, Sage can transcribe in-channel audio while connected and persist **summary-only** voice session memory when it leaves voice.
 
@@ -206,23 +206,15 @@ Use any of these:
 </details>
 
 <details>
-<summary><strong>What commands are available?</strong></summary>
+<summary><strong>How do I use Sage now?</strong></summary>
 
-See **[Commands Reference](COMMANDS.md)**. Highlights:
+Sage is chat-first:
 
-**Public:**
+- Mention Sage
+- Reply to Sage
+- Start a message with `Sage`
 
-- `/ping`
-- `/sage key login`
-- `/join`
-- `/leave`
-
-**Admin / setup:**
-
-- `/sage key set`, `/sage key check`, `/sage key clear`
-- `/sage admin stats`
-
-There are no slash commands for search, image generation, or summarization. Those are triggered through normal chat using wake word, mention, or reply.
+Hosted BYOP setup now happens through Sage's setup card buttons and modal, not through slash commands. Voice join/leave is also chat-driven.
 
 </details>
 

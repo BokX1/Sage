@@ -70,11 +70,35 @@ function resolveMaxRetries(rawMaxRetries: number | undefined): number {
 }
 
 /** Wait for retry backoff without keeping the Node.js process alive by itself. */
-function sleep(delayMs: number): Promise<void> {
-  return new Promise((resolve) => {
-    const timeoutId = setTimeout(resolve, delayMs);
+function sleep(delayMs: number, signal?: AbortSignal): Promise<void> {
+  if (signal?.aborted) {
+    return Promise.reject(new DOMException('The operation was aborted.', 'AbortError'));
+  }
+
+  return new Promise((resolve, reject) => {
+    const timeoutId = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort);
+      resolve();
+    }, delayMs);
     timeoutId.unref?.();
+
+    const onAbort = () => {
+      clearTimeout(timeoutId);
+      reject(new DOMException('The operation was aborted.', 'AbortError'));
+    };
+
+    signal?.addEventListener('abort', onAbort, { once: true });
   });
+}
+
+function isAbortError(error: unknown): boolean {
+  if (error instanceof DOMException) {
+    return error.name === 'AbortError';
+  }
+  if (error instanceof Error) {
+    return error.name === 'AbortError' || /aborted|aborterror/i.test(error.message);
+  }
+  return false;
 }
 
 function isGeminiSearchModel(model: string): boolean {
@@ -269,21 +293,26 @@ export class PollinationsClient implements LLMClient {
     return toolCalls.map((toolCall) => {
       const toolName = toolCall.function?.name?.trim() || 'unknown_tool';
       const rawArgs = toolCall.function?.arguments ?? '{}';
-      let args: unknown;
       try {
-        args = JSON.parse(rawArgs);
-      } catch {
-        args = {};
-        logger.warn(
-          { toolName, rawArgs: String(rawArgs).slice(0, 200) },
-          '[Pollinations] Malformed tool call arguments JSON, defaulting to empty object',
+        const args = JSON.parse(rawArgs);
+        return {
+          id: typeof toolCall.id === 'string' && toolCall.id.trim().length > 0 ? toolCall.id.trim() : undefined,
+          name: toolName,
+          args,
+        };
+      } catch (error) {
+        logger.error(
+          {
+            toolName,
+            rawArgs: String(rawArgs).slice(0, 200),
+            error: error instanceof Error ? error.message : String(error),
+          },
+          '[Pollinations] Malformed tool call arguments JSON',
         );
+        throw new Error(`Pollinations returned malformed JSON arguments for tool "${toolName}".`, {
+          cause: error,
+        });
       }
-      return {
-        id: typeof toolCall.id === 'string' && toolCall.id.trim().length > 0 ? toolCall.id.trim() : undefined,
-        name: toolName,
-        args,
-      };
     });
   }
 
@@ -543,6 +572,10 @@ export class PollinationsClient implements LLMClient {
       } catch (err: unknown) {
         lastError = err instanceof Error ? err : new Error(String(err));
 
+        if (isAbortError(err) || request.signal?.aborted) {
+          throw lastError;
+        }
+
         // If it's the model validation error we threw above, stop retrying
         if (lastError.message.includes('Pollinations Model Error')) {
           throw lastError;
@@ -555,7 +588,7 @@ export class PollinationsClient implements LLMClient {
           logger.warn({ attempt, error: lastError.message }, '[Pollinations] Retry');
 
           // Simple backoff
-          await sleep(500 * Math.pow(2, attempt));
+          await sleep(500 * Math.pow(2, attempt), request.signal);
         }
       }
     }

@@ -28,7 +28,7 @@ Invite → Activate → Chat
 | Step | Document | Time |
 | :--- | :--- | :--- |
 | 1️⃣ | [⚡ Quick Start](guides/QUICKSTART.md) — Join an existing deployment or self-host quickly | ~5 min |
-| 2️⃣ | [🎮 Commands Reference](guides/COMMANDS.md) — Current slash commands, triggers, and admin action patterns | ~10 min |
+| 2️⃣ | [💬 Conversation & Controls](guides/COMMANDS.md) — Chat triggers, setup controls, voice control, and admin action patterns | ~10 min |
 | 3️⃣ | [❓ FAQ](guides/FAQ.md) — Common questions about setup, behavior, and data storage | As needed |
 
 ---
@@ -56,7 +56,7 @@ Architecture → Pipeline → Memory → Database
 
 | Step | Document | Time |
 | :--- | :--- | :--- |
-| 1️⃣ | [🤖 Agentic Architecture](architecture/OVERVIEW.md) — Single-agent design, 11 built-in tools, runtime flow | ~15 min |
+| 1️⃣ | [🤖 Agentic Architecture](architecture/OVERVIEW.md) — Single-agent design, 16 built-in tools, runtime flow | ~15 min |
 | 2️⃣ | [🔀 Runtime Pipeline](architecture/PIPELINE.md) — Context assembly, tool loop, and trace outputs | ~20 min |
 | 3️⃣ | [🧠 Memory System](architecture/MEMORY.md) — Transcript retention, summaries, profiles, and on-demand retrieval | ~15 min |
 | 4️⃣ | [💾 Database Schema](architecture/DATABASE.md) — 17 Prisma models and common operations | ~10 min |
@@ -72,7 +72,7 @@ Architecture → Pipeline → Memory → Database
 | :--- | :--- |
 | [⚡ Quick Start](guides/QUICKSTART.md) | Fastest path to an existing deployment or a minimal self-host setup |
 | [📖 Getting Started](guides/GETTING_STARTED.md) | Full setup from source (step-by-step) |
-| [🎮 Commands Reference](guides/COMMANDS.md) | Slash commands, triggers, and approval-gated admin actions |
+| [💬 Conversation & Controls](guides/COMMANDS.md) | Chat triggers, setup controls, voice control, and approval-gated admin actions |
 | [❓ FAQ](guides/FAQ.md) | Common questions about setup, behavior, and privacy |
 | [🔧 Troubleshooting](guides/TROUBLESHOOTING.md) | Fixes for common failures and misconfigurations |
 | [🌸 BYOP Mode](guides/BYOP.md) | Bring-Your-Own-Pollen key setup |

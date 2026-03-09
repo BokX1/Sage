@@ -1,13 +1,16 @@
 import { Events, Interaction } from 'discord.js';
 import { client } from '../../../platform/discord/client';
 import { logger } from '../../../platform/logging/logger';
-import {
-  handleAdminStats,
-} from './sage-command-handlers';
-import { handleKeyCheck, handleKeyClear, handleKeyLogin, handleKeySet } from '../commands/api-key-handlers';
-import { handleJoinCommand, handleLeaveCommand } from '../commands/voice-channel-handlers';
 import { handleAdminActionButtonInteraction } from '../../../features/admin/adminActionService';
-
+import {
+  handleGuildApiKeyBootstrapButtonInteraction,
+  handleGuildApiKeyBootstrapModalSubmit,
+} from '../../../features/discord/byopBootstrap';
+import {
+  handleInteractiveButtonSession,
+  handleInteractiveModalSession,
+  sendCommandlessNotice,
+} from './interactiveSage';
 
 const registrationKey = Symbol.for('sage.handlers.interactionCreate.registered');
 
@@ -36,7 +39,7 @@ async function sendInteractionFailure(interaction: Interaction): Promise<void> {
 }
 
 /**
- * Registers a single interaction handler instance for slash command routing.
+ * Registers a single interaction handler instance for Sage-authored component and modal flows.
  */
 export function registerInteractionCreateHandler() {
   const g = globalThis as unknown as { [key: symbol]: boolean };
@@ -48,63 +51,33 @@ export function registerInteractionCreateHandler() {
   client.on(Events.InteractionCreate, async (interaction: Interaction) => {
     try {
       if ('isButton' in interaction && typeof interaction.isButton === 'function' && interaction.isButton()) {
-        const handled = await handleAdminActionButtonInteraction(interaction);
+        const handled =
+          (await handleAdminActionButtonInteraction(interaction)) ||
+          (await handleGuildApiKeyBootstrapButtonInteraction(interaction)) ||
+          (await handleInteractiveButtonSession(interaction));
         if (handled) {
           return;
         }
       }
 
-      if (!interaction.isChatInputCommand()) return;
-
-      if (interaction.commandName === 'ping') {
-        await interaction.reply('Pong!');
-        return;
-      }
-
-      if (interaction.commandName === 'join') {
-        await handleJoinCommand(interaction);
-        return;
-      }
-
-      if (interaction.commandName === 'leave') {
-        await handleLeaveCommand(interaction);
-        return;
-      }
-
-      if (interaction.commandName === 'sage') {
-        const subcommandGroup = interaction.options.getSubcommandGroup(false);
-        const subcommand = interaction.options.getSubcommand();
-
-        // Route to handlers
-        if (subcommandGroup === 'key') {
-          if (subcommand === 'login') {
-            await handleKeyLogin(interaction);
-            return;
-          }
-          if (subcommand === 'set') {
-            await handleKeySet(interaction);
-            return;
-          }
-          if (subcommand === 'check') {
-            await handleKeyCheck(interaction);
-            return;
-          }
-          if (subcommand === 'clear') {
-            await handleKeyClear(interaction);
-            return;
-          }
-        }
-
-        if (subcommandGroup === 'admin' && subcommand === 'stats') {
-          await handleAdminStats(interaction);
+      if (
+        'isModalSubmit' in interaction &&
+        typeof interaction.isModalSubmit === 'function' &&
+        interaction.isModalSubmit()
+      ) {
+        const handled =
+          (await handleGuildApiKeyBootstrapModalSubmit(interaction)) ||
+          (await handleInteractiveModalSession(interaction));
+        if (handled) {
           return;
         }
+      }
 
-        await sendInteractionReply(interaction, { content: 'Unknown subcommand.', ephemeral: true });
+      if (!interaction.isChatInputCommand()) {
         return;
       }
 
-      await sendInteractionReply(interaction, { content: 'Unknown command.', ephemeral: true });
+      await sendCommandlessNotice(interaction);
     } catch (err) {
       logger.error({ err }, 'Interaction handler error');
       await sendInteractionFailure(interaction);

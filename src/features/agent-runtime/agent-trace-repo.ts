@@ -20,6 +20,7 @@ export interface TraceEndData {
   qualityJson?: unknown;
   budgetJson?: unknown;
   agentEventsJson?: unknown;
+  reasoningText?: string | null;
   replyText: string;
 }
 
@@ -105,6 +106,9 @@ export async function updateTraceEnd(data: TraceEndData): Promise<void> {
     replyText: data.replyText,
   };
 
+  if (data.reasoningText !== undefined) {
+    updateData.reasoningText = data.reasoningText;
+  }
   if (data.qualityJson !== undefined) {
     updateData.qualityJson = jsonMap(data.qualityJson);
   }

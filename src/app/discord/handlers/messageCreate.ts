@@ -32,6 +32,7 @@ import {
 } from './attachment-parser';
 import { isAdminFromMember } from '../../../platform/discord/admin-permissions';
 import { buildPendingAdminActionResolutionNotice } from '../../../features/admin/adminActionService';
+import { buildGuildApiKeyMissingResponse } from '../../../features/discord/byopBootstrap';
 
 const processedMessagesKey = Symbol.for('sage.handlers.messageCreate.processed');
 const registrationKey = Symbol.for('sage.handlers.messageCreate.registered');
@@ -77,7 +78,7 @@ function getWakeWordPrefixes(): string[] {
 }
 
 function shouldInlineAttachmentBlocks(params: {
-  invokedBy: 'mention' | 'reply' | 'wakeword' | 'autopilot' | 'command';
+  invokedBy: 'mention' | 'reply' | 'wakeword' | 'autopilot' | 'component';
   cleanedText: string;
   hasAttachmentBlocks: boolean;
 }): boolean {
@@ -721,7 +722,19 @@ export async function handleMessageCreate(message: Message) {
 
       let didSendAnything = false;
 
-      if (replyText || (result.files && result.files.length > 0)) {
+      if (result.meta?.kind === 'missing_api_key' && message.guildId) {
+        const missing = buildGuildApiKeyMissingResponse({
+          isAdmin: isAdminFromMember(message.member),
+        });
+        await message.reply({
+          content: missing.content,
+          components: missing.components,
+          allowedMentions: { repliedUser: false },
+        });
+        didSendAnything = true;
+      }
+
+      if (!didSendAnything && (replyText || (result.files && result.files.length > 0))) {
         const chunks = smartSplit(replyText, 2000);
         const [firstChunk, ...restChunks] = chunks;
 

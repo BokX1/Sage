@@ -34,7 +34,7 @@ flowchart LR
 
     A[Run npm run doctor]:::check --> B{All green?}:::check
     B -->|Yes| C[Check bot login logs]:::check
-    C --> D[Verify command registration]:::check
+    C --> D[Send a real chat ping in Discord]:::check
     D --> E[Confirm DB connectivity]:::check
 
     B -->|No| F[Check error output]:::alert
@@ -45,15 +45,15 @@ flowchart LR
 **Daily checklist:**
 
 1. Run `npm run doctor`
-2. Verify bot login and command registration in logs:
+2. Verify bot login in logs:
 
    ```text
    [info] Logged in as Sage#1234!
-   [info] Successfully reloaded application (/) commands GLOBALLY.
    ```
 
 3. Confirm database connectivity and migration state
-4. Check `/sage admin stats` for runtime health
+4. Send `@Sage health check` or `Sage, are you online?`
+5. If the hosted Pollinations BYOP path is in use, verify the setup card appears in a no-key test guild
 
 > [!TIP]
 > Use `npm run doctor -- --llm-ping` to include an LLM connectivity check. Alternative env-var syntax also works: `LLM_DOCTOR_PING=1 npm run doctor`.
@@ -69,7 +69,7 @@ flowchart LR
 | Pattern | Severity | Meaning |
 |:---|:---|:---|
 | `[info] Logged in as Sage#1234` | ✅ | Bot started successfully |
-| `[info] Successfully reloaded application (/) commands GLOBALLY.` | ✅ | Slash commands registered |
+| `Sage is chat-first now...` | ✅ | Legacy slash-command input is being redirected to the current UX |
 | `[warn] Model degraded` | ⚠️ | A model is experiencing errors, health score decreased |
 | `[error] P1001` | 🔴 | Database connection lost |
 | `[error] ECONNREFUSED` | 🔴 | Service unavailable |
@@ -94,12 +94,11 @@ Traces include:
 - `qualityJson` — quality metrics
 - `replyText` — final reply
 
-### Discord Commands
+### Discord checks
 
-```text
-/sage admin stats    ← Runtime health snapshot
-/ping                ← Connectivity check
-```
+- Send `@Sage health check` or `Sage, are you online?`
+- Verify Sage replies in-channel
+- In a no-key hosted guild, verify the setup card and admin-only key controls still work
 
 ---
 
@@ -251,7 +250,7 @@ npm run check:trust
 - Do not log raw keys or user-provided secrets
 - Keep database backups current before production migrations
 - If enabling `dependency-review`, ensure Dependency Graph is enabled in repository settings and set `ENABLE_DEPENDENCY_REVIEW=true`
-- Admin commands use Discord-native permissions (`Manage Server` or `Administrator`)
+- Admin actions use Discord-native permissions (`Manage Server` or `Administrator`)
 
 > [!WARNING]
 > Always back up your database before running schema migrations in production.

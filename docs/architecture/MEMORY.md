@@ -4,7 +4,7 @@
   <img src="https://img.shields.io/badge/%F0%9F%8C%BF-Sage%20Memory-2d5016?style=for-the-badge&labelColor=4a7c23" alt="Sage Memory" />
 </p>
 
-This document describes how Sage stores memory and makes it available to the runtime. It reflects the current behavior under `src/core`.
+This document describes how Sage stores memory and makes it available to the runtime. It reflects the current behavior under `src/features` and `src/platform`.
 
 ---
 
@@ -201,7 +201,7 @@ Long-term channel summary updates are scheduler-driven:
 - output is stored in `ChannelSummary` with `kind = 'profile'`
 - the runtime reads these summaries through `discord_context` actions when needed
 
-There is no dedicated summarize slash command in the current command set.
+There is no dedicated summarize command surface in the current product; summarization is requested through normal chat.
 
 ---
 

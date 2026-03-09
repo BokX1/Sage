@@ -7,7 +7,7 @@
     "node": ">=22.12.0",
     "npm": ">=10"
   },
-  "description": "An intelligent Discord bot with persistent memory, powered by Pollinations.ai. Remembers conversations, understands community relationships, and delivers personalized AI responses.",
+  "description": "A provider-flexible Discord bot with persistent memory, tool calling, and community-aware context.",
   "main": "dist/index.js",
   "keywords": [
     "discord",
@@ -37,7 +37,6 @@
     "db:studio": "prisma studio",
     "doctor": "node --import tsx src/cli/doctor.ts --",
     "tools:smoke": "ts-node -P config/tooling/tsconfig.app.json src/cli/tool-smoke.ts",
-    "cert": "ts-node src/cli/cert.ts",
     "postinstall": "prisma generate",
     "prepack": "npm run build",
     "prepare": "husky",

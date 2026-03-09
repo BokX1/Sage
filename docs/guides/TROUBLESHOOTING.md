@@ -17,7 +17,7 @@ Fast fixes for common Sage issues.
 - [🔴 Startup Issues](#startup-issues)
 - [🟡 Response Issues](#response-issues)
 - [🟠 Memory & Learning Issues](#memory-learning-issues)
-- [🔵 Command Issues](#command-issues)
+- [🔵 Interaction Issues](#interaction-issues)
 - [🟣 Database Issues](#database-issues)
 - [⚡ Performance Issues](#performance-issues)
 - [📋 Error Code Reference](#error-code-reference)
@@ -105,7 +105,7 @@ Check these in order:
 | :--- | :--- | :--- |
 | Bot has permissions | Check channel permissions | Send Messages ✅ |
 | Wake word matches | `Sage, hello` | Response |
-| API key active | `/sage key check` | Key status shown |
+| API key active | Use Sage's setup card `Check Key` button | Key status shown |
 | Rate limit | Wait 10 seconds | Try again |
 
 ### “No API key” error in guild
@@ -114,9 +114,9 @@ Check these in order:
 
 **Fix:**
 
-1. If you are using Sage's hosted/default Pollinations-backed flow, run `/sage key login`
-2. Follow the Pollinations login instructions
-3. Run `/sage key set sk_your_key`
+1. Trigger Sage once in the guild so the missing-key setup card appears
+2. Click `Get Pollinations Key`
+3. Click `Set Server Key` and submit the `sk_...` value in the modal
 4. If you self-host Sage against another OpenAI-compatible provider, set `LLM_API_KEY` in `.env` instead
 
 ### Response is truncated or cut off
@@ -169,24 +169,19 @@ Possible causes:
 
 ---
 
-<a id="command-issues"></a>
+<a id="interaction-issues"></a>
 
-## 🔵 Command Issues
+## 🔵 Interaction Issues
 
-### Slash commands not appearing
+### Sage says it is chat-first now
 
-**Cause:** Commands need to be registered with Discord.
+**Cause:** A legacy slash command interaction is being used against a commandless build.
 
 **Fix:**
 
-1. Set `DEV_GUILD_ID` for instant updates (dev):
-
-   ```env
-   DEV_GUILD_ID=your_guild_id
-   ```
-
-2. Restart the bot
-3. Wait up to 1 hour for global commands to propagate
+1. Mention Sage, reply to Sage, or start with `Sage`
+2. For hosted BYOP setup, use the setup card buttons and modal
+3. For voice, ask Sage to join or leave in plain chat
 
 ### “Unknown interaction” error
 

@@ -1,16 +1,8 @@
 import type { ChatInputCommandInteraction } from 'discord.js';
 import { PermissionsBitField } from 'discord.js';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { makeChatInputCommandInteraction } from '../../../../testkit/discord';
-
-const configMock = vi.hoisted(() => ({
-  NODE_ENV: 'test',
-}));
-
-vi.mock('@/platform/config/env', () => ({
-  config: configMock,
-}));
-import { handleAdminStats, isAdmin } from '@/app/discord/handlers/sage-command-handlers';
+import { describe, expect, it, vi } from 'vitest';
+import { makeChatInputCommandInteraction } from '../../../testkit/discord';
+import { isAdminInteraction } from '@/platform/discord/admin-permissions';
 
 function createBaseInteraction(overrides: Record<string, unknown> = {}): ChatInputCommandInteraction {
   const base = makeChatInputCommandInteraction({
@@ -21,8 +13,8 @@ function createBaseInteraction(overrides: Record<string, unknown> = {}): ChatInp
     options: {
       getString: vi.fn(() => null),
       getInteger: vi.fn(() => null),
-      getSubcommand: vi.fn(() => 'trace'),
-      getSubcommandGroup: vi.fn(() => 'admin'),
+      getSubcommand: vi.fn(() => ''),
+      getSubcommandGroup: vi.fn(() => null),
     } as unknown as ChatInputCommandInteraction['options'],
   }) as unknown as Record<string, unknown>;
 
@@ -32,11 +24,7 @@ function createBaseInteraction(overrides: Record<string, unknown> = {}): ChatInp
   } as unknown as ChatInputCommandInteraction;
 }
 
-describe('sage command handlers', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
+describe('admin permission interaction helpers', () => {
   it('treats ManageGuild permission as admin', () => {
     const interaction = createBaseInteraction({
       member: {
@@ -50,8 +38,8 @@ describe('sage command handlers', () => {
     });
 
     expect({
-      manageGuild: isAdmin(interaction),
-      viewOnly: isAdmin(nonAdminInteraction),
+      manageGuild: isAdminInteraction(interaction),
+      viewOnly: isAdminInteraction(nonAdminInteraction),
     }).toEqual({
       manageGuild: true,
       viewOnly: false,
@@ -71,26 +59,11 @@ describe('sage command handlers', () => {
     });
 
     expect({
-      administrator: isAdmin(interaction),
-      nonAdmin: isAdmin(nonAdminInteraction),
+      administrator: isAdminInteraction(interaction),
+      nonAdmin: isAdminInteraction(nonAdminInteraction),
     }).toEqual({
       administrator: true,
       nonAdmin: false,
     });
-  });
-
-  it('uses editReply for admin denial when interaction was already deferred', async () => {
-    const reply = vi.fn().mockResolvedValue(undefined);
-    const editReply = vi.fn().mockResolvedValue(undefined);
-    const interaction = createBaseInteraction({
-      deferred: true,
-      reply: reply as unknown as ChatInputCommandInteraction['reply'],
-      editReply: editReply as unknown as ChatInputCommandInteraction['editReply'],
-    });
-
-    await handleAdminStats(interaction);
-
-    expect(editReply).toHaveBeenCalledWith({ content: '❌ Admin only.' });
-    expect(reply).not.toHaveBeenCalled();
   });
 });

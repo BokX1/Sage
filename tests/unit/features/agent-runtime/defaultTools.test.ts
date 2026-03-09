@@ -15,6 +15,7 @@ describe('default agentic tools', () => {
       'discord_files',
       'discord_messages',
       'discord_server',
+      'discord_voice',
       'github',
       'image_generate',
       'npm_info',
@@ -105,7 +106,7 @@ describe('default agentic tools', () => {
         userId: 'user',
         channelId: 'channel',
         guildId: 'guild',
-        invokedBy: 'command',
+        invokedBy: 'mention',
         invokerIsAdmin: true,
       },
     );

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { PermissionsBitField } from 'discord.js';
+import { ChannelType, PermissionsBitField, type VoiceChannel } from 'discord.js';
 
 import type { ToolExecutionContext } from '../toolRegistry';
 import {
@@ -42,6 +42,10 @@ import {
 import { filterChannelIdsByMemberAccess } from '../../../platform/discord/channel-access';
 import { client } from '../../../platform/discord/client';
 import { config } from '../../../platform/config/env';
+import { VoiceManager } from '../../voice/voiceManager';
+import { isLoggingEnabled } from '../../settings/guildChannelSettings';
+import { buildGuildApiKeySetupCardContent, buildGuildApiKeyWelcomeActions } from '../../discord/byopBootstrap';
+import { clearGuildApiKey, getGuildApiKeyStatus } from '../../settings/guildApiKeyService';
 
 export const discordThinkField = z
   .string()
@@ -65,7 +69,7 @@ export const discordThreadAutoArchiveDurationSchema = z.union([
   z.literal(4_320),
   z.literal(10_080),
 ]);
-export const discordOauthScopeSchema = z.enum(['bot', 'applications.commands']);
+export const discordOauthScopeSchema = z.enum(['bot']);
 export const discordEmojiSchema = z.string().trim().min(1).max(128);
 export const discordRestPathSchema = z.string().trim().min(1).max(2_000);
 
@@ -108,6 +112,12 @@ function requireGuildContext(guildId?: string | null): string {
     throw new Error('This Discord action requires a guild context.');
   }
   return guildId;
+}
+
+function isGuildVoiceChannel(
+  channel: { type?: number } | null | undefined,
+): channel is VoiceChannel {
+  return !!channel && channel.type === ChannelType.GuildVoice;
 }
 
 function assertNotAutopilot(invokedBy: string | undefined, actionLabel: string): void {
@@ -1048,6 +1058,84 @@ export async function executeDiscordServerAction(
   }
 }
 
+export async function executeDiscordVoiceAction(
+  args: DiscordActionArgs,
+  ctx: ToolExecutionContext,
+): Promise<unknown> {
+  const guildId = requireGuildContext(ctx.guildId);
+
+  switch (args.action) {
+    case 'get_status': {
+      const voiceManager = VoiceManager.getInstance();
+      const connection = voiceManager.getConnection(guildId);
+      const channelId = connection?.joinConfig.channelId ?? null;
+      const guild = await client.guilds.fetch(guildId);
+      const channel = channelId ? await guild.channels.fetch(channelId).catch(() => null) : null;
+
+      return {
+        ok: true,
+        action: 'get_status',
+        guildId,
+        connected: !!connection,
+        channelId,
+        channelName: channel && 'name' in channel ? channel.name : null,
+        transcriptionActive:
+          !!channelId && config.VOICE_STT_ENABLED && isLoggingEnabled(guildId, channelId),
+      };
+    }
+    case 'join_current_channel': {
+      assertNotAutopilot(ctx.invokedBy, 'join_current_channel');
+      const guild = await client.guilds.fetch(guildId);
+      const member = await guild.members.fetch(ctx.userId).catch(() => null);
+      if (!member) {
+        throw new Error('Could not resolve the invoking member for voice join.');
+      }
+
+      const channel = member.voice.channel;
+      if (!isGuildVoiceChannel(channel)) {
+        throw new Error('You must be in a standard voice channel to use this action. Stage channels are not supported.');
+      }
+
+      const voiceManager = VoiceManager.getInstance();
+      await voiceManager.joinChannel({ channel, initiatedByUserId: ctx.userId });
+
+      return {
+        ok: true,
+        action: 'join_current_channel',
+        guildId,
+        channelId: channel.id,
+        channelName: channel.name,
+        transcriptionActive: config.VOICE_STT_ENABLED && isLoggingEnabled(guildId, channel.id),
+      };
+    }
+    case 'leave': {
+      assertNotAutopilot(ctx.invokedBy, 'leave');
+      const voiceManager = VoiceManager.getInstance();
+      const connection = voiceManager.getConnection(guildId);
+      if (!connection) {
+        return {
+          ok: true,
+          action: 'leave',
+          guildId,
+          connected: false,
+          message: 'Sage is not currently in a voice channel.',
+        };
+      }
+
+      await voiceManager.leaveChannel(guildId);
+      return {
+        ok: true,
+        action: 'leave',
+        guildId,
+        connected: false,
+        message: 'Left the active voice channel.',
+      };
+    }
+    default:
+      throw new Error(`Unsupported discord_voice action: ${args.action}`);
+  }
+}
+
 export async function executeDiscordMessagesAction(
   args: DiscordActionArgs,
   ctx: ToolExecutionContext,
@@ -1267,9 +1355,6 @@ export async function executeDiscordMessagesAction(
           reason: data.reason,
         },
       });
-    }
-    case 'create_thread': {
-      return executeDiscordServerAction(args, ctx);
     }
     case 'add_reaction': {
       const data = asAction<{
@@ -1529,6 +1614,49 @@ export async function executeDiscordAdminAction(
         },
       });
     }
+    case 'get_server_key_status': {
+      assertAdmin(ctx.invokerIsAdmin);
+      const status = await getGuildApiKeyStatus(requireGuildContext(ctx.guildId));
+      return {
+        ok: true,
+        action: 'get_server_key_status',
+        guildId: requireGuildContext(ctx.guildId),
+        status,
+      };
+    }
+    case 'clear_server_api_key': {
+      assertAdmin(ctx.invokerIsAdmin);
+      assertNotAutopilot(ctx.invokedBy, 'clear_server_api_key');
+      await clearGuildApiKey(requireGuildContext(ctx.guildId));
+      return {
+        ok: true,
+        action: 'clear_server_api_key',
+        guildId: requireGuildContext(ctx.guildId),
+        message: 'Server-wide API key removed.',
+      };
+    }
+    case 'send_key_setup_card': {
+      assertAdmin(ctx.invokerIsAdmin);
+      assertNotAutopilot(ctx.invokedBy, 'send_key_setup_card');
+      const result = await discordRestRequestGuildScoped({
+        guildId: requireGuildContext(ctx.guildId),
+        method: 'POST',
+        path: `/channels/${ctx.channelId}/messages`,
+        body: {
+          content: buildGuildApiKeySetupCardContent(),
+          components: buildGuildApiKeyWelcomeActions().map((row) => row.toJSON()),
+          allowed_mentions: { parse: [] },
+        },
+        signal: ctx.signal,
+      });
+      return {
+        ok: result.ok === true,
+        action: 'send_key_setup_card',
+        guildId: requireGuildContext(ctx.guildId),
+        channelId: ctx.channelId,
+        data: result.data,
+      };
+    }
     case 'get_invite_url': {
       const data = asAction<{
         permissions?: string | number;
@@ -1540,7 +1668,7 @@ export async function executeDiscordAdminAction(
       if (!clientId) {
         throw new Error('DISCORD_APP_ID is required to generate an OAuth2 invite URL.');
       }
-      const scopes = data.scopes?.length ? data.scopes : ['bot', 'applications.commands'];
+      const scopes = data.scopes?.length ? data.scopes : ['bot'];
       const permissions = normalizeDiscordPermissions(data.permissions);
       return {
         ok: true,

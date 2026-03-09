@@ -642,7 +642,7 @@ async function main() {
   const appId = values.get('DISCORD_APP_ID');
   const recommendedPerms = '1133568';
   const inviteUrl = appId
-    ? `https://discord.com/oauth2/authorize?client_id=${appId}&scope=bot%20applications.commands&permissions=${recommendedPerms}`
+    ? `https://discord.com/oauth2/authorize?client_id=${appId}&scope=bot&permissions=${recommendedPerms}`
     : '(missing DISCORD_APP_ID)';
 
   prompts.note(

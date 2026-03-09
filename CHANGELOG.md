@@ -24,11 +24,22 @@
 
 ## [Unreleased]
 
+### Added
+
+- Added a commandless interactive Discord UX layer: Sage can now emit stateful Components V2 buttons, launch modal-backed follow-up flows, persist interaction sessions, and continue chat turns from Sage-authored component clicks instead of relying on slash-command entrypoints.
+- Added a non-model bootstrap path for hosted Pollinations BYOP recovery, including admin-only setup-card buttons and a secure modal flow to set, check, or clear the current guild server key even when Sage has no usable provider key yet.
+- Added a dedicated `discord_voice` routed tool for live voice presence control so Sage can report voice status, join the invoker's current voice channel, and leave the active guild voice channel through normal chat turns.
+
 ### Changed
 
+- Made Sage fully chat-first in Discord: primary invocation is now wake word, mention, reply, and Sage-authored interactive follow-ups, while onboarding, welcome messaging, and hosted BYOP setup now direct operators to the in-chat setup card flow instead of slash commands.
+- Reworked Discord Components V2 delivery so action-row buttons can carry Sage-managed interactive actions, with session-backed custom IDs created at send time and routed back into the runtime on button click or modal submit.
+- Removed `applications.commands` from the default invite scope and deleted the unused `DEV_GUILD_ID` config surface, aligning invite generation and runtime configuration with the now-commandless Discord app surface.
+- Updated runtime docs, onboarding guides, deployment/runbook copy, website onboarding, and native tool metadata to reflect commandless setup, `discord_voice`, interactive Components V2, and the hosted setup-card BYOP flow.
 - Added a fifth routed Discord domain tool, `discord_server`, so Sage can now inspect guild channels, roles, threads, scheduled events, AutoMod rules, and permission snapshots through typed actions instead of falling back to raw admin REST reads for common server workflows.
-- Reassigned canonical thread ownership to `discord_server` and expanded the immediate Discord interaction path with typed thread lifecycle actions (`update_thread`, `join_thread`, `leave_thread`, `add_thread_member`, `remove_thread_member`) while keeping `discord_messages.create_thread` as a compatibility alias for existing prompts and payloads.
+- Reassigned canonical thread ownership to `discord_server` and expanded the immediate Discord interaction path with typed thread lifecycle actions (`create_thread`, `update_thread`, `join_thread`, `leave_thread`, `add_thread_member`, `remove_thread_member`), completing the thread-surface migration away from `discord_messages`.
 - Reworked the agent runtime around native structured tool calls end-to-end: LLM responses now carry `text`, `toolCalls`, `reasoningText`, and usage separately, the runtime no longer teaches or parses JSON tool-call envelopes, and trace payloads now record tool rounds, rebudgeting, finalization behavior, and cancellation outcomes for better operator debugging.
+- Tightened the Phase 1/2 release candidate around the new runtime/tool surface: Pollinations retries now stop immediately on cancellation and now fail malformed provider tool-call argument JSON explicitly instead of degrading to empty args, top-level `AgentTrace.reasoningText` now reflects the real provider/tool-loop reasoning captured during the turn, `discord_server.list_threads` now rejects archived-thread requests that omit `parentChannelId`, the public agent-runtime export surface now includes the shipped `discord_server` and `discord_voice` tools, and the remaining runtime/docs wording now consistently describes native provider tool calls instead of the retired JSON-envelope protocol.
 - Added explicit per-round context rebudgeting before follow-up model calls and propagated cancellation signals through the main web, GitHub, workflow, npm, and Pollinations-backed long-running integrations, reducing stuck tool chains and making runtime timeouts stop upstream work instead of only timing out locally.
 - Rebuilt the deep trust gate around mutation-tested critical guardrails instead of broad unscoped files: `check:mutation` now targets logging policy and invocation/chat rate-limiters with deterministic boundary-focused tests, so passing `check:trust:deep` reflects behavior-level protection against trivial test workarounds.
 - Expanded the mutation-scored trust gate to include shared timeout/retry and typed-error utilities (`timeout`, `resilience`, `AppError`) with strict deterministic tests, increasing guardrail depth for runtime failure handling while keeping the gate enforceable in CI.
@@ -74,8 +85,11 @@
 
 ### Removed
 
+- Removed the user-facing slash-command surface (`/ping`, `/join`, `/leave`, `/sage key ...`, `/sage admin stats`) along with command registration and the old command-handler paths, so Discord interaction routing is now focused on chat, buttons, and modals.
+- Removed the final `discord_messages.create_thread` compatibility alias from the routed-tool contract so `discord_server.create_thread` is the only canonical thread-creation path end to end.
 - Removed the last legacy interactive Discord message path (`legacy_components`) from Sage’s model-facing tool surface and runtime execution contract, so operators no longer have a stale third presentation mode that conflicts with the split-tool mental model.
 - Removed the last internal legacy `discord` tool module and old monolith-named test surfaces, so the checked-in runtime, tests, and website no longer describe a singular provider-facing Discord tool shape.
+- Removed the dead `sage-command-handlers` helper/test path and the unused local `cert` CLI entrypoint, trimming leftover development-era surfaces from the commandless Discord build so the repository only carries supported runtime and operator flows.
 - Removed the "Trust & Quality" section from the website homepage and deleted the `TrustBadges.jsx` component.
 
 ### Added
