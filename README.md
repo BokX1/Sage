@@ -226,7 +226,8 @@ profiles, messages, summaries, traces"]:::memory
 
     subgraph Tools["Tool System"]
         direction LR
-        DISC["discord tool
+        DISC["discord_context / discord_messages /
+discord_files / discord_admin
 memory, search, files, analytics, admin wrappers"]:::tools
         WEB["web / wikipedia / stack overflow"]:::tools
         DEV["github / npm / workflow"]:::tools

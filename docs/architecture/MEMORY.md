@@ -30,7 +30,7 @@ This document describes how Sage stores memory and makes it available to the run
 | Memory type | Purpose | Storage | Key files |
 | :--- | :--- | :--- | :--- |
 | **User profile** | Long-term personalization profile per user, stored as soft preferences, active focus, and durable background context. | `UserProfile`, `UserProfileArchive` | `src/features/memory/profileUpdater.ts`, `src/features/memory/userProfileRepo.ts` |
-| **Server instructions** | Admin-authored server instructions and archive history. | `GuildMemory`, `GuildMemoryArchive` | `src/features/admin/*`, `src/features/agent-runtime/discordTool.ts` |
+| **Server instructions** | Admin-authored server instructions and archive history. | `GuildMemory`, `GuildMemoryArchive` | `src/features/admin/*`, `src/features/agent-runtime/discordDomainTools.ts`, `src/features/agent-runtime/discord/core.ts` |
 | **Channel summaries** | Rolling and profile summaries for channels; continuity context rather than quote-level evidence. | `ChannelSummary` | `src/features/summary/*` |
 | **Raw transcript** | Recent message history for prompt context and retrieval. | Ring buffer plus optional `ChannelMessage` persistence | `src/features/awareness/*`, `src/features/ingest/ingestEvent.ts` |
 | **Attachment cache** | Persisted attachment recall text for on-demand retrieval and resend. Uploaded images store Florence-generated recall/OCR text; other files store extracted text. | `IngestedAttachment`, `AttachmentChunk` | `src/features/attachments/*`, `src/app/discord/handlers/messageCreate.ts` |
@@ -58,8 +58,8 @@ Transcript storage and prompt budgeting are separate controls. A channel can ret
 Attachment behavior:
 
 - Transcript rows store cache references and message metadata, not full historical attachment bodies.
-- Stored attachment text is loaded on demand through `discord` tool actions such as `files.list_channel`, `files.list_server`, and `files.read_attachment`.
-- Sage can resend a cached original file or image through `discord` action `files.send_attachment`; the tool result also returns the stored recall/extracted text so the follow-up reply stays grounded.
+- Stored attachment text is loaded on demand through `discord_files` actions such as `list_channel`, `list_server`, and `read_attachment`.
+- Sage can resend a cached original file or image through `discord_files` action `send_attachment`; the tool result also returns the stored recall/extracted text so the follow-up reply stays grounded.
 
 Voice transcript behavior:
 
@@ -86,11 +86,11 @@ flowchart LR
     end
 
     subgraph Tools
-        U[discord: profile.get_user]:::tools
-        C[discord: summary.get_channel]:::tools
-        A[discord: summary.search_channel_archives]:::tools
-        G[discord: analytics.get_social_graph]:::tools
-        F[discord: files.read_attachment]:::tools
+        U[discord_context.get_user_profile]:::tools
+        C[discord_context.get_channel_summary]:::tools
+        A[discord_context.search_channel_summary_archives]:::tools
+        G[discord_context.get_social_graph]:::tools
+        F[discord_files.read_attachment]:::tools
     end
 
     subgraph Builder["Context Builder"]
@@ -119,8 +119,8 @@ Runtime notes:
 - User profile summary is the only long-term profile block always embedded up front, and it is embedded inside the system prompt.
 - The profile is best-effort personalization, not an authoritative rule surface: it is stored as `<preferences>`, `<active_focus>`, and `<background>`, with durable preferences/background and current-but-fallible active focus, and it may lag behind the latest turn because updates happen asynchronously.
 - Channel summaries, archives, social-graph data, file cache data, and wider message history are fetched only if the model chooses the corresponding tool action.
-- `summary.get_channel` returns rolling channel summary context for continuity and situational awareness. It is not a substitute for message-history evidence.
-- Exact historical verification should use `messages.search_history`, `messages.search_with_context`, or `messages.get_context`.
+- `discord_context.get_channel_summary` returns rolling channel summary context for continuity and situational awareness. It is not a substitute for message-history evidence.
+- Exact historical verification should use `discord_messages.search_history`, `discord_messages.search_with_context`, or `discord_messages.get_context`.
 
 ---
 
@@ -199,7 +199,7 @@ Long-term channel summary updates are scheduler-driven:
 
 - `SUMMARY_PROFILE_MIN_INTERVAL_SEC` starter value `21600` gates profile updates
 - output is stored in `ChannelSummary` with `kind = 'profile'`
-- the runtime reads these summaries through `discord` tool actions when needed
+- the runtime reads these summaries through `discord_context` actions when needed
 
 There is no dedicated summarize slash command in the current command set.
 
@@ -238,7 +238,7 @@ Relationship edges are updated from mentions, replies, reactions, and voice over
 - `acquaintance`
 - `distant`
 
-These signals are returned through `discord` tool actions such as `analytics.get_social_graph` and `analytics.top_relationships`.
+These signals are returned through `discord_context` actions such as `get_social_graph` and `get_top_relationships`.
 
 If the optional Memgraph/Redpanda stack is enabled, Sage can also export interaction events and query richer graph analytics from Memgraph.
 
@@ -250,7 +250,7 @@ If the optional Memgraph/Redpanda stack is enabled, Sage can also export interac
 
 Voice presence events are stored in `VoiceSession` as join/leave windows and durations.
 
-`discord` action `analytics.get_voice_analytics` summarizes:
+`discord_context` action `get_voice_analytics` summarizes:
 
 - who is currently in voice
 - how long a user has been active today
@@ -261,7 +261,7 @@ Optional voice session summary memory:
 - If `VOICE_STT_ENABLED=true`, Sage can transcribe in-channel audio while connected.
 - Utterance transcripts stay **in-memory only** in the live session store.
 - On leave/disconnect, Sage can persist a **summary-only** record to `VoiceConversationSummary`.
-- These summaries are retrievable via `discord` action `analytics.voice_summaries`.
+- These summaries are retrievable via `discord_context` action `get_voice_summaries`.
 
 ---
 

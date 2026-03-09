@@ -24,7 +24,7 @@ How Sage exports relationship signals to Memgraph and reads them back at runtime
 
 ## 🌐 Overview
 
-The social graph is optional infrastructure. When `KAFKA_BROKERS` is configured, Sage can export mentions, replies, reactions, and voice-session signals to **Redpanda** and **Memgraph**. The runtime can then read graph analytics back through the `discord` tool.
+The social graph is optional infrastructure. When `KAFKA_BROKERS` is configured, Sage can export mentions, replies, reactions, and voice-session signals to **Redpanda** and **Memgraph**. The runtime can then read graph analytics back through `discord_context`.
 
 What is available today:
 
@@ -95,7 +95,7 @@ The repository keeps the broader 9-pillar design, but it is split across two cat
 | Emoji sentiment | `emojiSentiment.ts` | Signed reaction signals |
 | Dunbar layers | `graphAnalyticsPulse.ts` | Rank-based labels such as `intimate` and `close` |
 | Reciprocity | `graphAnalyticsPulse.ts` | Relative balance of A→B vs B→A interactions |
-| Query shaping | `socialGraphQuery.ts` | Runtime-friendly response payloads for the `discord` tool |
+| Query shaping | `socialGraphQuery.ts` | Runtime-friendly response payloads for `discord_context` |
 
 The analytics pulse can call into Memgraph and write graph metrics, but it is not wired into the main Sage process lifecycle.
 

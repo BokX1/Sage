@@ -96,7 +96,7 @@ flowchart TD
 | **Prompt Composer** | `src/features/agent-runtime/promptComposer.ts` | Assembles the final system prompt with personality, capabilities, and tool protocol |
 | **Tool Call Loop** | `src/features/agent-runtime/toolCallLoop.ts` | Iterative tool execution with bounded rounds, parallel read-only optimization, and timeout enforcement |
 | **Tool Registry** | `src/features/agent-runtime/toolRegistry.ts` | Zod-validated tool definitions with OpenAI-compatible spec generation |
-| **Default Tools** | `src/features/agent-runtime/defaultTools.ts` | All 11 built-in tool definitions |
+| **Default Tools** | `src/features/agent-runtime/defaultTools.ts` | All 14 built-in top-level tool definitions |
 
 ---
 
@@ -177,13 +177,19 @@ The tool protocol is communicated to the LLM via a structured instruction block,
 
 <a id="registered-tools"></a>
 
-## 🧰 Registered Tools (11 Total)
+## 🧰 Registered Tools (14 Total)
 
-### 🧠 Memory & Context (1 tool)
+> [!NOTE]
+> The runtime currently registers 14 top-level tools. The website/demo may show a larger capability count because it also lists routed Discord actions individually.
+
+### 🧠 Discord Domain Tools (4 tools)
 
 | Tool | Description | Access |
 |:---|:---|:---|
-| `discord` | Unified Discord tool: memory, retrieval, analytics, safe interactions, and admin approval flows (action-based) | Public (some actions Admin) |
+| `discord_context` | Profiles, channel summaries, server-instructions reads, and social/voice analytics | Public |
+| `discord_messages` | Exact message history, Discord-native delivery, polls, threads, and reactions | Public |
+| `discord_files` | Attachment discovery, paged attachment reads, and attachment resend flows | Public |
+| `discord_admin` | Admin instruction writes, moderation, channel/role/member admin actions, invite URLs, and raw Discord API fallback | Public (some actions Admin) |
 
 ### 🌐 Search & Research (3 tools)
 
@@ -207,14 +213,14 @@ The tool protocol is communicated to the LLM via a structured instruction block,
 |:---|:---|:---|
 | `image_generate` | Generate/edit images via Pollinations | Public |
 
-### 🛡️ Admin & Discord (via `discord` actions)
+### 🛡️ Admin & Discord (via routed Discord actions)
 
-Admin-only capabilities are exposed as actions on the `discord` tool:
+Admin-only capabilities are exposed on `discord_admin`:
 
-- `instructions.update_server` (approval-gated)
-- `moderation.submit` (approval-gated)
-- `discord.api` (admin-only; guild-scoped; GET executes immediately, non-GET requires approval)
-- Typed REST write wrappers (approval-gated): `messages.edit/delete/pin/unpin`, `channels.create/edit`, `roles.create/edit/delete`, `members.add_role/remove_role`
+- `update_server_instructions` (approval-gated)
+- `submit_moderation` (approval-gated)
+- `api` (admin-only; guild-scoped; `GET` executes immediately, non-`GET` requires approval)
+- Typed REST write wrappers (approval-gated): `edit_message`, `delete_message`, `pin_message`, `unpin_message`, `create_channel`, `edit_channel`, `create_role`, `edit_role`, `delete_role`, `add_member_role`, `remove_member_role`
 
 Approval UX:
 
@@ -222,14 +228,14 @@ Approval UX:
 - When an action resolves (approve/reject/execute/fail/expire), Sage edits that status message with the outcome.
 - Resolved approval cards auto-delete after ~60 seconds to avoid channel clutter (including after restarts via DB-backed cleanup).
 
-Read-only helpers are also exposed via `discord` actions:
+Read-only helpers are also exposed across the routed Discord tools:
 
-- `oauth2.invite_url` (builds a bot invite URL using `DISCORD_APP_ID`)
-- `messages.search_with_context` (one-shot match + surrounding messages)
-- `messages.search_guild` (guild-wide search; not available in Autopilot)
-- `messages.user_timeline` (recent activity for a user; not available in Autopilot)
-- `files.read_attachment` (paged read of ingested attachment text)
-- `analytics.top_relationships` (top social-graph edges for a time window)
+- `discord_admin.get_invite_url` (builds a bot invite URL using `DISCORD_APP_ID`)
+- `discord_messages.search_with_context` (one-shot match + surrounding messages)
+- `discord_messages.search_guild` (guild-wide search; not available in Autopilot)
+- `discord_messages.get_user_timeline` (recent activity for a user; not available in Autopilot)
+- `discord_files.read_attachment` (paged read of ingested attachment text)
+- `discord_context.get_top_relationships` (top social-graph edges for a time window)
 
 ### ⚙️ System (3 tools)
 

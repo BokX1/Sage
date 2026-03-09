@@ -92,10 +92,10 @@ When generating replies, Sage sends:
 - User profile summary embedded inside the runtime system prompt
 - Server instructions when guild-specific behavior has been configured
 - Tool-fetched summaries, archives, social-graph data, or attachment cache results only when the tool loop requests them
-- Stored message-history retrieval results when tool loop calls `discord` actions `messages.search_history` / `messages.get_context` (permission-gated; optional `channelId` can target other channels)
+- Stored message-history retrieval results when tool loop calls `discord_messages` actions `search_history` / `get_context` (permission-gated; optional `channelId` can target other channels)
 - Attachment text blocks for the current turn when inline analysis is needed
-- Attachment-cache retrieval results when tool loop calls `discord` actions `files.list_channel` or `files.list_server` (server-wide results are permission-filtered)
-- When an admin authorizes `discord` action `discord.api` calls that include multipart `files` sourced from a URL, Sage will fetch those files from public HTTP(S) URLs to upload them to Discord (private/local hosts are blocked).
+- Attachment-cache retrieval results when tool loop calls `discord_files` actions `list_channel` or `list_server` (server-wide results are permission-filtered)
+- When an admin authorizes `discord_admin` action `api` calls that include multipart `files` sourced from a URL, Sage will fetch those files from public HTTP(S) URLs to upload them to Discord (private/local hosts are blocked).
 - Image URLs for vision-capable requests
 - When voice session summary is enabled, Sage may send an utterance-level transcript (text) to the LLM provider to generate a summary. Voice audio is sent only to the local voice service (STT), not to the LLM provider.
 

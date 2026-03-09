@@ -97,7 +97,7 @@ Sage can answer questions like:
 - *"How long has @User been in voice?"*
 - *"Who was in #general-voice earlier today?"*
 
-When Sage is actively in a voice session, it can inject a compact live voice context block into the prompt. Outside of those sessions, voice analytics are fetched on demand through the `discord` tool.
+When Sage is actively in a voice session, it can inject a compact live voice context block into the prompt. Outside of those sessions, voice analytics are fetched on demand through `discord_context`.
 
 ### Voice Transcription + Summary Memory (Beta)
 

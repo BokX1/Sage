@@ -82,8 +82,8 @@ flowchart TD
 | 8 | Current user message | Triggering text and multimodal content wrapped as `<user_input>` |
 
 > [!NOTE]
-> Channel summaries, archived summaries, social-graph data, attachment cache results, and wider message history are not preloaded into every turn. The model fetches them on demand through the `discord` tool when it decides they are needed.
-> `summary.get_channel` is a continuity surface, not historical evidence. For exact verification Sage should use `messages.search_history`, `messages.search_with_context`, or `messages.get_context`.
+> Channel summaries, archived summaries, social-graph data, attachment cache results, and wider message history are not preloaded into every turn. The model fetches them on demand through the split Discord tools when it decides they are needed.
+> `discord_context.get_channel_summary` is a continuity surface, not historical evidence. For exact verification Sage should use `discord_messages.search_history`, `discord_messages.search_with_context`, or `discord_messages.get_context`.
 
 All system-role blocks are merged into a single system message before the provider call. This keeps ordering valid for stricter providers while preserving the logical block boundaries in `budgetJson`.
 
@@ -152,20 +152,20 @@ Each turn can persist the following to `AgentTrace`:
 
 ## 🧰 Tool-Oriented Data Access
 
-Most richer context is loaded on demand through the `discord` tool:
+Most richer context is loaded on demand through the split Discord tools:
 
 | Data | Tool action | Storage |
 | :--- | :--- | :--- |
-| User profile | `profile.get_user` | PostgreSQL (`UserProfile`) |
-| Channel summaries | `summary.get_channel` | PostgreSQL (`ChannelSummary`) |
-| Archived channel summaries | `summary.search_channel_archives` | PostgreSQL plus pgvector-backed archive search |
-| Server instructions | `instructions.get_server` | PostgreSQL (`GuildMemory`) |
-| Social graph | `analytics.get_social_graph`, `analytics.top_relationships` | PostgreSQL (`RelationshipEdge`) plus optional Memgraph |
-| Voice analytics | `analytics.get_voice_analytics`, `analytics.voice_summaries` | PostgreSQL (`VoiceSession`, `VoiceConversationSummary`) |
-| Cached file text | `files.list_channel`, `files.list_server`, `files.read_attachment` | PostgreSQL (`IngestedAttachment`) |
-| Semantic file search | `files.find_channel`, `files.find_server` | pgvector (`AttachmentChunk`) |
-| Message history | `messages.search_history`, `messages.search_with_context`, `messages.get_context`, `messages.search_guild`, `messages.user_timeline` | PostgreSQL (`ChannelMessage`) plus pgvector (`ChannelMessageEmbedding`) |
-| Invite generation | `oauth2.invite_url` | Computed from `DISCORD_APP_ID` |
+| User profile | `discord_context.get_user_profile` | PostgreSQL (`UserProfile`) |
+| Channel summaries | `discord_context.get_channel_summary` | PostgreSQL (`ChannelSummary`) |
+| Archived channel summaries | `discord_context.search_channel_summary_archives` | PostgreSQL plus pgvector-backed archive search |
+| Server instructions | `discord_context.get_server_instructions` | PostgreSQL (`GuildMemory`) |
+| Social graph | `discord_context.get_social_graph`, `discord_context.get_top_relationships` | PostgreSQL (`RelationshipEdge`) plus optional Memgraph |
+| Voice analytics | `discord_context.get_voice_analytics`, `discord_context.get_voice_summaries` | PostgreSQL (`VoiceSession`, `VoiceConversationSummary`) |
+| Cached file text | `discord_files.list_channel`, `discord_files.list_server`, `discord_files.read_attachment` | PostgreSQL (`IngestedAttachment`) |
+| Semantic file search | `discord_files.find_channel`, `discord_files.find_server` | pgvector (`AttachmentChunk`) |
+| Message history | `discord_messages.search_history`, `discord_messages.search_with_context`, `discord_messages.get_context`, `discord_messages.search_guild`, `discord_messages.get_user_timeline` | PostgreSQL (`ChannelMessage`) plus pgvector (`ChannelMessageEmbedding`) |
+| Invite generation | `discord_admin.get_invite_url` | Computed from `DISCORD_APP_ID` |
 
 Some read actions are blocked in Autopilot mode, and all write/admin actions remain permission-gated.
 
