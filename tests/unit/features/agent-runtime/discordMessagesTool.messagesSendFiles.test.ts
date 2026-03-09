@@ -41,7 +41,6 @@ describe('discord messages tool send attachments', () => {
       {
         name: 'discord_messages',
         args: {
-          think: 'Send a file attachment',
           action: 'send',
           files: [
             {
@@ -109,7 +108,6 @@ describe('discord messages tool send attachments', () => {
       {
         name: 'discord_messages',
         args: {
-          think: 'Send a structured update card',
           action: 'send',
           presentation: 'components_v2',
           files: [

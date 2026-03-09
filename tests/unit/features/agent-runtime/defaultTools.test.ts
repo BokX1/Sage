@@ -22,7 +22,6 @@ describe('default agentic tools', () => {
       'stack_overflow_search',
       'system_tool_stats',
       'system_time',
-      'system_plan',
       'workflow',
       'web',
       'wikipedia_search',
@@ -36,7 +35,7 @@ describe('default agentic tools', () => {
     const result = await registry.executeValidated(
       {
         name: 'system_time',
-        args: { think: 'Testing datetime execution' },
+        args: {},
       },
       {
         traceId: 'trace',
@@ -63,7 +62,6 @@ describe('default agentic tools', () => {
       {
         name: 'discord_messages',
         args: {
-          think: 'Verify autopilot guard',
           action: 'send',
           content: 'Hello from autopilot',
         },
@@ -91,7 +89,6 @@ describe('default agentic tools', () => {
       {
         name: 'discord_admin',
         args: {
-          think: 'Should fail schema validation',
           action: 'submit_moderation',
           request: {
             // wrong schema on purpose: this is an interaction, not a moderation action
@@ -124,7 +121,6 @@ describe('default agentic tools', () => {
       {
         name: 'discord_admin',
         args: {
-          think: 'Verify non-command admin context is allowed to reach guild guard',
           action: 'update_server_instructions',
           request: {
             operation: 'set',

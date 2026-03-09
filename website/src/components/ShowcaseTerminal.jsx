@@ -7,7 +7,6 @@ const scenarios = [
         desc: 'Trace web search and error resolution',
         userMsg: 'Sage, I keep getting a hydration mismatch error in my Next.js app. Can you help?',
         trace: [
-            { tool: 'system_plan', status: 'ok', text: 'Analyzing: hydration mismatch → likely SSR/CSR discrepancy' },
             { tool: 'stack_overflow_search', status: 'ok', text: 'query: "Next.js hydration mismatch error"' },
             { tool: 'web', status: 'ok', text: 'action=extract → Extracting top answer from stackoverflow.com/q/71706...' },
             { tool: 'web', status: 'fallback', text: 'action=search → tavily ✗ → exa ✗ → searxng ✓ "Next.js 15 hydration fix"' },
@@ -19,10 +18,9 @@ const scenarios = [
         desc: 'Extracting temporal conversational data',
         userMsg: "Sage, what did we discuss in voice chat yesterday?",
         trace: [
-            { tool: 'system_plan', status: 'ok', text: 'User wants voice session context from yesterday' },
-  { tool: 'discord_context', status: 'ok', text: 'action=get_voice_analytics → Found 2 sessions: #general-voice (45min), #dev-talk (20min)' },
-  { tool: 'discord_context', status: 'ok', text: 'action=get_channel_summary → Loading rolling summary for #general around session timestamp' },
-  { tool: 'discord_messages', status: 'ok', text: 'action=search_with_context → Semantic search + context: messages near voice session window' },
+            { tool: 'discord_context', status: 'ok', text: 'action=get_voice_analytics → Found 2 sessions: #general-voice (45min), #dev-talk (20min)' },
+            { tool: 'discord_context', status: 'ok', text: 'action=get_channel_summary → Loading rolling summary for #general around session timestamp' },
+            { tool: 'discord_messages', status: 'ok', text: 'action=search_with_context → Semantic search + context: messages near voice session window' },
         ],
     },
     {
@@ -30,7 +28,6 @@ const scenarios = [
         desc: 'Static analysis of external git repository',
         userMsg: 'Sage, can you look at the BokX1/Sage repo and explain the architecture?',
         trace: [
-            { tool: 'system_plan', status: 'ok', text: 'User wants repo architecture breakdown' },
             { tool: 'github', status: 'ok', text: 'action=repo.get → Fetching BokX1/Sage metadata: 14 dirs, TypeScript, MIT' },
             { tool: 'github', status: 'ok', text: 'action=code.search → query: "agentRuntime" → 3 files found' },
             { tool: 'github', status: 'ok', text: 'action=file.page → Reading src/features/agent-runtime/agentRuntime.ts (paged)' },
@@ -40,7 +37,6 @@ const scenarios = [
 ];
 
 const toolIcons = {
-    system_plan: '🧠',
     stack_overflow_search: '📚',
     web: '🌐',
     discord_context: '💬',

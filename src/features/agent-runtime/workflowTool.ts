@@ -4,22 +4,13 @@ import { lookupGitHubCodeSearch, lookupNpmPackage } from './toolIntegrations';
 import { ToolDetailedError } from './toolErrors';
 import { buildRoutedToolHelp } from './toolDocs';
 
-const thinkField = z
-  .string()
-  .describe(
-    'Optional internal reasoning explaining why you are generating this payload and how it fulfills the active goal.',
-  )
-  .optional();
-
 const workflowToolSchema = z.discriminatedUnion('action', [
   z.object({
-    think: thinkField,
     action: z.literal('help').describe('Show available workflow actions and example payloads.'),
     includeExamples: z.boolean().optional().describe('If true, include example payloads for each workflow action.'),
   }),
 
   z.object({
-    think: thinkField,
     action: z
       .literal('npm.github_code_search')
       .describe('One-shot: npm_info -> resolve githubRepo -> github code.search (reduces multi-hop chains).'),

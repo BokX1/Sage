@@ -84,6 +84,7 @@ function buildToolUsageInstruction(toolNames: string[]): string {
     '<tool_usage>',
     'When you need tools, use the provider-native tool calling interface directly.',
     'Do not describe, serialize, or wrap tool calls in JSON or markdown.',
+    'Do not narrate tool names, tool arguments, approval payloads, or retry protocol in the channel reply.',
     'After gathering sufficient data, either respond in plain text or use the appropriate Discord self-send action when the runtime guidance tells you to deliver the final answer through Discord.',
     'If no tool is needed, answer normally in plain text.',
     '',
@@ -118,20 +119,46 @@ function cleanDraftText(value: string | null | undefined): string | null {
   return normalized.length > 0 ? normalized : null;
 }
 
-function collectTraceReasoningText(values: Array<string | null | undefined>): string | undefined {
-  const segments: string[] = [];
-  const seen = new Set<string>();
+const OPERATIONAL_REPLY_BLOCK_REGEXES = [
+  /```(?:json|txt|text)?\s*[\s\S]*?(?:"actionId"|"approvalMessageId"|"expiresAtIso"|"pending_approval"|"action"\s*:|"request"\s*:|\[OK\] Tool|\[ERROR\] Tool|<untrusted_external_data)[\s\S]*?```/gi,
+];
 
-  for (const value of values) {
-    const cleaned = cleanDraftText(value);
-    if (!cleaned || seen.has(cleaned)) {
-      continue;
-    }
-    seen.add(cleaned);
-    segments.push(cleaned);
+const OPERATIONAL_REPLY_LINE_REGEXES = [
+  /^\s*\[(?:SYSTEM|OK|ERROR)\]\b/i,
+  /^\s*<(?:untrusted_external_data|tool_results?)\b/i,
+  /^\s*(?:Suggestion|Hint)\s*:/i,
+  /^\s*(?:I|I'll|I will|Let me|First,? I'll|First,? I will|Next,? I'll|Next,? I will)\s+(?:call|use|invoke|run)\b/i,
+  /^\s*(?:Calling|Using|Invoking|Running)\b.+\b(?:tool|discord_admin|discord_messages|discord_server|discord_context|discord_files|discord_voice|web|github|workflow|system_time|image_generate)\b/i,
+  /\b(?:tool protocol|tool payload|approval payload|approval command|actionId|approvalMessageId|expiresAtIso|pending_approval)\b/i,
+];
+
+export function scrubFinalReplyText(params: {
+  replyText: string | null | undefined;
+  hasPendingApproval?: boolean;
+}): string {
+  let cleaned = cleanDraftText(params.replyText) ?? '';
+
+  for (const pattern of OPERATIONAL_REPLY_BLOCK_REGEXES) {
+    cleaned = cleaned.replace(pattern, '\n');
   }
 
-  return segments.length > 0 ? segments.join('\n\n') : undefined;
+  cleaned = cleaned
+    .split('\n')
+    .filter((line) => !OPERATIONAL_REPLY_LINE_REGEXES.some((pattern) => pattern.test(line)))
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+
+  cleaned = cleaned
+    .replace(/^\s*\{[\s\S]*"action"\s*:[\s\S]*\}\s*$/i, '')
+    .replace(/^\s*\{[\s\S]*"status"\s*:\s*"pending_approval"[\s\S]*\}\s*$/i, '')
+    .trim();
+
+  if (!cleaned && params.hasPendingApproval) {
+    return 'I queued that for approval.';
+  }
+
+  return cleaned;
 }
 
 function collectFilesFromToolResults(toolResults: ToolResult[]): Array<{ attachment: Buffer; name: string }> {
@@ -348,8 +375,6 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
   let toolLoopBudgetJson: Record<string, unknown> | undefined;
   let toolResults: ToolResult[] = [];
   let toolLoopTraceEvents: Record<string, unknown>[] = [];
-  let initialReasoningText: string | undefined;
-  let traceReasoningText: string | undefined;
 
   try {
     const maxTokens = normalizeStrictlyPositiveInt(
@@ -367,8 +392,6 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
       toolChoice: toolSpecs ? 'auto' : undefined,
     });
     draftText = response.text;
-    initialReasoningText = cleanDraftText(response.reasoningText) ?? undefined;
-    traceReasoningText = collectTraceReasoningText([initialReasoningText]);
 
     if (toolLoopEnabled && toolSpecs && activeToolNames.length > 0) {
       const loopStartedAt = Date.now();
@@ -428,26 +451,20 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
         roundEvents: loopResult.roundEvents,
         finalization: loopResult.finalization,
         cancellationCount: loopResult.cancellationCount,
-        initialReasoningText: initialReasoningText ?? null,
         attachmentCount: loopResult.toolResults.reduce(
           (sum, result) => sum + (result.attachments?.length ?? 0),
           0,
         ),
         latencyMs: Date.now() - loopStartedAt,
       };
-      traceReasoningText = collectTraceReasoningText([
-        initialReasoningText,
-        ...loopResult.roundEvents.map((event) => event.reasoningText),
-      ]);
     }
   } catch (error) {
     logger.error({ error, traceId }, 'Single-agent runtime call failed');
     draftText = "I'm having trouble connecting right now. Please try again later.";
-        toolLoopBudgetJson = {
+    toolLoopBudgetJson = {
       enabled: toolLoopEnabled,
       failed: true,
       errorText: error instanceof Error ? error.message : String(error),
-      initialReasoningText: initialReasoningText ?? null,
     };
   }
 
@@ -473,6 +490,13 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
 
   const files = collectFilesFromToolResults(toolResults);
   const pendingAdminActionIds = collectPendingAdminActionIds(toolResults);
+  const cleanedReplyText = scrubFinalReplyText({
+    replyText: safeFinalText,
+    hasPendingApproval: pendingAdminActionIds.length > 0,
+  });
+  const finalReplyText =
+    cleanedReplyText ||
+    'I completed part of the request but could not format a final response. Please ask me to try once more.';
   const budgetJson: Record<string, unknown> = {
     route: SINGLE_ROUTE_KIND,
     model,
@@ -507,19 +531,18 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
             details: {
               files: files.length,
               toolResults: toolResults.length,
-              initialReasoningTextPresent: !!initialReasoningText,
             },
           },
         ],
-        reasoningText: traceReasoningText ?? null,
-        replyText: safeFinalText,
+        reasoningText: null,
+        replyText: finalReplyText,
       });
     } catch (error) {
       logger.warn({ error, traceId }, 'Failed to persist trace end');
     }
   }
 
-  if (safeFinalText.trim() === '[SILENCE]') {
+  if (finalReplyText.trim() === '[SILENCE]') {
     logger.info({ traceId }, 'Agent chose silence');
     clearToolCaches();
     return {
@@ -530,19 +553,9 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
     };
   }
 
-  let cleanedText = safeFinalText;
-  if (files.length > 0) {
-    const jsonActionRegex = /```(?:json)?\s*\{(?:.|\n)*?"action"\s*:(?:.|\n)*?\}\s*```/yi;
-    const rawJsonRegex = /\{(?:.|\n)*?"action"\s*:(?:.|\n)*?\}/yi;
-    cleanedText = cleanedText.replace(jsonActionRegex, '').replace(rawJsonRegex, '').trim();
-    if (/^\s*\{(?:.|\n)*?\}\s*$/.test(cleanedText)) {
-      cleanedText = '';
-    }
-  }
-
   clearToolCaches();
   return {
-    replyText: cleanedText,
+    replyText: finalReplyText,
     meta: undefined,
     debug: { messages: runtimeMessages },
     files,

@@ -13,7 +13,7 @@ describe('promptComposer', () => {
     expect(prompt).toContain('<hard_rules>');
     expect(prompt).toContain('<user_profile>');
     expect(prompt).not.toContain('<reasoning_protocol>');
-    expect(prompt.length).toBeLessThan(5500);
+    expect(prompt.length).toBeLessThan(6500);
   });
 
   it('uses the guild-native strategist-host identity without DM framing', () => {
@@ -74,5 +74,12 @@ describe('promptComposer', () => {
     const prompt = getCorePromptContent();
 
     expect(prompt).toContain('Runtime may split longer replies automatically before sending.');
+  });
+
+  it('keeps approval workflow and recovery protocol out of visible replies', () => {
+    const prompt = getCorePromptContent();
+
+    expect(prompt).toContain('Treat approval-gated actions as private runtime workflow.');
+    expect(prompt).toContain('Never echo raw recovery coaching, schema hints, or tool failure protocol back into the visible reply.');
   });
 });

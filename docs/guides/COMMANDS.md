@@ -94,6 +94,8 @@ Examples:
 - `Sage, moderate the last spam message`
 
 Destructive or sensitive operations still require explicit approval through Sage-authored buttons.
+Equivalent unresolved requests are coalesced, so repeated asks for the same admin action should point back to one pending approval and one action ID rather than spawning duplicates.
+Normal channel replies should stay operator-friendly: Sage should not paste raw tool payloads, approval commands, or internal retry chatter into chat while an approval is pending.
 
 ---
 

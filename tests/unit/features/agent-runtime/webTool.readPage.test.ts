@@ -50,7 +50,6 @@ describe('webTool read.page', () => {
       {
         name: 'web',
         args: {
-          think: 'page 1',
           action: 'read.page',
           url: 'https://example.com/',
           maxChars: 200,
@@ -76,7 +75,6 @@ describe('webTool read.page', () => {
       {
         name: 'web',
         args: {
-          think: 'page 2',
           action: 'read.page',
           url: 'https://example.com/',
           contentId,

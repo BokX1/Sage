@@ -15,8 +15,8 @@ function textResponse(text: string): LLMResponse {
   return { text };
 }
 
-function toolResponse(calls: LLMToolCall[], reasoningText?: string): LLMResponse {
-  return { text: '', toolCalls: calls, reasoningText };
+function toolResponse(calls: LLMToolCall[]): LLMResponse {
+  return { text: '', toolCalls: calls };
 }
 
 function extractInjectedToolResults(request: LLMRequest): string {
@@ -143,7 +143,7 @@ describe('toolCallLoop', () => {
 
     it('executes tools when the provider returns native tool calls', async () => {
       mockChat
-        .mockResolvedValueOnce(toolResponse([{ name: 'get_time', args: {} }], 'Need a clock lookup'))
+        .mockResolvedValueOnce(toolResponse([{ name: 'get_time', args: {} }]))
         .mockResolvedValueOnce(textResponse('The current time is 12:00 PM.'));
 
       const result = await runToolCallLoop({
@@ -160,7 +160,6 @@ describe('toolCallLoop', () => {
         success: true,
       });
       expect(result.replyText).toBe('The current time is 12:00 PM.');
-      expect(result.roundEvents[0]?.reasoningText).toBe('Need a clock lookup');
       expect(result.finalization.returnedToolCallCount).toBe(0);
     });
 
@@ -336,7 +335,7 @@ describe('toolCallLoop', () => {
       }
     });
 
-    it('adds github-specific recovery guidance when GitHub file lookup fails with not found', async () => {
+    it('keeps failed tool reinjection compact and non-procedural', async () => {
       registry.register({
         name: 'github',
         description: 'Lookup file in GitHub',
@@ -359,8 +358,9 @@ describe('toolCallLoop', () => {
       });
 
       const toolResultsMessage = extractInjectedToolResults(mockChat.mock.calls[1][0]);
-      expect(toolResultsMessage).toContain('github action code.search');
-      expect(toolResultsMessage).toContain('file.get');
+      expect(toolResultsMessage).toContain('[ERROR] Tool "github" failed');
+      expect(toolResultsMessage).not.toContain('Suggestion:');
+      expect(toolResultsMessage).not.toContain('Hint:');
     });
 
     it('redacts sensitive keys from tool results before sending them back to the model', async () => {
@@ -765,7 +765,7 @@ describe('toolCallLoop', () => {
       expect(multiModeExecute).toHaveBeenCalledTimes(1);
     });
 
-    it('deduplicates read-only calls when only think differs', async () => {
+    it('deduplicates identical read-only calls with the same arguments', async () => {
       const lookupExecute = vi.fn().mockResolvedValue({ ok: true });
       registry.register({
         name: 'lookup_profile',
@@ -778,8 +778,8 @@ describe('toolCallLoop', () => {
       mockChat
         .mockResolvedValueOnce(
           toolResponse([
-            { name: 'lookup_profile', args: { query: 'alice', think: 'path a' } },
-            { name: 'lookup_profile', args: { query: 'alice', think: 'path b' } },
+            { name: 'lookup_profile', args: { query: 'alice' } },
+            { name: 'lookup_profile', args: { query: 'alice' } },
           ]),
         )
         .mockResolvedValueOnce(textResponse('Done.'));
@@ -793,6 +793,43 @@ describe('toolCallLoop', () => {
 
       expect(result.deduplicatedCallCount).toBe(1);
       expect(lookupExecute).toHaveBeenCalledTimes(1);
+    });
+
+    it('suppresses equivalent approval-gated retries after a pending approval is already queued', async () => {
+      const queueWriteExecute = vi
+        .fn()
+        .mockResolvedValue({ status: 'pending_approval', actionId: 'action-1' });
+      registry.register({
+        name: 'queue_write',
+        description: 'Queue a write that needs approval',
+        schema: z.object({ target: z.string() }),
+        metadata: { readOnly: false },
+        execute: queueWriteExecute,
+      });
+
+      mockChat
+        .mockResolvedValueOnce(
+          toolResponse([
+            { name: 'queue_write', args: { target: 'chan-1' } },
+            { name: 'queue_write', args: { target: 'chan-1' } },
+          ]),
+        )
+        .mockResolvedValueOnce(textResponse('I queued that for approval.'));
+
+      const result = await runToolCallLoop({
+        client: mockClient,
+        messages: [{ role: 'user', content: 'queue the write twice' }],
+        registry,
+        ctx: testCtx,
+      });
+
+      expect(queueWriteExecute).toHaveBeenCalledTimes(1);
+      expect(result.deduplicatedCallCount).toBe(1);
+      expect(result.toolResults).toHaveLength(2);
+      expect(result.toolResults[1]).toMatchObject({
+        success: true,
+        cacheKind: 'dedupe',
+      });
     });
   });
 });

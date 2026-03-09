@@ -51,6 +51,7 @@ flowchart TD
 1. Chat turns use one runtime model per turn.
 2. Tool usage extends capability without changing the runtime into a different route or agent.
 3. Image and web capabilities come from tools plus model capabilities, not from a separate selector pipeline.
+4. Provider reasoning capability stays internal to the model. Sage does not surface or persist provider reasoning text in normal operation, even if a provider can emit it.
 
 ---
 

@@ -129,6 +129,7 @@ describe('AgentTraceRepo', () => {
       expect(mockUpdate).toHaveBeenCalledWith({
         where: { id: 'trace-123' },
         data: {
+          reasoningText: null,
           replyText: 'Final reply text',
           toolJson: Prisma.JsonNull,
         },
@@ -159,7 +160,7 @@ describe('AgentTraceRepo', () => {
       });
     });
 
-    it('updates top-level reasoning text when provided at trace end', async () => {
+    it('suppresses top-level reasoning text even when provided at trace end', async () => {
       mockUpdate.mockResolvedValue({});
 
       await updateTraceEnd({
@@ -171,7 +172,7 @@ describe('AgentTraceRepo', () => {
       expect(mockUpdate).toHaveBeenCalledWith({
         where: { id: 'trace-123' },
         data: expect.objectContaining({
-          reasoningText: 'Need a quick lookup first.',
+          reasoningText: null,
           replyText: 'Final reply text',
         }),
       });

@@ -42,7 +42,6 @@ describe('discord files tool send_attachment', () => {
       {
         name: 'discord_files',
         args: {
-          think: 'Resend the cached attachment the user asked for',
           action: 'send_attachment',
           attachmentId: 'att-1',
           channelId: 'channel-2',

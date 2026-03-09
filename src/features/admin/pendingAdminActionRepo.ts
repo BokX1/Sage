@@ -84,6 +84,28 @@ function toRecord(value: {
   };
 }
 
+function canonicalizeJsonValue(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map((entry) => canonicalizeJsonValue(entry));
+  }
+
+  if (value && typeof value === 'object') {
+    const record = value as Record<string, unknown>;
+    return Object.keys(record)
+      .sort((left, right) => left.localeCompare(right))
+      .reduce<Record<string, unknown>>((accumulator, key) => {
+        accumulator[key] = canonicalizeJsonValue(record[key]);
+        return accumulator;
+      }, {});
+  }
+
+  return value;
+}
+
+function canonicalizePayloadJson(value: unknown): string {
+  return JSON.stringify(canonicalizeJsonValue(value));
+}
+
 export async function createPendingAdminAction(params: {
   guildId: string;
   channelId: string;
@@ -112,6 +134,35 @@ export async function getPendingAdminActionById(
 ): Promise<PendingAdminActionRecord | null> {
   const row = await prisma.pendingAdminAction.findUnique({ where: { id } });
   return row ? toRecord(row) : null;
+}
+
+export async function findMatchingPendingAdminAction(params: {
+  guildId: string;
+  requestedBy: string;
+  kind: string;
+  payloadJson: unknown;
+  now?: Date;
+}): Promise<PendingAdminActionRecord | null> {
+  const now = params.now ?? new Date();
+  const expectedPayload = canonicalizePayloadJson(params.payloadJson);
+  const rows = await prisma.pendingAdminAction.findMany({
+    where: {
+      guildId: params.guildId,
+      requestedBy: params.requestedBy,
+      kind: params.kind,
+      status: 'pending',
+      expiresAt: { gt: now },
+    },
+    orderBy: { createdAt: 'asc' },
+  });
+
+  for (const row of rows) {
+    if (canonicalizePayloadJson(row.payloadJson) === expectedPayload) {
+      return toRecord(row);
+    }
+  }
+
+  return null;
 }
 
 export async function markPendingAdminActionExpired(id: string): Promise<void> {

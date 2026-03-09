@@ -162,6 +162,61 @@ describe('tool help actions', () => {
     expect((adminPayload.result as Record<string, unknown>).action_names).toEqual(
       expect.arrayContaining(['api', 'update_server_instructions']),
     );
+
+    const contextResult = results[0];
+    if (!contextResult.success) throw new Error(contextResult.error);
+    const contextPayload = contextResult.result as {
+      routing_notes: string[];
+      action_contracts: Array<{ action: string; common_mistakes?: string[] }>;
+    };
+    expect(contextPayload.routing_notes).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining('changing that config belongs to discord_admin.update_server_instructions'),
+        expect.stringContaining('Voice analytics and voice summaries live here'),
+      ]),
+    );
+    expect(contextPayload.action_contracts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          action: 'get_server_instructions',
+          common_mistakes: expect.arrayContaining([
+            expect.stringContaining('discord_admin.update_server_instructions'),
+          ]),
+        }),
+      ]),
+    );
+
+    const filesResult = results[2];
+    if (!filesResult.success) throw new Error(filesResult.error);
+    const filesHelpPayload = filesResult.result as {
+      routing_notes: string[];
+    };
+    expect(filesHelpPayload.routing_notes).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining('list_channel/list_server enumerate files'),
+        expect.stringContaining('find_channel/find_server search attachment text'),
+      ]),
+    );
+
+    const adminHelpPayload = adminPayload.result as {
+      routing_notes: string[];
+      action_contracts: Array<{ action: string; common_mistakes?: string[] }>;
+    };
+    expect(adminHelpPayload.routing_notes).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining('update_server_instructions changes Sage behavior/persona config'),
+      ]),
+    );
+    expect(adminHelpPayload.action_contracts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          action: 'api',
+          common_mistakes: expect.arrayContaining([
+            expect.stringContaining('typed discord_server or discord_admin actions'),
+          ]),
+        }),
+      ]),
+    );
   });
 
   it('validation errors include a schema hint for known tools', async () => {

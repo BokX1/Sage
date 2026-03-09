@@ -15,13 +15,6 @@ import { buildRoutedToolHelp } from './toolDocs';
 type WebSearchProviderId = 'tavily' | 'exa' | 'searxng' | 'pollinations';
 type WebScrapeProviderId = 'firecrawl' | 'crawl4ai' | 'jina' | 'raw_fetch' | 'nomnom';
 
-const thinkField = z
-  .string()
-  .describe(
-    'Optional internal reasoning explaining why you are generating this payload and how it fulfills the active goal.',
-  )
-  .optional();
-
 const COMPLEX_SEARCH_WEB_PROVIDER_ORDER = ['searxng', 'tavily', 'exa'] as const;
 const COMPLEX_SEARCH_SCRAPE_PROVIDER_ORDER = ['crawl4ai', 'jina', 'raw_fetch', 'firecrawl'] as const;
 
@@ -52,13 +45,11 @@ function getWebSearchProfile(ctx: ToolExecutionContext): {
 
 const webToolSchema = z.discriminatedUnion('action', [
   z.object({
-    think: thinkField,
     action: z.literal('help').describe('Show available web actions and example payloads.'),
     includeExamples: z.boolean().optional().describe('If true, include example payloads for common actions.'),
   }),
 
   z.object({
-    think: thinkField,
     action: z.literal('search').describe('Search the web and return source-grounded results.'),
     query: z.string().trim().min(2).max(400).describe('The specific explicit search query to run.'),
     depth: z.enum(['quick', 'balanced', 'deep']).optional(),
@@ -66,7 +57,6 @@ const webToolSchema = z.discriminatedUnion('action', [
   }),
 
   z.object({
-    think: thinkField,
     action: z.literal('read').describe('Fetch and extract the main content from a URL.'),
     url: z
       .string()
@@ -78,7 +68,6 @@ const webToolSchema = z.discriminatedUnion('action', [
   }),
 
   z.object({
-    think: thinkField,
     action: z
       .literal('read.page')
       .describe('Read a URL in pages, returning continuation fields so large pages are not all-or-nothing.'),
@@ -113,7 +102,6 @@ const webToolSchema = z.discriminatedUnion('action', [
   }),
 
   z.object({
-    think: thinkField,
     action: z.literal('extract').describe('Extract specific data from a URL using explicit instructions.'),
     url: z
       .string()
@@ -131,7 +119,6 @@ const webToolSchema = z.discriminatedUnion('action', [
   }),
 
   z.object({
-    think: thinkField,
     action: z
       .literal('research')
       .describe('One-shot web research: search + read top sources (pagination via repeated calls).'),

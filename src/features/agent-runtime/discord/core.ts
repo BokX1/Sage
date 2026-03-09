@@ -47,13 +47,6 @@ import { isLoggingEnabled } from '../../settings/guildChannelSettings';
 import { buildGuildApiKeySetupCardContent, buildGuildApiKeyWelcomeActions } from '../../discord/byopBootstrap';
 import { clearGuildApiKey, getGuildApiKeyStatus } from '../../settings/guildApiKeyService';
 
-export const discordThinkField = z
-  .string()
-  .describe(
-    'Optional internal reasoning explaining why you are generating this payload and how it fulfills the active goal.',
-  )
-  .optional();
-
 export const discordRestFileInputSchema = z.object({
   fieldName: z.string().trim().min(1).max(120).optional(),
   filename: z.string().trim().min(1).max(255),

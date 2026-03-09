@@ -103,7 +103,7 @@ describe('default tools search-high execution profile', () => {
     const result = await registry.executeValidated(
       {
         name: 'web',
-        args: { think: 'Searching new SDK docs', action: 'search', query: 'latest sdk release notes' },
+        args: { action: 'search', query: 'latest sdk release notes' },
       },
       {
         traceId: 'trace-1',
@@ -132,7 +132,7 @@ describe('default tools search-high execution profile', () => {
     const result = await registry.executeValidated(
       {
         name: 'web',
-        args: { think: 'Scraping docs page', action: 'read', url: 'https://example.com/docs' },
+        args: { action: 'read', url: 'https://example.com/docs' },
       },
       {
         traceId: 'trace-2',

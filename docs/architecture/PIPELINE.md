@@ -73,7 +73,7 @@ flowchart TD
 | Priority | Block | Source |
 | :---: | :--- | :--- |
 | 1 | Base system prompt | `composeSystemPrompt` with the user profile summary embedded in `<user_profile>` |
-| 2 | Runtime instructions | Single-agent capabilities, tool protocol, and runtime state |
+| 2 | Runtime instructions | Single-agent capabilities, silent native tool-use rules, approval guardrails, and runtime state |
 | 3 | Server instructions | `GuildMemory`, when present |
 | 4 | Live voice context | In-memory voice session context, only when Sage is active in voice |
 | 5 | Recent transcript | Ring buffer plus recent `ChannelMessage` history |
@@ -140,11 +140,12 @@ Each turn can persist the following to `AgentTrace`:
 | `toolJson` | Tool names, args, statuses, and compacted results |
 | `tokenJson` | Provider token usage |
 | `qualityJson` | Quality metrics when available |
-| `reasoningText` | Model reasoning text when the provider exposes it |
+| `reasoningText` | Legacy nullable column retained for compatibility; new turns write `null` and Sage does not surface provider reasoning in normal operation |
 | `replyText` | Final reply text sent back to Discord |
 
 > [!TIP]
 > Use `npm run db:studio` to inspect traces in Prisma Studio, or send a real chat ping in Discord for an end-to-end runtime health check.
+> Tool-loop reinjection is intentionally compact and machine-facing: successful results are bounded, failed results omit conversational recovery coaching, and approval-gated writes stop retrying once a `pending_approval` result is queued for that turn.
 
 ---
 

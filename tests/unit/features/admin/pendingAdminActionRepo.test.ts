@@ -2,12 +2,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const createMock = vi.hoisted(() => vi.fn());
 const findUniqueMock = vi.hoisted(() => vi.fn());
+const findManyMock = vi.hoisted(() => vi.fn());
 const updateMock = vi.hoisted(() => vi.fn());
 
 vi.mock('@/platform/db/prisma-client', () => ({
   prisma: {
     pendingAdminAction: {
       create: createMock,
+      findMany: findManyMock,
       findUnique: findUniqueMock,
       update: updateMock,
     },
@@ -168,5 +170,101 @@ describe('pendingAdminActionRepo', () => {
         data: { approvalMessageId: 'approval-456' },
       }),
     );
+  });
+
+  it('finds a matching unresolved pending action using normalized payload comparison', async () => {
+    findManyMock.mockResolvedValue([
+      {
+        id: 'action-5',
+        guildId: 'guild-1',
+        channelId: 'channel-1',
+        approvalMessageId: 'approval-1',
+        requestMessageId: null,
+        requestedBy: 'admin-1',
+        kind: 'discord_rest_write',
+        payloadJson: {
+          request: {
+            path: '/channels/1/messages/2',
+            method: 'PATCH',
+            body: {
+              nested: { b: 2, a: 1 },
+            },
+          },
+        },
+        status: 'pending',
+        expiresAt: new Date('2026-02-26T12:10:00.000Z'),
+        decidedBy: null,
+        decidedAt: null,
+        executedAt: null,
+        resultJson: null,
+        errorText: null,
+        createdAt: new Date('2026-02-26T12:00:00.000Z'),
+        updatedAt: new Date('2026-02-26T12:00:00.000Z'),
+      },
+    ]);
+
+    const { findMatchingPendingAdminAction } = await import('../../../../src/features/admin/pendingAdminActionRepo');
+    const result = await findMatchingPendingAdminAction({
+      guildId: 'guild-1',
+      requestedBy: 'admin-1',
+      kind: 'discord_rest_write',
+      payloadJson: {
+        request: {
+          method: 'PATCH',
+          path: '/channels/1/messages/2',
+          body: {
+            nested: { a: 1, b: 2 },
+          },
+        },
+      },
+      now: new Date('2026-02-26T12:01:00.000Z'),
+    });
+
+    expect(result?.id).toBe('action-5');
+    expect(findManyMock).toHaveBeenCalledWith({
+      where: {
+        guildId: 'guild-1',
+        requestedBy: 'admin-1',
+        kind: 'discord_rest_write',
+        status: 'pending',
+        expiresAt: { gt: new Date('2026-02-26T12:01:00.000Z') },
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+  });
+
+  it('returns null when only expired or non-matching pending actions exist', async () => {
+    findManyMock.mockResolvedValue([
+      {
+        id: 'action-6',
+        guildId: 'guild-1',
+        channelId: 'channel-1',
+        approvalMessageId: null,
+        requestMessageId: null,
+        requestedBy: 'admin-1',
+        kind: 'server_instructions_update',
+        payloadJson: { operation: 'set', newInstructionsText: 'Old', reason: 'test', baseVersion: 1 },
+        status: 'pending',
+        expiresAt: new Date('2026-02-26T12:10:00.000Z'),
+        decidedBy: null,
+        decidedAt: null,
+        executedAt: null,
+        resultJson: null,
+        errorText: null,
+        createdAt: new Date('2026-02-26T12:00:00.000Z'),
+        updatedAt: new Date('2026-02-26T12:00:00.000Z'),
+      },
+    ]);
+
+    const { findMatchingPendingAdminAction } = await import('../../../../src/features/admin/pendingAdminActionRepo');
+    const result = await findMatchingPendingAdminAction({
+      guildId: 'guild-1',
+      requestedBy: 'admin-1',
+      kind: 'server_instructions_update',
+      payloadJson: { operation: 'set', newInstructionsText: 'New', reason: 'test', baseVersion: 1 },
+      now: new Date('2026-02-26T12:01:00.000Z'),
+    });
+
+    expect(result).toBeNull();
   });
 });

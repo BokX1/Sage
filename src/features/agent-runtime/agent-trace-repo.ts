@@ -62,14 +62,14 @@ export async function upsertTraceStart(data: TraceStartData): Promise<void> {
     userId: data.userId,
     routeKind,
     tokenJson: jsonMap(tokenPayload),
-    reasoningText: data.reasoningText ?? null,
+    reasoningText: null,
     replyText: '',
   };
 
   const updateData: Prisma.AgentTraceUpdateInput = {
     routeKind,
     tokenJson: jsonMap(tokenPayload),
-    reasoningText: data.reasoningText ?? null,
+    reasoningText: null,
   };
 
   if (data.agentEventsJson !== undefined) {
@@ -103,12 +103,10 @@ export async function updateTraceEnd(data: TraceEndData): Promise<void> {
 
   const updateData: Prisma.AgentTraceUpdateInput = {
     toolJson: jsonMap(data.toolJson ?? Prisma.JsonNull),
+    reasoningText: null,
     replyText: data.replyText,
   };
 
-  if (data.reasoningText !== undefined) {
-    updateData.reasoningText = data.reasoningText;
-  }
   if (data.qualityJson !== undefined) {
     updateData.qualityJson = jsonMap(data.qualityJson);
   }

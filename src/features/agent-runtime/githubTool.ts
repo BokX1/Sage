@@ -61,13 +61,6 @@ const githubRepoSchema = z
   )
   .describe('The repository in owner/repo format (e.g. microsoft/TypeScript) or a github.com URL to it.');
 
-const thinkField = z
-  .string()
-  .describe(
-    'Optional internal reasoning explaining why you are generating this payload and how it fulfills the active goal.',
-  )
-  .optional();
-
 const githubFileRangeSchema = z
   .object({
     startLine: z.number().int().min(1).max(2_000_000),
@@ -85,20 +78,17 @@ const githubFileRangeSchema = z
 
 const githubToolSchema = z.discriminatedUnion('action', [
   z.object({
-    think: thinkField,
     action: z.literal('help').describe('Show available GitHub actions and example payloads.'),
     includeExamples: z.boolean().optional().describe('If true, include example payloads for common actions.'),
   }),
 
   z.object({
-    think: thinkField,
     action: z.literal('repo.get').describe('Lookup GitHub repository metadata and optionally include README.'),
     repo: githubRepoSchema,
     includeReadme: z.boolean().optional(),
   }),
 
   z.object({
-    think: thinkField,
     action: z.literal('code.search').describe('Search code across a GitHub repository.'),
     repo: githubRepoSchema,
     query: z.string().trim().min(2).max(300),
@@ -112,7 +102,6 @@ const githubToolSchema = z.discriminatedUnion('action', [
   }),
 
   z.object({
-    think: thinkField,
     action: z.literal('file.get').describe('Fetch file contents from a GitHub repo (supports line ranges for large files).'),
     repo: githubRepoSchema,
     path: z
@@ -148,7 +137,6 @@ const githubToolSchema = z.discriminatedUnion('action', [
   }),
 
   z.object({
-    think: thinkField,
     action: z.literal('file.page').describe('Read a file in pages to avoid all-or-nothing large outputs.'),
     repo: githubRepoSchema,
     path: z
@@ -166,7 +154,6 @@ const githubToolSchema = z.discriminatedUnion('action', [
   }),
 
   z.object({
-    think: thinkField,
     action: z.literal('file.ranges').describe('Fetch multiple disjoint line ranges from a file in one call.'),
     repo: githubRepoSchema,
     path: z
@@ -183,7 +170,6 @@ const githubToolSchema = z.discriminatedUnion('action', [
   }),
 
   z.object({
-    think: thinkField,
     action: z.literal('file.snippet').describe('Fetch a tight code snippet around a line number.'),
     repo: githubRepoSchema,
     path: z
@@ -202,7 +188,6 @@ const githubToolSchema = z.discriminatedUnion('action', [
   }),
 
   z.object({
-    think: thinkField,
     action: z.literal('issues.search').describe('Search issues in a GitHub repository.'),
     repo: githubRepoSchema,
     query: z.string().trim().min(2).max(350),
@@ -211,7 +196,6 @@ const githubToolSchema = z.discriminatedUnion('action', [
   }),
 
   z.object({
-    think: thinkField,
     action: z.literal('prs.search').describe('Search pull requests in a GitHub repository.'),
     repo: githubRepoSchema,
     query: z.string().trim().min(2).max(350),
@@ -220,7 +204,6 @@ const githubToolSchema = z.discriminatedUnion('action', [
   }),
 
   z.object({
-    think: thinkField,
     action: z.literal('commits.list').describe('List recent commits for a repo/ref (optionally scoped to a path).'),
     repo: githubRepoSchema,
     ref: z.string().trim().min(1).max(120).optional(),

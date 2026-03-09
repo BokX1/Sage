@@ -31,6 +31,8 @@ describe('capabilityPrompt', () => {
       expect(prompt).toContain('Treat `discord_context` action `get_channel_summary` the same way: it provides rolling channel summary context, not exact historical evidence.');
       expect(prompt).toContain('For exact historical verification, exact Discord message-history tools are unavailable this turn.');
       expect(prompt).toContain('Image generation behavior: you do not have image generation capabilities this turn.');
+      expect(prompt).toContain('Use native tool calls silently.');
+      expect(prompt).toContain('If a tool result reports `status="pending_approval"`');
     });
 
     it('renders compact tool selection guidance for available tools', () => {
@@ -48,6 +50,7 @@ describe('capabilityPrompt', () => {
       expect(prompt).toContain('timezone conversion for a specific utcOffset');
       expect(prompt).toContain('public internet information or fresh sources');
       expect(prompt).toContain('routed-tool actions or fields');
+      expect(prompt).toContain('Keep tool usage silent in the final channel response.');
       expect(prompt).toContain('</tool_selection_guide>');
     });
 
@@ -76,6 +79,9 @@ describe('capabilityPrompt', () => {
 
       // Assert
       expect(prompt).toContain('Discord tool behavior: Discord surfaces are split by domain.');
+      expect(prompt).toContain('Distinguish instruction reads from instruction writes');
+      expect(prompt).toContain('Distinguish summary context from message context');
+      expect(prompt).toContain('Distinguish file discovery from guild discovery');
       expect(prompt).toContain('Attachment retrieval behavior: historical uploaded attachments are cached outside transcript');
       expect(prompt).toContain('If the `send` payload shape is unclear, call `discord_messages` action `help` before guessing.');
       expect(prompt).toContain('send_attachment');
@@ -85,6 +91,7 @@ describe('capabilityPrompt', () => {
       expect(prompt).toContain('Writes are disallowed in autopilot turns');
       expect(prompt).toContain('<reply_format_policy>');
       expect(prompt).toContain('Components V2 may be used freely');
+      expect(prompt).toContain('`presentation` is not a cosmetic toggle');
       expect(prompt).toContain('IS_COMPONENTS_V2');
       expect(prompt).toContain('call `discord_messages` action `send` with `presentation="plain" | "components_v2"`');
       expect(prompt).toContain('do not repeat the same answer again as a normal assistant reply');
@@ -109,6 +116,8 @@ describe('capabilityPrompt', () => {
       expect(prompt).toContain('search_history / search_with_context');
       expect(prompt).toContain('get_channel_summary');
       expect(prompt).toContain('Rolling summary of what has been happening → get_channel_summary.');
+      expect(prompt).toContain('get_server_instructions (read-only).');
+      expect(prompt).toContain('message window, not summary context');
       expect(prompt).toContain('get_user_profile');
       expect(prompt).toContain('read_attachment');
       expect(prompt).toContain('send_attachment');
@@ -182,10 +191,10 @@ describe('capabilityPrompt', () => {
     it('is materially shorter than the previous verbose prompt shape', () => {
       const prompt = buildCapabilityPromptSection({
         model: 'kimi',
-        activeTools: ['discord_context', 'discord_messages', 'discord_files', 'discord_server', 'discord_admin', 'web', 'github', 'system_time', 'system_plan', 'image_generate'],
+        activeTools: ['discord_context', 'discord_messages', 'discord_files', 'discord_server', 'discord_admin', 'web', 'github', 'system_time', 'image_generate'],
       });
 
-      expect(prompt.length).toBeLessThan(12500);
+      expect(prompt.length).toBeLessThan(14050);
     });
   });
 

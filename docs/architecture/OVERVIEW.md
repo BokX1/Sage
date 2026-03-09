@@ -93,10 +93,10 @@ flowchart TD
 | **Agent Runtime** | `src/features/agent-runtime/agentRuntime.ts` | The single `runChatTurn` function: model resolution, prompt assembly, tool loop, trace persistence |
 | **Context Builder** | `src/features/agent-runtime/contextBuilder.ts` | Composes prioritized message blocks (system prompt, runtime instructions, optional server instructions/voice context, transcript, reply context) |
 | **Context Budgeter** | `src/features/agent-runtime/contextBudgeter.ts` | Token-aware block sizing with configurable per-block budgets |
-| **Prompt Composer** | `src/features/agent-runtime/promptComposer.ts` | Assembles the final system prompt with personality, capabilities, and tool protocol |
-| **Tool Call Loop** | `src/features/agent-runtime/toolCallLoop.ts` | Iterative tool execution with bounded rounds, parallel read-only optimization, and timeout enforcement |
+| **Prompt Composer** | `src/features/agent-runtime/promptComposer.ts` | Assembles the final system prompt with personality, capability guidance, and silent native tool-use rules |
+| **Tool Call Loop** | `src/features/agent-runtime/toolCallLoop.ts` | Iterative tool execution with bounded rounds, parallel read-only optimization, compact result reinjection, and timeout enforcement |
 | **Tool Registry** | `src/features/agent-runtime/toolRegistry.ts` | Zod-validated tool definitions with OpenAI-compatible spec generation |
-| **Default Tools** | `src/features/agent-runtime/defaultTools.ts` | All 16 built-in top-level tool definitions |
+| **Default Tools** | `src/features/agent-runtime/defaultTools.ts` | All 15 built-in top-level tool definitions |
 
 ---
 
@@ -171,7 +171,7 @@ interface ToolDefinition<TArgs> {
 }
 ```
 
-The tool protocol is communicated to the LLM via a structured instruction block, and tool calls flow through the runtime's native structured tool-call contract.
+The runtime teaches silent native tool usage via structured instruction blocks, and tool calls flow through the provider's native structured tool-call contract. Sage does not expose tool payloads, approval commands, or internal recovery protocol in normal channel replies.
 
 ---
 
@@ -226,9 +226,11 @@ Admin-only capabilities are exposed on `discord_admin`:
 
 Approval UX:
 
-- Sage posts a requester-facing status message per queued admin action (includes the `Action ID`).
+- Sage posts one requester-facing status message per queued admin action.
+- Equivalent unresolved approval-gated requests are coalesced onto the same pending action and action ID instead of opening duplicate cards.
 - When an action resolves (approve/reject/execute/fail/expire), Sage edits that status message with the outcome.
 - Resolved approval cards auto-delete after ~60 seconds to avoid channel clutter (including after restarts via DB-backed cleanup).
+- After a `pending_approval` tool result, the runtime stops retrying the same approval-gated action for the rest of that turn.
 
 Read-only helpers are also exposed across the routed Discord tools:
 
@@ -249,7 +251,6 @@ Read-only helpers are also exposed across the routed Discord tools:
 |:---|:---|:---|
 | `system_time` | Get current date/time with timezone offset | Public |
 | `system_tool_stats` | Inspect in-process tool telemetry (latency/caching/failures; in-memory only) | Public |
-| `system_plan` | Internal reasoning scratchpad | Public |
 
 ---
 

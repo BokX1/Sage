@@ -97,7 +97,7 @@ describe('discord domain tool catalogs', () => {
   it.each(toolCases)('help output is complete for $name', async ({ tool, name, catalog, readOnlyOnly }) => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const result = await (tool as any).execute(
-      { think: 'List actions', action: 'help' },
+        { action: 'help' },
       {
         traceId: 'trace',
         userId: 'user-1',

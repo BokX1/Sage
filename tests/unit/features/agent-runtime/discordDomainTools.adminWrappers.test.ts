@@ -50,7 +50,6 @@ describe('discord admin domain typed REST wrappers', () => {
   it('queues edit_message as an approval-gated REST write', async () => {
     const result = await discordAdminTool.execute(
       {
-        think: 'Edit a message safely',
         action: 'edit_message',
         messageId: 'msg-1',
         content: 'Updated',
@@ -83,7 +82,6 @@ describe('discord admin domain typed REST wrappers', () => {
   it('queues channels.create and ignores text-only fields for voice channels', async () => {
     await discordAdminTool.execute(
       {
-        think: 'Create a voice channel',
         action: 'create_channel',
         name: 'Voice Lounge',
         type: 'voice',
@@ -110,7 +108,6 @@ describe('discord admin domain typed REST wrappers', () => {
   it('queues roles.create and converts colorHex to Discord integer color', async () => {
     await discordAdminTool.execute(
       {
-        think: 'Create a new role',
         action: 'create_role',
         name: 'Moderators',
         colorHex: '#ff0000',
@@ -137,7 +134,6 @@ describe('discord admin domain typed REST wrappers', () => {
   it('generates an OAuth2 invite URL using the configured app id', async () => {
     const result = await discordAdminTool.execute(
       {
-        think: 'Generate invite URL',
         action: 'get_invite_url',
       },
       {

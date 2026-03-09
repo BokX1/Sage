@@ -1,8 +1,8 @@
 export const nativeTools = [
-  { name: 'discord_context', short: 'Discord Context', desc: 'Profiles, summaries, server instructions reads, and analytics', cat: 'discord', color: '#7AA2F7' },
-  { name: 'discord_messages', short: 'Discord Messages', desc: 'Exact message history, Discord-native delivery, reactions, and polls', cat: 'discord', color: '#7AA2F7' },
-  { name: 'discord_files', short: 'Discord Files', desc: 'Attachment discovery, recall, paging, and resend flows', cat: 'discord', color: '#7AA2F7' },
-  { name: 'discord_server', short: 'Discord Server', desc: 'Guild resources, scheduled events, AutoMod reads, and thread lifecycle', cat: 'discord', color: '#7AA2F7' },
+  { name: 'discord_context', short: 'Discord Context', desc: 'Profiles, rolling summaries, instruction reads, and analytics', cat: 'discord', color: '#7AA2F7' },
+  { name: 'discord_messages', short: 'Discord Messages', desc: 'Exact message history, message windows, delivery, reactions, and polls', cat: 'discord', color: '#7AA2F7' },
+  { name: 'discord_files', short: 'Discord Files', desc: 'Attachment discovery, file search, paging, and resend flows', cat: 'discord', color: '#7AA2F7' },
+  { name: 'discord_server', short: 'Discord Server', desc: 'Guild resources, admin-only reads, scheduled events, and thread lifecycle', cat: 'discord', color: '#7AA2F7' },
   { name: 'discord_voice', short: 'Discord Voice', desc: 'Live voice connection status and commandless join or leave control', cat: 'discord', color: '#7AA2F7' },
   { name: 'discord_admin', short: 'Discord Admin', desc: 'Admin writes, moderation, invite URLs, and raw Discord API fallback', cat: 'discord', color: '#7AA2F7' },
 
@@ -11,7 +11,7 @@ export const nativeTools = [
   { name: 'get_user_profile', short: 'User Profile', desc: 'Retrieve a user best-effort personalization profile and preferences', cat: 'discord', color: '#7AA2F7' },
   { name: 'get_channel_summary', short: 'Channel Summary', desc: 'Retrieve rolling and long-term summary context for the current channel', cat: 'discord', color: '#7AA2F7' },
   { name: 'search_channel_summary_archives', short: 'Search Summaries', desc: 'Search archived channel summaries and long-term context', cat: 'discord', color: '#7AA2F7' },
-  { name: 'get_server_instructions', short: 'Server Instructions', desc: 'Retrieve guild-specific bot instructions and persona rules', cat: 'discord', color: '#7AA2F7' },
+  { name: 'get_server_instructions', short: 'Read Instructions', desc: 'Read guild-specific bot instructions and persona rules', cat: 'discord', color: '#7AA2F7' },
   { name: 'list_channels', short: 'List Channels', desc: 'Inspect accessible channels, categories, and forum/media surfaces', cat: 'discord', color: '#7AA2F7' },
   { name: 'get_channel', short: 'Get Channel', desc: 'Inspect one channel with metadata and permission overwrites', cat: 'discord', color: '#7AA2F7' },
   { name: 'list_roles', short: 'List Roles', desc: 'List guild roles with compact permission summaries', cat: 'discord', color: '#7AA2F7' },
@@ -23,14 +23,14 @@ export const nativeTools = [
   { name: 'get_member', short: 'Get Member', desc: 'Admin-only inspection for one guild member', cat: 'discord', color: '#7AA2F7' },
   { name: 'get_permission_snapshot', short: 'Perm Snapshot', desc: 'Admin-only resolved channel permissions for a member or role', cat: 'discord', color: '#7AA2F7' },
   { name: 'list_automod_rules', short: 'AutoMod Rules', desc: 'Admin-only summary of current AutoMod rules', cat: 'discord', color: '#7AA2F7' },
-  { name: 'list_channel', short: 'Channel Files', desc: 'Look up files shared in the current channel', cat: 'discord', color: '#7AA2F7' },
-  { name: 'list_server', short: 'Server Files', desc: 'Look up files shared across the entire server', cat: 'discord', color: '#7AA2F7' },
+  { name: 'list_channel', short: 'Channel Files', desc: 'List files shared in the current channel (not channels)', cat: 'discord', color: '#7AA2F7' },
+  { name: 'list_server', short: 'Server Files', desc: 'List files shared across the entire server (not server resources)', cat: 'discord', color: '#7AA2F7' },
   { name: 'find_channel', short: 'Search Ch. Files', desc: 'Search indexed attachment text in the current channel', cat: 'discord', color: '#7AA2F7' },
-  { name: 'find_server', short: 'Search Sv. Files', desc: 'Search for specific file types or names in the server', cat: 'discord', color: '#7AA2F7' },
+  { name: 'find_server', short: 'Search Sv. Files', desc: 'Search indexed attachment text across the server', cat: 'discord', color: '#7AA2F7' },
   { name: 'read_attachment', short: 'Read Attachment', desc: 'Read cached attachment text in pages (continuation-friendly)', cat: 'discord', color: '#7AA2F7' },
   { name: 'search_history', short: 'Search History', desc: 'Hybrid semantic/keyword/regex search (time-windowed)', cat: 'discord', color: '#7AA2F7' },
   { name: 'search_with_context', short: 'Search+Context', desc: 'Search + expand surrounding context in one call', cat: 'discord', color: '#7AA2F7' },
-  { name: 'get_context', short: 'Get Context', desc: 'Fetch messages before/after a message ID', cat: 'discord', color: '#7AA2F7' },
+  { name: 'get_context', short: 'Msg Window', desc: 'Fetch messages before/after a known message ID', cat: 'discord', color: '#7AA2F7' },
   { name: 'search_guild', short: 'Search Guild', desc: 'Cross-channel message search across the server (permission-filtered)', cat: 'discord', color: '#7AA2F7' },
   { name: 'get_user_timeline', short: 'User Timeline', desc: 'Recent messages from a user across the server (permission-filtered)', cat: 'discord', color: '#7AA2F7' },
   { name: 'get_social_graph', short: 'Social Graph', desc: 'Analyze user interaction graphs and network centrality', cat: 'discord', color: '#7AA2F7' },
@@ -53,7 +53,7 @@ export const nativeTools = [
   { name: 'remove_self_reaction', short: 'Remove Reaction', desc: 'Remove own emoji reactions from messages', cat: 'discord', color: '#7AA2F7' },
 
   // Discord (cyan) - Admin Only
-  { name: 'update_server_instructions', short: 'Update Instructions', desc: 'Queue an admin-approved update to server instructions', cat: 'discord', color: '#7AA2F7' },
+  { name: 'update_server_instructions', short: 'Update Instructions', desc: 'Queue an admin-approved change to server instructions', cat: 'discord', color: '#7AA2F7' },
   { name: 'get_server_key_status', short: 'Key Status', desc: 'Admin-only status check for the current server API key', cat: 'discord', color: '#7AA2F7' },
   { name: 'clear_server_api_key', short: 'Clear Server Key', desc: 'Admin-only removal of the current server API key', cat: 'discord', color: '#7AA2F7' },
   { name: 'send_key_setup_card', short: 'Send Setup Card', desc: 'Post the interactive server-key setup card into the current channel', cat: 'discord', color: '#7AA2F7' },
@@ -69,7 +69,7 @@ export const nativeTools = [
   { name: 'delete_role', short: 'Delete Role', desc: 'Delete a server role', cat: 'discord', color: '#7AA2F7' },
   { name: 'add_member_role', short: 'Add Role', desc: 'Assign a role to a server member', cat: 'discord', color: '#7AA2F7' },
   { name: 'remove_member_role', short: 'Remove Role', desc: 'Remove a role from a server member', cat: 'discord', color: '#7AA2F7' },
-  { name: 'api', short: 'Discord API', desc: 'Raw Discord REST passthrough (admin-only, guild-scoped)', cat: 'discord', color: '#7AA2F7' },
+  { name: 'api', short: 'Discord API', desc: 'Raw Discord REST fallback after typed actions (admin-only, guild-scoped)', cat: 'discord', color: '#7AA2F7' },
   { name: 'get_status', short: 'Voice Status', desc: 'Check whether Sage is currently connected to voice', cat: 'discord', color: '#7AA2F7' },
   { name: 'join_current_channel', short: 'Join Voice', desc: 'Join the invoker current standard voice channel', cat: 'discord', color: '#7AA2F7' },
   { name: 'leave', short: 'Leave Voice', desc: 'Leave the active guild voice channel', cat: 'discord', color: '#7AA2F7' },
@@ -88,7 +88,6 @@ export const nativeTools = [
   { name: 'image_generate', short: 'Image Gen', desc: 'Generate images with agentic prompt refinement', cat: 'gen', color: '#78b846' },
 
   // System (green)
-  { name: 'system_plan', short: 'Reflection', desc: 'Internal reasoning step before complex actions', cat: 'system', color: '#78b846' },
   { name: 'system_time', short: 'DateTime', desc: 'Get current date, time, and UTC offset', cat: 'system', color: '#78b846' },
   { name: 'system_tool_stats', short: 'Tool Stats', desc: 'Inspect in-process tool latency, caching, and failure stats', cat: 'system', color: '#78b846' },
 ];

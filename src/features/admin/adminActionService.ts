@@ -30,6 +30,7 @@ import { z } from 'zod';
 import {
   createPendingAdminAction,
   attachPendingAdminActionApprovalMessageId,
+  findMatchingPendingAdminAction,
   getPendingAdminActionById,
   clearPendingAdminActionApprovalMessageId,
   markPendingAdminActionDecision,
@@ -603,6 +604,44 @@ async function postApprovalCard(params: {
     );
     return null;
   }
+}
+
+async function ensureApprovalCardForPending(params: {
+  pending: PendingAdminActionRecord;
+  channelId: string;
+  title: string;
+  details: string[];
+  requestedBy: string;
+  coalesced?: boolean;
+}): Promise<string | null> {
+  const existingApprovalMessageId = params.pending.approvalMessageId?.trim() || null;
+  if (existingApprovalMessageId) {
+    return existingApprovalMessageId;
+  }
+  if (params.coalesced) {
+    return null;
+  }
+
+  const approvalMessageId = await postApprovalCard({
+    guildId: params.pending.guildId,
+    channelId: params.channelId,
+    actionId: params.pending.id,
+    title: params.title,
+    details: params.details,
+    requestedBy: params.requestedBy,
+    expiresAt: params.pending.expiresAt,
+  });
+
+  if (approvalMessageId) {
+    await attachPendingAdminActionApprovalMessageId({
+      id: params.pending.id,
+      approvalMessageId,
+    }).catch((error) => {
+      logger.warn({ error, actionId: params.pending.id }, 'Failed to persist approval message id for coalesced pending action');
+    });
+  }
+
+  return approvalMessageId;
 }
 
 function buildDiscordActionSummary(action: QueuedDiscordAction): string[] {
@@ -1933,21 +1972,13 @@ export async function requestServerInstructionsUpdateForTool(params: {
     throw new Error(`Server instructions exceed max length (${MAX_SERVER_INSTRUCTIONS_CHARS} chars).`);
   }
 
-  const expiresAt = new Date(Date.now() + APPROVAL_TTL_MS);
   const baseVersion = current?.version ?? 0;
-  const pending = await createPendingAdminAction({
-    guildId: params.guildId,
-    channelId: params.channelId,
-    requestedBy: params.requestedBy,
-    kind: 'server_instructions_update',
-    payloadJson: {
-      operation: params.request.operation,
-      newInstructionsText: nextText,
-      reason: params.request.reason,
-      baseVersion,
-    } satisfies ServerInstructionsPendingPayload,
-    expiresAt,
-  });
+  const payload = {
+    operation: params.request.operation,
+    newInstructionsText: nextText,
+    reason: params.request.reason,
+    baseVersion,
+  } satisfies ServerInstructionsPendingPayload;
 
   const preview = truncateWithFlag(nextText, 700);
   const currentChars = currentText.length;
@@ -1962,24 +1993,30 @@ export async function requestServerInstructionsUpdateForTool(params: {
     `Proposed size: ${nextChars} chars (${signedDelta})`,
     `Preview:\n\`\`\`\n${preview.text || '[empty]'}\n\`\`\``,
   ];
-  const approvalMessageId = await postApprovalCard({
+  const existingPending = await findMatchingPendingAdminAction({
+    guildId: params.guildId,
+    requestedBy: params.requestedBy,
+    kind: 'server_instructions_update',
+    payloadJson: payload,
+  });
+  const expiresAt = existingPending?.expiresAt ?? new Date(Date.now() + APPROVAL_TTL_MS);
+  const pending = existingPending ?? await createPendingAdminAction({
     guildId: params.guildId,
     channelId: params.channelId,
-    actionId: pending.id,
+    requestedBy: params.requestedBy,
+    kind: 'server_instructions_update',
+    payloadJson: payload,
+    expiresAt,
+  });
+  const coalesced = existingPending !== null;
+  const approvalMessageId = await ensureApprovalCardForPending({
+    pending,
+    channelId: params.channelId,
     title: 'Server Instructions Update Approval',
     details,
     requestedBy: params.requestedBy,
-    expiresAt,
+    coalesced,
   });
-
-  if (approvalMessageId) {
-    await attachPendingAdminActionApprovalMessageId({
-      id: pending.id,
-      approvalMessageId,
-    }).catch((error) => {
-    logger.warn({ error, actionId: pending.id }, 'Failed to persist approval message id for server instructions update');
-    });
-  }
 
   await logAdminAction({
     guildId: params.guildId,
@@ -1997,6 +2034,7 @@ export async function requestServerInstructionsUpdateForTool(params: {
   return {
     status: 'pending_approval',
     actionId: pending.id,
+    coalesced,
     expiresAtIso: expiresAt.toISOString(),
     approvalMessageId,
     instructionsChars: nextText.length,
@@ -2011,36 +2049,34 @@ export async function requestDiscordAdminActionForTool(params: {
   requestedBy: string;
   request: DiscordModerationActionRequest;
 }): Promise<Record<string, unknown>> {
-  const expiresAt = new Date(Date.now() + APPROVAL_TTL_MS);
-  const pending = await createPendingAdminAction({
+  const payload = {
+    action: params.request,
+  } satisfies DiscordActionPendingPayload;
+  const details = buildDiscordActionSummary(params.request);
+  const existingPending = await findMatchingPendingAdminAction({
+    guildId: params.guildId,
+    requestedBy: params.requestedBy,
+    kind: 'discord_queue_moderation_action',
+    payloadJson: payload,
+  });
+  const expiresAt = existingPending?.expiresAt ?? new Date(Date.now() + APPROVAL_TTL_MS);
+  const pending = existingPending ?? await createPendingAdminAction({
     guildId: params.guildId,
     channelId: params.channelId,
     requestedBy: params.requestedBy,
     kind: 'discord_queue_moderation_action',
-    payloadJson: {
-      action: params.request,
-    } satisfies DiscordActionPendingPayload,
+    payloadJson: payload,
     expiresAt,
   });
-
-  const approvalMessageId = await postApprovalCard({
-    guildId: params.guildId,
+  const coalesced = existingPending !== null;
+  const approvalMessageId = await ensureApprovalCardForPending({
+    pending,
     channelId: params.channelId,
-    actionId: pending.id,
     title: 'Discord Moderation Action Approval',
-    details: buildDiscordActionSummary(params.request),
+    details,
     requestedBy: params.requestedBy,
-    expiresAt,
+    coalesced,
   });
-
-  if (approvalMessageId) {
-    await attachPendingAdminActionApprovalMessageId({
-      id: pending.id,
-      approvalMessageId,
-    }).catch((error) => {
-      logger.warn({ error, actionId: pending.id }, 'Failed to persist approval message id for moderation action');
-    });
-  }
 
   await logAdminAction({
     guildId: params.guildId,
@@ -2056,6 +2092,7 @@ export async function requestDiscordAdminActionForTool(params: {
     status: 'pending_approval',
     actionId: pending.id,
     action: params.request.action,
+    coalesced,
     expiresAtIso: expiresAt.toISOString(),
     approvalMessageId,
   };
@@ -2073,36 +2110,34 @@ export async function requestDiscordRestWriteForTool(params: {
     path: params.request.path,
   });
 
-  const expiresAt = new Date(Date.now() + APPROVAL_TTL_MS);
-  const pending = await createPendingAdminAction({
+  const payload = {
+    request: params.request,
+  } satisfies DiscordRestWritePendingPayload;
+  const details = buildDiscordRestWriteSummary(params.request);
+  const existingPending = await findMatchingPendingAdminAction({
+    guildId: params.guildId,
+    requestedBy: params.requestedBy,
+    kind: 'discord_rest_write',
+    payloadJson: payload,
+  });
+  const expiresAt = existingPending?.expiresAt ?? new Date(Date.now() + APPROVAL_TTL_MS);
+  const pending = existingPending ?? await createPendingAdminAction({
     guildId: params.guildId,
     channelId: params.channelId,
     requestedBy: params.requestedBy,
     kind: 'discord_rest_write',
-    payloadJson: {
-      request: params.request,
-    } satisfies DiscordRestWritePendingPayload,
+    payloadJson: payload,
     expiresAt,
   });
-
-  const approvalMessageId = await postApprovalCard({
-    guildId: params.guildId,
+  const coalesced = existingPending !== null;
+  const approvalMessageId = await ensureApprovalCardForPending({
+    pending,
     channelId: params.channelId,
-    actionId: pending.id,
     title: 'Discord REST Write Approval',
-    details: buildDiscordRestWriteSummary(params.request),
+    details,
     requestedBy: params.requestedBy,
-    expiresAt,
+    coalesced,
   });
-
-  if (approvalMessageId) {
-    await attachPendingAdminActionApprovalMessageId({
-      id: pending.id,
-      approvalMessageId,
-    }).catch((error) => {
-      logger.warn({ error, actionId: pending.id }, 'Failed to persist approval message id for Discord REST write');
-    });
-  }
 
   await logAdminAction({
     guildId: params.guildId,
@@ -2120,6 +2155,7 @@ export async function requestDiscordRestWriteForTool(params: {
     actionId: pending.id,
     method: params.request.method,
     path: params.request.path,
+    coalesced,
     expiresAtIso: expiresAt.toISOString(),
     approvalMessageId,
   };

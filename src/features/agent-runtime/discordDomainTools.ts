@@ -18,7 +18,6 @@ import {
   discordPollDurationHoursSchema,
   discordRestFileInputSchema,
   discordRestPathSchema,
-  discordThinkField,
   discordThreadAutoArchiveDurationSchema,
   executeDiscordAdminAction,
   executeDiscordContextAction,
@@ -36,7 +35,6 @@ import {
 import { buildRoutedToolHelp } from './toolDocs';
 
 const helpActionSchema = z.object({
-  think: discordThinkField,
   action: z.literal('help').describe('Show action contracts and examples for this routed Discord tool.'),
   includeExamples: z.boolean().optional(),
 });
@@ -76,7 +74,6 @@ function isReadOnlyDiscordDomainCall(
 }
 
 const profileGetUserSchema = z.object({
-  think: discordThinkField,
   action: z.literal('get_user_profile').describe('Fetch the best-effort personalization profile for a user.'),
   userId: z.string().trim().min(1).max(64).optional(),
   maxChars: z.number().int().min(200).max(8_000).optional(),
@@ -84,7 +81,6 @@ const profileGetUserSchema = z.object({
 });
 
 const summaryGetChannelSchema = z.object({
-  think: discordThinkField,
   action: z.literal('get_channel_summary').describe('Fetch rolling and long-term summary context for the current channel only.'),
   maxChars: z.number().int().min(200).max(12_000).optional(),
   maxItemsPerList: z.number().int().min(1).max(12).optional(),
@@ -92,7 +88,6 @@ const summaryGetChannelSchema = z.object({
 });
 
 const summarySearchChannelArchivesSchema = z.object({
-  think: discordThinkField,
   action: z.literal('search_channel_summary_archives').describe('Search archived summary context for the current channel.'),
   query: z.string().trim().min(2).max(500),
   topK: z.number().int().min(1).max(20).optional(),
@@ -100,13 +95,11 @@ const summarySearchChannelArchivesSchema = z.object({
 });
 
 const instructionsGetServerSchema = z.object({
-  think: discordThinkField,
-  action: z.literal('get_server_instructions').describe('Fetch the current admin-authored server instructions for this guild.'),
+  action: z.literal('get_server_instructions').describe('Fetch the current admin-authored server instructions for this guild. Read-only behavior/persona config; not an admin write.'),
   maxChars: z.number().int().min(200).max(12_000).optional(),
 });
 
 const analyticsGetSocialGraphSchema = z.object({
-  think: discordThinkField,
   action: z.literal('get_social_graph').describe('Retrieve social graph relationships for a user.'),
   userId: z.string().trim().min(1).max(64).optional(),
   maxEdges: z.number().int().min(1).max(30).optional(),
@@ -114,22 +107,19 @@ const analyticsGetSocialGraphSchema = z.object({
 });
 
 const analyticsTopRelationshipsSchema = z.object({
-  think: discordThinkField,
   action: z.literal('get_top_relationships').describe('Show the top interaction pairs in this server.'),
   limit: z.number().int().min(1).max(30).optional(),
   maxChars: z.number().int().min(200).max(12_000).optional(),
 });
 
 const analyticsGetVoiceAnalyticsSchema = z.object({
-  think: discordThinkField,
-  action: z.literal('get_voice_analytics').describe('Retrieve voice participation analytics.'),
+  action: z.literal('get_voice_analytics').describe('Retrieve voice participation analytics. Use discord_voice for live join/leave or connection status.'),
   userId: z.string().trim().min(1).max(64).optional(),
   maxChars: z.number().int().min(200).max(12_000).optional(),
 });
 
 const analyticsVoiceSummariesSchema = z.object({
-  think: discordThinkField,
-  action: z.literal('get_voice_summaries').describe('Retrieve recent voice session summaries.'),
+  action: z.literal('get_voice_summaries').describe('Retrieve recent voice session summaries. Use discord_voice for live join/leave or connection status.'),
   voiceChannelId: z.string().trim().min(1).max(64).optional(),
   sinceHours: z.number().int().min(1).max(2_160).optional(),
   limit: z.number().int().min(1).max(10).optional(),
@@ -151,7 +141,7 @@ const discordContextToolSchema = z.discriminatedUnion('action', [
 export const discordContextTool: ToolDefinition<z.infer<typeof discordContextToolSchema>> = {
   name: 'discord_context',
   description:
-    'Discord context tool for profiles, channel summaries, server instructions reads, and social/voice analytics.\n<USE_ONLY_WHEN> You need Discord-native context rather than exact message history, files, or admin writes. </USE_ONLY_WHEN>',
+    'Discord context tool for profiles, rolling channel summaries, server-instruction reads, and social/voice analytics.\n<USE_ONLY_WHEN> You need Discord-native context rather than exact message history, files, live voice control, or admin writes. </USE_ONLY_WHEN>',
   schema: discordContextToolSchema,
   metadata: {
     readOnlyPredicate: (args) => isReadOnlyDiscordDomainCall('discord_context', args),
@@ -166,7 +156,6 @@ export const discordContextTool: ToolDefinition<z.infer<typeof discordContextToo
 
 const messagesSearchHistorySchema = addSinceVariantValidation(
   z.object({
-    think: discordThinkField,
     action: z.literal('search_history').describe('Search channel message history. channelId defaults to the current channel.'),
     channelId: z.string().trim().min(1).max(64).optional(),
     query: z.string().trim().min(2).max(500),
@@ -183,7 +172,6 @@ const messagesSearchHistorySchema = addSinceVariantValidation(
 
 const messagesSearchWithContextSchema = addSinceVariantValidation(
   z.object({
-    think: discordThinkField,
     action: z.literal('search_with_context').describe('Search channel history and expand context around the best match.'),
     channelId: z.string().trim().min(1).max(64).optional(),
     query: z.string().trim().min(2).max(500),
@@ -202,8 +190,7 @@ const messagesSearchWithContextSchema = addSinceVariantValidation(
 );
 
 const messagesGetContextSchema = z.object({
-  think: discordThinkField,
-  action: z.literal('get_context').describe('Retrieve messages before and after a given message ID. channelId defaults to the current channel.'),
+  action: z.literal('get_context').describe('Retrieve messages before and after a given message ID. This is a message-window lookup, not a rolling channel summary. channelId defaults to the current channel.'),
   channelId: z.string().trim().min(1).max(64).optional(),
   messageId: z.string().trim().min(1).max(64),
   before: z.number().int().min(0).max(20).optional(),
@@ -213,7 +200,6 @@ const messagesGetContextSchema = z.object({
 
 const messagesSearchGuildSchema = addSinceVariantValidation(
   z.object({
-    think: discordThinkField,
     action: z.literal('search_guild').describe('Search raw message history across the guild. Disabled in autopilot turns.'),
     query: z.string().trim().min(2).max(500),
     topK: z.number().int().min(1).max(20).optional(),
@@ -229,7 +215,6 @@ const messagesSearchGuildSchema = addSinceVariantValidation(
 
 const messagesUserTimelineSchema = addSinceVariantValidation(
   z.object({
-    think: discordThinkField,
     action: z.literal('get_user_timeline').describe('Show recent messages from a user across the guild. Disabled in autopilot turns.'),
     userId: z.string().trim().min(1).max(64).optional(),
     limit: z.number().int().min(1).max(50).optional(),
@@ -242,8 +227,7 @@ const messagesUserTimelineSchema = addSinceVariantValidation(
 );
 
 const messagesSendSchema = z.object({
-  think: discordThinkField,
-  action: z.literal('send').describe('Send a new message using plain text or Components V2 presentation.'),
+  action: z.literal('send').describe('Send a new message using plain text or Components V2 presentation. Presentation changes payload rules; use help if the shape is unclear.'),
   channelId: z.string().trim().min(1).max(64).optional(),
   presentation: discordMessagePresentationSchema.optional(),
   content: z.string().trim().min(1).max(8_000).optional(),
@@ -255,7 +239,6 @@ const messagesSendSchema = z.object({
 });
 
 const pollsCreateSchema = z.object({
-  think: discordThinkField,
   action: z.literal('create_poll').describe('Create a poll. Disabled in autopilot turns.'),
   question: z.string().trim().min(1).max(300),
   answers: z.array(discordPollAnswerSchema).min(2).max(10),
@@ -266,7 +249,6 @@ const pollsCreateSchema = z.object({
 });
 
 const threadsCreateSchema = z.object({
-  think: discordThinkField,
   action: z.literal('create_thread').describe('Create a thread. Disabled in autopilot turns.'),
   name: z.string().trim().min(1).max(100),
   messageId: z.string().trim().min(1).max(64).optional(),
@@ -276,7 +258,6 @@ const threadsCreateSchema = z.object({
 });
 
 const reactionsAddSchema = z.object({
-  think: discordThinkField,
   action: z.literal('add_reaction').describe('Add a reaction to a message. Disabled in autopilot turns.'),
   messageId: z.string().trim().min(1).max(64),
   emoji: discordEmojiSchema,
@@ -285,7 +266,6 @@ const reactionsAddSchema = z.object({
 });
 
 const reactionsRemoveSelfSchema = z.object({
-  think: discordThinkField,
   action: z.literal('remove_self_reaction').describe('Remove Sage’s own reaction from a message. Disabled in autopilot turns.'),
   messageId: z.string().trim().min(1).max(64),
   emoji: discordEmojiSchema,
@@ -309,7 +289,7 @@ const discordMessagesToolSchema = z.discriminatedUnion('action', [
 export const discordMessagesTool: ToolDefinition<z.infer<typeof discordMessagesToolSchema>> = {
   name: 'discord_messages',
   description:
-    'Discord messages tool for exact message history, in-channel delivery, reactions, and polls.\n<USE_ONLY_WHEN> You need exact message evidence or message-level actions. </USE_ONLY_WHEN>',
+    'Discord messages tool for exact message history, message-window lookups, in-channel delivery, reactions, and polls.\n<USE_ONLY_WHEN> You need exact message evidence or message-level actions rather than summary context, file recall, or thread lifecycle. </USE_ONLY_WHEN>',
   schema: discordMessagesToolSchema,
   metadata: {
     readOnlyPredicate: (args) => isReadOnlyDiscordDomainCall('discord_messages', args),
@@ -323,8 +303,7 @@ export const discordMessagesTool: ToolDefinition<z.infer<typeof discordMessagesT
 };
 
 const filesListChannelSchema = z.object({
-  think: discordThinkField,
-  action: z.literal('list_channel').describe('List cached attachments in the current channel only.'),
+  action: z.literal('list_channel').describe('List cached attachments in the current channel only. This enumerates files, not channels.'),
   query: z.string().trim().min(1).max(200).optional(),
   messageId: z.string().trim().min(1).max(64).optional(),
   filename: z.string().trim().min(1).max(255).optional(),
@@ -334,8 +313,7 @@ const filesListChannelSchema = z.object({
 });
 
 const filesListServerSchema = z.object({
-  think: discordThinkField,
-  action: z.literal('list_server').describe('List cached attachments across the guild. Disabled in autopilot turns.'),
+  action: z.literal('list_server').describe('List cached attachments across the guild. This enumerates files, not guild resources. Disabled in autopilot turns.'),
   query: z.string().trim().min(1).max(200).optional(),
   messageId: z.string().trim().min(1).max(64).optional(),
   filename: z.string().trim().min(1).max(255).optional(),
@@ -345,23 +323,20 @@ const filesListServerSchema = z.object({
 });
 
 const filesFindChannelSchema = z.object({
-  think: discordThinkField,
-  action: z.literal('find_channel').describe('Search attachment text in the current channel only.'),
+  action: z.literal('find_channel').describe('Search attachment text in the current channel only. This searches files, not messages.'),
   query: z.string().trim().min(2).max(500),
   topK: z.number().int().min(1).max(20).optional(),
   maxChars: z.number().int().min(300).max(12_000).optional(),
 });
 
 const filesFindServerSchema = z.object({
-  think: discordThinkField,
-  action: z.literal('find_server').describe('Search attachment text across the guild. Disabled in autopilot turns.'),
+  action: z.literal('find_server').describe('Search attachment text across the guild. This searches files, not messages. Disabled in autopilot turns.'),
   query: z.string().trim().min(2).max(500),
   topK: z.number().int().min(1).max(20).optional(),
   maxChars: z.number().int().min(300).max(12_000).optional(),
 });
 
 const filesReadAttachmentSchema = z.object({
-  think: discordThinkField,
   action: z.literal('read_attachment').describe('Read cached attachment text in pages. Disabled in autopilot turns.'),
   attachmentId: z.string().trim().min(1).max(64),
   startChar: z.number().int().min(0).max(50_000_000).optional(),
@@ -369,7 +344,6 @@ const filesReadAttachmentSchema = z.object({
 });
 
 const filesSendAttachmentSchema = z.object({
-  think: discordThinkField,
   action: z.literal('send_attachment').describe('Resend a cached attachment and return its stored content. Disabled in autopilot turns.'),
   attachmentId: z.string().trim().min(1).max(64),
   channelId: z.string().trim().min(1).max(64).optional(),
@@ -392,7 +366,7 @@ const discordFilesToolSchema = z.discriminatedUnion('action', [
 export const discordFilesTool: ToolDefinition<z.infer<typeof discordFilesToolSchema>> = {
   name: 'discord_files',
   description:
-    'Discord files tool for attachment discovery, paged attachment reads, and attachment resend flows.\n<USE_ONLY_WHEN> You need cached Discord attachments or attachment-derived text. </USE_ONLY_WHEN>',
+    'Discord files tool for attachment discovery, paged attachment reads, and attachment resend flows.\n<USE_ONLY_WHEN> You need cached Discord attachments or attachment-derived text rather than message history or guild-resource inventory. </USE_ONLY_WHEN>',
   schema: discordFilesToolSchema,
   metadata: {
     readOnlyPredicate: (args) => isReadOnlyDiscordDomainCall('discord_files', args),
@@ -406,26 +380,22 @@ export const discordFilesTool: ToolDefinition<z.infer<typeof discordFilesToolSch
 };
 
 const serverListChannelsSchema = z.object({
-  think: discordThinkField,
   action: z.literal('list_channels').describe('List accessible guild channels and categories.'),
   type: z.enum(['text', 'voice', 'category', 'announcement', 'forum', 'media', 'stage']).optional(),
   limit: z.number().int().min(1).max(100).optional(),
 });
 
 const serverGetChannelSchema = z.object({
-  think: discordThinkField,
   action: z.literal('get_channel').describe('Retrieve detailed metadata for one guild channel.'),
   channelId: z.string().trim().min(1).max(64),
 });
 
 const serverListRolesSchema = z.object({
-  think: discordThinkField,
   action: z.literal('list_roles').describe('List guild roles with compact permission summaries.'),
   limit: z.number().int().min(1).max(100).optional(),
 });
 
 const serverListThreadsSchema = z.object({
-  think: discordThinkField,
   action: z.literal('list_threads').describe('List active guild threads; archived lookup requires parentChannelId.'),
   parentChannelId: z.string().trim().min(1).max(64).optional(),
   includeArchived: z.boolean().optional(),
@@ -441,40 +411,34 @@ const serverListThreadsSchema = z.object({
 });
 
 const serverGetThreadSchema = z.object({
-  think: discordThinkField,
   action: z.literal('get_thread').describe('Retrieve detailed metadata for one thread.'),
   threadId: z.string().trim().min(1).max(64),
 });
 
 const serverListScheduledEventsSchema = z.object({
-  think: discordThinkField,
   action: z.literal('list_scheduled_events').describe('List scheduled events for the active guild.'),
   includeCompleted: z.boolean().optional(),
   limit: z.number().int().min(1).max(100).optional(),
 });
 
 const serverGetScheduledEventSchema = z.object({
-  think: discordThinkField,
   action: z.literal('get_scheduled_event').describe('Retrieve one scheduled event for the active guild.'),
   eventId: z.string().trim().min(1).max(64),
 });
 
 const serverListMembersSchema = z.object({
-  think: discordThinkField,
-  action: z.literal('list_members').describe('List guild members. Admin-only read.'),
+  action: z.literal('list_members').describe('List guild members. Admin-only read; distinct from public guild-resource reads like channels, roles, threads, or events.'),
   query: z.string().trim().min(1).max(120).optional(),
   roleId: z.string().trim().min(1).max(64).optional(),
   limit: z.number().int().min(1).max(100).optional(),
 });
 
 const serverGetMemberSchema = z.object({
-  think: discordThinkField,
-  action: z.literal('get_member').describe('Retrieve one guild member. Admin-only read.'),
+  action: z.literal('get_member').describe('Retrieve one guild member. Admin-only read; use discord_context.get_user_profile for best-effort personalization context instead.'),
   userId: z.string().trim().min(1).max(64),
 });
 
 const serverPermissionSnapshotSchema = z.object({
-  think: discordThinkField,
   action: z.literal('get_permission_snapshot').describe('Resolve permissions for a user or role in a specific channel. Admin-only read.'),
   channelId: z.string().trim().min(1).max(64),
   userId: z.string().trim().min(1).max(64).optional(),
@@ -491,13 +455,11 @@ const serverPermissionSnapshotSchema = z.object({
 });
 
 const serverListAutomodRulesSchema = z.object({
-  think: discordThinkField,
   action: z.literal('list_automod_rules').describe('List AutoMod rules for the active guild. Admin-only read.'),
   limit: z.number().int().min(1).max(100).optional(),
 });
 
 const serverUpdateThreadSchema = z.object({
-  think: discordThinkField,
   action: z.literal('update_thread').describe('Rename or change archive/lock settings for a thread. Disabled in autopilot turns.'),
   threadId: z.string().trim().min(1).max(64),
   name: z.string().trim().min(1).max(100).optional(),
@@ -522,7 +484,6 @@ const serverUpdateThreadSchema = z.object({
 
 const serverThreadMembershipSchema = (action: 'join_thread' | 'leave_thread', description: string) =>
   z.object({
-    think: discordThinkField,
     action: z.literal(action).describe(description),
     threadId: z.string().trim().min(1).max(64),
     reason: z.string().trim().max(500).optional(),
@@ -533,7 +494,6 @@ const serverThreadMemberActionSchema = (
   description: string,
 ) =>
   z.object({
-    think: discordThinkField,
     action: z.literal(action).describe(description),
     threadId: z.string().trim().min(1).max(64),
     userId: z.string().trim().min(1).max(64),
@@ -564,7 +524,7 @@ const discordServerToolSchema = z.discriminatedUnion('action', [
 export const discordServerTool: ToolDefinition<z.infer<typeof discordServerToolSchema>> = {
   name: 'discord_server',
   description:
-    'Discord server tool for guild resources, channel and role inspection, scheduled events, AutoMod reads, and thread lifecycle actions.\n<USE_ONLY_WHEN> You need guild-resource metadata or thread lifecycle behavior rather than memory, messages, files, or admin-only writes. </USE_ONLY_WHEN>',
+    'Discord server tool for guild resources, channel and role inspection, scheduled events, AutoMod reads, and thread lifecycle actions.\n<USE_ONLY_WHEN> You need guild-resource metadata or thread lifecycle behavior rather than summary context, messages, files, live voice control, or admin-only writes. </USE_ONLY_WHEN>',
   schema: discordServerToolSchema,
   metadata: {
     readOnlyPredicate: (args) => isReadOnlyDiscordDomainCall('discord_server', args),
@@ -578,13 +538,11 @@ export const discordServerTool: ToolDefinition<z.infer<typeof discordServerToolS
 };
 
 const instructionsUpdateServerSchema = z.object({
-  think: discordThinkField,
-  action: z.literal('update_server_instructions').describe('Submit an admin request to update guild server instructions.'),
+  action: z.literal('update_server_instructions').describe('Submit an admin request to update guild server instructions. This changes behavior/persona config; use discord_context.get_server_instructions to read the current text.'),
   request: serverInstructionsUpdateRequestSchema,
 });
 
 const messagesEditSchema = z.object({
-  think: discordThinkField,
   action: z.literal('edit_message').describe('Edit a message. Requires admin context and approval.'),
   channelId: z.string().trim().min(1).max(64).optional(),
   messageId: z.string().trim().min(1).max(64),
@@ -594,7 +552,6 @@ const messagesEditSchema = z.object({
 
 const messageIdActionSchema = (action: 'delete_message' | 'pin_message' | 'unpin_message', description: string) =>
   z.object({
-    think: discordThinkField,
     action: z.literal(action).describe(description),
     channelId: z.string().trim().min(1).max(64).optional(),
     messageId: z.string().trim().min(1).max(64),
@@ -602,7 +559,6 @@ const messageIdActionSchema = (action: 'delete_message' | 'pin_message' | 'unpin
   });
 
 const channelsCreateSchema = z.object({
-  think: discordThinkField,
   action: z.literal('create_channel').describe('Create a new channel or category. Requires admin context and approval.'),
   name: z.string().trim().min(1).max(100),
   type: z.enum(['text', 'voice', 'category']).optional(),
@@ -614,7 +570,6 @@ const channelsCreateSchema = z.object({
 });
 
 const channelsEditSchema = z.object({
-  think: discordThinkField,
   action: z.literal('edit_channel').describe('Edit an existing channel. Requires admin context and approval.'),
   channelId: z.string().trim().min(1).max(64),
   name: z.string().trim().min(1).max(100).optional(),
@@ -626,7 +581,6 @@ const channelsEditSchema = z.object({
 });
 
 const rolesCreateSchema = z.object({
-  think: discordThinkField,
   action: z.literal('create_role').describe('Create a new role. Requires admin context and approval.'),
   name: z.string().trim().min(1).max(100),
   colorHex: z.string().trim().min(1).max(7).optional(),
@@ -637,7 +591,6 @@ const rolesCreateSchema = z.object({
 });
 
 const rolesEditSchema = z.object({
-  think: discordThinkField,
   action: z.literal('edit_role').describe('Edit an existing role. Requires admin context and approval.'),
   roleId: z.string().trim().min(1).max(64),
   name: z.string().trim().min(1).max(100).optional(),
@@ -650,7 +603,6 @@ const rolesEditSchema = z.object({
 
 const roleIdActionSchema = (action: 'delete_role', description: string) =>
   z.object({
-    think: discordThinkField,
     action: z.literal(action).describe(description),
     roleId: z.string().trim().min(1).max(64),
     reason: z.string().trim().max(500).optional(),
@@ -658,7 +610,6 @@ const roleIdActionSchema = (action: 'delete_role', description: string) =>
 
 const memberRoleActionSchema = (action: 'add_member_role' | 'remove_member_role', description: string) =>
   z.object({
-    think: discordThinkField,
     action: z.literal(action).describe(description),
     userId: z.string().trim().min(1).max(64),
     roleId: z.string().trim().min(1).max(64),
@@ -666,7 +617,6 @@ const memberRoleActionSchema = (action: 'add_member_role' | 'remove_member_role'
   });
 
 const oauthInviteUrlSchema = z.object({
-  think: discordThinkField,
   action: z.literal('get_invite_url').describe('Generate an OAuth2 invite URL for the bot.'),
   permissions: z.union([z.string(), z.number()]).optional(),
   scopes: z.array(discordOauthScopeSchema).min(1).max(4).optional(),
@@ -675,23 +625,19 @@ const oauthInviteUrlSchema = z.object({
 });
 
 const adminGetServerKeyStatusSchema = z.object({
-  think: discordThinkField,
   action: z.literal('get_server_key_status').describe('Check the current server-wide API key status. Admin-only read.'),
 });
 
 const adminClearServerApiKeySchema = z.object({
-  think: discordThinkField,
   action: z.literal('clear_server_api_key').describe('Clear the current server-wide API key immediately. Admin-only write. Disabled in autopilot turns.'),
 });
 
 const adminSendKeySetupCardSchema = z.object({
-  think: discordThinkField,
   action: z.literal('send_key_setup_card').describe('Send an interactive server-key setup card in the current channel. Admin-only write. Disabled in autopilot turns.'),
 });
 
 const discordApiSchema = z.object({
-  think: discordThinkField,
-  action: z.literal('api').describe('Guild-scoped raw Discord API fallback for admin use only. Non-GET requests require approval.'),
+  action: z.literal('api').describe('Guild-scoped raw Discord API fallback for admin use only. Prefer typed discord_server/discord_admin actions first. Non-GET requests require approval.'),
   method: z.enum(['GET', 'POST', 'PUT', 'PATCH', 'DELETE']),
   path: discordRestPathSchema,
   query: z.record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.null()])).optional(),
@@ -709,7 +655,6 @@ const discordAdminToolSchema = z.discriminatedUnion('action', [
   adminSendKeySetupCardSchema,
   instructionsUpdateServerSchema,
   z.object({
-    think: discordThinkField,
     action: z.literal('submit_moderation').describe('Submit a moderation request. Requires admin context and approval.'),
     request: discordModerationActionRequestSchema,
   }),
@@ -731,7 +676,7 @@ const discordAdminToolSchema = z.discriminatedUnion('action', [
 export const discordAdminTool: ToolDefinition<z.infer<typeof discordAdminToolSchema>> = {
   name: 'discord_admin',
   description:
-    'Discord admin tool for server instruction writes, moderation, message/channel/role/member admin operations, invite URLs, and Discord API fallback.\n<USE_ONLY_WHEN> You need admin-grade Discord actions or raw Discord API fallback. </USE_ONLY_WHEN>',
+    'Discord admin tool for server-instruction writes, moderation, message/channel/role/member admin operations, invite URLs, and Discord API fallback.\n<USE_ONLY_WHEN> You need admin-grade Discord actions or raw Discord API fallback after typed actions are exhausted. </USE_ONLY_WHEN>',
   schema: discordAdminToolSchema,
   metadata: {
     readOnlyPredicate: (args) => isReadOnlyDiscordDomainCall('discord_admin', args),
@@ -745,17 +690,14 @@ export const discordAdminTool: ToolDefinition<z.infer<typeof discordAdminToolSch
 };
 
 const voiceGetStatusSchema = z.object({
-  think: discordThinkField,
   action: z.literal('get_status').describe('Show the bot voice connection status for this guild.'),
 });
 
 const voiceJoinCurrentChannelSchema = z.object({
-  think: discordThinkField,
   action: z.literal('join_current_channel').describe('Join the invoker’s current voice channel. Disabled in autopilot turns.'),
 });
 
 const voiceLeaveSchema = z.object({
-  think: discordThinkField,
   action: z.literal('leave').describe('Leave the active guild voice channel. Disabled in autopilot turns.'),
 });
 
@@ -769,7 +711,7 @@ const discordVoiceToolSchema = z.discriminatedUnion('action', [
 export const discordVoiceTool: ToolDefinition<z.infer<typeof discordVoiceToolSchema>> = {
   name: 'discord_voice',
   description:
-    'Discord voice tool for live voice connection status and commandless join/leave control.\n<USE_ONLY_WHEN> You need live voice control or voice connection state rather than summaries/analytics. </USE_ONLY_WHEN>',
+    'Discord voice tool for live voice connection status and commandless join/leave control.\n<USE_ONLY_WHEN> You need live voice control or voice connection state rather than voice summaries/analytics. </USE_ONLY_WHEN>',
   schema: discordVoiceToolSchema,
   metadata: {
     readOnlyPredicate: (args) => isReadOnlyDiscordDomainCall('discord_voice', args),

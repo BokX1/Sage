@@ -132,61 +132,6 @@ function isRetryableErrorType(type: ToolErrorType): boolean {
 }
 
 
-function getRecoverySuggestion(errorType: ToolErrorType): string {
-  switch (errorType) {
-    case 'timeout':
-      return 'The tool timed out. Try again with a simpler query, or explain that the operation is taking longer than expected.';
-    case 'not_found':
-      return 'The tool could not find the requested information. Try a different query or explain that the information is not available.';
-    case 'rate_limited':
-      return 'The tool hit a rate limit. Wait before retrying or use cached or known information instead.';
-    case 'validation':
-      return 'The tool received invalid parameters. Check input format and retry with corrected parameters.';
-    case 'unauthorized':
-      return 'The tool was unauthorized. Check that credentials/API keys are configured and valid.';
-    case 'forbidden':
-      return 'The tool was forbidden. Ensure the token has permission to access the requested resource.';
-    case 'bad_request':
-      return 'The tool sent a bad request. Verify parameters and retry with corrected inputs.';
-    case 'server_error':
-      return 'The upstream service returned a server error. Retry later or try a different provider.';
-    case 'network_error':
-      return 'The tool hit a network error. Retry once, reduce concurrency, or use cached info if available.';
-    case 'misconfigured':
-      return 'The tool appears misconfigured. Ensure required environment variables/API keys are set.';
-    case 'upstream_error':
-      return 'The upstream service returned an unexpected response. Retry or try a different provider.';
-    case 'unknown':
-    default:
-      return 'The tool encountered an error. Try again, use a different approach, or explain the limitation to the user.';
-  }
-}
-
-function getToolSpecificRecoverySuggestion(
-  toolName: string,
-  errorType: ToolErrorType,
-  errorText: string,
-): string {
-  const lowerToolName = toolName.trim().toLowerCase();
-  const lowerErrorText = errorText.toLowerCase();
-  const isGitHubFileLookup =
-    lowerToolName === 'github' ||
-    lowerToolName === 'github_get_file' ||
-    lowerErrorText.includes('github_get_file failed') ||
-    lowerErrorText.includes('github.file.get failed');
-  const isNotFound =
-    errorType === 'not_found' ||
-    lowerErrorText.includes('404') ||
-    lowerErrorText.includes('not found');
-
-  if (isGitHubFileLookup && isNotFound) {
-    return 'GitHub file lookup failed. Use github action code.search (or repo.get) to find candidate paths/branch details, then retry github action file.get with exact path/ref and line ranges or file.page for pagination.';
-  }
-
-  return getRecoverySuggestion(errorType);
-}
-
-
 function truncateText(value: string, maxChars: number): string {
   const cap = Math.max(1, Math.floor(maxChars));
   if (value.length <= cap) return value;
@@ -377,6 +322,14 @@ function formatUntrustedExternalDataBlock(source: string, payload: string): stri
   return `<untrusted_external_data source="${escapedSource}" trust_level="low">\n${escapedPayload}\n</untrusted_external_data>`;
 }
 
+function isPendingApprovalResult(result: ToolResult): boolean {
+  if (!result.success || !result.result || typeof result.result !== 'object' || Array.isArray(result.result)) {
+    return false;
+  }
+
+  return (result.result as Record<string, unknown>).status === 'pending_approval';
+}
+
 function formatToolResultsMessage(results: ToolResult[], maxToolResultChars: number): LLMChatMessage {
   const successResults = results.filter((r) => r.success);
   const failedResults = results.filter((r) => !r.success);
@@ -414,11 +367,6 @@ function formatToolResultsMessage(results: ToolResult[], maxToolResultChars: num
     const failedTexts = failedResults.map((r) => {
       const errorType = classifyErrorType(r.error || 'unknown', r.errorDetails);
       const errorText = truncateText(r.error ?? 'Unknown tool error', Math.max(240, Math.floor(maxToolResultChars / 2)));
-      const suggestion = getToolSpecificRecoverySuggestion(r.name, errorType, errorText);
-      const hint =
-        typeof r.errorDetails?.hint === 'string' && r.errorDetails.hint.trim().length > 0
-          ? r.errorDetails.hint.trim()
-          : null;
       const toolLabel = formatToolNameLabel(r.name);
       const httpStatus = resolveHttpStatus(errorText, r.errorDetails);
       const metaParts: string[] = [];
@@ -432,7 +380,7 @@ function formatToolResultsMessage(results: ToolResult[], maxToolResultChars: num
       if (typeof r.errorDetails?.retryAfterMs === 'number' && Number.isFinite(r.errorDetails.retryAfterMs)) {
         metaParts.push(`retryAfterMs=${Math.max(0, Math.floor(r.errorDetails.retryAfterMs))}`);
       }
-      return `[ERROR] Tool ${toolLabel} failed (${metaParts.join(', ')}):\n${formatUntrustedExternalDataBlock(r.name, errorText)}\nSuggestion: ${suggestion}${hint ? `\nHint: ${hint}` : ''}`;
+      return `[ERROR] Tool ${toolLabel} failed (${metaParts.join(', ')}):\n${formatUntrustedExternalDataBlock(r.name, errorText)}`;
     });
     parts.push(failedTexts.join('\n'));
   }
@@ -495,7 +443,6 @@ export interface ToolCallRoundEvent {
   truncatedCallCount: number;
   seeded: boolean;
   completedAt: string;
-  reasoningText?: string;
   rebudgeting?: ToolLoopRebudgetEvent;
 }
 
@@ -642,6 +589,7 @@ export async function runToolCallLoop(params: ToolCallLoopParams): Promise<ToolC
   let seededResponse = params.initialAssistantResponse;
   const loopStartTime = Date.now();
   let sideEffectExecutedInLoop = false;
+  const pendingApprovalResultByFingerprint = new Map<string, ToolResult>();
   const roundEvents: ToolCallRoundEvent[] = [];
   let finalization: ToolCallFinalizationEvent = {
     attempted: false,
@@ -746,6 +694,20 @@ export async function runToolCallLoop(params: ToolCallLoopParams): Promise<ToolC
 
     const executePendingCall = async (pending: PendingCall): Promise<void> => {
       const readOnly = isReadOnlyToolCall(pending.call);
+      const approvalFingerprint = buildToolCacheKey(pending.call.name, pending.call.args);
+      if (!readOnly) {
+        const existingPendingApproval = pendingApprovalResultByFingerprint.get(approvalFingerprint);
+        if (existingPendingApproval) {
+          roundResultsByIndex[pending.index] = {
+            ...existingPendingApproval,
+            latencyMs: 0,
+            cacheHit: true,
+            cacheKind: 'dedupe',
+          };
+          deduplicatedCallCount += 1;
+          return;
+        }
+      }
 
       const runOnce = () =>
         executeToolWithTimeout(registry, pending.call, ctx, config.toolTimeoutMs);
@@ -788,6 +750,9 @@ export async function runToolCallLoop(params: ToolCallLoopParams): Promise<ToolC
       }
 
       roundResultsByIndex[pending.index] = result;
+      if (isPendingApprovalResult(result)) {
+        pendingApprovalResultByFingerprint.set(approvalFingerprint, result);
+      }
       if (result.success && cache) {
         cache.set(pending.call.name, pending.call.args, result.result);
       }
@@ -820,6 +785,23 @@ export async function runToolCallLoop(params: ToolCallLoopParams): Promise<ToolC
     for (let index = 0; index < calls.length; index += 1) {
       const call = calls[index];
       const dedupeEligible = isReadOnlyToolCall(call);
+      const approvalFingerprint = buildToolCacheKey(call.name, call.args);
+      if (!dedupeEligible) {
+        const pendingApprovalResult = pendingApprovalResultByFingerprint.get(approvalFingerprint);
+        if (pendingApprovalResult) {
+          roundResultsByIndex[index] = {
+            ...pendingApprovalResult,
+            latencyMs: 0,
+            cacheHit: true,
+            cacheKind: 'dedupe',
+          };
+          deduplicatedCallCount += 1;
+          hasPriorSideEffectCall = true;
+          readOnlySegmentId += 1;
+          sideEffectExecutedInLoop = true;
+          continue;
+        }
+      }
       const canReuseCachedRead =
         dedupeEligible &&
         !hasPriorSideEffectCall &&
@@ -936,7 +918,6 @@ export async function runToolCallLoop(params: ToolCallLoopParams): Promise<ToolC
       truncatedCallCount: Math.max(0, requestedCalls.length - calls.length),
       seeded,
       completedAt: new Date().toISOString(),
-      reasoningText: response.reasoningText,
       rebudgeting: roundRebudgeting,
     });
 

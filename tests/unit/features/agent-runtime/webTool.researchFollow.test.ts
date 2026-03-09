@@ -69,7 +69,6 @@ describe('webTool research followLinks', () => {
       {
         name: 'web',
         args: {
-          think: 'research with follow',
           action: 'research',
           query: 'example query',
           followLinks: true,

@@ -28,7 +28,6 @@ describe('default tools cross-channel message history', () => {
       {
         name: 'discord_messages',
         args: {
-          think: 'search other channel',
           action: 'search_history',
           channelId: 'channel-2',
           query: 'hello world',
@@ -62,7 +61,6 @@ describe('default tools cross-channel message history', () => {
       {
         name: 'discord_messages',
         args: {
-          think: 'autopilot should block',
           action: 'search_history',
           channelId: 'channel-2',
           query: 'hello world',
@@ -92,7 +90,6 @@ describe('default tools cross-channel message history', () => {
       {
         name: 'discord_messages',
         args: {
-          think: 'lookup other channel message',
           action: 'get_context',
           channelId: 'channel-2',
           messageId: 'msg-123',
@@ -126,7 +123,6 @@ describe('default tools cross-channel message history', () => {
       {
         name: 'discord_messages',
         args: {
-          think: 'autopilot should block',
           action: 'get_context',
           channelId: 'channel-2',
           messageId: 'msg-123',

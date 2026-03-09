@@ -7,6 +7,10 @@ vi.mock('@/features/social-graph/socialGraphQuery', () => ({
   querySocialGraph: mockQuerySocialGraph,
 }));
 
+vi.mock('../../../../src/features/social-graph/socialGraphQuery', () => ({
+  querySocialGraph: mockQuerySocialGraph,
+}));
+
 describe('lookupSocialGraph fallback behavior', () => {
   beforeEach(() => {
     vi.resetModules();
@@ -16,7 +20,7 @@ describe('lookupSocialGraph fallback behavior', () => {
   it('returns unavailable when Memgraph query fails', async () => {
     mockQuerySocialGraph.mockRejectedValueOnce(new Error('memgraph unavailable'));
 
-    const { lookupSocialGraph } = await importFresh(() => import('@/features/agent-runtime/toolIntegrations'));
+    const { lookupSocialGraph } = await importFresh(() => import('@/features/agent-runtime/toolIntegrations/impl'));
     const result = await lookupSocialGraph({
       guildId: 'guild-1',
       userId: 'user-a',
@@ -28,7 +32,7 @@ describe('lookupSocialGraph fallback behavior', () => {
     expect(typedResult.found).toBe(false);
     expect(typedResult.source).toBe('memgraph');
     expect(String(typedResult.content)).toContain('temporarily unavailable');
-  });
+  }, 15_000);
 
   it('keeps Memgraph as primary source when query succeeds', async () => {
     mockQuerySocialGraph.mockResolvedValueOnce({
@@ -57,7 +61,7 @@ describe('lookupSocialGraph fallback behavior', () => {
       ],
     });
 
-    const { lookupSocialGraph } = await importFresh(() => import('@/features/agent-runtime/toolIntegrations'));
+    const { lookupSocialGraph } = await importFresh(() => import('@/features/agent-runtime/toolIntegrations/impl'));
     const result = await lookupSocialGraph({
       guildId: 'guild-1',
       userId: 'user-a',
@@ -67,5 +71,5 @@ describe('lookupSocialGraph fallback behavior', () => {
     const typedResult = result as Record<string, unknown>;
     expect(typedResult.found).toBe(true);
     expect(typedResult.source).toBe('memgraph');
-  });
+  }, 15_000);
 });

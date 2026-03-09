@@ -193,6 +193,22 @@ Possible causes:
 2. Reduce `TIMEOUT_CHAT_MS` if needed
 3. Ensure a stable network connection
 
+### Sage repeats approval requests or posts tool chatter in chat
+
+**Cause:** An approval-gated action was retried instead of being coalesced, or an older build exposed tool/approval protocol in the visible reply.
+
+**Expected behavior:**
+
+1. One unresolved admin request maps to one pending approval and one action ID
+2. Repeated equivalent requests should reuse that pending action instead of creating a second approval card
+3. Channel replies should acknowledge the pending approval briefly without raw tool JSON, approval payloads, or retry instructions
+
+**Fix:**
+
+1. Upgrade to a build that includes approval coalescing and final-reply scrubbing
+2. Re-run the request once and confirm the same pending action ID is reused
+3. If duplicate pending rows already exist, resolve or expire the stale item and retry
+
 ---
 
 <a id="database-issues"></a>
