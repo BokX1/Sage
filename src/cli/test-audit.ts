@@ -2,18 +2,18 @@
 
 import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import ts from 'typescript';
-
-type AuditIssue = {
-  file: string;
-  detail: string;
-};
+import { analyzeTestFileContent, type AuditIssue } from './test-audit-lib';
 
 type AuditReport = {
   generatedAt: string;
   scannedFiles: number;
   scannedTestCases: number;
   expectCallCount: number;
+  matcherAssertionCount: number;
+  weakMatcherCount: number;
+  strongMatcherCount: number;
+  weakOnlyTestCount: number;
+  requireStrongAssertions: boolean;
   failures: AuditIssue[];
   warnings: AuditIssue[];
 };
@@ -54,40 +54,6 @@ async function collectTestFiles(rootDir: string): Promise<string[]> {
   return files.sort((a, b) => a.localeCompare(b));
 }
 
-function isIdentifierNamed(node: ts.Node, name: string): boolean {
-  return ts.isIdentifier(node) && node.text === name;
-}
-
-function isTestCaseCall(node: ts.CallExpression): boolean {
-  return isIdentifierNamed(node.expression, 'it') || isIdentifierNamed(node.expression, 'test');
-}
-
-function hasExpectInNode(root: ts.Node): boolean {
-  let found = false;
-  function walk(node: ts.Node): void {
-    if (found) return;
-    if (ts.isCallExpression(node) && isIdentifierNamed(node.expression, 'expect')) {
-      found = true;
-      return;
-    }
-    ts.forEachChild(node, walk);
-  }
-  walk(root);
-  return found;
-}
-
-function countExpectCalls(root: ts.Node): number {
-  let count = 0;
-  function walk(node: ts.Node): void {
-    if (ts.isCallExpression(node) && isIdentifierNamed(node.expression, 'expect')) {
-      count += 1;
-    }
-    ts.forEachChild(node, walk);
-  }
-  walk(root);
-  return count;
-}
-
 async function writeReport(reportPath: string, report: AuditReport): Promise<void> {
   const resolved = path.resolve(reportPath);
   await mkdir(path.dirname(resolved), { recursive: true });
@@ -97,6 +63,7 @@ async function writeReport(reportPath: string, report: AuditReport): Promise<voi
 async function main(): Promise<void> {
   const rootDir = process.cwd();
   const failOnWarnings = readBoolean('TEST_AUDIT_FAIL_ON_WARNINGS', true);
+  const requireStrongAssertions = readBoolean('TEST_AUDIT_REQUIRE_STRONG_ASSERTIONS', true);
   const reportPath =
     process.env.TEST_AUDIT_REPORT_PATH?.trim() || '.agent/reports/test-audit-latest.json';
 
@@ -105,53 +72,24 @@ async function main(): Promise<void> {
   const warnings: AuditIssue[] = [];
   let scannedTestCases = 0;
   let expectCallCount = 0;
+  let matcherAssertionCount = 0;
+  let weakMatcherCount = 0;
+  let strongMatcherCount = 0;
+  let weakOnlyTestCount = 0;
 
   for (const filePath of files) {
     const content = await readFile(filePath, 'utf8');
     const relative = toPosixPath(path.relative(rootDir, filePath));
-    const sourceFile = ts.createSourceFile(filePath, content, ts.ScriptTarget.Latest, true);
+    const result = analyzeTestFileContent(content, relative, { requireStrongAssertions });
 
-    const failurePatterns: Array<{ name: string; regex: RegExp }> = [
-      { name: '.only', regex: /\b(?:it|test|describe)\.only\s*\(/g },
-      { name: '.skip', regex: /\b(?:it|test|describe)\.skip\s*\(/g },
-      { name: '.todo', regex: /\b(?:it|test|describe)\.todo\s*\(/g },
-      { name: 'TODO/FIXME/HACK/XXX marker', regex: /\b(?:TODO|FIXME|HACK|XXX)\b/g },
-      { name: '@ts-ignore', regex: /@ts-ignore/g },
-    ];
-
-    for (const pattern of failurePatterns) {
-      const matches = content.match(pattern.regex);
-      if (!matches || matches.length === 0) continue;
-      failures.push({
-        file: relative,
-        detail: `contains ${pattern.name} (${matches.length} occurrence${matches.length === 1 ? '' : 's'})`,
-      });
-    }
-
-    expectCallCount += countExpectCalls(sourceFile);
-
-    function visit(node: ts.Node): void {
-      if (ts.isCallExpression(node) && isTestCaseCall(node)) {
-        scannedTestCases += 1;
-        const callback = node.arguments[1];
-        if (
-          callback &&
-          (ts.isFunctionExpression(callback) || ts.isArrowFunction(callback)) &&
-          callback.body &&
-          ts.isBlock(callback.body)
-        ) {
-          if (!hasExpectInNode(callback.body)) {
-            warnings.push({
-              file: relative,
-              detail: `test "${node.arguments[0]?.getText(sourceFile) ?? '<unknown>'}" has no expect(...) assertion`,
-            });
-          }
-        }
-      }
-      ts.forEachChild(node, visit);
-    }
-
-    visit(sourceFile);
+    scannedTestCases += result.scannedTestCases;
+    expectCallCount += result.expectCallCount;
+    matcherAssertionCount += result.matcherAssertionCount;
+    weakMatcherCount += result.weakMatcherCount;
+    strongMatcherCount += result.strongMatcherCount;
+    weakOnlyTestCount += result.weakOnlyTestCount;
+    failures.push(...result.failures);
+    warnings.push(...result.warnings);
   }
 
   const report: AuditReport = {
@@ -159,6 +97,11 @@ async function main(): Promise<void> {
     scannedFiles: files.length,
     scannedTestCases,
     expectCallCount,
+    matcherAssertionCount,
+    weakMatcherCount,
+    strongMatcherCount,
+    weakOnlyTestCount,
+    requireStrongAssertions,
     failures,
     warnings,
   };
@@ -169,10 +112,15 @@ async function main(): Promise<void> {
     scannedFiles: report.scannedFiles,
     scannedTestCases: report.scannedTestCases,
     expectCallCount: report.expectCallCount,
+    matcherAssertionCount: report.matcherAssertionCount,
+    weakMatcherCount: report.weakMatcherCount,
+    strongMatcherCount: report.strongMatcherCount,
+    weakOnlyTestCount: report.weakOnlyTestCount,
     failureCount: report.failures.length,
     warningCount: report.warnings.length,
     reportPath: toPosixPath(reportPath),
     failOnWarnings,
+    requireStrongAssertions,
   });
 
   if (report.failures.length > 0) {

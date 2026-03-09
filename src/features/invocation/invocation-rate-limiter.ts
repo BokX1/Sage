@@ -24,14 +24,15 @@ export function shouldAllowInvocation(params: {
   );
 
   const lastWakeword = wakewordCooldowns.get(key);
-  if (typeof lastWakeword === 'number' && now - lastWakeword < cooldownMs) {
+  const elapsedSinceLastWakewordMs = now - (lastWakeword ?? Number.NEGATIVE_INFINITY);
+  if (elapsedSinceLastWakewordMs < cooldownMs) {
     return false;
   }
 
   if (maxPerMinute > 0) {
     const windowMs = 60_000;
-    const history = channelWakewordHistory.get(channelId) ?? [];
-    const recent = history.filter((timestamp) => now - timestamp < windowMs);
+    const history = channelWakewordHistory.get(channelId);
+    const recent = history ? history.filter((timestamp) => now - timestamp < windowMs) : [];
     if (recent.length >= maxPerMinute) {
       channelWakewordHistory.set(channelId, recent);
       return false;

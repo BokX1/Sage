@@ -16,11 +16,16 @@ function clampTimerDelayMs(delayMs: number): number {
   return Math.min(delayMs, MAX_TIMER_DELAY_MS);
 }
 
+function unrefTimerHandle(timer: NodeJS.Timeout): void {
+  if (typeof timer.unref !== 'function') return;
+  timer.unref();
+}
+
 /** Wait for the provided delay without keeping the process alive on its own. */
 function sleep(delayMs: number): Promise<void> {
   return new Promise((resolve) => {
     const timeoutId = setTimeout(resolve, clampTimerDelayMs(delayMs));
-    timeoutId.unref?.();
+    unrefTimerHandle(timeoutId);
   });
 }
 
@@ -45,7 +50,7 @@ export async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, ope
         timeoutId = setTimeout(() => {
           reject(new AppError('TIMEOUT', `${operation} timed out after ${timeoutMs}ms`));
         }, clampTimerDelayMs(timeoutMs));
-        timeoutId.unref?.();
+        unrefTimerHandle(timeoutId);
       }),
     ]);
   } finally {

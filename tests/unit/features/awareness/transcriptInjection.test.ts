@@ -140,6 +140,12 @@ describe('transcript injection', () => {
         message.role === 'system' && message.content.includes('Recent channel transcript'),
     );
 
-    expect(hasTranscript).toBe(false);
+    expect(hasTranscript).toEqual(false);
+    expect(
+      call.messages.filter(
+        (message: { role: string; content: string }) =>
+          message.role === 'system' && message.content.includes('Recent channel transcript'),
+      ),
+    ).toHaveLength(0);
   });
 });

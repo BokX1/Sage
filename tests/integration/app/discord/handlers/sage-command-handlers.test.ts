@@ -43,8 +43,19 @@ describe('sage command handlers', () => {
         permissions: new PermissionsBitField(PermissionsBitField.Flags.ManageGuild),
       } as unknown as ChatInputCommandInteraction['member'],
     });
+    const nonAdminInteraction = createBaseInteraction({
+      member: {
+        permissions: new PermissionsBitField(PermissionsBitField.Flags.ViewChannel),
+      } as unknown as ChatInputCommandInteraction['member'],
+    });
 
-    expect(isAdmin(interaction)).toBe(true);
+    expect({
+      manageGuild: isAdmin(interaction),
+      viewOnly: isAdmin(nonAdminInteraction),
+    }).toEqual({
+      manageGuild: true,
+      viewOnly: false,
+    });
   });
 
   it('treats Administrator permission as admin', () => {
@@ -53,8 +64,19 @@ describe('sage command handlers', () => {
         permissions: new PermissionsBitField(PermissionsBitField.Flags.Administrator),
       } as unknown as ChatInputCommandInteraction['member'],
     });
+    const nonAdminInteraction = createBaseInteraction({
+      member: {
+        permissions: new PermissionsBitField(PermissionsBitField.Flags.SendMessages),
+      } as unknown as ChatInputCommandInteraction['member'],
+    });
 
-    expect(isAdmin(interaction)).toBe(true);
+    expect({
+      administrator: isAdmin(interaction),
+      nonAdmin: isAdmin(nonAdminInteraction),
+    }).toEqual({
+      administrator: true,
+      nonAdmin: false,
+    });
   });
 
   it('uses editReply for admin denial when interaction was already deferred', async () => {

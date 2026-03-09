@@ -12,11 +12,12 @@ const DEFAULT_FALLBACK_TIMEOUT_MS = 30_000;
 const MAX_JS_TIMER_DELAY_MS = 2_147_483_647;
 
 function toPositiveInt(value: number | undefined, fallback: number): number {
-  if (typeof value !== 'number' || !Number.isFinite(value)) {
+  if (!Number.isFinite(value)) {
     return fallback;
   }
 
-  const normalized = Math.floor(value);
+  const finiteValue = value as number;
+  const normalized = Math.floor(finiteValue);
   return normalized > 0 ? normalized : fallback;
 }
 
@@ -41,18 +42,15 @@ export function normalizeTimeoutMs(
   const maxMs = Math.max(minMs, clampTimerDelayMs(toPositiveInt(options.maxMs, MAX_JS_TIMER_DELAY_MS)));
   const boundedFallback = Math.min(Math.max(fallbackMs, minMs), maxMs);
 
-  if (typeof rawTimeoutMs !== 'number' || !Number.isFinite(rawTimeoutMs)) {
+  if (!Number.isFinite(rawTimeoutMs)) {
     return boundedFallback;
   }
 
-  const normalized = clampTimerDelayMs(Math.floor(rawTimeoutMs));
+  const finiteRawTimeoutMs = rawTimeoutMs as number;
+  const normalized = clampTimerDelayMs(Math.floor(finiteRawTimeoutMs));
   if (normalized < minMs) {
     return options.belowMinMode === 'clamp' ? minMs : boundedFallback;
   }
 
-  if (normalized > maxMs) {
-    return maxMs;
-  }
-
-  return normalized;
+  return Math.min(normalized, maxMs);
 }

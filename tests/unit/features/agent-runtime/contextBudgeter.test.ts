@@ -140,7 +140,7 @@ describe('budgetContextBlocks', () => {
       estimateTokens,
     });
 
-    expect(result.some((block) => block.id === 'user')).toBe(true);
+    expect(result.map((block) => block.id)).toContain('user');
   });
 
   it('adds truncation notice when truncation occurs', () => {

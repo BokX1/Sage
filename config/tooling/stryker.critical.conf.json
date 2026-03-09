@@ -1,0 +1,48 @@
+{
+  "$schema": "../../node_modules/@stryker-mutator/core/schema/stryker-schema.json",
+  "testRunner": "vitest",
+  "vitest": {
+    "configFile": "config/tooling/vitest.config.mjs",
+    "related": true
+  },
+  "reporters": [
+    "clear-text",
+    "json"
+  ],
+  "jsonReporter": {
+    "fileName": "reports/mutation/critical-mutation.json"
+  },
+  "coverageAnalysis": "perTest",
+  "ignoreStatic": true,
+  "allowEmpty": false,
+  "concurrency": "50%",
+  "timeoutMS": 15000,
+  "timeoutFactor": 2.0,
+  "mutate": [
+    "src/features/settings/guildChannelSettings.ts",
+    "src/features/chat/rate-limiter.ts",
+    "src/features/invocation/invocation-rate-limiter.ts",
+    "src/shared/utils/timeout.ts",
+    "src/shared/async/resilience.ts",
+    "src/shared/errors/app-error.ts"
+  ],
+  "testFiles": [
+    "tests/unit/features/awareness/loggingPolicy.test.ts",
+    "tests/unit/features/chat/rate-limiter.test.ts",
+    "tests/unit/features/invocation/invocationRateLimiter.test.ts",
+    "tests/unit/shared/utils/timeout.test.ts",
+    "tests/unit/shared/resilience.test.ts",
+    "tests/unit/shared/app-error.test.ts"
+  ],
+  "ignorePatterns": [
+    "dist/**",
+    "docs/**",
+    "website/**",
+    ".agent/**"
+  ],
+  "thresholds": {
+    "high": 100,
+    "low": 100,
+    "break": 100
+  }
+}

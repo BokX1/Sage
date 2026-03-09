@@ -1,7 +1,7 @@
 /**
  * @description Verifies AppError construction and unknown-error normalization.
  */
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { AppError, toErrorWithCode } from '../../../src/shared/errors/app-error';
 
 describe('AppError', () => {
@@ -11,6 +11,32 @@ describe('AppError', () => {
     expect(error.code).toBe('CONFIG_INVALID');
     expect(error.name).toBe('AppError');
     expect(error).toBeInstanceOf(AppError);
+  });
+
+  it('captures stack traces when captureStackTrace is available', () => {
+    const originalCapture = Error.captureStackTrace;
+    const captureSpy = vi.fn();
+    Error.captureStackTrace = captureSpy as unknown as typeof Error.captureStackTrace;
+
+    try {
+      new AppError('BOOTSTRAP_FAILED', 'boot failed');
+      expect(captureSpy).toHaveBeenCalledWith(expect.any(AppError), AppError);
+    } finally {
+      Error.captureStackTrace = originalCapture;
+    }
+  });
+
+  it('constructs safely when captureStackTrace is unavailable', () => {
+    const originalCapture = Error.captureStackTrace;
+    Error.captureStackTrace = undefined as unknown as typeof Error.captureStackTrace;
+
+    try {
+      const error = new AppError('TIMEOUT', 'fallback stack');
+      expect(error).toBeInstanceOf(AppError);
+      expect(error.message).toBe('fallback stack');
+    } finally {
+      Error.captureStackTrace = originalCapture;
+    }
   });
 
   it('returns the original instance when already AppError', () => {

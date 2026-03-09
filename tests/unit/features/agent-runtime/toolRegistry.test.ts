@@ -94,7 +94,10 @@ describe('ToolRegistry', () => {
         args: { message: 'hello' },
       });
 
-      expect(result.success).toBe(true);
+      expect(result).toEqual({
+        success: true,
+        args: { message: 'hello' },
+      });
     });
   });
 

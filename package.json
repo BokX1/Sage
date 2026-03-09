@@ -46,18 +46,22 @@
     "docs:lint": "markdownlint-cli2 --config config/tooling/sage.markdownlint-cli2.jsonc",
     "docs:links": "node scripts/docs/check-links.cjs",
     "check:docs": "npm run docs:lint && npm run docs:links",
+    "mutation:critical": "stryker run config/tooling/stryker.critical.conf.json",
+    "check:mutation": "npm run mutation:critical",
     "hooks:pre-commit": "node scripts/hooks/pre-commit.cjs",
     "hooks:pre-push": "node scripts/hooks/pre-push.cjs",
     "check:local": "npm run lint && npm run typecheck && npm run test",
     "check:trust": "npm run lint && npm run typecheck && npm run test:audit && npm run test:trust",
+    "check:trust:deep": "npm run check:trust && npm run check:mutation",
     "check": "npm run check:local"
   },
   "author": "",
   "license": "MIT",
   "type": "commonjs",
   "dependencies": {
-    "@discordjs/voice": "^0.19.0",
+    "@clack/prompts": "^1.1.0",
     "@discordjs/opus": "^0.10.0",
+    "@discordjs/voice": "^0.19.0",
     "@huggingface/transformers": "^3.8.1",
     "@prisma/client": "^6.19.2",
     "@snazzah/davey": "^0.1.10",
@@ -71,11 +75,12 @@
     "pino": "^10.3.1",
     "pino-pretty": "^13.1.3",
     "prism-media": "^1.3.5",
-    "zod": "^4.3.6",
-    "@clack/prompts": "^1.1.0"
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@stryker-mutator/core": "^9.6.0",
+    "@stryker-mutator/vitest-runner": "^9.6.0",
     "@types/node": "^25.3.5",
     "eslint": "^10.0.3",
     "globals": "^17.4.0",
@@ -85,10 +90,10 @@
     "prettier": "^3.8.1",
     "prisma": "^6.19.2",
     "ts-node": "^10.9.2",
+    "tsx": "^4.20.6",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.56.1",
-    "vitest": "^4.0.18",
-    "tsx": "^4.20.6"
+    "vitest": "^4.0.18"
   },
   "overrides": {
     "minimatch": "^10.2.2",

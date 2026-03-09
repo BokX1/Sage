@@ -23,8 +23,8 @@ export function isRateLimited(channelId: string): boolean {
     lastCleanup = now;
   }
 
-  const timestamps = limits.get(channelId) || [];
-  const validTimestamps = timestamps.filter((t) => now - t < windowMs);
+  const timestamps = limits.get(channelId);
+  const validTimestamps = timestamps ? timestamps.filter((t) => now - t < windowMs) : [];
 
   if (validTimestamps.length >= max) {
     limits.set(channelId, validTimestamps);
@@ -34,4 +34,17 @@ export function isRateLimited(channelId: string): boolean {
   validTimestamps.push(now);
   limits.set(channelId, validTimestamps);
   return false;
+}
+
+/**
+ * Test-only helpers to keep limiter behavior deterministic under unit tests.
+ * Not used by runtime codepaths.
+ */
+export function __resetRateLimiterStateForTests(now: number = Date.now()): void {
+  limits.clear();
+  lastCleanup = now;
+}
+
+export function __getRateLimiterChannelCountForTests(): number {
+  return limits.size;
 }

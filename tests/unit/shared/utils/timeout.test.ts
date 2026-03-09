@@ -22,6 +22,46 @@ describe('normalizeTimeoutMs', () => {
     ).toBe(30_000);
   });
 
+  it('normalizes invalid fallback values before applying bounds', () => {
+    expect(
+      normalizeTimeoutMs(undefined, {
+        fallbackMs: 0,
+        minMs: 1_000,
+        maxMs: 120_000,
+      }),
+    ).toBe(30_000);
+  });
+
+  it('normalizes non-number fallbackMs inputs to the default fallback', () => {
+    expect(
+      normalizeTimeoutMs(undefined, {
+        fallbackMs: '5000' as unknown as number,
+        minMs: 1_000,
+        maxMs: 120_000,
+      }),
+    ).toBe(30_000);
+  });
+
+  it('normalizes non-finite numeric fallbackMs inputs to the default fallback', () => {
+    expect(
+      normalizeTimeoutMs(undefined, {
+        fallbackMs: Number.POSITIVE_INFINITY,
+        minMs: 1_000,
+        maxMs: 120_000,
+      }),
+    ).toBe(30_000);
+  });
+
+  it('treats non-number raw timeout inputs as invalid', () => {
+    expect(
+      normalizeTimeoutMs('4500' as unknown as number, {
+        fallbackMs: 30_000,
+        minMs: 1_000,
+        maxMs: 120_000,
+      }),
+    ).toBe(30_000);
+  });
+
   it('clamps below-min values when configured', () => {
     expect(
       normalizeTimeoutMs(500, {
@@ -29,6 +69,16 @@ describe('normalizeTimeoutMs', () => {
         minMs: 1_000,
         maxMs: 120_000,
         belowMinMode: 'clamp',
+      }),
+    ).toBe(1_000);
+  });
+
+  it('accepts values exactly at the min boundary', () => {
+    expect(
+      normalizeTimeoutMs(1_000, {
+        fallbackMs: 30_000,
+        minMs: 1_000,
+        maxMs: 120_000,
       }),
     ).toBe(1_000);
   });

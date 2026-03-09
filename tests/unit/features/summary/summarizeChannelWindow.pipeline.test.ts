@@ -121,7 +121,7 @@ describe('summarizeChannelWindow pipeline', () => {
       windowEnd: new Date('2026-01-15T13:00:00.000Z'),
     });
 
-    expect(result.summaryText).toBeTruthy();
+    expect(result.summaryText.trim().length).toBeGreaterThan(0);
   });
 });
 
