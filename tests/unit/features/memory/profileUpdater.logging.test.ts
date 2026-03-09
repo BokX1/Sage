@@ -43,7 +43,7 @@ describe('profileUpdater logging hardening', () => {
 
   it('logs only a bounded preview when parsing fails', async () => {
     mockChatFn.mockResolvedValueOnce({
-      content: '{"summary": ',
+      text: '{"summary": ',
     });
     mockJsonRepair.mockImplementation(() => {
       throw new Error('repair failed');

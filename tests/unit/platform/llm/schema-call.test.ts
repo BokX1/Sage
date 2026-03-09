@@ -6,7 +6,7 @@ import { LLMClient } from '../../../../src/platform/llm/llm-types';
 describe('callWithSchema', () => {
   it('should build a sanitized JSON schema prompt without $schema metadata', async () => {
     const chat = vi.fn().mockResolvedValue({
-      content: JSON.stringify({ summary: 'ok' }),
+      text: JSON.stringify({ summary: 'ok' }),
     });
 
     const client: LLMClient = {
@@ -38,7 +38,7 @@ describe('callWithSchema', () => {
       .fn()
       .mockRejectedValueOnce(new Error('invalid json'))
       .mockResolvedValueOnce({
-        content: JSON.stringify({ summary: 'repaired' }),
+        text: JSON.stringify({ summary: 'repaired' }),
       });
 
     const client: LLMClient = {

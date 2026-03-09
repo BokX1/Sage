@@ -74,7 +74,7 @@ describe('agent runtime API key fallback', () => {
   });
 
   it('uses global API key when guild key is unavailable', async () => {
-    mockLLM.chat.mockResolvedValueOnce({ content: 'ok' });
+    mockLLM.chat.mockResolvedValueOnce({ text: 'ok' });
     mockGetGuildApiKey.mockResolvedValueOnce(undefined);
 
     const result = await runChatTurn({

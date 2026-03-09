@@ -33,6 +33,22 @@ export interface ToolResult {
   cacheScopeKey?: string;
 }
 
+function composeAbortSignal(parentSignal: AbortSignal | undefined, timeoutSignal: AbortSignal): AbortSignal {
+  if (!parentSignal) return timeoutSignal;
+  if (parentSignal.aborted) return parentSignal;
+
+  const controller = new AbortController();
+  const abort = () => controller.abort();
+  parentSignal.addEventListener('abort', abort, { once: true });
+  timeoutSignal.addEventListener('abort', abort, { once: true });
+
+  if (timeoutSignal.aborted) {
+    controller.abort();
+  }
+
+  return controller.signal;
+}
+
 function sanitizeErrorMessage(value: string | undefined): string | undefined {
   if (typeof value !== 'string') return undefined;
   const normalized = value
@@ -89,7 +105,7 @@ export async function executeToolWithTimeout(
   const abortController = new AbortController();
   const ctxWithSignal: ToolExecutionContext = {
     ...ctx,
-    signal: abortController.signal,
+    signal: composeAbortSignal(ctx.signal, abortController.signal),
   };
 
   let timeoutHandle: NodeJS.Timeout | undefined;

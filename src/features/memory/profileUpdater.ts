@@ -250,7 +250,7 @@ Output the updated summary:`;
 
   try {
     const response = await client.chat(payload);
-    return response.content?.trim() || null;
+    return response.text?.trim() || null;
   } catch (error) {
     logger.error({ error }, 'Analyst phase failed');
     return null;

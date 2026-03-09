@@ -1,4 +1,12 @@
-import { LLMClient, LLMContentPart, LLMMessageContent, LLMRequest, LLMResponse, ToolDefinition } from './llm-types';
+import {
+  LLMClient,
+  LLMContentPart,
+  LLMMessageContent,
+  LLMRequest,
+  LLMResponse,
+  LLMToolCall,
+  ToolDefinition,
+} from './llm-types';
 import { CircuitBreaker } from './circuit-breaker';
 import { logger } from '../logging/logger';
 import { metrics } from '../../shared/observability/metrics';
@@ -26,6 +34,7 @@ interface PollinationsPayload {
 }
 
 type ProviderToolCall = {
+  id?: string;
   function?: {
     name?: string;
     arguments?: string;
@@ -71,6 +80,22 @@ function sleep(delayMs: number): Promise<void> {
 function isGeminiSearchModel(model: string): boolean {
   const normalized = model.trim().toLowerCase();
   return normalized === 'gemini-search';
+}
+
+function composeAbortSignal(parentSignal: AbortSignal | undefined, timeoutSignal: AbortSignal): AbortSignal {
+  if (!parentSignal) return timeoutSignal;
+  if (parentSignal.aborted) return parentSignal;
+
+  const controller = new AbortController();
+  const abort = () => controller.abort();
+  parentSignal.addEventListener('abort', abort, { once: true });
+  timeoutSignal.addEventListener('abort', abort, { once: true });
+
+  if (timeoutSignal.aborted) {
+    controller.abort();
+  }
+
+  return controller.signal;
 }
 
 function withSystemInstruction(
@@ -236,6 +261,32 @@ export class PollinationsClient implements LLMClient {
     return this.breaker.execute(() => this._chat(request));
   }
 
+  private normalizeToolCalls(toolCalls: ProviderToolCall[] | undefined): LLMToolCall[] | undefined {
+    if (!Array.isArray(toolCalls) || toolCalls.length === 0) {
+      return undefined;
+    }
+
+    return toolCalls.map((toolCall) => {
+      const toolName = toolCall.function?.name?.trim() || 'unknown_tool';
+      const rawArgs = toolCall.function?.arguments ?? '{}';
+      let args: unknown;
+      try {
+        args = JSON.parse(rawArgs);
+      } catch {
+        args = {};
+        logger.warn(
+          { toolName, rawArgs: String(rawArgs).slice(0, 200) },
+          '[Pollinations] Malformed tool call arguments JSON, defaulting to empty object',
+        );
+      }
+      return {
+        id: typeof toolCall.id === 'string' && toolCall.id.trim().length > 0 ? toolCall.id.trim() : undefined,
+        name: toolName,
+        args,
+      };
+    });
+  }
+
   private async _chat(request: LLMRequest): Promise<LLMResponse> {
     // Build final URL - strict guarantee of single /chat/completions
     const url = `${this.config.baseUrl}/chat/completions`;
@@ -383,7 +434,7 @@ export class PollinationsClient implements LLMClient {
             method: 'POST',
             headers,
             body: JSON.stringify(payload),
-            signal: controller.signal,
+            signal: composeAbortSignal(request.signal, controller.signal),
           });
         } finally {
           clearTimeout(id);
@@ -458,60 +509,29 @@ export class PollinationsClient implements LLMClient {
           usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number };
         };
         const message = data.choices?.[0]?.message;
-        let content = typeof message?.content === 'string' ? message.content : '';
-
-        // Handle native tool calls from OpenAI-compatible APIs
-        const toolCalls = Array.isArray(message?.tool_calls) ? message.tool_calls : undefined;
-
-        if (toolCalls && Array.isArray(toolCalls) && toolCalls.length > 0) {
-          // Preserve the model's reasoning/thought chain if present alongside tool calls.
-          // Previously this was discarded, losing valuable CoT context.
-          const reasoningText = typeof content === 'string' && content.trim().length > 0
+        const content = typeof message?.content === 'string' ? message.content : '';
+        const toolCalls = this.normalizeToolCalls(message?.tool_calls);
+        const reasoningText =
+          toolCalls && toolCalls.length > 0 && content.trim().length > 0
             ? content.trim()
-            : null;
+            : undefined;
 
-          if (reasoningText) {
-            logger.debug(
-              { reasoningLength: reasoningText.length },
-              '[Pollinations] Preserving model reasoning alongside native tool calls',
-            );
-          }
+        if (reasoningText) {
+          logger.debug(
+            { reasoningLength: reasoningText.length },
+            '[Pollinations] Preserving model reasoning alongside native tool calls',
+          );
+        }
 
-          logger.debug({ count: toolCalls.length }, '[Pollinations] Native tool calls detected, serializing to envelope');
-
-          const envelope: Record<string, unknown> = {
-            type: 'tool_calls',
-            calls: toolCalls.map((toolCall) => {
-              const toolName = toolCall.function?.name?.trim() || 'unknown_tool';
-              const rawArgs = toolCall.function?.arguments ?? '{}';
-              let args: unknown;
-              try {
-                args = JSON.parse(rawArgs);
-              } catch {
-                args = {};
-                logger.warn(
-                  { toolName, rawArgs: String(rawArgs).slice(0, 200) },
-                  '[Pollinations] Malformed tool call arguments JSON, defaulting to empty object',
-                );
-              }
-              return { name: toolName, args };
-            }),
-          };
-
-          // Include reasoning in the envelope so the tool loop can access it for tracing.
-          if (reasoningText) {
-            envelope.reasoning = reasoningText;
-          }
-
-          // If tool calls are present, we MUST return strict JSON for the agentRuntime to parse.
-          // Any text content (thought chain) is now preserved in the envelope's `reasoning` field
-          // rather than being discarded.
-          content = JSON.stringify(envelope, null, 2);
+        if (toolCalls && toolCalls.length > 0) {
+          logger.debug({ count: toolCalls.length }, '[Pollinations] Native tool calls detected');
         }
         logger.debug({ usage: data.usage }, '[Pollinations] Success');
 
         return {
-          content,
+          text: toolCalls && toolCalls.length > 0 ? '' : content,
+          toolCalls,
+          reasoningText,
           usage: data.usage
             ? {
               promptTokens: data.usage.prompt_tokens,

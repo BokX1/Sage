@@ -465,4 +465,56 @@ describe('PollinationsClient', () => {
     expect(body.response_format).toEqual({ type: 'json_object' });
     expect(body.messages.some((m) => m.role === 'system')).toBe(false);
   });
+
+  it('returns structured tool calls instead of serializing them into text envelopes', async () => {
+    const client = new PollinationsClient({ model: 'kimi' });
+
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      statusText: 'OK',
+      json: async () => ({
+        choices: [
+          {
+            message: {
+              content: 'Need a quick lookup first.',
+              tool_calls: [
+                {
+                  id: 'call-1',
+                  function: {
+                    name: 'google_search',
+                    arguments: '{"query":"latest discord components v2"}',
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      }),
+      text: async () => 'ok',
+    } satisfies { ok: boolean; status: number; statusText: string; json: () => Promise<unknown>; text: () => Promise<string> });
+
+    const result = await client.chat({
+      messages: [{ role: 'user', content: 'test' }],
+      tools: [
+        {
+          type: 'function',
+          function: {
+            name: 'google_search',
+            parameters: { type: 'object', properties: {}, required: [] },
+          },
+        },
+      ],
+    });
+
+    expect(result.text).toBe('');
+    expect(result.reasoningText).toBe('Need a quick lookup first.');
+    expect(result.toolCalls).toEqual([
+      {
+        id: 'call-1',
+        name: 'google_search',
+        args: { query: 'latest discord components v2' },
+      },
+    ]);
+  });
 });

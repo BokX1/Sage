@@ -219,7 +219,7 @@ async function runAnalyst(
 
   try {
     const response = await client.chat(payload);
-    const text = response.content?.trim();
+    const text = response.text?.trim();
     logger.debug({ textLength: text?.length }, 'Summary analyst output');
     return text || null;
   } catch (error) {

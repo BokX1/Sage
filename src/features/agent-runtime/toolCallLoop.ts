@@ -1,13 +1,14 @@
-import { LLMChatMessage, LLMClient } from '../../platform/llm/llm-types';
+import { LLMChatMessage, LLMClient, LLMRequest, LLMResponse } from '../../platform/llm/llm-types';
 import { ToolRegistry, ToolExecutionContext } from './toolRegistry';
 import { logger } from '../../platform/logging/logger';
 import { executeToolWithTimeout, ToolResult } from './toolCallExecution';
-import { looksLikeJson, parseToolCallEnvelope, RETRY_PROMPT } from './toolCallParser';
 import { buildToolCacheKey, ToolResultCache } from './toolCache';
 import { buildToolMemoScopeKey, globalToolMemoStore } from './toolMemoStore';
 import { limitConcurrency } from '../../shared/async/concurrency';
 import { metrics } from '../../shared/observability/metrics';
 import type { ToolErrorDetails, ToolFailureCategory } from './toolErrors';
+import { getModelBudgetConfig } from '../../platform/llm/model-budget-config';
+import { planBudget, trimMessagesToBudget } from '../../platform/llm/context-budgeter';
 
 
 /** Configure loop bounds and tool timeout behavior. */
@@ -469,13 +470,42 @@ export interface ToolCallLoopParams {
 
   maxTokens?: number;
 
-  /**
-   * Optional pre-fetched assistant response content to consume as the first
-   * loop turn. Useful when the caller already received a tool envelope.
-   */
-  initialAssistantResponseText?: string;
+  /** Optional pre-fetched structured assistant response to consume as the first loop turn. */
+  initialAssistantResponse?: LLMResponse;
 
   config?: ToolCallLoopConfig;
+}
+
+export interface ToolLoopRebudgetEvent {
+  beforeCount: number;
+  afterCount: number;
+  estimatedTokensBefore: number;
+  estimatedTokensAfter: number;
+  availableInputTokens: number;
+  reservedOutputTokens: number;
+  notes: string[];
+  trimmed: boolean;
+}
+
+export interface ToolCallRoundEvent {
+  round: number;
+  requestedCallCount: number;
+  executedCallCount: number;
+  deduplicatedCallCount: number;
+  truncatedCallCount: number;
+  seeded: boolean;
+  completedAt: string;
+  reasoningText?: string;
+  rebudgeting?: ToolLoopRebudgetEvent;
+}
+
+export interface ToolCallFinalizationEvent {
+  attempted: boolean;
+  succeeded: boolean;
+  fallbackUsed: boolean;
+  returnedToolCallCount: number;
+  completedAt: string;
+  rebudgeting?: ToolLoopRebudgetEvent;
 }
 
 /** Return final response and execution telemetry for the tool loop. */
@@ -492,6 +522,79 @@ export interface ToolCallLoopResult {
   deduplicatedCallCount?: number;
 
   truncatedCallCount?: number;
+
+  roundEvents: ToolCallRoundEvent[];
+
+  finalization: ToolCallFinalizationEvent;
+
+  cancellationCount: number;
+}
+
+function buildRebudgetingEvent(
+  messages: LLMChatMessage[],
+  model: string | undefined,
+  maxTokens: number | undefined,
+): { trimmedMessages: LLMChatMessage[]; rebudgeting: ToolLoopRebudgetEvent } {
+  const modelConfig = getModelBudgetConfig(model);
+  const budgetPlan = planBudget(modelConfig, {
+    reservedOutputTokens: maxTokens ?? modelConfig.maxOutputTokens,
+  });
+  const { trimmed, stats } = trimMessagesToBudget(messages, budgetPlan, {
+    keepSystemMessages: true,
+    keepLastUserTurns: 4,
+    visionFadeKeepLastUserImages: modelConfig.visionFadeKeepLastUserImages,
+    attachmentTextMaxTokens: modelConfig.attachmentTextMaxTokens,
+    estimator: modelConfig.estimation,
+    visionEnabled: modelConfig.visionEnabled,
+  });
+
+  return {
+    trimmedMessages: trimmed,
+    rebudgeting: {
+      beforeCount: stats.beforeCount,
+      afterCount: stats.afterCount,
+      estimatedTokensBefore: stats.estimatedTokensBefore,
+      estimatedTokensAfter: stats.estimatedTokensAfter,
+      availableInputTokens: budgetPlan.availableInputTokens,
+      reservedOutputTokens: budgetPlan.reservedOutputTokens,
+      notes: [...stats.notes],
+      trimmed:
+        stats.beforeCount !== stats.afterCount ||
+        stats.estimatedTokensBefore !== stats.estimatedTokensAfter ||
+        stats.notes.length > 0,
+    },
+  };
+}
+
+function buildLoopChatRequest(params: {
+  messages: LLMChatMessage[];
+  model?: string;
+  apiKey?: string;
+  temperature: number;
+  timeoutMs?: number;
+  maxTokens?: number;
+  tools?: LLMRequest['tools'];
+  toolChoice?: LLMRequest['toolChoice'];
+}): { request: LLMRequest; rebudgeting: ToolLoopRebudgetEvent } {
+  const { trimmedMessages, rebudgeting } = buildRebudgetingEvent(
+    params.messages,
+    params.model,
+    params.maxTokens,
+  );
+
+  return {
+    request: {
+      messages: trimmedMessages,
+      model: params.model,
+      apiKey: params.apiKey,
+      temperature: params.temperature,
+      timeout: params.timeoutMs,
+      maxTokens: params.maxTokens,
+      tools: params.tools,
+      toolChoice: params.toolChoice,
+    },
+    rebudgeting,
+  };
 }
 
 
@@ -536,10 +639,17 @@ export async function runToolCallLoop(params: ToolCallLoopParams): Promise<ToolC
   const allToolResults: ToolResult[] = [];
   let deduplicatedCallCount = 0;
   let truncatedCallCount = 0;
-  let retryAttempted = false;
-  let seededResponseText = params.initialAssistantResponseText;
+  let seededResponse = params.initialAssistantResponse;
   const loopStartTime = Date.now();
   let sideEffectExecutedInLoop = false;
+  const roundEvents: ToolCallRoundEvent[] = [];
+  let finalization: ToolCallFinalizationEvent = {
+    attempted: false,
+    succeeded: true,
+    fallbackUsed: false,
+    returnedToolCallCount: 0,
+    completedAt: new Date().toISOString(),
+  };
 
   while (roundsCompleted < config.maxRounds) {
     // Wall-clock guard: abort loop if total elapsed time exceeds limit
@@ -551,83 +661,45 @@ export async function runToolCallLoop(params: ToolCallLoopParams): Promise<ToolC
       );
       break;
     }
-    const responseText =
-      typeof seededResponseText === 'string'
-        ? seededResponseText
-        : (
-          await client.chat({
-            messages,
-            model,
-            apiKey,
-            temperature: loopTemperature,
-            timeout: params.timeoutMs,
-            maxTokens: params.maxTokens,
-            tools: toolSpecs,
-            toolChoice: toolSpecs ? 'auto' : undefined,
-          })
-        ).content;
-    seededResponseText = undefined;
+    const seeded = !!seededResponse;
+    let response: LLMResponse;
+    let roundRebudgeting: ToolLoopRebudgetEvent | undefined;
 
-    let envelope = parseToolCallEnvelope(responseText);
-
-    if (!envelope && !retryAttempted && looksLikeJson(responseText)) {
-      retryAttempted = true;
-      logger.debug(
-        { responseLength: responseText.length },
-        'JSON parse failed, attempting retry',
-      );
-
-      messages.push({ role: 'assistant', content: responseText });
-      messages.push({ role: 'user', content: RETRY_PROMPT });
-
-      const retryResponse = await client.chat({
+    if (seededResponse) {
+      response = seededResponse;
+      seededResponse = undefined;
+    } else {
+      const prepared = buildLoopChatRequest({
         messages,
         model,
         apiKey,
         temperature: loopTemperature,
-        timeout: params.timeoutMs,
+        timeoutMs: params.timeoutMs,
         maxTokens: params.maxTokens,
         tools: toolSpecs,
         toolChoice: toolSpecs ? 'auto' : undefined,
       });
-
-      envelope = parseToolCallEnvelope(retryResponse.content);
-
-      if (!envelope) {
-        logger.warn(
-          { traceId: ctx.traceId, responseLength: retryResponse.content.length },
-          'Retry tool call envelope parsing failed, returning response',
-        );
-        return {
-          replyText: retryResponse.content,
-          toolsExecuted: false,
-          roundsCompleted,
-          toolResults: allToolResults,
-          deduplicatedCallCount,
-          truncatedCallCount,
-        };
-      }
+      roundRebudgeting = prepared.rebudgeting;
+      response = await client.chat(prepared.request);
     }
 
-    if (!envelope) {
-      if (looksLikeJson(responseText)) {
-        logger.warn(
-          { traceId: ctx.traceId, responseLength: responseText.length },
-          'Tool call envelope parsing failed, returning response',
-        );
-      }
+    const requestedCalls = response.toolCalls ?? [];
+
+    if (requestedCalls.length === 0) {
       return {
-        replyText: responseText,
+        replyText: response.text,
         toolsExecuted: allToolResults.length > 0,
         roundsCompleted,
         toolResults: allToolResults,
         deduplicatedCallCount,
         truncatedCallCount,
+        roundEvents,
+        finalization,
+        cancellationCount: allToolResults.filter((result) => result.errorDetails?.category === 'timeout').length,
       };
     }
 
 
-    const requestedCalls = envelope.calls;
     const calls = requestedCalls.slice(0, config.maxCallsPerRound);
     if (requestedCalls.length > config.maxCallsPerRound) {
       logger.warn(
@@ -856,35 +928,60 @@ export async function runToolCallLoop(params: ToolCallLoopParams): Promise<ToolC
     const roundResults = roundResultsByIndex.filter((result): result is ToolResult => result !== null);
     allToolResults.push(...roundResults);
     roundsCompleted++;
+    roundEvents.push({
+      round: roundsCompleted,
+      requestedCallCount: requestedCalls.length,
+      executedCallCount: roundResults.length,
+      deduplicatedCallCount: roundResults.filter((result) => result.cacheKind === 'dedupe').length,
+      truncatedCallCount: Math.max(0, requestedCalls.length - calls.length),
+      seeded,
+      completedAt: new Date().toISOString(),
+      reasoningText: response.reasoningText,
+      rebudgeting: roundRebudgeting,
+    });
 
-    messages.push({ role: 'assistant', content: responseText });
+    if (response.text.trim().length > 0) {
+      messages.push({ role: 'assistant', content: response.text });
+    }
     messages.push(formatToolResultsMessage(roundResults, config.maxToolResultChars));
   }
 
-  const finalResponse = await client.chat({
+  const preparedFinal = buildLoopChatRequest({
     messages,
     model,
     apiKey,
     temperature: loopTemperature,
-    timeout: params.timeoutMs,
+    timeoutMs: params.timeoutMs,
     maxTokens: params.maxTokens,
     tools: toolSpecs,
     toolChoice: toolSpecs ? 'auto' : undefined,
   });
-  let finalReplyText = finalResponse.content;
-  if (parseToolCallEnvelope(finalReplyText)) {
+  const finalResponse = await client.chat(preparedFinal.request);
+  let finalReplyText = finalResponse.text;
+  finalization = {
+    attempted: false,
+    succeeded: true,
+    fallbackUsed: false,
+    returnedToolCallCount: finalResponse.toolCalls?.length ?? 0,
+    completedAt: new Date().toISOString(),
+    rebudgeting: preparedFinal.rebudgeting,
+  };
+  if ((finalResponse.toolCalls?.length ?? 0) > 0) {
     logger.warn(
       { traceId: ctx.traceId, roundsCompleted, maxRounds: config.maxRounds },
-      'Tool loop reached round limit with another tool envelope; forcing a plain-text finalization pass',
+      'Tool loop reached round limit with another tool-call batch; forcing a plain-text finalization pass',
     );
+    finalization.attempted = true;
     try {
-      const plainTextFinalization = await client.chat({
+      if (finalResponse.text.trim().length > 0) {
+        messages.push({ role: 'assistant', content: finalResponse.text });
+      }
+      const preparedPlainTextFinalization = buildLoopChatRequest({
         messages: [
           ...messages,
-          { role: 'assistant', content: finalReplyText },
           {
             role: 'system',
-            content:
+              content:
               'Tool-call rounds are exhausted. Do not call tools. ' +
               'Return one final plain-text answer grounded only in prior tool results and context.',
           },
@@ -892,23 +989,31 @@ export async function runToolCallLoop(params: ToolCallLoopParams): Promise<ToolC
         model,
         apiKey,
         temperature: Math.max(0, loopTemperature - 0.1),
-        timeout: params.timeoutMs,
+        timeoutMs: params.timeoutMs,
         maxTokens: params.maxTokens,
+        tools: undefined,
+        toolChoice: undefined,
       });
-      finalReplyText = plainTextFinalization.content;
+      const plainTextFinalization = await client.chat(preparedPlainTextFinalization.request);
+      finalization.rebudgeting = preparedPlainTextFinalization.rebudgeting;
+      finalization.returnedToolCallCount = plainTextFinalization.toolCalls?.length ?? 0;
+      finalization.completedAt = new Date().toISOString();
+      if ((plainTextFinalization.toolCalls?.length ?? 0) > 0) {
+        finalization.succeeded = false;
+        finalization.fallbackUsed = true;
+        finalReplyText =
+          'I could not finalize a plain-text answer after tool execution. Please try again.';
+      } else {
+        finalReplyText = plainTextFinalization.text;
+      }
     } catch (finalizationError) {
       logger.warn(
         { traceId: ctx.traceId, roundsCompleted, maxRounds: config.maxRounds, error: finalizationError },
         'Tool loop plain-text finalization pass failed; returning a safe fallback message',
       );
-      finalReplyText =
-        'I could not finalize a plain-text answer after tool execution. Please try again.';
-    }
-    if (parseToolCallEnvelope(finalReplyText)) {
-      logger.warn(
-        { traceId: ctx.traceId, roundsCompleted, maxRounds: config.maxRounds },
-        'Tool loop plain-text finalization still returned an envelope; returning a safe fallback message',
-      );
+      finalization.succeeded = false;
+      finalization.fallbackUsed = true;
+      finalization.completedAt = new Date().toISOString();
       finalReplyText =
         'I could not finalize a plain-text answer after tool execution. Please try again.';
     }
@@ -921,5 +1026,8 @@ export async function runToolCallLoop(params: ToolCallLoopParams): Promise<ToolC
     toolResults: allToolResults,
     deduplicatedCallCount,
     truncatedCallCount,
+    roundEvents,
+    finalization,
+    cancellationCount: allToolResults.filter((result) => result.errorDetails?.category === 'timeout').length,
   };
 }

@@ -189,6 +189,7 @@ export const webTool: ToolDefinition<z.infer<typeof webToolSchema>> = {
           apiKey: ctx.apiKey,
           providerOrder: profile.providerOrder,
           allowLlmFallback: profile.allowLlmFallback,
+          signal: ctx.signal,
         });
 
         const results = Array.isArray(search.results) ? (search.results as unknown[]) : [];
@@ -218,6 +219,7 @@ export const webTool: ToolDefinition<z.infer<typeof webToolSchema>> = {
           url: sanitizedUrl,
           maxChars: args.maxChars,
           providerOrder: profile.scrapeProviderOrder,
+          signal: ctx.signal,
         });
       }
 
@@ -241,6 +243,7 @@ export const webTool: ToolDefinition<z.infer<typeof webToolSchema>> = {
             url: sanitizedUrl,
             maxChars: fetchMaxChars,
             providerOrder: profile.scrapeProviderOrder,
+            signal: ctx.signal,
           });
           const extractedRecord = extracted && typeof extracted === 'object' && !Array.isArray(extracted)
             ? (extracted as Record<string, unknown>)
@@ -322,6 +325,7 @@ export const webTool: ToolDefinition<z.infer<typeof webToolSchema>> = {
           url: sanitizedUrl,
           instruction: args.instruction,
           maxChars: args.maxChars,
+          signal: ctx.signal,
         });
       }
 
@@ -342,6 +346,7 @@ export const webTool: ToolDefinition<z.infer<typeof webToolSchema>> = {
           apiKey: ctx.apiKey,
           providerOrder: profile.providerOrder,
           allowLlmFallback: profile.allowLlmFallback,
+          signal: ctx.signal,
         });
 
         const results = Array.isArray(search.results) ? (search.results as Record<string, unknown>[]) : [];
@@ -364,6 +369,7 @@ export const webTool: ToolDefinition<z.infer<typeof webToolSchema>> = {
               url: sanitizedUrl,
               maxChars: perSourceMaxChars,
               providerOrder: profile.scrapeProviderOrder,
+              signal: ctx.signal,
             });
             reads.push({
               ...source,
@@ -372,6 +378,7 @@ export const webTool: ToolDefinition<z.infer<typeof webToolSchema>> = {
               read: extracted,
             });
           } catch (error) {
+            if (ctx.signal?.aborted) throw error;
             reads.push({
               ...source,
               ageDays: computeAgeDays(source.publishedDate, now),
@@ -453,6 +460,7 @@ export const webTool: ToolDefinition<z.infer<typeof webToolSchema>> = {
                   url: candidate,
                   maxChars: perFollowMaxChars,
                   providerOrder: profile.scrapeProviderOrder,
+                  signal: ctx.signal,
                 });
                 followed.push({
                   sourceUrl,
@@ -461,6 +469,7 @@ export const webTool: ToolDefinition<z.infer<typeof webToolSchema>> = {
                   read: extracted,
                 });
               } catch (error) {
+                if (ctx.signal?.aborted) throw error;
                 followed.push({
                   sourceUrl,
                   url: candidate,

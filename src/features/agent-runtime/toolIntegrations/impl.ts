@@ -141,6 +141,36 @@ function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+function isAbortError(error: unknown): boolean {
+  if (error instanceof DOMException && error.name === 'AbortError') return true;
+  if (error && typeof error === 'object' && (error as { name?: unknown }).name === 'AbortError') {
+    return true;
+  }
+  const lower = errorText(error).toLowerCase();
+  return lower.includes('aborterror') || lower.includes('aborted');
+}
+
+function throwIfAborted(signal: AbortSignal | undefined): void {
+  if (!signal?.aborted) return;
+  throw new ToolDetailedError('Request aborted.', { category: 'timeout' });
+}
+
+function composeAbortSignal(parentSignal: AbortSignal | undefined, timeoutSignal: AbortSignal): AbortSignal {
+  if (!parentSignal) return timeoutSignal;
+  if (parentSignal.aborted) return parentSignal;
+
+  const controller = new AbortController();
+  const abort = () => controller.abort();
+  parentSignal.addEventListener('abort', abort, { once: true });
+  timeoutSignal.addEventListener('abort', abort, { once: true });
+
+  if (timeoutSignal.aborted) {
+    controller.abort();
+  }
+
+  return controller.signal;
+}
+
 function isLocalProviderConnectivityError(error: unknown): boolean {
   const lower = errorText(error).toLowerCase();
   if (/\bhttp\s+\d{3}\b/i.test(lower)) return false;
@@ -316,17 +346,27 @@ function truncateWithNotice(text: string, maxChars: number): { text: string; tru
   };
 }
 
-async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: number): Promise<Response> {
+async function fetchWithTimeout(
+  url: string,
+  init: RequestInit,
+  timeoutMs: number,
+  signal?: AbortSignal,
+): Promise<Response> {
   const boundedTimeoutMs = normalizeTimeoutMs(timeoutMs, {
     fallbackMs: DEFAULT_WEB_SEARCH_TIMEOUT_MS,
     minMs: MIN_FETCH_TIMEOUT_MS,
     maxMs: MAX_FETCH_TIMEOUT_MS,
   });
   const controller = new AbortController();
+  const callerSignal = signal ?? (init.signal as AbortSignal | undefined);
+  throwIfAborted(callerSignal);
   const timeoutHandle = setTimeout(() => controller.abort(), boundedTimeoutMs);
   timeoutHandle.unref?.();
   try {
-    return await fetch(url, { ...init, signal: controller.signal });
+    return await fetch(url, {
+      ...init,
+      signal: composeAbortSignal(callerSignal, controller.signal),
+    });
   } finally {
     clearTimeout(timeoutHandle);
   }
@@ -379,14 +419,31 @@ function parseRetryAfterMs(value: string | null): number | null {
   return null;
 }
 
-async function fetchJson(url: string, init: RequestInit, timeoutMs: number): Promise<Record<string, unknown>> {
+async function fetchJson(
+  url: string,
+  init: RequestInit,
+  timeoutMs: number,
+  signal?: AbortSignal,
+): Promise<Record<string, unknown>> {
   const safe = safeUrlForErrorDetails(url);
   const provider = inferProviderFromUrl(url) ?? undefined;
 
   let response: Response;
   try {
-    response = await fetchWithTimeout(url, init, timeoutMs);
+    response = await fetchWithTimeout(url, init, timeoutMs, signal);
   } catch (error) {
+    if (isAbortError(error)) {
+      throw new ToolDetailedError(
+        'Request aborted.',
+        {
+          category: 'timeout',
+          provider,
+          host: safe.host ?? undefined,
+          url: safe.url ?? undefined,
+        },
+        { cause: error },
+      );
+    }
     const errorCode = (error as unknown as { code?: unknown }).code;
     throw new ToolDetailedError(
       `Network request failed: ${errorText(error)}`,
@@ -536,7 +593,13 @@ export function uniqueUrls(text: string): string[] {
   return urls;
 }
 
-async function searchWithTavily(query: string, depth: SearchDepth, maxResults: number, timeoutMs: number): Promise<SearchOutcome> {
+async function searchWithTavily(
+  query: string,
+  depth: SearchDepth,
+  maxResults: number,
+  timeoutMs: number,
+  signal?: AbortSignal,
+): Promise<SearchOutcome> {
   const apiKey = (config.TAVILY_API_KEY as string | undefined)?.trim();
   if (!apiKey) throw new Error('TAVILY_API_KEY is not configured');
   const payload = await fetchJson(
@@ -554,6 +617,7 @@ async function searchWithTavily(query: string, depth: SearchDepth, maxResults: n
       }),
     },
     timeoutMs,
+    signal,
   );
   const results = normalizeSearchResults(toRecordList(payload.results));
   const answer = pickString(payload, 'answer')?.trim() ?? '';
@@ -568,7 +632,13 @@ async function searchWithTavily(query: string, depth: SearchDepth, maxResults: n
   };
 }
 
-async function searchWithExa(query: string, depth: SearchDepth, maxResults: number, timeoutMs: number): Promise<SearchOutcome> {
+async function searchWithExa(
+  query: string,
+  depth: SearchDepth,
+  maxResults: number,
+  timeoutMs: number,
+  signal?: AbortSignal,
+): Promise<SearchOutcome> {
   const apiKey = (config.EXA_API_KEY as string | undefined)?.trim();
   if (!apiKey) throw new Error('EXA_API_KEY is not configured');
   const payload = await fetchJson(
@@ -585,6 +655,7 @@ async function searchWithExa(query: string, depth: SearchDepth, maxResults: numb
       }),
     },
     timeoutMs,
+    signal,
   );
   const results = normalizeSearchResults(toRecordList(payload.results));
   if (results.length === 0) throw new Error('Exa returned no results');
@@ -612,7 +683,12 @@ function parseSearxngHtmlResults(html: string, maxResults: number): SearchResult
   return results;
 }
 
-async function searchWithSearxng(query: string, maxResults: number, timeoutMs: number): Promise<SearchOutcome> {
+async function searchWithSearxng(
+  query: string,
+  maxResults: number,
+  timeoutMs: number,
+  signal?: AbortSignal,
+): Promise<SearchOutcome> {
   const baseUrl = (config.SEARXNG_BASE_URL as string | undefined)?.trim();
   if (!baseUrl) throw new Error('SEARXNG_BASE_URL is not configured');
   const searchPath = (config.SEARXNG_SEARCH_PATH as string | undefined)?.trim() || '/search';
@@ -637,6 +713,7 @@ async function searchWithSearxng(query: string, maxResults: number, timeoutMs: n
       buildEndpoint('json').toString(),
       { method: 'GET', headers: { Accept: 'application/json' } },
       timeoutMs,
+      signal,
     );
     const results = normalizeSearchResults(toRecordList(payload.results)).slice(0, maxResults);
     const answers = Array.isArray(payload.answers) ? payload.answers.filter((entry): entry is string => typeof entry === 'string') : [];
@@ -650,6 +727,7 @@ async function searchWithSearxng(query: string, maxResults: number, timeoutMs: n
     }
     throw new Error('SearXNG JSON endpoint returned no results');
   } catch (error) {
+    if (isAbortError(error)) throw error;
     jsonError = error instanceof Error ? error : new Error(String(error));
     logger.warn({ error: jsonError }, 'searxng json endpoint failed; trying html fallback');
   }
@@ -659,6 +737,7 @@ async function searchWithSearxng(query: string, maxResults: number, timeoutMs: n
     htmlEndpoint.toString(),
     { method: 'GET', headers: { Accept: 'text/html' } },
     timeoutMs,
+    signal,
   );
   const htmlBody = await htmlResponse.text();
   if (!htmlResponse.ok) {
@@ -684,6 +763,7 @@ async function searchWithPollinations(
   timeoutMs: number,
   maxOutputTokens: number,
   apiKey?: string,
+  signal?: AbortSignal,
 ): Promise<SearchOutcome> {
   const today = new Date().toISOString().slice(0, 10);
   const models =
@@ -704,6 +784,7 @@ async function searchWithPollinations(
         temperature: 0.2,
         maxTokens: maxOutputTokens,
         timeout: timeoutMs,
+        signal,
         messages: [
           {
             role: 'system',
@@ -721,7 +802,7 @@ async function searchWithPollinations(
         ],
       });
 
-      const content = (response.content ?? '').trim();
+      const content = (response.text ?? '').trim();
       lastContent = content;
       const sourceUrls = uniqueUrls(content);
       if (sourceUrls.length === 0 && model !== models[models.length - 1]) continue;
@@ -735,6 +816,7 @@ async function searchWithPollinations(
         rawContent: content,
       };
     } catch (error) {
+      if (isAbortError(error)) throw error;
       lastError = error instanceof Error ? error : new Error(String(error));
       logger.warn({ error: lastError, model }, 'web.search pollinations attempt failed; trying next model');
     }
@@ -765,6 +847,7 @@ export async function runWebSearch(params: {
   apiKey?: string;
   providerOrder?: SearchProviderId[];
   allowLlmFallback?: boolean;
+  signal?: AbortSignal;
 }): Promise<Record<string, unknown>> {
   const timeoutMs = toInt((config.TOOL_WEB_SEARCH_TIMEOUT_MS as number | undefined), DEFAULT_WEB_SEARCH_TIMEOUT_MS, 5_000, 180_000);
   const maxOutputTokens = toInt((config.AGENTIC_TOOL_MAX_OUTPUT_TOKENS as number | undefined), 1_200, 128, 8_000);
@@ -805,12 +888,12 @@ export async function runWebSearch(params: {
     try {
       const outcome =
         provider === 'tavily'
-          ? await searchWithTavily(params.query, params.depth, maxResults, timeoutMs)
+          ? await searchWithTavily(params.query, params.depth, maxResults, timeoutMs, params.signal)
           : provider === 'exa'
-            ? await searchWithExa(params.query, params.depth, maxResults, timeoutMs)
+            ? await searchWithExa(params.query, params.depth, maxResults, timeoutMs, params.signal)
             : provider === 'searxng'
-              ? await searchWithSearxng(params.query, maxResults, timeoutMs)
-              : await searchWithPollinations(params.query, params.depth, timeoutMs, maxOutputTokens, params.apiKey);
+              ? await searchWithSearxng(params.query, maxResults, timeoutMs, params.signal)
+              : await searchWithPollinations(params.query, params.depth, timeoutMs, maxOutputTokens, params.apiKey, params.signal);
 
       if (provider === 'searxng') {
         clearLocalProviderCooldown('searxng');
@@ -832,6 +915,7 @@ export async function runWebSearch(params: {
         rawContent: outcome.rawContent,
       };
     } catch (error) {
+      if (isAbortError(error)) throw error;
       if (provider === 'searxng') {
         markLocalProviderCooldown('searxng', error);
       }
@@ -874,7 +958,12 @@ function extractScrapeContent(record: Record<string, unknown>): { title?: string
   return null;
 }
 
-async function scrapeWithFirecrawl(url: string, maxChars: number, timeoutMs: number): Promise<{ provider: string; title?: string; content: string; truncated: boolean }> {
+async function scrapeWithFirecrawl(
+  url: string,
+  maxChars: number,
+  timeoutMs: number,
+  signal?: AbortSignal,
+): Promise<{ provider: string; title?: string; content: string; truncated: boolean }> {
   const apiKey = (config.FIRECRAWL_API_KEY as string | undefined)?.trim();
   if (!apiKey) throw new Error('FIRECRAWL_API_KEY is not configured');
   const baseUrl = (config.FIRECRAWL_BASE_URL as string | undefined)?.trim() || DEFAULT_FIRECRAWL_BASE_URL;
@@ -887,6 +976,7 @@ async function scrapeWithFirecrawl(url: string, maxChars: number, timeoutMs: num
       body: JSON.stringify({ url, formats: ['markdown'], onlyMainContent: true }),
     },
     timeoutMs,
+    signal,
   );
   const extracted = extractScrapeContent(payload);
   if (!extracted) throw new Error('Firecrawl returned empty content');
@@ -894,7 +984,12 @@ async function scrapeWithFirecrawl(url: string, maxChars: number, timeoutMs: num
   return { provider: 'firecrawl', title: extracted.title, content: truncated.text, truncated: truncated.truncated };
 }
 
-async function scrapeWithCrawl4ai(url: string, maxChars: number, timeoutMs: number): Promise<{ provider: string; title?: string; content: string; truncated: boolean }> {
+async function scrapeWithCrawl4ai(
+  url: string,
+  maxChars: number,
+  timeoutMs: number,
+  signal?: AbortSignal,
+): Promise<{ provider: string; title?: string; content: string; truncated: boolean }> {
   const baseUrl = (config.CRAWL4AI_BASE_URL as string | undefined)?.trim();
   if (!baseUrl) throw new Error('CRAWL4AI_BASE_URL is not configured');
   const endpoint = buildBaseUrl(baseUrl, '/md');
@@ -906,6 +1001,7 @@ async function scrapeWithCrawl4ai(url: string, maxChars: number, timeoutMs: numb
     endpoint,
     { method: 'POST', headers, body: JSON.stringify({ url }) },
     timeoutMs,
+    signal,
   );
   const raw = await response.text();
   if (!response.ok) throw new Error(`Crawl4AI failed with status ${response.status}: ${raw.slice(0, 240)}`);
@@ -925,10 +1021,15 @@ async function scrapeWithCrawl4ai(url: string, maxChars: number, timeoutMs: numb
   return { provider: 'crawl4ai', title: extracted.title, content: truncated.text, truncated: truncated.truncated };
 }
 
-async function scrapeWithJina(url: string, maxChars: number, timeoutMs: number): Promise<{ provider: string; content: string; truncated: boolean }> {
+async function scrapeWithJina(
+  url: string,
+  maxChars: number,
+  timeoutMs: number,
+  signal?: AbortSignal,
+): Promise<{ provider: string; content: string; truncated: boolean }> {
   const readerBase = ((config.JINA_READER_BASE_URL as string | undefined)?.trim() || DEFAULT_JINA_READER_BASE_URL).replace(/\/+$/, '/');
   const readerUrl = `${readerBase}${url.replace(/^https?:\/\//i, '')}`;
-  const response = await fetchWithTimeout(readerUrl, { method: 'GET', headers: { Accept: 'text/plain' } }, timeoutMs);
+  const response = await fetchWithTimeout(readerUrl, { method: 'GET', headers: { Accept: 'text/plain' } }, timeoutMs, signal);
   const text = await response.text();
   if (!response.ok) throw new Error(`Jina reader failed with status ${response.status}`);
   if (!text.trim()) throw new Error('Jina reader returned empty content');
@@ -936,8 +1037,13 @@ async function scrapeWithJina(url: string, maxChars: number, timeoutMs: number):
   return { provider: 'jina', content: truncated.text, truncated: truncated.truncated };
 }
 
-async function scrapeWithRawFetch(url: string, maxChars: number, timeoutMs: number): Promise<{ provider: string; content: string; truncated: boolean }> {
-  const response = await fetchWithTimeout(url, { method: 'GET', headers: { 'User-Agent': 'SageAgent/1.0 (+https://github.com)' } }, timeoutMs);
+async function scrapeWithRawFetch(
+  url: string,
+  maxChars: number,
+  timeoutMs: number,
+  signal?: AbortSignal,
+): Promise<{ provider: string; content: string; truncated: boolean }> {
+  const response = await fetchWithTimeout(url, { method: 'GET', headers: { 'User-Agent': 'SageAgent/1.0 (+https://github.com)' } }, timeoutMs, signal);
   const body = await response.text();
   if (!response.ok) throw new Error(`Raw fetch failed with status ${response.status}`);
   const stripped = stripHtml(body);
@@ -946,13 +1052,19 @@ async function scrapeWithRawFetch(url: string, maxChars: number, timeoutMs: numb
   return { provider: 'raw_fetch', content: truncated.text, truncated: truncated.truncated };
 }
 
-async function scrapeWithNomnom(url: string, maxChars: number, timeoutMs: number): Promise<{ provider: string; content: string; truncated: boolean }> {
+async function scrapeWithNomnom(
+  url: string,
+  maxChars: number,
+  timeoutMs: number,
+  signal?: AbortSignal,
+): Promise<{ provider: string; content: string; truncated: boolean }> {
   try {
     const client = createLLMClient('pollinations', { chatModel: 'nomnom' });
     const response = await client.chat({
       model: 'nomnom',
       temperature: 0.1,
       timeout: timeoutMs,
+      signal,
       messages: [
         {
           role: 'system',
@@ -965,7 +1077,7 @@ async function scrapeWithNomnom(url: string, maxChars: number, timeoutMs: number
       ],
     });
 
-    const content = (response.content ?? '').trim();
+    const content = (response.text ?? '').trim();
     if (!content) {
       throw new Error('Nomnom returned empty content.');
     }
@@ -974,6 +1086,7 @@ async function scrapeWithNomnom(url: string, maxChars: number, timeoutMs: number
     return { provider: 'nomnom', content: truncated.text, truncated: truncated.truncated };
   } catch (error) {
     const errorObj = error instanceof Error ? error : new Error(String(error));
+    if (isAbortError(errorObj)) throw errorObj;
     logger.warn({ error: errorObj, url }, 'web.read nomnom attempt failed');
     throw new Error(`Nomnom scraping failed: ${errorObj.message}`, { cause: error });
   }
@@ -983,6 +1096,7 @@ export async function runAgenticWebScrape(params: {
   url: string;
   instruction: string;
   maxChars?: number;
+  signal?: AbortSignal;
 }): Promise<Record<string, unknown>> {
   const sanitizedUrl = sanitizePublicUrl(params.url);
   if (!sanitizedUrl) {
@@ -999,6 +1113,7 @@ export async function runAgenticWebScrape(params: {
       model: 'nomnom',
       temperature: 0.1,
       timeout: timeoutMs,
+      signal: params.signal,
       messages: [
         {
           role: 'system',
@@ -1011,7 +1126,7 @@ export async function runAgenticWebScrape(params: {
       ],
     });
 
-    const content = (response.content ?? '').trim();
+    const content = (response.text ?? '').trim();
     if (!content) {
       throw new Error('Agentic scraper returned empty content.');
     }
@@ -1026,6 +1141,7 @@ export async function runAgenticWebScrape(params: {
     };
   } catch (error) {
     const errorObj = error instanceof Error ? error : new Error(String(error));
+    if (isAbortError(errorObj)) throw errorObj;
     logger.warn({ error: errorObj, url: sanitizedUrl }, 'web.extract attempt failed');
     throw new Error(`Agentic scraping failed: ${errorObj.message}`, { cause: error });
   }
@@ -1035,6 +1151,7 @@ export async function scrapeWebPage(params: {
   url: string;
   maxChars?: number;
   providerOrder?: ScrapeProviderId[];
+  signal?: AbortSignal;
 }): Promise<Record<string, unknown>> {
   const sanitizedUrl = sanitizePublicUrl(params.url);
   if (!sanitizedUrl) {
@@ -1089,14 +1206,14 @@ export async function scrapeWebPage(params: {
     try {
       const outcome =
         provider === 'firecrawl'
-          ? await scrapeWithFirecrawl(sanitizedUrl, maxChars, timeoutMs)
+          ? await scrapeWithFirecrawl(sanitizedUrl, maxChars, timeoutMs, params.signal)
           : provider === 'crawl4ai'
-            ? await scrapeWithCrawl4ai(sanitizedUrl, maxChars, timeoutMs)
+            ? await scrapeWithCrawl4ai(sanitizedUrl, maxChars, timeoutMs, params.signal)
             : provider === 'jina'
-              ? await scrapeWithJina(sanitizedUrl, maxChars, timeoutMs)
+              ? await scrapeWithJina(sanitizedUrl, maxChars, timeoutMs, params.signal)
               : provider === 'nomnom'
-                ? await scrapeWithNomnom(sanitizedUrl, maxChars, timeoutMs)
-                : await scrapeWithRawFetch(sanitizedUrl, maxChars, timeoutMs);
+                ? await scrapeWithNomnom(sanitizedUrl, maxChars, timeoutMs, params.signal)
+                : await scrapeWithRawFetch(sanitizedUrl, maxChars, timeoutMs, params.signal);
       if (provider === 'crawl4ai') {
         clearLocalProviderCooldown('crawl4ai');
       }
@@ -1112,6 +1229,7 @@ export async function scrapeWebPage(params: {
         truncated: outcome.truncated,
       };
     } catch (error) {
+      if (isAbortError(error)) throw error;
       if (provider === 'crawl4ai') {
         markLocalProviderCooldown('crawl4ai', error);
       }
@@ -1272,6 +1390,7 @@ async function listGitHubRefTreeCandidates(params: {
   maxCandidates: number;
   timeoutMs: number;
   headers: Record<string, string>;
+  signal?: AbortSignal;
 }): Promise<GitHubCodeSearchCandidate[]> {
   const commitEndpoint = new URL(
     `https://api.github.com/repos/${params.repo}/commits/${encodeURIComponent(params.ref)}`,
@@ -1280,6 +1399,7 @@ async function listGitHubRefTreeCandidates(params: {
     commitEndpoint.toString(),
     { method: 'GET', headers: params.headers },
     params.timeoutMs,
+    params.signal,
   );
   const treeSha = extractCommitTreeSha(commitPayload);
   if (!treeSha) return [];
@@ -1292,6 +1412,7 @@ async function listGitHubRefTreeCandidates(params: {
     treeEndpoint.toString(),
     { method: 'GET', headers: params.headers },
     params.timeoutMs,
+    params.signal,
   );
 
   const queryTokens = tokenizeCodeSearchQuery(params.query);
@@ -1330,6 +1451,7 @@ async function loadGitHubFileContent(params: {
   ref?: string;
   traceId?: string;
   timeoutMs: number;
+  signal?: AbortSignal;
 }): Promise<GitHubFileCacheEntry> {
   const cache = getGitHubFileCache(params.traceId);
   const cacheKey = buildGitHubFileCacheKey(params.repo, params.path, params.ref);
@@ -1345,7 +1467,7 @@ async function loadGitHubFileContent(params: {
   const endpoint = new URL(`https://api.github.com/repos/${params.repo}/contents/${encodedPath}`);
   if (params.ref?.trim()) endpoint.searchParams.set('ref', params.ref.trim());
 
-  const payload = await fetchJson(endpoint.toString(), { method: 'GET', headers }, params.timeoutMs);
+  const payload = await fetchJson(endpoint.toString(), { method: 'GET', headers }, params.timeoutMs, params.signal);
   const type = pickString(payload, 'type') ?? 'file';
   if (type !== 'file') throw new Error(`Path resolved to "${type}", not a file.`);
 
@@ -1364,6 +1486,7 @@ async function loadGitHubFileContent(params: {
       downloadUrl,
       { method: 'GET', headers: { 'User-Agent': 'SageAgent/1.0', Accept: 'text/plain' } },
       params.timeoutMs,
+      params.signal,
     );
     const rawText = await rawResponse.text();
     if (rawResponse.ok && rawText.trim()) decoded = rawText;
@@ -1387,12 +1510,16 @@ async function loadGitHubFileContent(params: {
   return entry;
 }
 
-export async function lookupGitHubRepo(params: { repo: string; includeReadme?: boolean }): Promise<Record<string, unknown>> {
+export async function lookupGitHubRepo(params: {
+  repo: string;
+  includeReadme?: boolean;
+  signal?: AbortSignal;
+}): Promise<Record<string, unknown>> {
   const timeoutMs = toInt((config.TOOL_WEB_SCRAPE_TIMEOUT_MS as number | undefined), DEFAULT_WEB_SCRAPE_TIMEOUT_MS, 5_000, 180_000);
   const token = (config.GITHUB_TOKEN as string | undefined)?.trim();
   const headers = buildGitHubHeaders(token);
   const repoUrl = `https://api.github.com/repos/${params.repo}`;
-  const payload = await fetchJson(repoUrl, { method: 'GET', headers }, timeoutMs);
+  const payload = await fetchJson(repoUrl, { method: 'GET', headers }, timeoutMs, params.signal);
 
   const fullName = pickString(payload, 'full_name') ?? params.repo;
   const description = pickString(payload, 'description') ?? '';
@@ -1414,12 +1541,13 @@ export async function lookupGitHubRepo(params: { repo: string; includeReadme?: b
   let readme: string | null = null;
   if (params.includeReadme) {
     try {
-      const readmePayload = await fetchJson(`${repoUrl}/readme`, { method: 'GET', headers }, timeoutMs);
+      const readmePayload = await fetchJson(`${repoUrl}/readme`, { method: 'GET', headers }, timeoutMs, params.signal);
       const encoded = pickString(readmePayload, 'content') ?? '';
       if (encoded) {
         readme = truncateWithNotice(Buffer.from(encoded.replace(/\n/g, ''), 'base64').toString('utf8'), 8_000).text;
       }
     } catch (error) {
+      if (isAbortError(error)) throw error;
       logger.warn({ error, repo: params.repo }, 'github.repo.get: failed to fetch README; returning metadata only');
     }
   }
@@ -1448,6 +1576,7 @@ export async function searchGitHubIssuesAndPullRequests(params: {
   type: 'issue' | 'pr';
   state?: 'open' | 'closed' | 'all';
   maxResults?: number;
+  signal?: AbortSignal;
 }): Promise<Record<string, unknown>> {
   const timeoutMs = toInt((config.TOOL_WEB_SCRAPE_TIMEOUT_MS as number | undefined), DEFAULT_WEB_SCRAPE_TIMEOUT_MS, 5_000, 180_000);
   const token = (config.GITHUB_TOKEN as string | undefined)?.trim();
@@ -1464,7 +1593,7 @@ export async function searchGitHubIssuesAndPullRequests(params: {
   endpoint.searchParams.set('per_page', String(Math.min(100, maxResults)));
   endpoint.searchParams.set('page', '1');
 
-  const payload = await fetchJson(endpoint.toString(), { method: 'GET', headers }, timeoutMs);
+  const payload = await fetchJson(endpoint.toString(), { method: 'GET', headers }, timeoutMs, params.signal);
   const items = toRecordList(payload.items).slice(0, maxResults).map((item) => {
     const title = pickString(item, 'title') ?? '';
     const htmlUrl = pickString(item, 'html_url') ?? null;
@@ -1500,6 +1629,7 @@ export async function listGitHubCommits(params: {
   path?: string;
   sinceIso?: string;
   limit?: number;
+  signal?: AbortSignal;
 }): Promise<Record<string, unknown>> {
   const timeoutMs = toInt((config.TOOL_WEB_SCRAPE_TIMEOUT_MS as number | undefined), DEFAULT_WEB_SCRAPE_TIMEOUT_MS, 5_000, 180_000);
   const token = (config.GITHUB_TOKEN as string | undefined)?.trim();
@@ -1514,7 +1644,7 @@ export async function listGitHubCommits(params: {
   if (params.path?.trim()) endpoint.searchParams.set('path', params.path.trim());
   if (since) endpoint.searchParams.set('since', since.toISOString());
 
-  const response = await fetchWithTimeout(endpoint.toString(), { method: 'GET', headers }, timeoutMs);
+  const response = await fetchWithTimeout(endpoint.toString(), { method: 'GET', headers }, timeoutMs, params.signal);
   const raw = await response.text();
   if (!response.ok) {
     throw new Error(`HTTP ${response.status}: ${raw.slice(0, 240)}`);
@@ -1572,6 +1702,7 @@ export async function lookupGitHubFile(params: {
   endLine?: number;
   includeLineNumbers?: boolean;
   traceId?: string;
+  signal?: AbortSignal;
 }): Promise<Record<string, unknown>> {
   const timeoutMs = toInt((config.TOOL_WEB_SCRAPE_TIMEOUT_MS as number | undefined), DEFAULT_WEB_SCRAPE_TIMEOUT_MS, 5_000, 180_000);
   const configuredMaxChars = toInt((config.TOOL_WEB_SCRAPE_MAX_CHARS as number | undefined), DEFAULT_WEB_SCRAPE_MAX_CHARS, 500, 50_000);
@@ -1583,6 +1714,7 @@ export async function lookupGitHubFile(params: {
       ref: params.ref,
       traceId: params.traceId,
       timeoutMs,
+      signal: params.signal,
     });
 
     let renderedContent = cachedFile.decoded;
@@ -1658,6 +1790,9 @@ export async function lookupGitHubFile(params: {
       includeLineNumbers: params.includeLineNumbers === true,
     };
   } catch (error) {
+    if (error instanceof ToolDetailedError || isAbortError(error)) {
+      throw error;
+    }
     const reason = error instanceof Error ? error.message : String(error);
     const refLabel = params.ref?.trim() ? ` ref "${params.ref.trim()}"` : '';
     throw new Error(
@@ -1720,6 +1855,7 @@ export async function lookupGitHubCodeSearch(params: {
   maxMatches?: number;
   includeTextMatches?: boolean;
   traceId?: string;
+  signal?: AbortSignal;
 }): Promise<Record<string, unknown>> {
   const timeoutMs = toInt(
     (config.TOOL_WEB_SCRAPE_TIMEOUT_MS as number | undefined),
@@ -1789,6 +1925,7 @@ export async function lookupGitHubCodeSearch(params: {
       endpoint.toString(),
       { method: 'GET', headers: searchHeaders },
       timeoutMs,
+      params.signal,
     );
 
     const candidateItems = toRecordList(payload.items).slice(0, maxCandidates);
@@ -1812,8 +1949,10 @@ export async function lookupGitHubCodeSearch(params: {
           maxCandidates,
           timeoutMs,
           headers,
+          signal: params.signal,
         });
       } catch (error) {
+        if (isAbortError(error)) throw error;
         logger.warn(
           {
             error,
@@ -1878,8 +2017,10 @@ export async function lookupGitHubCodeSearch(params: {
           ref: params.ref,
           traceId: params.traceId,
           timeoutMs,
+          signal: params.signal,
         });
-      } catch {
+      } catch (error) {
+        if (isAbortError(error)) throw error;
         continue;
       }
 
@@ -1942,6 +2083,9 @@ export async function lookupGitHubCodeSearch(params: {
           : 'No regex matches found in scanned candidates.',
     };
   } catch (error) {
+    if (error instanceof ToolDetailedError || isAbortError(error)) {
+      throw error;
+    }
     const reason = error instanceof Error ? error.message : String(error);
     throw new Error(
       `github.code.search failed for repo "${params.repo}" query "${params.query}": ${reason}`,
@@ -2573,12 +2717,17 @@ function extractGitHubRepoFromUrl(url: string): string | null {
   }
 }
 
-export async function lookupNpmPackage(params: { packageName: string; version?: string }): Promise<Record<string, unknown>> {
+export async function lookupNpmPackage(params: {
+  packageName: string;
+  version?: string;
+  signal?: AbortSignal;
+}): Promise<Record<string, unknown>> {
   const timeoutMs = toInt((config.TOOL_WEB_SCRAPE_TIMEOUT_MS as number | undefined), DEFAULT_WEB_SCRAPE_TIMEOUT_MS, 5_000, 180_000);
   const payload = await fetchJson(
     `https://registry.npmjs.org/${encodeURIComponent(params.packageName)}`,
     { method: 'GET', headers: { Accept: 'application/json' } },
     timeoutMs,
+    params.signal,
   );
 
   const distTags = payload['dist-tags'] && typeof payload['dist-tags'] === 'object' && !Array.isArray(payload['dist-tags'])

@@ -49,7 +49,7 @@ Do not wrap the output in markdown blocks. Output raw JSON only.
       apiKey,
     });
 
-    return parseAndValidate(response.content, schema);
+    return parseAndValidate(response.text, schema);
   } catch (error) {
     logger.warn({ error }, '[callWithSchema] Initial call failed or invalid JSON');
     // 2. Repair Attempt
@@ -91,7 +91,7 @@ async function repairJsonOnce<T>(
       responseFormat: 'json_object',
       apiKey,
     });
-    return parseAndValidate(response.content, schema);
+    return parseAndValidate(response.text, schema);
   } catch (finalError) {
     logger.error({ error: finalError }, '[callWithSchema] Repair failed');
     return null;

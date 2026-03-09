@@ -241,10 +241,11 @@ const npmPackageLookupTool: ToolDefinition<{
     version: z.string().trim().min(1).max(80).optional(),
   }),
   metadata: { readOnly: true },
-  execute: async ({ packageName, version }) => {
+  execute: async ({ packageName, version }, ctx) => {
     return lookupNpmPackage({
       packageName,
       version,
+      signal: ctx.signal,
     });
   },
 };

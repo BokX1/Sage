@@ -61,6 +61,20 @@ export interface ToolDefinition {
 }
 
 /**
+ * Describe one structured tool call returned by an LLM provider.
+ *
+ * Details: carries the normalized tool name and parsed JSON arguments.
+ *
+ * Side effects: none.
+ * Error behavior: none.
+ */
+export interface LLMToolCall {
+  id?: string;
+  name: string;
+  args: unknown;
+}
+
+/**
  * Define a chat request sent to an LLM client.
  *
  * Details: includes message history, model selection, and tool metadata.
@@ -78,6 +92,7 @@ export interface LLMRequest {
   tools?: ToolDefinition[];
   toolChoice?: string | 'auto' | 'none' | { type: 'function'; function: { name: string } };
   timeout?: number;
+  signal?: AbortSignal;
 }
 
 /**
@@ -89,7 +104,9 @@ export interface LLMRequest {
  * Error behavior: none.
  */
 export interface LLMResponse {
-  content: string;
+  text: string;
+  toolCalls?: LLMToolCall[];
+  reasoningText?: string;
   usage?: {
     promptTokens: number;
     completionTokens: number;

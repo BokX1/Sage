@@ -26,6 +26,8 @@
 
 ### Changed
 
+- Reworked the agent runtime around native structured tool calls end-to-end: LLM responses now carry `text`, `toolCalls`, `reasoningText`, and usage separately, the runtime no longer teaches or parses JSON tool-call envelopes, and trace payloads now record tool rounds, rebudgeting, finalization behavior, and cancellation outcomes for better operator debugging.
+- Added explicit per-round context rebudgeting before follow-up model calls and propagated cancellation signals through the main web, GitHub, workflow, npm, and Pollinations-backed long-running integrations, reducing stuck tool chains and making runtime timeouts stop upstream work instead of only timing out locally.
 - Rebuilt the deep trust gate around mutation-tested critical guardrails instead of broad unscoped files: `check:mutation` now targets logging policy and invocation/chat rate-limiters with deterministic boundary-focused tests, so passing `check:trust:deep` reflects behavior-level protection against trivial test workarounds.
 - Expanded the mutation-scored trust gate to include shared timeout/retry and typed-error utilities (`timeout`, `resilience`, `AppError`) with strict deterministic tests, increasing guardrail depth for runtime failure handling while keeping the gate enforceable in CI.
 - Hardened the critical trust suite with boundary and timer-behavior assertions across logging/rate-limit/invocation/resilience/timeout error paths, raising the critical mutation score from 81.97% to 90.98% so trust-gate passes now reflect stronger behavior-level guarantees instead of permissive happy-path checks.

@@ -74,19 +74,18 @@ function buildScopedToolRegistry(toolNames: string[]): ToolRegistry {
   return scopedRegistry;
 }
 
-function buildToolProtocolInstruction(toolNames: string[]): string {
+function buildToolUsageInstruction(toolNames: string[]): string {
   if (toolNames.length === 0) return '';
 
   const lines = [
-    '<tool_protocol>',
-    'FORMAT: When calling tools, output ONLY valid JSON (no markdown wrapping):',
-    '{"type": "tool_calls", "calls": [{"name": "<tool_name>", "args": {...}}]}',
-    '',
+    '<tool_usage>',
+    'When you need tools, use the provider-native tool calling interface directly.',
+    'Do not describe, serialize, or wrap tool calls in JSON or markdown.',
     'After gathering sufficient data, either respond in plain text or use the appropriate Discord self-send action when the runtime guidance tells you to deliver the final answer through Discord.',
     'If no tool is needed, answer normally in plain text.',
     '',
     'Behavioral rules (batching, tool selection, guardrails) are in <execution_rules> and <tool_selection_guide>.',
-    '</tool_protocol>',
+    '</tool_usage>',
   ];
 
   return lines.join('\n');
@@ -276,7 +275,7 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
 
   const runtimeInstruction = [
     buildCapabilityPromptSection(capabilityParams),
-    buildToolProtocolInstruction(activeToolNames),
+    buildToolUsageInstruction(activeToolNames),
   ].join('\n\n');
 
   const runtimeMessages = buildContextMessages({
@@ -329,6 +328,8 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
   let draftText: string;
   let toolLoopBudgetJson: Record<string, unknown> | undefined;
   let toolResults: ToolResult[] = [];
+  let toolLoopTraceEvents: Record<string, unknown>[] = [];
+  let initialReasoningText: string | undefined;
 
   try {
     const maxTokens = normalizeStrictlyPositiveInt(
@@ -345,7 +346,8 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
       tools: toolSpecs,
       toolChoice: toolSpecs ? 'auto' : undefined,
     });
-    draftText = response.content;
+    draftText = response.text;
+    initialReasoningText = cleanDraftText(response.reasoningText) ?? undefined;
 
     if (toolLoopEnabled && toolSpecs && activeToolNames.length > 0) {
       const loopStartedAt = Date.now();
@@ -372,11 +374,27 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
           appConfig.AGENTIC_TOOL_MAX_OUTPUT_TOKENS as number | undefined,
           1_200,
         ),
-        initialAssistantResponseText: response.content,
+        initialAssistantResponse: response,
         config: toolLoopConfig,
       });
       draftText = loopResult.replyText;
       toolResults = loopResult.toolResults;
+      toolLoopTraceEvents = [
+        ...loopResult.roundEvents.map((event) => ({
+          type: 'tool_round',
+          timestamp: event.completedAt,
+          details: event,
+        })),
+        ...(loopResult.finalization.attempted
+          ? [
+            {
+              type: 'tool_finalization',
+              timestamp: loopResult.finalization.completedAt,
+              details: loopResult.finalization,
+            },
+          ]
+          : []),
+      ];
       const successfulToolCount = loopResult.toolResults.filter((result) => result.success).length;
       toolLoopBudgetJson = {
         enabled: true,
@@ -386,6 +404,10 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
         successfulToolCount,
         deduplicatedCallCount: loopResult.deduplicatedCallCount ?? 0,
         truncatedCallCount: loopResult.truncatedCallCount ?? 0,
+        roundEvents: loopResult.roundEvents,
+        finalization: loopResult.finalization,
+        cancellationCount: loopResult.cancellationCount,
+        initialReasoningText: initialReasoningText ?? null,
         attachmentCount: loopResult.toolResults.reduce(
           (sum, result) => sum + (result.attachments?.length ?? 0),
           0,
@@ -396,10 +418,11 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
   } catch (error) {
     logger.error({ error, traceId }, 'Single-agent runtime call failed');
     draftText = "I'm having trouble connecting right now. Please try again later.";
-    toolLoopBudgetJson = {
+        toolLoopBudgetJson = {
       enabled: toolLoopEnabled,
       failed: true,
       errorText: error instanceof Error ? error.message : String(error),
+      initialReasoningText: initialReasoningText ?? null,
     };
   }
 
@@ -451,6 +474,7 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
         },
         budgetJson,
         agentEventsJson: [
+          ...toolLoopTraceEvents,
           {
             type: 'runtime_end',
             route: SINGLE_ROUTE_KIND,
@@ -458,6 +482,7 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
             details: {
               files: files.length,
               toolResults: toolResults.length,
+              initialReasoningTextPresent: !!initialReasoningText,
             },
           },
         ],

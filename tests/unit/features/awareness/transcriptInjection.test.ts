@@ -66,7 +66,7 @@ describe('transcript injection', () => {
   beforeEach(() => {
     clearChannel({ guildId: 'guild-1', channelId: 'channel-1' });
     mockChat.chat.mockClear();
-    mockChat.chat.mockResolvedValue({ content: 'ok' });
+    mockChat.chat.mockResolvedValue({ text: 'ok' });
     mockGetGuildMemoryText.mockResolvedValue(null);
     vi.mocked(isLoggingEnabled).mockReturnValue(true);
   });

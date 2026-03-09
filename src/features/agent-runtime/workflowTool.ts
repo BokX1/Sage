@@ -60,6 +60,7 @@ export const workflowTool: ToolDefinition<z.infer<typeof workflowToolSchema>> = 
         const npmInfo = await lookupNpmPackage({
           packageName: args.packageName,
           version: args.version,
+          signal: ctx.signal,
         });
 
         const githubRepo = typeof npmInfo.githubRepo === 'string' ? npmInfo.githubRepo.trim() : '';
@@ -81,6 +82,7 @@ export const workflowTool: ToolDefinition<z.infer<typeof workflowToolSchema>> = 
           maxMatches: args.maxMatches,
           includeTextMatches: args.includeTextMatches,
           traceId: ctx.traceId,
+          signal: ctx.signal,
         });
 
         return {

@@ -266,6 +266,7 @@ export const githubTool: ToolDefinition<z.infer<typeof githubToolSchema>> = {
         return lookupGitHubRepo({
           repo,
           includeReadme: args.includeReadme,
+          signal: ctx.signal,
         });
       }
 
@@ -281,6 +282,7 @@ export const githubTool: ToolDefinition<z.infer<typeof githubToolSchema>> = {
           maxMatches: args.maxMatches,
           includeTextMatches: args.includeTextMatches,
           traceId: ctx.traceId,
+          signal: ctx.signal,
         });
       }
 
@@ -294,6 +296,7 @@ export const githubTool: ToolDefinition<z.infer<typeof githubToolSchema>> = {
           endLine: args.endLine,
           includeLineNumbers: args.includeLineNumbers,
           traceId: ctx.traceId,
+          signal: ctx.signal,
         });
       }
 
@@ -310,6 +313,7 @@ export const githubTool: ToolDefinition<z.infer<typeof githubToolSchema>> = {
           endLine,
           includeLineNumbers: args.includeLineNumbers ?? true,
           traceId: ctx.traceId,
+          signal: ctx.signal,
         });
 
         const record = page && typeof page === 'object' && !Array.isArray(page)
@@ -344,6 +348,7 @@ export const githubTool: ToolDefinition<z.infer<typeof githubToolSchema>> = {
             endLine: range.endLine,
             includeLineNumbers: args.includeLineNumbers ?? true,
             traceId: ctx.traceId,
+            signal: ctx.signal,
           });
           reads.push({ range, ...chunk });
         }
@@ -371,6 +376,7 @@ export const githubTool: ToolDefinition<z.infer<typeof githubToolSchema>> = {
           endLine,
           includeLineNumbers: args.includeLineNumbers ?? true,
           traceId: ctx.traceId,
+          signal: ctx.signal,
         });
       }
 
@@ -381,6 +387,7 @@ export const githubTool: ToolDefinition<z.infer<typeof githubToolSchema>> = {
           type: 'issue',
           state: args.state,
           maxResults: args.maxResults,
+          signal: ctx.signal,
         });
       }
 
@@ -391,6 +398,7 @@ export const githubTool: ToolDefinition<z.infer<typeof githubToolSchema>> = {
           type: 'pr',
           state: args.state,
           maxResults: args.maxResults,
+          signal: ctx.signal,
         });
       }
 
@@ -401,6 +409,7 @@ export const githubTool: ToolDefinition<z.infer<typeof githubToolSchema>> = {
           path: args.path,
           sinceIso: args.sinceIso,
           limit: args.limit,
+          signal: ctx.signal,
         });
       }
     }

@@ -58,7 +58,7 @@ describe('summarizeChannelWindow pipeline', () => {
       glossary: { JWT: 'JSON Web Token' },
     });
 
-    mockChatFn.mockResolvedValueOnce({ content: mockJson });
+    mockChatFn.mockResolvedValueOnce({ text: mockJson });
 
     const result = await summarizeChannelWindow({
       messages: [makeMessage('Let us discuss the API')],
@@ -78,7 +78,7 @@ describe('summarizeChannelWindow pipeline', () => {
     const { summarizeChannelWindow } = await import('@/features/summary/summarizeChannelWindow');
 
     mockChatFn.mockResolvedValueOnce({
-      content: JSON.stringify({ summaryText: 'Test', topics: [] }),
+      text: JSON.stringify({ summaryText: 'Test', topics: [] }),
     });
 
     await summarizeChannelWindow({
@@ -96,7 +96,7 @@ describe('summarizeChannelWindow pipeline', () => {
   it('falls back when analyst returns empty', async () => {
     const { summarizeChannelWindow } = await import('@/features/summary/summarizeChannelWindow');
 
-    mockChatFn.mockResolvedValueOnce({ content: '' });
+    mockChatFn.mockResolvedValueOnce({ text: '' });
 
     const result = await summarizeChannelWindow({
       messages: [makeMessage('Test message')],
@@ -112,7 +112,7 @@ describe('summarizeChannelWindow pipeline', () => {
     const { summarizeChannelWindow } = await import('@/features/summary/summarizeChannelWindow');
 
     mockChatFn.mockResolvedValueOnce({
-      content: 'This is not JSON at all, just text.',
+      text: 'This is not JSON at all, just text.',
     });
 
     const result = await summarizeChannelWindow({
@@ -145,7 +145,7 @@ describe('summarizeChannelProfile pipeline', () => {
       glossary: { ORM: 'Object-Relational Mapping' },
     });
 
-    mockChatFn.mockResolvedValueOnce({ content: mockJson });
+    mockChatFn.mockResolvedValueOnce({ text: mockJson });
 
     const result = await summarizeChannelProfile({
       previousSummary: null,

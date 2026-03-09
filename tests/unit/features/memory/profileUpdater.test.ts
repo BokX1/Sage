@@ -41,7 +41,7 @@ describe('ProfileUpdater', () => {
     it('should complete pipeline: Analyst outputs JSON summary', async () => {
       // Step 1: Analyst outputs the updated summary as JSON
       mockChatFn.mockResolvedValueOnce({
-        content: '{"summary": "<preferences>Loves cats</preferences>\\n<active_focus>Enthusiastic about felines</active_focus>\\n<background>Enjoys cozy spaces</background>"}',
+        text: '{"summary": "<preferences>Loves cats</preferences>\\n<active_focus>Enthusiastic about felines</active_focus>\\n<background>Enjoys cozy spaces</background>"}',
       });
 
       const result = await updateProfileSummary({
@@ -69,7 +69,7 @@ describe('ProfileUpdater', () => {
     it('should preserve previous summary when adding new facts', async () => {
       // Analyst merges previous + new facts as JSON
       mockChatFn.mockResolvedValueOnce({
-        content: '{"summary": "<preferences>Prefers detailed travel tips</preferences>\\n<active_focus>Lives in Paris and loves cats</active_focus>\\n<background>Enjoys city guides</background>"}',
+        text: '{"summary": "<preferences>Prefers detailed travel tips</preferences>\\n<active_focus>Lives in Paris and loves cats</active_focus>\\n<background>Enjoys city guides</background>"}',
       });
 
       const result = await updateProfileSummary({
@@ -89,7 +89,7 @@ describe('ProfileUpdater', () => {
     it('should preserve previous summary if analyst returns empty', async () => {
       // Analyst returns empty
       mockChatFn.mockResolvedValueOnce({
-        content: '',
+        text: '',
       });
 
       const result = await updateProfileSummary({
@@ -125,7 +125,7 @@ describe('ProfileUpdater', () => {
     it('should preserve previous summary if JSON parsing fails to yield a string', async () => {
       // Analyst outputs a JSON structure missing the "summary" string
       mockChatFn.mockResolvedValueOnce({
-        content: '{"malformed": true}',
+        text: '{"malformed": true}',
       });
 
       const result = await updateProfileSummary({
@@ -151,7 +151,7 @@ describe('ProfileUpdater', () => {
       ]);
 
       mockChatFn.mockResolvedValueOnce({
-        content: '{"summary": "<preferences>Likes dogs</preferences>\\n<active_focus>Exploring pet care</active_focus>\\n<background>Owns a rescue dog</background>"}',
+        text: '{"summary": "<preferences>Likes dogs</preferences>\\n<active_focus>Exploring pet care</active_focus>\\n<background>Owns a rescue dog</background>"}',
       });
 
       const result = await updateProfileSummary({
@@ -186,7 +186,7 @@ describe('ProfileUpdater', () => {
       ]);
 
       mockChatFn.mockResolvedValueOnce({
-        content: '{"summary": "<preferences>Keeps context safely</preferences>\\n<active_focus>Reviewing current thread</active_focus>\\n<background>Values attribution</background>"}',
+        text: '{"summary": "<preferences>Keeps context safely</preferences>\\n<active_focus>Reviewing current thread</active_focus>\\n<background>Values attribution</background>"}',
       });
 
       const result = await updateProfileSummary({
@@ -210,7 +210,7 @@ describe('ProfileUpdater', () => {
 
     it('normalizes legacy directives into preferences', async () => {
       mockChatFn.mockResolvedValueOnce({
-        content: '{"summary": "<directives>Prefers concise answers</directives>\\n<active_focus>Refining prompts</active_focus>\\n<background>Maintains Sage</background>"}',
+        text: '{"summary": "<directives>Prefers concise answers</directives>\\n<active_focus>Refining prompts</active_focus>\\n<background>Maintains Sage</background>"}',
       });
 
       const result = await updateProfileSummary({
@@ -227,7 +227,7 @@ describe('ProfileUpdater', () => {
 
     it('preserves the previous summary when required profile sections are missing', async () => {
       mockChatFn.mockResolvedValueOnce({
-        content: '{"summary": "<preferences>Prefers concise answers</preferences>\\n<background>Maintains Sage</background>"}',
+        text: '{"summary": "<preferences>Prefers concise answers</preferences>\\n<background>Maintains Sage</background>"}',
       });
 
       const previousSummary = '<preferences>Prefers concise answers</preferences>\n<active_focus>Refining prompts</active_focus>\n<background>Maintains Sage</background>';
@@ -245,7 +245,7 @@ describe('ProfileUpdater', () => {
 
     it('includes reply reference text as supporting evidence in the analyst prompt', async () => {
       mockChatFn.mockResolvedValueOnce({
-        content: '{"summary": "<preferences>Prefers concise answers</preferences>\\n<active_focus>Refining prompts</active_focus>\\n<background>Maintains Sage</background>"}',
+        text: '{"summary": "<preferences>Prefers concise answers</preferences>\\n<active_focus>Refining prompts</active_focus>\\n<background>Maintains Sage</background>"}',
       });
 
       await updateProfileSummary({

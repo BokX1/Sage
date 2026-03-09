@@ -361,7 +361,7 @@ describe('toolIntegrations', () => {
   });
 
   it('runs agentic web scrape with instruction and sanitized URL', async () => {
-    const mockChat = vi.fn().mockResolvedValue({ content: '## Extracted\n\nDetails' });
+    const mockChat = vi.fn().mockResolvedValue({ text: '## Extracted\n\nDetails' });
     const createClientSpy = vi
       .spyOn(llm, 'createLLMClient')
       .mockReturnValue({ chat: mockChat } as unknown as ReturnType<typeof llm.createLLMClient>);

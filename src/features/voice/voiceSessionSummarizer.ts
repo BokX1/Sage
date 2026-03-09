@@ -131,7 +131,7 @@ Summarize this voice session:`;
 
   try {
     const response = await client.chat(payload);
-    const json = parseToJson(response.content ?? '');
+    const json = parseToJson(response.text ?? '');
     if (!json) {
       logger.warn({ guildId: params.session.guildId }, 'Voice summary parse failed');
       return null;
@@ -158,4 +158,3 @@ Summarize this voice session:`;
     return null;
   }
 }
-
