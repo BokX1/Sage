@@ -177,18 +177,19 @@ The tool protocol is communicated to the LLM via a structured instruction block,
 
 <a id="registered-tools"></a>
 
-## 🧰 Registered Tools (14 Total)
+## 🧰 Registered Tools (15 Total)
 
 > [!NOTE]
-> The runtime currently registers 14 top-level tools. The website/demo may show a larger capability count because it also lists routed Discord actions individually.
+> The runtime currently registers 15 top-level tools. The website/demo may show a larger capability count because it also lists routed Discord actions individually.
 
-### 🧠 Discord Domain Tools (4 tools)
+### 🧠 Discord Domain Tools (5 tools)
 
 | Tool | Description | Access |
 |:---|:---|:---|
 | `discord_context` | Profiles, channel summaries, server-instructions reads, and social/voice analytics | Public |
-| `discord_messages` | Exact message history, Discord-native delivery, polls, threads, and reactions | Public |
+| `discord_messages` | Exact message history, Discord-native delivery, polls, and reactions | Public |
 | `discord_files` | Attachment discovery, paged attachment reads, and attachment resend flows | Public |
+| `discord_server` | Guild resources, scheduled events, AutoMod reads, and thread lifecycle actions | Public (some reads Admin) |
 | `discord_admin` | Admin instruction writes, moderation, channel/role/member admin actions, invite URLs, and raw Discord API fallback | Public (some actions Admin) |
 
 ### 🌐 Search & Research (3 tools)
@@ -235,6 +236,10 @@ Read-only helpers are also exposed across the routed Discord tools:
 - `discord_messages.search_guild` (guild-wide search; not available in Autopilot)
 - `discord_messages.get_user_timeline` (recent activity for a user; not available in Autopilot)
 - `discord_files.read_attachment` (paged read of ingested attachment text)
+- `discord_server.list_channels` / `discord_server.get_channel` (guild channel and category inspection)
+- `discord_server.list_threads` / `discord_server.get_thread` (thread discovery and state lookup)
+- `discord_server.list_scheduled_events` / `discord_server.get_scheduled_event` (guild event inspection)
+- `discord_server.list_members` / `discord_server.get_member` / `discord_server.get_permission_snapshot` / `discord_server.list_automod_rules` (admin-only guild inspection reads)
 - `discord_context.get_top_relationships` (top social-graph edges for a time window)
 
 ### ⚙️ System (3 tools)

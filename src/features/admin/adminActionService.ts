@@ -73,6 +73,11 @@ const ADMIN_ACTION_CUSTOM_ID_PREFIX = 'sage:admin_action:';
 const DISCORD_INTERACTION_COOLDOWN_BY_ACTION_MS = {
   create_poll: 45_000,
   create_thread: 30_000,
+  update_thread: 15_000,
+  join_thread: 7_500,
+  leave_thread: 7_500,
+  add_thread_member: 15_000,
+  remove_thread_member: 15_000,
   add_reaction: 7_500,
   remove_bot_reaction: 7_500,
   send_message: 3_000,
@@ -120,6 +125,51 @@ const createThreadRequestSchema = z.object({
     z.literal(4_320),
     z.literal(10_080),
   ]).optional(),
+  reason: z.string().trim().max(500).optional(),
+});
+
+const updateThreadRequestSchema = z.object({
+  action: z.literal('update_thread'),
+  threadId: z.string().trim().min(1).max(64),
+  name: z.string().trim().min(1).max(100).optional(),
+  archived: z.boolean().optional(),
+  locked: z.boolean().optional(),
+  autoArchiveDurationMinutes: z.union([
+    z.literal(60),
+    z.literal(1_440),
+    z.literal(4_320),
+    z.literal(10_080),
+  ]).optional(),
+  reason: z.string().trim().max(500).optional(),
+}).superRefine((value, ctx) => {
+  if (
+    value.name === undefined &&
+    value.archived === undefined &&
+    value.locked === undefined &&
+    value.autoArchiveDurationMinutes === undefined
+  ) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'update_thread requires at least one mutable field.',
+      path: ['name'],
+    });
+  }
+});
+
+const joinLeaveThreadRequestSchema = (
+  action: 'join_thread' | 'leave_thread',
+) => z.object({
+  action: z.literal(action),
+  threadId: z.string().trim().min(1).max(64),
+  reason: z.string().trim().max(500).optional(),
+});
+
+const threadMemberRequestSchema = (
+  action: 'add_thread_member' | 'remove_thread_member',
+) => z.object({
+  action: z.literal(action),
+  threadId: z.string().trim().min(1).max(64),
+  userId: z.string().trim().min(1).max(64),
   reason: z.string().trim().max(500).optional(),
 });
 
@@ -206,6 +256,11 @@ const unbanMemberRequestSchema = z.object({
 export const discordInteractionRequestSchema = z.discriminatedUnion('action', [
   createPollRequestSchema,
   createThreadRequestSchema,
+  updateThreadRequestSchema,
+  joinLeaveThreadRequestSchema('join_thread'),
+  joinLeaveThreadRequestSchema('leave_thread'),
+  threadMemberRequestSchema('add_thread_member'),
+  threadMemberRequestSchema('remove_thread_member'),
   addReactionRequestSchema,
   removeBotReactionRequestSchema,
   sendMessageRequestSchema,
@@ -938,7 +993,11 @@ async function executeImmediateDiscordAction(params: {
   action: ImmediateDiscordAction;
   enforceRequesterGuards?: boolean;
 }): Promise<Record<string, unknown>> {
-  const channelId = normalizeChannelId(params.action.channelId ?? params.channelId);
+  const channelId = normalizeChannelId(
+    'threadId' in params.action
+      ? params.action.threadId
+      : (params.action.channelId ?? params.channelId),
+  );
   const channel = await fetchGuildChannel(params.guildId, channelId);
   const { guild, botMember } = await fetchGuildAndBotMember(params.guildId);
   const permissionsInChannel = botMember.permissionsIn(channel);
@@ -1260,48 +1319,210 @@ async function executeImmediateDiscordAction(params: {
     };
   }
 
-  if (shouldEnforceRequesterGuards && requesterPermissionsInChannel) {
-    assertAnyChannelPermission({
-      permissions: requesterPermissionsInChannel,
-      requirements: THREAD_CREATION_REQUIREMENTS,
-      actorLabel: 'Invoker',
-    });
-    if (params.action.messageId) {
+  if (params.action.action === 'update_thread') {
+    if (shouldEnforceRequesterGuards && requesterPermissionsInChannel) {
       assertAllChannelPermissions({
         permissions: requesterPermissionsInChannel,
-        requirements: [{ flag: PermissionsBitField.Flags.ReadMessageHistory, label: 'ReadMessageHistory' }],
+        requirements: [{ flag: PermissionsBitField.Flags.ManageThreads, label: 'ManageThreads' }],
         actorLabel: 'Invoker',
       });
     }
-  }
 
-  if (!isSendableGuildChannel(channel)) {
-    throw new Error('Selected channel does not allow message sends.');
-  }
-  assertAnyChannelPermission({
-    permissions: permissionsInChannel,
-    requirements: THREAD_CREATION_REQUIREMENTS,
-    actorLabel: 'Bot',
-  });
-  if (shouldEnforceRequesterGuards) {
-    enforceDiscordInteractionCooldown({
-      guildId: params.guildId,
-      channelId,
-      requestedBy: params.requestedBy,
-      action: params.action,
+    assertAllChannelPermissions({
+      permissions: permissionsInChannel,
+      requirements: [{ flag: PermissionsBitField.Flags.ManageThreads, label: 'ManageThreads' }],
+      actorLabel: 'Bot',
     });
+    if (shouldEnforceRequesterGuards) {
+      enforceDiscordInteractionCooldown({
+        guildId: params.guildId,
+        channelId,
+        requestedBy: params.requestedBy,
+        action: params.action,
+      });
+    }
+
+    const body: Record<string, unknown> = {};
+    if (params.action.name !== undefined) body.name = params.action.name;
+    if (params.action.archived !== undefined) body.archived = params.action.archived;
+    if (params.action.locked !== undefined) body.locked = params.action.locked;
+    if (params.action.autoArchiveDurationMinutes !== undefined) {
+      body.auto_archive_duration = params.action.autoArchiveDurationMinutes;
+    }
+
+    const response = await discordRestRequest({
+      method: 'PATCH',
+      path: `/channels/${channel.id}`,
+      body,
+      reason: params.action.reason,
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to update thread (${response.status} ${response.statusText}).`);
+    }
+
+    return {
+      status: 'executed',
+      action: 'update_thread',
+      threadId: channel.id,
+      name: params.action.name ?? null,
+      archived: params.action.archived ?? null,
+      locked: params.action.locked ?? null,
+      autoArchiveDurationMinutes: params.action.autoArchiveDurationMinutes ?? null,
+    };
   }
 
-  const autoArchiveDuration =
-    (params.action.autoArchiveDurationMinutes as ThreadAutoArchiveDuration | undefined) ??
-    ThreadAutoArchiveDuration.OneDay;
+  if (params.action.action === 'join_thread' || params.action.action === 'leave_thread') {
+    if (shouldEnforceRequesterGuards && requesterPermissionsInChannel) {
+      assertAllChannelPermissions({
+        permissions: requesterPermissionsInChannel,
+        requirements: [{ flag: PermissionsBitField.Flags.ViewChannel, label: 'ViewChannel' }],
+        actorLabel: 'Invoker',
+      });
+    }
 
-  if (params.action.messageId) {
-    const message = await fetchGuildMessage(channel, params.action.messageId);
-    const thread = await message.startThread({
-      name: params.action.name,
-      autoArchiveDuration,
+    assertAllChannelPermissions({
+      permissions: permissionsInChannel,
+      requirements: [{ flag: PermissionsBitField.Flags.ViewChannel, label: 'ViewChannel' }],
+      actorLabel: 'Bot',
+    });
+    if (shouldEnforceRequesterGuards) {
+      enforceDiscordInteractionCooldown({
+        guildId: params.guildId,
+        channelId,
+        requestedBy: params.requestedBy,
+        action: params.action,
+      });
+    }
+
+    const response = await discordRestRequest({
+      method: params.action.action === 'join_thread' ? 'PUT' : 'DELETE',
+      path: `/channels/${channel.id}/thread-members/@me`,
       reason: params.action.reason,
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to ${params.action.action === 'join_thread' ? 'join' : 'leave'} thread (${response.status} ${response.statusText}).`);
+    }
+
+    return {
+      status: 'executed',
+      action: params.action.action,
+      threadId: channel.id,
+    };
+  }
+
+  if (params.action.action === 'add_thread_member' || params.action.action === 'remove_thread_member') {
+    if (shouldEnforceRequesterGuards && requesterPermissionsInChannel) {
+      assertAllChannelPermissions({
+        permissions: requesterPermissionsInChannel,
+        requirements: [{ flag: PermissionsBitField.Flags.ManageThreads, label: 'ManageThreads' }],
+        actorLabel: 'Invoker',
+      });
+    }
+
+    assertAllChannelPermissions({
+      permissions: permissionsInChannel,
+      requirements: [{ flag: PermissionsBitField.Flags.ManageThreads, label: 'ManageThreads' }],
+      actorLabel: 'Bot',
+    });
+    if (shouldEnforceRequesterGuards) {
+      enforceDiscordInteractionCooldown({
+        guildId: params.guildId,
+        channelId,
+        requestedBy: params.requestedBy,
+        action: params.action,
+      });
+    }
+
+    const response = await discordRestRequest({
+      method: params.action.action === 'add_thread_member' ? 'PUT' : 'DELETE',
+      path: `/channels/${channel.id}/thread-members/${params.action.userId}`,
+      reason: params.action.reason,
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to update thread membership (${response.status} ${response.statusText}).`);
+    }
+
+    return {
+      status: 'executed',
+      action: params.action.action,
+      threadId: channel.id,
+      userId: params.action.userId,
+    };
+  }
+
+  if (params.action.action === 'create_thread') {
+    const createThreadAction = params.action;
+
+    if (shouldEnforceRequesterGuards && requesterPermissionsInChannel) {
+      assertAnyChannelPermission({
+        permissions: requesterPermissionsInChannel,
+        requirements: THREAD_CREATION_REQUIREMENTS,
+        actorLabel: 'Invoker',
+      });
+      if (createThreadAction.messageId) {
+        assertAllChannelPermissions({
+          permissions: requesterPermissionsInChannel,
+          requirements: [{ flag: PermissionsBitField.Flags.ReadMessageHistory, label: 'ReadMessageHistory' }],
+          actorLabel: 'Invoker',
+        });
+      }
+    }
+
+    if (!isSendableGuildChannel(channel)) {
+      throw new Error('Selected channel does not allow message sends.');
+    }
+    assertAnyChannelPermission({
+      permissions: permissionsInChannel,
+      requirements: THREAD_CREATION_REQUIREMENTS,
+      actorLabel: 'Bot',
+    });
+    if (shouldEnforceRequesterGuards) {
+      enforceDiscordInteractionCooldown({
+        guildId: params.guildId,
+        channelId,
+        requestedBy: params.requestedBy,
+        action: createThreadAction,
+      });
+    }
+
+    const autoArchiveDuration =
+      (createThreadAction.autoArchiveDurationMinutes as ThreadAutoArchiveDuration | undefined) ??
+      ThreadAutoArchiveDuration.OneDay;
+
+    if (createThreadAction.messageId) {
+      const message = await fetchGuildMessage(channel, createThreadAction.messageId);
+      const thread = await message.startThread({
+        name: createThreadAction.name,
+        autoArchiveDuration,
+        reason: createThreadAction.reason,
+      });
+
+      return {
+        status: 'executed',
+        action: 'create_thread',
+        channelId: channel.id,
+        threadId: thread.id,
+        sourceMessageId: createThreadAction.messageId,
+      };
+    }
+
+    const threadCapable = channel as unknown as {
+      threads?: {
+        create: (args: {
+          name: string;
+          autoArchiveDuration?: ThreadAutoArchiveDuration;
+          reason?: string;
+        }) => Promise<{ id: string }>;
+      };
+    };
+    if (!threadCapable.threads) {
+      throw new Error('Channel does not support thread creation.');
+    }
+
+    const thread = await threadCapable.threads.create({
+      name: createThreadAction.name,
+      autoArchiveDuration,
+      reason: createThreadAction.reason,
     });
 
     return {
@@ -1309,36 +1530,11 @@ async function executeImmediateDiscordAction(params: {
       action: 'create_thread',
       channelId: channel.id,
       threadId: thread.id,
-      sourceMessageId: params.action.messageId,
+      sourceMessageId: null,
     };
   }
 
-  const threadCapable = channel as unknown as {
-    threads?: {
-      create: (args: {
-        name: string;
-        autoArchiveDuration?: ThreadAutoArchiveDuration;
-        reason?: string;
-      }) => Promise<{ id: string }>;
-    };
-  };
-  if (!threadCapable.threads) {
-    throw new Error('Channel does not support thread creation.');
-  }
-
-  const thread = await threadCapable.threads.create({
-    name: params.action.name,
-    autoArchiveDuration,
-    reason: params.action.reason,
-  });
-
-  return {
-    status: 'executed',
-    action: 'create_thread',
-    channelId: channel.id,
-    threadId: thread.id,
-    sourceMessageId: null,
-  };
+  throw new Error(`Unsupported immediate Discord action: ${(params.action as { action: string }).action}`);
 }
 
 async function executeQueuedDiscordAction(params: {

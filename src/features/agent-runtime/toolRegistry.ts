@@ -77,6 +77,7 @@ function buildValidationHint(toolName: string): string | undefined {
     normalized === 'discord_context' ||
     normalized === 'discord_messages' ||
     normalized === 'discord_files' ||
+    normalized === 'discord_server' ||
     normalized === 'discord_admin'
   ) {
     return 'Try: { action: "help" } to see available actions and required fields.';

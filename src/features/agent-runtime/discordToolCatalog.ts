@@ -46,6 +46,33 @@ export const DISCORD_FILES_ACTION_CATALOG = {
   admin_only: [],
 } as const;
 
+export const DISCORD_SERVER_ACTION_CATALOG = {
+  read_only: [
+    'help',
+    'list_channels',
+    'get_channel',
+    'list_roles',
+    'list_threads',
+    'get_thread',
+    'list_scheduled_events',
+    'get_scheduled_event',
+  ],
+  writes: [
+    'create_thread',
+    'update_thread',
+    'join_thread',
+    'leave_thread',
+    'add_thread_member',
+    'remove_thread_member',
+  ],
+  admin_only: [
+    'list_members',
+    'get_member',
+    'get_permission_snapshot',
+    'list_automod_rules',
+  ],
+} as const;
+
 export const DISCORD_ADMIN_ACTION_CATALOG = {
   read_only: ['help', 'get_invite_url'],
   writes: [],
@@ -71,6 +98,7 @@ export const DISCORD_TOOL_ACTION_CATALOG = {
   discord_context: DISCORD_CONTEXT_ACTION_CATALOG,
   discord_messages: DISCORD_MESSAGES_ACTION_CATALOG,
   discord_files: DISCORD_FILES_ACTION_CATALOG,
+  discord_server: DISCORD_SERVER_ACTION_CATALOG,
   discord_admin: DISCORD_ADMIN_ACTION_CATALOG,
 } as const;
 

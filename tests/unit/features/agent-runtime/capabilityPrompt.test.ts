@@ -68,7 +68,7 @@ describe('capabilityPrompt', () => {
     it('renders guidance for channel file lookup when tool is active', () => {
       // Arrange
       const params = {
-        activeTools: ['discord_context', 'discord_messages', 'discord_files', 'discord_admin'],
+        activeTools: ['discord_context', 'discord_messages', 'discord_files', 'discord_server', 'discord_admin'],
       };
 
       // Act
@@ -93,7 +93,7 @@ describe('capabilityPrompt', () => {
     it('renders Discord domain tool selection guide when Discord tools are active', () => {
       // Arrange
       const params = {
-        activeTools: ['discord_context', 'discord_messages', 'discord_files', 'discord_admin'],
+        activeTools: ['discord_context', 'discord_messages', 'discord_files', 'discord_server', 'discord_admin'],
       };
 
       // Act
@@ -103,6 +103,7 @@ describe('capabilityPrompt', () => {
       expect(prompt).toContain('Discord-internal profiles, summaries, instruction reads, or analytics → discord_context.');
       expect(prompt).toContain('exact Discord message evidence or Discord-native delivery → discord_messages.');
       expect(prompt).toContain('Discord attachment discovery, paging, or resend flows → discord_files.');
+      expect(prompt).toContain('Discord guild resources or thread lifecycle → discord_server.');
       expect(prompt).toContain('Discord admin writes or raw Discord REST fallback → discord_admin.');
       expect(prompt).toContain('search_history / search_with_context');
       expect(prompt).toContain('get_channel_summary');
@@ -111,7 +112,8 @@ describe('capabilityPrompt', () => {
       expect(prompt).toContain('read_attachment');
       expect(prompt).toContain('send_attachment');
       expect(prompt).toContain('Final Discord-native delivery in the channel → send with plain / components_v2 presentation.');
-      expect(prompt).toContain('Polls, threads, and reactions → create_poll / create_thread / add_reaction / remove_self_reaction.');
+      expect(prompt).toContain('Polls and reactions → create_poll / add_reaction / remove_self_reaction.');
+      expect(prompt).toContain('Thread lifecycle → discord_server');
       expect(prompt).toContain('Installation link generation → get_invite_url.');
       expect(prompt).toContain('Unsupported admin-grade guild-scoped reads/writes after typed-action checks → api.');
       expect(prompt).not.toContain('memory.get_channel');
@@ -135,7 +137,7 @@ describe('capabilityPrompt', () => {
 
     it('keeps key anti-pattern guidance in the smaller tool guide', () => {
       const prompt = buildCapabilityPromptSection({
-        activeTools: ['discord_context', 'discord_messages', 'discord_files', 'discord_admin', 'web', 'github'],
+        activeTools: ['discord_context', 'discord_messages', 'discord_files', 'discord_server', 'discord_admin', 'web', 'github'],
       });
 
       expect(prompt).toContain('ANTI-PATTERNS');
@@ -143,6 +145,7 @@ describe('capabilityPrompt', () => {
       expect(prompt).toContain('discord_context.get_channel_summary when the user wants exact quotes or message-level evidence');
       expect(prompt).toContain('web for Discord-internal questions when Discord domain tools can answer them');
       expect(prompt).toContain('discord_admin.api when a typed Discord action already covers the request');
+      expect(prompt).toContain('discord_messages.create_thread for new thread workflows when discord_server is available');
       expect(prompt).toContain('plain assistant prose for a final rich in-channel reply that should be delivered via send');
       expect(prompt).toContain('github file.get before code.search when the path is unknown');
       expect(prompt).toContain('extra tool calls after you already have enough evidence to answer');
@@ -178,10 +181,10 @@ describe('capabilityPrompt', () => {
     it('is materially shorter than the previous verbose prompt shape', () => {
       const prompt = buildCapabilityPromptSection({
         model: 'kimi',
-        activeTools: ['discord_context', 'discord_messages', 'discord_files', 'discord_admin', 'web', 'github', 'system_time', 'system_plan', 'image_generate'],
+        activeTools: ['discord_context', 'discord_messages', 'discord_files', 'discord_server', 'discord_admin', 'web', 'github', 'system_time', 'system_plan', 'image_generate'],
       });
 
-      expect(prompt.length).toBeLessThan(11050);
+      expect(prompt.length).toBeLessThan(12500);
     });
   });
 

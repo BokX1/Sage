@@ -5,6 +5,7 @@ import {
   discordContextTool,
   discordFilesTool,
   discordMessagesTool,
+  discordServerTool,
 } from './discordDomainTools';
 import { webTool } from './webTool';
 import { githubTool } from './githubTool';
@@ -328,6 +329,7 @@ const DEFAULT_TOOL_DEFINITIONS = [
   discordContextTool,
   discordMessagesTool,
   discordFilesTool,
+  discordServerTool,
   discordAdminTool,
   generateImageTool,
   webTool,

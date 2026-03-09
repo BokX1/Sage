@@ -29,6 +29,7 @@ import {
   discordContextTool,
   discordFilesTool,
   discordMessagesTool,
+  discordServerTool,
 } from '../../../../src/features/agent-runtime/discordDomainTools';
 import { githubTool } from '../../../../src/features/agent-runtime/githubTool';
 import { webTool } from '../../../../src/features/agent-runtime/webTool';
@@ -117,12 +118,14 @@ describe('tool help actions', () => {
     registry.register(discordContextTool);
     registry.register(discordMessagesTool);
     registry.register(discordFilesTool);
+    registry.register(discordServerTool);
     registry.register(discordAdminTool);
 
     const results = await Promise.all([
       registry.executeValidated({ name: 'discord_context', args: { action: 'help' } }, ctx),
       registry.executeValidated({ name: 'discord_messages', args: { action: 'help' } }, ctx),
       registry.executeValidated({ name: 'discord_files', args: { action: 'help' } }, ctx),
+      registry.executeValidated({ name: 'discord_server', args: { action: 'help' } }, ctx),
       registry.executeValidated({ name: 'discord_admin', args: { action: 'help' } }, ctx),
     ]);
 
@@ -148,7 +151,13 @@ describe('tool help actions', () => {
       expect.arrayContaining(['read_attachment', 'send_attachment']),
     );
 
-    const adminPayload = results[3];
+    const serverPayload = results[3];
+    if (!serverPayload.success) throw new Error(serverPayload.error);
+    expect((serverPayload.result as Record<string, unknown>).action_names).toEqual(
+      expect.arrayContaining(['list_channels', 'get_thread', 'update_thread']),
+    );
+
+    const adminPayload = results[4];
     if (!adminPayload.success) throw new Error(adminPayload.error);
     expect((adminPayload.result as Record<string, unknown>).action_names).toEqual(
       expect.arrayContaining(['api', 'update_server_instructions']),

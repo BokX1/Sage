@@ -14,6 +14,7 @@ describe('default agentic tools', () => {
       'discord_context',
       'discord_files',
       'discord_messages',
+      'discord_server',
       'github',
       'image_generate',
       'npm_info',

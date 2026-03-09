@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { PermissionsBitField } from 'discord.js';
 
 import type { ToolExecutionContext } from '../toolRegistry';
 import {
@@ -38,6 +39,8 @@ import {
 import {
   discordRestRequestGuildScoped,
 } from '../../../platform/discord/discordRestPolicy';
+import { filterChannelIdsByMemberAccess } from '../../../platform/discord/channel-access';
+import { client } from '../../../platform/discord/client';
 import { config } from '../../../platform/config/env';
 
 export const discordThinkField = z
@@ -84,6 +87,17 @@ export function addSinceVariantValidation<T extends z.ZodObject<z.ZodRawShape>>(
 
 type DiscordActionArgs = Record<string, unknown> & { action: string };
 type DiscordRestFileInput = z.infer<typeof discordRestFileInputSchema>;
+type JsonRecord = Record<string, unknown>;
+type DiscordRestResult = Record<string, unknown> & {
+  ok?: boolean;
+  status?: number;
+  statusText?: string;
+  data?: unknown;
+};
+
+const VIEW_CHANNEL_REQUIREMENTS = [
+  { flag: PermissionsBitField.Flags.ViewChannel, label: 'ViewChannel' },
+];
 
 function asAction<T>(args: DiscordActionArgs): T {
   return args as unknown as T;
@@ -167,6 +181,285 @@ function deriveSinceIso(params: {
     return new Date(Date.now() - params.sinceDays * 24 * 60 * 60 * 1000).toISOString();
   }
   return undefined;
+}
+
+function isJsonRecord(value: unknown): value is JsonRecord {
+  return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+function toJsonRecord(value: unknown): JsonRecord {
+  if (!isJsonRecord(value)) {
+    throw new Error('Discord API returned an unexpected object shape.');
+  }
+  return value;
+}
+
+function toJsonRecordArray(value: unknown): JsonRecord[] {
+  if (!Array.isArray(value)) {
+    throw new Error('Discord API returned an unexpected list shape.');
+  }
+  return value.filter((item): item is JsonRecord => isJsonRecord(item));
+}
+
+function optionalString(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined;
+}
+
+function optionalBoolean(value: unknown): boolean | undefined {
+  return typeof value === 'boolean' ? value : undefined;
+}
+
+function optionalNumber(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+}
+
+function optionalStringArray(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  return value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0);
+}
+
+function discordTypeLabel(rawType: unknown): string {
+  switch (rawType) {
+    case 0:
+      return 'text';
+    case 2:
+      return 'voice';
+    case 4:
+      return 'category';
+    case 5:
+      return 'announcement';
+    case 10:
+      return 'announcement_thread';
+    case 11:
+      return 'public_thread';
+    case 12:
+      return 'private_thread';
+    case 13:
+      return 'stage';
+    case 15:
+      return 'forum';
+    case 16:
+      return 'media';
+    default:
+      return 'unknown';
+  }
+}
+
+function summarizePermissions(value: unknown): {
+  bitfield: string | null;
+  isAdministrator: boolean;
+  names: string[];
+} {
+  if (typeof value !== 'string' && typeof value !== 'number') {
+    return { bitfield: null, isAdministrator: false, names: [] };
+  }
+
+  try {
+    const permissions = new PermissionsBitField(
+      typeof value === 'string'
+        ? BigInt(value)
+        : BigInt(Math.trunc(value)),
+    );
+    return {
+      bitfield: permissions.bitfield.toString(),
+      isAdministrator: permissions.has(PermissionsBitField.Flags.Administrator),
+      names: permissions.toArray().slice(0, 32),
+    };
+  } catch {
+    return {
+      bitfield: typeof value === 'string' ? value : String(value),
+      isAdministrator: false,
+      names: [],
+    };
+  }
+}
+
+function shapePermissionOverwrites(value: unknown): Array<Record<string, unknown>> {
+  return toJsonRecordArray(value).map((overwrite) => ({
+    id: optionalString(overwrite.id) ?? null,
+    type: overwrite.type === 0 ? 'role' : overwrite.type === 1 ? 'member' : String(overwrite.type ?? 'unknown'),
+    allow: summarizePermissions(overwrite.allow),
+    deny: summarizePermissions(overwrite.deny),
+  }));
+}
+
+function shapeChannelRecord(channel: JsonRecord): Record<string, unknown> {
+  const permissionOverwrites = Array.isArray(channel.permission_overwrites)
+    ? shapePermissionOverwrites(channel.permission_overwrites)
+    : [];
+  const type = discordTypeLabel(channel.type);
+  const threadMetadata = isJsonRecord(channel.thread_metadata) ? channel.thread_metadata : null;
+  const availableTags = Array.isArray(channel.available_tags)
+    ? channel.available_tags
+      .filter((tag): tag is JsonRecord => isJsonRecord(tag))
+      .map((tag) => ({
+        id: optionalString(tag.id) ?? null,
+        name: optionalString(tag.name) ?? null,
+        moderated: optionalBoolean(tag.moderated) ?? false,
+        emojiId: optionalString(tag.emoji_id) ?? null,
+        emojiName: optionalString(tag.emoji_name) ?? null,
+      }))
+    : [];
+
+  return {
+    id: optionalString(channel.id) ?? null,
+    guildId: optionalString(channel.guild_id) ?? null,
+    parentId: optionalString(channel.parent_id) ?? null,
+    name: optionalString(channel.name) ?? null,
+    type,
+    position: optionalNumber(channel.position) ?? null,
+    topic: optionalString(channel.topic) ?? null,
+    nsfw: optionalBoolean(channel.nsfw) ?? false,
+    rateLimitPerUser: optionalNumber(channel.rate_limit_per_user) ?? null,
+    defaultAutoArchiveDurationMinutes: optionalNumber(channel.default_auto_archive_duration) ?? null,
+    defaultThreadRateLimitPerUser: optionalNumber(channel.default_thread_rate_limit_per_user) ?? null,
+    isThread: threadMetadata !== null,
+    threadMetadata: threadMetadata
+      ? {
+        archived: optionalBoolean(threadMetadata.archived) ?? false,
+        locked: optionalBoolean(threadMetadata.locked) ?? false,
+        autoArchiveDurationMinutes: optionalNumber(threadMetadata.auto_archive_duration) ?? null,
+        archiveTimestamp: optionalString(threadMetadata.archive_timestamp) ?? null,
+        createTimestamp: optionalString(threadMetadata.create_timestamp) ?? null,
+        invitable: optionalBoolean(threadMetadata.invitable) ?? null,
+      }
+      : null,
+    messageCount: optionalNumber(channel.message_count) ?? null,
+    memberCount: optionalNumber(channel.member_count) ?? null,
+    totalMessageSent: optionalNumber(channel.total_message_sent) ?? null,
+    lastMessageId: optionalString(channel.last_message_id) ?? null,
+    lastPinTimestamp: optionalString(channel.last_pin_timestamp) ?? null,
+    permissions: summarizePermissions(channel.permissions),
+    flags: optionalNumber(channel.flags) ?? null,
+    availableTags,
+    appliedTags: optionalStringArray(channel.applied_tags) ?? [],
+    permissionOverwrites,
+  };
+}
+
+function shapeRoleRecord(role: JsonRecord): Record<string, unknown> {
+  return {
+    id: optionalString(role.id) ?? null,
+    name: optionalString(role.name) ?? null,
+    color: optionalNumber(role.color) ?? null,
+    colorHex:
+      typeof role.color === 'number'
+        ? `#${role.color.toString(16).padStart(6, '0')}`
+        : null,
+    hoist: optionalBoolean(role.hoist) ?? false,
+    managed: optionalBoolean(role.managed) ?? false,
+    mentionable: optionalBoolean(role.mentionable) ?? false,
+    position: optionalNumber(role.position) ?? null,
+    permissions: summarizePermissions(role.permissions),
+  };
+}
+
+function shapeScheduledEventRecord(event: JsonRecord): Record<string, unknown> {
+  const entityMetadata = isJsonRecord(event.entity_metadata) ? event.entity_metadata : null;
+  return {
+    id: optionalString(event.id) ?? null,
+    name: optionalString(event.name) ?? null,
+    description: optionalString(event.description) ?? null,
+    status: optionalNumber(event.status) ?? null,
+    entityType: optionalNumber(event.entity_type) ?? null,
+    privacyLevel: optionalNumber(event.privacy_level) ?? null,
+    scheduledStartTime: optionalString(event.scheduled_start_time) ?? null,
+    scheduledEndTime: optionalString(event.scheduled_end_time) ?? null,
+    channelId: optionalString(event.channel_id) ?? null,
+    creatorId: optionalString(event.creator_id) ?? null,
+    userCount: optionalNumber(event.user_count) ?? null,
+    location: entityMetadata ? optionalString(entityMetadata.location) ?? null : null,
+  };
+}
+
+function shapeMemberRecord(member: JsonRecord): Record<string, unknown> {
+  const user = isJsonRecord(member.user) ? member.user : null;
+  const roles = optionalStringArray(member.roles) ?? [];
+  return {
+    userId: user ? optionalString(user.id) ?? null : null,
+    username: user ? optionalString(user.username) ?? null : null,
+    globalName: user ? optionalString(user.global_name) ?? null : null,
+    discriminator: user ? optionalString(user.discriminator) ?? null : null,
+    bot: user ? optionalBoolean(user.bot) ?? false : false,
+    nick: optionalString(member.nick) ?? null,
+    joinedAt: optionalString(member.joined_at) ?? null,
+    premiumSince: optionalString(member.premium_since) ?? null,
+    pending: optionalBoolean(member.pending) ?? false,
+    communicationDisabledUntil: optionalString(member.communication_disabled_until) ?? null,
+    roleIds: roles,
+  };
+}
+
+function shapeAutomodRuleRecord(rule: JsonRecord): Record<string, unknown> {
+  return {
+    id: optionalString(rule.id) ?? null,
+    name: optionalString(rule.name) ?? null,
+    creatorId: optionalString(rule.creator_id) ?? null,
+    enabled: optionalBoolean(rule.enabled) ?? false,
+    eventType: optionalNumber(rule.event_type) ?? null,
+    triggerType: optionalNumber(rule.trigger_type) ?? null,
+    exemptChannels: optionalStringArray(rule.exempt_channels) ?? [],
+    exemptRoles: optionalStringArray(rule.exempt_roles) ?? [],
+    actionCount: Array.isArray(rule.actions) ? rule.actions.length : 0,
+  };
+}
+
+async function readDiscordGuildResource(params: {
+  ctx: ToolExecutionContext;
+  path: string;
+  query?: Record<string, string | number | boolean | null | undefined>;
+  maxResponseChars?: number;
+}): Promise<unknown> {
+  const guildId = requireGuildContext(params.ctx.guildId);
+  const result = await discordRestRequestGuildScoped({
+    guildId,
+    method: 'GET',
+    path: params.path,
+    query: params.query,
+    maxResponseChars: params.maxResponseChars,
+    signal: params.ctx.signal,
+  }) as DiscordRestResult;
+
+  if (result.ok !== true) {
+    throw new Error(
+      `Discord API request failed (${String(result.status ?? 'unknown')} ${String(result.statusText ?? '').trim()}).`,
+    );
+  }
+
+  return result.data;
+}
+
+async function assertRequesterCanViewChannel(ctx: ToolExecutionContext, channelId: string): Promise<void> {
+  const guildId = requireGuildContext(ctx.guildId);
+  const allowed = await filterChannelIdsByMemberAccess({
+    guildId,
+    userId: ctx.userId,
+    channelIds: [channelId],
+    requirements: VIEW_CHANNEL_REQUIREMENTS,
+  });
+  if (!allowed.has(channelId)) {
+    throw new Error('You do not have access to that channel.');
+  }
+}
+
+async function filterAccessibleChannels(
+  ctx: ToolExecutionContext,
+  channels: JsonRecord[],
+): Promise<JsonRecord[]> {
+  if (!ctx.guildId) return [];
+  const channelIds = channels
+    .map((channel) => optionalString(channel.id))
+    .filter((id): id is string => !!id);
+  const allowedIds = await filterChannelIdsByMemberAccess({
+    guildId: ctx.guildId,
+    userId: ctx.userId,
+    channelIds,
+    requirements: VIEW_CHANNEL_REQUIREMENTS,
+  });
+  return channels.filter((channel) => {
+    const channelId = optionalString(channel.id);
+    return !!channelId && allowedIds.has(channelId);
+  });
 }
 
 function queueDiscordRestWrite(params: {
@@ -382,6 +675,376 @@ export async function executeDiscordFilesAction(
     }
     default:
       throw new Error(`Unsupported discord_files action: ${args.action}`);
+  }
+}
+
+export async function executeDiscordServerAction(
+  args: DiscordActionArgs,
+  ctx: ToolExecutionContext,
+): Promise<unknown> {
+  switch (args.action) {
+    case 'list_channels': {
+      const data = asAction<{
+        type?: 'text' | 'voice' | 'category' | 'announcement' | 'forum' | 'media' | 'stage';
+        limit?: number;
+      }>(args);
+      const channels = toJsonRecordArray(
+        await readDiscordGuildResource({
+          ctx,
+          path: `/guilds/${requireGuildContext(ctx.guildId)}/channels`,
+          maxResponseChars: 50_000,
+        }),
+      );
+      const accessible = await filterAccessibleChannels(ctx, channels);
+      const filtered = accessible
+        .map((channel) => shapeChannelRecord(channel))
+        .filter((channel) => !data.type || channel.type === data.type)
+        .slice(0, data.limit ?? 50);
+      return {
+        ok: true,
+        action: 'list_channels',
+        guildId: requireGuildContext(ctx.guildId),
+        totalChannels: channels.length,
+        accessibleCount: accessible.length,
+        items: filtered,
+      };
+    }
+    case 'get_channel': {
+      const data = asAction<{ channelId: string }>(args);
+      await assertRequesterCanViewChannel(ctx, data.channelId);
+      const channel = toJsonRecord(
+        await readDiscordGuildResource({
+          ctx,
+          path: `/channels/${data.channelId}`,
+          maxResponseChars: 20_000,
+        }),
+      );
+      return {
+        ok: true,
+        action: 'get_channel',
+        channel: shapeChannelRecord(channel),
+      };
+    }
+    case 'list_roles': {
+      const data = asAction<{ limit?: number }>(args);
+      const roles = toJsonRecordArray(
+        await readDiscordGuildResource({
+          ctx,
+          path: `/guilds/${requireGuildContext(ctx.guildId)}/roles`,
+          maxResponseChars: 50_000,
+        }),
+      );
+      return {
+        ok: true,
+        action: 'list_roles',
+        guildId: requireGuildContext(ctx.guildId),
+        items: roles
+          .sort((left, right) => (optionalNumber(right.position) ?? 0) - (optionalNumber(left.position) ?? 0))
+          .slice(0, data.limit ?? 50)
+          .map((role) => shapeRoleRecord(role)),
+      };
+    }
+    case 'list_threads': {
+      const data = asAction<{
+        parentChannelId?: string;
+        includeArchived?: boolean;
+        limit?: number;
+      }>(args);
+      if (data.includeArchived && !data.parentChannelId) {
+        throw new Error('includeArchived requires parentChannelId.');
+      }
+
+      if (data.parentChannelId) {
+        await assertRequesterCanViewChannel(ctx, data.parentChannelId);
+      }
+
+      const activeThreadsPayload = toJsonRecord(
+        await readDiscordGuildResource({
+          ctx,
+          path: `/guilds/${requireGuildContext(ctx.guildId)}/threads/active`,
+          maxResponseChars: 50_000,
+        }),
+      );
+
+      const activeThreads = toJsonRecordArray(activeThreadsPayload.threads);
+      let threads = activeThreads;
+
+      if (data.parentChannelId) {
+        threads = threads.filter((thread) => optionalString(thread.parent_id) === data.parentChannelId);
+      }
+
+      if (data.includeArchived && data.parentChannelId) {
+        const archivedSources = [
+          `/channels/${data.parentChannelId}/threads/archived/public`,
+          `/channels/${data.parentChannelId}/users/@me/threads/archived/private`,
+        ];
+
+        for (const path of archivedSources) {
+          try {
+            const archivedPayload = await readDiscordGuildResource({
+              ctx,
+              path,
+              maxResponseChars: 50_000,
+            });
+            if (isJsonRecord(archivedPayload) && Array.isArray(archivedPayload.threads)) {
+              threads = [...threads, ...toJsonRecordArray(archivedPayload.threads)];
+            }
+          } catch {
+            // Some thread archives are permission-gated. Active results remain valid.
+          }
+        }
+      }
+
+      const accessible = await filterAccessibleChannels(ctx, threads);
+      const deduped = new Map<string, JsonRecord>();
+      for (const thread of accessible) {
+        const threadId = optionalString(thread.id);
+        if (!threadId || deduped.has(threadId)) continue;
+        deduped.set(threadId, thread);
+      }
+
+      return {
+        ok: true,
+        action: 'list_threads',
+        guildId: requireGuildContext(ctx.guildId),
+        parentChannelId: data.parentChannelId ?? null,
+        includeArchived: data.includeArchived ?? false,
+        items: Array.from(deduped.values())
+          .slice(0, data.limit ?? 50)
+          .map((thread) => shapeChannelRecord(thread)),
+      };
+    }
+    case 'get_thread': {
+      const data = asAction<{ threadId: string }>(args);
+      await assertRequesterCanViewChannel(ctx, data.threadId);
+      const thread = toJsonRecord(
+        await readDiscordGuildResource({
+          ctx,
+          path: `/channels/${data.threadId}`,
+          maxResponseChars: 20_000,
+        }),
+      );
+      return {
+        ok: true,
+        action: 'get_thread',
+        thread: shapeChannelRecord(thread),
+      };
+    }
+    case 'list_scheduled_events': {
+      const data = asAction<{ includeCompleted?: boolean; limit?: number }>(args);
+      const events = toJsonRecordArray(
+        await readDiscordGuildResource({
+          ctx,
+          path: `/guilds/${requireGuildContext(ctx.guildId)}/scheduled-events`,
+          query: { with_user_count: true },
+          maxResponseChars: 50_000,
+        }),
+      );
+      const filtered = data.includeCompleted
+        ? events
+        : events.filter((event) => {
+          const status = optionalNumber(event.status);
+          return status === 1 || status === 2;
+        });
+      return {
+        ok: true,
+        action: 'list_scheduled_events',
+        guildId: requireGuildContext(ctx.guildId),
+        items: filtered.slice(0, data.limit ?? 50).map((event) => shapeScheduledEventRecord(event)),
+      };
+    }
+    case 'get_scheduled_event': {
+      const data = asAction<{ eventId: string }>(args);
+      const event = toJsonRecord(
+        await readDiscordGuildResource({
+          ctx,
+          path: `/guilds/${requireGuildContext(ctx.guildId)}/scheduled-events/${data.eventId}`,
+          query: { with_user_count: true },
+          maxResponseChars: 20_000,
+        }),
+      );
+      return {
+        ok: true,
+        action: 'get_scheduled_event',
+        event: shapeScheduledEventRecord(event),
+      };
+    }
+    case 'list_members': {
+      const data = asAction<{ query?: string; roleId?: string; limit?: number }>(args);
+      assertAdmin(ctx.invokerIsAdmin);
+      const limit = data.limit ?? 25;
+      const path = data.query?.trim()
+        ? `/guilds/${requireGuildContext(ctx.guildId)}/members/search`
+        : `/guilds/${requireGuildContext(ctx.guildId)}/members`;
+      const members = toJsonRecordArray(
+        await readDiscordGuildResource({
+          ctx,
+          path,
+          query: data.query?.trim()
+            ? { query: data.query.trim(), limit }
+            : { limit },
+          maxResponseChars: 50_000,
+        }),
+      );
+      const filtered = data.roleId
+        ? members.filter((member) => (optionalStringArray(member.roles) ?? []).includes(data.roleId!))
+        : members;
+      return {
+        ok: true,
+        action: 'list_members',
+        guildId: requireGuildContext(ctx.guildId),
+        items: filtered.slice(0, limit).map((member) => shapeMemberRecord(member)),
+      };
+    }
+    case 'get_member': {
+      const data = asAction<{ userId: string }>(args);
+      assertAdmin(ctx.invokerIsAdmin);
+      const member = toJsonRecord(
+        await readDiscordGuildResource({
+          ctx,
+          path: `/guilds/${requireGuildContext(ctx.guildId)}/members/${data.userId}`,
+          maxResponseChars: 20_000,
+        }),
+      );
+      return {
+        ok: true,
+        action: 'get_member',
+        member: shapeMemberRecord(member),
+      };
+    }
+    case 'get_permission_snapshot': {
+      const data = asAction<{ channelId: string; userId?: string; roleId?: string }>(args);
+      assertAdmin(ctx.invokerIsAdmin);
+      const guild = await client.guilds.fetch(requireGuildContext(ctx.guildId));
+      const channel = await guild.channels.fetch(data.channelId);
+      if (!channel || channel.isDMBased() || !('permissionsFor' in channel)) {
+        throw new Error('Target channel is unavailable or does not support permission snapshots.');
+      }
+
+      const target = data.userId
+        ? await guild.members.fetch(data.userId)
+        : await guild.roles.fetch(data.roleId!);
+      if (!target) {
+        throw new Error('Target user or role was not found.');
+      }
+
+      const permissions = channel.permissionsFor(target);
+      if (!permissions) {
+        throw new Error('Unable to resolve permissions for the requested target.');
+      }
+
+      return {
+        ok: true,
+        action: 'get_permission_snapshot',
+        guildId: guild.id,
+        channelId: channel.id,
+        targetType: data.userId ? 'member' : 'role',
+        targetId: data.userId ?? data.roleId ?? null,
+        permissions: summarizePermissions(permissions.bitfield.toString()),
+      };
+    }
+    case 'list_automod_rules': {
+      const data = asAction<{ limit?: number }>(args);
+      assertAdmin(ctx.invokerIsAdmin);
+      const rules = toJsonRecordArray(
+        await readDiscordGuildResource({
+          ctx,
+          path: `/guilds/${requireGuildContext(ctx.guildId)}/auto-moderation/rules`,
+          maxResponseChars: 50_000,
+        }),
+      );
+      return {
+        ok: true,
+        action: 'list_automod_rules',
+        guildId: requireGuildContext(ctx.guildId),
+        items: rules.slice(0, data.limit ?? 50).map((rule) => shapeAutomodRuleRecord(rule)),
+      };
+    }
+    case 'create_thread': {
+      const data = asAction<{
+        name: string;
+        messageId?: string;
+        channelId?: string;
+        autoArchiveDurationMinutes?: 60 | 1440 | 4320 | 10080;
+        reason?: string;
+      }>(args);
+      assertNotAutopilot(ctx.invokedBy, 'create_thread');
+      return requestDiscordInteractionForTool({
+        guildId: requireGuildContext(ctx.guildId),
+        channelId: ctx.channelId,
+        requestedBy: ctx.userId,
+        invokedBy: ctx.invokedBy,
+        request: {
+          action: 'create_thread',
+          name: data.name,
+          messageId: data.messageId,
+          channelId: data.channelId?.trim() || undefined,
+          autoArchiveDurationMinutes: data.autoArchiveDurationMinutes,
+          reason: data.reason,
+        },
+      });
+    }
+    case 'update_thread': {
+      const data = asAction<{
+        threadId: string;
+        name?: string;
+        archived?: boolean;
+        locked?: boolean;
+        autoArchiveDurationMinutes?: 60 | 1440 | 4320 | 10080;
+        reason?: string;
+      }>(args);
+      assertNotAutopilot(ctx.invokedBy, 'update_thread');
+      return requestDiscordInteractionForTool({
+        guildId: requireGuildContext(ctx.guildId),
+        channelId: ctx.channelId,
+        requestedBy: ctx.userId,
+        invokedBy: ctx.invokedBy,
+        request: {
+          action: 'update_thread',
+          threadId: data.threadId,
+          name: data.name,
+          archived: data.archived,
+          locked: data.locked,
+          autoArchiveDurationMinutes: data.autoArchiveDurationMinutes,
+          reason: data.reason,
+        },
+      });
+    }
+    case 'join_thread':
+    case 'leave_thread': {
+      const data = asAction<{ threadId: string; reason?: string }>(args);
+      assertNotAutopilot(ctx.invokedBy, args.action);
+      return requestDiscordInteractionForTool({
+        guildId: requireGuildContext(ctx.guildId),
+        channelId: ctx.channelId,
+        requestedBy: ctx.userId,
+        invokedBy: ctx.invokedBy,
+        request: {
+          action: args.action,
+          threadId: data.threadId,
+          reason: data.reason,
+        },
+      });
+    }
+    case 'add_thread_member':
+    case 'remove_thread_member': {
+      const data = asAction<{ threadId: string; userId: string; reason?: string }>(args);
+      assertNotAutopilot(ctx.invokedBy, args.action);
+      return requestDiscordInteractionForTool({
+        guildId: requireGuildContext(ctx.guildId),
+        channelId: ctx.channelId,
+        requestedBy: ctx.userId,
+        invokedBy: ctx.invokedBy,
+        request: {
+          action: args.action,
+          threadId: data.threadId,
+          userId: data.userId,
+          reason: data.reason,
+        },
+      });
+    }
+    default:
+      throw new Error(`Unsupported discord_server action: ${args.action}`);
   }
 }
 
@@ -606,28 +1269,7 @@ export async function executeDiscordMessagesAction(
       });
     }
     case 'create_thread': {
-      const data = asAction<{
-        name: string;
-        messageId?: string;
-        channelId?: string;
-        autoArchiveDurationMinutes?: 60 | 1440 | 4320 | 10080;
-        reason?: string;
-      }>(args);
-      assertNotAutopilot(ctx.invokedBy, 'create_thread');
-      return requestDiscordInteractionForTool({
-        guildId: requireGuildContext(ctx.guildId),
-        channelId: ctx.channelId,
-        requestedBy: ctx.userId,
-        invokedBy: ctx.invokedBy,
-        request: {
-          action: 'create_thread',
-          name: data.name,
-          messageId: data.messageId,
-          channelId: data.channelId?.trim() || undefined,
-          autoArchiveDurationMinutes: data.autoArchiveDurationMinutes,
-          reason: data.reason,
-        },
-      });
+      return executeDiscordServerAction(args, ctx);
     }
     case 'add_reaction': {
       const data = asAction<{

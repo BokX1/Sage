@@ -116,6 +116,39 @@ describe('adminActionService interaction schemas', () => {
     );
   });
 
+  it('accepts update_thread interaction requests', () => {
+    const parsed = discordInteractionRequestSchema.parse({
+      action: 'update_thread',
+      threadId: '1234567890',
+      archived: true,
+      reason: 'Resolved',
+    });
+
+    expect(parsed).toEqual(
+      expect.objectContaining({
+        action: 'update_thread',
+        threadId: '1234567890',
+        archived: true,
+      }),
+    );
+  });
+
+  it('accepts thread membership interaction requests', () => {
+    const parsed = discordInteractionRequestSchema.parse({
+      action: 'add_thread_member',
+      threadId: '1234567890',
+      userId: '2222222222',
+    });
+
+    expect(parsed).toEqual(
+      expect.objectContaining({
+        action: 'add_thread_member',
+        threadId: '1234567890',
+        userId: '2222222222',
+      }),
+    );
+  });
+
   it('rejects components_v2 send_message payloads that reference unknown attachments', () => {
     expect(() =>
       discordInteractionRequestSchema.parse({

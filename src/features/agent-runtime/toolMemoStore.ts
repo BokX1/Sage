@@ -54,6 +54,7 @@ export function buildToolMemoScopeKey(toolName: string, ctx: ToolExecutionContex
     normalizedTool === 'discord_context' ||
     normalizedTool === 'discord_messages' ||
     normalizedTool === 'discord_files' ||
+    normalizedTool === 'discord_server' ||
     normalizedTool === 'discord_admin'
   ) {
     return `discord::${guildId}::${ctx.channelId.trim()}::${ctx.userId.trim()}::${profile}`;

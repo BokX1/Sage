@@ -6,12 +6,14 @@ import {
   discordContextTool,
   discordFilesTool,
   discordMessagesTool,
+  discordServerTool,
 } from '@/features/agent-runtime/discordDomainTools';
 import {
   DISCORD_ADMIN_ACTION_CATALOG,
   DISCORD_CONTEXT_ACTION_CATALOG,
   DISCORD_FILES_ACTION_CATALOG,
   DISCORD_MESSAGES_ACTION_CATALOG,
+  DISCORD_SERVER_ACTION_CATALOG,
 } from '@/features/agent-runtime/discordToolCatalog';
 
 function extractTopLevelActionConsts(schema: unknown): string[] {
@@ -66,6 +68,12 @@ describe('discord domain tool catalogs', () => {
       tool: discordFilesTool,
       name: 'discord_files',
       catalog: DISCORD_FILES_ACTION_CATALOG,
+      readOnlyOnly: false,
+    },
+    {
+      tool: discordServerTool,
+      name: 'discord_server',
+      catalog: DISCORD_SERVER_ACTION_CATALOG,
       readOnlyOnly: false,
     },
     {

@@ -69,9 +69,14 @@ export function buildCapabilityPromptSection(
   const hasDiscordContextTool = normalizedTools.includes('discord_context');
   const hasDiscordMessagesTool = normalizedTools.includes('discord_messages');
   const hasDiscordFilesTool = normalizedTools.includes('discord_files');
+  const hasDiscordServerTool = normalizedTools.includes('discord_server');
   const hasDiscordAdminTool = normalizedTools.includes('discord_admin');
   const hasAnyDiscordTool =
-    hasDiscordContextTool || hasDiscordMessagesTool || hasDiscordFilesTool || hasDiscordAdminTool;
+    hasDiscordContextTool ||
+    hasDiscordMessagesTool ||
+    hasDiscordFilesTool ||
+    hasDiscordServerTool ||
+    hasDiscordAdminTool;
   const hasGenerateImage = normalizedTools.includes('image_generate');
 
   // --- Discord guardrails ---
@@ -108,7 +113,7 @@ export function buildCapabilityPromptSection(
     '- Use the minimum sufficient tool path, then stop once you have enough evidence to answer.',
     '- Batch multiple read-only tools (like web reads or GitHub file lookups) in a single `tool_calls` JSON envelope for parallel execution. Do NOT loop reading them one by one across multiple rounds.',
     hasAnyDiscordTool
-      ? '- Discord tool behavior: Discord surfaces are split by domain. Use `discord_context` for profiles/summaries/instruction reads/analytics, `discord_messages` for message history and Discord-native delivery, `discord_files` for attachment recall, and `discord_admin` for admin actions or raw API fallback.'
+      ? '- Discord tool behavior: Discord surfaces are split by domain. Use `discord_context` for profiles/summaries/instruction reads/analytics, `discord_messages` for message history and Discord-native delivery, `discord_files` for attachment recall, `discord_server` for guild resources and thread lifecycle, and `discord_admin` for approval-gated admin writes or raw API fallback.'
       : '- Discord tool behavior: you do not have access to Discord profiles, summaries, instructions, messages, files, or actions via tools this turn.',
     hasDiscordMessagesTool
       ? '- When Sage chooses a Discord-native final reply format, call `discord_messages` action `send` with `presentation="plain" | "components_v2"` instead of replying only in prose.'
@@ -129,7 +134,7 @@ export function buildCapabilityPromptSection(
       ? '- Server instructions: the <server_instructions> block (if present) contains admin-configured guild behavior/persona instructions. To update it, use `discord_admin` action `update_server_instructions` (admin only). Changes take effect on the next turn.'
       : '',
     hasAnyDiscordTool && params.invokedBy === 'autopilot'
-      ? '- Autopilot-restricted Discord reads include server-wide file lookup, attachment paging, guild-wide message search, user timelines, and top relationship summaries.'
+      ? '- Autopilot-restricted Discord reads include server-wide file lookup, attachment paging, guild-wide message search, user timelines, top relationship summaries, and all discord_server writes.'
       : '',
     ...discordGuardrailLines,
     hasGenerateImage
@@ -148,7 +153,7 @@ export function buildCapabilityPromptSection(
         '- Plain messages are preferred for short conversational replies, single-paragraph answers, or cases where extra structure would add friction.',
         '- Components V2 may be used freely when structure, grouped evidence, media, attachments, status blocks, or guided next actions materially improve the response.',
         '- For Discord-native final answers, prefer `discord_messages.send` over plain assistant prose so the runtime can render the chosen presentation mode correctly.',
-        '- Typed Discord actions are the first choice for common tasks; use `discord_admin.api` only as a fallback for unsupported admin-grade reads or advanced admin operations.',
+        '- Typed Discord actions are the first choice for common tasks; use `discord_admin.api` only as a fallback after discord_server and other typed Discord actions are exhausted.',
         '- Avoid decorative layouts that do not add clarity.',
         '- Components V2 requires the `IS_COMPONENTS_V2` flag.',
         '- When using Components V2, do not combine it with `content`, `embeds`, `poll`, or `stickers` in the same message.',
@@ -205,6 +210,11 @@ function buildToolSelectionGuide(activeTools: string[]): string {
     lines.push('');
   }
 
+  if (activeTools.includes('discord_server')) {
+    lines.push(...getRoutedToolSelectionHints('discord_server').map((line) => line.replaceAll('->', '→')));
+    lines.push('');
+  }
+
   if (activeTools.includes('discord_admin')) {
     lines.push(...getRoutedToolSelectionHints('discord_admin').map((line) => line.replaceAll('->', '→')));
     lines.push('');
@@ -258,6 +268,9 @@ function buildToolSelectionGuide(activeTools: string[]): string {
   if (activeTools.includes('discord_admin')) {
     lines.push('  ✗ discord_admin.api when a typed Discord action already covers the request');
   }
+  if (activeTools.includes('discord_messages') && activeTools.includes('discord_server')) {
+    lines.push('  ✗ discord_messages.create_thread for new thread workflows when discord_server is available');
+  }
   if (activeTools.includes('discord_messages')) {
     lines.push('  ✗ plain assistant prose for a final rich in-channel reply that should be delivered via send');
   }
@@ -267,6 +280,7 @@ function buildToolSelectionGuide(activeTools: string[]): string {
       activeTools.includes('discord_context') ||
       activeTools.includes('discord_messages') ||
       activeTools.includes('discord_files') ||
+      activeTools.includes('discord_server') ||
       activeTools.includes('discord_admin')
     )
   ) {

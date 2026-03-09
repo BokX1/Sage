@@ -26,6 +26,8 @@
 
 ### Changed
 
+- Added a fifth routed Discord domain tool, `discord_server`, so Sage can now inspect guild channels, roles, threads, scheduled events, AutoMod rules, and permission snapshots through typed actions instead of falling back to raw admin REST reads for common server workflows.
+- Reassigned canonical thread ownership to `discord_server` and expanded the immediate Discord interaction path with typed thread lifecycle actions (`update_thread`, `join_thread`, `leave_thread`, `add_thread_member`, `remove_thread_member`) while keeping `discord_messages.create_thread` as a compatibility alias for existing prompts and payloads.
 - Reworked the agent runtime around native structured tool calls end-to-end: LLM responses now carry `text`, `toolCalls`, `reasoningText`, and usage separately, the runtime no longer teaches or parses JSON tool-call envelopes, and trace payloads now record tool rounds, rebudgeting, finalization behavior, and cancellation outcomes for better operator debugging.
 - Added explicit per-round context rebudgeting before follow-up model calls and propagated cancellation signals through the main web, GitHub, workflow, npm, and Pollinations-backed long-running integrations, reducing stuck tool chains and making runtime timeouts stop upstream work instead of only timing out locally.
 - Rebuilt the deep trust gate around mutation-tested critical guardrails instead of broad unscoped files: `check:mutation` now targets logging policy and invocation/chat rate-limiters with deterministic boundary-focused tests, so passing `check:trust:deep` reflects behavior-level protection against trivial test workarounds.
@@ -234,5 +236,5 @@
 
 ## 🔗 Release Links
 
-[Unreleased]: https://github.com/BokX1/Sage/compare/ae988c1...HEAD
+[Unreleased]: https://github.com/BokX1/Sage/compare/ae988c1...master
 [1.0.0]: https://github.com/BokX1/Sage/commit/ae988c1
