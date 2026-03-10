@@ -22,6 +22,60 @@ describe('discord tool mental model guidance', () => {
     expect(writeAction?.avoidWhen).toEqual(
       expect.arrayContaining([
         expect.stringContaining('discord_context.get_server_instructions'),
+        expect.stringContaining('submit_moderation'),
+      ]),
+    );
+    expect(writeAction?.commonMistakes).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining('submit_moderation'),
+      ]),
+    );
+  });
+
+  it('distinguishes governance/config from moderation/enforcement', () => {
+    const adminDoc = getRoutedToolDoc('discord_admin');
+
+    const updateInstructions = adminDoc?.actions.find((action) => action.action === 'update_server_instructions');
+    const moderation = adminDoc?.actions.find((action) => action.action === 'submit_moderation');
+    const deleteMessage = adminDoc?.actions.find((action) => action.action === 'delete_message');
+
+    expect(adminDoc?.routingNotes).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining('governance/config and moderation as separate admin domains'),
+        expect.stringContaining('submit_moderation is for enforcement workflows'),
+        expect.stringContaining('Reply-targeted cleanup'),
+      ]),
+    );
+    expect(adminDoc?.selectionHints).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining('Governance/config for Sage or the review surface'),
+        expect.stringContaining('reply-targeted "delete this spam/abuse message" requests -> submit_moderation'),
+      ]),
+    );
+    expect(updateInstructions?.avoidWhen).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining('moderation or enforcement'),
+      ]),
+    );
+    expect(moderation?.avoidWhen).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining('Sage persona, tone, behavior rules, or server policy posture'),
+      ]),
+    );
+    expect(moderation?.commonMistakes).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining('update_server_instructions'),
+        expect.stringContaining('generic delete_message'),
+      ]),
+    );
+    expect(deleteMessage?.avoidWhen).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining('submit_moderation'),
+      ]),
+    );
+    expect(deleteMessage?.commonMistakes).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining('replied-to spam/abusive user content'),
       ]),
     );
   });
@@ -199,8 +253,12 @@ describe('discord tool mental model guidance', () => {
     });
 
     expect(prompt).toContain('Distinguish instruction reads from instruction writes');
+    expect(prompt).toContain('Distinguish governance/config from moderation/enforcement');
+    expect(prompt).toContain('Treat reply-targeted enforcement as moderation');
     expect(prompt).toContain('Distinguish summary context from message context');
     expect(prompt).toContain('Distinguish file discovery from guild discovery');
     expect(prompt).toContain('Distinguish voice analytics from live voice control');
+    expect(prompt).toContain('change Sage');
+    expect(prompt).toContain('enforce on user/content');
   });
 });

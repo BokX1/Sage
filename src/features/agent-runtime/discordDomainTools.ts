@@ -538,7 +538,7 @@ export const discordServerTool: ToolDefinition<z.infer<typeof discordServerToolS
 };
 
 const instructionsUpdateServerSchema = z.object({
-  action: z.literal('update_server_instructions').describe('Submit an admin request to update guild server instructions. This changes behavior/persona config; use discord_context.get_server_instructions to read the current text.'),
+  action: z.literal('update_server_instructions').describe('Submit an admin request to update guild server instructions. This changes Sage behavior/persona/policy config, not moderation or enforcement; use discord_context.get_server_instructions to read the current text.'),
   request: serverInstructionsUpdateRequestSchema,
 });
 
@@ -671,11 +671,11 @@ const discordAdminToolSchema = z.discriminatedUnion('action', [
   adminSendKeySetupCardSchema,
   instructionsUpdateServerSchema,
   z.object({
-    action: z.literal('submit_moderation').describe('Submit a moderation request. Requires admin context and approval.'),
+    action: z.literal('submit_moderation').describe('Submit a moderation/enforcement request. This applies actions to users, messages, reactions, or content, including reply-targeted spam/abuse cleanup, not Sage behavior/persona config. Requires admin context and approval.'),
     request: discordModerationActionRequestSchema,
   }),
   messagesEditSchema,
-  messageIdActionSchema('delete_message', 'Delete a message. Requires admin context and approval.'),
+  messageIdActionSchema('delete_message', 'Delete a message as a direct admin maintenance action. For reply-targeted spam/abuse or other enforcement cleanup, prefer submit_moderation. Requires admin context and approval.'),
   messageIdActionSchema('pin_message', 'Pin a message. Requires admin context and approval.'),
   messageIdActionSchema('unpin_message', 'Unpin a message. Requires admin context and approval.'),
   channelsCreateSchema,
@@ -692,7 +692,7 @@ const discordAdminToolSchema = z.discriminatedUnion('action', [
 export const discordAdminTool: ToolDefinition<z.infer<typeof discordAdminToolSchema>> = {
   name: 'discord_admin',
   description:
-    'Discord admin tool for server-instruction writes, moderation, message/channel/role/member admin operations, invite URLs, and Discord API fallback.\n<USE_ONLY_WHEN> You need admin-grade Discord actions or raw Discord API fallback after typed actions are exhausted. </USE_ONLY_WHEN>',
+    'Discord admin tool for governance/config actions, moderation/enforcement, message/channel/role/member admin operations, invite URLs, and Discord API fallback. Server-instruction writes change Sage behavior/persona config; moderation actions enforce against users, messages, reactions, or content.\n<USE_ONLY_WHEN> You need admin-grade Discord actions or raw Discord API fallback after typed actions are exhausted. </USE_ONLY_WHEN>',
   schema: discordAdminToolSchema,
   metadata: {
     readOnlyPredicate: (args) => isReadOnlyDiscordDomainCall('discord_admin', args),

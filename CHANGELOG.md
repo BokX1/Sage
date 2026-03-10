@@ -34,6 +34,7 @@
 
 ### Changed
 
+- Tightened Sage's Discord admin prompt surface so server-instruction updates are now consistently taught as governance/config changes to Sage's behavior while moderation is taught as separate enforcement on users, messages, reactions, or content; reply-targeted "delete this" cleanup now points Sage toward `discord_admin.submit_moderation`, while direct `discord_admin.delete_message` is framed as non-moderation maintenance.
 - Hard-cut the development schema and governance persistence model: Prisma now uses a single clean baseline with required `sourceChannelId` and `reviewChannelId` fields on pending admin actions, and the server-instructions storage surface is now named `ServerInstructions` / `ServerInstructionsArchive` with `instructionsText` end to end.
 - Reworked approval-gated Discord governance end to end around shared Components V2 cards, hybrid requester/reviewer routing, and dedicated `discord_admin` review-channel management actions, while preserving the existing `pending_approval` runtime contract and same-turn retry suppression.
 - Hardened the single-agent runtime around silent native tool use: Sage no longer exposes reasoning-facing tool surfaces like `system_plan`/`think`, no longer persists provider reasoning text into new traces, and now scrubs tool/approval protocol chatter out of visible Discord replies before sending.

@@ -78,8 +78,9 @@ describe('capabilityPrompt', () => {
       const prompt = buildCapabilityPromptSection(params);
 
       // Assert
-      expect(prompt).toContain('Discord tool behavior: Discord surfaces are split by domain.');
+      expect(prompt).toContain('Discord tool behavior: `discord_context` for profiles/summaries/instruction reads/analytics');
       expect(prompt).toContain('Distinguish instruction reads from instruction writes');
+      expect(prompt).toContain('Treat reply-targeted enforcement as moderation');
       expect(prompt).toContain('Distinguish summary context from message context');
       expect(prompt).toContain('Distinguish file discovery from guild discovery');
       expect(prompt).toContain('Attachment retrieval behavior: historical uploaded attachments are cached outside transcript');
@@ -126,6 +127,7 @@ describe('capabilityPrompt', () => {
       expect(prompt).toContain('Thread lifecycle → discord_server');
       expect(prompt).toContain('Installation link generation → get_invite_url.');
       expect(prompt).toContain('Unsupported admin-grade guild-scoped reads/writes after typed-action checks → api.');
+      expect(prompt).toContain('reply-targeted "delete this spam/abuse message" requests → submit_moderation.');
       expect(prompt).not.toContain('memory.get_channel');
     });
 

@@ -204,11 +204,45 @@ describe('tool help actions', () => {
     };
     expect(adminHelpPayload.routing_notes).toEqual(
       expect.arrayContaining([
+        expect.stringContaining('governance/config and moderation as separate admin domains'),
+        expect.stringContaining('Reply-targeted cleanup'),
         expect.stringContaining('update_server_instructions changes Sage behavior/persona config'),
+        expect.stringContaining('submit_moderation is for enforcement workflows'),
       ]),
     );
     expect(adminHelpPayload.action_contracts).toEqual(
       expect.arrayContaining([
+        expect.objectContaining({
+          action: 'update_server_instructions',
+          avoid_when: expect.arrayContaining([
+            expect.stringContaining('submit_moderation'),
+          ]),
+          common_mistakes: expect.arrayContaining([
+            expect.stringContaining('submit_moderation'),
+          ]),
+        }),
+        expect.objectContaining({
+          action: 'submit_moderation',
+          use_when: expect.arrayContaining([
+            expect.stringContaining('replied-to message'),
+          ]),
+          avoid_when: expect.arrayContaining([
+            expect.stringContaining('update_server_instructions'),
+          ]),
+          common_mistakes: expect.arrayContaining([
+            expect.stringContaining('update_server_instructions'),
+            expect.stringContaining('generic delete_message'),
+          ]),
+        }),
+        expect.objectContaining({
+          action: 'delete_message',
+          avoid_when: expect.arrayContaining([
+            expect.stringContaining('submit_moderation'),
+          ]),
+          common_mistakes: expect.arrayContaining([
+            expect.stringContaining('replied-to spam/abusive user content'),
+          ]),
+        }),
         expect.objectContaining({
           action: 'api',
           common_mistakes: expect.arrayContaining([

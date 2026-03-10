@@ -120,19 +120,25 @@ export function buildCapabilityPromptSection(
     '- If a tool result reports `status="pending_approval"`, treat that action as already queued for this turn. Do not retry the same approval-gated action again.',
     '- After a pending approval, keep the channel reply brief. Do not repeat action IDs, approval card contents, raw admin workflow steps, or recovery protocol.',
     hasAnyDiscordTool
-      ? '- Discord tool behavior: Discord surfaces are split by domain. Use `discord_context` for profiles/summaries/instruction reads/analytics, `discord_messages` for message history and Discord-native delivery, `discord_files` for attachment recall, `discord_server` for guild resources and thread lifecycle, `discord_voice` for live voice control/status, and `discord_admin` for approval-gated admin writes or raw API fallback.'
+      ? '- Discord tool behavior: `discord_context` for profiles/summaries/instruction reads/analytics, `discord_messages` for history/delivery, `discord_files` for attachment recall, `discord_server` for guild resources/thread lifecycle, `discord_voice` for voice/status, `discord_admin` for admin writes/API fallback.'
       : '- Discord tool behavior: you do not have access to Discord profiles, summaries, instructions, messages, files, or actions via tools this turn.',
     hasDiscordContextTool && hasDiscordAdminTool
-      ? '- Distinguish instruction reads from instruction writes: `discord_context.get_server_instructions` reads the current guild behavior/persona config, while `discord_admin.update_server_instructions` queues a config change.'
+      ? '- Distinguish instruction reads from instruction writes: `discord_context.get_server_instructions` reads config, while `discord_admin.update_server_instructions` queues a config change.'
+      : '',
+    hasDiscordAdminTool
+      ? '- Distinguish governance/config from moderation/enforcement: server instructions change Sage; moderation acts on users/messages/content.'
+      : '',
+    hasDiscordAdminTool
+      ? '- Treat reply-targeted enforcement as moderation: replied-to spam/abuse -> `discord_admin.submit_moderation`.'
       : '',
     hasDiscordContextTool && hasDiscordMessagesTool
-      ? '- Distinguish summary context from message context: `discord_context.get_channel_summary` is a rolling recap, while `discord_messages.get_context` is only the local window around one known message ID.'
+      ? '- Distinguish summary context from message context: `discord_context.get_channel_summary` is a rolling recap, while `discord_messages.get_context` is a local message window.'
       : '',
     hasDiscordFilesTool && hasDiscordServerTool
-      ? '- Distinguish file discovery from guild discovery: `discord_files.list_channel` / `find_channel` operate on attachments, while `discord_server.list_channels` inspects channel resources.'
+      ? '- Distinguish file discovery from guild discovery: `discord_files.list_channel` / `find_channel` operate on attachments, while `discord_server.list_channels` inspects channels.'
       : '',
     hasDiscordContextTool && hasDiscordVoiceTool
-      ? '- Distinguish voice analytics from live voice control: `discord_context` covers voice analytics/summaries, while `discord_voice` covers current voice status and join/leave actions.'
+      ? '- Distinguish voice analytics from live voice control: `discord_context` covers voice analytics/summaries, while `discord_voice` handles current voice status and join/leave.'
       : '',
     hasDiscordMessagesTool
       ? '- When Sage chooses a Discord-native final reply format, call `discord_messages` action `send` with `presentation="plain" | "components_v2"` instead of replying only in prose.'
@@ -150,7 +156,7 @@ export function buildCapabilityPromptSection(
       ? '- Attachment retrieval behavior: historical uploaded attachments are cached outside transcript; when transcript notes include `attachment:<id>` use `discord_files` action `read_attachment` directly, or `send_attachment` when the user wants the original file shown again. Otherwise use `list_*` or `find_*` first.'
       : '- Attachment retrieval behavior: you do not have access to retrieve historical files this turn.',
     hasDiscordAdminTool
-      ? '- Server instructions: the <server_instructions> block (if present) contains admin-configured guild behavior/persona instructions. To update it, use `discord_admin` action `update_server_instructions` (admin only). Changes take effect on the next turn.'
+      ? '- Route admin intent: change Sage -> `discord_admin.update_server_instructions`; enforce on user/content -> `discord_admin.submit_moderation`.'
       : '',
     hasAnyDiscordTool && params.invokedBy === 'autopilot'
       ? '- Autopilot-restricted Discord reads include server-wide file lookup, attachment paging, guild-wide message search, user timelines, top relationship summaries, and all discord_server writes.'
