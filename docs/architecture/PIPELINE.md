@@ -55,7 +55,7 @@ flowchart TD
 **Step-by-step**
 
 1. **Model resolution**: `runChatTurn` reads `CHAT_MODEL` and falls back to `kimi` when it is empty.
-2. **Context composition**: `buildContextMessages` assembles the system prompt, runtime instruction block, optional server instructions, optional live voice context, recent transcript, `<assistant_context>`, `<reply_reference>`, and the current `<user_input>` message.
+2. **Context composition**: `buildContextMessages` assembles the system prompt, runtime instruction block, optional server instructions, optional live voice context, recent transcript, `<assistant_context>`, and the current user turn with any `<reply_reference>` folded in as context-only preface content ahead of `<user_input>`.
 3. **Token budgeting**: `contextBudgeter` trims blocks against the configured budgets before the provider call.
 4. **LLM request**: Sage sends the budgeted messages plus the OpenAI-compatible tool definitions.
 5. **Tool loop**: if the model returns tool calls, Sage validates them, executes them, and feeds results back into the same turn up to the configured round limit.
@@ -78,8 +78,7 @@ flowchart TD
 | 4 | Live voice context | In-memory voice session context, only when Sage is active in voice |
 | 5 | Recent transcript | Ring buffer plus recent `ChannelMessage` history |
 | 6 | Assistant context | Prior Sage output wrapped as `<assistant_context>` for continuity only |
-| 7 | Reply reference | Replied-to message content wrapped as `<reply_reference>`, if present |
-| 8 | Current user message | Triggering text and multimodal content wrapped as `<user_input>` |
+| 7 | Current user message | Triggering text and multimodal content wrapped as `<user_input>`, with any replied-to content inlined first as context-only `<reply_reference>` |
 
 > [!NOTE]
 > Channel summaries, archived summaries, social-graph data, attachment cache results, and wider message history are not preloaded into every turn. The model fetches them on demand through the split Discord tools when it decides they are needed.

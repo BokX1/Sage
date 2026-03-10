@@ -160,4 +160,30 @@ describe('budgetContextBlocks', () => {
     expect(noticeIndex).toBe(baseIndex + 1);
     expect(result[noticeIndex].content).toBe(DEFAULT_TRUNCATION_NOTICE);
   });
+
+  it('keeps the most recent user_input portion when a combined user block is truncated', () => {
+    const replyReference = 'Reply reference for context only:\n<reply_reference>\n' + 'Old context '.repeat(300) + '\n</reply_reference>\n\n';
+    const userInput = '<user_input>\nCurrent user ask must survive.\n</user_input>';
+    const blocks = buildBlocks([
+      { content: 'Base system prompt.' },
+      { content: 'Memory block content.' },
+      { content: 'Runtime instruction content.' },
+      { content: 'Voice context content.' },
+      { content: 'Transcript content.' },
+      { content: 'Reply context content.' },
+      { content: `${replyReference}${userInput}` },
+    ]);
+
+    const result = budgetContextBlocks(blocks, {
+      maxInputTokens: 120,
+      reservedOutputTokens: 0,
+      estimateTokens,
+    });
+
+    const userBlock = result.find((block) => block.id === 'user');
+    expect(userBlock).toBeDefined();
+    const text = contentText(userBlock!.content);
+    expect(text).toContain('<user_input>');
+    expect(text).toContain('Current user ask must survive.');
+  });
 });

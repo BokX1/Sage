@@ -18,7 +18,6 @@ export type ContextBlockId =
   | 'transcript'
   | 'intent_hint'
   | 'reply_context'
-  | 'reply_reference'
   | 'user'
   | 'trunc_notice';
 
@@ -178,14 +177,6 @@ function truncateBlockContent(
           safeTruncateEnd(contentText, maxTokens, estimator),
         ),
       };
-    case 'reply_reference':
-      return {
-        ...block,
-        content: applyTextToContent(
-          block.content,
-          safeTruncateEnd(contentText, maxTokens, estimator),
-        ),
-      };
     case 'user': {
       const notice = 'User message truncated to fit context. Showing most recent portion:\\n';
       const noticeTokens = estimator(notice);
@@ -285,7 +276,6 @@ const TRUNCATION_ORDER: ContextBlockId[] = [
   'voice_context',
   'intent_hint',
   'reply_context',
-  'reply_reference',
   'server_instructions',
   'user',
 ];

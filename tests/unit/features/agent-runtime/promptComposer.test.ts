@@ -84,6 +84,14 @@ describe('promptComposer', () => {
     expect(prompt).not.toContain('<50% confident');
   });
 
+  it('teaches exact-format obedience, no self-narration, and brief clarification', () => {
+    const prompt = getCorePromptContent();
+
+    expect(prompt).toContain('Obey requested output shape exactly');
+    expect(prompt).toContain('Do not narrate thinking or preface answers with meta-analysis.');
+    expect(prompt).toContain('ask one short clarifying question instead of choosing the riskiest one');
+  });
+
   it('explains that runtime can split long replies automatically', () => {
     const prompt = getCorePromptContent();
 

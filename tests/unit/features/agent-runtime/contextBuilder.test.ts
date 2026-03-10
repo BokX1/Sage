@@ -107,12 +107,14 @@ describe('contextBuilder core message assembly', () => {
     expect(messages[1].role).toBe('assistant');
     expect(String(messages[1].content)).toContain('<assistant_context>');
     expect(String(messages[1].content)).toContain('Earlier bot reply');
-    expect(messages[2].role).toBe('user');
-    expect(String(messages[2].content)).toContain('<reply_reference>');
-    expect(String(messages[2].content)).toContain('User is replying to that earlier answer');
     expect(messages[messages.length - 1].role).toBe('user');
-    expect(String(messages[messages.length - 1].content)).toContain('<user_input>');
-    expect(String(messages[messages.length - 1].content)).toContain('Here is my latest follow-up');
+    const latestContent = String(messages[messages.length - 1].content);
+    expect(latestContent).toContain('Reply reference for context only:');
+    expect(latestContent).toContain('<reply_reference>');
+    expect(latestContent).toContain('User is replying to that earlier answer');
+    expect(latestContent).toContain('<user_input>');
+    expect(latestContent).toContain('Here is my latest follow-up');
+    expect(messages).toHaveLength(3);
   });
 
   it('wraps multimodal user content in user_input tags', () => {
@@ -132,6 +134,45 @@ describe('contextBuilder core message assembly', () => {
     if (typeof latestMessage.content === 'string') return;
     expect(latestMessage.content[0]).toEqual({ type: 'text', text: '<user_input>\n' });
     expect(latestMessage.content[latestMessage.content.length - 1]).toEqual({ type: 'text', text: '\n</user_input>' });
+  });
+
+  it('folds multimodal reply reference content into the latest user message', () => {
+    const messages = buildContextMessages({
+      userProfileSummary: null,
+      replyToBotText: null,
+      replyReferenceContent: [
+        { type: 'text', text: 'Reference image context' },
+        { type: 'image_url', image_url: { url: 'https://example.com/reference.png' } },
+      ],
+      userText: 'fallback text',
+      userContent: [
+        { type: 'text', text: 'Please analyze the current image' },
+        { type: 'image_url', image_url: { url: 'https://example.com/current.png' } },
+      ],
+    });
+
+    const latestMessage = messages[messages.length - 1];
+    expect(latestMessage.role).toBe('user');
+    expect(Array.isArray(latestMessage.content)).toBe(true);
+    if (typeof latestMessage.content === 'string') return;
+    expect(latestMessage.content[0]).toEqual({ type: 'text', text: 'Reply reference for context only:\n' });
+    expect(latestMessage.content[1]).toEqual({ type: 'text', text: '<reply_reference>\n' });
+    expect(latestMessage.content.some((part) => part.type === 'image_url' && part.image_url.url === 'https://example.com/reference.png')).toBe(true);
+    expect(latestMessage.content.some((part) => part.type === 'text' && part.text === '<user_input>\n')).toBe(true);
+    expect(latestMessage.content.some((part) => part.type === 'image_url' && part.image_url.url === 'https://example.com/current.png')).toBe(true);
+  });
+
+  it('keeps the normal latest-user shape when no reply reference is present', () => {
+    const messages = buildContextMessages({
+      userProfileSummary: null,
+      replyToBotText: 'Earlier bot reply',
+      userText: 'Here is my latest follow-up',
+    });
+
+    expect(messages).toHaveLength(3);
+    const latestContent = String(messages[messages.length - 1].content);
+    expect(latestContent).not.toContain('<reply_reference>');
+    expect(latestContent).toContain('<user_input>');
   });
 });
 

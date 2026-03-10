@@ -1,4 +1,4 @@
-import { LLMChatMessage, LLMMessageContent } from '../../platform/llm/llm-types';
+import { LLMChatMessage, LLMContentPart, LLMMessageContent } from '../../platform/llm/llm-types';
 import { composeSystemPrompt } from './promptComposer';
 import { config } from '../../platform/config/env';
 import { budgetContextBlocks, ContextBlock } from './contextBudgeter';
@@ -32,6 +32,45 @@ function wrapTaggedContent(tagName: string, content: LLMMessageContent): LLMMess
     ...content,
     { type: 'text', text: `\n</${tagName}>` },
   ];
+}
+
+function toContentParts(content: LLMMessageContent): LLMContentPart[] {
+  if (typeof content === 'string') {
+    return [{ type: 'text', text: content }];
+  }
+
+  return content;
+}
+
+function concatContentSegments(segments: LLMMessageContent[]): LLMMessageContent {
+  if (segments.every((segment) => typeof segment === 'string')) {
+    return segments.join('');
+  }
+
+  const parts: LLMContentPart[] = [];
+  for (const segment of segments) {
+    parts.push(...toContentParts(segment));
+  }
+  return parts;
+}
+
+function buildCurrentUserContent(params: {
+  replyReferenceContent?: LLMMessageContent | null;
+  userText: string;
+  userContent?: LLMMessageContent;
+}): LLMMessageContent {
+  const userInputContent = wrapTaggedContent('user_input', params.userContent ?? params.userText);
+
+  if (!params.replyReferenceContent) {
+    return userInputContent;
+  }
+
+  return concatContentSegments([
+    'Reply reference for context only:\n',
+    wrapTaggedContent('reply_reference', params.replyReferenceContent),
+    '\n\n',
+    userInputContent,
+  ]);
 }
 
 /**
@@ -162,24 +201,14 @@ export function buildContextMessages(params: BuildContextMessagesParams): LLMCha
     });
   }
 
-  if (replyReferenceContent) {
-    blocks.push({
-      id: 'reply_reference',
-      role: 'user',
-      content: wrapTaggedContent('reply_reference', replyReferenceContent),
-      priority: 105,
-      hardMaxTokens: config.CONTEXT_BLOCK_MAX_TOKENS_REPLY_CONTEXT,
-      truncatable: true,
-    });
-  }
-
   blocks.push({
     id: 'user',
     role: 'user',
-    content: wrapTaggedContent(
-      'user_input',
-      userContent ?? userText,
-    ),
+    content: buildCurrentUserContent({
+      replyReferenceContent,
+      userText,
+      userContent,
+    }),
     priority: 110,
     hardMaxTokens: config.CONTEXT_USER_MAX_TOKENS,
     truncatable: true,
