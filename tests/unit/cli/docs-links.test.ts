@@ -43,10 +43,18 @@ describe('docs link checker external retries', () => {
     const abortError = new Error('This operation timed out');
     abortError.name = 'AbortError';
 
-    expect(isRetryableFetchError(abortError)).toBe(true);
-    expect(isRetryableFetchError(new TypeError('fetch failed'))).toBe(true);
-    expect(isRetryableFetchError(new Error('certificate rejected'))).toBe(false);
-    expect(isRetryableStatus(503)).toBe(true);
-    expect(isRetryableStatus(404)).toBe(false);
+    expect({
+      abort: isRetryableFetchError(abortError),
+      transientFetch: isRetryableFetchError(new TypeError('fetch failed')),
+      certificate: isRetryableFetchError(new Error('certificate rejected')),
+      status503: isRetryableStatus(503),
+      status404: isRetryableStatus(404),
+    }).toEqual({
+      abort: true,
+      transientFetch: true,
+      certificate: false,
+      status503: true,
+      status404: false,
+    });
   });
 });
