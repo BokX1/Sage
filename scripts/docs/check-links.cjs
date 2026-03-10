@@ -5,6 +5,11 @@ const { spawn } = require("node:child_process");
 
 const REPO_ROOT = path.resolve(__dirname, "..", "..");
 const CONFIG_PATH = path.join(REPO_ROOT, "config", "tooling", "docs-links.json");
+const EXTERNAL_FETCH_MAX_ATTEMPTS = 3;
+const EXTERNAL_FETCH_BASE_DELAY_MS = 500;
+const EXTERNAL_FETCH_USER_AGENT =
+  "SageDocsLinkChecker/1.0 (+https://github.com/BokX1/Sage)";
+const RETRYABLE_HTTP_STATUS_CODES = new Set([408, 425, 429, 500, 502, 503, 504]);
 
 function pathExists(targetPath) {
   return fs.existsSync(targetPath);
@@ -250,6 +255,70 @@ function isSkippedExternal(target, config) {
   return config.skip_external_patterns.some((pattern) => new RegExp(pattern, "u").test(target));
 }
 
+function isRetryableStatus(status) {
+  return typeof status === "number" && RETRYABLE_HTTP_STATUS_CODES.has(status);
+}
+
+function isRetryableFetchError(error) {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  if (error.name === "AbortError") {
+    return true;
+  }
+
+  return /fetch failed|network|socket|timed out|timeout|econnreset|eai_again|enotfound/iu.test(
+    error.message
+  );
+}
+
+function delay(ms) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+async function fetchWithRetries(target, method, config, options = {}) {
+  const maxAttempts = options.maxAttempts ?? EXTERNAL_FETCH_MAX_ATTEMPTS;
+  const baseDelayMs = options.baseDelayMs ?? EXTERNAL_FETCH_BASE_DELAY_MS;
+  let lastError = null;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), config.timeout_ms);
+
+    try {
+      const response = await fetch(target, {
+        method,
+        redirect: "follow",
+        signal: controller.signal,
+        headers: {
+          "user-agent": EXTERNAL_FETCH_USER_AGENT,
+        },
+      });
+
+      if (!isRetryableStatus(response.status) || attempt === maxAttempts) {
+        return response;
+      }
+
+      lastError = new Error(`${method} ${target} returned retryable status ${response.status}`);
+    } catch (error) {
+      if (!isRetryableFetchError(error) || attempt === maxAttempts) {
+        throw error;
+      }
+
+      lastError = error;
+    } finally {
+      clearTimeout(timeout);
+    }
+
+    await delay(baseDelayMs * attempt);
+  }
+
+  throw lastError ?? new Error(`Failed to fetch ${target}`);
+}
+
 function splitTarget(target) {
   const hashIndex = target.indexOf("#");
   if (hashIndex === -1) {
@@ -272,25 +341,14 @@ async function checkExternal(target, config) {
     return { ok: true, skipped: true, status: "skipped" };
   }
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), config.timeout_ms);
-
   try {
-    const headResponse = await fetch(target, {
-      method: "HEAD",
-      redirect: "follow",
-      signal: controller.signal,
-    });
+    const headResponse = await fetchWithRetries(target, "HEAD", config);
 
     if (headResponse.status >= 200 && headResponse.status < 400) {
       return { ok: true, skipped: false, status: headResponse.status };
     }
 
-    const getResponse = await fetch(target, {
-      method: "GET",
-      redirect: "follow",
-      signal: controller.signal,
-    });
+    const getResponse = await fetchWithRetries(target, "GET", config);
 
     return {
       ok: getResponse.status >= 200 && getResponse.status < 400,
@@ -303,8 +361,6 @@ async function checkExternal(target, config) {
       skipped: false,
       status: error instanceof Error ? error.message : String(error),
     };
-  } finally {
-    clearTimeout(timeout);
   }
 }
 
@@ -470,7 +526,16 @@ async function main() {
   process.stdout.write("All link checks passed.\n");
 }
 
-main().catch((error) => {
-  process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
-  process.exitCode = 1;
-});
+module.exports = {
+  checkExternal,
+  fetchWithRetries,
+  isRetryableFetchError,
+  isRetryableStatus,
+};
+
+if (require.main === module) {
+  main().catch((error) => {
+    process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+    process.exitCode = 1;
+  });
+}
