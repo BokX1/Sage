@@ -34,6 +34,8 @@
 
 ### Changed
 
+- Aligned prompt-side reserved output budgeting with Sage's real chat response cap, so context assembly no longer over-reserves output tokens beyond what Discord chat turns can actually generate.
+- Tightened Sage's base prompt for busy shared channels so it now prioritizes the current speaker over adjacent unrelated users, treats `<recent_transcript>` as ambient room context instead of default task state, and reads `<reply_reference>` as evidence to inspect rather than permission to assume the whole prior thread.
 - Tightened Sage's Discord admin prompt surface so server-instruction updates are now consistently taught as governance/config changes to Sage's behavior while moderation is taught as separate enforcement on users, messages, reactions, or content; reply-targeted "delete this" cleanup now points Sage toward `discord_admin.submit_moderation`, while direct `discord_admin.delete_message` is framed as non-moderation maintenance.
 - Hard-cut the development schema and governance persistence model: Prisma now uses a single clean baseline with required `sourceChannelId` and `reviewChannelId` fields on pending admin actions, and the server-instructions storage surface is now named `ServerInstructions` / `ServerInstructionsArchive` with `instructionsText` end to end.
 - Reworked approval-gated Discord governance end to end around shared Components V2 cards, hybrid requester/reviewer routing, and dedicated `discord_admin` review-channel management actions, while preserving the existing `pending_approval` runtime contract and same-turn retry suppression.

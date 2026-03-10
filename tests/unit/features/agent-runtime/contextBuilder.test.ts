@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { buildContextMessages } from '../../../../src/features/agent-runtime/contextBuilder';
+import {
+  buildContextMessages,
+  resolveReservedOutputTokens,
+} from '../../../../src/features/agent-runtime/contextBuilder';
 
 function getSystemContent(messages: ReturnType<typeof buildContextMessages>): string {
   const content = messages[0]?.content;
@@ -129,5 +132,15 @@ describe('contextBuilder core message assembly', () => {
     if (typeof latestMessage.content === 'string') return;
     expect(latestMessage.content[0]).toEqual({ type: 'text', text: '<user_input>\n' });
     expect(latestMessage.content[latestMessage.content.length - 1]).toEqual({ type: 'text', text: '\n</user_input>' });
+  });
+});
+
+describe('resolveReservedOutputTokens', () => {
+  it('clamps oversized reserved output budgets to the real chat output cap', () => {
+    expect(resolveReservedOutputTokens(12_000, 1_800)).toBe(1_800);
+  });
+
+  it('keeps the configured reserved budget when it already fits within chat max output', () => {
+    expect(resolveReservedOutputTokens(1_500, 1_800)).toBe(1_500);
   });
 });

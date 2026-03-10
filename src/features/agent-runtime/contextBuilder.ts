@@ -3,6 +3,7 @@ import { composeSystemPrompt } from './promptComposer';
 import { config } from '../../platform/config/env';
 import { budgetContextBlocks, ContextBlock } from './contextBudgeter';
 import { resolveRuntimeAutopilotMode } from './autopilotMode';
+import { normalizePositiveInt } from '../../shared/utils/numbers';
 
 
 /** Carry all optional context inputs used to construct a turn prompt. */
@@ -31,6 +32,19 @@ function wrapTaggedContent(tagName: string, content: LLMMessageContent): LLMMess
     ...content,
     { type: 'text', text: `\n</${tagName}>` },
   ];
+}
+
+/**
+ * Clamp prompt-side reserved output budget so we do not reserve more tokens
+ * than the runtime will actually allow the chat response to generate.
+ */
+export function resolveReservedOutputTokens(
+  configuredReservedOutputTokens: number | undefined,
+  chatMaxOutputTokens: number | undefined,
+): number {
+  const normalizedReserved = normalizePositiveInt(configuredReservedOutputTokens, 4_000);
+  const normalizedChatMax = normalizePositiveInt(chatMaxOutputTokens, normalizedReserved);
+  return Math.min(normalizedReserved, normalizedChatMax);
 }
 
 /**
@@ -173,7 +187,10 @@ export function buildContextMessages(params: BuildContextMessagesParams): LLMCha
 
   const budgetedBlocks = budgetContextBlocks(blocks, {
     maxInputTokens: config.CONTEXT_MAX_INPUT_TOKENS,
-    reservedOutputTokens: config.CONTEXT_RESERVED_OUTPUT_TOKENS,
+    reservedOutputTokens: resolveReservedOutputTokens(
+      config.CONTEXT_RESERVED_OUTPUT_TOKENS,
+      config.CHAT_MAX_OUTPUT_TOKENS,
+    ),
     truncationNoticeEnabled: config.CONTEXT_TRUNCATION_NOTICE,
   });
 
