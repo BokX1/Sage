@@ -1,10 +1,11 @@
 import { describe, it, expect } from 'vitest';
+import type { CurrentTurnContext } from '../../../../src/features/agent-runtime/continuityContext';
 import {
   buildContextMessages,
   resolveReservedOutputTokens,
 } from '../../../../src/features/agent-runtime/contextBuilder';
 
-function makeCurrentTurn(overrides: Record<string, unknown> = {}) {
+function makeCurrentTurn(overrides: Partial<CurrentTurnContext> = {}): CurrentTurnContext {
   return {
     invokerUserId: 'user-1',
     invokerDisplayName: 'User One',

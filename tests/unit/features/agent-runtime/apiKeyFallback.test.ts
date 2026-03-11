@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { CurrentTurnContext } from '@/features/agent-runtime/continuityContext';
 
 const mockConfig = vi.hoisted(() => ({
   LLM_API_KEY: 'env-key',
@@ -65,7 +66,7 @@ vi.mock('@/features/settings/serverInstructionsRepo', () => ({
 
 import { runChatTurn } from '@/features/agent-runtime/agentRuntime';
 
-function makeCurrentTurn(overrides: Record<string, unknown> = {}) {
+function makeCurrentTurn(overrides: Partial<CurrentTurnContext> = {}): CurrentTurnContext {
   return {
     invokerUserId: 'user-1',
     invokerDisplayName: 'User One',

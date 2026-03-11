@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { CurrentTurnContext } from '@/features/agent-runtime/continuityContext';
 
 const mockRunChatTurn = vi.hoisted(() => vi.fn());
 const mockGetUserProfileRecord = vi.hoisted(() => vi.fn());
@@ -42,7 +43,7 @@ vi.mock('@/features/memory/userProfileCompaction', () => ({
 
 import { __resetChatEngineStateForTests, generateChatReply } from '@/features/chat/chat-engine';
 
-function makeCurrentTurn(overrides: Record<string, unknown> = {}) {
+function makeCurrentTurn(overrides: Partial<CurrentTurnContext> = {}): CurrentTurnContext {
   return {
     invokerUserId: 'user1',
     invokerDisplayName: 'User One',

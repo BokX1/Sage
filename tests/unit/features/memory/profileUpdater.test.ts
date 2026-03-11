@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import type { CurrentTurnContext } from '@/features/agent-runtime/continuityContext';
 import { updateProfileSummary, extractBalancedJson } from '../../../../src/features/memory/profileUpdater';
 
 // Mock LLM Client
@@ -30,7 +31,7 @@ type ChatMessage = {
   content: string;
 };
 
-function makeCurrentTurn(overrides: Record<string, unknown> = {}) {
+function makeCurrentTurn(overrides: Partial<CurrentTurnContext> = {}): CurrentTurnContext {
   return {
     invokerUserId: 'U1',
     invokerDisplayName: 'User',

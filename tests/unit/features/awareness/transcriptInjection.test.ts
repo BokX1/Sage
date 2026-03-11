@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { CurrentTurnContext } from '@/features/agent-runtime/continuityContext';
 
 const mockConfig = vi.hoisted(() => ({
   CONTEXT_TRANSCRIPT_MAX_MESSAGES: 6,
@@ -62,7 +63,7 @@ import { appendMessage, clearChannel } from '@/features/awareness/channelRingBuf
 import { runChatTurn } from '@/features/agent-runtime/agentRuntime';
 import { isLoggingEnabled } from '@/features/settings/guildChannelSettings';
 
-function makeCurrentTurn(overrides: Record<string, unknown> = {}) {
+function makeCurrentTurn(overrides: Partial<CurrentTurnContext> = {}): CurrentTurnContext {
   return {
     invokerUserId: 'user-1',
     invokerDisplayName: 'User One',

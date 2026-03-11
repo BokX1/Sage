@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { CurrentTurnContext } from '@/features/agent-runtime/continuityContext';
 
 import {
   describeContinuityPolicy,
@@ -6,7 +7,7 @@ import {
   selectFocusedContinuityMessages,
 } from '@/features/agent-runtime/continuityContext';
 
-function makeCurrentTurn(overrides: Record<string, unknown> = {}) {
+function makeCurrentTurn(overrides: Partial<CurrentTurnContext> = {}): CurrentTurnContext {
   return {
     invokerUserId: 'user-1',
     invokerDisplayName: 'User One',

@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { CurrentTurnContext } from '@/features/agent-runtime/continuityContext';
 import { logger } from '@/platform/logging/logger';
 
 const { mockChatFn, mockJsonRepair } = vi.hoisted(() => ({
@@ -34,7 +35,7 @@ vi.mock('jsonrepair', () => ({
 
 import { updateProfileSummary } from '@/features/memory/profileUpdater';
 
-function makeCurrentTurn(overrides: Record<string, unknown> = {}) {
+function makeCurrentTurn(overrides: Partial<CurrentTurnContext> = {}): CurrentTurnContext {
   return {
     invokerUserId: 'U1',
     invokerDisplayName: 'User',
