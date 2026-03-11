@@ -35,10 +35,10 @@ import {
   findMatchingPendingAdminAction,
   getPendingAdminActionById,
   clearPendingAdminActionApprovalMessageId,
-  markPendingAdminActionDecision,
-  markPendingAdminActionExecuted,
+  markPendingAdminActionDecisionIfPending,
+  markPendingAdminActionExecutedIfApproved,
   markPendingAdminActionExpired,
-  markPendingAdminActionFailed,
+  markPendingAdminActionFailedIfApproved,
   PendingAdminActionRecord,
   updatePendingAdminActionReviewSurface,
 } from './pendingAdminActionRepo';
@@ -83,6 +83,21 @@ import {
   buildPendingAdminActionRequesterCardPayload,
   buildPendingAdminActionReviewerCardPayload,
 } from './governanceCards';
+import {
+  computePreparedModerationDedupeKey,
+  discordModerationActionRequestSchema,
+  readPreparedModerationEnvelope,
+  type DiscordModerationActionRequest,
+  type PendingModerationPayload,
+  type PreparedModerationAction,
+  type PreparedModerationEnvelope,
+  type PreparedModerationEvidence,
+} from './discordModeration';
+import {
+  extractTextFromMessageContent,
+  type CurrentTurnContext,
+  type ReplyTargetContext,
+} from '../agent-runtime/continuityContext';
 
 const APPROVAL_TTL_MS = 10 * 60 * 1_000;
 const RESOLVED_APPROVAL_CARD_DELETE_DELAY_MS = 60_000;
@@ -108,6 +123,8 @@ const DISCORD_INTERACTION_COOLDOWNS = new Map<string, number>();
 const sendPollsFlag = (
   PermissionsBitField.Flags as Record<string, bigint | undefined>
 ).SendPolls;
+const DISCORD_URL_HOSTS = new Set(['discord.com', 'canary.discord.com', 'ptb.discord.com']);
+const REPLY_TARGET_ALIASES = new Set(['reply_target', 'reply', 'replied_message', 'current_reply_target']);
 
 type PendingButtonAction = 'approve' | 'reject' | 'details';
 
@@ -222,55 +239,6 @@ const sendMessageRequestSchema = z.object({
   validateDiscordSendMessagePayload(value, ctx, { actionLabel: 'send_message' });
 });
 
-const removeUserReactionRequestSchema = z.object({
-  action: z.literal('remove_user_reaction'),
-  messageId: z.string().trim().min(1).max(64),
-  channelId: z.string().trim().min(1).max(64).optional(),
-  emoji: z.string().trim().min(1).max(128),
-  userId: z.string().trim().min(1).max(64),
-  reason: z.string().trim().min(3).max(500),
-});
-
-const clearReactionsRequestSchema = z.object({
-  action: z.literal('clear_reactions'),
-  messageId: z.string().trim().min(1).max(64),
-  channelId: z.string().trim().min(1).max(64).optional(),
-  reason: z.string().trim().min(3).max(500),
-});
-
-const deleteMessageRequestSchema = z.object({
-  action: z.literal('delete_message'),
-  messageId: z.string().trim().min(1).max(64),
-  channelId: z.string().trim().min(1).max(64).optional(),
-  reason: z.string().trim().min(3).max(500),
-});
-
-const timeoutMemberRequestSchema = z.object({
-  action: z.literal('timeout_member'),
-  userId: z.string().trim().min(1).max(64),
-  durationMinutes: z.number().int().min(1).max(40_320),
-  reason: z.string().trim().min(3).max(500),
-});
-
-const kickMemberRequestSchema = z.object({
-  action: z.literal('kick_member'),
-  userId: z.string().trim().min(1).max(64),
-  reason: z.string().trim().min(3).max(500),
-});
-
-const banMemberRequestSchema = z.object({
-  action: z.literal('ban_member'),
-  userId: z.string().trim().min(1).max(64),
-  deleteMessageSeconds: z.number().int().min(0).max(604_800).optional(),
-  reason: z.string().trim().min(3).max(500),
-});
-
-const unbanMemberRequestSchema = z.object({
-  action: z.literal('unban_member'),
-  userId: z.string().trim().min(1).max(64),
-  reason: z.string().trim().min(3).max(500),
-});
-
 /**
  * Declares exported bindings: discordInteractionRequestSchema.
  */
@@ -292,25 +260,10 @@ export const discordInteractionRequestSchema = z.discriminatedUnion('action', [
  */
 export type DiscordInteractionRequest = z.infer<typeof discordInteractionRequestSchema>;
 
-/**
- * Declares exported bindings: discordModerationActionRequestSchema.
- */
-export const discordModerationActionRequestSchema = z.discriminatedUnion('action', [
-  removeUserReactionRequestSchema,
-  clearReactionsRequestSchema,
-  deleteMessageRequestSchema,
-  timeoutMemberRequestSchema,
-  kickMemberRequestSchema,
-  banMemberRequestSchema,
-  unbanMemberRequestSchema,
-]);
-
-/**
- * Represents the DiscordModerationActionRequest type.
- */
-export type DiscordModerationActionRequest = z.infer<typeof discordModerationActionRequestSchema>;
+export { discordModerationActionRequestSchema };
+export type { DiscordModerationActionRequest };
 type ImmediateDiscordAction = DiscordInteractionRequest;
-type QueuedDiscordAction = DiscordModerationActionRequest;
+type QueuedDiscordAction = PreparedModerationAction;
 
 type ServerInstructionsPendingPayload = {
   operation: ServerInstructionsUpdateRequest['operation'];
@@ -319,9 +272,7 @@ type ServerInstructionsPendingPayload = {
   baseVersion: number;
 };
 
-type DiscordActionPendingPayload = {
-  action: QueuedDiscordAction;
-};
+type DiscordActionPendingPayload = PendingModerationPayload;
 
 /**
  * Represents the DiscordRestWriteRequest type.
@@ -455,6 +406,18 @@ async function fetchGuildAndBotMember(guildId: string): Promise<{ guild: Guild; 
 
 type GuildMessageLike = {
   id: string;
+  channelId?: string;
+  guildId?: string | null;
+  content?: string;
+  author?: {
+    id?: string;
+    bot?: boolean;
+    username?: string;
+    globalName?: string | null;
+  };
+  member?: {
+    displayName?: string | null;
+  } | null;
   delete: () => Promise<void>;
   react: (emoji: string) => Promise<unknown>;
   startThread: (args: {
@@ -511,6 +474,302 @@ function normalizeChannelId(rawChannelId: string): string {
   return match ? match[1] : trimmed;
 }
 
+function normalizeUserId(rawUserId: string): string | null {
+  const trimmed = rawUserId.trim();
+  const mentionMatch = trimmed.match(/^<@!?(\d+)>$/);
+  if (mentionMatch) {
+    return mentionMatch[1] ?? null;
+  }
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+type ParsedDiscordMessageUrl = {
+  guildId: string | '@me';
+  channelId: string;
+  messageId: string;
+  normalizedUrl: string;
+};
+
+function parseDiscordMessageUrl(raw: string): ParsedDiscordMessageUrl | null {
+  const trimmed = raw.trim();
+  const unwrapped =
+    trimmed.startsWith('<') && trimmed.endsWith('>')
+      ? trimmed.slice(1, Math.max(1, trimmed.length - 1)).trim()
+      : trimmed;
+
+  let parsed: URL;
+  try {
+    parsed = new URL(unwrapped);
+  } catch {
+    return null;
+  }
+
+  if (!DISCORD_URL_HOSTS.has(parsed.hostname)) {
+    return null;
+  }
+
+  const match = parsed.pathname.match(/^\/channels\/([^/]+)\/([^/]+)\/([^/]+)\/?$/);
+  if (!match) {
+    return null;
+  }
+
+  const [, guildId, channelId, messageId] = match;
+  if (!guildId || !channelId || !messageId) {
+    return null;
+  }
+  return {
+    guildId: guildId === '@me' ? '@me' : guildId,
+    channelId,
+    messageId,
+    normalizedUrl: `https://discord.com/channels/${guildId}/${channelId}/${messageId}`,
+  };
+}
+
+function isReplyTargetAlias(value: string | null | undefined): boolean {
+  if (!value) return true;
+  return REPLY_TARGET_ALIASES.has(value.trim().toLowerCase());
+}
+
+function buildDiscordMessageUrl(guildId: string, channelId: string, messageId: string): string {
+  return `https://discord.com/channels/${guildId}/${channelId}/${messageId}`;
+}
+
+function extractReplyTargetPreview(replyTarget: ReplyTargetContext | null | undefined): {
+  messageExcerpt: string | null;
+  messageAuthorDisplayName: string | null;
+} {
+  if (!replyTarget) {
+    return { messageExcerpt: null, messageAuthorDisplayName: null };
+  }
+
+  const content = extractTextFromMessageContent(replyTarget.content);
+  return {
+    messageExcerpt: content ? truncateWithFlag(content.replace(/\s+/g, ' ').trim(), 220).text : null,
+    messageAuthorDisplayName: replyTarget.authorDisplayName.trim() || null,
+  };
+}
+
+function extractMessagePreview(message: GuildMessageLike): {
+  messageExcerpt: string | null;
+  messageAuthorId: string | null;
+  messageAuthorDisplayName: string | null;
+} {
+  const content = typeof message.content === 'string' ? message.content.replace(/\s+/g, ' ').trim() : '';
+  const authorId = message.author?.id?.trim() || null;
+  const messageAuthorDisplayName =
+    message.member?.displayName?.trim() ||
+    message.author?.globalName?.trim() ||
+    message.author?.username?.trim() ||
+    authorId;
+
+  return {
+    messageExcerpt: content ? truncateWithFlag(content, 220).text : null,
+    messageAuthorId: authorId,
+    messageAuthorDisplayName,
+  };
+}
+
+function readDiscordErrorCode(error: unknown): number | string | null {
+  if (!error || typeof error !== 'object') {
+    return null;
+  }
+  const code = (error as { code?: unknown }).code;
+  if (typeof code === 'number' || typeof code === 'string') {
+    return code;
+  }
+  return null;
+}
+
+function isDiscordNotFoundError(error: unknown): boolean {
+  const code = readDiscordErrorCode(error);
+  if (code === 10003 || code === 10008 || code === 10013 || code === 10014 || code === 10026) {
+    return true;
+  }
+  const message = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
+  return (
+    message.includes('unknown message') ||
+    message.includes('unknown channel') ||
+    message.includes('unknown member') ||
+    message.includes('unknown ban') ||
+    message.includes('not found')
+  );
+}
+
+async function fetchGuildMessageOrNull(channel: GuildBasedChannel, messageId: string): Promise<GuildMessageLike | null> {
+  return fetchGuildMessage(channel, messageId).catch((error) => {
+    if (isDiscordNotFoundError(error)) {
+      return null;
+    }
+    throw error;
+  });
+}
+
+type RequiredModerationPermission = {
+  flag: bigint;
+  label: string;
+  scope: 'channel' | 'guild';
+};
+
+type ResolvedMessageTarget = {
+  source: PreparedModerationEvidence['source'];
+  channelId: string;
+  messageId: string;
+  messageUrl: string | null;
+};
+
+type ResolvedMemberTarget = {
+  source: PreparedModerationEvidence['source'];
+  userId: string;
+  messageUrl: string | null;
+  evidenceChannelId: string | null;
+  evidenceMessageId: string | null;
+};
+
+type PreparedModerationDeps = {
+  guildId: string;
+  sourceChannelId: string;
+  request: DiscordModerationActionRequest;
+  currentTurn?: CurrentTurnContext;
+  replyTarget?: ReplyTargetContext | null;
+};
+
+function computeModerationDedupeKey(action: PreparedModerationAction): string {
+  return computePreparedModerationDedupeKey(action);
+}
+
+function assertReplyTargetInGuild(params: {
+  guildId: string;
+  replyTarget?: ReplyTargetContext | null;
+  usage: string;
+}): ReplyTargetContext {
+  const replyTarget = params.replyTarget;
+  if (!replyTarget) {
+    throw new Error(`${params.usage} requires either an explicit target or a direct reply target.`);
+  }
+  if ((replyTarget.guildId ?? null) !== params.guildId) {
+    throw new Error(`${params.usage} can only target messages from the active guild.`);
+  }
+  return replyTarget;
+}
+
+function resolveMessageTarget(params: {
+  guildId: string;
+  sourceChannelId: string;
+  rawMessageId?: string;
+  rawChannelId?: string;
+  replyTarget?: ReplyTargetContext | null;
+  usage: string;
+}): ResolvedMessageTarget {
+  const rawMessageId = params.rawMessageId?.trim() || null;
+  const rawChannelId = params.rawChannelId?.trim() || null;
+
+  if (rawMessageId && !isReplyTargetAlias(rawMessageId)) {
+    const parsedUrl = parseDiscordMessageUrl(rawMessageId);
+    if (parsedUrl) {
+      if (parsedUrl.guildId === '@me') {
+        throw new Error(`${params.usage} cannot target DM message URLs.`);
+      }
+      if (parsedUrl.guildId !== params.guildId) {
+        throw new Error(`${params.usage} cannot target a message from another guild.`);
+      }
+
+      const explicitChannelId = rawChannelId ? normalizeChannelId(rawChannelId) : null;
+      if (explicitChannelId && explicitChannelId !== parsedUrl.channelId) {
+        throw new Error(`${params.usage} received conflicting channel and message references.`);
+      }
+
+      return {
+        source: 'message_url',
+        channelId: parsedUrl.channelId,
+        messageId: parsedUrl.messageId,
+        messageUrl: parsedUrl.normalizedUrl,
+      };
+    }
+
+    const channelId = rawChannelId ? normalizeChannelId(rawChannelId) : params.sourceChannelId;
+    return {
+      source: rawChannelId ? (rawChannelId.startsWith('<#') ? 'channel_mention' : 'explicit_id') : 'current_channel_default',
+      channelId,
+      messageId: rawMessageId,
+      messageUrl: buildDiscordMessageUrl(params.guildId, channelId, rawMessageId),
+    };
+  }
+
+  const replyTarget = assertReplyTargetInGuild({
+    guildId: params.guildId,
+    replyTarget: params.replyTarget,
+    usage: params.usage,
+  });
+  return {
+    source: 'reply_target',
+    channelId: replyTarget.channelId,
+    messageId: replyTarget.messageId,
+    messageUrl: buildDiscordMessageUrl(params.guildId, replyTarget.channelId, replyTarget.messageId),
+  };
+}
+
+function resolveMemberTargetInput(params: {
+  guildId: string;
+  rawUserId?: string;
+  replyTarget?: ReplyTargetContext | null;
+  usage: string;
+  allowReplyTargetInference?: boolean;
+}): ResolvedMemberTarget {
+  const rawUserId = params.rawUserId?.trim() || null;
+
+  if (rawUserId && !isReplyTargetAlias(rawUserId)) {
+    const parsedUrl = parseDiscordMessageUrl(rawUserId);
+    if (parsedUrl) {
+      if (parsedUrl.guildId === '@me') {
+        throw new Error(`${params.usage} cannot target DM message URLs.`);
+      }
+      if (parsedUrl.guildId !== params.guildId) {
+        throw new Error(`${params.usage} cannot target a message from another guild.`);
+      }
+      return {
+        source: 'message_author_url',
+        userId: '',
+        messageUrl: parsedUrl.normalizedUrl,
+        evidenceChannelId: parsedUrl.channelId,
+        evidenceMessageId: parsedUrl.messageId,
+      };
+    }
+
+    const parsedUserId = normalizeUserId(rawUserId);
+    if (parsedUserId) {
+      return {
+        source: rawUserId.startsWith('<@') ? 'user_mention' : 'explicit_id',
+        userId: parsedUserId,
+        messageUrl: null,
+        evidenceChannelId: null,
+        evidenceMessageId: null,
+      };
+    }
+
+    throw new Error(`${params.usage} requires a Discord user mention, user ID, message URL, or direct reply target.`);
+  }
+
+  if (params.allowReplyTargetInference === false) {
+    throw new Error(`${params.usage} requires an explicit Discord user mention, user ID, or message URL for the member target.`);
+  }
+
+  const replyTarget = assertReplyTargetInGuild({
+    guildId: params.guildId,
+    replyTarget: params.replyTarget,
+    usage: params.usage,
+  });
+  if (replyTarget.authorIsBot) {
+    throw new Error(`${params.usage} cannot infer a member target from a bot-authored reply target.`);
+  }
+  return {
+    source: 'reply_target',
+    userId: replyTarget.authorId,
+    messageUrl: buildDiscordMessageUrl(params.guildId, replyTarget.channelId, replyTarget.messageId),
+    evidenceChannelId: replyTarget.channelId,
+    evidenceMessageId: replyTarget.messageId,
+  };
+}
+
 function matchesEmojiIdentifier(reaction: GuildMessageReactionLike, emojiIdentifier: string): boolean {
   const reactionIdentifier = reaction.emoji.identifier;
   if (reactionIdentifier && reactionIdentifier === emojiIdentifier) {
@@ -565,6 +824,498 @@ async function resolveMessageReaction(
   return null;
 }
 
+function requiredApproverPermission(
+  action: QueuedDiscordAction,
+): RequiredModerationPermission | null {
+  switch (action.action) {
+    case 'delete_message':
+    case 'remove_user_reaction':
+    case 'clear_reactions':
+      return { flag: PermissionsBitField.Flags.ManageMessages, label: 'Manage Messages', scope: 'channel' };
+    case 'timeout_member':
+    case 'untimeout_member':
+      return { flag: PermissionsBitField.Flags.ModerateMembers, label: 'Moderate Members', scope: 'guild' };
+    case 'kick_member':
+      return { flag: PermissionsBitField.Flags.KickMembers, label: 'Kick Members', scope: 'guild' };
+    case 'ban_member':
+    case 'unban_member':
+      return { flag: PermissionsBitField.Flags.BanMembers, label: 'Ban Members', scope: 'guild' };
+    default:
+      return null;
+  }
+}
+
+function assertPermissionSet(params: {
+  permissions: Readonly<PermissionsBitField>;
+  required: RequiredModerationPermission[];
+  actorLabel: string;
+  location?: string | null;
+}): void {
+  const missing = params.required.filter((item) => !params.permissions.has(item.flag));
+  if (missing.length === 0) {
+    return;
+  }
+  const labels = missing.map((item) => item.label).join(', ');
+  const suffix = params.location ? ` in ${params.location}` : '';
+  throw new Error(`${params.actorLabel} lacks required permission(s)${suffix}: ${labels}.`);
+}
+
+function moderationBotPermissionsForAction(action: DiscordModerationActionRequest['action']): RequiredModerationPermission[] {
+  switch (action) {
+    case 'delete_message':
+      return [{ flag: PermissionsBitField.Flags.ManageMessages, label: 'Manage Messages', scope: 'channel' }];
+    case 'remove_user_reaction':
+    case 'clear_reactions':
+      return [
+        { flag: PermissionsBitField.Flags.ManageMessages, label: 'Manage Messages', scope: 'channel' },
+        { flag: PermissionsBitField.Flags.ReadMessageHistory, label: 'Read Message History', scope: 'channel' },
+      ];
+    case 'timeout_member':
+    case 'untimeout_member':
+      return [{ flag: PermissionsBitField.Flags.ModerateMembers, label: 'Moderate Members', scope: 'guild' }];
+    case 'kick_member':
+      return [{ flag: PermissionsBitField.Flags.KickMembers, label: 'Kick Members', scope: 'guild' }];
+    case 'ban_member':
+    case 'unban_member':
+      return [{ flag: PermissionsBitField.Flags.BanMembers, label: 'Ban Members', scope: 'guild' }];
+    default:
+      return [];
+  }
+}
+
+function buildNormalizedOriginalRequest(
+  original: DiscordModerationActionRequest,
+  canonicalAction: PreparedModerationAction,
+): DiscordModerationActionRequest {
+  switch (canonicalAction.action) {
+    case 'remove_user_reaction':
+      return {
+        action: canonicalAction.action,
+        channelId: canonicalAction.channelId,
+        messageId: canonicalAction.messageId,
+        emoji: canonicalAction.emoji,
+        userId: canonicalAction.userId,
+        reason: canonicalAction.reason,
+      };
+    case 'clear_reactions':
+    case 'delete_message':
+      return {
+        action: canonicalAction.action,
+        channelId: canonicalAction.channelId,
+        messageId: canonicalAction.messageId,
+        reason: canonicalAction.reason,
+      };
+    case 'timeout_member':
+      return {
+        action: canonicalAction.action,
+        userId: canonicalAction.userId,
+        durationMinutes: canonicalAction.durationMinutes,
+        reason: canonicalAction.reason,
+      };
+    case 'ban_member':
+      return {
+        action: canonicalAction.action,
+        userId: canonicalAction.userId,
+        deleteMessageSeconds: canonicalAction.deleteMessageSeconds,
+        reason: canonicalAction.reason,
+      };
+    case 'untimeout_member':
+    case 'kick_member':
+    case 'unban_member':
+      return {
+        action: canonicalAction.action,
+        userId: canonicalAction.userId,
+        reason: canonicalAction.reason,
+      };
+    default:
+      return original;
+  }
+}
+
+async function resolveMemberEvidenceMessage(params: {
+  guildId: string;
+  evidenceChannelId: string;
+  evidenceMessageId: string;
+}): Promise<GuildMessageLike> {
+  const channel = await fetchGuildChannel(params.guildId, params.evidenceChannelId);
+  const message = await fetchGuildMessageOrNull(channel, params.evidenceMessageId);
+  if (!message) {
+    throw new Error('Referenced moderation evidence message was not found.');
+  }
+  return message;
+}
+
+async function prepareMessageModerationEnvelope(
+  params: PreparedModerationDeps,
+): Promise<PreparedModerationEnvelope> {
+  const target = resolveMessageTarget({
+    guildId: params.guildId,
+    sourceChannelId: params.sourceChannelId,
+    rawMessageId: 'messageId' in params.request ? params.request.messageId : undefined,
+    rawChannelId: 'channelId' in params.request ? params.request.channelId : undefined,
+    replyTarget: params.replyTarget,
+    usage: `discord_admin.submit_moderation (${params.request.action})`,
+  });
+
+  const { botMember } = await fetchGuildAndBotMember(params.guildId);
+  const channel = await fetchGuildChannel(params.guildId, target.channelId);
+  const botChannelPermissions = botMember.permissionsIn(channel);
+  const botRequirements = moderationBotPermissionsForAction(params.request.action);
+  assertPermissionSet({
+    permissions: botChannelPermissions,
+    required: botRequirements.filter((item) => item.scope === 'channel'),
+    actorLabel: 'Bot',
+    location: `channel ${channel.id}`,
+  });
+  assertPermissionSet({
+    permissions: botMember.permissions,
+    required: botRequirements.filter((item) => item.scope === 'guild'),
+    actorLabel: 'Bot',
+    location: 'the guild',
+  });
+
+  const message = await fetchGuildMessageOrNull(channel, target.messageId);
+  if (!message) {
+    throw new Error('Target message was not found in the active guild.');
+  }
+
+  const messagePreview = extractMessagePreview(message);
+  const replyPreview = extractReplyTargetPreview(params.replyTarget);
+  const messageUrl = target.messageUrl ?? buildDiscordMessageUrl(params.guildId, channel.id, message.id);
+  const approverPermission = requiredApproverPermission({
+    action: params.request.action,
+    channelId: channel.id,
+    messageId: message.id,
+    reason: params.request.reason,
+    ...(params.request.action === 'remove_user_reaction'
+      ? {
+          emoji: normalizeEmojiIdentifier(params.request.emoji),
+          userId: '',
+        }
+      : {}),
+  } as QueuedDiscordAction);
+
+  if (params.request.action === 'delete_message' || params.request.action === 'clear_reactions') {
+    const canonicalAction: PreparedModerationAction = {
+      action: params.request.action,
+      channelId: channel.id,
+      messageId: message.id,
+      reason: params.request.reason,
+    };
+    return {
+      version: 1,
+      originalRequest: buildNormalizedOriginalRequest(params.request, canonicalAction),
+      canonicalAction,
+      evidence: {
+        targetKind: params.request.action === 'clear_reactions' ? 'reaction' : 'message',
+        source: target.source,
+        channelId: channel.id,
+        messageId: message.id,
+        messageUrl,
+        userId: messagePreview.messageAuthorId,
+        messageAuthorId: messagePreview.messageAuthorId,
+        messageAuthorDisplayName: messagePreview.messageAuthorDisplayName ?? replyPreview.messageAuthorDisplayName,
+        messageExcerpt: messagePreview.messageExcerpt ?? replyPreview.messageExcerpt,
+      },
+      preflight: {
+        approverPermission: approverPermission?.label ?? null,
+        botPermissionChecks: botRequirements.map((item) => item.label),
+        targetChannelScope: channel.id,
+        hierarchyChecked: false,
+        notes: [
+          target.source === 'reply_target'
+            ? 'Resolved the moderation target from the direct reply target.'
+            : 'Resolved the moderation target from explicit Discord identifiers.',
+          `Verified bot permissions in <#${channel.id}> before queueing approval.`,
+        ],
+      },
+      dedupeKey: computeModerationDedupeKey(canonicalAction),
+    };
+  }
+
+  if (params.request.action !== 'remove_user_reaction') {
+    throw new Error('Unsupported message moderation request.');
+  }
+
+  const resolvedUser = resolveMemberTargetInput({
+    guildId: params.guildId,
+    rawUserId: params.request.userId,
+    replyTarget: params.replyTarget,
+    usage: 'discord_admin.submit_moderation (remove_user_reaction)',
+    allowReplyTargetInference: false,
+  });
+
+  let resolvedUserId = resolvedUser.userId;
+  if (!resolvedUserId && resolvedUser.evidenceChannelId && resolvedUser.evidenceMessageId) {
+    const evidenceMessage = await resolveMemberEvidenceMessage({
+      guildId: params.guildId,
+      evidenceChannelId: resolvedUser.evidenceChannelId,
+      evidenceMessageId: resolvedUser.evidenceMessageId,
+    });
+    resolvedUserId = evidenceMessage.author?.id?.trim() || '';
+  }
+  if (!resolvedUserId) {
+    throw new Error('Unable to resolve the reaction target user.');
+  }
+
+  const emoji = normalizeEmojiIdentifier(params.request.emoji);
+  const reaction = await resolveMessageReaction(message, emoji);
+  if (!reaction) {
+    throw new Error('Target reaction was not found on the target message.');
+  }
+
+  const canonicalAction: PreparedModerationAction = {
+    action: 'remove_user_reaction',
+    channelId: channel.id,
+    messageId: message.id,
+    emoji,
+    userId: resolvedUserId,
+    reason: params.request.reason,
+  };
+  return {
+    version: 1,
+    originalRequest: buildNormalizedOriginalRequest(params.request, canonicalAction),
+    canonicalAction,
+    evidence: {
+      targetKind: 'reaction',
+      source: resolvedUser.source === 'message_author_url' ? 'message_author_url' : target.source,
+      channelId: channel.id,
+      messageId: message.id,
+      messageUrl,
+      userId: resolvedUserId,
+      messageAuthorId: messagePreview.messageAuthorId,
+      messageAuthorDisplayName: messagePreview.messageAuthorDisplayName,
+      messageExcerpt: messagePreview.messageExcerpt,
+    },
+    preflight: {
+      approverPermission: approverPermission?.label ?? null,
+      botPermissionChecks: botRequirements.map((item) => item.label),
+      targetChannelScope: channel.id,
+      hierarchyChecked: false,
+      notes: [
+        target.source === 'reply_target'
+          ? 'Resolved the target message from the direct reply target.'
+          : 'Resolved the target message from explicit Discord identifiers.',
+        resolvedUser.source === 'message_author_url'
+          ? 'Resolved the reaction user from a referenced message author.'
+          : 'Resolved the reaction user from an explicit user reference.',
+      ],
+    },
+    dedupeKey: computeModerationDedupeKey(canonicalAction),
+  };
+}
+
+async function prepareMemberModerationEnvelope(
+  params: PreparedModerationDeps,
+): Promise<PreparedModerationEnvelope> {
+  if (
+    params.request.action !== 'timeout_member' &&
+    params.request.action !== 'untimeout_member' &&
+    params.request.action !== 'kick_member' &&
+    params.request.action !== 'ban_member' &&
+    params.request.action !== 'unban_member'
+  ) {
+    throw new Error('Unsupported member moderation request.');
+  }
+
+  const request = params.request;
+  const resolved = resolveMemberTargetInput({
+    guildId: params.guildId,
+    rawUserId: request.userId,
+    replyTarget: params.replyTarget,
+    usage: `discord_admin.submit_moderation (${request.action})`,
+  });
+  const { guild, botMember } = await fetchGuildAndBotMember(params.guildId);
+  const botRequirements = moderationBotPermissionsForAction(request.action);
+  assertPermissionSet({
+    permissions: botMember.permissions,
+    required: botRequirements,
+    actorLabel: 'Bot',
+    location: 'the guild',
+  });
+
+  let evidence: PreparedModerationEvidence = {
+    targetKind: 'member',
+    source: resolved.source,
+    channelId: resolved.evidenceChannelId,
+    messageId: resolved.evidenceMessageId,
+    messageUrl: resolved.messageUrl,
+    userId: null,
+    messageAuthorId: null,
+    messageAuthorDisplayName: null,
+    messageExcerpt: null,
+  };
+  let userId = resolved.userId;
+
+  if (!userId && resolved.evidenceChannelId && resolved.evidenceMessageId) {
+    const evidenceMessage = await resolveMemberEvidenceMessage({
+      guildId: params.guildId,
+      evidenceChannelId: resolved.evidenceChannelId,
+      evidenceMessageId: resolved.evidenceMessageId,
+    });
+    const messagePreview = extractMessagePreview(evidenceMessage);
+    userId = messagePreview.messageAuthorId ?? '';
+    evidence = {
+      ...evidence,
+      userId,
+      messageAuthorId: messagePreview.messageAuthorId,
+      messageAuthorDisplayName: messagePreview.messageAuthorDisplayName,
+      messageExcerpt: messagePreview.messageExcerpt,
+      messageUrl:
+        resolved.messageUrl ??
+        buildDiscordMessageUrl(params.guildId, resolved.evidenceChannelId, resolved.evidenceMessageId),
+    };
+  } else if (resolved.source === 'reply_target') {
+    const replyTarget = assertReplyTargetInGuild({
+      guildId: params.guildId,
+      replyTarget: params.replyTarget,
+      usage: `discord_admin.submit_moderation (${params.request.action})`,
+    });
+    const replyPreview = extractReplyTargetPreview(replyTarget);
+    evidence = {
+      ...evidence,
+      userId,
+      messageAuthorId: replyTarget.authorId,
+      messageAuthorDisplayName: replyPreview.messageAuthorDisplayName,
+      messageExcerpt: replyPreview.messageExcerpt,
+      messageUrl: buildDiscordMessageUrl(params.guildId, replyTarget.channelId, replyTarget.messageId),
+    };
+  } else {
+    evidence = {
+      ...evidence,
+      userId,
+    };
+  }
+
+  if (!userId) {
+    throw new Error('Unable to resolve the member target for moderation.');
+  }
+
+  const approverPermission = requiredApproverPermission({
+    action: request.action,
+    userId,
+    reason: request.reason,
+    ...(request.action === 'timeout_member'
+      ? { durationMinutes: request.durationMinutes }
+      : {}),
+    ...(request.action === 'ban_member'
+      ? { deleteMessageSeconds: request.deleteMessageSeconds }
+      : {}),
+  } as QueuedDiscordAction);
+
+  let hierarchyChecked = false;
+  let hierarchyNote = 'No role-hierarchy check was required for this action.';
+  if (request.action === 'unban_member') {
+    const existingBan = await guild.bans.fetch(userId).catch((error) => {
+      if (isDiscordNotFoundError(error)) return null;
+      throw error;
+    });
+    if (!existingBan) {
+      throw new Error('Target user is not currently banned.');
+    }
+  } else {
+    const targetMember = await guild.members.fetch(userId).catch((error) => {
+      if (isDiscordNotFoundError(error)) return null;
+      throw error;
+    });
+    if (!targetMember && request.action !== 'ban_member') {
+      throw new Error('Target member was not found in the active guild.');
+    }
+
+    if (request.action === 'ban_member' && !targetMember) {
+      hierarchyNote = 'Target user was not an active guild member during preflight; Sage will execute the ban by raw user ID if approved.';
+    }
+
+    if (request.action === 'untimeout_member' && targetMember && !targetMember.communicationDisabledUntilTimestamp) {
+      throw new Error('Target member is not currently timed out.');
+    }
+
+    if (
+      targetMember &&
+      (request.action === 'timeout_member' ||
+        request.action === 'untimeout_member' ||
+        request.action === 'kick_member' ||
+        request.action === 'ban_member')
+    ) {
+      assertMemberHierarchy(botMember, targetMember);
+      hierarchyChecked = true;
+      hierarchyNote = 'Verified the target member is below Sage in the role hierarchy.';
+    }
+  }
+
+  let canonicalAction: PreparedModerationAction;
+  switch (request.action) {
+    case 'timeout_member':
+      canonicalAction = {
+        action: 'timeout_member',
+        userId,
+        durationMinutes: request.durationMinutes,
+        reason: request.reason,
+      };
+      break;
+    case 'ban_member':
+      canonicalAction = {
+        action: 'ban_member',
+        userId,
+        deleteMessageSeconds: request.deleteMessageSeconds,
+        reason: request.reason,
+      };
+      break;
+    case 'untimeout_member':
+    case 'kick_member':
+    case 'unban_member':
+      canonicalAction = {
+        action: request.action,
+        userId,
+        reason: request.reason,
+      };
+      break;
+    default:
+      throw new Error('Unsupported member moderation request.');
+  }
+
+  return {
+    version: 1,
+    originalRequest: buildNormalizedOriginalRequest(request, canonicalAction),
+    canonicalAction,
+    evidence,
+    preflight: {
+      approverPermission: approverPermission?.label ?? null,
+      botPermissionChecks: botRequirements.map((item) => item.label),
+      targetChannelScope: evidence.channelId ?? null,
+      hierarchyChecked,
+      notes: [
+        resolved.source === 'reply_target'
+          ? 'Resolved the member target from the direct reply target author.'
+          : resolved.source === 'message_author_url'
+            ? 'Resolved the member target from a referenced message author.'
+            : 'Resolved the member target from an explicit user reference.',
+        hierarchyNote,
+      ],
+    },
+    dedupeKey: computeModerationDedupeKey(canonicalAction),
+  };
+}
+
+async function prepareDiscordModerationEnvelope(
+  params: PreparedModerationDeps,
+): Promise<PreparedModerationEnvelope> {
+  switch (params.request.action) {
+    case 'delete_message':
+    case 'clear_reactions':
+    case 'remove_user_reaction':
+      return prepareMessageModerationEnvelope(params);
+    case 'timeout_member':
+    case 'untimeout_member':
+    case 'kick_member':
+    case 'ban_member':
+    case 'unban_member':
+      return prepareMemberModerationEnvelope(params);
+    default:
+      throw new Error('Unsupported moderation request.');
+  }
+}
+
 function getInteractionMemberPermissions(
   interaction: Pick<ButtonInteraction, 'member'>,
 ): Readonly<PermissionsBitField> | null {
@@ -576,26 +1327,6 @@ function getInteractionMemberPermissions(
   return typeof member.permissions === 'string'
     ? new PermissionsBitField(BigInt(member.permissions))
     : member.permissions;
-}
-
-function requiredApproverPermission(
-  action: QueuedDiscordAction,
-): { flag: bigint; label: string } | null {
-  switch (action.action) {
-    case 'delete_message':
-    case 'remove_user_reaction':
-    case 'clear_reactions':
-      return { flag: PermissionsBitField.Flags.ManageMessages, label: 'Manage Messages' };
-    case 'timeout_member':
-      return { flag: PermissionsBitField.Flags.ModerateMembers, label: 'Moderate Members' };
-    case 'kick_member':
-      return { flag: PermissionsBitField.Flags.KickMembers, label: 'Kick Members' };
-    case 'ban_member':
-    case 'unban_member':
-      return { flag: PermissionsBitField.Flags.BanMembers, label: 'Ban Members' };
-    default:
-      return null;
-  }
 }
 
 function assertMemberHierarchy(botMember: GuildMember, target: GuildMember): void {
@@ -1664,24 +2395,28 @@ async function executeQueuedDiscordAction(params: {
         throw new Error('Bot lacks ManageMessages permission in target channel.');
       }
 
-      const messageChannel = channel as unknown as {
-        messages?: {
-          fetch: (messageId: string) => Promise<{ delete: () => Promise<void> }>;
-        };
-      };
-
-      if (!messageChannel.messages) {
-        throw new Error('Target channel does not support message lookup.');
+      const auditReason = withAuditReason(
+        params.action.reason,
+        params.actionId,
+        params.requestedBy,
+        params.approvedBy,
+      );
+      const restResult = await discordRestRequestGuildScoped({
+        guildId: params.guildId,
+        method: 'DELETE',
+        path: `/channels/${channel.id}/messages/${params.action.messageId}`,
+        reason: auditReason,
+      });
+      if (!restResult.ok && (restResult.status ?? 0) !== 404) {
+        throw new Error(`Failed to delete message (${restResult.status} ${restResult.statusText}): ${String(restResult.error ?? 'Unknown error')}`);
       }
-
-      const message = await messageChannel.messages.fetch(params.action.messageId);
-      await message.delete();
 
       return {
         action: params.action.action,
-        status: 'executed',
+        status: restResult.ok ? 'executed' : 'noop',
         channelId: channel.id,
         messageId: params.action.messageId,
+        noop: !restResult.ok,
       };
     }
 
@@ -1696,14 +2431,38 @@ async function executeQueuedDiscordAction(params: {
         throw new Error('Bot lacks ReadMessageHistory permission in target channel.');
       }
 
-      const message = await fetchGuildMessage(channel, params.action.messageId);
+      const message = await fetchGuildMessageOrNull(channel, params.action.messageId);
+      if (!message) {
+        return {
+          action: params.action.action,
+          status: 'noop',
+          channelId: channel.id,
+          messageId: params.action.messageId,
+          emoji: params.action.emoji,
+          userId: params.action.userId,
+          noop: true,
+        };
+      }
       const emoji = normalizeEmojiIdentifier(params.action.emoji);
       const reaction = await resolveMessageReaction(message, emoji);
       if (!reaction) {
-        throw new Error('Reaction not found on the target message.');
+        return {
+          action: params.action.action,
+          status: 'noop',
+          channelId: channel.id,
+          messageId: params.action.messageId,
+          emoji,
+          userId: params.action.userId,
+          noop: true,
+        };
       }
 
-      await reaction.users.remove(params.action.userId);
+      await reaction.users.remove(params.action.userId).catch((error) => {
+        if (isDiscordNotFoundError(error)) {
+          return null;
+        }
+        throw error;
+      });
       return {
         action: params.action.action,
         status: 'executed',
@@ -1725,12 +2484,26 @@ async function executeQueuedDiscordAction(params: {
         throw new Error('Bot lacks ReadMessageHistory permission in target channel.');
       }
 
-      const message = await fetchGuildMessage(channel, params.action.messageId);
+      const message = await fetchGuildMessageOrNull(channel, params.action.messageId);
+      if (!message) {
+        return {
+          action: params.action.action,
+          status: 'noop',
+          channelId: channel.id,
+          messageId: params.action.messageId,
+          noop: true,
+        };
+      }
       if (!message.reactions?.removeAll) {
         throw new Error('Target message does not support reaction management.');
       }
 
-      await message.reactions.removeAll();
+      await message.reactions.removeAll().catch((error) => {
+        if (isDiscordNotFoundError(error)) {
+          return null;
+        }
+        throw error;
+      });
       return {
         action: params.action.action,
         status: 'executed',
@@ -1762,6 +2535,39 @@ async function executeQueuedDiscordAction(params: {
         status: 'executed',
         userId: params.action.userId,
         durationMinutes: params.action.durationMinutes,
+      };
+    }
+
+    case 'untimeout_member': {
+      if (!botMember.permissions.has(PermissionsBitField.Flags.ModerateMembers)) {
+        throw new Error('Bot lacks ModerateMembers permission.');
+      }
+
+      const targetMember = await guild.members.fetch(params.action.userId);
+      assertMemberHierarchy(botMember, targetMember);
+      if (!targetMember.communicationDisabledUntilTimestamp) {
+        return {
+          action: params.action.action,
+          status: 'noop',
+          userId: params.action.userId,
+          noop: true,
+        };
+      }
+
+      await targetMember.timeout(
+        null,
+        withAuditReason(
+          params.action.reason,
+          params.actionId,
+          params.requestedBy,
+          params.approvedBy,
+        ),
+      );
+
+      return {
+        action: params.action.action,
+        status: 'executed',
+        userId: params.action.userId,
       };
     }
 
@@ -1819,6 +2625,21 @@ async function executeQueuedDiscordAction(params: {
     case 'unban_member': {
       if (!botMember.permissions.has(PermissionsBitField.Flags.BanMembers)) {
         throw new Error('Bot lacks BanMembers permission.');
+      }
+
+      const existingBan = await guild.bans.fetch(params.action.userId).catch((error) => {
+        if (isDiscordNotFoundError(error)) {
+          return null;
+        }
+        throw error;
+      });
+      if (!existingBan) {
+        return {
+          action: params.action.action,
+          status: 'noop',
+          userId: params.action.userId,
+          noop: true,
+        };
       }
 
       await guild.bans.remove(
@@ -1884,9 +2705,14 @@ async function executePendingAction(params: {
   }
 
   if (params.action.kind === 'discord_queue_moderation_action') {
-    const payload = params.action.payloadJson as DiscordActionPendingPayload;
+    const prepared = readPreparedModerationEnvelope(params.action.payloadJson, {
+      sourceChannelId: params.action.sourceChannelId,
+    });
+    if (!prepared) {
+      throw new Error('Pending moderation payload is invalid or unreadable.');
+    }
     return executeQueuedDiscordAction({
-      action: payload.action,
+      action: prepared.canonicalAction,
       guildId: params.action.guildId,
       channelId: params.action.sourceChannelId,
       actionId: params.action.id,
@@ -2055,9 +2881,42 @@ export async function requestDiscordAdminActionForTool(params: {
   channelId: string;
   requestedBy: string;
   request: DiscordModerationActionRequest;
+  currentTurn?: CurrentTurnContext;
+  replyTarget?: ReplyTargetContext | null;
 }): Promise<Record<string, unknown>> {
-  const payload = {
+  const legacyPayload = {
     action: params.request,
+  } satisfies DiscordActionPendingPayload;
+  const exactExistingPending = await findMatchingPendingAdminAction({
+    guildId: params.guildId,
+    requestedBy: params.requestedBy,
+    kind: 'discord_queue_moderation_action',
+    payloadJson: legacyPayload,
+  });
+  if (exactExistingPending) {
+    const approvalMessageId = await ensureApprovalCardForPending({
+      pending: exactExistingPending,
+    });
+    return {
+      status: 'pending_approval',
+      actionId: exactExistingPending.id,
+      action: params.request.action,
+      coalesced: true,
+      expiresAtIso: exactExistingPending.expiresAt.toISOString(),
+      approvalMessageId,
+      reviewChannelId: exactExistingPending.reviewChannelId,
+    };
+  }
+
+  const prepared = await prepareDiscordModerationEnvelope({
+    guildId: params.guildId,
+    sourceChannelId: params.channelId,
+    request: params.request,
+    currentTurn: params.currentTurn,
+    replyTarget: params.replyTarget,
+  });
+  const payload = {
+    prepared,
   } satisfies DiscordActionPendingPayload;
   const existingPending = await findMatchingPendingAdminAction({
     guildId: params.guildId,
@@ -2087,14 +2946,15 @@ export async function requestDiscordAdminActionForTool(params: {
     command: 'tool_discord_queue_moderation_action',
     paramsHash: computeParamsHash({
       actionId: pending.id,
-      action: params.request.action,
+      action: prepared.canonicalAction.action,
+      dedupeKey: prepared.dedupeKey,
     }),
   });
 
   return {
     status: 'pending_approval',
     actionId: pending.id,
-    action: params.request.action,
+    action: prepared.canonicalAction.action,
     coalesced,
     expiresAtIso: expiresAt.toISOString(),
     approvalMessageId,
@@ -2365,6 +3225,51 @@ export async function publishPendingAdminActionRequesterStatusMessage(params: {
   return updated;
 }
 
+async function getModerationApprovalPermissionError(
+  interaction: ButtonInteraction,
+  action: PendingAdminActionRecord,
+): Promise<string | null> {
+  const prepared = readPreparedModerationEnvelope(action.payloadJson, {
+    sourceChannelId: action.sourceChannelId,
+  });
+  if (!prepared) {
+    return 'Unable to verify moderation approval permissions for this action.';
+  }
+
+  const requiredPermission = requiredApproverPermission(prepared.canonicalAction);
+  if (!requiredPermission) {
+    return null;
+  }
+
+  if (requiredPermission.scope === 'guild') {
+    const memberPermissions = getInteractionMemberPermissions(interaction);
+    if (!memberPermissions || !memberPermissions.has(requiredPermission.flag)) {
+      return `❌ Missing required permission to approve this action: ${requiredPermission.label}.`;
+    }
+    return null;
+  }
+
+  const targetChannelId =
+    'channelId' in prepared.canonicalAction ? prepared.canonicalAction.channelId : action.sourceChannelId;
+  const guild = interaction.guild ?? (await client.guilds.fetch(action.guildId));
+  const approverMember = await guild.members.fetch(interaction.user.id).catch(() => null);
+  if (!approverMember) {
+    return '❌ Unable to verify your permissions in the target channel.';
+  }
+
+  const targetChannel = await fetchGuildChannel(action.guildId, targetChannelId).catch(() => null);
+  if (!targetChannel) {
+    return '❌ Unable to verify permissions because the target channel is unavailable.';
+  }
+
+  const memberPermissions = approverMember.permissionsIn(targetChannel);
+  if (!memberPermissions.has(requiredPermission.flag)) {
+    return `❌ Missing required permission to approve this action in <#${targetChannel.id}>: ${requiredPermission.label}.`;
+  }
+
+  return null;
+}
+
 export async function handleAdminActionButtonInteraction(
   interaction: ButtonInteraction,
 ): Promise<boolean> {
@@ -2446,35 +3351,58 @@ export async function handleAdminActionButtonInteraction(
   }
 
   if (parsed.action === 'approve' && action.kind === 'discord_queue_moderation_action') {
-    const payload = action.payloadJson as DiscordActionPendingPayload;
-    const requiredPermission = requiredApproverPermission(payload.action);
-    if (requiredPermission) {
-      const memberPermissions = getInteractionMemberPermissions(interaction);
-      if (!memberPermissions || !memberPermissions.has(requiredPermission.flag)) {
-        await interaction.reply({
-          content: `❌ Missing required permission to approve this action: ${requiredPermission.label}.`,
-          ephemeral: true,
-        });
-        return true;
-      }
+    const permissionError = await getModerationApprovalPermissionError(interaction, action);
+    if (permissionError) {
+      await interaction.reply({
+        content: permissionError,
+        ephemeral: true,
+      });
+      return true;
     }
   }
   await interaction.deferUpdate();
-  await markPendingAdminActionDecision({
+  const approved = await markPendingAdminActionDecisionIfPending({
     id: action.id,
     decidedBy: interaction.user.id,
     status: 'approved',
   });
+  if (!approved) {
+    const latest = await getPendingAdminActionById(action.id).catch(() => null);
+    if (latest) {
+      await updateReviewMessageForAction(latest).catch(() => {
+        // Ignore refresh failures after races.
+      });
+      void updateRequesterMessageForResolvedAction(latest).catch(() => {
+        // Ignore refresh failures after races.
+      });
+    }
+    await interaction.followUp({ content: `Action is already ${latest?.status ?? 'resolved'}.`, ephemeral: true }).catch(() => {
+      // Ignore follow-up failures.
+    });
+    return true;
+  }
 
   try {
     const result = await executePendingAction({
       action,
       approvedBy: interaction.user.id,
     });
-    const executed = await markPendingAdminActionExecuted({
+    const executed = await markPendingAdminActionExecutedIfApproved({
       id: action.id,
       resultJson: result,
     });
+    if (!executed) {
+      const latest = await getPendingAdminActionById(action.id).catch(() => null);
+      if (latest) {
+        await updateReviewMessageForAction(latest).catch(() => {
+          // Ignore refresh failures after races.
+        });
+        void updateRequesterMessageForResolvedAction(latest).catch(() => {
+          // Ignore refresh failures after races.
+        });
+      }
+      return true;
+    }
 
     await logAdminAction({
       guildId: action.guildId,
@@ -2491,10 +3419,22 @@ export async function handleAdminActionButtonInteraction(
     scheduleResolvedApprovalCardDeletion(action.id);
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
-    const failed = await markPendingAdminActionFailed({
+    const failed = await markPendingAdminActionFailedIfApproved({
       id: action.id,
       errorText: errorMessage,
     });
+    if (!failed) {
+      const latest = await getPendingAdminActionById(action.id).catch(() => null);
+      if (latest) {
+        await updateReviewMessageForAction(latest).catch(() => {
+          // Ignore refresh failures after races.
+        });
+        void updateRequesterMessageForResolvedAction(latest).catch(() => {
+          // Ignore refresh failures after races.
+        });
+      }
+      return true;
+    }
     logger.warn({ error, actionId: action.id }, 'Pending admin action execution failed');
     await updateReviewMessageForAction(failed).catch((notifyError) => {
       logger.warn({ error: notifyError, actionId: failed.id }, 'Failed to update governance review card after admin action failure');
@@ -2553,12 +3493,17 @@ export async function handleAdminActionRejectModalSubmit(
 
   await interaction.deferReply({ ephemeral: true });
 
-  const rejected = await markPendingAdminActionDecision({
+  const rejected = await markPendingAdminActionDecisionIfPending({
     id: action.id,
     decidedBy: interaction.user.id,
     status: 'rejected',
     decisionReasonText: rejectionReason,
   });
+  if (!rejected) {
+    const latest = await getPendingAdminActionById(action.id).catch(() => null);
+    await interaction.editReply(`Action is already ${latest?.status ?? 'resolved'}.`);
+    return true;
+  }
   await logAdminAction({
     guildId: action.guildId,
     adminId: interaction.user.id,

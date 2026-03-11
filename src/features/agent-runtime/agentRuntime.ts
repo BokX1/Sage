@@ -441,6 +441,8 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
           invokedBy,
           routeKind: SINGLE_ROUTE_KIND,
           toolExecutionProfile: 'default',
+          currentTurn,
+          replyTarget,
         } satisfies ToolExecutionContext,
         model,
         apiKey,

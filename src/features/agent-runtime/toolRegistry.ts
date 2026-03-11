@@ -4,6 +4,7 @@
 import { z } from 'zod';
 import { sanitizeJsonSchemaForProvider } from '../../shared/validation/json-schema';
 import { buildToolErrorDetails, extractToolErrorDetails, type ToolErrorDetails } from './toolErrors';
+import type { CurrentTurnContext, ReplyTargetContext } from './continuityContext';
 
 // Guardrail against runaway or malicious tool payloads (for example oversized base64 blobs).
 // Must be large enough to support legitimate multipart/file workflows.
@@ -113,6 +114,10 @@ export interface ToolExecutionContext {
    * behavior for specific runtime paths (for example search-high).
    */
   toolExecutionProfile?: 'default' | 'search_high';
+  /** Structured current-turn context carried into Discord-aware tools. */
+  currentTurn?: CurrentTurnContext;
+  /** Direct reply target surfaced in the runtime prompt, when present. */
+  replyTarget?: ReplyTargetContext | null;
   /** Optional abort signal to check for timeout/cancellation. Tools should check signal.aborted periodically. */
   signal?: AbortSignal;
 }

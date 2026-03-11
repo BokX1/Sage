@@ -1,5 +1,6 @@
 import { prisma } from '../../platform/db/prisma-client';
 import { Prisma } from '@prisma/client';
+import { readPreparedModerationEnvelope } from './discordModeration';
 
 /**
  * Declares exported bindings: PENDING_ADMIN_ACTION_STATUSES.
@@ -161,6 +162,10 @@ export async function findMatchingPendingAdminAction(params: {
 }): Promise<PendingAdminActionRecord | null> {
   const now = params.now ?? new Date();
   const expectedPayload = canonicalizePayloadJson(params.payloadJson);
+  const expectedModerationDedupeKey =
+    params.kind === 'discord_queue_moderation_action'
+      ? readPreparedModerationEnvelope(params.payloadJson)?.dedupeKey ?? null
+      : null;
   const rows = await prisma.pendingAdminAction.findMany({
     where: {
       guildId: params.guildId,
@@ -173,6 +178,15 @@ export async function findMatchingPendingAdminAction(params: {
   });
 
   for (const row of rows) {
+    if (expectedModerationDedupeKey && row.kind === 'discord_queue_moderation_action') {
+      const rowDedupeKey = readPreparedModerationEnvelope(row.payloadJson, {
+        sourceChannelId: row.sourceChannelId,
+      })?.dedupeKey;
+      if (rowDedupeKey && rowDedupeKey === expectedModerationDedupeKey) {
+        return toRecord(row);
+      }
+    }
+
     if (canonicalizePayloadJson(row.payloadJson) === expectedPayload) {
       return toRecord(row);
     }
@@ -210,6 +224,34 @@ export async function markPendingAdminActionDecision(params: {
   return toRecord(updated);
 }
 
+export async function markPendingAdminActionDecisionIfPending(params: {
+  id: string;
+  decidedBy: string;
+  status: 'approved' | 'rejected';
+  decisionReasonText?: string | null;
+}): Promise<PendingAdminActionRecord | null> {
+  const normalizedDecisionReasonText = params.decisionReasonText?.trim() || null;
+  const result = await prisma.pendingAdminAction.updateMany({
+    where: {
+      id: params.id,
+      status: 'pending',
+    },
+    data: {
+      status: params.status,
+      decidedBy: params.decidedBy,
+      decidedAt: new Date(),
+      decisionReasonText: normalizedDecisionReasonText,
+    },
+  });
+
+  if (result.count < 1) {
+    return null;
+  }
+
+  const row = await prisma.pendingAdminAction.findUnique({ where: { id: params.id } });
+  return row ? toRecord(row) : null;
+}
+
 export async function markPendingAdminActionExecuted(params: {
   id: string;
   resultJson: unknown;
@@ -224,6 +266,31 @@ export async function markPendingAdminActionExecuted(params: {
     },
   });
   return toRecord(updated);
+}
+
+export async function markPendingAdminActionExecutedIfApproved(params: {
+  id: string;
+  resultJson: unknown;
+}): Promise<PendingAdminActionRecord | null> {
+  const result = await prisma.pendingAdminAction.updateMany({
+    where: {
+      id: params.id,
+      status: 'approved',
+    },
+    data: {
+      status: 'executed',
+      executedAt: new Date(),
+      resultJson: params.resultJson as Prisma.InputJsonValue,
+      errorText: null,
+    },
+  });
+
+  if (result.count < 1) {
+    return null;
+  }
+
+  const row = await prisma.pendingAdminAction.findUnique({ where: { id: params.id } });
+  return row ? toRecord(row) : null;
 }
 
 export async function markPendingAdminActionFailed(params: {
@@ -248,6 +315,41 @@ export async function markPendingAdminActionFailed(params: {
       },
   });
   return toRecord(updated);
+}
+
+export async function markPendingAdminActionFailedIfApproved(params: {
+  id: string;
+  errorText: string;
+  resultJson?: unknown;
+}): Promise<PendingAdminActionRecord | null> {
+  const data = params.resultJson === undefined
+    ? {
+        status: 'failed',
+        executedAt: new Date(),
+        errorText: params.errorText,
+      }
+    : {
+        status: 'failed',
+        executedAt: new Date(),
+        decisionReasonText: null,
+        errorText: params.errorText,
+        resultJson: params.resultJson as Prisma.InputJsonValue,
+      };
+
+  const result = await prisma.pendingAdminAction.updateMany({
+    where: {
+      id: params.id,
+      status: 'approved',
+    },
+    data,
+  });
+
+  if (result.count < 1) {
+    return null;
+  }
+
+  const row = await prisma.pendingAdminAction.findUnique({ where: { id: params.id } });
+  return row ? toRecord(row) : null;
 }
 
 export async function attachPendingAdminActionRequestMessageId(params: {

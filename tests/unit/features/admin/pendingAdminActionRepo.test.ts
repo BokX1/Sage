@@ -4,6 +4,7 @@ const createMock = vi.hoisted(() => vi.fn());
 const findUniqueMock = vi.hoisted(() => vi.fn());
 const findManyMock = vi.hoisted(() => vi.fn());
 const updateMock = vi.hoisted(() => vi.fn());
+const updateManyMock = vi.hoisted(() => vi.fn());
 
 vi.mock('@/platform/db/prisma-client', () => ({
   prisma: {
@@ -12,6 +13,7 @@ vi.mock('@/platform/db/prisma-client', () => ({
       findMany: findManyMock,
       findUnique: findUniqueMock,
       update: updateMock,
+      updateMany: updateManyMock,
     },
   },
 }));
@@ -278,6 +280,145 @@ describe('pendingAdminActionRepo', () => {
       kind: 'server_instructions_update',
       payloadJson: { operation: 'set', newInstructionsText: 'New', reason: 'test', baseVersion: 1 },
       now: new Date('2026-02-26T12:01:00.000Z'),
+    });
+
+    expect(result).toBeNull();
+  });
+
+  it('matches prepared moderation payloads against legacy pending actions via canonical moderation dedupe', async () => {
+    findManyMock.mockResolvedValue([
+      {
+        id: 'action-7',
+        guildId: 'guild-1',
+        sourceChannelId: 'channel-1',
+        reviewChannelId: 'channel-review',
+        approvalMessageId: null,
+        requestMessageId: null,
+        requestedBy: 'admin-1',
+        kind: 'discord_queue_moderation_action',
+        payloadJson: {
+          action: {
+            action: 'delete_message',
+            channelId: 'channel-1',
+            messageId: 'msg-1',
+            reason: 'cleanup',
+          },
+        },
+        status: 'pending',
+        expiresAt: new Date('2026-02-26T12:10:00.000Z'),
+        decidedBy: null,
+        decidedAt: null,
+        executedAt: null,
+        resultJson: null,
+        decisionReasonText: null,
+        errorText: null,
+        createdAt: new Date('2026-02-26T12:00:00.000Z'),
+        updatedAt: new Date('2026-02-26T12:00:00.000Z'),
+      },
+    ]);
+
+    const { findMatchingPendingAdminAction } = await import('../../../../src/features/admin/pendingAdminActionRepo');
+    const result = await findMatchingPendingAdminAction({
+      guildId: 'guild-1',
+      requestedBy: 'admin-1',
+      kind: 'discord_queue_moderation_action',
+      payloadJson: {
+        prepared: {
+          version: 1,
+          originalRequest: {
+            action: 'delete_message',
+            channelId: 'channel-1',
+            messageId: 'https://discord.com/channels/guild-1/channel-1/msg-1',
+            reason: 'cleanup',
+          },
+          canonicalAction: {
+            action: 'delete_message',
+            channelId: 'channel-1',
+            messageId: 'msg-1',
+            reason: 'cleanup',
+          },
+          evidence: {
+            targetKind: 'message',
+            source: 'message_url',
+            channelId: 'channel-1',
+            messageId: 'msg-1',
+            messageUrl: 'https://discord.com/channels/guild-1/channel-1/msg-1',
+            userId: 'user-1',
+            messageAuthorId: 'user-1',
+            messageAuthorDisplayName: 'User One',
+            messageExcerpt: 'spam message',
+          },
+          preflight: {
+            approverPermission: 'Manage Messages',
+            botPermissionChecks: ['Manage Messages'],
+            targetChannelScope: 'channel-1',
+            hierarchyChecked: false,
+            notes: ['Resolved from a Discord message URL.'],
+          },
+          dedupeKey: JSON.stringify({
+            action: 'delete_message',
+            channelId: 'channel-1',
+            messageId: 'msg-1',
+            reason: 'cleanup',
+          }),
+        },
+      },
+      now: new Date('2026-02-26T12:01:00.000Z'),
+    });
+
+    expect(result?.id).toBe('action-7');
+  });
+
+  it('claims a pending decision atomically when the row is still pending', async () => {
+    updateManyMock.mockResolvedValue({ count: 1 });
+    findUniqueMock.mockResolvedValue({
+      id: 'action-8',
+      guildId: 'guild-1',
+      sourceChannelId: 'channel-1',
+      reviewChannelId: 'channel-review',
+      approvalMessageId: null,
+      requestMessageId: null,
+      requestedBy: 'admin-1',
+      kind: 'discord_queue_moderation_action',
+      payloadJson: {},
+      status: 'approved',
+      expiresAt: new Date('2026-02-26T12:10:00.000Z'),
+      decidedBy: 'admin-2',
+      decidedAt: new Date('2026-02-26T12:01:00.000Z'),
+      executedAt: null,
+      resultJson: null,
+      decisionReasonText: null,
+      errorText: null,
+      createdAt: new Date('2026-02-26T12:00:00.000Z'),
+      updatedAt: new Date('2026-02-26T12:01:00.000Z'),
+    });
+
+    const { markPendingAdminActionDecisionIfPending } = await import('../../../../src/features/admin/pendingAdminActionRepo');
+    const result = await markPendingAdminActionDecisionIfPending({
+      id: 'action-8',
+      decidedBy: 'admin-2',
+      status: 'approved',
+    });
+
+    expect(result?.status).toBe('approved');
+    expect(updateManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          id: 'action-8',
+          status: 'pending',
+        }),
+      }),
+    );
+  });
+
+  it('returns null when an atomic decision claim loses the race', async () => {
+    updateManyMock.mockResolvedValue({ count: 0 });
+
+    const { markPendingAdminActionDecisionIfPending } = await import('../../../../src/features/admin/pendingAdminActionRepo');
+    const result = await markPendingAdminActionDecisionIfPending({
+      id: 'action-9',
+      decidedBy: 'admin-2',
+      status: 'approved',
     });
 
     expect(result).toBeNull();

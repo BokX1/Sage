@@ -87,4 +87,54 @@ describe('governanceCards', () => {
     expect(detailsText).toContain('Action ID: `action-123`');
     expect(detailsText).toContain('Review channel: <#channel-review>');
   });
+
+  it('shows prepared moderation evidence and preflight details in the reviewer details text', () => {
+    const action = makePendingAction({
+      kind: 'discord_queue_moderation_action',
+      payloadJson: {
+        prepared: {
+          version: 1,
+          originalRequest: {
+            action: 'delete_message',
+            reason: 'Spam cleanup',
+          },
+          canonicalAction: {
+            action: 'delete_message',
+            channelId: 'chan-target',
+            messageId: 'msg-1',
+            reason: 'Spam cleanup',
+          },
+          evidence: {
+            targetKind: 'message',
+            source: 'reply_target',
+            channelId: 'chan-target',
+            messageId: 'msg-1',
+            messageUrl: 'https://discord.com/channels/guild-1/chan-target/msg-1',
+            userId: 'user-8',
+            messageAuthorId: 'user-8',
+            messageAuthorDisplayName: 'Spammer',
+            messageExcerpt: 'buy cheap spam now',
+          },
+          preflight: {
+            approverPermission: 'Manage Messages',
+            botPermissionChecks: ['Manage Messages', 'Read Message History'],
+            targetChannelScope: 'chan-target',
+            hierarchyChecked: false,
+            notes: ['Resolved from direct reply target.'],
+          },
+          dedupeKey: '{"action":"delete_message","channelId":"chan-target","messageId":"msg-1","reason":"Spam cleanup"}',
+        },
+      },
+    });
+
+    const detailsText = buildPendingAdminActionDetailsText(action);
+
+    expect(detailsText).toContain('Approver permission: Manage Messages');
+    expect(detailsText).toContain('Target channel scope: <#chan-target>');
+    expect(detailsText).toContain('Message link: https://discord.com/channels/guild-1/chan-target/msg-1');
+    expect(detailsText).toContain('Evidence author: Spammer (user-8)');
+    expect(detailsText).toContain('Evidence excerpt: buy cheap spam now');
+    expect(detailsText).toContain('Bot checks: Manage Messages, Read Message History');
+    expect(detailsText).toContain('Preflight notes: Resolved from direct reply target.');
+  });
 });

@@ -1424,6 +1424,8 @@ export async function executeDiscordAdminAction(
         channelId: ctx.channelId,
         requestedBy: ctx.userId,
         request: data.request,
+        currentTurn: ctx.currentTurn,
+        replyTarget: ctx.replyTarget,
       });
     }
     case 'edit_message': {

@@ -11,6 +11,7 @@ import {
   type APITextDisplayComponent,
 } from 'discord-api-types/payloads/v10';
 import type { PendingAdminActionRecord } from './pendingAdminActionRepo';
+import { readPreparedModerationEnvelope, type PreparedModerationEnvelope } from './discordModeration';
 
 type InteractiveApiButtonStyle =
   | ApiButtonStyle.Primary
@@ -128,80 +129,125 @@ function riskBadge(risk: GovernanceRisk): string {
   }
 }
 
-function summarizeModerationAction(action: Record<string, unknown>): GovernanceSummary {
+function buildModerationPreview(reason: string | null, envelope?: PreparedModerationEnvelope | null): string | undefined {
+  const parts = [reason, envelope?.evidence.messageExcerpt ?? null]
+    .filter((value): value is string => !!value && value.trim().length > 0)
+    .map((value) => value.trim());
+  if (parts.length === 0) {
+    return undefined;
+  }
+  return truncate(parts.join('\n\n'), 420);
+}
+
+function describePreparedModerationTarget(envelope: PreparedModerationEnvelope | null | undefined): string | null {
+  if (!envelope) return null;
+  const action = envelope.canonicalAction;
+  switch (action.action) {
+    case 'delete_message':
+    case 'clear_reactions':
+      return envelope.evidence.messageUrl ?? `Message ${action.messageId}`;
+    case 'remove_user_reaction':
+      return `${envelope.evidence.messageUrl ?? `Message ${action.messageId}`} -> user <@${action.userId}>`;
+    case 'timeout_member':
+      return `<@${action.userId}> for ${action.durationMinutes} minute(s)`;
+    case 'untimeout_member':
+    case 'kick_member':
+    case 'ban_member':
+    case 'unban_member':
+      return `<@${action.userId}>`;
+    default:
+      return null;
+  }
+}
+
+function summarizeModerationAction(
+  action: Record<string, unknown>,
+  envelope?: PreparedModerationEnvelope | null,
+): GovernanceSummary {
   const actionName = asString(action.action) ?? 'moderation_action';
+  const reason = asString(action.reason);
+  const preparedTarget = describePreparedModerationTarget(envelope);
   switch (actionName) {
     case 'delete_message':
       return {
         title: 'Moderation Review',
         intent: 'Delete a Discord message',
-        target: `Message ${asString(action.messageId) ?? 'unknown'}`,
+        target: preparedTarget ?? `Message ${asString(action.messageId) ?? 'unknown'}`,
         impact: 'Removes content from the server.',
         risk: 'high',
-        preview: asString(action.reason) ?? undefined,
+        preview: buildModerationPreview(reason, envelope),
       };
     case 'timeout_member':
       return {
         title: 'Moderation Review',
         intent: 'Timeout a member',
-        target: `<@${asString(action.userId) ?? 'unknown'}>`,
+        target: preparedTarget ?? `<@${asString(action.userId) ?? 'unknown'}>`,
         impact: 'Restricts the member from participating temporarily.',
         risk: 'high',
-        preview: asString(action.reason) ?? undefined,
+        preview: buildModerationPreview(reason, envelope),
+      };
+    case 'untimeout_member':
+      return {
+        title: 'Moderation Review',
+        intent: 'Remove a member timeout',
+        target: preparedTarget ?? `<@${asString(action.userId) ?? 'unknown'}>`,
+        impact: 'Restores a member’s ability to participate.',
+        risk: 'medium',
+        preview: buildModerationPreview(reason, envelope),
       };
     case 'kick_member':
       return {
         title: 'Moderation Review',
         intent: 'Kick a member',
-        target: `<@${asString(action.userId) ?? 'unknown'}>`,
+        target: preparedTarget ?? `<@${asString(action.userId) ?? 'unknown'}>`,
         impact: 'Removes the member from the server.',
         risk: 'critical',
-        preview: asString(action.reason) ?? undefined,
+        preview: buildModerationPreview(reason, envelope),
       };
     case 'ban_member':
       return {
         title: 'Moderation Review',
         intent: 'Ban a member',
-        target: `<@${asString(action.userId) ?? 'unknown'}>`,
+        target: preparedTarget ?? `<@${asString(action.userId) ?? 'unknown'}>`,
         impact: 'Removes the member and blocks re-entry.',
         risk: 'critical',
-        preview: asString(action.reason) ?? undefined,
+        preview: buildModerationPreview(reason, envelope),
       };
     case 'remove_user_reaction':
       return {
         title: 'Moderation Review',
         intent: 'Remove a user reaction',
-        target: `Message ${asString(action.messageId) ?? 'unknown'}`,
+        target: preparedTarget ?? `Message ${asString(action.messageId) ?? 'unknown'}`,
         impact: 'Removes a specific user reaction from a message.',
         risk: 'medium',
-        preview: asString(action.reason) ?? undefined,
+        preview: buildModerationPreview(reason, envelope),
       };
     case 'clear_reactions':
       return {
         title: 'Moderation Review',
         intent: 'Clear reactions from a message',
-        target: `Message ${asString(action.messageId) ?? 'unknown'}`,
+        target: preparedTarget ?? `Message ${asString(action.messageId) ?? 'unknown'}`,
         impact: 'Removes all reactions from the target message.',
         risk: 'high',
-        preview: asString(action.reason) ?? undefined,
+        preview: buildModerationPreview(reason, envelope),
       };
     case 'unban_member':
       return {
         title: 'Moderation Review',
         intent: 'Unban a member',
-        target: `<@${asString(action.userId) ?? 'unknown'}>`,
+        target: preparedTarget ?? `<@${asString(action.userId) ?? 'unknown'}>`,
         impact: 'Allows the user to rejoin the server.',
         risk: 'medium',
-        preview: asString(action.reason) ?? undefined,
+        preview: buildModerationPreview(reason, envelope),
       };
     default:
       return {
         title: 'Moderation Review',
         intent: `Run moderation action: ${actionName}`,
-        target: 'Discord moderation target',
+        target: preparedTarget ?? 'Discord moderation target',
         impact: 'Applies a moderation action in the server.',
         risk: 'high',
-        preview: asString(action.reason) ?? undefined,
+        preview: buildModerationPreview(reason, envelope),
       };
   }
 }
@@ -240,8 +286,11 @@ function summarizePendingAction(action: PendingAdminActionRecord): GovernanceSum
   }
 
   if (action.kind === 'discord_queue_moderation_action') {
-    const moderationAction = normalizeUnknownRecord(payload.action) ?? {};
-    return summarizeModerationAction(moderationAction);
+    const prepared = readPreparedModerationEnvelope(action.payloadJson, {
+      sourceChannelId: action.sourceChannelId,
+    });
+    const moderationAction = normalizeUnknownRecord(prepared?.canonicalAction ?? payload.action) ?? {};
+    return summarizeModerationAction(moderationAction, prepared);
   }
 
   if (action.kind === 'discord_rest_write') {
@@ -417,6 +466,12 @@ export function buildPendingAdminActionReviewerCardPayload(params: {
 
 export function buildPendingAdminActionDetailsText(action: PendingAdminActionRecord): string {
   const summary = summarizePendingAction(action);
+  const prepared =
+    action.kind === 'discord_queue_moderation_action'
+      ? readPreparedModerationEnvelope(action.payloadJson, {
+          sourceChannelId: action.sourceChannelId,
+        })
+      : null;
   const payloadPreview = JSON.stringify(sanitizeForDetailView(action.payloadJson), null, 2);
   const resultPreview = action.resultJson
     ? JSON.stringify(sanitizeForDetailView(action.resultJson), null, 2)
@@ -433,6 +488,19 @@ export function buildPendingAdminActionDetailsText(action: PendingAdminActionRec
     `Intent: ${summary.intent}`,
     `Target: ${summary.target}`,
     `Expires: ${formatDiscordTimestamp(action.expiresAt)}`,
+    prepared?.preflight.approverPermission ? `Approver permission: ${prepared.preflight.approverPermission}` : null,
+    prepared?.preflight.targetChannelScope ? `Target channel scope: <#${prepared.preflight.targetChannelScope}>` : null,
+    prepared?.evidence.messageUrl ? `Message link: ${prepared.evidence.messageUrl}` : null,
+    prepared?.evidence.messageAuthorDisplayName
+      ? `Evidence author: ${prepared.evidence.messageAuthorDisplayName}${prepared.evidence.messageAuthorId ? ` (${prepared.evidence.messageAuthorId})` : ''}`
+      : null,
+    prepared?.evidence.messageExcerpt ? `Evidence excerpt: ${truncate(prepared.evidence.messageExcerpt, 500)}` : null,
+    prepared && prepared.preflight.botPermissionChecks.length > 0
+      ? `Bot checks: ${prepared.preflight.botPermissionChecks.join(', ')}`
+      : null,
+    prepared && prepared.preflight.notes.length > 0
+      ? `Preflight notes: ${prepared.preflight.notes.map((note) => truncate(note, 240)).join(' | ')}`
+      : null,
     action.decisionReasonText?.trim() ? `Decision reason: ${truncate(action.decisionReasonText.trim(), 500)}` : null,
     action.errorText?.trim() ? `Error: ${truncate(action.errorText.trim(), 500)}` : null,
     `Payload:\n\`\`\`json\n${truncate(payloadPreview, 1_600)}\n\`\`\``,
