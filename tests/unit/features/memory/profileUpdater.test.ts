@@ -374,6 +374,102 @@ describe('ProfileUpdater', () => {
       expect(analystSystemPrompt).toContain('prioritize the invoking user\'s own turns and direct reply-target evidence over unrelated messages from other people');
       expect(analystSystemPrompt).toContain('omit the detail rather than inferring it');
     });
+
+    it('keeps unrelated external bot chatter out of focused profile history', async () => {
+      mockGetRecentMessages.mockReturnValueOnce([
+        {
+          messageId: 'msg-history-1',
+          guildId: 'G1',
+          channelId: 'C1',
+          authorId: 'U1',
+          authorDisplayName: 'User',
+          authorIsBot: false,
+          content: 'still tuning the deployment copy',
+          timestamp: new Date(),
+          replyToMessageId: undefined,
+          mentionsUserIds: [],
+          mentionsBot: false,
+        },
+        {
+          messageId: 'msg-history-2',
+          guildId: 'G1',
+          channelId: 'C1',
+          authorId: 'deploy-bot',
+          authorDisplayName: 'DeployBot',
+          authorIsBot: true,
+          content: 'Deployment completed successfully',
+          timestamp: new Date(),
+          replyToMessageId: undefined,
+          mentionsUserIds: [],
+          mentionsBot: false,
+        },
+      ]);
+
+      mockChatFn.mockResolvedValueOnce({
+        text: '{"summary": "<preferences>Values clean attribution</preferences>\\n<active_focus>Reviewing deployment messaging</active_focus>\\n<background>Maintains Sage</background>"}',
+      });
+
+      const result = await updateProfileSummary({
+        previousSummary: null,
+        userMessage: 'make the release note shorter',
+        assistantReply: 'I can shorten it.',
+        currentTurn: makeCurrentTurn(),
+        channelId: 'C1',
+        guildId: 'G1',
+        userId: 'U1',
+      });
+
+      expect(result).toBe('<preferences>Values clean attribution</preferences>\n<active_focus>Reviewing deployment messaging</active_focus>\n<background>Maintains Sage</background>');
+
+      const analystCall = mockChatFn.mock.calls[0][0];
+      const messages = analystCall.messages as ChatMessage[];
+      const userPrompt = messages.find((message) => message.role === 'user')?.content ?? '';
+      const recentHistoryBlock = userPrompt.split('Supporting Reply Target Context:')[0];
+      expect(recentHistoryBlock).toContain('still tuning the deployment copy');
+      expect(recentHistoryBlock).not.toContain('Deployment completed successfully');
+    });
+
+    it('keeps bot reply-target context available when the human is explicitly replying to that bot', async () => {
+      mockChatFn.mockResolvedValueOnce({
+        text: '{"summary": "<preferences>Prefers concise status recaps</preferences>\\n<active_focus>Reviewing bot-reported warnings</active_focus>\\n<background>Maintains Sage</background>"}',
+      });
+
+      await updateProfileSummary({
+        previousSummary: null,
+        userMessage: 'what are the warnings?',
+        assistantReply: 'The scan reported two warnings.',
+        currentTurn: makeCurrentTurn({
+          invokedBy: 'reply',
+          isDirectReply: true,
+          replyTargetMessageId: 'reply-msg-bot',
+          replyTargetAuthorId: 'helper-bot',
+        }),
+        replyTarget: {
+          messageId: 'reply-msg-bot',
+          guildId: 'G1',
+          channelId: 'C1',
+          authorId: 'helper-bot',
+          authorDisplayName: 'HelperBot',
+          authorIsBot: true,
+          replyToMessageId: null,
+          mentionedUserIds: [],
+          content: 'Scan finished: 2 warnings found.',
+        },
+        channelId: 'C1',
+        guildId: 'G1',
+        userId: 'U1',
+      });
+
+      const analystCall = mockChatFn.mock.calls[0][0];
+      const messages = analystCall.messages as ChatMessage[];
+      const userPrompt = messages.find((message) => message.role === 'user')?.content ?? '';
+      const analystSystemPrompt = messages.find((message) => message.role === 'system')?.content ?? '';
+      expect(userPrompt).toContain('author_is_bot: true');
+      expect(userPrompt).toContain('Scan finished: 2 warnings found.');
+      expect(analystSystemPrompt).toContain(
+        'Treat bot-authored messages as room events/context, not as the invoking user, unless the current human turn directly replies to or explicitly centers that bot-authored message.',
+      );
+    });
   });
 
   describe('extractBalancedJson', () => {

@@ -43,6 +43,7 @@ Example:
 - Do NOT invent traits or preferences not clearly supported by the conversation.
 - If support is weak or ambiguous, omit the detail rather than inferring it.
 - In shared channels, prioritize the invoking user's own turns and direct reply-target evidence over unrelated messages from other people.
+- Treat bot-authored messages as room events/context, not as the invoking user, unless the current human turn directly replies to or explicitly centers that bot-authored message.
 - If no updates are needed, return the Previous Summary unchanged inside the JSON.
 
 Output ONLY the JSON object.`;
@@ -51,10 +52,17 @@ Output ONLY the JSON object.`;
 let analystClientCache: { client: LLMClient; provider: LLMProviderName } | null = null;
 
 function isTrailingAssistantMatch(
-  message: { content: string; authorIsBot: boolean },
+  message: { content: string; authorId: string; authorIsBot: boolean },
+  botUserId: string | null | undefined,
   assistantReply: string,
 ): boolean {
-  return message.authorIsBot === true && message.content.trim() === assistantReply.trim();
+  return (
+    message.authorIsBot === true &&
+    typeof botUserId === 'string' &&
+    botUserId.length > 0 &&
+    message.authorId === botUserId &&
+    message.content.trim() === assistantReply.trim()
+  );
 }
 
 function isTrailingUserMatch(
@@ -153,7 +161,7 @@ export async function updateProfileSummary(params: {
       // 1) Drop the trailing assistant message if it matches assistantReply.
       if (historyMessages.length > 0) {
         const last = historyMessages[historyMessages.length - 1];
-        if (isTrailingAssistantMatch(last, assistantReply)) {
+        if (isTrailingAssistantMatch(last, currentTurn.botUserId, assistantReply)) {
           historyMessages.pop();
         }
       }

@@ -65,7 +65,7 @@ describe('contextBuilder core message assembly', () => {
     const systemContent = getSystemContent(messages);
     const currentTurnIdx = systemContent.indexOf('<current_turn>');
     const serverInstructionsIdx = systemContent.indexOf('Act like a tavernkeeper in this guild.');
-    const transcriptIdx = systemContent.indexOf('Transcript');
+    const transcriptIdx = systemContent.indexOf('<recent_transcript>\nTranscript\n</recent_transcript>');
 
     expect(currentTurnIdx).toBeGreaterThan(-1);
     expect(serverInstructionsIdx).toBeGreaterThan(-1);

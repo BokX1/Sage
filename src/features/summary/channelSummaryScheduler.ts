@@ -17,6 +17,7 @@ export interface DirtyChannelParams {
   channelId: string;
   lastMessageAt: Date;
   messageCountIncrement?: number;
+  humanMessageCountIncrement?: number;
 }
 
 type DirtyChannelState = {
@@ -24,6 +25,7 @@ type DirtyChannelState = {
   channelId: string;
   lastMessageAt: Date;
   messageCount: number;
+  humanMessageCount: number;
   createdAt: number; // Track when entry was created for TTL cleanup
 };
 
@@ -62,10 +64,12 @@ export class ChannelSummaryScheduler {
     const key = this.keyFor(params.guildId, params.channelId);
     const existing = this.dirtyChannels.get(key);
     const increment = params.messageCountIncrement ?? 1;
+    const humanIncrement = params.humanMessageCountIncrement ?? increment;
 
     if (existing) {
       existing.lastMessageAt = params.lastMessageAt;
       existing.messageCount += increment;
+      existing.humanMessageCount += humanIncrement;
       this.dirtyChannels.set(key, existing);
       return;
     }
@@ -75,6 +79,7 @@ export class ChannelSummaryScheduler {
       channelId: params.channelId,
       lastMessageAt: params.lastMessageAt,
       messageCount: increment,
+      humanMessageCount: humanIncrement,
       createdAt: this.now(),
     });
   }
@@ -135,6 +140,12 @@ export class ChannelSummaryScheduler {
     const minIntervalMs = appConfig.SUMMARY_ROLLING_MIN_INTERVAL_SEC * 1000;
     const hasMinInterval = !lastRollingAt || nowMs - lastRollingAt >= minIntervalMs;
     const hasMinMessages = state.messageCount >= appConfig.SUMMARY_ROLLING_MIN_MESSAGES;
+    const hasHumanActivity = state.humanMessageCount > 0;
+
+    if (!hasHumanActivity) {
+      this.dirtyChannels.delete(key);
+      return;
+    }
 
     if (!hasMinInterval || !hasMinMessages) {
       return;
@@ -243,6 +254,7 @@ export class ChannelSummaryScheduler {
         lastMessageAt: new Date(), // approximate
         messageCount: messages.length,
         createdAt: this.now(),
+        humanMessageCount: messages.filter((message) => !message.authorIsBot).length,
       },
       rollingSummary,
       true, // force update

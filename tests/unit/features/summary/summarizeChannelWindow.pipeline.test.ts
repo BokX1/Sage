@@ -19,6 +19,14 @@ vi.mock('@/platform/config/env', () => ({
   },
 }));
 
+vi.mock('@/platform/discord/client', () => ({
+  client: {
+    user: {
+      id: 'sage-bot',
+    },
+  },
+}));
+
 let messageCounter = 0;
 
 function makeMessage(content: string, author = 'TestUser'): ChannelMessage {
@@ -91,6 +99,40 @@ describe('summarizeChannelWindow pipeline', () => {
     const payload = mockChatFn.mock.calls[0][0];
     expect(payload.responseFormat).toBe('json_object');
     expect(payload.maxTokens).toBe(2048);
+  });
+
+  it('annotates participant classes for human, sage, and external bot summary inputs', async () => {
+    const { summarizeChannelWindow } = await import('@/features/summary/summarizeChannelWindow');
+
+    mockChatFn.mockResolvedValueOnce({
+      text: JSON.stringify({ summaryText: 'Test', topics: [] }),
+    });
+
+    await summarizeChannelWindow({
+      messages: [
+        makeMessage('Queued the deploy', 'Alice'),
+        {
+          ...makeMessage('I queued that for approval.', 'Sage'),
+          authorId: 'sage-bot',
+          authorIsBot: true,
+        },
+        {
+          ...makeMessage('Deployment completed successfully', 'DeployBot'),
+          authorId: 'B2',
+          authorIsBot: true,
+        },
+      ],
+      windowStart: new Date('2026-01-15T11:00:00.000Z'),
+      windowEnd: new Date('2026-01-15T13:00:00.000Z'),
+    });
+
+    const payload = mockChatFn.mock.calls[0][0];
+    const userPrompt = String(payload.messages[1]?.content ?? '');
+    expect(userPrompt).toContain('participant:human');
+    expect(userPrompt).toContain('participant:sage');
+    expect(userPrompt).toContain('participant:external_bot');
+    expect(userPrompt).toContain('@Sage');
+    expect(userPrompt).toContain('@DeployBot');
   });
 
   it('falls back when analyst returns empty', async () => {

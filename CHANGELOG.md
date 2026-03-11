@@ -34,6 +34,7 @@
 
 ### Changed
 
+- Made live room awareness bot-aware without enabling bot-to-bot replies: external bot messages now stay visible in ambient transcript context and rolling channel summaries, while current-turn continuity still remains anchored to the human invoker and explicit reply linkage.
 - Reworked shared-channel turn assembly around structured `<current_turn>`, canonical `<reply_target>`, focused same-speaker/reply-chain continuity, and an explicitly ambient `<recent_transcript>`, so Sage now answers one speaker's turn in a busy room instead of flattening nearby chatter into one rolling objective.
 - Reused the same turn-scoped continuity selector in user-profile updates, so long-term personalization now prefers the invoking user's own recent turns and direct reply-target evidence over unrelated mixed-channel messages.
 - Aligned prompt-side reserved output budgeting with Sage's real chat response cap, so context assembly no longer over-reserves output tokens beyond what Discord chat turns can actually generate.
@@ -85,8 +86,11 @@
 
 ### Fixed
 
+- Fixed follow-up summary noise in the bot-aware perception path: Sage-authored messages now stay labeled as `sage` instead of `external_bot` inside rolling/profile summary inputs, and bot-only traffic no longer triggers rolling/profile summary recomputes without new human activity.
+- Fixed a perception gap where other Discord bots could disappear from live runtime context or be flattened into generic human room chatter; transcript and summary shaping now classify external bots explicitly, and profile deduping only treats Sage's own messages as trailing assistant turns.
 - Fixed shared-channel reply confusion where short follow-ups like "alright let's see" could pull in unrelated nearby conversations; Sage now excludes the live turn and canonical reply target from ambient transcript injection, carries reply-target metadata through the runtime, and preserves reply-target plus user-input structure more reliably under prompt truncation.
 - Fixed follow-up hardening gaps in the new turn-scoped continuity path: sibling replies to a shared parent no longer leak into focused reply continuity, newest local reply-chain neighbors now win over stale older ones, and user-controlled Discord display names are escaped before being rendered into structured prompt metadata.
+- Fixed budget-config drift between the operator env example and Sage's real chat cap by aligning `CONTEXT_RESERVED_OUTPUT_TOKENS` with `CHAT_MAX_OUTPUT_TOKENS`, so prompt budget settings no longer imply a larger reserved output window than the runtime can actually generate.
 - Fixed a runtime leak where Sage could narrate internal tool usage, parrot recovery coaching, or echo approval payloads/action commands into chat replies instead of keeping approval acknowledgements short and operator-friendly.
 - Fixed flaky docs-link CI runs caused by intermittent aborts when validating the external contributor image at `contrib.rocks`; the tracked docs gate now skips that decorative image URL instead of failing otherwise healthy pushes.
 - Fixed a rare Discord runtime leak where array-wrapped `tool_calls` payloads, including server-instruction update requests, could be sent to chat as raw JSON instead of being executed and finalized into a normal reply.

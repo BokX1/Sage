@@ -4,6 +4,7 @@ import { LLMClient, LLMRequest } from '../../platform/llm/llm-types';
 import { logger } from '../../platform/logging/logger';
 import { ChannelMessage } from '../awareness/awareness-types';
 import { jsonrepair } from 'jsonrepair';
+import { client } from '../../platform/discord/client';
 
 const MAX_INPUT_MESSAGES = 800;
 const MAX_INPUT_CHARS = 80_000;
@@ -36,8 +37,9 @@ You are an expert impartial Facilitator and Channel Context Analyst.
 1. **Human Dynamics**: Detect sarcasm and inside jokes; extract factual intent without adopting sarcastic tone.
 2. **Disagreements**: Represent all differing viewpoints fairly. Capture resolution or note as unresolved.
 3. **Decisions & Actions**: For action items, state WHO is responsible and the DEADLINE if mentioned.
-4. **Anti-Hallucination**: Do NOT invent topics, decisions, or action items not clearly supported by the messages.
-5. **Format**: Output STRICTLY as a JSON object matching this schema:
+4. **Participants**: Participant tags may include human, sage, external_bot, or system. "sage" means this bot's own prior messages; "external_bot" means other automated participants. Bot-authored lines are room events and automation outputs, not the active requester, unless a human turn directly centers them.
+5. **Anti-Hallucination**: Do NOT invent topics, decisions, or action items not clearly supported by the messages.
+6. **Format**: Output STRICTLY as a JSON object matching this schema:
 {
   "summaryText": "<Detailed, neutral narrative of conversation flow and outcomes>",
   "topics": ["topic 1", "topic 2"],
@@ -64,8 +66,9 @@ You are a Channel Historian maintaining a long-term Wiki of this channel.
 2. Track long-term decisions and recurring behavioral patterns.
 3. Preserve established glossary terms and channel rules.
 4. Drop fully resolved action items and completed threads.
-5. **Anti-Hallucination**: Do NOT invent history not supported by the input.
-6. **Format**: Output STRICTLY as a JSON object:
+5. Participant tags may include human, sage, external_bot, or system. "sage" means this bot's own prior messages; "external_bot" means other automated participants. Bot-authored lines are room events and automation outputs, not the active requester, unless a human turn directly centers them.
+6. **Anti-Hallucination**: Do NOT invent history not supported by the input.
+7. **Format**: Output STRICTLY as a JSON object:
 {
   "summaryText": "<Comprehensive channel description, purpose, culture, and history>",
   "topics": ["recurring theme 1"],
@@ -253,9 +256,20 @@ function boundMessages(
 function buildMessageLines(messages: ChannelMessage[]): string {
   let totalChars = 0;
   const lines: string[] = [];
+  const sageUserId = client.user?.id ?? null;
 
   for (const message of messages) {
-    const line = `- [${message.timestamp.toISOString()}] @${message.authorDisplayName}: ${message.content}`;
+    const participant =
+      message.authorId === 'SYSTEM'
+        ? 'system'
+        : sageUserId && message.authorId === sageUserId
+          ? 'sage'
+          : message.authorIsBot
+          ? 'external_bot'
+          : 'human';
+    const line =
+      `- [${message.timestamp.toISOString()} participant:${participant} user:${message.authorId} ` +
+      `msg:${message.messageId}] @${message.authorDisplayName}: ${message.content}`;
     const nextTotal = totalChars + line.length + 1;
     if (nextTotal > MAX_INPUT_CHARS) {
       break;

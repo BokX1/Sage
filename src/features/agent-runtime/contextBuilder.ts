@@ -86,7 +86,8 @@ function buildCurrentTurnBlock(currentTurn: CurrentTurnContext): string {
     `reply_target_author_id: ${currentTurn.replyTargetAuthorId ?? 'none'}`,
     `mentioned_user_ids: ${mentions}`,
     `continuity_policy: ${describeContinuityPolicy(currentTurn.invokedBy)}`,
-    'rule: Nearby messages from other users are ambient room background unless linked by direct reply context, same-speaker continuity, or a concrete named subject in the current message.',
+    'rule: Nearby messages from other participants are ambient room background unless linked by direct reply context, same-speaker continuity, or a concrete named subject in the current message.',
+    'rule: Bot-authored messages may be relevant room context, but they do not become the current requester unless the current human turn explicitly surfaces them as the direct reply target.',
     'rule: Short acknowledgements or pronouns alone do not unlock broader room continuity.',
     '</current_turn>',
   ].join('\n');

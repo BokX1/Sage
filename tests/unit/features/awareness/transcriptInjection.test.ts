@@ -148,6 +148,15 @@ describe('transcript injection', () => {
         content: 'Parallel chatter from another user',
       }),
     );
+    appendMessage(
+      makeMessage({
+        messageId: 'msg-history-3',
+        authorId: 'deploy-bot',
+        authorDisplayName: 'DeployBot',
+        authorIsBot: true,
+        content: 'Deployment completed successfully',
+      }),
+    );
 
     await runChatTurn({
       traceId: 'trace-1',
@@ -167,11 +176,14 @@ describe('transcript injection', () => {
     expect(focusedContinuity).toContain('Focused continuity window');
     expect(focusedContinuity).toContain('Earlier context from the same user');
     expect(focusedContinuity).not.toContain('Parallel chatter from another user');
+    expect(focusedContinuity).not.toContain('Deployment completed successfully');
     expect(recentTranscript).toContain('Ambient room transcript');
     expect(recentTranscript).toContain('Earlier context from the same user');
     expect(recentTranscript).toContain('Parallel chatter from another user');
+    expect(recentTranscript).toContain('Deployment completed successfully');
     expect(recentTranscript).toContain('speaker:self');
-    expect(recentTranscript).toContain('speaker:other');
+    expect(recentTranscript).toContain('speaker:human');
+    expect(recentTranscript).toContain('speaker:external_bot');
   });
 
   it('skips transcript blocks when logging is disabled', async () => {
@@ -381,6 +393,107 @@ describe('transcript injection', () => {
     expect(focusedContinuity).toBeNull();
     expect(recentTranscript).toContain('does heiryn have tools to update its own memory?');
     expect(userContent).toContain('Does Heiryn have tools to update its own memory?');
+  });
+
+  it('keeps external bot room events visible in ambient context for a later human follow-up', async () => {
+    appendMessage(
+      makeMessage({
+        messageId: 'msg-human-1',
+        content: 'queue the deployment after lunch',
+      }),
+    );
+    appendMessage(
+      makeMessage({
+        messageId: 'msg-bot-1',
+        authorId: 'deploy-bot',
+        authorDisplayName: 'DeployBot',
+        authorIsBot: true,
+        content: 'Deployment completed successfully on shard blue.',
+      }),
+    );
+
+    await runChatTurn({
+      traceId: 'trace-5b',
+      userId: 'user-1',
+      channelId: 'channel-1',
+      guildId: 'guild-1',
+      messageId: 'msg-current-5b',
+      userText: 'did that finish cleanly?',
+      userProfileSummary: null,
+      currentTurn: makeCurrentTurn({
+        messageId: 'msg-current-5b',
+      }),
+    });
+
+    const systemContent = getSystemMessageContent();
+    const focusedContinuity = extractTagBlock(systemContent, 'focused_continuity');
+    const recentTranscript = extractTagBlock(systemContent, 'recent_transcript');
+
+    expect(focusedContinuity).toContain('queue the deployment after lunch');
+    expect(focusedContinuity).not.toContain('Deployment completed successfully on shard blue.');
+    expect(recentTranscript).toContain('Deployment completed successfully on shard blue.');
+    expect(recentTranscript).toContain('speaker:external_bot');
+  });
+
+  it('accepts an external bot reply target as valid supporting continuity for a human turn', async () => {
+    appendMessage(
+      makeMessage({
+        messageId: 'msg-helper-bot',
+        authorId: 'helper-bot',
+        authorDisplayName: 'HelperBot',
+        authorIsBot: true,
+        content: 'Scan finished: 2 warnings found.',
+      }),
+    );
+    appendMessage(
+      makeMessage({
+        messageId: 'msg-helper-neighbor',
+        authorId: 'user-2',
+        authorDisplayName: 'User Two',
+        content: 'which warnings?',
+        replyToMessageId: 'msg-helper-bot',
+      }),
+    );
+
+    await runChatTurn({
+      traceId: 'trace-5c',
+      userId: 'user-1',
+      channelId: 'channel-1',
+      guildId: 'guild-1',
+      messageId: 'msg-current-5c',
+      userText: 'can you summarize that for me?',
+      userProfileSummary: null,
+      currentTurn: makeCurrentTurn({
+        messageId: 'msg-current-5c',
+        invokedBy: 'mention',
+        isDirectReply: true,
+        replyTargetMessageId: 'msg-helper-bot',
+        replyTargetAuthorId: 'helper-bot',
+      }),
+      replyTarget: {
+        messageId: 'msg-helper-bot',
+        guildId: 'guild-1',
+        channelId: 'channel-1',
+        authorId: 'helper-bot',
+        authorDisplayName: 'HelperBot',
+        authorIsBot: true,
+        replyToMessageId: null,
+        mentionedUserIds: [],
+        content: 'Scan finished: 2 warnings found.',
+      },
+    });
+
+    const systemContent = getSystemMessageContent();
+    const userContent = getUserMessageContent();
+    const currentTurnBlock = extractTagBlock(systemContent, 'current_turn');
+    const focusedContinuity = extractTagBlock(systemContent, 'focused_continuity');
+
+    expect(currentTurnBlock).toContain(
+      'rule: Bot-authored messages may be relevant room context, but they do not become the current requester unless the current human turn explicitly surfaces them as the direct reply target.',
+    );
+    expect(focusedContinuity).toContain('which warnings?');
+    expect(userContent).toContain('author_is_bot: true');
+    expect(userContent).toContain('Scan finished: 2 warnings found.');
   });
 
   it('does not invent focused continuity for short acknowledgements without linkage', async () => {

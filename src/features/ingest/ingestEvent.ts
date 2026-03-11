@@ -99,10 +99,9 @@ export async function ingestEvent(event: Event, options: IngestEventOptions = {}
         mentionsBot: event.mentionsBot ?? false,
       };
 
-      // Keep ring-buffer awareness focused on human chat turns.
-      if (!isBotMessage) {
-        appendMessage(message);
-      }
+      // Keep live awareness faithful to the room, including external bot activity,
+      // while invocation and downstream side effects remain human-gated elsewhere.
+      appendMessage(message);
 
       if (config.MESSAGE_DB_STORAGE_ENABLED) {
         const dbRetentionLimit = resolveDbRetentionLimit();
@@ -152,16 +151,15 @@ export async function ingestEvent(event: Event, options: IngestEventOptions = {}
         }
       }
 
-      if (!isBotMessage) {
-        const scheduler = getChannelSummaryScheduler();
-        if (scheduler) {
-          scheduler.markDirty({
-            guildId: message.guildId,
-            channelId: message.channelId,
-            lastMessageAt: message.timestamp,
-            messageCountIncrement: 1,
-          });
-        }
+      const scheduler = getChannelSummaryScheduler();
+      if (scheduler) {
+        scheduler.markDirty({
+          guildId: message.guildId,
+          channelId: message.channelId,
+          lastMessageAt: message.timestamp,
+          messageCountIncrement: 1,
+          humanMessageCountIncrement: isBotMessage ? 0 : 1,
+        });
       }
     } else if (event.type === 'voice') {
       // SYNTHETIC SYSTEM MESSAGE FOR TRANSCRIPT

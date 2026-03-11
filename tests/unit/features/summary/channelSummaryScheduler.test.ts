@@ -37,14 +37,17 @@ function createMessage(params: {
   channelId: string;
   timestamp: Date;
   content: string;
+  authorId?: string;
+  authorDisplayName?: string;
+  authorIsBot?: boolean;
 }): ChannelMessage {
   return {
     messageId: params.id,
     guildId: params.guildId,
     channelId: params.channelId,
-    authorId: 'user-1',
-    authorDisplayName: 'User',
-    authorIsBot: false,
+    authorId: params.authorId ?? 'user-1',
+    authorDisplayName: params.authorDisplayName ?? 'User',
+    authorIsBot: params.authorIsBot ?? false,
     timestamp: params.timestamp,
     content: params.content,
     mentionsUserIds: [],
@@ -174,5 +177,66 @@ describe('ChannelSummaryScheduler', () => {
 
     expect(summarizeWindow).not.toHaveBeenCalled();
     expect(upsertSpy).not.toHaveBeenCalled();
+  });
+
+  it('does not summarize bot-only dirty activity', async () => {
+    const summaryStore = new InMemoryChannelSummaryStore();
+    const messageStore = new InMemoryMessageStore();
+    const nowMs = Date.now();
+    const summarizeWindow = vi.fn();
+    const summarizeProfile = vi.fn();
+
+    const scheduler = new ChannelSummaryScheduler({
+      summaryStore,
+      messageStore,
+      summarizeWindow,
+      summarizeProfile,
+      now: () => nowMs,
+    });
+
+    await messageStore.append(
+      createMessage({
+        id: 'msg-bot-1',
+        guildId: 'guild-1',
+        channelId: 'channel-1',
+        timestamp: new Date(nowMs - 500),
+        content: 'Sage status update',
+        authorId: 'sage-bot',
+        authorDisplayName: 'Sage',
+        authorIsBot: true,
+      }),
+    );
+    await messageStore.append(
+      createMessage({
+        id: 'msg-bot-2',
+        guildId: 'guild-1',
+        channelId: 'channel-1',
+        timestamp: new Date(nowMs - 400),
+        content: 'DeployBot completed successfully',
+        authorId: 'deploy-bot',
+        authorDisplayName: 'DeployBot',
+        authorIsBot: true,
+      }),
+    );
+
+    scheduler.markDirty({
+      guildId: 'guild-1',
+      channelId: 'channel-1',
+      lastMessageAt: new Date(nowMs - 400),
+      messageCountIncrement: 1,
+      humanMessageCountIncrement: 0,
+    });
+    scheduler.markDirty({
+      guildId: 'guild-1',
+      channelId: 'channel-1',
+      lastMessageAt: new Date(nowMs - 300),
+      messageCountIncrement: 1,
+      humanMessageCountIncrement: 0,
+    });
+
+    await scheduler.tick();
+
+    expect(summarizeWindow).not.toHaveBeenCalled();
+    expect(summarizeProfile).not.toHaveBeenCalled();
   });
 });

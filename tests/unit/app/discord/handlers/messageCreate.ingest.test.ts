@@ -565,6 +565,32 @@ describe('messageCreate - ingest + reply gating', () => {
     expect(mockGenerateChatReply).not.toHaveBeenCalled();
   });
 
+  it('ingests bot mentions to Sage but still skips reply generation', async () => {
+    const message = createMockMessage({
+      content: '<@123> status update from another bot',
+      author: {
+        id: 'other-bot',
+        bot: true,
+        username: 'Bot',
+      },
+      mentions: {
+        has: vi.fn((user: User) => user.id === '123'),
+        users: new Map<string, User>(),
+      },
+    });
+
+    await handleMessageCreate(message);
+
+    expect(mockIngestEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        messageId: message.id,
+        authorIsBot: true,
+        mentionsBot: true,
+      }),
+    );
+    expect(mockGenerateChatReply).not.toHaveBeenCalled();
+  });
+
   it('ingests non-mention messages even though bot does not reply', async () => {
     const message = createMockMessage({
       content: 'Just chatting without mentioning bot',
