@@ -34,6 +34,23 @@ vi.mock('jsonrepair', () => ({
 
 import { updateProfileSummary } from '@/features/memory/profileUpdater';
 
+function makeCurrentTurn(overrides: Record<string, unknown> = {}) {
+  return {
+    invokerUserId: 'U1',
+    invokerDisplayName: 'User',
+    messageId: 'msg-1',
+    guildId: 'G1',
+    channelId: 'C1',
+    invokedBy: 'mention',
+    mentionedUserIds: [],
+    isDirectReply: false,
+    replyTargetMessageId: null,
+    replyTargetAuthorId: null,
+    botUserId: 'B1',
+    ...overrides,
+  };
+}
+
 describe('profileUpdater logging hardening', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -53,6 +70,7 @@ describe('profileUpdater logging hardening', () => {
       previousSummary: 'Existing summary',
       userMessage: 'Hello',
       assistantReply: 'Hi',
+      currentTurn: makeCurrentTurn(),
       channelId: 'C1',
       guildId: 'G1',
       userId: 'U1',

@@ -19,8 +19,17 @@ import { generateTraceId } from '../../../shared/observability/trace-id-generato
 import { smartSplit } from '../../../shared/text/message-splitter';
 import { isAdminFromMember } from '../../../platform/discord/admin-permissions';
 import { publishPendingAdminActionRequesterStatusMessage } from '../../../features/admin/adminActionService';
+import { client } from '../../../platform/discord/client';
 
 type RepliableInteraction = ButtonInteraction | ModalSubmitInteraction | ChatInputCommandInteraction;
+
+function resolveInteractionDisplayName(interaction: RepliableInteraction): string {
+  const member = interaction.member;
+  if (member && typeof member === 'object' && 'displayName' in member && typeof member.displayName === 'string') {
+    return member.displayName;
+  }
+  return interaction.user.globalName ?? interaction.user.username;
+}
 
 async function sendInteractionReply(
   interaction: RepliableInteraction,
@@ -82,6 +91,7 @@ async function runInteractivePrompt(params: {
   }
 
   await params.interaction.deferReply({ ephemeral: params.ephemeral });
+  const invokerDisplayName = resolveInteractionDisplayName(params.interaction);
   const result = await generateChatReply({
     traceId: generateTraceId(),
     userId: params.interaction.user.id,
@@ -90,8 +100,20 @@ async function runInteractivePrompt(params: {
     messageId: params.interaction.id,
     userText: params.prompt,
     userContent: params.prompt,
-    replyToBotText: null,
-    replyReferenceContent: null,
+    currentTurn: {
+      invokerUserId: params.interaction.user.id,
+      invokerDisplayName,
+      messageId: params.interaction.id,
+      guildId: params.interaction.guildId,
+      channelId,
+      invokedBy: 'component',
+      mentionedUserIds: [],
+      isDirectReply: false,
+      replyTargetMessageId: null,
+      replyTargetAuthorId: null,
+      botUserId: client.user?.id ?? null,
+    },
+    replyTarget: null,
     invokedBy: 'component',
     isVoiceActive: false,
     voiceChannelId: null,

@@ -8,6 +8,10 @@ import {
 } from '../memory/userProfileCompaction';
 import { logger } from '../../platform/logging/logger';
 import { runChatTurn } from '../agent-runtime';
+import {
+  CurrentTurnContext,
+  ReplyTargetContext,
+} from '../agent-runtime/continuityContext';
 import type { PendingAdminActionNotice } from '../agent-runtime/pendingApprovals';
 import { LLMMessageContent } from '../../platform/llm/llm-types';
 import { config } from '../../platform/config/env';
@@ -33,20 +37,6 @@ function resolveProfileUpdateInterval(): number {
   return Math.max(1, Math.floor(configured));
 }
 
-function extractTextForProfileContext(content: LLMMessageContent | null | undefined): string | null {
-  if (!content) return null;
-  if (typeof content === 'string') {
-    const trimmed = content.trim();
-    return trimmed.length > 0 ? trimmed : null;
-  }
-  const text = content
-    .filter((part) => part.type === 'text')
-    .map((part) => part.text.trim())
-    .filter((part) => part.length > 0)
-    .join('\n');
-  return text.length > 0 ? text : null;
-}
-
 /**
  * Generate a chat reply using the agent runtime.
  * This is the main entry point for chat interactions.
@@ -64,8 +54,8 @@ export async function generateChatReply(params: {
   messageId: string;
   userText: string;
   userContent?: LLMMessageContent;
-  replyToBotText?: string | null;
-  replyReferenceContent?: LLMMessageContent | null;
+  currentTurn: CurrentTurnContext;
+  replyTarget?: ReplyTargetContext | null;
   mentionedUserIds?: string[];
   invokedBy?: 'mention' | 'reply' | 'wakeword' | 'autopilot' | 'component';
   isVoiceActive?: boolean;
@@ -90,8 +80,8 @@ export async function generateChatReply(params: {
       messageId,
       userText,
       userContent,
-      replyToBotText,
-      replyReferenceContent,
+      currentTurn,
+      replyTarget,
       mentionedUserIds,
       invokedBy = 'mention',
       isVoiceActive,
@@ -121,9 +111,9 @@ export async function generateChatReply(params: {
       messageId,
       userText,
       userContent,
+      currentTurn,
       userProfileSummary: profileSummary,
-      replyToBotText: replyToBotText ?? null,
-      replyReferenceContent: replyReferenceContent ?? null,
+      replyTarget: replyTarget ?? null,
       mentionedUserIds,
       invokedBy,
       isVoiceActive,
@@ -211,7 +201,8 @@ export async function generateChatReply(params: {
           previousSummary: profileSummary,
           userMessage: userText,
           assistantReply: replyText,
-          replyReferenceText: extractTextForProfileContext(replyReferenceContent),
+          currentTurn,
+          replyTarget: replyTarget ?? null,
           channelId,
           guildId,
           userId,

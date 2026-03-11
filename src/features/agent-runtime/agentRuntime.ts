@@ -20,6 +20,11 @@ import {
   buildCapabilityPromptSection,
   type BuildCapabilityPromptSectionParams,
 } from './capabilityPrompt';
+import {
+  CurrentTurnContext,
+  ReplyTargetContext,
+  selectFocusedContinuityMessages,
+} from './continuityContext';
 import { resolveRuntimeAutopilotMode } from './autopilotMode';
 import {
   ToolRegistry,
@@ -44,8 +49,8 @@ export interface RunChatTurnParams {
   userText: string;
   userContent?: LLMMessageContent;
   userProfileSummary: string | null;
-  replyToBotText: string | null;
-  replyReferenceContent?: LLMMessageContent | null;
+  currentTurn: CurrentTurnContext;
+  replyTarget?: ReplyTargetContext | null;
   mentionedUserIds?: string[];
   invokedBy?: 'mention' | 'reply' | 'wakeword' | 'autopilot' | 'component';
   isVoiceActive?: boolean;
@@ -233,8 +238,8 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
     voiceChannelId,
     userText,
     userContent,
-    replyToBotText,
-    replyReferenceContent,
+    currentTurn,
+    replyTarget,
     invokedBy = 'mention',
     isVoiceActive,
     isAdmin = false,
@@ -243,16 +248,41 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
     clearGitHubFileLookupCacheForTrace(traceId);
   };
 
-  const transcriptBlock = guildId && isLoggingEnabled(guildId, channelId)
-    ? buildTranscriptBlock(
-      getRecentMessages({ guildId, channelId, limit: appConfig.CONTEXT_TRANSCRIPT_MAX_MESSAGES }),
-      appConfig.CONTEXT_TRANSCRIPT_MAX_CHARS,
-    )
-    : null;
+  const recentMessages =
+    guildId && isLoggingEnabled(guildId, channelId)
+      ? getRecentMessages({ guildId, channelId, limit: appConfig.CONTEXT_TRANSCRIPT_MAX_MESSAGES })
+      : [];
 
+  const excludedAmbientMessageIds = [params.messageId];
+  if (replyTarget?.messageId) {
+    excludedAmbientMessageIds.push(replyTarget.messageId);
+  }
 
+  const focusedContinuityMessages = selectFocusedContinuityMessages({
+    messages: recentMessages,
+    currentTurn,
+    replyTarget,
+    excludedMessageIds: excludedAmbientMessageIds,
+  });
 
+  const focusedContinuityBlock =
+    focusedContinuityMessages.length > 0
+      ? buildTranscriptBlock(focusedContinuityMessages, appConfig.CONTEXT_TRANSCRIPT_MAX_CHARS, {
+          header:
+            'Focused continuity window (most recent last). Use this first for same-speaker or reply-chain continuity before reading ambient room context:',
+          focusUserId: currentTurn.invokerUserId,
+          sageUserId: currentTurn.botUserId ?? null,
+        })
+      : null;
 
+  const transcriptBlock =
+    recentMessages.length > 0
+      ? buildTranscriptBlock(recentMessages, appConfig.CONTEXT_TRANSCRIPT_MAX_CHARS, {
+          excludedMessageIds: excludedAmbientMessageIds,
+          focusUserId: currentTurn.invokerUserId,
+          sageUserId: currentTurn.botUserId ?? null,
+        })
+      : null;
 
   const liveVoiceContext =
     guildId && isVoiceActive && voiceChannelId
@@ -328,12 +358,13 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
 
   const runtimeMessages = buildContextMessages({
     userProfileSummary: params.userProfileSummary,
+    currentTurn,
     runtimeInstruction,
     serverInstructions,
-    replyToBotText,
-    replyReferenceContent,
+    replyTarget,
     userText,
     userContent,
+    focusedContinuity: focusedContinuityBlock,
     recentTranscript: transcriptBlock,
     voiceContext: liveVoiceContext,
     invokedBy,

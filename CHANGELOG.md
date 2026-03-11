@@ -34,6 +34,8 @@
 
 ### Changed
 
+- Reworked shared-channel turn assembly around structured `<current_turn>`, canonical `<reply_target>`, focused same-speaker/reply-chain continuity, and an explicitly ambient `<recent_transcript>`, so Sage now answers one speaker's turn in a busy room instead of flattening nearby chatter into one rolling objective.
+- Reused the same turn-scoped continuity selector in user-profile updates, so long-term personalization now prefers the invoking user's own recent turns and direct reply-target evidence over unrelated mixed-channel messages.
 - Aligned prompt-side reserved output budgeting with Sage's real chat response cap, so context assembly no longer over-reserves output tokens beyond what Discord chat turns can actually generate.
 - Tightened Sage's base prompt for busy shared channels so it now prioritizes the current speaker over adjacent unrelated users, treats `<recent_transcript>` as ambient room context instead of default task state, and reads `<reply_reference>` as evidence to inspect rather than permission to assume the whole prior thread.
 - Tightened Sage's visible response-control prompt rules so exact answer shapes like "one sentence" or "3 bullets" are now taught explicitly, visible self-narration is discouraged more strongly, and replied-to content is folded into the current user turn as context-only preface instead of being injected as a separate user message, reducing prompt duplication and keeping the current ask dominant.
@@ -83,6 +85,8 @@
 
 ### Fixed
 
+- Fixed shared-channel reply confusion where short follow-ups like "alright let's see" could pull in unrelated nearby conversations; Sage now excludes the live turn and canonical reply target from ambient transcript injection, carries reply-target metadata through the runtime, and preserves reply-target plus user-input structure more reliably under prompt truncation.
+- Fixed follow-up hardening gaps in the new turn-scoped continuity path: sibling replies to a shared parent no longer leak into focused reply continuity, newest local reply-chain neighbors now win over stale older ones, and user-controlled Discord display names are escaped before being rendered into structured prompt metadata.
 - Fixed a runtime leak where Sage could narrate internal tool usage, parrot recovery coaching, or echo approval payloads/action commands into chat replies instead of keeping approval acknowledgements short and operator-friendly.
 - Fixed flaky docs-link CI runs caused by intermittent aborts when validating the external contributor image at `contrib.rocks`; the tracked docs gate now skips that decorative image URL instead of failing otherwise healthy pushes.
 - Fixed a rare Discord runtime leak where array-wrapped `tool_calls` payloads, including server-instruction update requests, could be sent to chat as raw JSON instead of being executed and finalized into a normal reply.

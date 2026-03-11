@@ -12,6 +12,7 @@ import { LLMMessageContent } from '../../platform/llm/llm-types';
 /** Identify supported context block classes used by the runtime builder. */
 export type ContextBlockId =
   | 'base_system'
+  | 'current_turn'
   | 'runtime_instruction'
   | 'server_instructions'
   | 'voice_context'
@@ -149,6 +150,92 @@ function safeTruncateEnd(
   return best.trimStart();
 }
 
+function truncateTaggedSectionFromEnd(params: {
+  sectionText: string;
+  tagName: string;
+  maxTokens: number;
+  estimator: (text: string) => number;
+}): string {
+  const { sectionText, tagName, maxTokens, estimator } = params;
+  const openTag = `<${tagName}>`;
+  const closeTag = `</${tagName}>`;
+  const openIndex = sectionText.indexOf(openTag);
+  const closeIndex = sectionText.lastIndexOf(closeTag);
+
+  if (openIndex === -1 || closeIndex === -1 || closeIndex < openIndex) {
+    return safeTruncateEnd(sectionText, maxTokens, estimator);
+  }
+
+  const prefix = sectionText.slice(0, openIndex + openTag.length);
+  const inner = sectionText.slice(openIndex + openTag.length, closeIndex);
+  const suffix = sectionText.slice(closeIndex);
+  const reservedTokens = estimator(prefix) + estimator(suffix);
+  if (reservedTokens >= maxTokens) {
+    return safeTruncateEnd(sectionText, maxTokens, estimator);
+  }
+
+  const truncatedInner = safeTruncateEnd(inner, maxTokens - reservedTokens, estimator);
+  return `${prefix}${truncatedInner}${suffix}`.trimEnd();
+}
+
+function truncateCombinedUserContent(
+  text: string,
+  maxTokens: number,
+  estimator: (text: string) => number,
+): string {
+  const userInputStart = text.indexOf('<user_input>');
+  if (userInputStart === -1) {
+    return safeTruncateEnd(text, maxTokens, estimator);
+  }
+
+  const prefix = text.slice(0, userInputStart).trimEnd();
+  const userInputSection = text.slice(userInputStart);
+  const userInputTokens = estimator(userInputSection);
+
+  if (prefix.length === 0) {
+    return truncateTaggedSectionFromEnd({
+      sectionText: userInputSection,
+      tagName: 'user_input',
+      maxTokens,
+      estimator,
+    });
+  }
+
+  const prefixTokens = estimator(prefix);
+  if (prefixTokens >= maxTokens) {
+    return truncateTaggedSectionFromEnd({
+      sectionText: userInputSection,
+      tagName: 'user_input',
+      maxTokens,
+      estimator,
+    });
+  }
+
+  const remainingForUserInput = Math.max(0, maxTokens - prefixTokens);
+  const truncatedUserInput = truncateTaggedSectionFromEnd({
+    sectionText: userInputSection,
+    tagName: 'user_input',
+    maxTokens: remainingForUserInput,
+    estimator,
+  });
+
+  const combined = `${prefix}\n\n${truncatedUserInput}`.trimEnd();
+  if (estimator(combined) <= maxTokens) {
+    return combined;
+  }
+
+  if (userInputTokens <= maxTokens) {
+    return userInputSection;
+  }
+
+  return truncateTaggedSectionFromEnd({
+    sectionText: userInputSection,
+    tagName: 'user_input',
+    maxTokens,
+    estimator,
+  });
+}
+
 function truncateBlockContent(
   block: ContextBlock,
   maxTokens: number,
@@ -181,7 +268,7 @@ function truncateBlockContent(
       const notice = 'User message truncated to fit context. Showing most recent portion:\\n';
       const noticeTokens = estimator(notice);
       const availableTokens = Math.max(0, maxTokens - noticeTokens);
-      const truncatedContent = safeTruncateEnd(contentText, availableTokens, estimator);
+      const truncatedContent = truncateCombinedUserContent(contentText, availableTokens, estimator);
       if (truncatedContent.length === contentText.length) {
         return { ...block, content: applyTextToContent(block.content, truncatedContent) };
       }
@@ -190,7 +277,7 @@ function truncateBlockContent(
           ...block,
           content: applyTextToContent(
             block.content,
-            safeTruncateEnd(contentText, maxTokens, estimator),
+            truncateCombinedUserContent(contentText, maxTokens, estimator),
           ),
         };
       }
@@ -200,6 +287,7 @@ function truncateBlockContent(
       };
     }
     case 'server_instructions':
+    case 'current_turn':
       return {
         ...block,
         content: applyTextToContent(
@@ -280,6 +368,56 @@ const TRUNCATION_ORDER: ContextBlockId[] = [
   'user',
 ];
 
+function makeRoomForNotice(
+  blocks: ContextBlock[],
+  noticeTokens: number,
+  estimator: (text: string) => number,
+  maxAllowedTokens: number,
+): ContextBlock[] | null {
+  let workingBlocks = blocks;
+  let total = totalTokens(workingBlocks, estimator);
+  let overflow = total + noticeTokens - maxAllowedTokens;
+  if (overflow <= 0) {
+    return workingBlocks;
+  }
+
+  for (const blockId of TRUNCATION_ORDER) {
+    if (overflow <= 0) {
+      break;
+    }
+
+    const block = findBlock(workingBlocks, blockId);
+    if (!block) {
+      continue;
+    }
+
+    const currentTextTokens = estimator(extractText(block.content));
+    const minTokens = block.minTokens ?? 0;
+
+    if (block.truncatable && currentTextTokens > minTokens) {
+      const desiredTokens = Math.max(minTokens, currentTextTokens - overflow);
+      const truncatedBlocks = truncateToFit(workingBlocks, blockId, desiredTokens, estimator);
+      const truncatedTotal = totalTokens(truncatedBlocks, estimator);
+      if (truncatedTotal < total) {
+        workingBlocks = truncatedBlocks;
+        total = truncatedTotal;
+        overflow = total + noticeTokens - maxAllowedTokens;
+      }
+    }
+
+    if (overflow > 0 && blockId !== 'user') {
+      const droppedBlocks = dropBlock(workingBlocks, blockId);
+      if (droppedBlocks.length < workingBlocks.length) {
+        workingBlocks = droppedBlocks;
+        total = totalTokens(workingBlocks, estimator);
+        overflow = total + noticeTokens - maxAllowedTokens;
+      }
+    }
+  }
+
+  return total + noticeTokens <= maxAllowedTokens ? workingBlocks : null;
+}
+
 function insertTruncationNotice(
   blocks: ContextBlock[],
   noticeText: string,
@@ -296,16 +434,24 @@ function insertTruncationNotice(
 
   const noticeTokens = estimateBlockTokens(noticeBlock, estimator);
   const currentTotal = totalTokens(blocks, estimator);
-  if (currentTotal + noticeTokens > maxAllowedTokens) {
+  const fittedBlocks =
+    currentTotal + noticeTokens <= maxAllowedTokens
+      ? blocks
+      : makeRoomForNotice(blocks, noticeTokens, estimator, maxAllowedTokens);
+  if (!fittedBlocks) {
     return blocks;
   }
 
-  const baseIndex = blocks.findIndex((block) => block.id === 'base_system');
+  const baseIndex = fittedBlocks.findIndex((block) => block.id === 'base_system');
   if (baseIndex === -1) {
-    return [noticeBlock, ...blocks];
+    return [noticeBlock, ...fittedBlocks];
   }
 
-  return [...blocks.slice(0, baseIndex + 1), noticeBlock, ...blocks.slice(baseIndex + 1)];
+  return [
+    ...fittedBlocks.slice(0, baseIndex + 1),
+    noticeBlock,
+    ...fittedBlocks.slice(baseIndex + 1),
+  ];
 }
 
 /**
@@ -371,7 +517,7 @@ export function budgetContextBlocks(
     const upperBound = estimator(extractText(block.content));
 
     if (upperBound > minTokens) {
-      let bestTokens = upperBound;
+      let bestTokens = minTokens;
       let low = minTokens;
       let high = upperBound;
 
@@ -382,9 +528,9 @@ export function budgetContextBlocks(
 
         if (candidateTotal <= maxAllowedTokens) {
           bestTokens = mid;
-          high = mid - 1;
-        } else {
           low = mid + 1;
+        } else {
+          high = mid - 1;
         }
       }
 
@@ -409,7 +555,7 @@ export function budgetContextBlocks(
       if (userTokens > 0) {
         let low = 0;
         let high = userTokens;
-        let best = userTokens;
+        let best = 0;
 
         while (low <= high) {
           const mid = Math.floor((low + high) / 2);
@@ -418,9 +564,9 @@ export function budgetContextBlocks(
 
           if (candidateTotal <= maxAllowedTokens) {
             best = mid;
-            high = mid - 1;
-          } else {
             low = mid + 1;
+          } else {
+            high = mid - 1;
           }
         }
 

@@ -1,17 +1,17 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mockConfig = vi.hoisted(() => ({
-  CONTEXT_TRANSCRIPT_MAX_MESSAGES: 5,
-  CONTEXT_TRANSCRIPT_MAX_CHARS: 2000,
-  CONTEXT_BLOCK_MAX_TOKENS_TRANSCRIPT: 4000,
-  CONTEXT_BLOCK_MAX_TOKENS_ROLLING_SUMMARY: 2000,
-  CONTEXT_BLOCK_MAX_TOKENS_PROFILE_SUMMARY: 2000,
-  CONTEXT_BLOCK_MAX_TOKENS_MEMORY: 2000,
-  CONTEXT_BLOCK_MAX_TOKENS_REPLY_CONTEXT: 1000,
-  CONTEXT_BLOCK_MAX_TOKENS_PROVIDERS: 2000,
-  CONTEXT_USER_MAX_TOKENS: 8000,
-  CONTEXT_MAX_INPUT_TOKENS: 16000,
-  CONTEXT_RESERVED_OUTPUT_TOKENS: 4000,
+  CONTEXT_TRANSCRIPT_MAX_MESSAGES: 6,
+  CONTEXT_TRANSCRIPT_MAX_CHARS: 2_000,
+  CONTEXT_BLOCK_MAX_TOKENS_TRANSCRIPT: 4_000,
+  CONTEXT_BLOCK_MAX_TOKENS_ROLLING_SUMMARY: 2_000,
+  CONTEXT_BLOCK_MAX_TOKENS_PROFILE_SUMMARY: 2_000,
+  CONTEXT_BLOCK_MAX_TOKENS_MEMORY: 2_000,
+  CONTEXT_BLOCK_MAX_TOKENS_REPLY_CONTEXT: 1_000,
+  CONTEXT_BLOCK_MAX_TOKENS_PROVIDERS: 2_000,
+  CONTEXT_USER_MAX_TOKENS: 8_000,
+  CONTEXT_MAX_INPUT_TOKENS: 16_000,
+  CONTEXT_RESERVED_OUTPUT_TOKENS: 4_000,
   CONTEXT_TRUNCATION_NOTICE: true,
   AUTOPILOT_MODE: 'manual',
   RAW_MESSAGE_TTL_DAYS: 3,
@@ -19,7 +19,7 @@ const mockConfig = vi.hoisted(() => ({
   CHAT_MODEL: 'kimi',
   CHAT_MAX_OUTPUT_TOKENS: 800,
   AGENTIC_TOOL_LOOP_ENABLED: false,
-  TIMEOUT_CHAT_MS: 1000,
+  TIMEOUT_CHAT_MS: 1_000,
   LLM_API_KEY: 'test-key',
   TRACE_ENABLED: false,
 }));
@@ -58,9 +58,70 @@ vi.mock('@/features/agent-runtime/toolIntegrations', () => ({
   clearGitHubFileLookupCacheForTrace: vi.fn(),
 }));
 
-import { appendMessage, clearChannel } from '../../../../src/features/awareness/channelRingBuffer';
-import { runChatTurn } from '../../../../src/features/agent-runtime/agentRuntime';
-import { isLoggingEnabled } from '../../../../src/features/settings/guildChannelSettings';
+import { appendMessage, clearChannel } from '@/features/awareness/channelRingBuffer';
+import { runChatTurn } from '@/features/agent-runtime/agentRuntime';
+import { isLoggingEnabled } from '@/features/settings/guildChannelSettings';
+
+function makeCurrentTurn(overrides: Record<string, unknown> = {}) {
+  return {
+    invokerUserId: 'user-1',
+    invokerDisplayName: 'User One',
+    messageId: 'msg-current',
+    guildId: 'guild-1',
+    channelId: 'channel-1',
+    invokedBy: 'mention',
+    mentionedUserIds: [],
+    isDirectReply: false,
+    replyTargetMessageId: null,
+    replyTargetAuthorId: null,
+    botUserId: 'sage-bot',
+    ...overrides,
+  };
+}
+
+function makeMessage(overrides: Record<string, unknown> = {}) {
+  return {
+    messageId: 'msg-default',
+    guildId: 'guild-1',
+    channelId: 'channel-1',
+    authorId: 'user-1',
+    authorDisplayName: 'User One',
+    authorIsBot: false,
+    timestamp: new Date('2026-03-11T00:00:00.000Z'),
+    content: 'default content',
+    replyToMessageId: undefined,
+    mentionsUserIds: [],
+    mentionsBot: false,
+    ...overrides,
+  };
+}
+
+function getPromptCall() {
+  return mockChat.chat.mock.calls[0]?.[0] as {
+    messages: Array<{ role: string; content: string }>;
+  };
+}
+
+function getSystemMessageContent(): string {
+  const content = getPromptCall().messages[0]?.content;
+  if (typeof content !== 'string') {
+    throw new Error('Expected system message content to be a string');
+  }
+  return content;
+}
+
+function getUserMessageContent(): string {
+  const content = getPromptCall().messages.find((message) => message.role === 'user')?.content;
+  if (typeof content !== 'string') {
+    throw new Error('Expected user message content to be a string');
+  }
+  return content;
+}
+
+function extractTagBlock(content: string, tagName: string): string | null {
+  const match = content.match(new RegExp(`<${tagName}>[\\s\\S]*?<\\/${tagName}>`));
+  return match?.[0] ?? null;
+}
 
 describe('transcript injection', () => {
   beforeEach(() => {
@@ -71,81 +132,295 @@ describe('transcript injection', () => {
     vi.mocked(isLoggingEnabled).mockReturnValue(true);
   });
 
-  it('includes a transcript block when logging is enabled', async () => {
-    appendMessage({
-      messageId: 'msg-1',
-      guildId: 'guild-1',
-      channelId: 'channel-1',
-      authorId: 'user-1',
-      authorDisplayName: 'User One',
-      authorIsBot: false,
-      timestamp: new Date(),
-      content: 'Hello there',
-      replyToMessageId: undefined,
-      mentionsUserIds: [],
-      mentionsBot: false,
-    });
+  it('includes ambient transcript and focused continuity when logging is enabled', async () => {
+    appendMessage(
+      makeMessage({
+        messageId: 'msg-history-1',
+        content: 'Earlier context from the same user',
+      }),
+    );
+    appendMessage(
+      makeMessage({
+        messageId: 'msg-history-2',
+        authorId: 'user-2',
+        authorDisplayName: 'User Two',
+        content: 'Parallel chatter from another user',
+      }),
+    );
 
     await runChatTurn({
       traceId: 'trace-1',
       userId: 'user-1',
       channelId: 'channel-1',
       guildId: 'guild-1',
-      messageId: 'msg-1',
+      messageId: 'msg-current',
       userText: 'Invoke',
       userProfileSummary: null,
-      replyToBotText: null,
+      currentTurn: makeCurrentTurn(),
     });
 
-    const call = mockChat.chat.mock.calls[0][0];
-    const transcriptMessage = call.messages.find(
-      (message: { role: string; content: string }) =>
-        message.role === 'system' && message.content.includes('Recent channel transcript'),
-    );
+    const systemContent = getSystemMessageContent();
+    const focusedContinuity = extractTagBlock(systemContent, 'focused_continuity');
+    const recentTranscript = extractTagBlock(systemContent, 'recent_transcript');
 
-    expect(transcriptMessage?.content).toContain('@User One');
-    expect(transcriptMessage?.content).toContain('Hello there');
+    expect(focusedContinuity).toContain('Focused continuity window');
+    expect(focusedContinuity).toContain('Earlier context from the same user');
+    expect(focusedContinuity).not.toContain('Parallel chatter from another user');
+    expect(recentTranscript).toContain('Ambient room transcript');
+    expect(recentTranscript).toContain('Earlier context from the same user');
+    expect(recentTranscript).toContain('Parallel chatter from another user');
+    expect(recentTranscript).toContain('speaker:self');
+    expect(recentTranscript).toContain('speaker:other');
   });
 
-  it('skips transcript block when logging is disabled', async () => {
+  it('skips transcript blocks when logging is disabled', async () => {
     vi.mocked(isLoggingEnabled).mockReturnValue(false);
-    appendMessage({
-      messageId: 'msg-2',
-      guildId: 'guild-1',
-      channelId: 'channel-1',
-      authorId: 'user-2',
-      authorDisplayName: 'User Two',
-      authorIsBot: false,
-      timestamp: new Date(),
-      content: 'No log',
-      replyToMessageId: undefined,
-      mentionsUserIds: [],
-      mentionsBot: false,
-    });
+    appendMessage(
+      makeMessage({
+        messageId: 'msg-history-1',
+        authorId: 'user-2',
+        authorDisplayName: 'User Two',
+        content: 'No log',
+      }),
+    );
 
     await runChatTurn({
       traceId: 'trace-2',
       userId: 'user-2',
       channelId: 'channel-1',
       guildId: 'guild-1',
-      messageId: 'msg-2',
+      messageId: 'msg-current-2',
       userText: 'Invoke',
       userProfileSummary: null,
-      replyToBotText: null,
+      currentTurn: makeCurrentTurn({
+        invokerUserId: 'user-2',
+        invokerDisplayName: 'User Two',
+        messageId: 'msg-current-2',
+      }),
     });
 
-    const call = mockChat.chat.mock.calls[0][0];
-    const hasTranscript = call.messages.some(
-      (message: { role: string; content: string }) =>
-        message.role === 'system' && message.content.includes('Recent channel transcript'),
+    const systemContent = getSystemMessageContent();
+    expect(extractTagBlock(systemContent, 'recent_transcript')).toBeNull();
+    expect(extractTagBlock(systemContent, 'focused_continuity')).toBeNull();
+  });
+
+  it('keeps a reply turn anchored to the reply target instead of unrelated room chatter', async () => {
+    appendMessage(
+      makeMessage({
+        messageId: 'msg-heiryn',
+        authorId: 'user-2',
+        authorDisplayName: 'User Two',
+        content: 'does heiryn have tools to update its own memory?',
+      }),
+    );
+    appendMessage(
+      makeMessage({
+        messageId: 'msg-same-speaker',
+        content: 'once approval lands we can test the new response',
+      }),
+    );
+    appendMessage(
+      makeMessage({
+        messageId: 'msg-approval',
+        authorId: 'sage-bot',
+        authorDisplayName: 'Sage',
+        authorIsBot: true,
+        content: 'The approval card was accepted. Response behavior updated.',
+      }),
+    );
+    appendMessage(
+      makeMessage({
+        messageId: 'msg-reply-neighbor',
+        content: 'waiting for the approval result',
+        replyToMessageId: 'msg-approval',
+      }),
     );
 
-    expect(hasTranscript).toEqual(false);
-    expect(
-      call.messages.filter(
-        (message: { role: string; content: string }) =>
-          message.role === 'system' && message.content.includes('Recent channel transcript'),
-      ),
-    ).toHaveLength(0);
+    await runChatTurn({
+      traceId: 'trace-3',
+      userId: 'user-1',
+      channelId: 'channel-1',
+      guildId: 'guild-1',
+      messageId: 'msg-current-3',
+      userText: "alright let's see",
+      userProfileSummary: null,
+      currentTurn: makeCurrentTurn({
+        messageId: 'msg-current-3',
+        invokedBy: 'reply',
+        isDirectReply: true,
+        replyTargetMessageId: 'msg-approval',
+        replyTargetAuthorId: 'sage-bot',
+      }),
+      replyTarget: {
+        messageId: 'msg-approval',
+        guildId: 'guild-1',
+        channelId: 'channel-1',
+        authorId: 'sage-bot',
+        authorDisplayName: 'Sage',
+        authorIsBot: true,
+        replyToMessageId: null,
+        mentionedUserIds: [],
+        content: 'The approval card was accepted. Response behavior updated.',
+      },
+    });
+
+    const systemContent = getSystemMessageContent();
+    const userContent = getUserMessageContent();
+    const currentTurnBlock = extractTagBlock(systemContent, 'current_turn');
+    const focusedContinuity = extractTagBlock(systemContent, 'focused_continuity');
+    const recentTranscript = extractTagBlock(systemContent, 'recent_transcript');
+
+    expect(currentTurnBlock).toContain('invocation_kind: reply');
+    expect(currentTurnBlock).toContain('continuity_policy: reply_target > same_speaker_recent > explicit_named_subject > ambient_room');
+    expect(focusedContinuity).toContain('once approval lands we can test the new response');
+    expect(focusedContinuity).toContain('waiting for the approval result');
+    expect(focusedContinuity).not.toContain('does heiryn have tools to update its own memory?');
+    expect(recentTranscript).toContain('does heiryn have tools to update its own memory?');
+    expect(recentTranscript).not.toContain('The approval card was accepted. Response behavior updated.');
+    expect(userContent).toContain('Reply target for continuity only:');
+    expect(userContent).toContain('<reply_target>');
+    expect(userContent).toContain('The approval card was accepted. Response behavior updated.');
+    expect(userContent).toContain('<user_input>');
+    expect(userContent).toContain("alright let's see");
+  });
+
+  it('keeps same-speaker continuity ahead of busy-room chatter', async () => {
+    appendMessage(
+      makeMessage({
+        messageId: 'msg-u1-1',
+        content: 'ship the approval card copy update',
+      }),
+    );
+    appendMessage(
+      makeMessage({
+        messageId: 'msg-u2-1',
+        authorId: 'user-2',
+        authorDisplayName: 'User Two',
+        content: 'who is up for valorant later',
+      }),
+    );
+    appendMessage(
+      makeMessage({
+        messageId: 'msg-u1-2',
+        content: 'make it shorter but keep the same tone',
+      }),
+    );
+    appendMessage(
+      makeMessage({
+        messageId: 'msg-u3-1',
+        authorId: 'user-3',
+        authorDisplayName: 'User Three',
+        content: 'show me the meme thread',
+      }),
+    );
+
+    await runChatTurn({
+      traceId: 'trace-4',
+      userId: 'user-1',
+      channelId: 'channel-1',
+      guildId: 'guild-1',
+      messageId: 'msg-current-4',
+      userText: 'keep the same direction but terser',
+      userProfileSummary: null,
+      currentTurn: makeCurrentTurn({
+        messageId: 'msg-current-4',
+      }),
+    });
+
+    const systemContent = getSystemMessageContent();
+    const focusedContinuity = extractTagBlock(systemContent, 'focused_continuity');
+    const recentTranscript = extractTagBlock(systemContent, 'recent_transcript');
+
+    expect(focusedContinuity).toContain('ship the approval card copy update');
+    expect(focusedContinuity).toContain('make it shorter but keep the same tone');
+    expect(focusedContinuity).not.toContain('who is up for valorant later');
+    expect(focusedContinuity).not.toContain('show me the meme thread');
+    expect(recentTranscript).toContain('who is up for valorant later');
+    expect(recentTranscript).toContain('show me the meme thread');
+  });
+
+  it('keeps explicit-subject evidence in ambient room context for named-subject turns', async () => {
+    appendMessage(
+      makeMessage({
+        messageId: 'msg-subject',
+        authorId: 'user-2',
+        authorDisplayName: 'User Two',
+        content: 'does heiryn have tools to update its own memory?',
+      }),
+    );
+    appendMessage(
+      makeMessage({
+        messageId: 'msg-noise',
+        authorId: 'user-3',
+        authorDisplayName: 'User Three',
+        content: 'what game are we playing tonight',
+      }),
+    );
+
+    await runChatTurn({
+      traceId: 'trace-5',
+      userId: 'user-1',
+      channelId: 'channel-1',
+      guildId: 'guild-1',
+      messageId: 'msg-current-5',
+      userText: 'Does Heiryn have tools to update its own memory?',
+      userProfileSummary: null,
+      currentTurn: makeCurrentTurn({
+        messageId: 'msg-current-5',
+      }),
+    });
+
+    const systemContent = getSystemMessageContent();
+    const currentTurnBlock = extractTagBlock(systemContent, 'current_turn');
+    const focusedContinuity = extractTagBlock(systemContent, 'focused_continuity');
+    const recentTranscript = extractTagBlock(systemContent, 'recent_transcript');
+    const userContent = getUserMessageContent();
+
+    expect(currentTurnBlock).toContain('continuity_policy: current_user_input > same_speaker_recent > explicit_named_subject > ambient_room');
+    expect(focusedContinuity).toBeNull();
+    expect(recentTranscript).toContain('does heiryn have tools to update its own memory?');
+    expect(userContent).toContain('Does Heiryn have tools to update its own memory?');
+  });
+
+  it('does not invent focused continuity for short acknowledgements without linkage', async () => {
+    appendMessage(
+      makeMessage({
+        messageId: 'msg-noise-1',
+        authorId: 'user-2',
+        authorDisplayName: 'User Two',
+        content: 'unrelated build pipeline discussion',
+      }),
+    );
+    appendMessage(
+      makeMessage({
+        messageId: 'msg-noise-2',
+        authorId: 'user-3',
+        authorDisplayName: 'User Three',
+        content: 'separate gaming conversation',
+      }),
+    );
+
+    await runChatTurn({
+      traceId: 'trace-6',
+      userId: 'user-1',
+      channelId: 'channel-1',
+      guildId: 'guild-1',
+      messageId: 'msg-current-6',
+      userText: "alright let's see",
+      userProfileSummary: null,
+      currentTurn: makeCurrentTurn({
+        messageId: 'msg-current-6',
+      }),
+    });
+
+    const systemContent = getSystemMessageContent();
+    const currentTurnBlock = extractTagBlock(systemContent, 'current_turn');
+    const focusedContinuity = extractTagBlock(systemContent, 'focused_continuity');
+    const recentTranscript = extractTagBlock(systemContent, 'recent_transcript');
+
+    expect(currentTurnBlock).toContain('rule: Short acknowledgements or pronouns alone do not unlock broader room continuity.');
+    expect(focusedContinuity).toBeNull();
+    expect(recentTranscript).toContain('unrelated build pipeline discussion');
+    expect(recentTranscript).toContain('separate gaming conversation');
   });
 });

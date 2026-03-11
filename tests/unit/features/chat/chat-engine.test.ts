@@ -42,6 +42,23 @@ vi.mock('@/features/memory/userProfileCompaction', () => ({
 
 import { __resetChatEngineStateForTests, generateChatReply } from '@/features/chat/chat-engine';
 
+function makeCurrentTurn(overrides: Record<string, unknown> = {}) {
+  return {
+    invokerUserId: 'user1',
+    invokerDisplayName: 'User One',
+    messageId: 'msg1',
+    guildId: null,
+    channelId: 'chan1',
+    invokedBy: 'mention',
+    mentionedUserIds: [],
+    isDirectReply: false,
+    replyTargetMessageId: null,
+    replyTargetAuthorId: null,
+    botUserId: 'sage-bot',
+    ...overrides,
+  };
+}
+
 describe('ChatEngine', () => {
   beforeEach(() => {
     __resetChatEngineStateForTests();
@@ -66,6 +83,7 @@ describe('ChatEngine', () => {
       guildId: null,
       messageId: 'msg1',
       userText: 'Hi',
+      currentTurn: makeCurrentTurn(),
     });
 
     expect(result.replyText).toBe('Hello there!');
@@ -74,12 +92,14 @@ describe('ChatEngine', () => {
         traceId: 'test-trace',
         userId: 'user1',
         channelId: 'chan1',
-        guildId: null,
-        messageId: 'msg1',
-        userText: 'Hi',
-        userProfileSummary: null,
-      }),
-    );
+      guildId: null,
+      messageId: 'msg1',
+      userText: 'Hi',
+      userProfileSummary: null,
+      currentTurn: makeCurrentTurn(),
+      replyTarget: null,
+    }),
+  );
   });
 
   it('loads profile summary and passes it into runChatTurn', async () => {
@@ -96,6 +116,7 @@ describe('ChatEngine', () => {
       guildId: null,
       messageId: 'msg1',
       userText: 'Hi',
+      currentTurn: makeCurrentTurn(),
     });
 
     expect(mockRunChatTurn).toHaveBeenCalledWith(
@@ -121,13 +142,15 @@ describe('ChatEngine', () => {
       guildId: 'guild1',
       messageId: 'msg1',
       userText: 'I like dark mode',
+      currentTurn: makeCurrentTurn({ guildId: 'guild1' }),
     });
 
     expect(mockUpdateProfileSummary).toHaveBeenCalledWith({
       previousSummary: 'Old summary',
       userMessage: 'I like dark mode',
       assistantReply: 'Sure, updated.',
-      replyReferenceText: null,
+      currentTurn: makeCurrentTurn({ guildId: 'guild1' }),
+      replyTarget: null,
       channelId: 'chan1',
       guildId: 'guild1',
       userId: 'user1',
@@ -163,6 +186,7 @@ describe('ChatEngine', () => {
       guildId: 'guild1',
       messageId: 'msg1',
       userText: 'First message',
+      currentTurn: makeCurrentTurn({ guildId: 'guild1' }),
     });
 
     await generateChatReply({
@@ -172,6 +196,7 @@ describe('ChatEngine', () => {
       guildId: 'guild1',
       messageId: 'msg2',
       userText: 'Second message',
+      currentTurn: makeCurrentTurn({ guildId: 'guild1', messageId: 'msg2' }),
     });
 
     expect(mockCompactUserProfile).toHaveBeenCalledTimes(1);
@@ -190,13 +215,14 @@ describe('ChatEngine', () => {
       guildId: 'guild1',
       messageId: 'msg1',
       userText: 'hello',
+      currentTurn: makeCurrentTurn({ guildId: 'guild1' }),
     });
 
     await Promise.resolve();
     expect(mockUpdateProfileSummary).toHaveBeenCalledTimes(1);
   });
 
-  it('passes reply reference text into background profile updates', async () => {
+  it('passes structured reply target context into background profile updates', async () => {
     mockGetUserProfileRecord.mockResolvedValueOnce({
       userId: 'user1',
       summary: '<preferences>Prefers concise answers</preferences>\n<active_focus>Refining runtime prompts</active_focus>\n<background>TypeScript maintainer</background>',
@@ -211,15 +237,35 @@ describe('ChatEngine', () => {
       guildId: 'guild1',
       messageId: 'msg1',
       userText: 'Can you refine this?',
-      replyReferenceContent: [
-        { type: 'text', text: 'Referenced implementation note' },
-        { type: 'image_url', image_url: { url: 'https://example.com/image.png' } },
-      ],
+      currentTurn: makeCurrentTurn({
+        guildId: 'guild1',
+        invokedBy: 'reply',
+        isDirectReply: true,
+        replyTargetMessageId: 'reply-msg-1',
+        replyTargetAuthorId: 'user-2',
+      }),
+      replyTarget: {
+        messageId: 'reply-msg-1',
+        guildId: 'guild1',
+        channelId: 'chan1',
+        authorId: 'user-2',
+        authorDisplayName: 'Referenced User',
+        authorIsBot: false,
+        replyToMessageId: null,
+        mentionedUserIds: [],
+        content: [
+          { type: 'text', text: 'Referenced implementation note' },
+          { type: 'image_url', image_url: { url: 'https://example.com/image.png' } },
+        ],
+      },
     });
 
     expect(mockUpdateProfileSummary).toHaveBeenCalledWith(
       expect.objectContaining({
-        replyReferenceText: 'Referenced implementation note',
+        replyTarget: expect.objectContaining({
+          messageId: 'reply-msg-1',
+          authorId: 'user-2',
+        }),
       }),
     );
   });

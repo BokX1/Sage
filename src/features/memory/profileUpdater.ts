@@ -7,6 +7,12 @@ import { getRecentMessages } from '../awareness/channelRingBuffer';
 import { buildTranscriptBlock } from '../awareness/transcriptBuilder';
 import { jsonrepair } from 'jsonrepair';
 import { normalizeUserProfileSummary } from './userProfileXml';
+import {
+  CurrentTurnContext,
+  ReplyTargetContext,
+  extractTextFromMessageContent,
+  selectFocusedContinuityMessages,
+} from '../agent-runtime/continuityContext';
 
 // Global request rate limiting is handled by the LLM client.
 // This module additionally enforces per-user sequential consistency.
@@ -36,6 +42,7 @@ Example:
 - Do not turn one-off requests into stable preferences unless they appear durable or repeated.
 - Do NOT invent traits or preferences not clearly supported by the conversation.
 - If support is weak or ambiguous, omit the detail rather than inferring it.
+- In shared channels, prioritize the invoking user's own turns and direct reply-target evidence over unrelated messages from other people.
 - If no updates are needed, return the Previous Summary unchanged inside the JSON.
 
 Output ONLY the JSON object.`;
@@ -97,7 +104,8 @@ export async function updateProfileSummary(params: {
   previousSummary: string | null;
   userMessage: string;
   assistantReply: string;
-  replyReferenceText?: string | null;
+  currentTurn: CurrentTurnContext;
+  replyTarget?: ReplyTargetContext | null;
   channelId: string;
   guildId: string | null;
   userId: string;
@@ -107,7 +115,8 @@ export async function updateProfileSummary(params: {
     previousSummary,
     userMessage,
     assistantReply,
-    replyReferenceText,
+    currentTurn,
+    replyTarget,
     channelId,
     guildId,
     userId,
@@ -157,7 +166,21 @@ export async function updateProfileSummary(params: {
         }
       }
 
-      const recentHistory = buildTranscriptBlock(historyMessages, 4000) || '';
+      const focusedHistoryMessages = selectFocusedContinuityMessages({
+        messages: historyMessages,
+        currentTurn,
+        replyTarget,
+        excludedMessageIds: [currentTurn.messageId, replyTarget?.messageId].filter(
+          (value): value is string => typeof value === 'string' && value.length > 0,
+        ),
+      });
+      const recentHistory =
+        buildTranscriptBlock(focusedHistoryMessages, 4000, {
+          header:
+            'Focused continuity history (chronological: top=oldest, bottom=newest). Prioritize the invoking user and direct reply-chain evidence over unrelated room chatter:',
+          focusUserId: currentTurn.invokerUserId,
+          sageUserId: currentTurn.botUserId ?? null,
+        }) || '';
 
       // ========================================
       // STEP 1: ANALYST (Outputs Updated Summary)
@@ -167,7 +190,7 @@ export async function updateProfileSummary(params: {
         recentHistory,
         userMessage,
         assistantReply,
-        replyReferenceText: replyReferenceText?.trim() || null,
+        replyTarget: replyTarget ?? null,
         apiKey,
       });
 
@@ -214,25 +237,38 @@ async function runAnalyst(params: {
   recentHistory: string;
   userMessage: string;
   assistantReply: string;
-  replyReferenceText?: string | null;
+  replyTarget?: ReplyTargetContext | null;
   apiKey?: string;
 }): Promise<string | null> {
-  const { previousSummary, recentHistory, userMessage, assistantReply, replyReferenceText, apiKey } = params;
+  const { previousSummary, recentHistory, userMessage, assistantReply, replyTarget, apiKey } = params;
   const { client } = getAnalystClient();
+
+  const replyTargetText = extractTextFromMessageContent(replyTarget?.content);
+  const replyTargetSection = replyTarget
+    ? [
+        `message_id: ${replyTarget.messageId}`,
+        `author_display_name: ${replyTarget.authorDisplayName}`,
+        `author_user_id: ${replyTarget.authorId}`,
+        `author_is_bot: ${replyTarget.authorIsBot}`,
+        `reply_to_message_id: ${replyTarget.replyToMessageId ?? 'none'}`,
+        'content:',
+        replyTargetText ?? '(No text content available)',
+      ].join('\n')
+    : 'None';
 
   const userPrompt = `Previous Summary: ${previousSummary || 'None (new user)'}
 
 Recent Conversation History (Chronological: Top=Oldest, Bottom=Newest):
 ${recentHistory}
 
-Supporting Reply/Reference Context:
-${replyReferenceText || 'None'}
+Supporting Reply Target Context:
+${replyTargetSection}
 
 Latest Interaction (Focus):
 User: ${userMessage}
 Assistant: ${assistantReply}
 
-(Note: The interaction above is the LATEST event and is NOT included in the "Recent Conversation History" block. Treat reply/reference context as supporting evidence only; do not let it override the current user message.)
+(Note: The interaction above is the LATEST event and is NOT included in the "Recent Conversation History" block. Treat reply-target context as supporting evidence only; do not let it override the current user message.)
 
 Output the updated summary:`;
 

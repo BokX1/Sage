@@ -33,5 +33,14 @@ export {
   type ToolCallLoopResult,
 } from './toolCallLoop';
 
+export {
+  extractTextFromMessageContent,
+  selectFocusedContinuityMessages,
+  describeContinuityPolicy,
+  type CurrentTurnContext,
+  type ReplyTargetContext,
+  type InvocationKind,
+} from './continuityContext';
+
 export { type ToolResult, type ToolAttachment } from './toolCallExecution';
 export { ToolResultCache, buildToolCacheKey, type ToolCacheEntry } from './toolCache';

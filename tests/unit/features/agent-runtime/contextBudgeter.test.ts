@@ -18,6 +18,13 @@ function buildBlocks(overrides: Partial<ContextBlock>[] = []): ContextBlock[] {
       truncatable: false,
     },
     {
+      id: 'current_turn',
+      role: 'system',
+      content: 'Current turn facts.',
+      priority: 99,
+      truncatable: false,
+    },
+    {
       id: 'server_instructions',
       role: 'system',
       content: 'Memory block content.',
@@ -39,17 +46,17 @@ function buildBlocks(overrides: Partial<ContextBlock>[] = []): ContextBlock[] {
       truncatable: true,
     },
     {
+      id: 'intent_hint',
+      role: 'system',
+      content: 'Focused continuity content.',
+      priority: 55,
+      truncatable: true,
+    },
+    {
       id: 'transcript',
       role: 'system',
       content: 'Transcript content.',
       priority: 50,
-      truncatable: true,
-    },
-    {
-      id: 'reply_context',
-      role: 'assistant',
-      content: 'Reply context content.',
-      priority: 40,
       truncatable: true,
     },
     {
@@ -92,10 +99,10 @@ describe('budgetContextBlocks', () => {
     expect(result.map((block) => block.id)).toEqual(blocks.map((block) => block.id));
   });
 
-  it('drops transcript before summaries', () => {
+  it('truncates ambient transcript before richer continuity blocks', () => {
     const transcript = 'T'.repeat(2000);
     const voiceContext = 'Voice context content.';
-    const blocks = buildBlocks([{}, {}, {}, { content: voiceContext }, { content: transcript }]);
+    const blocks = buildBlocks([{}, {}, {}, {}, { content: voiceContext }, {}, { content: transcript }]);
 
     const result = budgetContextBlocks(blocks, {
       maxInputTokens: 200,
@@ -107,11 +114,13 @@ describe('budgetContextBlocks', () => {
     const voiceBlock = result.find((block) => block.id === 'voice_context');
 
     expect(voiceBlock).toBeDefined();
-    expect(transcriptBlock).toBeUndefined();
+    expect(contentText(voiceBlock!.content)).toBe(voiceContext);
+    expect(transcriptBlock).toBeDefined();
+    expect(contentText(transcriptBlock!.content).length).toBeLessThan(transcript.length);
   });
 
   it('ensures total tokens fit within budget', () => {
-    const blocks = buildBlocks([{}, {}, {}, {}, { content: 'T'.repeat(1000) }]);
+    const blocks = buildBlocks([{}, {}, {}, {}, {}, {}, { content: 'T'.repeat(1000) }]);
 
     const result = budgetContextBlocks(blocks, {
       maxInputTokens: 150,
@@ -126,16 +135,17 @@ describe('budgetContextBlocks', () => {
   it('keeps user message even under heavy truncation', () => {
     const blocks = buildBlocks([
       { content: 'Base system prompt.'.repeat(50) },
+      { content: 'Current turn facts.'.repeat(20) },
       { content: 'Memory block content.'.repeat(50) },
       { content: 'Runtime instruction content.'.repeat(50) },
       { content: 'Voice context content.'.repeat(50) },
+      { content: 'Focused continuity content.'.repeat(50) },
       { content: 'Transcript content.'.repeat(200) },
-      { content: 'Reply context content.'.repeat(50) },
       { content: 'User message content.'.repeat(50) },
     ]);
 
     const result = budgetContextBlocks(blocks, {
-      maxInputTokens: 120,
+      maxInputTokens: 300,
       reservedOutputTokens: 0,
       estimateTokens,
     });
@@ -144,7 +154,7 @@ describe('budgetContextBlocks', () => {
   });
 
   it('adds truncation notice when truncation occurs', () => {
-    const blocks = buildBlocks([{}, {}, {}, {}, { content: 'Transcript content.'.repeat(200) }]);
+    const blocks = buildBlocks([{}, {}, {}, {}, {}, {}, { content: 'Transcript content.'.repeat(200) }]);
 
     const result = budgetContextBlocks(blocks, {
       maxInputTokens: 120,
@@ -162,20 +172,21 @@ describe('budgetContextBlocks', () => {
   });
 
   it('keeps the most recent user_input portion when a combined user block is truncated', () => {
-    const replyReference = 'Reply reference for context only:\n<reply_reference>\n' + 'Old context '.repeat(300) + '\n</reply_reference>\n\n';
+    const replyTarget = 'Reply target for continuity only:\n<reply_target>\n' + 'Old context '.repeat(300) + '\n</reply_target>\n\n';
     const userInput = '<user_input>\nCurrent user ask must survive.\n</user_input>';
     const blocks = buildBlocks([
       { content: 'Base system prompt.' },
+      { content: 'Current turn facts.' },
       { content: 'Memory block content.' },
       { content: 'Runtime instruction content.' },
       { content: 'Voice context content.' },
+      { content: 'Focused continuity content.' },
       { content: 'Transcript content.' },
-      { content: 'Reply context content.' },
-      { content: `${replyReference}${userInput}` },
+      { content: `${replyTarget}${userInput}` },
     ]);
 
     const result = budgetContextBlocks(blocks, {
-      maxInputTokens: 120,
+      maxInputTokens: 300,
       reservedOutputTokens: 0,
       estimateTokens,
     });
@@ -185,5 +196,32 @@ describe('budgetContextBlocks', () => {
     const text = contentText(userBlock!.content);
     expect(text).toContain('<user_input>');
     expect(text).toContain('Current user ask must survive.');
+  });
+
+  it('keeps current_turn and focused continuity before dropping ambient transcript', () => {
+    const blocks = buildBlocks([
+      { content: 'Base system prompt.' },
+      { content: '<current_turn>\ninvocation_kind: reply\ncontinuity_policy: reply_target > same_speaker_recent > explicit_named_subject > ambient_room\n</current_turn>' },
+      { content: 'Memory block content.' },
+      { content: 'Runtime instruction content.' },
+      { content: 'Voice context content.'.repeat(10) },
+      { content: '<focused_continuity>\nSame speaker: please ship the approval card copy update.\n</focused_continuity>' },
+      { content: 'Transcript content.'.repeat(300) },
+      { content: "Reply target for continuity only:\n<reply_target>\nAccepted approval card\n</reply_target>\n\n<user_input>\nalright let's see\n</user_input>" },
+    ]);
+
+    const result = budgetContextBlocks(blocks, {
+      maxInputTokens: 150,
+      reservedOutputTokens: 0,
+      estimateTokens,
+    });
+
+    expect(result.map((block) => block.id)).toContain('current_turn');
+    expect(result.map((block) => block.id)).toContain('intent_hint');
+    expect(result.map((block) => block.id)).not.toContain('transcript');
+    const userBlock = result.find((block) => block.id === 'user');
+    expect(userBlock).toBeDefined();
+    expect(contentText(userBlock!.content)).toContain('<reply_target>');
+    expect(contentText(userBlock!.content)).toContain('<user_input>');
   });
 });

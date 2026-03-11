@@ -4,19 +4,23 @@ import { config } from '../../platform/config/env';
 import { budgetContextBlocks, ContextBlock } from './contextBudgeter';
 import { resolveRuntimeAutopilotMode } from './autopilotMode';
 import { normalizePositiveInt } from '../../shared/utils/numbers';
-
+import {
+  CurrentTurnContext,
+  ReplyTargetContext,
+  describeContinuityPolicy,
+} from './continuityContext';
 
 /** Carry all optional context inputs used to construct a turn prompt. */
 export interface BuildContextMessagesParams {
   userProfileSummary: string | null;
+  currentTurn: CurrentTurnContext;
   runtimeInstruction?: string | null;
   serverInstructions?: string | null;
-  replyToBotText: string | null;
-  replyReferenceContent?: LLMMessageContent | null;
+  replyTarget?: ReplyTargetContext | null;
   userText: string;
   userContent?: LLMMessageContent;
+  focusedContinuity?: string | null;
   recentTranscript?: string | null;
-
   voiceContext?: string | null;
   invokedBy?: 'mention' | 'reply' | 'wakeword' | 'autopilot' | 'component';
   isVoiceActive?: boolean;
@@ -54,20 +58,81 @@ function concatContentSegments(segments: LLMMessageContent[]): LLMMessageContent
   return parts;
 }
 
+function escapeStructuredPromptValue(value: string): string {
+  return value
+    .replace(/[\r\n\t]+/g, ' ')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
+
+function buildCurrentTurnBlock(currentTurn: CurrentTurnContext): string {
+  const mentions =
+    currentTurn.mentionedUserIds.length > 0 ? currentTurn.mentionedUserIds.join(', ') : 'none';
+  const safeInvokerDisplayName = escapeStructuredPromptValue(currentTurn.invokerDisplayName);
+
+  return [
+    '<current_turn>',
+    `invoker_display_name: ${safeInvokerDisplayName}`,
+    `invoker_user_id: ${currentTurn.invokerUserId}`,
+    `message_id: ${currentTurn.messageId}`,
+    `guild_id: ${currentTurn.guildId ?? '@me'}`,
+    `channel_id: ${currentTurn.channelId}`,
+    `invocation_kind: ${currentTurn.invokedBy}`,
+    `direct_reply: ${currentTurn.isDirectReply}`,
+    `reply_target_message_id: ${currentTurn.replyTargetMessageId ?? 'none'}`,
+    `reply_target_author_id: ${currentTurn.replyTargetAuthorId ?? 'none'}`,
+    `mentioned_user_ids: ${mentions}`,
+    `continuity_policy: ${describeContinuityPolicy(currentTurn.invokedBy)}`,
+    'rule: Nearby messages from other users are ambient room background unless linked by direct reply context, same-speaker continuity, or a concrete named subject in the current message.',
+    'rule: Short acknowledgements or pronouns alone do not unlock broader room continuity.',
+    '</current_turn>',
+  ].join('\n');
+}
+
+function wrapReplyTargetContent(replyTarget: ReplyTargetContext): LLMMessageContent {
+  const safeAuthorDisplayName = escapeStructuredPromptValue(replyTarget.authorDisplayName);
+  const headerLines = [
+    '<reply_target>',
+    `message_id: ${replyTarget.messageId}`,
+    `guild_id: ${replyTarget.guildId ?? '@me'}`,
+    `channel_id: ${replyTarget.channelId}`,
+    `author_display_name: ${safeAuthorDisplayName}`,
+    `author_user_id: ${replyTarget.authorId}`,
+    `author_is_bot: ${replyTarget.authorIsBot}`,
+    `reply_to_message_id: ${replyTarget.replyToMessageId ?? 'none'}`,
+    `mentioned_user_ids: ${replyTarget.mentionedUserIds.length > 0 ? replyTarget.mentionedUserIds.join(', ') : 'none'}`,
+    'supporting_context_only: true',
+    '<content>',
+  ];
+
+  if (typeof replyTarget.content === 'string') {
+    return `${headerLines.join('\n')}\n${replyTarget.content}\n</content>\n</reply_target>`;
+  }
+
+  return [
+    { type: 'text', text: `${headerLines.join('\n')}\n` },
+    ...replyTarget.content,
+    { type: 'text', text: '\n</content>\n</reply_target>' },
+  ];
+}
+
 function buildCurrentUserContent(params: {
-  replyReferenceContent?: LLMMessageContent | null;
+  replyTarget?: ReplyTargetContext | null;
   userText: string;
   userContent?: LLMMessageContent;
 }): LLMMessageContent {
   const userInputContent = wrapTaggedContent('user_input', params.userContent ?? params.userText);
 
-  if (!params.replyReferenceContent) {
+  if (!params.replyTarget) {
     return userInputContent;
   }
 
   return concatContentSegments([
-    'Reply reference for context only:\n',
-    wrapTaggedContent('reply_reference', params.replyReferenceContent),
+    'Reply target for continuity only:\n',
+    wrapReplyTargetContent(params.replyTarget),
     '\n\n',
     userInputContent,
   ]);
@@ -104,27 +169,24 @@ export function resolveReservedOutputTokens(
 export function buildContextMessages(params: BuildContextMessagesParams): LLMChatMessage[] {
   const {
     userProfileSummary,
+    currentTurn,
     runtimeInstruction,
     serverInstructions,
-    replyToBotText,
-    replyReferenceContent,
+    replyTarget,
     userText,
     userContent,
+    focusedContinuity,
     recentTranscript,
     voiceContext,
     invokedBy,
     isVoiceActive,
   } = params;
 
-  // Determine autopilot mode (only applies when invoked by autopilot)
   const autopilotMode = resolveRuntimeAutopilotMode({
     invokedBy,
     configuredMode: config.AUTOPILOT_MODE,
   });
 
-  // Voice and autopilot instructions are small (~40-50 tokens each) and
-  // critical for correct behavior, so they're embedded inside the
-  // <system_persona> block via composeSystemPrompt rather than separate context blocks.
   const baseSystemContent = composeSystemPrompt({
     userProfileSummary,
     voiceMode: isVoiceActive ?? false,
@@ -137,6 +199,13 @@ export function buildContextMessages(params: BuildContextMessagesParams): LLMCha
       role: 'system',
       content: baseSystemContent,
       priority: 100,
+      truncatable: false,
+    },
+    {
+      id: 'current_turn',
+      role: 'system',
+      content: buildCurrentTurnBlock(currentTurn),
+      priority: 99,
       truncatable: false,
     },
   ];
@@ -177,6 +246,17 @@ export function buildContextMessages(params: BuildContextMessagesParams): LLMCha
     });
   }
 
+  if (focusedContinuity?.trim()) {
+    blocks.push({
+      id: 'intent_hint',
+      role: 'system',
+      content: `<focused_continuity>\n${focusedContinuity.trim()}\n</focused_continuity>`,
+      priority: 55,
+      hardMaxTokens: config.CONTEXT_BLOCK_MAX_TOKENS_TRANSCRIPT,
+      truncatable: true,
+    });
+  }
+
   if (recentTranscript) {
     blocks.push({
       id: 'transcript',
@@ -188,24 +268,11 @@ export function buildContextMessages(params: BuildContextMessagesParams): LLMCha
     });
   }
 
-
-
-  if (replyToBotText) {
-    blocks.push({
-      id: 'reply_context',
-      role: 'assistant',
-      content: wrapTaggedContent('assistant_context', replyToBotText),
-      priority: 40,
-      hardMaxTokens: config.CONTEXT_BLOCK_MAX_TOKENS_REPLY_CONTEXT,
-      truncatable: true,
-    });
-  }
-
   blocks.push({
     id: 'user',
     role: 'user',
     content: buildCurrentUserContent({
-      replyReferenceContent,
+      replyTarget,
       userText,
       userContent,
     }),

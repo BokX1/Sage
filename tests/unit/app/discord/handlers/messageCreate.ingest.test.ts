@@ -406,10 +406,19 @@ describe('messageCreate - ingest + reply gating', () => {
 
   it('treats replies as replies even when mentioning the bot', async () => {
     const fetchReference = vi.fn().mockResolvedValue({
+      id: 'ref-1',
+      guildId: 'guild-789',
+      channelId: 'channel-101',
       author: { id: '123', bot: true },
+      member: null,
       content: 'Prior bot message',
+      mentions: {
+        users: new Map<string, User>(),
+      },
+      reference: null,
       attachments: {
         first: vi.fn(() => null),
+        values: vi.fn(() => []),
       },
       partial: false,
     });
@@ -429,17 +438,35 @@ describe('messageCreate - ingest + reply gating', () => {
     expect(fetchReference).toHaveBeenCalledTimes(1);
     expect(mockGenerateChatReply).toHaveBeenCalledWith(
       expect.objectContaining({
-        replyToBotText: 'Prior bot message',
+        currentTurn: expect.objectContaining({
+          invokedBy: 'reply',
+          isDirectReply: true,
+          replyTargetAuthorId: '123',
+        }),
+        replyTarget: expect.objectContaining({
+          authorId: '123',
+          authorIsBot: true,
+          content: 'Prior bot message',
+        }),
       }),
     );
   });
 
   it('includes reply reference content', async () => {
     const referencedMessage = {
-      author: { id: 'user-999', bot: false },
+      id: 'ref-2',
+      guildId: 'guild-1',
+      channelId: 'channel-1',
+      author: { id: 'user-999', bot: false, username: 'Reply User' },
+      member: null,
       content: 'Original question',
+      mentions: {
+        users: new Map<string, User>(),
+      },
+      reference: null,
       attachments: {
         first: vi.fn(() => null),
+        values: vi.fn(() => []),
       },
       partial: false,
     };
@@ -458,20 +485,38 @@ describe('messageCreate - ingest + reply gating', () => {
 
     expect(mockGenerateChatReply).toHaveBeenCalledWith(
       expect.objectContaining({
-        replyReferenceContent: '[In reply to]: Original question',
+        replyTarget: expect.objectContaining({
+          messageId: 'ref-2',
+          authorId: 'user-999',
+          content: 'Original question',
+        }),
       }),
     );
   });
 
   it('includes reply reference images as multimodal content', async () => {
     const referencedMessage = {
-      author: { id: 'user-999', bot: false },
+      id: 'ref-3',
+      guildId: 'guild-1',
+      channelId: 'channel-1',
+      author: { id: 'user-999', bot: false, username: 'Reply User' },
+      member: null,
       content: '',
+      mentions: {
+        users: new Map<string, User>(),
+      },
+      reference: null,
       attachments: {
         first: vi.fn(() => ({
           contentType: 'image/png',
           url: 'https://cdn.example.com/image.png',
         })),
+        values: vi.fn(() => [
+          {
+            contentType: 'image/png',
+            url: 'https://cdn.example.com/image.png',
+          },
+        ]),
       },
       partial: false,
     };
@@ -490,10 +535,12 @@ describe('messageCreate - ingest + reply gating', () => {
 
     expect(mockGenerateChatReply).toHaveBeenCalledWith(
       expect.objectContaining({
-        replyReferenceContent: [
-          { type: 'text', text: '[In reply to]: ' },
-          { type: 'image_url', image_url: { url: 'https://cdn.example.com/image.png' } },
-        ],
+        replyTarget: expect.objectContaining({
+          content: [
+            { type: 'text', text: ' ' },
+            { type: 'image_url', image_url: { url: 'https://cdn.example.com/image.png' } },
+          ],
+        }),
       }),
     );
   });

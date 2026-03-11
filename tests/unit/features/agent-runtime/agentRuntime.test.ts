@@ -135,6 +135,23 @@ vi.mock('@/features/voice/voiceConversationSessionStore', () => ({
 
 import { runChatTurn, scrubFinalReplyText } from '@/features/agent-runtime/agentRuntime';
 
+function makeCurrentTurn(overrides: Record<string, unknown> = {}) {
+  return {
+    invokerUserId: 'user-1',
+    invokerDisplayName: 'User One',
+    messageId: 'message-1',
+    guildId: 'guild-1',
+    channelId: 'channel-1',
+    invokedBy: 'mention',
+    mentionedUserIds: [],
+    isDirectReply: false,
+    replyTargetMessageId: null,
+    replyTargetAuthorId: null,
+    botUserId: 'sage-bot',
+    ...overrides,
+  };
+}
+
 describe('agentRuntime', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -206,7 +223,7 @@ describe('agentRuntime', () => {
       messageId: 'message-1',
       userText: 'update the server instructions',
       userProfileSummary: null,
-      replyToBotText: null,
+      currentTurn: makeCurrentTurn(),
       invokedBy: 'mention',
       isAdmin: true,
     });
@@ -231,7 +248,10 @@ describe('agentRuntime', () => {
       messageId: 'message-2',
       userText: 'hello',
       userProfileSummary: null,
-      replyToBotText: null,
+      currentTurn: makeCurrentTurn({
+        messageId: 'message-2',
+        guildId: null,
+      }),
       invokedBy: 'mention',
       isAdmin: false,
     });

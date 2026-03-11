@@ -30,6 +30,23 @@ type ChatMessage = {
   content: string;
 };
 
+function makeCurrentTurn(overrides: Record<string, unknown> = {}) {
+  return {
+    invokerUserId: 'U1',
+    invokerDisplayName: 'User',
+    messageId: 'msg-1',
+    guildId: 'G1',
+    channelId: 'C1',
+    invokedBy: 'mention',
+    mentionedUserIds: [],
+    isDirectReply: false,
+    replyTargetMessageId: null,
+    replyTargetAuthorId: null,
+    botUserId: 'B1',
+    ...overrides,
+  };
+}
+
 describe('ProfileUpdater', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -48,6 +65,7 @@ describe('ProfileUpdater', () => {
         previousSummary: null,
         userMessage: 'I love cats!',
         assistantReply: 'Cats are wonderful!',
+        currentTurn: makeCurrentTurn(),
         channelId: 'C1',
         guildId: 'G1',
         userId: 'U1',
@@ -76,6 +94,7 @@ describe('ProfileUpdater', () => {
         previousSummary: '<preferences>Prefers detailed travel tips</preferences>\n<active_focus>Lives in Paris</active_focus>\n<background>Enjoys city guides</background>',
         userMessage: 'I love cats!',
         assistantReply: 'Cats are wonderful!',
+        currentTurn: makeCurrentTurn(),
         channelId: 'C1',
         guildId: 'G1',
         userId: 'U1',
@@ -96,6 +115,7 @@ describe('ProfileUpdater', () => {
         previousSummary: '<preferences>Prefers concise answers</preferences>\n<active_focus>Lives in Paris</active_focus>\n<background>Travels often</background>',
         userMessage: 'Hi',
         assistantReply: 'Hello!',
+        currentTurn: makeCurrentTurn(),
         channelId: 'C1',
         guildId: 'G1',
         userId: 'U1',
@@ -114,6 +134,7 @@ describe('ProfileUpdater', () => {
         previousSummary: null,
         userMessage: 'Hi',
         assistantReply: 'Hello',
+        currentTurn: makeCurrentTurn(),
         channelId: 'C1',
         guildId: 'G1',
         userId: 'U1',
@@ -132,6 +153,7 @@ describe('ProfileUpdater', () => {
         previousSummary: '<preferences>Prefers concise answers</preferences>\n<active_focus>Lives in Paris</active_focus>\n<background>Travels often</background>',
         userMessage: 'Hi',
         assistantReply: 'Hi',
+        currentTurn: makeCurrentTurn(),
         channelId: 'C1',
         guildId: 'G1',
         userId: 'U1',
@@ -145,9 +167,45 @@ describe('ProfileUpdater', () => {
     it('should deduplicate user and assistant messages if they appear trailing in history', async () => {
       // Setup history mock to include the very messages we're updating for
       mockGetRecentMessages.mockReturnValueOnce([
-        { authorId: 'U1', authorDisplayName: 'User', authorIsBot: false, content: 'older context', timestamp: new Date() },
-        { authorId: 'U1', authorDisplayName: 'User', authorIsBot: false, content: 'What about dogs?', timestamp: new Date() },
-        { authorId: 'B1', authorDisplayName: 'Bot', authorIsBot: true, content: 'Dogs are cool.', timestamp: new Date() },
+        {
+          messageId: 'msg-history-1',
+          guildId: 'G1',
+          channelId: 'C1',
+          authorId: 'U1',
+          authorDisplayName: 'User',
+          authorIsBot: false,
+          content: 'older context',
+          timestamp: new Date(),
+          replyToMessageId: undefined,
+          mentionsUserIds: [],
+          mentionsBot: false,
+        },
+        {
+          messageId: 'msg-history-2',
+          guildId: 'G1',
+          channelId: 'C1',
+          authorId: 'U1',
+          authorDisplayName: 'User',
+          authorIsBot: false,
+          content: 'What about dogs?',
+          timestamp: new Date(),
+          replyToMessageId: undefined,
+          mentionsUserIds: [],
+          mentionsBot: false,
+        },
+        {
+          messageId: 'msg-history-3',
+          guildId: 'G1',
+          channelId: 'C1',
+          authorId: 'B1',
+          authorDisplayName: 'Bot',
+          authorIsBot: true,
+          content: 'Dogs are cool.',
+          timestamp: new Date(),
+          replyToMessageId: undefined,
+          mentionsUserIds: [],
+          mentionsBot: false,
+        },
       ]);
 
       mockChatFn.mockResolvedValueOnce({
@@ -158,6 +216,7 @@ describe('ProfileUpdater', () => {
         previousSummary: '<preferences>Likes cats</preferences>\n<active_focus>Comparing pets</active_focus>\n<background>Lives with animals</background>',
         userMessage: 'What about dogs?', // exact match
         assistantReply: 'Dogs are cool.', // exact match
+        currentTurn: makeCurrentTurn(),
         channelId: 'C1',
         guildId: 'G1',
         userId: 'U1',
@@ -179,10 +238,34 @@ describe('ProfileUpdater', () => {
       expect(recentHistoryBlock).not.toContain('Dogs are cool.');
     });
 
-    it('does not drop trailing history lines when text matches but authors do not', async () => {
+    it('keeps the invoking user focused history even when another user has matching text', async () => {
       mockGetRecentMessages.mockReturnValueOnce([
-        { authorId: 'U1', authorDisplayName: 'User', authorIsBot: false, content: 'older context', timestamp: new Date() },
-        { authorId: 'U2', authorDisplayName: 'Other User', authorIsBot: false, content: 'same text', timestamp: new Date() },
+        {
+          messageId: 'msg-history-1',
+          guildId: 'G1',
+          channelId: 'C1',
+          authorId: 'U1',
+          authorDisplayName: 'User',
+          authorIsBot: false,
+          content: 'older context',
+          timestamp: new Date(),
+          replyToMessageId: undefined,
+          mentionsUserIds: [],
+          mentionsBot: false,
+        },
+        {
+          messageId: 'msg-history-2',
+          guildId: 'G1',
+          channelId: 'C1',
+          authorId: 'U2',
+          authorDisplayName: 'Other User',
+          authorIsBot: false,
+          content: 'same text',
+          timestamp: new Date(),
+          replyToMessageId: undefined,
+          mentionsUserIds: [],
+          mentionsBot: false,
+        },
       ]);
 
       mockChatFn.mockResolvedValueOnce({
@@ -193,6 +276,7 @@ describe('ProfileUpdater', () => {
         previousSummary: '<preferences>Existing preference</preferences>\n<active_focus>Existing focus</active_focus>\n<background>Existing background</background>',
         userMessage: 'new user message',
         assistantReply: 'same text',
+        currentTurn: makeCurrentTurn(),
         channelId: 'C1',
         guildId: 'G1',
         userId: 'U1',
@@ -205,7 +289,7 @@ describe('ProfileUpdater', () => {
       const userPrompt = messages.find((message) => message.role === 'user')?.content ?? '';
       const recentHistoryBlock = userPrompt.split('Latest Interaction (Focus):')[0];
       expect(recentHistoryBlock).toContain('older context');
-      expect(recentHistoryBlock).toContain('same text');
+      expect(recentHistoryBlock).not.toContain('same text');
     });
 
     it('normalizes legacy directives into preferences', async () => {
@@ -217,6 +301,7 @@ describe('ProfileUpdater', () => {
         previousSummary: null,
         userMessage: 'Keep it brief',
         assistantReply: 'Will do.',
+        currentTurn: makeCurrentTurn(),
         channelId: 'C1',
         guildId: 'G1',
         userId: 'U1',
@@ -235,6 +320,7 @@ describe('ProfileUpdater', () => {
         previousSummary,
         userMessage: 'Keep it brief',
         assistantReply: 'Will do.',
+        currentTurn: makeCurrentTurn(),
         channelId: 'C1',
         guildId: 'G1',
         userId: 'U1',
@@ -243,7 +329,7 @@ describe('ProfileUpdater', () => {
       expect(result).toBe(previousSummary);
     });
 
-    it('includes reply reference text as supporting evidence in the analyst prompt', async () => {
+    it('includes reply target context as supporting evidence in the analyst prompt', async () => {
       mockChatFn.mockResolvedValueOnce({
         text: '{"summary": "<preferences>Prefers concise answers</preferences>\\n<active_focus>Refining prompts</active_focus>\\n<background>Maintains Sage</background>"}',
       });
@@ -252,7 +338,23 @@ describe('ProfileUpdater', () => {
         previousSummary: null,
         userMessage: 'Keep it brief',
         assistantReply: 'Will do.',
-        replyReferenceText: 'Earlier they asked for terse code comments.',
+        currentTurn: makeCurrentTurn({
+          invokedBy: 'reply',
+          isDirectReply: true,
+          replyTargetMessageId: 'reply-msg-1',
+          replyTargetAuthorId: 'U2',
+        }),
+        replyTarget: {
+          messageId: 'reply-msg-1',
+          guildId: 'G1',
+          channelId: 'C1',
+          authorId: 'U2',
+          authorDisplayName: 'Other User',
+          authorIsBot: false,
+          replyToMessageId: null,
+          mentionedUserIds: [],
+          content: 'Earlier they asked for terse code comments.',
+        },
         channelId: 'C1',
         guildId: 'G1',
         userId: 'U1',
@@ -261,13 +363,14 @@ describe('ProfileUpdater', () => {
       const analystCall = mockChatFn.mock.calls[0][0];
       const messages = analystCall.messages as ChatMessage[];
       const userPrompt = messages.find((message) => message.role === 'user')?.content ?? '';
-      expect(userPrompt).toContain('Supporting Reply/Reference Context:');
+      expect(userPrompt).toContain('Supporting Reply Target Context:');
       expect(userPrompt).toContain('Earlier they asked for terse code comments.');
       expect(userPrompt).toContain('supporting evidence only');
       const analystSystemPrompt = messages.find((message) => message.role === 'system')?.content ?? '';
       expect(analystSystemPrompt).toContain('best-effort personalization that may become stale between updates');
       expect(analystSystemPrompt).toContain('Current user input always outranks stored profile content.');
       expect(analystSystemPrompt).toContain('Do not turn one-off requests into stable preferences unless they appear durable or repeated.');
+      expect(analystSystemPrompt).toContain('prioritize the invoking user\'s own turns and direct reply-target evidence over unrelated messages from other people');
       expect(analystSystemPrompt).toContain('omit the detail rather than inferring it');
     });
   });

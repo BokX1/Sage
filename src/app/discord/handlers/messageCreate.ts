@@ -29,6 +29,7 @@ import {
 import { isAdminFromMember } from '../../../platform/discord/admin-permissions';
 import { publishPendingAdminActionRequesterStatusMessage } from '../../../features/admin/adminActionService';
 import { buildGuildApiKeyMissingResponse } from '../../../features/discord/byopBootstrap';
+import { ReplyTargetContext } from '../../../features/agent-runtime/continuityContext';
 
 const processedMessagesKey = Symbol.for('sage.handlers.messageCreate.processed');
 const registrationKey = Symbol.for('sage.handlers.messageCreate.registered');
@@ -368,17 +369,26 @@ export async function handleMessageCreate(message: Message) {
     }
 
     let isReplyToBot = false;
-    let replyToBotText: string | null = null;
+    let replyTarget: ReplyTargetContext | null = null;
     if (referencedMessage) {
       isReplyToBot = referencedMessage.author.id === client.user?.id;
-      if (isReplyToBot) {
-        replyToBotText = referencedMessage.content;
-      }
+      const replyTargetDisplayName =
+        referencedMessage.member?.displayName ??
+        referencedMessage.author.globalName ??
+        referencedMessage.author.username ??
+        referencedMessage.author.id;
+      replyTarget = {
+        messageId: referencedMessage.id,
+        guildId: referencedMessage.guildId,
+        channelId: referencedMessage.channelId,
+        authorId: referencedMessage.author.id,
+        authorDisplayName: replyTargetDisplayName,
+        authorIsBot: referencedMessage.author.bot,
+        replyToMessageId: referencedMessage.reference?.messageId ?? null,
+        mentionedUserIds: getMentionedUserIds(referencedMessage),
+        content: buildMessageContent(referencedMessage, { allowEmpty: true }) ?? '',
+      };
     }
-
-    const replyReferenceContent = referencedMessage
-      ? buildMessageContent(referencedMessage, { prefix: '[In reply to]: ' })
-      : null;
 
     const messageVisionImageUrl = getVisionImageUrl(message);
     const referencedVisionImageUrl = referencedMessage ? getVisionImageUrl(referencedMessage) : null;
@@ -704,8 +714,20 @@ export async function handleMessageCreate(message: Message) {
         messageId: message.id,
         userText: userTextWithAttachments,
         userContent: userContent ?? userTextWithAttachments,
-        replyToBotText: invocation.kind === 'reply' ? replyToBotText : null,
-        replyReferenceContent,
+        currentTurn: {
+          invokerUserId: message.author.id,
+          invokerDisplayName: authorDisplayName,
+          messageId: message.id,
+          guildId: message.guildId,
+          channelId: message.channelId,
+          invokedBy: invocation.kind,
+          mentionedUserIds,
+          isDirectReply: referencedMessage !== null,
+          replyTargetMessageId: replyTarget?.messageId ?? null,
+          replyTargetAuthorId: replyTarget?.authorId ?? null,
+          botUserId: client.user?.id ?? null,
+        },
+        replyTarget,
         mentionedUserIds,
         invokedBy: invocation.kind,
         isVoiceActive,

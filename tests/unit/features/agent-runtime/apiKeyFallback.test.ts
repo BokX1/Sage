@@ -65,6 +65,23 @@ vi.mock('@/features/settings/serverInstructionsRepo', () => ({
 
 import { runChatTurn } from '@/features/agent-runtime/agentRuntime';
 
+function makeCurrentTurn(overrides: Record<string, unknown> = {}) {
+  return {
+    invokerUserId: 'user-1',
+    invokerDisplayName: 'User One',
+    messageId: 'msg-1',
+    guildId: 'guild-1',
+    channelId: 'channel-1',
+    invokedBy: 'mention',
+    mentionedUserIds: [],
+    isDirectReply: false,
+    replyTargetMessageId: null,
+    replyTargetAuthorId: null,
+    botUserId: 'sage-bot',
+    ...overrides,
+  };
+}
+
 describe('agent runtime API key fallback', () => {
   beforeEach(() => {
     mockConfig.LLM_API_KEY = 'env-key';
@@ -85,7 +102,7 @@ describe('agent runtime API key fallback', () => {
       messageId: 'msg-1',
       userText: 'Hello',
       userProfileSummary: null,
-      replyToBotText: null,
+      currentTurn: makeCurrentTurn(),
     });
 
     expect(result.replyText).toBe('ok');
@@ -108,7 +125,13 @@ describe('agent runtime API key fallback', () => {
       messageId: 'msg-2',
       userText: 'Hello',
       userProfileSummary: null,
-      replyToBotText: null,
+      currentTurn: makeCurrentTurn({
+        invokerUserId: 'user-2',
+        invokerDisplayName: 'User Two',
+        messageId: 'msg-2',
+        guildId: 'guild-2',
+        channelId: 'channel-2',
+      }),
     });
 
     expect(result.replyText).toContain('I need a server API key before I can respond here');
