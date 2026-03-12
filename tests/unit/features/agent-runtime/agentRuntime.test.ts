@@ -15,7 +15,12 @@ const {
   buildContextMessagesMock: vi.fn(() => [{ role: 'user', content: 'hello' }]),
   globalToolRegistryMock: {
     listNames: vi.fn(() => []),
-    get: vi.fn(() => undefined),
+    get: vi.fn(
+      (name: string): { metadata?: { access?: 'public' | 'admin' } } | undefined => {
+        void name;
+        return undefined;
+      },
+    ),
   },
   runAgentGraphTurnMock: vi.fn(),
 }));
@@ -262,8 +267,8 @@ describe('agentRuntime', () => {
   it('does not expose admin-only tools to non-admin turns', async () => {
     globalToolRegistryMock.listNames.mockReturnValue(['web', 'discord_admin'] as never);
     globalToolRegistryMock.get.mockImplementation((name: string) => {
-      if (name === 'discord_admin') return { metadata: { access: 'admin' } };
-      return { metadata: { access: 'public' } };
+      const access: 'public' | 'admin' = name === 'discord_admin' ? 'admin' : 'public';
+      return { metadata: { access } };
     });
     runAgentGraphTurnMock.mockResolvedValue(makeGraphResult({ replyText: 'ok' }));
 
@@ -292,8 +297,8 @@ describe('agentRuntime', () => {
   it('does not expose admin-only tools during autopilot turns even for admins', async () => {
     globalToolRegistryMock.listNames.mockReturnValue(['web', 'discord_admin'] as never);
     globalToolRegistryMock.get.mockImplementation((name: string) => {
-      if (name === 'discord_admin') return { metadata: { access: 'admin' } };
-      return { metadata: { access: 'public' } };
+      const access: 'public' | 'admin' = name === 'discord_admin' ? 'admin' : 'public';
+      return { metadata: { access } };
     });
     runAgentGraphTurnMock.mockResolvedValue(makeGraphResult({ replyText: 'ok' }));
 
