@@ -22,6 +22,7 @@ import {
 import type {
   AgentGraphState,
   ApprovalResumeInput,
+  ApprovalResolutionState,
   SerializedToolResult,
   ToolCallFinalizationEvent,
   GraphTurnTerminationReason,
@@ -98,6 +99,10 @@ const AgentGraphStateAnnotation = Annotation.Root({
     reducer: overwriteNullable,
     default: () => null,
   }),
+  approvalResolution: Annotation<AgentGraphState['approvalResolution']>({
+    reducer: overwriteNullable,
+    default: () => null,
+  }),
   traceEvents: Annotation<Record<string, unknown>[]>({ reducer: overwrite, default: () => [] }),
 });
 
@@ -142,6 +147,7 @@ export interface AgentGraphTurnResult {
   terminationReason: GraphTurnTerminationReason;
   graphStatus: AgentGraphState['graphStatus'];
   approvalInterrupt: AgentGraphState['approvalInterrupt'];
+  approvalResolution: AgentGraphState['approvalResolution'];
   traceEvents: Record<string, unknown>[];
 }
 
@@ -220,8 +226,60 @@ function normalizeGraphResult(state: AgentGraphState): AgentGraphTurnResult {
     terminationReason: state.terminationReason,
     graphStatus: state.graphStatus,
     approvalInterrupt: state.approvalInterrupt,
+    approvalResolution: state.approvalResolution,
     traceEvents: state.traceEvents,
   };
+}
+
+function normalizeResolvedApprovalStatus(params: {
+  decision: ApprovalResumeInput['status'];
+  actionStatus?: string | null;
+  errorText?: string | null;
+}): ApprovalResolutionState['status'] {
+  if (params.errorText?.trim()) {
+    return 'failed';
+  }
+  if (params.actionStatus === 'executed') {
+    return 'executed';
+  }
+  if (params.actionStatus === 'failed') {
+    return 'failed';
+  }
+  if (params.actionStatus === 'rejected') {
+    return 'rejected';
+  }
+  if (params.actionStatus === 'expired') {
+    return 'expired';
+  }
+  if (params.actionStatus === 'approved') {
+    return 'approved';
+  }
+  return params.decision;
+}
+
+function buildApprovalResolutionReply(
+  resolution: ApprovalResolutionState | null,
+): string {
+  if (!resolution) {
+    return '';
+  }
+
+  switch (resolution.status) {
+    case 'executed':
+      return 'Approved. I completed that action.';
+    case 'rejected':
+      return resolution.decisionReasonText?.trim()
+        ? `The approval was rejected: ${resolution.decisionReasonText.trim()}`
+        : 'The approval was rejected.';
+    case 'expired':
+      return 'The approval expired before anyone approved it.';
+    case 'failed':
+      return resolution.errorText?.trim()
+        ? 'Approved, but the action failed. I updated the governance card with the error.'
+        : 'Approved, but the action failed.';
+    case 'approved':
+      return 'Approved.';
+  }
 }
 
 function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, graphConfig: AgentGraphConfig) {
@@ -322,11 +380,7 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
       });
       return {
         ...nextState,
-        replyText:
-          result.approvalSignal.payload.visibleReplyText?.trim() ||
-          (materialized.coalesced
-            ? 'That request is already awaiting review.'
-            : 'I queued that for approval.'),
+        replyText: '',
         graphStatus: 'interrupted',
         terminationReason: 'approval_interrupt',
         approvalInterrupt: {
@@ -335,6 +389,7 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
           coalesced: materialized.coalesced,
           expiresAtIso: materialized.request.expiresAt.toISOString(),
         },
+        approvalResolution: null,
       };
     }
 
@@ -424,40 +479,84 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
       return {};
     }
 
+    const approvalRequestId = state.approvalInterrupt.requestId;
     const resume = interrupt({
-      requestId: state.approvalInterrupt.requestId,
+      requestId: approvalRequestId,
       kind: state.approvalInterrupt.payload.kind,
       coalesced: state.approvalInterrupt.coalesced,
       expiresAtIso: state.approvalInterrupt.expiresAtIso,
     }) as ApprovalResumeInput;
 
+    let resolvedStatus: ApprovalResolutionState['status'] = resume.status;
+    let errorText: string | null = null;
+
     if (resume.status === 'approved') {
-      await executeApprovedReviewRequest({
-        requestId: state.approvalInterrupt.requestId,
-        reviewerId: resume.reviewerId ?? null,
-        decisionReasonText: resume.decisionReasonText ?? null,
-        resumeTraceId: resume.resumeTraceId ?? null,
-      });
+      try {
+        const resolvedAction = await executeApprovedReviewRequest({
+          requestId: approvalRequestId,
+          reviewerId: resume.reviewerId ?? null,
+          decisionReasonText: resume.decisionReasonText ?? null,
+          resumeTraceId: resume.resumeTraceId ?? null,
+        });
+        resolvedStatus = normalizeResolvedApprovalStatus({
+          decision: resume.status,
+          actionStatus: resolvedAction?.status ?? null,
+        });
+        if (!resolvedAction) {
+          resolvedStatus = 'failed';
+          errorText = 'Approval request could not be resumed.';
+        }
+      } catch (error) {
+        errorText = error instanceof Error ? error.message : String(error);
+        resolvedStatus = 'failed';
+      }
     }
 
     return {
       graphStatus: 'running',
       traceId: resume.resumeTraceId?.trim() || state.traceId,
       approvalInterrupt: null,
+      approvalResolution: {
+        requestId: approvalRequestId,
+        decision: resume.status,
+        status: resolvedStatus,
+        reviewerId: resume.reviewerId ?? null,
+        decisionReasonText: resume.decisionReasonText ?? null,
+        errorText,
+      },
+      terminationReason: 'assistant_reply',
       traceEvents: [
         ...state.traceEvents,
         {
           type: 'approval_finalize',
           timestamp: nowIso(),
           details: {
-            requestId: state.approvalInterrupt.requestId,
+            requestId: approvalRequestId,
             decision: resume.status,
+            status: resolvedStatus,
             reviewerId: resume.reviewerId ?? null,
+            errorText,
           },
         },
       ],
     };
   };
+
+  const approvalAcknowledgeNode = async (state: AgentGraphState): Promise<Partial<AgentGraphState>> => ({
+    replyText: buildApprovalResolutionReply(state.approvalResolution),
+    graphStatus: 'running',
+    traceEvents: [
+      ...state.traceEvents,
+      {
+        type: 'approval_acknowledgement',
+        timestamp: nowIso(),
+        details: {
+          requestId: state.approvalResolution?.requestId ?? null,
+          status: state.approvalResolution?.status ?? null,
+        },
+      },
+    ],
+  });
 
   const finalizeTurnNode = async (state: AgentGraphState): Promise<Partial<AgentGraphState>> => {
     roundCacheByThread.delete(state.threadId);
@@ -473,6 +572,7 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
     .addNode('execute_tools', executeToolsNode)
     .addNode('forced_finalize', forcedFinalizeNode)
     .addNode('approval_finalize', approvalFinalizeNode)
+    .addNode('approval_acknowledgement', approvalAcknowledgeNode)
     .addNode('finalize_turn', finalizeTurnNode)
     .addEdge(START, 'call_model')
     .addConditionalEdges('call_model', (state) => {
@@ -502,7 +602,8 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
       return 'call_model';
     })
     .addEdge('forced_finalize', 'finalize_turn')
-    .addEdge('approval_finalize', 'finalize_turn')
+    .addEdge('approval_finalize', 'approval_acknowledgement')
+    .addEdge('approval_acknowledgement', 'finalize_turn')
     .addEdge('finalize_turn', END)
     .compile({
       checkpointer,
@@ -611,6 +712,7 @@ export async function runAgentGraphTurn(params: StartAgentGraphTurnParams): Prom
     graphStatus: 'running',
     startedAtEpochMs: Date.now(),
     approvalInterrupt: null,
+    approvalResolution: null,
     traceEvents: [],
   };
   const output = await runtime.graph.invoke(

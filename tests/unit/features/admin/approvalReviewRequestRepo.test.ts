@@ -240,6 +240,60 @@ describe('approvalReviewRequestRepo', () => {
     expect(result).toBeNull();
   });
 
+  it('marks an expired pending request atomically when its deadline has passed', async () => {
+    updateManyMock.mockResolvedValue({ count: 1 });
+    findUniqueMock.mockResolvedValue({
+      id: 'approval-expired-1',
+      threadId: 'thread-expired-1',
+      originTraceId: 'trace-expired-1',
+      resumeTraceId: 'trace-resume-expired-1',
+      guildId: 'guild-1',
+      sourceChannelId: 'channel-1',
+      reviewChannelId: 'channel-review',
+      sourceMessageId: null,
+      requesterStatusMessageId: null,
+      reviewerMessageId: null,
+      requestedBy: 'admin-1',
+      kind: 'server_instructions_update',
+      dedupeKey: 'dedupe-expired-1',
+      executionPayloadJson: {},
+      reviewSnapshotJson: {},
+      interruptMetadataJson: null,
+      status: 'expired',
+      expiresAt: new Date('2026-02-26T12:00:00.000Z'),
+      decidedBy: null,
+      decidedAt: new Date('2026-02-26T12:10:00.000Z'),
+      executedAt: null,
+      resultJson: null,
+      decisionReasonText: null,
+      errorText: null,
+      createdAt: new Date('2026-02-26T11:50:00.000Z'),
+      updatedAt: new Date('2026-02-26T12:10:00.000Z'),
+    });
+
+    const { markApprovalReviewRequestExpiredIfPending } = await import('../../../../src/features/admin/approvalReviewRequestRepo');
+    const now = new Date('2026-02-26T12:10:00.000Z');
+    const result = await markApprovalReviewRequestExpiredIfPending({
+      id: 'approval-expired-1',
+      now,
+      resumeTraceId: 'trace-resume-expired-1',
+    });
+
+    expect(result?.status).toBe('expired');
+    expect(updateManyMock).toHaveBeenCalledWith({
+      where: {
+        id: 'approval-expired-1',
+        status: 'pending',
+        expiresAt: { lte: now },
+      },
+      data: {
+        status: 'expired',
+        decidedAt: now,
+        resumeTraceId: 'trace-resume-expired-1',
+      },
+    });
+  });
+
   it('marks a request executed with result payload after approval', async () => {
     updateManyMock.mockResolvedValue({ count: 1 });
     findUniqueMock.mockResolvedValue({
@@ -465,5 +519,52 @@ describe('approvalReviewRequestRepo', () => {
         take: 10,
       }),
     );
+  });
+
+  it('lists pending approvals whose expiry has passed', async () => {
+    findManyMock.mockResolvedValue([
+      {
+        id: 'approval-expired-2',
+        threadId: 'thread-expired-2',
+        originTraceId: 'trace-expired-2',
+        resumeTraceId: null,
+        guildId: 'guild-1',
+        sourceChannelId: 'channel-1',
+        reviewChannelId: 'channel-review',
+        sourceMessageId: null,
+        requesterStatusMessageId: null,
+        reviewerMessageId: 'reviewer-2',
+        requestedBy: 'admin-1',
+        kind: 'server_instructions_update',
+        dedupeKey: 'dedupe-expired-2',
+        executionPayloadJson: {},
+        reviewSnapshotJson: {},
+        interruptMetadataJson: null,
+        status: 'pending',
+        expiresAt: new Date('2026-02-26T12:00:00.000Z'),
+        decidedBy: null,
+        decidedAt: null,
+        executedAt: null,
+        resultJson: null,
+        decisionReasonText: null,
+        errorText: null,
+        createdAt: new Date('2026-02-26T11:50:00.000Z'),
+        updatedAt: new Date('2026-02-26T12:00:00.000Z'),
+      },
+    ]);
+
+    const { listPendingApprovalReviewsExpiredBy } = await import('../../../../src/features/admin/approvalReviewRequestRepo');
+    const now = new Date('2026-02-26T12:05:00.000Z');
+    const result = await listPendingApprovalReviewsExpiredBy({ now, limit: 5 });
+
+    expect(result).toHaveLength(1);
+    expect(findManyMock).toHaveBeenCalledWith({
+      where: {
+        status: 'pending',
+        expiresAt: { lte: now },
+      },
+      orderBy: { expiresAt: 'asc' },
+      take: 5,
+    });
   });
 });

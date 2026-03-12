@@ -130,7 +130,7 @@ describe('messageCreate - ingest + reply gating', () => {
     mockUpsertIngestedAttachment.mockReset();
     mockDeleteAttachmentChunks.mockReset();
     mockIngestAttachmentText.mockReset();
-    mockGenerateChatReply.mockResolvedValue({ replyText: 'Test response' });
+    mockGenerateChatReply.mockResolvedValue({ replyText: 'Test response', delivery: 'chat_reply' });
     mockFetchAttachmentText.mockResolvedValue({
       kind: 'ok',
       text: 'default file text',
@@ -181,6 +181,28 @@ describe('messageCreate - ingest + reply gating', () => {
       }),
     );
     expect((message as unknown as { reply: ReturnType<typeof vi.fn> }).reply).toHaveBeenCalled();
+  });
+
+  it('still delivers generated files when approval review is queued', async () => {
+    const attachment = Buffer.from('generated file');
+    mockGenerateChatReply.mockResolvedValueOnce({
+      replyText: '',
+      delivery: 'approval_governance_only',
+      files: [{ attachment, name: 'report.txt' }],
+    });
+
+    const message = createMockMessage({
+      content: 'sage prepare the report and then update the Sage Persona',
+    });
+
+    await handleMessageCreate(message);
+
+    expect((message as unknown as { reply: ReturnType<typeof vi.fn> }).reply).toHaveBeenCalledWith(
+      expect.objectContaining({
+        allowedMentions: { repliedUser: false },
+        files: [{ attachment, name: 'report.txt' }],
+      }),
+    );
   });
 
   it('calls generateChatReply for wakeword-only image messages (default prompt)', async () => {

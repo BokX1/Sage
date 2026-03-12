@@ -120,6 +120,7 @@ function makeGraphResult(overrides: Partial<Awaited<ReturnType<typeof mockRunAge
     terminationReason: 'assistant_reply',
     graphStatus: 'completed',
     approvalInterrupt: null,
+    approvalResolution: null,
     traceEvents: [],
     ...overrides,
   };

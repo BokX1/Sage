@@ -73,6 +73,15 @@ export interface ApprovalInterruptState {
   expiresAtIso?: string;
 }
 
+export interface ApprovalResolutionState {
+  requestId: string;
+  decision: 'approved' | 'rejected' | 'expired';
+  status: 'approved' | 'rejected' | 'expired' | 'executed' | 'failed';
+  reviewerId?: string | null;
+  decisionReasonText?: string | null;
+  errorText?: string | null;
+}
+
 export interface AgentGraphState {
   traceId: string;
   originTraceId: string;
@@ -113,6 +122,7 @@ export interface AgentGraphState {
   graphStatus: 'running' | 'interrupted' | 'completed' | 'failed';
   startedAtEpochMs: number;
   approvalInterrupt: ApprovalInterruptState | null;
+  approvalResolution: ApprovalResolutionState | null;
   traceEvents: Record<string, unknown>[];
 }
 

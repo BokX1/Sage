@@ -37,8 +37,9 @@ import {
   getApprovalReviewRequestById,
   markApprovalReviewRequestDecisionIfPending,
   markApprovalReviewRequestExecutedIfApproved,
-  markApprovalReviewRequestExpired,
+  markApprovalReviewRequestExpiredIfPending,
   markApprovalReviewRequestFailedIfApproved,
+  listPendingApprovalReviewsExpiredBy,
   updateApprovalReviewSurface,
   type ApprovalReviewRequestRecord,
 } from './approvalReviewRequestRepo';
@@ -1858,6 +1859,56 @@ async function editGovernanceSurfaceMessage(params: {
   );
 }
 
+function shouldPublishRequesterStatusMessage(params: {
+  action: Pick<ApprovalReviewRequestRecord, 'sourceChannelId' | 'reviewChannelId'>;
+  coalesced: boolean;
+  publishedReviewerCard: boolean;
+}): boolean {
+  if (params.action.sourceChannelId !== params.action.reviewChannelId) {
+    return true;
+  }
+
+  return params.coalesced && !params.publishedReviewerCard;
+}
+
+async function sendApprovalOutcomeMessage(params: {
+  action: ApprovalReviewRequestRecord;
+  content: string;
+}): Promise<string | null> {
+  const content = params.content.trim();
+  if (!content) {
+    return null;
+  }
+
+  const result = await discordRestRequestGuildScoped({
+    guildId: params.action.guildId,
+    method: 'POST',
+    path: `/channels/${params.action.sourceChannelId}/messages`,
+    body: {
+      content,
+      allowed_mentions: { parse: [] },
+      ...(params.action.sourceMessageId
+        ? {
+            message_reference: {
+              message_id: params.action.sourceMessageId,
+              fail_if_not_exists: false,
+            },
+          }
+        : {}),
+    },
+    reason: `[sage action:${params.action.id}] post approval outcome acknowledgement`,
+  });
+
+  if (!result.ok) {
+    throw new Error(
+      `Approval outcome send failed (${String(result.status ?? 'unknown')} ${String(result.statusText ?? '')}): ${String(result.error ?? 'Unknown error')}`,
+    );
+  }
+
+  const data = normalizeUnknownRecord(result.data);
+  return asString(data?.id);
+}
+
 async function postApprovalCard(params: {
   pending: ApprovalReviewRequestRecord;
 }): Promise<{ reviewChannelId: string; approvalMessageId: string | null }> {
@@ -1879,10 +1930,13 @@ async function postApprovalCard(params: {
 
 async function ensureApprovalCardForPending(params: {
   pending: ApprovalReviewRequestRecord;
-}): Promise<string | null> {
+}): Promise<{ approvalMessageId: string | null; published: boolean }> {
   const existingApprovalMessageId = params.pending.reviewerMessageId?.trim() || null;
   if (existingApprovalMessageId) {
-    return existingApprovalMessageId;
+    return {
+      approvalMessageId: existingApprovalMessageId,
+      published: false,
+    };
   }
 
   const { reviewChannelId, approvalMessageId } = await postApprovalCard({
@@ -1902,7 +1956,10 @@ async function ensureApprovalCardForPending(params: {
     });
   }
 
-  return approvalMessageId;
+  return {
+    approvalMessageId,
+    published: true,
+  };
 }
 
 export function buildDiscordRestWriteSummary(request: DiscordRestWriteRequest): string[] {
@@ -3412,7 +3469,6 @@ export async function requestSagePersonaUpdateForTool(params: {
       instructionsHash: hashForAudit(nextText),
       instructionsChars: nextText.length,
     },
-    visibleReplyText: 'I queued that for approval.',
   } satisfies ApprovalInterruptPayload);
 }
 
@@ -3452,7 +3508,6 @@ export async function requestDiscordAdminActionForTool(params: {
       action: prepared.canonicalAction.action,
       dedupeKey: prepared.dedupeKey,
     },
-    visibleReplyText: 'I queued that moderation action for approval.',
   } satisfies ApprovalInterruptPayload);
 }
 
@@ -3495,7 +3550,6 @@ export async function requestDiscordRestWriteForTool(params: {
       method: params.request.method,
       path: params.request.path,
     },
-    visibleReplyText: 'I queued that admin write for approval.',
   } satisfies ApprovalInterruptPayload);
 }
 
@@ -3531,11 +3585,18 @@ export async function createOrReuseApprovalReviewRequestFromSignal(params: {
     }));
   const coalesced = existingPending !== null;
 
-  await ensureApprovalCardForPending({
+  const approvalCard = await ensureApprovalCardForPending({
     pending: request,
   });
 
-  if (!request.requesterStatusMessageId?.trim()) {
+  if (
+    shouldPublishRequesterStatusMessage({
+      action: request,
+      coalesced,
+      publishedReviewerCard: approvalCard.published,
+    }) &&
+    !request.requesterStatusMessageId?.trim()
+  ) {
     const updated = await publishApprovalReviewRequesterStatusMessage({
       actionId: request.id,
       coalesced,
@@ -3972,6 +4033,16 @@ async function resumeApprovalReviewGraph(params: {
     }).catch((error) => {
       logger.warn({ error, requestId: params.action.id }, 'Failed to persist approval resume trace end');
     });
+
+    const acknowledgement = graphResult.replyText.trim();
+    if (acknowledgement) {
+      await sendApprovalOutcomeMessage({
+        action: params.action,
+        content: acknowledgement,
+      }).catch((error) => {
+        logger.warn({ error, requestId: params.action.id }, 'Failed to publish approval outcome acknowledgement');
+      });
+    }
   } catch (error) {
     await updateTraceEnd({
       id: resumeTraceId,
@@ -4006,6 +4077,44 @@ async function resumeApprovalReviewGraph(params: {
     });
     throw error;
   }
+}
+
+export async function reconcileExpiredApprovalReviewRequests(params?: {
+  now?: Date;
+  limit?: number;
+}): Promise<number> {
+  const now = params?.now ?? new Date();
+  const expiredPending = await listPendingApprovalReviewsExpiredBy({
+    now,
+    limit: params?.limit,
+  });
+  let resolvedCount = 0;
+
+  for (const pending of expiredPending) {
+    const resumeTraceId = generateTraceId();
+    const expired = await markApprovalReviewRequestExpiredIfPending({
+      id: pending.id,
+      now,
+      resumeTraceId,
+    });
+    if (!expired) {
+      continue;
+    }
+
+    resolvedCount += 1;
+    await refreshApprovalReviewSurfaces(expired, 'scheduled approval expiry').catch((error) => {
+      logger.warn({ error, actionId: expired.id }, 'Failed to refresh approval surfaces after scheduled expiry');
+    });
+    await resumeApprovalReviewGraph({
+      action: expired,
+      decision: 'expired',
+      resumeTraceId,
+    }).catch((error) => {
+      logger.warn({ error, actionId: expired.id }, 'Failed to resume scheduled expired approval review graph');
+    });
+  }
+
+  return resolvedCount;
 }
 
 export async function handleAdminActionButtonInteraction(
@@ -4060,17 +4169,23 @@ export async function handleAdminActionButtonInteraction(
   }
 
   if (action.expiresAt.getTime() <= Date.now()) {
-    await markApprovalReviewRequestExpired(action.id);
-    const expired = await getApprovalReviewRequestById(action.id).catch(() => null);
     await interaction.deferUpdate();
-    if (expired) {
-      await refreshApprovalReviewSurfaces(expired, 'admin action expiry');
+    const resumeTraceId = generateTraceId();
+    const expired = await markApprovalReviewRequestExpiredIfPending({
+      id: action.id,
+      now: new Date(),
+      resumeTraceId,
+    }).catch(() => null);
+    const latest = expired ?? await getApprovalReviewRequestById(action.id).catch(() => null);
+    if (latest?.status === 'expired') {
+      await refreshApprovalReviewSurfaces(latest, 'admin action expiry');
       await resumeApprovalReviewGraph({
-        action: expired,
+        action: latest,
         decision: 'expired',
         reviewerId: interaction.user.id,
+        resumeTraceId,
       }).catch((error) => {
-        logger.warn({ error, actionId: expired.id }, 'Failed to resume expired approval review graph');
+        logger.warn({ error, actionId: latest.id }, 'Failed to resume expired approval review graph');
       });
     }
     return true;

@@ -174,14 +174,31 @@ export async function findMatchingPendingApprovalReviewRequest(params: {
   return row ? toRecord(row) : null;
 }
 
-export async function markApprovalReviewRequestExpired(id: string): Promise<void> {
-  await prisma.approvalReviewRequest.update({
-    where: { id },
+export async function markApprovalReviewRequestExpiredIfPending(params: {
+  id: string;
+  now?: Date;
+  resumeTraceId?: string | null;
+}): Promise<ApprovalReviewRequestRecord | null> {
+  const decidedAt = params.now ?? new Date();
+  const result = await prisma.approvalReviewRequest.updateMany({
+    where: {
+      id: params.id,
+      status: 'pending',
+      expiresAt: { lte: decidedAt },
+    },
     data: {
       status: 'expired',
-      decidedAt: new Date(),
+      decidedAt,
+      resumeTraceId: params.resumeTraceId?.trim() || null,
     },
   });
+
+  if (result.count < 1) {
+    return null;
+  }
+
+  const row = await prisma.approvalReviewRequest.findUnique({ where: { id: params.id } });
+  return row ? toRecord(row) : null;
 }
 
 export async function markApprovalReviewRequestDecisionIfPending(params: {
@@ -320,6 +337,22 @@ export async function clearApprovalReviewReviewerMessageId(
     data: { reviewerMessageId: null },
   });
   return toRecord(updated);
+}
+
+export async function listPendingApprovalReviewsExpiredBy(params: {
+  now?: Date;
+  limit?: number;
+}): Promise<ApprovalReviewRequestRecord[]> {
+  const rows = await prisma.approvalReviewRequest.findMany({
+    where: {
+      status: 'pending',
+      expiresAt: { lte: params.now ?? new Date() },
+    },
+    orderBy: { expiresAt: 'asc' },
+    take: Math.max(1, Math.min(params.limit ?? 50, 250)),
+  });
+
+  return rows.map(toRecord);
 }
 
 export async function listApprovalReviewsWithReviewerCardsReadyForDeletion(params: {

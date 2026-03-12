@@ -62,6 +62,7 @@ export async function generateChatReply(params: {
   isAdmin?: boolean;
 }): Promise<{
   replyText: string;
+  delivery: 'chat_reply' | 'approval_governance_only';
   meta?: { kind?: 'missing_api_key' };
   files?: Array<{ attachment: Buffer; name: string }>;
 }> {
@@ -225,6 +226,7 @@ export async function generateChatReply(params: {
 
     return {
       replyText,
+      delivery: result.delivery,
       meta: result.meta,
       files: result.files,
     };

@@ -57,6 +57,14 @@ async function publishChatResultToInteraction(params: {
     return;
   }
 
+  if (params.result.delivery === 'approval_governance_only') {
+    await sendInteractionReply(params.interaction, {
+      content: params.ephemeral ? 'Approval review posted.' : '\u200b',
+      files: params.result.files,
+    });
+    return;
+  }
+
   const chunks = smartSplit(params.result.replyText || '', 2_000);
   const [firstChunk, ...rest] = chunks;
   await sendInteractionReply(params.interaction, {

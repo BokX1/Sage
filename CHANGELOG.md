@@ -35,6 +35,8 @@
 - Added a dedicated `discord_voice` routed tool for live voice presence control so Sage can report voice status, join the invoker's current voice channel, and leave the active guild voice channel through normal chat turns.
 
 ### Changed
+- Reworked approval-interrupt lifecycle handling around the existing LangGraph checkpoint thread so approval decisions now resume the paused Sage turn, emit one short post-decision acknowledgement in the source channel, suppress the duplicate plain-text “queued for approval” reply, skip redundant requester cards when review happens in the same channel, and reconcile expired pending approvals automatically instead of waiting for a stale click.
+- Finished the approval-flow cleanup behind that lifecycle rewrite: chat/runtime results now carry an explicit delivery contract instead of the old `approval_queued` meta shim, interactive component turns honor the same governance-only delivery path as normal messages, and the last dead approval payload/repo compatibility helpers were removed.
 - Removed the remaining internal Sage Persona rename drift: the runtime, approval-service helpers, context budgeting block IDs, website governance copy, and affected tests now use `guildSagePersona`/`<guild_sage_persona>` terminology consistently, leaving only the intentionally stable compatibility contracts such as tool IDs, approval kind strings, and persisted `ServerInstructions` model names.
 - Renamed the model-visible “server instructions” concept to **Sage Persona** across runtime prompt blocks, routed tool help, docs, and website copy, so Sage now distinguishes guild behavior config from memory and Discord server-resource changes more reliably without changing tool IDs or storage contracts.
 - Consolidated Sage's routed tool-selection guidance so the runtime prompt now pulls `web`, `github`, and `workflow` routing hints from the same routed-tool docs used for help payloads, reducing prompt drift for operators extending tool behavior.
@@ -239,6 +241,7 @@
 
 ### Fixed
 
+- Fixed approval-governance delivery regressions: repeated same-channel approval requests that coalesce onto an existing pending review now emit a visible requester acknowledgement instead of going silent, and files generated before an approval interrupt are still delivered in message and interactive flows.
 - Hardened Discord REST reliability for moderation bursts and other transient failures: requests now use coordinated global/bucket/route rate-limit holds, multi-attempt retries for 429/5xx responses honoring `retry_after`/reset windows, and Discord-compliant bounded audit-log-reason header encoding.
 - Squashed Prisma migration history to a fresh current-schema baseline, so new Sage environments bootstrap directly with `ApprovalReviewRequest` and the LangGraph trace fields instead of creating any legacy approval table first.
 - Fixed `src/cli/simulate-agentic.ts` to remove stale `intent` payload fields after runtime contract cleanup, restoring `npm run build` compatibility for simulation runs.

@@ -69,13 +69,13 @@ describe('ChatEngine', () => {
     mockGetGuildApiKey.mockResolvedValue('guild-key');
     mockNeedsCompaction.mockReturnValue(false);
     mockCompactUserProfile.mockResolvedValue(null);
-    mockRunChatTurn.mockResolvedValue({ replyText: 'ok' });
+    mockRunChatTurn.mockResolvedValue({ replyText: 'ok', delivery: 'chat_reply' });
     mockUpdateProfileSummary.mockResolvedValue('New Summary');
     mockUpsertUserProfile.mockResolvedValue(undefined);
   });
 
   it('returns replyText from the agent runtime', async () => {
-    mockRunChatTurn.mockResolvedValueOnce({ replyText: 'Hello there!' });
+    mockRunChatTurn.mockResolvedValueOnce({ replyText: 'Hello there!', delivery: 'chat_reply' });
 
     const result = await generateChatReply({
       traceId: 'test-trace',
@@ -88,6 +88,7 @@ describe('ChatEngine', () => {
     });
 
     expect(result.replyText).toBe('Hello there!');
+    expect(result.delivery).toBe('chat_reply');
     expect(mockRunChatTurn).toHaveBeenCalledWith(
       expect.objectContaining({
         traceId: 'test-trace',
@@ -133,7 +134,7 @@ describe('ChatEngine', () => {
       summary: 'Old summary',
       updatedAt: new Date('2025-01-01T00:00:00.000Z'),
     });
-    mockRunChatTurn.mockResolvedValueOnce({ replyText: 'Sure, updated.' });
+    mockRunChatTurn.mockResolvedValueOnce({ replyText: 'Sure, updated.', delivery: 'chat_reply' });
     mockUpdateProfileSummary.mockResolvedValueOnce('Mocked New Summary');
 
     await generateChatReply({
@@ -229,7 +230,7 @@ describe('ChatEngine', () => {
       summary: '<preferences>Prefers concise answers</preferences>\n<active_focus>Refining runtime prompts</active_focus>\n<background>TypeScript maintainer</background>',
       updatedAt: new Date('2025-01-01T00:00:00.000Z'),
     });
-    mockRunChatTurn.mockResolvedValueOnce({ replyText: 'Working from the referenced note.' });
+    mockRunChatTurn.mockResolvedValueOnce({ replyText: 'Working from the referenced note.', delivery: 'chat_reply' });
 
     await generateChatReply({
       traceId: 'test',

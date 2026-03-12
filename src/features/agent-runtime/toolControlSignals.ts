@@ -9,7 +9,6 @@ export interface ApprovalInterruptPayload {
   executionPayloadJson: unknown;
   reviewSnapshotJson: unknown;
   interruptMetadataJson?: unknown;
-  visibleReplyText?: string;
 }
 
 export class ToolControlSignal extends Error {

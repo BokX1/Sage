@@ -55,6 +55,7 @@ export interface RunChatTurnParams {
 
 export interface RunChatTurnResult {
   replyText: string;
+  delivery: 'chat_reply' | 'approval_governance_only';
   meta?: {
     kind?: 'missing_api_key';
   };
@@ -171,6 +172,7 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
       replyText: guildId
         ? '⚠️ I need a server API key before I can respond here.'
         : '⚠️ I need an API key before I can respond. Configure `LLM_API_KEY` for this bot instance.',
+      delivery: 'chat_reply',
       meta: guildId ? { kind: 'missing_api_key' } : undefined,
     };
   }
@@ -266,6 +268,8 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
   let graphTraceEvents: Record<string, unknown>[] = [];
   let finalReplyText: string;
   let files: Array<{ attachment: Buffer; name: string }> = [];
+  let approvalInterrupt: { requestId?: string } | undefined;
+  let delivery: RunChatTurnResult['delivery'] = 'chat_reply';
 
   try {
     const loopStartedAt = Date.now();
@@ -293,6 +297,8 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
     finalReplyText = graphResult.replyText;
     files = graphResult.files;
     toolResults = graphResult.toolResults;
+    approvalInterrupt = graphResult.approvalInterrupt ?? undefined;
+    delivery = approvalInterrupt ? 'approval_governance_only' : 'chat_reply';
     graphTraceEvents = [
       ...graphResult.roundEvents.map((event) => ({
         type: 'tool_round',
@@ -326,7 +332,7 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
       attachmentCount: graphResult.files.length,
       latencyMs: Date.now() - loopStartedAt,
       graphStatus: graphResult.graphStatus,
-      approvalInterrupt: graphResult.approvalInterrupt,
+      approvalInterrupt,
     };
     graphTraceEvents = [
       ...graphTraceEvents,
@@ -359,13 +365,11 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
   const cleanedReplyText = scrubFinalReplyText({
     replyText: groundedReplyText,
   });
-  const approvalInterrupt = graphBudgetJson?.approvalInterrupt as
-    | { requestId?: string }
-    | undefined;
   const safeFinalReplyText =
     cleanedReplyText ||
-    (approvalInterrupt ? 'I queued that for approval.' : '') ||
-    'I completed part of the request but could not format a final response. Please ask me to try once more.';
+    (approvalInterrupt
+      ? ''
+      : 'I completed part of the request but could not format a final response. Please ask me to try once more.');
   const budgetJson: Record<string, unknown> = {
     route: SINGLE_ROUTE_KIND,
     model,
@@ -419,6 +423,7 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
     clearToolCaches();
     return {
       replyText: '',
+      delivery,
       meta: undefined,
       debug: { messages: runtimeMessages },
     };
@@ -427,6 +432,7 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
   clearToolCaches();
   return {
     replyText: safeFinalReplyText,
+    delivery,
     meta: undefined,
     debug: { messages: runtimeMessages },
     files,

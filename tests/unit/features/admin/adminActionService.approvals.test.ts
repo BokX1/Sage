@@ -171,7 +171,6 @@ describe('adminActionService approval signal shaping', () => {
       sourceChannelId: 'channel-2',
       reviewChannelId: 'channel-2',
       requestedBy: 'admin-1',
-      visibleReplyText: 'I queued that for approval.',
       executionPayloadJson: {
         operation: 'append',
         newInstructionsText: 'Current Sage Persona\nAdd this note',
@@ -216,7 +215,6 @@ describe('adminActionService approval signal shaping', () => {
       sourceChannelId: 'channel-source',
       reviewChannelId: 'channel-source',
       requestedBy: 'admin-1',
-      visibleReplyText: 'I queued that moderation action for approval.',
       reviewSnapshotJson: {
         action: 'delete_message',
       },
@@ -281,7 +279,6 @@ describe('adminActionService approval signal shaping', () => {
       sourceChannelId: 'channel-2',
       reviewChannelId: 'channel-2',
       requestedBy: 'admin-1',
-      visibleReplyText: 'I queued that admin write for approval.',
       executionPayloadJson: {
         request: {
           method: 'PATCH',

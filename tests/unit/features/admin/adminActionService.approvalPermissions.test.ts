@@ -62,9 +62,11 @@ const mocks = vi.hoisted(() => {
     clearApprovalReviewReviewerMessageId: vi.fn(),
     findMatchingPendingApprovalReviewRequest: vi.fn(),
     getApprovalReviewRequestById: vi.fn(),
+    listPendingApprovalReviewsExpiredBy: vi.fn(),
     markApprovalReviewRequestDecisionIfPending: vi.fn(),
     markApprovalReviewRequestExecutedIfApproved: vi.fn(),
     markApprovalReviewRequestExpired: vi.fn(),
+    markApprovalReviewRequestExpiredIfPending: vi.fn(),
     markApprovalReviewRequestFailedIfApproved: vi.fn(),
     updateApprovalReviewSurface: vi.fn(),
     clearGuildSagePersona: vi.fn(),
@@ -88,7 +90,7 @@ const mocks = vi.hoisted(() => {
     })),
     discordRestRequest: vi.fn(),
     resumeAgentGraphTurn: vi.fn(async () => ({
-      replyText: 'I queued that for approval.',
+      replyText: 'Approved. I completed that action.',
       toolResults: [],
       files: [],
       roundsCompleted: 1,
@@ -108,6 +110,7 @@ const mocks = vi.hoisted(() => {
       terminationReason: 'assistant_reply',
       graphStatus: 'completed',
       approvalInterrupt: null,
+      approvalResolution: null,
       traceEvents: [],
     })),
     upsertTraceStart: vi.fn(),
@@ -132,9 +135,11 @@ vi.mock('@/features/admin/approvalReviewRequestRepo', () => ({
   clearApprovalReviewReviewerMessageId: mocks.clearApprovalReviewReviewerMessageId,
   findMatchingPendingApprovalReviewRequest: mocks.findMatchingPendingApprovalReviewRequest,
   getApprovalReviewRequestById: mocks.getApprovalReviewRequestById,
+  listPendingApprovalReviewsExpiredBy: mocks.listPendingApprovalReviewsExpiredBy,
   markApprovalReviewRequestDecisionIfPending: mocks.markApprovalReviewRequestDecisionIfPending,
   markApprovalReviewRequestExecutedIfApproved: mocks.markApprovalReviewRequestExecutedIfApproved,
   markApprovalReviewRequestExpired: mocks.markApprovalReviewRequestExpired,
+  markApprovalReviewRequestExpiredIfPending: mocks.markApprovalReviewRequestExpiredIfPending,
   markApprovalReviewRequestFailedIfApproved: mocks.markApprovalReviewRequestFailedIfApproved,
   updateApprovalReviewSurface: mocks.updateApprovalReviewSurface,
 }));
@@ -177,9 +182,12 @@ vi.mock('@/features/agent-runtime/agent-trace-repo', () => ({
 }));
 
 import {
+  createOrReuseApprovalReviewRequestFromSignal,
   executeApprovedReviewRequest,
   handleAdminActionButtonInteraction,
+  reconcileExpiredApprovalReviewRequests,
 } from '@/features/admin/adminActionService';
+import { ApprovalRequiredSignal } from '@/features/agent-runtime/toolControlSignals';
 
 function makeReviewRequest(executionPayloadJson: unknown, overrides: Partial<ApprovalReviewRequestRecord> = {}): ApprovalReviewRequestRecord {
   return {
@@ -283,6 +291,262 @@ function makeApprovedBulkDeleteRequest(messageIds: string[]): ApprovalReviewRequ
 describe('adminActionService approval permissions', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.logAdminAction.mockResolvedValue(undefined);
+    mocks.upsertTraceStart.mockResolvedValue(undefined);
+    mocks.updateTraceEnd.mockResolvedValue(undefined);
+  });
+
+  it('skips requester status card publication when review and source channels are the same', async () => {
+    const pending = makeReviewRequest(
+      {
+        operation: 'set',
+        newInstructionsText: 'Keep replies short.',
+        reason: 'Tone refresh',
+        baseVersion: 2,
+      },
+      {
+        kind: 'server_instructions_update',
+        sourceChannelId: 'channel-source',
+        reviewChannelId: 'channel-source',
+        requesterStatusMessageId: null,
+        reviewerMessageId: null,
+      },
+    );
+
+    mocks.findMatchingPendingApprovalReviewRequest.mockResolvedValue(null);
+    mocks.createApprovalReviewRequest.mockResolvedValue(pending);
+    mocks.updateApprovalReviewSurface.mockResolvedValue({
+      ...pending,
+      reviewerMessageId: 'approval-1',
+    });
+
+    await createOrReuseApprovalReviewRequestFromSignal({
+      threadId: 'thread-1',
+      originTraceId: 'trace-origin-1',
+      signal: new ApprovalRequiredSignal({
+        kind: 'server_instructions_update',
+        guildId: 'guild-1',
+        sourceChannelId: 'channel-source',
+        reviewChannelId: 'channel-source',
+        sourceMessageId: 'message-source',
+        requestedBy: 'admin-1',
+        dedupeKey: 'dedupe-key',
+        executionPayloadJson: pending.executionPayloadJson,
+        reviewSnapshotJson: pending.reviewSnapshotJson,
+      }),
+    });
+
+    expect(mocks.discordRestRequestGuildScoped).toHaveBeenCalledTimes(1);
+    expect(mocks.discordRestRequestGuildScoped).toHaveBeenCalledWith(
+      expect.objectContaining({
+        method: 'POST',
+        path: '/channels/channel-source/messages',
+      }),
+    );
+    expect(mocks.attachApprovalReviewRequesterStatusMessageId).not.toHaveBeenCalled();
+  });
+
+  it('posts a requester acknowledgement when a same-channel approval request coalesces onto an existing reviewer card', async () => {
+    const pending = makeReviewRequest(
+      {
+        operation: 'set',
+        newInstructionsText: 'Keep replies short.',
+        reason: 'Tone refresh',
+        baseVersion: 2,
+      },
+      {
+        kind: 'server_instructions_update',
+        sourceChannelId: 'channel-source',
+        reviewChannelId: 'channel-source',
+        requesterStatusMessageId: null,
+        reviewerMessageId: 'approval-existing',
+      },
+    );
+
+    mocks.findMatchingPendingApprovalReviewRequest.mockResolvedValue(pending);
+    mocks.getApprovalReviewRequestById.mockResolvedValue(pending);
+    mocks.attachApprovalReviewRequesterStatusMessageId.mockResolvedValue({
+      ...pending,
+      requesterStatusMessageId: 'requester-2',
+    });
+
+    await createOrReuseApprovalReviewRequestFromSignal({
+      threadId: 'thread-1',
+      originTraceId: 'trace-origin-1',
+      signal: new ApprovalRequiredSignal({
+        kind: 'server_instructions_update',
+        guildId: 'guild-1',
+        sourceChannelId: 'channel-source',
+        reviewChannelId: 'channel-source',
+        sourceMessageId: 'message-source-2',
+        requestedBy: 'admin-1',
+        dedupeKey: 'dedupe-key',
+        executionPayloadJson: pending.executionPayloadJson,
+        reviewSnapshotJson: pending.reviewSnapshotJson,
+      }),
+    });
+
+    expect(mocks.createApprovalReviewRequest).not.toHaveBeenCalled();
+    expect(mocks.updateApprovalReviewSurface).not.toHaveBeenCalled();
+    expect(mocks.discordRestRequestGuildScoped).toHaveBeenCalledTimes(1);
+    expect(mocks.discordRestRequestGuildScoped).toHaveBeenCalledWith(
+      expect.objectContaining({
+        method: 'POST',
+        path: '/channels/channel-source/messages',
+      }),
+    );
+    expect(mocks.attachApprovalReviewRequesterStatusMessageId).toHaveBeenCalledWith({
+      id: 'action-1',
+      requesterStatusMessageId: 'message-1',
+    });
+  });
+
+  it('posts the resumed approval acknowledgement back to the source channel', async () => {
+    const action = makeReviewRequest(
+      {
+        operation: 'set',
+        newInstructionsText: 'Keep replies short.',
+        reason: 'Tone refresh',
+        baseVersion: 2,
+      },
+      {
+        kind: 'server_instructions_update',
+      },
+    );
+    const approved = {
+      ...action,
+      status: 'approved' as const,
+      decidedBy: 'admin-2',
+      decidedAt: new Date('2026-03-12T00:01:00.000Z'),
+    };
+
+    mocks.getApprovalReviewRequestById.mockResolvedValue(action);
+    mocks.markApprovalReviewRequestDecisionIfPending.mockResolvedValue(approved);
+    mocks.resumeAgentGraphTurn.mockResolvedValue({
+      replyText: 'Approved. I completed that action.',
+      toolResults: [],
+      files: [],
+      roundsCompleted: 1,
+      deduplicatedCallCount: 0,
+      truncatedCallCount: 0,
+      guardrailBlockedCallCount: 0,
+      cancellationCount: 0,
+      roundEvents: [],
+      finalization: {
+        attempted: false,
+        succeeded: true,
+        fallbackUsed: false,
+        returnedToolCallCount: 0,
+        completedAt: '2026-03-12T00:00:00.000Z',
+        terminationReason: 'assistant_reply',
+      },
+      terminationReason: 'assistant_reply',
+      graphStatus: 'completed',
+      approvalInterrupt: null,
+      approvalResolution: null,
+      traceEvents: [],
+    });
+
+    await handleAdminActionButtonInteraction(
+      makeInteraction({
+        customId: 'sage:admin_action:approve:action-1',
+      }) as never,
+    );
+
+    expect(mocks.resumeAgentGraphTurn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        threadId: 'thread-1',
+        decision: 'approved',
+      }),
+    );
+    expect(mocks.discordRestRequestGuildScoped).toHaveBeenCalledWith(
+      expect.objectContaining({
+        method: 'POST',
+        path: '/channels/channel-source/messages',
+        body: expect.objectContaining({
+          content: 'Approved. I completed that action.',
+          message_reference: {
+            message_id: 'message-source',
+            fail_if_not_exists: false,
+          },
+        }),
+      }),
+    );
+  });
+
+  it('reconciles expired pending approvals and resumes their LangGraph threads once', async () => {
+    const now = new Date('2026-03-12T00:10:00.000Z');
+    const pending = makeReviewRequest(
+      {
+        operation: 'set',
+        newInstructionsText: 'Keep replies short.',
+        reason: 'Tone refresh',
+        baseVersion: 2,
+      },
+      {
+        kind: 'server_instructions_update',
+        status: 'pending',
+        expiresAt: new Date('2026-03-12T00:00:00.000Z'),
+      },
+    );
+    const expired = {
+      ...pending,
+      status: 'expired' as const,
+      decidedAt: now,
+      resumeTraceId: 'trace-expired-1',
+    };
+
+    mocks.listPendingApprovalReviewsExpiredBy.mockResolvedValue([pending]);
+    mocks.markApprovalReviewRequestExpiredIfPending.mockResolvedValue(expired);
+    mocks.resumeAgentGraphTurn.mockResolvedValue({
+      replyText: 'The approval expired before anyone approved it.',
+      toolResults: [],
+      files: [],
+      roundsCompleted: 1,
+      deduplicatedCallCount: 0,
+      truncatedCallCount: 0,
+      guardrailBlockedCallCount: 0,
+      cancellationCount: 0,
+      roundEvents: [],
+      finalization: {
+        attempted: false,
+        succeeded: true,
+        fallbackUsed: false,
+        returnedToolCallCount: 0,
+        completedAt: '2026-03-12T00:00:00.000Z',
+        terminationReason: 'assistant_reply',
+      },
+      terminationReason: 'assistant_reply',
+      graphStatus: 'completed',
+      approvalInterrupt: null,
+      approvalResolution: null,
+      traceEvents: [],
+    });
+
+    const resolvedCount = await reconcileExpiredApprovalReviewRequests({ now, limit: 10 });
+
+    expect(resolvedCount).toBe(1);
+    expect(mocks.markApprovalReviewRequestExpiredIfPending).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: 'action-1',
+        now,
+      }),
+    );
+    expect(mocks.resumeAgentGraphTurn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        threadId: 'thread-1',
+        decision: 'expired',
+      }),
+    );
+    expect(mocks.discordRestRequestGuildScoped).toHaveBeenCalledWith(
+      expect.objectContaining({
+        method: 'POST',
+        path: '/channels/channel-source/messages',
+        body: expect.objectContaining({
+          content: 'The approval expired before anyone approved it.',
+        }),
+      }),
+    );
   });
 
   it('checks approver permissions in the target channel for message moderation approvals', async () => {

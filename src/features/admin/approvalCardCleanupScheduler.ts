@@ -2,6 +2,7 @@ import {
   clearApprovalReviewReviewerMessageId,
   listApprovalReviewsWithReviewerCardsReadyForDeletion,
 } from './approvalReviewRequestRepo';
+import { reconcileExpiredApprovalReviewRequests } from './adminActionService';
 import { discordRestRequestGuildScoped } from '../../platform/discord/discordRestPolicy';
 import { logger } from '../../platform/logging/logger';
 
@@ -27,6 +28,11 @@ export function initApprovalCardCleanupScheduler(): void {
     running = true;
 
     try {
+      await reconcileExpiredApprovalReviewRequests({
+        now: new Date(),
+        limit: CLEANUP_BATCH_LIMIT,
+      });
+
       const resolvedBefore = new Date(Date.now() - CLEANUP_INTERVAL_MS);
       const actions = await listApprovalReviewsWithReviewerCardsReadyForDeletion({
         resolvedBefore,

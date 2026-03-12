@@ -735,8 +735,10 @@ export async function handleMessageCreate(message: Message) {
       });
 
       const replyText = result.replyText || '';
+      const files = result.files ?? [];
 
       let didSendAnything = false;
+      const approvalQueued = result.delivery === 'approval_governance_only';
 
       if (result.meta?.kind === 'missing_api_key' && message.guildId) {
         const missing = buildGuildApiKeyMissingResponse({
@@ -750,15 +752,16 @@ export async function handleMessageCreate(message: Message) {
         didSendAnything = true;
       }
 
-      if (!didSendAnything && (replyText || (result.files && result.files.length > 0))) {
-        const chunks = smartSplit(replyText, 2000);
+      if (!didSendAnything && ((!approvalQueued && replyText) || files.length > 0)) {
+        const chunks = approvalQueued ? [] : smartSplit(replyText, 2000);
         const [firstChunk, ...restChunks] = chunks;
+        const firstReplyContent = approvalQueued ? undefined : firstChunk;
 
-        if (firstChunk || (result.files && result.files.length > 0)) {
+        if (firstReplyContent || files.length > 0) {
           await message.reply({
-            content: firstChunk,
+            content: firstReplyContent,
             allowedMentions: { repliedUser: false },
-            files: result.files,
+            files,
           });
           didSendAnything = true;
         }
@@ -771,10 +774,12 @@ export async function handleMessageCreate(message: Message) {
 
       if (didSendAnything) {
         loggerWithTrace.info('Response sent');
+      } else if (approvalQueued) {
+        loggerWithTrace.info('Approval interrupt handled via governance surface; skipped chat reply');
       } else {
         loggerWithTrace.info(
           {
-            hasFiles: false,
+            hasFiles: files.length > 0,
             replyLength: 0,
           },
           'No response sent (empty reply)',

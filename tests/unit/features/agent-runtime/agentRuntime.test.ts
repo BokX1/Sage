@@ -160,6 +160,7 @@ function makeGraphResult(overrides: Record<string, unknown> = {}) {
     terminationReason: 'assistant_reply',
     graphStatus: 'completed',
     approvalInterrupt: null,
+    approvalResolution: null,
     traceEvents: [],
     ...overrides,
   };
@@ -191,7 +192,7 @@ describe('agentRuntime', () => {
     expect(scrubbed).toBe('Queued for review.');
   });
 
-  it('falls back to a short approval acknowledgement when scrubbing removes the visible draft', async () => {
+  it('suppresses the normal chat reply when approval is queued', async () => {
     globalToolRegistryMock.listNames.mockReturnValue(['discord_admin'] as never);
     globalToolRegistryMock.get.mockReturnValue({ metadata: { access: 'admin' } } as never);
     runAgentGraphTurnMock.mockResolvedValue(
@@ -222,12 +223,14 @@ describe('agentRuntime', () => {
       isAdmin: true,
     });
 
-    expect(result.replyText).toBe('I queued that for approval.');
+    expect(result.replyText).toBe('');
+    expect(result.delivery).toBe('approval_governance_only');
+    expect(result.meta).toBeUndefined();
     expect(updateTraceEndMock).toHaveBeenCalledWith(
       expect.objectContaining({
         id: 'trace-1',
         approvalRequestId: 'request-1',
-        replyText: 'I queued that for approval.',
+        replyText: '',
       }),
     );
   });
