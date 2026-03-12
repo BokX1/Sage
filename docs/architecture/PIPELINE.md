@@ -120,6 +120,7 @@ flowchart LR
 - **Native tool contract**: the runtime consumes structured provider tool calls directly; it no longer relies on text-parsed JSON envelopes.
 - **Per-tool timeout**: each tool call is bounded by `AGENT_GRAPH_TOOL_TIMEOUT_MS`.
 - **Repeated-call guardrails**: identical calls that already failed non-retryably are blocked for the rest of the turn, and identical calls that fail twice in one turn are closed even if the failures were retryable.
+- **Repair-aware validation feedback**: routed-tool validation failures now carry compact repair guidance into the next model round, including missing/unknown action recovery and the best matching action contract from the routed-tool docs.
 - **Stagnation stop**: if the same requested tool batch repeats without any new uncached success, approval interrupt, or side-effect progress, Sage stops the active graph early and pivots to finalization.
 - **Graph wall-clock cap**: the whole orchestration phase is bounded by `AGENT_GRAPH_MAX_DURATION_MS`.
 - **In-process memoization**: repeated read-only calls can hit the in-memory memo cache controlled by `AGENT_GRAPH_MEMO_*`. The cache is per process and not shared across instances.
@@ -147,7 +148,7 @@ Each turn can persist the following to `AgentTrace`:
 
 > [!TIP]
 > Use `npm run db:studio` to inspect traces in Prisma Studio, or send a real chat ping in Discord for an end-to-end runtime health check.
-> Tool-result reinjection is intentionally compact and machine-facing: successful results are bounded, failed results omit conversational recovery coaching, repeated blocked calls are surfaced as explicit guardrail failures, approval-gated writes resume from an interrupt instead of replaying the write inline, and trace metadata records why the graph terminated.
+> Tool-result reinjection is intentionally compact and machine-facing: successful results are bounded, failed results surface retryability plus compact repair metadata for routed-tool validation issues, repeated blocked calls are surfaced as explicit guardrail failures, approval-gated writes resume from an interrupt instead of replaying the write inline, and trace metadata records why the graph terminated.
 
 ---
 
@@ -187,7 +188,7 @@ These values reflect the starter values in `.env.example`:
 | `AGENT_GRAPH_MAX_TOOL_CALLS_PER_STEP` | Max tool calls per graph step | `5` |
 | `AGENT_GRAPH_TOOL_TIMEOUT_MS` | Per-tool execution timeout | `45000` |
 | `AGENT_GRAPH_MAX_DURATION_MS` | Max wall-clock duration for one graph turn | `120000` |
-| `AGENT_GRAPH_MAX_OUTPUT_TOKENS` | Max output tokens for graph model calls | `1200` |
+| `AGENT_GRAPH_MAX_OUTPUT_TOKENS` | Max output tokens for graph model calls | `1800` |
 | `AGENT_GRAPH_MAX_RESULT_CHARS` | Max chars per tool result | `8000` |
 | `AGENT_GRAPH_GITHUB_GROUNDED_MODE` | Enable grounded GitHub search mode | `true` |
 | `AGENT_GRAPH_READONLY_PARALLEL_ENABLED` | Enable parallel read-only execution | `true` |

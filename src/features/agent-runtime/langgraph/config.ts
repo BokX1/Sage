@@ -31,7 +31,7 @@ export function buildAgentGraphConfig(): AgentGraphConfig {
     ),
     maxOutputTokens: normalizeStrictlyPositiveInt(
       appConfig.AGENT_GRAPH_MAX_OUTPUT_TOKENS as number | undefined,
-      1_200,
+      1_800,
     ),
     maxResultChars: normalizeStrictlyPositiveInt(
       appConfig.AGENT_GRAPH_MAX_RESULT_CHARS as number | undefined,

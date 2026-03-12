@@ -1,3 +1,5 @@
+import type { RoutedToolRepairGuidance } from './toolDocs';
+
 /** Model typed error categories emitted by tool execution stages. */
 export type ToolErrorKind = 'validation' | 'execution' | 'timeout';
 
@@ -31,6 +33,7 @@ export interface ToolErrorDetails {
   timeoutMs?: number;
   hint?: string;
   retryable?: boolean;
+  repair?: RoutedToolRepairGuidance;
 }
 
 function defaultRetryable(category: ToolFailureCategory, httpStatus?: number): boolean {

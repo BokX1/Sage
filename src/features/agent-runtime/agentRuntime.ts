@@ -280,7 +280,7 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
       timeoutMs: appConfig.TIMEOUT_CHAT_MS,
       maxTokens: normalizeStrictlyPositiveInt(
         appConfig.AGENT_GRAPH_MAX_OUTPUT_TOKENS as number | undefined,
-        1_200,
+        1_800,
       ),
       messages: runtimeMessages,
       activeToolNames,

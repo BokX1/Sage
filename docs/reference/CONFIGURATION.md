@@ -232,7 +232,7 @@ These settings control Sage's optional Discord voice features. The local voice s
 | `AGENT_GRAPH_MAX_TOOL_CALLS_PER_STEP` | Max tool calls the model can request in one step | `5` |
 | `AGENT_GRAPH_TOOL_TIMEOUT_MS` | Per-tool execution timeout | `45000` |
 | `AGENT_GRAPH_MAX_DURATION_MS` | Max wall-clock duration for a full graph turn | `120000` |
-| `AGENT_GRAPH_MAX_OUTPUT_TOKENS` | Max output tokens for graph model calls | `1200` |
+| `AGENT_GRAPH_MAX_OUTPUT_TOKENS` | Max output tokens for graph model calls | `1800` |
 | `AGENT_GRAPH_MAX_RESULT_CHARS` | Max chars per tool result | `8000` |
 | `AGENT_GRAPH_GITHUB_GROUNDED_MODE` | Enable GitHub grounded search | `true` |
 | `AGENT_GRAPH_READONLY_PARALLEL_ENABLED` | Enable parallel read-only tool execution | `true` |

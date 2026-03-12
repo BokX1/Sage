@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { z } from 'zod';
 import { ToolRegistry } from '../../../../src/features/agent-runtime/toolRegistry';
+import { registerDefaultAgenticTools } from '../../../../src/features/agent-runtime/defaultTools';
 
 function hasKeyDeep(value: unknown, key: string): boolean {
   if (Array.isArray(value)) {
@@ -220,6 +221,118 @@ describe('ToolRegistry', () => {
         expect(result.error).toContain('Unknown tool');
         expect(result.errorType).toBe('validation');
       }
+    });
+
+    it('adds missing-action repair guidance for routed tools', async () => {
+      const runtimeRegistry = new ToolRegistry();
+      registerDefaultAgenticTools(runtimeRegistry);
+
+      const result = await runtimeRegistry.executeValidated(
+        {
+          name: 'github',
+          args: { repo: 'openai/openai-node' },
+        },
+        { traceId: 'test', userId: 'u1', channelId: 'c1' },
+      );
+
+      expect(result.success).toBe(false);
+      if (result.success) return;
+      expect(result.errorType).toBe('validation');
+      expect(result.errorDetails?.repair).toMatchObject({
+        tool: 'github',
+        kind: 'missing_action',
+      });
+      expect(result.errorDetails?.repair?.suggestedActions).toContain('help');
+      expect(result.errorDetails?.repair?.actionContract?.action).toBe('help');
+    });
+
+    it('adds unknown-action repair guidance with closest action suggestions', async () => {
+      const runtimeRegistry = new ToolRegistry();
+      registerDefaultAgenticTools(runtimeRegistry);
+
+      const result = await runtimeRegistry.executeValidated(
+        {
+          name: 'github',
+          args: { action: 'repo.gt', repo: 'openai/openai-node' },
+        },
+        { traceId: 'test', userId: 'u1', channelId: 'c1' },
+      );
+
+      expect(result.success).toBe(false);
+      if (result.success) return;
+      expect(result.errorType).toBe('validation');
+      expect(result.errorDetails?.repair).toMatchObject({
+        tool: 'github',
+        kind: 'unknown_action',
+      });
+      expect(result.errorDetails?.repair?.suggestedActions[0]).toBe('repo.get');
+      expect(result.errorDetails?.repair?.actionContract?.action).toBe('repo.get');
+    });
+
+    it('avoids expensive fuzzy ranking for oversized unknown action strings', async () => {
+      const runtimeRegistry = new ToolRegistry();
+      registerDefaultAgenticTools(runtimeRegistry);
+      const hugeAction = `repo.get${'x'.repeat(20_000)}`;
+
+      const result = await runtimeRegistry.executeValidated(
+        {
+          name: 'github',
+          args: { action: hugeAction, repo: 'openai/openai-node' },
+        },
+        { traceId: 'test', userId: 'u1', channelId: 'c1' },
+      );
+
+      expect(result.success).toBe(false);
+      if (result.success) return;
+      expect(result.errorType).toBe('validation');
+      expect(result.errorDetails?.repair).toMatchObject({
+        tool: 'github',
+        kind: 'unknown_action',
+      });
+      expect(result.errorDetails?.repair?.suggestedActions).toEqual(['repo.get']);
+      expect(result.errorDetails?.repair?.actionContract?.action).toBe('repo.get');
+    });
+
+    it('adds invalid-action-payload repair guidance for known routed actions', async () => {
+      const runtimeRegistry = new ToolRegistry();
+      registerDefaultAgenticTools(runtimeRegistry);
+
+      const result = await runtimeRegistry.executeValidated(
+        {
+          name: 'github',
+          args: { action: 'repo.get' },
+        },
+        { traceId: 'test', userId: 'u1', channelId: 'c1' },
+      );
+
+      expect(result.success).toBe(false);
+      if (result.success) return;
+      expect(result.errorType).toBe('validation');
+      expect(result.errorDetails?.repair).toMatchObject({
+        tool: 'github',
+        kind: 'invalid_action_payload',
+      });
+      expect(result.errorDetails?.repair?.actionContract?.action).toBe('repo.get');
+      expect(result.errorDetails?.repair?.actionContract?.requiredFields).toContain('repo');
+    });
+
+    it('keeps direct-tool validation hints without routed repair guidance', async () => {
+      const runtimeRegistry = new ToolRegistry();
+      registerDefaultAgenticTools(runtimeRegistry);
+
+      const result = await runtimeRegistry.executeValidated(
+        {
+          name: 'npm_info',
+          args: {},
+        },
+        { traceId: 'test', userId: 'u1', channelId: 'c1' },
+      );
+
+      expect(result.success).toBe(false);
+      if (result.success) return;
+      expect(result.errorType).toBe('validation');
+      expect(result.errorDetails?.hint).toContain('packageName');
+      expect(result.errorDetails?.repair).toBeUndefined();
     });
   });
 

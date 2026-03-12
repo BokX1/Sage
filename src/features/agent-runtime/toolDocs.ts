@@ -22,6 +22,22 @@ export interface RoutedToolDoc {
   actions: RoutedToolActionDoc[];
 }
 
+export interface RoutedToolRepairActionContract {
+  action: string;
+  purpose: string;
+  requiredFields: string[];
+  optionalFields: string[];
+  commonMistakes: string[];
+}
+
+export interface RoutedToolRepairGuidance {
+  tool: string;
+  kind: 'missing_action' | 'unknown_action' | 'invalid_action_payload';
+  suggestedActions: string[];
+  actionContract?: RoutedToolRepairActionContract;
+  nextStepHint: string;
+}
+
 export type WebsiteToolCategory = 'discord' | 'search' | 'dev' | 'gen' | 'system';
 
 export interface WebsiteNativeToolRow {
@@ -80,6 +96,101 @@ function normalizeActionDoc(
   };
 }
 
+function normalizeToolActionName(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+const MAX_ACTION_SUGGESTION_QUERY_CHARS = 128;
+
+function toRepairActionContract(action: RoutedToolActionDoc): RoutedToolRepairActionContract {
+  return {
+    action: action.action,
+    purpose: action.purpose,
+    requiredFields: [...(action.requiredFields ?? [])],
+    optionalFields: [...(action.optionalFields ?? [])],
+    commonMistakes: [...(action.commonMistakes ?? [])],
+  };
+}
+
+function levenshteinDistance(a: string, b: string): number {
+  if (a === b) return 0;
+  if (a.length === 0) return b.length;
+  if (b.length === 0) return a.length;
+
+  const matrix = Array.from({ length: a.length + 1 }, () => new Array(b.length + 1).fill(0));
+  for (let i = 0; i <= a.length; i += 1) matrix[i][0] = i;
+  for (let j = 0; j <= b.length; j += 1) matrix[0][j] = j;
+
+  for (let i = 1; i <= a.length; i += 1) {
+    for (let j = 1; j <= b.length; j += 1) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      matrix[i][j] = Math.min(
+        matrix[i - 1][j] + 1,
+        matrix[i][j - 1] + 1,
+        matrix[i - 1][j - 1] + cost,
+      );
+    }
+  }
+
+  return matrix[a.length][b.length];
+}
+
+function rankSuggestedActions(
+  query: string,
+  actions: RoutedToolActionDoc[],
+  limit = 3,
+): RoutedToolActionDoc[] {
+  const normalizedQuery = normalizeToolActionName(query);
+  if (!normalizedQuery) {
+    return actions.slice(0, limit);
+  }
+
+  if (normalizedQuery.length > MAX_ACTION_SUGGESTION_QUERY_CHARS) {
+    const prefixMatches = actions.filter((action) => {
+      const normalizedAction = normalizeToolActionName(action.action);
+      return (
+        normalizedAction.startsWith(normalizedQuery) ||
+        normalizedQuery.startsWith(normalizedAction)
+      );
+    });
+    return (prefixMatches.length > 0 ? prefixMatches : actions).slice(0, limit);
+  }
+
+  const threshold = Math.max(2, Math.floor(normalizedQuery.length / 2));
+  const scored = actions.map((action, index) => {
+    const normalizedAction = normalizeToolActionName(action.action);
+    const prefixMatch =
+      normalizedAction.startsWith(normalizedQuery) || normalizedQuery.startsWith(normalizedAction);
+    return {
+      action,
+      index,
+      prefixMatch,
+      distance: levenshteinDistance(normalizedQuery, normalizedAction),
+    };
+  });
+
+  const ranked = scored
+    .filter((entry) => entry.prefixMatch || entry.distance <= threshold)
+    .sort(
+      (left, right) =>
+        Number(right.prefixMatch) - Number(left.prefixMatch) ||
+        left.distance - right.distance ||
+        left.index - right.index,
+    )
+    .slice(0, limit)
+    .map((entry) => entry.action);
+
+  return ranked.length > 0 ? ranked : actions.slice(0, limit);
+}
+
+function readRequestedAction(args: unknown): string | null {
+  if (!args || typeof args !== 'object' || Array.isArray(args)) {
+    return null;
+  }
+  const action = (args as Record<string, unknown>).action;
+  return typeof action === 'string' && action.trim().length > 0 ? action.trim() : null;
+}
+
 export function getRoutedToolDoc(toolName: string): RoutedToolDoc | null {
   return routedToolDocs.get(toolName) ?? null;
 }
@@ -112,6 +223,57 @@ export function getTopLevelToolSelectionHints(toolName: string): string[] {
 
 export function getToolValidationHint(toolName: string): string | undefined {
   return getTopLevelToolDoc(toolName)?.validationHint;
+}
+
+export function buildRoutedToolRepairGuidance(
+  toolName: string,
+  args: unknown,
+): RoutedToolRepairGuidance | undefined {
+  const doc = getRoutedToolDoc(toolName);
+  if (!doc) return undefined;
+
+  const requestedAction = readRequestedAction(args);
+  const helpAction = doc.actions.find((action) => normalizeToolActionName(action.action) === 'help');
+
+  if (!requestedAction) {
+    return {
+      tool: doc.tool,
+      kind: 'missing_action',
+      suggestedActions: doc.actions.slice(0, 3).map((action) => action.action),
+      actionContract: helpAction ? toRepairActionContract(helpAction) : undefined,
+      nextStepHint:
+        `Add an "action" field for ${doc.tool}. ` +
+        `If you are unsure which action fits, call ${doc.tool} with { action: "help" } first.`,
+    };
+  }
+
+  const normalizedRequestedAction = normalizeToolActionName(requestedAction);
+  const matchedAction = doc.actions.find(
+    (action) => normalizeToolActionName(action.action) === normalizedRequestedAction,
+  );
+
+  if (!matchedAction) {
+    const suggestions = rankSuggestedActions(requestedAction, doc.actions, 3);
+    return {
+      tool: doc.tool,
+      kind: 'unknown_action',
+      suggestedActions: suggestions.map((action) => action.action),
+      actionContract: suggestions[0] ? toRepairActionContract(suggestions[0]) : undefined,
+      nextStepHint:
+        `Action "${requestedAction}" is not valid for ${doc.tool}. ` +
+        `Use one of the suggested actions instead, or call ${doc.tool} with { action: "help" } first.`,
+    };
+  }
+
+  return {
+    tool: doc.tool,
+    kind: 'invalid_action_payload',
+    suggestedActions: [...new Set([matchedAction.action, 'help'])].slice(0, 3),
+    actionContract: toRepairActionContract(matchedAction),
+    nextStepHint:
+      `Keep action="${matchedAction.action}" and fix the payload fields. ` +
+      `If you need the full contract, call ${doc.tool} with { action: "help" } first.`,
+  };
 }
 
 export function buildRoutedToolHelp(

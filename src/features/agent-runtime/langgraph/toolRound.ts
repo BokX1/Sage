@@ -242,6 +242,45 @@ function summarizeToolResultPayload(value: unknown, maxChars: number): string | 
   }
 }
 
+function compactRepairGuidance(repair: NonNullable<ToolErrorDetails['repair']>): Record<string, unknown> {
+  return {
+    tool: repair.tool,
+    kind: repair.kind,
+    suggestedActions: repair.suggestedActions.slice(0, 3),
+    actionContract: repair.actionContract
+      ? {
+          action: repair.actionContract.action,
+          purpose: truncateText(repair.actionContract.purpose, 220),
+          requiredFields: repair.actionContract.requiredFields.slice(0, 8),
+          optionalFields: repair.actionContract.optionalFields.slice(0, 8),
+          commonMistakes: repair.actionContract.commonMistakes.slice(0, 3).map((item) => truncateText(item, 180)),
+        }
+      : undefined,
+    nextStepHint: truncateText(repair.nextStepHint, 220),
+  };
+}
+
+function buildFailureRecoveryPayload(
+  errorDetails: ToolErrorDetails | undefined,
+  maxChars: number,
+): string | null {
+  if (!errorDetails?.hint && !errorDetails?.repair) return null;
+
+  const payload: Record<string, unknown> = {};
+  if (errorDetails.hint) {
+    payload.hint = truncateText(errorDetails.hint, 220);
+  }
+  if (errorDetails.repair) {
+    payload.repair_guidance = compactRepairGuidance(errorDetails.repair);
+  }
+
+  try {
+    return truncateText(JSON.stringify(payload), Math.max(200, Math.min(maxChars, 1_400)));
+  } catch {
+    return null;
+  }
+}
+
 function computeToolResultPayloadBudgets(maxToolResultChars: number): {
   summaryBudget: number;
   rawBudget: number;
@@ -327,9 +366,14 @@ export function formatToolResultsMessage(
         r.error ?? 'Unknown tool error',
         Math.max(240, Math.floor(maxToolResultChars / 2)),
       );
+      const recoveryText = buildFailureRecoveryPayload(
+        r.errorDetails,
+        Math.max(240, Math.floor(maxToolResultChars / 2)),
+      );
       const toolLabel = formatToolNameLabel(r.name);
       const httpStatus = resolveHttpStatus(errorText, r.errorDetails);
       const metaParts: string[] = [`type=${errorType}`];
+      const blocks: string[] = [formatUntrustedExternalDataBlock(r.name, errorText)];
       if (r.errorType) metaParts.push(`kind=${r.errorType}`);
       if (Number.isFinite(r.latencyMs)) metaParts.push(`latencyMs=${r.latencyMs}`);
       if (httpStatus) metaParts.push(`httpStatus=${httpStatus}`);
@@ -341,7 +385,10 @@ export function formatToolResultsMessage(
       if (typeof r.errorDetails?.retryAfterMs === 'number' && Number.isFinite(r.errorDetails.retryAfterMs)) {
         metaParts.push(`retryAfterMs=${Math.max(0, Math.floor(r.errorDetails.retryAfterMs))}`);
       }
-      return `[ERROR] Tool ${toolLabel} failed (${metaParts.join(', ')}):\n${formatUntrustedExternalDataBlock(r.name, errorText)}`;
+      if (recoveryText) {
+        blocks.push(formatUntrustedExternalDataBlock(`${r.name}.recovery`, recoveryText));
+      }
+      return `[ERROR] Tool ${toolLabel} failed (${metaParts.join(', ')}):\n${blocks.join('\n')}`;
     });
     parts.push(failedTexts.join('\n'));
   }

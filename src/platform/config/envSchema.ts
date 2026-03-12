@@ -330,7 +330,7 @@ export const testDefaults: Record<string, string> = {
   AGENT_GRAPH_MAX_STEPS: '6',
   AGENT_GRAPH_MAX_TOOL_CALLS_PER_STEP: '5',
   AGENT_GRAPH_TOOL_TIMEOUT_MS: '45000',
-  AGENT_GRAPH_MAX_OUTPUT_TOKENS: '1200',
+  AGENT_GRAPH_MAX_OUTPUT_TOKENS: '1800',
   AGENT_GRAPH_MAX_RESULT_CHARS: '8000',
   AGENT_GRAPH_GITHUB_GROUNDED_MODE: 'true',
   AGENT_GRAPH_READONLY_PARALLEL_ENABLED: 'true',
@@ -505,7 +505,7 @@ export const envSchema = z.object({
   AGENT_GRAPH_MAX_STEPS: z.coerce.number().int().min(1).max(10).default(6),
   AGENT_GRAPH_MAX_TOOL_CALLS_PER_STEP: z.coerce.number().int().min(1).max(10).default(5),
   AGENT_GRAPH_TOOL_TIMEOUT_MS: z.coerce.number().int().min(1000).max(120000).default(45000),
-  AGENT_GRAPH_MAX_OUTPUT_TOKENS: z.coerce.number().int().min(128).max(8000).default(1200),
+  AGENT_GRAPH_MAX_OUTPUT_TOKENS: z.coerce.number().int().min(128).max(8000).default(1800),
   AGENT_GRAPH_MAX_RESULT_CHARS: z.coerce.number().int().min(500).max(50000).default(8000),
   AGENT_GRAPH_GITHUB_GROUNDED_MODE: z
     .enum(['true', 'false'])

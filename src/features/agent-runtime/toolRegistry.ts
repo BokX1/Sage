@@ -6,7 +6,7 @@ import { sanitizeJsonSchemaForProvider } from '../../shared/validation/json-sche
 import { buildToolErrorDetails, extractToolErrorDetails, type ToolErrorDetails } from './toolErrors';
 import type { CurrentTurnContext, ReplyTargetContext } from './continuityContext';
 import { isToolControlSignal } from './toolControlSignals';
-import { getToolValidationHint } from './toolDocs';
+import { buildRoutedToolRepairGuidance, getToolValidationHint } from './toolDocs';
 
 // Guardrail against runaway or malicious tool payloads (for example oversized base64 blobs).
 // Must be large enough to support legitimate multipart/file workflows.
@@ -78,6 +78,14 @@ function buildValidationHint(toolName: string): string | undefined {
   return getToolValidationHint(toolName.trim().toLowerCase());
 }
 
+function buildValidationErrorDetails(toolName: string, args: unknown): ToolErrorDetails {
+  return buildToolErrorDetails({
+    category: 'validation',
+    hint: buildValidationHint(toolName),
+    repair: buildRoutedToolRepairGuidance(toolName, args),
+  });
+}
+
 /** Carry immutable context passed into every tool execution. */
 export interface ToolExecutionContext {
   traceId: string;
@@ -141,7 +149,7 @@ export interface ToolDefinition<TArgs = unknown> {
 /** Return shape for validating tool calls before execution. */
 export type ToolValidationResult<TArgs = unknown> =
   | { success: true; args: TArgs }
-  | { success: false; error: string };
+  | { success: false; error: string; errorDetails?: ToolErrorDetails };
 
 /** Return shape for tool execution outcomes. */
 export type ToolExecutionResult =
@@ -263,6 +271,7 @@ export class ToolRegistry {
       return {
         success: false,
         error: `Invalid arguments for tool "${name}": ${issues}`,
+        errorDetails: buildValidationErrorDetails(name, args),
       };
     }
 
@@ -291,7 +300,11 @@ export class ToolRegistry {
         success: false,
         error,
         errorType: 'validation',
-        errorDetails: buildToolErrorDetails({ category: 'validation', hint: buildValidationHint(call.name) }),
+        errorDetails: buildToolErrorDetails({
+          category: 'validation',
+          hint: validation.errorDetails?.hint ?? buildValidationHint(call.name),
+          repair: validation.errorDetails?.repair,
+        }),
       };
     }
 
