@@ -26,6 +26,7 @@
 
 ### Added
 
+- Added approval-gated Discord moderation batch actions through `discord_admin.submit_moderation`: explicit `bulk_delete_messages` and criteria-based `purge_recent_messages` now resolve into deterministic canonical message-id snapshots before review, enabling safer high-volume cleanup workflows.
 - Added a custom LangGraph-backed agent runtime with Postgres checkpointing so Sage now persists tool-loop state per trace/thread, supports graph-native approval interrupts and resumes, and records graph lifecycle metadata in agent traces for operator debugging.
 - Added a premium Discord-native governance surface for approval-gated actions: compact requester status cards now stay in the source channel, detailed reviewer cards can route to a dedicated governance review channel, rejections collect a short modal reason, and admin-only details move into an explicit `Details` view instead of the default message body.
 - Added persistent governance review routing metadata, including a new guild-level `approvalReviewChannelId` setting plus separate source/review channel tracking on `ApprovalReviewRequest` records, so approval cards, requester updates, coalescing, and restart-safe cleanup can operate across hybrid review surfaces.
@@ -35,6 +36,8 @@
 
 ### Changed
 
+- Upgraded moderation execution and reviewer surfaces for bulk message cleanup: canonical bulk actions now chunk deletes in Discord-safe batches, use single-delete fallback for one-message batches, skip messages older than 14 days with explicit outcome reporting, and surface bulk intent/outcome summaries in governance details.
+- Expanded Discord admin mental-model guidance and routed tool docs so Sage now prioritizes typed bulk moderation actions first, keeps `discord_admin.api` as fallback only, and teaches a moderation-evidence fallback path when exact message-history tools are unavailable.
 - Hard-cut Sage’s tool orchestration over to the custom LangGraph runtime: `runChatTurn` no longer does a legacy pre-loop model call, approval-gated admin actions now raise internal approval interrupts instead of returning legacy pending-approval payloads, and Discord approval handlers now resume the paused graph thread instead of executing outside the runtime.
 - Hardened Sage's tool-loop governor so repeated identical failed calls now close for the rest of the turn, repeated non-productive batches stop early as stagnation instead of burning more model rounds, and exhausted loops finalize directly in plain text with explicit termination telemetry for safer operator debugging.
 - Hardened Sage's approval-gated Discord moderation flow so `discord_admin.submit_moderation` now resolves reply targets, mentions, and Discord message URLs into canonical moderation targets before queueing review, reuses equivalent pending moderation approvals across mixed input shapes, and gives reviewers richer evidence and permission context in the details surface.
@@ -93,6 +96,8 @@
 
 ### Fixed
 
+- Fixed `bulk_delete_messages` preflight channel inference when `request.channelId` is omitted: Discord message URLs are now treated as authoritative channel scope, so URL-only moderation batches no longer fail as false cross-channel mixes against the source channel default.
+- Fixed Discord REST write safety by making transient 5xx/transport retries method-aware: non-idempotent writes no longer auto-retry by default, while rate-limit (429) retries remain enabled and non-idempotent retry replay can be explicitly opted in when safe.
 - Fixed two tool-loop stagnation blind spots: repeated read-only batches that return the same uncached data after a prior write now stop early instead of consuming extra rounds, and stagnation detection now keys off the truncated executed batch so discarded tail calls cannot hide repeated non-productive work.
 - Fixed two Discord moderation preflight regressions: `remove_user_reaction` no longer guesses the replied-to message author as the reactor when `userId` is omitted, and `ban_member` once again permits valid ban-by-ID requests for users who already left the guild before approval.
 - Fixed follow-up summary noise in the bot-aware perception path: Sage-authored messages now stay labeled as `sage` instead of `external_bot` inside rolling/profile summary inputs, and bot-only traffic no longer triggers rolling/profile summary recomputes without new human activity.
@@ -224,6 +229,7 @@
 
 ### Fixed
 
+- Hardened Discord REST reliability for moderation bursts and other transient failures: requests now use coordinated global/bucket/route rate-limit holds, multi-attempt retries for 429/5xx responses honoring `retry_after`/reset windows, and Discord-compliant bounded audit-log-reason header encoding.
 - Squashed Prisma migration history to a fresh current-schema baseline, so new Sage environments bootstrap directly with `ApprovalReviewRequest` and the LangGraph trace fields instead of creating any legacy approval table first.
 - Fixed `src/cli/simulate-agentic.ts` to remove stale `intent` payload fields after runtime contract cleanup, restoring `npm run build` compatibility for simulation runs.
 - Hardened web content text extraction in agent runtime HTML stripping: script/style block removal now also handles closing tags with trailing whitespace (for example `</script >`, `</style   >`), preventing embedded script/style payload text from leaking into scraped summaries.

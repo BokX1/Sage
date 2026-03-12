@@ -58,6 +58,27 @@ function asString(value: unknown): string | null {
   return trimmed ? trimmed : null;
 }
 
+function asNonNegativeInt(value: unknown): number | null {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : null;
+}
+
+function buildBulkDeleteOutcomeSummary(result: unknown): string | null {
+  const record = normalizeUnknownRecord(result);
+  if (!record) return null;
+  if (asString(record.action) !== 'bulk_delete_messages') return null;
+
+  const requested = asNonNegativeInt(record.requested);
+  const eligible = asNonNegativeInt(record.eligible);
+  const deleted = asNonNegativeInt(record.deleted);
+  const skippedTooOld = asNonNegativeInt(record.skipped_too_old);
+  const notFound = asNonNegativeInt(record.not_found);
+
+  if (requested === null || eligible === null || deleted === null || skippedTooOld === null || notFound === null) {
+    return null;
+  }
+  return `Outcome summary: requested=${requested}, eligible=${eligible}, deleted=${deleted}, skipped older than 14 days=${skippedTooOld}, not_found=${notFound}.`;
+}
+
 function statusLabel(action: ApprovalReviewRequestRecord, coalesced?: boolean): string {
   switch (action.status) {
     case 'pending':
@@ -146,6 +167,11 @@ function describePreparedModerationTarget(envelope: PreparedModerationEnvelope |
     case 'delete_message':
     case 'clear_reactions':
       return envelope.evidence.messageUrl ?? `Message ${action.messageId}`;
+    case 'bulk_delete_messages': {
+      const count = action.messageIds.length;
+      const channelRef = `<#${action.channelId}>`;
+      return `${channelRef} -> ${count} message(s)`;
+    }
     case 'remove_user_reaction':
       return `${envelope.evidence.messageUrl ?? `Message ${action.messageId}`} -> user <@${action.userId}>`;
     case 'timeout_member':
@@ -229,6 +255,15 @@ function summarizeModerationAction(
         target: preparedTarget ?? `Message ${asString(action.messageId) ?? 'unknown'}`,
         impact: 'Removes all reactions from the target message.',
         risk: 'high',
+        preview: buildModerationPreview(reason, envelope),
+      };
+    case 'bulk_delete_messages':
+      return {
+        title: 'Moderation Review',
+        intent: 'Bulk delete messages',
+        target: preparedTarget ?? `<#${asString(action.channelId) ?? 'unknown'}>`,
+        impact: 'Deletes multiple messages in one moderation action.',
+        risk: 'critical',
         preview: buildModerationPreview(reason, envelope),
       };
     case 'unban_member':
@@ -354,6 +389,10 @@ function buildRequesterStateCopy(params: {
     lines.push(`Error: ${truncate(action.errorText.trim(), 280)}`);
   } else if (action.status === 'executed') {
     lines.push('Outcome: Completed successfully.');
+    const bulkOutcomeSummary = buildBulkDeleteOutcomeSummary(action.resultJson);
+    if (bulkOutcomeSummary) {
+      lines.push(bulkOutcomeSummary);
+    }
   } else if (action.status === 'expired') {
     lines.push('Outcome: Review expired before approval.');
   }
@@ -474,6 +513,7 @@ export function buildApprovalReviewDetailsText(action: ApprovalReviewRequestReco
   const resultPreview = action.resultJson
     ? (JSON.stringify(sanitizeForDetailView(action.resultJson), null, 2) ?? '[unserializable result]')
     : null;
+  const bulkOutcomeSummary = buildBulkDeleteOutcomeSummary(action.resultJson);
 
   return [
     `Action ID: \`${action.id}\``,
@@ -499,6 +539,7 @@ export function buildApprovalReviewDetailsText(action: ApprovalReviewRequestReco
     prepared && prepared.preflight.notes.length > 0
       ? `Preflight notes: ${prepared.preflight.notes.map((note) => truncate(note, 240)).join(' | ')}`
       : null,
+    bulkOutcomeSummary,
     action.decisionReasonText?.trim() ? `Decision reason: ${truncate(action.decisionReasonText.trim(), 500)}` : null,
     action.errorText?.trim() ? `Error: ${truncate(action.errorText.trim(), 500)}` : null,
     `Payload:\n\`\`\`json\n${truncate(payloadPreview, 1_600)}\n\`\`\``,

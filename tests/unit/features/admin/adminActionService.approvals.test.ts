@@ -224,6 +224,43 @@ describe('adminActionService approval signal shaping', () => {
     expect(signal.payload.dedupeKey).toContain('delete_message');
   });
 
+  it('normalizes bulk-delete moderation targets so equivalent requests share the same dedupe key', async () => {
+    const firstSignal = await expectApprovalSignal(
+      requestDiscordAdminActionForTool({
+        guildId: 'guild-1',
+        channelId: 'channel-source',
+        requestedBy: 'admin-1',
+        request: {
+          action: 'bulk_delete_messages',
+          channelId: 'chan-9',
+          messageIds: ['3003', '2002'],
+          reason: 'Raid cleanup',
+        },
+      }),
+    );
+
+    const secondSignal = await expectApprovalSignal(
+      requestDiscordAdminActionForTool({
+        guildId: 'guild-1',
+        channelId: 'channel-source',
+        requestedBy: 'admin-1',
+        request: {
+          action: 'bulk_delete_messages',
+          channelId: 'chan-9',
+          messageIds: ['2002', '3003'],
+          reason: 'Raid cleanup',
+        },
+      }),
+    );
+
+    expect(firstSignal.payload.dedupeKey).toBe(secondSignal.payload.dedupeKey);
+    expect(firstSignal.payload.reviewSnapshotJson).toEqual(
+      expect.objectContaining({
+        action: 'bulk_delete_messages',
+      }),
+    );
+  });
+
   it('throws an approval signal for Discord REST writes', async () => {
     const signal = await expectApprovalSignal(
       requestDiscordRestWriteForTool({

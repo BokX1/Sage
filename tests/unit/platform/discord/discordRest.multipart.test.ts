@@ -261,7 +261,7 @@ describe('discordRestRequest multipart uploads', () => {
     ).rejects.toThrow('DNS');
   });
 
-  it('retries once on Discord 429 responses', async () => {
+  it('retries Discord 429 responses', async () => {
     fetchMock
       .mockResolvedValueOnce({
         ok: false,

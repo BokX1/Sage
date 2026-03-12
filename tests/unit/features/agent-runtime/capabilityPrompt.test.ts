@@ -95,6 +95,7 @@ describe('capabilityPrompt', () => {
       expect(prompt).toContain('Treat reply-targeted enforcement as moderation');
       expect(prompt).toContain('Distinguish summary context from message context');
       expect(prompt).toContain('Distinguish file discovery from guild discovery');
+      expect(prompt).toContain('bulk_delete_messages');
       expect(prompt).toContain('Attachment retrieval behavior: historical uploaded attachments are cached outside transcript');
       expect(prompt).toContain('If the `send` payload shape is unclear, call `discord_messages` action `help` before guessing.');
       expect(prompt).toContain('send_attachment');
@@ -109,6 +110,16 @@ describe('capabilityPrompt', () => {
       expect(prompt).toContain('call `discord_messages` action `send` with `presentation="plain" | "components_v2"`');
       expect(prompt).toContain('do not repeat the same answer again as a normal assistant reply');
       expect(prompt).toContain('componentsV2.blocks` types: `text`, `section`, `media_gallery`, `file`, `separator`, `action_row`');
+    });
+
+    it('teaches moderation evidence fallback via discord_admin.api when message-history tools are unavailable', () => {
+      const prompt = buildCapabilityPromptSection({
+        activeTools: ['discord_admin'],
+      });
+
+      expect(prompt).toContain('Exact Discord message-history tools are unavailable; gather moderation evidence via `discord_admin.api` GET');
+      expect(prompt).toContain('bulk_delete_messages');
+      expect(prompt).toContain('purge_recent_messages');
     });
 
     it('renders Discord domain tool selection guide when Discord tools are active', () => {
@@ -208,7 +219,7 @@ describe('capabilityPrompt', () => {
         activeTools: ['discord_context', 'discord_messages', 'discord_files', 'discord_server', 'discord_admin', 'web', 'github', 'system_time', 'image_generate'],
       });
 
-      expect(prompt.length).toBeLessThan(14550);
+      expect(prompt.length).toBeLessThan(15550);
     });
   });
 

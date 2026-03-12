@@ -6,6 +6,7 @@ const ADMIN_MEMBER_PERMISSIONS = String(PermissionsBitField.Flags.ManageGuild);
 const ADMIN_AND_MODERATE_MEMBER_PERMISSIONS = String(
   PermissionsBitField.Flags.ManageGuild | PermissionsBitField.Flags.ModerateMembers,
 );
+const DISCORD_SNOWFLAKE_EPOCH_MS = 1_420_070_400_000n;
 
 const mocks = vi.hoisted(() => {
   const allowAllPermissions = {
@@ -231,6 +232,54 @@ function makeInteraction(overrides: Partial<Record<string, unknown>> = {}) {
   };
 }
 
+function snowflakeFromTimestampMs(timestampMs: number, increment = 0): string {
+  const timestampPart = (BigInt(Math.trunc(timestampMs)) - DISCORD_SNOWFLAKE_EPOCH_MS) << 22n;
+  return String(timestampPart + BigInt(increment));
+}
+
+function makeApprovedBulkDeleteRequest(messageIds: string[]): ApprovalReviewRequestRecord {
+  return makeReviewRequest(
+    {
+      prepared: {
+        version: 1,
+        originalRequest: {
+          action: 'bulk_delete_messages',
+          channelId: 'chan-target',
+          messageIds,
+          reason: 'Raid cleanup',
+        },
+        canonicalAction: {
+          action: 'bulk_delete_messages',
+          channelId: 'chan-target',
+          messageIds,
+          reason: 'Raid cleanup',
+        },
+        evidence: {
+          targetKind: 'message',
+          source: 'bulk_explicit_ids',
+          channelId: 'chan-target',
+          messageId: messageIds[0] ?? null,
+          messageUrl: messageIds[0] ? `https://discord.com/channels/guild-1/chan-target/${messageIds[0]}` : null,
+          userId: null,
+          messageAuthorId: null,
+          messageAuthorDisplayName: null,
+          messageExcerpt: `Resolved ${messageIds.length} explicit message target(s) for bulk deletion.`,
+        },
+        preflight: {
+          approverPermission: 'Manage Messages',
+          botPermissionChecks: ['Manage Messages'],
+          targetChannelScope: 'chan-target',
+          hierarchyChecked: false,
+          notes: ['Resolved explicit targets.'],
+        },
+        dedupeKey:
+          '{"action":"bulk_delete_messages","channelId":"chan-target","messageIds":["msg-1"],"reason":"Raid cleanup"}',
+      },
+    },
+    { status: 'approved' },
+  );
+}
+
 describe('adminActionService approval permissions', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -273,6 +322,58 @@ describe('adminActionService approval permissions', () => {
           },
           dedupeKey:
             '{"action":"delete_message","channelId":"chan-target","messageId":"msg-1","reason":"Spam cleanup"}',
+        },
+      }),
+    );
+
+    const interaction = makeInteraction();
+    const handled = await handleAdminActionButtonInteraction(interaction as never);
+
+    expect(handled).toBe(true);
+    expect(interaction.reply).toHaveBeenCalledWith({
+      content: '❌ Missing required permission to approve this action in <#chan-target>: Manage Messages.',
+      ephemeral: true,
+    });
+    expect(mocks.markApprovalReviewRequestDecisionIfPending).not.toHaveBeenCalled();
+  });
+
+  it('checks approver permissions in the target channel for bulk moderation approvals', async () => {
+    mocks.getApprovalReviewRequestById.mockResolvedValue(
+      makeReviewRequest({
+        prepared: {
+          version: 1,
+          originalRequest: {
+            action: 'bulk_delete_messages',
+            channelId: 'chan-target',
+            messageIds: ['msg-1', 'msg-2'],
+            reason: 'Raid cleanup',
+          },
+          canonicalAction: {
+            action: 'bulk_delete_messages',
+            channelId: 'chan-target',
+            messageIds: ['msg-1', 'msg-2'],
+            reason: 'Raid cleanup',
+          },
+          evidence: {
+            targetKind: 'message',
+            source: 'bulk_explicit_ids',
+            channelId: 'chan-target',
+            messageId: 'msg-1',
+            messageUrl: 'https://discord.com/channels/guild-1/chan-target/msg-1',
+            userId: null,
+            messageAuthorId: null,
+            messageAuthorDisplayName: null,
+            messageExcerpt: 'bulk',
+          },
+          preflight: {
+            approverPermission: 'Manage Messages',
+            botPermissionChecks: ['Manage Messages'],
+            targetChannelScope: 'chan-target',
+            hierarchyChecked: false,
+            notes: ['Resolved explicit targets.'],
+          },
+          dedupeKey:
+            '{"action":"bulk_delete_messages","channelId":"chan-target","messageIds":["msg-1","msg-2"],"reason":"Raid cleanup"}',
         },
       }),
     );
@@ -463,6 +564,106 @@ describe('adminActionService approval permissions', () => {
         noop: true,
         status: 'noop',
       },
+      resumeTraceId: null,
+    });
+  });
+
+  it('chunks bulk-delete moderation into 100-message requests and skips older-than-14-day targets', async () => {
+    const now = Date.now();
+    const eligibleIds = Array.from({ length: 205 }, (_, index) =>
+      snowflakeFromTimestampMs(now - 60_000 - index * 1_000, index + 1),
+    );
+    const tooOldId = snowflakeFromTimestampMs(now - (15 * 24 * 60 * 60 * 1_000), 999);
+    const approved = makeApprovedBulkDeleteRequest([...eligibleIds, tooOldId]);
+
+    mocks.getApprovalReviewRequestById.mockResolvedValueOnce(approved).mockResolvedValueOnce(null);
+    mocks.discordRestRequestGuildScoped.mockResolvedValue({
+      ok: true,
+      status: 204,
+      statusText: 'No Content',
+      data: { id: 'bulk-ok' },
+    });
+    mocks.markApprovalReviewRequestExecutedIfApproved.mockResolvedValue(null);
+
+    const result = await executeApprovedReviewRequest({
+      requestId: 'action-1',
+      reviewerId: 'admin-2',
+    });
+
+    expect(result).toBeNull();
+    const bulkCalls = mocks.discordRestRequestGuildScoped.mock.calls as unknown as Array<
+      [
+        {
+          method?: string;
+          path?: string;
+          body?: { messages?: string[] };
+        },
+      ]
+    >;
+    expect(bulkCalls).toHaveLength(3);
+    expect(bulkCalls.every(([call]) => call.method === 'POST')).toBe(true);
+    expect(bulkCalls.every(([call]) => call.path === '/channels/chan-target/messages/bulk-delete')).toBe(true);
+    expect((bulkCalls[0]?.[0]?.body?.messages ?? [])).toHaveLength(100);
+    expect((bulkCalls[1]?.[0]?.body?.messages ?? [])).toHaveLength(100);
+    expect((bulkCalls[2]?.[0]?.body?.messages ?? [])).toHaveLength(5);
+    expect(mocks.markApprovalReviewRequestExecutedIfApproved).toHaveBeenCalledWith({
+      id: 'action-1',
+      resultJson: expect.objectContaining({
+        action: 'bulk_delete_messages',
+        channelId: 'chan-target',
+        requested: 206,
+        eligible: 205,
+        deleted: 205,
+        skipped_too_old: 1,
+        not_found: 0,
+        noop: false,
+        status: 'executed',
+      }),
+      resumeTraceId: null,
+    });
+  });
+
+  it('uses single-message delete for a one-item eligible bulk-delete set', async () => {
+    const now = Date.now();
+    const eligibleId = snowflakeFromTimestampMs(now - 45_000, 1);
+    const tooOldId = snowflakeFromTimestampMs(now - (15 * 24 * 60 * 60 * 1_000), 2);
+    const approved = makeApprovedBulkDeleteRequest([eligibleId, tooOldId]);
+
+    mocks.getApprovalReviewRequestById.mockResolvedValueOnce(approved).mockResolvedValueOnce(null);
+    mocks.discordRestRequestGuildScoped.mockResolvedValue({
+      ok: true,
+      status: 204,
+      statusText: 'No Content',
+      data: { id: 'bulk-ok' },
+    });
+    mocks.markApprovalReviewRequestExecutedIfApproved.mockResolvedValue(null);
+
+    const result = await executeApprovedReviewRequest({
+      requestId: 'action-1',
+      reviewerId: 'admin-2',
+    });
+
+    expect(result).toBeNull();
+    expect(mocks.discordRestRequestGuildScoped).toHaveBeenCalledTimes(1);
+    expect(mocks.discordRestRequestGuildScoped).toHaveBeenCalledWith(
+      expect.objectContaining({
+        method: 'DELETE',
+        path: `/channels/chan-target/messages/${eligibleId}`,
+      }),
+    );
+    expect(mocks.markApprovalReviewRequestExecutedIfApproved).toHaveBeenCalledWith({
+      id: 'action-1',
+      resultJson: expect.objectContaining({
+        action: 'bulk_delete_messages',
+        channelId: 'chan-target',
+        requested: 2,
+        eligible: 1,
+        deleted: 1,
+        skipped_too_old: 1,
+        not_found: 0,
+        noop: false,
+        status: 'executed',
+      }),
       resumeTraceId: null,
     });
   });

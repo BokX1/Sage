@@ -143,6 +143,7 @@ describe('adminActionService moderation preflight', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.getGuildApprovalReviewChannelId.mockResolvedValue(null);
+    mocks.client.channels.fetch.mockImplementation(async () => mocks.channel);
     mocks.channel.messages.fetch.mockResolvedValue(mocks.message);
     mocks.guild.members.fetch.mockResolvedValue(mocks.targetMember);
     mocks.guild.bans.fetch.mockResolvedValue({ user: { id: 'user-8' } });
@@ -190,6 +191,196 @@ describe('adminActionService moderation preflight', () => {
         messageExcerpt: 'buy cheap spam now',
       }),
     );
+  });
+
+  it('resolves explicit bulk-delete moderation targets into a deterministic canonical payload', async () => {
+    const signal = await expectApprovalSignal(
+      requestDiscordAdminActionForTool({
+        guildId: 'guild-1',
+        channelId: 'channel-source',
+        requestedBy: 'admin-1',
+        request: {
+          action: 'bulk_delete_messages',
+          channelId: 'chan-9',
+          messageIds: [
+            '2002',
+            'https://discord.com/channels/guild-1/chan-9/3003',
+            '2002',
+          ],
+          reason: 'Raid cleanup',
+        },
+      }),
+    );
+
+    const prepared = signal.payload.executionPayloadJson as {
+      canonicalAction: { action: string; channelId: string; messageIds: string[]; reason: string };
+      evidence: { source: string; messageUrl: string | null };
+      preflight: { notes: string[] };
+    };
+
+    expect(prepared.canonicalAction).toEqual({
+      action: 'bulk_delete_messages',
+      channelId: 'chan-9',
+      messageIds: ['2002', '3003'],
+      reason: 'Raid cleanup',
+    });
+    expect(prepared.evidence).toEqual(
+      expect.objectContaining({
+        source: 'bulk_explicit_ids',
+        messageUrl: 'https://discord.com/channels/guild-1/chan-9/2002',
+      }),
+    );
+    expect(prepared.preflight.notes.join(' ')).toContain('skip messages older than 14 days');
+  });
+
+  it('infers bulk-delete channel scope from Discord message URLs when request.channelId is omitted', async () => {
+    mocks.client.channels.fetch.mockImplementation(async (...args: unknown[]) => ({
+      ...mocks.channel,
+      id: typeof args[0] === 'string' ? args[0] : mocks.channel.id,
+    }));
+
+    const signal = await expectApprovalSignal(
+      requestDiscordAdminActionForTool({
+        guildId: 'guild-1',
+        channelId: 'channel-source',
+        requestedBy: 'admin-1',
+        request: {
+          action: 'bulk_delete_messages',
+          messageIds: [
+            'https://discord.com/channels/guild-1/chan-42/3004',
+            'https://discord.com/channels/guild-1/chan-42/3003',
+          ],
+          reason: 'Raid cleanup',
+        },
+      }),
+    );
+
+    const prepared = signal.payload.executionPayloadJson as {
+      canonicalAction: { action: string; channelId: string; messageIds: string[]; reason: string };
+      evidence: { source: string; messageUrl: string | null };
+    };
+
+    expect(prepared.canonicalAction).toEqual({
+      action: 'bulk_delete_messages',
+      channelId: 'chan-42',
+      messageIds: ['3003', '3004'],
+      reason: 'Raid cleanup',
+    });
+    expect(prepared.evidence).toEqual(
+      expect.objectContaining({
+        source: 'bulk_explicit_ids',
+        messageUrl: 'https://discord.com/channels/guild-1/chan-42/3003',
+      }),
+    );
+    expect(mocks.client.channels.fetch).toHaveBeenCalledWith('chan-42');
+  });
+
+  it('rejects bulk-delete requests that mix Discord message URLs from different channels', async () => {
+    await expect(
+      requestDiscordAdminActionForTool({
+        guildId: 'guild-1',
+        channelId: 'channel-source',
+        requestedBy: 'admin-1',
+        request: {
+          action: 'bulk_delete_messages',
+          messageIds: [
+            'https://discord.com/channels/guild-1/chan-9/3003',
+            'https://discord.com/channels/guild-1/chan-42/3004',
+          ],
+          reason: 'Raid cleanup',
+        },
+      }),
+    ).rejects.toThrow(/cannot mix message targets from different channels/i);
+  });
+
+  it('resolves purge_recent_messages to explicit canonical bulk-delete ids during preflight', async () => {
+    const now = Date.now();
+    const iso = (offsetMinutes: number) => new Date(now - offsetMinutes * 60_000).toISOString();
+    mocks.discordRestRequestGuildScoped.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      statusText: 'OK',
+      data: [
+        {
+          id: '3004',
+          channel_id: 'chan-9',
+          content: 'spam one',
+          timestamp: iso(1),
+          pinned: false,
+          author: { id: 'user-8', username: 'spammer' },
+        },
+        {
+          id: '3003',
+          channel_id: 'chan-9',
+          content: 'spam two',
+          timestamp: iso(2),
+          pinned: false,
+          author: { id: 'user-8', username: 'spammer' },
+        },
+        {
+          id: '3002',
+          channel_id: 'chan-9',
+          content: 'different author',
+          timestamp: iso(3),
+          pinned: false,
+          author: { id: 'user-9', username: 'other' },
+        },
+        {
+          id: '3001',
+          channel_id: 'chan-9',
+          content: 'older message',
+          timestamp: iso(120),
+          pinned: false,
+          author: { id: 'user-8', username: 'spammer' },
+        },
+      ],
+    });
+
+    const signal = await expectApprovalSignal(
+      requestDiscordAdminActionForTool({
+        guildId: 'guild-1',
+        channelId: 'channel-source',
+        requestedBy: 'admin-1',
+        request: {
+          action: 'purge_recent_messages',
+          channelId: 'chan-9',
+          limit: 2,
+          windowMinutes: 30,
+          authorUserId: 'user-8',
+          reason: 'Purge raid burst',
+        },
+      }),
+    );
+
+    const prepared = signal.payload.executionPayloadJson as {
+      originalRequest: { action: string; limit?: number; windowMinutes?: number; authorUserId?: string };
+      canonicalAction: { action: string; channelId: string; messageIds: string[]; reason: string };
+      evidence: { source: string; userId: string | null };
+      preflight: { notes: string[] };
+    };
+
+    expect(prepared.originalRequest).toEqual(
+      expect.objectContaining({
+        action: 'purge_recent_messages',
+        limit: 2,
+        windowMinutes: 30,
+        authorUserId: 'user-8',
+      }),
+    );
+    expect(prepared.canonicalAction).toEqual({
+      action: 'bulk_delete_messages',
+      channelId: 'chan-9',
+      messageIds: ['3003', '3004'],
+      reason: 'Purge raid burst',
+    });
+    expect(prepared.evidence).toEqual(
+      expect.objectContaining({
+        source: 'purge_recent_scan',
+        userId: 'user-8',
+      }),
+    );
+    expect(prepared.preflight.notes.join(' ')).toContain('Matched 2 message(s)');
+    expect(prepared.preflight.notes.join(' ')).toContain('skip messages older than 14 days');
   });
 
   it('resolves member moderation from a Discord message URL to the referenced author', async () => {

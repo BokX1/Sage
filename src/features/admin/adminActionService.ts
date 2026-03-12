@@ -127,6 +127,14 @@ const sendPollsFlag = (
 ).SendPolls;
 const DISCORD_URL_HOSTS = new Set(['discord.com', 'canary.discord.com', 'ptb.discord.com']);
 const REPLY_TARGET_ALIASES = new Set(['reply_target', 'reply', 'replied_message', 'current_reply_target']);
+const DISCORD_SNOWFLAKE_EPOCH_MS = 1_420_070_400_000n;
+const BULK_DELETE_MAX_MESSAGES_PER_REQUEST = 100;
+const BULK_DELETE_MAX_BATCH_SIZE = 500;
+const BULK_DELETE_ELIGIBILITY_WINDOW_MS = 14 * 24 * 60 * 60 * 1_000;
+const PURGE_DEFAULT_LIMIT = 50;
+const PURGE_DEFAULT_WINDOW_MINUTES = 60;
+const PURGE_MAX_SCAN_MESSAGES = 1_000;
+const DISCORD_REST_MESSAGES_PAGE_LIMIT = 100;
 
 type PendingButtonAction = 'approve' | 'reject' | 'details';
 
@@ -444,6 +452,16 @@ type GuildMessageReactionLike = {
   };
 };
 
+type DiscordRestChannelMessage = {
+  id: string;
+  channelId: string | null;
+  content: string | null;
+  timestampMs: number | null;
+  pinned: boolean;
+  authorId: string | null;
+  authorDisplayName: string | null;
+};
+
 type MessageLookupGuildChannel = GuildBasedChannel & {
   messages?: {
     fetch: (messageId: string) => Promise<GuildMessageLike>;
@@ -522,6 +540,219 @@ function parseDiscordMessageUrl(raw: string): ParsedDiscordMessageUrl | null {
     channelId,
     messageId,
     normalizedUrl: `https://discord.com/channels/${guildId}/${channelId}/${messageId}`,
+  };
+}
+
+function parseIsoTimestampMs(value: string | null | undefined): number | null {
+  if (!value) return null;
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function parseSnowflakeTimestampMs(value: string): number | null {
+  const trimmed = value.trim();
+  if (!/^\d+$/.test(trimmed)) return null;
+  try {
+    const snowflake = BigInt(trimmed);
+    const timestampMs = Number((snowflake >> 22n) + DISCORD_SNOWFLAKE_EPOCH_MS);
+    return Number.isFinite(timestampMs) ? timestampMs : null;
+  } catch {
+    return null;
+  }
+}
+
+function isBulkDeleteEligibleMessageId(messageId: string, nowMs = Date.now()): boolean {
+  const timestampMs = parseSnowflakeTimestampMs(messageId);
+  if (timestampMs === null) {
+    return false;
+  }
+  return nowMs - timestampMs < BULK_DELETE_ELIGIBILITY_WINDOW_MS;
+}
+
+function dedupeStrings(values: string[]): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const value of values) {
+    if (seen.has(value)) continue;
+    seen.add(value);
+    out.push(value);
+  }
+  return out;
+}
+
+function chunkStrings(values: string[], chunkSize: number): string[][] {
+  if (!Number.isInteger(chunkSize) || chunkSize <= 0) {
+    throw new RangeError('chunkSize must be a positive integer.');
+  }
+  if (values.length === 0) return [];
+
+  const chunks: string[][] = [];
+  for (let index = 0; index < values.length; index += chunkSize) {
+    chunks.push(values.slice(index, index + chunkSize));
+  }
+  return chunks;
+}
+
+function readDiscordRestChannelMessages(data: unknown): DiscordRestChannelMessage[] {
+  if (!Array.isArray(data)) return [];
+  const messages: DiscordRestChannelMessage[] = [];
+
+  for (const entry of data) {
+    const record = normalizeUnknownRecord(entry);
+    if (!record) continue;
+    const id = asString(record.id);
+    if (!id) continue;
+
+    const author = normalizeUnknownRecord(record.author);
+    const authorId = asString(author?.id);
+    const authorDisplayName =
+      asString(author?.global_name) ??
+      asString(author?.username) ??
+      authorId;
+
+    messages.push({
+      id,
+      channelId: asString(record.channel_id),
+      content: asString(record.content),
+      timestampMs: parseIsoTimestampMs(asString(record.timestamp)),
+      pinned: record.pinned === true,
+      authorId,
+      authorDisplayName,
+    });
+  }
+
+  return messages;
+}
+
+async function fetchRecentChannelMessagesForPurge(params: {
+  guildId: string;
+  channelId: string;
+  maxScan: number;
+  beforeMessageId?: string | null;
+}): Promise<DiscordRestChannelMessage[]> {
+  const maxScan = Math.max(1, Math.min(params.maxScan, PURGE_MAX_SCAN_MESSAGES));
+  const collected: DiscordRestChannelMessage[] = [];
+  let before = params.beforeMessageId?.trim() || null;
+
+  while (collected.length < maxScan) {
+    const requestLimit = Math.max(
+      1,
+      Math.min(DISCORD_REST_MESSAGES_PAGE_LIMIT, maxScan - collected.length),
+    );
+    const restResult = await discordRestRequestGuildScoped({
+      guildId: params.guildId,
+      method: 'GET',
+      path: `/channels/${params.channelId}/messages`,
+      query: {
+        limit: requestLimit,
+        ...(before ? { before } : {}),
+      },
+      maxResponseChars: 50_000,
+    });
+    if (restResult.ok !== true) {
+      throw new Error(
+        `Failed to fetch channel messages for purge (${String(restResult.status ?? 'unknown')} ${String(restResult.statusText ?? '').trim()}).`,
+      );
+    }
+
+    const page = readDiscordRestChannelMessages(restResult.data);
+    if (page.length === 0) {
+      break;
+    }
+
+    collected.push(...page);
+
+    const lastMessageId = page[page.length - 1]?.id?.trim() || null;
+    if (!lastMessageId || page.length < requestLimit) {
+      break;
+    }
+    before = lastMessageId;
+  }
+
+  return collected.slice(0, maxScan);
+}
+
+function resolveBulkDeleteMessageTargets(params: {
+  guildId: string;
+  sourceChannelId: string;
+  rawChannelId?: string;
+  rawMessageIds: string[];
+  usage: string;
+}): {
+  source: PreparedModerationEvidence['source'];
+  channelId: string;
+  messageIds: string[];
+  messageUrls: string[];
+} {
+  const rawChannelId = params.rawChannelId?.trim() || null;
+  const explicitChannelId = rawChannelId ? normalizeChannelId(rawChannelId) : null;
+  const messageIdToUrl = new Map<string, string>();
+  const urlTargets: ParsedDiscordMessageUrl[] = [];
+  const rawIdTargets: string[] = [];
+
+  for (const rawMessageRef of params.rawMessageIds) {
+    const ref = rawMessageRef.trim();
+    if (!ref) continue;
+    if (isReplyTargetAlias(ref)) {
+      throw new Error(`${params.usage} requires explicit message IDs or Discord message URLs.`);
+    }
+
+    const parsedUrl = parseDiscordMessageUrl(ref);
+    if (parsedUrl) {
+      if (parsedUrl.guildId === '@me') {
+        throw new Error(`${params.usage} cannot target DM message URLs.`);
+      }
+      if (parsedUrl.guildId !== params.guildId) {
+        throw new Error(`${params.usage} cannot target messages from another guild.`);
+      }
+      urlTargets.push(parsedUrl);
+      continue;
+    }
+
+    if (!/^\d+$/.test(ref)) {
+      throw new Error(`${params.usage} requires message IDs or valid Discord message URLs.`);
+    }
+    rawIdTargets.push(ref);
+  }
+
+  if (urlTargets.length === 0 && rawIdTargets.length === 0) {
+    throw new Error(`${params.usage} requires at least one target message.`);
+  }
+
+  const inferredUrlChannelIds = new Set(urlTargets.map((target) => target.channelId));
+  if (inferredUrlChannelIds.size > 1) {
+    throw new Error(`${params.usage} cannot mix message targets from different channels.`);
+  }
+  const inferredUrlChannelId = inferredUrlChannelIds.values().next().value as string | undefined;
+  if (explicitChannelId && inferredUrlChannelId && explicitChannelId !== inferredUrlChannelId) {
+    throw new Error(`${params.usage} cannot mix message targets from different channels.`);
+  }
+
+  const channelId = explicitChannelId ?? inferredUrlChannelId ?? params.sourceChannelId;
+
+  for (const parsedUrl of urlTargets) {
+    if (!messageIdToUrl.has(parsedUrl.messageId)) {
+      messageIdToUrl.set(parsedUrl.messageId, parsedUrl.normalizedUrl);
+    }
+  }
+  for (const messageId of rawIdTargets) {
+    if (!messageIdToUrl.has(messageId)) {
+      messageIdToUrl.set(messageId, buildDiscordMessageUrl(params.guildId, channelId, messageId));
+    }
+  }
+
+  if (messageIdToUrl.size > BULK_DELETE_MAX_BATCH_SIZE) {
+    throw new Error(`${params.usage} supports at most ${BULK_DELETE_MAX_BATCH_SIZE} target messages.`);
+  }
+
+  const canonicalEntries = Array.from(messageIdToUrl.entries())
+    .sort(([leftId], [rightId]) => leftId.localeCompare(rightId));
+
+  return {
+    source: 'bulk_explicit_ids',
+    channelId,
+    messageIds: canonicalEntries.map(([messageId]) => messageId),
+    messageUrls: canonicalEntries.map(([, messageUrl]) => messageUrl),
   };
 }
 
@@ -829,6 +1060,7 @@ function requiredApproverPermission(
 ): RequiredModerationPermission | null {
   switch (action.action) {
     case 'delete_message':
+    case 'bulk_delete_messages':
     case 'remove_user_reaction':
     case 'clear_reactions':
       return { flag: PermissionsBitField.Flags.ManageMessages, label: 'Manage Messages', scope: 'channel' };
@@ -863,7 +1095,13 @@ function assertPermissionSet(params: {
 function moderationBotPermissionsForAction(action: DiscordModerationActionRequest['action']): RequiredModerationPermission[] {
   switch (action) {
     case 'delete_message':
+    case 'bulk_delete_messages':
       return [{ flag: PermissionsBitField.Flags.ManageMessages, label: 'Manage Messages', scope: 'channel' }];
+    case 'purge_recent_messages':
+      return [
+        { flag: PermissionsBitField.Flags.ManageMessages, label: 'Manage Messages', scope: 'channel' },
+        { flag: PermissionsBitField.Flags.ReadMessageHistory, label: 'Read Message History', scope: 'channel' },
+      ];
     case 'remove_user_reaction':
     case 'clear_reactions':
       return [
@@ -903,6 +1141,13 @@ function buildNormalizedOriginalRequest(
         action: canonicalAction.action,
         channelId: canonicalAction.channelId,
         messageId: canonicalAction.messageId,
+        reason: canonicalAction.reason,
+      };
+    case 'bulk_delete_messages':
+      return {
+        action: canonicalAction.action,
+        channelId: canonicalAction.channelId,
+        messageIds: canonicalAction.messageIds,
         reason: canonicalAction.reason,
       };
     case 'timeout_member':
@@ -948,19 +1193,216 @@ async function resolveMemberEvidenceMessage(params: {
 async function prepareMessageModerationEnvelope(
   params: PreparedModerationDeps,
 ): Promise<PreparedModerationEnvelope> {
+  const request = params.request;
+  const { botMember } = await fetchGuildAndBotMember(params.guildId);
+  const botRequirements = moderationBotPermissionsForAction(request.action);
+
+  if (request.action === 'bulk_delete_messages') {
+    const resolvedTargets = resolveBulkDeleteMessageTargets({
+      guildId: params.guildId,
+      sourceChannelId: params.sourceChannelId,
+      rawChannelId: request.channelId,
+      rawMessageIds: request.messageIds,
+      usage: 'discord_admin.submit_moderation (bulk_delete_messages)',
+    });
+    const channel = await fetchGuildChannel(params.guildId, resolvedTargets.channelId);
+    const botChannelPermissions = botMember.permissionsIn(channel);
+    assertPermissionSet({
+      permissions: botChannelPermissions,
+      required: botRequirements.filter((item) => item.scope === 'channel'),
+      actorLabel: 'Bot',
+      location: `channel ${channel.id}`,
+    });
+    assertPermissionSet({
+      permissions: botMember.permissions,
+      required: botRequirements.filter((item) => item.scope === 'guild'),
+      actorLabel: 'Bot',
+      location: 'the guild',
+    });
+
+    const canonicalAction: PreparedModerationAction = {
+      action: 'bulk_delete_messages',
+      channelId: channel.id,
+      messageIds: resolvedTargets.messageIds,
+      reason: request.reason,
+    };
+    const approverPermission = requiredApproverPermission(canonicalAction);
+    const firstMessageId = resolvedTargets.messageIds[0] ?? null;
+    const firstMessageUrl = resolvedTargets.messageUrls[0] ?? null;
+
+    return {
+      version: 1,
+      originalRequest: buildNormalizedOriginalRequest(request, canonicalAction),
+      canonicalAction,
+      evidence: {
+        targetKind: 'message',
+        source: resolvedTargets.source,
+        channelId: channel.id,
+        messageId: firstMessageId,
+        messageUrl: firstMessageUrl,
+        userId: null,
+        messageAuthorId: null,
+        messageAuthorDisplayName: null,
+        messageExcerpt: `Resolved ${resolvedTargets.messageIds.length} explicit message target(s) for bulk deletion.`,
+      },
+      preflight: {
+        approverPermission: approverPermission?.label ?? null,
+        botPermissionChecks: botRequirements.map((item) => item.label),
+        targetChannelScope: channel.id,
+        hierarchyChecked: false,
+        notes: [
+          `Resolved ${resolvedTargets.messageIds.length} explicit message target(s) in <#${channel.id}>.`,
+          `Verified bot permissions in <#${channel.id}> before queueing approval.`,
+          'Execution policy: skip messages older than 14 days and report them in the outcome summary.',
+        ],
+      },
+      dedupeKey: computeModerationDedupeKey(canonicalAction),
+    };
+  }
+
+  if (request.action === 'purge_recent_messages') {
+    const targetChannelId = request.channelId?.trim()
+      ? normalizeChannelId(request.channelId)
+      : params.sourceChannelId;
+    const channel = await fetchGuildChannel(params.guildId, targetChannelId);
+    const botChannelPermissions = botMember.permissionsIn(channel);
+    assertPermissionSet({
+      permissions: botChannelPermissions,
+      required: botRequirements.filter((item) => item.scope === 'channel'),
+      actorLabel: 'Bot',
+      location: `channel ${channel.id}`,
+    });
+    assertPermissionSet({
+      permissions: botMember.permissions,
+      required: botRequirements.filter((item) => item.scope === 'guild'),
+      actorLabel: 'Bot',
+      location: 'the guild',
+    });
+
+    let authorUserId: string | null = null;
+    if (request.authorUserId?.trim()) {
+      const resolvedUser = resolveMemberTargetInput({
+        guildId: params.guildId,
+        rawUserId: request.authorUserId,
+        replyTarget: params.replyTarget,
+        usage: 'discord_admin.submit_moderation (purge_recent_messages authorUserId)',
+        allowReplyTargetInference: false,
+      });
+      authorUserId = resolvedUser.userId;
+      if (!authorUserId && resolvedUser.evidenceChannelId && resolvedUser.evidenceMessageId) {
+        const evidenceMessage = await resolveMemberEvidenceMessage({
+          guildId: params.guildId,
+          evidenceChannelId: resolvedUser.evidenceChannelId,
+          evidenceMessageId: resolvedUser.evidenceMessageId,
+        });
+        authorUserId = evidenceMessage.author?.id?.trim() || null;
+      }
+      if (!authorUserId) {
+        throw new Error('Unable to resolve purge_recent_messages author filter user.');
+      }
+    }
+
+    const purgeLimit = request.limit ?? PURGE_DEFAULT_LIMIT;
+    const windowMinutes = request.windowMinutes ?? PURGE_DEFAULT_WINDOW_MINUTES;
+    const includePinned = request.includePinned === true;
+    const maxScan = Math.max(
+      DISCORD_REST_MESSAGES_PAGE_LIMIT,
+      Math.min(PURGE_MAX_SCAN_MESSAGES, purgeLimit * 5),
+    );
+    const scannedMessages = await fetchRecentChannelMessagesForPurge({
+      guildId: params.guildId,
+      channelId: channel.id,
+      maxScan,
+    });
+    const cutoffMs = Date.now() - windowMinutes * 60_000;
+    const matchedMessages: DiscordRestChannelMessage[] = [];
+    let skippedByWindow = 0;
+    let skippedByAuthor = 0;
+    let skippedPinned = 0;
+
+    for (const message of scannedMessages) {
+      if (message.timestampMs !== null && message.timestampMs < cutoffMs) {
+        skippedByWindow += 1;
+        continue;
+      }
+      if (!includePinned && message.pinned) {
+        skippedPinned += 1;
+        continue;
+      }
+      if (authorUserId && message.authorId !== authorUserId) {
+        skippedByAuthor += 1;
+        continue;
+      }
+      matchedMessages.push(message);
+      if (matchedMessages.length >= purgeLimit) {
+        break;
+      }
+    }
+
+    const matchedMessageIds = dedupeStrings(matchedMessages.map((message) => message.id))
+      .slice(0, purgeLimit);
+    if (matchedMessageIds.length === 0) {
+      throw new Error('No recent messages matched the purge criteria in the target channel.');
+    }
+    const canonicalMessageIds = [...matchedMessageIds].sort((left, right) => left.localeCompare(right));
+
+    const canonicalAction: PreparedModerationAction = {
+      action: 'bulk_delete_messages',
+      channelId: channel.id,
+      messageIds: canonicalMessageIds,
+      reason: request.reason,
+    };
+    const approverPermission = requiredApproverPermission(canonicalAction);
+    const firstMatchedMessage = matchedMessages[0] ?? null;
+    const firstMessageId = matchedMessageIds[0] ?? null;
+    const firstMessageUrl = firstMessageId
+      ? buildDiscordMessageUrl(params.guildId, channel.id, firstMessageId)
+      : null;
+    const firstMessageExcerpt = firstMatchedMessage?.content
+      ? truncateWithFlag(firstMatchedMessage.content.replace(/\s+/g, ' ').trim(), 220).text
+      : null;
+
+    return {
+      version: 1,
+      originalRequest: request,
+      canonicalAction,
+      evidence: {
+        targetKind: 'message',
+        source: 'purge_recent_scan',
+        channelId: channel.id,
+        messageId: firstMessageId,
+        messageUrl: firstMessageUrl,
+        userId: authorUserId ?? firstMatchedMessage?.authorId ?? null,
+        messageAuthorId: firstMatchedMessage?.authorId ?? null,
+        messageAuthorDisplayName: firstMatchedMessage?.authorDisplayName ?? null,
+        messageExcerpt: firstMessageExcerpt ?? `Resolved purge to ${matchedMessageIds.length} message(s).`,
+      },
+      preflight: {
+        approverPermission: approverPermission?.label ?? null,
+        botPermissionChecks: botRequirements.map((item) => item.label),
+        targetChannelScope: channel.id,
+        hierarchyChecked: false,
+        notes: [
+          `Resolved purge criteria against live Discord history in <#${channel.id}>.`,
+          `Matched ${matchedMessageIds.length} message(s) from ${scannedMessages.length} scanned (limit=${purgeLimit}, windowMinutes=${windowMinutes}, includePinned=${includePinned}${authorUserId ? `, author=<@${authorUserId}>` : ''}).`,
+          `Filter summary: skippedByWindow=${skippedByWindow}, skippedByAuthor=${skippedByAuthor}, skippedPinned=${skippedPinned}.`,
+          'Execution policy: skip messages older than 14 days and report them in the outcome summary.',
+        ],
+      },
+      dedupeKey: computeModerationDedupeKey(canonicalAction),
+    };
+  }
+
   const target = resolveMessageTarget({
     guildId: params.guildId,
     sourceChannelId: params.sourceChannelId,
-    rawMessageId: 'messageId' in params.request ? params.request.messageId : undefined,
-    rawChannelId: 'channelId' in params.request ? params.request.channelId : undefined,
+    rawMessageId: 'messageId' in request ? request.messageId : undefined,
+    rawChannelId: 'channelId' in request ? request.channelId : undefined,
     replyTarget: params.replyTarget,
-    usage: `discord_admin.submit_moderation (${params.request.action})`,
+    usage: `discord_admin.submit_moderation (${request.action})`,
   });
-
-  const { botMember } = await fetchGuildAndBotMember(params.guildId);
   const channel = await fetchGuildChannel(params.guildId, target.channelId);
   const botChannelPermissions = botMember.permissionsIn(channel);
-  const botRequirements = moderationBotPermissionsForAction(params.request.action);
   assertPermissionSet({
     permissions: botChannelPermissions,
     required: botRequirements.filter((item) => item.scope === 'channel'),
@@ -983,31 +1425,31 @@ async function prepareMessageModerationEnvelope(
   const replyPreview = extractReplyTargetPreview(params.replyTarget);
   const messageUrl = target.messageUrl ?? buildDiscordMessageUrl(params.guildId, channel.id, message.id);
   const approverPermission = requiredApproverPermission({
-    action: params.request.action,
+    action: request.action,
     channelId: channel.id,
     messageId: message.id,
-    reason: params.request.reason,
-    ...(params.request.action === 'remove_user_reaction'
+    reason: request.reason,
+    ...(request.action === 'remove_user_reaction'
       ? {
-          emoji: normalizeEmojiIdentifier(params.request.emoji),
+          emoji: normalizeEmojiIdentifier(request.emoji),
           userId: '',
         }
       : {}),
   } as QueuedDiscordAction);
 
-  if (params.request.action === 'delete_message' || params.request.action === 'clear_reactions') {
+  if (request.action === 'delete_message' || request.action === 'clear_reactions') {
     const canonicalAction: PreparedModerationAction = {
-      action: params.request.action,
+      action: request.action,
       channelId: channel.id,
       messageId: message.id,
-      reason: params.request.reason,
+      reason: request.reason,
     };
     return {
       version: 1,
-      originalRequest: buildNormalizedOriginalRequest(params.request, canonicalAction),
+      originalRequest: buildNormalizedOriginalRequest(request, canonicalAction),
       canonicalAction,
       evidence: {
-        targetKind: params.request.action === 'clear_reactions' ? 'reaction' : 'message',
+        targetKind: request.action === 'clear_reactions' ? 'reaction' : 'message',
         source: target.source,
         channelId: channel.id,
         messageId: message.id,
@@ -1033,13 +1475,13 @@ async function prepareMessageModerationEnvelope(
     };
   }
 
-  if (params.request.action !== 'remove_user_reaction') {
+  if (request.action !== 'remove_user_reaction') {
     throw new Error('Unsupported message moderation request.');
   }
 
   const resolvedUser = resolveMemberTargetInput({
     guildId: params.guildId,
-    rawUserId: params.request.userId,
+    rawUserId: request.userId,
     replyTarget: params.replyTarget,
     usage: 'discord_admin.submit_moderation (remove_user_reaction)',
     allowReplyTargetInference: false,
@@ -1058,7 +1500,7 @@ async function prepareMessageModerationEnvelope(
     throw new Error('Unable to resolve the reaction target user.');
   }
 
-  const emoji = normalizeEmojiIdentifier(params.request.emoji);
+  const emoji = normalizeEmojiIdentifier(request.emoji);
   const reaction = await resolveMessageReaction(message, emoji);
   if (!reaction) {
     throw new Error('Target reaction was not found on the target message.');
@@ -1070,11 +1512,11 @@ async function prepareMessageModerationEnvelope(
     messageId: message.id,
     emoji,
     userId: resolvedUserId,
-    reason: params.request.reason,
+    reason: request.reason,
   };
   return {
     version: 1,
-    originalRequest: buildNormalizedOriginalRequest(params.request, canonicalAction),
+    originalRequest: buildNormalizedOriginalRequest(request, canonicalAction),
     canonicalAction,
     evidence: {
       targetKind: 'reaction',
@@ -1302,6 +1744,8 @@ async function prepareDiscordModerationEnvelope(
 ): Promise<PreparedModerationEnvelope> {
   switch (params.request.action) {
     case 'delete_message':
+    case 'bulk_delete_messages':
+    case 'purge_recent_messages':
     case 'clear_reactions':
     case 'remove_user_reaction':
       return prepareMessageModerationEnvelope(params);
@@ -2417,6 +2861,125 @@ async function executeQueuedDiscordAction(params: {
         channelId: channel.id,
         messageId: params.action.messageId,
         noop: !restResult.ok,
+      };
+    }
+
+    case 'bulk_delete_messages': {
+      const channel = await fetchGuildChannel(params.guildId, params.action.channelId);
+      const permissions = botMember.permissionsIn(channel);
+      if (!permissions.has(PermissionsBitField.Flags.ManageMessages)) {
+        throw new Error('Bot lacks ManageMessages permission in target channel.');
+      }
+
+      const requestedMessageIds = dedupeStrings(
+        params.action.messageIds
+          .map((messageId) => messageId.trim())
+          .filter((messageId) => messageId.length > 0),
+      );
+      if (requestedMessageIds.length === 0) {
+        return {
+          action: params.action.action,
+          status: 'noop',
+          channelId: channel.id,
+          requested: 0,
+          eligible: 0,
+          deleted: 0,
+          skipped_too_old: 0,
+          not_found: 0,
+          noop: true,
+        };
+      }
+
+      const nowMs = Date.now();
+      const eligibleMessageIds: string[] = [];
+      const skippedTooOldMessageIds: string[] = [];
+      for (const messageId of requestedMessageIds) {
+        if (isBulkDeleteEligibleMessageId(messageId, nowMs)) {
+          eligibleMessageIds.push(messageId);
+        } else {
+          skippedTooOldMessageIds.push(messageId);
+        }
+      }
+
+      const auditReason = withAuditReason(
+        params.action.reason,
+        params.actionId,
+        params.requestedBy,
+        params.approvedBy,
+      );
+
+      let deleted = 0;
+      let notFound = 0;
+
+      if (eligibleMessageIds.length === 1) {
+        const deleteResult = await discordRestRequestGuildScoped({
+          guildId: params.guildId,
+          method: 'DELETE',
+          path: `/channels/${channel.id}/messages/${eligibleMessageIds[0]}`,
+          reason: auditReason,
+        });
+        if (deleteResult.ok) {
+          deleted += 1;
+        } else if ((deleteResult.status ?? 0) === 404) {
+          notFound += 1;
+        } else {
+          throw new Error(
+            `Failed to delete message (${deleteResult.status} ${deleteResult.statusText}): ${String(deleteResult.error ?? 'Unknown error')}`,
+          );
+        }
+      } else if (eligibleMessageIds.length > 1) {
+        const chunks = chunkStrings(eligibleMessageIds, BULK_DELETE_MAX_MESSAGES_PER_REQUEST);
+        for (const chunk of chunks) {
+          const bulkResult = await discordRestRequestGuildScoped({
+            guildId: params.guildId,
+            method: 'POST',
+            path: `/channels/${channel.id}/messages/bulk-delete`,
+            body: { messages: chunk },
+            reason: auditReason,
+          });
+          if (bulkResult.ok) {
+            deleted += chunk.length;
+            continue;
+          }
+
+          const status = bulkResult.status ?? 0;
+          if (status !== 400 && status !== 404) {
+            throw new Error(
+              `Bulk delete failed (${bulkResult.status} ${bulkResult.statusText}): ${String(bulkResult.error ?? 'Unknown error')}`,
+            );
+          }
+
+          for (const messageId of chunk) {
+            const singleResult = await discordRestRequestGuildScoped({
+              guildId: params.guildId,
+              method: 'DELETE',
+              path: `/channels/${channel.id}/messages/${messageId}`,
+              reason: auditReason,
+            });
+            if (singleResult.ok) {
+              deleted += 1;
+            } else if ((singleResult.status ?? 0) === 404) {
+              notFound += 1;
+            } else {
+              throw new Error(
+                `Failed to delete message (${singleResult.status} ${singleResult.statusText}): ${String(singleResult.error ?? 'Unknown error')}`,
+              );
+            }
+          }
+        }
+      }
+
+      return {
+        action: params.action.action,
+        status: deleted > 0 ? 'executed' : 'noop',
+        channelId: channel.id,
+        requested: requestedMessageIds.length,
+        eligible: eligibleMessageIds.length,
+        deleted,
+        skipped_too_old: skippedTooOldMessageIds.length,
+        skipped_too_old_ids: skippedTooOldMessageIds.slice(0, 25),
+        not_found: notFound,
+        noop: deleted === 0,
       };
     }
 

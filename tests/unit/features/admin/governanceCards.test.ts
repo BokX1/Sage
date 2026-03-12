@@ -155,4 +155,73 @@ describe('governanceCards', () => {
     expect(detailsText).toContain('Bot checks: Manage Messages, Read Message History');
     expect(detailsText).toContain('Preflight notes: Resolved from direct reply target.');
   });
+
+  it('summarizes bulk moderation outcomes with skipped older-than-14-day counts', () => {
+    const action = makeReviewRequest({
+      kind: 'discord_queue_moderation_action',
+      status: 'executed',
+      executedAt: new Date('2026-03-10T07:55:00.000Z'),
+      executionPayloadJson: {
+        prepared: {
+          version: 1,
+          originalRequest: {
+            action: 'bulk_delete_messages',
+            channelId: 'chan-target',
+            messageIds: ['msg-1', 'msg-2', 'msg-3'],
+            reason: 'Raid cleanup',
+          },
+          canonicalAction: {
+            action: 'bulk_delete_messages',
+            channelId: 'chan-target',
+            messageIds: ['msg-1', 'msg-2', 'msg-3'],
+            reason: 'Raid cleanup',
+          },
+          evidence: {
+            targetKind: 'message',
+            source: 'bulk_explicit_ids',
+            channelId: 'chan-target',
+            messageId: 'msg-1',
+            messageUrl: 'https://discord.com/channels/guild-1/chan-target/msg-1',
+            userId: null,
+            messageAuthorId: null,
+            messageAuthorDisplayName: null,
+            messageExcerpt: 'bulk cleanup',
+          },
+          preflight: {
+            approverPermission: 'Manage Messages',
+            botPermissionChecks: ['Manage Messages'],
+            targetChannelScope: 'chan-target',
+            hierarchyChecked: false,
+            notes: ['Execution policy: skip messages older than 14 days and report them in the outcome summary.'],
+          },
+          dedupeKey:
+            '{"action":"bulk_delete_messages","channelId":"chan-target","messageIds":["msg-1","msg-2","msg-3"],"reason":"Raid cleanup"}',
+        },
+      },
+      reviewSnapshotJson: {
+        action: 'bulk_delete_messages',
+      },
+      resultJson: {
+        action: 'bulk_delete_messages',
+        status: 'executed',
+        requested: 3,
+        eligible: 2,
+        deleted: 1,
+        skipped_too_old: 1,
+        not_found: 1,
+        noop: false,
+      },
+    });
+
+    const requesterPayload = buildApprovalReviewRequesterCardPayload({ action });
+    const requesterSerialized = JSON.stringify(requesterPayload);
+    const detailsText = buildApprovalReviewDetailsText(action);
+
+    expect(requesterSerialized).toContain('Bulk delete messages');
+    expect(requesterSerialized).toContain('skipped older than 14 days=1');
+    expect(detailsText).toContain('Intent: Bulk delete messages');
+    expect(detailsText).toContain(
+      'Outcome summary: requested=3, eligible=2, deleted=1, skipped older than 14 days=1, not_found=1.',
+    );
+  });
 });

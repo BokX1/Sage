@@ -101,6 +101,7 @@ If a server review channel is configured, Sage posts the detailed reviewer card 
 Equivalent unresolved requests are coalesced, so repeated asks for the same admin action should point back to one approval review request and one reviewer card instead of spawning duplicates.
 Rejections collect a short reason through a modal and show that reason back on the requester-facing status card.
 For moderation, Sage works best when you reply directly to the target message or provide an exact Discord message link, mention, or ID; it should use exact message-history evidence rather than summaries before taking enforcement action.
+For high-volume cleanup, Sage can queue approval-gated batch moderation through typed flows (explicit bulk delete IDs/URLs or criteria-based recent-message purge); execution skips messages older than 14 days and reports skipped counts instead of failing the whole action.
 Normal channel replies should stay operator-friendly: Sage should not paste raw tool payloads, approval commands, or internal retry chatter into chat while an approval is pending.
 
 ---

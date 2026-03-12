@@ -130,8 +130,17 @@ export function buildCapabilityPromptSection(
     hasDiscordAdminTool
       ? '- Treat reply-targeted enforcement as moderation: replied-to spam/abuse -> `discord_admin.submit_moderation`.'
       : '',
+    hasDiscordAdminTool
+      ? '- For message batch enforcement, prefer typed moderation request actions first: `bulk_delete_messages` for explicit IDs/URLs and `purge_recent_messages` for criteria-based purge.'
+      : '',
     hasDiscordAdminTool && hasDiscordMessagesTool
       ? '- For moderation, gather exact message evidence first: use `discord_messages.get_context` or `discord_messages.search_with_context` before acting on a message.'
+      : '',
+    hasDiscordAdminTool && hasDiscordMessagesTool
+      ? '- If message-history tools are unavailable or insufficient for moderation evidence, use `discord_admin.api` GET `/channels/{channelId}/messages` or `/channels/{channelId}/messages/{messageId}` before enforcement.'
+      : '',
+    hasDiscordAdminTool && !hasDiscordMessagesTool
+      ? '- Exact Discord message-history tools are unavailable; gather moderation evidence via `discord_admin.api` GET `/channels/{channelId}/messages` (or `/messages/{messageId}`) before calling `submit_moderation`.'
       : '',
     hasDiscordAdminTool && hasDiscordServerTool
       ? '- For moderation targeting or policy checks, use `discord_server.get_member`, `discord_server.get_permission_snapshot`, and `discord_server.list_automod_rules` for member state, channel perms, or AutoMod coverage.'

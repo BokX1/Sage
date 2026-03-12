@@ -27,6 +27,23 @@ const deleteMessageRequestSchema = z.object({
   reason: z.string().trim().min(3).max(500),
 });
 
+const bulkDeleteMessagesRequestSchema = z.object({
+  action: z.literal('bulk_delete_messages'),
+  channelId: flexibleDiscordRefSchema.optional(),
+  messageIds: z.array(flexibleDiscordRefSchema).min(1).max(500),
+  reason: z.string().trim().min(3).max(500),
+});
+
+const purgeRecentMessagesRequestSchema = z.object({
+  action: z.literal('purge_recent_messages'),
+  channelId: flexibleDiscordRefSchema.optional(),
+  limit: z.number().int().min(1).max(500).optional(),
+  windowMinutes: z.number().int().min(1).max(10_080).optional(),
+  authorUserId: flexibleDiscordRefSchema.optional(),
+  includePinned: z.boolean().optional(),
+  reason: z.string().trim().min(3).max(500),
+});
+
 const timeoutMemberRequestSchema = z.object({
   action: z.literal('timeout_member'),
   userId: flexibleDiscordRefSchema.optional(),
@@ -63,6 +80,8 @@ export const discordModerationActionRequestSchema = z.discriminatedUnion('action
   removeUserReactionRequestSchema,
   clearReactionsRequestSchema,
   deleteMessageRequestSchema,
+  bulkDeleteMessagesRequestSchema,
+  purgeRecentMessagesRequestSchema,
   timeoutMemberRequestSchema,
   untimeoutMemberRequestSchema,
   kickMemberRequestSchema,
@@ -85,6 +104,12 @@ export type PreparedModerationAction =
       action: 'clear_reactions' | 'delete_message';
       channelId: string;
       messageId: string;
+      reason: string;
+    }
+  | {
+      action: 'bulk_delete_messages';
+      channelId: string;
+      messageIds: string[];
       reason: string;
     }
   | {
@@ -114,7 +139,9 @@ export type PreparedModerationEvidence = {
     | 'user_mention'
     | 'message_url'
     | 'reply_target'
-    | 'message_author_url';
+    | 'message_author_url'
+    | 'bulk_explicit_ids'
+    | 'purge_recent_scan';
   channelId?: string | null;
   messageId?: string | null;
   messageUrl?: string | null;
@@ -182,6 +209,15 @@ function normalizePreparedModerationAction(value: unknown): PreparedModerationAc
       if (!channelId || !messageId || !reason) return null;
       return { action, channelId, messageId, reason };
     }
+    case 'bulk_delete_messages': {
+      const channelId = asString(value.channelId);
+      const reason = asString(value.reason);
+      const messageIds = Array.isArray(value.messageIds)
+        ? value.messageIds.map((entry) => asString(entry)).filter((entry): entry is string => !!entry)
+        : [];
+      if (!channelId || !reason || messageIds.length === 0) return null;
+      return { action, channelId, messageIds, reason };
+    }
     case 'timeout_member': {
       const userId = asString(value.userId);
       const reason = asString(value.reason);
@@ -232,7 +268,9 @@ function normalizePreparedModerationEvidence(value: unknown): PreparedModeration
     source !== 'user_mention' &&
     source !== 'message_url' &&
     source !== 'reply_target' &&
-    source !== 'message_author_url'
+    source !== 'message_author_url' &&
+    source !== 'bulk_explicit_ids' &&
+    source !== 'purge_recent_scan'
   ) {
     return null;
   }

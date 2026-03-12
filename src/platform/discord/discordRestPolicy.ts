@@ -318,6 +318,7 @@ export async function discordRestRequestGuildScoped(params: {
   multipartBodyMode?: DiscordRestMultipartBodyMode;
   reason?: string;
   maxResponseChars?: number;
+  allowNonIdempotentRetries?: boolean;
   signal?: AbortSignal;
 }): Promise<Record<string, unknown>> {
   await assertDiscordRestRequestGuildScoped({
@@ -336,6 +337,7 @@ export async function discordRestRequestGuildScoped(params: {
     multipartBodyMode: params.multipartBodyMode,
     reason: params.reason,
     maxResponseChars: params.maxResponseChars,
+    allowNonIdempotentRetries: params.allowNonIdempotentRetries,
     signal: params.signal,
   });
 

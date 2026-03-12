@@ -68,6 +68,21 @@ describe('discord tool mental model guidance', () => {
         expect.stringContaining('generic delete_message'),
       ]),
     );
+    expect(moderation?.optionalFields).toEqual(
+      expect.arrayContaining([
+        'request.messageIds',
+        'request.limit',
+        'request.windowMinutes',
+        'request.authorUserId',
+      ]),
+    );
+    expect(moderation?.resultNotes).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining('bulk_delete_messages'),
+        expect.stringContaining('purge_recent_messages'),
+        expect.stringContaining('older than 14 days'),
+      ]),
+    );
     expect(deleteMessage?.avoidWhen).toEqual(
       expect.arrayContaining([
         expect.stringContaining('submit_moderation'),
@@ -195,6 +210,16 @@ describe('discord tool mental model guidance', () => {
     expect(adminDoc?.routingNotes).toEqual(
       expect.arrayContaining([
         expect.stringContaining('fallback only'),
+      ]),
+    );
+    expect(adminDoc?.selectionHints).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining('Bulk message enforcement'),
+      ]),
+    );
+    expect(apiAction?.avoidWhen).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining('bulk/purge moderation'),
       ]),
     );
     expect(apiAction?.avoidWhen).toEqual(

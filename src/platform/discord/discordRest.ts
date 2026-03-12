@@ -35,6 +35,17 @@ const MAX_DEFAULT_RESPONSE_CHARS = 12_000;
 const MAX_DEFAULT_UPLOAD_FILES = 10;
 const MAX_DEFAULT_UPLOAD_BYTES_PER_FILE = 25_000_000;
 const MAX_DEFAULT_UPLOAD_TOTAL_BYTES = 50_000_000;
+const MAX_AUDIT_LOG_REASON_HEADER_CHARS = 512;
+const MAX_DISCORD_RETRY_ATTEMPTS = 5;
+const MAX_DISCORD_RETRY_DELAY_MS = 30_000;
+const MAX_RATE_LIMIT_TRACKED_ENTRIES = 1_024;
+const RETRYABLE_DISCORD_STATUS_CODES = new Set([429, 500, 502, 503, 504]);
+const IDEMPOTENT_RETRY_METHODS = new Set<DiscordRestMethod>(['GET', 'PUT', 'DELETE']);
+
+let discordGlobalHoldUntilMs = 0;
+const discordRouteToBucketMap = new Map<string, string>();
+const discordBucketHoldUntilMs = new Map<string, number>();
+const discordRouteHoldUntilMs = new Map<string, number>();
 
 function isDiscordRestMethod(value: string): value is DiscordRestMethod {
   switch (value.toUpperCase()) {
@@ -141,8 +152,16 @@ function buildDiscordApiUrl(params: {
 }
 
 function urlEncodeAuditReason(reason: string): string {
-  // Discord requires URL-encoded audit log reason.
-  return encodeURIComponent(reason).slice(0, 1_000);
+  // Discord requires URL-encoded audit-log reasons, capped to a fixed header budget.
+  let encoded = '';
+  for (const char of reason) {
+    const encodedChar = encodeURIComponent(char);
+    if (encoded.length + encodedChar.length > MAX_AUDIT_LOG_REASON_HEADER_CHARS) {
+      break;
+    }
+    encoded += encodedChar;
+  }
+  return encoded;
 }
 
 function resolveUploadLimits(): { maxFiles: number; maxBytesPerFile: number; maxTotalBytes: number } {
@@ -182,11 +201,247 @@ function trimToMaxChars(value: string, maxChars: number): { text: string; trunca
   return { text: `${value.slice(0, Math.max(1, maxChars - 1))}…`, truncated: true };
 }
 
-function sleep(delayMs: number): Promise<void> {
-  return new Promise((resolve) => {
-    const delayHandle = setTimeout(resolve, delayMs);
+function toFiniteNumber(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    const parsed = Number.parseFloat(trimmed);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+function readRetryAfterMsFromSources(params: {
+  headerRetryAfter: string | null;
+  parsedBody: unknown;
+  isJson: boolean;
+}): number {
+  const headerSeconds = toFiniteNumber(params.headerRetryAfter);
+  const bodyRetryAfterSeconds =
+    params.isJson &&
+    params.parsedBody &&
+    typeof params.parsedBody === 'object' &&
+    !Array.isArray(params.parsedBody)
+      ? toFiniteNumber((params.parsedBody as Record<string, unknown>).retry_after)
+      : null;
+  const retryAfterSeconds = bodyRetryAfterSeconds ?? headerSeconds;
+  if (retryAfterSeconds === null || retryAfterSeconds <= 0) {
+    return 0;
+  }
+  return Math.min(MAX_DISCORD_RETRY_DELAY_MS, Math.ceil(retryAfterSeconds * 1_000));
+}
+
+function readResetAfterMs(headerResetAfter: string | null): number {
+  const resetAfterSeconds = toFiniteNumber(headerResetAfter);
+  if (resetAfterSeconds === null || resetAfterSeconds <= 0) {
+    return 0;
+  }
+  return Math.min(MAX_DISCORD_RETRY_DELAY_MS, Math.ceil(resetAfterSeconds * 1_000));
+}
+
+function readRemainingFromHeaders(headers: { get: (name: string) => string | null }): number | null {
+  const raw = headers.get('x-ratelimit-remaining');
+  const parsed = toFiniteNumber(raw);
+  if (parsed === null) return null;
+  return Math.trunc(parsed);
+}
+
+function readRateLimitScope(headers: { get: (name: string) => string | null }): string | null {
+  const scope = headers.get('x-ratelimit-scope')?.trim().toLowerCase();
+  return scope ? scope : null;
+}
+
+function readGlobalRateLimitFlag(parsedBody: unknown, isJson: boolean): boolean {
+  if (!isJson || !parsedBody || typeof parsedBody !== 'object' || Array.isArray(parsedBody)) {
+    return false;
+  }
+  const flag = (parsedBody as Record<string, unknown>).global;
+  return flag === true;
+}
+
+function trimMapToMaxEntries<T>(map: Map<string, T>, maxEntries: number): void {
+  while (map.size > maxEntries) {
+    const oldestKey = map.keys().next().value;
+    if (typeof oldestKey !== 'string') {
+      break;
+    }
+    map.delete(oldestKey);
+  }
+}
+
+function pruneRateLimitState(nowMs: number): void {
+  if (discordGlobalHoldUntilMs <= nowMs) {
+    discordGlobalHoldUntilMs = 0;
+  }
+
+  for (const [bucket, holdUntilMs] of discordBucketHoldUntilMs.entries()) {
+    if (holdUntilMs <= nowMs) {
+      discordBucketHoldUntilMs.delete(bucket);
+    }
+  }
+  for (const [routeKey, holdUntilMs] of discordRouteHoldUntilMs.entries()) {
+    if (holdUntilMs <= nowMs) {
+      discordRouteHoldUntilMs.delete(routeKey);
+    }
+  }
+  for (const [routeKey, bucket] of discordRouteToBucketMap.entries()) {
+    if (!discordBucketHoldUntilMs.has(bucket)) {
+      // Keep long-lived mappings if no route hold exists; otherwise prune stale one-off mappings.
+      if (!discordRouteHoldUntilMs.has(routeKey)) {
+        discordRouteToBucketMap.delete(routeKey);
+      }
+    }
+  }
+
+  trimMapToMaxEntries(discordRouteToBucketMap, MAX_RATE_LIMIT_TRACKED_ENTRIES);
+  trimMapToMaxEntries(discordBucketHoldUntilMs, MAX_RATE_LIMIT_TRACKED_ENTRIES);
+  trimMapToMaxEntries(discordRouteHoldUntilMs, MAX_RATE_LIMIT_TRACKED_ENTRIES);
+}
+
+function trackRouteBucket(routeKey: string, bucket: string | null): void {
+  if (!bucket) return;
+  discordRouteToBucketMap.set(routeKey, bucket);
+  trimMapToMaxEntries(discordRouteToBucketMap, MAX_RATE_LIMIT_TRACKED_ENTRIES);
+}
+
+function applyRateLimitHold(params: {
+  routeKey: string;
+  bucket: string | null;
+  scope: string | null;
+  retryAfterMs: number;
+  resetAfterMs: number;
+  globalFromBody: boolean;
+}): void {
+  const waitMs = Math.max(params.retryAfterMs, params.resetAfterMs);
+  if (waitMs <= 0) return;
+
+  const holdUntilMs = Date.now() + waitMs;
+  const isGlobal = params.globalFromBody || params.scope === 'global';
+  if (isGlobal) {
+    discordGlobalHoldUntilMs = Math.max(discordGlobalHoldUntilMs, holdUntilMs);
+    return;
+  }
+
+  if (params.bucket) {
+    const existing = discordBucketHoldUntilMs.get(params.bucket) ?? 0;
+    discordBucketHoldUntilMs.set(params.bucket, Math.max(existing, holdUntilMs));
+    trimMapToMaxEntries(discordBucketHoldUntilMs, MAX_RATE_LIMIT_TRACKED_ENTRIES);
+    return;
+  }
+
+  const existing = discordRouteHoldUntilMs.get(params.routeKey) ?? 0;
+  discordRouteHoldUntilMs.set(params.routeKey, Math.max(existing, holdUntilMs));
+  trimMapToMaxEntries(discordRouteHoldUntilMs, MAX_RATE_LIMIT_TRACKED_ENTRIES);
+}
+
+function getRequiredRateLimitWait(params: {
+  routeKey: string;
+  nowMs: number;
+}): {
+  waitMs: number;
+  scope: 'global' | 'bucket' | 'route' | null;
+  bucket: string | null;
+} {
+  const globalWait = Math.max(0, discordGlobalHoldUntilMs - params.nowMs);
+  const routeBucket = discordRouteToBucketMap.get(params.routeKey) ?? null;
+  const bucketWait = routeBucket
+    ? Math.max(0, (discordBucketHoldUntilMs.get(routeBucket) ?? 0) - params.nowMs)
+    : 0;
+  const routeWait = Math.max(0, (discordRouteHoldUntilMs.get(params.routeKey) ?? 0) - params.nowMs);
+
+  if (globalWait >= bucketWait && globalWait >= routeWait && globalWait > 0) {
+    return { waitMs: globalWait, scope: 'global', bucket: null };
+  }
+  if (bucketWait >= routeWait && bucketWait > 0) {
+    return { waitMs: bucketWait, scope: 'bucket', bucket: routeBucket };
+  }
+  if (routeWait > 0) {
+    return { waitMs: routeWait, scope: 'route', bucket: null };
+  }
+  return { waitMs: 0, scope: null, bucket: routeBucket };
+}
+
+async function sleep(delayMs: number, signal?: AbortSignal): Promise<void> {
+  if (delayMs <= 0) return;
+  if (signal?.aborted) {
+    throw signal.reason instanceof Error ? signal.reason : new Error('Request aborted.');
+  }
+
+  await new Promise<void>((resolve, reject) => {
+    const delayHandle = setTimeout(() => {
+      cleanup();
+      resolve();
+    }, delayMs);
     delayHandle.unref?.();
+
+    const onAbort = () => {
+      clearTimeout(delayHandle);
+      cleanup();
+      reject(signal?.reason instanceof Error ? signal.reason : new Error('Request aborted.'));
+    };
+    const cleanup = () => {
+      signal?.removeEventListener('abort', onAbort);
+    };
+
+    signal?.addEventListener('abort', onAbort, { once: true });
   });
+}
+
+async function waitForRateLimitWindow(routeKey: string, signal?: AbortSignal): Promise<void> {
+  while (true) {
+    const nowMs = Date.now();
+    pruneRateLimitState(nowMs);
+    const hold = getRequiredRateLimitWait({ routeKey, nowMs });
+    if (hold.waitMs <= 0) {
+      return;
+    }
+    logger.info(
+      { routeKey, scope: hold.scope, bucket: hold.bucket, waitMs: hold.waitMs },
+      'discord_rest: waiting for tracked rate-limit window',
+    );
+    await sleep(hold.waitMs, signal);
+  }
+}
+
+function computeRetryDelayMs(params: {
+  status: number;
+  attempt: number;
+  retryAfterMs: number;
+  resetAfterMs: number;
+}): number {
+  if (params.retryAfterMs > 0) {
+    return params.retryAfterMs;
+  }
+  if (params.status === 429 && params.resetAfterMs > 0) {
+    return params.resetAfterMs;
+  }
+
+  const baseDelayMs = params.status === 429 ? 500 : 750;
+  const backoff = baseDelayMs * (2 ** params.attempt);
+  return Math.min(MAX_DISCORD_RETRY_DELAY_MS, backoff);
+}
+
+export function resetDiscordRestRateLimitStateForTests(): void {
+  discordGlobalHoldUntilMs = 0;
+  discordRouteToBucketMap.clear();
+  discordBucketHoldUntilMs.clear();
+  discordRouteHoldUntilMs.clear();
+}
+
+export function inspectDiscordRestRateLimitStateForTests(): {
+  globalHoldUntilMs: number;
+  routeToBucket: Record<string, string>;
+  bucketHoldUntilMs: Record<string, number>;
+  routeHoldUntilMs: Record<string, number>;
+} {
+  pruneRateLimitState(Date.now());
+  return {
+    globalHoldUntilMs: discordGlobalHoldUntilMs,
+    routeToBucket: Object.fromEntries(discordRouteToBucketMap),
+    bucketHoldUntilMs: Object.fromEntries(discordBucketHoldUntilMs),
+    routeHoldUntilMs: Object.fromEntries(discordRouteHoldUntilMs),
+  };
 }
 
 async function readResponseBytesWithLimit(response: Response, maxBytes: number): Promise<Uint8Array> {
@@ -442,6 +697,7 @@ export async function discordRestRequest(params: {
   multipartBodyMode?: DiscordRestMultipartBodyMode;
   reason?: string;
   maxResponseChars?: number;
+  allowNonIdempotentRetries?: boolean;
   signal?: AbortSignal;
 }): Promise<Record<string, unknown>> {
   if (!config.DISCORD_TOKEN?.trim()) {
@@ -452,6 +708,8 @@ export async function discordRestRequest(params: {
   if (!isDiscordRestMethod(method)) {
     throw new Error(`Unsupported Discord REST method: ${params.method}`);
   }
+  const allowNonIdempotentRetries = params.allowNonIdempotentRetries === true;
+  const canRetryTransientFailures = allowNonIdempotentRetries || IDEMPOTENT_RETRY_METHODS.has(method);
 
   const path = normalizeApiPath(params.path);
   const query = normalizeQuery(params.query);
@@ -491,26 +749,80 @@ export async function discordRestRequest(params: {
   }
 
   logger.info({ method, path, hasFiles, fileCount: files.length }, 'discord_rest: request');
+  const routeKey = `${method} ${path}`;
 
-  for (let attempt = 0; attempt < 2; attempt += 1) {
-    const response = await fetch(url, {
-      method,
-      headers,
-      body,
-      signal: params.signal,
-    });
+  for (let attempt = 0; attempt < MAX_DISCORD_RETRY_ATTEMPTS; attempt += 1) {
+    await waitForRateLimitWindow(routeKey, params.signal);
 
+    let response: Response;
+    try {
+      response = await fetch(url, {
+        method,
+        headers,
+        body,
+        signal: params.signal,
+      });
+    } catch (error) {
+      const retriesRemaining = attempt < MAX_DISCORD_RETRY_ATTEMPTS - 1;
+      if (!retriesRemaining || !canRetryTransientFailures) {
+        throw error;
+      }
+      const waitMs = computeRetryDelayMs({
+        status: 503,
+        attempt,
+        retryAfterMs: 0,
+        resetAfterMs: 0,
+      });
+      logger.warn(
+        {
+          method,
+          path,
+          attempt: attempt + 1,
+          maxAttempts: MAX_DISCORD_RETRY_ATTEMPTS,
+          waitMs,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        'discord_rest: transient fetch failure, retrying request',
+      );
+      await sleep(waitMs, params.signal);
+      continue;
+    }
+
+    const rawBucket = response.headers.get('x-ratelimit-bucket');
+    const bucket = rawBucket?.trim() || null;
+    const scope = readRateLimitScope(response.headers);
     const rateLimit = {
       limit: response.headers.get('x-ratelimit-limit'),
       remaining: response.headers.get('x-ratelimit-remaining'),
       resetAfter: response.headers.get('x-ratelimit-reset-after'),
       retryAfter: response.headers.get('retry-after'),
-      bucket: response.headers.get('x-ratelimit-bucket'),
+      bucket: rawBucket,
       scope: response.headers.get('x-ratelimit-scope'),
     };
 
+    trackRouteBucket(routeKey, bucket);
+
     const { parsed, rawText, isJson } = await safeReadResponseBody(response);
     const trimmed = trimToMaxChars(rawText, maxResponseChars);
+    const retryAfterMs = readRetryAfterMsFromSources({
+      headerRetryAfter: response.headers.get('retry-after'),
+      parsedBody: parsed,
+      isJson,
+    });
+    const resetAfterMs = readResetAfterMs(response.headers.get('x-ratelimit-reset-after'));
+    const remaining = readRemainingFromHeaders(response.headers);
+    const globalFromBody = readGlobalRateLimitFlag(parsed, isJson);
+    const shouldTrackHold = response.status === 429 || (remaining !== null && remaining <= 0 && resetAfterMs > 0);
+    if (shouldTrackHold) {
+      applyRateLimitHold({
+        routeKey,
+        bucket,
+        scope,
+        retryAfterMs,
+        resetAfterMs,
+        globalFromBody,
+      });
+    }
 
     if (response.ok) {
       return {
@@ -527,43 +839,39 @@ export async function discordRestRequest(params: {
       };
     }
 
-    if (response.status === 429 && attempt === 0) {
-      const retryAfterHeader = response.headers.get('retry-after')?.trim() ?? '';
-      const retryAfterFromHeader = retryAfterHeader ? Number.parseFloat(retryAfterHeader) : Number.NaN;
-      const retryAfterFromJson =
-        isJson &&
-        parsed &&
-        typeof parsed === 'object' &&
-        !Array.isArray(parsed) &&
-        typeof (parsed as Record<string, unknown>).retry_after === 'number'
-          ? (parsed as Record<string, unknown>).retry_after
-          : Number.NaN;
-
-      const retryAfterSeconds = Number.isFinite(retryAfterFromJson)
-        ? (retryAfterFromJson as number)
-        : retryAfterFromHeader;
-      const waitMs = Math.max(0, Math.min(5_000, Math.ceil((retryAfterSeconds || 0) * 1000)));
-
+    const isRetryableStatus = RETRYABLE_DISCORD_STATUS_CODES.has(response.status);
+    const retriesRemaining = attempt < MAX_DISCORD_RETRY_ATTEMPTS - 1;
+    const statusAllowsRetry =
+      response.status === 429 || canRetryTransientFailures;
+    if (isRetryableStatus && statusAllowsRetry && retriesRemaining) {
+      const waitMs = computeRetryDelayMs({
+        status: response.status,
+        attempt,
+        retryAfterMs,
+        resetAfterMs,
+      });
       logger.warn(
         {
           method,
           path,
+          attempt: attempt + 1,
+          maxAttempts: MAX_DISCORD_RETRY_ATTEMPTS,
+          status: response.status,
           waitMs,
-          rateLimit,
-          attempt,
+          bucket,
+          scope,
         },
-        'discord_rest: rate limited, retrying once',
+        'discord_rest: transient Discord response, retrying request',
       );
-
-      if (waitMs > 0) {
-        await sleep(waitMs);
-      }
+      await sleep(waitMs, params.signal);
       continue;
     }
 
     const hint = response.status === 429
       ? 'Discord rate limited the request. Retry after the indicated delay.'
-      : undefined;
+      : response.status >= 500 && response.status < 600
+        ? 'Discord returned a transient server error. Retry the request.'
+        : undefined;
 
     return {
       ok: false,
@@ -579,7 +887,6 @@ export async function discordRestRequest(params: {
     };
   }
 
-  // Unreachable in practice; the loop either returns or continues on the first 429 retry.
   return {
     ok: false,
     method,
@@ -588,8 +895,8 @@ export async function discordRestRequest(params: {
     statusText: 'Too Many Requests',
     rateLimit: {},
     isJson: false,
-    error: 'Discord rate limited the request.',
+    error: 'Discord REST retry budget exhausted.',
     truncated: false,
-    guidance: 'Discord rate limited the request. Retry after the indicated delay.',
+    guidance: 'Discord REST retries were exhausted. Retry after the indicated delay.',
   };
 }
