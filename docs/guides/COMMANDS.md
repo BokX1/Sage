@@ -98,7 +98,7 @@ Examples:
 Destructive or sensitive operations still require explicit approval through Sage-authored buttons.
 Requester-facing governance cards stay compact in the source channel and move through states like queued, joined existing review, approved, executed, rejected, failed, or expired.
 If a server review channel is configured, Sage posts the detailed reviewer card there; otherwise the reviewer card stays in the source channel by default.
-Equivalent unresolved requests are coalesced, so repeated asks for the same admin action should point back to one pending approval and one reviewer card instead of spawning duplicates.
+Equivalent unresolved requests are coalesced, so repeated asks for the same admin action should point back to one approval review request and one reviewer card instead of spawning duplicates.
 Rejections collect a short reason through a modal and show that reason back on the requester-facing status card.
 For moderation, Sage works best when you reply directly to the target message or provide an exact Discord message link, mention, or ID; it should use exact message-history evidence rather than summaries before taking enforcement action.
 Normal channel replies should stay operator-friendly: Sage should not paste raw tool payloads, approval commands, or internal retry chatter into chat while an approval is pending.

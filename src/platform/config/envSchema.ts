@@ -327,20 +327,20 @@ export const testDefaults: Record<string, string> = {
   // Output / Runtime Control
   CHAT_MAX_OUTPUT_TOKENS: '1800',
   LLM_DOCTOR_PING: '0',
-  AGENTIC_TOOL_LOOP_ENABLED: 'true',
-  AGENTIC_TOOL_MAX_ROUNDS: '6',
-  AGENTIC_TOOL_MAX_CALLS_PER_ROUND: '5',
-  AGENTIC_TOOL_TIMEOUT_MS: '45000',
-  AGENTIC_TOOL_MAX_OUTPUT_TOKENS: '1200',
-  AGENTIC_TOOL_RESULT_MAX_CHARS: '8000',
-  AGENTIC_TOOL_GITHUB_GROUNDED_MODE: 'true',
-  AGENTIC_TOOL_PARALLEL_READ_ONLY_ENABLED: 'true',
-  AGENTIC_TOOL_MAX_PARALLEL_READ_ONLY: '4',
-  AGENTIC_TOOL_LOOP_TIMEOUT_MS: '120000',
-  AGENTIC_TOOL_MEMO_ENABLED: 'true',
-  AGENTIC_TOOL_MEMO_TTL_MS: '900000',
-  AGENTIC_TOOL_MEMO_MAX_ENTRIES: '250',
-  AGENTIC_TOOL_MEMO_MAX_RESULT_JSON_CHARS: '200000',
+  AGENT_GRAPH_MAX_STEPS: '6',
+  AGENT_GRAPH_MAX_TOOL_CALLS_PER_STEP: '5',
+  AGENT_GRAPH_TOOL_TIMEOUT_MS: '45000',
+  AGENT_GRAPH_MAX_OUTPUT_TOKENS: '1200',
+  AGENT_GRAPH_MAX_RESULT_CHARS: '8000',
+  AGENT_GRAPH_GITHUB_GROUNDED_MODE: 'true',
+  AGENT_GRAPH_READONLY_PARALLEL_ENABLED: 'true',
+  AGENT_GRAPH_MAX_PARALLEL_READONLY: '4',
+  AGENT_GRAPH_MAX_DURATION_MS: '120000',
+  AGENT_GRAPH_MEMO_ENABLED: 'true',
+  AGENT_GRAPH_MEMO_TTL_MS: '900000',
+  AGENT_GRAPH_MEMO_MAX_ENTRIES: '250',
+  AGENT_GRAPH_MEMO_MAX_RESULT_JSON_CHARS: '200000',
+  AGENT_GRAPH_RECURSION_LIMIT: '16',
 
   // Security
   SECRET_ENCRYPTION_KEY: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
@@ -502,26 +502,26 @@ export const envSchema = z.object({
   // Output / Runtime Control
   CHAT_MAX_OUTPUT_TOKENS: z.coerce.number().int().min(128).max(16000).default(1800),
   LLM_DOCTOR_PING: z.enum(['0', '1']).default('0'),
-  AGENTIC_TOOL_LOOP_ENABLED: z.enum(['true', 'false']).default('true').transform((v) => v === 'true'),
-  AGENTIC_TOOL_MAX_ROUNDS: z.coerce.number().int().min(1).max(10).default(6),
-  AGENTIC_TOOL_MAX_CALLS_PER_ROUND: z.coerce.number().int().min(1).max(10).default(5),
-  AGENTIC_TOOL_TIMEOUT_MS: z.coerce.number().int().min(1000).max(120000).default(45000),
-  AGENTIC_TOOL_MAX_OUTPUT_TOKENS: z.coerce.number().int().min(128).max(8000).default(1200),
-  AGENTIC_TOOL_RESULT_MAX_CHARS: z.coerce.number().int().min(500).max(50000).default(8000),
-  AGENTIC_TOOL_GITHUB_GROUNDED_MODE: z
+  AGENT_GRAPH_MAX_STEPS: z.coerce.number().int().min(1).max(10).default(6),
+  AGENT_GRAPH_MAX_TOOL_CALLS_PER_STEP: z.coerce.number().int().min(1).max(10).default(5),
+  AGENT_GRAPH_TOOL_TIMEOUT_MS: z.coerce.number().int().min(1000).max(120000).default(45000),
+  AGENT_GRAPH_MAX_OUTPUT_TOKENS: z.coerce.number().int().min(128).max(8000).default(1200),
+  AGENT_GRAPH_MAX_RESULT_CHARS: z.coerce.number().int().min(500).max(50000).default(8000),
+  AGENT_GRAPH_GITHUB_GROUNDED_MODE: z
     .enum(['true', 'false'])
     .default('true')
     .transform((v) => v === 'true'),
-  AGENTIC_TOOL_PARALLEL_READ_ONLY_ENABLED: z
+  AGENT_GRAPH_READONLY_PARALLEL_ENABLED: z
     .enum(['true', 'false'])
     .default('true')
     .transform((v) => v === 'true'),
-  AGENTIC_TOOL_MAX_PARALLEL_READ_ONLY: z.coerce.number().int().min(1).max(10).default(4),
-  AGENTIC_TOOL_LOOP_TIMEOUT_MS: z.coerce.number().int().min(10_000).max(300_000).default(120_000),
-  AGENTIC_TOOL_MEMO_ENABLED: z.enum(['true', 'false']).default('true').transform((v) => v === 'true'),
-  AGENTIC_TOOL_MEMO_TTL_MS: z.coerce.number().int().min(1_000).max(6 * 60 * 60_000).default(900_000),
-  AGENTIC_TOOL_MEMO_MAX_ENTRIES: z.coerce.number().int().min(1).max(5_000).default(250),
-  AGENTIC_TOOL_MEMO_MAX_RESULT_JSON_CHARS: z.coerce.number().int().min(1_000).max(2_000_000).default(200_000),
+  AGENT_GRAPH_MAX_PARALLEL_READONLY: z.coerce.number().int().min(1).max(10).default(4),
+  AGENT_GRAPH_MAX_DURATION_MS: z.coerce.number().int().min(10_000).max(300_000).default(120_000),
+  AGENT_GRAPH_MEMO_ENABLED: z.enum(['true', 'false']).default('true').transform((v) => v === 'true'),
+  AGENT_GRAPH_MEMO_TTL_MS: z.coerce.number().int().min(1_000).max(6 * 60 * 60_000).default(900_000),
+  AGENT_GRAPH_MEMO_MAX_ENTRIES: z.coerce.number().int().min(1).max(5_000).default(250),
+  AGENT_GRAPH_MEMO_MAX_RESULT_JSON_CHARS: z.coerce.number().int().min(1_000).max(2_000_000).default(200_000),
+  AGENT_GRAPH_RECURSION_LIMIT: z.coerce.number().int().min(2).max(64).default(16),
 
   // Security
   SECRET_ENCRYPTION_KEY: z.string().regex(/^[0-9a-fA-F]{64}$/),

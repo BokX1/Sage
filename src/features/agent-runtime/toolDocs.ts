@@ -780,7 +780,7 @@ export const discordAdminToolDoc = registerRoutedToolDoc({
       restrictions: ['Requires admin context.', 'Disabled in autopilot turns.', 'Requires guild context.'],
       resultNotes: [
         'Message and user refs accept raw IDs, mentions, Discord message URLs, or direct-reply shorthand when the runtime can resolve the target unambiguously.',
-        'The moderation queue stores a canonical target snapshot so equivalent requests can coalesce onto one pending approval.',
+        'The moderation queue stores a canonical target snapshot so equivalent requests can coalesce onto one approval review request.',
       ],
       examples: [
         { action: 'submit_moderation', request: { action: 'timeout_member', userId: '<@123>', durationMinutes: 30, reason: 'Spam' } },

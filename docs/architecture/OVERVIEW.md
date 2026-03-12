@@ -25,7 +25,7 @@ How Sage processes every message — from raw Discord event to verified, tool-au
 
 ## 💡 Design Philosophy
 
-Sage is a **single-agent runtime** — not a multi-agent graph. Every message flows through one unified execution path (`runChatTurn`) with an iterative tool loop that fetches context, executes actions, and synthesizes a final reply.
+Sage is a **single-agent runtime** built around one custom LangGraph execution path. Every message flows through `runChatTurn`, which assembles context and then hands control to the agent graph for model calls, tool execution, approval interrupts, and finalization.
 
 **Why single-agent?**
 
@@ -59,7 +59,7 @@ flowchart TD
         CB[Context Builder]:::runtime
         BG[Context Budgeter]:::runtime
         PC[Prompt Composer]:::runtime
-        TL[Tool Call Loop]:::runtime
+        AG["Agent Graph (LangGraph)"]:::runtime
     end
 
     subgraph Memory["Memory Layer"]
@@ -81,20 +81,20 @@ flowchart TD
     IC --> CE
     RT --> CB --> BG
     BG --> PC --> LLM[LLM Provider]:::llm
-    LLM --> TL
-    TL --> MT & ST & DT & AT & GT
+    LLM --> AG
+    AG --> MT & ST & DT & AT & GT
     MT --> PG & MG
-    TL -->|"Final Answer"| ME
+    AG -->|"Final Answer"| ME
 ```
 
 | Component | File | Purpose |
 |:---|:---|:---|
 | **Chat Engine** | `src/features/chat/chat-engine.ts` | Entry point — receives Discord events, orchestrates `runChatTurn` |
-| **Agent Runtime** | `src/features/agent-runtime/agentRuntime.ts` | The single `runChatTurn` function: model resolution, prompt assembly, tool loop, trace persistence |
+| **Agent Runtime** | `src/features/agent-runtime/agentRuntime.ts` | The single `runChatTurn` function: model resolution, prompt assembly, graph invocation, trace persistence |
 | **Context Builder** | `src/features/agent-runtime/contextBuilder.ts` | Composes prioritized message blocks (system prompt, runtime instructions, optional server instructions/voice context, transcript, reply context) |
 | **Context Budgeter** | `src/features/agent-runtime/contextBudgeter.ts` | Token-aware block sizing with configurable per-block budgets |
 | **Prompt Composer** | `src/features/agent-runtime/promptComposer.ts` | Assembles the final system prompt with personality, capability guidance, and silent native tool-use rules |
-| **Tool Call Loop** | `src/features/agent-runtime/toolCallLoop.ts` | Iterative tool execution with bounded rounds, parallel read-only optimization, compact result reinjection, and timeout enforcement |
+| **Agent Graph Runtime** | `src/features/agent-runtime/langgraph/runtime.ts` | Custom LangGraph runtime for model calls, bounded tool execution, approval interrupts, forced finalization, and checkpointed resumes |
 | **Tool Registry** | `src/features/agent-runtime/toolRegistry.ts` | Zod-validated tool definitions with OpenAI-compatible spec generation |
 | **Default Tools** | `src/features/agent-runtime/defaultTools.ts` | All 15 built-in top-level tool definitions |
 
@@ -110,7 +110,7 @@ sequenceDiagram
     participant CE as Chat Engine
     participant RT as runChatTurn
     participant LLM as LLM Provider
-    participant TL as Tool Loop
+    participant AG as Agent Graph
     participant T as Tools
 
     U->>CE: Discord message
@@ -122,14 +122,14 @@ sequenceDiagram
     LLM->>RT: Response (text or tool calls)
 
     alt Tool calls detected
-        RT->>TL: Enter iterative tool loop
-        loop Up to AGENTIC_TOOL_MAX_ROUNDS
-            TL->>T: Execute validated tool calls
-            T->>TL: Tool results
-            TL->>LLM: Feed results back
-            LLM->>TL: Next response
+        RT->>AG: Enter LangGraph runtime
+        loop Up to AGENT_GRAPH_MAX_STEPS
+            AG->>T: Execute validated tool calls
+            T->>AG: Tool results
+            AG->>LLM: Feed results back
+            LLM->>AG: Next response
         end
-        TL->>RT: Final plain-text answer + attachments
+        AG->>RT: Final plain-text answer + attachments
     end
 
     RT->>RT: Persist trace (if TRACE_ENABLED)
@@ -141,8 +141,8 @@ sequenceDiagram
 
 1. **Single-agent, single-model** — no route-mapped model selection.
 2. **Tool-driven context** — memory, social graph, voice data are fetched through tools, not pre-injected.
-3. **Bounded tool loop** — configurable max rounds (`AGENTIC_TOOL_MAX_ROUNDS`) and calls per round (`AGENTIC_TOOL_MAX_CALLS_PER_ROUND`).
-4. **Parallel read-only optimization** — read-only tools can execute concurrently within a round.
+3. **Bounded graph execution** — configurable max steps (`AGENT_GRAPH_MAX_STEPS`) and tool calls per step (`AGENT_GRAPH_MAX_TOOL_CALLS_PER_STEP`).
+4. **Parallel read-only optimization** — read-only tools can execute concurrently within a step.
 5. **Trace persistence** — every turn optionally persists route, budget, tool, and quality metadata.
 
 ---
@@ -230,11 +230,11 @@ Approval UX:
 
 - Sage posts one compact requester-facing status card per queued admin action in the source channel.
 - Detailed reviewer cards route to the configured governance review channel when `approvalReviewChannelId` is set, or use the source channel by default when it is not.
-- Equivalent unresolved approval-gated requests are coalesced onto the same pending action and reviewer card instead of opening duplicate cards.
+- Equivalent unresolved approval-gated requests are coalesced onto the same approval review request and reviewer card instead of opening duplicate cards.
 - Rejecting an action collects a short modal reason and propagates that reason back to the requester-facing resolution card.
 - When an action resolves (approve/reject/execute/fail/expire), Sage edits the requester-facing status card with the outcome and updates the reviewer card state.
 - Resolved reviewer cards auto-delete after ~60 seconds to avoid channel clutter (including after restarts via DB-backed cleanup).
-- After a `pending_approval` tool result, the runtime stops retrying the same approval-gated action for the rest of that turn.
+- After an approval interrupt is materialized, the graph keeps the paused turn stable instead of retrying the same approval-gated write again.
 
 Read-only helpers are also exposed across the routed Discord tools:
 

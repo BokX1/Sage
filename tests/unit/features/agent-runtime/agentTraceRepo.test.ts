@@ -48,13 +48,13 @@ describe('AgentTraceRepo', () => {
         create: expect.objectContaining({
           id: 'trace-123',
           routeKind: 'single',
-          reasoningText: null,
         }),
         update: expect.objectContaining({
           routeKind: 'single',
-          reasoningText: null,
         }),
       });
+      expect(mockUpsert.mock.calls[0]?.[0].create).not.toHaveProperty('reasoningText');
+      expect(mockUpsert.mock.calls[0]?.[0].update).not.toHaveProperty('reasoningText');
     });
 
     it('embeds agent events/quality/budget into tokenJson payload', async () => {
@@ -129,11 +129,16 @@ describe('AgentTraceRepo', () => {
       expect(mockUpdate).toHaveBeenCalledWith({
         where: { id: 'trace-123' },
         data: {
-          reasoningText: null,
+          approvalRequestId: null,
+          graphStatus: null,
+          interruptJson: Prisma.JsonNull,
+          parentTraceId: null,
           replyText: 'Final reply text',
+          threadId: null,
           toolJson: Prisma.JsonNull,
         },
       });
+      expect(mockUpdate.mock.calls[0]?.[0].data).not.toHaveProperty('reasoningText');
     });
 
     it('persists quality and budget JSON when provided', async () => {
@@ -156,24 +161,6 @@ describe('AgentTraceRepo', () => {
           qualityJson: expect.any(Object),
           budgetJson: expect.any(Object),
           agentEventsJson: expect.any(Array),
-        }),
-      });
-    });
-
-    it('suppresses top-level reasoning text even when provided at trace end', async () => {
-      mockUpdate.mockResolvedValue({});
-
-      await updateTraceEnd({
-        id: 'trace-123',
-        reasoningText: 'Need a quick lookup first.',
-        replyText: 'Final reply text',
-      });
-
-      expect(mockUpdate).toHaveBeenCalledWith({
-        where: { id: 'trace-123' },
-        data: expect.objectContaining({
-          reasoningText: null,
-          replyText: 'Final reply text',
         }),
       });
     });

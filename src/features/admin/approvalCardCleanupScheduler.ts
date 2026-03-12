@@ -1,7 +1,7 @@
 import {
-  clearPendingAdminActionApprovalMessageId,
-  listPendingAdminActionsWithApprovalCardsReadyForDeletion,
-} from './pendingAdminActionRepo';
+  clearApprovalReviewReviewerMessageId,
+  listApprovalReviewsWithReviewerCardsReadyForDeletion,
+} from './approvalReviewRequestRepo';
 import { discordRestRequestGuildScoped } from '../../platform/discord/discordRestPolicy';
 import { logger } from '../../platform/logging/logger';
 
@@ -28,13 +28,13 @@ export function initApprovalCardCleanupScheduler(): void {
 
     try {
       const resolvedBefore = new Date(Date.now() - CLEANUP_INTERVAL_MS);
-      const actions = await listPendingAdminActionsWithApprovalCardsReadyForDeletion({
+      const actions = await listApprovalReviewsWithReviewerCardsReadyForDeletion({
         resolvedBefore,
         limit: CLEANUP_BATCH_LIMIT,
       });
 
       for (const action of actions) {
-        const approvalMessageId = action.approvalMessageId?.trim();
+        const approvalMessageId = action.reviewerMessageId?.trim();
         if (!approvalMessageId) {
           continue;
         }
@@ -55,7 +55,7 @@ export function initApprovalCardCleanupScheduler(): void {
             status === 403;
 
           if (shouldClear) {
-            await clearPendingAdminActionApprovalMessageId(action.id).catch((error) => {
+            await clearApprovalReviewReviewerMessageId(action.id).catch((error) => {
               logger.warn({ error, actionId: action.id }, 'Failed to clear approval message id after cleanup deletion');
             });
           } else if (status !== 429) {
@@ -78,7 +78,7 @@ export function initApprovalCardCleanupScheduler(): void {
             'Approval card cleanup threw; clearing id to avoid repeated attempts',
           );
 
-          await clearPendingAdminActionApprovalMessageId(action.id).catch(() => {
+          await clearApprovalReviewReviewerMessageId(action.id).catch(() => {
             // Ignore cleanup failures.
           });
         }

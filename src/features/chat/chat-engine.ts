@@ -12,7 +12,6 @@ import {
   CurrentTurnContext,
   ReplyTargetContext,
 } from '../agent-runtime/continuityContext';
-import type { PendingAdminActionNotice } from '../agent-runtime/pendingApprovals';
 import { LLMMessageContent } from '../../platform/llm/llm-types';
 import { config } from '../../platform/config/env';
 
@@ -65,8 +64,6 @@ export async function generateChatReply(params: {
   replyText: string;
   meta?: { kind?: 'missing_api_key' };
   files?: Array<{ attachment: Buffer; name: string }>;
-  pendingAdminActions?: PendingAdminActionNotice[];
-  pendingAdminActionIds?: string[];
 }> {
   // Enforce sequential processing per user
   const limit = limitByKey(params.userId, 1);
@@ -230,8 +227,6 @@ export async function generateChatReply(params: {
       replyText,
       meta: result.meta,
       files: result.files,
-      pendingAdminActions: result.pendingAdminActions,
-      pendingAdminActionIds: result.pendingAdminActionIds,
     };
   });
 }

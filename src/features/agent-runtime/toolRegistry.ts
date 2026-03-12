@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { sanitizeJsonSchemaForProvider } from '../../shared/validation/json-schema';
 import { buildToolErrorDetails, extractToolErrorDetails, type ToolErrorDetails } from './toolErrors';
 import type { CurrentTurnContext, ReplyTargetContext } from './continuityContext';
+import { isToolControlSignal } from './toolControlSignals';
 
 // Guardrail against runaway or malicious tool payloads (for example oversized base64 blobs).
 // Must be large enough to support legitimate multipart/file workflows.
@@ -99,6 +100,17 @@ function buildValidationHint(toolName: string): string | undefined {
 /** Carry immutable context passed into every tool execution. */
 export interface ToolExecutionContext {
   traceId: string;
+  graphThreadId?: string;
+  graphRunKind?: 'turn' | 'approval_resume';
+  graphStep?: number;
+  approvalRequestId?: string | null;
+  approvalResume?: {
+    requestId: string;
+    decision: 'approved' | 'rejected' | 'expired';
+    reviewerId?: string | null;
+    decisionReasonText?: string | null;
+    resumeTraceId?: string | null;
+  } | null;
   userId: string;
   channelId: string;
   guildId?: string | null;
@@ -312,6 +324,9 @@ export class ToolRegistry {
       const result = await tool.execute(validation.args, ctx);
       return { success: true, result };
     } catch (err) {
+      if (isToolControlSignal(err)) {
+        throw err;
+      }
       const message = err instanceof Error ? err.message : String(err);
       const errorDetails = extractToolErrorDetails(err) ?? undefined;
       return {

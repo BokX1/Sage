@@ -10,7 +10,7 @@ import {
   SeparatorSpacingSize,
   type APITextDisplayComponent,
 } from 'discord-api-types/payloads/v10';
-import type { PendingAdminActionRecord } from './pendingAdminActionRepo';
+import type { ApprovalReviewRequestRecord } from './approvalReviewRequestRepo';
 import { readPreparedModerationEnvelope, type PreparedModerationEnvelope } from './discordModeration';
 
 type InteractiveApiButtonStyle =
@@ -58,7 +58,7 @@ function asString(value: unknown): string | null {
   return trimmed ? trimmed : null;
 }
 
-function statusLabel(action: PendingAdminActionRecord, coalesced?: boolean): string {
+function statusLabel(action: ApprovalReviewRequestRecord, coalesced?: boolean): string {
   switch (action.status) {
     case 'pending':
       return coalesced ? 'Joined existing review' : 'Queued for review';
@@ -75,7 +75,7 @@ function statusLabel(action: PendingAdminActionRecord, coalesced?: boolean): str
   }
 }
 
-function accentColorForState(action: PendingAdminActionRecord): number {
+function accentColorForState(action: ApprovalReviewRequestRecord): number {
   switch (action.status) {
     case 'pending':
       return 0x5865f2;
@@ -278,17 +278,15 @@ function summarizeDiscordRestWrite(request: Record<string, unknown>): Governance
   };
 }
 
-function summarizePendingAction(action: PendingAdminActionRecord): GovernanceSummary {
-  const payload = normalizeUnknownRecord(action.payloadJson) ?? {};
+function summarizeApprovalRequest(action: ApprovalReviewRequestRecord): GovernanceSummary {
+  const payload = normalizeUnknownRecord(action.executionPayloadJson) ?? {};
 
   if (action.kind === 'server_instructions_update') {
     return summarizeServerInstructionUpdate(payload);
   }
 
   if (action.kind === 'discord_queue_moderation_action') {
-    const prepared = readPreparedModerationEnvelope(action.payloadJson, {
-      sourceChannelId: action.sourceChannelId,
-    });
+    const prepared = readPreparedModerationEnvelope(action.executionPayloadJson);
     const moderationAction = normalizeUnknownRecord(prepared?.canonicalAction ?? payload.action) ?? {};
     return summarizeModerationAction(moderationAction, prepared);
   }
@@ -336,7 +334,7 @@ function button(params: {
 }
 
 function buildRequesterStateCopy(params: {
-  action: PendingAdminActionRecord;
+  action: ApprovalReviewRequestRecord;
   coalesced?: boolean;
   summary: GovernanceSummary;
 }): string[] {
@@ -363,11 +361,11 @@ function buildRequesterStateCopy(params: {
   return lines;
 }
 
-export function buildPendingAdminActionRequesterCardPayload(params: {
-  action: PendingAdminActionRecord;
+export function buildApprovalReviewRequesterCardPayload(params: {
+  action: ApprovalReviewRequestRecord;
   coalesced?: boolean;
 }): GovernanceMessagePayload {
-  const summary = summarizePendingAction(params.action);
+  const summary = summarizeApprovalRequest(params.action);
   const body = buildRequesterStateCopy({
     action: params.action,
     coalesced: params.coalesced,
@@ -390,13 +388,13 @@ export function buildPendingAdminActionRequesterCardPayload(params: {
   };
 }
 
-export function buildPendingAdminActionReviewerCardPayload(params: {
-  action: PendingAdminActionRecord;
+export function buildApprovalReviewReviewerCardPayload(params: {
+  action: ApprovalReviewRequestRecord;
   approveCustomId: string;
   rejectCustomId: string;
   detailsCustomId: string;
 }): GovernanceMessagePayload {
-  const summary = summarizePendingAction(params.action);
+  const summary = summarizeApprovalRequest(params.action);
   const reviewState = params.action.status === 'pending' ? 'Review required' : statusLabel(params.action);
   const lines = [
     `**${reviewState}**`,
@@ -464,17 +462,17 @@ export function buildPendingAdminActionReviewerCardPayload(params: {
   };
 }
 
-export function buildPendingAdminActionDetailsText(action: PendingAdminActionRecord): string {
-  const summary = summarizePendingAction(action);
+export function buildApprovalReviewDetailsText(action: ApprovalReviewRequestRecord): string {
+  const summary = summarizeApprovalRequest(action);
   const prepared =
     action.kind === 'discord_queue_moderation_action'
-      ? readPreparedModerationEnvelope(action.payloadJson, {
-          sourceChannelId: action.sourceChannelId,
-        })
+      ? readPreparedModerationEnvelope(action.executionPayloadJson)
       : null;
-  const payloadPreview = JSON.stringify(sanitizeForDetailView(action.payloadJson), null, 2);
+  const payloadPreview =
+    JSON.stringify(sanitizeForDetailView(action.executionPayloadJson), null, 2) ??
+    '[no execution payload recorded]';
   const resultPreview = action.resultJson
-    ? JSON.stringify(sanitizeForDetailView(action.resultJson), null, 2)
+    ? (JSON.stringify(sanitizeForDetailView(action.resultJson), null, 2) ?? '[unserializable result]')
     : null;
 
   return [

@@ -335,7 +335,6 @@ Per-turn telemetry for debugging and observability.
 | `toolJson` | `Json?` | Tool names, args, results |
 | `tokenJson` | `Json?` | Provider token usage |
 | `qualityJson` | `Json?` | Quality metrics |
-| `reasoningText` | `Text?` | Agent reasoning/selector text |
 | `replyText` | `Text` | Final reply |
 
 ### `ModelHealthState`
@@ -354,23 +353,30 @@ Rolling health scores per model for degraded-mode signaling.
 
 ## 🛡️ Admin & Operations Tables
 
-### `PendingAdminAction`
+### `ApprovalReviewRequest`
 
-Queued admin actions awaiting approval via Discord buttons.
+Checkpoint-backed approval review requests used to pause and resume the LangGraph runtime around Discord-governed writes.
 
 | Column | Type | Notes |
 |:---|:---|:---|
 | `id` | `String` (PK) | CUID |
+| `threadId` | `String` | LangGraph thread id (the originating trace id) |
+| `originTraceId` | `String` | Trace that opened the approval interrupt |
+| `resumeTraceId` | `String?` | Trace written when the paused graph resumes |
 | `guildId` | `String` | Guild scope |
 | `sourceChannelId` | `String` | Source/request channel used for compact requester-facing governance status cards |
 | `reviewChannelId` | `String` | Detailed reviewer card channel; defaults to the source channel when no dedicated review surface is configured |
-| `approvalMessageId` | `String?` | Discord message id for the reviewer governance card (auto-deleted after resolution; persisted for restart-safe cleanup) |
-| `requestMessageId` | `String?` | Discord message id for Sage's requester-facing status card (edited on resolution) |
-| `kind` | `String` | Action type (e.g., `server_instructions_update`, `moderation`) |
-| `payloadJson` | `Json` | Action parameters |
+| `reviewerMessageId` | `String?` | Discord message id for the reviewer governance card (auto-deleted after resolution; persisted for restart-safe cleanup) |
+| `requesterStatusMessageId` | `String?` | Discord message id for Sage's requester-facing status card (edited on resolution) |
+| `kind` | `String` | Action type (for example `server_instructions_update`, `discord_queue_moderation_action`, `discord_rest_write`) |
+| `dedupeKey` | `String` | Canonical coalescing key for equivalent unresolved approvals |
+| `executionPayloadJson` | `Json` | Canonical execution payload used after approval resume |
+| `reviewSnapshotJson` | `Json` | Reviewer-friendly snapshot of the request |
+| `interruptMetadataJson` | `Json?` | Extra interrupt metadata surfaced in traces/cards |
 | `status` | `String` | `pending` / `approved` / `rejected` / `executed` / `failed` / `expired` |
 | `expiresAt` | `DateTime` | Auto-expiry deadline |
 | `decidedBy` / `decidedAt` | `String?` / `DateTime?` | Admin decision metadata |
+| `executedAt` | `DateTime?` | Timestamp for executed or failed post-approval side effects |
 | `decisionReasonText` | `String?` | Short rejection reason collected from the governance modal when present |
 
 ### `AdminAudit`

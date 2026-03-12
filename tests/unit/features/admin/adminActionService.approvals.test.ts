@@ -1,44 +1,101 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const mocks = vi.hoisted(() => ({
-  createPendingAdminAction: vi.fn(),
-  attachPendingAdminActionRequestMessageId: vi.fn(),
-  findMatchingPendingAdminAction: vi.fn(),
-  getPendingAdminActionById: vi.fn(),
-  clearPendingAdminActionApprovalMessageId: vi.fn(),
-  markPendingAdminActionDecision: vi.fn(),
-  markPendingAdminActionExecuted: vi.fn(),
-  markPendingAdminActionExpired: vi.fn(),
-  markPendingAdminActionFailed: vi.fn(),
-  updatePendingAdminActionReviewSurface: vi.fn(),
-  clearServerInstructions: vi.fn(),
-  getServerInstructionsRecord: vi.fn(),
-  upsertServerInstructions: vi.fn(),
-  getGuildApprovalReviewChannelId: vi.fn(),
-  setGuildApprovalReviewChannelId: vi.fn(),
-  computeParamsHash: vi.fn(() => 'hash'),
-  logAdminAction: vi.fn(),
-  assertDiscordRestRequestGuildScoped: vi.fn(),
-  discordRestRequestGuildScoped: vi.fn(),
-  discordRestRequest: vi.fn(),
-}));
+const mocks = vi.hoisted(() => {
+  const allowAllPermissions = {
+    has: vi.fn(() => true),
+  };
 
-vi.mock('@/features/admin/pendingAdminActionRepo', () => ({
-  createPendingAdminAction: mocks.createPendingAdminAction,
-  attachPendingAdminActionRequestMessageId: mocks.attachPendingAdminActionRequestMessageId,
-  findMatchingPendingAdminAction: mocks.findMatchingPendingAdminAction,
-  getPendingAdminActionById: mocks.getPendingAdminActionById,
-  clearPendingAdminActionApprovalMessageId: mocks.clearPendingAdminActionApprovalMessageId,
-  markPendingAdminActionDecision: mocks.markPendingAdminActionDecision,
-  markPendingAdminActionExecuted: mocks.markPendingAdminActionExecuted,
-  markPendingAdminActionExpired: mocks.markPendingAdminActionExpired,
-  markPendingAdminActionFailed: mocks.markPendingAdminActionFailed,
-  updatePendingAdminActionReviewSurface: mocks.updatePendingAdminActionReviewSurface,
-}));
+  const botMember = {
+    permissions: allowAllPermissions,
+    permissionsIn: vi.fn(() => allowAllPermissions),
+    roles: {
+      highest: {
+        comparePositionTo: vi.fn(() => 1),
+      },
+    },
+  };
+
+  const targetMember = {
+    id: 'user-8',
+    guild: { ownerId: 'owner-1' },
+    roles: {
+      highest: {
+        position: 1,
+      },
+    },
+    communicationDisabledUntilTimestamp: Date.now() + 60_000,
+  };
+
+  const message = {
+    id: 'msg-1',
+    channelId: 'chan-9',
+    guildId: 'guild-1',
+    content: 'buy cheap spam now',
+    author: {
+      id: 'user-8',
+      username: 'spammer',
+      globalName: 'Spammer',
+      bot: false,
+    },
+    member: {
+      displayName: 'Spammer',
+    },
+    reactions: {
+      resolve: vi.fn(() => null),
+      fetch: vi.fn(async () => null),
+      cache: new Map(),
+      removeAll: vi.fn(async () => undefined),
+    },
+    delete: vi.fn(async () => undefined),
+    react: vi.fn(async () => undefined),
+    startThread: vi.fn(async () => ({ id: 'thread-1' })),
+  };
+
+  const channel = {
+    id: 'chan-9',
+    guildId: 'guild-1',
+    isDMBased: vi.fn(() => false),
+    send: vi.fn(async () => ({ id: 'sent-1' })),
+    messages: {
+      fetch: vi.fn(async () => message),
+    },
+  };
+
+  const guild = {
+    id: 'guild-1',
+    members: {
+      me: botMember,
+      fetchMe: vi.fn(async () => botMember),
+      fetch: vi.fn(async () => targetMember),
+    },
+    bans: {
+      fetch: vi.fn(async () => ({ user: { id: 'user-8' } })),
+    },
+  };
+
+  return {
+    clearServerInstructions: vi.fn(),
+    getServerInstructionsRecord: vi.fn(),
+    upsertServerInstructions: vi.fn(),
+    getGuildApprovalReviewChannelId: vi.fn(),
+    computeParamsHash: vi.fn(() => 'hash'),
+    logAdminAction: vi.fn(),
+    assertDiscordRestRequestGuildScoped: vi.fn(),
+    discordRestRequestGuildScoped: vi.fn(),
+    discordRestRequest: vi.fn(),
+    client: {
+      guilds: {
+        fetch: vi.fn(async () => guild),
+      },
+      channels: {
+        fetch: vi.fn(async () => channel),
+      },
+    },
+  };
+});
 
 vi.mock('@/features/settings/guildSettingsRepo', () => ({
   getGuildApprovalReviewChannelId: mocks.getGuildApprovalReviewChannelId,
-  setGuildApprovalReviewChannelId: mocks.setGuildApprovalReviewChannelId,
 }));
 
 vi.mock('@/features/settings/serverInstructionsRepo', () => ({
@@ -62,7 +119,7 @@ vi.mock('@/platform/discord/discordRest', () => ({
 }));
 
 vi.mock('@/platform/discord/client', () => ({
-  client: {},
+  client: mocks.client,
 }));
 
 import {
@@ -70,8 +127,19 @@ import {
   requestDiscordRestWriteForTool,
   requestServerInstructionsUpdateForTool,
 } from '@/features/admin/adminActionService';
+import { ApprovalRequiredSignal } from '@/features/agent-runtime/toolControlSignals';
 
-describe('adminActionService approval coalescing', () => {
+async function expectApprovalSignal(promise: Promise<never>): Promise<ApprovalRequiredSignal> {
+  try {
+    await promise;
+    throw new Error('Expected ApprovalRequiredSignal');
+  } catch (error) {
+    expect(error).toBeInstanceOf(ApprovalRequiredSignal);
+    return error as ApprovalRequiredSignal;
+  }
+}
+
+describe('adminActionService approval signal shaping', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.getServerInstructionsRecord.mockResolvedValue({
@@ -83,135 +151,112 @@ describe('adminActionService approval coalescing', () => {
     mocks.assertDiscordRestRequestGuildScoped.mockResolvedValue(undefined);
   });
 
-  it('reuses an existing pending server-instructions action', async () => {
-    mocks.findMatchingPendingAdminAction.mockResolvedValue({
-      id: 'action-existing',
-      guildId: 'guild-1',
-      sourceChannelId: 'channel-1',
-      reviewChannelId: 'channel-9',
-      approvalMessageId: 'approval-1',
-      requestMessageId: null,
-      requestedBy: 'admin-1',
+  it('throws an approval signal for server-instructions updates', async () => {
+    const signal = await expectApprovalSignal(
+      requestServerInstructionsUpdateForTool({
+        guildId: 'guild-1',
+        channelId: 'channel-2',
+        requestedBy: 'admin-1',
+        request: {
+          operation: 'append',
+          text: 'Add this note',
+          reason: 'Keep docs aligned',
+        },
+      }),
+    );
+
+    expect(signal.payload).toMatchObject({
       kind: 'server_instructions_update',
-      payloadJson: {},
-      status: 'pending',
-      expiresAt: new Date('2026-03-10T10:10:00.000Z'),
-      decidedBy: null,
-      decidedAt: null,
-      executedAt: null,
-      resultJson: null,
-      decisionReasonText: null,
-      errorText: null,
-      createdAt: new Date('2026-03-10T10:00:00.000Z'),
-      updatedAt: new Date('2026-03-10T10:00:00.000Z'),
-    });
-
-    const result = await requestServerInstructionsUpdateForTool({
       guildId: 'guild-1',
-      channelId: 'channel-2',
+      sourceChannelId: 'channel-2',
+      reviewChannelId: 'channel-2',
       requestedBy: 'admin-1',
-      request: {
+      visibleReplyText: 'I queued that for approval.',
+      executionPayloadJson: {
         operation: 'append',
-        text: 'Add this note',
+        newInstructionsText: 'Current instructions\nAdd this note',
         reason: 'Keep docs aligned',
+        baseVersion: 2,
+      },
+      reviewSnapshotJson: {
+        operation: 'append',
+        baseVersion: 2,
       },
     });
-
-    expect(mocks.createPendingAdminAction).not.toHaveBeenCalled();
-    expect(result).toMatchObject({
-      status: 'pending_approval',
-      actionId: 'action-existing',
-      approvalMessageId: 'approval-1',
-      coalesced: true,
-    });
+    expect(signal.payload.dedupeKey).toBe('hash');
   });
 
-  it('reuses an existing pending moderation approval action', async () => {
-    mocks.findMatchingPendingAdminAction.mockResolvedValue({
-      id: 'action-mod',
-      guildId: 'guild-1',
-      sourceChannelId: 'channel-1',
-      reviewChannelId: 'channel-9',
-      approvalMessageId: 'approval-mod',
-      requestMessageId: null,
-      requestedBy: 'admin-1',
+  it('throws an approval signal for moderation requests', async () => {
+    const signal = await expectApprovalSignal(
+      requestDiscordAdminActionForTool({
+        guildId: 'guild-1',
+        channelId: 'channel-source',
+        requestedBy: 'admin-1',
+        request: {
+          action: 'delete_message',
+          reason: 'Spam cleanup',
+        },
+        replyTarget: {
+          messageId: 'msg-1',
+          guildId: 'guild-1',
+          channelId: 'chan-9',
+          authorId: 'user-8',
+          authorDisplayName: 'Spammer',
+          authorIsBot: false,
+          replyToMessageId: null,
+          mentionedUserIds: [],
+          content: 'buy cheap spam now',
+        },
+      }),
+    );
+
+    expect(signal.payload).toMatchObject({
       kind: 'discord_queue_moderation_action',
-      payloadJson: {},
-      status: 'pending',
-      expiresAt: new Date('2026-03-10T10:10:00.000Z'),
-      decidedBy: null,
-      decidedAt: null,
-      executedAt: null,
-      resultJson: null,
-      decisionReasonText: null,
-      errorText: null,
-      createdAt: new Date('2026-03-10T10:00:00.000Z'),
-      updatedAt: new Date('2026-03-10T10:00:00.000Z'),
-    });
-
-    const result = await requestDiscordAdminActionForTool({
       guildId: 'guild-1',
-      channelId: 'channel-2',
+      sourceChannelId: 'channel-source',
+      reviewChannelId: 'channel-source',
       requestedBy: 'admin-1',
-      request: {
+      visibleReplyText: 'I queued that moderation action for approval.',
+      reviewSnapshotJson: {
         action: 'delete_message',
-        messageId: 'msg-1',
-        reason: 'cleanup',
       },
     });
-
-    expect(mocks.createPendingAdminAction).not.toHaveBeenCalled();
-    expect(result).toMatchObject({
-      status: 'pending_approval',
-      actionId: 'action-mod',
-      approvalMessageId: 'approval-mod',
-      action: 'delete_message',
-      coalesced: true,
-    });
+    expect(signal.payload.dedupeKey).toContain('delete_message');
   });
 
-  it('reuses an existing pending Discord REST write approval action', async () => {
-    mocks.findMatchingPendingAdminAction.mockResolvedValue({
-      id: 'action-rest',
-      guildId: 'guild-1',
-      sourceChannelId: 'channel-1',
-      reviewChannelId: 'channel-9',
-      approvalMessageId: 'approval-rest',
-      requestMessageId: null,
-      requestedBy: 'admin-1',
-      kind: 'discord_rest_write',
-      payloadJson: {},
-      status: 'pending',
-      expiresAt: new Date('2026-03-10T10:10:00.000Z'),
-      decidedBy: null,
-      decidedAt: null,
-      executedAt: null,
-      resultJson: null,
-      decisionReasonText: null,
-      errorText: null,
-      createdAt: new Date('2026-03-10T10:00:00.000Z'),
-      updatedAt: new Date('2026-03-10T10:00:00.000Z'),
-    });
+  it('throws an approval signal for Discord REST writes', async () => {
+    const signal = await expectApprovalSignal(
+      requestDiscordRestWriteForTool({
+        guildId: 'guild-1',
+        channelId: 'channel-2',
+        requestedBy: 'admin-1',
+        request: {
+          method: 'PATCH',
+          path: '/channels/1/messages/2',
+          body: { content: 'Updated' },
+        },
+      }),
+    );
 
-    const result = await requestDiscordRestWriteForTool({
+    expect(signal.payload).toMatchObject({
+      kind: 'discord_rest_write',
       guildId: 'guild-1',
-      channelId: 'channel-2',
+      sourceChannelId: 'channel-2',
+      reviewChannelId: 'channel-2',
       requestedBy: 'admin-1',
-      request: {
+      visibleReplyText: 'I queued that admin write for approval.',
+      executionPayloadJson: {
+        request: {
+          method: 'PATCH',
+          path: '/channels/1/messages/2',
+          body: { content: 'Updated' },
+        },
+      },
+      reviewSnapshotJson: {
         method: 'PATCH',
         path: '/channels/1/messages/2',
-        body: { content: 'Updated' },
       },
     });
-
-    expect(mocks.createPendingAdminAction).not.toHaveBeenCalled();
-    expect(result).toMatchObject({
-      status: 'pending_approval',
-      actionId: 'action-rest',
-      approvalMessageId: 'approval-rest',
-      method: 'PATCH',
-      path: '/channels/1/messages/2',
-      coalesced: true,
-    });
+    expect(signal.payload.dedupeKey).toBe('hash');
   });
 });

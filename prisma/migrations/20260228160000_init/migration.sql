@@ -58,16 +58,23 @@ CREATE TABLE "ServerInstructionsArchive" (
 );
 
 -- CreateTable
-CREATE TABLE "PendingAdminAction" (
+CREATE TABLE "ApprovalReviewRequest" (
     "id" TEXT NOT NULL,
+    "threadId" TEXT NOT NULL,
+    "originTraceId" TEXT NOT NULL,
+    "resumeTraceId" TEXT,
     "guildId" TEXT NOT NULL,
     "sourceChannelId" TEXT NOT NULL,
     "reviewChannelId" TEXT NOT NULL,
-    "approvalMessageId" TEXT,
-    "requestMessageId" TEXT,
+    "sourceMessageId" TEXT,
+    "requesterStatusMessageId" TEXT,
+    "reviewerMessageId" TEXT,
     "requestedBy" TEXT NOT NULL,
     "kind" TEXT NOT NULL,
-    "payloadJson" JSONB NOT NULL,
+    "dedupeKey" TEXT NOT NULL,
+    "executionPayloadJson" JSONB NOT NULL,
+    "reviewSnapshotJson" JSONB NOT NULL,
+    "interruptMetadataJson" JSONB,
     "status" TEXT NOT NULL,
     "expiresAt" TIMESTAMP(3) NOT NULL,
     "decidedBy" TEXT,
@@ -79,7 +86,7 @@ CREATE TABLE "PendingAdminAction" (
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
-    CONSTRAINT "PendingAdminAction_pkey" PRIMARY KEY ("id")
+    CONSTRAINT "ApprovalReviewRequest_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -232,12 +239,16 @@ CREATE TABLE "AgentTrace" (
     "channelId" TEXT NOT NULL,
     "userId" TEXT NOT NULL,
     "routeKind" TEXT NOT NULL,
+    "threadId" TEXT,
+    "parentTraceId" TEXT,
+    "graphStatus" TEXT,
+    "interruptJson" JSONB,
+    "approvalRequestId" TEXT,
     "agentEventsJson" JSONB,
     "qualityJson" JSONB,
     "budgetJson" JSONB,
     "toolJson" JSONB,
     "tokenJson" JSONB,
-    "reasoningText" TEXT,
     "replyText" TEXT NOT NULL,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
@@ -286,13 +297,22 @@ CREATE INDEX "UserProfileArchive_userId_createdAt_idx" ON "UserProfileArchive"("
 CREATE INDEX "ServerInstructionsArchive_guildId_createdAt_idx" ON "ServerInstructionsArchive"("guildId", "createdAt");
 
 -- CreateIndex
-CREATE INDEX "PendingAdminAction_guildId_createdAt_idx" ON "PendingAdminAction"("guildId", "createdAt");
+CREATE INDEX "ApprovalReviewRequest_threadId_createdAt_idx" ON "ApprovalReviewRequest"("threadId", "createdAt");
 
 -- CreateIndex
-CREATE INDEX "PendingAdminAction_status_expiresAt_idx" ON "PendingAdminAction"("status", "expiresAt");
+CREATE INDEX "ApprovalReviewRequest_originTraceId_createdAt_idx" ON "ApprovalReviewRequest"("originTraceId", "createdAt");
 
 -- CreateIndex
-CREATE INDEX "PendingAdminAction_reviewChannelId_createdAt_idx" ON "PendingAdminAction"("reviewChannelId", "createdAt");
+CREATE INDEX "ApprovalReviewRequest_guildId_createdAt_idx" ON "ApprovalReviewRequest"("guildId", "createdAt");
+
+-- CreateIndex
+CREATE INDEX "ApprovalReviewRequest_status_expiresAt_idx" ON "ApprovalReviewRequest"("status", "expiresAt");
+
+-- CreateIndex
+CREATE INDEX "ApprovalReviewRequest_reviewChannelId_createdAt_idx" ON "ApprovalReviewRequest"("reviewChannelId", "createdAt");
+
+-- CreateIndex
+CREATE INDEX "ApprovalReviewRequest_requestedBy_kind_dedupeKey_status_exp_idx" ON "ApprovalReviewRequest"("requestedBy", "kind", "dedupeKey", "status", "expiresAt");
 
 -- CreateIndex
 CREATE INDEX "DiscordInteractionSession_guildId_createdAt_idx" ON "DiscordInteractionSession"("guildId", "createdAt");
@@ -356,6 +376,12 @@ CREATE INDEX "AgentTrace_channelId_createdAt_idx" ON "AgentTrace"("channelId", "
 
 -- CreateIndex
 CREATE INDEX "AgentTrace_userId_createdAt_idx" ON "AgentTrace"("userId", "createdAt");
+
+-- CreateIndex
+CREATE INDEX "AgentTrace_threadId_createdAt_idx" ON "AgentTrace"("threadId", "createdAt");
+
+-- CreateIndex
+CREATE INDEX "AgentTrace_approvalRequestId_createdAt_idx" ON "AgentTrace"("approvalRequestId", "createdAt");
 
 -- CreateIndex
 CREATE INDEX "ModelHealthState_updatedAt_idx" ON "ModelHealthState"("updatedAt");

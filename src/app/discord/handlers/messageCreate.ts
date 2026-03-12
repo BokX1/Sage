@@ -27,7 +27,6 @@ import {
   getVisionImageUrl,
 } from './attachment-parser';
 import { isAdminFromMember } from '../../../platform/discord/admin-permissions';
-import { publishPendingAdminActionRequesterStatusMessage } from '../../../features/admin/adminActionService';
 import { buildGuildApiKeyMissingResponse } from '../../../features/discord/byopBootstrap';
 import { ReplyTargetContext } from '../../../features/agent-runtime/continuityContext';
 
@@ -735,12 +734,6 @@ export async function handleMessageCreate(message: Message) {
         isAdmin: isAdminFromMember(message.member),
       });
 
-      const pendingAdminActions =
-        result.pendingAdminActions ??
-        (result.pendingAdminActionIds ?? []).map((actionId) => ({
-          actionId,
-          coalesced: false,
-        }));
       const replyText = result.replyText || '';
 
       let didSendAnything = false;
@@ -773,24 +766,6 @@ export async function handleMessageCreate(message: Message) {
         for (const chunk of restChunks) {
           await discordChannel.send(chunk);
           didSendAnything = true;
-        }
-      }
-
-      let shouldReplyRequesterStatus = !didSendAnything;
-      for (const pendingAction of pendingAdminActions) {
-        try {
-          await publishPendingAdminActionRequesterStatusMessage({
-            actionId: pendingAction.actionId,
-            coalesced: pendingAction.coalesced,
-            replyToMessageId: shouldReplyRequesterStatus ? message.id : undefined,
-          });
-          didSendAnything = true;
-          shouldReplyRequesterStatus = false;
-        } catch (error) {
-          loggerWithTrace.warn(
-            { error, actionId: pendingAction.actionId },
-            'Failed to publish governance requester status message',
-          );
         }
       }
 

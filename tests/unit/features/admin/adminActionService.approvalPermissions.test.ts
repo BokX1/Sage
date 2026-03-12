@@ -1,12 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { PermissionsBitField } from 'discord.js';
+import type { ApprovalReviewRequestRecord } from '@/features/admin/approvalReviewRequestRepo';
 
 const ADMIN_MEMBER_PERMISSIONS = String(PermissionsBitField.Flags.ManageGuild);
 const ADMIN_AND_MODERATE_MEMBER_PERMISSIONS = String(
   PermissionsBitField.Flags.ManageGuild | PermissionsBitField.Flags.ModerateMembers,
-);
-const ADMIN_AND_BAN_MEMBER_PERMISSIONS = String(
-  PermissionsBitField.Flags.ManageGuild | PermissionsBitField.Flags.BanMembers,
 );
 
 const mocks = vi.hoisted(() => {
@@ -58,16 +56,16 @@ const mocks = vi.hoisted(() => {
   };
 
   return {
-    createPendingAdminAction: vi.fn(),
-    attachPendingAdminActionRequestMessageId: vi.fn(),
-    clearPendingAdminActionApprovalMessageId: vi.fn(),
-    findMatchingPendingAdminAction: vi.fn(),
-    getPendingAdminActionById: vi.fn(),
-    markPendingAdminActionDecisionIfPending: vi.fn(),
-    markPendingAdminActionExecutedIfApproved: vi.fn(),
-    markPendingAdminActionExpired: vi.fn(),
-    markPendingAdminActionFailedIfApproved: vi.fn(),
-    updatePendingAdminActionReviewSurface: vi.fn(),
+    createApprovalReviewRequest: vi.fn(),
+    attachApprovalReviewRequesterStatusMessageId: vi.fn(),
+    clearApprovalReviewReviewerMessageId: vi.fn(),
+    findMatchingPendingApprovalReviewRequest: vi.fn(),
+    getApprovalReviewRequestById: vi.fn(),
+    markApprovalReviewRequestDecisionIfPending: vi.fn(),
+    markApprovalReviewRequestExecutedIfApproved: vi.fn(),
+    markApprovalReviewRequestExpired: vi.fn(),
+    markApprovalReviewRequestFailedIfApproved: vi.fn(),
+    updateApprovalReviewSurface: vi.fn(),
     clearServerInstructions: vi.fn(),
     getServerInstructionsRecord: vi.fn(),
     upsertServerInstructions: vi.fn(),
@@ -88,6 +86,31 @@ const mocks = vi.hoisted(() => {
       data: { id: 'message-1' },
     })),
     discordRestRequest: vi.fn(),
+    resumeAgentGraphTurn: vi.fn(async () => ({
+      replyText: 'I queued that for approval.',
+      toolResults: [],
+      files: [],
+      roundsCompleted: 1,
+      deduplicatedCallCount: 0,
+      truncatedCallCount: 0,
+      guardrailBlockedCallCount: 0,
+      cancellationCount: 0,
+      roundEvents: [],
+      finalization: {
+        attempted: false,
+        succeeded: true,
+        fallbackUsed: false,
+        returnedToolCallCount: 0,
+        completedAt: '2026-03-12T00:00:00.000Z',
+        terminationReason: 'assistant_reply',
+      },
+      terminationReason: 'assistant_reply',
+      graphStatus: 'completed',
+      approvalInterrupt: null,
+      traceEvents: [],
+    })),
+    upsertTraceStart: vi.fn(),
+    updateTraceEnd: vi.fn(),
     client: {
       guilds: {
         fetch: vi.fn(async () => guild),
@@ -102,17 +125,17 @@ const mocks = vi.hoisted(() => {
   };
 });
 
-vi.mock('@/features/admin/pendingAdminActionRepo', () => ({
-  createPendingAdminAction: mocks.createPendingAdminAction,
-  attachPendingAdminActionRequestMessageId: mocks.attachPendingAdminActionRequestMessageId,
-  clearPendingAdminActionApprovalMessageId: mocks.clearPendingAdminActionApprovalMessageId,
-  findMatchingPendingAdminAction: mocks.findMatchingPendingAdminAction,
-  getPendingAdminActionById: mocks.getPendingAdminActionById,
-  markPendingAdminActionDecisionIfPending: mocks.markPendingAdminActionDecisionIfPending,
-  markPendingAdminActionExecutedIfApproved: mocks.markPendingAdminActionExecutedIfApproved,
-  markPendingAdminActionExpired: mocks.markPendingAdminActionExpired,
-  markPendingAdminActionFailedIfApproved: mocks.markPendingAdminActionFailedIfApproved,
-  updatePendingAdminActionReviewSurface: mocks.updatePendingAdminActionReviewSurface,
+vi.mock('@/features/admin/approvalReviewRequestRepo', () => ({
+  createApprovalReviewRequest: mocks.createApprovalReviewRequest,
+  attachApprovalReviewRequesterStatusMessageId: mocks.attachApprovalReviewRequesterStatusMessageId,
+  clearApprovalReviewReviewerMessageId: mocks.clearApprovalReviewReviewerMessageId,
+  findMatchingPendingApprovalReviewRequest: mocks.findMatchingPendingApprovalReviewRequest,
+  getApprovalReviewRequestById: mocks.getApprovalReviewRequestById,
+  markApprovalReviewRequestDecisionIfPending: mocks.markApprovalReviewRequestDecisionIfPending,
+  markApprovalReviewRequestExecutedIfApproved: mocks.markApprovalReviewRequestExecutedIfApproved,
+  markApprovalReviewRequestExpired: mocks.markApprovalReviewRequestExpired,
+  markApprovalReviewRequestFailedIfApproved: mocks.markApprovalReviewRequestFailedIfApproved,
+  updateApprovalReviewSurface: mocks.updateApprovalReviewSurface,
 }));
 
 vi.mock('@/features/settings/guildSettingsRepo', () => ({
@@ -143,20 +166,39 @@ vi.mock('@/platform/discord/client', () => ({
   client: mocks.client,
 }));
 
-import { handleAdminActionButtonInteraction } from '@/features/admin/adminActionService';
+vi.mock('@/features/agent-runtime/langgraph/runtime', () => ({
+  resumeAgentGraphTurn: mocks.resumeAgentGraphTurn,
+}));
 
-function makePendingAction(payloadJson: unknown) {
+vi.mock('@/features/agent-runtime/agent-trace-repo', () => ({
+  upsertTraceStart: mocks.upsertTraceStart,
+  updateTraceEnd: mocks.updateTraceEnd,
+}));
+
+import {
+  executeApprovedReviewRequest,
+  handleAdminActionButtonInteraction,
+} from '@/features/admin/adminActionService';
+
+function makeReviewRequest(executionPayloadJson: unknown, overrides: Partial<ApprovalReviewRequestRecord> = {}): ApprovalReviewRequestRecord {
   return {
     id: 'action-1',
+    threadId: 'thread-1',
+    originTraceId: 'trace-origin-1',
+    resumeTraceId: null,
     guildId: 'guild-1',
     sourceChannelId: 'channel-source',
     reviewChannelId: 'channel-review',
-    approvalMessageId: 'approval-1',
-    requestMessageId: 'request-1',
+    sourceMessageId: 'message-source',
+    requesterStatusMessageId: 'request-1',
+    reviewerMessageId: 'approval-1',
     requestedBy: 'admin-1',
     kind: 'discord_queue_moderation_action',
-    payloadJson,
-    status: 'pending' as const,
+    dedupeKey: 'dedupe-key',
+    executionPayloadJson,
+    reviewSnapshotJson: executionPayloadJson,
+    interruptMetadataJson: { kind: 'discord_queue_moderation_action' },
+    status: 'pending',
     expiresAt: new Date(Date.now() + 60_000),
     decidedBy: null,
     decidedAt: null,
@@ -166,6 +208,7 @@ function makePendingAction(payloadJson: unknown) {
     errorText: null,
     createdAt: new Date('2026-03-12T00:00:00.000Z'),
     updatedAt: new Date('2026-03-12T00:00:00.000Z'),
+    ...overrides,
   };
 }
 
@@ -194,8 +237,8 @@ describe('adminActionService approval permissions', () => {
   });
 
   it('checks approver permissions in the target channel for message moderation approvals', async () => {
-    mocks.getPendingAdminActionById.mockResolvedValue(
-      makePendingAction({
+    mocks.getApprovalReviewRequestById.mockResolvedValue(
+      makeReviewRequest({
         prepared: {
           version: 1,
           originalRequest: {
@@ -228,7 +271,8 @@ describe('adminActionService approval permissions', () => {
             hierarchyChecked: false,
             notes: ['Resolved from exact identifiers.'],
           },
-          dedupeKey: '{"action":"delete_message","channelId":"chan-target","messageId":"msg-1","reason":"Spam cleanup"}',
+          dedupeKey:
+            '{"action":"delete_message","channelId":"chan-target","messageId":"msg-1","reason":"Spam cleanup"}',
         },
       }),
     );
@@ -241,12 +285,12 @@ describe('adminActionService approval permissions', () => {
       content: '❌ Missing required permission to approve this action in <#chan-target>: Manage Messages.',
       ephemeral: true,
     });
-    expect(mocks.markPendingAdminActionDecisionIfPending).not.toHaveBeenCalled();
+    expect(mocks.markApprovalReviewRequestDecisionIfPending).not.toHaveBeenCalled();
   });
 
   it('uses guild-level moderation permissions for member moderation approvals', async () => {
-    mocks.getPendingAdminActionById.mockResolvedValue(
-      makePendingAction({
+    mocks.getApprovalReviewRequestById.mockResolvedValue(
+      makeReviewRequest({
         prepared: {
           version: 1,
           originalRequest: {
@@ -279,7 +323,8 @@ describe('adminActionService approval permissions', () => {
             hierarchyChecked: true,
             notes: ['Resolved from explicit user reference.'],
           },
-          dedupeKey: '{"action":"timeout_member","durationMinutes":30,"reason":"Spam cleanup","userId":"user-8"}',
+          dedupeKey:
+            '{"action":"timeout_member","durationMinutes":30,"reason":"Spam cleanup","userId":"user-8"}',
         },
       }),
     );
@@ -292,56 +337,50 @@ describe('adminActionService approval permissions', () => {
       content: '❌ Missing required permission to approve this action: Moderate Members.',
       ephemeral: true,
     });
-    expect(mocks.markPendingAdminActionDecisionIfPending).not.toHaveBeenCalled();
+    expect(mocks.markApprovalReviewRequestDecisionIfPending).not.toHaveBeenCalled();
   });
 
   it('handles an approval race without executing the action twice', async () => {
-    mocks.getPendingAdminActionById
-      .mockResolvedValueOnce(
-        makePendingAction({
-          prepared: {
-            version: 1,
-            originalRequest: {
-              action: 'timeout_member',
-              userId: 'user-8',
-              durationMinutes: 30,
-              reason: 'Spam cleanup',
-            },
-            canonicalAction: {
-              action: 'timeout_member',
-              userId: 'user-8',
-              durationMinutes: 30,
-              reason: 'Spam cleanup',
-            },
-            evidence: {
-              targetKind: 'member',
-              source: 'explicit_id',
-              channelId: null,
-              messageId: null,
-              messageUrl: null,
-              userId: 'user-8',
-              messageAuthorId: null,
-              messageAuthorDisplayName: null,
-              messageExcerpt: null,
-            },
-            preflight: {
-              approverPermission: 'Moderate Members',
-              botPermissionChecks: ['Moderate Members'],
-              targetChannelScope: null,
-              hierarchyChecked: true,
-              notes: ['Resolved from explicit user reference.'],
-            },
-            dedupeKey: '{"action":"timeout_member","durationMinutes":30,"reason":"Spam cleanup","userId":"user-8"}',
+    mocks.getApprovalReviewRequestById.mockResolvedValueOnce(
+      makeReviewRequest({
+        prepared: {
+          version: 1,
+          originalRequest: {
+            action: 'timeout_member',
+            userId: 'user-8',
+            durationMinutes: 30,
+            reason: 'Spam cleanup',
           },
-        }),
-      )
-      .mockResolvedValueOnce(
-        {
-          ...makePendingAction({}),
-          status: 'executed',
+          canonicalAction: {
+            action: 'timeout_member',
+            userId: 'user-8',
+            durationMinutes: 30,
+            reason: 'Spam cleanup',
+          },
+          evidence: {
+            targetKind: 'member',
+            source: 'explicit_id',
+            channelId: null,
+            messageId: null,
+            messageUrl: null,
+            userId: 'user-8',
+            messageAuthorId: null,
+            messageAuthorDisplayName: null,
+            messageExcerpt: null,
+          },
+          preflight: {
+            approverPermission: 'Moderate Members',
+            botPermissionChecks: ['Moderate Members'],
+            targetChannelScope: null,
+            hierarchyChecked: true,
+            notes: ['Resolved from explicit user reference.'],
+          },
+          dedupeKey:
+            '{"action":"timeout_member","durationMinutes":30,"reason":"Spam cleanup","userId":"user-8"}',
         },
-      );
-    mocks.markPendingAdminActionDecisionIfPending.mockResolvedValue(null);
+      }),
+    ).mockResolvedValueOnce(null);
+    mocks.markApprovalReviewRequestDecisionIfPending.mockResolvedValue(null);
 
     const interaction = makeInteraction({
       member: {
@@ -353,69 +392,69 @@ describe('adminActionService approval permissions', () => {
     expect(handled).toBe(true);
     expect(interaction.deferUpdate).toHaveBeenCalled();
     expect(interaction.followUp).toHaveBeenCalledWith({
-      content: 'Action is already executed.',
+      content: 'Action is already resolved.',
       ephemeral: true,
     });
-    expect(mocks.markPendingAdminActionExecutedIfApproved).not.toHaveBeenCalled();
+    expect(mocks.resumeAgentGraphTurn).not.toHaveBeenCalled();
   });
 
   it('records a noop result when deleting a message that is already gone', async () => {
-    const pendingAction = makePendingAction({
-      prepared: {
-        version: 1,
-        originalRequest: {
-          action: 'delete_message',
-          channelId: 'chan-target',
-          messageId: 'msg-1',
-          reason: 'Spam cleanup',
+    const approved = makeReviewRequest(
+      {
+        prepared: {
+          version: 1,
+          originalRequest: {
+            action: 'delete_message',
+            channelId: 'chan-target',
+            messageId: 'msg-1',
+            reason: 'Spam cleanup',
+          },
+          canonicalAction: {
+            action: 'delete_message',
+            channelId: 'chan-target',
+            messageId: 'msg-1',
+            reason: 'Spam cleanup',
+          },
+          evidence: {
+            targetKind: 'message',
+            source: 'reply_target',
+            channelId: 'chan-target',
+            messageId: 'msg-1',
+            messageUrl: 'https://discord.com/channels/guild-1/chan-target/msg-1',
+            userId: 'user-8',
+            messageAuthorId: 'user-8',
+            messageAuthorDisplayName: 'Spammer',
+            messageExcerpt: 'spam',
+          },
+          preflight: {
+            approverPermission: 'Manage Messages',
+            botPermissionChecks: ['Manage Messages'],
+            targetChannelScope: 'chan-target',
+            hierarchyChecked: false,
+            notes: ['Resolved from reply target.'],
+          },
+          dedupeKey:
+            '{"action":"delete_message","channelId":"chan-target","messageId":"msg-1","reason":"Spam cleanup"}',
         },
-        canonicalAction: {
-          action: 'delete_message',
-          channelId: 'chan-target',
-          messageId: 'msg-1',
-          reason: 'Spam cleanup',
-        },
-        evidence: {
-          targetKind: 'message',
-          source: 'reply_target',
-          channelId: 'chan-target',
-          messageId: 'msg-1',
-          messageUrl: 'https://discord.com/channels/guild-1/chan-target/msg-1',
-          userId: 'user-8',
-          messageAuthorId: 'user-8',
-          messageAuthorDisplayName: 'Spammer',
-          messageExcerpt: 'spam',
-        },
-        preflight: {
-          approverPermission: 'Manage Messages',
-          botPermissionChecks: ['Manage Messages'],
-          targetChannelScope: 'chan-target',
-          hierarchyChecked: false,
-          notes: ['Resolved from reply target.'],
-        },
-        dedupeKey: '{"action":"delete_message","channelId":"chan-target","messageId":"msg-1","reason":"Spam cleanup"}',
       },
-    });
-    mocks.getPendingAdminActionById.mockResolvedValueOnce(pendingAction).mockResolvedValueOnce(null);
-    mocks.guild.members.fetch.mockResolvedValueOnce(mocks.approverMemberWithManageMessages);
-    mocks.markPendingAdminActionDecisionIfPending.mockResolvedValue({
-      ...pendingAction,
-      status: 'approved',
-    });
+      { status: 'approved' },
+    );
+    mocks.getApprovalReviewRequestById.mockResolvedValueOnce(approved).mockResolvedValueOnce(null);
     mocks.discordRestRequestGuildScoped.mockResolvedValue({
       ok: false,
       status: 404,
       statusText: 'Not Found',
       error: 'Unknown Message',
     });
-    mocks.markPendingAdminActionExecutedIfApproved.mockResolvedValue(null);
+    mocks.markApprovalReviewRequestExecutedIfApproved.mockResolvedValue(null);
 
-    const interaction = makeInteraction();
-    const handled = await handleAdminActionButtonInteraction(interaction as never);
+    const result = await executeApprovedReviewRequest({
+      requestId: 'action-1',
+      reviewerId: 'admin-2',
+    });
 
-    expect(handled).toBe(true);
-    expect(interaction.deferUpdate).toHaveBeenCalled();
-    expect(mocks.markPendingAdminActionExecutedIfApproved).toHaveBeenCalledWith({
+    expect(result).toBeNull();
+    expect(mocks.markApprovalReviewRequestExecutedIfApproved).toHaveBeenCalledWith({
       id: 'action-1',
       resultJson: {
         action: 'delete_message',
@@ -424,56 +463,56 @@ describe('adminActionService approval permissions', () => {
         noop: true,
         status: 'noop',
       },
+      resumeTraceId: null,
     });
   });
 
   it('records a noop result when the target reaction is already missing', async () => {
-    const pendingAction = makePendingAction({
-      prepared: {
-        version: 1,
-        originalRequest: {
-          action: 'remove_user_reaction',
-          channelId: 'chan-target',
-          messageId: 'msg-1',
-          emoji: '🔥',
-          userId: 'user-8',
-          reason: 'Reaction cleanup',
+    const approved = makeReviewRequest(
+      {
+        prepared: {
+          version: 1,
+          originalRequest: {
+            action: 'remove_user_reaction',
+            channelId: 'chan-target',
+            messageId: 'msg-1',
+            emoji: '🔥',
+            userId: 'user-8',
+            reason: 'Reaction cleanup',
+          },
+          canonicalAction: {
+            action: 'remove_user_reaction',
+            channelId: 'chan-target',
+            messageId: 'msg-1',
+            emoji: '🔥',
+            userId: 'user-8',
+            reason: 'Reaction cleanup',
+          },
+          evidence: {
+            targetKind: 'reaction',
+            source: 'explicit_id',
+            channelId: 'chan-target',
+            messageId: 'msg-1',
+            messageUrl: 'https://discord.com/channels/guild-1/chan-target/msg-1',
+            userId: 'user-8',
+            messageAuthorId: 'user-8',
+            messageAuthorDisplayName: 'Spammer',
+            messageExcerpt: 'spam',
+          },
+          preflight: {
+            approverPermission: 'Manage Messages',
+            botPermissionChecks: ['Manage Messages', 'Read Message History'],
+            targetChannelScope: 'chan-target',
+            hierarchyChecked: false,
+            notes: ['Resolved from explicit identifiers.'],
+          },
+          dedupeKey:
+            '{"action":"remove_user_reaction","channelId":"chan-target","emoji":"🔥","messageId":"msg-1","reason":"Reaction cleanup","userId":"user-8"}',
         },
-        canonicalAction: {
-          action: 'remove_user_reaction',
-          channelId: 'chan-target',
-          messageId: 'msg-1',
-          emoji: '🔥',
-          userId: 'user-8',
-          reason: 'Reaction cleanup',
-        },
-        evidence: {
-          targetKind: 'reaction',
-          source: 'explicit_id',
-          channelId: 'chan-target',
-          messageId: 'msg-1',
-          messageUrl: 'https://discord.com/channels/guild-1/chan-target/msg-1',
-          userId: 'user-8',
-          messageAuthorId: 'user-8',
-          messageAuthorDisplayName: 'Spammer',
-          messageExcerpt: 'spam',
-        },
-        preflight: {
-          approverPermission: 'Manage Messages',
-          botPermissionChecks: ['Manage Messages', 'Read Message History'],
-          targetChannelScope: 'chan-target',
-          hierarchyChecked: false,
-          notes: ['Resolved from explicit identifiers.'],
-        },
-        dedupeKey: '{"action":"remove_user_reaction","channelId":"chan-target","emoji":"🔥","messageId":"msg-1","reason":"Reaction cleanup","userId":"user-8"}',
       },
-    });
-    mocks.getPendingAdminActionById.mockResolvedValueOnce(pendingAction).mockResolvedValueOnce(null);
-    mocks.guild.members.fetch.mockResolvedValueOnce(mocks.approverMemberWithManageMessages);
-    mocks.markPendingAdminActionDecisionIfPending.mockResolvedValue({
-      ...pendingAction,
-      status: 'approved',
-    });
+      { status: 'approved' },
+    );
+    mocks.getApprovalReviewRequestById.mockResolvedValueOnce(approved).mockResolvedValueOnce(null);
     mocks.targetChannel.messages.fetch.mockResolvedValueOnce({
       id: 'msg-1',
       reactions: {
@@ -482,13 +521,15 @@ describe('adminActionService approval permissions', () => {
         cache: new Map(),
       },
     });
-    mocks.markPendingAdminActionExecutedIfApproved.mockResolvedValue(null);
+    mocks.markApprovalReviewRequestExecutedIfApproved.mockResolvedValue(null);
 
-    const interaction = makeInteraction();
-    const handled = await handleAdminActionButtonInteraction(interaction as never);
+    const result = await executeApprovedReviewRequest({
+      requestId: 'action-1',
+      reviewerId: 'admin-2',
+    });
 
-    expect(handled).toBe(true);
-    expect(mocks.markPendingAdminActionExecutedIfApproved).toHaveBeenCalledWith({
+    expect(result).toBeNull();
+    expect(mocks.markApprovalReviewRequestExecutedIfApproved).toHaveBeenCalledWith({
       id: 'action-1',
       resultJson: {
         action: 'remove_user_reaction',
@@ -499,61 +540,59 @@ describe('adminActionService approval permissions', () => {
         status: 'noop',
         userId: 'user-8',
       },
+      resumeTraceId: null,
     });
   });
 
   it('records a noop result when unbanning a user who is already not banned', async () => {
-    const pendingAction = makePendingAction({
-      prepared: {
-        version: 1,
-        originalRequest: {
-          action: 'unban_member',
-          userId: 'user-8',
-          reason: 'Appeal accepted',
+    const approved = makeReviewRequest(
+      {
+        prepared: {
+          version: 1,
+          originalRequest: {
+            action: 'unban_member',
+            userId: 'user-8',
+            reason: 'Appeal accepted',
+          },
+          canonicalAction: {
+            action: 'unban_member',
+            userId: 'user-8',
+            reason: 'Appeal accepted',
+          },
+          evidence: {
+            targetKind: 'member',
+            source: 'explicit_id',
+            channelId: null,
+            messageId: null,
+            messageUrl: null,
+            userId: 'user-8',
+            messageAuthorId: null,
+            messageAuthorDisplayName: null,
+            messageExcerpt: null,
+          },
+          preflight: {
+            approverPermission: 'Ban Members',
+            botPermissionChecks: ['Ban Members'],
+            targetChannelScope: null,
+            hierarchyChecked: false,
+            notes: ['Resolved from explicit user reference.'],
+          },
+          dedupeKey: '{"action":"unban_member","reason":"Appeal accepted","userId":"user-8"}',
         },
-        canonicalAction: {
-          action: 'unban_member',
-          userId: 'user-8',
-          reason: 'Appeal accepted',
-        },
-        evidence: {
-          targetKind: 'member',
-          source: 'explicit_id',
-          channelId: null,
-          messageId: null,
-          messageUrl: null,
-          userId: 'user-8',
-          messageAuthorId: null,
-          messageAuthorDisplayName: null,
-          messageExcerpt: null,
-        },
-        preflight: {
-          approverPermission: 'Ban Members',
-          botPermissionChecks: ['Ban Members'],
-          targetChannelScope: null,
-          hierarchyChecked: false,
-          notes: ['Resolved from explicit user reference.'],
-        },
-        dedupeKey: '{"action":"unban_member","reason":"Appeal accepted","userId":"user-8"}',
       },
-    });
-    mocks.getPendingAdminActionById.mockResolvedValueOnce(pendingAction).mockResolvedValueOnce(null);
-    mocks.markPendingAdminActionDecisionIfPending.mockResolvedValue({
-      ...pendingAction,
-      status: 'approved',
-    });
+      { status: 'approved' },
+    );
+    mocks.getApprovalReviewRequestById.mockResolvedValueOnce(approved).mockResolvedValueOnce(null);
     mocks.guild.bans.fetch.mockRejectedValueOnce({ code: 10026 });
-    mocks.markPendingAdminActionExecutedIfApproved.mockResolvedValue(null);
+    mocks.markApprovalReviewRequestExecutedIfApproved.mockResolvedValue(null);
 
-    const interaction = makeInteraction({
-      member: {
-        permissions: ADMIN_AND_BAN_MEMBER_PERMISSIONS,
-      },
+    const result = await executeApprovedReviewRequest({
+      requestId: 'action-1',
+      reviewerId: 'admin-2',
     });
-    const handled = await handleAdminActionButtonInteraction(interaction as never);
 
-    expect(handled).toBe(true);
-    expect(mocks.markPendingAdminActionExecutedIfApproved).toHaveBeenCalledWith({
+    expect(result).toBeNull();
+    expect(mocks.markApprovalReviewRequestExecutedIfApproved).toHaveBeenCalledWith({
       id: 'action-1',
       resultJson: {
         action: 'unban_member',
@@ -561,6 +600,7 @@ describe('adminActionService approval permissions', () => {
         status: 'noop',
         userId: 'user-8',
       },
+      resumeTraceId: null,
     });
   });
 });

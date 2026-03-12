@@ -33,7 +33,7 @@ describe('capabilityPrompt', () => {
       expect(prompt).toContain('For exact historical verification, exact Discord message-history tools are unavailable this turn.');
       expect(prompt).toContain('Image generation behavior: you do not have image generation capabilities this turn.');
       expect(prompt).toContain('Use native tool calls silently.');
-      expect(prompt).toContain('If a tool result reports `status="pending_approval"`');
+      expect(prompt).toContain('If the runtime interrupts for approval');
       expect(prompt).toContain('If the runtime blocks a repeated call for this turn');
     });
 
@@ -230,13 +230,13 @@ describe('capabilityPrompt', () => {
       expect(stateBlock).toContain('"tools_available": [\n    "web"\n  ]');
       expect(stateBlock).toContain('"turn_mode": "text"');
       expect(stateBlock).toContain('"autopilot_mode": null');
-      expect(stateBlock).toContain('"tool_loop_limits": null');
+      expect(stateBlock).toContain('"graph_limits": null');
       expect(stateBlock).not.toContain('"architecture"');
       expect(stateBlock).not.toContain('"orchestrator"');
       expect(stateBlock).not.toContain('"tool_capabilities"');
     });
 
-    it('includes compact turn facts and snake_case tool limits', () => {
+    it('includes compact turn facts and snake_case graph limits', () => {
       // Arrange
       const params = {
         model: 'kimi',
@@ -246,7 +246,7 @@ describe('capabilityPrompt', () => {
         inGuild: true,
         turnMode: 'voice' as const,
         autopilotMode: 'reserved' as const,
-        toolLoopLimits: {
+        graphLimits: {
           maxRounds: 6,
           maxCallsPerRound: 5,
           parallelReadOnlyTools: true,
@@ -264,8 +264,8 @@ describe('capabilityPrompt', () => {
       expect(stateBlock).toContain('"in_guild": true');
       expect(stateBlock).toContain('"turn_mode": "voice"');
       expect(stateBlock).toContain('"autopilot_mode": "reserved"');
-      expect(stateBlock).toContain('"max_rounds": 6');
-      expect(stateBlock).toContain('"max_calls_per_round": 5');
+      expect(stateBlock).toContain('"max_steps": 6');
+      expect(stateBlock).toContain('"max_tool_calls_per_step": 5');
       expect(stateBlock).toContain('"parallel_read_only_tools": true');
       expect(stateBlock).toContain('"max_parallel_read_only_tools": 4');
     });

@@ -10,6 +10,7 @@ import {
   ToolValidationError,
   ToolErrorKind,
 } from './toolErrors';
+import { isToolControlSignal } from './toolControlSignals';
 
 
 /** Represent one completed tool invocation result. */
@@ -126,39 +127,46 @@ export async function executeToolWithTimeout(
     timeoutHandle.unref?.();
   });
 
-  const executionPromise = registry.executeValidated(call, ctxWithSignal).then((result) => {
-    const latencyMs = Date.now() - start;
-    if (result.success) {
-      let normalizedResult: unknown = result.result;
-      let attachments: ToolAttachment[] | undefined;
-      if (result.result && typeof result.result === 'object' && !Array.isArray(result.result)) {
-        const record = result.result as Record<string, unknown>;
-        if ('attachments' in record) {
-          attachments = normalizeAttachments(record.attachments);
-          if (attachments) {
-            const rest = { ...record };
-            delete rest.attachments;
-            normalizedResult = rest;
+  const executionPromise = registry.executeValidated(call, ctxWithSignal)
+    .then((result) => {
+      const latencyMs = Date.now() - start;
+      if (result.success) {
+        let normalizedResult: unknown = result.result;
+        let attachments: ToolAttachment[] | undefined;
+        if (result.result && typeof result.result === 'object' && !Array.isArray(result.result)) {
+          const record = result.result as Record<string, unknown>;
+          if ('attachments' in record) {
+            attachments = normalizeAttachments(record.attachments);
+            if (attachments) {
+              const rest = { ...record };
+              delete rest.attachments;
+              normalizedResult = rest;
+            }
           }
         }
+        return {
+          name: call.name,
+          success: true,
+          result: normalizedResult,
+          attachments,
+          latencyMs,
+        };
       }
       return {
         name: call.name,
-        success: true,
-        result: normalizedResult,
-        attachments,
+        success: false,
+        error: result.error,
+        errorType: result.errorType,
+        errorDetails: result.errorDetails,
         latencyMs,
       };
-    }
-    return {
-      name: call.name,
-      success: false,
-      error: result.error,
-      errorType: result.errorType,
-      errorDetails: result.errorDetails,
-      latencyMs,
-    };
-  });
+    })
+    .catch((error) => {
+      if (isToolControlSignal(error)) {
+        throw error;
+      }
+      throw error;
+    });
 
   const result = await Promise.race([executionPromise, timeoutPromise]);
   if (timeoutHandle) {

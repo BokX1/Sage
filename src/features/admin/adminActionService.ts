@@ -30,18 +30,18 @@ import {
 } from 'discord-api-types/payloads/v10';
 import { z } from 'zod';
 import {
-  createPendingAdminAction,
-  attachPendingAdminActionRequestMessageId,
-  findMatchingPendingAdminAction,
-  getPendingAdminActionById,
-  clearPendingAdminActionApprovalMessageId,
-  markPendingAdminActionDecisionIfPending,
-  markPendingAdminActionExecutedIfApproved,
-  markPendingAdminActionExpired,
-  markPendingAdminActionFailedIfApproved,
-  PendingAdminActionRecord,
-  updatePendingAdminActionReviewSurface,
-} from './pendingAdminActionRepo';
+  createApprovalReviewRequest,
+  attachApprovalReviewRequesterStatusMessageId,
+  clearApprovalReviewReviewerMessageId,
+  findMatchingPendingApprovalReviewRequest,
+  getApprovalReviewRequestById,
+  markApprovalReviewRequestDecisionIfPending,
+  markApprovalReviewRequestExecutedIfApproved,
+  markApprovalReviewRequestExpired,
+  markApprovalReviewRequestFailedIfApproved,
+  updateApprovalReviewSurface,
+  type ApprovalReviewRequestRecord,
+} from './approvalReviewRequestRepo';
 import {
   clearServerInstructions,
   getServerInstructionsRecord,
@@ -51,6 +51,7 @@ import { getGuildApprovalReviewChannelId } from '../settings/guildSettingsRepo';
 import { computeParamsHash, logAdminAction } from '../relationships/adminAuditRepo';
 import { logger } from '../../platform/logging/logger';
 import { smartSplit } from '../../shared/text/message-splitter';
+import { generateTraceId } from '../../shared/observability/trace-id-generator';
 import {
   discordRestRequest,
   type DiscordRestFileInput,
@@ -79,16 +80,15 @@ import {
 } from '../discord/interactiveComponentService';
 import { isAdminInteraction } from '../../platform/discord/admin-permissions';
 import {
-  buildPendingAdminActionDetailsText,
-  buildPendingAdminActionRequesterCardPayload,
-  buildPendingAdminActionReviewerCardPayload,
+  buildApprovalReviewDetailsText,
+  buildApprovalReviewRequesterCardPayload,
+  buildApprovalReviewReviewerCardPayload,
 } from './governanceCards';
 import {
   computePreparedModerationDedupeKey,
   discordModerationActionRequestSchema,
   readPreparedModerationEnvelope,
   type DiscordModerationActionRequest,
-  type PendingModerationPayload,
   type PreparedModerationAction,
   type PreparedModerationEnvelope,
   type PreparedModerationEvidence,
@@ -98,9 +98,11 @@ import {
   type CurrentTurnContext,
   type ReplyTargetContext,
 } from '../agent-runtime/continuityContext';
+import { ApprovalRequiredSignal, type ApprovalInterruptPayload } from '../agent-runtime/toolControlSignals';
 
 const APPROVAL_TTL_MS = 10 * 60 * 1_000;
 const RESOLVED_APPROVAL_CARD_DELETE_DELAY_MS = 60_000;
+const resolvedApprovalCardDeleteTimers = new Map<string, NodeJS.Timeout>();
 const MAX_SERVER_INSTRUCTIONS_CHARS = 8_000;
 const DEFAULT_SERVER_INSTRUCTIONS_MAX_CHARS = 4_000;
 const ADMIN_ACTION_CUSTOM_ID_PREFIX = 'sage:admin_action:';
@@ -271,8 +273,6 @@ type ServerInstructionsPendingPayload = {
   reason: string;
   baseVersion: number;
 };
-
-type DiscordActionPendingPayload = PendingModerationPayload;
 
 /**
  * Represents the DiscordRestWriteRequest type.
@@ -1415,10 +1415,10 @@ async function editGovernanceSurfaceMessage(params: {
 }
 
 async function postApprovalCard(params: {
-  pending: PendingAdminActionRecord;
+  pending: ApprovalReviewRequestRecord;
 }): Promise<{ reviewChannelId: string; approvalMessageId: string | null }> {
   const reviewChannelId = params.pending.reviewChannelId;
-  const payload = buildPendingAdminActionReviewerCardPayload({
+  const payload = buildApprovalReviewReviewerCardPayload({
     action: params.pending,
     approveCustomId: makeAdminActionButtonCustomId('approve', params.pending.id),
     rejectCustomId: makeAdminActionButtonCustomId('reject', params.pending.id),
@@ -1434,9 +1434,9 @@ async function postApprovalCard(params: {
 }
 
 async function ensureApprovalCardForPending(params: {
-  pending: PendingAdminActionRecord;
+  pending: ApprovalReviewRequestRecord;
 }): Promise<string | null> {
-  const existingApprovalMessageId = params.pending.approvalMessageId?.trim() || null;
+  const existingApprovalMessageId = params.pending.reviewerMessageId?.trim() || null;
   if (existingApprovalMessageId) {
     return existingApprovalMessageId;
   }
@@ -1446,10 +1446,10 @@ async function ensureApprovalCardForPending(params: {
   });
 
   if (approvalMessageId) {
-    await updatePendingAdminActionReviewSurface({
+    await updateApprovalReviewSurface({
       id: params.pending.id,
       reviewChannelId,
-      approvalMessageId,
+      reviewerMessageId: approvalMessageId,
     }).catch((error) => {
       logger.warn(
         { error, actionId: params.pending.id },
@@ -2665,11 +2665,11 @@ async function executeQueuedDiscordAction(params: {
 }
 
 async function executePendingAction(params: {
-  action: PendingAdminActionRecord;
+  action: ApprovalReviewRequestRecord;
   approvedBy: string;
 }): Promise<Record<string, unknown>> {
   if (params.action.kind === 'server_instructions_update') {
-    const payload = params.action.payloadJson as ServerInstructionsPendingPayload;
+    const payload = params.action.executionPayloadJson as ServerInstructionsPendingPayload;
     const current = await getServerInstructionsRecord(params.action.guildId);
     const currentVersion = current?.version ?? 0;
     if (currentVersion !== payload.baseVersion) {
@@ -2705,11 +2705,9 @@ async function executePendingAction(params: {
   }
 
   if (params.action.kind === 'discord_queue_moderation_action') {
-    const prepared = readPreparedModerationEnvelope(params.action.payloadJson, {
-      sourceChannelId: params.action.sourceChannelId,
-    });
+    const prepared = readPreparedModerationEnvelope(params.action.executionPayloadJson);
     if (!prepared) {
-      throw new Error('Pending moderation payload is invalid or unreadable.');
+      throw new Error('Approval review moderation payload is invalid or unreadable.');
     }
     return executeQueuedDiscordAction({
       action: prepared.canonicalAction,
@@ -2722,7 +2720,7 @@ async function executePendingAction(params: {
   }
 
   if (params.action.kind === 'discord_rest_write') {
-    const payload = params.action.payloadJson as DiscordRestWritePendingPayload;
+    const payload = params.action.executionPayloadJson as DiscordRestWritePendingPayload;
     const request = payload.request;
     const auditReasonBase = request.reason?.trim() || `${request.method} ${request.path}`;
     const auditReason = withAuditReason(
@@ -2760,7 +2758,7 @@ async function executePendingAction(params: {
     };
   }
 
-  throw new Error(`Unknown pending action kind: ${params.action.kind}`);
+  throw new Error(`Unknown approval review request kind: ${params.action.kind}`);
 }
 
 export async function lookupServerInstructionsForTool(params: {
@@ -2789,12 +2787,20 @@ export async function lookupServerInstructionsForTool(params: {
   };
 }
 
+function buildApprovalReviewDedupeKey(kind: string, payload: unknown): string {
+  return computeParamsHash({
+    kind,
+    payload,
+  });
+}
+
 export async function requestServerInstructionsUpdateForTool(params: {
   guildId: string;
   channelId: string;
   requestedBy: string;
+  sourceMessageId?: string | null;
   request: ServerInstructionsUpdateRequest;
-}): Promise<Record<string, unknown>> {
+}): Promise<never> {
   const current = await getServerInstructionsRecord(params.guildId);
   const currentText = current?.instructionsText ?? '';
 
@@ -2826,88 +2832,36 @@ export async function requestServerInstructionsUpdateForTool(params: {
     reason: params.request.reason,
     baseVersion,
   } satisfies ServerInstructionsPendingPayload;
-
-  const preview = truncateWithFlag(nextText, 700);
-  const existingPending = await findMatchingPendingAdminAction({
-    guildId: params.guildId,
-    requestedBy: params.requestedBy,
-    kind: 'server_instructions_update',
-    payloadJson: payload,
-  });
   const reviewChannelId = await getGuildApprovalReviewChannelId(params.guildId) ?? params.channelId;
-  const expiresAt = existingPending?.expiresAt ?? new Date(Date.now() + APPROVAL_TTL_MS);
-  const pending = existingPending ?? await createPendingAdminAction({
+
+  throw new ApprovalRequiredSignal({
+    kind: 'server_instructions_update',
     guildId: params.guildId,
     sourceChannelId: params.channelId,
     reviewChannelId,
+    sourceMessageId: params.sourceMessageId ?? null,
     requestedBy: params.requestedBy,
-    kind: 'server_instructions_update',
-    payloadJson: payload,
-    expiresAt,
-  });
-  const coalesced = existingPending !== null;
-  const approvalMessageId = await ensureApprovalCardForPending({
-    pending,
-  });
-
-  await logAdminAction({
-    guildId: params.guildId,
-    adminId: params.requestedBy,
-    command: 'tool_discord_queue_server_instructions_update',
-    paramsHash: computeParamsHash({
-      actionId: pending.id,
-      operation: params.request.operation,
-      baseVersion,
+    dedupeKey: buildApprovalReviewDedupeKey('server_instructions_update', payload),
+    executionPayloadJson: payload,
+    reviewSnapshotJson: payload,
+    interruptMetadataJson: {
       reasonHash: hashForAudit(params.request.reason),
       instructionsHash: hashForAudit(nextText),
-    }),
-  });
-
-  return {
-    status: 'pending_approval',
-    actionId: pending.id,
-    coalesced,
-    expiresAtIso: expiresAt.toISOString(),
-    approvalMessageId,
-    reviewChannelId: pending.reviewChannelId,
-    instructionsChars: nextText.length,
-    preview: preview.text,
-    previewTruncated: preview.truncated,
-  };
+      instructionsChars: nextText.length,
+    },
+    visibleReplyText: 'I queued that for approval.',
+  } satisfies ApprovalInterruptPayload);
 }
 
 export async function requestDiscordAdminActionForTool(params: {
   guildId: string;
   channelId: string;
   requestedBy: string;
+  sourceMessageId?: string | null;
   request: DiscordModerationActionRequest;
   currentTurn?: CurrentTurnContext;
   replyTarget?: ReplyTargetContext | null;
-}): Promise<Record<string, unknown>> {
-  const legacyPayload = {
-    action: params.request,
-  } satisfies DiscordActionPendingPayload;
-  const exactExistingPending = await findMatchingPendingAdminAction({
-    guildId: params.guildId,
-    requestedBy: params.requestedBy,
-    kind: 'discord_queue_moderation_action',
-    payloadJson: legacyPayload,
-  });
-  if (exactExistingPending) {
-    const approvalMessageId = await ensureApprovalCardForPending({
-      pending: exactExistingPending,
-    });
-    return {
-      status: 'pending_approval',
-      actionId: exactExistingPending.id,
-      action: params.request.action,
-      coalesced: true,
-      expiresAtIso: exactExistingPending.expiresAt.toISOString(),
-      approvalMessageId,
-      reviewChannelId: exactExistingPending.reviewChannelId,
-    };
-  }
-
+}): Promise<never> {
   const prepared = await prepareDiscordModerationEnvelope({
     guildId: params.guildId,
     sourceChannelId: params.channelId,
@@ -2915,111 +2869,187 @@ export async function requestDiscordAdminActionForTool(params: {
     currentTurn: params.currentTurn,
     replyTarget: params.replyTarget,
   });
-  const payload = {
-    prepared,
-  } satisfies DiscordActionPendingPayload;
-  const existingPending = await findMatchingPendingAdminAction({
-    guildId: params.guildId,
-    requestedBy: params.requestedBy,
-    kind: 'discord_queue_moderation_action',
-    payloadJson: payload,
-  });
   const reviewChannelId = await getGuildApprovalReviewChannelId(params.guildId) ?? params.channelId;
-  const expiresAt = existingPending?.expiresAt ?? new Date(Date.now() + APPROVAL_TTL_MS);
-  const pending = existingPending ?? await createPendingAdminAction({
+  throw new ApprovalRequiredSignal({
+    kind: 'discord_queue_moderation_action',
     guildId: params.guildId,
     sourceChannelId: params.channelId,
     reviewChannelId,
+    sourceMessageId: params.sourceMessageId ?? null,
     requestedBy: params.requestedBy,
-    kind: 'discord_queue_moderation_action',
-    payloadJson: payload,
-    expiresAt,
-  });
-  const coalesced = existingPending !== null;
-  const approvalMessageId = await ensureApprovalCardForPending({
-    pending,
-  });
-
-  await logAdminAction({
-    guildId: params.guildId,
-    adminId: params.requestedBy,
-    command: 'tool_discord_queue_moderation_action',
-    paramsHash: computeParamsHash({
-      actionId: pending.id,
+    dedupeKey: prepared.dedupeKey,
+    executionPayloadJson: prepared,
+    reviewSnapshotJson: {
       action: prepared.canonicalAction.action,
       dedupeKey: prepared.dedupeKey,
-    }),
-  });
-
-  return {
-    status: 'pending_approval',
-    actionId: pending.id,
-    action: prepared.canonicalAction.action,
-    coalesced,
-    expiresAtIso: expiresAt.toISOString(),
-    approvalMessageId,
-    reviewChannelId: pending.reviewChannelId,
-  };
+      evidence: prepared.evidence,
+      preflight: prepared.preflight,
+    },
+    interruptMetadataJson: {
+      action: prepared.canonicalAction.action,
+      dedupeKey: prepared.dedupeKey,
+    },
+    visibleReplyText: 'I queued that moderation action for approval.',
+  } satisfies ApprovalInterruptPayload);
 }
 
 export async function requestDiscordRestWriteForTool(params: {
   guildId: string;
   channelId: string;
   requestedBy: string;
+  sourceMessageId?: string | null;
   request: DiscordRestWriteRequest;
-}): Promise<Record<string, unknown>> {
+}): Promise<never> {
   await assertDiscordRestRequestGuildScoped({
     guildId: params.guildId,
     method: params.request.method,
     path: params.request.path,
   });
 
-  const payload = {
-    request: params.request,
-  } satisfies DiscordRestWritePendingPayload;
-  const existingPending = await findMatchingPendingAdminAction({
-    guildId: params.guildId,
-    requestedBy: params.requestedBy,
-    kind: 'discord_rest_write',
-    payloadJson: payload,
-  });
   const reviewChannelId = await getGuildApprovalReviewChannelId(params.guildId) ?? params.channelId;
-  const expiresAt = existingPending?.expiresAt ?? new Date(Date.now() + APPROVAL_TTL_MS);
-  const pending = existingPending ?? await createPendingAdminAction({
+
+  throw new ApprovalRequiredSignal({
+    kind: 'discord_rest_write',
     guildId: params.guildId,
     sourceChannelId: params.channelId,
     reviewChannelId,
+    sourceMessageId: params.sourceMessageId ?? null,
     requestedBy: params.requestedBy,
-    kind: 'discord_rest_write',
-    payloadJson: payload,
-    expiresAt,
-  });
-  const coalesced = existingPending !== null;
-  const approvalMessageId = await ensureApprovalCardForPending({
-    pending,
-  });
-
-  await logAdminAction({
-    guildId: params.guildId,
-    adminId: params.requestedBy,
-    command: 'tool_discord_rest_write',
-    paramsHash: computeParamsHash({
-      actionId: pending.id,
+    dedupeKey: buildApprovalReviewDedupeKey('discord_rest_write', {
       method: params.request.method,
       path: params.request.path,
+      query: params.request.query,
+      body: params.request.body,
     }),
+    executionPayloadJson: {
+      request: params.request,
+    } satisfies DiscordRestWritePendingPayload,
+    reviewSnapshotJson: {
+      method: params.request.method,
+      path: params.request.path,
+    },
+    interruptMetadataJson: {
+      method: params.request.method,
+      path: params.request.path,
+    },
+    visibleReplyText: 'I queued that admin write for approval.',
+  } satisfies ApprovalInterruptPayload);
+}
+
+export async function createOrReuseApprovalReviewRequestFromSignal(params: {
+  threadId: string;
+  originTraceId: string;
+  signal: ApprovalRequiredSignal;
+}): Promise<{ request: ApprovalReviewRequestRecord; coalesced: boolean }> {
+  const payload = params.signal.payload;
+  const existingPending = await findMatchingPendingApprovalReviewRequest({
+    guildId: payload.guildId,
+    requestedBy: payload.requestedBy,
+    kind: payload.kind,
+    dedupeKey: payload.dedupeKey,
+  });
+  const expiresAt = existingPending?.expiresAt ?? new Date(Date.now() + APPROVAL_TTL_MS);
+  let request =
+    existingPending ??
+    (await createApprovalReviewRequest({
+      threadId: params.threadId,
+      originTraceId: params.originTraceId,
+      guildId: payload.guildId,
+      sourceChannelId: payload.sourceChannelId,
+      reviewChannelId: payload.reviewChannelId,
+      sourceMessageId: payload.sourceMessageId ?? null,
+      requestedBy: payload.requestedBy,
+      kind: payload.kind,
+      dedupeKey: payload.dedupeKey,
+      executionPayloadJson: payload.executionPayloadJson,
+      reviewSnapshotJson: payload.reviewSnapshotJson,
+      interruptMetadataJson: payload.interruptMetadataJson,
+      expiresAt,
+    }));
+  const coalesced = existingPending !== null;
+
+  await ensureApprovalCardForPending({
+    pending: request,
+  });
+
+  if (!request.requesterStatusMessageId?.trim()) {
+    const updated = await publishApprovalReviewRequesterStatusMessage({
+      actionId: request.id,
+      coalesced,
+      replyToMessageId: request.sourceMessageId ?? undefined,
+    });
+    if (updated) {
+      request = updated;
+    }
+  }
+
+  await logAdminAction({
+    guildId: request.guildId,
+    adminId: request.requestedBy,
+    command: `tool_${request.kind}`,
+    paramsHash: computeParamsHash({
+      actionId: request.id,
+      kind: request.kind,
+      dedupeKey: request.dedupeKey,
+      coalesced,
+    }),
+  }).catch((error) => {
+    logger.warn({ error, requestId: request.id }, 'Failed to write approval-request audit log');
   });
 
   return {
-    status: 'pending_approval',
-    actionId: pending.id,
-    method: params.request.method,
-    path: params.request.path,
+    request,
     coalesced,
-    expiresAtIso: expiresAt.toISOString(),
-    approvalMessageId,
-    reviewChannelId: pending.reviewChannelId,
   };
+}
+
+export async function executeApprovedReviewRequest(params: {
+  requestId: string;
+  reviewerId?: string | null;
+  decisionReasonText?: string | null;
+  resumeTraceId?: string | null;
+}): Promise<ApprovalReviewRequestRecord | null> {
+  const action = await getApprovalReviewRequestById(params.requestId);
+  if (!action) {
+    return null;
+  }
+
+  if (action.status === 'executed' || action.status === 'failed' || action.status === 'rejected' || action.status === 'expired') {
+    return action;
+  }
+
+  if (action.status !== 'approved') {
+    return action;
+  }
+
+  try {
+    const result = await executePendingAction({
+      action,
+      approvedBy: params.reviewerId?.trim() || action.decidedBy || action.requestedBy,
+    });
+    const executed = await markApprovalReviewRequestExecutedIfApproved({
+      id: action.id,
+      resultJson: result,
+      resumeTraceId: params.resumeTraceId ?? null,
+    });
+    const latest = executed ?? await getApprovalReviewRequestById(action.id);
+    if (latest) {
+      await refreshApprovalReviewSurfaces(latest, 'approval execution');
+    }
+    return latest;
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    const failed = await markApprovalReviewRequestFailedIfApproved({
+      id: action.id,
+      errorText: errorMessage,
+      resumeTraceId: params.resumeTraceId ?? null,
+    });
+    const latest = failed ?? await getApprovalReviewRequestById(action.id);
+    if (latest) {
+      await refreshApprovalReviewSurfaces(latest, 'approval failure');
+    }
+    throw error;
+  }
 }
 
 export async function requestDiscordInteractionForTool(params: {
@@ -3054,8 +3084,8 @@ export async function requestDiscordInteractionForTool(params: {
   return result;
 }
 
-async function deleteApprovalCardForAction(action: PendingAdminActionRecord): Promise<void> {
-  const approvalMessageId = action.approvalMessageId?.trim();
+async function deleteApprovalCardForAction(action: ApprovalReviewRequestRecord): Promise<void> {
+  const approvalMessageId = action.reviewerMessageId?.trim();
   if (!approvalMessageId) {
     return;
   }
@@ -3076,7 +3106,7 @@ async function deleteApprovalCardForAction(action: PendingAdminActionRecord): Pr
       status === 403;
 
     if (shouldClear) {
-      await clearPendingAdminActionApprovalMessageId(action.id).catch((error) => {
+      await clearApprovalReviewReviewerMessageId(action.id).catch((error) => {
         logger.warn({ error, actionId: action.id }, 'Failed to clear approval message id after deletion attempt');
       });
       return;
@@ -3101,34 +3131,40 @@ async function deleteApprovalCardForAction(action: PendingAdminActionRecord): Pr
       { error, actionId: action.id, guildId: action.guildId, channelId: action.reviewChannelId },
       'Resolved approval card deletion threw; clearing id to avoid repeated attempts',
     );
-    await clearPendingAdminActionApprovalMessageId(action.id).catch(() => {
+    await clearApprovalReviewReviewerMessageId(action.id).catch(() => {
       // Ignore cleanup failures.
     });
   }
 }
 
 async function deleteResolvedApprovalCardForActionId(actionId: string): Promise<void> {
-  const action = await getPendingAdminActionById(actionId);
+  const action = await getApprovalReviewRequestById(actionId);
   if (!action) return;
   await deleteApprovalCardForAction(action);
 }
 
 function scheduleResolvedApprovalCardDeletion(actionId: string): void {
+  const existingTimer = resolvedApprovalCardDeleteTimers.get(actionId);
+  if (existingTimer) {
+    clearTimeout(existingTimer);
+  }
   const timer = setTimeout(() => {
+    resolvedApprovalCardDeleteTimers.delete(actionId);
     void deleteResolvedApprovalCardForActionId(actionId).catch((error) => {
       logger.warn({ error, actionId }, 'Failed to auto-delete resolved approval card');
     });
   }, RESOLVED_APPROVAL_CARD_DELETE_DELAY_MS);
+  resolvedApprovalCardDeleteTimers.set(actionId, timer);
   timer.unref?.();
 }
 
-async function updateReviewMessageForAction(action: PendingAdminActionRecord): Promise<void> {
-  const approvalMessageId = action.approvalMessageId?.trim();
+async function updateReviewMessageForAction(action: ApprovalReviewRequestRecord): Promise<void> {
+  const approvalMessageId = action.reviewerMessageId?.trim();
   if (!approvalMessageId) {
     return;
   }
 
-  const payload = buildPendingAdminActionReviewerCardPayload({
+  const payload = buildApprovalReviewReviewerCardPayload({
     action,
     approveCustomId: makeAdminActionButtonCustomId('approve', action.id),
     rejectCustomId: makeAdminActionButtonCustomId('reject', action.id),
@@ -3155,13 +3191,13 @@ async function updateReviewMessageForAction(action: PendingAdminActionRecord): P
   }
 }
 
-async function updateRequesterMessageForResolvedAction(action: PendingAdminActionRecord): Promise<void> {
-  const requestMessageId = action.requestMessageId?.trim();
+async function updateRequesterMessageForAction(action: ApprovalReviewRequestRecord): Promise<void> {
+  const requestMessageId = action.requesterStatusMessageId?.trim();
   if (!requestMessageId) {
     return;
   }
 
-  const payload = buildPendingAdminActionRequesterCardPayload({
+  const payload = buildApprovalReviewRequesterCardPayload({
     action,
   });
 
@@ -3186,17 +3222,32 @@ async function updateRequesterMessageForResolvedAction(action: PendingAdminActio
   }
 }
 
-export async function publishPendingAdminActionRequesterStatusMessage(params: {
+async function refreshApprovalReviewSurfaces(
+  action: ApprovalReviewRequestRecord,
+  outcomeContext: string,
+): Promise<void> {
+  await updateReviewMessageForAction(action).catch((error) => {
+    logger.warn({ error, actionId: action.id }, `Failed to update governance review card after ${outcomeContext}`);
+  });
+  void updateRequesterMessageForAction(action).catch((error) => {
+    logger.warn({ error, actionId: action.id }, `Failed to update requester card after ${outcomeContext}`);
+  });
+  if (action.status !== 'pending' && action.status !== 'approved') {
+    scheduleResolvedApprovalCardDeletion(action.id);
+  }
+}
+
+export async function publishApprovalReviewRequesterStatusMessage(params: {
   actionId: string;
   replyToMessageId?: string;
   coalesced?: boolean;
-}): Promise<PendingAdminActionRecord | null> {
-  const action = await getPendingAdminActionById(params.actionId);
+}): Promise<ApprovalReviewRequestRecord | null> {
+  const action = await getApprovalReviewRequestById(params.actionId);
   if (!action) {
     return null;
   }
 
-  const payload = buildPendingAdminActionRequesterCardPayload({
+  const payload = buildApprovalReviewRequesterCardPayload({
     action,
     coalesced: params.coalesced,
   });
@@ -3208,16 +3259,16 @@ export async function publishPendingAdminActionRequesterStatusMessage(params: {
     reason: `[sage action:${action.id}] post requester governance status`,
   });
 
-  const updated = await attachPendingAdminActionRequestMessageId({
+  const updated = await attachApprovalReviewRequesterStatusMessageId({
     id: action.id,
-    requestMessageId: messageId,
+    requesterStatusMessageId: messageId,
   }).catch((error) => {
     logger.warn({ error, actionId: action.id }, 'Failed to persist requester governance status message id');
     return action;
   });
 
   if (updated.status !== 'pending' && updated.status !== 'approved') {
-    await updateRequesterMessageForResolvedAction(updated).catch((error) => {
+    await updateRequesterMessageForAction(updated).catch((error) => {
       logger.warn({ error, actionId: updated.id }, 'Failed to sync requester governance status after publish');
     });
   }
@@ -3227,11 +3278,9 @@ export async function publishPendingAdminActionRequesterStatusMessage(params: {
 
 async function getModerationApprovalPermissionError(
   interaction: ButtonInteraction,
-  action: PendingAdminActionRecord,
+  action: ApprovalReviewRequestRecord,
 ): Promise<string | null> {
-  const prepared = readPreparedModerationEnvelope(action.payloadJson, {
-    sourceChannelId: action.sourceChannelId,
-  });
+  const prepared = readPreparedModerationEnvelope(action.executionPayloadJson);
   if (!prepared) {
     return 'Unable to verify moderation approval permissions for this action.';
   }
@@ -3270,6 +3319,132 @@ async function getModerationApprovalPermissionError(
   return null;
 }
 
+async function resumeApprovalReviewGraph(params: {
+  action: ApprovalReviewRequestRecord;
+  decision: 'approved' | 'rejected' | 'expired';
+  reviewerId?: string | null;
+  decisionReasonText?: string | null;
+  resumeTraceId?: string | null;
+}): Promise<void> {
+  const resumeTraceId = params.resumeTraceId?.trim() || generateTraceId();
+  const timestamp = new Date().toISOString();
+  const { upsertTraceStart, updateTraceEnd } = await import('../agent-runtime/agent-trace-repo');
+  const { resumeAgentGraphTurn } = await import('../agent-runtime/langgraph/runtime');
+
+  if (process.env.TRACE_ENABLED !== 'false') {
+    await upsertTraceStart({
+      id: resumeTraceId,
+      guildId: params.action.guildId,
+      channelId: params.action.reviewChannelId,
+      userId: params.reviewerId?.trim() || params.action.requestedBy,
+      routeKind: 'approval_resume',
+      tokenJson: {
+        approvalRequestId: params.action.id,
+        threadId: params.action.threadId,
+        decision: params.decision,
+      },
+      budgetJson: {
+        route: 'approval_resume',
+      },
+      agentEventsJson: [
+        {
+          type: 'approval_resume_start',
+          timestamp,
+          details: {
+            approvalRequestId: params.action.id,
+            threadId: params.action.threadId,
+            decision: params.decision,
+          },
+        },
+      ],
+      threadId: params.action.threadId,
+      parentTraceId: params.action.originTraceId,
+      graphStatus: 'running',
+      approvalRequestId: params.action.id,
+      interruptJson: {
+        decision: params.decision,
+      },
+    }).catch((error) => {
+      logger.warn({ error, requestId: params.action.id }, 'Failed to persist approval resume trace start');
+    });
+  }
+
+  try {
+    const graphResult = await resumeAgentGraphTurn({
+      threadId: params.action.threadId,
+      decision: params.decision,
+      reviewerId: params.reviewerId ?? null,
+      decisionReasonText: params.decisionReasonText ?? null,
+      resumeTraceId,
+    });
+
+    await updateTraceEnd({
+      id: resumeTraceId,
+      replyText: graphResult.replyText,
+      toolJson: {
+        approvalRequestId: params.action.id,
+        decision: params.decision,
+        graphStatus: graphResult.graphStatus,
+        terminationReason: graphResult.terminationReason,
+      },
+      budgetJson: {
+        route: 'approval_resume',
+        graphStatus: graphResult.graphStatus,
+      },
+      agentEventsJson: [
+        {
+          type: 'approval_resume_end',
+          timestamp: new Date().toISOString(),
+          details: {
+            approvalRequestId: params.action.id,
+            decision: params.decision,
+            graphStatus: graphResult.graphStatus,
+          },
+        },
+      ],
+      threadId: params.action.threadId,
+      parentTraceId: params.action.originTraceId,
+      graphStatus: graphResult.graphStatus,
+      approvalRequestId: params.action.id,
+    }).catch((error) => {
+      logger.warn({ error, requestId: params.action.id }, 'Failed to persist approval resume trace end');
+    });
+  } catch (error) {
+    await updateTraceEnd({
+      id: resumeTraceId,
+      replyText: '',
+      toolJson: {
+        approvalRequestId: params.action.id,
+        decision: params.decision,
+        failed: true,
+        errorText: error instanceof Error ? error.message : String(error),
+      },
+      budgetJson: {
+        route: 'approval_resume',
+        failed: true,
+      },
+      agentEventsJson: [
+        {
+          type: 'approval_resume_error',
+          timestamp: new Date().toISOString(),
+          details: {
+            approvalRequestId: params.action.id,
+            decision: params.decision,
+            errorText: error instanceof Error ? error.message : String(error),
+          },
+        },
+      ],
+      threadId: params.action.threadId,
+      parentTraceId: params.action.originTraceId,
+      graphStatus: 'failed',
+      approvalRequestId: params.action.id,
+    }).catch(() => {
+      // Ignore trace-end persistence failures for approval resumes.
+    });
+    throw error;
+  }
+}
+
 export async function handleAdminActionButtonInteraction(
   interaction: ButtonInteraction,
 ): Promise<boolean> {
@@ -3288,7 +3463,7 @@ export async function handleAdminActionButtonInteraction(
     return true;
   }
 
-  let action = await getPendingAdminActionById(parsed.actionId);
+  let action = await getApprovalReviewRequestById(parsed.actionId);
   if (!action) {
     await interaction.reply({ content: 'Action not found.', ephemeral: true });
     return true;
@@ -3304,11 +3479,11 @@ export async function handleAdminActionButtonInteraction(
     return true;
   }
 
-  if (!action.approvalMessageId?.trim() && interaction.message?.id) {
-    const updated = await updatePendingAdminActionReviewSurface({
+  if (!action.reviewerMessageId?.trim() && interaction.message?.id) {
+    const updated = await updateApprovalReviewSurface({
       id: action.id,
       reviewChannelId: interaction.channelId,
-      approvalMessageId: interaction.message.id,
+      reviewerMessageId: interaction.message.id,
     }).catch((error) => {
       logger.warn({ error, actionId: action?.id }, 'Failed to attach approval card message id while handling decision');
       return null;
@@ -3317,29 +3492,30 @@ export async function handleAdminActionButtonInteraction(
     if (updated) {
       action = updated;
     } else {
-      action = { ...action, approvalMessageId: interaction.message.id, reviewChannelId: interaction.channelId };
+      action = { ...action, reviewerMessageId: interaction.message.id, reviewChannelId: interaction.channelId };
     }
   }
 
   if (action.expiresAt.getTime() <= Date.now()) {
-    await markPendingAdminActionExpired(action.id);
-    const expired = await getPendingAdminActionById(action.id).catch(() => null);
+    await markApprovalReviewRequestExpired(action.id);
+    const expired = await getApprovalReviewRequestById(action.id).catch(() => null);
     await interaction.deferUpdate();
     if (expired) {
-      await updateReviewMessageForAction(expired).catch((error) => {
-        logger.warn({ error, actionId: expired.id }, 'Failed to update governance review card after admin action expiry');
-      });
-      void updateRequesterMessageForResolvedAction(expired).catch((error) => {
-        logger.warn({ error, actionId: expired.id }, 'Failed to update requester message after admin action expiry');
+      await refreshApprovalReviewSurfaces(expired, 'admin action expiry');
+      await resumeApprovalReviewGraph({
+        action: expired,
+        decision: 'expired',
+        reviewerId: interaction.user.id,
+      }).catch((error) => {
+        logger.warn({ error, actionId: expired.id }, 'Failed to resume expired approval review graph');
       });
     }
-    scheduleResolvedApprovalCardDeletion(action.id);
     return true;
   }
 
   if (parsed.action === 'details') {
     await interaction.reply({
-      content: buildPendingAdminActionDetailsText(action),
+      content: buildApprovalReviewDetailsText(action),
       ephemeral: true,
     });
     return true;
@@ -3361,18 +3537,17 @@ export async function handleAdminActionButtonInteraction(
     }
   }
   await interaction.deferUpdate();
-  const approved = await markPendingAdminActionDecisionIfPending({
+  const resumeTraceId = generateTraceId();
+  const approved = await markApprovalReviewRequestDecisionIfPending({
     id: action.id,
     decidedBy: interaction.user.id,
     status: 'approved',
+    resumeTraceId,
   });
   if (!approved) {
-    const latest = await getPendingAdminActionById(action.id).catch(() => null);
+    const latest = await getApprovalReviewRequestById(action.id).catch(() => null);
     if (latest) {
-      await updateReviewMessageForAction(latest).catch(() => {
-        // Ignore refresh failures after races.
-      });
-      void updateRequesterMessageForResolvedAction(latest).catch(() => {
+      await refreshApprovalReviewSurfaces(latest, 'approval-decision race').catch(() => {
         // Ignore refresh failures after races.
       });
     }
@@ -3383,69 +3558,27 @@ export async function handleAdminActionButtonInteraction(
   }
 
   try {
-    const result = await executePendingAction({
-      action,
-      approvedBy: interaction.user.id,
+    await resumeApprovalReviewGraph({
+      action: approved,
+      decision: 'approved',
+      reviewerId: interaction.user.id,
+      resumeTraceId,
     });
-    const executed = await markPendingAdminActionExecutedIfApproved({
-      id: action.id,
-      resultJson: result,
-    });
-    if (!executed) {
-      const latest = await getPendingAdminActionById(action.id).catch(() => null);
-      if (latest) {
-        await updateReviewMessageForAction(latest).catch(() => {
-          // Ignore refresh failures after races.
-        });
-        void updateRequesterMessageForResolvedAction(latest).catch(() => {
-          // Ignore refresh failures after races.
-        });
-      }
-      return true;
-    }
 
     await logAdminAction({
       guildId: action.guildId,
       adminId: interaction.user.id,
-      command: 'admin_action_execute',
+      command: 'approval_review_approve',
       paramsHash: computeParamsHash({ actionId: action.id, kind: action.kind }),
     });
-    await updateReviewMessageForAction(executed).catch((error) => {
-      logger.warn({ error, actionId: executed.id }, 'Failed to update governance review card after admin action execution');
-    });
-    void updateRequesterMessageForResolvedAction(executed).catch((error) => {
-      logger.warn({ error, actionId: executed.id }, 'Failed to update requester message after admin action execution');
-    });
-    scheduleResolvedApprovalCardDeletion(action.id);
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    const failed = await markPendingAdminActionFailedIfApproved({
-      id: action.id,
-      errorText: errorMessage,
-    });
-    if (!failed) {
-      const latest = await getPendingAdminActionById(action.id).catch(() => null);
-      if (latest) {
-        await updateReviewMessageForAction(latest).catch(() => {
-          // Ignore refresh failures after races.
-        });
-        void updateRequesterMessageForResolvedAction(latest).catch(() => {
-          // Ignore refresh failures after races.
-        });
-      }
-      return true;
+    logger.warn({ error, actionId: action.id }, 'Approval review execution failed');
+    const latest = await getApprovalReviewRequestById(action.id).catch(() => null);
+    if (latest?.status === 'approved') {
+      await refreshApprovalReviewSurfaces(latest, 'approval resume error').catch(() => {
+        // Ignore refresh failures after resume errors.
+      });
     }
-    logger.warn({ error, actionId: action.id }, 'Pending admin action execution failed');
-    await updateReviewMessageForAction(failed).catch((notifyError) => {
-      logger.warn({ error: notifyError, actionId: failed.id }, 'Failed to update governance review card after admin action failure');
-    });
-    void updateRequesterMessageForResolvedAction(failed).catch((notifyError) => {
-      logger.warn(
-        { error: notifyError, actionId: failed.id },
-        'Failed to update requester message after admin action failure',
-      );
-    });
-    scheduleResolvedApprovalCardDeletion(action.id);
   }
 
   return true;
@@ -3469,7 +3602,7 @@ export async function handleAdminActionRejectModalSubmit(
     return true;
   }
 
-  const action = await getPendingAdminActionById(actionId);
+  const action = await getApprovalReviewRequestById(actionId);
   if (!action) {
     await interaction.reply({ content: 'Action not found.', ephemeral: true });
     return true;
@@ -3492,15 +3625,17 @@ export async function handleAdminActionRejectModalSubmit(
   }
 
   await interaction.deferReply({ ephemeral: true });
+  const resumeTraceId = generateTraceId();
 
-  const rejected = await markPendingAdminActionDecisionIfPending({
+  const rejected = await markApprovalReviewRequestDecisionIfPending({
     id: action.id,
     decidedBy: interaction.user.id,
     status: 'rejected',
     decisionReasonText: rejectionReason,
+    resumeTraceId,
   });
   if (!rejected) {
-    const latest = await getPendingAdminActionById(action.id).catch(() => null);
+    const latest = await getApprovalReviewRequestById(action.id).catch(() => null);
     await interaction.editReply(`Action is already ${latest?.status ?? 'resolved'}.`);
     return true;
   }
@@ -3511,13 +3646,16 @@ export async function handleAdminActionRejectModalSubmit(
     paramsHash: computeParamsHash({ actionId: action.id, kind: action.kind, rejectionReason }),
   });
 
-  await updateReviewMessageForAction(rejected).catch((error) => {
-    logger.warn({ error, actionId: rejected.id }, 'Failed to update governance review card after admin action rejection');
+  await refreshApprovalReviewSurfaces(rejected, 'admin action rejection');
+  await resumeApprovalReviewGraph({
+    action: rejected,
+    decision: 'rejected',
+    reviewerId: interaction.user.id,
+    decisionReasonText: rejectionReason,
+    resumeTraceId,
+  }).catch((error) => {
+    logger.warn({ error, actionId: rejected.id }, 'Failed to resume rejected approval review graph');
   });
-  void updateRequesterMessageForResolvedAction(rejected).catch((error) => {
-    logger.warn({ error, actionId: rejected.id }, 'Failed to update requester message after admin action rejection');
-  });
-  scheduleResolvedApprovalCardDeletion(action.id);
 
   await interaction.editReply('Rejected. Sage updated the governance cards with your reason.');
   return true;

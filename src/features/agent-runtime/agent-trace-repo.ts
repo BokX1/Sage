@@ -7,8 +7,12 @@ export interface TraceStartData {
   channelId: string;
   userId: string;
   routeKind?: string;
+  threadId?: string | null;
+  parentTraceId?: string | null;
+  graphStatus?: string | null;
+  approvalRequestId?: string | null;
+  interruptJson?: unknown;
   tokenJson?: unknown;
-  reasoningText?: string;
   agentEventsJson?: unknown;
   qualityJson?: unknown;
   budgetJson?: unknown;
@@ -16,11 +20,15 @@ export interface TraceStartData {
 
 export interface TraceEndData {
   id: string;
+  threadId?: string | null;
+  parentTraceId?: string | null;
+  graphStatus?: string | null;
+  approvalRequestId?: string | null;
+  interruptJson?: unknown;
   toolJson?: unknown;
   qualityJson?: unknown;
   budgetJson?: unknown;
   agentEventsJson?: unknown;
-  reasoningText?: string | null;
   replyText: string;
 }
 
@@ -61,15 +69,25 @@ export async function upsertTraceStart(data: TraceStartData): Promise<void> {
     channelId: data.channelId,
     userId: data.userId,
     routeKind,
+    threadId: data.threadId?.trim() || null,
+    parentTraceId: data.parentTraceId?.trim() || null,
+    graphStatus: data.graphStatus?.trim() || null,
+    approvalRequestId: data.approvalRequestId?.trim() || null,
+    interruptJson:
+      data.interruptJson === undefined ? Prisma.JsonNull : (data.interruptJson as Prisma.InputJsonValue),
     tokenJson: jsonMap(tokenPayload),
-    reasoningText: null,
     replyText: '',
   };
 
   const updateData: Prisma.AgentTraceUpdateInput = {
     routeKind,
+    threadId: data.threadId?.trim() || null,
+    parentTraceId: data.parentTraceId?.trim() || null,
+    graphStatus: data.graphStatus?.trim() || null,
+    approvalRequestId: data.approvalRequestId?.trim() || null,
+    interruptJson:
+      data.interruptJson === undefined ? Prisma.JsonNull : (data.interruptJson as Prisma.InputJsonValue),
     tokenJson: jsonMap(tokenPayload),
-    reasoningText: null,
   };
 
   if (data.agentEventsJson !== undefined) {
@@ -103,7 +121,12 @@ export async function updateTraceEnd(data: TraceEndData): Promise<void> {
 
   const updateData: Prisma.AgentTraceUpdateInput = {
     toolJson: jsonMap(data.toolJson ?? Prisma.JsonNull),
-    reasoningText: null,
+    threadId: data.threadId?.trim() || null,
+    parentTraceId: data.parentTraceId?.trim() || null,
+    graphStatus: data.graphStatus?.trim() || null,
+    approvalRequestId: data.approvalRequestId?.trim() || null,
+    interruptJson:
+      data.interruptJson === undefined ? Prisma.JsonNull : (data.interruptJson as Prisma.InputJsonValue),
     replyText: data.replyText,
   };
 

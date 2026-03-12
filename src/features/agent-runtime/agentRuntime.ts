@@ -1,7 +1,6 @@
 import { config as appConfig } from '../../platform/config/env';
 import { getRecentMessages } from '../awareness/channelRingBuffer';
 import { buildTranscriptBlock } from '../awareness/transcriptBuilder';
-import { getLLMClient } from '../../platform/llm';
 import { LLMChatMessage, LLMMessageContent } from '../../platform/llm/llm-types';
 import { getGuildApiKey } from '../settings/guildSettingsRepo';
 import { getServerInstructionsText } from '../settings/serverInstructionsRepo';
@@ -10,11 +9,11 @@ import { logger } from '../../platform/logging/logger';
 import { normalizeStrictlyPositiveInt } from '../../shared/utils/numbers';
 import { upsertTraceStart, updateTraceEnd } from './agent-trace-repo';
 import { buildContextMessages } from './contextBuilder';
-import { runToolCallLoop } from './toolCallLoop';
-import { ToolResult } from './toolCallExecution';
-import { enforceGitHubFileGrounding } from './toolGrounding';
 import { clearGitHubFileLookupCacheForTrace } from './toolIntegrations';
-import { collectPendingAdminActionIds, collectPendingAdminActions, type PendingAdminActionNotice } from './pendingApprovals';
+import { enforceGitHubFileGrounding } from './toolGrounding';
+import { buildAgentGraphConfig } from './langgraph/config';
+import { runAgentGraphTurn } from './langgraph/runtime';
+import { scrubFinalReplyText } from './finalReplyScrubber';
 
 import {
   buildCapabilityPromptSection,
@@ -26,11 +25,8 @@ import {
   selectFocusedContinuityMessages,
 } from './continuityContext';
 import { resolveRuntimeAutopilotMode } from './autopilotMode';
-import {
-  ToolRegistry,
-  globalToolRegistry,
-  type ToolExecutionContext,
-} from './toolRegistry';
+import { globalToolRegistry } from './toolRegistry';
+import type { ToolResult } from './toolCallExecution';
 
 import { formatLiveVoiceContext } from '../voice/voiceConversationSessionStore';
 
@@ -69,18 +65,6 @@ export interface RunChatTurnResult {
     attachment: Buffer;
     name: string;
   }>;
-  pendingAdminActions?: PendingAdminActionNotice[];
-  pendingAdminActionIds?: string[];
-}
-
-function buildScopedToolRegistry(toolNames: string[]): ToolRegistry {
-  const scopedRegistry = new ToolRegistry();
-  for (const toolName of toolNames) {
-    const tool = globalToolRegistry.get(toolName);
-    if (!tool) continue;
-    scopedRegistry.register(tool);
-  }
-  return scopedRegistry;
 }
 
 function buildToolUsageInstruction(toolNames: string[]): string {
@@ -113,120 +97,6 @@ function resolveActiveToolNames(params: {
     if (access === 'public') return true;
     return params.isAdmin && params.invokedBy !== 'autopilot';
   });
-}
-
-function cleanDraftText(value: string | null | undefined): string | null {
-  if (typeof value !== 'string') return null;
-  const normalized = value
-    .split('\0')
-    .join('')
-    .replace(/\r\n/g, '\n')
-    .trim();
-  return normalized.length > 0 ? normalized : null;
-}
-
-const OPERATIONAL_REPLY_BLOCK_REGEXES = [
-  /```(?:json|txt|text)?\s*[\s\S]*?(?:"actionId"|"approvalMessageId"|"expiresAtIso"|"pending_approval"|"action"\s*:|"request"\s*:|\[OK\] Tool|\[ERROR\] Tool|<untrusted_external_data)[\s\S]*?```/gi,
-];
-
-const OPERATIONAL_REPLY_LINE_REGEXES = [
-  /^\s*\[(?:SYSTEM|OK|ERROR)\]\b/i,
-  /^\s*<(?:untrusted_external_data|tool_results?)\b/i,
-  /^\s*(?:Suggestion|Hint)\s*:/i,
-  /^\s*(?:I|I'll|I will|Let me|First,? I'll|First,? I will|Next,? I'll|Next,? I will)\s+(?:call|use|invoke|run)\b/i,
-  /^\s*(?:Calling|Using|Invoking|Running)\b.+\b(?:tool|discord_admin|discord_messages|discord_server|discord_context|discord_files|discord_voice|web|github|workflow|system_time|image_generate)\b/i,
-  /\b(?:tool protocol|tool payload|approval payload|approval command|actionId|approvalMessageId|expiresAtIso|pending_approval)\b/i,
-];
-
-export function scrubFinalReplyText(params: {
-  replyText: string | null | undefined;
-  hasPendingApproval?: boolean;
-}): string {
-  let cleaned = cleanDraftText(params.replyText) ?? '';
-
-  for (const pattern of OPERATIONAL_REPLY_BLOCK_REGEXES) {
-    cleaned = cleaned.replace(pattern, '\n');
-  }
-
-  cleaned = cleaned
-    .split('\n')
-    .filter((line) => !OPERATIONAL_REPLY_LINE_REGEXES.some((pattern) => pattern.test(line)))
-    .join('\n')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim();
-
-  cleaned = cleaned
-    .replace(/^\s*\{[\s\S]*"action"\s*:[\s\S]*\}\s*$/i, '')
-    .replace(/^\s*\{[\s\S]*"status"\s*:\s*"pending_approval"[\s\S]*\}\s*$/i, '')
-    .trim();
-
-  if (!cleaned && params.hasPendingApproval) {
-    return 'I queued that for approval.';
-  }
-
-  return cleaned;
-}
-
-function collectFilesFromToolResults(toolResults: ToolResult[]): Array<{ attachment: Buffer; name: string }> {
-  const files: Array<{ attachment: Buffer; name: string }> = [];
-  for (const toolResult of toolResults) {
-    if (!toolResult.success || !toolResult.attachments || toolResult.attachments.length === 0) {
-      continue;
-    }
-    for (const attachment of toolResult.attachments) {
-      files.push({
-        attachment: attachment.data,
-        name: attachment.filename,
-      });
-    }
-  }
-  return files;
-}
-
-function buildToolLoopConfig() {
-  return {
-    maxRounds: normalizeStrictlyPositiveInt(
-      appConfig.AGENTIC_TOOL_MAX_ROUNDS as number | undefined,
-      6,
-    ),
-    maxCallsPerRound: normalizeStrictlyPositiveInt(
-      appConfig.AGENTIC_TOOL_MAX_CALLS_PER_ROUND as number | undefined,
-      5,
-    ),
-    toolTimeoutMs: normalizeStrictlyPositiveInt(
-      appConfig.AGENTIC_TOOL_TIMEOUT_MS as number | undefined,
-      45_000,
-    ),
-    maxToolResultChars: normalizeStrictlyPositiveInt(
-      appConfig.AGENTIC_TOOL_RESULT_MAX_CHARS as number | undefined,
-      8_000,
-    ),
-    parallelReadOnlyTools:
-      (appConfig.AGENTIC_TOOL_PARALLEL_READ_ONLY_ENABLED as boolean | undefined) ?? true,
-    maxParallelReadOnlyTools: normalizeStrictlyPositiveInt(
-      appConfig.AGENTIC_TOOL_MAX_PARALLEL_READ_ONLY as number | undefined,
-      4,
-    ),
-    cacheEnabled: true,
-    cacheMaxEntries: 50,
-    memoEnabled: (appConfig.AGENTIC_TOOL_MEMO_ENABLED as boolean | undefined) ?? true,
-    memoMaxEntries: normalizeStrictlyPositiveInt(
-      appConfig.AGENTIC_TOOL_MEMO_MAX_ENTRIES as number | undefined,
-      250,
-    ),
-    memoTtlMs: normalizeStrictlyPositiveInt(
-      appConfig.AGENTIC_TOOL_MEMO_TTL_MS as number | undefined,
-      15 * 60_000,
-    ),
-    memoMaxResultJsonChars: normalizeStrictlyPositiveInt(
-      appConfig.AGENTIC_TOOL_MEMO_MAX_RESULT_JSON_CHARS as number | undefined,
-      200_000,
-    ),
-    maxLoopDurationMs: normalizeStrictlyPositiveInt(
-      appConfig.AGENTIC_TOOL_LOOP_TIMEOUT_MS as number | undefined,
-      120_000,
-    ),
-  };
 }
 
 export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTurnResult> {
@@ -314,13 +184,12 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
     }
   }
   const model = (appConfig.CHAT_MODEL || DEFAULT_CHAT_MODEL).trim();
-  const toolLoopEnabled = (appConfig.AGENTIC_TOOL_LOOP_ENABLED as boolean | undefined) ?? true;
-  const toolLoopConfig = buildToolLoopConfig();
-  const toolLoopLimits = {
-    maxRounds: toolLoopConfig.maxRounds,
-    maxCallsPerRound: toolLoopConfig.maxCallsPerRound,
-    parallelReadOnlyTools: toolLoopConfig.parallelReadOnlyTools,
-    maxParallelReadOnlyTools: toolLoopConfig.maxParallelReadOnlyTools,
+  const graphConfig = buildAgentGraphConfig();
+  const graphLimits = {
+    maxRounds: graphConfig.maxSteps,
+    maxCallsPerRound: graphConfig.maxToolCallsPerStep,
+    parallelReadOnlyTools: graphConfig.parallelReadOnlyTools,
+    maxParallelReadOnlyTools: graphConfig.maxParallelReadOnlyTools,
   };
   const autopilotMode = resolveRuntimeAutopilotMode({
     invokedBy,
@@ -328,18 +197,6 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
   });
 
   const activeToolNames = resolveActiveToolNames({ isAdmin, invokedBy });
-  const scopedToolRegistry = buildScopedToolRegistry(activeToolNames);
-  const toolSpecs =
-    toolLoopEnabled && activeToolNames.length > 0
-      ? scopedToolRegistry.listOpenAIToolSpecs().map((tool) => ({
-        type: tool.type,
-        function: {
-          ...tool.function,
-          parameters: tool.function.parameters as Record<string, unknown>,
-        },
-      }))
-      : undefined;
-
   const capabilityParams: BuildCapabilityPromptSectionParams = {
     activeTools: activeToolNames,
     model,
@@ -348,7 +205,7 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
     inGuild: guildId !== null,
     turnMode: isVoiceActive ? 'voice' : 'text',
     autopilotMode,
-    toolLoopLimits,
+    graphLimits,
   };
 
   const runtimeInstruction = [
@@ -387,8 +244,10 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
         budgetJson: {
           route: SINGLE_ROUTE_KIND,
           model,
-          toolLoopEnabled,
+          graphEnabled: activeToolNames.length > 0,
         },
+        threadId: traceId,
+        graphStatus: 'running',
         agentEventsJson: [
           {
             type: 'runtime_start',
@@ -402,115 +261,90 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
     }
   }
 
-  const client = getLLMClient();
-  let draftText: string;
-  let toolLoopBudgetJson: Record<string, unknown> | undefined;
+  let graphBudgetJson: Record<string, unknown> | undefined;
   let toolResults: ToolResult[] = [];
-  let toolLoopTraceEvents: Record<string, unknown>[] = [];
+  let graphTraceEvents: Record<string, unknown>[] = [];
+  let finalReplyText: string;
+  let files: Array<{ attachment: Buffer; name: string }> = [];
 
   try {
-    const maxTokens = normalizeStrictlyPositiveInt(
-      appConfig.CHAT_MAX_OUTPUT_TOKENS as number | undefined,
-      1_800,
-    );
-    const response = await client.chat({
-      messages: runtimeMessages,
-      model,
+    const loopStartedAt = Date.now();
+    const graphResult = await runAgentGraphTurn({
+      traceId,
+      userId,
+      channelId,
+      guildId,
       apiKey,
+      model,
       temperature: 0.6,
-      timeout: appConfig.TIMEOUT_CHAT_MS,
-      maxTokens,
-      tools: toolSpecs,
-      toolChoice: toolSpecs ? 'auto' : undefined,
+      timeoutMs: appConfig.TIMEOUT_CHAT_MS,
+      maxTokens: normalizeStrictlyPositiveInt(
+        appConfig.AGENT_GRAPH_MAX_OUTPUT_TOKENS as number | undefined,
+        1_200,
+      ),
+      messages: runtimeMessages,
+      activeToolNames,
+      routeKind: SINGLE_ROUTE_KIND,
+      toolExecutionProfile: 'default',
+      currentTurn,
+      replyTarget,
+      invokedBy,
+      invokerIsAdmin: isAdmin,
     });
-    draftText = response.text;
-
-    if (toolLoopEnabled && toolSpecs && activeToolNames.length > 0) {
-      const loopStartedAt = Date.now();
-      const loopResult = await runToolCallLoop({
-        client,
-        messages: runtimeMessages,
-        registry: scopedToolRegistry,
-        ctx: {
-          traceId,
-          userId,
-          channelId,
-          guildId,
-          apiKey,
-          invokerIsAdmin: isAdmin,
-          invokedBy,
-          routeKind: SINGLE_ROUTE_KIND,
-          toolExecutionProfile: 'default',
-          currentTurn,
-          replyTarget,
-        } satisfies ToolExecutionContext,
-        model,
-        apiKey,
-        temperature: 0.6,
-        timeoutMs: appConfig.TIMEOUT_CHAT_MS,
-        maxTokens: normalizeStrictlyPositiveInt(
-          appConfig.AGENTIC_TOOL_MAX_OUTPUT_TOKENS as number | undefined,
-          1_200,
-        ),
-        initialAssistantResponse: response,
-        config: toolLoopConfig,
-      });
-      draftText = loopResult.replyText;
-      toolResults = loopResult.toolResults;
-      toolLoopTraceEvents = [
-        ...loopResult.roundEvents.map((event) => ({
-          type: 'tool_round',
-          timestamp: event.completedAt,
-          details: event,
-        })),
-        ...(loopResult.finalization.attempted
-          ? [
-            {
-              type: 'tool_finalization',
-              timestamp: loopResult.finalization.completedAt,
-              details: loopResult.finalization,
-            },
-          ]
-          : []),
-      ];
-      const successfulToolCount = loopResult.toolResults.filter((result) => result.success).length;
-      toolLoopBudgetJson = {
-        enabled: true,
-        toolsExecuted: loopResult.toolsExecuted,
-        roundsCompleted: loopResult.roundsCompleted,
-        terminationReason: loopResult.terminationReason,
-        toolResultCount: loopResult.toolResults.length,
-        successfulToolCount,
-        deduplicatedCallCount: loopResult.deduplicatedCallCount ?? 0,
-        truncatedCallCount: loopResult.truncatedCallCount ?? 0,
-        guardrailBlockedCallCount: loopResult.guardrailBlockedCallCount,
-        roundEvents: loopResult.roundEvents,
-        finalization: loopResult.finalization,
-        cancellationCount: loopResult.cancellationCount,
-        attachmentCount: loopResult.toolResults.reduce(
-          (sum, result) => sum + (result.attachments?.length ?? 0),
-          0,
-        ),
-        latencyMs: Date.now() - loopStartedAt,
-      };
-    }
+    finalReplyText = graphResult.replyText;
+    files = graphResult.files;
+    toolResults = graphResult.toolResults;
+    graphTraceEvents = [
+      ...graphResult.roundEvents.map((event) => ({
+        type: 'tool_round',
+        timestamp: event.completedAt,
+        details: event,
+      })),
+      ...(graphResult.finalization.attempted
+        ? [
+          {
+            type: 'tool_finalization',
+            timestamp: graphResult.finalization.completedAt,
+            details: graphResult.finalization,
+          },
+        ]
+        : []),
+    ];
+    const successfulToolCount = graphResult.toolResults.filter((result) => result.success).length;
+    graphBudgetJson = {
+      enabled: activeToolNames.length > 0,
+      toolsExecuted: graphResult.toolResults.length > 0,
+      roundsCompleted: graphResult.roundsCompleted,
+      terminationReason: graphResult.terminationReason,
+      toolResultCount: graphResult.toolResults.length,
+      successfulToolCount,
+      deduplicatedCallCount: graphResult.deduplicatedCallCount,
+      truncatedCallCount: graphResult.truncatedCallCount,
+      guardrailBlockedCallCount: graphResult.guardrailBlockedCallCount,
+      roundEvents: graphResult.roundEvents,
+      finalization: graphResult.finalization,
+      cancellationCount: graphResult.cancellationCount,
+      attachmentCount: graphResult.files.length,
+      latencyMs: Date.now() - loopStartedAt,
+      graphStatus: graphResult.graphStatus,
+      approvalInterrupt: graphResult.approvalInterrupt,
+    };
+    graphTraceEvents = [
+      ...graphTraceEvents,
+      ...graphResult.traceEvents,
+    ];
   } catch (error) {
     logger.error({ error, traceId }, 'Single-agent runtime call failed');
-    draftText = "I'm having trouble connecting right now. Please try again later.";
-    toolLoopBudgetJson = {
-      enabled: toolLoopEnabled,
+    finalReplyText = "I'm having trouble connecting right now. Please try again later.";
+    graphBudgetJson = {
+      enabled: activeToolNames.length > 0,
       failed: true,
       errorText: error instanceof Error ? error.message : String(error),
     };
   }
-
-  let safeFinalText =
-    cleanDraftText(draftText) ??
-    'I completed part of the request but could not format a final response. Please ask me to try once more.';
-  const githubGroundedMode =
-    (appConfig.AGENTIC_TOOL_GITHUB_GROUNDED_MODE as boolean | undefined) ?? true;
-  if (githubGroundedMode) {
-    const groundingResult = enforceGitHubFileGrounding(safeFinalText, toolResults);
+  let groundedReplyText = finalReplyText;
+  if (graphConfig.githubGroundedMode) {
+    const groundingResult = enforceGitHubFileGrounding(groundedReplyText, toolResults);
     if (groundingResult.modified) {
       logger.warn(
         {
@@ -520,24 +354,23 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
         },
         'Final response replaced due to ungrounded GitHub file path claims',
       );
-      safeFinalText = groundingResult.replyText;
+      groundedReplyText = groundingResult.replyText;
     }
   }
-
-  const files = collectFilesFromToolResults(toolResults);
-  const pendingAdminActions = collectPendingAdminActions(toolResults);
-  const pendingAdminActionIds = collectPendingAdminActionIds(toolResults);
   const cleanedReplyText = scrubFinalReplyText({
-    replyText: safeFinalText,
-    hasPendingApproval: pendingAdminActionIds.length > 0,
+    replyText: groundedReplyText,
   });
-  const finalReplyText =
+  const approvalInterrupt = graphBudgetJson?.approvalInterrupt as
+    | { requestId?: string }
+    | undefined;
+  const safeFinalReplyText =
     cleanedReplyText ||
+    (approvalInterrupt ? 'I queued that for approval.' : '') ||
     'I completed part of the request but could not format a final response. Please ask me to try once more.';
   const budgetJson: Record<string, unknown> = {
     route: SINGLE_ROUTE_KIND,
     model,
-    toolLoop: toolLoopBudgetJson,
+    graphRuntime: graphBudgetJson,
     promptUserText:
       userText.length <= 6_000 ? userText : `${userText.slice(0, 6_000)}...`,
     promptUserTextTruncated: userText.length > 6_000,
@@ -550,17 +383,21 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
       await updateTraceEnd({
         id: traceId,
         toolJson: {
-          enabled: toolLoopEnabled,
+          enabled: activeToolNames.length > 0,
           routeTools: activeToolNames,
-          main: toolLoopBudgetJson,
+          graph: graphBudgetJson,
         },
         qualityJson: {
           model,
           route: SINGLE_ROUTE_KIND,
         },
         budgetJson,
+        threadId: traceId,
+        graphStatus: (graphBudgetJson?.graphStatus as string | undefined) ?? 'completed',
+        approvalRequestId: approvalInterrupt?.requestId ?? null,
+        interruptJson: approvalInterrupt,
         agentEventsJson: [
-          ...toolLoopTraceEvents,
+          ...graphTraceEvents,
           {
             type: 'runtime_end',
             route: SINGLE_ROUTE_KIND,
@@ -571,33 +408,28 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
             },
           },
         ],
-        reasoningText: null,
-        replyText: finalReplyText,
+        replyText: safeFinalReplyText,
       });
     } catch (error) {
       logger.warn({ error, traceId }, 'Failed to persist trace end');
     }
   }
 
-  if (finalReplyText.trim() === '[SILENCE]') {
+  if (safeFinalReplyText.trim() === '[SILENCE]') {
     logger.info({ traceId }, 'Agent chose silence');
     clearToolCaches();
     return {
       replyText: '',
       meta: undefined,
       debug: { messages: runtimeMessages },
-      pendingAdminActions,
-      pendingAdminActionIds,
     };
   }
 
   clearToolCaches();
   return {
-    replyText: finalReplyText,
+    replyText: safeFinalReplyText,
     meta: undefined,
     debug: { messages: runtimeMessages },
     files,
-    pendingAdminActions,
-    pendingAdminActionIds,
   };
 }

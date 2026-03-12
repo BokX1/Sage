@@ -10,7 +10,7 @@ export interface BuildCapabilityPromptSectionParams {
   inGuild?: boolean;
   turnMode?: 'text' | 'voice';
   autopilotMode?: RuntimeAutopilotMode;
-  toolLoopLimits?: {
+  graphLimits?: {
     maxRounds: number;
     maxCallsPerRound: number;
     parallelReadOnlyTools: boolean;
@@ -38,12 +38,12 @@ export function buildAgenticStateBlock(params: BuildCapabilityPromptSectionParam
     in_guild: params.inGuild ?? null,
     turn_mode: params.turnMode ?? 'text',
     autopilot_mode: params.autopilotMode ?? null,
-    tool_loop_limits: params.toolLoopLimits
+    graph_limits: params.graphLimits
       ? {
-        max_rounds: params.toolLoopLimits.maxRounds,
-        max_calls_per_round: params.toolLoopLimits.maxCallsPerRound,
-        parallel_read_only_tools: params.toolLoopLimits.parallelReadOnlyTools,
-        max_parallel_read_only_tools: params.toolLoopLimits.maxParallelReadOnlyTools,
+        max_steps: params.graphLimits.maxRounds,
+        max_tool_calls_per_step: params.graphLimits.maxCallsPerRound,
+        parallel_read_only_tools: params.graphLimits.parallelReadOnlyTools,
+        max_parallel_read_only_tools: params.graphLimits.maxParallelReadOnlyTools,
       }
       : null,
   };
@@ -89,7 +89,7 @@ export function buildCapabilityPromptSection(
   // --- Execution rules ---
   const executionRules = [
     '<execution_rules>',
-    '- Read exact runtime facts from <agent_state> for current time, model, active tools, invocation context, turn mode, autopilot mode, and tool loop limits.',
+    '- Read exact runtime facts from <agent_state> for current time, model, active tools, invocation context, turn mode, autopilot mode, and graph limits.',
     '- <server_instructions> govern Sage\'s guild-specific behavior/persona, not factual truth about users, messages, or the outside world.',
     '- If <agent_state>.turn_mode is "voice", spoken-response behavior is expected and the <voice_mode> block overrides the default Discord markdown guidance.',
     '- If <agent_state>.autopilot_mode is non-null, the <autopilot_mode> block determines whether Sage should respond or emit [SILENCE].',
@@ -115,9 +115,9 @@ export function buildCapabilityPromptSection(
     '- Use the minimum sufficient tool path, then stop once you have enough evidence to answer.',
     '- Use native tool calls silently. Never narrate that you are about to call a tool, never print tool arguments, and never expose approval-command payloads.',
     '- Batch multiple read-only tool calls in one provider-native tool-calling turn when possible. Do NOT loop reading them one by one across multiple rounds.',
-    '- If a tool result reports `status="pending_approval"`, treat that action as already queued for this turn. Do not retry the same approval-gated action again.',
+    '- If the runtime interrupts for approval review, treat that action as already queued for this turn. Do not retry the same approval-gated action again.',
     '- If the runtime blocks a repeated call for this turn, do not retry it unchanged. Pivot to different arguments, another tool, or one clarifying question.',
-    '- After a pending approval, keep the channel reply brief. Do not repeat action IDs, approval card contents, raw admin workflow steps, or recovery protocol.',
+    '- After an approval-review interrupt, keep the channel reply brief. Do not repeat action IDs, approval card contents, raw admin workflow steps, or recovery protocol.',
     hasAnyDiscordTool
       ? '- Discord tool behavior: `discord_context` for profiles/summaries/instruction reads/analytics, `discord_messages` for history/delivery, `discord_files` for attachment recall, `discord_server` for guild resources/thread lifecycle, `discord_voice` for voice/status, `discord_admin` for admin writes/API fallback.'
       : '- Discord tool behavior: you do not have access to Discord profiles, summaries, instructions, messages, files, or actions via tools this turn.',
@@ -318,7 +318,7 @@ function buildToolSelectionGuide(activeTools: string[]): string {
     lines.push('  ✗ web for Discord-internal questions when Discord domain tools can answer them');
   }
   lines.push('  ✗ visible replies that mention tool calls, approval payloads, action IDs, or retry protocol');
-  lines.push('  ✗ retrying the same approval-gated write again after a `pending_approval` result already queued it');
+  lines.push('  ✗ retrying the same approval-gated write again after the runtime already queued it for approval');
   if (activeTools.includes('web')) {
     lines.push('  ✗ sequentially reading search results one by one across multiple rounds (use parallel batching or action=research instead)');
     lines.push('  ✗ web extract for simple page reads that web read can answer directly');

@@ -18,7 +18,6 @@ import {
 import { generateTraceId } from '../../../shared/observability/trace-id-generator';
 import { smartSplit } from '../../../shared/text/message-splitter';
 import { isAdminFromMember } from '../../../platform/discord/admin-permissions';
-import { publishPendingAdminActionRequesterStatusMessage } from '../../../features/admin/adminActionService';
 import { client } from '../../../platform/discord/client';
 
 type RepliableInteraction = ButtonInteraction | ModalSubmitInteraction | ChatInputCommandInteraction;
@@ -61,7 +60,7 @@ async function publishChatResultToInteraction(params: {
   const chunks = smartSplit(params.result.replyText || '', 2_000);
   const [firstChunk, ...rest] = chunks;
   await sendInteractionReply(params.interaction, {
-    content: firstChunk || ((params.result.pendingAdminActions?.length ?? 0) > 0 ? 'I queued that for review.' : '\u200b'),
+    content: firstChunk || '\u200b',
     files: params.result.files,
   });
 
@@ -69,13 +68,6 @@ async function publishChatResultToInteraction(params: {
     await params.interaction.followUp({
       content: chunk,
       flags: params.ephemeral ? MessageFlags.Ephemeral : undefined,
-    });
-  }
-
-  for (const pendingAction of params.result.pendingAdminActions ?? []) {
-    await publishPendingAdminActionRequesterStatusMessage({
-      actionId: pendingAction.actionId,
-      coalesced: pendingAction.coalesced,
     });
   }
 }

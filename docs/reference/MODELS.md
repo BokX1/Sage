@@ -41,7 +41,7 @@ flowchart TD
     B --> C[Resolve model from CHAT_MODEL or kimi]:::logic
     C --> D[Primary LLM response]:::model
     D --> E{Tool calls needed?}:::logic
-    E -->|Yes| F[Tool call loop]:::logic
+    E -->|Yes| F[LangGraph runtime]:::logic
     F --> G[Final answer + attachments]:::model
     E -->|No| G
 ```

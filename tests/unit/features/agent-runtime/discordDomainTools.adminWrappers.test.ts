@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ToolExecutionContext } from '@/features/agent-runtime/toolRegistry';
 import { config } from '@/platform/config/env';
+import { ApprovalRequiredSignal } from '@/features/agent-runtime/toolControlSignals';
 
 const mocks = vi.hoisted(() => ({
   requestDiscordRestWriteForTool: vi.fn(),
@@ -36,10 +37,18 @@ describe('discord admin domain typed REST wrappers', () => {
   };
 
   beforeEach(() => {
-    mocks.requestDiscordRestWriteForTool.mockReset().mockResolvedValue({
-      status: 'pending_approval',
-      actionId: 'action-1',
-    });
+    mocks.requestDiscordRestWriteForTool.mockReset().mockRejectedValue(
+      new ApprovalRequiredSignal({
+        kind: 'discord_rest_write',
+        guildId: 'guild-1',
+        sourceChannelId: 'channel-1',
+        reviewChannelId: 'channel-1',
+        requestedBy: 'user-1',
+        dedupeKey: 'dedupe-1',
+        executionPayloadJson: {},
+        reviewSnapshotJson: {},
+      }),
+    );
     mocks.discordRestRequestGuildScoped.mockReset().mockResolvedValue({
       ok: true,
       status: 200,
@@ -48,25 +57,22 @@ describe('discord admin domain typed REST wrappers', () => {
   });
 
   it('queues edit_message as an approval-gated REST write', async () => {
-    const result = await discordAdminTool.execute(
-      {
-        action: 'edit_message',
-        messageId: 'msg-1',
-        content: 'Updated',
-      },
-      adminCtx,
-    );
-
-    expect(result).toEqual(
-      expect.objectContaining({
-        status: 'pending_approval',
-      }),
-    );
+    await expect(
+      discordAdminTool.execute(
+        {
+          action: 'edit_message',
+          messageId: 'msg-1',
+          content: 'Updated',
+        },
+        adminCtx,
+      ),
+    ).rejects.toBeInstanceOf(ApprovalRequiredSignal);
     expect(mocks.requestDiscordRestWriteForTool).toHaveBeenCalledTimes(1);
     expect(mocks.requestDiscordRestWriteForTool).toHaveBeenCalledWith({
       guildId: 'guild-1',
       channelId: 'channel-1',
       requestedBy: 'user-1',
+      sourceMessageId: null,
       request: {
         method: 'PATCH',
         path: '/channels/channel-1/messages/msg-1',
@@ -80,16 +86,18 @@ describe('discord admin domain typed REST wrappers', () => {
   });
 
   it('queues channels.create and ignores text-only fields for voice channels', async () => {
-    await discordAdminTool.execute(
-      {
-        action: 'create_channel',
-        name: 'Voice Lounge',
-        type: 'voice',
-        topic: 'should be ignored',
-        rateLimitPerUser: 10,
-      },
-      adminCtx,
-    );
+    await expect(
+      discordAdminTool.execute(
+        {
+          action: 'create_channel',
+          name: 'Voice Lounge',
+          type: 'voice',
+          topic: 'should be ignored',
+          rateLimitPerUser: 10,
+        },
+        adminCtx,
+      ),
+    ).rejects.toBeInstanceOf(ApprovalRequiredSignal);
 
     expect(mocks.requestDiscordRestWriteForTool).toHaveBeenCalledTimes(1);
     const call = mocks.requestDiscordRestWriteForTool.mock.calls[0]?.[0] as {
@@ -106,15 +114,17 @@ describe('discord admin domain typed REST wrappers', () => {
   });
 
   it('queues roles.create and converts colorHex to Discord integer color', async () => {
-    await discordAdminTool.execute(
-      {
-        action: 'create_role',
-        name: 'Moderators',
-        colorHex: '#ff0000',
-        permissions: '8',
-      },
-      adminCtx,
-    );
+    await expect(
+      discordAdminTool.execute(
+        {
+          action: 'create_role',
+          name: 'Moderators',
+          colorHex: '#ff0000',
+          permissions: '8',
+        },
+        adminCtx,
+      ),
+    ).rejects.toBeInstanceOf(ApprovalRequiredSignal);
 
     expect(mocks.requestDiscordRestWriteForTool).toHaveBeenCalledTimes(1);
     const call = mocks.requestDiscordRestWriteForTool.mock.calls[0]?.[0] as {

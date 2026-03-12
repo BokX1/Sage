@@ -41,7 +41,7 @@ This document describes what Sage stores and how to control retention. Implement
 | Relationship edges | `RelationshipEdge` | Probabilistic relationship weights from mentions/replies/voice overlap. |
 | Voice sessions | `VoiceSession` | Join/leave session history per user/channel. |
 | Voice session summaries | `VoiceConversationSummary` | Summary-only memory of transcribed voice sessions (optional; no raw transcript stored in DB). |
-| Pending admin actions | `PendingAdminAction` | Approval-gated admin action queue and status metadata. |
+| Approval review requests | `ApprovalReviewRequest` | Approval-gated graph interrupt, reviewer/requester message ids, and status metadata for governed writes. |
 | Admin audits | `AdminAudit` | Records admin action usage with hashed params. |
 | Agent traces | `AgentTrace` | Agent trace payload, context budget metadata, and final reply text (if tracing is enabled). |
 | Model health state | `ModelHealthState` | Rolling model health scores used for diagnostics. |

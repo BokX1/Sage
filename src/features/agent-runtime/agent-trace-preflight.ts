@@ -6,13 +6,17 @@ const AGENT_TRACE_SCHEMA_PROBE_SQL = `
     "guildId",
     "channelId",
     "userId",
+    "threadId",
+    "parentTraceId",
+    "graphStatus",
+    "approvalRequestId",
+    "interruptJson",
     "routeKind",
     "agentEventsJson",
     "qualityJson",
     "budgetJson",
     "toolJson",
     "tokenJson",
-    "reasoningText",
     "replyText",
     "createdAt"
   FROM "AgentTrace"

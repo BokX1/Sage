@@ -257,7 +257,7 @@ Things to try:
 | **Social Graph Edges** | Relationship weights and analytics-derived Dunbar labels such as `intimate`, `close`, `active`, `acquaintance`, and `distant`. |
 | **Ingested Attachments** | Cached extracted text from non-image Discord attachments (per-channel). |
 | **Channel Summaries** | Rolling LLM-generated summaries of channel conversations. |
-| **Traces** | Agent selector `reasoningText`, route metadata, and runtime diagnostics for auditing responses. |
+| **Traces** | Graph thread linkage, approval-review metadata, route metadata, and runtime diagnostics for auditing responses. |
 
 For a full breakdown (tables, retention, and deletion), see **[Security &amp; Privacy](../security/SECURITY_PRIVACY.md)**.
 

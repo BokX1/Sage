@@ -7,25 +7,23 @@ const mockConfig = vi.hoisted(() => ({
   TIMEOUT_CHAT_MS: 1000,
   CHAT_MODEL: 'kimi',
   CHAT_MAX_OUTPUT_TOKENS: 800,
-  AGENTIC_TOOL_LOOP_ENABLED: false,
+  AGENT_GRAPH_MAX_OUTPUT_TOKENS: 800,
+  AGENT_GRAPH_GITHUB_GROUNDED_MODE: false,
   CONTEXT_TRANSCRIPT_MAX_MESSAGES: 5,
   CONTEXT_TRANSCRIPT_MAX_CHARS: 2000,
+  AUTOPILOT_MODE: null,
 }));
 
-const mockGetLLMClient = vi.hoisted(() => vi.fn());
 const mockGetGuildApiKey = vi.hoisted(() => vi.fn());
 const mockGetServerInstructionsText = vi.hoisted(() => vi.fn());
-
-const mockLLM = {
-  chat: vi.fn(),
-};
+const mockRunAgentGraphTurn = vi.hoisted(() => vi.fn());
+const globalToolRegistryMock = vi.hoisted(() => ({
+  listNames: vi.fn(() => []),
+  get: vi.fn(() => undefined),
+}));
 
 vi.mock('@/platform/config/env', () => ({
   config: mockConfig,
-}));
-
-vi.mock('@/platform/llm', () => ({
-  getLLMClient: mockGetLLMClient,
 }));
 
 vi.mock('@/features/awareness/channelRingBuffer', () => ({
@@ -56,12 +54,29 @@ vi.mock('@/features/agent-runtime/toolIntegrations', () => ({
   clearGitHubFileLookupCacheForTrace: vi.fn(),
 }));
 
+vi.mock('@/features/agent-runtime/toolGrounding', () => ({
+  enforceGitHubFileGrounding: vi.fn((replyText: string) => ({
+    modified: false,
+    replyText,
+    ungroundedPaths: [],
+    successfulPaths: [],
+  })),
+}));
+
+vi.mock('@/features/agent-runtime/langgraph/runtime', () => ({
+  runAgentGraphTurn: mockRunAgentGraphTurn,
+}));
+
 vi.mock('@/features/settings/guildSettingsRepo', () => ({
   getGuildApiKey: mockGetGuildApiKey,
 }));
 
 vi.mock('@/features/settings/serverInstructionsRepo', () => ({
   getServerInstructionsText: mockGetServerInstructionsText,
+}));
+
+vi.mock('@/features/agent-runtime/toolRegistry', () => ({
+  globalToolRegistry: globalToolRegistryMock,
 }));
 
 import { runChatTurn } from '@/features/agent-runtime/agentRuntime';
@@ -83,16 +98,44 @@ function makeCurrentTurn(overrides: Partial<CurrentTurnContext> = {}): CurrentTu
   };
 }
 
+function makeGraphResult(overrides: Partial<Awaited<ReturnType<typeof mockRunAgentGraphTurn>>> = {}) {
+  return {
+    replyText: 'ok',
+    toolResults: [],
+    files: [],
+    roundsCompleted: 0,
+    deduplicatedCallCount: 0,
+    truncatedCallCount: 0,
+    guardrailBlockedCallCount: 0,
+    cancellationCount: 0,
+    roundEvents: [],
+    finalization: {
+      attempted: false,
+      succeeded: true,
+      fallbackUsed: false,
+      returnedToolCallCount: 0,
+      completedAt: '2026-03-12T00:00:00.000Z',
+      terminationReason: 'assistant_reply',
+    },
+    terminationReason: 'assistant_reply',
+    graphStatus: 'completed',
+    approvalInterrupt: null,
+    traceEvents: [],
+    ...overrides,
+  };
+}
+
 describe('agent runtime API key fallback', () => {
   beforeEach(() => {
     mockConfig.LLM_API_KEY = 'env-key';
-    mockGetLLMClient.mockReturnValue(mockLLM);
     mockGetServerInstructionsText.mockResolvedValue(null);
-    mockLLM.chat.mockReset();
+    mockRunAgentGraphTurn.mockReset();
+    globalToolRegistryMock.listNames.mockReturnValue([]);
+    globalToolRegistryMock.get.mockReturnValue(undefined);
   });
 
   it('uses global API key when guild key is unavailable', async () => {
-    mockLLM.chat.mockResolvedValueOnce({ text: 'ok' });
+    mockRunAgentGraphTurn.mockResolvedValueOnce(makeGraphResult({ replyText: 'ok' }));
     mockGetGuildApiKey.mockResolvedValueOnce(undefined);
 
     const result = await runChatTurn({
@@ -107,7 +150,7 @@ describe('agent runtime API key fallback', () => {
     });
 
     expect(result.replyText).toBe('ok');
-    expect(mockLLM.chat).toHaveBeenCalledWith(
+    expect(mockRunAgentGraphTurn).toHaveBeenCalledWith(
       expect.objectContaining({
         apiKey: 'env-key',
       }),
@@ -137,6 +180,6 @@ describe('agent runtime API key fallback', () => {
 
     expect(result.replyText).toContain('I need a server API key before I can respond here');
     expect(result.meta).toEqual({ kind: 'missing_api_key' });
-    expect(mockLLM.chat).not.toHaveBeenCalled();
+    expect(mockRunAgentGraphTurn).not.toHaveBeenCalled();
   });
 });

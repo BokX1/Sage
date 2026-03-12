@@ -74,36 +74,6 @@ const mocks = vi.hoisted(() => {
   };
 
   return {
-    createPendingAdminAction: vi.fn(async (params: { payloadJson: unknown }) => ({
-      id: 'action-1',
-      guildId: 'guild-1',
-      sourceChannelId: 'channel-source',
-      reviewChannelId: 'channel-source',
-      approvalMessageId: 'approval-1',
-      requestMessageId: null,
-      requestedBy: 'admin-1',
-      kind: 'discord_queue_moderation_action',
-      payloadJson: params.payloadJson,
-      status: 'pending',
-      expiresAt: new Date('2026-03-12T00:10:00.000Z'),
-      decidedBy: null,
-      decidedAt: null,
-      executedAt: null,
-      resultJson: null,
-      decisionReasonText: null,
-      errorText: null,
-      createdAt: new Date('2026-03-12T00:00:00.000Z'),
-      updatedAt: new Date('2026-03-12T00:00:00.000Z'),
-    })),
-    attachPendingAdminActionRequestMessageId: vi.fn(),
-    clearPendingAdminActionApprovalMessageId: vi.fn(),
-    findMatchingPendingAdminAction: vi.fn(async () => null),
-    getPendingAdminActionById: vi.fn(),
-    markPendingAdminActionDecisionIfPending: vi.fn(),
-    markPendingAdminActionExecutedIfApproved: vi.fn(),
-    markPendingAdminActionExpired: vi.fn(),
-    markPendingAdminActionFailedIfApproved: vi.fn(),
-    updatePendingAdminActionReviewSurface: vi.fn(),
     clearServerInstructions: vi.fn(),
     getServerInstructionsRecord: vi.fn(),
     upsertServerInstructions: vi.fn(),
@@ -124,23 +94,9 @@ const mocks = vi.hoisted(() => {
     guild,
     channel,
     message,
-    botMember,
     targetMember,
   };
 });
-
-vi.mock('@/features/admin/pendingAdminActionRepo', () => ({
-  createPendingAdminAction: mocks.createPendingAdminAction,
-  attachPendingAdminActionRequestMessageId: mocks.attachPendingAdminActionRequestMessageId,
-  clearPendingAdminActionApprovalMessageId: mocks.clearPendingAdminActionApprovalMessageId,
-  findMatchingPendingAdminAction: mocks.findMatchingPendingAdminAction,
-  getPendingAdminActionById: mocks.getPendingAdminActionById,
-  markPendingAdminActionDecisionIfPending: mocks.markPendingAdminActionDecisionIfPending,
-  markPendingAdminActionExecutedIfApproved: mocks.markPendingAdminActionExecutedIfApproved,
-  markPendingAdminActionExpired: mocks.markPendingAdminActionExpired,
-  markPendingAdminActionFailedIfApproved: mocks.markPendingAdminActionFailedIfApproved,
-  updatePendingAdminActionReviewSurface: mocks.updatePendingAdminActionReviewSurface,
-}));
 
 vi.mock('@/features/settings/guildSettingsRepo', () => ({
   getGuildApprovalReviewChannelId: mocks.getGuildApprovalReviewChannelId,
@@ -171,11 +127,21 @@ vi.mock('@/platform/discord/client', () => ({
 }));
 
 import { requestDiscordAdminActionForTool } from '@/features/admin/adminActionService';
+import { ApprovalRequiredSignal } from '@/features/agent-runtime/toolControlSignals';
+
+async function expectApprovalSignal(promise: Promise<never>): Promise<ApprovalRequiredSignal> {
+  try {
+    await promise;
+    throw new Error('Expected ApprovalRequiredSignal');
+  } catch (error) {
+    expect(error).toBeInstanceOf(ApprovalRequiredSignal);
+    return error as ApprovalRequiredSignal;
+  }
+}
 
 describe('adminActionService moderation preflight', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.findMatchingPendingAdminAction.mockResolvedValue(null);
     mocks.getGuildApprovalReviewChannelId.mockResolvedValue(null);
     mocks.channel.messages.fetch.mockResolvedValue(mocks.message);
     mocks.guild.members.fetch.mockResolvedValue(mocks.targetMember);
@@ -183,46 +149,41 @@ describe('adminActionService moderation preflight', () => {
   });
 
   it('resolves reply-target delete moderation into a canonical prepared payload', async () => {
-    const result = await requestDiscordAdminActionForTool({
-      guildId: 'guild-1',
-      channelId: 'channel-source',
-      requestedBy: 'admin-1',
-      request: {
-        action: 'delete_message',
-        reason: 'Spam cleanup',
-      },
-      replyTarget: {
-        messageId: 'msg-1',
+    const signal = await expectApprovalSignal(
+      requestDiscordAdminActionForTool({
         guildId: 'guild-1',
-        channelId: 'chan-9',
-        authorId: 'user-8',
-        authorDisplayName: 'Spammer',
-        authorIsBot: false,
-        replyToMessageId: null,
-        mentionedUserIds: [],
-        content: 'buy cheap spam now',
-      },
-    });
+        channelId: 'channel-source',
+        requestedBy: 'admin-1',
+        request: {
+          action: 'delete_message',
+          reason: 'Spam cleanup',
+        },
+        replyTarget: {
+          messageId: 'msg-1',
+          guildId: 'guild-1',
+          channelId: 'chan-9',
+          authorId: 'user-8',
+          authorDisplayName: 'Spammer',
+          authorIsBot: false,
+          replyToMessageId: null,
+          mentionedUserIds: [],
+          content: 'buy cheap spam now',
+        },
+      }),
+    );
 
-    expect(result).toMatchObject({
-      status: 'pending_approval',
-      action: 'delete_message',
-    });
-    const createCall = mocks.createPendingAdminAction.mock.calls[0]?.[0] as {
-      payloadJson: {
-        prepared: {
-          canonicalAction: { action: string; channelId: string; messageId: string };
-          evidence: { source: string; messageUrl: string; messageExcerpt: string };
-        };
-      };
+    const prepared = signal.payload.executionPayloadJson as {
+      canonicalAction: { action: string; channelId: string; messageId: string; reason: string };
+      evidence: { source: string; messageUrl: string; messageExcerpt: string };
     };
-    expect(createCall.payloadJson.prepared.canonicalAction).toEqual({
+
+    expect(prepared.canonicalAction).toEqual({
       action: 'delete_message',
       channelId: 'chan-9',
       messageId: 'msg-1',
       reason: 'Spam cleanup',
     });
-    expect(createCall.payloadJson.prepared.evidence).toEqual(
+    expect(prepared.evidence).toEqual(
       expect.objectContaining({
         source: 'reply_target',
         messageUrl: 'https://discord.com/channels/guild-1/chan-9/msg-1',
@@ -232,37 +193,32 @@ describe('adminActionService moderation preflight', () => {
   });
 
   it('resolves member moderation from a Discord message URL to the referenced author', async () => {
-    const result = await requestDiscordAdminActionForTool({
-      guildId: 'guild-1',
-      channelId: 'channel-source',
-      requestedBy: 'admin-1',
-      request: {
-        action: 'timeout_member',
-        userId: 'https://discord.com/channels/guild-1/chan-9/msg-1',
-        durationMinutes: 30,
-        reason: 'Spam wave',
-      },
-    });
+    const signal = await expectApprovalSignal(
+      requestDiscordAdminActionForTool({
+        guildId: 'guild-1',
+        channelId: 'channel-source',
+        requestedBy: 'admin-1',
+        request: {
+          action: 'timeout_member',
+          userId: 'https://discord.com/channels/guild-1/chan-9/msg-1',
+          durationMinutes: 30,
+          reason: 'Spam wave',
+        },
+      }),
+    );
 
-    expect(result).toMatchObject({
-      status: 'pending_approval',
-      action: 'timeout_member',
-    });
-    const createCall = mocks.createPendingAdminAction.mock.calls[0]?.[0] as {
-      payloadJson: {
-        prepared: {
-          canonicalAction: { action: string; userId: string; durationMinutes: number };
-          evidence: { source: string; messageAuthorId: string; messageUrl: string };
-        };
-      };
+    const prepared = signal.payload.executionPayloadJson as {
+      canonicalAction: { action: string; userId: string; durationMinutes: number; reason: string };
+      evidence: { source: string; messageAuthorId: string; messageUrl: string };
     };
-    expect(createCall.payloadJson.prepared.canonicalAction).toEqual({
+
+    expect(prepared.canonicalAction).toEqual({
       action: 'timeout_member',
       userId: 'user-8',
       durationMinutes: 30,
       reason: 'Spam wave',
     });
-    expect(createCall.payloadJson.prepared.evidence).toEqual(
+    expect(prepared.evidence).toEqual(
       expect.objectContaining({
         source: 'message_author_url',
         messageAuthorId: 'user-8',
@@ -284,7 +240,6 @@ describe('adminActionService moderation preflight', () => {
         },
       }),
     ).rejects.toThrow(/requires either an explicit target or a direct reply target/i);
-    expect(mocks.createPendingAdminAction).not.toHaveBeenCalled();
   });
 
   it('rejects remove_user_reaction requests that only identify the message via the reply target', async () => {
@@ -311,49 +266,46 @@ describe('adminActionService moderation preflight', () => {
         },
       }),
     ).rejects.toThrow(/requires an explicit Discord user mention, user ID, or message URL/i);
-    expect(mocks.createPendingAdminAction).not.toHaveBeenCalled();
   });
 
   it('allows ban_member preflight to queue a raw user-id ban when the target already left the guild', async () => {
     mocks.guild.members.fetch.mockRejectedValueOnce(new Error('Unknown Member'));
 
-    const result = await requestDiscordAdminActionForTool({
-      guildId: 'guild-1',
-      channelId: 'channel-source',
-      requestedBy: 'admin-1',
-      request: {
-        action: 'ban_member',
-        userId: 'user-9',
-        deleteMessageSeconds: 600,
-        reason: 'Drive-by spam raid',
-      },
-    });
+    const signal = await expectApprovalSignal(
+      requestDiscordAdminActionForTool({
+        guildId: 'guild-1',
+        channelId: 'channel-source',
+        requestedBy: 'admin-1',
+        request: {
+          action: 'ban_member',
+          userId: 'user-8',
+          reason: 'Spam raid',
+        },
+      }),
+    );
 
-    expect(result).toMatchObject({
-      status: 'pending_approval',
-      action: 'ban_member',
-    });
-    const createCall = mocks.createPendingAdminAction.mock.calls[0]?.[0] as {
-      payloadJson: {
-        prepared: {
-          canonicalAction: { action: string; userId: string; deleteMessageSeconds?: number };
-          preflight: { hierarchyChecked: boolean; notes: string[] };
-        };
-      };
+    const prepared = signal.payload.executionPayloadJson as {
+      canonicalAction: { action: string; userId: string; reason: string };
+      evidence: { source: string; userId: string };
+      preflight: { hierarchyChecked: boolean; notes: string[] };
     };
-    expect(createCall.payloadJson.prepared.canonicalAction).toEqual({
+
+    expect(prepared.canonicalAction).toEqual({
       action: 'ban_member',
-      userId: 'user-9',
-      deleteMessageSeconds: 600,
-      reason: 'Drive-by spam raid',
+      userId: 'user-8',
+      reason: 'Spam raid',
     });
-    expect(createCall.payloadJson.prepared.preflight).toEqual(
+    expect(prepared.evidence).toEqual(
+      expect.objectContaining({
+        source: 'explicit_id',
+        userId: 'user-8',
+      }),
+    );
+    expect(prepared.preflight).toEqual(
       expect.objectContaining({
         hierarchyChecked: false,
       }),
     );
-    expect(createCall.payloadJson.prepared.preflight.notes).toContain(
-      'Target user was not an active guild member during preflight; Sage will execute the ban by raw user ID if approved.',
-    );
+    expect(prepared.preflight.notes.join(' ')).toContain('not an active guild member');
   });
 });

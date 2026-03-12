@@ -224,20 +224,20 @@ These settings control Sage's optional Discord voice features. The local voice s
 | Variable | Description | Default |
 |:---|:---|:---|
 | `TRACE_ENABLED` | Enable trace persistence | `true` |
-| `AGENTIC_TOOL_LOOP_ENABLED` | Enable the tool call loop | `true` |
-| `AGENTIC_TOOL_MAX_ROUNDS` | Max tool loop iterations | `6` |
-| `AGENTIC_TOOL_MAX_CALLS_PER_ROUND` | Max tool calls per round | `5` |
-| `AGENTIC_TOOL_TIMEOUT_MS` | Per-tool execution timeout | `45000` |
-| `AGENTIC_TOOL_LOOP_TIMEOUT_MS` | Max wall-clock duration for a full tool loop turn | `120000` |
-| `AGENTIC_TOOL_MAX_OUTPUT_TOKENS` | Max output tokens for tool responses | `1200` |
-| `AGENTIC_TOOL_RESULT_MAX_CHARS` | Max chars per tool result | `8000` |
-| `AGENTIC_TOOL_GITHUB_GROUNDED_MODE` | Enable GitHub grounded search | `true` |
-| `AGENTIC_TOOL_PARALLEL_READ_ONLY_ENABLED` | Enable parallel read-only tool execution | `true` |
-| `AGENTIC_TOOL_MAX_PARALLEL_READ_ONLY` | Max concurrent read-only tools | `4` |
-| `AGENTIC_TOOL_MEMO_ENABLED` | Enable in-process memoization for repeated read-only calls | `true` |
-| `AGENTIC_TOOL_MEMO_TTL_MS` | Memo cache TTL in milliseconds | `900000` |
-| `AGENTIC_TOOL_MEMO_MAX_ENTRIES` | Max memoized entries kept in memory | `250` |
-| `AGENTIC_TOOL_MEMO_MAX_RESULT_JSON_CHARS` | Max JSON payload size eligible for memoization | `200000` |
+| `AGENT_GRAPH_MAX_STEPS` | Max LangGraph model/tool steps per turn | `6` |
+| `AGENT_GRAPH_MAX_TOOL_CALLS_PER_STEP` | Max tool calls the model can request in one step | `5` |
+| `AGENT_GRAPH_TOOL_TIMEOUT_MS` | Per-tool execution timeout | `45000` |
+| `AGENT_GRAPH_MAX_DURATION_MS` | Max wall-clock duration for a full graph turn | `120000` |
+| `AGENT_GRAPH_MAX_OUTPUT_TOKENS` | Max output tokens for graph model calls | `1200` |
+| `AGENT_GRAPH_MAX_RESULT_CHARS` | Max chars per tool result | `8000` |
+| `AGENT_GRAPH_GITHUB_GROUNDED_MODE` | Enable GitHub grounded search | `true` |
+| `AGENT_GRAPH_READONLY_PARALLEL_ENABLED` | Enable parallel read-only tool execution | `true` |
+| `AGENT_GRAPH_MAX_PARALLEL_READONLY` | Max concurrent read-only tools | `4` |
+| `AGENT_GRAPH_MEMO_ENABLED` | Enable in-process memoization for repeated read-only calls | `true` |
+| `AGENT_GRAPH_MEMO_TTL_MS` | Memo cache TTL in milliseconds | `900000` |
+| `AGENT_GRAPH_MEMO_MAX_ENTRIES` | Max memoized entries kept in memory | `250` |
+| `AGENT_GRAPH_MEMO_MAX_RESULT_JSON_CHARS` | Max JSON payload size eligible for memoization | `200000` |
+| `AGENT_GRAPH_RECURSION_LIMIT` | LangGraph recursion fail-safe above the legal hop count | `16` |
 
 ---
 

@@ -850,7 +850,7 @@ export async function runWebSearch(params: {
   signal?: AbortSignal;
 }): Promise<Record<string, unknown>> {
   const timeoutMs = toInt((config.TOOL_WEB_SEARCH_TIMEOUT_MS as number | undefined), DEFAULT_WEB_SEARCH_TIMEOUT_MS, 5_000, 180_000);
-  const maxOutputTokens = toInt((config.AGENTIC_TOOL_MAX_OUTPUT_TOKENS as number | undefined), 1_200, 128, 8_000);
+  const maxOutputTokens = toInt((config.AGENT_GRAPH_MAX_OUTPUT_TOKENS as number | undefined), 1_200, 128, 8_000);
   const configuredMaxResults = toInt((config.TOOL_WEB_SEARCH_MAX_RESULTS as number | undefined), DEFAULT_WEB_SEARCH_MAX_RESULTS, 1, 10);
   const maxResults = toInt(params.maxResults ?? configuredMaxResults, configuredMaxResults, 1, 10);
   const allowLlmFallback = params.allowLlmFallback !== false;

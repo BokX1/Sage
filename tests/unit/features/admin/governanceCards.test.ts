@@ -2,29 +2,43 @@ import { describe, expect, it } from 'vitest';
 import { MessageFlags } from 'discord.js';
 
 import {
-  buildPendingAdminActionDetailsText,
-  buildPendingAdminActionRequesterCardPayload,
-  buildPendingAdminActionReviewerCardPayload,
+  buildApprovalReviewDetailsText,
+  buildApprovalReviewRequesterCardPayload,
+  buildApprovalReviewReviewerCardPayload,
 } from '@/features/admin/governanceCards';
-import type { PendingAdminActionRecord } from '@/features/admin/pendingAdminActionRepo';
+import type { ApprovalReviewRequestRecord } from '@/features/admin/approvalReviewRequestRepo';
 
-function makePendingAction(
-  overrides: Partial<PendingAdminActionRecord> = {},
-): PendingAdminActionRecord {
+function makeReviewRequest(
+  overrides: Partial<ApprovalReviewRequestRecord> = {},
+): ApprovalReviewRequestRecord {
   return {
     id: 'action-123',
+    threadId: 'thread-123',
+    originTraceId: 'trace-origin-123',
+    resumeTraceId: null,
     guildId: 'guild-1',
     sourceChannelId: 'channel-source',
     reviewChannelId: 'channel-review',
-    approvalMessageId: 'approval-1',
-    requestMessageId: 'request-1',
+    sourceMessageId: 'message-source',
+    requesterStatusMessageId: 'request-1',
+    reviewerMessageId: 'approval-1',
     requestedBy: 'user-1',
     kind: 'server_instructions_update',
-    payloadJson: {
+    dedupeKey: '{"operation":"set"}',
+    executionPayloadJson: {
       operation: 'set',
       newInstructionsText: 'Keep replies concise and Discord-native.',
       reason: 'Refresh tone',
       baseVersion: 4,
+    },
+    reviewSnapshotJson: {
+      operation: 'set',
+      newInstructionsText: 'Keep replies concise and Discord-native.',
+      reason: 'Refresh tone',
+      baseVersion: 4,
+    },
+    interruptMetadataJson: {
+      reasonHash: 'hash',
     },
     status: 'pending',
     expiresAt: new Date('2026-03-10T08:00:00.000Z'),
@@ -42,8 +56,8 @@ function makePendingAction(
 
 describe('governanceCards', () => {
   it('renders coalesced requester cards without raw action IDs', () => {
-    const payload = buildPendingAdminActionRequesterCardPayload({
-      action: makePendingAction(),
+    const payload = buildApprovalReviewRequesterCardPayload({
+      action: makeReviewRequest(),
       coalesced: true,
     });
 
@@ -55,8 +69,8 @@ describe('governanceCards', () => {
   });
 
   it('renders reviewer cards with approve, reject, and details controls', () => {
-    const payload = buildPendingAdminActionReviewerCardPayload({
-      action: makePendingAction(),
+    const payload = buildApprovalReviewReviewerCardPayload({
+      action: makeReviewRequest(),
       approveCustomId: 'approve-1',
       rejectCustomId: 'reject-1',
       detailsCustomId: 'details-1',
@@ -71,16 +85,16 @@ describe('governanceCards', () => {
   });
 
   it('puts operational metadata in details text and requester-facing reason text on rejection', () => {
-    const action = makePendingAction({
+    const action = makeReviewRequest({
       status: 'rejected',
       decidedBy: 'admin-1',
       decidedAt: new Date('2026-03-10T07:50:00.000Z'),
       decisionReasonText: 'Need legal review before changing policy.',
     });
 
-    const requesterPayload = buildPendingAdminActionRequesterCardPayload({ action });
+    const requesterPayload = buildApprovalReviewRequesterCardPayload({ action });
     const requesterSerialized = JSON.stringify(requesterPayload);
-    const detailsText = buildPendingAdminActionDetailsText(action);
+    const detailsText = buildApprovalReviewDetailsText(action);
 
     expect(requesterSerialized).toContain('Rejected');
     expect(requesterSerialized).toContain('Need legal review before changing policy.');
@@ -89,9 +103,9 @@ describe('governanceCards', () => {
   });
 
   it('shows prepared moderation evidence and preflight details in the reviewer details text', () => {
-    const action = makePendingAction({
+    const action = makeReviewRequest({
       kind: 'discord_queue_moderation_action',
-      payloadJson: {
+      executionPayloadJson: {
         prepared: {
           version: 1,
           originalRequest: {
@@ -122,12 +136,16 @@ describe('governanceCards', () => {
             hierarchyChecked: false,
             notes: ['Resolved from direct reply target.'],
           },
-          dedupeKey: '{"action":"delete_message","channelId":"chan-target","messageId":"msg-1","reason":"Spam cleanup"}',
+          dedupeKey:
+            '{"action":"delete_message","channelId":"chan-target","messageId":"msg-1","reason":"Spam cleanup"}',
         },
+      },
+      reviewSnapshotJson: {
+        action: 'delete_message',
       },
     });
 
-    const detailsText = buildPendingAdminActionDetailsText(action);
+    const detailsText = buildApprovalReviewDetailsText(action);
 
     expect(detailsText).toContain('Approver permission: Manage Messages');
     expect(detailsText).toContain('Target channel scope: <#chan-target>');

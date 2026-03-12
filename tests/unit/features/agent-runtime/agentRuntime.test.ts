@@ -2,28 +2,22 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CurrentTurnContext } from '@/features/agent-runtime/continuityContext';
 
 const {
-  mockChat,
   upsertTraceStartMock,
   updateTraceEndMock,
-  runToolCallLoopMock,
-  collectPendingAdminActionsMock,
-  collectPendingAdminActionIdsMock,
   clearGitHubFileLookupCacheForTraceMock,
   buildContextMessagesMock,
   globalToolRegistryMock,
+  runAgentGraphTurnMock,
 } = vi.hoisted(() => ({
-  mockChat: vi.fn(),
   upsertTraceStartMock: vi.fn(),
   updateTraceEndMock: vi.fn(),
-  runToolCallLoopMock: vi.fn(),
-  collectPendingAdminActionsMock: vi.fn(() => []),
-  collectPendingAdminActionIdsMock: vi.fn(() => []),
   clearGitHubFileLookupCacheForTraceMock: vi.fn(),
   buildContextMessagesMock: vi.fn(() => [{ role: 'user', content: 'hello' }]),
   globalToolRegistryMock: {
     listNames: vi.fn(() => []),
     get: vi.fn(() => undefined),
   },
+  runAgentGraphTurnMock: vi.fn(),
 }));
 
 vi.mock('@/platform/config/env', () => ({
@@ -32,23 +26,23 @@ vi.mock('@/platform/config/env', () => ({
     CONTEXT_TRANSCRIPT_MAX_CHARS: 4000,
     LLM_API_KEY: 'test-api-key',
     CHAT_MODEL: 'kimi',
-    AGENTIC_TOOL_LOOP_ENABLED: true,
-    AGENTIC_TOOL_MAX_ROUNDS: 2,
-    AGENTIC_TOOL_MAX_CALLS_PER_ROUND: 3,
-    AGENTIC_TOOL_TIMEOUT_MS: 1000,
-    AGENTIC_TOOL_RESULT_MAX_CHARS: 4000,
-    AGENTIC_TOOL_PARALLEL_READ_ONLY_ENABLED: true,
-    AGENTIC_TOOL_MAX_PARALLEL_READ_ONLY: 2,
-    AGENTIC_TOOL_MEMO_ENABLED: false,
-    AGENTIC_TOOL_MEMO_MAX_ENTRIES: 10,
-    AGENTIC_TOOL_MEMO_TTL_MS: 1000,
-    AGENTIC_TOOL_MEMO_MAX_RESULT_JSON_CHARS: 1000,
-    AGENTIC_TOOL_LOOP_TIMEOUT_MS: 5000,
     CHAT_MAX_OUTPUT_TOKENS: 500,
-    AGENTIC_TOOL_MAX_OUTPUT_TOKENS: 500,
+    AGENT_GRAPH_MAX_OUTPUT_TOKENS: 500,
+    AGENT_GRAPH_MAX_STEPS: 2,
+    AGENT_GRAPH_MAX_TOOL_CALLS_PER_STEP: 3,
+    AGENT_GRAPH_TOOL_TIMEOUT_MS: 1000,
+    AGENT_GRAPH_MAX_RESULT_CHARS: 4000,
+    AGENT_GRAPH_READONLY_PARALLEL_ENABLED: true,
+    AGENT_GRAPH_MAX_PARALLEL_READONLY: 2,
+    AGENT_GRAPH_MEMO_ENABLED: false,
+    AGENT_GRAPH_MEMO_MAX_ENTRIES: 10,
+    AGENT_GRAPH_MEMO_TTL_MS: 1000,
+    AGENT_GRAPH_MEMO_MAX_RESULT_JSON_CHARS: 1000,
+    AGENT_GRAPH_MAX_DURATION_MS: 5000,
+    AGENT_GRAPH_GITHUB_GROUNDED_MODE: false,
+    AGENT_GRAPH_RECURSION_LIMIT: 8,
     TIMEOUT_CHAT_MS: 1000,
     TRACE_ENABLED: true,
-    AGENTIC_TOOL_GITHUB_GROUNDED_MODE: false,
     AUTOPILOT_MODE: null,
   },
 }));
@@ -59,10 +53,6 @@ vi.mock('@/features/awareness/channelRingBuffer', () => ({
 
 vi.mock('@/features/awareness/transcriptBuilder', () => ({
   buildTranscriptBlock: vi.fn(() => null),
-}));
-
-vi.mock('@/platform/llm', () => ({
-  getLLMClient: vi.fn(() => ({ chat: mockChat })),
 }));
 
 vi.mock('@/features/settings/guildSettingsRepo', () => ({
@@ -94,10 +84,6 @@ vi.mock('@/features/agent-runtime/contextBuilder', () => ({
   buildContextMessages: buildContextMessagesMock,
 }));
 
-vi.mock('@/features/agent-runtime/toolCallLoop', () => ({
-  runToolCallLoop: runToolCallLoopMock,
-}));
-
 vi.mock('@/features/agent-runtime/toolGrounding', () => ({
   enforceGitHubFileGrounding: vi.fn((replyText: string) => ({
     modified: false,
@@ -107,13 +93,12 @@ vi.mock('@/features/agent-runtime/toolGrounding', () => ({
   })),
 }));
 
-vi.mock('@/features/agent-runtime/toolIntegrations', () => ({
-  clearGitHubFileLookupCacheForTrace: clearGitHubFileLookupCacheForTraceMock,
+vi.mock('@/features/agent-runtime/langgraph/runtime', () => ({
+  runAgentGraphTurn: runAgentGraphTurnMock,
 }));
 
-vi.mock('@/features/agent-runtime/pendingApprovals', () => ({
-  collectPendingAdminActions: collectPendingAdminActionsMock,
-  collectPendingAdminActionIds: collectPendingAdminActionIdsMock,
+vi.mock('@/features/agent-runtime/toolIntegrations', () => ({
+  clearGitHubFileLookupCacheForTrace: clearGitHubFileLookupCacheForTraceMock,
 }));
 
 vi.mock('@/features/agent-runtime/autopilotMode', () => ({
@@ -121,12 +106,6 @@ vi.mock('@/features/agent-runtime/autopilotMode', () => ({
 }));
 
 vi.mock('@/features/agent-runtime/toolRegistry', () => ({
-  ToolRegistry: class {
-    register() {}
-    listOpenAIToolSpecs() {
-      return [];
-    }
-  },
   globalToolRegistry: globalToolRegistryMock,
 }));
 
@@ -134,7 +113,8 @@ vi.mock('@/features/voice/voiceConversationSessionStore', () => ({
   formatLiveVoiceContext: vi.fn(() => null),
 }));
 
-import { runChatTurn, scrubFinalReplyText } from '@/features/agent-runtime/agentRuntime';
+import { runChatTurn } from '@/features/agent-runtime/agentRuntime';
+import { scrubFinalReplyText } from '@/features/agent-runtime/finalReplyScrubber';
 
 function makeCurrentTurn(overrides: Partial<CurrentTurnContext> = {}): CurrentTurnContext {
   return {
@@ -153,17 +133,42 @@ function makeCurrentTurn(overrides: Partial<CurrentTurnContext> = {}): CurrentTu
   };
 }
 
+function makeGraphResult(overrides: Record<string, unknown> = {}) {
+  return {
+    replyText: 'Visible reply',
+    toolResults: [],
+    files: [],
+    roundsCompleted: 0,
+    deduplicatedCallCount: 0,
+    truncatedCallCount: 0,
+    guardrailBlockedCallCount: 0,
+    cancellationCount: 0,
+    roundEvents: [],
+    finalization: {
+      attempted: false,
+      succeeded: true,
+      fallbackUsed: false,
+      returnedToolCallCount: 0,
+      completedAt: '2026-03-12T00:00:00.000Z',
+      terminationReason: 'assistant_reply',
+    },
+    terminationReason: 'assistant_reply',
+    graphStatus: 'completed',
+    approvalInterrupt: null,
+    traceEvents: [],
+    ...overrides,
+  };
+}
+
 describe('agentRuntime', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     buildContextMessagesMock.mockReturnValue([{ role: 'user', content: 'hello' }]);
-    collectPendingAdminActionsMock.mockReturnValue([]);
-    collectPendingAdminActionIdsMock.mockReturnValue([]);
     globalToolRegistryMock.listNames.mockReturnValue([]);
     globalToolRegistryMock.get.mockReturnValue(undefined);
     upsertTraceStartMock.mockResolvedValue(undefined);
     updateTraceEndMock.mockResolvedValue(undefined);
-    runToolCallLoopMock.mockReset();
+    runAgentGraphTurnMock.mockReset();
     clearGitHubFileLookupCacheForTraceMock.mockReset();
   });
 
@@ -184,40 +189,20 @@ describe('agentRuntime', () => {
   it('falls back to a short approval acknowledgement when scrubbing removes the visible draft', async () => {
     globalToolRegistryMock.listNames.mockReturnValue(['discord_admin'] as never);
     globalToolRegistryMock.get.mockReturnValue({ metadata: { access: 'public' } } as never);
-    mockChat.mockResolvedValue({
-      text: 'I will call `discord_admin`.\n```json\n{"action":"update_server_instructions"}\n```',
-      reasoningText: 'hidden provider reasoning',
-      toolCalls: [],
-    });
-    runToolCallLoopMock.mockResolvedValue({
-      replyText: 'I will call `discord_admin`.\n```json\n{"status":"pending_approval","actionId":"action-1"}\n```',
-      toolsExecuted: true,
-      roundsCompleted: 1,
-      toolResults: [
-        {
-          name: 'discord_admin',
-          success: true,
-          result: { status: 'pending_approval', actionId: 'action-1' },
-          latencyMs: 5,
+    runAgentGraphTurnMock.mockResolvedValue(
+      makeGraphResult({
+        replyText: 'I will call `discord_admin`.\n```json\n{"action":"update_server_instructions"}\n```',
+        graphStatus: 'interrupted',
+        approvalInterrupt: {
+          requestId: 'request-1',
+          coalesced: false,
+          expiresAtIso: '2026-03-12T00:10:00.000Z',
+          payload: {
+            kind: 'server_instructions_update',
+          },
         },
-      ],
-      deduplicatedCallCount: 0,
-      truncatedCallCount: 0,
-      guardrailBlockedCallCount: 0,
-      roundEvents: [],
-      finalization: {
-        attempted: false,
-        succeeded: true,
-        fallbackUsed: false,
-        returnedToolCallCount: 0,
-        completedAt: '2026-03-09T10:00:00.000Z',
-        terminationReason: 'assistant_reply',
-      },
-      cancellationCount: 0,
-      terminationReason: 'assistant_reply',
-    });
-    collectPendingAdminActionsMock.mockReturnValue([{ actionId: 'action-1', coalesced: false }] as never);
-    collectPendingAdminActionIdsMock.mockReturnValue(['action-1'] as never);
+      }),
+    );
 
     const result = await runChatTurn({
       traceId: 'trace-1',
@@ -233,16 +218,21 @@ describe('agentRuntime', () => {
     });
 
     expect(result.replyText).toBe('I queued that for approval.');
-    expect(result.pendingAdminActions).toEqual([{ actionId: 'action-1', coalesced: false }]);
-    expect(result.pendingAdminActionIds).toEqual(['action-1']);
+    expect(updateTraceEndMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: 'trace-1',
+        approvalRequestId: 'request-1',
+        replyText: 'I queued that for approval.',
+      }),
+    );
   });
 
   it('does not persist provider reasoning text into traces', async () => {
-    mockChat.mockResolvedValue({
-      text: 'Visible reply',
-      reasoningText: 'Need a quick lookup first.',
-      toolCalls: [],
-    });
+    runAgentGraphTurnMock.mockResolvedValue(
+      makeGraphResult({
+        replyText: 'Visible reply',
+      }),
+    );
 
     await runChatTurn({
       traceId: 'trace-2',
@@ -263,39 +253,31 @@ describe('agentRuntime', () => {
     expect(updateTraceEndMock).toHaveBeenCalledWith(
       expect.objectContaining({
         id: 'trace-2',
-        reasoningText: null,
         replyText: 'Visible reply',
       }),
     );
+    expect(updateTraceEndMock.mock.calls.at(-1)?.[0]).not.toHaveProperty('reasoningText');
   });
 
   it('persists tool-loop termination metadata into trace budgets', async () => {
     globalToolRegistryMock.listNames.mockReturnValue(['web'] as never);
     globalToolRegistryMock.get.mockReturnValue({ metadata: { access: 'public' } } as never);
-    mockChat.mockResolvedValue({
-      text: '',
-      toolCalls: [{ name: 'web', args: { action: 'search', query: 'test' } }],
-    });
-    runToolCallLoopMock.mockResolvedValue({
-      replyText: 'Final answer',
-      toolsExecuted: true,
-      roundsCompleted: 2,
-      toolResults: [],
-      deduplicatedCallCount: 0,
-      truncatedCallCount: 0,
-      guardrailBlockedCallCount: 1,
-      roundEvents: [],
-      finalization: {
-        attempted: true,
-        succeeded: true,
-        fallbackUsed: false,
-        returnedToolCallCount: 0,
-        completedAt: '2026-03-11T22:00:00.000Z',
+    runAgentGraphTurnMock.mockResolvedValue(
+      makeGraphResult({
+        replyText: 'Final answer',
+        roundsCompleted: 2,
+        guardrailBlockedCallCount: 1,
+        finalization: {
+          attempted: true,
+          succeeded: true,
+          fallbackUsed: false,
+          returnedToolCallCount: 0,
+          completedAt: '2026-03-11T22:00:00.000Z',
+          terminationReason: 'stagnation',
+        },
         terminationReason: 'stagnation',
-      },
-      cancellationCount: 0,
-      terminationReason: 'stagnation',
-    });
+      }),
+    );
 
     await runChatTurn({
       traceId: 'trace-3',
@@ -316,13 +298,13 @@ describe('agentRuntime', () => {
       expect.objectContaining({
         id: 'trace-3',
         budgetJson: expect.objectContaining({
-          toolLoop: expect.objectContaining({
+          graphRuntime: expect.objectContaining({
             terminationReason: 'stagnation',
             guardrailBlockedCallCount: 1,
           }),
         }),
         toolJson: expect.objectContaining({
-          main: expect.objectContaining({
+          graph: expect.objectContaining({
             terminationReason: 'stagnation',
             guardrailBlockedCallCount: 1,
           }),

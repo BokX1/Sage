@@ -199,14 +199,14 @@ Possible causes:
 
 **Expected behavior:**
 
-1. One unresolved admin request maps to one pending approval and one action ID
-2. Repeated equivalent requests should reuse that pending action instead of creating a second approval card
-3. Channel replies should acknowledge the pending approval briefly without raw tool JSON, approval payloads, or retry instructions
+1. One unresolved admin request maps to one approval review request and one reviewer card
+2. Repeated equivalent requests should reuse that open review request instead of creating a second approval card
+3. Channel replies should acknowledge the queued review briefly without raw tool JSON, interrupt payloads, or retry instructions
 
 **Fix:**
 
 1. Upgrade to a build that includes approval coalescing and final-reply scrubbing
-2. Re-run the request once and confirm the same pending action ID is reused
+2. Re-run the request once and confirm the same approval review request id is reused
 3. If duplicate pending rows already exist, resolve or expire the stale item and retry
 
 ---

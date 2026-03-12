@@ -57,30 +57,40 @@ model ServerInstructionsArchive {
   @@index([guildId, createdAt])
 }
 
-model PendingAdminAction {
-  id                 String    @id @default(cuid())
-  guildId            String
-  sourceChannelId    String
-  reviewChannelId    String
-  approvalMessageId  String?
-  requestMessageId   String?
-  requestedBy        String
-  kind               String
-  payloadJson        Json
-  status             String
-  expiresAt          DateTime
-  decidedBy          String?
-  decidedAt          DateTime?
-  executedAt         DateTime?
-  resultJson         Json?
-  decisionReasonText String?   @db.Text
-  errorText          String?   @db.Text
-  createdAt          DateTime  @default(now())
-  updatedAt          DateTime  @updatedAt
+model ApprovalReviewRequest {
+  id                       String   @id @default(cuid())
+  threadId                 String
+  originTraceId            String
+  resumeTraceId            String?
+  guildId                  String
+  sourceChannelId          String
+  reviewChannelId          String
+  sourceMessageId          String?
+  requesterStatusMessageId String?
+  reviewerMessageId        String?
+  requestedBy              String
+  kind                     String
+  dedupeKey                String
+  executionPayloadJson     Json
+  reviewSnapshotJson       Json
+  interruptMetadataJson    Json?
+  status                   String
+  expiresAt                DateTime
+  decidedBy                String?
+  decidedAt                DateTime?
+  executedAt               DateTime?
+  resultJson               Json?
+  decisionReasonText       String?  @db.Text
+  errorText                String?  @db.Text
+  createdAt                DateTime @default(now())
+  updatedAt                DateTime @updatedAt
 
+  @@index([threadId, createdAt])
+  @@index([originTraceId, createdAt])
   @@index([guildId, createdAt])
   @@index([status, expiresAt])
   @@index([reviewChannelId, createdAt])
+  @@index([requestedBy, kind, dedupeKey, status, expiresAt])
 }
 
 model DiscordInteractionSession {
@@ -235,18 +245,24 @@ model AgentTrace {
   channelId       String
   userId          String
   routeKind       String
+  threadId        String?
+  parentTraceId   String?
+  graphStatus     String?
+  interruptJson   Json?
+  approvalRequestId String?
   agentEventsJson Json?
   qualityJson     Json?
   budgetJson      Json?
   toolJson        Json?
   tokenJson       Json?
-  reasoningText   String?  @db.Text
   replyText       String   @db.Text
   createdAt       DateTime @default(now())
 
   @@index([guildId, createdAt])
   @@index([channelId, createdAt])
   @@index([userId, createdAt])
+  @@index([threadId, createdAt])
+  @@index([approvalRequestId, createdAt])
 }
 
 model ModelHealthState {

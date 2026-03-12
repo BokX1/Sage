@@ -478,6 +478,7 @@ function queueDiscordRestWrite(params: {
     guildId,
     channelId: params.ctx.channelId,
     requestedBy: params.ctx.userId,
+    sourceMessageId: params.ctx.currentTurn?.messageId ?? null,
     request: params.request,
   });
 }
@@ -1412,6 +1413,7 @@ export async function executeDiscordAdminAction(
         guildId: requireGuildContext(ctx.guildId),
         channelId: ctx.channelId,
         requestedBy: ctx.userId,
+        sourceMessageId: ctx.currentTurn?.messageId ?? null,
         request: data.request,
       });
     }
@@ -1423,6 +1425,7 @@ export async function executeDiscordAdminAction(
         guildId: requireGuildContext(ctx.guildId),
         channelId: ctx.channelId,
         requestedBy: ctx.userId,
+        sourceMessageId: ctx.currentTurn?.messageId ?? null,
         request: data.request,
         currentTurn: ctx.currentTurn,
         replyTarget: ctx.replyTarget,
@@ -1761,6 +1764,7 @@ export async function executeDiscordAdminAction(
         guildId: ctx.guildId!,
         channelId: ctx.channelId,
         requestedBy: ctx.userId,
+        sourceMessageId: ctx.currentTurn?.messageId ?? null,
         request: {
           method: data.method,
           path: data.path,

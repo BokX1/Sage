@@ -30,20 +30,20 @@ describe('env embedding dimension guard', () => {
     });
   });
 
-  it('uses AGENTIC_TOOL_MAX_ROUNDS default of 6 when not provided', async () => {
+  it('uses AGENT_GRAPH_MAX_STEPS default of 6 when not provided', async () => {
     await withEnv({ NODE_ENV: 'test' }, async () => {
-      delete process.env.AGENTIC_TOOL_MAX_ROUNDS;
+      delete process.env.AGENT_GRAPH_MAX_STEPS;
       const envModule = await importFresh(() => import('@/platform/config/env'));
-      expect(envModule.config.AGENTIC_TOOL_MAX_ROUNDS).toBe(6);
+      expect(envModule.config.AGENT_GRAPH_MAX_STEPS).toBe(6);
     });
   });
 
   it('uses lean defaults for tool result and scrape char caps', async () => {
     await withEnv({ NODE_ENV: 'test' }, async () => {
-      delete process.env.AGENTIC_TOOL_RESULT_MAX_CHARS;
+      delete process.env.AGENT_GRAPH_MAX_RESULT_CHARS;
       delete process.env.TOOL_WEB_SCRAPE_MAX_CHARS;
       const envModule = await importFresh(() => import('@/platform/config/env'));
-      expect(envModule.config.AGENTIC_TOOL_RESULT_MAX_CHARS).toBe(8000);
+      expect(envModule.config.AGENT_GRAPH_MAX_RESULT_CHARS).toBe(8000);
       expect(envModule.config.TOOL_WEB_SCRAPE_MAX_CHARS).toBe(20000);
     });
   });

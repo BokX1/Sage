@@ -12,7 +12,7 @@ How a single message flows through Sage's single-agent runtime from Discord even
 
 - [Turn Flow](#turn-flow)
 - [Context Assembly](#context-assembly)
-- [Tool Call Loop](#tool-call-loop)
+- [Agent Graph](#agent-graph)
 - [Trace Outputs](#trace-outputs)
 - [Tool-Oriented Data Access](#tool-oriented-data-access)
 - [Configuration](#configuration)
@@ -42,7 +42,7 @@ flowchart TD
     F --> G[Send to LLM with tool specs]:::llm
     G --> H{Tool calls?}:::llm
 
-    H -->|Yes| I[Tool Call Loop]:::tools
+    H -->|Yes| I[Agent Graph]:::tools
     I --> J["Validate and execute tools<br/>collect results and files"]:::tools
     J --> K[Feed results back to LLM]:::llm
     K --> H
@@ -58,7 +58,7 @@ flowchart TD
 2. **Context composition**: `buildContextMessages` assembles the system prompt, runtime instruction block, optional server instructions, optional live voice context, recent transcript, `<assistant_context>`, and the current user turn with any `<reply_reference>` folded in as context-only preface content ahead of `<user_input>`.
 3. **Token budgeting**: `contextBudgeter` trims blocks against the configured budgets before the provider call.
 4. **LLM request**: Sage sends the budgeted messages plus the OpenAI-compatible tool definitions.
-5. **Tool loop**: if the model returns tool calls, Sage validates them, executes them, and feeds results back into the same turn up to the configured round limit.
+5. **Agent graph**: if the model returns tool calls, Sage routes through the custom LangGraph runtime to validate calls, execute tools, handle approval interrupts, and continue the turn until it can finalize.
 6. **Final reply**: plain text is cleaned, tool-produced files are attached, and the final payload is returned to Discord.
 7. **Trace persistence**: route, tool, token, and quality metadata are stored when tracing is enabled.
 
@@ -88,9 +88,9 @@ All system-role blocks are merged into a single system message before the provid
 
 ---
 
-<a id="tool-call-loop"></a>
+<a id="agent-graph"></a>
 
-## 🔄 Tool Call Loop
+## 🔄 Agent Graph
 
 ```mermaid
 flowchart LR
@@ -113,17 +113,17 @@ flowchart LR
 
 **Key behaviors**
 
-- **Bounded rounds**: `AGENTIC_TOOL_MAX_ROUNDS` limits how many back-and-forth tool iterations can occur in one turn.
-- **Calls per round**: `AGENTIC_TOOL_MAX_CALLS_PER_ROUND` caps the number of tool calls the model can issue at once.
-- **Parallel read-only execution**: read-only calls can run concurrently up to `AGENTIC_TOOL_MAX_PARALLEL_READ_ONLY`, but side-effecting actions still preserve ordering barriers.
+- **Bounded steps**: `AGENT_GRAPH_MAX_STEPS` limits how many model/tool hops can occur in one turn.
+- **Calls per step**: `AGENT_GRAPH_MAX_TOOL_CALLS_PER_STEP` caps the number of tool calls the model can issue at once.
+- **Parallel read-only execution**: read-only calls can run concurrently up to `AGENT_GRAPH_MAX_PARALLEL_READONLY`, but side-effecting actions still preserve ordering barriers.
 - **Native tool contract**: the runtime consumes structured provider tool calls directly; it no longer relies on text-parsed JSON envelopes.
-- **Per-tool timeout**: each tool call is bounded by `AGENTIC_TOOL_TIMEOUT_MS`.
+- **Per-tool timeout**: each tool call is bounded by `AGENT_GRAPH_TOOL_TIMEOUT_MS`.
 - **Repeated-call guardrails**: identical calls that already failed non-retryably are blocked for the rest of the turn, and identical calls that fail twice in one turn are closed even if the failures were retryable.
-- **Stagnation stop**: if the same requested tool batch repeats without any new uncached success, pending approval, or side-effect progress, Sage stops the active loop early and pivots to finalization.
-- **Loop wall-clock cap**: the whole orchestration phase is bounded by `AGENTIC_TOOL_LOOP_TIMEOUT_MS`.
-- **In-process memoization**: repeated read-only calls can hit the in-memory memo cache controlled by `AGENTIC_TOOL_MEMO_*`. The cache is per process and not shared across instances.
-- **Result truncation**: raw tool output is capped by `AGENTIC_TOOL_RESULT_MAX_CHARS`, with a compact summary block added when the raw payload is too large.
-- **Direct plain-text finalization**: when the loop ends by round limit, loop timeout, or stagnation, Sage skips another tool-enabled model pass and forces one final plain-text answer grounded only in prior context and tool results.
+- **Stagnation stop**: if the same requested tool batch repeats without any new uncached success, approval interrupt, or side-effect progress, Sage stops the active graph early and pivots to finalization.
+- **Graph wall-clock cap**: the whole orchestration phase is bounded by `AGENT_GRAPH_MAX_DURATION_MS`.
+- **In-process memoization**: repeated read-only calls can hit the in-memory memo cache controlled by `AGENT_GRAPH_MEMO_*`. The cache is per process and not shared across instances.
+- **Result truncation**: raw tool output is capped by `AGENT_GRAPH_MAX_RESULT_CHARS`, with a compact summary block added when the raw payload is too large.
+- **Direct plain-text finalization**: when the graph ends by step limit, duration cap, or stagnation, Sage skips another tool-enabled model pass and forces one final plain-text answer grounded only in prior context and tool results.
 - **File collection**: tools such as `image_generate` can return files that are merged into the final Discord response.
 
 ---
@@ -142,12 +142,11 @@ Each turn can persist the following to `AgentTrace`:
 | `toolJson` | Tool names, args, statuses, and compacted results |
 | `tokenJson` | Provider token usage |
 | `qualityJson` | Quality metrics when available |
-| `reasoningText` | Legacy nullable column retained for compatibility; new turns write `null` and Sage does not surface provider reasoning in normal operation |
 | `replyText` | Final reply text sent back to Discord |
 
 > [!TIP]
 > Use `npm run db:studio` to inspect traces in Prisma Studio, or send a real chat ping in Discord for an end-to-end runtime health check.
-> Tool-loop reinjection is intentionally compact and machine-facing: successful results are bounded, failed results omit conversational recovery coaching, repeated blocked calls are surfaced as explicit guardrail failures, approval-gated writes stop retrying once a `pending_approval` result is queued for that turn, and trace metadata now records why the loop terminated.
+> Tool-result reinjection is intentionally compact and machine-facing: successful results are bounded, failed results omit conversational recovery coaching, repeated blocked calls are surfaced as explicit guardrail failures, approval-gated writes resume from an interrupt instead of replaying the write inline, and trace metadata records why the graph terminated.
 
 ---
 
@@ -183,19 +182,20 @@ These values reflect the starter values in `.env.example`:
 | Variable | Description | Starter value |
 | :--- | :--- | :--- |
 | `CHAT_MODEL` | Runtime chat model for `runChatTurn` | `kimi` |
-| `AGENTIC_TOOL_LOOP_ENABLED` | Enable the tool call loop | `true` |
-| `AGENTIC_TOOL_MAX_ROUNDS` | Max tool loop iterations | `6` |
-| `AGENTIC_TOOL_MAX_CALLS_PER_ROUND` | Max tool calls per round | `5` |
-| `AGENTIC_TOOL_TIMEOUT_MS` | Per-tool execution timeout | `45000` |
-| `AGENTIC_TOOL_LOOP_TIMEOUT_MS` | Max wall-clock duration for one tool loop turn | `120000` |
-| `AGENTIC_TOOL_RESULT_MAX_CHARS` | Max chars per tool result | `8000` |
-| `AGENTIC_TOOL_GITHUB_GROUNDED_MODE` | Enable grounded GitHub search mode | `true` |
-| `AGENTIC_TOOL_PARALLEL_READ_ONLY_ENABLED` | Enable parallel read-only execution | `true` |
-| `AGENTIC_TOOL_MAX_PARALLEL_READ_ONLY` | Max concurrent read-only tool calls | `4` |
-| `AGENTIC_TOOL_MEMO_ENABLED` | Enable in-process memoization for repeated read-only calls | `true` |
-| `AGENTIC_TOOL_MEMO_TTL_MS` | Memo cache TTL | `900000` |
-| `AGENTIC_TOOL_MEMO_MAX_ENTRIES` | Max cached memo entries | `250` |
-| `AGENTIC_TOOL_MEMO_MAX_RESULT_JSON_CHARS` | Max memoized JSON payload size | `200000` |
+| `AGENT_GRAPH_MAX_STEPS` | Max model/tool graph steps per turn | `6` |
+| `AGENT_GRAPH_MAX_TOOL_CALLS_PER_STEP` | Max tool calls per graph step | `5` |
+| `AGENT_GRAPH_TOOL_TIMEOUT_MS` | Per-tool execution timeout | `45000` |
+| `AGENT_GRAPH_MAX_DURATION_MS` | Max wall-clock duration for one graph turn | `120000` |
+| `AGENT_GRAPH_MAX_OUTPUT_TOKENS` | Max output tokens for graph model calls | `1200` |
+| `AGENT_GRAPH_MAX_RESULT_CHARS` | Max chars per tool result | `8000` |
+| `AGENT_GRAPH_GITHUB_GROUNDED_MODE` | Enable grounded GitHub search mode | `true` |
+| `AGENT_GRAPH_READONLY_PARALLEL_ENABLED` | Enable parallel read-only execution | `true` |
+| `AGENT_GRAPH_MAX_PARALLEL_READONLY` | Max concurrent read-only tool calls | `4` |
+| `AGENT_GRAPH_MEMO_ENABLED` | Enable in-process memoization for repeated read-only calls | `true` |
+| `AGENT_GRAPH_MEMO_TTL_MS` | Memo cache TTL | `900000` |
+| `AGENT_GRAPH_MEMO_MAX_ENTRIES` | Max cached memo entries | `250` |
+| `AGENT_GRAPH_MEMO_MAX_RESULT_JSON_CHARS` | Max memoized JSON payload size | `200000` |
+| `AGENT_GRAPH_RECURSION_LIMIT` | LangGraph recursion fail-safe above the legal hop count | `16` |
 | `TRACE_ENABLED` | Enable trace persistence | `true` |
 
 ---

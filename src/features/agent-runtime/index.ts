@@ -27,11 +27,12 @@ export {
 } from './discordDomainTools';
 
 export {
-  runToolCallLoop,
-  type ToolCallLoopConfig,
-  type ToolCallLoopParams,
-  type ToolCallLoopResult,
-} from './toolCallLoop';
+  initializeAgentGraphRuntime,
+  shutdownAgentGraphRuntime,
+  runAgentGraphTurn,
+  resumeAgentGraphTurn,
+  type AgentGraphTurnResult,
+} from './langgraph/runtime';
 
 export {
   extractTextFromMessageContent,

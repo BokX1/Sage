@@ -141,14 +141,6 @@ export type PreparedModerationEnvelope = {
   dedupeKey: string;
 };
 
-export type PendingModerationPayload =
-  | {
-      action: DiscordModerationActionRequest;
-    }
-  | {
-      prepared: PreparedModerationEnvelope;
-    };
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value);
 }
@@ -287,60 +279,6 @@ export function isPreparedModerationEnvelope(value: unknown): value is PreparedM
   return asString(value.dedupeKey) !== null;
 }
 
-function buildLegacyCanonicalAction(
-  request: DiscordModerationActionRequest,
-  fallback: { sourceChannelId?: string | null },
-): PreparedModerationAction | null {
-  switch (request.action) {
-    case 'remove_user_reaction':
-      if (!request.messageId || !request.userId) return null;
-      return {
-        action: request.action,
-        channelId: request.channelId ?? fallback.sourceChannelId ?? '',
-        messageId: request.messageId,
-        emoji: request.emoji,
-        userId: request.userId,
-        reason: request.reason,
-      };
-    case 'clear_reactions':
-    case 'delete_message':
-      if (!request.messageId) return null;
-      return {
-        action: request.action,
-        channelId: request.channelId ?? fallback.sourceChannelId ?? '',
-        messageId: request.messageId,
-        reason: request.reason,
-      };
-    case 'timeout_member':
-      if (!request.userId) return null;
-      return {
-        action: request.action,
-        userId: request.userId,
-        durationMinutes: request.durationMinutes,
-        reason: request.reason,
-      };
-    case 'untimeout_member':
-    case 'kick_member':
-    case 'unban_member':
-      if (!request.userId) return null;
-      return {
-        action: request.action,
-        userId: request.userId,
-        reason: request.reason,
-      };
-    case 'ban_member':
-      if (!request.userId) return null;
-      return {
-        action: request.action,
-        userId: request.userId,
-        deleteMessageSeconds: request.deleteMessageSeconds,
-        reason: request.reason,
-      };
-    default:
-      return null;
-  }
-}
-
 function canonicalizeForHash(value: unknown): unknown {
   if (Array.isArray(value)) {
     return value.map((entry) => canonicalizeForHash(entry));
@@ -362,9 +300,6 @@ export function computePreparedModerationDedupeKey(action: PreparedModerationAct
 
 export function readPreparedModerationEnvelope(
   payloadJson: unknown,
-  fallback: {
-    sourceChannelId?: string | null;
-  } = {},
 ): PreparedModerationEnvelope | null {
   if (!isRecord(payloadJson)) return null;
 
@@ -376,38 +311,5 @@ export function readPreparedModerationEnvelope(
     return payloadJson;
   }
 
-  const legacyRequest = readOriginalRequest(payloadJson.action);
-  if (!legacyRequest) return null;
-  const canonicalAction = buildLegacyCanonicalAction(legacyRequest, fallback);
-  if (!canonicalAction) return null;
-
-  return {
-    version: 1,
-    originalRequest: legacyRequest,
-    canonicalAction,
-    evidence: {
-      targetKind:
-        legacyRequest.action === 'delete_message' || legacyRequest.action === 'clear_reactions'
-          ? 'message'
-          : legacyRequest.action === 'remove_user_reaction'
-            ? 'reaction'
-            : 'member',
-      source: 'explicit_id',
-      channelId: 'channelId' in canonicalAction ? canonicalAction.channelId : null,
-      messageId: 'messageId' in canonicalAction ? canonicalAction.messageId : null,
-      userId: 'userId' in canonicalAction ? canonicalAction.userId : null,
-      messageUrl: null,
-      messageAuthorId: null,
-      messageAuthorDisplayName: null,
-      messageExcerpt: null,
-    },
-    preflight: {
-      approverPermission: null,
-      botPermissionChecks: [],
-      targetChannelScope: 'channelId' in canonicalAction ? canonicalAction.channelId : null,
-      hierarchyChecked: false,
-      notes: ['Legacy pending moderation payload; no enriched preflight snapshot was stored.'],
-    },
-    dedupeKey: computePreparedModerationDedupeKey(canonicalAction),
-  };
+  return null;
 }

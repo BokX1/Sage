@@ -9,6 +9,7 @@ import { initApprovalCardCleanupScheduler } from '../features/admin/approvalCard
 import { config } from '../platform/config/env';
 import { assertAgentTraceSchemaReady } from '../features/agent-runtime/agent-trace-preflight';
 import { registerDefaultAgenticTools } from '../features/agent-runtime';
+import { initializeAgentGraphRuntime } from '../features/agent-runtime/langgraph/runtime';
 import { registerShutdownHooks } from './runtime/shutdown';
 import { initChannelSummaryScheduler } from '../features/summary/channelSummaryScheduler';
 import { startCompactionScheduler } from '../features/summary/ltmCompaction';
@@ -23,6 +24,7 @@ export async function bootstrapApp(): Promise<void> {
     }
 
     registerDefaultAgenticTools();
+    await initializeAgentGraphRuntime();
     registerMessageCreateHandler();
     registerMessageReactionAddHandler();
     registerInteractionCreateHandler();
