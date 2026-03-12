@@ -7,6 +7,7 @@ export type ToolErrorKind = 'validation' | 'execution' | 'timeout';
  */
 export type ToolFailureCategory =
   | 'validation'
+  | 'guardrail'
   | 'timeout'
   | 'rate_limited'
   | 'not_found'
@@ -34,6 +35,7 @@ export interface ToolErrorDetails {
 
 function defaultRetryable(category: ToolFailureCategory, httpStatus?: number): boolean {
   if (category === 'validation') return false;
+  if (category === 'guardrail') return false;
   if (category === 'misconfigured') return false;
   if (category === 'not_found') return false;
   if (category === 'bad_request') return false;

@@ -6,7 +6,7 @@ import { buildToolCacheKey, ToolResultCache } from './toolCache';
 import { buildToolMemoScopeKey, globalToolMemoStore } from './toolMemoStore';
 import { limitConcurrency } from '../../shared/async/concurrency';
 import { metrics } from '../../shared/observability/metrics';
-import type { ToolErrorDetails, ToolFailureCategory } from './toolErrors';
+import { buildToolErrorDetails, type ToolErrorDetails, type ToolFailureCategory } from './toolErrors';
 import { getModelBudgetConfig } from '../../platform/llm/model-budget-config';
 import { planBudget, trimMessagesToBudget } from '../../platform/llm/context-budgeter';
 
@@ -129,6 +129,96 @@ function isRetryableErrorType(type: ToolErrorType): boolean {
     type === 'server_error' ||
     type === 'upstream_error'
   );
+}
+
+type RepeatedCallBlockReason = 'non_retryable_failure' | 'failure_budget';
+
+type CallAttemptLedgerEntry = {
+  failedOuterExecutions: number;
+  blockedReason?: RepeatedCallBlockReason;
+  lastFailureCategory?: ToolErrorType;
+};
+
+function isImmediateRepeatBlockCategory(type: ToolErrorType): boolean {
+  return (
+    type === 'validation' ||
+    type === 'guardrail' ||
+    type === 'not_found' ||
+    type === 'unauthorized' ||
+    type === 'forbidden' ||
+    type === 'bad_request' ||
+    type === 'misconfigured'
+  );
+}
+
+function buildRepeatedCallBlockedResult(
+  call: { name: string },
+  reason: RepeatedCallBlockReason,
+): ToolResult {
+  const hint = 'Change arguments, choose a different tool, or ask the user for missing details.';
+  return {
+    name: call.name,
+    success: false,
+    error:
+      reason === 'non_retryable_failure'
+        ? 'Tool call blocked for this turn because the same request already failed non-retryably.'
+        : 'Tool call blocked for this turn because the same request already failed twice.',
+    errorType: 'execution',
+    errorDetails: buildToolErrorDetails({
+      category: 'guardrail',
+      code: reason,
+      hint,
+      retryable: false,
+    }),
+    latencyMs: 0,
+  };
+}
+
+function buildCallBatchFingerprint(calls: Array<{ name: string; args: unknown }>): string {
+  if (calls.length === 0) return '';
+  return calls.map((call) => buildToolCacheKey(call.name, call.args)).join('||');
+}
+
+function buildSuccessfulReadObservationFingerprint(
+  resultsByIndex: Array<ToolResult | null>,
+  readOnlyByIndex: boolean[],
+): string {
+  const parts: string[] = [];
+  for (let index = 0; index < resultsByIndex.length; index += 1) {
+    if (!readOnlyByIndex[index]) continue;
+    const result = resultsByIndex[index];
+    if (!result?.success) {
+      parts.push(`${index}:!`);
+      continue;
+    }
+
+    const payload: Record<string, unknown> = { result: result.result };
+    if (result.attachments?.length) {
+      payload.attachments = result.attachments.map((attachment) => ({
+        filename: attachment.filename,
+        mimetype: attachment.mimetype ?? null,
+        byteLength: attachment.data.length,
+      }));
+    }
+
+    parts.push(`${index}:${stringifyResult(payload)}`);
+  }
+  return parts.join('||');
+}
+
+function didRoundMakeProgress(
+  resultsByIndex: Array<ToolResult | null>,
+  readOnlyByIndex: boolean[],
+  repeatedBatch: boolean,
+  repeatedReadObservations: boolean,
+): boolean {
+  for (let index = 0; index < resultsByIndex.length; index += 1) {
+    const result = resultsByIndex[index];
+    if (!result?.success || result.cacheHit) continue;
+    if (!readOnlyByIndex[index]) return true;
+    if (!repeatedBatch || !repeatedReadObservations) return true;
+  }
+  return false;
 }
 
 
@@ -441,10 +531,22 @@ export interface ToolCallRoundEvent {
   executedCallCount: number;
   deduplicatedCallCount: number;
   truncatedCallCount: number;
+  guardrailBlockedCallCount: number;
   seeded: boolean;
   completedAt: string;
   rebudgeting?: ToolLoopRebudgetEvent;
+  stagnation?: {
+    repeatedBatch: boolean;
+    madeProgress: boolean;
+    triggered: boolean;
+  };
 }
+
+export type ToolLoopTerminationReason =
+  | 'assistant_reply'
+  | 'round_limit'
+  | 'loop_timeout'
+  | 'stagnation';
 
 export interface ToolCallFinalizationEvent {
   attempted: boolean;
@@ -452,6 +554,7 @@ export interface ToolCallFinalizationEvent {
   fallbackUsed: boolean;
   returnedToolCallCount: number;
   completedAt: string;
+  terminationReason: ToolLoopTerminationReason;
   rebudgeting?: ToolLoopRebudgetEvent;
 }
 
@@ -475,6 +578,10 @@ export interface ToolCallLoopResult {
   finalization: ToolCallFinalizationEvent;
 
   cancellationCount: number;
+
+  terminationReason: ToolLoopTerminationReason;
+
+  guardrailBlockedCallCount: number;
 }
 
 function buildRebudgetingEvent(
@@ -590,13 +697,19 @@ export async function runToolCallLoop(params: ToolCallLoopParams): Promise<ToolC
   const loopStartTime = Date.now();
   let sideEffectExecutedInLoop = false;
   const pendingApprovalResultByFingerprint = new Map<string, ToolResult>();
+  const callAttemptLedger = new Map<string, CallAttemptLedgerEntry>();
   const roundEvents: ToolCallRoundEvent[] = [];
+  let previousExecutedBatchFingerprint: string | null = null;
+  let previousSuccessfulReadObservationFingerprint: string | null = null;
+  let terminationReason: ToolLoopTerminationReason = 'assistant_reply';
+  let guardrailBlockedCallCount = 0;
   let finalization: ToolCallFinalizationEvent = {
     attempted: false,
     succeeded: true,
     fallbackUsed: false,
     returnedToolCallCount: 0,
     completedAt: new Date().toISOString(),
+    terminationReason,
   };
 
   while (roundsCompleted < config.maxRounds) {
@@ -607,6 +720,7 @@ export async function runToolCallLoop(params: ToolCallLoopParams): Promise<ToolC
         { traceId: ctx.traceId, roundsCompleted, elapsed, maxLoopDurationMs: config.maxLoopDurationMs },
         'Tool loop exceeded wall-clock time limit; breaking',
       );
+      terminationReason = 'loop_timeout';
       break;
     }
     const seeded = !!seededResponse;
@@ -634,6 +748,7 @@ export async function runToolCallLoop(params: ToolCallLoopParams): Promise<ToolC
     const requestedCalls = response.toolCalls ?? [];
 
     if (requestedCalls.length === 0) {
+      finalization.terminationReason = terminationReason;
       return {
         replyText: response.text,
         toolsExecuted: allToolResults.length > 0,
@@ -644,11 +759,14 @@ export async function runToolCallLoop(params: ToolCallLoopParams): Promise<ToolC
         roundEvents,
         finalization,
         cancellationCount: allToolResults.filter((result) => result.errorDetails?.category === 'timeout').length,
+        terminationReason,
+        guardrailBlockedCallCount,
       };
     }
 
 
     const calls = requestedCalls.slice(0, config.maxCallsPerRound);
+    const executedBatchFingerprint = buildCallBatchFingerprint(calls);
     if (requestedCalls.length > config.maxCallsPerRound) {
       logger.warn(
         { requested: requestedCalls.length, limit: config.maxCallsPerRound },
@@ -668,6 +786,7 @@ export async function runToolCallLoop(params: ToolCallLoopParams): Promise<ToolC
     const pendingCallsInOrder: PendingCall[] = [];
     const dedupePrimaryIndexByKey = new Map<string, number>();
     const dedupeFollowerIndexesByKey = new Map<string, number[]>();
+    let roundGuardrailBlockedCallCount = 0;
     let readOnlySegmentId = 0;
     let hasPriorSideEffectCall = false;
 
@@ -692,21 +811,53 @@ export async function runToolCallLoop(params: ToolCallLoopParams): Promise<ToolC
       return metadata.readOnly === true;
     };
 
-    const executePendingCall = async (pending: PendingCall): Promise<void> => {
-      const readOnly = isReadOnlyToolCall(pending.call);
-      const approvalFingerprint = buildToolCacheKey(pending.call.name, pending.call.args);
-      if (!readOnly) {
-        const existingPendingApproval = pendingApprovalResultByFingerprint.get(approvalFingerprint);
-        if (existingPendingApproval) {
-          roundResultsByIndex[pending.index] = {
-            ...existingPendingApproval,
+    const assignResult = (pending: PendingCall, result: ToolResult): void => {
+      roundResultsByIndex[pending.index] = result;
+      if (pending.dedupeKey) {
+        const followerIndexes = dedupeFollowerIndexesByKey.get(pending.dedupeKey) ?? [];
+        for (const followerIndex of followerIndexes) {
+          roundResultsByIndex[followerIndex] = {
+            ...result,
             latencyMs: 0,
             cacheHit: true,
             cacheKind: 'dedupe',
           };
+        }
+      }
+    };
+
+    const callReadOnlyByIndex = calls.map((call) => isReadOnlyToolCall(call));
+
+    const executePendingCall = async (pending: PendingCall): Promise<void> => {
+      const readOnly = callReadOnlyByIndex[pending.index] ?? isReadOnlyToolCall(pending.call);
+      const callFingerprint = buildToolCacheKey(pending.call.name, pending.call.args);
+      if (!readOnly) {
+        const existingPendingApproval = pendingApprovalResultByFingerprint.get(callFingerprint);
+        if (existingPendingApproval) {
+          assignResult(pending, {
+            ...existingPendingApproval,
+            latencyMs: 0,
+            cacheHit: true,
+            cacheKind: 'dedupe',
+          });
           deduplicatedCallCount += 1;
           return;
         }
+      }
+
+      const attemptState = callAttemptLedger.get(callFingerprint);
+      if (attemptState?.blockedReason) {
+        const blockedResult = buildRepeatedCallBlockedResult(pending.call, attemptState.blockedReason);
+        const blockedCallCount =
+          1 + (pending.dedupeKey ? (dedupeFollowerIndexesByKey.get(pending.dedupeKey)?.length ?? 0) : 0);
+        assignResult(pending, blockedResult);
+        roundGuardrailBlockedCallCount += blockedCallCount;
+        guardrailBlockedCallCount += blockedCallCount;
+        metrics.increment('tool_guardrail_block_total', {
+          tool: pending.call.name,
+          reason: attemptState.blockedReason,
+        });
+        return;
       }
 
       const runOnce = () =>
@@ -749,9 +900,22 @@ export async function runToolCallLoop(params: ToolCallLoopParams): Promise<ToolC
         }
       }
 
-      roundResultsByIndex[pending.index] = result;
+      if (!result.success) {
+        const failureType = classifyErrorType(result.error ?? '', result.errorDetails);
+        const nextState = callAttemptLedger.get(callFingerprint) ?? { failedOuterExecutions: 0 };
+        nextState.failedOuterExecutions += 1;
+        nextState.lastFailureCategory = failureType;
+        if (isImmediateRepeatBlockCategory(failureType)) {
+          nextState.blockedReason = 'non_retryable_failure';
+        } else if (nextState.failedOuterExecutions >= 2) {
+          nextState.blockedReason = 'failure_budget';
+        }
+        callAttemptLedger.set(callFingerprint, nextState);
+      }
+
+      assignResult(pending, result);
       if (isPendingApprovalResult(result)) {
-        pendingApprovalResultByFingerprint.set(approvalFingerprint, result);
+        pendingApprovalResultByFingerprint.set(callFingerprint, result);
       }
       if (result.success && cache) {
         cache.set(pending.call.name, pending.call.args, result.result);
@@ -769,25 +933,14 @@ export async function runToolCallLoop(params: ToolCallLoopParams): Promise<ToolC
           metrics.increment('tool_memo_store_total', { tool: pending.call.name });
         }
       }
-      if (pending.dedupeKey) {
-        const followerIndexes = dedupeFollowerIndexesByKey.get(pending.dedupeKey) ?? [];
-        for (const followerIndex of followerIndexes) {
-          roundResultsByIndex[followerIndex] = {
-            ...result,
-            latencyMs: 0,
-            cacheHit: true,
-            cacheKind: 'dedupe',
-          };
-        }
-      }
     };
 
     for (let index = 0; index < calls.length; index += 1) {
       const call = calls[index];
-      const dedupeEligible = isReadOnlyToolCall(call);
-      const approvalFingerprint = buildToolCacheKey(call.name, call.args);
+      const dedupeEligible = callReadOnlyByIndex[index] ?? isReadOnlyToolCall(call);
+      const callFingerprint = buildToolCacheKey(call.name, call.args);
       if (!dedupeEligible) {
-        const pendingApprovalResult = pendingApprovalResultByFingerprint.get(approvalFingerprint);
+        const pendingApprovalResult = pendingApprovalResultByFingerprint.get(callFingerprint);
         if (pendingApprovalResult) {
           roundResultsByIndex[index] = {
             ...pendingApprovalResult,
@@ -907,97 +1060,116 @@ export async function runToolCallLoop(params: ToolCallLoopParams): Promise<ToolC
       await executeReadOnlyBatch(readOnlyBatch);
     }
 
+    const successfulReadObservationFingerprint = buildSuccessfulReadObservationFingerprint(
+      roundResultsByIndex,
+      callReadOnlyByIndex,
+    );
+    const repeatedBatch =
+      previousExecutedBatchFingerprint !== null &&
+      previousExecutedBatchFingerprint === executedBatchFingerprint;
+    const repeatedReadObservations =
+      previousSuccessfulReadObservationFingerprint !== null &&
+      previousSuccessfulReadObservationFingerprint === successfulReadObservationFingerprint;
+    const roundMadeProgress = didRoundMakeProgress(
+      roundResultsByIndex,
+      callReadOnlyByIndex,
+      repeatedBatch,
+      repeatedReadObservations,
+    );
     const roundResults = roundResultsByIndex.filter((result): result is ToolResult => result !== null);
     allToolResults.push(...roundResults);
     roundsCompleted++;
+    const stagnationTriggered = repeatedBatch && !roundMadeProgress;
     roundEvents.push({
       round: roundsCompleted,
       requestedCallCount: requestedCalls.length,
       executedCallCount: roundResults.length,
       deduplicatedCallCount: roundResults.filter((result) => result.cacheKind === 'dedupe').length,
       truncatedCallCount: Math.max(0, requestedCalls.length - calls.length),
+      guardrailBlockedCallCount: roundGuardrailBlockedCallCount,
       seeded,
       completedAt: new Date().toISOString(),
       rebudgeting: roundRebudgeting,
+      stagnation: {
+        repeatedBatch,
+        madeProgress: roundMadeProgress,
+        triggered: stagnationTriggered,
+      },
     });
 
     if (response.text.trim().length > 0) {
       messages.push({ role: 'assistant', content: response.text });
     }
     messages.push(formatToolResultsMessage(roundResults, config.maxToolResultChars));
+    previousExecutedBatchFingerprint = executedBatchFingerprint;
+    previousSuccessfulReadObservationFingerprint = successfulReadObservationFingerprint;
+
+    if (stagnationTriggered) {
+      terminationReason = 'stagnation';
+      logger.warn(
+        { traceId: ctx.traceId, roundsCompleted, requestedCallCount: requestedCalls.length },
+        'Tool loop detected a repeated non-productive tool batch; forcing finalization',
+      );
+      break;
+    }
   }
 
-  const preparedFinal = buildLoopChatRequest({
-    messages,
-    model,
-    apiKey,
-    temperature: loopTemperature,
-    timeoutMs: params.timeoutMs,
-    maxTokens: params.maxTokens,
-    tools: toolSpecs,
-    toolChoice: toolSpecs ? 'auto' : undefined,
-  });
-  const finalResponse = await client.chat(preparedFinal.request);
-  let finalReplyText = finalResponse.text;
+  if (terminationReason === 'assistant_reply') {
+    terminationReason = 'round_limit';
+  }
+
+  logger.warn(
+    { traceId: ctx.traceId, roundsCompleted, terminationReason },
+    'Tool loop exhausted active execution; forcing a plain-text finalization pass',
+  );
+
+  let finalReplyText =
+    'I could not finalize a plain-text answer after tool execution. Please try again.';
   finalization = {
-    attempted: false,
+    attempted: true,
     succeeded: true,
     fallbackUsed: false,
-    returnedToolCallCount: finalResponse.toolCalls?.length ?? 0,
+    returnedToolCallCount: 0,
     completedAt: new Date().toISOString(),
-    rebudgeting: preparedFinal.rebudgeting,
+    terminationReason,
   };
-  if ((finalResponse.toolCalls?.length ?? 0) > 0) {
-    logger.warn(
-      { traceId: ctx.traceId, roundsCompleted, maxRounds: config.maxRounds },
-      'Tool loop reached round limit with another tool-call batch; forcing a plain-text finalization pass',
-    );
-    finalization.attempted = true;
-    try {
-      if (finalResponse.text.trim().length > 0) {
-        messages.push({ role: 'assistant', content: finalResponse.text });
-      }
-      const preparedPlainTextFinalization = buildLoopChatRequest({
-        messages: [
-          ...messages,
-          {
-            role: 'system',
-              content:
-              'Tool-call rounds are exhausted. Do not call tools. ' +
-              'Return one final plain-text answer grounded only in prior tool results and context.',
-          },
-        ],
-        model,
-        apiKey,
-        temperature: Math.max(0, loopTemperature - 0.1),
-        timeoutMs: params.timeoutMs,
-        maxTokens: params.maxTokens,
-        tools: undefined,
-        toolChoice: undefined,
-      });
-      const plainTextFinalization = await client.chat(preparedPlainTextFinalization.request);
-      finalization.rebudgeting = preparedPlainTextFinalization.rebudgeting;
-      finalization.returnedToolCallCount = plainTextFinalization.toolCalls?.length ?? 0;
-      finalization.completedAt = new Date().toISOString();
-      if ((plainTextFinalization.toolCalls?.length ?? 0) > 0) {
-        finalization.succeeded = false;
-        finalization.fallbackUsed = true;
-        finalReplyText =
-          'I could not finalize a plain-text answer after tool execution. Please try again.';
-      } else {
-        finalReplyText = plainTextFinalization.text;
-      }
-    } catch (finalizationError) {
-      logger.warn(
-        { traceId: ctx.traceId, roundsCompleted, maxRounds: config.maxRounds, error: finalizationError },
-        'Tool loop plain-text finalization pass failed; returning a safe fallback message',
-      );
+  try {
+    const preparedPlainTextFinalization = buildLoopChatRequest({
+      messages: [
+        ...messages,
+        {
+          role: 'system',
+          content:
+            'Tool-call rounds are exhausted. Do not call tools. ' +
+            'Return one final plain-text answer grounded only in prior tool results and context.',
+        },
+      ],
+      model,
+      apiKey,
+      temperature: Math.max(0, loopTemperature - 0.1),
+      timeoutMs: params.timeoutMs,
+      maxTokens: params.maxTokens,
+      tools: undefined,
+      toolChoice: undefined,
+    });
+    const plainTextFinalization = await client.chat(preparedPlainTextFinalization.request);
+    finalization.rebudgeting = preparedPlainTextFinalization.rebudgeting;
+    finalization.returnedToolCallCount = plainTextFinalization.toolCalls?.length ?? 0;
+    finalization.completedAt = new Date().toISOString();
+    if ((plainTextFinalization.toolCalls?.length ?? 0) > 0) {
       finalization.succeeded = false;
       finalization.fallbackUsed = true;
-      finalization.completedAt = new Date().toISOString();
-      finalReplyText =
-        'I could not finalize a plain-text answer after tool execution. Please try again.';
+    } else {
+      finalReplyText = plainTextFinalization.text;
     }
+  } catch (finalizationError) {
+    logger.warn(
+      { traceId: ctx.traceId, roundsCompleted, terminationReason, error: finalizationError },
+      'Tool loop plain-text finalization pass failed; returning a safe fallback message',
+    );
+    finalization.succeeded = false;
+    finalization.fallbackUsed = true;
+    finalization.completedAt = new Date().toISOString();
   }
 
   return {
@@ -1010,5 +1182,7 @@ export async function runToolCallLoop(params: ToolCallLoopParams): Promise<ToolC
     roundEvents,
     finalization,
     cancellationCount: allToolResults.filter((result) => result.errorDetails?.category === 'timeout').length,
+    terminationReason,
+    guardrailBlockedCallCount,
   };
 }

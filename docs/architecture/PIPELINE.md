@@ -118,9 +118,12 @@ flowchart LR
 - **Parallel read-only execution**: read-only calls can run concurrently up to `AGENTIC_TOOL_MAX_PARALLEL_READ_ONLY`, but side-effecting actions still preserve ordering barriers.
 - **Native tool contract**: the runtime consumes structured provider tool calls directly; it no longer relies on text-parsed JSON envelopes.
 - **Per-tool timeout**: each tool call is bounded by `AGENTIC_TOOL_TIMEOUT_MS`.
+- **Repeated-call guardrails**: identical calls that already failed non-retryably are blocked for the rest of the turn, and identical calls that fail twice in one turn are closed even if the failures were retryable.
+- **Stagnation stop**: if the same requested tool batch repeats without any new uncached success, pending approval, or side-effect progress, Sage stops the active loop early and pivots to finalization.
 - **Loop wall-clock cap**: the whole orchestration phase is bounded by `AGENTIC_TOOL_LOOP_TIMEOUT_MS`.
 - **In-process memoization**: repeated read-only calls can hit the in-memory memo cache controlled by `AGENTIC_TOOL_MEMO_*`. The cache is per process and not shared across instances.
 - **Result truncation**: raw tool output is capped by `AGENTIC_TOOL_RESULT_MAX_CHARS`, with a compact summary block added when the raw payload is too large.
+- **Direct plain-text finalization**: when the loop ends by round limit, loop timeout, or stagnation, Sage skips another tool-enabled model pass and forces one final plain-text answer grounded only in prior context and tool results.
 - **File collection**: tools such as `image_generate` can return files that are merged into the final Discord response.
 
 ---
@@ -144,7 +147,7 @@ Each turn can persist the following to `AgentTrace`:
 
 > [!TIP]
 > Use `npm run db:studio` to inspect traces in Prisma Studio, or send a real chat ping in Discord for an end-to-end runtime health check.
-> Tool-loop reinjection is intentionally compact and machine-facing: successful results are bounded, failed results omit conversational recovery coaching, and approval-gated writes stop retrying once a `pending_approval` result is queued for that turn.
+> Tool-loop reinjection is intentionally compact and machine-facing: successful results are bounded, failed results omit conversational recovery coaching, repeated blocked calls are surfaced as explicit guardrail failures, approval-gated writes stop retrying once a `pending_approval` result is queued for that turn, and trace metadata now records why the loop terminated.
 
 ---
 

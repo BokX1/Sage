@@ -34,6 +34,7 @@
 
 ### Changed
 
+- Hardened Sage's tool-loop governor so repeated identical failed calls now close for the rest of the turn, repeated non-productive batches stop early as stagnation instead of burning more model rounds, and exhausted loops finalize directly in plain text with explicit termination telemetry for safer operator debugging.
 - Hardened Sage's approval-gated Discord moderation flow so `discord_admin.submit_moderation` now resolves reply targets, mentions, and Discord message URLs into canonical moderation targets before queueing review, reuses equivalent pending moderation approvals across mixed input shapes, and gives reviewers richer evidence and permission context in the details surface.
 - Tightened moderation execution safety so approval decisions now use compare-and-set transitions, message/reaction approvals verify the approver's permissions in the actual target channel, and stale moderation targets such as already-deleted messages, already-cleared reactions, and already-unbanned users now resolve as safe no-op executions instead of hard failures.
 - Expanded Sage's Discord moderation mental model across prompt guidance, routed tool help, and operator docs so the runtime now teaches exact message-history evidence before enforcement, points moderators toward member/permission/AutoMod inspection reads when needed, and exposes `untimeout_member` as the canonical timeout-reversal action.
@@ -89,6 +90,7 @@
 
 ### Fixed
 
+- Fixed two tool-loop stagnation blind spots: repeated read-only batches that return the same uncached data after a prior write now stop early instead of consuming extra rounds, and stagnation detection now keys off the truncated executed batch so discarded tail calls cannot hide repeated non-productive work.
 - Fixed two Discord moderation preflight regressions: `remove_user_reaction` no longer guesses the replied-to message author as the reactor when `userId` is omitted, and `ban_member` once again permits valid ban-by-ID requests for users who already left the guild before approval.
 - Fixed follow-up summary noise in the bot-aware perception path: Sage-authored messages now stay labeled as `sage` instead of `external_bot` inside rolling/profile summary inputs, and bot-only traffic no longer triggers rolling/profile summary recomputes without new human activity.
 - Fixed a perception gap where other Discord bots could disappear from live runtime context or be flattened into generic human room chatter; transcript and summary shaping now classify external bots explicitly, and profile deduping only treats Sage's own messages as trailing assistant turns.

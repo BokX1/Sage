@@ -34,6 +34,7 @@ describe('capabilityPrompt', () => {
       expect(prompt).toContain('Image generation behavior: you do not have image generation capabilities this turn.');
       expect(prompt).toContain('Use native tool calls silently.');
       expect(prompt).toContain('If a tool result reports `status="pending_approval"`');
+      expect(prompt).toContain('If the runtime blocks a repeated call for this turn');
     });
 
     it('keeps runtime guidance free of the base-prompt continuity duplicates', () => {

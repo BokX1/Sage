@@ -203,6 +203,7 @@ describe('agentRuntime', () => {
       ],
       deduplicatedCallCount: 0,
       truncatedCallCount: 0,
+      guardrailBlockedCallCount: 0,
       roundEvents: [],
       finalization: {
         attempted: false,
@@ -210,8 +211,10 @@ describe('agentRuntime', () => {
         fallbackUsed: false,
         returnedToolCallCount: 0,
         completedAt: '2026-03-09T10:00:00.000Z',
+        terminationReason: 'assistant_reply',
       },
       cancellationCount: 0,
+      terminationReason: 'assistant_reply',
     });
     collectPendingAdminActionsMock.mockReturnValue([{ actionId: 'action-1', coalesced: false }] as never);
     collectPendingAdminActionIdsMock.mockReturnValue(['action-1'] as never);
@@ -262,6 +265,68 @@ describe('agentRuntime', () => {
         id: 'trace-2',
         reasoningText: null,
         replyText: 'Visible reply',
+      }),
+    );
+  });
+
+  it('persists tool-loop termination metadata into trace budgets', async () => {
+    globalToolRegistryMock.listNames.mockReturnValue(['web'] as never);
+    globalToolRegistryMock.get.mockReturnValue({ metadata: { access: 'public' } } as never);
+    mockChat.mockResolvedValue({
+      text: '',
+      toolCalls: [{ name: 'web', args: { action: 'search', query: 'test' } }],
+    });
+    runToolCallLoopMock.mockResolvedValue({
+      replyText: 'Final answer',
+      toolsExecuted: true,
+      roundsCompleted: 2,
+      toolResults: [],
+      deduplicatedCallCount: 0,
+      truncatedCallCount: 0,
+      guardrailBlockedCallCount: 1,
+      roundEvents: [],
+      finalization: {
+        attempted: true,
+        succeeded: true,
+        fallbackUsed: false,
+        returnedToolCallCount: 0,
+        completedAt: '2026-03-11T22:00:00.000Z',
+        terminationReason: 'stagnation',
+      },
+      cancellationCount: 0,
+      terminationReason: 'stagnation',
+    });
+
+    await runChatTurn({
+      traceId: 'trace-3',
+      userId: 'user-1',
+      channelId: 'channel-1',
+      guildId: 'guild-1',
+      messageId: 'message-3',
+      userText: 'search twice',
+      userProfileSummary: null,
+      currentTurn: makeCurrentTurn({
+        messageId: 'message-3',
+      }),
+      invokedBy: 'mention',
+      isAdmin: false,
+    });
+
+    expect(updateTraceEndMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: 'trace-3',
+        budgetJson: expect.objectContaining({
+          toolLoop: expect.objectContaining({
+            terminationReason: 'stagnation',
+            guardrailBlockedCallCount: 1,
+          }),
+        }),
+        toolJson: expect.objectContaining({
+          main: expect.objectContaining({
+            terminationReason: 'stagnation',
+            guardrailBlockedCallCount: 1,
+          }),
+        }),
       }),
     );
   });

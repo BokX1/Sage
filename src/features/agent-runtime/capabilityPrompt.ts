@@ -116,6 +116,7 @@ export function buildCapabilityPromptSection(
     '- Use native tool calls silently. Never narrate that you are about to call a tool, never print tool arguments, and never expose approval-command payloads.',
     '- Batch multiple read-only tool calls in one provider-native tool-calling turn when possible. Do NOT loop reading them one by one across multiple rounds.',
     '- If a tool result reports `status="pending_approval"`, treat that action as already queued for this turn. Do not retry the same approval-gated action again.',
+    '- If the runtime blocks a repeated call for this turn, do not retry it unchanged. Pivot to different arguments, another tool, or one clarifying question.',
     '- After a pending approval, keep the channel reply brief. Do not repeat action IDs, approval card contents, raw admin workflow steps, or recovery protocol.',
     hasAnyDiscordTool
       ? '- Discord tool behavior: `discord_context` for profiles/summaries/instruction reads/analytics, `discord_messages` for history/delivery, `discord_files` for attachment recall, `discord_server` for guild resources/thread lifecycle, `discord_voice` for voice/status, `discord_admin` for admin writes/API fallback.'

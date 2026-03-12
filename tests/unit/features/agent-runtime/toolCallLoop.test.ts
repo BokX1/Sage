@@ -185,9 +185,8 @@ describe('toolCallLoop', () => {
       expect(result.finalization.rebudgeting?.beforeCount).toBeGreaterThan(0);
     });
 
-    it('runs a plain-text finalization pass when the post-round response still has tool calls', async () => {
+    it('runs a plain-text finalization pass immediately when rounds are exhausted', async () => {
       mockChat
-        .mockResolvedValueOnce(toolResponse([{ name: 'get_time', args: {} }]))
         .mockResolvedValueOnce(toolResponse([{ name: 'get_time', args: {} }]))
         .mockResolvedValueOnce(textResponse('Final plain-text answer after tool rounds.'));
 
@@ -207,14 +206,15 @@ describe('toolCallLoop', () => {
         succeeded: true,
         fallbackUsed: false,
         returnedToolCallCount: 0,
+        terminationReason: 'round_limit',
       });
-      expect(mockChat).toHaveBeenCalledTimes(3);
-      expect(mockChat.mock.calls[2][0].tools).toBeUndefined();
+      expect(result.terminationReason).toBe('round_limit');
+      expect(mockChat).toHaveBeenCalledTimes(2);
+      expect(mockChat.mock.calls[1][0].tools).toBeUndefined();
     });
 
     it('returns a safe fallback when plain-text finalization fails', async () => {
       mockChat
-        .mockResolvedValueOnce(toolResponse([{ name: 'get_time', args: {} }]))
         .mockResolvedValueOnce(toolResponse([{ name: 'get_time', args: {} }]))
         .mockRejectedValueOnce(new Error('finalization timeout'));
 
@@ -233,6 +233,7 @@ describe('toolCallLoop', () => {
         attempted: true,
         succeeded: false,
         fallbackUsed: true,
+        terminationReason: 'round_limit',
       });
     });
   });
@@ -629,6 +630,226 @@ describe('toolCallLoop', () => {
       expect(result.toolResults).toHaveLength(2);
       expect(result.deduplicatedCallCount).toBe(0);
       expect(statefulExecute).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe('repeated-call guardrails and stagnation', () => {
+    it('blocks an identical call after one non-retryable failure', async () => {
+      mockChat
+        .mockResolvedValueOnce(toolResponse([{ name: 'add_numbers', args: { a: 'nope', b: 5 } }]))
+        .mockResolvedValueOnce(toolResponse([{ name: 'add_numbers', args: { a: 'nope', b: 5 } }]))
+        .mockResolvedValueOnce(textResponse('Pivoted after the repeated invalid call.'));
+
+      const result = await runToolCallLoop({
+        client: mockClient,
+        messages: [{ role: 'user', content: 'add stuff' }],
+        registry,
+        ctx: testCtx,
+        config: { maxRounds: 2 },
+      });
+
+      expect(result.toolResults).toHaveLength(2);
+      expect(result.toolResults[0]).toMatchObject({
+        success: false,
+        errorType: 'validation',
+        errorDetails: expect.objectContaining({ category: 'validation' }),
+      });
+      expect(result.toolResults[1]).toMatchObject({
+        success: false,
+        errorType: 'execution',
+        errorDetails: expect.objectContaining({
+          category: 'guardrail',
+          retryable: false,
+          code: 'non_retryable_failure',
+        }),
+      });
+      expect(result.guardrailBlockedCallCount).toBe(1);
+      expect(result.roundEvents[1]).toMatchObject({
+        guardrailBlockedCallCount: 1,
+      });
+      expect(result.terminationReason).toBe('stagnation');
+    });
+
+    it('blocks an identical retryable call after two failed outer executions', async () => {
+      const unstableExecute = vi.fn().mockRejectedValue(new Error('timed out'));
+      registry.register({
+        name: 'unstable_read',
+        description: 'Read-only tool that keeps timing out',
+        schema: z.object({ key: z.string() }),
+        metadata: { readOnly: true },
+        execute: unstableExecute,
+      });
+
+      mockChat
+        .mockResolvedValueOnce(toolResponse([{ name: 'unstable_read', args: { key: 'same' } }]))
+        .mockResolvedValueOnce(
+          toolResponse([
+            { name: 'get_time', args: {} },
+            { name: 'unstable_read', args: { key: 'same' } },
+          ]),
+        )
+        .mockResolvedValueOnce(toolResponse([{ name: 'unstable_read', args: { key: 'same' } }]))
+        .mockResolvedValueOnce(textResponse('Stopped retrying the same timed-out read.'));
+
+      const result = await runToolCallLoop({
+        client: mockClient,
+        messages: [{ role: 'user', content: 'keep trying the same read' }],
+        registry,
+        ctx: testCtx,
+        config: { maxRounds: 3 },
+      });
+
+      expect(unstableExecute).toHaveBeenCalledTimes(4);
+      expect(result.toolResults).toHaveLength(4);
+      expect(result.toolResults[1]).toMatchObject({
+        success: true,
+        name: 'get_time',
+      });
+      expect(result.toolResults[3]).toMatchObject({
+        success: false,
+        errorDetails: expect.objectContaining({
+          category: 'guardrail',
+          retryable: false,
+          code: 'failure_budget',
+        }),
+      });
+      expect(result.guardrailBlockedCallCount).toBe(1);
+      expect(result.terminationReason).toBe('round_limit');
+    });
+
+    it('stops early when the same non-productive batch repeats', async () => {
+      mockChat
+        .mockResolvedValueOnce(toolResponse([{ name: 'unknown_tool', args: {} }]))
+        .mockResolvedValueOnce(toolResponse([{ name: 'unknown_tool', args: {} }]))
+        .mockResolvedValueOnce(textResponse('Final answer after stagnation.'));
+
+      const result = await runToolCallLoop({
+        client: mockClient,
+        messages: [{ role: 'user', content: 'keep trying the same unknown tool' }],
+        registry,
+        ctx: testCtx,
+        config: { maxRounds: 5 },
+      });
+
+      expect(result.roundsCompleted).toBe(2);
+      expect(result.terminationReason).toBe('stagnation');
+      expect(result.finalization).toMatchObject({
+        attempted: true,
+        succeeded: true,
+        fallbackUsed: false,
+        terminationReason: 'stagnation',
+      });
+      expect(result.roundEvents[0]?.stagnation).toMatchObject({
+        repeatedBatch: false,
+        triggered: false,
+      });
+      expect(result.roundEvents[1]?.stagnation).toMatchObject({
+        repeatedBatch: true,
+        madeProgress: false,
+        triggered: true,
+      });
+      expect(mockChat).toHaveBeenCalledTimes(3);
+      expect(mockChat.mock.calls[2][0].tools).toBeUndefined();
+    });
+
+    it('stops early when an uncached repeated read returns the same observation after a prior write', async () => {
+      const state = { value: 0 };
+      const readStateExecute = vi.fn().mockImplementation(async () => ({ value: state.value }));
+
+      registry.register({
+        name: 'read_state_after_write',
+        description: 'Read-only state probe',
+        schema: z.object({ key: z.string() }),
+        metadata: { readOnly: true },
+        execute: readStateExecute,
+      });
+
+      registry.register({
+        name: 'write_state_before_repeat',
+        description: 'State mutator',
+        schema: z.object({}),
+        metadata: { readOnly: false },
+        execute: async () => {
+          state.value = 1;
+          return { ok: true };
+        },
+      });
+
+      mockChat
+        .mockResolvedValueOnce(toolResponse([{ name: 'write_state_before_repeat', args: {} }]))
+        .mockResolvedValueOnce(toolResponse([{ name: 'read_state_after_write', args: { key: 'same' } }]))
+        .mockResolvedValueOnce(toolResponse([{ name: 'read_state_after_write', args: { key: 'same' } }]))
+        .mockResolvedValueOnce(textResponse('Stopped after repeated uncached read.'));
+
+      const result = await runToolCallLoop({
+        client: mockClient,
+        messages: [{ role: 'user', content: 'write once, then keep reading the same state' }],
+        registry,
+        ctx: testCtx,
+        config: {
+          maxRounds: 5,
+          cacheEnabled: true,
+          cacheMaxEntries: 10,
+          memoEnabled: false,
+        },
+      });
+
+      expect(readStateExecute).toHaveBeenCalledTimes(2);
+      expect(result.roundsCompleted).toBe(3);
+      expect(result.terminationReason).toBe('stagnation');
+      expect(result.roundEvents[1]?.stagnation).toMatchObject({
+        repeatedBatch: false,
+        madeProgress: true,
+        triggered: false,
+      });
+      expect(result.roundEvents[2]?.stagnation).toMatchObject({
+        repeatedBatch: true,
+        madeProgress: false,
+        triggered: true,
+      });
+    });
+
+    it('treats repeated truncated executed work as stagnation even when only the discarded tail changes', async () => {
+      mockChat
+        .mockResolvedValueOnce(
+          toolResponse([
+            { name: 'unknown_tool_a', args: {} },
+            { name: 'unknown_tool_b', args: {} },
+            { name: 'tail_only_round_one', args: { id: 1 } },
+          ]),
+        )
+        .mockResolvedValueOnce(
+          toolResponse([
+            { name: 'unknown_tool_a', args: {} },
+            { name: 'unknown_tool_b', args: {} },
+            { name: 'tail_only_round_two', args: { id: 2 } },
+          ]),
+        )
+        .mockResolvedValueOnce(textResponse('Stopped after repeated truncated work.'));
+
+      const result = await runToolCallLoop({
+        client: mockClient,
+        messages: [{ role: 'user', content: 'keep retrying the same first two tools' }],
+        registry,
+        ctx: testCtx,
+        config: {
+          maxRounds: 5,
+          maxCallsPerRound: 2,
+        },
+      });
+
+      expect(result.roundsCompleted).toBe(2);
+      expect(result.truncatedCallCount).toBe(2);
+      expect(result.terminationReason).toBe('stagnation');
+      expect(result.roundEvents[1]).toMatchObject({
+        requestedCallCount: 3,
+        executedCallCount: 2,
+      });
+      expect(result.roundEvents[1]?.stagnation).toMatchObject({
+        repeatedBatch: true,
+        madeProgress: false,
+        triggered: true,
+      });
     });
   });
 
