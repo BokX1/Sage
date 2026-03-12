@@ -90,7 +90,6 @@ export interface AgentGraphState {
   messages: LLMChatMessage[];
   activeToolNames: string[];
   routeKind: string;
-  toolExecutionProfile: 'default' | 'search_high';
   currentTurn: unknown;
   replyTarget: unknown;
   pendingToolCalls: LLMToolCall[];

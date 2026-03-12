@@ -161,6 +161,10 @@ These settings control Sage's optional Discord voice features. The local voice s
 | `FILE_INGEST_MAX_BYTES_PER_FILE` | Max file size (10 MB) | `10485760` |
 | `FILE_INGEST_MAX_TOTAL_BYTES_PER_MESSAGE` | Max total file size per message (20 MB) | `20971520` |
 | `FILE_INGEST_OCR_ENABLED` | Enable OCR for image-based documents | `false` |
+| `FILE_INGEST_IMAGE_ENABLED` | Enable image attachment ingest with background caption/recall text extraction | `true` |
+| `FILE_INGEST_IMAGE_MODEL_ID` | Local image caption model id used for attachment recall text | `onnx-community/Florence-2-large-ft` |
+| `FILE_INGEST_IMAGE_TIMEOUT_MS` | Per-image timeout for recall text extraction | `120000` |
+| `FILE_INGEST_IMAGE_MAX_CHARS` | Max chars stored from image recall text | `4000` |
 
 ---
 
@@ -203,7 +207,7 @@ These settings control Sage's optional Discord voice features. The local voice s
 | Variable | Description | Default |
 |:---|:---|:---|
 | `CONTEXT_MAX_INPUT_TOKENS` | Max total input tokens | `120000` |
-| `CONTEXT_RESERVED_OUTPUT_TOKENS` | Reserved output tokens | `12000` |
+| `CONTEXT_RESERVED_OUTPUT_TOKENS` | Reserved output tokens | `1800` |
 | `TOKEN_HEURISTIC_CHARS_PER_TOKEN` | Chars per token for heuristic estimator | `4` |
 | `CONTEXT_BLOCK_MAX_TOKENS_TRANSCRIPT` | Transcript block budget | `20000` |
 | `CONTEXT_BLOCK_MAX_TOKENS_ROLLING_SUMMARY` | Rolling summary block budget | `12000` |

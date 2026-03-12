@@ -285,7 +285,6 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
       messages: runtimeMessages,
       activeToolNames,
       routeKind: SINGLE_ROUTE_KIND,
-      toolExecutionProfile: 'default',
       currentTurn,
       replyTarget,
       invokedBy,

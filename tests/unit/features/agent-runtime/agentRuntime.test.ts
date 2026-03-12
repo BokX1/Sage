@@ -188,7 +188,7 @@ describe('agentRuntime', () => {
 
   it('falls back to a short approval acknowledgement when scrubbing removes the visible draft', async () => {
     globalToolRegistryMock.listNames.mockReturnValue(['discord_admin'] as never);
-    globalToolRegistryMock.get.mockReturnValue({ metadata: { access: 'public' } } as never);
+    globalToolRegistryMock.get.mockReturnValue({ metadata: { access: 'admin' } } as never);
     runAgentGraphTurnMock.mockResolvedValue(
       makeGraphResult({
         replyText: 'I will call `discord_admin`.\n```json\n{"action":"update_server_instructions"}\n```',
@@ -257,6 +257,67 @@ describe('agentRuntime', () => {
       }),
     );
     expect(updateTraceEndMock.mock.calls.at(-1)?.[0]).not.toHaveProperty('reasoningText');
+  });
+
+  it('does not expose admin-only tools to non-admin turns', async () => {
+    globalToolRegistryMock.listNames.mockReturnValue(['web', 'discord_admin'] as never);
+    globalToolRegistryMock.get.mockImplementation((name: string) => {
+      if (name === 'discord_admin') return { metadata: { access: 'admin' } };
+      return { metadata: { access: 'public' } };
+    });
+    runAgentGraphTurnMock.mockResolvedValue(makeGraphResult({ replyText: 'ok' }));
+
+    await runChatTurn({
+      traceId: 'trace-2b',
+      userId: 'user-1',
+      channelId: 'channel-1',
+      guildId: 'guild-1',
+      messageId: 'message-2b',
+      userText: 'hello',
+      userProfileSummary: null,
+      currentTurn: makeCurrentTurn({
+        messageId: 'message-2b',
+      }),
+      invokedBy: 'mention',
+      isAdmin: false,
+    });
+
+    expect(runAgentGraphTurnMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        activeToolNames: ['web'],
+      }),
+    );
+  });
+
+  it('does not expose admin-only tools during autopilot turns even for admins', async () => {
+    globalToolRegistryMock.listNames.mockReturnValue(['web', 'discord_admin'] as never);
+    globalToolRegistryMock.get.mockImplementation((name: string) => {
+      if (name === 'discord_admin') return { metadata: { access: 'admin' } };
+      return { metadata: { access: 'public' } };
+    });
+    runAgentGraphTurnMock.mockResolvedValue(makeGraphResult({ replyText: 'ok' }));
+
+    await runChatTurn({
+      traceId: 'trace-2c',
+      userId: 'user-1',
+      channelId: 'channel-1',
+      guildId: 'guild-1',
+      messageId: 'message-2c',
+      userText: 'hello',
+      userProfileSummary: null,
+      currentTurn: makeCurrentTurn({
+        messageId: 'message-2c',
+        invokedBy: 'autopilot',
+      }),
+      invokedBy: 'autopilot',
+      isAdmin: true,
+    });
+
+    expect(runAgentGraphTurnMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        activeToolNames: ['web'],
+      }),
+    );
   });
 
   it('persists tool-loop termination metadata into trace budgets', async () => {

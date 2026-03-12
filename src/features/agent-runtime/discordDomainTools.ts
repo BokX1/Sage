@@ -695,6 +695,7 @@ export const discordAdminTool: ToolDefinition<z.infer<typeof discordAdminToolSch
     'Discord admin tool for governance/config actions, moderation/enforcement, message/channel/role/member admin operations, invite URLs, and Discord API fallback. Server-instruction writes change Sage behavior/persona config; moderation actions enforce against users, messages, reactions, or content.\n<USE_ONLY_WHEN> You need admin-grade Discord actions or raw Discord API fallback after typed actions are exhausted. </USE_ONLY_WHEN>',
   schema: discordAdminToolSchema,
   metadata: {
+    access: 'admin',
     readOnlyPredicate: (args) => isReadOnlyDiscordDomainCall('discord_admin', args),
   },
   execute: async (args, ctx) => {

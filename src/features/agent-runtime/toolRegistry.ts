@@ -121,11 +121,6 @@ export interface ToolExecutionContext {
   invokedBy?: 'mention' | 'reply' | 'wakeword' | 'autopilot' | 'component';
   /** Optional route metadata for route-aware tool behavior. */
   routeKind?: string;
-  /**
-   * Optional execution profile used to enforce deterministic provider/tooling
-   * behavior for specific runtime paths (for example search-high).
-   */
-  toolExecutionProfile?: 'default' | 'search_high';
   /** Structured current-turn context carried into Discord-aware tools. */
   currentTurn?: CurrentTurnContext;
   /** Direct reply target surfaced in the runtime prompt, when present. */

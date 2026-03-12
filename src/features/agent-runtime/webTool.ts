@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { ToolDefinition, ToolExecutionContext } from './toolRegistry';
+import type { ToolDefinition } from './toolRegistry';
 import { buildToolMemoScopeKey } from './toolMemoStore';
 import { globalPagedTextStore } from './pagedTextStore';
 import {
@@ -12,12 +12,6 @@ import {
 } from './toolIntegrations';
 import { buildRoutedToolHelp } from './toolDocs';
 
-type WebSearchProviderId = 'tavily' | 'exa' | 'searxng' | 'pollinations';
-type WebScrapeProviderId = 'firecrawl' | 'crawl4ai' | 'jina' | 'raw_fetch' | 'nomnom';
-
-const COMPLEX_SEARCH_WEB_PROVIDER_ORDER = ['searxng', 'tavily', 'exa'] as const;
-const COMPLEX_SEARCH_SCRAPE_PROVIDER_ORDER = ['crawl4ai', 'jina', 'raw_fetch', 'firecrawl'] as const;
-
 function computeAgeDays(publishedDate: string | null | undefined, now = new Date()): number | null {
   if (!publishedDate) return null;
   const parsed = new Date(publishedDate);
@@ -27,20 +21,8 @@ function computeAgeDays(publishedDate: string | null | undefined, now = new Date
   return Math.floor(deltaMs / (24 * 60 * 60 * 1000));
 }
 
-function getWebSearchProfile(ctx: ToolExecutionContext): {
-  depth: SearchDepth;
-  providerOrder?: WebSearchProviderId[];
-  allowLlmFallback?: boolean;
-  scrapeProviderOrder?: WebScrapeProviderId[];
-} {
-  const useHighSearchProfile =
-    ctx.routeKind === 'search' && ctx.toolExecutionProfile === 'search_high';
-  return {
-    depth: useHighSearchProfile ? 'deep' : 'balanced',
-    providerOrder: useHighSearchProfile ? [...COMPLEX_SEARCH_WEB_PROVIDER_ORDER] : undefined,
-    allowLlmFallback: useHighSearchProfile ? false : undefined,
-    scrapeProviderOrder: useHighSearchProfile ? [...COMPLEX_SEARCH_SCRAPE_PROVIDER_ORDER] : undefined,
-  };
+function getWebSearchProfile(): { depth: SearchDepth } {
+  return { depth: 'balanced' };
 }
 
 const webToolSchema = z.discriminatedUnion('action', [
@@ -158,7 +140,7 @@ export const webTool: ToolDefinition<z.infer<typeof webToolSchema>> = {
   schema: webToolSchema,
   metadata: { readOnly: true },
   execute: async (args, ctx) => {
-    const profile = getWebSearchProfile(ctx);
+    const profile = getWebSearchProfile();
     const now = new Date();
 
     switch (args.action) {
@@ -174,8 +156,6 @@ export const webTool: ToolDefinition<z.infer<typeof webToolSchema>> = {
           depth: args.depth ?? profile.depth,
           maxResults: args.maxResults,
           apiKey: ctx.apiKey,
-          providerOrder: profile.providerOrder,
-          allowLlmFallback: profile.allowLlmFallback,
           signal: ctx.signal,
         });
 
@@ -205,7 +185,6 @@ export const webTool: ToolDefinition<z.infer<typeof webToolSchema>> = {
         return scrapeWebPage({
           url: sanitizedUrl,
           maxChars: args.maxChars,
-          providerOrder: profile.scrapeProviderOrder,
           signal: ctx.signal,
         });
       }
@@ -229,7 +208,6 @@ export const webTool: ToolDefinition<z.infer<typeof webToolSchema>> = {
           const extracted = await scrapeWebPage({
             url: sanitizedUrl,
             maxChars: fetchMaxChars,
-            providerOrder: profile.scrapeProviderOrder,
             signal: ctx.signal,
           });
           const extractedRecord = extracted && typeof extracted === 'object' && !Array.isArray(extracted)
@@ -331,8 +309,6 @@ export const webTool: ToolDefinition<z.infer<typeof webToolSchema>> = {
           depth: args.depth ?? profile.depth,
           maxResults: args.maxResults,
           apiKey: ctx.apiKey,
-          providerOrder: profile.providerOrder,
-          allowLlmFallback: profile.allowLlmFallback,
           signal: ctx.signal,
         });
 
@@ -355,7 +331,6 @@ export const webTool: ToolDefinition<z.infer<typeof webToolSchema>> = {
             const extracted = await scrapeWebPage({
               url: sanitizedUrl,
               maxChars: perSourceMaxChars,
-              providerOrder: profile.scrapeProviderOrder,
               signal: ctx.signal,
             });
             reads.push({
@@ -446,7 +421,6 @@ export const webTool: ToolDefinition<z.infer<typeof webToolSchema>> = {
                 const extracted = await scrapeWebPage({
                   url: candidate,
                   maxChars: perFollowMaxChars,
-                  providerOrder: profile.scrapeProviderOrder,
                   signal: ctx.signal,
                 });
                 followed.push({

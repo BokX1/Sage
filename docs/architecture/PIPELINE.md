@@ -55,7 +55,7 @@ flowchart TD
 **Step-by-step**
 
 1. **Model resolution**: `runChatTurn` reads `CHAT_MODEL` and falls back to `kimi` when it is empty.
-2. **Context composition**: `buildContextMessages` assembles the system prompt, runtime instruction block, optional server instructions, optional live voice context, recent transcript, `<assistant_context>`, and the current user turn with any `<reply_reference>` folded in as context-only preface content ahead of `<user_input>`.
+2. **Context composition**: `buildContextMessages` assembles the system prompt, `<current_turn>`, runtime instruction block, optional server instructions, optional live voice context, optional `<focused_continuity>`, optional `<recent_transcript>`, and the current user turn wrapped in `<user_input>` (with any `<reply_target>` folded in as context-only preface content).
 3. **Token budgeting**: `contextBudgeter` trims blocks against the configured budgets before the provider call.
 4. **LLM request**: Sage sends the budgeted messages plus the OpenAI-compatible tool definitions.
 5. **Agent graph**: if the model returns tool calls, Sage routes through the custom LangGraph runtime to validate calls, execute tools, handle approval interrupts, and continue the turn until it can finalize.
@@ -73,12 +73,13 @@ flowchart TD
 | Priority | Block | Source |
 | :---: | :--- | :--- |
 | 1 | Base system prompt | `composeSystemPrompt` with the user profile summary embedded in `<user_profile>` |
-| 2 | Runtime instructions | Single-agent capabilities, silent native tool-use rules, approval guardrails, and runtime state |
-| 3 | Server instructions | `ServerInstructions`, when present |
-| 4 | Live voice context | In-memory voice session context, only when Sage is active in voice |
-| 5 | Recent transcript | Ring buffer plus recent `ChannelMessage` history |
-| 6 | Assistant context | Prior Sage output wrapped as `<assistant_context>` for continuity only |
-| 7 | Current user message | Triggering text and multimodal content wrapped as `<user_input>`, with any replied-to content inlined first as context-only `<reply_reference>` |
+| 2 | Current turn | Structured `<current_turn>` metadata from `CurrentTurnContext` |
+| 3 | Runtime instructions | Single-agent capabilities, silent native tool-use rules, approval guardrails, and runtime state |
+| 4 | Server instructions | `ServerInstructions`, when present |
+| 5 | Live voice context | In-memory voice session context, only when Sage is active in voice |
+| 6 | Focused continuity | `<focused_continuity>` window from same-speaker and direct-reply context |
+| 7 | Recent transcript | Ambient `<recent_transcript>` ring-buffer context |
+| 8 | Current user message | Triggering text and multimodal content wrapped as `<user_input>`, with replied-to content inlined first as context-only `<reply_target>` |
 
 > [!NOTE]
 > Channel summaries, archived summaries, social-graph data, attachment cache results, and wider message history are not preloaded into every turn. The model fetches them on demand through the split Discord tools when it decides they are needed.

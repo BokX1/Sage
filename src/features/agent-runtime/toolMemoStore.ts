@@ -48,7 +48,6 @@ function safeJsonStringify(value: unknown): { ok: true; json: string } | { ok: f
 export function buildToolMemoScopeKey(toolName: string, ctx: ToolExecutionContext): string {
   const normalizedTool = toolName.trim().toLowerCase();
   const guildId = (ctx.guildId ?? 'dm').trim();
-  const profile = (ctx.toolExecutionProfile ?? 'default').trim();
 
   if (
     normalizedTool === 'discord_context' ||
@@ -58,14 +57,14 @@ export function buildToolMemoScopeKey(toolName: string, ctx: ToolExecutionContex
     normalizedTool === 'discord_admin' ||
     normalizedTool === 'discord_voice'
   ) {
-    return `discord::${guildId}::${ctx.channelId.trim()}::${ctx.userId.trim()}::${profile}`;
+    return `discord::${guildId}::${ctx.channelId.trim()}::${ctx.userId.trim()}`;
   }
 
   if (normalizedTool === 'web' || normalizedTool === 'github') {
-    return `${normalizedTool}::${guildId}::${profile}`;
+    return `${normalizedTool}::${guildId}`;
   }
 
-  return `${normalizedTool}::${guildId}::${profile}`;
+  return `${normalizedTool}::${guildId}`;
 }
 
 export class ToolMemoStore {

@@ -62,7 +62,6 @@ describe('webTool research followLinks', () => {
       userId: 'user-1',
       channelId: 'channel-1',
       routeKind: 'search' as const,
-      toolExecutionProfile: 'default' as const,
     };
 
     const result = await registry.executeValidated(

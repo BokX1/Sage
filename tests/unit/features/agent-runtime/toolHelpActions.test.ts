@@ -45,7 +45,6 @@ describe('tool help actions', () => {
     userId: 'user-1',
     channelId: 'channel-1',
     routeKind: 'search' as const,
-    toolExecutionProfile: 'default' as const,
   };
 
   it('github help returns an action index', async () => {

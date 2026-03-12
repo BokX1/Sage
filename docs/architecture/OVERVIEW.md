@@ -177,7 +177,7 @@ The runtime teaches silent native tool usage via structured instruction blocks, 
 
 <a id="registered-tools"></a>
 
-## 🧰 Registered Tools (16 Total)
+## 🧰 Registered Tools (15 Total)
 
 > [!NOTE]
 > The runtime currently registers 15 top-level tools. The website/demo may show a larger capability count because it also lists routed Discord actions individually.
@@ -191,7 +191,7 @@ The runtime teaches silent native tool usage via structured instruction blocks, 
 | `discord_files` | Attachment discovery, paged attachment reads, and attachment resend flows | Public |
 | `discord_server` | Guild resources, scheduled events, AutoMod reads, and thread lifecycle actions | Public (some reads Admin) |
 | `discord_voice` | Live voice connection status plus join or leave control | Public |
-| `discord_admin` | Admin instruction writes, moderation, channel/role/member admin actions, invite URLs, and raw Discord API fallback | Public (some actions Admin) |
+| `discord_admin` | Admin instruction writes, moderation, channel/role/member admin actions, invite URLs, and raw Discord API fallback | Admin |
 
 ### 🌐 Search & Research (3 tools)
 
@@ -213,7 +213,7 @@ The runtime teaches silent native tool usage via structured instruction blocks, 
 
 | Tool | Description | Access |
 |:---|:---|:---|
-| `image_generate` | Generate/edit images via Pollinations | Public |
+| `image_generate` | Generate images via Pollinations (optional reference image guidance) | Public |
 
 ### 🛡️ Admin & Discord (via routed Discord actions)
 
@@ -249,7 +249,7 @@ Read-only helpers are also exposed across the routed Discord tools:
 - `discord_server.list_members` / `discord_server.get_member` / `discord_server.get_permission_snapshot` / `discord_server.list_automod_rules` (admin-only guild inspection reads)
 - `discord_context.get_top_relationships` (top social-graph edges for a time window)
 
-### ⚙️ System (3 tools)
+### ⚙️ System (2 tools)
 
 | Tool | Description | Access |
 |:---|:---|:---|

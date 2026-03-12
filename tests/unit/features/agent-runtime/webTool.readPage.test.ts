@@ -43,7 +43,6 @@ describe('webTool read.page', () => {
       userId: 'user-1',
       channelId: 'channel-1',
       routeKind: 'search' as const,
-      toolExecutionProfile: 'default' as const,
     };
 
     const first = await registry.executeValidated(

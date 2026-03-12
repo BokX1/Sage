@@ -36,6 +36,9 @@
 
 ### Changed
 
+- Hardened model-visible tool exposure for Discord governance: `discord_admin` is now marked admin-access in tool metadata, so non-admin turns and all autopilot turns no longer advertise admin-only tool surface to the model while preserving existing action contracts for admin flows.
+- Removed dead `search_high` execution-profile plumbing from the single-route runtime path: LangGraph state/context and tool memo scope keying now match the only active production behavior, reducing stale branching and operator confusion without changing the default search/scrape path.
+- Aligned critical runtime documentation with shipped behavior by updating prompt block naming (`current_turn`, `reply_target`, `focused_continuity`, `recent_transcript`, `user_input`), fixing architecture tool-count wording, and syncing configuration docs with `.env.example` defaults including image-attachment ingest variables.
 - Upgraded moderation execution and reviewer surfaces for bulk message cleanup: canonical bulk actions now chunk deletes in Discord-safe batches, use single-delete fallback for one-message batches, skip messages older than 14 days with explicit outcome reporting, and surface bulk intent/outcome summaries in governance details.
 - Expanded Discord admin mental-model guidance and routed tool docs so Sage now prioritizes typed bulk moderation actions first, keeps `discord_admin.api` as fallback only, and teaches a moderation-evidence fallback path when exact message-history tools are unavailable.
 - Hard-cut Sage’s tool orchestration over to the custom LangGraph runtime: `runChatTurn` no longer does a legacy pre-loop model call, approval-gated admin actions now raise internal approval interrupts instead of returning legacy pending-approval payloads, and Discord approval handlers now resume the paused graph thread instead of executing outside the runtime.
@@ -253,6 +256,7 @@
 
 ### Removed
 
+- Removed the unused `search_high` runtime execution-profile branch and legacy profile-specific tests, replacing them with coverage for the current default web execution path.
 - Removed legacy replay/evaluation tooling end-to-end: deleted npm commands (`agentic:seed-replay-data`, `eval:run`, `eval:gate`, `release:agentic-check`), removed associated scripts/runtime modules/tests/env surfaces, and folded `AgentEvaluation` removal into the baseline migration so fresh environments migrate with a single file. Operators should remove any automation or runbooks that still invoke these commands.
 - Removed legacy agentic simulation/tuning tooling end-to-end: deleted `src/cli/simulate-agentic.ts` and `src/cli/tune-agentic.ts`, removed npm commands (`agentic:simulate`, `agentic:tune`), and dropped all `SIM_*` / `TUNE_*` environment template-schema references from active operator docs.
 - Removed four unreferenced legacy modules (`src/core/agentRuntime/agent-events.ts`, `src/core/agentRuntime/patterns.ts`, `src/core/config/doctor.ts`, `src/core/voice/index.ts`) to reduce dead maintenance surface and stale internal APIs.

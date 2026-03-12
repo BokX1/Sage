@@ -47,10 +47,6 @@ const AgentGraphStateAnnotation = Annotation.Root({
   messages: Annotation<LLMChatMessage[]>({ reducer: overwrite, default: () => [] }),
   activeToolNames: Annotation<string[]>({ reducer: overwrite, default: () => [] }),
   routeKind: Annotation<string>({ reducer: overwrite, default: () => 'single' }),
-  toolExecutionProfile: Annotation<AgentGraphState['toolExecutionProfile']>({
-    reducer: overwrite,
-    default: () => 'default',
-  }),
   currentTurn: Annotation<unknown>({ reducer: overwrite, default: () => null }),
   replyTarget: Annotation<unknown>({ reducer: overwrite, default: () => null }),
   pendingToolCalls: Annotation<AgentGraphState['pendingToolCalls']>({ reducer: overwrite, default: () => [] }),
@@ -118,7 +114,6 @@ export interface StartAgentGraphTurnParams {
   messages: LLMChatMessage[];
   activeToolNames: string[];
   routeKind: string;
-  toolExecutionProfile: 'default' | 'search_high';
   currentTurn: unknown;
   replyTarget: unknown;
   invokedBy?: AgentGraphState['invokedBy'];
@@ -185,7 +180,6 @@ function buildToolContext(state: AgentGraphState, graphRunKind: 'turn' | 'approv
     invokerIsAdmin: state.invokerIsAdmin,
     invokedBy: state.invokedBy,
     routeKind: state.routeKind,
-    toolExecutionProfile: state.toolExecutionProfile,
     currentTurn: state.currentTurn as ToolExecutionContext['currentTurn'],
     replyTarget: state.replyTarget as ToolExecutionContext['replyTarget'],
   };
@@ -587,7 +581,6 @@ export async function runAgentGraphTurn(params: StartAgentGraphTurnParams): Prom
     messages: [...params.messages],
     activeToolNames: [...params.activeToolNames],
     routeKind: params.routeKind,
-    toolExecutionProfile: params.toolExecutionProfile,
     currentTurn: params.currentTurn,
     replyTarget: params.replyTarget,
     pendingToolCalls: [],

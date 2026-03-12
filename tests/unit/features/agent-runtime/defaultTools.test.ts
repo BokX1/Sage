@@ -28,6 +28,14 @@ describe('default agentic tools', () => {
     ].sort());
   });
 
+  it('marks discord_admin as admin access', () => {
+    const registry = new ToolRegistry();
+    registerDefaultAgenticTools(registry);
+
+    const adminTool = registry.get('discord_admin');
+    expect(adminTool?.metadata?.access).toBe('admin');
+  });
+
   it('executes system_time tool', async () => {
     const registry = new ToolRegistry();
     registerDefaultAgenticTools(registry);
