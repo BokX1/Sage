@@ -43,10 +43,10 @@ import {
   type ApprovalReviewRequestRecord,
 } from './approvalReviewRequestRepo';
 import {
-  clearServerInstructions,
-  getServerInstructionsRecord,
-  upsertServerInstructions,
-} from '../settings/serverInstructionsRepo';
+  clearGuildSagePersona,
+  getGuildSagePersonaRecord,
+  upsertGuildSagePersona,
+} from '../settings/guildSagePersonaRepo';
 import { getGuildApprovalReviewChannelId } from '../settings/guildSettingsRepo';
 import { computeParamsHash, logAdminAction } from '../relationships/adminAuditRepo';
 import { logger } from '../../platform/logging/logger';
@@ -103,8 +103,8 @@ import { ApprovalRequiredSignal, type ApprovalInterruptPayload } from '../agent-
 const APPROVAL_TTL_MS = 10 * 60 * 1_000;
 const RESOLVED_APPROVAL_CARD_DELETE_DELAY_MS = 60_000;
 const resolvedApprovalCardDeleteTimers = new Map<string, NodeJS.Timeout>();
-const MAX_SERVER_INSTRUCTIONS_CHARS = 8_000;
-const DEFAULT_SERVER_INSTRUCTIONS_MAX_CHARS = 4_000;
+const MAX_SAGE_PERSONA_CHARS = 8_000;
+const DEFAULT_SAGE_PERSONA_MAX_CHARS = 4_000;
 const ADMIN_ACTION_CUSTOM_ID_PREFIX = 'sage:admin_action:';
 const ADMIN_ACTION_REJECT_MODAL_CUSTOM_ID_PREFIX = 'sage:admin_action:reject_modal:';
 const ADMIN_ACTION_REJECT_REASON_FIELD_ID = 'rejection_reason';
@@ -139,18 +139,18 @@ const DISCORD_REST_MESSAGES_PAGE_LIMIT = 100;
 type PendingButtonAction = 'approve' | 'reject' | 'details';
 
 /**
- * Declares exported bindings: serverInstructionsUpdateRequestSchema.
+ * Declares exported bindings: sagePersonaUpdateRequestSchema.
  */
-export const serverInstructionsUpdateRequestSchema = z.object({
+export const sagePersonaUpdateRequestSchema = z.object({
   operation: z.enum(['set', 'append', 'clear']),
-  text: z.string().trim().max(MAX_SERVER_INSTRUCTIONS_CHARS).optional(),
+  text: z.string().trim().max(MAX_SAGE_PERSONA_CHARS).optional(),
   reason: z.string().trim().min(3).max(500),
 });
 
 /**
- * Represents the ServerInstructionsUpdateRequest type.
+ * Represents the SagePersonaUpdateRequest type.
  */
-export type ServerInstructionsUpdateRequest = z.infer<typeof serverInstructionsUpdateRequestSchema>;
+export type SagePersonaUpdateRequest = z.infer<typeof sagePersonaUpdateRequestSchema>;
 
 const createPollRequestSchema = z.object({
   action: z.literal('create_poll'),
@@ -275,8 +275,8 @@ export type { DiscordModerationActionRequest };
 type ImmediateDiscordAction = DiscordInteractionRequest;
 type QueuedDiscordAction = PreparedModerationAction;
 
-type ServerInstructionsPendingPayload = {
-  operation: ServerInstructionsUpdateRequest['operation'];
+type SagePersonaPendingPayload = {
+  operation: SagePersonaUpdateRequest['operation'];
   newInstructionsText: string;
   reason: string;
   baseVersion: number;
@@ -3232,17 +3232,17 @@ async function executePendingAction(params: {
   approvedBy: string;
 }): Promise<Record<string, unknown>> {
   if (params.action.kind === 'server_instructions_update') {
-    const payload = params.action.executionPayloadJson as ServerInstructionsPendingPayload;
-    const current = await getServerInstructionsRecord(params.action.guildId);
+    const payload = params.action.executionPayloadJson as SagePersonaPendingPayload;
+    const current = await getGuildSagePersonaRecord(params.action.guildId);
     const currentVersion = current?.version ?? 0;
     if (currentVersion !== payload.baseVersion) {
       throw new Error(
-        `Server instructions changed since request creation (baseVersion=${payload.baseVersion}, currentVersion=${currentVersion}). Recreate and approve a fresh request.`,
+        `Sage Persona changed since request creation (baseVersion=${payload.baseVersion}, currentVersion=${currentVersion}). Recreate and approve a fresh request.`,
       );
     }
 
     if (payload.operation === 'clear') {
-      const cleared = await clearServerInstructions({
+      const cleared = await clearGuildSagePersona({
         guildId: params.action.guildId,
         adminId: params.approvedBy,
       });
@@ -3253,7 +3253,7 @@ async function executePendingAction(params: {
       };
     }
 
-    const updated = await upsertServerInstructions({
+    const updated = await upsertGuildSagePersona({
       guildId: params.action.guildId,
       instructionsText: payload.newInstructionsText,
       adminId: params.approvedBy,
@@ -3324,18 +3324,18 @@ async function executePendingAction(params: {
   throw new Error(`Unknown approval review request kind: ${params.action.kind}`);
 }
 
-export async function lookupServerInstructionsForTool(params: {
+export async function lookupGuildSagePersonaForTool(params: {
   guildId: string;
   maxChars?: number;
 }): Promise<Record<string, unknown>> {
-  const maxChars = Math.max(200, Math.min(params.maxChars ?? DEFAULT_SERVER_INSTRUCTIONS_MAX_CHARS, 12_000));
-  const record = await getServerInstructionsRecord(params.guildId);
+  const maxChars = Math.max(200, Math.min(params.maxChars ?? DEFAULT_SAGE_PERSONA_MAX_CHARS, 12_000));
+  const record = await getGuildSagePersonaRecord(params.guildId);
   if (!record) {
     return {
       found: false,
       guildId: params.guildId,
       instructionsText: '',
-      content: 'No server instructions have been configured for this guild.',
+      content: 'No Sage Persona has been configured for this guild.',
     };
   }
 
@@ -3357,14 +3357,14 @@ function buildApprovalReviewDedupeKey(kind: string, payload: unknown): string {
   });
 }
 
-export async function requestServerInstructionsUpdateForTool(params: {
+export async function requestSagePersonaUpdateForTool(params: {
   guildId: string;
   channelId: string;
   requestedBy: string;
   sourceMessageId?: string | null;
-  request: ServerInstructionsUpdateRequest;
+  request: SagePersonaUpdateRequest;
 }): Promise<never> {
-  const current = await getServerInstructionsRecord(params.guildId);
+  const current = await getGuildSagePersonaRecord(params.guildId);
   const currentText = current?.instructionsText ?? '';
 
   let nextText: string;
@@ -3384,8 +3384,8 @@ export async function requestServerInstructionsUpdateForTool(params: {
     nextText = '';
   }
 
-  if (params.request.operation !== 'clear' && nextText.length > MAX_SERVER_INSTRUCTIONS_CHARS) {
-    throw new Error(`Server instructions exceed max length (${MAX_SERVER_INSTRUCTIONS_CHARS} chars).`);
+  if (params.request.operation !== 'clear' && nextText.length > MAX_SAGE_PERSONA_CHARS) {
+    throw new Error(`Sage Persona exceeds max length (${MAX_SAGE_PERSONA_CHARS} chars).`);
   }
 
   const baseVersion = current?.version ?? 0;
@@ -3394,7 +3394,7 @@ export async function requestServerInstructionsUpdateForTool(params: {
     newInstructionsText: nextText,
     reason: params.request.reason,
     baseVersion,
-  } satisfies ServerInstructionsPendingPayload;
+  } satisfies SagePersonaPendingPayload;
   const reviewChannelId = await getGuildApprovalReviewChannelId(params.guildId) ?? params.channelId;
 
   throw new ApprovalRequiredSignal({

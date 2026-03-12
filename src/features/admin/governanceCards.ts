@@ -291,8 +291,8 @@ function summarizeServerInstructionUpdate(payload: Record<string, unknown>): Gov
   const operation = asString(payload.operation) ?? 'update';
   const text = asString(payload.newInstructionsText) ?? '';
   return {
-    title: 'Server Instructions Review',
-    intent: `Apply a ${operation} change to Sage's server instructions`,
+    title: 'Sage Persona Review',
+    intent: `Apply a ${operation} change to the guild Sage Persona`,
     target: 'Guild-wide behavior and persona config',
     impact: 'Changes how Sage behaves for future conversations in this server.',
     risk: operation === 'clear' ? 'critical' : 'high',

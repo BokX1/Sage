@@ -40,14 +40,14 @@ vi.mock('@/platform/db/prisma-client', () => ({
   },
 }));
 
-describe('serverInstructionsRepo', () => {
+describe('guildSagePersonaRepo', () => {
   beforeEach(async () => {
     vi.clearAllMocks();
-    const { __clearServerInstructionsCacheForTests } = await import('../../../../src/features/settings/serverInstructionsRepo');
-    __clearServerInstructionsCacheForTests();
+    const { __clearGuildSagePersonaCacheForTests } = await import('../../../../src/features/settings/guildSagePersonaRepo');
+    __clearGuildSagePersonaCacheForTests();
   });
 
-  it('caches server-instructions lookups for the TTL window', async () => {
+  it('caches guild Sage Persona lookups for the TTL window', async () => {
     findUniqueMock.mockResolvedValue({
       guildId: 'guild-1',
       instructionsText: 'QA bot mode',
@@ -57,9 +57,9 @@ describe('serverInstructionsRepo', () => {
       createdAt: new Date('2026-02-25T00:00:00.000Z'),
     });
 
-    const { getServerInstructionsRecord } = await import('../../../../src/features/settings/serverInstructionsRepo');
-    const first = await getServerInstructionsRecord('guild-1');
-    const second = await getServerInstructionsRecord('guild-1');
+    const { getGuildSagePersonaRecord } = await import('../../../../src/features/settings/guildSagePersonaRepo');
+    const first = await getGuildSagePersonaRecord('guild-1');
+    const second = await getGuildSagePersonaRecord('guild-1');
 
     expect(first?.instructionsText).toBe('QA bot mode');
     expect(second?.instructionsText).toBe('QA bot mode');
@@ -84,8 +84,8 @@ describe('serverInstructionsRepo', () => {
       createdAt: new Date('2026-02-19T00:00:00.000Z'),
     });
 
-    const { upsertServerInstructions } = await import('../../../../src/features/settings/serverInstructionsRepo');
-    const result = await upsertServerInstructions({
+    const { upsertGuildSagePersona } = await import('../../../../src/features/settings/guildSagePersonaRepo');
+    const result = await upsertGuildSagePersona({
       guildId: 'guild-1',
       instructionsText: 'new instructions',
       adminId: 'admin-new',

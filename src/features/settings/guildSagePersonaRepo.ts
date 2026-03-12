@@ -2,7 +2,7 @@ import { prisma } from '../../platform/db/prisma-client';
 
 const CACHE_TTL_MS = 30_000;
 
-export interface ServerInstructionsRecord {
+export interface GuildSagePersonaRecord {
   guildId: string;
   instructionsText: string;
   version: number;
@@ -12,38 +12,38 @@ export interface ServerInstructionsRecord {
 }
 
 type CacheEntry = {
-  value: ServerInstructionsRecord | null;
+  value: GuildSagePersonaRecord | null;
   expiresAt: number;
 };
 
-const serverInstructionsCache = new Map<string, CacheEntry>();
+const guildSagePersonaCache = new Map<string, CacheEntry>();
 
-function cacheValue(guildId: string, value: ServerInstructionsRecord | null): void {
-  serverInstructionsCache.set(guildId, {
+function cacheValue(guildId: string, value: GuildSagePersonaRecord | null): void {
+  guildSagePersonaCache.set(guildId, {
     value,
     expiresAt: Date.now() + CACHE_TTL_MS,
   });
 }
 
-function readCachedValue(guildId: string): ServerInstructionsRecord | null | undefined {
-  const entry = serverInstructionsCache.get(guildId);
+function readCachedValue(guildId: string): GuildSagePersonaRecord | null | undefined {
+  const entry = guildSagePersonaCache.get(guildId);
   if (!entry) {
     return undefined;
   }
 
   if (entry.expiresAt <= Date.now()) {
-    serverInstructionsCache.delete(guildId);
+    guildSagePersonaCache.delete(guildId);
     return undefined;
   }
 
   return entry.value;
 }
 
-function normalizeInstructionsText(value: string): string {
+function normalizeSagePersonaText(value: string): string {
   return value.replace(/\r\n/g, '\n').trim();
 }
 
-export async function getServerInstructionsRecord(guildId: string): Promise<ServerInstructionsRecord | null> {
+export async function getGuildSagePersonaRecord(guildId: string): Promise<GuildSagePersonaRecord | null> {
   const cached = readCachedValue(guildId);
   if (cached !== undefined) {
     return cached;
@@ -68,19 +68,19 @@ export async function getServerInstructionsRecord(guildId: string): Promise<Serv
   return record;
 }
 
-export async function getServerInstructionsText(guildId: string): Promise<string | null> {
-  const record = await getServerInstructionsRecord(guildId);
+export async function getGuildSagePersonaText(guildId: string): Promise<string | null> {
+  const record = await getGuildSagePersonaRecord(guildId);
   return record?.instructionsText ?? null;
 }
 
-export async function upsertServerInstructions(params: {
+export async function upsertGuildSagePersona(params: {
   guildId: string;
   instructionsText: string;
   adminId: string;
-}): Promise<ServerInstructionsRecord> {
-  const normalizedInstructionsText = normalizeInstructionsText(params.instructionsText);
+}): Promise<GuildSagePersonaRecord> {
+  const normalizedInstructionsText = normalizeSagePersonaText(params.instructionsText);
   if (!normalizedInstructionsText) {
-    throw new Error('Server instructions text cannot be empty.');
+    throw new Error('Sage Persona text cannot be empty.');
   }
 
   const record = await prisma.$transaction(async (tx) => {
@@ -115,7 +115,7 @@ export async function upsertServerInstructions(params: {
     });
   });
 
-  const normalized: ServerInstructionsRecord = {
+  const normalized: GuildSagePersonaRecord = {
     guildId: record.guildId,
     instructionsText: record.instructionsText,
     version: record.version,
@@ -127,7 +127,7 @@ export async function upsertServerInstructions(params: {
   return normalized;
 }
 
-export async function clearServerInstructions(params: {
+export async function clearGuildSagePersona(params: {
   guildId: string;
   adminId: string;
 }): Promise<boolean> {
@@ -154,10 +154,10 @@ export async function clearServerInstructions(params: {
     return true;
   });
 
-  serverInstructionsCache.delete(params.guildId);
+  guildSagePersonaCache.delete(params.guildId);
   return deleted;
 }
 
-export function __clearServerInstructionsCacheForTests(): void {
-  serverInstructionsCache.clear();
+export function __clearGuildSagePersonaCacheForTests(): void {
+  guildSagePersonaCache.clear();
 }

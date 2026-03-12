@@ -74,9 +74,9 @@ const mocks = vi.hoisted(() => {
   };
 
   return {
-    clearServerInstructions: vi.fn(),
-    getServerInstructionsRecord: vi.fn(),
-    upsertServerInstructions: vi.fn(),
+    clearGuildSagePersona: vi.fn(),
+    getGuildSagePersonaRecord: vi.fn(),
+    upsertGuildSagePersona: vi.fn(),
     getGuildApprovalReviewChannelId: vi.fn(async () => null),
     computeParamsHash: vi.fn(() => 'hash'),
     logAdminAction: vi.fn(async () => undefined),
@@ -102,10 +102,10 @@ vi.mock('@/features/settings/guildSettingsRepo', () => ({
   getGuildApprovalReviewChannelId: mocks.getGuildApprovalReviewChannelId,
 }));
 
-vi.mock('@/features/settings/serverInstructionsRepo', () => ({
-  clearServerInstructions: mocks.clearServerInstructions,
-  getServerInstructionsRecord: mocks.getServerInstructionsRecord,
-  upsertServerInstructions: mocks.upsertServerInstructions,
+vi.mock('@/features/settings/guildSagePersonaRepo', () => ({
+  clearGuildSagePersona: mocks.clearGuildSagePersona,
+  getGuildSagePersonaRecord: mocks.getGuildSagePersonaRecord,
+  upsertGuildSagePersona: mocks.upsertGuildSagePersona,
 }));
 
 vi.mock('@/features/relationships/adminAuditRepo', () => ({

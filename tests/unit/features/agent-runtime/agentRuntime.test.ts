@@ -64,8 +64,8 @@ vi.mock('@/features/settings/guildSettingsRepo', () => ({
   getGuildApiKey: vi.fn(async () => null),
 }));
 
-vi.mock('@/features/settings/serverInstructionsRepo', () => ({
-  getServerInstructionsText: vi.fn(async () => null),
+vi.mock('@/features/settings/guildSagePersonaRepo', () => ({
+  getGuildSagePersonaText: vi.fn(async () => null),
 }));
 
 vi.mock('@/features/settings/guildChannelSettings', () => ({
@@ -215,7 +215,7 @@ describe('agentRuntime', () => {
       channelId: 'channel-1',
       guildId: 'guild-1',
       messageId: 'message-1',
-      userText: 'update the server instructions',
+      userText: 'update the Sage Persona',
       userProfileSummary: null,
       currentTurn: makeCurrentTurn(),
       invokedBy: 'mention',

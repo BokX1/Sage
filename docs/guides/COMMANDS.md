@@ -89,7 +89,7 @@ Examples:
 
 - `Sage, search the server for the last thread about release blockers`
 - `Sage, send a setup card in this channel`
-- `Sage, update server instructions with this policy`
+- `Sage, update Sage Persona with this policy`
 - `Sage, create a thread for this incident`
 - `Sage, moderate the last spam message`
 - `Sage, timeout the author of this replied-to message for 30 minutes`

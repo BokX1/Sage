@@ -1,6 +1,6 @@
 import { formatDiscordGuardrailsLines } from './discordToolCatalog';
 import { RuntimeAutopilotMode } from './autopilotMode';
-import { getRoutedToolSelectionHints, isRoutedTool } from './toolDocs';
+import { getTopLevelToolSelectionHints, isRoutedTool } from './toolDocs';
 
 export interface BuildCapabilityPromptSectionParams {
   activeTools?: string[];
@@ -90,7 +90,8 @@ export function buildCapabilityPromptSection(
   const executionRules = [
     '<execution_rules>',
     '- Read exact runtime facts from <agent_state> for current time, model, active tools, invocation context, turn mode, autopilot mode, and graph limits.',
-    '- <server_instructions> govern Sage\'s guild-specific behavior/persona, not factual truth about users, messages, or the outside world.',
+    '- <guild_sage_persona> governs Sage\'s guild-specific behavior/persona, not factual truth or memory.',
+    '- <system_persona> is global identity, <guild_sage_persona> is guild behavior overlay, and <user_profile> / channel summaries are memory or continuity context rather than policy.',
     '- If <agent_state>.turn_mode is "voice", spoken-response behavior is expected and the <voice_mode> block overrides the default Discord markdown guidance.',
     '- If <agent_state>.autopilot_mode is non-null, the <autopilot_mode> block determines whether Sage should respond or emit [SILENCE].',
     '- Treat <current_turn> as the authoritative structured facts for the current speaker, invocation kind, reply status, and continuity policy.',
@@ -122,10 +123,13 @@ export function buildCapabilityPromptSection(
       ? '- Discord tool behavior: `discord_context` for profiles/summaries/instruction reads/analytics, `discord_messages` for history/delivery, `discord_files` for attachment recall, `discord_server` for guild resources/thread lifecycle, `discord_voice` for voice/status, `discord_admin` for admin writes/API fallback.'
       : '- Discord tool behavior: you do not have access to Discord profiles, summaries, instructions, messages, files, or actions via tools this turn.',
     hasDiscordContextTool && hasDiscordAdminTool
-      ? '- Distinguish instruction reads from instruction writes: `discord_context.get_server_instructions` reads config, while `discord_admin.update_server_instructions` queues a config change.'
+      ? '- Distinguish Sage Persona reads from Sage Persona writes: `discord_context.get_server_instructions` reads the guild Sage Persona, while `discord_admin.update_server_instructions` queues a Sage Persona change.'
       : '',
     hasDiscordAdminTool
-      ? '- Distinguish governance/config from moderation/enforcement: server instructions change Sage; moderation acts on users/messages/content.'
+      ? '- Distinguish Sage Persona/config from moderation/enforcement: Sage Persona changes how Sage behaves; moderation acts on users, messages, reactions, or content.'
+      : '',
+    hasDiscordServerTool
+      ? '- Distinguish Sage Persona from server-resource work: channels, roles, threads, members, events, and AutoMod belong to `discord_server` or typed admin actions.'
       : '',
     hasDiscordAdminTool
       ? '- Treat reply-targeted enforcement as moderation: replied-to spam/abuse -> `discord_admin.submit_moderation`.'
@@ -221,85 +225,11 @@ function buildToolSelectionGuide(activeTools: string[]): string {
   lines.push('Use the most specific tool that can answer the request. If you are unsure about routed-tool actions or fields, call that tool\'s `help` action first.');
   lines.push('Keep tool usage silent in the final channel response. Tool choice belongs in execution, not in the visible reply.');
   lines.push('');
-
-  // --- Time ---
-  if (activeTools.includes('system_time')) {
-    lines.push('IF timezone conversion for a specific utcOffset → system_time (the current UTC time is already in <agent_state>; use the tool only for explicit offset math)');
+  for (const toolName of activeTools) {
+    const hints = getTopLevelToolSelectionHints(toolName);
+    if (hints.length === 0) continue;
+    lines.push(...hints.map((line) => line.replaceAll('->', '→')));
     lines.push('');
-  }
-
-  // --- Telemetry ---
-  if (activeTools.includes('system_tool_stats')) {
-    lines.push('IF tool latency/cache debugging:');
-    lines.push('  → system_tool_stats');
-    lines.push('');
-  }
-
-  // --- Discord ---
-  if (activeTools.includes('discord_context')) {
-    lines.push(...getRoutedToolSelectionHints('discord_context').map((line) => line.replaceAll('->', '→')));
-    lines.push('');
-  }
-
-  if (activeTools.includes('discord_messages')) {
-    lines.push(...getRoutedToolSelectionHints('discord_messages').map((line) => line.replaceAll('->', '→')));
-    lines.push('');
-  }
-
-  if (activeTools.includes('discord_files')) {
-    lines.push(...getRoutedToolSelectionHints('discord_files').map((line) => line.replaceAll('->', '→')));
-    lines.push('');
-  }
-
-  if (activeTools.includes('discord_server')) {
-    lines.push(...getRoutedToolSelectionHints('discord_server').map((line) => line.replaceAll('->', '→')));
-    lines.push('');
-  }
-
-  if (activeTools.includes('discord_admin')) {
-    lines.push(...getRoutedToolSelectionHints('discord_admin').map((line) => line.replaceAll('->', '→')));
-    lines.push('');
-  }
-
-  if (activeTools.includes('discord_voice')) {
-    lines.push(...getRoutedToolSelectionHints('discord_voice').map((line) => line.replaceAll('->', '→')));
-    lines.push('');
-  }
-
-  // --- Web ---
-  if (activeTools.includes('web')) {
-    lines.push('IF the question needs public internet information or fresh sources → web.');
-    lines.push('  - For broad or open-ended questions, ALWAYS use web (action=research) to search and read multiple sources in a single payload round.');
-    lines.push('  - Read a known page directly → web (action=read) or web (action=read.page) for long pages.');
-    lines.push('  - If you must read multiple URLs from a search (action=search), ALWAYS batch multiple web (action=read) calls in parallel within the same JSON payload.');
-    lines.push('  - Use web (action=extract) only when raw page content is not enough and the user needs targeted agentic extraction.');
-    lines.push('');
-  }
-
-  // --- GitHub ---
-  if (activeTools.includes('github')) {
-    lines.push('IF the request is about GitHub repository data → github.');
-    lines.push('  - When the file path is unknown, start with github (action=code.search).');
-    lines.push('  - Read exact files or ranges only after you know the path → file.get / file.page / file.ranges / file.snippet.');
-    lines.push('  - Use github (action=help) if the action surface is unclear.');
-    lines.push('');
-  }
-
-  // --- Other tools ---
-  if (activeTools.includes('npm_info')) {
-    lines.push('IF npm package info → npm_info (returns githubRepo when available)');
-  }
-  if (activeTools.includes('workflow')) {
-    lines.push('IF composed workflows → workflow (action=help; e.g. action=npm.github_code_search)');
-  }
-  if (activeTools.includes('wikipedia_search')) {
-    lines.push('IF encyclopedia facts → wikipedia_search');
-  }
-  if (activeTools.includes('stack_overflow_search')) {
-    lines.push('IF coding Q&A → stack_overflow_search (set includeAcceptedAnswer=true for answer body)');
-  }
-  if (activeTools.includes('image_generate')) {
-    lines.push('IF image creation → image_generate');
   }
 
   // --- Anti-patterns ---

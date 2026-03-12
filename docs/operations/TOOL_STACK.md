@@ -151,16 +151,21 @@ Run the smoke test to verify all tools are working:
 npm run tools:smoke
 ```
 
+The smoke script executes the runtime tool surface itself from shared tool metadata, so the smoke inventory, prompt guidance, website capability grid, and validation hints stay aligned. Discord domain tools are intentionally reported as skipped here because they require live guild/current-turn context and are covered by runtime, unit, and integration tests instead.
+
 The smoke script checks:
 
 | Tool | Status |
 | :--- | :--- |
-| `web.search` | Required |
-| `web.read` | Required |
-| `wikipedia_search` | Required |
-| `github.repo.get` | Required |
+| `system_time` | Required |
+| `system_tool_stats` | Required |
+| `web` | Required |
+| `github` | Required |
+| `workflow` | Required |
 | `npm_info` | Required |
+| `wikipedia_search` | Required |
 | `stack_overflow_search` | Required |
+| `image_generate` | Optional |
 
 Attachment extraction health check (Tika):
 

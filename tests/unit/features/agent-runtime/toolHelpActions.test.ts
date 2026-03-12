@@ -24,6 +24,7 @@ vi.mock('@/features/agent-runtime/toolIntegrations', () => ({
 }));
 
 import { ToolRegistry } from '../../../../src/features/agent-runtime/toolRegistry';
+import { registerDefaultAgenticTools } from '../../../../src/features/agent-runtime/defaultTools';
 import {
   discordAdminTool,
   discordContextTool,
@@ -171,6 +172,7 @@ describe('tool help actions', () => {
     expect(contextPayload.routing_notes).toEqual(
       expect.arrayContaining([
         expect.stringContaining('changing that config belongs to discord_admin.update_server_instructions'),
+        expect.stringContaining('not Sage Persona reads'),
         expect.stringContaining('Voice analytics and voice summaries live here'),
       ]),
     );
@@ -203,9 +205,9 @@ describe('tool help actions', () => {
     };
     expect(adminHelpPayload.routing_notes).toEqual(
       expect.arrayContaining([
-        expect.stringContaining('governance/config and moderation as separate admin domains'),
+        expect.stringContaining('Sage Persona/config and moderation as separate admin domains'),
         expect.stringContaining('Reply-targeted cleanup'),
-        expect.stringContaining('update_server_instructions changes Sage behavior/persona config'),
+        expect.stringContaining('update_server_instructions changes the guild Sage Persona'),
         expect.stringContaining('submit_moderation is for enforcement workflows'),
       ]),
     );
@@ -269,5 +271,25 @@ describe('tool help actions', () => {
     expect(result.errorType).toBe('validation');
     expect(result.errorDetails?.category).toBe('validation');
     expect(result.errorDetails?.hint).toContain('Try: { action: "help" }');
+  });
+
+  it('validation errors include metadata hints for direct tools', async () => {
+    const registry = new ToolRegistry();
+    registerDefaultAgenticTools(registry);
+
+    const result = await registry.executeValidated(
+      {
+        name: 'npm_info',
+        args: {},
+      },
+      ctx,
+    );
+
+    expect(result.success).toBe(false);
+    if (result.success) return;
+    expect(result.errorType).toBe('validation');
+    expect(result.errorDetails?.category).toBe('validation');
+    expect(result.errorDetails?.hint).toContain('packageName');
+    expect(result.errorDetails?.hint).toContain('zod');
   });
 });

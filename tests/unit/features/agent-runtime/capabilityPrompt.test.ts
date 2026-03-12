@@ -28,13 +28,15 @@ describe('capabilityPrompt', () => {
       expect(prompt).toContain('<reply_target> helps interpret what the user is responding to, but it must not override the current user message.');
       expect(prompt).toContain('Only a concrete entity or topic explicitly named in the current message counts as an explicit subject.');
       expect(prompt).toContain('If the current message is brief or acknowledgement-like and continuity remains unproven');
-      expect(prompt).toContain('<server_instructions> govern Sage\'s guild-specific behavior/persona, not factual truth about users, messages, or the outside world.');
+      expect(prompt).toContain('<guild_sage_persona> governs Sage\'s guild-specific behavior/persona, not factual truth or memory.');
+      expect(prompt).toContain('<system_persona> is global identity, <guild_sage_persona> is guild behavior overlay, and <user_profile> / channel summaries are memory or continuity context rather than policy.');
       expect(prompt).toContain('Treat `discord_context` action `get_channel_summary` the same way: it provides rolling channel summary context, not exact historical evidence.');
       expect(prompt).toContain('For exact historical verification, exact Discord message-history tools are unavailable this turn.');
       expect(prompt).toContain('Image generation behavior: you do not have image generation capabilities this turn.');
       expect(prompt).toContain('Use native tool calls silently.');
       expect(prompt).toContain('If the runtime interrupts for approval');
       expect(prompt).toContain('If the runtime blocks a repeated call for this turn');
+      expect(prompt).not.toContain('<server_instructions>');
     });
 
     it('keeps runtime guidance free of the base-prompt continuity duplicates', () => {
@@ -42,9 +44,9 @@ describe('capabilityPrompt', () => {
         activeTools: ['web'],
       });
 
-      expect(prompt).not.toContain('Resolve conflicting guidance in this order: current user input, then <server_instructions>, then <user_profile>');
+      expect(prompt).not.toContain('Resolve conflicting guidance in this order: current user input, then <guild_sage_persona>, then <user_profile>');
       expect(prompt).not.toContain('<assistant_context>');
-      expect(prompt).not.toContain('<server_instructions> can refine guild-specific behavior and persona, but they remain subordinate to <hard_rules>, safety constraints, and runtime/tool guardrails.');
+      expect(prompt).not.toContain('<guild_sage_persona> can refine guild-specific behavior and persona, but it remains subordinate to <hard_rules>, safety constraints, and runtime/tool guardrails.');
     });
 
     it('renders compact tool selection guidance for available tools', () => {
@@ -91,8 +93,9 @@ describe('capabilityPrompt', () => {
 
       // Assert
       expect(prompt).toContain('Discord tool behavior: `discord_context` for profiles/summaries/instruction reads/analytics');
-      expect(prompt).toContain('Distinguish instruction reads from instruction writes');
+      expect(prompt).toContain('Distinguish Sage Persona reads from Sage Persona writes');
       expect(prompt).toContain('Treat reply-targeted enforcement as moderation');
+      expect(prompt).toContain('Distinguish Sage Persona from server-resource work');
       expect(prompt).toContain('Distinguish summary context from message context');
       expect(prompt).toContain('Distinguish file discovery from guild discovery');
       expect(prompt).toContain('bulk_delete_messages');
@@ -140,7 +143,7 @@ describe('capabilityPrompt', () => {
       expect(prompt).toContain('search_history / search_with_context');
       expect(prompt).toContain('get_channel_summary');
       expect(prompt).toContain('Rolling summary of what has been happening → get_channel_summary.');
-      expect(prompt).toContain('get_server_instructions (read-only).');
+      expect(prompt).toContain('Guild Sage Persona read → get_server_instructions (read-only).');
       expect(prompt).toContain('message window, not summary context');
       expect(prompt).toContain('get_user_profile');
       expect(prompt).toContain('read_attachment');
@@ -168,6 +171,40 @@ describe('capabilityPrompt', () => {
       expect(prompt).toContain('web (action=research)');
       expect(prompt).toContain('web (action=read)');
       expect(prompt).toContain('web (action=extract)');
+      expect(prompt).toContain('call web: help');
+    });
+
+    it('renders github and workflow selection hints from routed tool docs', () => {
+      const prompt = buildCapabilityPromptSection({
+        activeTools: ['github', 'workflow'],
+      });
+
+      expect(prompt).toContain('GitHub repository data → github.');
+      expect(prompt).toContain('repo.get.');
+      expect(prompt).toContain('call github: help');
+      expect(prompt).toContain('composed workflow can replace multiple manual tool hops → workflow.');
+      expect(prompt).toContain('action=npm.github_code_search');
+    });
+
+    it('renders direct-tool selection hints from shared top-level metadata', () => {
+      const prompt = buildCapabilityPromptSection({
+        activeTools: [
+          'system_time',
+          'system_tool_stats',
+          'npm_info',
+          'wikipedia_search',
+          'stack_overflow_search',
+          'image_generate',
+        ],
+      });
+
+      expect(prompt).toContain('timezone conversion for a specific utcOffset');
+      expect(prompt).toContain('tool latency, cache, memo, or error telemetry');
+      expect(prompt).toContain('npm package metadata, versions, maintainers, or repository hints');
+      expect(prompt).toContain('broad encyclopedia facts or canonical topic grounding');
+      expect(prompt).toContain('coding Q&A or accepted-answer solution hunting');
+      expect(prompt).toContain('Set includeAcceptedAnswer=true');
+      expect(prompt).toContain('image creation, illustration, or visual mockup generation');
     });
 
     it('keeps key anti-pattern guidance in the smaller tool guide', () => {
@@ -219,7 +256,7 @@ describe('capabilityPrompt', () => {
         activeTools: ['discord_context', 'discord_messages', 'discord_files', 'discord_server', 'discord_admin', 'web', 'github', 'system_time', 'image_generate'],
       });
 
-      expect(prompt.length).toBeLessThan(15550);
+      expect(prompt.length).toBeLessThan(16300);
     });
   });
 

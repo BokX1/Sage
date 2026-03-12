@@ -3,7 +3,7 @@ import { getRecentMessages } from '../awareness/channelRingBuffer';
 import { buildTranscriptBlock } from '../awareness/transcriptBuilder';
 import { LLMChatMessage, LLMMessageContent } from '../../platform/llm/llm-types';
 import { getGuildApiKey } from '../settings/guildSettingsRepo';
-import { getServerInstructionsText } from '../settings/serverInstructionsRepo';
+import { getGuildSagePersonaText } from '../settings/guildSagePersonaRepo';
 import { isLoggingEnabled } from '../settings/guildChannelSettings';
 import { logger } from '../../platform/logging/logger';
 import { normalizeStrictlyPositiveInt } from '../../shared/utils/numbers';
@@ -175,12 +175,12 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
     };
   }
 
-  let serverInstructions: string | null = null;
+  let guildSagePersona: string | null = null;
   if (guildId) {
     try {
-      serverInstructions = await getServerInstructionsText(guildId);
+      guildSagePersona = await getGuildSagePersonaText(guildId);
     } catch (error) {
-      logger.warn({ error, guildId }, 'Failed to load server instructions (non-fatal)');
+      logger.warn({ error, guildId }, 'Failed to load guild Sage Persona (non-fatal)');
     }
   }
   const model = (appConfig.CHAT_MODEL || DEFAULT_CHAT_MODEL).trim();
@@ -217,7 +217,7 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
     userProfileSummary: params.userProfileSummary,
     currentTurn,
     runtimeInstruction,
-    serverInstructions,
+    guildSagePersona,
     replyTarget,
     userText,
     userContent,

@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 import {
   discordModerationActionRequestSchema,
-  serverInstructionsUpdateRequestSchema,
+  sagePersonaUpdateRequestSchema,
 } from '../../features/admin/adminActionService';
 import {
   discordComponentsV2MessageSchema,
@@ -95,7 +95,7 @@ const summarySearchChannelArchivesSchema = z.object({
 });
 
 const instructionsGetServerSchema = z.object({
-  action: z.literal('get_server_instructions').describe('Fetch the current admin-authored server instructions for this guild. Read-only behavior/persona config; not an admin write.'),
+  action: z.literal('get_server_instructions').describe('Fetch the current admin-authored Sage Persona for this guild. Read-only guild behavior/persona config; not an admin write or memory surface.'),
   maxChars: z.number().int().min(200).max(12_000).optional(),
 });
 
@@ -141,7 +141,7 @@ const discordContextToolSchema = z.discriminatedUnion('action', [
 export const discordContextTool: ToolDefinition<z.infer<typeof discordContextToolSchema>> = {
   name: 'discord_context',
   description:
-    'Discord context tool for profiles, rolling channel summaries, server-instruction reads, and social/voice analytics.\n<USE_ONLY_WHEN> You need Discord-native context rather than exact message history, files, live voice control, or admin writes. </USE_ONLY_WHEN>',
+    'Discord context tool for profiles, rolling channel summaries, Sage Persona reads, and social/voice analytics.\n<USE_ONLY_WHEN> You need Discord-native context rather than exact message history, files, live voice control, or admin writes. </USE_ONLY_WHEN>',
   schema: discordContextToolSchema,
   metadata: {
     readOnlyPredicate: (args) => isReadOnlyDiscordDomainCall('discord_context', args),
@@ -538,8 +538,8 @@ export const discordServerTool: ToolDefinition<z.infer<typeof discordServerToolS
 };
 
 const instructionsUpdateServerSchema = z.object({
-  action: z.literal('update_server_instructions').describe('Submit an admin request to update guild server instructions. This changes Sage behavior/persona/policy config, not moderation or enforcement; use discord_context.get_server_instructions to read the current text.'),
-  request: serverInstructionsUpdateRequestSchema,
+  action: z.literal('update_server_instructions').describe('Submit an admin request to update the guild Sage Persona. This changes Sage behavior/persona/policy config, not moderation or enforcement; use discord_context.get_server_instructions to read the current text.'),
+  request: sagePersonaUpdateRequestSchema,
 });
 
 const messagesEditSchema = z.object({

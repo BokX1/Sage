@@ -166,24 +166,24 @@ Per-guild configuration including server-wide BYOP key.
 
 ### `ServerInstructions`
 
-Admin-authored server instructions text available to the bot.
+Admin-authored guild Sage Persona text available to the bot. The persisted model name remains `ServerInstructions`.
 
 | Column | Type | Notes |
 |:---|:---|:---|
 | `guildId` | `String` (PK) | One memory per guild |
-| `instructionsText` | `Text` | Operator-defined server instructions, persona, and rules |
+| `instructionsText` | `Text` | Operator-defined Sage Persona, tone, and rules |
 | `version` | `Int` | Monotonically increasing |
 | `updatedByAdminId` | `String?` | Discord ID of last admin editor |
 
 ### `ServerInstructionsArchive`
 
-Historical snapshots of server instructions before updates.
+Historical snapshots of Sage Persona text before updates. The archive model name remains `ServerInstructionsArchive`.
 
 | Column | Type | Notes |
 |:---|:---|:---|
 | `id` | `String` (PK) | CUID |
 | `guildId` / `version` | `String` / `Int` | Indexed by `[guildId, createdAt]` |
-| `instructionsText` | `Text` | Archived server instructions text |
+| `instructionsText` | `Text` | Archived Sage Persona text |
 
 ---
 

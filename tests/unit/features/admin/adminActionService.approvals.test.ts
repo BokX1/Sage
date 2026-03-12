@@ -74,9 +74,9 @@ const mocks = vi.hoisted(() => {
   };
 
   return {
-    clearServerInstructions: vi.fn(),
-    getServerInstructionsRecord: vi.fn(),
-    upsertServerInstructions: vi.fn(),
+    clearGuildSagePersona: vi.fn(),
+    getGuildSagePersonaRecord: vi.fn(),
+    upsertGuildSagePersona: vi.fn(),
     getGuildApprovalReviewChannelId: vi.fn(),
     computeParamsHash: vi.fn(() => 'hash'),
     logAdminAction: vi.fn(),
@@ -98,10 +98,10 @@ vi.mock('@/features/settings/guildSettingsRepo', () => ({
   getGuildApprovalReviewChannelId: mocks.getGuildApprovalReviewChannelId,
 }));
 
-vi.mock('@/features/settings/serverInstructionsRepo', () => ({
-  clearServerInstructions: mocks.clearServerInstructions,
-  getServerInstructionsRecord: mocks.getServerInstructionsRecord,
-  upsertServerInstructions: mocks.upsertServerInstructions,
+vi.mock('@/features/settings/guildSagePersonaRepo', () => ({
+  clearGuildSagePersona: mocks.clearGuildSagePersona,
+  getGuildSagePersonaRecord: mocks.getGuildSagePersonaRecord,
+  upsertGuildSagePersona: mocks.upsertGuildSagePersona,
 }));
 
 vi.mock('@/features/relationships/adminAuditRepo', () => ({
@@ -125,7 +125,7 @@ vi.mock('@/platform/discord/client', () => ({
 import {
   requestDiscordAdminActionForTool,
   requestDiscordRestWriteForTool,
-  requestServerInstructionsUpdateForTool,
+  requestSagePersonaUpdateForTool,
 } from '@/features/admin/adminActionService';
 import { ApprovalRequiredSignal } from '@/features/agent-runtime/toolControlSignals';
 
@@ -142,8 +142,8 @@ async function expectApprovalSignal(promise: Promise<never>): Promise<ApprovalRe
 describe('adminActionService approval signal shaping', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.getServerInstructionsRecord.mockResolvedValue({
-      instructionsText: 'Current instructions',
+    mocks.getGuildSagePersonaRecord.mockResolvedValue({
+      instructionsText: 'Current Sage Persona',
       version: 2,
     });
     mocks.getGuildApprovalReviewChannelId.mockResolvedValue(null);
@@ -151,9 +151,9 @@ describe('adminActionService approval signal shaping', () => {
     mocks.assertDiscordRestRequestGuildScoped.mockResolvedValue(undefined);
   });
 
-  it('throws an approval signal for server-instructions updates', async () => {
+  it('throws an approval signal for Sage Persona updates', async () => {
     const signal = await expectApprovalSignal(
-      requestServerInstructionsUpdateForTool({
+      requestSagePersonaUpdateForTool({
         guildId: 'guild-1',
         channelId: 'channel-2',
         requestedBy: 'admin-1',
@@ -174,7 +174,7 @@ describe('adminActionService approval signal shaping', () => {
       visibleReplyText: 'I queued that for approval.',
       executionPayloadJson: {
         operation: 'append',
-        newInstructionsText: 'Current instructions\nAdd this note',
+        newInstructionsText: 'Current Sage Persona\nAdd this note',
         reason: 'Keep docs aligned',
         baseVersion: 2,
       },

@@ -55,7 +55,7 @@ flowchart TD
 **Step-by-step**
 
 1. **Model resolution**: `runChatTurn` reads `CHAT_MODEL` and falls back to `kimi` when it is empty.
-2. **Context composition**: `buildContextMessages` assembles the system prompt, `<current_turn>`, runtime instruction block, optional server instructions, optional live voice context, optional `<focused_continuity>`, optional `<recent_transcript>`, and the current user turn wrapped in `<user_input>` (with any `<reply_target>` folded in as context-only preface content).
+2. **Context composition**: `buildContextMessages` assembles the system prompt, `<current_turn>`, runtime instruction block, optional guild Sage Persona (`<guild_sage_persona>`), optional live voice context, optional `<focused_continuity>`, optional `<recent_transcript>`, and the current user turn wrapped in `<user_input>` (with any `<reply_target>` folded in as context-only preface content).
 3. **Token budgeting**: `contextBudgeter` trims blocks against the configured budgets before the provider call.
 4. **LLM request**: Sage sends the budgeted messages plus the OpenAI-compatible tool definitions.
 5. **Agent graph**: if the model returns tool calls, Sage routes through the custom LangGraph runtime to validate calls, execute tools, handle approval interrupts, and continue the turn until it can finalize.
@@ -75,7 +75,7 @@ flowchart TD
 | 1 | Base system prompt | `composeSystemPrompt` with the user profile summary embedded in `<user_profile>` |
 | 2 | Current turn | Structured `<current_turn>` metadata from `CurrentTurnContext` |
 | 3 | Runtime instructions | Single-agent capabilities, silent native tool-use rules, approval guardrails, and runtime state |
-| 4 | Server instructions | `ServerInstructions`, when present |
+| 4 | Guild Sage Persona | `ServerInstructions`, when present, rendered as `<guild_sage_persona>` |
 | 5 | Live voice context | In-memory voice session context, only when Sage is active in voice |
 | 6 | Focused continuity | `<focused_continuity>` window from same-speaker and direct-reply context |
 | 7 | Recent transcript | Ambient `<recent_transcript>` ring-buffer context |
@@ -162,7 +162,7 @@ Most richer context is loaded on demand through the split Discord tools:
 | User profile | `discord_context.get_user_profile` | PostgreSQL (`UserProfile`) |
 | Channel summaries | `discord_context.get_channel_summary` | PostgreSQL (`ChannelSummary`) |
 | Archived channel summaries | `discord_context.search_channel_summary_archives` | PostgreSQL plus pgvector-backed archive search |
-| Server instructions | `discord_context.get_server_instructions` | PostgreSQL (`ServerInstructions`) |
+| Sage Persona | `discord_context.get_server_instructions` | PostgreSQL (`ServerInstructions`, stored internally as guild Sage Persona config) |
 | Social graph | `discord_context.get_social_graph`, `discord_context.get_top_relationships` | PostgreSQL (`RelationshipEdge`) plus optional Memgraph |
 | Voice analytics | `discord_context.get_voice_analytics`, `discord_context.get_voice_summaries` | PostgreSQL (`VoiceSession`, `VoiceConversationSummary`) |
 | Cached file text | `discord_files.list_channel`, `discord_files.list_server`, `discord_files.read_attachment` | PostgreSQL (`IngestedAttachment`) |

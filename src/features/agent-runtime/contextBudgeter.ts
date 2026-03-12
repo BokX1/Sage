@@ -14,7 +14,7 @@ export type ContextBlockId =
   | 'base_system'
   | 'current_turn'
   | 'runtime_instruction'
-  | 'server_instructions'
+  | 'guild_sage_persona'
   | 'voice_context'
   | 'transcript'
   | 'intent_hint'
@@ -286,7 +286,7 @@ function truncateBlockContent(
         content: applyTextToContent(block.content, `${notice}${truncatedContent}`.trimEnd()),
       };
     }
-    case 'server_instructions':
+    case 'guild_sage_persona':
     case 'current_turn':
       return {
         ...block,
@@ -364,7 +364,7 @@ const TRUNCATION_ORDER: ContextBlockId[] = [
   'voice_context',
   'intent_hint',
   'reply_context',
-  'server_instructions',
+  'guild_sage_persona',
   'user',
 ];
 

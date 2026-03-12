@@ -22,10 +22,42 @@ export interface RoutedToolDoc {
   actions: RoutedToolActionDoc[];
 }
 
+export type WebsiteToolCategory = 'discord' | 'search' | 'dev' | 'gen' | 'system';
+
+export interface WebsiteNativeToolRow {
+  name: string;
+  short: string;
+  desc: string;
+  cat: WebsiteToolCategory;
+  color: string;
+}
+
+export interface ToolSmokeDoc {
+  mode: 'required' | 'optional' | 'skip';
+  args?: Record<string, unknown>;
+  reason?: string;
+}
+
+export interface TopLevelToolDoc {
+  tool: string;
+  purpose: string;
+  selectionHints: string[];
+  avoidWhen?: string[];
+  validationHint?: string;
+  website: WebsiteNativeToolRow;
+  smoke: ToolSmokeDoc;
+}
+
 const routedToolDocs = new Map<string, RoutedToolDoc>();
+const topLevelToolDocs = new Map<string, TopLevelToolDoc>();
 
 function registerRoutedToolDoc(doc: RoutedToolDoc): RoutedToolDoc {
   routedToolDocs.set(doc.tool, doc);
+  return doc;
+}
+
+function registerTopLevelToolDoc(doc: TopLevelToolDoc): TopLevelToolDoc {
+  topLevelToolDocs.set(doc.tool, doc);
   return doc;
 }
 
@@ -65,6 +97,23 @@ export function getRoutedToolSelectionHints(toolName: string): string[] {
   return doc?.selectionHints ? [...doc.selectionHints] : [];
 }
 
+export function getTopLevelToolDoc(toolName: string): TopLevelToolDoc | null {
+  return topLevelToolDocs.get(toolName) ?? null;
+}
+
+export function listTopLevelToolDocs(): TopLevelToolDoc[] {
+  return [...topLevelToolDocs.values()];
+}
+
+export function getTopLevelToolSelectionHints(toolName: string): string[] {
+  const doc = getTopLevelToolDoc(toolName);
+  return doc ? [...doc.selectionHints] : [];
+}
+
+export function getToolValidationHint(toolName: string): string | undefined {
+  return getTopLevelToolDoc(toolName)?.validationHint;
+}
+
 export function buildRoutedToolHelp(
   toolName: string,
   options?: { includeExamples?: boolean },
@@ -91,11 +140,11 @@ export function buildRoutedToolHelp(
 export const discordContextToolDoc = registerRoutedToolDoc({
   tool: 'discord_context',
   purpose:
-    'Read Discord-native context surfaces for the current guild: user profiles, rolling channel summaries, server-behavior instruction reads, and social/voice analytics.',
+    'Read Discord-native context surfaces for the current guild: user profiles, rolling channel summaries, Sage Persona reads, and social/voice analytics.',
   useWhen: [
     'You need server-internal context rather than public web information.',
     'You need summaries, profiles, or analytics instead of exact message-level evidence.',
-    'You need the current guild server instructions as a behavior/persona reference rather than an admin write.',
+    'You need the current guild Sage Persona as a behavior/persona reference rather than an admin write.',
   ],
   avoidWhen: [
     'The user needs exact message quotes or historical proof; use discord_messages instead.',
@@ -105,17 +154,19 @@ export const discordContextToolDoc = registerRoutedToolDoc({
   routingNotes: [
     'This tool is read-only.',
     'get_channel_summary is current-channel only.',
-    'get_server_instructions reads the guild behavior/persona config; changing that config belongs to discord_admin.update_server_instructions.',
+    'get_server_instructions reads the guild Sage Persona; changing that config belongs to discord_admin.update_server_instructions.',
     'Voice analytics and voice summaries live here; live join/leave control belongs to discord_voice.',
+    'Channels, roles, threads, members, scheduled events, and AutoMod are Discord server-resource work, not Sage Persona reads.',
     'get_top_relationships is read-only but disabled in autopilot turns.',
   ],
   selectionHints: [
     'IF the question is about Discord-internal profiles, summaries, instruction reads, or analytics -> discord_context.',
     '  - Rolling summary of what has been happening -> get_channel_summary.',
     '  - User identity/profile in the server -> get_user_profile.',
-    '  - Guild behavior/persona instructions read -> get_server_instructions (read-only).',
+    '  - Guild Sage Persona read -> get_server_instructions (read-only).',
     '  - Social analytics -> get_social_graph / get_top_relationships.',
     '  - Voice analytics or past voice recaps -> get_voice_analytics / get_voice_summaries.',
+    '  - Channels, roles, threads, members, events, or AutoMod -> discord_server or typed admin actions, not Sage Persona.',
     '  - If unsure which context action fits, call discord_context: help.',
   ],
   actions: [
@@ -158,15 +209,15 @@ export const discordContextToolDoc = registerRoutedToolDoc({
     },
     {
       action: 'get_server_instructions',
-      purpose: 'Read the current admin-authored server instructions for this guild.',
-      useWhen: ['You need the guild-configured behavior/persona rules for Sage.'],
-      avoidWhen: ['You need to change the instructions; use discord_admin.update_server_instructions instead.'],
+      purpose: 'Read the current admin-authored Sage Persona for this guild.',
+      useWhen: ['You need the guild-configured Sage Persona rules for how Sage should behave.'],
+      avoidWhen: ['You need to change the Sage Persona; use discord_admin.update_server_instructions instead.'],
       requiredFields: ['action'],
       optionalFields: ['maxChars'],
       restrictions: ['Requires guild context.'],
-      resultNotes: ['This is behavior/persona configuration, not factual truth or an admin action result.'],
+      resultNotes: ['This is Sage Persona configuration, not factual truth, memory, or an admin action result.'],
       examples: [{ action: 'get_server_instructions', maxChars: 1500 }],
-      commonMistakes: ['Do not confuse this read with discord_admin.update_server_instructions, which queues an admin change request.'],
+      commonMistakes: ['Do not confuse this read with discord_admin.update_server_instructions, which queues an admin Sage Persona change request.'],
     },
     {
       action: 'get_social_graph',
@@ -657,7 +708,7 @@ export const discordFilesToolDoc = registerRoutedToolDoc({
 export const discordAdminToolDoc = registerRoutedToolDoc({
   tool: 'discord_admin',
   purpose:
-    'Perform guild administration and approval-gated Discord writes: server instruction updates, moderation requests, message edits/deletes/pins, channel and role management, member role changes, OAuth invite URLs, and raw Discord API fallback.',
+    'Perform guild administration and approval-gated Discord writes: Sage Persona updates, moderation requests, message edits/deletes/pins, channel and role management, member role changes, OAuth invite URLs, and raw Discord API fallback.',
   useWhen: [
     'The task changes guild configuration or performs admin actions.',
     'Typed admin actions are needed, or raw Discord API fallback is required.',
@@ -670,7 +721,7 @@ export const discordAdminToolDoc = registerRoutedToolDoc({
   routingNotes: [
     'Most actions require guild context.',
     'Admin privileges are required for all mutating actions.',
-    'Treat governance/config and moderation as separate admin domains: server-instruction changes govern Sage behavior/persona/policy posture, while moderation enforces actions on users, messages, reactions, or content.',
+    'Treat Sage Persona/config and moderation as separate admin domains: Sage Persona changes govern Sage behavior/persona/policy posture, while moderation enforces actions on users, messages, reactions, or content.',
     'Reply-targeted cleanup of someone else\'s spam/abusive/rule-breaking message is a moderation workflow, not a generic admin delete.',
     'Moderation should be evidence-first: use exact message-history tools before making a strong enforcement claim about what a message said.',
     'For high-leverage message enforcement, use submit_moderation with request.action `bulk_delete_messages` (explicit IDs/URLs) or `purge_recent_messages` (criteria-based purge resolved during preflight).',
@@ -678,7 +729,7 @@ export const discordAdminToolDoc = registerRoutedToolDoc({
     'If exact message-history tools are unavailable or insufficient, collect evidence with discord_admin.api GET /channels/{channelId}/messages before running moderation writes.',
     'submit_moderation accepts canonical Discord targeting inputs: raw IDs, mentions, Discord message URLs, and direct-reply shorthand when the target is unambiguous.',
     'api is the fallback only when typed discord_server or discord_admin actions do not cover the job.',
-    'update_server_instructions changes Sage behavior/persona config; get_server_instructions in discord_context only reads that config.',
+    'update_server_instructions changes the guild Sage Persona; get_server_instructions in discord_context only reads that config.',
     'submit_moderation is for enforcement workflows such as timeout/kick/ban/delete/reaction cleanup, not for changing how Sage behaves.',
   ],
   selectionHints: [
@@ -689,7 +740,8 @@ export const discordAdminToolDoc = registerRoutedToolDoc({
     '  - Bulk delete execution skips messages older than 14 days and reports skipped counts instead of failing the whole action.',
     '  - Before moderation, use discord_messages.get_context / search_with_context for exact message evidence when the current reply target or transcript is incomplete.',
     '  - If the moderation decision depends on member state, permissions, or current server guardrails -> discord_server.get_member / get_permission_snapshot / list_automod_rules.',
-    '  - Other admin writes such as message edits, channels, roles, and member role changes -> typed discord_admin actions.',
+    '  - Channels, roles, threads, members, events, and AutoMod -> typed discord_server or discord_admin actions, not Sage Persona.',
+    '  - Other admin writes such as message edits and member role changes -> typed discord_admin actions.',
     '  - Installation link generation -> get_invite_url.',
     '  - Unsupported admin-grade guild-scoped reads/writes after typed-action checks -> api.',
     '  - If unsure which admin action fits, call discord_admin: help.',
@@ -756,10 +808,10 @@ export const discordAdminToolDoc = registerRoutedToolDoc({
     },
     {
       action: 'update_server_instructions',
-      purpose: 'Submit an admin request to update guild server instructions.',
-      useWhen: ['The guild wants Sage behavior/persona instructions changed.'],
+      purpose: 'Submit an admin request to update the guild Sage Persona.',
+      useWhen: ['The guild wants Sage Persona behavior/persona instructions changed.'],
       avoidWhen: [
-        'You only need to read the current instruction text; use discord_context.get_server_instructions instead.',
+        'You only need to read the current Sage Persona text; use discord_context.get_server_instructions instead.',
         'The request is really moderation or enforcement on a user, message, reaction, or piece of content; use submit_moderation instead.',
       ],
       requiredFields: ['action', 'request'],
@@ -767,7 +819,7 @@ export const discordAdminToolDoc = registerRoutedToolDoc({
       restrictions: ['Requires admin context.', 'Disabled in autopilot turns.', 'Requires guild context.'],
       examples: [{ action: 'update_server_instructions', request: { operation: 'set', text: 'Be concise.', reason: 'Policy refresh' } }],
       commonMistakes: [
-        'Do not use this when you only need to inspect the current instructions; that is a discord_context read.',
+        'Do not use this when you only need to inspect the current Sage Persona; that is a discord_context read.',
         'Do not use this for moderation policy enforcement such as timeout_member, delete_message, or reaction cleanup; that belongs to submit_moderation.',
       ],
     },
@@ -1027,6 +1079,14 @@ export const webToolDoc = registerRoutedToolDoc({
   useWhen: ['The answer needs fresh or source-grounded public web data.'],
   avoidWhen: ['The answer is purely Discord-internal.', 'A GitHub repo or npm package tool is a better source.'],
   routingNotes: ['Use research for one-shot search + read.', 'Use read.page for very large pages.'],
+  selectionHints: [
+    'IF the question needs public internet information or fresh sources -> web.',
+    '  - For broad or open-ended questions, ALWAYS use web (action=research) to search and read multiple sources in a single payload round.',
+    '  - Read a known page directly -> web (action=read) or web (action=read.page) for long pages.',
+    '  - If you must read multiple URLs from a search (action=search), ALWAYS batch multiple web (action=read) calls in parallel within the same JSON payload.',
+    '  - Use web (action=extract) only when raw page content is not enough and the user needs targeted agentic extraction.',
+    '  - If unsure which web action fits, call web: help.',
+  ],
   actions: [
     {
       action: 'help',
@@ -1089,6 +1149,15 @@ export const githubToolDoc = registerRoutedToolDoc({
   useWhen: ['The request is about GitHub repository data or source files.'],
   avoidWhen: ['The package source is unknown and npm_info or workflow can resolve it first.', 'The request is general web research rather than GitHub data.'],
   routingNotes: ['When the path is unknown, start with code.search.', 'Prefer file.page, file.ranges, or file.snippet for large files.'],
+  selectionHints: [
+    'IF the request is about GitHub repository data -> github.',
+    '  - When the file path is unknown, start with github (action=code.search).',
+    '  - Read exact files or ranges only after you know the path -> file.get / file.page / file.ranges / file.snippet.',
+    '  - Repo metadata or README lookup -> repo.get.',
+    '  - Issues or pull request history -> issues.search / prs.search.',
+    '  - Recent repository activity -> commits.list.',
+    '  - If unsure which GitHub action fits, call github: help.',
+  ],
   actions: [
     {
       action: 'help',
@@ -1180,6 +1249,11 @@ export const workflowToolDoc = registerRoutedToolDoc({
   useWhen: ['A composed workflow can replace multiple manual tool hops.'],
   avoidWhen: ['A direct tool call is simpler or the workflow does not match the task.'],
   routingNotes: ['Workflow actions are convenience wrappers over lower-level tools.'],
+  selectionHints: [
+    'IF a composed workflow can replace multiple manual tool hops -> workflow.',
+    '  - Start with workflow (action=help) when you want a one-shot wrapper over lower-level tools.',
+    '  - npm package -> GitHub code search in one call -> action=npm.github_code_search.',
+  ],
   actions: [
     {
       action: 'help',
@@ -1199,3 +1273,457 @@ export const workflowToolDoc = registerRoutedToolDoc({
     },
   ],
 });
+
+const WEBSITE_COLORS = {
+  discord: '#7AA2F7',
+  search: '#E0AF68',
+  dev: '#BB9AF7',
+  gen: '#78b846',
+  system: '#78b846',
+} as const;
+
+type DiscordActionWebsiteDoc = {
+  short: string;
+  desc: string;
+};
+
+const discordActionWebsiteDocs: Record<string, DiscordActionWebsiteDoc> = {
+  help: { short: 'Help', desc: 'Get usage instructions and action help' },
+  get_user_profile: { short: 'User Profile', desc: 'Retrieve a user best-effort personalization profile and preferences' },
+  get_channel_summary: { short: 'Channel Summary', desc: 'Retrieve rolling and long-term summary context for the current channel' },
+  search_channel_summary_archives: { short: 'Search Summaries', desc: 'Search archived channel summaries and long-term context' },
+  get_server_instructions: { short: 'Read Sage Persona', desc: 'Read the guild-scoped Sage Persona configuration' },
+  get_social_graph: { short: 'Social Graph', desc: 'Analyze user interaction graphs and network centrality' },
+  get_top_relationships: { short: 'Top Relationships', desc: 'List the strongest interaction pairs across the server' },
+  get_voice_analytics: { short: 'Voice Analytics', desc: 'Retrieve voice channel participation analytics' },
+  get_voice_summaries: { short: 'Voice Summaries', desc: 'Get summarized transcripts from voice sessions' },
+  search_history: { short: 'Search History', desc: 'Hybrid semantic, keyword, or regex history search with time filters' },
+  search_with_context: { short: 'Search+Context', desc: 'Search history and expand surrounding message context in one call' },
+  get_context: { short: 'Msg Window', desc: 'Fetch messages before and after a known message ID' },
+  search_guild: { short: 'Search Guild', desc: 'Cross-channel message search across the server when allowed' },
+  get_user_timeline: { short: 'User Timeline', desc: 'Recent messages from a user across the server when allowed' },
+  send: { short: 'Send Message', desc: 'Send a plain or Components V2 message' },
+  create_poll: { short: 'Create Poll', desc: 'Create an interactive Discord poll' },
+  add_reaction: { short: 'Add Reaction', desc: 'Add emoji reactions to existing messages' },
+  remove_self_reaction: { short: 'Remove Reaction', desc: 'Remove Sage-owned emoji reactions from messages' },
+  list_channel: { short: 'Channel Files', desc: 'List files shared in the current channel' },
+  list_server: { short: 'Server Files', desc: 'List files shared across the entire server when allowed' },
+  find_channel: { short: 'Search Ch. Files', desc: 'Search indexed attachment text in the current channel' },
+  find_server: { short: 'Search Sv. Files', desc: 'Search indexed attachment text across the server when allowed' },
+  read_attachment: { short: 'Read Attachment', desc: 'Read cached attachment text in pages' },
+  send_attachment: { short: 'Send Attachment', desc: 'Resend a cached file or image while returning its stored recall text' },
+  list_channels: { short: 'List Channels', desc: 'Inspect accessible channels, categories, and forum/media surfaces' },
+  get_channel: { short: 'Get Channel', desc: 'Inspect one channel with metadata and permission overwrites' },
+  list_roles: { short: 'List Roles', desc: 'List guild roles with compact permission summaries' },
+  list_threads: { short: 'List Threads', desc: 'List active or archived threads for a guild or channel' },
+  get_thread: { short: 'Get Thread', desc: 'Inspect one thread state, ownership, and archive settings' },
+  list_scheduled_events: { short: 'List Events', desc: 'List upcoming or active scheduled events' },
+  get_scheduled_event: { short: 'Get Event', desc: 'Inspect one scheduled event' },
+  create_thread: { short: 'Create Thread', desc: 'Start a new conversation thread' },
+  update_thread: { short: 'Update Thread', desc: 'Rename or change archive and lock state for a thread' },
+  join_thread: { short: 'Join Thread', desc: 'Join a thread as Sage' },
+  leave_thread: { short: 'Leave Thread', desc: 'Leave a thread as Sage' },
+  add_thread_member: { short: 'Add Member', desc: 'Add a member to a thread' },
+  remove_thread_member: { short: 'Remove Member', desc: 'Remove a member from a thread' },
+  list_members: { short: 'List Members', desc: 'Admin-only member lookup with query or role filtering' },
+  get_member: { short: 'Get Member', desc: 'Admin-only inspection for one guild member' },
+  get_permission_snapshot: { short: 'Perm Snapshot', desc: 'Admin-only resolved channel permissions for a member or role' },
+  list_automod_rules: { short: 'AutoMod Rules', desc: 'Admin-only summary of current AutoMod rules' },
+  update_server_instructions: { short: 'Update Sage Persona', desc: 'Queue an admin-approved Sage Persona change' },
+  get_server_key_status: { short: 'Key Status', desc: 'Admin-only status check for the current server API key' },
+  get_governance_review_status: { short: 'Review Status', desc: 'Inspect where governance review cards are routed for this server' },
+  clear_server_api_key: { short: 'Clear Server Key', desc: 'Admin-only removal of the current server API key' },
+  set_governance_review_channel: { short: 'Set Review Ch.', desc: 'Route detailed governance review cards to a dedicated admin channel' },
+  clear_governance_review_channel: { short: 'Clear Review Ch.', desc: 'Return governance review cards to source-channel default routing' },
+  send_key_setup_card: { short: 'Send Setup Card', desc: 'Post the interactive server-key setup card into the current channel' },
+  submit_moderation: { short: 'Mod Queue', desc: 'Queue moderation actions based on policy' },
+  edit_message: { short: 'Edit Message', desc: 'Modify contents of an existing bot message' },
+  delete_message: { short: 'Delete Message', desc: 'Delete an offending message' },
+  pin_message: { short: 'Pin Message', desc: 'Pin an important message to the channel' },
+  unpin_message: { short: 'Unpin Message', desc: 'Unpin a message from the channel' },
+  create_channel: { short: 'Create Channel', desc: 'Create a new text, voice, or category channel' },
+  edit_channel: { short: 'Edit Channel', desc: 'Modify channel settings or placement' },
+  create_role: { short: 'Create Role', desc: 'Create a new server role' },
+  edit_role: { short: 'Edit Role', desc: 'Modify existing server role settings or permissions' },
+  delete_role: { short: 'Delete Role', desc: 'Delete a server role' },
+  add_member_role: { short: 'Add Role', desc: 'Assign a role to a server member' },
+  remove_member_role: { short: 'Remove Role', desc: 'Remove a role from a server member' },
+  get_invite_url: { short: 'Invite URL', desc: 'Generate a bot installation invite link' },
+  api: { short: 'Discord API', desc: 'Raw Discord REST fallback after typed admin actions' },
+  get_status: { short: 'Voice Status', desc: 'Check whether Sage is currently connected to voice' },
+  join_current_channel: { short: 'Join Voice', desc: 'Join the invoker current standard voice channel' },
+  leave: { short: 'Leave Voice', desc: 'Leave the active guild voice channel' },
+};
+
+function registerRoutedTopLevelToolDoc(
+  routedDoc: RoutedToolDoc,
+  options: {
+    website: Omit<WebsiteNativeToolRow, 'name'>;
+    smoke: ToolSmokeDoc;
+    validationHint?: string;
+  },
+): TopLevelToolDoc {
+  return registerTopLevelToolDoc({
+    tool: routedDoc.tool,
+    purpose: routedDoc.purpose,
+    selectionHints: [...(routedDoc.selectionHints ?? [])],
+    avoidWhen: routedDoc.avoidWhen ? [...routedDoc.avoidWhen] : undefined,
+    validationHint:
+      options.validationHint ??
+      'Try: { action: "help" } to see available actions and example payloads.',
+    website: {
+      name: routedDoc.tool,
+      ...options.website,
+    },
+    smoke: options.smoke,
+  });
+}
+
+registerTopLevelToolDoc({
+  tool: 'system_time',
+  purpose: 'Calculate timezone offsets when the runtime prompt current UTC timestamp is not enough.',
+  selectionHints: [
+    'IF timezone conversion for a specific utcOffset -> system_time (the current UTC time is already in <agent_state>; use the tool only for explicit offset math).',
+  ],
+  validationHint:
+    'Try: {} for current UTC facts or { utcOffsetMinutes: 480 } for explicit timezone conversion.',
+  website: {
+    name: 'system_time',
+    short: 'DateTime',
+    desc: 'Get current UTC facts or apply explicit timezone-offset math',
+    cat: 'system',
+    color: WEBSITE_COLORS.system,
+  },
+  smoke: {
+    mode: 'required',
+    args: {},
+  },
+});
+
+registerTopLevelToolDoc({
+  tool: 'system_tool_stats',
+  purpose: 'Inspect in-process tool telemetry such as latency, failures, and cache or memo activity.',
+  selectionHints: [
+    'IF tool latency, cache, memo, or error telemetry is needed -> system_tool_stats.',
+  ],
+  validationHint:
+    'Try: { topN: 10 } for a compact summary or { includeRaw: true } for full in-process metrics.',
+  website: {
+    name: 'system_tool_stats',
+    short: 'Tool Stats',
+    desc: 'Inspect in-process tool latency, caching, memoization, and failure stats',
+    cat: 'system',
+    color: WEBSITE_COLORS.system,
+  },
+  smoke: {
+    mode: 'required',
+    args: { topN: 5 },
+  },
+});
+
+registerRoutedTopLevelToolDoc(discordContextToolDoc, {
+  website: {
+    short: 'Discord Context',
+    desc: 'Profiles, rolling summaries, instruction reads, and analytics',
+    cat: 'discord',
+    color: WEBSITE_COLORS.discord,
+  },
+  smoke: {
+    mode: 'skip',
+    reason: 'Requires live guild and current-turn context; covered by runtime, unit, and integration tests.',
+  },
+  validationHint: 'Try: { action: "help" } to see available actions and required fields.',
+});
+
+registerRoutedTopLevelToolDoc(discordMessagesToolDoc, {
+  website: {
+    short: 'Discord Messages',
+    desc: 'Exact message history, message windows, delivery, reactions, and polls',
+    cat: 'discord',
+    color: WEBSITE_COLORS.discord,
+  },
+  smoke: {
+    mode: 'skip',
+    reason: 'Requires live guild and current-turn context; covered by runtime, unit, and integration tests.',
+  },
+  validationHint: 'Try: { action: "help" } to see available actions and required fields.',
+});
+
+registerRoutedTopLevelToolDoc(discordFilesToolDoc, {
+  website: {
+    short: 'Discord Files',
+    desc: 'Attachment discovery, file search, paging, and resend flows',
+    cat: 'discord',
+    color: WEBSITE_COLORS.discord,
+  },
+  smoke: {
+    mode: 'skip',
+    reason: 'Requires live guild and current-turn context; covered by runtime, unit, and integration tests.',
+  },
+  validationHint: 'Try: { action: "help" } to see available actions and required fields.',
+});
+
+registerRoutedTopLevelToolDoc(discordServerToolDoc, {
+  website: {
+    short: 'Discord Server',
+    desc: 'Guild resources, admin-only reads, scheduled events, and thread lifecycle',
+    cat: 'discord',
+    color: WEBSITE_COLORS.discord,
+  },
+  smoke: {
+    mode: 'skip',
+    reason: 'Requires live guild and current-turn context; covered by runtime, unit, and integration tests.',
+  },
+  validationHint: 'Try: { action: "help" } to see available actions and required fields.',
+});
+
+registerRoutedTopLevelToolDoc(discordVoiceToolDoc, {
+  website: {
+    short: 'Discord Voice',
+    desc: 'Live voice connection status and commandless join or leave control',
+    cat: 'discord',
+    color: WEBSITE_COLORS.discord,
+  },
+  smoke: {
+    mode: 'skip',
+    reason: 'Requires live guild and current-turn context; covered by runtime, unit, and integration tests.',
+  },
+  validationHint: 'Try: { action: "help" } to see available actions and required fields.',
+});
+
+registerRoutedTopLevelToolDoc(discordAdminToolDoc, {
+  website: {
+    short: 'Discord Admin',
+    desc: 'Admin writes, moderation, invite URLs, and raw Discord API fallback',
+    cat: 'discord',
+    color: WEBSITE_COLORS.discord,
+  },
+  smoke: {
+    mode: 'skip',
+    reason: 'Requires live guild, admin turn state, and approval context; covered by runtime, unit, and integration tests.',
+  },
+  validationHint: 'Try: { action: "help" } to see available actions and required fields.',
+});
+
+registerTopLevelToolDoc({
+  tool: 'image_generate',
+  purpose: 'Generate an image attachment when the user explicitly wants a visual created.',
+  selectionHints: [
+    'IF image creation, illustration, or visual mockup generation is requested -> image_generate.',
+  ],
+  validationHint:
+    'Try: { prompt: "minimal geometric poster of a robot librarian" } and optionally add width, height, model, seed, or referenceImageUrl.',
+  website: {
+    name: 'image_generate',
+    short: 'Image Gen',
+    desc: 'Generate images from a prompt with optional reference-image guidance',
+    cat: 'gen',
+    color: WEBSITE_COLORS.gen,
+  },
+  smoke: {
+    mode: 'optional',
+    args: {
+      prompt: 'minimal geometric poster of a robot librarian',
+      width: 512,
+      height: 512,
+    },
+  },
+});
+
+registerRoutedTopLevelToolDoc(webToolDoc, {
+  website: {
+    short: 'Web',
+    desc: 'Unified web research with search, page reads, extraction, and one-shot research',
+    cat: 'search',
+    color: WEBSITE_COLORS.search,
+  },
+  smoke: {
+    mode: 'required',
+    args: {
+      action: 'research',
+      query: 'latest OpenAI release notes',
+      maxResults: 4,
+      maxSources: 2,
+    },
+  },
+});
+
+registerRoutedTopLevelToolDoc(githubToolDoc, {
+  website: {
+    short: 'GitHub',
+    desc: 'Unified GitHub repo, code, file, issue, PR, and commit lookup',
+    cat: 'dev',
+    color: WEBSITE_COLORS.dev,
+  },
+  smoke: {
+    mode: 'required',
+    args: {
+      action: 'repo.get',
+      repo: 'openai/openai-node',
+      includeReadme: false,
+    },
+  },
+});
+
+registerRoutedTopLevelToolDoc(workflowToolDoc, {
+  website: {
+    short: 'Workflow',
+    desc: 'Composable one-shot workflows that reduce multi-hop tool chains',
+    cat: 'dev',
+    color: WEBSITE_COLORS.dev,
+  },
+  smoke: {
+    mode: 'required',
+    args: {
+      action: 'npm.github_code_search',
+      packageName: 'zod',
+      query: 'safeParse',
+      includeTextMatches: true,
+      maxCandidates: 5,
+      maxFilesToScan: 5,
+      maxMatches: 5,
+    },
+  },
+  validationHint: 'Try: { action: "help" } to see available workflows and example payloads.',
+});
+
+registerTopLevelToolDoc({
+  tool: 'npm_info',
+  purpose: 'Lookup npm package metadata, versions, maintainers, and normalized repository hints.',
+  selectionHints: [
+    'IF npm package metadata, versions, maintainers, or repository hints are needed -> npm_info.',
+  ],
+  validationHint:
+    'Try: { packageName: "zod" } and optionally add { version: "latest" } or a specific version tag.',
+  website: {
+    name: 'npm_info',
+    short: 'NPM Package',
+    desc: 'Lookup npm package details, versions, maintainers, and repository hints',
+    cat: 'dev',
+    color: WEBSITE_COLORS.dev,
+  },
+  smoke: {
+    mode: 'required',
+    args: {
+      packageName: 'zod',
+    },
+  },
+});
+
+registerTopLevelToolDoc({
+  tool: 'wikipedia_search',
+  purpose: 'Lookup broad, canonical encyclopedia-style topic grounding from Wikipedia.',
+  selectionHints: [
+    'IF broad encyclopedia facts or canonical topic grounding is needed -> wikipedia_search.',
+  ],
+  validationHint:
+    'Try: { query: "OpenAI", maxResults: 3 } and optionally add { language: "en" }.',
+  website: {
+    name: 'wikipedia_search',
+    short: 'Wikipedia',
+    desc: 'Search Wikipedia pages with snippets and canonical article links',
+    cat: 'search',
+    color: WEBSITE_COLORS.search,
+  },
+  smoke: {
+    mode: 'required',
+    args: {
+      query: 'OpenAI',
+      maxResults: 3,
+    },
+  },
+});
+
+registerTopLevelToolDoc({
+  tool: 'stack_overflow_search',
+  purpose: 'Search Stack Overflow questions and optionally fetch an accepted answer body for coding help.',
+  selectionHints: [
+    'IF coding Q&A or accepted-answer solution hunting is needed -> stack_overflow_search.',
+    '  - Set includeAcceptedAnswer=true when the accepted answer body itself is needed.',
+  ],
+  validationHint:
+    'Try: { query: "TypeScript zod schema parse error", includeAcceptedAnswer: true } and optionally add tagged or maxResults.',
+  website: {
+    name: 'stack_overflow_search',
+    short: 'Stack Overflow',
+    desc: 'Search Stack Overflow questions and accepted-answer coding fixes',
+    cat: 'search',
+    color: WEBSITE_COLORS.search,
+  },
+  smoke: {
+    mode: 'required',
+    args: {
+      query: 'TypeScript zod schema parse error',
+      tagged: 'typescript',
+      maxResults: 3,
+    },
+  },
+});
+
+function buildDiscordActionWebsiteRow(action: RoutedToolActionDoc): WebsiteNativeToolRow {
+  const override = discordActionWebsiteDocs[action.action];
+  return {
+    name: action.action,
+    short: override?.short ?? action.action.replaceAll('_', ' '),
+    desc: override?.desc ?? action.purpose,
+    cat: 'discord',
+    color: WEBSITE_COLORS.discord,
+  };
+}
+
+export function listSmokeToolDocs(): TopLevelToolDoc[] {
+  return listTopLevelToolDocs().filter((doc) => doc.smoke.mode !== 'skip');
+}
+
+export function buildWebsiteNativeTools(): WebsiteNativeToolRow[] {
+  const rows: WebsiteNativeToolRow[] = [];
+  const addTopLevelTool = (toolName: string): void => {
+    const doc = getTopLevelToolDoc(toolName);
+    if (!doc) {
+      throw new Error(`No top-level tool documentation registered for "${toolName}".`);
+    }
+    rows.push({ ...doc.website });
+  };
+
+  for (const toolName of [
+    'discord_context',
+    'discord_messages',
+    'discord_files',
+    'discord_server',
+    'discord_voice',
+    'discord_admin',
+  ]) {
+    addTopLevelTool(toolName);
+  }
+
+  const seenDiscordActions = new Set<string>();
+  for (const toolName of [
+    'discord_context',
+    'discord_messages',
+    'discord_server',
+    'discord_files',
+    'discord_admin',
+    'discord_voice',
+  ]) {
+    const routedDoc = getRoutedToolDoc(toolName);
+    if (!routedDoc) continue;
+    for (const action of routedDoc.actions) {
+      if (seenDiscordActions.has(action.action)) continue;
+      seenDiscordActions.add(action.action);
+      rows.push(buildDiscordActionWebsiteRow(action));
+    }
+  }
+
+  for (const toolName of ['web', 'wikipedia_search', 'stack_overflow_search']) {
+    addTopLevelTool(toolName);
+  }
+  for (const toolName of ['github', 'npm_info', 'workflow']) {
+    addTopLevelTool(toolName);
+  }
+  addTopLevelTool('image_generate');
+  for (const toolName of ['system_time', 'system_tool_stats']) {
+    addTopLevelTool(toolName);
+  }
+
+  return rows;
+}

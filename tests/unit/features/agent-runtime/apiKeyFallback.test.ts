@@ -15,7 +15,7 @@ const mockConfig = vi.hoisted(() => ({
 }));
 
 const mockGetGuildApiKey = vi.hoisted(() => vi.fn());
-const mockGetServerInstructionsText = vi.hoisted(() => vi.fn());
+const mockGetGuildSagePersonaText = vi.hoisted(() => vi.fn());
 const mockRunAgentGraphTurn = vi.hoisted(() => vi.fn());
 const globalToolRegistryMock = vi.hoisted(() => ({
   listNames: vi.fn(() => []),
@@ -71,8 +71,8 @@ vi.mock('@/features/settings/guildSettingsRepo', () => ({
   getGuildApiKey: mockGetGuildApiKey,
 }));
 
-vi.mock('@/features/settings/serverInstructionsRepo', () => ({
-  getServerInstructionsText: mockGetServerInstructionsText,
+vi.mock('@/features/settings/guildSagePersonaRepo', () => ({
+  getGuildSagePersonaText: mockGetGuildSagePersonaText,
 }));
 
 vi.mock('@/features/agent-runtime/toolRegistry', () => ({
@@ -128,7 +128,7 @@ function makeGraphResult(overrides: Partial<Awaited<ReturnType<typeof mockRunAge
 describe('agent runtime API key fallback', () => {
   beforeEach(() => {
     mockConfig.LLM_API_KEY = 'env-key';
-    mockGetServerInstructionsText.mockResolvedValue(null);
+    mockGetGuildSagePersonaText.mockResolvedValue(null);
     mockRunAgentGraphTurn.mockReset();
     globalToolRegistryMock.listNames.mockReturnValue([]);
     globalToolRegistryMock.get.mockReturnValue(undefined);

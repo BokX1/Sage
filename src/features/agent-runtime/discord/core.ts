@@ -28,11 +28,11 @@ import {
 } from '../toolIntegrations';
 import {
   type DiscordModerationActionRequest,
-  type ServerInstructionsUpdateRequest,
+  type SagePersonaUpdateRequest,
   requestDiscordAdminActionForTool,
   requestDiscordInteractionForTool,
-  lookupServerInstructionsForTool,
-  requestServerInstructionsUpdateForTool,
+  lookupGuildSagePersonaForTool,
+  requestSagePersonaUpdateForTool,
   requestDiscordRestWriteForTool,
   type DiscordRestWriteRequest,
 } from '../../admin/adminActionService';
@@ -526,7 +526,7 @@ export async function executeDiscordContextAction(
     }
     case 'get_server_instructions': {
       const data = asAction<{ maxChars?: number }>(args);
-      return lookupServerInstructionsForTool({
+      return lookupGuildSagePersonaForTool({
         guildId: requireGuildContext(ctx.guildId),
         maxChars: data.maxChars,
       });
@@ -1406,10 +1406,10 @@ export async function executeDiscordAdminAction(
 ): Promise<unknown> {
   switch (args.action) {
     case 'update_server_instructions': {
-      const data = asAction<{ request: ServerInstructionsUpdateRequest }>(args);
+      const data = asAction<{ request: SagePersonaUpdateRequest }>(args);
       assertAdmin(ctx.invokerIsAdmin);
       assertNotAutopilot(ctx.invokedBy, 'update_server_instructions');
-      return requestServerInstructionsUpdateForTool({
+      return requestSagePersonaUpdateForTool({
         guildId: requireGuildContext(ctx.guildId),
         channelId: ctx.channelId,
         requestedBy: ctx.userId,

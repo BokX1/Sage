@@ -1,17 +1,17 @@
 /* eslint-disable no-console */
 
+import { registerDefaultAgenticTools } from '../features/agent-runtime/defaultTools';
+import type { ToolExecutionContext } from '../features/agent-runtime/toolRegistry';
+import { ToolRegistry } from '../features/agent-runtime/toolRegistry';
 import {
-  lookupGitHubRepo,
-  lookupNpmPackage,
-  lookupWikipedia,
-  runWebSearch,
-  scrapeWebPage,
-  searchStackOverflow,
-} from '../features/agent-runtime/toolIntegrations';
+  listSmokeToolDocs,
+  listTopLevelToolDocs,
+  type TopLevelToolDoc,
+} from '../features/agent-runtime/toolDocs';
 
 type SmokeCheck = {
   name: string;
-  optional?: boolean;
+  optional: boolean;
   run: () => Promise<string>;
 };
 
@@ -20,96 +20,117 @@ function errorText(error: unknown): string {
   return String(error);
 }
 
+function buildSmokeContext(): ToolExecutionContext {
+  return {
+    traceId: 'tool-smoke',
+    userId: 'tool-smoke',
+    channelId: 'tool-smoke',
+    apiKey: process.env.LLM_API_KEY,
+  };
+}
+
+function summarizeSmokeResult(toolName: string, result: unknown): string {
+  const record =
+    result && typeof result === 'object' && !Array.isArray(result)
+      ? (result as Record<string, unknown>)
+      : null;
+
+  if (!record) {
+    return `resultType=${typeof result}`;
+  }
+
+  switch (toolName) {
+    case 'system_time':
+      return `isoUtc=${String(record.isoUtc ?? 'n/a')}`;
+    case 'system_tool_stats': {
+      const tools = Array.isArray(record.tools) ? record.tools.length : 0;
+      return `scope=${String(record.scope ?? 'unknown')} tools=${tools}`;
+    }
+    case 'web': {
+      const provider = String(record.provider ?? 'unknown');
+      const sourcesRead = typeof record.sourcesRead === 'number' ? record.sourcesRead : 0;
+      const results = Array.isArray(record.results) ? record.results.length : 0;
+      return `provider=${provider} results=${results} sourcesRead=${sourcesRead}`;
+    }
+    case 'github':
+      return `fullName=${String(record.fullName ?? record.repo ?? 'unknown')}`;
+    case 'workflow':
+      return `repo=${String(record.githubRepo ?? 'unknown')} action=${String(record.action ?? 'unknown')}`;
+    case 'npm_info':
+      return `package=${String(record.packageName ?? 'unknown')} latest=${String(record.latestVersion ?? record.version ?? 'n/a')}`;
+    case 'wikipedia_search': {
+      const count = Array.isArray(record.results) ? record.results.length : 0;
+      return `results=${count}`;
+    }
+    case 'stack_overflow_search': {
+      const count = Array.isArray(record.results) ? record.results.length : 0;
+      return `results=${count}`;
+    }
+    case 'image_generate': {
+      const attachments = Array.isArray(record.attachments) ? record.attachments.length : 0;
+      return `provider=${String(record.provider ?? 'unknown')} attachments=${attachments}`;
+    }
+    default:
+      return `keys=${Object.keys(record).slice(0, 5).join(',') || 'none'}`;
+  }
+}
+
+function buildSmokeChecks(registry: ToolRegistry, ctx: ToolExecutionContext): SmokeCheck[] {
+  return listSmokeToolDocs().map((doc: TopLevelToolDoc) => ({
+    name: doc.tool,
+    optional: doc.smoke.mode === 'optional',
+    run: async () => {
+      const result = await registry.executeValidated(
+        {
+          name: doc.tool,
+          args: doc.smoke.args ?? {},
+        },
+        ctx,
+      );
+      if (!result.success) {
+        const hint = result.errorDetails?.hint ? ` hint=${result.errorDetails.hint}` : '';
+        throw new Error(`${result.error}${hint}`);
+      }
+      return summarizeSmokeResult(doc.tool, result.result);
+    },
+  }));
+}
+
 async function runCheck(check: SmokeCheck): Promise<{ passed: boolean; optional: boolean }> {
   const startedAt = Date.now();
   try {
     const detail = await check.run();
     console.log(`[PASS] ${check.name} (${Date.now() - startedAt}ms) ${detail}`);
-    return { passed: true, optional: !!check.optional };
+    return { passed: true, optional: check.optional };
   } catch (error) {
     const label = check.optional ? 'WARN' : 'FAIL';
     console.log(`[${label}] ${check.name} (${Date.now() - startedAt}ms) ${errorText(error)}`);
-    return { passed: false, optional: !!check.optional };
+    return { passed: false, optional: check.optional };
   }
 }
 
 async function main(): Promise<void> {
-  const checks: SmokeCheck[] = [
-    {
-      name: 'web.search',
-      run: async () => {
-        const result = await runWebSearch({
-          query: 'latest OpenAI release notes',
-          depth: 'balanced',
-          maxResults: 4,
-        });
-        const provider = String(result.provider ?? 'unknown');
-        const count = Array.isArray(result.results) ? result.results.length : 0;
-        return `provider=${provider} results=${count}`;
-      },
-    },
-    {
-      name: 'web.read',
-      run: async () => {
-        const result = await scrapeWebPage({
-          url: 'https://example.com',
-          maxChars: 2_000,
-        });
-        const provider = String(result.provider ?? 'unknown');
-        const chars = typeof result.content === 'string' ? result.content.length : 0;
-        return `provider=${provider} contentChars=${chars}`;
-      },
-    },
-    {
-      name: 'wikipedia_search',
-      run: async () => {
-        const result = await lookupWikipedia({
-          query: 'OpenAI',
-          maxResults: 3,
-        });
-        const count = Array.isArray(result.results) ? result.results.length : 0;
-        return `results=${count}`;
-      },
-    },
-    {
-      name: 'github.repo.get',
-      run: async () => {
-        const result = await lookupGitHubRepo({
-          repo: 'openai/openai-node',
-          includeReadme: false,
-        });
-        return `fullName=${String(result.fullName ?? 'unknown')} stars=${String(result.stars ?? 'n/a')}`;
-      },
-    },
-    {
-      name: 'npm_info',
-      run: async () => {
-        const result = await lookupNpmPackage({
-          packageName: 'zod',
-        });
-        return `package=${String(result.packageName ?? 'unknown')} latest=${String(result.latestVersion ?? result.version ?? 'n/a')}`;
-      },
-    },
-    {
-      name: 'stack_overflow_search',
-      run: async () => {
-        const result = await searchStackOverflow({
-          query: 'TypeScript zod schema parse error',
-          maxResults: 3,
-          tagged: 'typescript',
-        });
-        const count = Array.isArray(result.results) ? result.results.length : 0;
-        return `results=${count}`;
-      },
-    },
-  ];
+  const registry = new ToolRegistry();
+  registerDefaultAgenticTools(registry);
+
+  const ctx = buildSmokeContext();
+  const checks = buildSmokeChecks(registry, ctx);
+  const skipped = listTopLevelToolDocs().filter((doc) => doc.smoke.mode === 'skip');
 
   console.log('Sage tool smoke checks starting...');
-  const outcomes = await Promise.all(checks.map((check) => runCheck(check)));
+  for (const doc of skipped) {
+    console.log(`[SKIP] ${doc.tool} ${doc.smoke.reason ?? 'No smoke runner configured.'}`);
+  }
+
+  const outcomes = [];
+  for (const check of checks) {
+    outcomes.push(await runCheck(check));
+  }
+
   const requiredFailures = outcomes.filter((entry) => !entry.passed && !entry.optional).length;
   const optionalFailures = outcomes.filter((entry) => !entry.passed && entry.optional).length;
   console.log(
-    `Completed ${checks.length} checks. requiredFailures=${requiredFailures} optionalFailures=${optionalFailures}`,
+    `Completed ${checks.length} checks. requiredFailures=${requiredFailures} optionalFailures=${optionalFailures} skipped=${skipped.length}`,
   );
   if (requiredFailures > 0) {
     process.exitCode = 1;

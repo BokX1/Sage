@@ -41,7 +41,7 @@ describe('discord tool mental model guidance', () => {
 
     expect(adminDoc?.routingNotes).toEqual(
       expect.arrayContaining([
-        expect.stringContaining('governance/config and moderation as separate admin domains'),
+        expect.stringContaining('Sage Persona/config and moderation as separate admin domains'),
         expect.stringContaining('submit_moderation is for enforcement workflows'),
         expect.stringContaining('Reply-targeted cleanup'),
       ]),
@@ -277,8 +277,9 @@ describe('discord tool mental model guidance', () => {
       ],
     });
 
-    expect(prompt).toContain('Distinguish instruction reads from instruction writes');
-    expect(prompt).toContain('Distinguish governance/config from moderation/enforcement');
+    expect(prompt).toContain('Distinguish Sage Persona reads from Sage Persona writes');
+    expect(prompt).toContain('Distinguish Sage Persona/config from moderation/enforcement');
+    expect(prompt).toContain('Distinguish Sage Persona from server-resource work');
     expect(prompt).toContain('Treat reply-targeted enforcement as moderation');
     expect(prompt).toContain('Distinguish summary context from message context');
     expect(prompt).toContain('Distinguish file discovery from guild discovery');

@@ -1,50 +1,36 @@
 import { describe, expect, it } from 'vitest';
 
-import { ToolRegistry } from '../../../src/features/agent-runtime/toolRegistry';
-import { registerDefaultAgenticTools } from '../../../src/features/agent-runtime/defaultTools';
-import { getAllDiscordActions } from '../../../src/features/agent-runtime/discordToolCatalog';
+import { buildWebsiteNativeTools } from '../../../src/features/agent-runtime/toolDocs';
 
-type NativeToolRow = { name: string };
+type NativeToolRow = {
+  name: string;
+  short: string;
+  desc: string;
+  cat: string;
+  color: string;
+};
 
-async function loadWebsiteNativeTools(): Promise<NativeToolRow[]> {
+async function loadWebsiteNativeTools(): Promise<{
+  nativeTools: NativeToolRow[];
+  nativeToolCount: number;
+}> {
   const modulePath = '../../../website/src/lib/nativeTools.js';
-  const mod = (await import(modulePath)) as { nativeTools?: unknown };
-  const rows = Array.isArray(mod.nativeTools) ? (mod.nativeTools as NativeToolRow[]) : [];
-  return rows;
+  const mod = (await import(modulePath)) as {
+    nativeTools?: unknown;
+    nativeToolCount?: unknown;
+  };
+  return {
+    nativeTools: Array.isArray(mod.nativeTools) ? (mod.nativeTools as NativeToolRow[]) : [],
+    nativeToolCount: typeof mod.nativeToolCount === 'number' ? mod.nativeToolCount : 0,
+  };
 }
 
 describe('website native tools list', () => {
-  it('lists only real runtime tools or discord actions', async () => {
-    const nativeTools = await loadWebsiteNativeTools();
-    const names = nativeTools.map((row) => row.name);
+  it('matches the generated runtime metadata rows exactly', async () => {
+    const website = await loadWebsiteNativeTools();
+    const generated = buildWebsiteNativeTools();
 
-    const registry = new ToolRegistry();
-    registerDefaultAgenticTools(registry);
-    const runtimeTools = new Set(registry.listNames());
-    const discordActions = new Set(getAllDiscordActions());
-
-    const unknown = names.filter((name) => !runtimeTools.has(name) && !discordActions.has(name));
-    expect(unknown).toEqual([]);
-  });
-
-  it('includes the full Discord action catalog', async () => {
-    const nativeTools = await loadWebsiteNativeTools();
-    const names = new Set(nativeTools.map((row) => row.name));
-    const actions = getAllDiscordActions();
-
-    const missing = actions.filter((action) => !names.has(action));
-    expect(missing).toEqual([]);
-  });
-
-  it('includes all default tools', async () => {
-    const nativeTools = await loadWebsiteNativeTools();
-    const names = new Set(nativeTools.map((row) => row.name));
-
-    const registry = new ToolRegistry();
-    registerDefaultAgenticTools(registry);
-    const toolNames = registry.listNames();
-
-    const missing = toolNames.filter((toolName) => !names.has(toolName));
-    expect(missing).toEqual([]);
+    expect(website.nativeTools).toEqual(generated);
+    expect(website.nativeToolCount).toBe(generated.length);
   });
 });

@@ -91,7 +91,7 @@ flowchart TD
 |:---|:---|:---|
 | **Chat Engine** | `src/features/chat/chat-engine.ts` | Entry point — receives Discord events, orchestrates `runChatTurn` |
 | **Agent Runtime** | `src/features/agent-runtime/agentRuntime.ts` | The single `runChatTurn` function: model resolution, prompt assembly, graph invocation, trace persistence |
-| **Context Builder** | `src/features/agent-runtime/contextBuilder.ts` | Composes prioritized message blocks (system prompt, runtime instructions, optional server instructions/voice context, transcript, reply context) |
+| **Context Builder** | `src/features/agent-runtime/contextBuilder.ts` | Composes prioritized message blocks (system prompt, runtime instructions, optional guild Sage Persona/voice context, transcript, reply context) |
 | **Context Budgeter** | `src/features/agent-runtime/contextBudgeter.ts` | Token-aware block sizing with configurable per-block budgets |
 | **Prompt Composer** | `src/features/agent-runtime/promptComposer.ts` | Assembles the final system prompt with personality, capability guidance, and silent native tool-use rules |
 | **Agent Graph Runtime** | `src/features/agent-runtime/langgraph/runtime.ts` | Custom LangGraph runtime for model calls, bounded tool execution, approval interrupts, forced finalization, and checkpointed resumes |
@@ -181,12 +181,13 @@ The runtime teaches silent native tool usage via structured instruction blocks, 
 
 > [!NOTE]
 > The runtime currently registers 15 top-level tools. The website/demo may show a larger capability count because it also lists routed Discord actions individually.
+> Sage’s agent-facing source of truth lives in the runtime tool schemas plus the shared top-level and routed tool metadata in `src/features/agent-runtime/toolDocs.ts`.
 
 ### 🧠 Discord Domain Tools (6 tools)
 
 | Tool | Description | Access |
 |:---|:---|:---|
-| `discord_context` | Profiles, channel summaries, server-instructions reads, and social/voice analytics | Public |
+| `discord_context` | Profiles, channel summaries, Sage Persona reads, and social/voice analytics | Public |
 | `discord_messages` | Exact message history, Discord-native delivery, polls, and reactions | Public |
 | `discord_files` | Attachment discovery, paged attachment reads, and attachment resend flows | Public |
 | `discord_server` | Guild resources, scheduled events, AutoMod reads, and thread lifecycle actions | Public (some reads Admin) |

@@ -208,7 +208,7 @@ flowchart TD
         TURN["runChatTurn"]:::runtime
         MODEL["Model Resolution + Health Fallbacks"]:::runtime
         CTX["Context Assembly
-system prompt + user profile + server instructions + transcript + live voice"]:::runtime
+system prompt + user profile + guild Sage Persona + transcript + live voice"]:::runtime
         BUDGET["Token Budgeting + Truncation"]:::runtime
         LOOP{"Tool Loop
 max rounds, per-call limits, timeouts"}:::runtime

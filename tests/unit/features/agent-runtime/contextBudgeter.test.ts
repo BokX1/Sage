@@ -25,7 +25,7 @@ function buildBlocks(overrides: Partial<ContextBlock>[] = []): ContextBlock[] {
       truncatable: false,
     },
     {
-      id: 'server_instructions',
+      id: 'guild_sage_persona',
       role: 'system',
       content: 'Memory block content.',
       priority: 90,

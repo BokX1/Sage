@@ -89,7 +89,7 @@ export default function ConversationalGovernance() {
                                 >
                                     <div className="w-8 h-8 rounded-full bg-red-500/20 border border-red-500/30 flex-shrink-0 flex items-center justify-center text-xs">AD</div>
                                     <div className="bg-white/5 rounded-2xl rounded-tl-md px-4 py-3 text-sm text-slate-300 max-w-md">
-                                        Sage, update our server instructions so moderation approvals stay concise in-channel and route full reviews to
+                                        Sage, update our Sage Persona so moderation approvals stay concise in-channel and route full reviews to
                                         <span className="text-[#8ed6ff]"> #governance-review</span>.
                                     </div>
                                 </motion.div>
@@ -111,7 +111,7 @@ export default function ConversationalGovernance() {
                                         <div className="font-semibold text-white">
                                             {approved ? 'Executed' : rejected ? 'Rejected' : 'Queued for review'}
                                         </div>
-                                        <div>Update Sage&apos;s server instructions for premium governance routing.</div>
+                                        <div>Update the guild Sage Persona for premium governance routing.</div>
                                         <div className="text-slate-400">Review surface: <span className="text-[#8ed6ff]">#governance-review</span></div>
                                         <div className="text-slate-400">
                                             {approved
@@ -165,7 +165,7 @@ export default function ConversationalGovernance() {
                                     </div>
 
                                     <div className="space-y-2 text-sm text-slate-300">
-                                        <div>Apply a server-instruction update for governance routing.</div>
+                                        <div>Apply a Sage Persona update for governance routing.</div>
                                         <div className="text-slate-400">Requester: @admin</div>
                                         <div className="text-slate-400">Target: guild-wide behavior and approval presentation</div>
                                         <div className="text-slate-400">Impact: compact requester cards in the source channel, richer review cards for admins</div>

@@ -6,6 +6,7 @@ import { sanitizeJsonSchemaForProvider } from '../../shared/validation/json-sche
 import { buildToolErrorDetails, extractToolErrorDetails, type ToolErrorDetails } from './toolErrors';
 import type { CurrentTurnContext, ReplyTargetContext } from './continuityContext';
 import { isToolControlSignal } from './toolControlSignals';
+import { getToolValidationHint } from './toolDocs';
 
 // Guardrail against runaway or malicious tool payloads (for example oversized base64 blobs).
 // Must be large enough to support legitimate multipart/file workflows.
@@ -74,27 +75,7 @@ function formatZodIssues(issues: z.ZodIssue[], maxIssues = 10): { text: string; 
 }
 
 function buildValidationHint(toolName: string): string | undefined {
-  const normalized = toolName.trim().toLowerCase();
-  if (
-    normalized === 'discord_context' ||
-    normalized === 'discord_messages' ||
-    normalized === 'discord_files' ||
-    normalized === 'discord_server' ||
-    normalized === 'discord_admin' ||
-    normalized === 'discord_voice'
-  ) {
-    return 'Try: { action: "help" } to see available actions and required fields.';
-  }
-  if (normalized === 'github') {
-    return 'Try: { action: "help" } to see available actions and example payloads.';
-  }
-  if (normalized === 'web') {
-    return 'Try: { action: "help" } to see available actions and example payloads.';
-  }
-  if (normalized === 'workflow') {
-    return 'Try: { action: "help" } to see available workflows and example payloads.';
-  }
-  return undefined;
+  return getToolValidationHint(toolName.trim().toLowerCase());
 }
 
 /** Carry immutable context passed into every tool execution. */

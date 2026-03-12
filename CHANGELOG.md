@@ -35,6 +35,11 @@
 - Added a dedicated `discord_voice` routed tool for live voice presence control so Sage can report voice status, join the invoker's current voice channel, and leave the active guild voice channel through normal chat turns.
 
 ### Changed
+- Removed the remaining internal Sage Persona rename drift: the runtime, approval-service helpers, context budgeting block IDs, website governance copy, and affected tests now use `guildSagePersona`/`<guild_sage_persona>` terminology consistently, leaving only the intentionally stable compatibility contracts such as tool IDs, approval kind strings, and persisted `ServerInstructions` model names.
+- Renamed the model-visible “server instructions” concept to **Sage Persona** across runtime prompt blocks, routed tool help, docs, and website copy, so Sage now distinguishes guild behavior config from memory and Discord server-resource changes more reliably without changing tool IDs or storage contracts.
+- Consolidated Sage's routed tool-selection guidance so the runtime prompt now pulls `web`, `github`, and `workflow` routing hints from the same routed-tool docs used for help payloads, reducing prompt drift for operators extending tool behavior.
+- Added contract coverage that fails when registered runtime tools or routed selection hints fall out of sync with the architecture overview or the prompt-surface metadata Sage sees at runtime.
+- Unified Sage's full tool-surface metadata behind `toolDocs.ts`, so direct-tool prompt guidance, validation hints, website native-tool rows, and CLI smoke coverage now derive from one shared runtime source instead of drifting hand-maintained copies.
 
 - Hardened model-visible tool exposure for Discord governance: `discord_admin` is now marked admin-access in tool metadata, so non-admin turns and all autopilot turns no longer advertise admin-only tool surface to the model while preserving existing action contracts for admin flows.
 - Removed dead `search_high` execution-profile plumbing from the single-route runtime path: LangGraph state/context and tool memo scope keying now match the only active production behavior, reducing stale branching and operator confusion without changing the default search/scrape path.

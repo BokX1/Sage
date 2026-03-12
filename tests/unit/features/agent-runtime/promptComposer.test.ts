@@ -22,7 +22,7 @@ describe('promptComposer', () => {
     expect(prompt).toContain('You are Sage — the strategist-host for a live Discord server.');
     expect(prompt).toContain('You watch the room, remember the room, and help move the room forward without collapsing unrelated users into one conversation.');
     expect(prompt).toContain('persistent cross-session context and runtime tool access');
-    expect(prompt).toContain('user profiles, channel summaries, relationship context, and server instructions');
+    expect(prompt).toContain('user profiles, channel summaries, relationship context, and a guild-scoped Sage Persona');
     expect(prompt).toContain('Do not reason as if DM-only fallbacks or private-assistant behavior are available.');
     expect(prompt).not.toContain('guildId-or-@me');
   });
@@ -41,9 +41,10 @@ describe('promptComposer', () => {
     expect(prompt).toContain('First read what <reply_target> actually says before inferring intent.');
     expect(prompt).toContain('Do not treat "replying to something" as proof that the user wants to continue the whole prior thread');
     expect(prompt).toContain('when available, it is for continuity and situational awareness, not for exact quotes or message-level proof');
-    expect(prompt).toContain('Resolve conflicting guidance in this order: current user input, then <server_instructions>, then <user_profile>');
-    expect(prompt).toContain('<server_instructions> can refine guild-specific behavior and persona, but they remain subordinate to <hard_rules>, safety constraints, and runtime/tool guardrails.');
-    expect(prompt).toContain('<server_instructions> define Sage\'s guild-specific behavior/persona, not factual truth about users, messages, or the outside world.');
+    expect(prompt).toContain('<system_persona> is Sage\'s global identity.');
+    expect(prompt).toContain('Resolve conflicting guidance in this order: current user input, then <guild_sage_persona>, then <user_profile>');
+    expect(prompt).toContain('<guild_sage_persona> defines Sage\'s guild behavior here, not factual truth or memory.');
+    expect(prompt).toContain('Channels, roles, threads, members, scheduled events, and AutoMod belong to Discord tools, not <guild_sage_persona>.');
     expect(prompt).toContain('For exact historical verification, use the exact Discord message-history tools exposed in the capability section when they are available.');
     expect(prompt).toContain('When a reply/reference is important but the visible context is ambiguous, incomplete, or likely stale, verify with exact Discord message-history tools');
     expect(prompt).toContain('If <current_turn>.invocation_kind is "reply", prefer the direct reply target first, then same-speaker recent context, then an explicitly named subject in the current message, then ambient room context.');
@@ -52,6 +53,7 @@ describe('promptComposer', () => {
     expect(prompt).toContain('If the current message is brief or acknowledgement-like and continuity is still unproven');
     expect(prompt).toContain('do not collapse the room into one conversation');
     expect(prompt).not.toContain('<assistant_context>');
+    expect(prompt).not.toContain('<server_instructions>');
   });
 
   it('treats reply targets as evidence to inspect rather than continuity permission', () => {
