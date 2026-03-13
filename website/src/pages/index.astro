@@ -16,6 +16,7 @@ import CommandPalette from '../components/CommandPalette.jsx';
 import ConfigSimulator from '../components/ConfigSimulator.jsx';
 import GraphBackground from '../components/GraphBackground.jsx';
 import SocialProof from '../components/SocialProof.jsx';
+import NavBar from '../components/NavBar.jsx';
 import MobileNav from '../components/MobileNav.jsx';
 import ComparisonTable from '../components/ComparisonTable.jsx';
 import ScrollProgress from '../components/ScrollProgress.jsx';
@@ -36,24 +37,7 @@ const nativeToolsLabel = `${nativeToolCount}+`;
 	<main class="w-full min-h-screen pt-24 pb-0 overflow-hidden">
 		
 		<!-- Navigation Bar -->
-		<nav class="fixed top-0 left-0 right-0 z-50 px-6 py-4 glass-panel border-b border-white/5">
-			<div class="max-w-7xl mx-auto flex justify-between items-center">
-				<div class="flex items-center gap-3">
-					<div class="w-8 h-8 rounded-lg bg-gradient-to-br from-[#78b846] to-[#2d4530] flex items-center justify-center font-bold text-[#050608] shadow-[0_0_15px_rgba(120,184,70,0.5)]">S</div>
-					<span class="font-sans font-bold text-xl tracking-tight text-white">Sage</span>
-				</div>
-				<div class="flex items-center gap-6 text-sm font-medium">
-					<a href="#tech-stack" class="text-slate-400 hover:text-[#78b846] transition-colors hidden sm:inline">Stack</a>
-					<a href="#tools" class="text-slate-400 hover:text-[#78b846] transition-colors hidden sm:inline">Tools</a>
-					<a href="#architecture" class="text-slate-400 hover:text-[#78b846] transition-colors hidden sm:inline">Architecture</a>
-					<a href="#comparison" class="text-slate-400 hover:text-[#78b846] transition-colors hidden sm:inline">Compare</a>
-					<a href="https://github.com/BokX1/Sage" target="_blank" rel="noopener noreferrer" class="px-5 py-2.5 rounded-full bg-white/10 hover:bg-white/20 border border-white/10 transition-all hidden sm:inline-flex">
-						View on GitHub
-					</a>
-					<MobileNav client:load />
-				</div>
-			</div>
-		</nav>
+		<NavBar client:load />
 
 		<!-- ═══════════════════════════════════════ -->
 		<!--  1. HERO SECTION                       -->
@@ -66,6 +50,20 @@ const nativeToolsLabel = `${nativeToolCount}+`;
 				<GraphBackground client:only="react" />
 			</div>
 
+			<!-- Floating Particles Layer -->
+			<div class="particles-container" aria-hidden="true">
+				<div class="particle" style="left: 15%; bottom: 0; animation-duration: 12s; animation-delay: 0s;"></div>
+				<div class="particle" style="left: 35%; bottom: 0; animation-duration: 16s; animation-delay: 2s;"></div>
+				<div class="particle" style="left: 55%; bottom: 0; animation-duration: 14s; animation-delay: 4s;"></div>
+				<div class="particle" style="left: 75%; bottom: 0; animation-duration: 18s; animation-delay: 1s;"></div>
+				<div class="particle" style="left: 25%; bottom: 0; animation-duration: 20s; animation-delay: 6s;"></div>
+				<div class="particle" style="left: 85%; bottom: 0; animation-duration: 15s; animation-delay: 3s;"></div>
+				<div class="particle" style="left: 45%; bottom: 0; animation-duration: 22s; animation-delay: 8s;"></div>
+				<div class="particle" style="left: 65%; bottom: 0; animation-duration: 13s; animation-delay: 5s;"></div>
+				<div class="particle" style="left: 10%; bottom: 0; animation-duration: 17s; animation-delay: 7s;"></div>
+				<div class="particle" style="left: 90%; bottom: 0; animation-duration: 19s; animation-delay: 10s;"></div>
+			</div>
+
 			<div class="z-10 flex flex-col items-start text-left">
 				<div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#141a23] border border-[#2d4530] text-[#a9df7c] text-xs font-mono mb-6">
 					<span class="w-2 h-2 rounded-full bg-[#78b846] animate-pulse"></span>
@@ -74,7 +72,7 @@ const nativeToolsLabel = `${nativeToolCount}+`;
 				
 				<h1 class="text-5xl lg:text-7xl font-extrabold tracking-tight text-white leading-[1.1] mb-6">
 					The First <span class="text-transparent bg-clip-text bg-gradient-to-r from-[#78b846] to-[#a9df7c] text-glow">Agentic</span><br/>
-					Community Engineer.
+					<span class="shimmer-text">Community Engineer.</span>
 				</h1>
 				
 				<p class="text-xl text-slate-400 mb-10 max-w-xl font-light leading-relaxed">
@@ -82,7 +80,7 @@ const nativeToolsLabel = `${nativeToolCount}+`;
 				</p>
 				
 				<div class="flex flex-wrap items-center gap-4 mb-10">
-					<a href="https://github.com/BokX1/Sage" class="px-8 py-4 rounded-full bg-[#78b846] text-[#050608] font-semibold hover:bg-[#a9df7c] transition-all border-glow shadow-[0_0_30px_rgba(120,184,70,0.3)]">
+					<a href="https://github.com/BokX1/Sage" class="px-8 py-4 rounded-full bg-[#78b846] text-[#050608] font-semibold hover:bg-[#a9df7c] transition-all border-glow btn-glow-pulse">
 						Deploy Your Agent
 					</a>
 					<a href="#architecture" class="px-8 py-4 rounded-full bg-transparent text-white font-medium hover:bg-white/5 border border-white/10 transition-all">
@@ -122,24 +120,38 @@ const nativeToolsLabel = `${nativeToolCount}+`;
 		<!-- ═══════════════════════════════════════ -->
 		<SocialProof client:visible />
 
-		<!-- ── Gradient Divider ── -->
-		<div class="w-full h-px bg-gradient-to-r from-transparent via-[#78b846]/20 to-transparent"></div>
+		<!-- ── Angled Divider ── -->
+		<div class="divider-angle" aria-hidden="true">
+			<svg viewBox="0 0 1440 80" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+				<path d="M0,80 L0,30 Q360,0 720,20 Q1080,40 1440,10 L1440,80 Z" fill="rgba(120,184,70,0.03)"/>
+				<path d="M0,80 L0,50 Q360,20 720,40 Q1080,60 1440,30 L1440,80 Z" fill="rgba(11,14,20,0.5)"/>
+			</svg>
+		</div>
 
 		<!-- ═══════════════════════════════════════ -->
 		<!--  WHY SAGE — Value Prop Strip            -->
 		<!-- ═══════════════════════════════════════ -->
 		<WhySage client:visible />
 
-		<!-- ── Gradient Divider ── -->
-		<div class="w-full h-px bg-gradient-to-r from-transparent via-[#78b846]/30 to-transparent"></div>
+		<!-- ── Dot Divider ── -->
+		<div class="divider-dots max-w-5xl mx-auto px-6" aria-hidden="true">
+			<span class="dot"></span>
+			<span class="dot"></span>
+			<span class="dot"></span>
+		</div>
 
 		<!-- ═══════════════════════════════════════ -->
 		<!--  STATS STRIP — Animated Counters       -->
 		<!-- ═══════════════════════════════════════ -->
 		<StatsStrip client:visible />
 
-		<!-- ── Gradient Divider ── -->
-		<div class="w-full h-px bg-gradient-to-r from-transparent via-[#7AA2F7]/20 to-transparent"></div>
+		<!-- ── Wave Divider ── -->
+		<div class="divider-wave" aria-hidden="true">
+			<svg viewBox="0 0 1440 60" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+				<path d="M0,40 C240,60 480,10 720,30 C960,50 1200,15 1440,35 L1440,60 L0,60 Z" fill="rgba(122,162,247,0.04)"/>
+				<path d="M0,50 C360,30 720,55 1080,35 C1260,25 1380,45 1440,40 L1440,60 L0,60 Z" fill="rgba(11,14,20,0.3)"/>
+			</svg>
+		</div>
 
 		<!-- ═══════════════════════════════════════ -->
 		<!--  2. TECH STACK                         -->
@@ -149,8 +161,13 @@ const nativeToolsLabel = `${nativeToolCount}+`;
 			<TechStackGrid client:visible />
 		</div>
 
-		<!-- ── Gradient Divider ── -->
-		<div class="w-full h-px bg-gradient-to-r from-transparent via-[#BB9AF7]/20 to-transparent"></div>
+		<!-- ── Angled Divider (mirrored) ── -->
+		<div class="divider-angle" aria-hidden="true">
+			<svg viewBox="0 0 1440 80" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+				<path d="M0,80 L0,10 Q360,40 720,20 Q1080,0 1440,30 L1440,80 Z" fill="rgba(180,156,236,0.03)"/>
+				<path d="M0,80 L0,30 Q360,60 720,40 Q1080,20 1440,50 L1440,80 Z" fill="rgba(11,14,20,0.5)"/>
+			</svg>
+		</div>
 
 		<!-- ═══════════════════════════════════════ -->
 		<!--  3. TOOL REGISTRY                      -->
@@ -160,8 +177,12 @@ const nativeToolsLabel = `${nativeToolCount}+`;
 			<ToolGrid client:visible />
 		</div>
 
-		<!-- ── Gradient Divider ── -->
-		<div class="w-full h-px bg-gradient-to-r from-transparent via-[#E0AF68]/20 to-transparent"></div>
+		<!-- ── Dot Divider ── -->
+		<div class="divider-dots max-w-5xl mx-auto px-6" aria-hidden="true">
+			<span class="dot" style="background: rgba(224,175,104,0.4); box-shadow: 0 0 8px rgba(224,175,104,0.3);"></span>
+			<span class="dot" style="background: rgba(120,184,70,0.4); box-shadow: 0 0 8px rgba(120,184,70,0.3);"></span>
+			<span class="dot" style="background: rgba(224,175,104,0.4); box-shadow: 0 0 8px rgba(224,175,104,0.3);"></span>
+		</div>
 
 		<!-- ═══════════════════════════════════════ -->
 		<!--  4. LIVE AGENT TRACE                   -->
@@ -171,8 +192,13 @@ const nativeToolsLabel = `${nativeToolCount}+`;
 			<ShowcaseTerminal client:visible />
 		</div>
 
-		<!-- ── Gradient Divider ── -->
-		<div class="w-full h-px bg-gradient-to-r from-transparent via-[#78b846]/20 to-transparent"></div>
+		<!-- ── Wave Divider ── -->
+		<div class="divider-wave" aria-hidden="true">
+			<svg viewBox="0 0 1440 60" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+				<path d="M0,20 C180,45 360,10 540,30 C720,50 900,15 1080,35 C1260,55 1380,25 1440,30 L1440,60 L0,60 Z" fill="rgba(120,184,70,0.04)"/>
+				<path d="M0,35 C240,15 480,45 720,25 C960,5 1200,45 1440,20 L1440,60 L0,60 Z" fill="rgba(11,14,20,0.3)"/>
+			</svg>
+		</div>
 
 		<!-- ═══════════════════════════════════════ -->
 		<!--  5. MEMORY PIPELINE                    -->
@@ -182,8 +208,13 @@ const nativeToolsLabel = `${nativeToolCount}+`;
 			<MemoryPipelineFlow client:visible />
 		</div>
 
-		<!-- ── Gradient Divider ── -->
-		<div class="w-full h-px bg-gradient-to-r from-transparent via-[#7AA2F7]/20 to-transparent"></div>
+		<!-- ── Angled Divider ── -->
+		<div class="divider-angle" aria-hidden="true">
+			<svg viewBox="0 0 1440 80" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+				<path d="M0,80 L0,25 Q480,50 960,15 Q1200,0 1440,20 L1440,80 Z" fill="rgba(122,162,247,0.03)"/>
+				<path d="M0,80 L0,45 Q480,70 960,35 Q1200,20 1440,40 L1440,80 Z" fill="rgba(11,14,20,0.5)"/>
+			</svg>
+		</div>
 
 		<!-- ═══════════════════════════════════════ -->
 		<!--  5.5 MULTIMODAL VOICE SYSTEM           -->
@@ -220,8 +251,12 @@ const nativeToolsLabel = `${nativeToolCount}+`;
 			</div>
 		</section>
 
-		<!-- ── Gradient Divider ── -->
-		<div class="w-full h-px bg-gradient-to-r from-transparent via-[#78b846]/20 to-transparent"></div>
+		<!-- ── Dot Divider ── -->
+		<div class="divider-dots max-w-5xl mx-auto px-6" aria-hidden="true">
+			<span class="dot"></span>
+			<span class="dot" style="background: rgba(122,162,247,0.4); box-shadow: 0 0 8px rgba(122,162,247,0.3);"></span>
+			<span class="dot"></span>
+		</div>
 
 		<!-- ═══════════════════════════════════════ -->
 		<!--  6. CREATIVE INTELLIGENCE              -->
@@ -231,16 +266,26 @@ const nativeToolsLabel = `${nativeToolCount}+`;
 			<ImageRefinementDemo client:visible />
 		</div>
 
-		<!-- ── Gradient Divider ── -->
-		<div class="w-full h-px bg-gradient-to-r from-transparent via-[#BB9AF7]/20 to-transparent"></div>
+		<!-- ── Wave Divider ── -->
+		<div class="divider-wave" aria-hidden="true">
+			<svg viewBox="0 0 1440 60" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+				<path d="M0,30 C360,5 720,50 1080,20 C1260,8 1380,40 1440,25 L1440,60 L0,60 Z" fill="rgba(180,156,236,0.04)"/>
+				<path d="M0,45 C240,25 480,50 720,30 C960,10 1200,40 1440,35 L1440,60 L0,60 Z" fill="rgba(11,14,20,0.3)"/>
+			</svg>
+		</div>
 
 		<!-- ═══════════════════════════════════════ -->
 		<!--  7. CONVERSATIONAL GOVERNANCE          -->
 		<!-- ═══════════════════════════════════════ -->
 		<ConversationalGovernance client:visible />
 
-		<!-- ── Gradient Divider ── -->
-		<div class="w-full h-px bg-gradient-to-r from-transparent via-[#E0AF68]/20 to-transparent"></div>
+		<!-- ── Angled Divider ── -->
+		<div class="divider-angle" aria-hidden="true">
+			<svg viewBox="0 0 1440 80" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+				<path d="M0,80 L0,20 Q360,45 720,10 Q1080,35 1440,5 L1440,80 Z" fill="rgba(224,175,104,0.03)"/>
+				<path d="M0,80 L0,40 Q360,65 720,30 Q1080,55 1440,25 L1440,80 Z" fill="rgba(11,14,20,0.5)"/>
+			</svg>
+		</div>
 
 		<!-- ═══════════════════════════════════════ -->
 		<!--  8. BYOP SOVEREIGNTY                   -->
@@ -250,8 +295,12 @@ const nativeToolsLabel = `${nativeToolCount}+`;
 			<SovereigntyShowcase client:visible />
 		</div>
 
-		<!-- ── Gradient Divider ── -->
-		<div class="w-full h-px bg-gradient-to-r from-transparent via-[#78b846]/20 to-transparent"></div>
+		<!-- ── Dot Divider ── -->
+		<div class="divider-dots max-w-5xl mx-auto px-6" aria-hidden="true">
+			<span class="dot" style="background: rgba(180,156,236,0.4); box-shadow: 0 0 8px rgba(180,156,236,0.3);"></span>
+			<span class="dot"></span>
+			<span class="dot" style="background: rgba(180,156,236,0.4); box-shadow: 0 0 8px rgba(180,156,236,0.3);"></span>
+		</div>
 
 
 		<!-- ═══════════════════════════════════════ -->
@@ -275,8 +324,13 @@ const nativeToolsLabel = `${nativeToolCount}+`;
 			<ConfigSimulator client:visible />
 		</section>
 
-		<!-- ── Gradient Divider ── -->
-		<div class="w-full h-px bg-gradient-to-r from-transparent via-[#E0AF68]/30 to-transparent"></div>
+		<!-- ── Wave Divider ── -->
+		<div class="divider-wave" aria-hidden="true">
+			<svg viewBox="0 0 1440 60" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+				<path d="M0,25 C180,50 540,5 720,35 C900,55 1080,10 1440,30 L1440,60 L0,60 Z" fill="rgba(224,175,104,0.04)"/>
+				<path d="M0,40 C360,20 720,50 1080,25 C1260,15 1380,40 1440,35 L1440,60 L0,60 Z" fill="rgba(11,14,20,0.3)"/>
+			</svg>
+		</div>
 
 		<!-- ═══════════════════════════════════════ -->
 		<!--  11. COMPARISON TABLE                  -->
@@ -286,19 +340,51 @@ const nativeToolsLabel = `${nativeToolCount}+`;
 			<ComparisonTable client:visible />
 		</div>
 
-		<!-- ── Gradient Divider ── -->
-		<div class="w-full h-px bg-gradient-to-r from-transparent via-[#78b846]/20 to-transparent"></div>
+		<!-- ── Angled Divider ── -->
+		<div class="divider-angle" aria-hidden="true">
+			<svg viewBox="0 0 1440 80" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+				<path d="M0,80 L0,15 Q480,40 960,10 Q1200,0 1440,25 L1440,80 Z" fill="rgba(120,184,70,0.03)"/>
+				<path d="M0,80 L0,35 Q480,60 960,30 Q1200,20 1440,45 L1440,80 Z" fill="rgba(11,14,20,0.5)"/>
+			</svg>
+		</div>
 
 		<!-- ═══════════════════════════════════════ -->
 		<!--  12. QUICK START                       -->
 		<!-- ═══════════════════════════════════════ -->
 		<QuickStart client:visible />
 
-		<!-- ── Gradient Divider ── -->
-		<div class="w-full h-px bg-gradient-to-r from-transparent via-[#78b846]/30 to-transparent"></div>
+		<!-- ── Dot Divider ── -->
+		<div class="divider-dots max-w-5xl mx-auto px-6" aria-hidden="true">
+			<span class="dot"></span>
+			<span class="dot"></span>
+			<span class="dot"></span>
+		</div>
+
 		<!-- ═══════════════════════════════════════ -->
-		<section class="relative max-w-4xl mx-auto px-6 py-32 text-center">
+		<!--  CTA SECTION — with Pulse Rings        -->
+		<!-- ═══════════════════════════════════════ -->
+		<section class="relative max-w-4xl mx-auto px-6 py-32 text-center overflow-hidden">
+			<!-- Ambient glow -->
 			<div class="absolute top-[30%] left-[50%] -translate-x-1/2 w-[500px] h-[500px] rounded-full bg-[#78b846]/[0.04] blur-[120px] pointer-events-none"></div>
+			
+			<!-- Concentric Pulse Rings -->
+			<div class="absolute top-[50%] left-[50%] -translate-x-1/2 -translate-y-1/2 flex items-center justify-center pointer-events-none" aria-hidden="true">
+				<div class="pulse-ring"></div>
+				<div class="pulse-ring"></div>
+				<div class="pulse-ring"></div>
+				<div class="pulse-ring"></div>
+			</div>
+
+			<!-- Floating Particles -->
+			<div class="particles-container" aria-hidden="true">
+				<div class="particle" style="left: 20%; bottom: 0; animation-duration: 14s; animation-delay: 0s;"></div>
+				<div class="particle" style="left: 40%; bottom: 0; animation-duration: 18s; animation-delay: 3s;"></div>
+				<div class="particle" style="left: 60%; bottom: 0; animation-duration: 16s; animation-delay: 6s;"></div>
+				<div class="particle" style="left: 80%; bottom: 0; animation-duration: 20s; animation-delay: 2s;"></div>
+				<div class="particle" style="left: 50%; bottom: 0; animation-duration: 22s; animation-delay: 9s;"></div>
+				<div class="particle" style="left: 30%; bottom: 0; animation-duration: 15s; animation-delay: 4s;"></div>
+			</div>
+
 			<h2 class="text-4xl lg:text-6xl font-extrabold text-white mb-6 relative z-10">
 				Ready to <span class="text-transparent bg-clip-text bg-gradient-to-r from-[#78b846] to-[#a9df7c] text-glow">Deploy</span>?
 			</h2>
@@ -306,7 +392,7 @@ const nativeToolsLabel = `${nativeToolCount}+`;
 				Your community deserves an intelligence layer, not another chatbot. Choose your path.
 			</p>
 			<div class="flex flex-wrap justify-center gap-4 relative z-10">
-				<a href="https://github.com/BokX1/Sage" class="px-10 py-5 rounded-full bg-[#78b846] text-[#050608] font-bold text-lg hover:bg-[#a9df7c] transition-all border-glow shadow-[0_0_40px_rgba(120,184,70,0.3)]">
+				<a href="https://github.com/BokX1/Sage" class="px-10 py-5 rounded-full bg-[#78b846] text-[#050608] font-bold text-lg hover:bg-[#a9df7c] transition-all border-glow btn-glow-pulse">
 					Deploy Agent
 				</a>
 				<a href="https://github.com/BokX1/Sage" class="px-10 py-5 rounded-full bg-white/5 text-white font-medium text-lg hover:bg-white/10 border border-white/10 transition-all">
@@ -326,9 +412,9 @@ const nativeToolsLabel = `${nativeToolCount}+`;
 	<CommandPalette client:load />
 
 	<!-- ═══════════════════════════════════════ -->
-	<!--  FOOTER                                -->
+	<!--  FOOTER — Enhanced                     -->
 	<!-- ═══════════════════════════════════════ -->
-	<footer class="relative border-t border-white/5 bg-[#06080d]">
+	<footer class="relative footer-gradient-border bg-[#06080d] footer-dots">
 		<div class="max-w-7xl mx-auto px-6 py-16">
 			<div class="grid grid-cols-1 md:grid-cols-4 gap-12 mb-12">
 				<!-- Brand -->

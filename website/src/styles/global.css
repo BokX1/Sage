@@ -243,3 +243,250 @@
         background-clip: text;
     }
 }
+
+/* ═══════════════════════════════════════════════ */
+/*  CREATIVE SECTION DIVIDERS                      */
+/* ═══════════════════════════════════════════════ */
+
+.divider-angle {
+    position: relative;
+    height: 80px;
+    overflow: hidden;
+    pointer-events: none;
+}
+
+.divider-angle svg {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+}
+
+.divider-wave {
+    position: relative;
+    height: 60px;
+    overflow: hidden;
+    pointer-events: none;
+}
+
+.divider-wave svg {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+}
+
+.divider-dots {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    padding: 32px 0;
+    pointer-events: none;
+}
+
+.divider-dots::before {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: linear-gradient(to right, transparent, rgba(120, 184, 70, 0.15));
+}
+
+.divider-dots::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: linear-gradient(to left, transparent, rgba(120, 184, 70, 0.15));
+}
+
+.divider-dots .dot {
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background: rgba(120, 184, 70, 0.4);
+    box-shadow: 0 0 8px rgba(120, 184, 70, 0.3);
+}
+
+/* ═══════════════════════════════════════════════ */
+/*  FLOATING PARTICLES SYSTEM                      */
+/* ═══════════════════════════════════════════════ */
+
+.particles-container {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    pointer-events: none;
+    z-index: 0;
+}
+
+.particle {
+    position: absolute;
+    width: 2px;
+    height: 2px;
+    border-radius: 50%;
+    background: rgba(120, 184, 70, 0.5);
+    box-shadow: 0 0 6px rgba(120, 184, 70, 0.3);
+    animation: particle-float linear infinite;
+}
+
+@keyframes particle-float {
+    0% {
+        transform: translateY(0) translateX(0) scale(1);
+        opacity: 0;
+    }
+    10% {
+        opacity: 1;
+    }
+    90% {
+        opacity: 1;
+    }
+    100% {
+        transform: translateY(-100vh) translateX(30px) scale(0);
+        opacity: 0;
+    }
+}
+
+/* ═══════════════════════════════════════════════ */
+/*  SHIMMER TEXT EFFECT                            */
+/* ═══════════════════════════════════════════════ */
+
+.shimmer-text {
+    background: linear-gradient(
+        110deg,
+        var(--color-text-primary) 35%,
+        rgba(169, 223, 124, 0.8) 50%,
+        var(--color-text-primary) 65%
+    );
+    background-size: 250% 100%;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    animation: shimmer 4s ease-in-out infinite;
+}
+
+@keyframes shimmer {
+    0%, 100% {
+        background-position: 100% center;
+    }
+    50% {
+        background-position: 0% center;
+    }
+}
+
+/* ═══════════════════════════════════════════════ */
+/*  CONCENTRIC PULSE RINGS                         */
+/* ═══════════════════════════════════════════════ */
+
+.pulse-ring {
+    position: absolute;
+    border-radius: 50%;
+    border: 1px solid rgba(120, 184, 70, 0.15);
+    animation: pulse-expand 4s ease-out infinite;
+}
+
+.pulse-ring:nth-child(2) {
+    animation-delay: 1s;
+}
+
+.pulse-ring:nth-child(3) {
+    animation-delay: 2s;
+}
+
+.pulse-ring:nth-child(4) {
+    animation-delay: 3s;
+}
+
+@keyframes pulse-expand {
+    0% {
+        width: 60px;
+        height: 60px;
+        opacity: 0.6;
+    }
+    100% {
+        width: 500px;
+        height: 500px;
+        opacity: 0;
+    }
+}
+
+/* ═══════════════════════════════════════════════ */
+/*  CTA GLOW PULSE BUTTON                         */
+/* ═══════════════════════════════════════════════ */
+
+.btn-glow-pulse {
+    animation: glow-pulse 3s ease-in-out infinite;
+}
+
+@keyframes glow-pulse {
+    0%, 100% {
+        box-shadow: 0 0 30px rgba(120, 184, 70, 0.3), 0 0 60px rgba(120, 184, 70, 0.1);
+    }
+    50% {
+        box-shadow: 0 0 40px rgba(120, 184, 70, 0.5), 0 0 80px rgba(120, 184, 70, 0.2), 0 0 120px rgba(120, 184, 70, 0.1);
+    }
+}
+
+/* ═══════════════════════════════════════════════ */
+/*  ANIMATED FOOTER BORDER                         */
+/* ═══════════════════════════════════════════════ */
+
+.footer-gradient-border {
+    position: relative;
+}
+
+.footer-gradient-border::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: linear-gradient(
+        90deg,
+        transparent 0%,
+        rgba(120, 184, 70, 0.3) 15%,
+        rgba(122, 162, 247, 0.3) 35%,
+        rgba(180, 156, 236, 0.3) 55%,
+        rgba(120, 184, 70, 0.3) 75%,
+        transparent 100%
+    );
+    background-size: 200% 100%;
+    animation: footer-shimmer 8s linear infinite;
+}
+
+@keyframes footer-shimmer {
+    0% {
+        background-position: 0% center;
+    }
+    100% {
+        background-position: 200% center;
+    }
+}
+
+/* ═══════════════════════════════════════════════ */
+/*  FOOTER GRID DOT PATTERN                        */
+/* ═══════════════════════════════════════════════ */
+
+.footer-dots {
+    background-image: radial-gradient(circle, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+    background-size: 24px 24px;
+}
+
+/* ═══════════════════════════════════════════════ */
+/*  COMPACT NAV ON SCROLL                          */
+/* ═══════════════════════════════════════════════ */
+
+.nav-compact {
+    transition: padding 0.3s ease, background-color 0.3s ease, backdrop-filter 0.3s ease;
+}
+
+.nav-compact.scrolled {
+    padding-top: 0.5rem;
+    padding-bottom: 0.5rem;
+    background: rgba(6, 8, 13, 0.85);
+    -webkit-backdrop-filter: blur(24px) saturate(1.4);
+    backdrop-filter: blur(24px) saturate(1.4);
+}

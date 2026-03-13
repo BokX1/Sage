@@ -124,6 +124,7 @@
 - Cleaned stale documentation across 7 markdown files: fixed `CONTRIBUTING.md` source tree (`src/core/` → `src/features/`, `src/platform/`, `src/shared/`), corrected `SECURITY.md` provider claims and dead `LLM_API_KEY` reference, fixed `INDEX.md` tool/env-var counts, removed `TOOL_STACK.md` phantom search fallback, and aligned `POLLINATIONS.md`/`BYOP.md` with `IMAGE_PROVIDER_*`/`SERVER_PROVIDER_*` env vars.
 - Updated `README.md` to reflect the LangGraph-native runtime: added LangGraph badge, updated architecture diagrams/descriptions, fixed stale `LLM_BASE_URL` → `AI_PROVIDER_BASE_URL`, replaced dead `/sage key` slash commands with chat-first setup card flow, and corrected `TRACE_ENABLED` → `SAGE_TRACE_DB_ENABLED`/`LANGSMITH_TRACING`.
 - Updated website homepage (`index.astro`, `TechStackGrid.jsx`, `StatsStrip.jsx`) with LangGraph branding: added LangGraph to Engine Context tech layer, updated tech count 13 → 14, and updated page title/meta/hero/footer descriptions.
+- Redesigned website visual experience: replaced flat gradient dividers with alternating SVG angle/wave/dot sections, added scroll-aware `NavBar`, introduced 3D tilt-on-hover effects to `WhySage` cards, wrapped `StatsStrip` counters in radial progress rings, and added floating particles and pulse rings to the Hero and CTA sections.
 
 ### Fixed
 
