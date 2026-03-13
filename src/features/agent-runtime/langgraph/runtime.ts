@@ -8,6 +8,7 @@ import {
   StateGraph,
   StateSchema,
   interrupt,
+  isInterrupted,
 } from '@langchain/langgraph';
 import { ToolNode, toolsCondition } from '@langchain/langgraph/prebuilt';
 import { AIMessage, SystemMessage, ToolMessage, type BaseMessage } from '@langchain/core/messages';
@@ -1169,8 +1170,18 @@ export async function runGraphValueStream(
       ...config,
       streamMode: 'values',
     } as Parameters<typeof graph.stream>[1]);
-    for await (const chunk of stream as AsyncIterable<AgentGraphState>) {
-      lastValue = chunk;
+    for await (const chunk of stream as AsyncIterable<unknown>) {
+      if (isInterrupted(chunk)) {
+        const recovered = await recoverInterruptedGraphState(graph, config, {
+          reason: 'stream_error',
+          streamError: new Error('LangGraph emitted an interrupt sentinel instead of a terminal state chunk.'),
+        });
+        if (recovered) {
+          return recovered;
+        }
+        continue;
+      }
+      lastValue = chunk as AgentGraphState;
     }
   } catch (error) {
     streamError = error;

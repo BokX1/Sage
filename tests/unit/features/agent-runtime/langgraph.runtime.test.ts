@@ -265,6 +265,33 @@ describe('runGraphValueStream', () => {
     );
   });
 
+  it('recovers the interrupted approval state when LangGraph emits an interrupt sentinel chunk', async () => {
+    const interruptedState = makeInterruptedState();
+    const graph = {
+      stream: vi.fn(async () => ({
+        async *[Symbol.asyncIterator]() {
+          yield { __interrupt__: [{ value: { requestId: 'request-1' } }] };
+        },
+      })),
+      getState: vi.fn(async () => ({
+        values: interruptedState,
+      })),
+    };
+
+    const result = await runGraphValueStream(graph as never, {} as never, makeConfig() as never);
+
+    expect(result.graphStatus).toBe('interrupted');
+    expect(result.approvalInterrupt?.requestId).toBe('request-1');
+    expect(graph.getState).toHaveBeenCalledTimes(1);
+    expect(loggerWarnMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        recoveryReason: 'stream_error',
+        streamError: 'LangGraph emitted an interrupt sentinel instead of a terminal state chunk.',
+      }),
+      expect.stringContaining('Recovered interrupted approval state'),
+    );
+  });
+
   it('rethrows the original stream error when checkpoint recovery does not produce an approval interrupt state', async () => {
     const streamError = new Error('stream failed');
     const graph = {
