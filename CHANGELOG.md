@@ -26,6 +26,7 @@
 
 ### Added
 
+- Added resumable LangGraph continuation sessions and Discord Continue actions, so long-running Sage turns now pause with a progress summary, preserve the checkpointed thread state, and resume in-place instead of restarting from scratch after step-window exhaustion.
 - Added approval-gated Discord moderation batch actions through `discord_admin.submit_moderation`: explicit `bulk_delete_messages` and criteria-based `purge_recent_messages` now resolve into deterministic canonical message-id snapshots before review, enabling safer high-volume cleanup workflows.
 - Added a custom LangGraph-backed agent runtime with Postgres checkpointing so Sage now persists tool-loop state per trace/thread, supports graph-native approval interrupts and resumes, and records graph lifecycle metadata in agent traces for operator debugging.
 - Added a premium Discord-native governance surface for approval-gated actions: compact requester status cards now stay in the source channel, detailed reviewer cards can route to a dedicated governance review channel, rejections collect a short modal reason, and admin-only details move into an explicit `Details` view instead of the default message body.
@@ -35,6 +36,10 @@
 - Added a dedicated `discord_voice` routed tool for live voice presence control so Sage can report voice status, join the invoker's current voice channel, and leave the active guild voice channel through normal chat turns.
 
 ### Changed
+- Replaced the old step-limit forced-finalization path with a windowed continuation runtime: Sage now tracks completed continuation windows, total rounds, and working summaries in graph state, reuses the same generalized interrupt/resume contract for approval and continuation pauses, and resumes paused LangGraph threads through the explicit Discord Continue button flow instead of restarting from scratch.
+- Reframed Sage's LangGraph loop around explicit internal task state: each turn now starts with objective framing, refreshes subgoal/evidence state after meaningful tool progress, gates final answers on task readiness instead of "plain text means done", and records task-state snapshots in trace metadata for clearer operator debugging.
+- Hardened continuation resumes so Sage now rehydrates the current API-key/tool-access policy at resume time, restricts Continue buttons to the original requester in the original channel, still delivers pause summaries when button-session persistence fails, and prefers the graph's real working summary over a generic fallback when a terminal plain-text reply is missing.
+- Squashed Prisma back down to one current-schema baseline migration, so fresh databases now bootstrap the continuation-session table directly instead of replaying a separate post-baseline delta.
 - Increased the maximum allowed values for `AGENT_GRAPH_MAX_STEPS` and `AGENT_GRAPH_MAX_TOOL_CALLS_PER_STEP` from 10 to 14, allowing operators to run longer or wider LangGraph tool loops when needed.
 - Hardened approval-interrupt recovery in Sage's LangGraph runtime so approval-gated turns now recover the checkpointed interrupted state when the stream stops at the queue boundary, preventing false `I'm having trouble connecting right now. Please try again later.` replies after Sage already posted governance review.
 - Tightened the approval-interrupt stream contract around LangGraph’s native interrupt sentinel chunks, so queue-time approval pauses no longer get mistaken for missing terminal state and leak the generic fallback into chat.

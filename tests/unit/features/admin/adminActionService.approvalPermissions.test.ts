@@ -94,10 +94,12 @@ const mocks = vi.hoisted(() => {
       toolResults: [],
       files: [],
       roundsCompleted: 1,
+      completedWindows: 0,
+      totalRoundsCompleted: 1,
+      workingSummary: '',
       deduplicatedCallCount: 0,
       truncatedCallCount: 0,
       guardrailBlockedCallCount: 0,
-      cancellationCount: 0,
       roundEvents: [],
       finalization: {
         attempted: false,
@@ -109,9 +111,10 @@ const mocks = vi.hoisted(() => {
       },
       terminationReason: 'assistant_reply',
       graphStatus: 'completed',
-      approvalInterrupt: null,
-      approvalResolution: null,
-      traceEvents: [],
+      pendingInterrupt: null,
+      interruptResolution: null,
+      langSmithRunId: null,
+      langSmithTraceId: null,
     })),
     upsertTraceStart: vi.fn(),
     updateTraceEnd: vi.fn(),
@@ -502,10 +505,12 @@ describe('adminActionService approval permissions', () => {
       toolResults: [],
       files: [],
       roundsCompleted: 1,
+      completedWindows: 0,
+      totalRoundsCompleted: 1,
+      workingSummary: '',
       deduplicatedCallCount: 0,
       truncatedCallCount: 0,
       guardrailBlockedCallCount: 0,
-      cancellationCount: 0,
       roundEvents: [],
       finalization: {
         attempted: false,
@@ -517,9 +522,10 @@ describe('adminActionService approval permissions', () => {
       },
       terminationReason: 'assistant_reply',
       graphStatus: 'completed',
-      approvalInterrupt: null,
-      approvalResolution: null,
-      traceEvents: [],
+      pendingInterrupt: null,
+      interruptResolution: null,
+      langSmithRunId: null,
+      langSmithTraceId: null,
     });
 
     await handleAdminActionButtonInteraction(
@@ -531,7 +537,10 @@ describe('adminActionService approval permissions', () => {
     expect(mocks.resumeAgentGraphTurn).toHaveBeenCalledWith(
       expect.objectContaining({
         threadId: 'thread-1',
-        decision: 'approved',
+        resume: expect.objectContaining({
+          interruptKind: 'approval_review',
+          status: 'approved',
+        }),
       }),
     );
     expect(mocks.discordRestRequestGuildScoped).toHaveBeenCalledWith(
@@ -578,10 +587,12 @@ describe('adminActionService approval permissions', () => {
       toolResults: [],
       files: [],
       roundsCompleted: 1,
+      completedWindows: 0,
+      totalRoundsCompleted: 1,
+      workingSummary: '',
       deduplicatedCallCount: 0,
       truncatedCallCount: 0,
       guardrailBlockedCallCount: 0,
-      cancellationCount: 0,
       roundEvents: [],
       finalization: {
         attempted: false,
@@ -593,9 +604,10 @@ describe('adminActionService approval permissions', () => {
       },
       terminationReason: 'assistant_reply',
       graphStatus: 'completed',
-      approvalInterrupt: null,
-      approvalResolution: null,
-      traceEvents: [],
+      pendingInterrupt: null,
+      interruptResolution: null,
+      langSmithRunId: null,
+      langSmithTraceId: null,
     });
 
     const resolvedCount = await reconcileExpiredApprovalReviewRequests({ now, limit: 10 });
@@ -610,7 +622,10 @@ describe('adminActionService approval permissions', () => {
     expect(mocks.resumeAgentGraphTurn).toHaveBeenCalledWith(
       expect.objectContaining({
         threadId: 'thread-1',
-        decision: 'expired',
+        resume: expect.objectContaining({
+          interruptKind: 'approval_review',
+          status: 'expired',
+        }),
       }),
     );
     expect(mocks.discordRestRequestGuildScoped).toHaveBeenCalledWith(

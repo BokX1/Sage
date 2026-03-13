@@ -105,6 +105,28 @@ CREATE TABLE "DiscordInteractionSession" (
 );
 
 -- CreateTable
+CREATE TABLE "AgentContinuationSession" (
+    "id" TEXT NOT NULL,
+    "threadId" TEXT NOT NULL,
+    "originTraceId" TEXT NOT NULL,
+    "latestTraceId" TEXT NOT NULL,
+    "guildId" TEXT,
+    "channelId" TEXT NOT NULL,
+    "requestedByUserId" TEXT NOT NULL,
+    "status" TEXT NOT NULL,
+    "pauseKind" TEXT NOT NULL,
+    "completedWindows" INTEGER NOT NULL DEFAULT 0,
+    "maxWindows" INTEGER NOT NULL,
+    "summaryText" TEXT NOT NULL,
+    "resumeNode" TEXT NOT NULL,
+    "expiresAt" TIMESTAMP(3) NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "AgentContinuationSession_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
 CREATE TABLE "ChannelMessage" (
     "messageId" TEXT NOT NULL,
     "guildId" TEXT,
@@ -308,6 +330,15 @@ CREATE INDEX "DiscordInteractionSession_guildId_createdAt_idx" ON "DiscordIntera
 
 -- CreateIndex
 CREATE INDEX "DiscordInteractionSession_expiresAt_idx" ON "DiscordInteractionSession"("expiresAt");
+
+-- CreateIndex
+CREATE INDEX "AgentContinuationSession_threadId_createdAt_idx" ON "AgentContinuationSession"("threadId", "createdAt");
+
+-- CreateIndex
+CREATE INDEX "AgentContinuationSession_channelId_requestedByUserId_status_expiresAt_idx" ON "AgentContinuationSession"("channelId", "requestedByUserId", "status", "expiresAt");
+
+-- CreateIndex
+CREATE INDEX "AgentContinuationSession_status_expiresAt_idx" ON "AgentContinuationSession"("status", "expiresAt");
 
 -- CreateIndex
 CREATE INDEX "ChannelMessage_guildId_channelId_timestamp_idx" ON "ChannelMessage"("guildId", "channelId", "timestamp");

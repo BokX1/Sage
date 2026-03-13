@@ -29,6 +29,10 @@ import {
 import { isAdminFromMember } from '../../../platform/discord/admin-permissions';
 import { buildGuildApiKeyMissingResponse } from '../../../features/discord/byopBootstrap';
 import { ReplyTargetContext } from '../../../features/agent-runtime/continuityContext';
+import {
+  createInteractiveButtonSession,
+  buildActionButtonComponent,
+} from '../../../features/discord/interactiveComponentService';
 
 const processedMessagesKey = Symbol.for('sage.handlers.messageCreate.processed');
 const registrationKey = Symbol.for('sage.handlers.messageCreate.registered');
@@ -705,6 +709,20 @@ export async function handleMessageCreate(message: Message) {
         }
       }
 
+      const currentTurn = {
+        invokerUserId: message.author.id,
+        invokerDisplayName: authorDisplayName,
+        messageId: message.id,
+        guildId: message.guildId,
+        channelId: message.channelId,
+        invokedBy: invocation.kind,
+        mentionedUserIds,
+        isDirectReply: referencedMessage !== null,
+        replyTargetMessageId: replyTarget?.messageId ?? null,
+        replyTargetAuthorId: replyTarget?.authorId ?? null,
+        botUserId: client.user?.id ?? null,
+      };
+
       const result = await generateChatReply({
         traceId,
         userId: message.author.id,
@@ -713,19 +731,7 @@ export async function handleMessageCreate(message: Message) {
         messageId: message.id,
         userText: userTextWithAttachments,
         userContent: userContent ?? userTextWithAttachments,
-        currentTurn: {
-          invokerUserId: message.author.id,
-          invokerDisplayName: authorDisplayName,
-          messageId: message.id,
-          guildId: message.guildId,
-          channelId: message.channelId,
-          invokedBy: invocation.kind,
-          mentionedUserIds,
-          isDirectReply: referencedMessage !== null,
-          replyTargetMessageId: replyTarget?.messageId ?? null,
-          replyTargetAuthorId: replyTarget?.authorId ?? null,
-          botUserId: client.user?.id ?? null,
-        },
+        currentTurn,
         replyTarget,
         mentionedUserIds,
         invokedBy: invocation.kind,
@@ -736,9 +742,30 @@ export async function handleMessageCreate(message: Message) {
 
       const replyText = result.replyText || '';
       const files = result.files ?? [];
+      const continuation = result.meta?.continuation;
 
       let didSendAnything = false;
       const approvalQueued = result.delivery === 'approval_governance_only';
+      let continueButtonId: string | null = null;
+      if (result.delivery === 'chat_reply_with_continue' && continuation && message.guildId) {
+        try {
+          continueButtonId = await createInteractiveButtonSession({
+            guildId: message.guildId,
+            channelId: message.channelId,
+            createdByUserId: message.author.id,
+            action: {
+              type: 'graph_continue',
+              continuationId: continuation.id,
+              visibility: 'public',
+            },
+          });
+        } catch (err) {
+          loggerWithTrace.warn(
+            { err, continuationId: continuation.id, channelId: message.channelId },
+            'Failed to create continuation button session; sending summary without button',
+          );
+        }
+      }
 
       if (result.meta?.kind === 'missing_api_key' && message.guildId) {
         const missing = buildGuildApiKeyMissingResponse({
@@ -762,6 +789,21 @@ export async function handleMessageCreate(message: Message) {
             content: firstReplyContent,
             allowedMentions: { repliedUser: false },
             files,
+            components:
+              continueButtonId
+                ? [
+                    {
+                      type: 1,
+                      components: [
+                        buildActionButtonComponent({
+                          customId: continueButtonId,
+                          label: 'Continue',
+                          style: 'primary',
+                        }),
+                      ],
+                    },
+                  ]
+                : undefined,
           });
           didSendAnything = true;
         }

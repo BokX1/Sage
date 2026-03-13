@@ -3987,10 +3987,13 @@ async function resumeApprovalReviewGraph(params: {
   try {
     const graphResult = await resumeAgentGraphTurn({
       threadId: params.action.threadId,
-      decision: params.decision,
-      reviewerId: params.reviewerId ?? null,
-      decisionReasonText: params.decisionReasonText ?? null,
-      resumeTraceId,
+      resume: {
+        interruptKind: 'approval_review',
+        status: params.decision,
+        reviewerId: params.reviewerId ?? null,
+        decisionReasonText: params.decisionReasonText ?? null,
+        resumeTraceId,
+      },
     });
 
     await updateTraceEnd({

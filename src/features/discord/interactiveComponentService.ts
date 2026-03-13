@@ -40,9 +40,16 @@ export const interactiveModalPromptActionSchema = z.object({
   visibility: interactiveButtonVisibilitySchema.optional(),
 });
 
+export const interactiveGraphContinueActionSchema = z.object({
+  type: z.literal('graph_continue'),
+  continuationId: z.string().trim().min(1).max(64),
+  visibility: interactiveButtonVisibilitySchema.optional(),
+});
+
 export const interactiveButtonActionSchema = z.discriminatedUnion('type', [
   interactivePromptActionSchema,
   interactiveModalPromptActionSchema,
+  interactiveGraphContinueActionSchema,
 ]);
 
 export type InteractiveButtonAction = z.infer<typeof interactiveButtonActionSchema>;
@@ -60,7 +67,19 @@ type StoredInteractiveSessionPayload =
       modalTitle: string;
       promptTemplate: string;
       fields: InteractiveModalField[];
+    }
+  | {
+      kind: 'graph_continue_button';
+      visibility: 'public' | 'ephemeral';
+      continuationId: string;
     };
+
+export type ActiveInteractiveSession = StoredInteractiveSessionPayload & {
+  guildId: string;
+  channelId: string;
+  createdByUserId: string;
+  expiresAt: Date;
+};
 
 export function buildInteractiveSessionCustomId(sessionId: string): string {
   return `${DISCORD_UI_SESSION_CUSTOM_ID_PREFIX}${sessionId}`;
@@ -99,13 +118,19 @@ export async function createInteractiveButtonSession(params: {
           visibility: params.action.visibility ?? 'public',
           prompt: params.action.prompt,
         }
-      : {
+      : params.action.type === 'modal_prompt'
+        ? {
           kind: 'modal_prompt_button',
           visibility: params.action.visibility ?? 'public',
           modalTitle: params.action.modalTitle,
           promptTemplate: params.action.promptTemplate,
           fields: params.action.fields,
-        };
+        }
+        : {
+            kind: 'graph_continue_button',
+            visibility: params.action.visibility ?? 'public',
+            continuationId: params.action.continuationId,
+          };
 
   const session = await createDiscordInteractionSession({
     guildId: params.guildId,
@@ -119,7 +144,7 @@ export async function createInteractiveButtonSession(params: {
   return buildInteractiveSessionCustomId(session.id);
 }
 
-export async function getActiveInteractiveSession(sessionId: string): Promise<StoredInteractiveSessionPayload | null> {
+export async function getActiveInteractiveSession(sessionId: string): Promise<ActiveInteractiveSession | null> {
   const record = await getDiscordInteractionSessionById(sessionId);
   if (!record || record.expiresAt.getTime() <= Date.now()) {
     return null;
@@ -139,10 +164,25 @@ export async function getActiveInteractiveSession(sessionId: string): Promise<St
         promptTemplate: z.string().trim().min(1).max(4_000),
         fields: z.array(interactiveModalFieldSchema).min(1).max(5),
       }),
+      z.object({
+        kind: z.literal('graph_continue_button'),
+        visibility: interactiveButtonVisibilitySchema,
+        continuationId: z.string().trim().min(1).max(64),
+      }),
     ])
     .safeParse(record.payloadJson);
 
-  return parsed.success ? parsed.data : null;
+  if (!parsed.success) {
+    return null;
+  }
+
+  return {
+    ...parsed.data,
+    guildId: record.guildId,
+    channelId: record.channelId,
+    createdByUserId: record.createdByUserId,
+    expiresAt: record.expiresAt,
+  };
 }
 
 export function buildModalForInteractiveSession(params: {

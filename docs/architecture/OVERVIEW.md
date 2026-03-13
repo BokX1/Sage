@@ -25,7 +25,7 @@ How Sage processes every message — from raw Discord event to verified, tool-au
 
 ## 💡 Design Philosophy
 
-Sage is a **single-agent runtime** built around one custom LangGraph execution path. Every message flows through `runChatTurn`, which assembles context and then hands control to the agent graph for model calls, tool execution, approval interrupts, and finalization.
+Sage is a **single-agent runtime** built around one custom LangGraph execution path. Every message flows through `runChatTurn`, which assembles context and then hands control to the agent graph for model calls, tool execution, approval interrupts, resumable continuation pauses, and finalization.
 
 **Why single-agent?**
 
@@ -94,7 +94,7 @@ flowchart TD
 | **Context Builder** | `src/features/agent-runtime/contextBuilder.ts` | Composes prioritized message blocks (system prompt, runtime instructions, optional guild Sage Persona/voice context, transcript, reply context) |
 | **Context Budgeter** | `src/features/agent-runtime/contextBudgeter.ts` | Token-aware block sizing with configurable per-block budgets |
 | **Prompt Composer** | `src/features/agent-runtime/promptComposer.ts` | Assembles the final system prompt with personality, capability guidance, and silent native tool-use rules |
-| **Agent Graph Runtime** | `src/features/agent-runtime/langgraph/runtime.ts` | Custom LangGraph runtime for schema-first state, model calls, bounded tool execution, approval interrupts, forced finalization, subgraph routing, and checkpointed resumes |
+| **Agent Graph Runtime** | `src/features/agent-runtime/langgraph/runtime.ts` | Custom LangGraph runtime for schema-first state, model calls, bounded tool execution, approval + continuation interrupts, resumable windowed tool loops, subgraph routing, and checkpointed resumes |
 | **Tool Registry** | `src/features/agent-runtime/toolRegistry.ts` | Zod-validated tool definitions with runtime execution metadata |
 | **Default Tools** | `src/features/agent-runtime/defaultTools.ts` | All 15 built-in top-level tool definitions |
 
@@ -123,13 +123,13 @@ sequenceDiagram
 
     alt Tool calls detected
         RT->>AG: Enter LangGraph runtime
-        loop Up to AGENT_GRAPH_MAX_STEPS
+        loop One continuation window (up to AGENT_GRAPH_MAX_STEPS)
             AG->>T: Execute validated tool calls
             T->>AG: Tool results
             AG->>LLM: Feed results back
             LLM->>AG: Next response
         end
-        AG->>RT: Final plain-text answer + attachments
+        AG->>RT: Final answer, approval pause, or continuation summary + attachments
     end
 
     RT->>RT: Persist LangSmith trace + optional AgentTrace ledger

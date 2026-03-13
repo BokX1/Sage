@@ -1,6 +1,6 @@
 # 💾 Database Schema
 
-Sage uses PostgreSQL with Prisma ORM. The current Prisma schema defines 17 models; this document covers the active tables, relationships, and common query patterns.
+Sage uses PostgreSQL with Prisma ORM. The current Prisma schema defines 18 models; this document covers the active tables, relationships, and common query patterns.
 
 > [!IMPORTANT]
 > Sage now ships one current-schema Prisma baseline migration for fresh database rebuilds. Historical migration layering was intentionally removed as part of the flagship runtime reset.
@@ -333,7 +333,7 @@ Compact per-turn operator ledger for debugging and observability. High-fidelity 
 |:---|:---|:---|
 | `id` | `String` (PK) | Trace ID |
 | `routeKind` | `String` | Canonical value: `single` |
-| `terminationReason` | `String?` | Why the graph ended (`completed`, `step_limit`, `timeout`, etc.) |
+| `terminationReason` | `String?` | Why the graph ended or paused (`assistant_reply`, `continue_prompt`, `approval_interrupt`, `graph_timeout`, `max_windows_reached`) |
 | `langSmithRunId` | `String?` | LangSmith run id for the graph execution |
 | `langSmithTraceId` | `String?` | LangSmith trace id for cross-run lookup |
 | `budgetJson` | `Json?` | Token budget allocation per block |
@@ -370,6 +370,27 @@ Checkpoint-backed approval review requests used to pause and resume the LangGrap
 | `decidedBy` / `decidedAt` | `String?` / `DateTime?` | Admin decision metadata |
 | `executedAt` | `DateTime?` | Timestamp for executed or failed post-approval side effects |
 | `decisionReasonText` | `String?` | Short rejection reason collected from the governance modal when present |
+
+### `AgentContinuationSession`
+
+Checkpoint-backed continuation records used when Sage pauses a long-running LangGraph thread at the per-window step or duration boundary.
+
+| Column | Type | Notes |
+|:---|:---|:---|
+| `id` | `String` (PK) | CUID |
+| `threadId` | `String` | LangGraph thread id shared across continuation windows |
+| `originTraceId` | `String` | Trace that opened the original graph thread |
+| `latestTraceId` | `String` | Most recent trace id associated with the paused thread |
+| `guildId` | `String?` | Guild scope when present |
+| `channelId` | `String` | Channel allowed to resume the continuation |
+| `requestedByUserId` | `String` | Only this user can resume the continuation |
+| `status` | `String` | `pending` / `resumed` / `expired` |
+| `pauseKind` | `String` | Pause source such as `step_window_exhausted` or `graph_timeout` |
+| `completedWindows` | `Int` | How many bounded execution windows were already consumed |
+| `maxWindows` | `Int` | Hard cap before Sage requires a fresh request |
+| `summaryText` | `Text` | Human-facing progress summary shown with the Continue affordance |
+| `resumeNode` | `String` | Next graph node to enter on resume (`llm_call` or `route_tool_phase`) |
+| `expiresAt` | `DateTime` | Continuation TTL deadline |
 
 ### `AdminAudit`
 

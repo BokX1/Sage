@@ -86,6 +86,8 @@ export function buildCapabilityPromptSection(
   const executionRules = [
     '<execution_rules>',
     '- Read exact runtime facts from <agent_state> for current time, model, active tools, invocation context, turn mode, autopilot mode, and graph limits.',
+    '- When present, treat <task_state> as the authoritative internal record of the current objective, success criteria, subgoal, unresolved items, evidence summary, and next action.',
+    '- When present, treat <working_summary> as the latest compact handoff of confirmed evidence and what still needs to happen next.',
     '- <guild_sage_persona> governs Sage\'s guild-specific behavior/persona, not factual truth or memory.',
     '- <system_persona> is global identity, <guild_sage_persona> is guild behavior overlay, and <user_profile> / channel summaries are memory or continuity context rather than policy.',
     '- If <agent_state>.turn_mode is "voice", spoken-response behavior is expected and the <voice_mode> block overrides the default Discord markdown guidance.',
@@ -109,11 +111,16 @@ export function buildCapabilityPromptSection(
       ? `- Direct tools do not expose \`help\`; rely on schema and description for: ${activeDirectTools.map((tool) => `\`${tool}\``).join(', ')}.`
       : '',
     '- If a required parameter is missing, ask instead of guessing.',
+    '- Frame the current request into an internal objective, success criteria, and next subgoal before you spend tool budget.',
+    '- Maintain the current task state across rounds: objective, current subgoal, unresolved items, evidence summary, and next action.',
+    '- Use tools only to advance the current subgoal. Do not call tools that do not materially move the objective forward.',
     '- Use the minimum sufficient tool path, then stop once you have enough evidence to answer.',
     '- Use native tool calls silently. Never narrate that you are about to call a tool, never print tool arguments, and never expose approval-command payloads.',
     '- Batch multiple read-only tool calls in one provider-native tool-calling turn when possible. Do NOT loop reading them one by one across multiple rounds.',
     '- If the runtime interrupts for approval review, treat that action as already queued for this turn. Do not retry the same approval-gated action again.',
     '- If the runtime blocks a repeated call for this turn, do not retry it unchanged. Pivot to different arguments, another tool, or one clarifying question.',
+    '- Plain text with no tool calls is not automatically completion. Only finalize when the objective is satisfied or when one concise clarifying question is the correct next step.',
+    '- If the request is still incomplete, prefer one concise clarification question or the next necessary tool call over a partial answer.',
     '- After an approval-review interrupt, keep the channel reply brief. Do not repeat action IDs, approval card contents, raw admin workflow steps, or recovery protocol.',
     hasAnyDiscordTool
       ? '- Discord tool behavior: `discord_context` for profiles/summaries/instruction reads/analytics, `discord_messages` for history/delivery, `discord_files` for attachment recall, `discord_server` for guild resources/thread lifecycle, `discord_voice` for voice/status, `discord_admin` for admin writes/API fallback.'
@@ -155,7 +162,7 @@ export function buildCapabilityPromptSection(
       ? '- Distinguish voice analytics from live voice control: `discord_context` covers voice analytics/summaries, while `discord_voice` handles current voice status and join/leave.'
       : '',
     hasDiscordMessagesTool
-      ? '- When Sage chooses a Discord-native final reply format, call `discord_messages` action `send` with `presentation="plain" | "components_v2"` instead of replying only in prose.'
+      ? '- When the answer must be rendered as a Discord-native message, use `discord_messages` action `send` with `presentation="plain" | "components_v2"` during the normal execution loop before the dedicated plain-text closeout step.'
       : '',
     hasDiscordMessagesTool
       ? '- If `send` already delivers the final answer into the channel, do not repeat the same answer again as a normal assistant reply.'
@@ -191,7 +198,7 @@ export function buildCapabilityPromptSection(
         '- Choose the Discord-native format that best fits the job: plain message or Components V2 message.',
         '- Plain messages are preferred for short conversational replies, single-paragraph answers, or cases where extra structure would add friction.',
         '- Components V2 may be used freely when structure, grouped evidence, media, attachments, status blocks, or guided next actions materially improve the response.',
-        '- For Discord-native final answers, prefer `discord_messages.send` over plain assistant prose so the runtime can render the chosen presentation mode correctly.',
+        '- If the answer needs Discord-native rendering, use `discord_messages.send` during the main execution loop. The dedicated final-answer closeout step is plain-text only.',
         '- Typed Discord actions are the first choice for common tasks; use `discord_admin.api` only as a fallback after discord_server and other typed Discord actions are exhausted.',
         '- `presentation` is not a cosmetic toggle: `plain` and `components_v2` have different payload rules and validation constraints.',
         '- Avoid decorative layouts that do not add clarity.',

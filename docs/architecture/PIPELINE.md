@@ -58,7 +58,7 @@ flowchart TD
 2. **Context composition**: `buildContextMessages` assembles the system prompt, `<current_turn>`, runtime instruction block, optional guild Sage Persona (`<guild_sage_persona>`), optional live voice context, optional `<focused_continuity>`, optional `<recent_transcript>`, and the current user turn wrapped in `<user_input>` (with any `<reply_target>` folded in as context-only preface content).
 3. **Token budgeting**: `contextBudgeter` trims blocks against the configured budgets before the provider call.
 4. **LLM request**: Sage sends the budgeted messages plus the active tool schemas for this turn.
-5. **Agent graph**: if the model returns tool calls, Sage routes through the LangGraph-native runtime built on reducer-backed message state, durable tasks, `ToolNode` read batches, and in-graph approval interrupts/resumes until it can finalize.
+5. **Agent graph**: Sage first frames the request into internal task state, then routes through the LangGraph-native runtime built on reducer-backed message state, durable tasks, `ToolNode` read batches, task-state refresh steps, and in-graph approval or continuation interrupts/resumes until the objective is satisfied, clarification is required, or the run pauses cleanly.
 6. **Final reply**: plain text is cleaned, tool-produced files are attached, and the final payload is returned to Discord.
 7. **Trace persistence**: LangGraph node and task execution is recorded in LangSmith, and Sage can additionally persist a compact `AgentTrace` ledger row with LangSmith references.
 
@@ -100,33 +100,42 @@ flowchart LR
     classDef execute fill:#fff3cd,stroke:#333,color:black
     classDef result fill:#ffccbc,stroke:#333,color:black
 
-    A["llm_call"]:::llm --> B{"Tool calls?"}:::route
-    B -->|No| F["finalize_turn"]:::result
-    B -->|Yes| C["route_tool_phase"]:::route
-    C --> D["execute_read_tools (ToolNode)"]:::execute
-    D --> E["approval_gate / execute_approved_write"]:::execute
-    C --> E
-    E --> A
-    A -->|"step/duration cap"| G["finalize_reply"]:::result
-    G --> F
+    A["frame_task"]:::llm --> B{"Ready to answer or blocked?"}:::route
+    B -->|Needs tools| C["llm_call"]:::llm
+    B -->|Ready / clarify| H["finalize_answer or finalize_turn"]:::result
+    C --> D{"Tool calls?"}:::route
+    D -->|No| I["repair or final-answer gate"]:::route
+    D -->|Yes| E["route_tool_phase"]:::route
+    E --> F["execute_read_tools (ToolNode)"]:::execute
+    F --> G["approval_gate / resume_interrupt"]:::execute
+    F --> J["refresh_task_state"]:::llm
+    G --> J
+    J --> C
+    I -->|ready| H
+    I -->|not ready| C
+    C -->|"step/duration cap"| K["pause_for_continue"]:::result
+    K --> G
 ```
 
 **Key behaviors**
 
-- **Bounded steps**: `AGENT_GRAPH_MAX_STEPS` limits how many model/tool hops can occur in one turn.
+- **Bounded windows**: `AGENT_GRAPH_MAX_STEPS` limits how many model/tool rounds can occur in one continuation window before Sage pauses with a resumable progress summary.
 - **Calls per step**: `AGENT_GRAPH_MAX_TOOL_CALLS_PER_STEP` caps the number of tool calls the model can issue at once.
 - **Message-native state**: the graph persists LangGraph/LangChain messages plus turn facts, approval state, trace metadata, and final delivery state instead of the old custom pending-tool-loop buffers.
+- **Intent-framed state**: every turn starts with `frame_task`, which derives an internal objective, success criteria, current subgoal, next action, unresolved items, and evidence summary before tool budget is spent.
 - **Read/write partitioning**: same-step duplicate read-only calls are collapsed, read-only batches execute through `ToolNode`, and mutating calls execute one at a time.
+- **Task refresh discipline**: after meaningful evidence changes, `refresh_task_state` updates the plan-of-record so the next model round acts on the current subgoal instead of treating the turn like a fresh scratchpad.
 - **Native tool contract**: the runtime consumes structured provider tool calls directly and feeds tool results back as LangChain tool messages.
 - **Provider-neutral model node**: the graph now invokes Sage's `AiProviderChatModel`, which targets an operator-defined AI provider over the OpenAI-compatible chat-completions contract exposed at `AI_PROVIDER_BASE_URL`.
 - **Native provider transcript**: follow-up model calls now preserve assistant `tool_calls` and real `tool` messages end to end instead of flattening tool results into synthetic user text.
+- **Explicit final-answer gate**: plain text with no tool calls is not treated as automatically complete. Sage now repairs premature drafts, asks a concise clarifying question when needed, or routes through a dedicated `finalize_answer` node only when task state says the objective is ready to close.
 - **Per-tool timeout**: each tool call is bounded by `AGENT_GRAPH_TOOL_TIMEOUT_MS`.
 - **Durable execution**: every real tool invocation and post-approval execution runs inside a LangGraph `task(...)` boundary so replay and thread resume reuse checkpointed task outputs instead of repeating side effects.
 - **Repair-aware validation feedback**: routed-tool validation failures now carry compact repair guidance into the next model round, including missing/unknown action recovery and the best matching action contract from the routed-tool docs.
 - **Graph wall-clock cap**: the whole orchestration phase is bounded by `AGENT_GRAPH_MAX_DURATION_MS`.
 - **Result truncation**: raw tool output is capped by `AGENT_GRAPH_MAX_RESULT_CHARS`, with a compact summary block added when the raw payload is too large.
-- **Approval interrupt/resume**: approval-gated writes now pause the graph before the side effect, persist a pending approval descriptor, and on resume append a real tool result or tool failure message back into the graph before the next model step.
-- **Direct plain-text finalization**: when the graph ends by step limit or duration cap, Sage forces one final plain-text answer grounded only in prior context and tool results.
+- **Approval + continuation interrupts**: approval-gated writes pause before side effects, and long-running turns pause at the window boundary with a persisted continuation record and human-facing progress summary.
+- **Checkpointed continuation**: resume keeps the same LangGraph thread and prior tool results, resets only the window-local counters, and can continue through another bounded window instead of rebuilding the turn from scratch.
 - **File collection**: tools such as `image_generate` can return files that are merged into the final Discord response.
 
 ---
@@ -140,7 +149,8 @@ Each turn can persist the following compact operator ledger fields to `AgentTrac
 | Field | Description |
 | :--- | :--- |
 | `routeKind` | Canonical value: `single` |
-| `terminationReason` | Why the graph finished (`completed`, `step_limit`, `timeout`, etc.) |
+| `terminationReason` | Why the graph finished or paused (`assistant_reply`, `continue_prompt`, `approval_interrupt`, `graph_timeout`, `max_windows_reached`) |
+| `taskState` | Internal task objective/status snapshot, including unresolved-item count and next action |
 | `langSmithRunId` | LangSmith run id for the turn |
 | `langSmithTraceId` | LangSmith trace id for the turn |
 | `budgetJson` | Token-budget allocation per block |

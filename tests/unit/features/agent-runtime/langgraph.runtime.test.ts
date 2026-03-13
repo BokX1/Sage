@@ -152,9 +152,24 @@ function makeInterruptedState() {
     },
     pendingWriteCall: null,
     replyText: '',
+    draftReplyText: '',
+    repairHint: '',
+    answerRepairCount: 0,
     toolResults: [],
     files: [],
     roundsCompleted: 1,
+    completedWindows: 1,
+    totalRoundsCompleted: 1,
+    workingSummary: 'I confirmed the target state and need another step window to continue.',
+    taskState: {
+      objective: 'Update the Sage Persona safely.',
+      successCriteria: ['Get the requested persona update approved and applied.'],
+      currentSubgoal: 'Wait for approval outcome.',
+      nextAction: 'Resume once approval resolves.',
+      unresolvedItems: ['Approval decision for the pending write request'],
+      evidenceSummary: 'The requested write action was prepared and sent to approval review.',
+      status: 'paused',
+    },
     deduplicatedCallCount: 0,
     truncatedCallCount: 0,
     guardrailBlockedCallCount: 0,
@@ -170,7 +185,8 @@ function makeInterruptedState() {
     terminationReason: 'approval_interrupt',
     graphStatus: 'interrupted',
     startedAtEpochMs: Date.now(),
-    approvalInterrupt: {
+    pendingInterrupt: {
+      kind: 'approval_review',
       requestId: 'request-1',
       call: {
         id: 'call-1',
@@ -183,7 +199,7 @@ function makeInterruptedState() {
       coalesced: false,
       expiresAtIso: '2026-03-13T09:40:00.000Z',
     },
-    approvalResolution: null,
+    interruptResolution: null,
   };
 }
 
@@ -204,7 +220,7 @@ describe('runGraphValueStream', () => {
     vi.clearAllMocks();
   });
 
-  it('recovers the interrupted approval state when the stream throws after queueing approval', async () => {
+  it('recovers the interrupted graph state when the stream throws after queueing approval', async () => {
     const interruptedState = makeInterruptedState();
     const streamError = new Error('Graph interrupted before terminal values chunk');
     const graph = {
@@ -226,20 +242,24 @@ describe('runGraphValueStream', () => {
       terminationReason: 'approval_interrupt',
       replyText: '',
     });
-    expect(result.approvalInterrupt?.requestId).toBe('request-1');
+    expect(result.pendingInterrupt).toMatchObject({
+      kind: 'approval_review',
+      requestId: 'request-1',
+    });
     expect(graph.getState).toHaveBeenCalledTimes(1);
     expect(loggerWarnMock).toHaveBeenCalledWith(
       expect.objectContaining({
         traceId: 'trace-1',
         threadId: 'trace-1',
-        approvalRequestId: 'request-1',
+        interruptKind: 'approval_review',
+        interruptId: 'request-1',
         recoveryReason: 'stream_error',
       }),
-      expect.stringContaining('Recovered interrupted approval state'),
+      expect.stringContaining('Recovered interrupted graph state'),
     );
   });
 
-  it('recovers the interrupted approval state when the stream ends without yielding a terminal value', async () => {
+  it('recovers the interrupted graph state when the stream ends without yielding a terminal value', async () => {
     const interruptedState = makeInterruptedState();
     const graph = {
       stream: vi.fn(async () => ({
@@ -256,16 +276,19 @@ describe('runGraphValueStream', () => {
     const result = await runGraphValueStream(graph as never, {} as never, makeConfig() as never);
 
     expect(result.graphStatus).toBe('interrupted');
-    expect(result.approvalInterrupt?.requestId).toBe('request-1');
+    expect(result.pendingInterrupt).toMatchObject({
+      kind: 'approval_review',
+      requestId: 'request-1',
+    });
     expect(loggerWarnMock).toHaveBeenCalledWith(
       expect.objectContaining({
         recoveryReason: 'missing_final_state',
       }),
-      expect.stringContaining('Recovered interrupted approval state'),
+      expect.stringContaining('Recovered interrupted graph state'),
     );
   });
 
-  it('recovers the interrupted approval state when LangGraph emits an interrupt sentinel chunk', async () => {
+  it('recovers the interrupted graph state when LangGraph emits an interrupt sentinel chunk', async () => {
     const interruptedState = makeInterruptedState();
     const graph = {
       stream: vi.fn(async () => ({
@@ -281,18 +304,21 @@ describe('runGraphValueStream', () => {
     const result = await runGraphValueStream(graph as never, {} as never, makeConfig() as never);
 
     expect(result.graphStatus).toBe('interrupted');
-    expect(result.approvalInterrupt?.requestId).toBe('request-1');
+    expect(result.pendingInterrupt).toMatchObject({
+      kind: 'approval_review',
+      requestId: 'request-1',
+    });
     expect(graph.getState).toHaveBeenCalledTimes(1);
     expect(loggerWarnMock).toHaveBeenCalledWith(
       expect.objectContaining({
         recoveryReason: 'stream_error',
         streamError: 'LangGraph emitted an interrupt sentinel instead of a terminal state chunk.',
       }),
-      expect.stringContaining('Recovered interrupted approval state'),
+      expect.stringContaining('Recovered interrupted graph state'),
     );
   });
 
-  it('rethrows the original stream error when checkpoint recovery does not produce an approval interrupt state', async () => {
+  it('rethrows the original stream error when checkpoint recovery does not produce an interrupted graph state', async () => {
     const streamError = new Error('stream failed');
     const graph = {
       stream: vi.fn(async () => ({
@@ -306,7 +332,7 @@ describe('runGraphValueStream', () => {
           ...makeInterruptedState(),
           graphStatus: 'completed',
           terminationReason: 'assistant_reply',
-          approvalInterrupt: null,
+          pendingInterrupt: null,
         },
       })),
     };

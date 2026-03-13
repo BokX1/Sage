@@ -9,6 +9,9 @@ const {
   buildContextMessagesMock,
   globalToolRegistryMock,
   runAgentGraphTurnMock,
+  resumeAgentGraphTurnMock,
+  getGraphContinuationSessionByIdMock,
+  markGraphContinuationSessionExpiredMock,
 } = vi.hoisted(() => ({
   upsertTraceStartMock: vi.fn(),
   updateTraceEndMock: vi.fn(),
@@ -24,6 +27,9 @@ const {
     ),
   },
   runAgentGraphTurnMock: vi.fn(),
+  resumeAgentGraphTurnMock: vi.fn(),
+  getGraphContinuationSessionByIdMock: vi.fn(),
+  markGraphContinuationSessionExpiredMock: vi.fn(),
 }));
 
 vi.mock('@/platform/config/env', () => ({
@@ -96,6 +102,7 @@ vi.mock('@/features/agent-runtime/toolGrounding', () => ({
 
 vi.mock('@/features/agent-runtime/langgraph/runtime', () => ({
   runAgentGraphTurn: runAgentGraphTurnMock,
+  resumeAgentGraphTurn: resumeAgentGraphTurnMock,
 }));
 
 vi.mock('@/features/agent-runtime/toolIntegrations', () => ({
@@ -110,11 +117,16 @@ vi.mock('@/features/agent-runtime/toolRegistry', () => ({
   globalToolRegistry: globalToolRegistryMock,
 }));
 
+vi.mock('@/features/agent-runtime/graphContinuationRepo', () => ({
+  getGraphContinuationSessionById: getGraphContinuationSessionByIdMock,
+  markGraphContinuationSessionExpired: markGraphContinuationSessionExpiredMock,
+}));
+
 vi.mock('@/features/voice/voiceConversationSessionStore', () => ({
   formatLiveVoiceContext: vi.fn(() => null),
 }));
 
-import { runChatTurn } from '@/features/agent-runtime/agentRuntime';
+import { runChatTurn, resumeContinuationChatTurn } from '@/features/agent-runtime/agentRuntime';
 import { scrubFinalReplyText } from '@/features/agent-runtime/finalReplyScrubber';
 
 function makeCurrentTurn(overrides: Partial<CurrentTurnContext> = {}): CurrentTurnContext {
@@ -140,6 +152,18 @@ function makeGraphResult(overrides: Record<string, unknown> = {}) {
     toolResults: [],
     files: [],
     roundsCompleted: 0,
+    completedWindows: 0,
+    totalRoundsCompleted: 0,
+    workingSummary: '',
+    taskState: {
+      objective: 'Answer the user request.',
+      successCriteria: ['Provide a complete answer or one clarification question.'],
+      currentSubgoal: 'Produce the final response.',
+      nextAction: 'Answer directly.',
+      unresolvedItems: [],
+      evidenceSummary: 'No extra evidence is required.',
+      status: 'completed',
+    },
     deduplicatedCallCount: 0,
     truncatedCallCount: 0,
     guardrailBlockedCallCount: 0,
@@ -154,8 +178,8 @@ function makeGraphResult(overrides: Record<string, unknown> = {}) {
     },
     terminationReason: 'assistant_reply',
     graphStatus: 'completed',
-    approvalInterrupt: null,
-    approvalResolution: null,
+    pendingInterrupt: null,
+    interruptResolution: null,
     langSmithRunId: null,
     langSmithTraceId: null,
     ...overrides,
@@ -171,6 +195,9 @@ describe('agentRuntime', () => {
     upsertTraceStartMock.mockResolvedValue(undefined);
     updateTraceEndMock.mockResolvedValue(undefined);
     runAgentGraphTurnMock.mockReset();
+    resumeAgentGraphTurnMock.mockReset();
+    getGraphContinuationSessionByIdMock.mockReset();
+    markGraphContinuationSessionExpiredMock.mockReset();
     clearGitHubFileLookupCacheForTraceMock.mockReset();
   });
 
@@ -195,7 +222,8 @@ describe('agentRuntime', () => {
       makeGraphResult({
         replyText: 'I will call `discord_admin`.\n```json\n{"action":"update_server_instructions"}\n```',
         graphStatus: 'interrupted',
-        approvalInterrupt: {
+        pendingInterrupt: {
+          kind: 'approval_review',
           requestId: 'request-1',
           coalesced: false,
           expiresAtIso: '2026-03-12T00:10:00.000Z',
@@ -227,6 +255,47 @@ describe('agentRuntime', () => {
         id: 'trace-1',
         approvalRequestId: 'request-1',
         replyText: '',
+      }),
+    );
+  });
+
+  it('persists task-state trace metadata from the graph runtime', async () => {
+    runAgentGraphTurnMock.mockResolvedValue(
+      makeGraphResult({
+        taskState: {
+          objective: 'Investigate the user request',
+          successCriteria: ['Confirm the current state', 'Answer with verified findings'],
+          currentSubgoal: 'Write the final answer',
+          nextAction: 'Answer directly.',
+          unresolvedItems: ['None'],
+          evidenceSummary: 'Required evidence was gathered.',
+          status: 'ready_to_answer',
+        },
+      }),
+    );
+
+    await runChatTurn({
+      traceId: 'trace-task-state',
+      userId: 'user-1',
+      channelId: 'channel-1',
+      guildId: 'guild-1',
+      messageId: 'message-1',
+      userText: 'summarize what you found',
+      userProfileSummary: null,
+      currentTurn: makeCurrentTurn(),
+      invokedBy: 'mention',
+      isAdmin: false,
+    });
+
+    expect(updateTraceEndMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        budgetJson: expect.objectContaining({
+          taskState: expect.objectContaining({
+            objective: 'Investigate the user request',
+            status: 'ready_to_answer',
+            unresolvedItemCount: 1,
+          }),
+        }),
       }),
     );
   });
@@ -338,9 +407,9 @@ describe('agentRuntime', () => {
           fallbackUsed: false,
           returnedToolCallCount: 0,
           completedAt: '2026-03-11T22:00:00.000Z',
-          terminationReason: 'stagnation',
+          terminationReason: 'continue_prompt',
         },
-        terminationReason: 'stagnation',
+        terminationReason: 'continue_prompt',
       }),
     );
 
@@ -364,17 +433,126 @@ describe('agentRuntime', () => {
         id: 'trace-3',
         budgetJson: expect.objectContaining({
           graphRuntime: expect.objectContaining({
-            terminationReason: 'stagnation',
+            terminationReason: 'continue_prompt',
             guardrailBlockedCallCount: 1,
           }),
         }),
         toolJson: expect.objectContaining({
           graph: expect.objectContaining({
-            terminationReason: 'stagnation',
+            terminationReason: 'continue_prompt',
             guardrailBlockedCallCount: 1,
           }),
         }),
       }),
     );
+  });
+
+  it('returns continuation delivery when the graph pauses for continue', async () => {
+    runAgentGraphTurnMock.mockResolvedValue(
+      makeGraphResult({
+        replyText: 'I verified the first batch of results and need another continuation window to keep going.',
+        graphStatus: 'interrupted',
+        terminationReason: 'continue_prompt',
+        completedWindows: 1,
+        totalRoundsCompleted: 2,
+        workingSummary: 'Verified the first batch of results.',
+        pendingInterrupt: {
+          kind: 'continue_prompt',
+          continuationId: 'cont-1',
+          requestedByUserId: 'user-1',
+          channelId: 'channel-1',
+          guildId: 'guild-1',
+          summaryText: 'I verified the first batch of results and need another continuation window to keep going.',
+          completedWindows: 1,
+          maxWindows: 4,
+          expiresAtIso: '2026-03-13T09:40:00.000Z',
+          resumeNode: 'llm_call',
+        },
+      }),
+    );
+
+    const result = await runChatTurn({
+      traceId: 'trace-4',
+      userId: 'user-1',
+      channelId: 'channel-1',
+      guildId: 'guild-1',
+      messageId: 'message-4',
+      userText: 'keep digging',
+      userProfileSummary: null,
+      currentTurn: makeCurrentTurn({ messageId: 'message-4' }),
+      invokedBy: 'mention',
+      isAdmin: false,
+    });
+
+    expect(result.delivery).toBe('chat_reply_with_continue');
+    expect(result.meta?.continuation).toMatchObject({
+      id: 'cont-1',
+      completedWindows: 1,
+      maxWindows: 4,
+    });
+    expect(result.replyText).toContain('need another continuation window');
+  });
+
+  it('rehydrates current runtime policy and credentials when resuming a continuation', async () => {
+    globalToolRegistryMock.listNames.mockReturnValue(['discord_messages', 'discord_admin'] as never);
+    globalToolRegistryMock.get.mockImplementation((name: string) =>
+      name === 'discord_admin' ? ({ metadata: { access: 'admin' } } as never) : ({ metadata: { access: 'public' } } as never),
+    );
+    getGraphContinuationSessionByIdMock.mockResolvedValue({
+      id: 'cont-2',
+      threadId: 'thread-1',
+      originTraceId: 'trace-origin',
+      latestTraceId: 'trace-latest',
+      guildId: 'guild-1',
+      channelId: 'channel-1',
+      requestedByUserId: 'user-1',
+      status: 'pending',
+      pauseKind: 'step_window_exhausted',
+      completedWindows: 1,
+      maxWindows: 4,
+      summaryText: 'summary',
+      resumeNode: 'llm_call',
+      expiresAt: new Date(Date.now() + 60_000),
+      createdAt: new Date('2026-03-13T00:00:00.000Z'),
+      updatedAt: new Date('2026-03-13T00:00:00.000Z'),
+    });
+    resumeAgentGraphTurnMock.mockResolvedValue(
+      makeGraphResult({
+        replyText: 'Resumed and finished.',
+      }),
+    );
+
+    const result = await resumeContinuationChatTurn({
+      traceId: 'trace-resume-1',
+      userId: 'user-1',
+      channelId: 'channel-1',
+      guildId: 'guild-1',
+      continuationId: 'cont-2',
+      isAdmin: true,
+    });
+
+    expect(result.replyText).toBe('Resumed and finished.');
+    expect(resumeAgentGraphTurnMock).toHaveBeenCalledWith({
+      threadId: 'thread-1',
+      resume: {
+        interruptKind: 'continue_prompt',
+        decision: 'continue',
+        continuationId: 'cont-2',
+        resumedByUserId: 'user-1',
+        resumeTraceId: 'trace-resume-1',
+      },
+      context: expect.objectContaining({
+        traceId: 'trace-resume-1',
+        userId: 'user-1',
+        channelId: 'channel-1',
+        guildId: 'guild-1',
+        apiKey: 'test-api-key',
+        model: 'test-main-agent-model',
+        invokedBy: 'component',
+        invokerIsAdmin: true,
+        routeKind: 'continue_resume',
+        activeToolNames: ['discord_messages', 'discord_admin'],
+      }),
+    });
   });
 });

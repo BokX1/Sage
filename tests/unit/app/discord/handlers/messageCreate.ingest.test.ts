@@ -20,6 +20,7 @@ const mockUpsertIngestedAttachment = vi.hoisted(() =>
 const mockDeleteAttachmentChunks = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
 const mockIngestAttachmentText = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
 const mockQueueImageAttachmentRecall = vi.hoisted(() => vi.fn());
+const mockCreateInteractiveButtonSession = vi.hoisted(() => vi.fn(async () => 'sage:ui:continue-1'));
 
 vi.mock('@/features/chat/chat-engine', () => ({
   generateChatReply: mockGenerateChatReply,
@@ -60,6 +61,16 @@ vi.mock('@/features/attachments/imageAttachmentRecallWorker', () => ({
 
 vi.mock('@/platform/discord/client', () => ({
   client: mockClient,
+}));
+
+vi.mock('@/features/discord/interactiveComponentService', () => ({
+  buildActionButtonComponent: vi.fn((params: { customId: string; label: string; style?: string }) => ({
+    type: 2,
+    custom_id: params.customId,
+    label: params.label,
+    style: params.style === 'primary' ? 1 : 2,
+  })),
+  createInteractiveButtonSession: mockCreateInteractiveButtonSession,
 }));
 
 import { config } from '@/platform/config/env';
@@ -144,9 +155,11 @@ describe('messageCreate - ingest + reply gating', () => {
     mockIngestAttachmentText.mockResolvedValue(undefined);
     mockUpsertIngestedAttachment.mockResolvedValue({ id: 'attachment-row-default' });
     mockQueueImageAttachmentRecall.mockReset();
+    mockCreateInteractiveButtonSession.mockReset();
     config.FILE_INGEST_MAX_ATTACHMENTS_PER_MESSAGE = defaultMaxAttachmentsPerMessage;
     messageCounter = 0;
     resetInvocationCooldowns();
+    mockCreateInteractiveButtonSession.mockResolvedValue('sage:ui:continue-1');
   });
 
   afterEach(() => {
@@ -201,6 +214,87 @@ describe('messageCreate - ingest + reply gating', () => {
       expect.objectContaining({
         allowedMentions: { repliedUser: false },
         files: [{ attachment, name: 'report.txt' }],
+      }),
+    );
+  });
+
+  it('attaches a Continue button when the graph pauses for continuation', async () => {
+    mockGenerateChatReply.mockResolvedValueOnce({
+      replyText: 'I checked the first batch and can continue from here.',
+      delivery: 'chat_reply_with_continue',
+      meta: {
+        continuation: {
+          id: 'cont-1',
+          expiresAtIso: '2026-03-13T09:40:00.000Z',
+          completedWindows: 1,
+          maxWindows: 4,
+          summaryText: 'I checked the first batch and can continue from here.',
+        },
+      },
+      files: [],
+    });
+
+    const message = createMockMessage({
+      content: 'sage keep going',
+    });
+
+    await handleMessageCreate(message);
+
+    expect(mockCreateInteractiveButtonSession).toHaveBeenCalledWith({
+      guildId: 'guild-789',
+      channelId: 'channel-101',
+      createdByUserId: 'user-456',
+      action: {
+        type: 'graph_continue',
+        continuationId: 'cont-1',
+        visibility: 'public',
+      },
+    });
+    expect((message as unknown as { reply: ReturnType<typeof vi.fn> }).reply).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: 'I checked the first batch and can continue from here.',
+        components: [
+          {
+            type: 1,
+            components: [
+              expect.objectContaining({
+                custom_id: 'sage:ui:continue-1',
+                label: 'Continue',
+              }),
+            ],
+          },
+        ],
+      }),
+    );
+  });
+
+  it('still replies with the continuation summary when button session creation fails', async () => {
+    mockCreateInteractiveButtonSession.mockRejectedValueOnce(new Error('session store offline'));
+    mockGenerateChatReply.mockResolvedValueOnce({
+      replyText: 'I checked the first batch and can continue from here.',
+      delivery: 'chat_reply_with_continue',
+      meta: {
+        continuation: {
+          id: 'cont-2',
+          expiresAtIso: '2026-03-13T09:40:00.000Z',
+          completedWindows: 1,
+          maxWindows: 4,
+          summaryText: 'I checked the first batch and can continue from here.',
+        },
+      },
+      files: [],
+    });
+
+    const message = createMockMessage({
+      content: 'sage keep going',
+    });
+
+    await handleMessageCreate(message);
+
+    expect((message as unknown as { reply: ReturnType<typeof vi.fn> }).reply).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: 'I checked the first batch and can continue from here.',
+        components: undefined,
       }),
     );
   });

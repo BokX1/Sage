@@ -13,8 +13,13 @@ import { buildContextMessages } from './contextBuilder';
 import { clearGitHubFileLookupCacheForTrace } from './toolIntegrations';
 import { enforceGitHubFileGrounding } from './toolGrounding';
 import { buildAgentGraphConfig } from './langgraph/config';
-import { runAgentGraphTurn } from './langgraph/runtime';
+import { resumeAgentGraphTurn, runAgentGraphTurn } from './langgraph/runtime';
 import { scrubFinalReplyText } from './finalReplyScrubber';
+import {
+  getGraphContinuationSessionById,
+  markGraphContinuationSessionExpired,
+  type AgentContinuationSessionRecord,
+} from './graphContinuationRepo';
 
 import {
   buildCapabilityPromptSection,
@@ -32,6 +37,25 @@ import type { ToolResult } from './toolCallExecution';
 import { formatLiveVoiceContext } from '../voice/voiceConversationSessionStore';
 
 const SINGLE_ROUTE_KIND = 'single';
+
+function buildTaskStateTraceSnapshot(taskState: {
+  objective: string;
+  status: string;
+  unresolvedItems: string[];
+  currentSubgoal: string;
+  nextAction: string;
+  evidenceSummary: string;
+}) {
+  return {
+    objective: taskState.objective,
+    status: taskState.status,
+    unresolvedItemCount: taskState.unresolvedItems.length,
+    unresolvedItems: taskState.unresolvedItems,
+    currentSubgoal: taskState.currentSubgoal,
+    nextAction: taskState.nextAction,
+    evidenceSummary: taskState.evidenceSummary,
+  };
+}
 
 export interface RunChatTurnParams {
   traceId: string;
@@ -53,9 +77,16 @@ export interface RunChatTurnParams {
 
 export interface RunChatTurnResult {
   replyText: string;
-  delivery: 'chat_reply' | 'approval_governance_only';
+  delivery: 'chat_reply' | 'approval_governance_only' | 'chat_reply_with_continue';
   meta?: {
     kind?: 'missing_api_key';
+    continuation?: {
+      id: string;
+      expiresAtIso: string;
+      completedWindows: number;
+      maxWindows: number;
+      summaryText: string;
+    };
   };
   debug?: {
     messages?: BaseMessage[];
@@ -66,6 +97,15 @@ export interface RunChatTurnResult {
   }>;
 }
 
+export interface ResumeContinuationChatTurnParams {
+  traceId: string;
+  userId: string;
+  channelId: string;
+  guildId: string | null;
+  continuationId: string;
+  isAdmin: boolean;
+}
+
 function buildToolUsageInstruction(toolNames: string[]): string {
   if (toolNames.length === 0) return '';
 
@@ -74,7 +114,7 @@ function buildToolUsageInstruction(toolNames: string[]): string {
     'When you need tools, use the provider-native tool calling interface directly.',
     'Do not describe, serialize, or wrap tool calls in JSON or markdown.',
     'Do not narrate tool names, tool arguments, approval payloads, or retry protocol in the channel reply.',
-    'After gathering sufficient data, either respond in plain text or use the appropriate Discord self-send action when the runtime guidance tells you to deliver the final answer through Discord.',
+    'If the answer needs Discord-native delivery, use the appropriate Discord self-send action during the normal execution loop. If the runtime later enters a dedicated final closeout step, respond in plain text only.',
     'If no tool is needed, answer normally in plain text.',
     '',
     'Behavioral rules (batching, tool selection, guardrails) are in <execution_rules> and <tool_selection_guide>.',
@@ -96,6 +136,22 @@ function resolveActiveToolNames(params: {
     if (access === 'public') return true;
     return params.isAdmin && params.invokedBy !== 'autopilot';
   });
+}
+
+async function resolveApiKeyForChatTurn(guildId: string | null): Promise<string | undefined> {
+  const guildApiKey = guildId ? await getGuildApiKey(guildId) : undefined;
+  const apiKey = (guildApiKey ?? appConfig.AI_PROVIDER_API_KEY)?.trim();
+  return apiKey || undefined;
+}
+
+function buildMissingApiKeyResult(guildId: string | null): RunChatTurnResult {
+  return {
+    replyText: guildId
+      ? '⚠️ I need a server API key before I can respond here.'
+      : '⚠️ I need an AI provider API key before I can respond. Configure `AI_PROVIDER_API_KEY` for this bot instance.',
+    delivery: 'chat_reply',
+    meta: guildId ? { kind: 'missing_api_key' } : undefined,
+  };
 }
 
 export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTurnResult> {
@@ -158,21 +214,14 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
       ? formatLiveVoiceContext({ guildId, voiceChannelId, now: new Date() })
       : null;
 
-  const guildApiKey = guildId ? await getGuildApiKey(guildId) : undefined;
-  const apiKey = (guildApiKey ?? appConfig.AI_PROVIDER_API_KEY)?.trim();
+  const apiKey = await resolveApiKeyForChatTurn(guildId);
   if (!apiKey) {
     logger.warn(
       { guildId, channelId, userId },
       'No API key configured for chat turn; returning setup guidance response',
     );
     clearToolCaches();
-    return {
-      replyText: guildId
-        ? '⚠️ I need a server API key before I can respond here.'
-        : '⚠️ I need an AI provider API key before I can respond. Configure `AI_PROVIDER_API_KEY` for this bot instance.',
-      delivery: 'chat_reply',
-      meta: guildId ? { kind: 'missing_api_key' } : undefined,
-    };
+    return buildMissingApiKeyResult(guildId);
   }
 
   let guildSagePersona: string | null = null;
@@ -255,9 +304,24 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
   let graphBudgetJson: Record<string, unknown> | undefined;
   let toolResults: ToolResult[] = [];
   let finalReplyText: string;
+  let workingSummary = '';
   let files: Array<{ attachment: Buffer; name: string }> = [];
-  let approvalInterrupt: { requestId?: string } | undefined;
+  let pendingInterrupt:
+    | {
+        kind: 'approval_review';
+        requestId: string;
+      }
+    | {
+        kind: 'continue_prompt';
+        continuationId: string;
+        expiresAtIso: string;
+        completedWindows: number;
+        maxWindows: number;
+        summaryText: string;
+      }
+    | null = null;
   let delivery: RunChatTurnResult['delivery'] = 'chat_reply';
+  let meta: RunChatTurnResult['meta'] | undefined;
   let langSmithRunId: string | null = null;
   let langSmithTraceId: string | null = null;
 
@@ -285,10 +349,30 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
       invokerIsAdmin: isAdmin,
     });
     finalReplyText = graphResult.replyText;
+    workingSummary = graphResult.workingSummary;
     files = graphResult.files;
     toolResults = graphResult.toolResults;
-    approvalInterrupt = graphResult.approvalInterrupt ?? undefined;
-    delivery = approvalInterrupt ? 'approval_governance_only' : 'chat_reply';
+    pendingInterrupt =
+      graphResult.pendingInterrupt?.kind === 'approval_review'
+        ? {
+            kind: 'approval_review',
+            requestId: graphResult.pendingInterrupt.requestId,
+          }
+        : graphResult.pendingInterrupt?.kind === 'continue_prompt'
+          ? {
+              kind: 'continue_prompt',
+              continuationId: graphResult.pendingInterrupt.continuationId,
+              expiresAtIso: graphResult.pendingInterrupt.expiresAtIso,
+              completedWindows: graphResult.pendingInterrupt.completedWindows,
+              maxWindows: graphResult.pendingInterrupt.maxWindows,
+              summaryText: graphResult.pendingInterrupt.summaryText,
+            }
+          : null;
+    delivery = resolveDelivery({ pendingInterrupt });
+    meta =
+      pendingInterrupt?.kind === 'continue_prompt'
+        ? buildContinuationMeta(pendingInterrupt)
+        : undefined;
     langSmithRunId = graphResult.langSmithRunId;
     langSmithTraceId = graphResult.langSmithTraceId;
     const successfulToolCount = graphResult.toolResults.filter((result) => result.success).length;
@@ -296,6 +380,9 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
       enabled: activeToolNames.length > 0,
       toolsExecuted: graphResult.toolResults.length > 0,
       roundsCompleted: graphResult.roundsCompleted,
+      completedWindows: graphResult.completedWindows,
+      totalRoundsCompleted: graphResult.totalRoundsCompleted,
+      workingSummary: graphResult.workingSummary,
       terminationReason: graphResult.terminationReason,
       toolResultCount: graphResult.toolResults.length,
       successfulToolCount,
@@ -307,7 +394,9 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
       attachmentCount: graphResult.files.length,
       latencyMs: Date.now() - loopStartedAt,
       graphStatus: graphResult.graphStatus,
-      approvalInterrupt,
+      pendingInterrupt,
+      interruptResolution: graphResult.interruptResolution,
+      taskState: buildTaskStateTraceSnapshot(graphResult.taskState),
       langSmithRunId,
       langSmithTraceId,
     };
@@ -340,13 +429,16 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
   });
   const safeFinalReplyText =
     cleanedReplyText ||
-    (approvalInterrupt
+    workingSummary.trim() ||
+    (pendingInterrupt?.kind === 'approval_review'
       ? ''
       : 'I completed part of the request but could not format a final response. Please ask me to try once more.');
   const budgetJson: Record<string, unknown> = {
     route: SINGLE_ROUTE_KIND,
     model,
     graphRuntime: graphBudgetJson,
+    taskState:
+      graphBudgetJson && 'taskState' in graphBudgetJson ? graphBudgetJson.taskState : undefined,
     promptUserText:
       userText.length <= 6_000 ? userText : `${userText.slice(0, 6_000)}...`,
     promptUserTextTruncated: userText.length > 6_000,
@@ -371,7 +463,7 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
         },
         threadId: traceId,
         graphStatus: (graphBudgetJson?.graphStatus as string | undefined) ?? 'completed',
-        approvalRequestId: approvalInterrupt?.requestId ?? null,
+        approvalRequestId: pendingInterrupt?.kind === 'approval_review' ? pendingInterrupt.requestId : null,
         terminationReason: (graphBudgetJson?.terminationReason as string | undefined) ?? null,
         langSmithRunId,
         langSmithTraceId,
@@ -388,7 +480,7 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
     return {
       replyText: '',
       delivery,
-      meta: undefined,
+      meta,
       debug: { messages: runtimeMessages },
     };
   }
@@ -397,8 +489,278 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
   return {
     replyText: safeFinalReplyText,
     delivery,
-    meta: undefined,
+    meta,
     debug: { messages: runtimeMessages },
     files,
   };
+}
+
+async function loadValidatedContinuation(params: {
+  continuationId: string;
+  userId: string;
+  channelId: string;
+}): Promise<
+  | { ok: true; session: AgentContinuationSessionRecord }
+  | { ok: false; replyText: string }
+> {
+  const session = await getGraphContinuationSessionById(params.continuationId);
+  if (!session) {
+    return {
+      ok: false,
+      replyText: 'That continuation is no longer available. Start a fresh request if you want me to keep going.',
+    };
+  }
+  if (session.requestedByUserId !== params.userId || session.channelId !== params.channelId) {
+    return {
+      ok: false,
+      replyText: 'That continuation belongs to a different user or channel, so I cannot resume it here.',
+    };
+  }
+  if (session.status !== 'pending') {
+    return {
+      ok: false,
+      replyText: 'That continuation was already used. Start a fresh request if you want me to keep going.',
+    };
+  }
+  if (session.expiresAt.getTime() <= Date.now()) {
+    await markGraphContinuationSessionExpired(session.id).catch(() => undefined);
+    return {
+      ok: false,
+      replyText: 'That continuation expired. Start a fresh request if you want me to keep going.',
+    };
+  }
+
+  return { ok: true, session };
+}
+
+export async function resumeContinuationChatTurn(
+  params: ResumeContinuationChatTurnParams,
+): Promise<RunChatTurnResult> {
+  const validated = await loadValidatedContinuation({
+    continuationId: params.continuationId,
+    userId: params.userId,
+    channelId: params.channelId,
+  });
+  if (!validated.ok) {
+    return {
+      replyText: validated.replyText,
+      delivery: 'chat_reply',
+      meta: undefined,
+      files: [],
+    };
+  }
+
+  const session = validated.session;
+  const apiKey = await resolveApiKeyForChatTurn(params.guildId);
+  if (!apiKey) {
+    return buildMissingApiKeyResult(params.guildId);
+  }
+  const model = appConfig.AI_PROVIDER_MAIN_AGENT_MODEL.trim();
+  const activeToolNames = resolveActiveToolNames({
+    isAdmin: params.isAdmin,
+    invokedBy: 'component',
+  });
+  const maxTokens = normalizeStrictlyPositiveInt(
+    appConfig.AGENT_GRAPH_MAX_OUTPUT_TOKENS as number | undefined,
+    1_800,
+  );
+  if (appConfig.SAGE_TRACE_DB_ENABLED) {
+    try {
+      await upsertTraceStart({
+        id: params.traceId,
+        guildId: params.guildId,
+        channelId: params.channelId,
+        userId: params.userId,
+        routeKind: 'continue_resume',
+        tokenJson: {
+          continuationId: session.id,
+          threadId: session.threadId,
+        },
+        budgetJson: {
+          route: 'continue_resume',
+          continuationId: session.id,
+          completedWindows: session.completedWindows,
+        },
+        threadId: session.threadId,
+        parentTraceId: session.latestTraceId,
+        graphStatus: 'running',
+      });
+    } catch (error) {
+      logger.warn({ error, traceId: params.traceId }, 'Failed to persist continuation resume trace start');
+    }
+  }
+
+  let result: RunChatTurnResult;
+  try {
+    const graphResult = await resumeAgentGraphTurn({
+      threadId: session.threadId,
+      resume: {
+        interruptKind: 'continue_prompt',
+        decision: 'continue',
+        continuationId: session.id,
+        resumedByUserId: params.userId,
+        resumeTraceId: params.traceId,
+      },
+      context: {
+        traceId: params.traceId,
+        userId: params.userId,
+        channelId: params.channelId,
+        guildId: params.guildId,
+        apiKey,
+        model,
+        temperature: 0.6,
+        timeoutMs: appConfig.TIMEOUT_CHAT_MS,
+        maxTokens,
+        invokedBy: 'component',
+        invokerIsAdmin: params.isAdmin,
+        activeToolNames,
+        routeKind: 'continue_resume',
+      },
+    });
+    const pendingInterrupt =
+      graphResult.pendingInterrupt?.kind === 'continue_prompt'
+        ? {
+            kind: 'continue_prompt' as const,
+            continuationId: graphResult.pendingInterrupt.continuationId,
+            expiresAtIso: graphResult.pendingInterrupt.expiresAtIso,
+            completedWindows: graphResult.pendingInterrupt.completedWindows,
+            maxWindows: graphResult.pendingInterrupt.maxWindows,
+            summaryText: graphResult.pendingInterrupt.summaryText,
+          }
+        : graphResult.pendingInterrupt?.kind === 'approval_review'
+          ? {
+              kind: 'approval_review' as const,
+              requestId: graphResult.pendingInterrupt.requestId,
+            }
+          : null;
+
+    const cleanedReplyText = scrubFinalReplyText({
+      replyText: graphResult.replyText,
+    });
+    const safeReplyText =
+      cleanedReplyText ||
+      graphResult.workingSummary.trim() ||
+      (pendingInterrupt?.kind === 'approval_review'
+        ? ''
+        : 'I completed part of the request but could not format a final response. Please ask me to continue again.');
+    result = {
+      replyText: safeReplyText,
+      delivery: resolveDelivery({ pendingInterrupt }),
+      meta:
+        pendingInterrupt?.kind === 'continue_prompt' ? buildContinuationMeta(pendingInterrupt) : undefined,
+      files: graphResult.files,
+    };
+
+    if (appConfig.SAGE_TRACE_DB_ENABLED) {
+      await updateTraceEnd({
+        id: params.traceId,
+        toolJson: {
+          enabled: activeToolNames.length > 0,
+          graph: {
+            roundsCompleted: graphResult.roundsCompleted,
+            completedWindows: graphResult.completedWindows,
+            totalRoundsCompleted: graphResult.totalRoundsCompleted,
+            terminationReason: graphResult.terminationReason,
+            graphStatus: graphResult.graphStatus,
+            pendingInterrupt,
+            interruptResolution: graphResult.interruptResolution,
+            taskState: buildTaskStateTraceSnapshot(graphResult.taskState),
+          },
+        },
+        budgetJson: {
+          route: 'continue_resume',
+          graphRuntime: {
+            roundsCompleted: graphResult.roundsCompleted,
+            completedWindows: graphResult.completedWindows,
+            totalRoundsCompleted: graphResult.totalRoundsCompleted,
+            terminationReason: graphResult.terminationReason,
+            graphStatus: graphResult.graphStatus,
+            taskState: buildTaskStateTraceSnapshot(graphResult.taskState),
+          },
+        },
+        tokenJson: {
+          model,
+          activeToolNames,
+          continuationId: session.id,
+          threadId: session.threadId,
+        },
+        threadId: session.threadId,
+        parentTraceId: session.latestTraceId,
+        graphStatus: graphResult.graphStatus,
+        approvalRequestId: pendingInterrupt?.kind === 'approval_review' ? pendingInterrupt.requestId : null,
+        terminationReason: graphResult.terminationReason,
+        langSmithRunId: graphResult.langSmithRunId,
+        langSmithTraceId: graphResult.langSmithTraceId,
+        replyText: safeReplyText,
+      });
+    }
+  } catch (error) {
+    logger.error({ error, traceId: params.traceId }, 'Continuation resume failed');
+    result = {
+      replyText: "I'm having trouble continuing that request right now. Please try again.",
+      delivery: 'chat_reply',
+      meta: undefined,
+      files: [],
+    };
+    if (appConfig.SAGE_TRACE_DB_ENABLED) {
+      await updateTraceEnd({
+        id: params.traceId,
+        threadId: session.threadId,
+        parentTraceId: session.latestTraceId,
+        graphStatus: 'failed',
+        approvalRequestId: null,
+        terminationReason: 'continue_prompt',
+        replyText: result.replyText,
+        budgetJson: {
+          route: 'continue_resume',
+          failed: true,
+          continuationId: session.id,
+          errorText: error instanceof Error ? error.message : String(error),
+        },
+      }).catch(() => undefined);
+    }
+  }
+
+  return result;
+}
+function buildContinuationMeta(
+  pendingInterrupt: {
+    kind: 'continue_prompt';
+    continuationId: string;
+    expiresAtIso: string;
+    completedWindows: number;
+    maxWindows: number;
+    summaryText: string;
+  } | null,
+): RunChatTurnResult['meta'] {
+  if (!pendingInterrupt) {
+    return undefined;
+  }
+  return {
+    continuation: {
+      id: pendingInterrupt.continuationId,
+      expiresAtIso: pendingInterrupt.expiresAtIso,
+      completedWindows: pendingInterrupt.completedWindows,
+      maxWindows: pendingInterrupt.maxWindows,
+      summaryText: pendingInterrupt.summaryText,
+    },
+  };
+}
+
+function resolveDelivery(params: {
+  pendingInterrupt:
+    | { kind: 'approval_review' }
+    | {
+        kind: 'continue_prompt';
+        continuationId: string;
+        expiresAtIso: string;
+        completedWindows: number;
+        maxWindows: number;
+        summaryText: string;
+      }
+    | null;
+}): RunChatTurnResult['delivery'] {
+  if (!params.pendingInterrupt) return 'chat_reply';
+  if (params.pendingInterrupt.kind === 'approval_review') return 'approval_governance_only';
+  return 'chat_reply_with_continue';
 }

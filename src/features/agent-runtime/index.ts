@@ -1,4 +1,10 @@
-export { runChatTurn, type RunChatTurnParams, type RunChatTurnResult } from './agentRuntime';
+export {
+  runChatTurn,
+  resumeContinuationChatTurn,
+  type RunChatTurnParams,
+  type RunChatTurnResult,
+  type ResumeContinuationChatTurnParams,
+} from './agentRuntime';
 
 export {
   composeSystemPrompt,

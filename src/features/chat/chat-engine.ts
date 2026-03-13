@@ -62,8 +62,17 @@ export async function generateChatReply(params: {
   isAdmin?: boolean;
 }): Promise<{
   replyText: string;
-  delivery: 'chat_reply' | 'approval_governance_only';
-  meta?: { kind?: 'missing_api_key' };
+  delivery: 'chat_reply' | 'approval_governance_only' | 'chat_reply_with_continue';
+  meta?: {
+    kind?: 'missing_api_key';
+    continuation?: {
+      id: string;
+      expiresAtIso: string;
+      completedWindows: number;
+      maxWindows: number;
+      summaryText: string;
+    };
+  };
   files?: Array<{ attachment: Buffer; name: string }>;
 }> {
   // Enforce sequential processing per user

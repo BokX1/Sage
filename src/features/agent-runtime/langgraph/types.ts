@@ -9,6 +9,24 @@ export interface GraphToolFile {
   mimetype?: string;
 }
 
+export type GraphTaskStatus =
+  | 'framing'
+  | 'executing'
+  | 'needs_user_input'
+  | 'ready_to_answer'
+  | 'paused'
+  | 'completed';
+
+export interface GraphTaskState {
+  objective: string;
+  successCriteria: string[];
+  currentSubgoal: string;
+  nextAction: string;
+  unresolvedItems: string[];
+  evidenceSummary: string;
+  status: GraphTaskStatus;
+}
+
 export interface GraphRebudgetEvent {
   beforeCount: number;
   afterCount: number;
@@ -33,9 +51,10 @@ export interface ToolCallRoundEvent {
 
 export type GraphTurnTerminationReason =
   | 'assistant_reply'
-  | 'step_limit'
+  | 'continue_prompt'
   | 'graph_timeout'
-  | 'approval_interrupt';
+  | 'approval_interrupt'
+  | 'max_windows_reached';
 
 export interface ToolCallFinalizationEvent {
   attempted: boolean;
@@ -56,6 +75,7 @@ export interface SerializedToolResult extends Omit<ToolResult, 'attachments'> {
 }
 
 export interface ApprovalInterruptState {
+  kind: 'approval_review';
   requestId: string;
   call: GraphToolCallDescriptor;
   payload: ApprovalInterruptPayload;
@@ -63,7 +83,23 @@ export interface ApprovalInterruptState {
   expiresAtIso?: string;
 }
 
+export interface ContinuePromptInterruptState {
+  kind: 'continue_prompt';
+  continuationId: string;
+  requestedByUserId: string;
+  channelId: string;
+  guildId: string | null;
+  summaryText: string;
+  completedWindows: number;
+  maxWindows: number;
+  expiresAtIso: string;
+  resumeNode: 'llm_call' | 'route_tool_phase';
+}
+
+export type GraphInterruptState = ApprovalInterruptState | ContinuePromptInterruptState;
+
 export interface ApprovalResolutionState {
+  kind: 'approval_review';
   requestId: string;
   decision: 'approved' | 'rejected' | 'expired';
   status: 'approved' | 'rejected' | 'expired' | 'executed' | 'failed';
@@ -71,6 +107,15 @@ export interface ApprovalResolutionState {
   decisionReasonText?: string | null;
   errorText?: string | null;
 }
+
+export interface ContinuePromptResolutionState {
+  kind: 'continue_prompt';
+  continuationId: string;
+  decision: 'continue' | 'expired';
+  resumedByUserId?: string | null;
+}
+
+export type GraphInterruptResolution = ApprovalResolutionState | ContinuePromptResolutionState;
 
 export interface AgentGraphRuntimeContext {
   traceId: string;
@@ -97,9 +142,16 @@ export interface AgentGraphState {
   resumeContext: AgentGraphRuntimeContext;
   pendingWriteCall: GraphToolCallDescriptor | null;
   replyText: string;
+  draftReplyText: string;
+  repairHint: string;
+  answerRepairCount: number;
   toolResults: SerializedToolResult[];
   files: GraphToolFile[];
   roundsCompleted: number;
+  completedWindows: number;
+  totalRoundsCompleted: number;
+  workingSummary: string;
+  taskState: GraphTaskState;
   deduplicatedCallCount: number;
   truncatedCallCount: number;
   guardrailBlockedCallCount: number;
@@ -108,13 +160,22 @@ export interface AgentGraphState {
   terminationReason: GraphTurnTerminationReason;
   graphStatus: 'running' | 'interrupted' | 'completed' | 'failed';
   startedAtEpochMs: number;
-  approvalInterrupt: ApprovalInterruptState | null;
-  approvalResolution: ApprovalResolutionState | null;
+  pendingInterrupt: GraphInterruptState | null;
+  interruptResolution: GraphInterruptResolution | null;
 }
 
-export interface ApprovalResumeInput {
-  status: 'approved' | 'rejected' | 'expired';
-  reviewerId?: string | null;
-  decisionReasonText?: string | null;
-  resumeTraceId?: string | null;
-}
+export type GraphResumeInput =
+  | {
+      interruptKind: 'approval_review';
+      status: 'approved' | 'rejected' | 'expired';
+      reviewerId?: string | null;
+      decisionReasonText?: string | null;
+      resumeTraceId?: string | null;
+    }
+  | {
+      interruptKind: 'continue_prompt';
+      decision: 'continue' | 'expired';
+      continuationId: string;
+      resumedByUserId?: string | null;
+      resumeTraceId?: string | null;
+    };

@@ -77,6 +77,32 @@ function truncateText(value: string, maxChars: number): string {
   return `${value.slice(0, Math.max(0, cap - 1))}…`;
 }
 
+function buildStructuredTruncationEnvelope(serialized: string, maxChars: number): string {
+  const compactSummary = 'Tool result truncated to fit the runtime evidence budget.';
+  const minimalEnvelope = JSON.stringify({
+    truncated: true,
+    summary: compactSummary,
+  });
+  if (minimalEnvelope.length >= maxChars) {
+    return minimalEnvelope;
+  }
+
+  let previewBudget = Math.max(0, maxChars - minimalEnvelope.length - 32);
+  while (previewBudget >= 0) {
+    const envelope = JSON.stringify({
+      truncated: true,
+      summary: compactSummary,
+      preview: truncateText(serialized, Math.max(1, previewBudget)),
+    });
+    if (envelope.length <= maxChars) {
+      return envelope;
+    }
+    previewBudget -= Math.max(1, Math.ceil((envelope.length - maxChars) / 2));
+  }
+
+  return minimalEnvelope;
+}
+
 function serializeToolResult(result: ToolResult): SerializedToolResult {
   return {
     ...result,
@@ -106,10 +132,11 @@ function buildToolMessageContent(result: ToolResult, maxResultChars: number): st
   }
 
   try {
-    return truncateText(
-      JSON.stringify(sanitizeToolResultForModel(result.result)),
-      maxResultChars,
-    );
+    const serialized = JSON.stringify(sanitizeToolResultForModel(result.result));
+    if (serialized.length <= maxResultChars) {
+      return serialized;
+    }
+    return buildStructuredTruncationEnvelope(serialized, maxResultChars);
   } catch {
     return '[unserializable tool result]';
   }

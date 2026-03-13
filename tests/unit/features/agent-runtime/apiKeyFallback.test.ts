@@ -67,6 +67,7 @@ vi.mock('@/features/agent-runtime/toolGrounding', () => ({
 
 vi.mock('@/features/agent-runtime/langgraph/runtime', () => ({
   runAgentGraphTurn: mockRunAgentGraphTurn,
+  resumeAgentGraphTurn: vi.fn(),
 }));
 
 vi.mock('@/features/settings/guildSettingsRepo', () => ({
@@ -106,6 +107,18 @@ function makeGraphResult(overrides: Partial<Awaited<ReturnType<typeof mockRunAge
     toolResults: [],
     files: [],
     roundsCompleted: 0,
+    completedWindows: 0,
+    totalRoundsCompleted: 0,
+    workingSummary: '',
+    taskState: {
+      objective: 'Answer the user request.',
+      successCriteria: ['Provide a complete answer or one clarification question.'],
+      currentSubgoal: 'Produce the final response.',
+      nextAction: 'Answer directly.',
+      unresolvedItems: [],
+      evidenceSummary: 'No extra evidence is required.',
+      status: 'completed',
+    },
     deduplicatedCallCount: 0,
     truncatedCallCount: 0,
     guardrailBlockedCallCount: 0,
@@ -120,8 +133,8 @@ function makeGraphResult(overrides: Partial<Awaited<ReturnType<typeof mockRunAge
     },
     terminationReason: 'assistant_reply',
     graphStatus: 'completed',
-    approvalInterrupt: null,
-    approvalResolution: null,
+    pendingInterrupt: null,
+    interruptResolution: null,
     langSmithRunId: null,
     langSmithTraceId: null,
     ...overrides,

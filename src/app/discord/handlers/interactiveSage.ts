@@ -7,14 +7,18 @@ import {
   type InteractionReplyOptions,
 } from 'discord.js';
 import { generateChatReply } from '../../../features/chat/chat-engine';
+import { resumeContinuationChatTurn } from '../../../features/agent-runtime/agentRuntime';
 import { buildGuildApiKeyMissingResponse } from '../../../features/discord/byopBootstrap';
 import {
+  buildActionButtonComponent,
   buildModalForInteractiveSession,
   buildPromptFromInteractiveModalSubmission,
+  createInteractiveButtonSession,
   getActiveInteractiveSession,
   parseInteractiveModalCustomId,
   parseInteractiveSessionCustomId,
 } from '../../../features/discord/interactiveComponentService';
+import { logger } from '../../../platform/logging/logger';
 import { generateTraceId } from '../../../shared/observability/trace-id-generator';
 import { smartSplit } from '../../../shared/text/message-splitter';
 import { isAdminFromMember } from '../../../platform/discord/admin-permissions';
@@ -65,11 +69,58 @@ async function publishChatResultToInteraction(params: {
     return;
   }
 
+  const continuation = params.result.meta?.continuation;
+  let continuationButtonId: string | null = null;
+  if (
+    params.result.delivery === 'chat_reply_with_continue' &&
+    continuation &&
+    params.interaction.guildId &&
+    params.interaction.channelId
+  ) {
+    try {
+      continuationButtonId = await createInteractiveButtonSession({
+        guildId: params.interaction.guildId,
+        channelId: params.interaction.channelId,
+        createdByUserId: params.interaction.user.id,
+        action: {
+          type: 'graph_continue',
+          continuationId: continuation.id,
+          visibility: params.ephemeral ? 'ephemeral' : 'public',
+        },
+      });
+    } catch (err) {
+      logger.warn(
+        {
+          err,
+          continuationId: continuation.id,
+          channelId: params.interaction.channelId,
+          interactionId: 'id' in params.interaction ? params.interaction.id : undefined,
+        },
+        'Failed to create continuation button session; sending summary without button',
+      );
+    }
+  }
+
   const chunks = smartSplit(params.result.replyText || '', 2_000);
   const [firstChunk, ...rest] = chunks;
   await sendInteractionReply(params.interaction, {
     content: firstChunk || '\u200b',
     files: params.result.files,
+    components:
+      continuationButtonId
+        ? [
+            {
+              type: 1,
+              components: [
+                buildActionButtonComponent({
+                  customId: continuationButtonId,
+                  label: 'Continue',
+                  style: 'primary',
+                }),
+              ],
+            },
+          ]
+        : undefined,
   });
 
   for (const chunk of rest) {
@@ -146,6 +197,39 @@ export async function handleInteractiveButtonSession(
     await runInteractivePrompt({
       interaction,
       prompt: session.prompt,
+      ephemeral: session.visibility === 'ephemeral',
+    });
+    return true;
+  }
+
+  if (session.kind === 'graph_continue_button') {
+    if (session.createdByUserId !== interaction.user.id) {
+      await interaction.reply({
+        content: 'This Continue button belongs to the original requester.',
+        ephemeral: true,
+      });
+      return true;
+    }
+    if (session.guildId !== interaction.guildId || session.channelId !== interaction.channelId) {
+      await interaction.reply({
+        content: 'This Continue button only works in the original channel.',
+        ephemeral: true,
+      });
+      return true;
+    }
+    await interaction.deferReply({ ephemeral: session.visibility === 'ephemeral' });
+    const result = await resumeContinuationChatTurn({
+      traceId: generateTraceId(),
+      userId: interaction.user.id,
+      channelId: interaction.channelId,
+      guildId: interaction.guildId,
+      continuationId: session.continuationId,
+      isAdmin: isAdminFromMember(interaction.member),
+    });
+    await publishChatResultToInteraction({
+      interaction,
+      result,
+      isAdmin: isAdminFromMember(interaction.member),
       ephemeral: session.visibility === 'ephemeral',
     });
     return true;
