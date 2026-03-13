@@ -3601,6 +3601,12 @@ export async function createOrReuseApprovalReviewRequestFromSignal(params: {
       actionId: request.id,
       coalesced,
       replyToMessageId: request.sourceMessageId ?? undefined,
+    }).catch((error) => {
+      logger.warn(
+        { error, requestId: request.id },
+        'Failed to publish requester governance status message after approval review was created',
+      );
+      return null;
     });
     if (updated) {
       request = updated;

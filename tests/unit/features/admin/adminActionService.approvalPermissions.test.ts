@@ -401,6 +401,81 @@ describe('adminActionService approval permissions', () => {
     });
   });
 
+  it('does not fail the turn when requester status publication errors after the review card is already posted', async () => {
+    const pending = makeReviewRequest(
+      {
+        operation: 'set',
+        newInstructionsText: 'Keep replies short.',
+        reason: 'Tone refresh',
+        baseVersion: 2,
+      },
+      {
+        kind: 'server_instructions_update',
+        sourceChannelId: 'channel-source',
+        reviewChannelId: 'channel-review',
+        requesterStatusMessageId: null,
+        reviewerMessageId: null,
+      },
+    );
+
+    mocks.findMatchingPendingApprovalReviewRequest.mockResolvedValue(null);
+    mocks.createApprovalReviewRequest.mockResolvedValue(pending);
+    mocks.updateApprovalReviewSurface.mockResolvedValue({
+      ...pending,
+      reviewerMessageId: 'approval-1',
+    });
+    mocks.discordRestRequestGuildScoped
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        data: { id: 'approval-1' },
+      })
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 500,
+        statusText: 'Internal Server Error',
+        error: 'requester status failed',
+      });
+
+    await expect(
+      createOrReuseApprovalReviewRequestFromSignal({
+        threadId: 'thread-1',
+        originTraceId: 'trace-origin-1',
+        signal: new ApprovalRequiredSignal({
+          kind: 'server_instructions_update',
+          guildId: 'guild-1',
+          sourceChannelId: 'channel-source',
+          reviewChannelId: 'channel-review',
+          sourceMessageId: 'message-source',
+          requestedBy: 'admin-1',
+          dedupeKey: 'dedupe-key',
+          executionPayloadJson: pending.executionPayloadJson,
+          reviewSnapshotJson: pending.reviewSnapshotJson,
+        }),
+      }),
+    ).resolves.toMatchObject({
+      request: expect.objectContaining({
+        id: 'action-1',
+      }),
+      coalesced: false,
+    });
+
+    expect(mocks.updateApprovalReviewSurface).toHaveBeenCalledWith({
+      id: 'action-1',
+      reviewChannelId: 'channel-review',
+      reviewerMessageId: 'approval-1',
+    });
+    expect(mocks.attachApprovalReviewRequesterStatusMessageId).not.toHaveBeenCalled();
+    expect(mocks.logAdminAction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        guildId: 'guild-1',
+        adminId: 'admin-1',
+        command: 'tool_server_instructions_update',
+      }),
+    );
+  });
+
   it('posts the resumed approval acknowledgement back to the source channel', async () => {
     const action = makeReviewRequest(
       {

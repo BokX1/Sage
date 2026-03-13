@@ -36,6 +36,7 @@
 
 ### Changed
 - Hardened approval-interrupt recovery in Sage's LangGraph runtime so approval-gated turns now recover the checkpointed interrupted state when the stream stops at the queue boundary, preventing false `I'm having trouble connecting right now. Please try again later.` replies after Sage already posted governance review.
+- Hardened approval-request materialization so Sage no longer turns a non-critical requester-status publication failure into a visible generic connection error after the governance review card is already live.
 - Updated the maintained direct dependency set around the current runtime baseline: bumped `@discordjs/voice`, `@types/node`, `jsonrepair`, `typescript-eslint`, `vitest`, refreshed the lockfile/override surface, and removed the unused direct `pgvector` package from the shipped install footprint.
 - Reset Sage onto a schema-first LangGraph flagship runtime: graph state now uses current LangGraph reducer and message semantics, provider calls flow through Sage-owned provider-neutral adapters, LangSmith tracing is first-class and required outside tests, and `AgentTrace` has been simplified into a compact ledger with LangSmith run and trace references.
 - Collapsed Prisma migration history to one current-schema baseline for fresh Sage rebuilds, so new databases now bootstrap directly into the flagship runtime schema instead of replaying legacy `ModelHealthState` or pre-LangSmith `AgentTrace` transitions.
