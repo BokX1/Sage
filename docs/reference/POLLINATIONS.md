@@ -103,7 +103,7 @@ Sage accepts successful authenticated profile responses and extracts account fie
 When Sage needs a key, it resolves in this order:
 
 1. **Server key** (set through Sage's setup card + modal)
-2. **Host-level runtime key** (`AI_PROVIDER_API_KEY` in `.env`)
+2. **Optional host-level runtime key** (`AI_PROVIDER_API_KEY` in `.env`)
 3. If neither exists, Sage returns setup guidance and cannot complete chat requests until a key is configured.
 
 ---

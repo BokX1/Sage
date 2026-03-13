@@ -114,7 +114,7 @@ FILE_INGEST_TIKA_BASE_URL=http://127.0.0.1:9998
 Key notes:
 
 - If you set `AI_PROVIDER_API_KEY`, Sage can use that host-level key with your configured AI provider.
-- If you do **not** set `AI_PROVIDER_API_KEY`, runtime chat cannot boot; the hosted server-key flow is a separate provider surface, not a runtime fallback.
+- If you do **not** set `AI_PROVIDER_API_KEY`, Sage can still run and answer in servers that configure an in-Discord server key. Direct-message chat still needs a host-level key because there is no guild-scoped key to fall back to.
 - Admin actions and approval-gated flows use Discord-native permissions. Grant `Manage Server` or `Administrator` only to approved operators.
 - Social-graph export is disabled by setting `KAFKA_BROKERS=`.
 
@@ -161,7 +161,7 @@ npm start
 - [ ] `npm run doctor` passes
 - [ ] `npm run check:trust` passes on the release candidate
 - [ ] Tika is reachable when file ingestion is enabled
-- [ ] `AI_PROVIDER_BASE_URL`, `AI_PROVIDER_API_KEY`, `AI_PROVIDER_MAIN_AGENT_MODEL`, `AI_PROVIDER_PROFILE_AGENT_MODEL`, and `AI_PROVIDER_SUMMARY_AGENT_MODEL` are set explicitly; `AI_PROVIDER_MODEL_PROFILES_JSON` is optional
+- [ ] `AI_PROVIDER_BASE_URL`, `AI_PROVIDER_MAIN_AGENT_MODEL`, `AI_PROVIDER_PROFILE_AGENT_MODEL`, and `AI_PROVIDER_SUMMARY_AGENT_MODEL` are set explicitly; `AI_PROVIDER_API_KEY` and `AI_PROVIDER_MODEL_PROFILES_JSON` are optional
 - [ ] If you want hosted execution tracing, set `LANGSMITH_TRACING=true` and provide `LANGSMITH_API_KEY`
 - [ ] `SAGE_TRACE_DB_ENABLED=true` if you want compact `AgentTrace` ledger rows in Postgres
 - [ ] Approved moderators/admins have `Manage Server` or `Administrator`

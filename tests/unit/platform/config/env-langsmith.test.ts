@@ -15,6 +15,7 @@ describe('envSchema LangSmith contract', () => {
     const parsed = envSchema.safeParse(
       makeProductionEnv({
         LANGSMITH_TRACING: 'false',
+        LANGSMITH_ENDPOINT: 'https://api.smith.langchain.com',
         LANGSMITH_API_KEY: '',
         LANGSMITH_PROJECT: '',
       }),
@@ -29,6 +30,7 @@ describe('envSchema LangSmith contract', () => {
     expect(parsed.data).toMatchObject({
       NODE_ENV: 'production',
       LANGSMITH_TRACING: false,
+      LANGSMITH_ENDPOINT: 'https://api.smith.langchain.com',
       LANGSMITH_API_KEY: '',
       LANGSMITH_PROJECT: '',
     });

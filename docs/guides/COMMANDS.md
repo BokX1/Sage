@@ -63,7 +63,7 @@ Server admins can use:
 Non-admins can still see the setup card, but only admins can submit changes.
 
 > [!NOTE]
-> Self-hosted deployments can skip this flow entirely by setting a host-level `AI_PROVIDER_API_KEY` for any OpenAI-compatible provider.
+> Self-hosted deployments can skip this flow by setting a host-level `AI_PROVIDER_API_KEY` for any OpenAI-compatible provider, but the key is optional if you want to rely on Sage's in-Discord server-key flow instead.
 
 ---
 

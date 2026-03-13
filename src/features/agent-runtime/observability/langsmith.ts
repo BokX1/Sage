@@ -43,6 +43,7 @@ export function createAgentRunTelemetry(): AgentRunTelemetry {
 
   const client = new Client({
     apiKey: appConfig.LANGSMITH_API_KEY,
+    apiUrl: appConfig.LANGSMITH_ENDPOINT,
   }) as LangSmithClientLike;
   const tracer = new LangChainTracer({
     client,

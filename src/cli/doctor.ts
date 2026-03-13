@@ -825,14 +825,18 @@ function buildChecks(): CheckDefinition[] {
             message: 'Skipped (environment schema failed)',
           };
         }
+        if (!ctx.parsedEnv.AI_PROVIDER_API_KEY?.trim()) {
+          return {
+            status: 'skip',
+            message: 'Skipped (no host AI provider key configured; Discord server-key flow can still work)',
+          };
+        }
         const baseUrl = normalizeAiProviderBaseUrl(ctx.parsedEnv.AI_PROVIDER_BASE_URL);
         const endpoint = `${baseUrl}/chat/completions`;
         const headers: Record<string, string> = {
           'content-type': 'application/json',
         };
-        if (ctx.parsedEnv.AI_PROVIDER_API_KEY) {
-          headers.authorization = `Bearer ${ctx.parsedEnv.AI_PROVIDER_API_KEY}`;
-        }
+        headers.authorization = `Bearer ${ctx.parsedEnv.AI_PROVIDER_API_KEY}`;
         try {
           const response = await fetch(endpoint, {
             method: 'POST',

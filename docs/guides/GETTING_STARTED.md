@@ -178,7 +178,7 @@ The wizard will ask for:
 | **DISCORD_APP_ID** | Application ID from Step 2.2 |
 | **DATABASE_URL** | Choose **Use local Docker default** for local setup |
 | **AI_PROVIDER_BASE_URL** | Required base URL for your OpenAI-compatible chat-completions endpoint |
-| **AI_PROVIDER_API_KEY** | Required host-level key for that AI provider |
+| **AI_PROVIDER_API_KEY** | Optional host-level fallback key for that AI provider |
 | **AI_PROVIDER_MAIN_AGENT_MODEL** | Required main runtime agent model id |
 | **AI_PROVIDER_PROFILE_AGENT_MODEL** | Required profile-analysis agent model id |
 | **AI_PROVIDER_SUMMARY_AGENT_MODEL** | Required summary agent model id |
@@ -202,7 +202,7 @@ npm run onboard -- \
   --doctor
 ```
 
-> ℹ️ `--api-key` seeds `AI_PROVIDER_API_KEY`. Hosted server-key flows are optional and separate from the runtime AI provider configuration.
+> ℹ️ `--api-key` seeds the optional host-level `AI_PROVIDER_API_KEY`. You can leave it blank and rely on Sage's in-Discord server-key flow instead.
 
 ---
 
@@ -302,7 +302,7 @@ Keep this terminal window open.
 
 ## 7️⃣ Optional: Activate a Server Key (Pollinations BYOP)
 
-Use this step if you want Sage's built-in server-wide BYOP flow. If you already configured `AI_PROVIDER_API_KEY` for your self-hosted runtime provider, you can skip it.
+Use this step if you want Sage's built-in server-wide BYOP flow. If you already configured `AI_PROVIDER_API_KEY` for your self-hosted runtime provider, you can skip it, but you do not have to set a host key anymore.
 
 ### 7.1 Trigger the setup card
 

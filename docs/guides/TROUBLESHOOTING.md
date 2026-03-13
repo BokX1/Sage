@@ -117,7 +117,7 @@ Check these in order:
 1. Trigger Sage once in the guild so the missing-key setup card appears
 2. Click `Get Pollinations Key`
 3. Click `Set Server Key` and submit the `sk_...` value in the modal
-4. If you self-host Sage against another OpenAI-compatible provider, set `AI_PROVIDER_API_KEY` in `.env` instead
+4. If you self-host Sage against another OpenAI-compatible provider, set `AI_PROVIDER_API_KEY` in `.env` if you want a host-level fallback key; otherwise use Sage's in-Discord server-key flow
 
 ### Response is truncated or cut off
 

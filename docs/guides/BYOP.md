@@ -24,7 +24,7 @@ Sage's built-in hosted/server-key flow uses a BYOP model: communities provide a 
 For the built-in Pollinations-backed flow, Sage needs a server key to answer in that guild. This can be provided in two ways:
 
 1. **Server-wide key (BYOP):** A server admin uses Sage's setup card and modal to store a Pollinations `sk_...` key for the community.
-2. **Host-level key (`AI_PROVIDER_API_KEY`):** The bot owner sets a default runtime chat key for the whole deployment.
+2. **Host-level key (`AI_PROVIDER_API_KEY`):** Optional fallback key the bot owner can set for the whole deployment.
 
 This key powers:
 

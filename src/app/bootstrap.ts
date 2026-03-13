@@ -38,7 +38,9 @@ export async function bootstrapApp(): Promise<void> {
     registerShutdownHooks({ client });
 
     if (!config.AI_PROVIDER_API_KEY) {
-      logger.warn('No host-level AI provider key found. Sage can still respond if a server configures a server provider key through the in-Discord setup controls.');
+      logger.warn(
+        'No host-level AI provider key found. Sage can still respond if a server admin configures an in-Discord server API key.',
+      );
     }
 
     await client.login(config.DISCORD_TOKEN);

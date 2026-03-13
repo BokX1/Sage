@@ -60,7 +60,7 @@ Complete index of all environment variables used by Sage, with descriptions and 
 | Variable | Description | Default |
 |:---|:---|:---|
 | `AI_PROVIDER_BASE_URL` | Base URL for your OpenAI-compatible chat-completions endpoint | *(required)* |
-| `AI_PROVIDER_API_KEY` | Host-level API key for the configured AI provider | *(required)* |
+| `AI_PROVIDER_API_KEY` | Optional host-level fallback key for the configured AI provider; leave empty to rely on the in-Discord server key flow | *(empty)* |
 | `AI_PROVIDER_MAIN_AGENT_MODEL` | Primary runtime agent model | *(required)* |
 | `AI_PROVIDER_MODEL_PROFILES_JSON` | JSON object keyed by model id with token/capability limits Sage should trust when provided | *(optional)* |
 
@@ -252,6 +252,7 @@ These settings control Sage's optional Discord voice features. The local voice s
 | Variable | Description | Default |
 |:---|:---|:---|
 | `LANGSMITH_TRACING` | Enable optional LangSmith tracing for graph, task, and node execution | `false` |
+| `LANGSMITH_ENDPOINT` | LangSmith API base URL; keep the hosted default from `.env.example` unless you use a custom or self-hosted LangSmith deployment | *(hosted default in `.env.example`)* |
 | `LANGSMITH_API_KEY` | LangSmith API key used when `LANGSMITH_TRACING=true` | *(empty)* |
 | `LANGSMITH_PROJECT` | LangSmith project name when tracing is enabled | `sage` |
 | `SAGE_TRACE_DB_ENABLED` | Persist compact `AgentTrace` ledger rows alongside LangSmith references | `true` |

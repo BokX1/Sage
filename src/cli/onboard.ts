@@ -11,7 +11,6 @@ const REQUIRED_KEYS = [
   'DATABASE_URL',
   'SECRET_ENCRYPTION_KEY',
   'AI_PROVIDER_BASE_URL',
-  'AI_PROVIDER_API_KEY',
   'AI_PROVIDER_MAIN_AGENT_MODEL',
   'AI_PROVIDER_PROFILE_AGENT_MODEL',
   'AI_PROVIDER_SUMMARY_AGENT_MODEL',
@@ -184,7 +183,7 @@ Options:
   --discord-token <token>          Discord bot token
   --discord-app-id <id>            Discord application ID
   --database-url <url>             PostgreSQL connection string
-  --api-key <key>                  AI provider API key
+  --api-key <key>                  Optional host AI provider API key
   --model <id>                     AI provider main agent model
   --secret-encryption-key <hex>    64-hex encryption key
   --env-file <path>                Target env file (default: .env)
@@ -536,18 +535,20 @@ async function main() {
   });
 
   if (
+    args.apiKey !== undefined ||
     !values.get('AI_PROVIDER_API_KEY') ||
     (shouldPrompt('AI_PROVIDER_API_KEY') &&
       (await prompts.askConfirm('AI_PROVIDER_API_KEY already exists. Overwrite?', false)))
   ) {
     if (args.apiKey !== undefined) {
       values.set('AI_PROVIDER_API_KEY', args.apiKey.trim());
-    } else if (args.nonInteractive) {
-      throw new Error('AI_PROVIDER_API_KEY is required in non-interactive mode.');
-    } else {
+    } else if (!args.nonInteractive) {
       values.set(
         'AI_PROVIDER_API_KEY',
-        await prompts.askSecret('AI provider API key', true),
+        await prompts.askSecret(
+          'Optional host AI provider API key (leave blank to rely on in-Discord server keys)',
+          false,
+        ),
       );
     }
   }

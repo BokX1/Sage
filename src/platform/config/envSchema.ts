@@ -280,6 +280,7 @@ export const testDefaults: Record<string, string> = {
 
   // Agentic Runtime / Embeddings / Tracing
   LANGSMITH_TRACING: 'false',
+  LANGSMITH_ENDPOINT: 'https://api.smith.langchain.com',
   LANGSMITH_API_KEY: '',
   LANGSMITH_PROJECT: 'sage-test',
   SAGE_TRACE_DB_ENABLED: 'false',
@@ -288,7 +289,7 @@ export const testDefaults: Record<string, string> = {
   LTM_COMPACTION_ENABLED: 'true',
   USER_PROFILE_COMPACTION_INTERVAL_DAYS: '30',
   AI_PROVIDER_BASE_URL: 'https://ai-provider.example/v1',
-  AI_PROVIDER_API_KEY: 'test-ai-provider-key',
+  AI_PROVIDER_API_KEY: '',
   AI_PROVIDER_MAIN_AGENT_MODEL: 'test-main-agent-model',
   AI_PROVIDER_PROFILE_AGENT_MODEL: 'test-profile-agent-model',
   AI_PROVIDER_SUMMARY_AGENT_MODEL: 'test-summary-agent-model',
@@ -445,6 +446,7 @@ export const envSchema = z.object({
 
   // Agentic Runtime / Embeddings / Tracing
   LANGSMITH_TRACING: z.enum(['true', 'false']).transform((v) => v === 'true'),
+  LANGSMITH_ENDPOINT: optionalHttpOrHttpsUrlSchema.default('https://api.smith.langchain.com'),
   LANGSMITH_API_KEY: z.string().trim().optional(),
   LANGSMITH_PROJECT: z.string().trim().optional(),
   SAGE_TRACE_DB_ENABLED: z.enum(['true', 'false']).transform((v) => v === 'true'),
@@ -460,7 +462,7 @@ export const envSchema = z.object({
   LTM_COMPACTION_ENABLED: z.enum(['true', 'false']).transform((v) => v === 'true'),
   USER_PROFILE_COMPACTION_INTERVAL_DAYS: z.coerce.number().int().min(1).max(365).default(30),
   AI_PROVIDER_BASE_URL: httpOrHttpsUrlSchema,
-  AI_PROVIDER_API_KEY: z.string().trim().min(1),
+  AI_PROVIDER_API_KEY: z.string().trim().optional(),
   AI_PROVIDER_MAIN_AGENT_MODEL: z.string().trim().min(1),
   AI_PROVIDER_PROFILE_AGENT_MODEL: z.string().trim().min(1),
   AI_PROVIDER_SUMMARY_AGENT_MODEL: z.string().trim().min(1),
