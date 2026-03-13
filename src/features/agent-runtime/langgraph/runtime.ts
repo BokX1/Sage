@@ -1082,22 +1082,121 @@ async function getRuntime(): Promise<AgentGraphRuntime> {
   return runtimePromise;
 }
 
-async function runGraphValueStream(
-  graph: AgentGraphRuntime['graph'],
+function isRecoverableApprovalInterruptState(state: AgentGraphState): boolean {
+  return (
+    state.graphStatus === 'interrupted' &&
+    state.terminationReason === 'approval_interrupt' &&
+    !!state.approvalInterrupt?.requestId
+  );
+}
+
+function coerceInterruptedApprovalState(value: unknown): AgentGraphState | null {
+  if (!value || typeof value !== 'object') {
+    return null;
+  }
+
+  const state = value as Partial<AgentGraphState>;
+  if (state.graphStatus !== 'interrupted' || state.terminationReason !== 'approval_interrupt') {
+    return null;
+  }
+
+  const approvalInterrupt = state.approvalInterrupt;
+  if (
+    !approvalInterrupt ||
+    typeof approvalInterrupt !== 'object' ||
+    typeof approvalInterrupt.requestId !== 'string' ||
+    approvalInterrupt.requestId.trim().length === 0
+  ) {
+    return null;
+  }
+
+  if (typeof state.replyText !== 'string') {
+    return null;
+  }
+
+  return state as AgentGraphState;
+}
+
+async function recoverInterruptedGraphState(
+  graph: Pick<AgentGraphRuntime['graph'], 'getState'>,
+  config: RunnableConfig,
+  context: {
+    reason: 'stream_error' | 'missing_final_state';
+    streamError?: unknown;
+  },
+  ): Promise<AgentGraphState | null> {
+  try {
+    const snapshot = await graph.getState(config);
+    const state = coerceInterruptedApprovalState(snapshot.values);
+    if (!state || !isRecoverableApprovalInterruptState(state)) {
+      return null;
+    }
+
+    logger.warn(
+      {
+        traceId: state.resumeContext.traceId,
+        threadId: state.resumeContext.threadId,
+        approvalRequestId: state.approvalInterrupt?.requestId,
+        recoveryReason: context.reason,
+        streamError: context.streamError instanceof Error ? context.streamError.message : undefined,
+      },
+      'Recovered interrupted approval state from LangGraph checkpoint after stream did not yield a terminal value',
+    );
+    return state;
+  } catch (error) {
+    logger.warn(
+      {
+        error,
+        reason: context.reason,
+        streamError: context.streamError instanceof Error ? context.streamError.message : undefined,
+      },
+      'Failed to recover interrupted approval state from LangGraph checkpoint',
+    );
+    return null;
+  }
+}
+
+export async function runGraphValueStream(
+  graph: Pick<AgentGraphRuntime['graph'], 'stream' | 'getState'>,
   input: Parameters<AgentGraphRuntime['graph']['invoke']>[0],
   config: RunnableConfig,
 ): Promise<AgentGraphState> {
   let lastValue: AgentGraphState | null = null;
-  const stream = await graph.stream(input, {
-    ...config,
-    streamMode: 'values',
-  } as Parameters<typeof graph.stream>[1]);
-  for await (const chunk of stream as AsyncIterable<AgentGraphState>) {
-    lastValue = chunk;
+  let streamError: unknown;
+
+  try {
+    const stream = await graph.stream(input, {
+      ...config,
+      streamMode: 'values',
+    } as Parameters<typeof graph.stream>[1]);
+    for await (const chunk of stream as AsyncIterable<AgentGraphState>) {
+      lastValue = chunk;
+    }
+  } catch (error) {
+    streamError = error;
   }
+
+  if (streamError) {
+    const recovered = await recoverInterruptedGraphState(graph, config, {
+      reason: 'stream_error',
+      streamError,
+    });
+    if (recovered) {
+      return recovered;
+    }
+    throw streamError;
+  }
+
   if (!lastValue) {
+    const recovered = await recoverInterruptedGraphState(graph, config, {
+      reason: 'missing_final_state',
+    });
+    if (recovered) {
+      return recovered;
+    }
     throw new Error('Agent graph finished without a final state.');
   }
+
   return lastValue;
 }
 
