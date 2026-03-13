@@ -11,9 +11,8 @@ import {
   isInterrupted,
 } from '@langchain/langgraph';
 import { ToolNode, toolsCondition } from '@langchain/langgraph/prebuilt';
-import { AIMessage, SystemMessage, ToolMessage, type BaseMessage } from '@langchain/core/messages';
+import { AIMessage, ToolMessage, type BaseMessage } from '@langchain/core/messages';
 import type { RunnableConfig } from '@langchain/core/runnables';
-import { jsonrepair } from 'jsonrepair';
 import { z } from 'zod';
 import { PostgresSaver } from '@langchain/langgraph-checkpoint-postgres';
 import { getModelBudgetConfig } from '../../../platform/llm/model-budget-config';
@@ -50,7 +49,6 @@ import type {
   AgentGraphState,
   GraphResumeInput,
   GraphRebudgetEvent,
-  GraphTaskState,
   GraphTurnTerminationReason,
   SerializedToolResult,
   ToolCallFinalizationEvent,
@@ -67,25 +65,6 @@ const GraphToolFileSchema = z.object({
   name: z.string(),
   dataBase64: z.string(),
   mimetype: z.string().optional(),
-});
-
-const GraphTaskStatusSchema = z.enum([
-  'framing',
-  'executing',
-  'needs_user_input',
-  'ready_to_answer',
-  'paused',
-  'completed',
-]);
-
-const GraphTaskStateSchema = z.object({
-  objective: z.string(),
-  successCriteria: z.array(z.string()),
-  currentSubgoal: z.string(),
-  nextAction: z.string(),
-  unresolvedItems: z.array(z.string()),
-  evidenceSummary: z.string(),
-  status: GraphTaskStatusSchema,
 });
 
 const SerializedToolResultSchema = z.object({
@@ -230,9 +209,6 @@ const AgentGraphStateSchema = new StateSchema({
   resumeContext: AgentGraphRuntimeSnapshotSchema,
   pendingWriteCall: z.union([GraphToolCallDescriptorSchema, z.null()]).default(null),
   replyText: z.string().default(''),
-  draftReplyText: z.string().default(''),
-  repairHint: z.string().default(''),
-  answerRepairCount: z.number().default(0),
   toolResults: new ReducedValue(z.array(SerializedToolResultSchema).default([]), {
     reducer: (left, right) => [...left, ...right],
   }),
@@ -242,16 +218,6 @@ const AgentGraphStateSchema = new StateSchema({
   roundsCompleted: z.number().default(0),
   completedWindows: z.number().default(0),
   totalRoundsCompleted: z.number().default(0),
-  workingSummary: z.string().default(''),
-  taskState: GraphTaskStateSchema.default({
-    objective: '',
-    successCriteria: [],
-    currentSubgoal: '',
-    nextAction: '',
-    unresolvedItems: [],
-    evidenceSummary: '',
-    status: 'framing',
-  }),
   deduplicatedCallCount: new ReducedValue(z.number().default(0), {
     reducer: (left, right) => left + right,
   }),
@@ -286,13 +252,10 @@ const AgentGraphStateSchema = new StateSchema({
 });
 
 type GraphNodeName =
-  | 'frame_task'
   | 'llm_call'
   | 'route_tool_phase'
   | 'execute_read_tools'
   | 'approval_gate'
-  | 'refresh_task_state'
-  | 'finalize_answer'
   | 'pause_for_continue'
   | 'resume_interrupt'
   | 'finalize_turn';
@@ -349,8 +312,6 @@ export interface AgentGraphTurnResult {
   roundsCompleted: number;
   completedWindows: number;
   totalRoundsCompleted: number;
-  workingSummary: string;
-  taskState: GraphTaskState;
   deduplicatedCallCount: number;
   truncatedCallCount: number;
   guardrailBlockedCallCount: number;
@@ -377,377 +338,71 @@ function nowIso(): string {
   return new Date().toISOString();
 }
 
-function getDefaultTaskState(): GraphTaskState {
-  return {
-    objective: '',
-    successCriteria: [],
-    currentSubgoal: '',
-    nextAction: '',
-    unresolvedItems: [],
-    evidenceSummary: '',
-    status: 'framing',
-  };
-}
-
-function sanitizeTaskList(values: string[], limit: number): string[] {
-  const seen = new Set<string>();
-  const sanitized: string[] = [];
-  for (const value of values) {
-    const trimmed = value.trim();
-    if (!trimmed) {
-      continue;
-    }
-    const key = trimmed.toLowerCase();
-    if (seen.has(key)) {
-      continue;
-    }
-    seen.add(key);
-    sanitized.push(trimmed);
-    if (sanitized.length >= limit) {
-      break;
-    }
-  }
-  return sanitized;
-}
-
-function buildFallbackObjective(messages: BaseMessage[]): string {
+function findLatestAssistantText(messages: BaseMessage[]): string {
   for (let index = messages.length - 1; index >= 0; index -= 1) {
-    const content = extractMessageText(messages[index]).trim();
-    if (content) {
-      return content.length <= 240 ? content : `${content.slice(0, 237)}...`;
+    const message = messages[index];
+    if (!AIMessage.isInstance(message)) {
+      continue;
+    }
+    const text = extractMessageText(message).trim();
+    if (text) {
+      return text;
     }
   }
-  return 'Resolve the current user request.';
+  return '';
 }
 
-function normalizeTaskState(params: {
-  raw: Partial<GraphTaskState> | null | undefined;
-  previous?: GraphTaskState | null;
-  fallbackObjective: string;
-}): GraphTaskState {
-  const previous = params.previous ?? getDefaultTaskState();
-  const raw = params.raw ?? {};
-  const objective = raw.objective?.trim() || previous.objective.trim() || params.fallbackObjective;
-  const successCriteria = sanitizeTaskList(
-    Array.isArray(raw.successCriteria) ? raw.successCriteria : previous.successCriteria,
-    6,
-  );
-  const unresolvedItems = sanitizeTaskList(
-    Array.isArray(raw.unresolvedItems) ? raw.unresolvedItems : previous.unresolvedItems,
-    6,
-  );
-  const status = GraphTaskStatusSchema.catch(previous.status).parse(raw.status ?? previous.status);
-  return {
-    objective,
-    successCriteria:
-      successCriteria.length > 0
-        ? successCriteria
-        : ['Resolve the user request with the minimum necessary tools or one clear clarifying question.'],
-    currentSubgoal:
-      raw.currentSubgoal?.trim() ||
-      previous.currentSubgoal.trim() ||
-      'Determine the next concrete step needed to resolve the request.',
-    nextAction:
-      raw.nextAction?.trim() ||
-      previous.nextAction.trim() ||
-      'Either ask one concise clarification question or take the next minimal tool/action step.',
-    unresolvedItems: status === 'ready_to_answer' || status === 'completed' ? [] : unresolvedItems,
-    evidenceSummary:
-      raw.evidenceSummary?.trim() ||
-      previous.evidenceSummary.trim() ||
-      'The task is framed, but no verified evidence has been gathered yet.',
-    status,
-  };
-}
-
-function isTaskStateValid(taskState: GraphTaskState | null | undefined): taskState is GraphTaskState {
-  return Boolean(taskState && taskState.objective.trim() && taskState.currentSubgoal.trim());
-}
-
-function buildTaskStateBlock(taskState: GraphTaskState): string {
-  const successCriteria =
-    taskState.successCriteria.length > 0
-      ? taskState.successCriteria.map((item) => `- ${item}`).join('\n')
-      : '- none';
-  const unresolvedItems =
-    taskState.unresolvedItems.length > 0
-      ? taskState.unresolvedItems.map((item) => `- ${item}`).join('\n')
-      : '- none';
-  return [
-    '<task_state>',
-    `status: ${taskState.status}`,
-    `objective: ${taskState.objective}`,
-    'success_criteria:',
-    successCriteria,
-    `current_subgoal: ${taskState.currentSubgoal}`,
-    `next_action: ${taskState.nextAction}`,
-    'unresolved_items:',
-    unresolvedItems,
-    `evidence_summary: ${taskState.evidenceSummary}`,
-    '</task_state>',
-  ].join('\n');
-}
-
-function deriveWorkingSummary(taskState: GraphTaskState, fallback?: string): string {
-  const parts = [
-    taskState.objective.trim() ? `Objective: ${taskState.objective.trim()}` : '',
-    taskState.evidenceSummary.trim() ? `Confirmed: ${taskState.evidenceSummary.trim()}` : '',
-    taskState.unresolvedItems.length > 0 ? `Unresolved: ${taskState.unresolvedItems.join('; ')}` : '',
-    taskState.nextAction.trim() ? `Next: ${taskState.nextAction.trim()}` : '',
-  ].filter((value) => value.length > 0);
-  return (parts.join('\n') || fallback || '').trim();
-}
-
-function stripJsonCodeFence(text: string): string {
-  const trimmed = text.trim();
-  if (trimmed.startsWith('```')) {
-    return trimmed.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
-  }
-  return trimmed;
-}
-
-function parseStructuredJson<T>(schema: z.ZodType<T>, text: string): T | null {
-  const cleaned = stripJsonCodeFence(text);
-  if (!cleaned) {
-    return null;
-  }
-  try {
-    return schema.parse(JSON.parse(cleaned));
-  } catch {
-    try {
-      return schema.parse(JSON.parse(jsonrepair(cleaned)));
-    } catch {
-      return null;
+function buildCompactToolResultText(result: SerializedToolResult): string {
+  if (result.success) {
+    const rawResult =
+      typeof result.result === 'string' ? result.result.trim() : result.result !== undefined ? JSON.stringify(result.result) : '';
+    if (rawResult) {
+      return `${result.name}: ${rawResult.length <= 180 ? rawResult : `${rawResult.slice(0, 177)}...`}`;
     }
+    return `${result.name}: success`;
   }
+
+  const errorText = result.error?.trim() || result.errorType?.trim() || 'failed';
+  return `${result.name}: ${errorText.length <= 180 ? errorText : `${errorText.slice(0, 177)}...`}`;
 }
 
-function isConciseClarifyingQuestion(text: string): boolean {
-  const trimmed = text.trim();
-  if (!trimmed.endsWith('?')) {
-    return false;
+function buildDeterministicRuntimeSummary(
+  state: Pick<AgentGraphState, 'toolResults' | 'messages' | 'replyText'>,
+  options?: {
+    paused?: boolean;
+    continuationLimitReached?: boolean;
+  },
+): string {
+  const parts: string[] = [];
+  const successful = state.toolResults.filter((result) => result.success);
+  const failed = state.toolResults.filter((result) => !result.success);
+  const latestAssistantText = findLatestAssistantText(state.messages as BaseMessage[]);
+
+  if (successful.length > 0) {
+    parts.push(`Verified so far: ${successful.map((result) => buildCompactToolResultText(result)).join('; ')}`);
   }
-  if (trimmed.length > 240) {
-    return false;
+  if (failed.length > 0) {
+    parts.push(`Issues encountered: ${failed.map((result) => buildCompactToolResultText(result)).join('; ')}`);
   }
-  return trimmed.split(/\r?\n/).length <= 3;
-}
-
-function buildRepairHint(taskState: GraphTaskState, draftReplyText: string): string {
-  const draft = draftReplyText.trim();
-  return [
-    'The previous plain-text draft was premature.',
-    `Current task status: ${taskState.status}.`,
-    'If the task is not fully satisfied, do not answer partially.',
-    'Either ask one concise clarifying question, call the next necessary tool, or wait until the task is ready for the dedicated final-answer step.',
-    draft ? `Premature draft to avoid repeating verbatim: ${draft}` : '',
-  ]
-    .filter((value) => value.length > 0)
-    .join(' ');
-}
-
-const TaskStateEnvelopeSchema = z.object({
-  taskState: GraphTaskStateSchema.optional(),
-  replyText: z.string().optional(),
-});
-
-function buildClarifyingQuestion(taskState: GraphTaskState): string {
-  const unresolved = taskState.unresolvedItems.find((item) => item.trim().length > 0);
-  if (unresolved) {
-    return `Before I continue, can you clarify: ${unresolved}?`;
+  if (latestAssistantText) {
+    parts.push(`Latest assistant draft: ${latestAssistantText}`);
+  } else if (state.replyText.trim()) {
+    parts.push(state.replyText.trim());
   }
-  return 'Before I continue, what specific outcome should I optimize for?';
-}
-
-async function invokeStructuredTaskStateStep(params: {
-  kind: 'frame' | 'refresh';
-  state: AgentGraphState;
-  runtimeContext: AgentGraphRuntimeContext;
-  config: RunnableConfig;
-}): Promise<{
-  taskState: GraphTaskState;
-  replyText: string;
-  workingSummary: string;
-  rebudgeting?: GraphRebudgetEvent;
-  strictFailure: boolean;
-}> {
-  const fallbackObjective = buildFallbackObjective(params.state.messages as BaseMessage[]);
-  const previousTaskState = isTaskStateValid(params.state.taskState)
-    ? params.state.taskState
-    : normalizeTaskState({
-        raw: null,
-        fallbackObjective,
-      });
-  const promptLines =
-    params.kind === 'frame'
-      ? [
-          'You are framing the internal task state before tool execution.',
-          'Do not call tools.',
-          'Return JSON only with keys `taskState` and optional `replyText`.',
-          'Set `taskState.objective` to the real user goal and define concrete success criteria.',
-          'Set `taskState.currentSubgoal` to the first actionable subgoal.',
-          'Set `taskState.nextAction` to the next concrete thing the runtime should do.',
-          'Set `taskState.status` to `needs_user_input` only when one user answer is required before safe progress.',
-          'If `taskState.status` is `needs_user_input`, place one concise clarification question in `replyText`.',
-          'Set `taskState.status` to `ready_to_answer` only if the request can be answered now without tools.',
-        ]
-      : [
-          'You are refreshing the internal task state after the runtime gathered new evidence.',
-          'Do not call tools.',
-          'Return JSON only with keys `taskState` and optional `replyText`.',
-          'Update what is confirmed, what remains unresolved, the current subgoal, and the next best action.',
-          'Set `taskState.status` to `ready_to_answer` only if the objective can now be answered completely without more tools.',
-          'Set `taskState.status` to `needs_user_input` only if one user answer is required next.',
-          'If `taskState.status` is `needs_user_input`, place one concise clarification question in `replyText`.',
-        ];
-  const buildPromptMessages = (extraSystemInstructions?: string, previousInvalidResponse?: string): BaseMessage[] => {
-    const messages: BaseMessage[] = [
-      new SystemMessage({
-        content: [
-          ...promptLines,
-          'Do not wrap the JSON in markdown fences.',
-          extraSystemInstructions ?? '',
-        ]
-          .filter((value) => value.length > 0)
-          .join(' '),
-      }),
-      ...(params.state.messages as BaseMessage[]),
-    ];
-    if (previousInvalidResponse?.trim()) {
-      messages.push(
-        new SystemMessage({
-          content: [
-            'The previous response was invalid for this structured step.',
-            'Correct it into strict JSON with keys `taskState` and optional `replyText` only.',
-            'Do not repeat explanations or markdown fences.',
-            `Previous invalid response:\n${previousInvalidResponse.trim()}`,
-          ].join(' '),
-        }),
-      );
-    }
-    return messages;
-  };
-
-  const invokeStructuredAttempt = async (
-    promptMessages: BaseMessage[],
-    temperature: number,
-  ): Promise<{
-    parsed: z.infer<typeof TaskStateEnvelopeSchema> | null;
-    rawText: string;
-    rebudgeting?: GraphRebudgetEvent;
-  }> => {
-    const prepared = buildRebudgetingEvent(
-      promptMessages,
-      params.runtimeContext.model,
-      params.runtimeContext.maxTokens,
-      {
-        workingSummary: params.state.workingSummary,
-        taskState: isTaskStateValid(params.state.taskState) ? params.state.taskState : null,
-      },
+  if (options?.continuationLimitReached) {
+    parts.push('I reached the continuation limit for this request.');
+  } else if (options?.paused) {
+    parts.push('I need another continuation window to keep going from the current tool state.');
+  }
+  if (parts.length === 0) {
+    parts.push(
+      options?.paused
+        ? 'I need another continuation window to keep going from the current tool state.'
+        : 'I completed part of the request but do not have enough structured output to finalize cleanly.',
     );
-    const responseMessage = await createGraphChatModel({
-      model: params.runtimeContext.model,
-      apiKey: params.runtimeContext.apiKey,
-      temperature,
-      timeoutMs: params.runtimeContext.timeoutMs,
-      maxTokens: params.runtimeContext.maxTokens,
-    }).invoke(prepared.trimmedMessages, params.config);
-    const aiMessage = AIMessage.isInstance(responseMessage)
-      ? responseMessage
-      : new AIMessage({ content: extractMessageText(responseMessage as BaseMessage) });
-    const rawText = extractMessageText(aiMessage).trim();
-    const parsed = parseStructuredJson(TaskStateEnvelopeSchema, rawText);
-    return {
-      parsed,
-      rawText,
-      rebudgeting: prepared.rebudgeting,
-    };
-  };
-
-  try {
-    const firstAttempt = await invokeStructuredAttempt(
-      buildPromptMessages(),
-      params.kind === 'frame'
-        ? Math.max(0, params.runtimeContext.temperature - 0.2)
-        : Math.max(0, params.runtimeContext.temperature - 0.1),
-    );
-    let parsed = firstAttempt.parsed?.taskState ? firstAttempt.parsed : null;
-    let rawText = firstAttempt.rawText;
-    let rebudgeting = firstAttempt.rebudgeting;
-
-    if (!parsed) {
-      const repairedAttempt = await invokeStructuredAttempt(
-        buildPromptMessages(
-          'Your next response must be valid strict JSON for the schema, not prose.',
-          rawText,
-        ),
-        0,
-      );
-      parsed = repairedAttempt.parsed?.taskState ? repairedAttempt.parsed : null;
-      rawText = repairedAttempt.rawText;
-      rebudgeting = repairedAttempt.rebudgeting ?? rebudgeting;
-    }
-
-    if (!parsed?.taskState) {
-      throw new Error('Structured task-state step did not return a valid taskState payload.');
-    }
-
-    const taskState = normalizeTaskState({
-      raw: parsed.taskState,
-      previous: previousTaskState,
-      fallbackObjective,
-    });
-    const replyText =
-      taskState.status === 'needs_user_input'
-        ? parsed.replyText?.trim() || (isConciseClarifyingQuestion(rawText) ? rawText : buildClarifyingQuestion(taskState))
-        : '';
-    const workingSummary = deriveWorkingSummary(
-      taskState,
-      params.state.workingSummary || buildFallbackWorkingSummary(params.state),
-    );
-    return {
-      taskState,
-      replyText,
-      workingSummary,
-      rebudgeting,
-      strictFailure: false,
-    };
-  } catch (error) {
-    logger.warn(
-      {
-        error,
-        traceId: params.runtimeContext.traceId,
-        stepKind: params.kind,
-      },
-      'Structured task-state step failed; using fallback task state',
-    );
-    const taskState = normalizeTaskState({
-      raw: {
-        status: params.kind === 'frame' ? 'needs_user_input' : previousTaskState.status,
-        nextAction:
-          params.kind === 'frame'
-            ? 'Wait for the user to clarify the goal before continuing.'
-            : previousTaskState.nextAction,
-      },
-      previous: previousTaskState,
-      fallbackObjective,
-    });
-    return {
-      taskState,
-      replyText:
-        params.kind === 'frame'
-          ? buildClarifyingQuestion(taskState)
-          : taskState.status === 'needs_user_input'
-            ? buildClarifyingQuestion(taskState)
-            : '',
-      workingSummary: deriveWorkingSummary(
-        taskState,
-        params.state.workingSummary || buildFallbackWorkingSummary(params.state),
-      ),
-      rebudgeting: undefined,
-      strictFailure: true,
-    };
   }
+
+  return parts.join('\n\n').trim();
 }
 
 function createRuntimeContext(params: StartAgentGraphTurnParams): AgentGraphRuntimeContext {
@@ -831,8 +486,6 @@ function normalizeGraphResult(
     roundsCompleted: state.roundsCompleted,
     completedWindows: state.completedWindows,
     totalRoundsCompleted: state.totalRoundsCompleted,
-    workingSummary: state.workingSummary,
-    taskState: state.taskState,
     deduplicatedCallCount: state.deduplicatedCallCount,
     truncatedCallCount: state.truncatedCallCount,
     guardrailBlockedCallCount: state.guardrailBlockedCallCount,
@@ -851,37 +504,8 @@ function buildRebudgetingEvent(
   messages: BaseMessage[],
   model: string | undefined,
   maxTokens: number | undefined,
-  options?: {
-    workingSummary?: string;
-    taskState?: GraphTaskState | null;
-    repairHint?: string;
-  },
 ): { trimmedMessages: BaseMessage[]; rebudgeting: GraphRebudgetEvent } {
-  const systemMessages: BaseMessage[] = [];
-  if (options?.taskState && isTaskStateValid(options.taskState)) {
-    systemMessages.push(
-      new SystemMessage({
-        content: buildTaskStateBlock(options.taskState),
-      }),
-    );
-  }
-  if (options?.workingSummary?.trim()) {
-    systemMessages.push(
-      new SystemMessage({
-        content: `<working_summary>\n${options.workingSummary.trim()}\n</working_summary>`,
-      }),
-    );
-  }
-  if (options?.repairHint?.trim()) {
-    systemMessages.push(
-      new SystemMessage({
-        content: `<repair_hint>\n${options.repairHint.trim()}\n</repair_hint>`,
-      }),
-    );
-  }
-  const preparedMessages = toLlmMessages(
-    systemMessages.length > 0 ? [...systemMessages, ...messages] : messages,
-  );
+  const preparedMessages = toLlmMessages(messages);
   const modelConfig = getModelBudgetConfig(model);
   const budgetPlan = planBudget(modelConfig, {
     reservedOutputTokens: maxTokens ?? modelConfig.maxOutputTokens,
@@ -1007,120 +631,10 @@ function buildToolMessageFromOutcome(params: {
   });
 }
 
-function buildFallbackWorkingSummary(state: AgentGraphState): string {
-  const taskSummary = isTaskStateValid(state.taskState) ? deriveWorkingSummary(state.taskState) : '';
-  const successfulTools = state.toolResults.filter((result) => result.success).map((result) => result.name);
-  const failedTools = state.toolResults
-    .filter((result) => !result.success)
-    .map((result) => `${result.name}${result.error ? ` (${result.error})` : ''}`);
-  const parts: string[] = [];
-
-  if (taskSummary) {
-    parts.push(taskSummary);
-  }
-  if (successfulTools.length > 0) {
-    parts.push(`Verified so far: completed ${successfulTools.join(', ')}.`);
-  }
-  if (failedTools.length > 0) {
-    parts.push(`Issues encountered: ${failedTools.join('; ')}.`);
-  }
-  if (state.replyText.trim()) {
-    parts.push(state.replyText.trim());
-  }
-  if (parts.length === 0) {
-    parts.push('I have partial tool results but need another continuation window to finish the request.');
-  }
-
-  return parts.join('\n\n').trim();
-}
-
-async function buildContinuationSummary(params: {
-  state: AgentGraphState;
-  runtimeContext: AgentGraphRuntimeContext;
-  config: RunnableConfig;
-}): Promise<{ summaryText: string; workingSummary: string; rebudgeting?: GraphRebudgetEvent }> {
-  const taskState =
-    params.state.taskState.status === 'paused'
-      ? params.state.taskState
-      : {
-          ...params.state.taskState,
-          status: 'paused' as const,
-        };
-  const fallback =
-    deriveWorkingSummary(taskState, params.state.workingSummary || buildFallbackWorkingSummary(params.state)) ||
-    buildFallbackWorkingSummary(params.state);
-  const summaryPrompt = [
-    new SystemMessage({
-      content: [
-        'You are pausing an in-progress tool workflow.',
-        'Do not call tools.',
-        'Write a concise progress handoff for the user in plain text.',
-        'Include: what is confirmed so far, what is still unresolved, and what you would likely do next if they press Continue.',
-        'Do not mention internal graph state, checkpoints, windows, or tool protocol.',
-      ].join(' '),
-    }),
-    ...(params.state.messages as BaseMessage[]),
-  ];
-  const prepared = buildRebudgetingEvent(
-    summaryPrompt,
-    params.runtimeContext.model,
-    params.runtimeContext.maxTokens,
-    {
-      workingSummary: params.state.workingSummary || fallback,
-      taskState,
-    },
-  );
-
-  try {
-    const responseMessage = await createGraphChatModel({
-      model: params.runtimeContext.model,
-      apiKey: params.runtimeContext.apiKey,
-      temperature: Math.max(0, params.runtimeContext.temperature - 0.15),
-      timeoutMs: params.runtimeContext.timeoutMs,
-      maxTokens: params.runtimeContext.maxTokens,
-    }).invoke(prepared.trimmedMessages, params.config);
-    const aiMessage = AIMessage.isInstance(responseMessage)
-      ? responseMessage
-      : new AIMessage({ content: extractMessageText(responseMessage as BaseMessage) });
-    const summaryText = extractMessageText(aiMessage).trim() || fallback;
-    return {
-      summaryText,
-      workingSummary: summaryText,
-      rebudgeting: prepared.rebudgeting,
-    };
-  } catch (error) {
-    logger.warn(
-      { error, traceId: params.runtimeContext.traceId },
-      'Agent graph continuation summary generation failed; using fallback summary',
-    );
-    return {
-      summaryText: fallback,
-      workingSummary: fallback,
-      rebudgeting: prepared.rebudgeting,
-    };
-  }
-}
-
 function resolveContinueResumeNode(state: AgentGraphState): 'llm_call' | 'route_tool_phase' {
   const lastMessage = state.messages.at(-1);
   if (lastMessage && AIMessage.isInstance(lastMessage) && (lastMessage.tool_calls?.length ?? 0) > 0) {
     return 'route_tool_phase';
-  }
-  return 'llm_call';
-}
-
-function routeAfterTaskStateRefresh(
-  state: AgentGraphState,
-  graphConfig: AgentGraphConfig,
-): GraphNodeName {
-  if (state.taskState.status === 'needs_user_input') {
-    return 'finalize_turn';
-  }
-  if (state.taskState.status === 'ready_to_answer' || state.taskState.status === 'completed') {
-    return 'finalize_answer';
-  }
-  if (isTimedOut(state, graphConfig) || state.roundsCompleted >= graphConfig.maxSteps) {
-    return 'pause_for_continue';
   }
   return 'llm_call';
 }
@@ -1187,83 +701,20 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
       description: 'Read-only ToolNode execution for Sage.',
     });
 
-  const frameTaskNode = async (
-    state: AgentGraphState,
-    config: RunnableConfig,
-  ): Promise<Command<unknown, Partial<AgentGraphState>, GraphNodeName>> => {
-    const runtimeContext = resolveRuntimeContext(state, config);
-    const framed = await invokeStructuredTaskStateStep({
-      kind: 'frame',
-      state,
-      runtimeContext,
-      config,
-    });
-    const nextState: Partial<AgentGraphState> = {
-      taskState: framed.taskState,
-      workingSummary: framed.workingSummary,
-      replyText: framed.taskState.status === 'needs_user_input' ? framed.replyText : '',
-      draftReplyText: '',
-      repairHint: '',
-      answerRepairCount: 0,
-      resumeContext: runtimeContext,
-    };
-
-    if (framed.strictFailure) {
-      return new Command({
-        goto: 'finalize_turn',
-        update: {
-          ...nextState,
-          terminationReason: 'assistant_reply',
-          finalization: {
-            attempted: true,
-            succeeded: false,
-            fallbackUsed: true,
-            returnedToolCallCount: 0,
-            completedAt: nowIso(),
-            terminationReason: 'assistant_reply',
-            rebudgeting: framed.rebudgeting,
-          },
-        },
-      });
-    }
-
-    if (framed.taskState.status === 'needs_user_input') {
-      return new Command({
-        goto: 'finalize_turn',
-        update: {
-          ...nextState,
-          terminationReason: 'assistant_reply',
-          finalization: {
-            attempted: true,
-            succeeded: true,
-            fallbackUsed: false,
-            returnedToolCallCount: 0,
-            completedAt: nowIso(),
-            terminationReason: 'assistant_reply',
-            rebudgeting: framed.rebudgeting,
-          },
-        },
-      });
-    }
-
-    if (framed.taskState.status === 'ready_to_answer' || framed.taskState.status === 'completed') {
-      return new Command({
-        goto: 'finalize_answer',
-        update: nextState,
-      });
-    }
-
-    return new Command({
-      goto: 'llm_call',
-      update: nextState,
-    });
-  };
-
   const callModelNode = async (
     state: AgentGraphState,
     config: RunnableConfig,
   ): Promise<Command<unknown, Partial<AgentGraphState>, GraphNodeName>> => {
     const runtimeContext = resolveRuntimeContext(state, config);
+    if (isTimedOut(state, graphConfig) || state.roundsCompleted >= graphConfig.maxSteps) {
+      return new Command({
+        goto: 'pause_for_continue',
+        update: {
+          terminationReason: isTimedOut(state, graphConfig) ? 'graph_timeout' : 'continue_prompt',
+          resumeContext: runtimeContext,
+        },
+      });
+    }
     const toolContext = buildToolContext(state, runtimeContext, 'turn');
     const toolsEnabled =
       runtimeContext.activeToolNames.length > 0 &&
@@ -1281,11 +732,6 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
       state.messages as BaseMessage[],
       runtimeContext.model,
       runtimeContext.maxTokens,
-      {
-        workingSummary: state.workingSummary,
-        taskState: isTaskStateValid(state.taskState) ? state.taskState : null,
-        repairHint: state.repairHint,
-      },
     );
     const baseModel = createGraphChatModel({
       model: runtimeContext.model,
@@ -1313,9 +759,6 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
             : 'route_tool_phase',
         update: {
           messages: [aiMessage],
-          draftReplyText: '',
-          repairHint: '',
-          answerRepairCount: 0,
           terminationReason:
             isTimedOut(state, graphConfig)
               ? 'graph_timeout'
@@ -1327,81 +770,16 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
       });
     }
 
-    if (isConciseClarifyingQuestion(replyText)) {
-      const taskState = normalizeTaskState({
-        raw: {
-          status: 'needs_user_input',
-          nextAction: 'Wait for the user to answer the clarification question.',
-        },
-        previous: state.taskState,
-        fallbackObjective: buildFallbackObjective(state.messages as BaseMessage[]),
-      });
-      return new Command({
-        goto: 'finalize_turn',
-        update: {
-          messages: [aiMessage],
-          replyText,
-          workingSummary: deriveWorkingSummary(taskState, state.workingSummary),
-          taskState,
-          draftReplyText: '',
-          repairHint: '',
-          answerRepairCount: 0,
-          terminationReason: 'assistant_reply',
-          finalization: {
-            attempted: true,
-            succeeded: true,
-            fallbackUsed: false,
-            returnedToolCallCount: 0,
-            completedAt: nowIso(),
-            terminationReason: 'assistant_reply',
-            rebudgeting: prepared.rebudgeting,
-          },
-          resumeContext: runtimeContext,
-        },
-      });
-    }
-
-    if (state.taskState.status === 'ready_to_answer' || state.taskState.status === 'completed') {
-      return new Command({
-        goto: 'finalize_answer',
-        update: {
-          messages: [aiMessage],
-          draftReplyText: replyText,
-          repairHint: '',
-          answerRepairCount: 0,
-          resumeContext: runtimeContext,
-        },
-      });
-    }
-
-    if (state.answerRepairCount < 1) {
-      return new Command({
-        goto: 'llm_call',
-        update: {
-          draftReplyText: replyText,
-          repairHint: buildRepairHint(state.taskState, replyText),
-          answerRepairCount: state.answerRepairCount + 1,
-          resumeContext: runtimeContext,
-        },
-      });
-    }
-
-    const fallbackSummary = deriveWorkingSummary(
-      state.taskState,
-      state.workingSummary || replyText || buildFallbackWorkingSummary(state),
-    );
     return new Command({
       goto: 'finalize_turn',
       update: {
-        workingSummary: fallbackSummary,
-        draftReplyText: replyText,
-        repairHint: '',
-        answerRepairCount: 0,
+        messages: [aiMessage],
+        replyText,
         terminationReason: 'assistant_reply',
         finalization: {
           attempted: true,
-          succeeded: false,
-          fallbackUsed: true,
+          succeeded: true,
+          fallbackUsed: false,
           returnedToolCallCount: 0,
           completedAt: nowIso(),
           terminationReason: 'assistant_reply',
@@ -1522,7 +900,7 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
       config as Parameters<typeof readToolsSubgraph.invoke>[1],
     )) as Partial<AgentGraphState>;
     return new Command({
-      goto: state.pendingWriteCall ? 'approval_gate' : 'refresh_task_state',
+      goto: state.pendingWriteCall ? 'approval_gate' : 'llm_call',
       update,
     });
   };
@@ -1532,7 +910,7 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
     config: RunnableConfig,
   ): Promise<Command<unknown, Partial<AgentGraphState>, GraphNodeName>> => {
     if (!state.pendingWriteCall) {
-      return new Command({ goto: 'refresh_task_state', update: {} });
+      return new Command({ goto: 'llm_call', update: {} });
     }
 
     const runtimeContext = resolveRuntimeContext(state, config);
@@ -1589,7 +967,7 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
     });
 
     return new Command({
-      goto: 'refresh_task_state',
+      goto: 'llm_call',
       update: {
         pendingWriteCall: null,
         messages: [toolMessage],
@@ -1605,7 +983,7 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
   ): Promise<Command<unknown, Partial<AgentGraphState>, GraphNodeName>> => {
     if (!state.pendingInterrupt) {
       return new Command({
-        goto: routeAfterTaskStateRefresh(state, graphConfig),
+        goto: 'llm_call',
         update: {},
       });
     }
@@ -1689,12 +1067,9 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
       }
 
       return new Command({
-        goto: isTaskStateValid(state.taskState) ? state.pendingInterrupt.resumeNode : 'frame_task',
+        goto: state.pendingInterrupt.resumeNode,
         update: {
           replyText: '',
-          draftReplyText: '',
-          repairHint: '',
-          answerRepairCount: 0,
           resumeContext: resumedContext,
           graphStatus: 'running',
           terminationReason: 'assistant_reply',
@@ -1707,13 +1082,6 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
           },
           roundsCompleted: 0,
           startedAtEpochMs: Date.now(),
-          taskState:
-            state.taskState.status === 'paused'
-              ? {
-                  ...state.taskState,
-                  status: 'executing',
-                }
-              : state.taskState,
           finalization: {
             attempted: false,
             succeeded: true,
@@ -1767,7 +1135,7 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
       });
 
       return new Command({
-        goto: 'refresh_task_state',
+        goto: 'llm_call',
         update: {
           messages: [toolMessage],
           resumeContext: resumedContext,
@@ -1810,7 +1178,7 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
     });
 
     return new Command({
-      goto: 'refresh_task_state',
+      goto: 'llm_call',
       update: {
         messages: [toolMessage],
         resumeContext: resumedContext,
@@ -1831,187 +1199,22 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
     });
   };
 
-  const refreshTaskStateNode = async (
-    state: AgentGraphState,
-    config: RunnableConfig,
-  ): Promise<Command<unknown, Partial<AgentGraphState>, GraphNodeName>> => {
-    const runtimeContext = resolveRuntimeContext(state, config);
-    const refreshed = await invokeStructuredTaskStateStep({
-      kind: 'refresh',
-      state,
-      runtimeContext,
-      config,
-    });
-    const nextTaskState = refreshed.taskState;
-    const nextWorkingSummary = refreshed.workingSummary;
-    const nextReplyText = nextTaskState.status === 'needs_user_input' ? refreshed.replyText : '';
-    const nextState: AgentGraphState = {
-      ...state,
-      taskState: nextTaskState,
-      workingSummary: nextWorkingSummary,
-      replyText: nextReplyText,
-      draftReplyText: '',
-      repairHint: '',
-      answerRepairCount: 0,
-    };
-    const nextRoute = routeAfterTaskStateRefresh(nextState, graphConfig);
-    const finalization =
-      nextRoute === 'finalize_turn'
-        ? {
-            attempted: true,
-            succeeded: !refreshed.strictFailure,
-            fallbackUsed: refreshed.strictFailure,
-            returnedToolCallCount: 0,
-            completedAt: nowIso(),
-            terminationReason: 'assistant_reply' as const,
-            rebudgeting: refreshed.rebudgeting,
-          }
-        : state.finalization;
-    return new Command({
-      goto: nextRoute,
-      update: {
-        taskState: nextTaskState,
-        workingSummary: nextWorkingSummary,
-        replyText: nextReplyText,
-        draftReplyText: '',
-        repairHint: '',
-        answerRepairCount: 0,
-        resumeContext: runtimeContext,
-        finalization,
-      },
-    });
-  };
-
-  const finalizeAnswerNode = async (
-    state: AgentGraphState,
-    config: RunnableConfig,
-  ): Promise<Command<unknown, Partial<AgentGraphState>, GraphNodeName>> => {
-    const runtimeContext = resolveRuntimeContext(state, config);
-    const promptMessages = [
-      new SystemMessage({
-        content: [
-          'You are writing the final user-facing answer for the current task.',
-          'Do not call tools.',
-          'Respond in plain text only.',
-          'Resolve the objective directly using the verified evidence already gathered.',
-          'If exactly one user detail is still required, ask one concise clarifying question instead of giving a partial answer.',
-        ].join(' '),
-      }),
-      ...(state.messages as BaseMessage[]),
-    ];
-    const prepared = buildRebudgetingEvent(
-      promptMessages,
-      runtimeContext.model,
-      runtimeContext.maxTokens,
-      {
-        workingSummary: state.workingSummary,
-        taskState: isTaskStateValid(state.taskState) ? state.taskState : null,
-      },
-    );
-    const fallbackText =
-      state.draftReplyText.trim() ||
-      state.workingSummary.trim() ||
-      buildFallbackWorkingSummary(state);
-
-    try {
-      const responseMessage = await createGraphChatModel({
-        model: runtimeContext.model,
-        apiKey: runtimeContext.apiKey,
-        temperature: Math.max(0, runtimeContext.temperature - 0.15),
-        timeoutMs: runtimeContext.timeoutMs,
-        maxTokens: runtimeContext.maxTokens,
-      }).invoke(prepared.trimmedMessages, config);
-      const aiMessage = AIMessage.isInstance(responseMessage)
-        ? responseMessage
-        : new AIMessage({ content: extractMessageText(responseMessage as BaseMessage) });
-      const replyText = extractMessageText(aiMessage).trim() || fallbackText;
-      const isQuestion = isConciseClarifyingQuestion(replyText);
-      const taskState = normalizeTaskState({
-        raw: {
-          status: isQuestion ? 'needs_user_input' : 'completed',
-          nextAction: isQuestion ? 'Wait for the user to answer the clarification question.' : 'No further action is required.',
-        },
-        previous: state.taskState,
-        fallbackObjective: buildFallbackObjective(state.messages as BaseMessage[]),
-      });
-      return new Command({
-        goto: 'finalize_turn',
-        update: {
-          messages: [aiMessage],
-          replyText,
-          workingSummary: deriveWorkingSummary(taskState, state.workingSummary || fallbackText),
-          taskState,
-          draftReplyText: '',
-          repairHint: '',
-          answerRepairCount: 0,
-          terminationReason: 'assistant_reply',
-          finalization: {
-            attempted: true,
-            succeeded: true,
-            fallbackUsed: replyText === fallbackText && extractMessageText(aiMessage).trim().length === 0,
-            returnedToolCallCount: 0,
-            completedAt: nowIso(),
-            terminationReason: 'assistant_reply',
-            rebudgeting: prepared.rebudgeting,
-          },
-          resumeContext: runtimeContext,
-        },
-      });
-    } catch (error) {
-      logger.warn(
-        { error, traceId: runtimeContext.traceId },
-        'Final answer generation failed; using working summary fallback',
-      );
-      const taskState = normalizeTaskState({
-        raw: {
-          status: 'completed',
-        },
-        previous: state.taskState,
-        fallbackObjective: buildFallbackObjective(state.messages as BaseMessage[]),
-      });
-      return new Command({
-        goto: 'finalize_turn',
-        update: {
-          replyText: fallbackText,
-          workingSummary: deriveWorkingSummary(taskState, state.workingSummary || fallbackText),
-          taskState,
-          draftReplyText: '',
-          repairHint: '',
-          answerRepairCount: 0,
-          terminationReason: 'assistant_reply',
-          finalization: {
-            attempted: true,
-            succeeded: false,
-            fallbackUsed: true,
-            returnedToolCallCount: 0,
-            completedAt: nowIso(),
-            terminationReason: 'assistant_reply',
-            rebudgeting: prepared.rebudgeting,
-          },
-          resumeContext: runtimeContext,
-        },
-      });
-    }
-  };
-
   const pauseForContinueNode = async (
     state: AgentGraphState,
     config: RunnableConfig,
   ): Promise<Command<unknown, Partial<AgentGraphState>, GraphNodeName>> => {
     const runtimeContext = resolveRuntimeContext(state, config);
     const nextCompletedWindows = state.completedWindows + 1;
-    const summary = await buildContinuationSummary({
-      state,
-      runtimeContext,
-      config,
-    });
+    const summaryText = buildDeterministicRuntimeSummary(state, { paused: true });
 
     if (nextCompletedWindows >= GRAPH_CONTINUATION_MAX_WINDOWS) {
+      const limitText = `${buildDeterministicRuntimeSummary(state, {
+        continuationLimitReached: true,
+      })}\n\nAsk me in a new message if you want me to keep going from here.`;
       return new Command({
         goto: 'finalize_turn',
         update: {
-          replyText: `${summary.summaryText}\n\nI reached the continuation limit for this request. Ask me in a new message if you want me to keep going from here.`,
-          workingSummary: summary.workingSummary,
+          replyText: limitText,
           completedWindows: nextCompletedWindows,
           graphStatus: 'completed',
           terminationReason: 'max_windows_reached',
@@ -2022,7 +1225,6 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
             returnedToolCallCount: 0,
             completedAt: nowIso(),
             terminationReason: 'max_windows_reached',
-            rebudgeting: summary.rebudgeting,
           },
         },
       });
@@ -2038,19 +1240,14 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
       pauseKind: isTimedOut(state, graphConfig) ? 'graph_timeout' : 'step_window_exhausted',
       completedWindows: nextCompletedWindows,
       maxWindows: GRAPH_CONTINUATION_MAX_WINDOWS,
-      summaryText: summary.summaryText,
+      summaryText,
       resumeNode: resolveContinueResumeNode(state),
     });
 
     return new Command({
       goto: 'resume_interrupt',
       update: {
-        replyText: summary.summaryText,
-        workingSummary: summary.workingSummary,
-        taskState: {
-          ...state.taskState,
-          status: 'paused',
-        },
+        replyText: summaryText,
         completedWindows: nextCompletedWindows,
         graphStatus: 'interrupted',
         terminationReason: 'continue_prompt',
@@ -2074,7 +1271,6 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
           returnedToolCallCount: 0,
           completedAt: nowIso(),
           terminationReason: 'continue_prompt',
-          rebudgeting: summary.rebudgeting,
         },
       },
     });
@@ -2089,35 +1285,26 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
     state: AgentGraphStateSchema,
     context: AgentGraphConfigurableSchema,
   })
-    .addNode('frame_task', frameTaskNode, {
-      ends: ['llm_call', 'finalize_answer', 'finalize_turn'],
-    })
     .addNode('llm_call', callModelNode, {
-      ends: ['route_tool_phase', 'pause_for_continue', 'finalize_answer', 'finalize_turn', 'llm_call'],
+      ends: ['route_tool_phase', 'pause_for_continue', 'finalize_turn'],
     })
     .addNode('route_tool_phase', routeToolPhaseNode, {
       ends: ['execute_read_tools', 'approval_gate', 'llm_call'],
     })
     .addNode('execute_read_tools', executeReadToolsNode, {
-      ends: ['approval_gate', 'refresh_task_state'],
+      ends: ['approval_gate', 'llm_call'],
     })
     .addNode('approval_gate', approvalGateNode, {
-      ends: ['resume_interrupt', 'refresh_task_state'],
-    })
-    .addNode('refresh_task_state', refreshTaskStateNode, {
-      ends: ['llm_call', 'pause_for_continue', 'finalize_answer', 'finalize_turn'],
-    })
-    .addNode('finalize_answer', finalizeAnswerNode, {
-      ends: ['finalize_turn'],
+      ends: ['resume_interrupt', 'llm_call'],
     })
     .addNode('pause_for_continue', pauseForContinueNode, {
       ends: ['resume_interrupt', 'finalize_turn'],
     })
     .addNode('resume_interrupt', resumeInterruptNode, {
-      ends: ['frame_task', 'llm_call', 'route_tool_phase', 'finalize_turn', 'pause_for_continue', 'finalize_answer'],
+      ends: ['llm_call', 'route_tool_phase', 'finalize_turn'],
     })
     .addNode('finalize_turn', finalizeTurnNode)
-    .addEdge(START, 'frame_task')
+    .addEdge(START, 'llm_call')
     .addEdge('finalize_turn', END)
     .compile({
       checkpointer,
@@ -2332,16 +1519,11 @@ function buildInitialState(params: StartAgentGraphTurnParams): AgentGraphState {
     resumeContext: createRuntimeContext(params),
     pendingWriteCall: null,
     replyText: '',
-    draftReplyText: '',
-    repairHint: '',
-    answerRepairCount: 0,
     toolResults: [],
     files: [],
     roundsCompleted: 0,
     completedWindows: 0,
     totalRoundsCompleted: 0,
-    workingSummary: '',
-    taskState: getDefaultTaskState(),
     deduplicatedCallCount: 0,
     truncatedCallCount: 0,
     guardrailBlockedCallCount: 0,

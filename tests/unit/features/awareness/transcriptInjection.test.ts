@@ -137,7 +137,6 @@ describe('transcript injection', () => {
       roundsCompleted: 0,
       completedWindows: 0,
       totalRoundsCompleted: 0,
-      workingSummary: '',
       deduplicatedCallCount: 0,
       truncatedCallCount: 0,
       guardrailBlockedCallCount: 0,

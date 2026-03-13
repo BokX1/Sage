@@ -1,8 +1,48 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { HumanMessage } from '@langchain/core/messages';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { AIMessage, HumanMessage } from '@langchain/core/messages';
 
-const { loggerWarnMock } = vi.hoisted(() => ({
+const {
+  loggerWarnMock,
+  modelInvokeMock,
+  getLastAiToolCallsMock,
+  buildAgentGraphConfigMock,
+  executeDurableToolTaskMock,
+  createGraphContinuationSessionMock,
+} = vi.hoisted(() => ({
   loggerWarnMock: vi.fn(),
+  modelInvokeMock: vi.fn(async () => new HumanMessage({ content: 'unused' })),
+  getLastAiToolCallsMock: vi.fn((messages: Array<{ tool_calls?: unknown[] }>) => {
+    const last = messages.at(-1);
+    return Array.isArray(last?.tool_calls) ? last.tool_calls : [];
+  }),
+  buildAgentGraphConfigMock: vi.fn(() => ({
+    maxSteps: 2,
+    maxToolCallsPerStep: 3,
+    toolTimeoutMs: 1_000,
+    maxResultChars: 4_000,
+    maxDurationMs: 5_000,
+    recursionLimit: 8,
+    githubGroundedMode: false,
+  })),
+  executeDurableToolTaskMock: vi.fn(),
+  createGraphContinuationSessionMock: vi.fn(async () => ({
+    id: 'cont-1',
+    threadId: 'trace-pause-1',
+    originTraceId: 'trace-pause-1',
+    latestTraceId: 'trace-pause-1',
+    guildId: 'guild-1',
+    channelId: 'channel-1',
+    requestedByUserId: 'user-1',
+    status: 'pending',
+    pauseKind: 'step_window_exhausted',
+    completedWindows: 1,
+    maxWindows: 4,
+    summaryText: 'summary',
+    resumeNode: 'llm_call',
+    expiresAt: new Date('2026-03-14T00:00:00.000Z'),
+    createdAt: new Date('2026-03-14T00:00:00.000Z'),
+    updatedAt: new Date('2026-03-14T00:00:00.000Z'),
+  })),
 }));
 
 vi.mock('@/platform/config/env', () => ({
@@ -69,14 +109,16 @@ vi.mock('@/platform/llm/ai-provider-chat-model', () => ({
     }
 
     async invoke() {
-      return new HumanMessage({ content: 'unused' });
+      return modelInvokeMock();
     }
   },
 }));
 
 vi.mock('@/platform/llm/langchain-interop', () => ({
-  extractMessageText: vi.fn(() => 'unused'),
-  getLastAiToolCalls: vi.fn(() => []),
+  extractMessageText: vi.fn((message: { content?: unknown }) =>
+    typeof message?.content === 'string' ? message.content : 'unused'
+  ),
+  getLastAiToolCalls: getLastAiToolCallsMock,
   toLangChainMessages: vi.fn((messages: unknown[]) => messages),
   toLlmMessages: vi.fn((messages: unknown[]) => messages),
 }));
@@ -93,15 +135,7 @@ vi.mock('@/features/agent-runtime/observability/langsmith', () => ({
 }));
 
 vi.mock('@/features/agent-runtime/langgraph/config', () => ({
-  buildAgentGraphConfig: vi.fn(() => ({
-    maxSteps: 2,
-    maxToolCallsPerStep: 3,
-    toolTimeoutMs: 1_000,
-    maxResultChars: 4_000,
-    maxDurationMs: 5_000,
-    recursionLimit: 8,
-    githubGroundedMode: false,
-  })),
+  buildAgentGraphConfig: buildAgentGraphConfigMock,
 }));
 
 vi.mock('@/features/agent-runtime/langgraph/nativeTools', () => ({
@@ -111,7 +145,7 @@ vi.mock('@/features/agent-runtime/langgraph/nativeTools', () => ({
     definitions: new Map(),
   })),
   executeApprovedReviewTask: vi.fn(),
-  executeDurableToolTask: vi.fn(),
+  executeDurableToolTask: executeDurableToolTaskMock,
   isReadOnlyToolCall: vi.fn(() => false),
 }));
 
@@ -126,7 +160,17 @@ vi.mock('@/features/agent-runtime/toolControlSignals', () => ({
   },
 }));
 
-import { runGraphValueStream } from '@/features/agent-runtime/langgraph/runtime';
+vi.mock('@/features/agent-runtime/graphContinuationRepo', () => ({
+  GRAPH_CONTINUATION_MAX_WINDOWS: 4,
+  createGraphContinuationSession: createGraphContinuationSessionMock,
+  consumeGraphContinuationSession: vi.fn(),
+}));
+
+import {
+  runAgentGraphTurn,
+  runGraphValueStream,
+  shutdownAgentGraphRuntime,
+} from '@/features/agent-runtime/langgraph/runtime';
 
 function makeInterruptedState() {
   return {
@@ -152,24 +196,11 @@ function makeInterruptedState() {
     },
     pendingWriteCall: null,
     replyText: '',
-    draftReplyText: '',
-    repairHint: '',
-    answerRepairCount: 0,
     toolResults: [],
     files: [],
     roundsCompleted: 1,
     completedWindows: 1,
     totalRoundsCompleted: 1,
-    workingSummary: 'I confirmed the target state and need another step window to continue.',
-    taskState: {
-      objective: 'Update the Sage Persona safely.',
-      successCriteria: ['Get the requested persona update approved and applied.'],
-      currentSubgoal: 'Wait for approval outcome.',
-      nextAction: 'Resume once approval resolves.',
-      unresolvedItems: ['Approval decision for the pending write request'],
-      evidenceSummary: 'The requested write action was prepared and sent to approval review.',
-      status: 'paused',
-    },
     deduplicatedCallCount: 0,
     truncatedCallCount: 0,
     guardrailBlockedCallCount: 0,
@@ -218,6 +249,27 @@ function makeConfig() {
 describe('runGraphValueStream', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    modelInvokeMock.mockReset();
+    modelInvokeMock.mockResolvedValue(new HumanMessage({ content: 'unused' }));
+    getLastAiToolCallsMock.mockImplementation((messages: Array<{ tool_calls?: unknown[] }>) => {
+      const last = messages.at(-1);
+      return Array.isArray(last?.tool_calls) ? last.tool_calls : [];
+    });
+    buildAgentGraphConfigMock.mockReturnValue({
+      maxSteps: 2,
+      maxToolCallsPerStep: 3,
+      toolTimeoutMs: 1_000,
+      maxResultChars: 4_000,
+      maxDurationMs: 5_000,
+      recursionLimit: 8,
+      githubGroundedMode: false,
+    });
+    executeDurableToolTaskMock.mockReset();
+    createGraphContinuationSessionMock.mockClear();
+  });
+
+  afterEach(async () => {
+    await shutdownAgentGraphRuntime();
   });
 
   it('recovers the interrupted graph state when the stream throws after queueing approval', async () => {
@@ -340,5 +392,74 @@ describe('runGraphValueStream', () => {
     await expect(runGraphValueStream(graph as never, {} as never, makeConfig() as never)).rejects.toThrow(
       'stream failed',
     );
+  });
+
+  it('pauses immediately instead of forcing another plain-text model pass after the step window is exhausted', async () => {
+    await shutdownAgentGraphRuntime();
+    buildAgentGraphConfigMock.mockReturnValue({
+      maxSteps: 1,
+      maxToolCallsPerStep: 3,
+      toolTimeoutMs: 1_000,
+      maxResultChars: 4_000,
+      maxDurationMs: 5_000,
+      recursionLimit: 8,
+      githubGroundedMode: false,
+    });
+    modelInvokeMock.mockResolvedValueOnce(
+      new AIMessage({
+        content: '',
+        tool_calls: [
+          {
+            id: 'call-1',
+            name: 'discord_admin',
+            args: { action: 'update_server_instructions' },
+            type: 'tool_call',
+          },
+        ],
+      }),
+    );
+    executeDurableToolTaskMock.mockResolvedValueOnce({
+      kind: 'executed',
+      toolName: 'discord_admin',
+      callId: 'call-1',
+      content: '{"ok":true}',
+      result: {
+        name: 'discord_admin',
+        success: true,
+        result: { ok: true },
+        latencyMs: 12,
+      },
+      files: [],
+      status: 'executed',
+    });
+
+    const result = await runAgentGraphTurn({
+      traceId: 'trace-pause-1',
+      userId: 'user-1',
+      channelId: 'channel-1',
+      guildId: 'guild-1',
+      apiKey: 'test-api-key',
+      model: 'test-main-agent-model',
+      temperature: 0.6,
+      timeoutMs: 1_000,
+      maxTokens: 500,
+      messages: [new HumanMessage({ content: 'update the server persona' })],
+      activeToolNames: ['discord_admin'],
+      routeKind: 'single',
+      currentTurn: { invokerUserId: 'user-1' },
+      replyTarget: null,
+      invokedBy: 'mention',
+      invokerIsAdmin: true,
+    });
+
+    expect(result.graphStatus).toBe('interrupted');
+    expect(result.terminationReason).toBe('continue_prompt');
+    expect(result.pendingInterrupt).toMatchObject({
+      kind: 'continue_prompt',
+      completedWindows: 1,
+      maxWindows: 4,
+    });
+    expect(result.replyText).toContain('another continuation window');
+    expect(modelInvokeMock).toHaveBeenCalledTimes(1);
   });
 });

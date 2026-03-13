@@ -38,23 +38,23 @@ import { formatLiveVoiceContext } from '../voice/voiceConversationSessionStore';
 
 const SINGLE_ROUTE_KIND = 'single';
 
-function buildTaskStateTraceSnapshot(taskState: {
-  objective: string;
-  status: string;
-  unresolvedItems: string[];
-  currentSubgoal: string;
-  nextAction: string;
-  evidenceSummary: string;
-}) {
-  return {
-    objective: taskState.objective,
-    status: taskState.status,
-    unresolvedItemCount: taskState.unresolvedItems.length,
-    unresolvedItems: taskState.unresolvedItems,
-    currentSubgoal: taskState.currentSubgoal,
-    nextAction: taskState.nextAction,
-    evidenceSummary: taskState.evidenceSummary,
-  };
+function buildDeterministicToolSummary(toolResults: ToolResult[]): string {
+  const successful = toolResults
+    .filter((result) => result.success)
+    .map((result) => result.name);
+  const failed = toolResults
+    .filter((result) => !result.success)
+    .map((result) => `${result.name}${result.error ? ` (${result.error})` : ''}`);
+  const parts: string[] = [];
+
+  if (successful.length > 0) {
+    parts.push(`Completed so far: ${successful.join(', ')}.`);
+  }
+  if (failed.length > 0) {
+    parts.push(`Problems encountered: ${failed.join('; ')}.`);
+  }
+
+  return parts.join('\n\n').trim();
 }
 
 export interface RunChatTurnParams {
@@ -304,7 +304,6 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
   let graphBudgetJson: Record<string, unknown> | undefined;
   let toolResults: ToolResult[] = [];
   let finalReplyText: string;
-  let workingSummary = '';
   let files: Array<{ attachment: Buffer; name: string }> = [];
   let pendingInterrupt:
     | {
@@ -349,7 +348,6 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
       invokerIsAdmin: isAdmin,
     });
     finalReplyText = graphResult.replyText;
-    workingSummary = graphResult.workingSummary;
     files = graphResult.files;
     toolResults = graphResult.toolResults;
     pendingInterrupt =
@@ -382,7 +380,6 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
       roundsCompleted: graphResult.roundsCompleted,
       completedWindows: graphResult.completedWindows,
       totalRoundsCompleted: graphResult.totalRoundsCompleted,
-      workingSummary: graphResult.workingSummary,
       terminationReason: graphResult.terminationReason,
       toolResultCount: graphResult.toolResults.length,
       successfulToolCount,
@@ -396,7 +393,6 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
       graphStatus: graphResult.graphStatus,
       pendingInterrupt,
       interruptResolution: graphResult.interruptResolution,
-      taskState: buildTaskStateTraceSnapshot(graphResult.taskState),
       langSmithRunId,
       langSmithTraceId,
     };
@@ -427,9 +423,10 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
   const cleanedReplyText = scrubFinalReplyText({
     replyText: groundedReplyText,
   });
+  const fallbackToolSummary = buildDeterministicToolSummary(toolResults);
   const safeFinalReplyText =
     cleanedReplyText ||
-    workingSummary.trim() ||
+    fallbackToolSummary ||
     (pendingInterrupt?.kind === 'approval_review'
       ? ''
       : 'I completed part of the request but could not format a final response. Please ask me to try once more.');
@@ -437,7 +434,6 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
     route: SINGLE_ROUTE_KIND,
     model,
     graphRuntime: graphBudgetJson,
-    taskState: 'taskState' in graphBudgetJson ? graphBudgetJson.taskState : undefined,
     promptUserText:
       userText.length <= 6_000 ? userText : `${userText.slice(0, 6_000)}...`,
     promptUserTextTruncated: userText.length > 6_000,
@@ -636,9 +632,10 @@ export async function resumeContinuationChatTurn(
     const cleanedReplyText = scrubFinalReplyText({
       replyText: graphResult.replyText,
     });
+    const fallbackToolSummary = buildDeterministicToolSummary(graphResult.toolResults);
     const safeReplyText =
       cleanedReplyText ||
-      graphResult.workingSummary.trim() ||
+      fallbackToolSummary ||
       (pendingInterrupt?.kind === 'approval_review'
         ? ''
         : 'I completed part of the request but could not format a final response. Please ask me to continue again.');
@@ -663,7 +660,6 @@ export async function resumeContinuationChatTurn(
             graphStatus: graphResult.graphStatus,
             pendingInterrupt,
             interruptResolution: graphResult.interruptResolution,
-            taskState: buildTaskStateTraceSnapshot(graphResult.taskState),
           },
         },
         budgetJson: {
@@ -674,7 +670,6 @@ export async function resumeContinuationChatTurn(
             totalRoundsCompleted: graphResult.totalRoundsCompleted,
             terminationReason: graphResult.terminationReason,
             graphStatus: graphResult.graphStatus,
-            taskState: buildTaskStateTraceSnapshot(graphResult.taskState),
           },
         },
         tokenJson: {

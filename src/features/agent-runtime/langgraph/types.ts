@@ -9,24 +9,6 @@ export interface GraphToolFile {
   mimetype?: string;
 }
 
-export type GraphTaskStatus =
-  | 'framing'
-  | 'executing'
-  | 'needs_user_input'
-  | 'ready_to_answer'
-  | 'paused'
-  | 'completed';
-
-export interface GraphTaskState {
-  objective: string;
-  successCriteria: string[];
-  currentSubgoal: string;
-  nextAction: string;
-  unresolvedItems: string[];
-  evidenceSummary: string;
-  status: GraphTaskStatus;
-}
-
 export interface GraphRebudgetEvent {
   beforeCount: number;
   afterCount: number;
@@ -142,16 +124,11 @@ export interface AgentGraphState {
   resumeContext: AgentGraphRuntimeContext;
   pendingWriteCall: GraphToolCallDescriptor | null;
   replyText: string;
-  draftReplyText: string;
-  repairHint: string;
-  answerRepairCount: number;
   toolResults: SerializedToolResult[];
   files: GraphToolFile[];
   roundsCompleted: number;
   completedWindows: number;
   totalRoundsCompleted: number;
-  workingSummary: string;
-  taskState: GraphTaskState;
   deduplicatedCallCount: number;
   truncatedCallCount: number;
   guardrailBlockedCallCount: number;

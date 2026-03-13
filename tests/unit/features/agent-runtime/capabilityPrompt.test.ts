@@ -19,8 +19,6 @@ describe('capabilityPrompt', () => {
       // Assert
       expect(prompt).toContain('<execution_rules>');
       expect(prompt).toContain('Read exact runtime facts from <agent_state>');
-      expect(prompt).toContain('When present, treat <task_state> as the authoritative internal record of the current objective');
-      expect(prompt).toContain('When present, treat <working_summary> as the latest compact handoff of confirmed evidence');
       expect(prompt).toContain('Routed tools expose action-level `help`: `web`.');
       expect(prompt).toContain('Attachment retrieval behavior: you do not have access to retrieve historical files this turn.');
       expect(prompt).toContain('Treat <current_turn> as the authoritative structured facts for the current speaker, invocation kind, reply status, and continuity policy.');
@@ -36,10 +34,9 @@ describe('capabilityPrompt', () => {
       expect(prompt).toContain('For exact historical verification, exact Discord message-history tools are unavailable this turn.');
       expect(prompt).toContain('Image generation behavior: you do not have image generation capabilities this turn.');
       expect(prompt).toContain('Use native tool calls silently.');
-      expect(prompt).toContain('Frame the current request into an internal objective, success criteria, and next subgoal before you spend tool budget.');
-      expect(prompt).toContain('Maintain the current task state across rounds');
-      expect(prompt).toContain('Plain text with no tool calls is not automatically completion.');
-      expect(prompt).toContain('If the request is still incomplete, prefer one concise clarification question or the next necessary tool call over a partial answer.');
+      expect(prompt).toContain('Use tools only when they materially improve the answer or are required to complete the request.');
+      expect(prompt).toContain('Plain text with no tool calls is treated as the final answer for this turn.');
+      expect(prompt).toContain('If the request is still ambiguous, ask one concise clarifying question instead of guessing.');
       expect(prompt).toContain('If the runtime interrupts for approval');
       expect(prompt).toContain('If the runtime blocks a repeated call for this turn');
       expect(prompt).not.toContain('<server_instructions>');
@@ -116,7 +113,7 @@ describe('capabilityPrompt', () => {
       expect(prompt).toContain('Components V2 may be used freely');
       expect(prompt).toContain('`presentation` is not a cosmetic toggle');
       expect(prompt).toContain('IS_COMPONENTS_V2');
-      expect(prompt).toContain('use `discord_messages` action `send` with `presentation="plain" | "components_v2"` during the normal execution loop before the dedicated plain-text closeout step');
+      expect(prompt).toContain('use `discord_messages` action `send` with `presentation="plain" | "components_v2"` during the normal execution loop');
       expect(prompt).toContain('do not repeat the same answer again as a normal assistant reply');
       expect(prompt).toContain('componentsV2.blocks` types: `text`, `section`, `media_gallery`, `file`, `separator`, `action_row`');
     });
@@ -256,13 +253,13 @@ describe('capabilityPrompt', () => {
       expect(prompt).not.toContain('<reasoning_protocol>');
     });
 
-    it('teaches Discord-native delivery as a main-loop action and plain-text closeout as the terminal step', () => {
+    it('teaches Discord-native delivery as a main-loop action and plain-text as the fallback path', () => {
       const prompt = buildCapabilityPromptSection({
         activeTools: ['discord_messages'],
       });
 
       expect(prompt).toContain('If the answer needs Discord-native rendering, use `discord_messages.send` during the main execution loop.');
-      expect(prompt).toContain('The dedicated final-answer closeout step is plain-text only.');
+      expect(prompt).toContain('If you are not using Discord-native send, answer normally in plain text.');
     });
 
     it('is materially shorter than the previous verbose prompt shape', () => {

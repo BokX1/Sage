@@ -154,16 +154,6 @@ function makeGraphResult(overrides: Record<string, unknown> = {}) {
     roundsCompleted: 0,
     completedWindows: 0,
     totalRoundsCompleted: 0,
-    workingSummary: '',
-    taskState: {
-      objective: 'Answer the user request.',
-      successCriteria: ['Provide a complete answer or one clarification question.'],
-      currentSubgoal: 'Produce the final response.',
-      nextAction: 'Answer directly.',
-      unresolvedItems: [],
-      evidenceSummary: 'No extra evidence is required.',
-      status: 'completed',
-    },
     deduplicatedCallCount: 0,
     truncatedCallCount: 0,
     guardrailBlockedCallCount: 0,
@@ -259,20 +249,8 @@ describe('agentRuntime', () => {
     );
   });
 
-  it('persists task-state trace metadata from the graph runtime', async () => {
-    runAgentGraphTurnMock.mockResolvedValue(
-      makeGraphResult({
-        taskState: {
-          objective: 'Investigate the user request',
-          successCriteria: ['Confirm the current state', 'Answer with verified findings'],
-          currentSubgoal: 'Write the final answer',
-          nextAction: 'Answer directly.',
-          unresolvedItems: ['None'],
-          evidenceSummary: 'Required evidence was gathered.',
-          status: 'ready_to_answer',
-        },
-      }),
-    );
+  it('does not persist removed task-state metadata into trace budgets', async () => {
+    runAgentGraphTurnMock.mockResolvedValue(makeGraphResult());
 
     await runChatTurn({
       traceId: 'trace-task-state',
@@ -289,12 +267,8 @@ describe('agentRuntime', () => {
 
     expect(updateTraceEndMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        budgetJson: expect.objectContaining({
-          taskState: expect.objectContaining({
-            objective: 'Investigate the user request',
-            status: 'ready_to_answer',
-            unresolvedItemCount: 1,
-          }),
+        budgetJson: expect.not.objectContaining({
+          taskState: expect.anything(),
         }),
       }),
     );
@@ -455,7 +429,6 @@ describe('agentRuntime', () => {
         terminationReason: 'continue_prompt',
         completedWindows: 1,
         totalRoundsCompleted: 2,
-        workingSummary: 'Verified the first batch of results.',
         pendingInterrupt: {
           kind: 'continue_prompt',
           continuationId: 'cont-1',
