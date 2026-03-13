@@ -167,7 +167,7 @@ export class ChannelSummaryScheduler {
     }
 
     const guildApiKey = await getGuildApiKey(state.guildId);
-    const apiKey = guildApiKey ?? appConfig.LLM_API_KEY;
+    const apiKey = guildApiKey ?? appConfig.AI_PROVIDER_API_KEY;
 
     const rollingSummary = await this.summarizeWindow({
       messages,

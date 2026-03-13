@@ -6,7 +6,7 @@
  * Side effects: none.
  * Error behavior: none.
  */
-export type LLMRole = 'system' | 'user' | 'assistant';
+export type LLMRole = 'system' | 'user' | 'assistant' | 'tool';
 
 /**
  * Describe a structured content part for LLM messages.
@@ -38,13 +38,30 @@ export type LLMMessageContent = string | LLMContentPart[];
  * Side effects: none.
  * Error behavior: none.
  */
-export interface LLMChatMessage {
-  role: LLMRole;
-  content: LLMMessageContent;
+export interface LLMToolCall {
+  id?: string;
+  name: string;
+  args: unknown;
 }
 
 /**
- * Describe a tool definition exposed to LLM providers.
+ * Describe a single chat message sent to or from the LLM.
+ *
+ * Details: supports native assistant tool-call transcripts and tool-result
+ * messages for compatible chat-completions providers.
+ *
+ * Side effects: none.
+ * Error behavior: none.
+ */
+export interface LLMChatMessage {
+  role: LLMRole;
+  content: LLMMessageContent;
+  toolCalls?: LLMToolCall[];
+  toolCallId?: string;
+}
+
+/**
+ * Describe a tool definition exposed to AI providers over the compatible chat-completions contract.
  *
  * Details: conforms to the provider's function/tool schema structure.
  *
@@ -58,20 +75,6 @@ export interface ToolDefinition {
     description?: string;
     parameters: Record<string, unknown>;
   };
-}
-
-/**
- * Describe one structured tool call returned by an LLM provider.
- *
- * Details: carries the normalized tool name and parsed JSON arguments.
- *
- * Side effects: none.
- * Error behavior: none.
- */
-export interface LLMToolCall {
-  id?: string;
-  name: string;
-  args: unknown;
 }
 
 /**
@@ -90,7 +93,13 @@ export interface LLMRequest {
   maxTokens?: number;
   responseFormat?: 'text' | 'json_object';
   tools?: ToolDefinition[];
-  toolChoice?: string | 'auto' | 'none' | { type: 'function'; function: { name: string } };
+  toolChoice?:
+    | string
+    | 'auto'
+    | 'any'
+    | 'none'
+    | { type: 'function'; function: { name: string } }
+    | Record<string, unknown>;
   timeout?: number;
   signal?: AbortSignal;
 }
@@ -127,11 +136,10 @@ export interface LLMClient {
 }
 
 /**
- * Identify supported LLM providers.
+ * Identify the shared chat client contract used by Sage's non-graph flows.
  *
- * Details: currently limited to the Pollinations client runtime.
+ * Details: implementations target provider-neutral compatible chat-completions APIs.
  *
  * Side effects: none.
  * Error behavior: none.
  */
-export type LLMProviderName = 'pollinations';

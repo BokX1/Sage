@@ -95,12 +95,12 @@ Yes. Sage is MIT-licensed. Provider costs are separate from Sage's software lice
 <details>
 <summary><strong>What AI models does Sage use?</strong></summary>
 
-Sage's main chat loop uses one runtime chat model per turn:
+Sage's main chat loop uses one runtime agent model per turn:
 
-- **Chat turns:** `CHAT_MODEL` (starter default: `kimi`)
-- **Profile updates:** `PROFILE_CHAT_MODEL` (starter default: `deepseek`)
-- **Channel summaries:** `SUMMARY_MODEL` (starter default: `deepseek`)
-- **Guarded search fallback:** Sage can use `gemini-search`, `perplexity-fast`, and `perplexity-reasoning`, with the order varying by search depth (`quick`, `balanced`, `deep`)
+- **Main agent turns:** `AI_PROVIDER_MAIN_AGENT_MODEL` (required)
+- **Profile updates:** `AI_PROVIDER_PROFILE_AGENT_MODEL` (required)
+- **Channel summaries:** `AI_PROVIDER_SUMMARY_AGENT_MODEL` (required)
+- **Optional model budgets:** `AI_PROVIDER_MODEL_PROFILES_JSON` can refine per-model limits, but Sage falls back to base runtime budgets when it is omitted
 
 There is no route-mapped multi-agent pipeline in the current runtime.
 

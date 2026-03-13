@@ -25,7 +25,7 @@ function buildSmokeContext(): ToolExecutionContext {
     traceId: 'tool-smoke',
     userId: 'tool-smoke',
     channelId: 'tool-smoke',
-    apiKey: process.env.LLM_API_KEY,
+    apiKey: process.env.AI_PROVIDER_API_KEY,
   };
 }
 

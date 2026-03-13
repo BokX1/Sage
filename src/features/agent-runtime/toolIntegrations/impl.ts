@@ -54,13 +54,11 @@ const DEFAULT_EXA_SEARCH_URL = 'https://api.exa.ai/search';
 const DEFAULT_FIRECRAWL_BASE_URL = 'https://api.firecrawl.dev/v1';
 const DEFAULT_JINA_READER_BASE_URL = 'https://r.jina.ai/http://';
 const DEFAULT_IMAGE_GEN_TIMEOUT_MS = 360_000;
-const DEFAULT_IMAGE_MODEL = 'imagen-4';
-
 /**
  * Represents the SearchDepth type.
  */
 export type SearchDepth = 'quick' | 'balanced' | 'deep';
-type SearchProviderId = 'tavily' | 'exa' | 'searxng' | 'pollinations';
+type SearchProviderId = 'tavily' | 'exa' | 'searxng';
 type ScrapeProviderId = 'firecrawl' | 'crawl4ai' | 'jina' | 'raw_fetch' | 'nomnom';
 type LocalProviderId = 'searxng' | 'crawl4ai';
 type LocalProviderCooldownState = {
@@ -329,12 +327,6 @@ function decodeHtmlEntities(value: string): string {
   );
 }
 
-function extractAnswerSection(content: string): string {
-  const match = content.match(/answer:\s*([\s\S]*?)(?:\nsource urls?:|\nchecked on:|$)/i);
-  const answer = match?.[1]?.trim();
-  return answer && answer.length > 0 ? answer : content.trim();
-}
-
 function truncateWithNotice(text: string, maxChars: number): { text: string; truncated: boolean } {
   const max = Math.max(500, Math.floor(maxChars));
   if (text.length <= max) return { text, truncated: false };
@@ -511,18 +503,10 @@ function parseSearchProviderOrder(
   csv: string | undefined,
   options?: {
     preferredOrder?: SearchProviderId[];
-    allowPollinationsFallback?: boolean;
   },
 ): SearchProviderId[] {
-  const allowPollinationsFallback = options?.allowPollinationsFallback !== false;
-  const fallback: SearchProviderId[] = allowPollinationsFallback
-    ? ['tavily', 'exa', 'searxng', 'pollinations']
-    : ['tavily', 'exa', 'searxng'];
-  const valid = new Set<SearchProviderId>(
-    allowPollinationsFallback
-      ? ['tavily', 'exa', 'searxng', 'pollinations']
-      : ['tavily', 'exa', 'searxng'],
-  );
+  const fallback: SearchProviderId[] = ['tavily', 'exa', 'searxng'];
+  const valid = new Set<SearchProviderId>(['tavily', 'exa', 'searxng']);
   const preferredOrder = options?.preferredOrder ?? [];
   const sourceValues =
     preferredOrder.length > 0
@@ -539,9 +523,6 @@ function parseSearchProviderOrder(
     if (seen.has(provider)) continue;
     seen.add(provider);
     deduped.push(provider);
-  }
-  if (allowPollinationsFallback && !seen.has('pollinations')) {
-    deduped.push('pollinations');
   }
   return deduped.length > 0 ? deduped : fallback;
 }
@@ -757,108 +738,21 @@ async function searchWithSearxng(
   };
 }
 
-async function searchWithPollinations(
-  query: string,
-  depth: SearchDepth,
-  timeoutMs: number,
-  maxOutputTokens: number,
-  apiKey?: string,
-  signal?: AbortSignal,
-): Promise<SearchOutcome> {
-  const today = new Date().toISOString().slice(0, 10);
-  const models =
-    depth === 'quick'
-      ? ['gemini-search', 'perplexity-fast']
-      : depth === 'deep'
-        ? ['perplexity-reasoning', 'perplexity-fast', 'gemini-search']
-        : ['perplexity-fast', 'gemini-search', 'perplexity-reasoning'];
-  let lastContent = '';
-  let lastError: Error | null = null;
-
-  for (const model of models) {
-    try {
-      const client = createLLMClient('pollinations', { chatModel: model });
-      const response = await client.chat({
-        model,
-        apiKey,
-        temperature: 0.2,
-        maxTokens: maxOutputTokens,
-        timeout: timeoutMs,
-        signal,
-        messages: [
-          {
-            role: 'system',
-            content:
-              'You are a search tool. Return plain text only with this exact structure:\n' +
-              'Answer: <concise factual answer>\n' +
-              'Source URLs: <one or more URLs>\n' +
-              'Checked on: <YYYY-MM-DD>\n' +
-              'Use only sources you can cite with URLs.',
-          },
-          {
-            role: 'user',
-            content: `Search query: ${query}\nCurrent date: ${today}`,
-          },
-        ],
-      });
-
-      const content = (response.text ?? '').trim();
-      lastContent = content;
-      const sourceUrls = uniqueUrls(content);
-      if (sourceUrls.length === 0 && model !== models[models.length - 1]) continue;
-
-      return {
-        provider: 'pollinations',
-        model,
-        answer: extractAnswerSection(content),
-        sourceUrls,
-        results: sourceUrls.map((url) => ({ title: url, url })),
-        rawContent: content,
-      };
-    } catch (error) {
-      if (isAbortError(error)) throw error;
-      lastError = error instanceof Error ? error : new Error(String(error));
-      logger.warn({ error: lastError, model }, 'web.search pollinations attempt failed; trying next model');
-    }
-  }
-
-  if (lastContent.trim()) {
-    const sourceUrls = uniqueUrls(lastContent);
-    if (sourceUrls.length === 0) {
-      throw new Error('Pollinations fallback returned no source URLs');
-    }
-    return {
-      provider: 'pollinations',
-      model: models[models.length - 1],
-      answer: extractAnswerSection(lastContent),
-      sourceUrls,
-      results: sourceUrls.map((url) => ({ title: url, url })),
-      rawContent: lastContent,
-    };
-  }
-
-  throw new Error(lastError ? `Pollinations fallback failed: ${lastError.message}` : 'Pollinations fallback failed');
-}
-
 export async function runWebSearch(params: {
   query: string;
   depth: SearchDepth;
   maxResults?: number;
   apiKey?: string;
   providerOrder?: SearchProviderId[];
-  allowLlmFallback?: boolean;
   signal?: AbortSignal;
 }): Promise<Record<string, unknown>> {
   const timeoutMs = toInt((config.TOOL_WEB_SEARCH_TIMEOUT_MS as number | undefined), DEFAULT_WEB_SEARCH_TIMEOUT_MS, 5_000, 180_000);
-  const maxOutputTokens = toInt((config.AGENT_GRAPH_MAX_OUTPUT_TOKENS as number | undefined), 1_800, 128, 8_000);
   const configuredMaxResults = toInt((config.TOOL_WEB_SEARCH_MAX_RESULTS as number | undefined), DEFAULT_WEB_SEARCH_MAX_RESULTS, 1, 10);
   const maxResults = toInt(params.maxResults ?? configuredMaxResults, configuredMaxResults, 1, 10);
-  const allowLlmFallback = params.allowLlmFallback !== false;
   const providerOrder = parseSearchProviderOrder(
     config.TOOL_WEB_SEARCH_PROVIDER_ORDER as string | undefined,
     {
       preferredOrder: params.providerOrder,
-      allowPollinationsFallback: allowLlmFallback,
     },
   );
   const providersTried: string[] = [];
@@ -891,9 +785,7 @@ export async function runWebSearch(params: {
           ? await searchWithTavily(params.query, params.depth, maxResults, timeoutMs, params.signal)
           : provider === 'exa'
             ? await searchWithExa(params.query, params.depth, maxResults, timeoutMs, params.signal)
-            : provider === 'searxng'
-              ? await searchWithSearxng(params.query, maxResults, timeoutMs, params.signal)
-              : await searchWithPollinations(params.query, params.depth, timeoutMs, maxOutputTokens, params.apiKey, params.signal);
+            : await searchWithSearxng(params.query, maxResults, timeoutMs, params.signal);
 
       if (provider === 'searxng') {
         clearLocalProviderCooldown('searxng');
@@ -1059,7 +951,7 @@ async function scrapeWithNomnom(
   signal?: AbortSignal,
 ): Promise<{ provider: string; content: string; truncated: boolean }> {
   try {
-    const client = createLLMClient('pollinations', { chatModel: 'nomnom' });
+    const client = createLLMClient({ agentModel: 'nomnom' });
     const response = await client.chat({
       model: 'nomnom',
       temperature: 0.1,
@@ -1108,7 +1000,7 @@ export async function runAgenticWebScrape(params: {
   const maxChars = toInt(params.maxChars ?? configuredMaxChars, configuredMaxChars, 500, 50_000);
 
   try {
-    const client = createLLMClient('pollinations', { chatModel: 'nomnom' });
+    const client = createLLMClient({ agentModel: 'nomnom' });
     const response = await client.chat({
       model: 'nomnom',
       temperature: 0.1,
@@ -4741,9 +4633,9 @@ export async function generateImage(params: {
   const prompt = params.prompt.trim();
   if (!prompt) throw new Error('Prompt must not be empty.');
   const seed = Number.isFinite(params.seed) ? Math.max(0, Math.floor(params.seed as number)) : Math.floor(Math.random() * 1_000_000);
-  const model = params.model?.trim() || DEFAULT_IMAGE_MODEL;
-  const imageBaseUrl = normalizeImageBaseUrl(config.LLM_IMAGE_BASE_URL || config.LLM_BASE_URL);
-  const apiKey = params.apiKey?.trim() || config.LLM_API_KEY || '';
+  const model = params.model?.trim() || config.IMAGE_PROVIDER_MODEL.trim();
+  const imageBaseUrl = normalizeImageBaseUrl(config.IMAGE_PROVIDER_BASE_URL);
+  const apiKey = params.apiKey?.trim() || config.IMAGE_PROVIDER_API_KEY || '';
   const encodedPrompt = encodeURIComponent(prompt);
   const requestUrl = new URL(`${imageBaseUrl}/image/${encodedPrompt}`);
   requestUrl.searchParams.set('model', model);
@@ -4764,7 +4656,7 @@ export async function generateImage(params: {
   const logUrl = new URL(requestUrl.toString());
   if (logUrl.searchParams.has('key')) logUrl.searchParams.set('key', '[redacted]');
 
-  logger.info({ model, seed, imageBaseUrl, promptLength: prompt.length }, 'image_generate: requesting image from Pollinations');
+  logger.info({ model, seed, imageBaseUrl, promptLength: prompt.length }, 'image_generate: requesting image from configured image provider');
   const response = await fetchWithTimeout(
     requestUrl.toString(),
     { method: 'GET' },
@@ -4785,7 +4677,7 @@ export async function generateImage(params: {
   const mimetype = contentType?.split(';')[0]?.trim() || 'application/octet-stream';
 
   return {
-    provider: 'pollinations',
+    provider: 'image_provider',
     model,
     seed,
     prompt,

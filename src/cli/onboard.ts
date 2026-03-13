@@ -5,9 +5,17 @@ import dotenv from 'dotenv';
 import fs from 'fs';
 import path from 'path';
 
-const REQUIRED_KEYS = ['DISCORD_TOKEN', 'DISCORD_APP_ID', 'DATABASE_URL', 'SECRET_ENCRYPTION_KEY'] as const;
-const DEFAULT_CHAT_MODEL = 'kimi';
-const DEPRECATED_CHAT_MODEL = 'openai-large';
+const REQUIRED_KEYS = [
+  'DISCORD_TOKEN',
+  'DISCORD_APP_ID',
+  'DATABASE_URL',
+  'SECRET_ENCRYPTION_KEY',
+  'AI_PROVIDER_BASE_URL',
+  'AI_PROVIDER_API_KEY',
+  'AI_PROVIDER_MAIN_AGENT_MODEL',
+  'AI_PROVIDER_PROFILE_AGENT_MODEL',
+  'AI_PROVIDER_SUMMARY_AGENT_MODEL',
+] as const;
 
 type CliArgs = {
   help?: boolean;
@@ -176,8 +184,8 @@ Options:
   --discord-token <token>          Discord bot token
   --discord-app-id <id>            Discord application ID
   --database-url <url>             PostgreSQL connection string
-  --api-key <key>                  Optional global LLM API key
-  --model <id>                     Default chat model (default: kimi)
+  --api-key <key>                  AI provider API key
+  --model <id>                     AI provider main agent model
   --secret-encryption-key <hex>    64-hex encryption key
   --env-file <path>                Target env file (default: .env)
   --env-example <path>             Env template file (default: .env.example)
@@ -417,26 +425,17 @@ async function main() {
   const exampleLines = parseEnvExampleLines(fs.readFileSync(envExamplePath, 'utf8'));
   const values = new Map(existingEnv);
 
-  if (!values.has('LLM_API_KEY') && values.has('POLLINATIONS_API_KEY')) {
-    values.set('LLM_API_KEY', values.get('POLLINATIONS_API_KEY') as string);
-    values.delete('POLLINATIONS_API_KEY');
-  }
-  if (!values.has('CHAT_MODEL') && values.has('POLLINATIONS_MODEL')) {
-    values.set('CHAT_MODEL', values.get('POLLINATIONS_MODEL') as string);
-    values.delete('POLLINATIONS_MODEL');
-  }
-
   if (args.discordToken) values.set('DISCORD_TOKEN', args.discordToken);
   if (args.discordAppId) values.set('DISCORD_APP_ID', args.discordAppId);
   if (args.databaseUrl) values.set('DATABASE_URL', args.databaseUrl);
-  if (args.apiKey !== undefined) values.set('LLM_API_KEY', args.apiKey);
+  if (args.apiKey !== undefined) values.set('AI_PROVIDER_API_KEY', args.apiKey);
   if (args.secretEncryptionKey) {
     if (!isValidEncryptionKey(args.secretEncryptionKey)) {
       throw new Error('SECRET_ENCRYPTION_KEY must be exactly 64 hex characters.');
     }
     values.set('SECRET_ENCRYPTION_KEY', args.secretEncryptionKey);
   }
-  if (args.model) values.set('CHAT_MODEL', args.model);
+  if (args.model) values.set('AI_PROVIDER_MAIN_AGENT_MODEL', args.model);
 
   const dockerDefaults = getDockerComposeDefaults(repoRoot);
   const dockerDatabaseUrl = dockerDefaults
@@ -498,59 +497,70 @@ async function main() {
     values.set('SECRET_ENCRYPTION_KEY', generateEncryptionKey());
   }
 
-  if (args.apiKey === undefined && interactive && !args.nonInteractive) {
-    const shouldUpdateApiKey = args.yes
-      ? true
-      : !values.get('LLM_API_KEY')
-        ? await prompts.askConfirm('Set an optional global LLM_API_KEY now?', false)
-        : await prompts.askConfirm('LLM_API_KEY already exists. Update it?', false);
-    if (shouldUpdateApiKey) {
-      const apiKey = await prompts.askSecret('LLM_API_KEY (optional, leave empty to unset)', false);
-      if (apiKey) values.set('LLM_API_KEY', apiKey);
-      else values.delete('LLM_API_KEY');
+  const ensureTextValue = async (
+    key: string,
+    promptMessage: string,
+    providedValue?: string,
+    validate?: (value: string) => string | undefined,
+  ) => {
+    if (
+      values.get(key) &&
+      (!interactive || args.yes || !(await prompts.askConfirm(`${key} already exists. Overwrite?`, false)))
+    ) {
+      return;
     }
-  }
 
-  const { loadModelCatalog, findModelInCatalog, suggestModelIds, getModelCatalogState } =
-    await import('../platform/llm/model-catalog');
-  const spinner = prompts.spinner();
-  spinner.start('Loading model catalog...');
-  const catalog = await loadModelCatalog();
-  spinner.stop('Model catalog loaded.');
-  const availableModels = Object.values(catalog)
-    .map((model) => model.id)
-    .sort((a, b) => a.localeCompare(b));
+    if (providedValue !== undefined) {
+      values.set(key, providedValue.trim());
+      return;
+    }
 
-  let chosenModel = values.get('CHAT_MODEL') || DEFAULT_CHAT_MODEL;
-  if (args.model) {
-    chosenModel = args.model;
-  } else if (interactive && !args.nonInteractive) {
-    while (true) {
-      const modelInput = await prompts.askText(
-        `Default chat model (type "list" to print available models)`,
-        chosenModel,
-      );
-      if (modelInput.toLowerCase() === 'list') {
-        prompts.note(availableModels.join('\n'), 'Available models');
-        continue;
+    if (args.nonInteractive) {
+      throw new Error(`${key} is required in non-interactive mode.`);
+    }
+
+    const nextValue = await prompts.askText(promptMessage, values.get(key), validate);
+    values.set(key, nextValue.trim());
+  };
+
+  await ensureTextValue('AI_PROVIDER_BASE_URL', 'AI provider base URL (OpenAI-compatible)', undefined, (value) => {
+    try {
+      const parsed = new URL(value);
+      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+        return 'URL must use http:// or https://';
       }
-      chosenModel = modelInput;
-      break;
+      return undefined;
+    } catch {
+      return 'Enter a valid URL.';
+    }
+  });
+
+  if (
+    !values.get('AI_PROVIDER_API_KEY') ||
+    (shouldPrompt('AI_PROVIDER_API_KEY') &&
+      (await prompts.askConfirm('AI_PROVIDER_API_KEY already exists. Overwrite?', false)))
+  ) {
+    if (args.apiKey !== undefined) {
+      values.set('AI_PROVIDER_API_KEY', args.apiKey.trim());
+    } else if (args.nonInteractive) {
+      throw new Error('AI_PROVIDER_API_KEY is required in non-interactive mode.');
+    } else {
+      values.set(
+        'AI_PROVIDER_API_KEY',
+        await prompts.askSecret('AI provider API key', true),
+      );
     }
   }
 
-  if (chosenModel.trim().toLowerCase() === DEPRECATED_CHAT_MODEL) {
-    throw new Error(`CHAT_MODEL "${DEPRECATED_CHAT_MODEL}" is unsupported. Use "${DEFAULT_CHAT_MODEL}" or another active model.`);
-  }
-
-  const validatedModel = await findModelInCatalog(chosenModel, { refreshIfMissing: true });
-  if (!validatedModel.model) {
-    const suggestions = suggestModelIds(chosenModel, validatedModel.catalog);
-    const hint = suggestions.length > 0 ? ` Did you mean: ${suggestions.join(', ')}?` : '';
-    throw new Error(`Unknown model "${chosenModel}".${hint}`);
-  }
-  values.set('CHAT_MODEL', validatedModel.model.id);
-  const catalogState = getModelCatalogState();
+  await ensureTextValue('AI_PROVIDER_MAIN_AGENT_MODEL', 'AI provider main agent model', args.model);
+  await ensureTextValue(
+    'AI_PROVIDER_PROFILE_AGENT_MODEL',
+    'AI provider profile agent model',
+  );
+  await ensureTextValue(
+    'AI_PROVIDER_SUMMARY_AGENT_MODEL',
+    'AI provider summary agent model',
+  );
 
   for (const key of REQUIRED_KEYS) {
     const value = values.get(key);
@@ -587,9 +597,11 @@ async function main() {
         `DISCORD_TOKEN: ${maskValue(values.get('DISCORD_TOKEN'))}`,
         `DISCORD_APP_ID: ${maskValue(values.get('DISCORD_APP_ID'))}`,
         `DATABASE_URL: ${values.get('DATABASE_URL') ? '[SET]' : '[NOT SET]'}`,
-        `LLM_API_KEY: ${maskValue(values.get('LLM_API_KEY'))}`,
-        `CHAT_MODEL: ${values.get('CHAT_MODEL') || DEFAULT_CHAT_MODEL}`,
-        `Model catalog source: ${catalogState.source}`,
+        `AI_PROVIDER_BASE_URL: ${values.get('AI_PROVIDER_BASE_URL') ? '[SET]' : '[NOT SET]'}`,
+        `AI_PROVIDER_API_KEY: ${maskValue(values.get('AI_PROVIDER_API_KEY'))}`,
+        `AI_PROVIDER_MAIN_AGENT_MODEL: ${values.get('AI_PROVIDER_MAIN_AGENT_MODEL') || '[NOT SET]'}`,
+        `AI_PROVIDER_PROFILE_AGENT_MODEL: ${values.get('AI_PROVIDER_PROFILE_AGENT_MODEL') || '[NOT SET]'}`,
+        `AI_PROVIDER_SUMMARY_AGENT_MODEL: ${values.get('AI_PROVIDER_SUMMARY_AGENT_MODEL') || '[NOT SET]'}`,
       ].join('\n'),
       'Preview',
     );
@@ -600,9 +612,11 @@ async function main() {
         `Updated ${envPath}`,
         `DISCORD_TOKEN: ${maskValue(values.get('DISCORD_TOKEN'))}`,
         `DISCORD_APP_ID: ${maskValue(values.get('DISCORD_APP_ID'))}`,
-        `LLM_API_KEY: ${maskValue(values.get('LLM_API_KEY'))}`,
-        `CHAT_MODEL: ${values.get('CHAT_MODEL') || DEFAULT_CHAT_MODEL}`,
-        `Model catalog source: ${catalogState.source}`,
+        `AI_PROVIDER_BASE_URL: ${values.get('AI_PROVIDER_BASE_URL') ? '[SET]' : '[NOT SET]'}`,
+        `AI_PROVIDER_API_KEY: ${maskValue(values.get('AI_PROVIDER_API_KEY'))}`,
+        `AI_PROVIDER_MAIN_AGENT_MODEL: ${values.get('AI_PROVIDER_MAIN_AGENT_MODEL') || '[NOT SET]'}`,
+        `AI_PROVIDER_PROFILE_AGENT_MODEL: ${values.get('AI_PROVIDER_PROFILE_AGENT_MODEL') || '[NOT SET]'}`,
+        `AI_PROVIDER_SUMMARY_AGENT_MODEL: ${values.get('AI_PROVIDER_SUMMARY_AGENT_MODEL') || '[NOT SET]'}`,
       ].join('\n'),
       'Configuration',
     );

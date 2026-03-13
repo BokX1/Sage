@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { HumanMessage, SystemMessage, type BaseMessage } from '@langchain/core/messages';
 import type { CurrentTurnContext } from '@/features/agent-runtime/continuityContext';
 
 const mockConfig = vi.hoisted(() => ({
@@ -17,26 +18,26 @@ const mockConfig = vi.hoisted(() => ({
   AUTOPILOT_MODE: 'manual',
   RAW_MESSAGE_TTL_DAYS: 3,
   RING_BUFFER_MAX_MESSAGES_PER_CHANNEL: 200,
-  CHAT_MODEL: 'kimi',
+  AI_PROVIDER_MAIN_AGENT_MODEL: 'test-main-agent-model',
   CHAT_MAX_OUTPUT_TOKENS: 800,
   AGENT_GRAPH_MAX_OUTPUT_TOKENS: 800,
   AGENT_GRAPH_GITHUB_GROUNDED_MODE: false,
   TIMEOUT_CHAT_MS: 1_000,
-  LLM_API_KEY: 'test-key',
-  TRACE_ENABLED: false,
+  AI_PROVIDER_API_KEY: 'test-key',
+  SAGE_TRACE_DB_ENABLED: false,
+  LANGSMITH_TRACING: false,
 }));
 
 vi.mock('@/platform/config/env', () => ({
   config: mockConfig,
 }));
 
-const mockChat = vi.hoisted(() => ({
-  chat: vi.fn(),
-}));
 const mockGetGuildSagePersonaText = vi.hoisted(() => vi.fn());
+const mockRunAgentGraphTurn = vi.hoisted(() => vi.fn());
 
-vi.mock('@/platform/llm', () => ({
-  getLLMClient: () => mockChat,
+vi.mock('@/features/agent-runtime/langgraph/runtime', () => ({
+  runAgentGraphTurn: mockRunAgentGraphTurn,
+  resumeAgentGraphTurn: vi.fn(),
 }));
 
 vi.mock('@/features/settings/guildChannelSettings', () => ({
@@ -99,13 +100,13 @@ function makeMessage(overrides: Record<string, unknown> = {}) {
 }
 
 function getPromptCall() {
-  return mockChat.chat.mock.calls[0]?.[0] as {
-    messages: Array<{ role: string; content: string }>;
+  return mockRunAgentGraphTurn.mock.calls[0]?.[0] as {
+    messages: BaseMessage[];
   };
 }
 
 function getSystemMessageContent(): string {
-  const content = getPromptCall().messages[0]?.content;
+  const content = getPromptCall().messages.find((message) => SystemMessage.isInstance(message))?.content;
   if (typeof content !== 'string') {
     throw new Error('Expected system message content to be a string');
   }
@@ -113,7 +114,7 @@ function getSystemMessageContent(): string {
 }
 
 function getUserMessageContent(): string {
-  const content = getPromptCall().messages.find((message) => message.role === 'user')?.content;
+  const content = getPromptCall().messages.find((message) => HumanMessage.isInstance(message))?.content;
   if (typeof content !== 'string') {
     throw new Error('Expected user message content to be a string');
   }
@@ -128,8 +129,31 @@ function extractTagBlock(content: string, tagName: string): string | null {
 describe('transcript injection', () => {
   beforeEach(() => {
     clearChannel({ guildId: 'guild-1', channelId: 'channel-1' });
-    mockChat.chat.mockClear();
-    mockChat.chat.mockResolvedValue({ text: 'ok' });
+    mockRunAgentGraphTurn.mockClear();
+    mockRunAgentGraphTurn.mockResolvedValue({
+      replyText: 'ok',
+      toolResults: [],
+      files: [],
+      roundsCompleted: 0,
+      deduplicatedCallCount: 0,
+      truncatedCallCount: 0,
+      guardrailBlockedCallCount: 0,
+      roundEvents: [],
+      finalization: {
+        attempted: false,
+        succeeded: true,
+        fallbackUsed: false,
+        returnedToolCallCount: 0,
+        completedAt: new Date('2026-03-13T00:00:00.000Z').toISOString(),
+        terminationReason: 'assistant_reply',
+      },
+      terminationReason: 'assistant_reply',
+      graphStatus: 'completed',
+      approvalInterrupt: null,
+      approvalResolution: null,
+      langSmithRunId: null,
+      langSmithTraceId: null,
+    });
     mockGetGuildSagePersonaText.mockResolvedValue(null);
     vi.mocked(isLoggingEnabled).mockReturnValue(true);
   });

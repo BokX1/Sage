@@ -81,8 +81,8 @@ const CHECK_IDS = {
   dbConnect: 'db.connect',
   dbMigrations: 'db.migrations',
   servicesTika: 'services.tika',
-  llmModels: 'llm.models',
-  llmPing: 'llm.ping',
+  aiProviderConfig: 'ai_provider.config',
+  aiProviderPing: 'ai_provider.ping',
 } as const;
 
 const CHECK_ORDER: readonly string[] = [
@@ -95,8 +95,8 @@ const CHECK_ORDER: readonly string[] = [
   CHECK_IDS.dbConnect,
   CHECK_IDS.dbMigrations,
   CHECK_IDS.servicesTika,
-  CHECK_IDS.llmModels,
-  CHECK_IDS.llmPing,
+  CHECK_IDS.aiProviderConfig,
+  CHECK_IDS.aiProviderPing,
 ] as const;
 
 function printHelp() {
@@ -279,7 +279,7 @@ function redactDatabaseUrl(url: string): string {
   }
 }
 
-function normalizeLlmBaseUrl(baseUrl: string): string {
+function normalizeAiProviderBaseUrl(baseUrl: string): string {
   return baseUrl.trim().replace(/\/$/, '').replace(/\/chat\/completions$/, '');
 }
 
@@ -764,8 +764,8 @@ function buildChecks(): CheckDefinition[] {
       },
     },
     {
-      id: CHECK_IDS.llmModels,
-      title: 'LLM model catalog',
+      id: CHECK_IDS.aiProviderConfig,
+      title: 'AI provider agent profile config',
       run: async (ctx) => {
         if (!ctx.parsedEnv) {
           return {
@@ -773,67 +773,45 @@ function buildChecks(): CheckDefinition[] {
             message: 'Skipped (environment schema failed)',
           };
         }
-        const baseUrl = normalizeLlmBaseUrl(ctx.parsedEnv.LLM_BASE_URL);
-        const modelsUrl = `${baseUrl}/models`;
-        try {
-          const response = await fetch(modelsUrl, { signal: AbortSignal.timeout(8000) });
-          if (!response.ok) {
-            return {
-              status: 'fail',
-              message: `Model catalog request failed (${response.status})`,
-              details: [modelsUrl],
-            };
-          }
-          const payload = (await response.json()) as unknown;
-          const items: unknown[] = Array.isArray(payload)
-            ? payload
-            : Array.isArray((payload as { data?: unknown[] })?.data)
-              ? ((payload as { data?: unknown[] }).data as unknown[])
-              : Array.isArray((payload as { models?: unknown[] })?.models)
-                ? ((payload as { models?: unknown[] }).models as unknown[])
-                : [];
 
-          const modelIds = items
-            .map((item) => {
-              if (!item || typeof item !== 'object') return null;
-              const value = (item as Record<string, unknown>).id;
-              if (!value) return null;
-              return String(value).trim();
-            })
-            .filter((item): item is string => !!item);
-
-          if (modelIds.length === 0) {
-            return {
-              status: 'warn',
-              message: 'Model catalog reachable but returned no models',
-              details: [modelsUrl],
-            };
-          }
-
-          if (!modelIds.includes(ctx.parsedEnv.CHAT_MODEL)) {
-            return {
-              status: 'warn',
-              message: `CHAT_MODEL (${ctx.parsedEnv.CHAT_MODEL}) not listed by provider`,
-              details: [`Available models: ${modelIds.slice(0, 20).join(', ')}`],
-            };
-          }
-
+        if (!ctx.parsedEnv.AI_PROVIDER_MODEL_PROFILES_JSON) {
           return {
             status: 'pass',
-            message: `Model catalog reachable and CHAT_MODEL (${ctx.parsedEnv.CHAT_MODEL}) is available`,
+            message: 'No explicit AI provider model profiles configured; Sage will use base runtime budgets',
+          };
+        }
+
+        try {
+          const profiles = JSON.parse(ctx.parsedEnv.AI_PROVIDER_MODEL_PROFILES_JSON) as Record<string, unknown>;
+          const configuredModels = [
+            ctx.parsedEnv.AI_PROVIDER_MAIN_AGENT_MODEL,
+            ctx.parsedEnv.AI_PROVIDER_PROFILE_AGENT_MODEL,
+            ctx.parsedEnv.AI_PROVIDER_SUMMARY_AGENT_MODEL,
+          ];
+          const missingProfiles = configuredModels.filter((modelId) => !(modelId in profiles));
+          if (missingProfiles.length > 0) {
+            return {
+              status: 'pass',
+              message: 'AI provider model profiles are partial; Sage will fall back to base runtime budgets for missing entries',
+              details: missingProfiles.map((modelId) => `Using base budget defaults for: ${modelId}`),
+            };
+          }
+          return {
+            status: 'pass',
+            message: 'Configured AI provider agent models all have explicit profile entries',
           };
         } catch (error) {
           return {
             status: 'fail',
-            message: `Model catalog request failed (${modelsUrl})`,
+            message: 'AI_PROVIDER_MODEL_PROFILES_JSON could not be parsed',
             details: [String(error)],
           };
         }
       },
     },
     {
-      id: CHECK_IDS.llmPing,
-      title: 'Live LLM ping',
+      id: CHECK_IDS.aiProviderPing,
+      title: 'Live AI provider ping',
       run: async (ctx) => {
         if (!getLlmPingEnabled(ctx.flags, ctx.envValues)) {
           return {
@@ -847,13 +825,13 @@ function buildChecks(): CheckDefinition[] {
             message: 'Skipped (environment schema failed)',
           };
         }
-        const baseUrl = normalizeLlmBaseUrl(ctx.parsedEnv.LLM_BASE_URL);
+        const baseUrl = normalizeAiProviderBaseUrl(ctx.parsedEnv.AI_PROVIDER_BASE_URL);
         const endpoint = `${baseUrl}/chat/completions`;
         const headers: Record<string, string> = {
           'content-type': 'application/json',
         };
-        if (ctx.parsedEnv.LLM_API_KEY) {
-          headers.authorization = `Bearer ${ctx.parsedEnv.LLM_API_KEY}`;
+        if (ctx.parsedEnv.AI_PROVIDER_API_KEY) {
+          headers.authorization = `Bearer ${ctx.parsedEnv.AI_PROVIDER_API_KEY}`;
         }
         try {
           const response = await fetch(endpoint, {
@@ -861,7 +839,7 @@ function buildChecks(): CheckDefinition[] {
             headers,
             signal: AbortSignal.timeout(10000),
             body: JSON.stringify({
-              model: ctx.parsedEnv.CHAT_MODEL,
+              model: ctx.parsedEnv.AI_PROVIDER_MAIN_AGENT_MODEL,
               messages: [{ role: 'user', content: 'Respond with exactly: OK' }],
               max_tokens: 8,
               temperature: 0,
@@ -871,7 +849,7 @@ function buildChecks(): CheckDefinition[] {
             const bodySnippet = (await response.text()).slice(0, 200);
             return {
               status: 'fail',
-              message: `LLM ping failed (${response.status})`,
+              message: `AI provider ping failed (${response.status})`,
               details: [bodySnippet],
             };
           }
@@ -881,12 +859,12 @@ function buildChecks(): CheckDefinition[] {
           const content = payload.choices?.[0]?.message?.content?.trim() ?? '';
           return {
             status: 'pass',
-            message: content ? `LLM ping succeeded (${content})` : 'LLM ping succeeded',
+            message: content ? `AI provider ping succeeded (${content})` : 'AI provider ping succeeded',
           };
         } catch (error) {
           return {
             status: 'fail',
-            message: 'LLM ping request failed',
+            message: 'AI provider ping request failed',
             details: [String(error)],
           };
         }

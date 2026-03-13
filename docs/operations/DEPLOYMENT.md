@@ -29,7 +29,7 @@ How to run Sage in production with the current repo layout.
 | PostgreSQL | Prisma-compatible | Required |
 | Discord Bot Token | - | From the Discord Developer Portal |
 | Discord App ID | - | Used for bot invite generation and Discord app identity |
-| Provider API key or Pollinations server BYOP flow | - | Required for Sage to make upstream model requests |
+| Explicit AI provider config or hosted server BYOP flow | - | Required for Sage to make upstream model requests |
 | Docker | Optional | Used by the repo's support-service compose files |
 
 > [!NOTE]
@@ -94,25 +94,27 @@ docker compose -f config/services/self-host/docker-compose.social-graph.yml up -
 DISCORD_TOKEN=your_discord_bot_token
 DISCORD_APP_ID=your_discord_app_id
 DATABASE_URL=postgresql://user:password@host:5432/sage?schema=public
-LLM_PROVIDER=pollinations
-LLM_BASE_URL=https://gen.pollinations.ai/v1
+AI_PROVIDER_BASE_URL=https://your-provider.example/v1
 ```
 
-These values show the current starter/default integration. For self-hosting, `LLM_BASE_URL` can point at any OpenAI-compatible chat endpoint.
+These values show the provider-neutral runtime contract. `AI_PROVIDER_BASE_URL` can point at any OpenAI-compatible chat endpoint.
 
 ### Recommended production variables
 
 ```env
 AUTOPILOT_MODE=manual
-TRACE_ENABLED=true
+LANGSMITH_TRACING=false
+LANGSMITH_API_KEY=your_langsmith_api_key
+LANGSMITH_PROJECT=sage
+SAGE_TRACE_DB_ENABLED=true
 LOG_LEVEL=info
 FILE_INGEST_TIKA_BASE_URL=http://127.0.0.1:9998
 ```
 
 Key notes:
 
-- If you set `LLM_API_KEY`, Sage can use that host-level key with your configured OpenAI-compatible provider.
-- If you do **not** set `LLM_API_KEY`, each server using the hosted Pollinations path must configure a server key through Sage's setup card and modal.
+- If you set `AI_PROVIDER_API_KEY`, Sage can use that host-level key with your configured AI provider.
+- If you do **not** set `AI_PROVIDER_API_KEY`, runtime chat cannot boot; the hosted server-key flow is a separate provider surface, not a runtime fallback.
 - Admin actions and approval-gated flows use Discord-native permissions. Grant `Manage Server` or `Administrator` only to approved operators.
 - Social-graph export is disabled by setting `KAFKA_BROKERS=`.
 
@@ -130,6 +132,8 @@ See **[⚙️ Configuration Reference](../reference/CONFIGURATION.md)** for the 
 npx prisma migrate deploy
 ```
 
+Sage now ships a single current-schema Prisma baseline. For a fresh environment or an intentional hard reset, `npx prisma migrate deploy` applies that baseline directly.
+
 ### Upgrades
 
 When upgrading Sage:
@@ -143,7 +147,7 @@ npm start
 ```
 
 > [!WARNING]
-> Back up your database before production schema changes.
+> Sage's current Prisma history is a hard-reset baseline, not a layered compatibility chain. Treat upgrades as rebuild-oriented unless you have your own migration and rollback strategy.
 
 ---
 
@@ -157,8 +161,9 @@ npm start
 - [ ] `npm run doctor` passes
 - [ ] `npm run check:trust` passes on the release candidate
 - [ ] Tika is reachable when file ingestion is enabled
-- [ ] A global `LLM_API_KEY` is configured for your chosen provider or operators know how to use Sage's hosted BYOP setup card flow
-- [ ] `TRACE_ENABLED=true` if you want runtime trace rows
+- [ ] `AI_PROVIDER_BASE_URL`, `AI_PROVIDER_API_KEY`, `AI_PROVIDER_MAIN_AGENT_MODEL`, `AI_PROVIDER_PROFILE_AGENT_MODEL`, and `AI_PROVIDER_SUMMARY_AGENT_MODEL` are set explicitly; `AI_PROVIDER_MODEL_PROFILES_JSON` is optional
+- [ ] If you want hosted execution tracing, set `LANGSMITH_TRACING=true` and provide `LANGSMITH_API_KEY`
+- [ ] `SAGE_TRACE_DB_ENABLED=true` if you want compact `AgentTrace` ledger rows in Postgres
 - [ ] Approved moderators/admins have `Manage Server` or `Administrator`
 - [ ] Process supervision is configured (`systemd`, PM2, container restart policy, or similar)
 - [ ] Database backups are scheduled
@@ -190,7 +195,6 @@ Useful log patterns:
 | `[info] Logged in as` | Bot started successfully |
 | `Sage is chat-first now...` | Legacy slash-command input is being redirected as expected |
 | `[error] P1001` | Database connection issue |
-| `[warn] Model degraded` | Model health has dropped |
 
 ### Traces
 

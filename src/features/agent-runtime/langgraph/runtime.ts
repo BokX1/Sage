@@ -1,110 +1,246 @@
-import { Annotation, Command, END, START, StateGraph, interrupt, MemorySaver } from '@langchain/langgraph';
-import { PostgresSaver } from '@langchain/langgraph-checkpoint-postgres';
+import {
+  Command,
+  END,
+  MemorySaver,
+  MessagesValue,
+  ReducedValue,
+  START,
+  StateGraph,
+  StateSchema,
+  interrupt,
+} from '@langchain/langgraph';
+import { ToolNode, toolsCondition } from '@langchain/langgraph/prebuilt';
+import { AIMessage, SystemMessage, ToolMessage, type BaseMessage } from '@langchain/core/messages';
 import type { RunnableConfig } from '@langchain/core/runnables';
-import type { LLMChatMessage } from '../../../platform/llm/llm-types';
-import { getLLMClient } from '../../../platform/llm';
+import { z } from 'zod';
+import { PostgresSaver } from '@langchain/langgraph-checkpoint-postgres';
+import { getModelBudgetConfig } from '../../../platform/llm/model-budget-config';
+import { planBudget, trimMessagesToBudget } from '../../../platform/llm/context-budgeter';
+import { AiProviderChatModel } from '../../../platform/llm/ai-provider-chat-model';
+import {
+  extractMessageText,
+  getLastAiToolCalls,
+  toLangChainMessages,
+  toLlmMessages,
+} from '../../../platform/llm/langchain-interop';
 import { config as appConfig } from '../../../platform/config/env';
 import { logger } from '../../../platform/logging/logger';
+import { createOrReuseApprovalReviewRequestFromSignal } from '../../admin/adminActionService';
 import type { ToolResult } from '../toolCallExecution';
 import type { ToolExecutionContext } from '../toolRegistry';
-import { ToolResultCache } from '../toolCache';
-import { buildScopedToolRegistry } from '../scopedToolRegistry';
-import {
-  createOrReuseApprovalReviewRequestFromSignal,
-  executeApprovedReviewRequest,
-} from '../../admin/adminActionService';
+import { ApprovalRequiredSignal } from '../toolControlSignals';
+import { createAgentRunTelemetry } from '../observability/langsmith';
 import { buildAgentGraphConfig, type AgentGraphConfig } from './config';
-import { buildGraphChatRequest } from './modelAdapter';
 import {
-  decodeGraphFiles,
-  executeToolCallStep,
-} from './toolRound';
+  buildActiveToolCatalog,
+  executeApprovedReviewTask,
+  executeDurableToolTask,
+  isReadOnlyToolCall,
+  type GraphToolCallDescriptor,
+} from './nativeTools';
 import type {
+  AgentGraphRuntimeContext,
   AgentGraphState,
   ApprovalResumeInput,
-  ApprovalResolutionState,
+  GraphRebudgetEvent,
+  GraphTurnTerminationReason,
   SerializedToolResult,
   ToolCallFinalizationEvent,
-  GraphTurnTerminationReason,
+  ToolCallRoundEvent,
 } from './types';
 
-const overwrite = <T>(_: T, right: T): T => right;
-const overwriteNullable = <T>(_: T | null, right: T | null): T | null => right;
-
-const AgentGraphStateAnnotation = Annotation.Root({
-  traceId: Annotation<string>({ reducer: overwrite, default: () => '' }),
-  originTraceId: Annotation<string>({ reducer: overwrite, default: () => '' }),
-  threadId: Annotation<string>({ reducer: overwrite, default: () => '' }),
-  userId: Annotation<string>({ reducer: overwrite, default: () => '' }),
-  channelId: Annotation<string>({ reducer: overwrite, default: () => '' }),
-  guildId: Annotation<string | null>({ reducer: overwriteNullable, default: () => null }),
-  apiKey: Annotation<string | undefined>({ reducer: overwrite, default: () => undefined }),
-  model: Annotation<string | undefined>({ reducer: overwrite, default: () => undefined }),
-  temperature: Annotation<number>({ reducer: overwrite, default: () => 0.6 }),
-  timeoutMs: Annotation<number | undefined>({ reducer: overwrite, default: () => undefined }),
-  maxTokens: Annotation<number | undefined>({ reducer: overwrite, default: () => undefined }),
-  invokedBy: Annotation<AgentGraphState['invokedBy']>({ reducer: overwrite, default: () => 'mention' }),
-  invokerIsAdmin: Annotation<boolean | undefined>({ reducer: overwrite, default: () => undefined }),
-  messages: Annotation<LLMChatMessage[]>({ reducer: overwrite, default: () => [] }),
-  activeToolNames: Annotation<string[]>({ reducer: overwrite, default: () => [] }),
-  routeKind: Annotation<string>({ reducer: overwrite, default: () => 'single' }),
-  currentTurn: Annotation<unknown>({ reducer: overwrite, default: () => null }),
-  replyTarget: Annotation<unknown>({ reducer: overwrite, default: () => null }),
-  pendingToolCalls: Annotation<AgentGraphState['pendingToolCalls']>({ reducer: overwrite, default: () => [] }),
-  pendingAssistantText: Annotation<string>({ reducer: overwrite, default: () => '' }),
-  replyText: Annotation<string>({ reducer: overwrite, default: () => '' }),
-  toolResults: Annotation<SerializedToolResult[]>({ reducer: overwrite, default: () => [] }),
-  files: Annotation<AgentGraphState['files']>({ reducer: overwrite, default: () => [] }),
-  roundsCompleted: Annotation<number>({ reducer: overwrite, default: () => 0 }),
-  deduplicatedCallCount: Annotation<number>({ reducer: overwrite, default: () => 0 }),
-  truncatedCallCount: Annotation<number>({ reducer: overwrite, default: () => 0 }),
-  guardrailBlockedCallCount: Annotation<number>({ reducer: overwrite, default: () => 0 }),
-  cancellationCount: Annotation<number>({ reducer: overwrite, default: () => 0 }),
-  roundEvents: Annotation<AgentGraphState['roundEvents']>({ reducer: overwrite, default: () => [] }),
-  finalization: Annotation<ToolCallFinalizationEvent>({
-    reducer: overwrite,
-    default: () => ({
-      attempted: false,
-      succeeded: true,
-      fallbackUsed: false,
-      returnedToolCallCount: 0,
-      completedAt: new Date().toISOString(),
-      terminationReason: 'assistant_reply',
-    }),
-  }),
-  terminationReason: Annotation<GraphTurnTerminationReason>({
-    reducer: overwrite,
-    default: () => 'assistant_reply',
-  }),
-  previousExecutedBatchFingerprint: Annotation<string | null>({
-    reducer: overwriteNullable,
-    default: () => null,
-  }),
-  previousSuccessfulReadObservationFingerprint: Annotation<string | null>({
-    reducer: overwriteNullable,
-    default: () => null,
-  }),
-  pendingApprovalResultsByFingerprint: Annotation<Record<string, SerializedToolResult>>({
-    reducer: overwrite,
-    default: () => ({}),
-  }),
-  callAttemptLedger: Annotation<AgentGraphState['callAttemptLedger']>({
-    reducer: overwrite,
-    default: () => ({}),
-  }),
-  sideEffectExecutedInLoop: Annotation<boolean>({ reducer: overwrite, default: () => false }),
-  graphStatus: Annotation<AgentGraphState['graphStatus']>({ reducer: overwrite, default: () => 'running' }),
-  startedAtEpochMs: Annotation<number>({ reducer: overwrite, default: () => Date.now() }),
-  approvalInterrupt: Annotation<AgentGraphState['approvalInterrupt']>({
-    reducer: overwriteNullable,
-    default: () => null,
-  }),
-  approvalResolution: Annotation<AgentGraphState['approvalResolution']>({
-    reducer: overwriteNullable,
-    default: () => null,
-  }),
-  traceEvents: Annotation<Record<string, unknown>[]>({ reducer: overwrite, default: () => [] }),
+const GraphToolCallDescriptorSchema = z.object({
+  id: z.string().optional(),
+  name: z.string(),
+  args: z.unknown(),
 });
+
+const GraphToolFileSchema = z.object({
+  name: z.string(),
+  dataBase64: z.string(),
+  mimetype: z.string().optional(),
+});
+
+const SerializedToolResultSchema = z.object({
+  name: z.string(),
+  success: z.boolean(),
+  result: z.unknown().optional(),
+  error: z.string().optional(),
+  errorType: z.string().optional(),
+  latencyMs: z.number(),
+  attachmentsMeta: z
+    .array(
+      z.object({
+        filename: z.string(),
+        mimetype: z.string().optional(),
+        byteLength: z.number(),
+      }),
+    )
+    .optional(),
+});
+
+const GraphRebudgetEventSchema = z.object({
+  beforeCount: z.number(),
+  afterCount: z.number(),
+  estimatedTokensBefore: z.number(),
+  estimatedTokensAfter: z.number(),
+  availableInputTokens: z.number(),
+  reservedOutputTokens: z.number(),
+  notes: z.array(z.string()),
+  trimmed: z.boolean(),
+});
+
+const ToolCallRoundEventSchema = z.object({
+  round: z.number(),
+  requestedCallCount: z.number(),
+  executedCallCount: z.number(),
+  deduplicatedCallCount: z.number(),
+  truncatedCallCount: z.number(),
+  guardrailBlockedCallCount: z.number(),
+  completedAt: z.string(),
+  rebudgeting: GraphRebudgetEventSchema.optional(),
+});
+
+const ToolCallFinalizationEventSchema = z.object({
+  attempted: z.boolean(),
+  succeeded: z.boolean(),
+  fallbackUsed: z.boolean(),
+  returnedToolCallCount: z.number(),
+  completedAt: z.string(),
+  terminationReason: z.enum(['assistant_reply', 'step_limit', 'graph_timeout', 'approval_interrupt']),
+  rebudgeting: GraphRebudgetEventSchema.optional(),
+});
+
+const ApprovalInterruptStateSchema = z.object({
+  requestId: z.string(),
+  call: GraphToolCallDescriptorSchema,
+  payload: z.unknown(),
+  coalesced: z.boolean().optional(),
+  expiresAtIso: z.string().optional(),
+});
+
+const ApprovalResolutionStateSchema = z.object({
+  requestId: z.string(),
+  decision: z.enum(['approved', 'rejected', 'expired']),
+  status: z.enum(['approved', 'rejected', 'expired', 'executed', 'failed']),
+  reviewerId: z.string().nullable().optional(),
+  decisionReasonText: z.string().nullable().optional(),
+  errorText: z.string().nullable().optional(),
+});
+
+const AgentGraphRuntimeSnapshotSchema = z.object({
+  traceId: z.string(),
+  originTraceId: z.string(),
+  threadId: z.string(),
+  userId: z.string(),
+  channelId: z.string(),
+  guildId: z.string().nullable(),
+  apiKey: z.string().optional(),
+  model: z.string().optional(),
+  temperature: z.number(),
+  timeoutMs: z.number().optional(),
+  maxTokens: z.number().optional(),
+  invokedBy: z.enum(['mention', 'reply', 'wakeword', 'autopilot', 'component']).optional(),
+  invokerIsAdmin: z.boolean().optional(),
+  activeToolNames: z.array(z.string()),
+  routeKind: z.string(),
+  currentTurn: z.unknown(),
+  replyTarget: z.unknown().nullable(),
+});
+
+const AgentGraphConfigurableSchema = z
+  .object({
+    traceId: z.string().optional(),
+    originTraceId: z.string().optional(),
+    threadId: z.string().optional(),
+    userId: z.string().optional(),
+    channelId: z.string().optional(),
+    guildId: z.string().nullable().optional(),
+    apiKey: z.string().optional(),
+    model: z.string().optional(),
+    temperature: z.number().optional(),
+    timeoutMs: z.number().optional(),
+    maxTokens: z.number().optional(),
+    invokedBy: z.enum(['mention', 'reply', 'wakeword', 'autopilot', 'component']).optional(),
+    invokerIsAdmin: z.boolean().optional(),
+    activeToolNames: z.array(z.string()).optional(),
+    routeKind: z.string().optional(),
+    currentTurn: z.unknown().optional(),
+    replyTarget: z.unknown().optional(),
+  })
+  .strip();
+
+const AgentGraphStateSchema = new StateSchema({
+  messages: MessagesValue,
+  resumeContext: AgentGraphRuntimeSnapshotSchema,
+  pendingWriteCall: z.union([GraphToolCallDescriptorSchema, z.null()]).default(null),
+  replyText: z.string().default(''),
+  toolResults: new ReducedValue(z.array(SerializedToolResultSchema).default([]), {
+    reducer: (left, right) => [...left, ...right],
+  }),
+  files: new ReducedValue(z.array(GraphToolFileSchema).default([]), {
+    reducer: (left, right) => [...left, ...right],
+  }),
+  roundsCompleted: new ReducedValue(z.number().default(0), {
+    reducer: (left, right) => left + right,
+  }),
+  deduplicatedCallCount: new ReducedValue(z.number().default(0), {
+    reducer: (left, right) => left + right,
+  }),
+  truncatedCallCount: new ReducedValue(z.number().default(0), {
+    reducer: (left, right) => left + right,
+  }),
+  guardrailBlockedCallCount: new ReducedValue(z.number().default(0), {
+    reducer: (left, right) => left + right,
+  }),
+  roundEvents: new ReducedValue(z.array(ToolCallRoundEventSchema).default([]), {
+    reducer: (left, right) => [...left, ...right],
+  }),
+  finalization: ToolCallFinalizationEventSchema.default({
+    attempted: false,
+    succeeded: true,
+    fallbackUsed: false,
+    returnedToolCallCount: 0,
+    completedAt: new Date(0).toISOString(),
+    terminationReason: 'assistant_reply',
+  }),
+  terminationReason: z
+    .enum(['assistant_reply', 'step_limit', 'graph_timeout', 'approval_interrupt'])
+    .default('assistant_reply'),
+  graphStatus: z.enum(['running', 'interrupted', 'completed', 'failed']).default('running'),
+  startedAtEpochMs: z.number().default(0),
+  approvalInterrupt: z.union([ApprovalInterruptStateSchema, z.null()]).default(null),
+  approvalResolution: z.union([ApprovalResolutionStateSchema, z.null()]).default(null),
+});
+
+type GraphNodeName =
+  | 'llm_call'
+  | 'route_tool_phase'
+  | 'execute_read_tools'
+  | 'approval_gate'
+  | 'execute_approved_write'
+  | 'finalize_reply'
+  | 'finalize_turn';
+
+const EMPTY_RUNTIME_CONTEXT: AgentGraphRuntimeContext = {
+  traceId: '',
+  originTraceId: '',
+  threadId: '',
+  userId: '',
+  channelId: '',
+  guildId: null,
+  apiKey: undefined,
+  model: undefined,
+  temperature: 0.6,
+  timeoutMs: undefined,
+  maxTokens: undefined,
+  invokedBy: 'mention',
+  invokerIsAdmin: undefined,
+  activeToolNames: [],
+  routeKind: 'single',
+  currentTurn: null,
+  replyTarget: null,
+};
 
 export interface StartAgentGraphTurnParams {
   traceId: string;
@@ -116,12 +252,12 @@ export interface StartAgentGraphTurnParams {
   temperature: number;
   timeoutMs?: number;
   maxTokens?: number;
-  messages: LLMChatMessage[];
+  messages: BaseMessage[];
   activeToolNames: string[];
   routeKind: string;
   currentTurn: unknown;
   replyTarget: unknown;
-  invokedBy?: AgentGraphState['invokedBy'];
+  invokedBy?: AgentGraphRuntimeContext['invokedBy'];
   invokerIsAdmin?: boolean;
 }
 
@@ -141,14 +277,14 @@ export interface AgentGraphTurnResult {
   deduplicatedCallCount: number;
   truncatedCallCount: number;
   guardrailBlockedCallCount: number;
-  cancellationCount: number;
-  roundEvents: AgentGraphState['roundEvents'];
+  roundEvents: ToolCallRoundEvent[];
   finalization: ToolCallFinalizationEvent;
   terminationReason: GraphTurnTerminationReason;
   graphStatus: AgentGraphState['graphStatus'];
   approvalInterrupt: AgentGraphState['approvalInterrupt'];
   approvalResolution: AgentGraphState['approvalResolution'];
-  traceEvents: Record<string, unknown>[];
+  langSmithRunId: string | null;
+  langSmithTraceId: string | null;
 }
 
 interface AgentGraphRuntime {
@@ -160,48 +296,64 @@ interface AgentGraphRuntime {
 let runtimePromise: Promise<AgentGraphRuntime> | null = null;
 let runtimeInstance: AgentGraphRuntime | null = null;
 
-function buildToolSpecs(activeToolNames: string[]) {
-  const scopedRegistry = buildScopedToolRegistry(activeToolNames);
-  const specs = scopedRegistry.listOpenAIToolSpecs().map((tool) => ({
-    type: tool.type,
-    function: {
-      ...tool.function,
-      parameters: tool.function.parameters as Record<string, unknown>,
-    },
-  }));
-  return specs.length > 0 ? specs : undefined;
-}
-
-function buildToolContext(state: AgentGraphState, graphRunKind: 'turn' | 'approval_resume'): ToolExecutionContext {
-  return {
-    traceId: state.traceId,
-    graphThreadId: state.threadId,
-    graphRunKind,
-    graphStep: state.roundsCompleted + 1,
-    approvalRequestId: state.approvalInterrupt?.requestId ?? null,
-    userId: state.userId,
-    channelId: state.channelId,
-    guildId: state.guildId,
-    apiKey: state.apiKey,
-    invokerIsAdmin: state.invokerIsAdmin,
-    invokedBy: state.invokedBy,
-    routeKind: state.routeKind,
-    currentTurn: state.currentTurn as ToolExecutionContext['currentTurn'],
-    replyTarget: state.replyTarget as ToolExecutionContext['replyTarget'],
-  };
-}
-
 function nowIso(): string {
   return new Date().toISOString();
 }
 
-function buildRunnableConfig(threadId: string, recursionLimit: number): RunnableConfig {
+function createRuntimeContext(params: StartAgentGraphTurnParams): AgentGraphRuntimeContext {
+  return {
+    traceId: params.traceId,
+    originTraceId: params.traceId,
+    threadId: params.traceId,
+    userId: params.userId,
+    channelId: params.channelId,
+    guildId: params.guildId,
+    apiKey: params.apiKey,
+    model: params.model,
+    temperature: params.temperature,
+    timeoutMs: params.timeoutMs,
+    maxTokens: params.maxTokens,
+    invokedBy: params.invokedBy,
+    invokerIsAdmin: params.invokerIsAdmin,
+    activeToolNames: [...params.activeToolNames],
+    routeKind: params.routeKind,
+    currentTurn: params.currentTurn,
+    replyTarget: params.replyTarget ?? null,
+  };
+}
+
+function buildRunnableConfig(params: {
+  threadId: string;
+  recursionLimit: number;
+  runId: string;
+  runName: string;
+  context?: Partial<AgentGraphRuntimeContext>;
+  callbacks?: RunnableConfig['callbacks'];
+  tags?: string[];
+  metadata?: Record<string, unknown>;
+}): RunnableConfig {
   return {
     configurable: {
-      thread_id: threadId,
+      thread_id: params.threadId,
+      ...(params.context ?? {}),
     },
-    recursionLimit,
-  };
+    callbacks: params.callbacks,
+    tags: params.tags,
+    metadata: params.metadata,
+    runId: params.runId,
+    runName: params.runName,
+    recursionLimit: params.recursionLimit,
+    durability: 'sync',
+  } as RunnableConfig;
+}
+
+function resolveRuntimeContext(state: AgentGraphState, config: RunnableConfig): AgentGraphRuntimeContext {
+  const configured = AgentGraphConfigurableSchema.parse(config.configurable ?? {});
+  return {
+    ...EMPTY_RUNTIME_CONTEXT,
+    ...state.resumeContext,
+    ...Object.fromEntries(Object.entries(configured).filter(([, value]) => value !== undefined)),
+  } as AgentGraphRuntimeContext;
 }
 
 function deserializeToolResults(results: SerializedToolResult[]): ToolResult[] {
@@ -211,7 +363,17 @@ function deserializeToolResults(results: SerializedToolResult[]): ToolResult[] {
   }));
 }
 
-function normalizeGraphResult(state: AgentGraphState): AgentGraphTurnResult {
+function decodeGraphFiles(files: AgentGraphState['files']): Array<{ attachment: Buffer; name: string }> {
+  return files.map((file) => ({
+    attachment: Buffer.from(file.dataBase64, 'base64'),
+    name: file.name,
+  }));
+}
+
+function normalizeGraphResult(
+  state: AgentGraphState,
+  langSmith: { langSmithRunId: string | null; langSmithTraceId: string | null },
+): AgentGraphTurnResult {
   return {
     replyText: state.replyText,
     toolResults: deserializeToolResults(state.toolResults),
@@ -220,201 +382,574 @@ function normalizeGraphResult(state: AgentGraphState): AgentGraphTurnResult {
     deduplicatedCallCount: state.deduplicatedCallCount,
     truncatedCallCount: state.truncatedCallCount,
     guardrailBlockedCallCount: state.guardrailBlockedCallCount,
-    cancellationCount: state.cancellationCount,
     roundEvents: state.roundEvents,
     finalization: state.finalization,
     terminationReason: state.terminationReason,
     graphStatus: state.graphStatus,
     approvalInterrupt: state.approvalInterrupt,
     approvalResolution: state.approvalResolution,
-    traceEvents: state.traceEvents,
+    langSmithRunId: langSmith.langSmithRunId,
+    langSmithTraceId: langSmith.langSmithTraceId,
   };
+}
+
+function buildRebudgetingEvent(
+  messages: BaseMessage[],
+  model: string | undefined,
+  maxTokens: number | undefined,
+): { trimmedMessages: BaseMessage[]; rebudgeting: GraphRebudgetEvent } {
+  const preparedMessages = toLlmMessages(messages);
+  const modelConfig = getModelBudgetConfig(model);
+  const budgetPlan = planBudget(modelConfig, {
+    reservedOutputTokens: maxTokens ?? modelConfig.maxOutputTokens,
+  });
+  const { trimmed, stats } = trimMessagesToBudget(preparedMessages, budgetPlan, {
+    keepSystemMessages: true,
+    keepLastUserTurns: 4,
+    visionFadeKeepLastUserImages: modelConfig.visionFadeKeepLastUserImages,
+    attachmentTextMaxTokens: modelConfig.attachmentTextMaxTokens,
+    estimator: modelConfig.estimation,
+    visionEnabled: modelConfig.visionEnabled,
+  });
+
+  return {
+    trimmedMessages: toLangChainMessages(trimmed),
+    rebudgeting: {
+      beforeCount: stats.beforeCount,
+      afterCount: stats.afterCount,
+      estimatedTokensBefore: stats.estimatedTokensBefore,
+      estimatedTokensAfter: stats.estimatedTokensAfter,
+      availableInputTokens: budgetPlan.availableInputTokens,
+      reservedOutputTokens: budgetPlan.reservedOutputTokens,
+      notes: [...stats.notes],
+      trimmed:
+        stats.beforeCount !== stats.afterCount ||
+        stats.estimatedTokensBefore !== stats.estimatedTokensAfter ||
+        stats.notes.length > 0,
+    },
+  };
+}
+
+function createGraphChatModel(params: {
+  model?: string;
+  apiKey?: string;
+  temperature: number;
+  timeoutMs?: number;
+  maxTokens?: number;
+}): AiProviderChatModel {
+  const model = params.model?.trim() || appConfig.AI_PROVIDER_MAIN_AGENT_MODEL.trim();
+  if (!model) {
+    throw new Error('AI_PROVIDER_MAIN_AGENT_MODEL must be configured before the agent graph can run.');
+  }
+
+  return new AiProviderChatModel({
+    baseUrl: appConfig.AI_PROVIDER_BASE_URL,
+    model,
+    apiKey: params.apiKey ?? appConfig.AI_PROVIDER_API_KEY,
+    temperature: params.temperature,
+    timeout: params.timeoutMs,
+    maxTokens: params.maxTokens,
+  });
 }
 
 function normalizeResolvedApprovalStatus(params: {
   decision: ApprovalResumeInput['status'];
   actionStatus?: string | null;
   errorText?: string | null;
-}): ApprovalResolutionState['status'] {
-  if (params.errorText?.trim()) {
-    return 'failed';
-  }
-  if (params.actionStatus === 'executed') {
-    return 'executed';
-  }
-  if (params.actionStatus === 'failed') {
-    return 'failed';
-  }
-  if (params.actionStatus === 'rejected') {
-    return 'rejected';
-  }
-  if (params.actionStatus === 'expired') {
-    return 'expired';
-  }
-  if (params.actionStatus === 'approved') {
-    return 'approved';
-  }
+}) {
+  if (params.errorText?.trim()) return 'failed';
+  if (params.actionStatus === 'executed') return 'executed';
+  if (params.actionStatus === 'failed') return 'failed';
+  if (params.actionStatus === 'rejected') return 'rejected';
+  if (params.actionStatus === 'expired') return 'expired';
+  if (params.actionStatus === 'approved') return 'approved';
   return params.decision;
 }
 
-function buildApprovalResolutionReply(
-  resolution: ApprovalResolutionState | null,
-): string {
-  if (!resolution) {
-    return '';
-  }
+function buildToolContext(
+  state: AgentGraphState,
+  runtimeContext: AgentGraphRuntimeContext,
+  graphRunKind: 'turn' | 'approval_resume',
+): ToolExecutionContext {
+  return {
+    traceId: runtimeContext.traceId,
+    graphThreadId: runtimeContext.threadId,
+    graphRunKind,
+    graphStep: state.roundsCompleted + 1,
+    approvalRequestId: state.approvalInterrupt?.requestId ?? null,
+    userId: runtimeContext.userId,
+    channelId: runtimeContext.channelId,
+    guildId: runtimeContext.guildId,
+    apiKey: runtimeContext.apiKey,
+    invokerIsAdmin: runtimeContext.invokerIsAdmin,
+    invokedBy: runtimeContext.invokedBy,
+    routeKind: runtimeContext.routeKind,
+    currentTurn: runtimeContext.currentTurn as ToolExecutionContext['currentTurn'],
+    replyTarget: runtimeContext.replyTarget as ToolExecutionContext['replyTarget'],
+  };
+}
 
-  switch (resolution.status) {
-    case 'executed':
-      return 'Approved. I completed that action.';
-    case 'rejected':
-      return resolution.decisionReasonText?.trim()
-        ? `The approval was rejected: ${resolution.decisionReasonText.trim()}`
-        : 'The approval was rejected.';
-    case 'expired':
-      return 'The approval expired before anyone approved it.';
-    case 'failed':
-      return resolution.errorText?.trim()
-        ? 'Approved, but the action failed. I updated the governance card with the error.'
-        : 'Approved, but the action failed.';
-    case 'approved':
-      return 'Approved.';
+function isTimedOut(state: AgentGraphState, graphConfig: AgentGraphConfig): boolean {
+  return Date.now() - state.startedAtEpochMs >= graphConfig.maxDurationMs;
+}
+
+function buildExecutionEvent(
+  state: AgentGraphState,
+  details: Omit<ToolCallRoundEvent, 'round' | 'completedAt'>,
+): ToolCallRoundEvent {
+  return {
+    round: state.roundsCompleted + 1,
+    completedAt: nowIso(),
+    ...details,
+  };
+}
+
+function buildToolMessageFromOutcome(params: {
+  toolName: string;
+  callId?: string;
+  content: string;
+  result: SerializedToolResult;
+  files: AgentGraphState['files'];
+  status?: 'success' | 'error';
+}): ToolMessage {
+  return new ToolMessage({
+    content: params.content,
+    tool_call_id: params.callId ?? `${params.toolName}-call`,
+    artifact: {
+      result: params.result,
+      files: params.files,
+    },
+    status: params.status,
+  });
+}
+
+function routeAfterToolExecution(
+  state: AgentGraphState,
+  graphConfig: AgentGraphConfig,
+): GraphNodeName {
+  if (isTimedOut(state, graphConfig) || state.roundsCompleted >= graphConfig.maxSteps) {
+    return 'finalize_reply';
   }
+  return 'llm_call';
+}
+
+function buildReadToolsNode(graphConfig: AgentGraphConfig) {
+  return async (
+    state: AgentGraphState,
+    config: RunnableConfig,
+  ): Promise<Partial<AgentGraphState>> => {
+    const batchMessage = state.messages.at(-1);
+    if (!AIMessage.isInstance(batchMessage)) {
+      return {};
+    }
+
+    const runtimeContext = resolveRuntimeContext(state, config);
+    const toolContext = buildToolContext(state, runtimeContext, 'turn');
+    const catalog = buildActiveToolCatalog({
+      activeToolNames: runtimeContext.activeToolNames,
+      context: toolContext,
+      timeoutMs: graphConfig.toolTimeoutMs,
+      maxResultChars: graphConfig.maxResultChars,
+    });
+    const selectedTools = catalog.readOnlyTools.filter((tool) =>
+      (batchMessage.tool_calls ?? []).some((call) => call.name === tool.name),
+    );
+    if (selectedTools.length === 0) {
+      return {};
+    }
+
+    const output = (await new ToolNode(selectedTools).invoke(
+      { messages: [batchMessage] },
+      config as Parameters<InstanceType<typeof ToolNode>['invoke']>[1],
+    )) as { messages?: ToolMessage[] };
+    const toolMessages = Array.isArray(output.messages) ? output.messages : [];
+    const nextToolResults = toolMessages
+      .map((message) => (message.artifact as { result?: SerializedToolResult } | undefined)?.result)
+      .filter((result): result is SerializedToolResult => Boolean(result));
+    const nextFiles = toolMessages.flatMap((message) => {
+      const artifact = message.artifact as { files?: AgentGraphState['files'] } | undefined;
+      return artifact?.files ?? [];
+    });
+
+    return {
+      messages: toolMessages,
+      toolResults: nextToolResults,
+      files: nextFiles,
+    };
+  };
 }
 
 function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, graphConfig: AgentGraphConfig) {
-  const client = getLLMClient();
-  const roundCacheByThread = new Map<string, ToolResultCache>();
-
-  const callModelNode = async (state: AgentGraphState): Promise<Partial<AgentGraphState>> => {
-    const elapsedMs = Date.now() - state.startedAtEpochMs;
-    if (elapsedMs >= graphConfig.maxDurationMs && state.toolResults.length > 0) {
-      return {
-        terminationReason: 'graph_timeout',
-        traceEvents: [
-          ...state.traceEvents,
-          {
-            type: 'graph_timeout',
-            timestamp: nowIso(),
-            details: {
-              elapsedMs,
-              maxDurationMs: graphConfig.maxDurationMs,
-            },
-          },
-        ],
-      };
-    }
-
-    const toolSpecs = buildToolSpecs(state.activeToolNames);
-    const prepared = buildGraphChatRequest({
-      messages: state.messages,
-      model: state.model,
-      apiKey: state.apiKey,
-      temperature: state.temperature,
-      timeoutMs: state.timeoutMs,
-      maxTokens: state.maxTokens,
-      tools: toolSpecs,
-      toolChoice: toolSpecs ? 'auto' : undefined,
+  const readToolsSubgraph = new StateGraph({
+    state: AgentGraphStateSchema,
+    context: AgentGraphConfigurableSchema,
+  })
+    .addNode('tools', buildReadToolsNode(graphConfig))
+    .addEdge(START, 'tools')
+    .addConditionalEdges('tools', (state) =>
+      toolsCondition(state.messages as BaseMessage[]) === 'tools' ? 'tools' : END,
+    )
+    .compile({
+      checkpointer: false,
+      name: 'sage_read_tools_subgraph',
+      description: 'Read-only ToolNode execution for Sage.',
     });
-    const response = await client.chat(prepared.request);
-    const toolCalls = response.toolCalls ?? [];
 
-    return {
-      pendingToolCalls: toolCalls,
-      pendingAssistantText: response.text,
-      replyText: toolCalls.length === 0 ? response.text : state.replyText,
-      terminationReason: toolCalls.length === 0 ? 'assistant_reply' : state.terminationReason,
-      traceEvents: [
-        ...state.traceEvents,
-        {
-          type: 'call_model',
-          timestamp: nowIso(),
-          details: {
-            rebudgeting: prepared.rebudgeting,
-            toolCallCount: toolCalls.length,
-          },
-        },
-      ],
-    };
+  const callModelNode = async (
+    state: AgentGraphState,
+    config: RunnableConfig,
+  ): Promise<Command<unknown, Partial<AgentGraphState>, GraphNodeName>> => {
+    const runtimeContext = resolveRuntimeContext(state, config);
+    const toolContext = buildToolContext(state, runtimeContext, 'turn');
+    const toolsEnabled =
+      runtimeContext.activeToolNames.length > 0 &&
+      state.roundsCompleted < graphConfig.maxSteps &&
+      !isTimedOut(state, graphConfig);
+    const catalog = toolsEnabled
+      ? buildActiveToolCatalog({
+          activeToolNames: runtimeContext.activeToolNames,
+          context: toolContext,
+          timeoutMs: graphConfig.toolTimeoutMs,
+          maxResultChars: graphConfig.maxResultChars,
+        })
+      : null;
+    const prepared = buildRebudgetingEvent(
+      state.messages as BaseMessage[],
+      runtimeContext.model,
+      runtimeContext.maxTokens,
+    );
+    const baseModel = createGraphChatModel({
+      model: runtimeContext.model,
+      apiKey: runtimeContext.apiKey,
+      temperature: runtimeContext.temperature,
+      timeoutMs: runtimeContext.timeoutMs,
+      maxTokens: runtimeContext.maxTokens,
+    });
+    const runnable =
+      catalog && catalog.allTools.length > 0
+        ? baseModel.bindTools(catalog.allTools, { tool_choice: 'auto' })
+        : baseModel;
+    const responseMessage = await runnable.invoke(prepared.trimmedMessages, config);
+    const aiMessage = AIMessage.isInstance(responseMessage)
+      ? responseMessage
+      : new AIMessage({ content: extractMessageText(responseMessage as BaseMessage) });
+    const toolCalls = getLastAiToolCalls([aiMessage]);
+    const nextTerminationReason =
+      toolCalls.length === 0
+        ? 'assistant_reply'
+        : isTimedOut(state, graphConfig)
+          ? 'graph_timeout'
+          : state.roundsCompleted >= graphConfig.maxSteps
+            ? 'step_limit'
+            : state.terminationReason;
+
+    return new Command({
+      goto:
+        toolCalls.length === 0
+          ? 'finalize_turn'
+          : isTimedOut(state, graphConfig) || state.roundsCompleted >= graphConfig.maxSteps
+            ? 'finalize_reply'
+            : 'route_tool_phase',
+      update: {
+        messages: [aiMessage],
+        replyText: toolCalls.length === 0 ? extractMessageText(aiMessage) : state.replyText,
+        terminationReason: nextTerminationReason,
+        resumeContext: runtimeContext,
+      },
+    });
   };
 
-  const executeToolsNode = async (state: AgentGraphState): Promise<Partial<AgentGraphState>> => {
-    const scopedRegistry = buildScopedToolRegistry(state.activeToolNames);
-    const roundCache =
-      roundCacheByThread.get(state.threadId) ??
-      (() => {
-        const cache = new ToolResultCache(50);
-        roundCacheByThread.set(state.threadId, cache);
-        return cache;
-      })();
-    const result = await executeToolCallStep({
-      state,
-      toolCalls: state.pendingToolCalls,
-      registry: scopedRegistry,
-      toolCtx: buildToolContext(state, 'turn'),
-      config: graphConfig,
-      cache: roundCache,
+  const routeToolPhaseNode = async (
+    state: AgentGraphState,
+    config: RunnableConfig,
+  ): Promise<Command<unknown, Partial<AgentGraphState>, GraphNodeName>> => {
+    const toolCalls = getLastAiToolCalls(state.messages as BaseMessage[]);
+    const runtimeContext = resolveRuntimeContext(state, config);
+    const toolContext = buildToolContext(state, runtimeContext, 'turn');
+    const catalog = buildActiveToolCatalog({
+      activeToolNames: runtimeContext.activeToolNames,
+      context: toolContext,
+      timeoutMs: graphConfig.toolTimeoutMs,
+      maxResultChars: graphConfig.maxResultChars,
     });
 
-    const nextState: Partial<AgentGraphState> = {
-      ...result.nextState,
-      pendingToolCalls: [],
-      pendingAssistantText: '',
-      traceEvents: [
-        ...state.traceEvents,
-        {
-          type: 'execute_tools',
-          timestamp: nowIso(),
-          details: {
-            requestedCallCount: state.pendingToolCalls.length,
-          },
-        },
-      ],
-    };
+    const requestedCallCount = toolCalls.length;
+    const effectiveCalls = toolCalls.slice(0, graphConfig.maxToolCallsPerStep);
+    const truncatedCallCount = Math.max(0, requestedCallCount - effectiveCalls.length);
+    const seenReadOnly = new Set<string>();
+    const readBatch: GraphToolCallDescriptor[] = [];
+    let pendingWriteCall: GraphToolCallDescriptor | null = null;
+    let deduplicatedCallCount = 0;
+    let guardrailBlockedCallCount = 0;
 
-    if (result.approvalSignal) {
-      const materialized = await createOrReuseApprovalReviewRequestFromSignal({
-        threadId: state.threadId,
-        originTraceId: state.originTraceId,
-        signal: result.approvalSignal,
+    for (const call of effectiveCalls) {
+      const serializedCall: GraphToolCallDescriptor = {
+        id: call.id,
+        name: call.name,
+        args: call.args,
+      };
+      const readOnly = isReadOnlyToolCall({
+        definitions: catalog.definitions,
+        call: serializedCall,
+        context: toolContext,
       });
-      return {
-        ...nextState,
-        replyText: '',
-        graphStatus: 'interrupted',
-        terminationReason: 'approval_interrupt',
-        approvalInterrupt: {
-          payload: result.approvalSignal.payload,
-          requestId: materialized.request.id,
-          coalesced: materialized.coalesced,
-          expiresAtIso: materialized.request.expiresAt.toISOString(),
-        },
-        approvalResolution: null,
-      };
+
+      if (readOnly) {
+        const dedupeKey = `${call.name}:${JSON.stringify(call.args ?? {})}`;
+        if (seenReadOnly.has(dedupeKey)) {
+          deduplicatedCallCount += 1;
+          continue;
+        }
+        seenReadOnly.add(dedupeKey);
+        readBatch.push(serializedCall);
+        continue;
+      }
+
+      if (!pendingWriteCall) {
+        pendingWriteCall = serializedCall;
+      } else {
+        guardrailBlockedCallCount += 1;
+      }
     }
 
-    const latestRound = result.nextState.roundEvents?.[result.nextState.roundEvents.length - 1];
-    const elapsedMs = Date.now() - state.startedAtEpochMs;
-    const stepLimitReached = (result.nextState.roundsCompleted ?? state.roundsCompleted) >= graphConfig.maxSteps;
-    const timedOut = elapsedMs >= graphConfig.maxDurationMs;
-    const stagnationTriggered = latestRound?.stagnation?.triggered === true;
+    const readBatchMessage =
+      readBatch.length > 0
+        ? new AIMessage({
+            content: '',
+            tool_calls: readBatch.map((call) => ({
+              id: call.id,
+              name: call.name,
+              args:
+                call.args && typeof call.args === 'object' && !Array.isArray(call.args)
+                  ? (call.args as Record<string, unknown>)
+                  : {},
+              type: 'tool_call',
+            })),
+          })
+        : null;
 
-    return {
-      ...nextState,
-      terminationReason:
-        stagnationTriggered
-          ? 'stagnation'
-          : timedOut
-            ? 'graph_timeout'
-            : stepLimitReached
-              ? 'step_limit'
-              : state.terminationReason,
-    };
+    const executedAny = readBatch.length > 0 || pendingWriteCall !== null;
+
+    return new Command({
+      goto:
+        readBatch.length > 0
+          ? 'execute_read_tools'
+          : pendingWriteCall
+            ? 'approval_gate'
+            : 'llm_call',
+      update: {
+        messages: readBatchMessage ? [readBatchMessage] : [],
+        pendingWriteCall,
+        roundsCompleted: executedAny ? 1 : 0,
+        deduplicatedCallCount,
+        truncatedCallCount,
+        guardrailBlockedCallCount,
+        roundEvents: executedAny
+          ? [
+              buildExecutionEvent(state, {
+                requestedCallCount,
+                executedCallCount: readBatch.length + (pendingWriteCall ? 1 : 0),
+                deduplicatedCallCount,
+                truncatedCallCount,
+                guardrailBlockedCallCount,
+              }),
+            ]
+          : [],
+      },
+    });
   };
 
-  const forcedFinalizeNode = async (state: AgentGraphState): Promise<Partial<AgentGraphState>> => {
-    let replyText =
-      'I could not finalize a plain-text answer after tool execution. Please try again.';
+  const executeReadToolsNode = async (
+    state: AgentGraphState,
+    config: RunnableConfig,
+  ): Promise<Command<unknown, Partial<AgentGraphState>, GraphNodeName>> => {
+    const update = (await readToolsSubgraph.invoke(
+      state,
+      config as Parameters<typeof readToolsSubgraph.invoke>[1],
+    )) as Partial<AgentGraphState>;
+    return new Command({
+      goto: state.pendingWriteCall ? 'approval_gate' : routeAfterToolExecution(state, graphConfig),
+      update,
+    });
+  };
+
+  const approvalGateNode = async (
+    state: AgentGraphState,
+    config: RunnableConfig,
+  ): Promise<Command<unknown, Partial<AgentGraphState>, GraphNodeName>> => {
+    if (!state.pendingWriteCall) {
+      return new Command({ goto: routeAfterToolExecution(state, graphConfig), update: {} });
+    }
+
+    const runtimeContext = resolveRuntimeContext(state, config);
+    const outcome = await executeDurableToolTask({
+      activeToolNames: runtimeContext.activeToolNames,
+      call: state.pendingWriteCall,
+      context: buildToolContext(state, runtimeContext, 'turn'),
+      timeoutMs: graphConfig.toolTimeoutMs,
+      maxResultChars: graphConfig.maxResultChars,
+    });
+
+    if (outcome.kind === 'approval_required') {
+      const materialized = await createOrReuseApprovalReviewRequestFromSignal({
+        threadId: runtimeContext.threadId,
+        originTraceId: runtimeContext.originTraceId,
+        signal: new ApprovalRequiredSignal(outcome.payload),
+      });
+
+      return new Command({
+        goto: 'execute_approved_write',
+        update: {
+          pendingWriteCall: null,
+          replyText: '',
+          graphStatus: 'interrupted',
+          terminationReason: 'approval_interrupt',
+          approvalInterrupt: {
+            requestId: materialized.request.id,
+            call: outcome.call,
+            payload: outcome.payload,
+            coalesced: materialized.coalesced,
+            expiresAtIso: materialized.request.expiresAt.toISOString(),
+          },
+          approvalResolution: null,
+        },
+      });
+    }
+
+    const toolMessage = buildToolMessageFromOutcome({
+      toolName: outcome.toolName,
+      callId: outcome.callId,
+      content: outcome.content,
+      result: outcome.result,
+      files: outcome.files,
+      status: outcome.result.success ? 'success' : 'error',
+    });
+
+    return new Command({
+      goto: routeAfterToolExecution(state, graphConfig),
+      update: {
+        pendingWriteCall: null,
+        messages: [toolMessage],
+        toolResults: [outcome.result],
+        files: outcome.files,
+      },
+    });
+  };
+
+  const approvalResumeNode = async (
+    state: AgentGraphState,
+    config: RunnableConfig,
+  ): Promise<Command<unknown, Partial<AgentGraphState>, GraphNodeName>> => {
+    if (!state.approvalInterrupt?.requestId) {
+      return new Command({ goto: routeAfterToolExecution(state, graphConfig), update: {} });
+    }
+
+    const runtimeContext = resolveRuntimeContext(state, config);
+    const resume = interrupt({
+      requestId: state.approvalInterrupt.requestId,
+      kind: state.approvalInterrupt.payload.kind,
+      coalesced: state.approvalInterrupt.coalesced,
+      expiresAtIso: state.approvalInterrupt.expiresAtIso,
+    }) as ApprovalResumeInput;
+    const resumedContext: AgentGraphRuntimeContext = {
+      ...runtimeContext,
+      traceId: resume.resumeTraceId?.trim() || runtimeContext.traceId,
+    };
+
+    if (resume.status !== 'approved') {
+      const result: SerializedToolResult = {
+        name: state.approvalInterrupt.call.name,
+        success: false,
+        error:
+          resume.status === 'rejected'
+            ? resume.decisionReasonText?.trim()
+              ? `Approval rejected: ${resume.decisionReasonText.trim()}`
+              : 'Approval rejected.'
+            : 'Approval expired before execution.',
+        errorType: 'execution',
+        latencyMs: 0,
+      };
+      const toolMessage = buildToolMessageFromOutcome({
+        toolName: state.approvalInterrupt.call.name,
+        callId: state.approvalInterrupt.call.id,
+        content: JSON.stringify({
+          status: resume.status,
+          decisionReasonText: resume.decisionReasonText ?? null,
+        }),
+        result,
+        files: [],
+        status: 'error',
+      });
+
+      return new Command({
+        goto: routeAfterToolExecution(state, graphConfig),
+        update: {
+          messages: [toolMessage],
+          resumeContext: resumedContext,
+          graphStatus: 'running',
+          approvalResolution: {
+            requestId: state.approvalInterrupt.requestId,
+            decision: resume.status,
+            status: resume.status,
+            reviewerId: resume.reviewerId ?? null,
+            decisionReasonText: resume.decisionReasonText ?? null,
+          },
+          approvalInterrupt: null,
+          toolResults: [result],
+        },
+      });
+    }
+
+    const executed = await executeApprovedReviewTask({
+      requestId: state.approvalInterrupt.requestId,
+      toolName: state.approvalInterrupt.call.name,
+      callId: state.approvalInterrupt.call.id,
+      reviewerId: resume.reviewerId ?? null,
+      decisionReasonText: resume.decisionReasonText ?? null,
+      resumeTraceId: resume.resumeTraceId ?? null,
+      maxResultChars: graphConfig.maxResultChars,
+    });
+    const resolvedStatus = normalizeResolvedApprovalStatus({
+      decision: resume.status,
+      actionStatus: executed.status,
+      errorText: executed.result.error ?? null,
+    });
+    const toolMessage = buildToolMessageFromOutcome({
+      toolName: executed.toolName,
+      callId: executed.callId,
+      content: executed.content,
+      result: executed.result,
+      files: executed.files,
+      status: executed.result.success ? 'success' : 'error',
+    });
+
+    return new Command({
+      goto: routeAfterToolExecution(state, graphConfig),
+      update: {
+        messages: [toolMessage],
+        resumeContext: resumedContext,
+        graphStatus: 'running',
+        approvalResolution: {
+          requestId: state.approvalInterrupt.requestId,
+          decision: resume.status,
+          status: resolvedStatus,
+          reviewerId: resume.reviewerId ?? null,
+          decisionReasonText: resume.decisionReasonText ?? null,
+          errorText: executed.result.error ?? null,
+        },
+        approvalInterrupt: null,
+        toolResults: [executed.result],
+        files: executed.files,
+      },
+    });
+  };
+
+  const forcedFinalizeNode = async (
+    state: AgentGraphState,
+    config: RunnableConfig,
+  ): Promise<Command<unknown, Partial<AgentGraphState>, GraphNodeName>> => {
+    const runtimeContext = resolveRuntimeContext(state, config);
+    let replyText = 'I could not finalize a plain-text answer after tool execution. Please try again.';
     const finalization: ToolCallFinalizationEvent = {
       attempted: true,
       succeeded: true,
@@ -425,190 +960,87 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
     };
 
     try {
-      const prepared = buildGraphChatRequest({
-        messages: [
-          ...state.messages,
-          {
-            role: 'system',
+      const prepared = buildRebudgetingEvent(
+        [
+          ...(state.messages as BaseMessage[]),
+          new SystemMessage({
             content:
-              'Tool-call steps are exhausted. Do not call tools. ' +
-              'Return one final plain-text answer grounded only in prior tool results and context.',
-          },
+              'Tool-call steps are exhausted. Do not call tools. Return one final plain-text answer grounded only in prior context and tool results.',
+          }),
         ],
-        model: state.model,
-        apiKey: state.apiKey,
-        temperature: Math.max(0, state.temperature - 0.1),
-        timeoutMs: state.timeoutMs,
-        maxTokens: state.maxTokens,
-        tools: undefined,
-        toolChoice: undefined,
-      });
-      const response = await client.chat(prepared.request);
+        runtimeContext.model,
+        runtimeContext.maxTokens,
+      );
+      const responseMessage = await createGraphChatModel({
+        model: runtimeContext.model,
+        apiKey: runtimeContext.apiKey,
+        temperature: Math.max(0, runtimeContext.temperature - 0.1),
+        timeoutMs: runtimeContext.timeoutMs,
+        maxTokens: runtimeContext.maxTokens,
+      }).invoke(prepared.trimmedMessages, config);
+      const aiMessage = AIMessage.isInstance(responseMessage)
+        ? responseMessage
+        : new AIMessage({ content: extractMessageText(responseMessage as BaseMessage) });
+      const returnedToolCalls = getLastAiToolCalls([aiMessage]);
       finalization.rebudgeting = prepared.rebudgeting;
-      finalization.returnedToolCallCount = response.toolCalls?.length ?? 0;
+      finalization.returnedToolCallCount = returnedToolCalls.length;
       finalization.completedAt = nowIso();
-      if ((response.toolCalls?.length ?? 0) > 0) {
+      if (returnedToolCalls.length > 0) {
         finalization.succeeded = false;
         finalization.fallbackUsed = true;
       } else {
-        replyText = response.text;
+        replyText = extractMessageText(aiMessage);
       }
     } catch (error) {
-      logger.warn({ error, traceId: state.traceId }, 'Agent graph forced finalization failed');
+      logger.warn({ error, traceId: runtimeContext.traceId }, 'Agent graph forced finalization failed');
       finalization.succeeded = false;
       finalization.fallbackUsed = true;
       finalization.completedAt = nowIso();
     }
 
-    return {
-      replyText,
-      finalization,
-      traceEvents: [
-        ...state.traceEvents,
-        {
-          type: 'forced_finalize',
-          timestamp: nowIso(),
-          details: finalization,
-        },
-      ],
-    };
+    return new Command({
+      goto: 'finalize_turn',
+      update: {
+        replyText,
+        finalization,
+      },
+    });
   };
 
-  const approvalFinalizeNode = async (state: AgentGraphState): Promise<Partial<AgentGraphState>> => {
-    if (!state.approvalInterrupt?.requestId) {
-      return {};
-    }
-
-    const approvalRequestId = state.approvalInterrupt.requestId;
-    const resume = interrupt({
-      requestId: approvalRequestId,
-      kind: state.approvalInterrupt.payload.kind,
-      coalesced: state.approvalInterrupt.coalesced,
-      expiresAtIso: state.approvalInterrupt.expiresAtIso,
-    }) as ApprovalResumeInput;
-
-    let resolvedStatus: ApprovalResolutionState['status'] = resume.status;
-    let errorText: string | null = null;
-
-    if (resume.status === 'approved') {
-      try {
-        const resolvedAction = await executeApprovedReviewRequest({
-          requestId: approvalRequestId,
-          reviewerId: resume.reviewerId ?? null,
-          decisionReasonText: resume.decisionReasonText ?? null,
-          resumeTraceId: resume.resumeTraceId ?? null,
-        });
-        resolvedStatus = normalizeResolvedApprovalStatus({
-          decision: resume.status,
-          actionStatus: resolvedAction?.status ?? null,
-        });
-        if (!resolvedAction) {
-          resolvedStatus = 'failed';
-          errorText = 'Approval request could not be resumed.';
-        }
-      } catch (error) {
-        errorText = error instanceof Error ? error.message : String(error);
-        resolvedStatus = 'failed';
-      }
-    }
-
-    return {
-      graphStatus: 'running',
-      traceId: resume.resumeTraceId?.trim() || state.traceId,
-      approvalInterrupt: null,
-      approvalResolution: {
-        requestId: approvalRequestId,
-        decision: resume.status,
-        status: resolvedStatus,
-        reviewerId: resume.reviewerId ?? null,
-        decisionReasonText: resume.decisionReasonText ?? null,
-        errorText,
-      },
-      terminationReason: 'assistant_reply',
-      traceEvents: [
-        ...state.traceEvents,
-        {
-          type: 'approval_finalize',
-          timestamp: nowIso(),
-          details: {
-            requestId: approvalRequestId,
-            decision: resume.status,
-            status: resolvedStatus,
-            reviewerId: resume.reviewerId ?? null,
-            errorText,
-          },
-        },
-      ],
-    };
-  };
-
-  const approvalAcknowledgeNode = async (state: AgentGraphState): Promise<Partial<AgentGraphState>> => ({
-    replyText: buildApprovalResolutionReply(state.approvalResolution),
-    graphStatus: 'running',
-    traceEvents: [
-      ...state.traceEvents,
-      {
-        type: 'approval_acknowledgement',
-        timestamp: nowIso(),
-        details: {
-          requestId: state.approvalResolution?.requestId ?? null,
-          status: state.approvalResolution?.status ?? null,
-        },
-      },
-    ],
+  const finalizeTurnNode = async (state: AgentGraphState): Promise<Partial<AgentGraphState>> => ({
+    graphStatus: state.graphStatus === 'failed' ? 'failed' : 'completed',
+    pendingWriteCall: null,
   });
 
-  const finalizeTurnNode = async (state: AgentGraphState): Promise<Partial<AgentGraphState>> => {
-    roundCacheByThread.delete(state.threadId);
-    return {
-      graphStatus: state.graphStatus === 'failed' ? 'failed' : 'completed',
-      pendingToolCalls: [],
-      pendingAssistantText: '',
-    };
-  };
-
-  return new StateGraph(AgentGraphStateAnnotation)
-    .addNode('call_model', callModelNode)
-    .addNode('execute_tools', executeToolsNode)
-    .addNode('forced_finalize', forcedFinalizeNode)
-    .addNode('approval_finalize', approvalFinalizeNode)
-    .addNode('approval_acknowledgement', approvalAcknowledgeNode)
+  return new StateGraph({
+    state: AgentGraphStateSchema,
+    context: AgentGraphConfigurableSchema,
+  })
+    .addNode('llm_call', callModelNode, {
+      ends: ['route_tool_phase', 'finalize_reply', 'finalize_turn'],
+    })
+    .addNode('route_tool_phase', routeToolPhaseNode, {
+      ends: ['execute_read_tools', 'approval_gate', 'llm_call'],
+    })
+    .addNode('execute_read_tools', executeReadToolsNode, {
+      ends: ['approval_gate', 'llm_call', 'finalize_reply'],
+    })
+    .addNode('approval_gate', approvalGateNode, {
+      ends: ['execute_approved_write', 'llm_call', 'finalize_reply'],
+    })
+    .addNode('execute_approved_write', approvalResumeNode, {
+      ends: ['llm_call', 'finalize_reply'],
+    })
+    .addNode('finalize_reply', forcedFinalizeNode, {
+      ends: ['finalize_turn'],
+    })
     .addNode('finalize_turn', finalizeTurnNode)
-    .addEdge(START, 'call_model')
-    .addConditionalEdges('call_model', (state) => {
-      if (state.pendingToolCalls.length > 0) {
-        return 'execute_tools';
-      }
-      if (
-        state.terminationReason === 'graph_timeout' ||
-        state.terminationReason === 'step_limit' ||
-        state.terminationReason === 'stagnation'
-      ) {
-        return 'forced_finalize';
-      }
-      return 'finalize_turn';
-    })
-    .addConditionalEdges('execute_tools', (state) => {
-      if (state.approvalInterrupt?.requestId) {
-        return 'approval_finalize';
-      }
-      if (
-        state.terminationReason === 'graph_timeout' ||
-        state.terminationReason === 'step_limit' ||
-        state.terminationReason === 'stagnation'
-      ) {
-        return 'forced_finalize';
-      }
-      return 'call_model';
-    })
-    .addEdge('forced_finalize', 'finalize_turn')
-    .addEdge('approval_finalize', 'approval_acknowledgement')
-    .addEdge('approval_acknowledgement', 'finalize_turn')
+    .addEdge(START, 'llm_call')
     .addEdge('finalize_turn', END)
     .compile({
       checkpointer,
       name: 'sage_agent_graph',
-      description: 'Sage custom LangGraph runtime for model/tool execution and approval interrupts.',
+      description: 'Sage LangGraph-native runtime for provider-neutral agent orchestration.',
     });
 }
 
@@ -650,6 +1082,25 @@ async function getRuntime(): Promise<AgentGraphRuntime> {
   return runtimePromise;
 }
 
+async function runGraphValueStream(
+  graph: AgentGraphRuntime['graph'],
+  input: Parameters<AgentGraphRuntime['graph']['invoke']>[0],
+  config: RunnableConfig,
+): Promise<AgentGraphState> {
+  let lastValue: AgentGraphState | null = null;
+  const stream = await graph.stream(input, {
+    ...config,
+    streamMode: 'values',
+  } as Parameters<typeof graph.stream>[1]);
+  for await (const chunk of stream as AsyncIterable<AgentGraphState>) {
+    lastValue = chunk;
+  }
+  if (!lastValue) {
+    throw new Error('Agent graph finished without a final state.');
+  }
+  return lastValue;
+}
+
 export async function initializeAgentGraphRuntime(): Promise<void> {
   await getRuntime();
 }
@@ -663,29 +1114,11 @@ export async function shutdownAgentGraphRuntime(): Promise<void> {
   }
 }
 
-export async function runAgentGraphTurn(params: StartAgentGraphTurnParams): Promise<AgentGraphTurnResult> {
-  const runtime = await getRuntime();
-  const initialState: AgentGraphState = {
-    traceId: params.traceId,
-    originTraceId: params.traceId,
-    threadId: params.traceId,
-    userId: params.userId,
-    channelId: params.channelId,
-    guildId: params.guildId,
-    apiKey: params.apiKey,
-    model: params.model,
-    temperature: params.temperature,
-    timeoutMs: params.timeoutMs,
-    maxTokens: params.maxTokens,
-    invokedBy: params.invokedBy,
-    invokerIsAdmin: params.invokerIsAdmin,
-    messages: [...params.messages],
-    activeToolNames: [...params.activeToolNames],
-    routeKind: params.routeKind,
-    currentTurn: params.currentTurn,
-    replyTarget: params.replyTarget,
-    pendingToolCalls: [],
-    pendingAssistantText: '',
+function buildInitialState(params: StartAgentGraphTurnParams): AgentGraphState {
+  return {
+    messages: params.messages,
+    resumeContext: createRuntimeContext(params),
+    pendingWriteCall: null,
     replyText: '',
     toolResults: [],
     files: [],
@@ -693,7 +1126,6 @@ export async function runAgentGraphTurn(params: StartAgentGraphTurnParams): Prom
     deduplicatedCallCount: 0,
     truncatedCallCount: 0,
     guardrailBlockedCallCount: 0,
-    cancellationCount: 0,
     roundEvents: [],
     finalization: {
       attempted: false,
@@ -704,29 +1136,48 @@ export async function runAgentGraphTurn(params: StartAgentGraphTurnParams): Prom
       terminationReason: 'assistant_reply',
     },
     terminationReason: 'assistant_reply',
-    previousExecutedBatchFingerprint: null,
-    previousSuccessfulReadObservationFingerprint: null,
-    pendingApprovalResultsByFingerprint: {},
-    callAttemptLedger: {},
-    sideEffectExecutedInLoop: false,
     graphStatus: 'running',
     startedAtEpochMs: Date.now(),
     approvalInterrupt: null,
     approvalResolution: null,
-    traceEvents: [],
   };
-  const output = await runtime.graph.invoke(
-    initialState as unknown as Parameters<typeof runtime.graph.invoke>[0],
-    buildRunnableConfig(params.traceId, runtime.config.recursionLimit),
-  ) as unknown as AgentGraphState;
-  return normalizeGraphResult(output);
+}
+
+export async function runAgentGraphTurn(params: StartAgentGraphTurnParams): Promise<AgentGraphTurnResult> {
+  const runtime = await getRuntime();
+  const telemetry = createAgentRunTelemetry();
+  const context = createRuntimeContext(params);
+  const output = await runGraphValueStream(
+    runtime.graph,
+    buildInitialState(params),
+    buildRunnableConfig({
+      threadId: context.threadId,
+      recursionLimit: runtime.config.recursionLimit,
+      runId: context.traceId,
+      runName: 'sage_agent_turn',
+      context,
+      callbacks: telemetry.callbacks,
+      tags: ['sage', 'agent-runtime', 'langgraph'],
+      metadata: {
+        routeKind: context.routeKind,
+        channelId: context.channelId,
+        guildId: context.guildId,
+        userId: context.userId,
+      },
+    }),
+  );
+  await telemetry.flush();
+  return normalizeGraphResult(output, telemetry.getRunReferences(context.traceId));
 }
 
 export async function resumeAgentGraphTurn(
   params: ResumeAgentGraphTurnParams,
 ): Promise<AgentGraphTurnResult> {
   const runtime = await getRuntime();
-  const output = await runtime.graph.invoke(
+  const telemetry = createAgentRunTelemetry();
+  const runId = params.resumeTraceId?.trim() || params.threadId;
+  const output = await runGraphValueStream(
+    runtime.graph,
     new Command({
       resume: {
         status: params.decision,
@@ -735,7 +1186,23 @@ export async function resumeAgentGraphTurn(
         resumeTraceId: params.resumeTraceId ?? null,
       } satisfies ApprovalResumeInput,
     }),
-    buildRunnableConfig(params.threadId, runtime.config.recursionLimit),
-  ) as unknown as AgentGraphState;
-  return normalizeGraphResult(output);
+    buildRunnableConfig({
+      threadId: params.threadId,
+      recursionLimit: runtime.config.recursionLimit,
+      runId,
+      runName: 'sage_agent_approval_resume',
+      context: {
+        threadId: params.threadId,
+        traceId: runId,
+      },
+      callbacks: telemetry.callbacks,
+      tags: ['sage', 'agent-runtime', 'approval-resume'],
+      metadata: {
+        threadId: params.threadId,
+        decision: params.decision,
+      },
+    }),
+  );
+  await telemetry.flush();
+  return normalizeGraphResult(output, telemetry.getRunReferences(runId));
 }

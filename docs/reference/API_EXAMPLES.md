@@ -4,10 +4,10 @@
   <img src="https://img.shields.io/badge/%F0%9F%8C%BF-Sage%20API%20Examples-2d5016?style=for-the-badge&labelColor=4a7c23" alt="API Examples" />
 </p>
 
-Annotated examples of the request shapes Sage uses for its current [Pollinations.ai](https://pollinations.ai) integration, plus the optional local voice-service calls used for Discord voice.
+Annotated examples of the request shapes Sage can send to a [Pollinations.ai](https://pollinations.ai) OpenAI-compatible endpoint, plus the optional local voice-service calls used for Discord voice.
 
 > [!NOTE]
-> Replace `sk_YOUR_KEY` with your actual Pollinations secret key for Pollinations examples. Voice-service examples do not require a Pollinations key. These are simplified request shapes; the real runtime also sends its full system prompt and tool definitions where applicable.
+> Replace `sk_YOUR_KEY` with your actual Pollinations secret key for Pollinations examples. Voice-service examples do not require a Pollinations key. These are provider-specific examples, not a statement about Sage's default runtime endpoint; the real runtime also sends its full system prompt and tool definitions where applicable.
 
 ---
 
@@ -33,7 +33,7 @@ curl -sS https://gen.pollinations.ai/v1/chat/completions \
   -H "Authorization: Bearer sk_YOUR_KEY" \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "kimi",
+    "model": "your-chat-model",
     "messages": [
       {
         "role": "system",
@@ -87,7 +87,7 @@ curl -sS https://gen.pollinations.ai/v1/chat/completions \
   -H "Authorization: Bearer sk_YOUR_KEY" \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "kimi",
+    "model": "your-vision-capable-model",
     "messages": [
       {
         "role": "user",
@@ -109,7 +109,7 @@ curl -sS https://gen.pollinations.ai/v1/chat/completions \
 ```
 
 > [!IMPORTANT]
-> The model must have `vision` capability. The starter configuration uses `CHAT_MODEL=kimi`, which supports vision in Sage's model catalog.
+> The model must have `vision` capability. Configure that explicitly in `AI_PROVIDER_MODEL_PROFILES_JSON` when you need vision-specific overrides; otherwise Sage falls back to its base runtime defaults.
 
 ---
 

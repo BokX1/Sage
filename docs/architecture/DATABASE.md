@@ -1,6 +1,9 @@
 # 💾 Database Schema
 
-Sage uses PostgreSQL with Prisma ORM. The current Prisma schema defines 18 models; this document covers the active tables, relationships, and common query patterns.
+Sage uses PostgreSQL with Prisma ORM. The current Prisma schema defines 17 models; this document covers the active tables, relationships, and common query patterns.
+
+> [!IMPORTANT]
+> Sage now ships one current-schema Prisma baseline migration for fresh database rebuilds. Historical migration layering was intentionally removed as part of the flagship runtime reset.
 
 <p align="center">
   <img src="https://img.shields.io/badge/%F0%9F%8C%BF-Sage%20Database-2d5016?style=for-the-badge&labelColor=4a7c23" alt="Sage Database" />
@@ -28,7 +31,7 @@ Sage uses PostgreSQL with Prisma ORM. The current Prisma schema defines 18 model
 ## 📊 Entity Relationship Diagram
 
 > [!NOTE]
-> The ERD below is abbreviated to the core entities most readers need first. The later sections cover the full 18-model schema.
+> The ERD below is abbreviated to the core entities most readers need first. The later sections cover the full 17-model schema.
 
 ```mermaid
 erDiagram
@@ -324,30 +327,19 @@ Vector embeddings of channel messages for hybrid semantic/lexical search.
 
 ### `AgentTrace`
 
-Per-turn telemetry for debugging and observability.
+Compact per-turn operator ledger for debugging and observability. High-fidelity node, task, and interrupt traces now live in LangSmith.
 
 | Column | Type | Notes |
 |:---|:---|:---|
 | `id` | `String` (PK) | Trace ID |
 | `routeKind` | `String` | Canonical value: `single` |
-| `agentEventsJson` | `Json?` | Tool call events with timing |
+| `terminationReason` | `String?` | Why the graph ended (`completed`, `step_limit`, `timeout`, etc.) |
+| `langSmithRunId` | `String?` | LangSmith run id for the graph execution |
+| `langSmithTraceId` | `String?` | LangSmith trace id for cross-run lookup |
 | `budgetJson` | `Json?` | Token budget allocation per block |
 | `toolJson` | `Json?` | Tool names, args, results |
 | `tokenJson` | `Json?` | Provider token usage |
-| `qualityJson` | `Json?` | Quality metrics |
 | `replyText` | `Text` | Final reply |
-
-### `ModelHealthState`
-
-Rolling health scores per model for degraded-mode signaling.
-
-| Column | Type | Notes |
-|:---|:---|:---|
-| `modelId` | `String` (PK) | Model identifier |
-| `score` | `Float` | Rolling health score |
-| `samples` | `Int` | Sample count |
-
----
 
 <a id="admin--operations-tables"></a>
 

@@ -4,7 +4,7 @@
   <img src="https://img.shields.io/badge/%F0%9F%8C%BF-Sage%20Pollinations-2d5016?style=for-the-badge&labelColor=4a7c23" alt="Sage Pollinations" />
 </p>
 
-This guide documents Sage's current **Pollinations.ai integration**: the hosted/default chat path, the built-in BYOP server-key flow, and the current built-in image generation/editing path.
+This guide documents Sage's **Pollinations.ai provider integration**: the built-in BYOP server-key flow, the built-in image generation/editing path, and how to point Sage's OpenAI-compatible chat runtime at Pollinations when you want to use it as the upstream endpoint.
 
 This document is written for:
 
@@ -14,7 +14,7 @@ This document is written for:
 - **Reviewers** (what Sage calls upstream, and how to verify it)
 
 > [!IMPORTANT]
-> Sage can target another OpenAI-compatible endpoint for self-hosted runtime chat requests via `LLM_BASE_URL`, but Sage's built-in image generation and hosted server-key validation flow remain Pollinations-specific today.
+> Sage can target another OpenAI-compatible endpoint for self-hosted runtime chat requests via `AI_PROVIDER_BASE_URL`, but Sage's built-in image generation and hosted server-key validation flow remain Pollinations-specific today.
 
 ```mermaid
 flowchart LR
@@ -22,7 +22,7 @@ flowchart LR
     classDef api fill:#d4edda,stroke:#155724,color:black
     classDef mgmt fill:#fff3cd,stroke:#856404,color:black
 
-    S[Sage Bot]:::sage --> T["gen.pollinations.ai/v1/chat/completions"]:::api
+    S[Sage Bot]:::sage --> T["Optional: gen.pollinations.ai/v1/chat/completions"]:::api
     S --> I["gen.pollinations.ai/image/{prompt}"]:::api
     S --> P["gen.pollinations.ai/account/profile"]:::mgmt
     A[Admin] --> D["enter.pollinations.ai"]:::mgmt
@@ -32,7 +32,7 @@ flowchart LR
 
 ## 🧭 Quick navigation
 
-- [✅ What the current Pollinations integration covers](#-what-the-current-pollinations-integration-covers)
+- [✅ What the current Pollinations-specific integration covers](#-what-the-current-pollinations-specific-integration-covers)
 - [🔗 Hosts and endpoints (the “unified” surface)](#-hosts-and-endpoints-the-unified-surface)
 - [🌸 BYOP: server-wide keys in Discord](#-byop-server-wide-keys-in-discord)
 - [⚙️ Self-host configuration (`.env`)](#-self-host-configuration-env)
@@ -44,16 +44,16 @@ flowchart LR
 
 ---
 
-## ✅ What the current Pollinations integration covers
+## ✅ What the current Pollinations-specific integration covers
 
 | Capability | What users see in Discord | What Sage calls upstream |
 |---|---|---|
-| **Chat** | Normal conversations | OpenAI-compatible `chat/completions` on `gen.pollinations.ai` |
-| **Vision** | You send an image, Sage can describe/analyze it | `chat/completions` with `image_url` content parts |
+| **Optional chat endpoint** | Runtime conversations when `AI_PROVIDER_BASE_URL` points at Pollinations | OpenAI-compatible `chat/completions` on `gen.pollinations.ai` |
+| **Optional vision endpoint** | Image analysis when `AI_PROVIDER_BASE_URL` points at Pollinations and the chosen model supports vision | `chat/completions` with `image_url` content parts |
 | **Image generation** | “Sage, draw …” → image attachment | `GET /image/{prompt}` on `gen.pollinations.ai` |
 | **Image editing** | Reply to an image: “make it watercolor” → edited image | Same image endpoint + `image=<url>` parameter |
 
-In the current repo, Pollinations is the default upstream for hosted/default chat, vision, images, and key validation. Self-hosted chat turns can still point at another OpenAI-compatible provider.
+In the current repo, Pollinations-specific surfaces are the BYOP key-validation flow plus built-in image generation/editing. Runtime chat itself is provider-agnostic and uses whatever OpenAI-compatible endpoint you configure via `AI_PROVIDER_BASE_URL`.
 
 ---
 
@@ -103,41 +103,40 @@ Sage accepts successful authenticated profile responses and extracts account fie
 When Sage needs a key, it resolves in this order:
 
 1. **Server key** (set through Sage's setup card + modal)
-2. **Host-level fallback** (`LLM_API_KEY` in `.env`)
+2. **Host-level runtime key** (`AI_PROVIDER_API_KEY` in `.env`)
 3. If neither exists, Sage returns setup guidance and cannot complete chat requests until a key is configured.
 
 ---
 
 ## ⚙️ Self-host configuration (`.env`)
 
-Minimum Pollinations settings for the current default integration (see `.env.example` for the full list):
+If you want Sage's OpenAI-compatible chat runtime to use Pollinations, these are the minimum settings (see `.env.example` for the full list):
 
 ```env
-LLM_PROVIDER=pollinations
-LLM_BASE_URL=<pollinations-v1-base-url>
-CHAT_MODEL=kimi
+AI_PROVIDER_BASE_URL=https://gen.pollinations.ai/v1
+AI_PROVIDER_MAIN_AGENT_MODEL=your-main-agent-model
 
 # Optional: Global fallback key (used if no BYOP key is set for the server)
-LLM_API_KEY=
+AI_PROVIDER_API_KEY=
 ```
 
-### Recommended: keep `LLM_BASE_URL` at the `/v1` root
+### Recommended: keep `AI_PROVIDER_BASE_URL` at the `/v1` root
 
-Sage will append `/chat/completions` internally. If you accidentally include `/chat/completions` in the base URL, Sage normalizes it, but keeping it clean avoids confusion.
+Use the `/v1` root here. The OpenAI-compatible client adds the chat endpoint path itself, and keeping the base URL at the API root avoids double-path mistakes.
 
 ### Common model overrides (optional)
 
-These are **defaults** you can customize:
+These are common overrides if you want Pollinations to back more than the primary runtime turn:
 
 ```env
 # Main baseline chat model for runtime turns
-CHAT_MODEL=kimi
+AI_PROVIDER_MAIN_AGENT_MODEL=your-main-agent-model
 
 # Profile/memory updates
-PROFILE_CHAT_MODEL=deepseek
+AI_PROVIDER_PROFILE_AGENT_MODEL=your-profile-agent-model
 
 # Channel summaries
-SUMMARY_MODEL=deepseek
+AI_PROVIDER_SUMMARY_AGENT_MODEL=your-summary-agent-model
 ```
 
 > [!NOTE]
@@ -147,7 +146,7 @@ SUMMARY_MODEL=deepseek
 
 ## 🧠 Text + vision (OpenAI-compatible chat)
 
-For the current Pollinations-backed default integration, Sage uses the OpenAI-compatible endpoint:
+If you point `AI_PROVIDER_BASE_URL` at Pollinations, Sage uses the OpenAI-compatible endpoint:
 
 - `POST gen.pollinations.ai/v1/chat/completions`
 
@@ -163,7 +162,7 @@ When users attach an image, Sage can send multimodal content:
 
 ```json
 {
-  "model": "kimi",
+  "model": "your-chat-model",
   "messages": [
     {
       "role": "user",
@@ -257,7 +256,7 @@ curl -sS "$POLLINATIONS_API/account/profile" -H "Authorization: Bearer sk_YOUR_K
 ```bash
 POLLINATIONS_API="https://gen.pollinations.ai"
 curl -sS "$POLLINATIONS_API/v1/chat/completions" -H "Authorization: Bearer sk_YOUR_KEY" -H "Content-Type: application/json" -d '{
-    "model": "kimi",
+    "model": "your-chat-model",
     "messages": [{"role":"user","content":"Say hello in one sentence."}]
   }' | head
 ```
@@ -307,5 +306,5 @@ curl -L "$POLLINATIONS_API/image/a%20cat%20wearing%20sunglasses?model=imagen-4&s
 ---
 
 <p align="center">
-  <sub>This page documents Sage's current Pollinations-backed hosted/default integration, not the full set of OpenAI-compatible providers Sage can target when self-hosted.</sub>
+  <sub>This page documents Sage's optional Pollinations provider surfaces. Sage's LangGraph runtime itself is provider-agnostic and targets any OpenAI-compatible chat endpoint configured through `AI_PROVIDER_BASE_URL`.</sub>
 </p>

@@ -72,8 +72,8 @@ vi.mock('@/app/runtime/shutdown', () => ({
 vi.mock('@/platform/config/env', () => ({
   config: {
     DISCORD_TOKEN: 'test-token',
-    LLM_API_KEY: '',
-    TRACE_ENABLED: true,
+    AI_PROVIDER_API_KEY: '',
+    SAGE_TRACE_DB_ENABLED: true,
   },
 }));
 

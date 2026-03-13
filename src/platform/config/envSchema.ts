@@ -264,7 +264,6 @@ export const testDefaults: Record<string, string> = {
   SUMMARY_PROFILE_MIN_INTERVAL_SEC: '600',
   SUMMARY_MAX_CHARS: '1500',
   SUMMARY_SCHED_TICK_SEC: '60',
-  SUMMARY_MODEL: 'deepseek',
 
   // Context Budgets
   CONTEXT_MAX_INPUT_TOKENS: '16000',
@@ -279,20 +278,29 @@ export const testDefaults: Record<string, string> = {
   CONTEXT_TRUNCATION_NOTICE: 'true',
   CONTEXT_BLOCK_MAX_TOKENS_PROVIDERS: '2000',
 
-  // Agentic Runtime / Embeddings / LLM
-  TRACE_ENABLED: 'false',
+  // Agentic Runtime / Embeddings / Tracing
+  LANGSMITH_TRACING: 'false',
+  LANGSMITH_API_KEY: '',
+  LANGSMITH_PROJECT: 'sage-test',
+  SAGE_TRACE_DB_ENABLED: 'false',
   EMBEDDING_MODEL: 'nomic-ai/nomic-embed-text-v1.5',
   EMBEDDING_DIMENSIONS: '256',
   LTM_COMPACTION_ENABLED: 'true',
   USER_PROFILE_COMPACTION_INTERVAL_DAYS: '30',
-  LLM_PROVIDER: 'pollinations',
-  LLM_BASE_URL: 'https://gen.pollinations.ai/v1',
-  LLM_IMAGE_BASE_URL: 'https://gen.pollinations.ai',
-  CHAT_MODEL: 'kimi',
-  LLM_API_KEY: '',
-  LLM_MODEL_LIMITS_JSON: '{}',
-  PROFILE_PROVIDER: 'pollinations',
-  PROFILE_CHAT_MODEL: 'deepseek',
+  AI_PROVIDER_BASE_URL: 'https://ai-provider.example/v1',
+  AI_PROVIDER_API_KEY: 'test-ai-provider-key',
+  AI_PROVIDER_MAIN_AGENT_MODEL: 'test-main-agent-model',
+  AI_PROVIDER_PROFILE_AGENT_MODEL: 'test-profile-agent-model',
+  AI_PROVIDER_SUMMARY_AGENT_MODEL: 'test-summary-agent-model',
+  AI_PROVIDER_MODEL_PROFILES_JSON: '',
+  IMAGE_PROVIDER_BASE_URL: 'https://image-provider.example',
+  IMAGE_PROVIDER_MODEL: 'test-image-model',
+  IMAGE_PROVIDER_API_KEY: '',
+  SERVER_PROVIDER_API_KEY: '',
+  SERVER_PROVIDER_PROFILE_URL: 'https://server-provider.example/account/profile',
+  SERVER_PROVIDER_AUTHORIZE_URL:
+    'https://server-provider.example/authorize?redirect_url=https://server-provider.example&permissions=profile,balance,usage',
+  SERVER_PROVIDER_DASHBOARD_URL: 'https://server-provider.example/dashboard',
   PROFILE_UPDATE_INTERVAL: '5',
 
   // Runtime Timeouts
@@ -300,7 +308,7 @@ export const testDefaults: Record<string, string> = {
   TIMEOUT_MEMORY_MS: '600000',
 
   // Tool Providers
-  TOOL_WEB_SEARCH_PROVIDER_ORDER: 'tavily,exa,searxng,pollinations',
+  TOOL_WEB_SEARCH_PROVIDER_ORDER: 'tavily,exa,searxng',
   TOOL_WEB_SEARCH_TIMEOUT_MS: '45000',
   TOOL_WEB_SEARCH_MAX_RESULTS: '6',
   TOOL_WEB_SCRAPE_PROVIDER_ORDER: 'crawl4ai,firecrawl,jina,nomnom,raw_fetch',
@@ -333,13 +341,7 @@ export const testDefaults: Record<string, string> = {
   AGENT_GRAPH_MAX_OUTPUT_TOKENS: '1800',
   AGENT_GRAPH_MAX_RESULT_CHARS: '8000',
   AGENT_GRAPH_GITHUB_GROUNDED_MODE: 'true',
-  AGENT_GRAPH_READONLY_PARALLEL_ENABLED: 'true',
-  AGENT_GRAPH_MAX_PARALLEL_READONLY: '4',
   AGENT_GRAPH_MAX_DURATION_MS: '120000',
-  AGENT_GRAPH_MEMO_ENABLED: 'true',
-  AGENT_GRAPH_MEMO_TTL_MS: '900000',
-  AGENT_GRAPH_MEMO_MAX_ENTRIES: '250',
-  AGENT_GRAPH_MEMO_MAX_RESULT_JSON_CHARS: '200000',
   AGENT_GRAPH_RECURSION_LIMIT: '16',
 
   // Security
@@ -427,7 +429,6 @@ export const envSchema = z.object({
   SUMMARY_PROFILE_MIN_INTERVAL_SEC: z.coerce.number().int().positive(),
   SUMMARY_MAX_CHARS: z.coerce.number().int().positive(),
   SUMMARY_SCHED_TICK_SEC: z.coerce.number().int().positive(),
-  SUMMARY_MODEL: z.string(),
 
   // Context Budgets
   CONTEXT_MAX_INPUT_TOKENS: z.coerce.number().int().positive(),
@@ -442,8 +443,11 @@ export const envSchema = z.object({
   CONTEXT_TRUNCATION_NOTICE: z.enum(['true', 'false']).transform((v) => v === 'true'),
   CONTEXT_BLOCK_MAX_TOKENS_PROVIDERS: z.coerce.number().int().positive(),
 
-  // Agentic Runtime / Embeddings / LLM
-  TRACE_ENABLED: z.enum(['true', 'false']).transform((v) => v === 'true'),
+  // Agentic Runtime / Embeddings / Tracing
+  LANGSMITH_TRACING: z.enum(['true', 'false']).transform((v) => v === 'true'),
+  LANGSMITH_API_KEY: z.string().trim().optional(),
+  LANGSMITH_PROJECT: z.string().trim().optional(),
+  SAGE_TRACE_DB_ENABLED: z.enum(['true', 'false']).transform((v) => v === 'true'),
   EMBEDDING_MODEL: z.string().default('nomic-ai/nomic-embed-text-v1.5'),
   EMBEDDING_DIMENSIONS: z.coerce
     .number()
@@ -455,19 +459,32 @@ export const envSchema = z.object({
     ),
   LTM_COMPACTION_ENABLED: z.enum(['true', 'false']).transform((v) => v === 'true'),
   USER_PROFILE_COMPACTION_INTERVAL_DAYS: z.coerce.number().int().min(1).max(365).default(30),
-  LLM_PROVIDER: z.enum(['pollinations']),
-  LLM_BASE_URL: httpsUrlSchema,
-  LLM_IMAGE_BASE_URL: httpsUrlSchema,
-  CHAT_MODEL: z
+  AI_PROVIDER_BASE_URL: httpOrHttpsUrlSchema,
+  AI_PROVIDER_API_KEY: z.string().trim().min(1),
+  AI_PROVIDER_MAIN_AGENT_MODEL: z.string().trim().min(1),
+  AI_PROVIDER_PROFILE_AGENT_MODEL: z.string().trim().min(1),
+  AI_PROVIDER_SUMMARY_AGENT_MODEL: z.string().trim().min(1),
+  AI_PROVIDER_MODEL_PROFILES_JSON: z
     .string()
-    .refine(
-      (value) => value.trim().toLowerCase() !== 'openai-large',
-      'CHAT_MODEL "openai-large" is no longer supported. Use "kimi" or another active model.',
-    ),
-  LLM_API_KEY: z.string().optional(),
-  LLM_MODEL_LIMITS_JSON: z.string(),
-  PROFILE_PROVIDER: z.string(),
-  PROFILE_CHAT_MODEL: z.string(),
+    .trim()
+    .transform((value) => (value.length > 0 ? value : undefined))
+    .optional()
+    .refine((value) => {
+      if (!value) return true;
+      try {
+        const parsed = JSON.parse(value) as unknown;
+        return !!parsed && typeof parsed === 'object' && !Array.isArray(parsed);
+      } catch {
+        return false;
+      }
+    }, 'AI_PROVIDER_MODEL_PROFILES_JSON must be a valid JSON object keyed by model id when provided.'),
+  IMAGE_PROVIDER_BASE_URL: httpOrHttpsUrlSchema,
+  IMAGE_PROVIDER_MODEL: z.string().trim().min(1),
+  IMAGE_PROVIDER_API_KEY: z.string().optional(),
+  SERVER_PROVIDER_API_KEY: z.string().optional(),
+  SERVER_PROVIDER_PROFILE_URL: httpsUrlSchema,
+  SERVER_PROVIDER_AUTHORIZE_URL: httpsUrlSchema,
+  SERVER_PROVIDER_DASHBOARD_URL: httpsUrlSchema,
   PROFILE_UPDATE_INTERVAL: z.coerce.number().int().positive(),
 
   // Runtime Timeouts
@@ -475,7 +492,7 @@ export const envSchema = z.object({
   TIMEOUT_MEMORY_MS: z.coerce.number().int().positive().max(600000),
 
   // Tool Providers
-  TOOL_WEB_SEARCH_PROVIDER_ORDER: z.string().default('tavily,exa,searxng,pollinations'),
+  TOOL_WEB_SEARCH_PROVIDER_ORDER: z.string().default('tavily,exa,searxng'),
   TOOL_WEB_SEARCH_TIMEOUT_MS: z.coerce.number().int().min(1000).max(180000).default(45000),
   TOOL_WEB_SEARCH_MAX_RESULTS: z.coerce.number().int().min(1).max(10).default(6),
   TOOL_WEB_SCRAPE_PROVIDER_ORDER: z.string().default('crawl4ai,firecrawl,jina,nomnom,raw_fetch'),
@@ -511,20 +528,23 @@ export const envSchema = z.object({
     .enum(['true', 'false'])
     .default('true')
     .transform((v) => v === 'true'),
-  AGENT_GRAPH_READONLY_PARALLEL_ENABLED: z
-    .enum(['true', 'false'])
-    .default('true')
-    .transform((v) => v === 'true'),
-  AGENT_GRAPH_MAX_PARALLEL_READONLY: z.coerce.number().int().min(1).max(10).default(4),
   AGENT_GRAPH_MAX_DURATION_MS: z.coerce.number().int().min(10_000).max(300_000).default(120_000),
-  AGENT_GRAPH_MEMO_ENABLED: z.enum(['true', 'false']).default('true').transform((v) => v === 'true'),
-  AGENT_GRAPH_MEMO_TTL_MS: z.coerce.number().int().min(1_000).max(6 * 60 * 60_000).default(900_000),
-  AGENT_GRAPH_MEMO_MAX_ENTRIES: z.coerce.number().int().min(1).max(5_000).default(250),
-  AGENT_GRAPH_MEMO_MAX_RESULT_JSON_CHARS: z.coerce.number().int().min(1_000).max(2_000_000).default(200_000),
   AGENT_GRAPH_RECURSION_LIMIT: z.coerce.number().int().min(2).max(64).default(16),
 
   // Security
   SECRET_ENCRYPTION_KEY: z.string().regex(/^[0-9a-fA-F]{64}$/),
+}).superRefine((value, ctx) => {
+  if (value.NODE_ENV === 'test') {
+    return;
+  }
+
+  if (value.LANGSMITH_TRACING && !value.LANGSMITH_API_KEY?.trim()) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['LANGSMITH_API_KEY'],
+      message: 'LANGSMITH_API_KEY is required when LANGSMITH_TRACING=true.',
+    });
+  }
 });
 
 /**

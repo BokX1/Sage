@@ -242,10 +242,10 @@ CREATE TABLE "AgentTrace" (
     "threadId" TEXT,
     "parentTraceId" TEXT,
     "graphStatus" TEXT,
-    "interruptJson" JSONB,
     "approvalRequestId" TEXT,
-    "agentEventsJson" JSONB,
-    "qualityJson" JSONB,
+    "terminationReason" TEXT,
+    "langSmithRunId" TEXT,
+    "langSmithTraceId" TEXT,
     "budgetJson" JSONB,
     "toolJson" JSONB,
     "tokenJson" JSONB,
@@ -253,17 +253,6 @@ CREATE TABLE "AgentTrace" (
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "AgentTrace_pkey" PRIMARY KEY ("id")
-);
-
--- CreateTable
-CREATE TABLE "ModelHealthState" (
-    "modelId" TEXT NOT NULL,
-    "score" DOUBLE PRECISION NOT NULL,
-    "samples" INTEGER NOT NULL,
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" TIMESTAMP(3) NOT NULL,
-
-    CONSTRAINT "ModelHealthState_pkey" PRIMARY KEY ("modelId")
 );
 
 -- CreateTable
@@ -384,7 +373,7 @@ CREATE INDEX "AgentTrace_threadId_createdAt_idx" ON "AgentTrace"("threadId", "cr
 CREATE INDEX "AgentTrace_approvalRequestId_createdAt_idx" ON "AgentTrace"("approvalRequestId", "createdAt");
 
 -- CreateIndex
-CREATE INDEX "ModelHealthState_updatedAt_idx" ON "ModelHealthState"("updatedAt");
+CREATE INDEX "AgentTrace_langSmithTraceId_createdAt_idx" ON "AgentTrace"("langSmithTraceId", "createdAt");
 
 -- CreateIndex
 CREATE INDEX "AttachmentChunk_attachmentId_idx" ON "AttachmentChunk"("attachmentId");

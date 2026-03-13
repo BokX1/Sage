@@ -166,7 +166,7 @@ export class VoiceManager extends EventEmitter {
     const speakerStats = Array.from(speakerCounts.values()).sort((a, b) => b.utteranceCount - a.utteranceCount);
 
     const guildKey = await getGuildApiKey(session.guildId);
-    const apiKey = guildKey ?? config.LLM_API_KEY;
+    const apiKey = guildKey ?? config.AI_PROVIDER_API_KEY;
     const structured = await summarizeVoiceConversationSession({
       session: { ...session, endedAt },
       apiKey,

@@ -1,4 +1,3 @@
-import { Prisma } from '@prisma/client';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const { mockUpsert, mockUpdate, mockFindUnique, mockFindMany } = vi.hoisted(() => ({
@@ -57,7 +56,7 @@ describe('AgentTraceRepo', () => {
       expect(mockUpsert.mock.calls[0]?.[0].update).not.toHaveProperty('reasoningText');
     });
 
-    it('embeds agent events/quality/budget into tokenJson payload', async () => {
+    it('persists compact runtime metadata without legacy event payloads', async () => {
       mockUpsert.mockResolvedValue({});
 
       await upsertTraceStart({
@@ -67,34 +66,24 @@ describe('AgentTraceRepo', () => {
         userId: 'user-1',
         routeKind: 'single',
         tokenJson: { baseline: 1 },
-        agentEventsJson: [{ type: 'runtime_start' }],
-        qualityJson: { model: 'kimi' },
         budgetJson: { route: 'single' },
+        langSmithRunId: 'run-1',
+        langSmithTraceId: 'trace-1',
       });
 
       expect(mockUpsert).toHaveBeenCalledWith(
         expect.objectContaining({
           create: expect.objectContaining({
-            agentEventsJson: expect.any(Array),
-            qualityJson: expect.any(Object),
             budgetJson: expect.any(Object),
-            tokenJson: expect.objectContaining({
-              baseline: 1,
-              agentEvents: expect.any(Array),
-              quality: expect.any(Object),
-              budget: expect.any(Object),
-            }),
+            tokenJson: { baseline: 1 },
+            langSmithRunId: 'run-1',
+            langSmithTraceId: 'trace-1',
           }),
           update: expect.objectContaining({
-            agentEventsJson: expect.any(Array),
-            qualityJson: expect.any(Object),
             budgetJson: expect.any(Object),
-            tokenJson: expect.objectContaining({
-              baseline: 1,
-              agentEvents: expect.any(Array),
-              quality: expect.any(Object),
-              budget: expect.any(Object),
-            }),
+            tokenJson: { baseline: 1 },
+            langSmithRunId: 'run-1',
+            langSmithTraceId: 'trace-1',
           }),
         }),
       );
@@ -128,28 +117,31 @@ describe('AgentTraceRepo', () => {
 
       expect(mockUpdate).toHaveBeenCalledWith({
         where: { id: 'trace-123' },
-        data: {
+        data: expect.objectContaining({
           approvalRequestId: null,
           graphStatus: null,
-          interruptJson: Prisma.JsonNull,
+          langSmithRunId: null,
+          langSmithTraceId: null,
           parentTraceId: null,
           replyText: 'Final reply text',
+          terminationReason: null,
           threadId: null,
-          toolJson: Prisma.JsonNull,
-        },
+        }),
       });
       expect(mockUpdate.mock.calls[0]?.[0].data).not.toHaveProperty('reasoningText');
     });
 
-    it('persists quality and budget JSON when provided', async () => {
+    it('persists tool, budget, and LangSmith references when provided', async () => {
       mockUpdate.mockResolvedValue({});
 
       await updateTraceEnd({
         id: 'trace-123',
         toolJson: { executed: true },
-        qualityJson: { score: 0.9 },
         budgetJson: { toolResultCount: 2 },
-        agentEventsJson: [{ type: 'runtime_end' }],
+        tokenJson: { promptTokens: 10 },
+        langSmithRunId: 'run-2',
+        langSmithTraceId: 'trace-2',
+        terminationReason: 'assistant_reply',
         replyText: 'Final reply text',
       });
 
@@ -158,9 +150,11 @@ describe('AgentTraceRepo', () => {
         data: expect.objectContaining({
           replyText: 'Final reply text',
           toolJson: { executed: true },
-          qualityJson: expect.any(Object),
           budgetJson: expect.any(Object),
-          agentEventsJson: expect.any(Array),
+          tokenJson: { promptTokens: 10 },
+          langSmithRunId: 'run-2',
+          langSmithTraceId: 'trace-2',
+          terminationReason: 'assistant_reply',
         }),
       });
     });
@@ -171,7 +165,6 @@ describe('AgentTraceRepo', () => {
       await expect(
         updateTraceEnd({
           id: 'trace-end-write-error',
-          qualityJson: { score: 0.8 },
           budgetJson: { toolResultCount: 1 },
           replyText: 'Final reply text',
         }),

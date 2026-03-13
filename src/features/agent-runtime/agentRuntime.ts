@@ -1,7 +1,8 @@
 import { config as appConfig } from '../../platform/config/env';
 import { getRecentMessages } from '../awareness/channelRingBuffer';
 import { buildTranscriptBlock } from '../awareness/transcriptBuilder';
-import { LLMChatMessage, LLMMessageContent } from '../../platform/llm/llm-types';
+import { type BaseMessage } from '@langchain/core/messages';
+import { LLMMessageContent } from '../../platform/llm/llm-types';
 import { getGuildApiKey } from '../settings/guildSettingsRepo';
 import { getGuildSagePersonaText } from '../settings/guildSagePersonaRepo';
 import { isLoggingEnabled } from '../settings/guildChannelSettings';
@@ -32,9 +33,6 @@ import { formatLiveVoiceContext } from '../voice/voiceConversationSessionStore';
 
 const SINGLE_ROUTE_KIND = 'single';
 
-/** Default model identifier when CHAT_MODEL is not configured. */
-const DEFAULT_CHAT_MODEL = 'kimi';
-
 export interface RunChatTurnParams {
   traceId: string;
   userId: string;
@@ -60,7 +58,7 @@ export interface RunChatTurnResult {
     kind?: 'missing_api_key';
   };
   debug?: {
-    messages?: LLMChatMessage[];
+    messages?: BaseMessage[];
   };
   files?: Array<{
     attachment: Buffer;
@@ -161,7 +159,7 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
       : null;
 
   const guildApiKey = guildId ? await getGuildApiKey(guildId) : undefined;
-  const apiKey = (guildApiKey ?? appConfig.LLM_API_KEY)?.trim();
+  const apiKey = (guildApiKey ?? appConfig.AI_PROVIDER_API_KEY)?.trim();
   if (!apiKey) {
     logger.warn(
       { guildId, channelId, userId },
@@ -171,7 +169,7 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
     return {
       replyText: guildId
         ? '⚠️ I need a server API key before I can respond here.'
-        : '⚠️ I need an API key before I can respond. Configure `LLM_API_KEY` for this bot instance.',
+        : '⚠️ I need an AI provider API key before I can respond. Configure `AI_PROVIDER_API_KEY` for this bot instance.',
       delivery: 'chat_reply',
       meta: guildId ? { kind: 'missing_api_key' } : undefined,
     };
@@ -185,13 +183,11 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
       logger.warn({ error, guildId }, 'Failed to load guild Sage Persona (non-fatal)');
     }
   }
-  const model = (appConfig.CHAT_MODEL || DEFAULT_CHAT_MODEL).trim();
+  const model = appConfig.AI_PROVIDER_MAIN_AGENT_MODEL.trim();
   const graphConfig = buildAgentGraphConfig();
   const graphLimits = {
     maxRounds: graphConfig.maxSteps,
     maxCallsPerRound: graphConfig.maxToolCallsPerStep,
-    parallelReadOnlyTools: graphConfig.parallelReadOnlyTools,
-    maxParallelReadOnlyTools: graphConfig.maxParallelReadOnlyTools,
   };
   const autopilotMode = resolveRuntimeAutopilotMode({
     invokedBy,
@@ -230,7 +226,7 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
     isVoiceActive,
   });
 
-  if (appConfig.TRACE_ENABLED) {
+  if (appConfig.SAGE_TRACE_DB_ENABLED) {
     try {
       await upsertTraceStart({
         id: traceId,
@@ -250,13 +246,6 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
         },
         threadId: traceId,
         graphStatus: 'running',
-        agentEventsJson: [
-          {
-            type: 'runtime_start',
-            route: SINGLE_ROUTE_KIND,
-            timestamp: new Date().toISOString(),
-          },
-        ],
       });
     } catch (error) {
       logger.warn({ error, traceId }, 'Failed to persist trace start');
@@ -265,11 +254,12 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
 
   let graphBudgetJson: Record<string, unknown> | undefined;
   let toolResults: ToolResult[] = [];
-  let graphTraceEvents: Record<string, unknown>[] = [];
   let finalReplyText: string;
   let files: Array<{ attachment: Buffer; name: string }> = [];
   let approvalInterrupt: { requestId?: string } | undefined;
   let delivery: RunChatTurnResult['delivery'] = 'chat_reply';
+  let langSmithRunId: string | null = null;
+  let langSmithTraceId: string | null = null;
 
   try {
     const loopStartedAt = Date.now();
@@ -299,22 +289,8 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
     toolResults = graphResult.toolResults;
     approvalInterrupt = graphResult.approvalInterrupt ?? undefined;
     delivery = approvalInterrupt ? 'approval_governance_only' : 'chat_reply';
-    graphTraceEvents = [
-      ...graphResult.roundEvents.map((event) => ({
-        type: 'tool_round',
-        timestamp: event.completedAt,
-        details: event,
-      })),
-      ...(graphResult.finalization.attempted
-        ? [
-          {
-            type: 'tool_finalization',
-            timestamp: graphResult.finalization.completedAt,
-            details: graphResult.finalization,
-          },
-        ]
-        : []),
-    ];
+    langSmithRunId = graphResult.langSmithRunId;
+    langSmithTraceId = graphResult.langSmithTraceId;
     const successfulToolCount = graphResult.toolResults.filter((result) => result.success).length;
     graphBudgetJson = {
       enabled: activeToolNames.length > 0,
@@ -328,16 +304,13 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
       guardrailBlockedCallCount: graphResult.guardrailBlockedCallCount,
       roundEvents: graphResult.roundEvents,
       finalization: graphResult.finalization,
-      cancellationCount: graphResult.cancellationCount,
       attachmentCount: graphResult.files.length,
       latencyMs: Date.now() - loopStartedAt,
       graphStatus: graphResult.graphStatus,
       approvalInterrupt,
+      langSmithRunId,
+      langSmithTraceId,
     };
-    graphTraceEvents = [
-      ...graphTraceEvents,
-      ...graphResult.traceEvents,
-    ];
   } catch (error) {
     logger.error({ error, traceId }, 'Single-agent runtime call failed');
     finalReplyText = "I'm having trouble connecting right now. Please try again later.";
@@ -381,7 +354,7 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
     attachmentCount: files.length,
   };
 
-  if (appConfig.TRACE_ENABLED) {
+  if (appConfig.SAGE_TRACE_DB_ENABLED) {
     try {
       await updateTraceEnd({
         id: traceId,
@@ -390,27 +363,18 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
           routeTools: activeToolNames,
           graph: graphBudgetJson,
         },
-        qualityJson: {
+        budgetJson,
+        tokenJson: {
           model,
           route: SINGLE_ROUTE_KIND,
+          activeToolNames,
         },
-        budgetJson,
         threadId: traceId,
         graphStatus: (graphBudgetJson?.graphStatus as string | undefined) ?? 'completed',
         approvalRequestId: approvalInterrupt?.requestId ?? null,
-        interruptJson: approvalInterrupt,
-        agentEventsJson: [
-          ...graphTraceEvents,
-          {
-            type: 'runtime_end',
-            route: SINGLE_ROUTE_KIND,
-            timestamp: new Date().toISOString(),
-            details: {
-              files: files.length,
-              toolResults: toolResults.length,
-            },
-          },
-        ],
+        terminationReason: (graphBudgetJson?.terminationReason as string | undefined) ?? null,
+        langSmithRunId,
+        langSmithTraceId,
         replyText: safeFinalReplyText,
       });
     } catch (error) {

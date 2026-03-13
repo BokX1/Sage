@@ -214,7 +214,7 @@ There is no dedicated summarize command surface in the current product; summariz
 Sage updates user profiles asynchronously with throttling:
 
 - Update interval: `PROFILE_UPDATE_INTERVAL` starter value `5`
-- Analysis model: `PROFILE_CHAT_MODEL` starter value `deepseek`
+- Analysis model: `AI_PROVIDER_PROFILE_AGENT_MODEL` (required; optional `AI_PROVIDER_MODEL_PROFILES_JSON` entries can refine limits)
 - Formatter/repair step: `jsonrepair` is used to recover strict JSON output
 - Concurrency guard: per-user sequential protection prevents overlapping profile updates
 - Stored profile contract: exactly `<preferences>`, `<active_focus>`, and `<background>`; legacy `<directives>` rows are normalized on read/write for compatibility

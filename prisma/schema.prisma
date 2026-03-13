@@ -240,39 +240,30 @@ model AdminAudit {
 }
 
 model AgentTrace {
-  id              String   @id
-  guildId         String?
-  channelId       String
-  userId          String
-  routeKind       String
-  threadId        String?
-  parentTraceId   String?
-  graphStatus     String?
-  interruptJson   Json?
+  id                String   @id
+  guildId           String?
+  channelId         String
+  userId            String
+  routeKind         String
+  threadId          String?
+  parentTraceId     String?
+  graphStatus       String?
   approvalRequestId String?
-  agentEventsJson Json?
-  qualityJson     Json?
-  budgetJson      Json?
-  toolJson        Json?
-  tokenJson       Json?
-  replyText       String   @db.Text
-  createdAt       DateTime @default(now())
+  terminationReason String?
+  langSmithRunId    String?
+  langSmithTraceId  String?
+  budgetJson        Json?
+  toolJson          Json?
+  tokenJson         Json?
+  replyText         String   @db.Text
+  createdAt         DateTime @default(now())
 
   @@index([guildId, createdAt])
   @@index([channelId, createdAt])
   @@index([userId, createdAt])
   @@index([threadId, createdAt])
   @@index([approvalRequestId, createdAt])
-}
-
-model ModelHealthState {
-  modelId   String   @id
-  score     Float
-  samples   Int
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([updatedAt])
+  @@index([langSmithTraceId, createdAt])
 }
 
 model AttachmentChunk {

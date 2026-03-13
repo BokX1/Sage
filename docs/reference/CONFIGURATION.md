@@ -10,16 +10,18 @@ Complete index of all environment variables used by Sage, with descriptions and 
 > [!TIP]
 > Use `.env.example` as your starting template. Run `npm run onboard` for interactive setup.
 > [!NOTE]
-> Values in the tables below match the committed `.env.example` template. The runtime also has schema-level fallbacks in `src/platform/config/envSchema.ts` when variables are omitted entirely.
+> Values in the tables below match the committed `.env.example` template. Most operational defaults still live in `src/platform/config/envSchema.ts`, but the runtime AI-provider fields must be set explicitly.
 > [!IMPORTANT]
-> Sage can target any OpenAI-compatible chat endpoint through `LLM_BASE_URL`. The starter values below point at Pollinations because that is the current default hosted integration and the current built-in image/BYOP path.
+> Sage's runtime talks to an operator-defined AI provider over an OpenAI-compatible chat-completions contract. Sage does not assume a literal OpenAI provider and does not ship default chat/profile/summary model ids.
 
 ---
 
 ## 🧭 Quick Navigation
 
 - [Core / Discord](#core--discord)
-- [LLM Configuration](#llm-configuration)
+- [AI Provider Configuration](#ai-provider-configuration)
+- [Image Provider Configuration](#image-provider-configuration)
+- [Server Provider Configuration](#server-provider-configuration)
 - [Memory & Profile Models](#memory--profile-models)
 - [Embeddings](#embeddings)
 - [Memory Compaction](#memory-compaction)
@@ -51,18 +53,41 @@ Complete index of all environment variables used by Sage, with descriptions and 
 
 ---
 
-<a id="llm-configuration"></a>
+<a id="ai-provider-configuration"></a>
 
-## 🤖 LLM Configuration
+## 🤖 AI Provider Configuration
 
 | Variable | Description | Default |
 |:---|:---|:---|
-| `LLM_PROVIDER` | Starter provider identifier for the default integration | `pollinations` |
-| `LLM_BASE_URL` | OpenAI-compatible API base URL for chat turns | <code>https&#58;//gen.pollinations.ai/v1</code> |
-| `LLM_IMAGE_BASE_URL` | Current built-in image generation endpoint base | <code>https&#58;//gen.pollinations.ai</code> |
-| `CHAT_MODEL` | Primary chat model | `kimi` |
-| `LLM_API_KEY` | Global fallback API key for the configured provider (or per-server via Pollinations BYOP) | *(empty)* |
-| `LLM_MODEL_LIMITS_JSON` | JSON override for model token limits | *(empty)* |
+| `AI_PROVIDER_BASE_URL` | Base URL for your OpenAI-compatible chat-completions endpoint | *(required)* |
+| `AI_PROVIDER_API_KEY` | Host-level API key for the configured AI provider | *(required)* |
+| `AI_PROVIDER_MAIN_AGENT_MODEL` | Primary runtime agent model | *(required)* |
+| `AI_PROVIDER_MODEL_PROFILES_JSON` | JSON object keyed by model id with token/capability limits Sage should trust when provided | *(optional)* |
+
+---
+
+<a id="image-provider-configuration"></a>
+
+## 🖼️ Image Provider Configuration
+
+| Variable | Description | Default |
+|:---|:---|:---|
+| `IMAGE_PROVIDER_BASE_URL` | Base URL for Sage's image generation/editing provider | *(required when image tools are enabled)* |
+| `IMAGE_PROVIDER_MODEL` | Image generation/editing model id | *(required when image tools are enabled)* |
+| `IMAGE_PROVIDER_API_KEY` | API key for the image provider | *(empty)* |
+
+---
+
+<a id="server-provider-configuration"></a>
+
+## 🏢 Server Provider Configuration
+
+| Variable | Description | Default |
+|:---|:---|:---|
+| `SERVER_PROVIDER_API_KEY` | Host-level key for the optional server-side BYOP/account flow | *(empty)* |
+| `SERVER_PROVIDER_PROFILE_URL` | Profile-check endpoint for the server-provider flow | *(required when BYOP is enabled)* |
+| `SERVER_PROVIDER_AUTHORIZE_URL` | Hosted authorize URL for the server-provider flow | *(required when BYOP is enabled)* |
+| `SERVER_PROVIDER_DASHBOARD_URL` | Hosted dashboard URL for the server-provider flow | *(required when BYOP is enabled)* |
 
 ---
 
@@ -72,10 +97,9 @@ Complete index of all environment variables used by Sage, with descriptions and 
 
 | Variable | Description | Default |
 |:---|:---|:---|
-| `PROFILE_PROVIDER` | LLM provider for profile updates (blank = default) | *(empty)* |
-| `PROFILE_CHAT_MODEL` | Model for user profile analysis | `deepseek` |
+| `AI_PROVIDER_PROFILE_AGENT_MODEL` | Model for user profile analysis | *(required)* |
 | `PROFILE_UPDATE_INTERVAL` | Min interactions before triggering profile update | `5` |
-| `SUMMARY_MODEL` | Model for channel summaries | `deepseek` |
+| `AI_PROVIDER_SUMMARY_AGENT_MODEL` | Model for channel summaries | *(required)* |
 
 ---
 
@@ -227,7 +251,10 @@ These settings control Sage's optional Discord voice features. The local voice s
 
 | Variable | Description | Default |
 |:---|:---|:---|
-| `TRACE_ENABLED` | Enable trace persistence | `true` |
+| `LANGSMITH_TRACING` | Enable optional LangSmith tracing for graph, task, and node execution | `false` |
+| `LANGSMITH_API_KEY` | LangSmith API key used when `LANGSMITH_TRACING=true` | *(empty)* |
+| `LANGSMITH_PROJECT` | LangSmith project name when tracing is enabled | `sage` |
+| `SAGE_TRACE_DB_ENABLED` | Persist compact `AgentTrace` ledger rows alongside LangSmith references | `true` |
 | `AGENT_GRAPH_MAX_STEPS` | Max LangGraph model/tool steps per turn | `6` |
 | `AGENT_GRAPH_MAX_TOOL_CALLS_PER_STEP` | Max tool calls the model can request in one step | `5` |
 | `AGENT_GRAPH_TOOL_TIMEOUT_MS` | Per-tool execution timeout | `45000` |
@@ -235,12 +262,6 @@ These settings control Sage's optional Discord voice features. The local voice s
 | `AGENT_GRAPH_MAX_OUTPUT_TOKENS` | Max output tokens for graph model calls | `1800` |
 | `AGENT_GRAPH_MAX_RESULT_CHARS` | Max chars per tool result | `8000` |
 | `AGENT_GRAPH_GITHUB_GROUNDED_MODE` | Enable GitHub grounded search | `true` |
-| `AGENT_GRAPH_READONLY_PARALLEL_ENABLED` | Enable parallel read-only tool execution | `true` |
-| `AGENT_GRAPH_MAX_PARALLEL_READONLY` | Max concurrent read-only tools | `4` |
-| `AGENT_GRAPH_MEMO_ENABLED` | Enable in-process memoization for repeated read-only calls | `true` |
-| `AGENT_GRAPH_MEMO_TTL_MS` | Memo cache TTL in milliseconds | `900000` |
-| `AGENT_GRAPH_MEMO_MAX_ENTRIES` | Max memoized entries kept in memory | `250` |
-| `AGENT_GRAPH_MEMO_MAX_RESULT_JSON_CHARS` | Max JSON payload size eligible for memoization | `200000` |
 | `AGENT_GRAPH_RECURSION_LIMIT` | LangGraph recursion fail-safe above the legal hop count | `16` |
 
 ---
@@ -262,7 +283,7 @@ These settings control Sage's optional Discord voice features. The local voice s
 
 | Variable | Description | Default |
 |:---|:---|:---|
-| `TOOL_WEB_SEARCH_PROVIDER_ORDER` | Search provider priority | `tavily,exa,searxng,pollinations` |
+| `TOOL_WEB_SEARCH_PROVIDER_ORDER` | Search provider priority | `tavily,exa,searxng` |
 | `TOOL_WEB_SEARCH_TIMEOUT_MS` | Per-provider search timeout | `45000` |
 | `TOOL_WEB_SEARCH_MAX_RESULTS` | Results per search call | `6` |
 | `TOOL_WEB_SCRAPE_PROVIDER_ORDER` | Scrape provider priority | `crawl4ai,firecrawl,jina,nomnom,raw_fetch` |

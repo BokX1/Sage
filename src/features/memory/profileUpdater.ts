@@ -1,7 +1,7 @@
 import { createLLMClient } from '../../platform/llm';
 import { config as appConfig } from '../../platform/config/env';
 import { logger } from '../../platform/logging/logger';
-import { LLMClient, LLMRequest, LLMProviderName } from '../../platform/llm/llm-types';
+import { LLMClient, LLMRequest } from '../../platform/llm/llm-types';
 import { limitByKey } from '../../shared/async/perKeyConcurrency';
 import { getRecentMessages } from '../awareness/channelRingBuffer';
 import { buildTranscriptBlock } from '../awareness/transcriptBuilder';
@@ -49,7 +49,7 @@ Example:
 Output ONLY the JSON object.`;
 
 // Cached analyst client
-let analystClientCache: { client: LLMClient; provider: LLMProviderName } | null = null;
+let analystClientCache: LLMClient | null = null;
 
 function isTrailingAssistantMatch(
   message: { content: string; authorId: string; authorIsBot: boolean },
@@ -75,27 +75,18 @@ function isTrailingUserMatch(
 
 /**
  * Get the LLM client for the Analyst phase.
- * Uses PROFILE_PROVIDER and PROFILE_CHAT_MODEL overrides if configured.
- * Default: Configured model (default: deepseek) with temperature 0.3
+ * Uses the configured AI provider profile model with temperature 0.3.
  */
-function getAnalystClient(): { client: LLMClient; provider: LLMProviderName } {
+function getAnalystClient(): LLMClient {
   if (analystClientCache) {
     return analystClientCache;
   }
 
-  const profileProvider = appConfig.PROFILE_PROVIDER?.trim() || '';
-  const profileChatModel = appConfig.PROFILE_CHAT_MODEL?.trim() || 'deepseek';
-
-  // Determine provider (use override or fallback to default)
-  const provider = (profileProvider || 'pollinations') as LLMProviderName;
-
-  analystClientCache = {
-    client: createLLMClient(provider, { chatModel: profileChatModel }),
-    provider,
-  };
+  const profileAgentModel = appConfig.AI_PROVIDER_PROFILE_AGENT_MODEL.trim();
+  analystClientCache = createLLMClient({ agentModel: profileAgentModel });
 
   logger.debug(
-    { provider, model: profileChatModel },
+    { model: profileAgentModel },
     'Analyst client initialized',
   );
 
@@ -236,7 +227,7 @@ export async function updateProfileSummary(params: {
 
 /**
  * STEP 1: Run the Analyst
- * - Model: deepseek
+ * - Model: configured AI provider profile model
  * - Temperature: 0.3 (creative but focused)
  * - Output: Free-form text analysis (NO JSON constraint)
  */
@@ -249,7 +240,7 @@ async function runAnalyst(params: {
   apiKey?: string;
 }): Promise<string | null> {
   const { previousSummary, recentHistory, userMessage, assistantReply, replyTarget, apiKey } = params;
-  const { client } = getAnalystClient();
+  const client = getAnalystClient();
 
   const replyTargetText = extractTextFromMessageContent(replyTarget?.content);
   const replyTargetSection = replyTarget

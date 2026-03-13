@@ -1,6 +1,7 @@
-import type { LLMChatMessage, LLMToolCall } from '../../../platform/llm/llm-types';
-import type { ToolResult } from '../toolCallExecution';
+import type { BaseMessage } from '@langchain/core/messages';
 import type { ApprovalInterruptPayload } from '../toolControlSignals';
+import type { ToolResult } from '../toolCallExecution';
+import type { GraphToolCallDescriptor } from './nativeTools';
 
 export interface GraphToolFile {
   name: string;
@@ -28,18 +29,12 @@ export interface ToolCallRoundEvent {
   guardrailBlockedCallCount: number;
   completedAt: string;
   rebudgeting?: GraphRebudgetEvent;
-  stagnation?: {
-    repeatedBatch: boolean;
-    madeProgress: boolean;
-    triggered: boolean;
-  };
 }
 
 export type GraphTurnTerminationReason =
   | 'assistant_reply'
   | 'step_limit'
   | 'graph_timeout'
-  | 'stagnation'
   | 'approval_interrupt';
 
 export interface ToolCallFinalizationEvent {
@@ -60,15 +55,10 @@ export interface SerializedToolResult extends Omit<ToolResult, 'attachments'> {
   }>;
 }
 
-export interface CallAttemptLedgerEntry {
-  failedOuterExecutions: number;
-  blockedReason?: 'non_retryable_failure' | 'failure_budget';
-  lastFailureCategory?: string;
-}
-
 export interface ApprovalInterruptState {
+  requestId: string;
+  call: GraphToolCallDescriptor;
   payload: ApprovalInterruptPayload;
-  requestId?: string;
   coalesced?: boolean;
   expiresAtIso?: string;
 }
@@ -82,7 +72,7 @@ export interface ApprovalResolutionState {
   errorText?: string | null;
 }
 
-export interface AgentGraphState {
+export interface AgentGraphRuntimeContext {
   traceId: string;
   originTraceId: string;
   threadId: string;
@@ -96,13 +86,16 @@ export interface AgentGraphState {
   maxTokens?: number;
   invokedBy?: 'mention' | 'reply' | 'wakeword' | 'autopilot' | 'component';
   invokerIsAdmin?: boolean;
-  messages: LLMChatMessage[];
   activeToolNames: string[];
   routeKind: string;
   currentTurn: unknown;
   replyTarget: unknown;
-  pendingToolCalls: LLMToolCall[];
-  pendingAssistantText: string;
+}
+
+export interface AgentGraphState {
+  messages: BaseMessage[];
+  resumeContext: AgentGraphRuntimeContext;
+  pendingWriteCall: GraphToolCallDescriptor | null;
   replyText: string;
   toolResults: SerializedToolResult[];
   files: GraphToolFile[];
@@ -110,20 +103,13 @@ export interface AgentGraphState {
   deduplicatedCallCount: number;
   truncatedCallCount: number;
   guardrailBlockedCallCount: number;
-  cancellationCount: number;
   roundEvents: ToolCallRoundEvent[];
   finalization: ToolCallFinalizationEvent;
   terminationReason: GraphTurnTerminationReason;
-  previousExecutedBatchFingerprint: string | null;
-  previousSuccessfulReadObservationFingerprint: string | null;
-  pendingApprovalResultsByFingerprint: Record<string, SerializedToolResult>;
-  callAttemptLedger: Record<string, CallAttemptLedgerEntry>;
-  sideEffectExecutedInLoop: boolean;
   graphStatus: 'running' | 'interrupted' | 'completed' | 'failed';
   startedAtEpochMs: number;
   approvalInterrupt: ApprovalInterruptState | null;
   approvalResolution: ApprovalResolutionState | null;
-  traceEvents: Record<string, unknown>[];
 }
 
 export interface ApprovalResumeInput {

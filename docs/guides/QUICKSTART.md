@@ -81,7 +81,7 @@ npm run dev
 > [!TIP]
 > `npm run onboard` supports optional automation flags for CI/headless flows: `--start-docker --migrate --doctor`.
 
-Self-hosted Sage can target any OpenAI-compatible chat provider through `LLM_BASE_URL`. Follow **[📖 Getting Started](GETTING_STARTED.md)** for the full walkthrough.
+Self-hosted Sage can target any OpenAI-compatible chat provider through `AI_PROVIDER_BASE_URL`. Follow **[📖 Getting Started](GETTING_STARTED.md)** for the full walkthrough.
 
 ---
 

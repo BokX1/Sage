@@ -80,7 +80,7 @@ flowchart TD
     VE --> CE
     IC --> CE
     RT --> CB --> BG
-    BG --> PC --> LLM[LLM Provider]:::llm
+    BG --> PC --> LLM[AI Provider]:::llm
     LLM --> AG
     AG --> MT & ST & DT & AT & GT
     MT --> PG & MG
@@ -90,12 +90,12 @@ flowchart TD
 | Component | File | Purpose |
 |:---|:---|:---|
 | **Chat Engine** | `src/features/chat/chat-engine.ts` | Entry point — receives Discord events, orchestrates `runChatTurn` |
-| **Agent Runtime** | `src/features/agent-runtime/agentRuntime.ts` | The single `runChatTurn` function: model resolution, prompt assembly, graph invocation, trace persistence |
+| **Agent Runtime** | `src/features/agent-runtime/agentRuntime.ts` | The single `runChatTurn` function: model resolution, prompt assembly, graph invocation, and compact trace-ledger persistence |
 | **Context Builder** | `src/features/agent-runtime/contextBuilder.ts` | Composes prioritized message blocks (system prompt, runtime instructions, optional guild Sage Persona/voice context, transcript, reply context) |
 | **Context Budgeter** | `src/features/agent-runtime/contextBudgeter.ts` | Token-aware block sizing with configurable per-block budgets |
 | **Prompt Composer** | `src/features/agent-runtime/promptComposer.ts` | Assembles the final system prompt with personality, capability guidance, and silent native tool-use rules |
-| **Agent Graph Runtime** | `src/features/agent-runtime/langgraph/runtime.ts` | Custom LangGraph runtime for model calls, bounded tool execution, approval interrupts, forced finalization, and checkpointed resumes |
-| **Tool Registry** | `src/features/agent-runtime/toolRegistry.ts` | Zod-validated tool definitions with OpenAI-compatible spec generation |
+| **Agent Graph Runtime** | `src/features/agent-runtime/langgraph/runtime.ts` | Custom LangGraph runtime for schema-first state, model calls, bounded tool execution, approval interrupts, forced finalization, subgraph routing, and checkpointed resumes |
+| **Tool Registry** | `src/features/agent-runtime/toolRegistry.ts` | Zod-validated tool definitions with runtime execution metadata |
 | **Default Tools** | `src/features/agent-runtime/defaultTools.ts` | All 15 built-in top-level tool definitions |
 
 ---
@@ -109,13 +109,13 @@ sequenceDiagram
     participant U as User
     participant CE as Chat Engine
     participant RT as runChatTurn
-    participant LLM as LLM Provider
+    participant LLM as AI Provider
     participant AG as Agent Graph
     participant T as Tools
 
     U->>CE: Discord message
     CE->>RT: Invoke with context params
-    RT->>RT: Resolve model (CHAT_MODEL → kimi fallback)
+    RT->>RT: Resolve model from explicit AI provider config
     RT->>RT: Build context (system prompt + runtime blocks + transcript + current turn)
     RT->>RT: Budget tokens across blocks
     RT->>LLM: Send prompt + tool specs
@@ -132,7 +132,7 @@ sequenceDiagram
         AG->>RT: Final plain-text answer + attachments
     end
 
-    RT->>RT: Persist trace (if TRACE_ENABLED)
+    RT->>RT: Persist LangSmith trace + optional AgentTrace ledger
     RT->>CE: Return reply + files
     CE->>U: Discord reply
 ```
@@ -142,8 +142,8 @@ sequenceDiagram
 1. **Single-agent, single-model** — no route-mapped model selection.
 2. **Tool-driven context** — memory, social graph, voice data are fetched through tools, not pre-injected.
 3. **Bounded graph execution** — configurable max steps (`AGENT_GRAPH_MAX_STEPS`) and tool calls per step (`AGENT_GRAPH_MAX_TOOL_CALLS_PER_STEP`).
-4. **Parallel read-only optimization** — read-only tools can execute concurrently within a step.
-5. **Trace persistence** — every turn optionally persists route, budget, tool, and quality metadata.
+4. **Parallel read-only optimization** — read-only tools can execute concurrently within a step through `ToolNode`.
+5. **LangSmith-first observability** — every turn records LangGraph execution into LangSmith and can additionally persist a compact `AgentTrace` ledger row.
 
 ---
 
@@ -268,8 +268,7 @@ Read-only helpers are also exposed across the routed Discord tools:
 | **Tool validation** | Zod schema validation + size limits before execution |
 | **Bounded execution** | Max rounds, calls per round, and per-tool timeout |
 | **Error classification** | Execution-stage kind (`validation`/`execution`/`timeout`) plus actionable categories (HTTP status, rate limit, network error, etc.) surfaced to the LLM |
-| **Model health tracking** | Rolling success/failure scores per model with degraded-mode signaling |
-| **Trace persistence** | Route, budget, tool, and quality metadata stored per turn |
+| **Observability** | LangSmith captures graph execution and Sage can persist a compact `AgentTrace` ledger with route, budget, tool, token, and final-reply metadata |
 | **Build/test gates** | `check:trust` runs lint + typecheck + test audit + shuffled test validation |
 
 ---

@@ -3,22 +3,6 @@ import { z } from 'zod';
 import { ToolRegistry } from '../../../../src/features/agent-runtime/toolRegistry';
 import { registerDefaultAgenticTools } from '../../../../src/features/agent-runtime/defaultTools';
 
-function hasKeyDeep(value: unknown, key: string): boolean {
-  if (Array.isArray(value)) {
-    return value.some((item) => hasKeyDeep(item, key));
-  }
-
-  if (value && typeof value === 'object') {
-    const record = value as Record<string, unknown>;
-    if (Object.prototype.hasOwnProperty.call(record, key)) {
-      return true;
-    }
-    return Object.values(record).some((nested) => hasKeyDeep(nested, key));
-  }
-
-  return false;
-}
-
 describe('ToolRegistry', () => {
   let registry: ToolRegistry;
 
@@ -336,27 +320,4 @@ describe('ToolRegistry', () => {
     });
   });
 
-  describe('OpenAI tool specs', () => {
-    it('should generate valid OpenAI-compatible tool specs', () => {
-      const specs = registry.listOpenAIToolSpecs();
-
-      expect(specs).toHaveLength(2);
-      expect(specs[0].type).toBe('function');
-      expect(specs.map((s) => s.function.name)).toContain('echo');
-      expect(specs.map((s) => s.function.name)).toContain('calc');
-
-      const echoSpec = specs.find((spec) => spec.function.name === 'echo');
-      expect(echoSpec).toBeDefined();
-      expect(echoSpec?.function.parameters).toMatchObject({
-        type: 'object',
-        properties: {
-          message: {
-            type: 'string',
-          },
-        },
-        required: ['message'],
-      });
-      expect(hasKeyDeep(echoSpec?.function.parameters, '$schema')).toBe(false);
-    });
-  });
 });

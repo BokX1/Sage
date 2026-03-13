@@ -163,7 +163,7 @@ export async function generateChatReply(params: {
 
     // 3. Update Profile (Background, Throttled)
     // Only trigger profile update every PROFILE_UPDATE_INTERVAL messages
-    const apiKey = (guildId ? await getGuildApiKey(guildId) : undefined) ?? config.LLM_API_KEY;
+    const apiKey = (guildId ? await getGuildApiKey(guildId) : undefined) ?? config.AI_PROVIDER_API_KEY;
 
     if (apiKey) {
       const nowMs = Date.now();

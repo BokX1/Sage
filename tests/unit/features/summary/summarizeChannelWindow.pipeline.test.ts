@@ -15,7 +15,7 @@ vi.mock('@/platform/llm', () => ({
 
 vi.mock('@/platform/config/env', () => ({
   config: {
-    SUMMARY_MODEL: 'deepseek',
+    AI_PROVIDER_SUMMARY_AGENT_MODEL: 'test-summary-agent-model',
   },
 }));
 

@@ -1,11 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { HumanMessage, SystemMessage } from '@langchain/core/messages';
 import type { CurrentTurnContext } from '@/features/agent-runtime/continuityContext';
 
 const mockConfig = vi.hoisted(() => ({
-  LLM_API_KEY: 'env-key',
-  TRACE_ENABLED: false,
+  AI_PROVIDER_API_KEY: 'env-key',
+  SAGE_TRACE_DB_ENABLED: false,
+  LANGSMITH_TRACING: false,
   TIMEOUT_CHAT_MS: 1000,
-  CHAT_MODEL: 'kimi',
+  AI_PROVIDER_MAIN_AGENT_MODEL: 'test-main-agent-model',
   CHAT_MAX_OUTPUT_TOKENS: 800,
   AGENT_GRAPH_MAX_OUTPUT_TOKENS: 800,
   AGENT_GRAPH_GITHUB_GROUNDED_MODE: false,
@@ -36,8 +38,8 @@ vi.mock('@/features/awareness/transcriptBuilder', () => ({
 
 vi.mock('@/features/agent-runtime/contextBuilder', () => ({
   buildContextMessages: vi.fn().mockReturnValue([
-    { role: 'system', content: 'sys' },
-    { role: 'user', content: 'hello' },
+    new SystemMessage({ content: 'sys' }),
+    new HumanMessage({ content: 'hello' }),
   ]),
 }));
 
@@ -107,7 +109,6 @@ function makeGraphResult(overrides: Partial<Awaited<ReturnType<typeof mockRunAge
     deduplicatedCallCount: 0,
     truncatedCallCount: 0,
     guardrailBlockedCallCount: 0,
-    cancellationCount: 0,
     roundEvents: [],
     finalization: {
       attempted: false,
@@ -121,14 +122,15 @@ function makeGraphResult(overrides: Partial<Awaited<ReturnType<typeof mockRunAge
     graphStatus: 'completed',
     approvalInterrupt: null,
     approvalResolution: null,
-    traceEvents: [],
+    langSmithRunId: null,
+    langSmithTraceId: null,
     ...overrides,
   };
 }
 
 describe('agent runtime API key fallback', () => {
   beforeEach(() => {
-    mockConfig.LLM_API_KEY = 'env-key';
+    mockConfig.AI_PROVIDER_API_KEY = 'env-key';
     mockGetGuildSagePersonaText.mockResolvedValue(null);
     mockRunAgentGraphTurn.mockReset();
     globalToolRegistryMock.listNames.mockReturnValue([]);
@@ -159,7 +161,7 @@ describe('agent runtime API key fallback', () => {
   });
 
   it('returns setup guidance when no keys are available', async () => {
-    mockConfig.LLM_API_KEY = '';
+    mockConfig.AI_PROVIDER_API_KEY = '';
     mockGetGuildApiKey.mockResolvedValueOnce(undefined);
 
     const result = await runChatTurn({

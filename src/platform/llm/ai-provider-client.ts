@@ -15,7 +15,7 @@ import { planBudget, trimMessagesToBudget } from './context-budgeter';
 import { sanitizeJsonSchemaForProvider } from '../../shared/validation/json-schema';
 import { normalizeTimeoutMs } from '../../shared/utils/timeout';
 
-interface PollinationsConfig {
+interface AiProviderClientConfigInput {
   baseUrl: string;
   model: string;
   apiKey?: string;
@@ -23,9 +23,17 @@ interface PollinationsConfig {
   maxRetries?: number;
 }
 
-interface PollinationsPayload {
+interface AiProviderClientConfig {
+  baseUrl: string;
   model: string;
-  messages: LLMRequest['messages'];
+  apiKey?: string;
+  timeoutMs: number;
+  maxRetries: number;
+}
+
+interface CompatibleChatCompletionsPayload {
+  model: string;
+  messages: CompatibleChatMessage[];
   temperature: number;
   max_tokens?: number;
   response_format?: { type: 'json_object' };
@@ -33,7 +41,14 @@ interface PollinationsPayload {
   tool_choice?: string | object;
 }
 
-type ProviderToolCall = {
+type CompatibleChatMessage = {
+  role: 'system' | 'user' | 'assistant' | 'tool';
+  content: LLMMessageContent;
+  tool_calls?: CompatibleChatToolCall[];
+  tool_call_id?: string;
+};
+
+type CompatibleChatToolCall = {
   id?: string;
   function?: {
     name?: string;
@@ -41,9 +56,9 @@ type ProviderToolCall = {
   };
 };
 
-type ProviderMessage = {
+type CompatibleChatResponseMessage = {
   content?: string;
-  tool_calls?: ProviderToolCall[];
+  tool_calls?: CompatibleChatToolCall[];
 };
 
 const DEFAULT_TIMEOUT_MS = 180_000;
@@ -53,8 +68,6 @@ const DEFAULT_MAX_RETRIES = 2;
 const MAX_RETRIES = 5;
 const JSON_ONLY_INSTRUCTION =
   ' IMPORTANT: You must output strictly valid JSON only. Do not wrap in markdown blocks. No other text.';
-const TOOL_AVAILABILITY_INSTRUCTION =
-  ' You have access to google_search tool for real-time info/web. Never deny using it.';
 
 function resolveMaxRetries(rawMaxRetries: number | undefined): number {
   if (typeof rawMaxRetries !== 'number' || !Number.isFinite(rawMaxRetries)) {
@@ -69,7 +82,6 @@ function resolveMaxRetries(rawMaxRetries: number | undefined): number {
   return Math.min(normalized, MAX_RETRIES);
 }
 
-/** Wait for retry backoff without keeping the Node.js process alive by itself. */
 function sleep(delayMs: number, signal?: AbortSignal): Promise<void> {
   if (signal?.aborted) {
     return Promise.reject(new DOMException('The operation was aborted.', 'AbortError'));
@@ -101,11 +113,6 @@ function isAbortError(error: unknown): boolean {
   return false;
 }
 
-function isGeminiSearchModel(model: string): boolean {
-  const normalized = model.trim().toLowerCase();
-  return normalized === 'gemini-search';
-}
-
 function composeAbortSignal(parentSignal: AbortSignal | undefined, timeoutSignal: AbortSignal): AbortSignal {
   if (!parentSignal) return timeoutSignal;
   if (parentSignal.aborted) return parentSignal;
@@ -122,33 +129,7 @@ function composeAbortSignal(parentSignal: AbortSignal | undefined, timeoutSignal
   return controller.signal;
 }
 
-function withSystemInstruction(
-  messages: LLMRequest['messages'],
-  instruction: string,
-): LLMRequest['messages'] {
-  const cloned = messages.map((message) => ({ ...message }));
-  const systemMessage = cloned.find((message) => message.role === 'system');
-
-  if (systemMessage) {
-    if (typeof systemMessage.content === 'string') {
-      if (!systemMessage.content.includes(instruction.trim())) {
-        systemMessage.content += instruction;
-      }
-    } else if (Array.isArray(systemMessage.content)) {
-      const alreadyPresent = systemMessage.content.some(
-        (part) => part.type === 'text' && part.text.includes(instruction.trim()),
-      );
-      if (!alreadyPresent) {
-        systemMessage.content = [...systemMessage.content, { type: 'text', text: instruction.trim() }];
-      }
-    }
-    return cloned;
-  }
-
-  return [{ role: 'system', content: instruction.trim() }, ...cloned];
-}
-
-function extractSystemText(content: LLMRequest['messages'][number]['content']): string {
+function extractSystemText(content: CompatibleChatMessage['content']): string {
   if (typeof content === 'string') {
     return content;
   }
@@ -161,13 +142,9 @@ function extractSystemText(content: LLMRequest['messages'][number]['content']): 
     .join('\n');
 }
 
-/**
- * Ensure provider calls receive one consolidated system prompt block.
- * This prevents scattered system instructions from being dropped or reordered.
- */
-function collapseSystemMessages(messages: LLMRequest['messages']): LLMRequest['messages'] {
+function collapseSystemMessages(messages: CompatibleChatMessage[]): CompatibleChatMessage[] {
   const systemParts: string[] = [];
-  const nonSystemMessages: LLMRequest['messages'] = [];
+  const nonSystemMessages: CompatibleChatMessage[] = [];
 
   for (const message of messages) {
     if (message.role === 'system') {
@@ -215,11 +192,80 @@ function mergeMessageContents(prev: LLMMessageContent, next: LLMMessageContent):
   return merged;
 }
 
+function serializeToolCallsForApi(toolCalls: LLMToolCall[] | undefined): CompatibleChatToolCall[] | undefined {
+  if (!Array.isArray(toolCalls) || toolCalls.length === 0) {
+    return undefined;
+  }
+
+  return toolCalls.map((toolCall) => ({
+    id: toolCall.id,
+    type: 'function',
+    function: {
+      name: toolCall.name,
+      arguments: JSON.stringify(toolCall.args ?? {}),
+    },
+  }));
+}
+
+function normalizeMessagesForApi(messages: LLMRequest['messages']): CompatibleChatMessage[] {
+  const messagesWithSingleSystem = collapseSystemMessages(
+    messages.map((message) => ({
+      role: message.role,
+      content: message.content,
+      tool_calls: serializeToolCallsForApi(message.toolCalls),
+      tool_call_id: message.toolCallId,
+    })),
+  );
+  const normalizedMessages: CompatibleChatMessage[] = [];
+
+  for (const message of messagesWithSingleSystem) {
+    if (normalizedMessages.length === 0) {
+      normalizedMessages.push(message);
+      continue;
+    }
+
+    const previous = normalizedMessages[normalizedMessages.length - 1];
+    const shouldMerge =
+      previous.role === message.role &&
+      previous.role !== 'tool' &&
+      !previous.tool_calls?.length &&
+      !message.tool_calls?.length &&
+      !previous.tool_call_id &&
+      !message.tool_call_id;
+
+    if (shouldMerge) {
+      previous.content = mergeMessageContents(previous.content, message.content);
+    } else {
+      normalizedMessages.push(message);
+    }
+  }
+
+  let firstNonSystemIndex = -1;
+  for (let index = 0; index < normalizedMessages.length; index += 1) {
+    if (normalizedMessages[index].role !== 'system') {
+      firstNonSystemIndex = index;
+      break;
+    }
+  }
+
+  if (firstNonSystemIndex !== -1) {
+    const firstMessage = normalizedMessages[firstNonSystemIndex];
+    if (firstMessage.role === 'assistant' || firstMessage.role === 'tool') {
+      normalizedMessages.splice(firstNonSystemIndex, 0, {
+        role: 'user',
+        content: '(Consulting memory/context...)',
+      });
+    }
+  }
+
+  return normalizedMessages;
+}
+
 function assertSafeBaseUrl(rawBaseUrl: string): string {
   const trimmed = rawBaseUrl.trim().replace(/\/$/, '').replace(/\/chat\/completions$/, '');
   const parsed = new URL(trimmed);
-  if (parsed.protocol !== 'https:') {
-    throw new Error('LLM base URL must use HTTPS.');
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    throw new Error('AI provider base URL must use HTTP(S).');
   }
   return parsed.toString().replace(/\/$/, '');
 }
@@ -238,15 +284,21 @@ function sanitizeToolDefinitionsForProvider(tools: ToolDefinition[] | undefined)
   }));
 }
 
-/**
- * Defines the PollinationsClient class.
- */
-export class PollinationsClient implements LLMClient {
-  private config: PollinationsConfig;
+export class AiProviderClient implements LLMClient {
+  private config: AiProviderClientConfig;
   private breaker: CircuitBreaker;
 
-  constructor(config: Partial<PollinationsConfig> = {}) {
-    const baseUrl = assertSafeBaseUrl(config.baseUrl || 'https://gen.pollinations.ai/v1');
+  constructor(config: AiProviderClientConfigInput) {
+    const normalizedBaseUrl = config.baseUrl?.trim();
+    if (!normalizedBaseUrl) {
+      throw new Error('AI provider base URL must be configured.');
+    }
+    const normalizedModel = config.model?.trim();
+    if (!normalizedModel) {
+      throw new Error('AI provider model must be configured.');
+    }
+
+    const baseUrl = assertSafeBaseUrl(normalizedBaseUrl);
     const timeoutMs = normalizeTimeoutMs(config.timeoutMs, {
       fallbackMs: DEFAULT_TIMEOUT_MS,
       minMs: MIN_TIMEOUT_MS,
@@ -257,20 +309,20 @@ export class PollinationsClient implements LLMClient {
     if (config.timeoutMs !== undefined && timeoutMs !== Math.floor(config.timeoutMs)) {
       logger.warn(
         { providedTimeoutMs: config.timeoutMs, appliedTimeoutMs: timeoutMs, minTimeoutMs: MIN_TIMEOUT_MS, maxTimeoutMs: MAX_TIMEOUT_MS },
-        '[Pollinations] Invalid timeout override detected; using sanitized timeout',
+        '[AiProviderClient] Invalid timeout override detected; using sanitized timeout',
       );
     }
 
     if (config.maxRetries !== undefined && maxRetries !== Math.floor(config.maxRetries)) {
       logger.warn(
         { providedMaxRetries: config.maxRetries, appliedMaxRetries: maxRetries, maxRetriesCap: MAX_RETRIES },
-        '[Pollinations] Invalid maxRetries override detected; using sanitized retry count',
+        '[AiProviderClient] Invalid maxRetries override detected; using sanitized retry count',
       );
     }
 
     this.config = {
       baseUrl,
-      model: (config.model || 'kimi').toLowerCase(),
+      model: normalizedModel,
       apiKey: config.apiKey,
       timeoutMs,
       maxRetries,
@@ -285,7 +337,7 @@ export class PollinationsClient implements LLMClient {
     return this.breaker.execute(() => this._chat(request));
   }
 
-  private normalizeToolCalls(toolCalls: ProviderToolCall[] | undefined): LLMToolCall[] | undefined {
+  private normalizeToolCalls(toolCalls: CompatibleChatToolCall[] | undefined): LLMToolCall[] | undefined {
     if (!Array.isArray(toolCalls) || toolCalls.length === 0) {
       return undefined;
     }
@@ -307,9 +359,9 @@ export class PollinationsClient implements LLMClient {
             rawArgs: String(rawArgs).slice(0, 200),
             error: error instanceof Error ? error.message : String(error),
           },
-          '[Pollinations] Malformed tool call arguments JSON',
+          '[AiProviderClient] Malformed tool call arguments JSON',
         );
-        throw new Error(`Pollinations returned malformed JSON arguments for tool "${toolName}".`, {
+        throw new Error(`AI provider returned malformed JSON arguments for tool "${toolName}".`, {
           cause: error,
         });
       }
@@ -317,17 +369,19 @@ export class PollinationsClient implements LLMClient {
   }
 
   private async _chat(request: LLMRequest): Promise<LLMResponse> {
-    // Build final URL - strict guarantee of single /chat/completions
     const url = `${this.config.baseUrl}/chat/completions`;
     const rawModel = request.model || this.config.model;
-    const model = rawModel.trim().toLowerCase();
+    const model = rawModel.trim();
+    if (!model) {
+      throw new Error('AI provider request model must be configured.');
+    }
 
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
     };
     const apiKey = request.apiKey || this.config.apiKey;
     if (apiKey) {
-      headers['Authorization'] = `Bearer ${apiKey}`;
+      headers.Authorization = `Bearer ${apiKey}`;
     }
 
     const modelConfig = getModelBudgetConfig(model);
@@ -343,45 +397,7 @@ export class PollinationsClient implements LLMClient {
       visionEnabled: modelConfig.visionEnabled,
     });
 
-    // Normalize messages to enforce strict alternation (S? -> U -> A -> U...).
-    const messagesWithSingleSystem = collapseSystemMessages(trimmed);
-    const normalizedMessages: LLMRequest['messages'] = [];
-
-    for (const msg of messagesWithSingleSystem) {
-      if (normalizedMessages.length === 0) {
-        normalizedMessages.push(msg);
-        continue;
-      }
-
-      const prev = normalizedMessages[normalizedMessages.length - 1];
-
-      // Merge adjacent same-role messages.
-      if (prev.role === msg.role) {
-        prev.content = mergeMessageContents(prev.content, msg.content);
-      } else {
-        normalizedMessages.push(msg);
-      }
-    }
-
-    // Ensure first non-system message is user.
-    let firstNonSystemIndex = -1;
-    for (let i = 0; i < normalizedMessages.length; i++) {
-      if (normalizedMessages[i].role !== 'system') {
-        firstNonSystemIndex = i;
-        break;
-      }
-    }
-
-    if (firstNonSystemIndex !== -1) {
-      const firstMsg = normalizedMessages[firstNonSystemIndex];
-      if (firstMsg.role === 'assistant') {
-        normalizedMessages.splice(firstNonSystemIndex, 0, {
-          role: 'user',
-          content: '(Consulting memory/context...)'
-        });
-      }
-    }
-
+    const normalizedMessages = normalizeMessagesForApi(trimmed);
 
     if (stats.droppedCount > 0 || stats.notes.length > 0) {
       logger.info(
@@ -408,7 +424,7 @@ export class PollinationsClient implements LLMClient {
       );
     }
 
-    const payload: PollinationsPayload = {
+    const payload: CompatibleChatCompletionsPayload = {
       model,
       messages: normalizedMessages,
       temperature: request.temperature ?? 0.7,
@@ -419,36 +435,17 @@ export class PollinationsClient implements LLMClient {
       tool_choice: request.toolChoice,
     };
 
-    // WORKAROUND: gemini-search models reject response_format='json_object'.
-    // Apply the shim only for gemini-search family so other models keep native JSON mode.
-    if (isGeminiSearchModel(model) && payload.response_format?.type === 'json_object') {
-      logger.info(
-        { model, hasTools: !!payload.tools?.length },
-        '[Pollinations] gemini-search does not support JSON mode. Disabling API JSON mode and injecting prompt instructions.',
-      );
-
-      delete payload.response_format;
-
-      const instruction =
-        payload.tools && payload.tools.length > 0
-          ? `${TOOL_AVAILABILITY_INSTRUCTION}${JSON_ONLY_INSTRUCTION}`
-          : JSON_ONLY_INSTRUCTION;
-      payload.messages = withSystemInstruction(payload.messages, instruction);
-    }
-
-    // Safe URL logging (no headers)
-    logger.debug({ url, model, messageCount: trimmed.length }, '[Pollinations] Request');
-    metrics.increment('llm_calls_total', { model, provider: 'pollinations' });
+    logger.debug({ url, model, messageCount: trimmed.length }, '[AiProviderClient] Request');
+    metrics.increment('llm_calls_total', { model, provider: 'ai_provider' });
 
     let attempt = 0;
     let lastError: Error | undefined;
-    const maxAttempts = this.config.maxRetries! + 1; // +1 for the first try
+    const maxAttempts = this.config.maxRetries + 1;
     let hasRetriedForJson = false;
 
     while (attempt < maxAttempts) {
       try {
         const controller = new AbortController();
-        // Use request-specific timeout if provided, then sanitize to safe bounds.
         const timeout = normalizeTimeoutMs(request.timeout, {
           fallbackMs: this.config.timeoutMs ?? DEFAULT_TIMEOUT_MS,
           minMs: MIN_TIMEOUT_MS,
@@ -472,8 +469,6 @@ export class PollinationsClient implements LLMClient {
         if (!response.ok) {
           const text = await response.text();
 
-          // 1. JSON Mode Compatibility Check
-          // If rejection is due to response_format/json_object, retry ONCE without it
           if (
             !hasRetriedForJson &&
             (response.status === 400 || response.status === 422) &&
@@ -482,17 +477,13 @@ export class PollinationsClient implements LLMClient {
           ) {
             logger.warn(
               { status: response.status, error: text.slice(0, 100) },
-              '[Pollinations] JSON mode rejected. Retrying with shim...',
+              '[AiProviderClient] JSON mode rejected. Retrying with shim...',
             );
 
             hasRetriedForJson = true;
-
-            // Modify payload for compatibility retry
             delete payload.response_format;
-            // Strengthen system prompt to ensure JSON output
-            const systemMsg = payload.messages.find((m) => m.role === 'system');
+            const systemMsg = payload.messages.find((message) => message.role === 'system');
 
-            // Avoid duplicate instructions
             if (systemMsg) {
               if (
                 typeof systemMsg.content === 'string' &&
@@ -504,37 +495,34 @@ export class PollinationsClient implements LLMClient {
               payload.messages.unshift({ role: 'system', content: JSON_ONLY_INSTRUCTION });
             }
 
-            // Continue loop immediately to retry with new payload
             continue;
           }
 
-          // 2. Fail Fast on Model Validation Errors (400)
-          // Only if we passed the JSON check or it wasn't a JSON error
           if (response.status === 400 && /model|validation/i.test(text)) {
-            const err = new Error(`Pollinations Model Error: ${text}`);
+            const err = new Error(`AI provider model error: ${text}`);
             logger.error(
               {
                 status: response.status,
                 model,
                 error: text,
               },
-              '[Pollinations] Invalid Model - Aborting Retries',
+              '[AiProviderClient] Invalid model - aborting retries',
             );
-            throw err; // invalidating retry loop by throwing out
+            throw err;
           }
 
           const err = new Error(
-            `Pollinations API error: ${response.status} ${response.statusText} - ${text.slice(0, 200)}`,
+            `AI provider API error: ${response.status} ${response.statusText} - ${text.slice(0, 200)}`,
           );
           logger.warn(
             { status: response.status, error: err.message, timeout },
-            '[Pollinations] API Error',
+            '[AiProviderClient] API error',
           );
           throw err;
         }
 
         const data = (await response.json()) as {
-          choices?: { message?: ProviderMessage }[];
+          choices?: { message?: CompatibleChatResponseMessage }[];
           usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number };
         };
         const message = data.choices?.[0]?.message;
@@ -548,14 +536,14 @@ export class PollinationsClient implements LLMClient {
         if (reasoningText) {
           logger.debug(
             { reasoningLength: reasoningText.length },
-            '[Pollinations] Preserving model reasoning alongside native tool calls',
+            '[AiProviderClient] Preserving model reasoning alongside native tool calls',
           );
         }
 
         if (toolCalls && toolCalls.length > 0) {
-          logger.debug({ count: toolCalls.length }, '[Pollinations] Native tool calls detected');
+          logger.debug({ count: toolCalls.length }, '[AiProviderClient] Native tool calls detected');
         }
-        logger.debug({ usage: data.usage }, '[Pollinations] Success');
+        logger.debug({ usage: data.usage }, '[AiProviderClient] Success');
 
         return {
           text: toolCalls && toolCalls.length > 0 ? '' : content,
@@ -576,25 +564,22 @@ export class PollinationsClient implements LLMClient {
           throw lastError;
         }
 
-        // If it's the model validation error we threw above, stop retrying
-        if (lastError.message.includes('Pollinations Model Error')) {
+        if (lastError.message.includes('AI provider model error')) {
           throw lastError;
         }
 
-        attempt++;
+        attempt += 1;
 
         if (attempt < maxAttempts) {
           metrics.increment('llm_failures_total', { model, type: 'retry' });
-          logger.warn({ attempt, error: lastError.message }, '[Pollinations] Retry');
-
-          // Simple backoff
+          logger.warn({ attempt, error: lastError.message }, '[AiProviderClient] Retry');
           await sleep(500 * Math.pow(2, attempt), request.signal);
         }
       }
     }
 
     metrics.increment('llm_failures_total', { model, type: 'exhausted' });
-    logger.error({ error: lastError }, '[Pollinations] Failed after retries');
+    logger.error({ error: lastError }, '[AiProviderClient] Failed after retries');
     throw lastError;
   }
 }

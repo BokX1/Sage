@@ -297,8 +297,6 @@ describe('capabilityPrompt', () => {
         graphLimits: {
           maxRounds: 6,
           maxCallsPerRound: 5,
-          parallelReadOnlyTools: true,
-          maxParallelReadOnlyTools: 4,
         },
       };
 
@@ -314,8 +312,8 @@ describe('capabilityPrompt', () => {
       expect(stateBlock).toContain('"autopilot_mode": "reserved"');
       expect(stateBlock).toContain('"max_steps": 6');
       expect(stateBlock).toContain('"max_tool_calls_per_step": 5');
-      expect(stateBlock).toContain('"parallel_read_only_tools": true');
-      expect(stateBlock).toContain('"max_parallel_read_only_tools": 4');
+      expect(stateBlock).not.toContain('"parallel_read_only_tools"');
+      expect(stateBlock).not.toContain('"max_parallel_read_only_tools"');
     });
 
     it('propagates voice and autopilot guidance into execution rules', () => {

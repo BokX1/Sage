@@ -45,7 +45,6 @@ describe('web tool default execution profile', () => {
     const payload = mockRunWebSearch.mock.calls[0]?.[0] as Record<string, unknown>;
     expect(payload.depth).toBe('balanced');
     expect(payload).not.toHaveProperty('providerOrder');
-    expect(payload).not.toHaveProperty('allowLlmFallback');
   });
 
   it('does not inject legacy scrape provider overrides', async () => {

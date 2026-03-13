@@ -3951,11 +3951,10 @@ async function resumeApprovalReviewGraph(params: {
   resumeTraceId?: string | null;
 }): Promise<void> {
   const resumeTraceId = params.resumeTraceId?.trim() || generateTraceId();
-  const timestamp = new Date().toISOString();
   const { upsertTraceStart, updateTraceEnd } = await import('../agent-runtime/agent-trace-repo');
   const { resumeAgentGraphTurn } = await import('../agent-runtime/langgraph/runtime');
 
-  if (process.env.TRACE_ENABLED !== 'false') {
+  if (process.env.SAGE_TRACE_DB_ENABLED !== 'false') {
     await upsertTraceStart({
       id: resumeTraceId,
       guildId: params.action.guildId,
@@ -3970,24 +3969,10 @@ async function resumeApprovalReviewGraph(params: {
       budgetJson: {
         route: 'approval_resume',
       },
-      agentEventsJson: [
-        {
-          type: 'approval_resume_start',
-          timestamp,
-          details: {
-            approvalRequestId: params.action.id,
-            threadId: params.action.threadId,
-            decision: params.decision,
-          },
-        },
-      ],
       threadId: params.action.threadId,
       parentTraceId: params.action.originTraceId,
       graphStatus: 'running',
       approvalRequestId: params.action.id,
-      interruptJson: {
-        decision: params.decision,
-      },
     }).catch((error) => {
       logger.warn({ error, requestId: params.action.id }, 'Failed to persist approval resume trace start');
     });
@@ -4015,21 +4000,17 @@ async function resumeApprovalReviewGraph(params: {
         route: 'approval_resume',
         graphStatus: graphResult.graphStatus,
       },
-      agentEventsJson: [
-        {
-          type: 'approval_resume_end',
-          timestamp: new Date().toISOString(),
-          details: {
-            approvalRequestId: params.action.id,
-            decision: params.decision,
-            graphStatus: graphResult.graphStatus,
-          },
-        },
-      ],
+      tokenJson: {
+        approvalRequestId: params.action.id,
+        decision: params.decision,
+      },
       threadId: params.action.threadId,
       parentTraceId: params.action.originTraceId,
       graphStatus: graphResult.graphStatus,
       approvalRequestId: params.action.id,
+      terminationReason: graphResult.terminationReason,
+      langSmithRunId: graphResult.langSmithRunId,
+      langSmithTraceId: graphResult.langSmithTraceId,
     }).catch((error) => {
       logger.warn({ error, requestId: params.action.id }, 'Failed to persist approval resume trace end');
     });
@@ -4057,21 +4038,15 @@ async function resumeApprovalReviewGraph(params: {
         route: 'approval_resume',
         failed: true,
       },
-      agentEventsJson: [
-        {
-          type: 'approval_resume_error',
-          timestamp: new Date().toISOString(),
-          details: {
-            approvalRequestId: params.action.id,
-            decision: params.decision,
-            errorText: error instanceof Error ? error.message : String(error),
-          },
-        },
-      ],
+      tokenJson: {
+        approvalRequestId: params.action.id,
+        decision: params.decision,
+      },
       threadId: params.action.threadId,
       parentTraceId: params.action.originTraceId,
       graphStatus: 'failed',
       approvalRequestId: params.action.id,
+      terminationReason: 'approval_interrupt',
     }).catch(() => {
       // Ignore trace-end persistence failures for approval resumes.
     });

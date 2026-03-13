@@ -48,11 +48,11 @@ describe('env embedding dimension guard', () => {
     });
   });
 
-  it('rejects openai-large as unsupported CHAT_MODEL', async () => {
+  it('rejects blank AI provider chat model configuration', async () => {
     await withEnv(
       {
         NODE_ENV: 'test',
-        CHAT_MODEL: 'openai-large',
+        AI_PROVIDER_MAIN_AGENT_MODEL: '',
       },
       async () => {
         const exitSpy = vi.spyOn(process, 'exit').mockImplementation((code?: string | number | null) => {
@@ -69,11 +69,11 @@ describe('env embedding dimension guard', () => {
     );
   });
 
-  it('keeps configured context limits for supported models', async () => {
+  it('keeps configured context limits for explicitly configured AI provider models', async () => {
     await withEnv(
       {
         NODE_ENV: 'test',
-        CHAT_MODEL: 'kimi',
+        AI_PROVIDER_MAIN_AGENT_MODEL: 'test-main-agent-model',
         CONTEXT_MAX_INPUT_TOKENS: '16000',
         CONTEXT_RESERVED_OUTPUT_TOKENS: '4000',
         CONTEXT_BLOCK_MAX_TOKENS_TRANSCRIPT: '4000',

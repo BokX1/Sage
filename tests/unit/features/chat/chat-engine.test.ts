@@ -10,7 +10,7 @@ const mockNeedsCompaction = vi.hoisted(() => vi.fn());
 const mockCompactUserProfile = vi.hoisted(() => vi.fn());
 
 const mockConfig = vi.hoisted(() => ({
-  LLM_API_KEY: 'bot-key',
+  AI_PROVIDER_API_KEY: 'bot-key',
   PROFILE_UPDATE_INTERVAL: 1,
 }));
 
@@ -63,7 +63,7 @@ function makeCurrentTurn(overrides: Partial<CurrentTurnContext> = {}): CurrentTu
 describe('ChatEngine', () => {
   beforeEach(() => {
     __resetChatEngineStateForTests();
-    mockConfig.LLM_API_KEY = 'bot-key';
+    mockConfig.AI_PROVIDER_API_KEY = 'bot-key';
     mockConfig.PROFILE_UPDATE_INTERVAL = 1;
     mockGetUserProfileRecord.mockResolvedValue(null);
     mockGetGuildApiKey.mockResolvedValue('guild-key');

@@ -13,8 +13,6 @@ export interface BuildCapabilityPromptSectionParams {
   graphLimits?: {
     maxRounds: number;
     maxCallsPerRound: number;
-    parallelReadOnlyTools: boolean;
-    maxParallelReadOnlyTools: number;
   };
 }
 
@@ -42,8 +40,6 @@ export function buildAgenticStateBlock(params: BuildCapabilityPromptSectionParam
       ? {
         max_steps: params.graphLimits.maxRounds,
         max_tool_calls_per_step: params.graphLimits.maxCallsPerRound,
-        parallel_read_only_tools: params.graphLimits.parallelReadOnlyTools,
-        max_parallel_read_only_tools: params.graphLimits.maxParallelReadOnlyTools,
       }
       : null,
   };

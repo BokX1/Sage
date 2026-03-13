@@ -5,6 +5,7 @@ const stopChannelSummaryScheduler = vi.hoisted(() => vi.fn());
 const stopCompactionScheduler = vi.hoisted(() => vi.fn());
 const prismaDisconnect = vi.hoisted(() => vi.fn());
 const shutdownKafkaProducer = vi.hoisted(() => vi.fn());
+const shutdownAgentGraphRuntime = vi.hoisted(() => vi.fn());
 
 vi.mock('@/features/summary/channelSummaryScheduler', () => ({
   stopChannelSummaryScheduler,
@@ -24,6 +25,10 @@ vi.mock('@/platform/social-graph/kafkaProducer', () => ({
   shutdownKafkaProducer,
 }));
 
+vi.mock('@/features/agent-runtime/langgraph/runtime', () => ({
+  shutdownAgentGraphRuntime,
+}));
+
 describe('registerShutdownHooks', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -31,6 +36,7 @@ describe('registerShutdownHooks', () => {
     stopCompactionScheduler.mockReturnValue(undefined);
     prismaDisconnect.mockResolvedValue(undefined);
     shutdownKafkaProducer.mockResolvedValue(undefined);
+    shutdownAgentGraphRuntime.mockResolvedValue(undefined);
   });
 
   it('stops scheduler, destroys client, and disconnects prisma on SIGTERM', async () => {
@@ -58,6 +64,7 @@ describe('registerShutdownHooks', () => {
     expect(stopChannelSummaryScheduler).toHaveBeenCalledTimes(1);
     expect(stopCompactionScheduler).toHaveBeenCalledTimes(1);
     expect(client.destroy).toHaveBeenCalledTimes(1);
+    expect(shutdownAgentGraphRuntime).toHaveBeenCalledTimes(1);
     expect(prismaDisconnect).toHaveBeenCalledTimes(1);
     expect(shutdownKafkaProducer).toHaveBeenCalledTimes(1);
     expect(processExitMock).toHaveBeenCalledWith(0);

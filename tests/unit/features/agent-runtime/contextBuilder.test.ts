@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
+import { AIMessage, HumanMessage, SystemMessage } from '@langchain/core/messages';
 import type { CurrentTurnContext } from '../../../../src/features/agent-runtime/continuityContext';
+import type { LLMContentPart } from '../../../../src/platform/llm/llm-types';
 import {
   buildContextMessages,
   resolveReservedOutputTokens,
@@ -30,6 +32,23 @@ function getSystemContent(messages: ReturnType<typeof buildContextMessages>): st
   return content;
 }
 
+function getRole(message: ReturnType<typeof buildContextMessages>[number]): string {
+  if (SystemMessage.isInstance(message)) return 'system';
+  if (HumanMessage.isInstance(message)) return 'user';
+  if (AIMessage.isInstance(message)) return 'assistant';
+  return 'unknown';
+}
+
+function getStructuredContentParts(
+  message: ReturnType<typeof buildContextMessages>[number],
+): LLMContentPart[] {
+  if (typeof message.content === 'string') {
+    return [];
+  }
+
+  return message.content as LLMContentPart[];
+}
+
 describe('contextBuilder core message assembly', () => {
   it('should produce a system message with user profile', () => {
     const messages = buildContextMessages({
@@ -38,7 +57,7 @@ describe('contextBuilder core message assembly', () => {
       userText: 'Hello',
     });
 
-    expect(messages[0].role).toBe('system');
+    expect(getRole(messages[0])).toBe('system');
     expect(getSystemContent(messages)).toContain('Active developer');
     expect(getSystemContent(messages)).toContain('<current_turn>');
   });
@@ -137,9 +156,9 @@ describe('contextBuilder core message assembly', () => {
       userText: 'Here is my latest follow-up',
     });
 
-    expect(messages[0].role).toBe('system');
+    expect(getRole(messages[0])).toBe('system');
     expect(getSystemContent(messages)).toContain('continuity_policy: reply_target > same_speaker_recent > explicit_named_subject > ambient_room');
-    expect(messages[messages.length - 1].role).toBe('user');
+    expect(getRole(messages[messages.length - 1]!)).toBe('user');
     const latestContent = String(messages[messages.length - 1].content);
     expect(latestContent).toContain('Reply target for continuity only:');
     expect(latestContent).toContain('<reply_target>');
@@ -198,11 +217,11 @@ describe('contextBuilder core message assembly', () => {
     });
 
     const latestMessage = messages[messages.length - 1];
-    expect(latestMessage.role).toBe('user');
+    expect(getRole(latestMessage)).toBe('user');
     expect(Array.isArray(latestMessage.content)).toBe(true);
-    if (typeof latestMessage.content === 'string') return;
-    expect(latestMessage.content[0]).toEqual({ type: 'text', text: '<user_input>\n' });
-    expect(latestMessage.content[latestMessage.content.length - 1]).toEqual({ type: 'text', text: '\n</user_input>' });
+    const structuredContent = getStructuredContentParts(latestMessage);
+    expect(structuredContent[0]).toEqual({ type: 'text', text: '<user_input>\n' });
+    expect(structuredContent[structuredContent.length - 1]).toEqual({ type: 'text', text: '\n</user_input>' });
   });
 
   it('folds multimodal reply target content into the latest user message', () => {
@@ -236,25 +255,25 @@ describe('contextBuilder core message assembly', () => {
     });
 
     const latestMessage = messages[messages.length - 1];
-    expect(latestMessage.role).toBe('user');
+    expect(getRole(latestMessage)).toBe('user');
     expect(Array.isArray(latestMessage.content)).toBe(true);
-    if (typeof latestMessage.content === 'string') return;
-    expect(latestMessage.content[0]).toEqual({ type: 'text', text: 'Reply target for continuity only:\n' });
-    expect(latestMessage.content[1]).toEqual({
+    const structuredContent = getStructuredContentParts(latestMessage);
+    expect(structuredContent[0]).toEqual({ type: 'text', text: 'Reply target for continuity only:\n' });
+    expect(structuredContent[1]).toEqual({
       type: 'text',
       text:
         '<reply_target>\nmessage_id: reply-msg-2\nguild_id: guild-1\nchannel_id: channel-1\nauthor_display_name: Reference User\nauthor_user_id: user-2\nauthor_is_bot: false\nreply_to_message_id: none\nmentioned_user_ids: none\nsupporting_context_only: true\n<content>\n',
     });
     expect(
-      latestMessage.content.some(
+      structuredContent.some(
         (part) => part.type === 'image_url' && part.image_url.url === 'https://example.com/reference.png',
       ),
     ).toBe(true);
     expect(
-      latestMessage.content.some((part) => part.type === 'text' && part.text === '<user_input>\n'),
+      structuredContent.some((part) => part.type === 'text' && part.text === '<user_input>\n'),
     ).toBe(true);
     expect(
-      latestMessage.content.some(
+      structuredContent.some(
         (part) => part.type === 'image_url' && part.image_url.url === 'https://example.com/current.png',
       ),
     ).toBe(true);

@@ -12,7 +12,7 @@ Set up Sage from source — even if you’ve never built a Discord bot before.
   <img src="https://img.shields.io/badge/Steps-7-orange?style=flat-square" alt="Steps" />
 </p>
 
-**Outcome:** A running Sage instance + a working invite link + either a configured OpenAI-compatible provider key for self-hosting or a Pollinations key if you use Sage's built-in BYOP flow
+**Outcome:** A running Sage instance + a working invite link + explicit AI-provider runtime configuration for chat, plus optional hosted BYOP/image-provider setup when you use Sage's built-in server flow
 
 ---
 
@@ -177,8 +177,12 @@ The wizard will ask for:
 | **DISCORD_TOKEN** | Bot token from Step 2.3 |
 | **DISCORD_APP_ID** | Application ID from Step 2.2 |
 | **DATABASE_URL** | Choose **Use local Docker default** for local setup |
-| **LLM_API_KEY** | Optional global key for your configured OpenAI-compatible provider (or set a Pollinations server key later through Sage's setup card flow) |
-| **CHAT_MODEL** | Use `kimi` (recommended baseline) unless you have a specific override |
+| **AI_PROVIDER_BASE_URL** | Required base URL for your OpenAI-compatible chat-completions endpoint |
+| **AI_PROVIDER_API_KEY** | Required host-level key for that AI provider |
+| **AI_PROVIDER_MAIN_AGENT_MODEL** | Required main runtime agent model id |
+| **AI_PROVIDER_PROFILE_AGENT_MODEL** | Required profile-analysis agent model id |
+| **AI_PROVIDER_SUMMARY_AGENT_MODEL** | Required summary agent model id |
+| **AI_PROVIDER_MODEL_PROFILES_JSON** | Optional JSON object describing budgets/capabilities for any configured agent models |
 
 > ✅ The wizard can also run optional post-setup steps for you (start Docker, run migrations, run doctor).
 
@@ -190,7 +194,7 @@ npm run onboard -- \
   --discord-app-id "YOUR_APP_ID" \
   --database-url "postgresql://..." \
   --api-key "YOUR_PROVIDER_KEY" \
-  --model kimi \
+  --model your-chat-model \
   --yes \
   --non-interactive \
   --start-docker \
@@ -198,7 +202,7 @@ npm run onboard -- \
   --doctor
 ```
 
-> ℹ️ `--api-key` is optional. If you skip it, Sage can still use a server key later through the built-in Pollinations setup card flow.
+> ℹ️ `--api-key` seeds `AI_PROVIDER_API_KEY`. Hosted server-key flows are optional and separate from the runtime AI provider configuration.
 
 ---
 
@@ -227,7 +231,7 @@ docker compose -f config/services/self-host/docker-compose.tools.yml up -d
 If using local tools first, set these `.env` values:
 
 ```env
-TOOL_WEB_SEARCH_PROVIDER_ORDER=searxng,tavily,exa,pollinations
+TOOL_WEB_SEARCH_PROVIDER_ORDER=searxng,tavily,exa
 TOOL_WEB_SCRAPE_PROVIDER_ORDER=crawl4ai,firecrawl,jina,nomnom,raw_fetch
 SEARXNG_BASE_URL=http://127.0.0.1:18080
 CRAWL4AI_BASE_URL=http://127.0.0.1:11235
@@ -298,7 +302,7 @@ Keep this terminal window open.
 
 ## 7️⃣ Optional: Activate a Server Key (Pollinations BYOP)
 
-Use this step if you want Sage's built-in server-wide BYOP flow. If you already configured `LLM_API_KEY` for a self-hosted OpenAI-compatible provider, you can skip it.
+Use this step if you want Sage's built-in server-wide BYOP flow. If you already configured `AI_PROVIDER_API_KEY` for your self-hosted runtime provider, you can skip it.
 
 ### 7.1 Trigger the setup card
 

@@ -19,7 +19,7 @@ import { logger } from '../platform/logging/logger';
 
 export async function bootstrapApp(): Promise<void> {
   try {
-    if (config.TRACE_ENABLED) {
+    if (config.SAGE_TRACE_DB_ENABLED) {
       await assertAgentTraceSchemaReady();
     }
 
@@ -37,8 +37,8 @@ export async function bootstrapApp(): Promise<void> {
     initApprovalCardCleanupScheduler();
     registerShutdownHooks({ client });
 
-    if (!config.LLM_API_KEY) {
-      logger.warn('No host-level LLM_API_KEY found. Sage can still respond if a server configures a Pollinations BYOP key through the in-Discord setup controls.');
+    if (!config.AI_PROVIDER_API_KEY) {
+      logger.warn('No host-level AI provider key found. Sage can still respond if a server configures a server provider key through the in-Discord setup controls.');
     }
 
     await client.login(config.DISCORD_TOKEN);

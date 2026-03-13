@@ -283,50 +283,48 @@ describe('toolIntegrations', () => {
 
   it('falls back to nomnom and raw_fetch even when provider order only lists jina', async () => {
     config.TOOL_WEB_SCRAPE_PROVIDER_ORDER = 'jina';
-    fetchMock
-      .mockResolvedValueOnce({
-        ok: false,
-        status: 500,
-        statusText: 'Internal Server Error',
-        text: async () => 'jina down',
-      } satisfies {
-        ok: boolean;
-        status: number;
-        statusText: string;
-        text: () => Promise<string>;
-      })
-      .mockResolvedValueOnce({
-        ok: false,
-        status: 400,
-        statusText: 'Bad Request',
-        text: async () => 'model validation error',
-      } satisfies {
-        ok: boolean;
-        status: number;
-        statusText: string;
-        text: () => Promise<string>;
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        statusText: 'OK',
-        text: async () => '<html><body>Fallback content</body></html>',
-      } satisfies {
-        ok: boolean;
-        status: number;
-        statusText: string;
-        text: () => Promise<string>;
+    const mockChat = vi.fn().mockRejectedValue(new Error('nomnom unavailable'));
+    const createClientSpy = vi
+      .spyOn(llm, 'createLLMClient')
+      .mockReturnValue({ chat: mockChat } as unknown as ReturnType<typeof llm.createLLMClient>);
+    try {
+      fetchMock
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 500,
+          statusText: 'Internal Server Error',
+          text: async () => 'jina down',
+        } satisfies {
+          ok: boolean;
+          status: number;
+          statusText: string;
+          text: () => Promise<string>;
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          statusText: 'OK',
+          text: async () => '<html><body>Fallback content</body></html>',
+        } satisfies {
+          ok: boolean;
+          status: number;
+          statusText: string;
+          text: () => Promise<string>;
+        });
+
+      const result = await scrapeWebPage({
+        url: 'https://example.com',
+        maxChars: 1_000,
       });
 
-    const result = await scrapeWebPage({
-      url: 'https://example.com',
-      maxChars: 1_000,
-    });
-
-    const typed = result as { provider: string; content: unknown };
-    expect(typed.provider).toBe('raw_fetch');
-    expect(String(typed.content)).toContain('Fallback content');
-    expect(fetchMock).toHaveBeenCalledTimes(3);
+      const typed = result as { provider: string; content: unknown };
+      expect(typed.provider).toBe('raw_fetch');
+      expect(String(typed.content)).toContain('Fallback content');
+      expect(createClientSpy).toHaveBeenCalledWith({ agentModel: 'nomnom' });
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    } finally {
+      createClientSpy.mockRestore();
+    }
   });
 
   it('strips script/style blocks with whitespace-padded closing tags in raw fetch', async () => {
@@ -372,7 +370,7 @@ describe('toolIntegrations', () => {
       maxChars: 1_000,
     });
 
-    expect(createClientSpy).toHaveBeenCalledWith('pollinations', { chatModel: 'nomnom' });
+    expect(createClientSpy).toHaveBeenCalledWith({ agentModel: 'nomnom' });
     expect(mockChat).toHaveBeenCalledWith(
       expect.objectContaining({
         model: 'nomnom',
@@ -547,7 +545,6 @@ describe('toolIntegrations', () => {
       depth: 'quick',
       maxResults: 3,
       providerOrder: ['tavily', 'exa'],
-      allowLlmFallback: false,
     });
 
     const typed = result as { provider: string; providersTried: string[]; results: unknown[] };
@@ -564,8 +561,8 @@ describe('toolIntegrations', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
-  it('disables pollinations fallback when allowLlmFallback is false', async () => {
-    config.TOOL_WEB_SEARCH_PROVIDER_ORDER = 'pollinations';
+  it('keeps web search scoped to configured search providers only', async () => {
+    config.TOOL_WEB_SEARCH_PROVIDER_ORDER = 'tavily,exa,searxng';
     fetchMock.mockResolvedValue({
       ok: false,
       status: 500,
@@ -584,8 +581,7 @@ describe('toolIntegrations', () => {
         query: 'sage docs',
         depth: 'quick',
         maxResults: 3,
-        providerOrder: ['tavily', 'exa', 'searxng', 'pollinations'],
-        allowLlmFallback: false,
+        providerOrder: ['tavily', 'exa', 'searxng'],
       });
     } catch (error) {
       thrown = error;
@@ -594,7 +590,7 @@ describe('toolIntegrations', () => {
     expect(thrown).toBeInstanceOf(Error);
     const errorText = (thrown as Error).message;
     expect(errorText).toContain('Providers attempted: tavily, exa');
-    expect(errorText).not.toContain('pollinations');
+    expect(errorText).not.toContain('ai_provider');
   });
 
   it('skips local searxng when not configured', async () => {
@@ -607,7 +603,6 @@ describe('toolIntegrations', () => {
         depth: 'quick',
         maxResults: 3,
         providerOrder: ['searxng'],
-        allowLlmFallback: false,
       }),
     ).rejects.toThrow('searxng: skipped (not configured');
 
@@ -691,7 +686,6 @@ describe('toolIntegrations', () => {
         depth: 'quick',
         maxResults: 3,
         providerOrder: ['searxng'],
-        allowLlmFallback: false,
       }),
     ).rejects.toThrow('Providers attempted: searxng');
 
@@ -704,7 +698,6 @@ describe('toolIntegrations', () => {
         depth: 'quick',
         maxResults: 3,
         providerOrder: ['searxng'],
-        allowLlmFallback: false,
       }),
     ).rejects.toThrow('Skipped local providers: searxng');
 

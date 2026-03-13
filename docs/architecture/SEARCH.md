@@ -55,18 +55,19 @@ sequenceDiagram
 
 <a id="model-guardrails"></a>
 
-## 🛡️ Model Guardrails
+## 🛡️ Runtime Guardrails
 
-Search execution applies runtime guardrails to ensure the right models are used:
+Search execution now follows the same provider-neutral runtime contract as the rest of Sage:
 
-| Scenario | Models Used |
+| Scenario | Runtime behavior |
 | :--- | :--- |
-| Tool orchestrator | `kimi` |
-| Guarded fallback (if tool pass fails) | `gemini-search` → `perplexity-fast` → `perplexity-reasoning` (plus `nomnom` when URL-aware guarded fallback is active) |
+| Tool orchestration | Uses the configured `AI_PROVIDER_MAIN_AGENT_MODEL` |
+| Fallback synthesis | Uses only explicitly configured search providers; there is no AI-provider search fallback |
 
 **Key rules:**
 
-- Sage runs tool orchestration first and only falls back to guarded search models when needed.
+- Sage no longer ships built-in search-model chains or hidden fallback model ids.
+- Search runs only through the configured search providers in `TOOL_WEB_SEARCH_PROVIDER_ORDER`.
 - Source/date normalization and capability validation still apply to search outputs.
 
 **Source:** [`src/features/agent-runtime/agentRuntime.ts`](../../src/features/agent-runtime/agentRuntime.ts) and [`src/features/agent-runtime/toolIntegrations.ts`](../../src/features/agent-runtime/toolIntegrations.ts)
@@ -86,9 +87,8 @@ Sage supports multiple search and scraping providers with automatic fallback:
 | Tavily | API-based search | `TAVILY_API_KEY` |
 | Exa | API-based search | `EXA_API_KEY` |
 | SearXNG | Self-hosted search | `SEARXNG_BASE_URL` |
-| Pollinations | Fallback search | Built-in |
 
-**Provider order:** Configured via `TOOL_WEB_SEARCH_PROVIDER_ORDER` (default: `tavily,exa,searxng,pollinations`)
+**Provider order:** Configured via `TOOL_WEB_SEARCH_PROVIDER_ORDER` (default: `tavily,exa,searxng`)
 
 ### Web Scrape Providers
 
@@ -97,7 +97,7 @@ Sage supports multiple search and scraping providers with automatic fallback:
 | Firecrawl | API-based scraper | `FIRECRAWL_API_KEY` |
 | Crawl4AI | Self-hosted scraper | `CRAWL4AI_BASE_URL` |
 | Jina Reader | API-based reader | Built-in |
-| Nomnom (Pollinations) | LLM-based scraper | Built-in |
+| Nomnom | LLM-based scraper | Built-in |
 | Raw Fetch | Direct HTTP | Built-in |
 
 **Provider order:** Configured via `TOOL_WEB_SCRAPE_PROVIDER_ORDER` (default: `crawl4ai,firecrawl,jina,nomnom,raw_fetch`)

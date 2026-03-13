@@ -54,13 +54,13 @@ flowchart TD
 
 **Step-by-step**
 
-1. **Model resolution**: `runChatTurn` reads `CHAT_MODEL` and falls back to `kimi` when it is empty.
+1. **Model resolution**: `runChatTurn` reads `AI_PROVIDER_MAIN_AGENT_MODEL`. Sage no longer ships a built-in agent-model fallback; runtime boot requires explicit AI-provider model configuration.
 2. **Context composition**: `buildContextMessages` assembles the system prompt, `<current_turn>`, runtime instruction block, optional guild Sage Persona (`<guild_sage_persona>`), optional live voice context, optional `<focused_continuity>`, optional `<recent_transcript>`, and the current user turn wrapped in `<user_input>` (with any `<reply_target>` folded in as context-only preface content).
 3. **Token budgeting**: `contextBudgeter` trims blocks against the configured budgets before the provider call.
-4. **LLM request**: Sage sends the budgeted messages plus the OpenAI-compatible tool definitions.
-5. **Agent graph**: if the model returns tool calls, Sage routes through the custom LangGraph runtime to validate calls, execute tools, handle approval interrupts, and continue the turn until it can finalize.
+4. **LLM request**: Sage sends the budgeted messages plus the active tool schemas for this turn.
+5. **Agent graph**: if the model returns tool calls, Sage routes through the LangGraph-native runtime built on reducer-backed message state, durable tasks, `ToolNode` read batches, and in-graph approval interrupts/resumes until it can finalize.
 6. **Final reply**: plain text is cleaned, tool-produced files are attached, and the final payload is returned to Discord.
-7. **Trace persistence**: route, tool, token, and quality metadata are stored when tracing is enabled.
+7. **Trace persistence**: LangGraph node and task execution is recorded in LangSmith, and Sage can additionally persist a compact `AgentTrace` ledger row with LangSmith references.
 
 ---
 
@@ -95,37 +95,38 @@ All system-role blocks are merged into a single system message before the provid
 
 ```mermaid
 flowchart LR
-    classDef parse fill:#e8f5e9,stroke:#333,color:black
-    classDef validate fill:#e3f2fd,stroke:#333,color:black
+    classDef llm fill:#e8f5e9,stroke:#333,color:black
+    classDef route fill:#e3f2fd,stroke:#333,color:black
     classDef execute fill:#fff3cd,stroke:#333,color:black
     classDef result fill:#ffccbc,stroke:#333,color:black
 
-    A[LLM Response] --> B[Read native tool calls]:::parse
-    B --> C{Calls present?}:::parse
-    C -->|Yes| D[Validate args with Zod]:::validate
-    D --> E{Allowed and valid?}:::validate
-    E -->|Yes| F[Execute tool]:::execute
-    E -->|No| G[Return validation error]:::result
-    C -->|No| H[Finalize plain-text answer]:::result
-    F --> I[Collect results and files]:::result
-    G --> I
-    I --> J[Feed results back to LLM]:::result
+    A["llm_call"]:::llm --> B{"Tool calls?"}:::route
+    B -->|No| F["finalize_turn"]:::result
+    B -->|Yes| C["route_tool_phase"]:::route
+    C --> D["execute_read_tools (ToolNode)"]:::execute
+    D --> E["approval_gate / execute_approved_write"]:::execute
+    C --> E
+    E --> A
+    A -->|"step/duration cap"| G["finalize_reply"]:::result
+    G --> F
 ```
 
 **Key behaviors**
 
 - **Bounded steps**: `AGENT_GRAPH_MAX_STEPS` limits how many model/tool hops can occur in one turn.
 - **Calls per step**: `AGENT_GRAPH_MAX_TOOL_CALLS_PER_STEP` caps the number of tool calls the model can issue at once.
-- **Parallel read-only execution**: read-only calls can run concurrently up to `AGENT_GRAPH_MAX_PARALLEL_READONLY`, but side-effecting actions still preserve ordering barriers.
-- **Native tool contract**: the runtime consumes structured provider tool calls directly; it no longer relies on text-parsed JSON envelopes.
+- **Message-native state**: the graph persists LangGraph/LangChain messages plus turn facts, approval state, trace metadata, and final delivery state instead of the old custom pending-tool-loop buffers.
+- **Read/write partitioning**: same-step duplicate read-only calls are collapsed, read-only batches execute through `ToolNode`, and mutating calls execute one at a time.
+- **Native tool contract**: the runtime consumes structured provider tool calls directly and feeds tool results back as LangChain tool messages.
+- **Provider-neutral model node**: the graph now invokes Sage's `AiProviderChatModel`, which targets an operator-defined AI provider over the OpenAI-compatible chat-completions contract exposed at `AI_PROVIDER_BASE_URL`.
+- **Native provider transcript**: follow-up model calls now preserve assistant `tool_calls` and real `tool` messages end to end instead of flattening tool results into synthetic user text.
 - **Per-tool timeout**: each tool call is bounded by `AGENT_GRAPH_TOOL_TIMEOUT_MS`.
-- **Repeated-call guardrails**: identical calls that already failed non-retryably are blocked for the rest of the turn, and identical calls that fail twice in one turn are closed even if the failures were retryable.
+- **Durable execution**: every real tool invocation and post-approval execution runs inside a LangGraph `task(...)` boundary so replay and thread resume reuse checkpointed task outputs instead of repeating side effects.
 - **Repair-aware validation feedback**: routed-tool validation failures now carry compact repair guidance into the next model round, including missing/unknown action recovery and the best matching action contract from the routed-tool docs.
-- **Stagnation stop**: if the same requested tool batch repeats without any new uncached success, approval interrupt, or side-effect progress, Sage stops the active graph early and pivots to finalization.
 - **Graph wall-clock cap**: the whole orchestration phase is bounded by `AGENT_GRAPH_MAX_DURATION_MS`.
-- **In-process memoization**: repeated read-only calls can hit the in-memory memo cache controlled by `AGENT_GRAPH_MEMO_*`. The cache is per process and not shared across instances.
 - **Result truncation**: raw tool output is capped by `AGENT_GRAPH_MAX_RESULT_CHARS`, with a compact summary block added when the raw payload is too large.
-- **Direct plain-text finalization**: when the graph ends by step limit, duration cap, or stagnation, Sage skips another tool-enabled model pass and forces one final plain-text answer grounded only in prior context and tool results.
+- **Approval interrupt/resume**: approval-gated writes now pause the graph before the side effect, persist a pending approval descriptor, and on resume append a real tool result or tool failure message back into the graph before the next model step.
+- **Direct plain-text finalization**: when the graph ends by step limit or duration cap, Sage forces one final plain-text answer grounded only in prior context and tool results.
 - **File collection**: tools such as `image_generate` can return files that are merged into the final Discord response.
 
 ---
@@ -134,20 +135,21 @@ flowchart LR
 
 ## 📊 Trace Outputs
 
-Each turn can persist the following to `AgentTrace`:
+Each turn can persist the following compact operator ledger fields to `AgentTrace`:
 
 | Field | Description |
 | :--- | :--- |
 | `routeKind` | Canonical value: `single` |
-| `agentEventsJson` | Tool-call events with timing metadata |
+| `terminationReason` | Why the graph finished (`completed`, `step_limit`, `timeout`, etc.) |
+| `langSmithRunId` | LangSmith run id for the turn |
+| `langSmithTraceId` | LangSmith trace id for the turn |
 | `budgetJson` | Token-budget allocation per block |
 | `toolJson` | Tool names, args, statuses, and compacted results |
 | `tokenJson` | Provider token usage |
-| `qualityJson` | Quality metrics when available |
 | `replyText` | Final reply text sent back to Discord |
 
 > [!TIP]
-> Use `npm run db:studio` to inspect traces in Prisma Studio, or send a real chat ping in Discord for an end-to-end runtime health check.
+> Use LangSmith for node, task, and interrupt drill-down, `npm run db:studio` for Sage's compact ledger rows, or send a real chat ping in Discord for an end-to-end runtime health check.
 > Tool-result reinjection is intentionally compact and machine-facing: successful results are bounded, failed results surface retryability plus compact repair metadata for routed-tool validation issues, repeated blocked calls are surfaced as explicit guardrail failures, approval-gated writes resume from an interrupt instead of replaying the write inline, and trace metadata records why the graph terminated.
 
 ---
@@ -183,7 +185,7 @@ These values reflect the starter values in `.env.example`:
 
 | Variable | Description | Starter value |
 | :--- | :--- | :--- |
-| `CHAT_MODEL` | Runtime chat model for `runChatTurn` | `kimi` |
+| `AI_PROVIDER_MAIN_AGENT_MODEL` | Runtime main agent model for `runChatTurn` | *(required in `.env`)* |
 | `AGENT_GRAPH_MAX_STEPS` | Max model/tool graph steps per turn | `6` |
 | `AGENT_GRAPH_MAX_TOOL_CALLS_PER_STEP` | Max tool calls per graph step | `5` |
 | `AGENT_GRAPH_TOOL_TIMEOUT_MS` | Per-tool execution timeout | `45000` |
@@ -191,14 +193,10 @@ These values reflect the starter values in `.env.example`:
 | `AGENT_GRAPH_MAX_OUTPUT_TOKENS` | Max output tokens for graph model calls | `1800` |
 | `AGENT_GRAPH_MAX_RESULT_CHARS` | Max chars per tool result | `8000` |
 | `AGENT_GRAPH_GITHUB_GROUNDED_MODE` | Enable grounded GitHub search mode | `true` |
-| `AGENT_GRAPH_READONLY_PARALLEL_ENABLED` | Enable parallel read-only execution | `true` |
-| `AGENT_GRAPH_MAX_PARALLEL_READONLY` | Max concurrent read-only tool calls | `4` |
-| `AGENT_GRAPH_MEMO_ENABLED` | Enable in-process memoization for repeated read-only calls | `true` |
-| `AGENT_GRAPH_MEMO_TTL_MS` | Memo cache TTL | `900000` |
-| `AGENT_GRAPH_MEMO_MAX_ENTRIES` | Max cached memo entries | `250` |
-| `AGENT_GRAPH_MEMO_MAX_RESULT_JSON_CHARS` | Max memoized JSON payload size | `200000` |
 | `AGENT_GRAPH_RECURSION_LIMIT` | LangGraph recursion fail-safe above the legal hop count | `16` |
-| `TRACE_ENABLED` | Enable trace persistence | `true` |
+| `LANGSMITH_TRACING` | Enable optional LangSmith graph tracing | `false` |
+| `LANGSMITH_PROJECT` | LangSmith project name | `sage` |
+| `SAGE_TRACE_DB_ENABLED` | Persist compact `AgentTrace` ledger rows | `true` |
 
 ---
 

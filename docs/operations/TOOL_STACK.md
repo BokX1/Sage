@@ -50,7 +50,7 @@ flowchart LR
     W -->|search| S1[SearXNG]:::local
     W -->|search| S2[Tavily]:::hosted
     W -->|search| S3[Exa]:::hosted
-    W -->|search| S4[Pollinations]:::hosted
+    W -->|search| S4[AI provider fallback]:::hosted
 
     W -->|read / extract| C1[Crawl4AI]:::local
     W -->|read / extract| C2[Firecrawl]:::hosted
@@ -90,7 +90,7 @@ This starts:
 
 ```env
 # Self-host first, hosted fallback
-TOOL_WEB_SEARCH_PROVIDER_ORDER=searxng,tavily,exa,pollinations
+TOOL_WEB_SEARCH_PROVIDER_ORDER=searxng,tavily,exa
 TOOL_WEB_SCRAPE_PROVIDER_ORDER=crawl4ai,firecrawl,jina,nomnom,raw_fetch
 
 # Local endpoints
@@ -118,17 +118,17 @@ FIRECRAWL_API_KEY=fc-...
 The `PROVIDER_ORDER` variables control which provider is tried first. Providers are tried left-to-right; the first one that succeeds wins:
 
 ```text
-searxng → tavily → exa → pollinations
+searxng → tavily → exa
   ↑ local       ↑ hosted fallbacks
 ```
 
 | Variable | Default | Description |
 | :--- | :--- | :--- |
-| `TOOL_WEB_SEARCH_PROVIDER_ORDER` | `tavily,exa,searxng,pollinations` | Search provider order |
+| `TOOL_WEB_SEARCH_PROVIDER_ORDER` | `tavily,exa,searxng` | Search provider order |
 | `TOOL_WEB_SCRAPE_PROVIDER_ORDER` | `crawl4ai,firecrawl,jina,nomnom,raw_fetch` | Scrape provider order |
 
 > [!NOTE]
-> The default search order is API-first (`tavily` first); the default scrape order is local-first (`crawl4ai` first). When running the self-hosted stack, set `TOOL_WEB_SEARCH_PROVIDER_ORDER=searxng,tavily,exa,pollinations` to prefer your local SearXNG instance.
+> The default search order is API-first (`tavily` first); the default scrape order is local-first (`crawl4ai` first). When running the self-hosted stack, set `TOOL_WEB_SEARCH_PROVIDER_ORDER=searxng,tavily,exa` to prefer your local SearXNG instance.
 
 ### SearXNG Options
 

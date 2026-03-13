@@ -23,8 +23,7 @@ const BASE_ESTIMATION: TokenEstimateOptions = {
   messageOverheadTokens: DEFAULT_MESSAGE_OVERHEAD,
 };
 
-const BASE_LIMITS: ModelBudgetConfig = {
-  model: 'default',
+const BASE_LIMITS: Omit<ModelBudgetConfig, 'model'> = {
   maxContextTokens: config.CONTEXT_MAX_INPUT_TOKENS,
   maxOutputTokens: config.CONTEXT_RESERVED_OUTPUT_TOKENS,
   safetyMarginTokens: DEFAULT_SAFETY_MARGIN,
@@ -34,31 +33,41 @@ const BASE_LIMITS: ModelBudgetConfig = {
   visionFadeKeepLastUserImages: 1,
 };
 
-const BUILTIN_MODEL_OVERRIDES: Record<string, Partial<ModelBudgetConfig>> = {
-  kimi: {
-    visionEnabled: true,
-  },
-  deepseek: {
-    visionEnabled: false,
-  },
-};
-
 function normalizeModelName(model?: string): string {
-  return (model ?? 'default').trim().toLowerCase() || 'default';
+  return (model ?? '').trim().toLowerCase();
 }
 
-function parseModelOverridesFromEnv(): Record<string, Partial<ModelBudgetConfig>> {
-  const raw = config.LLM_MODEL_LIMITS_JSON?.trim();
+type RawModelProfile = Partial<Omit<ModelBudgetConfig, 'model'>>;
+
+let cachedProfilesJson: string | null = null;
+let cachedProfiles: Record<string, RawModelProfile> | null = null;
+
+function parseModelOverridesFromEnv(): Record<string, RawModelProfile> {
+  const raw = config.AI_PROVIDER_MODEL_PROFILES_JSON?.trim() ?? '';
+  if (cachedProfiles && cachedProfilesJson === raw) {
+    return cachedProfiles;
+  }
+
   if (!raw) {
+    cachedProfilesJson = raw;
+    cachedProfiles = {};
     return {};
   }
 
   try {
-    const parsed = JSON.parse(raw) as Record<string, Partial<ModelBudgetConfig>>;
-    return parsed ?? {};
+    const parsed = JSON.parse(raw) as Record<string, RawModelProfile>;
+    const normalizedEntries = Object.entries(parsed ?? {}).map(([modelId, profile]) => [
+      normalizeModelName(modelId),
+      profile ?? {},
+    ]);
+    cachedProfilesJson = raw;
+    cachedProfiles = Object.fromEntries(normalizedEntries);
+    return cachedProfiles ?? {};
   } catch (error) {
-    logger.warn({ error }, 'Failed to parse LLM_MODEL_LIMITS_JSON overrides');
-    return {};
+    logger.error({ error }, 'Failed to parse AI_PROVIDER_MODEL_PROFILES_JSON overrides');
+    throw new Error('AI_PROVIDER_MODEL_PROFILES_JSON must be valid JSON keyed by model id.', {
+      cause: error,
+    });
   }
 }
 
@@ -91,14 +100,12 @@ function mergeConfig(
 
 export function getModelBudgetConfig(model?: string): ModelBudgetConfig {
   const normalized = normalizeModelName(model);
+  if (!normalized) {
+    throw new Error('A model id is required to resolve AI provider model budgets.');
+  }
   const envOverrides = parseModelOverridesFromEnv();
-
-  const configOverride = {
-    ...BUILTIN_MODEL_OVERRIDES[normalized],
-    ...envOverrides[normalized],
-  };
-
-  const merged = mergeConfig({ ...BASE_LIMITS, model: normalized }, configOverride);
+  const profile = envOverrides[normalized];
+  const merged = mergeConfig({ ...BASE_LIMITS, model: normalized }, profile);
 
   return merged;
 }

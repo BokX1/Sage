@@ -70,7 +70,6 @@ flowchart LR
 |:---|:---|:---|
 | `[info] Logged in as Sage#1234` | ✅ | Bot started successfully |
 | `Sage is chat-first now...` | ✅ | Legacy slash-command input is being redirected to the current UX |
-| `[warn] Model degraded` | ⚠️ | A model is experiencing errors, health score decreased |
 | `[error] P1001` | 🔴 | Database connection lost |
 | `[error] ECONNREFUSED` | 🔴 | Service unavailable |
 | `[error] 520` | 🟡 | LLM response truncated |
@@ -84,15 +83,18 @@ For detailed response diagnostics, inspect `AgentTrace` rows:
 npm run db:studio
 ```
 
-Traces include:
+The compact `AgentTrace` ledger includes:
 
 - `routeKind` — canonical value: `single`
-- `agentEventsJson` — tool call events with timing
+- `terminationReason` — why the graph ended
+- `langSmithRunId` — LangSmith run id
+- `langSmithTraceId` — LangSmith trace id
 - `budgetJson` — token budget allocation
 - `toolJson` — tool names, args, results
 - `tokenJson` — provider token usage
-- `qualityJson` — quality metrics
 - `replyText` — final reply
+
+Use LangSmith as the primary graph, task, and node trace surface. `AgentTrace` is Sage's compact Postgres ledger for operators.
 
 ### Discord checks
 

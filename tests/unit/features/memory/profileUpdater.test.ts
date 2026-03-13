@@ -15,8 +15,7 @@ vi.mock('@/platform/llm', () => ({
 
 vi.mock('@/platform/config/env', () => ({
   config: {
-    PROFILE_PROVIDER: 'pollinations',
-    PROFILE_CHAT_MODEL: 'deepseek',
+    AI_PROVIDER_PROFILE_AGENT_MODEL: 'test-profile-agent-model',
     TIMEOUT_MEMORY_MS: 600000,
   },
 }));

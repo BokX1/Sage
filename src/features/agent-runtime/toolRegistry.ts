@@ -2,7 +2,6 @@
  * Register, validate, and expose tool definitions for runtime execution.
  */
 import { z } from 'zod';
-import { sanitizeJsonSchemaForProvider } from '../../shared/validation/json-schema';
 import { buildToolErrorDetails, extractToolErrorDetails, type ToolErrorDetails } from './toolErrors';
 import type { CurrentTurnContext, ReplyTargetContext } from './continuityContext';
 import { isToolControlSignal } from './toolControlSignals';
@@ -161,16 +160,6 @@ export type ToolExecutionResult =
       errorDetails?: ToolErrorDetails;
     };
 
-/** Describe tool schema format expected by OpenAI-compatible providers. */
-export interface OpenAIToolSpec {
-  type: 'function';
-  function: {
-    name: string;
-    description: string;
-    parameters: object;
-  };
-}
-
 /**
  * Provide a mutable registry for runtime tool definitions.
  */
@@ -204,20 +193,6 @@ export class ToolRegistry {
   /** List all registered tool names. */
   listNames(): string[] {
     return Array.from(this.tools.keys());
-  }
-
-  /** Convert registered tools into OpenAI function-tool specifications. */
-  listOpenAIToolSpecs(): OpenAIToolSpec[] {
-    return Array.from(this.tools.values()).map((tool) => ({
-      type: 'function' as const,
-      function: {
-        name: tool.name,
-        description: tool.description,
-        parameters: sanitizeJsonSchemaForProvider(
-          z.toJSONSchema(tool.schema as z.ZodTypeAny),
-        ),
-      },
-    }));
   }
 
   /**

@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { HumanMessage } from '@langchain/core/messages';
 import type { CurrentTurnContext } from '@/features/agent-runtime/continuityContext';
 
 const {
@@ -12,7 +13,7 @@ const {
   upsertTraceStartMock: vi.fn(),
   updateTraceEndMock: vi.fn(),
   clearGitHubFileLookupCacheForTraceMock: vi.fn(),
-  buildContextMessagesMock: vi.fn(() => [{ role: 'user', content: 'hello' }]),
+  buildContextMessagesMock: vi.fn(() => [new HumanMessage({ content: 'hello' })]),
   globalToolRegistryMock: {
     listNames: vi.fn(() => []),
     get: vi.fn(
@@ -29,25 +30,20 @@ vi.mock('@/platform/config/env', () => ({
   config: {
     CONTEXT_TRANSCRIPT_MAX_MESSAGES: 10,
     CONTEXT_TRANSCRIPT_MAX_CHARS: 4000,
-    LLM_API_KEY: 'test-api-key',
-    CHAT_MODEL: 'kimi',
+    AI_PROVIDER_API_KEY: 'test-api-key',
+    AI_PROVIDER_MAIN_AGENT_MODEL: 'test-main-agent-model',
     CHAT_MAX_OUTPUT_TOKENS: 500,
     AGENT_GRAPH_MAX_OUTPUT_TOKENS: 500,
     AGENT_GRAPH_MAX_STEPS: 2,
     AGENT_GRAPH_MAX_TOOL_CALLS_PER_STEP: 3,
     AGENT_GRAPH_TOOL_TIMEOUT_MS: 1000,
     AGENT_GRAPH_MAX_RESULT_CHARS: 4000,
-    AGENT_GRAPH_READONLY_PARALLEL_ENABLED: true,
-    AGENT_GRAPH_MAX_PARALLEL_READONLY: 2,
-    AGENT_GRAPH_MEMO_ENABLED: false,
-    AGENT_GRAPH_MEMO_MAX_ENTRIES: 10,
-    AGENT_GRAPH_MEMO_TTL_MS: 1000,
-    AGENT_GRAPH_MEMO_MAX_RESULT_JSON_CHARS: 1000,
     AGENT_GRAPH_MAX_DURATION_MS: 5000,
     AGENT_GRAPH_GITHUB_GROUNDED_MODE: false,
     AGENT_GRAPH_RECURSION_LIMIT: 8,
     TIMEOUT_CHAT_MS: 1000,
-    TRACE_ENABLED: true,
+    SAGE_TRACE_DB_ENABLED: true,
+    LANGSMITH_TRACING: false,
     AUTOPILOT_MODE: null,
   },
 }));
@@ -147,7 +143,6 @@ function makeGraphResult(overrides: Record<string, unknown> = {}) {
     deduplicatedCallCount: 0,
     truncatedCallCount: 0,
     guardrailBlockedCallCount: 0,
-    cancellationCount: 0,
     roundEvents: [],
     finalization: {
       attempted: false,
@@ -161,7 +156,8 @@ function makeGraphResult(overrides: Record<string, unknown> = {}) {
     graphStatus: 'completed',
     approvalInterrupt: null,
     approvalResolution: null,
-    traceEvents: [],
+    langSmithRunId: null,
+    langSmithTraceId: null,
     ...overrides,
   };
 }
@@ -169,7 +165,7 @@ function makeGraphResult(overrides: Record<string, unknown> = {}) {
 describe('agentRuntime', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    buildContextMessagesMock.mockReturnValue([{ role: 'user', content: 'hello' }]);
+    buildContextMessagesMock.mockReturnValue([new HumanMessage({ content: 'hello' })]);
     globalToolRegistryMock.listNames.mockReturnValue([]);
     globalToolRegistryMock.get.mockReturnValue(undefined);
     upsertTraceStartMock.mockResolvedValue(undefined);

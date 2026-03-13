@@ -1,32 +1,32 @@
 # 🧩 Model Reference
 
-How Sage selects and tracks models in the current single-agent runtime.
+How Sage selects, constrains, and validates models in the current LangGraph-native runtime.
 
 > [!NOTE]
-> Message handling now runs through one agent loop. The primary runtime model is controlled by `CHAT_MODEL`, while profile and summary work use their own background-model settings.
+> Message handling runs through one agent loop. The runtime model, profile model, and summary model are all explicitly configured through `AI_PROVIDER_*` variables.
 
 ---
 
 ## 🧭 Quick Navigation
 
-- [Default Runtime Model](#default-runtime-model)
+- [Runtime Contract](#runtime-contract)
 - [Model Resolution Flow](#model-resolution-flow)
-- [Health Tracking](#health-tracking)
-- [Search Fallback Models](#search-fallback-models)
-- [Model Capabilities](#model-capabilities)
-- [Configuration Overrides](#configuration-overrides)
+- [Model Profiles](#model-profiles)
+- [Search Providers](#search-providers)
 
 ---
 
-## 🎯 Default Runtime Model
+## 🎯 Runtime Contract
 
-For chat turns, Sage resolves a single runtime model from configuration:
+Sage is provider-neutral at the runtime layer:
 
-- Uses `CHAT_MODEL` when set
-- Falls back to `kimi` when `CHAT_MODEL` is empty
-- Executes tool calls inside the same runtime loop rather than switching to route-specific runtimes
+- Runtime chat uses `AI_PROVIDER_BASE_URL` plus `AI_PROVIDER_MAIN_AGENT_MODEL`
+- Profile updates use `AI_PROVIDER_PROFILE_AGENT_MODEL`
+- Channel summaries use `AI_PROVIDER_SUMMARY_AGENT_MODEL`
+- `AI_PROVIDER_MODEL_PROFILES_JSON` is optional; Sage falls back to base runtime budgets when it is omitted or partial
+- Sage does not fetch a remote model catalog and does not ship built-in fallback model ids
 
-This behavior is implemented in `runChatTurn` in `src/features/agent-runtime/agentRuntime.ts`.
+This behavior is implemented in `runChatTurn` and the shared AI-provider transport/model adapter.
 
 ---
 
@@ -38,8 +38,8 @@ flowchart TD
     classDef model fill:#d4edda,stroke:#155724,stroke-width:2px,color:black
 
     A[Incoming message]:::logic --> B[runChatTurn]:::logic
-    B --> C[Resolve model from CHAT_MODEL or kimi]:::logic
-    C --> D[Primary LLM response]:::model
+    B --> C[Read explicit AI provider config]:::logic
+    C --> D[Primary compatible chat response]:::model
     D --> E{Tool calls needed?}:::logic
     E -->|Yes| F[LangGraph runtime]:::logic
     F --> G[Final answer + attachments]:::model
@@ -48,73 +48,44 @@ flowchart TD
 
 ### Key Rules
 
-1. Chat turns use one runtime model per turn.
+1. Chat turns use one explicitly configured runtime model per turn.
 2. Tool usage extends capability without changing the runtime into a different route or agent.
-3. Image and web capabilities come from tools plus model capabilities, not from a separate selector pipeline.
-4. Provider reasoning capability stays internal to the model. Sage does not surface or persist provider reasoning text in normal operation, even if a provider can emit it.
+3. Image and web capabilities come from tools plus the configured model-profile data, not from a separate runtime catalog.
+4. Provider reasoning stays internal to the model. Sage does not surface or persist provider reasoning text in normal operation.
 
 ---
 
-## 🏥 Health Tracking
+## 📊 Model Profiles
 
-Sage records model outcomes and maintains rolling health scores in `ModelHealthState`.
+Sage trusts the operator-provided profile map in `AI_PROVIDER_MODEL_PROFILES_JSON` when you provide one.
 
-- Health snapshots are persisted only when `TRACE_ENABLED=true` and the database path is available.
-- If `TRACE_ENABLED=false`, health tracking is memory-only even with a healthy database.
-- The runtime also falls back to in-memory tracking if persistence fails.
-- Health data is used for diagnostics and degraded-mode signaling, not for multi-agent routing.
+Each model profile can describe:
 
----
-
-## 🔎 Search Fallback Models
-
-The main chat runtime still uses `CHAT_MODEL`, but the web stack has guarded fallback models for search-heavy recovery paths:
-
-- `gemini-search`
-- `perplexity-fast`
-- `perplexity-reasoning`
-
-Those fallbacks are used by the web/search integrations when needed; they are not separate top-level chat routes.
-
----
-
-## 📊 Model Capabilities
-
-Model capability data comes from the runtime catalog with fallback definitions.
-
-| Capability | Description |
+| Field | Purpose |
 | :--- | :--- |
-| `vision` | Accepts image inputs |
-| `audioIn` | Accepts audio inputs |
-| `audioOut` | Produces audio outputs |
-| `tools` | Supports function/tool calling |
-| `search` | Supports search-oriented behavior |
-| `reasoning` | Better long-form or complex reasoning |
-| `codeExec` | Supports code execution flows when the provider exposes them |
+| `maxContextTokens` | Input budget Sage should respect |
+| `maxOutputTokens` | Output cap Sage should reserve for |
+| `safetyMarginTokens` | Buffer for trimming and provider differences |
+| `visionEnabled` | Whether image inputs are allowed |
+| `attachmentTextMaxTokens` | Attachment-text budget within the turn |
+| `visionFadeKeepLastUserImages` | How many recent user images stay pinned during trimming |
 
-When runtime catalog fetch fails, Sage uses fallback model metadata plus manual capability overrides from `model-catalog.ts`.
+If a configured model is missing from the profile map, Sage falls back to the runtime base budgets instead of guessing.
 
 ---
 
-## ⚙️ Configuration Overrides
+## 🔎 Search Providers
 
-| Variable | Description | Starter value |
-| :--- | :--- | :--- |
-| `CHAT_MODEL` | Runtime chat model for `runChatTurn` | `kimi` |
-| `SUMMARY_MODEL` | Model for channel summaries | `deepseek` |
-| `PROFILE_CHAT_MODEL` | Model for user profile updates | `deepseek` |
-| `LLM_MODEL_LIMITS_JSON` | Manual token-limit override map | *(empty)* |
-
-> [!WARNING]
-> Changing `CHAT_MODEL` affects every chat turn because model selection is centralized in the single-agent runtime.
+The web stack now uses only the explicitly configured search providers from `TOOL_WEB_SEARCH_PROVIDER_ORDER`.
 
 ---
 
 ## 🔗 Implementation References
 
 - [`src/features/agent-runtime/agentRuntime.ts`](../../src/features/agent-runtime/agentRuntime.ts)
-- [`src/platform/llm/model-health.ts`](../../src/platform/llm/model-health.ts)
-- [`src/platform/llm/model-catalog.ts`](../../src/platform/llm/model-catalog.ts)
+- [`src/platform/llm/model-budget-config.ts`](../../src/platform/llm/model-budget-config.ts)
+- [`src/platform/llm/ai-provider-client.ts`](../../src/platform/llm/ai-provider-client.ts)
+- [`src/platform/llm/ai-provider-chat-model.ts`](../../src/platform/llm/ai-provider-chat-model.ts)
 
 ## 🔗 Related Documentation
 

@@ -46,8 +46,8 @@ let analystClientCache: LLMClient | null = null;
 
 function getAnalystClient(): LLMClient {
   if (analystClientCache) return analystClientCache;
-  const model = appConfig.SUMMARY_MODEL?.trim() || 'deepseek';
-  analystClientCache = createLLMClient('pollinations', { chatModel: model });
+  const model = appConfig.AI_PROVIDER_SUMMARY_AGENT_MODEL.trim();
+  analystClientCache = createLLMClient({ agentModel: model });
   return analystClientCache;
 }
 

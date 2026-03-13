@@ -25,7 +25,7 @@ describe('assertAgentTraceSchemaReady', () => {
   });
 
   it('throws when AgentTrace probe fails', async () => {
-    queryRawUnsafeMock.mockRejectedValueOnce(new Error('column "qualityJson" does not exist'));
+    queryRawUnsafeMock.mockRejectedValueOnce(new Error('column "langSmithTraceId" does not exist'));
 
     await expect(assertAgentTraceSchemaReady()).rejects.toThrow(
       'AgentTrace schema preflight failed. Run database migrations before startup.',

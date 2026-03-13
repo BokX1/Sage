@@ -1,6 +1,10 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '../../platform/db/prisma-client';
 
+function toJsonValue(value: unknown): Prisma.InputJsonValue | typeof Prisma.JsonNull {
+  return value === undefined ? Prisma.JsonNull : (value as Prisma.InputJsonValue);
+}
+
 export interface TraceStartData {
   id: string;
   guildId: string | null;
@@ -11,10 +15,9 @@ export interface TraceStartData {
   parentTraceId?: string | null;
   graphStatus?: string | null;
   approvalRequestId?: string | null;
-  interruptJson?: unknown;
+  langSmithRunId?: string | null;
+  langSmithTraceId?: string | null;
   tokenJson?: unknown;
-  agentEventsJson?: unknown;
-  qualityJson?: unknown;
   budgetJson?: unknown;
 }
 
@@ -24,44 +27,17 @@ export interface TraceEndData {
   parentTraceId?: string | null;
   graphStatus?: string | null;
   approvalRequestId?: string | null;
-  interruptJson?: unknown;
+  terminationReason?: string | null;
+  langSmithRunId?: string | null;
+  langSmithTraceId?: string | null;
   toolJson?: unknown;
-  qualityJson?: unknown;
   budgetJson?: unknown;
-  agentEventsJson?: unknown;
+  tokenJson?: unknown;
   replyText: string;
 }
 
-/**
- * Create or update trace start (selector + provider execution).
- */
 export async function upsertTraceStart(data: TraceStartData): Promise<void> {
   const routeKind = data.routeKind?.trim() || 'single';
-  const buildTokenPayload = (): Prisma.InputJsonValue => {
-    const payload: Record<string, unknown> = {};
-    if (data.tokenJson && typeof data.tokenJson === 'object' && !Array.isArray(data.tokenJson)) {
-      Object.assign(payload, data.tokenJson as Record<string, unknown>);
-    } else if (data.tokenJson !== undefined) {
-      payload.runtime = data.tokenJson;
-    }
-
-    if (data.agentEventsJson !== undefined) {
-      payload.agentEvents = data.agentEventsJson;
-    }
-    if (data.qualityJson !== undefined) {
-      payload.quality = data.qualityJson;
-    }
-    if (data.budgetJson !== undefined) {
-      payload.budget = data.budgetJson;
-    }
-
-    return payload as Prisma.InputJsonValue;
-  };
-
-  const jsonMap = (val: unknown) =>
-    val === undefined ? Prisma.JsonNull : (val as Prisma.InputJsonValue);
-
-  const tokenPayload = buildTokenPayload();
 
   const createData: Prisma.AgentTraceCreateInput = {
     id: data.id,
@@ -73,9 +49,10 @@ export async function upsertTraceStart(data: TraceStartData): Promise<void> {
     parentTraceId: data.parentTraceId?.trim() || null,
     graphStatus: data.graphStatus?.trim() || null,
     approvalRequestId: data.approvalRequestId?.trim() || null,
-    interruptJson:
-      data.interruptJson === undefined ? Prisma.JsonNull : (data.interruptJson as Prisma.InputJsonValue),
-    tokenJson: jsonMap(tokenPayload),
+    langSmithRunId: data.langSmithRunId?.trim() || null,
+    langSmithTraceId: data.langSmithTraceId?.trim() || null,
+    tokenJson: toJsonValue(data.tokenJson),
+    budgetJson: toJsonValue(data.budgetJson),
     replyText: '',
   };
 
@@ -85,25 +62,11 @@ export async function upsertTraceStart(data: TraceStartData): Promise<void> {
     parentTraceId: data.parentTraceId?.trim() || null,
     graphStatus: data.graphStatus?.trim() || null,
     approvalRequestId: data.approvalRequestId?.trim() || null,
-    interruptJson:
-      data.interruptJson === undefined ? Prisma.JsonNull : (data.interruptJson as Prisma.InputJsonValue),
-    tokenJson: jsonMap(tokenPayload),
+    langSmithRunId: data.langSmithRunId?.trim() || null,
+    langSmithTraceId: data.langSmithTraceId?.trim() || null,
+    tokenJson: toJsonValue(data.tokenJson),
+    budgetJson: toJsonValue(data.budgetJson),
   };
-
-  if (data.agentEventsJson !== undefined) {
-    createData.agentEventsJson = jsonMap(data.agentEventsJson);
-    updateData.agentEventsJson = jsonMap(data.agentEventsJson);
-  }
-
-  if (data.qualityJson !== undefined) {
-    createData.qualityJson = jsonMap(data.qualityJson);
-    updateData.qualityJson = jsonMap(data.qualityJson);
-  }
-
-  if (data.budgetJson !== undefined) {
-    createData.budgetJson = jsonMap(data.budgetJson);
-    updateData.budgetJson = jsonMap(data.budgetJson);
-  }
 
   await prisma.agentTrace.upsert({
     where: { id: data.id },
@@ -112,59 +75,37 @@ export async function upsertTraceStart(data: TraceStartData): Promise<void> {
   });
 }
 
-/**
- * Update trace end (governor + tool calls + final reply).
- */
 export async function updateTraceEnd(data: TraceEndData): Promise<void> {
-  const jsonMap = (val: unknown) =>
-    val === undefined ? Prisma.JsonNull : (val as Prisma.InputJsonValue);
-
-  const updateData: Prisma.AgentTraceUpdateInput = {
-    toolJson: jsonMap(data.toolJson ?? Prisma.JsonNull),
-    threadId: data.threadId?.trim() || null,
-    parentTraceId: data.parentTraceId?.trim() || null,
-    graphStatus: data.graphStatus?.trim() || null,
-    approvalRequestId: data.approvalRequestId?.trim() || null,
-    interruptJson:
-      data.interruptJson === undefined ? Prisma.JsonNull : (data.interruptJson as Prisma.InputJsonValue),
-    replyText: data.replyText,
-  };
-
-  if (data.qualityJson !== undefined) {
-    updateData.qualityJson = jsonMap(data.qualityJson);
-  }
-  if (data.budgetJson !== undefined) {
-    updateData.budgetJson = jsonMap(data.budgetJson);
-  }
-  if (data.agentEventsJson !== undefined) {
-    updateData.agentEventsJson = jsonMap(data.agentEventsJson);
-  }
-
   await prisma.agentTrace.update({
     where: { id: data.id },
-    data: updateData,
+    data: {
+      threadId: data.threadId?.trim() || null,
+      parentTraceId: data.parentTraceId?.trim() || null,
+      graphStatus: data.graphStatus?.trim() || null,
+      approvalRequestId: data.approvalRequestId?.trim() || null,
+      terminationReason: data.terminationReason?.trim() || null,
+      langSmithRunId: data.langSmithRunId?.trim() || null,
+      langSmithTraceId: data.langSmithTraceId?.trim() || null,
+      toolJson: toJsonValue(data.toolJson),
+      budgetJson: toJsonValue(data.budgetJson),
+      tokenJson: toJsonValue(data.tokenJson),
+      replyText: data.replyText,
+    },
   });
 }
 
-/**
- * Get a trace by ID.
- */
 export async function getTraceById(id: string) {
   return prisma.agentTrace.findUnique({
     where: { id },
   });
 }
 
-/**
- * List recent traces for a guild or channel.
- */
 export async function listRecentTraces(params: {
   guildId?: string;
   channelId?: string;
   limit: number;
 }) {
   const { guildId, channelId, limit } = params;
-
   const where: Prisma.AgentTraceWhereInput = {};
   if (guildId) where.guildId = guildId;
   if (channelId) where.channelId = channelId;

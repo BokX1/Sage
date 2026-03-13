@@ -11,7 +11,7 @@ const mockConfig = vi.hoisted(() => ({
   MESSAGE_DB_STORAGE_ENABLED: false,
   RAW_MESSAGE_TTL_DAYS: 3,
   RING_BUFFER_MAX_MESSAGES_PER_CHANNEL: 200,
-  LLM_API_KEY: '',
+  AI_PROVIDER_API_KEY: '',
 }));
 
 vi.mock('@/platform/config/env', () => ({

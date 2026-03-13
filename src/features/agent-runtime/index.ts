@@ -14,7 +14,6 @@ export {
   type ToolExecutionContext,
   type ToolMetadata,
   type ToolValidationResult,
-  type OpenAIToolSpec,
 } from './toolRegistry';
 export { registerDefaultAgenticTools } from './defaultTools';
 export {

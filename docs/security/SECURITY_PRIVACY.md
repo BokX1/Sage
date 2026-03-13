@@ -1,6 +1,6 @@
 # 🔒 Security & Privacy
 
-What Sage stores, how to control retention, and what goes to the LLM provider.
+What Sage stores, how to control retention, and what goes to the upstream AI provider.
 
 <p align="center">
   <img src="https://img.shields.io/badge/%F0%9F%8C%BF-Sage%20Security-2d5016?style=for-the-badge&labelColor=4a7c23" alt="Sage Security" />
@@ -18,7 +18,7 @@ This document describes what Sage stores and how to control retention. Implement
 - [✅ What Sage stores (default)](#what-sage-stores-default)
 - [⚙️ Message ingestion controls](#message-ingestion-controls)
 - [🧾 Retention behavior](#retention-behavior)
-- [📤 What is sent to the LLM provider](#what-is-sent-to-the-llm-provider)
+- [📤 What is sent to the AI provider](#what-is-sent-to-the-ai-provider)
 - [🧹 Deletion / reset](#deletion-reset)
 - [🩹 Redaction](#redaction)
 
@@ -43,8 +43,7 @@ This document describes what Sage stores and how to control retention. Implement
 | Voice session summaries | `VoiceConversationSummary` | Summary-only memory of transcribed voice sessions (optional; no raw transcript stored in DB). |
 | Approval review requests | `ApprovalReviewRequest` | Approval-gated graph interrupt, reviewer/requester message ids, and status metadata for governed writes. |
 | Admin audits | `AdminAudit` | Records admin action usage with hashed params. |
-| Agent traces | `AgentTrace` | Agent trace payload, context budget metadata, and final reply text (if tracing is enabled). |
-| Model health state | `ModelHealthState` | Rolling model health scores used for diagnostics. |
+| Agent traces | `AgentTrace` | Compact runtime ledger with LangSmith references, context budget metadata, and final reply text (when DB trace persistence is enabled). |
 
 ---
 
@@ -73,16 +72,16 @@ These settings control what Sage ingests and logs:
 - **Voice transcription utterances** are kept in-memory only and discarded when the voice session ends; only summary rows persist (when enabled).
 - **Attachment cache** persists extracted non-image file text/metadata (including optional voice-message transcripts) in `IngestedAttachment` until deleted manually.
 - **Summaries and profiles** persist until deleted manually.
-- **Agent traces** are stored only when `TRACE_ENABLED=true`.
+- **Agent traces** are stored only when `SAGE_TRACE_DB_ENABLED=true`.
 
 > [!TIP]
 > Want less retained context? Reduce `CONTEXT_TRANSCRIPT_MAX_MESSAGES`, disable DB storage, and/or disable tracing.
 
 ---
 
-<a id="what-is-sent-to-the-llm-provider"></a>
+<a id="what-is-sent-to-the-ai-provider"></a>
 
-## 📤 What is sent to the LLM provider
+## 📤 What is sent to the AI provider
 
 When generating replies, Sage sends:
 
@@ -98,7 +97,7 @@ When generating replies, Sage sends:
 - Attachment-cache retrieval results when tool loop calls `discord_files` actions `list_channel` or `list_server` (server-wide results are permission-filtered)
 - When an admin authorizes `discord_admin` action `api` calls that include multipart `files` sourced from a URL, Sage will fetch those files from public HTTP(S) URLs to upload them to Discord (private/local hosts are blocked).
 - Image URLs for vision-capable requests
-- When voice session summary is enabled, Sage may send an utterance-level transcript (text) to the LLM provider to generate a summary. Voice audio is sent only to the local voice service (STT), not to the LLM provider.
+- When voice session summary is enabled, Sage may send an utterance-level transcript (text) to the AI provider to generate a summary. Voice audio is sent only to the local voice service (STT), not to the AI provider.
 
 Sage does **not** log API keys or tokens. Keep `.env` out of version control.
 

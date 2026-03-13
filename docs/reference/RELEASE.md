@@ -61,7 +61,7 @@ It runs lint/typecheck, static test quality audit, and repeated/shuffled test va
    - comment cleanup (remove stale/noise comments),
    - legacy/unneeded code or module cleanup.
 4. **Review schema changes** (if applicable)
-   - Document migration/rollback notes in `CHANGELOG.md` and ops docs.
+   - Document hard-reset or rebuild expectations in `CHANGELOG.md` and ops docs when Prisma baseline history changes.
 5. **Review configuration changes**
    - Update [Configuration](CONFIGURATION.md) and setup docs for env var changes.
 6. **Review dependency policy exceptions**

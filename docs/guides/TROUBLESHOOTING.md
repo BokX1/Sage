@@ -39,7 +39,7 @@ This validates:
 
 - ✅ Environment configuration
 - ✅ Database connectivity
-- ✅ LLM provider availability (if `--llm-ping` or `LLM_DOCTOR_PING=1`)
+- ✅ AI provider availability (if `--llm-ping` or `LLM_DOCTOR_PING=1`)
 
 ---
 
@@ -117,7 +117,7 @@ Check these in order:
 1. Trigger Sage once in the guild so the missing-key setup card appears
 2. Click `Get Pollinations Key`
 3. Click `Set Server Key` and submit the `sk_...` value in the modal
-4. If you self-host Sage against another OpenAI-compatible provider, set `LLM_API_KEY` in `.env` instead
+4. If you self-host Sage against another OpenAI-compatible provider, set `AI_PROVIDER_API_KEY` in `.env` instead
 
 ### Response is truncated or cut off
 
@@ -165,7 +165,7 @@ Possible causes:
 **Fix:**
 
 1. Increase timeout: `TIMEOUT_MEMORY_MS=600000`
-2. Use reliable model for profiles: `PROFILE_CHAT_MODEL=deepseek`
+2. Make sure `AI_PROVIDER_PROFILE_AGENT_MODEL` is set explicitly; optional `AI_PROVIDER_MODEL_PROFILES_JSON` entries can refine its budget if needed
 
 ---
 
@@ -255,7 +255,7 @@ RAW_MESSAGE_TTL_DAYS=1                     # Reduce from 3
 
 | Factor | Optimization |
 | :--- | :--- |
-| Model | Default is `CHAT_MODEL=kimi`; change only when you need a different quality/latency profile |
+| Model | `AI_PROVIDER_MAIN_AGENT_MODEL` is required; change it only when you intentionally switch provider-side quality/latency profiles |
 | Context | Reduce `CONTEXT_MAX_INPUT_TOKENS` |
 | Network | Check your configured provider/API status |
 

@@ -1,4 +1,5 @@
-import { LLMChatMessage, LLMContentPart, LLMMessageContent } from '../../platform/llm/llm-types';
+import { AIMessage, HumanMessage, SystemMessage, type BaseMessage } from '@langchain/core/messages';
+import { LLMContentPart, LLMMessageContent } from '../../platform/llm/llm-types';
 import { composeSystemPrompt } from './promptComposer';
 import { config } from '../../platform/config/env';
 import { budgetContextBlocks, ContextBlock } from './contextBudgeter';
@@ -56,6 +57,25 @@ function concatContentSegments(segments: LLMMessageContent[]): LLMMessageContent
     parts.push(...toContentParts(segment));
   }
   return parts;
+}
+
+function toBaseMessageContent(content: LLMMessageContent): BaseMessage['content'] {
+  if (typeof content === 'string') {
+    return content;
+  }
+
+  return content.map((part) => {
+    if (part.type === 'text') {
+      return { type: 'text', text: part.text };
+    }
+
+    return {
+      type: 'image_url',
+      image_url: {
+        url: part.image_url.url,
+      },
+    };
+  });
 }
 
 function escapeStructuredPromptValue(value: string): string {
@@ -167,7 +187,7 @@ export function resolveReservedOutputTokens(
  * Invariants:
  * - Returned message list always contains exactly one system message at index 0.
  */
-export function buildContextMessages(params: BuildContextMessagesParams): LLMChatMessage[] {
+export function buildContextMessages(params: BuildContextMessagesParams): BaseMessage[] {
   const {
     userProfileSummary,
     currentTurn,
@@ -292,7 +312,7 @@ export function buildContextMessages(params: BuildContextMessagesParams): LLMCha
   });
 
   const systemContentParts: string[] = [];
-  const nonSystemMessages: LLMChatMessage[] = [];
+  const nonSystemMessages: BaseMessage[] = [];
 
   for (const block of budgetedBlocks) {
     if (block.role === 'system') {
@@ -304,14 +324,18 @@ export function buildContextMessages(params: BuildContextMessagesParams): LLMCha
         );
       }
     } else {
-      nonSystemMessages.push({ role: block.role, content: block.content });
+      const content = toBaseMessageContent(block.content);
+      if (block.role === 'assistant') {
+        nonSystemMessages.push(new AIMessage({ content }));
+      } else {
+        nonSystemMessages.push(new HumanMessage({ content }));
+      }
     }
   }
 
-  const mergedSystemMessage: LLMChatMessage = {
-    role: 'system',
+  const mergedSystemMessage = new SystemMessage({
     content: systemContentParts.join('\n\n'),
-  };
+  });
 
   return [mergedSystemMessage, ...nonSystemMessages];
 }

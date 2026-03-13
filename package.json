@@ -7,13 +7,13 @@
     "node": ">=22.12.0",
     "npm": ">=10"
   },
-  "description": "A provider-flexible Discord bot with persistent memory, tool calling, and community-aware context.",
+  "description": "A LangGraph-native Discord bot with a provider-neutral compatible chat runtime, persistent memory, tool calling, and community-aware context.",
   "main": "dist/index.js",
   "keywords": [
     "discord",
     "bot",
     "ai",
-    "pollinations",
+    "compatible-chat-completions",
     "memory",
     "chatbot",
     "llm",
@@ -71,6 +71,7 @@
     "dotenv": "^17.3.1",
     "jsonrepair": "^3.13.2",
     "kafkajs": "^2.2.4",
+    "langsmith": "^0.5.10",
     "libsodium-wrappers": "^0.8.2",
     "neo4j-driver": "^6.0.1",
     "pgvector": "^0.2.1",
