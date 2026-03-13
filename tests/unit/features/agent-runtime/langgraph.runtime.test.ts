@@ -10,7 +10,7 @@ const {
   createGraphContinuationSessionMock,
 } = vi.hoisted(() => ({
   loggerWarnMock: vi.fn(),
-  modelInvokeMock: vi.fn(async () => new HumanMessage({ content: 'unused' })),
+  modelInvokeMock: vi.fn<() => Promise<unknown>>(async () => new HumanMessage({ content: 'unused' })),
   getLastAiToolCallsMock: vi.fn((messages: Array<{ tool_calls?: unknown[] }>) => {
     const last = messages.at(-1);
     return Array.isArray(last?.tool_calls) ? last.tool_calls : [];
