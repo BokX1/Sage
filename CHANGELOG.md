@@ -35,6 +35,7 @@
 - Added a dedicated `discord_voice` routed tool for live voice presence control so Sage can report voice status, join the invoker's current voice channel, and leave the active guild voice channel through normal chat turns.
 
 ### Changed
+- Increased the maximum allowed values for `AGENT_GRAPH_MAX_STEPS` and `AGENT_GRAPH_MAX_TOOL_CALLS_PER_STEP` from 10 to 14, allowing operators to run longer or wider LangGraph tool loops when needed.
 - Hardened approval-interrupt recovery in Sage's LangGraph runtime so approval-gated turns now recover the checkpointed interrupted state when the stream stops at the queue boundary, preventing false `I'm having trouble connecting right now. Please try again later.` replies after Sage already posted governance review.
 - Tightened the approval-interrupt stream contract around LangGraph’s native interrupt sentinel chunks, so queue-time approval pauses no longer get mistaken for missing terminal state and leak the generic fallback into chat.
 - Hardened approval-request materialization so Sage no longer turns a non-critical requester-status publication failure into a visible generic connection error after the governance review card is already live.
