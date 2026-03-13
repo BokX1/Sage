@@ -437,8 +437,7 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
     route: SINGLE_ROUTE_KIND,
     model,
     graphRuntime: graphBudgetJson,
-    taskState:
-      graphBudgetJson && 'taskState' in graphBudgetJson ? graphBudgetJson.taskState : undefined,
+    taskState: 'taskState' in graphBudgetJson ? graphBudgetJson.taskState : undefined,
     promptUserText:
       userText.length <= 6_000 ? userText : `${userText.slice(0, 6_000)}...`,
     promptUserTextTruncated: userText.length > 6_000,
