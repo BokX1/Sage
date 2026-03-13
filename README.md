@@ -8,7 +8,7 @@
 <h3 align="center">The open-source AI agent for Discord communities</h3>
 
 <p align="center">
-  <strong>Discord-native AI runtime with long-term memory, live web research, optional voice tooling, and approval-gated admin actions.</strong>
+  <strong>LangGraph-native AI runtime for Discord with long-term memory, live web research, optional voice tooling, and approval-gated admin actions.</strong>
 </p>
 
 <p align="center">
@@ -16,6 +16,7 @@
 </p>
 
 <p align="center">
+  <img src="https://img.shields.io/badge/Powered%20by-LangGraph-1a1a2e?style=for-the-badge&logo=langgraph&labelColor=0d1117" alt="Powered by LangGraph" />
   <img src="https://img.shields.io/badge/OpenAI-Compatible%20Runtime-0ea5e9?style=for-the-badge&labelColor=1e293b" alt="OpenAI-Compatible Runtime" />
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-green?style=for-the-badge" alt="License" /></a>
   <a href="https://github.com/BokX1/Sage/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/BokX1/Sage/ci.yml?style=for-the-badge&label=Build" alt="CI Status" /></a>
@@ -61,14 +62,14 @@
 
 ## 🎯 What Is Sage?
 
-Sage is a Discord-native AI runtime built for active communities—where context matters, creativity is celebrated, and traditional "chatbot" commands are obsolete.
+Sage is a LangGraph-native AI runtime built for active Discord communities—where context matters, creativity is celebrated, and traditional "chatbot" commands are obsolete.
 
 It's designed to feel like an intelligent, ever-present teammate that adapts to your server's unique needs:
 
 - 🧠 **Layered Memory:** Combines recent transcript history, background summaries, user profiles, and attachment retrieval, with optional Memgraph analytics when the social-graph stack is enabled.
 - 🌐 **Live Internet Research:** Uses built-in web and reference tools to pull in current documentation, search results, and cited pages when the runtime needs fresh information.
 - 🎨 **Creative Generation:** Supports vision-aware chat plus built-in image generation and editing through the same runtime loop.
-- 🔀 **Tool-Driven Automation:** Executes multi-step workflows through the unified tool loop instead of separate bots or hard-coded command trees.
+- 🔀 **LangGraph Tool Loop:** Executes multi-step workflows through LangGraph's bounded graph runtime instead of separate bots or hard-coded command trees.
 - 🧰 **Operator Controls:** Point Sage at any OpenAI-compatible chat endpoint, use the built-in server-key and image flows when you want them, and optionally self-host the search/scrape stack.
 
 **Best fit:** Gaming communities, creative hubs, development teams, and any server scaling beyond simple "vibe-only" chat into genuine AI collaboration.
@@ -90,11 +91,11 @@ flowchart LR
         A["🛡️ Natural-Language Admin Requests"]:::discord
     end
 
-    subgraph Runtime["Sage Single-Agent Runtime"]
+    subgraph Runtime["Sage LangGraph Runtime"]
         CE["⚙️ Chat Engine"]:::runtime
         RT["🧠 runChatTurn"]:::runtime
         CB["📦 Context Builder + Token Budgeting"]:::runtime
-        TL{"🔁 Bounded Tool Loop"}:::runtime
+        TL{"🔁 LangGraph Bounded Tool Loop"}:::runtime
         SY["💬 Synthesis + Final Reply"]:::runtime
     end
 
@@ -149,9 +150,9 @@ flowchart LR
 
 ## 💎 What Makes Sage Different
 
-- 🛡️ **Single-Agent Runtime:** One execution path (`runChatTurn`) handles prompt assembly, tool calls, and final replies, which keeps behavior inspectable and easier to debug.
+- 🛡️ **LangGraph-Native Runtime:** One execution path (`runChatTurn`) powered by LangGraph handles prompt assembly, bounded tool calls, and final replies — keeping behavior inspectable and easier to debug.
 - 🧠 **Layered Memory:** Sage keeps recent transcript context in Postgres, updates user/channel summaries in the background, and fetches richer memory only when the tool loop needs it.
-- 🔍 **Tool-First Research:** Live web search, page reads, GitHub access, npm lookup, and file retrieval all run through the same tool loop instead of separate specialty bots.
+- 🔍 **Tool-First Research:** Live web search, page reads, GitHub access, npm lookup, and file retrieval all run through the same LangGraph tool loop instead of separate specialty bots.
 - 🧰 **Operator Choice:** The repo ships with starter defaults, supports any OpenAI-compatible chat backend for self-hosting, and can add local search/scrape services plus an optional Memgraph/Redpanda stack.
 
 <p align="right"><a href="#top">⬆️ Back to top</a></p>
@@ -202,15 +203,15 @@ flowchart TD
         AUTO["Autopilot / Proactive Triggers"]:::discord
     end
 
-    subgraph Engine["Single-Agent Runtime"]
+    subgraph Engine["LangGraph Single-Agent Runtime"]
         direction TB
         CHAT["Chat Engine"]:::runtime
         TURN["runChatTurn"]:::runtime
-        MODEL["Model Resolution + Health Fallbacks"]:::runtime
+        MODEL["Model Resolution"]:::runtime
         CTX["Context Assembly
 system prompt + user profile + guild Sage Persona + transcript + live voice"]:::runtime
         BUDGET["Token Budgeting + Truncation"]:::runtime
-        LOOP{"Tool Loop
+        LOOP{"LangGraph Tool Loop
 max rounds, per-call limits, timeouts"}:::runtime
         FINAL["Final Draft Cleanup + Attachments"]:::runtime
     end
@@ -310,12 +311,9 @@ The fastest way to try Sage if your team or community already runs an instance.
 Use the current invite URL from the operator who hosts that deployment.
 
 **2. Activate BYOP (server key)**  
-*(The current hosted invite-bot flow uses BYOP.)*
+*(The current hosted flow uses BYOP — Bring Your Own Pollen.)*
 
-```bash
-/sage key login
-/sage key set <your_key>
-```
+Sage is chat-first: send `@Sage hello` and Sage replies with a setup card. Use the card buttons to configure your server key through the interactive modal — no slash commands needed.
 
 > [!TIP]
 > For self-hosted deployments, `npm run onboard` prints a recommended invite URL and the manual Discord Developer Portal flow is documented in [Getting Started](docs/guides/GETTING_STARTED.md#step-6-invite-sage-to-your-server).
@@ -331,7 +329,7 @@ Node.js >=22.12, Docker, and PostgreSQL. Memgraph/Redpanda are optional and only
 👉 **[📖 Getting Started](docs/guides/GETTING_STARTED.md)** (Covers database initialization, onboarding, and Discord invite flow).
 
 **3. Configure Chat + BYOP**  
-Starter defaults are included in `.env.example`, but self-hosted chat turns can target any OpenAI-compatible endpoint via `LLM_BASE_URL`. Sage's built-in image generation and `/sage key` validation flow still use the current hosted/default integration today.
+Starter defaults are included in `.env.example`, but self-hosted chat turns can target any OpenAI-compatible endpoint via `AI_PROVIDER_BASE_URL`. Sage's built-in image generation and server-key setup flow can use the current hosted provider integration or your own.
 
 **4. Optional: Local Tool Services**  
 For localized web search and scraping (SearXNG/Crawl4AI), check out the **[🧰 Self-Hosted Tool Stack](docs/operations/TOOL_STACK.md)** guide.
@@ -403,7 +401,7 @@ Sage is tuned for highly autonomous community interaction out-of-the-box, but yo
 
 - ⚙️ **`AUTOPILOT_MODE`**: Set to `manual`, `reserved`, or `talkative` to control how often Sage autonomously replies to community conversations without being directly pinged.
 - ⏱️ **`PROFILE_UPDATE_INTERVAL`**: Controls how often (in messages) a user's long-term behavioral profile is re-analyzed.
-- 📡 **`TRACE_ENABLED`**: Toggles deep observability logging for debugging tool executions.
+- 📡 **`SAGE_TRACE_DB_ENABLED`**: Persist compact runtime traces to Postgres. Use `LANGSMITH_TRACING=true` for full LangGraph graph/task/node trace visualization.
 
 See the **[⚙️ Configuration Reference](docs/reference/CONFIGURATION.md)** for a complete index of all adjustable settings.
 

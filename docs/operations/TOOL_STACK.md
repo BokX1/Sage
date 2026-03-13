@@ -50,7 +50,6 @@ flowchart LR
     W -->|search| S1[SearXNG]:::local
     W -->|search| S2[Tavily]:::hosted
     W -->|search| S3[Exa]:::hosted
-    W -->|search| S4[AI provider fallback]:::hosted
 
     W -->|read / extract| C1[Crawl4AI]:::local
     W -->|read / extract| C2[Firecrawl]:::hosted

@@ -118,6 +118,9 @@
 - Realigned the tracked documentation with the current single-agent runtime, tool catalog, invite flow, config surface, and compose stacks, removing stale hosted-bot, Ollama, and legacy social-graph automation guidance so operators can follow the checked-in docs without code drift.
 - Reorganized tracked config and CI automation around `config/tooling/`, `config/services/`, reusable GitHub Actions gates, pinned Pages actions, and repo-owned Husky/docs scripts, reducing workflow drift and making local and CI validation use the same commands.
 - Upgraded agent reasoning protocol from a 3-step (INTENT → PLAN → TOOL CHOICE) loop to a structured 4-step cognitive loop (Pause and Restate → Ground Constraints → Select Tool Path → Verify Before Executing) with a fast-exit clause for trivial queries and an explicit halt gate on failed constraint checks, improving tool-selection accuracy and reducing hallucination.
+- Cleaned stale documentation across 7 markdown files: fixed `CONTRIBUTING.md` source tree (`src/core/` → `src/features/`, `src/platform/`, `src/shared/`), corrected `SECURITY.md` provider claims and dead `LLM_API_KEY` reference, fixed `INDEX.md` tool/env-var counts, removed `TOOL_STACK.md` phantom search fallback, and aligned `POLLINATIONS.md`/`BYOP.md` with `IMAGE_PROVIDER_*`/`SERVER_PROVIDER_*` env vars.
+- Updated `README.md` to reflect the LangGraph-native runtime: added LangGraph badge, updated architecture diagrams/descriptions, fixed stale `LLM_BASE_URL` → `AI_PROVIDER_BASE_URL`, replaced dead `/sage key` slash commands with chat-first setup card flow, and corrected `TRACE_ENABLED` → `SAGE_TRACE_DB_ENABLED`/`LANGSMITH_TRACING`.
+- Updated website homepage (`index.astro`, `TechStackGrid.jsx`, `StatsStrip.jsx`) with LangGraph branding: added LangGraph to Engine Context tech layer, updated tech count 13 → 14, and updated page title/meta/hero/footer descriptions.
 
 ### Fixed
 

@@ -51,8 +51,6 @@ sequenceDiagram
 
 ---
 
----
-
 <a id="model-guardrails"></a>
 
 ## 🛡️ Runtime Guardrails

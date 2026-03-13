@@ -42,7 +42,7 @@ Clone → Configure → Deploy → Operate
 | Step | Document | Time |
 | :--- | :--- | :--- |
 | 1️⃣ | [📖 Getting Started](guides/GETTING_STARTED.md) — Discord app, `.env`, database, onboarding, invite flow | ~30 min |
-| 2️⃣ | [⚙️ Configuration](reference/CONFIGURATION.md) — 126 environment variables, grouped by subsystem | ~15 min |
+| 2️⃣ | [⚙️ Configuration](reference/CONFIGURATION.md) — Environment variables, grouped by subsystem | ~15 min |
 | 3️⃣ | [🧰 Self-Hosted Tool Stack](operations/TOOL_STACK.md) — Local SearXNG, Crawl4AI, and Tika | ~20 min |
 | 4️⃣ | [📋 Operations Runbook](operations/RUNBOOK.md) — Validation, monitoring, and maintenance | Reference |
 
@@ -56,7 +56,7 @@ Architecture → Pipeline → Memory → Database
 
 | Step | Document | Time |
 | :--- | :--- | :--- |
-| 1️⃣ | [🤖 Agentic Architecture](architecture/OVERVIEW.md) — Single-agent design, 16 built-in tools, runtime flow | ~15 min |
+| 1️⃣ | [🤖 Agentic Architecture](architecture/OVERVIEW.md) — Single-agent design, 15 built-in tools, runtime flow | ~15 min |
 | 2️⃣ | [🔀 Runtime Pipeline](architecture/PIPELINE.md) — Context assembly, tool loop, and trace outputs | ~20 min |
 | 3️⃣ | [🧠 Memory System](architecture/MEMORY.md) — Transcript retention, summaries, profiles, and on-demand retrieval | ~15 min |
 | 4️⃣ | [💾 Database Schema](architecture/DATABASE.md) — 17 Prisma models and common operations | ~10 min |

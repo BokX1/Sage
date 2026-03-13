@@ -55,7 +55,7 @@ When deploying Sage:
 
 ### API Keys
 
-- Keep your `LLM_API_KEY` (or BYOP server key) private
+- Keep your `AI_PROVIDER_API_KEY` (or BYOP server key) private
 - Generate keys with minimal required permissions
 - Revoke and regenerate keys periodically
 
@@ -80,6 +80,6 @@ See [Security & Privacy](docs/security/SECURITY_PRIVACY.md) for full details.
 
 ### Third-Party Services
 
-- **Pollinations.ai**: All AI requests are sent to Pollinations
-- Messages are processed through their API
-- Review their privacy policy at [pollinations.ai](https://pollinations.ai)
+- **AI Provider**: Sage sends chat, profile, and summary requests to whichever OpenAI-compatible endpoint you configure via `AI_PROVIDER_BASE_URL`. The current hosted deployment uses [Pollinations.ai](https://pollinations.ai) as the default provider.
+- **Image Provider**: Image generation and editing requests go to the endpoint configured via `IMAGE_PROVIDER_BASE_URL`.
+- Review the privacy policy of your chosen AI and image providers.

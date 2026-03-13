@@ -17,7 +17,8 @@ const Icons = {
   SearXNG: (props) => <CdnIcon src="https://cdn.simpleicons.org/searxng/white" alt="SearXNG" {...props} style={{ filter: 'none' }} />,
   Crawl4AI: (props) => <svg viewBox="0 0 24 24" fill="currentColor" {...props}><path d="M12 2a2 2 0 0 1 2 2c0 .74-.4 1.39-1 1.73V7h1a7 7 0 0 1 7 7h1v2h-1v2h-2v-2h-1v-2h1c0-2.76-2.24-5-5-5h-4v2h2v4H9v-4h2V9H6c-2.76 0-5 2.24-5 5h1v2H1v2h-1v-2h2v-2h1a7 7 0 0 1 7-7h1V5.73A2.001 2.001 0 0 1 12 2z" /></svg>,
   HuggingFace: (props) => <CdnIcon src="https://cdn.simpleicons.org/huggingface/white" alt="HuggingFace" {...props} style={{ filter: 'none' }} />,
-  Tika: (props) => <CdnIcon src="https://cdn.simpleicons.org/apache/white" alt="Apache Tika" {...props} style={{ filter: 'none' }} />
+  Tika: (props) => <CdnIcon src="https://cdn.simpleicons.org/apache/white" alt="Apache Tika" {...props} style={{ filter: 'none' }} />,
+  LangGraph: (props) => <svg viewBox="0 0 24 24" fill="currentColor" {...props}><path d="M12 2L3 7v10l9 5 9-5V7l-9-5zm0 2.18l6.63 3.68L12 11.5 5.37 7.86 12 4.18zM5 9.32l6 3.33v6.7l-6-3.33v-6.7zm8 10.03v-6.7l6-3.33v6.7l-6 3.33z" /></svg>
 };
 
 const techLayers = {
@@ -38,6 +39,7 @@ const techLayers = {
     side: 'left',
     nodes: [
       { name: 'Node.js', role: 'Single-agent runtime with TypeScript (v5.9)', color: '#78b846', icon: Icons.NodeJs },
+      { name: 'LangGraph', role: 'Graph-native agentic orchestration framework', color: '#78b846', icon: Icons.LangGraph },
       { name: 'discord.js', role: 'Discord gateway & voice bindings', color: '#BB9AF7', icon: Icons.Discord },
       { name: 'Docker', role: 'Container orchestration & networking', color: '#7AA2F7', icon: Icons.Docker },
       { name: 'Zod', role: 'Strict schema validation for tool inputs', color: '#BB9AF7', icon: Icons.Zod }
@@ -151,7 +153,7 @@ export default function TechStackGrid() {
           </span>
         </h2>
         <p className="text-lg text-slate-400 max-w-2xl mx-auto font-light">
-          13 core technologies. Zero compromises. Every layer is connected and purpose-built for agentic AI orchestration.
+          14 core technologies. Zero compromises. Every layer is connected and purpose-built for agentic AI orchestration.
         </p>
       </motion.div>
 

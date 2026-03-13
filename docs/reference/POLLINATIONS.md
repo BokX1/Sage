@@ -103,7 +103,7 @@ Sage accepts successful authenticated profile responses and extracts account fie
 When Sage needs a key, it resolves in this order:
 
 1. **Server key** (set through Sage's setup card + modal)
-2. **Optional host-level runtime key** (`AI_PROVIDER_API_KEY` in `.env`)
+2. **Optional host-level server-provider key** (`SERVER_PROVIDER_API_KEY` in `.env`)
 3. If neither exists, Sage returns setup guidance and cannot complete chat requests until a key is configured.
 
 ---
@@ -140,7 +140,7 @@ AI_PROVIDER_SUMMARY_AGENT_MODEL=your-summary-agent-model
 ```
 
 > [!NOTE]
-> Image generation uses a Pollinations image model (currently set in code). See the Image section below for details.
+> Image generation uses the model configured via `IMAGE_PROVIDER_MODEL` (Pollinations currently defaults to `imagen-4` in hosted deployments). See the Image section below for details.
 
 ---
 
@@ -208,7 +208,7 @@ Sage fetches raw image bytes from Pollinations:
 
 Sage appends query parameters:
 
-- `model` (default in code: `imagen-4`)
+- `model` (configured via `IMAGE_PROVIDER_MODEL`; current Pollinations default: `imagen-4`)
 - `seed` (random per request)
 - `nologo=true`
 - `key=sk_...` (only when BYOP/global key is available)

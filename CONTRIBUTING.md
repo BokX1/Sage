@@ -109,19 +109,22 @@ Understanding the codebase structure helps you contribute effectively:
 
 ```text
 src/
-├── core/
-│   ├── agentRuntime/      # Runtime orchestration, prompt assembly, tool loop
-│   ├── llm/               # Model resolver, catalog, health tracking
-│   ├── voice/             # Voice presence, sessions, analytics
-│   ├── memory/            # Profile updater, user profile repo
-│   ├── summary/           # Channel summary scheduler and summarizer
-│   └── relationships/     # Social graph edge tracking
-└── shared/
-    └── config/            # Environment validation (Zod schemas)
+├── app/                        # Bootstrap, Discord event wiring, lifecycle hooks
+├── features/
+│   ├── agent-runtime/          # runChatTurn, tool loop, prompt/context assembly
+│   ├── chat/                   # Chat orchestration and rate limiting
+│   ├── memory/                 # Profiles and memory update flows
+│   ├── summary/                # Channel summarization and compaction
+│   ├── social-graph/           # Query/migration/setup logic and analytics
+│   ├── voice/                  # Voice presence, sessions, analytics
+│   └── ...                     # Awareness, settings, ingest, embeddings, admin
+├── platform/                   # Discord, DB, LLM, config, logging, security adapters
+├── shared/                     # Pure cross-cutting helpers and error utilities
+└── cli/                        # Operational entrypoints and diagnostics
 ```
 
 > [!TIP]
-> Start with `src/core/agentRuntime/agentRuntime.ts` — it's the main entry point for understanding how messages flow through Sage.
+> Start with `src/features/agent-runtime/agentRuntime.ts` — it's the main entry point for understanding how messages flow through Sage.
 
 ---
 
