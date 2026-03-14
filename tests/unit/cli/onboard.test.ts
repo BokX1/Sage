@@ -90,21 +90,35 @@ describe('onboard helpers', () => {
   });
 
   it('only forces shared models automatically outside the explicit split-model prompt path', () => {
-    expect(
-      shouldSeedSharedAgentModels({
+    const outcomes = {
+      interactiveHostKeyNow: shouldSeedSharedAgentModels({
         mode: 'host_key_now',
         interactive: true,
         nonInteractive: false,
       }),
-    ).toBe(true);
-
-    expect(
-      shouldSeedSharedAgentModels({
+      interactiveBoth: shouldSeedSharedAgentModels({
         mode: 'both',
         interactive: true,
         nonInteractive: false,
       }),
-    ).toBe(false);
+      nonInteractiveBoth: shouldSeedSharedAgentModels({
+        mode: 'both',
+        interactive: true,
+        nonInteractive: true,
+      }),
+      nonPromptedHostKeyNow: shouldSeedSharedAgentModels({
+        mode: 'host_key_now',
+        interactive: false,
+        nonInteractive: false,
+      }),
+    };
+
+    expect(outcomes).toEqual({
+      interactiveHostKeyNow: true,
+      interactiveBoth: false,
+      nonInteractiveBoth: true,
+      nonPromptedHostKeyNow: true,
+    });
   });
 
   it('builds a grouped onboarding summary with the chosen setup mode', () => {
