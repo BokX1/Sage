@@ -26,6 +26,7 @@
 
 ### Added
 
+- Added prompt-budget regression coverage for Sage's Discord-native runtime, so the core prompt, common public capability prompt, and full admin capability prompt now fail tests if they grow past the new lean-budget ceilings.
 - Added resumable LangGraph continuation sessions and Discord Continue actions, so long-running Sage turns now pause with a progress summary, preserve the checkpointed thread state, and resume in-place instead of restarting from scratch after step-window exhaustion.
 - Added approval-gated Discord moderation batch actions through `discord_admin.submit_moderation`: explicit `bulk_delete_messages` and criteria-based `purge_recent_messages` now resolve into deterministic canonical message-id snapshots before review, enabling safer high-volume cleanup workflows.
 - Added a custom LangGraph-backed agent runtime with Postgres checkpointing so Sage now persists tool-loop state per trace/thread, supports graph-native approval interrupts and resumes, and records graph lifecycle metadata in agent traces for operator debugging.
@@ -36,6 +37,8 @@
 - Added a dedicated `discord_voice` routed tool for live voice presence control so Sage can report voice status, join the invoker's current voice channel, and leave the active guild voice channel through normal chat turns.
 
 ### Changed
+- Reframed Sage's always-on runtime prompt around a frontier-agent operator brief: the base prompt now emphasizes objective-first judgment and durable Discord channel discipline, while the capability prompt teaches a compact source-selection ladder and lookup-first heuristics without changing any Discord tool contracts or public tool surface.
+- Leaned Sage's always-on Discord prompt surface around a split invariant-vs-routing contract: the base prompt now owns continuity and persona precedence, the capability prompt keeps only runtime protocol plus critical Discord tool disambiguators, and routed-tool `help` remains the full-fidelity action contract so first-pass tool selection stays accurate with less prompt weight.
 - Replaced the old step-limit forced-finalization path with a windowed continuation runtime: Sage now tracks completed continuation windows and total rounds, reuses the same generalized interrupt/resume contract for approval and continuation pauses, and resumes paused LangGraph threads through the explicit Discord Continue button flow instead of restarting from scratch.
 - Simplified Sage's LangGraph loop back to the classic single-agent tool pattern: plain text with no tool calls now finalizes immediately, continuation summaries are built deterministically from tool results and the latest assistant draft, and the removed intent/task-state layer no longer leaks protocol JSON or trace metadata into the runtime.
 - Hardened continuation resumes so Sage now rehydrates the current API-key/tool-access policy at resume time, restricts Continue buttons to the original requester in the original channel, still delivers pause summaries when button-session persistence fails, and prefers the graph's real working summary over a generic fallback when a terminal plain-text reply is missing.

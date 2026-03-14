@@ -260,9 +260,10 @@ describe('discord tool mental model guidance', () => {
       activeTools: ['discord_context', 'discord_messages', 'web', 'system_time'],
     });
 
+    expect(prompt).toContain('<operator_model>');
     expect(prompt).toContain('Routed tools expose action-level `help`');
     expect(prompt).toContain('Direct tools do not expose `help`; rely on schema and description');
-    expect(prompt).toContain('If a routed tool action or field is unclear, call that tool\'s `help` action before guessing.');
+    expect(prompt).toContain('Use it only when a routed-tool contract is genuinely unclear.');
   });
 
   it('surfaces the critical Discord distinctions together in the capability prompt', () => {
@@ -279,12 +280,11 @@ describe('discord tool mental model guidance', () => {
 
     expect(prompt).toContain('Distinguish Sage Persona reads from Sage Persona writes');
     expect(prompt).toContain('Distinguish Sage Persona/config from moderation/enforcement');
-    expect(prompt).toContain('Distinguish Sage Persona from server-resource work');
     expect(prompt).toContain('Treat reply-targeted enforcement as moderation');
-    expect(prompt).toContain('Distinguish summary context from message context');
+    expect(prompt).toContain('Summary vs evidence: `discord_context.get_channel_summary` is rolling recap');
     expect(prompt).toContain('Distinguish file discovery from guild discovery');
     expect(prompt).toContain('Distinguish voice analytics from live voice control');
-    expect(prompt).toContain('change Sage');
-    expect(prompt).toContain('enforce on user/content');
+    expect(prompt).toContain('Change Sage behavior or governance config');
+    expect(prompt).toContain('Enforce on user or content');
   });
 });

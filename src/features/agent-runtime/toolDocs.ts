@@ -38,6 +38,13 @@ export interface RoutedToolRepairGuidance {
   nextStepHint: string;
 }
 
+export interface PromptToolGuidance {
+  purpose?: string;
+  decisionEdges: string[];
+  antiPatterns?: string[];
+  helpHint?: string;
+}
+
 export type WebsiteToolCategory = 'discord' | 'search' | 'dev' | 'gen' | 'system';
 
 export interface WebsiteNativeToolRow {
@@ -59,6 +66,7 @@ export interface TopLevelToolDoc {
   purpose: string;
   selectionHints: string[];
   avoidWhen?: string[];
+  promptGuidance?: PromptToolGuidance;
   validationHint?: string;
   website: WebsiteNativeToolRow;
   smoke: ToolSmokeDoc;
@@ -219,6 +227,22 @@ export function listTopLevelToolDocs(): TopLevelToolDoc[] {
 export function getTopLevelToolSelectionHints(toolName: string): string[] {
   const doc = getTopLevelToolDoc(toolName);
   return doc ? [...doc.selectionHints] : [];
+}
+
+export function getPromptToolGuidance(toolName: string): PromptToolGuidance | null {
+  const doc = getTopLevelToolDoc(toolName);
+  if (!doc?.promptGuidance) {
+    return null;
+  }
+
+  return {
+    purpose: doc.promptGuidance.purpose,
+    decisionEdges: [...doc.promptGuidance.decisionEdges],
+    antiPatterns: doc.promptGuidance.antiPatterns
+      ? [...doc.promptGuidance.antiPatterns]
+      : undefined,
+    helpHint: doc.promptGuidance.helpHint,
+  };
 }
 
 export function getToolValidationHint(toolName: string): string | undefined {
@@ -1522,6 +1546,7 @@ function registerRoutedTopLevelToolDoc(
   options: {
     website: Omit<WebsiteNativeToolRow, 'name'>;
     smoke: ToolSmokeDoc;
+    promptGuidance?: PromptToolGuidance;
     validationHint?: string;
   },
 ): TopLevelToolDoc {
@@ -1530,6 +1555,7 @@ function registerRoutedTopLevelToolDoc(
     purpose: routedDoc.purpose,
     selectionHints: [...(routedDoc.selectionHints ?? [])],
     avoidWhen: routedDoc.avoidWhen ? [...routedDoc.avoidWhen] : undefined,
+    promptGuidance: options.promptGuidance,
     validationHint:
       options.validationHint ??
       'Try: { action: "help" } to see available actions and example payloads.',
@@ -1547,6 +1573,15 @@ registerTopLevelToolDoc({
   selectionHints: [
     'IF timezone conversion for a specific utcOffset -> system_time (the current UTC time is already in <agent_state>; use the tool only for explicit offset math).',
   ],
+  promptGuidance: {
+    purpose: 'Timezone math when <agent_state> UTC is not enough.',
+    decisionEdges: [
+      'Specific timezone conversion or offset math -> system_time.',
+    ],
+    antiPatterns: [
+      'Do not call it just to know the current UTC time already exposed in <agent_state>.',
+    ],
+  },
   validationHint:
     'Try: {} for current UTC facts or { utcOffsetMinutes: 480 } for explicit timezone conversion.',
   website: {
@@ -1568,6 +1603,12 @@ registerTopLevelToolDoc({
   selectionHints: [
     'IF tool latency, cache, memo, or error telemetry is needed -> system_tool_stats.',
   ],
+  promptGuidance: {
+    purpose: 'Process-local tool telemetry and cache or memo stats.',
+    decisionEdges: [
+      'Tool latency, failures, cache, or memo behavior -> system_tool_stats.',
+    ],
+  },
   validationHint:
     'Try: { topN: 10 } for a compact summary or { includeRaw: true } for full in-process metrics.',
   website: {
@@ -1594,6 +1635,18 @@ registerRoutedTopLevelToolDoc(discordContextToolDoc, {
     mode: 'skip',
     reason: 'Requires live guild and current-turn context; covered by runtime, unit, and integration tests.',
   },
+  promptGuidance: {
+    purpose: 'Profiles, recaps, relationship context, and Sage Persona reads.',
+    decisionEdges: [
+      'Room recap, profile context, relationship context, or a guild Sage Persona read -> discord_context.',
+      'Exact quotes, message proof, or local message windows -> discord_messages instead.',
+      'Live voice state, join, or leave -> discord_voice instead.',
+    ],
+    antiPatterns: [
+      'Do not use get_channel_summary for exact quotes or message-level evidence.',
+    ],
+    helpHint: 'If the exact context contract is genuinely unclear, call `discord_context` with `action: "help"`.',
+  },
   validationHint: 'Try: { action: "help" } to see available actions and required fields.',
 });
 
@@ -1607,6 +1660,19 @@ registerRoutedTopLevelToolDoc(discordMessagesToolDoc, {
   smoke: {
     mode: 'skip',
     reason: 'Requires live guild and current-turn context; covered by runtime, unit, and integration tests.',
+  },
+  promptGuidance: {
+    purpose: 'Exact message evidence, local message windows, and Discord-native delivery.',
+    decisionEdges: [
+      'Exact quotes, message proof, who-said-what, or local message windows -> discord_messages.',
+      'Final in-channel rich or interactive reply -> discord_messages.send.',
+      'Thread lifecycle or guild-resource state -> discord_server instead.',
+    ],
+    antiPatterns: [
+      'Do not use discord_messages for rolling summaries or profile context.',
+      'Do not leave the final rich reply in plain assistant prose when send should deliver it.',
+    ],
+    helpHint: 'If the exact message contract or send payload is genuinely unclear, call `discord_messages` with `action: "help"`.',
   },
   validationHint: 'Try: { action: "help" } to see available actions and required fields.',
 });
@@ -1622,6 +1688,18 @@ registerRoutedTopLevelToolDoc(discordFilesToolDoc, {
     mode: 'skip',
     reason: 'Requires live guild and current-turn context; covered by runtime, unit, and integration tests.',
   },
+  promptGuidance: {
+    purpose: 'Attachment recall, cached attachment text, and resend flows.',
+    decisionEdges: [
+      'Uploaded files, cached attachment text, or "show that again" -> discord_files.',
+      'Message history, exact quotes, or who-said-what -> discord_messages instead.',
+      'Channels, roles, threads, or guild resources -> discord_server instead.',
+    ],
+    antiPatterns: [
+      'Do not use discord_files to inspect channels or guild resources.',
+    ],
+    helpHint: 'If the exact attachment contract is genuinely unclear, call `discord_files` with `action: "help"`.',
+  },
   validationHint: 'Try: { action: "help" } to see available actions and required fields.',
 });
 
@@ -1635,6 +1713,18 @@ registerRoutedTopLevelToolDoc(discordServerToolDoc, {
   smoke: {
     mode: 'skip',
     reason: 'Requires live guild and current-turn context; covered by runtime, unit, and integration tests.',
+  },
+  promptGuidance: {
+    purpose: 'Guild resources, server inventory, and thread lifecycle.',
+    decisionEdges: [
+      'Channels, roles, threads, members, events, permissions, or AutoMod -> discord_server.',
+      'Attachment recall -> discord_files instead.',
+      'Exact message evidence or in-channel reply delivery -> discord_messages instead.',
+    ],
+    antiPatterns: [
+      'Do not use discord_server for rolling summaries or cached file recall.',
+    ],
+    helpHint: 'If the exact guild-resource contract is genuinely unclear, call `discord_server` with `action: "help"`.',
   },
   validationHint: 'Try: { action: "help" } to see available actions and required fields.',
 });
@@ -1650,6 +1740,17 @@ registerRoutedTopLevelToolDoc(discordVoiceToolDoc, {
     mode: 'skip',
     reason: 'Requires live guild and current-turn context; covered by runtime, unit, and integration tests.',
   },
+  promptGuidance: {
+    purpose: 'Live voice status and join or leave control.',
+    decisionEdges: [
+      'Voice status or join or leave -> discord_voice.',
+      'Voice analytics or past voice summaries -> discord_context instead.',
+    ],
+    antiPatterns: [
+      'Do not use discord_voice for historical analytics or summary lookup.',
+    ],
+    helpHint: 'If the exact voice contract is genuinely unclear, call `discord_voice` with `action: "help"`.',
+  },
   validationHint: 'Try: { action: "help" } to see available actions and required fields.',
 });
 
@@ -1664,6 +1765,19 @@ registerRoutedTopLevelToolDoc(discordAdminToolDoc, {
     mode: 'skip',
     reason: 'Requires live guild, admin turn state, and approval context; covered by runtime, unit, and integration tests.',
   },
+  promptGuidance: {
+    purpose: 'Governance changes, enforcement actions, and raw Discord API fallback.',
+    decisionEdges: [
+      'Change Sage behavior or governance config -> discord_admin.',
+      'Enforce on user or content -> discord_admin.submit_moderation.',
+      'Use discord_admin.api only when typed Discord actions do not cover the task.',
+    ],
+    antiPatterns: [
+      'Do not jump to discord_admin.api before typed Discord actions.',
+      'Do not use generic delete_message for reply-targeted spam or abuse when submit_moderation fits better.',
+    ],
+    helpHint: 'If the exact admin contract is genuinely unclear, call `discord_admin` with `action: "help"`.',
+  },
   validationHint: 'Try: { action: "help" } to see available actions and required fields.',
 });
 
@@ -1673,6 +1787,12 @@ registerTopLevelToolDoc({
   selectionHints: [
     'IF image creation, illustration, or visual mockup generation is requested -> image_generate.',
   ],
+  promptGuidance: {
+    purpose: 'Create an image attachment from a prompt.',
+    decisionEdges: [
+      'Image creation, illustration, or visual mockup request -> image_generate.',
+    ],
+  },
   validationHint:
     'Try: { prompt: "minimal geometric poster of a robot librarian" } and optionally add width, height, model, seed, or referenceImageUrl.',
   website: {
@@ -1708,6 +1828,19 @@ registerRoutedTopLevelToolDoc(webToolDoc, {
       maxSources: 2,
     },
   },
+  promptGuidance: {
+    purpose: 'Fresh public web information and external research.',
+    decisionEdges: [
+      'Fresh external facts or open web research -> web.',
+      'Broad open-ended research -> `web` with `action="research"`.',
+      'Discord-internal questions -> use Discord tools instead.',
+    ],
+    antiPatterns: [
+      'Avoid sequential page-by-page read loops; batch reads or use research.',
+      'Do not use web for Discord-internal facts.',
+    ],
+    helpHint: 'If the exact web contract is genuinely unclear, call `web` with `action: "help"`.',
+  },
 });
 
 registerRoutedTopLevelToolDoc(githubToolDoc, {
@@ -1724,6 +1857,18 @@ registerRoutedTopLevelToolDoc(githubToolDoc, {
       repo: 'openai/openai-node',
       includeReadme: false,
     },
+  },
+  promptGuidance: {
+    purpose: 'GitHub repo, code, file, issue, PR, and commit lookup.',
+    decisionEdges: [
+      'GitHub repository or code lookup -> github.',
+      'Unknown file path -> start with `code.search`.',
+      'npm registry metadata only -> npm_info instead.',
+    ],
+    antiPatterns: [
+      'Do not call `file.get` before `code.search` when the path is unknown.',
+    ],
+    helpHint: 'If the exact GitHub contract is genuinely unclear, call `github` with `action: "help"`.',
   },
 });
 
@@ -1746,6 +1891,17 @@ registerRoutedTopLevelToolDoc(workflowToolDoc, {
       maxMatches: 5,
     },
   },
+  promptGuidance: {
+    purpose: 'One-shot wrappers that replace routine multi-hop tool chains.',
+    decisionEdges: [
+      'Use workflow when one call can replace a routine multi-hop chain.',
+      'npm package plus GitHub code search -> `workflow` with `action="npm.github_code_search"`.',
+    ],
+    antiPatterns: [
+      'Do not split a supported workflow into multiple manual hops first.',
+    ],
+    helpHint: 'If the exact workflow contract is genuinely unclear, call `workflow` with `action: "help"`.',
+  },
   validationHint: 'Try: { action: "help" } to see available workflows and example payloads.',
 });
 
@@ -1755,6 +1911,15 @@ registerTopLevelToolDoc({
   selectionHints: [
     'IF npm package metadata, versions, maintainers, or repository hints are needed -> npm_info.',
   ],
+  promptGuidance: {
+    purpose: 'npm registry metadata, versions, maintainers, and repository hints.',
+    decisionEdges: [
+      'npm package versions, maintainers, dependency surface, or repo hint -> npm_info.',
+    ],
+    antiPatterns: [
+      'Do not use github when you only need npm registry metadata.',
+    ],
+  },
   validationHint:
     'Try: { packageName: "zod" } and optionally add { version: "latest" } or a specific version tag.',
   website: {
@@ -1778,6 +1943,12 @@ registerTopLevelToolDoc({
   selectionHints: [
     'IF broad encyclopedia facts or canonical topic grounding is needed -> wikipedia_search.',
   ],
+  promptGuidance: {
+    purpose: 'Broad canonical topic grounding from Wikipedia.',
+    decisionEdges: [
+      'Broad encyclopedia-style facts or canonical topic grounding -> wikipedia_search.',
+    ],
+  },
   validationHint:
     'Try: { query: "OpenAI", maxResults: 3 } and optionally add { language: "en" }.',
   website: {
@@ -1803,6 +1974,13 @@ registerTopLevelToolDoc({
     'IF coding Q&A or accepted-answer solution hunting is needed -> stack_overflow_search.',
     '  - Set includeAcceptedAnswer=true when the accepted answer body itself is needed.',
   ],
+  promptGuidance: {
+    purpose: 'Coding Q&A search with optional accepted-answer retrieval.',
+    decisionEdges: [
+      'Coding Q&A or accepted-answer solution hunting -> stack_overflow_search.',
+      'Need the accepted answer body itself -> set `includeAcceptedAnswer=true`.',
+    ],
+  },
   validationHint:
     'Try: { query: "TypeScript zod schema parse error", includeAcceptedAnswer: true } and optionally add tagged or maxResults.',
   website: {

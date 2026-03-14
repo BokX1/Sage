@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { HumanMessage, SystemMessage, type BaseMessage } from '@langchain/core/messages';
 import type { CurrentTurnContext } from '@/features/agent-runtime/continuityContext';
 
@@ -128,6 +128,8 @@ function extractTagBlock(content: string, tagName: string): string | null {
 
 describe('transcript injection', () => {
   beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-03-13T00:00:00.000Z'));
     clearChannel({ guildId: 'guild-1', channelId: 'channel-1' });
     mockRunAgentGraphTurn.mockClear();
     mockRunAgentGraphTurn.mockResolvedValue({
@@ -158,6 +160,10 @@ describe('transcript injection', () => {
     });
     mockGetGuildSagePersonaText.mockResolvedValue(null);
     vi.mocked(isLoggingEnabled).mockReturnValue(true);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it('includes ambient transcript and focused continuity when logging is enabled', async () => {
