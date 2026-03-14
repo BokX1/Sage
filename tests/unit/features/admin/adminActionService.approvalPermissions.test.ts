@@ -687,7 +687,7 @@ describe('adminActionService approval permissions', () => {
       interruptResolution: null,
       langSmithRunId: null,
       langSmithTraceId: null,
-    });
+    } as never);
 
     await handleAdminActionButtonInteraction(
       makeInteraction({
@@ -762,7 +762,7 @@ describe('adminActionService approval permissions', () => {
       interruptResolution: null,
       langSmithRunId: null,
       langSmithTraceId: null,
-    });
+    } as never);
 
     await handleAdminActionButtonInteraction(
       makeInteraction({
