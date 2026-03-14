@@ -182,6 +182,7 @@ The runtime teaches silent native tool usage via structured instruction blocks, 
 > [!NOTE]
 > The runtime currently registers 15 top-level tools. The website/demo may show a larger capability count because it also lists routed Discord actions individually.
 > Sage’s agent-facing source of truth lives in the runtime tool schemas plus the shared top-level and routed tool metadata in `src/features/agent-runtime/toolDocs.ts`.
+> The hierarchy is intentional: prompt guidance teaches fast first-pass routing, routed-tool `help` teaches verbose action discovery, and validation hints plus repair guidance teach recovery after malformed or uncertain tool calls.
 
 ### 🧠 Discord Domain Tools (6 tools)
 

@@ -36,13 +36,13 @@ describe('capabilityPrompt', () => {
       expect(prompt).toContain('<tool_selection_guide>');
       expect(prompt).toContain('DISCORD-FIRST:');
       expect(prompt).toContain('OTHER ACTIVE TOOLS:');
-      expect(prompt).toContain('discord_context: Profiles, recaps, relationship context, and Sage Persona reads.');
+      expect(prompt).toContain('discord_context: Profiles, summaries, relationships, and Sage Persona reads.');
       expect(prompt).toContain('Room recap, profile context, relationship context, or a guild Sage Persona read -> discord_context.');
-      expect(prompt).toContain('discord_messages: Exact message evidence, local message windows, and Discord-native delivery.');
+      expect(prompt).toContain('discord_messages: Exact message evidence and Discord-native delivery.');
       expect(prompt).toContain('Final in-channel rich or interactive reply -> discord_messages.send.');
-      expect(prompt).toContain('web: Fresh public web information and external research.');
-      expect(prompt).toContain('github: GitHub repo, code, file, issue, PR, and commit lookup.');
-      expect(prompt).toContain('workflow: One-shot wrappers that replace routine multi-hop tool chains.');
+      expect(prompt).toContain('web: Fresh web research.');
+      expect(prompt).toContain('github: GitHub repos, code, files, PRs, and commits.');
+      expect(prompt).toContain('workflow: One-shot multi-hop wrappers.');
       expect(prompt).not.toContain('action_contracts');
       expect(prompt).not.toContain('componentsV2.blocks` types');
     });
@@ -74,6 +74,19 @@ describe('capabilityPrompt', () => {
       expect(prompt).toContain('Voice status or join or leave -> discord_voice.');
       expect(prompt).toContain('Do not use web for Discord-internal facts.');
       expect(prompt).toContain('Do not use generic delete_message for reply-targeted spam or abuse when submit_moderation fits better.');
+    });
+
+    it('teaches non-discord tool arbitration in the compact guide', () => {
+      const prompt = buildCapabilityPromptSection({
+        activeTools: ['web', 'wikipedia_search', 'stack_overflow_search', 'github', 'npm_info', 'workflow', 'system_time'],
+      });
+
+      expect(prompt).toContain('Canonical topic grounding with no freshness requirement -> wikipedia_search instead.');
+      expect(prompt).toContain('Coding Q&A or accepted-answer hunting -> stack_overflow_search instead.');
+      expect(prompt).toContain('npm registry metadata only -> npm_info instead.');
+      expect(prompt).toContain('npm package to GitHub code search in one hop -> workflow instead.');
+      expect(prompt).toContain('Known GitHub repo and direct GitHub data -> github instead.');
+      expect(prompt).toContain('Direct tools do not expose `help`; rely on schema and description for: `wikipedia_search`, `stack_overflow_search`, `npm_info`, `system_time`.');
     });
 
     it('keeps durable continuity and response-style invariants out of the capability prompt', () => {

@@ -1263,11 +1263,22 @@ export const webToolDoc = registerRoutedToolDoc({
   tool: 'web',
   purpose: 'Research public internet information with search, page reads, targeted extraction, and one-shot grounded research.',
   useWhen: ['The answer needs fresh or source-grounded public web data.'],
-  avoidWhen: ['The answer is purely Discord-internal.', 'A GitHub repo or npm package tool is a better source.'],
-  routingNotes: ['Use research for one-shot search + read.', 'Use read.page for very large pages.'],
+  avoidWhen: [
+    'The answer is purely Discord-internal.',
+    'A GitHub repo or npm package tool is a better source.',
+    'Broad canonical topic grounding from Wikipedia is enough.',
+    'Coding Q&A or accepted-answer hunting is better served by Stack Overflow search.',
+  ],
+  routingNotes: [
+    'Use research for one-shot search plus grounded reads.',
+    'Use search for discovery only, then read or read.page once you know the URL.',
+    'Use read.page for very large pages.',
+  ],
   selectionHints: [
     'IF the question needs public internet information or fresh sources -> web.',
     '  - For broad or open-ended questions, ALWAYS use web (action=research) to search and read multiple sources in a single payload round.',
+    '  - Broad canonical topic grounding with no freshness requirement -> wikipedia_search instead.',
+    '  - Coding Q&A or accepted-answer hunting -> stack_overflow_search instead.',
     '  - Read a known page directly -> web (action=read) or web (action=read.page) for long pages.',
     '  - If you must read multiple URLs from a search (action=search), ALWAYS batch multiple web (action=read) calls in parallel within the same JSON payload.',
     '  - Use web (action=extract) only when raw page content is not enough and the user needs targeted agentic extraction.',
@@ -1285,6 +1296,10 @@ export const webToolDoc = registerRoutedToolDoc({
       action: 'search',
       purpose: 'Search the public web and return grounded results.',
       useWhen: ['You need discovery or source selection.'],
+      avoidWhen: [
+        'You already know the exact page you want to read; use read or read.page.',
+        'You want one-shot search plus grounded reads; use research.',
+      ],
       requiredFields: ['action', 'query'],
       optionalFields: ['depth', 'maxResults'],
       defaults: ['depth defaults to the runtime search profile.'],
@@ -1294,6 +1309,10 @@ export const webToolDoc = registerRoutedToolDoc({
       action: 'read',
       purpose: 'Fetch the main content from a known URL.',
       useWhen: ['You already know the page you want to read.'],
+      avoidWhen: [
+        'The page is large enough that paged reading would be safer; use read.page.',
+        'You still need discovery across multiple sources; use search or research.',
+      ],
       requiredFields: ['action', 'url'],
       optionalFields: ['maxChars'],
       examples: [{ action: 'read', url: 'https://example.com/docs', maxChars: 4000 }],
@@ -1312,6 +1331,7 @@ export const webToolDoc = registerRoutedToolDoc({
       action: 'extract',
       purpose: 'Run targeted extraction against a URL with explicit instructions.',
       useWhen: ['Raw page content is not enough and the user needs focused extraction.'],
+      avoidWhen: ['A normal page read already gives enough information; use read or read.page.'],
       requiredFields: ['action', 'url', 'instruction'],
       optionalFields: ['maxChars'],
       examples: [{ action: 'extract', url: 'https://example.com/pricing', instruction: 'Extract plan names and monthly prices.' }],
@@ -1320,6 +1340,10 @@ export const webToolDoc = registerRoutedToolDoc({
       action: 'research',
       purpose: 'Run one-shot search plus grounded reads of top sources.',
       useWhen: ['You want a compact search + read workflow in one call.'],
+      avoidWhen: [
+        'You already know the exact page you want to read; use read or read.page.',
+        'You only need discovery and not grounded page reads yet; use search.',
+      ],
       requiredFields: ['action', 'query'],
       optionalFields: ['depth', 'maxResults', 'maxSources', 'perSourceMaxChars', 'followLinks', 'maxFollowedLinks', 'maxFollowedLinksPerSource', 'followSameDomainOnly', 'perFollowMaxChars'],
       defaults: ['followSameDomainOnly defaults to true.'],
@@ -1333,10 +1357,20 @@ export const githubToolDoc = registerRoutedToolDoc({
   tool: 'github',
   purpose: 'Read GitHub repository metadata, code search, file content, issues, pull requests, and commit activity.',
   useWhen: ['The request is about GitHub repository data or source files.'],
-  avoidWhen: ['The package source is unknown and npm_info or workflow can resolve it first.', 'The request is general web research rather than GitHub data.'],
-  routingNotes: ['When the path is unknown, start with code.search.', 'Prefer file.page, file.ranges, or file.snippet for large files.'],
+  avoidWhen: [
+    'The package source is unknown and npm_info or workflow can resolve it first.',
+    'The request is general web research rather than GitHub data.',
+    'You only need npm registry metadata.',
+  ],
+  routingNotes: [
+    'When the path is unknown, start with code.search.',
+    'Prefer file.page, file.ranges, or file.snippet for large files.',
+    'Use workflow when you want npm package resolution plus GitHub code search in one call.',
+  ],
   selectionHints: [
     'IF the request is about GitHub repository data -> github.',
+    '  - npm metadata only -> npm_info instead.',
+    '  - npm package to GitHub code search in one call -> workflow instead.',
     '  - When the file path is unknown, start with github (action=code.search).',
     '  - Read exact files or ranges only after you know the path -> file.get / file.page / file.ranges / file.snippet.',
     '  - Repo metadata or README lookup -> repo.get.',
@@ -1355,6 +1389,7 @@ export const githubToolDoc = registerRoutedToolDoc({
     {
       action: 'repo.get',
       purpose: 'Fetch GitHub repository metadata, optionally including the README.',
+      avoidWhen: ['You need to locate code and do not know the path yet; use code.search first.'],
       requiredFields: ['action', 'repo'],
       optionalFields: ['includeReadme'],
       resultNotes: ['repo accepts owner/repo or a GitHub URL and is normalized internally.'],
@@ -1377,6 +1412,10 @@ export const githubToolDoc = registerRoutedToolDoc({
       restrictions: ['startLine and endLine must be provided together.'],
       useWhen: ['You know the exact file path and want the file or one contiguous range.'],
       examples: [{ action: 'file.get', repo: 'microsoft/TypeScript', path: 'src/compiler/program.ts', startLine: 1, endLine: 80 }],
+      commonMistakes: [
+        'Do not call file.get before code.search when the path is still unknown.',
+        'Use file.page, file.ranges, or file.snippet instead of one large file.get when the file is big.',
+      ],
     },
     {
       action: 'file.page',
@@ -1433,11 +1472,20 @@ export const workflowToolDoc = registerRoutedToolDoc({
   tool: 'workflow',
   purpose: 'Use one-shot composed tool chains to reduce latency and failure points for common multi-hop tasks.',
   useWhen: ['A composed workflow can replace multiple manual tool hops.'],
-  avoidWhen: ['A direct tool call is simpler or the workflow does not match the task.'],
-  routingNotes: ['Workflow actions are convenience wrappers over lower-level tools.'],
+  avoidWhen: [
+    'A direct tool call is simpler or the workflow does not match the task.',
+    'You already know the GitHub repo and can go straight to github.',
+    'You only need npm registry metadata.',
+  ],
+  routingNotes: [
+    'Workflow actions are convenience wrappers over lower-level tools.',
+    'Use workflow when the value is fewer hops, not when a direct tool already cleanly fits.',
+  ],
   selectionHints: [
     'IF a composed workflow can replace multiple manual tool hops -> workflow.',
     '  - Start with workflow (action=help) when you want a one-shot wrapper over lower-level tools.',
+    '  - If you already know the GitHub repo and only need GitHub data -> github instead.',
+    '  - If you only need npm registry metadata -> npm_info instead.',
     '  - npm package -> GitHub code search in one call -> action=npm.github_code_search.',
   ],
   actions: [
@@ -1452,10 +1500,18 @@ export const workflowToolDoc = registerRoutedToolDoc({
       action: 'npm.github_code_search',
       purpose: 'Resolve an npm package’s GitHub repo and immediately run GitHub code search.',
       useWhen: ['You want npm package resolution plus GitHub code search in one call.'],
+      avoidWhen: [
+        'You already know the GitHub repo and can call github directly.',
+        'You only need npm registry metadata and not GitHub code search.',
+      ],
       requiredFields: ['action', 'packageName', 'query'],
       optionalFields: ['version', 'ref', 'regex', 'pathFilter', 'maxCandidates', 'maxFilesToScan', 'maxMatches', 'includeTextMatches'],
       resultNotes: ['Fails with not_found when the package metadata does not expose a GitHub repo.'],
       examples: [{ action: 'npm.github_code_search', packageName: 'zod', query: 'safeParse', includeTextMatches: true }],
+      commonMistakes: [
+        'Do not use this when npm_info alone answers the question.',
+        'Do not use this when the GitHub repo is already known and github can search directly.',
+      ],
     },
   ],
 });
@@ -1568,15 +1624,18 @@ function registerRoutedTopLevelToolDoc(
 }
 
 const PROMPT_GUIDANCE_ANTI_PATTERNS = {
-  summaryNotEvidence: 'Do not use summaries when the user needs exact message evidence.',
+  summaryNotEvidence: 'Do not use summaries for exact message evidence.',
   messagesNotContext: 'Do not use discord_messages for summaries or profile context.',
   nativeDeliveryNeedsSend:
-    'Do not leave a final in-channel delivery in plain assistant prose when discord_messages.send should deliver it.',
+    'Do not leave an in-channel delivery in plain prose when discord_messages.send should deliver it.',
   filesNotGuildResources: 'Do not use discord_files for channels or guild resources.',
   serverNotRecall: 'Do not use discord_server for summaries or attachment recall.',
   voiceNotAnalytics: 'Do not use discord_voice for historical analytics or summaries.',
-  typedBeforeApi: 'Do not jump to discord_admin.api before typed Discord actions.',
+  typedBeforeApi: 'Do not jump to discord_admin.api before typed actions.',
   webNotDiscord: 'Do not use web for Discord-internal facts.',
+  githubNotNpmOnly: 'Do not use github when npm metadata alone answers it.',
+  githubSearchBeforeFile: 'Do not read GitHub files before code.search when the path is unknown.',
+  workflowNotSimpleDirect: 'Do not use workflow when github or npm_info already fits.',
 } as const;
 
 registerTopLevelToolDoc({
@@ -1648,7 +1707,7 @@ registerRoutedTopLevelToolDoc(discordContextToolDoc, {
     reason: 'Requires live guild and current-turn context; covered by runtime, unit, and integration tests.',
   },
   promptGuidance: {
-    purpose: 'Profiles, recaps, relationship context, and Sage Persona reads.',
+    purpose: 'Profiles, summaries, relationships, and Sage Persona reads.',
     decisionEdges: [
       'Room recap, profile context, relationship context, or a guild Sage Persona read -> discord_context.',
       'Exact quotes, message proof, or local message windows -> discord_messages instead.',
@@ -1674,7 +1733,7 @@ registerRoutedTopLevelToolDoc(discordMessagesToolDoc, {
     reason: 'Requires live guild and current-turn context; covered by runtime, unit, and integration tests.',
   },
   promptGuidance: {
-    purpose: 'Exact message evidence, local message windows, and Discord-native delivery.',
+    purpose: 'Exact message evidence and Discord-native delivery.',
     decisionEdges: [
       'Exact quotes, message proof, who-said-what, or local message windows -> discord_messages.',
       'Final in-channel rich or interactive reply -> discord_messages.send.',
@@ -1701,7 +1760,7 @@ registerRoutedTopLevelToolDoc(discordFilesToolDoc, {
     reason: 'Requires live guild and current-turn context; covered by runtime, unit, and integration tests.',
   },
   promptGuidance: {
-    purpose: 'Attachment recall, cached attachment text, and resend flows.',
+    purpose: 'Attachment recall and cached attachment text.',
     decisionEdges: [
       'Uploaded files, cached attachment text, or "show that again" -> discord_files.',
       'Message history, exact quotes, or who-said-what -> discord_messages instead.',
@@ -1727,7 +1786,7 @@ registerRoutedTopLevelToolDoc(discordServerToolDoc, {
     reason: 'Requires live guild and current-turn context; covered by runtime, unit, and integration tests.',
   },
   promptGuidance: {
-    purpose: 'Guild resources, server inventory, and thread lifecycle.',
+    purpose: 'Guild resources and thread lifecycle.',
     decisionEdges: [
       'Channels, roles, threads, members, events, permissions, or AutoMod -> discord_server.',
       'Attachment recall -> discord_files instead.',
@@ -1753,7 +1812,7 @@ registerRoutedTopLevelToolDoc(discordVoiceToolDoc, {
     reason: 'Requires live guild and current-turn context; covered by runtime, unit, and integration tests.',
   },
   promptGuidance: {
-    purpose: 'Live voice status and join or leave control.',
+    purpose: 'Live voice status and join/leave control.',
     decisionEdges: [
       'Voice status or join or leave -> discord_voice.',
       'Voice analytics or past voice summaries -> discord_context instead.',
@@ -1778,7 +1837,7 @@ registerRoutedTopLevelToolDoc(discordAdminToolDoc, {
     reason: 'Requires live guild, admin turn state, and approval context; covered by runtime, unit, and integration tests.',
   },
   promptGuidance: {
-    purpose: 'Governance changes, enforcement actions, and raw Discord API fallback.',
+    purpose: 'Governance changes, moderation, and API fallback.',
     decisionEdges: [
       'Change Sage behavior or governance config -> discord_admin.',
       'Enforce on user or content -> discord_admin.submit_moderation.',
@@ -1841,10 +1900,11 @@ registerRoutedTopLevelToolDoc(webToolDoc, {
     },
   },
   promptGuidance: {
-    purpose: 'Fresh public web information and external research.',
+    purpose: 'Fresh web research.',
     decisionEdges: [
       'Fresh external facts or open web research -> web.',
-      'Broad open-ended research -> `web` with `action="research"`.',
+      'Canonical topic grounding with no freshness requirement -> wikipedia_search instead.',
+      'Coding Q&A or accepted-answer hunting -> stack_overflow_search instead.',
       'Discord-internal questions -> use Discord tools instead.',
     ],
     antiPatterns: [
@@ -1871,14 +1931,16 @@ registerRoutedTopLevelToolDoc(githubToolDoc, {
     },
   },
   promptGuidance: {
-    purpose: 'GitHub repo, code, file, issue, PR, and commit lookup.',
+    purpose: 'GitHub repos, code, files, PRs, and commits.',
     decisionEdges: [
       'GitHub repository or code lookup -> github.',
-      'Unknown file path -> start with `code.search`.',
+      'Unknown file path -> `code.search` first.',
       'npm registry metadata only -> npm_info instead.',
+      'npm package to GitHub code search in one hop -> workflow instead.',
     ],
     antiPatterns: [
-      'Do not call `file.get` before `code.search` when the path is unknown.',
+      PROMPT_GUIDANCE_ANTI_PATTERNS.githubSearchBeforeFile,
+      PROMPT_GUIDANCE_ANTI_PATTERNS.githubNotNpmOnly,
     ],
     helpHint: 'If the exact GitHub contract is genuinely unclear, call `github` with `action: "help"`.',
   },
@@ -1904,14 +1966,13 @@ registerRoutedTopLevelToolDoc(workflowToolDoc, {
     },
   },
   promptGuidance: {
-    purpose: 'One-shot wrappers that replace routine multi-hop tool chains.',
+    purpose: 'One-shot multi-hop wrappers.',
     decisionEdges: [
-      'Use workflow when one call can replace a routine multi-hop chain.',
+      'One call can replace a routine multi-hop chain -> workflow.',
       'npm package plus GitHub code search -> `workflow` with `action="npm.github_code_search"`.',
+      'Known GitHub repo and direct GitHub data -> github instead.',
     ],
-    antiPatterns: [
-      'Do not split a supported workflow into multiple manual hops first.',
-    ],
+    antiPatterns: [],
     helpHint: 'If the exact workflow contract is genuinely unclear, call `workflow` with `action: "help"`.',
   },
   validationHint: 'Try: { action: "help" } to see available workflows and example payloads.',
@@ -1924,13 +1985,12 @@ registerTopLevelToolDoc({
     'IF npm package metadata, versions, maintainers, or repository hints are needed -> npm_info.',
   ],
   promptGuidance: {
-    purpose: 'npm registry metadata, versions, maintainers, and repository hints.',
+    purpose: 'npm metadata and repo hints.',
     decisionEdges: [
-      'npm package versions, maintainers, dependency surface, or repo hint -> npm_info.',
+      'npm package metadata, maintainers, or repo hint -> npm_info.',
+      'Need GitHub repo or code lookup after you know the repo -> github instead.',
     ],
-    antiPatterns: [
-      'Do not use github when you only need npm registry metadata.',
-    ],
+    antiPatterns: ['Do not use github when you only need npm registry metadata.'],
   },
   validationHint:
     'Try: { packageName: "zod" } and optionally add { version: "latest" } or a specific version tag.',
@@ -1956,9 +2016,10 @@ registerTopLevelToolDoc({
     'IF broad encyclopedia facts or canonical topic grounding is needed -> wikipedia_search.',
   ],
   promptGuidance: {
-    purpose: 'Broad canonical topic grounding from Wikipedia.',
+    purpose: 'Canonical encyclopedia grounding.',
     decisionEdges: [
-      'Broad encyclopedia-style facts or canonical topic grounding -> wikipedia_search.',
+      'Broad canonical topic grounding -> wikipedia_search.',
+      'Fresh, time-sensitive, or multi-source facts -> web instead.',
     ],
   },
   validationHint:
@@ -1987,10 +2048,11 @@ registerTopLevelToolDoc({
     '  - Set includeAcceptedAnswer=true when the accepted answer body itself is needed.',
   ],
   promptGuidance: {
-    purpose: 'Coding Q&A search with optional accepted-answer retrieval.',
+    purpose: 'Coding Q&A and accepted answers.',
     decisionEdges: [
       'Coding Q&A or accepted-answer solution hunting -> stack_overflow_search.',
       'Need the accepted answer body itself -> set `includeAcceptedAnswer=true`.',
+      'Fresh docs, product facts, or open-web research -> web instead.',
     ],
   },
   validationHint:

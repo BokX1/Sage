@@ -201,7 +201,7 @@ function buildToolSelectionGuide(params: {
 }): string {
   const { activeTools, activeDiscordTools } = params;
   const lines: string[] = ['<tool_selection_guide>'];
-  lines.push('Look in the narrowest place that fits. Keep tool choice out of the visible reply.');
+  lines.push('Pick the narrowest fit. Keep tool choice out of the visible reply.');
 
   if (activeDiscordTools.length > 0) {
     lines.push('');
@@ -227,8 +227,8 @@ function buildToolSelectionGuide(params: {
       antiPatterns.add(antiPattern);
     }
   }
-  antiPatterns.add('Do not mention tool calls, approval payloads, action IDs, or retry protocol in the visible reply.');
-  antiPatterns.add('Do not make extra tool calls after you already have enough evidence to answer.');
+  antiPatterns.add('Do not mention tool calls, approval payloads, action IDs, or retry protocol.');
+  antiPatterns.add('Do not make extra tool calls after you already have enough evidence.');
 
   if (antiPatterns.size > 0) {
     lines.push('');

@@ -228,6 +228,8 @@ describe('ToolRegistry', () => {
       });
       expect(result.errorDetails?.repair?.suggestedActions).toContain('help');
       expect(result.errorDetails?.repair?.actionContract?.action).toBe('help');
+      expect(result.errorDetails?.repair?.nextStepHint).toContain('Add an "action" field for github.');
+      expect(result.errorDetails?.repair?.nextStepHint).toContain('{ action: "help" }');
     });
 
     it('adds unknown-action repair guidance with closest action suggestions', async () => {
@@ -251,6 +253,8 @@ describe('ToolRegistry', () => {
       });
       expect(result.errorDetails?.repair?.suggestedActions[0]).toBe('repo.get');
       expect(result.errorDetails?.repair?.actionContract?.action).toBe('repo.get');
+      expect(result.errorDetails?.repair?.nextStepHint).toContain('Action "repo.gt" is not valid for github.');
+      expect(result.errorDetails?.repair?.nextStepHint).toContain('suggested actions');
     });
 
     it('avoids expensive fuzzy ranking for oversized unknown action strings', async () => {
@@ -275,6 +279,7 @@ describe('ToolRegistry', () => {
       });
       expect(result.errorDetails?.repair?.suggestedActions).toEqual(['repo.get']);
       expect(result.errorDetails?.repair?.actionContract?.action).toBe('repo.get');
+      expect(result.errorDetails?.repair?.nextStepHint).toContain('is not valid for github');
     });
 
     it('adds invalid-action-payload repair guidance for known routed actions', async () => {
@@ -298,6 +303,7 @@ describe('ToolRegistry', () => {
       });
       expect(result.errorDetails?.repair?.actionContract?.action).toBe('repo.get');
       expect(result.errorDetails?.repair?.actionContract?.requiredFields).toContain('repo');
+      expect(result.errorDetails?.repair?.nextStepHint).toContain('Keep action="repo.get" and fix the payload fields.');
     });
 
     it('keeps direct-tool validation hints without routed repair guidance', async () => {

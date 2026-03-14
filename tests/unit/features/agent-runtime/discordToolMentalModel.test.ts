@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { buildCapabilityPromptSection } from '../../../../src/features/agent-runtime/capabilityPrompt';
-import { getRoutedToolDoc } from '../../../../src/features/agent-runtime/toolDocs';
+import { getPromptToolGuidance, getRoutedToolDoc } from '../../../../src/features/agent-runtime/toolDocs';
 
 describe('discord tool mental model guidance', () => {
   it('distinguishes instruction reads from instruction writes', () => {
@@ -286,5 +286,47 @@ describe('discord tool mental model guidance', () => {
     expect(prompt).toContain('Voice analytics vs live control');
     expect(prompt).toContain('Change Sage behavior or governance config');
     expect(prompt).toContain('Enforce on user or content');
+  });
+
+  it('keeps prompt guidance aligned with routed-help distinctions', () => {
+    const contextPromptGuidance = getPromptToolGuidance('discord_context');
+    const messagesPromptGuidance = getPromptToolGuidance('discord_messages');
+    const adminPromptGuidance = getPromptToolGuidance('discord_admin');
+
+    const contextDoc = getRoutedToolDoc('discord_context');
+    const messagesDoc = getRoutedToolDoc('discord_messages');
+    const adminDoc = getRoutedToolDoc('discord_admin');
+
+    expect(contextPromptGuidance?.antiPatterns).toEqual(
+      expect.arrayContaining([
+        'Do not use summaries for exact message evidence.',
+      ]),
+    );
+    expect(messagesPromptGuidance?.antiPatterns).toEqual(
+      expect.arrayContaining([
+        'Do not use discord_messages for summaries or profile context.',
+      ]),
+    );
+    expect(adminPromptGuidance?.antiPatterns).toEqual(
+      expect.arrayContaining([
+        'Do not jump to discord_admin.api before typed actions.',
+      ]),
+    );
+
+    expect(contextDoc?.avoidWhen).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining('exact message quotes or historical proof'),
+      ]),
+    );
+    expect(messagesDoc?.avoidWhen).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining('summaries or profiles'),
+      ]),
+    );
+    expect(adminDoc?.routingNotes).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining('fallback only'),
+      ]),
+    );
   });
 });
