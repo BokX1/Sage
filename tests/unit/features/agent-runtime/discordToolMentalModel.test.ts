@@ -297,19 +297,19 @@ describe('discord tool mental model guidance', () => {
     const messagesDoc = getRoutedToolDoc('discord_messages');
     const adminDoc = getRoutedToolDoc('discord_admin');
 
-    expect(contextPromptGuidance?.antiPatterns).toEqual(
+    expect(contextPromptGuidance?.decisionEdges).toEqual(
       expect.arrayContaining([
-        'Do not use summaries for exact message evidence.',
+        'Exact quotes, message proof, or local message windows -> discord_messages instead.',
       ]),
     );
     expect(messagesPromptGuidance?.antiPatterns).toEqual(
       expect.arrayContaining([
-        'Do not use discord_messages for summaries or profile context.',
+        'Do not leave an in-channel delivery in plain prose when discord_messages.send should deliver it.',
       ]),
     );
-    expect(adminPromptGuidance?.antiPatterns).toEqual(
+    expect(adminPromptGuidance?.decisionEdges).toEqual(
       expect.arrayContaining([
-        'Do not jump to discord_admin.api before typed actions.',
+        'Use discord_admin.api only when typed Discord actions do not cover the task.',
       ]),
     );
 

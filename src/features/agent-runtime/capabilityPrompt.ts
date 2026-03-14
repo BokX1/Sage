@@ -92,7 +92,6 @@ export function buildCapabilityPromptSection(
 
   const operatorModel = [
     '<operator_model>',
-    '- Lock onto the current user\'s objective before room noise.',
     '- Decide the needed source: exact evidence, summary context, file recall, guild resource, live voice, admin action, or public web facts.',
     '- Choose the narrowest active tool that can answer it.',
     '- Stop when enough evidence exists. Then answer in the simplest fitting format.',
@@ -111,15 +110,14 @@ export function buildCapabilityPromptSection(
       ? `- Direct tools do not expose \`help\`; rely on schema and description for: ${activeDirectTools.map((tool) => `\`${tool}\``).join(', ')}.`
       : '',
     '- Use tools only when they materially improve the answer or are required to complete the request.',
-    '- Use native tool calls silently. Never narrate tool choice, args, or approval payloads.',
+    '- Use provider-native tool calls silently. Do not describe, serialize, or wrap them in JSON or markdown, and never narrate tool choice, args, or approval payloads.',
     '- Batch read-only calls in one provider-native turn when possible. Do NOT loop them one by one across rounds.',
     '- If a required parameter is missing, ask instead of guessing.',
-    '- If approval review interrupts the turn, treat that action as already queued. Do not retry the same approval-gated action again.',
+    '- If approval review interrupts the turn, treat that action as already queued, keep any visible follow-up brief, and do not repeat approval payloads, action IDs, or internal workflow steps.',
     '- If the runtime blocks a repeated call for this turn, do not retry it unchanged. Pivot to different arguments, another tool, or one clarifying question.',
     '- If no tool is needed, answer in plain text.',
-    '- After an approval-review interrupt, keep the channel reply brief. Do not repeat action IDs, approval card contents, raw admin workflow steps, or recovery protocol.',
     hasAnyDiscordTool
-      ? '- Think Discord-first when Discord tools can answer the request. Use web only for questions outside Discord.'
+      ? '- Stay Discord-native when Discord tools already cover the request.'
       : '- Discord-native profiles, summaries, files, messages, and actions are unavailable this turn.',
     hasDiscordContextTool && hasDiscordMessagesTool
       ? '- Summary vs exact evidence: `discord_context.get_channel_summary` is recap; `discord_messages` is for quotes and message-level proof.'
@@ -158,9 +156,6 @@ export function buildCapabilityPromptSection(
     hasGenerateImage
       ? '- Image generation behavior: use image_generate for image creation requests (supports optional reference image); attachments are returned by the runtime.'
       : '- Image generation behavior: you do not have image generation capabilities this turn.',
-    normalizedTools.includes('github')
-      ? '- GitHub file strategy: when repo path is unknown, use code.search first then file.get. For large files, use file.get with startLine/endLine or file.page. If file.get fails, do NOT claim paths as verified.'
-      : '',
     '</execution_rules>',
   ].filter(line => line.length > 0).join('\n');
 

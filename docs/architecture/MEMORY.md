@@ -117,7 +117,7 @@ Runtime notes:
 
 - Memory is not pre-fetched through a separate graph executor.
 - User profile summary is the only long-term profile block always embedded up front, and it is embedded inside the system prompt.
-- The base system prompt carries Sage's durable operator brief (identity, visible-reply discipline, continuity precedence, hard rules), while the runtime instruction block carries runtime protocol, `<agent_state>`, and compact tool-routing guidance.
+- The base system prompt carries Sage's durable operator brief (identity, visible-reply discipline, continuity precedence, hard rules), while the runtime instruction block carries runtime protocol, silent native tool-use rules, `<agent_state>`, and compact tool-routing guidance.
 - The profile is best-effort personalization, not an authoritative rule surface: it is stored as `<preferences>`, `<active_focus>`, and `<background>`, with durable preferences/background and current-but-fallible active focus, and it may lag behind the latest turn because updates happen asynchronously.
 - Channel summaries, archives, social-graph data, file cache data, and wider message history are fetched only if the model chooses the corresponding tool action.
 - `discord_context.get_channel_summary` returns rolling channel summary context for continuity and situational awareness. It is not a substitute for message-history evidence.
@@ -134,9 +134,9 @@ Runtime notes:
 `buildContextMessages` composes turn context in these prioritized blocks:
 
 - Base system prompt from `composeSystemPrompt`
-- Current turn metadata block from `CurrentTurnContext`
+- Current turn metadata block from `CurrentTurnContext` with structured turn facts plus `continuity_policy`
 - Runtime instruction block
-- Optional guild Sage Persona (`<guild_sage_persona>`)
+- Optional guild Sage Persona (`<guild_sage_persona>`) as a minimal behavior overlay wrapper
 - Optional live voice context
 - Optional focused continuity window
 - Optional recent transcript

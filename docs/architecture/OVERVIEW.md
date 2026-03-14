@@ -93,7 +93,7 @@ flowchart TD
 | **Agent Runtime** | `src/features/agent-runtime/agentRuntime.ts` | The single `runChatTurn` function: model resolution, prompt assembly, graph invocation, and compact trace-ledger persistence |
 | **Context Builder** | `src/features/agent-runtime/contextBuilder.ts` | Composes prioritized message blocks (system prompt, runtime instructions, optional guild Sage Persona/voice context, transcript, reply context) |
 | **Context Budgeter** | `src/features/agent-runtime/contextBudgeter.ts` | Token-aware block sizing with configurable per-block budgets |
-| **Prompt Composer** | `src/features/agent-runtime/promptComposer.ts` | Assembles the final system prompt with personality, capability guidance, and silent native tool-use rules |
+| **Prompt Composer** | `src/features/agent-runtime/promptComposer.ts` | Assembles the durable base system prompt with identity, response discipline, continuity precedence, and hard rules |
 | **Agent Graph Runtime** | `src/features/agent-runtime/langgraph/runtime.ts` | Custom LangGraph runtime for schema-first state, model calls, bounded tool execution, approval + continuation interrupts, resumable windowed tool loops, subgraph routing, and checkpointed resumes |
 | **Tool Registry** | `src/features/agent-runtime/toolRegistry.ts` | Zod-validated tool definitions with runtime execution metadata |
 | **Default Tools** | `src/features/agent-runtime/defaultTools.ts` | All 15 built-in top-level tool definitions |
@@ -171,7 +171,7 @@ interface ToolDefinition<TArgs> {
 }
 ```
 
-The runtime teaches silent native tool usage via structured instruction blocks, and tool calls flow through the provider's native structured tool-call contract. Sage does not expose tool payloads, approval commands, or internal recovery protocol in normal channel replies.
+The runtime teaches silent native tool usage through the capability prompt execution rules, and tool calls flow through the provider's native structured tool-call contract. Sage does not expose tool payloads, approval commands, or internal recovery protocol in normal channel replies.
 
 ---
 

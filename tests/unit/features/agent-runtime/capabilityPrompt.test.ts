@@ -15,7 +15,6 @@ describe('capabilityPrompt', () => {
       });
 
       expect(prompt).toContain('<operator_model>');
-      expect(prompt).toContain('Lock onto the current user\'s objective before room noise.');
       expect(prompt).toContain('Decide the needed source: exact evidence, summary context, file recall');
       expect(prompt).toContain('Choose the narrowest active tool that can answer it.');
       expect(prompt).toContain('Stop when enough evidence exists. Then answer in the simplest fitting format.');
@@ -23,8 +22,10 @@ describe('capabilityPrompt', () => {
       expect(prompt).toContain('Read exact runtime facts from <agent_state>');
       expect(prompt).toContain('Routed tools expose action-level `help`: `web`. Use it only when a routed-tool contract is genuinely unclear.');
       expect(prompt).toContain('Direct tools do not expose `help`; rely on schema and description for: `system_time`.');
+      expect(prompt).toContain('Use provider-native tool calls silently. Do not describe, serialize, or wrap them in JSON or markdown');
       expect(prompt).toContain('Batch read-only calls in one provider-native turn when possible.');
       expect(prompt).toContain('If no tool is needed, answer in plain text.');
+      expect(prompt).toContain('If approval review interrupts the turn, treat that action as already queued, keep any visible follow-up brief');
       expect(prompt).not.toContain('<reasoning_protocol>');
     });
 
@@ -72,7 +73,6 @@ describe('capabilityPrompt', () => {
       expect(prompt).toContain('Enforce on user or content -> discord_admin.submit_moderation.');
       expect(prompt).toContain('Uploaded files, cached attachment text, or "show that again" -> discord_files.');
       expect(prompt).toContain('Voice status or join or leave -> discord_voice.');
-      expect(prompt).toContain('Do not use web for Discord-internal facts.');
       expect(prompt).toContain('Do not use generic delete_message for reply-targeted spam or abuse when submit_moderation fits better.');
     });
 
@@ -87,6 +87,20 @@ describe('capabilityPrompt', () => {
       expect(prompt).toContain('npm package to GitHub code search in one hop -> workflow instead.');
       expect(prompt).toContain('Known GitHub repo and direct GitHub data -> github instead.');
       expect(prompt).toContain('Direct tools do not expose `help`; rely on schema and description for: `wikipedia_search`, `stack_overflow_search`, `npm_info`, `system_time`.');
+    });
+
+    it('keeps anti-patterns focused on net-new mistakes instead of repeated tool boundaries', () => {
+      const prompt = buildCapabilityPromptSection({
+        activeTools: ['discord_context', 'discord_messages', 'discord_admin', 'web', 'github', 'npm_info', 'workflow'],
+      });
+
+      expect(prompt).toContain('ANTI-PATTERNS — AVOID:');
+      expect(prompt).toContain('Do not leave an in-channel delivery in plain prose when discord_messages.send should deliver it.');
+      expect(prompt).toContain('Do not use generic delete_message for reply-targeted spam or abuse when submit_moderation fits better.');
+      expect(prompt).toContain('Avoid sequential page-by-page read loops; batch reads or use research.');
+      expect(prompt).not.toContain('Do not use web for Discord-internal facts.');
+      expect(prompt).not.toContain('Do not use github when npm metadata alone answers it.');
+      expect(prompt).not.toContain('Do not read GitHub files before code.search when the path is unknown.');
     });
 
     it('keeps durable continuity and response-style invariants out of the capability prompt', () => {
@@ -186,8 +200,8 @@ describe('capabilityPrompt', () => {
         },
       });
 
-      expect(commonPrompt.length).toBeLessThan(9500);
-      expect(fullPrompt.length).toBeLessThan(11000);
+      expect(commonPrompt.length).toBeLessThan(9200);
+      expect(fullPrompt.length).toBeLessThan(10350);
     });
 
     it('handles empty or missing model/tools gracefully', () => {

@@ -342,7 +342,6 @@ export const discordContextToolDoc = registerRoutedToolDoc({
     'get_channel_summary is current-channel only.',
     'get_server_instructions reads the guild Sage Persona; changing that config belongs to discord_admin.update_server_instructions.',
     'Voice analytics and voice summaries live here; live join/leave control belongs to discord_voice.',
-    'Channels, roles, threads, members, scheduled events, and AutoMod are Discord server-resource work, not Sage Persona reads.',
     'get_top_relationships is read-only but disabled in autopilot turns.',
   ],
   selectionHints: [
@@ -1624,18 +1623,8 @@ function registerRoutedTopLevelToolDoc(
 }
 
 const PROMPT_GUIDANCE_ANTI_PATTERNS = {
-  summaryNotEvidence: 'Do not use summaries for exact message evidence.',
-  messagesNotContext: 'Do not use discord_messages for summaries or profile context.',
   nativeDeliveryNeedsSend:
     'Do not leave an in-channel delivery in plain prose when discord_messages.send should deliver it.',
-  filesNotGuildResources: 'Do not use discord_files for channels or guild resources.',
-  serverNotRecall: 'Do not use discord_server for summaries or attachment recall.',
-  voiceNotAnalytics: 'Do not use discord_voice for historical analytics or summaries.',
-  typedBeforeApi: 'Do not jump to discord_admin.api before typed actions.',
-  webNotDiscord: 'Do not use web for Discord-internal facts.',
-  githubNotNpmOnly: 'Do not use github when npm metadata alone answers it.',
-  githubSearchBeforeFile: 'Do not read GitHub files before code.search when the path is unknown.',
-  workflowNotSimpleDirect: 'Do not use workflow when github or npm_info already fits.',
 } as const;
 
 registerTopLevelToolDoc({
@@ -1713,9 +1702,6 @@ registerRoutedTopLevelToolDoc(discordContextToolDoc, {
       'Exact quotes, message proof, or local message windows -> discord_messages instead.',
       'Live voice state, join, or leave -> discord_voice instead.',
     ],
-    antiPatterns: [
-      PROMPT_GUIDANCE_ANTI_PATTERNS.summaryNotEvidence,
-    ],
     helpHint: 'If the exact context contract is genuinely unclear, call `discord_context` with `action: "help"`.',
   },
   validationHint: 'Try: { action: "help" } to see available actions and required fields.',
@@ -1740,7 +1726,6 @@ registerRoutedTopLevelToolDoc(discordMessagesToolDoc, {
       'Thread lifecycle or guild-resource state -> discord_server instead.',
     ],
     antiPatterns: [
-      PROMPT_GUIDANCE_ANTI_PATTERNS.messagesNotContext,
       PROMPT_GUIDANCE_ANTI_PATTERNS.nativeDeliveryNeedsSend,
     ],
     helpHint: 'If the exact message contract or send payload is genuinely unclear, call `discord_messages` with `action: "help"`.',
@@ -1766,9 +1751,6 @@ registerRoutedTopLevelToolDoc(discordFilesToolDoc, {
       'Message history, exact quotes, or who-said-what -> discord_messages instead.',
       'Channels, roles, threads, or guild resources -> discord_server instead.',
     ],
-    antiPatterns: [
-      PROMPT_GUIDANCE_ANTI_PATTERNS.filesNotGuildResources,
-    ],
     helpHint: 'If the exact attachment contract is genuinely unclear, call `discord_files` with `action: "help"`.',
   },
   validationHint: 'Try: { action: "help" } to see available actions and required fields.',
@@ -1792,9 +1774,6 @@ registerRoutedTopLevelToolDoc(discordServerToolDoc, {
       'Attachment recall -> discord_files instead.',
       'Exact message evidence or in-channel reply delivery -> discord_messages instead.',
     ],
-    antiPatterns: [
-      PROMPT_GUIDANCE_ANTI_PATTERNS.serverNotRecall,
-    ],
     helpHint: 'If the exact guild-resource contract is genuinely unclear, call `discord_server` with `action: "help"`.',
   },
   validationHint: 'Try: { action: "help" } to see available actions and required fields.',
@@ -1816,9 +1795,6 @@ registerRoutedTopLevelToolDoc(discordVoiceToolDoc, {
     decisionEdges: [
       'Voice status or join or leave -> discord_voice.',
       'Voice analytics or past voice summaries -> discord_context instead.',
-    ],
-    antiPatterns: [
-      PROMPT_GUIDANCE_ANTI_PATTERNS.voiceNotAnalytics,
     ],
     helpHint: 'If the exact voice contract is genuinely unclear, call `discord_voice` with `action: "help"`.',
   },
@@ -1844,7 +1820,6 @@ registerRoutedTopLevelToolDoc(discordAdminToolDoc, {
       'Use discord_admin.api only when typed Discord actions do not cover the task.',
     ],
     antiPatterns: [
-      PROMPT_GUIDANCE_ANTI_PATTERNS.typedBeforeApi,
       'Do not use generic delete_message for reply-targeted spam or abuse when submit_moderation fits better.',
     ],
     helpHint: 'If the exact admin contract is genuinely unclear, call `discord_admin` with `action: "help"`.',
@@ -1909,7 +1884,6 @@ registerRoutedTopLevelToolDoc(webToolDoc, {
     ],
     antiPatterns: [
       'Avoid sequential page-by-page read loops; batch reads or use research.',
-      PROMPT_GUIDANCE_ANTI_PATTERNS.webNotDiscord,
     ],
     helpHint: 'If the exact web contract is genuinely unclear, call `web` with `action: "help"`.',
   },
@@ -1937,10 +1911,6 @@ registerRoutedTopLevelToolDoc(githubToolDoc, {
       'Unknown file path -> `code.search` first.',
       'npm registry metadata only -> npm_info instead.',
       'npm package to GitHub code search in one hop -> workflow instead.',
-    ],
-    antiPatterns: [
-      PROMPT_GUIDANCE_ANTI_PATTERNS.githubSearchBeforeFile,
-      PROMPT_GUIDANCE_ANTI_PATTERNS.githubNotNpmOnly,
     ],
     helpHint: 'If the exact GitHub contract is genuinely unclear, call `github` with `action: "help"`.',
   },
@@ -1990,7 +1960,6 @@ registerTopLevelToolDoc({
       'npm package metadata, maintainers, or repo hint -> npm_info.',
       'Need GitHub repo or code lookup after you know the repo -> github instead.',
     ],
-    antiPatterns: ['Do not use github when you only need npm registry metadata.'],
   },
   validationHint:
     'Try: { packageName: "zod" } and optionally add { version: "latest" } or a specific version tag.',

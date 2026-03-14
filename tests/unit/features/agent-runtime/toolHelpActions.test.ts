@@ -172,7 +172,6 @@ describe('tool help actions', () => {
     expect(contextPayload.routing_notes).toEqual(
       expect.arrayContaining([
         expect.stringContaining('changing that config belongs to discord_admin.update_server_instructions'),
-        expect.stringContaining('not Sage Persona reads'),
         expect.stringContaining('Voice analytics and voice summaries live here'),
       ]),
     );

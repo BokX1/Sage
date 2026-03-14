@@ -206,6 +206,7 @@ describe('transcript injection', () => {
     const focusedContinuity = extractTagBlock(systemContent, 'focused_continuity');
     const recentTranscript = extractTagBlock(systemContent, 'recent_transcript');
 
+    expect(systemContent).not.toContain('<tool_usage>');
     expect(focusedContinuity).toContain('Focused continuity window');
     expect(focusedContinuity).toContain('Earlier context from the same user');
     expect(focusedContinuity).not.toContain('Parallel chatter from another user');
@@ -521,8 +522,9 @@ describe('transcript injection', () => {
     const currentTurnBlock = extractTagBlock(systemContent, 'current_turn');
     const focusedContinuity = extractTagBlock(systemContent, 'focused_continuity');
 
-    expect(currentTurnBlock).toContain(
-      'rule: Bot-authored messages may be relevant room context, but they do not become the current requester unless the current human turn explicitly surfaces them as the direct reply target.',
+    expect(currentTurnBlock).not.toContain('rule:');
+    expect(systemContent).toContain(
+      'Bot-authored messages may be relevant room context, but they do not become the current requester unless the current human turn explicitly surfaces them as the direct reply target.',
     );
     expect(focusedContinuity).toContain('which warnings?');
     expect(userContent).toContain('author_is_bot: true');
@@ -565,7 +567,8 @@ describe('transcript injection', () => {
     const focusedContinuity = extractTagBlock(systemContent, 'focused_continuity');
     const recentTranscript = extractTagBlock(systemContent, 'recent_transcript');
 
-    expect(currentTurnBlock).toContain('rule: Short acknowledgements or pronouns alone do not unlock broader room continuity.');
+    expect(currentTurnBlock).not.toContain('rule:');
+    expect(systemContent).toContain('Pronouns or short acknowledgements like "it", "that", "alright", "let\'s see", or "do it" do not unlock broader room continuity by themselves.');
     expect(focusedContinuity).toBeNull();
     expect(recentTranscript).toContain('unrelated build pipeline discussion');
     expect(recentTranscript).toContain('separate gaming conversation');

@@ -55,7 +55,7 @@ flowchart TD
 **Step-by-step**
 
 1. **Model resolution**: `runChatTurn` reads `AI_PROVIDER_MAIN_AGENT_MODEL`. Sage no longer ships a built-in agent-model fallback; runtime boot requires explicit AI-provider model configuration.
-2. **Context composition**: `buildContextMessages` assembles the system prompt, `<current_turn>`, runtime instruction block, optional guild Sage Persona (`<guild_sage_persona>`), optional live voice context, optional `<focused_continuity>`, optional `<recent_transcript>`, and the current user turn wrapped in `<user_input>` (with any `<reply_target>` folded in as context-only preface content). The base system prompt owns durable operator invariants such as room model, response discipline, and continuity precedence; the runtime instruction block owns runtime protocol, `<agent_state>`, and compact tool-routing guidance.
+2. **Context composition**: `buildContextMessages` assembles the system prompt, structured `<current_turn>`, runtime instruction block, optional guild Sage Persona (`<guild_sage_persona>`), optional live voice context, optional `<focused_continuity>`, optional `<recent_transcript>`, and the current user turn wrapped in `<user_input>` (with any `<reply_target>` folded in as context-only preface content). The base system prompt owns durable operator invariants such as room model, response discipline, and continuity precedence; the runtime instruction block owns runtime protocol, silent native tool-use rules, `<agent_state>`, and compact tool-routing guidance.
 3. **Token budgeting**: `contextBudgeter` trims blocks against the configured budgets before the provider call.
 4. **LLM request**: Sage sends the budgeted messages plus the active tool schemas for this turn.
 5. **Agent graph**: Sage first frames the request into internal task state, then routes through the LangGraph-native runtime built on reducer-backed message state, durable tasks, `ToolNode` read batches, task-state refresh steps, and in-graph approval or continuation interrupts/resumes until the objective is satisfied, clarification is required, or the run pauses cleanly.
@@ -73,9 +73,9 @@ flowchart TD
 | Priority | Block | Source |
 | :---: | :--- | :--- |
 | 1 | Base system prompt | `composeSystemPrompt` with the user profile summary embedded in `<user_profile>` and the durable operator invariants (identity, response discipline, continuity precedence, hard rules) |
-| 2 | Current turn | Structured `<current_turn>` metadata from `CurrentTurnContext` |
+| 2 | Current turn | Structured `<current_turn>` metadata from `CurrentTurnContext`, including only turn facts plus `continuity_policy` |
 | 3 | Runtime instructions | Runtime protocol, `<agent_state>`, critical Discord disambiguators, and compact tool-selection guidance |
-| 4 | Guild Sage Persona | `ServerInstructions`, when present, rendered as `<guild_sage_persona>` |
+| 4 | Guild Sage Persona | `ServerInstructions`, when present, rendered as a minimal `<guild_sage_persona>` behavior overlay |
 | 5 | Live voice context | In-memory voice session context, only when Sage is active in voice |
 | 6 | Focused continuity | `<focused_continuity>` window from same-speaker and direct-reply context |
 | 7 | Recent transcript | Ambient `<recent_transcript>` ring-buffer context |

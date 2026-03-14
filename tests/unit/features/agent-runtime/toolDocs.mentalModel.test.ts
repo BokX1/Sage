@@ -21,7 +21,7 @@ describe('tool guidance mental model', () => {
     );
     expect(webGuidance?.antiPatterns).toEqual(
       expect.arrayContaining([
-        'Do not use web for Discord-internal facts.',
+        'Avoid sequential page-by-page read loops; batch reads or use research.',
       ]),
     );
 
@@ -51,12 +51,7 @@ describe('tool guidance mental model', () => {
         'npm package to GitHub code search in one hop -> workflow instead.',
       ]),
     );
-    expect(githubGuidance?.antiPatterns).toEqual(
-      expect.arrayContaining([
-        'Do not read GitHub files before code.search when the path is unknown.',
-        'Do not use github when npm metadata alone answers it.',
-      ]),
-    );
+    expect(githubGuidance?.antiPatterns).toBeUndefined();
 
     expect(npmGuidance?.decisionEdges).toEqual(
       expect.arrayContaining([
@@ -128,13 +123,23 @@ describe('tool guidance mental model', () => {
 
     expect(npmDoc?.validationHint).toContain('packageName');
     expect(npmDoc?.promptGuidance?.helpHint).toBeUndefined();
-    expect(npmDoc?.promptGuidance?.antiPatterns).toEqual(
-      expect.arrayContaining([
-        'Do not use github when you only need npm registry metadata.',
-      ]),
-    );
+    expect(npmDoc?.promptGuidance?.antiPatterns).toBeUndefined();
 
     expect(wikipediaDoc?.promptGuidance?.helpHint).toBeUndefined();
     expect(stackOverflowDoc?.promptGuidance?.helpHint).toBeUndefined();
+  });
+
+  it('keeps github-vs-npm routing in decision edges instead of anti-pattern duplication', () => {
+    const githubGuidance = getPromptToolGuidance('github');
+    const npmGuidance = getPromptToolGuidance('npm_info');
+
+    expect(githubGuidance?.decisionEdges).toEqual(
+      expect.arrayContaining(['npm registry metadata only -> npm_info instead.']),
+    );
+    expect(npmGuidance?.decisionEdges).toEqual(
+      expect.arrayContaining(['Need GitHub repo or code lookup after you know the repo -> github instead.']),
+    );
+    expect(githubGuidance?.antiPatterns).toBeUndefined();
+    expect(npmGuidance?.antiPatterns).toBeUndefined();
   });
 });

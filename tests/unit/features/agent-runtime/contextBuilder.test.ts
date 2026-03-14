@@ -133,6 +133,26 @@ describe('contextBuilder core message assembly', () => {
     expect(guildSagePersonaIdx).toBeGreaterThan(runtimeIdx);
   });
 
+  it('keeps current_turn structured and guild Sage Persona wrapper minimal', () => {
+    const messages = buildContextMessages({
+      userProfileSummary: null,
+      currentTurn: makeCurrentTurn(),
+      runtimeInstruction: '<runtime_instruction>\n- Runtime rule.\n</runtime_instruction>',
+      guildSagePersona: 'Act like a tavernkeeper in this guild.',
+      userText: 'Hello',
+    });
+
+    const systemContent = getSystemContent(messages);
+    const currentTurnStart = systemContent.indexOf('<current_turn>');
+    const currentTurnEnd = systemContent.indexOf('</current_turn>');
+    const currentTurnBlock = systemContent.slice(currentTurnStart, currentTurnEnd);
+
+    expect(currentTurnBlock).toContain('continuity_policy: current_user_input > same_speaker_recent > explicit_named_subject > ambient_room');
+    expect(currentTurnBlock).not.toContain('rule:');
+    expect(systemContent).toContain('Admin-authored guild behavior overlay for Sage.');
+    expect(systemContent).not.toContain('It is not memory, not credentials storage, and not a Discord server-resource change surface.');
+  });
+
   it('embeds canonical reply target context ahead of the latest user input', () => {
     const messages = buildContextMessages({
       userProfileSummary: null,

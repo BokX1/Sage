@@ -106,24 +106,6 @@ export interface ResumeContinuationChatTurnParams {
   isAdmin: boolean;
 }
 
-function buildToolUsageInstruction(toolNames: string[]): string {
-  if (toolNames.length === 0) return '';
-
-  const lines = [
-    '<tool_usage>',
-    'When you need tools, use the provider-native tool calling interface directly.',
-    'Do not describe, serialize, or wrap tool calls in JSON or markdown.',
-    'Do not narrate tool names, tool arguments, approval payloads, or retry protocol in the channel reply.',
-    'If the answer needs Discord-native delivery, use the appropriate Discord self-send action during the normal execution loop. If the runtime later enters a dedicated final closeout step, respond in plain text only.',
-    'If no tool is needed, answer normally in plain text.',
-    '',
-    'Behavioral rules (batching, tool selection, guardrails) are in <execution_rules> and <tool_selection_guide>.',
-    '</tool_usage>',
-  ];
-
-  return lines.join('\n');
-}
-
 function resolveActiveToolNames(params: {
   isAdmin: boolean;
   invokedBy: 'mention' | 'reply' | 'wakeword' | 'autopilot' | 'component';
@@ -255,10 +237,7 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
     graphLimits,
   };
 
-  const runtimeInstruction = [
-    buildCapabilityPromptSection(capabilityParams),
-    buildToolUsageInstruction(activeToolNames),
-  ].join('\n\n');
+  const runtimeInstruction = buildCapabilityPromptSection(capabilityParams);
 
   const runtimeMessages = buildContextMessages({
     userProfileSummary: params.userProfileSummary,
