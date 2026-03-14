@@ -1,6 +1,7 @@
 import { config as appConfig } from '../../platform/config/env';
 import { getApprovalReviewRequestById } from '../admin/approvalReviewRequestRepo';
 import {
+  buildMissingHostedGuildActivationFallbackText,
   buildMissingHostApiKeyText,
   buildMissingSelfHostedGuildApiKeyText,
 } from '../discord/userFacingCopy';
@@ -139,9 +140,29 @@ async function resolveApiKeyForChatTurn(guildId: string | null): Promise<string 
   return apiKey || undefined;
 }
 
+function shouldUseHostedServerKeyRecovery(): boolean {
+  const candidateUrls = [
+    appConfig.SERVER_PROVIDER_AUTHORIZE_URL,
+    appConfig.SERVER_PROVIDER_PROFILE_URL,
+    appConfig.SERVER_PROVIDER_DASHBOARD_URL,
+  ];
+
+  return candidateUrls.some((candidateUrl) => {
+    try {
+      const hostname = new URL(candidateUrl).hostname.toLowerCase();
+      return hostname === 'pollinations.ai' || hostname.endsWith('.pollinations.ai');
+    } catch {
+      return false;
+    }
+  });
+}
+
 function buildMissingApiKeyResult(guildId: string | null): RunChatTurnResult {
+  const useHostedRecovery = guildId && shouldUseHostedServerKeyRecovery();
   return {
-    replyText: guildId
+    replyText: useHostedRecovery
+      ? buildMissingHostedGuildActivationFallbackText()
+      : guildId
       ? buildMissingSelfHostedGuildApiKeyText()
       : buildMissingHostApiKeyText(),
     delivery: 'chat_reply',
@@ -149,7 +170,7 @@ function buildMissingApiKeyResult(guildId: string | null): RunChatTurnResult {
       ? {
           kind: 'missing_api_key',
           missingApiKey: {
-            recovery: 'host_api_key',
+            recovery: useHostedRecovery ? 'server_key_activation' : 'host_api_key',
           },
         }
       : undefined,

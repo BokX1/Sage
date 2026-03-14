@@ -8,6 +8,10 @@ const mockConfig = vi.hoisted(() => ({
   LANGSMITH_TRACING: false,
   TIMEOUT_CHAT_MS: 1000,
   AI_PROVIDER_MAIN_AGENT_MODEL: 'test-main-agent-model',
+  SERVER_PROVIDER_AUTHORIZE_URL:
+    'https://server-provider.example/authorize?redirect_url=https://server-provider.example&permissions=profile,balance,usage',
+  SERVER_PROVIDER_PROFILE_URL: 'https://server-provider.example/account/profile',
+  SERVER_PROVIDER_DASHBOARD_URL: 'https://server-provider.example/dashboard',
   CHAT_MAX_OUTPUT_TOKENS: 800,
   AGENT_GRAPH_MAX_OUTPUT_TOKENS: 800,
   AGENT_GRAPH_GITHUB_GROUNDED_MODE: false,
@@ -134,6 +138,10 @@ function makeGraphResult(overrides: Partial<Awaited<ReturnType<typeof mockRunAge
 describe('agent runtime API key fallback', () => {
   beforeEach(() => {
     mockConfig.AI_PROVIDER_API_KEY = 'env-key';
+    mockConfig.SERVER_PROVIDER_AUTHORIZE_URL =
+      'https://server-provider.example/authorize?redirect_url=https://server-provider.example&permissions=profile,balance,usage';
+    mockConfig.SERVER_PROVIDER_PROFILE_URL = 'https://server-provider.example/account/profile';
+    mockConfig.SERVER_PROVIDER_DASHBOARD_URL = 'https://server-provider.example/dashboard';
     mockGetGuildSagePersonaText.mockResolvedValue(null);
     mockRunAgentGraphTurn.mockReset();
     globalToolRegistryMock.listNames.mockReturnValue([]);
@@ -189,6 +197,41 @@ describe('agent runtime API key fallback', () => {
       kind: 'missing_api_key',
       missingApiKey: {
         recovery: 'host_api_key',
+      },
+    });
+    expect(mockRunAgentGraphTurn).not.toHaveBeenCalled();
+  });
+
+  it('returns hosted activation guidance when the server-key flow points at Pollinations', async () => {
+    mockConfig.AI_PROVIDER_API_KEY = '';
+    mockConfig.SERVER_PROVIDER_AUTHORIZE_URL =
+      'https://enter.pollinations.ai/authorize?redirect_url=https://pollinations.ai/&permissions=profile,balance,usage';
+    mockConfig.SERVER_PROVIDER_PROFILE_URL = 'https://gen.pollinations.ai/account/profile';
+    mockConfig.SERVER_PROVIDER_DASHBOARD_URL = 'https://enter.pollinations.ai/dashboard';
+    mockGetGuildApiKey.mockResolvedValueOnce(undefined);
+
+    const result = await runChatTurn({
+      traceId: 'trace-3',
+      userId: 'user-3',
+      channelId: 'channel-3',
+      guildId: 'guild-3',
+      messageId: 'msg-3',
+      userText: 'Hello',
+      userProfileSummary: null,
+      currentTurn: makeCurrentTurn({
+        invokerUserId: 'user-3',
+        invokerDisplayName: 'User Three',
+        messageId: 'msg-3',
+        guildId: 'guild-3',
+        channelId: 'channel-3',
+      }),
+    });
+
+    expect(result.replyText).toContain('Sage is not active for this server yet.');
+    expect(result.meta).toEqual({
+      kind: 'missing_api_key',
+      missingApiKey: {
+        recovery: 'server_key_activation',
       },
     });
     expect(mockRunAgentGraphTurn).not.toHaveBeenCalled();

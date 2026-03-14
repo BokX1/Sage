@@ -89,6 +89,14 @@ export function buildMissingGuildActivationText(params: { isAdmin: boolean }): s
   ].join(' ');
 }
 
+export function buildMissingHostedGuildActivationFallbackText(): string {
+  return [
+    'Sage is not active for this server yet.',
+    'Why: the hosted bot does not have a server key for this guild yet.',
+    'Next: ask a server admin to activate Hosted Sage for this server, then try again.',
+  ].join(' ');
+}
+
 export function buildMissingSelfHostedGuildApiKeyText(): string {
   return [
     'Self-hosted Sage is not configured for chat in this server yet.',
