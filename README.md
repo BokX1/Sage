@@ -37,7 +37,7 @@
 </p>
 
 <p align="center">
-  <strong>🎮 <a href="docs/guides/QUICKSTART.md">Add Sage to Discord</a></strong> · <strong>💻 <a href="#developer-quick-start">Build & Deploy (Dev Guide)</a></strong>
+  <strong>🌐 <a href="https://bokx1.github.io/Sage/">Project Website</a></strong> · <strong>🎮 <a href="docs/guides/QUICKSTART.md">Add Sage to Discord</a></strong> · <strong>💻 <a href="#developer-quick-start">Build & Deploy (Dev Guide)</a></strong>
 </p>
 
 ---
@@ -85,26 +85,26 @@ flowchart LR
     classDef ops fill:#f3c7c1,stroke:#a24b43,stroke-width:2px,color:#111
 
     subgraph Discord["Discord Community Surface"]
-        U["📩 Wake Word / Mention / Reply"]:::discord
-        X["🧾 Attachments / Images / References"]:::discord
-        V["🎤 Optional Live Voice Context"]:::discord
-        A["🛡️ Natural-Language Admin Requests"]:::discord
+        U["Wake Word / Mention / Reply"]:::discord
+        X["Attachments / Images / References"]:::discord
+        V["Optional Live Voice Context"]:::discord
+        A["Natural-Language Admin Requests"]:::discord
     end
 
     subgraph Runtime["Sage LangGraph Runtime"]
-        CE["⚙️ Chat Engine"]:::runtime
-        RT["🧠 runChatTurn"]:::runtime
-        CB["📦 Context Builder + Token Budgeting"]:::runtime
-        TL{"🔁 LangGraph Bounded Tool Loop"}:::runtime
-        SY["💬 Synthesis + Final Reply"]:::runtime
+        CE["Chat Engine"]:::runtime
+        RT["runChatTurn"]:::runtime
+        CB["Context Builder + Token Budgeting"]:::runtime
+        TL{"Bounded LangGraph Tool Loop"}:::runtime
+        SY["Synthesis + Final Reply"]:::runtime
     end
 
     subgraph Data["On-Demand Memory + Research"]
-        M["📚 Profiles, Transcript, Summaries, Files"]:::memory
-        G["🕸️ Social Graph + Voice Analytics"]:::memory
-        W["🌐 Web / Docs / Search / GitHub / npm"]:::tools
-        C["🎨 Image + Creative Workflow Tools"]:::tools
-        P["✅ Approval Queue + Admin Action Status"]:::ops
+        M["Profiles, Transcript, Summaries, Files"]:::memory
+        G["Social Graph + Voice Analytics"]:::memory
+        W["Web / Docs / Search / GitHub / npm"]:::tools
+        C["Image + Creative Workflow Tools"]:::tools
+        P["Approval Queue + Admin Action Status"]:::ops
     end
 
     U --> CE
@@ -123,8 +123,8 @@ flowchart LR
     C --> TL
     P --> TL
     TL --> SY
-    SY --> R["📤 Grounded Reply, Files, and Action Updates"]:::discord
-    SY --> T["📊 Trace + Runtime Health Telemetry"]:::ops
+    SY --> R["Grounded Reply, Files, and Action Updates"]:::discord
+    SY --> T["Trace + Runtime Health Telemetry"]:::ops
 ```
 
 <p align="center">
@@ -208,18 +208,15 @@ flowchart TD
         CHAT["Chat Engine"]:::runtime
         TURN["runChatTurn"]:::runtime
         MODEL["Model Resolution"]:::runtime
-        CTX["Context Assembly
-system prompt + user profile + guild Sage Persona + transcript + live voice"]:::runtime
+        CTX["Context Assembly<br/>system prompt + user profile + guild Sage Persona + transcript + live voice"]:::runtime
         BUDGET["Token Budgeting + Truncation"]:::runtime
-        LOOP{"LangGraph Tool Loop
-max rounds, per-call limits, timeouts"}:::runtime
+        LOOP{"LangGraph Tool Loop<br/>max rounds, per-call limits, timeouts"}:::runtime
         FINAL["Final Draft Cleanup + Attachments"]:::runtime
     end
 
     subgraph Retrieval["On-Demand Context Surfaces"]
         direction LR
-        DB["Postgres
-profiles, messages, summaries, traces"]:::memory
+        DB["Postgres<br/>profiles, messages, summaries, traces"]:::memory
         ATT["Attachment Cache + Semantic File Search"]:::memory
         VOICE["Voice Presence + Summary Memory"]:::memory
         GRAPH["Relationship Edges + optional Memgraph"]:::memory
@@ -227,9 +224,7 @@ profiles, messages, summaries, traces"]:::memory
 
     subgraph Tools["Tool System"]
         direction LR
-        DISC["discord_context / discord_messages /
-discord_files / discord_admin
-memory, search, files, analytics, admin wrappers"]:::tools
+        DISC["discord_context / discord_messages /<br/>discord_files / discord_admin<br/>memory, search, files, analytics, admin wrappers"]:::tools
         WEB["web / wikipedia / stack overflow"]:::tools
         DEV["github / npm / workflow"]:::tools
         GEN["image generation / editing"]:::tools
@@ -272,8 +267,7 @@ memory, search, files, analytics, admin wrappers"]:::tools
     GEN --> LOOP
     DISC --> LOOP
 
-    LOOP --> FINAL --> OUT["Discord Reply
-text + files + approval status cards"]:::discord
+    LOOP --> FINAL --> OUT["Discord Reply<br/>text + files + approval status cards"]:::discord
     FINAL --> TRACE
 ```
 
@@ -413,6 +407,7 @@ See the **[⚙️ Configuration Reference](docs/reference/CONFIGURATION.md)** fo
 
 **🚀 Getting Started & Guides**
 
+- **[🌐 Project Website](https://bokx1.github.io/Sage/)**: Live landing page for feature overview, positioning, and hosted entry points
 - **[📚 Documentation Hub](docs/INDEX.md)**: Start here for complete navigation
 - **[⚡ Quick Start](docs/guides/QUICKSTART.md)**: 5-minute setup for new users
 - **[📖 Getting Started](docs/guides/GETTING_STARTED.md)**: Full beginner walkthrough
@@ -457,7 +452,7 @@ A massive thank you to everyone who has helped build Sage.
 
 <p align="center">
   <strong>Unlock your server's full potential.</strong><br />
-  <a href="docs/guides/QUICKSTART.md"><strong>🚀 Quick Start</strong></a> · <a href="docs/guides/GETTING_STARTED.md"><strong>📖 Read the Docs</strong></a> · <a href="docs/architecture/OVERVIEW.md"><strong>🏛️ Explore Architecture</strong></a>
+  <a href="https://bokx1.github.io/Sage/"><strong>🌐 Project Website</strong></a> · <a href="docs/guides/QUICKSTART.md"><strong>🚀 Quick Start</strong></a> · <a href="docs/guides/GETTING_STARTED.md"><strong>📖 Read the Docs</strong></a> · <a href="docs/architecture/OVERVIEW.md"><strong>🏛️ Explore Architecture</strong></a>
 </p>
 
 ---

@@ -44,19 +44,19 @@ flowchart LR
     classDef hosted fill:#fff3cd,stroke:#856404,color:black
     classDef sage fill:#cce5ff,stroke:#004085,color:black
 
-    S[Sage Bot]:::sage --> W{web\n(actions)}:::sage
-    S --> FI{file_ingest}
+    S["Sage runtime"]:::sage --> W["web tool"]:::sage
+    S --> FI["discord_files.read_attachment"]:::sage
 
-    W -->|search| S1[SearXNG]:::local
-    W -->|search| S2[Tavily]:::hosted
-    W -->|search| S3[Exa]:::hosted
+    W -->|"search order"| S1["SearXNG"]:::local
+    W -->|"search order"| S2["Tavily"]:::hosted
+    W -->|"search order"| S3["Exa"]:::hosted
 
-    W -->|read / extract| C1[Crawl4AI]:::local
-    W -->|read / extract| C2[Firecrawl]:::hosted
-    W -->|read / extract| C3[Jina Reader]:::hosted
-    W -->|read / extract| C4[Raw Fetch]:::hosted
+    W -->|"read / extract order"| C1["Crawl4AI"]:::local
+    W -->|"read / extract order"| C2["Firecrawl"]:::hosted
+    W -->|"read / extract order"| C3["Jina Reader"]:::hosted
+    W -->|"read / extract order"| C4["Raw Fetch"]:::hosted
 
-    FI --> T1[Apache Tika]:::local
+    FI -->|"extract attachment text"| T1["Apache Tika"]:::local
 ```
 
 > [!TIP]

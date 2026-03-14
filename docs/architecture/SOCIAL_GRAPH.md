@@ -50,24 +50,24 @@ What is available today:
 flowchart TD
     classDef discord fill:#5865f2,stroke:#333,color:white
     classDef kafka fill:#e8453c,stroke:#333,color:white
-    classDef graph fill:#e8f5e9,stroke:#333,color:black
+    classDef graphSvc fill:#e8f5e9,stroke:#333,color:black
     classDef jobs fill:#fff3cd,stroke:#333,color:black
     classDef output fill:#e3f2fd,stroke:#333,color:black
 
-    M[Message / reaction events]:::discord --> KP[Kafka producer]:::kafka
-    V[Voice session events]:::discord --> KP
+    M["Message, reply, and reaction events"]:::discord --> KP["Kafka producer"]:::kafka
+    V["Voice session events"]:::discord --> KP
 
-    KP --> RP[Redpanda]:::kafka
-    RP --> MG[Memgraph streams]:::graph
+    KP --> RP["Redpanda topics"]:::kafka
+    RP --> MG["Memgraph streams + graph"]:::graphSvc
 
-    MG --> SQ[Social graph query]:::output
-    SQ --> RT[Sage runtime]:::output
+    MG --> SQ["Social graph query layer"]:::output
+    SQ --> RT["Sage runtime"]:::output
 
-    MG --> AP[Analytics pulse<br/>manual or external scheduler]:::jobs
-    AP --> PR[PageRank]:::jobs
-    AP --> DL[Dunbar labels]:::jobs
-    AP --> RI[Reciprocity]:::jobs
-    AP --> GM[MAGE procedures]:::jobs
+    MG --> AP["Analytics pulse<br/>manual or external scheduler"]:::jobs
+    AP --> PR["PageRank"]:::jobs
+    AP --> DL["Dunbar labels"]:::jobs
+    AP --> RI["Reciprocity"]:::jobs
+    AP --> GM["MAGE procedures"]:::jobs
 ```
 
 ---
@@ -130,8 +130,8 @@ sequenceDiagram
     participant J as External analytics job
 
     D->>B: Mention / reply / reaction / voice event
-    B->>K: Publish interaction payload
-    K->>M: Stream transform updates graph nodes and edges
+    B->>K: Publish interaction or voice payload
+    K->>M: Streams update graph nodes and edges
     B->>M: Query social graph on demand
     M->>B: Ranked edges and graph metrics
 

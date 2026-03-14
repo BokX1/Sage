@@ -44,24 +44,24 @@ flowchart TD
     classDef tracker fill:#e8f5e9,stroke:#333,color:black
     classDef output fill:#fff3cd,stroke:#333,color:black
 
-    V[Discord Voice Events]:::discord --> VT[Voice Tracker]:::tracker
-    VT --> VP[Voice Presence Index]:::tracker
-    VT --> VS[Voice Session Repo]:::tracker
-    VT --> VO[Voice Overlap Tracker]:::tracker
+    V["Discord voice state events"]:::discord --> VT["Voice tracker"]:::tracker
+    VT --> VP["Voice presence index"]:::tracker
+    VT --> VS["Voice session repo"]:::tracker
+    VT --> VO["Voice overlap tracker"]:::tracker
 
-    VP --> VQ[Voice Queries]:::tracker
+    VP --> VQ["Voice queries"]:::tracker
     VS --> VQ
     VO --> VQ
 
-    VQ --> VF[Voice Format]:::output
-    VF --> CP[Context Provider]:::output
-    CP --> LLM[LLM Context]:::output
+    VQ --> VF["Voice format"]:::output
+    VF --> CP["Context builder / discord_context"]:::output
+    CP --> LLM["Prompt context"]:::output
 
-    VA[Discord Voice Audio]:::discord --> VM[Voice Manager]:::tracker
-    VM --> STT[Voice Transcription Manager]:::tracker
-    STT --> VSV[Local Voice Service (STT)]:::tracker
-    STT --> VCS[In-memory Voice Session Store]:::tracker
-    VCS --> VSUM[Voice Session Summarizer]:::output
+    VA["Discord voice audio"]:::discord --> VM["Voice manager"]:::tracker
+    VM --> STT["Voice transcription manager"]:::tracker
+    STT --> VSV["Local voice service<br/>(STT)"]:::tracker
+    STT --> VCS["In-memory voice session store"]:::tracker
+    VCS --> VSUM["Voice session summarizer"]:::output
     VSUM --> VDB[(VoiceConversationSummary)]:::output
 ```
 
