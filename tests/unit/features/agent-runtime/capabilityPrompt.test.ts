@@ -16,9 +16,9 @@ describe('capabilityPrompt', () => {
 
       expect(prompt).toContain('<operator_model>');
       expect(prompt).toContain('Lock onto the current user\'s objective before room noise.');
-      expect(prompt).toContain('Decide the source type: exact evidence, summary context, file recall');
-      expect(prompt).toContain('Choose the narrowest active tool for that source.');
-      expect(prompt).toContain('Stop when enough evidence exists.');
+      expect(prompt).toContain('Decide the needed source: exact evidence, summary context, file recall');
+      expect(prompt).toContain('Choose the narrowest active tool that can answer it.');
+      expect(prompt).toContain('Stop when enough evidence exists. Then answer in the simplest fitting format.');
       expect(prompt).toContain('<execution_rules>');
       expect(prompt).toContain('Read exact runtime facts from <agent_state>');
       expect(prompt).toContain('Routed tools expose action-level `help`: `web`. Use it only when a routed-tool contract is genuinely unclear.');
@@ -52,14 +52,14 @@ describe('capabilityPrompt', () => {
         activeTools: ['discord_context', 'discord_messages', 'discord_files', 'discord_server', 'discord_admin', 'discord_voice'],
       });
 
-      expect(prompt).toContain('Summary vs evidence: `discord_context.get_channel_summary` is rolling recap; exact quotes and message-level proof belong to `discord_messages`.');
-      expect(prompt).toContain('Distinguish Sage Persona reads from Sage Persona writes');
-      expect(prompt).toContain('Distinguish Sage Persona/config from moderation/enforcement');
-      expect(prompt).toContain('Treat reply-targeted enforcement as moderation');
-      expect(prompt).toContain('Distinguish file discovery from guild discovery');
-      expect(prompt).toContain('Distinguish voice analytics from live voice control');
-      expect(prompt).toContain('Typed Discord actions come first. Use `discord_admin.api` only after typed `discord_server` or `discord_admin` actions do not cover the task.');
-      expect(prompt).toContain('Plain assistant text is fine for normal answers. Use `discord_messages.send` only when the final answer should be rendered as a Discord-native message inside the channel.');
+      expect(prompt).toContain('Summary vs exact evidence: `discord_context.get_channel_summary` is recap; `discord_messages` is for quotes and message-level proof.');
+      expect(prompt).toContain('Sage Persona read vs write');
+      expect(prompt).toContain('Governance/config vs moderation');
+      expect(prompt).toContain('Reply-targeted enforcement uses moderation');
+      expect(prompt).toContain('File recall vs guild resources');
+      expect(prompt).toContain('Voice analytics vs live control');
+      expect(prompt).toContain('Typed Discord actions come before raw API fallback. Use `discord_admin.api` only after typed `discord_server` or `discord_admin` actions do not cover the task.');
+      expect(prompt).toContain('Plain assistant text is fine for normal answers. Use `discord_messages.send` only when final delivery must be a Discord-native message inside the channel.');
     });
 
     it('covers the key routing regressions in the compact guide', () => {
@@ -74,6 +74,17 @@ describe('capabilityPrompt', () => {
       expect(prompt).toContain('Voice status or join or leave -> discord_voice.');
       expect(prompt).toContain('Do not use web for Discord-internal facts.');
       expect(prompt).toContain('Do not use generic delete_message for reply-targeted spam or abuse when submit_moderation fits better.');
+    });
+
+    it('keeps durable continuity and response-style invariants out of the capability prompt', () => {
+      const prompt = buildCapabilityPromptSection({
+        activeTools: ['discord_context', 'discord_messages', 'discord_admin'],
+      });
+
+      expect(prompt).not.toContain('Resolve conflicts in this order: current user input, then <guild_sage_persona>, then <user_profile>');
+      expect(prompt).not.toContain('Use <focused_continuity> before <recent_transcript>');
+      expect(prompt).not.toContain('Keep the visible reply in final form. No meta-analysis, no narrated thinking.');
+      expect(prompt).not.toContain('Each turn belongs to one invoking speaker inside a shared room.');
     });
 
     it('keeps reply-format guidance lean while preserving components rules', () => {

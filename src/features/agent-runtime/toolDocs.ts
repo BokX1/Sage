@@ -1567,6 +1567,18 @@ function registerRoutedTopLevelToolDoc(
   });
 }
 
+const PROMPT_GUIDANCE_ANTI_PATTERNS = {
+  summaryNotEvidence: 'Do not use summaries when the user needs exact message evidence.',
+  messagesNotContext: 'Do not use discord_messages for summaries or profile context.',
+  nativeDeliveryNeedsSend:
+    'Do not leave a final in-channel delivery in plain assistant prose when discord_messages.send should deliver it.',
+  filesNotGuildResources: 'Do not use discord_files for channels or guild resources.',
+  serverNotRecall: 'Do not use discord_server for summaries or attachment recall.',
+  voiceNotAnalytics: 'Do not use discord_voice for historical analytics or summaries.',
+  typedBeforeApi: 'Do not jump to discord_admin.api before typed Discord actions.',
+  webNotDiscord: 'Do not use web for Discord-internal facts.',
+} as const;
+
 registerTopLevelToolDoc({
   tool: 'system_time',
   purpose: 'Calculate timezone offsets when the runtime prompt current UTC timestamp is not enough.',
@@ -1643,7 +1655,7 @@ registerRoutedTopLevelToolDoc(discordContextToolDoc, {
       'Live voice state, join, or leave -> discord_voice instead.',
     ],
     antiPatterns: [
-      'Do not use get_channel_summary for exact quotes or message-level evidence.',
+      PROMPT_GUIDANCE_ANTI_PATTERNS.summaryNotEvidence,
     ],
     helpHint: 'If the exact context contract is genuinely unclear, call `discord_context` with `action: "help"`.',
   },
@@ -1669,8 +1681,8 @@ registerRoutedTopLevelToolDoc(discordMessagesToolDoc, {
       'Thread lifecycle or guild-resource state -> discord_server instead.',
     ],
     antiPatterns: [
-      'Do not use discord_messages for rolling summaries or profile context.',
-      'Do not leave the final rich reply in plain assistant prose when send should deliver it.',
+      PROMPT_GUIDANCE_ANTI_PATTERNS.messagesNotContext,
+      PROMPT_GUIDANCE_ANTI_PATTERNS.nativeDeliveryNeedsSend,
     ],
     helpHint: 'If the exact message contract or send payload is genuinely unclear, call `discord_messages` with `action: "help"`.',
   },
@@ -1696,7 +1708,7 @@ registerRoutedTopLevelToolDoc(discordFilesToolDoc, {
       'Channels, roles, threads, or guild resources -> discord_server instead.',
     ],
     antiPatterns: [
-      'Do not use discord_files to inspect channels or guild resources.',
+      PROMPT_GUIDANCE_ANTI_PATTERNS.filesNotGuildResources,
     ],
     helpHint: 'If the exact attachment contract is genuinely unclear, call `discord_files` with `action: "help"`.',
   },
@@ -1722,7 +1734,7 @@ registerRoutedTopLevelToolDoc(discordServerToolDoc, {
       'Exact message evidence or in-channel reply delivery -> discord_messages instead.',
     ],
     antiPatterns: [
-      'Do not use discord_server for rolling summaries or cached file recall.',
+      PROMPT_GUIDANCE_ANTI_PATTERNS.serverNotRecall,
     ],
     helpHint: 'If the exact guild-resource contract is genuinely unclear, call `discord_server` with `action: "help"`.',
   },
@@ -1747,7 +1759,7 @@ registerRoutedTopLevelToolDoc(discordVoiceToolDoc, {
       'Voice analytics or past voice summaries -> discord_context instead.',
     ],
     antiPatterns: [
-      'Do not use discord_voice for historical analytics or summary lookup.',
+      PROMPT_GUIDANCE_ANTI_PATTERNS.voiceNotAnalytics,
     ],
     helpHint: 'If the exact voice contract is genuinely unclear, call `discord_voice` with `action: "help"`.',
   },
@@ -1773,7 +1785,7 @@ registerRoutedTopLevelToolDoc(discordAdminToolDoc, {
       'Use discord_admin.api only when typed Discord actions do not cover the task.',
     ],
     antiPatterns: [
-      'Do not jump to discord_admin.api before typed Discord actions.',
+      PROMPT_GUIDANCE_ANTI_PATTERNS.typedBeforeApi,
       'Do not use generic delete_message for reply-targeted spam or abuse when submit_moderation fits better.',
     ],
     helpHint: 'If the exact admin contract is genuinely unclear, call `discord_admin` with `action: "help"`.',
@@ -1837,7 +1849,7 @@ registerRoutedTopLevelToolDoc(webToolDoc, {
     ],
     antiPatterns: [
       'Avoid sequential page-by-page read loops; batch reads or use research.',
-      'Do not use web for Discord-internal facts.',
+      PROMPT_GUIDANCE_ANTI_PATTERNS.webNotDiscord,
     ],
     helpHint: 'If the exact web contract is genuinely unclear, call `web` with `action: "help"`.',
   },

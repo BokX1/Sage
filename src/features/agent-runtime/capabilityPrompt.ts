@@ -93,9 +93,9 @@ export function buildCapabilityPromptSection(
   const operatorModel = [
     '<operator_model>',
     '- Lock onto the current user\'s objective before room noise.',
-    '- Decide the source type: exact evidence, summary context, file recall, guild resource, live voice, admin action, or public web facts.',
-    '- Choose the narrowest active tool for that source.',
-    '- Stop when enough evidence exists. Answer in the simplest fitting format.',
+    '- Decide the needed source: exact evidence, summary context, file recall, guild resource, live voice, admin action, or public web facts.',
+    '- Choose the narrowest active tool that can answer it.',
+    '- Stop when enough evidence exists. Then answer in the simplest fitting format.',
     '</operator_model>',
   ].join('\n');
 
@@ -110,10 +110,10 @@ export function buildCapabilityPromptSection(
     activeDirectTools.length > 0
       ? `- Direct tools do not expose \`help\`; rely on schema and description for: ${activeDirectTools.map((tool) => `\`${tool}\``).join(', ')}.`
       : '',
-    '- If a required parameter is missing, ask instead of guessing.',
     '- Use tools only when they materially improve the answer or are required to complete the request.',
     '- Use native tool calls silently. Never narrate tool choice, args, or approval payloads.',
     '- Batch read-only calls in one provider-native turn when possible. Do NOT loop them one by one across rounds.',
+    '- If a required parameter is missing, ask instead of guessing.',
     '- If approval review interrupts the turn, treat that action as already queued. Do not retry the same approval-gated action again.',
     '- If the runtime blocks a repeated call for this turn, do not retry it unchanged. Pivot to different arguments, another tool, or one clarifying question.',
     '- If no tool is needed, answer in plain text.',
@@ -122,31 +122,31 @@ export function buildCapabilityPromptSection(
       ? '- Think Discord-first when Discord tools can answer the request. Use web only for questions outside Discord.'
       : '- Discord-native profiles, summaries, files, messages, and actions are unavailable this turn.',
     hasDiscordContextTool && hasDiscordMessagesTool
-      ? '- Summary vs evidence: `discord_context.get_channel_summary` is rolling recap; exact quotes and message-level proof belong to `discord_messages`.'
+      ? '- Summary vs exact evidence: `discord_context.get_channel_summary` is recap; `discord_messages` is for quotes and message-level proof.'
       : '',
     hasDiscordContextTool && hasDiscordAdminTool
-      ? '- Distinguish Sage Persona reads from Sage Persona writes: `discord_context.get_server_instructions` reads the guild Sage Persona, while `discord_admin.update_server_instructions` queues a Sage Persona change.'
+      ? '- Sage Persona read vs write: `discord_context.get_server_instructions` reads the guild Sage Persona, while `discord_admin.update_server_instructions` queues a change.'
       : '',
     hasDiscordAdminTool
-      ? '- Distinguish Sage Persona/config from moderation/enforcement: Sage Persona changes how Sage behaves; moderation acts on users, messages, reactions, or content.'
+      ? '- Governance/config vs moderation: Sage Persona changes how Sage behaves; moderation acts on users, messages, reactions, or content.'
       : '',
     hasDiscordAdminTool
-      ? '- Treat reply-targeted enforcement as moderation: replied-to spam/abuse -> `discord_admin.submit_moderation`.'
+      ? '- Reply-targeted enforcement uses moderation: replied-to spam or abuse -> `discord_admin.submit_moderation`.'
       : '',
     hasDiscordAdminTool && !hasDiscordMessagesTool
       ? '- Exact Discord message-history tools are unavailable; gather moderation evidence via `discord_admin.api` GET `/channels/{channelId}/messages` (or `/messages/{messageId}`) before calling `submit_moderation`.'
       : '',
     hasDiscordFilesTool && hasDiscordServerTool
-      ? '- Distinguish file discovery from guild discovery: `discord_files.list_channel` / `find_channel` operate on attachments, while `discord_server.list_channels` inspects channels.'
+      ? '- File recall vs guild resources: `discord_files.list_channel` / `find_channel` operate on attachments, while `discord_server.list_channels` inspects channels.'
       : '',
     hasDiscordContextTool && hasDiscordVoiceTool
-      ? '- Distinguish voice analytics from live voice control: `discord_context` covers voice analytics/summaries, while `discord_voice` handles current voice status and join/leave.'
+      ? '- Voice analytics vs live control: `discord_context` covers voice analytics and summaries, while `discord_voice` handles current voice status and join/leave.'
       : '',
     hasDiscordAdminTool && hasDiscordServerTool
-      ? '- Typed Discord actions come first. Use `discord_admin.api` only after typed `discord_server` or `discord_admin` actions do not cover the task.'
+      ? '- Typed Discord actions come before raw API fallback. Use `discord_admin.api` only after typed `discord_server` or `discord_admin` actions do not cover the task.'
       : '',
     hasDiscordMessagesTool
-      ? '- Plain assistant text is fine for normal answers. Use `discord_messages.send` only when the final answer should be rendered as a Discord-native message inside the channel.'
+      ? '- Plain assistant text is fine for normal answers. Use `discord_messages.send` only when final delivery must be a Discord-native message inside the channel.'
       : '',
     hasDiscordMessagesTool
       ? '- If `send` already delivers the final answer into the channel, do not repeat the same answer again as a normal assistant reply.'

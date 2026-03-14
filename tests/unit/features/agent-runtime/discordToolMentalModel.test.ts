@@ -278,12 +278,12 @@ describe('discord tool mental model guidance', () => {
       ],
     });
 
-    expect(prompt).toContain('Distinguish Sage Persona reads from Sage Persona writes');
-    expect(prompt).toContain('Distinguish Sage Persona/config from moderation/enforcement');
-    expect(prompt).toContain('Treat reply-targeted enforcement as moderation');
-    expect(prompt).toContain('Summary vs evidence: `discord_context.get_channel_summary` is rolling recap');
-    expect(prompt).toContain('Distinguish file discovery from guild discovery');
-    expect(prompt).toContain('Distinguish voice analytics from live voice control');
+    expect(prompt).toContain('Sage Persona read vs write');
+    expect(prompt).toContain('Governance/config vs moderation');
+    expect(prompt).toContain('Reply-targeted enforcement uses moderation');
+    expect(prompt).toContain('Summary vs exact evidence: `discord_context.get_channel_summary` is recap');
+    expect(prompt).toContain('File recall vs guild resources');
+    expect(prompt).toContain('Voice analytics vs live control');
     expect(prompt).toContain('Change Sage behavior or governance config');
     expect(prompt).toContain('Enforce on user or content');
   });
