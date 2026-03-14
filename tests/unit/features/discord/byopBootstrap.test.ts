@@ -35,8 +35,17 @@ describe('byopBootstrap activation cards', () => {
     };
     const actionRow = container.components.find((component) => component.type === ComponentType.ActionRow);
 
-    expect(actionRow?.components?.[0]?.disabled).not.toBe(true);
-    expect(actionRow?.components?.slice(1).every((button) => button.disabled === true)).toBe(true);
+    expect(
+      actionRow?.components?.map((button) => ({
+        label: button.label,
+        disabled: button.disabled,
+      })),
+    ).toEqual([
+      { label: 'Get Pollinations Key', disabled: undefined },
+      { label: 'Set Server Key', disabled: true },
+      { label: 'Check Key', disabled: true },
+      { label: 'Clear Key', disabled: true },
+    ]);
   });
 
   it('builds the explicit setup-card tool payload as Components V2', () => {
