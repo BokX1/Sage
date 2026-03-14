@@ -1,4 +1,9 @@
 import { config as appConfig } from '../../platform/config/env';
+import { getApprovalReviewRequestById } from '../admin/approvalReviewRequestRepo';
+import {
+  buildMissingHostApiKeyText,
+  buildMissingSelfHostedGuildApiKeyText,
+} from '../discord/userFacingCopy';
 import { getRecentMessages } from '../awareness/channelRingBuffer';
 import { buildTranscriptBlock } from '../awareness/transcriptBuilder';
 import { type BaseMessage } from '@langchain/core/messages';
@@ -80,6 +85,14 @@ export interface RunChatTurnResult {
   delivery: 'chat_reply' | 'approval_governance_only' | 'chat_reply_with_continue';
   meta?: {
     kind?: 'missing_api_key';
+    missingApiKey?: {
+      recovery: 'host_api_key' | 'server_key_activation';
+    };
+    approvalReview?: {
+      requestId: string;
+      reviewChannelId: string;
+      sourceChannelId: string;
+    };
     continuation?: {
       id: string;
       expiresAtIso: string;
@@ -129,10 +142,58 @@ async function resolveApiKeyForChatTurn(guildId: string | null): Promise<string 
 function buildMissingApiKeyResult(guildId: string | null): RunChatTurnResult {
   return {
     replyText: guildId
-      ? '⚠️ I need a server API key before I can respond here.'
-      : '⚠️ I need an AI provider API key before I can respond. Configure `AI_PROVIDER_API_KEY` for this bot instance.',
+      ? buildMissingSelfHostedGuildApiKeyText()
+      : buildMissingHostApiKeyText(),
     delivery: 'chat_reply',
-    meta: guildId ? { kind: 'missing_api_key' } : undefined,
+    meta: guildId
+      ? {
+          kind: 'missing_api_key',
+          missingApiKey: {
+            recovery: 'host_api_key',
+          },
+        }
+      : undefined,
+  };
+}
+
+async function buildRunChatTurnMeta(params: {
+  pendingInterrupt:
+    | { kind: 'approval_review'; requestId: string }
+    | {
+        kind: 'continue_prompt';
+        continuationId: string;
+        expiresAtIso: string;
+        completedWindows: number;
+        maxWindows: number;
+        summaryText: string;
+      }
+    | null;
+}): Promise<RunChatTurnResult['meta'] | undefined> {
+  if (!params.pendingInterrupt) {
+    return undefined;
+  }
+
+  if (params.pendingInterrupt.kind === 'continue_prompt') {
+    return buildContinuationMeta(params.pendingInterrupt);
+  }
+
+  const action = await getApprovalReviewRequestById(params.pendingInterrupt.requestId).catch(() => null);
+  if (!action) {
+    return {
+      approvalReview: {
+        requestId: params.pendingInterrupt.requestId,
+        reviewChannelId: '',
+        sourceChannelId: '',
+      },
+    };
+  }
+
+  return {
+    approvalReview: {
+      requestId: action.id,
+      reviewChannelId: action.reviewChannelId,
+      sourceChannelId: action.sourceChannelId,
+    },
   };
 }
 
@@ -346,10 +407,7 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
             }
           : null;
     delivery = resolveDelivery({ pendingInterrupt });
-    meta =
-      pendingInterrupt?.kind === 'continue_prompt'
-        ? buildContinuationMeta(pendingInterrupt)
-        : undefined;
+    meta = await buildRunChatTurnMeta({ pendingInterrupt });
     langSmithRunId = graphResult.langSmithRunId;
     langSmithTraceId = graphResult.langSmithTraceId;
     const successfulToolCount = graphResult.toolResults.filter((result) => result.success).length;
@@ -621,8 +679,7 @@ export async function resumeContinuationChatTurn(
     result = {
       replyText: safeReplyText,
       delivery: resolveDelivery({ pendingInterrupt }),
-      meta:
-        pendingInterrupt?.kind === 'continue_prompt' ? buildContinuationMeta(pendingInterrupt) : undefined,
+      meta: await buildRunChatTurnMeta({ pendingInterrupt }),
       files: graphResult.files,
     };
 

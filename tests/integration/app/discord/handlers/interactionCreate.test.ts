@@ -31,12 +31,6 @@ vi.mock('@/features/discord/byopBootstrap', () => ({
 vi.mock('@/app/discord/handlers/interactiveSage', () => ({
   handleInteractiveButtonSession,
   handleInteractiveModalSession,
-  sendCommandlessNotice: vi.fn(async (interaction: ChatInputCommandInteraction) => {
-    await interaction.reply({
-      content: 'Sage is chat-first now. Mention me, reply to me, or start with `Sage` instead of using slash commands.',
-      ephemeral: true,
-    });
-  }),
 }));
 
 describe('interactionCreate handler', () => {
@@ -54,7 +48,7 @@ describe('interactionCreate handler', () => {
     delete g[registrationKey];
   });
 
-  it('replies with the commandless guidance for any slash command', async () => {
+  it('ignores legacy slash commands instead of surfacing a fallback reply', async () => {
     const { registerInteractionCreateHandler } = await import('@/app/discord/handlers/interactionCreate');
     registerInteractionCreateHandler();
 
@@ -71,10 +65,7 @@ describe('interactionCreate handler', () => {
       }),
     );
 
-    expect(reply).toHaveBeenCalledWith({
-      content: 'Sage is chat-first now. Mention me, reply to me, or start with `Sage` instead of using slash commands.',
-      ephemeral: true,
-    });
+    expect(reply).not.toHaveBeenCalled();
   });
 
   it('stops after a bootstrap button handler succeeds', async () => {

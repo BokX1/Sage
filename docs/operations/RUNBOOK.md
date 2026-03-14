@@ -69,7 +69,7 @@ flowchart LR
 | Pattern | Severity | Meaning |
 |:---|:---|:---|
 | `[info] Logged in as Sage#1234` | ✅ | Bot started successfully |
-| `Sage is chat-first now...` | ✅ | Legacy slash-command input is being redirected to the current UX |
+| `Cleared legacy Discord application commands...` | ✅ | Startup removed stale slash-command registrations from older builds |
 | `[error] P1001` | 🔴 | Database connection lost |
 | `[error] ECONNREFUSED` | 🔴 | Service unavailable |
 | `[error] 520` | 🟡 | LLM response truncated |

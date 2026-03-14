@@ -4,8 +4,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 const steps = [
     {
         num: '01',
-        title: 'Invite Sage',
-        desc: 'Add the hosted Sage bot to your Discord server — zero infrastructure, one click.',
+        title: 'Add Hosted Sage',
+        desc: 'Add the hosted Sage bot to your Discord server and start the setup flow in one click.',
         command: 'https://discord.com/oauth2/authorize?client_id=1462117382398017667&scope=bot&permissions=8',
         commandDisplay: 'discord.com/oauth2/authorize',
         color: '#7AA2F7',
@@ -16,7 +16,7 @@ const steps = [
     {
         num: '02',
         title: 'Activate Your Server',
-        desc: 'For the hosted bot, trigger Sage once and use the setup card modal to activate your whole server.',
+        desc: 'Trigger Sage once, then let a server admin use the setup card to activate Hosted Sage for everyone.',
         command: '@Sage hello',
         commandDisplay: '@Sage hello',
         color: '#78b846',
@@ -27,7 +27,7 @@ const steps = [
     {
         num: '03',
         title: 'Start Talking',
-        desc: 'Mention @Sage in any channel. It remembers context, calls tools when helpful, and works with the hosted flow or your own OpenAI-compatible setup.',
+        desc: 'Mention @Sage in any channel. It remembers context, calls tools when helpful, and keeps the flow chat-first.',
         command: '@Sage what happened?',
         commandDisplay: '@Sage what happened?',
         color: '#BB9AF7',
@@ -187,14 +187,14 @@ function DiscordMockup({ activeStep }) {
                                 avatarColor="#78b846"
                                 author="Sage"
                                 time="Today at 12:00 PM"
-                                content="Hello there! 👋 I am Sage, an agentic AI community engineer. I've successfully connected to your server architecture."
+                                content="Hello there. I am Sage, your chat-first AI teammate for this Discord community."
                             />
                             <DiscordMessage
                                 isBot={true}
                                 avatarColor="#78b846"
                                 author="Sage"
                                 time="Today at 12:00 PM"
-                                content={<div className="bg-[#2B2D31] p-3 rounded border border-slate-700/50 mt-1"><span className="text-[#a9df7c] text-xs font-mono uppercase font-bold tracking-wider block mb-1">Status: Online</span><div className="text-slate-300">Talk to Sage once to open the setup card, or self-host Sage against any OpenAI-compatible provider.</div></div>}
+                                content={<div className="bg-[#2B2D31] p-3 rounded border border-slate-700/50 mt-1"><span className="text-[#a9df7c] text-xs font-mono uppercase font-bold tracking-wider block mb-1">Status: Waiting for activation</span><div className="text-slate-300">Talk to Sage once to open the setup card, or self-host Sage against your own provider.</div></div>}
                             />
                         </motion.div>
                     )}
@@ -213,7 +213,7 @@ function DiscordMockup({ activeStep }) {
                                 avatarColor="#78b846"
                                 author="Sage"
                                 time="Today at 12:05 PM"
-                                content="✅ Server key validated. Hosted runtime activated for this guild. I am now ready for normal chat, tools, and voice control."
+                                content="Hosted Sage is active for this server. You can mention me, reply to me, or start a message with Sage."
                             />
                         </motion.div>
                     )}
@@ -297,13 +297,13 @@ export default function QuickStart() {
                     60-Second Onboarding
                 </div>
                 <h2 className="text-4xl lg:text-5xl font-extrabold text-white mb-4">
-                    Live in{' '}
+                    Get Sage Live In{' '}
                     <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#78b846] to-[#9cd65a]">
                         Three Steps
                     </span>
                 </h2>
                 <p className="text-lg text-slate-400 max-w-xl lg:mx-auto font-light">
-                    From zero to a fully agentic community engineer with a chat-first setup flow.
+                    Start with Hosted Sage in minutes, then move to deeper setup only if you want self-hosting and custom infrastructure.
                 </p>
             </motion.div>
 

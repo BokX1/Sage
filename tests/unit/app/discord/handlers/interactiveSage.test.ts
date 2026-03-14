@@ -6,6 +6,12 @@ const parseInteractiveSessionCustomIdMock = vi.hoisted(() => vi.fn());
 const getActiveInteractiveSessionMock = vi.hoisted(() => vi.fn());
 const createInteractiveButtonSessionMock = vi.hoisted(() => vi.fn(async () => 'sage:ui:continue-1'));
 const isAdminFromMemberMock = vi.hoisted(() => vi.fn(() => true));
+const buildGuildApiKeyMissingResponseMock = vi.hoisted(() =>
+  vi.fn(() => ({
+    content: 'missing key',
+    components: [],
+  })),
+);
 
 vi.mock('@/features/chat/chat-engine', () => ({
   generateChatReply: generateChatReplyMock,
@@ -16,10 +22,7 @@ vi.mock('@/features/agent-runtime/agentRuntime', () => ({
 }));
 
 vi.mock('@/features/discord/byopBootstrap', () => ({
-  buildGuildApiKeyMissingResponse: vi.fn(() => ({
-    content: 'missing key',
-    components: [],
-  })),
+  buildGuildApiKeyMissingResponse: buildGuildApiKeyMissingResponseMock,
 }));
 
 vi.mock('@/features/discord/interactiveComponentService', () => ({
@@ -76,7 +79,13 @@ describe('interactiveSage delivery', () => {
     generateChatReplyMock.mockResolvedValue({
       replyText: '',
       delivery: 'approval_governance_only',
-      meta: undefined,
+      meta: {
+        approvalReview: {
+          requestId: 'approval-1',
+          sourceChannelId: 'channel-1',
+          reviewChannelId: 'review-1',
+        },
+      },
       files: [],
     });
 
@@ -101,10 +110,111 @@ describe('interactiveSage delivery', () => {
     expect(handled).toBe(true);
     expect(interaction.deferReply).toHaveBeenCalledWith({ ephemeral: true });
     expect(interaction.editReply).toHaveBeenCalledWith({
-      content: 'Approval review posted.',
+      content: 'Approval review posted in <#review-1>. Next: I will update the status card when the review is resolved.',
       files: [],
     });
     expect(interaction.followUp).not.toHaveBeenCalled();
+  });
+
+  it('keeps self-hosted missing-key replies in plain text instead of showing Pollinations setup controls', async () => {
+    parseInteractiveSessionCustomIdMock.mockReturnValue('session-self-hosted');
+    getActiveInteractiveSessionMock.mockResolvedValue({
+      kind: 'prompt_button',
+      prompt: 'hello',
+      visibility: 'ephemeral',
+      guildId: 'guild-1',
+      channelId: 'channel-1',
+      createdByUserId: 'user-1',
+      expiresAt: new Date('2026-03-14T00:00:00.000Z'),
+    });
+    generateChatReplyMock.mockResolvedValue({
+      replyText:
+        'Self-hosted Sage is not configured for chat in this server yet. Why: this bot instance has no `AI_PROVIDER_API_KEY`, and the hosted Pollinations server-key flow only applies to the hosted invite bot. Next: ask the bot operator to add the self-hosted provider key, then try again.',
+      delivery: 'chat_reply',
+      meta: {
+        kind: 'missing_api_key',
+        missingApiKey: {
+          recovery: 'host_api_key',
+        },
+      },
+      files: [],
+    });
+
+    const interaction = {
+      customId: 'session-self-hosted',
+      channelId: 'channel-1',
+      guildId: 'guild-1',
+      user: { id: 'user-1', username: 'user1', globalName: 'User One' },
+      member: { displayName: 'User One' },
+      deferred: false,
+      replied: false,
+      deferReply: vi.fn(async () => {
+        interaction.deferred = true;
+      }),
+      editReply: vi.fn(async () => undefined),
+      reply: vi.fn(async () => undefined),
+      followUp: vi.fn(async () => undefined),
+    };
+
+    const handled = await handleInteractiveButtonSession(interaction as never);
+
+    expect(handled).toBe(true);
+    expect(buildGuildApiKeyMissingResponseMock).not.toHaveBeenCalled();
+    expect(interaction.editReply).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: expect.stringContaining('Self-hosted Sage is not configured for chat in this server yet.'),
+      }),
+    );
+  });
+
+  it('still renders hosted server-key recovery controls when the runtime explicitly requests that path', async () => {
+    parseInteractiveSessionCustomIdMock.mockReturnValue('session-hosted');
+    getActiveInteractiveSessionMock.mockResolvedValue({
+      kind: 'prompt_button',
+      prompt: 'hello',
+      visibility: 'ephemeral',
+      guildId: 'guild-1',
+      channelId: 'channel-1',
+      createdByUserId: 'user-1',
+      expiresAt: new Date('2026-03-14T00:00:00.000Z'),
+    });
+    generateChatReplyMock.mockResolvedValue({
+      replyText: 'Sage is waiting for server activation here.',
+      delivery: 'chat_reply',
+      meta: {
+        kind: 'missing_api_key',
+        missingApiKey: {
+          recovery: 'server_key_activation',
+        },
+      },
+      files: [],
+    });
+
+    const interaction = {
+      customId: 'session-hosted',
+      channelId: 'channel-1',
+      guildId: 'guild-1',
+      user: { id: 'user-1', username: 'user1', globalName: 'User One' },
+      member: { displayName: 'User One' },
+      deferred: false,
+      replied: false,
+      deferReply: vi.fn(async () => {
+        interaction.deferred = true;
+      }),
+      editReply: vi.fn(async () => undefined),
+      reply: vi.fn(async () => undefined),
+      followUp: vi.fn(async () => undefined),
+    };
+
+    const handled = await handleInteractiveButtonSession(interaction as never);
+
+    expect(handled).toBe(true);
+    expect(buildGuildApiKeyMissingResponseMock).toHaveBeenCalledWith({ isAdmin: true });
+    expect(interaction.editReply).toHaveBeenCalledWith({
+      content: 'missing key',
+      components: [],
+      ephemeral: true,
+    });
   });
 
   it('publishes a continuation summary with a Continue button', async () => {
@@ -171,7 +281,7 @@ describe('interactiveSage delivery', () => {
             components: [
               expect.objectContaining({
                 custom_id: 'sage:ui:continue-1',
-                label: 'Continue',
+                label: 'Continue (2/4)',
               }),
             ],
           },
@@ -320,7 +430,46 @@ describe('interactiveSage delivery', () => {
     expect(handled).toBe(true);
     expect(resumeContinuationChatTurnMock).not.toHaveBeenCalled();
     expect(interaction.reply).toHaveBeenCalledWith({
-      content: 'This Continue button belongs to the original requester.',
+      content:
+        'This Continue button belongs to the person who started this request. Next: ask them to continue it, or ask Sage to start a fresh pass for you.',
+      ephemeral: true,
+    });
+  });
+
+  it('rejects Continue clicks from the wrong channel with a channel-specific recovery hint', async () => {
+    parseInteractiveSessionCustomIdMock.mockReturnValue('session-5');
+    getActiveInteractiveSessionMock.mockResolvedValue({
+      kind: 'graph_continue_button',
+      continuationId: 'cont-4',
+      visibility: 'public',
+      guildId: 'guild-1',
+      channelId: 'channel-home',
+      createdByUserId: 'user-1',
+      expiresAt: new Date('2026-03-14T00:00:00.000Z'),
+    });
+
+    const interaction = {
+      customId: 'session-5',
+      id: 'interaction-5',
+      channelId: 'channel-other',
+      guildId: 'guild-1',
+      user: { id: 'user-1', username: 'user1', globalName: 'User One' },
+      member: { displayName: 'User One' },
+      deferred: false,
+      replied: false,
+      deferReply: vi.fn(async () => undefined),
+      editReply: vi.fn(async () => undefined),
+      reply: vi.fn(async () => undefined),
+      followUp: vi.fn(async () => undefined),
+    };
+
+    const handled = await handleInteractiveButtonSession(interaction as never);
+
+    expect(handled).toBe(true);
+    expect(resumeContinuationChatTurnMock).not.toHaveBeenCalled();
+    expect(interaction.reply).toHaveBeenCalledWith({
+      content:
+        'This Continue button only works in the original channel. Next: go back to <#channel-home> and use it there, or ask Sage for a fresh continuation here.',
       ephemeral: true,
     });
   });

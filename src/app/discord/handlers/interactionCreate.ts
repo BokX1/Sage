@@ -12,8 +12,8 @@ import {
 import {
   handleInteractiveButtonSession,
   handleInteractiveModalSession,
-  sendCommandlessNotice,
 } from './interactiveSage';
+import { buildInteractionFailureText } from '../../../features/discord/userFacingCopy';
 
 const registrationKey = Symbol.for('sage.handlers.interactionCreate.registered');
 
@@ -35,7 +35,10 @@ async function sendInteractionReply(
 
 async function sendInteractionFailure(interaction: Interaction): Promise<void> {
   try {
-    await sendInteractionReply(interaction, { content: 'Something went wrong.', ephemeral: true });
+    await sendInteractionReply(interaction, {
+      content: buildInteractionFailureText(),
+      ephemeral: true,
+    });
   } catch (replyError) {
     logger.warn({ error: replyError }, 'Failed to send interaction error response');
   }
@@ -81,7 +84,13 @@ export function registerInteractionCreateHandler() {
         return;
       }
 
-      await sendCommandlessNotice(interaction);
+      logger.debug(
+        {
+          interactionId: interaction.id,
+          commandName: interaction.commandName,
+        },
+        'Ignoring legacy slash command interaction for commandless Discord runtime',
+      );
     } catch (err) {
       logger.error({ err }, 'Interaction handler error');
       await sendInteractionFailure(interaction);

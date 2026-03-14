@@ -1,6 +1,6 @@
 # 💬 Sage Conversation & Controls
 
-Sage is chat-first. There are no primary slash commands in the current product surface.
+Sage is chat-first. Use normal conversation in Discord instead of relying on a slash-command menu.
 
 <p align="center">
   <img src="https://img.shields.io/badge/%F0%9F%8C%BF-Sage%20Controls-2d5016?style=for-the-badge&labelColor=4a7c23" alt="Sage Controls" />
@@ -24,7 +24,7 @@ Sage is chat-first. There are no primary slash commands in the current product s
 | Goal | How to do it |
 | :--- | :--- |
 | Talk to Sage | Mention Sage, reply to Sage, or start with `Sage` |
-| Activate hosted Pollinations BYOP | Use Sage's setup card buttons and modal |
+| Activate Hosted Sage | Use Sage's setup card buttons and modal |
 | Check or clear the server key | Use the setup card buttons as a server admin |
 | Ask Sage to join voice | Say `Sage, join my voice channel` |
 | Ask Sage to leave voice | Say `Sage, leave voice` |
@@ -51,7 +51,7 @@ Wake word prefixes like `Hey Sage` are also supported.
 
 ## 🔑 Server Key Setup
 
-For the hosted/default Pollinations-backed flow, Sage exposes setup controls directly in Discord when a server key is missing.
+For the hosted Pollinations-backed flow, Sage exposes setup controls directly in Discord when a server key is missing.
 
 Server admins can use:
 
@@ -63,13 +63,13 @@ Server admins can use:
 Non-admins can still see the setup card, but only admins can submit changes.
 
 > [!NOTE]
-> Self-hosted deployments can skip this flow by setting a host-level `AI_PROVIDER_API_KEY` for any OpenAI-compatible provider, but the key is optional if you want to rely on Sage's in-Discord server-key flow instead.
+> Self-hosted deployments can skip this flow by setting a host-level `AI_PROVIDER_API_KEY` for any OpenAI-compatible provider, or they can still rely on Sage's in-Discord server activation flow later.
 
 ---
 
 ## 🎤 Voice Control
 
-Voice presence is also chat-first now.
+Voice presence follows the same chat-first model.
 
 Examples:
 

@@ -33,6 +33,11 @@ import {
   createInteractiveButtonSession,
   buildActionButtonComponent,
 } from '../../../features/discord/interactiveComponentService';
+import {
+  buildApprovalReviewPostedText,
+  buildContinuationButtonLabel,
+  buildMessageFailureText,
+} from '../../../features/discord/userFacingCopy';
 
 const processedMessagesKey = Symbol.for('sage.handlers.messageCreate.processed');
 const registrationKey = Symbol.for('sage.handlers.messageCreate.registered');
@@ -767,7 +772,11 @@ export async function handleMessageCreate(message: Message) {
         }
       }
 
-      if (result.meta?.kind === 'missing_api_key' && message.guildId) {
+      if (
+        result.meta?.kind === 'missing_api_key' &&
+        message.guildId &&
+        result.meta.missingApiKey?.recovery === 'server_key_activation'
+      ) {
         const missing = buildGuildApiKeyMissingResponse({
           isAdmin: isAdminFromMember(message.member),
         });
@@ -779,10 +788,14 @@ export async function handleMessageCreate(message: Message) {
         didSendAnything = true;
       }
 
-      if (!didSendAnything && ((!approvalQueued && replyText) || files.length > 0)) {
+      const approvalReplyText = approvalQueued
+        ? buildApprovalReviewPostedText(result.meta?.approvalReview)
+        : undefined;
+
+      if (!didSendAnything && ((!approvalQueued && replyText) || files.length > 0 || approvalReplyText)) {
         const chunks = approvalQueued ? [] : smartSplit(replyText, 2000);
         const [firstChunk, ...restChunks] = chunks;
-        const firstReplyContent = approvalQueued ? undefined : firstChunk;
+        const firstReplyContent = approvalQueued ? approvalReplyText : firstChunk;
 
         if (firstReplyContent || files.length > 0) {
           await message.reply({
@@ -797,7 +810,7 @@ export async function handleMessageCreate(message: Message) {
                       components: [
                         buildActionButtonComponent({
                           customId: continueButtonId,
-                          label: 'Continue',
+                          label: buildContinuationButtonLabel(result.meta?.continuation),
                           style: 'primary',
                         }),
                       ],
@@ -815,7 +828,23 @@ export async function handleMessageCreate(message: Message) {
       }
 
       if (didSendAnything) {
-        loggerWithTrace.info('Response sent');
+        if (approvalQueued && result.meta?.approvalReview) {
+          loggerWithTrace.info(
+            { requestId: result.meta.approvalReview.requestId },
+            'Approval interrupt acknowledged in chat reply',
+          );
+        } else {
+          loggerWithTrace.info('Response sent');
+        }
+      } else if (approvalQueued && result.meta?.approvalReview) {
+        await message.reply({
+          content: buildApprovalReviewPostedText(result.meta.approvalReview),
+          allowedMentions: { repliedUser: false },
+        });
+        loggerWithTrace.info(
+          { requestId: result.meta.approvalReview.requestId },
+          'Approval interrupt acknowledged in chat reply',
+        );
       } else if (approvalQueued) {
         loggerWithTrace.info('Approval interrupt handled via governance surface; skipped chat reply');
       } else {
@@ -832,7 +861,7 @@ export async function handleMessageCreate(message: Message) {
 
       try {
         await message.reply({
-          content: 'Sorry, something went wrong processing your request.',
+          content: buildMessageFailureText(),
           allowedMentions: { repliedUser: false },
         });
       } catch {

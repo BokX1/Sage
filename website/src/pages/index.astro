@@ -17,7 +17,6 @@ import ConfigSimulator from '../components/ConfigSimulator.jsx';
 import GraphBackground from '../components/GraphBackground.jsx';
 import SocialProof from '../components/SocialProof.jsx';
 import NavBar from '../components/NavBar.jsx';
-import MobileNav from '../components/MobileNav.jsx';
 import ComparisonTable from '../components/ComparisonTable.jsx';
 import ScrollProgress from '../components/ScrollProgress.jsx';
 import WhySage from '../components/WhySage.jsx';
@@ -29,7 +28,7 @@ const nativeToolsLabel = `${nativeToolCount}+`;
 
 <Layout 
  	title="Sage — LangGraph-Powered Agentic AI for Discord Communities" 
-	description={`Meet the AI that doesn't just respond — it reasons, remembers, and acts. Sage is a LangGraph-native agentic runtime with ${nativeToolsLabel} native tools, social-graph intelligence, a layered memory pipeline, zero-prompt automation, and provider-flexible OpenAI-compatible self-hosting.`}>
+	description={`Sage is a chat-first AI teammate for Discord communities. Start with the hosted bot in minutes, or self-host Sage with ${nativeToolsLabel} native tools and an OpenAI-compatible runtime.`}>
 	
 	<!-- Scroll Progress Indicator -->
 	<ScrollProgress client:load />
@@ -67,24 +66,24 @@ const nativeToolsLabel = `${nativeToolCount}+`;
 			<div class="z-10 flex flex-col items-start text-left">
 				<div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#141a23] border border-[#2d4530] text-[#a9df7c] text-xs font-mono mb-6">
 					<span class="w-2 h-2 rounded-full bg-[#78b846] animate-pulse"></span>
-					Cognitive Runtime: Online
+					Chat-First Discord AI
 				</div>
 				
 				<h1 class="text-5xl lg:text-7xl font-extrabold tracking-tight text-white leading-[1.1] mb-6">
-					The First <span class="text-transparent bg-clip-text bg-gradient-to-r from-[#78b846] to-[#a9df7c] text-glow">Agentic</span><br/>
-					<span class="shimmer-text">Community Engineer.</span>
+					One <span class="text-transparent bg-clip-text bg-gradient-to-r from-[#78b846] to-[#a9df7c] text-glow">AI Teammate</span><br/>
+					<span class="shimmer-text">For Your Discord Community.</span>
 				</h1>
 				
 				<p class="text-xl text-slate-400 mb-10 max-w-xl font-light leading-relaxed">
-					Stop managing. Start orchestrating. Sage is a LangGraph-native runtime that transforms your Discord server into a self-operating community — driven by graph-native social intelligence, a layered memory pipeline, and {nativeToolsLabel} tools that act without a single prompt.
+					Sage helps communities research, summarize, moderate, work with files, and keep decisions moving without command menus. Start with the hosted bot in minutes, or self-host Sage on your own OpenAI-compatible stack.
 				</p>
 				
 				<div class="flex flex-wrap items-center gap-4 mb-10">
-					<a href="https://github.com/BokX1/Sage" class="px-8 py-4 rounded-full bg-[#78b846] text-[#050608] font-semibold hover:bg-[#a9df7c] transition-all border-glow btn-glow-pulse">
-						Deploy Your Agent
+					<a href="#quickstart" class="px-8 py-4 rounded-full bg-[#78b846] text-[#050608] font-semibold hover:bg-[#a9df7c] transition-all border-glow btn-glow-pulse">
+						Add Hosted Sage
 					</a>
-					<a href="#architecture" class="px-8 py-4 rounded-full bg-transparent text-white font-medium hover:bg-white/5 border border-white/10 transition-all">
-						See How It Works
+					<a href="https://github.com/BokX1/Sage/blob/master/docs/guides/GETTING_STARTED.md" class="px-8 py-4 rounded-full bg-transparent text-white font-medium hover:bg-white/5 border border-white/10 transition-all">
+						Self-Host Sage
 					</a>
 				</div>
 
@@ -114,6 +113,34 @@ const nativeToolsLabel = `${nativeToolCount}+`;
 				<div class="sr-only">Interactive demo showing Sage responding to a user question in Discord, with tool calls and streaming text.</div>
 			</div>
 		</section>
+
+		<!-- ═══════════════════════════════════════ -->
+		<!--  EARLY PATH CHOICE                     -->
+		<!-- ═══════════════════════════════════════ -->
+		<div class="relative">
+			<div class="absolute top-[20%] right-[-8%] w-[400px] h-[400px] rounded-full bg-[#78b846]/[0.03] blur-[100px] pointer-events-none"></div>
+			<SovereigntyShowcase client:visible />
+		</div>
+
+		<!-- ── Dot Divider ── -->
+		<div class="divider-dots max-w-5xl mx-auto px-6" aria-hidden="true">
+			<span class="dot"></span>
+			<span class="dot"></span>
+			<span class="dot"></span>
+		</div>
+
+		<!-- ═══════════════════════════════════════ -->
+		<!--  QUICK START                           -->
+		<!-- ═══════════════════════════════════════ -->
+		<QuickStart client:visible />
+
+		<!-- ── Wave Divider ── -->
+		<div class="divider-wave" aria-hidden="true">
+			<svg viewBox="0 0 1440 60" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+				<path d="M0,25 C180,50 540,5 720,35 C900,55 1080,10 1440,30 L1440,60 L0,60 Z" fill="rgba(224,175,104,0.04)"/>
+				<path d="M0,40 C360,20 720,50 1080,25 C1260,15 1380,40 1440,35 L1440,60 L0,60 Z" fill="rgba(11,14,20,0.3)"/>
+			</svg>
+		</div>
 
 		<!-- ═══════════════════════════════════════ -->
 		<!--  SOCIAL PROOF STRIP                    -->
@@ -288,22 +315,6 @@ const nativeToolsLabel = `${nativeToolCount}+`;
 		</div>
 
 		<!-- ═══════════════════════════════════════ -->
-		<!--  8. BYOP SOVEREIGNTY                   -->
-		<!-- ═══════════════════════════════════════ -->
-		<div class="relative">
-			<div class="absolute top-[40%] right-[-8%] w-[400px] h-[400px] rounded-full bg-[#78b846]/[0.03] blur-[100px] pointer-events-none"></div>
-			<SovereigntyShowcase client:visible />
-		</div>
-
-		<!-- ── Dot Divider ── -->
-		<div class="divider-dots max-w-5xl mx-auto px-6" aria-hidden="true">
-			<span class="dot" style="background: rgba(180,156,236,0.4); box-shadow: 0 0 8px rgba(180,156,236,0.3);"></span>
-			<span class="dot"></span>
-			<span class="dot" style="background: rgba(180,156,236,0.4); box-shadow: 0 0 8px rgba(180,156,236,0.3);"></span>
-		</div>
-
-
-		<!-- ═══════════════════════════════════════ -->
 		<!--  10. CONFIGURATION PLAYGROUND          -->
 		<!-- ═══════════════════════════════════════ -->
 		<section class="relative max-w-7xl mx-auto px-6 py-24">
@@ -349,18 +360,6 @@ const nativeToolsLabel = `${nativeToolCount}+`;
 		</div>
 
 		<!-- ═══════════════════════════════════════ -->
-		<!--  12. QUICK START                       -->
-		<!-- ═══════════════════════════════════════ -->
-		<QuickStart client:visible />
-
-		<!-- ── Dot Divider ── -->
-		<div class="divider-dots max-w-5xl mx-auto px-6" aria-hidden="true">
-			<span class="dot"></span>
-			<span class="dot"></span>
-			<span class="dot"></span>
-		</div>
-
-		<!-- ═══════════════════════════════════════ -->
 		<!--  CTA SECTION — with Pulse Rings        -->
 		<!-- ═══════════════════════════════════════ -->
 		<section class="relative max-w-4xl mx-auto px-6 py-32 text-center overflow-hidden">
@@ -386,17 +385,17 @@ const nativeToolsLabel = `${nativeToolCount}+`;
 			</div>
 
 			<h2 class="text-4xl lg:text-6xl font-extrabold text-white mb-6 relative z-10">
-				Ready to <span class="text-transparent bg-clip-text bg-gradient-to-r from-[#78b846] to-[#a9df7c] text-glow">Deploy</span>?
+				Ready to <span class="text-transparent bg-clip-text bg-gradient-to-r from-[#78b846] to-[#a9df7c] text-glow">Get Live</span>?
 			</h2>
 			<p class="text-xl text-slate-400 mb-10 max-w-2xl mx-auto font-light relative z-10">
-				Your community deserves an intelligence layer, not another chatbot. Choose your path.
+				Choose the fastest path for your team now, then grow into deeper infrastructure only when you need it.
 			</p>
 			<div class="flex flex-wrap justify-center gap-4 relative z-10">
-				<a href="https://github.com/BokX1/Sage" class="px-10 py-5 rounded-full bg-[#78b846] text-[#050608] font-bold text-lg hover:bg-[#a9df7c] transition-all border-glow btn-glow-pulse">
-					Deploy Agent
+				<a href="#quickstart" class="px-10 py-5 rounded-full bg-[#78b846] text-[#050608] font-bold text-lg hover:bg-[#a9df7c] transition-all border-glow btn-glow-pulse">
+					Add Hosted Sage
 				</a>
-				<a href="https://github.com/BokX1/Sage" class="px-10 py-5 rounded-full bg-white/5 text-white font-medium text-lg hover:bg-white/10 border border-white/10 transition-all">
-					Self-Host Runtime
+				<a href="https://github.com/BokX1/Sage/blob/master/docs/guides/GETTING_STARTED.md" class="px-10 py-5 rounded-full bg-white/5 text-white font-medium text-lg hover:bg-white/10 border border-white/10 transition-all">
+					Self-Host Sage
 				</a>
 			</div>
 		</section>

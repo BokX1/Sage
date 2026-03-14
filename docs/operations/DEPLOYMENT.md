@@ -193,7 +193,7 @@ Useful log patterns:
 | Pattern | Meaning |
 | :--- | :--- |
 | `[info] Logged in as` | Bot started successfully |
-| `Sage is chat-first now...` | Legacy slash-command input is being redirected as expected |
+| `Cleared legacy Discord application commands...` | Startup cleaned stale slash-command registrations from older builds |
 | `[error] P1001` | Database connection issue |
 
 ### Traces

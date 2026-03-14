@@ -8,9 +8,9 @@ import { createInterface } from 'readline/promises';
 import type { EnvSchema } from '../platform/config/envSchema';
 import { envSchema, parseEnvSafe } from '../platform/config/envSchema';
 
-type CheckStatus = 'pass' | 'warn' | 'fail' | 'skip';
+export type CheckStatus = 'pass' | 'warn' | 'fail' | 'skip';
 
-type CheckResult = {
+export type CheckResult = {
   id: string;
   title: string;
   status: CheckStatus;
@@ -345,6 +345,51 @@ function summarize(results: CheckResult[]) {
   return summary;
 }
 
+export function classifyDoctorResults(results: CheckResult[]) {
+  return {
+    blocking: results.filter((result) => result.status === 'fail'),
+    recommended: results.filter((result) => result.status === 'warn'),
+    optional: results.filter((result) => result.status === 'skip'),
+    passing: results.filter((result) => result.status === 'pass'),
+  };
+}
+
+export function buildDoctorNextAction(results: CheckResult[]): string {
+  const firstFailure = results.find((result) => result.status === 'fail');
+  if (firstFailure) {
+    switch (firstFailure.id) {
+      case CHECK_IDS.envFiles:
+      case CHECK_IDS.envSchema:
+        return 'Run `npm run onboard` to create or repair your `.env`, then rerun `npm run doctor`.';
+      case CHECK_IDS.runtimeNode:
+      case CHECK_IDS.runtimeNpm:
+        return 'Upgrade the local Node.js/npm runtime to the required version, then rerun `npm run doctor`.';
+      case CHECK_IDS.dbConnect:
+        return 'Start the database service or fix `DATABASE_URL`, then rerun `npm run doctor`.';
+      case CHECK_IDS.dbMigrations:
+        return 'Run `npm run db:migrate`, then rerun `npm run doctor`.';
+      case CHECK_IDS.depsPrismaClient:
+        return 'Run `npm ci` and `npm run postinstall`, then rerun `npm run doctor`.';
+      default:
+        return `Address the blocking check \`${firstFailure.id}\`, then rerun \`npm run doctor\`.`;
+    }
+  }
+
+  const firstWarning = results.find((result) => result.status === 'warn');
+  if (firstWarning) {
+    switch (firstWarning.id) {
+      case CHECK_IDS.envTemplateSync:
+        return 'Sync your `.env` with `.env.example` so future setup and diagnostics stay predictable.';
+      case CHECK_IDS.servicesTika:
+        return 'Start Tika if you want file extraction locally, or leave it off if that workflow is optional.';
+      default:
+        return `Review the warning for \`${firstWarning.id}\` and rerun \`npm run doctor\` when ready.`;
+    }
+  }
+
+  return 'No immediate action needed. Sage looks ready.';
+}
+
 async function confirmAction(question: string): Promise<boolean> {
   const rl = createInterface({
     input: process.stdin,
@@ -400,21 +445,38 @@ function buildFixActions(ctx: DoctorContext, results: CheckResult[]): FixAction[
 }
 
 function printHumanReport(ctx: DoctorContext, results: CheckResult[], fixResults: FixResult[]) {
+  const groups = classifyDoctorResults(results);
+
   console.log(`Sage v${ctx.packageVersion} - Doctor`);
   console.log('');
-  for (const result of results) {
-    console.log(`[${renderStatus(result.status)}] ${result.id} - ${result.message} (${result.durationMs}ms)`);
-    if (result.details && result.details.length > 0) {
-      for (const detail of result.details) {
-        console.log(`  - ${detail}`);
+
+  const printGroup = (title: string, groupResults: CheckResult[]) => {
+    if (groupResults.length === 0) {
+      return;
+    }
+
+    console.log(`${title}:`);
+    for (const result of groupResults) {
+      console.log(`- [${renderStatus(result.status)}] ${result.id} - ${result.message} (${result.durationMs}ms)`);
+      if (result.details && result.details.length > 0) {
+        for (const detail of result.details) {
+          console.log(`  ${detail}`);
+        }
       }
     }
-  }
+    console.log('');
+  };
+
+  printGroup('Blocking', groups.blocking);
+  printGroup('Recommended', groups.recommended);
+  printGroup('Optional', groups.optional);
+  printGroup('Passing', groups.passing);
+
   const summary = summarize(results);
-  console.log('');
   console.log(
     `Summary: ${summary.pass} pass, ${summary.warn} warn, ${summary.fail} fail, ${summary.skip} skip`,
   );
+  console.log(`Next best action: ${buildDoctorNextAction(results)}`);
 
   if (fixResults.length > 0) {
     console.log('');
@@ -995,14 +1057,22 @@ async function runDoctor(): Promise<number> {
   return 0;
 }
 
-void runDoctor()
-  .then((exitCode) => {
-    if (exitCode !== 0) {
-      process.exitCode = exitCode;
-    }
-  })
-  .catch((error) => {
-    console.error('Doctor failed.');
-    console.error(error instanceof Error ? error.message : String(error));
-    process.exitCode = 1;
-  });
+if (require.main === module) {
+  void runDoctor()
+    .then((exitCode) => {
+      if (exitCode !== 0) {
+        process.exitCode = exitCode;
+      }
+    })
+    .catch((error) => {
+      console.error('Doctor failed.');
+      console.error(error instanceof Error ? error.message : String(error));
+      process.exitCode = 1;
+    });
+}
+
+export {
+  buildChecks,
+  runDoctor,
+  summarize,
+};

@@ -184,8 +184,13 @@ describe('agent runtime API key fallback', () => {
       }),
     });
 
-    expect(result.replyText).toContain('I need a server API key before I can respond here');
-    expect(result.meta).toEqual({ kind: 'missing_api_key' });
+    expect(result.replyText).toContain('Self-hosted Sage is not configured for chat in this server yet.');
+    expect(result.meta).toEqual({
+      kind: 'missing_api_key',
+      missingApiKey: {
+        recovery: 'host_api_key',
+      },
+    });
     expect(mockRunAgentGraphTurn).not.toHaveBeenCalled();
   });
 });

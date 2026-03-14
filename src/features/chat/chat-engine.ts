@@ -14,6 +14,7 @@ import {
 } from '../agent-runtime/continuityContext';
 import { LLMMessageContent } from '../../platform/llm/llm-types';
 import { config } from '../../platform/config/env';
+import type { RunChatTurnResult } from '../agent-runtime/agentRuntime';
 
 import { limitByKey } from '../../shared/async/perKeyConcurrency';
 
@@ -60,21 +61,7 @@ export async function generateChatReply(params: {
   isVoiceActive?: boolean;
   voiceChannelId?: string | null;
   isAdmin?: boolean;
-}): Promise<{
-  replyText: string;
-  delivery: 'chat_reply' | 'approval_governance_only' | 'chat_reply_with_continue';
-  meta?: {
-    kind?: 'missing_api_key';
-    continuation?: {
-      id: string;
-      expiresAtIso: string;
-      completedWindows: number;
-      maxWindows: number;
-      summaryText: string;
-    };
-  };
-  files?: Array<{ attachment: Buffer; name: string }>;
-}> {
+}): Promise<Pick<RunChatTurnResult, 'replyText' | 'delivery' | 'meta' | 'files'>> {
   // Enforce sequential processing per user
   const limit = limitByKey(params.userId, 1);
 

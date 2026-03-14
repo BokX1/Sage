@@ -7,7 +7,7 @@ const pages = [
     // ── Guides ──
     { title: "Quickstart Guide", url: `${BASE}/guides/QUICKSTART.md`, icon: "⚡", cat: "guide" },
     { title: "Getting Started", url: `${BASE}/guides/GETTING_STARTED.md`, icon: "🚀", cat: "guide" },
-    { title: "Commands Reference", url: `${BASE}/guides/COMMANDS.md`, icon: "🎮", cat: "guide" },
+    { title: "Conversation & Controls", url: `${BASE}/guides/COMMANDS.md`, icon: "🎮", cat: "guide" },
     { title: "BYOP Setup", url: `${BASE}/guides/BYOP.md`, icon: "🔑", cat: "guide" },
     { title: "FAQ", url: `${BASE}/guides/FAQ.md`, icon: "❓", cat: "guide" },
     { title: "Troubleshooting", url: `${BASE}/guides/TROUBLESHOOTING.md`, icon: "🔧", cat: "guide" },
@@ -90,7 +90,7 @@ const CommandPalette = () => {
                 aria-expanded={isOpen}
                 aria-haspopup="dialog"
                 aria-label="Open documentation search (Ctrl or Command plus K)"
-                className="fixed top-24 lg:top-auto lg:bottom-8 right-8 z-[90] px-4 py-3 rounded-full bg-[#141a23]/80 backdrop-blur border border-white/10 text-slate-300 text-sm font-medium hover:bg-white/10 hover:border-[#78b846]/50 transition-all shadow-lg flex items-center gap-3 group"
+                className="fixed bottom-5 right-4 lg:bottom-8 lg:right-8 z-[90] px-4 py-3 rounded-full bg-[#141a23]/80 backdrop-blur border border-white/10 text-slate-300 text-sm font-medium hover:bg-white/10 hover:border-[#78b846]/50 transition-all shadow-lg flex items-center gap-3 group"
             >
                 <span className="text-slate-400 group-hover:text-[#a9df7c] transition-colors">Search Docs</span>
                 <div className="flex items-center gap-1 font-mono text-[10px] text-slate-500 bg-black/20 px-2 py-1 rounded">
@@ -128,7 +128,7 @@ const CommandPalette = () => {
                                 <input
                                     ref={inputRef}
                                     type="text"
-                                    placeholder="Search documentation, guides, or commands..."
+                                    placeholder="Search documentation, guides, or controls..."
                                     value={query}
                                     onChange={(e) => setQuery(e.target.value)}
                                     aria-label="Search documentation"

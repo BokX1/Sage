@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
+import MobileNav from './MobileNav.jsx';
 
 const navLinks = [
     { href: '#tech-stack', label: 'Stack' },
@@ -80,6 +81,7 @@ export default function NavBar() {
                     >
                         View on GitHub
                     </a>
+                    <MobileNav />
                 </div>
             </div>
         </nav>

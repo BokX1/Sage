@@ -18,6 +18,7 @@ import {
   saveVerifiedGuildApiKey,
 } from '../settings/guildApiKeyService';
 import { isAdminInteraction } from '../../platform/discord/admin-permissions';
+import { buildMissingGuildActivationText } from './userFacingCopy';
 
 const GUILD_API_KEY_SET_CUSTOM_ID = 'sage:bootstrap:key:set';
 const GUILD_API_KEY_CHECK_CUSTOM_ID = 'sage:bootstrap:key:check';
@@ -74,12 +75,8 @@ export function buildGuildApiKeyMissingResponse(params: { isAdmin: boolean }): {
   content: string;
   components: ReturnType<typeof makeBootstrapRows>;
 } {
-  const content = params.isAdmin
-    ? '⚠️ I need a server API key before I can respond here. Use the controls below to activate Sage for this server.'
-    : `⚠️ I need a server API key before I can respond here. ${buildGuildApiKeySetupGuidance()}`;
-
   return {
-    content,
+    content: buildMissingGuildActivationText(params),
     components: makeBootstrapRows(!params.isAdmin),
   };
 }
@@ -90,9 +87,9 @@ export function buildGuildApiKeyWelcomeActions() {
 
 export function buildGuildApiKeySetupCardContent(): string {
   return [
-    '**Server API Key Setup**',
+    '**Activate Hosted Sage For This Server**',
     '',
-    'Sage is commandless now. Use the controls below to get a Pollinations key, submit it securely, check status, or clear it.',
+    'Hosted Sage is chat-first. Use the controls below to get a Pollinations key, submit it securely, check status, or clear it.',
   ].join('\n');
 }
 
@@ -165,7 +162,7 @@ export async function handleGuildApiKeyBootstrapButtonInteraction(
   await interaction.deferReply({ ephemeral: true });
   await clearGuildApiKey(interaction.guildId);
   await interaction.editReply(
-    `🗑️ **Server-wide API Key removed.** ${buildGuildApiKeySetupGuidance()}`,
+    'Hosted Sage was deactivated for this server. Next: use Get Pollinations Key and Set Server Key to activate it again.',
   );
   return true;
 }
@@ -201,7 +198,9 @@ export async function handleGuildApiKeyBootstrapModalSubmit(
 
   if (!result.ok) {
     if (result.reason === 'invalid_format') {
-      await interaction.editReply('⚠️ Invalid key format. It should start with `sk_`.');
+      await interaction.editReply(
+        'That key format does not look right. Why: Pollinations keys should start with `sk_`. Next: copy the full key again and retry.',
+      );
       return true;
     }
     await interaction.editReply(getKeySetVerificationFailureMessage(result.reason));
@@ -210,7 +209,7 @@ export async function handleGuildApiKeyBootstrapModalSubmit(
 
   const balanceInfo = result.balanceText ? ` (Balance: ${result.balanceText})` : '';
   await interaction.editReply(
-    `✅ **Server-wide API Key saved!**\nAccount: ${result.accountLabel}${balanceInfo}\nSage will now use this key for **all members** in this server.`,
+    `Hosted Sage is active for this server.\nAccount: ${result.accountLabel}${balanceInfo}\nNext: talk to Sage normally with a mention, reply, or a message that starts with \`Sage\`.`,
   );
   return true;
 }

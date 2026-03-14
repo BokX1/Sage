@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { nativeTools as tools } from '../lib/nativeTools.js';
 
@@ -10,6 +10,7 @@ const categories = [
     { key: 'gen', label: 'Creative', count: tools.filter(t => t.cat === 'gen').length, color: '#78b846' },
     { key: 'system', label: 'System', count: tools.filter(t => t.cat === 'system').length, color: '#78b846' },
 ];
+const MOBILE_PREVIEW_LIMIT = 8;
 
 // SVG Circuit Background with Dynamic Pattern
 function CircuitPaths({ activeColor }) {
@@ -142,10 +143,21 @@ function ToolCard({ tool }) {
 export default function ToolGrid() {
     const [activeFilter, setActiveFilter] = useState('all');
     const [expandedSections, setExpandedSections] = useState(['discord']); // Open discord by default
+    const [isMobile, setIsMobile] = useState(false);
+    const [expandedMobileCategories, setExpandedMobileCategories] = useState([]);
 
     const activeColor = useMemo(() => {
         return categories.find(c => c.key === activeFilter)?.color || '#78b846';
     }, [activeFilter]);
+
+    useEffect(() => {
+        const media = window.matchMedia('(max-width: 767px)');
+        const syncMobile = () => setIsMobile(media.matches);
+
+        syncMobile();
+        media.addEventListener('change', syncMobile);
+        return () => media.removeEventListener('change', syncMobile);
+    }, []);
 
     const handleFilterClick = (key) => {
         setActiveFilter(key);
@@ -165,6 +177,9 @@ export default function ToolGrid() {
             : [...expandedSections, key];
 
         setExpandedSections(nextExpanded);
+        if (isCurrentlyExpanded) {
+            setExpandedMobileCategories((current) => current.filter((categoryKey) => categoryKey !== key));
+        }
 
         if (!isCurrentlyExpanded && activeFilter !== 'all') {
             setActiveFilter(key);
@@ -216,7 +231,7 @@ export default function ToolGrid() {
                     Zero Plugins.
                 </h2>
                 <p className="text-lg text-slate-400 max-w-2xl mx-auto font-light leading-relaxed">
-                    Every node is an autonomous agentic capability, strongly typed by Zod, and routed dynamically by the engine based on contextual need.
+                    Start with a preview of Sage’s core surfaces, then expand any subsystem when you want the full runtime map.
                 </p>
             </motion.div>
 
@@ -253,6 +268,9 @@ export default function ToolGrid() {
             <div className="relative z-10 flex flex-col gap-6">
                 {categories.filter(c => c.key !== 'all').map(cat => {
                     const catTools = tools.filter(t => t.cat === cat.key);
+                    const isMobileExpanded = expandedMobileCategories.includes(cat.key);
+                    const previewingMobile = isMobile && !isMobileExpanded && catTools.length > MOBILE_PREVIEW_LIMIT;
+                    const visibleTools = previewingMobile ? catTools.slice(0, MOBILE_PREVIEW_LIMIT) : catTools;
                     const isExpanded = expandedSections.includes(cat.key);
                     const isMuted = activeFilter !== 'all' && activeFilter !== cat.key;
 
@@ -290,13 +308,28 @@ export default function ToolGrid() {
                                         transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
                                     >
                                         <div className="p-6 pt-2 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 xl:grid-cols-4">
-                                            {catTools.map(tool => (
+                                            {visibleTools.map(tool => (
                                                 <ToolCard
                                                     key={tool.name}
                                                     tool={tool}
                                                 />
                                             ))}
                                         </div>
+                                        {previewingMobile && (
+                                            <div className="px-6 pb-6 pt-2">
+                                                <button
+                                                    type="button"
+                                                    onClick={() =>
+                                                        setExpandedMobileCategories((current) =>
+                                                            current.includes(cat.key) ? current : [...current, cat.key]
+                                                        )
+                                                    }
+                                                    className="w-full rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm font-medium text-slate-200 hover:bg-white/[0.06] transition-all"
+                                                >
+                                                    Show all {cat.count} {cat.label.toLowerCase()} tools
+                                                </button>
+                                            </div>
+                                        )}
                                     </motion.div>
                                 )}
                             </AnimatePresence>

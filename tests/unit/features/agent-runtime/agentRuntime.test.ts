@@ -12,6 +12,7 @@ const {
   resumeAgentGraphTurnMock,
   getGraphContinuationSessionByIdMock,
   markGraphContinuationSessionExpiredMock,
+  getApprovalReviewRequestByIdMock,
 } = vi.hoisted(() => ({
   upsertTraceStartMock: vi.fn(),
   updateTraceEndMock: vi.fn(),
@@ -30,6 +31,7 @@ const {
   resumeAgentGraphTurnMock: vi.fn(),
   getGraphContinuationSessionByIdMock: vi.fn(),
   markGraphContinuationSessionExpiredMock: vi.fn(),
+  getApprovalReviewRequestByIdMock: vi.fn(),
 }));
 
 vi.mock('@/platform/config/env', () => ({
@@ -122,6 +124,10 @@ vi.mock('@/features/agent-runtime/graphContinuationRepo', () => ({
   markGraphContinuationSessionExpired: markGraphContinuationSessionExpiredMock,
 }));
 
+vi.mock('@/features/admin/approvalReviewRequestRepo', () => ({
+  getApprovalReviewRequestById: getApprovalReviewRequestByIdMock,
+}));
+
 vi.mock('@/features/voice/voiceConversationSessionStore', () => ({
   formatLiveVoiceContext: vi.fn(() => null),
 }));
@@ -189,6 +195,8 @@ describe('agentRuntime', () => {
     getGraphContinuationSessionByIdMock.mockReset();
     markGraphContinuationSessionExpiredMock.mockReset();
     clearGitHubFileLookupCacheForTraceMock.mockReset();
+    getApprovalReviewRequestByIdMock.mockReset();
+    getApprovalReviewRequestByIdMock.mockResolvedValue(null);
   });
 
   it('scrubs tool narration and raw approval payloads from final reply text', () => {
@@ -239,7 +247,13 @@ describe('agentRuntime', () => {
 
     expect(result.replyText).toBe('');
     expect(result.delivery).toBe('approval_governance_only');
-    expect(result.meta).toBeUndefined();
+    expect(result.meta).toEqual({
+      approvalReview: {
+        requestId: 'request-1',
+        reviewChannelId: '',
+        sourceChannelId: '',
+      },
+    });
     expect(updateTraceEndMock).toHaveBeenCalledWith(
       expect.objectContaining({
         id: 'trace-1',

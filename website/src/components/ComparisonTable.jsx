@@ -11,7 +11,7 @@ const features = [
     { name: 'Conversational Configuration', sage: true, traditional: false, desc: 'Change settings via natural language' },
     { name: 'Self-Hosted / Sovereign', sage: true, traditional: false, desc: 'Your data never leaves your infra' },
     { name: 'Basic Moderation', sage: true, traditional: true, desc: 'Kick, ban, mute, timeouts' },
-    { name: 'Custom Commands', sage: true, traditional: true, desc: 'Slash commands and triggers' },
+    { name: 'Chat-First Triggers', sage: true, traditional: false, desc: 'Mentions, replies, and wake-word entrypoints' },
     { name: 'Role Management', sage: true, traditional: true, desc: 'Auto-roles and reaction roles' },
 ];
 
@@ -59,7 +59,7 @@ export default function ComparisonTable() {
                     Beyond <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#78b846] to-[#a9df7c]">Traditional</span> Bots
                 </h2>
                 <p className="text-lg text-slate-400 max-w-2xl mx-auto font-light">
-                    Sage isn't a chatbot with more commands. It's a cognitive runtime that reasons, remembers, and acts autonomously.
+                    Sage isn't a chatbot with a bigger command list. It's a cognitive runtime that reasons, remembers, and acts autonomously.
                 </p>
             </motion.div>
 

@@ -37,6 +37,7 @@
 - Added a dedicated `discord_voice` routed tool for live voice presence control so Sage can report voice status, join the invoker's current voice channel, and leave the active guild voice channel through normal chat turns.
 
 ### Changed
+- Reworked Sage's user-facing activation and setup experience across Discord, onboarding, diagnostics, docs, and the website: hosted-vs-self-hosted guidance now uses one consistent story, interactive/runtime recovery messages explain the next action more clearly, onboarding now clears stale host-level API keys when operators switch to server-key activation while preserving existing split-model installs unless operators explicitly choose shared defaults, `npm run doctor` now groups blocking vs recommended follow-ups, and the landing page now surfaces mobile navigation plus clearer hosted/self-hosted CTAs earlier in the flow.
 - Trimmed prompt creep in Sage's always-on runtime surface by removing the duplicate `<tool_usage>` wrapper, slimming `<current_turn>` and `<guild_sage_persona>` down to structural context, collapsing continuity routing onto the structured `continuity_policy`, and stripping repeated cross-tool anti-pattern restatements so the frontier-model brief stays leaner without changing tool contracts.
 - Tightened Sage's model-visible tool-guidance hierarchy so top-level prompt guidance now does sharper cross-tool arbitration, routed-tool help carries more self-sufficient action-choice and wrong-turn recovery nuance, and new scenario-driven tests guard that a frontier model can choose the right tool/help path without extra scaffolding.
 - Tightened Sage's runtime prompt boundary contract so the base prompt now owns only durable operator invariants, the capability prompt stays focused on runtime protocol plus critical Discord routing distinctions, and the always-on tool-selection guide pulls terser prompt guidance while verbose nuance remains in routed-tool help.
@@ -141,6 +142,7 @@
 
 ### Fixed
 
+- Fixed the final UX-hardening regressions around missing-key recovery and legacy command drift in Discord: self-hosted guilds without a host `AI_PROVIDER_API_KEY` now stay on self-hosted operator guidance instead of being misrouted into the hosted Pollinations activation flow, approval-only turns that also attach generated files now keep the “review posted” acknowledgement in the same reply, and startup now clears stale registered application commands so the commandless runtime no longer advertises dead slash commands.
 - Fixed `bulk_delete_messages` preflight channel inference when `request.channelId` is omitted: Discord message URLs are now treated as authoritative channel scope, so URL-only moderation batches no longer fail as false cross-channel mixes against the source channel default.
 - Fixed Discord REST write safety by making transient 5xx/transport retries method-aware: non-idempotent writes no longer auto-retry by default, while rate-limit (429) retries remain enabled and non-idempotent retry replay can be explicitly opted in when safe.
 - Fixed two tool-loop stagnation blind spots: repeated read-only batches that return the same uncached data after a prior write now stop early instead of consuming extra rounds, and stagnation detection now keys off the truncated executed batch so discarded tail calls cannot hide repeated non-productive work.
@@ -171,6 +173,7 @@
 - Removed the last legacy interactive Discord message path (`legacy_components`) from Sage’s model-facing tool surface and runtime execution contract, so operators no longer have a stale third presentation mode that conflicts with the split-tool mental model.
 - Removed the last internal legacy `discord` tool module and old monolith-named test surfaces, so the checked-in runtime, tests, and website no longer describe a singular provider-facing Discord tool shape.
 - Removed the dead `sage-command-handlers` helper/test path and the unused local `cert` CLI entrypoint, trimming leftover development-era surfaces from the commandless Discord build so the repository only carries supported runtime and operator flows.
+- Removed the final slash-command cleanup leftovers from the current UX pass, including the dead command-reply helper plus stale operator/site copy that still described redirected slash-command behavior after Sage became fully commandless.
 - Removed the "Trust & Quality" section from the website homepage and deleted the `TrustBadges.jsx` component.
 - Removed the last LangGraph cutover leftovers from the approval runtime: moderation execution no longer reconstructs legacy `payloadJson.action` requests, approval card refresh/deletion now has one owner plus deduped timers, and `AgentTrace` no longer carries the dead `reasoningText` column.
 

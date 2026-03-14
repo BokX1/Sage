@@ -21,6 +21,12 @@ const mockDeleteAttachmentChunks = vi.hoisted(() => vi.fn().mockResolvedValue(un
 const mockIngestAttachmentText = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
 const mockQueueImageAttachmentRecall = vi.hoisted(() => vi.fn());
 const mockCreateInteractiveButtonSession = vi.hoisted(() => vi.fn(async () => 'sage:ui:continue-1'));
+const mockBuildGuildApiKeyMissingResponse = vi.hoisted(() =>
+  vi.fn(() => ({
+    content: 'missing key',
+    components: [],
+  })),
+);
 
 vi.mock('@/features/chat/chat-engine', () => ({
   generateChatReply: mockGenerateChatReply,
@@ -71,6 +77,10 @@ vi.mock('@/features/discord/interactiveComponentService', () => ({
     style: params.style === 'primary' ? 1 : 2,
   })),
   createInteractiveButtonSession: mockCreateInteractiveButtonSession,
+}));
+
+vi.mock('@/features/discord/byopBootstrap', () => ({
+  buildGuildApiKeyMissingResponse: mockBuildGuildApiKeyMissingResponse,
 }));
 
 import { config } from '@/platform/config/env';
@@ -156,6 +166,11 @@ describe('messageCreate - ingest + reply gating', () => {
     mockUpsertIngestedAttachment.mockResolvedValue({ id: 'attachment-row-default' });
     mockQueueImageAttachmentRecall.mockReset();
     mockCreateInteractiveButtonSession.mockReset();
+    mockBuildGuildApiKeyMissingResponse.mockReset();
+    mockBuildGuildApiKeyMissingResponse.mockReturnValue({
+      content: 'missing key',
+      components: [],
+    });
     config.FILE_INGEST_MAX_ATTACHMENTS_PER_MESSAGE = defaultMaxAttachmentsPerMessage;
     messageCounter = 0;
     resetInvocationCooldowns();
@@ -201,6 +216,13 @@ describe('messageCreate - ingest + reply gating', () => {
     mockGenerateChatReply.mockResolvedValueOnce({
       replyText: '',
       delivery: 'approval_governance_only',
+      meta: {
+        approvalReview: {
+          requestId: 'approval-1',
+          sourceChannelId: 'channel-101',
+          reviewChannelId: 'review-1',
+        },
+      },
       files: [{ attachment, name: 'report.txt' }],
     });
 
@@ -212,8 +234,38 @@ describe('messageCreate - ingest + reply gating', () => {
 
     expect((message as unknown as { reply: ReturnType<typeof vi.fn> }).reply).toHaveBeenCalledWith(
       expect.objectContaining({
+        content:
+          'Approval review posted in <#review-1>. Next: I will update the status card when the review is resolved.',
         allowedMentions: { repliedUser: false },
         files: [{ attachment, name: 'report.txt' }],
+      }),
+    );
+  });
+
+  it('keeps self-hosted missing-key replies in plain text instead of the hosted Pollinations bootstrap card', async () => {
+    mockGenerateChatReply.mockResolvedValueOnce({
+      replyText:
+        'Self-hosted Sage is not configured for chat in this server yet. Why: this bot instance has no `AI_PROVIDER_API_KEY`, and the hosted Pollinations server-key flow only applies to the hosted invite bot. Next: ask the bot operator to add the self-hosted provider key, then try again.',
+      delivery: 'chat_reply',
+      meta: {
+        kind: 'missing_api_key',
+        missingApiKey: {
+          recovery: 'host_api_key',
+        },
+      },
+      files: [],
+    });
+
+    const message = createMockMessage({
+      content: 'sage hello',
+    });
+
+    await handleMessageCreate(message);
+
+    expect(mockBuildGuildApiKeyMissingResponse).not.toHaveBeenCalled();
+    expect((message as unknown as { reply: ReturnType<typeof vi.fn> }).reply).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: expect.stringContaining('Self-hosted Sage is not configured for chat in this server yet.'),
       }),
     );
   });
@@ -259,7 +311,7 @@ describe('messageCreate - ingest + reply gating', () => {
             components: [
               expect.objectContaining({
                 custom_id: 'sage:ui:continue-1',
-                label: 'Continue',
+                label: 'Continue (2/4)',
               }),
             ],
           },

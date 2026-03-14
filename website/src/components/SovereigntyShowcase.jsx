@@ -41,7 +41,7 @@ export default function SovereigntyShowcase() {
     const mode = modes.find(m => m.key === active) ?? modes[0];
 
     return (
-        <section className="relative max-w-7xl mx-auto px-6 py-24" >
+        <section className="relative max-w-7xl mx-auto px-6 py-24" id="activation-paths" >
             <motion.div
                 className="text-center mb-12"
                 initial={{ opacity: 0, y: 20 }}
@@ -51,18 +51,16 @@ export default function SovereigntyShowcase() {
             >
                 <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#141a23] border border-[#2d4530] text-[#a9df7c] text-xs font-mono mb-6">
                     <span className="w-2 h-2 rounded-full bg-[#78b846] animate-pulse" />
-                    BYOP Architecture
+                    Choose Your Path
                 </div>
                 <h2 className="text-4xl lg:text-5xl font-extrabold text-white mb-4">
-                    Your Key.{' '}
+                    Hosted Or{' '}
                     <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#78b846] to-[#a9df7c]">
-                        Your Provider.
+                        Self-Hosted.
                     </span>
                 </h2>
                 <p className="text-lg text-slate-400 max-w-2xl mx-auto font-light">
-                    BYOP = <strong className="text-white">server-key activation</strong> (hosted flow)
-                    + <strong className="text-white">Bring Your Own Provider</strong> (self-hosted).
-                    Choose how Sage connects to AI.
+                    Sage supports two clear starting paths. Use the hosted bot and activate it in Discord, or self-host Sage against your own OpenAI-compatible provider.
                 </p>
             </motion.div>
 
@@ -158,8 +156,8 @@ export default function SovereigntyShowcase() {
                         {/* Explainer */}
                         <p className="text-xs text-slate-600 font-mono mt-6 leading-relaxed">
                             {active === 'invite'
-                                ? 'Admins trigger Sage once, use the setup card to get a Pollinations key, then submit the key through the modal to activate the hosted bot for the whole server.'
-                                : 'Set LLM_PROVIDER + LLM_BASE_URL + LLM_API_KEY in your .env to point Sage at any OpenAI-compatible endpoint.'}
+                                ? 'Trigger Sage once in Discord, let a server admin use the setup card, and the hosted bot is ready for the whole server.'
+                                : 'Run npm run onboard, fill in AI_PROVIDER_BASE_URL plus your model IDs, and optionally add AI_PROVIDER_API_KEY for a host-level default.'}
                         </p>
                     </motion.div>
                 </div>

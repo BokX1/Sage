@@ -173,15 +173,15 @@ Possible causes:
 
 ## 🔵 Interaction Issues
 
-### Sage says it is chat-first now
+### Slash commands still appear in Discord
 
-**Cause:** A legacy slash command interaction is being used against a commandless build.
+**Cause:** Discord is still showing application commands cached from an older Sage build.
 
 **Fix:**
 
-1. Mention Sage, reply to Sage, or start with `Sage`
-2. For hosted BYOP setup, use the setup card buttons and modal
-3. For voice, ask Sage to join or leave in plain chat
+1. Restart the latest Sage build once so startup can clear legacy application commands
+2. Give Discord a short refresh window, then reopen the command picker
+3. Use chat-first entrypoints instead: mention Sage, reply to Sage, or start with `Sage`
 
 ### “Unknown interaction” error
 

@@ -12,7 +12,7 @@ Set up Sage from source — even if you’ve never built a Discord bot before.
   <img src="https://img.shields.io/badge/Steps-7-orange?style=flat-square" alt="Steps" />
 </p>
 
-**Outcome:** A running Sage instance + a working invite link + explicit AI-provider runtime configuration for chat, plus optional hosted BYOP/image-provider setup when you use Sage's built-in server flow
+**Outcome:** A running self-hosted Sage instance, a working invite link, and a clear provider setup choice: host-level key now, server activation later, or both.
 
 ---
 
@@ -178,13 +178,14 @@ The wizard will ask for:
 | **DISCORD_APP_ID** | Application ID from Step 2.2 |
 | **DATABASE_URL** | Choose **Use local Docker default** for local setup |
 | **AI_PROVIDER_BASE_URL** | Required base URL for your OpenAI-compatible chat-completions endpoint |
-| **AI_PROVIDER_API_KEY** | Optional host-level fallback key for that AI provider |
+| **AI provider setup mode** | Choose whether to set a host-level key now, rely on server activation later, or support both |
+| **AI_PROVIDER_API_KEY** | Host-level provider key if you want Sage to have a default key outside the in-Discord server activation flow |
 | **AI_PROVIDER_MAIN_AGENT_MODEL** | Required main runtime agent model id |
-| **AI_PROVIDER_PROFILE_AGENT_MODEL** | Required profile-analysis agent model id |
-| **AI_PROVIDER_SUMMARY_AGENT_MODEL** | Required summary agent model id |
+| **AI_PROVIDER_PROFILE_AGENT_MODEL** | Defaults to the main model unless you choose a separate profile model |
+| **AI_PROVIDER_SUMMARY_AGENT_MODEL** | Defaults to the main model unless you choose a separate summary model |
 | **AI_PROVIDER_MODEL_PROFILES_JSON** | Optional JSON object describing budgets/capabilities for any configured agent models |
 
-> ✅ The wizard can also run optional post-setup steps for you (start Docker, run migrations, run doctor).
+> ✅ The wizard also ends with a grouped setup summary for Discord, database, AI provider configuration, and next steps.
 
 **Non-interactive option (CI/automation):**
 
@@ -302,12 +303,12 @@ Keep this terminal window open.
 
 ## 7️⃣ Optional: Activate a Server Key (Pollinations BYOP)
 
-Use this step if you want Sage's built-in server-wide BYOP flow. If you already configured `AI_PROVIDER_API_KEY` for your self-hosted runtime provider, you can skip it, but you do not have to set a host key anymore.
+Use this step if you want Sage's built-in server-wide activation flow. If you already configured `AI_PROVIDER_API_KEY` for your self-hosted runtime provider, you can skip it, but you do not have to set a host key anymore.
 
 ### 7.1 Trigger the setup card
 
 1. Mention Sage or start a message with `Sage`
-2. If the guild has no usable key, Sage posts the setup card
+2. If the guild has no usable key, Sage posts the setup card for that server
 3. Click `Get Pollinations Key` and sign in via Pollinations (GitHub)
 4. Copy the `sk_...` key from the URL
 
@@ -328,6 +329,7 @@ Use this step if you want Sage's built-in server-wide BYOP flow. If you already 
 
 - [ ] Sage appears in your server member list
 - [ ] Mention Sage or use the wake word — Sage should reply in-channel
+- [ ] If you skipped `AI_PROVIDER_API_KEY`, trigger Sage once and confirm the setup card explains how to activate the server
 - [ ] Chat with Sage in any of these ways:
   - **Wake word:** `Sage, hello!`
   - **Mention:** `@Sage what's up?`

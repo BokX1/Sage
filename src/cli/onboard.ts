@@ -34,6 +34,8 @@ type CliArgs = {
   secretEncryptionKey?: string;
 };
 
+export type ProviderSetupMode = 'host_key_now' | 'server_key_later' | 'both';
+
 type PromptTools = {
   intro: (message: string) => void;
   outro: (message: string) => void;
@@ -197,6 +199,19 @@ Options:
   -h, --help                       Show this help`);
 }
 
+export function inferProviderSetupMode(params: {
+  argsApiKey?: string;
+  existingApiKey?: string;
+}): ProviderSetupMode {
+  if ((params.argsApiKey ?? '').trim().length > 0) {
+    return 'host_key_now';
+  }
+  if ((params.existingApiKey ?? '').trim().length > 0) {
+    return 'both';
+  }
+  return 'server_key_later';
+}
+
 function parseEnvFile(filePath: string): Map<string, string> {
   if (!fs.existsSync(filePath)) return new Map<string, string>();
   const content = fs.readFileSync(filePath, 'utf8');
@@ -305,6 +320,44 @@ function maskValue(value: string | undefined): string {
   return '[SET]';
 }
 
+export function shouldSeedSharedAgentModels(params: {
+  mode: ProviderSetupMode;
+  interactive: boolean;
+  nonInteractive: boolean;
+}): boolean {
+  if (params.nonInteractive || !params.interactive) {
+    return true;
+  }
+  return params.mode !== 'both';
+}
+
+export function applyProviderSetupModeDefaults(
+  values: Map<string, string>,
+  mode: ProviderSetupMode,
+): void {
+  if (mode === 'server_key_later') {
+    values.set('AI_PROVIDER_API_KEY', '');
+  }
+}
+
+export function applySharedAgentModelDefaults(
+  values: Map<string, string>,
+  mainModel: string,
+  options: { overwriteExisting?: boolean } = {},
+): void {
+  const trimmedMainModel = mainModel.trim();
+  if (!trimmedMainModel) {
+    return;
+  }
+
+  if (options.overwriteExisting || !values.get('AI_PROVIDER_PROFILE_AGENT_MODEL')?.trim()) {
+    values.set('AI_PROVIDER_PROFILE_AGENT_MODEL', trimmedMainModel);
+  }
+  if (options.overwriteExisting || !values.get('AI_PROVIDER_SUMMARY_AGENT_MODEL')?.trim()) {
+    values.set('AI_PROVIDER_SUMMARY_AGENT_MODEL', trimmedMainModel);
+  }
+}
+
 function runCommand(command: string, cwd: string) {
   execSync(command, { cwd, stdio: 'inherit' });
 }
@@ -400,6 +453,41 @@ async function buildPromptTools(interactive: boolean): Promise<PromptTools> {
   };
 }
 
+export function buildOnboardingSummary(params: {
+  envPath: string;
+  values: Map<string, string>;
+  mode: ProviderSetupMode;
+  inviteUrl: string;
+}): string {
+  const usingSharedModels =
+    params.values.get('AI_PROVIDER_MAIN_AGENT_MODEL') === params.values.get('AI_PROVIDER_PROFILE_AGENT_MODEL') &&
+    params.values.get('AI_PROVIDER_MAIN_AGENT_MODEL') === params.values.get('AI_PROVIDER_SUMMARY_AGENT_MODEL');
+
+  return [
+    'Discord',
+    `- App ID: ${maskValue(params.values.get('DISCORD_APP_ID'))}`,
+    `- Bot token: ${maskValue(params.values.get('DISCORD_TOKEN'))}`,
+    `- Env file: ${params.envPath}`,
+    '',
+    'Database',
+    `- DATABASE_URL: ${params.values.get('DATABASE_URL') ? '[SET]' : '[NOT SET]'}`,
+    '',
+    'AI provider',
+    `- Setup mode: ${params.mode}`,
+    `- Base URL: ${params.values.get('AI_PROVIDER_BASE_URL') ? '[SET]' : '[NOT SET]'}`,
+    `- Host API key: ${maskValue(params.values.get('AI_PROVIDER_API_KEY'))}`,
+    `- Main model: ${params.values.get('AI_PROVIDER_MAIN_AGENT_MODEL') || '[NOT SET]'}`,
+    `- Profile model: ${params.values.get('AI_PROVIDER_PROFILE_AGENT_MODEL') || '[NOT SET]'}`,
+    `- Summary model: ${params.values.get('AI_PROVIDER_SUMMARY_AGENT_MODEL') || '[NOT SET]'}`,
+    `- Shared model defaults: ${usingSharedModels ? 'yes' : 'no'}`,
+    '',
+    'Next steps',
+    `- Invite Sage: ${params.inviteUrl}`,
+    '- Start Sage: npm run dev',
+    '- Run diagnostics: npm run doctor',
+  ].join('\n');
+}
+
 async function main() {
   const args = parseArgs(process.argv);
   if (args.help) {
@@ -440,6 +528,36 @@ async function main() {
   const dockerDatabaseUrl = dockerDefaults
     ? `postgresql://${dockerDefaults.user}:${dockerDefaults.password}@localhost:${dockerDefaults.port}/${dockerDefaults.db}?schema=public`
     : 'postgresql://postgres:password@localhost:5432/sage?schema=public';
+  let providerSetupMode = inferProviderSetupMode({
+    argsApiKey: args.apiKey,
+    existingApiKey: values.get('AI_PROVIDER_API_KEY'),
+  });
+
+  if (interactive && !args.nonInteractive) {
+    providerSetupMode = (await prompts.askSelect(
+      'How should this Sage instance connect to AI?',
+      [
+        {
+          value: 'host_key_now',
+          label: 'Host key now',
+          hint: 'Recommended: set a host-level provider key during onboarding.',
+        },
+        {
+          value: 'server_key_later',
+          label: 'Server key later',
+          hint: 'Skip the host key and rely on Sage server activation inside Discord later.',
+        },
+        {
+          value: 'both',
+          label: 'Support both',
+          hint: 'Set a host key now and keep the server-key flow available too.',
+        },
+      ],
+      providerSetupMode,
+    )) as ProviderSetupMode;
+  }
+
+  applyProviderSetupModeDefaults(values, providerSetupMode);
 
   const shouldPrompt = (key: string) => interactive && !args.yes && values.has(key);
 
@@ -534,34 +652,56 @@ async function main() {
     }
   });
 
-  if (
-    args.apiKey !== undefined ||
-    !values.get('AI_PROVIDER_API_KEY') ||
-    (shouldPrompt('AI_PROVIDER_API_KEY') &&
-      (await prompts.askConfirm('AI_PROVIDER_API_KEY already exists. Overwrite?', false)))
-  ) {
-    if (args.apiKey !== undefined) {
-      values.set('AI_PROVIDER_API_KEY', args.apiKey.trim());
-    } else if (!args.nonInteractive) {
-      values.set(
-        'AI_PROVIDER_API_KEY',
-        await prompts.askSecret(
-          'Optional host AI provider API key (leave blank to rely on in-Discord server keys)',
-          false,
-        ),
-      );
+  if (providerSetupMode !== 'server_key_later') {
+    if (
+      args.apiKey !== undefined ||
+      !values.get('AI_PROVIDER_API_KEY') ||
+      (shouldPrompt('AI_PROVIDER_API_KEY') &&
+        (await prompts.askConfirm('AI_PROVIDER_API_KEY already exists. Overwrite?', false)))
+    ) {
+      if (args.apiKey !== undefined) {
+        values.set('AI_PROVIDER_API_KEY', args.apiKey.trim());
+      } else if (!args.nonInteractive) {
+        values.set(
+          'AI_PROVIDER_API_KEY',
+          await prompts.askSecret(
+            providerSetupMode === 'both'
+              ? 'Optional host AI provider API key (Sage will still support server activation later)'
+              : 'Host AI provider API key',
+            false,
+          ),
+        );
+      }
     }
   }
 
   await ensureTextValue('AI_PROVIDER_MAIN_AGENT_MODEL', 'AI provider main agent model', args.model);
-  await ensureTextValue(
-    'AI_PROVIDER_PROFILE_AGENT_MODEL',
-    'AI provider profile agent model',
-  );
-  await ensureTextValue(
-    'AI_PROVIDER_SUMMARY_AGENT_MODEL',
-    'AI provider summary agent model',
-  );
+  if (shouldSeedSharedAgentModels({
+    mode: providerSetupMode,
+    interactive,
+    nonInteractive: !!args.nonInteractive,
+  })) {
+    applySharedAgentModelDefaults(values, values.get('AI_PROVIDER_MAIN_AGENT_MODEL') ?? '');
+  } else {
+    const reuseMainModel = await prompts.askConfirm(
+      'Use the main model for profile and summary work too?',
+      true,
+    );
+    if (reuseMainModel) {
+      applySharedAgentModelDefaults(values, values.get('AI_PROVIDER_MAIN_AGENT_MODEL') ?? '', {
+        overwriteExisting: true,
+      });
+    } else {
+      await ensureTextValue(
+        'AI_PROVIDER_PROFILE_AGENT_MODEL',
+        'AI provider profile agent model',
+      );
+      await ensureTextValue(
+        'AI_PROVIDER_SUMMARY_AGENT_MODEL',
+        'AI provider summary agent model',
+      );
+    }
+  }
 
   for (const key of REQUIRED_KEYS) {
     const value = values.get(key);
@@ -591,36 +731,10 @@ async function main() {
   const output = buildEnvOutput(exampleLines, values, extraEntries);
 
   if (args.dryRun) {
-    prompts.note(
-      [
-        `Dry-run mode: no files were written.`,
-        `Target env file: ${envPath}`,
-        `DISCORD_TOKEN: ${maskValue(values.get('DISCORD_TOKEN'))}`,
-        `DISCORD_APP_ID: ${maskValue(values.get('DISCORD_APP_ID'))}`,
-        `DATABASE_URL: ${values.get('DATABASE_URL') ? '[SET]' : '[NOT SET]'}`,
-        `AI_PROVIDER_BASE_URL: ${values.get('AI_PROVIDER_BASE_URL') ? '[SET]' : '[NOT SET]'}`,
-        `AI_PROVIDER_API_KEY: ${maskValue(values.get('AI_PROVIDER_API_KEY'))}`,
-        `AI_PROVIDER_MAIN_AGENT_MODEL: ${values.get('AI_PROVIDER_MAIN_AGENT_MODEL') || '[NOT SET]'}`,
-        `AI_PROVIDER_PROFILE_AGENT_MODEL: ${values.get('AI_PROVIDER_PROFILE_AGENT_MODEL') || '[NOT SET]'}`,
-        `AI_PROVIDER_SUMMARY_AGENT_MODEL: ${values.get('AI_PROVIDER_SUMMARY_AGENT_MODEL') || '[NOT SET]'}`,
-      ].join('\n'),
-      'Preview',
-    );
+    prompts.note('Dry-run mode: no files were written.', 'Preview');
   } else {
     writeEnvFileAtomic(envPath, output);
-    prompts.note(
-      [
-        `Updated ${envPath}`,
-        `DISCORD_TOKEN: ${maskValue(values.get('DISCORD_TOKEN'))}`,
-        `DISCORD_APP_ID: ${maskValue(values.get('DISCORD_APP_ID'))}`,
-        `AI_PROVIDER_BASE_URL: ${values.get('AI_PROVIDER_BASE_URL') ? '[SET]' : '[NOT SET]'}`,
-        `AI_PROVIDER_API_KEY: ${maskValue(values.get('AI_PROVIDER_API_KEY'))}`,
-        `AI_PROVIDER_MAIN_AGENT_MODEL: ${values.get('AI_PROVIDER_MAIN_AGENT_MODEL') || '[NOT SET]'}`,
-        `AI_PROVIDER_PROFILE_AGENT_MODEL: ${values.get('AI_PROVIDER_PROFILE_AGENT_MODEL') || '[NOT SET]'}`,
-        `AI_PROVIDER_SUMMARY_AGENT_MODEL: ${values.get('AI_PROVIDER_SUMMARY_AGENT_MODEL') || '[NOT SET]'}`,
-      ].join('\n'),
-      'Configuration',
-    );
+    prompts.note(`Updated ${envPath}`, 'Configuration');
   }
 
   const shouldStartDocker = args.startDocker ?? (!args.nonInteractive && !args.dryRun
@@ -661,19 +775,27 @@ async function main() {
     : '(missing DISCORD_APP_ID)';
 
   prompts.note(
-    [
-      `Invite URL: ${inviteUrl}`,
-      `Next step: npm run dev`,
-      `Need diagnostics: npm run doctor`,
-    ].join('\n'),
-    'Next steps',
+    buildOnboardingSummary({
+      envPath,
+      values,
+      mode: providerSetupMode,
+      inviteUrl,
+    }),
+    args.dryRun ? 'Preview summary' : 'Setup summary',
   );
 
   prompts.outro(args.dryRun ? 'Onboarding dry-run completed.' : 'Onboarding completed.');
 }
 
-main().catch((error) => {
-  console.error('Onboarding failed.');
-  console.error(error instanceof Error ? error.message : String(error));
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch((error) => {
+    console.error('Onboarding failed.');
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  });
+}
+
+export {
+  main,
+  maskValue,
+};

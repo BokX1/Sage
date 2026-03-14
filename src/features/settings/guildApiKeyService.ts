@@ -87,7 +87,7 @@ export function resolveProfileTimeoutMs(timeoutMs: number | undefined): number {
 }
 
 export function buildGuildApiKeySetupGuidance(): string {
-  return 'Ask a server admin to click Sage’s key setup controls, get a Pollinations key, and submit it through the secure setup modal.';
+  return 'Ask a server admin to use Sage’s setup controls, get a Pollinations key, and submit it through the secure setup modal.';
 }
 
 export function buildGuildApiKeyLoginInstructions(): string[] {
@@ -106,17 +106,17 @@ export function buildGuildApiKeyLoginInstructions(): string[] {
 export function getKeySetVerificationFailureMessage(reason: ProfileVerificationFailureReason): string {
   switch (reason) {
     case 'unauthorized':
-      return '❌ **Invalid API Key.** Pollinations rejected this key (invalid or expired). Click the login link again and try a fresh key.';
+      return 'Pollinations rejected that key. Why: it is invalid or expired. Next: click the login link again, copy a fresh key, and retry.';
     case 'timeout':
-      return '⚠️ Pollinations timed out while verifying your key. Please try again in a moment.';
+      return 'Pollinations timed out while verifying that key. Next: wait a moment and try again.';
     case 'upstream':
-      return '⚠️ Pollinations returned an error while verifying your key. Please try again shortly.';
+      return 'Pollinations returned an error while verifying that key. Next: try again shortly.';
     case 'invalid_response':
-      return '⚠️ Pollinations returned an unexpected verification response. Please retry with a fresh key.';
+      return 'Pollinations returned an unexpected verification response. Next: copy a fresh key and retry.';
     case 'network':
-      return '⚠️ Could not reach Pollinations to verify your key. Please check connectivity and try again.';
+      return 'I could not reach Pollinations to verify that key. Next: check connectivity and try again.';
     default:
-      return '⚠️ Failed to verify your key with Pollinations. Please try again.';
+      return 'I could not verify that key with Pollinations. Next: try again.';
   }
 }
 

@@ -1,6 +1,5 @@
 import {
   ButtonInteraction,
-  ChatInputCommandInteraction,
   MessageFlags,
   ModalSubmitInteraction,
   type InteractionEditReplyOptions,
@@ -23,8 +22,15 @@ import { generateTraceId } from '../../../shared/observability/trace-id-generato
 import { smartSplit } from '../../../shared/text/message-splitter';
 import { isAdminFromMember } from '../../../platform/discord/admin-permissions';
 import { client } from '../../../platform/discord/client';
+import {
+  buildApprovalReviewPostedText,
+  buildContinueChannelMismatchText,
+  buildContinueOwnerMismatchText,
+  buildContinuationButtonLabel,
+  buildExpiredInteractionText,
+} from '../../../features/discord/userFacingCopy';
 
-type RepliableInteraction = ButtonInteraction | ModalSubmitInteraction | ChatInputCommandInteraction;
+type RepliableInteraction = ButtonInteraction | ModalSubmitInteraction;
 
 function resolveInteractionDisplayName(interaction: RepliableInteraction): string {
   const member = interaction.member;
@@ -51,7 +57,11 @@ async function publishChatResultToInteraction(params: {
   isAdmin: boolean;
   ephemeral: boolean;
 }): Promise<void> {
-  if (params.result.meta?.kind === 'missing_api_key' && params.interaction.guildId) {
+  if (
+    params.result.meta?.kind === 'missing_api_key' &&
+    params.interaction.guildId &&
+    params.result.meta.missingApiKey?.recovery === 'server_key_activation'
+  ) {
     const missing = buildGuildApiKeyMissingResponse({ isAdmin: params.isAdmin });
     await sendInteractionReply(params.interaction, {
       content: missing.content,
@@ -62,8 +72,9 @@ async function publishChatResultToInteraction(params: {
   }
 
   if (params.result.delivery === 'approval_governance_only') {
+    const reviewMeta = params.result.meta?.approvalReview;
     await sendInteractionReply(params.interaction, {
-      content: params.ephemeral ? 'Approval review posted.' : '\u200b',
+      content: buildApprovalReviewPostedText(reviewMeta),
       files: params.result.files,
     });
     return;
@@ -114,7 +125,7 @@ async function publishChatResultToInteraction(params: {
               components: [
                 buildActionButtonComponent({
                   customId: continuationButtonId,
-                  label: 'Continue',
+                  label: buildContinuationButtonLabel(params.result.meta?.continuation),
                   style: 'primary',
                 }),
               ],
@@ -189,7 +200,7 @@ export async function handleInteractiveButtonSession(
 
   const session = await getActiveInteractiveSession(sessionId);
   if (!session) {
-    await interaction.reply({ content: 'This Sage interaction has expired. Ask Sage again for a fresh one.', ephemeral: true });
+    await interaction.reply({ content: buildExpiredInteractionText('button'), ephemeral: true });
     return true;
   }
 
@@ -205,14 +216,14 @@ export async function handleInteractiveButtonSession(
   if (session.kind === 'graph_continue_button') {
     if (session.createdByUserId !== interaction.user.id) {
       await interaction.reply({
-        content: 'This Continue button belongs to the original requester.',
+        content: buildContinueOwnerMismatchText(),
         ephemeral: true,
       });
       return true;
     }
     if (session.guildId !== interaction.guildId || session.channelId !== interaction.channelId) {
       await interaction.reply({
-        content: 'This Continue button only works in the original channel.',
+        content: buildContinueChannelMismatchText(session.channelId),
         ephemeral: true,
       });
       return true;
@@ -254,7 +265,7 @@ export async function handleInteractiveModalSession(
 
   const session = await getActiveInteractiveSession(sessionId);
   if (!session || session.kind !== 'modal_prompt_button') {
-    await interaction.reply({ content: 'This Sage form has expired. Ask Sage again for a fresh one.', ephemeral: true });
+    await interaction.reply({ content: buildExpiredInteractionText('form'), ephemeral: true });
     return true;
   }
 
@@ -272,11 +283,4 @@ export async function handleInteractiveModalSession(
     ephemeral: session.visibility === 'ephemeral',
   });
   return true;
-}
-
-export async function sendCommandlessNotice(interaction: RepliableInteraction): Promise<void> {
-  await sendInteractionReply(interaction, {
-    content: 'Sage is chat-first now. Mention me, reply to me, or start with `Sage` instead of using slash commands.',
-    ephemeral: true,
-  });
 }

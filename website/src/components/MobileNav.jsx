@@ -6,7 +6,7 @@ const navLinks = [
     { href: '#tools', label: 'Tools', icon: '⚡' },
     { href: '#architecture', label: 'Architecture', icon: '🔧' },
     { href: '#comparison', label: 'Compare', icon: '⚖️' },
-    { href: '#quick-start', label: 'Quick Start', icon: '🚀' },
+    { href: '#quickstart', label: 'Quick Start', icon: '🚀' },
 ];
 
 export default function MobileNav() {
