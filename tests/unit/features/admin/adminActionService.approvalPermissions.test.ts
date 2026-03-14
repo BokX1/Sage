@@ -187,6 +187,7 @@ import {
   createOrReuseApprovalReviewRequestFromSignal,
   executeApprovedReviewRequest,
   handleAdminActionButtonInteraction,
+  handleAdminActionRejectModalSubmit,
   reconcileExpiredApprovalReviewRequests,
 } from '@/features/admin/adminActionService';
 import { ApprovalRequiredSignal } from '@/features/agent-runtime/toolControlSignals';
@@ -236,7 +237,10 @@ function makeInteraction(overrides: Partial<Record<string, unknown>> = {}) {
     },
     inGuild: () => true,
     reply: vi.fn(async () => undefined),
+    deferReply: vi.fn(async () => undefined),
     deferUpdate: vi.fn(async () => undefined),
+    editReply: vi.fn(async () => undefined),
+    deleteReply: vi.fn(async () => undefined),
     followUp: vi.fn(async () => undefined),
     ...overrides,
   };
@@ -633,6 +637,217 @@ describe('adminActionService approval permissions', () => {
           content: 'The approval expired before anyone approved it.',
         }),
       }),
+    );
+  });
+
+  it('publishes approval-resume attachments through the existing guild-scoped REST path', async () => {
+    const approved = makeReviewRequest(
+      {
+        operation: 'set',
+        newInstructionsText: 'Keep replies short.',
+        reason: 'Tone refresh',
+        baseVersion: 2,
+      },
+      {
+        kind: 'server_instructions_update',
+        status: 'pending',
+      },
+    );
+
+    mocks.getApprovalReviewRequestById.mockResolvedValue(approved);
+    mocks.markApprovalReviewRequestDecisionIfPending.mockResolvedValue({
+      ...approved,
+      status: 'approved',
+      decidedBy: 'admin-2',
+      decidedAt: new Date('2026-03-12T00:00:00.000Z'),
+    });
+    const attachment = Buffer.from('approval report');
+    mocks.resumeAgentGraphTurn.mockResolvedValue({
+      replyText: 'Approved. I completed that action.',
+      toolResults: [],
+      files: [{ attachment, name: 'report.txt' }],
+      roundsCompleted: 1,
+      completedWindows: 0,
+      totalRoundsCompleted: 1,
+      deduplicatedCallCount: 0,
+      truncatedCallCount: 0,
+      guardrailBlockedCallCount: 0,
+      roundEvents: [],
+      finalization: {
+        attempted: false,
+        succeeded: true,
+        fallbackUsed: false,
+        returnedToolCallCount: 0,
+        completedAt: '2026-03-12T00:00:00.000Z',
+        terminationReason: 'assistant_reply',
+      },
+      terminationReason: 'assistant_reply',
+      graphStatus: 'completed',
+      pendingInterrupt: null,
+      interruptResolution: null,
+      langSmithRunId: null,
+      langSmithTraceId: null,
+    });
+
+    await handleAdminActionButtonInteraction(
+      makeInteraction({
+        customId: 'sage:admin_action:approve:action-1',
+      }) as never,
+    );
+
+    expect(mocks.discordRestRequestGuildScoped).toHaveBeenCalledWith(
+      expect.objectContaining({
+        method: 'POST',
+        path: '/channels/channel-source/messages',
+        body: expect.objectContaining({
+          content: 'Approved. I completed that action.',
+          attachments: [{ id: 0, filename: 'report.txt' }],
+        }),
+        files: [
+          expect.objectContaining({
+            filename: 'report.txt',
+            source: expect.objectContaining({
+              type: 'base64',
+              base64: attachment.toString('base64'),
+            }),
+          }),
+        ],
+      }),
+    );
+  });
+
+  it('scrubs approval-resume protocol chatter and falls back to a deterministic tool summary before posting', async () => {
+    const approved = makeReviewRequest(
+      {
+        operation: 'set',
+        newInstructionsText: 'Keep replies short.',
+        reason: 'Tone refresh',
+        baseVersion: 2,
+      },
+      {
+        kind: 'server_instructions_update',
+        status: 'pending',
+      },
+    );
+
+    mocks.getApprovalReviewRequestById.mockResolvedValue(approved);
+    mocks.markApprovalReviewRequestDecisionIfPending.mockResolvedValue({
+      ...approved,
+      status: 'approved',
+      decidedBy: 'admin-2',
+      decidedAt: new Date('2026-03-12T00:00:00.000Z'),
+    });
+    mocks.resumeAgentGraphTurn.mockResolvedValue({
+      replyText: 'I will call `discord_admin`.\n```json\n{"action":"delete_message"}\n```',
+      toolResults: [{ name: 'discord_admin', success: true, latencyMs: 0 }],
+      files: [],
+      roundsCompleted: 1,
+      completedWindows: 0,
+      totalRoundsCompleted: 1,
+      deduplicatedCallCount: 0,
+      truncatedCallCount: 0,
+      guardrailBlockedCallCount: 0,
+      roundEvents: [],
+      finalization: {
+        attempted: false,
+        succeeded: true,
+        fallbackUsed: false,
+        returnedToolCallCount: 0,
+        completedAt: '2026-03-12T00:00:00.000Z',
+        terminationReason: 'assistant_reply',
+      },
+      terminationReason: 'assistant_reply',
+      graphStatus: 'completed',
+      pendingInterrupt: null,
+      interruptResolution: null,
+      langSmithRunId: null,
+      langSmithTraceId: null,
+    });
+
+    await handleAdminActionButtonInteraction(
+      makeInteraction({
+        customId: 'sage:admin_action:approve:action-1',
+      }) as never,
+    );
+
+    expect(mocks.discordRestRequestGuildScoped).toHaveBeenCalledWith(
+      expect.objectContaining({
+        method: 'POST',
+        path: '/channels/channel-source/messages',
+        body: expect.objectContaining({
+          content: 'Completed so far: discord_admin.',
+        }),
+      }),
+    );
+    expect(mocks.updateTraceEnd).toHaveBeenCalledWith(
+      expect.objectContaining({
+        replyText: 'Completed so far: discord_admin.',
+      }),
+    );
+  });
+
+  it('clears the reject modal acknowledgement after the resumed rejection reply is published', async () => {
+    const rejected = makeReviewRequest(
+      {
+        operation: 'set',
+        newInstructionsText: 'Keep replies short.',
+        reason: 'Tone refresh',
+        baseVersion: 2,
+      },
+      {
+        kind: 'server_instructions_update',
+        status: 'pending',
+      },
+    );
+
+    mocks.getApprovalReviewRequestById.mockResolvedValue(rejected);
+    mocks.markApprovalReviewRequestDecisionIfPending.mockResolvedValue({
+      ...rejected,
+      status: 'rejected',
+      decidedBy: 'admin-2',
+      decidedAt: new Date('2026-03-12T00:00:00.000Z'),
+      decisionReasonText: 'Looks risky.',
+    });
+    mocks.resumeAgentGraphTurn.mockResolvedValue({
+      replyText: 'Rejected. I left the server unchanged.',
+      toolResults: [],
+      files: [],
+      roundsCompleted: 1,
+      completedWindows: 0,
+      totalRoundsCompleted: 1,
+      deduplicatedCallCount: 0,
+      truncatedCallCount: 0,
+      guardrailBlockedCallCount: 0,
+      roundEvents: [],
+      finalization: {
+        attempted: false,
+        succeeded: true,
+        fallbackUsed: false,
+        returnedToolCallCount: 0,
+        completedAt: '2026-03-12T00:00:00.000Z',
+        terminationReason: 'assistant_reply',
+      },
+      terminationReason: 'assistant_reply',
+      graphStatus: 'completed',
+      pendingInterrupt: null,
+      interruptResolution: null,
+      langSmithRunId: null,
+      langSmithTraceId: null,
+    });
+    const interaction = makeInteraction({
+      customId: 'sage:admin_action:reject_modal:action-1',
+      fields: {
+        getTextInputValue: vi.fn(() => 'Looks risky.'),
+      },
+    });
+
+    const handled = await handleAdminActionRejectModalSubmit(interaction as never);
+
+    expect(handled).toBe(true);
+    expect(interaction.deferReply).toHaveBeenCalledWith({ ephemeral: true });
+    expect(interaction.deleteReply).toHaveBeenCalledTimes(1);
+    expect(interaction.editReply).not.toHaveBeenCalledWith(
+      'Rejected. Sage updated the governance cards with your reason.',
     );
   });
 

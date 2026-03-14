@@ -37,23 +37,6 @@ export function buildContinueChannelMismatchText(channelId: string): string {
   ].join(' ');
 }
 
-export function buildApprovalReviewPostedText(params?: {
-  reviewChannelId?: string | null;
-  sourceChannelId?: string | null;
-}): string {
-  const reviewChannelId = params?.reviewChannelId ?? null;
-  const sourceChannelId = params?.sourceChannelId ?? null;
-  const location =
-    reviewChannelId && reviewChannelId !== sourceChannelId
-      ? `in <#${reviewChannelId}>`
-      : 'in this channel';
-
-  return [
-    `Approval review posted ${location}.`,
-    'Next: I will update the status card when the review is resolved.',
-  ].join(' ');
-}
-
 export function buildContinuationButtonLabel(params?: {
   completedWindows?: number;
   maxWindows?: number;
@@ -71,22 +54,6 @@ export function buildContinuationButtonLabel(params?: {
     return `Continue (${currentWindow}/${max})`;
   }
   return 'Continue';
-}
-
-export function buildMissingGuildActivationText(params: { isAdmin: boolean }): string {
-  if (params.isAdmin) {
-    return [
-      'Sage is not active for this server yet.',
-      'Why: the hosted flow does not have a server key yet.',
-      'Next: use the controls below to get a Pollinations key, set the server key, then ask me again.',
-    ].join(' ');
-  }
-
-  return [
-    'Sage is waiting for server activation here.',
-    'Why: the hosted flow does not have a server key yet.',
-    'Next: ask a server admin to use the setup controls below, then try again.',
-  ].join(' ');
 }
 
 export function buildMissingHostedGuildActivationFallbackText(): string {

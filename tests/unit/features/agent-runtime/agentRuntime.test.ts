@@ -320,6 +320,35 @@ describe('agentRuntime', () => {
     expect(updateTraceEndMock.mock.calls.at(-1)?.[0]).not.toHaveProperty('reasoningText');
   });
 
+  it('uses route-aware runtime failure copy when the initial graph run throws', async () => {
+    runAgentGraphTurnMock.mockRejectedValueOnce(new Error('provider offline'));
+
+    const result = await runChatTurn({
+      traceId: 'trace-runtime-failed',
+      userId: 'user-1',
+      channelId: 'channel-1',
+      guildId: 'guild-1',
+      messageId: 'message-runtime-failed',
+      userText: 'hello',
+      userProfileSummary: null,
+      currentTurn: makeCurrentTurn({
+        messageId: 'message-runtime-failed',
+      }),
+      invokedBy: 'mention',
+      isAdmin: false,
+    });
+
+    expect(result.replyText).toBe(
+      'I hit a runtime issue before I could finish that turn. Next: send it again and I will retry from the current context.',
+    );
+    expect(updateTraceEndMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        replyText:
+          'I hit a runtime issue before I could finish that turn. Next: send it again and I will retry from the current context.',
+      }),
+    );
+  });
+
   it('does not expose admin-only tools to non-admin turns', async () => {
     globalToolRegistryMock.listNames.mockReturnValue(['web', 'discord_admin'] as never);
     globalToolRegistryMock.get.mockImplementation((name: string) => {
@@ -480,6 +509,38 @@ describe('agentRuntime', () => {
     expect(result.replyText).toContain('need another continuation window');
   });
 
+  it('returns a normal chat reply without continuation metadata when the continuation cap is reached', async () => {
+    runAgentGraphTurnMock.mockResolvedValue(
+      makeGraphResult({
+        replyText:
+          'Verified so far: discord_admin: success.\n\nI reached the continuation limit for this request.\n\nAsk me in a new message if you want me to keep going from here.',
+        graphStatus: 'completed',
+        terminationReason: 'max_windows_reached',
+        completedWindows: 4,
+        totalRoundsCompleted: 4,
+        pendingInterrupt: null,
+      }),
+    );
+
+    const result = await runChatTurn({
+      traceId: 'trace-4b',
+      userId: 'user-1',
+      channelId: 'channel-1',
+      guildId: 'guild-1',
+      messageId: 'message-4b',
+      userText: 'keep digging',
+      userProfileSummary: null,
+      currentTurn: makeCurrentTurn({ messageId: 'message-4b' }),
+      invokedBy: 'mention',
+      isAdmin: false,
+    });
+
+    expect(result.delivery).toBe('chat_reply');
+    expect(result.meta?.continuation).toBeUndefined();
+    expect(result.replyText).toContain('I reached the continuation limit for this request.');
+    expect(result.replyText).toContain('Ask me in a new message if you want me to keep going from here.');
+  });
+
   it('rehydrates current runtime policy and credentials when resuming a continuation', async () => {
     globalToolRegistryMock.listNames.mockReturnValue(['discord_messages', 'discord_admin'] as never);
     globalToolRegistryMock.get.mockImplementation((name: string) =>
@@ -541,5 +602,89 @@ describe('agentRuntime', () => {
         activeToolNames: ['discord_messages', 'discord_admin'],
       }),
     });
+  });
+
+  it('uses route-aware runtime failure copy when continuation resume throws', async () => {
+    getGraphContinuationSessionByIdMock.mockResolvedValue({
+      id: 'cont-3',
+      threadId: 'thread-1',
+      originTraceId: 'trace-origin',
+      latestTraceId: 'trace-latest',
+      guildId: 'guild-1',
+      channelId: 'channel-1',
+      requestedByUserId: 'user-1',
+      status: 'pending',
+      pauseKind: 'step_window_exhausted',
+      completedWindows: 1,
+      maxWindows: 4,
+      summaryText: 'summary',
+      resumeNode: 'llm_call',
+      expiresAt: new Date(Date.now() + 60_000),
+      createdAt: new Date('2026-03-13T00:00:00.000Z'),
+      updatedAt: new Date('2026-03-13T00:00:00.000Z'),
+    });
+    resumeAgentGraphTurnMock.mockRejectedValueOnce(new Error('resume failed'));
+
+    const result = await resumeContinuationChatTurn({
+      traceId: 'trace-resume-failed',
+      userId: 'user-1',
+      channelId: 'channel-1',
+      guildId: 'guild-1',
+      continuationId: 'cont-3',
+      isAdmin: true,
+    });
+
+    expect(result.replyText).toBe(
+      'I hit a runtime issue before I could finish that continuation. Next: press Continue again, or send a fresh message if it keeps happening.',
+    );
+    expect(updateTraceEndMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        replyText:
+          'I hit a runtime issue before I could finish that continuation. Next: press Continue again, or send a fresh message if it keeps happening.',
+      }),
+    );
+  });
+
+  it('does not ask for Continue again when a resumed continuation finishes without producing a new continuation prompt', async () => {
+    getGraphContinuationSessionByIdMock.mockResolvedValue({
+      id: 'cont-4',
+      threadId: 'thread-1',
+      originTraceId: 'trace-origin',
+      latestTraceId: 'trace-latest',
+      guildId: 'guild-1',
+      channelId: 'channel-1',
+      requestedByUserId: 'user-1',
+      status: 'pending',
+      pauseKind: 'step_window_exhausted',
+      completedWindows: 1,
+      maxWindows: 4,
+      summaryText: 'summary',
+      resumeNode: 'llm_call',
+      expiresAt: new Date(Date.now() + 60_000),
+      createdAt: new Date('2026-03-13T00:00:00.000Z'),
+      updatedAt: new Date('2026-03-13T00:00:00.000Z'),
+    });
+    resumeAgentGraphTurnMock.mockResolvedValue(
+      makeGraphResult({
+        replyText: '```json\n{"action":"noop"}\n```',
+        toolResults: [],
+        pendingInterrupt: null,
+      }),
+    );
+
+    const result = await resumeContinuationChatTurn({
+      traceId: 'trace-resume-empty-final',
+      userId: 'user-1',
+      channelId: 'channel-1',
+      guildId: 'guild-1',
+      continuationId: 'cont-4',
+      isAdmin: true,
+    });
+
+    expect(result.delivery).toBe('chat_reply');
+    expect(result.replyText).toBe(
+      'I got to the end of that pass, but I do not have a clean reply ready to show yet. Next: send the next message and I will keep going from the current context.',
+    );
+    expect(result.replyText).not.toContain('press Continue again');
   });
 });

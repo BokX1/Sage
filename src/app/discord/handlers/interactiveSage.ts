@@ -23,7 +23,6 @@ import { smartSplit } from '../../../shared/text/message-splitter';
 import { isAdminFromMember } from '../../../platform/discord/admin-permissions';
 import { client } from '../../../platform/discord/client';
 import {
-  buildApprovalReviewPostedText,
   buildContinueChannelMismatchText,
   buildContinueOwnerMismatchText,
   buildContinuationButtonLabel,
@@ -51,6 +50,14 @@ async function sendInteractionReply(
   await interaction.reply(payload as InteractionReplyOptions);
 }
 
+async function clearInteractionReply(interaction: RepliableInteraction): Promise<void> {
+  if (typeof interaction.deleteReply !== 'function' || (!interaction.deferred && !interaction.replied)) {
+    return;
+  }
+
+  await interaction.deleteReply();
+}
+
 async function publishChatResultToInteraction(params: {
   interaction: RepliableInteraction;
   result: Awaited<ReturnType<typeof generateChatReply>>;
@@ -64,19 +71,22 @@ async function publishChatResultToInteraction(params: {
   ) {
     const missing = buildGuildApiKeyMissingResponse({ isAdmin: params.isAdmin });
     await sendInteractionReply(params.interaction, {
-      content: missing.content,
+      flags: missing.flags,
       components: missing.components,
-      ephemeral: params.ephemeral,
     });
     return;
   }
 
   if (params.result.delivery === 'approval_governance_only') {
-    const reviewMeta = params.result.meta?.approvalReview;
-    await sendInteractionReply(params.interaction, {
-      content: buildApprovalReviewPostedText(reviewMeta),
-      files: params.result.files,
-    });
+    const files = params.result.files ?? [];
+    if (files.length > 0) {
+      await sendInteractionReply(params.interaction, {
+        files,
+      });
+      return;
+    }
+
+    await clearInteractionReply(params.interaction);
     return;
   }
 

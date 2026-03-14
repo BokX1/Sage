@@ -44,7 +44,7 @@ import { client } from '../../../platform/discord/client';
 import { config } from '../../../platform/config/env';
 import { VoiceManager } from '../../voice/voiceManager';
 import { isLoggingEnabled } from '../../settings/guildChannelSettings';
-import { buildGuildApiKeySetupCardContent, buildGuildApiKeyWelcomeActions } from '../../discord/byopBootstrap';
+import { buildGuildApiKeySetupCardMessage } from '../../discord/byopBootstrap';
 import { clearGuildApiKey, getGuildApiKeyStatus } from '../../settings/guildApiKeyService';
 import { getGuildApprovalReviewChannelId, setGuildApprovalReviewChannelId } from '../../settings/guildSettingsRepo';
 
@@ -1683,13 +1683,14 @@ export async function executeDiscordAdminAction(
     case 'send_key_setup_card': {
       assertAdmin(ctx.invokerIsAdmin);
       assertNotAutopilot(ctx.invokedBy, 'send_key_setup_card');
+      const setupCard = buildGuildApiKeySetupCardMessage();
       const result = await discordRestRequestGuildScoped({
         guildId: requireGuildContext(ctx.guildId),
         method: 'POST',
         path: `/channels/${ctx.channelId}/messages`,
         body: {
-          content: buildGuildApiKeySetupCardContent(),
-          components: buildGuildApiKeyWelcomeActions().map((row) => row.toJSON()),
+          flags: setupCard.flags,
+          components: setupCard.components,
           allowed_mentions: { parse: [] },
         },
         signal: ctx.signal,

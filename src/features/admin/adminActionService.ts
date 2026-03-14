@@ -100,6 +100,7 @@ import {
   type ReplyTargetContext,
 } from '../agent-runtime/continuityContext';
 import { ApprovalRequiredSignal, type ApprovalInterruptPayload } from '../agent-runtime/toolControlSignals';
+import { buildLastResortVisibleReply, finalizeVisibleReplyText } from '../agent-runtime/visibleReply';
 
 const APPROVAL_TTL_MS = 10 * 60 * 1_000;
 const RESOLVED_APPROVAL_CARD_DELETE_DELAY_MS = 60_000;
@@ -1873,19 +1874,33 @@ function shouldPublishRequesterStatusMessage(params: {
 
 async function sendApprovalOutcomeMessage(params: {
   action: ApprovalReviewRequestRecord;
-  content: string;
+  content?: string | null;
+  files?: Array<{ attachment: Buffer; name: string }>;
 }): Promise<string | null> {
-  const content = params.content.trim();
-  if (!content) {
+  const content = params.content?.trim() || '';
+  const files = params.files ?? [];
+  if (!content && files.length < 1) {
     return null;
   }
 
+  const attachments = files.map((file, index) => ({
+    id: index,
+    filename: file.name,
+  }));
+  const restFiles = files.map((file) => ({
+    filename: file.name,
+    source: {
+      type: 'base64',
+      base64: file.attachment.toString('base64'),
+    },
+  } satisfies DiscordRestFileInput));
   const result = await discordRestRequestGuildScoped({
     guildId: params.action.guildId,
     method: 'POST',
     path: `/channels/${params.action.sourceChannelId}/messages`,
     body: {
-      content,
+      ...(content ? { content } : {}),
+      ...(attachments.length > 0 ? { attachments } : {}),
       allowed_mentions: { parse: [] },
       ...(params.action.sourceMessageId
         ? {
@@ -1896,6 +1911,7 @@ async function sendApprovalOutcomeMessage(params: {
           }
         : {}),
     },
+    ...(restFiles.length > 0 ? { files: restFiles } : {}),
     reason: `[sage action:${params.action.id}] post approval outcome acknowledgement`,
   });
 
@@ -3995,10 +4011,15 @@ async function resumeApprovalReviewGraph(params: {
         resumeTraceId,
       },
     });
+    const visibleReplyText = finalizeVisibleReplyText({
+      replyText: graphResult.replyText,
+      toolResults: graphResult.toolResults,
+      emptyFallback: buildLastResortVisibleReply('approval_resume'),
+    });
 
     await updateTraceEnd({
       id: resumeTraceId,
-      replyText: graphResult.replyText,
+      replyText: visibleReplyText,
       toolJson: {
         approvalRequestId: params.action.id,
         decision: params.decision,
@@ -4024,11 +4045,11 @@ async function resumeApprovalReviewGraph(params: {
       logger.warn({ error, requestId: params.action.id }, 'Failed to persist approval resume trace end');
     });
 
-    const acknowledgement = graphResult.replyText.trim();
-    if (acknowledgement) {
+    if (visibleReplyText || graphResult.files.length > 0) {
       await sendApprovalOutcomeMessage({
         action: params.action,
-        content: acknowledgement,
+        content: visibleReplyText,
+        files: graphResult.files,
       }).catch((error) => {
         logger.warn({ error, requestId: params.action.id }, 'Failed to publish approval outcome acknowledgement');
       });
@@ -4309,7 +4330,7 @@ export async function handleAdminActionRejectModalSubmit(
   });
 
   await refreshApprovalReviewSurfaces(rejected, 'admin action rejection');
-  await resumeApprovalReviewGraph({
+  const resumeError = await resumeApprovalReviewGraph({
     action: rejected,
     decision: 'rejected',
     reviewerId: interaction.user.id,
@@ -4317,8 +4338,15 @@ export async function handleAdminActionRejectModalSubmit(
     resumeTraceId,
   }).catch((error) => {
     logger.warn({ error, actionId: rejected.id }, 'Failed to resume rejected approval review graph');
+    return error;
   });
+  if (resumeError) {
+    await interaction.editReply('Rejected, but Sage could not post the follow-up reply. Governance cards were updated.');
+    return true;
+  }
 
-  await interaction.editReply('Rejected. Sage updated the governance cards with your reason.');
+  await interaction.deleteReply().catch((error) => {
+    logger.warn({ error, actionId: rejected.id }, 'Failed to clear reject modal acknowledgement after posting resume reply');
+  });
   return true;
 }

@@ -90,19 +90,6 @@ export function buildGuildApiKeySetupGuidance(): string {
   return 'Ask a server admin to use Sage’s setup controls, get a Pollinations key, and submit it through the secure setup modal.';
 }
 
-export function buildGuildApiKeyLoginInstructions(): string[] {
-  return [
-    '**Bring Your Own Pollen (BYOP)**',
-    '',
-    'To use your own Pollinations credits for this server:',
-    '',
-    `1. [**Click here to login**](${POLLINATIONS_AUTHORIZE_URL})`,
-    '2. After logging in, you will land on the Pollinations homepage.',
-    '3. Copy the `sk_...` value from the browser address bar after `#api_key=`.',
-    '4. Return to Discord and use Sage’s **Set Server Key** control to paste the key securely.',
-  ];
-}
-
 export function getKeySetVerificationFailureMessage(reason: ProfileVerificationFailureReason): string {
   switch (reason) {
     case 'unauthorized':

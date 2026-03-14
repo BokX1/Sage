@@ -20,7 +20,11 @@ import { clearGitHubFileLookupCacheForTrace } from './toolIntegrations';
 import { enforceGitHubFileGrounding } from './toolGrounding';
 import { buildAgentGraphConfig } from './langgraph/config';
 import { resumeAgentGraphTurn, runAgentGraphTurn } from './langgraph/runtime';
-import { scrubFinalReplyText } from './finalReplyScrubber';
+import {
+  buildLastResortVisibleReply,
+  buildRuntimeFailureReply,
+  finalizeVisibleReplyText,
+} from './visibleReply';
 import {
   getGraphContinuationSessionById,
   markGraphContinuationSessionExpired,
@@ -43,25 +47,6 @@ import type { ToolResult } from './toolCallExecution';
 import { formatLiveVoiceContext } from '../voice/voiceConversationSessionStore';
 
 const SINGLE_ROUTE_KIND = 'single';
-
-function buildDeterministicToolSummary(toolResults: ToolResult[]): string {
-  const successful = toolResults
-    .filter((result) => result.success)
-    .map((result) => result.name);
-  const failed = toolResults
-    .filter((result) => !result.success)
-    .map((result) => `${result.name}${result.error ? ` (${result.error})` : ''}`);
-  const parts: string[] = [];
-
-  if (successful.length > 0) {
-    parts.push(`Completed so far: ${successful.join(', ')}.`);
-  }
-  if (failed.length > 0) {
-    parts.push(`Problems encountered: ${failed.join('; ')}.`);
-  }
-
-  return parts.join('\n\n').trim();
-}
 
 export interface RunChatTurnParams {
   traceId: string;
@@ -456,7 +441,7 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
     };
   } catch (error) {
     logger.error({ error, traceId }, 'Single-agent runtime call failed');
-    finalReplyText = "I'm having trouble connecting right now. Please try again later.";
+    finalReplyText = buildRuntimeFailureReply('turn');
     graphBudgetJson = {
       enabled: activeToolNames.length > 0,
       failed: true,
@@ -478,16 +463,12 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
       groundedReplyText = groundingResult.replyText;
     }
   }
-  const cleanedReplyText = scrubFinalReplyText({
+  const safeFinalReplyText = finalizeVisibleReplyText({
     replyText: groundedReplyText,
+    toolResults,
+    allowEmpty: pendingInterrupt?.kind === 'approval_review',
+    emptyFallback: buildLastResortVisibleReply('turn'),
   });
-  const fallbackToolSummary = buildDeterministicToolSummary(toolResults);
-  const safeFinalReplyText =
-    cleanedReplyText ||
-    fallbackToolSummary ||
-    (pendingInterrupt?.kind === 'approval_review'
-      ? ''
-      : 'I completed part of the request but could not format a final response. Please ask me to try once more.');
   const budgetJson: Record<string, unknown> = {
     route: SINGLE_ROUTE_KIND,
     model,
@@ -687,16 +668,15 @@ export async function resumeContinuationChatTurn(
             }
           : null;
 
-    const cleanedReplyText = scrubFinalReplyText({
+    const safeReplyText = finalizeVisibleReplyText({
       replyText: graphResult.replyText,
+      toolResults: graphResult.toolResults,
+      allowEmpty: pendingInterrupt?.kind === 'approval_review',
+      emptyFallback:
+        pendingInterrupt?.kind === 'continue_prompt'
+          ? buildLastResortVisibleReply('continue_resume')
+          : buildLastResortVisibleReply('turn'),
     });
-    const fallbackToolSummary = buildDeterministicToolSummary(graphResult.toolResults);
-    const safeReplyText =
-      cleanedReplyText ||
-      fallbackToolSummary ||
-      (pendingInterrupt?.kind === 'approval_review'
-        ? ''
-        : 'I completed part of the request but could not format a final response. Please ask me to continue again.');
     result = {
       replyText: safeReplyText,
       delivery: resolveDelivery({ pendingInterrupt }),
@@ -748,7 +728,7 @@ export async function resumeContinuationChatTurn(
   } catch (error) {
     logger.error({ error, traceId: params.traceId }, 'Continuation resume failed');
     result = {
-      replyText: "I'm having trouble continuing that request right now. Please try again.",
+      replyText: buildRuntimeFailureReply('continue_resume'),
       delivery: 'chat_reply',
       meta: undefined,
       files: [],

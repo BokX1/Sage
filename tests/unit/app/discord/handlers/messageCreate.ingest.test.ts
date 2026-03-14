@@ -23,7 +23,7 @@ const mockQueueImageAttachmentRecall = vi.hoisted(() => vi.fn());
 const mockCreateInteractiveButtonSession = vi.hoisted(() => vi.fn(async () => 'sage:ui:continue-1'));
 const mockBuildGuildApiKeyMissingResponse = vi.hoisted(() =>
   vi.fn(() => ({
-    content: 'missing key',
+    flags: 32768,
     components: [],
   })),
 );
@@ -168,7 +168,7 @@ describe('messageCreate - ingest + reply gating', () => {
     mockCreateInteractiveButtonSession.mockReset();
     mockBuildGuildApiKeyMissingResponse.mockReset();
     mockBuildGuildApiKeyMissingResponse.mockReturnValue({
-      content: 'missing key',
+      flags: 32768,
       components: [],
     });
     config.FILE_INGEST_MAX_ATTACHMENTS_PER_MESSAGE = defaultMaxAttachmentsPerMessage;
@@ -211,7 +211,7 @@ describe('messageCreate - ingest + reply gating', () => {
     expect((message as unknown as { reply: ReturnType<typeof vi.fn> }).reply).toHaveBeenCalled();
   });
 
-  it('still delivers generated files when approval review is queued', async () => {
+  it('still delivers generated files when approval review is queued, without placeholder text', async () => {
     const attachment = Buffer.from('generated file');
     mockGenerateChatReply.mockResolvedValueOnce({
       replyText: '',
@@ -234,12 +234,34 @@ describe('messageCreate - ingest + reply gating', () => {
 
     expect((message as unknown as { reply: ReturnType<typeof vi.fn> }).reply).toHaveBeenCalledWith(
       expect.objectContaining({
-        content:
-          'Approval review posted in <#review-1>. Next: I will update the status card when the review is resolved.',
         allowedMentions: { repliedUser: false },
         files: [{ attachment, name: 'report.txt' }],
       }),
     );
+    expect((message as unknown as { reply: ReturnType<typeof vi.fn> }).reply.mock.calls[0]?.[0]?.content).toBeUndefined();
+  });
+
+  it('does not send a duplicate chat reply when approval review is queued without files', async () => {
+    mockGenerateChatReply.mockResolvedValueOnce({
+      replyText: '',
+      delivery: 'approval_governance_only',
+      meta: {
+        approvalReview: {
+          requestId: 'approval-2',
+          sourceChannelId: 'channel-101',
+          reviewChannelId: 'review-1',
+        },
+      },
+      files: [],
+    });
+
+    const message = createMockMessage({
+      content: 'sage delete that helper message',
+    });
+
+    await handleMessageCreate(message);
+
+    expect((message as unknown as { reply: ReturnType<typeof vi.fn> }).reply).not.toHaveBeenCalled();
   });
 
   it('keeps self-hosted missing-key replies in plain text instead of the hosted Pollinations bootstrap card', async () => {
@@ -316,6 +338,30 @@ describe('messageCreate - ingest + reply gating', () => {
             ],
           },
         ],
+      }),
+    );
+  });
+
+  it('does not attach a Continue button once the continuation cap has been reached', async () => {
+    mockGenerateChatReply.mockResolvedValueOnce({
+      replyText:
+        'Verified so far: discord_admin: success.\n\nI reached the continuation limit for this request.\n\nAsk me in a new message if you want me to keep going from here.',
+      delivery: 'chat_reply',
+      meta: undefined,
+      files: [],
+    });
+
+    const message = createMockMessage({
+      content: 'sage keep going',
+    });
+
+    await handleMessageCreate(message);
+
+    expect(mockCreateInteractiveButtonSession).not.toHaveBeenCalled();
+    expect((message as unknown as { reply: ReturnType<typeof vi.fn> }).reply).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: expect.stringContaining('I reached the continuation limit for this request.'),
+        components: undefined,
       }),
     );
   });

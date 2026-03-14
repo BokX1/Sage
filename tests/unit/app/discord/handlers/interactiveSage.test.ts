@@ -8,7 +8,7 @@ const createInteractiveButtonSessionMock = vi.hoisted(() => vi.fn(async () => 's
 const isAdminFromMemberMock = vi.hoisted(() => vi.fn(() => true));
 const buildGuildApiKeyMissingResponseMock = vi.hoisted(() =>
   vi.fn(() => ({
-    content: 'missing key',
+    flags: 32768,
     components: [],
   })),
 );
@@ -65,7 +65,7 @@ describe('interactiveSage delivery', () => {
     vi.clearAllMocks();
   });
 
-  it('acknowledges approval-governance-only turns without trying to publish a normal reply', async () => {
+  it('clears the deferred interaction when approval-governance-only turns do not return files', async () => {
     parseInteractiveSessionCustomIdMock.mockReturnValue('session-1');
     getActiveInteractiveSessionMock.mockResolvedValue({
       kind: 'prompt_button',
@@ -100,6 +100,7 @@ describe('interactiveSage delivery', () => {
       deferReply: vi.fn(async () => {
         interaction.deferred = true;
       }),
+      deleteReply: vi.fn(async () => undefined),
       editReply: vi.fn(async () => undefined),
       reply: vi.fn(async () => undefined),
       followUp: vi.fn(async () => undefined),
@@ -109,11 +110,60 @@ describe('interactiveSage delivery', () => {
 
     expect(handled).toBe(true);
     expect(interaction.deferReply).toHaveBeenCalledWith({ ephemeral: true });
-    expect(interaction.editReply).toHaveBeenCalledWith({
-      content: 'Approval review posted in <#review-1>. Next: I will update the status card when the review is resolved.',
-      files: [],
-    });
+    expect(interaction.deleteReply).toHaveBeenCalledTimes(1);
+    expect(interaction.editReply).not.toHaveBeenCalled();
     expect(interaction.followUp).not.toHaveBeenCalled();
+  });
+
+  it('still returns approval-governance-only files without placeholder text', async () => {
+    parseInteractiveSessionCustomIdMock.mockReturnValue('session-1-files');
+    getActiveInteractiveSessionMock.mockResolvedValue({
+      kind: 'prompt_button',
+      prompt: 'prepare the report and update the Sage Persona',
+      visibility: 'ephemeral',
+      guildId: 'guild-1',
+      channelId: 'channel-1',
+      createdByUserId: 'user-1',
+      expiresAt: new Date('2026-03-14T00:00:00.000Z'),
+    });
+    const attachment = Buffer.from('report body');
+    generateChatReplyMock.mockResolvedValue({
+      replyText: '',
+      delivery: 'approval_governance_only',
+      meta: {
+        approvalReview: {
+          requestId: 'approval-1',
+          sourceChannelId: 'channel-1',
+          reviewChannelId: 'review-1',
+        },
+      },
+      files: [{ attachment, name: 'report.txt' }],
+    });
+
+    const interaction = {
+      customId: 'session-1-files',
+      channelId: 'channel-1',
+      guildId: 'guild-1',
+      user: { id: 'user-1', username: 'user1', globalName: 'User One' },
+      member: { displayName: 'User One' },
+      deferred: false,
+      replied: false,
+      deferReply: vi.fn(async () => {
+        interaction.deferred = true;
+      }),
+      deleteReply: vi.fn(async () => undefined),
+      editReply: vi.fn(async () => undefined),
+      reply: vi.fn(async () => undefined),
+      followUp: vi.fn(async () => undefined),
+    };
+
+    const handled = await handleInteractiveButtonSession(interaction as never);
+
+    expect(handled).toBe(true);
+    expect(interaction.editReply).toHaveBeenCalledWith({
+      files: [{ attachment, name: 'report.txt' }],
+    });
+    expect(interaction.deleteReply).not.toHaveBeenCalled();
   });
 
   it('keeps self-hosted missing-key replies in plain text instead of showing Pollinations setup controls', async () => {
@@ -211,9 +261,8 @@ describe('interactiveSage delivery', () => {
     expect(handled).toBe(true);
     expect(buildGuildApiKeyMissingResponseMock).toHaveBeenCalledWith({ isAdmin: true });
     expect(interaction.editReply).toHaveBeenCalledWith({
-      content: 'missing key',
+      flags: 32768,
       components: [],
-      ephemeral: true,
     });
   });
 

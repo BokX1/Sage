@@ -34,7 +34,6 @@ import {
   buildActionButtonComponent,
 } from '../../../features/discord/interactiveComponentService';
 import {
-  buildApprovalReviewPostedText,
   buildContinuationButtonLabel,
   buildMessageFailureText,
 } from '../../../features/discord/userFacingCopy';
@@ -781,21 +780,17 @@ export async function handleMessageCreate(message: Message) {
           isAdmin: isAdminFromMember(message.member),
         });
         await message.reply({
-          content: missing.content,
+          flags: missing.flags,
           components: missing.components,
           allowedMentions: { repliedUser: false },
         });
         didSendAnything = true;
       }
 
-      const approvalReplyText = approvalQueued
-        ? buildApprovalReviewPostedText(result.meta?.approvalReview)
-        : undefined;
-
-      if (!didSendAnything && ((!approvalQueued && replyText) || files.length > 0 || approvalReplyText)) {
+      if (!didSendAnything && ((!approvalQueued && replyText) || files.length > 0)) {
         const chunks = approvalQueued ? [] : smartSplit(replyText, 2000);
         const [firstChunk, ...restChunks] = chunks;
-        const firstReplyContent = approvalQueued ? approvalReplyText : firstChunk;
+        const firstReplyContent = approvalQueued ? undefined : firstChunk;
 
         if (firstReplyContent || files.length > 0) {
           await message.reply({
@@ -831,19 +826,15 @@ export async function handleMessageCreate(message: Message) {
         if (approvalQueued && result.meta?.approvalReview) {
           loggerWithTrace.info(
             { requestId: result.meta.approvalReview.requestId },
-            'Approval interrupt acknowledged in chat reply',
+            'Approval interrupt returned files only; governance surfaces own visible review state',
           );
         } else {
           loggerWithTrace.info('Response sent');
         }
       } else if (approvalQueued && result.meta?.approvalReview) {
-        await message.reply({
-          content: buildApprovalReviewPostedText(result.meta.approvalReview),
-          allowedMentions: { repliedUser: false },
-        });
         loggerWithTrace.info(
           { requestId: result.meta.approvalReview.requestId },
-          'Approval interrupt acknowledged in chat reply',
+          'Approval interrupt handled via governance surfaces without chat reply',
         );
       } else if (approvalQueued) {
         loggerWithTrace.info('Approval interrupt handled via governance surface; skipped chat reply');

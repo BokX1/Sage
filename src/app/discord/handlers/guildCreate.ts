@@ -1,7 +1,6 @@
 import { ChannelType, Client, Events, Guild, TextChannel } from 'discord.js';
 import { logger } from '../../../platform/logging/logger';
-import { getWelcomeMessage } from './welcomeMessage';
-import { buildGuildApiKeyWelcomeActions } from '../../../features/discord/byopBootstrap';
+import { buildGuildApiKeyWelcomeMessage } from '../../../features/discord/byopBootstrap';
 
 const registrationKey = Symbol.for('sage.handlers.guildCreate.registered');
 
@@ -36,7 +35,8 @@ export async function handleGuildCreate(guild: Guild) {
       return;
     }
 
-    await channel.send({ embeds: [getWelcomeMessage()], components: buildGuildApiKeyWelcomeActions() });
+    const welcome = buildGuildApiKeyWelcomeMessage();
+    await channel.send({ flags: welcome.flags, components: welcome.components });
     logger.info({ guildId: guild.id, channelId: channel.id }, 'Proactive welcome message sent');
   } catch (err) {
     logger.error({ err, guildId: guild.id }, 'GuildCreate handler failed');
