@@ -1,4 +1,4 @@
-import { Events, Interaction } from 'discord.js';
+import { Events, Interaction, type InteractionEditReplyOptions, type InteractionReplyOptions } from 'discord.js';
 import { client } from '../../../platform/discord/client';
 import { logger } from '../../../platform/logging/logger';
 import {
@@ -14,31 +14,44 @@ import {
   handleInteractiveModalSession,
 } from './interactiveSage';
 import { buildInteractionFailureText } from '../../../features/discord/userFacingCopy';
+import { buildRuntimeResponseCardPayload } from '../../../features/discord/runtimeResponseCards';
 
 const registrationKey = Symbol.for('sage.handlers.interactionCreate.registered');
 
 async function sendInteractionReply(
   interaction: Interaction,
-  payload: { content: string; ephemeral: boolean },
+  payload: InteractionReplyOptions | InteractionEditReplyOptions,
 ): Promise<void> {
   if (!interaction.isRepliable()) {
     return;
   }
 
+  const normalizedPayload =
+    'components' in payload && payload.components
+      ? ({
+          ...payload,
+          withComponents: true,
+        } as InteractionReplyOptions | InteractionEditReplyOptions)
+      : payload;
+
   if (interaction.deferred || interaction.replied) {
-    await interaction.editReply({ content: payload.content });
+    await interaction.editReply(normalizedPayload as InteractionEditReplyOptions);
     return;
   }
 
-  await interaction.reply(payload);
+  await interaction.reply(normalizedPayload as InteractionReplyOptions);
 }
 
 async function sendInteractionFailure(interaction: Interaction): Promise<void> {
   try {
-    await sendInteractionReply(interaction, {
-      content: buildInteractionFailureText(),
-      ephemeral: true,
-    });
+    await sendInteractionReply(
+      interaction,
+      buildRuntimeResponseCardPayload({
+        text: buildInteractionFailureText(),
+        tone: 'error',
+        ephemeral: true,
+      }) as InteractionReplyOptions,
+    );
   } catch (replyError) {
     logger.warn({ error: replyError }, 'Failed to send interaction error response');
   }

@@ -9,7 +9,6 @@ import { generateChatReply } from '../../../features/chat/chat-engine';
 import { resumeContinuationChatTurn, retryFailedChatTurn } from '../../../features/agent-runtime/agentRuntime';
 import { buildGuildApiKeyMissingResponse } from '../../../features/discord/byopBootstrap';
 import {
-  buildActionButtonComponent,
   buildModalForInteractiveSession,
   buildPromptFromInteractiveModalSubmission,
   createInteractiveButtonSession,
@@ -25,14 +24,17 @@ import { client } from '../../../platform/discord/client';
 import {
   buildContinueChannelMismatchText,
   buildContinueOwnerMismatchText,
+  buildApprovalQueuedHandoffText,
   buildContinuationButtonLabel,
   buildExpiredInteractionText,
   buildRetryButtonLabel,
   buildRetryChannelMismatchText,
   buildRetryOwnerMismatchText,
 } from '../../../features/discord/userFacingCopy';
+import { buildRuntimeResponseCardPayload } from '../../../features/discord/runtimeResponseCards';
 
 type RepliableInteraction = ButtonInteraction | ModalSubmitInteraction;
+type InteractionPublishMode = 'reply' | 'update_source';
 
 function resolveInteractionDisplayName(interaction: RepliableInteraction): string {
   const member = interaction.member;
@@ -46,11 +48,18 @@ async function sendInteractionReply(
   interaction: RepliableInteraction,
   payload: InteractionReplyOptions | InteractionEditReplyOptions,
 ): Promise<void> {
+  const normalizedPayload =
+    'components' in payload && payload.components
+      ? ({
+          ...payload,
+          withComponents: true,
+        } as InteractionReplyOptions | InteractionEditReplyOptions)
+      : payload;
   if (interaction.deferred || interaction.replied) {
-    await interaction.editReply(payload as InteractionEditReplyOptions);
+    await interaction.editReply(normalizedPayload as InteractionEditReplyOptions);
     return;
   }
-  await interaction.reply(payload as InteractionReplyOptions);
+  await interaction.reply(normalizedPayload as InteractionReplyOptions);
 }
 
 async function clearInteractionReply(interaction: RepliableInteraction): Promise<void> {
@@ -66,6 +75,7 @@ async function publishChatResultToInteraction(params: {
   result: Awaited<ReturnType<typeof generateChatReply>>;
   isAdmin: boolean;
   ephemeral: boolean;
+  mode: InteractionPublishMode;
 }): Promise<void> {
   if (
     params.result.meta?.kind === 'missing_api_key' &&
@@ -86,6 +96,20 @@ async function publishChatResultToInteraction(params: {
       await sendInteractionReply(params.interaction, {
         files,
       });
+      return;
+    }
+
+    if (params.mode === 'update_source') {
+      await sendInteractionReply(
+        params.interaction,
+        buildRuntimeResponseCardPayload({
+          text: buildApprovalQueuedHandoffText({
+            reviewChannelId: params.result.meta?.approvalReview?.reviewChannelId,
+            sourceChannelId: params.result.meta?.approvalReview?.sourceChannelId,
+          }),
+          tone: 'notice',
+        }) as InteractionEditReplyOptions,
+      );
       return;
     }
 
@@ -155,25 +179,29 @@ async function publishChatResultToInteraction(params: {
 
   const chunks = smartSplit(params.result.replyText || '', 2_000);
   const [firstChunk, ...rest] = chunks;
-  await sendInteractionReply(params.interaction, {
-    content: firstChunk || '\u200b',
-    files: params.result.files,
-    components:
-      actionButtonId
-        ? [
-            {
-              type: 1,
-              components: [
-                buildActionButtonComponent({
-                  customId: actionButtonId,
-                  label: actionButtonLabel ?? buildRetryButtonLabel(),
-                  style: 'primary',
-                }),
-              ],
-            },
-          ]
-        : undefined,
-  });
+  const actionButton =
+    actionButtonId
+      ? {
+          customId: actionButtonId,
+          label: actionButtonLabel ?? buildRetryButtonLabel(),
+          style: 'primary' as const,
+        }
+      : null;
+  const shouldUseRuntimeCard = params.mode === 'update_source' || !!actionButton;
+  const primaryText = firstChunk || '\u200b';
+  const primaryPayload = shouldUseRuntimeCard
+    ? buildRuntimeResponseCardPayload({
+        text: primaryText,
+        tone: continuation ? 'continue' : retry ? 'retry' : 'notice',
+        button: actionButton,
+        files: params.result.files,
+      })
+    : {
+        content: primaryText,
+        files: params.result.files,
+      };
+
+  await sendInteractionReply(params.interaction, primaryPayload as InteractionReplyOptions | InteractionEditReplyOptions);
 
   for (const chunk of rest) {
     await params.interaction.followUp({
@@ -231,6 +259,7 @@ async function runInteractivePrompt(params: {
     result,
     isAdmin: invokerIsAdmin,
     ephemeral: params.ephemeral,
+    mode: 'reply',
   });
 }
 
@@ -272,7 +301,7 @@ export async function handleInteractiveButtonSession(
       });
       return true;
     }
-    await interaction.deferReply({ ephemeral: session.visibility === 'ephemeral' });
+    await interaction.deferUpdate();
     const invokerIsAdmin = isAdminFromMember(interaction.member);
     const invokerCanModerate = isModeratorFromMember(interaction.member);
     const result = await resumeContinuationChatTurn({
@@ -289,6 +318,7 @@ export async function handleInteractiveButtonSession(
       result,
       isAdmin: invokerIsAdmin,
       ephemeral: session.visibility === 'ephemeral',
+      mode: 'update_source',
     });
     return true;
   }
@@ -308,7 +338,7 @@ export async function handleInteractiveButtonSession(
       });
       return true;
     }
-    await interaction.deferReply({ ephemeral: session.visibility === 'ephemeral' });
+    await interaction.deferUpdate();
     const invokerIsAdmin = isAdminFromMember(interaction.member);
     const invokerCanModerate = isModeratorFromMember(interaction.member);
     const result = await retryFailedChatTurn({
@@ -326,6 +356,7 @@ export async function handleInteractiveButtonSession(
       result,
       isAdmin: invokerIsAdmin,
       ephemeral: session.visibility === 'ephemeral',
+      mode: 'update_source',
     });
     return true;
   }

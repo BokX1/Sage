@@ -340,7 +340,7 @@ describe('agentRuntime', () => {
     });
 
     expect(result.replyText).toBe(
-      'My model provider stopped responding before I could finish that turn. Next: use Retry below if it appears, or send that request again.',
+      'The model behind Sage stopped responding before I could finish that reply. Next: press Retry if it shows up, or send me that request again.',
     );
     expect(result.meta).toEqual({
       retry: {
@@ -351,7 +351,7 @@ describe('agentRuntime', () => {
     expect(updateTraceEndMock).toHaveBeenCalledWith(
       expect.objectContaining({
         replyText:
-          'My model provider stopped responding before I could finish that turn. Next: use Retry below if it appears, or send that request again.',
+          'The model behind Sage stopped responding before I could finish that reply. Next: press Retry if it shows up, or send me that request again.',
       }),
     );
   });
@@ -700,7 +700,7 @@ describe('agentRuntime', () => {
     });
 
     expect(result.replyText).toBe(
-      'Something went wrong on my side while I was continuing that request. Next: use Retry below if it appears. If not, press Continue again or send a fresh message.',
+      'Sage hit a snag while I was picking that request back up. Next: press Retry if it shows up. If not, press Continue again or send me a fresh message.',
     );
     expect(result.meta).toEqual({
       retry: {
@@ -711,7 +711,7 @@ describe('agentRuntime', () => {
     expect(updateTraceEndMock).toHaveBeenCalledWith(
       expect.objectContaining({
         replyText:
-          'Something went wrong on my side while I was continuing that request. Next: use Retry below if it appears. If not, press Continue again or send a fresh message.',
+          'Sage hit a snag while I was picking that request back up. Next: press Retry if it shows up. If not, press Continue again or send me a fresh message.',
       }),
     );
   });
@@ -754,7 +754,7 @@ describe('agentRuntime', () => {
 
     expect(result.delivery).toBe('chat_reply');
     expect(result.replyText).toBe(
-      'I made progress on that, but I do not have a reply ready to post yet. Next: send the next message and I will keep going from the current context.',
+      'I made progress on that, but I do not have a clean reply ready to post yet. Next: send the next message and I will keep going from the current context.',
     );
     expect(result.replyText).not.toContain('press Continue again');
   });

@@ -636,6 +636,70 @@ describe('runGraphValueStream', () => {
     expect(modelInvokeMock).toHaveBeenCalledTimes(1);
   });
 
+  it('retries transient provider failures on llm_call without consuming an extra turn', async () => {
+    modelInvokeMock
+      .mockRejectedValueOnce(new Error('AI provider API error: 503 Service Unavailable - upstream down'))
+      .mockResolvedValueOnce(new AIMessage({ content: 'Recovered after transient provider failure.' }));
+
+    const result = await runAgentGraphTurn({
+      traceId: 'trace-llm-retry-1',
+      userId: 'user-1',
+      channelId: 'channel-1',
+      guildId: 'guild-1',
+      apiKey: 'test-api-key',
+      model: 'test-main-agent-model',
+      temperature: 0.6,
+      timeoutMs: 1_000,
+      maxTokens: 500,
+      messages: [new HumanMessage({ content: 'say hello after retrying' })],
+      activeToolNames: [],
+      routeKind: 'single',
+      currentTurn: { invokerUserId: 'user-1' },
+      replyTarget: null,
+      invokedBy: 'mention',
+      invokerIsAdmin: false,
+    });
+
+    expect(result.graphStatus).toBe('completed');
+    expect(result.replyText).toContain('Recovered after transient provider failure.');
+    expect(result.roundsCompleted).toBe(1);
+    expect(result.totalRoundsCompleted).toBe(1);
+    expect(modelInvokeMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('falls back to the configured main-agent model when seeded graph commands omit context.model', async () => {
+    const modelBudgetModule = await import('@/platform/llm/model-budget-config');
+    const getModelBudgetConfigMock = vi.mocked(modelBudgetModule.getModelBudgetConfig);
+    modelInvokeMock.mockResolvedValueOnce(new AIMessage({ content: 'Seeded run completed.' }));
+
+    const result = await __runAgentGraphCommandForTests({
+      threadId: 'trace-seeded-model-fallback',
+      goto: 'llm_call',
+      context: {
+        traceId: 'trace-seeded-model-fallback',
+        originTraceId: 'trace-seeded-model-fallback',
+        userId: 'user-1',
+        channelId: 'channel-1',
+        guildId: 'guild-1',
+        apiKey: 'test-api-key',
+        temperature: 0.6,
+        timeoutMs: 1_000,
+        maxTokens: 500,
+        activeToolNames: [],
+        routeKind: 'single',
+        currentTurn: { invokerUserId: 'user-1' },
+        replyTarget: null,
+        invokedBy: 'mention',
+      },
+      state: {
+        messages: [new HumanMessage({ content: 'finish this seeded run' })],
+      },
+    });
+
+    expect(result.replyText).toContain('Seeded run completed.');
+    expect(getModelBudgetConfigMock).toHaveBeenCalledWith('test-main-agent-model');
+  });
+
   it('preserves graph_timeout when a continuation pause is caused by the active runtime budget', async () => {
     await shutdownAgentGraphRuntime();
     buildAgentGraphConfigMock.mockReturnValue({

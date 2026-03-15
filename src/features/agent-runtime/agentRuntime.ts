@@ -1,6 +1,9 @@
 import { config as appConfig } from '../../platform/config/env';
 import { getApprovalReviewRequestById } from '../admin/approvalReviewRequestRepo';
 import {
+  buildContinuationAccessDeniedText,
+  buildContinuationAlreadyClosedText,
+  buildContinuationExpiredText,
   buildMissingHostedGuildActivationFallbackText,
   buildMissingHostApiKeyText,
   buildMissingSelfHostedGuildApiKeyText,
@@ -594,20 +597,20 @@ async function loadValidatedContinuation(params: {
   if (session.requestedByUserId !== params.userId || session.channelId !== params.channelId) {
     return {
       ok: false,
-      replyText: 'I can only continue that request for the original person in the original channel.',
+      replyText: buildContinuationAccessDeniedText(),
     };
   }
   if (session.status !== 'pending') {
     return {
       ok: false,
-      replyText: 'That continuation already ran. Next: send a fresh message if you want another pass.',
+      replyText: buildContinuationAlreadyClosedText(),
     };
   }
   if (session.expiresAt.getTime() <= Date.now()) {
     await markGraphContinuationSessionExpired(session.id).catch(() => undefined);
     return {
       ok: false,
-      replyText: 'That continuation expired. Next: send a fresh message if you want me to keep going.',
+      replyText: buildContinuationExpiredText(),
     };
   }
 

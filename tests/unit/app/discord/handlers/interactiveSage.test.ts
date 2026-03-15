@@ -266,10 +266,13 @@ describe('interactiveSage delivery', () => {
 
     expect(handled).toBe(true);
     expect(buildGuildApiKeyMissingResponseMock).toHaveBeenCalledWith({ isAdmin: true });
-    expect(interaction.editReply).toHaveBeenCalledWith({
-      flags: 32768,
-      components: [],
-    });
+    expect(interaction.editReply).toHaveBeenCalledWith(
+      expect.objectContaining({
+        flags: 32768,
+        components: [],
+        withComponents: true,
+      }),
+    );
   });
 
   it('publishes a continuation summary with a Continue button', async () => {
@@ -329,17 +332,25 @@ describe('interactiveSage delivery', () => {
     });
     expect(interaction.editReply).toHaveBeenCalledWith(
       expect.objectContaining({
-        content: 'I checked the first batch and can continue from here.',
+        flags: 32768,
         components: [
-          {
-            type: 1,
-            components: [
+          expect.objectContaining({
+            type: 17,
+            components: expect.arrayContaining([
               expect.objectContaining({
-                custom_id: 'sage:ui:continue-1',
-                label: 'Continue (2/4)',
+                content: 'I checked the first batch and can continue from here.',
               }),
-            ],
-          },
+              expect.objectContaining({
+                type: 1,
+                components: [
+                  expect.objectContaining({
+                    custom_id: 'sage:ui:continue-1',
+                    label: 'Continue (2/4)',
+                  }),
+                ],
+              }),
+            ]),
+          }),
         ],
       }),
     );
@@ -394,7 +405,7 @@ describe('interactiveSage delivery', () => {
     expect(interaction.editReply).toHaveBeenCalledWith(
       expect.objectContaining({
         content: 'I checked the first batch and can continue from here.',
-        components: undefined,
+        files: [],
       }),
     );
   });
@@ -411,7 +422,7 @@ describe('interactiveSage delivery', () => {
       expiresAt: new Date('2026-03-14T00:00:00.000Z'),
     });
     generateChatReplyMock.mockResolvedValue({
-      replyText: 'My model provider stopped responding before I could finish that turn. Next: use Retry below if it appears, or send that request again.',
+      replyText: 'The model behind Sage stopped responding before I could finish that reply. Next: press Retry if it shows up, or send me that request again.',
       delivery: 'chat_reply',
       meta: {
         retry: {
@@ -454,16 +465,26 @@ describe('interactiveSage delivery', () => {
     });
     expect(interaction.editReply).toHaveBeenCalledWith(
       expect.objectContaining({
+        flags: 32768,
         components: [
-          {
-            type: 1,
-            components: [
+          expect.objectContaining({
+            type: 17,
+            components: expect.arrayContaining([
               expect.objectContaining({
-                custom_id: 'sage:ui:continue-1',
-                label: 'Retry',
+                content:
+                  'The model behind Sage stopped responding before I could finish that reply. Next: press Retry if it shows up, or send me that request again.',
               }),
-            ],
-          },
+              expect.objectContaining({
+                type: 1,
+                components: [
+                  expect.objectContaining({
+                    custom_id: 'sage:ui:continue-1',
+                    label: 'Retry',
+                  }),
+                ],
+              }),
+            ]),
+          }),
         ],
       }),
     );
@@ -499,6 +520,9 @@ describe('interactiveSage delivery', () => {
       deferReply: vi.fn(async () => {
         interaction.deferred = true;
       }),
+      deferUpdate: vi.fn(async () => {
+        interaction.deferred = true;
+      }),
       editReply: vi.fn(async () => undefined),
       reply: vi.fn(async () => undefined),
       followUp: vi.fn(async () => undefined),
@@ -517,9 +541,20 @@ describe('interactiveSage delivery', () => {
       canModerate: true,
     });
     expect(generateChatReplyMock).not.toHaveBeenCalled();
+    expect(interaction.deferUpdate).toHaveBeenCalledTimes(1);
     expect(interaction.editReply).toHaveBeenCalledWith(
       expect.objectContaining({
-        content: 'Resumed and finished.',
+        flags: 32768,
+        components: [
+          expect.objectContaining({
+            type: 17,
+            components: expect.arrayContaining([
+              expect.objectContaining({
+                content: 'Resumed and finished.',
+              }),
+            ]),
+          }),
+        ],
       }),
     );
   });
@@ -555,6 +590,9 @@ describe('interactiveSage delivery', () => {
       deferReply: vi.fn(async () => {
         interaction.deferred = true;
       }),
+      deferUpdate: vi.fn(async () => {
+        interaction.deferred = true;
+      }),
       editReply: vi.fn(async () => undefined),
       reply: vi.fn(async () => undefined),
       followUp: vi.fn(async () => undefined),
@@ -573,9 +611,20 @@ describe('interactiveSage delivery', () => {
       isAdmin: true,
       canModerate: true,
     });
+    expect(interaction.deferUpdate).toHaveBeenCalledTimes(1);
     expect(interaction.editReply).toHaveBeenCalledWith(
       expect.objectContaining({
-        content: 'Recovered after retry.',
+        flags: 32768,
+        components: [
+          expect.objectContaining({
+            type: 17,
+            components: expect.arrayContaining([
+              expect.objectContaining({
+                content: 'Recovered after retry.',
+              }),
+            ]),
+          }),
+        ],
       }),
     );
   });
@@ -613,7 +662,7 @@ describe('interactiveSage delivery', () => {
     expect(resumeContinuationChatTurnMock).not.toHaveBeenCalled();
     expect(interaction.reply).toHaveBeenCalledWith({
       content:
-        'This Continue button belongs to the person who started this request. Next: ask them to continue it, or ask Sage to start a fresh pass for you.',
+        'This Continue button belongs to the person who asked Sage to keep going. Next: ask them to continue it, or ask Sage to start a fresh pass for you.',
       ephemeral: true,
     });
   });

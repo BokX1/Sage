@@ -1,16 +1,16 @@
 export function buildInteractionFailureText(): string {
   return [
-    'Something went wrong while I was handling that interaction.',
-    'Next: try it again.',
-    'If it keeps happening, ask me to open a fresh flow.',
+    'Sage hit a snag while I was handling that action.',
+    'Next: try that button or form again.',
+    'If it keeps happening, ask me to open a fresh flow here.',
   ].join(' ');
 }
 
 export function buildMessageFailureText(): string {
   return [
-    'Something went wrong while I was working on that reply.',
+    'Sage hit a snag before I could finish that reply.',
     'Next: try again.',
-    'If it keeps happening, send a fresh message and I will restart from there.',
+    'If it keeps happening, send a fresh message and I will start over from there.',
   ].join(' ');
 }
 
@@ -25,7 +25,7 @@ export function buildExpiredInteractionText(kind: 'button' | 'form'): string {
 
 export function buildContinueOwnerMismatchText(): string {
   return [
-    'This Continue button belongs to the person who started this request.',
+    'This Continue button belongs to the person who asked Sage to keep going.',
     'Next: ask them to continue it, or ask Sage to start a fresh pass for you.',
   ].join(' ');
 }
@@ -39,7 +39,7 @@ export function buildContinueChannelMismatchText(channelId: string): string {
 
 export function buildRetryOwnerMismatchText(): string {
   return [
-    'This Retry button belongs to the person who started this request.',
+    'This Retry button belongs to the person who asked Sage for that retry.',
     'Next: ask them to retry it, or ask Sage to start a fresh pass for you.',
   ].join(' ');
 }
@@ -72,6 +72,40 @@ export function buildContinuationButtonLabel(params?: {
 
 export function buildRetryButtonLabel(): string {
   return 'Retry';
+}
+
+export function buildContinuationAccessDeniedText(): string {
+  return [
+    'I can only reopen that continuation for the original person in the original channel.',
+    'Next: ask Sage there from a fresh message if you still need another pass.',
+  ].join(' ');
+}
+
+export function buildContinuationAlreadyClosedText(): string {
+  return [
+    'That continuation is already closed.',
+    'Next: send me a fresh message if you want another pass.',
+  ].join(' ');
+}
+
+export function buildContinuationExpiredText(): string {
+  return [
+    'That continuation expired before I could reopen it.',
+    'Next: send me a fresh message if you want me to keep going.',
+  ].join(' ');
+}
+
+export function buildApprovalQueuedHandoffText(params?: {
+  reviewChannelId?: string | null;
+  sourceChannelId?: string | null;
+}): string {
+  const reviewChannelId = params?.reviewChannelId?.trim();
+  const sourceChannelId = params?.sourceChannelId?.trim();
+  if (reviewChannelId && reviewChannelId !== sourceChannelId) {
+    return `I queued that for review. Next: check <#${reviewChannelId}> for the approval card.`;
+  }
+
+  return 'I queued that for review. Next: check the approval card for the next step.';
 }
 
 export function buildMissingHostedGuildActivationFallbackText(): string {

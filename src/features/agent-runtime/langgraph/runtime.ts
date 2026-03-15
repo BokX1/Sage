@@ -532,7 +532,7 @@ function buildRebudgetingEvent(
   maxTokens: number | undefined,
 ): { trimmedMessages: BaseMessage[]; rebudgeting: GraphRebudgetEvent } {
   const preparedMessages = toLlmMessages(messages);
-  const modelConfig = getModelBudgetConfig(model);
+  const modelConfig = getModelBudgetConfig(resolveGraphModelId(model));
   const budgetPlan = planBudget(modelConfig, {
     reservedOutputTokens: maxTokens ?? modelConfig.maxOutputTokens,
   });
@@ -563,6 +563,39 @@ function buildRebudgetingEvent(
   };
 }
 
+function resolveGraphModelId(model: string | undefined): string {
+  const resolvedModel = model?.trim() || appConfig.AI_PROVIDER_MAIN_AGENT_MODEL.trim();
+  if (!resolvedModel) {
+    throw new Error('AI_PROVIDER_MAIN_AGENT_MODEL must be configured before the agent graph can run.');
+  }
+  return resolvedModel;
+}
+
+function shouldRetryModelInvokeError(error: unknown): boolean {
+  const text = error instanceof Error ? error.message : String(error);
+  if (
+    /401|403|404|unauthorized|forbidden|authentication required|invalid api key|unknown api key|model .*not found|unknown model|unsupported model|validation failed|invalid request|bad request/i.test(
+      text,
+    )
+  ) {
+    return false;
+  }
+
+  return /408|409|425|429|500|502|503|504|timeout|timed out|ECONNRESET|ECONNREFUSED|EAI_AGAIN|ETIMEDOUT|socket hang up|rate limit|provider offline|provider unavailable|upstream/i.test(
+    text,
+  );
+}
+
+const MODEL_INVOKE_RETRY_POLICY = {
+  maxAttempts: 2,
+  initialInterval: 250,
+  backoffFactor: 2,
+  maxInterval: 1_000,
+  jitter: true,
+  retryOn: shouldRetryModelInvokeError,
+  logWarning: true,
+} as const;
+
 function createGraphChatModel(params: {
   model?: string;
   apiKey?: string;
@@ -570,10 +603,7 @@ function createGraphChatModel(params: {
   timeoutMs?: number;
   maxTokens?: number;
 }): AiProviderChatModel {
-  const model = params.model?.trim() || appConfig.AI_PROVIDER_MAIN_AGENT_MODEL.trim();
-  if (!model) {
-    throw new Error('AI_PROVIDER_MAIN_AGENT_MODEL must be configured before the agent graph can run.');
-  }
+  const model = resolveGraphModelId(params.model);
 
   return new AiProviderChatModel({
     baseUrl: appConfig.AI_PROVIDER_BASE_URL,
@@ -628,7 +658,10 @@ interface DurableGraphTimestampOutput {
 }
 
 const invokeAgentModelTask = task(
-  { name: 'sage_invoke_agent_model' },
+  {
+    name: 'sage_invoke_agent_model',
+    retry: MODEL_INVOKE_RETRY_POLICY,
+  },
   async (input: DurableModelInvokeInput): Promise<DurableModelInvokeOutput> => {
     const startedAt = Date.now();
     const baseModel = createGraphChatModel({

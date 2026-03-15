@@ -31,13 +31,13 @@ import { buildGuildApiKeyMissingResponse } from '../../../features/discord/byopB
 import { ReplyTargetContext } from '../../../features/agent-runtime/continuityContext';
 import {
   createInteractiveButtonSession,
-  buildActionButtonComponent,
 } from '../../../features/discord/interactiveComponentService';
 import {
   buildContinuationButtonLabel,
   buildMessageFailureText,
   buildRetryButtonLabel,
 } from '../../../features/discord/userFacingCopy';
+import { buildRuntimeResponseCardPayload } from '../../../features/discord/runtimeResponseCards';
 
 const processedMessagesKey = Symbol.for('sage.handlers.messageCreate.processed');
 const registrationKey = Symbol.for('sage.handlers.messageCreate.registered');
@@ -818,28 +818,32 @@ export async function handleMessageCreate(message: Message) {
         const chunks = approvalQueued ? [] : smartSplit(replyText, 2000);
         const [firstChunk, ...restChunks] = chunks;
         const firstReplyContent = approvalQueued ? undefined : firstChunk;
+        const actionButton =
+          actionButtonId
+            ? {
+                customId: actionButtonId,
+                label: actionButtonLabel ?? buildRetryButtonLabel(),
+                style: 'primary' as const,
+              }
+            : null;
+        const shouldUseRuntimeCard = !!actionButton;
 
-        if (firstReplyContent || files.length > 0) {
-          await message.reply({
-            content: firstReplyContent,
-            allowedMentions: { repliedUser: false },
-            files,
-            components:
-              actionButtonId
-                ? [
-                    {
-                      type: 1,
-                      components: [
-                        buildActionButtonComponent({
-                          customId: actionButtonId,
-                          label: actionButtonLabel ?? buildRetryButtonLabel(),
-                          style: 'primary',
-                        }),
-                      ],
-                    },
-                  ]
-                : undefined,
-          });
+        if ((shouldUseRuntimeCard && (firstReplyContent || files.length > 0)) || firstReplyContent || files.length > 0) {
+          await message.reply(
+            shouldUseRuntimeCard
+              ? buildRuntimeResponseCardPayload({
+                  text: firstReplyContent || '\u200b',
+                  tone: continuation ? 'continue' : retry ? 'retry' : 'notice',
+                  button: actionButton,
+                  files,
+                  allowedMentions: { repliedUser: false },
+                })
+              : {
+                  content: firstReplyContent,
+                  allowedMentions: { repliedUser: false },
+                  files,
+                },
+          );
           didSendAnything = true;
         }
 
@@ -878,10 +882,13 @@ export async function handleMessageCreate(message: Message) {
       loggerWithTrace.error(err, 'Error handling message');
 
       try {
-        await message.reply({
-          content: buildMessageFailureText(),
-          allowedMentions: { repliedUser: false },
-        });
+        await message.reply(
+          buildRuntimeResponseCardPayload({
+            text: buildMessageFailureText(),
+            tone: 'error',
+            allowedMentions: { repliedUser: false },
+          }),
+        );
       } catch {
         // Ignore send errors.
       }

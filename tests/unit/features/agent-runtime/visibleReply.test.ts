@@ -41,16 +41,16 @@ describe('visibleReply', () => {
 
     expect(turnFallback).toContain('I made progress on that');
     expect(continuationFallback).toContain('I need another continuation window');
-    expect(continuationResumeFallback).toContain('I picked that request back up');
+    expect(continuationResumeFallback).toContain('I picked that back up');
     expect(approvalFallback).toContain('That review is resolved');
   });
 
   it('returns route-aware runtime failure copy', () => {
     expect(buildRuntimeFailureReply({ kind: 'turn', category: 'provider' })).toContain(
-      'My model provider stopped responding before I could finish that turn.',
+      'The model behind Sage stopped responding before I could finish that reply.',
     );
     expect(buildRuntimeFailureReply({ kind: 'continue_resume', category: 'runtime' })).toContain(
-      'Something went wrong on my side while I was continuing that request.',
+      'Sage hit a snag while I was picking that request back up.',
     );
   });
 });

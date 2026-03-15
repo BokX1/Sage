@@ -326,17 +326,25 @@ describe('messageCreate - ingest + reply gating', () => {
     });
     expect((message as unknown as { reply: ReturnType<typeof vi.fn> }).reply).toHaveBeenCalledWith(
       expect.objectContaining({
-        content: 'I checked the first batch and can continue from here.',
+        flags: 32768,
         components: [
-          {
-            type: 1,
-            components: [
+          expect.objectContaining({
+            type: 17,
+            components: expect.arrayContaining([
               expect.objectContaining({
-                custom_id: 'sage:ui:continue-1',
-                label: 'Continue (2/4)',
+                content: 'I checked the first batch and can continue from here.',
               }),
-            ],
-          },
+              expect.objectContaining({
+                type: 1,
+                components: [
+                  expect.objectContaining({
+                    custom_id: 'sage:ui:continue-1',
+                    label: 'Continue (2/4)',
+                  }),
+                ],
+              }),
+            ]),
+          }),
         ],
       }),
     );
@@ -361,7 +369,8 @@ describe('messageCreate - ingest + reply gating', () => {
     expect((message as unknown as { reply: ReturnType<typeof vi.fn> }).reply).toHaveBeenCalledWith(
       expect.objectContaining({
         content: expect.stringContaining('I reached the continuation limit for this request.'),
-        components: undefined,
+        allowedMentions: { repliedUser: false },
+        files: [],
       }),
     );
   });
@@ -392,14 +401,15 @@ describe('messageCreate - ingest + reply gating', () => {
     expect((message as unknown as { reply: ReturnType<typeof vi.fn> }).reply).toHaveBeenCalledWith(
       expect.objectContaining({
         content: 'I checked the first batch and can continue from here.',
-        components: undefined,
+        allowedMentions: { repliedUser: false },
+        files: [],
       }),
     );
   });
 
   it('attaches a Retry button when the runtime returns retry metadata', async () => {
     mockGenerateChatReply.mockResolvedValueOnce({
-      replyText: 'My model provider stopped responding before I could finish that turn. Next: use Retry below if it appears, or send that request again.',
+      replyText: 'The model behind Sage stopped responding before I could finish that reply. Next: press Retry if it shows up, or send me that request again.',
       delivery: 'chat_reply',
       meta: {
         retry: {
@@ -429,17 +439,26 @@ describe('messageCreate - ingest + reply gating', () => {
     });
     expect((message as unknown as { reply: ReturnType<typeof vi.fn> }).reply).toHaveBeenCalledWith(
       expect.objectContaining({
-        content: 'My model provider stopped responding before I could finish that turn. Next: use Retry below if it appears, or send that request again.',
+        flags: 32768,
         components: [
-          {
-            type: 1,
-            components: [
+          expect.objectContaining({
+            type: 17,
+            components: expect.arrayContaining([
               expect.objectContaining({
-                custom_id: 'sage:ui:continue-1',
-                label: 'Retry',
+                content:
+                  'The model behind Sage stopped responding before I could finish that reply. Next: press Retry if it shows up, or send me that request again.',
               }),
-            ],
-          },
+              expect.objectContaining({
+                type: 1,
+                components: [
+                  expect.objectContaining({
+                    custom_id: 'sage:ui:continue-1',
+                    label: 'Retry',
+                  }),
+                ],
+              }),
+            ]),
+          }),
         ],
       }),
     );
