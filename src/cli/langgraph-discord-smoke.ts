@@ -105,7 +105,7 @@ async function waitForDiscordReady(): Promise<void> {
   }
   await client.login(appConfig.DISCORD_TOKEN);
   if (!client.isReady()) {
-    await once(client, 'ready');
+    await once(client, 'clientReady');
   }
 }
 

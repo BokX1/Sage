@@ -43,6 +43,7 @@
 - Trimmed fictional runtime telemetry from Sage's operator surface: the graph no longer reports the unused `guardrailBlockedCallCount`, and `system_tool_stats` now reports only metrics and store data that the executor actually maintains instead of advertising cache/memo hit counters that were never wired end to end.
 
 ### Fixed
+- Fixed the live Discord LangGraph smoke client boot path to wait on Discord.js `clientReady`, eliminating the remaining deprecation warning during real VM smoke validation.
 - Fixed routed Discord admin-only reads such as `discord_server.list_members` and `discord_admin.get_server_key_status`, which were being misclassified as writes and could be sent down the approval/write lane instead of the read lane.
 - Fixed the live Discord LangGraph smoke path so seeded validation runs now expire and finalize their continuation interrupts instead of leaving pending continuation-session records behind after a successful smoke.
 
