@@ -231,6 +231,7 @@ function makeInterruptedState() {
       currentTurn: { invokerUserId: 'user-1' },
       replyTarget: null,
     },
+    pendingReadCalls: [],
     pendingWriteCalls: [],
     replyText: '',
     toolResults: [],
@@ -439,7 +440,7 @@ describe('runGraphValueStream', () => {
     );
   });
 
-  it('pauses immediately instead of forcing another plain-text model pass after the step window is exhausted', async () => {
+  it('uses a no-tools wrap-up model pass before pausing when the step window is exhausted', async () => {
     await shutdownAgentGraphRuntime();
     buildAgentGraphConfigMock.mockReturnValue({
       maxSteps: 1,
@@ -461,6 +462,12 @@ describe('runGraphValueStream', () => {
             type: 'tool_call',
           },
         ],
+      }),
+    );
+    modelInvokeMock.mockResolvedValueOnce(
+      new AIMessage({
+        content:
+          'I updated the server persona and still need one more pass to verify the remaining details cleanly.',
       }),
     );
     executeDurableToolTaskMock.mockResolvedValueOnce({
@@ -513,12 +520,12 @@ describe('runGraphValueStream', () => {
         resumeNode: 'llm_call',
       }),
     );
-    expect(result.replyText).toContain('another continuation window');
     expect(result.replyText).toContain('press Continue below');
-    expect(result.replyText).toContain('Completed so far: 1 tool call (discord_admin).');
+    expect(result.replyText).toContain('updated the server persona');
+    expect(result.replyText).not.toContain('Completed so far: 1 tool call (discord_admin).');
     expect(result.roundsCompleted).toBe(1);
-    expect(result.totalRoundsCompleted).toBe(1);
-    expect(modelInvokeMock).toHaveBeenCalledTimes(1);
+    expect(result.totalRoundsCompleted).toBe(2);
+    expect(modelInvokeMock).toHaveBeenCalledTimes(2);
   });
 
   it('counts a plain assistant response as one AI-provider turn', async () => {
@@ -549,7 +556,7 @@ describe('runGraphValueStream', () => {
     expect(result.totalRoundsCompleted).toBe(1);
   });
 
-  it('counts one model response with multiple tool calls as one AI-provider turn', async () => {
+  it('keeps multiple tool calls in one model response to one operational graph step, then spends one wrap-up provider turn when pausing', async () => {
     await shutdownAgentGraphRuntime();
     buildAgentGraphConfigMock.mockReturnValue({
       maxSteps: 1,
@@ -577,6 +584,12 @@ describe('runGraphValueStream', () => {
             type: 'tool_call',
           },
         ],
+      }),
+    );
+    modelInvokeMock.mockResolvedValueOnce(
+      new AIMessage({
+        content:
+          'I completed both admin changes and need another pass before I can wrap the rest up cleanly.',
       }),
     );
     executeDurableToolTaskMock
@@ -631,9 +644,137 @@ describe('runGraphValueStream', () => {
       kind: 'continue_prompt',
     });
     expect(result.roundsCompleted).toBe(1);
-    expect(result.totalRoundsCompleted).toBe(1);
+    expect(result.totalRoundsCompleted).toBe(2);
     expect(result.toolResults).toHaveLength(2);
-    expect(modelInvokeMock).toHaveBeenCalledTimes(1);
+    expect(result.replyText).toContain('completed both admin changes');
+    expect(modelInvokeMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('surfaces overflowed tool calls as explicit tool results instead of silently dropping them', async () => {
+    await shutdownAgentGraphRuntime();
+    buildAgentGraphConfigMock.mockReturnValue({
+      maxSteps: 3,
+      maxToolCallsPerStep: 3,
+      toolTimeoutMs: 1_000,
+      maxResultChars: 4_000,
+      maxDurationMs: 5_000,
+      recursionLimit: 8,
+      githubGroundedMode: false,
+    });
+    modelInvokeMock.mockResolvedValueOnce(
+      new AIMessage({
+        content: '',
+        tool_calls: [
+          {
+            id: 'call-overflow-1',
+            name: 'discord_admin',
+            args: { action: 'update_server_instructions' },
+            type: 'tool_call',
+          },
+          {
+            id: 'call-overflow-2',
+            name: 'discord_admin',
+            args: { action: 'clear_server_api_key' },
+            type: 'tool_call',
+          },
+          {
+            id: 'call-overflow-3',
+            name: 'discord_admin',
+            args: { action: 'get_server_key_status' },
+            type: 'tool_call',
+          },
+          {
+            id: 'call-overflow-4',
+            name: 'discord_admin',
+            args: { action: 'create_channel', name: 'ops' },
+            type: 'tool_call',
+          },
+          {
+            id: 'call-overflow-5',
+            name: 'discord_admin',
+            args: { action: 'delete_channel', channelId: '123' },
+            type: 'tool_call',
+          },
+        ],
+      }),
+    );
+    modelInvokeMock.mockResolvedValueOnce(new AIMessage({ content: 'I finished the first batch and left the overflow for a follow-up pass.' }));
+    executeDurableToolTaskMock
+      .mockResolvedValueOnce({
+        kind: 'tool_result',
+        toolName: 'discord_admin',
+        callId: 'call-overflow-1',
+        content: '{"ok":true,"action":"update_server_instructions"}',
+        result: {
+          name: 'discord_admin',
+          success: true,
+          result: { ok: true, action: 'update_server_instructions' },
+          latencyMs: 10,
+        },
+        files: [],
+      })
+      .mockResolvedValueOnce({
+        kind: 'tool_result',
+        toolName: 'discord_admin',
+        callId: 'call-overflow-2',
+        content: '{"ok":true,"action":"clear_server_api_key"}',
+        result: {
+          name: 'discord_admin',
+          success: true,
+          result: { ok: true, action: 'clear_server_api_key' },
+          latencyMs: 10,
+        },
+        files: [],
+      })
+      .mockResolvedValueOnce({
+        kind: 'tool_result',
+        toolName: 'discord_admin',
+        callId: 'call-overflow-3',
+        content: '{"ok":true,"action":"get_server_key_status"}',
+        result: {
+          name: 'discord_admin',
+          success: true,
+          result: { ok: true, action: 'get_server_key_status' },
+          latencyMs: 10,
+        },
+        files: [],
+      });
+
+    const result = await runAgentGraphTurn({
+      traceId: 'trace-overflow-1',
+      userId: 'user-1',
+      channelId: 'channel-1',
+      guildId: 'guild-1',
+      apiKey: 'test-api-key',
+      model: 'test-main-agent-model',
+      temperature: 0.6,
+      timeoutMs: 1_000,
+      maxTokens: 500,
+      messages: [new HumanMessage({ content: 'handle the admin actions in order' })],
+      activeToolNames: ['discord_admin'],
+      routeKind: 'single',
+      currentTurn: { invokerUserId: 'user-1' },
+      replyTarget: null,
+      invokedBy: 'mention',
+      invokerIsAdmin: true,
+    });
+
+    expect(result.graphStatus).toBe('completed');
+    expect(result.replyText).toContain('finished the first batch');
+    expect(result.roundsCompleted).toBe(2);
+    expect(result.totalRoundsCompleted).toBe(2);
+    expect(result.truncatedCallCount).toBe(2);
+    expect(result.roundEvents[0]).toMatchObject({
+      requestedCallCount: 5,
+      executedCallCount: 3,
+      truncatedCallCount: 2,
+      deduplicatedCallCount: 0,
+    });
+    expect(result.toolResults).toHaveLength(5);
+    expect(result.toolResults.filter((entry) => entry.success)).toHaveLength(3);
+    expect(result.toolResults.filter((entry) => !entry.success)).toHaveLength(2);
+    expect(result.toolResults.find((entry) => !entry.success)?.error).toContain('only runs up to 3 tool calls');
+    expect(executeDurableToolTaskMock).toHaveBeenCalledTimes(3);
   });
 
   it('retries transient provider failures on llm_call without consuming an extra turn', async () => {
@@ -763,9 +904,16 @@ describe('runGraphValueStream', () => {
       kind: 'continue_prompt',
       pauseReason: 'graph_timeout',
     });
+    expect(modelInvokeMock).toHaveBeenCalledTimes(1);
   });
 
-  it('finalizes max-window exhaustion with a user-facing continuation-limit summary instead of a bare tool fragment', async () => {
+  it('finalizes max-window exhaustion with a wrap-up summary plus continuation-limit guidance instead of a raw tool fragment', async () => {
+    modelInvokeMock.mockResolvedValueOnce(
+      new AIMessage({
+        content:
+          'I gathered the key GitHub findings already, but the continuation limit means I need a fresh message to keep going.',
+      }),
+    );
     const result = await __runAgentGraphCommandForTests({
       threadId: 'trace-max-windows-1',
       goto: 'pause_for_continue',
@@ -802,10 +950,11 @@ describe('runGraphValueStream', () => {
 
     expect(result.graphStatus).toBe('completed');
     expect(result.terminationReason).toBe('max_windows_reached');
+    expect(result.replyText).toContain('gathered the key GitHub findings');
     expect(result.replyText).toContain('I hit the continuation limit for this request.');
     expect(result.replyText).toContain('send a new message if you want me to keep going');
-    expect(result.replyText).toContain('Completed so far: 7 tool calls (github x7).');
-    expect(result.replyText).not.toBe('Completed so far: github, github, github, github, github, github, github.');
+    expect(result.replyText).not.toContain('Completed so far: 7 tool calls (github x7).');
+    expect(result.totalRoundsCompleted).toBe(8);
   });
 
   it('materializes approval interrupts before pausing the graph', async () => {

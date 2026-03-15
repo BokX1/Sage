@@ -256,12 +256,12 @@ These settings control Sage's optional Discord voice features. The local voice s
 | `LANGSMITH_API_KEY` | LangSmith API key used when `LANGSMITH_TRACING=true` | *(empty)* |
 | `LANGSMITH_PROJECT` | LangSmith project name when tracing is enabled | `sage` |
 | `SAGE_TRACE_DB_ENABLED` | Persist compact `AgentTrace` ledger rows alongside LangSmith references | `true` |
-| `AGENT_GRAPH_MAX_STEPS` | Max LangGraph model/tool steps per turn | `6` |
-| `AGENT_GRAPH_MAX_TOOL_CALLS_PER_STEP` | Max tool calls the model can request in one step | `5` |
+| `AGENT_GRAPH_MAX_STEPS` | Max tool-capable assistant/model responses per continuation window before Sage pauses or runs a wrap-up summary | `6` |
+| `AGENT_GRAPH_MAX_TOOL_CALLS_PER_STEP` | Hard cap on tool calls the model can emit in one assistant/model response; overflow becomes explicit skipped tool results for follow-up planning | `5` |
 | `AGENT_GRAPH_TOOL_TIMEOUT_MS` | Per-tool execution timeout | `45000` |
 | `AGENT_GRAPH_MAX_DURATION_MS` | Max wall-clock duration for a full graph turn | `120000` |
 | `AGENT_GRAPH_MAX_OUTPUT_TOKENS` | Max output tokens for graph model calls | `1800` |
-| `AGENT_GRAPH_MAX_RESULT_CHARS` | Max chars per tool result | `8000` |
+| `AGENT_GRAPH_MAX_RESULT_CHARS` | Max chars per model-facing tool result before Sage compacts it into a structured envelope | `8000` |
 | `AGENT_GRAPH_GITHUB_GROUNDED_MODE` | Enable GitHub grounded search | `true` |
 | `AGENT_GRAPH_RECURSION_LIMIT` | LangGraph recursion fail-safe above the legal hop count | `16` |
 

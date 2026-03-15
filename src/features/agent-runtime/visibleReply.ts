@@ -95,19 +95,30 @@ export function buildRuntimeFailureReply(params: {
 
 export function finalizeVisibleReplyText(params: {
   replyText: string | null | undefined;
+  preferredReplyText?: string | null | undefined;
   toolResults?: ToolResult[];
   allowEmpty?: boolean;
+  preferEmptyFallback?: boolean;
   emptyFallback: string;
 }): string {
+  const cleanedPreferredReplyText = scrubFinalReplyText({
+    replyText: params.preferredReplyText,
+  });
   const cleanedReplyText = scrubFinalReplyText({
     replyText: params.replyText,
   });
   const fallbackToolSummary = buildDeterministicToolSummary(params.toolResults ?? []);
 
+  if (cleanedPreferredReplyText) {
+    return cleanedPreferredReplyText;
+  }
   if (cleanedReplyText) {
     return cleanedReplyText;
   }
   if (fallbackToolSummary) {
+    if (params.preferEmptyFallback) {
+      return params.emptyFallback;
+    }
     return fallbackToolSummary;
   }
   if (params.allowEmpty) {

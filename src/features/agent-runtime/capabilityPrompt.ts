@@ -113,6 +113,8 @@ export function buildCapabilityPromptSection(
       : '',
     '- Use tools only when they materially improve the answer or are required to complete the request.',
     '- Use provider-native tool calls silently. Do not describe, serialize, or wrap them in JSON or markdown, and never narrate tool choice, args, or approval payloads.',
+    '- Treat graph steps as tool-capable assistant/model responses in the current continuation window. One response can emit multiple tool calls and still consumes only one step.',
+    '- Stay within <agent_state>.graph_limits.max_tool_calls_per_step for any single response. If you need more tool work than that, use the returned results to plan the next response instead of overfilling one response.',
     '- Batch read-only calls in one provider-native turn when possible. Do NOT loop them one by one across rounds.',
     '- If a required parameter is missing, ask instead of guessing.',
     '- If approval review interrupts the turn, treat that action as already queued, keep any visible follow-up brief, and do not repeat approval payloads, action IDs, or internal workflow steps.',

@@ -57,7 +57,7 @@ Architecture → Pipeline → Memory → Database
 | Step | Document | Time |
 | :--- | :--- | :--- |
 | 1️⃣ | [🤖 Agentic Architecture](architecture/OVERVIEW.md) — Single-agent design, 15 built-in tools, runtime flow | ~15 min |
-| 2️⃣ | [🔀 Runtime Pipeline](architecture/PIPELINE.md) — Context assembly, tool loop, and trace outputs | ~20 min |
+| 2️⃣ | [🔀 Runtime Pipeline](architecture/PIPELINE.md) — Context assembly, LangGraph runtime flow, and trace outputs | ~20 min |
 | 3️⃣ | [🧠 Memory System](architecture/MEMORY.md) — Transcript retention, summaries, profiles, and on-demand retrieval | ~15 min |
 | 4️⃣ | [💾 Database Schema](architecture/DATABASE.md) — 17 Prisma models and common operations | ~10 min |
 | 5️⃣ | [🕸️ Social Graph](architecture/SOCIAL_GRAPH.md) — Optional Memgraph/Redpanda export and analytics design | ~15 min |
@@ -92,7 +92,7 @@ Architecture → Pipeline → Memory → Database
 | Document | Description |
 | :--- | :--- |
 | [🤖 Agentic Overview](architecture/OVERVIEW.md) | Single-agent design, tool registry, and reliability model |
-| [🔀 Runtime Pipeline](architecture/PIPELINE.md) | Message flow, context assembly, tool loop, and trace outputs |
+| [🔀 Runtime Pipeline](architecture/PIPELINE.md) | Message flow, context assembly, LangGraph runtime flow, and trace outputs |
 | [🔍 Search Architecture](architecture/SEARCH.md) | SAG flow, web providers, and guarded search fallbacks |
 | [🧠 Memory System](architecture/MEMORY.md) | How Sage stores memory and fetches richer context on demand |
 | [🎤 Voice System](architecture/VOICE.md) | Voice awareness plus optional local transcription |

@@ -145,6 +145,7 @@ export type AgentGraphPersistedContext = Omit<AgentGraphRuntimeContext, 'apiKey'
 export interface AgentGraphState {
   messages: BaseMessage[];
   resumeContext: AgentGraphPersistedContext;
+  pendingReadCalls: GraphToolCallDescriptor[];
   pendingWriteCalls: GraphToolCallDescriptor[];
   replyText: string;
   toolResults: SerializedToolResult[];

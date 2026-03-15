@@ -574,6 +574,53 @@ describe('agentRuntime', () => {
     expect(result.replyText).toContain('need another continuation window');
   });
 
+  it('prefers the persisted continuation summary over a raw tool-count fallback when the graph reply text is empty', async () => {
+    runAgentGraphTurnMock.mockResolvedValue(
+      makeGraphResult({
+        replyText: '',
+        graphStatus: 'interrupted',
+        terminationReason: 'continue_prompt',
+        completedWindows: 1,
+        totalRoundsCompleted: 2,
+        toolResults: Array.from({ length: 8 }, () => ({
+          name: 'web',
+          success: true,
+          latencyMs: 10,
+        })),
+        pendingInterrupt: {
+          kind: 'continue_prompt',
+          continuationId: 'cont-2',
+          requestedByUserId: 'user-1',
+          channelId: 'channel-1',
+          guildId: 'guild-1',
+          summaryText:
+            'I checked the relevant web sources and still need one more pass to connect the findings cleanly.',
+          completedWindows: 1,
+          maxWindows: 4,
+          expiresAtIso: '2026-03-13T09:40:00.000Z',
+          resumeNode: 'llm_call',
+        },
+      }),
+    );
+
+    const result = await runChatTurn({
+      traceId: 'trace-4a',
+      userId: 'user-1',
+      channelId: 'channel-1',
+      guildId: 'guild-1',
+      messageId: 'message-4a',
+      userText: 'keep digging',
+      userProfileSummary: null,
+      currentTurn: makeCurrentTurn({ messageId: 'message-4a' }),
+      invokedBy: 'mention',
+      isAdmin: false,
+    });
+
+    expect(result.delivery).toBe('chat_reply_with_continue');
+    expect(result.replyText).toContain('I checked the relevant web sources');
+    expect(result.replyText).not.toContain('Completed so far: 8 tool calls');
+  });
+
   it('returns a normal chat reply without continuation metadata when the continuation cap is reached', async () => {
     runAgentGraphTurnMock.mockResolvedValue(
       makeGraphResult({

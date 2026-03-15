@@ -512,8 +512,13 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
   }
   const safeFinalReplyText = finalizeVisibleReplyText({
     replyText: groundedReplyText,
+    preferredReplyText:
+      pendingInterrupt?.kind === 'continue_prompt' ? pendingInterrupt.summaryText : undefined,
     toolResults,
     allowEmpty: pendingInterrupt?.kind === 'approval_review',
+    preferEmptyFallback:
+      pendingInterrupt?.kind === 'continue_prompt' ||
+      ((graphBudgetJson?.terminationReason as string | undefined) ?? null) === 'max_windows_reached',
     emptyFallback:
       pendingInterrupt?.kind === 'continue_prompt'
         ? buildLastResortVisibleReply('continue_prompt')
@@ -722,8 +727,13 @@ export async function resumeContinuationChatTurn(
 
     const safeReplyText = finalizeVisibleReplyText({
       replyText: graphResult.replyText,
+      preferredReplyText:
+        pendingInterrupt?.kind === 'continue_prompt' ? pendingInterrupt.summaryText : undefined,
       toolResults: graphResult.toolResults,
       allowEmpty: pendingInterrupt?.kind === 'approval_review',
+      preferEmptyFallback:
+        pendingInterrupt?.kind === 'continue_prompt' ||
+        graphResult.terminationReason === 'max_windows_reached',
       emptyFallback:
         pendingInterrupt?.kind === 'continue_prompt'
           ? buildLastResortVisibleReply('continue_resume')
@@ -900,8 +910,13 @@ export async function retryFailedChatTurn(
 
     const replyText = finalizeVisibleReplyText({
       replyText: graphResult.replyText,
+      preferredReplyText:
+        pendingInterrupt?.kind === 'continue_prompt' ? pendingInterrupt.summaryText : undefined,
       toolResults: graphResult.toolResults,
       allowEmpty: pendingInterrupt?.kind === 'approval_review',
+      preferEmptyFallback:
+        pendingInterrupt?.kind === 'continue_prompt' ||
+        graphResult.terminationReason === 'max_windows_reached',
       emptyFallback:
         pendingInterrupt?.kind === 'continue_prompt'
           ? buildLastResortVisibleReply('continue_resume')

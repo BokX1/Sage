@@ -100,7 +100,7 @@ flowchart LR
 
     RB --> MB
     VS --> MB
-    MB --> Budget --> LLM[LLM Request + Tool Loop]:::llm
+    MB --> Budget --> LLM[LLM Request + LangGraph Runtime]:::llm
     DB --> U
     DB --> C
     DB --> A
@@ -152,7 +152,7 @@ What is **not** preloaded:
 - attachment cache text
 - historical message search results
 
-These are returned only when the tool loop calls for them.
+These are returned only when the runtime requests them through tools.
 
 Context is budgeted by `contextBudgeter` using these key limits:
 

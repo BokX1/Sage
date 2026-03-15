@@ -86,30 +86,121 @@ function truncateText(value: string, maxChars: number): string {
   return `${value.slice(0, Math.max(0, cap - 1))}…`;
 }
 
-function buildStructuredTruncationEnvelope(serialized: string, maxChars: number): string {
-  const compactSummary = 'Tool result truncated to fit the runtime evidence budget.';
-  const minimalEnvelope = JSON.stringify({
-    truncated: true,
-    summary: compactSummary,
-  });
-  if (minimalEnvelope.length >= maxChars) {
-    return minimalEnvelope;
+function safeJsonStringify(value: unknown): string | null {
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return null;
+  }
+}
+
+function truncateTextWithMiddleNotice(value: string, maxChars: number): string {
+  const cap = Math.max(32, Math.floor(maxChars));
+  if (value.length <= cap) {
+    return value;
   }
 
-  let previewBudget = Math.max(0, maxChars - minimalEnvelope.length - 32);
-  while (previewBudget >= 0) {
+  const omittedChars = Math.max(1, value.length - cap);
+  const notice = ` ...[${omittedChars.toLocaleString()} chars omitted]... `;
+  const available = Math.max(2, cap - notice.length);
+  const head = Math.max(1, Math.ceil(available * 0.65));
+  const tail = Math.max(1, available - head);
+  return `${value.slice(0, head)}${notice}${value.slice(value.length - tail)}`;
+}
+
+function compactValueForModel(value: unknown, maxChars: number, depth = 0): unknown {
+  const direct = safeJsonStringify(value);
+  if (direct && direct.length <= maxChars) {
+    return value;
+  }
+
+  if (value === null || value === undefined || typeof value === 'number' || typeof value === 'boolean') {
+    return value;
+  }
+
+  if (typeof value === 'string') {
+    return truncateTextWithMiddleNotice(value, Math.max(24, maxChars - 2));
+  }
+
+  if (Array.isArray(value)) {
+    const maxItems = depth === 0 ? 8 : 4;
+    const items: unknown[] = [];
+    const limited = value.slice(0, maxItems);
+    const perItemBudget = Math.max(24, Math.floor((maxChars - 48) / Math.max(1, limited.length)));
+    for (const item of limited) {
+      items.push(compactValueForModel(item, perItemBudget, depth + 1));
+      const serializedItems = safeJsonStringify(items);
+      if (!serializedItems || serializedItems.length > maxChars - 24) {
+        items.pop();
+        break;
+      }
+    }
+
+    const omittedCount = Math.max(0, value.length - items.length);
+    if (omittedCount > 0) {
+      items.push(`...[${omittedCount} item${omittedCount === 1 ? '' : 's'} omitted]`);
+    }
+    return items;
+  }
+
+  if (typeof value === 'object') {
+    const out: Record<string, unknown> = {};
+    const entries = Object.entries(value as Record<string, unknown>);
+    const maxKeys = depth === 0 ? 14 : 8;
+    const limited = entries.slice(0, maxKeys);
+    const perKeyBudget = Math.max(24, Math.floor((maxChars - 96) / Math.max(1, limited.length)));
+    let processedCount = 0;
+
+    for (const [key, entryValue] of limited) {
+      out[key] = compactValueForModel(entryValue, perKeyBudget, depth + 1);
+      const serializedObject = safeJsonStringify(out);
+      if (!serializedObject || serializedObject.length > maxChars - 48) {
+        delete out[key];
+        break;
+      }
+      processedCount += 1;
+    }
+
+    const omittedCount = Math.max(0, entries.length - processedCount);
+    if (omittedCount > 0) {
+      out.$omitted = `${omittedCount} key${omittedCount === 1 ? '' : 's'} omitted`;
+    }
+    return out;
+  }
+
+  return String(value);
+}
+
+function buildStructuredTruncationEnvelope(value: unknown, serialized: string, maxChars: number): string {
+  const compactSummary = 'Tool result compacted to fit the runtime evidence budget.';
+  const fallbackExcerpt = () => {
     const envelope = JSON.stringify({
       truncated: true,
-      summary: compactSummary,
-      preview: truncateText(serialized, Math.max(1, previewBudget)),
+      summary: 'Tool result excerpted to fit the runtime evidence budget.',
+      excerpt: truncateTextWithMiddleNotice(serialized, Math.max(32, maxChars - 128)),
     });
     if (envelope.length <= maxChars) {
       return envelope;
     }
-    previewBudget -= Math.max(1, Math.ceil((envelope.length - maxChars) / 2));
+    return JSON.stringify({
+      truncated: true,
+      summary: 'Tool result omitted because it exceeded the runtime evidence budget.',
+    });
+  };
+
+  for (const budgetScale of [0.7, 0.55, 0.4, 0.3, 0.2]) {
+    const compacted = compactValueForModel(value, Math.max(64, Math.floor(maxChars * budgetScale)));
+    const envelope = JSON.stringify({
+      truncated: true,
+      summary: compactSummary,
+      data: compacted,
+    });
+    if (envelope.length <= maxChars) {
+      return envelope;
+    }
   }
 
-  return minimalEnvelope;
+  return fallbackExcerpt();
 }
 
 function serializeToolResult(result: ToolResult): SerializedToolResult {
@@ -141,11 +232,15 @@ function buildToolMessageContent(result: ToolResult, maxResultChars: number): st
   }
 
   try {
-    const serialized = JSON.stringify(sanitizeToolResultForModel(result.result));
+    const sanitized = sanitizeToolResultForModel(result.result);
+    const serialized = safeJsonStringify(sanitized);
+    if (!serialized) {
+      return sanitized === undefined ? 'null' : '[unserializable tool result]';
+    }
     if (serialized.length <= maxResultChars) {
       return serialized;
     }
-    return buildStructuredTruncationEnvelope(serialized, maxResultChars);
+    return buildStructuredTruncationEnvelope(sanitized, serialized, maxResultChars);
   } catch {
     return '[unserializable tool result]';
   }
@@ -249,18 +344,18 @@ export const executeApprovedReviewTask = task(
     });
 
     const status = action?.status ?? 'failed';
-    const content = truncateText(
-      JSON.stringify(
-        sanitizeToolResultForModel({
-          requestId: input.requestId,
-          status,
-          kind: action?.kind ?? null,
-          result: action?.resultJson ?? null,
-          errorText: action?.errorText ?? null,
-        }),
-      ),
-      input.maxResultChars,
-    );
+    const contentPayload = sanitizeToolResultForModel({
+      requestId: input.requestId,
+      status,
+      kind: action?.kind ?? null,
+      result: action?.resultJson ?? null,
+      errorText: action?.errorText ?? null,
+    });
+    const serializedContentPayload = safeJsonStringify(contentPayload);
+    const content =
+      serializedContentPayload && serializedContentPayload.length > input.maxResultChars
+        ? buildStructuredTruncationEnvelope(contentPayload, serializedContentPayload, input.maxResultChars)
+        : serializedContentPayload ?? '[unserializable approval execution result]';
 
     return {
       status,

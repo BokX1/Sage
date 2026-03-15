@@ -94,7 +94,7 @@ flowchart TD
 | **Context Builder** | `src/features/agent-runtime/contextBuilder.ts` | Composes prioritized message blocks (system prompt, runtime instructions, optional guild Sage Persona/voice context, transcript, reply context) |
 | **Context Budgeter** | `src/features/agent-runtime/contextBudgeter.ts` | Token-aware block sizing with configurable per-block budgets |
 | **Prompt Composer** | `src/features/agent-runtime/promptComposer.ts` | Assembles the durable base system prompt with identity, response discipline, continuity precedence, and hard rules |
-| **Agent Graph Runtime** | `src/features/agent-runtime/langgraph/runtime.ts` | Custom LangGraph runtime for schema-first state, model calls, bounded tool execution, approval + continuation interrupts, resumable windowed tool loops, subgraph routing, and checkpointed resumes |
+| **Agent Graph Runtime** | `src/features/agent-runtime/langgraph/runtime.ts` | Custom LangGraph runtime for schema-first state, model calls, bounded continuation windows, tool execution, approval + continuation interrupts, subgraph routing, and checkpointed resumes |
 | **Tool Registry** | `src/features/agent-runtime/toolRegistry.ts` | Zod-validated tool definitions with runtime execution metadata |
 | **Default Tools** | `src/features/agent-runtime/defaultTools.ts` | All 15 built-in top-level tool definitions |
 
@@ -123,7 +123,7 @@ sequenceDiagram
 
     alt Tool calls detected
         RT->>AG: Enter LangGraph runtime
-        loop One continuation window (up to AGENT_GRAPH_MAX_STEPS)
+        loop One continuation window (up to AGENT_GRAPH_MAX_STEPS assistant/model responses)
             AG->>T: Execute validated tool calls
             T->>AG: Tool results
             AG->>LLM: Feed results back
@@ -141,9 +141,10 @@ sequenceDiagram
 
 1. **Single-agent, single-model** — no route-mapped model selection.
 2. **Tool-driven context** — memory, social graph, voice data are fetched through tools, not pre-injected.
-3. **Bounded graph execution** — configurable max steps (`AGENT_GRAPH_MAX_STEPS`) and tool calls per step (`AGENT_GRAPH_MAX_TOOL_CALLS_PER_STEP`).
+3. **Bounded graph execution** — configurable max tool-capable assistant/model responses per continuation window (`AGENT_GRAPH_MAX_STEPS`) and a hard per-response tool-call width cap (`AGENT_GRAPH_MAX_TOOL_CALLS_PER_STEP`); overflowed calls are surfaced back to the model as explicit skipped tool results instead of disappearing silently.
 4. **Parallel read-only optimization** — read-only tools can execute concurrently within a step through `ToolNode`.
-5. **LangSmith-first observability** — every turn records LangGraph execution into LangSmith and can additionally persist a compact `AgentTrace` ledger row.
+5. **Clean pause handoff** — when a step window closes cleanly after tool work, Sage can spend one extra no-tools wrap-up response to summarize progress before the Continue handoff; timeout pauses still fall back to the deterministic runtime summary.
+6. **LangSmith-first observability** — every turn records LangGraph execution into LangSmith and can additionally persist a compact `AgentTrace` ledger row.
 
 ---
 
@@ -282,7 +283,7 @@ Read-only helpers are also exposed across the routed Discord tools:
 src/
 ├── app/                        # Bootstrap, Discord event wiring, lifecycle hooks
 ├── features/
-│   ├── agent-runtime/          # runChatTurn, tool loop, prompt/context assembly
+│   ├── agent-runtime/          # runChatTurn, LangGraph turn runtime, prompt/context assembly
 │   ├── chat/                   # Chat orchestration and rate limiting
 │   ├── memory/                 # Profiles and memory update flows
 │   ├── summary/                # Channel summarization and compaction

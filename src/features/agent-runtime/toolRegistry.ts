@@ -377,5 +377,5 @@ export class ToolRegistry {
   }
 }
 
-/** Provide process-global registry used by the runtime tool loop. */
+/** Provide the process-global registry used by the LangGraph runtime. */
 export const globalToolRegistry = new ToolRegistry();

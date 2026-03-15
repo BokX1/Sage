@@ -227,6 +227,7 @@ const AgentGraphConfigurableSchema = z
 const AgentGraphStateSchema = new StateSchema({
   messages: MessagesValue,
   resumeContext: AgentGraphRuntimeSnapshotSchema,
+  pendingReadCalls: z.array(GraphToolCallDescriptorSchema).default([]),
   pendingWriteCalls: z.array(GraphToolCallDescriptorSchema).default([]),
   replyText: z.string().default(''),
   toolResults: new ReducedValue(z.array(SerializedToolResultSchema).default([]), {
@@ -423,6 +424,127 @@ function buildDeterministicRuntimeSummary(
   }
 
   return parts.join('\n\n').trim();
+}
+
+const WINDOW_CLOSEOUT_MAX_OUTPUT_TOKENS = 320;
+const WINDOW_CLOSEOUT_REQUEST_TIMEOUT_MS = 12_000;
+const WINDOW_CLOSEOUT_TEMPERATURE = 0.2;
+
+function buildWindowCloseoutPromptMessages(params: {
+  state: AgentGraphState;
+  runtimeContext: AgentGraphRuntimeContext;
+}): LLMChatMessage[] {
+  const prepared = buildRebudgetingEvent(
+    params.state.messages as BaseMessage[],
+    params.runtimeContext.model,
+    Math.min(
+      params.runtimeContext.maxTokens ?? WINDOW_CLOSEOUT_MAX_OUTPUT_TOKENS,
+      WINDOW_CLOSEOUT_MAX_OUTPUT_TOKENS,
+    ),
+  );
+
+  return [
+    ...toLlmMessages(prepared.trimmedMessages),
+    {
+      role: 'user',
+      content:
+        'Write a short user-visible progress update for Sage before this run pauses. ' +
+        'Summarize the most important concrete progress so far and what remains next. ' +
+        'Do not mention tools, tool counts, steps, windows, budgets, prompts, retries, or internal runtime details. ' +
+        'Do not mention buttons or next-step instructions. ' +
+        'Tools are unavailable for this response.',
+    },
+  ];
+}
+
+function wrapWindowCloseoutReply(params: {
+  summaryBody: string;
+  continuationLimitReached?: boolean;
+}): string {
+  const parts = [params.summaryBody.trim()].filter((part) => part.length > 0);
+  if (params.continuationLimitReached) {
+    parts.push('I hit the continuation limit for this request.');
+    parts.push('Next: send a new message if you want me to keep going from this state.');
+  } else {
+    parts.push('Next: press Continue below if you want me to keep going from the current state.');
+  }
+  return parts.join('\n\n').trim();
+}
+
+async function buildWindowCloseoutSummary(params: {
+  state: AgentGraphState;
+  runtimeContext: AgentGraphRuntimeContext;
+  toolContext: ToolExecutionContext;
+  graphConfig: AgentGraphConfig;
+  pauseReason: 'graph_timeout' | 'step_window_exhausted';
+  continuationLimitReached?: boolean;
+}): Promise<{
+  text: string;
+  usedModel: boolean;
+  latencyMs: number;
+}> {
+  const deterministic = buildDeterministicRuntimeSummary(
+    params.state,
+    params.continuationLimitReached
+      ? { continuationLimitReached: true }
+      : { paused: true },
+  );
+  if (params.pauseReason === 'graph_timeout') {
+    return { text: deterministic, usedModel: false, latencyMs: 0 };
+  }
+
+  try {
+    const response = await invokeAgentModelTask({
+      messages: buildWindowCloseoutPromptMessages({
+        state: params.state,
+        runtimeContext: params.runtimeContext,
+      }),
+      activeToolNames: [],
+      toolContext: params.toolContext,
+      timeoutMs: params.graphConfig.toolTimeoutMs,
+      maxResultChars: params.graphConfig.maxResultChars,
+      model: params.runtimeContext.model,
+      apiKey: params.runtimeContext.apiKey,
+      temperature: WINDOW_CLOSEOUT_TEMPERATURE,
+      requestTimeoutMs: Math.min(
+        params.runtimeContext.timeoutMs ?? WINDOW_CLOSEOUT_REQUEST_TIMEOUT_MS,
+        WINDOW_CLOSEOUT_REQUEST_TIMEOUT_MS,
+      ),
+      maxTokens: Math.min(
+        params.runtimeContext.maxTokens ?? params.graphConfig.maxOutputTokens,
+        WINDOW_CLOSEOUT_MAX_OUTPUT_TOKENS,
+      ),
+    });
+    const [aiMessageCandidate] = toLangChainMessages([response.message]);
+    const aiMessage = AIMessage.isInstance(aiMessageCandidate)
+      ? aiMessageCandidate
+      : new AIMessage({ content: extractMessageText(aiMessageCandidate as BaseMessage) });
+    const summaryBody = scrubFinalReplyText({
+      replyText: extractMessageText(aiMessage),
+    });
+    if (summaryBody) {
+      return {
+        text: wrapWindowCloseoutReply({
+          summaryBody,
+          continuationLimitReached: params.continuationLimitReached,
+        }),
+        usedModel: true,
+        latencyMs: response.latencyMs,
+      };
+    }
+  } catch (error) {
+    logger.warn(
+      {
+        error,
+        traceId: params.runtimeContext.traceId,
+        threadId: params.runtimeContext.threadId,
+        continuationLimitReached: params.continuationLimitReached ?? false,
+      },
+      'Window closeout summary model call failed; using deterministic summary fallback',
+    );
+  }
+
+  return { text: deterministic, usedModel: false, latencyMs: 0 };
 }
 
 function createRuntimeContext(params: StartAgentGraphTurnParams): AgentGraphRuntimeContext {
@@ -924,6 +1046,21 @@ function buildToolMessageFromOutcome(params: {
   });
 }
 
+function buildOverflowToolOutcome(params: {
+  toolName: string;
+  maxToolCallsPerStep: number;
+}): SerializedToolResult {
+  return {
+    name: params.toolName,
+    success: false,
+    error:
+      `This tool call was not executed because Sage only runs up to ${params.maxToolCallsPerStep} ` +
+      'tool calls from one assistant response. Continue in the next model response if this call is still needed.',
+    errorType: 'validation',
+    latencyMs: 0,
+  };
+}
+
 function resolveContinueResumeNode(state: AgentGraphState): 'llm_call' | 'route_tool_phase' {
   const lastMessage = state.messages.at(-1);
   if (lastMessage && AIMessage.isInstance(lastMessage) && (lastMessage.tool_calls?.length ?? 0) > 0) {
@@ -943,8 +1080,7 @@ function buildReadToolsNode(graphConfig: AgentGraphConfig) {
     state: AgentGraphState,
     config: RunnableConfig,
   ): Promise<Partial<AgentGraphState>> => {
-    const batchMessage = state.messages.at(-1);
-    if (!AIMessage.isInstance(batchMessage)) {
+    if (state.pendingReadCalls.length === 0) {
       return {};
     }
 
@@ -956,11 +1092,25 @@ function buildReadToolsNode(graphConfig: AgentGraphConfig) {
       timeoutMs: graphConfig.toolTimeoutMs,
       maxResultChars: graphConfig.maxResultChars,
     });
+    const batchMessage = new AIMessage({
+      content: '',
+      tool_calls: state.pendingReadCalls.map((call) => ({
+        id: call.id,
+        name: call.name,
+        args:
+          call.args && typeof call.args === 'object' && !Array.isArray(call.args)
+            ? (call.args as Record<string, unknown>)
+            : {},
+        type: 'tool_call',
+      })),
+    });
     const selectedTools = catalog.readOnlyTools.filter((tool) =>
       (batchMessage.tool_calls ?? []).some((call) => call.name === tool.name),
     );
     if (selectedTools.length === 0) {
-      return {};
+      return {
+        pendingReadCalls: [],
+      };
     }
 
     const output = (await new ToolNode(selectedTools).invoke(
@@ -980,6 +1130,7 @@ function buildReadToolsNode(graphConfig: AgentGraphConfig) {
       messages: toolMessages,
       toolResults: nextToolResults,
       files: nextFiles,
+      pendingReadCalls: [],
     };
   };
 }
@@ -1106,10 +1257,8 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
     const requestedCallCount = toolCalls.length;
     const effectiveCalls = toolCalls.slice(0, graphConfig.maxToolCallsPerStep);
     const truncatedCallCount = Math.max(0, requestedCallCount - effectiveCalls.length);
-    const seenReadOnly = new Set<string>();
     const readBatch: GraphToolCallDescriptor[] = [];
     const pendingWriteCalls: GraphToolCallDescriptor[] = [];
-    let deduplicatedCallCount = 0;
 
     for (const call of effectiveCalls) {
       const serializedCall: GraphToolCallDescriptor = {
@@ -1124,36 +1273,35 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
       });
 
       if (readOnly) {
-        const dedupeKey = `${call.name}:${JSON.stringify(call.args ?? {})}`;
-        if (seenReadOnly.has(dedupeKey)) {
-          deduplicatedCallCount += 1;
-          continue;
-        }
-        seenReadOnly.add(dedupeKey);
         readBatch.push(serializedCall);
         continue;
       }
 
       pendingWriteCalls.push(serializedCall);
     }
+    const overflowCalls = toolCalls.slice(graphConfig.maxToolCallsPerStep);
+    const overflowResults = overflowCalls.map((call) =>
+      buildOverflowToolOutcome({
+        toolName: call.name,
+        maxToolCallsPerStep: graphConfig.maxToolCallsPerStep,
+      }),
+    );
+    const overflowMessages = overflowCalls.map((call, index) =>
+      buildToolMessageFromOutcome({
+        toolName: call.name,
+        callId: call.id,
+        content: JSON.stringify({
+          skipped: true,
+          reason: 'tool_call_limit_exceeded',
+          maxToolCallsPerStep: graphConfig.maxToolCallsPerStep,
+        }),
+        result: overflowResults[index]!,
+        files: [],
+        status: 'error',
+      }),
+    );
 
-    const readBatchMessage =
-      readBatch.length > 0
-        ? new AIMessage({
-            content: '',
-            tool_calls: readBatch.map((call) => ({
-              id: call.id,
-              name: call.name,
-              args:
-                call.args && typeof call.args === 'object' && !Array.isArray(call.args)
-                  ? (call.args as Record<string, unknown>)
-                  : {},
-              type: 'tool_call',
-            })),
-          })
-        : null;
-
-    const executedAny = readBatch.length > 0 || pendingWriteCalls.length > 0;
+    const executedAny = readBatch.length > 0 || pendingWriteCalls.length > 0 || overflowMessages.length > 0;
 
     return new Command({
       goto:
@@ -1163,16 +1311,18 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
             ? 'approval_gate'
             : 'llm_call',
       update: {
-        messages: readBatchMessage ? [readBatchMessage] : [],
+        messages: overflowMessages,
+        pendingReadCalls: readBatch,
         pendingWriteCalls,
-        deduplicatedCallCount,
+        deduplicatedCallCount: 0,
         truncatedCallCount,
+        toolResults: overflowResults,
         roundEvents: executedAny
           ? [
               await buildExecutionEvent(state, {
                 requestedCallCount,
                 executedCallCount: readBatch.length + pendingWriteCalls.length,
-                deduplicatedCallCount,
+                deduplicatedCallCount: 0,
                 truncatedCallCount,
               }),
             ]
@@ -1615,21 +1765,30 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
     config: RunnableConfig,
   ): Promise<Command<unknown, Partial<AgentGraphState>, GraphNodeName>> => {
     const runtimeContext = resolveRuntimeContext(state, config);
+    const toolContext = buildToolContext(state, runtimeContext, 'turn');
     const nextCompletedWindows = state.completedWindows + 1;
-    const summaryText = buildDeterministicRuntimeSummary(state, { paused: true });
+    const pauseReason = isTimedOut(state, graphConfig) ? 'graph_timeout' : 'step_window_exhausted';
 
     if (nextCompletedWindows >= GRAPH_CONTINUATION_MAX_WINDOWS) {
-      const limitText = buildDeterministicRuntimeSummary(state, {
+      const limitSummary = await buildWindowCloseoutSummary({
+        state,
+        runtimeContext,
+        toolContext,
+        graphConfig,
+        pauseReason,
         continuationLimitReached: true,
       });
       const completionTimestamp = await captureGraphTimestampTask();
       return new Command({
         goto: 'finalize_turn',
         update: {
-          replyText: limitText,
+          replyText: limitSummary.text,
           completedWindows: nextCompletedWindows,
+          totalRoundsCompleted:
+            state.totalRoundsCompleted + (limitSummary.usedModel ? 1 : 0),
           graphStatus: 'completed',
           terminationReason: 'max_windows_reached',
+          activeWindowDurationMs: addActiveWindowDuration(state, limitSummary.latencyMs),
           finalization: {
             attempted: true,
             succeeded: true,
@@ -1640,6 +1799,13 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
       });
     }
 
+    const summary = await buildWindowCloseoutSummary({
+      state,
+      runtimeContext,
+      toolContext,
+      graphConfig,
+      pauseReason,
+    });
     const continuation = await createContinuationInterruptTask({
       threadId: runtimeContext.threadId,
       originTraceId: runtimeContext.originTraceId,
@@ -1647,10 +1813,10 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
       guildId: runtimeContext.guildId,
       channelId: runtimeContext.channelId,
       requestedByUserId: runtimeContext.userId,
-      pauseKind: isTimedOut(state, graphConfig) ? 'graph_timeout' : 'step_window_exhausted',
+      pauseKind: pauseReason,
       completedWindows: nextCompletedWindows,
       maxWindows: GRAPH_CONTINUATION_MAX_WINDOWS,
-      summaryText,
+      summaryText: summary.text,
       resumeNode: resolveContinueResumeNode(state),
     });
 
@@ -1658,10 +1824,13 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
     return new Command({
       goto: 'resume_interrupt',
       update: {
-        replyText: summaryText,
+        replyText: summary.text,
         completedWindows: nextCompletedWindows,
+        totalRoundsCompleted:
+          state.totalRoundsCompleted + (summary.usedModel ? 1 : 0),
         graphStatus: 'interrupted',
         terminationReason: resolveContinuationTerminationReason(continuation.pauseReason),
+        activeWindowDurationMs: addActiveWindowDuration(state, summary.latencyMs),
         pendingInterrupt: {
           kind: 'continue_prompt',
           continuationId: continuation.id,
@@ -1688,6 +1857,7 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
 
   const finalizeTurnNode = async (state: AgentGraphState): Promise<Partial<AgentGraphState>> => ({
     graphStatus: state.graphStatus === 'failed' ? 'failed' : 'completed',
+    pendingReadCalls: [],
     pendingWriteCalls: [],
   });
 
@@ -1967,6 +2137,7 @@ function buildInitialState(params: StartAgentGraphTurnParams): AgentGraphState {
   return {
     messages: params.messages,
     resumeContext: snapshotRuntimeContext(createRuntimeContext(params)),
+    pendingReadCalls: [],
     pendingWriteCalls: [],
     replyText: '',
     toolResults: [],
@@ -2010,6 +2181,7 @@ function buildSeededGraphState(params: {
   const seededState: AgentGraphState = {
     messages: [],
     resumeContext: snapshotRuntimeContext(resolvedContext),
+    pendingReadCalls: [],
     pendingWriteCalls: [],
     replyText: '',
     toolResults: [],

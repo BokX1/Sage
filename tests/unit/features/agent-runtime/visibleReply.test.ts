@@ -53,4 +53,17 @@ describe('visibleReply', () => {
       'Sage hit a snag while I was picking that request back up.',
     );
   });
+
+  it('prefers a continuation summary over a raw tool-count fallback when the visible reply is empty', () => {
+    const result = finalizeVisibleReplyText({
+      replyText: '',
+      preferredReplyText: 'I checked the relevant GitHub files and still need one more pass to connect the findings.',
+      toolResults: [{ name: 'github', success: true, latencyMs: 0 }],
+      preferEmptyFallback: true,
+      emptyFallback: buildLastResortVisibleReply('continue_prompt'),
+    });
+
+    expect(result).toContain('I checked the relevant GitHub files');
+    expect(result).not.toContain('Completed so far');
+  });
 });
