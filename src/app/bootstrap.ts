@@ -2,6 +2,7 @@ import { client } from '../platform/discord/client';
 import { registerGuildCreateHandler } from './discord/handlers/guildCreate';
 import { registerInteractionCreateHandler } from './discord/handlers/interactionCreate';
 import { registerMessageCreateHandler } from './discord/handlers/messageCreate';
+import { registerMessageUpdateHandler } from './discord/handlers/messageUpdate';
 import { registerMessageReactionAddHandler } from './discord/handlers/messageReactionAdd';
 import { registerReadyHandler } from './discord/handlers/ready';
 import { registerVoiceStateUpdateHandler } from './discord/handlers/voiceStateUpdate';
@@ -26,6 +27,7 @@ export async function bootstrapApp(): Promise<void> {
     registerDefaultAgenticTools();
     await initializeAgentGraphRuntime();
     registerMessageCreateHandler();
+    registerMessageUpdateHandler();
     registerMessageReactionAddHandler();
     registerInteractionCreateHandler();
     registerVoiceStateUpdateHandler();

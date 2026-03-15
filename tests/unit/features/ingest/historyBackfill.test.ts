@@ -234,4 +234,62 @@ describe('historyBackfill', () => {
       { publishSocialGraph: false },
     );
   });
+
+  it('captures visible embed and Components V2 text during backfill', async () => {
+    const message = {
+      id: 'msg-rich-1',
+      guildId: 'guild-1',
+      channelId: 'channel-1',
+      content: '',
+      createdAt: new Date('2024-01-01T00:00:00.000Z'),
+      createdTimestamp: new Date('2024-01-01T00:00:00.000Z').getTime(),
+      author: { id: 'bot-1', username: 'Helper Bot', bot: true },
+      member: { displayName: 'Helper Bot' },
+      embeds: [
+        {
+          title: 'Search Result',
+          description: 'Found the exact deployment note.',
+        },
+      ],
+      components: [
+        {
+          type: 17,
+          components: [
+            {
+              type: 10,
+              content: 'Deployment completed successfully.',
+            },
+          ],
+        },
+      ],
+      mentions: {
+        users: new Map<string, unknown>(),
+        has: vi.fn(() => false),
+      },
+      reference: null,
+    };
+
+    const fetchMessages = vi.fn().mockResolvedValue(new Map([['msg-rich-1', message]]));
+    mockFetchChannel.mockResolvedValue(
+      new TestTextChannel({
+        id: 'channel-1',
+        guildId: 'guild-1',
+        messages: { fetch: fetchMessages },
+      }),
+    );
+
+    await backfillChannelHistory('channel-1', 1);
+
+    expect(ingestEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        messageId: 'msg-rich-1',
+        content: [
+          'Search Result',
+          'Found the exact deployment note.',
+          'Deployment completed successfully.',
+        ].join('\n\n'),
+      }),
+      { publishSocialGraph: false },
+    );
+  });
 });

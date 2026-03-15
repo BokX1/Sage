@@ -108,4 +108,19 @@ describe('channelRingBuffer', () => {
 
     expect(recent).toEqual([]);
   });
+
+  it('replaces an existing message when the same message id is re-ingested', () => {
+    appendMessage(buildMessage({ messageId: 'same', content: 'before' }));
+    appendMessage(buildMessage({ messageId: 'same', content: 'after' }));
+
+    const recent = getRecentMessages({
+      guildId: 'guild-1',
+      channelId: 'channel-1',
+      limit: 10,
+    });
+
+    expect(recent).toHaveLength(1);
+    expect(recent[0]?.messageId).toBe('same');
+    expect(recent[0]?.content).toBe('after');
+  });
 });

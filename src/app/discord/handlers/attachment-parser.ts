@@ -21,6 +21,8 @@ const ATTACHMENT_CONTEXT_NOTE =
 
 const URL_PATTERN = /https?:\/\/[^\s<>()[\]{}"']+/gi;
 const TRAILING_URL_PUNCTUATION_PATTERN = /[.,!?;:]+$/u;
+const COMPONENT_TYPE_TEXT_DISPLAY = 10;
+const COMPONENT_TYPE_BUTTON = 2;
 
 function sanitizePublicHttpUrl(value: string): string | null {
   const raw = value.trim();
@@ -57,6 +59,75 @@ function isLikelyImageUrl(url: string): boolean {
 
 function trimTrailingUrlPunctuation(value: string): string {
   return value.replace(TRAILING_URL_PUNCTUATION_PATTERN, '');
+}
+
+function pushUniqueText(target: string[], seen: Set<string>, value: unknown): void {
+  if (typeof value !== 'string') return;
+  const normalized = value.trim();
+  if (!normalized || seen.has(normalized)) return;
+  seen.add(normalized);
+  target.push(normalized);
+}
+
+function collectEmbedTextParts(message: Message, target: string[], seen: Set<string>): void {
+  const embeds = (message as unknown as { embeds?: unknown[] }).embeds;
+  if (!Array.isArray(embeds)) {
+    return;
+  }
+
+  for (const embed of embeds) {
+    const record = embed as {
+      title?: unknown;
+      description?: unknown;
+      author?: { name?: unknown };
+      footer?: { text?: unknown };
+      fields?: Array<{ name?: unknown; value?: unknown }>;
+    };
+    pushUniqueText(target, seen, record.author?.name);
+    pushUniqueText(target, seen, record.title);
+    pushUniqueText(target, seen, record.description);
+    for (const field of record.fields ?? []) {
+      pushUniqueText(target, seen, field.name);
+      pushUniqueText(target, seen, field.value);
+    }
+    pushUniqueText(target, seen, record.footer?.text);
+  }
+}
+
+function collectComponentTextParts(
+  value: unknown,
+  target: string[],
+  seen: Set<string>,
+): void {
+  if (!value || typeof value !== 'object') {
+    return;
+  }
+
+  if (Array.isArray(value)) {
+    for (const entry of value) {
+      collectComponentTextParts(entry, target, seen);
+    }
+    return;
+  }
+
+  const record = value as Record<string, unknown>;
+  const type = typeof record.type === 'number' ? record.type : null;
+  if (type === COMPONENT_TYPE_TEXT_DISPLAY) {
+    pushUniqueText(target, seen, record.content);
+  }
+
+  for (const [key, nestedValue] of Object.entries(record)) {
+    if (type === COMPONENT_TYPE_BUTTON && key === 'label') {
+      continue;
+    }
+    if (key === 'content' && typeof nestedValue === 'string') {
+      if (type !== COMPONENT_TYPE_TEXT_DISPLAY) {
+        pushUniqueText(target, seen, nestedValue);
+      }
+      continue;
+    }
+    collectComponentTextParts(nestedValue, target, seen);
+  }
 }
 
 export function isImageAttachment(attachment?: {
@@ -151,12 +222,41 @@ export function getVisionImageUrl(message: Message): string | null {
   return null;
 }
 
+export function extractVisibleMessageText(
+  message: Message,
+  options?: { allowEmpty?: boolean; textOverride?: string; includeRichText?: boolean },
+): string | null {
+  const parts: string[] = [];
+  const seen = new Set<string>();
+  const baseText = options?.textOverride ?? message.content ?? '';
+  pushUniqueText(parts, seen, baseText);
+
+  if (options?.includeRichText ?? options?.textOverride === undefined) {
+    collectEmbedTextParts(message, parts, seen);
+    collectComponentTextParts(
+      (message as unknown as { components?: unknown[] }).components ?? [],
+      parts,
+      seen,
+    );
+  }
+
+  const combinedText = parts.join('\n\n');
+  if (!options?.allowEmpty && combinedText.trim().length === 0) {
+    return null;
+  }
+  return combinedText;
+}
+
 export function buildMessageContent(
   message: Message,
   options?: { prefix?: string; allowEmpty?: boolean; textOverride?: string },
 ): LLMMessageContent | null {
   const prefix = options?.prefix ?? '';
-  const text = options?.textOverride ?? message.content ?? '';
+  const text =
+    extractVisibleMessageText(message, {
+      allowEmpty: true,
+      textOverride: options?.textOverride,
+    }) ?? '';
   const combinedText = `${prefix}${text}`;
   const imageUrl = getVisionImageUrl(message);
   const hasImage = typeof imageUrl === 'string' && imageUrl.length > 0;

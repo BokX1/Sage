@@ -846,6 +846,99 @@ describe('messageCreate - ingest + reply gating', () => {
     expect(mockGenerateChatReply).not.toHaveBeenCalled();
   });
 
+  it('ingests visible Components V2 text from bot-authored messages', async () => {
+    const message = createMockMessage({
+      content: '',
+      author: {
+        id: 'other-bot',
+        bot: true,
+        username: 'Bot',
+      },
+      components: [
+        {
+          type: 17,
+          components: [
+            {
+              type: 10,
+              content: 'Approval finished successfully.',
+            },
+            {
+              type: 1,
+              components: [
+                {
+                  type: 2,
+                  label: 'Continue',
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+
+    await handleMessageCreate(message);
+
+    expect(mockIngestEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        messageId: message.id,
+        authorIsBot: true,
+        content: 'Approval finished successfully.',
+      }),
+    );
+    expect(mockGenerateChatReply).not.toHaveBeenCalled();
+  });
+
+  it('uses visible Components V2 text for bot reply targets', async () => {
+    const referencedMessage = {
+      id: 'ref-components-1',
+      guildId: 'guild-1',
+      channelId: 'channel-1',
+      author: { id: '123', bot: true, username: 'SageBot' },
+      member: null,
+      content: '',
+      components: [
+        {
+          type: 17,
+          components: [
+            {
+              type: 10,
+              content: 'I finished the approval flow and posted the outcome.',
+            },
+          ],
+        },
+      ],
+      mentions: {
+        users: new Map<string, User>(),
+      },
+      reference: null,
+      attachments: {
+        first: vi.fn(() => null),
+        values: vi.fn(() => []),
+      },
+      partial: false,
+    };
+
+    const message = createMockMessage({
+      content: '<@123> can you check that again?',
+      mentions: {
+        has: vi.fn((user: User) => user.id === '123'),
+        users: new Map<string, User>(),
+      },
+      reference: { messageId: 'ref-components-1' },
+      referencedMessage,
+    });
+
+    await handleMessageCreate(message);
+
+    expect(mockGenerateChatReply).toHaveBeenCalledWith(
+      expect.objectContaining({
+        replyTarget: expect.objectContaining({
+          content: 'I finished the approval flow and posted the outcome.',
+        }),
+      }),
+    );
+  });
+
   it('ingests bot mentions to Sage but still skips reply generation', async () => {
     const message = createMockMessage({
       content: '<@123> status update from another bot',

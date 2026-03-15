@@ -32,10 +32,11 @@ function enforceMax(messages: ChannelMessage[], maxMessages: number): number {
 }
 
 /**
- * Append a message to the in-memory channel buffer.
+ * Append or replace a message in the in-memory channel buffer.
  *
- * Details: enforces the configured TTL and per-channel message cap after
- * insertion.
+ * Details: replaces an existing entry when the same Discord message ID is
+ * re-ingested (for example after a message edit), then enforces the configured
+ * TTL and per-channel message cap.
  *
  * Side effects: mutates the in-memory ring buffer.
  * Error behavior: none.
@@ -45,9 +46,14 @@ function enforceMax(messages: ChannelMessage[], maxMessages: number): number {
 export function appendMessage(message: ChannelMessage): void {
   const key = makeChannelKey(message.guildId, message.channelId);
   const buffer = channelBuffers.get(key) ?? [];
-  // Buffers are expected to receive messages in chronological order so TTL pruning can
-  // discard from the front.
-  buffer.push(message);
+  const existingIndex = buffer.findIndex((entry) => entry.messageId === message.messageId);
+  if (existingIndex >= 0) {
+    buffer.splice(existingIndex, 1, message);
+  } else {
+    // Buffers are expected to receive messages in chronological order so TTL pruning can
+    // discard from the front.
+    buffer.push(message);
+  }
 
   const cutoffMs = Date.now() - config.RAW_MESSAGE_TTL_DAYS * 24 * 60 * 60 * 1000;
   pruneByTtl(buffer, cutoffMs);

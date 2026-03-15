@@ -22,6 +22,7 @@ vi.mock('@/features/agent-runtime/tokenEstimate', () => ({
 
 import {
   deriveAttachmentBudget,
+  extractVisibleMessageText,
   getVisionImageUrl,
 } from '../../../../../src/app/discord/handlers/attachment-parser';
 
@@ -112,5 +113,54 @@ describe('attachment-parser getVisionImageUrl', () => {
     expect(getVisionImageUrl(message as unknown as Parameters<typeof getVisionImageUrl>[0])).toBe(
       'https://example.com/direct.png',
     );
+  });
+});
+
+describe('attachment-parser extractVisibleMessageText', () => {
+  it('includes embed text when raw content is empty', () => {
+    const message = createMockMessage({
+      embeds: [
+        {
+          author: { name: 'Sage (AI)' },
+          title: 'Approval Result',
+          description: 'The update is complete.',
+          fields: [
+            { name: 'Outcome', value: 'Success' },
+          ],
+          footer: { text: 'Done' },
+        },
+      ],
+    });
+
+    expect(extractVisibleMessageText(message as never)).toBe(
+      ['Sage (AI)', 'Approval Result', 'The update is complete.', 'Outcome', 'Success', 'Done'].join('\n\n'),
+    );
+  });
+
+  it('includes Components V2 text display content but skips button labels', () => {
+    const message = createMockMessage({
+      components: [
+        {
+          type: 17,
+          components: [
+            {
+              type: 10,
+              content: 'Sage finished the approval flow.',
+            },
+            {
+              type: 1,
+              components: [
+                {
+                  type: 2,
+                  label: 'Continue',
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(extractVisibleMessageText(message as never)).toBe('Sage finished the approval flow.');
   });
 });

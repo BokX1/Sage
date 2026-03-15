@@ -7,6 +7,7 @@ import { config as appConfig } from '../../platform/config/env';
 import { PrismaMessageStore } from '../../features/awareness/prismaMessageStore';
 import { trimChannelMessages } from '../../features/awareness/channelRingBuffer';
 import { normalizePositiveInt } from '../../shared/utils/numbers';
+import { extractVisibleMessageText } from './handlers/attachment-parser';
 
 const prismaMessageStore = new PrismaMessageStore();
 
@@ -96,7 +97,7 @@ async function processBackfillMessage(message: Message): Promise<void> {
     authorId: message.author.id,
     authorDisplayName,
     authorIsBot: message.author.bot,
-    content: message.content,
+    content: extractVisibleMessageText(message, { allowEmpty: true }) ?? '',
     timestamp: message.createdAt,
     replyToMessageId: message.reference?.messageId,
     mentionsBot: isMentioned,
