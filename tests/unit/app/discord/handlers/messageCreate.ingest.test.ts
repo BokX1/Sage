@@ -211,6 +211,23 @@ describe('messageCreate - ingest + reply gating', () => {
     expect((message as unknown as { reply: ReturnType<typeof vi.fn> }).reply).toHaveBeenCalled();
   });
 
+  it('calls generateChatReply for bare wakeword invocations', async () => {
+    const message = createMockMessage({
+      content: 'sage',
+    });
+
+    await handleMessageCreate(message);
+
+    expect(mockGenerateChatReply).toHaveBeenCalledTimes(1);
+    expect(mockGenerateChatReply).toHaveBeenCalledWith(
+      expect.objectContaining({
+        invokedBy: 'wakeword',
+        userText:
+          'The user is calling for your attention without a specific request. Briefly acknowledge them and ask what they need help with.',
+      }),
+    );
+  });
+
   it('still delivers generated files when approval review is queued, without placeholder text', async () => {
     const attachment = Buffer.from('generated file');
     mockGenerateChatReply.mockResolvedValueOnce({
@@ -542,6 +559,27 @@ describe('messageCreate - ingest + reply gating', () => {
     expect((message as unknown as { reply: ReturnType<typeof vi.fn> }).reply).toHaveBeenCalled();
   });
 
+  it('calls generateChatReply for bare mention invocations', async () => {
+    const message = createMockMessage({
+      content: '<@123>',
+      mentions: {
+        has: vi.fn((user: User) => user.id === '123'),
+        users: new Map<string, User>(),
+      },
+    });
+
+    await handleMessageCreate(message);
+
+    expect(mockGenerateChatReply).toHaveBeenCalledTimes(1);
+    expect(mockGenerateChatReply).toHaveBeenCalledWith(
+      expect.objectContaining({
+        invokedBy: 'mention',
+        userText:
+          'The user is calling for your attention without a specific request. Briefly acknowledge them and ask what they need help with.',
+      }),
+    );
+  });
+
   it('calls generateChatReply for mention-only image messages (default prompt)', async () => {
     const message = createMockMessage({
       content: '<@123>',
@@ -729,6 +767,82 @@ describe('messageCreate - ingest + reply gating', () => {
           authorIsBot: true,
           content: 'Prior bot message',
         }),
+      }),
+    );
+  });
+
+  it('calls generateChatReply for empty replies to Sage with a reply-aware fallback prompt', async () => {
+    const referencedMessage = {
+      id: 'ref-empty-1',
+      guildId: 'guild-789',
+      channelId: 'channel-101',
+      author: { id: '123', bot: true, username: 'SageBot' },
+      member: null,
+      content: 'Can you summarize that thread?',
+      mentions: {
+        users: new Map<string, User>(),
+      },
+      reference: null,
+      attachments: {
+        first: vi.fn(() => null),
+        values: vi.fn(() => []),
+      },
+      partial: false,
+    };
+
+    const message = createMockMessage({
+      content: '',
+      reference: { messageId: 'ref-empty-1' },
+      referencedMessage,
+    });
+
+    await handleMessageCreate(message);
+
+    expect(mockGenerateChatReply).toHaveBeenCalledTimes(1);
+    expect(mockGenerateChatReply).toHaveBeenCalledWith(
+      expect.objectContaining({
+        invokedBy: 'reply',
+        userText:
+          'Respond to the replied-to message using its content and nearby context. If the user intent is still unclear, ask one brief clarifying question.',
+        replyTarget: expect.objectContaining({
+          messageId: 'ref-empty-1',
+        }),
+      }),
+    );
+  });
+
+  it('strips a redundant leading wake word from reply text before invoking Sage', async () => {
+    const referencedMessage = {
+      id: 'ref-redundant-1',
+      guildId: 'guild-789',
+      channelId: 'channel-101',
+      author: { id: '123', bot: true, username: 'SageBot' },
+      member: null,
+      content: 'Previous Sage message',
+      mentions: {
+        users: new Map<string, User>(),
+      },
+      reference: null,
+      attachments: {
+        first: vi.fn(() => null),
+        values: vi.fn(() => []),
+      },
+      partial: false,
+    };
+
+    const message = createMockMessage({
+      content: 'sage keep going from there',
+      reference: { messageId: 'ref-redundant-1' },
+      referencedMessage,
+    });
+
+    await handleMessageCreate(message);
+
+    expect(mockGenerateChatReply).toHaveBeenCalledTimes(1);
+    expect(mockGenerateChatReply).toHaveBeenCalledWith(
+      expect.objectContaining({
+        invokedBy: 'reply',
+        userText: 'keep going from there',
       }),
     );
   });

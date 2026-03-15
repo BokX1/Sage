@@ -64,6 +64,10 @@ const ATTACHMENT_INTENT_PATTERN =
   /\b(attachment|attached|file|files|document|doc|pdf|read|review|analy[sz]e|summari[sz]e|inspect|parse|look at)\b/i;
 
 const DEFAULT_IMAGE_ONLY_PROMPT = 'Describe the image and answer any implied question.';
+const DEFAULT_DIRECT_INVOCATION_PROMPT =
+  'The user is calling for your attention without a specific request. Briefly acknowledge them and ask what they need help with.';
+const DEFAULT_REPLY_ONLY_PROMPT =
+  'Respond to the replied-to message using its content and nearby context. If the user intent is still unclear, ask one brief clarifying question.';
 
 function getWakeWords(): string[] {
   if (!cachedWakeWords) {
@@ -91,6 +95,20 @@ function shouldInlineAttachmentBlocks(params: {
   if (!params.hasAttachmentBlocks) return false;
   if (params.invokedBy !== 'autopilot') return true;
   return ATTACHMENT_INTENT_PATTERN.test(params.cleanedText);
+}
+
+function resolveEmptyInvocationPrompt(params: {
+  invocationKind: 'mention' | 'reply' | 'wakeword' | 'autopilot';
+  hasImageContext: boolean;
+  hasReplyTarget: boolean;
+}): string {
+  if (params.hasImageContext) {
+    return DEFAULT_IMAGE_ONLY_PROMPT;
+  }
+  if (params.invocationKind === 'reply' && params.hasReplyTarget) {
+    return DEFAULT_REPLY_ONLY_PROMPT;
+  }
+  return DEFAULT_DIRECT_INVOCATION_PROMPT;
 }
 
 function buildAttachmentIngestNotes(params: {
@@ -401,7 +419,7 @@ export async function handleMessageCreate(message: Message) {
 
     const messageVisionImageUrl = getVisionImageUrl(message);
     const referencedVisionImageUrl = referencedMessage ? getVisionImageUrl(referencedMessage) : null;
-    const allowEmptyInvocation = !!messageVisionImageUrl || !!referencedVisionImageUrl;
+    const hasImageInvocationContext = !!messageVisionImageUrl || !!referencedVisionImageUrl;
 
     const allAttachments = getMessageAttachments(message);
     const maxAttachmentsPerMessage = normalizePositiveInt(
@@ -626,7 +644,7 @@ export async function handleMessageCreate(message: Message) {
       botUserId: client.user?.id,
       wakeWords: getWakeWords(),
       prefixes: getWakeWordPrefixes(),
-      allowEmpty: allowEmptyInvocation,
+      allowEmpty: true,
     });
 
     if (
@@ -651,8 +669,15 @@ export async function handleMessageCreate(message: Message) {
       }
     }
 
-    if (allowEmptyInvocation && invocation.cleanedText.trim().length === 0) {
-      invocation = { ...invocation, cleanedText: DEFAULT_IMAGE_ONLY_PROMPT };
+    if (invocation.cleanedText.trim().length === 0) {
+      invocation = {
+        ...invocation,
+        cleanedText: resolveEmptyInvocationPrompt({
+          invocationKind: invocation.kind,
+          hasImageContext: hasImageInvocationContext,
+          hasReplyTarget: !!replyTarget,
+        }),
+      };
     }
 
     logger.debug({ type: invocation.kind }, 'Invocation decided');

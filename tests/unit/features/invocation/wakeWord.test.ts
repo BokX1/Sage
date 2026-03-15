@@ -107,6 +107,17 @@ describe('detectInvocation', () => {
       expect(result?.kind).toBe('mention');
     });
 
+    it('strips a redundant leading wake word after a bot mention', () => {
+      const result = detectInvocation({
+        ...baseParams,
+        rawContent: '<@123456789> sage help me do this',
+        isMentioned: true,
+      });
+      expect(result).not.toBeNull();
+      expect(result?.kind).toBe('mention');
+      expect(result?.cleanedText).toBe('help me do this');
+    });
+
     it('should return reply kind when replying to bot', () => {
       const result = detectInvocation({
         ...baseParams,
@@ -115,6 +126,17 @@ describe('detectInvocation', () => {
       });
       expect(result).not.toBeNull();
       expect(result?.kind).toBe('reply');
+    });
+
+    it('strips a redundant leading wake word in replies to Sage', () => {
+      const result = detectInvocation({
+        ...baseParams,
+        rawContent: 'sage keep going',
+        isReplyToBot: true,
+      });
+      expect(result).not.toBeNull();
+      expect(result?.kind).toBe('reply');
+      expect(result?.cleanedText).toBe('keep going');
     });
   });
 
@@ -135,6 +157,29 @@ describe('detectInvocation', () => {
       expect(result).toBeNull();
     });
 
+    it('should allow wake word only when empty direct invokes are enabled', () => {
+      const result = detectInvocation({
+        ...baseParams,
+        rawContent: 'Sage',
+        allowEmpty: true,
+      });
+      expect(result).not.toBeNull();
+      expect(result?.kind).toBe('wakeword');
+      expect(result?.cleanedText).toBe('');
+    });
+
+    it('should allow bare mentions when empty direct invokes are enabled', () => {
+      const result = detectInvocation({
+        ...baseParams,
+        rawContent: '<@123456789>',
+        isMentioned: true,
+        allowEmpty: true,
+      });
+      expect(result).not.toBeNull();
+      expect(result?.kind).toBe('mention');
+      expect(result?.cleanedText).toBe('');
+    });
+
     it('should handle leading punctuation before wake word', () => {
       const result = detectInvocation({
         ...baseParams,
@@ -142,6 +187,14 @@ describe('detectInvocation', () => {
       });
       expect(result).not.toBeNull();
       expect(result?.kind).toBe('wakeword');
+    });
+
+    it('should NOT trigger on possessive wake word forms', () => {
+      const result = detectInvocation({
+        ...baseParams,
+        rawContent: "Sage's latest message confused me",
+      });
+      expect(result).toBeNull();
     });
   });
 });

@@ -10,6 +10,7 @@ import { resumeContinuationChatTurn, retryFailedChatTurn } from '../../../featur
 import { buildGuildApiKeyMissingResponse } from '../../../features/discord/byopBootstrap';
 import {
   buildModalForInteractiveSession,
+  consumeActiveInteractiveSession,
   buildPromptFromInteractiveModalSubmission,
   createInteractiveButtonSession,
   getActiveInteractiveSession,
@@ -26,6 +27,7 @@ import {
   buildContinueOwnerMismatchText,
   buildApprovalQueuedHandoffText,
   buildContinuationButtonLabel,
+  buildConsumedInteractionText,
   buildExpiredInteractionText,
   buildRetryButtonLabel,
   buildRetryChannelMismatchText,
@@ -263,6 +265,27 @@ async function runInteractivePrompt(params: {
   });
 }
 
+async function claimSingleUseButtonSession(params: {
+  interaction: ButtonInteraction;
+  sessionId: string;
+  session: Awaited<ReturnType<typeof getActiveInteractiveSession>>;
+}): Promise<boolean> {
+  if (!params.session) {
+    return false;
+  }
+
+  const claimed = await consumeActiveInteractiveSession(params.sessionId, params.session);
+  if (claimed) {
+    return true;
+  }
+
+  await params.interaction.reply({
+    content: buildConsumedInteractionText('button'),
+    ephemeral: true,
+  });
+  return false;
+}
+
 export async function handleInteractiveButtonSession(
   interaction: ButtonInteraction,
 ): Promise<boolean> {
@@ -301,6 +324,9 @@ export async function handleInteractiveButtonSession(
       });
       return true;
     }
+    if (!(await claimSingleUseButtonSession({ interaction, sessionId, session }))) {
+      return true;
+    }
     await interaction.deferUpdate();
     const invokerIsAdmin = isAdminFromMember(interaction.member);
     const invokerCanModerate = isModeratorFromMember(interaction.member);
@@ -336,6 +362,9 @@ export async function handleInteractiveButtonSession(
         content: buildRetryChannelMismatchText(session.channelId),
         ephemeral: true,
       });
+      return true;
+    }
+    if (!(await claimSingleUseButtonSession({ interaction, sessionId, session }))) {
       return true;
     }
     await interaction.deferUpdate();

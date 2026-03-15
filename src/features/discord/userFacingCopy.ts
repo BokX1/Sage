@@ -23,6 +23,14 @@ export function buildExpiredInteractionText(kind: 'button' | 'form'): string {
   ].join(' ');
 }
 
+export function buildConsumedInteractionText(kind: 'button' | 'form'): string {
+  const subject = kind === 'form' ? 'form' : 'button';
+  return [
+    `This Sage ${subject} was already used.`,
+    'Next: wait for Sage to finish the first run, or ask Sage to open a fresh one if you still need it.',
+  ].join(' ');
+}
+
 export function buildContinueOwnerMismatchText(): string {
   return [
     'This Continue button belongs to the person who asked Sage to keep going.',

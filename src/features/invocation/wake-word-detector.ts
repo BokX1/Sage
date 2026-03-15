@@ -17,6 +17,7 @@ export type DetectInvocationParams = {
 };
 
 const MENTION_REGEX = /<@!?\d+>/g;
+const DISALLOWED_WAKEWORD_SUFFIXES = new Set(["'", '’']);
 
 function escapeRegex(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -29,7 +30,6 @@ function stripMentions(text: string): string {
 function stripLeadingPunctuation(text: string): string {
   return text.replace(/^[\p{P}\p{S}]+/u, '');
 }
-
 
 function cleanupText(text: string): string {
   return text.trim();
@@ -60,6 +60,11 @@ function buildWakeWordRegex(wakeWords: string[], prefixes: string[]): RegExp | n
   }
 
   return new RegExp(`^${wakePattern}(?=$|[\\s\\p{P}\\p{S}])`, 'iu');
+}
+
+function hasDisallowedWakeWordSuffix(text: string, matchedLength: number): boolean {
+  const nextChar = text.charAt(matchedLength);
+  return DISALLOWED_WAKEWORD_SUFFIXES.has(nextChar);
 }
 
 function detectWakeWord(
@@ -94,6 +99,9 @@ function detectWakeWord(
   if (!match || match.index !== 0) {
     return null;
   }
+  if (hasDisallowedWakeWordSuffix(withoutLeadingPunctuation, match[0].length)) {
+    return null;
+  }
 
   const remainder = withoutLeadingPunctuation.slice(match[0].length);
   const cleanedText = remainder.replace(/^[\s\p{P}\p{S}]+/u, '').trim();
@@ -104,29 +112,60 @@ function detectWakeWord(
   return { cleanedText };
 }
 
+function normalizeDirectInvocationText(
+  text: string,
+  wakeWords: string[],
+  prefixes: string[],
+  allowEmpty: boolean,
+): string | null {
+  const cleanedBase = cleanupText(text);
+  if (!cleanedBase) {
+    return allowEmpty ? '' : null;
+  }
+
+  const normalized =
+    detectWakeWord(cleanedBase, wakeWords, prefixes, true)?.cleanedText ?? cleanedBase;
+  if (!normalized) {
+    return allowEmpty ? '' : null;
+  }
+  return normalized;
+}
+
 export function detectInvocation(params: DetectInvocationParams): Invocation | null {
   const { rawContent, isMentioned, isReplyToBot, wakeWords, prefixes } = params;
   const allowEmpty = params.allowEmpty ?? false;
 
   const withoutMentions = stripMentions(rawContent);
-  const cleanedBase = cleanupText(withoutMentions);
 
   if (isReplyToBot) {
-    if (!cleanedBase && !allowEmpty) return null;
+    const cleanedText = normalizeDirectInvocationText(
+      withoutMentions,
+      wakeWords,
+      prefixes,
+      allowEmpty,
+    );
+    if (cleanedText === null) return null;
     return {
       kind: 'reply',
-      cleanedText: cleanedBase,
+      cleanedText,
     };
   }
 
   if (isMentioned) {
-    if (!cleanedBase && !allowEmpty) return null;
+    const cleanedText = normalizeDirectInvocationText(
+      withoutMentions,
+      wakeWords,
+      prefixes,
+      allowEmpty,
+    );
+    if (cleanedText === null) return null;
     return {
       kind: 'mention',
-      cleanedText: cleanedBase,
+      cleanedText,
     };
   }
 
+  const cleanedBase = cleanupText(withoutMentions);
   const wakewordMatch = detectWakeWord(cleanedBase, wakeWords, prefixes, allowEmpty);
   if (!wakewordMatch) {
     return null;

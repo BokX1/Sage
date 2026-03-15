@@ -24,6 +24,9 @@
 
 ## [Unreleased]
 
+### Fixed
+- Runtime Retry and Continue buttons are now single-use at the interaction-session layer, so repeated clicks cannot trigger duplicate backend turns while Sage is still updating the source message.
+
 ### Added
 
 - Added a dedicated `npm run langgraph:discord:smoke` command plus disposable-guild env knobs, so operators can validate the real Discord LangGraph read lane and approval/resume write flow without depending on LLM tool selection.
@@ -46,6 +49,7 @@
 - Trimmed fictional runtime telemetry from Sage's operator surface: the graph no longer reports the unused `guardrailBlockedCallCount`, and `system_tool_stats` now reports only metrics and store data that the executor actually maintains instead of advertising cache/memo hit counters that were never wired end to end.
 
 ### Fixed
+- Fixed Sage's Discord direct-invocation mental model so bare `sage`, bare `@Sage`, and empty replies to Sage now trigger intentionally instead of being dropped, while redundant leading wake words in reply/mention paths are stripped before routing and possessive forms like `Sage's ...` no longer false-trigger wakeword handling.
 - Fixed Discord message awareness for rich bot replies and approval/result updates: Sage now flattens visible embed and Components V2 text into stored transcript context, and edited bot-authored runtime messages re-ingest into awareness so Sage can reference its own updated cards and other bots' embed-only messages correctly.
 - Fixed oversized LangGraph tool-result handling so Sage now compacts large tool payloads into structure-preserving envelopes for model context instead of collapsing them into tiny preview stubs, while still preserving the full structured result in the runtime ledger.
 - Fixed continuation-window closeout so step exhaustion now uses a no-tools wrap-up model pass before Sage pauses, preserves the persisted continuation summary through the outer reply-finalization layer, and no longer degrades to a bare tool-count fragment like `Completed so far: web x7, github.` when a continuation handoff is missing visible reply text.

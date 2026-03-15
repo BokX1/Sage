@@ -65,3 +65,26 @@ export async function getDiscordInteractionSessionById(
   const row = await prisma.discordInteractionSession.findUnique({ where: { id } });
   return row ? toRecord(row) : null;
 }
+
+export async function consumeDiscordInteractionSession(params: {
+  id: string;
+  guildId: string;
+  channelId: string;
+  createdByUserId: string;
+  kind: string;
+}): Promise<boolean> {
+  const deleted = await prisma.discordInteractionSession.deleteMany({
+    where: {
+      id: params.id,
+      guildId: params.guildId,
+      channelId: params.channelId,
+      createdByUserId: params.createdByUserId,
+      kind: params.kind,
+      expiresAt: {
+        gt: new Date(),
+      },
+    },
+  });
+
+  return deleted.count === 1;
+}

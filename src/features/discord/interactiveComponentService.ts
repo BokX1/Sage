@@ -7,7 +7,11 @@ import {
   type ModalActionRowComponentBuilder,
 } from 'discord.js';
 import { z } from 'zod';
-import { createDiscordInteractionSession, getDiscordInteractionSessionById } from './interactionSessionRepo';
+import {
+  consumeDiscordInteractionSession,
+  createDiscordInteractionSession,
+  getDiscordInteractionSessionById,
+} from './interactionSessionRepo';
 
 export const DISCORD_UI_SESSION_CUSTOM_ID_PREFIX = 'sage:ui:';
 export const DISCORD_UI_MODAL_CUSTOM_ID_PREFIX = 'sage:ui_modal:';
@@ -210,6 +214,19 @@ export async function getActiveInteractiveSession(sessionId: string): Promise<Ac
     createdByUserId: record.createdByUserId,
     expiresAt: record.expiresAt,
   };
+}
+
+export async function consumeActiveInteractiveSession(
+  sessionId: string,
+  session: ActiveInteractiveSession,
+): Promise<boolean> {
+  return consumeDiscordInteractionSession({
+    id: sessionId,
+    guildId: session.guildId,
+    channelId: session.channelId,
+    createdByUserId: session.createdByUserId,
+    kind: session.kind,
+  });
 }
 
 export function buildModalForInteractiveSession(params: {

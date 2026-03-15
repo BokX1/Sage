@@ -5,6 +5,7 @@ const resumeContinuationChatTurnMock = vi.hoisted(() => vi.fn());
 const retryFailedChatTurnMock = vi.hoisted(() => vi.fn());
 const parseInteractiveSessionCustomIdMock = vi.hoisted(() => vi.fn());
 const getActiveInteractiveSessionMock = vi.hoisted(() => vi.fn());
+const consumeActiveInteractiveSessionMock = vi.hoisted(() => vi.fn());
 const createInteractiveButtonSessionMock = vi.hoisted(() => vi.fn(async () => 'sage:ui:continue-1'));
 const isAdminFromMemberMock = vi.hoisted(() => vi.fn(() => true));
 const isModeratorFromMemberMock = vi.hoisted(() => vi.fn(() => true));
@@ -37,6 +38,7 @@ vi.mock('@/features/discord/interactiveComponentService', () => ({
   })),
   buildModalForInteractiveSession: vi.fn(),
   buildPromptFromInteractiveModalSubmission: vi.fn(),
+  consumeActiveInteractiveSession: consumeActiveInteractiveSessionMock,
   createInteractiveButtonSession: createInteractiveButtonSessionMock,
   getActiveInteractiveSession: getActiveInteractiveSessionMock,
   parseInteractiveModalCustomId: vi.fn(),
@@ -69,6 +71,7 @@ describe('interactiveSage delivery', () => {
     vi.clearAllMocks();
     isAdminFromMemberMock.mockReturnValue(true);
     isModeratorFromMemberMock.mockReturnValue(true);
+    consumeActiveInteractiveSessionMock.mockResolvedValue(true);
   });
 
   it('clears the deferred interaction when approval-governance-only turns do not return files', async () => {
@@ -540,6 +543,15 @@ describe('interactiveSage delivery', () => {
       isAdmin: true,
       canModerate: true,
     });
+    expect(consumeActiveInteractiveSessionMock).toHaveBeenCalledWith('session-3', {
+      kind: 'graph_continue_button',
+      continuationId: 'cont-2',
+      visibility: 'ephemeral',
+      guildId: 'guild-1',
+      channelId: 'channel-1',
+      createdByUserId: 'user-1',
+      expiresAt: new Date('2026-03-14T00:00:00.000Z'),
+    });
     expect(generateChatReplyMock).not.toHaveBeenCalled();
     expect(interaction.deferUpdate).toHaveBeenCalledTimes(1);
     expect(interaction.editReply).toHaveBeenCalledWith(
@@ -611,6 +623,16 @@ describe('interactiveSage delivery', () => {
       isAdmin: true,
       canModerate: true,
     });
+    expect(consumeActiveInteractiveSessionMock).toHaveBeenCalledWith('session-retry-flow', {
+      kind: 'graph_retry_button',
+      threadId: 'thread-9',
+      retryKind: 'turn',
+      visibility: 'ephemeral',
+      guildId: 'guild-1',
+      channelId: 'channel-1',
+      createdByUserId: 'user-1',
+      expiresAt: new Date('2026-03-14T00:00:00.000Z'),
+    });
     expect(interaction.deferUpdate).toHaveBeenCalledTimes(1);
     expect(interaction.editReply).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -659,6 +681,7 @@ describe('interactiveSage delivery', () => {
     const handled = await handleInteractiveButtonSession(interaction as never);
 
     expect(handled).toBe(true);
+    expect(consumeActiveInteractiveSessionMock).not.toHaveBeenCalled();
     expect(resumeContinuationChatTurnMock).not.toHaveBeenCalled();
     expect(interaction.reply).toHaveBeenCalledWith({
       content:
@@ -697,10 +720,105 @@ describe('interactiveSage delivery', () => {
     const handled = await handleInteractiveButtonSession(interaction as never);
 
     expect(handled).toBe(true);
+    expect(consumeActiveInteractiveSessionMock).not.toHaveBeenCalled();
     expect(resumeContinuationChatTurnMock).not.toHaveBeenCalled();
     expect(interaction.reply).toHaveBeenCalledWith({
       content:
         'This Continue button only works in the original channel. Next: go back to <#channel-home> and use it there, or ask Sage for a fresh continuation here.',
+      ephemeral: true,
+    });
+  });
+
+  it('blocks repeated Continue clicks after the first session claim', async () => {
+    parseInteractiveSessionCustomIdMock.mockReturnValue('session-continue-repeat');
+    getActiveInteractiveSessionMock.mockResolvedValue({
+      kind: 'graph_continue_button',
+      continuationId: 'cont-repeat',
+      visibility: 'ephemeral',
+      guildId: 'guild-1',
+      channelId: 'channel-1',
+      createdByUserId: 'user-1',
+      expiresAt: new Date('2026-03-14T00:00:00.000Z'),
+    });
+    consumeActiveInteractiveSessionMock.mockResolvedValueOnce(false);
+
+    const interaction = {
+      customId: 'session-continue-repeat',
+      id: 'interaction-continue-repeat',
+      channelId: 'channel-1',
+      guildId: 'guild-1',
+      user: { id: 'user-1', username: 'user1', globalName: 'User One' },
+      member: { displayName: 'User One' },
+      deferred: false,
+      replied: false,
+      deferUpdate: vi.fn(async () => {
+        interaction.deferred = true;
+      }),
+      editReply: vi.fn(async () => undefined),
+      reply: vi.fn(async () => undefined),
+      followUp: vi.fn(async () => undefined),
+    };
+
+    const handled = await handleInteractiveButtonSession(interaction as never);
+
+    expect(handled).toBe(true);
+    expect(consumeActiveInteractiveSessionMock).toHaveBeenCalledWith('session-continue-repeat', {
+      kind: 'graph_continue_button',
+      continuationId: 'cont-repeat',
+      visibility: 'ephemeral',
+      guildId: 'guild-1',
+      channelId: 'channel-1',
+      createdByUserId: 'user-1',
+      expiresAt: new Date('2026-03-14T00:00:00.000Z'),
+    });
+    expect(resumeContinuationChatTurnMock).not.toHaveBeenCalled();
+    expect(interaction.deferUpdate).not.toHaveBeenCalled();
+    expect(interaction.reply).toHaveBeenCalledWith({
+      content:
+        'This Sage button was already used. Next: wait for Sage to finish the first run, or ask Sage to open a fresh one if you still need it.',
+      ephemeral: true,
+    });
+  });
+
+  it('blocks repeated Retry clicks after the first session claim', async () => {
+    parseInteractiveSessionCustomIdMock.mockReturnValue('session-retry-repeat');
+    getActiveInteractiveSessionMock.mockResolvedValue({
+      kind: 'graph_retry_button',
+      threadId: 'thread-repeat',
+      retryKind: 'turn',
+      visibility: 'ephemeral',
+      guildId: 'guild-1',
+      channelId: 'channel-1',
+      createdByUserId: 'user-1',
+      expiresAt: new Date('2026-03-14T00:00:00.000Z'),
+    });
+    consumeActiveInteractiveSessionMock.mockResolvedValueOnce(false);
+
+    const interaction = {
+      customId: 'session-retry-repeat',
+      id: 'interaction-retry-repeat',
+      channelId: 'channel-1',
+      guildId: 'guild-1',
+      user: { id: 'user-1', username: 'user1', globalName: 'User One' },
+      member: { displayName: 'User One' },
+      deferred: false,
+      replied: false,
+      deferUpdate: vi.fn(async () => {
+        interaction.deferred = true;
+      }),
+      editReply: vi.fn(async () => undefined),
+      reply: vi.fn(async () => undefined),
+      followUp: vi.fn(async () => undefined),
+    };
+
+    const handled = await handleInteractiveButtonSession(interaction as never);
+
+    expect(handled).toBe(true);
+    expect(retryFailedChatTurnMock).not.toHaveBeenCalled();
+    expect(interaction.deferUpdate).not.toHaveBeenCalled();
+    expect(interaction.reply).toHaveBeenCalledWith({
+      content:
+        'This Sage button was already used. Next: wait for Sage to finish the first run, or ask Sage to open a fresh one if you still need it.',
       ephemeral: true,
     });
   });
