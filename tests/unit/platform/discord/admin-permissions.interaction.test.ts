@@ -79,12 +79,16 @@ describe('admin permission interaction helpers', () => {
       member: moderatorMember,
     });
 
-    expect(isAdminInteraction(interaction)).toBe(false);
-    expect(isModeratorFromMember(moderatorMember)).toBe(true);
-    expect(
-      hasModerationPermissions(
+    expect({
+      admin: isAdminInteraction(interaction),
+      moderator: isModeratorFromMember(moderatorMember),
+      moderationPermissions: hasModerationPermissions(
         new PermissionsBitField(PermissionsBitField.Flags.ManageMessages),
       ),
-    ).toBe(true);
+    }).toEqual({
+      admin: false,
+      moderator: true,
+      moderationPermissions: true,
+    });
   });
 });
