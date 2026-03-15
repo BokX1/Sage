@@ -1,21 +1,36 @@
 import type { ToolResult } from './toolCallExecution';
 import { scrubFinalReplyText } from './finalReplyScrubber';
 
-export type LastResortVisibleReplyKind = 'turn' | 'continue_resume' | 'approval_resume';
+export type LastResortVisibleReplyKind = 'turn' | 'continue_prompt' | 'continue_resume' | 'approval_resume';
 export type RuntimeFailureReplyKind = 'turn' | 'continue_resume';
 export type RuntimeFailureCategory = 'provider' | 'runtime';
 
+function buildToolNameRollup(
+  entries: Array<{
+    name: string;
+  }>,
+): string {
+  const counts = new Map<string, number>();
+  for (const entry of entries) {
+    counts.set(entry.name, (counts.get(entry.name) ?? 0) + 1);
+  }
+
+  return Array.from(counts.entries())
+    .map(([name, count]) => (count > 1 ? `${name} x${count}` : name))
+    .join(', ');
+}
+
 function buildDeterministicToolSummary(toolResults: ToolResult[]): string {
-  const successful = toolResults
-    .filter((result) => result.success)
-    .map((result) => result.name);
+  const successful = toolResults.filter((result) => result.success);
   const failed = toolResults
     .filter((result) => !result.success)
     .map((result) => `${result.name}${result.error ? ` (${result.error})` : ''}`);
   const parts: string[] = [];
 
   if (successful.length > 0) {
-    parts.push(`Completed so far: ${successful.join(', ')}.`);
+    parts.push(
+      `Completed so far: ${successful.length} tool call${successful.length === 1 ? '' : 's'} (${buildToolNameRollup(successful)}).`,
+    );
   }
   if (failed.length > 0) {
     parts.push(`Problems encountered: ${failed.join('; ')}.`);
@@ -26,6 +41,11 @@ function buildDeterministicToolSummary(toolResults: ToolResult[]): string {
 
 export function buildLastResortVisibleReply(kind: LastResortVisibleReplyKind): string {
   switch (kind) {
+    case 'continue_prompt':
+      return [
+        'I made progress on that, but I need another continuation window to keep going from the current state.',
+        'Next: press Continue below if you want me to carry on from here.',
+      ].join(' ');
     case 'continue_resume':
       return [
         'I picked that request back up, but I do not have a good update ready to post yet.',

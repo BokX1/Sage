@@ -36,6 +36,7 @@ import {
   createGraphContinuationSession,
   GRAPH_CONTINUATION_MAX_WINDOWS,
 } from '../graphContinuationRepo';
+import { scrubFinalReplyText } from '../finalReplyScrubber';
 import type { ToolResult } from '../toolCallExecution';
 import type { ToolExecutionContext } from '../toolRegistry';
 import { ApprovalRequiredSignal } from '../toolControlSignals';
@@ -362,18 +363,15 @@ function findLatestAssistantText(messages: BaseMessage[]): string {
   return '';
 }
 
-function buildCompactToolResultText(result: SerializedToolResult): string {
-  if (result.success) {
-    const rawResult =
-      typeof result.result === 'string' ? result.result.trim() : result.result !== undefined ? JSON.stringify(result.result) : '';
-    if (rawResult) {
-      return `${result.name}: ${rawResult.length <= 180 ? rawResult : `${rawResult.slice(0, 177)}...`}`;
-    }
-    return `${result.name}: success`;
+function buildToolNameRollup(results: Array<Pick<SerializedToolResult, 'name'>>): string {
+  const counts = new Map<string, number>();
+  for (const result of results) {
+    counts.set(result.name, (counts.get(result.name) ?? 0) + 1);
   }
 
-  const errorText = result.error?.trim() || result.errorType?.trim() || 'failed';
-  return `${result.name}: ${errorText.length <= 180 ? errorText : `${errorText.slice(0, 177)}...`}`;
+  return Array.from(counts.entries())
+    .map(([name, count]) => (count > 1 ? `${name} x${count}` : name))
+    .join(', ');
 }
 
 function buildDeterministicRuntimeSummary(
@@ -386,28 +384,40 @@ function buildDeterministicRuntimeSummary(
   const parts: string[] = [];
   const successful = state.toolResults.filter((result) => result.success);
   const failed = state.toolResults.filter((result) => !result.success);
-  const latestAssistantText = findLatestAssistantText(state.messages as BaseMessage[]);
+  const latestAssistantText = scrubFinalReplyText({
+    replyText: findLatestAssistantText(state.messages as BaseMessage[]),
+  });
+  const cleanedReplyText = scrubFinalReplyText({
+    replyText: state.replyText,
+  });
+
+  if (options?.continuationLimitReached) {
+    parts.push('I hit the continuation limit for this request.');
+    parts.push('Next: send a new message if you want me to keep going from this state.');
+  } else if (options?.paused) {
+    parts.push('I need another continuation window to keep going from this state.');
+    parts.push('Next: press Continue below if you want me to keep going from the current state.');
+  }
 
   if (successful.length > 0) {
-    parts.push(`Verified so far: ${successful.map((result) => buildCompactToolResultText(result)).join('; ')}`);
+    parts.push(
+      `Completed so far: ${successful.length} tool call${successful.length === 1 ? '' : 's'} (${buildToolNameRollup(successful)}).`,
+    );
   }
   if (failed.length > 0) {
-    parts.push(`Issues encountered: ${failed.map((result) => buildCompactToolResultText(result)).join('; ')}`);
+    parts.push(
+      `Problems encountered: ${failed.length} tool call${failed.length === 1 ? '' : 's'} (${buildToolNameRollup(failed)}).`,
+    );
   }
   if (latestAssistantText) {
     parts.push(`Latest assistant draft: ${latestAssistantText}`);
-  } else if (state.replyText.trim()) {
-    parts.push(state.replyText.trim());
-  }
-  if (options?.continuationLimitReached) {
-    parts.push('I reached the continuation limit for this request.');
-  } else if (options?.paused) {
-    parts.push('I need another continuation window to keep going from the current tool state.');
+  } else if (cleanedReplyText) {
+    parts.push(cleanedReplyText);
   }
   if (parts.length === 0) {
     parts.push(
       options?.paused
-        ? 'I need another continuation window to keep going from the current tool state.'
+        ? 'I need another continuation window to keep going from this state.'
         : 'I completed part of the request but do not have enough structured output to finalize cleanly.',
     );
   }
@@ -764,11 +774,12 @@ function buildToolContext(
   runtimeContext: AgentGraphRuntimeContext,
   graphRunKind: 'turn' | 'approval_resume',
 ): ToolExecutionContext {
+  const currentGraphTurn = Math.max(1, state.roundsCompleted);
   return {
     traceId: runtimeContext.traceId,
     graphThreadId: runtimeContext.threadId,
     graphRunKind,
-    graphStep: state.roundsCompleted + 1,
+    graphStep: currentGraphTurn,
     approvalRequestId:
       state.pendingInterrupt?.kind === 'approval_review' ? state.pendingInterrupt.requestId : null,
     userId: runtimeContext.userId,
@@ -794,7 +805,7 @@ async function buildExecutionEvent(
 ): Promise<ToolCallRoundEvent> {
   const timestamp = await captureGraphTimestampTask();
   return {
-    round: state.roundsCompleted + 1,
+    round: Math.max(1, state.roundsCompleted),
     completedAt: timestamp.iso,
     ...details,
   };
@@ -1000,22 +1011,24 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
     const toolCalls = getLastAiToolCalls([aiMessage]);
     const nextActiveWindowDurationMs = addActiveWindowDuration(state, response.latencyMs);
     const timedOutAfterModel = nextActiveWindowDurationMs >= graphConfig.maxDurationMs;
+    const nextRoundsCompleted = state.roundsCompleted + 1;
+    const nextTotalRoundsCompleted = state.totalRoundsCompleted + 1;
 
     if (toolCalls.length > 0) {
       return new Command({
         goto:
-          timedOutAfterModel || state.roundsCompleted >= graphConfig.maxSteps
+          timedOutAfterModel
             ? 'pause_for_continue'
             : 'route_tool_phase',
         update: {
           messages: [aiMessage],
           activeWindowDurationMs: nextActiveWindowDurationMs,
+          roundsCompleted: nextRoundsCompleted,
+          totalRoundsCompleted: nextTotalRoundsCompleted,
           terminationReason:
             timedOutAfterModel
               ? 'graph_timeout'
-              : state.roundsCompleted >= graphConfig.maxSteps
-                ? 'continue_prompt'
-                : state.terminationReason,
+              : state.terminationReason,
           resumeContext: snapshotRuntimeContext(runtimeContext),
         },
       });
@@ -1028,6 +1041,8 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
         messages: [aiMessage],
         replyText,
         activeWindowDurationMs: addActiveWindowDuration(state, response.latencyMs),
+        roundsCompleted: nextRoundsCompleted,
+        totalRoundsCompleted: nextTotalRoundsCompleted,
         terminationReason: 'assistant_reply',
         finalization: {
           attempted: true,
@@ -1117,8 +1132,6 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
       update: {
         messages: readBatchMessage ? [readBatchMessage] : [],
         pendingWriteCalls,
-        roundsCompleted: executedAny ? state.roundsCompleted + 1 : state.roundsCompleted,
-        totalRoundsCompleted: executedAny ? state.totalRoundsCompleted + 1 : state.totalRoundsCompleted,
         deduplicatedCallCount,
         truncatedCallCount,
         roundEvents: executedAny
@@ -1549,6 +1562,7 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
         messages: toolMessages,
         resumeContext: snapshotRuntimeContext(resumedContext),
         graphStatus: 'running',
+        roundsCompleted: 0,
         activeWindowDurationMs: consumedDurationMs,
         interruptResolution: {
           kind: 'approval_review_batch',
@@ -1572,9 +1586,9 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
     const summaryText = buildDeterministicRuntimeSummary(state, { paused: true });
 
     if (nextCompletedWindows >= GRAPH_CONTINUATION_MAX_WINDOWS) {
-      const limitText = `${buildDeterministicRuntimeSummary(state, {
+      const limitText = buildDeterministicRuntimeSummary(state, {
         continuationLimitReached: true,
-      })}\n\nAsk me in a new message if you want me to keep going from here.`;
+      });
       const completionTimestamp = await captureGraphTimestampTask();
       return new Command({
         goto: 'finalize_turn',

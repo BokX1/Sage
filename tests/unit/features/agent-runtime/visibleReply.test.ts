@@ -14,7 +14,7 @@ describe('visibleReply', () => {
       emptyFallback: buildLastResortVisibleReply('turn'),
     });
 
-    expect(result).toBe('Completed so far: discord_admin.');
+    expect(result).toBe('Completed so far: 1 tool call (discord_admin).');
   });
 
   it('returns the route-aware last-resort fallback when no visible reply or tool summary exists', () => {
@@ -26,6 +26,11 @@ describe('visibleReply', () => {
     const continuationFallback = finalizeVisibleReplyText({
       replyText: '',
       toolResults: [],
+      emptyFallback: buildLastResortVisibleReply('continue_prompt'),
+    });
+    const continuationResumeFallback = finalizeVisibleReplyText({
+      replyText: '',
+      toolResults: [],
       emptyFallback: buildLastResortVisibleReply('continue_resume'),
     });
     const approvalFallback = finalizeVisibleReplyText({
@@ -35,7 +40,8 @@ describe('visibleReply', () => {
     });
 
     expect(turnFallback).toContain('I made progress on that');
-    expect(continuationFallback).toContain('I picked that request back up');
+    expect(continuationFallback).toContain('I need another continuation window');
+    expect(continuationResumeFallback).toContain('I picked that request back up');
     expect(approvalFallback).toContain('That review is resolved');
   });
 

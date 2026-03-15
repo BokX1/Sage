@@ -514,6 +514,125 @@ describe('runGraphValueStream', () => {
       }),
     );
     expect(result.replyText).toContain('another continuation window');
+    expect(result.replyText).toContain('press Continue below');
+    expect(result.replyText).toContain('Completed so far: 1 tool call (discord_admin).');
+    expect(result.roundsCompleted).toBe(1);
+    expect(result.totalRoundsCompleted).toBe(1);
+    expect(modelInvokeMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('counts a plain assistant response as one AI-provider turn', async () => {
+    modelInvokeMock.mockResolvedValueOnce(new AIMessage({ content: 'All set.' }));
+
+    const result = await runAgentGraphTurn({
+      traceId: 'trace-turn-count-1',
+      userId: 'user-1',
+      channelId: 'channel-1',
+      guildId: 'guild-1',
+      apiKey: 'test-api-key',
+      model: 'test-main-agent-model',
+      temperature: 0.6,
+      timeoutMs: 1_000,
+      maxTokens: 500,
+      messages: [new HumanMessage({ content: 'say hello' })],
+      activeToolNames: ['discord_admin'],
+      routeKind: 'single',
+      currentTurn: { invokerUserId: 'user-1' },
+      replyTarget: null,
+      invokedBy: 'mention',
+      invokerIsAdmin: true,
+    });
+
+    expect(result.graphStatus).toBe('completed');
+    expect(result.replyText).toContain('All set.');
+    expect(result.roundsCompleted).toBe(1);
+    expect(result.totalRoundsCompleted).toBe(1);
+  });
+
+  it('counts one model response with multiple tool calls as one AI-provider turn', async () => {
+    await shutdownAgentGraphRuntime();
+    buildAgentGraphConfigMock.mockReturnValue({
+      maxSteps: 1,
+      maxToolCallsPerStep: 5,
+      toolTimeoutMs: 1_000,
+      maxResultChars: 4_000,
+      maxDurationMs: 5_000,
+      recursionLimit: 8,
+      githubGroundedMode: false,
+    });
+    modelInvokeMock.mockResolvedValueOnce(
+      new AIMessage({
+        content: '',
+        tool_calls: [
+          {
+            id: 'call-multi-1',
+            name: 'discord_admin',
+            args: { action: 'update_server_instructions' },
+            type: 'tool_call',
+          },
+          {
+            id: 'call-multi-2',
+            name: 'discord_admin',
+            args: { action: 'clear_server_api_key' },
+            type: 'tool_call',
+          },
+        ],
+      }),
+    );
+    executeDurableToolTaskMock
+      .mockResolvedValueOnce({
+        kind: 'tool_result',
+        toolName: 'discord_admin',
+        callId: 'call-multi-1',
+        content: '{"ok":true}',
+        result: {
+          name: 'discord_admin',
+          success: true,
+          result: { ok: true },
+          latencyMs: 10,
+        },
+        files: [],
+      })
+      .mockResolvedValueOnce({
+        kind: 'tool_result',
+        toolName: 'discord_admin',
+        callId: 'call-multi-2',
+        content: '{"ok":true}',
+        result: {
+          name: 'discord_admin',
+          success: true,
+          result: { ok: true },
+          latencyMs: 10,
+        },
+        files: [],
+      });
+
+    const result = await runAgentGraphTurn({
+      traceId: 'trace-turn-count-2',
+      userId: 'user-1',
+      channelId: 'channel-1',
+      guildId: 'guild-1',
+      apiKey: 'test-api-key',
+      model: 'test-main-agent-model',
+      temperature: 0.6,
+      timeoutMs: 1_000,
+      maxTokens: 500,
+      messages: [new HumanMessage({ content: 'make the two admin changes' })],
+      activeToolNames: ['discord_admin'],
+      routeKind: 'single',
+      currentTurn: { invokerUserId: 'user-1' },
+      replyTarget: null,
+      invokedBy: 'mention',
+      invokerIsAdmin: true,
+    });
+
+    expect(result.graphStatus).toBe('interrupted');
+    expect(result.pendingInterrupt).toMatchObject({
+      kind: 'continue_prompt',
+    });
+    expect(result.roundsCompleted).toBe(1);
+    expect(result.totalRoundsCompleted).toBe(1);
+    expect(result.toolResults).toHaveLength(2);
     expect(modelInvokeMock).toHaveBeenCalledTimes(1);
   });
 
@@ -580,6 +699,49 @@ describe('runGraphValueStream', () => {
       kind: 'continue_prompt',
       pauseReason: 'graph_timeout',
     });
+  });
+
+  it('finalizes max-window exhaustion with a user-facing continuation-limit summary instead of a bare tool fragment', async () => {
+    const result = await __runAgentGraphCommandForTests({
+      threadId: 'trace-max-windows-1',
+      goto: 'pause_for_continue',
+      context: {
+        traceId: 'trace-max-windows-1',
+        originTraceId: 'trace-max-windows-1',
+        userId: 'user-1',
+        channelId: 'channel-1',
+        guildId: 'guild-1',
+        apiKey: 'test-api-key',
+        model: 'test-main-agent-model',
+        temperature: 0.6,
+        timeoutMs: 1_000,
+        maxTokens: 500,
+        activeToolNames: ['github'],
+        routeKind: 'single',
+        currentTurn: { invokerUserId: 'user-1' },
+        replyTarget: null,
+        invokedBy: 'mention',
+      },
+      state: {
+        completedWindows: 3,
+        roundsCompleted: 1,
+        totalRoundsCompleted: 7,
+        toolResults: Array.from({ length: 7 }, () => ({
+          name: 'github',
+          success: true,
+          latencyMs: 10,
+          result: { ok: true },
+        })),
+        messages: [new AIMessage({ content: 'I will call github again.' })],
+      },
+    });
+
+    expect(result.graphStatus).toBe('completed');
+    expect(result.terminationReason).toBe('max_windows_reached');
+    expect(result.replyText).toContain('I hit the continuation limit for this request.');
+    expect(result.replyText).toContain('send a new message if you want me to keep going');
+    expect(result.replyText).toContain('Completed so far: 7 tool calls (github x7).');
+    expect(result.replyText).not.toBe('Completed so far: github, github, github, github, github, github, github.');
   });
 
   it('materializes approval interrupts before pausing the graph', async () => {
@@ -1012,11 +1174,11 @@ describe('runGraphValueStream', () => {
   it('resets the active execution budget after an approval resume', async () => {
     await shutdownAgentGraphRuntime();
     buildAgentGraphConfigMock.mockReturnValue({
-      maxSteps: 2,
+      maxSteps: 1,
       maxToolCallsPerStep: 3,
       toolTimeoutMs: 1_000,
       maxResultChars: 4_000,
-      maxDurationMs: 1,
+      maxDurationMs: 5_000,
       recursionLimit: 8,
       githubGroundedMode: false,
     });

@@ -511,7 +511,10 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
     replyText: groundedReplyText,
     toolResults,
     allowEmpty: pendingInterrupt?.kind === 'approval_review',
-    emptyFallback: buildLastResortVisibleReply('turn'),
+    emptyFallback:
+      pendingInterrupt?.kind === 'continue_prompt'
+        ? buildLastResortVisibleReply('continue_prompt')
+        : buildLastResortVisibleReply('turn'),
   });
   const budgetJson: Record<string, unknown> = {
     route: SINGLE_ROUTE_KIND,

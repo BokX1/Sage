@@ -867,13 +867,13 @@ describe('adminActionService approval permissions', () => {
         method: 'POST',
         path: '/channels/channel-source/messages',
         body: expect.objectContaining({
-          content: 'Completed so far: discord_admin.',
+          content: 'Completed so far: 1 tool call (discord_admin).',
         }),
       }),
     );
     expect(mocks.updateTraceEnd).toHaveBeenCalledWith(
       expect.objectContaining({
-        replyText: 'Completed so far: discord_admin.',
+        replyText: 'Completed so far: 1 tool call (discord_admin).',
       }),
     );
   });

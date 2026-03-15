@@ -43,6 +43,7 @@
 - Trimmed fictional runtime telemetry from Sage's operator surface: the graph no longer reports the unused `guardrailBlockedCallCount`, and `system_tool_stats` now reports only metrics and store data that the executor actually maintains instead of advertising cache/memo hit counters that were never wired end to end.
 
 ### Fixed
+- Fixed LangGraph continuation budgeting so Sage now counts AI-provider turns at the model-response boundary instead of tool-routing rounds, and continuation-limit replies now keep the actionable Continue/new-message guidance instead of collapsing down to a bare tool-name fragment like `Completed so far: github...`.
 - Fixed approval-card LangGraph resumes to rehydrate the current guild or host AI provider key before the post-approval model turn, preventing 401 Unauthorized failures after admins approve or expire review cards.
 - Fixed the live Discord LangGraph smoke client boot path to wait on Discord.js `clientReady`, eliminating the remaining deprecation warning during real VM smoke validation.
 - Removed the obsolete Compose `version` key from Sage's core service stack, so VM/service restarts no longer emit the warning that the attribute is ignored.
