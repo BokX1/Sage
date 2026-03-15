@@ -105,6 +105,8 @@ export interface ToolExecutionContext {
   apiKey?: string;
   /** Whether the current turn was initiated by an admin-capable caller. */
   invokerIsAdmin?: boolean;
+  /** Whether the caller has moderation-capable Discord permissions for moderation workflows. */
+  invokerCanModerate?: boolean;
   /** Invocation source used for tool-policy decisions. */
   invokedBy?: 'mention' | 'reply' | 'wakeword' | 'autopilot' | 'component';
   /** Optional route metadata for route-aware tool behavior. */

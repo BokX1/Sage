@@ -35,6 +35,7 @@ import {
   clearApprovalReviewReviewerMessageId,
   findMatchingPendingApprovalReviewRequest,
   getApprovalReviewRequestById,
+  listApprovalReviewRequestsByThreadId,
   markApprovalReviewRequestDecisionIfPending,
   markApprovalReviewRequestExecutedIfApproved,
   markApprovalReviewRequestExpiredIfPending,
@@ -137,6 +138,57 @@ const PURGE_DEFAULT_LIMIT = 50;
 const PURGE_DEFAULT_WINDOW_MINUTES = 60;
 const PURGE_MAX_SCAN_MESSAGES = 1_000;
 const DISCORD_REST_MESSAGES_PAGE_LIMIT = 100;
+const LANGGRAPH_APPROVAL_BATCH_METADATA_KEY = 'langgraphApprovalBatch';
+
+interface ApprovalBatchMetadata {
+  batchId: string;
+  batchIndex: number;
+  batchSize: number;
+}
+
+function isJsonRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+function readApprovalBatchMetadata(value: unknown): ApprovalBatchMetadata | null {
+  if (!isJsonRecord(value)) {
+    return null;
+  }
+  const rawBatch = value[LANGGRAPH_APPROVAL_BATCH_METADATA_KEY];
+  if (!isJsonRecord(rawBatch)) {
+    return null;
+  }
+  const batchId = typeof rawBatch.batchId === 'string' ? rawBatch.batchId.trim() : '';
+  const batchIndex =
+    typeof rawBatch.batchIndex === 'number' && Number.isInteger(rawBatch.batchIndex) ? rawBatch.batchIndex : -1;
+  const batchSize =
+    typeof rawBatch.batchSize === 'number' && Number.isInteger(rawBatch.batchSize) ? rawBatch.batchSize : -1;
+  if (!batchId || batchIndex < 0 || batchSize < 1) {
+    return null;
+  }
+  return {
+    batchId,
+    batchIndex,
+    batchSize,
+  };
+}
+
+function buildApprovalResumeDecision(action: ApprovalReviewRequestRecord): {
+  requestId: string;
+  status: 'approved' | 'rejected' | 'expired';
+  reviewerId?: string | null;
+  decisionReasonText?: string | null;
+} {
+  if (action.status !== 'approved' && action.status !== 'rejected' && action.status !== 'expired') {
+    throw new Error(`Approval request "${action.id}" is not ready to resume with status "${action.status}".`);
+  }
+  return {
+    requestId: action.id,
+    status: action.status,
+    reviewerId: action.decidedBy ?? null,
+    decisionReasonText: action.decisionReasonText ?? null,
+  };
+}
 
 type PendingButtonAction = 'approve' | 'reject' | 'details';
 
@@ -1121,6 +1173,68 @@ function moderationBotPermissionsForAction(action: DiscordModerationActionReques
     default:
       return [];
   }
+}
+
+export function getRequiredModerationRequesterPermission(
+  action: DiscordModerationActionRequest['action'],
+): { flag: bigint; label: string; scope: 'channel' | 'guild' } {
+  switch (action) {
+    case 'delete_message':
+    case 'bulk_delete_messages':
+    case 'purge_recent_messages':
+    case 'remove_user_reaction':
+    case 'clear_reactions':
+      return { flag: PermissionsBitField.Flags.ManageMessages, label: 'Manage Messages', scope: 'channel' };
+    case 'timeout_member':
+    case 'untimeout_member':
+      return { flag: PermissionsBitField.Flags.ModerateMembers, label: 'Moderate Members', scope: 'guild' };
+    case 'kick_member':
+      return { flag: PermissionsBitField.Flags.KickMembers, label: 'Kick Members', scope: 'guild' };
+    case 'ban_member':
+    case 'unban_member':
+      return { flag: PermissionsBitField.Flags.BanMembers, label: 'Ban Members', scope: 'guild' };
+    default:
+      throw new Error(`Unsupported moderation action: ${action satisfies never}`);
+  }
+}
+
+export function resolveModerationActionChannelId(params: {
+  guildId: string;
+  sourceChannelId: string;
+  request: DiscordModerationActionRequest;
+  replyTarget?: ReplyTargetContext | null;
+}): string | null {
+  if (params.request.action === 'bulk_delete_messages') {
+    return resolveBulkDeleteMessageTargets({
+      guildId: params.guildId,
+      sourceChannelId: params.sourceChannelId,
+      rawChannelId: params.request.channelId,
+      rawMessageIds: params.request.messageIds,
+      usage: 'discord_admin.submit_moderation (bulk_delete_messages)',
+    }).channelId;
+  }
+
+  if (params.request.action === 'purge_recent_messages') {
+    const rawChannelId = params.request.channelId?.trim();
+    return rawChannelId ? normalizeChannelId(rawChannelId) : params.sourceChannelId;
+  }
+
+  if (
+    params.request.action === 'delete_message' ||
+    params.request.action === 'clear_reactions' ||
+    params.request.action === 'remove_user_reaction'
+  ) {
+    return resolveMessageTarget({
+      guildId: params.guildId,
+      sourceChannelId: params.sourceChannelId,
+      rawMessageId: params.request.messageId,
+      rawChannelId: params.request.channelId,
+      replyTarget: params.replyTarget,
+      usage: `discord_admin.submit_moderation (${params.request.action})`,
+    }).channelId;
+  }
+
+  return null;
 }
 
 function buildNormalizedOriginalRequest(
@@ -3965,16 +4079,108 @@ async function getModerationApprovalPermissionError(
   return null;
 }
 
+async function resolveApprovalResumePayload(params: {
+  action: ApprovalReviewRequestRecord;
+  resumeTraceId: string;
+}): Promise<
+  | {
+      shouldResume: false;
+    }
+  | {
+      shouldResume: true;
+      resumeTraceId: string;
+      decisions: Array<ReturnType<typeof buildApprovalResumeDecision>>;
+    }
+> {
+  const batchMetadata = readApprovalBatchMetadata(params.action.interruptMetadataJson);
+  if (!batchMetadata) {
+    return {
+      shouldResume: true,
+      resumeTraceId: params.resumeTraceId,
+      decisions: [buildApprovalResumeDecision(params.action)],
+    };
+  }
+
+  const threadRequests = await listApprovalReviewRequestsByThreadId(params.action.threadId);
+  const orderedBatch = threadRequests
+    .filter((request) => readApprovalBatchMetadata(request.interruptMetadataJson)?.batchId === batchMetadata.batchId)
+    .sort((left, right) => {
+      const leftIndex = readApprovalBatchMetadata(left.interruptMetadataJson)?.batchIndex ?? Number.MAX_SAFE_INTEGER;
+      const rightIndex = readApprovalBatchMetadata(right.interruptMetadataJson)?.batchIndex ?? Number.MAX_SAFE_INTEGER;
+      return leftIndex - rightIndex || left.createdAt.getTime() - right.createdAt.getTime();
+    });
+
+  if (orderedBatch.length !== batchMetadata.batchSize) {
+    return {
+      shouldResume: true,
+      resumeTraceId: params.resumeTraceId,
+      decisions: [buildApprovalResumeDecision(params.action)],
+    };
+  }
+
+  const earlierResolved = orderedBatch
+    .slice(0, batchMetadata.batchIndex)
+    .every((request) => request.status !== 'pending');
+  if (!earlierResolved) {
+    return { shouldResume: false };
+  }
+
+  let latestBatch = orderedBatch;
+  if (params.action.status === 'rejected' || params.action.status === 'expired') {
+    const laterPending = orderedBatch.slice(batchMetadata.batchIndex + 1).filter((request) => request.status === 'pending');
+    if (laterPending.length > 0) {
+      const forcedExpireTime = new Date();
+      const refreshedBatch = [...orderedBatch];
+      for (const request of laterPending) {
+        const expired = await markApprovalReviewRequestExpiredIfPending({
+          id: request.id,
+          now: forcedExpireTime,
+          resumeTraceId: params.resumeTraceId,
+          force: true,
+        });
+        if (!expired) {
+          continue;
+        }
+        const targetIndex = refreshedBatch.findIndex((entry) => entry.id === request.id);
+        if (targetIndex >= 0) {
+          refreshedBatch[targetIndex] = expired;
+        }
+        await refreshApprovalReviewSurfaces(expired, 'approval batch short-circuit').catch((error) => {
+          logger.warn({ error, actionId: expired.id }, 'Failed to refresh auto-expired approval batch sibling');
+        });
+      }
+      latestBatch = refreshedBatch;
+    }
+  }
+
+  if (latestBatch.some((request) => request.status === 'pending')) {
+    return { shouldResume: false };
+  }
+
+  return {
+    shouldResume: true,
+    resumeTraceId: params.resumeTraceId,
+    decisions: latestBatch.map(buildApprovalResumeDecision),
+  };
+}
+
 async function resumeApprovalReviewGraph(params: {
   action: ApprovalReviewRequestRecord;
   decision: 'approved' | 'rejected' | 'expired';
   reviewerId?: string | null;
   decisionReasonText?: string | null;
   resumeTraceId?: string | null;
-}): Promise<void> {
+}): Promise<boolean> {
   const resumeTraceId = params.resumeTraceId?.trim() || generateTraceId();
   const { upsertTraceStart, updateTraceEnd } = await import('../agent-runtime/agent-trace-repo');
   const { resumeAgentGraphTurn } = await import('../agent-runtime/langgraph/runtime');
+  const resumePayload = await resolveApprovalResumePayload({
+    action: params.action,
+    resumeTraceId,
+  });
+  if (!resumePayload.shouldResume) {
+    return false;
+  }
 
   if (process.env.SAGE_TRACE_DB_ENABLED !== 'false') {
     await upsertTraceStart({
@@ -4005,9 +4211,7 @@ async function resumeApprovalReviewGraph(params: {
       threadId: params.action.threadId,
       resume: {
         interruptKind: 'approval_review',
-        status: params.decision,
-        reviewerId: params.reviewerId ?? null,
-        decisionReasonText: params.decisionReasonText ?? null,
+        decisions: resumePayload.decisions,
         resumeTraceId,
       },
     });
@@ -4054,6 +4258,7 @@ async function resumeApprovalReviewGraph(params: {
         logger.warn({ error, requestId: params.action.id }, 'Failed to publish approval outcome acknowledgement');
       });
     }
+    return true;
   } catch (error) {
     await updateTraceEnd({
       id: resumeTraceId,
@@ -4239,6 +4444,9 @@ export async function handleAdminActionButtonInteraction(
     });
     return true;
   }
+  await refreshApprovalReviewSurfaces(approved, 'admin action approval').catch((error) => {
+    logger.warn({ error, actionId: approved.id }, 'Failed to refresh approval surfaces after approval');
+  });
 
   try {
     await resumeApprovalReviewGraph({
@@ -4330,7 +4538,7 @@ export async function handleAdminActionRejectModalSubmit(
   });
 
   await refreshApprovalReviewSurfaces(rejected, 'admin action rejection');
-  const resumeError = await resumeApprovalReviewGraph({
+  const resumeResult = await resumeApprovalReviewGraph({
     action: rejected,
     decision: 'rejected',
     reviewerId: interaction.user.id,
@@ -4340,8 +4548,8 @@ export async function handleAdminActionRejectModalSubmit(
     logger.warn({ error, actionId: rejected.id }, 'Failed to resume rejected approval review graph');
     return error;
   });
-  if (resumeError) {
-    await interaction.editReply('Rejected, but Sage could not post the follow-up reply. Governance cards were updated.');
+  if (resumeResult instanceof Error) {
+    await interaction.editReply('Rejected. I updated the review cards, but I could not post the follow-up message.');
     return true;
   }
 

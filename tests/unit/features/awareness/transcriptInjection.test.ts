@@ -146,8 +146,6 @@ describe('transcript injection', () => {
       finalization: {
         attempted: false,
         succeeded: true,
-        fallbackUsed: false,
-        returnedToolCallCount: 0,
         completedAt: new Date('2026-03-13T00:00:00.000Z').toISOString(),
         terminationReason: 'assistant_reply',
       },

@@ -36,6 +36,7 @@ export type DurableToolTaskOutput =
       callId?: string;
       payload: ApprovalInterruptPayload;
       call: GraphToolCallDescriptor;
+      latencyMs: number;
     };
 
 export interface ActiveToolCatalog {
@@ -183,6 +184,7 @@ export const executeDurableToolTask = task(
       };
     }
 
+    const startedAt = Date.now();
     try {
       const result = await executeToolWithTimeout(
         globalToolRegistry,
@@ -210,6 +212,7 @@ export const executeDurableToolTask = task(
           callId: input.call.id,
           payload: error.payload,
           call: input.call,
+          latencyMs: Math.max(0, Date.now() - startedAt),
         };
       }
       throw error;
@@ -229,6 +232,7 @@ export const executeApprovedReviewTask = task(
     maxResultChars: number;
   }) => {
     const { executeApprovedReviewRequest } = await import('../../admin/adminActionService');
+    const startedAt = Date.now();
     const action = await executeApprovedReviewRequest({
       requestId: input.requestId,
       reviewerId: input.reviewerId ?? null,
@@ -261,7 +265,7 @@ export const executeApprovedReviewTask = task(
           status === 'executed'
             ? undefined
             : action?.errorText ?? `Approval request resolved with status "${status}".`,
-        latencyMs: 0,
+        latencyMs: Math.max(0, Date.now() - startedAt),
       } satisfies SerializedToolResult,
       files: [] as GraphToolFile[],
       callId: input.callId,

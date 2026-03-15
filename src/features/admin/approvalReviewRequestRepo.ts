@@ -152,6 +152,18 @@ export async function getApprovalReviewRequestById(
   return row ? toRecord(row) : null;
 }
 
+export async function listApprovalReviewRequestsByThreadId(
+  threadId: string,
+): Promise<ApprovalReviewRequestRecord[]> {
+  const rows = await prisma.approvalReviewRequest.findMany({
+    where: {
+      threadId: threadId.trim(),
+    },
+    orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+  });
+  return rows.map(toRecord);
+}
+
 export async function findMatchingPendingApprovalReviewRequest(params: {
   guildId: string;
   requestedBy: string;
@@ -178,13 +190,14 @@ export async function markApprovalReviewRequestExpiredIfPending(params: {
   id: string;
   now?: Date;
   resumeTraceId?: string | null;
+  force?: boolean;
 }): Promise<ApprovalReviewRequestRecord | null> {
   const decidedAt = params.now ?? new Date();
   const result = await prisma.approvalReviewRequest.updateMany({
     where: {
       id: params.id,
       status: 'pending',
-      expiresAt: { lte: decidedAt },
+      ...(params.force ? {} : { expiresAt: { lte: decidedAt } }),
     },
     data: {
       status: 'expired',

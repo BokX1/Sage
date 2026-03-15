@@ -26,7 +26,7 @@ import {
   isImageAttachment,
   getVisionImageUrl,
 } from './attachment-parser';
-import { isAdminFromMember } from '../../../platform/discord/admin-permissions';
+import { isAdminFromMember, isModeratorFromMember } from '../../../platform/discord/admin-permissions';
 import { buildGuildApiKeyMissingResponse } from '../../../features/discord/byopBootstrap';
 import { ReplyTargetContext } from '../../../features/agent-runtime/continuityContext';
 import {
@@ -36,6 +36,7 @@ import {
 import {
   buildContinuationButtonLabel,
   buildMessageFailureText,
+  buildRetryButtonLabel,
 } from '../../../features/discord/userFacingCopy';
 
 const processedMessagesKey = Symbol.for('sage.handlers.messageCreate.processed');
@@ -727,6 +728,8 @@ export async function handleMessageCreate(message: Message) {
         botUserId: client.user?.id ?? null,
       };
 
+      const invokerIsAdmin = isAdminFromMember(message.member);
+      const invokerCanModerate = isModeratorFromMember(message.member);
       const result = await generateChatReply({
         traceId,
         userId: message.author.id,
@@ -741,19 +744,22 @@ export async function handleMessageCreate(message: Message) {
         invokedBy: invocation.kind,
         isVoiceActive,
         voiceChannelId: activeVoiceChannelId,
-        isAdmin: isAdminFromMember(message.member),
+        isAdmin: invokerIsAdmin,
+        canModerate: invokerCanModerate,
       });
 
       const replyText = result.replyText || '';
       const files = result.files ?? [];
       const continuation = result.meta?.continuation;
+      const retry = result.meta?.retry;
 
       let didSendAnything = false;
       const approvalQueued = result.delivery === 'approval_governance_only';
-      let continueButtonId: string | null = null;
+      let actionButtonId: string | null = null;
+      let actionButtonLabel: string | null = null;
       if (result.delivery === 'chat_reply_with_continue' && continuation && message.guildId) {
         try {
-          continueButtonId = await createInteractiveButtonSession({
+          actionButtonId = await createInteractiveButtonSession({
             guildId: message.guildId,
             channelId: message.channelId,
             createdByUserId: message.author.id,
@@ -763,10 +769,31 @@ export async function handleMessageCreate(message: Message) {
               visibility: 'public',
             },
           });
+          actionButtonLabel = buildContinuationButtonLabel(result.meta?.continuation);
         } catch (err) {
           loggerWithTrace.warn(
             { err, continuationId: continuation.id, channelId: message.channelId },
             'Failed to create continuation button session; sending summary without button',
+          );
+        }
+      } else if (retry && message.guildId) {
+        try {
+          actionButtonId = await createInteractiveButtonSession({
+            guildId: message.guildId,
+            channelId: message.channelId,
+            createdByUserId: message.author.id,
+            action: {
+              type: 'graph_retry',
+              threadId: retry.threadId,
+              retryKind: retry.retryKind,
+              visibility: 'public',
+            },
+          });
+          actionButtonLabel = buildRetryButtonLabel();
+        } catch (err) {
+          loggerWithTrace.warn(
+            { err, retryThreadId: retry.threadId, channelId: message.channelId },
+            'Failed to create retry button session; sending retry text without button',
           );
         }
       }
@@ -777,7 +804,7 @@ export async function handleMessageCreate(message: Message) {
         result.meta.missingApiKey?.recovery === 'server_key_activation'
       ) {
         const missing = buildGuildApiKeyMissingResponse({
-          isAdmin: isAdminFromMember(message.member),
+          isAdmin: invokerIsAdmin,
         });
         await message.reply({
           flags: missing.flags,
@@ -798,14 +825,14 @@ export async function handleMessageCreate(message: Message) {
             allowedMentions: { repliedUser: false },
             files,
             components:
-              continueButtonId
+              actionButtonId
                 ? [
                     {
                       type: 1,
                       components: [
                         buildActionButtonComponent({
-                          customId: continueButtonId,
-                          label: buildContinuationButtonLabel(result.meta?.continuation),
+                          customId: actionButtonId,
+                          label: actionButtonLabel ?? buildRetryButtonLabel(),
                           style: 'primary',
                         }),
                       ],

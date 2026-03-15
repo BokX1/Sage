@@ -41,8 +41,6 @@ export type GraphTurnTerminationReason =
 export interface ToolCallFinalizationEvent {
   attempted: boolean;
   succeeded: boolean;
-  fallbackUsed: boolean;
-  returnedToolCallCount: number;
   completedAt: string;
   terminationReason: GraphTurnTerminationReason;
   rebudgeting?: GraphRebudgetEvent;
@@ -56,13 +54,19 @@ export interface SerializedToolResult extends Omit<ToolResult, 'attachments'> {
   }>;
 }
 
-export interface ApprovalInterruptState {
-  kind: 'approval_review';
+export interface ApprovalInterruptRequestState {
   requestId: string;
   call: GraphToolCallDescriptor;
   payload: ApprovalInterruptPayload;
   coalesced?: boolean;
   expiresAtIso?: string;
+}
+
+export interface ApprovalInterruptState {
+  kind: 'approval_review';
+  requestId: string;
+  batchId: string;
+  requests: ApprovalInterruptRequestState[];
 }
 
 export interface ContinuePromptInterruptState {
@@ -90,6 +94,12 @@ export interface ApprovalResolutionState {
   errorText?: string | null;
 }
 
+export interface ApprovalBatchResolutionState {
+  kind: 'approval_review_batch';
+  batchId: string;
+  resolutions: ApprovalResolutionState[];
+}
+
 export interface ContinuePromptResolutionState {
   kind: 'continue_prompt';
   continuationId: string;
@@ -97,7 +107,17 @@ export interface ContinuePromptResolutionState {
   resumedByUserId?: string | null;
 }
 
-export type GraphInterruptResolution = ApprovalResolutionState | ContinuePromptResolutionState;
+export type GraphInterruptResolution =
+  | ApprovalResolutionState
+  | ApprovalBatchResolutionState
+  | ContinuePromptResolutionState;
+
+export interface ApprovalResumeDecision {
+  requestId: string;
+  status: 'approved' | 'rejected' | 'expired';
+  reviewerId?: string | null;
+  decisionReasonText?: string | null;
+}
 
 export interface AgentGraphRuntimeContext {
   traceId: string;
@@ -113,6 +133,7 @@ export interface AgentGraphRuntimeContext {
   maxTokens?: number;
   invokedBy?: 'mention' | 'reply' | 'wakeword' | 'autopilot' | 'component';
   invokerIsAdmin?: boolean;
+  invokerCanModerate?: boolean;
   activeToolNames: string[];
   routeKind: string;
   currentTurn: unknown;
@@ -122,7 +143,7 @@ export interface AgentGraphRuntimeContext {
 export interface AgentGraphState {
   messages: BaseMessage[];
   resumeContext: AgentGraphRuntimeContext;
-  pendingWriteCall: GraphToolCallDescriptor | null;
+  pendingWriteCalls: GraphToolCallDescriptor[];
   replyText: string;
   toolResults: SerializedToolResult[];
   files: GraphToolFile[];
@@ -136,7 +157,7 @@ export interface AgentGraphState {
   finalization: ToolCallFinalizationEvent;
   terminationReason: GraphTurnTerminationReason;
   graphStatus: 'running' | 'interrupted' | 'completed' | 'failed';
-  startedAtEpochMs: number;
+  activeWindowDurationMs: number;
   pendingInterrupt: GraphInterruptState | null;
   interruptResolution: GraphInterruptResolution | null;
 }
@@ -144,9 +165,7 @@ export interface AgentGraphState {
 export type GraphResumeInput =
   | {
       interruptKind: 'approval_review';
-      status: 'approved' | 'rejected' | 'expired';
-      reviewerId?: string | null;
-      decisionReasonText?: string | null;
+      decisions: ApprovalResumeDecision[];
       resumeTraceId?: string | null;
     }
   | {

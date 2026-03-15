@@ -29,6 +29,8 @@ import {
 import {
   type DiscordModerationActionRequest,
   type SagePersonaUpdateRequest,
+  getRequiredModerationRequesterPermission,
+  resolveModerationActionChannelId,
   requestDiscordAdminActionForTool,
   requestDiscordInteractionForTool,
   lookupGuildSagePersonaForTool,
@@ -123,6 +125,46 @@ function assertNotAutopilot(invokedBy: string | undefined, actionLabel: string):
 function assertAdmin(invokerIsAdmin: boolean | undefined): void {
   if (!invokerIsAdmin) {
     throw new Error('Admin privileges are required for this action.');
+  }
+}
+
+async function assertInvokerCanSubmitModeration(params: {
+  ctx: ToolExecutionContext;
+  request: DiscordModerationActionRequest;
+}): Promise<void> {
+  const guildId = requireGuildContext(params.ctx.guildId);
+  const requiredPermission = getRequiredModerationRequesterPermission(params.request.action);
+  const guild = await client.guilds.fetch(guildId);
+  const requester = await guild.members.fetch(params.ctx.userId).catch(() => null);
+  if (!requester) {
+    throw new Error('Unable to verify your permissions for this moderation action.');
+  }
+
+  if (requiredPermission.scope === 'guild') {
+    if (!requester.permissions.has(requiredPermission.flag)) {
+      throw new Error(`You need ${requiredPermission.label} to submit this moderation action.`);
+    }
+    return;
+  }
+
+  const channelId = resolveModerationActionChannelId({
+    guildId,
+    sourceChannelId: params.ctx.channelId,
+    request: params.request,
+    replyTarget: params.ctx.replyTarget,
+  });
+  if (!channelId) {
+    throw new Error('Unable to resolve the target channel for this moderation action.');
+  }
+
+  const channel = await guild.channels.fetch(channelId).catch(() => null);
+  if (!channel) {
+    throw new Error('Unable to verify your permissions because the target channel is unavailable.');
+  }
+
+  const channelPermissions = requester.permissionsIn(channel);
+  if (!channelPermissions.has(requiredPermission.flag)) {
+    throw new Error(`You need ${requiredPermission.label} in <#${channel.id}> to submit this moderation action.`);
   }
 }
 
@@ -1419,8 +1461,8 @@ export async function executeDiscordAdminAction(
     }
     case 'submit_moderation': {
       const data = asAction<{ request: DiscordModerationActionRequest }>(args);
-      assertAdmin(ctx.invokerIsAdmin);
       assertNotAutopilot(ctx.invokedBy, 'submit_moderation');
+      await assertInvokerCanSubmitModeration({ ctx, request: data.request });
       return requestDiscordAdminActionForTool({
         guildId: requireGuildContext(ctx.guildId),
         channelId: ctx.channelId,

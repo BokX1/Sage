@@ -2,10 +2,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const generateChatReplyMock = vi.hoisted(() => vi.fn());
 const resumeContinuationChatTurnMock = vi.hoisted(() => vi.fn());
+const retryFailedChatTurnMock = vi.hoisted(() => vi.fn());
 const parseInteractiveSessionCustomIdMock = vi.hoisted(() => vi.fn());
 const getActiveInteractiveSessionMock = vi.hoisted(() => vi.fn());
 const createInteractiveButtonSessionMock = vi.hoisted(() => vi.fn(async () => 'sage:ui:continue-1'));
 const isAdminFromMemberMock = vi.hoisted(() => vi.fn(() => true));
+const isModeratorFromMemberMock = vi.hoisted(() => vi.fn(() => true));
 const buildGuildApiKeyMissingResponseMock = vi.hoisted(() =>
   vi.fn(() => ({
     flags: 32768,
@@ -19,6 +21,7 @@ vi.mock('@/features/chat/chat-engine', () => ({
 
 vi.mock('@/features/agent-runtime/agentRuntime', () => ({
   resumeContinuationChatTurn: resumeContinuationChatTurnMock,
+  retryFailedChatTurn: retryFailedChatTurnMock,
 }));
 
 vi.mock('@/features/discord/byopBootstrap', () => ({
@@ -50,6 +53,7 @@ vi.mock('@/shared/text/message-splitter', () => ({
 
 vi.mock('@/platform/discord/admin-permissions', () => ({
   isAdminFromMember: isAdminFromMemberMock,
+  isModeratorFromMember: isModeratorFromMemberMock,
 }));
 
 vi.mock('@/platform/discord/client', () => ({
@@ -63,6 +67,8 @@ import { handleInteractiveButtonSession } from '@/app/discord/handlers/interacti
 describe('interactiveSage delivery', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    isAdminFromMemberMock.mockReturnValue(true);
+    isModeratorFromMemberMock.mockReturnValue(true);
   });
 
   it('clears the deferred interaction when approval-governance-only turns do not return files', async () => {
@@ -393,6 +399,76 @@ describe('interactiveSage delivery', () => {
     );
   });
 
+  it('publishes a Retry button when the runtime returns retry metadata', async () => {
+    parseInteractiveSessionCustomIdMock.mockReturnValue('session-retry');
+    getActiveInteractiveSessionMock.mockResolvedValue({
+      kind: 'prompt_button',
+      prompt: 'hello again',
+      visibility: 'ephemeral',
+      guildId: 'guild-1',
+      channelId: 'channel-1',
+      createdByUserId: 'user-1',
+      expiresAt: new Date('2026-03-14T00:00:00.000Z'),
+    });
+    generateChatReplyMock.mockResolvedValue({
+      replyText: 'My model provider stopped responding before I could finish that turn. Next: use Retry below if it appears, or send that request again.',
+      delivery: 'chat_reply',
+      meta: {
+        retry: {
+          threadId: 'thread-1',
+          retryKind: 'turn',
+        },
+      },
+      files: [],
+    });
+
+    const interaction = {
+      customId: 'session-retry',
+      channelId: 'channel-1',
+      guildId: 'guild-1',
+      user: { id: 'user-1', username: 'user1', globalName: 'User One' },
+      member: { displayName: 'User One' },
+      deferred: false,
+      replied: false,
+      deferReply: vi.fn(async () => {
+        interaction.deferred = true;
+      }),
+      editReply: vi.fn(async () => undefined),
+      reply: vi.fn(async () => undefined),
+      followUp: vi.fn(async () => undefined),
+    };
+
+    const handled = await handleInteractiveButtonSession(interaction as never);
+
+    expect(handled).toBe(true);
+    expect(createInteractiveButtonSessionMock).toHaveBeenCalledWith({
+      guildId: 'guild-1',
+      channelId: 'channel-1',
+      createdByUserId: 'user-1',
+      action: {
+        type: 'graph_retry',
+        threadId: 'thread-1',
+        retryKind: 'turn',
+        visibility: 'ephemeral',
+      },
+    });
+    expect(interaction.editReply).toHaveBeenCalledWith(
+      expect.objectContaining({
+        components: [
+          {
+            type: 1,
+            components: [
+              expect.objectContaining({
+                custom_id: 'sage:ui:continue-1',
+                label: 'Retry',
+              }),
+            ],
+          },
+        ],
+      }),
+    );
+  });
+
   it('resumes graph continuation sessions instead of generating a fresh prompt turn', async () => {
     parseInteractiveSessionCustomIdMock.mockReturnValue('session-3');
     getActiveInteractiveSessionMock.mockResolvedValue({
@@ -438,11 +514,68 @@ describe('interactiveSage delivery', () => {
       guildId: 'guild-1',
       continuationId: 'cont-2',
       isAdmin: true,
+      canModerate: true,
     });
     expect(generateChatReplyMock).not.toHaveBeenCalled();
     expect(interaction.editReply).toHaveBeenCalledWith(
       expect.objectContaining({
         content: 'Resumed and finished.',
+      }),
+    );
+  });
+
+  it('retries a failed turn via the Retry button flow', async () => {
+    parseInteractiveSessionCustomIdMock.mockReturnValue('session-retry-flow');
+    getActiveInteractiveSessionMock.mockResolvedValue({
+      kind: 'graph_retry_button',
+      threadId: 'thread-9',
+      retryKind: 'turn',
+      visibility: 'ephemeral',
+      guildId: 'guild-1',
+      channelId: 'channel-1',
+      createdByUserId: 'user-1',
+      expiresAt: new Date('2026-03-14T00:00:00.000Z'),
+    });
+    retryFailedChatTurnMock.mockResolvedValue({
+      replyText: 'Recovered after retry.',
+      delivery: 'chat_reply',
+      meta: undefined,
+      files: [],
+    });
+
+    const interaction = {
+      customId: 'session-retry-flow',
+      id: 'interaction-retry-1',
+      channelId: 'channel-1',
+      guildId: 'guild-1',
+      user: { id: 'user-1', username: 'user1', globalName: 'User One' },
+      member: { displayName: 'User One' },
+      deferred: false,
+      replied: false,
+      deferReply: vi.fn(async () => {
+        interaction.deferred = true;
+      }),
+      editReply: vi.fn(async () => undefined),
+      reply: vi.fn(async () => undefined),
+      followUp: vi.fn(async () => undefined),
+    };
+
+    const handled = await handleInteractiveButtonSession(interaction as never);
+
+    expect(handled).toBe(true);
+    expect(retryFailedChatTurnMock).toHaveBeenCalledWith({
+      traceId: 'trace-1',
+      threadId: 'thread-9',
+      userId: 'user-1',
+      channelId: 'channel-1',
+      guildId: 'guild-1',
+      retryKind: 'turn',
+      isAdmin: true,
+      canModerate: true,
+    });
+    expect(interaction.editReply).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: 'Recovered after retry.',
       }),
     );
   });

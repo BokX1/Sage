@@ -671,7 +671,7 @@ const discordAdminToolSchema = z.discriminatedUnion('action', [
   adminSendKeySetupCardSchema,
   instructionsUpdateServerSchema,
   z.object({
-    action: z.literal('submit_moderation').describe('Submit a moderation/enforcement request. This applies actions to users, messages, reactions, or content, including reply-targeted spam/abuse cleanup. Message and user fields accept Discord IDs, mentions, message URLs, or direct-reply shorthand when the target is unambiguous. For remove_user_reaction, the message can come from a reply target, but the reacting user still needs an explicit user reference. Requires admin context and approval.'),
+    action: z.literal('submit_moderation').describe('Submit a moderation/enforcement request. This applies actions to users, messages, reactions, or content, including reply-targeted spam/abuse cleanup. Message and user fields accept Discord IDs, mentions, message URLs, or direct-reply shorthand when the target is unambiguous. For remove_user_reaction, the message can come from a reply target, but the reacting user still needs an explicit user reference. Requires moderation or admin context and approval.'),
     request: discordModerationActionRequestSchema,
   }),
   messagesEditSchema,

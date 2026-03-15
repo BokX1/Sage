@@ -34,15 +34,17 @@ describe('visibleReply', () => {
       emptyFallback: buildLastResortVisibleReply('approval_resume'),
     });
 
-    expect(turnFallback).toContain('I got to the end of that pass');
-    expect(continuationFallback).toContain('I resumed that request');
-    expect(approvalFallback).toContain('The review is resolved');
+    expect(turnFallback).toContain('I made progress on that');
+    expect(continuationFallback).toContain('I picked that request back up');
+    expect(approvalFallback).toContain('That review is resolved');
   });
 
   it('returns route-aware runtime failure copy', () => {
-    expect(buildRuntimeFailureReply('turn')).toContain('I hit a runtime issue before I could finish that turn.');
-    expect(buildRuntimeFailureReply('continue_resume')).toContain(
-      'I hit a runtime issue before I could finish that continuation.',
+    expect(buildRuntimeFailureReply({ kind: 'turn', category: 'provider' })).toContain(
+      'My model provider stopped responding before I could finish that turn.',
+    );
+    expect(buildRuntimeFailureReply({ kind: 'continue_resume', category: 'runtime' })).toContain(
+      'Something went wrong on my side while I was continuing that request.',
     );
   });
 });

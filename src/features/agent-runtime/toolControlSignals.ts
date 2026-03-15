@@ -37,7 +37,3 @@ export class ApprovalRequiredSignal extends ToolControlSignal {
 export function isToolControlSignal(error: unknown): error is ToolControlSignal {
   return error instanceof ToolControlSignal;
 }
-
-export function isApprovalRequiredSignal(error: unknown): error is ApprovalRequiredSignal {
-  return error instanceof ApprovalRequiredSignal;
-}

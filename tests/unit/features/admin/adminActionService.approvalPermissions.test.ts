@@ -62,6 +62,7 @@ const mocks = vi.hoisted(() => {
     clearApprovalReviewReviewerMessageId: vi.fn(),
     findMatchingPendingApprovalReviewRequest: vi.fn(),
     getApprovalReviewRequestById: vi.fn(),
+    listApprovalReviewRequestsByThreadId: vi.fn(),
     listPendingApprovalReviewsExpiredBy: vi.fn(),
     markApprovalReviewRequestDecisionIfPending: vi.fn(),
     markApprovalReviewRequestExecutedIfApproved: vi.fn(),
@@ -103,8 +104,6 @@ const mocks = vi.hoisted(() => {
       finalization: {
         attempted: false,
         succeeded: true,
-        fallbackUsed: false,
-        returnedToolCallCount: 0,
         completedAt: '2026-03-12T00:00:00.000Z',
         terminationReason: 'assistant_reply',
       },
@@ -137,6 +136,7 @@ vi.mock('@/features/admin/approvalReviewRequestRepo', () => ({
   clearApprovalReviewReviewerMessageId: mocks.clearApprovalReviewReviewerMessageId,
   findMatchingPendingApprovalReviewRequest: mocks.findMatchingPendingApprovalReviewRequest,
   getApprovalReviewRequestById: mocks.getApprovalReviewRequestById,
+  listApprovalReviewRequestsByThreadId: mocks.listApprovalReviewRequestsByThreadId,
   listPendingApprovalReviewsExpiredBy: mocks.listPendingApprovalReviewsExpiredBy,
   markApprovalReviewRequestDecisionIfPending: mocks.markApprovalReviewRequestDecisionIfPending,
   markApprovalReviewRequestExecutedIfApproved: mocks.markApprovalReviewRequestExecutedIfApproved,
@@ -517,8 +517,6 @@ describe('adminActionService approval permissions', () => {
       finalization: {
         attempted: false,
         succeeded: true,
-        fallbackUsed: false,
-        returnedToolCallCount: 0,
         completedAt: '2026-03-12T00:00:00.000Z',
         terminationReason: 'assistant_reply',
       },
@@ -541,7 +539,7 @@ describe('adminActionService approval permissions', () => {
         threadId: 'thread-1',
         resume: expect.objectContaining({
           interruptKind: 'approval_review',
-          status: 'approved',
+          decisions: [expect.objectContaining({ requestId: 'action-1', status: 'approved' })],
         }),
       }),
     );
@@ -555,6 +553,97 @@ describe('adminActionService approval permissions', () => {
             message_id: 'message-source',
             fail_if_not_exists: false,
           },
+        }),
+      }),
+    );
+  });
+
+  it('waits for the full ordered approval batch before resuming the LangGraph thread', async () => {
+    const firstPending = makeReviewRequest(
+      {
+        operation: 'set',
+        newInstructionsText: 'Keep replies short.',
+        reason: 'Tone refresh',
+        baseVersion: 2,
+      },
+      {
+        id: 'action-1',
+        kind: 'server_instructions_update',
+        interruptMetadataJson: {
+          langgraphApprovalBatch: {
+            batchId: 'batch-1',
+            batchIndex: 0,
+            batchSize: 2,
+          },
+        },
+      },
+    );
+    const secondPending = makeReviewRequest(
+      {
+        operation: 'set',
+        newInstructionsText: 'Keep replies concise.',
+        reason: 'Follow-up',
+        baseVersion: 2,
+      },
+      {
+        id: 'action-2',
+        kind: 'server_instructions_update',
+        interruptMetadataJson: {
+          langgraphApprovalBatch: {
+            batchId: 'batch-1',
+            batchIndex: 1,
+            batchSize: 2,
+          },
+        },
+      },
+    );
+    const firstApproved = {
+      ...firstPending,
+      status: 'approved' as const,
+      decidedBy: 'admin-2',
+      decidedAt: new Date('2026-03-12T00:00:00.000Z'),
+    };
+    const secondApproved = {
+      ...secondPending,
+      status: 'approved' as const,
+      decidedBy: 'admin-2',
+      decidedAt: new Date('2026-03-12T00:01:00.000Z'),
+    };
+
+    mocks.getApprovalReviewRequestById
+      .mockResolvedValueOnce(firstPending)
+      .mockResolvedValueOnce(secondPending);
+    mocks.markApprovalReviewRequestDecisionIfPending
+      .mockResolvedValueOnce(firstApproved)
+      .mockResolvedValueOnce(secondApproved);
+    mocks.listApprovalReviewRequestsByThreadId
+      .mockResolvedValueOnce([firstApproved, secondPending])
+      .mockResolvedValueOnce([firstApproved, secondApproved]);
+
+    await handleAdminActionButtonInteraction(
+      makeInteraction({
+        customId: 'sage:admin_action:approve:action-1',
+      }) as never,
+    );
+
+    expect(mocks.resumeAgentGraphTurn).not.toHaveBeenCalled();
+
+    await handleAdminActionButtonInteraction(
+      makeInteraction({
+        customId: 'sage:admin_action:approve:action-2',
+      }) as never,
+    );
+
+    expect(mocks.resumeAgentGraphTurn).toHaveBeenCalledTimes(1);
+    expect(mocks.resumeAgentGraphTurn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        threadId: 'thread-1',
+        resume: expect.objectContaining({
+          interruptKind: 'approval_review',
+          decisions: [
+            expect.objectContaining({ requestId: 'action-1', status: 'approved' }),
+            expect.objectContaining({ requestId: 'action-2', status: 'approved' }),
+          ],
         }),
       }),
     );
@@ -598,8 +687,6 @@ describe('adminActionService approval permissions', () => {
       finalization: {
         attempted: false,
         succeeded: true,
-        fallbackUsed: false,
-        returnedToolCallCount: 0,
         completedAt: '2026-03-12T00:00:00.000Z',
         terminationReason: 'assistant_reply',
       },
@@ -625,7 +712,7 @@ describe('adminActionService approval permissions', () => {
         threadId: 'thread-1',
         resume: expect.objectContaining({
           interruptKind: 'approval_review',
-          status: 'expired',
+          decisions: [expect.objectContaining({ requestId: 'action-1', status: 'expired' })],
         }),
       }),
     );
@@ -676,8 +763,6 @@ describe('adminActionService approval permissions', () => {
       finalization: {
         attempted: false,
         succeeded: true,
-        fallbackUsed: false,
-        returnedToolCallCount: 0,
         completedAt: '2026-03-12T00:00:00.000Z',
         terminationReason: 'assistant_reply',
       },
@@ -751,8 +836,6 @@ describe('adminActionService approval permissions', () => {
       finalization: {
         attempted: false,
         succeeded: true,
-        fallbackUsed: false,
-        returnedToolCallCount: 0,
         completedAt: '2026-03-12T00:00:00.000Z',
         terminationReason: 'assistant_reply',
       },
@@ -822,8 +905,6 @@ describe('adminActionService approval permissions', () => {
       finalization: {
         attempted: false,
         succeeded: true,
-        fallbackUsed: false,
-        returnedToolCallCount: 0,
         completedAt: '2026-03-12T00:00:00.000Z',
         terminationReason: 'assistant_reply',
       },

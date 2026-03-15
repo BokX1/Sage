@@ -1,16 +1,16 @@
 export function buildInteractionFailureText(): string {
   return [
-    'I hit a problem while handling that Sage interaction.',
-    'Please try again.',
-    'If it keeps happening, ask Sage to start a fresh flow.',
+    'Something went wrong while I was handling that interaction.',
+    'Next: try it again.',
+    'If it keeps happening, ask me to open a fresh flow.',
   ].join(' ');
 }
 
 export function buildMessageFailureText(): string {
   return [
-    'Sorry, I hit a problem while working on that.',
-    'Please try again.',
-    'If it keeps happening, send a fresh message and I will start over.',
+    'Something went wrong while I was working on that reply.',
+    'Next: try again.',
+    'If it keeps happening, send a fresh message and I will restart from there.',
   ].join(' ');
 }
 
@@ -37,6 +37,20 @@ export function buildContinueChannelMismatchText(channelId: string): string {
   ].join(' ');
 }
 
+export function buildRetryOwnerMismatchText(): string {
+  return [
+    'This Retry button belongs to the person who started this request.',
+    'Next: ask them to retry it, or ask Sage to start a fresh pass for you.',
+  ].join(' ');
+}
+
+export function buildRetryChannelMismatchText(channelId: string): string {
+  return [
+    'This Retry button only works in the original channel.',
+    `Next: go back to <#${channelId}> and use it there, or ask Sage for a fresh pass here.`,
+  ].join(' ');
+}
+
 export function buildContinuationButtonLabel(params?: {
   completedWindows?: number;
   maxWindows?: number;
@@ -54,6 +68,10 @@ export function buildContinuationButtonLabel(params?: {
     return `Continue (${currentWindow}/${max})`;
   }
   return 'Continue';
+}
+
+export function buildRetryButtonLabel(): string {
+  return 'Retry';
 }
 
 export function buildMissingHostedGuildActivationFallbackText(): string {

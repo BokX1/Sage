@@ -6,7 +6,7 @@ import {
   type InteractionReplyOptions,
 } from 'discord.js';
 import { generateChatReply } from '../../../features/chat/chat-engine';
-import { resumeContinuationChatTurn } from '../../../features/agent-runtime/agentRuntime';
+import { resumeContinuationChatTurn, retryFailedChatTurn } from '../../../features/agent-runtime/agentRuntime';
 import { buildGuildApiKeyMissingResponse } from '../../../features/discord/byopBootstrap';
 import {
   buildActionButtonComponent,
@@ -20,13 +20,16 @@ import {
 import { logger } from '../../../platform/logging/logger';
 import { generateTraceId } from '../../../shared/observability/trace-id-generator';
 import { smartSplit } from '../../../shared/text/message-splitter';
-import { isAdminFromMember } from '../../../platform/discord/admin-permissions';
+import { isAdminFromMember, isModeratorFromMember } from '../../../platform/discord/admin-permissions';
 import { client } from '../../../platform/discord/client';
 import {
   buildContinueChannelMismatchText,
   buildContinueOwnerMismatchText,
   buildContinuationButtonLabel,
   buildExpiredInteractionText,
+  buildRetryButtonLabel,
+  buildRetryChannelMismatchText,
+  buildRetryOwnerMismatchText,
 } from '../../../features/discord/userFacingCopy';
 
 type RepliableInteraction = ButtonInteraction | ModalSubmitInteraction;
@@ -91,7 +94,9 @@ async function publishChatResultToInteraction(params: {
   }
 
   const continuation = params.result.meta?.continuation;
-  let continuationButtonId: string | null = null;
+  const retry = params.result.meta?.retry;
+  let actionButtonId: string | null = null;
+  let actionButtonLabel: string | null = null;
   if (
     params.result.delivery === 'chat_reply_with_continue' &&
     continuation &&
@@ -99,7 +104,7 @@ async function publishChatResultToInteraction(params: {
     params.interaction.channelId
   ) {
     try {
-      continuationButtonId = await createInteractiveButtonSession({
+      actionButtonId = await createInteractiveButtonSession({
         guildId: params.interaction.guildId,
         channelId: params.interaction.channelId,
         createdByUserId: params.interaction.user.id,
@@ -109,6 +114,7 @@ async function publishChatResultToInteraction(params: {
           visibility: params.ephemeral ? 'ephemeral' : 'public',
         },
       });
+      actionButtonLabel = buildContinuationButtonLabel(params.result.meta?.continuation);
     } catch (err) {
       logger.warn(
         {
@@ -120,6 +126,31 @@ async function publishChatResultToInteraction(params: {
         'Failed to create continuation button session; sending summary without button',
       );
     }
+  } else if (retry && params.interaction.guildId && params.interaction.channelId) {
+    try {
+      actionButtonId = await createInteractiveButtonSession({
+        guildId: params.interaction.guildId,
+        channelId: params.interaction.channelId,
+        createdByUserId: params.interaction.user.id,
+        action: {
+          type: 'graph_retry',
+          threadId: retry.threadId,
+          retryKind: retry.retryKind,
+          visibility: params.ephemeral ? 'ephemeral' : 'public',
+        },
+      });
+      actionButtonLabel = buildRetryButtonLabel();
+    } catch (err) {
+      logger.warn(
+        {
+          err,
+          retryThreadId: retry.threadId,
+          channelId: params.interaction.channelId,
+          interactionId: 'id' in params.interaction ? params.interaction.id : undefined,
+        },
+        'Failed to create retry button session; sending retry text without button',
+      );
+    }
   }
 
   const chunks = smartSplit(params.result.replyText || '', 2_000);
@@ -128,14 +159,14 @@ async function publishChatResultToInteraction(params: {
     content: firstChunk || '\u200b',
     files: params.result.files,
     components:
-      continuationButtonId
+      actionButtonId
         ? [
             {
               type: 1,
               components: [
                 buildActionButtonComponent({
-                  customId: continuationButtonId,
-                  label: buildContinuationButtonLabel(params.result.meta?.continuation),
+                  customId: actionButtonId,
+                  label: actionButtonLabel ?? buildRetryButtonLabel(),
                   style: 'primary',
                 }),
               ],
@@ -164,6 +195,8 @@ async function runInteractivePrompt(params: {
 
   await params.interaction.deferReply({ ephemeral: params.ephemeral });
   const invokerDisplayName = resolveInteractionDisplayName(params.interaction);
+  const invokerIsAdmin = isAdminFromMember(params.interaction.member);
+  const invokerCanModerate = isModeratorFromMember(params.interaction.member);
   const result = await generateChatReply({
     traceId: generateTraceId(),
     userId: params.interaction.user.id,
@@ -189,13 +222,14 @@ async function runInteractivePrompt(params: {
     invokedBy: 'component',
     isVoiceActive: false,
     voiceChannelId: null,
-    isAdmin: isAdminFromMember(params.interaction.member),
+    isAdmin: invokerIsAdmin,
+    canModerate: invokerCanModerate,
   });
 
   await publishChatResultToInteraction({
     interaction: params.interaction,
     result,
-    isAdmin: isAdminFromMember(params.interaction.member),
+    isAdmin: invokerIsAdmin,
     ephemeral: params.ephemeral,
   });
 }
@@ -239,18 +273,58 @@ export async function handleInteractiveButtonSession(
       return true;
     }
     await interaction.deferReply({ ephemeral: session.visibility === 'ephemeral' });
+    const invokerIsAdmin = isAdminFromMember(interaction.member);
+    const invokerCanModerate = isModeratorFromMember(interaction.member);
     const result = await resumeContinuationChatTurn({
       traceId: generateTraceId(),
       userId: interaction.user.id,
       channelId: interaction.channelId,
       guildId: interaction.guildId,
       continuationId: session.continuationId,
-      isAdmin: isAdminFromMember(interaction.member),
+      isAdmin: invokerIsAdmin,
+      canModerate: invokerCanModerate,
     });
     await publishChatResultToInteraction({
       interaction,
       result,
-      isAdmin: isAdminFromMember(interaction.member),
+      isAdmin: invokerIsAdmin,
+      ephemeral: session.visibility === 'ephemeral',
+    });
+    return true;
+  }
+
+  if (session.kind === 'graph_retry_button') {
+    if (session.createdByUserId !== interaction.user.id) {
+      await interaction.reply({
+        content: buildRetryOwnerMismatchText(),
+        ephemeral: true,
+      });
+      return true;
+    }
+    if (session.guildId !== interaction.guildId || session.channelId !== interaction.channelId) {
+      await interaction.reply({
+        content: buildRetryChannelMismatchText(session.channelId),
+        ephemeral: true,
+      });
+      return true;
+    }
+    await interaction.deferReply({ ephemeral: session.visibility === 'ephemeral' });
+    const invokerIsAdmin = isAdminFromMember(interaction.member);
+    const invokerCanModerate = isModeratorFromMember(interaction.member);
+    const result = await retryFailedChatTurn({
+      traceId: generateTraceId(),
+      threadId: session.threadId,
+      userId: interaction.user.id,
+      channelId: interaction.channelId,
+      guildId: interaction.guildId,
+      retryKind: session.retryKind,
+      isAdmin: invokerIsAdmin,
+      canModerate: invokerCanModerate,
+    });
+    await publishChatResultToInteraction({
+      interaction,
+      result,
+      isAdmin: invokerIsAdmin,
       ephemeral: session.visibility === 'ephemeral',
     });
     return true;

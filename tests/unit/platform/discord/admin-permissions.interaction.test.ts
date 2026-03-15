@@ -2,7 +2,11 @@ import type { ChatInputCommandInteraction } from 'discord.js';
 import { PermissionsBitField } from 'discord.js';
 import { describe, expect, it, vi } from 'vitest';
 import { makeChatInputCommandInteraction } from '../../../testkit/discord';
-import { isAdminInteraction } from '@/platform/discord/admin-permissions';
+import {
+  hasModerationPermissions,
+  isAdminInteraction,
+  isModeratorFromMember,
+} from '@/platform/discord/admin-permissions';
 
 function createBaseInteraction(overrides: Record<string, unknown> = {}): ChatInputCommandInteraction {
   const base = makeChatInputCommandInteraction({
@@ -65,5 +69,22 @@ describe('admin permission interaction helpers', () => {
       administrator: true,
       nonAdmin: false,
     });
+  });
+
+  it('treats ManageMessages permission as moderator but not admin', () => {
+    const moderatorMember = {
+      permissions: new PermissionsBitField(PermissionsBitField.Flags.ManageMessages),
+    } as unknown as ChatInputCommandInteraction['member'];
+    const interaction = createBaseInteraction({
+      member: moderatorMember,
+    });
+
+    expect(isAdminInteraction(interaction)).toBe(false);
+    expect(isModeratorFromMember(moderatorMember)).toBe(true);
+    expect(
+      hasModerationPermissions(
+        new PermissionsBitField(PermissionsBitField.Flags.ManageMessages),
+      ),
+    ).toBe(true);
   });
 });

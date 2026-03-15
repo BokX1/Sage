@@ -19,10 +19,12 @@ import { buildContextMessages } from './contextBuilder';
 import { clearGitHubFileLookupCacheForTrace } from './toolIntegrations';
 import { enforceGitHubFileGrounding } from './toolGrounding';
 import { buildAgentGraphConfig } from './langgraph/config';
-import { resumeAgentGraphTurn, runAgentGraphTurn } from './langgraph/runtime';
+import { resumeAgentGraphTurn, retryAgentGraphTurn, runAgentGraphTurn } from './langgraph/runtime';
 import {
+  buildContinuationUnavailableReply,
   buildLastResortVisibleReply,
   buildRuntimeFailureReply,
+  type RuntimeFailureCategory,
   finalizeVisibleReplyText,
 } from './visibleReply';
 import {
@@ -64,6 +66,7 @@ export interface RunChatTurnParams {
   invokedBy?: 'mention' | 'reply' | 'wakeword' | 'autopilot' | 'component';
   isVoiceActive?: boolean;
   isAdmin?: boolean;
+  canModerate?: boolean;
 }
 
 export interface RunChatTurnResult {
@@ -86,6 +89,10 @@ export interface RunChatTurnResult {
       maxWindows: number;
       summaryText: string;
     };
+    retry?: {
+      threadId: string;
+      retryKind: 'turn' | 'continue_resume';
+    };
   };
   debug?: {
     messages?: BaseMessage[];
@@ -103,10 +110,23 @@ export interface ResumeContinuationChatTurnParams {
   guildId: string | null;
   continuationId: string;
   isAdmin: boolean;
+  canModerate?: boolean;
+}
+
+export interface RetryFailedChatTurnParams {
+  traceId: string;
+  threadId: string;
+  userId: string;
+  channelId: string;
+  guildId: string | null;
+  retryKind: 'turn' | 'continue_resume';
+  isAdmin: boolean;
+  canModerate?: boolean;
 }
 
 function resolveActiveToolNames(params: {
   isAdmin: boolean;
+  canModerate: boolean;
   invokedBy: 'mention' | 'reply' | 'wakeword' | 'autopilot' | 'component';
 }): string[] {
   const allToolNames = globalToolRegistry.listNames();
@@ -115,8 +135,30 @@ function resolveActiveToolNames(params: {
     if (!tool) return false;
     const access = tool.metadata?.access ?? 'public';
     if (access === 'public') return true;
-    return params.isAdmin && params.invokedBy !== 'autopilot';
+    if (params.invokedBy === 'autopilot') return false;
+    if (params.isAdmin) return true;
+    return toolName === 'discord_admin' && params.canModerate;
   });
+}
+
+function classifyGraphFailure(error: unknown): RuntimeFailureCategory {
+  const text = error instanceof Error ? error.message : String(error);
+  if (/AI provider|provider offline|provider unavailable|model error|upstream/i.test(text)) {
+    return 'provider';
+  }
+  return 'runtime';
+}
+
+function buildRetryMeta(
+  threadId: string,
+  retryKind: 'turn' | 'continue_resume',
+): NonNullable<RunChatTurnResult['meta']> {
+  return {
+    retry: {
+      threadId,
+      retryKind,
+    },
+  };
 }
 
 async function resolveApiKeyForChatTurn(guildId: string | null): Promise<string | undefined> {
@@ -217,6 +259,7 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
     invokedBy = 'mention',
     isVoiceActive,
     isAdmin = false,
+    canModerate = false,
   } = params;
   const clearToolCaches = () => {
     clearGitHubFileLookupCacheForTrace(traceId);
@@ -292,12 +335,13 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
     configuredMode: appConfig.AUTOPILOT_MODE,
   });
 
-  const activeToolNames = resolveActiveToolNames({ isAdmin, invokedBy });
+  const activeToolNames = resolveActiveToolNames({ isAdmin, canModerate, invokedBy });
   const capabilityParams: BuildCapabilityPromptSectionParams = {
     activeTools: activeToolNames,
     model,
     invokedBy,
     invokerIsAdmin: isAdmin,
+    invokerCanModerate: canModerate,
     inGuild: guildId !== null,
     turnMode: isVoiceActive ? 'voice' : 'text',
     autopilotMode,
@@ -392,6 +436,7 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
       replyTarget,
       invokedBy,
       invokerIsAdmin: isAdmin,
+      invokerCanModerate: canModerate,
     });
     finalReplyText = graphResult.replyText;
     files = graphResult.files;
@@ -441,10 +486,16 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
     };
   } catch (error) {
     logger.error({ error, traceId }, 'Single-agent runtime call failed');
-    finalReplyText = buildRuntimeFailureReply('turn');
+    const failureCategory = classifyGraphFailure(error);
+    finalReplyText = buildRuntimeFailureReply({
+      kind: 'turn',
+      category: failureCategory,
+    });
+    meta = buildRetryMeta(traceId, 'turn');
     graphBudgetJson = {
       enabled: activeToolNames.length > 0,
       failed: true,
+      failureCategory,
       errorText: error instanceof Error ? error.message : String(error),
     };
   }
@@ -541,26 +592,26 @@ async function loadValidatedContinuation(params: {
   if (!session) {
     return {
       ok: false,
-      replyText: 'That continuation is no longer available. Start a fresh request if you want me to keep going.',
+      replyText: buildContinuationUnavailableReply(),
     };
   }
   if (session.requestedByUserId !== params.userId || session.channelId !== params.channelId) {
     return {
       ok: false,
-      replyText: 'That continuation belongs to a different user or channel, so I cannot resume it here.',
+      replyText: 'I can only continue that request for the original person in the original channel.',
     };
   }
   if (session.status !== 'pending') {
     return {
       ok: false,
-      replyText: 'That continuation was already used. Start a fresh request if you want me to keep going.',
+      replyText: 'That continuation already ran. Next: send a fresh message if you want another pass.',
     };
   }
   if (session.expiresAt.getTime() <= Date.now()) {
     await markGraphContinuationSessionExpired(session.id).catch(() => undefined);
     return {
       ok: false,
-      replyText: 'That continuation expired. Start a fresh request if you want me to keep going.',
+      replyText: 'That continuation expired. Next: send a fresh message if you want me to keep going.',
     };
   }
 
@@ -592,6 +643,7 @@ export async function resumeContinuationChatTurn(
   const model = appConfig.AI_PROVIDER_MAIN_AGENT_MODEL.trim();
   const activeToolNames = resolveActiveToolNames({
     isAdmin: params.isAdmin,
+    canModerate: params.canModerate ?? false,
     invokedBy: 'component',
   });
   const maxTokens = normalizeStrictlyPositiveInt(
@@ -647,6 +699,7 @@ export async function resumeContinuationChatTurn(
         maxTokens,
         invokedBy: 'component',
         invokerIsAdmin: params.isAdmin,
+        invokerCanModerate: params.canModerate ?? false,
         activeToolNames,
         routeKind: 'continue_resume',
       },
@@ -727,10 +780,14 @@ export async function resumeContinuationChatTurn(
     }
   } catch (error) {
     logger.error({ error, traceId: params.traceId }, 'Continuation resume failed');
+    const failureCategory = classifyGraphFailure(error);
     result = {
-      replyText: buildRuntimeFailureReply('continue_resume'),
+      replyText: buildRuntimeFailureReply({
+        kind: 'continue_resume',
+        category: failureCategory,
+      }),
       delivery: 'chat_reply',
-      meta: undefined,
+      meta: buildRetryMeta(session.threadId, 'continue_resume'),
       files: [],
     };
     if (appConfig.SAGE_TRACE_DB_ENABLED) {
@@ -746,6 +803,7 @@ export async function resumeContinuationChatTurn(
           route: 'continue_resume',
           failed: true,
           continuationId: session.id,
+          failureCategory,
           errorText: error instanceof Error ? error.message : String(error),
         },
       }).catch(() => undefined);
@@ -754,6 +812,202 @@ export async function resumeContinuationChatTurn(
 
   return result;
 }
+
+export async function retryFailedChatTurn(
+  params: RetryFailedChatTurnParams,
+): Promise<RunChatTurnResult> {
+  const apiKey = await resolveApiKeyForChatTurn(params.guildId);
+  if (!apiKey) {
+    return buildMissingApiKeyResult(params.guildId);
+  }
+
+  const model = appConfig.AI_PROVIDER_MAIN_AGENT_MODEL.trim();
+  const activeToolNames = resolveActiveToolNames({
+    isAdmin: params.isAdmin,
+    canModerate: params.canModerate ?? false,
+    invokedBy: 'component',
+  });
+  const routeKind = params.retryKind === 'continue_resume' ? 'continue_retry' : 'turn_retry';
+
+  if (appConfig.SAGE_TRACE_DB_ENABLED) {
+    try {
+      await upsertTraceStart({
+        id: params.traceId,
+        guildId: params.guildId,
+        channelId: params.channelId,
+        userId: params.userId,
+        routeKind,
+        tokenJson: {
+          model,
+          retryKind: params.retryKind,
+          retryThreadId: params.threadId,
+        },
+        budgetJson: {
+          route: routeKind,
+          retryKind: params.retryKind,
+        },
+        threadId: params.threadId,
+        parentTraceId: params.threadId,
+        graphStatus: 'running',
+      });
+    } catch (error) {
+      logger.warn({ error, traceId: params.traceId }, 'Failed to persist retry trace start');
+    }
+  }
+
+  try {
+    const graphResult = await retryAgentGraphTurn({
+      threadId: params.threadId,
+      runId: params.traceId,
+      runName: params.retryKind === 'continue_resume' ? 'sage_agent_continue_retry' : 'sage_agent_turn_retry',
+      context: {
+        traceId: params.traceId,
+        threadId: params.threadId,
+        userId: params.userId,
+        channelId: params.channelId,
+        guildId: params.guildId,
+        apiKey,
+        model,
+        temperature: 0.6,
+        timeoutMs: appConfig.TIMEOUT_CHAT_MS,
+        maxTokens: normalizeStrictlyPositiveInt(
+          appConfig.AGENT_GRAPH_MAX_OUTPUT_TOKENS as number | undefined,
+          1_800,
+        ),
+        invokedBy: 'component',
+        invokerIsAdmin: params.isAdmin,
+        invokerCanModerate: params.canModerate ?? false,
+        activeToolNames,
+        routeKind,
+      },
+    });
+
+    const pendingInterrupt =
+      graphResult.pendingInterrupt?.kind === 'continue_prompt'
+        ? {
+            kind: 'continue_prompt' as const,
+            continuationId: graphResult.pendingInterrupt.continuationId,
+            expiresAtIso: graphResult.pendingInterrupt.expiresAtIso,
+            completedWindows: graphResult.pendingInterrupt.completedWindows,
+            maxWindows: graphResult.pendingInterrupt.maxWindows,
+            summaryText: graphResult.pendingInterrupt.summaryText,
+          }
+        : graphResult.pendingInterrupt?.kind === 'approval_review'
+          ? {
+              kind: 'approval_review' as const,
+              requestId: graphResult.pendingInterrupt.requestId,
+            }
+          : null;
+
+    const replyText = finalizeVisibleReplyText({
+      replyText: graphResult.replyText,
+      toolResults: graphResult.toolResults,
+      allowEmpty: pendingInterrupt?.kind === 'approval_review',
+      emptyFallback:
+        pendingInterrupt?.kind === 'continue_prompt'
+          ? buildLastResortVisibleReply('continue_resume')
+          : buildLastResortVisibleReply('turn'),
+    });
+    const result: RunChatTurnResult = {
+      replyText,
+      delivery: resolveDelivery({ pendingInterrupt }),
+      meta: await buildRunChatTurnMeta({ pendingInterrupt }),
+      files: graphResult.files,
+    };
+
+    if (appConfig.SAGE_TRACE_DB_ENABLED) {
+      await updateTraceEnd({
+        id: params.traceId,
+        toolJson: {
+          enabled: activeToolNames.length > 0,
+          graph: {
+            roundsCompleted: graphResult.roundsCompleted,
+            completedWindows: graphResult.completedWindows,
+            totalRoundsCompleted: graphResult.totalRoundsCompleted,
+            terminationReason: graphResult.terminationReason,
+            graphStatus: graphResult.graphStatus,
+            pendingInterrupt,
+            interruptResolution: graphResult.interruptResolution,
+          },
+        },
+        budgetJson: {
+          route: routeKind,
+          retryKind: params.retryKind,
+          graphRuntime: {
+            roundsCompleted: graphResult.roundsCompleted,
+            completedWindows: graphResult.completedWindows,
+            totalRoundsCompleted: graphResult.totalRoundsCompleted,
+            terminationReason: graphResult.terminationReason,
+            graphStatus: graphResult.graphStatus,
+          },
+        },
+        tokenJson: {
+          model,
+          activeToolNames,
+          retryThreadId: params.threadId,
+          retryKind: params.retryKind,
+        },
+        threadId: params.threadId,
+        parentTraceId: params.threadId,
+        graphStatus: graphResult.graphStatus,
+        terminationReason: graphResult.terminationReason,
+        langSmithRunId: graphResult.langSmithRunId,
+        langSmithTraceId: graphResult.langSmithTraceId,
+        approvalRequestId: pendingInterrupt?.kind === 'approval_review' ? pendingInterrupt.requestId : null,
+        replyText,
+      }).catch(() => undefined);
+    }
+
+    return result;
+  } catch (error) {
+    logger.error({ error, traceId: params.traceId, threadId: params.threadId }, 'Failed to retry graph turn');
+    const failureCategory = classifyGraphFailure(error);
+    const replyText = buildRuntimeFailureReply({
+      kind: params.retryKind,
+      category: failureCategory,
+    });
+
+    if (appConfig.SAGE_TRACE_DB_ENABLED) {
+      await updateTraceEnd({
+        id: params.traceId,
+        toolJson: {
+          enabled: activeToolNames.length > 0,
+          graph: {
+            failed: true,
+            failureCategory,
+            errorText: error instanceof Error ? error.message : String(error),
+          },
+        },
+        budgetJson: {
+          route: routeKind,
+          retryKind: params.retryKind,
+          graphRuntime: {
+            failed: true,
+            failureCategory,
+          },
+        },
+        tokenJson: {
+          model,
+          activeToolNames,
+          retryThreadId: params.threadId,
+          retryKind: params.retryKind,
+        },
+        threadId: params.threadId,
+        parentTraceId: params.threadId,
+        graphStatus: 'failed',
+        replyText,
+      }).catch(() => undefined);
+    }
+
+    return {
+      replyText,
+      delivery: 'chat_reply',
+      meta: buildRetryMeta(params.threadId, params.retryKind),
+      files: [],
+    };
+  }
+}
+
 function buildContinuationMeta(
   pendingInterrupt: {
     kind: 'continue_prompt';

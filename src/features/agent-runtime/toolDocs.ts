@@ -211,22 +211,12 @@ export function listRoutedToolNames(): string[] {
   return [...routedToolDocs.keys()];
 }
 
-export function getRoutedToolSelectionHints(toolName: string): string[] {
-  const doc = getRoutedToolDoc(toolName);
-  return doc?.selectionHints ? [...doc.selectionHints] : [];
-}
-
 export function getTopLevelToolDoc(toolName: string): TopLevelToolDoc | null {
   return topLevelToolDocs.get(toolName) ?? null;
 }
 
 export function listTopLevelToolDocs(): TopLevelToolDoc[] {
   return [...topLevelToolDocs.values()];
-}
-
-export function getTopLevelToolSelectionHints(toolName: string): string[] {
-  const doc = getTopLevelToolDoc(toolName);
-  return doc ? [...doc.selectionHints] : [];
 }
 
 export function getPromptToolGuidance(toolName: string): PromptToolGuidance | null {
@@ -905,7 +895,7 @@ export const discordAdminToolDoc = registerRoutedToolDoc({
   ],
   routingNotes: [
     'Most actions require guild context.',
-    'Admin privileges are required for all mutating actions.',
+    'Governance/config and direct admin maintenance writes require admin privileges; submit_moderation is also available to moderators with the relevant Discord permissions.',
     'Treat Sage Persona/config and moderation as separate admin domains: Sage Persona changes govern Sage behavior/persona/policy posture, while moderation enforces actions on users, messages, reactions, or content.',
     'Reply-targeted cleanup of someone else\'s spam/abusive/rule-breaking message is a moderation workflow, not a generic admin delete.',
     'Moderation should be evidence-first: use exact message-history tools before making a strong enforcement claim about what a message said.',
@@ -1028,7 +1018,7 @@ export const discordAdminToolDoc = registerRoutedToolDoc({
         'request.authorUserId',
         'request.includePinned',
       ],
-      restrictions: ['Requires admin context.', 'Disabled in autopilot turns.', 'Requires guild context.'],
+      restrictions: ['Requires moderation or admin context.', 'Disabled in autopilot turns.', 'Requires guild context.'],
       resultNotes: [
         'Message and user refs accept raw IDs, mentions, Discord message URLs, or direct-reply shorthand when the runtime can resolve the target unambiguously.',
         'The moderation queue stores a canonical target snapshot so equivalent requests can coalesce onto one approval review request.',

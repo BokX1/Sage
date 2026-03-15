@@ -397,6 +397,54 @@ describe('messageCreate - ingest + reply gating', () => {
     );
   });
 
+  it('attaches a Retry button when the runtime returns retry metadata', async () => {
+    mockGenerateChatReply.mockResolvedValueOnce({
+      replyText: 'My model provider stopped responding before I could finish that turn. Next: use Retry below if it appears, or send that request again.',
+      delivery: 'chat_reply',
+      meta: {
+        retry: {
+          threadId: 'thread-retry-1',
+          retryKind: 'turn',
+        },
+      },
+      files: [],
+    });
+
+    const message = createMockMessage({
+      content: 'sage hello',
+    });
+
+    await handleMessageCreate(message);
+
+    expect(mockCreateInteractiveButtonSession).toHaveBeenCalledWith({
+      guildId: 'guild-789',
+      channelId: 'channel-101',
+      createdByUserId: 'user-456',
+      action: {
+        type: 'graph_retry',
+        threadId: 'thread-retry-1',
+        retryKind: 'turn',
+        visibility: 'public',
+      },
+    });
+    expect((message as unknown as { reply: ReturnType<typeof vi.fn> }).reply).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: 'My model provider stopped responding before I could finish that turn. Next: use Retry below if it appears, or send that request again.',
+        components: [
+          {
+            type: 1,
+            components: [
+              expect.objectContaining({
+                custom_id: 'sage:ui:continue-1',
+                label: 'Retry',
+              }),
+            ],
+          },
+        ],
+      }),
+    );
+  });
+
   it('calls generateChatReply for wakeword-only image messages (default prompt)', async () => {
     const message = createMockMessage({
       content: 'sage',

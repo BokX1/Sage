@@ -1,17 +1,21 @@
+import { PermissionsBitField } from 'discord.js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ToolExecutionContext } from '@/features/agent-runtime/toolRegistry';
 import { config } from '@/platform/config/env';
 import { ApprovalRequiredSignal } from '@/features/agent-runtime/toolControlSignals';
 
 const mocks = vi.hoisted(() => ({
+  requestDiscordAdminActionForTool: vi.fn(),
   requestDiscordRestWriteForTool: vi.fn(),
   discordRestRequestGuildScoped: vi.fn(),
+  guildFetch: vi.fn(),
 }));
 
 vi.mock('@/features/admin/adminActionService', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/features/admin/adminActionService')>();
   return {
     ...actual,
+    requestDiscordAdminActionForTool: mocks.requestDiscordAdminActionForTool,
     requestDiscordRestWriteForTool: mocks.requestDiscordRestWriteForTool,
   };
 });
@@ -23,6 +27,14 @@ vi.mock('@/platform/discord/discordRestPolicy', async (importOriginal) => {
     discordRestRequestGuildScoped: mocks.discordRestRequestGuildScoped,
   };
 });
+
+vi.mock('@/platform/discord/client', () => ({
+  client: {
+    guilds: {
+      fetch: mocks.guildFetch,
+    },
+  },
+}));
 
 import { discordAdminTool } from '@/features/agent-runtime/discordDomainTools';
 
@@ -37,6 +49,10 @@ describe('discord admin domain typed REST wrappers', () => {
   };
 
   beforeEach(() => {
+    mocks.requestDiscordAdminActionForTool.mockReset().mockResolvedValue({
+      ok: true,
+      requestId: 'approval-1',
+    });
     mocks.requestDiscordRestWriteForTool.mockReset().mockRejectedValue(
       new ApprovalRequiredSignal({
         kind: 'discord_rest_write',
@@ -54,6 +70,7 @@ describe('discord admin domain typed REST wrappers', () => {
       status: 200,
       data: { id: 'message-1' },
     });
+    mocks.guildFetch.mockReset();
   });
 
   it('queues edit_message as an approval-gated REST write', async () => {
@@ -209,5 +226,85 @@ describe('discord admin domain typed REST wrappers', () => {
         },
       ),
     ).rejects.toThrow(/admin/i);
+  });
+
+  it('allows moderator-only submit_moderation when the requester has Manage Messages in the target channel', async () => {
+    const targetChannelId = '123456789012345678';
+    const messageIds = ['223456789012345678', '323456789012345678'];
+    const requester = {
+      permissions: new PermissionsBitField(0n),
+      permissionsIn: vi.fn(
+        () => new PermissionsBitField(PermissionsBitField.Flags.ManageMessages),
+      ),
+    };
+    const targetChannel = { id: targetChannelId };
+    mocks.guildFetch.mockResolvedValue({
+      members: {
+        fetch: vi.fn().mockResolvedValue(requester),
+      },
+      channels: {
+        fetch: vi.fn().mockResolvedValue(targetChannel),
+      },
+    });
+
+    const result = await discordAdminTool.execute(
+      {
+        action: 'submit_moderation',
+        request: {
+          action: 'bulk_delete_messages',
+          channelId: targetChannelId,
+          messageIds,
+          reason: 'Raid cleanup',
+        },
+      },
+      {
+        traceId: 'trace',
+        userId: 'user-1',
+        channelId: 'channel-1',
+        guildId: 'guild-1',
+        invokedBy: 'mention',
+        invokerIsAdmin: false,
+        invokerCanModerate: true,
+      },
+    );
+
+    expect(result).toEqual({
+      ok: true,
+      requestId: 'approval-1',
+    });
+    expect(mocks.requestDiscordAdminActionForTool).toHaveBeenCalledWith(
+      expect.objectContaining({
+        guildId: 'guild-1',
+        channelId: 'channel-1',
+        requestedBy: 'user-1',
+        sourceMessageId: null,
+        request: {
+          action: 'bulk_delete_messages',
+          channelId: targetChannelId,
+          messageIds,
+          reason: 'Raid cleanup',
+        },
+      }),
+    );
+  });
+
+  it('keeps non-moderation admin actions blocked for moderator-only turns', async () => {
+    await expect(
+      discordAdminTool.execute(
+        {
+          action: 'clear_server_api_key',
+        },
+        {
+          traceId: 'trace',
+          userId: 'user-1',
+          channelId: 'channel-1',
+          guildId: 'guild-1',
+          invokedBy: 'mention',
+          invokerIsAdmin: false,
+          invokerCanModerate: true,
+        },
+      ),
+    ).rejects.toThrow(/admin/i);
+    expect(mocks.requestDiscordAdminActionForTool).toHaveBeenCalledTimes(0);
   });
 });

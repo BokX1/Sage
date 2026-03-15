@@ -120,8 +120,6 @@ function makeGraphResult(overrides: Partial<Awaited<ReturnType<typeof mockRunAge
     finalization: {
       attempted: false,
       succeeded: true,
-      fallbackUsed: false,
-      returnedToolCallCount: 0,
       completedAt: '2026-03-12T00:00:00.000Z',
       terminationReason: 'assistant_reply',
     },

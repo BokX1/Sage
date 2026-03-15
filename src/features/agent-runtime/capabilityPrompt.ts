@@ -7,6 +7,7 @@ export interface BuildCapabilityPromptSectionParams {
   model?: string | null;
   invokedBy?: string | null;
   invokerIsAdmin?: boolean;
+  invokerCanModerate?: boolean;
   inGuild?: boolean;
   turnMode?: 'text' | 'voice';
   autopilotMode?: RuntimeAutopilotMode;
@@ -33,6 +34,7 @@ export function buildAgenticStateBlock(params: BuildCapabilityPromptSectionParam
     tools_available: activeTools,
     invoked_by: params.invokedBy ?? null,
     invoker_is_admin: params.invokerIsAdmin ?? null,
+    invoker_can_moderate: params.invokerCanModerate ?? null,
     in_guild: params.inGuild ?? null,
     turn_mode: params.turnMode ?? 'text',
     autopilot_mode: params.autopilotMode ?? null,
@@ -127,6 +129,9 @@ export function buildCapabilityPromptSection(
       : '',
     hasDiscordAdminTool
       ? '- Governance/config vs moderation: Sage Persona changes how Sage behaves; moderation acts on users, messages, reactions, or content.'
+      : '',
+    hasDiscordAdminTool && !params.invokerIsAdmin && params.invokerCanModerate
+      ? '- `discord_admin` is moderation-only in this turn. Governance/config and direct admin maintenance actions remain unavailable.'
       : '',
     hasDiscordAdminTool
       ? '- Reply-targeted enforcement uses moderation: replied-to spam or abuse -> `discord_admin.submit_moderation`.'

@@ -116,7 +116,7 @@ export const DISCORD_TOOL_ACTION_CATALOG = {
 
 export const DISCORD_GUARDRAILS = [
   'Writes are disallowed in autopilot turns.',
-  'Admin-only actions require admin context; API passthrough is guild-scoped and approval-gated for non-GET writes.',
+  'Governance/admin actions require admin context; moderation actions require the relevant Discord moderation permissions; API passthrough is guild-scoped and approval-gated for non-GET writes.',
   'API passthrough blocks bot-wide endpoints (for example /users/@me) and direct /webhooks/* routes.',
   'API passthrough redacts sensitive fields (tokens/secrets) from results.',
   'Some actions require a guild context (guildId). If no guildId is available, avoid guild-only actions.',
@@ -128,30 +128,9 @@ type DiscordActionCatalog = {
   admin_only: readonly string[];
 };
 
-function dedupePreserveOrder(values: readonly string[]): string[] {
-  const seen = new Set<string>();
-  const out: string[] = [];
-  for (const value of values) {
-    if (seen.has(value)) continue;
-    seen.add(value);
-    out.push(value);
-  }
-  return out;
-}
-
 export function getDiscordActionCatalogForTool(toolName: string): DiscordActionCatalog | null {
   return (
     DISCORD_TOOL_ACTION_CATALOG[toolName as keyof typeof DISCORD_TOOL_ACTION_CATALOG] ?? null
-  );
-}
-
-export function getAllDiscordActions(): string[] {
-  return dedupePreserveOrder(
-    Object.values(DISCORD_TOOL_ACTION_CATALOG).flatMap((catalog) => [
-      ...catalog.read_only,
-      ...catalog.writes,
-      ...catalog.admin_only,
-    ]),
   );
 }
 

@@ -107,12 +107,12 @@ function buildFallbackReply(ungroundedPaths: string[], successfulPaths: string[]
     .join(', ');
 
   const lines = [
-    'I could not verify one or more GitHub file-path claims from tool results, so I will not assert them as facts.',
+    'I cannot stand behind one or more GitHub path claims from this turn yet, so I will not present them as verified.',
     `Unverified path claim${ungroundedPaths.length > 1 ? 's' : ''}: ${ungroundedLabel}.`,
     successfulPaths.length > 0
       ? `Verified GitHub file path${successfulPaths.length > 1 ? 's' : ''} in this turn: ${verifiedLabel}.`
-      : 'No GitHub file path was successfully retrieved in this turn.',
-    'Please provide the exact repo/path/ref, or ask me to inspect the repo structure first (github action repo.get / code.search).',
+      : 'I did not retrieve a verified GitHub file path in this turn.',
+    'Next: give me the exact repo/path/ref, or ask me to inspect the repo structure first with github repo.get or code.search.',
   ];
 
   return lines.join('\n');

@@ -10,6 +10,7 @@ const {
   globalToolRegistryMock,
   runAgentGraphTurnMock,
   resumeAgentGraphTurnMock,
+  retryAgentGraphTurnMock,
   getGraphContinuationSessionByIdMock,
   markGraphContinuationSessionExpiredMock,
   getApprovalReviewRequestByIdMock,
@@ -29,6 +30,7 @@ const {
   },
   runAgentGraphTurnMock: vi.fn(),
   resumeAgentGraphTurnMock: vi.fn(),
+  retryAgentGraphTurnMock: vi.fn(),
   getGraphContinuationSessionByIdMock: vi.fn(),
   markGraphContinuationSessionExpiredMock: vi.fn(),
   getApprovalReviewRequestByIdMock: vi.fn(),
@@ -105,6 +107,7 @@ vi.mock('@/features/agent-runtime/toolGrounding', () => ({
 vi.mock('@/features/agent-runtime/langgraph/runtime', () => ({
   runAgentGraphTurn: runAgentGraphTurnMock,
   resumeAgentGraphTurn: resumeAgentGraphTurnMock,
+  retryAgentGraphTurn: retryAgentGraphTurnMock,
 }));
 
 vi.mock('@/features/agent-runtime/toolIntegrations', () => ({
@@ -132,7 +135,7 @@ vi.mock('@/features/voice/voiceConversationSessionStore', () => ({
   formatLiveVoiceContext: vi.fn(() => null),
 }));
 
-import { runChatTurn, resumeContinuationChatTurn } from '@/features/agent-runtime/agentRuntime';
+import { retryFailedChatTurn, runChatTurn, resumeContinuationChatTurn } from '@/features/agent-runtime/agentRuntime';
 import { scrubFinalReplyText } from '@/features/agent-runtime/finalReplyScrubber';
 
 function makeCurrentTurn(overrides: Partial<CurrentTurnContext> = {}): CurrentTurnContext {
@@ -167,8 +170,6 @@ function makeGraphResult(overrides: Record<string, unknown> = {}) {
     finalization: {
       attempted: false,
       succeeded: true,
-      fallbackUsed: false,
-      returnedToolCallCount: 0,
       completedAt: '2026-03-12T00:00:00.000Z',
       terminationReason: 'assistant_reply',
     },
@@ -192,6 +193,7 @@ describe('agentRuntime', () => {
     updateTraceEndMock.mockResolvedValue(undefined);
     runAgentGraphTurnMock.mockReset();
     resumeAgentGraphTurnMock.mockReset();
+    retryAgentGraphTurnMock.mockReset();
     getGraphContinuationSessionByIdMock.mockReset();
     markGraphContinuationSessionExpiredMock.mockReset();
     clearGitHubFileLookupCacheForTraceMock.mockReset();
@@ -320,8 +322,8 @@ describe('agentRuntime', () => {
     expect(updateTraceEndMock.mock.calls.at(-1)?.[0]).not.toHaveProperty('reasoningText');
   });
 
-  it('uses route-aware runtime failure copy when the initial graph run throws', async () => {
-    runAgentGraphTurnMock.mockRejectedValueOnce(new Error('provider offline'));
+  it('uses provider-aware failure copy and exposes retry metadata when the initial graph run throws a provider error', async () => {
+    runAgentGraphTurnMock.mockRejectedValueOnce(new Error('AI provider API error: 503 Service Unavailable - upstream down'));
 
     const result = await runChatTurn({
       traceId: 'trace-runtime-failed',
@@ -339,12 +341,49 @@ describe('agentRuntime', () => {
     });
 
     expect(result.replyText).toBe(
-      'I hit a runtime issue before I could finish that turn. Next: send it again and I will retry from the current context.',
+      'My model provider stopped responding before I could finish that turn. Next: use Retry below if it appears, or send that request again.',
     );
+    expect(result.meta).toEqual({
+      retry: {
+        threadId: 'trace-runtime-failed',
+        retryKind: 'turn',
+      },
+    });
     expect(updateTraceEndMock).toHaveBeenCalledWith(
       expect.objectContaining({
         replyText:
-          'I hit a runtime issue before I could finish that turn. Next: send it again and I will retry from the current context.',
+          'My model provider stopped responding before I could finish that turn. Next: use Retry below if it appears, or send that request again.',
+      }),
+    );
+  });
+
+  it('retries a failed turn on the same LangGraph thread', async () => {
+    retryAgentGraphTurnMock.mockResolvedValue(
+      makeGraphResult({
+        replyText: 'Recovered after retry.',
+        pendingInterrupt: null,
+      }),
+    );
+
+    const result = await retryFailedChatTurn({
+      traceId: 'trace-retry-1',
+      threadId: 'thread-original-1',
+      userId: 'user-1',
+      channelId: 'channel-1',
+      guildId: 'guild-1',
+      retryKind: 'turn',
+      isAdmin: false,
+      canModerate: false,
+    });
+
+    expect(result.replyText).toBe('Recovered after retry.');
+    expect(retryAgentGraphTurnMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        threadId: 'thread-original-1',
+        context: expect.objectContaining({
+          traceId: 'trace-retry-1',
+          routeKind: 'turn_retry',
+        }),
       }),
     );
   });
@@ -375,6 +414,38 @@ describe('agentRuntime', () => {
     expect(runAgentGraphTurnMock).toHaveBeenCalledWith(
       expect.objectContaining({
         activeToolNames: ['web'],
+      }),
+    );
+  });
+
+  it('exposes discord_admin to moderator-only turns for moderation workflows', async () => {
+    globalToolRegistryMock.listNames.mockReturnValue(['web', 'discord_admin'] as never);
+    globalToolRegistryMock.get.mockImplementation((name: string) => {
+      const access: 'public' | 'admin' = name === 'discord_admin' ? 'admin' : 'public';
+      return { metadata: { access } };
+    });
+    runAgentGraphTurnMock.mockResolvedValue(makeGraphResult({ replyText: 'ok' }));
+
+    await runChatTurn({
+      traceId: 'trace-2b-moderator',
+      userId: 'user-1',
+      channelId: 'channel-1',
+      guildId: 'guild-1',
+      messageId: 'message-2b-moderator',
+      userText: 'clean up that spam burst',
+      userProfileSummary: null,
+      currentTurn: makeCurrentTurn({
+        messageId: 'message-2b-moderator',
+      }),
+      invokedBy: 'mention',
+      isAdmin: false,
+      canModerate: true,
+    });
+
+    expect(runAgentGraphTurnMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        activeToolNames: ['web', 'discord_admin'],
+        invokerCanModerate: true,
       }),
     );
   });
@@ -421,8 +492,6 @@ describe('agentRuntime', () => {
         finalization: {
           attempted: true,
           succeeded: true,
-          fallbackUsed: false,
-          returnedToolCallCount: 0,
           completedAt: '2026-03-11T22:00:00.000Z',
           terminationReason: 'continue_prompt',
         },
@@ -635,12 +704,18 @@ describe('agentRuntime', () => {
     });
 
     expect(result.replyText).toBe(
-      'I hit a runtime issue before I could finish that continuation. Next: press Continue again, or send a fresh message if it keeps happening.',
+      'Something went wrong on my side while I was continuing that request. Next: use Retry below if it appears. If not, press Continue again or send a fresh message.',
     );
+    expect(result.meta).toEqual({
+      retry: {
+        threadId: 'thread-1',
+        retryKind: 'continue_resume',
+      },
+    });
     expect(updateTraceEndMock).toHaveBeenCalledWith(
       expect.objectContaining({
         replyText:
-          'I hit a runtime issue before I could finish that continuation. Next: press Continue again, or send a fresh message if it keeps happening.',
+          'Something went wrong on my side while I was continuing that request. Next: use Retry below if it appears. If not, press Continue again or send a fresh message.',
       }),
     );
   });
@@ -683,7 +758,7 @@ describe('agentRuntime', () => {
 
     expect(result.delivery).toBe('chat_reply');
     expect(result.replyText).toBe(
-      'I got to the end of that pass, but I do not have a clean reply ready to show yet. Next: send the next message and I will keep going from the current context.',
+      'I made progress on that, but I do not have a reply ready to post yet. Next: send the next message and I will keep going from the current context.',
     );
     expect(result.replyText).not.toContain('press Continue again');
   });

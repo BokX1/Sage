@@ -61,6 +61,7 @@ export async function generateChatReply(params: {
   isVoiceActive?: boolean;
   voiceChannelId?: string | null;
   isAdmin?: boolean;
+  canModerate?: boolean;
 }): Promise<Pick<RunChatTurnResult, 'replyText' | 'delivery' | 'meta' | 'files'>> {
   // Enforce sequential processing per user
   const limit = limitByKey(params.userId, 1);
@@ -81,6 +82,7 @@ export async function generateChatReply(params: {
       isVoiceActive,
       voiceChannelId,
       isAdmin = false,
+      canModerate = false,
     } = params;
 
     // 1. Load Profile
@@ -113,6 +115,7 @@ export async function generateChatReply(params: {
       isVoiceActive,
       voiceChannelId: voiceChannelId ?? null,
       isAdmin,
+      canModerate,
     });
 
     const replyText = result.replyText;

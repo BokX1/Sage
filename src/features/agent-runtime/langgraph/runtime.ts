@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import {
   Command,
   END,
@@ -7,8 +8,10 @@ import {
   START,
   StateGraph,
   StateSchema,
+  getConfig,
   interrupt,
   isInterrupted,
+  task,
 } from '@langchain/langgraph';
 import { ToolNode, toolsCondition } from '@langchain/langgraph/prebuilt';
 import { AIMessage, ToolMessage, type BaseMessage } from '@langchain/core/messages';
@@ -24,6 +27,7 @@ import {
   toLangChainMessages,
   toLlmMessages,
 } from '../../../platform/llm/langchain-interop';
+import type { LLMChatMessage } from '../../../platform/llm/llm-types';
 import { config as appConfig } from '../../../platform/config/env';
 import { logger } from '../../../platform/logging/logger';
 import { createOrReuseApprovalReviewRequestFromSignal } from '../../admin/adminActionService';
@@ -36,6 +40,7 @@ import type { ToolResult } from '../toolCallExecution';
 import type { ToolExecutionContext } from '../toolRegistry';
 import { ApprovalRequiredSignal } from '../toolControlSignals';
 import { createAgentRunTelemetry } from '../observability/langsmith';
+import { buildContinuationUnavailableReply } from '../visibleReply';
 import { buildAgentGraphConfig, type AgentGraphConfig } from './config';
 import {
   buildActiveToolCatalog,
@@ -47,6 +52,7 @@ import {
 import type {
   AgentGraphRuntimeContext,
   AgentGraphState,
+  ApprovalResumeDecision,
   GraphResumeInput,
   GraphRebudgetEvent,
   GraphTurnTerminationReason,
@@ -85,6 +91,14 @@ const SerializedToolResultSchema = z.object({
     .optional(),
 });
 
+const ApprovalInterruptRequestStateSchema = z.object({
+  requestId: z.string(),
+  call: GraphToolCallDescriptorSchema,
+  payload: z.unknown(),
+  coalesced: z.boolean().optional(),
+  expiresAtIso: z.string().optional(),
+});
+
 const GraphRebudgetEventSchema = z.object({
   beforeCount: z.number(),
   afterCount: z.number(),
@@ -110,8 +124,6 @@ const ToolCallRoundEventSchema = z.object({
 const ToolCallFinalizationEventSchema = z.object({
   attempted: z.boolean(),
   succeeded: z.boolean(),
-  fallbackUsed: z.boolean(),
-  returnedToolCallCount: z.number(),
   completedAt: z.string(),
   terminationReason: z.enum([
     'assistant_reply',
@@ -126,10 +138,8 @@ const ToolCallFinalizationEventSchema = z.object({
 const ApprovalInterruptStateSchema = z.object({
   kind: z.literal('approval_review'),
   requestId: z.string(),
-  call: GraphToolCallDescriptorSchema,
-  payload: z.unknown(),
-  coalesced: z.boolean().optional(),
-  expiresAtIso: z.string().optional(),
+  batchId: z.string(),
+  requests: z.array(ApprovalInterruptRequestStateSchema).min(1),
 });
 
 const ContinuePromptInterruptStateSchema = z.object({
@@ -155,6 +165,12 @@ const ApprovalResolutionStateSchema = z.object({
   errorText: z.string().nullable().optional(),
 });
 
+const ApprovalBatchResolutionStateSchema = z.object({
+  kind: z.literal('approval_review_batch'),
+  batchId: z.string(),
+  resolutions: z.array(ApprovalResolutionStateSchema).min(1),
+});
+
 const ContinuePromptResolutionStateSchema = z.object({
   kind: z.literal('continue_prompt'),
   continuationId: z.string(),
@@ -176,6 +192,7 @@ const AgentGraphRuntimeSnapshotSchema = z.object({
   maxTokens: z.number().optional(),
   invokedBy: z.enum(['mention', 'reply', 'wakeword', 'autopilot', 'component']).optional(),
   invokerIsAdmin: z.boolean().optional(),
+  invokerCanModerate: z.boolean().optional(),
   activeToolNames: z.array(z.string()),
   routeKind: z.string(),
   currentTurn: z.unknown(),
@@ -197,6 +214,7 @@ const AgentGraphConfigurableSchema = z
     maxTokens: z.number().optional(),
     invokedBy: z.enum(['mention', 'reply', 'wakeword', 'autopilot', 'component']).optional(),
     invokerIsAdmin: z.boolean().optional(),
+    invokerCanModerate: z.boolean().optional(),
     activeToolNames: z.array(z.string()).optional(),
     routeKind: z.string().optional(),
     currentTurn: z.unknown().optional(),
@@ -207,7 +225,7 @@ const AgentGraphConfigurableSchema = z
 const AgentGraphStateSchema = new StateSchema({
   messages: MessagesValue,
   resumeContext: AgentGraphRuntimeSnapshotSchema,
-  pendingWriteCall: z.union([GraphToolCallDescriptorSchema, z.null()]).default(null),
+  pendingWriteCalls: z.array(GraphToolCallDescriptorSchema).default([]),
   replyText: z.string().default(''),
   toolResults: new ReducedValue(z.array(SerializedToolResultSchema).default([]), {
     reducer: (left, right) => [...left, ...right],
@@ -233,8 +251,6 @@ const AgentGraphStateSchema = new StateSchema({
   finalization: ToolCallFinalizationEventSchema.default({
     attempted: false,
     succeeded: true,
-    fallbackUsed: false,
-    returnedToolCallCount: 0,
     completedAt: new Date(0).toISOString(),
     terminationReason: 'assistant_reply',
   }),
@@ -242,12 +258,12 @@ const AgentGraphStateSchema = new StateSchema({
     .enum(['assistant_reply', 'continue_prompt', 'graph_timeout', 'approval_interrupt', 'max_windows_reached'])
     .default('assistant_reply'),
   graphStatus: z.enum(['running', 'interrupted', 'completed', 'failed']).default('running'),
-  startedAtEpochMs: z.number().default(0),
+  activeWindowDurationMs: z.number().default(0),
   pendingInterrupt: z
     .union([ApprovalInterruptStateSchema, ContinuePromptInterruptStateSchema, z.null()])
     .default(null),
   interruptResolution: z
-    .union([ApprovalResolutionStateSchema, ContinuePromptResolutionStateSchema, z.null()])
+    .union([ApprovalResolutionStateSchema, ApprovalBatchResolutionStateSchema, ContinuePromptResolutionStateSchema, z.null()])
     .default(null),
 });
 
@@ -297,6 +313,7 @@ export interface StartAgentGraphTurnParams {
   replyTarget: unknown;
   invokedBy?: AgentGraphRuntimeContext['invokedBy'];
   invokerIsAdmin?: boolean;
+  invokerCanModerate?: boolean;
 }
 
 export interface ResumeAgentGraphTurnParams {
@@ -333,10 +350,12 @@ interface AgentGraphRuntime {
 
 let runtimePromise: Promise<AgentGraphRuntime> | null = null;
 let runtimeInstance: AgentGraphRuntime | null = null;
-
-function nowIso(): string {
-  return new Date().toISOString();
-}
+const NON_APPROVAL_GATED_DISCORD_ADMIN_ACTIONS = new Set([
+  'clear_server_api_key',
+  'set_governance_review_channel',
+  'clear_governance_review_channel',
+  'send_key_setup_card',
+]);
 
 function findLatestAssistantText(messages: BaseMessage[]): string {
   for (let index = messages.length - 1; index >= 0; index -= 1) {
@@ -420,6 +439,7 @@ function createRuntimeContext(params: StartAgentGraphTurnParams): AgentGraphRunt
     maxTokens: params.maxTokens,
     invokedBy: params.invokedBy,
     invokerIsAdmin: params.invokerIsAdmin,
+    invokerCanModerate: params.invokerCanModerate,
     activeToolNames: [...params.activeToolNames],
     routeKind: params.routeKind,
     currentTurn: params.currentTurn,
@@ -559,6 +579,174 @@ function createGraphChatModel(params: {
   });
 }
 
+interface DurableModelInvokeInput {
+  messages: LLMChatMessage[];
+  activeToolNames: string[];
+  toolContext: ToolExecutionContext;
+  timeoutMs: number;
+  maxResultChars: number;
+  model?: string;
+  apiKey?: string;
+  temperature: number;
+  requestTimeoutMs?: number;
+  maxTokens?: number;
+}
+
+interface DurableModelInvokeOutput {
+  message: LLMChatMessage;
+  latencyMs: number;
+}
+
+interface DurableApprovalMaterializationOutput {
+  requestId: string;
+  threadId: string;
+  coalesced: boolean;
+  expiresAtIso: string;
+}
+
+interface DurableContinuationInterruptOutput {
+  id: string;
+  requestedByUserId: string;
+  channelId: string;
+  guildId: string | null;
+  summaryText: string;
+  completedWindows: number;
+  maxWindows: number;
+  expiresAtIso: string;
+  resumeNode: 'llm_call' | 'route_tool_phase';
+}
+
+interface DurableGraphTimestampOutput {
+  iso: string;
+}
+
+const invokeAgentModelTask = task(
+  { name: 'sage_invoke_agent_model' },
+  async (input: DurableModelInvokeInput): Promise<DurableModelInvokeOutput> => {
+    const startedAt = Date.now();
+    const baseModel = createGraphChatModel({
+      model: input.model,
+      apiKey: input.apiKey,
+      temperature: input.temperature,
+      timeoutMs: input.requestTimeoutMs,
+      maxTokens: input.maxTokens,
+    });
+    const catalog =
+      input.activeToolNames.length > 0
+        ? buildActiveToolCatalog({
+            activeToolNames: input.activeToolNames,
+            context: input.toolContext,
+            timeoutMs: input.timeoutMs,
+            maxResultChars: input.maxResultChars,
+          })
+        : null;
+    const runnable =
+      catalog && catalog.allTools.length > 0 ? baseModel.bindTools(catalog.allTools, { tool_choice: 'auto' }) : baseModel;
+    const taskConfig = getConfig();
+    const responseMessage = await runnable.invoke(toLangChainMessages(input.messages), {
+      callbacks: taskConfig?.callbacks,
+      tags: taskConfig?.tags,
+      metadata: taskConfig?.metadata,
+      signal: taskConfig?.signal,
+    });
+    const aiMessage = AIMessage.isInstance(responseMessage)
+      ? responseMessage
+      : new AIMessage({ content: extractMessageText(responseMessage as BaseMessage) });
+    const [message] = toLlmMessages([aiMessage]);
+    return {
+      message: message ?? {
+        role: 'assistant',
+        content: extractMessageText(aiMessage),
+      },
+      latencyMs: Math.max(0, Date.now() - startedAt),
+    };
+  },
+);
+
+const captureGraphTimestampTask = task(
+  { name: 'sage_capture_graph_timestamp' },
+  async (): Promise<DurableGraphTimestampOutput> => ({
+    iso: new Date().toISOString(),
+  }),
+);
+
+const materializeApprovalInterruptTask = task(
+  { name: 'sage_materialize_approval_interrupt' },
+  async (input: {
+    threadId: string;
+    originTraceId: string;
+    payload: ConstructorParameters<typeof ApprovalRequiredSignal>[0];
+  }): Promise<DurableApprovalMaterializationOutput> => {
+    const materialized = await createOrReuseApprovalReviewRequestFromSignal({
+      threadId: input.threadId,
+      originTraceId: input.originTraceId,
+      signal: new ApprovalRequiredSignal(input.payload),
+    });
+    return {
+      requestId: materialized.request.id,
+      threadId: materialized.request.threadId,
+      coalesced: materialized.coalesced,
+      expiresAtIso: materialized.request.expiresAt.toISOString(),
+    };
+  },
+);
+
+const createContinuationInterruptTask = task(
+  { name: 'sage_create_continuation_interrupt' },
+  async (input: {
+    threadId: string;
+    originTraceId: string;
+    latestTraceId: string;
+    guildId: string | null;
+    channelId: string;
+    requestedByUserId: string;
+    pauseKind: string;
+    completedWindows: number;
+    maxWindows: number;
+    summaryText: string;
+    resumeNode: 'llm_call' | 'route_tool_phase';
+  }): Promise<DurableContinuationInterruptOutput> => {
+    const continuation = await createGraphContinuationSession({
+      threadId: input.threadId,
+      originTraceId: input.originTraceId,
+      latestTraceId: input.latestTraceId,
+      guildId: input.guildId,
+      channelId: input.channelId,
+      requestedByUserId: input.requestedByUserId,
+      pauseKind: input.pauseKind,
+      completedWindows: input.completedWindows,
+      maxWindows: input.maxWindows,
+      summaryText: input.summaryText,
+      resumeNode: input.resumeNode,
+    });
+    return {
+      id: continuation.id,
+      requestedByUserId: continuation.requestedByUserId,
+      channelId: continuation.channelId,
+      guildId: continuation.guildId,
+      summaryText: continuation.summaryText,
+      completedWindows: continuation.completedWindows,
+      maxWindows: continuation.maxWindows,
+      expiresAtIso: continuation.expiresAt.toISOString(),
+      resumeNode: continuation.resumeNode as 'llm_call' | 'route_tool_phase',
+    };
+  },
+);
+
+const consumeContinuationInterruptTask = task(
+  { name: 'sage_consume_continuation_interrupt' },
+  async (input: {
+    continuationId: string;
+    latestTraceId: string;
+  }): Promise<{ continuationId: string } | null> => {
+    const consumed = await consumeGraphContinuationSession({
+      id: input.continuationId,
+      latestTraceId: input.latestTraceId,
+    });
+    return consumed ? { continuationId: consumed.id } : null;
+  },
+);
+
 function normalizeResolvedApprovalStatus(params: {
   decision: 'approved' | 'rejected' | 'expired';
   actionStatus?: string | null;
@@ -590,6 +778,7 @@ function buildToolContext(
     guildId: runtimeContext.guildId,
     apiKey: runtimeContext.apiKey,
     invokerIsAdmin: runtimeContext.invokerIsAdmin,
+    invokerCanModerate: runtimeContext.invokerCanModerate,
     invokedBy: runtimeContext.invokedBy,
     routeKind: runtimeContext.routeKind,
     currentTurn: runtimeContext.currentTurn as ToolExecutionContext['currentTurn'],
@@ -598,18 +787,109 @@ function buildToolContext(
 }
 
 function isTimedOut(state: AgentGraphState, graphConfig: AgentGraphConfig): boolean {
-  return Date.now() - state.startedAtEpochMs >= graphConfig.maxDurationMs;
+  return state.activeWindowDurationMs >= graphConfig.maxDurationMs;
 }
 
-function buildExecutionEvent(
+async function buildExecutionEvent(
   state: AgentGraphState,
   details: Omit<ToolCallRoundEvent, 'round' | 'completedAt'>,
-): ToolCallRoundEvent {
+): Promise<ToolCallRoundEvent> {
+  const timestamp = await captureGraphTimestampTask();
   return {
     round: state.roundsCompleted + 1,
-    completedAt: nowIso(),
+    completedAt: timestamp.iso,
     ...details,
   };
+}
+
+function addActiveWindowDuration(
+  state: Pick<AgentGraphState, 'activeWindowDurationMs'>,
+  ...durationsMs: Array<number | undefined>
+): number {
+  const baseDuration =
+    typeof state.activeWindowDurationMs === 'number' && Number.isFinite(state.activeWindowDurationMs)
+      ? state.activeWindowDurationMs
+      : 0;
+  return durationsMs.reduce<number>((total, value) => {
+    const duration = typeof value === 'number' && Number.isFinite(value) ? Math.max(0, Math.trunc(value)) : 0;
+    return total + duration;
+  }, baseDuration);
+}
+
+function buildApprovalBatchId(threadId: string, calls: GraphToolCallDescriptor[]): string {
+  return crypto
+    .createHash('sha256')
+    .update(
+      JSON.stringify({
+        threadId,
+        calls: calls.map((call) => ({
+          id: call.id ?? null,
+          name: call.name,
+          args: call.args ?? null,
+        })),
+      }),
+    )
+    .digest('hex')
+    .slice(0, 24);
+}
+
+function collectKnownApprovalBatchPrefix(calls: GraphToolCallDescriptor[]): GraphToolCallDescriptor[] {
+  const prefix: GraphToolCallDescriptor[] = [];
+  for (const call of calls) {
+    if (!isKnownApprovalGatedWriteCall(call)) {
+      break;
+    }
+    prefix.push(call);
+  }
+  return prefix;
+}
+
+function isKnownApprovalGatedWriteCall(call: GraphToolCallDescriptor): boolean {
+  if (call.name !== 'discord_admin' || !call.args || typeof call.args !== 'object' || Array.isArray(call.args)) {
+    return false;
+  }
+  const args = call.args as Record<string, unknown>;
+  const rawAction = args.action;
+  const action = typeof rawAction === 'string' ? rawAction.trim() : '';
+  if (!action) {
+    return false;
+  }
+  if (action === 'api') {
+    const rawMethod = args.method;
+    const method = typeof rawMethod === 'string' ? rawMethod.trim().toUpperCase() : '';
+    return method !== 'GET';
+  }
+  return !NON_APPROVAL_GATED_DISCORD_ADMIN_ACTIONS.has(action);
+}
+
+function normalizeApprovalResumeDecisions(
+  approvalInterrupt: Extract<AgentGraphState['pendingInterrupt'], { kind: 'approval_review' }>,
+  resume: GraphResumeInput,
+): ApprovalResumeDecision[] {
+  if (resume.interruptKind !== 'approval_review') {
+    throw new Error('Approval interrupt resumed with incompatible payload.');
+  }
+
+  const knownRequestIds = new Set(approvalInterrupt.requests.map((request) => request.requestId));
+  const decisions = approvalInterrupt.requests.map((request) => {
+    const decision = resume.decisions.find((entry) => entry.requestId === request.requestId);
+    if (!decision) {
+      throw new Error(`Approval batch resume is missing a decision for request "${request.requestId}".`);
+    }
+    if (!knownRequestIds.has(decision.requestId)) {
+      throw new Error(`Approval batch resume included an unknown request "${decision.requestId}".`);
+    }
+    return {
+      requestId: request.requestId,
+      status: decision.status,
+      reviewerId: decision.reviewerId ?? null,
+      decisionReasonText: decision.decisionReasonText ?? null,
+    };
+  });
+  if (resume.decisions.length !== decisions.length) {
+    throw new Error('Approval batch resume contained an unexpected number of decisions.');
+  }
+  return decisions;
 }
 
 function buildToolMessageFromOutcome(params: {
@@ -720,47 +1000,43 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
       runtimeContext.activeToolNames.length > 0 &&
       state.roundsCompleted < graphConfig.maxSteps &&
       !isTimedOut(state, graphConfig);
-    const catalog = toolsEnabled
-      ? buildActiveToolCatalog({
-          activeToolNames: runtimeContext.activeToolNames,
-          context: toolContext,
-          timeoutMs: graphConfig.toolTimeoutMs,
-          maxResultChars: graphConfig.maxResultChars,
-        })
-      : null;
     const prepared = buildRebudgetingEvent(
       state.messages as BaseMessage[],
       runtimeContext.model,
       runtimeContext.maxTokens,
     );
-    const baseModel = createGraphChatModel({
+    const response = await invokeAgentModelTask({
+      messages: toLlmMessages(prepared.trimmedMessages),
+      activeToolNames: toolsEnabled ? runtimeContext.activeToolNames : [],
+      toolContext,
+      timeoutMs: graphConfig.toolTimeoutMs,
+      maxResultChars: graphConfig.maxResultChars,
       model: runtimeContext.model,
       apiKey: runtimeContext.apiKey,
       temperature: runtimeContext.temperature,
-      timeoutMs: runtimeContext.timeoutMs,
+      requestTimeoutMs: runtimeContext.timeoutMs,
       maxTokens: runtimeContext.maxTokens,
     });
-    const runnable =
-      catalog && catalog.allTools.length > 0
-        ? baseModel.bindTools(catalog.allTools, { tool_choice: 'auto' })
-        : baseModel;
-    const responseMessage = await runnable.invoke(prepared.trimmedMessages, config);
-    const aiMessage = AIMessage.isInstance(responseMessage)
-      ? responseMessage
-      : new AIMessage({ content: extractMessageText(responseMessage as BaseMessage) });
+    const [aiMessageCandidate] = toLangChainMessages([response.message]);
+    const aiMessage = AIMessage.isInstance(aiMessageCandidate)
+      ? aiMessageCandidate
+      : new AIMessage({ content: extractMessageText(aiMessageCandidate as BaseMessage) });
     const replyText = extractMessageText(aiMessage).trim();
     const toolCalls = getLastAiToolCalls([aiMessage]);
+    const nextActiveWindowDurationMs = addActiveWindowDuration(state, response.latencyMs);
+    const timedOutAfterModel = nextActiveWindowDurationMs >= graphConfig.maxDurationMs;
 
     if (toolCalls.length > 0) {
       return new Command({
         goto:
-          isTimedOut(state, graphConfig) || state.roundsCompleted >= graphConfig.maxSteps
+          timedOutAfterModel || state.roundsCompleted >= graphConfig.maxSteps
             ? 'pause_for_continue'
             : 'route_tool_phase',
         update: {
           messages: [aiMessage],
+          activeWindowDurationMs: nextActiveWindowDurationMs,
           terminationReason:
-            isTimedOut(state, graphConfig)
+            timedOutAfterModel
               ? 'graph_timeout'
               : state.roundsCompleted >= graphConfig.maxSteps
                 ? 'continue_prompt'
@@ -770,18 +1046,18 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
       });
     }
 
+    const completionTimestamp = await captureGraphTimestampTask();
     return new Command({
       goto: 'finalize_turn',
       update: {
         messages: [aiMessage],
         replyText,
+        activeWindowDurationMs: addActiveWindowDuration(state, response.latencyMs),
         terminationReason: 'assistant_reply',
         finalization: {
           attempted: true,
           succeeded: true,
-          fallbackUsed: false,
-          returnedToolCallCount: 0,
-          completedAt: nowIso(),
+          completedAt: completionTimestamp.iso,
           terminationReason: 'assistant_reply',
           rebudgeting: prepared.rebudgeting,
         },
@@ -809,9 +1085,9 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
     const truncatedCallCount = Math.max(0, requestedCallCount - effectiveCalls.length);
     const seenReadOnly = new Set<string>();
     const readBatch: GraphToolCallDescriptor[] = [];
-    let pendingWriteCall: GraphToolCallDescriptor | null = null;
+    const pendingWriteCalls: GraphToolCallDescriptor[] = [];
     let deduplicatedCallCount = 0;
-    let guardrailBlockedCallCount = 0;
+    const guardrailBlockedCallCount = 0;
 
     for (const call of effectiveCalls) {
       const serializedCall: GraphToolCallDescriptor = {
@@ -836,11 +1112,7 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
         continue;
       }
 
-      if (!pendingWriteCall) {
-        pendingWriteCall = serializedCall;
-      } else {
-        guardrailBlockedCallCount += 1;
-      }
+      pendingWriteCalls.push(serializedCall);
     }
 
     const readBatchMessage =
@@ -859,18 +1131,18 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
           })
         : null;
 
-    const executedAny = readBatch.length > 0 || pendingWriteCall !== null;
+    const executedAny = readBatch.length > 0 || pendingWriteCalls.length > 0;
 
     return new Command({
       goto:
         readBatch.length > 0
           ? 'execute_read_tools'
-          : pendingWriteCall
+          : pendingWriteCalls.length > 0
             ? 'approval_gate'
             : 'llm_call',
       update: {
         messages: readBatchMessage ? [readBatchMessage] : [],
-        pendingWriteCall,
+        pendingWriteCalls,
         roundsCompleted: executedAny ? state.roundsCompleted + 1 : state.roundsCompleted,
         totalRoundsCompleted: executedAny ? state.totalRoundsCompleted + 1 : state.totalRoundsCompleted,
         deduplicatedCallCount,
@@ -878,9 +1150,9 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
         guardrailBlockedCallCount,
         roundEvents: executedAny
           ? [
-              buildExecutionEvent(state, {
+              await buildExecutionEvent(state, {
                 requestedCallCount,
-                executedCallCount: readBatch.length + (pendingWriteCall ? 1 : 0),
+                executedCallCount: readBatch.length + pendingWriteCalls.length,
                 deduplicatedCallCount,
                 truncatedCallCount,
                 guardrailBlockedCallCount,
@@ -899,9 +1171,15 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
       state,
       config as Parameters<typeof readToolsSubgraph.invoke>[1],
     )) as Partial<AgentGraphState>;
+    const readToolDurationMs = Array.isArray(update.toolResults)
+      ? update.toolResults.reduce((total, result) => total + (result.latencyMs ?? 0), 0)
+      : 0;
     return new Command({
-      goto: state.pendingWriteCall ? 'approval_gate' : 'llm_call',
-      update,
+      goto: state.pendingWriteCalls.length > 0 ? 'approval_gate' : 'llm_call',
+      update: {
+        ...update,
+        activeWindowDurationMs: addActiveWindowDuration(state, readToolDurationMs),
+      },
     });
   };
 
@@ -909,48 +1187,152 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
     state: AgentGraphState,
     config: RunnableConfig,
   ): Promise<Command<unknown, Partial<AgentGraphState>, GraphNodeName>> => {
-    if (!state.pendingWriteCall) {
+    const currentWriteCall = state.pendingWriteCalls[0] ?? null;
+    if (!currentWriteCall) {
       return new Command({ goto: 'llm_call', update: {} });
     }
 
     const runtimeContext = resolveRuntimeContext(state, config);
+    const turnToolContext = buildToolContext(state, runtimeContext, 'turn');
+
+    if (isKnownApprovalGatedWriteCall(currentWriteCall)) {
+      const batchCalls = collectKnownApprovalBatchPrefix(state.pendingWriteCalls);
+      const batchId = buildApprovalBatchId(runtimeContext.threadId, batchCalls);
+      const approvalRequests: NonNullable<Extract<AgentGraphState['pendingInterrupt'], { kind: 'approval_review' }>['requests']> = [];
+      let batchDurationMs = 0;
+
+      for (let index = 0; index < batchCalls.length; index += 1) {
+        const batchCall = batchCalls[index];
+        const outcome = await executeDurableToolTask({
+          activeToolNames: runtimeContext.activeToolNames,
+          call: batchCall,
+          context: turnToolContext,
+          timeoutMs: graphConfig.toolTimeoutMs,
+          maxResultChars: graphConfig.maxResultChars,
+        });
+        batchDurationMs += outcome.kind === 'approval_required' ? outcome.latencyMs : outcome.result.latencyMs;
+
+        if (outcome.kind !== 'approval_required') {
+          const toolMessage = buildToolMessageFromOutcome({
+            toolName: outcome.toolName,
+            callId: outcome.callId,
+            content: outcome.content,
+            result: outcome.result,
+            files: outcome.files,
+            status: outcome.result.success ? 'success' : 'error',
+          });
+          return new Command({
+            goto: state.pendingWriteCalls.length > 1 ? 'approval_gate' : 'llm_call',
+            update: {
+              activeWindowDurationMs: addActiveWindowDuration(state, outcome.result.latencyMs),
+              pendingWriteCalls: state.pendingWriteCalls.slice(1),
+              messages: [toolMessage],
+              toolResults: [outcome.result],
+              files: outcome.files,
+            },
+          });
+        }
+
+        const materialized = await materializeApprovalInterruptTask({
+          threadId: runtimeContext.threadId,
+          originTraceId: runtimeContext.originTraceId,
+          payload: {
+            ...outcome.payload,
+            interruptMetadataJson: {
+              ...(outcome.payload.interruptMetadataJson &&
+              typeof outcome.payload.interruptMetadataJson === 'object' &&
+              !Array.isArray(outcome.payload.interruptMetadataJson)
+                ? (outcome.payload.interruptMetadataJson as Record<string, unknown>)
+                : {}),
+              langgraphApprovalBatch: {
+                batchId,
+                batchIndex: index,
+                batchSize: batchCalls.length,
+              },
+            },
+          },
+        });
+        if (materialized.coalesced && materialized.threadId !== runtimeContext.threadId && index > 0) {
+          break;
+        }
+        approvalRequests.push({
+          requestId: materialized.requestId,
+          call: outcome.call,
+          payload: outcome.payload,
+          coalesced: materialized.coalesced,
+          expiresAtIso: materialized.expiresAtIso,
+        });
+      }
+
+      if (approvalRequests.length > 0) {
+        const interruptTimestamp = await captureGraphTimestampTask();
+        return new Command({
+          goto: 'resume_interrupt',
+          update: {
+            replyText: '',
+            graphStatus: 'interrupted',
+            terminationReason: 'approval_interrupt',
+            activeWindowDurationMs: addActiveWindowDuration(state, batchDurationMs),
+            pendingInterrupt: {
+              kind: 'approval_review',
+              requestId: approvalRequests[0]!.requestId,
+              batchId,
+              requests: approvalRequests,
+            },
+            interruptResolution: null,
+            finalization: {
+              attempted: false,
+              succeeded: true,
+              completedAt: interruptTimestamp.iso,
+              terminationReason: 'approval_interrupt',
+            },
+          },
+        });
+      }
+    }
+
     const outcome = await executeDurableToolTask({
       activeToolNames: runtimeContext.activeToolNames,
-      call: state.pendingWriteCall,
-      context: buildToolContext(state, runtimeContext, 'turn'),
+      call: currentWriteCall,
+      context: turnToolContext,
       timeoutMs: graphConfig.toolTimeoutMs,
       maxResultChars: graphConfig.maxResultChars,
     });
 
     if (outcome.kind === 'approval_required') {
-      const materialized = await createOrReuseApprovalReviewRequestFromSignal({
+      const materialized = await materializeApprovalInterruptTask({
         threadId: runtimeContext.threadId,
         originTraceId: runtimeContext.originTraceId,
-        signal: new ApprovalRequiredSignal(outcome.payload),
+        payload: outcome.payload,
       });
+      const interruptTimestamp = await captureGraphTimestampTask();
 
       return new Command({
         goto: 'resume_interrupt',
         update: {
-          pendingWriteCall: null,
           replyText: '',
           graphStatus: 'interrupted',
           terminationReason: 'approval_interrupt',
+          activeWindowDurationMs: addActiveWindowDuration(state, outcome.latencyMs),
           pendingInterrupt: {
             kind: 'approval_review',
-            requestId: materialized.request.id,
-            call: outcome.call,
-            payload: outcome.payload,
-            coalesced: materialized.coalesced,
-            expiresAtIso: materialized.request.expiresAt.toISOString(),
+            requestId: materialized.requestId,
+            batchId: buildApprovalBatchId(runtimeContext.threadId, [outcome.call]),
+            requests: [
+              {
+                requestId: materialized.requestId,
+                call: outcome.call,
+                payload: outcome.payload,
+                coalesced: materialized.coalesced,
+                expiresAtIso: materialized.expiresAtIso,
+              },
+            ],
           },
           interruptResolution: null,
           finalization: {
             attempted: false,
             succeeded: true,
-            fallbackUsed: false,
-            returnedToolCallCount: 0,
-            completedAt: nowIso(),
+            completedAt: interruptTimestamp.iso,
             terminationReason: 'approval_interrupt',
           },
         },
@@ -967,9 +1349,10 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
     });
 
     return new Command({
-      goto: 'llm_call',
+      goto: state.pendingWriteCalls.length > 1 ? 'approval_gate' : 'llm_call',
       update: {
-        pendingWriteCall: null,
+        activeWindowDurationMs: addActiveWindowDuration(state, outcome.result.latencyMs),
+        pendingWriteCalls: state.pendingWriteCalls.slice(1),
         messages: [toolMessage],
         toolResults: [outcome.result],
         files: outcome.files,
@@ -1009,6 +1392,7 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
       };
 
       if (resume.decision !== 'continue') {
+        const completionTimestamp = await captureGraphTimestampTask();
         return new Command({
           goto: 'finalize_turn',
           update: {
@@ -1024,26 +1408,25 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
             finalization: {
               attempted: true,
               succeeded: true,
-              fallbackUsed: false,
-              returnedToolCallCount: 0,
-              completedAt: nowIso(),
+              completedAt: completionTimestamp.iso,
               terminationReason: 'continue_prompt',
             },
           },
         });
       }
 
-      const consumed = await consumeGraphContinuationSession({
-        id: resume.continuationId,
+      const consumed = await consumeContinuationInterruptTask({
+        continuationId: resume.continuationId,
         latestTraceId: resumedContext.traceId,
       });
       if (!consumed) {
+        const completionTimestamp = await captureGraphTimestampTask();
         return new Command({
           goto: 'finalize_turn',
           update: {
             replyText:
               state.replyText.trim() ||
-              'That continuation is no longer available. Start a fresh request if you want me to keep going.',
+              buildContinuationUnavailableReply(),
             resumeContext: resumedContext,
             graphStatus: 'completed',
             terminationReason: 'continue_prompt',
@@ -1057,9 +1440,7 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
             finalization: {
               attempted: true,
               succeeded: true,
-              fallbackUsed: false,
-              returnedToolCallCount: 0,
-              completedAt: nowIso(),
+              completedAt: completionTimestamp.iso,
               terminationReason: 'continue_prompt',
             },
           },
@@ -1081,13 +1462,11 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
             resumedByUserId: resume.resumedByUserId ?? null,
           },
           roundsCompleted: 0,
-          startedAtEpochMs: Date.now(),
+          activeWindowDurationMs: 0,
           finalization: {
             attempted: false,
             succeeded: true,
-            fallbackUsed: false,
-            returnedToolCallCount: 0,
-            completedAt: nowIso(),
+            completedAt: new Date(0).toISOString(),
             terminationReason: 'assistant_reply',
           },
         },
@@ -1096,105 +1475,123 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
 
     const approvalInterrupt = state.pendingInterrupt;
     const resume = interrupt({
-      requestId: approvalInterrupt.requestId,
-      kind: approvalInterrupt.payload.kind,
-      coalesced: approvalInterrupt.coalesced,
-      expiresAtIso: approvalInterrupt.expiresAtIso,
+      batchId: approvalInterrupt.batchId,
+      requestIds: approvalInterrupt.requests.map((request) => request.requestId),
+      requests: approvalInterrupt.requests.map((request) => ({
+        requestId: request.requestId,
+        kind: request.payload.kind,
+        coalesced: request.coalesced,
+        expiresAtIso: request.expiresAtIso,
+      })),
     }) as GraphResumeInput;
-    if (resume.interruptKind !== 'approval_review') {
-      throw new Error('Approval interrupt resumed with incompatible payload.');
-    }
+    const decisions = normalizeApprovalResumeDecisions(approvalInterrupt, resume);
     const resumedContext: AgentGraphRuntimeContext = {
       ...runtimeContext,
       traceId: resume.resumeTraceId?.trim() || runtimeContext.traceId,
     };
+    const toolMessages: ToolMessage[] = [];
+    const resolvedResults: SerializedToolResult[] = [];
+    const resolvedFiles: AgentGraphState['files'] = [];
+    const resolutions: Array<Extract<NonNullable<AgentGraphState['interruptResolution']>, { kind: 'approval_review_batch' }>['resolutions'][number]> = [];
+    let consumedDurationMs = 0;
 
-    if (resume.status !== 'approved') {
-      const result: SerializedToolResult = {
-        name: approvalInterrupt.call.name,
-        success: false,
-        error:
-          resume.status === 'rejected'
-            ? resume.decisionReasonText?.trim()
-              ? `Approval rejected: ${resume.decisionReasonText.trim()}`
-              : 'Approval rejected.'
-            : 'Approval expired before execution.',
-        errorType: 'execution',
-        latencyMs: 0,
-      };
-      const toolMessage = buildToolMessageFromOutcome({
-        toolName: approvalInterrupt.call.name,
-        callId: approvalInterrupt.call.id,
-        content: JSON.stringify({
-          status: resume.status,
-          decisionReasonText: resume.decisionReasonText ?? null,
-        }),
-        result,
-        files: [],
-        status: 'error',
+    for (const request of approvalInterrupt.requests) {
+      const decision = decisions.find((entry) => entry.requestId === request.requestId);
+      if (!decision) {
+        throw new Error(`Approval batch resume is missing a decision for request "${request.requestId}".`);
+      }
+
+      if (decision.status !== 'approved') {
+        const result: SerializedToolResult = {
+          name: request.call.name,
+          success: false,
+          error:
+            decision.status === 'rejected'
+              ? decision.decisionReasonText?.trim()
+                ? `Approval rejected: ${decision.decisionReasonText.trim()}`
+                : 'Approval rejected.'
+              : 'Approval expired before execution.',
+          errorType: 'execution',
+          latencyMs: 0,
+        };
+        toolMessages.push(
+          buildToolMessageFromOutcome({
+            toolName: request.call.name,
+            callId: request.call.id,
+            content: JSON.stringify({
+              status: decision.status,
+              decisionReasonText: decision.decisionReasonText ?? null,
+            }),
+            result,
+            files: [],
+            status: 'error',
+          }),
+        );
+        resolvedResults.push(result);
+        resolutions.push({
+          kind: 'approval_review',
+          requestId: request.requestId,
+          decision: decision.status,
+          status: decision.status,
+          reviewerId: decision.reviewerId ?? null,
+          decisionReasonText: decision.decisionReasonText ?? null,
+        });
+        continue;
+      }
+
+      const executed = await executeApprovedReviewTask({
+        requestId: request.requestId,
+        toolName: request.call.name,
+        callId: request.call.id,
+        reviewerId: decision.reviewerId ?? null,
+        decisionReasonText: decision.decisionReasonText ?? null,
+        resumeTraceId: resume.resumeTraceId ?? null,
+        maxResultChars: graphConfig.maxResultChars,
       });
-
-      return new Command({
-        goto: 'llm_call',
-        update: {
-          messages: [toolMessage],
-          resumeContext: resumedContext,
-          graphStatus: 'running',
-          interruptResolution: {
-            kind: 'approval_review',
-            requestId: approvalInterrupt.requestId,
-            decision: resume.status,
-            status: resume.status,
-            reviewerId: resume.reviewerId ?? null,
-            decisionReasonText: resume.decisionReasonText ?? null,
-          },
-          pendingInterrupt: null,
-          toolResults: [result],
-        },
+      consumedDurationMs += executed.result.latencyMs ?? 0;
+      toolMessages.push(
+        buildToolMessageFromOutcome({
+          toolName: executed.toolName,
+          callId: executed.callId,
+          content: executed.content,
+          result: executed.result,
+          files: executed.files,
+          status: executed.result.success ? 'success' : 'error',
+        }),
+      );
+      resolvedResults.push(executed.result);
+      resolvedFiles.push(...executed.files);
+      resolutions.push({
+        kind: 'approval_review',
+        requestId: request.requestId,
+        decision: decision.status,
+        status: normalizeResolvedApprovalStatus({
+          decision: decision.status,
+          actionStatus: executed.status,
+          errorText: executed.result.error ?? null,
+        }),
+        reviewerId: decision.reviewerId ?? null,
+        decisionReasonText: decision.decisionReasonText ?? null,
+        errorText: executed.result.error ?? null,
       });
     }
 
-    const executed = await executeApprovedReviewTask({
-      requestId: approvalInterrupt.requestId,
-      toolName: approvalInterrupt.call.name,
-      callId: approvalInterrupt.call.id,
-      reviewerId: resume.reviewerId ?? null,
-      decisionReasonText: resume.decisionReasonText ?? null,
-      resumeTraceId: resume.resumeTraceId ?? null,
-      maxResultChars: graphConfig.maxResultChars,
-    });
-    const resolvedStatus = normalizeResolvedApprovalStatus({
-      decision: resume.status,
-      actionStatus: executed.status,
-      errorText: executed.result.error ?? null,
-    });
-    const toolMessage = buildToolMessageFromOutcome({
-      toolName: executed.toolName,
-      callId: executed.callId,
-      content: executed.content,
-      result: executed.result,
-      files: executed.files,
-      status: executed.result.success ? 'success' : 'error',
-    });
-
     return new Command({
-      goto: 'llm_call',
+      goto: state.pendingWriteCalls.length > approvalInterrupt.requests.length ? 'approval_gate' : 'llm_call',
       update: {
-        messages: [toolMessage],
+        messages: toolMessages,
         resumeContext: resumedContext,
         graphStatus: 'running',
+        activeWindowDurationMs: consumedDurationMs,
         interruptResolution: {
-          kind: 'approval_review',
-          requestId: approvalInterrupt.requestId,
-          decision: resume.status,
-          status: resolvedStatus,
-          reviewerId: resume.reviewerId ?? null,
-          decisionReasonText: resume.decisionReasonText ?? null,
-          errorText: executed.result.error ?? null,
+          kind: 'approval_review_batch',
+          batchId: approvalInterrupt.batchId,
+          resolutions,
         },
         pendingInterrupt: null,
-        toolResults: [executed.result],
-        files: executed.files,
+        pendingWriteCalls: state.pendingWriteCalls.slice(approvalInterrupt.requests.length),
+        toolResults: resolvedResults,
+        files: resolvedFiles,
       },
     });
   };
@@ -1211,6 +1608,7 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
       const limitText = `${buildDeterministicRuntimeSummary(state, {
         continuationLimitReached: true,
       })}\n\nAsk me in a new message if you want me to keep going from here.`;
+      const completionTimestamp = await captureGraphTimestampTask();
       return new Command({
         goto: 'finalize_turn',
         update: {
@@ -1221,16 +1619,14 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
           finalization: {
             attempted: true,
             succeeded: true,
-            fallbackUsed: false,
-            returnedToolCallCount: 0,
-            completedAt: nowIso(),
+            completedAt: completionTimestamp.iso,
             terminationReason: 'max_windows_reached',
           },
         },
       });
     }
 
-    const continuation = await createGraphContinuationSession({
+    const continuation = await createContinuationInterruptTask({
       threadId: runtimeContext.threadId,
       originTraceId: runtimeContext.originTraceId,
       latestTraceId: runtimeContext.traceId,
@@ -1244,6 +1640,7 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
       resumeNode: resolveContinueResumeNode(state),
     });
 
+    const interruptTimestamp = await captureGraphTimestampTask();
     return new Command({
       goto: 'resume_interrupt',
       update: {
@@ -1260,16 +1657,14 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
           summaryText: continuation.summaryText,
           completedWindows: continuation.completedWindows,
           maxWindows: continuation.maxWindows,
-          expiresAtIso: continuation.expiresAt.toISOString(),
-          resumeNode: continuation.resumeNode as 'llm_call' | 'route_tool_phase',
+          expiresAtIso: continuation.expiresAtIso,
+          resumeNode: continuation.resumeNode,
         },
         interruptResolution: null,
         finalization: {
           attempted: true,
           succeeded: true,
-          fallbackUsed: false,
-          returnedToolCallCount: 0,
-          completedAt: nowIso(),
+          completedAt: interruptTimestamp.iso,
           terminationReason: 'continue_prompt',
         },
       },
@@ -1278,7 +1673,7 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
 
   const finalizeTurnNode = async (state: AgentGraphState): Promise<Partial<AgentGraphState>> => ({
     graphStatus: state.graphStatus === 'failed' ? 'failed' : 'completed',
-    pendingWriteCall: null,
+    pendingWriteCalls: [],
   });
 
   return new StateGraph({
@@ -1377,7 +1772,13 @@ function coerceInterruptedState(value: unknown): AgentGraphState | null {
     return null;
   }
   if (pendingInterrupt.kind === 'approval_review') {
-    if (typeof pendingInterrupt.requestId !== 'string' || pendingInterrupt.requestId.trim().length === 0) {
+    const approvalRequests = (pendingInterrupt as { requests?: unknown[] }).requests;
+    if (
+      typeof pendingInterrupt.requestId !== 'string' ||
+      pendingInterrupt.requestId.trim().length === 0 ||
+      !Array.isArray(approvalRequests) ||
+      approvalRequests.length < 1
+    ) {
       return null;
     }
   } else if (pendingInterrupt.kind === 'continue_prompt') {
@@ -1517,7 +1918,7 @@ function buildInitialState(params: StartAgentGraphTurnParams): AgentGraphState {
   return {
     messages: params.messages,
     resumeContext: createRuntimeContext(params),
-    pendingWriteCall: null,
+    pendingWriteCalls: [],
     replyText: '',
     toolResults: [],
     files: [],
@@ -1531,14 +1932,12 @@ function buildInitialState(params: StartAgentGraphTurnParams): AgentGraphState {
     finalization: {
       attempted: false,
       succeeded: true,
-      fallbackUsed: false,
-      returnedToolCallCount: 0,
-      completedAt: nowIso(),
+      completedAt: new Date(0).toISOString(),
       terminationReason: 'assistant_reply',
     },
     terminationReason: 'assistant_reply',
     graphStatus: 'running',
-    startedAtEpochMs: Date.now(),
+    activeWindowDurationMs: 0,
     pendingInterrupt: null,
     interruptResolution: null,
   };
@@ -1608,7 +2007,45 @@ export async function resumeAgentGraphTurn(
         threadId: params.threadId,
         interruptKind: params.resume.interruptKind,
         decision:
-          params.resume.interruptKind === 'approval_review' ? params.resume.status : params.resume.decision,
+          params.resume.interruptKind === 'approval_review'
+            ? params.resume.decisions.map((decision) => `${decision.requestId}:${decision.status}`).join(',')
+            : params.resume.decision,
+      },
+    }),
+  );
+  await telemetry.flush();
+  return normalizeGraphResult(output, telemetry.getRunReferences(runId));
+}
+
+export async function retryAgentGraphTurn(params: {
+  threadId: string;
+  context: Partial<AgentGraphRuntimeContext>;
+  runId?: string;
+  runName?: string;
+}): Promise<AgentGraphTurnResult> {
+  const runtime = await getRuntime();
+  const telemetry = createAgentRunTelemetry();
+  const runId = params.runId?.trim() || params.context.traceId?.trim() || params.threadId;
+  const output = await runGraphValueStream(
+    runtime.graph,
+    null as Parameters<AgentGraphRuntime['graph']['invoke']>[0],
+    buildRunnableConfig({
+      threadId: params.threadId,
+      recursionLimit: runtime.config.recursionLimit,
+      runId,
+      runName: params.runName?.trim() || 'sage_agent_turn_retry',
+      context: {
+        ...params.context,
+        threadId: params.threadId,
+      },
+      callbacks: telemetry.callbacks,
+      tags: ['sage', 'agent-runtime', 'langgraph', 'retry'],
+      metadata: {
+        routeKind: params.context.routeKind,
+        channelId: params.context.channelId,
+        guildId: params.context.guildId,
+        userId: params.context.userId,
+        retryThreadId: params.threadId,
       },
     }),
   );

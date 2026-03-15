@@ -7,7 +7,10 @@ const {
   getLastAiToolCallsMock,
   buildAgentGraphConfigMock,
   executeDurableToolTaskMock,
+  executeApprovedReviewTaskMock,
   createGraphContinuationSessionMock,
+  consumeGraphContinuationSessionMock,
+  createOrReuseApprovalReviewRequestFromSignalMock,
 } = vi.hoisted(() => ({
   loggerWarnMock: vi.fn(),
   modelInvokeMock: vi.fn<() => Promise<unknown>>(async () => new HumanMessage({ content: 'unused' })),
@@ -25,6 +28,7 @@ const {
     githubGroundedMode: false,
   })),
   executeDurableToolTaskMock: vi.fn(),
+  executeApprovedReviewTaskMock: vi.fn(),
   createGraphContinuationSessionMock: vi.fn(async () => ({
     id: 'cont-1',
     threadId: 'trace-pause-1',
@@ -42,6 +46,32 @@ const {
     expiresAt: new Date('2026-03-14T00:00:00.000Z'),
     createdAt: new Date('2026-03-14T00:00:00.000Z'),
     updatedAt: new Date('2026-03-14T00:00:00.000Z'),
+  })),
+  consumeGraphContinuationSessionMock: vi.fn(async () => ({
+    id: 'cont-1',
+    threadId: 'trace-pause-1',
+    originTraceId: 'trace-pause-1',
+    latestTraceId: 'trace-resume-1',
+    guildId: 'guild-1',
+    channelId: 'channel-1',
+    requestedByUserId: 'user-1',
+    status: 'resumed',
+    pauseKind: 'step_window_exhausted',
+    completedWindows: 1,
+    maxWindows: 4,
+    summaryText: 'summary',
+    resumeNode: 'llm_call',
+    expiresAt: new Date('2026-03-14T00:00:00.000Z'),
+    createdAt: new Date('2026-03-14T00:00:00.000Z'),
+    updatedAt: new Date('2026-03-14T00:00:00.000Z'),
+  })),
+  createOrReuseApprovalReviewRequestFromSignalMock: vi.fn(async () => ({
+    request: {
+      id: 'request-1',
+      threadId: 'trace-approval-1',
+      expiresAt: new Date('2026-03-14T00:00:00.000Z'),
+    },
+    coalesced: false,
   })),
 }));
 
@@ -71,7 +101,7 @@ vi.mock('@/platform/logging/logger', () => ({
 }));
 
 vi.mock('@/features/admin/adminActionService', () => ({
-  createOrReuseApprovalReviewRequestFromSignal: vi.fn(),
+  createOrReuseApprovalReviewRequestFromSignal: createOrReuseApprovalReviewRequestFromSignalMock,
 }));
 
 vi.mock('@/platform/llm/model-budget-config', () => ({
@@ -144,7 +174,7 @@ vi.mock('@/features/agent-runtime/langgraph/nativeTools', () => ({
     readOnlyTools: [],
     definitions: new Map(),
   })),
-  executeApprovedReviewTask: vi.fn(),
+  executeApprovedReviewTask: executeApprovedReviewTaskMock,
   executeDurableToolTask: executeDurableToolTaskMock,
   isReadOnlyToolCall: vi.fn(() => false),
 }));
@@ -163,12 +193,13 @@ vi.mock('@/features/agent-runtime/toolControlSignals', () => ({
 vi.mock('@/features/agent-runtime/graphContinuationRepo', () => ({
   GRAPH_CONTINUATION_MAX_WINDOWS: 4,
   createGraphContinuationSession: createGraphContinuationSessionMock,
-  consumeGraphContinuationSession: vi.fn(),
+  consumeGraphContinuationSession: consumeGraphContinuationSessionMock,
 }));
 
 import {
   runAgentGraphTurn,
   runGraphValueStream,
+  resumeAgentGraphTurn,
   shutdownAgentGraphRuntime,
 } from '@/features/agent-runtime/langgraph/runtime';
 
@@ -194,7 +225,7 @@ function makeInterruptedState() {
       currentTurn: { invokerUserId: 'user-1' },
       replyTarget: null,
     },
-    pendingWriteCall: null,
+    pendingWriteCalls: [],
     replyText: '',
     toolResults: [],
     files: [],
@@ -208,27 +239,31 @@ function makeInterruptedState() {
     finalization: {
       attempted: false,
       succeeded: true,
-      fallbackUsed: false,
-      returnedToolCallCount: 0,
       completedAt: '2026-03-13T09:30:00.000Z',
       terminationReason: 'approval_interrupt',
     },
     terminationReason: 'approval_interrupt',
     graphStatus: 'interrupted',
-    startedAtEpochMs: Date.now(),
+    activeWindowDurationMs: 0,
     pendingInterrupt: {
       kind: 'approval_review',
       requestId: 'request-1',
-      call: {
-        id: 'call-1',
-        name: 'discord_admin',
-        args: { action: 'update_server_instructions' },
-      },
-      payload: {
-        kind: 'server_instructions_update',
-      },
-      coalesced: false,
-      expiresAtIso: '2026-03-13T09:40:00.000Z',
+      batchId: 'batch-1',
+      requests: [
+        {
+          requestId: 'request-1',
+          call: {
+            id: 'call-1',
+            name: 'discord_admin',
+            args: { action: 'update_server_instructions' },
+          },
+          payload: {
+            kind: 'server_instructions_update',
+          },
+          coalesced: false,
+          expiresAtIso: '2026-03-13T09:40:00.000Z',
+        },
+      ],
     },
     interruptResolution: null,
   };
@@ -265,7 +300,10 @@ describe('runGraphValueStream', () => {
       githubGroundedMode: false,
     });
     executeDurableToolTaskMock.mockReset();
+    executeApprovedReviewTaskMock.mockReset();
     createGraphContinuationSessionMock.mockClear();
+    consumeGraphContinuationSessionMock.mockClear();
+    createOrReuseApprovalReviewRequestFromSignalMock.mockClear();
   });
 
   afterEach(async () => {
@@ -459,7 +497,499 @@ describe('runGraphValueStream', () => {
       completedWindows: 1,
       maxWindows: 4,
     });
+    expect(createGraphContinuationSessionMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        threadId: 'trace-pause-1',
+        channelId: 'channel-1',
+        requestedByUserId: 'user-1',
+        completedWindows: 1,
+        resumeNode: 'llm_call',
+      }),
+    );
     expect(result.replyText).toContain('another continuation window');
     expect(modelInvokeMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('materializes approval interrupts before pausing the graph', async () => {
+    modelInvokeMock.mockResolvedValueOnce(
+      new AIMessage({
+        content: '',
+        tool_calls: [
+          {
+            id: 'call-approve-1',
+            name: 'discord_admin',
+            args: { action: 'update_server_instructions' },
+            type: 'tool_call',
+          },
+        ],
+      }),
+    );
+    executeDurableToolTaskMock.mockResolvedValueOnce({
+      kind: 'approval_required',
+      toolName: 'discord_admin',
+      callId: 'call-approve-1',
+      latencyMs: 1,
+      call: {
+        id: 'call-approve-1',
+        name: 'discord_admin',
+        args: { action: 'update_server_instructions' },
+      },
+      payload: {
+        kind: 'server_instructions_update',
+        guildId: 'guild-1',
+        sourceChannelId: 'channel-1',
+        reviewChannelId: 'channel-review',
+        sourceMessageId: null,
+        requestedBy: 'user-1',
+        dedupeKey: 'dedupe-1',
+        executionPayloadJson: { next: 'value' },
+        reviewSnapshotJson: { action: 'update_server_instructions' },
+        interruptMetadataJson: { action: 'update_server_instructions' },
+      },
+    });
+
+    const result = await runAgentGraphTurn({
+      traceId: 'trace-approval-1',
+      userId: 'user-1',
+      channelId: 'channel-1',
+      guildId: 'guild-1',
+      apiKey: 'test-api-key',
+      model: 'test-main-agent-model',
+      temperature: 0.6,
+      timeoutMs: 1_000,
+      maxTokens: 500,
+      messages: [new HumanMessage({ content: 'update the server persona' })],
+      activeToolNames: ['discord_admin'],
+      routeKind: 'single',
+      currentTurn: { invokerUserId: 'user-1' },
+      replyTarget: null,
+      invokedBy: 'mention',
+      invokerIsAdmin: true,
+    });
+
+    expect(createOrReuseApprovalReviewRequestFromSignalMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        threadId: 'trace-approval-1',
+        originTraceId: 'trace-approval-1',
+      }),
+    );
+    expect(result.graphStatus).toBe('interrupted');
+    expect(result.terminationReason).toBe('approval_interrupt');
+    expect(result.pendingInterrupt).toMatchObject({
+      kind: 'approval_review',
+      requestId: 'request-1',
+      requests: [
+        expect.objectContaining({
+          requestId: 'request-1',
+          expiresAtIso: '2026-03-14T00:00:00.000Z',
+        }),
+      ],
+    });
+  });
+
+  it('resumes a multi-request approval batch from one model response without throwing', async () => {
+    createOrReuseApprovalReviewRequestFromSignalMock
+      .mockResolvedValueOnce({
+        request: {
+          id: 'request-1',
+          threadId: 'trace-approval-chain-1',
+          expiresAt: new Date('2026-03-14T00:00:00.000Z'),
+        },
+        coalesced: false,
+      })
+      .mockResolvedValueOnce({
+        request: {
+          id: 'request-2',
+          threadId: 'trace-approval-chain-1',
+          expiresAt: new Date('2026-03-14T00:05:00.000Z'),
+        },
+        coalesced: false,
+      });
+    modelInvokeMock
+      .mockResolvedValueOnce(
+        new AIMessage({
+          content: '',
+          tool_calls: [
+            {
+              id: 'call-approve-1',
+              name: 'discord_admin',
+              args: { action: 'create_channel', name: 'ops-summary' },
+              type: 'tool_call',
+            },
+            {
+              id: 'call-approve-2',
+              name: 'discord_admin',
+              args: { action: 'send_message', channelName: 'ops-summary', content: 'Summary' },
+              type: 'tool_call',
+            },
+          ],
+        }),
+      )
+      .mockResolvedValueOnce(new AIMessage({ content: 'Done.' }));
+    executeDurableToolTaskMock
+      .mockResolvedValueOnce({
+        kind: 'approval_required',
+        toolName: 'discord_admin',
+        callId: 'call-approve-1',
+        latencyMs: 1,
+        call: {
+          id: 'call-approve-1',
+          name: 'discord_admin',
+          args: { action: 'create_channel', name: 'ops-summary' },
+        },
+        payload: {
+          kind: 'discord_rest_write',
+          guildId: 'guild-1',
+          sourceChannelId: 'channel-1',
+          reviewChannelId: 'channel-review',
+          sourceMessageId: null,
+          requestedBy: 'user-1',
+          dedupeKey: 'dedupe-1',
+          executionPayloadJson: { step: 1 },
+          reviewSnapshotJson: { step: 1 },
+          interruptMetadataJson: { step: 1 },
+        },
+      })
+      .mockResolvedValueOnce({
+        kind: 'approval_required',
+        toolName: 'discord_admin',
+        callId: 'call-approve-2',
+        latencyMs: 1,
+        call: {
+          id: 'call-approve-2',
+          name: 'discord_admin',
+          args: { action: 'send_message', channelName: 'ops-summary', content: 'Summary' },
+        },
+        payload: {
+          kind: 'discord_rest_write',
+          guildId: 'guild-1',
+          sourceChannelId: 'channel-1',
+          reviewChannelId: 'channel-review',
+          sourceMessageId: null,
+          requestedBy: 'user-1',
+          dedupeKey: 'dedupe-2',
+          executionPayloadJson: { step: 2 },
+          reviewSnapshotJson: { step: 2 },
+          interruptMetadataJson: { step: 2 },
+        },
+      });
+    executeApprovedReviewTaskMock
+      .mockResolvedValueOnce({
+        status: 'executed',
+        content: '{"status":"executed","step":1}',
+        result: {
+          name: 'discord_admin',
+          success: true,
+          result: { step: 1, status: 'executed' },
+          latencyMs: 10,
+        },
+        files: [],
+        callId: 'call-approve-1',
+        toolName: 'discord_admin',
+      })
+      .mockResolvedValueOnce({
+        status: 'executed',
+        content: '{"status":"executed","step":2}',
+        result: {
+          name: 'discord_admin',
+          success: true,
+          result: { step: 2, status: 'executed' },
+          latencyMs: 10,
+        },
+        files: [],
+        callId: 'call-approve-2',
+        toolName: 'discord_admin',
+      });
+
+    const initial = await runAgentGraphTurn({
+      traceId: 'trace-approval-chain-1',
+      userId: 'user-1',
+      channelId: 'channel-1',
+      guildId: 'guild-1',
+      apiKey: 'test-api-key',
+      model: 'test-main-agent-model',
+      temperature: 0.6,
+      timeoutMs: 1_000,
+      maxTokens: 500,
+      messages: [new HumanMessage({ content: 'create a channel and post a summary there' })],
+      activeToolNames: ['discord_admin'],
+      routeKind: 'single',
+      currentTurn: { invokerUserId: 'user-1' },
+      replyTarget: null,
+      invokedBy: 'mention',
+      invokerIsAdmin: true,
+    });
+
+    expect(initial.graphStatus).toBe('interrupted');
+    expect(initial.pendingInterrupt).toMatchObject({
+      kind: 'approval_review',
+      requestId: 'request-1',
+      requests: [
+        expect.objectContaining({ requestId: 'request-1' }),
+        expect.objectContaining({ requestId: 'request-2' }),
+      ],
+    });
+
+    const finalized = await resumeAgentGraphTurn({
+      threadId: 'trace-approval-chain-1',
+      resume: {
+        interruptKind: 'approval_review',
+        decisions: [
+          {
+            requestId: 'request-1',
+            status: 'approved',
+            reviewerId: 'reviewer-1',
+          },
+          {
+            requestId: 'request-2',
+            status: 'approved',
+            reviewerId: 'reviewer-1',
+          },
+        ],
+        resumeTraceId: 'trace-approval-chain-1a',
+      },
+      context: {
+        userId: 'user-1',
+        channelId: 'channel-1',
+        guildId: 'guild-1',
+        apiKey: 'test-api-key',
+        model: 'test-main-agent-model',
+        temperature: 0.6,
+        timeoutMs: 1_000,
+        maxTokens: 500,
+        activeToolNames: ['discord_admin'],
+        routeKind: 'single',
+        currentTurn: { invokerUserId: 'user-1' },
+        replyTarget: null,
+        invokedBy: 'component',
+        invokerIsAdmin: true,
+      },
+    });
+
+    expect(finalized.graphStatus).toBe('completed');
+    expect(finalized.replyText).toContain('Done.');
+    expect(executeApprovedReviewTaskMock).toHaveBeenCalledTimes(2);
+    expect(createOrReuseApprovalReviewRequestFromSignalMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('resets the active execution budget after an approval resume', async () => {
+    await shutdownAgentGraphRuntime();
+    buildAgentGraphConfigMock.mockReturnValue({
+      maxSteps: 2,
+      maxToolCallsPerStep: 3,
+      toolTimeoutMs: 1_000,
+      maxResultChars: 4_000,
+      maxDurationMs: 1,
+      recursionLimit: 8,
+      githubGroundedMode: false,
+    });
+    createOrReuseApprovalReviewRequestFromSignalMock.mockResolvedValueOnce({
+      request: {
+        id: 'request-timeout-1',
+        threadId: 'trace-approval-timeout-1',
+        expiresAt: new Date('2026-03-14T00:00:00.000Z'),
+      },
+      coalesced: false,
+    });
+    modelInvokeMock
+      .mockResolvedValueOnce(
+        new AIMessage({
+          content: '',
+          tool_calls: [
+            {
+              id: 'call-timeout-1',
+              name: 'discord_admin',
+              args: { action: 'update_server_instructions' },
+              type: 'tool_call',
+            },
+          ],
+        }),
+      )
+      .mockResolvedValueOnce(new AIMessage({ content: 'Done after approval.' }));
+    executeDurableToolTaskMock.mockResolvedValueOnce({
+      kind: 'approval_required',
+      toolName: 'discord_admin',
+      callId: 'call-timeout-1',
+      latencyMs: 1,
+      call: {
+        id: 'call-timeout-1',
+        name: 'discord_admin',
+        args: { action: 'update_server_instructions' },
+      },
+      payload: {
+        kind: 'server_instructions_update',
+        guildId: 'guild-1',
+        sourceChannelId: 'channel-1',
+        reviewChannelId: 'channel-review',
+        sourceMessageId: null,
+        requestedBy: 'user-1',
+        dedupeKey: 'dedupe-timeout-1',
+        executionPayloadJson: { next: 'value' },
+        reviewSnapshotJson: { action: 'update_server_instructions' },
+        interruptMetadataJson: { action: 'update_server_instructions' },
+      },
+    });
+    executeApprovedReviewTaskMock.mockResolvedValueOnce({
+      status: 'executed',
+      content: '{"status":"executed"}',
+      result: {
+        name: 'discord_admin',
+        success: true,
+        result: { status: 'executed' },
+        latencyMs: 0,
+      },
+      files: [],
+      callId: 'call-timeout-1',
+      toolName: 'discord_admin',
+    });
+
+    const initial = await runAgentGraphTurn({
+      traceId: 'trace-approval-timeout-1',
+      userId: 'user-1',
+      channelId: 'channel-1',
+      guildId: 'guild-1',
+      apiKey: 'test-api-key',
+      model: 'test-main-agent-model',
+      temperature: 0.6,
+      timeoutMs: 1_000,
+      maxTokens: 500,
+      messages: [new HumanMessage({ content: 'update the server persona' })],
+      activeToolNames: ['discord_admin'],
+      routeKind: 'single',
+      currentTurn: { invokerUserId: 'user-1' },
+      replyTarget: null,
+      invokedBy: 'mention',
+      invokerIsAdmin: true,
+    });
+
+    expect(initial.graphStatus).toBe('interrupted');
+
+    const resumed = await resumeAgentGraphTurn({
+      threadId: 'trace-approval-timeout-1',
+      resume: {
+        interruptKind: 'approval_review',
+        decisions: [{ requestId: 'request-timeout-1', status: 'approved', reviewerId: 'reviewer-1' }],
+        resumeTraceId: 'trace-approval-timeout-1b',
+      },
+      context: {
+        userId: 'user-1',
+        channelId: 'channel-1',
+        guildId: 'guild-1',
+        apiKey: 'test-api-key',
+        model: 'test-main-agent-model',
+        temperature: 0.6,
+        timeoutMs: 1_000,
+        maxTokens: 500,
+        activeToolNames: ['discord_admin'],
+        routeKind: 'single',
+        currentTurn: { invokerUserId: 'user-1' },
+        replyTarget: null,
+        invokedBy: 'component',
+        invokerIsAdmin: true,
+      },
+    });
+
+    expect(resumed.graphStatus).toBe('completed');
+    expect(resumed.terminationReason).toBe('assistant_reply');
+    expect(resumed.replyText).toContain('Done after approval.');
+  });
+
+  it('consumes continuation sessions before resuming the graph', async () => {
+    await shutdownAgentGraphRuntime();
+    buildAgentGraphConfigMock.mockReturnValue({
+      maxSteps: 1,
+      maxToolCallsPerStep: 3,
+      toolTimeoutMs: 1_000,
+      maxResultChars: 4_000,
+      maxDurationMs: 5_000,
+      recursionLimit: 8,
+      githubGroundedMode: false,
+    });
+    modelInvokeMock.mockResolvedValueOnce(
+      new AIMessage({
+        content: '',
+        tool_calls: [
+          {
+            id: 'call-continue-1',
+            name: 'discord_admin',
+            args: { action: 'update_server_instructions' },
+            type: 'tool_call',
+          },
+        ],
+      }),
+    );
+    executeDurableToolTaskMock.mockResolvedValueOnce({
+      kind: 'tool_result',
+      toolName: 'discord_admin',
+      callId: 'call-continue-1',
+      content: '{"ok":true}',
+      result: {
+        name: 'discord_admin',
+        success: true,
+        result: { ok: true },
+        latencyMs: 12,
+      },
+      files: [],
+    });
+
+    const initial = await runAgentGraphTurn({
+      traceId: 'trace-resume-1',
+      userId: 'user-1',
+      channelId: 'channel-1',
+      guildId: 'guild-1',
+      apiKey: 'test-api-key',
+      model: 'test-main-agent-model',
+      temperature: 0.6,
+      timeoutMs: 1_000,
+      maxTokens: 500,
+      messages: [new HumanMessage({ content: 'update the server persona' })],
+      activeToolNames: ['discord_admin'],
+      routeKind: 'single',
+      currentTurn: { invokerUserId: 'user-1' },
+      replyTarget: null,
+      invokedBy: 'mention',
+      invokerIsAdmin: true,
+    });
+
+    expect(initial.pendingInterrupt).toMatchObject({
+      kind: 'continue_prompt',
+      continuationId: 'cont-1',
+    });
+
+    modelInvokeMock.mockResolvedValueOnce(new AIMessage({ content: 'All set.' }));
+
+    const resumed = await resumeAgentGraphTurn({
+      threadId: 'trace-resume-1',
+      resume: {
+        interruptKind: 'continue_prompt',
+        decision: 'continue',
+        continuationId: 'cont-1',
+        resumedByUserId: 'user-1',
+        resumeTraceId: 'trace-resume-1b',
+      },
+      context: {
+        userId: 'user-1',
+        channelId: 'channel-1',
+        guildId: 'guild-1',
+        apiKey: 'test-api-key',
+        model: 'test-main-agent-model',
+        temperature: 0.6,
+        timeoutMs: 1_000,
+        maxTokens: 500,
+        activeToolNames: ['discord_admin'],
+        routeKind: 'single',
+        currentTurn: { invokerUserId: 'user-1' },
+        replyTarget: null,
+        invokedBy: 'component',
+        invokerIsAdmin: true,
+      },
+    });
+
+    expect(consumeGraphContinuationSessionMock).toHaveBeenCalledWith({
+      id: 'cont-1',
+      latestTraceId: 'trace-resume-1b',
+    });
+    expect(resumed.graphStatus).toBe('completed');
+    expect(resumed.replyText).toContain('All set.');
   });
 });
