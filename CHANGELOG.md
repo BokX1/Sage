@@ -26,6 +26,7 @@
 
 ### Added
 
+- Added a dedicated `npm run langgraph:discord:smoke` command plus disposable-guild env knobs, so operators can validate the real Discord LangGraph read lane and approval/resume write flow without depending on LLM tool selection.
 - Added prompt-budget regression coverage for Sage's Discord-native runtime, so the core prompt, common public capability prompt, and full admin capability prompt now fail tests if they grow past the new lean-budget ceilings.
 - Added resumable LangGraph continuation sessions and Discord Continue actions, so long-running Sage turns now pause with a progress summary, preserve the checkpointed thread state, and resume in-place instead of restarting from scratch after step-window exhaustion.
 - Added approval-gated Discord moderation batch actions through `discord_admin.submit_moderation`: explicit `bulk_delete_messages` and criteria-based `purge_recent_messages` now resolve into deterministic canonical message-id snapshots before review, enabling safer high-volume cleanup workflows.
@@ -37,6 +38,17 @@
 - Added a dedicated `discord_voice` routed tool for live voice presence control so Sage can report voice status, join the invoker's current voice channel, and leave the active guild voice channel through normal chat turns.
 
 ### Changed
+- Extended explicit LangGraph action-policy metadata across the routed Discord tool surface, so Discord reads and writes now advertise their mutability consistently instead of relying on the graph to infer Discord-specific behavior.
+- Reworked the LangGraph write-phase contract around tool-owned action policy metadata for `discord_admin`, so approval preparation now happens through explicit per-tool policy instead of graph-side hard-coded Discord action name checks, mixed write batches stop at policy boundaries deterministically, and continuation pauses preserve the real timeout-vs-step-window reason in checkpoint state and trace metadata.
+- Trimmed fictional runtime telemetry from Sage's operator surface: the graph no longer reports the unused `guardrailBlockedCallCount`, and `system_tool_stats` now reports only metrics and store data that the executor actually maintains instead of advertising cache/memo hit counters that were never wired end to end.
+
+### Fixed
+- Fixed routed Discord admin-only reads such as `discord_server.list_members` and `discord_admin.get_server_key_status`, which were being misclassified as writes and could be sent down the approval/write lane instead of the read lane.
+- Fixed the live Discord LangGraph smoke path so seeded validation runs now expire and finalize their continuation interrupts instead of leaving pending continuation-session records behind after a successful smoke.
+
+### Security
+- Removed provider API keys from persisted LangGraph checkpoint state, so resumed Sage turns now rehydrate credentials from runnable context instead of storing raw secrets in durable thread snapshots.
+
 - Cleaned Sage's runtime copy and leftover compatibility surface: hard-failure and last-resort replies now read like Sage instead of internal runtime/provider jargon, continuation fallback replies are more user-directed, and dead helper exports plus the old single-approval resume compatibility path were removed from the current LangGraph runtime surface.
 - Corrected Sage's Discord failure UX for LangGraph turn errors: provider outages are now surfaced as provider failures instead of generic runtime issues, and failed turns can now expose a same-thread Retry button so users can retry the checkpointed LangGraph run in place instead of retyping the request blindly.
 - Aligned Sage's Discord admin runtime gating with the moderation permission model: moderators with the relevant channel or guild permissions can now reach `discord_admin.submit_moderation` for enforcement workflows like bulk message cleanup, while governance/config and other direct admin actions remain restricted to full admin context.

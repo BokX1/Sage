@@ -78,11 +78,6 @@ type ToolStatsRow = {
   successes: number;
   failures: Record<string, number>;
   avgLatencyMs: number | null;
-  cacheHits: number;
-  cacheMisses: number;
-  memoHits: number;
-  memoMisses: number;
-  memoStores: number;
 };
 
 function buildToolStatsRows(): ToolStatsRow[] {
@@ -97,11 +92,6 @@ function buildToolStatsRows(): ToolStatsRow[] {
       successes: 0,
       failures: {},
       avgLatencyMs: null,
-      cacheHits: 0,
-      cacheMisses: 0,
-      memoHits: 0,
-      memoMisses: 0,
-      memoStores: 0,
     };
     rows.set(tool, created);
     return created;
@@ -124,13 +114,6 @@ function buildToolStatsRows(): ToolStatsRow[] {
       }
       continue;
     }
-
-    const row = ensure(tool);
-    if (name === 'tool_cache_hit_total') row.cacheHits += parsedValue;
-    if (name === 'tool_cache_miss_total') row.cacheMisses += parsedValue;
-    if (name === 'tool_memo_hit_total') row.memoHits += parsedValue;
-    if (name === 'tool_memo_miss_total') row.memoMisses += parsedValue;
-    if (name === 'tool_memo_store_total') row.memoStores += parsedValue;
   }
 
   for (const [key, value] of metrics.histograms.entries()) {
@@ -151,9 +134,9 @@ const toolStatsTool: ToolDefinition<{ topN?: number; includeRaw?: boolean }> = {
   name: 'system_tool_stats',
   description:
     [
-      'Inspect in-process tool telemetry (latency averages, failures, cache/memo hits).',
-      'Note: all stats are in-memory only (process-local); resets on restart and is not shared across instances.',
-      '<USE_ONLY_WHEN> You need to debug latency/caching/error patterns for tools. </USE_ONLY_WHEN>',
+      'Inspect in-process tool telemetry (latency averages, successes, failures, and store occupancy).',
+      'Note: all stats are process-local in-memory views; they reset on restart and are not shared across instances.',
+      '<USE_ONLY_WHEN> You need to debug runtime latency, failures, or local store pressure for tools. </USE_ONLY_WHEN>',
     ].join('\n'),
   schema: z.object({
     topN: z.number().int().min(1).max(50).optional().describe('Maximum number of tools to return (sorted by executions).'),

@@ -3544,13 +3544,13 @@ function buildApprovalReviewDedupeKey(kind: string, payload: unknown): string {
   });
 }
 
-export async function requestSagePersonaUpdateForTool(params: {
+export async function prepareSagePersonaUpdateApprovalForTool(params: {
   guildId: string;
   channelId: string;
   requestedBy: string;
   sourceMessageId?: string | null;
   request: SagePersonaUpdateRequest;
-}): Promise<never> {
+}): Promise<ApprovalInterruptPayload> {
   const current = await getGuildSagePersonaRecord(params.guildId);
   const currentText = current?.instructionsText ?? '';
 
@@ -3584,7 +3584,7 @@ export async function requestSagePersonaUpdateForTool(params: {
   } satisfies SagePersonaPendingPayload;
   const reviewChannelId = await getGuildApprovalReviewChannelId(params.guildId) ?? params.channelId;
 
-  throw new ApprovalRequiredSignal({
+  return {
     kind: 'server_instructions_update',
     guildId: params.guildId,
     sourceChannelId: params.channelId,
@@ -3599,10 +3599,20 @@ export async function requestSagePersonaUpdateForTool(params: {
       instructionsHash: hashForAudit(nextText),
       instructionsChars: nextText.length,
     },
-  } satisfies ApprovalInterruptPayload);
+  } satisfies ApprovalInterruptPayload;
 }
 
-export async function requestDiscordAdminActionForTool(params: {
+export async function requestSagePersonaUpdateForTool(params: {
+  guildId: string;
+  channelId: string;
+  requestedBy: string;
+  sourceMessageId?: string | null;
+  request: SagePersonaUpdateRequest;
+}): Promise<never> {
+  throw new ApprovalRequiredSignal(await prepareSagePersonaUpdateApprovalForTool(params));
+}
+
+export async function prepareDiscordModerationApprovalForTool(params: {
   guildId: string;
   channelId: string;
   requestedBy: string;
@@ -3610,7 +3620,7 @@ export async function requestDiscordAdminActionForTool(params: {
   request: DiscordModerationActionRequest;
   currentTurn?: CurrentTurnContext;
   replyTarget?: ReplyTargetContext | null;
-}): Promise<never> {
+}): Promise<ApprovalInterruptPayload> {
   const prepared = await prepareDiscordModerationEnvelope({
     guildId: params.guildId,
     sourceChannelId: params.channelId,
@@ -3619,7 +3629,7 @@ export async function requestDiscordAdminActionForTool(params: {
     replyTarget: params.replyTarget,
   });
   const reviewChannelId = await getGuildApprovalReviewChannelId(params.guildId) ?? params.channelId;
-  throw new ApprovalRequiredSignal({
+  return {
     kind: 'discord_queue_moderation_action',
     guildId: params.guildId,
     sourceChannelId: params.channelId,
@@ -3638,16 +3648,28 @@ export async function requestDiscordAdminActionForTool(params: {
       action: prepared.canonicalAction.action,
       dedupeKey: prepared.dedupeKey,
     },
-  } satisfies ApprovalInterruptPayload);
+  } satisfies ApprovalInterruptPayload;
 }
 
-export async function requestDiscordRestWriteForTool(params: {
+export async function requestDiscordAdminActionForTool(params: {
+  guildId: string;
+  channelId: string;
+  requestedBy: string;
+  sourceMessageId?: string | null;
+  request: DiscordModerationActionRequest;
+  currentTurn?: CurrentTurnContext;
+  replyTarget?: ReplyTargetContext | null;
+}): Promise<never> {
+  throw new ApprovalRequiredSignal(await prepareDiscordModerationApprovalForTool(params));
+}
+
+export async function prepareDiscordRestWriteApprovalForTool(params: {
   guildId: string;
   channelId: string;
   requestedBy: string;
   sourceMessageId?: string | null;
   request: DiscordRestWriteRequest;
-}): Promise<never> {
+}): Promise<ApprovalInterruptPayload> {
   await assertDiscordRestRequestGuildScoped({
     guildId: params.guildId,
     method: params.request.method,
@@ -3656,7 +3678,7 @@ export async function requestDiscordRestWriteForTool(params: {
 
   const reviewChannelId = await getGuildApprovalReviewChannelId(params.guildId) ?? params.channelId;
 
-  throw new ApprovalRequiredSignal({
+  return {
     kind: 'discord_rest_write',
     guildId: params.guildId,
     sourceChannelId: params.channelId,
@@ -3680,7 +3702,17 @@ export async function requestDiscordRestWriteForTool(params: {
       method: params.request.method,
       path: params.request.path,
     },
-  } satisfies ApprovalInterruptPayload);
+  } satisfies ApprovalInterruptPayload;
+}
+
+export async function requestDiscordRestWriteForTool(params: {
+  guildId: string;
+  channelId: string;
+  requestedBy: string;
+  sourceMessageId?: string | null;
+  request: DiscordRestWriteRequest;
+}): Promise<never> {
+  throw new ApprovalRequiredSignal(await prepareDiscordRestWriteApprovalForTool(params));
 }
 
 export async function createOrReuseApprovalReviewRequestFromSignal(params: {

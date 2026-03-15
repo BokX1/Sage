@@ -4,7 +4,7 @@
 import { z } from 'zod';
 import { buildToolErrorDetails, extractToolErrorDetails, type ToolErrorDetails } from './toolErrors';
 import type { CurrentTurnContext, ReplyTargetContext } from './continuityContext';
-import { isToolControlSignal } from './toolControlSignals';
+import { isToolControlSignal, type ApprovalInterruptPayload } from './toolControlSignals';
 import { buildRoutedToolRepairGuidance, getToolValidationHint } from './toolDocs';
 
 // Guardrail against runaway or malicious tool payloads (for example oversized base64 blobs).
@@ -119,6 +119,25 @@ export interface ToolExecutionContext {
   signal?: AbortSignal;
 }
 
+export type ToolActionMutability = 'read' | 'write';
+
+export interface ToolActionPolicy<TArgs = unknown> {
+  mutability: ToolActionMutability;
+  approvalMode?: 'none' | 'required';
+  approvalGroupKey?: string;
+  timeoutMs?: number;
+  retryClass?: 'none' | 'default' | 'safe-idempotent';
+  resultBudget?: 'default' | 'large';
+  idempotencyKey?: string | ((args: TArgs, ctx: ToolExecutionContext) => string | null | undefined);
+  prepareApproval?: (args: TArgs, ctx: ToolExecutionContext) => Promise<ApprovalInterruptPayload>;
+}
+
+export interface ResolvedToolActionPolicy<TArgs = unknown> {
+  tool: ToolDefinition<TArgs>;
+  args: TArgs;
+  policy: ToolActionPolicy<TArgs>;
+}
+
 /** Optional metadata attached to each tool definition for execution behavior. */
 export interface ToolMetadata {
   /**
@@ -132,10 +151,18 @@ export interface ToolMetadata {
    *
    * Implementations must be side-effect free and conservative: return `true`
    * only when the call is guaranteed to be read-only.
-   */
+  */
   readOnlyPredicate?: (args: unknown, ctx: ToolExecutionContext) => boolean;
   /** Access tier for tool visibility and invocation. Missing value defaults to public. */
   access?: 'public' | 'admin';
+  /**
+   * Optional execution policy for write-phase orchestration. This is the graph-owned
+   * contract for approval preparation and future retry or idempotency hints.
+   */
+  actionPolicy?: (
+    args: unknown,
+    ctx: ToolExecutionContext,
+  ) => ToolActionPolicy<unknown> | Promise<ToolActionPolicy<unknown>>;
 }
 
 /** Define one runtime tool with schema validation and async execution. */
@@ -255,6 +282,51 @@ export class ToolRegistry {
     return {
       success: true,
       args: parseResult.data as TArgs,
+    };
+  }
+
+  /**
+   * Resolve a validated per-call execution policy.
+   *
+   * Returns `null` when the tool is unknown or the call fails validation so callers can
+   * safely fall back to normal execution-path error handling.
+   */
+  async resolveActionPolicy<TArgs = unknown>(
+    call: { name: string; args: unknown },
+    ctx: ToolExecutionContext,
+  ): Promise<ResolvedToolActionPolicy<TArgs> | null> {
+    const validation = this.validateToolCall<TArgs>(call);
+    if (!validation.success) {
+      return null;
+    }
+
+    const tool = this.tools.get(call.name) as ToolDefinition<TArgs> | undefined;
+    if (!tool) {
+      return null;
+    }
+
+    const readOnlyPredicate = tool.metadata?.readOnlyPredicate;
+    let mutability: ToolActionMutability = tool.metadata?.readOnly === true ? 'read' : 'write';
+    if (typeof readOnlyPredicate === 'function') {
+      try {
+        mutability = readOnlyPredicate(validation.args, ctx) ? 'read' : 'write';
+      } catch {
+        mutability = 'write';
+      }
+    }
+
+    const resolved = tool.metadata?.actionPolicy
+      ? ((await tool.metadata.actionPolicy(validation.args, ctx)) as ToolActionPolicy<TArgs>)
+      : null;
+
+    return {
+      tool,
+      args: validation.args,
+      policy:
+        resolved ?? {
+          mutability,
+          approvalMode: 'none',
+        },
     };
   }
 

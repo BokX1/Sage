@@ -473,7 +473,6 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
       successfulToolCount,
       deduplicatedCallCount: graphResult.deduplicatedCallCount,
       truncatedCallCount: graphResult.truncatedCallCount,
-      guardrailBlockedCallCount: graphResult.guardrailBlockedCallCount,
       roundEvents: graphResult.roundEvents,
       finalization: graphResult.finalization,
       attachmentCount: graphResult.files.length,

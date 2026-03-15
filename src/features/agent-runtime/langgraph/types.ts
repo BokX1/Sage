@@ -26,7 +26,6 @@ export interface ToolCallRoundEvent {
   executedCallCount: number;
   deduplicatedCallCount: number;
   truncatedCallCount: number;
-  guardrailBlockedCallCount: number;
   completedAt: string;
   rebudgeting?: GraphRebudgetEvent;
 }
@@ -72,6 +71,7 @@ export interface ApprovalInterruptState {
 export interface ContinuePromptInterruptState {
   kind: 'continue_prompt';
   continuationId: string;
+  pauseReason: 'graph_timeout' | 'step_window_exhausted';
   requestedByUserId: string;
   channelId: string;
   guildId: string | null;
@@ -140,9 +140,11 @@ export interface AgentGraphRuntimeContext {
   replyTarget: unknown;
 }
 
+export type AgentGraphPersistedContext = Omit<AgentGraphRuntimeContext, 'apiKey'>;
+
 export interface AgentGraphState {
   messages: BaseMessage[];
-  resumeContext: AgentGraphRuntimeContext;
+  resumeContext: AgentGraphPersistedContext;
   pendingWriteCalls: GraphToolCallDescriptor[];
   replyText: string;
   toolResults: SerializedToolResult[];
@@ -152,7 +154,6 @@ export interface AgentGraphState {
   totalRoundsCompleted: number;
   deduplicatedCallCount: number;
   truncatedCallCount: number;
-  guardrailBlockedCallCount: number;
   roundEvents: ToolCallRoundEvent[];
   finalization: ToolCallFinalizationEvent;
   terminationReason: GraphTurnTerminationReason;

@@ -45,6 +45,14 @@ export interface ActiveToolCatalog {
   definitions: Map<string, ToolDefinition<unknown>>;
 }
 
+export interface PlannedApprovalInterrupt {
+  toolName: string;
+  callId?: string;
+  call: GraphToolCallDescriptor;
+  payload: ApprovalInterruptPayload;
+  approvalGroupKey: string;
+}
+
 function sanitizeToolResultForModel(value: unknown, depth = 0): unknown {
   if (depth >= 6) return '[…]';
   if (value === null || value === undefined) return value;
@@ -273,6 +281,41 @@ export const executeApprovedReviewTask = task(
     };
   },
 );
+
+export async function prepareToolApprovalInterrupt(params: {
+  activeToolNames: string[];
+  call: GraphToolCallDescriptor;
+  context: ToolExecutionContext;
+}): Promise<PlannedApprovalInterrupt | null> {
+  if (!params.activeToolNames.includes(params.call.name)) {
+    return null;
+  }
+
+  try {
+    const resolved = await globalToolRegistry.resolveActionPolicy(params.call, params.context);
+    if (!resolved) {
+      return null;
+    }
+
+    if (resolved.policy.mutability !== 'write' || resolved.policy.approvalMode !== 'required') {
+      return null;
+    }
+
+    if (typeof resolved.policy.prepareApproval !== 'function') {
+      return null;
+    }
+
+    return {
+      toolName: params.call.name,
+      callId: params.call.id,
+      call: params.call,
+      payload: await resolved.policy.prepareApproval(resolved.args, params.context),
+      approvalGroupKey: resolved.policy.approvalGroupKey?.trim() || `${params.call.name}:approval`,
+    };
+  } catch {
+    return null;
+  }
+}
 
 function buildLangChainTool(params: {
   definition: ToolDefinition<unknown>;

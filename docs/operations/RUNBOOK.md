@@ -225,8 +225,11 @@ npx ts-node -P config/tooling/tsconfig.app.json src/cli/social-graph/migratePost
 # Start local services (SearXNG, Crawl4AI, Tika)
 docker compose -f config/services/self-host/docker-compose.tools.yml up -d
 
-# Verify tool connectivity
+# Verify non-Discord tool connectivity
 npm run tools:smoke
+
+# Verify Discord LangGraph read + approval/resume flow against a disposable guild/channel
+npm run langgraph:discord:smoke
 ```
 
 ### Diagnostics

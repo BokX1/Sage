@@ -20,19 +20,32 @@ import {
   discordRestPathSchema,
   discordThreadAutoArchiveDurationSchema,
   executeDiscordAdminAction,
+  prepareDiscordAdminActionApproval,
   executeDiscordContextAction,
   executeDiscordFilesAction,
   executeDiscordMessagesAction,
   executeDiscordServerAction,
   executeDiscordVoiceAction,
 } from './discord/core';
-import type { ToolDefinition } from './toolRegistry';
+import type { ToolDefinition, ToolExecutionContext } from './toolRegistry';
 import {
   DISCORD_GUARDRAILS,
   DISCORD_TOOL_ACTION_CATALOG,
   getDiscordActionCatalogForTool,
 } from './discordToolCatalog';
 import { buildRoutedToolHelp } from './toolDocs';
+
+const DISCORD_SERVER_ADMIN_READ_ACTIONS = new Set([
+  'list_members',
+  'get_member',
+  'get_permission_snapshot',
+  'list_automod_rules',
+]);
+
+const DISCORD_ADMIN_READ_ACTIONS = new Set([
+  'get_server_key_status',
+  'get_governance_review_status',
+]);
 
 const helpActionSchema = z.object({
   action: z.literal('help').describe('Show action contracts and examples for this routed Discord tool.'),
@@ -65,12 +78,63 @@ function isReadOnlyDiscordDomainCall(
     return true;
   }
 
+  if (
+    (toolName === 'discord_server' && DISCORD_SERVER_ADMIN_READ_ACTIONS.has(action)) ||
+    (toolName === 'discord_admin' && DISCORD_ADMIN_READ_ACTIONS.has(action))
+  ) {
+    return true;
+  }
+
   if (action === 'api') {
     const method = (args as Record<string, unknown>).method;
     return typeof method === 'string' && method.toUpperCase() === 'GET';
   }
 
   return false;
+}
+
+function buildDiscordDomainActionPolicy(
+  toolName: keyof typeof DISCORD_TOOL_ACTION_CATALOG,
+  args: unknown,
+) {
+  return {
+    mutability: isReadOnlyDiscordDomainCall(toolName, args) ? ('read' as const) : ('write' as const),
+    approvalMode: 'none' as const,
+  };
+}
+
+async function resolveDiscordDomainActionPolicy(
+  toolName: keyof typeof DISCORD_TOOL_ACTION_CATALOG,
+  args: unknown,
+  ctx: ToolExecutionContext,
+) {
+  void ctx;
+  return buildDiscordDomainActionPolicy(toolName, args);
+}
+
+async function resolveDiscordAdminActionPolicy(args: unknown, ctx: ToolExecutionContext) {
+  if (isReadOnlyDiscordDomainCall('discord_admin', args)) {
+    return buildDiscordDomainActionPolicy('discord_admin', args);
+  }
+
+  const approval = await prepareDiscordAdminActionApproval(
+    args as Record<string, unknown> & { action: string },
+    ctx,
+  );
+  if (!approval) {
+    return buildDiscordDomainActionPolicy('discord_admin', args);
+  }
+
+  return {
+    mutability: 'write' as const,
+    approvalMode: 'required' as const,
+    approvalGroupKey: approval.approvalGroupKey,
+    prepareApproval: async (_validatedArgs: unknown, _toolCtx: ToolExecutionContext) => {
+      void _validatedArgs;
+      void _toolCtx;
+      return approval.payload;
+    },
+  };
 }
 
 const profileGetUserSchema = z.object({
@@ -145,6 +209,7 @@ export const discordContextTool: ToolDefinition<z.infer<typeof discordContextToo
   schema: discordContextToolSchema,
   metadata: {
     readOnlyPredicate: (args) => isReadOnlyDiscordDomainCall('discord_context', args),
+    actionPolicy: (args, ctx) => resolveDiscordDomainActionPolicy('discord_context', args, ctx),
   },
   execute: async (args, ctx) => {
     if (args.action === 'help') {
@@ -293,6 +358,7 @@ export const discordMessagesTool: ToolDefinition<z.infer<typeof discordMessagesT
   schema: discordMessagesToolSchema,
   metadata: {
     readOnlyPredicate: (args) => isReadOnlyDiscordDomainCall('discord_messages', args),
+    actionPolicy: (args, ctx) => resolveDiscordDomainActionPolicy('discord_messages', args, ctx),
   },
   execute: async (args, ctx) => {
     if (args.action === 'help') {
@@ -370,6 +436,7 @@ export const discordFilesTool: ToolDefinition<z.infer<typeof discordFilesToolSch
   schema: discordFilesToolSchema,
   metadata: {
     readOnlyPredicate: (args) => isReadOnlyDiscordDomainCall('discord_files', args),
+    actionPolicy: (args, ctx) => resolveDiscordDomainActionPolicy('discord_files', args, ctx),
   },
   execute: async (args, ctx) => {
     if (args.action === 'help') {
@@ -528,6 +595,7 @@ export const discordServerTool: ToolDefinition<z.infer<typeof discordServerToolS
   schema: discordServerToolSchema,
   metadata: {
     readOnlyPredicate: (args) => isReadOnlyDiscordDomainCall('discord_server', args),
+    actionPolicy: (args, ctx) => resolveDiscordDomainActionPolicy('discord_server', args, ctx),
   },
   execute: async (args, ctx) => {
     if (args.action === 'help') {
@@ -697,6 +765,7 @@ export const discordAdminTool: ToolDefinition<z.infer<typeof discordAdminToolSch
   metadata: {
     access: 'admin',
     readOnlyPredicate: (args) => isReadOnlyDiscordDomainCall('discord_admin', args),
+    actionPolicy: resolveDiscordAdminActionPolicy,
   },
   execute: async (args, ctx) => {
     if (args.action === 'help') {
@@ -732,6 +801,7 @@ export const discordVoiceTool: ToolDefinition<z.infer<typeof discordVoiceToolSch
   schema: discordVoiceToolSchema,
   metadata: {
     readOnlyPredicate: (args) => isReadOnlyDiscordDomainCall('discord_voice', args),
+    actionPolicy: (args, ctx) => resolveDiscordDomainActionPolicy('discord_voice', args, ctx),
   },
   execute: async (args, ctx) => {
     if (args.action === 'help') {

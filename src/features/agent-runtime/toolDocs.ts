@@ -1649,14 +1649,14 @@ registerTopLevelToolDoc({
 
 registerTopLevelToolDoc({
   tool: 'system_tool_stats',
-  purpose: 'Inspect in-process tool telemetry such as latency, failures, and cache or memo activity.',
+  purpose: 'Inspect in-process tool telemetry such as latency, failures, and local store occupancy.',
   selectionHints: [
-    'IF tool latency, cache, memo, or error telemetry is needed -> system_tool_stats.',
+    'IF tool latency, local store pressure, or error telemetry is needed -> system_tool_stats.',
   ],
   promptGuidance: {
-    purpose: 'Process-local tool telemetry and cache or memo stats.',
+    purpose: 'Process-local tool telemetry and store stats.',
     decisionEdges: [
-      'Tool latency, failures, cache, or memo behavior -> system_tool_stats.',
+      'Tool latency, failures, or process-local store behavior -> system_tool_stats.',
     ],
   },
   validationHint:
@@ -1664,7 +1664,7 @@ registerTopLevelToolDoc({
   website: {
     name: 'system_tool_stats',
     short: 'Tool Stats',
-    desc: 'Inspect in-process tool latency, caching, memoization, and failure stats',
+    desc: 'Inspect in-process tool latency, failures, and local store stats',
     cat: 'system',
     color: WEBSITE_COLORS.system,
   },
@@ -1683,7 +1683,7 @@ registerRoutedTopLevelToolDoc(discordContextToolDoc, {
   },
   smoke: {
     mode: 'skip',
-    reason: 'Requires live guild and current-turn context; covered by runtime, unit, and integration tests.',
+    reason: 'Requires live guild/current-turn context; validate with `npm run langgraph:discord:smoke` against a disposable guild/channel.',
   },
   promptGuidance: {
     purpose: 'Profiles, summaries, relationships, and Sage Persona reads.',
@@ -1706,7 +1706,7 @@ registerRoutedTopLevelToolDoc(discordMessagesToolDoc, {
   },
   smoke: {
     mode: 'skip',
-    reason: 'Requires live guild and current-turn context; covered by runtime, unit, and integration tests.',
+    reason: 'Requires live guild/current-turn context; validate with `npm run langgraph:discord:smoke` against a disposable guild/channel.',
   },
   promptGuidance: {
     purpose: 'Exact message evidence and Discord-native delivery.',
@@ -1732,7 +1732,7 @@ registerRoutedTopLevelToolDoc(discordFilesToolDoc, {
   },
   smoke: {
     mode: 'skip',
-    reason: 'Requires live guild and current-turn context; covered by runtime, unit, and integration tests.',
+    reason: 'Requires live guild/current-turn context; validate with `npm run langgraph:discord:smoke` against a disposable guild/channel.',
   },
   promptGuidance: {
     purpose: 'Attachment recall and cached attachment text.',
@@ -1755,7 +1755,7 @@ registerRoutedTopLevelToolDoc(discordServerToolDoc, {
   },
   smoke: {
     mode: 'skip',
-    reason: 'Requires live guild and current-turn context; covered by runtime, unit, and integration tests.',
+    reason: 'Requires live guild/current-turn context; validate with `npm run langgraph:discord:smoke` against a disposable guild/channel.',
   },
   promptGuidance: {
     purpose: 'Guild resources and thread lifecycle.',
@@ -1778,7 +1778,7 @@ registerRoutedTopLevelToolDoc(discordVoiceToolDoc, {
   },
   smoke: {
     mode: 'skip',
-    reason: 'Requires live guild and current-turn context; covered by runtime, unit, and integration tests.',
+    reason: 'Requires live guild/current-turn context; validate with `npm run langgraph:discord:smoke` against a disposable guild/channel.',
   },
   promptGuidance: {
     purpose: 'Live voice status and join/leave control.',
@@ -1800,7 +1800,7 @@ registerRoutedTopLevelToolDoc(discordAdminToolDoc, {
   },
   smoke: {
     mode: 'skip',
-    reason: 'Requires live guild, admin turn state, and approval context; covered by runtime, unit, and integration tests.',
+    reason: 'Requires live guild/admin approval context; validate with `npm run langgraph:discord:smoke` against a disposable guild/channel.',
   },
   promptGuidance: {
     purpose: 'Governance changes, moderation, and API fallback.',

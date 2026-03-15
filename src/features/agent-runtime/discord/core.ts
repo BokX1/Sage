@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { ChannelType, PermissionsBitField, type VoiceChannel } from 'discord.js';
 
 import type { ToolExecutionContext } from '../toolRegistry';
+import type { ApprovalInterruptPayload } from '../toolControlSignals';
 import {
   type DiscordComponentsV2Message,
   type DiscordMessageFileInput,
@@ -31,6 +32,9 @@ import {
   type SagePersonaUpdateRequest,
   getRequiredModerationRequesterPermission,
   resolveModerationActionChannelId,
+  prepareDiscordModerationApprovalForTool,
+  prepareDiscordRestWriteApprovalForTool,
+  prepareSagePersonaUpdateApprovalForTool,
   requestDiscordAdminActionForTool,
   requestDiscordInteractionForTool,
   lookupGuildSagePersonaForTool,
@@ -523,6 +527,303 @@ function queueDiscordRestWrite(params: {
     sourceMessageId: params.ctx.currentTurn?.messageId ?? null,
     request: params.request,
   });
+}
+
+async function prepareQueuedDiscordRestWriteApproval(params: {
+  ctx: ToolExecutionContext;
+  actionLabel: string;
+  request: DiscordRestWriteRequest;
+}): Promise<ApprovalInterruptPayload> {
+  assertAdmin(params.ctx.invokerIsAdmin);
+  assertNotAutopilot(params.ctx.invokedBy, params.actionLabel);
+  const guildId = requireGuildContext(params.ctx.guildId);
+  return prepareDiscordRestWriteApprovalForTool({
+    guildId,
+    channelId: params.ctx.channelId,
+    requestedBy: params.ctx.userId,
+    sourceMessageId: params.ctx.currentTurn?.messageId ?? null,
+    request: params.request,
+  });
+}
+
+export async function prepareDiscordAdminActionApproval(
+  args: DiscordActionArgs,
+  ctx: ToolExecutionContext,
+): Promise<{ approvalGroupKey: string; payload: ApprovalInterruptPayload } | null> {
+  switch (args.action) {
+    case 'update_server_instructions': {
+      const data = asAction<{ request: SagePersonaUpdateRequest }>(args);
+      assertAdmin(ctx.invokerIsAdmin);
+      assertNotAutopilot(ctx.invokedBy, 'update_server_instructions');
+      return {
+        approvalGroupKey: 'discord_admin:server_instructions',
+        payload: await prepareSagePersonaUpdateApprovalForTool({
+          guildId: requireGuildContext(ctx.guildId),
+          channelId: ctx.channelId,
+          requestedBy: ctx.userId,
+          sourceMessageId: ctx.currentTurn?.messageId ?? null,
+          request: data.request,
+        }),
+      };
+    }
+    case 'submit_moderation': {
+      const data = asAction<{ request: DiscordModerationActionRequest }>(args);
+      assertNotAutopilot(ctx.invokedBy, 'submit_moderation');
+      await assertInvokerCanSubmitModeration({ ctx, request: data.request });
+      return {
+        approvalGroupKey: 'discord_admin:moderation',
+        payload: await prepareDiscordModerationApprovalForTool({
+          guildId: requireGuildContext(ctx.guildId),
+          channelId: ctx.channelId,
+          requestedBy: ctx.userId,
+          sourceMessageId: ctx.currentTurn?.messageId ?? null,
+          request: data.request,
+          currentTurn: ctx.currentTurn,
+          replyTarget: ctx.replyTarget,
+        }),
+      };
+    }
+    case 'edit_message': {
+      const data = asAction<{
+        channelId?: string;
+        messageId: string;
+        content: string;
+        reason?: string;
+      }>(args);
+      return {
+        approvalGroupKey: 'discord_admin:rest_write',
+        payload: await prepareQueuedDiscordRestWriteApproval({
+          ctx,
+          actionLabel: 'edit_message',
+          request: {
+            method: 'PATCH',
+            path: `/channels/${(data.channelId?.trim() || ctx.channelId).trim()}/messages/${data.messageId}`,
+            body: {
+              content: data.content,
+              allowed_mentions: { parse: [] },
+            },
+            reason: data.reason,
+          },
+        }),
+      };
+    }
+    case 'delete_message':
+    case 'pin_message':
+    case 'unpin_message': {
+      const data = asAction<{
+        channelId?: string;
+        messageId: string;
+        reason?: string;
+      }>(args);
+      const channelId = (data.channelId?.trim() || ctx.channelId).trim();
+      const request =
+        args.action === 'delete_message'
+          ? { method: 'DELETE' as const, path: `/channels/${channelId}/messages/${data.messageId}` }
+          : args.action === 'pin_message'
+            ? { method: 'PUT' as const, path: `/channels/${channelId}/pins/${data.messageId}` }
+            : { method: 'DELETE' as const, path: `/channels/${channelId}/pins/${data.messageId}` };
+      return {
+        approvalGroupKey: 'discord_admin:rest_write',
+        payload: await prepareQueuedDiscordRestWriteApproval({
+          ctx,
+          actionLabel: args.action,
+          request: {
+            ...request,
+            reason: data.reason,
+          },
+        }),
+      };
+    }
+    case 'create_channel': {
+      const data = asAction<{
+        name: string;
+        type?: 'text' | 'voice' | 'category';
+        parentId?: string;
+        topic?: string;
+        nsfw?: boolean;
+        rateLimitPerUser?: number;
+        reason?: string;
+      }>(args);
+      const type = data.type ?? 'text';
+      const typeId = type === 'voice' ? 2 : type === 'category' ? 4 : 0;
+      const body: Record<string, unknown> = {
+        name: data.name,
+        type: typeId,
+      };
+      if (data.parentId) body.parent_id = data.parentId;
+      if (data.nsfw !== undefined) body.nsfw = data.nsfw;
+      if (type === 'text') {
+        if (data.topic !== undefined) body.topic = data.topic;
+        if (data.rateLimitPerUser !== undefined) body.rate_limit_per_user = data.rateLimitPerUser;
+      }
+      return {
+        approvalGroupKey: 'discord_admin:rest_write',
+        payload: await prepareQueuedDiscordRestWriteApproval({
+          ctx,
+          actionLabel: 'create_channel',
+          request: {
+            method: 'POST',
+            path: `/guilds/${requireGuildContext(ctx.guildId)}/channels`,
+            body,
+            reason: data.reason,
+          },
+        }),
+      };
+    }
+    case 'edit_channel': {
+      const data = asAction<{
+        channelId: string;
+        name?: string;
+        parentId?: string;
+        topic?: string;
+        nsfw?: boolean;
+        rateLimitPerUser?: number;
+        reason?: string;
+      }>(args);
+      const body: Record<string, unknown> = {};
+      if (data.name !== undefined) body.name = data.name;
+      if (data.parentId !== undefined) body.parent_id = data.parentId;
+      if (data.topic !== undefined) body.topic = data.topic;
+      if (data.nsfw !== undefined) body.nsfw = data.nsfw;
+      if (data.rateLimitPerUser !== undefined) body.rate_limit_per_user = data.rateLimitPerUser;
+      return {
+        approvalGroupKey: 'discord_admin:rest_write',
+        payload: await prepareQueuedDiscordRestWriteApproval({
+          ctx,
+          actionLabel: 'edit_channel',
+          request: {
+            method: 'PATCH',
+            path: `/channels/${data.channelId}`,
+            body,
+            reason: data.reason,
+          },
+        }),
+      };
+    }
+    case 'create_role': {
+      const data = asAction<{
+        name: string;
+        colorHex?: string;
+        hoist?: boolean;
+        mentionable?: boolean;
+        permissions?: string | number;
+        reason?: string;
+      }>(args);
+      const body: Record<string, unknown> = { name: data.name };
+      if (data.colorHex) body.color = parseHexColor(data.colorHex);
+      if (data.hoist !== undefined) body.hoist = data.hoist;
+      if (data.mentionable !== undefined) body.mentionable = data.mentionable;
+      if (data.permissions !== undefined) body.permissions = data.permissions;
+      return {
+        approvalGroupKey: 'discord_admin:rest_write',
+        payload: await prepareQueuedDiscordRestWriteApproval({
+          ctx,
+          actionLabel: 'create_role',
+          request: {
+            method: 'POST',
+            path: `/guilds/${requireGuildContext(ctx.guildId)}/roles`,
+            body,
+            reason: data.reason,
+          },
+        }),
+      };
+    }
+    case 'edit_role': {
+      const data = asAction<{
+        roleId: string;
+        name?: string;
+        colorHex?: string;
+        hoist?: boolean;
+        mentionable?: boolean;
+        permissions?: string | number;
+        reason?: string;
+      }>(args);
+      const body: Record<string, unknown> = {};
+      if (data.name !== undefined) body.name = data.name;
+      if (data.colorHex !== undefined) body.color = parseHexColor(data.colorHex);
+      if (data.hoist !== undefined) body.hoist = data.hoist;
+      if (data.mentionable !== undefined) body.mentionable = data.mentionable;
+      if (data.permissions !== undefined) body.permissions = data.permissions;
+      return {
+        approvalGroupKey: 'discord_admin:rest_write',
+        payload: await prepareQueuedDiscordRestWriteApproval({
+          ctx,
+          actionLabel: 'edit_role',
+          request: {
+            method: 'PATCH',
+            path: `/guilds/${requireGuildContext(ctx.guildId)}/roles/${data.roleId}`,
+            body,
+            reason: data.reason,
+          },
+        }),
+      };
+    }
+    case 'delete_role': {
+      const data = asAction<{ roleId: string; reason?: string }>(args);
+      return {
+        approvalGroupKey: 'discord_admin:rest_write',
+        payload: await prepareQueuedDiscordRestWriteApproval({
+          ctx,
+          actionLabel: 'delete_role',
+          request: {
+            method: 'DELETE',
+            path: `/guilds/${requireGuildContext(ctx.guildId)}/roles/${data.roleId}`,
+            reason: data.reason,
+          },
+        }),
+      };
+    }
+    case 'add_member_role':
+    case 'remove_member_role': {
+      const data = asAction<{ userId: string; roleId: string; reason?: string }>(args);
+      return {
+        approvalGroupKey: 'discord_admin:rest_write',
+        payload: await prepareQueuedDiscordRestWriteApproval({
+          ctx,
+          actionLabel: args.action,
+          request: {
+            method: args.action === 'add_member_role' ? 'PUT' : 'DELETE',
+            path: `/guilds/${requireGuildContext(ctx.guildId)}/members/${data.userId}/roles/${data.roleId}`,
+            reason: data.reason,
+          },
+        }),
+      };
+    }
+    case 'api': {
+      const data = asAction<{
+        method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+        path: string;
+        query?: Record<string, string | number | boolean | null>;
+        body?: unknown;
+        multipartBodyMode?: 'payload_json' | 'fields';
+        files?: DiscordRestFileInput[];
+        reason?: string;
+        maxResponseChars?: number;
+      }>(args);
+      if (data.method === 'GET') {
+        return null;
+      }
+      return {
+        approvalGroupKey: 'discord_admin:rest_write',
+        payload: await prepareQueuedDiscordRestWriteApproval({
+          ctx,
+          actionLabel: 'api',
+          request: {
+            method: data.method,
+            path: data.path,
+            query: data.query,
+            body: data.body,
+            multipartBodyMode: data.multipartBodyMode,
+            files: data.files,
+            reason: data.reason,
+            maxResponseChars: data.maxResponseChars,
+          },
+        }),
+      };
+    }
+    default:
+      return null;
+  }
 }
 
 export async function executeDiscordContextAction(

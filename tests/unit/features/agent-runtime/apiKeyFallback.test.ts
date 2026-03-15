@@ -115,7 +115,6 @@ function makeGraphResult(overrides: Partial<Awaited<ReturnType<typeof mockRunAge
     totalRoundsCompleted: 0,
     deduplicatedCallCount: 0,
     truncatedCallCount: 0,
-    guardrailBlockedCallCount: 0,
     roundEvents: [],
     finalization: {
       attempted: false,

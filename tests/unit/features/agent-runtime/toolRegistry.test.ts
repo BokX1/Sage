@@ -326,4 +326,64 @@ describe('ToolRegistry', () => {
     });
   });
 
+  describe('action policy resolution', () => {
+    it('classifies routed Discord writes explicitly without requiring approval', async () => {
+      const runtimeRegistry = new ToolRegistry();
+      registerDefaultAgenticTools(runtimeRegistry);
+
+      const result = await runtimeRegistry.resolveActionPolicy(
+        {
+          name: 'discord_messages',
+          args: {
+            action: 'send',
+            content: 'hello from Sage',
+          },
+        },
+        { traceId: 'test', userId: 'u1', channelId: 'c1' },
+      );
+
+      expect(result).not.toBeNull();
+      expect(result?.policy).toMatchObject({
+        mutability: 'write',
+        approvalMode: 'none',
+      });
+    });
+
+    it('keeps admin-only Discord reads on the read path', async () => {
+      const runtimeRegistry = new ToolRegistry();
+      registerDefaultAgenticTools(runtimeRegistry);
+
+      const serverRead = await runtimeRegistry.resolveActionPolicy(
+        {
+          name: 'discord_server',
+          args: {
+            action: 'list_members',
+          },
+        },
+        { traceId: 'test', userId: 'u1', channelId: 'c1' },
+      );
+
+      const adminRead = await runtimeRegistry.resolveActionPolicy(
+        {
+          name: 'discord_admin',
+          args: {
+            action: 'get_server_key_status',
+          },
+        },
+        { traceId: 'test', userId: 'u1', channelId: 'c1' },
+      );
+
+      expect(serverRead).not.toBeNull();
+      expect(serverRead?.policy).toMatchObject({
+        mutability: 'read',
+        approvalMode: 'none',
+      });
+      expect(adminRead).not.toBeNull();
+      expect(adminRead?.policy).toMatchObject({
+        mutability: 'read',
+        approvalMode: 'none',
+      });
+    });
+  });
+
 });

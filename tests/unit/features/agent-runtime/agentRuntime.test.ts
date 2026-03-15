@@ -165,7 +165,6 @@ function makeGraphResult(overrides: Record<string, unknown> = {}) {
     totalRoundsCompleted: 0,
     deduplicatedCallCount: 0,
     truncatedCallCount: 0,
-    guardrailBlockedCallCount: 0,
     roundEvents: [],
     finalization: {
       attempted: false,
@@ -488,7 +487,6 @@ describe('agentRuntime', () => {
       makeGraphResult({
         replyText: 'Final answer',
         roundsCompleted: 2,
-        guardrailBlockedCallCount: 1,
         finalization: {
           attempted: true,
           succeeded: true,
@@ -520,13 +518,11 @@ describe('agentRuntime', () => {
         budgetJson: expect.objectContaining({
           graphRuntime: expect.objectContaining({
             terminationReason: 'continue_prompt',
-            guardrailBlockedCallCount: 1,
           }),
         }),
         toolJson: expect.objectContaining({
           graph: expect.objectContaining({
             terminationReason: 'continue_prompt',
-            guardrailBlockedCallCount: 1,
           }),
         }),
       }),

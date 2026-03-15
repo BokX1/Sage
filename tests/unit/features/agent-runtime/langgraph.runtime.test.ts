@@ -8,6 +8,7 @@ const {
   buildAgentGraphConfigMock,
   executeDurableToolTaskMock,
   executeApprovedReviewTaskMock,
+  prepareToolApprovalInterruptMock,
   createGraphContinuationSessionMock,
   consumeGraphContinuationSessionMock,
   createOrReuseApprovalReviewRequestFromSignalMock,
@@ -29,6 +30,7 @@ const {
   })),
   executeDurableToolTaskMock: vi.fn(),
   executeApprovedReviewTaskMock: vi.fn(),
+  prepareToolApprovalInterruptMock: vi.fn(),
   createGraphContinuationSessionMock: vi.fn(async () => ({
     id: 'cont-1',
     threadId: 'trace-pause-1',
@@ -176,6 +178,7 @@ vi.mock('@/features/agent-runtime/langgraph/nativeTools', () => ({
   })),
   executeApprovedReviewTask: executeApprovedReviewTaskMock,
   executeDurableToolTask: executeDurableToolTaskMock,
+  prepareToolApprovalInterrupt: prepareToolApprovalInterruptMock,
   isReadOnlyToolCall: vi.fn(() => false),
 }));
 
@@ -197,6 +200,8 @@ vi.mock('@/features/agent-runtime/graphContinuationRepo', () => ({
 }));
 
 import {
+  __getAgentGraphStateForTests,
+  __runAgentGraphCommandForTests,
   runAgentGraphTurn,
   runGraphValueStream,
   resumeAgentGraphTurn,
@@ -213,7 +218,6 @@ function makeInterruptedState() {
       userId: 'user-1',
       channelId: 'channel-1',
       guildId: 'guild-1',
-      apiKey: 'test-api-key',
       model: 'test-main-agent-model',
       temperature: 0.6,
       timeoutMs: 1_000,
@@ -234,7 +238,6 @@ function makeInterruptedState() {
     totalRoundsCompleted: 1,
     deduplicatedCallCount: 0,
     truncatedCallCount: 0,
-    guardrailBlockedCallCount: 0,
     roundEvents: [],
     finalization: {
       attempted: false,
@@ -301,6 +304,8 @@ describe('runGraphValueStream', () => {
     });
     executeDurableToolTaskMock.mockReset();
     executeApprovedReviewTaskMock.mockReset();
+    prepareToolApprovalInterruptMock.mockReset();
+    prepareToolApprovalInterruptMock.mockResolvedValue(null);
     createGraphContinuationSessionMock.mockClear();
     consumeGraphContinuationSessionMock.mockClear();
     createOrReuseApprovalReviewRequestFromSignalMock.mockClear();
@@ -510,6 +515,71 @@ describe('runGraphValueStream', () => {
     expect(modelInvokeMock).toHaveBeenCalledTimes(1);
   });
 
+  it('preserves graph_timeout when a continuation pause is caused by the active runtime budget', async () => {
+    await shutdownAgentGraphRuntime();
+    buildAgentGraphConfigMock.mockReturnValue({
+      maxSteps: 2,
+      maxToolCallsPerStep: 3,
+      toolTimeoutMs: 1_000,
+      maxResultChars: 4_000,
+      maxDurationMs: 1,
+      recursionLimit: 8,
+      githubGroundedMode: false,
+    });
+    modelInvokeMock.mockResolvedValueOnce(
+      new AIMessage({
+        content: '',
+        tool_calls: [
+          {
+            id: 'call-time-budget-1',
+            name: 'discord_admin',
+            args: { action: 'clear_server_api_key' },
+            type: 'tool_call',
+          },
+        ],
+      }),
+    );
+    executeDurableToolTaskMock.mockResolvedValueOnce({
+      kind: 'tool_result',
+      toolName: 'discord_admin',
+      callId: 'call-time-budget-1',
+      content: '{"ok":true}',
+      result: {
+        name: 'discord_admin',
+        success: true,
+        result: { ok: true },
+        latencyMs: 12,
+      },
+      files: [],
+    });
+
+    const result = await runAgentGraphTurn({
+      traceId: 'trace-time-budget-1',
+      userId: 'user-1',
+      channelId: 'channel-1',
+      guildId: 'guild-1',
+      apiKey: 'test-api-key',
+      model: 'test-main-agent-model',
+      temperature: 0.6,
+      timeoutMs: 1_000,
+      maxTokens: 500,
+      messages: [new HumanMessage({ content: 'do the admin action and keep going' })],
+      activeToolNames: ['discord_admin'],
+      routeKind: 'single',
+      currentTurn: { invokerUserId: 'user-1' },
+      replyTarget: null,
+      invokedBy: 'mention',
+      invokerIsAdmin: true,
+    });
+
+    expect(result.graphStatus).toBe('interrupted');
+    expect(result.terminationReason).toBe('graph_timeout');
+    expect(result.pendingInterrupt).toMatchObject({
+      kind: 'continue_prompt',
+      pauseReason: 'graph_timeout',
+    });
+  });
+
   it('materializes approval interrupts before pausing the graph', async () => {
     modelInvokeMock.mockResolvedValueOnce(
       new AIMessage({
@@ -524,11 +594,9 @@ describe('runGraphValueStream', () => {
         ],
       }),
     );
-    executeDurableToolTaskMock.mockResolvedValueOnce({
-      kind: 'approval_required',
+    prepareToolApprovalInterruptMock.mockResolvedValueOnce({
       toolName: 'discord_admin',
       callId: 'call-approve-1',
-      latencyMs: 1,
       call: {
         id: 'call-approve-1',
         name: 'discord_admin',
@@ -546,6 +614,7 @@ describe('runGraphValueStream', () => {
         reviewSnapshotJson: { action: 'update_server_instructions' },
         interruptMetadataJson: { action: 'update_server_instructions' },
       },
+      approvalGroupKey: 'discord_admin:server_instructions',
     });
 
     const result = await runAgentGraphTurn({
@@ -587,6 +656,174 @@ describe('runGraphValueStream', () => {
     });
   });
 
+  it('can seed approval_gate execution directly for deterministic graph validation', async () => {
+    prepareToolApprovalInterruptMock.mockResolvedValueOnce({
+      toolName: 'discord_admin',
+      callId: 'call-seeded-approval-1',
+      call: {
+        id: 'call-seeded-approval-1',
+        name: 'discord_admin',
+        args: { action: 'create_role', name: 'seeded-role' },
+      },
+      payload: {
+        kind: 'discord_rest_write',
+        guildId: 'guild-1',
+        sourceChannelId: 'channel-1',
+        reviewChannelId: 'channel-review',
+        sourceMessageId: null,
+        requestedBy: 'user-1',
+        dedupeKey: 'seeded-dedupe',
+        executionPayloadJson: { request: { method: 'POST', path: '/guilds/guild-1/roles' } },
+        reviewSnapshotJson: { action: 'create_role' },
+        interruptMetadataJson: { action: 'create_role' },
+      },
+      approvalGroupKey: 'discord_admin:rest_write',
+    });
+
+    const result = await __runAgentGraphCommandForTests({
+      threadId: 'trace-seeded-approval-1',
+      goto: 'approval_gate',
+      context: {
+        traceId: 'trace-seeded-approval-1',
+        originTraceId: 'trace-seeded-approval-1',
+        userId: 'user-1',
+        channelId: 'channel-1',
+        guildId: 'guild-1',
+        activeToolNames: ['discord_admin'],
+        routeKind: 'single',
+        currentTurn: { invokerUserId: 'user-1' },
+        replyTarget: null,
+        invokedBy: 'mention',
+        invokerIsAdmin: true,
+      },
+      state: {
+        pendingWriteCalls: [
+          {
+            id: 'call-seeded-approval-1',
+            name: 'discord_admin',
+            args: { action: 'create_role', name: 'seeded-role' },
+          },
+        ],
+      },
+    });
+
+    expect(modelInvokeMock).not.toHaveBeenCalled();
+    expect(result.graphStatus).toBe('interrupted');
+    expect(result.terminationReason).toBe('approval_interrupt');
+    expect(result.pendingInterrupt).toMatchObject({
+      kind: 'approval_review',
+      requestId: 'request-1',
+    });
+  });
+
+  it('does not persist provider api keys in checkpointed graph state', async () => {
+    modelInvokeMock.mockResolvedValueOnce(new AIMessage({ content: 'Done.' }));
+
+    const result = await runAgentGraphTurn({
+      traceId: 'trace-secrets-1',
+      userId: 'user-1',
+      channelId: 'channel-1',
+      guildId: 'guild-1',
+      apiKey: 'test-api-key',
+      model: 'test-main-agent-model',
+      temperature: 0.6,
+      timeoutMs: 1_000,
+      maxTokens: 500,
+      messages: [new HumanMessage({ content: 'reply plainly' })],
+      activeToolNames: [],
+      routeKind: 'single',
+      currentTurn: { invokerUserId: 'user-1' },
+      replyTarget: null,
+      invokedBy: 'mention',
+      invokerIsAdmin: true,
+    });
+
+    expect(result.graphStatus).toBe('completed');
+    const checkpointState = await __getAgentGraphStateForTests('trace-secrets-1');
+    expect(checkpointState?.resumeContext).not.toHaveProperty('apiKey');
+  });
+
+  it('interrupts only the prepared approval prefix when the next write has no approval policy', async () => {
+    createOrReuseApprovalReviewRequestFromSignalMock.mockResolvedValueOnce({
+      request: {
+        id: 'request-boundary-1',
+        threadId: 'trace-approval-boundary-1',
+        expiresAt: new Date('2026-03-14T00:00:00.000Z'),
+      },
+      coalesced: false,
+    });
+    modelInvokeMock.mockResolvedValueOnce(
+      new AIMessage({
+        content: '',
+        tool_calls: [
+          {
+            id: 'call-boundary-1',
+            name: 'discord_admin',
+            args: { action: 'update_server_instructions' },
+            type: 'tool_call',
+          },
+          {
+            id: 'call-boundary-2',
+            name: 'discord_admin',
+            args: { action: 'clear_server_api_key' },
+            type: 'tool_call',
+          },
+        ],
+      }),
+    );
+    prepareToolApprovalInterruptMock
+      .mockResolvedValueOnce({
+        toolName: 'discord_admin',
+        callId: 'call-boundary-1',
+        call: {
+          id: 'call-boundary-1',
+          name: 'discord_admin',
+          args: { action: 'update_server_instructions' },
+        },
+        payload: {
+          kind: 'server_instructions_update',
+          guildId: 'guild-1',
+          sourceChannelId: 'channel-1',
+          reviewChannelId: 'channel-review',
+          sourceMessageId: null,
+          requestedBy: 'user-1',
+          dedupeKey: 'dedupe-boundary-1',
+          executionPayloadJson: { next: 'value' },
+          reviewSnapshotJson: { action: 'update_server_instructions' },
+          interruptMetadataJson: { action: 'update_server_instructions' },
+        },
+        approvalGroupKey: 'discord_admin:server_instructions',
+      })
+      .mockResolvedValueOnce(null);
+
+    const result = await runAgentGraphTurn({
+      traceId: 'trace-approval-boundary-1',
+      userId: 'user-1',
+      channelId: 'channel-1',
+      guildId: 'guild-1',
+      apiKey: 'test-api-key',
+      model: 'test-main-agent-model',
+      temperature: 0.6,
+      timeoutMs: 1_000,
+      maxTokens: 500,
+      messages: [new HumanMessage({ content: 'update the persona, then clear the key' })],
+      activeToolNames: ['discord_admin'],
+      routeKind: 'single',
+      currentTurn: { invokerUserId: 'user-1' },
+      replyTarget: null,
+      invokedBy: 'mention',
+      invokerIsAdmin: true,
+    });
+
+    expect(result.graphStatus).toBe('interrupted');
+    expect(result.pendingInterrupt).toMatchObject({
+      kind: 'approval_review',
+      requests: [expect.objectContaining({ requestId: 'request-boundary-1' })],
+    });
+    expect(executeDurableToolTaskMock).not.toHaveBeenCalled();
+    expect(createOrReuseApprovalReviewRequestFromSignalMock).toHaveBeenCalledTimes(1);
+  });
+
   it('resumes a multi-request approval batch from one model response without throwing', async () => {
     createOrReuseApprovalReviewRequestFromSignalMock
       .mockResolvedValueOnce({
@@ -619,19 +856,17 @@ describe('runGraphValueStream', () => {
             {
               id: 'call-approve-2',
               name: 'discord_admin',
-              args: { action: 'send_message', channelName: 'ops-summary', content: 'Summary' },
+              args: { action: 'create_role', name: 'ops-summary-role' },
               type: 'tool_call',
             },
           ],
         }),
       )
       .mockResolvedValueOnce(new AIMessage({ content: 'Done.' }));
-    executeDurableToolTaskMock
+    prepareToolApprovalInterruptMock
       .mockResolvedValueOnce({
-        kind: 'approval_required',
         toolName: 'discord_admin',
         callId: 'call-approve-1',
-        latencyMs: 1,
         call: {
           id: 'call-approve-1',
           name: 'discord_admin',
@@ -649,16 +884,15 @@ describe('runGraphValueStream', () => {
           reviewSnapshotJson: { step: 1 },
           interruptMetadataJson: { step: 1 },
         },
+        approvalGroupKey: 'discord_admin:rest_write',
       })
       .mockResolvedValueOnce({
-        kind: 'approval_required',
         toolName: 'discord_admin',
         callId: 'call-approve-2',
-        latencyMs: 1,
         call: {
           id: 'call-approve-2',
           name: 'discord_admin',
-          args: { action: 'send_message', channelName: 'ops-summary', content: 'Summary' },
+          args: { action: 'create_role', name: 'ops-summary-role' },
         },
         payload: {
           kind: 'discord_rest_write',
@@ -672,6 +906,7 @@ describe('runGraphValueStream', () => {
           reviewSnapshotJson: { step: 2 },
           interruptMetadataJson: { step: 2 },
         },
+        approvalGroupKey: 'discord_admin:rest_write',
       });
     executeApprovedReviewTaskMock
       .mockResolvedValueOnce({
@@ -806,11 +1041,9 @@ describe('runGraphValueStream', () => {
         }),
       )
       .mockResolvedValueOnce(new AIMessage({ content: 'Done after approval.' }));
-    executeDurableToolTaskMock.mockResolvedValueOnce({
-      kind: 'approval_required',
+    prepareToolApprovalInterruptMock.mockResolvedValueOnce({
       toolName: 'discord_admin',
       callId: 'call-timeout-1',
-      latencyMs: 1,
       call: {
         id: 'call-timeout-1',
         name: 'discord_admin',
@@ -828,6 +1061,7 @@ describe('runGraphValueStream', () => {
         reviewSnapshotJson: { action: 'update_server_instructions' },
         interruptMetadataJson: { action: 'update_server_instructions' },
       },
+      approvalGroupKey: 'discord_admin:server_instructions',
     });
     executeApprovedReviewTaskMock.mockResolvedValueOnce({
       status: 'executed',

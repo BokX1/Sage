@@ -150,7 +150,20 @@ Run the smoke test to verify all tools are working:
 npm run tools:smoke
 ```
 
-The smoke script executes the runtime tool surface itself from shared tool metadata, so the smoke inventory, prompt guidance, website capability grid, and validation hints stay aligned. Discord domain tools are intentionally reported as skipped here because they require live guild/current-turn context and are covered by runtime, unit, and integration tests instead.
+The smoke script executes the runtime tool surface itself from shared tool metadata, so the smoke inventory, prompt guidance, website capability grid, and validation hints stay aligned.
+
+Discord domain tools are intentionally reported as skipped here because they require live guild/current-turn context. Run the dedicated live LangGraph smoke against a disposable guild/channel to validate the Discord read lane plus approval/resume write path end to end:
+
+```bash
+npm run langgraph:discord:smoke
+```
+
+Set these optional `.env` values first:
+
+- `SAGE_DISCORD_SMOKE_GUILD_ID`
+- `SAGE_DISCORD_SMOKE_CHANNEL_ID`
+- `SAGE_DISCORD_SMOKE_USER_ID`
+- `SAGE_DISCORD_SMOKE_REVIEWER_ID`
 
 The smoke script checks:
 

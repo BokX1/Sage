@@ -557,7 +557,7 @@ export const nativeTools = [
   {
     "name": "system_tool_stats",
     "short": "Tool Stats",
-    "desc": "Inspect in-process tool latency, caching, memoization, and failure stats",
+    "desc": "Inspect in-process tool latency, failures, and local store stats",
     "cat": "system",
     "color": "#78b846"
   }
