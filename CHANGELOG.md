@@ -44,6 +44,7 @@
 
 ### Fixed
 - Fixed the live Discord LangGraph smoke client boot path to wait on Discord.js `clientReady`, eliminating the remaining deprecation warning during real VM smoke validation.
+- Removed the obsolete Compose `version` key from Sage's core service stack, so VM/service restarts no longer emit the warning that the attribute is ignored.
 - Fixed routed Discord admin-only reads such as `discord_server.list_members` and `discord_admin.get_server_key_status`, which were being misclassified as writes and could be sent down the approval/write lane instead of the read lane.
 - Fixed the live Discord LangGraph smoke path so seeded validation runs now expire and finalize their continuation interrupts instead of leaving pending continuation-session records behind after a successful smoke.
 
