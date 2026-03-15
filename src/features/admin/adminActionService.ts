@@ -100,6 +100,7 @@ import {
   type CurrentTurnContext,
   type ReplyTargetContext,
 } from '../agent-runtime/continuityContext';
+import { resolveApiKeyForRuntime } from '../agent-runtime/apiKeyResolver';
 import { ApprovalRequiredSignal, type ApprovalInterruptPayload } from '../agent-runtime/toolControlSignals';
 import { buildLastResortVisibleReply, finalizeVisibleReplyText } from '../agent-runtime/visibleReply';
 
@@ -4238,6 +4239,8 @@ async function resumeApprovalReviewGraph(params: {
     });
   }
 
+  const apiKey = await resolveApiKeyForRuntime(params.action.guildId);
+
   try {
     const graphResult = await resumeAgentGraphTurn({
       threadId: params.action.threadId,
@@ -4246,6 +4249,7 @@ async function resumeApprovalReviewGraph(params: {
         decisions: resumePayload.decisions,
         resumeTraceId,
       },
+      context: apiKey ? { apiKey } : undefined,
     });
     const visibleReplyText = finalizeVisibleReplyText({
       replyText: graphResult.replyText,

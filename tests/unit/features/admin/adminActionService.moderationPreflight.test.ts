@@ -78,6 +78,7 @@ const mocks = vi.hoisted(() => {
     getGuildSagePersonaRecord: vi.fn(),
     upsertGuildSagePersona: vi.fn(),
     getGuildApprovalReviewChannelId: vi.fn(async () => null),
+    getGuildApiKey: vi.fn(),
     computeParamsHash: vi.fn(() => 'hash'),
     logAdminAction: vi.fn(async () => undefined),
     assertDiscordRestRequestGuildScoped: vi.fn(),
@@ -100,6 +101,7 @@ const mocks = vi.hoisted(() => {
 
 vi.mock('@/features/settings/guildSettingsRepo', () => ({
   getGuildApprovalReviewChannelId: mocks.getGuildApprovalReviewChannelId,
+  getGuildApiKey: mocks.getGuildApiKey,
 }));
 
 vi.mock('@/features/settings/guildSagePersonaRepo', () => ({

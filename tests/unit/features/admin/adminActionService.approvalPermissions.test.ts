@@ -74,6 +74,7 @@ const mocks = vi.hoisted(() => {
     getGuildSagePersonaRecord: vi.fn(),
     upsertGuildSagePersona: vi.fn(),
     getGuildApprovalReviewChannelId: vi.fn(),
+    getGuildApiKey: vi.fn(),
     computeParamsHash: vi.fn(() => 'hash'),
     logAdminAction: vi.fn(),
     assertDiscordRestRequestGuildScoped: vi.fn(),
@@ -148,6 +149,7 @@ vi.mock('@/features/admin/approvalReviewRequestRepo', () => ({
 
 vi.mock('@/features/settings/guildSettingsRepo', () => ({
   getGuildApprovalReviewChannelId: mocks.getGuildApprovalReviewChannelId,
+  getGuildApiKey: mocks.getGuildApiKey,
 }));
 
 vi.mock('@/features/settings/guildSagePersonaRepo', () => ({
@@ -300,6 +302,7 @@ describe('adminActionService approval permissions', () => {
     mocks.logAdminAction.mockResolvedValue(undefined);
     mocks.upsertTraceStart.mockResolvedValue(undefined);
     mocks.updateTraceEnd.mockResolvedValue(undefined);
+    mocks.getGuildApiKey.mockResolvedValue('guild-key-1');
   });
 
   it('skips requester status card publication when review and source channels are the same', async () => {
@@ -537,6 +540,9 @@ describe('adminActionService approval permissions', () => {
     expect(mocks.resumeAgentGraphTurn).toHaveBeenCalledWith(
       expect.objectContaining({
         threadId: 'thread-1',
+        context: expect.objectContaining({
+          apiKey: 'guild-key-1',
+        }),
         resume: expect.objectContaining({
           interruptKind: 'approval_review',
           decisions: [expect.objectContaining({ requestId: 'action-1', status: 'approved' })],
@@ -710,6 +716,9 @@ describe('adminActionService approval permissions', () => {
     expect(mocks.resumeAgentGraphTurn).toHaveBeenCalledWith(
       expect.objectContaining({
         threadId: 'thread-1',
+        context: expect.objectContaining({
+          apiKey: 'guild-key-1',
+        }),
         resume: expect.objectContaining({
           interruptKind: 'approval_review',
           decisions: [expect.objectContaining({ requestId: 'action-1', status: 'expired' })],

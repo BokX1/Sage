@@ -9,7 +9,6 @@ import { getRecentMessages } from '../awareness/channelRingBuffer';
 import { buildTranscriptBlock } from '../awareness/transcriptBuilder';
 import { type BaseMessage } from '@langchain/core/messages';
 import { LLMMessageContent } from '../../platform/llm/llm-types';
-import { getGuildApiKey } from '../settings/guildSettingsRepo';
 import { getGuildSagePersonaText } from '../settings/guildSagePersonaRepo';
 import { isLoggingEnabled } from '../settings/guildChannelSettings';
 import { logger } from '../../platform/logging/logger';
@@ -19,6 +18,7 @@ import { buildContextMessages } from './contextBuilder';
 import { clearGitHubFileLookupCacheForTrace } from './toolIntegrations';
 import { enforceGitHubFileGrounding } from './toolGrounding';
 import { buildAgentGraphConfig } from './langgraph/config';
+import { resolveApiKeyForRuntime } from './apiKeyResolver';
 import { resumeAgentGraphTurn, retryAgentGraphTurn, runAgentGraphTurn } from './langgraph/runtime';
 import {
   buildContinuationUnavailableReply,
@@ -161,12 +161,6 @@ function buildRetryMeta(
   };
 }
 
-async function resolveApiKeyForChatTurn(guildId: string | null): Promise<string | undefined> {
-  const guildApiKey = guildId ? await getGuildApiKey(guildId) : undefined;
-  const apiKey = (guildApiKey ?? appConfig.AI_PROVIDER_API_KEY)?.trim();
-  return apiKey || undefined;
-}
-
 function shouldUseHostedServerKeyRecovery(): boolean {
   const candidateUrls = [
     appConfig.SERVER_PROVIDER_AUTHORIZE_URL,
@@ -306,7 +300,7 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
       ? formatLiveVoiceContext({ guildId, voiceChannelId, now: new Date() })
       : null;
 
-  const apiKey = await resolveApiKeyForChatTurn(guildId);
+  const apiKey = await resolveApiKeyForRuntime(guildId);
   if (!apiKey) {
     logger.warn(
       { guildId, channelId, userId },
@@ -635,7 +629,7 @@ export async function resumeContinuationChatTurn(
   }
 
   const session = validated.session;
-  const apiKey = await resolveApiKeyForChatTurn(params.guildId);
+  const apiKey = await resolveApiKeyForRuntime(params.guildId);
   if (!apiKey) {
     return buildMissingApiKeyResult(params.guildId);
   }
@@ -815,7 +809,7 @@ export async function resumeContinuationChatTurn(
 export async function retryFailedChatTurn(
   params: RetryFailedChatTurnParams,
 ): Promise<RunChatTurnResult> {
-  const apiKey = await resolveApiKeyForChatTurn(params.guildId);
+  const apiKey = await resolveApiKeyForRuntime(params.guildId);
   if (!apiKey) {
     return buildMissingApiKeyResult(params.guildId);
   }
