@@ -1779,7 +1779,7 @@ async function recoverInterruptedGraphState(
   graph: Pick<AgentGraphRuntime['graph'], 'getState'>,
   config: RunnableConfig,
   context: {
-    reason: 'stream_error' | 'missing_final_state';
+    reason: 'interrupt_sentinel' | 'stream_error' | 'missing_final_state';
     streamError?: unknown;
   },
   ): Promise<AgentGraphState | null> {
@@ -1798,17 +1798,26 @@ async function recoverInterruptedGraphState(
         ? pendingInterrupt.requestId
         : pendingInterrupt.continuationId;
 
-    logger.warn(
-      {
-        traceId: state.resumeContext.traceId,
-        threadId: state.resumeContext.threadId,
-        interruptKind: pendingInterrupt.kind,
-        interruptId,
-        recoveryReason: context.reason,
-        streamError: context.streamError instanceof Error ? context.streamError.message : undefined,
-      },
-      'Recovered interrupted graph state from LangGraph checkpoint after stream did not yield a terminal value',
-    );
+    const logPayload = {
+      traceId: state.resumeContext.traceId,
+      threadId: state.resumeContext.threadId,
+      interruptKind: pendingInterrupt.kind,
+      interruptId,
+      recoveryReason: context.reason,
+      streamError: context.streamError instanceof Error ? context.streamError.message : undefined,
+    };
+
+    if (context.reason === 'interrupt_sentinel') {
+      logger.info(
+        logPayload,
+        'Recovered interrupted graph state from LangGraph checkpoint after receiving an interrupt sentinel stream chunk',
+      );
+    } else {
+      logger.warn(
+        logPayload,
+        'Recovered interrupted graph state from LangGraph checkpoint after stream did not yield a terminal value',
+      );
+    }
     return state;
   } catch (error) {
     logger.warn(
@@ -1839,8 +1848,7 @@ export async function runGraphValueStream(
     for await (const chunk of stream as AsyncIterable<unknown>) {
       if (isInterrupted(chunk)) {
         const recovered = await recoverInterruptedGraphState(graph, config, {
-          reason: 'stream_error',
-          streamError: new Error('LangGraph emitted an interrupt sentinel instead of a terminal state chunk.'),
+          reason: 'interrupt_sentinel',
         });
         if (recovered) {
           return recovered;

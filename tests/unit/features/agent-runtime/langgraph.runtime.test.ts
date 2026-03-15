@@ -3,6 +3,7 @@ import { AIMessage, HumanMessage } from '@langchain/core/messages';
 
 const {
   loggerWarnMock,
+  loggerInfoMock,
   modelInvokeMock,
   getLastAiToolCallsMock,
   buildAgentGraphConfigMock,
@@ -14,6 +15,7 @@ const {
   createOrReuseApprovalReviewRequestFromSignalMock,
 } = vi.hoisted(() => ({
   loggerWarnMock: vi.fn(),
+  loggerInfoMock: vi.fn(),
   modelInvokeMock: vi.fn<() => Promise<unknown>>(async () => new HumanMessage({ content: 'unused' })),
   getLastAiToolCallsMock: vi.fn((messages: Array<{ tool_calls?: unknown[] }>) => {
     const last = messages.at(-1);
@@ -97,7 +99,7 @@ vi.mock('@/platform/config/env', () => ({
 vi.mock('@/platform/logging/logger', () => ({
   logger: {
     warn: loggerWarnMock,
-    info: vi.fn(),
+    info: loggerInfoMock,
     error: vi.fn(),
   },
 }));
@@ -404,13 +406,13 @@ describe('runGraphValueStream', () => {
       requestId: 'request-1',
     });
     expect(graph.getState).toHaveBeenCalledTimes(1);
-    expect(loggerWarnMock).toHaveBeenCalledWith(
+    expect(loggerInfoMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        recoveryReason: 'stream_error',
-        streamError: 'LangGraph emitted an interrupt sentinel instead of a terminal state chunk.',
+        recoveryReason: 'interrupt_sentinel',
       }),
       expect.stringContaining('Recovered interrupted graph state'),
     );
+    expect(loggerWarnMock).not.toHaveBeenCalled();
   });
 
   it('rethrows the original stream error when checkpoint recovery does not produce an interrupted graph state', async () => {
