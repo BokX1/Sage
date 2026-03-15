@@ -26,6 +26,7 @@
 
 ### Fixed
 - Runtime Retry and Continue buttons are now single-use at the interaction-session layer, so repeated clicks cannot trigger duplicate backend turns while Sage is still updating the source message.
+- Standardized Sage's user-facing failure and retry copy so runtime, interaction, and Pollinations key-verification errors now read as one clean message flow instead of awkward `Next:` fragments.
 
 ### Added
 
@@ -41,6 +42,8 @@
 - Added a dedicated `discord_voice` routed tool for live voice presence control so Sage can report voice status, join the invoker's current voice channel, and leave the active guild voice channel through normal chat turns.
 
 ### Changed
+- Sage no longer silently truncates agent context, model-facing tool payloads, attachment recall text, or routed-tool read results before provider submission; oversized requests now surface at the provider/runtime boundary instead of being compacted or clipped inside Sage.
+- Removed the leftover truncation compatibility surface that remained after that runtime change: hidden scrape/file-cache/output char caps, stale model-profile fields, and dead context-budgeting shims are now gone so the codebase matches the full-payload runtime contract.
 - Aligned Sage's runtime docs and capability prompt with the current LangGraph turn model: `AGENT_GRAPH_MAX_STEPS` is now documented as tool-capable assistant/model responses per continuation window, `AGENT_GRAPH_MAX_TOOL_CALLS_PER_STEP` is documented as the tool-call width of one response, and the prompt now explicitly teaches the model that multiple tool calls in one response still consume a single graph step.
 - Tightened Sage's LangGraph tool-loop contract so per-response tool-call overflow is now surfaced back to the model as explicit skipped tool results instead of being silently dropped, read-only execution no longer depends on synthetic assistant tool-call replay messages in checkpointed history, and the capability/docs surface now teaches the hard per-response width cap directly.
 - Standardized Sage's Discord runtime reply surfaces around shared Components V2 status cards: continuation, retry, and hard-failure replies now use the same Sage-facing copy and structured card layout, retry/continue button runs update the original runtime message in place instead of posting a separate follow-up, and the LangGraph `llm_call` node now shares one model-resolution path plus a conservative transient retry policy for upstream hiccups.

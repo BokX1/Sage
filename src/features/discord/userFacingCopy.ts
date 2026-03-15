@@ -1,17 +1,24 @@
+function joinFlow(parts: string[]): string {
+  return parts
+    .map((part) => part.trim())
+    .filter((part) => part.length > 0)
+    .join(' ');
+}
+
 export function buildInteractionFailureText(): string {
-  return [
+  return joinFlow([
     'Sage hit a snag while I was handling that action.',
-    'Next: try that button or form again.',
+    'Try that button or form again.',
     'If it keeps happening, ask me to open a fresh flow here.',
-  ].join(' ');
+  ]);
 }
 
 export function buildMessageFailureText(): string {
-  return [
+  return joinFlow([
     'Sage hit a snag before I could finish that reply.',
-    'Next: try again.',
+    'Try again.',
     'If it keeps happening, send a fresh message and I will start over from there.',
-  ].join(' ');
+  ]);
 }
 
 export function buildExpiredInteractionText(kind: 'button' | 'form'): string {

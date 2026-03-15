@@ -425,7 +425,7 @@ describe('interactiveSage delivery', () => {
       expiresAt: new Date('2026-03-14T00:00:00.000Z'),
     });
     generateChatReplyMock.mockResolvedValue({
-      replyText: 'The model behind Sage stopped responding before I could finish that reply. Next: press Retry if it shows up, or send me that request again.',
+      replyText: 'The model behind Sage stopped responding before I could finish that reply. Press Retry if it shows up, or send me that request again.',
       delivery: 'chat_reply',
       meta: {
         retry: {
@@ -475,7 +475,7 @@ describe('interactiveSage delivery', () => {
             components: expect.arrayContaining([
               expect.objectContaining({
                 content:
-                  'The model behind Sage stopped responding before I could finish that reply. Next: press Retry if it shows up, or send me that request again.',
+                  'The model behind Sage stopped responding before I could finish that reply. Press Retry if it shows up, or send me that request again.',
               }),
               expect.objectContaining({
                 type: 1,

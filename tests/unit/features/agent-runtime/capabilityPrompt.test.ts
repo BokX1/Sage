@@ -167,7 +167,6 @@ describe('capabilityPrompt', () => {
         autopilotMode: null,
         graphLimits: {
           maxRounds: 6,
-          maxCallsPerRound: 5,
         },
       });
       const fullPrompt = buildCapabilityPromptSection({
@@ -196,7 +195,6 @@ describe('capabilityPrompt', () => {
         autopilotMode: null,
         graphLimits: {
           maxRounds: 6,
-          maxCallsPerRound: 5,
         },
       });
 
@@ -244,7 +242,6 @@ describe('capabilityPrompt', () => {
         autopilotMode: 'reserved',
         graphLimits: {
           maxRounds: 6,
-          maxCallsPerRound: 5,
         },
       });
 
@@ -255,7 +252,6 @@ describe('capabilityPrompt', () => {
       expect(stateBlock).toContain('"turn_mode": "voice"');
       expect(stateBlock).toContain('"autopilot_mode": "reserved"');
       expect(stateBlock).toContain('"max_steps": 6');
-      expect(stateBlock).toContain('"max_tool_calls_per_step": 5');
       expect(stateBlock).not.toContain('"parallel_read_only_tools"');
       expect(stateBlock).not.toContain('"max_parallel_read_only_tools"');
     });

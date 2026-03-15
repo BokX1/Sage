@@ -38,13 +38,11 @@ describe('env embedding dimension guard', () => {
     });
   });
 
-  it('uses lean defaults for tool result and scrape char caps', async () => {
+  it('uses the scrape timeout default when not provided', async () => {
     await withEnv({ NODE_ENV: 'test' }, async () => {
-      delete process.env.AGENT_GRAPH_MAX_RESULT_CHARS;
-      delete process.env.TOOL_WEB_SCRAPE_MAX_CHARS;
+      delete process.env.TOOL_WEB_SCRAPE_TIMEOUT_MS;
       const envModule = await importFresh(() => import('@/platform/config/env'));
-      expect(envModule.config.AGENT_GRAPH_MAX_RESULT_CHARS).toBe(8000);
-      expect(envModule.config.TOOL_WEB_SCRAPE_MAX_CHARS).toBe(20000);
+      expect(envModule.config.TOOL_WEB_SCRAPE_TIMEOUT_MS).toBe(45000);
     });
   });
 
@@ -76,13 +74,11 @@ describe('env embedding dimension guard', () => {
         AI_PROVIDER_MAIN_AGENT_MODEL: 'test-main-agent-model',
         CONTEXT_MAX_INPUT_TOKENS: '16000',
         CONTEXT_RESERVED_OUTPUT_TOKENS: '4000',
-        CONTEXT_BLOCK_MAX_TOKENS_TRANSCRIPT: '4000',
       },
       async () => {
         const envModule = await importFresh(() => import('@/platform/config/env'));
         expect(envModule.config.CONTEXT_MAX_INPUT_TOKENS).toBe(16000);
         expect(envModule.config.CONTEXT_RESERVED_OUTPUT_TOKENS).toBe(4000);
-        expect(envModule.config.CONTEXT_BLOCK_MAX_TOKENS_TRANSCRIPT).toBe(4000);
       },
     );
   });

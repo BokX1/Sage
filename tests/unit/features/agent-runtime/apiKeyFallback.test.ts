@@ -16,7 +16,6 @@ const mockConfig = vi.hoisted(() => ({
   AGENT_GRAPH_MAX_OUTPUT_TOKENS: 800,
   AGENT_GRAPH_GITHUB_GROUNDED_MODE: false,
   CONTEXT_TRANSCRIPT_MAX_MESSAGES: 5,
-  CONTEXT_TRANSCRIPT_MAX_CHARS: 2000,
   AUTOPILOT_MODE: null,
 }));
 
@@ -114,7 +113,6 @@ function makeGraphResult(overrides: Partial<Awaited<ReturnType<typeof mockRunAge
     completedWindows: 0,
     totalRoundsCompleted: 0,
     deduplicatedCallCount: 0,
-    truncatedCallCount: 0,
     roundEvents: [],
     finalization: {
       attempted: false,

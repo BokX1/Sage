@@ -31,8 +31,6 @@ const activeSessions = new Map<string, ActiveSession>();
 
 const MAX_UTTERANCES_PER_SESSION = 2000;
 const DEFAULT_VOICE_LIVE_CONTEXT_LOOKBACK_SEC = 0;
-const DEFAULT_VOICE_LIVE_CONTEXT_MAX_CHARS = 200;
-const DEFAULT_VOICE_LIVE_CONTEXT_MAX_UTTERANCES = 5;
 
 export function startVoiceConversationSession(params: {
   guildId: string;
@@ -104,28 +102,12 @@ export function formatLiveVoiceContext(params: {
   const recent = session.utterances.filter((u) => u.at.getTime() >= cutoffMs);
   if (recent.length === 0) return null;
 
-  const maxChars = normalizeAtLeastInt(
-    config.VOICE_LIVE_CONTEXT_MAX_CHARS as number | undefined,
-    DEFAULT_VOICE_LIVE_CONTEXT_MAX_CHARS,
-    200,
-  );
-  const maxUtterances = normalizeAtLeastInt(
-    config.VOICE_LIVE_CONTEXT_MAX_UTTERANCES as number | undefined,
-    DEFAULT_VOICE_LIVE_CONTEXT_MAX_UTTERANCES,
-    5,
-  );
-
   const header = `Live voice transcript context (last ~${Math.round(lookbackMs / 1000)}s, most recent last):`;
   const lines: string[] = [header];
-
-  let total = header.length;
-  const slice = recent.length > maxUtterances ? recent.slice(recent.length - maxUtterances) : recent;
-  for (const utterance of slice) {
+  for (const utterance of recent) {
     const ts = utterance.at.toISOString();
     const line = `- [${ts}] ${formatSpeakerLabel(utterance)}: ${utterance.text}`;
-    if (total + 1 + line.length > maxChars) break;
     lines.push(line);
-    total += 1 + line.length;
   }
 
   if (lines.length === 1) return null;

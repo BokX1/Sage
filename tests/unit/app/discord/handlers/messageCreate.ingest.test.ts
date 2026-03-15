@@ -426,7 +426,7 @@ describe('messageCreate - ingest + reply gating', () => {
 
   it('attaches a Retry button when the runtime returns retry metadata', async () => {
     mockGenerateChatReply.mockResolvedValueOnce({
-      replyText: 'The model behind Sage stopped responding before I could finish that reply. Next: press Retry if it shows up, or send me that request again.',
+      replyText: 'The model behind Sage stopped responding before I could finish that reply. Press Retry if it shows up, or send me that request again.',
       delivery: 'chat_reply',
       meta: {
         retry: {
@@ -463,7 +463,7 @@ describe('messageCreate - ingest + reply gating', () => {
             components: expect.arrayContaining([
               expect.objectContaining({
                 content:
-                  'The model behind Sage stopped responding before I could finish that reply. Next: press Retry if it shows up, or send me that request again.',
+                  'The model behind Sage stopped responding before I could finish that reply. Press Retry if it shows up, or send me that request again.',
               }),
               expect.objectContaining({
                 type: 1,

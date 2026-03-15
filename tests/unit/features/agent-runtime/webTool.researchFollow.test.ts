@@ -44,14 +44,12 @@ describe('webTool research followLinks', () => {
         url: 'https://example.com/source',
         title: 'Source',
         content: 'See https://example.com/linked1 and https://example.com/linked2',
-        truncated: false,
       })
       .mockResolvedValueOnce({
         provider: 'raw_fetch',
         url: 'https://example.com/linked1',
         title: 'Linked 1',
         content: 'Linked content',
-        truncated: false,
       });
 
     const registry = new ToolRegistry();

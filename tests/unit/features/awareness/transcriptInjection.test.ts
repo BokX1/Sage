@@ -4,17 +4,9 @@ import type { CurrentTurnContext } from '@/features/agent-runtime/continuityCont
 
 const mockConfig = vi.hoisted(() => ({
   CONTEXT_TRANSCRIPT_MAX_MESSAGES: 6,
-  CONTEXT_TRANSCRIPT_MAX_CHARS: 2_000,
-  CONTEXT_BLOCK_MAX_TOKENS_TRANSCRIPT: 4_000,
-  CONTEXT_BLOCK_MAX_TOKENS_ROLLING_SUMMARY: 2_000,
-  CONTEXT_BLOCK_MAX_TOKENS_PROFILE_SUMMARY: 2_000,
-  CONTEXT_BLOCK_MAX_TOKENS_MEMORY: 2_000,
-  CONTEXT_BLOCK_MAX_TOKENS_REPLY_CONTEXT: 1_000,
-  CONTEXT_BLOCK_MAX_TOKENS_PROVIDERS: 2_000,
   CONTEXT_USER_MAX_TOKENS: 8_000,
   CONTEXT_MAX_INPUT_TOKENS: 16_000,
   CONTEXT_RESERVED_OUTPUT_TOKENS: 4_000,
-  CONTEXT_TRUNCATION_NOTICE: true,
   AUTOPILOT_MODE: 'manual',
   RAW_MESSAGE_TTL_DAYS: 3,
   RING_BUFFER_MAX_MESSAGES_PER_CHANNEL: 200,
@@ -140,7 +132,6 @@ describe('transcript injection', () => {
       completedWindows: 0,
       totalRoundsCompleted: 0,
       deduplicatedCallCount: 0,
-      truncatedCallCount: 0,
       guardrailBlockedCallCount: 0,
       roundEvents: [],
       finalization: {

@@ -241,7 +241,6 @@ const stackOverflowSearchTool: ToolDefinition<{
   maxResults?: number;
   tagged?: string;
   includeAcceptedAnswer?: boolean;
-  maxAcceptedAnswerChars?: number;
 }> = {
   name: 'stack_overflow_search',
   description:
@@ -251,16 +250,14 @@ const stackOverflowSearchTool: ToolDefinition<{
     maxResults: z.number().int().min(1).max(15).optional(),
     tagged: z.string().trim().min(1).max(120).optional(),
     includeAcceptedAnswer: z.boolean().optional().describe('If true, fetch the accepted answer body for the top accepted match (when available).'),
-    maxAcceptedAnswerChars: z.number().int().min(500).max(20_000).optional().describe('Maximum chars for the accepted answer body (when includeAcceptedAnswer=true).'),
   }),
   metadata: { readOnly: true },
-  execute: async ({ query, maxResults, tagged, includeAcceptedAnswer, maxAcceptedAnswerChars }) => {
+  execute: async ({ query, maxResults, tagged, includeAcceptedAnswer }) => {
     return searchStackOverflow({
       query,
       maxResults,
       tagged,
       includeAcceptedAnswer,
-      maxAcceptedAnswerChars,
     });
   },
 };

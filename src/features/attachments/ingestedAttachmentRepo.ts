@@ -7,7 +7,6 @@ export type IngestedAttachmentStatus =
   | 'queued'
   | 'processing'
   | 'ok'
-  | 'truncated'
   | 'too_large'
   | 'error'
   | 'skip';
@@ -190,7 +189,6 @@ function rankLookupHit(params: {
   if (query && rowFilename.includes(query)) score += 30;
   if (query && params.row.messageId.toLowerCase().includes(query)) score += 20;
   if (params.row.status === 'ok') score += 15;
-  if (params.row.status === 'truncated') score += 10;
 
   return score;
 }

@@ -19,7 +19,7 @@ import type { RunnableConfig } from '@langchain/core/runnables';
 import { z } from 'zod';
 import { PostgresSaver } from '@langchain/langgraph-checkpoint-postgres';
 import { getModelBudgetConfig } from '../../../platform/llm/model-budget-config';
-import { planBudget, trimMessagesToBudget } from '../../../platform/llm/context-budgeter';
+import { estimateMessagesTokens, planBudget } from '../../../platform/llm/context-budgeter';
 import { AiProviderChatModel } from '../../../platform/llm/ai-provider-chat-model';
 import {
   extractMessageText,
@@ -118,7 +118,6 @@ const ToolCallRoundEventSchema = z.object({
   requestedCallCount: z.number(),
   executedCallCount: z.number(),
   deduplicatedCallCount: z.number(),
-  truncatedCallCount: z.number(),
   completedAt: z.string(),
   rebudgeting: GraphRebudgetEventSchema.optional(),
 });
@@ -242,9 +241,6 @@ const AgentGraphStateSchema = new StateSchema({
   deduplicatedCallCount: new ReducedValue(z.number().default(0), {
     reducer: (left, right) => left + right,
   }),
-  truncatedCallCount: new ReducedValue(z.number().default(0), {
-    reducer: (left, right) => left + right,
-  }),
   roundEvents: new ReducedValue(z.array(ToolCallRoundEventSchema).default([]), {
     reducer: (left, right) => [...left, ...right],
   }),
@@ -330,7 +326,6 @@ export interface AgentGraphTurnResult {
   completedWindows: number;
   totalRoundsCompleted: number;
   deduplicatedCallCount: number;
-  truncatedCallCount: number;
   roundEvents: ToolCallRoundEvent[];
   finalization: ToolCallFinalizationEvent;
   terminationReason: GraphTurnTerminationReason;
@@ -502,7 +497,6 @@ async function buildWindowCloseoutSummary(params: {
       activeToolNames: [],
       toolContext: params.toolContext,
       timeoutMs: params.graphConfig.toolTimeoutMs,
-      maxResultChars: params.graphConfig.maxResultChars,
       model: params.runtimeContext.model,
       apiKey: params.runtimeContext.apiKey,
       temperature: WINDOW_CLOSEOUT_TEMPERATURE,
@@ -636,7 +630,6 @@ function normalizeGraphResult(
     completedWindows: state.completedWindows,
     totalRoundsCompleted: state.totalRoundsCompleted,
     deduplicatedCallCount: state.deduplicatedCallCount,
-    truncatedCallCount: state.truncatedCallCount,
     roundEvents: state.roundEvents,
     finalization: state.finalization,
     terminationReason: state.terminationReason,
@@ -658,29 +651,22 @@ function buildRebudgetingEvent(
   const budgetPlan = planBudget(modelConfig, {
     reservedOutputTokens: maxTokens ?? modelConfig.maxOutputTokens,
   });
-  const { trimmed, stats } = trimMessagesToBudget(preparedMessages, budgetPlan, {
-    keepSystemMessages: true,
-    keepLastUserTurns: 4,
-    visionFadeKeepLastUserImages: modelConfig.visionFadeKeepLastUserImages,
-    attachmentTextMaxTokens: modelConfig.attachmentTextMaxTokens,
-    estimator: modelConfig.estimation,
-    visionEnabled: modelConfig.visionEnabled,
-  });
+  const estimatedTokens = estimateMessagesTokens(preparedMessages, modelConfig.estimation);
 
   return {
-    trimmedMessages: toLangChainMessages(trimmed),
+    trimmedMessages: toLangChainMessages(preparedMessages),
     rebudgeting: {
-      beforeCount: stats.beforeCount,
-      afterCount: stats.afterCount,
-      estimatedTokensBefore: stats.estimatedTokensBefore,
-      estimatedTokensAfter: stats.estimatedTokensAfter,
+      beforeCount: preparedMessages.length,
+      afterCount: preparedMessages.length,
+      estimatedTokensBefore: estimatedTokens,
+      estimatedTokensAfter: estimatedTokens,
       availableInputTokens: budgetPlan.availableInputTokens,
       reservedOutputTokens: budgetPlan.reservedOutputTokens,
-      notes: [...stats.notes],
-      trimmed:
-        stats.beforeCount !== stats.afterCount ||
-        stats.estimatedTokensBefore !== stats.estimatedTokensAfter ||
-        stats.notes.length > 0,
+      notes:
+        estimatedTokens > budgetPlan.availableInputTokens
+          ? ['Sage no longer re-budgets graph messages before provider calls; overflow is deferred to the provider/runtime boundary.']
+          : [],
+      trimmed: false,
     },
   };
 }
@@ -742,7 +728,6 @@ interface DurableModelInvokeInput {
   activeToolNames: string[];
   toolContext: ToolExecutionContext;
   timeoutMs: number;
-  maxResultChars: number;
   model?: string;
   apiKey?: string;
   temperature: number;
@@ -799,7 +784,6 @@ const invokeAgentModelTask = task(
             activeToolNames: input.activeToolNames,
             context: input.toolContext,
             timeoutMs: input.timeoutMs,
-            maxResultChars: input.maxResultChars,
           })
         : null;
     const runnable =
@@ -1046,21 +1030,6 @@ function buildToolMessageFromOutcome(params: {
   });
 }
 
-function buildOverflowToolOutcome(params: {
-  toolName: string;
-  maxToolCallsPerStep: number;
-}): SerializedToolResult {
-  return {
-    name: params.toolName,
-    success: false,
-    error:
-      `This tool call was not executed because Sage only runs up to ${params.maxToolCallsPerStep} ` +
-      'tool calls from one assistant response. Continue in the next model response if this call is still needed.',
-    errorType: 'validation',
-    latencyMs: 0,
-  };
-}
-
 function resolveContinueResumeNode(state: AgentGraphState): 'llm_call' | 'route_tool_phase' {
   const lastMessage = state.messages.at(-1);
   if (lastMessage && AIMessage.isInstance(lastMessage) && (lastMessage.tool_calls?.length ?? 0) > 0) {
@@ -1090,7 +1059,6 @@ function buildReadToolsNode(graphConfig: AgentGraphConfig) {
       activeToolNames: runtimeContext.activeToolNames,
       context: toolContext,
       timeoutMs: graphConfig.toolTimeoutMs,
-      maxResultChars: graphConfig.maxResultChars,
     });
     const batchMessage = new AIMessage({
       content: '',
@@ -1180,7 +1148,6 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
       activeToolNames: toolsEnabled ? runtimeContext.activeToolNames : [],
       toolContext,
       timeoutMs: graphConfig.toolTimeoutMs,
-      maxResultChars: graphConfig.maxResultChars,
       model: runtimeContext.model,
       apiKey: runtimeContext.apiKey,
       temperature: runtimeContext.temperature,
@@ -1251,16 +1218,13 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
       activeToolNames: runtimeContext.activeToolNames,
       context: toolContext,
       timeoutMs: graphConfig.toolTimeoutMs,
-      maxResultChars: graphConfig.maxResultChars,
     });
 
     const requestedCallCount = toolCalls.length;
-    const effectiveCalls = toolCalls.slice(0, graphConfig.maxToolCallsPerStep);
-    const truncatedCallCount = Math.max(0, requestedCallCount - effectiveCalls.length);
     const readBatch: GraphToolCallDescriptor[] = [];
     const pendingWriteCalls: GraphToolCallDescriptor[] = [];
 
-    for (const call of effectiveCalls) {
+    for (const call of toolCalls) {
       const serializedCall: GraphToolCallDescriptor = {
         id: call.id,
         name: call.name,
@@ -1279,29 +1243,7 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
 
       pendingWriteCalls.push(serializedCall);
     }
-    const overflowCalls = toolCalls.slice(graphConfig.maxToolCallsPerStep);
-    const overflowResults = overflowCalls.map((call) =>
-      buildOverflowToolOutcome({
-        toolName: call.name,
-        maxToolCallsPerStep: graphConfig.maxToolCallsPerStep,
-      }),
-    );
-    const overflowMessages = overflowCalls.map((call, index) =>
-      buildToolMessageFromOutcome({
-        toolName: call.name,
-        callId: call.id,
-        content: JSON.stringify({
-          skipped: true,
-          reason: 'tool_call_limit_exceeded',
-          maxToolCallsPerStep: graphConfig.maxToolCallsPerStep,
-        }),
-        result: overflowResults[index]!,
-        files: [],
-        status: 'error',
-      }),
-    );
-
-    const executedAny = readBatch.length > 0 || pendingWriteCalls.length > 0 || overflowMessages.length > 0;
+    const executedAny = readBatch.length > 0 || pendingWriteCalls.length > 0;
 
     return new Command({
       goto:
@@ -1311,19 +1253,15 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
             ? 'approval_gate'
             : 'llm_call',
       update: {
-        messages: overflowMessages,
         pendingReadCalls: readBatch,
         pendingWriteCalls,
         deduplicatedCallCount: 0,
-        truncatedCallCount,
-        toolResults: overflowResults,
         roundEvents: executedAny
           ? [
               await buildExecutionEvent(state, {
                 requestedCallCount,
-                executedCallCount: readBatch.length + pendingWriteCalls.length,
+                executedCallCount: requestedCallCount,
                 deduplicatedCallCount: 0,
-                truncatedCallCount,
               }),
             ]
           : [],
@@ -1457,7 +1395,6 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
       call: currentWriteCall,
       context: turnToolContext,
       timeoutMs: graphConfig.toolTimeoutMs,
-      maxResultChars: graphConfig.maxResultChars,
     });
 
     if (outcome.kind === 'approval_required') {
@@ -1709,7 +1646,6 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
         reviewerId: decision.reviewerId ?? null,
         decisionReasonText: decision.decisionReasonText ?? null,
         resumeTraceId: resume.resumeTraceId ?? null,
-        maxResultChars: graphConfig.maxResultChars,
       });
       consumedDurationMs += executed.result.latencyMs ?? 0;
       toolMessages.push(
@@ -2146,7 +2082,6 @@ function buildInitialState(params: StartAgentGraphTurnParams): AgentGraphState {
     completedWindows: 0,
     totalRoundsCompleted: 0,
     deduplicatedCallCount: 0,
-    truncatedCallCount: 0,
     roundEvents: [],
     finalization: {
       attempted: false,
@@ -2190,7 +2125,6 @@ function buildSeededGraphState(params: {
     completedWindows: 0,
     totalRoundsCompleted: 0,
     deduplicatedCallCount: 0,
-    truncatedCallCount: 0,
     roundEvents: [],
     finalization: {
       attempted: false,

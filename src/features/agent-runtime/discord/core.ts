@@ -834,70 +834,60 @@ export async function executeDiscordContextAction(
     case 'get_user_profile': {
       const data = asAction<{
         userId?: string;
-        maxChars?: number;
         maxItemsPerSection?: number;
       }>(args);
       return lookupUserMemory({
         userId: data.userId?.trim() || ctx.userId,
-        maxChars: data.maxChars,
         maxItemsPerSection: data.maxItemsPerSection,
       });
     }
     case 'get_channel_summary': {
       const data = asAction<{
-        maxChars?: number;
         maxItemsPerList?: number;
         maxRecentFiles?: number;
       }>(args);
       return lookupChannelMemory({
         guildId: ctx.guildId ?? null,
         channelId: ctx.channelId,
-        maxChars: data.maxChars,
         maxItemsPerList: data.maxItemsPerList,
         maxRecentFiles: data.maxRecentFiles,
       });
     }
     case 'search_channel_summary_archives': {
-      const data = asAction<{ query: string; topK?: number; maxChars?: number }>(args);
+      const data = asAction<{ query: string; topK?: number }>(args);
       return searchChannelArchives({
         guildId: ctx.guildId ?? null,
         channelId: ctx.channelId,
         query: data.query,
         topK: data.topK,
-        maxChars: data.maxChars,
       });
     }
     case 'get_server_instructions': {
-      const data = asAction<{ maxChars?: number }>(args);
       return lookupGuildSagePersonaForTool({
         guildId: requireGuildContext(ctx.guildId),
-        maxChars: data.maxChars,
       });
     }
     case 'get_social_graph': {
-      const data = asAction<{ userId?: string; maxEdges?: number; maxChars?: number }>(args);
+      const data = asAction<{ userId?: string; maxEdges?: number }>(args);
       return lookupSocialGraph({
         guildId: ctx.guildId ?? null,
         userId: data.userId?.trim() || ctx.userId,
         maxEdges: data.maxEdges,
-        maxChars: data.maxChars,
       });
     }
     case 'get_top_relationships': {
-      const data = asAction<{ limit?: number; maxChars?: number }>(args);
+      const data = asAction<{ limit?: number }>(args);
       assertNotAutopilot(ctx.invokedBy, 'get_top_relationships');
       return lookupTopSocialGraphEdges({
         guildId: ctx.guildId ?? null,
         limit: data.limit,
-        maxChars: data.maxChars,
       });
     }
     case 'get_voice_analytics': {
-      const data = asAction<{ userId?: string; maxChars?: number }>(args);
+      const data = asAction<{ userId?: string }>(args);
       return lookupVoiceAnalytics({
         guildId: ctx.guildId ?? null,
         userId: data.userId?.trim() || ctx.userId,
-        maxChars: data.maxChars,
       });
     }
     case 'get_voice_summaries': {
@@ -905,14 +895,12 @@ export async function executeDiscordContextAction(
         voiceChannelId?: string;
         sinceHours?: number;
         limit?: number;
-        maxChars?: number;
       }>(args);
       return lookupVoiceSessionSummaries({
         guildId: ctx.guildId ?? null,
         voiceChannelId: data.voiceChannelId?.trim() || undefined,
         sinceHours: data.sinceHours,
         limit: data.limit,
-        maxChars: data.maxChars,
       });
     }
     default:
@@ -932,7 +920,6 @@ export async function executeDiscordFilesAction(
         filename?: string;
         limit?: number;
         includeContent?: boolean;
-        maxChars?: number;
       }>(args);
       return lookupChannelFileCache({
         guildId: ctx.guildId ?? null,
@@ -942,7 +929,6 @@ export async function executeDiscordFilesAction(
         filename: data.filename,
         limit: data.limit,
         includeContent: data.includeContent,
-        maxChars: data.maxChars,
       });
     }
     case 'list_server': {
@@ -952,7 +938,6 @@ export async function executeDiscordFilesAction(
         filename?: string;
         limit?: number;
         includeContent?: boolean;
-        maxChars?: number;
       }>(args);
       assertNotAutopilot(ctx.invokedBy, 'list_server');
       return lookupServerFileCache({
@@ -963,39 +948,35 @@ export async function executeDiscordFilesAction(
         filename: data.filename,
         limit: data.limit,
         includeContent: data.includeContent,
-        maxChars: data.maxChars,
       });
     }
     case 'find_channel': {
-      const data = asAction<{ query: string; topK?: number; maxChars?: number }>(args);
+      const data = asAction<{ query: string; topK?: number }>(args);
       return searchAttachmentChunksInChannel({
         guildId: ctx.guildId ?? null,
         channelId: ctx.channelId,
         query: data.query,
         topK: data.topK,
-        maxChars: data.maxChars,
       });
     }
     case 'find_server': {
-      const data = asAction<{ query: string; topK?: number; maxChars?: number }>(args);
+      const data = asAction<{ query: string; topK?: number }>(args);
       assertNotAutopilot(ctx.invokedBy, 'find_server');
       return searchAttachmentChunksInGuild({
         guildId: ctx.guildId ?? null,
         requesterUserId: ctx.userId,
         query: data.query,
         topK: data.topK,
-        maxChars: data.maxChars,
       });
     }
     case 'read_attachment': {
-      const data = asAction<{ attachmentId: string; startChar?: number; maxChars?: number }>(args);
+      const data = asAction<{ attachmentId: string; startChar?: number }>(args);
       assertNotAutopilot(ctx.invokedBy, 'read_attachment');
       return readIngestedAttachmentText({
         guildId: ctx.guildId ?? null,
         requesterUserId: ctx.userId,
         attachmentId: data.attachmentId,
         startChar: data.startChar,
-        maxChars: data.maxChars,
       });
     }
     case 'send_attachment': {
@@ -1005,7 +986,6 @@ export async function executeDiscordFilesAction(
         content?: string;
         reason?: string;
         startChar?: number;
-        maxChars?: number;
       }>(args);
       assertNotAutopilot(ctx.invokedBy, 'send_attachment');
       return sendCachedAttachment({
@@ -1018,7 +998,6 @@ export async function executeDiscordFilesAction(
         content: data.content,
         reason: data.reason,
         startChar: data.startChar,
-        maxChars: data.maxChars,
       });
     }
     default:
@@ -1484,7 +1463,6 @@ export async function executeDiscordMessagesAction(
         channelId?: string;
         query: string;
         topK?: number;
-        maxChars?: number;
         mode?: 'hybrid' | 'semantic' | 'lexical' | 'regex';
         regexPattern?: string;
         sinceIso?: string;
@@ -1502,7 +1480,6 @@ export async function executeDiscordMessagesAction(
         requesterUserId: ctx.userId,
         query: data.query,
         topK: data.topK,
-        maxChars: data.maxChars,
         mode: data.mode,
         regexPattern: data.regexPattern,
         sinceIso: deriveSinceIso(data),
@@ -1514,7 +1491,6 @@ export async function executeDiscordMessagesAction(
         channelId?: string;
         query: string;
         topK?: number;
-        maxChars?: number;
         mode?: 'hybrid' | 'semantic' | 'lexical' | 'regex';
         regexPattern?: string;
         sinceIso?: string;
@@ -1523,7 +1499,6 @@ export async function executeDiscordMessagesAction(
         sinceDays?: number;
         before?: number;
         after?: number;
-        contextMaxChars?: number;
       }>(args);
       const targetChannelId = (data.channelId?.trim() || ctx.channelId).trim();
       if (ctx.invokedBy === 'autopilot' && targetChannelId !== ctx.channelId) {
@@ -1535,7 +1510,6 @@ export async function executeDiscordMessagesAction(
         requesterUserId: ctx.userId,
         query: data.query,
         topK: data.topK,
-        maxChars: data.maxChars,
         mode: data.mode,
         regexPattern: data.regexPattern,
         sinceIso: deriveSinceIso(data),
@@ -1562,7 +1536,6 @@ export async function executeDiscordMessagesAction(
         messageId: bestMessageId,
         before: data.before ?? 5,
         after: data.after ?? 5,
-        maxChars: data.contextMaxChars ?? data.maxChars,
       });
 
       return {
@@ -1580,7 +1553,6 @@ export async function executeDiscordMessagesAction(
         messageId: string;
         before?: number;
         after?: number;
-        maxChars?: number;
       }>(args);
       const targetChannelId = (data.channelId?.trim() || ctx.channelId).trim();
       if (ctx.invokedBy === 'autopilot' && targetChannelId !== ctx.channelId) {
@@ -1593,14 +1565,12 @@ export async function executeDiscordMessagesAction(
         messageId: data.messageId,
         before: data.before,
         after: data.after,
-        maxChars: data.maxChars,
       });
     }
     case 'search_guild': {
       const data = asAction<{
         query: string;
         topK?: number;
-        maxChars?: number;
         mode?: 'hybrid' | 'semantic' | 'lexical' | 'regex';
         regexPattern?: string;
         sinceIso?: string;
@@ -1614,7 +1584,6 @@ export async function executeDiscordMessagesAction(
         requesterUserId: ctx.userId,
         query: data.query,
         topK: data.topK,
-        maxChars: data.maxChars,
         mode: data.mode,
         regexPattern: data.regexPattern,
         sinceIso: deriveSinceIso(data),
@@ -1625,7 +1594,6 @@ export async function executeDiscordMessagesAction(
       const data = asAction<{
         userId?: string;
         limit?: number;
-        maxChars?: number;
         sinceIso?: string;
         untilIso?: string;
         sinceHours?: number;
@@ -1637,7 +1605,6 @@ export async function executeDiscordMessagesAction(
         requesterUserId: ctx.userId,
         userId: data.userId?.trim() || ctx.userId,
         limit: data.limit,
-        maxChars: data.maxChars,
         sinceIso: deriveSinceIso(data),
         untilIso: data.untilIso,
       });

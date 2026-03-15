@@ -112,7 +112,6 @@ const githubToolSchema = z.discriminatedUnion('action', [
       .refine((value) => !value.includes('..'), 'path must not contain ".." segments')
       .describe('The precise file path within the repository.'),
     ref: z.string().trim().min(1).max(120).optional(),
-    maxChars: z.number().int().min(500).max(50_000).optional(),
     startLine: z.number().int().min(1).max(2_000_000).optional(),
     endLine: z.number().int().min(1).max(2_000_000).optional(),
     includeLineNumbers: z.boolean().optional(),
@@ -147,7 +146,6 @@ const githubToolSchema = z.discriminatedUnion('action', [
       .refine((value) => !value.includes('..'), 'path must not contain ".." segments')
       .describe('The precise file path within the repository.'),
     ref: z.string().trim().min(1).max(120).optional(),
-    maxChars: z.number().int().min(500).max(50_000).optional(),
     startLine: z.number().int().min(1).max(2_000_000).optional(),
     maxLines: z.number().int().min(1).max(800).optional(),
     includeLineNumbers: z.boolean().optional(),
@@ -164,7 +162,6 @@ const githubToolSchema = z.discriminatedUnion('action', [
       .refine((value) => !value.includes('..'), 'path must not contain ".." segments')
       .describe('The precise file path within the repository.'),
     ref: z.string().trim().min(1).max(120).optional(),
-    maxChars: z.number().int().min(500).max(50_000).optional(),
     ranges: z.array(githubFileRangeSchema).min(1).max(6),
     includeLineNumbers: z.boolean().optional(),
   }),
@@ -183,7 +180,6 @@ const githubToolSchema = z.discriminatedUnion('action', [
     lineNumber: z.number().int().min(1).max(2_000_000),
     before: z.number().int().min(0).max(200).optional(),
     after: z.number().int().min(0).max(200).optional(),
-    maxChars: z.number().int().min(500).max(50_000).optional(),
     includeLineNumbers: z.boolean().optional(),
   }),
 
@@ -274,7 +270,6 @@ export const githubTool: ToolDefinition<z.infer<typeof githubToolSchema>> = {
           repo,
           path: args.path,
           ref: args.ref,
-          maxChars: args.maxChars,
           startLine: args.startLine,
           endLine: args.endLine,
           includeLineNumbers: args.includeLineNumbers,
@@ -291,7 +286,6 @@ export const githubTool: ToolDefinition<z.infer<typeof githubToolSchema>> = {
           repo,
           path: args.path,
           ref: args.ref,
-          maxChars: args.maxChars,
           startLine,
           endLine,
           includeLineNumbers: args.includeLineNumbers ?? true,
@@ -326,7 +320,6 @@ export const githubTool: ToolDefinition<z.infer<typeof githubToolSchema>> = {
             repo,
             path: args.path,
             ref: args.ref,
-            maxChars: args.maxChars,
             startLine: range.startLine,
             endLine: range.endLine,
             includeLineNumbers: args.includeLineNumbers ?? true,
@@ -354,7 +347,6 @@ export const githubTool: ToolDefinition<z.infer<typeof githubToolSchema>> = {
           repo,
           path: args.path,
           ref: args.ref,
-          maxChars: args.maxChars,
           startLine,
           endLine,
           includeLineNumbers: args.includeLineNumbers ?? true,

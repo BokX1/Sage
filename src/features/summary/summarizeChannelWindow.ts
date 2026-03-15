@@ -423,7 +423,7 @@ function normalizeGlossary(value: unknown): Record<string, string> {
 
 function fallbackSummary(prompt: string, windowStart: Date, windowEnd: Date): StructuredSummary {
   const raw = prompt.replace(/\s+/g, ' ').trim();
-  const summaryText = raw.length > 500 ? raw.slice(0, 500) + '...' : raw;
+  const summaryText = raw;
 
   return {
     windowStart,

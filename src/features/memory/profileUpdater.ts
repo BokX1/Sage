@@ -174,7 +174,7 @@ export async function updateProfileSummary(params: {
         ),
       });
       const recentHistory =
-        buildTranscriptBlock(focusedHistoryMessages, 4000, {
+        buildTranscriptBlock(focusedHistoryMessages, {
           header:
             'Focused continuity history (chronological: top=oldest, bottom=newest). Prioritize the invoking user and direct reply-chain evidence over unrelated room chatter:',
           focusUserId: currentTurn.invokerUserId,

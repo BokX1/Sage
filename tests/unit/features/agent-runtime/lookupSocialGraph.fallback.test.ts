@@ -25,7 +25,6 @@ describe('lookupSocialGraph fallback behavior', () => {
       guildId: 'guild-1',
       userId: 'user-a',
       maxEdges: 5,
-      maxChars: 2_000,
     });
 
     const typedResult = result as Record<string, unknown>;

@@ -46,7 +46,6 @@ const webToolSchema = z.discriminatedUnion('action', [
       .url()
       .max(2_048)
       .refine((value) => /^https?:\/\//i.test(value), 'URL must start with http:// or https://'),
-    maxChars: z.number().int().min(500).max(50_000).optional(),
   }),
 
   z.object({
@@ -67,20 +66,6 @@ const webToolSchema = z.discriminatedUnion('action', [
       .optional()
       .describe('Continuation token from a previous web read.page call.'),
     startChar: z.number().int().min(0).max(50_000_000).optional(),
-    maxChars: z
-      .number()
-      .int()
-      .min(200)
-      .max(8_000)
-      .optional()
-      .describe('Maximum characters to return for this page.'),
-    fetchMaxChars: z
-      .number()
-      .int()
-      .min(500)
-      .max(50_000)
-      .optional()
-      .describe('Maximum characters to fetch/store on the initial call (bounded by TOOL_WEB_SCRAPE_MAX_CHARS).'),
   }),
 
   z.object({
@@ -97,7 +82,6 @@ const webToolSchema = z.discriminatedUnion('action', [
       .min(5)
       .max(1_000)
       .describe('Specific instructions for what data to extract or how to interpret the webpage.'),
-    maxChars: z.number().int().min(500).max(50_000).optional(),
   }),
 
   z.object({
@@ -108,7 +92,6 @@ const webToolSchema = z.discriminatedUnion('action', [
     depth: z.enum(['quick', 'balanced', 'deep']).optional(),
     maxResults: z.number().int().min(1).max(10).optional(),
     maxSources: z.number().int().min(1).max(5).optional(),
-    perSourceMaxChars: z.number().int().min(500).max(20_000).optional(),
     followLinks: z
       .boolean()
       .optional()
@@ -119,7 +102,6 @@ const webToolSchema = z.discriminatedUnion('action', [
       .boolean()
       .optional()
       .describe('If true (default), only follow links on the same domain as the source page.'),
-    perFollowMaxChars: z.number().int().min(500).max(10_000).optional(),
   }),
 ]);
 
@@ -184,7 +166,6 @@ export const webTool: ToolDefinition<z.infer<typeof webToolSchema>> = {
         }
         return scrapeWebPage({
           url: sanitizedUrl,
-          maxChars: args.maxChars,
           signal: ctx.signal,
         });
       }
@@ -197,8 +178,7 @@ export const webTool: ToolDefinition<z.infer<typeof webToolSchema>> = {
 
         const scopeKey = buildToolMemoScopeKey('web', ctx);
         const startChar = Math.max(0, Math.floor(args.startChar ?? 0));
-        const pageMaxChars = Math.max(200, Math.min(8_000, Math.floor(args.maxChars ?? 4_000)));
-        const fetchMaxChars = Math.max(500, Math.min(50_000, Math.floor(args.fetchMaxChars ?? 50_000)));
+        const pageMaxChars = 4_000;
 
         let contentId = args.contentId?.trim() || null;
         let entry = contentId ? globalPagedTextStore.get(contentId, scopeKey) : null;
@@ -207,7 +187,6 @@ export const webTool: ToolDefinition<z.infer<typeof webToolSchema>> = {
           const fetchedAtIso = new Date().toISOString();
           const extracted = await scrapeWebPage({
             url: sanitizedUrl,
-            maxChars: fetchMaxChars,
             signal: ctx.signal,
           });
           const extractedRecord = extracted && typeof extracted === 'object' && !Array.isArray(extracted)
@@ -219,7 +198,6 @@ export const webTool: ToolDefinition<z.infer<typeof webToolSchema>> = {
             url: sanitizedUrl,
             provider: typeof extractedRecord.provider === 'string' ? extractedRecord.provider : null,
             title: typeof extractedRecord.title === 'string' ? extractedRecord.title : null,
-            truncatedAtSource: extractedRecord.truncated === true,
             providersTried: Array.isArray(extractedRecord.providersTried) ? extractedRecord.providersTried : undefined,
             fetchedAtIso,
           });
@@ -240,9 +218,7 @@ export const webTool: ToolDefinition<z.infer<typeof webToolSchema>> = {
               hasMore: endChar < content.length,
               nextStartChar: endChar < content.length ? endChar : null,
               content: page,
-              truncatedAtSource: extractedRecord.truncated === true,
-              guidance:
-                'Paging store was unavailable for this page. Retry with a smaller fetchMaxChars or use web.read.',
+              guidance: 'Paging store was unavailable for this page. Retry later or use web.read.',
             };
           }
 
@@ -266,7 +242,6 @@ export const webTool: ToolDefinition<z.infer<typeof webToolSchema>> = {
           provider: typeof meta.provider === 'string' ? meta.provider : null,
           title: typeof meta.title === 'string' ? meta.title : null,
           fetchedAtIso: typeof meta.fetchedAtIso === 'string' ? meta.fetchedAtIso : null,
-          truncatedAtSource: meta.truncatedAtSource === true,
           startChar: boundedStart,
           maxChars: pageMaxChars,
           returnedChars: page.length,
@@ -289,21 +264,16 @@ export const webTool: ToolDefinition<z.infer<typeof webToolSchema>> = {
         return runAgenticWebScrape({
           url: sanitizedUrl,
           instruction: args.instruction,
-          maxChars: args.maxChars,
           signal: ctx.signal,
         });
       }
 
       case 'research': {
         const maxSources = args.maxSources ?? 3;
-        const perSourceMaxChars = args.perSourceMaxChars ?? 6_000;
         const followLinks = args.followLinks === true;
         const maxFollowedLinks = followLinks ? (args.maxFollowedLinks ?? 3) : 0;
         const maxFollowedLinksPerSource = followLinks ? (args.maxFollowedLinksPerSource ?? 1) : 0;
         const followSameDomainOnly = args.followSameDomainOnly !== false;
-        const perFollowMaxChars = followLinks
-          ? (args.perFollowMaxChars ?? Math.max(500, Math.min(3_000, perSourceMaxChars)))
-          : 0;
         const search = await runWebSearch({
           query: args.query,
           depth: args.depth ?? profile.depth,
@@ -330,7 +300,6 @@ export const webTool: ToolDefinition<z.infer<typeof webToolSchema>> = {
           try {
             const extracted = await scrapeWebPage({
               url: sanitizedUrl,
-              maxChars: perSourceMaxChars,
               signal: ctx.signal,
             });
             reads.push({
@@ -353,7 +322,6 @@ export const webTool: ToolDefinition<z.infer<typeof webToolSchema>> = {
         const payload: Record<string, unknown> = {
           ...search,
           maxSources,
-          perSourceMaxChars,
           sourcesRead: reads.length,
           sources: reads,
         };
@@ -420,7 +388,6 @@ export const webTool: ToolDefinition<z.infer<typeof webToolSchema>> = {
               try {
                 const extracted = await scrapeWebPage({
                   url: candidate,
-                  maxChars: perFollowMaxChars,
                   signal: ctx.signal,
                 });
                 followed.push({
@@ -445,7 +412,6 @@ export const webTool: ToolDefinition<z.infer<typeof webToolSchema>> = {
           payload.followSameDomainOnly = followSameDomainOnly;
           payload.maxFollowedLinks = maxFollowedLinks;
           payload.maxFollowedLinksPerSource = maxFollowedLinksPerSource;
-          payload.perFollowMaxChars = perFollowMaxChars;
           payload.followedCount = followed.length;
           payload.followed = followed;
           payload.followQueueCount = followQueue.length;

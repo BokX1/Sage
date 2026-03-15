@@ -21,7 +21,6 @@ import {
   appendAttachmentBlocksToText,
   buildAttachmentBlockFromResult,
   buildMessageContent,
-  deriveAttachmentBudget,
   extractVisibleMessageText,
   getMessageAttachments,
   isImageAttachment,
@@ -449,10 +448,6 @@ export async function handleMessageCreate(message: Message) {
       appConfig.VOICE_MESSAGE_STT_ENABLED &&
       message.flags?.has?.('IsVoiceMessage');
 
-    const attachmentBudget = deriveAttachmentBudget({
-      baseText: message.content ?? '',
-    });
-    let remainingAttachmentChars = attachmentBudget.maxChars;
     let remainingAttachmentBytes = perMessageMaxBytes;
     let queuedImageRecallWork = false;
 
@@ -488,22 +483,8 @@ export async function handleMessageCreate(message: Message) {
         continue;
       }
 
-      const attachmentsRemaining = Math.max(
-        1,
-        selectedAttachments.slice(index).filter((candidate) => !isImageAttachment(candidate)).length,
-      );
-      const maxChars = Math.floor(remainingAttachmentChars / attachmentsRemaining);
-      const headChars = Math.floor(maxChars * 0.7);
-      const tailChars = Math.max(0, maxChars - headChars);
-
       let attachmentResult: FetchAttachmentResult;
-      if (maxChars <= 0) {
-        attachmentResult = {
-          kind: 'too_large',
-          message: `[System: File '${attachmentName}' omitted due to context limits.]`,
-          extractor: 'none',
-        };
-      } else if (shouldTranscribeVoiceMessages) {
+      if (shouldTranscribeVoiceMessages) {
         const voiceMaxBytes = Math.max(
           0,
           Math.min(voiceSttMaxBytes, remainingAttachmentBytes, perFileMaxBytes),
@@ -525,15 +506,10 @@ export async function handleMessageCreate(message: Message) {
             timeoutMs: ingestTimeoutMs,
             maxBytes: voiceMaxBytes,
             maxSeconds: voiceSttMaxSeconds,
-            maxChars,
           });
         }
       } else {
-        const maxBytesFromChars = Math.max(0, Math.floor(maxChars * 4));
-        const maxBytes = Math.max(
-          0,
-          Math.min(perFileMaxBytes, remainingAttachmentBytes, maxBytesFromChars),
-        );
+        const maxBytes = Math.max(0, Math.min(perFileMaxBytes, remainingAttachmentBytes));
         if (maxBytes <= 0) {
           attachmentResult = {
             kind: 'too_large',
@@ -544,10 +520,6 @@ export async function handleMessageCreate(message: Message) {
           attachmentResult = await fetchAttachmentText(attachment.url ?? '', attachmentName, {
             timeoutMs: ingestTimeoutMs,
             maxBytes,
-            maxChars,
-            truncateStrategy: 'head_tail',
-            headChars,
-            tailChars,
             contentType: attachment.contentType ?? null,
             declaredSizeBytes: attachment.size ?? null,
             tikaBaseUrl: appConfig.FILE_INGEST_TIKA_BASE_URL,
@@ -565,12 +537,10 @@ export async function handleMessageCreate(message: Message) {
 
       if (attachmentBlock) {
         attachmentBlocks.push(attachmentBlock);
-        remainingAttachmentChars = Math.max(0, remainingAttachmentChars - attachmentBlock.length);
       }
 
       const attachmentStatus = attachmentResult.kind;
-      const extractedText =
-        attachmentStatus === 'ok' || attachmentStatus === 'truncated' ? attachmentResult.text : null;
+      const extractedText = attachmentStatus === 'ok' ? attachmentResult.text : null;
       const errorText =
         attachmentStatus === 'skip'
           ? attachmentResult.reason

@@ -10,8 +10,7 @@ import {
 import { CircuitBreaker } from './circuit-breaker';
 import { logger } from '../logging/logger';
 import { metrics } from '../../shared/observability/metrics';
-import { getModelBudgetConfig } from './model-budget-config';
-import { planBudget, trimMessagesToBudget } from './context-budgeter';
+import { estimateMessagesTokens } from './context-budgeter';
 import { sanitizeJsonSchemaForProvider } from '../../shared/validation/json-schema';
 import { normalizeTimeoutMs } from '../../shared/utils/timeout';
 
@@ -384,45 +383,15 @@ export class AiProviderClient implements LLMClient {
       headers.Authorization = `Bearer ${apiKey}`;
     }
 
-    const modelConfig = getModelBudgetConfig(model);
-    const plan = planBudget(modelConfig, {
-      reservedOutputTokens: request.maxTokens ?? modelConfig.maxOutputTokens,
-    });
-    const { trimmed, stats } = trimMessagesToBudget(request.messages, plan, {
-      keepSystemMessages: true,
-      keepLastUserTurns: 4,
-      visionFadeKeepLastUserImages: modelConfig.visionFadeKeepLastUserImages,
-      attachmentTextMaxTokens: modelConfig.attachmentTextMaxTokens,
-      estimator: modelConfig.estimation,
-      visionEnabled: modelConfig.visionEnabled,
-    });
-
-    const normalizedMessages = normalizeMessagesForApi(trimmed);
-
-    if (stats.droppedCount > 0 || stats.notes.length > 0) {
-      logger.info(
-        {
-          model,
-          beforeCount: stats.beforeCount,
-          afterCount: stats.afterCount,
-          estimatedTokensBefore: stats.estimatedTokensBefore,
-          estimatedTokensAfter: stats.estimatedTokensAfter,
-          availableInputTokens: plan.availableInputTokens,
-          notes: stats.notes,
-        },
-        '[Budget] Trim applied',
-      );
-    } else {
-      logger.debug(
-        {
-          model,
-          messageCount: stats.afterCount,
-          estimatedTokens: stats.estimatedTokensAfter,
-          availableInputTokens: plan.availableInputTokens,
-        },
-        '[Budget] Budget ok',
-      );
-    }
+    const normalizedMessages = normalizeMessagesForApi(request.messages);
+    logger.debug(
+      {
+        model,
+        messageCount: request.messages.length,
+        estimatedTokens: estimateMessagesTokens(request.messages),
+      },
+      '[Budget] Preflight only; message trimming disabled',
+    );
 
     const payload: CompatibleChatCompletionsPayload = {
       model,
@@ -435,7 +404,7 @@ export class AiProviderClient implements LLMClient {
       tool_choice: request.toolChoice,
     };
 
-    logger.debug({ url, model, messageCount: trimmed.length }, '[AiProviderClient] Request');
+    logger.debug({ url, model, messageCount: request.messages.length }, '[AiProviderClient] Request');
     metrics.increment('llm_calls_total', { model, provider: 'ai_provider' });
 
     let attempt = 0;

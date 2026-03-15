@@ -181,7 +181,7 @@ describe('AiProviderClient', () => {
     expect(body.messages[0]?.role).toBe('system');
   });
 
-  it('fades older user images to readable text-only history when later turns take priority', async () => {
+  it('preserves multimodal user history instead of rewriting older images into text-only placeholders', async () => {
     const client = new AiProviderClient({ baseUrl: 'https://api.test/v1', model: 'test-chat-model', maxRetries: 0 });
 
     fetchMock.mockResolvedValueOnce({
@@ -209,10 +209,15 @@ describe('AiProviderClient', () => {
     const body = parseRequestBody(fetchMock, 0);
     const userMessages = body.messages.filter((message) => message.role === 'user');
     expect(userMessages).toHaveLength(1);
-    expect(typeof userMessages[0]?.content).toBe('string');
-    expect(String(userMessages[0]?.content)).toContain('First turn');
-    expect(String(userMessages[0]?.content)).toContain('[Image omitted from history]');
-    expect(String(userMessages[0]?.content)).toContain('Second turn');
+    expect(Array.isArray(userMessages[0]?.content)).toBe(true);
+    const parts = userMessages[0]?.content as Array<Record<string, unknown>>;
+    expect(parts).toEqual(
+      expect.arrayContaining([
+        { type: 'text', text: 'First turn' },
+        { type: 'image_url', image_url: { url: 'https://example.com/1.png' } },
+        { type: 'text', text: 'Second turn' },
+      ]),
+    );
   });
 
   it('strips unsupported $schema keys from tool parameters before sending requests', async () => {

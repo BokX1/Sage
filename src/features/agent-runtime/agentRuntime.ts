@@ -281,7 +281,7 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
 
   const focusedContinuityBlock =
     focusedContinuityMessages.length > 0
-      ? buildTranscriptBlock(focusedContinuityMessages, appConfig.CONTEXT_TRANSCRIPT_MAX_CHARS, {
+      ? buildTranscriptBlock(focusedContinuityMessages, {
           header:
             'Focused continuity window (most recent last). Use this first for same-speaker or reply-chain continuity before reading ambient room context:',
           focusUserId: currentTurn.invokerUserId,
@@ -291,7 +291,7 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
 
   const transcriptBlock =
     recentMessages.length > 0
-      ? buildTranscriptBlock(recentMessages, appConfig.CONTEXT_TRANSCRIPT_MAX_CHARS, {
+      ? buildTranscriptBlock(recentMessages, {
           excludedMessageIds: excludedAmbientMessageIds,
           focusUserId: currentTurn.invokerUserId,
           sageUserId: currentTurn.botUserId ?? null,
@@ -325,7 +325,6 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
   const graphConfig = buildAgentGraphConfig();
   const graphLimits = {
     maxRounds: graphConfig.maxSteps,
-    maxCallsPerRound: graphConfig.maxToolCallsPerStep,
   };
   const autopilotMode = resolveRuntimeAutopilotMode({
     invokedBy,
@@ -469,7 +468,6 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
       toolResultCount: graphResult.toolResults.length,
       successfulToolCount,
       deduplicatedCallCount: graphResult.deduplicatedCallCount,
-      truncatedCallCount: graphResult.truncatedCallCount,
       roundEvents: graphResult.roundEvents,
       finalization: graphResult.finalization,
       attachmentCount: graphResult.files.length,

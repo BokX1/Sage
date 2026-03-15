@@ -11,8 +11,6 @@ export type AttachmentExtractor = 'native' | 'tika' | 'voice_stt' | 'vision' | '
 export type FetchAttachmentTextOptions = {
   timeoutMs: number;
   maxBytes: number;
-  maxChars?: number;
-  truncateStrategy?: 'head' | 'head_tail';
   headChars?: number;
   tailChars?: number;
   contentType?: string | null;
@@ -33,7 +31,6 @@ type ResultMeta = {
 export type FetchAttachmentResult =
   | ({ kind: 'skip'; reason: string } & ResultMeta)
   | ({ kind: 'too_large'; message: string } & ResultMeta)
-  | ({ kind: 'truncated'; text: string; message: string } & ResultMeta)
   | ({ kind: 'error'; message: string } & ResultMeta)
   | ({ kind: 'ok'; text: string } & ResultMeta);
 
@@ -196,73 +193,11 @@ function isFilenameSuspicious(filename?: string | null): boolean {
   return trimmed.length > MAX_FILENAME_LENGTH;
 }
 
-function formatLimitNotice(maxBytes: number, maxChars?: number): string {
-  const bytesPart = `${maxBytes.toLocaleString()} bytes`;
-  if (!maxChars) {
-    return bytesPart;
-  }
-  return `${maxChars.toLocaleString()} chars / ${bytesPart}`;
-}
-
 function resolveMaxBytes(options: Partial<FetchAttachmentTextOptions>): number {
   if (typeof options.maxBytes === 'number' && Number.isFinite(options.maxBytes)) {
     return options.maxBytes;
   }
-  if (typeof options.maxChars === 'number' && Number.isFinite(options.maxChars)) {
-    return Math.floor(options.maxChars * 4);
-  }
   return 0;
-}
-
-function resolveMaxChars(
-  options: Partial<FetchAttachmentTextOptions>,
-  fallback: number,
-): number | undefined {
-  if (typeof options.maxChars === 'number' && Number.isFinite(options.maxChars)) {
-    return options.maxChars;
-  }
-  if (Number.isFinite(fallback) && fallback > 0) {
-    return fallback;
-  }
-  return undefined;
-}
-
-function truncateText(
-  text: string,
-  maxChars: number,
-  strategy: 'head' | 'head_tail',
-  headChars?: number,
-  tailChars?: number,
-): string {
-  if (maxChars <= 0) {
-    return '';
-  }
-
-  if (strategy === 'head') {
-    return text.slice(0, maxChars).trimEnd();
-  }
-
-  const separator = '\n...\n';
-  const available = Math.max(0, maxChars - separator.length);
-  if (available === 0) {
-    return text.slice(0, maxChars).trimEnd();
-  }
-
-  const resolvedHead = Math.max(
-    0,
-    Math.min(headChars ?? Math.floor(available * 0.7), available),
-  );
-  const resolvedTail = Math.max(
-    0,
-    Math.min(tailChars ?? available - resolvedHead, available - resolvedHead),
-  );
-
-  const headText = text.slice(0, resolvedHead).trimEnd();
-  const tailText = resolvedTail > 0 ? text.slice(text.length - resolvedTail).trimStart() : '';
-  if (!tailText) {
-    return headText;
-  }
-  return `${headText}${separator}${tailText}`;
 }
 
 function normalizeMimeType(value?: string | null): string | null {
@@ -568,8 +503,7 @@ export async function fetchAttachmentText(
   }
 
   const maxBytes = resolveMaxBytes(opts);
-  const maxChars = resolveMaxChars(opts, Math.floor(maxBytes / 2));
-  if (maxBytes <= 0 || (typeof maxChars === 'number' && maxChars <= 0)) {
+  if (maxBytes <= 0) {
     return {
       kind: 'too_large',
       message: buildSystemMessage(`File '${filename}' omitted due to context limits.`),
@@ -660,30 +594,6 @@ export async function fetchAttachmentText(
     return {
       kind: 'skip',
       reason: buildSystemMessage(`Attachment '${filename}' has no extractable text.`),
-      extractor,
-      mimeType,
-      byteLength: fetched.byteLength,
-    };
-  }
-
-  const effectiveMaxChars = typeof maxChars === 'number' ? maxChars : normalizedText.length;
-  if (normalizedText.length > effectiveMaxChars) {
-    const truncatedText = truncateText(
-      normalizedText,
-      effectiveMaxChars,
-      opts.truncateStrategy ?? 'head_tail',
-      opts.headChars,
-      opts.tailChars,
-    );
-    return {
-      kind: 'truncated',
-      text: truncatedText,
-      message: buildSystemMessage(
-        `File '${filename}' truncated to ${effectiveMaxChars.toLocaleString()} characters to fit size limits (${formatLimitNotice(
-          maxBytes,
-          maxChars,
-        )}).`,
-      ),
       extractor,
       mimeType,
       byteLength: fetched.byteLength,

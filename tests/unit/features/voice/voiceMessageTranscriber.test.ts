@@ -66,7 +66,6 @@ describe('voiceMessageTranscriber', () => {
       timeoutMs: 5_000,
       maxBytes: 1_000_000,
       maxSeconds: 1,
-      maxChars: 2_000,
     });
 
     expect(result).toEqual(

@@ -46,11 +46,11 @@ describe('visibleReply', () => {
   });
 
   it('returns route-aware runtime failure copy', () => {
-    expect(buildRuntimeFailureReply({ kind: 'turn', category: 'provider' })).toContain(
-      'The model behind Sage stopped responding before I could finish that reply.',
+    expect(buildRuntimeFailureReply({ kind: 'turn', category: 'provider' })).toBe(
+      'The model behind Sage stopped responding before I could finish that reply. Press Retry if it shows up, or send me that request again.',
     );
-    expect(buildRuntimeFailureReply({ kind: 'continue_resume', category: 'runtime' })).toContain(
-      'Sage hit a snag while I was picking that request back up.',
+    expect(buildRuntimeFailureReply({ kind: 'continue_resume', category: 'runtime' })).toBe(
+      'Sage hit a snag while I was picking that request back up. Press Retry if it shows up. If not, press Continue again or send me a fresh message.',
     );
   });
 

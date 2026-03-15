@@ -51,9 +51,8 @@ This document describes how Sage stores memory and makes it available to the run
   - `MESSAGE_DB_MAX_MESSAGES_PER_CHANNEL` starter value: `500` caps retained rows per channel
 - **Prompt transcript window**
   - `CONTEXT_TRANSCRIPT_MAX_MESSAGES` starter value: `15`
-  - `CONTEXT_TRANSCRIPT_MAX_CHARS` starter value: `24000`
 
-Transcript storage and prompt budgeting are separate controls. A channel can retain more history in the database than any single prompt includes.
+Transcript storage and prompt assembly are separate controls. A channel can retain more history in the database than any single prompt includes, and Sage now passes the selected transcript window through without an extra character clamp.
 
 Attachment behavior:
 
@@ -95,12 +94,11 @@ flowchart LR
 
     subgraph Builder["Context Builder"]
         MB[buildContextMessages]:::builder
-        Budget[contextBudgeter]:::builder
     end
 
     RB --> MB
     VS --> MB
-    MB --> Budget --> LLM[LLM Request + LangGraph Runtime]:::llm
+    MB --> LLM[LLM Request + LangGraph Runtime]:::llm
     DB --> U
     DB --> C
     DB --> A
@@ -154,19 +152,12 @@ What is **not** preloaded:
 
 These are returned only when the runtime requests them through tools.
 
-Context is budgeted by `contextBudgeter` using these key limits:
+Runtime prompt assembly no longer truncates or drops blocks before provider submission, and the remaining operator knobs are:
 
 | Budget | Env var |
 | :--- | :--- |
 | Max input tokens | `CONTEXT_MAX_INPUT_TOKENS` |
 | Reserved output tokens | `CONTEXT_RESERVED_OUTPUT_TOKENS` |
-| Transcript block max | `CONTEXT_BLOCK_MAX_TOKENS_TRANSCRIPT` |
-| Rolling summary block max | `CONTEXT_BLOCK_MAX_TOKENS_ROLLING_SUMMARY` |
-| Profile summary block max | `CONTEXT_BLOCK_MAX_TOKENS_PROFILE_SUMMARY` |
-| Memory block max | `CONTEXT_BLOCK_MAX_TOKENS_MEMORY` |
-| Reply context max | `CONTEXT_BLOCK_MAX_TOKENS_REPLY_CONTEXT` |
-| Provider packet max | `CONTEXT_BLOCK_MAX_TOKENS_PROVIDERS` |
-| User message max | `CONTEXT_USER_MAX_TOKENS` |
 
 ---
 

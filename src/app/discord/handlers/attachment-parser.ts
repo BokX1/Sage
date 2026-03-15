@@ -1,7 +1,5 @@
 import { Message } from 'discord.js';
 import { LLMMessageContent } from '../../../platform/llm/llm-types';
-import { estimateTokens } from '../../../features/agent-runtime/tokenEstimate';
-import { config as appConfig } from '../../../platform/config/env';
 import { FetchAttachmentResult } from '../../../platform/files/file-handler';
 import { isPrivateOrLocalHostname } from '../../../platform/config/env';
 
@@ -305,27 +303,6 @@ export function formatAttachmentBlock(
   return lines.filter((line) => line !== undefined && line !== null).join('\n');
 }
 
-export function deriveAttachmentBudget(params: {
-  baseText: string;
-}): { maxChars: number; maxBytes: number } {
-  const contextUserMaxTokens = Number.isFinite(appConfig.CONTEXT_USER_MAX_TOKENS)
-    ? Math.max(0, appConfig.CONTEXT_USER_MAX_TOKENS)
-    : 0;
-  const charsPerToken = Number.isFinite(appConfig.TOKEN_HEURISTIC_CHARS_PER_TOKEN)
-    ? Math.max(1, appConfig.TOKEN_HEURISTIC_CHARS_PER_TOKEN)
-    : 4;
-  const availableTokens = Math.max(
-    0,
-    contextUserMaxTokens - estimateTokens(params.baseText),
-  );
-  const maxChars = Math.max(
-    0,
-    Math.floor(availableTokens * charsPerToken),
-  );
-  const maxBytes = Math.max(0, Math.floor(maxChars * 4));
-  return { maxChars, maxBytes };
-}
-
 function formatBytes(value?: number | null): string | null {
   if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
     return null;
@@ -358,10 +335,6 @@ export function buildAttachmentBlockFromResult(
   if (readSize) metadataBits.push(`read_size=${readSize}`);
   if (metadataBits.length > 0) {
     notes.push(`[System: Attachment metadata: ${metadataBits.join(', ')}.]`);
-  }
-
-  if (result.kind === 'truncated') {
-    notes.push(result.message);
   }
 
   if (resolvedMimeType?.toLowerCase().startsWith('application/octet-stream')) {

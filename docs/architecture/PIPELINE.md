@@ -56,11 +56,10 @@ flowchart TD
 
 1. **Model resolution**: `runChatTurn` reads `AI_PROVIDER_MAIN_AGENT_MODEL`. Sage no longer ships a built-in agent-model fallback; runtime boot requires explicit AI-provider model configuration.
 2. **Context composition**: `buildContextMessages` assembles the system prompt, structured `<current_turn>`, runtime instruction block, optional guild Sage Persona (`<guild_sage_persona>`), optional live voice context, optional `<focused_continuity>`, optional `<recent_transcript>`, and the current user turn wrapped in `<user_input>` (with any `<reply_target>` folded in as context-only preface content). The base system prompt owns durable operator invariants such as room model, response discipline, and continuity precedence; the runtime instruction block owns runtime protocol, silent native tool-use rules, `<agent_state>`, and compact tool-routing guidance.
-3. **Token budgeting**: `contextBudgeter` trims blocks against the configured budgets before the provider call.
-4. **LLM request**: Sage sends the budgeted messages plus the active tool schemas for this turn.
-5. **Agent graph**: Sage enters the LangGraph-native runtime built on reducer-backed message state, durable tasks, `ToolNode` read batches, explicit read/write partitioning, and in-graph approval or continuation interrupts/resumes until the objective is satisfied, clarification is required, or the run pauses cleanly.
-6. **Final reply**: plain text is cleaned, tool-produced files are attached, and the final payload is returned to Discord.
-7. **Trace persistence**: LangGraph node and task execution is recorded in LangSmith, and Sage can additionally persist a compact `AgentTrace` ledger row with LangSmith references.
+3. **LLM request**: Sage sends the assembled messages plus the active tool schemas for this turn.
+4. **Agent graph**: Sage enters the LangGraph-native runtime built on reducer-backed message state, durable tasks, `ToolNode` read batches, explicit read/write partitioning, and in-graph approval or continuation interrupts/resumes until the objective is satisfied, clarification is required, or the run pauses cleanly.
+5. **Final reply**: plain text is cleaned, tool-produced files are attached, and the final payload is returned to Discord.
+6. **Trace persistence**: LangGraph node and task execution is recorded in LangSmith, and Sage can additionally persist a compact `AgentTrace` ledger row with LangSmith references.
 
 ---
 
@@ -117,7 +116,6 @@ flowchart LR
 **Key behaviors**
 
 - **Bounded windows**: `AGENT_GRAPH_MAX_STEPS` limits how many tool-capable assistant/model responses can occur in one continuation window before Sage pauses.
-- **Calls per step**: `AGENT_GRAPH_MAX_TOOL_CALLS_PER_STEP` is a hard cap on how many tool calls one assistant/model response can emit at once. Overflowed calls are surfaced back as explicit skipped tool results instead of being silently dropped or ending the turn early.
 - **Window closeout summary**: when Sage pauses cleanly because the step window is exhausted, it can spend one extra no-tools model response to summarize concrete progress before posting the Continue handoff. If that closeout pass fails or the pause was caused by graph timeout, Sage falls back to the deterministic runtime summary.
 - **Message-native state**: the graph persists LangGraph/LangChain messages plus turn facts, approval state, trace metadata, and final delivery state instead of the old custom pending-tool-loop buffers.
 - **Read/write partitioning**: read-only batches execute through `ToolNode`, and mutating calls execute one at a time.
@@ -130,7 +128,7 @@ flowchart LR
 - **Durable execution**: every real tool invocation and post-approval execution runs inside a LangGraph `task(...)` boundary so replay and thread resume reuse checkpointed task outputs instead of repeating side effects.
 - **Repair-aware validation feedback**: routed-tool validation failures now carry compact repair guidance into the next model round, including missing/unknown action recovery and the best matching action contract from the routed-tool docs.
 - **Graph wall-clock cap**: the whole orchestration phase is bounded by `AGENT_GRAPH_MAX_DURATION_MS`.
-- **Result truncation**: raw tool output is capped by `AGENT_GRAPH_MAX_RESULT_CHARS`, but oversized payloads are compacted into a structured envelope that preserves useful shape instead of collapsing to a tiny preview stub.
+- **No Sage-side truncation**: Sage no longer compacts model-facing tool results or silently trims provider-bound prompt payloads; oversized requests now fail at the provider/runtime boundary instead of being rewritten locally.
 - **Approval + continuation interrupts**: approval-gated writes pause before side effects, and long-running turns pause at the window boundary with a persisted continuation record and deterministic progress summary built from the latest draft and tool results.
 - **Checkpointed continuation**: resume keeps the same LangGraph thread and prior tool results, resets only the window-local counters, and can continue through another bounded window instead of rebuilding the turn from scratch.
 - **File collection**: tools such as `image_generate` can return files that are merged into the final Discord response.
@@ -194,11 +192,9 @@ These values reflect the starter values in `.env.example`:
 | :--- | :--- | :--- |
 | `AI_PROVIDER_MAIN_AGENT_MODEL` | Runtime main agent model for `runChatTurn` | *(required in `.env`)* |
 | `AGENT_GRAPH_MAX_STEPS` | Max tool-capable assistant/model responses per continuation window before Sage pauses or runs a wrap-up summary | `6` |
-| `AGENT_GRAPH_MAX_TOOL_CALLS_PER_STEP` | Hard cap on tool calls emitted by one assistant/model response; overflow returns explicit skipped tool results for later follow-up | `5` |
 | `AGENT_GRAPH_TOOL_TIMEOUT_MS` | Per-tool execution timeout | `45000` |
 | `AGENT_GRAPH_MAX_DURATION_MS` | Max wall-clock duration for one graph turn | `120000` |
 | `AGENT_GRAPH_MAX_OUTPUT_TOKENS` | Max output tokens for graph model calls | `1800` |
-| `AGENT_GRAPH_MAX_RESULT_CHARS` | Max chars per model-facing tool result before Sage compacts it into a structured envelope | `8000` |
 | `AGENT_GRAPH_GITHUB_GROUNDED_MODE` | Enable grounded GitHub search mode | `true` |
 | `AGENT_GRAPH_RECURSION_LIMIT` | LangGraph recursion fail-safe above the legal hop count | `16` |
 | `LANGSMITH_TRACING` | Enable optional LangSmith graph tracing | `false` |

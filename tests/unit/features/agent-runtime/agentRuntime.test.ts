@@ -39,15 +39,12 @@ const {
 vi.mock('@/platform/config/env', () => ({
   config: {
     CONTEXT_TRANSCRIPT_MAX_MESSAGES: 10,
-    CONTEXT_TRANSCRIPT_MAX_CHARS: 4000,
     AI_PROVIDER_API_KEY: 'test-api-key',
     AI_PROVIDER_MAIN_AGENT_MODEL: 'test-main-agent-model',
     CHAT_MAX_OUTPUT_TOKENS: 500,
     AGENT_GRAPH_MAX_OUTPUT_TOKENS: 500,
     AGENT_GRAPH_MAX_STEPS: 2,
-    AGENT_GRAPH_MAX_TOOL_CALLS_PER_STEP: 3,
     AGENT_GRAPH_TOOL_TIMEOUT_MS: 1000,
-    AGENT_GRAPH_MAX_RESULT_CHARS: 4000,
     AGENT_GRAPH_MAX_DURATION_MS: 5000,
     AGENT_GRAPH_GITHUB_GROUNDED_MODE: false,
     AGENT_GRAPH_RECURSION_LIMIT: 8,
@@ -164,7 +161,6 @@ function makeGraphResult(overrides: Record<string, unknown> = {}) {
     completedWindows: 0,
     totalRoundsCompleted: 0,
     deduplicatedCallCount: 0,
-    truncatedCallCount: 0,
     roundEvents: [],
     finalization: {
       attempted: false,
@@ -340,7 +336,7 @@ describe('agentRuntime', () => {
     });
 
     expect(result.replyText).toBe(
-      'The model behind Sage stopped responding before I could finish that reply. Next: press Retry if it shows up, or send me that request again.',
+      'The model behind Sage stopped responding before I could finish that reply. Press Retry if it shows up, or send me that request again.',
     );
     expect(result.meta).toEqual({
       retry: {
@@ -351,7 +347,7 @@ describe('agentRuntime', () => {
     expect(updateTraceEndMock).toHaveBeenCalledWith(
       expect.objectContaining({
         replyText:
-          'The model behind Sage stopped responding before I could finish that reply. Next: press Retry if it shows up, or send me that request again.',
+          'The model behind Sage stopped responding before I could finish that reply. Press Retry if it shows up, or send me that request again.',
       }),
     );
   });
@@ -747,7 +743,7 @@ describe('agentRuntime', () => {
     });
 
     expect(result.replyText).toBe(
-      'Sage hit a snag while I was picking that request back up. Next: press Retry if it shows up. If not, press Continue again or send me a fresh message.',
+      'Sage hit a snag while I was picking that request back up. Press Retry if it shows up. If not, press Continue again or send me a fresh message.',
     );
     expect(result.meta).toEqual({
       retry: {
@@ -758,7 +754,7 @@ describe('agentRuntime', () => {
     expect(updateTraceEndMock).toHaveBeenCalledWith(
       expect.objectContaining({
         replyText:
-          'Sage hit a snag while I was picking that request back up. Next: press Retry if it shows up. If not, press Continue again or send me a fresh message.',
+          'Sage hit a snag while I was picking that request back up. Press Retry if it shows up. If not, press Continue again or send me a fresh message.',
       }),
     );
   });
@@ -801,7 +797,7 @@ describe('agentRuntime', () => {
 
     expect(result.delivery).toBe('chat_reply');
     expect(result.replyText).toBe(
-      'I made progress on that, but I do not have a clean reply ready to post yet. Next: send the next message and I will keep going from the current context.',
+      'I made progress on that, but I do not have a clean reply ready to post yet. Send the next message and I will keep going from the current context.',
     );
     expect(result.replyText).not.toContain('press Continue again');
   });

@@ -65,10 +65,8 @@ Each model profile can describe:
 | :--- | :--- |
 | `maxContextTokens` | Input budget Sage should respect |
 | `maxOutputTokens` | Output cap Sage should reserve for |
-| `safetyMarginTokens` | Buffer for trimming and provider differences |
+| `safetyMarginTokens` | Buffer for provider differences and explicit output reservations |
 | `visionEnabled` | Whether image inputs are allowed |
-| `attachmentTextMaxTokens` | Attachment-text budget within the turn |
-| `visionFadeKeepLastUserImages` | How many recent user images stay pinned during trimming |
 
 If a configured model is missing from the profile map, Sage falls back to the runtime base budgets instead of guessing.
 

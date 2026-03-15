@@ -68,7 +68,7 @@ These settings control what Sage ingests and logs:
   - `RAW_MESSAGE_TTL_DAYS`
   - `RING_BUFFER_MAX_MESSAGES_PER_CHANNEL`
 - **DB transcripts** are trimmed per channel to `MESSAGE_DB_MAX_MESSAGES_PER_CHANNEL`.
-- **Prompt transcript windows** are separately bounded by `CONTEXT_TRANSCRIPT_MAX_MESSAGES` and `CONTEXT_TRANSCRIPT_MAX_CHARS`.
+- **Prompt transcript windows** are selected by message count via `CONTEXT_TRANSCRIPT_MAX_MESSAGES`; Sage no longer applies a second prompt-character truncation pass.
 - **Voice transcription utterances** are kept in-memory only and discarded when the voice session ends; only summary rows persist (when enabled).
 - **Attachment cache** persists extracted non-image file text/metadata (including optional voice-message transcripts) in `IngestedAttachment` until deleted manually.
 - **Summaries and profiles** persist until deleted manually.

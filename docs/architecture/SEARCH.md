@@ -111,7 +111,6 @@ Sage supports multiple search and scraping providers with automatic fallback:
 | `TOOL_WEB_SEARCH_TIMEOUT_MS` | Per-provider search timeout | `45000` |
 | `TOOL_WEB_SEARCH_MAX_RESULTS` | Results per search call | `6` |
 | `TOOL_WEB_SCRAPE_TIMEOUT_MS` | Per-provider scrape timeout | `45000` |
-| `TOOL_WEB_SCRAPE_MAX_CHARS` | Max chars scraped per page | `20000` |
 
 ---
 

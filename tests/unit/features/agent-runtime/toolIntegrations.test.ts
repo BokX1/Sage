@@ -234,11 +234,10 @@ describe('toolIntegrations', () => {
       query: 'include accepted answer',
       maxResults: 1,
       includeAcceptedAnswer: true,
-      maxAcceptedAnswerChars: 2_000,
     });
 
     const typed = result as {
-      acceptedAnswer?: { answerId?: number; url?: string | null; body?: string; truncated?: boolean } | null;
+      acceptedAnswer?: { answerId?: number; url?: string | null; body?: string } | null;
       acceptedAnswerError?: string | null;
     };
 
@@ -247,7 +246,6 @@ describe('toolIntegrations', () => {
       expect.objectContaining({
         answerId: 123,
         url: 'https://stackoverflow.com/a/123',
-        truncated: false,
       }),
     );
     expect(String(typed.acceptedAnswer?.body ?? '')).toContain('```');
@@ -271,7 +269,6 @@ describe('toolIntegrations', () => {
 
     const result = await scrapeWebPage({
       url: 'https://example.com',
-      maxChars: 1_000,
     });
 
     const typed = result as { provider: string; url: string; content: unknown };
@@ -314,7 +311,6 @@ describe('toolIntegrations', () => {
 
       const result = await scrapeWebPage({
         url: 'https://example.com',
-        maxChars: 1_000,
       });
 
       const typed = result as { provider: string; content: unknown };
@@ -343,7 +339,6 @@ describe('toolIntegrations', () => {
 
     const result = await scrapeWebPage({
       url: 'https://example.com',
-      maxChars: 1_000,
       providerOrder: ['raw_fetch'],
     });
 
@@ -367,7 +362,6 @@ describe('toolIntegrations', () => {
     const result = await runAgenticWebScrape({
       url: 'https://example.com#section',
       instruction: 'Extract the key points.',
-      maxChars: 1_000,
     });
 
     expect(createClientSpy).toHaveBeenCalledWith({ agentModel: 'nomnom' });
@@ -390,7 +384,6 @@ describe('toolIntegrations', () => {
         url: 'https://example.com/',
         instruction: 'Extract the key points.',
         content: '## Extracted\n\nDetails',
-        truncated: false,
       }),
     );
   });
@@ -637,7 +630,6 @@ describe('toolIntegrations', () => {
 
     const result = await scrapeWebPage({
       url: 'https://example.com',
-      maxChars: 1_000,
       providerOrder: ['crawl4ai', 'raw_fetch'],
     });
 
@@ -663,7 +655,6 @@ describe('toolIntegrations', () => {
 
     const result = await scrapeWebPage({
       url: 'https://example.com',
-      maxChars: 1_000,
       providerOrder: ['crawl4ai', 'raw_fetch'],
     });
 
@@ -725,7 +716,6 @@ describe('toolIntegrations', () => {
 
     const first = await scrapeWebPage({
       url: 'https://example.com',
-      maxChars: 1_000,
       providerOrder: ['crawl4ai', 'raw_fetch'],
     });
     expect((first as { provider: string }).provider).toBe('raw_fetch');
@@ -733,7 +723,6 @@ describe('toolIntegrations', () => {
 
     const second = await scrapeWebPage({
       url: 'https://example.com',
-      maxChars: 1_000,
       providerOrder: ['crawl4ai', 'raw_fetch'],
     });
     expect((second as { provider: string }).provider).toBe('raw_fetch');

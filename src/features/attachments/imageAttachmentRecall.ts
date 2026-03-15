@@ -63,13 +63,6 @@ function isTimeoutError(error: unknown, label: string): boolean {
   return error instanceof Error && error.message.startsWith(`${label} timed out after `);
 }
 
-function truncateInline(value: string, maxChars: number): string {
-  const cap = Math.max(1, Math.floor(maxChars));
-  if (value.length <= cap) return value;
-  if (cap <= 3) return value.slice(0, cap);
-  return `${value.slice(0, cap - 3).trimEnd()}...`;
-}
-
 function normalizeInlineWhitespace(value: string): string {
   return value.replace(/\s+/g, ' ').trim();
 }
@@ -112,28 +105,11 @@ function normalizeOcr(value: unknown): string {
   return lines.join('\n');
 }
 
-function buildRecallText(summaryText: string, visibleText: string, maxChars: number): string | null {
+function buildRecallText(summaryText: string, visibleText: string): string | null {
   const summary = summaryText || '(unavailable)';
   const visible = visibleText || '(none)';
-
-  const summaryPrefix = 'Image summary: ';
-  const visiblePrefix = '\n\nVisible text: ';
-  const minimumVisibleBudget = 16;
-  const totalBudget = Math.max(200, Math.floor(maxChars));
-
-  let boundedSummary = summary;
-  let boundedVisible = visible;
-
-  const fixedOverhead = summaryPrefix.length + visiblePrefix.length + minimumVisibleBudget;
-  const summaryBudget = Math.max(48, Math.floor((totalBudget - fixedOverhead) * 0.6));
-  boundedSummary = truncateInline(boundedSummary, summaryBudget);
-
-  const visibleBudget =
-    totalBudget - summaryPrefix.length - boundedSummary.length - visiblePrefix.length;
-  boundedVisible = truncateInline(boundedVisible, Math.max(minimumVisibleBudget, visibleBudget));
-
-  const built = `${summaryPrefix}${boundedSummary}${visiblePrefix}${boundedVisible}`.trim();
-  return built.length > 0 ? truncateInline(built, totalBudget) : null;
+  const built = `Image summary: ${summary}\n\nVisible text: ${visible}`.trim();
+  return built.length > 0 ? built : null;
 }
 
 function loadFlorenceRuntime(modelId: string): Promise<LoadedFlorenceRuntime> {
@@ -210,7 +186,6 @@ export async function summarizeImageAttachmentForRecall(params: {
   contentType?: string | null;
   modelId: string;
   timeoutMs: number;
-  maxChars: number;
 }): Promise<ImageAttachmentRecallResult> {
   const runtimePromise = loadFlorenceRuntime(params.modelId);
   let runtime: LoadedFlorenceRuntime;
@@ -251,7 +226,7 @@ export async function summarizeImageAttachmentForRecall(params: {
   const summaryText = normalizeCaption(captionOutput);
   const visibleText = normalizeOcr(ocrOutput);
   return {
-    text: buildRecallText(summaryText, visibleText, params.maxChars),
+    text: buildRecallText(summaryText, visibleText),
     summaryText,
     visibleText,
   };

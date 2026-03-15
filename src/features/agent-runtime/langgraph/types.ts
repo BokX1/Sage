@@ -25,7 +25,6 @@ export interface ToolCallRoundEvent {
   requestedCallCount: number;
   executedCallCount: number;
   deduplicatedCallCount: number;
-  truncatedCallCount: number;
   completedAt: string;
   rebudgeting?: GraphRebudgetEvent;
 }
@@ -154,7 +153,6 @@ export interface AgentGraphState {
   completedWindows: number;
   totalRoundsCompleted: number;
   deduplicatedCallCount: number;
-  truncatedCallCount: number;
   roundEvents: ToolCallRoundEvent[];
   finalization: ToolCallFinalizationEvent;
   terminationReason: GraphTurnTerminationReason;

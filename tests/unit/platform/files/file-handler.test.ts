@@ -95,7 +95,7 @@ describe('fetchAttachmentText', () => {
     expect(mockFetch).toHaveBeenCalledTimes(2);
   });
 
-  it('truncates content that exceeds maxChars', async () => {
+  it('returns full content when the byte budget allows it', async () => {
     const fileResponse = new Response('a'.repeat(200), {
       status: 200,
       headers: { 'content-type': 'text/plain' },
@@ -105,13 +105,11 @@ describe('fetchAttachmentText', () => {
 
     const result = await fetchAttachmentText('https://cdn.discordapp.com/file.txt', 'file.txt', {
       maxBytes: 1024,
-      maxChars: 50,
-      truncateStrategy: 'head',
     });
 
-    expect(result.kind).toBe('truncated');
-    if (result.kind === 'truncated') {
-      expect(result.text.length).toBeLessThanOrEqual(50);
+    expect(result.kind).toBe('ok');
+    if (result.kind === 'ok') {
+      expect(result.text).toHaveLength(200);
       expect(result.extractor).toBe('native');
     }
     expect(mockFetch).toHaveBeenCalledTimes(1);

@@ -55,20 +55,19 @@ describe('langgraph nativeTools', () => {
     vi.clearAllMocks();
   });
 
-  it('compacts oversized tool results into a structured payload instead of a tiny preview envelope', async () => {
-    const oversizedResult = {
+  it('returns full serialized tool payloads instead of a truncation envelope', async () => {
+    const fullResult = {
       summary: 'Investigation summary',
       findings: Array.from({ length: 12 }, (_, index) => ({
         id: index + 1,
         title: `Finding ${index + 1}`,
         detail: `Detail ${index + 1}: ` + 'alpha '.repeat(120),
       })),
-      notes: 'omega '.repeat(200),
     };
     executeToolWithTimeoutMock.mockResolvedValueOnce({
       name: 'github',
       success: true,
-      result: oversizedResult,
+      result: fullResult,
       latencyMs: 42,
     });
 
@@ -80,31 +79,18 @@ describe('langgraph nativeTools', () => {
       },
       context: makeToolContext(),
       timeoutMs: 1_000,
-      maxResultChars: 420,
     });
 
     expect(output.kind).toBe('tool_result');
-    if (output.kind !== 'tool_result') {
-      return;
-    }
+    if (output.kind !== 'tool_result') return;
 
     expect(output.result.success).toBe(true);
-    expect(output.result.result).toEqual(oversizedResult);
-    const parsed = JSON.parse(output.content) as {
-      truncated?: boolean;
-      summary?: string;
-      data?: Record<string, unknown>;
-      preview?: string;
-    };
-    expect(parsed.truncated).toBe(true);
-    expect(typeof parsed.summary).toBe('string');
-    expect(parsed.data).toBeTruthy();
-    expect(parsed.preview).toBeUndefined();
-    expect(parsed.data).toHaveProperty('summary');
-    expect(output.content.length).toBeLessThanOrEqual(420);
+    expect(output.result.result).toEqual(fullResult);
+    expect(JSON.parse(output.content)).toEqual(fullResult);
+    expect(output.content).not.toContain('"truncated":true');
   });
 
-  it('uses the same structured compaction for approved review execution results', async () => {
+  it('serializes approved review execution results without compaction metadata', async () => {
     executeApprovedReviewRequestMock.mockResolvedValueOnce({
       status: 'executed',
       kind: 'discord_admin',
@@ -125,20 +111,14 @@ describe('langgraph nativeTools', () => {
       reviewerId: 'reviewer-1',
       decisionReasonText: 'approved in test',
       resumeTraceId: 'trace-approved-1',
-      maxResultChars: 420,
     });
 
     expect(output.status).toBe('executed');
     expect(output.result.success).toBe(true);
-    const parsed = JSON.parse(output.content) as {
-      truncated?: boolean;
-      data?: Record<string, unknown>;
-      preview?: string;
-    };
-    expect(parsed.truncated).toBe(true);
-    expect(parsed.preview).toBeUndefined();
-    expect(parsed.data).toBeTruthy();
-    expect(parsed.data).toHaveProperty('status', 'executed');
-    expect(output.content.length).toBeLessThanOrEqual(420);
+    const parsed = JSON.parse(output.content) as Record<string, unknown>;
+    expect(parsed.status).toBe('executed');
+    expect(parsed.kind).toBe('discord_admin');
+    expect(parsed).not.toHaveProperty('truncated');
+    expect(parsed).toHaveProperty('result');
   });
 });

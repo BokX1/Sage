@@ -20,7 +20,6 @@ describe('transcriptBuilder', () => {
           mentionsBot: false,
         },
       ],
-      2_000,
     );
 
     expect(block).toContain('Ambient room transcript');
@@ -97,7 +96,6 @@ describe('transcriptBuilder', () => {
           mentionsBot: false,
         },
       ],
-      4_000,
       {
         focusUserId: 'user-1',
         sageUserId: 'sage-bot',
@@ -142,7 +140,6 @@ describe('transcriptBuilder', () => {
           mentionsBot: false,
         },
       ],
-      2_000,
       {
         excludedMessageIds: ['msg-1'],
       },

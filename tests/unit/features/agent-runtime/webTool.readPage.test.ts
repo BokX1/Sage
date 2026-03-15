@@ -26,13 +26,12 @@ describe('webTool read.page', () => {
   });
 
   it('returns a continuation token and pages without re-fetching', async () => {
-    const content = `${'a'.repeat(200)}${'b'.repeat(200)}${'c'.repeat(50)}`;
+    const content = `${'a'.repeat(2000)}${'b'.repeat(2000)}${'c'.repeat(50)}`;
     mockScrapeWebPage.mockResolvedValueOnce({
       provider: 'raw_fetch',
       url: 'https://example.com/',
       title: 'Example',
       content,
-      truncated: false,
     });
 
     const registry = new ToolRegistry();
@@ -51,7 +50,6 @@ describe('webTool read.page', () => {
         args: {
           action: 'read.page',
           url: 'https://example.com/',
-          maxChars: 200,
         },
       },
       ctx,
@@ -62,9 +60,9 @@ describe('webTool read.page', () => {
       throw new Error(first.error);
     }
     const firstPayload = first.result as Record<string, unknown>;
-    expect(firstPayload.content).toBe('a'.repeat(200));
+    expect(firstPayload.content).toBe(`${'a'.repeat(2000)}${'b'.repeat(2000)}`);
     expect(firstPayload.hasMore).toBe(true);
-    expect(firstPayload.nextStartChar).toBe(200);
+    expect(firstPayload.nextStartChar).toBe(4000);
     expect(typeof firstPayload.contentId).toBe('string');
 
     const contentId = String(firstPayload.contentId);
@@ -78,7 +76,6 @@ describe('webTool read.page', () => {
           url: 'https://example.com/',
           contentId,
           startChar,
-          maxChars: 200,
         },
       },
       ctx,
@@ -89,7 +86,7 @@ describe('webTool read.page', () => {
       throw new Error(second.error);
     }
     const secondPayload = second.result as Record<string, unknown>;
-    expect(secondPayload.content).toBe('b'.repeat(200));
+    expect(secondPayload.content).toBe('c'.repeat(50));
     expect(mockScrapeWebPage).toHaveBeenCalledTimes(1);
   });
 });

@@ -99,7 +99,6 @@ const mocks = vi.hoisted(() => {
       completedWindows: 0,
       totalRoundsCompleted: 1,
       deduplicatedCallCount: 0,
-      truncatedCallCount: 0,
       guardrailBlockedCallCount: 0,
       roundEvents: [],
       finalization: {
@@ -514,7 +513,6 @@ describe('adminActionService approval permissions', () => {
       completedWindows: 0,
       totalRoundsCompleted: 1,
       deduplicatedCallCount: 0,
-      truncatedCallCount: 0,
       guardrailBlockedCallCount: 0,
       roundEvents: [],
       finalization: {
@@ -687,7 +685,6 @@ describe('adminActionService approval permissions', () => {
       completedWindows: 0,
       totalRoundsCompleted: 1,
       deduplicatedCallCount: 0,
-      truncatedCallCount: 0,
       guardrailBlockedCallCount: 0,
       roundEvents: [],
       finalization: {
@@ -766,7 +763,6 @@ describe('adminActionService approval permissions', () => {
       completedWindows: 0,
       totalRoundsCompleted: 1,
       deduplicatedCallCount: 0,
-      truncatedCallCount: 0,
       guardrailBlockedCallCount: 0,
       roundEvents: [],
       finalization: {
@@ -839,7 +835,6 @@ describe('adminActionService approval permissions', () => {
       completedWindows: 0,
       totalRoundsCompleted: 1,
       deduplicatedCallCount: 0,
-      truncatedCallCount: 0,
       guardrailBlockedCallCount: 0,
       roundEvents: [],
       finalization: {
@@ -908,7 +903,6 @@ describe('adminActionService approval permissions', () => {
       completedWindows: 0,
       totalRoundsCompleted: 1,
       deduplicatedCallCount: 0,
-      truncatedCallCount: 0,
       guardrailBlockedCallCount: 0,
       roundEvents: [],
       finalization: {

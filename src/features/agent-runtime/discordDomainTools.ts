@@ -140,13 +140,11 @@ async function resolveDiscordAdminActionPolicy(args: unknown, ctx: ToolExecution
 const profileGetUserSchema = z.object({
   action: z.literal('get_user_profile').describe('Fetch the best-effort personalization profile for a user.'),
   userId: z.string().trim().min(1).max(64).optional(),
-  maxChars: z.number().int().min(200).max(8_000).optional(),
   maxItemsPerSection: z.number().int().min(1).max(10).optional(),
 });
 
 const summaryGetChannelSchema = z.object({
   action: z.literal('get_channel_summary').describe('Fetch rolling and long-term summary context for the current channel only.'),
-  maxChars: z.number().int().min(200).max(12_000).optional(),
   maxItemsPerList: z.number().int().min(1).max(12).optional(),
   maxRecentFiles: z.number().int().min(1).max(20).optional(),
 });
@@ -155,31 +153,26 @@ const summarySearchChannelArchivesSchema = z.object({
   action: z.literal('search_channel_summary_archives').describe('Search archived summary context for the current channel.'),
   query: z.string().trim().min(2).max(500),
   topK: z.number().int().min(1).max(20).optional(),
-  maxChars: z.number().int().min(300).max(12_000).optional(),
 });
 
 const instructionsGetServerSchema = z.object({
   action: z.literal('get_server_instructions').describe('Fetch the current admin-authored Sage Persona for this guild. Read-only guild behavior/persona config; not an admin write or memory surface.'),
-  maxChars: z.number().int().min(200).max(12_000).optional(),
 });
 
 const analyticsGetSocialGraphSchema = z.object({
   action: z.literal('get_social_graph').describe('Retrieve social graph relationships for a user.'),
   userId: z.string().trim().min(1).max(64).optional(),
   maxEdges: z.number().int().min(1).max(30).optional(),
-  maxChars: z.number().int().min(200).max(12_000).optional(),
 });
 
 const analyticsTopRelationshipsSchema = z.object({
   action: z.literal('get_top_relationships').describe('Show the top interaction pairs in this server.'),
   limit: z.number().int().min(1).max(30).optional(),
-  maxChars: z.number().int().min(200).max(12_000).optional(),
 });
 
 const analyticsGetVoiceAnalyticsSchema = z.object({
   action: z.literal('get_voice_analytics').describe('Retrieve voice participation analytics. Use discord_voice for live join/leave or connection status.'),
   userId: z.string().trim().min(1).max(64).optional(),
-  maxChars: z.number().int().min(200).max(12_000).optional(),
 });
 
 const analyticsVoiceSummariesSchema = z.object({
@@ -187,7 +180,6 @@ const analyticsVoiceSummariesSchema = z.object({
   voiceChannelId: z.string().trim().min(1).max(64).optional(),
   sinceHours: z.number().int().min(1).max(2_160).optional(),
   limit: z.number().int().min(1).max(10).optional(),
-  maxChars: z.number().int().min(300).max(12_000).optional(),
 });
 
 const discordContextToolSchema = z.discriminatedUnion('action', [
@@ -225,7 +217,6 @@ const messagesSearchHistorySchema = addSinceVariantValidation(
     channelId: z.string().trim().min(1).max(64).optional(),
     query: z.string().trim().min(2).max(500),
     topK: z.number().int().min(1).max(20).optional(),
-    maxChars: z.number().int().min(300).max(12_000).optional(),
     mode: z.enum(['hybrid', 'semantic', 'lexical', 'regex']).optional(),
     regexPattern: z.string().trim().min(1).max(500).optional(),
     sinceIso: z.string().trim().min(1).max(80).optional(),
@@ -241,7 +232,6 @@ const messagesSearchWithContextSchema = addSinceVariantValidation(
     channelId: z.string().trim().min(1).max(64).optional(),
     query: z.string().trim().min(2).max(500),
     topK: z.number().int().min(1).max(20).optional(),
-    maxChars: z.number().int().min(300).max(12_000).optional(),
     mode: z.enum(['hybrid', 'semantic', 'lexical', 'regex']).optional(),
     regexPattern: z.string().trim().min(1).max(500).optional(),
     sinceIso: z.string().trim().min(1).max(80).optional(),
@@ -250,7 +240,6 @@ const messagesSearchWithContextSchema = addSinceVariantValidation(
     sinceDays: z.number().int().min(1).max(365).optional(),
     before: z.number().int().min(0).max(20).optional(),
     after: z.number().int().min(0).max(20).optional(),
-    contextMaxChars: z.number().int().min(300).max(12_000).optional(),
   }),
 );
 
@@ -260,7 +249,6 @@ const messagesGetContextSchema = z.object({
   messageId: z.string().trim().min(1).max(64),
   before: z.number().int().min(0).max(20).optional(),
   after: z.number().int().min(0).max(20).optional(),
-  maxChars: z.number().int().min(300).max(12_000).optional(),
 });
 
 const messagesSearchGuildSchema = addSinceVariantValidation(
@@ -268,7 +256,6 @@ const messagesSearchGuildSchema = addSinceVariantValidation(
     action: z.literal('search_guild').describe('Search raw message history across the guild. Disabled in autopilot turns.'),
     query: z.string().trim().min(2).max(500),
     topK: z.number().int().min(1).max(20).optional(),
-    maxChars: z.number().int().min(300).max(12_000).optional(),
     mode: z.enum(['hybrid', 'semantic', 'lexical', 'regex']).optional(),
     regexPattern: z.string().trim().min(1).max(500).optional(),
     sinceIso: z.string().trim().min(1).max(80).optional(),
@@ -283,7 +270,6 @@ const messagesUserTimelineSchema = addSinceVariantValidation(
     action: z.literal('get_user_timeline').describe('Show recent messages from a user across the guild. Disabled in autopilot turns.'),
     userId: z.string().trim().min(1).max(64).optional(),
     limit: z.number().int().min(1).max(50).optional(),
-    maxChars: z.number().int().min(200).max(6_000).optional(),
     sinceIso: z.string().trim().min(1).max(80).optional(),
     untilIso: z.string().trim().min(1).max(80).optional(),
     sinceHours: z.number().int().min(1).max(2_160).optional(),
@@ -375,7 +361,6 @@ const filesListChannelSchema = z.object({
   filename: z.string().trim().min(1).max(255).optional(),
   limit: z.number().int().min(1).max(10).optional(),
   includeContent: z.boolean().optional(),
-  maxChars: z.number().int().min(500).max(50_000).optional(),
 });
 
 const filesListServerSchema = z.object({
@@ -385,28 +370,24 @@ const filesListServerSchema = z.object({
   filename: z.string().trim().min(1).max(255).optional(),
   limit: z.number().int().min(1).max(10).optional(),
   includeContent: z.boolean().optional(),
-  maxChars: z.number().int().min(500).max(50_000).optional(),
 });
 
 const filesFindChannelSchema = z.object({
   action: z.literal('find_channel').describe('Search attachment text in the current channel only. This searches files, not messages.'),
   query: z.string().trim().min(2).max(500),
   topK: z.number().int().min(1).max(20).optional(),
-  maxChars: z.number().int().min(300).max(12_000).optional(),
 });
 
 const filesFindServerSchema = z.object({
   action: z.literal('find_server').describe('Search attachment text across the guild. This searches files, not messages. Disabled in autopilot turns.'),
   query: z.string().trim().min(2).max(500),
   topK: z.number().int().min(1).max(20).optional(),
-  maxChars: z.number().int().min(300).max(12_000).optional(),
 });
 
 const filesReadAttachmentSchema = z.object({
   action: z.literal('read_attachment').describe('Read cached attachment text in pages. Disabled in autopilot turns.'),
   attachmentId: z.string().trim().min(1).max(64),
   startChar: z.number().int().min(0).max(50_000_000).optional(),
-  maxChars: z.number().int().min(200).max(20_000).optional(),
 });
 
 const filesSendAttachmentSchema = z.object({
@@ -416,7 +397,6 @@ const filesSendAttachmentSchema = z.object({
   content: z.string().trim().min(1).max(8_000).optional(),
   reason: z.string().trim().max(500).optional(),
   startChar: z.number().int().min(0).max(50_000_000).optional(),
-  maxChars: z.number().int().min(200).max(20_000).optional(),
 });
 
 const discordFilesToolSchema = z.discriminatedUnion('action', [

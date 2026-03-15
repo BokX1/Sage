@@ -55,12 +55,10 @@ function formatTranscriptLine(
  * Error behavior: none.
  *
  * @param messages - Recent messages in chronological order.
- * @param maxChars - Maximum length of the returned block.
  * @returns Transcript block or null when it would be empty.
  */
 export function buildTranscriptBlock(
   messages: ChannelMessage[],
-  maxChars: number,
   options?: BuildTranscriptBlockOptions,
 ): string | null {
   if (messages.length === 0) return null;
@@ -72,27 +70,9 @@ export function buildTranscriptBlock(
   const header =
     options?.header ??
     'Ambient room transcript (most recent last). Treat this as shared-room background, not a single rolling task. Speaker classes distinguish self, human, external_bot, sage, and system participants. Bot-authored lines are room events/context, not the active requester. Each line includes guild, ch, and msg IDs — use them to build Discord message links (https://discord.com/channels/{guildId-or-@me}/{channelId}/{messageId}) when referencing messages:';
-  if (header.length >= maxChars) return null;
-
-  const selected: ChannelMessage[] = [];
-  let totalChars = header.length;
-
-  const placeholderIndexLabel = '000000';
-  for (let i = filteredMessages.length - 1; i >= 0; i -= 1) {
-    const message = filteredMessages[i];
-    const placeholderLine = formatTranscriptLine(message, placeholderIndexLabel, options);
-    const nextTotal = totalChars + 1 + placeholderLine.length;
-    if (nextTotal > maxChars) {
-      break;
-    }
-    selected.push(message);
-    totalChars = nextTotal;
-  }
-
-  if (selected.length === 0) return null;
-
-  selected.reverse();
-  const lines = selected.map((message, index) => formatTranscriptLine(message, String(index + 1), options));
+  const lines = filteredMessages.map((message, index) =>
+    formatTranscriptLine(message, String(index + 1), options),
+  );
 
   return `${header}\n${lines.join('\n')}`;
 }

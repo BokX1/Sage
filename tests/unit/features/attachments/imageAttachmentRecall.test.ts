@@ -62,7 +62,6 @@ describe('imageAttachmentRecall', () => {
       contentType: 'image/png',
       modelId: 'onnx-community/Florence-2-large-ft',
       timeoutMs: 1_000,
-      maxChars: 400,
     });
 
     expect(result.summaryText).toBe('crowded reaction meme with a cat pointing at text');
@@ -82,7 +81,6 @@ describe('imageAttachmentRecall', () => {
       contentType: 'image/png',
       modelId: 'onnx-community/Florence-2-large-ft',
       timeoutMs: 25,
-      maxChars: 400,
     });
     const expectation = expect(promise).rejects.toThrow('Florence model load timed out');
 
@@ -127,7 +125,6 @@ describe('imageAttachmentRecall', () => {
       contentType: 'image/png',
       modelId: 'onnx-community/Florence-2-large-ft',
       timeoutMs: 25,
-      maxChars: 400,
     });
     const firstExpectation = expect(firstAttempt).rejects.toThrow('Florence model load timed out');
 
@@ -143,7 +140,6 @@ describe('imageAttachmentRecall', () => {
         contentType: 'image/png',
         modelId: 'onnx-community/Florence-2-large-ft',
         timeoutMs: 250,
-        maxChars: 400,
       }),
     ).resolves.toEqual(
       expect.objectContaining({

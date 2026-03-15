@@ -1,15 +1,32 @@
 import { AIMessage, HumanMessage, SystemMessage, type BaseMessage } from '@langchain/core/messages';
 import { LLMContentPart, LLMMessageContent } from '../../platform/llm/llm-types';
 import { composeSystemPrompt } from './promptComposer';
-import { config } from '../../platform/config/env';
-import { budgetContextBlocks, ContextBlock } from './contextBudgeter';
 import { resolveRuntimeAutopilotMode } from './autopilotMode';
+import { config } from '../../platform/config/env';
 import { normalizePositiveInt } from '../../shared/utils/numbers';
 import {
   CurrentTurnContext,
   ReplyTargetContext,
   describeContinuityPolicy,
 } from './continuityContext';
+
+type ContextBlockId =
+  | 'base_system'
+  | 'current_turn'
+  | 'runtime_instruction'
+  | 'guild_sage_persona'
+  | 'voice_context'
+  | 'transcript'
+  | 'intent_hint'
+  | 'reply_context'
+  | 'user';
+
+type ContextBlock = {
+  id: ContextBlockId;
+  role: 'system' | 'assistant' | 'user';
+  content: LLMMessageContent;
+  priority: number;
+};
 
 /** Carry all optional context inputs used to construct a turn prompt. */
 export interface BuildContextMessagesParams {
@@ -217,14 +234,12 @@ export function buildContextMessages(params: BuildContextMessagesParams): BaseMe
       role: 'system',
       content: baseSystemContent,
       priority: 100,
-      truncatable: false,
     },
     {
       id: 'current_turn',
       role: 'system',
       content: buildCurrentTurnBlock(currentTurn),
       priority: 99,
-      truncatable: false,
     },
   ];
 
@@ -234,7 +249,6 @@ export function buildContextMessages(params: BuildContextMessagesParams): BaseMe
       role: 'system',
       content: `<runtime_instruction>\n${runtimeInstruction.trim()}\n</runtime_instruction>`,
       priority: 95,
-      truncatable: false,
     });
   }
 
@@ -248,8 +262,6 @@ export function buildContextMessages(params: BuildContextMessagesParams): BaseMe
         `${guildSagePersona.trim()}\n` +
         `</guild_sage_persona>`,
       priority: 92,
-      hardMaxTokens: config.CONTEXT_BLOCK_MAX_TOKENS_MEMORY,
-      truncatable: true,
     });
   }
 
@@ -259,8 +271,6 @@ export function buildContextMessages(params: BuildContextMessagesParams): BaseMe
       role: 'system',
       content: `<voice_context>\n${voiceContext.trim()}\n</voice_context>`,
       priority: 53,
-      hardMaxTokens: config.CONTEXT_BLOCK_MAX_TOKENS_TRANSCRIPT,
-      truncatable: true,
     });
   }
 
@@ -270,8 +280,6 @@ export function buildContextMessages(params: BuildContextMessagesParams): BaseMe
       role: 'system',
       content: `<focused_continuity>\n${focusedContinuity.trim()}\n</focused_continuity>`,
       priority: 55,
-      hardMaxTokens: config.CONTEXT_BLOCK_MAX_TOKENS_TRANSCRIPT,
-      truncatable: true,
     });
   }
 
@@ -281,8 +289,6 @@ export function buildContextMessages(params: BuildContextMessagesParams): BaseMe
       role: 'system',
       content: `<recent_transcript>\n${recentTranscript}\n</recent_transcript>`,
       priority: 50,
-      hardMaxTokens: config.CONTEXT_BLOCK_MAX_TOKENS_TRANSCRIPT,
-      truncatable: true,
     });
   }
 
@@ -295,23 +301,12 @@ export function buildContextMessages(params: BuildContextMessagesParams): BaseMe
       userContent,
     }),
     priority: 110,
-    hardMaxTokens: config.CONTEXT_USER_MAX_TOKENS,
-    truncatable: true,
-  });
-
-  const budgetedBlocks = budgetContextBlocks(blocks, {
-    maxInputTokens: config.CONTEXT_MAX_INPUT_TOKENS,
-    reservedOutputTokens: resolveReservedOutputTokens(
-      config.CONTEXT_RESERVED_OUTPUT_TOKENS,
-      config.CHAT_MAX_OUTPUT_TOKENS,
-    ),
-    truncationNoticeEnabled: config.CONTEXT_TRUNCATION_NOTICE,
   });
 
   const systemContentParts: string[] = [];
   const nonSystemMessages: BaseMessage[] = [];
 
-  for (const block of budgetedBlocks) {
+  for (const block of blocks) {
     if (block.role === 'system') {
       if (typeof block.content === 'string') {
         systemContentParts.push(block.content);

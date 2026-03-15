@@ -92,7 +92,6 @@ flowchart TD
 | **Chat Engine** | `src/features/chat/chat-engine.ts` | Entry point — receives Discord events, orchestrates `runChatTurn` |
 | **Agent Runtime** | `src/features/agent-runtime/agentRuntime.ts` | The single `runChatTurn` function: model resolution, prompt assembly, graph invocation, and compact trace-ledger persistence |
 | **Context Builder** | `src/features/agent-runtime/contextBuilder.ts` | Composes prioritized message blocks (system prompt, runtime instructions, optional guild Sage Persona/voice context, transcript, reply context) |
-| **Context Budgeter** | `src/features/agent-runtime/contextBudgeter.ts` | Token-aware block sizing with configurable per-block budgets |
 | **Prompt Composer** | `src/features/agent-runtime/promptComposer.ts` | Assembles the durable base system prompt with identity, response discipline, continuity precedence, and hard rules |
 | **Agent Graph Runtime** | `src/features/agent-runtime/langgraph/runtime.ts` | Custom LangGraph runtime for schema-first state, model calls, bounded continuation windows, tool execution, approval + continuation interrupts, subgraph routing, and checkpointed resumes |
 | **Tool Registry** | `src/features/agent-runtime/toolRegistry.ts` | Zod-validated tool definitions with runtime execution metadata |
@@ -141,7 +140,7 @@ sequenceDiagram
 
 1. **Single-agent, single-model** — no route-mapped model selection.
 2. **Tool-driven context** — memory, social graph, voice data are fetched through tools, not pre-injected.
-3. **Bounded graph execution** — configurable max tool-capable assistant/model responses per continuation window (`AGENT_GRAPH_MAX_STEPS`) and a hard per-response tool-call width cap (`AGENT_GRAPH_MAX_TOOL_CALLS_PER_STEP`); overflowed calls are surfaced back to the model as explicit skipped tool results instead of disappearing silently.
+3. **Bounded graph execution** — configurable max tool-capable assistant/model responses per continuation window (`AGENT_GRAPH_MAX_STEPS`); Sage no longer slices tool-call batches or truncates model-facing tool payloads inside the runtime.
 4. **Parallel read-only optimization** — read-only tools can execute concurrently within a step through `ToolNode`.
 5. **Clean pause handoff** — when a step window closes cleanly after tool work, Sage can spend one extra no-tools wrap-up response to summarize progress before the Continue handoff; timeout pauses still fall back to the deterministic runtime summary.
 6. **LangSmith-first observability** — every turn records LangGraph execution into LangSmith and can additionally persist a compact `AgentTrace` ledger row.

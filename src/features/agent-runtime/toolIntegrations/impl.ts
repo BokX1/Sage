@@ -42,7 +42,6 @@ const DEFAULT_WEB_SEARCH_TIMEOUT_MS = 45_000;
 const DEFAULT_WEB_SCRAPE_TIMEOUT_MS = 45_000;
 const MIN_FETCH_TIMEOUT_MS = 1_000;
 const MAX_FETCH_TIMEOUT_MS = 600_000;
-const DEFAULT_WEB_SCRAPE_MAX_CHARS = 20_000;
 const DEFAULT_WEB_SEARCH_MAX_RESULTS = 6;
 const DEFAULT_GITHUB_CODE_SEARCH_MAX_CANDIDATES = 30;
 const DEFAULT_GITHUB_REGEX_MAX_FILES = 20;
@@ -325,17 +324,6 @@ function decodeHtmlEntities(value: string): string {
       return BASIC_HTML_ENTITIES[named.toLowerCase()] ?? match;
     },
   );
-}
-
-function truncateWithNotice(text: string, maxChars: number): { text: string; truncated: boolean } {
-  const max = Math.max(500, Math.floor(maxChars));
-  if (text.length <= max) return { text, truncated: false };
-  const head = Math.max(250, Math.floor(max * 0.75));
-  const tail = Math.max(120, Math.floor(max * 0.2));
-  return {
-    text: `${text.slice(0, head).trimEnd()}\n\n[... ${Math.max(0, text.length - head - tail).toLocaleString()} chars omitted ...]\n\n${text.slice(-tail).trimStart()}`,
-    truncated: true,
-  };
 }
 
 async function fetchWithTimeout(
@@ -852,10 +840,9 @@ function extractScrapeContent(record: Record<string, unknown>): { title?: string
 
 async function scrapeWithFirecrawl(
   url: string,
-  maxChars: number,
   timeoutMs: number,
   signal?: AbortSignal,
-): Promise<{ provider: string; title?: string; content: string; truncated: boolean }> {
+): Promise<{ provider: string; title?: string; content: string }> {
   const apiKey = (config.FIRECRAWL_API_KEY as string | undefined)?.trim();
   if (!apiKey) throw new Error('FIRECRAWL_API_KEY is not configured');
   const baseUrl = (config.FIRECRAWL_BASE_URL as string | undefined)?.trim() || DEFAULT_FIRECRAWL_BASE_URL;
@@ -872,16 +859,14 @@ async function scrapeWithFirecrawl(
   );
   const extracted = extractScrapeContent(payload);
   if (!extracted) throw new Error('Firecrawl returned empty content');
-  const truncated = truncateWithNotice(extracted.content, maxChars);
-  return { provider: 'firecrawl', title: extracted.title, content: truncated.text, truncated: truncated.truncated };
+  return { provider: 'firecrawl', title: extracted.title, content: extracted.content };
 }
 
 async function scrapeWithCrawl4ai(
   url: string,
-  maxChars: number,
   timeoutMs: number,
   signal?: AbortSignal,
-): Promise<{ provider: string; title?: string; content: string; truncated: boolean }> {
+): Promise<{ provider: string; title?: string; content: string }> {
   const baseUrl = (config.CRAWL4AI_BASE_URL as string | undefined)?.trim();
   if (!baseUrl) throw new Error('CRAWL4AI_BASE_URL is not configured');
   const endpoint = buildBaseUrl(baseUrl, '/md');
@@ -909,47 +894,41 @@ async function scrapeWithCrawl4ai(
   }
 
   if (!extracted?.content.trim()) throw new Error('Crawl4AI returned empty content');
-  const truncated = truncateWithNotice(extracted.content, maxChars);
-  return { provider: 'crawl4ai', title: extracted.title, content: truncated.text, truncated: truncated.truncated };
+  return { provider: 'crawl4ai', title: extracted.title, content: extracted.content };
 }
 
 async function scrapeWithJina(
   url: string,
-  maxChars: number,
   timeoutMs: number,
   signal?: AbortSignal,
-): Promise<{ provider: string; content: string; truncated: boolean }> {
+): Promise<{ provider: string; content: string }> {
   const readerBase = ((config.JINA_READER_BASE_URL as string | undefined)?.trim() || DEFAULT_JINA_READER_BASE_URL).replace(/\/+$/, '/');
   const readerUrl = `${readerBase}${url.replace(/^https?:\/\//i, '')}`;
   const response = await fetchWithTimeout(readerUrl, { method: 'GET', headers: { Accept: 'text/plain' } }, timeoutMs, signal);
   const text = await response.text();
   if (!response.ok) throw new Error(`Jina reader failed with status ${response.status}`);
   if (!text.trim()) throw new Error('Jina reader returned empty content');
-  const truncated = truncateWithNotice(text.trim(), maxChars);
-  return { provider: 'jina', content: truncated.text, truncated: truncated.truncated };
+  return { provider: 'jina', content: text.trim() };
 }
 
 async function scrapeWithRawFetch(
   url: string,
-  maxChars: number,
   timeoutMs: number,
   signal?: AbortSignal,
-): Promise<{ provider: string; content: string; truncated: boolean }> {
+): Promise<{ provider: string; content: string }> {
   const response = await fetchWithTimeout(url, { method: 'GET', headers: { 'User-Agent': 'SageAgent/1.0 (+https://github.com)' } }, timeoutMs, signal);
   const body = await response.text();
   if (!response.ok) throw new Error(`Raw fetch failed with status ${response.status}`);
   const stripped = stripHtml(body);
   if (!stripped.trim()) throw new Error('Raw fetch extracted no readable content');
-  const truncated = truncateWithNotice(stripped, maxChars);
-  return { provider: 'raw_fetch', content: truncated.text, truncated: truncated.truncated };
+  return { provider: 'raw_fetch', content: stripped };
 }
 
 async function scrapeWithNomnom(
   url: string,
-  maxChars: number,
   timeoutMs: number,
   signal?: AbortSignal,
-): Promise<{ provider: string; content: string; truncated: boolean }> {
+): Promise<{ provider: string; content: string }> {
   try {
     const client = createLLMClient({ agentModel: 'nomnom' });
     const response = await client.chat({
@@ -974,8 +953,7 @@ async function scrapeWithNomnom(
       throw new Error('Nomnom returned empty content.');
     }
 
-    const truncated = truncateWithNotice(content, maxChars);
-    return { provider: 'nomnom', content: truncated.text, truncated: truncated.truncated };
+    return { provider: 'nomnom', content };
   } catch (error) {
     const errorObj = error instanceof Error ? error : new Error(String(error));
     if (isAbortError(errorObj)) throw errorObj;
@@ -987,7 +965,6 @@ async function scrapeWithNomnom(
 export async function runAgenticWebScrape(params: {
   url: string;
   instruction: string;
-  maxChars?: number;
   signal?: AbortSignal;
 }): Promise<Record<string, unknown>> {
   const sanitizedUrl = sanitizePublicUrl(params.url);
@@ -996,8 +973,6 @@ export async function runAgenticWebScrape(params: {
   }
 
   const timeoutMs = toInt((config.TOOL_WEB_SCRAPE_TIMEOUT_MS as number | undefined), DEFAULT_WEB_SCRAPE_TIMEOUT_MS, 5_000, 180_000);
-  const configuredMaxChars = toInt((config.TOOL_WEB_SCRAPE_MAX_CHARS as number | undefined), DEFAULT_WEB_SCRAPE_MAX_CHARS, 500, 50_000);
-  const maxChars = toInt(params.maxChars ?? configuredMaxChars, configuredMaxChars, 500, 50_000);
 
   try {
     const client = createLLMClient({ agentModel: 'nomnom' });
@@ -1023,13 +998,11 @@ export async function runAgenticWebScrape(params: {
       throw new Error('Agentic scraper returned empty content.');
     }
 
-    const truncated = truncateWithNotice(content, maxChars);
     return {
       provider: 'nomnom',
       url: sanitizedUrl,
       instruction: params.instruction,
-      content: truncated.text,
-      truncated: truncated.truncated,
+      content,
     };
   } catch (error) {
     const errorObj = error instanceof Error ? error : new Error(String(error));
@@ -1041,7 +1014,6 @@ export async function runAgenticWebScrape(params: {
 
 export async function scrapeWebPage(params: {
   url: string;
-  maxChars?: number;
   providerOrder?: ScrapeProviderId[];
   signal?: AbortSignal;
 }): Promise<Record<string, unknown>> {
@@ -1050,8 +1022,6 @@ export async function scrapeWebPage(params: {
     throw new Error('URL must be a public HTTP(S) URL.');
   }
   const timeoutMs = toInt((config.TOOL_WEB_SCRAPE_TIMEOUT_MS as number | undefined), DEFAULT_WEB_SCRAPE_TIMEOUT_MS, 5_000, 180_000);
-  const configuredMaxChars = toInt((config.TOOL_WEB_SCRAPE_MAX_CHARS as number | undefined), DEFAULT_WEB_SCRAPE_MAX_CHARS, 500, 50_000);
-  const maxChars = toInt(params.maxChars ?? configuredMaxChars, configuredMaxChars, 500, 50_000);
   const source = (config.TOOL_WEB_SCRAPE_PROVIDER_ORDER as string | undefined)?.trim() || 'crawl4ai,firecrawl,jina,nomnom,raw_fetch';
   const configuredProviderOrder = source
     .split(',')
@@ -1098,14 +1068,14 @@ export async function scrapeWebPage(params: {
     try {
       const outcome =
         provider === 'firecrawl'
-          ? await scrapeWithFirecrawl(sanitizedUrl, maxChars, timeoutMs, params.signal)
+          ? await scrapeWithFirecrawl(sanitizedUrl, timeoutMs, params.signal)
           : provider === 'crawl4ai'
-            ? await scrapeWithCrawl4ai(sanitizedUrl, maxChars, timeoutMs, params.signal)
+            ? await scrapeWithCrawl4ai(sanitizedUrl, timeoutMs, params.signal)
             : provider === 'jina'
-              ? await scrapeWithJina(sanitizedUrl, maxChars, timeoutMs, params.signal)
+              ? await scrapeWithJina(sanitizedUrl, timeoutMs, params.signal)
               : provider === 'nomnom'
-                ? await scrapeWithNomnom(sanitizedUrl, maxChars, timeoutMs, params.signal)
-                : await scrapeWithRawFetch(sanitizedUrl, maxChars, timeoutMs, params.signal);
+                ? await scrapeWithNomnom(sanitizedUrl, timeoutMs, params.signal)
+                : await scrapeWithRawFetch(sanitizedUrl, timeoutMs, params.signal);
       if (provider === 'crawl4ai') {
         clearLocalProviderCooldown('crawl4ai');
       }
@@ -1118,7 +1088,6 @@ export async function scrapeWebPage(params: {
         localProviderStatus: getLocalProviderRuntimeStatus(),
         title: 'title' in outcome ? outcome.title : undefined,
         content: outcome.content,
-        truncated: outcome.truncated,
       };
     } catch (error) {
       if (isAbortError(error)) throw error;
@@ -1436,7 +1405,7 @@ export async function lookupGitHubRepo(params: {
       const readmePayload = await fetchJson(`${repoUrl}/readme`, { method: 'GET', headers }, timeoutMs, params.signal);
       const encoded = pickString(readmePayload, 'content') ?? '';
       if (encoded) {
-        readme = truncateWithNotice(Buffer.from(encoded.replace(/\n/g, ''), 'base64').toString('utf8'), 8_000).text;
+        readme = Buffer.from(encoded.replace(/\n/g, ''), 'base64').toString('utf8');
       }
     } catch (error) {
       if (isAbortError(error)) throw error;
@@ -1589,7 +1558,6 @@ export async function lookupGitHubFile(params: {
   repo: string;
   path: string;
   ref?: string;
-  maxChars?: number;
   startLine?: number;
   endLine?: number;
   includeLineNumbers?: boolean;
@@ -1597,8 +1565,6 @@ export async function lookupGitHubFile(params: {
   signal?: AbortSignal;
 }): Promise<Record<string, unknown>> {
   const timeoutMs = toInt((config.TOOL_WEB_SCRAPE_TIMEOUT_MS as number | undefined), DEFAULT_WEB_SCRAPE_TIMEOUT_MS, 5_000, 180_000);
-  const configuredMaxChars = toInt((config.TOOL_WEB_SCRAPE_MAX_CHARS as number | undefined), DEFAULT_WEB_SCRAPE_MAX_CHARS, 500, 50_000);
-  const maxChars = toInt(params.maxChars ?? configuredMaxChars, configuredMaxChars, 500, 50_000);
   try {
     const cachedFile = await loadGitHubFileContent({
       repo: params.repo,
@@ -1660,7 +1626,6 @@ export async function lookupGitHubFile(params: {
         .join('\n');
     }
 
-    const truncated = truncateWithNotice(renderedContent, maxChars);
     return {
       repo: cachedFile.repo,
       path: cachedFile.path,
@@ -1670,8 +1635,7 @@ export async function lookupGitHubFile(params: {
       encoding: cachedFile.encoding,
       htmlUrl: cachedFile.htmlUrl,
       downloadUrl: cachedFile.downloadUrl,
-      content: truncated.text,
-      truncated: truncated.truncated,
+      content: renderedContent,
       totalLines: cachedFile.lineCount,
       lineCount: cachedFile.lineCount,
       lineStart,
@@ -2070,11 +2034,10 @@ function buildStoredAttachmentPage(params: {
 function formatAttachmentLookupItem(params: {
   record: IngestedAttachmentRecord;
   includeContent: boolean;
-  maxChars: number;
 }): Record<string, unknown> {
-  const { record, includeContent, maxChars } = params;
+  const { record, includeContent } = params;
   const hasStoredText = hasStoredAttachmentText(record);
-  const truncated = truncateWithNotice(record.extractedText ?? '', maxChars);
+  const content = record.extractedText ?? '';
 
   return {
     id: record.id,
@@ -2095,11 +2058,10 @@ function formatAttachmentLookupItem(params: {
     updatedAt: record.updatedAt.toISOString(),
     ...(includeContent
       ? {
-        content: hasStoredText ? truncated.text : null,
-        contentTruncated: hasStoredText ? truncated.truncated : false,
+        content: hasStoredText ? content : null,
       }
       : {
-        snippet: hasStoredText ? truncated.text.slice(0, Math.min(400, truncated.text.length)) : null,
+        snippet: hasStoredText ? content.slice(0, Math.min(400, content.length)) : null,
         contentIncluded: false,
       }),
     guidance: hasStoredText
@@ -2216,16 +2178,9 @@ export async function lookupChannelFileCache(params: {
   query?: string;
   limit?: number;
   includeContent?: boolean;
-  maxChars?: number;
 }): Promise<Record<string, unknown>> {
   const limit = toInt(params.limit, 3, 1, 10);
   const includeContent = params.includeContent !== false;
-  const maxChars = toInt(
-    params.maxChars ?? (config.TOOL_WEB_SCRAPE_MAX_CHARS as number | undefined),
-    DEFAULT_WEB_SCRAPE_MAX_CHARS,
-    500,
-    50_000,
-  );
 
   const records = await findIngestedAttachmentsForLookup({
     guildId: params.guildId ?? null,
@@ -2240,7 +2195,6 @@ export async function lookupChannelFileCache(params: {
     formatAttachmentLookupItem({
       record,
       includeContent,
-      maxChars,
     }),
   );
 
@@ -2252,7 +2206,6 @@ export async function lookupChannelFileCache(params: {
     messageId: params.messageId ?? null,
     filename: params.filename ?? null,
     includeContent,
-    maxChars,
     items,
     guidance:
       items.length > 0
@@ -2274,7 +2227,6 @@ export async function lookupServerFileCache(params: {
   query?: string;
   limit?: number;
   includeContent?: boolean;
-  maxChars?: number;
 }): Promise<Record<string, unknown>> {
   if (!params.guildId) {
     return {
@@ -2287,12 +2239,6 @@ export async function lookupServerFileCache(params: {
 
   const limit = toInt(params.limit, 3, 1, 10);
   const includeContent = params.includeContent !== false;
-  const maxChars = toInt(
-    params.maxChars ?? (config.TOOL_WEB_SCRAPE_MAX_CHARS as number | undefined),
-    DEFAULT_WEB_SCRAPE_MAX_CHARS,
-    500,
-    50_000,
-  );
 
   const records = await findIngestedAttachmentsForLookupInGuild({
     guildId: params.guildId,
@@ -2318,7 +2264,6 @@ export async function lookupServerFileCache(params: {
     formatAttachmentLookupItem({
       record,
       includeContent,
-      maxChars,
     }),
   );
 
@@ -2330,7 +2275,6 @@ export async function lookupServerFileCache(params: {
     messageId: params.messageId ?? null,
     filename: params.filename ?? null,
     includeContent,
-    maxChars,
     items,
     scope: 'guild_cached_files',
     guidance:
@@ -2765,12 +2709,10 @@ export async function searchStackOverflow(params: {
   maxResults?: number;
   tagged?: string;
   includeAcceptedAnswer?: boolean;
-  maxAcceptedAnswerChars?: number;
 }): Promise<Record<string, unknown>> {
   const timeoutMs = toInt((config.TOOL_WEB_SEARCH_TIMEOUT_MS as number | undefined), DEFAULT_WEB_SEARCH_TIMEOUT_MS, 5_000, 180_000);
   const maxResults = toInt(params.maxResults, 5, 1, 15);
   const includeAcceptedAnswer = params.includeAcceptedAnswer === true;
-  const maxAcceptedAnswerChars = toInt(params.maxAcceptedAnswerChars, 6_000, 500, 20_000);
   const endpoint = new URL('https://api.stackexchange.com/2.3/search/advanced');
   endpoint.searchParams.set('order', 'desc');
   endpoint.searchParams.set('sort', 'relevance');
@@ -2857,15 +2799,13 @@ export async function searchStackOverflow(params: {
             .replace(/\r/g, '')
             .replace(/\n{3,}/g, '\n\n')
             .trim();
-          const truncated = truncateWithNotice(markdown, maxAcceptedAnswerChars);
           acceptedAnswer = {
             answerId: acceptedCandidate.acceptedAnswerId,
             url: sanitizeUrl(pickString(answerItem, 'link') ?? ''),
             score: pickNumber(answerItem, 'score'),
             creationDate: unixSecondsToIso(pickNumber(answerItem, 'creation_date')),
             lastActivityDate: unixSecondsToIso(pickNumber(answerItem, 'last_activity_date')),
-            body: truncated.text,
-            truncated: truncated.truncated,
+            body: markdown,
           };
         }
       } catch (error) {
@@ -2905,13 +2845,8 @@ function formatRelativeAge(updatedAt: Date, nowMs = Date.now()): string {
   return `${days}d`;
 }
 
-function trimToChars(value: string, maxChars: number): { text: string; truncated: boolean } {
-  const normalized = value.trim();
-  if (normalized.length <= maxChars) return { text: normalized, truncated: false };
-  return {
-    text: `${normalized.slice(0, Math.max(0, maxChars - 3)).trimEnd()}...`,
-    truncated: true,
-  };
+function normalizeToolText(value: string): string {
+  return value.trim();
 }
 
 function formatWindow(windowStart: Date, windowEnd: Date): string {
@@ -3058,7 +2993,6 @@ export async function searchChannelMessages(params: {
   requesterUserId?: string;
   query: string;
   topK?: number;
-  maxChars?: number;
   mode?: 'hybrid' | 'semantic' | 'lexical' | 'regex';
   regexPattern?: string;
   sinceIso?: string;
@@ -3114,7 +3048,6 @@ export async function searchChannelMessages(params: {
   }
 
   const topK = toInt(params.topK, 5, 1, 20);
-  const maxChars = toInt(params.maxChars, 1_800, 300, 12_000);
   const mode = params.mode ?? 'hybrid';
   const since = parseOptionalIsoDate(params.sinceIso, 'sinceIso');
   const until = parseOptionalIsoDate(params.untilIso, 'untilIso');
@@ -3225,7 +3158,6 @@ export async function searchChannelMessages(params: {
   }
 
   const items = rows.slice(0, topK).map((row) => {
-    const truncated = truncateWithNotice(row.content, maxChars);
     return {
       messageId: row.messageId,
       guildId: row.guildId,
@@ -3235,8 +3167,7 @@ export async function searchChannelMessages(params: {
       authorIsBot: row.authorIsBot,
       timestamp: row.timestamp,
       score: Number.isFinite(row.score) ? Number(row.score.toFixed(6)) : row.score,
-      content: truncated.text,
-      truncated: truncated.truncated,
+      content: row.content,
     };
   });
 
@@ -3460,7 +3391,6 @@ export async function searchGuildMessages(params: {
   requesterUserId: string;
   query: string;
   topK?: number;
-  maxChars?: number;
   mode?: 'hybrid' | 'semantic' | 'lexical' | 'regex';
   regexPattern?: string;
   sinceIso?: string;
@@ -3492,7 +3422,6 @@ export async function searchGuildMessages(params: {
   }
 
   const topK = toInt(params.topK, 5, 1, 20);
-  const maxChars = toInt(params.maxChars, 1_800, 300, 12_000);
   const mode = params.mode ?? 'hybrid';
   const since = parseOptionalIsoDate(params.sinceIso, 'sinceIso');
   const until = parseOptionalIsoDate(params.untilIso, 'untilIso');
@@ -3616,7 +3545,6 @@ export async function searchGuildMessages(params: {
   }
 
   const items = filtered.slice(0, topK).map((row) => {
-    const truncated = truncateWithNotice(row.content, maxChars);
     return {
       messageId: row.messageId,
       channelId: row.channelId,
@@ -3625,8 +3553,7 @@ export async function searchGuildMessages(params: {
       authorIsBot: row.authorIsBot,
       timestamp: row.timestamp,
       score: Number.isFinite(row.score) ? Number(row.score.toFixed(6)) : row.score,
-      content: truncated.text,
-      truncated: truncated.truncated,
+      content: row.content,
     };
   });
 
@@ -3650,7 +3577,6 @@ export async function lookupUserMessageTimeline(params: {
   requesterUserId: string;
   userId: string;
   limit?: number;
-  maxChars?: number;
   sinceIso?: string;
   untilIso?: string;
 }): Promise<Record<string, unknown>> {
@@ -3672,7 +3598,6 @@ export async function lookupUserMessageTimeline(params: {
   }
 
   const limit = toInt(params.limit, 12, 1, 50);
-  const maxChars = toInt(params.maxChars, 800, 200, 6_000);
   const since = parseOptionalIsoDate(params.sinceIso, 'sinceIso');
   const until = parseOptionalIsoDate(params.untilIso, 'untilIso');
 
@@ -3731,7 +3656,6 @@ export async function lookupUserMessageTimeline(params: {
   }
 
   const items = filtered.map((row) => {
-    const truncated = truncateWithNotice(row.content, maxChars);
     return {
       messageId: row.messageId,
       channelId: row.channelId,
@@ -3739,8 +3663,7 @@ export async function lookupUserMessageTimeline(params: {
       authorDisplayName: row.authorDisplayName,
       authorIsBot: row.authorIsBot,
       timestamp: row.timestamp,
-      content: truncated.text,
-      truncated: truncated.truncated,
+      content: row.content,
     };
   });
 
@@ -3766,7 +3689,6 @@ export async function lookupChannelMessage(params: {
   messageId: string;
   before?: number;
   after?: number;
-  maxChars?: number;
 }): Promise<Record<string, unknown>> {
   if (!params.guildId) {
     return {
@@ -3818,7 +3740,6 @@ export async function lookupChannelMessage(params: {
 
   const before = toInt(params.before, 3, 0, 20);
   const after = toInt(params.after, 3, 0, 20);
-  const maxChars = toInt(params.maxChars, 1_800, 300, 12_000);
   const rows = await getChannelMessageWindowById({
     guildId: params.guildId,
     channelId: params.channelId,
@@ -3847,8 +3768,6 @@ export async function lookupChannelMessage(params: {
       `${marker} [${row.timestamp}] @${row.authorDisplayName} (id:${row.authorId}, bot=${row.authorIsBot}, guild:${row.guildId ?? '@me'} ch:${row.channelId} msg:${row.messageId}): ${normalizedContent}`,
     );
   }
-  const built = lines.join('\n');
-  const trimmed = trimToChars(built, maxChars);
 
   return {
     found: true,
@@ -3858,8 +3777,7 @@ export async function lookupChannelMessage(params: {
     before,
     after,
     itemCount: rows.length,
-    content: trimmed.text,
-    truncated: trimmed.truncated,
+    content: normalizeToolText(lines.join('\n')),
     items: rows,
     scope: 'raw_channel_messages',
   };
@@ -3870,10 +3788,8 @@ export async function searchAttachmentChunksInChannel(params: {
   channelId: string;
   query: string;
   topK?: number;
-  maxChars?: number;
 }): Promise<Record<string, unknown>> {
   const topK = toInt(params.topK, 5, 1, 20);
-  const maxChars = toInt(params.maxChars, 1_800, 300, 12_000);
   const query = params.query.trim();
   if (!query) {
     throw new Error('Query must not be empty');
@@ -3900,7 +3816,6 @@ export async function searchAttachmentChunksInChannel(params: {
 
   const items = rows.map((row) => {
     const attachment = attachmentById.get(row.attachmentId);
-    const truncated = truncateWithNotice(row.content, maxChars);
     return {
       chunkId: row.chunkId,
       attachmentId: row.attachmentId,
@@ -3910,8 +3825,7 @@ export async function searchAttachmentChunksInChannel(params: {
       messageId: attachment?.messageId ?? null,
       filename: attachment?.filename ?? null,
       score: Number.isFinite(row.score) ? Number(row.score.toFixed(4)) : row.score,
-      content: truncated.text,
-      truncated: truncated.truncated,
+      content: row.content,
     };
   });
 
@@ -3930,7 +3844,6 @@ export async function searchAttachmentChunksInGuild(params: {
   requesterUserId: string;
   query: string;
   topK?: number;
-  maxChars?: number;
 }): Promise<Record<string, unknown>> {
   if (!params.guildId) {
     return {
@@ -3943,7 +3856,6 @@ export async function searchAttachmentChunksInGuild(params: {
   }
 
   const topK = toInt(params.topK, 5, 1, 20);
-  const maxChars = toInt(params.maxChars, 1_800, 300, 12_000);
   const query = params.query.trim();
   if (!query) {
     throw new Error('Query must not be empty');
@@ -3982,7 +3894,6 @@ export async function searchAttachmentChunksInGuild(params: {
       const attachment = attachmentById.get(row.attachmentId);
       if (!attachment) return null;
       if (!allowedChannelIds.has(attachment.channelId)) return null;
-      const truncated = truncateWithNotice(row.content, maxChars);
       return {
         chunkId: row.chunkId,
         attachmentId: row.attachmentId,
@@ -3992,8 +3903,7 @@ export async function searchAttachmentChunksInGuild(params: {
         messageId: attachment.messageId,
         filename: attachment.filename,
         score: Number.isFinite(row.score) ? Number(row.score.toFixed(4)) : row.score,
-        content: truncated.text,
-        truncated: truncated.truncated,
+        content: row.content,
       };
     })
     .filter((item): item is NonNullable<typeof item> => item !== null)
@@ -4025,7 +3935,6 @@ export async function searchChannelArchives(params: {
   channelId: string;
   query: string;
   topK?: number;
-  maxChars?: number;
 }): Promise<Record<string, unknown>> {
   if (!params.guildId) {
     return {
@@ -4043,7 +3952,6 @@ export async function searchChannelArchives(params: {
   }
 
   const topK = toInt(params.topK, 5, 1, 20);
-  const maxChars = toInt(params.maxChars, 1_800, 300, 12_000);
   const summaryStore = getChannelSummaryStore();
   const archives = await summaryStore.listArchiveSummaries({
     guildId: params.guildId,
@@ -4088,15 +3996,13 @@ export async function searchChannelArchives(params: {
 
   ranked.sort((a, b) => b.score - a.score);
   const items = ranked.slice(0, topK).map(({ archive, score }) => {
-    const truncated = truncateWithNotice(archive.summaryText, maxChars);
     return {
       kind: archive.kind,
       week: getArchiveWeekLabel(archive.kind),
       score: Number.isFinite(score) ? Number(score.toFixed(4)) : score,
       windowStart: archive.windowStart.toISOString(),
       windowEnd: archive.windowEnd.toISOString(),
-      content: truncated.text,
-      truncated: truncated.truncated,
+      content: archive.summaryText,
     };
   });
 
@@ -4124,10 +4030,8 @@ function classifyActivity(ms: number): 'none' | 'light' | 'moderate' | 'active' 
 
 export async function lookupUserMemory(params: {
   userId: string;
-  maxChars?: number;
   maxItemsPerSection?: number;
 }): Promise<Record<string, unknown>> {
-  const maxChars = toInt(params.maxChars, 1_400, 200, 8_000);
   const maxItemsPerSection = toInt(params.maxItemsPerSection, 3, 1, 10);
   const profile = await getUserProfileRecord(params.userId);
   const summary = profile?.summary?.trim() ?? '';
@@ -4156,12 +4060,9 @@ export async function lookupUserMemory(params: {
     lines.push(`- Freshness: profile updated ${formatRelativeAge(profile.updatedAt)} ago.`);
   }
   lines.push('- Guidance: treat these as soft personalization cues: durable preferences/background plus current-but-fallible active focus. Prioritize explicit user instructions in this turn.');
-  const built = lines.join('\n');
-  const trimmed = trimToChars(built, maxChars);
   return {
     found: true,
-    content: trimmed.text,
-    truncated: trimmed.truncated,
+    content: normalizeToolText(lines.join('\n')),
     updatedAt: profile?.updatedAt?.toISOString() ?? null,
     preferences,
     activeFocus,
@@ -4172,7 +4073,6 @@ export async function lookupUserMemory(params: {
 export async function lookupChannelMemory(params: {
   guildId: string | null;
   channelId: string;
-  maxChars?: number;
   maxItemsPerList?: number;
   maxRecentFiles?: number;
 }): Promise<Record<string, unknown>> {
@@ -4184,7 +4084,6 @@ export async function lookupChannelMemory(params: {
     };
   }
 
-  const maxChars = toInt(params.maxChars, 1_800, 200, 12_000);
   const maxItemsPerList = toInt(params.maxItemsPerList, 5, 1, 10);
   const maxRecentFiles = toInt(params.maxRecentFiles, 5, 1, 20);
   const summaryStore = getChannelSummaryStore();
@@ -4229,11 +4128,9 @@ export async function lookupChannelMemory(params: {
     'Scope: rolling and long-term channel summary context plus recent cached attachment pointers only (not raw message transcripts).',
     ...parts,
   ].join('\n');
-  const trimmed = trimToChars(built, maxChars);
   return {
     found: true,
-    content: trimmed.text,
-    truncated: trimmed.truncated,
+    content: normalizeToolText(built),
     hasRolling: !!rollingSummary,
     hasProfile: !!profileSummary,
     recentAttachmentCount: recentAttachments.length,
@@ -4266,7 +4163,6 @@ export async function lookupSocialGraph(params: {
   guildId: string | null;
   userId: string;
   maxEdges?: number;
-  maxChars?: number;
 }): Promise<Record<string, unknown>> {
   if (!params.guildId) {
     return {
@@ -4276,7 +4172,6 @@ export async function lookupSocialGraph(params: {
     };
   }
   const maxEdges = toInt(params.maxEdges, 10, 1, 30);
-  const maxChars = toInt(params.maxChars, 1_800, 200, 12_000);
 
   // Memgraph-backed social graph (single source of truth).
   try {
@@ -4313,12 +4208,10 @@ export async function lookupSocialGraph(params: {
         `- <@${edge.userId}>: dunbar=${edge.dunbarLabel}(L${edge.dunbarLayer}), reciprocity=${edge.reciprocity.toFixed(2)}, sentiment=${sentimentLabel}(${edge.avgSentiment.toFixed(2)}), pagerank=${edge.pagerank.toFixed(4)}, recency=${recency}, signals=${signals}`,
       );
     }
-    const trimmed = trimToChars(lines.join('\n'), maxChars);
     return {
       found: true,
       source: 'memgraph',
-      content: trimmed.text,
-      truncated: trimmed.truncated,
+      content: normalizeToolText(lines.join('\n')),
       edgeCount: summary.edges.length,
       userPagerank: summary.userPagerank,
       userCommunityId: summary.userCommunityId,
@@ -4356,7 +4249,6 @@ export async function lookupSocialGraph(params: {
 export async function lookupTopSocialGraphEdges(params: {
   guildId: string | null;
   limit?: number;
-  maxChars?: number;
 }): Promise<Record<string, unknown>> {
   if (!params.guildId) {
     return {
@@ -4367,7 +4259,6 @@ export async function lookupTopSocialGraphEdges(params: {
     };
   }
   const limit = toInt(params.limit, 15, 1, 30);
-  const maxChars = toInt(params.maxChars, 1_800, 200, 12_000);
 
   try {
     const { queryTopSocialGraphEdges } = await import('../../social-graph/socialGraphQuery');
@@ -4390,14 +4281,12 @@ export async function lookupTopSocialGraphEdges(params: {
         `- <@${edge.userA}> ↔ <@${edge.userB}>: total=${edge.totalInteractions}, mentions=${edge.mentions}, replies=${edge.replies}, reacts=${edge.reacts}, voice=${edge.voiceSessions}`,
       );
     }
-    const trimmed = trimToChars(lines.join('\n'), maxChars);
     return {
       found: true,
       source: 'memgraph',
       guildId: params.guildId,
       limit,
-      content: trimmed.text,
-      truncated: trimmed.truncated,
+      content: normalizeToolText(lines.join('\n')),
       edgeCount: edges.length,
       edges,
       scope: 'memgraph_social_graph',
@@ -4418,7 +4307,6 @@ export async function lookupTopSocialGraphEdges(params: {
 export async function lookupVoiceAnalytics(params: {
   guildId: string | null;
   userId: string;
-  maxChars?: number;
 }): Promise<Record<string, unknown>> {
   if (!params.guildId) {
     return {
@@ -4426,7 +4314,6 @@ export async function lookupVoiceAnalytics(params: {
       content: 'Voice analytics memory is unavailable in DM context.',
     };
   }
-  const maxChars = toInt(params.maxChars, 1_800, 200, 12_000);
   const [presence, todayData] = await Promise.all([
     whoIsInVoice({ guildId: params.guildId }),
     howLongInVoiceToday({ guildId: params.guildId, userId: params.userId }),
@@ -4456,11 +4343,9 @@ export async function lookupVoiceAnalytics(params: {
     lines.push(`- User current channel: <#${userPresenceChannel.channelId}>.`);
     lines.push(`- User current session duration: ${formatDuration(currentSessionMs)}.`);
   }
-  const trimmed = trimToChars(lines.join('\n'), maxChars);
   return {
     found: true,
-    content: trimmed.text,
-    truncated: trimmed.truncated,
+    content: normalizeToolText(lines.join('\n')),
     activeChannelCount: activeChannels.length,
     totalMembers,
     userTodayMs: todayData.ms,
@@ -4476,7 +4361,6 @@ export async function lookupVoiceSessionSummaries(params: {
   voiceChannelId?: string | null;
   sinceHours?: number;
   limit?: number;
-  maxChars?: number;
 }): Promise<Record<string, unknown>> {
   if (!params.guildId) {
     return {
@@ -4489,7 +4373,6 @@ export async function lookupVoiceSessionSummaries(params: {
 
   const sinceHours = toInt(params.sinceHours, 24, 1, 2_160);
   const limit = toInt(params.limit, 3, 1, 10);
-  const maxChars = toInt(params.maxChars, 1_800, 300, 12_000);
   const since = new Date(Date.now() - sinceHours * 60 * 60 * 1000);
 
   const rows = await listVoiceConversationSummaries({
@@ -4560,11 +4443,9 @@ export async function lookupVoiceSessionSummaries(params: {
     };
   });
 
-  const trimmed = trimToChars(lines.join('\n'), maxChars);
   return {
     found: true,
-    content: trimmed.text,
-    truncated: trimmed.truncated,
+    content: normalizeToolText(lines.join('\n')),
     scope: 'voice_session_summaries',
     resultCount: rows.length,
     items,

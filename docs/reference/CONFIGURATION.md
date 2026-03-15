@@ -141,7 +141,6 @@ Complete index of all environment variables used by Sage, with descriptions and 
 | `RAW_MESSAGE_TTL_DAYS` | In-memory ring buffer TTL | `3` |
 | `RING_BUFFER_MAX_MESSAGES_PER_CHANNEL` | Max messages in ring buffer per channel | `200` |
 | `CONTEXT_TRANSCRIPT_MAX_MESSAGES` | Max messages in prompt transcript | `15` |
-| `CONTEXT_TRANSCRIPT_MAX_CHARS` | Max chars in prompt transcript | `24000` |
 
 ---
 
@@ -164,7 +163,6 @@ These settings control Sage's optional Discord voice features. The local voice s
 | `VOICE_MESSAGE_STT_MAX_SECONDS` | Max duration (seconds) to transcribe per voice message | `120` |
 | `VOICE_MESSAGE_STT_MAX_BYTES` | Max download bytes per voice message | `5000000` |
 | `VOICE_LIVE_CONTEXT_LOOKBACK_SEC` | How far back to include in live voice context | `180` |
-| `VOICE_LIVE_CONTEXT_MAX_CHARS` | Max chars for injected live voice context | `4000` |
 | `VOICE_LIVE_CONTEXT_MAX_UTTERANCES` | Max utterances for injected live voice context | `80` |
 | `VOICE_SESSION_SUMMARY_ENABLED` | Persist summary-only voice session memory on leave | `true` |
 
@@ -188,7 +186,6 @@ These settings control Sage's optional Discord voice features. The local voice s
 | `FILE_INGEST_IMAGE_ENABLED` | Enable image attachment ingest with background caption/recall text extraction | `true` |
 | `FILE_INGEST_IMAGE_MODEL_ID` | Local image caption model id used for attachment recall text | `onnx-community/Florence-2-large-ft` |
 | `FILE_INGEST_IMAGE_TIMEOUT_MS` | Per-image timeout for recall text extraction | `120000` |
-| `FILE_INGEST_IMAGE_MAX_CHARS` | Max chars stored from image recall text | `4000` |
 
 ---
 
@@ -202,7 +199,6 @@ These settings control Sage's optional Discord voice features. The local voice s
 | `SUMMARY_ROLLING_MIN_MESSAGES` | Min messages before rolling summary | `20` |
 | `SUMMARY_ROLLING_MIN_INTERVAL_SEC` | Min seconds between rolling summaries | `300` |
 | `SUMMARY_PROFILE_MIN_INTERVAL_SEC` | Min seconds between profile summaries | `21600` |
-| `SUMMARY_MAX_CHARS` | Max chars per summary output | `1800` |
 | `SUMMARY_SCHED_TICK_SEC` | Scheduler tick interval | `60` |
 
 ---
@@ -233,14 +229,6 @@ These settings control Sage's optional Discord voice features. The local voice s
 | `CONTEXT_MAX_INPUT_TOKENS` | Max total input tokens | `120000` |
 | `CONTEXT_RESERVED_OUTPUT_TOKENS` | Reserved output tokens | `1800` |
 | `TOKEN_HEURISTIC_CHARS_PER_TOKEN` | Chars per token for heuristic estimator | `4` |
-| `CONTEXT_BLOCK_MAX_TOKENS_TRANSCRIPT` | Transcript block budget | `20000` |
-| `CONTEXT_BLOCK_MAX_TOKENS_ROLLING_SUMMARY` | Rolling summary block budget | `12000` |
-| `CONTEXT_BLOCK_MAX_TOKENS_PROFILE_SUMMARY` | Profile summary block budget | `12000` |
-| `CONTEXT_BLOCK_MAX_TOKENS_MEMORY` | Memory block budget | `12000` |
-| `CONTEXT_BLOCK_MAX_TOKENS_REPLY_CONTEXT` | Reply context block budget | `8000` |
-| `CONTEXT_BLOCK_MAX_TOKENS_PROVIDERS` | Provider/action packets budget | `12000` |
-| `CONTEXT_USER_MAX_TOKENS` | Max tokens for user message | `60000` |
-| `CONTEXT_TRUNCATION_NOTICE` | Show truncation notice | `true` |
 | `CHAT_MAX_OUTPUT_TOKENS` | Max output tokens for chat | `1800` |
 
 ---
@@ -257,11 +245,9 @@ These settings control Sage's optional Discord voice features. The local voice s
 | `LANGSMITH_PROJECT` | LangSmith project name when tracing is enabled | `sage` |
 | `SAGE_TRACE_DB_ENABLED` | Persist compact `AgentTrace` ledger rows alongside LangSmith references | `true` |
 | `AGENT_GRAPH_MAX_STEPS` | Max tool-capable assistant/model responses per continuation window before Sage pauses or runs a wrap-up summary | `6` |
-| `AGENT_GRAPH_MAX_TOOL_CALLS_PER_STEP` | Hard cap on tool calls the model can emit in one assistant/model response; overflow becomes explicit skipped tool results for follow-up planning | `5` |
 | `AGENT_GRAPH_TOOL_TIMEOUT_MS` | Per-tool execution timeout | `45000` |
 | `AGENT_GRAPH_MAX_DURATION_MS` | Max wall-clock duration for a full graph turn | `120000` |
 | `AGENT_GRAPH_MAX_OUTPUT_TOKENS` | Max output tokens for graph model calls | `1800` |
-| `AGENT_GRAPH_MAX_RESULT_CHARS` | Max chars per model-facing tool result before Sage compacts it into a structured envelope | `8000` |
 | `AGENT_GRAPH_GITHUB_GROUNDED_MODE` | Enable GitHub grounded search | `true` |
 | `AGENT_GRAPH_RECURSION_LIMIT` | LangGraph recursion fail-safe above the legal hop count | `16` |
 
@@ -289,7 +275,6 @@ These settings control Sage's optional Discord voice features. The local voice s
 | `TOOL_WEB_SEARCH_MAX_RESULTS` | Results per search call | `6` |
 | `TOOL_WEB_SCRAPE_PROVIDER_ORDER` | Scrape provider priority | `crawl4ai,firecrawl,jina,nomnom,raw_fetch` |
 | `TOOL_WEB_SCRAPE_TIMEOUT_MS` | Per-provider scrape timeout | `45000` |
-| `TOOL_WEB_SCRAPE_MAX_CHARS` | Max chars scraped per page | `20000` |
 | `TAVILY_API_KEY` | Tavily search API key | *(empty)* |
 | `EXA_API_KEY` | Exa search API key | *(empty)* |
 | `SEARXNG_BASE_URL` | SearXNG instance URL | *(empty)* |

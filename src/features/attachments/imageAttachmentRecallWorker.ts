@@ -44,7 +44,6 @@ async function processFetchedAttachment(params: {
     contentType: params.fetched.mimeType ?? params.contentType,
     modelId: config.FILE_INGEST_IMAGE_MODEL_ID,
     timeoutMs: config.FILE_INGEST_IMAGE_TIMEOUT_MS,
-    maxChars: config.FILE_INGEST_IMAGE_MAX_CHARS,
   });
 
   if (!recall.text) {

@@ -93,17 +93,17 @@ export function buildGuildApiKeySetupGuidance(): string {
 export function getKeySetVerificationFailureMessage(reason: ProfileVerificationFailureReason): string {
   switch (reason) {
     case 'unauthorized':
-      return 'Pollinations rejected that key. Why: it is invalid or expired. Next: click the login link again, copy a fresh key, and retry.';
+      return 'Pollinations rejected that key because it is invalid or expired. Click the login link again, copy a fresh key, and retry.';
     case 'timeout':
-      return 'Pollinations timed out while verifying that key. Next: wait a moment and try again.';
+      return 'Pollinations timed out while verifying that key. Wait a moment and try again.';
     case 'upstream':
-      return 'Pollinations returned an error while verifying that key. Next: try again shortly.';
+      return 'Pollinations returned an error while verifying that key. Try again shortly.';
     case 'invalid_response':
-      return 'Pollinations returned an unexpected verification response. Next: copy a fresh key and retry.';
+      return 'Pollinations returned an unexpected verification response. Copy a fresh key and retry.';
     case 'network':
-      return 'I could not reach Pollinations to verify that key. Next: check connectivity and try again.';
+      return 'I could not reach Pollinations to verify that key. Check connectivity and try again.';
     default:
-      return 'I could not verify that key with Pollinations. Next: try again.';
+      return 'I could not verify that key with Pollinations. Try again.';
   }
 }
 

@@ -23,9 +23,7 @@ const {
   }),
   buildAgentGraphConfigMock: vi.fn(() => ({
     maxSteps: 2,
-    maxToolCallsPerStep: 3,
     toolTimeoutMs: 1_000,
-    maxResultChars: 4_000,
     maxDurationMs: 5_000,
     recursionLimit: 8,
     githubGroundedMode: false,
@@ -87,9 +85,7 @@ vi.mock('@/platform/config/env', () => ({
     AI_PROVIDER_MAIN_AGENT_MODEL: 'test-main-agent-model',
     LANGSMITH_TRACING: false,
     AGENT_GRAPH_MAX_STEPS: 2,
-    AGENT_GRAPH_MAX_TOOL_CALLS_PER_STEP: 3,
     AGENT_GRAPH_TOOL_TIMEOUT_MS: 1_000,
-    AGENT_GRAPH_MAX_RESULT_CHARS: 4_000,
     AGENT_GRAPH_MAX_DURATION_MS: 5_000,
     AGENT_GRAPH_RECURSION_LIMIT: 8,
     AGENT_GRAPH_GITHUB_GROUNDED_MODE: false,
@@ -113,26 +109,15 @@ vi.mock('@/platform/llm/model-budget-config', () => ({
     maxInputTokens: 8_192,
     maxOutputTokens: 1_024,
     estimation: 'rough',
-    visionFadeKeepLastUserImages: 0,
-    attachmentTextMaxTokens: 0,
     visionEnabled: false,
   })),
 }));
 
 vi.mock('@/platform/llm/context-budgeter', () => ({
+  estimateMessagesTokens: vi.fn(() => 0),
   planBudget: vi.fn(() => ({
     availableInputTokens: 8_192,
     reservedOutputTokens: 1_024,
-  })),
-  trimMessagesToBudget: vi.fn((messages: unknown[]) => ({
-    trimmed: messages,
-    stats: {
-      beforeCount: messages.length,
-      afterCount: messages.length,
-      estimatedTokensBefore: 0,
-      estimatedTokensAfter: 0,
-      notes: [],
-    },
   })),
 }));
 
@@ -240,7 +225,6 @@ function makeInterruptedState() {
     completedWindows: 1,
     totalRoundsCompleted: 1,
     deduplicatedCallCount: 0,
-    truncatedCallCount: 0,
     roundEvents: [],
     finalization: {
       attempted: false,
@@ -298,9 +282,7 @@ describe('runGraphValueStream', () => {
     });
     buildAgentGraphConfigMock.mockReturnValue({
       maxSteps: 2,
-      maxToolCallsPerStep: 3,
       toolTimeoutMs: 1_000,
-      maxResultChars: 4_000,
       maxDurationMs: 5_000,
       recursionLimit: 8,
       githubGroundedMode: false,
@@ -444,9 +426,7 @@ describe('runGraphValueStream', () => {
     await shutdownAgentGraphRuntime();
     buildAgentGraphConfigMock.mockReturnValue({
       maxSteps: 1,
-      maxToolCallsPerStep: 3,
       toolTimeoutMs: 1_000,
-      maxResultChars: 4_000,
       maxDurationMs: 5_000,
       recursionLimit: 8,
       githubGroundedMode: false,
@@ -560,9 +540,7 @@ describe('runGraphValueStream', () => {
     await shutdownAgentGraphRuntime();
     buildAgentGraphConfigMock.mockReturnValue({
       maxSteps: 1,
-      maxToolCallsPerStep: 5,
       toolTimeoutMs: 1_000,
-      maxResultChars: 4_000,
       maxDurationMs: 5_000,
       recursionLimit: 8,
       githubGroundedMode: false,
@@ -650,15 +628,13 @@ describe('runGraphValueStream', () => {
     expect(modelInvokeMock).toHaveBeenCalledTimes(2);
   });
 
-  it('surfaces overflowed tool calls as explicit tool results instead of silently dropping them', async () => {
+  it('executes every tool call emitted in one model response instead of truncating the batch', async () => {
     await shutdownAgentGraphRuntime();
     buildAgentGraphConfigMock.mockReturnValue({
       maxSteps: 3,
-      maxToolCallsPerStep: 3,
       toolTimeoutMs: 1_000,
-      maxResultChars: 4_000,
       maxDurationMs: 5_000,
-      recursionLimit: 8,
+      recursionLimit: 20,
       githubGroundedMode: false,
     });
     modelInvokeMock.mockResolvedValueOnce(
@@ -738,6 +714,32 @@ describe('runGraphValueStream', () => {
           latencyMs: 10,
         },
         files: [],
+      })
+      .mockResolvedValueOnce({
+        kind: 'tool_result',
+        toolName: 'discord_admin',
+        callId: 'call-overflow-4',
+        content: '{"ok":true,"action":"create_channel"}',
+        result: {
+          name: 'discord_admin',
+          success: true,
+          result: { ok: true, action: 'create_channel' },
+          latencyMs: 10,
+        },
+        files: [],
+      })
+      .mockResolvedValueOnce({
+        kind: 'tool_result',
+        toolName: 'discord_admin',
+        callId: 'call-overflow-5',
+        content: '{"ok":true,"action":"delete_channel"}',
+        result: {
+          name: 'discord_admin',
+          success: true,
+          result: { ok: true, action: 'delete_channel' },
+          latencyMs: 10,
+        },
+        files: [],
       });
 
     const result = await runAgentGraphTurn({
@@ -763,18 +765,15 @@ describe('runGraphValueStream', () => {
     expect(result.replyText).toContain('finished the first batch');
     expect(result.roundsCompleted).toBe(2);
     expect(result.totalRoundsCompleted).toBe(2);
-    expect(result.truncatedCallCount).toBe(2);
     expect(result.roundEvents[0]).toMatchObject({
       requestedCallCount: 5,
-      executedCallCount: 3,
-      truncatedCallCount: 2,
+      executedCallCount: 5,
       deduplicatedCallCount: 0,
     });
     expect(result.toolResults).toHaveLength(5);
-    expect(result.toolResults.filter((entry) => entry.success)).toHaveLength(3);
-    expect(result.toolResults.filter((entry) => !entry.success)).toHaveLength(2);
-    expect(result.toolResults.find((entry) => !entry.success)?.error).toContain('only runs up to 3 tool calls');
-    expect(executeDurableToolTaskMock).toHaveBeenCalledTimes(3);
+    expect(result.toolResults.filter((entry) => entry.success)).toHaveLength(5);
+    expect(result.toolResults.filter((entry) => !entry.success)).toHaveLength(0);
+    expect(executeDurableToolTaskMock).toHaveBeenCalledTimes(5);
   });
 
   it('retries transient provider failures on llm_call without consuming an extra turn', async () => {
@@ -845,9 +844,7 @@ describe('runGraphValueStream', () => {
     await shutdownAgentGraphRuntime();
     buildAgentGraphConfigMock.mockReturnValue({
       maxSteps: 2,
-      maxToolCallsPerStep: 3,
       toolTimeoutMs: 1_000,
-      maxResultChars: 4_000,
       maxDurationMs: 1,
       recursionLimit: 8,
       githubGroundedMode: false,
@@ -1388,9 +1385,7 @@ describe('runGraphValueStream', () => {
     await shutdownAgentGraphRuntime();
     buildAgentGraphConfigMock.mockReturnValue({
       maxSteps: 1,
-      maxToolCallsPerStep: 3,
       toolTimeoutMs: 1_000,
-      maxResultChars: 4_000,
       maxDurationMs: 5_000,
       recursionLimit: 8,
       githubGroundedMode: false,
@@ -1509,9 +1504,7 @@ describe('runGraphValueStream', () => {
     await shutdownAgentGraphRuntime();
     buildAgentGraphConfigMock.mockReturnValue({
       maxSteps: 1,
-      maxToolCallsPerStep: 3,
       toolTimeoutMs: 1_000,
-      maxResultChars: 4_000,
       maxDurationMs: 5_000,
       recursionLimit: 8,
       githubGroundedMode: false,

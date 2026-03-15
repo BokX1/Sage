@@ -20,20 +20,6 @@ function detectOpusChannels(oggBytes: Buffer): number | null {
   return channels;
 }
 
-function truncateHeadTail(text: string, maxChars: number): string {
-  if (maxChars <= 0) return '';
-  if (text.length <= maxChars) return text;
-  const separator = '\n...\n';
-  const available = Math.max(0, maxChars - separator.length);
-  if (available <= 0) return text.slice(0, maxChars).trimEnd();
-  const headChars = Math.max(0, Math.floor(available * 0.7));
-  const tailChars = Math.max(0, available - headChars);
-  const head = text.slice(0, headChars).trimEnd();
-  const tail = tailChars > 0 ? text.slice(text.length - tailChars).trimStart() : '';
-  if (!tail) return head;
-  return `${head}${separator}${tail}`;
-}
-
 async function decodeOggOpusToPcm(params: { oggBytes: Buffer; channels: number; maxSeconds: number }): Promise<Buffer> {
   const sampleRate = 48_000;
   const channels = Math.max(1, Math.min(2, Math.floor(params.channels)));
@@ -113,7 +99,6 @@ export async function transcribeDiscordVoiceMessageAttachment(params: {
   timeoutMs: number;
   maxBytes: number;
   maxSeconds: number;
-  maxChars: number;
 }): Promise<FetchAttachmentResult> {
   const maxSeconds = Math.max(1, Math.floor(params.maxSeconds));
 
@@ -230,18 +215,6 @@ export async function transcribeDiscordVoiceMessageAttachment(params: {
     return {
       kind: 'skip',
       reason: '[System: Voice message had no transcribable speech.]',
-      extractor: 'voice_stt',
-      mimeType,
-      byteLength,
-    };
-  }
-
-  if (transcript.length > params.maxChars) {
-    const truncated = truncateHeadTail(transcript, params.maxChars);
-    return {
-      kind: 'truncated',
-      text: truncated,
-      message: `[System: Voice transcript truncated to ${params.maxChars.toLocaleString()} characters to fit context limits.]`,
       extractor: 'voice_stt',
       mimeType,
       byteLength,

@@ -7,14 +7,11 @@ import { ModelLimits, TokenEstimateOptions } from './context-budgeter';
  */
 export type ModelBudgetConfig = ModelLimits & {
   estimation: TokenEstimateOptions;
-  attachmentTextMaxTokens: number;
-  visionFadeKeepLastUserImages: number;
 };
 
 const DEFAULT_SAFETY_MARGIN = 200;
 const DEFAULT_IMAGE_TOKENS = 1200;
 const DEFAULT_MESSAGE_OVERHEAD = 4;
-const DEFAULT_ATTACHMENT_MAX_TOKENS = Math.floor(config.CONTEXT_USER_MAX_TOKENS * 0.4);
 
 const BASE_ESTIMATION: TokenEstimateOptions = {
   charsPerToken: config.TOKEN_HEURISTIC_CHARS_PER_TOKEN,
@@ -29,8 +26,6 @@ const BASE_LIMITS: Omit<ModelBudgetConfig, 'model'> = {
   safetyMarginTokens: DEFAULT_SAFETY_MARGIN,
   visionEnabled: true,
   estimation: BASE_ESTIMATION,
-  attachmentTextMaxTokens: DEFAULT_ATTACHMENT_MAX_TOKENS,
-  visionFadeKeepLastUserImages: 1,
 };
 
 function normalizeModelName(model?: string): string {
@@ -91,10 +86,6 @@ function mergeConfig(
     ...base,
     ...override,
     estimation: mergeEstimation(base.estimation, override?.estimation),
-    attachmentTextMaxTokens:
-      override?.attachmentTextMaxTokens ?? base.attachmentTextMaxTokens,
-    visionFadeKeepLastUserImages:
-      override?.visionFadeKeepLastUserImages ?? base.visionFadeKeepLastUserImages,
   };
 }
 
