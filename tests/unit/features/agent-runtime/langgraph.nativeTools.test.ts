@@ -45,7 +45,7 @@ function makeToolContext() {
     invokerCanModerate: true,
     invokedBy: 'mention' as const,
     routeKind: 'single',
-    currentTurn: null,
+    currentTurn: undefined,
     replyTarget: null,
   };
 }
