@@ -321,7 +321,7 @@ async function runReadPathSmoke(target: SmokeTarget): Promise<void> {
         guildId: target.guildId,
         activeToolNames: ['discord_server'],
       },
-      resumeTraceId: `${traceId}:expire`,
+      resumeTraceId: randomUUID(),
     });
 
     console.log(
@@ -387,12 +387,14 @@ async function runApprovalPathSmoke(target: SmokeTarget): Promise<void> {
 
     requestId = queued.pendingInterrupt.requestId;
     action = await getApprovalReviewRequestById(requestId);
+    const decisionTraceId = randomUUID();
+    const resumeTraceId = randomUUID();
     await markApprovalReviewRequestDecisionIfPending({
       id: requestId,
       decidedBy: target.reviewerUserId,
       status: 'approved',
       decisionReasonText: 'Sage live smoke approved automatically.',
-      resumeTraceId: `${traceId}:decision`,
+      resumeTraceId: decisionTraceId,
     });
 
     const resumed = await resumeAgentGraphTurn({
@@ -407,10 +409,10 @@ async function runApprovalPathSmoke(target: SmokeTarget): Promise<void> {
             decisionReasonText: 'Sage live smoke approved automatically.',
           },
         ],
-        resumeTraceId: `${traceId}:resume`,
+        resumeTraceId,
       },
       context: {
-        traceId: `${traceId}:resume`,
+        traceId: resumeTraceId,
         originTraceId: traceId,
         userId: target.actorUserId,
         channelId: target.channelId,
@@ -446,7 +448,7 @@ async function runApprovalPathSmoke(target: SmokeTarget): Promise<void> {
           guildId: target.guildId,
           activeToolNames: ['discord_admin'],
         },
-        resumeTraceId: `${traceId}:expire`,
+        resumeTraceId: randomUUID(),
       });
 
       console.log(
