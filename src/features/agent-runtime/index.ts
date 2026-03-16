@@ -7,11 +7,17 @@ export {
 } from './agentRuntime';
 
 export {
-  composeSystemPrompt,
-  getCorePromptContent,
-  type ComposeSystemPromptParams,
-} from './promptComposer';
-export { buildContextMessages, type BuildContextMessagesParams } from './contextBuilder';
+  UNIVERSAL_PROMPT_CONTRACT_VERSION,
+  buildDefaultWorkingMemoryFrame,
+  buildPromptContextMessages,
+  buildUniversalPromptContract,
+  resolveDefaultInvocationUserText,
+  type BuildUniversalPromptContractParams,
+  type PromptContextMessagesResult,
+  type PromptInputMode,
+  type PromptWorkingMemoryFrame,
+  type UniversalPromptContract,
+} from './promptContract';
 
 export {
   ToolRegistry,

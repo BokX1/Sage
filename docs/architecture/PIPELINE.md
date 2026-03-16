@@ -37,9 +37,8 @@ flowchart TD
     A[Discord Message]:::discord --> B[Chat Engine]:::runtime
     B --> C[runChatTurn]:::runtime
     C --> D[Resolve Model]:::runtime
-    D --> E["Build Context Messages<br/>(system prompt + runtime blocks + transcript + current turn)"]:::runtime
-    E --> F[Budget Tokens]:::runtime
-    F --> G[Send to LLM with tool specs]:::llm
+    D --> E["Build Universal Prompt Contract<br/>(XML system contract + tagged turn data)"]:::runtime
+    E --> G[Send to LLM with tool specs]:::llm
     G --> H{Tool calls?}:::llm
 
     H -->|Yes| I[Agent Graph]:::tools
@@ -47,7 +46,7 @@ flowchart TD
     J --> K[Feed results back to LLM]:::llm
     K --> H
 
-    H -->|No| L[Clean final draft]:::runtime
+    H -->|No| L[Close with sage_finish_turn / finalize]:::runtime
     L --> M[Persist trace]:::runtime
     M --> N[Return reply + attachments]:::output
 ```
@@ -55,7 +54,7 @@ flowchart TD
 **Step-by-step**
 
 1. **Model resolution**: `runChatTurn` reads `AI_PROVIDER_MAIN_AGENT_MODEL`. Sage no longer ships a built-in agent-model fallback; runtime boot requires explicit AI-provider model configuration.
-2. **Context composition**: `buildContextMessages` assembles the system prompt, structured `<current_turn>`, runtime instruction block, optional guild Sage Persona (`<guild_sage_persona>`), optional live voice context, optional `<focused_continuity>`, optional `<recent_transcript>`, and the current user turn wrapped in `<user_input>` (with any `<reply_target>` folded in as context-only preface content). The base system prompt owns durable operator invariants such as room model, response discipline, and continuity precedence; the runtime instruction block owns runtime protocol, silent native tool-use rules, `<agent_state>`, and compact tool-routing guidance.
+2. **Context composition**: `buildPromptContextMessages` assembles one canonical XML-tagged system contract plus one lower-priority tagged context message. The system contract now carries only durable operator invariants, tool and closeout protocol, trusted runtime state, and trusted working memory; reply targets, transcript windows, tool observations, and current user content stay in the tagged user-context envelope instead of being duplicated into the system role.
 3. **LLM request**: Sage sends the assembled messages plus the active tool schemas for this turn.
 4. **Agent graph**: Sage enters the LangGraph-native runtime built on reducer-backed message state, durable tasks, `ToolNode` read batches, explicit read/write partitioning, and in-graph approval or continuation interrupts/resumes until the objective is satisfied, clarification is required, or the run pauses cleanly.
 5. **Final reply**: plain text is cleaned, tool-produced files are attached, and the final payload is returned to Discord.
@@ -67,24 +66,23 @@ flowchart TD
 
 ## 📦 Context Assembly
 
-`buildContextMessages` composes the turn context in this order:
+`buildPromptContextMessages` composes the turn context in this order:
 
 | Priority | Block | Source |
 | :---: | :--- | :--- |
-| 1 | Base system prompt | `composeSystemPrompt` with the user profile summary embedded in `<user_profile>` and the durable operator invariants (identity, response discipline, continuity precedence, hard rules) |
-| 2 | Current turn | Structured `<current_turn>` metadata from `CurrentTurnContext`, including only turn facts plus `continuity_policy` |
-| 3 | Runtime instructions | Runtime protocol, `<agent_state>`, critical Discord disambiguators, and compact tool-selection guidance |
-| 4 | Guild Sage Persona | `ServerInstructions`, when present, rendered as a minimal `<guild_sage_persona>` behavior overlay |
-| 5 | Live voice context | In-memory voice session context, only when Sage is active in voice |
-| 6 | Focused continuity | `<focused_continuity>` window from same-speaker and direct-reply context |
-| 7 | Recent transcript | Ambient `<recent_transcript>` ring-buffer context |
-| 8 | Current user message | Triggering text and multimodal content wrapped as `<user_input>`, with replied-to content inlined first as context-only `<reply_target>` |
+| 1 | System contract | `<system_contract>`, `<instruction_hierarchy>`, `<assistant_mission>`, `<tool_protocol>`, `<closeout_protocol>`, `<safety_and_injection_policy>`, `<few_shot_examples>` |
+| 2 | Trusted runtime state | `<trusted_runtime_state>` with `<current_turn>`, guild Sage Persona, voice context, autopilot mode, user profile summary, and any runtime protocol-repair state |
+| 3 | Trusted working memory | `<trusted_working_memory>` with objective, verified facts, completed actions, open questions, pending approvals, delivery state, and next required action |
+| 4 | Lower-priority context envelope | `<untrusted_reply_target>` when present |
+| 5 | Transcript context | `<focused_continuity>` and `<recent_transcript>` nested inside `<untrusted_recent_transcript>` when available |
+| 6 | Tool observations | `<untrusted_tool_observations>` summary from the active graph loop |
+| 7 | Current user message | Triggering text and multimodal content wrapped as `<untrusted_user_input>` |
 
 > [!NOTE]
 > Channel summaries, archived summaries, social-graph data, attachment cache results, and wider message history are not preloaded into every turn. The model fetches them on demand through the split Discord tools when it decides they are needed.
 > `discord_context.get_channel_summary` is a continuity surface, not historical evidence. For exact verification Sage should use `discord_messages.search_history`, `discord_messages.search_with_context`, or `discord_messages.get_context`.
 
-All system-role blocks are merged into a single system message before the provider call. This keeps ordering valid for stricter providers while preserving the logical block boundaries in `budgetJson`.
+The runtime records a stable `promptVersion` plus `promptFingerprint` for the full reusable prompt surface, including both the system contract template and the lower-priority context-envelope layout, so prompt changes are attributable in debugging and smoke runs without hashing live per-turn content.
 
 ---
 
@@ -132,6 +130,7 @@ flowchart LR
 - **Native tool contract**: the runtime consumes structured provider tool calls directly and feeds tool results back as LangChain tool messages.
 - **Provider-neutral model node**: the graph now invokes Sage's `AiProviderChatModel`, which targets an operator-defined AI provider over the OpenAI-compatible chat-completions contract exposed at `AI_PROVIDER_BASE_URL`.
 - **Native provider transcript**: follow-up model calls now preserve assistant `tool_calls` and real `tool` messages end to end instead of flattening tool results into synthetic user text.
+- **No fixed message-count clipping**: after rebudgeting, Sage now forwards the full surviving assistant/tool transcript instead of hard-cutting the loop to the last eight messages.
 - **Tool-delivered completion**: tools such as `discord_messages.send` can mark the user-visible answer as already delivered, so Sage does not fabricate or duplicate a chat reply after the tool posts it.
 - **Split outcome semantics**: `completionKind` captures what the turn semantically achieved, `stopReason` captures why the graph stopped or paused, and `deliveryDisposition` tells the outer runtime whether to post chat text, rely on a tool-delivered answer, or keep the outcome governance-only.
 - **Per-tool timeout**: each tool call is bounded by `AGENT_GRAPH_TOOL_TIMEOUT_MS`.
@@ -154,7 +153,9 @@ Each turn can persist the following compact operator ledger fields to `AgentTrac
 | Field | Description |
 | :--- | :--- |
 | `routeKind` | Canonical value: `single` |
-| `terminationReason` | Deprecated compact alias field on `AgentTrace`; normal graph success paths now persist semantic outcome data in `budgetJson.graphRuntime` / `toolJson.graph` instead |
+| `promptVersion` | Prompt-contract version string recorded in `tokenJson` / `budgetJson` for the turn |
+| `promptFingerprint` | Stable prompt hash recorded alongside the turn so prompt changes are observable |
+| `terminationReason` | Deprecated legacy alias on `AgentTrace`; normal graph success paths now persist semantic outcome data in `budgetJson.graphRuntime` / `toolJson.graph` instead |
 | `budgetJson.graphRuntime.completionKind` | Semantic closeout classification (`final_answer`, `clarification_question`, `delivered_via_tool`, `pause_handoff`, `approval_handoff`, `loop_guard`) |
 | `budgetJson.graphRuntime.stopReason` | Operational stop cause (`verified_closeout`, `approval_interrupt`, `step_window_exhausted`, `graph_timeout`, `max_windows_reached`, `continuation_expired`, `loop_guard`, `protocol_violation`) |
 | `budgetJson.graphRuntime.deliveryDisposition` | Final delivery path (`chat_reply`, `tool_delivered`, `approval_governance_only`, `chat_reply_with_continue`) |

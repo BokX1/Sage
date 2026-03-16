@@ -1,6 +1,7 @@
 import type { BaseMessage } from '@langchain/core/messages';
 import type { ApprovalInterruptPayload } from '../toolControlSignals';
 import type { ToolResult } from '../toolCallExecution';
+import type { PromptInputMode } from '../promptContract';
 import type { GraphToolCallDescriptor } from './nativeTools';
 
 export interface GraphToolFile {
@@ -81,6 +82,7 @@ export interface ToolCallFinalizationEvent {
   completionKind: GraphCompletionKind;
   deliveryDisposition: GraphDeliveryDisposition;
   protocolRepairCount: number;
+  protocolRepairInstruction?: string | null;
   toolDeliveredFinal: boolean;
   contextFrame?: GraphContextFrame;
   rebudgeting?: GraphRebudgetEvent;
@@ -179,6 +181,14 @@ export interface AgentGraphRuntimeContext {
   routeKind: string;
   currentTurn: unknown;
   replyTarget: unknown;
+  userProfileSummary?: string | null;
+  guildSagePersona?: string | null;
+  focusedContinuity?: string | null;
+  recentTranscript?: string | null;
+  voiceContext?: string | null;
+  promptMode?: PromptInputMode;
+  promptVersion?: string | null;
+  promptFingerprint?: string | null;
 }
 
 export type AgentGraphPersistedContext = Omit<AgentGraphRuntimeContext, 'apiKey'>;
@@ -205,6 +215,7 @@ export interface AgentGraphState {
   stopReason: GraphStopReason;
   deliveryDisposition: GraphDeliveryDisposition;
   protocolRepairCount: number;
+  protocolRepairInstruction: string | null;
   finalToolDelivery: GraphToolDeliveryState | null;
   contextFrame: GraphContextFrame;
   graphStatus: 'running' | 'interrupted' | 'completed' | 'failed';

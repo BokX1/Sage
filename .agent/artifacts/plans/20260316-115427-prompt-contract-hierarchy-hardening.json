@@ -1,0 +1,112 @@
+{
+  "schema_version": "2.0",
+  "artifact_type": "plan",
+  "plan_id": "20260316-115427-prompt-contract-hierarchy-hardening",
+  "status": "completed",
+  "created_utc": "2026-03-16T11:54:27.594Z",
+  "updated_utc": "2026-03-16T12:26:30.000Z",
+  "objective": "Fix prompt trust boundaries, remove hard assistant-turn truncation, fold repair instructions into the canonical prompt contract, and widen prompt fingerprint coverage.",
+  "success_criteria": [
+    "Untrusted reply-target, transcript, and tool-observation content no longer appears in the system message.",
+    "Protocol repair guidance is rendered through the canonical prompt contract instead of ad hoc runtime-authored human messages.",
+    "Assistant-turn replay no longer hard-clips rebudgeted history to the last eight messages.",
+    "Prompt fingerprinting covers the reusable system contract plus lower-priority context-envelope layout.",
+    "Runtime tests, docs, and changelog reflect the new prompt boundary and observability model."
+  ],
+  "constraints": [
+    "Keep the changes scoped to the prompt contract, LangGraph loop, tests, and operator docs.",
+    "Do not revert unrelated working-tree changes from the in-progress prompt rewrite.",
+    "Use the local workflow artifact validation and repository validation gates before closing the task."
+  ],
+  "scope": {
+    "in": [
+      "src/features/agent-runtime/promptContract.ts",
+      "src/features/agent-runtime/langgraph/runtime.ts",
+      "src/features/agent-runtime/langgraph/types.ts",
+      "tests/unit/features/agent-runtime/*.test.ts",
+      "tests/unit/features/awareness/transcriptInjection.test.ts",
+      "docs/architecture/*.md",
+      "CHANGELOG.md"
+    ],
+    "out": [
+      "Live provider or Discord smoke validation",
+      "Unrelated runtime prompt behavior outside the red-team findings"
+    ]
+  },
+  "milestones": [
+    {
+      "id": "intake",
+      "title": "Capture intake snapshot and touched scope",
+      "status": "completed",
+      "notes": [
+        "Work item scaffolded from the local workflow generator."
+      ]
+    },
+    {
+      "id": "implement",
+      "title": "Implement the scoped changes",
+      "status": "completed",
+      "notes": [
+        "Moved untrusted transcript and tool-observation blocks out of the system role and into the lower-priority context envelope.",
+        "Removed the fixed assistant-turn slice(-8) truncation and routed protocol repair state through the prompt contract."
+      ]
+    },
+    {
+      "id": "validate",
+      "title": "Run validation and publish the completion report",
+      "status": "completed",
+      "notes": [
+        "Validated artifacts, lint, build, full test suite, docs gate, and local doc-link checks."
+      ]
+    }
+  ],
+  "progress": [
+    {
+      "timestamp_utc": "2026-03-16T11:54:27.594Z",
+      "summary": "Created the local work item scaffold."
+    },
+    {
+      "timestamp_utc": "2026-03-16T12:08:00.000Z",
+      "summary": "Implemented the prompt-boundary hardening pass and updated the LangGraph repair path."
+    },
+    {
+      "timestamp_utc": "2026-03-16T12:25:00.000Z",
+      "summary": "Closed the validation stack with green lint, build, tests, docs, and workflow gates."
+    }
+  ],
+  "decision_log": [
+    {
+      "timestamp_utc": "2026-03-16T12:00:00.000Z",
+      "decision": "Keep protocol-repair guidance in trusted runtime state instead of a separate runtime-authored human message.",
+      "rationale": "This preserves the single-source prompt contract while keeping the repair instruction higher priority than user data."
+    },
+    {
+      "timestamp_utc": "2026-03-16T12:03:00.000Z",
+      "decision": "Use the full rebudgeted assistant/tool transcript after trimming instead of a fixed last-eight-message window.",
+      "rationale": "Message-count clipping was the remaining continuity risk for tool-calling loops."
+    }
+  ],
+  "discoveries": [
+    {
+      "timestamp_utc": "2026-03-16T12:10:00.000Z",
+      "summary": "The prompt fingerprint previously hashed only the system message and still included dynamic runtime values.",
+      "evidence": [
+        "The original fingerprint helper only redacted current_time_utc and ignored the lower-priority user-context envelope entirely."
+      ]
+    },
+    {
+      "timestamp_utc": "2026-03-16T12:14:00.000Z",
+      "summary": "Transcript-focused tests had to move their assertions from the system block to the user-context envelope.",
+      "evidence": [
+        "Transcript and reply-target tags now render in the lower-priority prompt message instead of the system message."
+      ]
+    }
+  ],
+  "validation_strategy": [
+    "Run focused prompt/runtime tests while editing, then rerun the full repository gates.",
+    "Update architecture docs in the same work unit because the system/user trust boundary is a documented contract."
+  ],
+  "notes": [
+    "The working tree still contains unrelated prompt-rewrite changes from the broader branch and an untracked reports/ directory that was left untouched."
+  ]
+}

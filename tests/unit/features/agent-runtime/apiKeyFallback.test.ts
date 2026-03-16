@@ -22,6 +22,7 @@ const mockConfig = vi.hoisted(() => ({
 const mockGetGuildApiKey = vi.hoisted(() => vi.fn());
 const mockGetGuildSagePersonaText = vi.hoisted(() => vi.fn());
 const mockRunAgentGraphTurn = vi.hoisted(() => vi.fn());
+const mockBuildPromptContextMessages = vi.hoisted(() => vi.fn());
 const globalToolRegistryMock = vi.hoisted(() => ({
   listNames: vi.fn(() => []),
   get: vi.fn(() => undefined),
@@ -39,11 +40,8 @@ vi.mock('@/features/awareness/transcriptBuilder', () => ({
   buildTranscriptBlock: vi.fn().mockReturnValue(null),
 }));
 
-vi.mock('@/features/agent-runtime/contextBuilder', () => ({
-  buildContextMessages: vi.fn().mockReturnValue([
-    new SystemMessage({ content: 'sys' }),
-    new HumanMessage({ content: 'hello' }),
-  ]),
+vi.mock('@/features/agent-runtime/promptContract', () => ({
+  buildPromptContextMessages: mockBuildPromptContextMessages,
 }));
 
 vi.mock('@/features/settings/guildChannelSettings', () => ({
@@ -118,9 +116,28 @@ function makeGraphResult(overrides: Partial<Awaited<ReturnType<typeof mockRunAge
       attempted: false,
       succeeded: true,
       completedAt: '2026-03-12T00:00:00.000Z',
-      terminationReason: 'assistant_reply',
+      stopReason: 'verified_closeout',
+      completionKind: 'final_answer',
+      deliveryDisposition: 'chat_reply',
+      protocolRepairCount: 0,
+      protocolRepairInstruction: null,
+      toolDeliveredFinal: false,
     },
-    terminationReason: 'assistant_reply',
+    completionKind: 'final_answer',
+    stopReason: 'verified_closeout',
+    deliveryDisposition: 'chat_reply',
+    protocolRepairCount: 0,
+    protocolRepairInstruction: null,
+    toolDeliveredFinal: false,
+    contextFrame: {
+      objective: 'Finish the request.',
+      verifiedFacts: [],
+      completedActions: [],
+      openQuestions: [],
+      pendingApprovals: [],
+      deliveryState: 'none',
+      nextAction: 'Close the turn.',
+    },
     graphStatus: 'completed',
     pendingInterrupt: null,
     interruptResolution: null,
@@ -139,6 +156,25 @@ describe('agent runtime API key fallback', () => {
     mockConfig.SERVER_PROVIDER_DASHBOARD_URL = 'https://server-provider.example/dashboard';
     mockGetGuildSagePersonaText.mockResolvedValue(null);
     mockRunAgentGraphTurn.mockReset();
+    mockBuildPromptContextMessages.mockReset();
+    mockBuildPromptContextMessages.mockReturnValue({
+      version: 'test-prompt-v1',
+      systemMessage: 'sys',
+      workingMemoryFrame: {
+        objective: 'Finish the request.',
+        verifiedFacts: [],
+        completedActions: [],
+        openQuestions: [],
+        pendingApprovals: [],
+        deliveryState: 'none',
+        nextAction: 'Close the turn.',
+      },
+      promptFingerprint: 'fingerprint-1',
+      messages: [
+        new SystemMessage({ content: 'sys' }),
+        new HumanMessage({ content: 'hello' }),
+      ],
+    });
     globalToolRegistryMock.listNames.mockReturnValue([]);
     globalToolRegistryMock.get.mockReturnValue(undefined);
   });

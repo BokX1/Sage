@@ -1,7 +1,31 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildCapabilityPromptSection } from '../../../../src/features/agent-runtime/capabilityPrompt';
+import { buildUniversalPromptContract } from '../../../../src/features/agent-runtime/promptContract';
 import { getPromptToolGuidance, getRoutedToolDoc } from '../../../../src/features/agent-runtime/toolDocs';
+
+function buildPrompt(activeTools: string[]): string {
+  return buildUniversalPromptContract({
+    userProfileSummary: null,
+    currentTurn: {
+      invokerUserId: 'user-1',
+      invokerDisplayName: 'User One',
+      messageId: 'message-1',
+      guildId: 'guild-1',
+      channelId: 'channel-1',
+      invokedBy: 'mention',
+      mentionedUserIds: [],
+      isDirectReply: false,
+      replyTargetMessageId: null,
+      replyTargetAuthorId: null,
+      botUserId: 'sage-bot',
+    },
+    userText: 'help',
+    activeTools,
+    model: 'kimi',
+    inGuild: true,
+    turnMode: 'text',
+  }).systemMessage;
+}
 
 describe('discord tool mental model guidance', () => {
   it('distinguishes instruction reads from instruction writes', () => {
@@ -256,32 +280,27 @@ describe('discord tool mental model guidance', () => {
   });
 
   it('teaches routed-tool help as the self-discovery path and direct tools as schema-only', () => {
-    const prompt = buildCapabilityPromptSection({
-      activeTools: ['discord_context', 'discord_messages', 'web', 'system_time'],
-    });
+    const prompt = buildPrompt(['discord_context', 'discord_messages', 'web', 'system_time']);
 
-    expect(prompt).toContain('<operator_model>');
+    expect(prompt).toContain('<tool_protocol>');
     expect(prompt).toContain('Routed tools expose action-level `help`');
     expect(prompt).toContain('Direct tools do not expose `help`; rely on schema and description');
-    expect(prompt).toContain('Use it only when a routed-tool contract is genuinely unclear.');
+    expect(prompt).toContain('Use help only when the routed-tool contract is genuinely unclear.');
   });
 
   it('surfaces the critical Discord distinctions together in the capability prompt', () => {
-    const prompt = buildCapabilityPromptSection({
-      activeTools: [
-        'discord_context',
-        'discord_messages',
-        'discord_files',
-        'discord_server',
-        'discord_admin',
-        'discord_voice',
-      ],
-    });
+    const prompt = buildPrompt([
+      'discord_context',
+      'discord_messages',
+      'discord_files',
+      'discord_server',
+      'discord_admin',
+      'discord_voice',
+    ]);
 
-    expect(prompt).toContain('Sage Persona read vs write');
-    expect(prompt).toContain('Governance/config vs moderation');
-    expect(prompt).toContain('Reply-targeted enforcement uses moderation');
-    expect(prompt).toContain('Summary vs exact evidence: `discord_context.get_channel_summary` is recap');
+    expect(prompt).toContain('discord_context: Profiles, summaries, relationships, and Sage Persona reads.');
+    expect(prompt).toContain('discord_admin: Governance changes, moderation, and API fallback.');
+    expect(prompt).toContain('Exact quotes, message proof, or local message windows -> discord_messages instead.');
     expect(prompt).toContain('File recall vs guild resources');
     expect(prompt).toContain('Voice analytics vs live control');
     expect(prompt).toContain('Change Sage behavior or governance config');

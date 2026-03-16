@@ -222,8 +222,9 @@ describe('messageCreate - ingest + reply gating', () => {
     expect(mockGenerateChatReply).toHaveBeenCalledWith(
       expect.objectContaining({
         invokedBy: 'wakeword',
+        promptMode: 'direct_attention',
         userText:
-          'The user is calling for your attention without a specific request. Briefly acknowledge them and ask what they need help with.',
+          'The user explicitly invoked Sage without a concrete task yet. Briefly acknowledge them and ask what they need help with.',
       }),
     );
   });
@@ -502,7 +503,10 @@ describe('messageCreate - ingest + reply gating', () => {
     expect(mockGenerateChatReply).toHaveBeenCalledTimes(1);
     expect(mockGenerateChatReply).toHaveBeenCalledWith(
       expect.objectContaining({
-        userText: expect.stringContaining('Describe the image and answer any implied question.'),
+        promptMode: 'image_only',
+        userText: expect.stringContaining(
+          'Inspect the attached image and either answer the implied request or ask one short clarification if the intent is still unclear.',
+        ),
       }),
     );
   });
@@ -574,8 +578,9 @@ describe('messageCreate - ingest + reply gating', () => {
     expect(mockGenerateChatReply).toHaveBeenCalledWith(
       expect.objectContaining({
         invokedBy: 'mention',
+        promptMode: 'direct_attention',
         userText:
-          'The user is calling for your attention without a specific request. Briefly acknowledge them and ask what they need help with.',
+          'The user explicitly invoked Sage without a concrete task yet. Briefly acknowledge them and ask what they need help with.',
       }),
     );
   });
@@ -604,7 +609,9 @@ describe('messageCreate - ingest + reply gating', () => {
 
     expect(mockGenerateChatReply).toHaveBeenCalledTimes(1);
     const call = mockGenerateChatReply.mock.calls[0]?.[0] as { userText?: string; userContent?: unknown };
-    expect(call.userText).toContain('Describe the image and answer any implied question.');
+    expect(call.userText).toContain(
+      'Inspect the attached image and either answer the implied request or ask one short clarification if the intent is still unclear.',
+    );
     expect(call.userText).toContain('attachment:attachment-row-default');
     expect(Array.isArray(call.userContent)).toBe(true);
     const parts = call.userContent as Array<{ type?: string; image_url?: { url?: string } }>;
@@ -771,7 +778,7 @@ describe('messageCreate - ingest + reply gating', () => {
     );
   });
 
-  it('calls generateChatReply for empty replies to Sage with a reply-aware fallback prompt', async () => {
+  it('calls generateChatReply for empty replies to Sage with the canonical reply-only prompt adapter', async () => {
     const referencedMessage = {
       id: 'ref-empty-1',
       guildId: 'guild-789',
@@ -802,8 +809,9 @@ describe('messageCreate - ingest + reply gating', () => {
     expect(mockGenerateChatReply).toHaveBeenCalledWith(
       expect.objectContaining({
         invokedBy: 'reply',
+        promptMode: 'reply_only',
         userText:
-          'Respond to the replied-to message using its content and nearby context. If the user intent is still unclear, ask one brief clarifying question.',
+          'The user replied without adding new text. Use the reply target as context, stay narrow, and ask one short clarification if the intent is still unclear.',
         replyTarget: expect.objectContaining({
           messageId: 'ref-empty-1',
         }),

@@ -278,6 +278,7 @@ function makeInterruptedState() {
       completionKind: 'approval_handoff',
       deliveryDisposition: 'approval_governance_only',
       protocolRepairCount: 0,
+      protocolRepairInstruction: null,
       toolDeliveredFinal: false,
       contextFrame: {
         objective: 'Finish the request.',
@@ -293,6 +294,7 @@ function makeInterruptedState() {
     stopReason: 'approval_interrupt',
     deliveryDisposition: 'approval_governance_only',
     protocolRepairCount: 0,
+    protocolRepairInstruction: null,
     finalToolDelivery: null,
     contextFrame: {
       objective: 'Finish the request.',

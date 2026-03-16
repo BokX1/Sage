@@ -6,7 +6,7 @@ const {
   upsertTraceStartMock,
   updateTraceEndMock,
   clearGitHubFileLookupCacheForTraceMock,
-  buildContextMessagesMock,
+  buildPromptContextMessagesMock,
   globalToolRegistryMock,
   runAgentGraphTurnMock,
   resumeAgentGraphTurnMock,
@@ -18,7 +18,21 @@ const {
   upsertTraceStartMock: vi.fn(),
   updateTraceEndMock: vi.fn(),
   clearGitHubFileLookupCacheForTraceMock: vi.fn(),
-  buildContextMessagesMock: vi.fn(() => [new HumanMessage({ content: 'hello' })]),
+  buildPromptContextMessagesMock: vi.fn(() => ({
+    version: 'test-prompt-v1',
+    systemMessage: 'system',
+    workingMemoryFrame: {
+      objective: 'Finish the request.',
+      verifiedFacts: [],
+      completedActions: [],
+      openQuestions: [],
+      pendingApprovals: [],
+      deliveryState: 'none',
+      nextAction: 'Close the turn.',
+    },
+    promptFingerprint: 'fingerprint-1',
+    messages: [new HumanMessage({ content: 'hello' })],
+  })),
   globalToolRegistryMock: {
     listNames: vi.fn(() => []),
     get: vi.fn(
@@ -88,8 +102,8 @@ vi.mock('@/features/agent-runtime/agent-trace-repo', () => ({
   updateTraceEnd: updateTraceEndMock,
 }));
 
-vi.mock('@/features/agent-runtime/contextBuilder', () => ({
-  buildContextMessages: buildContextMessagesMock,
+vi.mock('@/features/agent-runtime/promptContract', () => ({
+  buildPromptContextMessages: buildPromptContextMessagesMock,
 }));
 
 vi.mock('@/features/agent-runtime/toolGrounding', () => ({
@@ -170,6 +184,7 @@ function makeGraphResult(overrides: Record<string, unknown> = {}) {
       completionKind: 'final_answer',
       deliveryDisposition: 'chat_reply',
       protocolRepairCount: 0,
+      protocolRepairInstruction: null,
       toolDeliveredFinal: false,
       contextFrame: {
         objective: 'Finish the request.',
@@ -185,6 +200,7 @@ function makeGraphResult(overrides: Record<string, unknown> = {}) {
     stopReason: 'verified_closeout',
     deliveryDisposition: 'chat_reply',
     protocolRepairCount: 0,
+    protocolRepairInstruction: null,
     toolDeliveredFinal: false,
     contextFrame: {
       objective: 'Finish the request.',
@@ -207,7 +223,21 @@ function makeGraphResult(overrides: Record<string, unknown> = {}) {
 describe('agentRuntime', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    buildContextMessagesMock.mockReturnValue([new HumanMessage({ content: 'hello' })]);
+    buildPromptContextMessagesMock.mockReturnValue({
+      version: 'test-prompt-v1',
+      systemMessage: 'system',
+      workingMemoryFrame: {
+        objective: 'Finish the request.',
+        verifiedFacts: [],
+        completedActions: [],
+        openQuestions: [],
+        pendingApprovals: [],
+        deliveryState: 'none',
+        nextAction: 'Close the turn.',
+      },
+      promptFingerprint: 'fingerprint-1',
+      messages: [new HumanMessage({ content: 'hello' })],
+    });
     globalToolRegistryMock.listNames.mockReturnValue([]);
     globalToolRegistryMock.get.mockReturnValue(undefined);
     upsertTraceStartMock.mockResolvedValue(undefined);
@@ -292,7 +322,7 @@ describe('agentRuntime', () => {
   it('does not persist removed task-state metadata into trace budgets', async () => {
     runAgentGraphTurnMock.mockResolvedValue(makeGraphResult());
 
-    await runChatTurn({
+    const result = await runChatTurn({
       traceId: 'trace-task-state',
       userId: 'user-1',
       channelId: 'channel-1',
@@ -305,13 +335,25 @@ describe('agentRuntime', () => {
       isAdmin: false,
     });
 
+    expect(result.debug).toEqual(
+      expect.objectContaining({
+        promptVersion: 'test-prompt-v1',
+        promptFingerprint: 'fingerprint-1',
+      }),
+    );
     expect(updateTraceEndMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        budgetJson: expect.not.objectContaining({
-          taskState: expect.anything(),
+        budgetJson: expect.objectContaining({
+          promptVersion: 'test-prompt-v1',
+          promptFingerprint: 'fingerprint-1',
+        }),
+        tokenJson: expect.objectContaining({
+          promptVersion: 'test-prompt-v1',
+          promptFingerprint: 'fingerprint-1',
         }),
       }),
     );
+    expect(updateTraceEndMock.mock.calls.at(-1)?.[0]?.budgetJson).not.toHaveProperty('taskState');
   });
 
   it('does not persist provider reasoning text into traces', async () => {
@@ -519,7 +561,8 @@ describe('agentRuntime', () => {
           stopReason: 'step_window_exhausted',
           completionKind: 'pause_handoff',
           deliveryDisposition: 'chat_reply_with_continue',
-              protocolRepairCount: 0,
+          protocolRepairCount: 0,
+          protocolRepairInstruction: null,
           toolDeliveredFinal: false,
         },
         completionKind: 'pause_handoff',

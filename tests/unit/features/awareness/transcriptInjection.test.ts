@@ -107,15 +107,37 @@ function getSystemMessageContent(): string {
 
 function getUserMessageContent(): string {
   const content = getPromptCall().messages.find((message) => HumanMessage.isInstance(message))?.content;
-  if (typeof content !== 'string') {
-    throw new Error('Expected user message content to be a string');
+  if (content === undefined) {
+    throw new Error('Expected user message content to be present');
   }
-  return content;
+  if (typeof content === 'string') {
+    return content;
+  }
+  return content
+    .map((part) => {
+      if ('type' in part && part.type === 'text') {
+        return typeof part.text === 'string' ? part.text : '';
+      }
+      if ('type' in part && part.type === 'image_url') {
+        return '[image]';
+      }
+      return '';
+    })
+    .join('');
 }
 
 function extractTagBlock(content: string, tagName: string): string | null {
-  const match = content.match(new RegExp(`<${tagName}>[\\s\\S]*?<\\/${tagName}>`));
-  return match?.[0] ?? null;
+  const openTag = `<${tagName}>`;
+  const closeTag = `</${tagName}>`;
+  const start = content.lastIndexOf(openTag);
+  if (start === -1) {
+    return null;
+  }
+  const end = content.indexOf(closeTag, start);
+  if (end === -1) {
+    return null;
+  }
+  return content.slice(start, end + closeTag.length);
 }
 
 describe('transcript injection', () => {
@@ -138,9 +160,27 @@ describe('transcript injection', () => {
         attempted: false,
         succeeded: true,
         completedAt: new Date('2026-03-13T00:00:00.000Z').toISOString(),
-        terminationReason: 'assistant_reply',
+        stopReason: 'verified_closeout',
+        completionKind: 'final_answer',
+        deliveryDisposition: 'chat_reply',
+        protocolRepairCount: 0,
+        toolDeliveredFinal: false,
       },
-      terminationReason: 'assistant_reply',
+      completionKind: 'final_answer',
+      stopReason: 'verified_closeout',
+      deliveryDisposition: 'chat_reply',
+      protocolRepairCount: 0,
+      protocolRepairInstruction: null,
+      toolDeliveredFinal: false,
+      contextFrame: {
+        objective: 'Finish the current user request cleanly.',
+        verifiedFacts: [],
+        completedActions: [],
+        openQuestions: [],
+        pendingApprovals: [],
+        deliveryState: 'none',
+        nextAction: 'Decide the next best step.',
+      },
       graphStatus: 'completed',
       pendingInterrupt: null,
       interruptResolution: null,
@@ -192,10 +232,12 @@ describe('transcript injection', () => {
     });
 
     const systemContent = getSystemMessageContent();
-    const focusedContinuity = extractTagBlock(systemContent, 'focused_continuity');
-    const recentTranscript = extractTagBlock(systemContent, 'recent_transcript');
+    const userContent = getUserMessageContent();
+    const focusedContinuity = extractTagBlock(userContent, 'focused_continuity');
+    const recentTranscript = extractTagBlock(userContent, 'recent_transcript');
 
     expect(systemContent).not.toContain('<tool_usage>');
+    expect(systemContent).not.toContain('<untrusted_recent_transcript>');
     expect(focusedContinuity).toContain('Focused continuity window');
     expect(focusedContinuity).toContain('Earlier context from the same user');
     expect(focusedContinuity).not.toContain('Parallel chatter from another user');
@@ -236,8 +278,11 @@ describe('transcript injection', () => {
     });
 
     const systemContent = getSystemMessageContent();
+    const userContent = getUserMessageContent();
     expect(extractTagBlock(systemContent, 'recent_transcript')).toBeNull();
     expect(extractTagBlock(systemContent, 'focused_continuity')).toBeNull();
+    expect(extractTagBlock(userContent, 'recent_transcript')).toBeNull();
+    expect(extractTagBlock(userContent, 'focused_continuity')).toBeNull();
   });
 
   it('keeps a reply turn anchored to the reply target instead of unrelated room chatter', async () => {
@@ -303,8 +348,8 @@ describe('transcript injection', () => {
     const systemContent = getSystemMessageContent();
     const userContent = getUserMessageContent();
     const currentTurnBlock = extractTagBlock(systemContent, 'current_turn');
-    const focusedContinuity = extractTagBlock(systemContent, 'focused_continuity');
-    const recentTranscript = extractTagBlock(systemContent, 'recent_transcript');
+    const focusedContinuity = extractTagBlock(userContent, 'focused_continuity');
+    const recentTranscript = extractTagBlock(userContent, 'recent_transcript');
 
     expect(currentTurnBlock).toContain('invocation_kind: reply');
     expect(currentTurnBlock).toContain('continuity_policy: reply_target > same_speaker_recent > explicit_named_subject > ambient_room');
@@ -313,10 +358,9 @@ describe('transcript injection', () => {
     expect(focusedContinuity).not.toContain('does heiryn have tools to update its own memory?');
     expect(recentTranscript).toContain('does heiryn have tools to update its own memory?');
     expect(recentTranscript).not.toContain('The approval card was accepted. Response behavior updated.');
-    expect(userContent).toContain('Reply target for continuity only:');
-    expect(userContent).toContain('<reply_target>');
+    expect(userContent).toContain('<untrusted_reply_target>');
     expect(userContent).toContain('The approval card was accepted. Response behavior updated.');
-    expect(userContent).toContain('<user_input>');
+    expect(userContent).toContain('<untrusted_user_input>');
     expect(userContent).toContain("alright let's see");
   });
 
@@ -363,9 +407,9 @@ describe('transcript injection', () => {
       }),
     });
 
-    const systemContent = getSystemMessageContent();
-    const focusedContinuity = extractTagBlock(systemContent, 'focused_continuity');
-    const recentTranscript = extractTagBlock(systemContent, 'recent_transcript');
+    const userContent = getUserMessageContent();
+    const focusedContinuity = extractTagBlock(userContent, 'focused_continuity');
+    const recentTranscript = extractTagBlock(userContent, 'recent_transcript');
 
     expect(focusedContinuity).toContain('ship the approval card copy update');
     expect(focusedContinuity).toContain('make it shorter but keep the same tone');
@@ -407,10 +451,10 @@ describe('transcript injection', () => {
     });
 
     const systemContent = getSystemMessageContent();
-    const currentTurnBlock = extractTagBlock(systemContent, 'current_turn');
-    const focusedContinuity = extractTagBlock(systemContent, 'focused_continuity');
-    const recentTranscript = extractTagBlock(systemContent, 'recent_transcript');
     const userContent = getUserMessageContent();
+    const currentTurnBlock = extractTagBlock(systemContent, 'current_turn');
+    const focusedContinuity = extractTagBlock(userContent, 'focused_continuity');
+    const recentTranscript = extractTagBlock(userContent, 'recent_transcript');
 
     expect(currentTurnBlock).toContain('continuity_policy: current_user_input > same_speaker_recent > explicit_named_subject > ambient_room');
     expect(focusedContinuity).toBeNull();
@@ -448,9 +492,9 @@ describe('transcript injection', () => {
       }),
     });
 
-    const systemContent = getSystemMessageContent();
-    const focusedContinuity = extractTagBlock(systemContent, 'focused_continuity');
-    const recentTranscript = extractTagBlock(systemContent, 'recent_transcript');
+    const userContent = getUserMessageContent();
+    const focusedContinuity = extractTagBlock(userContent, 'focused_continuity');
+    const recentTranscript = extractTagBlock(userContent, 'recent_transcript');
 
     expect(focusedContinuity).toContain('queue the deployment after lunch');
     expect(focusedContinuity).not.toContain('Deployment completed successfully on shard blue.');
@@ -509,7 +553,7 @@ describe('transcript injection', () => {
     const systemContent = getSystemMessageContent();
     const userContent = getUserMessageContent();
     const currentTurnBlock = extractTagBlock(systemContent, 'current_turn');
-    const focusedContinuity = extractTagBlock(systemContent, 'focused_continuity');
+    const focusedContinuity = extractTagBlock(userContent, 'focused_continuity');
 
     expect(currentTurnBlock).not.toContain('rule:');
     expect(systemContent).toContain(
@@ -552,9 +596,10 @@ describe('transcript injection', () => {
     });
 
     const systemContent = getSystemMessageContent();
+    const userContent = getUserMessageContent();
     const currentTurnBlock = extractTagBlock(systemContent, 'current_turn');
-    const focusedContinuity = extractTagBlock(systemContent, 'focused_continuity');
-    const recentTranscript = extractTagBlock(systemContent, 'recent_transcript');
+    const focusedContinuity = extractTagBlock(userContent, 'focused_continuity');
+    const recentTranscript = extractTagBlock(userContent, 'recent_transcript');
 
     expect(currentTurnBlock).not.toContain('rule:');
     expect(systemContent).toContain('Pronouns or short acknowledgements like "it", "that", "alright", "let\'s see", or "do it" do not unlock broader room continuity by themselves.');

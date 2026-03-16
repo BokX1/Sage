@@ -39,6 +39,14 @@ import {
   GRAPH_CONTINUATION_MAX_WINDOWS,
 } from '../graphContinuationRepo';
 import { scrubFinalReplyText } from '../finalReplyScrubber';
+import type { CurrentTurnContext, ReplyTargetContext } from '../continuityContext';
+import {
+  buildDefaultWorkingMemoryFrame,
+  buildPromptContextContent,
+  buildUniversalPromptContract,
+  type PromptInputMode,
+  type PromptWorkingMemoryFrame,
+} from '../promptContract';
 import type { ToolResult } from '../toolCallExecution';
 import type { ToolExecutionContext } from '../toolRegistry';
 import { ApprovalRequiredSignal } from '../toolControlSignals';
@@ -163,6 +171,7 @@ const ToolCallFinalizationEventSchema = z.object({
     'chat_reply_with_continue',
   ]),
   protocolRepairCount: z.number(),
+  protocolRepairInstruction: z.string().nullable().optional(),
   toolDeliveredFinal: z.boolean(),
   contextFrame: z
     .object({
@@ -256,6 +265,16 @@ const AgentGraphRuntimeSnapshotSchema = z.object({
   routeKind: z.string(),
   currentTurn: z.unknown(),
   replyTarget: z.unknown().nullable(),
+  userProfileSummary: z.string().nullable().optional(),
+  guildSagePersona: z.string().nullable().optional(),
+  focusedContinuity: z.string().nullable().optional(),
+  recentTranscript: z.string().nullable().optional(),
+  voiceContext: z.string().nullable().optional(),
+  promptMode: z
+    .enum(['standard', 'image_only', 'reply_only', 'direct_attention', 'graph_continuation'])
+    .optional(),
+  promptVersion: z.string().nullable().optional(),
+  promptFingerprint: z.string().nullable().optional(),
 });
 
 const AgentGraphConfigurableSchema = z
@@ -278,6 +297,16 @@ const AgentGraphConfigurableSchema = z
     routeKind: z.string().optional(),
     currentTurn: z.unknown().optional(),
     replyTarget: z.unknown().optional(),
+    userProfileSummary: z.string().nullable().optional(),
+    guildSagePersona: z.string().nullable().optional(),
+    focusedContinuity: z.string().nullable().optional(),
+    recentTranscript: z.string().nullable().optional(),
+    voiceContext: z.string().nullable().optional(),
+    promptMode: z
+      .enum(['standard', 'image_only', 'reply_only', 'direct_attention', 'graph_continuation'])
+      .optional(),
+    promptVersion: z.string().nullable().optional(),
+    promptFingerprint: z.string().nullable().optional(),
   })
   .strip();
 
@@ -314,6 +343,7 @@ const AgentGraphStateSchema = new StateSchema({
     completionKind: 'final_answer',
     deliveryDisposition: 'chat_reply',
     protocolRepairCount: 0,
+    protocolRepairInstruction: null,
     toolDeliveredFinal: false,
   }),
   completionKind: z
@@ -348,6 +378,7 @@ const AgentGraphStateSchema = new StateSchema({
     ])
     .default('chat_reply'),
   protocolRepairCount: z.number().default(0),
+  protocolRepairInstruction: z.string().nullable().default(null),
   finalToolDelivery: z.union([GraphToolDeliveryStateSchema, z.null()]).default(null),
   contextFrame: GraphContextFrameSchema.default({
     objective: 'Finish the current user request cleanly.',
@@ -397,6 +428,14 @@ const EMPTY_RUNTIME_CONTEXT: AgentGraphRuntimeContext = {
   routeKind: 'single',
   currentTurn: null,
   replyTarget: null,
+  userProfileSummary: null,
+  guildSagePersona: null,
+  focusedContinuity: null,
+  recentTranscript: null,
+  voiceContext: null,
+  promptMode: 'standard',
+  promptVersion: null,
+  promptFingerprint: null,
 };
 
 export interface StartAgentGraphTurnParams {
@@ -414,6 +453,14 @@ export interface StartAgentGraphTurnParams {
   routeKind: string;
   currentTurn: unknown;
   replyTarget: unknown;
+  userProfileSummary?: string | null;
+  guildSagePersona?: string | null;
+  focusedContinuity?: string | null;
+  recentTranscript?: string | null;
+  voiceContext?: string | null;
+  promptMode?: PromptInputMode;
+  promptVersion?: string | null;
+  promptFingerprint?: string | null;
   invokedBy?: AgentGraphRuntimeContext['invokedBy'];
   invokerIsAdmin?: boolean;
   invokerCanModerate?: boolean;
@@ -439,6 +486,7 @@ export interface AgentGraphTurnResult {
   stopReason: GraphStopReason;
   deliveryDisposition: GraphDeliveryDisposition;
   protocolRepairCount: number;
+  protocolRepairInstruction: string | null;
   toolDeliveredFinal: boolean;
   contextFrame: GraphContextFrame;
   graphStatus: AgentGraphState['graphStatus'];
@@ -480,20 +528,13 @@ function buildDefaultFinalization(): ToolCallFinalizationEvent {
     completionKind: 'final_answer',
     deliveryDisposition: 'chat_reply',
     protocolRepairCount: 0,
+    protocolRepairInstruction: null,
     toolDeliveredFinal: false,
   };
 }
 
 function buildDefaultContextFrame(): GraphContextFrame {
-  return {
-    objective: 'Finish the current user request cleanly.',
-    verifiedFacts: [],
-    completedActions: [],
-    openQuestions: [],
-    pendingApprovals: [],
-    deliveryState: 'none',
-    nextAction: 'Decide the next best step.',
-  };
+  return buildDefaultWorkingMemoryFrame();
 }
 
 function buildToolNameRollup(results: Array<Pick<SerializedToolResult, 'name'>>): string {
@@ -698,6 +739,14 @@ function createRuntimeContext(params: StartAgentGraphTurnParams): AgentGraphRunt
     routeKind: params.routeKind,
     currentTurn: params.currentTurn,
     replyTarget: params.replyTarget ?? null,
+    userProfileSummary: params.userProfileSummary ?? null,
+    guildSagePersona: params.guildSagePersona ?? null,
+    focusedContinuity: params.focusedContinuity ?? null,
+    recentTranscript: params.recentTranscript ?? null,
+    voiceContext: params.voiceContext ?? null,
+    promptMode: params.promptMode ?? 'standard',
+    promptVersion: params.promptVersion ?? null,
+    promptFingerprint: params.promptFingerprint ?? null,
   };
 }
 
@@ -773,6 +822,7 @@ function normalizeGraphResult(
     stopReason: state.stopReason,
     deliveryDisposition: state.deliveryDisposition,
     protocolRepairCount: state.protocolRepairCount,
+    protocolRepairInstruction: state.protocolRepairInstruction,
     toolDeliveredFinal: state.finalization.toolDeliveredFinal,
     contextFrame: state.contextFrame,
     graphStatus: state.graphStatus,
@@ -926,20 +976,6 @@ function buildTurnCloseoutTool(): DynamicStructuredTool {
   ) as DynamicStructuredTool;
 }
 
-function buildAssistantTurnProtocolMessage(): LLMChatMessage {
-  return {
-    role: 'system',
-    content: [
-      'Assistant turn protocol:',
-      `- Use provider-native tool calls only.`,
-      `- Use external tools to gather evidence or take actions.`,
-      `- Use ${TURN_CLOSEOUT_TOOL_NAME} to close the turn with final_answer, clarification_question, or delivered_via_tool.`,
-      '- Do not send a plain assistant answer without a tool call.',
-      '- Do not mix external tools with the closeout tool in the same assistant response.',
-    ].join('\n'),
-  };
-}
-
 function buildProtocolViolationReply(params: {
   detail: string;
   state: Pick<AgentGraphState, 'toolResults' | 'messages' | 'replyText'>;
@@ -951,8 +987,16 @@ function buildProtocolViolationReply(params: {
     summary,
     `Next: ask me to continue with a narrower follow-up if you want me to recover from this point.`,
   ]
-    .filter((part) => part.trim().length > 0)
-    .join('\n\n');
+      .filter((part) => part.trim().length > 0)
+      .join('\n\n');
+}
+
+function buildProtocolRepairInstruction(detail: string): string {
+  return [
+    `violation_detail: ${detail}`,
+    `required_recovery: use provider-native external tool calls for work, or call ${TURN_CLOSEOUT_TOOL_NAME} exactly once to close the turn.`,
+    'plain_text_closeout_without_a_tool_call: forbidden',
+  ].join('\n');
 }
 
 const invokeAgentModelTask = task(
@@ -1328,9 +1372,15 @@ function resolveFinalToolDelivery(
 }
 
 function buildContextFrame(state: Pick<
-  AgentGraphState,
-  'messages' | 'toolResults' | 'replyText' | 'pendingInterrupt' | 'finalToolDelivery' | 'contextFrame'
->): GraphContextFrame {
+    AgentGraphState,
+    | 'messages'
+    | 'toolResults'
+    | 'replyText'
+    | 'pendingInterrupt'
+    | 'finalToolDelivery'
+    | 'contextFrame'
+    | 'protocolRepairInstruction'
+  >): GraphContextFrame {
   const latestAssistantText = scrubFinalReplyText({
     replyText: state.replyText || findLatestAssistantText(state.messages as BaseMessage[]),
   });
@@ -1364,11 +1414,13 @@ function buildContextFrame(state: Pick<
       : state.finalToolDelivery?.effectKind === 'governance_only'
         ? 'governance_only'
         : 'none';
-  const nextAction =
-    pendingApprovals.length > 0
-      ? 'Wait for approval resolution.'
-      : state.finalToolDelivery?.effectKind === 'final_message'
-        ? `Close the turn with ${TURN_CLOSEOUT_TOOL_NAME}(kind="delivered_via_tool").`
+    const nextAction =
+      pendingApprovals.length > 0
+        ? 'Wait for approval resolution.'
+        : state.protocolRepairInstruction?.trim()
+          ? `Repair the last assistant response. ${state.protocolRepairInstruction.trim()}`
+        : state.finalToolDelivery?.effectKind === 'final_message'
+          ? `Close the turn with ${TURN_CLOSEOUT_TOOL_NAME}(kind="delivered_via_tool").`
         : successfulResults.length > 0
           ? `Use the latest tool results to decide whether to call more tools or close with ${TURN_CLOSEOUT_TOOL_NAME}.`
           : latestAssistantText
@@ -1386,18 +1438,78 @@ function buildContextFrame(state: Pick<
   };
 }
 
-function buildContextFramePrompt(frame: GraphContextFrame): string {
-  return [
-    '<agent_working_state>',
-    `Objective: ${frame.objective}`,
-    `Verified facts: ${frame.verifiedFacts.join(' | ') || '(none)'}`,
-    `Completed actions: ${frame.completedActions.join(' | ') || '(none)'}`,
-    `Open questions: ${frame.openQuestions.join(' | ') || '(none)'}`,
-    `Pending approvals: ${frame.pendingApprovals.join(' | ') || '(none)'}`,
-    `Delivery state: ${frame.deliveryState}`,
-    `Next action: ${frame.nextAction}`,
-    '</agent_working_state>',
-  ].join('\n');
+function normalizeWorkingMemoryFrame(frame: GraphContextFrame | null | undefined): PromptWorkingMemoryFrame {
+  const fallback = buildDefaultWorkingMemoryFrame();
+  if (!frame) {
+    return fallback;
+  }
+  return {
+    objective: frame.objective || fallback.objective,
+    verifiedFacts: [...frame.verifiedFacts],
+    completedActions: [...frame.completedActions],
+    openQuestions: [...frame.openQuestions],
+    pendingApprovals: [...frame.pendingApprovals],
+    deliveryState: frame.deliveryState,
+    nextAction: frame.nextAction || fallback.nextAction,
+  };
+}
+
+function extractLatestHumanRequestText(messages: BaseMessage[]): string {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (!HumanMessage.isInstance(message)) {
+      continue;
+    }
+    const text = extractMessageText(message).trim();
+    if (text) {
+      return text;
+    }
+  }
+  return 'Continue the current turn using the latest working memory and tool results.';
+}
+
+function summarizeToolObservations(results: SerializedToolResult[]): string | null {
+  if (results.length === 0) {
+    return null;
+  }
+
+  return results
+    .slice(-6)
+    .map((result) =>
+      result.success
+        ? `${result.name}: success${result.cacheHit ? ' (cache)' : ''}`
+        : `${result.name}: ${result.error ?? 'failed'}`,
+    )
+    .join('\n');
+}
+
+function resolvePromptCurrentTurn(runtimeContext: AgentGraphRuntimeContext): CurrentTurnContext {
+  const candidate = runtimeContext.currentTurn as Partial<CurrentTurnContext> | null | undefined;
+  if (
+    candidate &&
+    typeof candidate === 'object' &&
+    typeof candidate.invokerUserId === 'string' &&
+    typeof candidate.invokerDisplayName === 'string' &&
+    typeof candidate.messageId === 'string' &&
+    typeof candidate.channelId === 'string' &&
+    typeof candidate.invokedBy === 'string'
+  ) {
+    return candidate as CurrentTurnContext;
+  }
+
+  return {
+    invokerUserId: runtimeContext.userId,
+    invokerDisplayName: 'Current User',
+    messageId: runtimeContext.traceId || 'graph-turn',
+    guildId: runtimeContext.guildId,
+    channelId: runtimeContext.channelId,
+    invokedBy: runtimeContext.invokedBy ?? 'component',
+    mentionedUserIds: [],
+    isDirectReply: false,
+    replyTargetMessageId: null,
+    replyTargetAuthorId: null,
+    botUserId: null,
+  };
 }
 
 function buildAssistantTurnMessages(params: {
@@ -1410,27 +1522,54 @@ function buildAssistantTurnMessages(params: {
     params.runtimeContext.maxTokens,
   );
   const frame = buildContextFrame(params.state);
+  const graphConfig = buildAgentGraphConfig();
+  const contract = buildUniversalPromptContract({
+    userProfileSummary: params.runtimeContext.userProfileSummary ?? null,
+    currentTurn: resolvePromptCurrentTurn(params.runtimeContext),
+    activeTools: params.runtimeContext.activeToolNames,
+    model: params.runtimeContext.model ?? null,
+    invokedBy: params.runtimeContext.invokedBy ?? null,
+    invokerIsAdmin: params.runtimeContext.invokerIsAdmin,
+    invokerCanModerate: params.runtimeContext.invokerCanModerate,
+    inGuild: params.runtimeContext.guildId !== null,
+    turnMode: params.runtimeContext.voiceContext ? 'voice' : 'text',
+    guildSagePersona: params.runtimeContext.guildSagePersona ?? null,
+    replyTarget: (params.runtimeContext.replyTarget as ReplyTargetContext | null | undefined) ?? null,
+    userText: extractLatestHumanRequestText(params.state.messages as BaseMessage[]),
+    focusedContinuity: params.runtimeContext.focusedContinuity ?? null,
+    recentTranscript: params.runtimeContext.recentTranscript ?? null,
+    voiceContext: params.runtimeContext.voiceContext ?? null,
+    graphLimits: {
+      maxRounds: graphConfig.maxSteps,
+    },
+    workingMemoryFrame: normalizeWorkingMemoryFrame(frame),
+    toolObservationSummary: summarizeToolObservations(params.state.toolResults),
+    promptMode: 'graph_continuation',
+    protocolRepairInstruction: params.state.protocolRepairInstruction,
+  });
+  const contextMessageContent = buildPromptContextContent({
+    replyTarget: (params.runtimeContext.replyTarget as ReplyTargetContext | null | undefined) ?? null,
+    focusedContinuity: params.runtimeContext.focusedContinuity ?? null,
+    recentTranscript: params.runtimeContext.recentTranscript ?? null,
+    toolObservationSummary: summarizeToolObservations(params.state.toolResults),
+    includeUserInput: false,
+    userText: extractLatestHumanRequestText(params.state.messages as BaseMessage[]),
+  });
   const preparedMessages = toLlmMessages(prepared.trimmedMessages);
-  const recentMessages = preparedMessages.slice(-8);
-  return [
+  const messages: LLMChatMessage[] = [
     {
       role: 'system',
-      content: buildContextFramePrompt(frame),
+      content: contract.systemMessage,
     },
-    buildAssistantTurnProtocolMessage(),
-    ...recentMessages,
   ];
-}
-
-function buildProtocolRepairMessage(detail: string): HumanMessage {
-  return new HumanMessage({
-    content: [
-      'Runtime protocol repair:',
-      detail,
-      `Reply with provider-native tool calls only. Use external tools for work, or use ${TURN_CLOSEOUT_TOOL_NAME} to close the turn.`,
-      'Do not send plain assistant text without a tool call.',
-    ].join('\n'),
-  });
+  if (contextMessageContent) {
+    messages.push({
+      role: 'user',
+      content: typeof contextMessageContent === 'string' ? contextMessageContent : contextMessageContent,
+    });
+  }
+  messages.push(...preparedMessages);
+  return messages;
 }
 
 function buildProtocolViolationOutcome(params: {
@@ -1440,12 +1579,17 @@ function buildProtocolViolationOutcome(params: {
   messages?: BaseMessage[];
 }): Command<unknown, Partial<AgentGraphState>, GraphNodeName> {
   if (params.state.protocolRepairCount < TURN_PROTOCOL_MAX_REPAIRS) {
+    const protocolRepairInstruction = buildProtocolRepairInstruction(params.detail);
     return new Command({
       goto: 'tool_call_turn',
       update: {
-        messages: [...(params.messages ?? []), buildProtocolRepairMessage(params.detail)],
+        messages: params.messages ?? [],
         protocolRepairCount: params.state.protocolRepairCount + 1,
-        contextFrame: buildContextFrame(params.state),
+        protocolRepairInstruction,
+        contextFrame: buildContextFrame({
+          ...params.state,
+          protocolRepairInstruction,
+        }),
         resumeContext: snapshotRuntimeContext(params.runtimeContext),
       },
     });
@@ -1463,7 +1607,11 @@ function buildProtocolViolationOutcome(params: {
       stopReason: 'protocol_violation',
       deliveryDisposition: 'chat_reply',
       protocolRepairCount: params.state.protocolRepairCount,
-      contextFrame: buildContextFrame(params.state),
+      protocolRepairInstruction: null,
+      contextFrame: buildContextFrame({
+        ...params.state,
+        protocolRepairInstruction: null,
+      }),
       resumeContext: snapshotRuntimeContext(params.runtimeContext),
     },
   });
@@ -2008,6 +2156,7 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
             consecutiveIdenticalToolBatches,
             loopGuardRecoveries: state.loopGuardRecoveries + 1,
             roundEvents: [event],
+            protocolRepairInstruction: null,
             contextFrame: buildContextFrame(state),
           },
         });
@@ -2039,6 +2188,7 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
           stopReason: 'loop_guard',
           deliveryDisposition: 'chat_reply',
           protocolRepairCount: state.protocolRepairCount,
+          protocolRepairInstruction: null,
           contextFrame: buildContextFrame(state),
           finalization: {
             attempted: true,
@@ -2048,6 +2198,7 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
             completionKind: 'loop_guard',
             deliveryDisposition: 'chat_reply',
             protocolRepairCount: state.protocolRepairCount,
+            protocolRepairInstruction: null,
             toolDeliveredFinal: false,
             contextFrame: buildContextFrame(state),
           },
@@ -2070,6 +2221,7 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
         lastToolBatchFingerprint: batchFingerprint,
         consecutiveIdenticalToolBatches,
         loopGuardRecoveries: 0,
+        protocolRepairInstruction: null,
         roundEvents: executedAny
           ? [
               await buildExecutionEvent(state, {
@@ -2103,6 +2255,7 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
       goto: 'finalize_turn',
       update: {
         replyText: effectiveReplyText,
+        protocolRepairInstruction: null,
         contextFrame: frame,
         finalization: {
           attempted: true,
@@ -2112,6 +2265,7 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
           completionKind: state.completionKind ?? 'loop_guard',
           deliveryDisposition: state.deliveryDisposition,
           protocolRepairCount: state.protocolRepairCount,
+          protocolRepairInstruction: null,
           toolDeliveredFinal: state.deliveryDisposition === 'tool_delivered',
           contextFrame: frame,
           rebudgeting: state.finalization.rebudgeting,
@@ -2140,6 +2294,7 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
         pendingReadCalls: update.pendingReadCalls ?? [],
         pendingReadExecutionCalls: update.pendingReadExecutionCalls ?? [],
         activeWindowDurationMs: addActiveWindowDuration(state, readToolDurationMs),
+        protocolRepairInstruction: null,
         finalToolDelivery: resolveFinalToolDelivery(state.finalToolDelivery, update.toolResults ?? []),
         contextFrame: buildContextFrame({
           ...state,
@@ -2946,6 +3101,8 @@ function normalizeRecoveredGraphState(value: unknown): AgentGraphState | null {
     stopReason: state.stopReason ?? 'verified_closeout',
     deliveryDisposition: state.deliveryDisposition ?? 'chat_reply',
     protocolRepairCount: state.protocolRepairCount ?? state.finalization?.protocolRepairCount ?? 0,
+    protocolRepairInstruction:
+      state.protocolRepairInstruction ?? state.finalization?.protocolRepairInstruction ?? null,
     finalToolDelivery: state.finalToolDelivery ?? null,
     contextFrame: state.contextFrame ?? buildDefaultContextFrame(),
     graphStatus: state.graphStatus ?? 'running',
@@ -3012,6 +3169,7 @@ async function recoverLoopGuardState(
       completionKind: 'loop_guard',
       stopReason: 'loop_guard',
       deliveryDisposition: 'chat_reply',
+      protocolRepairInstruction: null,
       graphStatus: 'completed',
       pendingInterrupt: null,
       finalization: {
@@ -3022,6 +3180,7 @@ async function recoverLoopGuardState(
         completionKind: 'loop_guard',
         deliveryDisposition: 'chat_reply',
         protocolRepairCount: state.protocolRepairCount ?? state.finalization?.protocolRepairCount ?? 0,
+        protocolRepairInstruction: null,
         toolDeliveredFinal: false,
         contextFrame: buildContextFrame(state),
       },
@@ -3151,6 +3310,7 @@ function buildInitialState(params: StartAgentGraphTurnParams): AgentGraphState {
     stopReason: 'verified_closeout',
     deliveryDisposition: 'chat_reply',
     protocolRepairCount: 0,
+    protocolRepairInstruction: null,
     finalToolDelivery: null,
     contextFrame: buildDefaultContextFrame(),
     graphStatus: 'running',
@@ -3198,6 +3358,7 @@ function buildSeededGraphState(params: {
     stopReason: 'verified_closeout',
     deliveryDisposition: 'chat_reply',
     protocolRepairCount: 0,
+    protocolRepairInstruction: null,
     finalToolDelivery: null,
     contextFrame: buildDefaultContextFrame(),
     graphStatus: 'running',

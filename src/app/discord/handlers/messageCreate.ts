@@ -29,6 +29,7 @@ import {
 import { isAdminFromMember, isModeratorFromMember } from '../../../platform/discord/admin-permissions';
 import { buildGuildApiKeyMissingResponse } from '../../../features/discord/byopBootstrap';
 import { ReplyTargetContext } from '../../../features/agent-runtime/continuityContext';
+import { resolveDefaultInvocationUserText, type PromptInputMode } from '../../../features/agent-runtime/promptContract';
 import {
   createInteractiveButtonSession,
 } from '../../../features/discord/interactiveComponentService';
@@ -62,12 +63,6 @@ let cachedWakeWordPrefixes: string[] | null = null;
 const ATTACHMENT_INTENT_PATTERN =
   /\b(attachment|attached|file|files|document|doc|pdf|read|review|analy[sz]e|summari[sz]e|inspect|parse|look at)\b/i;
 
-const DEFAULT_IMAGE_ONLY_PROMPT = 'Describe the image and answer any implied question.';
-const DEFAULT_DIRECT_INVOCATION_PROMPT =
-  'The user is calling for your attention without a specific request. Briefly acknowledge them and ask what they need help with.';
-const DEFAULT_REPLY_ONLY_PROMPT =
-  'Respond to the replied-to message using its content and nearby context. If the user intent is still unclear, ask one brief clarifying question.';
-
 function getWakeWords(): string[] {
   if (!cachedWakeWords) {
     cachedWakeWords = appConfig.WAKE_WORDS_CSV.split(',')
@@ -100,14 +95,8 @@ function resolveEmptyInvocationPrompt(params: {
   invocationKind: 'mention' | 'reply' | 'wakeword' | 'autopilot';
   hasImageContext: boolean;
   hasReplyTarget: boolean;
-}): string {
-  if (params.hasImageContext) {
-    return DEFAULT_IMAGE_ONLY_PROMPT;
-  }
-  if (params.invocationKind === 'reply' && params.hasReplyTarget) {
-    return DEFAULT_REPLY_ONLY_PROMPT;
-  }
-  return DEFAULT_DIRECT_INVOCATION_PROMPT;
+}): { promptMode: PromptInputMode; text: string } {
+  return resolveDefaultInvocationUserText(params);
 }
 
 function buildAttachmentIngestNotes(params: {
@@ -639,14 +628,17 @@ export async function handleMessageCreate(message: Message) {
       }
     }
 
+    let promptMode: PromptInputMode = 'standard';
     if (invocation.cleanedText.trim().length === 0) {
+      const fallbackPrompt = resolveEmptyInvocationPrompt({
+        invocationKind: invocation.kind,
+        hasImageContext: hasImageInvocationContext,
+        hasReplyTarget: !!replyTarget,
+      });
+      promptMode = fallbackPrompt.promptMode;
       invocation = {
         ...invocation,
-        cleanedText: resolveEmptyInvocationPrompt({
-          invocationKind: invocation.kind,
-          hasImageContext: hasImageInvocationContext,
-          hasReplyTarget: !!replyTarget,
-        }),
+        cleanedText: fallbackPrompt.text,
       };
     }
 
@@ -742,6 +734,7 @@ export async function handleMessageCreate(message: Message) {
         voiceChannelId: activeVoiceChannelId,
         isAdmin: invokerIsAdmin,
         canModerate: invokerCanModerate,
+        promptMode,
       });
 
       const replyText = result.replyText || '';

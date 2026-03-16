@@ -13,7 +13,7 @@ This document describes how Sage stores memory and makes it available to the run
 - [1) Memory sources and storage](#1-memory-sources-and-storage)
 - [2) Data retention (transcripts)](#2-data-retention-transcripts)
 - [3) Context assembly flow](#3-context-assembly-flow)
-- [4) Working memory (context builder)](#4-working-memory-context-builder)
+- [4) Working memory and prompt contract](#4-working-memory-and-prompt-contract)
 - [5) Short-term memory: rolling channel summary](#5-short-term-memory-rolling-channel-summary)
 - [6) Long-term memory: channel summary](#6-long-term-memory-channel-summary)
 - [7) Throttled user profile updates](#7-throttled-user-profile-updates)
@@ -92,8 +92,8 @@ flowchart LR
         F[discord_files.read_attachment]:::tools
     end
 
-    subgraph Builder["Context Builder"]
-        MB[buildContextMessages]:::builder
+    subgraph Builder["Prompt Contract"]
+        MB[buildPromptContextMessages]:::builder
     end
 
     RB --> MB
@@ -114,33 +114,53 @@ flowchart LR
 Runtime notes:
 
 - Memory is not pre-fetched through a separate graph executor.
-- User profile summary is the only long-term profile block always embedded up front, and it is embedded inside the system prompt.
-- The base system prompt carries Sage's durable operator brief (identity, visible-reply discipline, continuity precedence, hard rules), while the runtime instruction block carries runtime protocol, silent native tool-use rules, `<agent_state>`, and compact tool-routing guidance.
-- The profile is best-effort personalization, not an authoritative rule surface: it is stored as `<preferences>`, `<active_focus>`, and `<background>`, with durable preferences/background and current-but-fallible active focus, and it may lag behind the latest turn because updates happen asynchronously.
+- User profile summary is the only long-term profile block always embedded up front, and it now lives inside the universal XML prompt contract built by `buildPromptContextMessages`.
+- Sage now uses one canonical prompt contract in `src/features/agent-runtime/promptContract.ts`, with fixed sections for system rules, tool protocol, closeout protocol, trusted runtime state, trusted working memory, and explicitly tagged untrusted context.
+- The profile is best-effort personalization, not an authoritative rule surface: it is rendered inside `<user_profile>` as soft personalization context that may lag behind the latest turn because profile updates happen asynchronously.
 - Channel summaries, archives, social-graph data, file cache data, and wider message history are fetched only if the model chooses the corresponding tool action.
 - `discord_context.get_channel_summary` returns rolling channel summary context for continuity and situational awareness. It is not a substitute for message-history evidence.
 - Exact historical verification should use `discord_messages.search_history`, `discord_messages.search_with_context`, or `discord_messages.get_context`.
 
 ---
 
-<a id="4-working-memory-context-builder"></a>
+<a id="4-working-memory-and-prompt-contract"></a>
 
-## 4) Working memory (context builder)
+## 4) Working memory and prompt contract
 
-**File:** `src/features/agent-runtime/contextBuilder.ts`
+**File:** `src/features/agent-runtime/promptContract.ts`
 
-`buildContextMessages` composes turn context in these prioritized blocks:
+`buildPromptContextMessages` now owns the full turn prompt surface. It builds one universal XML-tagged system message plus one lower-priority tagged context message.
 
-- Base system prompt from `composeSystemPrompt`
-- Current turn metadata block from `CurrentTurnContext` with structured turn facts plus `continuity_policy`
-- Runtime instruction block
-- Optional guild Sage Persona (`<guild_sage_persona>`) as a minimal behavior overlay wrapper
-- Optional live voice context
-- Optional focused continuity window
-- Optional recent transcript
-- Current user message/content, with any reply target folded in first as context-only `<reply_target>`
+Canonical system-message sections:
 
-The user profile summary is embedded inside `<user_profile>` in the system prompt produced by `composeSystemPrompt`.
+- `<system_contract>`
+- `<instruction_hierarchy>`
+- `<assistant_mission>`
+- `<tool_protocol>`
+- `<closeout_protocol>`
+- `<safety_and_injection_policy>`
+- `<few_shot_examples>`
+- `<trusted_runtime_state>`
+- `<trusted_working_memory>`
+
+Trusted runtime state carries the current turn facts, guild Sage Persona, voice mode, autopilot mode, and profile summary. Trusted working memory carries the loop-level frame:
+
+- `objective`
+- `verified_facts`
+- `completed_actions`
+- `open_questions`
+- `pending_approvals`
+- `delivery_state`
+- `next_required_action`
+
+The lower-priority context envelope carries the explicitly tagged untrusted blocks:
+
+- `<untrusted_reply_target>`
+- `<untrusted_recent_transcript>`
+- `<untrusted_tool_observations>`
+- `<untrusted_user_input>`
+
+Untrusted context is tagged and kept out of the system role instead of being duplicated into high-authority instruction space.
 
 What is **not** preloaded:
 
@@ -152,7 +172,7 @@ What is **not** preloaded:
 
 These are returned only when the runtime requests them through tools.
 
-Runtime prompt assembly no longer truncates or drops blocks before provider submission, and the remaining operator knobs are:
+Runtime prompt assembly no longer truncates or drops blocks before provider submission, and the graph loop no longer applies a fixed post-budget message-count slice before the next model call. The prompt contract also emits a stable `promptFingerprint` plus a version string so trace/debug surfaces can correlate behavior to an exact reusable prompt revision. The remaining operator knobs are:
 
 | Budget | Env var |
 | :--- | :--- |

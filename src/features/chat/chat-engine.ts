@@ -12,6 +12,7 @@ import {
   CurrentTurnContext,
   ReplyTargetContext,
 } from '../agent-runtime/continuityContext';
+import type { PromptInputMode } from '../agent-runtime/promptContract';
 import { LLMMessageContent } from '../../platform/llm/llm-types';
 import { config } from '../../platform/config/env';
 import type { RunChatTurnResult } from '../agent-runtime/agentRuntime';
@@ -62,6 +63,7 @@ export async function generateChatReply(params: {
   voiceChannelId?: string | null;
   isAdmin?: boolean;
   canModerate?: boolean;
+  promptMode?: PromptInputMode;
 }): Promise<Pick<RunChatTurnResult, 'replyText' | 'delivery' | 'meta' | 'files'>> {
   // Enforce sequential processing per user
   const limit = limitByKey(params.userId, 1);
@@ -83,6 +85,7 @@ export async function generateChatReply(params: {
       voiceChannelId,
       isAdmin = false,
       canModerate = false,
+      promptMode,
     } = params;
 
     // 1. Load Profile
@@ -116,6 +119,7 @@ export async function generateChatReply(params: {
       voiceChannelId: voiceChannelId ?? null,
       isAdmin,
       canModerate,
+      promptMode,
     });
 
     const replyText = result.replyText;

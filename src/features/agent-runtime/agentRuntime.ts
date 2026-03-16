@@ -17,7 +17,6 @@ import { isLoggingEnabled } from '../settings/guildChannelSettings';
 import { logger } from '../../platform/logging/logger';
 import { normalizeStrictlyPositiveInt } from '../../shared/utils/numbers';
 import { upsertTraceStart, updateTraceEnd } from './agent-trace-repo';
-import { buildContextMessages } from './contextBuilder';
 import { clearGitHubFileLookupCacheForTrace } from './toolIntegrations';
 import { enforceGitHubFileGrounding } from './toolGrounding';
 import { buildAgentGraphConfig } from './langgraph/config';
@@ -29,15 +28,14 @@ import {
   type RuntimeFailureCategory,
 } from './visibleReply';
 import {
+  buildPromptContextMessages,
+  type PromptInputMode,
+} from './promptContract';
+import {
   getGraphContinuationSessionById,
   markGraphContinuationSessionExpired,
   type AgentContinuationSessionRecord,
 } from './graphContinuationRepo';
-
-import {
-  buildCapabilityPromptSection,
-  type BuildCapabilityPromptSectionParams,
-} from './capabilityPrompt';
 import {
   CurrentTurnContext,
   ReplyTargetContext,
@@ -68,6 +66,7 @@ export interface RunChatTurnParams {
   isVoiceActive?: boolean;
   isAdmin?: boolean;
   canModerate?: boolean;
+  promptMode?: PromptInputMode;
 }
 
 export interface RunChatTurnResult {
@@ -97,6 +96,8 @@ export interface RunChatTurnResult {
   };
   debug?: {
     messages?: BaseMessage[];
+    promptVersion?: string;
+    promptFingerprint?: string;
   };
   files?: Array<{
     attachment: Buffer;
@@ -290,7 +291,8 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
     isVoiceActive,
     isAdmin = false,
     canModerate = false,
-  } = params;
+      promptMode = 'standard',
+    } = params;
   const clearToolCaches = () => {
     clearGitHubFileLookupCacheForTrace(traceId);
   };
@@ -365,24 +367,11 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
   });
 
   const activeToolNames = resolveActiveToolNames({ isAdmin, canModerate, invokedBy });
-  const capabilityParams: BuildCapabilityPromptSectionParams = {
-    activeTools: activeToolNames,
-    model,
-    invokedBy,
-    invokerIsAdmin: isAdmin,
-    invokerCanModerate: canModerate,
-    inGuild: guildId !== null,
-    turnMode: isVoiceActive ? 'voice' : 'text',
-    autopilotMode,
-    graphLimits,
-  };
-
-  const runtimeInstruction = buildCapabilityPromptSection(capabilityParams);
-
-  const runtimeMessages = buildContextMessages({
+  const promptEnvelope = buildPromptContextMessages({
     userProfileSummary: params.userProfileSummary,
     currentTurn,
-    runtimeInstruction,
+    activeTools: activeToolNames,
+    model,
     guildSagePersona,
     replyTarget,
     userText,
@@ -391,8 +380,15 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
     recentTranscript: transcriptBlock,
     voiceContext: liveVoiceContext,
     invokedBy,
-    isVoiceActive,
+    invokerIsAdmin: isAdmin,
+    invokerCanModerate: canModerate,
+    inGuild: guildId !== null,
+    turnMode: isVoiceActive ? 'voice' : 'text',
+    autopilotMode,
+    graphLimits,
+    promptMode,
   });
+  const runtimeMessages = promptEnvelope.messages;
 
   if (appConfig.SAGE_TRACE_DB_ENABLED) {
     try {
@@ -406,11 +402,15 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
           model,
           route: SINGLE_ROUTE_KIND,
           activeToolNames,
+          promptVersion: promptEnvelope.version,
+          promptFingerprint: promptEnvelope.promptFingerprint,
         },
         budgetJson: {
           route: SINGLE_ROUTE_KIND,
           model,
           graphEnabled: activeToolNames.length > 0,
+          promptVersion: promptEnvelope.version,
+          promptFingerprint: promptEnvelope.promptFingerprint,
         },
         threadId: traceId,
         graphStatus: 'running',
@@ -466,6 +466,14 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
       invokedBy,
       invokerIsAdmin: isAdmin,
       invokerCanModerate: canModerate,
+      userProfileSummary: params.userProfileSummary,
+      guildSagePersona,
+      focusedContinuity: focusedContinuityBlock,
+      recentTranscript: transcriptBlock,
+      voiceContext: liveVoiceContext,
+      promptMode,
+      promptVersion: promptEnvelope.version,
+      promptFingerprint: promptEnvelope.promptFingerprint,
     });
     finalReplyText = graphResult.replyText;
     files = graphResult.files;
@@ -533,12 +541,14 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
   }
   const safeFinalReplyText = groundedReplyText;
   const budgetJson: Record<string, unknown> = {
-    route: SINGLE_ROUTE_KIND,
-    model,
-    graphRuntime: graphBudgetJson,
-    promptUserText:
-      userText.length <= 6_000 ? userText : `${userText.slice(0, 6_000)}...`,
-    promptUserTextTruncated: userText.length > 6_000,
+      route: SINGLE_ROUTE_KIND,
+      model,
+      graphRuntime: graphBudgetJson,
+      promptVersion: promptEnvelope.version,
+      promptFingerprint: promptEnvelope.promptFingerprint,
+      promptUserText:
+        userText.length <= 6_000 ? userText : `${userText.slice(0, 6_000)}...`,
+      promptUserTextTruncated: userText.length > 6_000,
     toolCount: activeToolNames.length,
     attachmentCount: files.length,
   };
@@ -557,6 +567,8 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
           model,
           route: SINGLE_ROUTE_KIND,
           activeToolNames,
+          promptVersion: promptEnvelope.version,
+          promptFingerprint: promptEnvelope.promptFingerprint,
         },
         threadId: traceId,
         graphStatus: (graphBudgetJson?.graphStatus as string | undefined) ?? 'completed',
@@ -578,7 +590,11 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
       replyText: '',
       delivery,
       meta,
-      debug: { messages: runtimeMessages },
+      debug: {
+        messages: runtimeMessages,
+        promptVersion: promptEnvelope.version,
+        promptFingerprint: promptEnvelope.promptFingerprint,
+      },
     };
   }
 
@@ -587,7 +603,11 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
     replyText: safeFinalReplyText,
     delivery,
     meta,
-    debug: { messages: runtimeMessages },
+    debug: {
+      messages: runtimeMessages,
+      promptVersion: promptEnvelope.version,
+      promptFingerprint: promptEnvelope.promptFingerprint,
+    },
     files,
   };
 }

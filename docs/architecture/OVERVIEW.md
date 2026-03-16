@@ -56,9 +56,7 @@ flowchart TD
     subgraph Runtime["Single-Agent Runtime"]
         CE[Chat Engine]:::runtime
         RT[runChatTurn]:::runtime
-        CB[Context Builder]:::runtime
-        BG[Context Budgeter]:::runtime
-        PC[Prompt Composer]:::runtime
+        PC["Universal Prompt Contract"]:::runtime
         AG["Agent Graph (LangGraph)"]:::runtime
     end
 
@@ -79,8 +77,7 @@ flowchart TD
     ME --> CE --> RT
     VE --> CE
     IC --> CE
-    RT --> CB --> BG
-    BG --> PC --> LLM[AI Provider]:::llm
+    RT --> PC --> LLM[AI Provider]:::llm
     LLM --> AG
     AG --> MT & ST & DT & AT & GT
     MT --> PG & MG
@@ -90,9 +87,8 @@ flowchart TD
 | Component | File | Purpose |
 |:---|:---|:---|
 | **Chat Engine** | `src/features/chat/chat-engine.ts` | Entry point — receives Discord events, orchestrates `runChatTurn` |
-| **Agent Runtime** | `src/features/agent-runtime/agentRuntime.ts` | The single `runChatTurn` function: model resolution, prompt assembly, graph invocation, and compact trace-ledger persistence |
-| **Context Builder** | `src/features/agent-runtime/contextBuilder.ts` | Composes prioritized message blocks (system prompt, runtime instructions, optional guild Sage Persona/voice context, transcript, reply context) |
-| **Prompt Composer** | `src/features/agent-runtime/promptComposer.ts` | Assembles the durable base system prompt with identity, response discipline, continuity precedence, and hard rules |
+| **Agent Runtime** | `src/features/agent-runtime/agentRuntime.ts` | The single `runChatTurn` function: model resolution, prompt assembly, graph invocation, trace persistence, and prompt metadata propagation |
+| **Universal Prompt Contract** | `src/features/agent-runtime/promptContract.ts` | Builds Sage's one canonical XML-tagged system contract plus tagged user content, working-memory frame, prompt version, and prompt fingerprint |
 | **Agent Graph Runtime** | `src/features/agent-runtime/langgraph/runtime.ts` | Custom LangGraph runtime for schema-first state, model calls, bounded continuation windows, tool execution, approval + continuation interrupts, subgraph routing, and checkpointed resumes |
 | **Tool Registry** | `src/features/agent-runtime/toolRegistry.ts` | Zod-validated tool definitions with runtime execution metadata |
 | **Default Tools** | `src/features/agent-runtime/defaultTools.ts` | All 15 built-in top-level tool definitions |
@@ -115,8 +111,7 @@ sequenceDiagram
     U->>CE: Discord message
     CE->>RT: Invoke with context params
     RT->>RT: Resolve model from explicit AI provider config
-    RT->>RT: Build context (system prompt + runtime blocks + transcript + current turn)
-    RT->>RT: Budget tokens across blocks
+    RT->>RT: Build universal prompt contract + tagged user context
     RT->>LLM: Send prompt + tool specs
     LLM->>RT: Response (text or tool calls)
 
@@ -143,7 +138,7 @@ sequenceDiagram
 3. **Bounded graph execution** — configurable max tool-capable assistant/model responses per continuation window (`AGENT_GRAPH_MAX_STEPS`); Sage no longer slices tool-call batches or truncates model-facing tool payloads inside the runtime.
 4. **Parallel read-only optimization** — read-only tools can execute concurrently within a step through `ToolNode`.
 5. **Clean pause handoff** — when a step window closes cleanly after tool work, Sage can spend one extra no-tools wrap-up response to summarize progress before the Continue handoff; timeout pauses still fall back to the deterministic runtime summary.
-6. **LangSmith-first observability** — every turn records LangGraph execution into LangSmith and can additionally persist a compact `AgentTrace` ledger row.
+6. **Prompt-first observability** — every turn carries `promptVersion` and `promptFingerprint` metadata alongside LangGraph tracing so changes to the canonical system contract or lower-priority context-envelope layout are attributable in traces and smoke runs.
 
 ---
 
@@ -171,7 +166,7 @@ interface ToolDefinition<TArgs> {
 }
 ```
 
-The runtime teaches silent native tool usage through the capability prompt execution rules, and tool calls flow through the provider's native structured tool-call contract. Sage does not expose tool payloads, approval commands, or internal recovery protocol in normal channel replies.
+The runtime teaches silent native tool usage through the universal prompt contract, and tool calls flow through the provider's native structured tool-call contract. Sage does not expose tool payloads, approval commands, or internal recovery protocol in normal channel replies.
 
 ---
 
