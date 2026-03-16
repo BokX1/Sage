@@ -48,7 +48,7 @@
 - Added a dedicated `discord_voice` routed tool for live voice presence control so Sage can report voice status, join the invoker's current voice channel, and leave the active guild voice channel through normal chat turns.
 
 ### Changed
-- Increased the prompt-side tool observation cap from 1,500 to 4,000 characters, so research-heavy tool results keep more useful detail in model context before Sage trims them for prompt budget control.
+- Increased the prompt-side tool observation cap from 1,500 to 24,000 characters, so research-heavy tool results keep substantially more useful detail in model context before Sage trims them for prompt budget control.
 - Replaced Sage's layered prompt stack with one universal prompt contract in `promptContract.ts`, so every runtime path now shares the same XML-tagged system contract, tool/closeout protocol, trust-boundary format, working-memory frame, and prompt version/fingerprint observability instead of drifting across separate prompt-composer and context-builder modules.
 - Tightened the universal prompt contract around current prompt-engineering best practices: untrusted reply/transcript/tool context now stays out of the system role, the prompt now teaches mixed visible-text-plus-tool turns directly, prompt fingerprints cover the reusable system-plus-envelope surface, and the graph no longer hard-clips rebudgeted history to the last eight messages before the next model call.
 - Rewrote Sage's LangGraph turn loop around a plain-text-first assistant contract, so assistant turns can now include visible draft text alongside backend tool calls, no-tool assistant turns finalize directly from plain text, and Discord replies are driven by one editable response-session message instead of terminal closeout tools.

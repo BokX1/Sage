@@ -8,7 +8,7 @@ import type { LLMContentPart, LLMMessageContent } from '../../platform/llm/llm-t
 import { getPromptToolGuidance, isRoutedTool } from './toolDocs';
 
 export const UNIVERSAL_PROMPT_CONTRACT_VERSION = '2026-03-16.plain-text-first-v2';
-const PROMPT_TOOL_OBSERVATION_MAX_CHARS = 4_000;
+const PROMPT_TOOL_OBSERVATION_MAX_CHARS = 24_000;
 
 export type PromptInputMode =
   | 'standard'
