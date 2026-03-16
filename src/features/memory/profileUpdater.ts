@@ -279,7 +279,6 @@ Output the updated summary:`;
     temperature: 0.3, // Analyst temperature: creative but focused
     maxTokens: 2048,
     apiKey,
-    responseFormat: 'json_object',
     timeout: appConfig.TIMEOUT_MEMORY_MS, // Relaxed timeout for background
   };
 
@@ -366,7 +365,7 @@ function parseToJSON(text: string): Record<string, unknown> | null {
   // We want to force {"summary": "..."} structure if it's raw text
   let contentToParse = text;
 
-  // Safety: if the model returned plain text despite json_object format,
+  // Safety: if the model returned plain text instead of JSON,
   // wrap it as a summary. Use JSON.stringify for safe escaping.
   if (!text.includes('{') && !text.includes('}')) {
     contentToParse = JSON.stringify({ summary: text });

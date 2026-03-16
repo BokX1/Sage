@@ -74,9 +74,8 @@ describe('ProfileUpdater', () => {
       expect(result).toBe('<preferences>Loves cats</preferences>\n<active_focus>Enthusiastic about felines</active_focus>\n<background>Enjoys cozy spaces</background>');
       expect(mockChatFn).toHaveBeenCalledTimes(1);
 
-      // Verify Step 1 (Analyst) enforces JSON format
+      // Verify Step 1 (Analyst) keeps the JSON-only prompt contract
       const analystCall = mockChatFn.mock.calls[0][0];
-      expect(analystCall.responseFormat).toBe('json_object');
       expect(analystCall.temperature).toBe(0.3);
       const analystSystemPrompt = analystCall.messages[0]?.content ?? '';
       expect(analystSystemPrompt).toContain('stable interaction preferences');

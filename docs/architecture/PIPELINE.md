@@ -156,7 +156,7 @@ Each turn can persist the following compact operator ledger fields to `AgentTrac
 | `routeKind` | Canonical value: `single` |
 | `terminationReason` | Deprecated compact alias field on `AgentTrace`; normal graph success paths now persist semantic outcome data in `budgetJson.graphRuntime` / `toolJson.graph` instead |
 | `budgetJson.graphRuntime.completionKind` | Semantic closeout classification (`final_answer`, `clarification_question`, `delivered_via_tool`, `pause_handoff`, `approval_handoff`, `loop_guard`) |
-| `budgetJson.graphRuntime.stopReason` | Operational stop cause (`verified_closeout`, `approval_interrupt`, `step_window_exhausted`, `graph_timeout`, `max_windows_reached`, `continuation_expired`, `loop_guard`, `structured_output_failure`) |
+| `budgetJson.graphRuntime.stopReason` | Operational stop cause (`verified_closeout`, `approval_interrupt`, `step_window_exhausted`, `graph_timeout`, `max_windows_reached`, `continuation_expired`, `loop_guard`, `protocol_violation`) |
 | `budgetJson.graphRuntime.deliveryDisposition` | Final delivery path (`chat_reply`, `tool_delivered`, `approval_governance_only`, `chat_reply_with_continue`) |
 | `langSmithRunId` | LangSmith run id for the turn |
 | `langSmithTraceId` | LangSmith trace id for the turn |

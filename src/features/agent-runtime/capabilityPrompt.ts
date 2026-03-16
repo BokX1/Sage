@@ -110,13 +110,16 @@ export function buildCapabilityPromptSection(
       ? `- Direct tools do not expose \`help\`; rely on schema and description for: ${activeDirectTools.map((tool) => `\`${tool}\``).join(', ')}.`
       : '',
     '- Use tools only when they materially improve the answer or are required to complete the request.',
-    '- Use provider-native tool calls silently. Do not describe, serialize, or wrap them in JSON or markdown, and never narrate tool choice, args, or approval payloads.',
+    '- Use provider-native tool calls silently. Do not describe, serialize, or wrap them in JSON or markdown, and never narrate tool choice, args, approval payloads, or closeout protocol.',
     '- Treat graph steps as tool-capable assistant/model responses in the current continuation window. One response can emit multiple tool calls and still consumes only one step.',
     '- Batch read-only calls in one provider-native turn when possible. Do NOT loop them one by one across rounds.',
     '- If a required parameter is missing, ask instead of guessing.',
     '- If approval review interrupts the turn, treat that action as already queued, keep any visible follow-up brief, and do not repeat approval payloads, action IDs, or internal workflow steps.',
     '- If the runtime blocks a repeated call for this turn, do not retry it unchanged. Pivot to different arguments, another tool, or one clarifying question.',
-    '- If no tool is needed, answer in plain text.',
+    '- Every assistant turn must use tool calls: either external tools for work or the internal `sage_finish_turn` tool to close out the turn.',
+    '- Use `sage_finish_turn(kind="final_answer", message="...")` for a normal final answer.',
+    '- Use `sage_finish_turn(kind="clarification_question", message="...")` when one short clarification is required.',
+    '- Use `sage_finish_turn(kind="delivered_via_tool")` after a final-delivery tool already posted the answer.',
     hasAnyDiscordTool
       ? '- Stay Discord-native when Discord tools already cover the request.'
       : '- Discord-native profiles, summaries, files, messages, and actions are unavailable this turn.',
@@ -148,7 +151,7 @@ export function buildCapabilityPromptSection(
       ? '- Typed Discord actions come before raw API fallback. Use `discord_admin.api` only after typed `discord_server` or `discord_admin` actions do not cover the task.'
       : '',
     hasDiscordMessagesTool
-      ? '- Plain assistant text is fine for normal answers. Use `discord_messages.send` only when final delivery must be a Discord-native message inside the channel.'
+      ? '- Use `discord_messages.send` only when final delivery must be a Discord-native message inside the channel; otherwise close the turn with `sage_finish_turn`.'
       : '',
     hasDiscordMessagesTool
       ? '- If `send` already delivers the final answer into the channel, do not repeat the same answer again as a normal assistant reply.'

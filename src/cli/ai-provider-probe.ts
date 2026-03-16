@@ -1,7 +1,7 @@
 /* eslint-disable no-console */
 import dotenv from 'dotenv';
 import {
-  probeAiProviderStrictStructuredOutputs,
+  probeAiProviderToolCalling,
   type AiProviderProbeResult,
 } from '../platform/llm/ai-provider-probe';
 
@@ -15,7 +15,7 @@ type CliFlags = {
 };
 
 function printHelp() {
-  console.log(`AI Provider Strict Structured-Output Probe
+  console.log(`AI Provider Chat Completions Tool-Calling Probe
 
 Usage:
   npm run ai-provider:probe -- [options]
@@ -123,7 +123,7 @@ async function runProbe(): Promise<number> {
     throw new Error('AI provider API key is required. Pass --api-key or set AI_PROVIDER_API_KEY.');
   }
 
-  const result = await probeAiProviderStrictStructuredOutputs({
+  const result = await probeAiProviderToolCalling({
     baseUrl,
     model,
     apiKey,
@@ -154,4 +154,3 @@ if (require.main === module) {
 }
 
 export { runProbe };
-

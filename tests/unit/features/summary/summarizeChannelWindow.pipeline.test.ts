@@ -82,7 +82,7 @@ describe('summarizeChannelWindow pipeline', () => {
     expect(result.glossary).toEqual({ JWT: 'JSON Web Token' });
   });
 
-  it('enforces responseFormat json_object in analyst payload', async () => {
+  it('keeps the JSON-only analyst prompt contract in the payload', async () => {
     const { summarizeChannelWindow } = await import('@/features/summary/summarizeChannelWindow');
 
     mockChatFn.mockResolvedValueOnce({
@@ -97,8 +97,8 @@ describe('summarizeChannelWindow pipeline', () => {
 
     expect(mockChatFn).toHaveBeenCalledTimes(1);
     const payload = mockChatFn.mock.calls[0][0];
-    expect(payload.responseFormat).toBe('json_object');
     expect(payload.maxTokens).toBe(2048);
+    expect(String(payload.messages[0]?.content ?? '')).toContain('Output STRICTLY as a JSON object');
   });
 
   it('annotates participant classes for human, sage, and external bot summary inputs', async () => {

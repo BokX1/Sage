@@ -7,7 +7,6 @@ import { ModelLimits, TokenEstimateOptions } from './context-budgeter';
  */
 export type ModelBudgetConfig = ModelLimits & {
   estimation: TokenEstimateOptions;
-  strictStructuredOutputs: boolean;
 };
 
 const DEFAULT_SAFETY_MARGIN = 200;
@@ -26,7 +25,6 @@ const BASE_LIMITS: Omit<ModelBudgetConfig, 'model'> = {
   maxOutputTokens: config.CONTEXT_RESERVED_OUTPUT_TOKENS,
   safetyMarginTokens: DEFAULT_SAFETY_MARGIN,
   visionEnabled: true,
-  strictStructuredOutputs: false,
   estimation: BASE_ESTIMATION,
 };
 

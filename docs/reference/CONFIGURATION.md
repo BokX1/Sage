@@ -62,7 +62,7 @@ Complete index of all environment variables used by Sage, with descriptions and 
 | `AI_PROVIDER_BASE_URL` | Base URL for your OpenAI-compatible chat-completions endpoint | *(required)* |
 | `AI_PROVIDER_API_KEY` | Optional host-level fallback key for the configured AI provider; leave empty to rely on the in-Discord server key flow | *(empty)* |
 | `AI_PROVIDER_MAIN_AGENT_MODEL` | Primary runtime agent model | *(required)* |
-| `AI_PROVIDER_MODEL_PROFILES_JSON` | Optional JSON object keyed by model id with token/capability limits Sage should trust; use the live provider probe to verify strict structured-output support instead of relying on this field for runtime boot | *(optional)* |
+| `AI_PROVIDER_MODEL_PROFILES_JSON` | Optional JSON object keyed by model id with token-budget limits Sage should trust; use the live provider probe to verify Chat Completions tool-calling support instead of relying on this field for runtime compatibility | *(optional)* |
 
 ---
 
@@ -324,7 +324,7 @@ These settings control Sage's optional Discord voice features. The local voice s
 
 | Variable | Description | Default |
 |:---|:---|:---|
-| `LLM_DOCTOR_PING` | Enable live AI provider ping plus strict structured-output probe checks in `npm run doctor` | `0` |
+| `LLM_DOCTOR_PING` | Enable live AI provider ping plus Chat Completions tool-calling probe checks in `npm run doctor` | `0` |
 
 Run `npm run doctor -- --llm-ping` for a cross-platform one-off live ping/probe without editing env vars. Use `npm run ai-provider:probe` when you want to test a specific base URL, model, and key directly.
 

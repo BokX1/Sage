@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
   probeAiProviderPing,
-  probeAiProviderStrictStructuredOutputs,
+  probeAiProviderToolCalling,
 } from '@/platform/llm/ai-provider-probe';
 
 describe('ai-provider probe helpers', () => {
@@ -34,20 +34,48 @@ describe('ai-provider probe helpers', () => {
     expect(result.message).toContain('succeeded');
   });
 
-  it('reports successful strict structured-output support', async () => {
-    const fetchMock = vi.fn().mockResolvedValue(
-      new Response(
-        JSON.stringify({
-          choices: [{ message: { content: '{"verdict":"strict_json_schema_ok"}' } }],
-        }),
-        {
-          status: 200,
-          headers: { 'content-type': 'application/json' },
-        },
-      ),
-    );
+  it('reports successful Chat Completions tool-calling support', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            choices: [
+              {
+                message: {
+                  content: '',
+                  tool_calls: [
+                    {
+                      id: 'call-1',
+                      function: {
+                        name: 'sage_probe_echo',
+                        arguments: '{"value":"tool_call_roundtrip_ok"}',
+                      },
+                    },
+                  ],
+                },
+              },
+            ],
+          }),
+          {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            choices: [{ message: { content: 'Tool roundtrip complete.' } }],
+          }),
+          {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          },
+        ),
+      );
 
-    const result = await probeAiProviderStrictStructuredOutputs({
+    const result = await probeAiProviderToolCalling({
       baseUrl: 'https://example.com/v1',
       model: 'test-model',
       apiKey: 'test-key',
@@ -56,17 +84,18 @@ describe('ai-provider probe helpers', () => {
 
     expect(result.ok).toBe(true);
     expect(result.message).toContain('succeeded');
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
-  it('fails the strict probe when the provider rejects json_schema mode', async () => {
+  it('fails the tool-calling probe when the provider rejects tools', async () => {
     const fetchMock = vi.fn().mockResolvedValue(
-      new Response('response_format json_schema is unsupported', {
+      new Response('tools are unsupported', {
         status: 400,
         headers: { 'content-type': 'text/plain' },
       }),
     );
 
-    const result = await probeAiProviderStrictStructuredOutputs({
+    const result = await probeAiProviderToolCalling({
       baseUrl: 'https://example.com/v1',
       model: 'test-model',
       apiKey: 'test-key',
@@ -77,5 +106,43 @@ describe('ai-provider probe helpers', () => {
     expect(result.message).toContain('failed (400)');
     expect(result.details?.[0]).toContain('unsupported');
   });
-});
 
+  it('fails the tool-calling probe when the provider returns malformed tool-call arguments', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          choices: [
+            {
+              message: {
+                content: '',
+                tool_calls: [
+                  {
+                    id: 'call-1',
+                    function: {
+                      name: 'sage_probe_echo',
+                      arguments: '{"value":',
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+        }),
+        {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        },
+      ),
+    );
+
+    const result = await probeAiProviderToolCalling({
+      baseUrl: 'https://example.com/v1',
+      model: 'test-model',
+      apiKey: 'test-key',
+      fetchImpl: fetchMock,
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.message).toContain('malformed tool-call arguments');
+  });
+});

@@ -11,7 +11,7 @@ import type { Runnable } from '@langchain/core/runnables';
 import type { BaseLanguageModelInput } from '@langchain/core/language_models/base';
 import { convertToOpenAITool } from '@langchain/core/utils/function_calling';
 import { AiProviderClient } from './ai-provider-client';
-import type { LLMResponseFormat, ToolDefinition } from './llm-types';
+import type { ToolDefinition } from './llm-types';
 import { toLlmMessages, toLangChainToolCalls } from './langchain-interop';
 
 export interface AiProviderChatModelCallOptions extends BaseChatModelCallOptions {
@@ -19,7 +19,6 @@ export interface AiProviderChatModelCallOptions extends BaseChatModelCallOptions
   model?: string;
   temperature?: number;
   maxTokens?: number;
-  responseFormat?: LLMResponseFormat;
   tools?: BindToolsInput[];
 }
 
@@ -99,7 +98,7 @@ export class AiProviderChatModel extends BaseChatModel<AiProviderChatModelCallOp
   }
 
   get callKeys(): string[] {
-    return [...super.callKeys, 'apiKey', 'model', 'temperature', 'maxTokens', 'responseFormat', 'tools', 'tool_choice'];
+    return [...super.callKeys, 'apiKey', 'model', 'temperature', 'maxTokens', 'tools', 'tool_choice'];
   }
 
   _llmType(): string {
@@ -136,7 +135,6 @@ export class AiProviderChatModel extends BaseChatModel<AiProviderChatModelCallOp
       apiKey: options.apiKey?.trim() || this.apiKey,
       temperature: options.temperature ?? this.temperature,
       maxTokens: options.maxTokens ?? this.maxTokens,
-      responseFormat: options.responseFormat,
       tools: normalizeBoundTools(options.tools),
       toolChoice: normalizeToolChoice(options.tool_choice),
       timeout: typeof options.timeout === 'number' ? options.timeout : this.timeoutMs,

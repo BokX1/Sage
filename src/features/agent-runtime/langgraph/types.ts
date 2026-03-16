@@ -33,20 +33,6 @@ export interface ToolCallRoundEvent {
   rebudgeting?: GraphRebudgetEvent;
 }
 
-export type GraphDecisionKind =
-  | 'call_tools'
-  | 'answer_now'
-  | 'ask_clarification'
-  | 'pause_handoff';
-
-export type GraphVerificationKind =
-  | 'verified_answer'
-  | 'need_more_tools'
-  | 'ask_clarification'
-  | 'delivered_via_tool'
-  | 'approval_handoff'
-  | 'loop_guard';
-
 export type GraphCompletionKind =
   | 'final_answer'
   | 'clarification_question'
@@ -63,7 +49,7 @@ export type GraphStopReason =
   | 'max_windows_reached'
   | 'continuation_expired'
   | 'loop_guard'
-  | 'structured_output_failure';
+  | 'protocol_violation';
 
 export type GraphDeliveryDisposition =
   | 'chat_reply'
@@ -94,7 +80,7 @@ export interface ToolCallFinalizationEvent {
   stopReason: GraphStopReason;
   completionKind: GraphCompletionKind;
   deliveryDisposition: GraphDeliveryDisposition;
-  structuredRetryCount: number;
+  protocolRepairCount: number;
   toolDeliveredFinal: boolean;
   contextFrame?: GraphContextFrame;
   rebudgeting?: GraphRebudgetEvent;
@@ -218,10 +204,8 @@ export interface AgentGraphState {
   completionKind: GraphCompletionKind | null;
   stopReason: GraphStopReason;
   deliveryDisposition: GraphDeliveryDisposition;
-  structuredRetryCount: number;
+  protocolRepairCount: number;
   finalToolDelivery: GraphToolDeliveryState | null;
-  decisionKind: GraphDecisionKind | null;
-  verificationKind: GraphVerificationKind | null;
   contextFrame: GraphContextFrame;
   graphStatus: 'running' | 'interrupted' | 'completed' | 'failed';
   activeWindowDurationMs: number;

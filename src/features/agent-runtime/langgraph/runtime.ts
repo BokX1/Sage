@@ -16,6 +16,7 @@ import {
 } from '@langchain/langgraph';
 import { ToolNode, toolsCondition } from '@langchain/langgraph/prebuilt';
 import { AIMessage, HumanMessage, ToolMessage, type BaseMessage } from '@langchain/core/messages';
+import { tool, type DynamicStructuredTool } from '@langchain/core/tools';
 import type { RunnableConfig } from '@langchain/core/runnables';
 import { z } from 'zod';
 import { PostgresSaver } from '@langchain/langgraph-checkpoint-postgres';
@@ -57,7 +58,6 @@ import {
 import type {
   GraphCompletionKind,
   GraphContextFrame,
-  GraphDecisionKind,
   GraphDeliveryDisposition,
   AgentGraphPersistedContext,
   AgentGraphRuntimeContext,
@@ -65,7 +65,6 @@ import type {
   ApprovalResumeDecision,
   GraphStopReason,
   GraphToolDeliveryState,
-  GraphVerificationKind,
   GraphResumeInput,
   GraphRebudgetEvent,
   SerializedToolResult,
@@ -147,7 +146,7 @@ const ToolCallFinalizationEventSchema = z.object({
     'max_windows_reached',
     'continuation_expired',
     'loop_guard',
-    'structured_output_failure',
+    'protocol_violation',
   ]),
   completionKind: z.enum([
     'final_answer',
@@ -163,7 +162,7 @@ const ToolCallFinalizationEventSchema = z.object({
     'approval_governance_only',
     'chat_reply_with_continue',
   ]),
-  structuredRetryCount: z.number(),
+  protocolRepairCount: z.number(),
   toolDeliveredFinal: z.boolean(),
   contextFrame: z
     .object({
@@ -314,7 +313,7 @@ const AgentGraphStateSchema = new StateSchema({
     stopReason: 'verified_closeout',
     completionKind: 'final_answer',
     deliveryDisposition: 'chat_reply',
-    structuredRetryCount: 0,
+    protocolRepairCount: 0,
     toolDeliveredFinal: false,
   }),
   completionKind: z
@@ -337,7 +336,7 @@ const AgentGraphStateSchema = new StateSchema({
       'max_windows_reached',
       'continuation_expired',
       'loop_guard',
-      'structured_output_failure',
+      'protocol_violation',
     ])
     .default('verified_closeout'),
   deliveryDisposition: z
@@ -348,23 +347,8 @@ const AgentGraphStateSchema = new StateSchema({
       'chat_reply_with_continue',
     ])
     .default('chat_reply'),
-  structuredRetryCount: z.number().default(0),
+  protocolRepairCount: z.number().default(0),
   finalToolDelivery: z.union([GraphToolDeliveryStateSchema, z.null()]).default(null),
-  decisionKind: z
-    .enum(['call_tools', 'answer_now', 'ask_clarification', 'pause_handoff'])
-    .nullable()
-    .default(null),
-  verificationKind: z
-    .enum([
-      'verified_answer',
-      'need_more_tools',
-      'ask_clarification',
-      'delivered_via_tool',
-      'approval_handoff',
-      'loop_guard',
-    ])
-    .nullable()
-    .default(null),
   contextFrame: GraphContextFrameSchema.default({
     objective: 'Finish the current user request cleanly.',
     verifiedFacts: [],
@@ -390,7 +374,6 @@ type GraphNodeName =
   | 'route_tool_phase'
   | 'execute_read_tools'
   | 'approval_gate'
-  | 'verify_turn'
   | 'closeout_turn'
   | 'pause_for_continue'
   | 'resume_interrupt'
@@ -455,10 +438,8 @@ export interface AgentGraphTurnResult {
   completionKind: GraphCompletionKind | null;
   stopReason: GraphStopReason;
   deliveryDisposition: GraphDeliveryDisposition;
-  structuredRetryCount: number;
+  protocolRepairCount: number;
   toolDeliveredFinal: boolean;
-  decisionKind: GraphDecisionKind | null;
-  verificationKind: GraphVerificationKind | null;
   contextFrame: GraphContextFrame;
   graphStatus: AgentGraphState['graphStatus'];
   pendingInterrupt: AgentGraphState['pendingInterrupt'];
@@ -498,7 +479,7 @@ function buildDefaultFinalization(): ToolCallFinalizationEvent {
     stopReason: 'verified_closeout',
     completionKind: 'final_answer',
     deliveryDisposition: 'chat_reply',
-    structuredRetryCount: 0,
+    protocolRepairCount: 0,
     toolDeliveredFinal: false,
   };
 }
@@ -791,10 +772,8 @@ function normalizeGraphResult(
     completionKind: state.completionKind,
     stopReason: state.stopReason,
     deliveryDisposition: state.deliveryDisposition,
-    structuredRetryCount: state.structuredRetryCount,
+    protocolRepairCount: state.protocolRepairCount,
     toolDeliveredFinal: state.finalization.toolDeliveredFinal,
-    decisionKind: state.decisionKind,
-    verificationKind: state.verificationKind,
     contextFrame: state.contextFrame,
     graphStatus: state.graphStatus,
     pendingInterrupt: state.pendingInterrupt,
@@ -855,17 +834,6 @@ function shouldRetryModelInvokeError(error: unknown): boolean {
   return /408|409|425|429|500|502|503|504|timeout|timed out|ECONNRESET|ECONNREFUSED|EAI_AGAIN|ETIMEDOUT|socket hang up|rate limit|provider offline|provider unavailable|upstream/i.test(
     text,
   );
-}
-
-function rewriteStructuredOutputError(model: string, error: unknown): Error {
-  const text = error instanceof Error ? error.message : String(error);
-  if (/response_format|json_schema|structured output|unsupported/i.test(text)) {
-    return new Error(
-      `AI provider model "${model}" rejected Sage's strict json_schema structured-output contract. Run \`npm run ai-provider:probe -- --model ${model}\` with a valid provider key to verify support.`,
-      { cause: error instanceof Error ? error : undefined },
-    );
-  }
-  return error instanceof Error ? error : new Error(text);
 }
 
 const MODEL_INVOKE_RETRY_POLICY = {
@@ -938,97 +906,53 @@ interface DurableGraphTimestampOutput {
   iso: string;
 }
 
-interface DurableStructuredModelInvokeInput {
-  messages: LLMChatMessage[];
-  schemaName: string;
-  schema: Record<string, unknown>;
-  model?: string;
-  apiKey?: string;
-  temperature: number;
-  requestTimeoutMs?: number;
-  maxTokens?: number;
-}
+const TURN_CLOSEOUT_TOOL_NAME = 'sage_finish_turn';
+const TURN_PROTOCOL_MAX_REPAIRS = 1;
 
-interface DurableStructuredModelInvokeOutput {
-  payload: unknown;
-  rawText: string;
-  latencyMs: number;
-}
-
-const TurnDecisionSchema = z.object({
-  decision: z.enum(['call_tools', 'answer_now', 'ask_clarification', 'pause_handoff']),
-  visibleReplyText: z.string().optional(),
-  objective: z.string().optional(),
-  nextAction: z.string().optional(),
+const TurnCloseoutSchema = z.object({
+  kind: z.enum(['final_answer', 'clarification_question', 'delivered_via_tool']),
+  message: z.string().optional(),
 });
 
-const TurnDecisionJsonSchema = {
-  type: 'object',
-  additionalProperties: false,
-  required: ['decision'],
-  properties: {
-    decision: {
-      type: 'string',
-      enum: ['call_tools', 'answer_now', 'ask_clarification', 'pause_handoff'],
+function buildTurnCloseoutTool(): DynamicStructuredTool {
+  return tool(
+    async () => 'This internal tool is intercepted by the Sage runtime.',
+    {
+      name: TURN_CLOSEOUT_TOOL_NAME,
+      description:
+        'Close the turn. Use final_answer with a user-visible message, clarification_question with one short question, or delivered_via_tool after a final-delivery tool already posted the answer.',
+      schema: TurnCloseoutSchema,
     },
-    visibleReplyText: { type: 'string' },
-    objective: { type: 'string' },
-    nextAction: { type: 'string' },
-  },
-} satisfies Record<string, unknown>;
+  ) as DynamicStructuredTool;
+}
 
-const TurnVerificationSchema = z.object({
-  verification: z.enum([
-    'verified_answer',
-    'need_more_tools',
-    'ask_clarification',
-    'delivered_via_tool',
-    'approval_handoff',
-    'loop_guard',
-  ]),
-  visibleReplyText: z.string().optional(),
-  verifiedFacts: z.array(z.string()).default([]),
-  openQuestions: z.array(z.string()).default([]),
-  nextAction: z.string().optional(),
-});
+function buildAssistantTurnProtocolMessage(): LLMChatMessage {
+  return {
+    role: 'system',
+    content: [
+      'Assistant turn protocol:',
+      `- Use provider-native tool calls only.`,
+      `- Use external tools to gather evidence or take actions.`,
+      `- Use ${TURN_CLOSEOUT_TOOL_NAME} to close the turn with final_answer, clarification_question, or delivered_via_tool.`,
+      '- Do not send a plain assistant answer without a tool call.',
+      '- Do not mix external tools with the closeout tool in the same assistant response.',
+    ].join('\n'),
+  };
+}
 
-const TurnVerificationJsonSchema = {
-  type: 'object',
-  additionalProperties: false,
-  required: ['verification'],
-  properties: {
-    verification: {
-      type: 'string',
-      enum: [
-        'verified_answer',
-        'need_more_tools',
-        'ask_clarification',
-        'delivered_via_tool',
-        'approval_handoff',
-        'loop_guard',
-      ],
-    },
-    visibleReplyText: { type: 'string' },
-    verifiedFacts: {
-      type: 'array',
-      items: { type: 'string' },
-    },
-    openQuestions: {
-      type: 'array',
-      items: { type: 'string' },
-    },
-    nextAction: { type: 'string' },
-  },
-} satisfies Record<string, unknown>;
-
-function parseStructuredJson(text: string): unknown {
-  try {
-    return JSON.parse(text);
-  } catch (error) {
-    throw new Error('Structured model response was not valid JSON.', {
-      cause: error,
-    });
-  }
+function buildProtocolViolationReply(params: {
+  detail: string;
+  state: Pick<AgentGraphState, 'toolResults' | 'messages' | 'replyText'>;
+}): string {
+  const summary = buildDeterministicRuntimeSummary(params.state);
+  return [
+    'I stopped here because the model did not follow Sage\'s Chat Completions tool-calling protocol.',
+    params.detail,
+    summary,
+    `Next: ask me to continue with a narrower follow-up if you want me to recover from this point.`,
+  ]
+    .filter((part) => part.trim().length > 0)
+    .join('\n\n');
 }
 
 const invokeAgentModelTask = task(
@@ -1053,8 +977,10 @@ const invokeAgentModelTask = task(
             timeoutMs: input.timeoutMs,
           })
         : null;
-    const runnable =
-      catalog && catalog.allTools.length > 0 ? baseModel.bindTools(catalog.allTools, { tool_choice: 'auto' }) : baseModel;
+    const runnable = baseModel.bindTools(
+      [...(catalog?.allTools ?? []), buildTurnCloseoutTool()],
+      { tool_choice: 'auto' },
+    );
     const taskConfig = getConfig();
     const responseMessage = await runnable.invoke(toLangChainMessages(input.messages), {
       callbacks: taskConfig?.callbacks,
@@ -1071,53 +997,6 @@ const invokeAgentModelTask = task(
         role: 'assistant',
         content: extractMessageText(aiMessage),
       },
-      latencyMs: Math.max(0, Date.now() - startedAt),
-    };
-  },
-);
-
-const invokeStructuredAgentModelTask = task(
-  {
-    name: 'sage_invoke_structured_agent_model',
-    retry: MODEL_INVOKE_RETRY_POLICY,
-  },
-  async (input: DurableStructuredModelInvokeInput): Promise<DurableStructuredModelInvokeOutput> => {
-    const startedAt = Date.now();
-    const model = createGraphChatModel({
-      model: input.model,
-      apiKey: input.apiKey,
-      temperature: input.temperature,
-      timeoutMs: input.requestTimeoutMs,
-      maxTokens: input.maxTokens,
-    });
-    const taskConfig = getConfig();
-    let responseMessage: BaseMessage;
-    try {
-      responseMessage = await model.invoke(toLangChainMessages(input.messages), {
-        callbacks: taskConfig?.callbacks,
-        tags: taskConfig?.tags,
-        metadata: taskConfig?.metadata,
-        signal: taskConfig?.signal,
-        responseFormat: {
-          type: 'json_schema',
-          name: input.schemaName,
-          schema: input.schema,
-          strict: true,
-          disableFallback: true,
-        },
-      });
-    } catch (error) {
-      throw rewriteStructuredOutputError(resolveGraphModelId(input.model), error);
-    }
-    const rawText = extractMessageText(
-      AIMessage.isInstance(responseMessage)
-        ? responseMessage
-        : (responseMessage as BaseMessage),
-    ).trim();
-
-    return {
-      payload: parseStructuredJson(rawText),
-      rawText,
       latencyMs: Math.max(0, Date.now() - startedAt),
     };
   },
@@ -1448,17 +1327,6 @@ function resolveFinalToolDelivery(
   return null;
 }
 
-function buildStructuredOutputFailureReply(state: AgentGraphState): string {
-  const summary = buildDeterministicRuntimeSummary(state);
-  return [
-    'I stopped here because the model did not return a valid structured turn decision.',
-    summary,
-    'Next: ask me to continue with a narrower next step or clarify the exact outcome you want.',
-  ]
-    .filter((part) => part.trim().length > 0)
-    .join('\n\n');
-}
-
 function buildContextFrame(state: Pick<
   AgentGraphState,
   'messages' | 'toolResults' | 'replyText' | 'pendingInterrupt' | 'finalToolDelivery' | 'contextFrame'
@@ -1499,11 +1367,13 @@ function buildContextFrame(state: Pick<
   const nextAction =
     pendingApprovals.length > 0
       ? 'Wait for approval resolution.'
-      : latestAssistantText
-        ? 'Verify whether the visible reply is complete.'
+      : state.finalToolDelivery?.effectKind === 'final_message'
+        ? `Close the turn with ${TURN_CLOSEOUT_TOOL_NAME}(kind="delivered_via_tool").`
         : successfulResults.length > 0
-          ? 'Use the latest tool results to decide the next step.'
-          : 'Decide whether to answer directly or call tools.';
+          ? `Use the latest tool results to decide whether to call more tools or close with ${TURN_CLOSEOUT_TOOL_NAME}.`
+          : latestAssistantText
+            ? `Repair the last assistant response so it uses tool calls or ${TURN_CLOSEOUT_TOOL_NAME}.`
+            : `Choose the next tool call or close the turn with ${TURN_CLOSEOUT_TOOL_NAME}.`;
 
   return {
     objective: objective.trim() || 'Finish the current user request cleanly.',
@@ -1530,10 +1400,9 @@ function buildContextFramePrompt(frame: GraphContextFrame): string {
   ].join('\n');
 }
 
-function buildStructuredPromptMessages(params: {
+function buildAssistantTurnMessages(params: {
   state: AgentGraphState;
   runtimeContext: AgentGraphRuntimeContext;
-  instruction: string;
 }): LLMChatMessage[] {
   const prepared = buildRebudgetingEvent(
     params.state.messages as BaseMessage[],
@@ -1548,72 +1417,61 @@ function buildStructuredPromptMessages(params: {
       role: 'system',
       content: buildContextFramePrompt(frame),
     },
+    buildAssistantTurnProtocolMessage(),
     ...recentMessages,
-    {
-      role: 'user',
-      content: params.instruction,
-    },
   ];
 }
 
-function mapVerificationToOutcome(params: {
-  verification: GraphVerificationKind;
-  visibleReplyText: string;
+function buildProtocolRepairMessage(detail: string): HumanMessage {
+  return new HumanMessage({
+    content: [
+      'Runtime protocol repair:',
+      detail,
+      `Reply with provider-native tool calls only. Use external tools for work, or use ${TURN_CLOSEOUT_TOOL_NAME} to close the turn.`,
+      'Do not send plain assistant text without a tool call.',
+    ].join('\n'),
+  });
+}
+
+function buildProtocolViolationOutcome(params: {
   state: AgentGraphState;
-}): {
-  completionKind: GraphCompletionKind;
-  deliveryDisposition: GraphDeliveryDisposition;
-  stopReason: GraphStopReason;
-  replyText: string;
-  toolDeliveredFinal: boolean;
-} {
-  if (params.verification === 'delivered_via_tool' && params.state.finalToolDelivery) {
-    return {
-      completionKind: 'delivered_via_tool',
-      deliveryDisposition: 'tool_delivered',
-      stopReason: 'verified_closeout',
-      replyText: '',
-      toolDeliveredFinal: true,
-    };
+  detail: string;
+  runtimeContext: AgentGraphRuntimeContext;
+  messages?: BaseMessage[];
+}): Command<unknown, Partial<AgentGraphState>, GraphNodeName> {
+  if (params.state.protocolRepairCount < TURN_PROTOCOL_MAX_REPAIRS) {
+    return new Command({
+      goto: 'tool_call_turn',
+      update: {
+        messages: [...(params.messages ?? []), buildProtocolRepairMessage(params.detail)],
+        protocolRepairCount: params.state.protocolRepairCount + 1,
+        contextFrame: buildContextFrame(params.state),
+        resumeContext: snapshotRuntimeContext(params.runtimeContext),
+      },
+    });
   }
 
-  if (params.verification === 'ask_clarification') {
-    return {
-      completionKind: 'clarification_question',
-      deliveryDisposition: 'chat_reply',
-      stopReason: 'verified_closeout',
-      replyText: params.visibleReplyText,
-      toolDeliveredFinal: false,
-    };
-  }
-
-  if (params.verification === 'approval_handoff') {
-    return {
-      completionKind: 'approval_handoff',
-      deliveryDisposition: 'approval_governance_only',
-      stopReason: 'approval_interrupt',
-      replyText: '',
-      toolDeliveredFinal: false,
-    };
-  }
-
-  if (params.verification === 'loop_guard') {
-    return {
+  return new Command({
+    goto: 'closeout_turn',
+    update: {
+      messages: params.messages ?? [],
+      replyText: buildProtocolViolationReply({
+        detail: params.detail,
+        state: params.state,
+      }),
       completionKind: 'loop_guard',
+      stopReason: 'protocol_violation',
       deliveryDisposition: 'chat_reply',
-      stopReason: 'loop_guard',
-      replyText: params.visibleReplyText || buildStructuredOutputFailureReply(params.state),
-      toolDeliveredFinal: false,
-    };
-  }
+      protocolRepairCount: params.state.protocolRepairCount,
+      contextFrame: buildContextFrame(params.state),
+      resumeContext: snapshotRuntimeContext(params.runtimeContext),
+    },
+  });
+}
 
-  return {
-    completionKind: 'final_answer',
-    deliveryDisposition: 'chat_reply',
-    stopReason: 'verified_closeout',
-    replyText: params.visibleReplyText,
-    toolDeliveredFinal: false,
-  };
+function parseCloseoutToolCall(call: GraphToolCallDescriptor): z.infer<typeof TurnCloseoutSchema> | null {
+  const parsed = TurnCloseoutSchema.safeParse(call.args);
+  return parsed.success ? parsed.data : null;
 }
 
 function isGraphRecursionLimitError(error: unknown): boolean {
@@ -1867,119 +1725,11 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
         },
       });
     }
-
-    const decisionInstruction = [
-      'Return a strict JSON turn decision.',
-      'Use decision=call_tools when more evidence or actions are required.',
-      'Use decision=answer_now only when you can answer cleanly right now.',
-      'Use decision=ask_clarification only when one short question is required.',
-      'When decision is answer_now or ask_clarification, include visibleReplyText.',
-      'Do not mention tools, prompts, budgets, traces, or internal runtime details.',
-    ].join(' ');
-
-    let parsedDecision:
-      | z.infer<typeof TurnDecisionSchema>
-      | null = null;
-    let structuredRetryCount = state.structuredRetryCount;
-    let consumedLatencyMs = 0;
-    for (let attempt = 0; attempt < 2; attempt += 1) {
-      const response = await invokeStructuredAgentModelTask({
-        messages: buildStructuredPromptMessages({
-          state,
-          runtimeContext,
-          instruction:
-            attempt === 0
-              ? decisionInstruction
-              : `${decisionInstruction} Retry: return only valid JSON matching the schema.`,
-        }),
-        schemaName: 'sage_turn_decision',
-        schema: TurnDecisionJsonSchema,
-        model: runtimeContext.model,
-        apiKey: runtimeContext.apiKey,
-        temperature: 0.2,
-        requestTimeoutMs: runtimeContext.timeoutMs,
-        maxTokens: runtimeContext.maxTokens,
-      });
-      consumedLatencyMs += response.latencyMs;
-      const candidate = TurnDecisionSchema.safeParse(response.payload);
-      if (candidate.success) {
-        parsedDecision = candidate.data;
-        break;
-      }
-      structuredRetryCount += 1;
-    }
-
-    if (!parsedDecision) {
-      return new Command({
-        goto: 'closeout_turn',
-        update: {
-          replyText: buildStructuredOutputFailureReply(state),
-          completionKind: 'loop_guard',
-          stopReason: 'structured_output_failure',
-          deliveryDisposition: 'chat_reply',
-          structuredRetryCount,
-          decisionKind: null,
-          verificationKind: 'loop_guard',
-          contextFrame: buildContextFrame(state),
-          activeWindowDurationMs: addActiveWindowDuration(state, consumedLatencyMs),
-          resumeContext: snapshotRuntimeContext(runtimeContext),
-        },
-      });
-    }
-
-    const nextContextFrame: GraphContextFrame = {
-      ...buildContextFrame(state),
-      objective:
-        parsedDecision.objective?.trim() ||
-        state.contextFrame.objective,
-      nextAction:
-        parsedDecision.nextAction?.trim() ||
-        (parsedDecision.decision === 'call_tools'
-          ? 'Call tools to gather the missing evidence.'
-          : 'Verify the drafted visible reply.'),
-    };
-
-    if (parsedDecision.decision === 'call_tools') {
-      return new Command({
-        goto: 'tool_call_turn',
-        update: {
-          decisionKind: 'call_tools',
-          structuredRetryCount,
-          contextFrame: nextContextFrame,
-          activeWindowDurationMs: addActiveWindowDuration(state, consumedLatencyMs),
-          resumeContext: snapshotRuntimeContext(runtimeContext),
-        },
-      });
-    }
-
-    if (parsedDecision.decision === 'pause_handoff') {
-      return new Command({
-        goto: 'pause_for_continue',
-        update: {
-          decisionKind: 'pause_handoff',
-          structuredRetryCount,
-          contextFrame: nextContextFrame,
-          activeWindowDurationMs: addActiveWindowDuration(state, consumedLatencyMs),
-          resumeContext: snapshotRuntimeContext(runtimeContext),
-          stopReason: 'step_window_exhausted',
-        },
-      });
-    }
-
-    const draftMessage = new AIMessage({
-      content: scrubFinalReplyText({ replyText: parsedDecision.visibleReplyText ?? '' }),
-    });
-
     return new Command({
-      goto: 'verify_turn',
+      goto: 'tool_call_turn',
       update: {
-        messages: [draftMessage],
-        replyText: extractMessageText(draftMessage),
-        decisionKind: parsedDecision.decision,
-        structuredRetryCount,
-        contextFrame: nextContextFrame,
-        activeWindowDurationMs: addActiveWindowDuration(state, consumedLatencyMs),
         resumeContext: snapshotRuntimeContext(runtimeContext),
+        contextFrame: buildContextFrame(state),
       },
     });
   };
@@ -2006,7 +1756,10 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
       runtimeContext.maxTokens,
     );
     const response = await invokeAgentModelTask({
-      messages: toLlmMessages(prepared.trimmedMessages),
+      messages: buildAssistantTurnMessages({
+        state,
+        runtimeContext,
+      }),
       activeToolNames: runtimeContext.activeToolNames,
       toolContext,
       timeoutMs: graphConfig.toolTimeoutMs,
@@ -2037,165 +1790,36 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
           totalRoundsCompleted: nextTotalRoundsCompleted,
           stopReason: timedOutAfterModel ? 'graph_timeout' : state.stopReason,
           resumeContext: snapshotRuntimeContext(runtimeContext),
-          contextFrame: buildContextFrame(state),
+          contextFrame: buildContextFrame({
+            ...state,
+            messages: [...(state.messages as BaseMessage[]), aiMessage],
+          }),
+          finalization: {
+            ...state.finalization,
+            rebudgeting: prepared.rebudgeting,
+          },
         },
       });
     }
 
-    return new Command({
-      goto: 'verify_turn',
-      update: {
-        messages: [aiMessage],
-        replyText,
-        activeWindowDurationMs: nextActiveWindowDurationMs,
-        roundsCompleted: nextRoundsCompleted,
-        totalRoundsCompleted: nextTotalRoundsCompleted,
-        resumeContext: snapshotRuntimeContext(runtimeContext),
-        contextFrame: buildContextFrame({
-          ...state,
-          replyText,
-          messages: [...(state.messages as BaseMessage[]), aiMessage],
-        }),
-        finalization: {
-          ...state.finalization,
-          rebudgeting: prepared.rebudgeting,
-        },
+    const nextState: AgentGraphState = {
+      ...state,
+      messages: [...(state.messages as BaseMessage[]), aiMessage],
+      replyText,
+      activeWindowDurationMs: nextActiveWindowDurationMs,
+      roundsCompleted: nextRoundsCompleted,
+      totalRoundsCompleted: nextTotalRoundsCompleted,
+      finalization: {
+        ...state.finalization,
+        rebudgeting: prepared.rebudgeting,
       },
-    });
-  };
-
-  const verifyTurnNode = async (
-    state: AgentGraphState,
-    config: RunnableConfig,
-  ): Promise<Command<unknown, Partial<AgentGraphState>, GraphNodeName>> => {
-    const runtimeContext = resolveRuntimeContext(state, config);
-    const latestReplyText = scrubFinalReplyText({
-      replyText: state.replyText || findLatestAssistantText(state.messages as BaseMessage[]),
-    });
-    const deliveryHint =
-      state.finalToolDelivery?.effectKind === 'final_message'
-        ? 'If the answer was already delivered by tool, return verification=delivered_via_tool.'
-        : '';
-
-    const verificationInstruction = [
-      'Return a strict JSON verification result for the current turn.',
-      'Use verification=need_more_tools only when another tool step is required.',
-      'Use verification=verified_answer only when the visible reply fully answers the user.',
-      'Use verification=ask_clarification only when one short question is required.',
-      'Use verification=delivered_via_tool when a tool already posted the final answer.',
-      'Include visibleReplyText for verified_answer, ask_clarification, or loop_guard when chat text should be shown.',
-      `Latest visible reply draft: ${latestReplyText || '(empty)'}.`,
-      deliveryHint,
-      'Do not mention tools, prompts, budgets, traces, or internal runtime details.',
-    ]
-      .filter((part) => part.trim().length > 0)
-      .join(' ');
-
-    let parsedVerification:
-      | z.infer<typeof TurnVerificationSchema>
-      | null = null;
-    let structuredRetryCount = state.structuredRetryCount;
-    let consumedLatencyMs = 0;
-    for (let attempt = 0; attempt < 2; attempt += 1) {
-      const response = await invokeStructuredAgentModelTask({
-        messages: buildStructuredPromptMessages({
-          state,
-          runtimeContext,
-          instruction:
-            attempt === 0
-              ? verificationInstruction
-              : `${verificationInstruction} Retry: return only valid JSON matching the schema.`,
-        }),
-        schemaName: 'sage_turn_verification',
-        schema: TurnVerificationJsonSchema,
-        model: runtimeContext.model,
-        apiKey: runtimeContext.apiKey,
-        temperature: 0.1,
-        requestTimeoutMs: runtimeContext.timeoutMs,
-        maxTokens: runtimeContext.maxTokens,
-      });
-      consumedLatencyMs += response.latencyMs;
-      const candidate = TurnVerificationSchema.safeParse(response.payload);
-      if (candidate.success) {
-        parsedVerification = candidate.data;
-        break;
-      }
-      structuredRetryCount += 1;
-    }
-
-    if (!parsedVerification) {
-      return new Command({
-        goto: 'closeout_turn',
-        update: {
-          replyText: buildStructuredOutputFailureReply(state),
-          completionKind: 'loop_guard',
-          stopReason: 'structured_output_failure',
-          deliveryDisposition: 'chat_reply',
-          structuredRetryCount,
-          verificationKind: 'loop_guard',
-          contextFrame: buildContextFrame(state),
-          activeWindowDurationMs: addActiveWindowDuration(state, consumedLatencyMs),
-          resumeContext: snapshotRuntimeContext(runtimeContext),
-        },
-      });
-    }
-
-    const nextContextFrame: GraphContextFrame = {
-      ...buildContextFrame(state),
-      verifiedFacts: [
-        ...buildContextFrame(state).verifiedFacts,
-        ...parsedVerification.verifiedFacts,
-      ].slice(-8),
-      openQuestions: [
-        ...parsedVerification.openQuestions,
-      ].slice(-4),
-      nextAction:
-        parsedVerification.nextAction?.trim() ||
-        (parsedVerification.verification === 'need_more_tools'
-          ? 'Call tools for the next step.'
-          : 'Close out the turn.'),
     };
 
-    if (parsedVerification.verification === 'need_more_tools') {
-      return new Command({
-        goto: 'tool_call_turn',
-        update: {
-          verificationKind: 'need_more_tools',
-          structuredRetryCount,
-          contextFrame: nextContextFrame,
-          activeWindowDurationMs: addActiveWindowDuration(state, consumedLatencyMs),
-          resumeContext: snapshotRuntimeContext(runtimeContext),
-        },
-      });
-    }
-
-    const outcome = mapVerificationToOutcome({
-      verification: parsedVerification.verification,
-      visibleReplyText: scrubFinalReplyText({
-        replyText: parsedVerification.visibleReplyText ?? latestReplyText,
-      }),
-      state,
-    });
-
-    return new Command({
-      goto: 'closeout_turn',
-      update: {
-        replyText: outcome.replyText,
-        completionKind: outcome.completionKind,
-        stopReason: outcome.stopReason,
-        deliveryDisposition: outcome.deliveryDisposition,
-        structuredRetryCount,
-        verificationKind: parsedVerification.verification,
-        contextFrame: nextContextFrame,
-        activeWindowDurationMs: addActiveWindowDuration(state, consumedLatencyMs),
-        resumeContext: snapshotRuntimeContext(runtimeContext),
-        finalization: {
-          ...state.finalization,
-          structuredRetryCount,
-          toolDeliveredFinal: outcome.toolDeliveredFinal,
-          contextFrame: nextContextFrame,
-        },
-      },
+    return buildProtocolViolationOutcome({
+      state: nextState,
+      detail: `The assistant responded with plain text instead of provider-native tool calls. Use external tools for work, or call ${TURN_CLOSEOUT_TOOL_NAME} to close the turn.`,
+      runtimeContext,
+      messages: [aiMessage],
     });
   };
 
@@ -2213,6 +1837,81 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
     });
 
     const requestedCallCount = toolCalls.length;
+    const closeoutCalls = toolCalls.filter((call) => call.name === TURN_CLOSEOUT_TOOL_NAME);
+    if (closeoutCalls.length > 0) {
+      if (closeoutCalls.length !== 1 || toolCalls.length !== 1) {
+        return buildProtocolViolationOutcome({
+          state,
+          detail: `The assistant mixed ${TURN_CLOSEOUT_TOOL_NAME} with other tool calls. Use either external tools or exactly one ${TURN_CLOSEOUT_TOOL_NAME} call per assistant turn.`,
+          runtimeContext,
+        });
+      }
+
+      const parsedCloseout = parseCloseoutToolCall({
+        id: closeoutCalls[0]!.id,
+        name: closeoutCalls[0]!.name,
+        args: closeoutCalls[0]!.args,
+      });
+      if (!parsedCloseout) {
+        return buildProtocolViolationOutcome({
+          state,
+          detail: `${TURN_CLOSEOUT_TOOL_NAME} received invalid arguments. Use kind=final_answer, clarification_question, or delivered_via_tool.`,
+          runtimeContext,
+        });
+      }
+
+      if (parsedCloseout.kind === 'delivered_via_tool') {
+        if (state.finalToolDelivery?.effectKind !== 'final_message') {
+          return buildProtocolViolationOutcome({
+            state,
+            detail: `${TURN_CLOSEOUT_TOOL_NAME}(kind="delivered_via_tool") is only valid after a final-delivery tool already posted the answer.`,
+            runtimeContext,
+          });
+        }
+
+        return new Command({
+          goto: 'closeout_turn',
+          update: {
+            replyText: '',
+            completionKind: 'delivered_via_tool',
+            stopReason: 'verified_closeout',
+            deliveryDisposition: 'tool_delivered',
+            contextFrame: buildContextFrame(state),
+            resumeContext: snapshotRuntimeContext(runtimeContext),
+          },
+        });
+      }
+
+      const visibleReplyText = scrubFinalReplyText({
+        replyText: parsedCloseout.message ?? '',
+      });
+      if (!visibleReplyText) {
+        return buildProtocolViolationOutcome({
+          state,
+          detail: `${TURN_CLOSEOUT_TOOL_NAME} requires a non-empty message for ${parsedCloseout.kind}.`,
+          runtimeContext,
+        });
+      }
+
+      return new Command({
+        goto: 'closeout_turn',
+        update: {
+          replyText: visibleReplyText,
+          completionKind:
+            parsedCloseout.kind === 'clarification_question'
+              ? 'clarification_question'
+              : 'final_answer',
+          stopReason: 'verified_closeout',
+          deliveryDisposition: 'chat_reply',
+          contextFrame: buildContextFrame({
+            ...state,
+            replyText: visibleReplyText,
+          }),
+          resumeContext: snapshotRuntimeContext(runtimeContext),
+        },
+      });
+    }
+
     const readBatch: GraphToolCallDescriptor[] = [];
     const readExecutionBatch: GraphToolCallDescriptor[] = [];
     const pendingWriteCalls: GraphToolCallDescriptor[] = [];
@@ -2308,7 +2007,6 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
             lastToolBatchFingerprint: batchFingerprint,
             consecutiveIdenticalToolBatches,
             loopGuardRecoveries: state.loopGuardRecoveries + 1,
-            structuredRetryCount: state.structuredRetryCount + 1,
             roundEvents: [event],
             contextFrame: buildContextFrame(state),
           },
@@ -2340,8 +2038,7 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
           completionKind: 'loop_guard',
           stopReason: 'loop_guard',
           deliveryDisposition: 'chat_reply',
-          structuredRetryCount: state.structuredRetryCount,
-          verificationKind: 'loop_guard',
+          protocolRepairCount: state.protocolRepairCount,
           contextFrame: buildContextFrame(state),
           finalization: {
             attempted: true,
@@ -2350,7 +2047,7 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
             stopReason: 'loop_guard',
             completionKind: 'loop_guard',
             deliveryDisposition: 'chat_reply',
-            structuredRetryCount: state.structuredRetryCount,
+            protocolRepairCount: state.protocolRepairCount,
             toolDeliveredFinal: false,
             contextFrame: buildContextFrame(state),
           },
@@ -2409,12 +2106,12 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
         contextFrame: frame,
         finalization: {
           attempted: true,
-          succeeded: state.stopReason !== 'structured_output_failure',
+          succeeded: true,
           completedAt: completionTimestamp.iso,
           stopReason: state.stopReason,
           completionKind: state.completionKind ?? 'loop_guard',
           deliveryDisposition: state.deliveryDisposition,
-          structuredRetryCount: state.structuredRetryCount,
+          protocolRepairCount: state.protocolRepairCount,
           toolDeliveredFinal: state.deliveryDisposition === 'tool_delivered',
           contextFrame: frame,
           rebudgeting: state.finalization.rebudgeting,
@@ -2552,7 +2249,7 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
               stopReason: 'approval_interrupt',
               completionKind: 'approval_handoff',
               deliveryDisposition: 'approval_governance_only',
-              structuredRetryCount: state.structuredRetryCount,
+              protocolRepairCount: state.protocolRepairCount,
               toolDeliveredFinal: false,
               contextFrame: buildContextFrame(state),
             },
@@ -2608,7 +2305,7 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
             stopReason: 'approval_interrupt',
             completionKind: 'approval_handoff',
             deliveryDisposition: 'approval_governance_only',
-            structuredRetryCount: state.structuredRetryCount,
+            protocolRepairCount: state.protocolRepairCount,
             toolDeliveredFinal: false,
             contextFrame: buildContextFrame(state),
           },
@@ -2700,7 +2397,7 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
               stopReason: 'continuation_expired',
               completionKind: 'pause_handoff',
               deliveryDisposition: 'chat_reply',
-              structuredRetryCount: state.structuredRetryCount,
+              protocolRepairCount: state.protocolRepairCount,
               toolDeliveredFinal: false,
               contextFrame: buildContextFrame(state),
             },
@@ -2740,7 +2437,7 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
               stopReason: 'continuation_expired',
               completionKind: 'pause_handoff',
               deliveryDisposition: 'chat_reply',
-              structuredRetryCount: state.structuredRetryCount,
+              protocolRepairCount: state.protocolRepairCount,
               toolDeliveredFinal: false,
               contextFrame: buildContextFrame(state),
             },
@@ -2940,7 +2637,7 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
             stopReason: 'max_windows_reached',
             completionKind: 'pause_handoff',
             deliveryDisposition: 'chat_reply',
-            structuredRetryCount: state.structuredRetryCount,
+            protocolRepairCount: state.protocolRepairCount,
             toolDeliveredFinal: false,
             contextFrame: buildContextFrame(state),
           },
@@ -3004,7 +2701,7 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
           stopReason: resolveContinuationStopReason(continuation.pauseReason),
           completionKind: 'pause_handoff',
           deliveryDisposition: 'chat_reply_with_continue',
-          structuredRetryCount: state.structuredRetryCount,
+          protocolRepairCount: state.protocolRepairCount,
           toolDeliveredFinal: false,
           contextFrame: buildContextFrame(state),
         },
@@ -3025,16 +2722,13 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
     context: AgentGraphConfigurableSchema,
   })
     .addNode('decide_turn', decideTurnNode, {
-      ends: ['tool_call_turn', 'verify_turn', 'pause_for_continue', 'closeout_turn'],
+      ends: ['tool_call_turn', 'pause_for_continue'],
     })
     .addNode('tool_call_turn', toolCallTurnNode, {
-      ends: ['route_tool_phase', 'pause_for_continue', 'verify_turn'],
+      ends: ['route_tool_phase', 'tool_call_turn', 'pause_for_continue', 'closeout_turn'],
     })
     .addNode('route_tool_phase', routeToolPhaseNode, {
-      ends: ['execute_read_tools', 'approval_gate', 'tool_call_turn'],
-    })
-    .addNode('verify_turn', verifyTurnNode, {
-      ends: ['tool_call_turn', 'closeout_turn'],
+      ends: ['execute_read_tools', 'approval_gate', 'tool_call_turn', 'closeout_turn', 'finalize_turn'],
     })
     .addNode('closeout_turn', closeoutTurnNode, {
       ends: ['finalize_turn'],
@@ -3251,10 +2945,8 @@ function normalizeRecoveredGraphState(value: unknown): AgentGraphState | null {
     completionKind: state.completionKind ?? null,
     stopReason: state.stopReason ?? 'verified_closeout',
     deliveryDisposition: state.deliveryDisposition ?? 'chat_reply',
-    structuredRetryCount: state.structuredRetryCount ?? state.finalization?.structuredRetryCount ?? 0,
+    protocolRepairCount: state.protocolRepairCount ?? state.finalization?.protocolRepairCount ?? 0,
     finalToolDelivery: state.finalToolDelivery ?? null,
-    decisionKind: state.decisionKind ?? null,
-    verificationKind: state.verificationKind ?? null,
     contextFrame: state.contextFrame ?? buildDefaultContextFrame(),
     graphStatus: state.graphStatus ?? 'running',
     activeWindowDurationMs: state.activeWindowDurationMs ?? 0,
@@ -3329,7 +3021,7 @@ async function recoverLoopGuardState(
         stopReason: 'loop_guard',
         completionKind: 'loop_guard',
         deliveryDisposition: 'chat_reply',
-        structuredRetryCount: state.structuredRetryCount ?? state.finalization?.structuredRetryCount ?? 0,
+        protocolRepairCount: state.protocolRepairCount ?? state.finalization?.protocolRepairCount ?? 0,
         toolDeliveredFinal: false,
         contextFrame: buildContextFrame(state),
       },
@@ -3458,10 +3150,8 @@ function buildInitialState(params: StartAgentGraphTurnParams): AgentGraphState {
     completionKind: null,
     stopReason: 'verified_closeout',
     deliveryDisposition: 'chat_reply',
-    structuredRetryCount: 0,
+    protocolRepairCount: 0,
     finalToolDelivery: null,
-    decisionKind: null,
-    verificationKind: null,
     contextFrame: buildDefaultContextFrame(),
     graphStatus: 'running',
     activeWindowDurationMs: 0,
@@ -3507,10 +3197,8 @@ function buildSeededGraphState(params: {
     completionKind: null,
     stopReason: 'verified_closeout',
     deliveryDisposition: 'chat_reply',
-    structuredRetryCount: 0,
+    protocolRepairCount: 0,
     finalToolDelivery: null,
-    decisionKind: null,
-    verificationKind: null,
     contextFrame: buildDefaultContextFrame(),
     graphStatus: 'running',
     activeWindowDurationMs: 0,

@@ -39,7 +39,7 @@ This validates:
 
 - ✅ Environment configuration
 - ✅ Database connectivity
-- ✅ AI provider availability plus strict structured-output support (if `--llm-ping` or `LLM_DOCTOR_PING=1`)
+- ✅ AI provider availability plus Chat Completions tool-calling support (if `--llm-ping` or `LLM_DOCTOR_PING=1`)
 
 ---
 
@@ -165,7 +165,7 @@ Possible causes:
 **Fix:**
 
 1. Increase timeout: `TIMEOUT_MEMORY_MS=600000`
-2. Make sure `AI_PROVIDER_PROFILE_AGENT_MODEL` is set explicitly, then run `npm run doctor -- --llm-ping` or `npm run ai-provider:probe` to confirm the main runtime model accepts strict structured outputs
+2. Make sure `AI_PROVIDER_PROFILE_AGENT_MODEL` is set explicitly, then run `npm run doctor -- --llm-ping` or `npm run ai-provider:probe` to confirm the main runtime model accepts Chat Completions tool calls
 
 ---
 

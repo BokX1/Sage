@@ -1,5 +1,8 @@
 const DEFAULT_PROBE_TIMEOUT_MS = 10_000;
-const STRICT_PROBE_VERDICT = 'strict_json_schema_ok';
+const TOOL_NAME = 'sage_probe_echo';
+const TOOL_ARG_VALUE = 'tool_call_roundtrip_ok';
+const TOOL_RESULT_VALUE = 'tool_result_roundtrip_ok';
+const FINAL_TEXT = 'Tool roundtrip complete.';
 
 export type AiProviderProbeParams = {
   baseUrl: string;
@@ -16,10 +19,19 @@ export type AiProviderProbeResult = {
   httpStatus?: number;
 };
 
+type CompatibleChatToolCall = {
+  id?: string;
+  function?: {
+    name?: string;
+    arguments?: string;
+  };
+};
+
 type CompatibleChatResponsePayload = {
   choices?: Array<{
     message?: {
       content?: string;
+      tool_calls?: CompatibleChatToolCall[];
     };
   }>;
 };
@@ -57,11 +69,15 @@ function getResponseBodySnippet(bodyText: string): string {
   if (!trimmed) {
     return '[empty response body]';
   }
-  return trimmed.slice(0, 200);
+  return trimmed.slice(0, 300);
 }
 
 function readAssistantText(payload: CompatibleChatResponsePayload): string {
   return payload.choices?.[0]?.message?.content?.trim() ?? '';
+}
+
+function readAssistantToolCalls(payload: CompatibleChatResponsePayload): CompatibleChatToolCall[] {
+  return payload.choices?.[0]?.message?.tool_calls ?? [];
 }
 
 async function sendProbeRequest(
@@ -114,97 +130,177 @@ export async function probeAiProviderPing(
   }
 }
 
-export async function probeAiProviderStrictStructuredOutputs(
+function buildProbeToolDefinition(): Record<string, unknown> {
+  return {
+    type: 'function',
+    function: {
+      name: TOOL_NAME,
+      description: 'Echoes the probe value so Sage can validate Chat Completions tool calling.',
+      parameters: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          value: {
+            type: 'string',
+            enum: [TOOL_ARG_VALUE],
+          },
+        },
+        required: ['value'],
+      },
+    },
+  };
+}
+
+function parseToolArgs(rawArgs: string | undefined): Record<string, unknown> | null {
+  if (!rawArgs?.trim()) {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(rawArgs);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return null;
+    }
+    return parsed as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+export async function probeAiProviderToolCalling(
   params: AiProviderProbeParams,
 ): Promise<AiProviderProbeResult> {
   try {
-    const response = await sendProbeRequest(params, {
+    const firstResponse = await sendProbeRequest(params, {
       model: params.model,
+      temperature: 0,
+      max_tokens: 128,
+      tools: [buildProbeToolDefinition()],
+      tool_choice: 'auto',
       messages: [
         {
           role: 'system',
-          content: 'Return only JSON that exactly matches the provided schema.',
+          content:
+            `You must use the ${TOOL_NAME} tool exactly once with {"value":"${TOOL_ARG_VALUE}"}. ` +
+            'Do not answer normally before calling the tool.',
         },
         {
           role: 'user',
-          content: `Return {"verdict":"${STRICT_PROBE_VERDICT}"}.`,
+          content: `Call ${TOOL_NAME} now.`,
         },
       ],
-      max_tokens: 32,
-      temperature: 0,
-      response_format: {
-        type: 'json_schema',
-        json_schema: {
-          name: 'sage_strict_structured_output_probe',
-          strict: true,
-          schema: {
-            type: 'object',
-            additionalProperties: false,
-            properties: {
-              verdict: {
-                type: 'string',
-                enum: [STRICT_PROBE_VERDICT],
-              },
-            },
-            required: ['verdict'],
-          },
-        },
-      },
     });
 
-    if (!response.ok) {
-      const bodySnippet = getResponseBodySnippet(await response.text());
+    if (!firstResponse.ok) {
+      const bodySnippet = getResponseBodySnippet(await firstResponse.text());
       return {
         ok: false,
-        httpStatus: response.status,
-        message: `AI provider strict structured-output probe failed (${response.status})`,
+        httpStatus: firstResponse.status,
+        message: `AI provider tool-calling probe failed (${firstResponse.status})`,
         details: [bodySnippet],
       };
     }
 
-    const payload = (await response.json()) as CompatibleChatResponsePayload;
-    const content = readAssistantText(payload);
-    if (!content) {
+    const firstPayload = (await firstResponse.json()) as CompatibleChatResponsePayload;
+    const toolCalls = readAssistantToolCalls(firstPayload);
+    if (toolCalls.length !== 1) {
       return {
         ok: false,
-        message: 'AI provider strict structured-output probe returned an empty assistant message',
+        message: 'AI provider tool-calling probe did not return exactly one assistant tool call',
+        details: [getResponseBodySnippet(JSON.stringify(firstPayload))],
       };
     }
 
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(content);
-    } catch (error) {
+    const toolCall = toolCalls[0]!;
+    if (toolCall.function?.name !== TOOL_NAME) {
       return {
         ok: false,
-        message: 'AI provider strict structured-output probe returned non-JSON content',
-        details: [String(error), getResponseBodySnippet(content)],
+        message: 'AI provider tool-calling probe returned the wrong tool name',
+        details: [getResponseBodySnippet(JSON.stringify(toolCall))],
       };
     }
 
-    if (
-      !parsed ||
-      typeof parsed !== 'object' ||
-      Array.isArray(parsed) ||
-      (parsed as { verdict?: unknown }).verdict !== STRICT_PROBE_VERDICT
-    ) {
+    const parsedArgs = parseToolArgs(toolCall.function.arguments);
+    if (!parsedArgs || parsedArgs.value !== TOOL_ARG_VALUE) {
       return {
         ok: false,
-        message: 'AI provider strict structured-output probe returned the wrong JSON payload',
-        details: [getResponseBodySnippet(JSON.stringify(parsed))],
+        message: 'AI provider tool-calling probe returned malformed tool-call arguments',
+        details: [getResponseBodySnippet(toolCall.function?.arguments ?? '')],
+      };
+    }
+
+    const secondResponse = await sendProbeRequest(params, {
+      model: params.model,
+      temperature: 0,
+      max_tokens: 64,
+      tools: [buildProbeToolDefinition()],
+      tool_choice: 'auto',
+      messages: [
+        {
+          role: 'system',
+          content: `When the tool result says "${TOOL_RESULT_VALUE}", reply with exactly "${FINAL_TEXT}" and no tool calls.`,
+        },
+        {
+          role: 'user',
+          content: `Call ${TOOL_NAME} now.`,
+        },
+        {
+          role: 'assistant',
+          content: firstPayload.choices?.[0]?.message?.content ?? '',
+          tool_calls: toolCalls.map((call) => ({
+            id: call.id,
+            type: 'function',
+            function: {
+              name: call.function?.name,
+              arguments: call.function?.arguments,
+            },
+          })),
+        },
+        {
+          role: 'tool',
+          tool_call_id: toolCall.id ?? 'probe-call-1',
+          content: JSON.stringify({ value: TOOL_RESULT_VALUE }),
+        },
+      ],
+    });
+
+    if (!secondResponse.ok) {
+      const bodySnippet = getResponseBodySnippet(await secondResponse.text());
+      return {
+        ok: false,
+        httpStatus: secondResponse.status,
+        message: `AI provider tool-result roundtrip probe failed (${secondResponse.status})`,
+        details: [bodySnippet],
+      };
+    }
+
+    const secondPayload = (await secondResponse.json()) as CompatibleChatResponsePayload;
+    const secondToolCalls = readAssistantToolCalls(secondPayload);
+    if (secondToolCalls.length > 0) {
+      return {
+        ok: false,
+        message: 'AI provider tool-calling probe returned follow-up tool calls instead of a final assistant reply',
+        details: [getResponseBodySnippet(JSON.stringify(secondPayload))],
+      };
+    }
+
+    const content = readAssistantText(secondPayload);
+    if (content !== FINAL_TEXT) {
+      return {
+        ok: false,
+        message: 'AI provider tool-calling probe returned the wrong final assistant reply',
+        details: [getResponseBodySnippet(content)],
       };
     }
 
     return {
       ok: true,
-      message: 'AI provider strict structured-output probe succeeded',
+      message: 'AI provider Chat Completions tool-calling probe succeeded',
     };
   } catch (error) {
     return {
       ok: false,
-      message: 'AI provider strict structured-output probe request failed',
+      message: 'AI provider tool-calling probe request failed',
       details: [String(error)],
     };
   }
 }
-

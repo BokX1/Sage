@@ -56,7 +56,7 @@ flowchart LR
 5. If the hosted Pollinations BYOP path is in use, verify the setup card appears in a no-key test guild
 
 > [!TIP]
-> Use `npm run doctor -- --llm-ping` to include live AI provider ping plus strict structured-output probe checks. Alternative env-var syntax also works: `LLM_DOCTOR_PING=1 npm run doctor`. Use `npm run ai-provider:probe` when you want to test a specific key/model directly.
+> Use `npm run doctor -- --llm-ping` to include live AI provider ping plus Chat Completions tool-calling probe checks. Alternative env-var syntax also works: `LLM_DOCTOR_PING=1 npm run doctor`. Use `npm run ai-provider:probe` when you want to test a specific key/model directly.
 
 ---
 

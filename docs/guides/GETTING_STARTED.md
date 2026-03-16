@@ -183,7 +183,7 @@ The wizard will ask for:
 | **AI_PROVIDER_MAIN_AGENT_MODEL** | Required main runtime agent model id |
 | **AI_PROVIDER_PROFILE_AGENT_MODEL** | Defaults to the main model unless you choose a separate profile model |
 | **AI_PROVIDER_SUMMARY_AGENT_MODEL** | Defaults to the main model unless you choose a separate summary model |
-| **AI_PROVIDER_MODEL_PROFILES_JSON** | Optional JSON object describing budgets/capabilities for configured agent models; use the live doctor/probe checks to confirm strict structured-output support for the main model |
+| **AI_PROVIDER_MODEL_PROFILES_JSON** | Optional JSON object describing budget overrides for configured agent models; use the live doctor/probe checks to confirm Chat Completions tool-calling support for the main model |
 
 > ✅ The wizard also ends with a grouped setup summary for Discord, database, AI provider configuration, and next steps.
 

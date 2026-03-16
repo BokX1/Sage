@@ -24,7 +24,8 @@ describe('capabilityPrompt', () => {
       expect(prompt).toContain('Direct tools do not expose `help`; rely on schema and description for: `system_time`.');
       expect(prompt).toContain('Use provider-native tool calls silently. Do not describe, serialize, or wrap them in JSON or markdown');
       expect(prompt).toContain('Batch read-only calls in one provider-native turn when possible.');
-      expect(prompt).toContain('If no tool is needed, answer in plain text.');
+      expect(prompt).toContain('Every assistant turn must use tool calls: either external tools for work or the internal `sage_finish_turn` tool to close out the turn.');
+      expect(prompt).toContain('Use `sage_finish_turn(kind="final_answer", message="...")` for a normal final answer.');
       expect(prompt).toContain('If approval review interrupts the turn, treat that action as already queued, keep any visible follow-up brief');
       expect(prompt).not.toContain('<reasoning_protocol>');
     });
@@ -60,7 +61,7 @@ describe('capabilityPrompt', () => {
       expect(prompt).toContain('File recall vs guild resources');
       expect(prompt).toContain('Voice analytics vs live control');
       expect(prompt).toContain('Typed Discord actions come before raw API fallback. Use `discord_admin.api` only after typed `discord_server` or `discord_admin` actions do not cover the task.');
-      expect(prompt).toContain('Plain assistant text is fine for normal answers. Use `discord_messages.send` only when final delivery must be a Discord-native message inside the channel.');
+      expect(prompt).toContain('Use `discord_messages.send` only when final delivery must be a Discord-native message inside the channel; otherwise close the turn with `sage_finish_turn`.');
     });
 
     it('covers the key routing regressions in the compact guide', () => {
@@ -198,7 +199,7 @@ describe('capabilityPrompt', () => {
         },
       });
 
-      expect(commonPrompt.length).toBeLessThan(9200);
+      expect(commonPrompt.length).toBeLessThan(9400);
       expect(fullPrompt.length).toBeLessThan(10350);
     });
 

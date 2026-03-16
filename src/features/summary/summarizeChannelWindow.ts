@@ -199,7 +199,7 @@ Output the updated channel profile:`;
 /**
  * Step 1: Run the Analyst
  * - Temperature: 0.5 (focused but creative)
- * - Output: Strict JSON via responseFormat enforcement
+ * - Output: JSON-only prompt contract with local parse/repair fallback
  */
 async function runAnalyst(
   systemPrompt: string,
@@ -216,7 +216,6 @@ async function runAnalyst(
     temperature: 0.5,
     maxTokens: 2048,
     apiKey,
-    responseFormat: 'json_object',
   };
 
   try {
@@ -361,12 +360,10 @@ function parseToJSON(text: string): Record<string, unknown> | null {
   }
 
   try {
-    // With responseFormat: 'json_object', this should always succeed
     return JSON.parse(cleaned);
   } catch {
-    // Safety net: jsonrepair for edge cases (e.g., provider doesn't honor responseFormat)
     try {
-      logger.warn('JSON parse failed despite responseFormat enforcement, trying jsonrepair');
+      logger.warn('JSON parse failed, trying jsonrepair');
       const repaired = jsonrepair(cleaned);
       return JSON.parse(repaired);
     } catch (err) {

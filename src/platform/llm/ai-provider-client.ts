@@ -4,7 +4,6 @@ import {
   LLMMessageContent,
   LLMRequest,
   LLMResponse,
-  LLMStructuredJsonSchemaFormat,
   LLMToolCall,
   ToolDefinition,
 } from './llm-types';
@@ -36,16 +35,6 @@ interface CompatibleChatCompletionsPayload {
   messages: CompatibleChatMessage[];
   temperature: number;
   max_tokens?: number;
-  response_format?:
-    | { type: 'json_object' }
-    | {
-        type: 'json_schema';
-        json_schema: {
-          name: string;
-          schema: Record<string, unknown>;
-          strict?: boolean;
-        };
-      };
   tools?: ToolDefinition[];
   tool_choice?: string | object;
 }
@@ -75,40 +64,6 @@ const MIN_TIMEOUT_MS = 1_000;
 const MAX_TIMEOUT_MS = 300_000;
 const DEFAULT_MAX_RETRIES = 2;
 const MAX_RETRIES = 5;
-const JSON_ONLY_INSTRUCTION =
-  ' IMPORTANT: You must output strictly valid JSON only. Do not wrap in markdown blocks. No other text.';
-
-function normalizeResponseFormat(
-  responseFormat: LLMRequest['responseFormat'],
-): CompatibleChatCompletionsPayload['response_format'] | undefined {
-  if (!responseFormat || responseFormat === 'text') {
-    return undefined;
-  }
-
-  if (responseFormat === 'json_object') {
-    return { type: 'json_object' };
-  }
-
-  const schemaFormat = responseFormat as LLMStructuredJsonSchemaFormat;
-  return {
-    type: 'json_schema',
-    json_schema: {
-      name: schemaFormat.name,
-      schema: sanitizeJsonSchemaForProvider(schemaFormat.schema),
-      strict: schemaFormat.strict,
-    },
-  };
-}
-
-function allowsJsonModeFallback(responseFormat: LLMRequest['responseFormat']): boolean {
-  if (!responseFormat || responseFormat === 'text') {
-    return false;
-  }
-  if (responseFormat === 'json_object') {
-    return true;
-  }
-  return responseFormat.disableFallback !== true;
-}
 
 function resolveMaxRetries(rawMaxRetries: number | undefined): number {
   if (typeof rawMaxRetries !== 'number' || !Number.isFinite(rawMaxRetries)) {
@@ -316,58 +271,35 @@ function sanitizeToolDefinitionsForProvider(tools: ToolDefinition[] | undefined)
     return tools;
   }
 
-  const normalizeToolParameters = (parameters: Record<string, unknown>): Record<string, unknown> => {
+  const normalizeToolParameters = (toolName: string, parameters: Record<string, unknown>): Record<string, unknown> => {
     const sanitized = sanitizeJsonSchemaForProvider(parameters);
-    const objectSchema: Record<string, unknown> =
-      sanitized && typeof sanitized === 'object' && !Array.isArray(sanitized)
-        ? { ...sanitized }
-        : { properties: {} };
-    const topLevelVariants = [
-      ...(Array.isArray(objectSchema.oneOf) ? objectSchema.oneOf : []),
-      ...(Array.isArray(objectSchema.anyOf) ? objectSchema.anyOf : []),
-      ...(Array.isArray(objectSchema.allOf) ? objectSchema.allOf : []),
-    ];
-    if (
-      topLevelVariants.length > 0 &&
-      (!objectSchema.properties ||
-        typeof objectSchema.properties !== 'object' ||
-        Array.isArray(objectSchema.properties))
-    ) {
-      const mergedProperties: Record<string, unknown> = {};
-      const mergedRequired = new Set<string>();
-      for (const variant of topLevelVariants) {
-        if (!variant || typeof variant !== 'object' || Array.isArray(variant)) {
-          continue;
-        }
-        const variantRecord = variant as Record<string, unknown>;
-        if (variantRecord.properties && typeof variantRecord.properties === 'object' && !Array.isArray(variantRecord.properties)) {
-          Object.assign(mergedProperties, variantRecord.properties);
-        }
-        if (Array.isArray(variantRecord.required)) {
-          for (const key of variantRecord.required) {
-            if (typeof key === 'string' && key.trim().length > 0) {
-              mergedRequired.add(key);
-            }
-          }
-        }
-      }
-      if (Object.keys(mergedProperties).length > 0) {
-        objectSchema.properties = mergedProperties;
-      }
-      if (mergedRequired.size > 0 && !Array.isArray(objectSchema.required)) {
-        objectSchema.required = Array.from(mergedRequired);
-      }
+    if (!sanitized || typeof sanitized !== 'object' || Array.isArray(sanitized)) {
+      throw new Error(
+        `Tool "${toolName}" must expose Chat Completions parameters as a JSON-schema object.`,
+      );
     }
-    delete objectSchema.oneOf;
-    delete objectSchema.anyOf;
-    delete objectSchema.allOf;
-    delete objectSchema.enum;
-    delete objectSchema.not;
+    const objectSchema = { ...sanitized } as Record<string, unknown>;
     if (objectSchema.type !== 'object') {
-      objectSchema.type = 'object';
+      throw new Error(
+        `Tool "${toolName}" must expose top-level parameters with type="object".`,
+      );
     }
     if (!objectSchema.properties || typeof objectSchema.properties !== 'object' || Array.isArray(objectSchema.properties)) {
-      objectSchema.properties = {};
+      throw new Error(
+        `Tool "${toolName}" must expose top-level object properties for Chat Completions tool calling.`,
+      );
+    }
+    for (const key of ['oneOf', 'anyOf', 'allOf', 'not', 'enum']) {
+      if (key in objectSchema) {
+        throw new Error(
+          `Tool "${toolName}" uses unsupported top-level schema keyword "${key}" for Chat Completions tool calling.`,
+        );
+      }
+    }
+    if ('required' in objectSchema && !Array.isArray(objectSchema.required)) {
+      throw new Error(
+        `Tool "${toolName}" must declare "required" as an array when provided.`,
+      );
     }
     return objectSchema;
   };
@@ -376,7 +308,7 @@ function sanitizeToolDefinitionsForProvider(tools: ToolDefinition[] | undefined)
     ...tool,
     function: {
       ...tool.function,
-      parameters: normalizeToolParameters(tool.function.parameters),
+      parameters: normalizeToolParameters(tool.function.name, tool.function.parameters),
     },
   }));
 }
@@ -496,7 +428,6 @@ export class AiProviderClient implements LLMClient {
       messages: normalizedMessages,
       temperature: request.temperature ?? 0.7,
       max_tokens: request.maxTokens,
-      response_format: normalizeResponseFormat(request.responseFormat),
       tools: sanitizeToolDefinitionsForProvider(request.tools),
       tool_choice: request.toolChoice,
     };
@@ -507,7 +438,6 @@ export class AiProviderClient implements LLMClient {
     let attempt = 0;
     let lastError: Error | undefined;
     const maxAttempts = this.config.maxRetries + 1;
-    let hasRetriedForJson = false;
 
     while (attempt < maxAttempts) {
       try {
@@ -534,36 +464,6 @@ export class AiProviderClient implements LLMClient {
 
         if (!response.ok) {
           const text = await response.text();
-
-          if (
-            !hasRetriedForJson &&
-            (response.status === 400 || response.status === 422) &&
-            payload.response_format &&
-            allowsJsonModeFallback(request.responseFormat) &&
-            /response_format|json_object|unknown field|unsupported/i.test(text)
-          ) {
-            logger.warn(
-              { status: response.status, error: text.slice(0, 100) },
-              '[AiProviderClient] JSON mode rejected. Retrying with shim...',
-            );
-
-            hasRetriedForJson = true;
-            delete payload.response_format;
-            const systemMsg = payload.messages.find((message) => message.role === 'system');
-
-            if (systemMsg) {
-              if (
-                typeof systemMsg.content === 'string' &&
-                !systemMsg.content.includes(JSON_ONLY_INSTRUCTION.trim())
-              ) {
-                systemMsg.content += JSON_ONLY_INSTRUCTION;
-              }
-            } else {
-              payload.messages.unshift({ role: 'system', content: JSON_ONLY_INSTRUCTION });
-            }
-
-            continue;
-          }
 
           if (response.status === 400 && /model|validation/i.test(text)) {
             const err = new Error(`AI provider model error: ${text}`);

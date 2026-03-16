@@ -19,9 +19,9 @@ const {
 } = vi.hoisted(() => ({
   loggerWarnMock: vi.fn(),
   loggerInfoMock: vi.fn(),
-  modelInvokeMock: vi.fn<
-    (messages?: unknown, options?: { responseFormat?: unknown }) => Promise<unknown>
-  >(async () => new HumanMessage({ content: 'unused' })),
+  modelInvokeMock: vi.fn<(messages?: unknown, options?: unknown) => Promise<unknown>>(
+    async () => new HumanMessage({ content: 'unused' }),
+  ),
   getLastAiToolCallsMock: vi.fn((messages: Array<{ tool_calls?: unknown[] }>) => {
     const last = messages.at(-1);
     return Array.isArray(last?.tool_calls) ? last.tool_calls : [];
@@ -142,7 +142,6 @@ vi.mock('@/platform/llm/model-budget-config', () => ({
       messageOverheadTokens: 4,
     },
     visionEnabled: false,
-    strictStructuredOutputs: true,
   })),
 }));
 
@@ -160,69 +159,7 @@ vi.mock('@/platform/llm/ai-provider-chat-model', () => ({
       return this;
     }
 
-    async invoke(messages: Array<{ role?: string; content?: unknown }>, options?: { responseFormat?: { type?: string; name?: string } }) {
-      if (options?.responseFormat?.type === 'json_schema') {
-        const getRole = (message: { role?: string; content?: unknown; getType?: () => string }) => {
-          if (typeof message.role === 'string') {
-            return message.role;
-          }
-          if (typeof message.getType !== 'function') {
-            return undefined;
-          }
-          const type = message.getType();
-          if (type === 'ai') {
-            return 'assistant';
-          }
-          if (type === 'human') {
-            return 'user';
-          }
-          return type;
-        };
-        const getText = (message: { content?: unknown }) =>
-          typeof message.content === 'string' ? message.content : '';
-        const latestAssistantText = [...messages]
-          .reverse()
-          .find((message) => getRole(message) === 'assistant');
-        const latestUserText = [...messages]
-          .reverse()
-          .find((message) => getRole(message) === 'user');
-        const systemText = messages
-          .filter((message) => getRole(message) === 'system')
-          .map((message) => getText(message))
-          .join('\n');
-
-        if (options.responseFormat.name === 'sage_turn_verification') {
-          if (/Delivery state: final_message/.test(systemText)) {
-            return { content: JSON.stringify({ verification: 'delivered_via_tool', nextAction: 'Close out the turn.' }) };
-          }
-          if (getText(latestAssistantText ?? {}).trim().endsWith('?')) {
-            return {
-              content: JSON.stringify({
-                verification: 'ask_clarification',
-                visibleReplyText: getText(latestAssistantText ?? {}).trim(),
-                openQuestions: [getText(latestAssistantText ?? {}).trim()],
-                nextAction: 'Close out the turn.',
-              }),
-            };
-          }
-          return {
-            content: JSON.stringify({
-              verification: 'verified_answer',
-              visibleReplyText: getText(latestAssistantText ?? {}).trim() || 'Done.',
-              verifiedFacts: getText(latestAssistantText ?? {}).trim() ? [getText(latestAssistantText ?? {}).trim()] : [],
-              nextAction: 'Close out the turn.',
-            }),
-          };
-        }
-
-        return {
-          content: JSON.stringify({
-            decision: 'call_tools',
-            objective: getText(latestUserText ?? {}).trim() || 'Finish the request.',
-            nextAction: 'Call tools or produce the next assistant step.',
-          }),
-        };
-      }
+    async invoke(messages: Array<{ role?: string; content?: unknown }>, options?: unknown) {
       return modelInvokeMock(messages, options);
     }
   },
@@ -340,7 +277,7 @@ function makeInterruptedState() {
       stopReason: 'approval_interrupt',
       completionKind: 'approval_handoff',
       deliveryDisposition: 'approval_governance_only',
-      structuredRetryCount: 0,
+      protocolRepairCount: 0,
       toolDeliveredFinal: false,
       contextFrame: {
         objective: 'Finish the request.',
@@ -355,10 +292,8 @@ function makeInterruptedState() {
     completionKind: 'approval_handoff',
     stopReason: 'approval_interrupt',
     deliveryDisposition: 'approval_governance_only',
-    structuredRetryCount: 0,
+    protocolRepairCount: 0,
     finalToolDelivery: null,
-    decisionKind: null,
-    verificationKind: null,
     contextFrame: {
       objective: 'Finish the request.',
       verifiedFacts: [],
@@ -392,6 +327,23 @@ function makeInterruptedState() {
     },
     interruptResolution: null,
   };
+}
+
+function makeFinishTurnMessage(
+  kind: 'final_answer' | 'clarification_question' | 'delivered_via_tool',
+  message?: string,
+): AIMessage {
+  return new AIMessage({
+    content: '',
+    tool_calls: [
+      {
+        id: `finish-${kind}`,
+        name: 'sage_finish_turn',
+        args: message ? { kind, message } : { kind },
+        type: 'tool_call',
+      },
+    ],
+  });
 }
 
 function makeConfig() {
@@ -710,8 +662,8 @@ describe('runGraphValueStream', () => {
     expect(modelInvokeMock).toHaveBeenCalledTimes(2);
   });
 
-  it('counts a plain assistant response as one AI-provider turn', async () => {
-    modelInvokeMock.mockResolvedValueOnce(new AIMessage({ content: 'All set.' }));
+  it('counts a terminal closeout tool response as one AI-provider turn', async () => {
+    modelInvokeMock.mockResolvedValueOnce(makeFinishTurnMessage('final_answer', 'All set.'));
 
     const result = await runAgentGraphTurn({
       traceId: 'trace-turn-count-1',
@@ -882,7 +834,9 @@ describe('runGraphValueStream', () => {
         ],
       }),
     );
-    modelInvokeMock.mockResolvedValueOnce(new AIMessage({ content: 'I finished the first batch and left the overflow for a follow-up pass.' }));
+    modelInvokeMock.mockResolvedValueOnce(
+      makeFinishTurnMessage('final_answer', 'I finished the first batch and left the overflow for a follow-up pass.'),
+    );
     executeDurableToolTaskMock
       .mockResolvedValueOnce({
         kind: 'tool_result',
@@ -1013,7 +967,9 @@ describe('runGraphValueStream', () => {
         ],
       };
     });
-    modelInvokeMock.mockResolvedValueOnce(new AIMessage({ content: 'Read checks completed.' }));
+    modelInvokeMock.mockResolvedValueOnce(
+      makeFinishTurnMessage('final_answer', 'Read checks completed.'),
+    );
 
     const result = await __runAgentGraphCommandForTests({
       threadId: 'trace-read-dedupe-1',
@@ -1111,7 +1067,9 @@ describe('runGraphValueStream', () => {
           ],
         }),
       )
-      .mockResolvedValueOnce(new AIMessage({ content: 'I narrowed the work and am waiting for direction.' }));
+      .mockResolvedValueOnce(
+        makeFinishTurnMessage('final_answer', 'I narrowed the work and am waiting for direction.'),
+      );
 
     const result = await runAgentGraphTurn({
       traceId: 'trace-over-cap-1',
@@ -1241,7 +1199,9 @@ describe('runGraphValueStream', () => {
   it('retries transient provider failures on tool_call_turn without consuming an extra turn', async () => {
     modelInvokeMock
       .mockRejectedValueOnce(new Error('AI provider API error: 503 Service Unavailable - upstream down'))
-      .mockResolvedValueOnce(new AIMessage({ content: 'Recovered after transient provider failure.' }));
+      .mockResolvedValueOnce(
+        makeFinishTurnMessage('final_answer', 'Recovered after transient provider failure.'),
+      );
 
     const result = await runAgentGraphTurn({
       traceId: 'trace-llm-retry-1',
@@ -1272,7 +1232,9 @@ describe('runGraphValueStream', () => {
   it('falls back to the configured main-agent model when seeded graph commands omit context.model', async () => {
     const modelBudgetModule = await import('@/platform/llm/model-budget-config');
     const getModelBudgetConfigMock = vi.mocked(modelBudgetModule.getModelBudgetConfig);
-    modelInvokeMock.mockResolvedValueOnce(new AIMessage({ content: 'Seeded run completed.' }));
+    modelInvokeMock.mockResolvedValueOnce(
+      makeFinishTurnMessage('final_answer', 'Seeded run completed.'),
+    );
 
     const result = await __runAgentGraphCommandForTests({
       threadId: 'trace-seeded-model-fallback',
@@ -1563,7 +1525,7 @@ describe('runGraphValueStream', () => {
   });
 
   it('does not persist provider api keys in checkpointed graph state', async () => {
-    modelInvokeMock.mockResolvedValueOnce(new AIMessage({ content: 'Done.' }));
+    modelInvokeMock.mockResolvedValueOnce(makeFinishTurnMessage('final_answer', 'Done.'));
 
     const result = await runAgentGraphTurn({
       traceId: 'trace-secrets-1',
@@ -1708,7 +1670,7 @@ describe('runGraphValueStream', () => {
           ],
         }),
       )
-      .mockResolvedValueOnce(new AIMessage({ content: 'Done.' }));
+      .mockResolvedValueOnce(makeFinishTurnMessage('final_answer', 'Done.'));
     prepareToolApprovalInterruptMock
       .mockResolvedValueOnce({
         toolName: 'discord_admin',
@@ -1887,8 +1849,8 @@ describe('runGraphValueStream', () => {
           ],
         }),
       )
-      .mockResolvedValueOnce(new AIMessage({ content: 'Done after approval.' }))
-      .mockResolvedValue(new AIMessage({ content: 'Done after approval.' }));
+      .mockResolvedValueOnce(makeFinishTurnMessage('final_answer', 'Done after approval.'))
+      .mockResolvedValue(makeFinishTurnMessage('final_answer', 'Done after approval.'));
     prepareToolApprovalInterruptMock.mockResolvedValueOnce({
       toolName: 'discord_admin',
       callId: 'call-timeout-1',
@@ -2041,7 +2003,7 @@ describe('runGraphValueStream', () => {
       continuationId: 'cont-1',
     });
 
-    modelInvokeMock.mockResolvedValueOnce(new AIMessage({ content: 'All set.' }));
+    modelInvokeMock.mockResolvedValueOnce(makeFinishTurnMessage('final_answer', 'All set.'));
 
     const resumed = await resumeAgentGraphTurn({
       threadId: 'trace-resume-1',

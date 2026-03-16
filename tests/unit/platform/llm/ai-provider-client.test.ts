@@ -14,7 +14,6 @@ type RequestBody = {
     tool_call_id?: string;
   }>;
   tools?: Array<{ function?: { name?: string; parameters?: unknown } }>;
-  response_format?: unknown;
 };
 
 function hasKeyDeep(value: unknown, key: string): boolean {
@@ -268,18 +267,11 @@ describe('AiProviderClient', () => {
     expect(hasKeyDeep(body.tools?.[0]?.function?.parameters, '$schema')).toBe(false);
   });
 
-  it('normalizes tool parameter schemas to explicit object types for provider compatibility', async () => {
+  it('fails when tool parameter schemas omit the top-level object type', async () => {
     const client = new AiProviderClient({ baseUrl: 'https://api.test/v1', model: 'test-chat-model' });
 
-    fetchMock.mockResolvedValueOnce({
-      ok: true,
-      status: 200,
-      statusText: 'OK',
-      json: async () => ({ choices: [{ message: { content: 'ok' } }] }),
-      text: async () => 'ok',
-    } satisfies { ok: boolean; status: number; statusText: string; json: () => Promise<unknown>; text: () => Promise<string> });
-
-    await client.chat({
+    await expect(
+      client.chat({
       messages: [{ role: 'user', content: 'run tool' }],
       tools: [
         {
@@ -297,32 +289,16 @@ describe('AiProviderClient', () => {
           },
         },
       ],
-    });
-
-    const body = parseRequestBody(fetchMock, 0);
-    expect(body.tools?.[0]?.function?.parameters).toMatchObject({
-      type: 'object',
-      properties: {
-        action: {
-          type: 'string',
-        },
-      },
-      required: ['action'],
-    });
+      }),
+    ).rejects.toThrow('must expose top-level parameters with type="object"');
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it('flattens top-level union keywords out of tool parameter schemas for provider compatibility', async () => {
+  it('fails when tool parameter schemas use unsupported top-level union keywords', async () => {
     const client = new AiProviderClient({ baseUrl: 'https://api.test/v1', model: 'test-chat-model' });
 
-    fetchMock.mockResolvedValueOnce({
-      ok: true,
-      status: 200,
-      statusText: 'OK',
-      json: async () => ({ choices: [{ message: { content: 'ok' } }] }),
-      text: async () => 'ok',
-    } satisfies { ok: boolean; status: number; statusText: string; json: () => Promise<unknown>; text: () => Promise<string> });
-
-    await client.chat({
+    await expect(
+      client.chat({
       messages: [{ role: 'user', content: 'run tool' }],
       tools: [
         {
@@ -343,82 +319,9 @@ describe('AiProviderClient', () => {
           },
         },
       ],
-    });
-
-    const body = parseRequestBody(fetchMock, 0);
-    expect(body.tools?.[0]?.function?.parameters).toMatchObject({
-      type: 'object',
-      properties: {
-        action: {
-          type: 'string',
-        },
-      },
-      required: ['action'],
-    });
-    expect(body.tools?.[0]?.function?.parameters).not.toHaveProperty('oneOf');
-    expect(body.tools?.[0]?.function?.parameters).not.toHaveProperty('anyOf');
-    expect(body.tools?.[0]?.function?.parameters).not.toHaveProperty('allOf');
-  });
-
-  it('retries without response_format on response_format errors', async () => {
-    const client = new AiProviderClient({ baseUrl: 'https://api.test/v1', model: 'test-chat-model', maxRetries: 1 });
-
-    fetchMock
-      .mockResolvedValueOnce({
-        ok: false,
-        status: 400,
-        statusText: 'Bad Request',
-        text: async () => 'Error: response_format is not supported by this model',
-        json: async () => ({}),
-      } satisfies {
-        ok: boolean;
-        status: number;
-        statusText: string;
-        text: () => Promise<string>;
-        json: () => Promise<unknown>;
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        statusText: 'OK',
-        json: async () => ({ choices: [{ message: { content: '{"json": true}' } }] }),
-        text: async () => '{"json": true}',
-      } satisfies { ok: boolean; status: number; statusText: string; json: () => Promise<unknown>; text: () => Promise<string> });
-
-    await client.chat({ messages: [], responseFormat: 'json_object' });
-
-    const body1 = parseRequestBody(fetchMock, 0);
-    expect(body1).toHaveProperty('response_format');
-
-    const body2 = parseRequestBody(fetchMock, 1);
-    expect(body2).not.toHaveProperty('response_format');
-
-    const systemMessage = body2.messages.find((message) => message.role === 'system');
-    expect(systemMessage).toBeDefined();
-    expect(String(systemMessage?.content)).toContain('IMPORTANT: You must output strictly valid JSON only');
-  });
-
-  it('does not retry when error is unrelated to json mode', async () => {
-    const client = new AiProviderClient({ baseUrl: 'https://api.test/v1', model: 'test-chat-model', maxRetries: 0 });
-
-    fetchMock.mockResolvedValueOnce({
-      ok: false,
-      status: 500,
-      statusText: 'Internal Server Error',
-      text: async () => 'Internal Server Error',
-      json: async () => ({}),
-    } satisfies {
-      ok: boolean;
-      status: number;
-      statusText: string;
-      text: () => Promise<string>;
-      json: () => Promise<unknown>;
-    });
-
-    await expect(client.chat({ messages: [], responseFormat: 'json_object' })).rejects.toThrow(
-      'AI provider API error: 500',
-    );
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+      }),
+    ).rejects.toThrow('must expose top-level parameters with type="object"');
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it('fails fast (no retry) on 400 model validation errors', async () => {

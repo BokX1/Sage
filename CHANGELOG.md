@@ -33,7 +33,7 @@
 ### Added
 
 - Added a dedicated `npm run langgraph:discord:smoke` command plus disposable-guild env knobs, so operators can validate the real Discord LangGraph read lane and approval/resume write flow without depending on LLM tool selection.
-- Added a dedicated `npm run ai-provider:probe` command plus doctor-backed strict structured-output probing, so operators can verify a real AI provider base URL/model/key against Sage's live `json_schema` contract instead of guessing from static model-profile metadata.
+- Added a dedicated `npm run ai-provider:probe` command plus doctor-backed Chat Completions tool-calling probing, so operators can verify a real AI provider base URL/model/key against Sage's live `tools` / `assistant.tool_calls` / `tool_call_id` contract instead of guessing from static model-profile metadata.
 - Added prompt-budget regression coverage for Sage's Discord-native runtime, so the core prompt, common public capability prompt, and full admin capability prompt now fail tests if they grow past the new lean-budget ceilings.
 - Added resumable LangGraph continuation sessions and Discord Continue actions, so long-running Sage turns now pause with a progress summary, preserve the checkpointed thread state, and resume in-place instead of restarting from scratch after step-window exhaustion.
 - Added explicit LangGraph loop-hardening knobs for per-round tool-call width, repeated identical tool batches, and repair-pass count, so operators can tune the agent loop guard without patching Sage code.
@@ -46,8 +46,8 @@
 - Added a dedicated `discord_voice` routed tool for live voice presence control so Sage can report voice status, join the invoker's current voice channel, and leave the active guild voice channel through normal chat turns.
 
 ### Changed
-- Rewrote Sage's LangGraph turn loop around strict structured decision, verification, and closeout states, so the graph now owns turn completion end to end, continuation or approval resumes re-enter the same typed flow, and legacy `llm_call` / `closeout_resolved` stop semantics are gone from the active runtime architecture.
-- Made `AI_PROVIDER_MODEL_PROFILES_JSON` optional again as trusted budget/capability metadata, while Sage's doctor and dedicated AI-provider probe now validate strict structured-output support against the live provider instead of blocking runtime boot on static config.
+- Rewrote Sage's LangGraph turn loop around OpenAI Chat Completions tool calling, so assistant turns now either emit external tool calls or the internal `sage_finish_turn` closeout tool, plain no-tool assistant text is treated as a protocol violation, and runtime finalization is driven by tool-call semantics instead of provider-specific structured-output contracts.
+- Made `AI_PROVIDER_MODEL_PROFILES_JSON` budget-only metadata again, while Sage's doctor and dedicated AI-provider probe now validate live Chat Completions tool-calling compatibility against the configured provider/model instead of carrying provider-compatibility flags in static config.
 - Rewrote Sage's LangGraph finalization flow around a graph-owned `closeout_turn` state machine, so the runtime now classifies each turn with explicit `completionKind`, `stopReason`, and `deliveryDisposition` fields instead of relying on the legacy "no tool calls means final answer" rule.
 - Made tool-delivered completion first-class in the LangGraph runtime, so Discord send tools can end a turn without duplicate assistant prose and continuation or approval handoffs now normalize through one shared closeout contract.
 - Sage no longer silently truncates agent context, model-facing tool payloads, attachment recall text, or routed-tool read results before provider submission; oversized requests now surface at the provider/runtime boundary instead of being compacted or clipped inside Sage.

@@ -126,7 +126,6 @@ Summarize this voice session:`;
     temperature: 0.4,
     maxTokens: 2048,
     apiKey: params.apiKey,
-    responseFormat: 'json_object',
   };
 
   try {

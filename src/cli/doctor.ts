@@ -9,7 +9,7 @@ import type { EnvSchema } from '../platform/config/envSchema';
 import { envSchema, parseEnvSafe } from '../platform/config/envSchema';
 import {
   probeAiProviderPing,
-  probeAiProviderStrictStructuredOutputs,
+  probeAiProviderToolCalling,
 } from '../platform/llm/ai-provider-probe';
 
 export type CheckStatus = 'pass' | 'warn' | 'fail' | 'skip';
@@ -88,7 +88,7 @@ const CHECK_IDS = {
   servicesTika: 'services.tika',
   aiProviderConfig: 'ai_provider.config',
   aiProviderPing: 'ai_provider.ping',
-  aiProviderStrictOutputs: 'ai_provider.strict_outputs',
+  aiProviderToolCalls: 'ai_provider.tool_calls',
 } as const;
 
 const CHECK_ORDER: readonly string[] = [
@@ -103,7 +103,7 @@ const CHECK_ORDER: readonly string[] = [
   CHECK_IDS.servicesTika,
   CHECK_IDS.aiProviderConfig,
   CHECK_IDS.aiProviderPing,
-  CHECK_IDS.aiProviderStrictOutputs,
+  CHECK_IDS.aiProviderToolCalls,
 ] as const;
 
 function printHelp() {
@@ -115,7 +115,7 @@ Usage:
 Options:
   --env-file <path>       Path to .env file (default: .env)
   --env-example <path>    Path to .env.example (default: .env.example)
-  --llm-ping              Run live AI provider ping and strict structured-output probe checks
+  --llm-ping              Run live AI provider ping and Chat Completions tool-calling probe checks
   --json                  Output machine-readable JSON
   --verbose               Include verbose diagnostics
   --fail-on-warn          Exit with code 1 on warnings
@@ -373,8 +373,8 @@ export function buildDoctorNextAction(results: CheckResult[]): string {
         return 'Run `npm run db:migrate`, then rerun `npm run doctor`.';
       case CHECK_IDS.depsPrismaClient:
         return 'Run `npm ci` and `npm run postinstall`, then rerun `npm run doctor`.';
-      case CHECK_IDS.aiProviderStrictOutputs:
-        return 'Run `npm run ai-provider:probe` with a valid AI provider key/model, then switch to a model that accepts strict json_schema output if the probe fails.';
+      case CHECK_IDS.aiProviderToolCalls:
+        return 'Run `npm run ai-provider:probe` with a valid AI provider key/model, then switch to a model that supports Chat Completions tool calling if the probe fails.';
       default:
         return `Address the blocking check \`${firstFailure.id}\`, then rerun \`npm run doctor\`.`;
     }
@@ -846,7 +846,7 @@ function buildChecks(): CheckDefinition[] {
             status: 'pass',
             message: 'AI provider model profiles are optional; Sage will use base runtime defaults',
             details: [
-              'Run `npm run doctor -- --llm-ping` or `npm run ai-provider:probe` to verify strict structured-output support against the live provider.',
+              'Run `npm run doctor -- --llm-ping` or `npm run ai-provider:probe` to verify Chat Completions tool-calling compatibility against the live provider.',
             ],
           };
         }
@@ -857,29 +857,17 @@ function buildChecks(): CheckDefinition[] {
           const mainProfile = profiles[mainModelId];
           if (!mainProfile || typeof mainProfile !== 'object' || Array.isArray(mainProfile)) {
             return {
-              status: 'warn',
-              message: `Main agent model ${mainModelId} has no explicit profile entry`,
+              status: 'pass',
+              message: `Main agent model ${mainModelId} has no explicit profile entry; Sage will use base defaults`,
               details: [
-                'Sage will still run with base defaults; use the live strict-output probe if you want to verify provider support and optionally record it in AI_PROVIDER_MODEL_PROFILES_JSON.',
-              ],
-            };
-          }
-
-          const strictStructuredOutputs =
-            (mainProfile as Record<string, unknown>).strictStructuredOutputs === true;
-          if (!strictStructuredOutputs) {
-            return {
-              status: 'warn',
-              message: `Main agent model ${mainModelId} profile does not declare strictStructuredOutputs=true`,
-              details: [
-                'This metadata is now optional. Use the live strict-output probe to confirm real provider support before trusting the flag.',
+                'Use the live tool-calling probe if you want to verify provider compatibility and optionally record budget metadata in AI_PROVIDER_MODEL_PROFILES_JSON.',
               ],
             };
           }
 
           return {
             status: 'pass',
-            message: 'Main agent model profile includes strict structured-output metadata',
+            message: `Main agent model ${mainModelId} has explicit budget/profile metadata`,
           };
         } catch (error) {
           return {
@@ -928,8 +916,8 @@ function buildChecks(): CheckDefinition[] {
       },
     },
     {
-      id: CHECK_IDS.aiProviderStrictOutputs,
-      title: 'Live AI provider strict structured-output probe',
+      id: CHECK_IDS.aiProviderToolCalls,
+      title: 'Live AI provider Chat Completions tool-calling probe',
       run: async (ctx) => {
         if (!getLlmPingEnabled(ctx.flags, ctx.runtimeEnvValues)) {
           return {
@@ -946,13 +934,13 @@ function buildChecks(): CheckDefinition[] {
         if (!ctx.parsedEnv.AI_PROVIDER_API_KEY?.trim()) {
           return {
             status: 'skip',
-            message: 'Skipped (no host AI provider key configured; strict probe is still available for BYOP keys)',
+            message: 'Skipped (no host AI provider key configured; tool-calling probe is still available for BYOP keys)',
             details: [
-              'Run `npm run ai-provider:probe -- --api-key <key> --model <model> --base-url <url>` to test strict structured-output support directly.',
+              'Run `npm run ai-provider:probe -- --api-key <key> --model <model> --base-url <url>` to test Chat Completions tool-calling support directly.',
             ],
           };
         }
-        const result = await probeAiProviderStrictStructuredOutputs({
+        const result = await probeAiProviderToolCalling({
           baseUrl: ctx.parsedEnv.AI_PROVIDER_BASE_URL,
           model: ctx.parsedEnv.AI_PROVIDER_MAIN_AGENT_MODEL,
           apiKey: ctx.parsedEnv.AI_PROVIDER_API_KEY,
