@@ -63,6 +63,7 @@ type DoctorContext = {
   envExists: boolean;
   envExampleExists: boolean;
   envValues: Record<string, string>;
+  runtimeEnvValues: Record<string, string>;
   envExampleValues: Record<string, string>;
   parsedEnv: EnvSchema | null;
   schemaIssues: string[];
@@ -893,7 +894,7 @@ function buildChecks(): CheckDefinition[] {
       id: CHECK_IDS.aiProviderPing,
       title: 'Live AI provider ping',
       run: async (ctx) => {
-        if (!getLlmPingEnabled(ctx.flags, ctx.envValues)) {
+        if (!getLlmPingEnabled(ctx.flags, ctx.runtimeEnvValues)) {
           return {
             status: 'skip',
             message: 'Skipped (enable with --llm-ping or LLM_DOCTOR_PING=1)',
@@ -930,7 +931,7 @@ function buildChecks(): CheckDefinition[] {
       id: CHECK_IDS.aiProviderStrictOutputs,
       title: 'Live AI provider strict structured-output probe',
       run: async (ctx) => {
-        if (!getLlmPingEnabled(ctx.flags, ctx.envValues)) {
+        if (!getLlmPingEnabled(ctx.flags, ctx.runtimeEnvValues)) {
           return {
             status: 'skip',
             message: 'Skipped (enable with --llm-ping or LLM_DOCTOR_PING=1)',
@@ -973,9 +974,16 @@ async function createContext(flags: CliFlags): Promise<DoctorContext> {
   const envExists = fs.existsSync(envPath);
   const envExampleExists = fs.existsSync(envExamplePath);
   const envValues = parseDotenvFile(envPath);
+  const runtimeOverrides = Object.fromEntries(
+    Object.entries(process.env).filter(([, value]) => typeof value === 'string'),
+  ) as Record<string, string>;
+  const runtimeEnvValues: Record<string, string> = {
+    ...envValues,
+    ...runtimeOverrides,
+  };
   const envExampleValues = parseDotenvFile(envExamplePath);
   const meta = safeReadPackageMeta(repoRoot);
-  const schemaResult = envExists ? parseEnvSafe(envValues as NodeJS.ProcessEnv) : null;
+  const schemaResult = envExists ? parseEnvSafe(runtimeEnvValues as NodeJS.ProcessEnv) : null;
   const schemaIssues =
     schemaResult && !schemaResult.success
       ? schemaResult.error.issues.map((issue) => {
@@ -994,6 +1002,7 @@ async function createContext(flags: CliFlags): Promise<DoctorContext> {
     envExists,
     envExampleExists,
     envValues,
+    runtimeEnvValues,
     envExampleValues,
     parsedEnv: schemaResult && schemaResult.success ? schemaResult.data : null,
     schemaIssues,

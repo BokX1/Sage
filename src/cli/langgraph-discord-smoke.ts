@@ -1,6 +1,7 @@
 /* eslint-disable no-console */
 
 import { once } from 'node:events';
+import dotenv from 'dotenv';
 import { AIMessage } from '@langchain/core/messages';
 
 type AgentGraphTurnResult = import('../features/agent-runtime/langgraph/runtime').AgentGraphTurnResult;
@@ -28,6 +29,8 @@ type SmokeTarget = {
 };
 
 function seedSmokeEnvDefaults(): void {
+  dotenv.config({ quiet: true });
+
   const defaults = {
     LANGSMITH_TRACING: 'false',
     SAGE_TRACE_DB_ENABLED: 'true',
