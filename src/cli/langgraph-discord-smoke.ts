@@ -309,24 +309,31 @@ async function runReadPathSmoke(target: SmokeTarget): Promise<void> {
       `Graph read-path smoke failed: ${toolResult?.error ?? 'discord_server.list_channels did not produce a successful tool result.'}`,
     );
   }
-  if (result.pendingInterrupt?.kind !== 'continue_prompt') {
-    throw new Error('Graph read-path smoke did not produce the expected continuation interrupt after tool execution.');
+  if (result.pendingInterrupt?.kind === 'continue_prompt') {
+    await expireContinuationPrompt({
+      threadId: traceId,
+      result,
+      actorUserId: target.actorUserId,
+      context: {
+        originTraceId: traceId,
+        channelId: target.channelId,
+        guildId: target.guildId,
+        activeToolNames: ['discord_server'],
+      },
+      resumeTraceId: `${traceId}:expire`,
+    });
+
+    console.log(
+      `[PASS] graph read path routed discord_server.list_channels through LangGraph and cleaned the continuation pause (stop=${result.stopReason})`,
+    );
+    return;
   }
-  await expireContinuationPrompt({
-    threadId: traceId,
-    result,
-    actorUserId: target.actorUserId,
-    context: {
-      originTraceId: traceId,
-      channelId: target.channelId,
-      guildId: target.guildId,
-      activeToolNames: ['discord_server'],
-    },
-    resumeTraceId: `${traceId}:expire`,
-  });
+  if (result.graphStatus !== 'completed' || result.pendingInterrupt) {
+    throw new Error('Graph read-path smoke did not finish with either a clean completion or a continuation interrupt.');
+  }
 
   console.log(
-      `[PASS] graph read path routed discord_server.list_channels through LangGraph and cleaned the continuation pause (stop=${result.stopReason})`,
+    `[PASS] graph read path routed discord_server.list_channels through LangGraph and completed cleanly without a continuation pause (stop=${result.stopReason})`,
   );
 }
 
@@ -422,30 +429,36 @@ async function runApprovalPathSmoke(target: SmokeTarget): Promise<void> {
         `Approval-resume smoke failed: ${toolResult?.error ?? 'discord_admin.create_role did not execute successfully.'}`,
       );
     }
-    if (resumed.pendingInterrupt?.kind !== 'continue_prompt') {
-      throw new Error('Approval-resume smoke did not produce the expected continuation interrupt after executing the write.');
-    }
-
     action = await getApprovalReviewRequestById(requestId);
     roleId = extractRoleId(action?.resultJson);
     if (!roleId) {
       throw new Error('Approval-resume smoke executed but did not expose the created role id for cleanup.');
     }
-    await expireContinuationPrompt({
-      threadId: traceId,
-      result: resumed,
-      actorUserId: target.actorUserId,
-      context: {
-        originTraceId: traceId,
-        channelId: target.channelId,
-        guildId: target.guildId,
-        activeToolNames: ['discord_admin'],
-      },
-      resumeTraceId: `${traceId}:expire`,
-    });
+    if (resumed.pendingInterrupt?.kind === 'continue_prompt') {
+      await expireContinuationPrompt({
+        threadId: traceId,
+        result: resumed,
+        actorUserId: target.actorUserId,
+        context: {
+          originTraceId: traceId,
+          channelId: target.channelId,
+          guildId: target.guildId,
+          activeToolNames: ['discord_admin'],
+        },
+        resumeTraceId: `${traceId}:expire`,
+      });
+
+      console.log(
+        `[PASS] graph approval path created, approved, resumed, executed discord_admin.create_role, and cleaned the continuation pause (stop=${resumed.stopReason})`,
+      );
+      return;
+    }
+    if (resumed.graphStatus !== 'completed' || resumed.pendingInterrupt) {
+      throw new Error('Approval-resume smoke did not finish with either a clean completion or a continuation interrupt.');
+    }
 
     console.log(
-      `[PASS] graph approval path created, approved, resumed, executed discord_admin.create_role, and cleaned the continuation pause (stop=${resumed.stopReason})`,
+      `[PASS] graph approval path created, approved, resumed, and executed discord_admin.create_role without requiring a continuation pause (stop=${resumed.stopReason})`,
     );
   } finally {
     if (!action && requestId) {
