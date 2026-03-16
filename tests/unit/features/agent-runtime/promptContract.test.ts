@@ -193,7 +193,6 @@ describe('promptContract', () => {
       userText: 'first user question',
       recentTranscript: 'first transcript window',
       toolObservationSummary: 'web: success',
-      protocolRepairInstruction: 'violation_detail: first',
     });
     const second = buildUniversalPromptContract({
       userProfileSummary: 'Different user profile',
@@ -203,7 +202,6 @@ describe('promptContract', () => {
       userText: 'second user question',
       recentTranscript: 'second transcript window',
       toolObservationSummary: 'web: failure',
-      protocolRepairInstruction: 'violation_detail: second',
     });
 
     expect(first.promptFingerprint).toBe(second.promptFingerprint);
