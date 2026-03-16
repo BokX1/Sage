@@ -89,7 +89,7 @@ flowchart TD
 | **Chat Engine** | `src/features/chat/chat-engine.ts` | Entry point — receives Discord events, orchestrates `runChatTurn` |
 | **Agent Runtime** | `src/features/agent-runtime/agentRuntime.ts` | The single `runChatTurn` function: model resolution, prompt assembly, graph invocation, trace persistence, and prompt metadata propagation |
 | **Universal Prompt Contract** | `src/features/agent-runtime/promptContract.ts` | Builds Sage's one canonical XML-tagged system contract plus tagged user content, working-memory frame, prompt version, and prompt fingerprint |
-| **Agent Graph Runtime** | `src/features/agent-runtime/langgraph/runtime.ts` | Custom LangGraph runtime for schema-first state, model calls, bounded continuation windows, tool execution, approval + continuation interrupts, subgraph routing, and checkpointed resumes |
+| **Agent Graph Runtime** | `src/features/agent-runtime/langgraph/runtime.ts` | Custom LangGraph runtime for plain-text-first assistant turns, bounded continuation windows, tool execution, approval + continuation interrupts, response-session state, and checkpointed resumes |
 | **Tool Registry** | `src/features/agent-runtime/toolRegistry.ts` | Zod-validated tool definitions with runtime execution metadata |
 | **Default Tools** | `src/features/agent-runtime/defaultTools.ts` | All 15 built-in top-level tool definitions |
 

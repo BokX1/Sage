@@ -25,7 +25,6 @@ import { client } from '../../../platform/discord/client';
 import {
   buildContinueChannelMismatchText,
   buildContinueOwnerMismatchText,
-  buildApprovalQueuedHandoffText,
   buildContinuationButtonLabel,
   buildConsumedInteractionText,
   buildExpiredInteractionText,
@@ -64,14 +63,6 @@ async function sendInteractionReply(
   await interaction.reply(normalizedPayload as InteractionReplyOptions);
 }
 
-async function clearInteractionReply(interaction: RepliableInteraction): Promise<void> {
-  if (typeof interaction.deleteReply !== 'function' || (!interaction.deferred && !interaction.replied)) {
-    return;
-  }
-
-  await interaction.deleteReply();
-}
-
 async function publishChatResultToInteraction(params: {
   interaction: RepliableInteraction;
   result: Awaited<ReturnType<typeof generateChatReply>>;
@@ -92,39 +83,12 @@ async function publishChatResultToInteraction(params: {
     return;
   }
 
-  if (params.result.delivery === 'approval_governance_only') {
-    const files = params.result.files ?? [];
-    if (files.length > 0) {
-      await sendInteractionReply(params.interaction, {
-        files,
-      });
-      return;
-    }
-
-    if (params.mode === 'update_source') {
-      await sendInteractionReply(
-        params.interaction,
-        buildRuntimeResponseCardPayload({
-          text: buildApprovalQueuedHandoffText({
-            reviewChannelId: params.result.meta?.approvalReview?.reviewChannelId,
-            sourceChannelId: params.result.meta?.approvalReview?.sourceChannelId,
-          }),
-          tone: 'notice',
-        }) as InteractionEditReplyOptions,
-      );
-      return;
-    }
-
-    await clearInteractionReply(params.interaction);
-    return;
-  }
-
   const continuation = params.result.meta?.continuation;
   const retry = params.result.meta?.retry;
   let actionButtonId: string | null = null;
   let actionButtonLabel: string | null = null;
   if (
-    params.result.delivery === 'chat_reply_with_continue' &&
+    params.result.delivery === 'response_session_with_continue' &&
     continuation &&
     params.interaction.guildId &&
     params.interaction.channelId

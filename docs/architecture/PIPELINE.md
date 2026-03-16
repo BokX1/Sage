@@ -46,7 +46,7 @@ flowchart TD
     J --> K[Feed results back to LLM]:::llm
     K --> H
 
-    H -->|No| L[Close with sage_finish_turn / finalize]:::runtime
+    H -->|No| L[Finalize from plain assistant text]:::runtime
     L --> M[Persist trace]:::runtime
     M --> N[Return reply + attachments]:::output
 ```
@@ -71,7 +71,7 @@ flowchart TD
 | Priority | Block | Source |
 | :---: | :--- | :--- |
 | 1 | System contract | `<system_contract>`, `<instruction_hierarchy>`, `<assistant_mission>`, `<tool_protocol>`, `<closeout_protocol>`, `<safety_and_injection_policy>`, `<few_shot_examples>` |
-| 2 | Trusted runtime state | `<trusted_runtime_state>` with `<current_turn>`, guild Sage Persona, voice context, autopilot mode, user profile summary, and any runtime protocol-repair state |
+| 2 | Trusted runtime state | `<trusted_runtime_state>` with `<current_turn>`, guild Sage Persona, voice context, autopilot mode, user profile summary, and runtime turn metadata |
 | 3 | Trusted working memory | `<trusted_working_memory>` with objective, verified facts, completed actions, open questions, pending approvals, delivery state, and next required action |
 | 4 | Lower-priority context envelope | `<untrusted_reply_target>` when present |
 | 5 | Transcript context | `<focused_continuity>` and `<recent_transcript>` nested inside `<untrusted_recent_transcript>` when available |
@@ -125,14 +125,14 @@ flowchart LR
 - **Read/write partitioning**: read-only batches execute through `ToolNode`, and mutating calls execute one at a time.
 - **In-round read dedupe**: identical read-only calls in the same model response are executed once, then fanned back out to the model as per-call tool messages so repeated reads do not waste a full execution slot.
 - **Loop guard**: Sage rejects over-wide tool batches before side effects, gives the model one structured repair chance, and finalizes with `loop_guard` if the next batch repeats the same unsafe plan or LangGraph hits the recursion safety ceiling.
-- **Graph-owned closeout**: the graph now routes every no-tool model response through `closeout_turn`, which classifies the turn as `final_answer`, `clarification_question`, `delivered_via_tool`, `pause_handoff`, `approval_handoff`, or `loop_guard` before `finalize_turn` runs.
+- **Plain-text-first closeout**: assistant turns may include both visible text and tool calls; when a turn ends with no tool calls, Sage finalizes directly from the assistant text as either a final answer or a clarification question.
 - **Tool-owned action policy**: routed Discord tools now declare explicit read/write and approval metadata, so admin-only reads stay on the read lane while approval-gated writes enter the approval path through per-tool policy instead of graph-side action-name branching.
 - **Native tool contract**: the runtime consumes structured provider tool calls directly and feeds tool results back as LangChain tool messages.
 - **Provider-neutral model node**: the graph now invokes Sage's `AiProviderChatModel`, which targets an operator-defined AI provider over the OpenAI-compatible chat-completions contract exposed at `AI_PROVIDER_BASE_URL`.
 - **Native provider transcript**: follow-up model calls now preserve assistant `tool_calls` and real `tool` messages end to end instead of flattening tool results into synthetic user text.
 - **No fixed message-count clipping**: after rebudgeting, Sage now forwards the full surviving assistant/tool transcript instead of hard-cutting the loop to the last eight messages.
-- **Tool-delivered completion**: tools such as `discord_messages.send` can mark the user-visible answer as already delivered, so Sage does not fabricate or duplicate a chat reply after the tool posts it.
-- **Split outcome semantics**: `completionKind` captures what the turn semantically achieved, `stopReason` captures why the graph stopped or paused, and `deliveryDisposition` tells the outer runtime whether to post chat text, rely on a tool-delivered answer, or keep the outcome governance-only.
+- **Response-session delivery**: the runtime tracks one primary editable response session, so draft assistant text can be updated in place while tools run and finalized cleanly when the turn ends.
+- **Split outcome semantics**: `completionKind` captures what the turn semantically achieved, `stopReason` captures why the graph stopped or paused, and `deliveryDisposition` tells the outer runtime whether to keep editing the response session, pause it with a Continue affordance, or hand off to approval state.
 - **Per-tool timeout**: each tool call is bounded by `AGENT_GRAPH_TOOL_TIMEOUT_MS`.
 - **Durable execution**: every real tool invocation and post-approval execution runs inside a LangGraph `task(...)` boundary so replay and thread resume reuse checkpointed task outputs instead of repeating side effects.
 - **Repair-aware validation feedback**: routed-tool validation failures now carry compact repair guidance into the next model round, including missing/unknown action recovery and the best matching action contract from the routed-tool docs.
@@ -156,9 +156,9 @@ Each turn can persist the following compact operator ledger fields to `AgentTrac
 | `promptVersion` | Prompt-contract version string recorded in `tokenJson` / `budgetJson` for the turn |
 | `promptFingerprint` | Stable prompt hash recorded alongside the turn so prompt changes are observable |
 | `terminationReason` | Deprecated legacy alias on `AgentTrace`; normal graph success paths now persist semantic outcome data in `budgetJson.graphRuntime` / `toolJson.graph` instead |
-| `budgetJson.graphRuntime.completionKind` | Semantic closeout classification (`final_answer`, `clarification_question`, `delivered_via_tool`, `pause_handoff`, `approval_handoff`, `loop_guard`) |
-| `budgetJson.graphRuntime.stopReason` | Operational stop cause (`verified_closeout`, `approval_interrupt`, `step_window_exhausted`, `graph_timeout`, `max_windows_reached`, `continuation_expired`, `loop_guard`, `protocol_violation`) |
-| `budgetJson.graphRuntime.deliveryDisposition` | Final delivery path (`chat_reply`, `tool_delivered`, `approval_governance_only`, `chat_reply_with_continue`) |
+| `budgetJson.graphRuntime.completionKind` | Semantic turn outcome (`final_answer`, `clarification_question`, `approval_pending`, `pause_handoff`, `loop_guard`, `runtime_failure`) |
+| `budgetJson.graphRuntime.stopReason` | Operational stop cause (`assistant_turn_completed`, `approval_interrupt`, `step_window_exhausted`, `graph_timeout`, `max_windows_reached`, `continuation_expired`, `loop_guard`, `runtime_failure`) |
+| `budgetJson.graphRuntime.deliveryDisposition` | Runtime delivery path (`response_session`, `approval_handoff`, `response_session_with_continue`) |
 | `langSmithRunId` | LangSmith run id for the turn |
 | `langSmithTraceId` | LangSmith trace id for the turn |
 | `budgetJson` | Token-budget allocation per block |

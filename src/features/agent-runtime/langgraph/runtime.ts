@@ -16,7 +16,6 @@ import {
 } from '@langchain/langgraph';
 import { ToolNode, toolsCondition } from '@langchain/langgraph/prebuilt';
 import { AIMessage, HumanMessage, ToolMessage, type BaseMessage } from '@langchain/core/messages';
-import { tool, type DynamicStructuredTool } from '@langchain/core/tools';
 import type { RunnableConfig } from '@langchain/core/runnables';
 import { z } from 'zod';
 import { PostgresSaver } from '@langchain/langgraph-checkpoint-postgres';
@@ -51,7 +50,7 @@ import type { ToolResult } from '../toolCallExecution';
 import type { ToolExecutionContext } from '../toolRegistry';
 import { ApprovalRequiredSignal } from '../toolControlSignals';
 import { createAgentRunTelemetry } from '../observability/langsmith';
-import { buildContinuationUnavailableReply } from '../visibleReply';
+import { buildContinuationUnavailableReply, buildRuntimeFailureReply } from '../visibleReply';
 import { buildToolCacheKey } from '../toolCache';
 import { globalToolRegistry } from '../toolRegistry';
 import { buildAgentGraphConfig, type AgentGraphConfig } from './config';
@@ -72,7 +71,6 @@ import type {
   AgentGraphState,
   ApprovalResumeDecision,
   GraphStopReason,
-  GraphToolDeliveryState,
   GraphResumeInput,
   GraphRebudgetEvent,
   SerializedToolResult,
@@ -147,32 +145,36 @@ const ToolCallFinalizationEventSchema = z.object({
   succeeded: z.boolean(),
   completedAt: z.string(),
   stopReason: z.enum([
-    'verified_closeout',
+    'assistant_turn_completed',
     'approval_interrupt',
     'step_window_exhausted',
     'graph_timeout',
     'max_windows_reached',
     'continuation_expired',
     'loop_guard',
-    'protocol_violation',
+    'runtime_failure',
   ]),
   completionKind: z.enum([
     'final_answer',
     'clarification_question',
-    'delivered_via_tool',
+    'approval_pending',
     'pause_handoff',
-    'approval_handoff',
     'loop_guard',
+    'runtime_failure',
   ]),
   deliveryDisposition: z.enum([
-    'chat_reply',
-    'tool_delivered',
-    'approval_governance_only',
-    'chat_reply_with_continue',
+    'response_session',
+    'approval_handoff',
+    'response_session_with_continue',
   ]),
-  protocolRepairCount: z.number(),
-  protocolRepairInstruction: z.string().nullable().optional(),
-  toolDeliveredFinal: z.boolean(),
+  finalizedBy: z.enum([
+    'assistant_no_tool_calls',
+    'approval_interrupt',
+    'continuation_pause',
+    'loop_guard',
+    'runtime_failure',
+  ]),
+  draftRevision: z.number(),
   contextFrame: z
     .object({
       objective: z.string(),
@@ -180,17 +182,27 @@ const ToolCallFinalizationEventSchema = z.object({
       completedActions: z.array(z.string()),
       openQuestions: z.array(z.string()),
       pendingApprovals: z.array(z.string()),
-      deliveryState: z.enum(['none', 'final_message', 'governance_only']),
+      deliveryState: z.enum(['none', 'awaiting_approval', 'paused', 'final']),
       nextAction: z.string(),
     })
     .optional(),
   rebudgeting: GraphRebudgetEventSchema.optional(),
 });
 
-const GraphToolDeliveryStateSchema = z.object({
+const GraphArtifactDeliverySchema = z.object({
   toolName: z.string(),
-  effectKind: z.enum(['final_message', 'governance_only']),
+  effectKind: z.enum(['governance_only', 'discord_artifact']),
   visibleSummary: z.string().optional(),
+});
+
+const GraphResponseSessionSchema = z.object({
+  responseSessionId: z.string(),
+  status: z.enum(['draft', 'awaiting_approval', 'paused', 'final', 'failed']),
+  latestText: z.string(),
+  draftRevision: z.number(),
+  sourceMessageId: z.string().nullable(),
+  responseMessageId: z.string().nullable(),
+  linkedArtifactMessageIds: z.array(z.string()),
 });
 
 const GraphContextFrameSchema = z.object({
@@ -199,7 +211,7 @@ const GraphContextFrameSchema = z.object({
   completedActions: z.array(z.string()).default([]),
   openQuestions: z.array(z.string()).default([]),
   pendingApprovals: z.array(z.string()).default([]),
-  deliveryState: z.enum(['none', 'final_message', 'governance_only']).default('none'),
+  deliveryState: z.enum(['none', 'awaiting_approval', 'paused', 'final']).default('none'),
   nextAction: z.string(),
 });
 
@@ -339,47 +351,54 @@ const AgentGraphStateSchema = new StateSchema({
     attempted: false,
     succeeded: true,
     completedAt: new Date(0).toISOString(),
-    stopReason: 'verified_closeout',
+    stopReason: 'assistant_turn_completed',
     completionKind: 'final_answer',
-    deliveryDisposition: 'chat_reply',
-    protocolRepairCount: 0,
-    protocolRepairInstruction: null,
-    toolDeliveredFinal: false,
+    deliveryDisposition: 'response_session',
+    finalizedBy: 'assistant_no_tool_calls',
+    draftRevision: 0,
   }),
   completionKind: z
     .enum([
       'final_answer',
       'clarification_question',
-      'delivered_via_tool',
+      'approval_pending',
       'pause_handoff',
-      'approval_handoff',
       'loop_guard',
+      'runtime_failure',
     ])
     .nullable()
     .default(null),
   stopReason: z
     .enum([
-      'verified_closeout',
+      'assistant_turn_completed',
       'approval_interrupt',
       'step_window_exhausted',
       'graph_timeout',
       'max_windows_reached',
       'continuation_expired',
       'loop_guard',
-      'protocol_violation',
+      'runtime_failure',
     ])
-    .default('verified_closeout'),
+    .default('assistant_turn_completed'),
   deliveryDisposition: z
     .enum([
-      'chat_reply',
-      'tool_delivered',
-      'approval_governance_only',
-      'chat_reply_with_continue',
+      'response_session',
+      'approval_handoff',
+      'response_session_with_continue',
     ])
-    .default('chat_reply'),
-  protocolRepairCount: z.number().default(0),
-  protocolRepairInstruction: z.string().nullable().default(null),
-  finalToolDelivery: z.union([GraphToolDeliveryStateSchema, z.null()]).default(null),
+    .default('response_session'),
+  responseSession: GraphResponseSessionSchema.default({
+    responseSessionId: '',
+    status: 'draft',
+    latestText: '',
+    draftRevision: 0,
+    sourceMessageId: null,
+    responseMessageId: null,
+    linkedArtifactMessageIds: [],
+  }),
+  artifactDeliveries: new ReducedValue(z.array(GraphArtifactDeliverySchema).default([]), {
+    reducer: (left, right) => [...left, ...right],
+  }),
   contextFrame: GraphContextFrameSchema.default({
     objective: 'Finish the current user request cleanly.',
     verifiedFacts: [],
@@ -464,12 +483,14 @@ export interface StartAgentGraphTurnParams {
   invokedBy?: AgentGraphRuntimeContext['invokedBy'];
   invokerIsAdmin?: boolean;
   invokerCanModerate?: boolean;
+  onStateUpdate?: (state: AgentGraphState) => Promise<void> | void;
 }
 
 export interface ResumeAgentGraphTurnParams {
   threadId: string;
   resume: GraphResumeInput;
   context?: Partial<AgentGraphRuntimeContext>;
+  onStateUpdate?: (state: AgentGraphState) => Promise<void> | void;
 }
 
 export interface AgentGraphTurnResult {
@@ -485,9 +506,8 @@ export interface AgentGraphTurnResult {
   completionKind: GraphCompletionKind | null;
   stopReason: GraphStopReason;
   deliveryDisposition: GraphDeliveryDisposition;
-  protocolRepairCount: number;
-  protocolRepairInstruction: string | null;
-  toolDeliveredFinal: boolean;
+  responseSession: AgentGraphState['responseSession'];
+  artifactDeliveries: AgentGraphState['artifactDeliveries'];
   contextFrame: GraphContextFrame;
   graphStatus: AgentGraphState['graphStatus'];
   pendingInterrupt: AgentGraphState['pendingInterrupt'];
@@ -524,17 +544,54 @@ function buildDefaultFinalization(): ToolCallFinalizationEvent {
     attempted: false,
     succeeded: true,
     completedAt: new Date(0).toISOString(),
-    stopReason: 'verified_closeout',
+    stopReason: 'assistant_turn_completed',
     completionKind: 'final_answer',
-    deliveryDisposition: 'chat_reply',
-    protocolRepairCount: 0,
-    protocolRepairInstruction: null,
-    toolDeliveredFinal: false,
+    deliveryDisposition: 'response_session',
+    finalizedBy: 'assistant_no_tool_calls',
+    draftRevision: 0,
   };
 }
 
 function buildDefaultContextFrame(): GraphContextFrame {
   return buildDefaultWorkingMemoryFrame();
+}
+
+function buildDefaultResponseSession(threadId: string): AgentGraphState['responseSession'] {
+  return {
+    responseSessionId: threadId,
+    status: 'draft',
+    latestText: '',
+    draftRevision: 0,
+    sourceMessageId: null,
+    responseMessageId: null,
+    linkedArtifactMessageIds: [],
+  };
+}
+
+function resolveDraftText(replyText: string | null | undefined): string {
+  const cleaned = scrubFinalReplyText({ replyText });
+  return cleaned || 'Working on that now.';
+}
+
+function classifyPlainTextCompletionKind(replyText: string): GraphCompletionKind {
+  return replyText.trim().endsWith('?') ? 'clarification_question' : 'final_answer';
+}
+
+function bumpResponseSession(params: {
+  state: AgentGraphState;
+  latestText: string;
+  status: AgentGraphState['responseSession']['status'];
+}): AgentGraphState['responseSession'] {
+  const current = params.state.responseSession;
+  const nextText = params.latestText.trim();
+  const textChanged = nextText !== current.latestText;
+  const statusChanged = params.status !== current.status;
+  return {
+    ...current,
+    status: params.status,
+    latestText: nextText,
+    draftRevision: textChanged || statusChanged ? current.draftRevision + 1 : current.draftRevision,
+  };
 }
 
 function buildToolNameRollup(results: Array<Pick<SerializedToolResult, 'name'>>): string {
@@ -821,9 +878,8 @@ function normalizeGraphResult(
     completionKind: state.completionKind,
     stopReason: state.stopReason,
     deliveryDisposition: state.deliveryDisposition,
-    protocolRepairCount: state.protocolRepairCount,
-    protocolRepairInstruction: state.protocolRepairInstruction,
-    toolDeliveredFinal: state.finalization.toolDeliveredFinal,
+    responseSession: state.responseSession,
+    artifactDeliveries: state.artifactDeliveries,
     contextFrame: state.contextFrame,
     graphStatus: state.graphStatus,
     pendingInterrupt: state.pendingInterrupt,
@@ -956,49 +1012,6 @@ interface DurableGraphTimestampOutput {
   iso: string;
 }
 
-const TURN_CLOSEOUT_TOOL_NAME = 'sage_finish_turn';
-const TURN_PROTOCOL_MAX_REPAIRS = 1;
-
-const TurnCloseoutSchema = z.object({
-  kind: z.enum(['final_answer', 'clarification_question', 'delivered_via_tool']),
-  message: z.string().optional(),
-});
-
-function buildTurnCloseoutTool(): DynamicStructuredTool {
-  return tool(
-    async () => 'This internal tool is intercepted by the Sage runtime.',
-    {
-      name: TURN_CLOSEOUT_TOOL_NAME,
-      description:
-        'Close the turn. Use final_answer with a user-visible message, clarification_question with one short question, or delivered_via_tool after a final-delivery tool already posted the answer.',
-      schema: TurnCloseoutSchema,
-    },
-  ) as DynamicStructuredTool;
-}
-
-function buildProtocolViolationReply(params: {
-  detail: string;
-  state: Pick<AgentGraphState, 'toolResults' | 'messages' | 'replyText'>;
-}): string {
-  const summary = buildDeterministicRuntimeSummary(params.state);
-  return [
-    'I stopped here because the model did not follow Sage\'s Chat Completions tool-calling protocol.',
-    params.detail,
-    summary,
-    `Next: ask me to continue with a narrower follow-up if you want me to recover from this point.`,
-  ]
-      .filter((part) => part.trim().length > 0)
-      .join('\n\n');
-}
-
-function buildProtocolRepairInstruction(detail: string): string {
-  return [
-    `violation_detail: ${detail}`,
-    `required_recovery: use provider-native external tool calls for work, or call ${TURN_CLOSEOUT_TOOL_NAME} exactly once to close the turn.`,
-    'plain_text_closeout_without_a_tool_call: forbidden',
-  ].join('\n');
-}
-
 const invokeAgentModelTask = task(
   {
     name: 'sage_invoke_agent_model',
@@ -1021,10 +1034,7 @@ const invokeAgentModelTask = task(
             timeoutMs: input.timeoutMs,
           })
         : null;
-    const runnable = baseModel.bindTools(
-      [...(catalog?.allTools ?? []), buildTurnCloseoutTool()],
-      { tool_choice: 'auto' },
-    );
+    const runnable = baseModel.bindTools(catalog?.allTools ?? [], { tool_choice: 'auto' });
     const taskConfig = getConfig();
     const responseMessage = await runnable.invoke(toLangChainMessages(input.messages), {
       callbacks: taskConfig?.callbacks,
@@ -1345,41 +1355,15 @@ function buildLoopGuardReply(params: {
   return [explanation, summary, nextStep].filter((part) => part.trim().length > 0).join('\n\n');
 }
 
-function resolveFinalToolDelivery(
-  current: GraphToolDeliveryState | null,
-  results: SerializedToolResult[],
-  toolNames?: string[],
-): GraphToolDeliveryState | null {
-  if (current) {
-    return current;
-  }
-
-  for (let index = 0; index < results.length; index += 1) {
-    const result = results[index];
-    const effect = result?.success ? result.deliveryEffect : undefined;
-    if (!result?.success || !effect) {
-      continue;
-    }
-
-    return {
-      toolName: toolNames?.[index] ?? result.name,
-      effectKind: effect.kind,
-      visibleSummary: effect.visibleSummary,
-    };
-  }
-
-  return null;
-}
-
 function buildContextFrame(state: Pick<
     AgentGraphState,
     | 'messages'
     | 'toolResults'
     | 'replyText'
     | 'pendingInterrupt'
-    | 'finalToolDelivery'
+    | 'responseSession'
+    | 'artifactDeliveries'
     | 'contextFrame'
-    | 'protocolRepairInstruction'
   >): GraphContextFrame {
   const latestAssistantText = scrubFinalReplyText({
     replyText: state.replyText || findLatestAssistantText(state.messages as BaseMessage[]),
@@ -1409,23 +1393,21 @@ function buildContextFrame(state: Pick<
       ? state.pendingInterrupt.requests.map((request) => `${request.call.name}:${request.requestId}`)
       : [];
   const deliveryState =
-    state.finalToolDelivery?.effectKind === 'final_message'
-      ? 'final_message'
-      : state.finalToolDelivery?.effectKind === 'governance_only'
-        ? 'governance_only'
-        : 'none';
-    const nextAction =
-      pendingApprovals.length > 0
-        ? 'Wait for approval resolution.'
-        : state.protocolRepairInstruction?.trim()
-          ? `Repair the last assistant response. ${state.protocolRepairInstruction.trim()}`
-        : state.finalToolDelivery?.effectKind === 'final_message'
-          ? `Close the turn with ${TURN_CLOSEOUT_TOOL_NAME}(kind="delivered_via_tool").`
-        : successfulResults.length > 0
-          ? `Use the latest tool results to decide whether to call more tools or close with ${TURN_CLOSEOUT_TOOL_NAME}.`
-          : latestAssistantText
-            ? `Repair the last assistant response so it uses tool calls or ${TURN_CLOSEOUT_TOOL_NAME}.`
-            : `Choose the next tool call or close the turn with ${TURN_CLOSEOUT_TOOL_NAME}.`;
+    state.responseSession.status === 'awaiting_approval'
+      ? 'awaiting_approval'
+      : state.responseSession.status === 'paused'
+        ? 'paused'
+        : state.responseSession.status === 'final'
+          ? 'final'
+          : 'none';
+  const nextAction =
+    pendingApprovals.length > 0
+      ? 'Wait for approval resolution and then continue the same response session.'
+      : successfulResults.length > 0
+        ? 'Use the latest tool results to decide whether more tools are needed or whether the next assistant turn can finalize with plain text.'
+        : latestAssistantText
+          ? 'Continue the visible draft, call the next tool if needed, or finish with a plain-text answer.'
+          : 'Choose the next tool call or answer directly with plain text.';
 
   return {
     objective: objective.trim() || 'Finish the current user request cleanly.',
@@ -1545,7 +1527,6 @@ function buildAssistantTurnMessages(params: {
     workingMemoryFrame: normalizeWorkingMemoryFrame(frame),
     toolObservationSummary: summarizeToolObservations(params.state.toolResults),
     promptMode: 'graph_continuation',
-    protocolRepairInstruction: params.state.protocolRepairInstruction,
   });
   const contextMessageContent = buildPromptContextContent({
     replyTarget: (params.runtimeContext.replyTarget as ReplyTargetContext | null | undefined) ?? null,
@@ -1570,56 +1551,6 @@ function buildAssistantTurnMessages(params: {
   }
   messages.push(...preparedMessages);
   return messages;
-}
-
-function buildProtocolViolationOutcome(params: {
-  state: AgentGraphState;
-  detail: string;
-  runtimeContext: AgentGraphRuntimeContext;
-  messages?: BaseMessage[];
-}): Command<unknown, Partial<AgentGraphState>, GraphNodeName> {
-  if (params.state.protocolRepairCount < TURN_PROTOCOL_MAX_REPAIRS) {
-    const protocolRepairInstruction = buildProtocolRepairInstruction(params.detail);
-    return new Command({
-      goto: 'tool_call_turn',
-      update: {
-        messages: params.messages ?? [],
-        protocolRepairCount: params.state.protocolRepairCount + 1,
-        protocolRepairInstruction,
-        contextFrame: buildContextFrame({
-          ...params.state,
-          protocolRepairInstruction,
-        }),
-        resumeContext: snapshotRuntimeContext(params.runtimeContext),
-      },
-    });
-  }
-
-  return new Command({
-    goto: 'closeout_turn',
-    update: {
-      messages: params.messages ?? [],
-      replyText: buildProtocolViolationReply({
-        detail: params.detail,
-        state: params.state,
-      }),
-      completionKind: 'loop_guard',
-      stopReason: 'protocol_violation',
-      deliveryDisposition: 'chat_reply',
-      protocolRepairCount: params.state.protocolRepairCount,
-      protocolRepairInstruction: null,
-      contextFrame: buildContextFrame({
-        ...params.state,
-        protocolRepairInstruction: null,
-      }),
-      resumeContext: snapshotRuntimeContext(params.runtimeContext),
-    },
-  });
-}
-
-function parseCloseoutToolCall(call: GraphToolCallDescriptor): z.infer<typeof TurnCloseoutSchema> | null {
-  const parsed = TurnCloseoutSchema.safeParse(call.args);
-  return parsed.success ? parsed.data : null;
 }
 
 function isGraphRecursionLimitError(error: unknown): boolean {
@@ -1927,12 +1858,21 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
     const timedOutAfterModel = nextActiveWindowDurationMs >= graphConfig.maxDurationMs;
     const nextRoundsCompleted = state.roundsCompleted + 1;
     const nextTotalRoundsCompleted = state.totalRoundsCompleted + 1;
+    const nextMessages = [...(state.messages as BaseMessage[]), aiMessage];
 
     if (toolCalls.length > 0) {
+      const draftText = resolveDraftText(replyText);
+      const responseSession = bumpResponseSession({
+        state,
+        latestText: draftText,
+        status: 'draft',
+      });
       return new Command({
         goto: timedOutAfterModel ? 'pause_for_continue' : 'route_tool_phase',
         update: {
           messages: [aiMessage],
+          replyText: draftText,
+          responseSession,
           activeWindowDurationMs: nextActiveWindowDurationMs,
           roundsCompleted: nextRoundsCompleted,
           totalRoundsCompleted: nextTotalRoundsCompleted,
@@ -1940,7 +1880,9 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
           resumeContext: snapshotRuntimeContext(runtimeContext),
           contextFrame: buildContextFrame({
             ...state,
-            messages: [...(state.messages as BaseMessage[]), aiMessage],
+            messages: nextMessages,
+            replyText: draftText,
+            responseSession,
           }),
           finalization: {
             ...state.finalization,
@@ -1950,24 +1892,37 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
       });
     }
 
-    const nextState: AgentGraphState = {
-      ...state,
-      messages: [...(state.messages as BaseMessage[]), aiMessage],
-      replyText,
-      activeWindowDurationMs: nextActiveWindowDurationMs,
-      roundsCompleted: nextRoundsCompleted,
-      totalRoundsCompleted: nextTotalRoundsCompleted,
-      finalization: {
-        ...state.finalization,
-        rebudgeting: prepared.rebudgeting,
+    const finalReplyText = scrubFinalReplyText({ replyText }) || resolveDraftText(state.responseSession.latestText);
+    const completionKind = classifyPlainTextCompletionKind(finalReplyText);
+    const responseSession = bumpResponseSession({
+      state,
+      latestText: finalReplyText,
+      status: 'final',
+    });
+    return new Command({
+      goto: timedOutAfterModel ? 'pause_for_continue' : 'closeout_turn',
+      update: {
+        messages: [aiMessage],
+        replyText: finalReplyText,
+        completionKind,
+        stopReason: timedOutAfterModel ? 'graph_timeout' : 'assistant_turn_completed',
+        deliveryDisposition: timedOutAfterModel ? 'response_session_with_continue' : 'response_session',
+        responseSession,
+        activeWindowDurationMs: nextActiveWindowDurationMs,
+        roundsCompleted: nextRoundsCompleted,
+        totalRoundsCompleted: nextTotalRoundsCompleted,
+        resumeContext: snapshotRuntimeContext(runtimeContext),
+        contextFrame: buildContextFrame({
+          ...state,
+          messages: nextMessages,
+          replyText: finalReplyText,
+          responseSession,
+        }),
+        finalization: {
+          ...state.finalization,
+          rebudgeting: prepared.rebudgeting,
+        },
       },
-    };
-
-    return buildProtocolViolationOutcome({
-      state: nextState,
-      detail: `The assistant responded with plain text instead of provider-native tool calls. Use external tools for work, or call ${TURN_CLOSEOUT_TOOL_NAME} to close the turn.`,
-      runtimeContext,
-      messages: [aiMessage],
     });
   };
 
@@ -1985,76 +1940,31 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
     });
 
     const requestedCallCount = toolCalls.length;
-    const closeoutCalls = toolCalls.filter((call) => call.name === TURN_CLOSEOUT_TOOL_NAME);
-    if (closeoutCalls.length > 0) {
-      if (closeoutCalls.length !== 1 || toolCalls.length !== 1) {
-        return buildProtocolViolationOutcome({
-          state,
-          detail: `The assistant mixed ${TURN_CLOSEOUT_TOOL_NAME} with other tool calls. Use either external tools or exactly one ${TURN_CLOSEOUT_TOOL_NAME} call per assistant turn.`,
-          runtimeContext,
-        });
-      }
-
-      const parsedCloseout = parseCloseoutToolCall({
-        id: closeoutCalls[0]!.id,
-        name: closeoutCalls[0]!.name,
-        args: closeoutCalls[0]!.args,
+    if (requestedCallCount === 0) {
+      const replyText = scrubFinalReplyText({
+        replyText: state.replyText || findLatestAssistantText(state.messages as BaseMessage[]),
       });
-      if (!parsedCloseout) {
-        return buildProtocolViolationOutcome({
-          state,
-          detail: `${TURN_CLOSEOUT_TOOL_NAME} received invalid arguments. Use kind=final_answer, clarification_question, or delivered_via_tool.`,
-          runtimeContext,
-        });
-      }
-
-      if (parsedCloseout.kind === 'delivered_via_tool') {
-        if (state.finalToolDelivery?.effectKind !== 'final_message') {
-          return buildProtocolViolationOutcome({
-            state,
-            detail: `${TURN_CLOSEOUT_TOOL_NAME}(kind="delivered_via_tool") is only valid after a final-delivery tool already posted the answer.`,
-            runtimeContext,
-          });
-        }
-
-        return new Command({
-          goto: 'closeout_turn',
-          update: {
-            replyText: '',
-            completionKind: 'delivered_via_tool',
-            stopReason: 'verified_closeout',
-            deliveryDisposition: 'tool_delivered',
-            contextFrame: buildContextFrame(state),
-            resumeContext: snapshotRuntimeContext(runtimeContext),
-          },
-        });
-      }
-
-      const visibleReplyText = scrubFinalReplyText({
-        replyText: parsedCloseout.message ?? '',
+      const resolvedReplyText = replyText || resolveDraftText(state.responseSession.latestText);
+      const completionKind = classifyPlainTextCompletionKind(resolvedReplyText);
+      const responseSession = bumpResponseSession({
+        state,
+        latestText: resolvedReplyText,
+        status: 'final',
       });
-      if (!visibleReplyText) {
-        return buildProtocolViolationOutcome({
-          state,
-          detail: `${TURN_CLOSEOUT_TOOL_NAME} requires a non-empty message for ${parsedCloseout.kind}.`,
-          runtimeContext,
-        });
-      }
-
+      const nextState = {
+        ...state,
+        replyText: resolvedReplyText,
+        responseSession,
+      };
       return new Command({
         goto: 'closeout_turn',
         update: {
-          replyText: visibleReplyText,
-          completionKind:
-            parsedCloseout.kind === 'clarification_question'
-              ? 'clarification_question'
-              : 'final_answer',
-          stopReason: 'verified_closeout',
-          deliveryDisposition: 'chat_reply',
-          contextFrame: buildContextFrame({
-            ...state,
-            replyText: visibleReplyText,
-          }),
+          replyText: resolvedReplyText,
+          completionKind,
+          stopReason: 'assistant_turn_completed',
+          deliveryDisposition: 'response_session',
+          responseSession,
+          contextFrame: buildContextFrame(nextState),
           resumeContext: snapshotRuntimeContext(runtimeContext),
         },
       });
@@ -2156,7 +2066,6 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
             consecutiveIdenticalToolBatches,
             loopGuardRecoveries: state.loopGuardRecoveries + 1,
             roundEvents: [event],
-            protocolRepairInstruction: null,
             contextFrame: buildContextFrame(state),
           },
         });
@@ -2186,20 +2095,39 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
           roundEvents: [event],
           completionKind: 'loop_guard',
           stopReason: 'loop_guard',
-          deliveryDisposition: 'chat_reply',
-          protocolRepairCount: state.protocolRepairCount,
-          protocolRepairInstruction: null,
-          contextFrame: buildContextFrame(state),
+          deliveryDisposition: 'response_session',
+          responseSession: bumpResponseSession({
+            state,
+            latestText: buildLoopGuardReply({
+              reason: guardReason,
+              state: {
+                toolResults: [...state.toolResults, ...loopGuard.results],
+                messages: [...(state.messages as BaseMessage[]), ...loopGuard.messages],
+                replyText: state.replyText,
+              },
+            }),
+            status: 'failed',
+          }),
+          contextFrame: buildContextFrame({
+            ...state,
+            replyText: buildLoopGuardReply({
+              reason: guardReason,
+              state: {
+                toolResults: [...state.toolResults, ...loopGuard.results],
+                messages: [...(state.messages as BaseMessage[]), ...loopGuard.messages],
+                replyText: state.replyText,
+              },
+            }),
+          }),
           finalization: {
             attempted: true,
             succeeded: true,
             completedAt: completionTimestamp.iso,
             stopReason: 'loop_guard',
             completionKind: 'loop_guard',
-            deliveryDisposition: 'chat_reply',
-            protocolRepairCount: state.protocolRepairCount,
-            protocolRepairInstruction: null,
-            toolDeliveredFinal: false,
+            deliveryDisposition: 'response_session',
+            finalizedBy: 'loop_guard',
+            draftRevision: state.responseSession.draftRevision + 1,
             contextFrame: buildContextFrame(state),
           },
         },
@@ -2221,7 +2149,6 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
         lastToolBatchFingerprint: batchFingerprint,
         consecutiveIdenticalToolBatches,
         loopGuardRecoveries: 0,
-        protocolRepairInstruction: null,
         roundEvents: executedAny
           ? [
               await buildExecutionEvent(state, {
@@ -2243,30 +2170,42 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
     state: AgentGraphState,
   ): Promise<Command<unknown, Partial<AgentGraphState>, GraphNodeName>> => {
     const frame = buildContextFrame(state);
-    const effectiveReplyText =
-      state.deliveryDisposition === 'tool_delivered' ||
-      state.deliveryDisposition === 'approval_governance_only'
-        ? ''
-        : scrubFinalReplyText({
-            replyText: state.replyText || findLatestAssistantText(state.messages as BaseMessage[]),
+    const effectiveReplyText = scrubFinalReplyText({
+      replyText: state.replyText || findLatestAssistantText(state.messages as BaseMessage[]),
+    });
+    const responseSession =
+      state.responseSession.status === 'final' || state.responseSession.status === 'failed'
+        ? state.responseSession
+        : bumpResponseSession({
+            state,
+            latestText: effectiveReplyText || state.responseSession.latestText,
+            status: state.completionKind === 'loop_guard' || state.completionKind === 'runtime_failure' ? 'failed' : 'final',
           });
     const completionTimestamp = await captureGraphTimestampTask();
     return new Command({
       goto: 'finalize_turn',
       update: {
         replyText: effectiveReplyText,
-        protocolRepairInstruction: null,
+        responseSession,
         contextFrame: frame,
         finalization: {
           attempted: true,
           succeeded: true,
           completedAt: completionTimestamp.iso,
           stopReason: state.stopReason,
-          completionKind: state.completionKind ?? 'loop_guard',
+          completionKind: state.completionKind ?? 'runtime_failure',
           deliveryDisposition: state.deliveryDisposition,
-          protocolRepairCount: state.protocolRepairCount,
-          protocolRepairInstruction: null,
-          toolDeliveredFinal: state.deliveryDisposition === 'tool_delivered',
+          finalizedBy:
+            state.stopReason === 'approval_interrupt'
+              ? 'approval_interrupt'
+              : state.stopReason === 'loop_guard'
+                ? 'loop_guard'
+                : state.stopReason === 'step_window_exhausted' || state.stopReason === 'graph_timeout'
+                  ? 'continuation_pause'
+                  : state.stopReason === 'runtime_failure'
+                    ? 'runtime_failure'
+                    : 'assistant_no_tool_calls',
+          draftRevision: responseSession.draftRevision,
           contextFrame: frame,
           rebudgeting: state.finalization.rebudgeting,
         },
@@ -2294,8 +2233,6 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
         pendingReadCalls: update.pendingReadCalls ?? [],
         pendingReadExecutionCalls: update.pendingReadExecutionCalls ?? [],
         activeWindowDurationMs: addActiveWindowDuration(state, readToolDurationMs),
-        protocolRepairInstruction: null,
-        finalToolDelivery: resolveFinalToolDelivery(state.finalToolDelivery, update.toolResults ?? []),
         contextFrame: buildContextFrame({
           ...state,
           toolResults: [...state.toolResults, ...(update.toolResults ?? [])],
@@ -2378,14 +2315,20 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
 
       if (approvalRequests.length > 0) {
         const interruptTimestamp = await captureGraphTimestampTask();
+        const responseSession = bumpResponseSession({
+          state,
+          latestText: resolveDraftText(state.replyText || state.responseSession.latestText),
+          status: 'awaiting_approval',
+        });
         return new Command({
           goto: 'resume_interrupt',
           update: {
-            replyText: '',
+            replyText: responseSession.latestText,
             graphStatus: 'interrupted',
-            completionKind: 'approval_handoff',
+            completionKind: 'approval_pending',
             stopReason: 'approval_interrupt',
-            deliveryDisposition: 'approval_governance_only',
+            deliveryDisposition: 'approval_handoff',
+            responseSession,
             activeWindowDurationMs: addActiveWindowDuration(
               state,
               Math.max(0, Date.now() - approvalPlanningStartedAt),
@@ -2402,13 +2345,21 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
               succeeded: true,
               completedAt: interruptTimestamp.iso,
               stopReason: 'approval_interrupt',
-              completionKind: 'approval_handoff',
-              deliveryDisposition: 'approval_governance_only',
-              protocolRepairCount: state.protocolRepairCount,
-              toolDeliveredFinal: false,
-              contextFrame: buildContextFrame(state),
+              completionKind: 'approval_pending',
+              deliveryDisposition: 'approval_handoff',
+              finalizedBy: 'approval_interrupt',
+              draftRevision: responseSession.draftRevision,
+              contextFrame: buildContextFrame({
+                ...state,
+                responseSession,
+                replyText: responseSession.latestText,
+              }),
             },
-            contextFrame: buildContextFrame(state),
+            contextFrame: buildContextFrame({
+              ...state,
+              responseSession,
+              replyText: responseSession.latestText,
+            }),
           },
         });
       }
@@ -2421,6 +2372,33 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
       timeoutMs: graphConfig.toolTimeoutMs,
     });
 
+    if (!outcome) {
+      const replyText = buildRuntimeFailureReply({
+        kind: 'turn',
+        category: 'runtime',
+      });
+      const responseSession = bumpResponseSession({
+        state,
+        latestText: replyText,
+        status: 'failed',
+      });
+      return new Command({
+        goto: 'closeout_turn',
+        update: {
+          replyText,
+          completionKind: 'runtime_failure',
+          stopReason: 'runtime_failure',
+          deliveryDisposition: 'response_session',
+          responseSession,
+          contextFrame: buildContextFrame({
+            ...state,
+            replyText,
+            responseSession,
+          }),
+        },
+      });
+    }
+
     if (outcome.kind === 'approval_required') {
       const materialized = await materializeApprovalInterruptTask({
         threadId: runtimeContext.threadId,
@@ -2428,15 +2406,21 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
         payload: outcome.payload,
       });
       const interruptTimestamp = await captureGraphTimestampTask();
+      const responseSession = bumpResponseSession({
+        state,
+        latestText: resolveDraftText(state.replyText || state.responseSession.latestText),
+        status: 'awaiting_approval',
+      });
 
       return new Command({
         goto: 'resume_interrupt',
         update: {
-          replyText: '',
+          replyText: responseSession.latestText,
           graphStatus: 'interrupted',
-          completionKind: 'approval_handoff',
+          completionKind: 'approval_pending',
           stopReason: 'approval_interrupt',
-          deliveryDisposition: 'approval_governance_only',
+          deliveryDisposition: 'approval_handoff',
+          responseSession,
           activeWindowDurationMs: addActiveWindowDuration(state, outcome.latencyMs),
           pendingInterrupt: {
             kind: 'approval_review',
@@ -2458,13 +2442,21 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
             succeeded: true,
             completedAt: interruptTimestamp.iso,
             stopReason: 'approval_interrupt',
-            completionKind: 'approval_handoff',
-            deliveryDisposition: 'approval_governance_only',
-            protocolRepairCount: state.protocolRepairCount,
-            toolDeliveredFinal: false,
-            contextFrame: buildContextFrame(state),
+            completionKind: 'approval_pending',
+            deliveryDisposition: 'approval_handoff',
+            finalizedBy: 'approval_interrupt',
+            draftRevision: responseSession.draftRevision,
+            contextFrame: buildContextFrame({
+              ...state,
+              responseSession,
+              replyText: responseSession.latestText,
+            }),
           },
-          contextFrame: buildContextFrame(state),
+          contextFrame: buildContextFrame({
+            ...state,
+            responseSession,
+            replyText: responseSession.latestText,
+          }),
         },
       });
     }
@@ -2486,7 +2478,6 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
         messages: [toolMessage],
         toolResults: [outcome.result],
         files: outcome.files,
-        finalToolDelivery: resolveFinalToolDelivery(state.finalToolDelivery, [outcome.result], [outcome.toolName]),
         contextFrame: buildContextFrame({
           ...state,
           toolResults: [...state.toolResults, outcome.result],
@@ -2530,13 +2521,19 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
 
       if (resume.decision !== 'continue') {
         const completionTimestamp = await captureGraphTimestampTask();
+        const responseSession = bumpResponseSession({
+          state,
+          latestText: state.replyText.trim() || state.responseSession.latestText || buildContinuationUnavailableReply(),
+          status: 'failed',
+        });
         return new Command({
           goto: 'finalize_turn',
           update: {
             resumeContext: snapshotRuntimeContext(resumedContext),
             completionKind: 'pause_handoff',
             stopReason: 'continuation_expired',
-            deliveryDisposition: 'chat_reply',
+            deliveryDisposition: 'response_session',
+            responseSession,
             graphStatus: 'completed',
             pendingInterrupt: null,
             interruptResolution: {
@@ -2551,12 +2548,18 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
               completedAt: completionTimestamp.iso,
               stopReason: 'continuation_expired',
               completionKind: 'pause_handoff',
-              deliveryDisposition: 'chat_reply',
-              protocolRepairCount: state.protocolRepairCount,
-              toolDeliveredFinal: false,
-              contextFrame: buildContextFrame(state),
+              deliveryDisposition: 'response_session',
+              finalizedBy: 'runtime_failure',
+              draftRevision: responseSession.draftRevision,
+              contextFrame: buildContextFrame({
+                ...state,
+                responseSession,
+              }),
             },
-            contextFrame: buildContextFrame(state),
+            contextFrame: buildContextFrame({
+              ...state,
+              responseSession,
+            }),
           },
         });
       }
@@ -2567,17 +2570,21 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
       });
       if (!consumed) {
         const completionTimestamp = await captureGraphTimestampTask();
+        const responseSession = bumpResponseSession({
+          state,
+          latestText: state.replyText.trim() || buildContinuationUnavailableReply(),
+          status: 'failed',
+        });
         return new Command({
           goto: 'finalize_turn',
           update: {
-            replyText:
-              state.replyText.trim() ||
-              buildContinuationUnavailableReply(),
+            replyText: responseSession.latestText,
             resumeContext: snapshotRuntimeContext(resumedContext),
             graphStatus: 'completed',
             completionKind: 'pause_handoff',
             stopReason: 'continuation_expired',
-            deliveryDisposition: 'chat_reply',
+            deliveryDisposition: 'response_session',
+            responseSession,
             pendingInterrupt: null,
             interruptResolution: {
               kind: 'continue_prompt',
@@ -2591,25 +2598,39 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
               completedAt: completionTimestamp.iso,
               stopReason: 'continuation_expired',
               completionKind: 'pause_handoff',
-              deliveryDisposition: 'chat_reply',
-              protocolRepairCount: state.protocolRepairCount,
-              toolDeliveredFinal: false,
-              contextFrame: buildContextFrame(state),
+              deliveryDisposition: 'response_session',
+              finalizedBy: 'runtime_failure',
+              draftRevision: responseSession.draftRevision,
+              contextFrame: buildContextFrame({
+                ...state,
+                replyText: responseSession.latestText,
+                responseSession,
+              }),
             },
-            contextFrame: buildContextFrame(state),
+            contextFrame: buildContextFrame({
+              ...state,
+              replyText: responseSession.latestText,
+              responseSession,
+            }),
           },
         });
       }
 
+      const resumedSession = bumpResponseSession({
+        state,
+        latestText: state.responseSession.latestText,
+        status: 'draft',
+      });
       return new Command({
         goto: state.pendingInterrupt.resumeNode,
         update: {
-          replyText: '',
+          replyText: resumedSession.latestText,
           resumeContext: snapshotRuntimeContext(resumedContext),
           graphStatus: 'running',
           completionKind: null,
-          stopReason: 'verified_closeout',
-          deliveryDisposition: 'chat_reply',
+          stopReason: 'assistant_turn_completed',
+          deliveryDisposition: 'response_session',
+          responseSession: resumedSession,
           pendingInterrupt: null,
           interruptResolution: {
             kind: 'continue_prompt',
@@ -2619,7 +2640,11 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
           },
           roundsCompleted: 0,
           activeWindowDurationMs: 0,
-          contextFrame: buildContextFrame(state),
+          contextFrame: buildContextFrame({
+            ...state,
+            responseSession: resumedSession,
+            replyText: resumedSession.latestText,
+          }),
           finalization: buildDefaultFinalization(),
         },
       });
@@ -2727,14 +2752,25 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
       });
     }
 
+    const hasPendingFollowupWrites = state.pendingWriteCalls.length > approvalInterrupt.requests.length;
+    const latestReplyText =
+      state.responseSession.latestText ||
+      resolveDraftText(state.replyText || findLatestAssistantText(state.messages as BaseMessage[]));
+    const responseSession = bumpResponseSession({
+      state,
+      latestText: latestReplyText,
+      status: hasPendingFollowupWrites ? 'awaiting_approval' : 'draft',
+    });
     return new Command({
-      goto: state.pendingWriteCalls.length > approvalInterrupt.requests.length ? 'approval_gate' : 'tool_call_turn',
+      goto: hasPendingFollowupWrites ? 'approval_gate' : 'tool_call_turn',
       update: {
         messages: toolMessages,
         resumeContext: snapshotRuntimeContext(resumedContext),
         graphStatus: 'running',
         roundsCompleted: 0,
         activeWindowDurationMs: consumedDurationMs,
+        replyText: latestReplyText,
+        responseSession,
         interruptResolution: {
           kind: 'approval_review_batch',
           batchId: approvalInterrupt.batchId,
@@ -2744,9 +2780,10 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
         pendingWriteCalls: state.pendingWriteCalls.slice(approvalInterrupt.requests.length),
         toolResults: resolvedResults,
         files: resolvedFiles,
-        finalToolDelivery: resolveFinalToolDelivery(state.finalToolDelivery, resolvedResults),
         contextFrame: buildContextFrame({
           ...state,
+          replyText: latestReplyText,
+          responseSession,
           toolResults: [...state.toolResults, ...resolvedResults],
           messages: [...(state.messages as BaseMessage[]), ...toolMessages],
         }),
@@ -2773,17 +2810,23 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
         continuationLimitReached: true,
       });
       const completionTimestamp = await captureGraphTimestampTask();
+      const responseSession = bumpResponseSession({
+        state,
+        latestText: limitSummary.text,
+        status: 'failed',
+      });
       return new Command({
         goto: 'finalize_turn',
         update: {
           replyText: limitSummary.text,
+          responseSession,
           completedWindows: nextCompletedWindows,
           totalRoundsCompleted:
             state.totalRoundsCompleted + (limitSummary.usedModel ? 1 : 0),
           graphStatus: 'completed',
           completionKind: 'pause_handoff',
           stopReason: 'max_windows_reached',
-          deliveryDisposition: 'chat_reply',
+          deliveryDisposition: 'response_session',
           activeWindowDurationMs: addActiveWindowDuration(state, limitSummary.latencyMs),
           finalization: {
             attempted: true,
@@ -2791,12 +2834,20 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
             completedAt: completionTimestamp.iso,
             stopReason: 'max_windows_reached',
             completionKind: 'pause_handoff',
-            deliveryDisposition: 'chat_reply',
-            protocolRepairCount: state.protocolRepairCount,
-            toolDeliveredFinal: false,
-            contextFrame: buildContextFrame(state),
+            deliveryDisposition: 'response_session',
+            finalizedBy: 'runtime_failure',
+            draftRevision: responseSession.draftRevision,
+            contextFrame: buildContextFrame({
+              ...state,
+              replyText: limitSummary.text,
+              responseSession,
+            }),
           },
-          contextFrame: buildContextFrame(state),
+          contextFrame: buildContextFrame({
+            ...state,
+            replyText: limitSummary.text,
+            responseSession,
+          }),
         },
       });
     }
@@ -2823,17 +2874,23 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
     });
 
     const interruptTimestamp = await captureGraphTimestampTask();
+    const responseSession = bumpResponseSession({
+      state,
+      latestText: summary.text,
+      status: 'paused',
+    });
     return new Command({
       goto: 'resume_interrupt',
       update: {
         replyText: summary.text,
+        responseSession,
         completedWindows: nextCompletedWindows,
         totalRoundsCompleted:
           state.totalRoundsCompleted + (summary.usedModel ? 1 : 0),
         graphStatus: 'interrupted',
         completionKind: 'pause_handoff',
         stopReason: resolveContinuationStopReason(continuation.pauseReason),
-        deliveryDisposition: 'chat_reply_with_continue',
+        deliveryDisposition: 'response_session_with_continue',
         activeWindowDurationMs: addActiveWindowDuration(state, summary.latencyMs),
         pendingInterrupt: {
           kind: 'continue_prompt',
@@ -2855,12 +2912,20 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
           completedAt: interruptTimestamp.iso,
           stopReason: resolveContinuationStopReason(continuation.pauseReason),
           completionKind: 'pause_handoff',
-          deliveryDisposition: 'chat_reply_with_continue',
-          protocolRepairCount: state.protocolRepairCount,
-          toolDeliveredFinal: false,
-          contextFrame: buildContextFrame(state),
+          deliveryDisposition: 'response_session_with_continue',
+          finalizedBy: 'continuation_pause',
+          draftRevision: responseSession.draftRevision,
+          contextFrame: buildContextFrame({
+            ...state,
+            replyText: summary.text,
+            responseSession,
+          }),
         },
-        contextFrame: buildContextFrame(state),
+        contextFrame: buildContextFrame({
+          ...state,
+          replyText: summary.text,
+          responseSession,
+        }),
       },
     });
   };
@@ -3098,12 +3163,14 @@ function normalizeRecoveredGraphState(value: unknown): AgentGraphState | null {
       ...(state.finalization ?? {}),
     },
     completionKind: state.completionKind ?? null,
-    stopReason: state.stopReason ?? 'verified_closeout',
-    deliveryDisposition: state.deliveryDisposition ?? 'chat_reply',
-    protocolRepairCount: state.protocolRepairCount ?? state.finalization?.protocolRepairCount ?? 0,
-    protocolRepairInstruction:
-      state.protocolRepairInstruction ?? state.finalization?.protocolRepairInstruction ?? null,
-    finalToolDelivery: state.finalToolDelivery ?? null,
+    stopReason: state.stopReason ?? 'assistant_turn_completed',
+    deliveryDisposition: state.deliveryDisposition ?? 'response_session',
+    responseSession:
+      state.responseSession ??
+      buildDefaultResponseSession(
+        state.resumeContext?.threadId ?? state.resumeContext?.traceId ?? 'recovered-thread',
+      ),
+    artifactDeliveries: state.artifactDeliveries ?? [],
     contextFrame: state.contextFrame ?? buildDefaultContextFrame(),
     graphStatus: state.graphStatus ?? 'running',
     activeWindowDurationMs: state.activeWindowDurationMs ?? 0,
@@ -3168,8 +3235,15 @@ async function recoverLoopGuardState(
       roundEvents: nextRoundEvents,
       completionKind: 'loop_guard',
       stopReason: 'loop_guard',
-      deliveryDisposition: 'chat_reply',
-      protocolRepairInstruction: null,
+      deliveryDisposition: 'response_session',
+      responseSession: bumpResponseSession({
+        state,
+        latestText: buildLoopGuardReply({
+          reason: 'recursion_limit',
+          state,
+        }),
+        status: 'failed',
+      }),
       graphStatus: 'completed',
       pendingInterrupt: null,
       finalization: {
@@ -3178,10 +3252,9 @@ async function recoverLoopGuardState(
         completedAt: completionTimestamp,
         stopReason: 'loop_guard',
         completionKind: 'loop_guard',
-        deliveryDisposition: 'chat_reply',
-        protocolRepairCount: state.protocolRepairCount ?? state.finalization?.protocolRepairCount ?? 0,
-        protocolRepairInstruction: null,
-        toolDeliveredFinal: false,
+        deliveryDisposition: 'response_session',
+        finalizedBy: 'loop_guard',
+        draftRevision: state.responseSession.draftRevision + 1,
         contextFrame: buildContextFrame(state),
       },
     };
@@ -3201,6 +3274,7 @@ export async function runGraphValueStream(
   graph: Pick<AgentGraphRuntime['graph'], 'stream' | 'getState'>,
   input: Parameters<AgentGraphRuntime['graph']['invoke']>[0],
   config: RunnableConfig,
+  onStateUpdate?: (state: AgentGraphState) => Promise<void> | void,
 ): Promise<AgentGraphState> {
   let lastValue: AgentGraphState | null = null;
   let streamError: unknown;
@@ -3221,6 +3295,7 @@ export async function runGraphValueStream(
         continue;
       }
       lastValue = chunk as AgentGraphState;
+      await onStateUpdate?.(lastValue);
     }
   } catch (error) {
     streamError = error;
@@ -3307,11 +3382,10 @@ function buildInitialState(params: StartAgentGraphTurnParams): AgentGraphState {
     roundEvents: [],
     finalization: buildDefaultFinalization(),
     completionKind: null,
-    stopReason: 'verified_closeout',
-    deliveryDisposition: 'chat_reply',
-    protocolRepairCount: 0,
-    protocolRepairInstruction: null,
-    finalToolDelivery: null,
+    stopReason: 'assistant_turn_completed',
+    deliveryDisposition: 'response_session',
+    responseSession: buildDefaultResponseSession(params.traceId),
+    artifactDeliveries: [],
     contextFrame: buildDefaultContextFrame(),
     graphStatus: 'running',
     activeWindowDurationMs: 0,
@@ -3355,11 +3429,10 @@ function buildSeededGraphState(params: {
     roundEvents: [],
     finalization: buildDefaultFinalization(),
     completionKind: null,
-    stopReason: 'verified_closeout',
-    deliveryDisposition: 'chat_reply',
-    protocolRepairCount: 0,
-    protocolRepairInstruction: null,
-    finalToolDelivery: null,
+    stopReason: 'assistant_turn_completed',
+    deliveryDisposition: 'response_session',
+    responseSession: buildDefaultResponseSession(params.threadId),
+    artifactDeliveries: [],
     contextFrame: buildDefaultContextFrame(),
     graphStatus: 'running',
     activeWindowDurationMs: 0,
@@ -3394,6 +3467,7 @@ export async function runAgentGraphTurn(params: StartAgentGraphTurnParams): Prom
         userId: context.userId,
       },
     }),
+    params.onStateUpdate,
   );
   await telemetry.flush();
   return normalizeGraphResult(output, telemetry.getRunReferences(context.traceId));
@@ -3406,6 +3480,7 @@ export async function runSeededAgentGraphTurn(params: {
   context?: Partial<AgentGraphRuntimeContext>;
   runId?: string;
   runName?: string;
+  onStateUpdate?: (state: AgentGraphState) => Promise<void> | void;
 }): Promise<AgentGraphTurnResult> {
   const runtime = await getRuntime();
   const telemetry = createAgentRunTelemetry();
@@ -3448,6 +3523,7 @@ export async function runSeededAgentGraphTurn(params: {
         userId: context.userId,
       },
     }),
+    params.onStateUpdate,
   );
   await telemetry.flush();
   return normalizeGraphResult(output, telemetry.getRunReferences(runId));
@@ -3507,6 +3583,7 @@ export async function retryAgentGraphTurn(params: {
   context: Partial<AgentGraphRuntimeContext>;
   runId?: string;
   runName?: string;
+  onStateUpdate?: (state: AgentGraphState) => Promise<void> | void;
 }): Promise<AgentGraphTurnResult> {
   const runtime = await getRuntime();
   const telemetry = createAgentRunTelemetry();
@@ -3533,6 +3610,7 @@ export async function retryAgentGraphTurn(params: {
         retryThreadId: params.threadId,
       },
     }),
+    params.onStateUpdate,
   );
   await telemetry.flush();
   return normalizeGraphResult(output, telemetry.getRunReferences(runId));

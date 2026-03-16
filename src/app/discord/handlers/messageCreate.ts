@@ -302,6 +302,18 @@ type SendableTypingChannel = {
   ) => Promise<Message>;
 };
 
+type EditableResponseMessage = {
+  id: string;
+  edit: (...args: unknown[]) => Promise<unknown>;
+};
+
+async function editResponseSessionMessage(
+  message: EditableResponseMessage,
+  payload: unknown,
+): Promise<void> {
+  await message.edit(payload);
+}
+
 function isSendableTypingChannel(
   channel: Message['channel'],
 ): channel is Message['channel'] & SendableTypingChannel {
@@ -718,6 +730,9 @@ export async function handleMessageCreate(message: Message) {
 
       const invokerIsAdmin = isAdminFromMember(message.member);
       const invokerCanModerate = isModeratorFromMember(message.member);
+      let responseSessionMessage: EditableResponseMessage | null = null;
+      let responseSessionRevision = -1;
+      let responseSessionText = '';
       const result = await generateChatReply({
         traceId,
         userId: message.author.id,
@@ -735,6 +750,35 @@ export async function handleMessageCreate(message: Message) {
         isAdmin: invokerIsAdmin,
         canModerate: invokerCanModerate,
         promptMode,
+        onResponseSessionUpdate: async (update) => {
+          if (update.responseSession.draftRevision <= responseSessionRevision) {
+            return;
+          }
+          const nextDraft = (update.responseSession.latestText || update.replyText || '').trim();
+          if (!nextDraft) {
+            return;
+          }
+          const [primaryDraft] = smartSplit(nextDraft, 2000);
+          const nextPrimaryDraft = primaryDraft || nextDraft;
+          if (!nextPrimaryDraft || nextPrimaryDraft === responseSessionText) {
+            responseSessionRevision = update.responseSession.draftRevision;
+            return;
+          }
+
+          if (!responseSessionMessage) {
+            responseSessionMessage = (await message.reply({
+              content: nextPrimaryDraft,
+              allowedMentions: { repliedUser: false },
+            })) as EditableResponseMessage;
+          } else {
+            await responseSessionMessage.edit({
+              content: nextPrimaryDraft,
+              allowedMentions: { repliedUser: false },
+            });
+          }
+          responseSessionRevision = update.responseSession.draftRevision;
+          responseSessionText = nextPrimaryDraft;
+        },
       });
 
       const replyText = result.replyText || '';
@@ -743,10 +787,10 @@ export async function handleMessageCreate(message: Message) {
       const retry = result.meta?.retry;
 
       let didSendAnything = false;
-      const approvalQueued = result.delivery === 'approval_governance_only';
+      const approvalQueued = result.delivery === 'approval_handoff';
       let actionButtonId: string | null = null;
       let actionButtonLabel: string | null = null;
-      if (result.delivery === 'chat_reply_with_continue' && continuation && message.guildId) {
+      if (result.delivery === 'response_session_with_continue' && continuation && message.guildId) {
         try {
           actionButtonId = await createInteractiveButtonSession({
             guildId: message.guildId,
@@ -803,10 +847,10 @@ export async function handleMessageCreate(message: Message) {
         didSendAnything = true;
       }
 
-      if (!didSendAnything && ((!approvalQueued && replyText) || files.length > 0)) {
-        const chunks = approvalQueued ? [] : smartSplit(replyText, 2000);
+      if (!didSendAnything && (replyText || files.length > 0 || responseSessionMessage !== null)) {
+        const chunks = smartSplit(replyText, 2000);
         const [firstChunk, ...restChunks] = chunks;
-        const firstReplyContent = approvalQueued ? undefined : firstChunk;
+        const firstReplyContent = firstChunk;
         const actionButton =
           actionButtonId
             ? {
@@ -818,22 +862,26 @@ export async function handleMessageCreate(message: Message) {
         const shouldUseRuntimeCard = !!actionButton;
 
         if ((shouldUseRuntimeCard && (firstReplyContent || files.length > 0)) || firstReplyContent || files.length > 0) {
-          await message.reply(
-            shouldUseRuntimeCard
-              ? buildRuntimeResponseCardPayload({
-                  text: firstReplyContent || '\u200b',
-                  tone: continuation ? 'continue' : retry ? 'retry' : 'notice',
-                  button: actionButton,
-                  files,
-                  allowedMentions: { repliedUser: false },
-                })
-              : {
-                  content: firstReplyContent,
-                  allowedMentions: { repliedUser: false },
-                  files,
-                },
-          );
+          const primaryPayload = shouldUseRuntimeCard
+            ? buildRuntimeResponseCardPayload({
+                text: firstReplyContent || '\u200b',
+                tone: continuation ? 'continue' : retry ? 'retry' : approvalQueued ? 'notice' : 'notice',
+                button: actionButton,
+                files,
+                allowedMentions: { repliedUser: false },
+              })
+            : {
+                content: firstReplyContent,
+                allowedMentions: { repliedUser: false },
+                files,
+              };
+          if (responseSessionMessage) {
+            await editResponseSessionMessage(responseSessionMessage, primaryPayload);
+          } else {
+            responseSessionMessage = (await message.reply(primaryPayload)) as EditableResponseMessage;
+          }
           didSendAnything = true;
+          responseSessionText = firstReplyContent || '\u200b';
         }
 
         for (const chunk of restChunks) {
@@ -843,21 +891,9 @@ export async function handleMessageCreate(message: Message) {
       }
 
       if (didSendAnything) {
-        if (approvalQueued && result.meta?.approvalReview) {
-          loggerWithTrace.info(
-            { requestId: result.meta.approvalReview.requestId },
-            'Approval interrupt returned files only; governance surfaces own visible review state',
-          );
-        } else {
-          loggerWithTrace.info('Response sent');
-        }
-      } else if (approvalQueued && result.meta?.approvalReview) {
-        loggerWithTrace.info(
-          { requestId: result.meta.approvalReview.requestId },
-          'Approval interrupt handled via governance surfaces without chat reply',
-        );
+        loggerWithTrace.info('Response sent');
       } else if (approvalQueued) {
-        loggerWithTrace.info('Approval interrupt handled via governance surface; skipped chat reply');
+        loggerWithTrace.info('Approval interrupt produced no visible draft text');
       } else {
         loggerWithTrace.info(
           {

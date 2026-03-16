@@ -44,6 +44,7 @@ import {
 import { resolveRuntimeAutopilotMode } from './autopilotMode';
 import { globalToolRegistry } from './toolRegistry';
 import type { ToolResult } from './toolCallExecution';
+import type { GraphDeliveryDisposition } from './langgraph/types';
 
 import { formatLiveVoiceContext } from '../voice/voiceConversationSessionStore';
 
@@ -67,11 +68,19 @@ export interface RunChatTurnParams {
   isAdmin?: boolean;
   canModerate?: boolean;
   promptMode?: PromptInputMode;
+  onResponseSessionUpdate?: (update: {
+    replyText: string;
+    delivery: GraphDeliveryDisposition;
+    responseSession: RuntimeGraphResult['responseSession'];
+    pendingInterrupt: RuntimeGraphResult['pendingInterrupt'];
+    completionKind: RuntimeGraphResult['completionKind'];
+    stopReason: RuntimeGraphResult['stopReason'];
+  }) => Promise<void> | void;
 }
 
 export interface RunChatTurnResult {
   replyText: string;
-  delivery: 'chat_reply' | 'tool_delivered' | 'approval_governance_only' | 'chat_reply_with_continue';
+  delivery: GraphDeliveryDisposition;
   meta?: {
     kind?: 'missing_api_key';
     missingApiKey?: {
@@ -103,6 +112,8 @@ export interface RunChatTurnResult {
     attachment: Buffer;
     name: string;
   }>;
+  responseSession?: RuntimeGraphResult['responseSession'];
+  artifactDeliveries?: RuntimeGraphResult['artifactDeliveries'];
 }
 
 export interface ResumeContinuationChatTurnParams {
@@ -188,7 +199,7 @@ function buildMissingApiKeyResult(guildId: string | null): RunChatTurnResult {
       : guildId
       ? buildMissingSelfHostedGuildApiKeyText()
       : buildMissingHostApiKeyText(),
-    delivery: 'chat_reply',
+    delivery: 'response_session',
     meta: guildId
       ? {
           kind: 'missing_api_key',
@@ -438,10 +449,12 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
         summaryText: string;
       }
     | null = null;
-  let delivery: RunChatTurnResult['delivery'] = 'chat_reply';
+  let delivery: RunChatTurnResult['delivery'] = 'response_session';
   let meta: RunChatTurnResult['meta'] | undefined;
   let langSmithRunId: string | null = null;
   let langSmithTraceId: string | null = null;
+  let responseSession: RuntimeGraphResult['responseSession'] | undefined;
+  let artifactDeliveries: RuntimeGraphResult['artifactDeliveries'] | undefined;
 
   try {
     const loopStartedAt = Date.now();
@@ -472,6 +485,18 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
       recentTranscript: transcriptBlock,
       voiceContext: liveVoiceContext,
       promptMode,
+      onStateUpdate: params.onResponseSessionUpdate
+        ? async (state) => {
+            await params.onResponseSessionUpdate?.({
+              replyText: state.replyText,
+              delivery: state.deliveryDisposition,
+              responseSession: state.responseSession,
+              pendingInterrupt: state.pendingInterrupt,
+              completionKind: state.completionKind,
+              stopReason: state.stopReason,
+            });
+          }
+        : undefined,
       promptVersion: promptEnvelope.version,
       promptFingerprint: promptEnvelope.promptFingerprint,
     });
@@ -480,6 +505,8 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
     toolResults = graphResult.toolResults;
     pendingInterrupt = toPendingInterruptSummary(graphResult.pendingInterrupt);
     delivery = graphResult.deliveryDisposition;
+    responseSession = graphResult.responseSession;
+    artifactDeliveries = graphResult.artifactDeliveries;
     meta = await buildRunChatTurnMeta({ pendingInterrupt });
     langSmithRunId = graphResult.langSmithRunId;
     langSmithTraceId = graphResult.langSmithTraceId;
@@ -498,8 +525,8 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
       deduplicatedCallCount: graphResult.deduplicatedCallCount,
       roundEvents: graphResult.roundEvents,
       finalization: graphResult.finalization,
-      protocolRepairCount: graphResult.protocolRepairCount,
-      toolDeliveredFinal: graphResult.toolDeliveredFinal,
+      responseSession: graphResult.responseSession,
+      artifactDeliveries: graphResult.artifactDeliveries,
       contextFrame: graphResult.contextFrame,
       attachmentCount: graphResult.files.length,
       latencyMs: Date.now() - loopStartedAt,
@@ -590,6 +617,8 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
       replyText: '',
       delivery,
       meta,
+      responseSession,
+      artifactDeliveries,
       debug: {
         messages: runtimeMessages,
         promptVersion: promptEnvelope.version,
@@ -603,6 +632,8 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
     replyText: safeFinalReplyText,
     delivery,
     meta,
+    responseSession,
+    artifactDeliveries,
     debug: {
       messages: runtimeMessages,
       promptVersion: promptEnvelope.version,
@@ -661,7 +692,7 @@ export async function resumeContinuationChatTurn(
   if (!validated.ok) {
     return {
       replyText: validated.replyText,
-      delivery: 'chat_reply',
+      delivery: 'response_session',
       meta: undefined,
       files: [],
     };
@@ -742,6 +773,8 @@ export async function resumeContinuationChatTurn(
       delivery: graphResult.deliveryDisposition,
       meta: await buildRunChatTurnMeta({ pendingInterrupt }),
       files: graphResult.files,
+      responseSession: graphResult.responseSession,
+      artifactDeliveries: graphResult.artifactDeliveries,
     };
 
     if (appConfig.SAGE_TRACE_DB_ENABLED) {
@@ -756,7 +789,8 @@ export async function resumeContinuationChatTurn(
             completionKind: graphResult.completionKind,
             stopReason: graphResult.stopReason,
             deliveryDisposition: graphResult.deliveryDisposition,
-            protocolRepairCount: graphResult.protocolRepairCount,
+            responseSession: graphResult.responseSession,
+            artifactDeliveries: graphResult.artifactDeliveries,
             contextFrame: graphResult.contextFrame,
             graphStatus: graphResult.graphStatus,
             pendingInterrupt,
@@ -772,7 +806,8 @@ export async function resumeContinuationChatTurn(
             completionKind: graphResult.completionKind,
             stopReason: graphResult.stopReason,
             deliveryDisposition: graphResult.deliveryDisposition,
-            protocolRepairCount: graphResult.protocolRepairCount,
+            responseSession: graphResult.responseSession,
+            artifactDeliveries: graphResult.artifactDeliveries,
             contextFrame: graphResult.contextFrame,
             graphStatus: graphResult.graphStatus,
           },
@@ -801,7 +836,7 @@ export async function resumeContinuationChatTurn(
         kind: 'continue_resume',
         category: failureCategory,
       }),
-      delivery: 'chat_reply',
+      delivery: 'response_session',
       meta: buildRetryMeta(session.threadId, 'continue_resume'),
       files: [],
     };
@@ -904,6 +939,8 @@ export async function retryFailedChatTurn(
       delivery: graphResult.deliveryDisposition,
       meta: await buildRunChatTurnMeta({ pendingInterrupt }),
       files: graphResult.files,
+      responseSession: graphResult.responseSession,
+      artifactDeliveries: graphResult.artifactDeliveries,
     };
 
     if (appConfig.SAGE_TRACE_DB_ENABLED) {
@@ -918,7 +955,8 @@ export async function retryFailedChatTurn(
             completionKind: graphResult.completionKind,
             stopReason: graphResult.stopReason,
             deliveryDisposition: graphResult.deliveryDisposition,
-            protocolRepairCount: graphResult.protocolRepairCount,
+            responseSession: graphResult.responseSession,
+            artifactDeliveries: graphResult.artifactDeliveries,
             contextFrame: graphResult.contextFrame,
             graphStatus: graphResult.graphStatus,
             pendingInterrupt,
@@ -935,7 +973,8 @@ export async function retryFailedChatTurn(
             completionKind: graphResult.completionKind,
             stopReason: graphResult.stopReason,
             deliveryDisposition: graphResult.deliveryDisposition,
-            protocolRepairCount: graphResult.protocolRepairCount,
+            responseSession: graphResult.responseSession,
+            artifactDeliveries: graphResult.artifactDeliveries,
             contextFrame: graphResult.contextFrame,
             graphStatus: graphResult.graphStatus,
           },
@@ -1000,7 +1039,7 @@ export async function retryFailedChatTurn(
 
     return {
       replyText,
-      delivery: 'chat_reply',
+      delivery: 'response_session',
       meta: buildRetryMeta(params.threadId, params.retryKind),
       files: [],
     };

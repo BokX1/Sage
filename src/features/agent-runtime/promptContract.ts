@@ -7,9 +7,8 @@ import { describeContinuityPolicy } from './continuityContext';
 import type { LLMContentPart, LLMMessageContent } from '../../platform/llm/llm-types';
 import { getPromptToolGuidance, isRoutedTool } from './toolDocs';
 
-export const UNIVERSAL_PROMPT_CONTRACT_VERSION = '2026-03-16.universal-prompt-v1';
-const TURN_CLOSEOUT_TOOL_NAME = 'sage_finish_turn';
-const PROMPT_TOOL_OBSERVATION_MAX_CHARS = 1_500;
+export const UNIVERSAL_PROMPT_CONTRACT_VERSION = '2026-03-16.plain-text-first-v2';
+const PROMPT_TOOL_OBSERVATION_MAX_CHARS = 4_000;
 
 export type PromptInputMode =
   | 'standard'
@@ -24,7 +23,7 @@ export interface PromptWorkingMemoryFrame {
   completedActions: string[];
   openQuestions: string[];
   pendingApprovals: string[];
-  deliveryState: 'none' | 'final_message' | 'governance_only';
+  deliveryState: 'none' | 'awaiting_approval' | 'paused' | 'final';
   nextAction: string;
 }
 
@@ -52,7 +51,6 @@ export interface BuildUniversalPromptContractParams {
   workingMemoryFrame?: PromptWorkingMemoryFrame | null;
   toolObservationSummary?: string | null;
   promptMode?: PromptInputMode;
-  protocolRepairInstruction?: string | null;
 }
 
 export interface UniversalPromptContract {
@@ -385,7 +383,6 @@ function buildTrustedRuntimeStateBlock(params: BuildUniversalPromptContractParam
   }
 
   lines.push(buildUserProfileBlock(params.userProfileSummary));
-  lines.push(buildProtocolRepairStateBlock(params.protocolRepairInstruction));
   lines.push('</trusted_runtime_state>');
   return lines.join('\n');
 }
@@ -405,23 +402,9 @@ function buildTrustedWorkingMemoryBlock(frame: PromptWorkingMemoryFrame | null |
   ].join('\n');
 }
 
-function buildProtocolRepairStateBlock(instruction: string | null | undefined): string {
-  if (!instruction?.trim()) {
-    return '<protocol_repair_state>\n(none)\n</protocol_repair_state>';
-  }
-
-  return [
-    '<protocol_repair_state>',
-    'The previous assistant response violated the runtime tool protocol.',
-    instruction.trim(),
-    'Recover by following <tool_protocol> and <closeout_protocol> exactly on the next assistant turn.',
-    '</protocol_repair_state>',
-  ].join('\n');
-}
-
 function buildToolRoutingSummary(activeTools: string[]): string[] {
   if (activeTools.length === 0) {
-    return ['- No external tools are available this turn. Close with `sage_finish_turn` when you can answer directly or need clarification.'];
+    return ['- No external tools are available this turn. Answer directly in plain assistant text.'];
   }
 
   const activeRoutedTools = activeTools.filter((tool) => isRoutedTool(tool));
@@ -487,7 +470,7 @@ function buildDiscordDisambiguators(activeTools: string[]): string[] {
       ? '- Typed Discord actions come before raw API fallback. Use `discord_admin.api` only after typed `discord_server` or `discord_admin` actions do not cover the task.'
       : '',
     hasDiscordMessagesTool
-      ? '- Use `discord_messages.send` only when final delivery must be a Discord-native message inside the channel; otherwise close with `sage_finish_turn`.'
+      ? '- Do not use `discord_messages.send` for normal conversational replies. Reserve it for distinct Discord-native artifacts only.'
       : '',
   ].filter((line) => line.length > 0);
 }
@@ -498,22 +481,22 @@ function buildFewShotExamples(activeTools: string[]): string {
 
   const examples: string[] = [
     '<few_shot_examples>',
-    '<example name="tool_instead_of_narration">',
+    '<example name="draft_plus_tool_call">',
     'User asks for current server channels.',
-    'Good behavior: call the narrowest Discord tool, inspect the result, then close with sage_finish_turn(kind="final_answer", message="...").',
-    'Bad behavior: narrate that you plan to call a tool, or answer from memory without evidence.',
+    'Good behavior: say "I\'ll check the current channels now." while calling the narrowest Discord tool in the same assistant turn.',
+    'After the tool result returns, answer in plain assistant text with no more tool calls if you are done.',
     '</example>',
-    '<example name="clean_closeout">',
-    'After enough evidence exists, stop calling tools and close exactly once with sage_finish_turn.',
-    'Use kind="clarification_question" only when one short missing-information question is required.',
+    '<example name="clean_plain_text_closeout">',
+    'After enough evidence exists, stop calling tools and answer directly in plain assistant text.',
+    'If one short missing-information question is required, ask it directly in plain assistant text with no tool calls.',
     '</example>',
   ];
 
   if (hasDiscordMessages) {
     examples.push(
-      '<example name="tool_delivered_final_message">',
-      'If discord_messages.send already posted the final answer in-channel, your next closeout is sage_finish_turn(kind="delivered_via_tool").',
-      'Do not repeat the same answer as plain assistant prose.',
+      '<example name="artifact_separate_from_main_reply">',
+      'If a tool creates a distinct Discord-native artifact, keep the main conversational answer in assistant text.',
+      'Do not use artifact tools as the normal reply path.',
       '</example>',
     );
   }
@@ -521,8 +504,8 @@ function buildFewShotExamples(activeTools: string[]): string {
   if (hasDiscordAdmin) {
     examples.push(
       '<example name="approval_resume">',
-      'If an approval interrupt is already queued, do not restate approval payloads or retry the same admin write unchanged.',
-      'Resume from the latest tool results, finish the approved work, then close cleanly with sage_finish_turn.',
+      'If an approval interrupt is already queued, keep the visible draft aligned with the pending action and wait for the review outcome.',
+      'After approval resolves, continue the same task and end with a normal plain-text answer when no more tools are needed.',
       '</example>',
     );
   }
@@ -565,7 +548,9 @@ function buildAssistantMission(): string {
   return [
     '<assistant_mission>',
     '- Lead with the answer when you can answer safely.',
-    '- Keep visible replies final-form: no meta-analysis, no narrated thinking, no tool narration.',
+    '- Use assistant text as the user-facing channel on every turn.',
+    '- During tool work, assistant text may be a brief visible progress draft that you later refine.',
+    '- Keep visible replies clean: no hidden reasoning, no JSON, no raw tool payloads, and no narrated chain-of-thought.',
     '- Use Discord-native formatting when it materially helps, otherwise keep it plain and concise.',
     '- Verify unstable or uncertain facts before stating them as true.',
     '- Ask one short clarification question instead of guessing high-risk missing details.',
@@ -586,7 +571,9 @@ function buildToolProtocol(activeTools: string[]): string {
 
   return [
     '<tool_protocol>',
-    '- Every assistant turn must use provider-native tool calls only.',
+    '- A single assistant turn may include both plain assistant text and provider-native tool calls.',
+    '- If tools are needed, write a concise visible draft for the user and call the tools in the same turn.',
+    '- If no more tools are needed, answer directly in plain assistant text and end the turn.',
     '- Use external tools when they materially improve the answer or are required to complete the request.',
     '- Batch read-only calls in one provider-native turn when possible; do not loop one-by-one across rounds.',
     '- If a required parameter is missing, ask a clarification question instead of guessing.',
@@ -601,11 +588,10 @@ function buildToolProtocol(activeTools: string[]): string {
 function buildCloseoutProtocol(): string {
   return [
     '<closeout_protocol>',
-    `- Close every completed assistant turn with ${TURN_CLOSEOUT_TOOL_NAME}.`,
-    `- Use ${TURN_CLOSEOUT_TOOL_NAME}(kind="final_answer", message="...") for a normal final answer.`,
-    `- Use ${TURN_CLOSEOUT_TOOL_NAME}(kind="clarification_question", message="...") for one short missing-information question.`,
-    `- Use ${TURN_CLOSEOUT_TOOL_NAME}(kind="delivered_via_tool") after a final-delivery tool already posted the answer.`,
-    `- Never mix ${TURN_CLOSEOUT_TOOL_NAME} with external tool calls in the same assistant response.`,
+    '- No tool calls means the assistant text is the final answer or clarification for this turn.',
+    '- If tool calls are present, treat the assistant text as a provisional visible draft that may be edited later.',
+    '- If approval review interrupts the turn, keep the draft aligned with the pending work and revise it after the outcome if needed.',
+    '- Do not rely on tools to deliver the normal chat reply.',
     '- If approval review interrupts the turn, treat the action as already queued and keep any later visible follow-up brief.',
     '- If the runtime blocks a repeated or unsafe tool batch, pivot to a different tool plan or ask one short clarification question.',
     '</closeout_protocol>',

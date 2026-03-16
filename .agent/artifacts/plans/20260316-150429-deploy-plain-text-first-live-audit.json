@@ -1,0 +1,47 @@
+{
+  "schema_version": "2.0",
+  "artifact_type": "plan",
+  "plan_id": "20260316-150429-deploy-plain-text-first-live-audit",
+  "status": "planned",
+  "created_utc": "2026-03-16T15:04:29.909Z",
+  "updated_utc": "2026-03-16T15:04:29.909Z",
+  "objective": "Commit the plain-text-first agent UX rewrite, deploy it to the hosted VM, update the local server access note with the correct live LangSmith key context, and run live smoke plus trace review for prompt/runtime alignment.",
+  "success_criteria": [],
+  "constraints": [],
+  "scope": {
+    "in": [],
+    "out": []
+  },
+  "milestones": [
+    {
+      "id": "intake",
+      "title": "Capture intake snapshot and touched scope",
+      "status": "completed",
+      "notes": [
+        "Work item scaffolded from the local workflow generator."
+      ]
+    },
+    {
+      "id": "implement",
+      "title": "Implement the scoped changes",
+      "status": "pending",
+      "notes": []
+    },
+    {
+      "id": "validate",
+      "title": "Run validation and publish the completion report",
+      "status": "pending",
+      "notes": []
+    }
+  ],
+  "progress": [
+    {
+      "timestamp_utc": "2026-03-16T15:04:29.909Z",
+      "summary": "Created the local work item scaffold."
+    }
+  ],
+  "decision_log": [],
+  "discoveries": [],
+  "validation_strategy": [],
+  "notes": []
+}

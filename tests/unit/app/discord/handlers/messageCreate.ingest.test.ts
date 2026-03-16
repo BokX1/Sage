@@ -151,7 +151,7 @@ describe('messageCreate - ingest + reply gating', () => {
     mockUpsertIngestedAttachment.mockReset();
     mockDeleteAttachmentChunks.mockReset();
     mockIngestAttachmentText.mockReset();
-    mockGenerateChatReply.mockResolvedValue({ replyText: 'Test response', delivery: 'chat_reply' });
+    mockGenerateChatReply.mockResolvedValue({ replyText: 'Test response', delivery: 'response_session' });
     mockFetchAttachmentText.mockResolvedValue({
       kind: 'ok',
       text: 'default file text',
@@ -233,7 +233,7 @@ describe('messageCreate - ingest + reply gating', () => {
     const attachment = Buffer.from('generated file');
     mockGenerateChatReply.mockResolvedValueOnce({
       replyText: '',
-      delivery: 'approval_governance_only',
+      delivery: 'approval_handoff',
       meta: {
         approvalReview: {
           requestId: 'approval-1',
@@ -256,13 +256,15 @@ describe('messageCreate - ingest + reply gating', () => {
         files: [{ attachment, name: 'report.txt' }],
       }),
     );
-    expect((message as unknown as { reply: ReturnType<typeof vi.fn> }).reply.mock.calls[0]?.[0]?.content).toBeUndefined();
+    expect(
+      (message as unknown as { reply: ReturnType<typeof vi.fn> }).reply.mock.calls[0]?.[0]?.content || undefined,
+    ).toBeUndefined();
   });
 
   it('does not send a duplicate chat reply when approval review is queued without files', async () => {
     mockGenerateChatReply.mockResolvedValueOnce({
       replyText: '',
-      delivery: 'approval_governance_only',
+      delivery: 'approval_handoff',
       meta: {
         approvalReview: {
           requestId: 'approval-2',
@@ -286,7 +288,7 @@ describe('messageCreate - ingest + reply gating', () => {
     mockGenerateChatReply.mockResolvedValueOnce({
       replyText:
         'Self-hosted Sage is not configured for chat in this server yet. Why: this bot instance has no `AI_PROVIDER_API_KEY`, and the hosted Pollinations server-key flow only applies to the hosted invite bot. Next: ask the bot operator to add the self-hosted provider key, then try again.',
-      delivery: 'chat_reply',
+      delivery: 'response_session',
       meta: {
         kind: 'missing_api_key',
         missingApiKey: {
@@ -313,7 +315,7 @@ describe('messageCreate - ingest + reply gating', () => {
   it('attaches a Continue button when the graph pauses for continuation', async () => {
     mockGenerateChatReply.mockResolvedValueOnce({
       replyText: 'I checked the first batch and can continue from here.',
-      delivery: 'chat_reply_with_continue',
+      delivery: 'response_session_with_continue',
       meta: {
         continuation: {
           id: 'cont-1',
@@ -372,7 +374,7 @@ describe('messageCreate - ingest + reply gating', () => {
     mockGenerateChatReply.mockResolvedValueOnce({
       replyText:
         'Verified so far: discord_admin: success.\n\nI reached the continuation limit for this request.\n\nAsk me in a new message if you want me to keep going from here.',
-      delivery: 'chat_reply',
+      delivery: 'response_session',
       meta: undefined,
       files: [],
     });
@@ -397,7 +399,7 @@ describe('messageCreate - ingest + reply gating', () => {
     mockCreateInteractiveButtonSession.mockRejectedValueOnce(new Error('session store offline'));
     mockGenerateChatReply.mockResolvedValueOnce({
       replyText: 'I checked the first batch and can continue from here.',
-      delivery: 'chat_reply_with_continue',
+      delivery: 'response_session_with_continue',
       meta: {
         continuation: {
           id: 'cont-2',
@@ -428,7 +430,7 @@ describe('messageCreate - ingest + reply gating', () => {
   it('attaches a Retry button when the runtime returns retry metadata', async () => {
     mockGenerateChatReply.mockResolvedValueOnce({
       replyText: 'The model behind Sage stopped responding before I could finish that reply. Press Retry if it shows up, or send me that request again.',
-      delivery: 'chat_reply',
+      delivery: 'response_session',
       meta: {
         retry: {
           threadId: 'thread-retry-1',

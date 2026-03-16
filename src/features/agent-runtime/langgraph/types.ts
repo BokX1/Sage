@@ -37,31 +37,42 @@ export interface ToolCallRoundEvent {
 export type GraphCompletionKind =
   | 'final_answer'
   | 'clarification_question'
-  | 'delivered_via_tool'
+  | 'approval_pending'
   | 'pause_handoff'
-  | 'approval_handoff'
-  | 'loop_guard';
+  | 'loop_guard'
+  | 'runtime_failure';
 
 export type GraphStopReason =
-  | 'verified_closeout'
+  | 'assistant_turn_completed'
   | 'approval_interrupt'
   | 'step_window_exhausted'
   | 'graph_timeout'
   | 'max_windows_reached'
   | 'continuation_expired'
   | 'loop_guard'
-  | 'protocol_violation';
+  | 'runtime_failure';
 
 export type GraphDeliveryDisposition =
-  | 'chat_reply'
-  | 'tool_delivered'
-  | 'approval_governance_only'
-  | 'chat_reply_with_continue';
+  | 'response_session'
+  | 'approval_handoff'
+  | 'response_session_with_continue';
 
-export interface GraphToolDeliveryState {
+export interface GraphArtifactDelivery {
   toolName: string;
-  effectKind: 'final_message' | 'governance_only';
+  effectKind: 'governance_only' | 'discord_artifact';
   visibleSummary?: string;
+}
+
+export type GraphResponseSessionStatus = 'draft' | 'awaiting_approval' | 'paused' | 'final' | 'failed';
+
+export interface GraphResponseSession {
+  responseSessionId: string;
+  status: GraphResponseSessionStatus;
+  latestText: string;
+  draftRevision: number;
+  sourceMessageId: string | null;
+  responseMessageId: string | null;
+  linkedArtifactMessageIds: string[];
 }
 
 export interface GraphContextFrame {
@@ -70,9 +81,16 @@ export interface GraphContextFrame {
   completedActions: string[];
   openQuestions: string[];
   pendingApprovals: string[];
-  deliveryState: 'none' | 'final_message' | 'governance_only';
+  deliveryState: 'none' | 'awaiting_approval' | 'paused' | 'final';
   nextAction: string;
 }
+
+export type GraphFinalizedBy =
+  | 'assistant_no_tool_calls'
+  | 'approval_interrupt'
+  | 'continuation_pause'
+  | 'loop_guard'
+  | 'runtime_failure';
 
 export interface ToolCallFinalizationEvent {
   attempted: boolean;
@@ -81,9 +99,8 @@ export interface ToolCallFinalizationEvent {
   stopReason: GraphStopReason;
   completionKind: GraphCompletionKind;
   deliveryDisposition: GraphDeliveryDisposition;
-  protocolRepairCount: number;
-  protocolRepairInstruction?: string | null;
-  toolDeliveredFinal: boolean;
+  finalizedBy: GraphFinalizedBy;
+  draftRevision: number;
   contextFrame?: GraphContextFrame;
   rebudgeting?: GraphRebudgetEvent;
 }
@@ -214,9 +231,8 @@ export interface AgentGraphState {
   completionKind: GraphCompletionKind | null;
   stopReason: GraphStopReason;
   deliveryDisposition: GraphDeliveryDisposition;
-  protocolRepairCount: number;
-  protocolRepairInstruction: string | null;
-  finalToolDelivery: GraphToolDeliveryState | null;
+  responseSession: GraphResponseSession;
+  artifactDeliveries: GraphArtifactDelivery[];
   contextFrame: GraphContextFrame;
   graphStatus: 'running' | 'interrupted' | 'completed' | 'failed';
   activeWindowDurationMs: number;

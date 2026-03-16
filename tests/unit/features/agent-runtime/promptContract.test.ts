@@ -86,9 +86,9 @@ describe('promptContract', () => {
       'system_time',
     ]).systemMessage;
 
-    expect(prompt).toContain('Every assistant turn must use provider-native tool calls only.');
-    expect(prompt).toContain('Close every completed assistant turn with sage_finish_turn.');
-    expect(prompt).toContain('Use sage_finish_turn(kind="final_answer", message="...")');
+    expect(prompt).toContain('A single assistant turn may include both plain assistant text and provider-native tool calls.');
+    expect(prompt).toContain('No tool calls means the assistant text is the final answer or clarification for this turn.');
+    expect(prompt).toContain('Do not rely on tools to deliver the normal chat reply.');
     expect(prompt).toContain('Routed tools expose action-level `help`');
     expect(prompt).toContain('Direct tools do not expose `help`');
     expect(prompt).toContain('discord_messages: Exact message evidence and Discord-native delivery.');

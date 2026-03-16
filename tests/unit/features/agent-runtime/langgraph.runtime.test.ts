@@ -275,34 +275,40 @@ function makeInterruptedState() {
       succeeded: true,
       completedAt: '2026-03-13T09:30:00.000Z',
       stopReason: 'approval_interrupt',
-      completionKind: 'approval_handoff',
-      deliveryDisposition: 'approval_governance_only',
-      protocolRepairCount: 0,
-      protocolRepairInstruction: null,
-      toolDeliveredFinal: false,
+      completionKind: 'approval_pending',
+      deliveryDisposition: 'approval_handoff',
+      finalizedBy: 'approval_interrupt',
+      draftRevision: 1,
       contextFrame: {
         objective: 'Finish the request.',
         verifiedFacts: [],
         completedActions: [],
         openQuestions: [],
         pendingApprovals: ['discord_admin:request-1'],
-        deliveryState: 'none',
+        deliveryState: 'awaiting_approval',
         nextAction: 'Wait for approval resolution.',
       },
     },
-    completionKind: 'approval_handoff',
+    completionKind: 'approval_pending',
     stopReason: 'approval_interrupt',
-    deliveryDisposition: 'approval_governance_only',
-    protocolRepairCount: 0,
-    protocolRepairInstruction: null,
-    finalToolDelivery: null,
+    deliveryDisposition: 'approval_handoff',
+    responseSession: {
+      responseSessionId: 'trace-1',
+      status: 'awaiting_approval',
+      latestText: 'Working on that now.',
+      draftRevision: 1,
+      sourceMessageId: null,
+      responseMessageId: null,
+      linkedArtifactMessageIds: [],
+    },
+    artifactDeliveries: [],
     contextFrame: {
       objective: 'Finish the request.',
       verifiedFacts: [],
       completedActions: [],
       openQuestions: [],
       pendingApprovals: ['discord_admin:request-1'],
-      deliveryState: 'none',
+      deliveryState: 'awaiting_approval',
       nextAction: 'Wait for approval resolution.',
     },
     graphStatus: 'interrupted',
@@ -335,16 +341,14 @@ function makeFinishTurnMessage(
   kind: 'final_answer' | 'clarification_question' | 'delivered_via_tool',
   message?: string,
 ): AIMessage {
+  const content =
+    kind === 'clarification_question'
+      ? message ?? 'What detail should I use?'
+      : kind === 'delivered_via_tool'
+        ? message ?? 'The requested artifact is ready.'
+        : message ?? 'All set.';
   return new AIMessage({
-    content: '',
-    tool_calls: [
-      {
-        id: `finish-${kind}`,
-        name: 'sage_finish_turn',
-        args: message ? { kind, message } : { kind },
-        type: 'tool_call',
-      },
-    ],
+    content,
   });
 }
 
@@ -422,8 +426,8 @@ describe('runGraphValueStream', () => {
     expect(result).toMatchObject({
       graphStatus: 'interrupted',
       stopReason: 'approval_interrupt',
-      completionKind: 'approval_handoff',
-      deliveryDisposition: 'approval_governance_only',
+      completionKind: 'approval_pending',
+      deliveryDisposition: 'approval_handoff',
       replyText: '',
     });
     expect(result.pendingInterrupt).toMatchObject({
@@ -515,9 +519,9 @@ describe('runGraphValueStream', () => {
         values: {
           ...makeInterruptedState(),
           graphStatus: 'completed',
-          stopReason: 'verified_closeout',
+          stopReason: 'assistant_turn_completed',
           completionKind: 'final_answer',
-          deliveryDisposition: 'chat_reply',
+          deliveryDisposition: 'response_session',
           pendingInterrupt: null,
         },
       })),
@@ -543,9 +547,9 @@ describe('runGraphValueStream', () => {
         values: {
           ...makeInterruptedState(),
           graphStatus: 'running',
-          stopReason: 'verified_closeout',
+          stopReason: 'assistant_turn_completed',
           completionKind: null,
-          deliveryDisposition: 'chat_reply',
+          deliveryDisposition: 'response_session',
           pendingInterrupt: null,
           pendingReadCalls: [{ id: 'call-recursion-1', name: 'github', args: { q: 'status' } }],
           pendingReadExecutionCalls: [{ id: 'call-recursion-1', name: 'github', args: { q: 'status' } }],
@@ -559,7 +563,7 @@ describe('runGraphValueStream', () => {
     expect(result.graphStatus).toBe('completed');
     expect(result.stopReason).toBe('loop_guard');
     expect(result.completionKind).toBe('loop_guard');
-    expect(result.deliveryDisposition).toBe('chat_reply');
+    expect(result.deliveryDisposition).toBe('response_session');
     expect(result.replyText).toContain('recursion safety limit');
     expect(result.roundEvents.at(-1)).toMatchObject({
       guardReason: 'recursion_limit',
@@ -641,7 +645,7 @@ describe('runGraphValueStream', () => {
     expect(result.graphStatus).toBe('interrupted');
     expect(result.stopReason).toBe('step_window_exhausted');
     expect(result.completionKind).toBe('pause_handoff');
-    expect(result.deliveryDisposition).toBe('chat_reply_with_continue');
+    expect(result.deliveryDisposition).toBe('response_session_with_continue');
     expect(result.pendingInterrupt).toMatchObject({
       kind: 'continue_prompt',
       completedWindows: 1,
@@ -1327,7 +1331,7 @@ describe('runGraphValueStream', () => {
     expect(result.graphStatus).toBe('interrupted');
     expect(result.stopReason).toBe('graph_timeout');
     expect(result.completionKind).toBe('pause_handoff');
-    expect(result.deliveryDisposition).toBe('chat_reply_with_continue');
+    expect(result.deliveryDisposition).toBe('response_session_with_continue');
     expect(result.pendingInterrupt).toMatchObject({
       kind: 'continue_prompt',
       pauseReason: 'graph_timeout',
@@ -1378,7 +1382,7 @@ describe('runGraphValueStream', () => {
     expect(result.graphStatus).toBe('completed');
     expect(result.stopReason).toBe('max_windows_reached');
     expect(result.completionKind).toBe('pause_handoff');
-    expect(result.deliveryDisposition).toBe('chat_reply');
+    expect(result.deliveryDisposition).toBe('response_session');
     expect(result.replyText).toContain('gathered the key GitHub findings');
     expect(result.replyText).toContain('I hit the continuation limit for this request.');
     expect(result.replyText).toContain('send a new message if you want me to keep going');
@@ -1450,8 +1454,8 @@ describe('runGraphValueStream', () => {
     );
     expect(result.graphStatus).toBe('interrupted');
     expect(result.stopReason).toBe('approval_interrupt');
-    expect(result.completionKind).toBe('approval_handoff');
-    expect(result.deliveryDisposition).toBe('approval_governance_only');
+    expect(result.completionKind).toBe('approval_pending');
+    expect(result.deliveryDisposition).toBe('approval_handoff');
     expect(result.pendingInterrupt).toMatchObject({
       kind: 'approval_review',
       requestId: 'request-1',
@@ -1518,8 +1522,8 @@ describe('runGraphValueStream', () => {
     expect(modelInvokeMock).not.toHaveBeenCalled();
     expect(result.graphStatus).toBe('interrupted');
     expect(result.stopReason).toBe('approval_interrupt');
-    expect(result.completionKind).toBe('approval_handoff');
-    expect(result.deliveryDisposition).toBe('approval_governance_only');
+    expect(result.completionKind).toBe('approval_pending');
+    expect(result.deliveryDisposition).toBe('approval_handoff');
     expect(result.pendingInterrupt).toMatchObject({
       kind: 'approval_review',
       requestId: 'request-1',
@@ -1936,9 +1940,9 @@ describe('runGraphValueStream', () => {
     });
 
     expect(resumed.graphStatus).toBe('completed');
-    expect(resumed.stopReason).toBe('verified_closeout');
+    expect(resumed.stopReason).toBe('assistant_turn_completed');
     expect(resumed.completionKind).toBe('final_answer');
-    expect(resumed.deliveryDisposition).toBe('chat_reply');
+    expect(resumed.deliveryDisposition).toBe('response_session');
     expect(resumed.replyText).toContain('Done after approval.');
   });
 

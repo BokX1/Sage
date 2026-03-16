@@ -10,7 +10,7 @@ describe('visibleReply', () => {
   it('returns the route-aware last-resort fallback when a chat reply is empty', () => {
     const result = finalizeVisibleReplyText({
       replyText: '```json\n{"action":"delete_message"}\n```',
-      deliveryDisposition: 'chat_reply',
+      deliveryDisposition: 'response_session',
       emptyFallback: buildLastResortVisibleReply('turn'),
     });
 
@@ -20,17 +20,17 @@ describe('visibleReply', () => {
   it('returns the route-aware last-resort fallback when no visible reply exists', () => {
     const turnFallback = finalizeVisibleReplyText({
       replyText: '',
-      deliveryDisposition: 'chat_reply',
+      deliveryDisposition: 'response_session',
       emptyFallback: buildLastResortVisibleReply('turn'),
     });
     const continuationFallback = finalizeVisibleReplyText({
       replyText: '',
-      deliveryDisposition: 'chat_reply_with_continue',
+      deliveryDisposition: 'response_session_with_continue',
       emptyFallback: buildLastResortVisibleReply('continue_prompt'),
     });
     const continuationResumeFallback = finalizeVisibleReplyText({
       replyText: '',
-      deliveryDisposition: 'chat_reply_with_continue',
+      deliveryDisposition: 'response_session_with_continue',
       emptyFallback: buildLastResortVisibleReply('continue_resume'),
     });
     expect(turnFallback).toContain('I made progress on that');
@@ -50,27 +50,27 @@ describe('visibleReply', () => {
   it('prefers a continuation summary over a raw tool-count fallback when the visible reply is empty', () => {
     const result = finalizeVisibleReplyText({
       replyText: 'I checked the relevant GitHub files and still need one more pass to connect the findings.',
-      deliveryDisposition: 'chat_reply_with_continue',
+      deliveryDisposition: 'response_session_with_continue',
       emptyFallback: buildLastResortVisibleReply('continue_prompt'),
     });
 
     expect(result).toContain('I checked the relevant GitHub files');
   });
 
-  it('allows empty text for tool-delivered and governance-only outcomes', () => {
+  it('falls back to route-aware copy when response-session text is empty', () => {
     expect(
       finalizeVisibleReplyText({
         replyText: '',
-        deliveryDisposition: 'tool_delivered',
+        deliveryDisposition: 'response_session',
         emptyFallback: buildLastResortVisibleReply('turn'),
       }),
-    ).toBe('');
+    ).toContain('I made progress on that');
     expect(
       finalizeVisibleReplyText({
         replyText: '',
-        deliveryDisposition: 'approval_governance_only',
+        deliveryDisposition: 'approval_handoff',
         emptyFallback: buildLastResortVisibleReply('approval_resume'),
       }),
-    ).toBe('');
+    ).toContain('That review is resolved');
   });
 });

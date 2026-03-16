@@ -77,12 +77,5 @@ export function finalizeVisibleReplyText(params: {
   if (cleanedReplyText) {
     return cleanedReplyText;
   }
-  if (
-    params.deliveryDisposition === 'tool_delivered' ||
-    params.deliveryDisposition === 'approval_governance_only'
-  ) {
-    return '';
-  }
-
   return params.emptyFallback;
 }

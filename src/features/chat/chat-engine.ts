@@ -15,7 +15,7 @@ import {
 import type { PromptInputMode } from '../agent-runtime/promptContract';
 import { LLMMessageContent } from '../../platform/llm/llm-types';
 import { config } from '../../platform/config/env';
-import type { RunChatTurnResult } from '../agent-runtime/agentRuntime';
+import type { RunChatTurnParams, RunChatTurnResult } from '../agent-runtime/agentRuntime';
 
 import { limitByKey } from '../../shared/async/perKeyConcurrency';
 
@@ -64,7 +64,8 @@ export async function generateChatReply(params: {
   isAdmin?: boolean;
   canModerate?: boolean;
   promptMode?: PromptInputMode;
-}): Promise<Pick<RunChatTurnResult, 'replyText' | 'delivery' | 'meta' | 'files'>> {
+  onResponseSessionUpdate?: RunChatTurnParams['onResponseSessionUpdate'];
+}): Promise<Pick<RunChatTurnResult, 'replyText' | 'delivery' | 'meta' | 'files' | 'responseSession' | 'artifactDeliveries'>> {
   // Enforce sequential processing per user
   const limit = limitByKey(params.userId, 1);
 
@@ -86,6 +87,7 @@ export async function generateChatReply(params: {
       isAdmin = false,
       canModerate = false,
       promptMode,
+      onResponseSessionUpdate,
     } = params;
 
     // 1. Load Profile
@@ -120,6 +122,7 @@ export async function generateChatReply(params: {
       isAdmin,
       canModerate,
       promptMode,
+      onResponseSessionUpdate,
     });
 
     const replyText = result.replyText;
@@ -232,6 +235,8 @@ export async function generateChatReply(params: {
       delivery: result.delivery,
       meta: result.meta,
       files: result.files,
+      responseSession: result.responseSession,
+      artifactDeliveries: result.artifactDeliveries,
     };
   });
 }

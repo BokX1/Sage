@@ -74,7 +74,7 @@ describe('interactiveSage delivery', () => {
     consumeActiveInteractiveSessionMock.mockResolvedValue(true);
   });
 
-  it('clears the deferred interaction when approval-governance-only turns do not return files', async () => {
+  it('keeps the deferred interaction visible when approval handoff returns a draft', async () => {
     parseInteractiveSessionCustomIdMock.mockReturnValue('session-1');
     getActiveInteractiveSessionMock.mockResolvedValue({
       kind: 'prompt_button',
@@ -86,8 +86,8 @@ describe('interactiveSage delivery', () => {
       expiresAt: new Date('2026-03-14T00:00:00.000Z'),
     });
     generateChatReplyMock.mockResolvedValue({
-      replyText: '',
-      delivery: 'approval_governance_only',
+      replyText: 'Working on that now.',
+      delivery: 'approval_handoff',
       meta: {
         approvalReview: {
           requestId: 'approval-1',
@@ -119,12 +119,12 @@ describe('interactiveSage delivery', () => {
 
     expect(handled).toBe(true);
     expect(interaction.deferReply).toHaveBeenCalledWith({ ephemeral: true });
-    expect(interaction.deleteReply).toHaveBeenCalledTimes(1);
-    expect(interaction.editReply).not.toHaveBeenCalled();
+    expect(interaction.deleteReply).not.toHaveBeenCalled();
+    expect(interaction.editReply).toHaveBeenCalled();
     expect(interaction.followUp).not.toHaveBeenCalled();
   });
 
-  it('still returns approval-governance-only files without placeholder text', async () => {
+  it('still returns approval-handoff files without a duplicate placeholder', async () => {
     parseInteractiveSessionCustomIdMock.mockReturnValue('session-1-files');
     getActiveInteractiveSessionMock.mockResolvedValue({
       kind: 'prompt_button',
@@ -138,7 +138,7 @@ describe('interactiveSage delivery', () => {
     const attachment = Buffer.from('report body');
     generateChatReplyMock.mockResolvedValue({
       replyText: '',
-      delivery: 'approval_governance_only',
+      delivery: 'approval_handoff',
       meta: {
         approvalReview: {
           requestId: 'approval-1',
@@ -169,9 +169,11 @@ describe('interactiveSage delivery', () => {
     const handled = await handleInteractiveButtonSession(interaction as never);
 
     expect(handled).toBe(true);
-    expect(interaction.editReply).toHaveBeenCalledWith({
-      files: [{ attachment, name: 'report.txt' }],
-    });
+    expect(interaction.editReply).toHaveBeenCalledWith(
+      expect.objectContaining({
+        files: [{ attachment, name: 'report.txt' }],
+      }),
+    );
     expect(interaction.deleteReply).not.toHaveBeenCalled();
   });
 
@@ -189,7 +191,7 @@ describe('interactiveSage delivery', () => {
     generateChatReplyMock.mockResolvedValue({
       replyText:
         'Self-hosted Sage is not configured for chat in this server yet. Why: this bot instance has no `AI_PROVIDER_API_KEY`, and the hosted Pollinations server-key flow only applies to the hosted invite bot. Next: ask the bot operator to add the self-hosted provider key, then try again.',
-      delivery: 'chat_reply',
+      delivery: 'response_session',
       meta: {
         kind: 'missing_api_key',
         missingApiKey: {
@@ -239,7 +241,7 @@ describe('interactiveSage delivery', () => {
     });
     generateChatReplyMock.mockResolvedValue({
       replyText: 'Sage is waiting for server activation here.',
-      delivery: 'chat_reply',
+      delivery: 'response_session',
       meta: {
         kind: 'missing_api_key',
         missingApiKey: {
@@ -291,7 +293,7 @@ describe('interactiveSage delivery', () => {
     });
     generateChatReplyMock.mockResolvedValue({
       replyText: 'I checked the first batch and can continue from here.',
-      delivery: 'chat_reply_with_continue',
+      delivery: 'response_session_with_continue',
       meta: {
         continuation: {
           id: 'cont-1',
@@ -373,7 +375,7 @@ describe('interactiveSage delivery', () => {
     createInteractiveButtonSessionMock.mockRejectedValueOnce(new Error('session store offline'));
     generateChatReplyMock.mockResolvedValue({
       replyText: 'I checked the first batch and can continue from here.',
-      delivery: 'chat_reply_with_continue',
+      delivery: 'response_session_with_continue',
       meta: {
         continuation: {
           id: 'cont-1b',
@@ -426,7 +428,7 @@ describe('interactiveSage delivery', () => {
     });
     generateChatReplyMock.mockResolvedValue({
       replyText: 'The model behind Sage stopped responding before I could finish that reply. Press Retry if it shows up, or send me that request again.',
-      delivery: 'chat_reply',
+      delivery: 'response_session',
       meta: {
         retry: {
           threadId: 'thread-1',
@@ -506,7 +508,7 @@ describe('interactiveSage delivery', () => {
     });
     resumeContinuationChatTurnMock.mockResolvedValue({
       replyText: 'Resumed and finished.',
-      delivery: 'chat_reply',
+      delivery: 'response_session',
       meta: undefined,
       files: [],
     });
@@ -585,7 +587,7 @@ describe('interactiveSage delivery', () => {
     });
     retryFailedChatTurnMock.mockResolvedValue({
       replyText: 'Recovered after retry.',
-      delivery: 'chat_reply',
+      delivery: 'response_session',
       meta: undefined,
       files: [],
     });

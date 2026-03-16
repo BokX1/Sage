@@ -1,0 +1,94 @@
+{
+  "schema_version": "2.0",
+  "artifact_type": "report",
+  "run_id": "20260316-140951-plain-text-first-agent-ux-rewrite",
+  "status": "completed",
+  "timestamp_utc": "2026-03-16T15:08:00.000Z",
+  "objective": "Rewrite Sage from a tool-protocol-first LangGraph loop to a plain-text-first, editable-response-session UX with backend-only tool execution and end-to-end legacy cleanup.",
+  "plan_id": "20260316-140951-plain-text-first-agent-ux-rewrite",
+  "scope_summary": "Reworked the LangGraph runtime, prompt contract, and Discord transport so assistant text is now the primary user-facing channel, tool calls are backend-only coordination, provisional drafts are streamed into one editable response session, and no-tool assistant turns finalize the conversation without terminal delivery tools.",
+  "constraints": [
+    "Treated the rewrite as a hard breaking change with no compatibility layer for sage_finish_turn or tool-delivered normal chat replies.",
+    "Kept the touched scope focused on runtime, prompt, Discord transport, tests, docs, and required workflow artifacts."
+  ],
+  "changes": [
+    {
+      "path": "src/features/agent-runtime/langgraph/runtime.ts",
+      "summary": "Rewrote the graph loop so assistant text plus tool calls becomes a provisional draft, no-tool assistant turns finalize the turn, approval/pause outcomes use response-session semantics, and terminal closeout-tool logic was removed."
+    },
+    {
+      "path": "src/features/agent-runtime/langgraph/types.ts",
+      "summary": "Replaced the old closeout/tool-delivery state with response-session-first graph types, status enums, artifact delivery metadata, and plain-text-first completion/stop semantics."
+    },
+    {
+      "path": "src/features/agent-runtime/agentRuntime.ts",
+      "summary": "Updated runtime results and streaming callbacks so callers receive response-session metadata and live draft updates instead of only one final reply blob."
+    },
+    {
+      "path": "src/app/discord/handlers/messageCreate.ts",
+      "summary": "Added editable response-session handling so the first draft sends one Discord reply, later assistant updates edit it in place, and final overflow is sent only at finalization."
+    },
+    {
+      "path": "src/features/agent-runtime/promptContract.ts",
+      "summary": "Rewrote the universal prompt contract to teach the model a plain-text-first, tool-assisted behavior pattern and removed all sage_finish_turn and tool-only closeout instructions."
+    },
+    {
+      "path": "docs/architecture/PIPELINE.md",
+      "summary": "Updated the architecture docs to describe the plain-text-first loop, response-session delivery model, and new completion/stop semantics."
+    },
+    {
+      "path": "tests/unit/features/agent-runtime/langgraph.runtime.test.ts",
+      "summary": "Replaced legacy protocol-closeout expectations with tests for provisional draft updates, plain-text finalization, and response-session-based outcomes."
+    }
+  ],
+  "validations": [
+    {
+      "command": "npm run lint",
+      "status": "passed",
+      "notes": "Lint passed after the runtime, prompt, transport, and test rewrites."
+    },
+    {
+      "command": "npm run test",
+      "status": "passed",
+      "notes": "Unit and integration suites passed after updating the plain-text-first behavior and transport expectations."
+    },
+    {
+      "command": "npm run build",
+      "status": "passed",
+      "notes": "TypeScript build passed with the new response-session types and runtime wiring."
+    },
+    {
+      "command": "npm run check:docs",
+      "status": "passed",
+      "notes": "Tracked docs checks passed after updating the architecture and runbook guidance."
+    },
+    {
+      "command": "pwsh -NoProfile -File .agent/workflows/validate-artifacts.ps1",
+      "status": "passed",
+      "notes": "Artifact schemas and canonical workflow layout validated successfully."
+    },
+    {
+      "command": "node .agent/workflows/audit-workflow.cjs",
+      "status": "passed",
+      "notes": "Workflow audit passed after the plan/report updates."
+    },
+    {
+      "command": "pwsh -NoProfile -File .agent/workflows/check-doc-links.ps1",
+      "status": "passed",
+      "notes": "Local workflow docs link gate passed."
+    }
+  ],
+  "evidence": [
+    "The runtime now accepts mixed assistant text plus tool calls and finalizes on assistant text without tool calls.",
+    "Discord reply handling now edits one primary response message across draft revisions instead of routing normal answers through tools.",
+    "Repo docs and tests no longer describe sage_finish_turn or plain text as a protocol violation."
+  ],
+  "decisions": [
+    "Made assistant plain text the canonical user-facing surface and restricted direct Discord-visible tool output to special artifacts only.",
+    "Implemented response-session updates in the Discord transport by consuming streamed graph state rather than introducing a separate persisted transport subsystem in the same pass."
+  ],
+  "risks": [
+    "Response-session message continuity is adapter-local for the current execution; persisted cross-run rebinding to the exact original Discord message id is not yet part of this rewrite."
+  ],
+  "deferred_items": []
+}

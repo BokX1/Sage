@@ -89,7 +89,7 @@ The compact `AgentTrace` ledger includes:
 - `terminationReason` — deprecated compact alias for the graph `stopReason`
 - `budgetJson.graphRuntime.completionKind` — semantic closeout classification
 - `budgetJson.graphRuntime.stopReason` — operational stop cause
-- `budgetJson.graphRuntime.deliveryDisposition` — whether Sage posted chat text, relied on tool delivery, or stayed governance-only
+- `budgetJson.graphRuntime.deliveryDisposition` — whether Sage is editing the primary response session, pausing it with a Continue affordance, or waiting on approval handoff
 - `langSmithRunId` — LangSmith run id
 - `langSmithTraceId` — LangSmith trace id
 - `budgetJson` — token budget allocation
