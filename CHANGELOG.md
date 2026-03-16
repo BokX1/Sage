@@ -26,6 +26,7 @@
 
 ### Fixed
 - Fixed the AI-provider diagnostics surface for BYOP and hosted checks: `npm run doctor -- --llm-ping` now honors one-off environment overrides like `AI_PROVIDER_API_KEY=...`, and `npm run langgraph:discord:smoke` now loads the real `.env` before seeding fallback defaults so live smoke runs no longer drift to `example.invalid`.
+- Fixed OpenAI-compatible tool-schema normalization so Sage now forces outbound function-tool parameter schemas to be explicit top-level JSON Schema objects, avoiding provider-side 400s from tools like `discord_server` when a schema omitted `type: "object"`.
 - Runtime Retry and Continue buttons are now single-use at the interaction-session layer, so repeated clicks cannot trigger duplicate backend turns while Sage is still updating the source message.
 - Standardized Sage's user-facing failure and retry copy so runtime, interaction, and Pollinations key-verification errors now read as one clean message flow instead of awkward `Next:` fragments.
 

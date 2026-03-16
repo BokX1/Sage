@@ -316,11 +316,26 @@ function sanitizeToolDefinitionsForProvider(tools: ToolDefinition[] | undefined)
     return tools;
   }
 
+  const normalizeToolParameters = (parameters: Record<string, unknown>): Record<string, unknown> => {
+    const sanitized = sanitizeJsonSchemaForProvider(parameters);
+    const objectSchema: Record<string, unknown> =
+      sanitized && typeof sanitized === 'object' && !Array.isArray(sanitized)
+        ? { ...sanitized }
+        : { properties: {} };
+    if (objectSchema.type !== 'object') {
+      objectSchema.type = 'object';
+    }
+    if (!objectSchema.properties || typeof objectSchema.properties !== 'object' || Array.isArray(objectSchema.properties)) {
+      objectSchema.properties = {};
+    }
+    return objectSchema;
+  };
+
   return tools.map((tool) => ({
     ...tool,
     function: {
       ...tool.function,
-      parameters: sanitizeJsonSchemaForProvider(tool.function.parameters),
+      parameters: normalizeToolParameters(tool.function.parameters),
     },
   }));
 }
