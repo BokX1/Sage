@@ -2,9 +2,9 @@
   "schema_version": "2.0",
   "artifact_type": "plan",
   "plan_id": "20260316-150429-deploy-plain-text-first-live-audit",
-  "status": "planned",
+  "status": "completed",
   "created_utc": "2026-03-16T15:04:29.909Z",
-  "updated_utc": "2026-03-16T15:04:29.909Z",
+  "updated_utc": "2026-03-16T15:26:00.000Z",
   "objective": "Commit the plain-text-first agent UX rewrite, deploy it to the hosted VM, update the local server access note with the correct live LangSmith key context, and run live smoke plus trace review for prompt/runtime alignment.",
   "success_criteria": [],
   "constraints": [],
@@ -24,24 +24,65 @@
     {
       "id": "implement",
       "title": "Implement the scoped changes",
-      "status": "pending",
-      "notes": []
+      "status": "completed",
+      "notes": [
+        "Updated the local VM access note with the VM's actual LangSmith key, pushed the plain-text-first rewrite to master, and synced the hosted VM to the deployed commit."
+      ]
     },
     {
       "id": "validate",
       "title": "Run validation and publish the completion report",
-      "status": "pending",
-      "notes": []
+      "status": "completed",
+      "notes": [
+        "Live AI-provider probe, doctor checks, Discord smoke, natural-language prompt audit, and workflow artifact gates all completed successfully."
+      ]
     }
   ],
   "progress": [
     {
       "timestamp_utc": "2026-03-16T15:04:29.909Z",
       "summary": "Created the local work item scaffold."
+    },
+    {
+      "timestamp_utc": "2026-03-16T15:26:00.000Z",
+      "summary": "Pushed the rewrite, deployed it to the VM, and captured live runtime evidence from smoke, Discord output, and LangSmith traces."
     }
   ],
-  "decision_log": [],
-  "discoveries": [],
-  "validation_strategy": [],
-  "notes": []
+  "decision_log": [
+    {
+      "timestamp_utc": "2026-03-16T15:10:00.000Z",
+      "decision": "Use the VM's configured LangSmith API key for live validation and update the local Server.txt note to match it.",
+      "rationale": "Previous manual smoke drift came from using a different tracing key than the one configured on the live host."
+    },
+    {
+      "timestamp_utc": "2026-03-16T15:18:00.000Z",
+      "decision": "Judge prompt/runtime alignment with both the seeded Discord smoke and one direct natural-language runChatTurn audit on the VM.",
+      "rationale": "The seeded smoke proves runtime and transport correctness, while the direct natural-language turn shows whether the model actually follows the new visible-draft mental model."
+    }
+  ],
+  "discoveries": [
+    {
+      "timestamp_utc": "2026-03-16T15:12:00.000Z",
+      "summary": "The seeded live smoke now completes on the deployed plain-text-first runtime with assistant_turn_completed stops for both the read and approval lanes.",
+      "evidence": [
+        "The VM smoke passed the read path and approval/resume path after deployment to commit 1533552c83a601ff1734edeac1187efb71938e0f."
+      ]
+    },
+    {
+      "timestamp_utc": "2026-03-16T15:21:00.000Z",
+      "summary": "A natural-language audit turn on the VM produced the expected provisional assistant draft before tool execution and then closed in plain text.",
+      "evidence": [
+        "The direct runChatTurn audit emitted \"I'll check the current channels in this server now.\" as a draft response-session update before finalizing with plain assistant text.",
+        "LangSmith trace 15fd84ff-4668-41a6-ac04-36d8ca9e5fd7 recorded the updated prompt version 2026-03-16.plain-text-first-v2 and the graph path through tool_call_turn, execute_read_tools, closeout_turn, and finalize_turn."
+      ]
+    }
+  ],
+  "validation_strategy": [
+    "Push only after the repo passes the full pre-push equivalent checks locally.",
+    "After deployment, verify AI-provider tool-calling compatibility, targeted doctor checks, seeded Discord smoke, and one direct natural-language audit turn on the VM."
+  ],
+  "notes": [
+    "Server.txt was updated locally outside the repo so future manual VM smoke runs use the VM's real LangSmith key.",
+    "The direct natural-language audit intentionally ran outside the long-lived Discord service loop, so its tool call lacked the full live Discord auth context even though it still demonstrated the new prompt/runtime behavior."
+  ]
 }

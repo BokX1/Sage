@@ -1,0 +1,100 @@
+{
+  "schema_version": "2.0",
+  "artifact_type": "report",
+  "run_id": "20260316-150429-deploy-plain-text-first-live-audit",
+  "status": "completed",
+  "timestamp_utc": "2026-03-16T15:26:00.000Z",
+  "objective": "Commit the plain-text-first agent UX rewrite, deploy it to the hosted VM, update the local server access note with the correct live LangSmith key context, and run live smoke plus trace review for prompt/runtime alignment.",
+  "plan_id": "20260316-150429-deploy-plain-text-first-live-audit",
+  "scope_summary": "Pushed the plain-text-first rewrite to origin/master, updated the hosted VM to commit 1533552c83a601ff1734edeac1187efb71938e0f, refreshed the local Server.txt LangSmith note to match the VM, and collected live runtime evidence from AI-provider checks, seeded Discord smoke, recent Discord replies, and a direct natural-language LangSmith-traced audit turn.",
+  "constraints": [
+    "Kept the hosted AI-provider key ephemeral for manual validation commands and did not persist it into the VM .env.",
+    "Updated Server.txt locally outside the repository because it is an operator note rather than tracked repo code."
+  ],
+  "changes": [
+    {
+      "path": "origin/master",
+      "summary": "Pushed commit c21428d9970f21ec57637979d165e552684d5e6f (plain-text-first rewrite) and follow-up commit 1533552c83a601ff1734edeac1187efb71938e0f (stale prompt-contract test cleanup) to master."
+    },
+    {
+      "path": "/home/ubuntu/Sage",
+      "summary": "Fetched and hard-reset the hosted VM repo to 1533552c83a601ff1734edeac1187efb71938e0f, rebuilt the project, and restarted sage.service."
+    },
+    {
+      "path": "C:/Users/ahazi/Desktop/Server.txt",
+      "summary": "Updated the local operator note so the recorded LangSmith key matches the VM's configured live tracing key."
+    }
+  ],
+  "validations": [
+    {
+      "command": "npm run check",
+      "status": "passed",
+      "notes": "Local pre-push-equivalent lint, typecheck, and test gates passed before the final push."
+    },
+    {
+      "command": "npm run build",
+      "status": "passed",
+      "notes": "The app build passed locally before rollout and again on the VM during deployment."
+    },
+    {
+      "command": "npm run docs:lint -- CHANGELOG.md docs/architecture/OVERVIEW.md docs/architecture/PIPELINE.md docs/operations/RUNBOOK.md",
+      "status": "passed",
+      "notes": "Markdown docs remained clean for the touched operator and architecture docs."
+    },
+    {
+      "command": "npm run docs:links -- CHANGELOG.md docs/architecture/OVERVIEW.md docs/architecture/PIPELINE.md docs/operations/RUNBOOK.md",
+      "status": "passed",
+      "notes": "Tracked docs links passed before push."
+    },
+    {
+      "command": "ssh ... \"cd /home/ubuntu/Sage && git reset --hard 1533552c83a601ff1734edeac1187efb71938e0f && npm run build && sudo systemctl restart sage.service\"",
+      "status": "passed",
+      "notes": "The hosted VM was updated to the pushed commit and sage.service came back active."
+    },
+    {
+      "command": "ssh ... \"cd /home/ubuntu/Sage && AI_PROVIDER_API_KEY=<temp> LANGSMITH_API_KEY=<vm-key> npm run ai-provider:probe -- --json\"",
+      "status": "passed",
+      "notes": "The deployed provider passed the live Chat Completions tool-calling probe."
+    },
+    {
+      "command": "ssh ... \"cd /home/ubuntu/Sage && AI_PROVIDER_API_KEY=<temp> LANGSMITH_API_KEY=<vm-key> npm run doctor -- --llm-ping --only ai_provider.config,ai_provider.ping,ai_provider.tool_calls\"",
+      "status": "passed",
+      "notes": "Targeted doctor checks passed on the live VM."
+    },
+    {
+      "command": "ssh ... \"cd /home/ubuntu/Sage && AI_PROVIDER_API_KEY=<temp> LANGSMITH_API_KEY=<vm-key> npm run langgraph:discord:smoke\"",
+      "status": "passed",
+      "notes": "The seeded Discord smoke passed both the read path and the approval/resume path with stop=assistant_turn_completed."
+    },
+    {
+      "command": "ssh ... \"node --import tsx /home/ubuntu/Sage/live-prompt-audit.ts\"",
+      "status": "passed",
+      "notes": "A direct natural-language runChatTurn audit showed the model producing a provisional draft before tool work and then closing in plain text under prompt version 2026-03-16.plain-text-first-v2."
+    },
+    {
+      "command": "pwsh -NoProfile -File .agent/workflows/validate-artifacts.ps1",
+      "status": "passed",
+      "notes": "Artifact validation passed after the deployment plan/report update."
+    },
+    {
+      "command": "node .agent/workflows/audit-workflow.cjs",
+      "status": "passed",
+      "notes": "Workflow audit passed after the deployment plan/report update."
+    }
+  ],
+  "evidence": [
+    "The hosted VM now runs commit 1533552c83a601ff1734edeac1187efb71938e0f with sage.service active.",
+    "The seeded smoke passed end to end and showed the approval path editing the same Discord message via POST followed by PATCH before cleanup.",
+    "Recent live Discord channel history showed Sage replying conversationally in plain assistant text rather than routing normal answers through Discord delivery tools.",
+    "LangSmith session 'sage' contains trace 15fd84ff-4668-41a6-ac04-36d8ca9e5fd7, which recorded prompt version 2026-03-16.plain-text-first-v2 and the tool_call_turn -> execute_read_tools -> closeout_turn -> finalize_turn path."
+  ],
+  "decisions": [
+    "Used the VM's configured LangSmith key for all live validation commands and updated the local operator note to match it.",
+    "Accepted the direct natural-language audit as the best available prompt-behavior check without needing to impersonate a real Discord user message."
+  ],
+  "risks": [
+    "The direct natural-language audit ran outside the long-lived Discord message handler, so the discord_server tool lacked the full live Discord auth context even though the model behavior and trace shape were still observable.",
+    "Response-session message continuity across separate pause/resume invocations is still limited to adapter-local knowledge from the active execution, as noted in the rewrite report."
+  ],
+  "deferred_items": []
+}
