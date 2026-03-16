@@ -979,7 +979,7 @@ const invokeAgentModelTask = task(
         : null;
     const runnable = baseModel.bindTools(
       [...(catalog?.allTools ?? []), buildTurnCloseoutTool()],
-      { tool_choice: 'auto' },
+      { tool_choice: 'required' },
     );
     const taskConfig = getConfig();
     const responseMessage = await runnable.invoke(toLangChainMessages(input.messages), {
