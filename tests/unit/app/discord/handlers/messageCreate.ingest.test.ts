@@ -287,7 +287,7 @@ describe('messageCreate - ingest + reply gating', () => {
   it('keeps self-hosted missing-key replies in plain text instead of the hosted Pollinations bootstrap card', async () => {
     mockGenerateChatReply.mockResolvedValueOnce({
       replyText:
-        'Self-hosted Sage is not configured for chat in this server yet. Why: this bot instance has no `AI_PROVIDER_API_KEY`, and the hosted Pollinations server-key flow only applies to the hosted invite bot. Next: ask the bot operator to add the self-hosted provider key, then try again.',
+        "I'm not set up to chat in this server yet, so please ask the bot operator to add the AI provider key.",
       delivery: 'response_session',
       meta: {
         kind: 'missing_api_key',
@@ -307,7 +307,7 @@ describe('messageCreate - ingest + reply gating', () => {
     expect(mockBuildGuildApiKeyMissingResponse).not.toHaveBeenCalled();
     expect((message as unknown as { reply: ReturnType<typeof vi.fn> }).reply).toHaveBeenCalledWith(
       expect.objectContaining({
-        content: expect.stringContaining('Self-hosted Sage is not configured for chat in this server yet.'),
+        content: expect.stringContaining("I'm not set up to chat in this server yet"),
       }),
     );
   });
@@ -429,7 +429,7 @@ describe('messageCreate - ingest + reply gating', () => {
 
   it('attaches a Retry button when the runtime returns retry metadata', async () => {
     mockGenerateChatReply.mockResolvedValueOnce({
-      replyText: 'The model behind Sage stopped responding before I could finish that reply. Press Retry if it shows up, or send me that request again.',
+      replyText: 'I lost the model connection before I could finish, so please try again.',
       delivery: 'response_session',
       meta: {
         retry: {
@@ -466,7 +466,7 @@ describe('messageCreate - ingest + reply gating', () => {
             components: expect.arrayContaining([
               expect.objectContaining({
                 content:
-                  'The model behind Sage stopped responding before I could finish that reply. Press Retry if it shows up, or send me that request again.',
+                  'I lost the model connection before I could finish, so please try again.',
               }),
               expect.objectContaining({
                 type: 1,

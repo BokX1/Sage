@@ -406,9 +406,7 @@ describe('agentRuntime', () => {
       isAdmin: false,
     });
 
-    expect(result.replyText).toBe(
-      'The model behind Sage stopped responding before I could finish that reply. Press Retry if it shows up, or send me that request again.',
-    );
+    expect(result.replyText).toBe('I lost the model connection before I could finish, so please try again.');
     expect(result.meta).toEqual({
       retry: {
         threadId: 'trace-runtime-failed',
@@ -418,7 +416,7 @@ describe('agentRuntime', () => {
     expect(updateTraceEndMock).toHaveBeenCalledWith(
       expect.objectContaining({
         replyText:
-          'The model behind Sage stopped responding before I could finish that reply. Press Retry if it shows up, or send me that request again.',
+          'I lost the model connection before I could finish, so please try again.',
       }),
     );
   });
@@ -828,7 +826,7 @@ describe('agentRuntime', () => {
     });
 
     expect(result.replyText).toBe(
-      'Sage hit a snag while I was picking that request back up. Press Retry if it shows up. If not, press Continue again or send me a fresh message.',
+      'I ran into a problem while I was picking that back up, so please press Retry or Continue again.',
     );
     expect(result.meta).toEqual({
       retry: {
@@ -839,7 +837,7 @@ describe('agentRuntime', () => {
     expect(updateTraceEndMock).toHaveBeenCalledWith(
       expect.objectContaining({
         replyText:
-          'Sage hit a snag while I was picking that request back up. Press Retry if it shows up. If not, press Continue again or send me a fresh message.',
+          'I ran into a problem while I was picking that back up, so please press Retry or Continue again.',
       }),
     );
   });
@@ -866,7 +864,7 @@ describe('agentRuntime', () => {
     resumeAgentGraphTurnMock.mockResolvedValue(
       makeGraphResult({
         replyText:
-          'I made progress on that, but I do not have a clean reply ready to post yet. Send the next message and I will keep going from the current context.',
+          'Please send me one more message so I can keep going.',
         toolResults: [],
         pendingInterrupt: null,
       }),
@@ -882,9 +880,7 @@ describe('agentRuntime', () => {
     });
 
     expect(result.delivery).toBe('chat_reply');
-    expect(result.replyText).toBe(
-      'I made progress on that, but I do not have a clean reply ready to post yet. Send the next message and I will keep going from the current context.',
-    );
+    expect(result.replyText).toBe('Please send me one more message so I can keep going.');
     expect(result.replyText).not.toContain('press Continue again');
   });
 });

@@ -80,6 +80,20 @@ import {
   buildActionButtonComponent,
   createInteractiveButtonSession,
 } from '../discord/interactiveComponentService';
+import {
+  buildApprovalActionNotFoundText,
+  buildApprovalAdminOnlyText,
+  buildApprovalAlreadyResolvedText,
+  buildApprovalFollowUpPostFailureText,
+  buildApprovalGuildOnlyText,
+  buildApprovalReasonRequiredText,
+  buildApprovalWrongGuildText,
+  buildModerationApprovalChannelPermissionsUnknownText,
+  buildModerationApprovalChannelPermissionMissingText,
+  buildModerationApprovalChannelUnavailableText,
+  buildModerationApprovalPermissionMissingText,
+  buildModerationApprovalPermissionsUnknownText,
+} from '../discord/userFacingCopy';
 import { isAdminInteraction } from '../../platform/discord/admin-permissions';
 import {
   buildApprovalReviewDetailsText,
@@ -4074,7 +4088,7 @@ async function getModerationApprovalPermissionError(
 ): Promise<string | null> {
   const prepared = readPreparedModerationEnvelope(action.executionPayloadJson);
   if (!prepared) {
-    return 'Unable to verify moderation approval permissions for this action.';
+    return buildModerationApprovalPermissionsUnknownText();
   }
 
   const requiredPermission = requiredApproverPermission(prepared.canonicalAction);
@@ -4085,7 +4099,7 @@ async function getModerationApprovalPermissionError(
   if (requiredPermission.scope === 'guild') {
     const memberPermissions = getInteractionMemberPermissions(interaction);
     if (!memberPermissions || !memberPermissions.has(requiredPermission.flag)) {
-      return `❌ Missing required permission to approve this action: ${requiredPermission.label}.`;
+      return buildModerationApprovalPermissionMissingText(requiredPermission.label);
     }
     return null;
   }
@@ -4095,17 +4109,20 @@ async function getModerationApprovalPermissionError(
   const guild = interaction.guild ?? (await client.guilds.fetch(action.guildId));
   const approverMember = await guild.members.fetch(interaction.user.id).catch(() => null);
   if (!approverMember) {
-    return '❌ Unable to verify your permissions in the target channel.';
+    return buildModerationApprovalChannelPermissionsUnknownText();
   }
 
   const targetChannel = await fetchGuildChannel(action.guildId, targetChannelId).catch(() => null);
   if (!targetChannel) {
-    return '❌ Unable to verify permissions because the target channel is unavailable.';
+    return buildModerationApprovalChannelUnavailableText();
   }
 
   const memberPermissions = approverMember.permissionsIn(targetChannel);
   if (!memberPermissions.has(requiredPermission.flag)) {
-    return `❌ Missing required permission to approve this action in <#${targetChannel.id}>: ${requiredPermission.label}.`;
+    return buildModerationApprovalChannelPermissionMissingText({
+      channelId: targetChannel.id,
+      permissionLabel: requiredPermission.label,
+    });
   }
 
   return null;
@@ -4369,28 +4386,28 @@ export async function handleAdminActionButtonInteraction(
   }
 
   if (!interaction.inGuild()) {
-    await interaction.reply({ content: 'Admin action approvals are guild-only.', ephemeral: true });
+    await interaction.reply({ content: buildApprovalGuildOnlyText(), ephemeral: true });
     return true;
   }
 
   if (!isAdminInteraction(interaction)) {
-    await interaction.reply({ content: '❌ Admin only.', ephemeral: true });
+    await interaction.reply({ content: buildApprovalAdminOnlyText(), ephemeral: true });
     return true;
   }
 
   let action = await getApprovalReviewRequestById(parsed.actionId);
   if (!action) {
-    await interaction.reply({ content: 'Action not found.', ephemeral: true });
+    await interaction.reply({ content: buildApprovalActionNotFoundText(), ephemeral: true });
     return true;
   }
 
   if (action.guildId !== interaction.guildId) {
-    await interaction.reply({ content: 'This action belongs to a different guild.', ephemeral: true });
+    await interaction.reply({ content: buildApprovalWrongGuildText(), ephemeral: true });
     return true;
   }
 
   if (action.status !== 'pending') {
-    await interaction.reply({ content: `Action is already ${action.status}.`, ephemeral: true });
+    await interaction.reply({ content: buildApprovalAlreadyResolvedText(action.status), ephemeral: true });
     return true;
   }
 
@@ -4472,9 +4489,11 @@ export async function handleAdminActionButtonInteraction(
         // Ignore refresh failures after races.
       });
     }
-    await interaction.followUp({ content: `Action is already ${latest?.status ?? 'resolved'}.`, ephemeral: true }).catch(() => {
-      // Ignore follow-up failures.
-    });
+    await interaction
+      .followUp({ content: buildApprovalAlreadyResolvedText(latest?.status ?? 'resolved'), ephemeral: true })
+      .catch(() => {
+        // Ignore follow-up failures.
+      });
     return true;
   }
   await refreshApprovalReviewSurfaces(approved, 'admin action approval').catch((error) => {
@@ -4517,34 +4536,34 @@ export async function handleAdminActionRejectModalSubmit(
   }
 
   if (!interaction.inGuild()) {
-    await interaction.reply({ content: 'Admin action approvals are guild-only.', ephemeral: true });
+    await interaction.reply({ content: buildApprovalGuildOnlyText(), ephemeral: true });
     return true;
   }
 
   if (!isAdminInteraction(interaction)) {
-    await interaction.reply({ content: '❌ Admin only.', ephemeral: true });
+    await interaction.reply({ content: buildApprovalAdminOnlyText(), ephemeral: true });
     return true;
   }
 
   const action = await getApprovalReviewRequestById(actionId);
   if (!action) {
-    await interaction.reply({ content: 'Action not found.', ephemeral: true });
+    await interaction.reply({ content: buildApprovalActionNotFoundText(), ephemeral: true });
     return true;
   }
 
   if (action.guildId !== interaction.guildId) {
-    await interaction.reply({ content: 'This action belongs to a different guild.', ephemeral: true });
+    await interaction.reply({ content: buildApprovalWrongGuildText(), ephemeral: true });
     return true;
   }
 
   if (action.status !== 'pending') {
-    await interaction.reply({ content: `Action is already ${action.status}.`, ephemeral: true });
+    await interaction.reply({ content: buildApprovalAlreadyResolvedText(action.status), ephemeral: true });
     return true;
   }
 
   const rejectionReason = interaction.fields.getTextInputValue(ADMIN_ACTION_REJECT_REASON_FIELD_ID)?.trim();
   if (!rejectionReason) {
-    await interaction.reply({ content: 'A rejection reason is required.', ephemeral: true });
+    await interaction.reply({ content: buildApprovalReasonRequiredText(), ephemeral: true });
     return true;
   }
 
@@ -4560,7 +4579,7 @@ export async function handleAdminActionRejectModalSubmit(
   });
   if (!rejected) {
     const latest = await getApprovalReviewRequestById(action.id).catch(() => null);
-    await interaction.editReply(`Action is already ${latest?.status ?? 'resolved'}.`);
+    await interaction.editReply(buildApprovalAlreadyResolvedText(latest?.status ?? 'resolved'));
     return true;
   }
   await logAdminAction({
@@ -4582,7 +4601,7 @@ export async function handleAdminActionRejectModalSubmit(
     return error;
   });
   if (resumeResult instanceof Error) {
-    await interaction.editReply('Rejected. I updated the review cards, but I could not post the follow-up message.');
+    await interaction.editReply(buildApprovalFollowUpPostFailureText());
     return true;
   }
 

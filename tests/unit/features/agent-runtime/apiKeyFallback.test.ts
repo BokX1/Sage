@@ -223,7 +223,9 @@ describe('agent runtime API key fallback', () => {
       }),
     });
 
-    expect(result.replyText).toContain('Self-hosted Sage is not configured for chat in this server yet.');
+    expect(result.replyText).toBe(
+      "I'm not set up to chat in this server yet, so please ask the bot operator to add the AI provider key.",
+    );
     expect(result.meta).toEqual({
       kind: 'missing_api_key',
       missingApiKey: {
@@ -258,7 +260,7 @@ describe('agent runtime API key fallback', () => {
       }),
     });
 
-    expect(result.replyText).toContain('Sage is not active for this server yet.');
+    expect(result.replyText).toBe("I'm not set up in this server yet, so please ask a server admin to activate me.");
     expect(result.meta).toEqual({
       kind: 'missing_api_key',
       missingApiKey: {

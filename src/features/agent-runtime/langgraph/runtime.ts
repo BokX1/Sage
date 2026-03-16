@@ -594,17 +594,6 @@ function bumpResponseSession(params: {
   };
 }
 
-function buildToolNameRollup(results: Array<Pick<SerializedToolResult, 'name'>>): string {
-  const counts = new Map<string, number>();
-  for (const result of results) {
-    counts.set(result.name, (counts.get(result.name) ?? 0) + 1);
-  }
-
-  return Array.from(counts.entries())
-    .map(([name, count]) => (count > 1 ? `${name} x${count}` : name))
-    .join(', ');
-}
-
 function buildDeterministicRuntimeSummary(
   state: Pick<AgentGraphState, 'toolResults' | 'messages' | 'replyText'>,
   options?: {
@@ -622,38 +611,27 @@ function buildDeterministicRuntimeSummary(
     replyText: state.replyText,
   });
 
-  if (options?.continuationLimitReached) {
-    parts.push('I hit the continuation limit for this request.');
-    parts.push('Next: send a new message if you want me to keep going from this state.');
-  } else if (options?.paused) {
-    parts.push('I need another continuation window to keep going from this state.');
-    parts.push('Next: press Continue below if you want me to keep going from the current state.');
-  }
-
-  if (successful.length > 0) {
-    parts.push(
-      `Completed so far: ${successful.length} tool call${successful.length === 1 ? '' : 's'} (${buildToolNameRollup(successful)}).`,
-    );
-  }
-  if (failed.length > 0) {
-    parts.push(
-      `Problems encountered: ${failed.length} tool call${failed.length === 1 ? '' : 's'} (${buildToolNameRollup(failed)}).`,
-    );
-  }
   if (latestAssistantText) {
-    parts.push(`Latest assistant draft: ${latestAssistantText}`);
+    parts.push(latestAssistantText);
   } else if (cleanedReplyText) {
     parts.push(cleanedReplyText);
-  }
-  if (parts.length === 0) {
-    parts.push(
-      options?.paused
-        ? 'I need another continuation window to keep going from this state.'
-        : 'I completed part of the request but do not have enough structured output to finalize cleanly.',
-    );
+  } else if (successful.length > 0 && failed.length > 0) {
+    parts.push('I made some progress, but I also ran into a problem.');
+  } else if (successful.length > 0) {
+    parts.push('I made some progress on that.');
+  } else if (failed.length > 0) {
+    parts.push('I ran into a problem while working on that.');
   }
 
-  return parts.join('\n\n').trim();
+  if (options?.continuationLimitReached) {
+    parts.push('Please send me a new message if you want me to keep going.');
+  } else if (options?.paused) {
+    parts.push('Please press Continue if you want me to keep going.');
+  } else if (parts.length === 0) {
+    parts.push('Please send me another message if you want me to keep going.');
+  }
+
+  return parts.join(' ').trim();
 }
 
 const WINDOW_CLOSEOUT_MAX_OUTPUT_TOKENS = 320;
@@ -693,12 +671,11 @@ function wrapWindowCloseoutReply(params: {
 }): string {
   const parts = [params.summaryBody.trim()].filter((part) => part.length > 0);
   if (params.continuationLimitReached) {
-    parts.push('I hit the continuation limit for this request.');
-    parts.push('Next: send a new message if you want me to keep going from this state.');
+    parts.push('Please send me a new message if you want me to keep going.');
   } else {
-    parts.push('Next: press Continue below if you want me to keep going from the current state.');
+    parts.push('Please press Continue if you want me to keep going.');
   }
-  return parts.join('\n\n').trim();
+  return parts.join(' ').trim();
 }
 
 async function buildWindowCloseoutSummary(params: {
@@ -1339,20 +1316,12 @@ function buildLoopGuardReply(params: {
   reason: NonNullable<ToolCallRoundEvent['guardReason']>;
   state: Pick<AgentGraphState, 'toolResults' | 'messages' | 'replyText'>;
 }): string {
-  const explanation =
-    params.reason === 'too_many_tool_calls'
-      ? 'I stopped here because the agent planned too many tool calls in one round to execute safely.'
-      : params.reason === 'repeated_identical_batch'
-        ? 'I stopped here because the agent kept repeating the same tool plan instead of making progress.'
-        : 'I stopped here because the agent hit the LangGraph recursion safety limit before it could finish safely.';
-  const nextStep =
-    params.reason === 'too_many_tool_calls'
-      ? 'Next: ask me to handle a smaller subset of the work, or tell me which calls to prioritize first.'
-      : params.reason === 'repeated_identical_batch'
-        ? 'Next: clarify the desired outcome or narrow the next step so I can replan cleanly.'
-        : 'Next: ask me to continue with a smaller scoped follow-up so I can resume from a safer checkpoint.';
-  const summary = buildDeterministicRuntimeSummary(params.state);
-  return [explanation, summary, nextStep].filter((part) => part.trim().length > 0).join('\n\n');
+  void params.state;
+  return params.reason === 'too_many_tool_calls'
+    ? 'I need to handle that in smaller steps, so please tell me what to do first.'
+    : params.reason === 'repeated_identical_batch'
+      ? 'I got stuck repeating myself, so please tell me the next step more clearly.'
+      : 'I need a smaller follow-up so I can finish that safely.';
 }
 
 function buildContextFrame(state: Pick<

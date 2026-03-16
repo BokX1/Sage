@@ -36,8 +36,8 @@ describe('enforceGitHubFileGrounding', () => {
 
     expect(result.modified).toBe(true);
     expect(result.ungroundedPaths).toContain('src/prompts.ts');
-    expect(result.replyText).toContain('Unverified path claim');
-    expect(result.replyText).toContain('`prompts/system-prompt.txt`');
+    expect(result.replyText).toContain("I couldn't verify");
+    expect(result.replyText).toContain('`src/prompts.ts`');
   });
 
   it('does not replace reply when claimed path is backed by successful lookup', () => {

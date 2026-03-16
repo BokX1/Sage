@@ -14,7 +14,7 @@ describe('visibleReply', () => {
       emptyFallback: buildLastResortVisibleReply('turn'),
     });
 
-    expect(result).toContain('I made progress on that');
+    expect(result).toContain('Please send me one more message');
   });
 
   it('returns the route-aware last-resort fallback when no visible reply exists', () => {
@@ -33,17 +33,17 @@ describe('visibleReply', () => {
       deliveryDisposition: 'response_session_with_continue',
       emptyFallback: buildLastResortVisibleReply('continue_resume'),
     });
-    expect(turnFallback).toContain('I made progress on that');
-    expect(continuationFallback).toContain('I need another continuation window');
-    expect(continuationResumeFallback).toContain('I picked that back up');
+    expect(turnFallback).toContain('Please send me one more message');
+    expect(continuationFallback).toContain('press Continue');
+    expect(continuationResumeFallback).toContain('another Continue');
   });
 
   it('returns route-aware runtime failure copy', () => {
     expect(buildRuntimeFailureReply({ kind: 'turn', category: 'provider' })).toBe(
-      'The model behind Sage stopped responding before I could finish that reply. Press Retry if it shows up, or send me that request again.',
+      'I lost the model connection before I could finish, so please try again.',
     );
     expect(buildRuntimeFailureReply({ kind: 'continue_resume', category: 'runtime' })).toBe(
-      'Sage hit a snag while I was picking that request back up. Press Retry if it shows up. If not, press Continue again or send me a fresh message.',
+      'I ran into a problem while I was picking that back up, so please press Retry or Continue again.',
     );
   });
 
@@ -64,13 +64,13 @@ describe('visibleReply', () => {
         deliveryDisposition: 'response_session',
         emptyFallback: buildLastResortVisibleReply('turn'),
       }),
-    ).toContain('I made progress on that');
+    ).toContain('Please send me one more message');
     expect(
       finalizeVisibleReplyText({
         replyText: '',
         deliveryDisposition: 'approval_handoff',
         emptyFallback: buildLastResortVisibleReply('approval_resume'),
       }),
-    ).toContain('That review is resolved');
+    ).toContain('That review is done');
   });
 });

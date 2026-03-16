@@ -1095,7 +1095,7 @@ describe('adminActionService approval permissions', () => {
 
     expect(handled).toBe(true);
     expect(interaction.reply).toHaveBeenCalledWith({
-      content: '❌ Missing required permission to approve this action in <#chan-target>: Manage Messages.',
+      content: 'I need Manage Messages in <#chan-target> to approve that.',
       ephemeral: true,
     });
     expect(mocks.markApprovalReviewRequestDecisionIfPending).not.toHaveBeenCalled();
@@ -1147,7 +1147,7 @@ describe('adminActionService approval permissions', () => {
 
     expect(handled).toBe(true);
     expect(interaction.reply).toHaveBeenCalledWith({
-      content: '❌ Missing required permission to approve this action in <#chan-target>: Manage Messages.',
+      content: 'I need Manage Messages in <#chan-target> to approve that.',
       ephemeral: true,
     });
     expect(mocks.markApprovalReviewRequestDecisionIfPending).not.toHaveBeenCalled();
@@ -1199,7 +1199,7 @@ describe('adminActionService approval permissions', () => {
 
     expect(handled).toBe(true);
     expect(interaction.reply).toHaveBeenCalledWith({
-      content: '❌ Missing required permission to approve this action: Moderate Members.',
+      content: 'I need Moderate Members to approve that.',
       ephemeral: true,
     });
     expect(mocks.markApprovalReviewRequestDecisionIfPending).not.toHaveBeenCalled();
@@ -1257,7 +1257,7 @@ describe('adminActionService approval permissions', () => {
     expect(handled).toBe(true);
     expect(interaction.deferUpdate).toHaveBeenCalled();
     expect(interaction.followUp).toHaveBeenCalledWith({
-      content: 'Action is already resolved.',
+      content: 'I already marked that review as resolved.',
       ephemeral: true,
     });
     expect(mocks.resumeAgentGraphTurn).not.toHaveBeenCalled();

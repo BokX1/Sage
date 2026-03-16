@@ -5,65 +5,37 @@ export type LastResortVisibleReplyKind = 'turn' | 'continue_prompt' | 'continue_
 export type RuntimeFailureReplyKind = 'turn' | 'continue_resume';
 export type RuntimeFailureCategory = 'provider' | 'runtime';
 
-function joinFlow(parts: string[]): string {
-  return parts
-    .map((part) => part.trim())
-    .filter((part) => part.length > 0)
-    .join(' ');
-}
-
 export function buildLastResortVisibleReply(kind: LastResortVisibleReplyKind): string {
   switch (kind) {
     case 'continue_prompt':
-      return joinFlow([
-        'I made progress on that, but I need another continuation window before Sage can finish it.',
-        'Press Continue below if you want me to pick it up from here.',
-      ]);
+      return 'I need you to press Continue so I can keep going.';
     case 'continue_resume':
-      return joinFlow([
-        'I picked that back up, but I do not have a clean update ready to post yet.',
-        'Press Continue again if you want me to keep working from this point.',
-      ]);
+      return 'I still need another Continue to keep going from here.';
     case 'approval_resume':
-      return joinFlow([
-        'That review is resolved, but I do not have a clean follow-up ready to post yet.',
-        'Ask me again here if you want another pass from the latest state.',
-      ]);
+      return 'That review is done, so please ask me again if you want me to keep going.';
     case 'turn':
     default:
-      return joinFlow([
-        'I made progress on that, but I do not have a clean reply ready to post yet.',
-        'Send the next message and I will keep going from the current context.',
-      ]);
+      return 'Please send me one more message so I can keep going.';
   }
 }
 
 export function buildContinuationUnavailableReply(): string {
-  return joinFlow([
-    'That continuation is already closed, so I cannot reopen it from this button.',
-    'Ask me again in this channel and I will continue from the latest state I have.',
-  ]);
+  return "I can't reopen that anymore, so please send me a new message if you want me to keep going.";
 }
 
 export function buildRuntimeFailureReply(params: {
   kind: RuntimeFailureReplyKind;
   category: RuntimeFailureCategory;
 }): string {
-  const failureText =
-    params.category === 'provider'
-      ? params.kind === 'continue_resume'
-        ? 'The model behind Sage stopped responding while I was picking that request back up.'
-        : 'The model behind Sage stopped responding before I could finish that reply.'
-      : params.kind === 'continue_resume'
-        ? 'Sage hit a snag while I was picking that request back up.'
-        : 'Sage hit a snag before I could finish that reply.';
+  if (params.category === 'provider') {
+    return params.kind === 'continue_resume'
+      ? 'I lost the model connection while I was picking that back up, so please press Retry or Continue again.'
+      : 'I lost the model connection before I could finish, so please try again.';
+  }
 
-  const nextStepText =
-    params.kind === 'continue_resume'
-      ? 'Press Retry if it shows up. If not, press Continue again or send me a fresh message.'
-      : 'Press Retry if it shows up, or send me that request again.';
-
-  return joinFlow([failureText, nextStepText]);
+  return params.kind === 'continue_resume'
+    ? 'I ran into a problem while I was picking that back up, so please press Retry or Continue again.'
+    : 'I ran into a problem before I could finish, so please try again.';
 }
 
 export function finalizeVisibleReplyText(params: {

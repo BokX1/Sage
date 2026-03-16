@@ -17,7 +17,7 @@ describe('byopBootstrap activation cards', () => {
     const container = payload.components[0] as {
       components: Array<{ type: number; content?: string; components?: Array<{ label?: string; disabled?: boolean }> }>;
     };
-    expect(container.components.some((component) => component.content?.includes('Hosted Sage Needs A Server Key'))).toBe(true);
+    expect(container.components.some((component) => component.content?.includes('I Need A Server Key'))).toBe(true);
     const actionRow = container.components.find((component) => component.type === ComponentType.ActionRow);
     expect(actionRow?.components?.map((button) => button.label)).toEqual([
       'Get Pollinations Key',
@@ -56,7 +56,7 @@ describe('byopBootstrap activation cards', () => {
     const container = payload.components[0] as {
       components: Array<{ content?: string }>;
     };
-    expect(container.components.some((component) => component.content?.includes('Activate Hosted Sage For This Server'))).toBe(true);
+    expect(container.components.some((component) => component.content?.includes('Set Up Sage For This Server'))).toBe(true);
   });
 
   it('builds the proactive welcome message as a Components V2 card', () => {

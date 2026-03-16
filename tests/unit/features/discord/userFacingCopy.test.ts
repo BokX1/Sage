@@ -7,14 +7,10 @@ import {
 
 describe('userFacingCopy', () => {
   it('uses a single-flow interaction failure message', () => {
-    expect(buildInteractionFailureText()).toBe(
-      'Sage hit a snag while I was handling that action. Try that button or form again. If it keeps happening, ask me to open a fresh flow here.',
-    );
+    expect(buildInteractionFailureText()).toBe('I could not handle that action, so please try it again.');
   });
 
   it('uses a single-flow message failure message', () => {
-    expect(buildMessageFailureText()).toBe(
-      'Sage hit a snag before I could finish that reply. Try again. If it keeps happening, send a fresh message and I will start over from there.',
-    );
+    expect(buildMessageFailureText()).toBe('I could not finish that reply, so please send it again.');
   });
 });

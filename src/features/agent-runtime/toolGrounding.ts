@@ -97,25 +97,16 @@ function collectSuccessfulLookupPaths(toolResults: ToolResult[]): {
 }
 
 function buildFallbackReply(ungroundedPaths: string[], successfulPaths: string[]): string {
-  const ungroundedLabel = ungroundedPaths
-    .slice(0, 3)
+  const target = ungroundedPaths
+    .slice(0, 2)
     .map((path) => `\`${path}\``)
     .join(', ');
-  const verifiedLabel = successfulPaths
-    .slice(0, 3)
+  const fallbackTarget = successfulPaths
+    .slice(0, 1)
     .map((path) => `\`${path}\``)
     .join(', ');
-
-  const lines = [
-    'I cannot stand behind one or more GitHub path claims from this turn yet, so I will not present them as verified.',
-    `Unverified path claim${ungroundedPaths.length > 1 ? 's' : ''}: ${ungroundedLabel}.`,
-    successfulPaths.length > 0
-      ? `Verified GitHub file path${successfulPaths.length > 1 ? 's' : ''} in this turn: ${verifiedLabel}.`
-      : 'I did not retrieve a verified GitHub file path in this turn.',
-    'Next: give me the exact repo/path/ref, or ask me to inspect the repo structure first with github repo.get or code.search.',
-  ];
-
-  return lines.join('\n');
+  const subject = target || fallbackTarget || 'those GitHub file paths';
+  return `I couldn't verify ${subject} yet, so please share the exact repo, path, or ref and I'll check again.`;
 }
 
 export function enforceGitHubFileGrounding(

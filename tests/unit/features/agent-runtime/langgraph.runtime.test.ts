@@ -564,7 +564,7 @@ describe('runGraphValueStream', () => {
     expect(result.stopReason).toBe('loop_guard');
     expect(result.completionKind).toBe('loop_guard');
     expect(result.deliveryDisposition).toBe('response_session');
-    expect(result.replyText).toContain('recursion safety limit');
+    expect(result.replyText).toContain('I need a smaller follow-up');
     expect(result.roundEvents.at(-1)).toMatchObject({
       guardReason: 'recursion_limit',
     });
@@ -660,7 +660,7 @@ describe('runGraphValueStream', () => {
         resumeNode: 'tool_call_turn',
       }),
     );
-    expect(result.replyText).toContain('press Continue below');
+    expect(result.replyText).toContain('Please press Continue');
     expect(result.replyText).toContain('updated the server persona');
     expect(result.replyText).not.toContain('Completed so far: 1 tool call (discord_admin).');
     expect(result.roundsCompleted).toBe(1);
@@ -1197,7 +1197,7 @@ describe('runGraphValueStream', () => {
     expect(result.graphStatus).toBe('completed');
     expect(result.stopReason).toBe('loop_guard');
     expect(result.completionKind).toBe('loop_guard');
-    expect(result.replyText).toContain('repeating the same tool plan');
+    expect(result.replyText).toContain('I need a smaller follow-up');
     expect(executeDurableToolTaskMock).toHaveBeenCalledTimes(1);
     expect(result.roundEvents.some((event) => event.guardReason === 'repeated_identical_batch')).toBe(true);
   });
@@ -1384,8 +1384,7 @@ describe('runGraphValueStream', () => {
     expect(result.completionKind).toBe('pause_handoff');
     expect(result.deliveryDisposition).toBe('response_session');
     expect(result.replyText).toContain('gathered the key GitHub findings');
-    expect(result.replyText).toContain('I hit the continuation limit for this request.');
-    expect(result.replyText).toContain('send a new message if you want me to keep going');
+    expect(result.replyText).toContain('Please send me a new message if you want me to keep going.');
     expect(result.replyText).not.toContain('Completed so far: 7 tool calls (github x7).');
     expect(result.totalRoundsCompleted).toBe(8);
   });

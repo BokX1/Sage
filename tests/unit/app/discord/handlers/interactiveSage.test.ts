@@ -190,7 +190,7 @@ describe('interactiveSage delivery', () => {
     });
     generateChatReplyMock.mockResolvedValue({
       replyText:
-        'Self-hosted Sage is not configured for chat in this server yet. Why: this bot instance has no `AI_PROVIDER_API_KEY`, and the hosted Pollinations server-key flow only applies to the hosted invite bot. Next: ask the bot operator to add the self-hosted provider key, then try again.',
+        "I'm not set up to chat in this server yet, so please ask the bot operator to add the AI provider key.",
       delivery: 'response_session',
       meta: {
         kind: 'missing_api_key',
@@ -223,7 +223,7 @@ describe('interactiveSage delivery', () => {
     expect(buildGuildApiKeyMissingResponseMock).not.toHaveBeenCalled();
     expect(interaction.editReply).toHaveBeenCalledWith(
       expect.objectContaining({
-        content: expect.stringContaining('Self-hosted Sage is not configured for chat in this server yet.'),
+        content: expect.stringContaining("I'm not set up to chat in this server yet"),
       }),
     );
   });
@@ -427,7 +427,7 @@ describe('interactiveSage delivery', () => {
       expiresAt: new Date('2026-03-14T00:00:00.000Z'),
     });
     generateChatReplyMock.mockResolvedValue({
-      replyText: 'The model behind Sage stopped responding before I could finish that reply. Press Retry if it shows up, or send me that request again.',
+      replyText: 'I lost the model connection before I could finish, so please try again.',
       delivery: 'response_session',
       meta: {
         retry: {
@@ -477,7 +477,7 @@ describe('interactiveSage delivery', () => {
             components: expect.arrayContaining([
               expect.objectContaining({
                 content:
-                  'The model behind Sage stopped responding before I could finish that reply. Press Retry if it shows up, or send me that request again.',
+                  'I lost the model connection before I could finish, so please try again.',
               }),
               expect.objectContaining({
                 type: 1,
@@ -686,8 +686,7 @@ describe('interactiveSage delivery', () => {
     expect(consumeActiveInteractiveSessionMock).not.toHaveBeenCalled();
     expect(resumeContinuationChatTurnMock).not.toHaveBeenCalled();
     expect(interaction.reply).toHaveBeenCalledWith({
-      content:
-        'This Continue button belongs to the person who asked Sage to keep going. Next: ask them to continue it, or ask Sage to start a fresh pass for you.',
+      content: 'I can only continue this for the person who started it.',
       ephemeral: true,
     });
   });
@@ -725,8 +724,7 @@ describe('interactiveSage delivery', () => {
     expect(consumeActiveInteractiveSessionMock).not.toHaveBeenCalled();
     expect(resumeContinuationChatTurnMock).not.toHaveBeenCalled();
     expect(interaction.reply).toHaveBeenCalledWith({
-      content:
-        'This Continue button only works in the original channel. Next: go back to <#channel-home> and use it there, or ask Sage for a fresh continuation here.',
+      content: 'I can only continue this in <#channel-home>.',
       ephemeral: true,
     });
   });
@@ -776,8 +774,7 @@ describe('interactiveSage delivery', () => {
     expect(resumeContinuationChatTurnMock).not.toHaveBeenCalled();
     expect(interaction.deferUpdate).not.toHaveBeenCalled();
     expect(interaction.reply).toHaveBeenCalledWith({
-      content:
-        'This Sage button was already used. Next: wait for Sage to finish the first run, or ask Sage to open a fresh one if you still need it.',
+      content: 'That Sage button was already used, so please ask me for a new one if you still need it.',
       ephemeral: true,
     });
   });
@@ -819,8 +816,7 @@ describe('interactiveSage delivery', () => {
     expect(retryFailedChatTurnMock).not.toHaveBeenCalled();
     expect(interaction.deferUpdate).not.toHaveBeenCalled();
     expect(interaction.reply).toHaveBeenCalledWith({
-      content:
-        'This Sage button was already used. Next: wait for Sage to finish the first run, or ask Sage to open a fresh one if you still need it.',
+      content: 'That Sage button was already used, so please ask me for a new one if you still need it.',
       ephemeral: true,
     });
   });

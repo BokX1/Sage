@@ -29,6 +29,13 @@ import {
   saveVerifiedGuildApiKey,
 } from '../settings/guildApiKeyService';
 import { isAdminInteraction } from '../../platform/discord/admin-permissions';
+import {
+  buildGuildContextRequiredText,
+  buildServerKeyGuildOnlyText,
+  buildServerKeyInvalidFormatText,
+  buildServerKeyManageAdminOnlyText,
+  buildServerKeySetAdminOnlyText,
+} from './userFacingCopy';
 
 const GUILD_API_KEY_SET_CUSTOM_ID = 'sage:bootstrap:key:set';
 const GUILD_API_KEY_CHECK_CUSTOM_ID = 'sage:bootstrap:key:check';
@@ -140,27 +147,25 @@ function buildGuildApiKeySetupCardPayload(params: {
 }): GuildApiKeySetupCardPayload {
   const heading =
     params.variant === 'setup'
-      ? '**Activate Hosted Sage For This Server**'
+      ? '**Set Up Sage For This Server**'
       : params.isAdmin
-        ? '**Hosted Sage Needs A Server Key**'
-        : '**Hosted Sage Is Waiting For Server Activation**';
+        ? '**I Need A Server Key**'
+        : '**I Am Waiting For Server Setup**';
   const summary =
     params.variant === 'setup'
-      ? 'Hosted Sage is chat-first. Use the controls below to connect a Pollinations server key for this guild.'
+      ? "I'm ready to chat here as soon as a server admin connects a Pollinations key."
       : params.isAdmin
-        ? 'Hosted Sage is not active here yet because no server key is saved for this guild.'
-        : 'Hosted Sage cannot answer here yet because this guild does not have a server key saved.';
+        ? "I'm not active here yet because this server does not have a key saved."
+        : "I'm not active here yet because this server does not have a key saved.";
   const nextSteps = params.isAdmin
     ? [
-        'Next:',
-        '- Use **Get Pollinations Key** to open Pollinations.',
-        '- Use **Set Server Key** to save the key securely for this server.',
-        '- Use **Check Key** any time to confirm the current server status.',
+        '- Click **Get Pollinations Key**.',
+        '- Click **Set Server Key**.',
+        '- Click **Check Key** to confirm I am ready.',
       ].join('\n')
     : [
-        'Next:',
-        '- Ask a server admin to use **Get Pollinations Key** and **Set Server Key**.',
-        '- You can try Sage again as soon as activation is complete.',
+        '- Ask a server admin to click **Get Pollinations Key** and **Set Server Key**.',
+        '- Try again once I am active.',
       ].join('\n');
 
   return buildCardPayload({
@@ -286,12 +291,12 @@ export async function handleGuildApiKeyBootstrapButtonInteraction(
   }
 
   if (!interaction.inGuild()) {
-    await interaction.reply({ content: 'Server key setup is guild-only.', ephemeral: true });
+    await interaction.reply({ content: buildServerKeyGuildOnlyText(), ephemeral: true });
     return true;
   }
 
   if (!isAdminInteraction(interaction)) {
-    await interaction.reply({ content: '❌ Only server admins can manage the server key.', ephemeral: true });
+    await interaction.reply({ content: buildServerKeyManageAdminOnlyText(), ephemeral: true });
     return true;
   }
 
@@ -301,7 +306,7 @@ export async function handleGuildApiKeyBootstrapButtonInteraction(
   }
 
   if (!interaction.guildId) {
-    await interaction.reply({ content: 'This action requires a guild context.', ephemeral: true });
+    await interaction.reply({ content: buildGuildContextRequiredText(), ephemeral: true });
     return true;
   }
 
@@ -314,9 +319,7 @@ export async function handleGuildApiKeyBootstrapButtonInteraction(
 
   await interaction.deferReply({ ephemeral: true });
   await clearGuildApiKey(interaction.guildId);
-  await interaction.editReply(
-    'Hosted Sage was deactivated for this server. Next: use Get Pollinations Key and Set Server Key to activate it again.',
-  );
+  await interaction.editReply('I cleared the server key, so please set a new one when you want me back here.');
   return true;
 }
 
@@ -328,17 +331,17 @@ export async function handleGuildApiKeyBootstrapModalSubmit(
   }
 
   if (!interaction.inGuild()) {
-    await interaction.reply({ content: 'Server key setup is guild-only.', ephemeral: true });
+    await interaction.reply({ content: buildServerKeyGuildOnlyText(), ephemeral: true });
     return true;
   }
 
   if (!isAdminInteraction(interaction)) {
-    await interaction.reply({ content: '❌ Only server admins can set the server key.', ephemeral: true });
+    await interaction.reply({ content: buildServerKeySetAdminOnlyText(), ephemeral: true });
     return true;
   }
 
   if (!interaction.guildId) {
-    await interaction.reply({ content: 'This action requires a guild context.', ephemeral: true });
+    await interaction.reply({ content: buildGuildContextRequiredText(), ephemeral: true });
     return true;
   }
 
@@ -351,9 +354,7 @@ export async function handleGuildApiKeyBootstrapModalSubmit(
 
   if (!result.ok) {
     if (result.reason === 'invalid_format') {
-      await interaction.editReply(
-        'That key format does not look right. Why: Pollinations keys should start with `sk_`. Next: copy the full key again and retry.',
-      );
+      await interaction.editReply(buildServerKeyInvalidFormatText());
       return true;
     }
     await interaction.editReply(getKeySetVerificationFailureMessage(result.reason));
@@ -362,7 +363,7 @@ export async function handleGuildApiKeyBootstrapModalSubmit(
 
   const balanceInfo = result.balanceText ? ` (Balance: ${result.balanceText})` : '';
   await interaction.editReply(
-    `Hosted Sage is active for this server.\nAccount: ${result.accountLabel}${balanceInfo}\nNext: talk to Sage normally with a mention, reply, or a message that starts with \`Sage\`.`,
+    `I'm active in this server now.\nAccount: ${result.accountLabel}${balanceInfo}\nTalk to me with a mention, a reply, or a message that starts with \`Sage\`.`,
   );
   return true;
 }

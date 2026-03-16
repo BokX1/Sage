@@ -87,40 +87,40 @@ export function resolveProfileTimeoutMs(timeoutMs: number | undefined): number {
 }
 
 export function buildGuildApiKeySetupGuidance(): string {
-  return 'Ask a server admin to use Sage’s setup controls, get a Pollinations key, and submit it through the secure setup modal.';
+  return 'Please ask a server admin to open Sage setup, get a Pollinations key, and paste it here.';
 }
 
 export function getKeySetVerificationFailureMessage(reason: ProfileVerificationFailureReason): string {
   switch (reason) {
     case 'unauthorized':
-      return 'Pollinations rejected that key because it is invalid or expired. Click the login link again, copy a fresh key, and retry.';
+      return "I couldn't verify that key because it looks invalid or expired, so please copy a fresh one and try again.";
     case 'timeout':
-      return 'Pollinations timed out while verifying that key. Wait a moment and try again.';
+      return "I couldn't verify that key in time, so please try again in a moment.";
     case 'upstream':
-      return 'Pollinations returned an error while verifying that key. Try again shortly.';
+      return "I couldn't verify that key right now because Pollinations had a problem, so please try again soon.";
     case 'invalid_response':
-      return 'Pollinations returned an unexpected verification response. Copy a fresh key and retry.';
+      return "I couldn't verify that key because Pollinations sent back something unexpected, so please copy a fresh key and try again.";
     case 'network':
-      return 'I could not reach Pollinations to verify that key. Check connectivity and try again.';
+      return "I couldn't reach Pollinations to verify that key, so please check the connection and try again.";
     default:
-      return 'I could not verify that key with Pollinations. Try again.';
+      return "I couldn't verify that key, so please try again.";
   }
 }
 
 export function getKeyCheckUnverifiedReason(reason: ProfileVerificationFailureReason): string {
   switch (reason) {
     case 'unauthorized':
-      return 'Saved key is now rejected by Pollinations (invalid or expired).';
+      return 'Pollinations says the saved key is invalid or expired.';
     case 'timeout':
-      return 'Pollinations timed out during verification.';
+      return 'Pollinations timed out while I was checking the saved key.';
     case 'upstream':
-      return 'Pollinations returned an upstream error.';
+      return 'Pollinations had a problem while I was checking the saved key.';
     case 'invalid_response':
-      return 'Pollinations returned an unexpected profile response.';
+      return 'Pollinations sent back something unexpected while I was checking the saved key.';
     case 'network':
-      return 'Could not reach Pollinations to verify.';
+      return "I couldn't reach Pollinations while I was checking the saved key.";
     default:
-      return 'Verification failed for an unknown reason.';
+      return "I couldn't verify the saved key.";
   }
 }
 

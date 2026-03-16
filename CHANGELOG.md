@@ -25,6 +25,7 @@
 ## [Unreleased]
 
 ### Fixed
+- Unified Sage's user-facing system error voice across runtime fallbacks, approvals, setup flows, continuation controls, and grounding guards, so failures now read as simple first-person one-line bot replies instead of mixed third-person, `Why:`, `Next:`, and other developer-style copy.
 - Fixed OpenAI-compatible routed tool compilation so discriminated-union tools like `discord_server` now compile into one canonical top-level object schema for Chat Completions tool calling, and the live Discord smoke now uses real UUID trace ids so LangSmith-enabled validation no longer trips over invalid trace identifiers.
 - Fixed the AI-provider diagnostics surface for BYOP and hosted checks: `npm run doctor -- --llm-ping` now honors one-off environment overrides like `AI_PROVIDER_API_KEY=...`, `npm run langgraph:discord:smoke` now loads the real `.env` before seeding fallback defaults so live smoke runs no longer drift to `example.invalid`, and the smoke harness now accepts either a clean completion or a continuation pause instead of assuming every successful provider run must stop at the continuation boundary.
 - Fixed OpenAI-compatible tool-schema normalization so Sage now forces outbound function-tool parameter schemas to be explicit top-level JSON Schema objects, avoiding provider-side 400s from tools like `discord_server` when a schema omitted `type: "object"`.

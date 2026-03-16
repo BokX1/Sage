@@ -1,69 +1,35 @@
-function joinFlow(parts: string[]): string {
-  return parts
-    .map((part) => part.trim())
-    .filter((part) => part.length > 0)
-    .join(' ');
-}
-
 export function buildInteractionFailureText(): string {
-  return joinFlow([
-    'Sage hit a snag while I was handling that action.',
-    'Try that button or form again.',
-    'If it keeps happening, ask me to open a fresh flow here.',
-  ]);
+  return 'I could not handle that action, so please try it again.';
 }
 
 export function buildMessageFailureText(): string {
-  return joinFlow([
-    'Sage hit a snag before I could finish that reply.',
-    'Try again.',
-    'If it keeps happening, send a fresh message and I will start over from there.',
-  ]);
+  return 'I could not finish that reply, so please send it again.';
 }
 
 export function buildExpiredInteractionText(kind: 'button' | 'form'): string {
   const subject = kind === 'form' ? 'form' : 'button';
-  return [
-    `This Sage ${subject} expired.`,
-    'Why: interactive sessions stay live for a limited time.',
-    'Next: ask Sage again to open a fresh one.',
-  ].join(' ');
+  return `That Sage ${subject} expired, so please ask me for a new one.`;
 }
 
 export function buildConsumedInteractionText(kind: 'button' | 'form'): string {
   const subject = kind === 'form' ? 'form' : 'button';
-  return [
-    `This Sage ${subject} was already used.`,
-    'Next: wait for Sage to finish the first run, or ask Sage to open a fresh one if you still need it.',
-  ].join(' ');
+  return `That Sage ${subject} was already used, so please ask me for a new one if you still need it.`;
 }
 
 export function buildContinueOwnerMismatchText(): string {
-  return [
-    'This Continue button belongs to the person who asked Sage to keep going.',
-    'Next: ask them to continue it, or ask Sage to start a fresh pass for you.',
-  ].join(' ');
+  return 'I can only continue this for the person who started it.';
 }
 
 export function buildContinueChannelMismatchText(channelId: string): string {
-  return [
-    'This Continue button only works in the original channel.',
-    `Next: go back to <#${channelId}> and use it there, or ask Sage for a fresh continuation here.`,
-  ].join(' ');
+  return `I can only continue this in <#${channelId}>.`;
 }
 
 export function buildRetryOwnerMismatchText(): string {
-  return [
-    'This Retry button belongs to the person who asked Sage for that retry.',
-    'Next: ask them to retry it, or ask Sage to start a fresh pass for you.',
-  ].join(' ');
+  return 'I can only retry this for the person who started it.';
 }
 
 export function buildRetryChannelMismatchText(channelId: string): string {
-  return [
-    'This Retry button only works in the original channel.',
-    `Next: go back to <#${channelId}> and use it there, or ask Sage for a fresh pass here.`,
-  ].join(' ');
+  return `I can only retry this in <#${channelId}>.`;
 }
 
 export function buildContinuationButtonLabel(params?: {
@@ -90,24 +56,15 @@ export function buildRetryButtonLabel(): string {
 }
 
 export function buildContinuationAccessDeniedText(): string {
-  return [
-    'I can only reopen that continuation for the original person in the original channel.',
-    'Next: ask Sage there from a fresh message if you still need another pass.',
-  ].join(' ');
+  return 'I can only reopen that for the same person in the same channel.';
 }
 
 export function buildContinuationAlreadyClosedText(): string {
-  return [
-    'That continuation is already closed.',
-    'Next: send me a fresh message if you want another pass.',
-  ].join(' ');
+  return 'I already closed that continuation, so please send me a new message if you want me to keep going.';
 }
 
 export function buildContinuationExpiredText(): string {
-  return [
-    'That continuation expired before I could reopen it.',
-    'Next: send me a fresh message if you want me to keep going.',
-  ].join(' ');
+  return 'That continuation expired, so please send me a new message if you want me to keep going.';
 }
 
 export function buildApprovalQueuedHandoffText(params?: {
@@ -117,32 +74,92 @@ export function buildApprovalQueuedHandoffText(params?: {
   const reviewChannelId = params?.reviewChannelId?.trim();
   const sourceChannelId = params?.sourceChannelId?.trim();
   if (reviewChannelId && reviewChannelId !== sourceChannelId) {
-    return `I queued that for review. Next: check <#${reviewChannelId}> for the approval card.`;
+    return `I queued that for review in <#${reviewChannelId}>.`;
   }
 
-  return 'I queued that for review. Next: check the approval card for the next step.';
+  return 'I queued that for review.';
 }
 
 export function buildMissingHostedGuildActivationFallbackText(): string {
-  return [
-    'Sage is not active for this server yet.',
-    'Why: the hosted bot does not have a server key for this guild yet.',
-    'Next: ask a server admin to activate Hosted Sage for this server, then try again.',
-  ].join(' ');
+  return "I'm not set up in this server yet, so please ask a server admin to activate me.";
 }
 
 export function buildMissingSelfHostedGuildApiKeyText(): string {
-  return [
-    'Self-hosted Sage is not configured for chat in this server yet.',
-    'Why: this bot instance has no `AI_PROVIDER_API_KEY`, and the hosted Pollinations server-key flow only applies to the hosted invite bot.',
-    'Next: ask the bot operator to add the self-hosted provider key, then try again.',
-  ].join(' ');
+  return "I'm not set up to chat in this server yet, so please ask the bot operator to add the AI provider key.";
 }
 
 export function buildMissingHostApiKeyText(): string {
-  return [
-    'Sage is not configured for chat yet.',
-    'Why: this self-hosted runtime has no `AI_PROVIDER_API_KEY` available.',
-    'Next: add the host provider key for this bot instance, then try again.',
-  ].join(' ');
+  return "I'm not set up to chat yet, so please ask the bot operator to add the AI provider key.";
+}
+
+export function buildApprovalGuildOnlyText(): string {
+  return 'I can only handle approvals inside a server.';
+}
+
+export function buildApprovalAdminOnlyText(): string {
+  return 'I need a server admin to do that.';
+}
+
+export function buildApprovalActionNotFoundText(): string {
+  return "I can't find that review anymore.";
+}
+
+export function buildApprovalWrongGuildText(): string {
+  return 'That review belongs to a different server.';
+}
+
+export function buildApprovalAlreadyResolvedText(status: string): string {
+  const normalizedStatus = status.trim().replace(/_/g, ' ') || 'resolved';
+  return `I already marked that review as ${normalizedStatus}.`;
+}
+
+export function buildApprovalReasonRequiredText(): string {
+  return 'Please add a reason before rejecting that.';
+}
+
+export function buildApprovalFollowUpPostFailureText(): string {
+  return "I rejected that, but I couldn't post the follow-up message.";
+}
+
+export function buildModerationApprovalPermissionsUnknownText(): string {
+  return "I couldn't check the approval permissions for that action.";
+}
+
+export function buildModerationApprovalPermissionMissingText(permissionLabel: string): string {
+  return `I need ${permissionLabel} to approve that.`;
+}
+
+export function buildModerationApprovalChannelPermissionsUnknownText(): string {
+  return "I couldn't check your permissions in that channel.";
+}
+
+export function buildModerationApprovalChannelUnavailableText(): string {
+  return "I couldn't check that because the channel is unavailable.";
+}
+
+export function buildModerationApprovalChannelPermissionMissingText(params: {
+  channelId: string;
+  permissionLabel: string;
+}): string {
+  return `I need ${params.permissionLabel} in <#${params.channelId}> to approve that.`;
+}
+
+export function buildServerKeyGuildOnlyText(): string {
+  return 'I can only set that up inside a server.';
+}
+
+export function buildServerKeyManageAdminOnlyText(): string {
+  return 'I need a server admin to manage the server key.';
+}
+
+export function buildServerKeySetAdminOnlyText(): string {
+  return 'I need a server admin to set the server key.';
+}
+
+export function buildGuildContextRequiredText(): string {
+  return 'I need the server context to do that.';
+}
+
+export function buildServerKeyInvalidFormatText(): string {
+  return "That key doesn't look right, so please copy it again and make sure it starts with `sk_`.";
 }
