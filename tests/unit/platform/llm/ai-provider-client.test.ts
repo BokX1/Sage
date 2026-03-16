@@ -311,6 +311,55 @@ describe('AiProviderClient', () => {
     });
   });
 
+  it('flattens top-level union keywords out of tool parameter schemas for provider compatibility', async () => {
+    const client = new AiProviderClient({ baseUrl: 'https://api.test/v1', model: 'test-chat-model' });
+
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      statusText: 'OK',
+      json: async () => ({ choices: [{ message: { content: 'ok' } }] }),
+      text: async () => 'ok',
+    } satisfies { ok: boolean; status: number; statusText: string; json: () => Promise<unknown>; text: () => Promise<string> });
+
+    await client.chat({
+      messages: [{ role: 'user', content: 'run tool' }],
+      tools: [
+        {
+          type: 'function',
+          function: {
+            name: 'discord_server',
+            parameters: {
+              oneOf: [
+                {
+                  type: 'object',
+                  properties: {
+                    action: { type: 'string' },
+                  },
+                  required: ['action'],
+                },
+              ],
+            },
+          },
+        },
+      ],
+    });
+
+    const body = parseRequestBody(fetchMock, 0);
+    expect(body.tools?.[0]?.function?.parameters).toMatchObject({
+      type: 'object',
+      properties: {
+        action: {
+          type: 'string',
+        },
+      },
+      required: ['action'],
+    });
+    expect(body.tools?.[0]?.function?.parameters).not.toHaveProperty('oneOf');
+    expect(body.tools?.[0]?.function?.parameters).not.toHaveProperty('anyOf');
+    expect(body.tools?.[0]?.function?.parameters).not.toHaveProperty('allOf');
+  });
+
   it('retries without response_format on response_format errors', async () => {
     const client = new AiProviderClient({ baseUrl: 'https://api.test/v1', model: 'test-chat-model', maxRetries: 1 });
 

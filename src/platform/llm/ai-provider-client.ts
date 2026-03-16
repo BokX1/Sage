@@ -322,6 +322,47 @@ function sanitizeToolDefinitionsForProvider(tools: ToolDefinition[] | undefined)
       sanitized && typeof sanitized === 'object' && !Array.isArray(sanitized)
         ? { ...sanitized }
         : { properties: {} };
+    const topLevelVariants = [
+      ...(Array.isArray(objectSchema.oneOf) ? objectSchema.oneOf : []),
+      ...(Array.isArray(objectSchema.anyOf) ? objectSchema.anyOf : []),
+      ...(Array.isArray(objectSchema.allOf) ? objectSchema.allOf : []),
+    ];
+    if (
+      topLevelVariants.length > 0 &&
+      (!objectSchema.properties ||
+        typeof objectSchema.properties !== 'object' ||
+        Array.isArray(objectSchema.properties))
+    ) {
+      const mergedProperties: Record<string, unknown> = {};
+      const mergedRequired = new Set<string>();
+      for (const variant of topLevelVariants) {
+        if (!variant || typeof variant !== 'object' || Array.isArray(variant)) {
+          continue;
+        }
+        const variantRecord = variant as Record<string, unknown>;
+        if (variantRecord.properties && typeof variantRecord.properties === 'object' && !Array.isArray(variantRecord.properties)) {
+          Object.assign(mergedProperties, variantRecord.properties);
+        }
+        if (Array.isArray(variantRecord.required)) {
+          for (const key of variantRecord.required) {
+            if (typeof key === 'string' && key.trim().length > 0) {
+              mergedRequired.add(key);
+            }
+          }
+        }
+      }
+      if (Object.keys(mergedProperties).length > 0) {
+        objectSchema.properties = mergedProperties;
+      }
+      if (mergedRequired.size > 0 && !Array.isArray(objectSchema.required)) {
+        objectSchema.required = Array.from(mergedRequired);
+      }
+    }
+    delete objectSchema.oneOf;
+    delete objectSchema.anyOf;
+    delete objectSchema.allOf;
+    delete objectSchema.enum;
+    delete objectSchema.not;
     if (objectSchema.type !== 'object') {
       objectSchema.type = 'object';
     }
