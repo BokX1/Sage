@@ -15,6 +15,7 @@ import {
   DISCORD_MESSAGES_ACTION_CATALOG,
   DISCORD_SERVER_ACTION_CATALOG,
 } from '@/features/agent-runtime/discordToolCatalog';
+import { normalizeToolParametersForChatCompletions } from '@/shared/validation/json-schema';
 
 function extractTopLevelActionConsts(schema: unknown): string[] {
   if (!schema || typeof schema !== 'object' || Array.isArray(schema)) {
@@ -22,26 +23,19 @@ function extractTopLevelActionConsts(schema: unknown): string[] {
   }
 
   const record = schema as Record<string, unknown>;
-  const variants =
-    (Array.isArray(record.oneOf) ? record.oneOf : null) ??
-    (Array.isArray(record.anyOf) ? record.anyOf : null);
-
-  if (!variants) {
-    throw new Error('Expected a top-level oneOf/anyOf union for tool schema');
+  const normalized = normalizeToolParametersForChatCompletions(record);
+  const properties = normalized.properties;
+  if (!properties || typeof properties !== 'object' || Array.isArray(properties)) {
+    throw new Error('Expected compiled tool schema properties');
   }
-
-  const actions: string[] = [];
-  for (const variant of variants) {
-    if (!variant || typeof variant !== 'object' || Array.isArray(variant)) continue;
-    const properties = (variant as Record<string, unknown>).properties;
-    if (!properties || typeof properties !== 'object' || Array.isArray(properties)) continue;
-    const actionSchema = (properties as Record<string, unknown>).action;
-    if (!actionSchema || typeof actionSchema !== 'object' || Array.isArray(actionSchema)) continue;
-    const constValue = (actionSchema as Record<string, unknown>).const;
-    if (typeof constValue === 'string' && constValue.trim().length > 0) {
-      actions.push(constValue);
-    }
+  const actionSchema = (properties as Record<string, unknown>).action;
+  if (!actionSchema || typeof actionSchema !== 'object' || Array.isArray(actionSchema)) {
+    throw new Error('Expected compiled action property schema');
   }
+  const actions = Array.isArray((actionSchema as Record<string, unknown>).enum)
+    ? ((actionSchema as Record<string, unknown>).enum as unknown[])
+      .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+    : [];
 
   return Array.from(new Set(actions)).sort((a, b) => a.localeCompare(b));
 }

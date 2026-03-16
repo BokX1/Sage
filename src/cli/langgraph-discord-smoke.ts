@@ -1,6 +1,7 @@
 /* eslint-disable no-console */
 
 import { once } from 'node:events';
+import { randomUUID } from 'node:crypto';
 import dotenv from 'dotenv';
 import { AIMessage } from '@langchain/core/messages';
 
@@ -263,8 +264,8 @@ async function expireContinuationPrompt(params: {
 
 async function runReadPathSmoke(target: SmokeTarget): Promise<void> {
   const graphConfig = buildAgentGraphConfig();
-  const traceId = `discord-smoke-read-${Date.now()}`;
-  const callId = `${traceId}-call`;
+  const traceId = randomUUID();
+  const callId = `discord-smoke-read-${Date.now()}-call`;
   const result = await runSeededAgentGraphTurn({
     threadId: traceId,
     goto: 'route_tool_phase',
@@ -339,7 +340,7 @@ async function runReadPathSmoke(target: SmokeTarget): Promise<void> {
 
 async function runApprovalPathSmoke(target: SmokeTarget): Promise<void> {
   const graphConfig = buildAgentGraphConfig();
-  const traceId = `discord-smoke-approval-${Date.now()}`;
+  const traceId = randomUUID();
   const roleName = `sage-smoke-${Date.now().toString(36)}`;
   const approvalReason = 'Sage LangGraph live smoke approval/resume validation';
   let requestId: string | null = null;

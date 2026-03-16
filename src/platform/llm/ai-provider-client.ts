@@ -11,7 +11,9 @@ import { CircuitBreaker } from './circuit-breaker';
 import { logger } from '../logging/logger';
 import { metrics } from '../../shared/observability/metrics';
 import { estimateMessagesTokens } from './context-budgeter';
-import { sanitizeJsonSchemaForProvider } from '../../shared/validation/json-schema';
+import {
+  normalizeToolParametersForChatCompletions,
+} from '../../shared/validation/json-schema';
 import { normalizeTimeoutMs } from '../../shared/utils/timeout';
 
 interface AiProviderClientConfigInput {
@@ -272,7 +274,7 @@ function sanitizeToolDefinitionsForProvider(tools: ToolDefinition[] | undefined)
   }
 
   const normalizeToolParameters = (toolName: string, parameters: Record<string, unknown>): Record<string, unknown> => {
-    const sanitized = sanitizeJsonSchemaForProvider(parameters);
+    const sanitized = normalizeToolParametersForChatCompletions(parameters);
     if (!sanitized || typeof sanitized !== 'object' || Array.isArray(sanitized)) {
       throw new Error(
         `Tool "${toolName}" must expose Chat Completions parameters as a JSON-schema object.`,

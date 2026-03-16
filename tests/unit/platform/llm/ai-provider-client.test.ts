@@ -294,11 +294,18 @@ describe('AiProviderClient', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it('fails when tool parameter schemas use unsupported top-level union keywords', async () => {
+  it('normalizes discriminated top-level union tool schemas into a provider-safe object schema', async () => {
     const client = new AiProviderClient({ baseUrl: 'https://api.test/v1', model: 'test-chat-model' });
 
-    await expect(
-      client.chat({
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      statusText: 'OK',
+      json: async () => ({ choices: [{ message: { content: 'ok' } }] }),
+      text: async () => 'ok',
+    } satisfies { ok: boolean; status: number; statusText: string; json: () => Promise<unknown>; text: () => Promise<string> });
+
+    await client.chat({
       messages: [{ role: 'user', content: 'run tool' }],
       tools: [
         {
@@ -310,18 +317,41 @@ describe('AiProviderClient', () => {
                 {
                   type: 'object',
                   properties: {
-                    action: { type: 'string' },
+                    action: { type: 'string', const: 'list_channels' },
+                    limit: { type: 'integer', minimum: 1 },
                   },
                   required: ['action'],
+                  additionalProperties: false,
+                },
+                {
+                  type: 'object',
+                  properties: {
+                    action: { type: 'string', const: 'get_channel' },
+                    channelId: { type: 'string' },
+                  },
+                  required: ['action', 'channelId'],
+                  additionalProperties: false,
                 },
               ],
             },
           },
         },
       ],
-      }),
-    ).rejects.toThrow('must expose top-level parameters with type="object"');
-    expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    const body = parseRequestBody(fetchMock, 0);
+    expect(body.tools?.[0]?.function?.parameters).toMatchObject({
+      type: 'object',
+      properties: {
+        action: {
+          type: 'string',
+          enum: ['list_channels', 'get_channel'],
+        },
+        limit: { type: 'integer', minimum: 1 },
+        channelId: { type: 'string' },
+      },
+      required: ['action'],
+    });
   });
 
   it('fails fast (no retry) on 400 model validation errors', async () => {
