@@ -36,6 +36,7 @@
     "db:migrate:dev": "prisma migrate dev",
     "db:studio": "prisma studio",
     "doctor": "node --import tsx src/cli/doctor.ts --",
+    "ai-provider:probe": "node --import tsx src/cli/ai-provider-probe.ts --",
     "tools:smoke": "ts-node -P config/tooling/tsconfig.app.json src/cli/tool-smoke.ts",
     "langgraph:discord:smoke": "node --import tsx src/cli/langgraph-discord-smoke.ts",
     "postinstall": "prisma generate",

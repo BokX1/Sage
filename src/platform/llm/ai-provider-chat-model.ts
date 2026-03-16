@@ -11,7 +11,7 @@ import type { Runnable } from '@langchain/core/runnables';
 import type { BaseLanguageModelInput } from '@langchain/core/language_models/base';
 import { convertToOpenAITool } from '@langchain/core/utils/function_calling';
 import { AiProviderClient } from './ai-provider-client';
-import type { ToolDefinition } from './llm-types';
+import type { LLMResponseFormat, ToolDefinition } from './llm-types';
 import { toLlmMessages, toLangChainToolCalls } from './langchain-interop';
 
 export interface AiProviderChatModelCallOptions extends BaseChatModelCallOptions {
@@ -19,7 +19,7 @@ export interface AiProviderChatModelCallOptions extends BaseChatModelCallOptions
   model?: string;
   temperature?: number;
   maxTokens?: number;
-  responseFormat?: 'text' | 'json_object';
+  responseFormat?: LLMResponseFormat;
   tools?: BindToolsInput[];
 }
 

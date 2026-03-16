@@ -49,6 +49,18 @@ describe('doctor helpers', () => {
     expect(nextAction).toContain('Start the database service');
   });
 
+  it('points strict-output probe failures to the dedicated provider probe command', () => {
+    const nextAction = buildDoctorNextAction([
+      makeResult({
+        id: 'ai_provider.strict_outputs',
+        status: 'fail',
+        message: 'strict structured-output probe failed',
+      }),
+    ]);
+
+    expect(nextAction).toContain('npm run ai-provider:probe');
+  });
+
   it('falls back to warning guidance when there are no blocking failures', () => {
     const nextAction = buildDoctorNextAction([
       makeResult({

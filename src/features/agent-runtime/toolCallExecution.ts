@@ -32,6 +32,10 @@ export interface ToolResult {
   cacheHit?: boolean;
   cacheKind?: 'round' | 'global' | 'dedupe';
   cacheScopeKey?: string;
+  deliveryEffect?: {
+    kind: 'final_message' | 'governance_only';
+    visibleSummary?: string;
+  };
 }
 
 function composeAbortSignal(parentSignal: AbortSignal | undefined, timeoutSignal: AbortSignal): AbortSignal {

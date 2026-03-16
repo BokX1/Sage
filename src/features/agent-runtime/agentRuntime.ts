@@ -25,10 +25,8 @@ import { resolveApiKeyForRuntime } from './apiKeyResolver';
 import { resumeAgentGraphTurn, retryAgentGraphTurn, runAgentGraphTurn } from './langgraph/runtime';
 import {
   buildContinuationUnavailableReply,
-  buildLastResortVisibleReply,
   buildRuntimeFailureReply,
   type RuntimeFailureCategory,
-  finalizeVisibleReplyText,
 } from './visibleReply';
 import {
   getGraphContinuationSessionById,
@@ -74,7 +72,7 @@ export interface RunChatTurnParams {
 
 export interface RunChatTurnResult {
   replyText: string;
-  delivery: 'chat_reply' | 'approval_governance_only' | 'chat_reply_with_continue';
+  delivery: 'chat_reply' | 'tool_delivered' | 'approval_governance_only' | 'chat_reply_with_continue';
   meta?: {
     kind?: 'missing_api_key';
     missingApiKey?: {
@@ -240,6 +238,41 @@ async function buildRunChatTurnMeta(params: {
       sourceChannelId: action.sourceChannelId,
     },
   };
+}
+
+type RuntimeGraphResult = Awaited<ReturnType<typeof runAgentGraphTurn>>;
+
+function toPendingInterruptSummary(
+  pendingInterrupt: RuntimeGraphResult['pendingInterrupt'],
+):
+  | {
+      kind: 'approval_review';
+      requestId: string;
+    }
+  | {
+      kind: 'continue_prompt';
+      continuationId: string;
+      expiresAtIso: string;
+      completedWindows: number;
+      maxWindows: number;
+      summaryText: string;
+    }
+  | null {
+  return pendingInterrupt?.kind === 'approval_review'
+    ? {
+        kind: 'approval_review',
+        requestId: pendingInterrupt.requestId,
+      }
+    : pendingInterrupt?.kind === 'continue_prompt'
+      ? {
+          kind: 'continue_prompt',
+          continuationId: pendingInterrupt.continuationId,
+          expiresAtIso: pendingInterrupt.expiresAtIso,
+          completedWindows: pendingInterrupt.completedWindows,
+          maxWindows: pendingInterrupt.maxWindows,
+          summaryText: pendingInterrupt.summaryText,
+        }
+      : null;
 }
 
 export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTurnResult> {
@@ -437,23 +470,8 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
     finalReplyText = graphResult.replyText;
     files = graphResult.files;
     toolResults = graphResult.toolResults;
-    pendingInterrupt =
-      graphResult.pendingInterrupt?.kind === 'approval_review'
-        ? {
-            kind: 'approval_review',
-            requestId: graphResult.pendingInterrupt.requestId,
-          }
-        : graphResult.pendingInterrupt?.kind === 'continue_prompt'
-          ? {
-              kind: 'continue_prompt',
-              continuationId: graphResult.pendingInterrupt.continuationId,
-              expiresAtIso: graphResult.pendingInterrupt.expiresAtIso,
-              completedWindows: graphResult.pendingInterrupt.completedWindows,
-              maxWindows: graphResult.pendingInterrupt.maxWindows,
-              summaryText: graphResult.pendingInterrupt.summaryText,
-            }
-          : null;
-    delivery = resolveDelivery({ pendingInterrupt });
+    pendingInterrupt = toPendingInterruptSummary(graphResult.pendingInterrupt);
+    delivery = graphResult.deliveryDisposition;
     meta = await buildRunChatTurnMeta({ pendingInterrupt });
     langSmithRunId = graphResult.langSmithRunId;
     langSmithTraceId = graphResult.langSmithTraceId;
@@ -464,12 +482,19 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
       roundsCompleted: graphResult.roundsCompleted,
       completedWindows: graphResult.completedWindows,
       totalRoundsCompleted: graphResult.totalRoundsCompleted,
-      terminationReason: graphResult.terminationReason,
+      completionKind: graphResult.completionKind,
+      stopReason: graphResult.stopReason,
+      deliveryDisposition: graphResult.deliveryDisposition,
       toolResultCount: graphResult.toolResults.length,
       successfulToolCount,
       deduplicatedCallCount: graphResult.deduplicatedCallCount,
       roundEvents: graphResult.roundEvents,
       finalization: graphResult.finalization,
+      structuredRetryCount: graphResult.structuredRetryCount,
+      toolDeliveredFinal: graphResult.toolDeliveredFinal,
+      decisionKind: graphResult.decisionKind,
+      verificationKind: graphResult.verificationKind,
+      contextFrame: graphResult.contextFrame,
       attachmentCount: graphResult.files.length,
       latencyMs: Date.now() - loopStartedAt,
       graphStatus: graphResult.graphStatus,
@@ -508,20 +533,7 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
       groundedReplyText = groundingResult.replyText;
     }
   }
-  const safeFinalReplyText = finalizeVisibleReplyText({
-    replyText: groundedReplyText,
-    preferredReplyText:
-      pendingInterrupt?.kind === 'continue_prompt' ? pendingInterrupt.summaryText : undefined,
-    toolResults,
-    allowEmpty: pendingInterrupt?.kind === 'approval_review',
-    preferEmptyFallback:
-      pendingInterrupt?.kind === 'continue_prompt' ||
-      ((graphBudgetJson?.terminationReason as string | undefined) ?? null) === 'max_windows_reached',
-    emptyFallback:
-      pendingInterrupt?.kind === 'continue_prompt'
-        ? buildLastResortVisibleReply('continue_prompt')
-        : buildLastResortVisibleReply('turn'),
-  });
+  const safeFinalReplyText = groundedReplyText;
   const budgetJson: Record<string, unknown> = {
     route: SINGLE_ROUTE_KIND,
     model,
@@ -551,7 +563,7 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
         threadId: traceId,
         graphStatus: (graphBudgetJson?.graphStatus as string | undefined) ?? 'completed',
         approvalRequestId: pendingInterrupt?.kind === 'approval_review' ? pendingInterrupt.requestId : null,
-        terminationReason: (graphBudgetJson?.terminationReason as string | undefined) ?? null,
+        terminationReason: null,
         langSmithRunId,
         langSmithTraceId,
         replyText: safeFinalReplyText,
@@ -706,40 +718,10 @@ export async function resumeContinuationChatTurn(
         routeKind: 'continue_resume',
       },
     });
-    const pendingInterrupt =
-      graphResult.pendingInterrupt?.kind === 'continue_prompt'
-        ? {
-            kind: 'continue_prompt' as const,
-            continuationId: graphResult.pendingInterrupt.continuationId,
-            expiresAtIso: graphResult.pendingInterrupt.expiresAtIso,
-            completedWindows: graphResult.pendingInterrupt.completedWindows,
-            maxWindows: graphResult.pendingInterrupt.maxWindows,
-            summaryText: graphResult.pendingInterrupt.summaryText,
-          }
-        : graphResult.pendingInterrupt?.kind === 'approval_review'
-          ? {
-              kind: 'approval_review' as const,
-              requestId: graphResult.pendingInterrupt.requestId,
-            }
-          : null;
-
-    const safeReplyText = finalizeVisibleReplyText({
-      replyText: graphResult.replyText,
-      preferredReplyText:
-        pendingInterrupt?.kind === 'continue_prompt' ? pendingInterrupt.summaryText : undefined,
-      toolResults: graphResult.toolResults,
-      allowEmpty: pendingInterrupt?.kind === 'approval_review',
-      preferEmptyFallback:
-        pendingInterrupt?.kind === 'continue_prompt' ||
-        graphResult.terminationReason === 'max_windows_reached',
-      emptyFallback:
-        pendingInterrupt?.kind === 'continue_prompt'
-          ? buildLastResortVisibleReply('continue_resume')
-          : buildLastResortVisibleReply('turn'),
-    });
+    const pendingInterrupt = toPendingInterruptSummary(graphResult.pendingInterrupt);
     result = {
-      replyText: safeReplyText,
-      delivery: resolveDelivery({ pendingInterrupt }),
+      replyText: graphResult.replyText,
+      delivery: graphResult.deliveryDisposition,
       meta: await buildRunChatTurnMeta({ pendingInterrupt }),
       files: graphResult.files,
     };
@@ -753,7 +735,13 @@ export async function resumeContinuationChatTurn(
             roundsCompleted: graphResult.roundsCompleted,
             completedWindows: graphResult.completedWindows,
             totalRoundsCompleted: graphResult.totalRoundsCompleted,
-            terminationReason: graphResult.terminationReason,
+            completionKind: graphResult.completionKind,
+            stopReason: graphResult.stopReason,
+            deliveryDisposition: graphResult.deliveryDisposition,
+            structuredRetryCount: graphResult.structuredRetryCount,
+            decisionKind: graphResult.decisionKind,
+            verificationKind: graphResult.verificationKind,
+            contextFrame: graphResult.contextFrame,
             graphStatus: graphResult.graphStatus,
             pendingInterrupt,
             interruptResolution: graphResult.interruptResolution,
@@ -765,7 +753,13 @@ export async function resumeContinuationChatTurn(
             roundsCompleted: graphResult.roundsCompleted,
             completedWindows: graphResult.completedWindows,
             totalRoundsCompleted: graphResult.totalRoundsCompleted,
-            terminationReason: graphResult.terminationReason,
+            completionKind: graphResult.completionKind,
+            stopReason: graphResult.stopReason,
+            deliveryDisposition: graphResult.deliveryDisposition,
+            structuredRetryCount: graphResult.structuredRetryCount,
+            decisionKind: graphResult.decisionKind,
+            verificationKind: graphResult.verificationKind,
+            contextFrame: graphResult.contextFrame,
             graphStatus: graphResult.graphStatus,
           },
         },
@@ -779,10 +773,10 @@ export async function resumeContinuationChatTurn(
         parentTraceId: session.latestTraceId,
         graphStatus: graphResult.graphStatus,
         approvalRequestId: pendingInterrupt?.kind === 'approval_review' ? pendingInterrupt.requestId : null,
-        terminationReason: graphResult.terminationReason,
+        terminationReason: null,
         langSmithRunId: graphResult.langSmithRunId,
         langSmithTraceId: graphResult.langSmithTraceId,
-        replyText: safeReplyText,
+        replyText: graphResult.replyText,
       });
     }
   } catch (error) {
@@ -804,7 +798,7 @@ export async function resumeContinuationChatTurn(
         parentTraceId: session.latestTraceId,
         graphStatus: 'failed',
         approvalRequestId: null,
-        terminationReason: 'continue_prompt',
+        terminationReason: 'continue_resume_failed',
         replyText: result.replyText,
         budgetJson: {
           route: 'continue_resume',
@@ -889,40 +883,11 @@ export async function retryFailedChatTurn(
       },
     });
 
-    const pendingInterrupt =
-      graphResult.pendingInterrupt?.kind === 'continue_prompt'
-        ? {
-            kind: 'continue_prompt' as const,
-            continuationId: graphResult.pendingInterrupt.continuationId,
-            expiresAtIso: graphResult.pendingInterrupt.expiresAtIso,
-            completedWindows: graphResult.pendingInterrupt.completedWindows,
-            maxWindows: graphResult.pendingInterrupt.maxWindows,
-            summaryText: graphResult.pendingInterrupt.summaryText,
-          }
-        : graphResult.pendingInterrupt?.kind === 'approval_review'
-          ? {
-              kind: 'approval_review' as const,
-              requestId: graphResult.pendingInterrupt.requestId,
-            }
-          : null;
-
-    const replyText = finalizeVisibleReplyText({
-      replyText: graphResult.replyText,
-      preferredReplyText:
-        pendingInterrupt?.kind === 'continue_prompt' ? pendingInterrupt.summaryText : undefined,
-      toolResults: graphResult.toolResults,
-      allowEmpty: pendingInterrupt?.kind === 'approval_review',
-      preferEmptyFallback:
-        pendingInterrupt?.kind === 'continue_prompt' ||
-        graphResult.terminationReason === 'max_windows_reached',
-      emptyFallback:
-        pendingInterrupt?.kind === 'continue_prompt'
-          ? buildLastResortVisibleReply('continue_resume')
-          : buildLastResortVisibleReply('turn'),
-    });
+    const pendingInterrupt = toPendingInterruptSummary(graphResult.pendingInterrupt);
+    const replyText = graphResult.replyText;
     const result: RunChatTurnResult = {
       replyText,
-      delivery: resolveDelivery({ pendingInterrupt }),
+      delivery: graphResult.deliveryDisposition,
       meta: await buildRunChatTurnMeta({ pendingInterrupt }),
       files: graphResult.files,
     };
@@ -936,7 +901,13 @@ export async function retryFailedChatTurn(
             roundsCompleted: graphResult.roundsCompleted,
             completedWindows: graphResult.completedWindows,
             totalRoundsCompleted: graphResult.totalRoundsCompleted,
-            terminationReason: graphResult.terminationReason,
+            completionKind: graphResult.completionKind,
+            stopReason: graphResult.stopReason,
+            deliveryDisposition: graphResult.deliveryDisposition,
+            structuredRetryCount: graphResult.structuredRetryCount,
+            decisionKind: graphResult.decisionKind,
+            verificationKind: graphResult.verificationKind,
+            contextFrame: graphResult.contextFrame,
             graphStatus: graphResult.graphStatus,
             pendingInterrupt,
             interruptResolution: graphResult.interruptResolution,
@@ -949,7 +920,13 @@ export async function retryFailedChatTurn(
             roundsCompleted: graphResult.roundsCompleted,
             completedWindows: graphResult.completedWindows,
             totalRoundsCompleted: graphResult.totalRoundsCompleted,
-            terminationReason: graphResult.terminationReason,
+            completionKind: graphResult.completionKind,
+            stopReason: graphResult.stopReason,
+            deliveryDisposition: graphResult.deliveryDisposition,
+            structuredRetryCount: graphResult.structuredRetryCount,
+            decisionKind: graphResult.decisionKind,
+            verificationKind: graphResult.verificationKind,
+            contextFrame: graphResult.contextFrame,
             graphStatus: graphResult.graphStatus,
           },
         },
@@ -962,7 +939,7 @@ export async function retryFailedChatTurn(
         threadId: params.threadId,
         parentTraceId: params.threadId,
         graphStatus: graphResult.graphStatus,
-        terminationReason: graphResult.terminationReason,
+        terminationReason: null,
         langSmithRunId: graphResult.langSmithRunId,
         langSmithTraceId: graphResult.langSmithTraceId,
         approvalRequestId: pendingInterrupt?.kind === 'approval_review' ? pendingInterrupt.requestId : null,
@@ -1042,22 +1019,4 @@ function buildContinuationMeta(
       summaryText: pendingInterrupt.summaryText,
     },
   };
-}
-
-function resolveDelivery(params: {
-  pendingInterrupt:
-    | { kind: 'approval_review' }
-    | {
-        kind: 'continue_prompt';
-        continuationId: string;
-        expiresAtIso: string;
-        completedWindows: number;
-        maxWindows: number;
-        summaryText: string;
-      }
-    | null;
-}): RunChatTurnResult['delivery'] {
-  if (!params.pendingInterrupt) return 'chat_reply';
-  if (params.pendingInterrupt.kind === 'approval_review') return 'approval_governance_only';
-  return 'chat_reply_with_continue';
 }

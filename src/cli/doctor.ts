@@ -7,6 +7,10 @@ import path from 'path';
 import { createInterface } from 'readline/promises';
 import type { EnvSchema } from '../platform/config/envSchema';
 import { envSchema, parseEnvSafe } from '../platform/config/envSchema';
+import {
+  probeAiProviderPing,
+  probeAiProviderStrictStructuredOutputs,
+} from '../platform/llm/ai-provider-probe';
 
 export type CheckStatus = 'pass' | 'warn' | 'fail' | 'skip';
 
@@ -83,6 +87,7 @@ const CHECK_IDS = {
   servicesTika: 'services.tika',
   aiProviderConfig: 'ai_provider.config',
   aiProviderPing: 'ai_provider.ping',
+  aiProviderStrictOutputs: 'ai_provider.strict_outputs',
 } as const;
 
 const CHECK_ORDER: readonly string[] = [
@@ -97,6 +102,7 @@ const CHECK_ORDER: readonly string[] = [
   CHECK_IDS.servicesTika,
   CHECK_IDS.aiProviderConfig,
   CHECK_IDS.aiProviderPing,
+  CHECK_IDS.aiProviderStrictOutputs,
 ] as const;
 
 function printHelp() {
@@ -108,7 +114,7 @@ Usage:
 Options:
   --env-file <path>       Path to .env file (default: .env)
   --env-example <path>    Path to .env.example (default: .env.example)
-  --llm-ping              Run live LLM ping check
+  --llm-ping              Run live AI provider ping and strict structured-output probe checks
   --json                  Output machine-readable JSON
   --verbose               Include verbose diagnostics
   --fail-on-warn          Exit with code 1 on warnings
@@ -279,10 +285,6 @@ function redactDatabaseUrl(url: string): string {
   }
 }
 
-function normalizeAiProviderBaseUrl(baseUrl: string): string {
-  return baseUrl.trim().replace(/\/$/, '').replace(/\/chat\/completions$/, '');
-}
-
 function isLocalHttpUrl(url: string): boolean {
   try {
     const parsed = new URL(url);
@@ -370,6 +372,8 @@ export function buildDoctorNextAction(results: CheckResult[]): string {
         return 'Run `npm run db:migrate`, then rerun `npm run doctor`.';
       case CHECK_IDS.depsPrismaClient:
         return 'Run `npm ci` and `npm run postinstall`, then rerun `npm run doctor`.';
+      case CHECK_IDS.aiProviderStrictOutputs:
+        return 'Run `npm run ai-provider:probe` with a valid AI provider key/model, then switch to a model that accepts strict json_schema output if the probe fails.';
       default:
         return `Address the blocking check \`${firstFailure.id}\`, then rerun \`npm run doctor\`.`;
     }
@@ -839,28 +843,42 @@ function buildChecks(): CheckDefinition[] {
         if (!ctx.parsedEnv.AI_PROVIDER_MODEL_PROFILES_JSON) {
           return {
             status: 'pass',
-            message: 'No explicit AI provider model profiles configured; Sage will use base runtime budgets',
+            message: 'AI provider model profiles are optional; Sage will use base runtime defaults',
+            details: [
+              'Run `npm run doctor -- --llm-ping` or `npm run ai-provider:probe` to verify strict structured-output support against the live provider.',
+            ],
           };
         }
 
         try {
           const profiles = JSON.parse(ctx.parsedEnv.AI_PROVIDER_MODEL_PROFILES_JSON) as Record<string, unknown>;
-          const configuredModels = [
-            ctx.parsedEnv.AI_PROVIDER_MAIN_AGENT_MODEL,
-            ctx.parsedEnv.AI_PROVIDER_PROFILE_AGENT_MODEL,
-            ctx.parsedEnv.AI_PROVIDER_SUMMARY_AGENT_MODEL,
-          ];
-          const missingProfiles = configuredModels.filter((modelId) => !(modelId in profiles));
-          if (missingProfiles.length > 0) {
+          const mainModelId = ctx.parsedEnv.AI_PROVIDER_MAIN_AGENT_MODEL;
+          const mainProfile = profiles[mainModelId];
+          if (!mainProfile || typeof mainProfile !== 'object' || Array.isArray(mainProfile)) {
             return {
-              status: 'pass',
-              message: 'AI provider model profiles are partial; Sage will fall back to base runtime budgets for missing entries',
-              details: missingProfiles.map((modelId) => `Using base budget defaults for: ${modelId}`),
+              status: 'warn',
+              message: `Main agent model ${mainModelId} has no explicit profile entry`,
+              details: [
+                'Sage will still run with base defaults; use the live strict-output probe if you want to verify provider support and optionally record it in AI_PROVIDER_MODEL_PROFILES_JSON.',
+              ],
             };
           }
+
+          const strictStructuredOutputs =
+            (mainProfile as Record<string, unknown>).strictStructuredOutputs === true;
+          if (!strictStructuredOutputs) {
+            return {
+              status: 'warn',
+              message: `Main agent model ${mainModelId} profile does not declare strictStructuredOutputs=true`,
+              details: [
+                'This metadata is now optional. Use the live strict-output probe to confirm real provider support before trusting the flag.',
+              ],
+            };
+          }
+
           return {
             status: 'pass',
-            message: 'Configured AI provider agent models all have explicit profile entries',
+            message: 'Main agent model profile includes strict structured-output metadata',
           };
         } catch (error) {
           return {
@@ -891,49 +909,58 @@ function buildChecks(): CheckDefinition[] {
           return {
             status: 'skip',
             message: 'Skipped (no host AI provider key configured; Discord server-key flow can still work)',
+            details: [
+              'Use `npm run ai-provider:probe -- --api-key <key> --model <model> --base-url <url>` when you want to verify a BYOP or host key directly.',
+            ],
           };
         }
-        const baseUrl = normalizeAiProviderBaseUrl(ctx.parsedEnv.AI_PROVIDER_BASE_URL);
-        const endpoint = `${baseUrl}/chat/completions`;
-        const headers: Record<string, string> = {
-          'content-type': 'application/json',
+        const result = await probeAiProviderPing({
+          baseUrl: ctx.parsedEnv.AI_PROVIDER_BASE_URL,
+          model: ctx.parsedEnv.AI_PROVIDER_MAIN_AGENT_MODEL,
+          apiKey: ctx.parsedEnv.AI_PROVIDER_API_KEY,
+        });
+        return {
+          status: result.ok ? 'pass' : 'fail',
+          message: result.message,
+          details: result.details,
         };
-        headers.authorization = `Bearer ${ctx.parsedEnv.AI_PROVIDER_API_KEY}`;
-        try {
-          const response = await fetch(endpoint, {
-            method: 'POST',
-            headers,
-            signal: AbortSignal.timeout(10000),
-            body: JSON.stringify({
-              model: ctx.parsedEnv.AI_PROVIDER_MAIN_AGENT_MODEL,
-              messages: [{ role: 'user', content: 'Respond with exactly: OK' }],
-              max_tokens: 8,
-              temperature: 0,
-            }),
-          });
-          if (!response.ok) {
-            const bodySnippet = (await response.text()).slice(0, 200);
-            return {
-              status: 'fail',
-              message: `AI provider ping failed (${response.status})`,
-              details: [bodySnippet],
-            };
-          }
-          const payload = (await response.json()) as {
-            choices?: Array<{ message?: { content?: string } }>;
-          };
-          const content = payload.choices?.[0]?.message?.content?.trim() ?? '';
+      },
+    },
+    {
+      id: CHECK_IDS.aiProviderStrictOutputs,
+      title: 'Live AI provider strict structured-output probe',
+      run: async (ctx) => {
+        if (!getLlmPingEnabled(ctx.flags, ctx.envValues)) {
           return {
-            status: 'pass',
-            message: content ? `AI provider ping succeeded (${content})` : 'AI provider ping succeeded',
-          };
-        } catch (error) {
-          return {
-            status: 'fail',
-            message: 'AI provider ping request failed',
-            details: [String(error)],
+            status: 'skip',
+            message: 'Skipped (enable with --llm-ping or LLM_DOCTOR_PING=1)',
           };
         }
+        if (!ctx.parsedEnv) {
+          return {
+            status: 'skip',
+            message: 'Skipped (environment schema failed)',
+          };
+        }
+        if (!ctx.parsedEnv.AI_PROVIDER_API_KEY?.trim()) {
+          return {
+            status: 'skip',
+            message: 'Skipped (no host AI provider key configured; strict probe is still available for BYOP keys)',
+            details: [
+              'Run `npm run ai-provider:probe -- --api-key <key> --model <model> --base-url <url>` to test strict structured-output support directly.',
+            ],
+          };
+        }
+        const result = await probeAiProviderStrictStructuredOutputs({
+          baseUrl: ctx.parsedEnv.AI_PROVIDER_BASE_URL,
+          model: ctx.parsedEnv.AI_PROVIDER_MAIN_AGENT_MODEL,
+          apiKey: ctx.parsedEnv.AI_PROVIDER_API_KEY,
+        });
+        return {
+          status: result.ok ? 'pass' : 'fail',
+          message: result.message,
+          details: result.details,
+        };
       },
     },
   ];

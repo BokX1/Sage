@@ -102,7 +102,6 @@ import {
 } from '../agent-runtime/continuityContext';
 import { resolveApiKeyForRuntime } from '../agent-runtime/apiKeyResolver';
 import { ApprovalRequiredSignal, type ApprovalInterruptPayload } from '../agent-runtime/toolControlSignals';
-import { buildLastResortVisibleReply, finalizeVisibleReplyText } from '../agent-runtime/visibleReply';
 
 const APPROVAL_TTL_MS = 10 * 60 * 1_000;
 const RESOLVED_APPROVAL_CARD_DELETE_DELAY_MS = 60_000;
@@ -4251,11 +4250,7 @@ async function resumeApprovalReviewGraph(params: {
       },
       context: apiKey ? { apiKey } : undefined,
     });
-    const visibleReplyText = finalizeVisibleReplyText({
-      replyText: graphResult.replyText,
-      toolResults: graphResult.toolResults,
-      emptyFallback: buildLastResortVisibleReply('approval_resume'),
-    });
+    const visibleReplyText = graphResult.replyText;
 
     await updateTraceEnd({
       id: resumeTraceId,
@@ -4264,7 +4259,9 @@ async function resumeApprovalReviewGraph(params: {
         approvalRequestId: params.action.id,
         decision: params.decision,
         graphStatus: graphResult.graphStatus,
-        terminationReason: graphResult.terminationReason,
+        stopReason: graphResult.stopReason,
+        completionKind: graphResult.completionKind,
+        deliveryDisposition: graphResult.deliveryDisposition,
       },
       budgetJson: {
         route: 'approval_resume',
@@ -4278,7 +4275,7 @@ async function resumeApprovalReviewGraph(params: {
       parentTraceId: params.action.originTraceId,
       graphStatus: graphResult.graphStatus,
       approvalRequestId: params.action.id,
-      terminationReason: graphResult.terminationReason,
+      terminationReason: null,
       langSmithRunId: graphResult.langSmithRunId,
       langSmithTraceId: graphResult.langSmithTraceId,
     }).catch((error) => {

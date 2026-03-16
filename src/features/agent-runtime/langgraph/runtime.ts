@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import {
   Command,
   END,
+  GraphRecursionError,
   MemorySaver,
   MessagesValue,
   ReducedValue,
@@ -14,7 +15,7 @@ import {
   task,
 } from '@langchain/langgraph';
 import { ToolNode, toolsCondition } from '@langchain/langgraph/prebuilt';
-import { AIMessage, ToolMessage, type BaseMessage } from '@langchain/core/messages';
+import { AIMessage, HumanMessage, ToolMessage, type BaseMessage } from '@langchain/core/messages';
 import type { RunnableConfig } from '@langchain/core/runnables';
 import { z } from 'zod';
 import { PostgresSaver } from '@langchain/langgraph-checkpoint-postgres';
@@ -42,6 +43,8 @@ import type { ToolExecutionContext } from '../toolRegistry';
 import { ApprovalRequiredSignal } from '../toolControlSignals';
 import { createAgentRunTelemetry } from '../observability/langsmith';
 import { buildContinuationUnavailableReply } from '../visibleReply';
+import { buildToolCacheKey } from '../toolCache';
+import { globalToolRegistry } from '../toolRegistry';
 import { buildAgentGraphConfig, type AgentGraphConfig } from './config';
 import {
   buildActiveToolCatalog,
@@ -52,13 +55,19 @@ import {
   type GraphToolCallDescriptor,
 } from './nativeTools';
 import type {
+  GraphCompletionKind,
+  GraphContextFrame,
+  GraphDecisionKind,
+  GraphDeliveryDisposition,
   AgentGraphPersistedContext,
   AgentGraphRuntimeContext,
   AgentGraphState,
   ApprovalResumeDecision,
+  GraphStopReason,
+  GraphToolDeliveryState,
+  GraphVerificationKind,
   GraphResumeInput,
   GraphRebudgetEvent,
-  GraphTurnTerminationReason,
   SerializedToolResult,
   ToolCallFinalizationEvent,
   ToolCallRoundEvent,
@@ -118,7 +127,11 @@ const ToolCallRoundEventSchema = z.object({
   requestedCallCount: z.number(),
   executedCallCount: z.number(),
   deduplicatedCallCount: z.number(),
+  uniqueCallCount: z.number(),
+  skippedDuplicateCallCount: z.number(),
+  overLimitCallCount: z.number(),
   completedAt: z.string(),
+  guardReason: z.enum(['too_many_tool_calls', 'repeated_identical_batch', 'recursion_limit']).optional(),
   rebudgeting: GraphRebudgetEventSchema.optional(),
 });
 
@@ -126,14 +139,60 @@ const ToolCallFinalizationEventSchema = z.object({
   attempted: z.boolean(),
   succeeded: z.boolean(),
   completedAt: z.string(),
-  terminationReason: z.enum([
-    'assistant_reply',
-    'continue_prompt',
-    'graph_timeout',
+  stopReason: z.enum([
+    'verified_closeout',
     'approval_interrupt',
+    'step_window_exhausted',
+    'graph_timeout',
     'max_windows_reached',
+    'continuation_expired',
+    'loop_guard',
+    'structured_output_failure',
   ]),
+  completionKind: z.enum([
+    'final_answer',
+    'clarification_question',
+    'delivered_via_tool',
+    'pause_handoff',
+    'approval_handoff',
+    'loop_guard',
+  ]),
+  deliveryDisposition: z.enum([
+    'chat_reply',
+    'tool_delivered',
+    'approval_governance_only',
+    'chat_reply_with_continue',
+  ]),
+  structuredRetryCount: z.number(),
+  toolDeliveredFinal: z.boolean(),
+  contextFrame: z
+    .object({
+      objective: z.string(),
+      verifiedFacts: z.array(z.string()),
+      completedActions: z.array(z.string()),
+      openQuestions: z.array(z.string()),
+      pendingApprovals: z.array(z.string()),
+      deliveryState: z.enum(['none', 'final_message', 'governance_only']),
+      nextAction: z.string(),
+    })
+    .optional(),
   rebudgeting: GraphRebudgetEventSchema.optional(),
+});
+
+const GraphToolDeliveryStateSchema = z.object({
+  toolName: z.string(),
+  effectKind: z.enum(['final_message', 'governance_only']),
+  visibleSummary: z.string().optional(),
+});
+
+const GraphContextFrameSchema = z.object({
+  objective: z.string(),
+  verifiedFacts: z.array(z.string()).default([]),
+  completedActions: z.array(z.string()).default([]),
+  openQuestions: z.array(z.string()).default([]),
+  pendingApprovals: z.array(z.string()).default([]),
+  deliveryState: z.enum(['none', 'final_message', 'governance_only']).default('none'),
+  nextAction: z.string(),
 });
 
 const ApprovalInterruptStateSchema = z.object({
@@ -154,7 +213,7 @@ const ContinuePromptInterruptStateSchema = z.object({
   completedWindows: z.number(),
   maxWindows: z.number(),
   expiresAtIso: z.string(),
-  resumeNode: z.enum(['llm_call', 'route_tool_phase']),
+  resumeNode: z.enum(['tool_call_turn', 'route_tool_phase']),
 });
 
 const ApprovalResolutionStateSchema = z.object({
@@ -227,6 +286,7 @@ const AgentGraphStateSchema = new StateSchema({
   messages: MessagesValue,
   resumeContext: AgentGraphRuntimeSnapshotSchema,
   pendingReadCalls: z.array(GraphToolCallDescriptorSchema).default([]),
+  pendingReadExecutionCalls: z.array(GraphToolCallDescriptorSchema).default([]),
   pendingWriteCalls: z.array(GraphToolCallDescriptorSchema).default([]),
   replyText: z.string().default(''),
   toolResults: new ReducedValue(z.array(SerializedToolResultSchema).default([]), {
@@ -241,6 +301,9 @@ const AgentGraphStateSchema = new StateSchema({
   deduplicatedCallCount: new ReducedValue(z.number().default(0), {
     reducer: (left, right) => left + right,
   }),
+  lastToolBatchFingerprint: z.string().nullable().default(null),
+  consecutiveIdenticalToolBatches: z.number().default(0),
+  loopGuardRecoveries: z.number().default(0),
   roundEvents: new ReducedValue(z.array(ToolCallRoundEventSchema).default([]), {
     reducer: (left, right) => [...left, ...right],
   }),
@@ -248,11 +311,69 @@ const AgentGraphStateSchema = new StateSchema({
     attempted: false,
     succeeded: true,
     completedAt: new Date(0).toISOString(),
-    terminationReason: 'assistant_reply',
+    stopReason: 'verified_closeout',
+    completionKind: 'final_answer',
+    deliveryDisposition: 'chat_reply',
+    structuredRetryCount: 0,
+    toolDeliveredFinal: false,
   }),
-  terminationReason: z
-    .enum(['assistant_reply', 'continue_prompt', 'graph_timeout', 'approval_interrupt', 'max_windows_reached'])
-    .default('assistant_reply'),
+  completionKind: z
+    .enum([
+      'final_answer',
+      'clarification_question',
+      'delivered_via_tool',
+      'pause_handoff',
+      'approval_handoff',
+      'loop_guard',
+    ])
+    .nullable()
+    .default(null),
+  stopReason: z
+    .enum([
+      'verified_closeout',
+      'approval_interrupt',
+      'step_window_exhausted',
+      'graph_timeout',
+      'max_windows_reached',
+      'continuation_expired',
+      'loop_guard',
+      'structured_output_failure',
+    ])
+    .default('verified_closeout'),
+  deliveryDisposition: z
+    .enum([
+      'chat_reply',
+      'tool_delivered',
+      'approval_governance_only',
+      'chat_reply_with_continue',
+    ])
+    .default('chat_reply'),
+  structuredRetryCount: z.number().default(0),
+  finalToolDelivery: z.union([GraphToolDeliveryStateSchema, z.null()]).default(null),
+  decisionKind: z
+    .enum(['call_tools', 'answer_now', 'ask_clarification', 'pause_handoff'])
+    .nullable()
+    .default(null),
+  verificationKind: z
+    .enum([
+      'verified_answer',
+      'need_more_tools',
+      'ask_clarification',
+      'delivered_via_tool',
+      'approval_handoff',
+      'loop_guard',
+    ])
+    .nullable()
+    .default(null),
+  contextFrame: GraphContextFrameSchema.default({
+    objective: 'Finish the current user request cleanly.',
+    verifiedFacts: [],
+    completedActions: [],
+    openQuestions: [],
+    pendingApprovals: [],
+    deliveryState: 'none',
+    nextAction: 'Decide the next best step.',
+  }),
   graphStatus: z.enum(['running', 'interrupted', 'completed', 'failed']).default('running'),
   activeWindowDurationMs: z.number().default(0),
   pendingInterrupt: z
@@ -264,10 +385,13 @@ const AgentGraphStateSchema = new StateSchema({
 });
 
 type GraphNodeName =
-  | 'llm_call'
+  | 'decide_turn'
+  | 'tool_call_turn'
   | 'route_tool_phase'
   | 'execute_read_tools'
   | 'approval_gate'
+  | 'verify_turn'
+  | 'closeout_turn'
   | 'pause_for_continue'
   | 'resume_interrupt'
   | 'finalize_turn';
@@ -328,7 +452,14 @@ export interface AgentGraphTurnResult {
   deduplicatedCallCount: number;
   roundEvents: ToolCallRoundEvent[];
   finalization: ToolCallFinalizationEvent;
-  terminationReason: GraphTurnTerminationReason;
+  completionKind: GraphCompletionKind | null;
+  stopReason: GraphStopReason;
+  deliveryDisposition: GraphDeliveryDisposition;
+  structuredRetryCount: number;
+  toolDeliveredFinal: boolean;
+  decisionKind: GraphDecisionKind | null;
+  verificationKind: GraphVerificationKind | null;
+  contextFrame: GraphContextFrame;
   graphStatus: AgentGraphState['graphStatus'];
   pendingInterrupt: AgentGraphState['pendingInterrupt'];
   interruptResolution: AgentGraphState['interruptResolution'];
@@ -357,6 +488,31 @@ function findLatestAssistantText(messages: BaseMessage[]): string {
     }
   }
   return '';
+}
+
+function buildDefaultFinalization(): ToolCallFinalizationEvent {
+  return {
+    attempted: false,
+    succeeded: true,
+    completedAt: new Date(0).toISOString(),
+    stopReason: 'verified_closeout',
+    completionKind: 'final_answer',
+    deliveryDisposition: 'chat_reply',
+    structuredRetryCount: 0,
+    toolDeliveredFinal: false,
+  };
+}
+
+function buildDefaultContextFrame(): GraphContextFrame {
+  return {
+    objective: 'Finish the current user request cleanly.',
+    verifiedFacts: [],
+    completedActions: [],
+    openQuestions: [],
+    pendingApprovals: [],
+    deliveryState: 'none',
+    nextAction: 'Decide the next best step.',
+  };
 }
 
 function buildToolNameRollup(results: Array<Pick<SerializedToolResult, 'name'>>): string {
@@ -632,7 +788,14 @@ function normalizeGraphResult(
     deduplicatedCallCount: state.deduplicatedCallCount,
     roundEvents: state.roundEvents,
     finalization: state.finalization,
-    terminationReason: state.terminationReason,
+    completionKind: state.completionKind,
+    stopReason: state.stopReason,
+    deliveryDisposition: state.deliveryDisposition,
+    structuredRetryCount: state.structuredRetryCount,
+    toolDeliveredFinal: state.finalization.toolDeliveredFinal,
+    decisionKind: state.decisionKind,
+    verificationKind: state.verificationKind,
+    contextFrame: state.contextFrame,
     graphStatus: state.graphStatus,
     pendingInterrupt: state.pendingInterrupt,
     interruptResolution: state.interruptResolution,
@@ -692,6 +855,17 @@ function shouldRetryModelInvokeError(error: unknown): boolean {
   return /408|409|425|429|500|502|503|504|timeout|timed out|ECONNRESET|ECONNREFUSED|EAI_AGAIN|ETIMEDOUT|socket hang up|rate limit|provider offline|provider unavailable|upstream/i.test(
     text,
   );
+}
+
+function rewriteStructuredOutputError(model: string, error: unknown): Error {
+  const text = error instanceof Error ? error.message : String(error);
+  if (/response_format|json_schema|structured output|unsupported/i.test(text)) {
+    return new Error(
+      `AI provider model "${model}" rejected Sage's strict json_schema structured-output contract. Run \`npm run ai-provider:probe -- --model ${model}\` with a valid provider key to verify support.`,
+      { cause: error instanceof Error ? error : undefined },
+    );
+  }
+  return error instanceof Error ? error : new Error(text);
 }
 
 const MODEL_INVOKE_RETRY_POLICY = {
@@ -757,11 +931,104 @@ interface DurableContinuationInterruptOutput {
   completedWindows: number;
   maxWindows: number;
   expiresAtIso: string;
-  resumeNode: 'llm_call' | 'route_tool_phase';
+  resumeNode: 'tool_call_turn' | 'route_tool_phase';
 }
 
 interface DurableGraphTimestampOutput {
   iso: string;
+}
+
+interface DurableStructuredModelInvokeInput {
+  messages: LLMChatMessage[];
+  schemaName: string;
+  schema: Record<string, unknown>;
+  model?: string;
+  apiKey?: string;
+  temperature: number;
+  requestTimeoutMs?: number;
+  maxTokens?: number;
+}
+
+interface DurableStructuredModelInvokeOutput {
+  payload: unknown;
+  rawText: string;
+  latencyMs: number;
+}
+
+const TurnDecisionSchema = z.object({
+  decision: z.enum(['call_tools', 'answer_now', 'ask_clarification', 'pause_handoff']),
+  visibleReplyText: z.string().optional(),
+  objective: z.string().optional(),
+  nextAction: z.string().optional(),
+});
+
+const TurnDecisionJsonSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['decision'],
+  properties: {
+    decision: {
+      type: 'string',
+      enum: ['call_tools', 'answer_now', 'ask_clarification', 'pause_handoff'],
+    },
+    visibleReplyText: { type: 'string' },
+    objective: { type: 'string' },
+    nextAction: { type: 'string' },
+  },
+} satisfies Record<string, unknown>;
+
+const TurnVerificationSchema = z.object({
+  verification: z.enum([
+    'verified_answer',
+    'need_more_tools',
+    'ask_clarification',
+    'delivered_via_tool',
+    'approval_handoff',
+    'loop_guard',
+  ]),
+  visibleReplyText: z.string().optional(),
+  verifiedFacts: z.array(z.string()).default([]),
+  openQuestions: z.array(z.string()).default([]),
+  nextAction: z.string().optional(),
+});
+
+const TurnVerificationJsonSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['verification'],
+  properties: {
+    verification: {
+      type: 'string',
+      enum: [
+        'verified_answer',
+        'need_more_tools',
+        'ask_clarification',
+        'delivered_via_tool',
+        'approval_handoff',
+        'loop_guard',
+      ],
+    },
+    visibleReplyText: { type: 'string' },
+    verifiedFacts: {
+      type: 'array',
+      items: { type: 'string' },
+    },
+    openQuestions: {
+      type: 'array',
+      items: { type: 'string' },
+    },
+    nextAction: { type: 'string' },
+  },
+} satisfies Record<string, unknown>;
+
+function parseStructuredJson(text: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch (error) {
+    throw new Error('Structured model response was not valid JSON.', {
+      cause: error,
+    });
+  }
 }
 
 const invokeAgentModelTask = task(
@@ -809,6 +1076,53 @@ const invokeAgentModelTask = task(
   },
 );
 
+const invokeStructuredAgentModelTask = task(
+  {
+    name: 'sage_invoke_structured_agent_model',
+    retry: MODEL_INVOKE_RETRY_POLICY,
+  },
+  async (input: DurableStructuredModelInvokeInput): Promise<DurableStructuredModelInvokeOutput> => {
+    const startedAt = Date.now();
+    const model = createGraphChatModel({
+      model: input.model,
+      apiKey: input.apiKey,
+      temperature: input.temperature,
+      timeoutMs: input.requestTimeoutMs,
+      maxTokens: input.maxTokens,
+    });
+    const taskConfig = getConfig();
+    let responseMessage: BaseMessage;
+    try {
+      responseMessage = await model.invoke(toLangChainMessages(input.messages), {
+        callbacks: taskConfig?.callbacks,
+        tags: taskConfig?.tags,
+        metadata: taskConfig?.metadata,
+        signal: taskConfig?.signal,
+        responseFormat: {
+          type: 'json_schema',
+          name: input.schemaName,
+          schema: input.schema,
+          strict: true,
+          disableFallback: true,
+        },
+      });
+    } catch (error) {
+      throw rewriteStructuredOutputError(resolveGraphModelId(input.model), error);
+    }
+    const rawText = extractMessageText(
+      AIMessage.isInstance(responseMessage)
+        ? responseMessage
+        : (responseMessage as BaseMessage),
+    ).trim();
+
+    return {
+      payload: parseStructuredJson(rawText),
+      rawText,
+      latencyMs: Math.max(0, Date.now() - startedAt),
+    };
+  },
+);
+
 const captureGraphTimestampTask = task(
   { name: 'sage_capture_graph_timestamp' },
   async (): Promise<DurableGraphTimestampOutput> => ({
@@ -850,7 +1164,7 @@ const createContinuationInterruptTask = task(
     completedWindows: number;
     maxWindows: number;
     summaryText: string;
-    resumeNode: 'llm_call' | 'route_tool_phase';
+    resumeNode: 'tool_call_turn' | 'route_tool_phase';
   }): Promise<DurableContinuationInterruptOutput> => {
     const continuation = await createGraphContinuationSession({
       threadId: input.threadId,
@@ -875,7 +1189,7 @@ const createContinuationInterruptTask = task(
       completedWindows: continuation.completedWindows,
       maxWindows: continuation.maxWindows,
       expiresAtIso: continuation.expiresAt.toISOString(),
-      resumeNode: continuation.resumeNode as 'llm_call' | 'route_tool_phase',
+      resumeNode: continuation.resumeNode as 'tool_call_turn' | 'route_tool_phase',
     };
   },
 );
@@ -912,8 +1226,18 @@ function buildToolContext(
   state: AgentGraphState,
   runtimeContext: AgentGraphRuntimeContext,
   graphRunKind: 'turn' | 'approval_resume',
+  config?: RunnableConfig,
 ): ToolExecutionContext {
-  const currentGraphTurn = Math.max(1, state.roundsCompleted);
+  const metadataStep =
+    typeof config?.metadata === 'object' && config.metadata
+      ? (config.metadata as Record<string, unknown>).langgraph_step
+      : undefined;
+  const currentGraphTurn =
+    typeof metadataStep === 'number' && Number.isFinite(metadataStep)
+      ? Math.max(1, Math.trunc(metadataStep))
+      : typeof metadataStep === 'string' && /^\d+$/.test(metadataStep)
+        ? Math.max(1, Number.parseInt(metadataStep, 10))
+        : Math.max(1, state.roundsCompleted);
   return {
     traceId: runtimeContext.traceId,
     graphThreadId: runtimeContext.threadId,
@@ -948,6 +1272,352 @@ async function buildExecutionEvent(
     completedAt: timestamp.iso,
     ...details,
   };
+}
+
+function safeJsonStringify(value: unknown): string | null {
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return null;
+  }
+}
+
+async function resolveToolCallFingerprint(
+  call: GraphToolCallDescriptor,
+  context: ToolExecutionContext,
+): Promise<string> {
+  const fallback = buildToolCacheKey(call.name, call.args);
+
+  try {
+    const resolved = await globalToolRegistry.resolveActionPolicy(call, context);
+    const idempotencyKey = resolved?.policy.idempotencyKey;
+    let candidate: string | null | undefined;
+
+    if (typeof idempotencyKey === 'string') {
+      candidate = idempotencyKey;
+    } else if (typeof idempotencyKey === 'function' && resolved) {
+      candidate = idempotencyKey(resolved.args, context);
+    }
+
+    const normalized = candidate?.trim();
+    if (normalized) {
+      return `${call.name}::${normalized}`;
+    }
+  } catch {
+    // Fall back to the stable semantic cache key when policy resolution is unavailable.
+  }
+
+  return fallback;
+}
+
+function buildToolBatchFingerprint(
+  calls: Array<{
+    readOnly: boolean;
+    fingerprint: string;
+  }>,
+): string | null {
+  if (calls.length === 0) {
+    return null;
+  }
+
+  return safeJsonStringify(
+    calls.map((call) => ({
+      mode: call.readOnly ? 'read' : 'write',
+      fingerprint: call.fingerprint,
+    })),
+  );
+}
+
+function buildLoopGuardContent(params: {
+  reason: NonNullable<ToolCallRoundEvent['guardReason']>;
+  detail: string;
+  requestedCallCount: number;
+  uniqueCallCount: number;
+  skippedDuplicateCallCount: number;
+  overLimitCallCount: number;
+  repairable: boolean;
+}): string {
+  return (
+    safeJsonStringify({
+      ok: false,
+      errorType: 'loop_guard',
+      reason: params.reason,
+      detail: params.detail,
+      requestedCallCount: params.requestedCallCount,
+      uniqueCallCount: params.uniqueCallCount,
+      skippedDuplicateCallCount: params.skippedDuplicateCallCount,
+      overLimitCallCount: params.overLimitCallCount,
+      repairable: params.repairable,
+    }) ?? params.detail
+  );
+}
+
+function buildLoopGuardToolMessages(params: {
+  calls: GraphToolCallDescriptor[];
+  reason: NonNullable<ToolCallRoundEvent['guardReason']>;
+  detail: string;
+  requestedCallCount: number;
+  uniqueCallCount: number;
+  skippedDuplicateCallCount: number;
+  overLimitCallCount: number;
+  repairable: boolean;
+}): {
+  messages: ToolMessage[];
+  results: SerializedToolResult[];
+} {
+  return params.calls.reduce<{
+    messages: ToolMessage[];
+    results: SerializedToolResult[];
+  }>(
+    (accumulator, call) => {
+      const result: SerializedToolResult = {
+        name: call.name,
+        success: false,
+        error: params.detail,
+        errorType: 'execution',
+        latencyMs: 0,
+      };
+      accumulator.messages.push(
+        buildToolMessageFromOutcome({
+          toolName: call.name,
+          callId: call.id,
+          content: buildLoopGuardContent({
+            reason: params.reason,
+            detail: params.detail,
+            requestedCallCount: params.requestedCallCount,
+            uniqueCallCount: params.uniqueCallCount,
+            skippedDuplicateCallCount: params.skippedDuplicateCallCount,
+            overLimitCallCount: params.overLimitCallCount,
+            repairable: params.repairable,
+          }),
+          result,
+          files: [],
+          status: 'error',
+        }),
+      );
+      accumulator.results.push(result);
+      return accumulator;
+    },
+    { messages: [], results: [] },
+  );
+}
+
+function buildLoopGuardReply(params: {
+  reason: NonNullable<ToolCallRoundEvent['guardReason']>;
+  state: Pick<AgentGraphState, 'toolResults' | 'messages' | 'replyText'>;
+}): string {
+  const explanation =
+    params.reason === 'too_many_tool_calls'
+      ? 'I stopped here because the agent planned too many tool calls in one round to execute safely.'
+      : params.reason === 'repeated_identical_batch'
+        ? 'I stopped here because the agent kept repeating the same tool plan instead of making progress.'
+        : 'I stopped here because the agent hit the LangGraph recursion safety limit before it could finish safely.';
+  const nextStep =
+    params.reason === 'too_many_tool_calls'
+      ? 'Next: ask me to handle a smaller subset of the work, or tell me which calls to prioritize first.'
+      : params.reason === 'repeated_identical_batch'
+        ? 'Next: clarify the desired outcome or narrow the next step so I can replan cleanly.'
+        : 'Next: ask me to continue with a smaller scoped follow-up so I can resume from a safer checkpoint.';
+  const summary = buildDeterministicRuntimeSummary(params.state);
+  return [explanation, summary, nextStep].filter((part) => part.trim().length > 0).join('\n\n');
+}
+
+function resolveFinalToolDelivery(
+  current: GraphToolDeliveryState | null,
+  results: SerializedToolResult[],
+  toolNames?: string[],
+): GraphToolDeliveryState | null {
+  if (current) {
+    return current;
+  }
+
+  for (let index = 0; index < results.length; index += 1) {
+    const result = results[index];
+    const effect = result?.success ? result.deliveryEffect : undefined;
+    if (!result?.success || !effect) {
+      continue;
+    }
+
+    return {
+      toolName: toolNames?.[index] ?? result.name,
+      effectKind: effect.kind,
+      visibleSummary: effect.visibleSummary,
+    };
+  }
+
+  return null;
+}
+
+function buildStructuredOutputFailureReply(state: AgentGraphState): string {
+  const summary = buildDeterministicRuntimeSummary(state);
+  return [
+    'I stopped here because the model did not return a valid structured turn decision.',
+    summary,
+    'Next: ask me to continue with a narrower next step or clarify the exact outcome you want.',
+  ]
+    .filter((part) => part.trim().length > 0)
+    .join('\n\n');
+}
+
+function buildContextFrame(state: Pick<
+  AgentGraphState,
+  'messages' | 'toolResults' | 'replyText' | 'pendingInterrupt' | 'finalToolDelivery' | 'contextFrame'
+>): GraphContextFrame {
+  const latestAssistantText = scrubFinalReplyText({
+    replyText: state.replyText || findLatestAssistantText(state.messages as BaseMessage[]),
+  });
+  const successfulResults = state.toolResults.filter((result) => result.success);
+  const failedResults = state.toolResults.filter((result) => !result.success);
+  const objective =
+    state.contextFrame?.objective?.trim() ||
+    extractMessageText((state.messages.find((message) => message.getType?.() === 'human') as BaseMessage | undefined) ?? new HumanMessage({ content: 'Finish the request.' })) ||
+    'Finish the current user request cleanly.';
+
+  const completedActions = successfulResults
+    .slice(-4)
+    .map((result) => `${result.name}${result.cacheHit ? ' (cache)' : ''}`);
+  const verifiedFacts = [
+    ...state.contextFrame.verifiedFacts,
+    ...successfulResults
+      .slice(-3)
+      .map((result) => `${result.name} succeeded`),
+  ].slice(-6);
+  const openQuestions = [
+    ...state.contextFrame.openQuestions,
+    ...(failedResults.length > 0 ? failedResults.slice(-2).map((result) => result.error ?? `${result.name} failed`) : []),
+  ].slice(-4);
+  const pendingApprovals =
+    state.pendingInterrupt?.kind === 'approval_review'
+      ? state.pendingInterrupt.requests.map((request) => `${request.call.name}:${request.requestId}`)
+      : [];
+  const deliveryState =
+    state.finalToolDelivery?.effectKind === 'final_message'
+      ? 'final_message'
+      : state.finalToolDelivery?.effectKind === 'governance_only'
+        ? 'governance_only'
+        : 'none';
+  const nextAction =
+    pendingApprovals.length > 0
+      ? 'Wait for approval resolution.'
+      : latestAssistantText
+        ? 'Verify whether the visible reply is complete.'
+        : successfulResults.length > 0
+          ? 'Use the latest tool results to decide the next step.'
+          : 'Decide whether to answer directly or call tools.';
+
+  return {
+    objective: objective.trim() || 'Finish the current user request cleanly.',
+    verifiedFacts,
+    completedActions,
+    openQuestions,
+    pendingApprovals,
+    deliveryState,
+    nextAction,
+  };
+}
+
+function buildContextFramePrompt(frame: GraphContextFrame): string {
+  return [
+    '<agent_working_state>',
+    `Objective: ${frame.objective}`,
+    `Verified facts: ${frame.verifiedFacts.join(' | ') || '(none)'}`,
+    `Completed actions: ${frame.completedActions.join(' | ') || '(none)'}`,
+    `Open questions: ${frame.openQuestions.join(' | ') || '(none)'}`,
+    `Pending approvals: ${frame.pendingApprovals.join(' | ') || '(none)'}`,
+    `Delivery state: ${frame.deliveryState}`,
+    `Next action: ${frame.nextAction}`,
+    '</agent_working_state>',
+  ].join('\n');
+}
+
+function buildStructuredPromptMessages(params: {
+  state: AgentGraphState;
+  runtimeContext: AgentGraphRuntimeContext;
+  instruction: string;
+}): LLMChatMessage[] {
+  const prepared = buildRebudgetingEvent(
+    params.state.messages as BaseMessage[],
+    params.runtimeContext.model,
+    params.runtimeContext.maxTokens,
+  );
+  const frame = buildContextFrame(params.state);
+  const preparedMessages = toLlmMessages(prepared.trimmedMessages);
+  const recentMessages = preparedMessages.slice(-8);
+  return [
+    {
+      role: 'system',
+      content: buildContextFramePrompt(frame),
+    },
+    ...recentMessages,
+    {
+      role: 'user',
+      content: params.instruction,
+    },
+  ];
+}
+
+function mapVerificationToOutcome(params: {
+  verification: GraphVerificationKind;
+  visibleReplyText: string;
+  state: AgentGraphState;
+}): {
+  completionKind: GraphCompletionKind;
+  deliveryDisposition: GraphDeliveryDisposition;
+  stopReason: GraphStopReason;
+  replyText: string;
+  toolDeliveredFinal: boolean;
+} {
+  if (params.verification === 'delivered_via_tool' && params.state.finalToolDelivery) {
+    return {
+      completionKind: 'delivered_via_tool',
+      deliveryDisposition: 'tool_delivered',
+      stopReason: 'verified_closeout',
+      replyText: '',
+      toolDeliveredFinal: true,
+    };
+  }
+
+  if (params.verification === 'ask_clarification') {
+    return {
+      completionKind: 'clarification_question',
+      deliveryDisposition: 'chat_reply',
+      stopReason: 'verified_closeout',
+      replyText: params.visibleReplyText,
+      toolDeliveredFinal: false,
+    };
+  }
+
+  if (params.verification === 'approval_handoff') {
+    return {
+      completionKind: 'approval_handoff',
+      deliveryDisposition: 'approval_governance_only',
+      stopReason: 'approval_interrupt',
+      replyText: '',
+      toolDeliveredFinal: false,
+    };
+  }
+
+  if (params.verification === 'loop_guard') {
+    return {
+      completionKind: 'loop_guard',
+      deliveryDisposition: 'chat_reply',
+      stopReason: 'loop_guard',
+      replyText: params.visibleReplyText || buildStructuredOutputFailureReply(params.state),
+      toolDeliveredFinal: false,
+    };
+  }
+
+  return {
+    completionKind: 'final_answer',
+    deliveryDisposition: 'chat_reply',
+    stopReason: 'verified_closeout',
+    replyText: params.visibleReplyText,
+    toolDeliveredFinal: false,
+  };
+}
+
+function isGraphRecursionLimitError(error: unknown): boolean {
+  return error instanceof GraphRecursionError || (error instanceof Error && error.name === 'GraphRecursionError');
 }
 
 function addActiveWindowDuration(
@@ -1018,6 +1688,8 @@ function buildToolMessageFromOutcome(params: {
   result: SerializedToolResult;
   files: AgentGraphState['files'];
   status?: 'success' | 'error';
+  cacheHit?: boolean;
+  cacheKind?: 'dedupe';
 }): ToolMessage {
   return new ToolMessage({
     content: params.content,
@@ -1025,23 +1697,25 @@ function buildToolMessageFromOutcome(params: {
     artifact: {
       result: params.result,
       files: params.files,
+      cacheHit: params.cacheHit,
+      cacheKind: params.cacheKind,
     },
     status: params.status,
   });
 }
 
-function resolveContinueResumeNode(state: AgentGraphState): 'llm_call' | 'route_tool_phase' {
+function resolveContinueResumeNode(state: AgentGraphState): 'tool_call_turn' | 'route_tool_phase' {
   const lastMessage = state.messages.at(-1);
   if (lastMessage && AIMessage.isInstance(lastMessage) && (lastMessage.tool_calls?.length ?? 0) > 0) {
     return 'route_tool_phase';
   }
-  return 'llm_call';
+  return 'tool_call_turn';
 }
 
-function resolveContinuationTerminationReason(
+function resolveContinuationStopReason(
   pauseReason: 'graph_timeout' | 'step_window_exhausted',
-): GraphTurnTerminationReason {
-  return pauseReason === 'graph_timeout' ? 'graph_timeout' : 'continue_prompt';
+): GraphStopReason {
+  return pauseReason === 'graph_timeout' ? 'graph_timeout' : 'step_window_exhausted';
 }
 
 function buildReadToolsNode(graphConfig: AgentGraphConfig) {
@@ -1052,9 +1726,15 @@ function buildReadToolsNode(graphConfig: AgentGraphConfig) {
     if (state.pendingReadCalls.length === 0) {
       return {};
     }
+    if (state.pendingReadExecutionCalls.length === 0) {
+      return {
+        pendingReadCalls: [],
+        pendingReadExecutionCalls: [],
+      };
+    }
 
     const runtimeContext = resolveRuntimeContext(state, config);
-    const toolContext = buildToolContext(state, runtimeContext, 'turn');
+    const toolContext = buildToolContext(state, runtimeContext, 'turn', config);
     const catalog = buildActiveToolCatalog({
       activeToolNames: runtimeContext.activeToolNames,
       context: toolContext,
@@ -1062,7 +1742,7 @@ function buildReadToolsNode(graphConfig: AgentGraphConfig) {
     });
     const batchMessage = new AIMessage({
       content: '',
-      tool_calls: state.pendingReadCalls.map((call) => ({
+      tool_calls: state.pendingReadExecutionCalls.map((call) => ({
         id: call.id,
         name: call.name,
         args:
@@ -1078,6 +1758,7 @@ function buildReadToolsNode(graphConfig: AgentGraphConfig) {
     if (selectedTools.length === 0) {
       return {
         pendingReadCalls: [],
+        pendingReadExecutionCalls: [],
       };
     }
 
@@ -1085,20 +1766,72 @@ function buildReadToolsNode(graphConfig: AgentGraphConfig) {
       { messages: [batchMessage] },
       config as Parameters<InstanceType<typeof ToolNode>['invoke']>[1],
     )) as { messages?: ToolMessage[] };
-    const toolMessages = Array.isArray(output.messages) ? output.messages : [];
-    const nextToolResults = toolMessages
-      .map((message) => (message.artifact as { result?: SerializedToolResult } | undefined)?.result)
-      .filter((result): result is SerializedToolResult => Boolean(result));
-    const nextFiles = toolMessages.flatMap((message) => {
+    const executedMessages = Array.isArray(output.messages) ? output.messages : [];
+    const nextFiles = executedMessages.flatMap((message) => {
       const artifact = message.artifact as { files?: AgentGraphState['files'] } | undefined;
       return artifact?.files ?? [];
     });
+    const executedEntries = await Promise.all(
+      state.pendingReadExecutionCalls.map(async (call, index) => ({
+        call,
+        fingerprint: await resolveToolCallFingerprint(call, toolContext),
+        message: executedMessages[index] ?? null,
+      })),
+    );
+    const executedByFingerprint = new Map<
+      string,
+      {
+        call: GraphToolCallDescriptor;
+        message: ToolMessage;
+        result: SerializedToolResult;
+        files: AgentGraphState['files'];
+      }
+    >();
+
+    for (const entry of executedEntries) {
+      const result = (entry.message?.artifact as { result?: SerializedToolResult } | undefined)?.result;
+      if (!entry.message || !result || executedByFingerprint.has(entry.fingerprint)) {
+        continue;
+      }
+      const artifact = entry.message.artifact as { files?: AgentGraphState['files'] } | undefined;
+      executedByFingerprint.set(entry.fingerprint, {
+        call: entry.call,
+        message: entry.message,
+        result,
+        files: artifact?.files ?? [],
+      });
+    }
+
+    const toolMessages: ToolMessage[] = [];
+    const nextToolResults: SerializedToolResult[] = [];
+    for (const call of state.pendingReadCalls) {
+      const fingerprint = await resolveToolCallFingerprint(call, toolContext);
+      const matched = executedByFingerprint.get(fingerprint);
+      if (!matched) {
+        continue;
+      }
+      const duplicate = call.id !== matched.call.id;
+      toolMessages.push(
+        buildToolMessageFromOutcome({
+          toolName: call.name,
+          callId: call.id,
+          content: extractMessageText(matched.message),
+          result: matched.result,
+          files: matched.files,
+          status: matched.result.success ? 'success' : 'error',
+          cacheHit: duplicate,
+          cacheKind: duplicate ? 'dedupe' : undefined,
+        }),
+      );
+      nextToolResults.push(matched.result);
+    }
 
     return {
       messages: toolMessages,
       toolResults: nextToolResults,
       files: nextFiles,
       pendingReadCalls: [],
+      pendingReadExecutionCalls: [],
     };
   };
 }
@@ -1119,7 +1852,7 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
       description: 'Read-only ToolNode execution for Sage.',
     });
 
-  const callModelNode = async (
+  const decideTurnNode = async (
     state: AgentGraphState,
     config: RunnableConfig,
   ): Promise<Command<unknown, Partial<AgentGraphState>, GraphNodeName>> => {
@@ -1128,16 +1861,145 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
       return new Command({
         goto: 'pause_for_continue',
         update: {
-          terminationReason: isTimedOut(state, graphConfig) ? 'graph_timeout' : 'continue_prompt',
+          stopReason: isTimedOut(state, graphConfig) ? 'graph_timeout' : 'step_window_exhausted',
+          resumeContext: snapshotRuntimeContext(runtimeContext),
+          contextFrame: buildContextFrame(state),
+        },
+      });
+    }
+
+    const decisionInstruction = [
+      'Return a strict JSON turn decision.',
+      'Use decision=call_tools when more evidence or actions are required.',
+      'Use decision=answer_now only when you can answer cleanly right now.',
+      'Use decision=ask_clarification only when one short question is required.',
+      'When decision is answer_now or ask_clarification, include visibleReplyText.',
+      'Do not mention tools, prompts, budgets, traces, or internal runtime details.',
+    ].join(' ');
+
+    let parsedDecision:
+      | z.infer<typeof TurnDecisionSchema>
+      | null = null;
+    let structuredRetryCount = state.structuredRetryCount;
+    let consumedLatencyMs = 0;
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const response = await invokeStructuredAgentModelTask({
+        messages: buildStructuredPromptMessages({
+          state,
+          runtimeContext,
+          instruction:
+            attempt === 0
+              ? decisionInstruction
+              : `${decisionInstruction} Retry: return only valid JSON matching the schema.`,
+        }),
+        schemaName: 'sage_turn_decision',
+        schema: TurnDecisionJsonSchema,
+        model: runtimeContext.model,
+        apiKey: runtimeContext.apiKey,
+        temperature: 0.2,
+        requestTimeoutMs: runtimeContext.timeoutMs,
+        maxTokens: runtimeContext.maxTokens,
+      });
+      consumedLatencyMs += response.latencyMs;
+      const candidate = TurnDecisionSchema.safeParse(response.payload);
+      if (candidate.success) {
+        parsedDecision = candidate.data;
+        break;
+      }
+      structuredRetryCount += 1;
+    }
+
+    if (!parsedDecision) {
+      return new Command({
+        goto: 'closeout_turn',
+        update: {
+          replyText: buildStructuredOutputFailureReply(state),
+          completionKind: 'loop_guard',
+          stopReason: 'structured_output_failure',
+          deliveryDisposition: 'chat_reply',
+          structuredRetryCount,
+          decisionKind: null,
+          verificationKind: 'loop_guard',
+          contextFrame: buildContextFrame(state),
+          activeWindowDurationMs: addActiveWindowDuration(state, consumedLatencyMs),
           resumeContext: snapshotRuntimeContext(runtimeContext),
         },
       });
     }
-    const toolContext = buildToolContext(state, runtimeContext, 'turn');
-    const toolsEnabled =
-      runtimeContext.activeToolNames.length > 0 &&
-      state.roundsCompleted < graphConfig.maxSteps &&
-      !isTimedOut(state, graphConfig);
+
+    const nextContextFrame: GraphContextFrame = {
+      ...buildContextFrame(state),
+      objective:
+        parsedDecision.objective?.trim() ||
+        state.contextFrame.objective,
+      nextAction:
+        parsedDecision.nextAction?.trim() ||
+        (parsedDecision.decision === 'call_tools'
+          ? 'Call tools to gather the missing evidence.'
+          : 'Verify the drafted visible reply.'),
+    };
+
+    if (parsedDecision.decision === 'call_tools') {
+      return new Command({
+        goto: 'tool_call_turn',
+        update: {
+          decisionKind: 'call_tools',
+          structuredRetryCount,
+          contextFrame: nextContextFrame,
+          activeWindowDurationMs: addActiveWindowDuration(state, consumedLatencyMs),
+          resumeContext: snapshotRuntimeContext(runtimeContext),
+        },
+      });
+    }
+
+    if (parsedDecision.decision === 'pause_handoff') {
+      return new Command({
+        goto: 'pause_for_continue',
+        update: {
+          decisionKind: 'pause_handoff',
+          structuredRetryCount,
+          contextFrame: nextContextFrame,
+          activeWindowDurationMs: addActiveWindowDuration(state, consumedLatencyMs),
+          resumeContext: snapshotRuntimeContext(runtimeContext),
+          stopReason: 'step_window_exhausted',
+        },
+      });
+    }
+
+    const draftMessage = new AIMessage({
+      content: scrubFinalReplyText({ replyText: parsedDecision.visibleReplyText ?? '' }),
+    });
+
+    return new Command({
+      goto: 'verify_turn',
+      update: {
+        messages: [draftMessage],
+        replyText: extractMessageText(draftMessage),
+        decisionKind: parsedDecision.decision,
+        structuredRetryCount,
+        contextFrame: nextContextFrame,
+        activeWindowDurationMs: addActiveWindowDuration(state, consumedLatencyMs),
+        resumeContext: snapshotRuntimeContext(runtimeContext),
+      },
+    });
+  };
+
+  const toolCallTurnNode = async (
+    state: AgentGraphState,
+    config: RunnableConfig,
+  ): Promise<Command<unknown, Partial<AgentGraphState>, GraphNodeName>> => {
+    const runtimeContext = resolveRuntimeContext(state, config);
+    if (isTimedOut(state, graphConfig) || state.roundsCompleted >= graphConfig.maxSteps) {
+      return new Command({
+        goto: 'pause_for_continue',
+        update: {
+          stopReason: isTimedOut(state, graphConfig) ? 'graph_timeout' : 'step_window_exhausted',
+          resumeContext: snapshotRuntimeContext(runtimeContext),
+          contextFrame: buildContextFrame(state),
+        },
+      });
+    }
+    const toolContext = buildToolContext(state, runtimeContext, 'turn', config);
     const prepared = buildRebudgetingEvent(
       state.messages as BaseMessage[],
       runtimeContext.model,
@@ -1145,7 +2007,7 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
     );
     const response = await invokeAgentModelTask({
       messages: toLlmMessages(prepared.trimmedMessages),
-      activeToolNames: toolsEnabled ? runtimeContext.activeToolNames : [],
+      activeToolNames: runtimeContext.activeToolNames,
       toolContext,
       timeoutMs: graphConfig.toolTimeoutMs,
       model: runtimeContext.model,
@@ -1167,42 +2029,172 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
 
     if (toolCalls.length > 0) {
       return new Command({
-        goto:
-          timedOutAfterModel
-            ? 'pause_for_continue'
-            : 'route_tool_phase',
+        goto: timedOutAfterModel ? 'pause_for_continue' : 'route_tool_phase',
         update: {
           messages: [aiMessage],
           activeWindowDurationMs: nextActiveWindowDurationMs,
           roundsCompleted: nextRoundsCompleted,
           totalRoundsCompleted: nextTotalRoundsCompleted,
-          terminationReason:
-            timedOutAfterModel
-              ? 'graph_timeout'
-              : state.terminationReason,
+          stopReason: timedOutAfterModel ? 'graph_timeout' : state.stopReason,
+          resumeContext: snapshotRuntimeContext(runtimeContext),
+          contextFrame: buildContextFrame(state),
+        },
+      });
+    }
+
+    return new Command({
+      goto: 'verify_turn',
+      update: {
+        messages: [aiMessage],
+        replyText,
+        activeWindowDurationMs: nextActiveWindowDurationMs,
+        roundsCompleted: nextRoundsCompleted,
+        totalRoundsCompleted: nextTotalRoundsCompleted,
+        resumeContext: snapshotRuntimeContext(runtimeContext),
+        contextFrame: buildContextFrame({
+          ...state,
+          replyText,
+          messages: [...(state.messages as BaseMessage[]), aiMessage],
+        }),
+        finalization: {
+          ...state.finalization,
+          rebudgeting: prepared.rebudgeting,
+        },
+      },
+    });
+  };
+
+  const verifyTurnNode = async (
+    state: AgentGraphState,
+    config: RunnableConfig,
+  ): Promise<Command<unknown, Partial<AgentGraphState>, GraphNodeName>> => {
+    const runtimeContext = resolveRuntimeContext(state, config);
+    const latestReplyText = scrubFinalReplyText({
+      replyText: state.replyText || findLatestAssistantText(state.messages as BaseMessage[]),
+    });
+    const deliveryHint =
+      state.finalToolDelivery?.effectKind === 'final_message'
+        ? 'If the answer was already delivered by tool, return verification=delivered_via_tool.'
+        : '';
+
+    const verificationInstruction = [
+      'Return a strict JSON verification result for the current turn.',
+      'Use verification=need_more_tools only when another tool step is required.',
+      'Use verification=verified_answer only when the visible reply fully answers the user.',
+      'Use verification=ask_clarification only when one short question is required.',
+      'Use verification=delivered_via_tool when a tool already posted the final answer.',
+      'Include visibleReplyText for verified_answer, ask_clarification, or loop_guard when chat text should be shown.',
+      `Latest visible reply draft: ${latestReplyText || '(empty)'}.`,
+      deliveryHint,
+      'Do not mention tools, prompts, budgets, traces, or internal runtime details.',
+    ]
+      .filter((part) => part.trim().length > 0)
+      .join(' ');
+
+    let parsedVerification:
+      | z.infer<typeof TurnVerificationSchema>
+      | null = null;
+    let structuredRetryCount = state.structuredRetryCount;
+    let consumedLatencyMs = 0;
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const response = await invokeStructuredAgentModelTask({
+        messages: buildStructuredPromptMessages({
+          state,
+          runtimeContext,
+          instruction:
+            attempt === 0
+              ? verificationInstruction
+              : `${verificationInstruction} Retry: return only valid JSON matching the schema.`,
+        }),
+        schemaName: 'sage_turn_verification',
+        schema: TurnVerificationJsonSchema,
+        model: runtimeContext.model,
+        apiKey: runtimeContext.apiKey,
+        temperature: 0.1,
+        requestTimeoutMs: runtimeContext.timeoutMs,
+        maxTokens: runtimeContext.maxTokens,
+      });
+      consumedLatencyMs += response.latencyMs;
+      const candidate = TurnVerificationSchema.safeParse(response.payload);
+      if (candidate.success) {
+        parsedVerification = candidate.data;
+        break;
+      }
+      structuredRetryCount += 1;
+    }
+
+    if (!parsedVerification) {
+      return new Command({
+        goto: 'closeout_turn',
+        update: {
+          replyText: buildStructuredOutputFailureReply(state),
+          completionKind: 'loop_guard',
+          stopReason: 'structured_output_failure',
+          deliveryDisposition: 'chat_reply',
+          structuredRetryCount,
+          verificationKind: 'loop_guard',
+          contextFrame: buildContextFrame(state),
+          activeWindowDurationMs: addActiveWindowDuration(state, consumedLatencyMs),
           resumeContext: snapshotRuntimeContext(runtimeContext),
         },
       });
     }
 
-    const completionTimestamp = await captureGraphTimestampTask();
-    return new Command({
-      goto: 'finalize_turn',
-      update: {
-        messages: [aiMessage],
-        replyText,
-        activeWindowDurationMs: addActiveWindowDuration(state, response.latencyMs),
-        roundsCompleted: nextRoundsCompleted,
-        totalRoundsCompleted: nextTotalRoundsCompleted,
-        terminationReason: 'assistant_reply',
-        finalization: {
-          attempted: true,
-          succeeded: true,
-          completedAt: completionTimestamp.iso,
-          terminationReason: 'assistant_reply',
-          rebudgeting: prepared.rebudgeting,
+    const nextContextFrame: GraphContextFrame = {
+      ...buildContextFrame(state),
+      verifiedFacts: [
+        ...buildContextFrame(state).verifiedFacts,
+        ...parsedVerification.verifiedFacts,
+      ].slice(-8),
+      openQuestions: [
+        ...parsedVerification.openQuestions,
+      ].slice(-4),
+      nextAction:
+        parsedVerification.nextAction?.trim() ||
+        (parsedVerification.verification === 'need_more_tools'
+          ? 'Call tools for the next step.'
+          : 'Close out the turn.'),
+    };
+
+    if (parsedVerification.verification === 'need_more_tools') {
+      return new Command({
+        goto: 'tool_call_turn',
+        update: {
+          verificationKind: 'need_more_tools',
+          structuredRetryCount,
+          contextFrame: nextContextFrame,
+          activeWindowDurationMs: addActiveWindowDuration(state, consumedLatencyMs),
+          resumeContext: snapshotRuntimeContext(runtimeContext),
         },
+      });
+    }
+
+    const outcome = mapVerificationToOutcome({
+      verification: parsedVerification.verification,
+      visibleReplyText: scrubFinalReplyText({
+        replyText: parsedVerification.visibleReplyText ?? latestReplyText,
+      }),
+      state,
+    });
+
+    return new Command({
+      goto: 'closeout_turn',
+      update: {
+        replyText: outcome.replyText,
+        completionKind: outcome.completionKind,
+        stopReason: outcome.stopReason,
+        deliveryDisposition: outcome.deliveryDisposition,
+        structuredRetryCount,
+        verificationKind: parsedVerification.verification,
+        contextFrame: nextContextFrame,
+        activeWindowDurationMs: addActiveWindowDuration(state, consumedLatencyMs),
         resumeContext: snapshotRuntimeContext(runtimeContext),
+        finalization: {
+          ...state.finalization,
+          structuredRetryCount,
+          toolDeliveredFinal: outcome.toolDeliveredFinal,
+          contextFrame: nextContextFrame,
+        },
       },
     });
   };
@@ -1213,7 +2205,7 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
   ): Promise<Command<unknown, Partial<AgentGraphState>, GraphNodeName>> => {
     const toolCalls = getLastAiToolCalls(state.messages as BaseMessage[]);
     const runtimeContext = resolveRuntimeContext(state, config);
-    const toolContext = buildToolContext(state, runtimeContext, 'turn');
+    const toolContext = buildToolContext(state, runtimeContext, 'turn', config);
     const catalog = buildActiveToolCatalog({
       activeToolNames: runtimeContext.activeToolNames,
       context: toolContext,
@@ -1222,7 +2214,11 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
 
     const requestedCallCount = toolCalls.length;
     const readBatch: GraphToolCallDescriptor[] = [];
+    const readExecutionBatch: GraphToolCallDescriptor[] = [];
     const pendingWriteCalls: GraphToolCallDescriptor[] = [];
+    const seenReadFingerprints = new Set<string>();
+    const batchFingerprintParts: Array<{ readOnly: boolean; fingerprint: string }> = [];
+    let skippedDuplicateCallCount = 0;
 
     for (const call of toolCalls) {
       const serializedCall: GraphToolCallDescriptor = {
@@ -1235,36 +2231,194 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
         call: serializedCall,
         context: toolContext,
       });
+      const fingerprint = await resolveToolCallFingerprint(serializedCall, toolContext);
+      batchFingerprintParts.push({
+        readOnly,
+        fingerprint,
+      });
 
       if (readOnly) {
         readBatch.push(serializedCall);
+        if (seenReadFingerprints.has(fingerprint)) {
+          skippedDuplicateCallCount += 1;
+          continue;
+        }
+        seenReadFingerprints.add(fingerprint);
+        readExecutionBatch.push(serializedCall);
         continue;
       }
 
       pendingWriteCalls.push(serializedCall);
     }
-    const executedAny = readBatch.length > 0 || pendingWriteCalls.length > 0;
+    const uniqueCallCount = readExecutionBatch.length + pendingWriteCalls.length;
+    const overLimitCallCount = Math.max(0, uniqueCallCount - graphConfig.maxToolCallsPerRound);
+    const batchFingerprint = buildToolBatchFingerprint(batchFingerprintParts);
+    const consecutiveIdenticalToolBatches =
+      batchFingerprint && batchFingerprint === state.lastToolBatchFingerprint
+        ? state.consecutiveIdenticalToolBatches + 1
+        : batchFingerprint
+          ? 1
+          : 0;
+    const guardReason: ToolCallRoundEvent['guardReason'] =
+      overLimitCallCount > 0
+        ? 'too_many_tool_calls'
+        : consecutiveIdenticalToolBatches >= graphConfig.maxIdenticalToolBatches && uniqueCallCount > 0
+          ? 'repeated_identical_batch'
+          : undefined;
+    const executedAny = readExecutionBatch.length > 0 || pendingWriteCalls.length > 0;
+    const repairable = Boolean(
+      guardReason && state.loopGuardRecoveries < graphConfig.maxLoopGuardRecoveries,
+    );
+
+    if (guardReason) {
+      const detail =
+        guardReason === 'too_many_tool_calls'
+          ? `The assistant requested ${uniqueCallCount} executable tool calls in one round, which exceeds the limit of ${graphConfig.maxToolCallsPerRound}. Replan into a smaller batch before calling tools again.`
+          : `The assistant repeated the same tool batch ${consecutiveIdenticalToolBatches} times in a row. Replan with a different approach or ask the user for clarification before calling tools again.`;
+      const loopGuard = buildLoopGuardToolMessages({
+        calls: [...readBatch, ...pendingWriteCalls],
+        reason: guardReason,
+        detail,
+        requestedCallCount,
+        uniqueCallCount,
+        skippedDuplicateCallCount,
+        overLimitCallCount,
+        repairable,
+      });
+      const event = await buildExecutionEvent(state, {
+        requestedCallCount,
+        executedCallCount: 0,
+        deduplicatedCallCount: skippedDuplicateCallCount,
+        uniqueCallCount,
+        skippedDuplicateCallCount,
+        overLimitCallCount,
+        guardReason,
+      });
+
+      if (repairable) {
+        return new Command({
+          goto: 'tool_call_turn',
+          update: {
+            messages: loopGuard.messages,
+            toolResults: loopGuard.results,
+            pendingReadCalls: [],
+            pendingReadExecutionCalls: [],
+            pendingWriteCalls: [],
+            deduplicatedCallCount: skippedDuplicateCallCount,
+            lastToolBatchFingerprint: batchFingerprint,
+            consecutiveIdenticalToolBatches,
+            loopGuardRecoveries: state.loopGuardRecoveries + 1,
+            structuredRetryCount: state.structuredRetryCount + 1,
+            roundEvents: [event],
+            contextFrame: buildContextFrame(state),
+          },
+        });
+      }
+
+      const completionTimestamp = await captureGraphTimestampTask();
+      return new Command({
+        goto: 'finalize_turn',
+        update: {
+          messages: loopGuard.messages,
+          toolResults: loopGuard.results,
+          replyText: buildLoopGuardReply({
+            reason: guardReason,
+            state: {
+              toolResults: [...state.toolResults, ...loopGuard.results],
+              messages: [...(state.messages as BaseMessage[]), ...loopGuard.messages],
+              replyText: state.replyText,
+            },
+          }),
+          pendingReadCalls: [],
+          pendingReadExecutionCalls: [],
+          pendingWriteCalls: [],
+          deduplicatedCallCount: skippedDuplicateCallCount,
+          lastToolBatchFingerprint: batchFingerprint,
+          consecutiveIdenticalToolBatches,
+          loopGuardRecoveries: state.loopGuardRecoveries,
+          roundEvents: [event],
+          completionKind: 'loop_guard',
+          stopReason: 'loop_guard',
+          deliveryDisposition: 'chat_reply',
+          structuredRetryCount: state.structuredRetryCount,
+          verificationKind: 'loop_guard',
+          contextFrame: buildContextFrame(state),
+          finalization: {
+            attempted: true,
+            succeeded: true,
+            completedAt: completionTimestamp.iso,
+            stopReason: 'loop_guard',
+            completionKind: 'loop_guard',
+            deliveryDisposition: 'chat_reply',
+            structuredRetryCount: state.structuredRetryCount,
+            toolDeliveredFinal: false,
+            contextFrame: buildContextFrame(state),
+          },
+        },
+      });
+    }
 
     return new Command({
       goto:
-        readBatch.length > 0
+        readExecutionBatch.length > 0
           ? 'execute_read_tools'
           : pendingWriteCalls.length > 0
             ? 'approval_gate'
-            : 'llm_call',
+            : 'tool_call_turn',
       update: {
         pendingReadCalls: readBatch,
+        pendingReadExecutionCalls: readExecutionBatch,
         pendingWriteCalls,
-        deduplicatedCallCount: 0,
+        deduplicatedCallCount: skippedDuplicateCallCount,
+        lastToolBatchFingerprint: batchFingerprint,
+        consecutiveIdenticalToolBatches,
+        loopGuardRecoveries: 0,
         roundEvents: executedAny
           ? [
               await buildExecutionEvent(state, {
                 requestedCallCount,
-                executedCallCount: requestedCallCount,
-                deduplicatedCallCount: 0,
+                executedCallCount: uniqueCallCount,
+                deduplicatedCallCount: skippedDuplicateCallCount,
+                uniqueCallCount,
+                skippedDuplicateCallCount,
+                overLimitCallCount,
               }),
             ]
           : [],
+        contextFrame: buildContextFrame(state),
+      },
+    });
+  };
+
+  const closeoutTurnNode = async (
+    state: AgentGraphState,
+  ): Promise<Command<unknown, Partial<AgentGraphState>, GraphNodeName>> => {
+    const frame = buildContextFrame(state);
+    const effectiveReplyText =
+      state.deliveryDisposition === 'tool_delivered' ||
+      state.deliveryDisposition === 'approval_governance_only'
+        ? ''
+        : scrubFinalReplyText({
+            replyText: state.replyText || findLatestAssistantText(state.messages as BaseMessage[]),
+          });
+    const completionTimestamp = await captureGraphTimestampTask();
+    return new Command({
+      goto: 'finalize_turn',
+      update: {
+        replyText: effectiveReplyText,
+        contextFrame: frame,
+        finalization: {
+          attempted: true,
+          succeeded: state.stopReason !== 'structured_output_failure',
+          completedAt: completionTimestamp.iso,
+          stopReason: state.stopReason,
+          completionKind: state.completionKind ?? 'loop_guard',
+          deliveryDisposition: state.deliveryDisposition,
+          structuredRetryCount: state.structuredRetryCount,
+          toolDeliveredFinal: state.deliveryDisposition === 'tool_delivered',
+          contextFrame: frame,
+          rebudgeting: state.finalization.rebudgeting,
+        },
       },
     });
   };
@@ -1281,10 +2435,20 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
       ? update.toolResults.reduce((total, result) => total + (result.latencyMs ?? 0), 0)
       : 0;
     return new Command({
-      goto: state.pendingWriteCalls.length > 0 ? 'approval_gate' : 'llm_call',
+      goto: state.pendingWriteCalls.length > 0 ? 'approval_gate' : 'tool_call_turn',
       update: {
-        ...update,
+        messages: update.messages ?? [],
+        toolResults: update.toolResults ?? [],
+        files: update.files ?? [],
+        pendingReadCalls: update.pendingReadCalls ?? [],
+        pendingReadExecutionCalls: update.pendingReadExecutionCalls ?? [],
         activeWindowDurationMs: addActiveWindowDuration(state, readToolDurationMs),
+        finalToolDelivery: resolveFinalToolDelivery(state.finalToolDelivery, update.toolResults ?? []),
+        contextFrame: buildContextFrame({
+          ...state,
+          toolResults: [...state.toolResults, ...(update.toolResults ?? [])],
+          messages: [...(state.messages as BaseMessage[]), ...((update.messages as BaseMessage[] | undefined) ?? [])],
+        }),
       },
     });
   };
@@ -1295,11 +2459,11 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
   ): Promise<Command<unknown, Partial<AgentGraphState>, GraphNodeName>> => {
     const currentWriteCall = state.pendingWriteCalls[0] ?? null;
     if (!currentWriteCall) {
-      return new Command({ goto: 'llm_call', update: {} });
+      return new Command({ goto: 'tool_call_turn', update: {} });
     }
 
     const runtimeContext = resolveRuntimeContext(state, config);
-    const turnToolContext = buildToolContext(state, runtimeContext, 'turn');
+    const turnToolContext = buildToolContext(state, runtimeContext, 'turn', config);
     const approvalPlanningStartedAt = Date.now();
     const preparedApproval = await prepareToolApprovalInterrupt({
       activeToolNames: runtimeContext.activeToolNames,
@@ -1367,7 +2531,9 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
           update: {
             replyText: '',
             graphStatus: 'interrupted',
-            terminationReason: 'approval_interrupt',
+            completionKind: 'approval_handoff',
+            stopReason: 'approval_interrupt',
+            deliveryDisposition: 'approval_governance_only',
             activeWindowDurationMs: addActiveWindowDuration(
               state,
               Math.max(0, Date.now() - approvalPlanningStartedAt),
@@ -1383,8 +2549,14 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
               attempted: false,
               succeeded: true,
               completedAt: interruptTimestamp.iso,
-              terminationReason: 'approval_interrupt',
+              stopReason: 'approval_interrupt',
+              completionKind: 'approval_handoff',
+              deliveryDisposition: 'approval_governance_only',
+              structuredRetryCount: state.structuredRetryCount,
+              toolDeliveredFinal: false,
+              contextFrame: buildContextFrame(state),
             },
+            contextFrame: buildContextFrame(state),
           },
         });
       }
@@ -1410,7 +2582,9 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
         update: {
           replyText: '',
           graphStatus: 'interrupted',
-          terminationReason: 'approval_interrupt',
+          completionKind: 'approval_handoff',
+          stopReason: 'approval_interrupt',
+          deliveryDisposition: 'approval_governance_only',
           activeWindowDurationMs: addActiveWindowDuration(state, outcome.latencyMs),
           pendingInterrupt: {
             kind: 'approval_review',
@@ -1431,8 +2605,14 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
             attempted: false,
             succeeded: true,
             completedAt: interruptTimestamp.iso,
-            terminationReason: 'approval_interrupt',
+            stopReason: 'approval_interrupt',
+            completionKind: 'approval_handoff',
+            deliveryDisposition: 'approval_governance_only',
+            structuredRetryCount: state.structuredRetryCount,
+            toolDeliveredFinal: false,
+            contextFrame: buildContextFrame(state),
           },
+          contextFrame: buildContextFrame(state),
         },
       });
     }
@@ -1447,13 +2627,19 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
     });
 
     return new Command({
-      goto: state.pendingWriteCalls.length > 1 ? 'approval_gate' : 'llm_call',
+      goto: state.pendingWriteCalls.length > 1 ? 'approval_gate' : 'tool_call_turn',
       update: {
         activeWindowDurationMs: addActiveWindowDuration(state, outcome.result.latencyMs),
         pendingWriteCalls: state.pendingWriteCalls.slice(1),
         messages: [toolMessage],
         toolResults: [outcome.result],
         files: outcome.files,
+        finalToolDelivery: resolveFinalToolDelivery(state.finalToolDelivery, [outcome.result], [outcome.toolName]),
+        contextFrame: buildContextFrame({
+          ...state,
+          toolResults: [...state.toolResults, outcome.result],
+          messages: [...(state.messages as BaseMessage[]), toolMessage],
+        }),
       },
     });
   };
@@ -1464,7 +2650,7 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
   ): Promise<Command<unknown, Partial<AgentGraphState>, GraphNodeName>> => {
     if (!state.pendingInterrupt) {
       return new Command({
-        goto: 'llm_call',
+        goto: 'tool_call_turn',
         update: {},
       });
     }
@@ -1496,7 +2682,9 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
           goto: 'finalize_turn',
           update: {
             resumeContext: snapshotRuntimeContext(resumedContext),
-            terminationReason: resolveContinuationTerminationReason(state.pendingInterrupt.pauseReason),
+            completionKind: 'pause_handoff',
+            stopReason: 'continuation_expired',
+            deliveryDisposition: 'chat_reply',
             graphStatus: 'completed',
             pendingInterrupt: null,
             interruptResolution: {
@@ -1509,8 +2697,14 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
               attempted: true,
               succeeded: true,
               completedAt: completionTimestamp.iso,
-              terminationReason: resolveContinuationTerminationReason(state.pendingInterrupt.pauseReason),
+              stopReason: 'continuation_expired',
+              completionKind: 'pause_handoff',
+              deliveryDisposition: 'chat_reply',
+              structuredRetryCount: state.structuredRetryCount,
+              toolDeliveredFinal: false,
+              contextFrame: buildContextFrame(state),
             },
+            contextFrame: buildContextFrame(state),
           },
         });
       }
@@ -1529,7 +2723,9 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
               buildContinuationUnavailableReply(),
             resumeContext: snapshotRuntimeContext(resumedContext),
             graphStatus: 'completed',
-            terminationReason: resolveContinuationTerminationReason(state.pendingInterrupt.pauseReason),
+            completionKind: 'pause_handoff',
+            stopReason: 'continuation_expired',
+            deliveryDisposition: 'chat_reply',
             pendingInterrupt: null,
             interruptResolution: {
               kind: 'continue_prompt',
@@ -1541,8 +2737,14 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
               attempted: true,
               succeeded: true,
               completedAt: completionTimestamp.iso,
-              terminationReason: resolveContinuationTerminationReason(state.pendingInterrupt.pauseReason),
+              stopReason: 'continuation_expired',
+              completionKind: 'pause_handoff',
+              deliveryDisposition: 'chat_reply',
+              structuredRetryCount: state.structuredRetryCount,
+              toolDeliveredFinal: false,
+              contextFrame: buildContextFrame(state),
             },
+            contextFrame: buildContextFrame(state),
           },
         });
       }
@@ -1553,7 +2755,9 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
           replyText: '',
           resumeContext: snapshotRuntimeContext(resumedContext),
           graphStatus: 'running',
-          terminationReason: 'assistant_reply',
+          completionKind: null,
+          stopReason: 'verified_closeout',
+          deliveryDisposition: 'chat_reply',
           pendingInterrupt: null,
           interruptResolution: {
             kind: 'continue_prompt',
@@ -1563,12 +2767,8 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
           },
           roundsCompleted: 0,
           activeWindowDurationMs: 0,
-          finalization: {
-            attempted: false,
-            succeeded: true,
-            completedAt: new Date(0).toISOString(),
-            terminationReason: 'assistant_reply',
-          },
+          contextFrame: buildContextFrame(state),
+          finalization: buildDefaultFinalization(),
         },
       });
     }
@@ -1676,7 +2876,7 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
     }
 
     return new Command({
-      goto: state.pendingWriteCalls.length > approvalInterrupt.requests.length ? 'approval_gate' : 'llm_call',
+      goto: state.pendingWriteCalls.length > approvalInterrupt.requests.length ? 'approval_gate' : 'tool_call_turn',
       update: {
         messages: toolMessages,
         resumeContext: snapshotRuntimeContext(resumedContext),
@@ -1692,6 +2892,12 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
         pendingWriteCalls: state.pendingWriteCalls.slice(approvalInterrupt.requests.length),
         toolResults: resolvedResults,
         files: resolvedFiles,
+        finalToolDelivery: resolveFinalToolDelivery(state.finalToolDelivery, resolvedResults),
+        contextFrame: buildContextFrame({
+          ...state,
+          toolResults: [...state.toolResults, ...resolvedResults],
+          messages: [...(state.messages as BaseMessage[]), ...toolMessages],
+        }),
       },
     });
   };
@@ -1701,7 +2907,7 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
     config: RunnableConfig,
   ): Promise<Command<unknown, Partial<AgentGraphState>, GraphNodeName>> => {
     const runtimeContext = resolveRuntimeContext(state, config);
-    const toolContext = buildToolContext(state, runtimeContext, 'turn');
+    const toolContext = buildToolContext(state, runtimeContext, 'turn', config);
     const nextCompletedWindows = state.completedWindows + 1;
     const pauseReason = isTimedOut(state, graphConfig) ? 'graph_timeout' : 'step_window_exhausted';
 
@@ -1723,14 +2929,22 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
           totalRoundsCompleted:
             state.totalRoundsCompleted + (limitSummary.usedModel ? 1 : 0),
           graphStatus: 'completed',
-          terminationReason: 'max_windows_reached',
+          completionKind: 'pause_handoff',
+          stopReason: 'max_windows_reached',
+          deliveryDisposition: 'chat_reply',
           activeWindowDurationMs: addActiveWindowDuration(state, limitSummary.latencyMs),
           finalization: {
             attempted: true,
             succeeded: true,
             completedAt: completionTimestamp.iso,
-            terminationReason: 'max_windows_reached',
+            stopReason: 'max_windows_reached',
+            completionKind: 'pause_handoff',
+            deliveryDisposition: 'chat_reply',
+            structuredRetryCount: state.structuredRetryCount,
+            toolDeliveredFinal: false,
+            contextFrame: buildContextFrame(state),
           },
+          contextFrame: buildContextFrame(state),
         },
       });
     }
@@ -1765,7 +2979,9 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
         totalRoundsCompleted:
           state.totalRoundsCompleted + (summary.usedModel ? 1 : 0),
         graphStatus: 'interrupted',
-        terminationReason: resolveContinuationTerminationReason(continuation.pauseReason),
+        completionKind: 'pause_handoff',
+        stopReason: resolveContinuationStopReason(continuation.pauseReason),
+        deliveryDisposition: 'chat_reply_with_continue',
         activeWindowDurationMs: addActiveWindowDuration(state, summary.latencyMs),
         pendingInterrupt: {
           kind: 'continue_prompt',
@@ -1785,8 +3001,14 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
           attempted: true,
           succeeded: true,
           completedAt: interruptTimestamp.iso,
-          terminationReason: resolveContinuationTerminationReason(continuation.pauseReason),
+          stopReason: resolveContinuationStopReason(continuation.pauseReason),
+          completionKind: 'pause_handoff',
+          deliveryDisposition: 'chat_reply_with_continue',
+          structuredRetryCount: state.structuredRetryCount,
+          toolDeliveredFinal: false,
+          contextFrame: buildContextFrame(state),
         },
+        contextFrame: buildContextFrame(state),
       },
     });
   };
@@ -1794,6 +3016,7 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
   const finalizeTurnNode = async (state: AgentGraphState): Promise<Partial<AgentGraphState>> => ({
     graphStatus: state.graphStatus === 'failed' ? 'failed' : 'completed',
     pendingReadCalls: [],
+    pendingReadExecutionCalls: [],
     pendingWriteCalls: [],
   });
 
@@ -1801,26 +3024,35 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
     state: AgentGraphStateSchema,
     context: AgentGraphConfigurableSchema,
   })
-    .addNode('llm_call', callModelNode, {
-      ends: ['route_tool_phase', 'pause_for_continue', 'finalize_turn'],
+    .addNode('decide_turn', decideTurnNode, {
+      ends: ['tool_call_turn', 'verify_turn', 'pause_for_continue', 'closeout_turn'],
+    })
+    .addNode('tool_call_turn', toolCallTurnNode, {
+      ends: ['route_tool_phase', 'pause_for_continue', 'verify_turn'],
     })
     .addNode('route_tool_phase', routeToolPhaseNode, {
-      ends: ['execute_read_tools', 'approval_gate', 'llm_call'],
+      ends: ['execute_read_tools', 'approval_gate', 'tool_call_turn'],
+    })
+    .addNode('verify_turn', verifyTurnNode, {
+      ends: ['tool_call_turn', 'closeout_turn'],
+    })
+    .addNode('closeout_turn', closeoutTurnNode, {
+      ends: ['finalize_turn'],
     })
     .addNode('execute_read_tools', executeReadToolsNode, {
-      ends: ['approval_gate', 'llm_call'],
+      ends: ['approval_gate', 'tool_call_turn'],
     })
     .addNode('approval_gate', approvalGateNode, {
-      ends: ['resume_interrupt', 'llm_call'],
+      ends: ['resume_interrupt', 'tool_call_turn'],
     })
     .addNode('pause_for_continue', pauseForContinueNode, {
       ends: ['resume_interrupt', 'finalize_turn'],
     })
     .addNode('resume_interrupt', resumeInterruptNode, {
-      ends: ['llm_call', 'route_tool_phase', 'finalize_turn'],
+      ends: ['tool_call_turn', 'route_tool_phase', 'finalize_turn'],
     })
     .addNode('finalize_turn', finalizeTurnNode)
-    .addEdge(START, 'llm_call')
+    .addEdge(START, 'decide_turn')
     .addEdge('finalize_turn', END)
     .compile({
       checkpointer,
@@ -1872,9 +3104,9 @@ function isRecoverableInterruptedState(state: AgentGraphState): boolean {
     state.graphStatus === 'interrupted' &&
     !!state.pendingInterrupt &&
     (
-      state.terminationReason === 'approval_interrupt' ||
-      state.terminationReason === 'continue_prompt' ||
-      state.terminationReason === 'graph_timeout'
+      state.stopReason === 'approval_interrupt' ||
+      state.stopReason === 'step_window_exhausted' ||
+      state.stopReason === 'graph_timeout'
     )
   );
 }
@@ -1888,9 +3120,9 @@ function coerceInterruptedState(value: unknown): AgentGraphState | null {
   if (
     state.graphStatus !== 'interrupted' ||
     (
-      state.terminationReason !== 'approval_interrupt' &&
-      state.terminationReason !== 'continue_prompt' &&
-      state.terminationReason !== 'graph_timeout'
+      state.stopReason !== 'approval_interrupt' &&
+      state.stopReason !== 'step_window_exhausted' &&
+      state.stopReason !== 'graph_timeout'
     )
   ) {
     return null;
@@ -1985,6 +3217,135 @@ async function recoverInterruptedGraphState(
   }
 }
 
+function normalizeRecoveredGraphState(value: unknown): AgentGraphState | null {
+  if (!value || typeof value !== 'object') {
+    return null;
+  }
+
+  const state = value as Partial<AgentGraphState>;
+  if (!Array.isArray(state.messages) || !Array.isArray(state.toolResults)) {
+    return null;
+  }
+
+  return {
+    messages: state.messages,
+    resumeContext: state.resumeContext ?? snapshotRuntimeContext(EMPTY_RUNTIME_CONTEXT),
+    pendingReadCalls: state.pendingReadCalls ?? [],
+    pendingReadExecutionCalls: state.pendingReadExecutionCalls ?? [],
+    pendingWriteCalls: state.pendingWriteCalls ?? [],
+    replyText: state.replyText ?? '',
+    toolResults: state.toolResults ?? [],
+    files: state.files ?? [],
+    roundsCompleted: state.roundsCompleted ?? 0,
+    completedWindows: state.completedWindows ?? 0,
+    totalRoundsCompleted: state.totalRoundsCompleted ?? 0,
+    deduplicatedCallCount: state.deduplicatedCallCount ?? 0,
+    lastToolBatchFingerprint: state.lastToolBatchFingerprint ?? null,
+    consecutiveIdenticalToolBatches: state.consecutiveIdenticalToolBatches ?? 0,
+    loopGuardRecoveries: state.loopGuardRecoveries ?? 0,
+    roundEvents: state.roundEvents ?? [],
+    finalization: {
+      ...buildDefaultFinalization(),
+      ...(state.finalization ?? {}),
+    },
+    completionKind: state.completionKind ?? null,
+    stopReason: state.stopReason ?? 'verified_closeout',
+    deliveryDisposition: state.deliveryDisposition ?? 'chat_reply',
+    structuredRetryCount: state.structuredRetryCount ?? state.finalization?.structuredRetryCount ?? 0,
+    finalToolDelivery: state.finalToolDelivery ?? null,
+    decisionKind: state.decisionKind ?? null,
+    verificationKind: state.verificationKind ?? null,
+    contextFrame: state.contextFrame ?? buildDefaultContextFrame(),
+    graphStatus: state.graphStatus ?? 'running',
+    activeWindowDurationMs: state.activeWindowDurationMs ?? 0,
+    pendingInterrupt: state.pendingInterrupt ?? null,
+    interruptResolution: state.interruptResolution ?? null,
+  };
+}
+
+async function recoverLoopGuardState(
+  graph: Pick<AgentGraphRuntime['graph'], 'getState'>,
+  config: RunnableConfig,
+  streamError: unknown,
+): Promise<AgentGraphState | null> {
+  try {
+    const snapshot = await graph.getState(config);
+    const state = normalizeRecoveredGraphState(snapshot.values);
+    if (!state) {
+      return null;
+    }
+
+    const completionTimestamp = new Date().toISOString();
+    const pendingCallCount =
+      state.pendingReadCalls.length +
+      state.pendingReadExecutionCalls.length +
+      state.pendingWriteCalls.length;
+    const nextRoundEvents =
+      pendingCallCount > 0
+        ? [
+            ...state.roundEvents,
+            {
+              round: Math.max(1, state.roundsCompleted),
+              requestedCallCount: pendingCallCount,
+              executedCallCount: 0,
+              deduplicatedCallCount: 0,
+              uniqueCallCount: pendingCallCount,
+              skippedDuplicateCallCount: 0,
+              overLimitCallCount: 0,
+              guardReason: 'recursion_limit',
+              completedAt: completionTimestamp,
+            } satisfies ToolCallRoundEvent,
+          ]
+        : state.roundEvents;
+
+    logger.warn(
+      {
+        error: streamError,
+        traceId: state.resumeContext.traceId,
+        threadId: state.resumeContext.threadId,
+      },
+      'Recovered graph checkpoint after hitting the LangGraph recursion limit',
+    );
+
+    return {
+      ...state,
+      pendingReadCalls: [],
+      pendingReadExecutionCalls: [],
+      pendingWriteCalls: [],
+      replyText: buildLoopGuardReply({
+        reason: 'recursion_limit',
+        state,
+      }),
+      roundEvents: nextRoundEvents,
+      completionKind: 'loop_guard',
+      stopReason: 'loop_guard',
+      deliveryDisposition: 'chat_reply',
+      graphStatus: 'completed',
+      pendingInterrupt: null,
+      finalization: {
+        attempted: true,
+        succeeded: true,
+        completedAt: completionTimestamp,
+        stopReason: 'loop_guard',
+        completionKind: 'loop_guard',
+        deliveryDisposition: 'chat_reply',
+        structuredRetryCount: state.structuredRetryCount ?? state.finalization?.structuredRetryCount ?? 0,
+        toolDeliveredFinal: false,
+        contextFrame: buildContextFrame(state),
+      },
+    };
+  } catch (error) {
+    logger.warn(
+      {
+        error,
+        streamError: streamError instanceof Error ? streamError.message : String(streamError),
+      },
+      'Failed to recover loop-guard graph state after hitting the LangGraph recursion limit',
+    );
+    return null;
+  }
+}
+
 export async function runGraphValueStream(
   graph: Pick<AgentGraphRuntime['graph'], 'stream' | 'getState'>,
   input: Parameters<AgentGraphRuntime['graph']['invoke']>[0],
@@ -2021,6 +3382,12 @@ export async function runGraphValueStream(
     });
     if (recovered) {
       return recovered;
+    }
+    if (isGraphRecursionLimitError(streamError)) {
+      const loopGuardState = await recoverLoopGuardState(graph, config, streamError);
+      if (loopGuardState) {
+        return loopGuardState;
+      }
     }
     throw streamError;
   }
@@ -2074,6 +3441,7 @@ function buildInitialState(params: StartAgentGraphTurnParams): AgentGraphState {
     messages: params.messages,
     resumeContext: snapshotRuntimeContext(createRuntimeContext(params)),
     pendingReadCalls: [],
+    pendingReadExecutionCalls: [],
     pendingWriteCalls: [],
     replyText: '',
     toolResults: [],
@@ -2082,14 +3450,19 @@ function buildInitialState(params: StartAgentGraphTurnParams): AgentGraphState {
     completedWindows: 0,
     totalRoundsCompleted: 0,
     deduplicatedCallCount: 0,
+    lastToolBatchFingerprint: null,
+    consecutiveIdenticalToolBatches: 0,
+    loopGuardRecoveries: 0,
     roundEvents: [],
-    finalization: {
-      attempted: false,
-      succeeded: true,
-      completedAt: new Date(0).toISOString(),
-      terminationReason: 'assistant_reply',
-    },
-    terminationReason: 'assistant_reply',
+    finalization: buildDefaultFinalization(),
+    completionKind: null,
+    stopReason: 'verified_closeout',
+    deliveryDisposition: 'chat_reply',
+    structuredRetryCount: 0,
+    finalToolDelivery: null,
+    decisionKind: null,
+    verificationKind: null,
+    contextFrame: buildDefaultContextFrame(),
     graphStatus: 'running',
     activeWindowDurationMs: 0,
     pendingInterrupt: null,
@@ -2117,6 +3490,7 @@ function buildSeededGraphState(params: {
     messages: [],
     resumeContext: snapshotRuntimeContext(resolvedContext),
     pendingReadCalls: [],
+    pendingReadExecutionCalls: [],
     pendingWriteCalls: [],
     replyText: '',
     toolResults: [],
@@ -2125,14 +3499,19 @@ function buildSeededGraphState(params: {
     completedWindows: 0,
     totalRoundsCompleted: 0,
     deduplicatedCallCount: 0,
+    lastToolBatchFingerprint: null,
+    consecutiveIdenticalToolBatches: 0,
+    loopGuardRecoveries: 0,
     roundEvents: [],
-    finalization: {
-      attempted: false,
-      succeeded: true,
-      completedAt: new Date(0).toISOString(),
-      terminationReason: 'assistant_reply',
-    },
-    terminationReason: 'assistant_reply',
+    finalization: buildDefaultFinalization(),
+    completionKind: null,
+    stopReason: 'verified_closeout',
+    deliveryDisposition: 'chat_reply',
+    structuredRetryCount: 0,
+    finalToolDelivery: null,
+    decisionKind: null,
+    verificationKind: null,
+    contextFrame: buildDefaultContextFrame(),
     graphStatus: 'running',
     activeWindowDurationMs: 0,
     pendingInterrupt: null,

@@ -8,6 +8,9 @@ export interface AgentGraphConfig {
   githubGroundedMode: boolean;
   maxDurationMs: number;
   recursionLimit: number;
+  maxToolCallsPerRound: number;
+  maxIdenticalToolBatches: number;
+  maxLoopGuardRecoveries: number;
 }
 
 export function buildAgentGraphConfig(): AgentGraphConfig {
@@ -30,6 +33,18 @@ export function buildAgentGraphConfig(): AgentGraphConfig {
     recursionLimit: normalizeStrictlyPositiveInt(
       appConfig.AGENT_GRAPH_RECURSION_LIMIT as number | undefined,
       16,
+    ),
+    maxToolCallsPerRound: normalizeStrictlyPositiveInt(
+      appConfig.AGENT_GRAPH_MAX_TOOL_CALLS_PER_ROUND as number | undefined,
+      8,
+    ),
+    maxIdenticalToolBatches: normalizeStrictlyPositiveInt(
+      appConfig.AGENT_GRAPH_MAX_IDENTICAL_TOOL_BATCHES as number | undefined,
+      2,
+    ),
+    maxLoopGuardRecoveries: normalizeStrictlyPositiveInt(
+      appConfig.AGENT_GRAPH_MAX_LOOP_GUARD_RECOVERIES as number | undefined,
+      1,
     ),
   };
 }

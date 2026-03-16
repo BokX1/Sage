@@ -166,9 +166,37 @@ function makeGraphResult(overrides: Record<string, unknown> = {}) {
       attempted: false,
       succeeded: true,
       completedAt: '2026-03-12T00:00:00.000Z',
-      terminationReason: 'assistant_reply',
+      stopReason: 'verified_closeout',
+      completionKind: 'final_answer',
+      deliveryDisposition: 'chat_reply',
+      structuredRetryCount: 0,
+      toolDeliveredFinal: false,
+      contextFrame: {
+        objective: 'Finish the request.',
+        verifiedFacts: [],
+        completedActions: [],
+        openQuestions: [],
+        pendingApprovals: [],
+        deliveryState: 'none',
+        nextAction: 'Close out the turn.',
+      },
     },
-    terminationReason: 'assistant_reply',
+    completionKind: 'final_answer',
+    stopReason: 'verified_closeout',
+    deliveryDisposition: 'chat_reply',
+    structuredRetryCount: 0,
+    toolDeliveredFinal: false,
+    decisionKind: null,
+    verificationKind: null,
+    contextFrame: {
+      objective: 'Finish the request.',
+      verifiedFacts: [],
+      completedActions: [],
+      openQuestions: [],
+      pendingApprovals: [],
+      deliveryState: 'none',
+      nextAction: 'Close out the turn.',
+    },
     graphStatus: 'completed',
     pendingInterrupt: null,
     interruptResolution: null,
@@ -215,8 +243,11 @@ describe('agentRuntime', () => {
     globalToolRegistryMock.get.mockReturnValue({ metadata: { access: 'admin' } } as never);
     runAgentGraphTurnMock.mockResolvedValue(
       makeGraphResult({
-        replyText: 'I will call `discord_admin`.\n```json\n{"action":"update_server_instructions"}\n```',
+        replyText: '',
         graphStatus: 'interrupted',
+        completionKind: 'approval_handoff',
+        stopReason: 'approval_interrupt',
+        deliveryDisposition: 'approval_governance_only',
         pendingInterrupt: {
           kind: 'approval_review',
           requestId: 'request-1',
@@ -487,9 +518,15 @@ describe('agentRuntime', () => {
           attempted: true,
           succeeded: true,
           completedAt: '2026-03-11T22:00:00.000Z',
-          terminationReason: 'continue_prompt',
+          stopReason: 'step_window_exhausted',
+          completionKind: 'pause_handoff',
+          deliveryDisposition: 'chat_reply_with_continue',
+          structuredRetryCount: 0,
+          toolDeliveredFinal: false,
         },
-        terminationReason: 'continue_prompt',
+        completionKind: 'pause_handoff',
+        stopReason: 'step_window_exhausted',
+        deliveryDisposition: 'chat_reply_with_continue',
       }),
     );
 
@@ -513,12 +550,12 @@ describe('agentRuntime', () => {
         id: 'trace-3',
         budgetJson: expect.objectContaining({
           graphRuntime: expect.objectContaining({
-            terminationReason: 'continue_prompt',
+            stopReason: 'step_window_exhausted',
           }),
         }),
         toolJson: expect.objectContaining({
           graph: expect.objectContaining({
-            terminationReason: 'continue_prompt',
+            stopReason: 'step_window_exhausted',
           }),
         }),
       }),
@@ -530,7 +567,9 @@ describe('agentRuntime', () => {
       makeGraphResult({
         replyText: 'I verified the first batch of results and need another continuation window to keep going.',
         graphStatus: 'interrupted',
-        terminationReason: 'continue_prompt',
+        completionKind: 'pause_handoff',
+        stopReason: 'step_window_exhausted',
+        deliveryDisposition: 'chat_reply_with_continue',
         completedWindows: 1,
         totalRoundsCompleted: 2,
         pendingInterrupt: {
@@ -543,7 +582,7 @@ describe('agentRuntime', () => {
           completedWindows: 1,
           maxWindows: 4,
           expiresAtIso: '2026-03-13T09:40:00.000Z',
-          resumeNode: 'llm_call',
+          resumeNode: 'tool_call_turn',
         },
       }),
     );
@@ -573,9 +612,12 @@ describe('agentRuntime', () => {
   it('prefers the persisted continuation summary over a raw tool-count fallback when the graph reply text is empty', async () => {
     runAgentGraphTurnMock.mockResolvedValue(
       makeGraphResult({
-        replyText: '',
+        replyText:
+          'I checked the relevant web sources and still need one more pass to connect the findings cleanly.',
         graphStatus: 'interrupted',
-        terminationReason: 'continue_prompt',
+        completionKind: 'pause_handoff',
+        stopReason: 'step_window_exhausted',
+        deliveryDisposition: 'chat_reply_with_continue',
         completedWindows: 1,
         totalRoundsCompleted: 2,
         toolResults: Array.from({ length: 8 }, () => ({
@@ -594,7 +636,7 @@ describe('agentRuntime', () => {
           completedWindows: 1,
           maxWindows: 4,
           expiresAtIso: '2026-03-13T09:40:00.000Z',
-          resumeNode: 'llm_call',
+          resumeNode: 'tool_call_turn',
         },
       }),
     );
@@ -623,7 +665,9 @@ describe('agentRuntime', () => {
         replyText:
           'Verified so far: discord_admin: success.\n\nI reached the continuation limit for this request.\n\nAsk me in a new message if you want me to keep going from here.',
         graphStatus: 'completed',
-        terminationReason: 'max_windows_reached',
+        completionKind: 'pause_handoff',
+        stopReason: 'max_windows_reached',
+        deliveryDisposition: 'chat_reply',
         completedWindows: 4,
         totalRoundsCompleted: 4,
         pendingInterrupt: null,
@@ -667,7 +711,7 @@ describe('agentRuntime', () => {
       completedWindows: 1,
       maxWindows: 4,
       summaryText: 'summary',
-      resumeNode: 'llm_call',
+      resumeNode: 'tool_call_turn',
       expiresAt: new Date(Date.now() + 60_000),
       createdAt: new Date('2026-03-13T00:00:00.000Z'),
       updatedAt: new Date('2026-03-13T00:00:00.000Z'),
@@ -726,7 +770,7 @@ describe('agentRuntime', () => {
       completedWindows: 1,
       maxWindows: 4,
       summaryText: 'summary',
-      resumeNode: 'llm_call',
+      resumeNode: 'tool_call_turn',
       expiresAt: new Date(Date.now() + 60_000),
       createdAt: new Date('2026-03-13T00:00:00.000Z'),
       updatedAt: new Date('2026-03-13T00:00:00.000Z'),
@@ -773,14 +817,15 @@ describe('agentRuntime', () => {
       completedWindows: 1,
       maxWindows: 4,
       summaryText: 'summary',
-      resumeNode: 'llm_call',
+      resumeNode: 'tool_call_turn',
       expiresAt: new Date(Date.now() + 60_000),
       createdAt: new Date('2026-03-13T00:00:00.000Z'),
       updatedAt: new Date('2026-03-13T00:00:00.000Z'),
     });
     resumeAgentGraphTurnMock.mockResolvedValue(
       makeGraphResult({
-        replyText: '```json\n{"action":"noop"}\n```',
+        replyText:
+          'I made progress on that, but I do not have a clean reply ready to post yet. Send the next message and I will keep going from the current context.',
         toolResults: [],
         pendingInterrupt: null,
       }),

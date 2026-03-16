@@ -99,18 +99,24 @@ flowchart LR
     classDef execute fill:#fff3cd,stroke:#333,color:black
     classDef result fill:#ffccbc,stroke:#333,color:black
 
-    A["llm_call"]:::llm --> B{"Tool calls?"}:::route
-    B -->|No| G["finalize_turn"]:::result
-    B -->|Yes| C["route_tool_phase"]:::route
-    C --> D["execute_read_tools (ToolNode)"]:::execute
-    C --> E["approval_gate"]:::execute
-    D --> A
-    E --> F["resume_interrupt"]:::execute
-    E --> A
-    F --> A
-    F --> C
-    A -->|"step/duration cap with pending work"| H["pause_for_continue"]:::result
-    H --> F
+    A["decide_turn"]:::llm --> B{"Decision"}:::route
+    B -->|call_tools| C["tool_call_turn"]:::llm
+    B -->|answer / clarify| F["verify_turn"]:::llm
+    B -->|pause_handoff| I["pause_for_continue"]:::result
+    C --> D{"Tool calls?"}:::route
+    D -->|Yes| E["route_tool_phase"]:::route
+    D -->|No| F
+    E --> J["execute_read_tools (ToolNode)"]:::execute
+    E --> K["approval_gate"]:::execute
+    J --> C
+    K --> L["resume_interrupt"]:::execute
+    K --> C
+    L --> C
+    L --> E
+    F --> G["closeout_turn"]:::result
+    G --> H["finalize_turn"]:::result
+    C -->|"step/duration cap with pending work"| I
+    I --> L
 ```
 
 **Key behaviors**
@@ -119,11 +125,15 @@ flowchart LR
 - **Window closeout summary**: when Sage pauses cleanly because the step window is exhausted, it can spend one extra no-tools model response to summarize concrete progress before posting the Continue handoff. If that closeout pass fails or the pause was caused by graph timeout, Sage falls back to the deterministic runtime summary.
 - **Message-native state**: the graph persists LangGraph/LangChain messages plus turn facts, approval state, trace metadata, and final delivery state instead of the old custom pending-tool-loop buffers.
 - **Read/write partitioning**: read-only batches execute through `ToolNode`, and mutating calls execute one at a time.
+- **In-round read dedupe**: identical read-only calls in the same model response are executed once, then fanned back out to the model as per-call tool messages so repeated reads do not waste a full execution slot.
+- **Loop guard**: Sage rejects over-wide tool batches before side effects, gives the model one structured repair chance, and finalizes with `loop_guard` if the next batch repeats the same unsafe plan or LangGraph hits the recursion safety ceiling.
+- **Graph-owned closeout**: the graph now routes every no-tool model response through `closeout_turn`, which classifies the turn as `final_answer`, `clarification_question`, `delivered_via_tool`, `pause_handoff`, `approval_handoff`, or `loop_guard` before `finalize_turn` runs.
 - **Tool-owned action policy**: routed Discord tools now declare explicit read/write and approval metadata, so admin-only reads stay on the read lane while approval-gated writes enter the approval path through per-tool policy instead of graph-side action-name branching.
 - **Native tool contract**: the runtime consumes structured provider tool calls directly and feeds tool results back as LangChain tool messages.
 - **Provider-neutral model node**: the graph now invokes Sage's `AiProviderChatModel`, which targets an operator-defined AI provider over the OpenAI-compatible chat-completions contract exposed at `AI_PROVIDER_BASE_URL`.
 - **Native provider transcript**: follow-up model calls now preserve assistant `tool_calls` and real `tool` messages end to end instead of flattening tool results into synthetic user text.
-- **Classic finalize policy**: plain text with no tool calls is treated as the final answer for the turn.
+- **Tool-delivered completion**: tools such as `discord_messages.send` can mark the user-visible answer as already delivered, so Sage does not fabricate or duplicate a chat reply after the tool posts it.
+- **Split outcome semantics**: `completionKind` captures what the turn semantically achieved, `stopReason` captures why the graph stopped or paused, and `deliveryDisposition` tells the outer runtime whether to post chat text, rely on a tool-delivered answer, or keep the outcome governance-only.
 - **Per-tool timeout**: each tool call is bounded by `AGENT_GRAPH_TOOL_TIMEOUT_MS`.
 - **Durable execution**: every real tool invocation and post-approval execution runs inside a LangGraph `task(...)` boundary so replay and thread resume reuse checkpointed task outputs instead of repeating side effects.
 - **Repair-aware validation feedback**: routed-tool validation failures now carry compact repair guidance into the next model round, including missing/unknown action recovery and the best matching action contract from the routed-tool docs.
@@ -144,7 +154,10 @@ Each turn can persist the following compact operator ledger fields to `AgentTrac
 | Field | Description |
 | :--- | :--- |
 | `routeKind` | Canonical value: `single` |
-| `terminationReason` | Why the graph finished or paused (`assistant_reply`, `continue_prompt`, `approval_interrupt`, `graph_timeout`, `max_windows_reached`) |
+| `terminationReason` | Deprecated compact alias field on `AgentTrace`; normal graph success paths now persist semantic outcome data in `budgetJson.graphRuntime` / `toolJson.graph` instead |
+| `budgetJson.graphRuntime.completionKind` | Semantic closeout classification (`final_answer`, `clarification_question`, `delivered_via_tool`, `pause_handoff`, `approval_handoff`, `loop_guard`) |
+| `budgetJson.graphRuntime.stopReason` | Operational stop cause (`verified_closeout`, `approval_interrupt`, `step_window_exhausted`, `graph_timeout`, `max_windows_reached`, `continuation_expired`, `loop_guard`, `structured_output_failure`) |
+| `budgetJson.graphRuntime.deliveryDisposition` | Final delivery path (`chat_reply`, `tool_delivered`, `approval_governance_only`, `chat_reply_with_continue`) |
 | `langSmithRunId` | LangSmith run id for the turn |
 | `langSmithTraceId` | LangSmith trace id for the turn |
 | `budgetJson` | Token-budget allocation per block |
@@ -155,7 +168,7 @@ Each turn can persist the following compact operator ledger fields to `AgentTrac
 > [!TIP]
 > Use LangSmith for node, task, and interrupt drill-down, `npm run db:studio` for Sage's compact ledger rows, or send a real chat ping in Discord for an end-to-end runtime health check.
 > For a deterministic live Discord graph validation pass without relying on LLM tool selection, run `npm run langgraph:discord:smoke` against a disposable guild/channel.
-> Tool-result reinjection is intentionally compact and machine-facing: successful results are bounded, failed results surface retryability plus compact repair metadata for routed-tool validation issues, approval-gated writes resume from an interrupt instead of replaying the write inline, and trace metadata records why the graph terminated or paused.
+> Tool-result reinjection is intentionally compact and machine-facing: successful results are bounded, failed results surface retryability plus compact repair metadata for routed-tool validation issues, approval-gated writes resume from an interrupt instead of replaying the write inline, and graph trace metadata records both the semantic closeout classification and the operational stop cause.
 
 ---
 
@@ -197,6 +210,9 @@ These values reflect the starter values in `.env.example`:
 | `AGENT_GRAPH_MAX_OUTPUT_TOKENS` | Max output tokens for graph model calls | `1800` |
 | `AGENT_GRAPH_GITHUB_GROUNDED_MODE` | Enable grounded GitHub search mode | `true` |
 | `AGENT_GRAPH_RECURSION_LIMIT` | LangGraph recursion fail-safe above the legal hop count | `16` |
+| `AGENT_GRAPH_MAX_TOOL_CALLS_PER_ROUND` | Max executable tool calls Sage will allow from one model response before it forces a repair pass | `8` |
+| `AGENT_GRAPH_MAX_IDENTICAL_TOOL_BATCHES` | Consecutive identical tool batches allowed before Sage trips the loop guard | `2` |
+| `AGENT_GRAPH_MAX_LOOP_GUARD_RECOVERIES` | How many structured repair attempts Sage gives the model before finalizing with `loop_guard` | `1` |
 | `LANGSMITH_TRACING` | Enable optional LangSmith graph tracing | `false` |
 | `LANGSMITH_PROJECT` | LangSmith project name | `sage` |
 | `SAGE_TRACE_DB_ENABLED` | Persist compact `AgentTrace` ledger rows | `true` |

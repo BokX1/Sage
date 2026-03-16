@@ -161,7 +161,7 @@ npm start
 - [ ] `npm run doctor` passes
 - [ ] `npm run check:trust` passes on the release candidate
 - [ ] Tika is reachable when file ingestion is enabled
-- [ ] `AI_PROVIDER_BASE_URL`, `AI_PROVIDER_MAIN_AGENT_MODEL`, `AI_PROVIDER_PROFILE_AGENT_MODEL`, and `AI_PROVIDER_SUMMARY_AGENT_MODEL` are set explicitly; `AI_PROVIDER_API_KEY` and `AI_PROVIDER_MODEL_PROFILES_JSON` are optional
+- [ ] `AI_PROVIDER_BASE_URL`, `AI_PROVIDER_MAIN_AGENT_MODEL`, `AI_PROVIDER_PROFILE_AGENT_MODEL`, and `AI_PROVIDER_SUMMARY_AGENT_MODEL` are set explicitly; if you use `AI_PROVIDER_MODEL_PROFILES_JSON`, treat it as optional operator metadata and verify strict structured-output support with `npm run doctor -- --llm-ping` or `npm run ai-provider:probe`
 - [ ] If you want hosted execution tracing, set `LANGSMITH_TRACING=true` and provide `LANGSMITH_API_KEY`
 - [ ] `SAGE_TRACE_DB_ENABLED=true` if you want compact `AgentTrace` ledger rows in Postgres
 - [ ] Approved moderators/admins have `Manage Server` or `Administrator`

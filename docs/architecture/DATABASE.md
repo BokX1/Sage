@@ -333,7 +333,7 @@ Compact per-turn operator ledger for debugging and observability. High-fidelity 
 |:---|:---|:---|
 | `id` | `String` (PK) | Trace ID |
 | `routeKind` | `String` | Canonical value: `single` |
-| `terminationReason` | `String?` | Why the graph ended or paused (`assistant_reply`, `continue_prompt`, `approval_interrupt`, `graph_timeout`, `max_windows_reached`) |
+| `terminationReason` | `String?` | Deprecated compact alias for the graph `stopReason`; current semantic closeout fields live in `budgetJson.graphRuntime` / `toolJson.graph` (`completionKind`, `stopReason`, `deliveryDisposition`) |
 | `langSmithRunId` | `String?` | LangSmith run id for the graph execution |
 | `langSmithTraceId` | `String?` | LangSmith trace id for cross-run lookup |
 | `budgetJson` | `Json?` | Token budget allocation per block |
@@ -389,7 +389,7 @@ Checkpoint-backed continuation records used when Sage pauses a long-running Lang
 | `completedWindows` | `Int` | How many bounded execution windows were already consumed |
 | `maxWindows` | `Int` | Hard cap before Sage requires a fresh request |
 | `summaryText` | `Text` | Human-facing progress summary shown with the Continue affordance |
-| `resumeNode` | `String` | Next graph node to enter on resume (`llm_call` or `route_tool_phase`) |
+| `resumeNode` | `String` | Next graph node to enter on resume (`tool_call_turn` or `route_tool_phase`) |
 | `expiresAt` | `DateTime` | Continuation TTL deadline |
 
 ### `AdminAudit`

@@ -1,5 +1,5 @@
-import type { ToolResult } from './toolCallExecution';
 import { scrubFinalReplyText } from './finalReplyScrubber';
+import type { GraphDeliveryDisposition } from './langgraph/types';
 
 export type LastResortVisibleReplyKind = 'turn' | 'continue_prompt' | 'continue_resume' | 'approval_resume';
 export type RuntimeFailureReplyKind = 'turn' | 'continue_resume';
@@ -10,40 +10,6 @@ function joinFlow(parts: string[]): string {
     .map((part) => part.trim())
     .filter((part) => part.length > 0)
     .join(' ');
-}
-
-function buildToolNameRollup(
-  entries: Array<{
-    name: string;
-  }>,
-): string {
-  const counts = new Map<string, number>();
-  for (const entry of entries) {
-    counts.set(entry.name, (counts.get(entry.name) ?? 0) + 1);
-  }
-
-  return Array.from(counts.entries())
-    .map(([name, count]) => (count > 1 ? `${name} x${count}` : name))
-    .join(', ');
-}
-
-function buildDeterministicToolSummary(toolResults: ToolResult[]): string {
-  const successful = toolResults.filter((result) => result.success);
-  const failed = toolResults
-    .filter((result) => !result.success)
-    .map((result) => `${result.name}${result.error ? ` (${result.error})` : ''}`);
-  const parts: string[] = [];
-
-  if (successful.length > 0) {
-    parts.push(
-      `Completed so far: ${successful.length} tool call${successful.length === 1 ? '' : 's'} (${buildToolNameRollup(successful)}).`,
-    );
-  }
-  if (failed.length > 0) {
-    parts.push(`Problems encountered: ${failed.join('; ')}.`);
-  }
-
-  return parts.join('\n\n').trim();
 }
 
 export function buildLastResortVisibleReply(kind: LastResortVisibleReplyKind): string {
@@ -102,33 +68,19 @@ export function buildRuntimeFailureReply(params: {
 
 export function finalizeVisibleReplyText(params: {
   replyText: string | null | undefined;
-  preferredReplyText?: string | null | undefined;
-  toolResults?: ToolResult[];
-  allowEmpty?: boolean;
-  preferEmptyFallback?: boolean;
+  deliveryDisposition: GraphDeliveryDisposition;
   emptyFallback: string;
 }): string {
-  const cleanedPreferredReplyText = scrubFinalReplyText({
-    replyText: params.preferredReplyText,
-  });
   const cleanedReplyText = scrubFinalReplyText({
     replyText: params.replyText,
   });
-  const fallbackToolSummary = buildDeterministicToolSummary(params.toolResults ?? []);
-
-  if (cleanedPreferredReplyText) {
-    return cleanedPreferredReplyText;
-  }
   if (cleanedReplyText) {
     return cleanedReplyText;
   }
-  if (fallbackToolSummary) {
-    if (params.preferEmptyFallback) {
-      return params.emptyFallback;
-    }
-    return fallbackToolSummary;
-  }
-  if (params.allowEmpty) {
+  if (
+    params.deliveryDisposition === 'tool_delivered' ||
+    params.deliveryDisposition === 'approval_governance_only'
+  ) {
     return '';
   }
 

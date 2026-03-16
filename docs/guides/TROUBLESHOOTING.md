@@ -39,7 +39,7 @@ This validates:
 
 - ✅ Environment configuration
 - ✅ Database connectivity
-- ✅ AI provider availability (if `--llm-ping` or `LLM_DOCTOR_PING=1`)
+- ✅ AI provider availability plus strict structured-output support (if `--llm-ping` or `LLM_DOCTOR_PING=1`)
 
 ---
 
@@ -165,7 +165,7 @@ Possible causes:
 **Fix:**
 
 1. Increase timeout: `TIMEOUT_MEMORY_MS=600000`
-2. Make sure `AI_PROVIDER_PROFILE_AGENT_MODEL` is set explicitly; optional `AI_PROVIDER_MODEL_PROFILES_JSON` entries can refine its budget if needed
+2. Make sure `AI_PROVIDER_PROFILE_AGENT_MODEL` is set explicitly, then run `npm run doctor -- --llm-ping` or `npm run ai-provider:probe` to confirm the main runtime model accepts strict structured outputs
 
 ---
 
@@ -292,7 +292,7 @@ RAW_MESSAGE_TTL_DAYS=1                     # Reduce from 3
    npm run doctor -- --llm-ping
    ```
 
-   Alternative env-var syntax also works: `LLM_DOCTOR_PING=1 npm run doctor`.
+   Alternative env-var syntax also works: `LLM_DOCTOR_PING=1 npm run doctor`. For a direct model/key check, run `npm run ai-provider:probe`.
    For deeper trace inspection, review `AgentTrace` rows via `npm run db:studio`.
 
 3. Open an issue: <https://github.com/BokX1/Sage/issues>

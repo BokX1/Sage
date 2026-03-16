@@ -71,7 +71,7 @@ export async function createGraphContinuationSession(params: {
   completedWindows: number;
   maxWindows?: number;
   summaryText: string;
-  resumeNode: 'llm_call' | 'route_tool_phase';
+  resumeNode: 'tool_call_turn' | 'route_tool_phase';
   expiresAt?: Date;
 }): Promise<AgentContinuationSessionRecord> {
   const created = await prisma.agentContinuationSession.create({

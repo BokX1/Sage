@@ -25,22 +25,78 @@ export interface ToolCallRoundEvent {
   requestedCallCount: number;
   executedCallCount: number;
   deduplicatedCallCount: number;
+  uniqueCallCount: number;
+  skippedDuplicateCallCount: number;
+  overLimitCallCount: number;
   completedAt: string;
+  guardReason?: 'too_many_tool_calls' | 'repeated_identical_batch' | 'recursion_limit';
   rebudgeting?: GraphRebudgetEvent;
 }
 
-export type GraphTurnTerminationReason =
-  | 'assistant_reply'
-  | 'continue_prompt'
-  | 'graph_timeout'
+export type GraphDecisionKind =
+  | 'call_tools'
+  | 'answer_now'
+  | 'ask_clarification'
+  | 'pause_handoff';
+
+export type GraphVerificationKind =
+  | 'verified_answer'
+  | 'need_more_tools'
+  | 'ask_clarification'
+  | 'delivered_via_tool'
+  | 'approval_handoff'
+  | 'loop_guard';
+
+export type GraphCompletionKind =
+  | 'final_answer'
+  | 'clarification_question'
+  | 'delivered_via_tool'
+  | 'pause_handoff'
+  | 'approval_handoff'
+  | 'loop_guard';
+
+export type GraphStopReason =
+  | 'verified_closeout'
   | 'approval_interrupt'
-  | 'max_windows_reached';
+  | 'step_window_exhausted'
+  | 'graph_timeout'
+  | 'max_windows_reached'
+  | 'continuation_expired'
+  | 'loop_guard'
+  | 'structured_output_failure';
+
+export type GraphDeliveryDisposition =
+  | 'chat_reply'
+  | 'tool_delivered'
+  | 'approval_governance_only'
+  | 'chat_reply_with_continue';
+
+export interface GraphToolDeliveryState {
+  toolName: string;
+  effectKind: 'final_message' | 'governance_only';
+  visibleSummary?: string;
+}
+
+export interface GraphContextFrame {
+  objective: string;
+  verifiedFacts: string[];
+  completedActions: string[];
+  openQuestions: string[];
+  pendingApprovals: string[];
+  deliveryState: 'none' | 'final_message' | 'governance_only';
+  nextAction: string;
+}
 
 export interface ToolCallFinalizationEvent {
   attempted: boolean;
   succeeded: boolean;
   completedAt: string;
-  terminationReason: GraphTurnTerminationReason;
+  stopReason: GraphStopReason;
+  completionKind: GraphCompletionKind;
+  deliveryDisposition: GraphDeliveryDisposition;
+  structuredRetryCount: number;
+  toolDeliveredFinal: boolean;
+  contextFrame?: GraphContextFrame;
   rebudgeting?: GraphRebudgetEvent;
 }
 
@@ -78,7 +134,7 @@ export interface ContinuePromptInterruptState {
   completedWindows: number;
   maxWindows: number;
   expiresAtIso: string;
-  resumeNode: 'llm_call' | 'route_tool_phase';
+  resumeNode: 'tool_call_turn' | 'route_tool_phase';
 }
 
 export type GraphInterruptState = ApprovalInterruptState | ContinuePromptInterruptState;
@@ -145,6 +201,7 @@ export interface AgentGraphState {
   messages: BaseMessage[];
   resumeContext: AgentGraphPersistedContext;
   pendingReadCalls: GraphToolCallDescriptor[];
+  pendingReadExecutionCalls: GraphToolCallDescriptor[];
   pendingWriteCalls: GraphToolCallDescriptor[];
   replyText: string;
   toolResults: SerializedToolResult[];
@@ -153,9 +210,19 @@ export interface AgentGraphState {
   completedWindows: number;
   totalRoundsCompleted: number;
   deduplicatedCallCount: number;
+  lastToolBatchFingerprint: string | null;
+  consecutiveIdenticalToolBatches: number;
+  loopGuardRecoveries: number;
   roundEvents: ToolCallRoundEvent[];
   finalization: ToolCallFinalizationEvent;
-  terminationReason: GraphTurnTerminationReason;
+  completionKind: GraphCompletionKind | null;
+  stopReason: GraphStopReason;
+  deliveryDisposition: GraphDeliveryDisposition;
+  structuredRetryCount: number;
+  finalToolDelivery: GraphToolDeliveryState | null;
+  decisionKind: GraphDecisionKind | null;
+  verificationKind: GraphVerificationKind | null;
+  contextFrame: GraphContextFrame;
   graphStatus: 'running' | 'interrupted' | 'completed' | 'failed';
   activeWindowDurationMs: number;
   pendingInterrupt: GraphInterruptState | null;

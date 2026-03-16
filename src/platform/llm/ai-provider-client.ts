@@ -4,6 +4,7 @@ import {
   LLMMessageContent,
   LLMRequest,
   LLMResponse,
+  LLMStructuredJsonSchemaFormat,
   LLMToolCall,
   ToolDefinition,
 } from './llm-types';
@@ -35,7 +36,16 @@ interface CompatibleChatCompletionsPayload {
   messages: CompatibleChatMessage[];
   temperature: number;
   max_tokens?: number;
-  response_format?: { type: 'json_object' };
+  response_format?:
+    | { type: 'json_object' }
+    | {
+        type: 'json_schema';
+        json_schema: {
+          name: string;
+          schema: Record<string, unknown>;
+          strict?: boolean;
+        };
+      };
   tools?: ToolDefinition[];
   tool_choice?: string | object;
 }
@@ -67,6 +77,38 @@ const DEFAULT_MAX_RETRIES = 2;
 const MAX_RETRIES = 5;
 const JSON_ONLY_INSTRUCTION =
   ' IMPORTANT: You must output strictly valid JSON only. Do not wrap in markdown blocks. No other text.';
+
+function normalizeResponseFormat(
+  responseFormat: LLMRequest['responseFormat'],
+): CompatibleChatCompletionsPayload['response_format'] | undefined {
+  if (!responseFormat || responseFormat === 'text') {
+    return undefined;
+  }
+
+  if (responseFormat === 'json_object') {
+    return { type: 'json_object' };
+  }
+
+  const schemaFormat = responseFormat as LLMStructuredJsonSchemaFormat;
+  return {
+    type: 'json_schema',
+    json_schema: {
+      name: schemaFormat.name,
+      schema: sanitizeJsonSchemaForProvider(schemaFormat.schema),
+      strict: schemaFormat.strict,
+    },
+  };
+}
+
+function allowsJsonModeFallback(responseFormat: LLMRequest['responseFormat']): boolean {
+  if (!responseFormat || responseFormat === 'text') {
+    return false;
+  }
+  if (responseFormat === 'json_object') {
+    return true;
+  }
+  return responseFormat.disableFallback !== true;
+}
 
 function resolveMaxRetries(rawMaxRetries: number | undefined): number {
   if (typeof rawMaxRetries !== 'number' || !Number.isFinite(rawMaxRetries)) {
@@ -398,8 +440,7 @@ export class AiProviderClient implements LLMClient {
       messages: normalizedMessages,
       temperature: request.temperature ?? 0.7,
       max_tokens: request.maxTokens,
-      response_format:
-        request.responseFormat === 'json_object' ? { type: 'json_object' } : undefined,
+      response_format: normalizeResponseFormat(request.responseFormat),
       tools: sanitizeToolDefinitionsForProvider(request.tools),
       tool_choice: request.toolChoice,
     };
@@ -442,6 +483,7 @@ export class AiProviderClient implements LLMClient {
             !hasRetriedForJson &&
             (response.status === 400 || response.status === 422) &&
             payload.response_format &&
+            allowsJsonModeFallback(request.responseFormat) &&
             /response_format|json_object|unknown field|unsupported/i.test(text)
           ) {
             logger.warn(

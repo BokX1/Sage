@@ -77,6 +77,16 @@ export interface ToolDefinition {
   };
 }
 
+export type LLMStructuredJsonSchemaFormat = {
+  type: 'json_schema';
+  name: string;
+  schema: Record<string, unknown>;
+  strict?: boolean;
+  disableFallback?: boolean;
+};
+
+export type LLMResponseFormat = 'text' | 'json_object' | LLMStructuredJsonSchemaFormat;
+
 /**
  * Define a chat request sent to an LLM client.
  *
@@ -91,7 +101,7 @@ export interface LLMRequest {
   apiKey?: string;
   temperature?: number;
   maxTokens?: number;
-  responseFormat?: 'text' | 'json_object';
+  responseFormat?: LLMResponseFormat;
   tools?: ToolDefinition[];
   toolChoice?:
     | string

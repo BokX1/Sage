@@ -7,42 +7,35 @@ import {
 } from '@/features/agent-runtime/visibleReply';
 
 describe('visibleReply', () => {
-  it('returns deterministic tool summaries before using the empty fallback', () => {
+  it('returns the route-aware last-resort fallback when a chat reply is empty', () => {
     const result = finalizeVisibleReplyText({
       replyText: '```json\n{"action":"delete_message"}\n```',
-      toolResults: [{ name: 'discord_admin', success: true, latencyMs: 0 }],
+      deliveryDisposition: 'chat_reply',
       emptyFallback: buildLastResortVisibleReply('turn'),
     });
 
-    expect(result).toBe('Completed so far: 1 tool call (discord_admin).');
+    expect(result).toContain('I made progress on that');
   });
 
-  it('returns the route-aware last-resort fallback when no visible reply or tool summary exists', () => {
+  it('returns the route-aware last-resort fallback when no visible reply exists', () => {
     const turnFallback = finalizeVisibleReplyText({
       replyText: '',
-      toolResults: [],
+      deliveryDisposition: 'chat_reply',
       emptyFallback: buildLastResortVisibleReply('turn'),
     });
     const continuationFallback = finalizeVisibleReplyText({
       replyText: '',
-      toolResults: [],
+      deliveryDisposition: 'chat_reply_with_continue',
       emptyFallback: buildLastResortVisibleReply('continue_prompt'),
     });
     const continuationResumeFallback = finalizeVisibleReplyText({
       replyText: '',
-      toolResults: [],
+      deliveryDisposition: 'chat_reply_with_continue',
       emptyFallback: buildLastResortVisibleReply('continue_resume'),
     });
-    const approvalFallback = finalizeVisibleReplyText({
-      replyText: '',
-      toolResults: [],
-      emptyFallback: buildLastResortVisibleReply('approval_resume'),
-    });
-
     expect(turnFallback).toContain('I made progress on that');
     expect(continuationFallback).toContain('I need another continuation window');
     expect(continuationResumeFallback).toContain('I picked that back up');
-    expect(approvalFallback).toContain('That review is resolved');
   });
 
   it('returns route-aware runtime failure copy', () => {
@@ -56,14 +49,28 @@ describe('visibleReply', () => {
 
   it('prefers a continuation summary over a raw tool-count fallback when the visible reply is empty', () => {
     const result = finalizeVisibleReplyText({
-      replyText: '',
-      preferredReplyText: 'I checked the relevant GitHub files and still need one more pass to connect the findings.',
-      toolResults: [{ name: 'github', success: true, latencyMs: 0 }],
-      preferEmptyFallback: true,
+      replyText: 'I checked the relevant GitHub files and still need one more pass to connect the findings.',
+      deliveryDisposition: 'chat_reply_with_continue',
       emptyFallback: buildLastResortVisibleReply('continue_prompt'),
     });
 
     expect(result).toContain('I checked the relevant GitHub files');
-    expect(result).not.toContain('Completed so far');
+  });
+
+  it('allows empty text for tool-delivered and governance-only outcomes', () => {
+    expect(
+      finalizeVisibleReplyText({
+        replyText: '',
+        deliveryDisposition: 'tool_delivered',
+        emptyFallback: buildLastResortVisibleReply('turn'),
+      }),
+    ).toBe('');
+    expect(
+      finalizeVisibleReplyText({
+        replyText: '',
+        deliveryDisposition: 'approval_governance_only',
+        emptyFallback: buildLastResortVisibleReply('approval_resume'),
+      }),
+    ).toBe('');
   });
 });

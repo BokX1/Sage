@@ -96,6 +96,35 @@ function serializeToolResult(result: ToolResult): SerializedToolResult {
   };
 }
 
+function annotateFinalDelivery(call: GraphToolCallDescriptor, result: ToolResult): ToolResult {
+  if (!result.success) {
+    return result;
+  }
+
+  const action =
+    call.args && typeof call.args === 'object' && !Array.isArray(call.args)
+      ? (call.args as Record<string, unknown>).action
+      : undefined;
+
+  if (call.name === 'discord_messages' && action === 'send_message') {
+    return {
+      ...result,
+      deliveryEffect: {
+        kind: 'final_message',
+        visibleSummary:
+          typeof result.result === 'object' &&
+          result.result &&
+          !Array.isArray(result.result) &&
+          typeof (result.result as Record<string, unknown>).content === 'string'
+            ? ((result.result as Record<string, unknown>).content as string)
+            : undefined,
+      },
+    };
+  }
+
+  return result;
+}
+
 function collectFiles(result: ToolResult): GraphToolFile[] {
   if (!result.success || !result.attachments?.length) {
     return [];
@@ -168,7 +197,7 @@ export const executeDurableToolTask = task(
 
     const startedAt = Date.now();
     try {
-      const result = await executeToolWithTimeout(
+      const rawResult = await executeToolWithTimeout(
         globalToolRegistry,
         {
           name: input.call.name,
@@ -177,6 +206,7 @@ export const executeDurableToolTask = task(
         input.context,
         input.timeoutMs,
       );
+      const result = annotateFinalDelivery(input.call, rawResult);
 
       return {
         kind: 'tool_result',

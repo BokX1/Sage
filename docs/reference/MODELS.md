@@ -23,7 +23,7 @@ Sage is provider-neutral at the runtime layer:
 - Runtime chat uses `AI_PROVIDER_BASE_URL` plus `AI_PROVIDER_MAIN_AGENT_MODEL`
 - Profile updates use `AI_PROVIDER_PROFILE_AGENT_MODEL`
 - Channel summaries use `AI_PROVIDER_SUMMARY_AGENT_MODEL`
-- `AI_PROVIDER_MODEL_PROFILES_JSON` is optional; Sage falls back to base runtime budgets when it is omitted or partial
+- `AI_PROVIDER_MODEL_PROFILES_JSON` is optional; use the live doctor/probe checks to verify whether the main agent model really supports Sage's strict structured-output contract
 - Sage does not fetch a remote model catalog and does not ship built-in fallback model ids
 
 This behavior is implemented in `runChatTurn` and the shared AI-provider transport/model adapter.
@@ -67,8 +67,9 @@ Each model profile can describe:
 | `maxOutputTokens` | Output cap Sage should reserve for |
 | `safetyMarginTokens` | Buffer for provider differences and explicit output reservations |
 | `visionEnabled` | Whether image inputs are allowed |
+| `strictStructuredOutputs` | Whether the model can satisfy Sage's strict decision/verification JSON-schema contract |
 
-If a configured model is missing from the profile map, Sage falls back to the runtime base budgets instead of guessing.
+If a configured model is missing from the profile map, Sage falls back to the base runtime budgets instead of guessing. `strictStructuredOutputs` is now an optional trusted hint, not a boot requirement.
 
 ---
 

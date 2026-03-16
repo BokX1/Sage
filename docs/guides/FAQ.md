@@ -100,7 +100,7 @@ Sage's main chat loop uses one runtime agent model per turn:
 - **Main agent turns:** `AI_PROVIDER_MAIN_AGENT_MODEL` (required)
 - **Profile updates:** `AI_PROVIDER_PROFILE_AGENT_MODEL` (required)
 - **Channel summaries:** `AI_PROVIDER_SUMMARY_AGENT_MODEL` (required)
-- **Optional model budgets:** `AI_PROVIDER_MODEL_PROFILES_JSON` can refine per-model limits, but Sage falls back to base runtime budgets when it is omitted
+- **Model profiles:** `AI_PROVIDER_MODEL_PROFILES_JSON` is optional. Use `npm run doctor -- --llm-ping` or `npm run ai-provider:probe` to verify that the main runtime model actually supports strict structured outputs.
 
 There is no route-mapped multi-agent pipeline in the current runtime.
 

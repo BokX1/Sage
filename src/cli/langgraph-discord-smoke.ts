@@ -323,7 +323,7 @@ async function runReadPathSmoke(target: SmokeTarget): Promise<void> {
   });
 
   console.log(
-    `[PASS] graph read path routed discord_server.list_channels through LangGraph and cleaned the continuation pause (termination=${result.terminationReason})`,
+      `[PASS] graph read path routed discord_server.list_channels through LangGraph and cleaned the continuation pause (stop=${result.stopReason})`,
   );
 }
 
@@ -442,7 +442,7 @@ async function runApprovalPathSmoke(target: SmokeTarget): Promise<void> {
     });
 
     console.log(
-      `[PASS] graph approval path created, approved, resumed, executed discord_admin.create_role, and cleaned the continuation pause (termination=${resumed.terminationReason})`,
+      `[PASS] graph approval path created, approved, resumed, executed discord_admin.create_role, and cleaned the continuation pause (stop=${resumed.stopReason})`,
     );
   } finally {
     if (!action && requestId) {

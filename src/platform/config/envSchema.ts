@@ -329,6 +329,9 @@ export const testDefaults: Record<string, string> = {
   AGENT_GRAPH_GITHUB_GROUNDED_MODE: 'true',
   AGENT_GRAPH_MAX_DURATION_MS: '120000',
   AGENT_GRAPH_RECURSION_LIMIT: '16',
+  AGENT_GRAPH_MAX_TOOL_CALLS_PER_ROUND: '8',
+  AGENT_GRAPH_MAX_IDENTICAL_TOOL_BATCHES: '2',
+  AGENT_GRAPH_MAX_LOOP_GUARD_RECOVERIES: '1',
 
   // Security
   SECRET_ENCRYPTION_KEY: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
@@ -502,6 +505,9 @@ export const envSchema = z.object({
     .transform((v) => v === 'true'),
   AGENT_GRAPH_MAX_DURATION_MS: z.coerce.number().int().min(10_000).max(300_000).default(120_000),
   AGENT_GRAPH_RECURSION_LIMIT: z.coerce.number().int().min(2).max(64).default(16),
+  AGENT_GRAPH_MAX_TOOL_CALLS_PER_ROUND: z.coerce.number().int().min(1).max(32).default(8),
+  AGENT_GRAPH_MAX_IDENTICAL_TOOL_BATCHES: z.coerce.number().int().min(2).max(8).default(2),
+  AGENT_GRAPH_MAX_LOOP_GUARD_RECOVERIES: z.coerce.number().int().min(0).max(4).default(1),
 
   // Security
   SECRET_ENCRYPTION_KEY: z.string().regex(/^[0-9a-fA-F]{64}$/),

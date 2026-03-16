@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { AIMessage, HumanMessage } from '@langchain/core/messages';
+import { AIMessage, HumanMessage, ToolMessage } from '@langchain/core/messages';
 
 const {
   loggerWarnMock,
@@ -7,6 +7,9 @@ const {
   modelInvokeMock,
   getLastAiToolCallsMock,
   buildAgentGraphConfigMock,
+  buildActiveToolCatalogMock,
+  isReadOnlyToolCallMock,
+  toolNodeInvokeMock,
   executeDurableToolTaskMock,
   executeApprovedReviewTaskMock,
   prepareToolApprovalInterruptMock,
@@ -16,7 +19,9 @@ const {
 } = vi.hoisted(() => ({
   loggerWarnMock: vi.fn(),
   loggerInfoMock: vi.fn(),
-  modelInvokeMock: vi.fn<() => Promise<unknown>>(async () => new HumanMessage({ content: 'unused' })),
+  modelInvokeMock: vi.fn<
+    (messages?: unknown, options?: { responseFormat?: unknown }) => Promise<unknown>
+  >(async () => new HumanMessage({ content: 'unused' })),
   getLastAiToolCallsMock: vi.fn((messages: Array<{ tool_calls?: unknown[] }>) => {
     const last = messages.at(-1);
     return Array.isArray(last?.tool_calls) ? last.tool_calls : [];
@@ -27,7 +32,28 @@ const {
     maxDurationMs: 5_000,
     recursionLimit: 8,
     githubGroundedMode: false,
+    maxToolCallsPerRound: 8,
+    maxIdenticalToolBatches: 2,
+    maxLoopGuardRecoveries: 1,
   })),
+  buildActiveToolCatalogMock: vi.fn<
+    () => {
+      allTools: Array<{ name: string }>;
+      readOnlyTools: Array<{ name: string }>;
+      definitions: Map<string, unknown>;
+    }
+  >(() => ({
+    allTools: [],
+    readOnlyTools: [],
+    definitions: new Map(),
+  })),
+  isReadOnlyToolCallMock: vi.fn(() => false),
+  toolNodeInvokeMock: vi.fn<
+    (
+      input?: { messages?: Array<{ tool_calls?: Array<{ id?: string }> }> },
+      config?: unknown,
+    ) => Promise<{ messages: unknown[] }>
+  >(async () => ({ messages: [] })),
   executeDurableToolTaskMock: vi.fn(),
   executeApprovedReviewTaskMock: vi.fn(),
   prepareToolApprovalInterruptMock: vi.fn(),
@@ -44,7 +70,7 @@ const {
     completedWindows: 1,
     maxWindows: 4,
     summaryText: 'summary',
-    resumeNode: 'llm_call',
+    resumeNode: 'tool_call_turn',
     expiresAt: new Date('2026-03-14T00:00:00.000Z'),
     createdAt: new Date('2026-03-14T00:00:00.000Z'),
     updatedAt: new Date('2026-03-14T00:00:00.000Z'),
@@ -62,7 +88,7 @@ const {
     completedWindows: 1,
     maxWindows: 4,
     summaryText: 'summary',
-    resumeNode: 'llm_call',
+    resumeNode: 'tool_call_turn',
     expiresAt: new Date('2026-03-14T00:00:00.000Z'),
     createdAt: new Date('2026-03-14T00:00:00.000Z'),
     updatedAt: new Date('2026-03-14T00:00:00.000Z'),
@@ -106,10 +132,17 @@ vi.mock('@/features/admin/adminActionService', () => ({
 
 vi.mock('@/platform/llm/model-budget-config', () => ({
   getModelBudgetConfig: vi.fn(() => ({
-    maxInputTokens: 8_192,
+    maxContextTokens: 8_192,
     maxOutputTokens: 1_024,
-    estimation: 'rough',
+    safetyMarginTokens: 256,
+    estimation: {
+      charsPerToken: 4,
+      codeCharsPerToken: 3.5,
+      imageTokens: 1200,
+      messageOverheadTokens: 4,
+    },
     visionEnabled: false,
+    strictStructuredOutputs: true,
   })),
 }));
 
@@ -127,8 +160,70 @@ vi.mock('@/platform/llm/ai-provider-chat-model', () => ({
       return this;
     }
 
-    async invoke() {
-      return modelInvokeMock();
+    async invoke(messages: Array<{ role?: string; content?: unknown }>, options?: { responseFormat?: { type?: string; name?: string } }) {
+      if (options?.responseFormat?.type === 'json_schema') {
+        const getRole = (message: { role?: string; content?: unknown; getType?: () => string }) => {
+          if (typeof message.role === 'string') {
+            return message.role;
+          }
+          if (typeof message.getType !== 'function') {
+            return undefined;
+          }
+          const type = message.getType();
+          if (type === 'ai') {
+            return 'assistant';
+          }
+          if (type === 'human') {
+            return 'user';
+          }
+          return type;
+        };
+        const getText = (message: { content?: unknown }) =>
+          typeof message.content === 'string' ? message.content : '';
+        const latestAssistantText = [...messages]
+          .reverse()
+          .find((message) => getRole(message) === 'assistant');
+        const latestUserText = [...messages]
+          .reverse()
+          .find((message) => getRole(message) === 'user');
+        const systemText = messages
+          .filter((message) => getRole(message) === 'system')
+          .map((message) => getText(message))
+          .join('\n');
+
+        if (options.responseFormat.name === 'sage_turn_verification') {
+          if (/Delivery state: final_message/.test(systemText)) {
+            return { content: JSON.stringify({ verification: 'delivered_via_tool', nextAction: 'Close out the turn.' }) };
+          }
+          if (getText(latestAssistantText ?? {}).trim().endsWith('?')) {
+            return {
+              content: JSON.stringify({
+                verification: 'ask_clarification',
+                visibleReplyText: getText(latestAssistantText ?? {}).trim(),
+                openQuestions: [getText(latestAssistantText ?? {}).trim()],
+                nextAction: 'Close out the turn.',
+              }),
+            };
+          }
+          return {
+            content: JSON.stringify({
+              verification: 'verified_answer',
+              visibleReplyText: getText(latestAssistantText ?? {}).trim() || 'Done.',
+              verifiedFacts: getText(latestAssistantText ?? {}).trim() ? [getText(latestAssistantText ?? {}).trim()] : [],
+              nextAction: 'Close out the turn.',
+            }),
+          };
+        }
+
+        return {
+          content: JSON.stringify({
+            decision: 'call_tools',
+            objective: getText(latestUserText ?? {}).trim() || 'Finish the request.',
+            nextAction: 'Call tools or produce the next assistant step.',
+          }),
+        };
+      }
+      return modelInvokeMock(messages, options);
     }
   },
 }));
@@ -157,16 +252,24 @@ vi.mock('@/features/agent-runtime/langgraph/config', () => ({
   buildAgentGraphConfig: buildAgentGraphConfigMock,
 }));
 
+vi.mock('@langchain/langgraph/prebuilt', () => ({
+  ToolNode: class ToolNode {
+    async invoke(...args: unknown[]) {
+      return toolNodeInvokeMock(
+        args[0] as Parameters<typeof toolNodeInvokeMock>[0],
+        args[1] as Parameters<typeof toolNodeInvokeMock>[1],
+      );
+    }
+  },
+  toolsCondition: vi.fn(() => 'end'),
+}));
+
 vi.mock('@/features/agent-runtime/langgraph/nativeTools', () => ({
-  buildActiveToolCatalog: vi.fn(() => ({
-    allTools: [],
-    readOnlyTools: [],
-    definitions: new Map(),
-  })),
+  buildActiveToolCatalog: buildActiveToolCatalogMock,
   executeApprovedReviewTask: executeApprovedReviewTaskMock,
   executeDurableToolTask: executeDurableToolTaskMock,
   prepareToolApprovalInterrupt: prepareToolApprovalInterruptMock,
-  isReadOnlyToolCall: vi.fn(() => false),
+  isReadOnlyToolCall: isReadOnlyToolCallMock,
 }));
 
 vi.mock('@/features/agent-runtime/toolControlSignals', () => ({
@@ -217,6 +320,7 @@ function makeInterruptedState() {
       replyTarget: null,
     },
     pendingReadCalls: [],
+    pendingReadExecutionCalls: [],
     pendingWriteCalls: [],
     replyText: '',
     toolResults: [],
@@ -225,14 +329,45 @@ function makeInterruptedState() {
     completedWindows: 1,
     totalRoundsCompleted: 1,
     deduplicatedCallCount: 0,
+    lastToolBatchFingerprint: null,
+    consecutiveIdenticalToolBatches: 0,
+    loopGuardRecoveries: 0,
     roundEvents: [],
     finalization: {
       attempted: false,
       succeeded: true,
       completedAt: '2026-03-13T09:30:00.000Z',
-      terminationReason: 'approval_interrupt',
+      stopReason: 'approval_interrupt',
+      completionKind: 'approval_handoff',
+      deliveryDisposition: 'approval_governance_only',
+      structuredRetryCount: 0,
+      toolDeliveredFinal: false,
+      contextFrame: {
+        objective: 'Finish the request.',
+        verifiedFacts: [],
+        completedActions: [],
+        openQuestions: [],
+        pendingApprovals: ['discord_admin:request-1'],
+        deliveryState: 'none',
+        nextAction: 'Wait for approval resolution.',
+      },
     },
-    terminationReason: 'approval_interrupt',
+    completionKind: 'approval_handoff',
+    stopReason: 'approval_interrupt',
+    deliveryDisposition: 'approval_governance_only',
+    structuredRetryCount: 0,
+    finalToolDelivery: null,
+    decisionKind: null,
+    verificationKind: null,
+    contextFrame: {
+      objective: 'Finish the request.',
+      verifiedFacts: [],
+      completedActions: [],
+      openQuestions: [],
+      pendingApprovals: ['discord_admin:request-1'],
+      deliveryState: 'none',
+      nextAction: 'Wait for approval resolution.',
+    },
     graphStatus: 'interrupted',
     activeWindowDurationMs: 0,
     pendingInterrupt: {
@@ -286,7 +421,20 @@ describe('runGraphValueStream', () => {
       maxDurationMs: 5_000,
       recursionLimit: 8,
       githubGroundedMode: false,
+      maxToolCallsPerRound: 8,
+      maxIdenticalToolBatches: 2,
+      maxLoopGuardRecoveries: 1,
     });
+    buildActiveToolCatalogMock.mockReset();
+    buildActiveToolCatalogMock.mockReturnValue({
+      allTools: [],
+      readOnlyTools: [],
+      definitions: new Map(),
+    });
+    isReadOnlyToolCallMock.mockReset();
+    isReadOnlyToolCallMock.mockReturnValue(false);
+    toolNodeInvokeMock.mockReset();
+    toolNodeInvokeMock.mockResolvedValue({ messages: [] });
     executeDurableToolTaskMock.mockReset();
     executeApprovedReviewTaskMock.mockReset();
     prepareToolApprovalInterruptMock.mockReset();
@@ -319,7 +467,9 @@ describe('runGraphValueStream', () => {
 
     expect(result).toMatchObject({
       graphStatus: 'interrupted',
-      terminationReason: 'approval_interrupt',
+      stopReason: 'approval_interrupt',
+      completionKind: 'approval_handoff',
+      deliveryDisposition: 'approval_governance_only',
       replyText: '',
     });
     expect(result.pendingInterrupt).toMatchObject({
@@ -411,7 +561,9 @@ describe('runGraphValueStream', () => {
         values: {
           ...makeInterruptedState(),
           graphStatus: 'completed',
-          terminationReason: 'assistant_reply',
+          stopReason: 'verified_closeout',
+          completionKind: 'final_answer',
+          deliveryDisposition: 'chat_reply',
           pendingInterrupt: null,
         },
       })),
@@ -419,6 +571,51 @@ describe('runGraphValueStream', () => {
 
     await expect(runGraphValueStream(graph as never, {} as never, makeConfig() as never)).rejects.toThrow(
       'stream failed',
+    );
+  });
+
+  it('converts GraphRecursionError into a clean loop_guard result using the last checkpoint', async () => {
+    const streamError = Object.assign(new Error('recursion limit exceeded'), {
+      name: 'GraphRecursionError',
+    });
+    const graph = {
+      stream: vi.fn(async () => ({
+        async *[Symbol.asyncIterator]() {
+          yield* [];
+          throw streamError;
+        },
+      })),
+      getState: vi.fn(async () => ({
+        values: {
+          ...makeInterruptedState(),
+          graphStatus: 'running',
+          stopReason: 'verified_closeout',
+          completionKind: null,
+          deliveryDisposition: 'chat_reply',
+          pendingInterrupt: null,
+          pendingReadCalls: [{ id: 'call-recursion-1', name: 'github', args: { q: 'status' } }],
+          pendingReadExecutionCalls: [{ id: 'call-recursion-1', name: 'github', args: { q: 'status' } }],
+          pendingWriteCalls: [],
+        },
+      })),
+    };
+
+    const result = await runGraphValueStream(graph as never, {} as never, makeConfig() as never);
+
+    expect(result.graphStatus).toBe('completed');
+    expect(result.stopReason).toBe('loop_guard');
+    expect(result.completionKind).toBe('loop_guard');
+    expect(result.deliveryDisposition).toBe('chat_reply');
+    expect(result.replyText).toContain('recursion safety limit');
+    expect(result.roundEvents.at(-1)).toMatchObject({
+      guardReason: 'recursion_limit',
+    });
+    expect(loggerWarnMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        traceId: 'trace-1',
+        threadId: 'trace-1',
+      }),
+      expect.stringContaining('Recovered graph checkpoint after hitting the LangGraph recursion limit'),
     );
   });
 
@@ -430,6 +627,9 @@ describe('runGraphValueStream', () => {
       maxDurationMs: 5_000,
       recursionLimit: 8,
       githubGroundedMode: false,
+      maxToolCallsPerRound: 8,
+      maxIdenticalToolBatches: 2,
+      maxLoopGuardRecoveries: 1,
     });
     modelInvokeMock.mockResolvedValueOnce(
       new AIMessage({
@@ -485,7 +685,9 @@ describe('runGraphValueStream', () => {
     });
 
     expect(result.graphStatus).toBe('interrupted');
-    expect(result.terminationReason).toBe('continue_prompt');
+    expect(result.stopReason).toBe('step_window_exhausted');
+    expect(result.completionKind).toBe('pause_handoff');
+    expect(result.deliveryDisposition).toBe('chat_reply_with_continue');
     expect(result.pendingInterrupt).toMatchObject({
       kind: 'continue_prompt',
       completedWindows: 1,
@@ -497,7 +699,7 @@ describe('runGraphValueStream', () => {
         channelId: 'channel-1',
         requestedByUserId: 'user-1',
         completedWindows: 1,
-        resumeNode: 'llm_call',
+        resumeNode: 'tool_call_turn',
       }),
     );
     expect(result.replyText).toContain('press Continue below');
@@ -544,6 +746,9 @@ describe('runGraphValueStream', () => {
       maxDurationMs: 5_000,
       recursionLimit: 8,
       githubGroundedMode: false,
+      maxToolCallsPerRound: 8,
+      maxIdenticalToolBatches: 2,
+      maxLoopGuardRecoveries: 1,
     });
     modelInvokeMock.mockResolvedValueOnce(
       new AIMessage({
@@ -636,6 +841,9 @@ describe('runGraphValueStream', () => {
       maxDurationMs: 5_000,
       recursionLimit: 20,
       githubGroundedMode: false,
+      maxToolCallsPerRound: 8,
+      maxIdenticalToolBatches: 2,
+      maxLoopGuardRecoveries: 1,
     });
     modelInvokeMock.mockResolvedValueOnce(
       new AIMessage({
@@ -776,7 +984,261 @@ describe('runGraphValueStream', () => {
     expect(executeDurableToolTaskMock).toHaveBeenCalledTimes(5);
   });
 
-  it('retries transient provider failures on llm_call without consuming an extra turn', async () => {
+  it('dedupes identical read-only calls in one model response while preserving per-call tool ids', async () => {
+    await shutdownAgentGraphRuntime();
+    isReadOnlyToolCallMock.mockReturnValue(true);
+    buildActiveToolCatalogMock.mockReturnValue({
+      allTools: [{ name: 'github' }],
+      readOnlyTools: [{ name: 'github' }],
+      definitions: new Map(),
+    });
+    toolNodeInvokeMock.mockImplementationOnce(async (input?: { messages?: Array<{ tool_calls?: Array<{ id?: string }> }> }) => {
+      const batchCall = input?.messages?.[0]?.tool_calls?.[0];
+      return {
+        messages: [
+          new ToolMessage({
+            content: '{"ok":true,"items":[1]}',
+            tool_call_id: batchCall?.id ?? 'call-read-1',
+            artifact: {
+              result: {
+                name: 'github',
+                success: true,
+                result: { ok: true, items: [1] },
+                latencyMs: 7,
+              },
+              files: [],
+            },
+            status: 'success',
+          }),
+        ],
+      };
+    });
+    modelInvokeMock.mockResolvedValueOnce(new AIMessage({ content: 'Read checks completed.' }));
+
+    const result = await __runAgentGraphCommandForTests({
+      threadId: 'trace-read-dedupe-1',
+      goto: 'route_tool_phase',
+      context: {
+        traceId: 'trace-read-dedupe-1',
+        originTraceId: 'trace-read-dedupe-1',
+        userId: 'user-1',
+        channelId: 'channel-1',
+        guildId: 'guild-1',
+        activeToolNames: ['github'],
+        routeKind: 'single',
+        currentTurn: { invokerUserId: 'user-1' },
+        replyTarget: null,
+        invokedBy: 'mention',
+      },
+      state: {
+        roundsCompleted: 1,
+        messages: [
+          new AIMessage({
+            content: '',
+            tool_calls: [
+              {
+                id: 'call-read-1',
+                name: 'github',
+                args: { q: 'repo status', think: 'ignore' },
+                type: 'tool_call',
+              },
+              {
+                id: 'call-read-2',
+                name: 'github',
+                args: { think: 'different', q: 'repo status' },
+                type: 'tool_call',
+              },
+            ],
+          }),
+        ],
+      },
+    });
+
+    expect(result.graphStatus).toBe('completed');
+    expect(result.replyText).toContain('Read checks completed.');
+    expect(result.deduplicatedCallCount).toBe(1);
+    expect(result.roundEvents[0]).toMatchObject({
+      requestedCallCount: 2,
+      executedCallCount: 1,
+      deduplicatedCallCount: 1,
+      uniqueCallCount: 1,
+      skippedDuplicateCallCount: 1,
+      overLimitCallCount: 0,
+    });
+    expect(result.toolResults).toHaveLength(2);
+    expect(toolNodeInvokeMock).toHaveBeenCalledTimes(1);
+
+    const checkpointState = await __getAgentGraphStateForTests('trace-read-dedupe-1');
+    const toolMessages = checkpointState?.messages.filter((message) => message instanceof ToolMessage) ?? [];
+    expect(toolMessages).toHaveLength(2);
+    expect(toolMessages.map((message) => message.tool_call_id)).toEqual(['call-read-1', 'call-read-2']);
+    expect((toolMessages[0]?.artifact as { cacheHit?: boolean } | undefined)?.cacheHit).not.toBe(true);
+    expect(toolMessages[1]?.artifact).toMatchObject({
+      cacheHit: true,
+      cacheKind: 'dedupe',
+    });
+  });
+
+  it('rejects an over-cap tool batch before any write executes and gives the model one repair pass', async () => {
+    await shutdownAgentGraphRuntime();
+    buildAgentGraphConfigMock.mockReturnValue({
+      maxSteps: 3,
+      toolTimeoutMs: 1_000,
+      maxDurationMs: 5_000,
+      recursionLimit: 20,
+      githubGroundedMode: false,
+      maxToolCallsPerRound: 1,
+      maxIdenticalToolBatches: 2,
+      maxLoopGuardRecoveries: 1,
+    });
+    modelInvokeMock
+      .mockResolvedValueOnce(
+        new AIMessage({
+          content: '',
+          tool_calls: [
+            {
+              id: 'call-cap-1',
+              name: 'discord_admin',
+              args: { action: 'create_channel', name: 'ops-1' },
+              type: 'tool_call',
+            },
+            {
+              id: 'call-cap-2',
+              name: 'discord_admin',
+              args: { action: 'create_channel', name: 'ops-2' },
+              type: 'tool_call',
+            },
+          ],
+        }),
+      )
+      .mockResolvedValueOnce(new AIMessage({ content: 'I narrowed the work and am waiting for direction.' }));
+
+    const result = await runAgentGraphTurn({
+      traceId: 'trace-over-cap-1',
+      userId: 'user-1',
+      channelId: 'channel-1',
+      guildId: 'guild-1',
+      apiKey: 'test-api-key',
+      model: 'test-main-agent-model',
+      temperature: 0.6,
+      timeoutMs: 1_000,
+      maxTokens: 500,
+      messages: [new HumanMessage({ content: 'create two channels' })],
+      activeToolNames: ['discord_admin'],
+      routeKind: 'single',
+      currentTurn: { invokerUserId: 'user-1' },
+      replyTarget: null,
+      invokedBy: 'mention',
+      invokerIsAdmin: true,
+    });
+
+    expect(result.graphStatus).toBe('completed');
+    expect(result.replyText).toContain('narrowed the work');
+    expect(result.roundEvents[0]).toMatchObject({
+      requestedCallCount: 2,
+      executedCallCount: 0,
+      uniqueCallCount: 2,
+      overLimitCallCount: 1,
+      guardReason: 'too_many_tool_calls',
+    });
+    expect(executeDurableToolTaskMock).not.toHaveBeenCalled();
+    expect(result.toolResults.filter((entry) => !entry.success)).toHaveLength(2);
+  });
+
+  it('allows one repeated-batch repair cycle, then finalizes with loop_guard if the same write plan repeats again', async () => {
+    await shutdownAgentGraphRuntime();
+    buildAgentGraphConfigMock.mockReturnValue({
+      maxSteps: 4,
+      toolTimeoutMs: 1_000,
+      maxDurationMs: 5_000,
+      recursionLimit: 8,
+      githubGroundedMode: false,
+      maxToolCallsPerRound: 8,
+      maxIdenticalToolBatches: 2,
+      maxLoopGuardRecoveries: 1,
+    });
+    modelInvokeMock
+      .mockResolvedValueOnce(
+        new AIMessage({
+          content: '',
+          tool_calls: [
+            {
+              id: 'call-repeat-1',
+              name: 'discord_admin',
+              args: { action: 'create_channel', name: 'ops-loop' },
+              type: 'tool_call',
+            },
+          ],
+        }),
+      )
+      .mockResolvedValueOnce(
+        new AIMessage({
+          content: '',
+          tool_calls: [
+            {
+              id: 'call-repeat-2',
+              name: 'discord_admin',
+              args: { action: 'create_channel', name: 'ops-loop' },
+              type: 'tool_call',
+            },
+          ],
+        }),
+      )
+      .mockResolvedValueOnce(
+        new AIMessage({
+          content: '',
+          tool_calls: [
+            {
+              id: 'call-repeat-3',
+              name: 'discord_admin',
+              args: { action: 'create_channel', name: 'ops-loop' },
+              type: 'tool_call',
+            },
+          ],
+        }),
+      );
+    executeDurableToolTaskMock.mockResolvedValueOnce({
+      kind: 'tool_result',
+      toolName: 'discord_admin',
+      callId: 'call-repeat-1',
+      content: '{"ok":true}',
+      result: {
+        name: 'discord_admin',
+        success: true,
+        result: { ok: true },
+        latencyMs: 9,
+      },
+      files: [],
+    });
+
+    const result = await runAgentGraphTurn({
+      traceId: 'trace-repeat-guard-1',
+      userId: 'user-1',
+      channelId: 'channel-1',
+      guildId: 'guild-1',
+      apiKey: 'test-api-key',
+      model: 'test-main-agent-model',
+      temperature: 0.6,
+      timeoutMs: 1_000,
+      maxTokens: 500,
+      messages: [new HumanMessage({ content: 'create the ops loop channel' })],
+      activeToolNames: ['discord_admin'],
+      routeKind: 'single',
+      currentTurn: { invokerUserId: 'user-1' },
+      replyTarget: null,
+      invokedBy: 'mention',
+      invokerIsAdmin: true,
+    });
+
+    expect(result.graphStatus).toBe('completed');
+    expect(result.stopReason).toBe('loop_guard');
+    expect(result.completionKind).toBe('loop_guard');
+    expect(result.replyText).toContain('repeating the same tool plan');
+    expect(executeDurableToolTaskMock).toHaveBeenCalledTimes(1);
+    expect(result.roundEvents.some((event) => event.guardReason === 'repeated_identical_batch')).toBe(true);
+  });
+
+  it('retries transient provider failures on tool_call_turn without consuming an extra turn', async () => {
     modelInvokeMock
       .mockRejectedValueOnce(new Error('AI provider API error: 503 Service Unavailable - upstream down'))
       .mockResolvedValueOnce(new AIMessage({ content: 'Recovered after transient provider failure.' }));
@@ -814,7 +1276,7 @@ describe('runGraphValueStream', () => {
 
     const result = await __runAgentGraphCommandForTests({
       threadId: 'trace-seeded-model-fallback',
-      goto: 'llm_call',
+      goto: 'tool_call_turn',
       context: {
         traceId: 'trace-seeded-model-fallback',
         originTraceId: 'trace-seeded-model-fallback',
@@ -848,6 +1310,9 @@ describe('runGraphValueStream', () => {
       maxDurationMs: 1,
       recursionLimit: 8,
       githubGroundedMode: false,
+      maxToolCallsPerRound: 8,
+      maxIdenticalToolBatches: 2,
+      maxLoopGuardRecoveries: 1,
     });
     modelInvokeMock.mockResolvedValueOnce(
       new AIMessage({
@@ -896,12 +1361,13 @@ describe('runGraphValueStream', () => {
     });
 
     expect(result.graphStatus).toBe('interrupted');
-    expect(result.terminationReason).toBe('graph_timeout');
+    expect(result.stopReason).toBe('graph_timeout');
+    expect(result.completionKind).toBe('pause_handoff');
+    expect(result.deliveryDisposition).toBe('chat_reply_with_continue');
     expect(result.pendingInterrupt).toMatchObject({
       kind: 'continue_prompt',
       pauseReason: 'graph_timeout',
     });
-    expect(modelInvokeMock).toHaveBeenCalledTimes(1);
   });
 
   it('finalizes max-window exhaustion with a wrap-up summary plus continuation-limit guidance instead of a raw tool fragment', async () => {
@@ -946,7 +1412,9 @@ describe('runGraphValueStream', () => {
     });
 
     expect(result.graphStatus).toBe('completed');
-    expect(result.terminationReason).toBe('max_windows_reached');
+    expect(result.stopReason).toBe('max_windows_reached');
+    expect(result.completionKind).toBe('pause_handoff');
+    expect(result.deliveryDisposition).toBe('chat_reply');
     expect(result.replyText).toContain('gathered the key GitHub findings');
     expect(result.replyText).toContain('I hit the continuation limit for this request.');
     expect(result.replyText).toContain('send a new message if you want me to keep going');
@@ -1017,7 +1485,9 @@ describe('runGraphValueStream', () => {
       }),
     );
     expect(result.graphStatus).toBe('interrupted');
-    expect(result.terminationReason).toBe('approval_interrupt');
+    expect(result.stopReason).toBe('approval_interrupt');
+    expect(result.completionKind).toBe('approval_handoff');
+    expect(result.deliveryDisposition).toBe('approval_governance_only');
     expect(result.pendingInterrupt).toMatchObject({
       kind: 'approval_review',
       requestId: 'request-1',
@@ -1083,7 +1553,9 @@ describe('runGraphValueStream', () => {
 
     expect(modelInvokeMock).not.toHaveBeenCalled();
     expect(result.graphStatus).toBe('interrupted');
-    expect(result.terminationReason).toBe('approval_interrupt');
+    expect(result.stopReason).toBe('approval_interrupt');
+    expect(result.completionKind).toBe('approval_handoff');
+    expect(result.deliveryDisposition).toBe('approval_governance_only');
     expect(result.pendingInterrupt).toMatchObject({
       kind: 'approval_review',
       requestId: 'request-1',
@@ -1389,6 +1861,9 @@ describe('runGraphValueStream', () => {
       maxDurationMs: 5_000,
       recursionLimit: 8,
       githubGroundedMode: false,
+      maxToolCallsPerRound: 8,
+      maxIdenticalToolBatches: 2,
+      maxLoopGuardRecoveries: 1,
     });
     createOrReuseApprovalReviewRequestFromSignalMock.mockResolvedValueOnce({
       request: {
@@ -1412,7 +1887,8 @@ describe('runGraphValueStream', () => {
           ],
         }),
       )
-      .mockResolvedValueOnce(new AIMessage({ content: 'Done after approval.' }));
+      .mockResolvedValueOnce(new AIMessage({ content: 'Done after approval.' }))
+      .mockResolvedValue(new AIMessage({ content: 'Done after approval.' }));
     prepareToolApprovalInterruptMock.mockResolvedValueOnce({
       toolName: 'discord_admin',
       callId: 'call-timeout-1',
@@ -1496,7 +1972,9 @@ describe('runGraphValueStream', () => {
     });
 
     expect(resumed.graphStatus).toBe('completed');
-    expect(resumed.terminationReason).toBe('assistant_reply');
+    expect(resumed.stopReason).toBe('verified_closeout');
+    expect(resumed.completionKind).toBe('final_answer');
+    expect(resumed.deliveryDisposition).toBe('chat_reply');
     expect(resumed.replyText).toContain('Done after approval.');
   });
 
@@ -1508,6 +1986,9 @@ describe('runGraphValueStream', () => {
       maxDurationMs: 5_000,
       recursionLimit: 8,
       githubGroundedMode: false,
+      maxToolCallsPerRound: 8,
+      maxIdenticalToolBatches: 2,
+      maxLoopGuardRecoveries: 1,
     });
     modelInvokeMock.mockResolvedValueOnce(
       new AIMessage({
