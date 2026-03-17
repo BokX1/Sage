@@ -154,7 +154,7 @@ Each tool carries:
 - A provider-safe **`inputSchema`**
 - An optional **`outputSchema`**
 - MCP-style **annotations** such as `readOnlyHint`, `destructiveHint`, `idempotentHint`, and `openWorldHint`
-- Runtime policy metadata for approval, observation budget, access tier, and capability tags
+- Runtime policy metadata for approval, observation budget, access tier, and capability tags where a tool family needs them for access policy
 - An **`execute` function** that returns structured content, optional model-facing summary text, optional artifacts, and telemetry
 
 The runtime now enforces that contract instead of treating it as descriptive metadata only:
@@ -162,7 +162,7 @@ The runtime now enforces that contract instead of treating it as descriptive met
 - `outputSchema` is validated at execution time when a tool declares it.
 - Observation summaries are generated per tool policy (`tiny`, `default`, `large`, `streaming`, `artifact-only`) instead of one global fallback path.
 - Only tools marked `parallelSafe` are batched into the parallel read lane; other reads stay sequential.
-- Fresh turns expose a phase-aware subset of tools based on permissions plus high-signal intent tags, while continuation resumes keep the full eligible surface.
+- Every turn now exposes the full eligible tool surface for the current actor and runtime context; Sage relies on tool definitions plus runtime policy enforcement instead of heuristic subset routing.
 
 ```typescript
 interface ToolSpecV2<TArgs, TStructured = unknown> {
@@ -195,9 +195,9 @@ interface ToolSpecV2<TArgs, TStructured = unknown> {
 }
 ```
 
-The runtime teaches silent native tool usage through the universal prompt contract, exposes only the active tool subset for the current turn, and keeps normal user-facing answers in assistant text rather than tool payloads.
+The runtime teaches silent native tool usage through the universal prompt contract, exposes all eligible tools for the current turn, and keeps normal user-facing answers in assistant text rather than tool payloads.
 
-Operators can audit that surface directly with `npm run tools:audit` or `npm run doctor -- --only tools.audit`, which checks the live registry for description quality, prompt routing metadata, capability tags, read-only annotation coverage, artifact observation policy, and other compiler-readiness rules before a tool set is shipped.
+Operators can audit that surface directly with `npm run tools:audit` or `npm run doctor -- --only tools.audit`, which checks the live registry for description quality, prompt routing metadata, read-only annotation coverage, artifact observation policy, and other compiler-readiness rules before a tool set is shipped.
 
 ---
 

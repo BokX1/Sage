@@ -466,6 +466,11 @@ describe('agentRuntime', () => {
   });
 
   it('retries a failed turn on the same LangGraph thread', async () => {
+    globalToolRegistryMock.listNames.mockReturnValue(['web', 'github_search_code', 'discord_messages_search_history'] as never);
+    globalToolRegistryMock.get.mockImplementation((name: string) => ({
+      metadata: { access: 'public' as const },
+      runtime: { access: 'public' as const, capabilityTags: name === 'web' ? ['web'] : ['developer'] },
+    }));
     retryAgentGraphTurnMock.mockResolvedValue(
       makeGraphResult({
         replyText: 'Recovered after retry.',
@@ -491,6 +496,83 @@ describe('agentRuntime', () => {
         context: expect.objectContaining({
           traceId: 'trace-retry-1',
           routeKind: 'turn_retry',
+          activeToolNames: ['web', 'github_search_code', 'discord_messages_search_history'],
+        }),
+      }),
+    );
+  });
+
+  it('keeps all eligible tools available for generic follow-up resumes', async () => {
+    const now = Date.now();
+    globalToolRegistryMock.listNames.mockReturnValue([
+      'web_search',
+      'github_search_code',
+      'discord_messages_search_history',
+    ] as never);
+    globalToolRegistryMock.get.mockImplementation(() => ({
+      metadata: { access: 'public' as const },
+      runtime: { access: 'public' as const, capabilityTags: [] },
+    }));
+    findWaitingUserInputTaskRunMock.mockResolvedValue({
+      id: 'task-waiting-followup-1',
+      threadId: 'thread-waiting-followup-1',
+      originTraceId: 'trace-origin',
+      latestTraceId: 'trace-latest',
+      guildId: 'guild-1',
+      channelId: 'channel-1',
+      requestedByUserId: 'user-1',
+      sourceMessageId: 'message-source-1',
+      responseMessageId: 'response-waiting-followup-1',
+      status: 'waiting_user_input',
+      waitingKind: 'user_input',
+      latestDraftText: 'What should I look at next?',
+      draftRevision: 2,
+      completionKind: 'clarification_question',
+      stopReason: 'user_input_interrupt',
+      nextRunnableAt: null,
+      leaseOwner: null,
+      leaseExpiresAt: null,
+      heartbeatAt: null,
+      resumeCount: 0,
+      taskWallClockMs: 1_000,
+      maxTotalDurationMs: 3_600_000,
+      maxIdleWaitMs: 86_400_000,
+      lastErrorText: null,
+      responseSessionJson: null,
+      waitingStateJson: null,
+      compactionStateJson: null,
+      checkpointMetadataJson: null,
+      startedAt: new Date(now - 5 * 60_000),
+      completedAt: null,
+      createdAt: new Date(now - 5 * 60_000),
+      updatedAt: new Date(now - 5_000),
+    });
+    continueAgentGraphTurnMock.mockResolvedValue(
+      makeGraphResult({
+        replyText: 'I dug further and found more evidence.',
+        activeWindowDurationMs: 600,
+      }),
+    );
+
+    await resumeWaitingTaskRunWithInput({
+      traceId: 'trace-followup-1',
+      userId: 'user-1',
+      channelId: 'channel-1',
+      guildId: 'guild-1',
+      replyToMessageId: 'response-waiting-followup-1',
+      userText: 'deep dive this',
+      currentTurn: makeCurrentTurn({
+        messageId: 'message-followup-deep-dive-1',
+        replyTargetMessageId: 'response-waiting-followup-1',
+        isDirectReply: true,
+      }),
+      isAdmin: false,
+    });
+
+    expect(continueAgentGraphTurnMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        context: expect.objectContaining({
+          activeToolNames: ['web_search', 'github_search_code', 'discord_messages_search_history'],
         }),
       }),
     );
@@ -526,7 +608,7 @@ describe('agentRuntime', () => {
     );
   });
 
-  it('narrows the exposed tool subset for obvious web research turns when the eligible surface is large', async () => {
+  it('exposes the full eligible tool surface on fresh turns without heuristic narrowing', async () => {
     globalToolRegistryMock.listNames.mockReturnValue([
       'web_search',
       'web_research',
@@ -570,9 +652,17 @@ describe('agentRuntime', () => {
     });
 
     const activeToolNames = runAgentGraphTurnMock.mock.calls.at(-1)?.[0]?.activeToolNames as string[];
-    expect(activeToolNames).toEqual(expect.arrayContaining(['web_search', 'web_research', 'system_time']));
-    expect(activeToolNames).not.toContain('github_search_code');
-    expect(activeToolNames).not.toContain('discord_messages_search_history');
+    expect(activeToolNames).toEqual([
+      'web_search',
+      'web_research',
+      'github_search_code',
+      'discord_messages_search_history',
+      'discord_server_list_channels',
+      'workflow_npm_github_code_search',
+      'image_generate',
+      'system_time',
+      'system_tool_stats',
+    ]);
   });
 
   it('exposes discord_admin to moderator-only turns for moderation workflows', async () => {

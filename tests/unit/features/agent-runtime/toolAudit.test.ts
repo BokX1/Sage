@@ -15,7 +15,7 @@ describe('toolAudit', () => {
     expect(report.summary.failCount).toBe(0);
   });
 
-  it('flags missing summaries, tags, and query/read-only mismatches', () => {
+  it('flags missing summaries and query/read-only mismatches', () => {
     const registry = new ToolRegistry();
     registry.register(
       defineToolSpecV2({
@@ -25,7 +25,6 @@ describe('toolAudit', () => {
         runtime: {
           class: 'query',
           readOnly: false,
-          capabilityTags: [],
         },
         execute: async () => ({ structuredContent: {} }),
       }),
@@ -38,7 +37,6 @@ describe('toolAudit', () => {
       expect.arrayContaining([
         'description_short',
         'prompt_summary_missing',
-        'capability_tags_missing',
         'query_not_read_only',
         'read_hint_missing',
       ]),

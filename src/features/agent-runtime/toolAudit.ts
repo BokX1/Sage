@@ -8,7 +8,6 @@ export interface ToolAuditFinding {
   code:
     | 'description_short'
     | 'prompt_summary_missing'
-    | 'capability_tags_missing'
     | 'query_not_read_only'
     | 'read_hint_missing'
     | 'parallel_safe_not_read_only'
@@ -63,17 +62,6 @@ export function auditToolRegistry(registry: Pick<ToolRegistry, 'listSpecs'> = gl
           toolName: spec.name,
           code: 'prompt_summary_missing',
           message: 'Tool is missing concise prompt routing guidance.',
-        }),
-      );
-    }
-
-    if (!spec.runtime.capabilityTags?.length) {
-      findings.push(
-        makeFinding({
-          severity: 'fail',
-          toolName: spec.name,
-          code: 'capability_tags_missing',
-          message: 'Tool is missing capability tags for exposure planning.',
         }),
       );
     }

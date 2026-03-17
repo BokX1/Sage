@@ -25,6 +25,7 @@
 ## [Unreleased]
 
 ### Changed
+- Simplified Sage's model-facing tool exposure contract so every turn now exposes the full eligible tool surface for the current actor and runtime context, eliminating fresh-turn heuristic narrowing and making follow-up requests keep web, GitHub, Discord, and other permitted tool families available by default.
 - Replaced Sage's layered Prisma migration history with a single current-schema baseline migration, so fresh deploys and intentional hard resets now rebuild from one canonical SQL entrypoint instead of replaying legacy runtime-era migrations.
 
 ### Fixed
@@ -36,6 +37,7 @@
 - Retuned Sage's conservative context and retrieval budgets for frontier 128K-256K-class models: long-running compaction now waits for materially larger prompt/tool pressure, transcript and attachment-retrieval windows are wider, chat and graph output reserves are larger, GitHub and web search tools keep more evidence per call, and the environment/docs surface now reflects the current `AGENT_RUN_*` runtime contract instead of stale pre-rewrite names.
 
 ### Removed
+- Removed the heuristic tool exposure planner, its strategy/tag telemetry, and the planner-only audit/test/doc surface, so Sage no longer hides tool families on fresh turns based on keyword or capability-tag inference.
 - Removed the old continuation-session runtime contract, including normal-task Continue prompts, continuation-window bookkeeping, and the legacy continuation helper copy/docs that no longer match Sage's durable background-worker model.
 
 ### Fixed

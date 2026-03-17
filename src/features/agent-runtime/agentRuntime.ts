@@ -41,10 +41,9 @@ import {
   selectFocusedContinuityMessages,
 } from './continuityContext';
 import { resolveRuntimeAutopilotMode } from './autopilotMode';
-import { globalToolRegistry } from './toolRegistry';
+import { globalToolRegistry, type ToolDefinition } from './toolRegistry';
 import type { ToolResult } from './toolCallExecution';
 import type { GraphDeliveryDisposition, GraphWaitingState } from './langgraph/types';
-import { planToolExposure } from './toolExposurePlanner';
 
 import { formatLiveVoiceContext } from '../voice/voiceConversationSessionStore';
 
@@ -142,34 +141,34 @@ export interface RetryFailedChatTurnParams {
   canModerate?: boolean;
 }
 
-function resolveActiveToolPlan(params: {
+type ToolInvocationKind = 'mention' | 'reply' | 'wakeword' | 'autopilot' | 'component';
+
+function getToolAccessTier(tool: Pick<ToolDefinition<unknown>, 'runtime' | 'metadata'>): 'public' | 'admin' {
+  return tool.runtime?.access ?? tool.metadata?.access ?? 'public';
+}
+
+function resolveActiveToolNames(params: {
   isAdmin: boolean;
   canModerate: boolean;
-  invokedBy: 'mention' | 'reply' | 'wakeword' | 'autopilot' | 'component';
-  phase: 'turn' | 'background_resume' | 'retry';
-  userText?: string;
-  promptMode?: PromptInputMode;
-  hasReplyTarget?: boolean;
-  inGuild?: boolean;
-  isVoiceActive?: boolean;
-}): {
-  activeToolNames: string[];
-  strategy: 'all_eligible' | 'intent_subset' | 'resume_all_eligible';
-  matchedCapabilityTags: string[];
-} {
-  const allToolNames = globalToolRegistry.listNames();
-  return planToolExposure({
-    allToolNames,
-    resolveTool: (toolName) => globalToolRegistry.get(toolName),
-    phase: params.phase,
-    invokedBy: params.invokedBy,
-    isAdmin: params.isAdmin,
-    canModerate: params.canModerate,
-    userText: params.userText,
-    promptMode: params.promptMode,
-    hasReplyTarget: params.hasReplyTarget,
-    inGuild: params.inGuild,
-    isVoiceActive: params.isVoiceActive,
+  invokedBy: ToolInvocationKind;
+}): string[] {
+  return globalToolRegistry.listNames().filter((toolName) => {
+    const tool = globalToolRegistry.get(toolName);
+    if (!tool) {
+      return false;
+    }
+    const access = getToolAccessTier(tool);
+    if (access === 'public') {
+      return true;
+    }
+    if (params.invokedBy === 'autopilot') {
+      return false;
+    }
+    if (params.isAdmin) {
+      return true;
+    }
+    const capabilityTags = tool.runtime?.capabilityTags ?? [];
+    return params.canModerate && capabilityTags.includes('moderation');
   });
 }
 
@@ -491,18 +490,11 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
     configuredMode: appConfig.AUTOPILOT_MODE,
   });
 
-  const activeToolPlan = resolveActiveToolPlan({
+  const activeToolNames = resolveActiveToolNames({
     isAdmin,
     canModerate,
     invokedBy,
-    phase: 'turn',
-    userText,
-    promptMode,
-    hasReplyTarget: Boolean(replyTarget),
-    inGuild: guildId !== null,
-    isVoiceActive: Boolean(isVoiceActive && voiceChannelId),
   });
-  const activeToolNames = activeToolPlan.activeToolNames;
   const promptEnvelope = buildPromptContextMessages({
     userProfileSummary: params.userProfileSummary,
     currentTurn,
@@ -538,8 +530,6 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
           model,
           route: SINGLE_ROUTE_KIND,
           activeToolNames,
-          toolExposureStrategy: activeToolPlan.strategy,
-          toolExposureTags: activeToolPlan.matchedCapabilityTags,
           promptVersion: promptEnvelope.version,
           promptFingerprint: promptEnvelope.promptFingerprint,
         },
@@ -547,8 +537,6 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
           route: SINGLE_ROUTE_KIND,
           model,
           graphEnabled: activeToolNames.length > 0,
-          toolExposureStrategy: activeToolPlan.strategy,
-          toolExposureTags: activeToolPlan.matchedCapabilityTags,
           promptVersion: promptEnvelope.version,
           promptFingerprint: promptEnvelope.promptFingerprint,
         },
@@ -657,8 +645,6 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
     const successfulToolCount = graphResult.toolResults.filter((result) => result.success).length;
     graphBudgetJson = {
       enabled: activeToolNames.length > 0,
-      toolExposureStrategy: activeToolPlan.strategy,
-      toolExposureTags: activeToolPlan.matchedCapabilityTags,
       toolsExecuted: graphResult.toolResults.length > 0,
       roundsCompleted: graphResult.roundsCompleted,
       sliceIndex: graphResult.sliceIndex,
@@ -722,8 +708,6 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
       graphRuntime: graphBudgetJson,
       promptVersion: promptEnvelope.version,
       promptFingerprint: promptEnvelope.promptFingerprint,
-      toolExposureStrategy: activeToolPlan.strategy,
-      toolExposureTags: activeToolPlan.matchedCapabilityTags,
       promptUserText:
         userText.length <= 6_000 ? userText : `${userText.slice(0, 6_000)}...`,
       promptUserTextTruncated: userText.length > 6_000,
@@ -745,8 +729,6 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
           model,
           route: SINGLE_ROUTE_KIND,
           activeToolNames,
-          toolExposureStrategy: activeToolPlan.strategy,
-          toolExposureTags: activeToolPlan.matchedCapabilityTags,
           promptVersion: promptEnvelope.version,
           promptFingerprint: promptEnvelope.promptFingerprint,
         },
@@ -894,16 +876,10 @@ export async function resumeWaitingTaskRunWithInput(
   }
 
   const model = appConfig.AI_PROVIDER_MAIN_AGENT_MODEL.trim();
-  const activeToolPlan = resolveActiveToolPlan({
+  const activeToolNames = resolveActiveToolNames({
     isAdmin: params.isAdmin,
     canModerate: params.canModerate ?? false,
     invokedBy: 'reply',
-    phase: 'background_resume',
-    userText: params.userText,
-    promptMode: params.promptMode,
-    hasReplyTarget: Boolean(params.replyTarget),
-    inGuild: params.guildId !== null,
-    isVoiceActive: false,
   });
 
   try {
@@ -928,7 +904,7 @@ export async function resumeWaitingTaskRunWithInput(
         invokedBy: 'reply',
         invokerIsAdmin: params.isAdmin,
         invokerCanModerate: params.canModerate ?? false,
-        activeToolNames: activeToolPlan.activeToolNames,
+        activeToolNames,
         routeKind: 'user_input_resume',
         currentTurn: params.currentTurn,
         replyTarget: params.replyTarget ?? null,
@@ -1051,11 +1027,10 @@ export async function resumeBackgroundTaskRun(params: {
     };
   }
 
-  const activeToolPlan = resolveActiveToolPlan({
+  const activeToolNames = resolveActiveToolNames({
     isAdmin: params.isAdmin,
     canModerate: params.canModerate ?? false,
     invokedBy: 'component',
-    phase: 'background_resume',
   });
   try {
     const graphResult = await continueAgentGraphTurn({
@@ -1079,7 +1054,7 @@ export async function resumeBackgroundTaskRun(params: {
         invokedBy: 'component',
         invokerIsAdmin: params.isAdmin,
         invokerCanModerate: params.canModerate ?? false,
-        activeToolNames: activeToolPlan.activeToolNames,
+        activeToolNames,
         routeKind: 'background_resume',
       },
       onStateUpdate: params.onResponseSessionUpdate
@@ -1157,13 +1132,11 @@ export async function retryFailedChatTurn(
   }
 
   const model = appConfig.AI_PROVIDER_MAIN_AGENT_MODEL.trim();
-  const activeToolPlan = resolveActiveToolPlan({
+  const activeToolNames = resolveActiveToolNames({
     isAdmin: params.isAdmin,
     canModerate: params.canModerate ?? false,
     invokedBy: 'component',
-    phase: 'retry',
   });
-  const activeToolNames = activeToolPlan.activeToolNames;
   const routeKind = params.retryKind === 'background_resume' ? 'background_retry' : 'turn_retry';
 
   if (appConfig.SAGE_TRACE_DB_ENABLED) {
