@@ -482,11 +482,66 @@ describe('agentRuntime', () => {
     );
   });
 
-  it('exposes discord_admin to moderator-only turns for moderation workflows', async () => {
-    globalToolRegistryMock.listNames.mockReturnValue(['web', 'discord_admin'] as never);
+  it('narrows the exposed tool subset for obvious web research turns when the eligible surface is large', async () => {
+    globalToolRegistryMock.listNames.mockReturnValue([
+      'web_search',
+      'web_research',
+      'github_search_code',
+      'discord_messages_search_history',
+      'discord_server_list_channels',
+      'workflow_npm_github_code_search',
+      'image_generate',
+      'system_time',
+      'system_tool_stats',
+    ] as never);
     globalToolRegistryMock.get.mockImplementation((name: string) => {
-      const access: 'public' | 'admin' = name === 'discord_admin' ? 'admin' : 'public';
-      return { metadata: { access } };
+      const toolMap: Record<string, { metadata: { access: 'public' | 'admin' }; runtime: { access: 'public' | 'admin'; capabilityTags: string[]; class: string } }> = {
+        web_search: { metadata: { access: 'public' }, runtime: { access: 'public', capabilityTags: ['web', 'search'], class: 'query' } },
+        web_research: { metadata: { access: 'public' }, runtime: { access: 'public', capabilityTags: ['web', 'research'], class: 'query' } },
+        github_search_code: { metadata: { access: 'public' }, runtime: { access: 'public', capabilityTags: ['github', 'developer'], class: 'query' } },
+        discord_messages_search_history: { metadata: { access: 'public' }, runtime: { access: 'public', capabilityTags: ['discord', 'messages'], class: 'query' } },
+        discord_server_list_channels: { metadata: { access: 'public' }, runtime: { access: 'public', capabilityTags: ['discord', 'server'], class: 'query' } },
+        workflow_npm_github_code_search: { metadata: { access: 'public' }, runtime: { access: 'public', capabilityTags: ['workflow', 'developer', 'github', 'npm'], class: 'query' } },
+        image_generate: { metadata: { access: 'public' }, runtime: { access: 'public', capabilityTags: ['generation', 'image'], class: 'artifact' } },
+        system_time: { metadata: { access: 'public' }, runtime: { access: 'public', capabilityTags: ['system', 'time'], class: 'query' } },
+        system_tool_stats: { metadata: { access: 'public' }, runtime: { access: 'public', capabilityTags: ['system', 'tooling'], class: 'query' } },
+      };
+      return toolMap[name] as never;
+    });
+    runAgentGraphTurnMock.mockResolvedValue(makeGraphResult({ replyText: 'ok' }));
+
+    await runChatTurn({
+      traceId: 'trace-tool-plan-1',
+      userId: 'user-1',
+      channelId: 'channel-1',
+      guildId: 'guild-1',
+      messageId: 'message-tool-plan-1',
+      userText: 'Please research the latest OpenAI docs on the web.',
+      userProfileSummary: null,
+      currentTurn: makeCurrentTurn({
+        messageId: 'message-tool-plan-1',
+      }),
+      invokedBy: 'mention',
+      isAdmin: false,
+    });
+
+    const activeToolNames = runAgentGraphTurnMock.mock.calls.at(-1)?.[0]?.activeToolNames as string[];
+    expect(activeToolNames).toEqual(expect.arrayContaining(['web_search', 'web_research', 'system_time']));
+    expect(activeToolNames).not.toContain('github_search_code');
+    expect(activeToolNames).not.toContain('discord_messages_search_history');
+  });
+
+  it('exposes discord_admin to moderator-only turns for moderation workflows', async () => {
+    globalToolRegistryMock.listNames.mockReturnValue(['web', 'discord_admin_submit_moderation'] as never);
+    globalToolRegistryMock.get.mockImplementation((name: string) => {
+      const access: 'public' | 'admin' = name === 'discord_admin_submit_moderation' ? 'admin' : 'public';
+      return {
+        metadata: { access },
+        runtime: {
+          access,
+          capabilityTags: name === 'discord_admin_submit_moderation' ? ['moderation'] : [],
+        },
+      };
     });
     runAgentGraphTurnMock.mockResolvedValue(makeGraphResult({ replyText: 'ok' }));
 
@@ -508,7 +563,7 @@ describe('agentRuntime', () => {
 
     expect(runAgentGraphTurnMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        activeToolNames: ['web', 'discord_admin'],
+        activeToolNames: ['web', 'discord_admin_submit_moderation'],
         invokerCanModerate: true,
       }),
     );

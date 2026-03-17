@@ -1,14 +1,12 @@
 /**
- * Register, validate, and expose tool definitions for runtime execution.
+ * Register, validate, and expose runtime tool specifications.
  */
 import { z } from 'zod';
 import { buildToolErrorDetails, extractToolErrorDetails, type ToolErrorDetails } from './toolErrors';
 import type { CurrentTurnContext, ReplyTargetContext } from './continuityContext';
 import { isToolControlSignal, type ApprovalInterruptPayload } from './toolControlSignals';
-import { buildRoutedToolRepairGuidance, getToolValidationHint } from './toolDocs';
+import { sanitizeJsonSchemaForProvider, validateJsonSchema } from '../../shared/validation/json-schema';
 
-// Guardrail against runaway or malicious tool payloads (for example oversized base64 blobs).
-// Must be large enough to support legitimate multipart/file workflows.
 const MAX_ARGS_SIZE = 256 * 1024;
 
 function formatZodIssuePath(path: PropertyKey[]): string {
@@ -73,16 +71,209 @@ function formatZodIssues(issues: z.ZodIssue[], maxIssues = 10): { text: string; 
   return { text: formatted.join('; '), truncated };
 }
 
-function buildValidationHint(toolName: string): string | undefined {
-  return getToolValidationHint(toolName.trim().toLowerCase());
+function toJsonSchema(schema: z.ZodType<unknown>): Record<string, unknown> {
+  const exported = z.toJSONSchema(schema);
+  const sanitize = (value: unknown): unknown => {
+    if (Array.isArray(value)) {
+      return value.map((entry) => sanitize(entry));
+    }
+    if (!value || typeof value !== 'object') {
+      return value;
+    }
+    const out: Record<string, unknown> = {};
+    for (const [key, nested] of Object.entries(value as Record<string, unknown>)) {
+      if (key === '$schema') continue;
+      out[key] = sanitize(nested);
+    }
+    return out;
+  };
+  return sanitize(exported) as Record<string, unknown>;
 }
 
-function buildValidationErrorDetails(toolName: string, args: unknown): ToolErrorDetails {
+function hasTopLevelUnionKeyword(schema: Record<string, unknown>): string | null {
+  for (const key of ['oneOf', 'anyOf', 'allOf', 'not']) {
+    if (key in schema) {
+      return key;
+    }
+  }
+  return null;
+}
+
+function assertProviderSafeInputSchema(toolName: string, schema: Record<string, unknown>): void {
+  if (schema.type !== 'object') {
+    throw new Error(`Tool "${toolName}" must expose inputSchema with top-level type="object".`);
+  }
+  if (!schema.properties || typeof schema.properties !== 'object' || Array.isArray(schema.properties)) {
+    throw new Error(`Tool "${toolName}" must expose top-level inputSchema.properties.`);
+  }
+  const forbidden = hasTopLevelUnionKeyword(schema);
+  if (forbidden) {
+    throw new Error(
+      `Tool "${toolName}" uses unsupported top-level schema keyword "${forbidden}". Split it into granular tools instead.`,
+    );
+  }
+  if ('required' in schema && !Array.isArray(schema.required)) {
+    throw new Error(`Tool "${toolName}" must declare "required" as an array when provided.`);
+  }
+}
+
+function buildValidationErrorDetails(spec: ToolSpecV2<unknown>, issues?: ToolErrorDetails): ToolErrorDetails {
   return buildToolErrorDetails({
     category: 'validation',
-    hint: buildValidationHint(toolName),
-    repair: buildRoutedToolRepairGuidance(toolName, args),
+    hint: issues?.hint ?? spec.validationHint,
+    retryable: false,
   });
+}
+
+function normalizeArtifacts(value: unknown): ToolArtifact[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const artifacts: ToolArtifact[] = [];
+  for (const entry of value) {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) continue;
+    const record = entry as Record<string, unknown>;
+    const kind = typeof record.kind === 'string' ? record.kind : null;
+    if (kind !== 'file' && kind !== 'discord_artifact' && kind !== 'governance_only') {
+      continue;
+    }
+    const artifact: ToolArtifact = { kind };
+    if (typeof record.name === 'string') artifact.name = record.name.trim();
+    if (typeof record.filename === 'string') artifact.filename = record.filename.trim();
+    if (typeof record.mimetype === 'string') artifact.mimetype = record.mimetype.trim();
+    if (Buffer.isBuffer(record.data)) artifact.data = record.data;
+    if (typeof record.visibleSummary === 'string') artifact.visibleSummary = record.visibleSummary.trim();
+    if ('payload' in record) artifact.payload = record.payload;
+    artifacts.push(artifact);
+  }
+  return artifacts.length > 0 ? artifacts : undefined;
+}
+
+function safeJsonStringify(value: unknown): string | null {
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return null;
+  }
+}
+
+function truncateSummary(value: string, maxChars: number): string {
+  const trimmed = value.trim();
+  if (trimmed.length <= maxChars) return trimmed;
+  return `${trimmed.slice(0, maxChars - 1)}…`;
+}
+
+function observationPolicyMaxChars(policy: ToolObservationPolicy): number {
+  switch (policy) {
+    case 'tiny':
+      return 1_200;
+    case 'default':
+      return 4_000;
+    case 'streaming':
+      return 8_000;
+    case 'large':
+      return 24_000;
+    case 'artifact-only':
+      return 600;
+  }
+}
+
+function projectStructuredContentForObservation(schema: unknown, value: unknown, depth = 0): unknown {
+  if (depth >= 5 || !schema || typeof schema !== 'object' || Array.isArray(schema)) {
+    return value;
+  }
+
+  if (Array.isArray(value)) {
+    const itemSchema = 'items' in schema ? (schema as { items?: unknown }).items : undefined;
+    return value.map((entry) => projectStructuredContentForObservation(itemSchema, entry, depth + 1));
+  }
+
+  if (!value || typeof value !== 'object') {
+    return value;
+  }
+
+  const schemaRecord = schema as Record<string, unknown>;
+  const properties =
+    schemaRecord.properties && typeof schemaRecord.properties === 'object' && !Array.isArray(schemaRecord.properties)
+      ? (schemaRecord.properties as Record<string, unknown>)
+      : null;
+
+  if (!properties) {
+    return value;
+  }
+
+  const projected: Record<string, unknown> = {};
+  for (const [key, propertySchema] of Object.entries(properties)) {
+    if (!(key in (value as Record<string, unknown>))) {
+      continue;
+    }
+    projected[key] = projectStructuredContentForObservation(
+      propertySchema,
+      (value as Record<string, unknown>)[key],
+      depth + 1,
+    );
+  }
+  return Object.keys(projected).length > 0 ? projected : value;
+}
+
+function buildArtifactObservationSummary(artifacts: ToolArtifact[] | undefined): string | undefined {
+  if (!artifacts?.length) {
+    return undefined;
+  }
+
+  const lines = artifacts
+    .map((artifact) => artifact.visibleSummary?.trim())
+    .filter((line): line is string => Boolean(line));
+
+  if (lines.length > 0) {
+    return lines.join('\n');
+  }
+
+  if (artifacts.some((artifact) => artifact.kind === 'file')) {
+    return 'Created a file artifact.';
+  }
+  if (artifacts.some((artifact) => artifact.kind === 'discord_artifact')) {
+    return 'Created a Discord artifact.';
+  }
+  if (artifacts.some((artifact) => artifact.kind === 'governance_only')) {
+    return 'Updated a governance artifact.';
+  }
+  return undefined;
+}
+
+function buildObservationSummary(params: {
+  normalized: ToolSuccessOutput<unknown>;
+  definition: RegisteredToolSpec<unknown>;
+}): string | undefined {
+  const policy = params.definition.runtime.observationPolicy ?? 'default';
+  const maxChars = observationPolicyMaxChars(policy);
+
+  if (policy === 'artifact-only') {
+    const artifactSummary = buildArtifactObservationSummary(params.normalized.artifacts);
+    return artifactSummary ? truncateSummary(artifactSummary, maxChars) : undefined;
+  }
+
+  const explicitSummary = params.normalized.modelSummary?.trim();
+  if (explicitSummary) {
+    return truncateSummary(explicitSummary, maxChars);
+  }
+
+  const artifactSummary = buildArtifactObservationSummary(params.normalized.artifacts);
+  if (artifactSummary && params.normalized.structuredContent === undefined) {
+    return truncateSummary(artifactSummary, maxChars);
+  }
+
+  const projected = params.definition.outputSchema
+    ? projectStructuredContentForObservation(params.definition.outputSchema, params.normalized.structuredContent)
+    : params.normalized.structuredContent;
+  const serialized = safeJsonStringify(projected);
+  if (serialized) {
+    return truncateSummary(serialized, maxChars);
+  }
+
+  if (projected === undefined) {
+    return artifactSummary ? truncateSummary(artifactSummary, maxChars) : undefined;
+  }
+
+  return truncateSummary(String(projected), maxChars);
 }
 
 /** Carry immutable context passed into every tool execution. */
@@ -103,23 +294,27 @@ export interface ToolExecutionContext {
   channelId: string;
   guildId?: string | null;
   apiKey?: string;
-  /** Whether the current turn was initiated by an admin-capable caller. */
   invokerIsAdmin?: boolean;
-  /** Whether the caller has moderation-capable Discord permissions for moderation workflows. */
   invokerCanModerate?: boolean;
-  /** Invocation source used for tool-policy decisions. */
   invokedBy?: 'mention' | 'reply' | 'wakeword' | 'autopilot' | 'component';
-  /** Optional route metadata for route-aware tool behavior. */
   routeKind?: string;
-  /** Structured current-turn context carried into Discord-aware tools. */
   currentTurn?: CurrentTurnContext;
-  /** Direct reply target surfaced in the runtime prompt, when present. */
   replyTarget?: ReplyTargetContext | null;
-  /** Optional abort signal to check for timeout/cancellation. Tools should check signal.aborted periodically. */
   signal?: AbortSignal;
 }
 
 export type ToolActionMutability = 'read' | 'write';
+export type ToolClass = 'query' | 'mutation' | 'artifact' | 'runtime';
+export type ToolAccessTier = 'public' | 'admin';
+export type ToolObservationPolicy = 'tiny' | 'default' | 'large' | 'streaming' | 'artifact-only';
+
+export interface ToolAnnotations {
+  readOnlyHint?: boolean;
+  destructiveHint?: boolean;
+  idempotentHint?: boolean;
+  openWorldHint?: boolean;
+  parallelSafe?: boolean;
+}
 
 export interface ToolActionPolicy<TArgs = unknown> {
   mutability: ToolActionMutability;
@@ -132,54 +327,94 @@ export interface ToolActionPolicy<TArgs = unknown> {
   prepareApproval?: (args: TArgs, ctx: ToolExecutionContext) => Promise<ApprovalInterruptPayload>;
 }
 
+export interface ToolPromptGuidance {
+  summary?: string;
+  whenToUse?: string[];
+  whenNotToUse?: string[];
+  argumentNotes?: string[];
+}
+
+export interface ToolSmokeSpec {
+  mode: 'required' | 'optional' | 'skip';
+  args?: Record<string, unknown>;
+  reason?: string;
+}
+
+export interface ToolRuntimeMetadata<TArgs = unknown> {
+  class: ToolClass;
+  access?: ToolAccessTier;
+  observationPolicy?: ToolObservationPolicy;
+  readOnly?: boolean;
+  readOnlyPredicate?: (args: TArgs, ctx: ToolExecutionContext) => boolean;
+  actionPolicy?: (
+    args: TArgs,
+    ctx: ToolExecutionContext,
+  ) => ToolActionPolicy<TArgs> | Promise<ToolActionPolicy<TArgs>>;
+  capabilityTags?: string[];
+}
+
+export interface ToolMetadata<TArgs = unknown> {
+  readOnly?: boolean;
+  readOnlyPredicate?: (args: TArgs, ctx: ToolExecutionContext) => boolean;
+  access?: ToolAccessTier;
+  actionPolicy?: (
+    args: TArgs,
+    ctx: ToolExecutionContext,
+  ) => ToolActionPolicy<TArgs> | Promise<ToolActionPolicy<TArgs>>;
+}
+
+export interface ToolArtifact {
+  kind: 'file' | 'discord_artifact' | 'governance_only';
+  name?: string;
+  filename?: string;
+  mimetype?: string;
+  data?: Buffer;
+  visibleSummary?: string;
+  payload?: unknown;
+}
+
+export interface ToolSuccessOutput<TStructured = unknown> {
+  structuredContent?: TStructured;
+  modelSummary?: string;
+  artifacts?: ToolArtifact[];
+}
+
+export interface ToolSpecV2<TArgs = unknown, TStructured = unknown> {
+  name: string;
+  title?: string;
+  description: string;
+  inputSchema?: Record<string, unknown>;
+  inputValidator?: z.ZodType<TArgs>;
+  schema?: z.ZodType<TArgs>;
+  outputSchema?: Record<string, unknown>;
+  annotations?: ToolAnnotations;
+  runtime?: ToolRuntimeMetadata<TArgs>;
+  metadata?: ToolMetadata<TArgs>;
+  prompt?: ToolPromptGuidance;
+  smoke?: ToolSmokeSpec;
+  validationHint?: string;
+  execute: (args: TArgs, ctx: ToolExecutionContext) => Promise<ToolSuccessOutput<TStructured> | unknown>;
+}
+
+export type RegisteredToolSpec<TArgs = unknown, TStructured = unknown> = ToolSpecV2<TArgs, TStructured> & {
+  inputSchema: Record<string, unknown>;
+  inputValidator: z.ZodType<TArgs>;
+  runtime: ToolRuntimeMetadata<TArgs>;
+  metadata: ToolMetadata<TArgs>;
+};
+
 export interface ResolvedToolActionPolicy<TArgs = unknown> {
-  tool: ToolDefinition<TArgs>;
+  tool: RegisteredToolSpec<TArgs>;
   args: TArgs;
   policy: ToolActionPolicy<TArgs>;
 }
 
-/** Optional metadata attached to each tool definition for execution behavior. */
-export interface ToolMetadata {
-  /**
-   * Marks tools safe for read-only parallelization and in-round deduplication.
-   * Missing metadata defaults to non-read-only execution.
-   */
-  readOnly?: boolean;
-  /**
-   * Optional per-call read-only predicate. When provided, it supersedes the static
-   * `readOnly` flag and is evaluated against the untrusted tool args payload.
-   *
-   * Implementations must be side-effect free and conservative: return `true`
-   * only when the call is guaranteed to be read-only.
-  */
-  readOnlyPredicate?: (args: unknown, ctx: ToolExecutionContext) => boolean;
-  /** Access tier for tool visibility and invocation. Missing value defaults to public. */
-  access?: 'public' | 'admin';
-  /**
-   * Optional execution policy for write-phase orchestration. This is the graph-owned
-   * contract for approval preparation and future retry or idempotency hints.
-   */
-  actionPolicy?: (
-    args: unknown,
-    ctx: ToolExecutionContext,
-  ) => ToolActionPolicy<unknown> | Promise<ToolActionPolicy<unknown>>;
-}
+export type ToolDefinition<TArgs = unknown, TStructured = unknown> = RegisteredToolSpec<TArgs, TStructured>;
 
-/** Define one runtime tool with schema validation and async execution. */
-export interface ToolDefinition<TArgs = unknown> {
-  name: string;
-  description: string;
-  schema: z.ZodType<TArgs>;
-  metadata?: ToolMetadata;
-  execute: (args: TArgs, ctx: ToolExecutionContext) => Promise<unknown>;
-}
-
-/** Return shape for validating tool calls before execution. */
 export type ToolValidationResult<TArgs = unknown> =
   | { success: true; args: TArgs }
   | { success: false; error: string; errorDetails?: ToolErrorDetails };
 
-/** Return shape for tool execution outcomes. */
 export type ToolExecutionResult =
   | { success: true; result: unknown }
   | {
@@ -189,53 +424,173 @@ export type ToolExecutionResult =
       errorDetails?: ToolErrorDetails;
     };
 
-/**
- * Provide a mutable registry for runtime tool definitions.
- */
-export class ToolRegistry {
-  private tools: Map<string, ToolDefinition<unknown>> = new Map();
+export function normalizeToolSuccessResult(
+  definition: RegisteredToolSpec<unknown>,
+  result: unknown,
+): ToolSuccessOutput<unknown> {
+  if (!result || typeof result !== 'object' || Array.isArray(result)) {
+    const normalized = {
+      structuredContent: result,
+      modelSummary: safeJsonStringify(result) ?? String(result),
+    };
+    return {
+      ...normalized,
+      modelSummary: buildObservationSummary({ normalized, definition }),
+    };
+  }
 
-  /**
-   * Register a tool definition.
-   *
-   * @param tool - Tool definition keyed by `tool.name`.
-   * @returns Nothing.
-   * @throws Error when a duplicate tool name is registered.
-   */
-  register<TArgs>(tool: ToolDefinition<TArgs>): void {
+  const record = result as Record<string, unknown>;
+  const explicitStructured = 'structuredContent' in record;
+  const explicitSummary = typeof record.modelSummary === 'string' ? record.modelSummary.trim() : '';
+  const explicitArtifacts = normalizeArtifacts(record.artifacts);
+
+  if (explicitStructured || explicitSummary || explicitArtifacts) {
+    const normalized = {
+      structuredContent: explicitStructured ? record.structuredContent : undefined,
+      modelSummary: explicitSummary || undefined,
+      artifacts: explicitArtifacts,
+    };
+    return {
+      ...normalized,
+      modelSummary: buildObservationSummary({ normalized, definition }),
+    };
+  }
+
+  const normalized = {
+    structuredContent: { ...record },
+    modelSummary: safeJsonStringify(record) ?? '[unserializable tool result]',
+  };
+  return {
+    ...normalized,
+    modelSummary: buildObservationSummary({ normalized, definition }),
+  };
+}
+
+function validateNormalizedToolSuccessResult(
+  definition: RegisteredToolSpec<unknown>,
+  normalized: ToolSuccessOutput<unknown>,
+): { valid: true } | { valid: false; error: string; errorDetails: ToolErrorDetails } {
+  if (!definition.outputSchema) {
+    return { valid: true };
+  }
+
+  const validation = validateJsonSchema(definition.outputSchema, normalized.structuredContent);
+  if (validation.valid) {
+    return { valid: true };
+  }
+
+  const summary = validation.errors.slice(0, 3).join('; ');
+  return {
+    valid: false,
+    error: `Tool "${definition.name}" returned data that did not match its output schema: ${summary}`,
+    errorDetails: buildToolErrorDetails({
+      category: 'validation',
+      hint: 'The tool returned an unexpected result shape. Check the tool implementation and output schema.',
+      retryable: false,
+    }),
+  };
+}
+
+export function defineToolSpecV2<TArgs, TStructured = unknown>(params: {
+  name: string;
+  title?: string;
+  description: string;
+  input: z.ZodType<TArgs>;
+  outputSchema?: Record<string, unknown>;
+  annotations?: ToolAnnotations;
+  runtime: ToolRuntimeMetadata<TArgs>;
+  prompt?: ToolPromptGuidance;
+  smoke?: ToolSmokeSpec;
+  validationHint?: string;
+  execute: (args: TArgs, ctx: ToolExecutionContext) => Promise<ToolSuccessOutput<TStructured> | unknown>;
+}): ToolSpecV2<TArgs, TStructured> {
+  const inputSchema = toJsonSchema(params.input);
+  assertProviderSafeInputSchema(params.name, inputSchema);
+  const outputSchema =
+    params.outputSchema !== undefined
+      ? sanitizeJsonSchemaForProvider(params.outputSchema)
+      : undefined;
+
+  return {
+    name: params.name,
+    title: params.title,
+    description: params.description,
+    inputSchema,
+    inputValidator: params.input,
+    schema: params.input,
+    outputSchema,
+    annotations: params.annotations,
+    runtime: {
+      access: 'public',
+      observationPolicy: 'default',
+      ...params.runtime,
+    },
+    metadata: {
+      readOnly: params.runtime.readOnly,
+      readOnlyPredicate: params.runtime.readOnlyPredicate,
+      access: params.runtime.access ?? 'public',
+      actionPolicy: params.runtime.actionPolicy,
+    },
+    prompt: params.prompt,
+    smoke: params.smoke,
+    validationHint: params.validationHint,
+    execute: params.execute,
+  };
+}
+
+export class ToolRegistry {
+  private tools: Map<string, RegisteredToolSpec<unknown>> = new Map();
+
+  register<TArgs>(tool: ToolSpecV2<TArgs>): void {
     if (this.tools.has(tool.name)) {
       throw new Error(`Tool "${tool.name}" is already registered`);
     }
-    this.tools.set(tool.name, tool as ToolDefinition<unknown>);
+    const inputValidator = tool.inputValidator ?? tool.schema;
+    if (!inputValidator) {
+      throw new Error(`Tool "${tool.name}" must provide an input validator.`);
+    }
+    const normalized: RegisteredToolSpec<TArgs> = {
+      ...tool,
+      inputValidator,
+      inputSchema: tool.inputSchema ?? toJsonSchema(inputValidator),
+      runtime: {
+        class: tool.runtime?.class ?? (tool.metadata?.readOnly === true ? 'query' : 'mutation'),
+        access: tool.runtime?.access ?? tool.metadata?.access ?? 'public',
+        observationPolicy: tool.runtime?.observationPolicy ?? 'default',
+        readOnly: tool.runtime?.readOnly ?? tool.metadata?.readOnly,
+        readOnlyPredicate: tool.runtime?.readOnlyPredicate ?? tool.metadata?.readOnlyPredicate,
+        actionPolicy: tool.runtime?.actionPolicy ?? tool.metadata?.actionPolicy,
+        capabilityTags: tool.runtime?.capabilityTags ?? [],
+      },
+      metadata: {
+        readOnly: tool.metadata?.readOnly ?? tool.runtime?.readOnly,
+        readOnlyPredicate: tool.metadata?.readOnlyPredicate ?? tool.runtime?.readOnlyPredicate,
+        access: tool.metadata?.access ?? tool.runtime?.access ?? 'public',
+        actionPolicy: tool.metadata?.actionPolicy ?? tool.runtime?.actionPolicy,
+      },
+    };
+    assertProviderSafeInputSchema(tool.name, normalized.inputSchema as Record<string, unknown>);
+    this.tools.set(tool.name, normalized as RegisteredToolSpec<unknown>);
   }
 
-  /** Get a tool definition by name. */
-  get(name: string): ToolDefinition<unknown> | undefined {
+  get(name: string): RegisteredToolSpec<unknown> | undefined {
     return this.tools.get(name);
   }
 
-  /** Return whether a named tool is registered. */
   has(name: string): boolean {
     return this.tools.has(name);
   }
 
-  /** List all registered tool names. */
   listNames(): string[] {
     return Array.from(this.tools.keys());
   }
 
-  /**
-   * Validate an inbound tool call against registry and schema constraints.
-   *
-   * @param call - Tool name and untrusted args payload.
-   * @returns Validation result with parsed args on success.
-   */
-  validateToolCall<TArgs = unknown>(call: {
-    name: string;
-    args: unknown;
-  }): ToolValidationResult<TArgs> {
-    const { name, args } = call;
+  listSpecs(): RegisteredToolSpec<unknown>[] {
+    return Array.from(this.tools.values());
+  }
 
+  validateToolCall<TArgs = unknown>(call: { name: string; args: unknown }): ToolValidationResult<TArgs> {
+    const { name, args } = call;
     const tool = this.tools.get(name);
     if (!tool) {
       return {
@@ -268,14 +623,20 @@ export class ToolRegistry {
       };
     }
 
-    const parseResult = tool.schema.safeParse(args);
+    const parseResult = (tool.inputValidator ?? tool.schema)?.safeParse(args);
+    if (!parseResult) {
+      return {
+        success: false,
+        error: `Tool "${name}" is missing a runtime validator.`,
+      };
+    }
     if (!parseResult.success) {
       const formatted = formatZodIssues(parseResult.error.issues);
       const issues = formatted.truncated ? `${formatted.text}; (+more)` : formatted.text;
       return {
         success: false,
         error: `Invalid arguments for tool "${name}": ${issues}`,
-        errorDetails: buildValidationErrorDetails(name, args),
+        errorDetails: buildValidationErrorDetails(tool),
       };
     }
 
@@ -285,12 +646,6 @@ export class ToolRegistry {
     };
   }
 
-  /**
-   * Resolve a validated per-call execution policy.
-   *
-   * Returns `null` when the tool is unknown or the call fails validation so callers can
-   * safely fall back to normal execution-path error handling.
-   */
   async resolveActionPolicy<TArgs = unknown>(
     call: { name: string; args: unknown },
     ctx: ToolExecutionContext,
@@ -300,13 +655,13 @@ export class ToolRegistry {
       return null;
     }
 
-    const tool = this.tools.get(call.name) as ToolDefinition<TArgs> | undefined;
+    const tool = this.tools.get(call.name) as RegisteredToolSpec<TArgs> | undefined;
     if (!tool) {
       return null;
     }
 
-    const readOnlyPredicate = tool.metadata?.readOnlyPredicate;
-    let mutability: ToolActionMutability = tool.metadata?.readOnly === true ? 'read' : 'write';
+    const readOnlyPredicate = tool.runtime.readOnlyPredicate;
+    let mutability: ToolActionMutability = tool.runtime.readOnly === true ? 'read' : 'write';
     if (typeof readOnlyPredicate === 'function') {
       try {
         mutability = readOnlyPredicate(validation.args, ctx) ? 'read' : 'write';
@@ -315,8 +670,8 @@ export class ToolRegistry {
       }
     }
 
-    const resolved = tool.metadata?.actionPolicy
-      ? ((await tool.metadata.actionPolicy(validation.args, ctx)) as ToolActionPolicy<TArgs>)
+    const resolved = tool.runtime.actionPolicy
+      ? ((await tool.runtime.actionPolicy(validation.args, ctx)) as ToolActionPolicy<TArgs>)
       : null;
 
     return {
@@ -330,37 +685,43 @@ export class ToolRegistry {
     };
   }
 
-  /**
-   * Validate and execute a tool call.
-   *
-   * @param call - Tool name and untrusted args payload.
-   * @param ctx - Runtime execution context.
-   * @returns Execution result with validation/exception normalization.
-   */
   async executeValidated<TArgs = unknown>(
     call: { name: string; args: unknown },
     ctx: ToolExecutionContext,
   ): Promise<ToolExecutionResult> {
     const validation = this.validateToolCall<TArgs>(call);
     if (!validation.success) {
-      // TS should narrow this, but if not, we access error safely
       const error = 'error' in validation ? validation.error : 'Validation failed';
       return {
         success: false,
         error,
         errorType: 'validation',
-        errorDetails: buildToolErrorDetails({
-          category: 'validation',
-          hint: validation.errorDetails?.hint ?? buildValidationHint(call.name),
-          repair: validation.errorDetails?.repair,
-        }),
+        errorDetails: validation.errorDetails,
       };
     }
 
-    const tool = this.tools.get(call.name)!;
+    const tool = this.tools.get(call.name);
+    if (!tool) {
+      return {
+        success: false,
+        error: `Unknown tool: "${call.name}"`,
+        errorType: 'validation',
+      };
+    }
+
     try {
-      const result = await tool.execute(validation.args, ctx);
-      return { success: true, result };
+      const rawResult = await tool.execute(validation.args, ctx);
+      const normalizedResult = normalizeToolSuccessResult(tool, rawResult);
+      const outputValidation = validateNormalizedToolSuccessResult(tool, normalizedResult);
+      if (!outputValidation.valid) {
+        return {
+          success: false,
+          error: outputValidation.error,
+          errorType: 'execution',
+          errorDetails: outputValidation.errorDetails,
+        };
+      }
+      return { success: true, result: normalizedResult };
     } catch (err) {
       if (isToolControlSignal(err)) {
         throw err;
@@ -377,5 +738,4 @@ export class ToolRegistry {
   }
 }
 
-/** Provide the process-global registry used by the LangGraph runtime. */
 export const globalToolRegistry = new ToolRegistry();

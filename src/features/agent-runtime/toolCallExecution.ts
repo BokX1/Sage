@@ -1,41 +1,41 @@
 /** Execute validated tool calls with timeout and structured result logging. */
-import { ToolExecutionContext, ToolRegistry } from './toolRegistry';
 import { logger } from '../../platform/logging/logger';
 import { metrics } from '../../shared/observability/metrics';
 import {
-  buildToolErrorDetails,
   ToolExecutionError,
   type ToolErrorDetails,
+  ToolErrorKind,
   ToolTimeoutError,
   ToolValidationError,
-  ToolErrorKind,
+  buildToolErrorDetails,
 } from './toolErrors';
 import { isToolControlSignal } from './toolControlSignals';
+import {
+  normalizeToolSuccessResult,
+  type ToolArtifact,
+  type ToolExecutionContext,
+  type ToolObservationPolicy,
+  type ToolRegistry,
+} from './toolRegistry';
 
-
-/** Represent one completed tool invocation result. */
-export interface ToolAttachment {
-  data: Buffer;
-  filename: string;
-  mimetype?: string;
+export interface ToolResultTelemetry {
+  latencyMs: number;
+  cacheHit?: boolean;
+  cacheKind?: 'round' | 'global' | 'dedupe';
+  cacheScopeKey?: string;
+  observationPolicy?: ToolObservationPolicy;
 }
 
 export interface ToolResult {
   name: string;
   success: boolean;
-  result?: unknown;
-  attachments?: ToolAttachment[];
+  structuredContent?: unknown;
+  modelSummary?: string;
+  artifacts?: ToolArtifact[];
   error?: string;
   errorType?: ToolErrorKind;
   errorDetails?: ToolErrorDetails;
-  latencyMs: number;
-  cacheHit?: boolean;
-  cacheKind?: 'round' | 'global' | 'dedupe';
-  cacheScopeKey?: string;
-  deliveryEffect?: {
-    kind: 'final_message' | 'governance_only';
-    visibleSummary?: string;
-  };
+  telemetry: ToolResultTelemetry;
 }
 
 function composeAbortSignal(parentSignal: AbortSignal | undefined, timeoutSignal: AbortSignal): AbortSignal {
@@ -66,34 +66,6 @@ function sanitizeErrorMessage(value: string | undefined): string | undefined {
   return `${normalized.slice(0, maxChars - 1)}…`;
 }
 
-function normalizeAttachments(value: unknown): ToolAttachment[] | undefined {
-  if (!Array.isArray(value)) return undefined;
-  const attachments: ToolAttachment[] = [];
-  for (const entry of value) {
-    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) continue;
-    const record = entry as Record<string, unknown>;
-    const data = record.data;
-    const filename = typeof record.filename === 'string' ? record.filename.trim() : '';
-    const mimetype =
-      typeof record.mimetype === 'string' && record.mimetype.trim().length > 0
-        ? record.mimetype.trim()
-        : undefined;
-    if (!filename || !Buffer.isBuffer(data)) continue;
-    attachments.push({ data, filename, mimetype });
-  }
-  return attachments.length > 0 ? attachments : undefined;
-}
-
-
-/**
- * Execute one tool call with timeout protection and normalized error reporting.
- *
- * @param registry - Tool registry used for validation and execution.
- * @param call - Tool call envelope containing name and args payload.
- * @param ctx - Request-scoped execution context for logging and auth decisions.
- * @param timeoutMs - Hard timeout in milliseconds for this invocation.
- * @returns Structured tool result with latency and typed failure metadata.
- */
 export async function executeToolWithTimeout(
   registry: ToolRegistry,
   call: { name: string; args: unknown },
@@ -106,7 +78,6 @@ export async function executeToolWithTimeout(
     'Tool invocation started',
   );
 
-  // Create AbortController for timeout cancellation support
   const abortController = new AbortController();
   const ctxWithSignal: ToolExecutionContext = {
     ...ctx,
@@ -116,7 +87,6 @@ export async function executeToolWithTimeout(
   let timeoutHandle: NodeJS.Timeout | undefined;
   const timeoutPromise = new Promise<ToolResult>((resolve) => {
     timeoutHandle = setTimeout(() => {
-      // Abort the signal so tools can detect cancellation
       abortController.abort();
       const timeoutError = new ToolTimeoutError(call.name, timeoutMs);
       resolve({
@@ -125,7 +95,7 @@ export async function executeToolWithTimeout(
         error: timeoutError.message,
         errorType: timeoutError.kind,
         errorDetails: buildToolErrorDetails({ category: 'timeout', timeoutMs }),
-        latencyMs: timeoutMs,
+        telemetry: { latencyMs: timeoutMs },
       });
     }, timeoutMs);
     timeoutHandle.unref?.();
@@ -134,27 +104,30 @@ export async function executeToolWithTimeout(
   const executionPromise = registry.executeValidated(call, ctxWithSignal)
     .then((result) => {
       const latencyMs = Date.now() - start;
+      const definition = registry.get(call.name);
       if (result.success) {
-        let normalizedResult: unknown = result.result;
-        let attachments: ToolAttachment[] | undefined;
-        if (result.result && typeof result.result === 'object' && !Array.isArray(result.result)) {
-          const record = result.result as Record<string, unknown>;
-          if ('attachments' in record) {
-            attachments = normalizeAttachments(record.attachments);
-            if (attachments) {
-              const rest = { ...record };
-              delete rest.attachments;
-              normalizedResult = rest;
-            }
-          }
+        if (!definition) {
+          return {
+            name: call.name,
+            success: false,
+            error: `Unknown tool "${call.name}".`,
+            errorType: 'validation',
+            telemetry: { latencyMs },
+          } satisfies ToolResult;
         }
+        const normalized = result.result as ReturnType<typeof normalizeToolSuccessResult>;
+
         return {
           name: call.name,
           success: true,
-          result: normalizedResult,
-          attachments,
-          latencyMs,
-        };
+          structuredContent: normalized.structuredContent,
+          modelSummary: normalized.modelSummary,
+          artifacts: normalized.artifacts,
+          telemetry: {
+            latencyMs,
+            observationPolicy: definition.runtime.observationPolicy,
+          },
+        } satisfies ToolResult;
       }
       return {
         name: call.name,
@@ -162,8 +135,11 @@ export async function executeToolWithTimeout(
         error: result.error,
         errorType: result.errorType,
         errorDetails: result.errorDetails,
-        latencyMs,
-      };
+        telemetry: {
+          latencyMs,
+          observationPolicy: definition?.runtime.observationPolicy,
+        },
+      } satisfies ToolResult;
     })
     .catch((error) => {
       if (isToolControlSignal(error)) {
@@ -176,12 +152,14 @@ export async function executeToolWithTimeout(
   if (timeoutHandle) {
     clearTimeout(timeoutHandle);
   }
-  const latencyMs = Math.max(0, Date.now() - start);
 
-  const finalResult = {
+  const finalResult: ToolResult = {
     ...result,
-    latencyMs: result.latencyMs ?? latencyMs,
-  } satisfies ToolResult;
+    telemetry: {
+      ...result.telemetry,
+      latencyMs: result.telemetry.latencyMs ?? Math.max(0, Date.now() - start),
+    },
+  };
 
   if (!finalResult.success) {
     const errorType = finalResult.errorType ?? 'execution';
@@ -194,7 +172,7 @@ export async function executeToolWithTimeout(
           errorType,
           errorName: error.name,
           errorMessage: sanitizeErrorMessage(finalResult.error ?? error.message),
-          latencyMs: finalResult.latencyMs,
+          latencyMs: finalResult.telemetry.latencyMs,
         },
         'Tool invocation rejected',
       );
@@ -207,7 +185,7 @@ export async function executeToolWithTimeout(
           errorType,
           errorName: error.name,
           errorMessage: sanitizeErrorMessage(finalResult.error ?? error.message),
-          latencyMs: finalResult.latencyMs,
+          latencyMs: finalResult.telemetry.latencyMs,
         },
         'Tool invocation timed out',
       );
@@ -220,24 +198,23 @@ export async function executeToolWithTimeout(
           errorType,
           errorName: error.name,
           errorMessage: sanitizeErrorMessage(finalResult.error ?? error.message),
-          latencyMs: finalResult.latencyMs,
+          latencyMs: finalResult.telemetry.latencyMs,
         },
         'Tool invocation failed',
       );
     }
   } else {
     logger.info(
-      { traceId: ctx.traceId, toolName: call.name, latencyMs: finalResult.latencyMs },
+      { traceId: ctx.traceId, toolName: call.name, latencyMs: finalResult.telemetry.latencyMs },
       'Tool invocation succeeded',
     );
   }
 
-  // Emit structured metrics for observability
   metrics.increment('tool_execution_total', {
     tool: call.name,
     status: finalResult.success ? 'success' : (finalResult.errorType ?? 'unknown'),
   });
-  metrics.histogram('tool_latency_ms', finalResult.latencyMs, { tool: call.name });
+  metrics.histogram('tool_latency_ms', finalResult.telemetry.latencyMs, { tool: call.name });
 
   return finalResult;
 }

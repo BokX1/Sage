@@ -5,7 +5,7 @@ import type { RuntimeAutopilotMode } from './autopilotMode';
 import type { CurrentTurnContext, ReplyTargetContext } from './continuityContext';
 import { describeContinuityPolicy } from './continuityContext';
 import type { LLMContentPart, LLMMessageContent } from '../../platform/llm/llm-types';
-import { getPromptToolGuidance, isRoutedTool } from './toolDocs';
+import { globalToolRegistry } from './toolRegistry';
 
 export const UNIVERSAL_PROMPT_CONTRACT_VERSION = '2026-03-16.plain-text-first-v2';
 const PROMPT_TOOL_OBSERVATION_MAX_CHARS = 24_000;
@@ -407,32 +407,22 @@ function buildToolRoutingSummary(activeTools: string[]): string[] {
     return ['- No external tools are available this turn. Answer directly in plain assistant text.'];
   }
 
-  const activeRoutedTools = activeTools.filter((tool) => isRoutedTool(tool));
-  const activeDirectTools = activeTools.filter((tool) => !isRoutedTool(tool));
   const lines = ['ACTIVE TOOL ROUTING SUMMARY:'];
 
-  if (activeRoutedTools.length > 0) {
-    lines.push(
-      `- Routed tools expose action-level \`help\`: ${activeRoutedTools.map((tool) => `\`${tool}\``).join(', ')}. Use help only when the routed-tool contract is genuinely unclear.`,
-    );
-  }
-
-  if (activeDirectTools.length > 0) {
-    lines.push(
-      `- Direct tools do not expose \`help\`; rely on schema and description directly: ${activeDirectTools.map((tool) => `\`${tool}\``).join(', ')}.`,
-    );
-  }
-
   for (const toolName of activeTools) {
-    const guidance = getPromptToolGuidance(toolName);
-    if (!guidance) {
+    const tool = globalToolRegistry.get(toolName);
+    const guidance = tool?.prompt;
+    if (!tool || !guidance) {
       continue;
     }
-    const summary = guidance.purpose?.trim() || `Use ${toolName} when it is the narrowest fit.`;
-    const edges = guidance.decisionEdges.join(' ');
+    const summary = guidance.summary?.trim() || tool.description || `Use ${toolName} when it is the narrowest fit.`;
+    const edges = guidance.whenToUse?.join(' ') ?? '';
     lines.push(`- ${toolName}: ${summary} ${edges}`.trim());
-    for (const antiPattern of guidance.antiPatterns ?? []) {
+    for (const antiPattern of guidance.whenNotToUse ?? []) {
       lines.push(`- Avoid: ${antiPattern}`);
+    }
+    for (const note of guidance.argumentNotes ?? []) {
+      lines.push(`- ${toolName} note: ${note}`);
     }
   }
 
@@ -440,44 +430,42 @@ function buildToolRoutingSummary(activeTools: string[]): string[] {
 }
 
 function buildDiscordDisambiguators(activeTools: string[]): string[] {
-  const hasDiscordContextTool = activeTools.includes('discord_context');
-  const hasDiscordMessagesTool = activeTools.includes('discord_messages');
-  const hasDiscordFilesTool = activeTools.includes('discord_files');
-  const hasDiscordServerTool = activeTools.includes('discord_server');
-  const hasDiscordAdminTool = activeTools.includes('discord_admin');
-  const hasDiscordVoiceTool = activeTools.includes('discord_voice');
+  const hasToolWithPrefix = (prefix: string) => activeTools.some((toolName) => toolName.startsWith(prefix));
+  const hasDiscordContextTool = hasToolWithPrefix('discord_context_');
+  const hasDiscordMessagesTool = hasToolWithPrefix('discord_messages_');
+  const hasDiscordFilesTool = hasToolWithPrefix('discord_files_');
+  const hasDiscordServerTool = hasToolWithPrefix('discord_server_');
+  const hasDiscordAdminTool = hasToolWithPrefix('discord_admin_');
+  const hasDiscordVoiceTool = hasToolWithPrefix('discord_voice_');
 
   return [
     hasDiscordContextTool && hasDiscordMessagesTool
-      ? '- Summary vs exact evidence: `discord_context.get_channel_summary` is recap; `discord_messages` is for quotes and message-level proof.'
+      ? '- Summary vs exact evidence: use context summary tools for recap, and message tools for quotes or message-level proof.'
       : '',
     hasDiscordContextTool && hasDiscordAdminTool
-      ? '- Sage Persona read vs write: `discord_context.get_server_instructions` reads guild Sage Persona, while `discord_admin.update_server_instructions` changes it.'
+      ? '- Sage Persona read vs write: context tools read the guild persona, while admin tools change it.'
       : '',
     hasDiscordAdminTool
       ? '- Governance/config vs moderation: Sage Persona changes how Sage behaves; moderation acts on users, messages, reactions, or content.'
       : '',
     hasDiscordAdminTool
-      ? '- Reply-targeted enforcement uses moderation: replied-to spam or abuse should usually go through `discord_admin.submit_moderation`.'
+      ? '- Reply-targeted enforcement uses moderation tools, not general chat replies.'
       : '',
     hasDiscordFilesTool && hasDiscordServerTool
-      ? '- File recall vs guild resources: `discord_files` is for attachments, while `discord_server` inspects channels, threads, members, roles, and other guild resources.'
+      ? '- File recall vs guild resources: file tools are for attachments, while server tools inspect channels, threads, members, roles, and other guild resources.'
       : '',
     hasDiscordContextTool && hasDiscordVoiceTool
-      ? '- Voice analytics vs live control: `discord_context` covers voice analytics and summaries, while `discord_voice` handles current voice status and join/leave.'
+      ? '- Voice analytics vs live control: context tools cover voice analytics and summaries, while voice tools handle current voice status and join or leave.'
       : '',
     hasDiscordAdminTool && hasDiscordServerTool
-      ? '- Typed Discord actions come before raw API fallback. Use `discord_admin.api` only after typed `discord_server` or `discord_admin` actions do not cover the task.'
-      : '',
-    hasDiscordMessagesTool
-      ? '- Do not use `discord_messages.send` for normal conversational replies. Reserve it for distinct Discord-native artifacts only.'
+      ? '- Typed Discord tools come before raw API fallback. Use the raw Discord API tool only after typed tools do not cover the task.'
       : '',
   ].filter((line) => line.length > 0);
 }
 
 function buildFewShotExamples(activeTools: string[]): string {
-  const hasDiscordMessages = activeTools.includes('discord_messages');
-  const hasDiscordAdmin = activeTools.includes('discord_admin');
+  const hasDiscordMessages = activeTools.some((toolName) => toolName.startsWith('discord_messages_'));
+  const hasDiscordAdmin = activeTools.some((toolName) => toolName.startsWith('discord_admin_'));
 
   const examples: string[] = [
     '<few_shot_examples>',

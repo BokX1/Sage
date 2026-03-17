@@ -59,6 +59,7 @@ import {
   executeApprovedReviewTask,
   executeDurableToolTask,
   isReadOnlyToolCall,
+  planReadOnlyToolExecution,
   prepareToolApprovalInterrupt,
   type GraphToolCallDescriptor,
 } from './nativeTools';
@@ -93,16 +94,24 @@ const GraphToolFileSchema = z.object({
 const SerializedToolResultSchema = z.object({
   name: z.string(),
   success: z.boolean(),
-  result: z.unknown().optional(),
+  structuredContent: z.unknown().optional(),
+  modelSummary: z.string().optional(),
   error: z.string().optional(),
   errorType: z.string().optional(),
-  latencyMs: z.number(),
-  attachmentsMeta: z
+  telemetry: z.object({
+    latencyMs: z.number().default(0),
+    cacheHit: z.boolean().optional(),
+    cacheKind: z.enum(['round', 'global', 'dedupe']).optional(),
+    cacheScopeKey: z.string().optional(),
+  }).default({ latencyMs: 0 }),
+  artifactsMeta: z
     .array(
       z.object({
-        filename: z.string(),
+        kind: z.enum(['file', 'discord_artifact', 'governance_only']),
+        filename: z.string().optional(),
         mimetype: z.string().optional(),
-        byteLength: z.number(),
+        byteLength: z.number().optional(),
+        visibleSummary: z.string().optional(),
       }),
     )
     .optional(),
@@ -1011,7 +1020,11 @@ const invokeAgentModelTask = task(
             timeoutMs: input.timeoutMs,
           })
         : null;
-    const runnable = baseModel.bindTools(catalog?.allTools ?? [], { tool_choice: 'auto' });
+    const runnable = baseModel.bindTools(catalog?.allTools ?? [], {
+      tool_choice: 'auto',
+      allowedTools: catalog?.providerAllowedToolNames ?? [],
+      parallelToolCalls: catalog?.parallelToolCallsAllowed ?? false,
+    });
     const taskConfig = getConfig();
     const responseMessage = await runnable.invoke(toLangChainMessages(input.messages), {
       callbacks: taskConfig?.callbacks,
@@ -1285,7 +1298,7 @@ function buildLoopGuardToolMessages(params: {
         success: false,
         error: params.detail,
         errorType: 'execution',
-        latencyMs: 0,
+        telemetry: { latencyMs: 0 },
       };
       accumulator.messages.push(
         buildToolMessageFromOutcome({
@@ -1346,7 +1359,7 @@ function buildContextFrame(state: Pick<
 
   const completedActions = successfulResults
     .slice(-4)
-    .map((result) => `${result.name}${result.cacheHit ? ' (cache)' : ''}`);
+    .map((result) => `${result.name}${result.telemetry?.cacheHit ? ' (cache)' : ''}`);
   const verifiedFacts = [
     ...state.contextFrame.verifiedFacts,
     ...successfulResults
@@ -1428,10 +1441,14 @@ function summarizeToolObservations(results: SerializedToolResult[]): string | nu
     .slice(-6)
     .map((result) =>
       result.success
-        ? `${result.name}: success${result.cacheHit ? ' (cache)' : ''}`
+        ? `${result.name}: success${result.telemetry?.cacheHit ? ' (cache)' : ''}`
         : `${result.name}: ${result.error ?? 'failed'}`,
     )
     .join('\n');
+}
+
+function getSerializedToolLatencyMs(result: { telemetry?: { latencyMs?: number } } | null | undefined): number {
+  return result?.telemetry?.latencyMs ?? 0;
 }
 
 function resolvePromptCurrentTurn(runtimeContext: AgentGraphRuntimeContext): CurrentTurnContext {
@@ -1646,44 +1663,91 @@ function buildReadToolsNode(graphConfig: AgentGraphConfig) {
       context: toolContext,
       timeoutMs: graphConfig.toolTimeoutMs,
     });
-    const batchMessage = new AIMessage({
-      content: '',
-      tool_calls: state.pendingReadExecutionCalls.map((call) => ({
-        id: call.id,
-        name: call.name,
-        args:
-          call.args && typeof call.args === 'object' && !Array.isArray(call.args)
-            ? (call.args as Record<string, unknown>)
-            : {},
-        type: 'tool_call',
-      })),
+    const executionPlan = planReadOnlyToolExecution({
+      definitions: catalog.definitions,
+      calls: state.pendingReadExecutionCalls,
+      context: toolContext,
     });
-    const selectedTools = catalog.readOnlyTools.filter((tool) =>
-      (batchMessage.tool_calls ?? []).some((call) => call.name === tool.name),
-    );
-    if (selectedTools.length === 0) {
+    if (executionPlan.parallelCalls.length === 0 && executionPlan.sequentialCalls.length === 0) {
       return {
         pendingReadCalls: [],
         pendingReadExecutionCalls: [],
       };
     }
 
-    const output = (await new ToolNode(selectedTools).invoke(
-      { messages: [batchMessage] },
-      config as Parameters<InstanceType<typeof ToolNode>['invoke']>[1],
-    )) as { messages?: ToolMessage[] };
-    const executedMessages = Array.isArray(output.messages) ? output.messages : [];
+    const parallelBatchMessage =
+      executionPlan.parallelCalls.length > 0
+        ? new AIMessage({
+            content: '',
+            tool_calls: executionPlan.parallelCalls.map((call) => ({
+              id: call.id,
+              name: call.name,
+              args:
+                call.args && typeof call.args === 'object' && !Array.isArray(call.args)
+                  ? (call.args as Record<string, unknown>)
+                  : {},
+              type: 'tool_call',
+            })),
+          })
+        : null;
+    const selectedParallelTools =
+      parallelBatchMessage === null
+        ? []
+        : catalog.readOnlyTools.filter((tool) =>
+            (parallelBatchMessage.tool_calls ?? []).some((call) => call.name === tool.name),
+          );
+    const parallelOutput =
+      selectedParallelTools.length > 0 && parallelBatchMessage
+        ? ((await new ToolNode(selectedParallelTools).invoke(
+            { messages: [parallelBatchMessage] },
+            config as Parameters<InstanceType<typeof ToolNode>['invoke']>[1],
+          )) as { messages?: ToolMessage[] })
+        : { messages: [] };
+    const parallelMessages = Array.isArray(parallelOutput.messages) ? parallelOutput.messages : [];
+    const sequentialOutcomes = await Promise.all(
+      executionPlan.sequentialCalls.map(async (call) => ({
+        call,
+        outcome: await executeDurableToolTask({
+          activeToolNames: runtimeContext.activeToolNames,
+          call,
+          context: toolContext,
+          timeoutMs: graphConfig.toolTimeoutMs,
+        }),
+      })),
+    );
+    const sequentialEntries = await Promise.all(
+      sequentialOutcomes.map(async ({ call, outcome }) => ({
+        call,
+        fingerprint: await resolveToolCallFingerprint(call, toolContext),
+        message:
+          outcome.kind === 'tool_result'
+            ? buildToolMessageFromOutcome({
+                toolName: outcome.toolName,
+                callId: outcome.callId,
+                content: outcome.content,
+                result: outcome.result,
+                files: outcome.files,
+                status: outcome.result.success ? 'success' : 'error',
+              })
+            : null,
+      })),
+    );
+    const sequentialMessages = sequentialEntries
+      .map((entry) => entry.message)
+      .filter((message): message is ToolMessage => Boolean(message));
+    const executedMessages = [...parallelMessages, ...sequentialMessages];
     const nextFiles = executedMessages.flatMap((message) => {
       const artifact = message.artifact as { files?: AgentGraphState['files'] } | undefined;
       return artifact?.files ?? [];
     });
-    const executedEntries = await Promise.all(
-      state.pendingReadExecutionCalls.map(async (call, index) => ({
+    const parallelEntries = await Promise.all(
+      executionPlan.parallelCalls.map(async (call, index) => ({
         call,
         fingerprint: await resolveToolCallFingerprint(call, toolContext),
-        message: executedMessages[index] ?? null,
+        message: parallelMessages[index] ?? null,
       })),
     );
+    const executedEntries = [...parallelEntries, ...sequentialEntries];
     const executedByFingerprint = new Map<
       string,
       {
@@ -2190,8 +2254,8 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
       state,
       config as Parameters<typeof readToolsSubgraph.invoke>[1],
     )) as Partial<AgentGraphState>;
-    const readToolDurationMs = Array.isArray(update.toolResults)
-      ? update.toolResults.reduce((total, result) => total + (result.latencyMs ?? 0), 0)
+  const readToolDurationMs = Array.isArray(update.toolResults)
+    ? update.toolResults.reduce((total, result) => total + getSerializedToolLatencyMs(result), 0)
       : 0;
     return new Command({
       goto: state.pendingWriteCalls.length > 0 ? 'approval_gate' : 'tool_call_turn',
@@ -2442,7 +2506,7 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
     return new Command({
       goto: state.pendingWriteCalls.length > 1 ? 'approval_gate' : 'tool_call_turn',
       update: {
-        activeWindowDurationMs: addActiveWindowDuration(state, outcome.result.latencyMs),
+      activeWindowDurationMs: addActiveWindowDuration(state, getSerializedToolLatencyMs(outcome.result)),
         pendingWriteCalls: state.pendingWriteCalls.slice(1),
         messages: [toolMessage],
         toolResults: [outcome.result],
@@ -2658,7 +2722,7 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
                 : 'Approval rejected.'
               : 'Approval expired before execution.',
           errorType: 'execution',
-          latencyMs: 0,
+          telemetry: { latencyMs: 0 },
         };
         toolMessages.push(
           buildToolMessageFromOutcome({
@@ -2693,7 +2757,7 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
         decisionReasonText: decision.decisionReasonText ?? null,
         resumeTraceId: resume.resumeTraceId ?? null,
       });
-      consumedDurationMs += executed.result.latencyMs ?? 0;
+      consumedDurationMs += getSerializedToolLatencyMs(executed.result);
       toolMessages.push(
         buildToolMessageFromOutcome({
           toolName: executed.toolName,

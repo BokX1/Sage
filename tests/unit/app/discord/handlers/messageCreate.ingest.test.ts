@@ -1166,8 +1166,8 @@ describe('messageCreate - ingest + reply gating', () => {
     const ingestPayload = mockIngestEvent.mock.calls[0]?.[0] as { content?: string };
     expect(ingestPayload.content).toContain('Attachment cache processed 2 attachment(s); cached attachments: 2.');
     expect(ingestPayload.content).toContain('Cached attachment references');
-    expect(ingestPayload.content).toContain('discord_files action read_attachment');
-    expect(ingestPayload.content).toContain('discord_files action send_attachment');
+    expect(ingestPayload.content).toContain('discord_files_read_attachment');
+    expect(ingestPayload.content).toContain('discord_files_send_attachment');
     expect(ingestPayload.content).toContain('attachment:attachment-row-alpha');
     expect(ingestPayload.content).not.toContain('BEGIN FILE ATTACHMENT');
   });

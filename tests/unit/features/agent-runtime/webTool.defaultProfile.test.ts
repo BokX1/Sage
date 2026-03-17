@@ -5,16 +5,15 @@ const { mockRunWebSearch, mockScrapeWebPage } = vi.hoisted(() => ({
   mockScrapeWebPage: vi.fn(),
 }));
 
-vi.mock('@/features/agent-runtime/toolIntegrations', () => ({
+vi.mock('../../../../src/features/agent-runtime/toolIntegrations', () => ({
   runWebSearch: mockRunWebSearch,
   scrapeWebPage: mockScrapeWebPage,
   runAgenticWebScrape: vi.fn(),
   sanitizePublicUrl: (url: string) => url,
-  uniqueUrls: () => [],
 }));
 
 import { ToolRegistry } from '../../../../src/features/agent-runtime/toolRegistry';
-import { webTool } from '../../../../src/features/agent-runtime/webTool';
+import { webReadTool, webSearchTool } from '../../../../src/features/agent-runtime/webTool';
 
 describe('web tool default execution profile', () => {
   beforeEach(() => {
@@ -25,12 +24,12 @@ describe('web tool default execution profile', () => {
 
   it('uses balanced depth without legacy provider overrides', async () => {
     const registry = new ToolRegistry();
-    registry.register(webTool);
+    registry.register(webSearchTool);
 
     const result = await registry.executeValidated(
       {
-        name: 'web',
-        args: { action: 'search', query: 'latest sdk release notes' },
+        name: 'web_search',
+        args: { query: 'latest sdk release notes' },
       },
       {
         traceId: 'trace-1',
@@ -49,12 +48,12 @@ describe('web tool default execution profile', () => {
 
   it('does not inject legacy scrape provider overrides', async () => {
     const registry = new ToolRegistry();
-    registry.register(webTool);
+    registry.register(webReadTool);
 
     const result = await registry.executeValidated(
       {
-        name: 'web',
-        args: { action: 'read', url: 'https://example.com/docs' },
+        name: 'web_read',
+        args: { url: 'https://example.com/docs' },
       },
       {
         traceId: 'trace-2',

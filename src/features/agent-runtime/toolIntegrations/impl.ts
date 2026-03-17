@@ -4563,11 +4563,13 @@ export async function generateImage(params: {
     seed,
     prompt,
     imageUrl: logUrl.toString(),
-    attachments: [
+    artifacts: [
       {
+        kind: 'file',
         data: buffer,
         filename,
         mimetype,
+        visibleSummary: `Created image artifact ${filename}.`,
       },
     ],
   };

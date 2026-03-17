@@ -91,7 +91,7 @@ flowchart TD
 | **Universal Prompt Contract** | `src/features/agent-runtime/promptContract.ts` | Builds Sage's one canonical XML-tagged system contract plus tagged user content, working-memory frame, prompt version, and prompt fingerprint |
 | **Agent Graph Runtime** | `src/features/agent-runtime/langgraph/runtime.ts` | Custom LangGraph runtime for plain-text-first assistant turns, bounded continuation windows, tool execution, approval + continuation interrupts, response-session state, and checkpointed resumes |
 | **Tool Registry** | `src/features/agent-runtime/toolRegistry.ts` | Zod-validated tool definitions with runtime execution metadata |
-| **Default Tools** | `src/features/agent-runtime/defaultTools.ts` | All 15 built-in top-level tool definitions |
+| **Default Tools** | `src/features/agent-runtime/defaultTools.ts` | All granular built-in tool definitions registered for the runtime |
 
 ---
 
@@ -146,112 +146,202 @@ sequenceDiagram
 
 ## 🔧 Tool-Oriented Architecture
 
-Tools are the primary extension mechanism. Each tool is defined with:
+Tools are the primary extension mechanism. Sage now uses one canonical MCP-like internal tool contract and compiles that into provider-edge Chat Completions tools on demand.
 
-- A **Zod schema** for input validation
-- An **`execute` function** for async execution
-- **Metadata** (`readOnly`, `readOnlyPredicate`, `access`) for parallelization and permission control
+Each tool carries:
+
+- A stable **tool name** plus optional display title
+- A provider-safe **`inputSchema`**
+- An optional **`outputSchema`**
+- MCP-style **annotations** such as `readOnlyHint`, `destructiveHint`, `idempotentHint`, and `openWorldHint`
+- Runtime policy metadata for approval, observation budget, access tier, and capability tags
+- An **`execute` function** that returns structured content, optional model-facing summary text, optional artifacts, and telemetry
+
+The runtime now enforces that contract instead of treating it as descriptive metadata only:
+
+- `outputSchema` is validated at execution time when a tool declares it.
+- Observation summaries are generated per tool policy (`tiny`, `default`, `large`, `streaming`, `artifact-only`) instead of one global fallback path.
+- Only tools marked `parallelSafe` are batched into the parallel read lane; other reads stay sequential.
+- Fresh turns expose a phase-aware subset of tools based on permissions plus high-signal intent tags, while continuation resumes keep the full eligible surface.
 
 ```typescript
-interface ToolDefinition<TArgs> {
+interface ToolSpecV2<TArgs, TStructured = unknown> {
   name: string;
+  title?: string;
   description: string;
-  schema: z.ZodType<TArgs>;
-  metadata?: {
-    readOnly?: boolean;
-    readOnlyPredicate?: (args: unknown, ctx: ToolExecutionContext) => boolean;
-    access?: 'public' | 'admin';
+  inputSchema: Record<string, unknown>;
+  outputSchema?: Record<string, unknown>;
+  annotations?: {
+    readOnlyHint?: boolean;
+    destructiveHint?: boolean;
+    idempotentHint?: boolean;
+    openWorldHint?: boolean;
+    parallelSafe?: boolean;
   };
-  execute: (args: TArgs, ctx: ToolExecutionContext) => Promise<unknown>;
+  runtime: {
+    class: 'query' | 'mutation' | 'artifact' | 'runtime';
+    access?: 'public' | 'admin';
+    observationPolicy?: 'tiny' | 'default' | 'large' | 'streaming' | 'artifact-only';
+    capabilityTags?: string[];
+  };
+  execute: (
+    args: TArgs,
+    ctx: ToolExecutionContext,
+  ) => Promise<{
+    structuredContent?: TStructured;
+    modelSummary?: string;
+    artifacts?: ToolArtifact[];
+  }>;
 }
 ```
 
-The runtime teaches silent native tool usage through the universal prompt contract, and tool calls flow through the provider's native structured tool-call contract. Sage does not expose tool payloads, approval commands, or internal recovery protocol in normal channel replies.
+The runtime teaches silent native tool usage through the universal prompt contract, exposes only the active tool subset for the current turn, and keeps normal user-facing answers in assistant text rather than tool payloads.
+
+Operators can audit that surface directly with `npm run tools:audit` or `npm run doctor -- --only tools.audit`, which checks the live registry for description quality, prompt routing metadata, capability tags, read-only annotation coverage, artifact observation policy, and other compiler-readiness rules before a tool set is shipped.
 
 ---
 
 <a id="registered-tools"></a>
 
-## 🧰 Registered Tools (15 Total)
+## 🧰 Registered Tools
 
 > [!NOTE]
-> The runtime currently registers 15 top-level tools. The website/demo may show a larger capability count because it also lists routed Discord actions individually.
-> Sage’s agent-facing source of truth lives in the runtime tool schemas plus the shared top-level and routed tool metadata in `src/features/agent-runtime/toolDocs.ts`.
-> The hierarchy is intentional: prompt guidance teaches fast first-pass routing, routed-tool `help` teaches verbose action discovery, and validation hints plus repair guidance teach recovery after malformed or uncertain tool calls.
+> The runtime no longer exposes routed mega-tools with model-facing `action` fields.
+> Every row below is a real registered runtime tool name. This table is the operator-facing mirror of the registry source of truth in `src/features/agent-runtime/defaultTools.ts`, `src/features/agent-runtime/discordDomainTools.ts`, `src/features/agent-runtime/webTool.ts`, `src/features/agent-runtime/githubTool.ts`, and `src/features/agent-runtime/workflowTool.ts`.
 
-### 🧠 Discord Domain Tools (6 tools)
-
-| Tool | Description | Access |
-|:---|:---|:---|
-| `discord_context` | Profiles, channel summaries, Sage Persona reads, and social/voice analytics | Public |
-| `discord_messages` | Exact message history, Discord-native delivery, polls, and reactions | Public |
-| `discord_files` | Attachment discovery, paged attachment reads, and attachment resend flows | Public |
-| `discord_server` | Guild resources, scheduled events, AutoMod reads, and thread lifecycle actions | Public (some reads Admin) |
-| `discord_voice` | Live voice connection status plus join or leave control | Public |
-| `discord_admin` | Admin instruction writes, moderation, channel/role/member admin actions, invite URLs, and raw Discord API fallback | Admin |
-
-### 🌐 Search & Research (3 tools)
+### 🧠 Discord Context
 
 | Tool | Description | Access |
 |:---|:---|:---|
-| `web` | Unified web tool (actions): `search`, `read`, `read.page`, `extract`, `research` | Public |
-| `wikipedia_search` | Wikipedia article lookup | Public |
-| `stack_overflow_search` | Stack Overflow Q&A search | Public |
+| `discord_context_get_channel_summary` | Fetch rolling and archived summary context for the current channel. | Public |
+| `discord_context_get_server_instructions` | Read the current guild Sage Persona instructions. | Public |
+| `discord_context_get_social_graph` | Retrieve social graph relationships for a user. | Public |
+| `discord_context_get_top_relationships` | Show the strongest recent relationship edges in the guild. | Public |
+| `discord_context_get_user_profile` | Fetch the best-effort profile for a user. | Public |
+| `discord_context_get_voice_analytics` | Retrieve voice participation analytics. | Public |
+| `discord_context_get_voice_summaries` | Retrieve recent voice session summaries. | Public |
+| `discord_context_search_channel_summary_archives` | Search archived summary context for the current channel. | Public |
 
-### 💻 Developer (3 tools)
-
-| Tool | Description | Access |
-|:---|:---|:---|
-| `github` | Unified GitHub tool (actions): repo metadata, code search, file reads (paged/bulk), issues/PRs, commits | Public |
-| `npm_info` | npm package metadata lookup | Public |
-| `workflow` | Composable workflow tool that chains common multi-hop operations into one call | Public |
-
-### 🎨 Generation (1 tool)
+### 💬 Discord Messages
 
 | Tool | Description | Access |
 |:---|:---|:---|
-| `image_generate` | Generate images via Pollinations (optional reference image guidance) | Public |
+| `discord_messages_add_reaction` | Add a reaction to a Discord message. | Public |
+| `discord_messages_create_poll` | Create a poll in Discord. | Public |
+| `discord_messages_get_context` | Retrieve messages before and after a message ID. | Public |
+| `discord_messages_get_user_timeline` | Show recent messages from a user across the guild. | Public |
+| `discord_messages_remove_self_reaction` | Remove Sage's own reaction from a message. | Public |
+| `discord_messages_search_guild` | Search raw message history across the guild. | Public |
+| `discord_messages_search_history` | Search channel message history. | Public |
+| `discord_messages_search_with_context` | Search channel history and expand context around the best match. | Public |
 
-### 🛡️ Admin & Discord (via routed Discord actions)
-
-Admin-only capabilities are exposed on `discord_admin`:
-
-- `get_governance_review_status` (admin-only read)
-- `set_governance_review_channel` / `clear_governance_review_channel` (admin-only governance routing controls)
-- `update_server_instructions` (approval-gated)
-- `submit_moderation` (approval-gated)
-- `api` (admin-only; guild-scoped; `GET` executes immediately, non-`GET` requires approval)
-- Typed REST write wrappers (approval-gated): `edit_message`, `delete_message`, `pin_message`, `unpin_message`, `create_channel`, `edit_channel`, `create_role`, `edit_role`, `delete_role`, `add_member_role`, `remove_member_role`
-
-Approval UX:
-
-- Sage posts one compact requester-facing status card per queued admin action in the source channel.
-- Detailed reviewer cards route to the configured governance review channel when `approvalReviewChannelId` is set, or use the source channel by default when it is not.
-- Equivalent unresolved approval-gated requests are coalesced onto the same approval review request and reviewer card instead of opening duplicate cards.
-- Rejecting an action collects a short modal reason and propagates that reason back to the requester-facing resolution card.
-- When an action resolves (approve/reject/execute/fail/expire), Sage edits the requester-facing status card with the outcome and updates the reviewer card state.
-- Resolved reviewer cards auto-delete after ~60 seconds to avoid channel clutter (including after restarts via DB-backed cleanup).
-- After an approval interrupt is materialized, the graph keeps the paused turn stable instead of retrying the same approval-gated write again.
-
-Read-only helpers are also exposed across the routed Discord tools:
-
-- `discord_admin.get_invite_url` (builds a bot invite URL using `DISCORD_APP_ID`)
-- `discord_messages.search_with_context` (one-shot match + surrounding messages)
-- `discord_messages.search_guild` (guild-wide search; not available in Autopilot)
-- `discord_messages.get_user_timeline` (recent activity for a user; not available in Autopilot)
-- `discord_files.read_attachment` (paged read of ingested attachment text)
-- `discord_server.list_channels` / `discord_server.get_channel` (guild channel and category inspection)
-- `discord_server.list_threads` / `discord_server.get_thread` (thread discovery and state lookup)
-- `discord_server.list_scheduled_events` / `discord_server.get_scheduled_event` (guild event inspection)
-- `discord_server.list_members` / `discord_server.get_member` / `discord_server.get_permission_snapshot` / `discord_server.list_automod_rules` (admin-only guild inspection reads)
-- `discord_context.get_top_relationships` (top social-graph edges for a time window)
-
-### ⚙️ System (2 tools)
+### 📎 Discord Files
 
 | Tool | Description | Access |
 |:---|:---|:---|
-| `system_time` | Get current date/time with timezone offset | Public |
-| `system_tool_stats` | Inspect in-process tool telemetry (latency/caching/failures; in-memory only) | Public |
+| `discord_files_find_channel` | Search attachment text in the current channel. | Public |
+| `discord_files_find_server` | Search attachment text across the guild. | Public |
+| `discord_files_list_channel` | List cached attachments in the current channel. | Public |
+| `discord_files_list_server` | List cached attachments across the guild. | Public |
+| `discord_files_read_attachment` | Read cached attachment text in pages. | Public |
+| `discord_files_send_attachment` | Resend a cached attachment as a distinct artifact. | Public |
+
+### 🏛️ Discord Server
+
+| Tool | Description | Access |
+|:---|:---|:---|
+| `discord_server_add_thread_member` | Add a member to a thread. | Public |
+| `discord_server_create_thread` | Create a thread in Discord. | Public |
+| `discord_server_get_channel` | Inspect a guild channel or category. | Public |
+| `discord_server_get_member` | Inspect a guild member. | Admin |
+| `discord_server_get_permission_snapshot` | Inspect guild permission state for a member or role. | Admin |
+| `discord_server_get_scheduled_event` | Inspect a scheduled event. | Public |
+| `discord_server_get_thread` | Inspect a thread. | Public |
+| `discord_server_join_thread` | Join a thread as Sage. | Public |
+| `discord_server_leave_thread` | Leave a thread as Sage. | Public |
+| `discord_server_list_automod_rules` | List guild AutoMod rules. | Admin |
+| `discord_server_list_channels` | List guild channels and categories. | Public |
+| `discord_server_list_members` | List guild members. | Admin |
+| `discord_server_list_roles` | List guild roles. | Public |
+| `discord_server_list_scheduled_events` | List guild scheduled events. | Public |
+| `discord_server_list_threads` | List guild threads. | Public |
+| `discord_server_remove_thread_member` | Remove a member from a thread. | Public |
+| `discord_server_update_thread` | Rename or update archive and lock settings for a thread. | Public |
+
+### 🛡️ Discord Admin
+
+| Tool | Description | Access |
+|:---|:---|:---|
+| `discord_admin_add_member_role` | Add a role to a member with admin approval. | Admin |
+| `discord_admin_api` | Use the guild-scoped raw Discord API fallback. | Admin |
+| `discord_admin_clear_governance_review_channel` | Clear the dedicated governance review channel. | Admin |
+| `discord_admin_clear_server_api_key` | Clear the current server-wide API key. | Admin |
+| `discord_admin_create_channel` | Create a new channel or category. | Admin |
+| `discord_admin_create_role` | Create a new role. | Admin |
+| `discord_admin_delete_message` | Delete a message with admin approval. | Admin |
+| `discord_admin_delete_role` | Delete a role with admin approval. | Admin |
+| `discord_admin_edit_channel` | Edit an existing channel. | Admin |
+| `discord_admin_edit_message` | Edit a message with admin approval. | Admin |
+| `discord_admin_edit_role` | Edit an existing role. | Admin |
+| `discord_admin_get_governance_review_status` | Inspect governance review routing. | Admin |
+| `discord_admin_get_invite_url` | Generate an OAuth2 invite URL for the bot. | Admin |
+| `discord_admin_get_server_key_status` | Check whether the guild has a server API key configured. | Admin |
+| `discord_admin_pin_message` | Pin a message with admin approval. | Admin |
+| `discord_admin_remove_member_role` | Remove a role from a member with admin approval. | Admin |
+| `discord_admin_send_key_setup_card` | Send an interactive server-key setup card. | Admin |
+| `discord_admin_set_governance_review_channel` | Route governance review cards to a specific channel. | Admin |
+| `discord_admin_submit_moderation` | Submit a moderation or enforcement request. | Admin |
+| `discord_admin_unpin_message` | Unpin a message with admin approval. | Admin |
+| `discord_admin_update_server_instructions` | Submit an admin request to update the guild Sage Persona. | Admin |
+
+### 🔊 Discord Voice
+
+| Tool | Description | Access |
+|:---|:---|:---|
+| `discord_voice_get_status` | Show the bot voice connection status for this guild. | Public |
+| `discord_voice_join_current_channel` | Join the invoker's current voice channel. | Public |
+| `discord_voice_leave` | Leave the active guild voice channel. | Public |
+
+### 🌐 Web And Research
+
+| Tool | Description | Access |
+|:---|:---|:---|
+| `web_extract` | Extract targeted fields from a web page. | Public |
+| `web_read` | Read a web page and return a compact summary. | Public |
+| `web_read_page` | Read a specific paginated or follow-up page. | Public |
+| `web_research` | Run a multi-step research flow. | Public |
+| `web_search` | Search the web. | Public |
+| `wikipedia_search` | Search Wikipedia for broad factual grounding. | Public |
+| `stack_overflow_search` | Search Stack Overflow for coding support. | Public |
+
+### 💻 Developer
+
+| Tool | Description | Access |
+|:---|:---|:---|
+| `github_get_file` | Fetch a GitHub file. | Public |
+| `github_get_file_ranges` | Fetch selected ranges from a GitHub file. | Public |
+| `github_get_file_snippet` | Fetch a focused GitHub file snippet. | Public |
+| `github_get_repo` | Inspect repository metadata. | Public |
+| `github_list_commits` | List recent repository commits. | Public |
+| `github_page_file` | Continue paging through a GitHub file. | Public |
+| `github_search_code` | Search GitHub code. | Public |
+| `github_search_issues` | Search GitHub issues. | Public |
+| `github_search_pull_requests` | Search GitHub pull requests. | Public |
+| `npm_info` | Lookup npm package metadata. | Public |
+| `workflow_npm_github_code_search` | Chain npm metadata and GitHub code search into one workflow. | Public |
+
+### 🎨 Generation
+
+| Tool | Description | Access |
+|:---|:---|:---|
+| `image_generate` | Generate an image artifact. | Public |
+
+### ⚙️ System
+
+| Tool | Description | Access |
+|:---|:---|:---|
+| `system_time` | Calculate current time and timezone offsets. | Public |
+| `system_tool_stats` | Inspect in-process tool telemetry. | Public |
 
 ---
 
@@ -261,11 +351,12 @@ Read-only helpers are also exposed across the routed Discord tools:
 
 | Layer | Mechanism |
 |:---|:---|
-| **Tool validation** | Zod schema validation + size limits before execution |
+| **Tool validation** | Zod input validation + size limits before execution, plus runtime `outputSchema` validation when declared |
 | **Bounded execution** | Max rounds, calls per round, and per-tool timeout |
 | **Error classification** | Execution-stage kind (`validation`/`execution`/`timeout`) plus actionable categories (HTTP status, rate limit, network error, etc.) surfaced to the LLM |
-| **Observability** | LangSmith captures graph execution and Sage can persist a compact `AgentTrace` ledger with route, budget, tool, token, and final-reply metadata |
-| **Build/test gates** | `check:trust` runs lint + typecheck + test audit + shuffled test validation |
+| **Observability** | LangSmith captures graph execution and Sage can persist a compact `AgentTrace` ledger with route, budget, tool, token, final-reply, and tool-exposure metadata |
+| **Tool audit** | `npm run tools:audit` and `tools.audit` in `doctor` validate registry quality, provider compiler readiness, and policy coverage before deployment |
+| **Build/test gates** | `check:trust` runs lint + typecheck + test audit + shuffled test validation, and now includes the tool-audit gate |
 
 ---
 

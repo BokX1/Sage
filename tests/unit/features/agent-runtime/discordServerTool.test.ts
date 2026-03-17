@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ChannelType, PermissionsBitField } from 'discord.js';
-import type { ToolExecutionContext } from '@/features/agent-runtime/toolRegistry';
+import type { ToolExecutionContext } from '../../../../src/features/agent-runtime/toolRegistry';
 
 const mocks = vi.hoisted(() => ({
   requestDiscordInteractionForTool: vi.fn(),
@@ -9,27 +9,27 @@ const mocks = vi.hoisted(() => ({
   guildFetch: vi.fn(),
 }));
 
-vi.mock('@/features/admin/adminActionService', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@/features/admin/adminActionService')>();
+vi.mock('../../../../src/features/admin/adminActionService', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../../src/features/admin/adminActionService')>();
   return {
     ...actual,
     requestDiscordInteractionForTool: mocks.requestDiscordInteractionForTool,
   };
 });
 
-vi.mock('@/platform/discord/discordRestPolicy', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@/platform/discord/discordRestPolicy')>();
+vi.mock('../../../../src/platform/discord/discordRestPolicy', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../../src/platform/discord/discordRestPolicy')>();
   return {
     ...actual,
     discordRestRequestGuildScoped: mocks.discordRestRequestGuildScoped,
   };
 });
 
-vi.mock('@/platform/discord/channel-access', () => ({
+vi.mock('../../../../src/platform/discord/channel-access', () => ({
   filterChannelIdsByMemberAccess: mocks.filterChannelIdsByMemberAccess,
 }));
 
-vi.mock('@/platform/discord/client', () => ({
+vi.mock('../../../../src/platform/discord/client', () => ({
   client: {
     guilds: {
       fetch: mocks.guildFetch,
@@ -37,9 +37,21 @@ vi.mock('@/platform/discord/client', () => ({
   },
 }));
 
-import { discordServerTool, discordVoiceTool } from '@/features/agent-runtime/discordDomainTools';
+import { discordServerTools, discordVoiceTools } from '../../../../src/features/agent-runtime/discordDomainTools';
 
-describe('discord server tool', () => {
+function serverTool(name: string) {
+  const found = discordServerTools.find((entry) => entry.name === name);
+  if (!found) throw new Error(`Missing server tool ${name}`);
+  return found;
+}
+
+function voiceTool(name: string) {
+  const found = discordVoiceTools.find((entry) => entry.name === name);
+  if (!found) throw new Error(`Missing voice tool ${name}`);
+  return found;
+}
+
+describe('discord granular server and voice tools', () => {
   const publicCtx: ToolExecutionContext = {
     traceId: 'trace',
     userId: 'user-1',
@@ -73,12 +85,7 @@ describe('discord server tool', () => {
     });
     mocks.filterChannelIdsByMemberAccess.mockResolvedValue(new Set(['channel-1']));
 
-    const result = await discordServerTool.execute(
-      {
-        action: 'list_channels',
-      },
-      publicCtx,
-    );
+    const result = await serverTool('discord_server_list_channels').execute({}, publicCtx);
 
     expect(mocks.discordRestRequestGuildScoped).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -103,7 +110,7 @@ describe('discord server tool', () => {
     );
   });
 
-  it('forwards create_thread through discord_server to the interaction service', async () => {
+  it('routes create_thread through the interaction service', async () => {
     mocks.requestDiscordInteractionForTool.mockResolvedValue({
       status: 'executed',
       action: 'create_thread',
@@ -111,9 +118,8 @@ describe('discord server tool', () => {
       threadId: 'thread-1',
     });
 
-    const result = await discordServerTool.execute(
+    const result = await serverTool('discord_server_create_thread').execute(
       {
-        action: 'create_thread',
         name: 'Release follow-up',
       },
       publicCtx,
@@ -162,9 +168,8 @@ describe('discord server tool', () => {
       },
     });
 
-    const result = await discordServerTool.execute(
+    const result = await serverTool('discord_server_get_permission_snapshot').execute(
       {
-        action: 'get_permission_snapshot',
         channelId: 'channel-1',
         userId: 'user-2',
       },
@@ -185,11 +190,10 @@ describe('discord server tool', () => {
     );
   });
 
-  it('blocks discord_server writes in autopilot turns', async () => {
+  it('blocks thread updates in autopilot turns', async () => {
     await expect(
-      discordServerTool.execute(
+      serverTool('discord_server_update_thread').execute(
         {
-          action: 'update_thread',
           threadId: 'thread-1',
           archived: true,
         },
@@ -202,12 +206,18 @@ describe('discord server tool', () => {
   });
 
   it('requires parentChannelId when archived threads are requested', () => {
-    const parsed = discordServerTool.schema.safeParse({
-      action: 'list_threads',
+    const schema = serverTool('discord_server_list_threads').schema;
+    if (!schema) {
+      throw new Error('Expected discord_server_list_threads to expose a runtime schema.');
+    }
+    const parsed = schema.safeParse({
       includeArchived: true,
     });
 
     expect(parsed.success).toBe(false);
+    if (parsed.success) {
+      throw new Error('Expected archived thread validation to fail without parentChannelId.');
+    }
     expect(parsed.error?.issues).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -217,19 +227,19 @@ describe('discord server tool', () => {
     );
   });
 
-  it('reports voice connection status through discord_voice', async () => {
+  it('reports voice connection status', async () => {
     mocks.guildFetch.mockResolvedValue({
       channels: {
         fetch: vi.fn().mockResolvedValue({ id: 'voice-1', name: 'Standup' }),
       },
     });
 
-    const { VoiceManager } = await import('@/features/voice/voiceManager');
+    const { VoiceManager } = await import('../../../../src/features/voice/voiceManager');
     const getConnectionSpy = vi.spyOn(VoiceManager.getInstance(), 'getConnection').mockReturnValue({
       joinConfig: { channelId: 'voice-1' },
     } as never);
 
-    const result = await discordVoiceTool.execute({ action: 'get_status' }, publicCtx);
+    const result = await voiceTool('discord_voice_get_status').execute({}, publicCtx);
 
     expect(result).toEqual(
       expect.objectContaining({
@@ -244,7 +254,7 @@ describe('discord server tool', () => {
     getConnectionSpy.mockRestore();
   });
 
-  it('joins the invoker current voice channel through discord_voice', async () => {
+  it('joins the invoker current voice channel', async () => {
     const channel = {
       id: 'voice-2',
       name: 'Pairing',
@@ -259,10 +269,10 @@ describe('discord server tool', () => {
       },
     });
 
-    const { VoiceManager } = await import('@/features/voice/voiceManager');
+    const { VoiceManager } = await import('../../../../src/features/voice/voiceManager');
     const joinSpy = vi.spyOn(VoiceManager.getInstance(), 'joinChannel').mockResolvedValue({} as never);
 
-    const result = await discordVoiceTool.execute({ action: 'join_current_channel' }, publicCtx);
+    const result = await voiceTool('discord_voice_join_current_channel').execute({}, publicCtx);
 
     expect(joinSpy).toHaveBeenCalledWith({
       channel,

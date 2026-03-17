@@ -3,11 +3,6 @@
 import { registerDefaultAgenticTools } from '../features/agent-runtime/defaultTools';
 import type { ToolExecutionContext } from '../features/agent-runtime/toolRegistry';
 import { ToolRegistry } from '../features/agent-runtime/toolRegistry';
-import {
-  listSmokeToolDocs,
-  listTopLevelToolDocs,
-  type TopLevelToolDoc,
-} from '../features/agent-runtime/toolDocs';
 
 type SmokeCheck = {
   name: string;
@@ -30,10 +25,15 @@ function buildSmokeContext(): ToolExecutionContext {
 }
 
 function summarizeSmokeResult(toolName: string, result: unknown): string {
-  const record =
+  const envelope =
     result && typeof result === 'object' && !Array.isArray(result)
       ? (result as Record<string, unknown>)
       : null;
+
+  const record =
+    envelope && typeof envelope.structuredContent === 'object' && envelope.structuredContent && !Array.isArray(envelope.structuredContent)
+      ? (envelope.structuredContent as Record<string, unknown>)
+      : envelope;
 
   if (!record) {
     return `resultType=${typeof result}`;
@@ -46,15 +46,34 @@ function summarizeSmokeResult(toolName: string, result: unknown): string {
       const tools = Array.isArray(record.tools) ? record.tools.length : 0;
       return `scope=${String(record.scope ?? 'unknown')} tools=${tools}`;
     }
-    case 'web': {
+    case 'web_search':
+    case 'web_read':
+    case 'web_read_page':
+    case 'web_extract':
+    case 'web_research': {
       const provider = String(record.provider ?? 'unknown');
       const sourcesRead = typeof record.sourcesRead === 'number' ? record.sourcesRead : 0;
       const results = Array.isArray(record.results) ? record.results.length : 0;
       return `provider=${provider} results=${results} sourcesRead=${sourcesRead}`;
     }
-    case 'github':
+    case 'github_get_repo':
       return `fullName=${String(record.fullName ?? record.repo ?? 'unknown')}`;
-    case 'workflow':
+    case 'github_search_code':
+    case 'github_search_issues':
+    case 'github_search_pull_requests': {
+      const results = Array.isArray(record.results) ? record.results.length : 0;
+      return `results=${results}`;
+    }
+    case 'github_get_file':
+    case 'github_get_file_ranges':
+    case 'github_get_file_snippet':
+    case 'github_page_file':
+      return `path=${String(record.path ?? 'unknown')}`;
+    case 'github_list_commits': {
+      const commits = Array.isArray(record.commits) ? record.commits.length : 0;
+      return `commits=${commits}`;
+    }
+    case 'workflow_npm_github_code_search':
       return `repo=${String(record.githubRepo ?? 'unknown')} action=${String(record.action ?? 'unknown')}`;
     case 'npm_info':
       return `package=${String(record.packageName ?? 'unknown')} latest=${String(record.latestVersion ?? record.version ?? 'n/a')}`;
@@ -67,8 +86,8 @@ function summarizeSmokeResult(toolName: string, result: unknown): string {
       return `results=${count}`;
     }
     case 'image_generate': {
-      const attachments = Array.isArray(record.attachments) ? record.attachments.length : 0;
-      return `provider=${String(record.provider ?? 'unknown')} attachments=${attachments}`;
+      const artifacts = Array.isArray(envelope?.artifacts) ? envelope.artifacts.length : 0;
+      return `provider=${String(record.provider ?? 'unknown')} artifacts=${artifacts}`;
     }
     default:
       return `keys=${Object.keys(record).slice(0, 5).join(',') || 'none'}`;
@@ -76,24 +95,27 @@ function summarizeSmokeResult(toolName: string, result: unknown): string {
 }
 
 function buildSmokeChecks(registry: ToolRegistry, ctx: ToolExecutionContext): SmokeCheck[] {
-  return listSmokeToolDocs().map((doc: TopLevelToolDoc) => ({
-    name: doc.tool,
-    optional: doc.smoke.mode === 'optional',
-    run: async () => {
-      const result = await registry.executeValidated(
-        {
-          name: doc.tool,
-          args: doc.smoke.args ?? {},
-        },
-        ctx,
-      );
-      if (!result.success) {
-        const hint = result.errorDetails?.hint ? ` hint=${result.errorDetails.hint}` : '';
-        throw new Error(`${result.error}${hint}`);
-      }
-      return summarizeSmokeResult(doc.tool, result.result);
-    },
-  }));
+  return registry.listSpecs()
+    .filter((spec) => spec.runtime.class !== 'runtime')
+    .filter((spec) => spec.smoke?.mode && spec.smoke.mode !== 'skip')
+    .map((spec) => ({
+      name: spec.name,
+      optional: spec.smoke?.mode === 'optional',
+      run: async () => {
+        const result = await registry.executeValidated(
+          {
+            name: spec.name,
+            args: spec.smoke?.args ?? {},
+          },
+          ctx,
+        );
+        if (!result.success) {
+          const hint = result.errorDetails?.hint ? ` hint=${result.errorDetails.hint}` : '';
+          throw new Error(`${result.error}${hint}`);
+        }
+        return summarizeSmokeResult(spec.name, result.result);
+      },
+    }));
 }
 
 async function runCheck(check: SmokeCheck): Promise<{ passed: boolean; optional: boolean }> {
@@ -115,11 +137,11 @@ async function main(): Promise<void> {
 
   const ctx = buildSmokeContext();
   const checks = buildSmokeChecks(registry, ctx);
-  const skipped = listTopLevelToolDocs().filter((doc) => doc.smoke.mode === 'skip');
+  const skipped = registry.listSpecs().filter((spec) => spec.smoke?.mode === 'skip');
 
   console.log('Sage tool smoke checks starting...');
-  for (const doc of skipped) {
-    console.log(`[SKIP] ${doc.tool} ${doc.smoke.reason ?? 'No smoke runner configured.'}`);
+  for (const spec of skipped) {
+    console.log(`[SKIP] ${spec.name} ${spec.smoke?.reason ?? 'No smoke runner configured.'}`);
   }
 
   const outcomes = [];

@@ -11,7 +11,7 @@ import type { Runnable } from '@langchain/core/runnables';
 import type { BaseLanguageModelInput } from '@langchain/core/language_models/base';
 import { convertToOpenAITool } from '@langchain/core/utils/function_calling';
 import { AiProviderClient } from './ai-provider-client';
-import type { ToolDefinition } from './llm-types';
+import type { ProviderAllowedTool, ProviderToolDefinition } from './llm-types';
 import { toLlmMessages, toLangChainToolCalls } from './langchain-interop';
 
 export interface AiProviderChatModelCallOptions extends BaseChatModelCallOptions {
@@ -20,6 +20,8 @@ export interface AiProviderChatModelCallOptions extends BaseChatModelCallOptions
   temperature?: number;
   maxTokens?: number;
   tools?: BindToolsInput[];
+  allowedTools?: string[];
+  parallelToolCalls?: boolean;
 }
 
 export interface AiProviderChatModelFields extends BaseChatModelParams {
@@ -45,7 +47,7 @@ function normalizeToolChoice(
   return toolChoice as Record<string, unknown>;
 }
 
-function normalizeBoundTools(tools: BindToolsInput[] | undefined): ToolDefinition[] | undefined {
+function normalizeBoundTools(tools: BindToolsInput[] | undefined): ProviderToolDefinition[] | undefined {
   if (!Array.isArray(tools) || tools.length === 0) {
     return undefined;
   }
@@ -69,6 +71,28 @@ function normalizeBoundTools(tools: BindToolsInput[] | undefined): ToolDefinitio
       },
     };
   });
+}
+
+function normalizeAllowedTools(allowedTools: string[] | undefined): ProviderAllowedTool[] | undefined {
+  if (!Array.isArray(allowedTools) || allowedTools.length === 0) {
+    return undefined;
+  }
+
+  const names = Array.from(
+    new Set(
+      allowedTools
+        .map((toolName) => String(toolName).trim())
+        .filter((toolName) => toolName.length > 0),
+    ),
+  );
+  if (names.length === 0) {
+    return undefined;
+  }
+
+  return names.map((name) => ({
+    type: 'function',
+    function: { name },
+  }));
 }
 
 export class AiProviderChatModel extends BaseChatModel<AiProviderChatModelCallOptions> {
@@ -98,7 +122,7 @@ export class AiProviderChatModel extends BaseChatModel<AiProviderChatModelCallOp
   }
 
   get callKeys(): string[] {
-    return [...super.callKeys, 'apiKey', 'model', 'temperature', 'maxTokens', 'tools', 'tool_choice'];
+    return [...super.callKeys, 'apiKey', 'model', 'temperature', 'maxTokens', 'tools', 'tool_choice', 'allowedTools', 'parallelToolCalls'];
   }
 
   _llmType(): string {
@@ -136,7 +160,9 @@ export class AiProviderChatModel extends BaseChatModel<AiProviderChatModelCallOp
       temperature: options.temperature ?? this.temperature,
       maxTokens: options.maxTokens ?? this.maxTokens,
       tools: normalizeBoundTools(options.tools),
+      allowedTools: normalizeAllowedTools(options.allowedTools),
       toolChoice: normalizeToolChoice(options.tool_choice),
+      parallelToolCalls: options.parallelToolCalls,
       timeout: typeof options.timeout === 'number' ? options.timeout : this.timeoutMs,
       signal: options.signal,
     });

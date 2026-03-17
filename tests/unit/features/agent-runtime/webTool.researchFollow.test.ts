@@ -5,26 +5,22 @@ const { mockRunWebSearch, mockScrapeWebPage } = vi.hoisted(() => ({
   mockScrapeWebPage: vi.fn(),
 }));
 
-vi.mock('@/features/agent-runtime/toolIntegrations', () => ({
+vi.mock('../../../../src/features/agent-runtime/toolIntegrations', () => ({
   runWebSearch: mockRunWebSearch,
   scrapeWebPage: mockScrapeWebPage,
   runAgenticWebScrape: vi.fn(),
   sanitizePublicUrl: (url: string) => url,
-  uniqueUrls: (text: string) => {
-    const matches = text.match(/https?:\/\/[^\s<>()]+/gi) ?? [];
-    return Array.from(new Set(matches));
-  },
 }));
 
 import { ToolRegistry } from '../../../../src/features/agent-runtime/toolRegistry';
-import { webTool } from '../../../../src/features/agent-runtime/webTool';
+import { webResearchTool } from '../../../../src/features/agent-runtime/webTool';
 
-describe('webTool research followLinks', () => {
+describe('web_research', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it('follows bounded links and returns a followQueue for leftovers', async () => {
+  it('returns bounded source reads from one search pass', async () => {
     mockRunWebSearch.mockResolvedValueOnce({
       provider: 'tavily',
       answer: '',
@@ -35,6 +31,11 @@ describe('webTool research followLinks', () => {
           url: 'https://example.com/source',
           publishedDate: '2024-01-01T00:00:00.000Z',
         },
+        {
+          title: 'Other Source',
+          url: 'https://example.com/other',
+          publishedDate: '2024-01-02T00:00:00.000Z',
+        },
       ],
     });
 
@@ -43,17 +44,17 @@ describe('webTool research followLinks', () => {
         provider: 'raw_fetch',
         url: 'https://example.com/source',
         title: 'Source',
-        content: 'See https://example.com/linked1 and https://example.com/linked2',
+        content: 'Primary content',
       })
       .mockResolvedValueOnce({
         provider: 'raw_fetch',
-        url: 'https://example.com/linked1',
-        title: 'Linked 1',
-        content: 'Linked content',
+        url: 'https://example.com/other',
+        title: 'Other Source',
+        content: 'Secondary content',
       });
 
     const registry = new ToolRegistry();
-    registry.register(webTool);
+    registry.register(webResearchTool);
 
     const ctx = {
       traceId: 'trace-1',
@@ -64,14 +65,11 @@ describe('webTool research followLinks', () => {
 
     const result = await registry.executeValidated(
       {
-        name: 'web',
+        name: 'web_research',
         args: {
-          action: 'research',
           query: 'example query',
           followLinks: true,
-          maxSources: 1,
-          maxFollowedLinks: 1,
-          maxFollowedLinksPerSource: 1,
+          maxSources: 2,
         },
       },
       ctx,
@@ -80,17 +78,11 @@ describe('webTool research followLinks', () => {
     expect(result.success).toBe(true);
     if (!result.success) throw new Error(result.error);
 
-    const payload = result.result as Record<string, unknown>;
-    expect(payload.followLinks).toBe(true);
-    expect(payload.followedCount).toBe(1);
-    expect(payload.followQueueCount).toBe(1);
-
-    const followed = payload.followed as Array<Record<string, unknown>>;
-    expect(followed[0]?.url).toBe('https://example.com/linked1');
-
-    const followQueue = payload.followQueue as Array<Record<string, unknown>>;
-    expect(followQueue[0]?.url).toBe('https://example.com/linked2');
-
+    const payload = (result.result as { structuredContent?: Record<string, unknown> }).structuredContent ?? {};
+    expect(payload.query).toBe('example query');
+    expect(payload.followLinksRequested).toBe(true);
+    expect(payload.sourceUrls).toEqual(['https://example.com/source', 'https://example.com/other']);
+    expect(payload.sourceReads).toHaveLength(2);
     expect(mockScrapeWebPage).toHaveBeenCalledTimes(2);
   });
 });

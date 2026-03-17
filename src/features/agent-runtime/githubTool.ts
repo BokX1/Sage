@@ -1,13 +1,12 @@
 import { z } from 'zod';
-import type { ToolDefinition } from './toolRegistry';
+import { defineToolSpecV2, type ToolRuntimeMetadata, type ToolSpecV2 } from './toolRegistry';
 import {
-  lookupGitHubRepo,
+  listGitHubCommits,
   lookupGitHubCodeSearch,
   lookupGitHubFile,
+  lookupGitHubRepo,
   searchGitHubIssuesAndPullRequests,
-  listGitHubCommits,
 } from './toolIntegrations';
-import { buildRoutedToolHelp } from './toolDocs';
 
 const REPO_PATTERN = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
 
@@ -59,334 +58,386 @@ const githubRepoSchema = z
     (value) => normalizeGitHubRepoSpecifier(value) !== null,
     'repo must be in owner/name format or a GitHub URL',
   )
-  .describe('The repository in owner/repo format (e.g. microsoft/TypeScript) or a github.com URL to it.');
+  .describe('The repository in owner/repo format or a github.com URL to it.');
 
-const githubFileRangeSchema = z
-  .object({
-    startLine: z.number().int().min(1).max(2_000_000),
-    endLine: z.number().int().min(1).max(2_000_000),
-  })
-  .superRefine((value, ctx) => {
-    if (value.endLine < value.startLine) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: 'endLine must be greater than or equal to startLine',
-        path: ['endLine'],
-      });
-    }
+const githubPathSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(500)
+  .refine((value) => !value.includes('..'), 'path must not contain ".." segments');
+
+const githubFileRangeSchema = z.object({
+  startLine: z.number().int().min(1).max(2_000_000),
+  endLine: z.number().int().min(1).max(2_000_000),
+}).superRefine((value, ctx) => {
+  if (value.endLine < value.startLine) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'endLine must be greater than or equal to startLine',
+      path: ['endLine'],
+    });
+  }
+});
+
+const githubGetRepoInput = z.object({
+  repo: githubRepoSchema,
+  includeReadme: z.boolean().optional(),
+});
+
+const githubSearchCodeInput = z.object({
+  repo: githubRepoSchema,
+  query: z.string().trim().min(2).max(300),
+  ref: z.string().trim().min(1).max(120).optional(),
+  regex: z.string().trim().min(1).max(500).optional(),
+  pathFilter: z.string().trim().min(1).max(300).optional(),
+  maxCandidates: z.number().int().min(1).max(100).optional(),
+  maxFilesToScan: z.number().int().min(1).max(100).optional(),
+  maxMatches: z.number().int().min(1).max(1_000).optional(),
+  includeTextMatches: z.boolean().optional(),
+});
+
+const githubGetFileInput = z.object({
+  repo: githubRepoSchema,
+  path: githubPathSchema.describe('The precise file path within the repository.'),
+  ref: z.string().trim().min(1).max(120).optional(),
+  startLine: z.number().int().min(1).max(2_000_000).optional(),
+  endLine: z.number().int().min(1).max(2_000_000).optional(),
+  includeLineNumbers: z.boolean().optional(),
+}).superRefine((value, ctx) => {
+  const hasStart = value.startLine !== undefined;
+  const hasEnd = value.endLine !== undefined;
+  if (hasStart !== hasEnd) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'startLine and endLine must both be provided for ranged lookup',
+      path: hasStart ? ['endLine'] : ['startLine'],
+    });
+    return;
+  }
+  if (hasStart && hasEnd && (value.endLine as number) < (value.startLine as number)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'endLine must be greater than or equal to startLine',
+      path: ['endLine'],
+    });
+  }
+});
+
+const githubPageFileInput = z.object({
+  repo: githubRepoSchema,
+  path: githubPathSchema.describe('The precise file path within the repository.'),
+  ref: z.string().trim().min(1).max(120).optional(),
+  startLine: z.number().int().min(1).max(2_000_000).optional(),
+  maxLines: z.number().int().min(1).max(800).optional(),
+  includeLineNumbers: z.boolean().optional(),
+});
+
+const githubGetFileRangesInput = z.object({
+  repo: githubRepoSchema,
+  path: githubPathSchema.describe('The precise file path within the repository.'),
+  ref: z.string().trim().min(1).max(120).optional(),
+  ranges: z.array(githubFileRangeSchema).min(1).max(6),
+  includeLineNumbers: z.boolean().optional(),
+});
+
+const githubGetFileSnippetInput = z.object({
+  repo: githubRepoSchema,
+  path: githubPathSchema.describe('The precise file path within the repository.'),
+  ref: z.string().trim().min(1).max(120).optional(),
+  lineNumber: z.number().int().min(1).max(2_000_000),
+  before: z.number().int().min(0).max(200).optional(),
+  after: z.number().int().min(0).max(200).optional(),
+  includeLineNumbers: z.boolean().optional(),
+});
+
+const githubSearchIssuesInput = z.object({
+  repo: githubRepoSchema,
+  query: z.string().trim().min(2).max(350),
+  state: z.enum(['open', 'closed', 'all']).optional(),
+  maxResults: z.number().int().min(1).max(20).optional(),
+});
+
+const githubSearchPrsInput = z.object({
+  repo: githubRepoSchema,
+  query: z.string().trim().min(2).max(350),
+  state: z.enum(['open', 'closed', 'all']).optional(),
+  maxResults: z.number().int().min(1).max(20).optional(),
+});
+
+const githubListCommitsInput = z.object({
+  repo: githubRepoSchema,
+  ref: z.string().trim().min(1).max(120).optional(),
+  path: z.string().trim().min(1).max(500).optional(),
+  sinceIso: z.string().trim().min(1).max(80).optional(),
+  limit: z.number().int().min(1).max(30).optional(),
+});
+
+function repoOrThrow(repo: string): string {
+  const normalized = normalizeGitHubRepoSpecifier(repo);
+  if (!normalized) {
+    throw new Error('repo must be in owner/repo format or a github.com URL.');
+  }
+  return normalized;
+}
+
+function githubSpec<TArgs>(params: Omit<Parameters<typeof defineToolSpecV2<TArgs>>[0], 'runtime'> & {
+  runtime?: Partial<ToolRuntimeMetadata<TArgs>>;
+}): ToolSpecV2<TArgs> {
+  const runtime: ToolRuntimeMetadata<TArgs> = {
+    class: 'query',
+    readOnly: true,
+    observationPolicy: 'large',
+    capabilityTags: ['github', 'developer'],
+    ...(params.runtime ?? {}),
+  };
+  return defineToolSpecV2({
+    ...params,
+    annotations: {
+      readOnlyHint: true,
+      openWorldHint: true,
+      parallelSafe: true,
+      ...(params.annotations ?? {}),
+    },
+    runtime,
   });
+}
 
-const githubToolSchema = z.discriminatedUnion('action', [
-  z.object({
-    action: z.literal('help').describe('Show available GitHub actions and example payloads.'),
-    includeExamples: z.boolean().optional().describe('If true, include example payloads for common actions.'),
+export const githubGetRepoTool = githubSpec({
+  name: 'github_get_repo',
+  title: 'GitHub Get Repo',
+  description: 'Fetch GitHub repository metadata and optionally include the README.',
+  input: githubGetRepoInput,
+  prompt: {
+    summary: 'Use for repository identity, metadata, README, and links.',
+  },
+  smoke: {
+    mode: 'optional',
+    args: { repo: 'openai/openai-node', includeReadme: false },
+  },
+  validationHint: 'Pass one repo in owner/name form or a GitHub URL.',
+  execute: async (args, ctx) => lookupGitHubRepo({
+    repo: repoOrThrow(args.repo),
+    includeReadme: args.includeReadme,
+    signal: ctx.signal,
   }),
+});
 
-  z.object({
-    action: z.literal('repo.get').describe('Lookup GitHub repository metadata and optionally include README.'),
-    repo: githubRepoSchema,
-    includeReadme: z.boolean().optional(),
+export const githubSearchCodeTool = githubSpec({
+  name: 'github_search_code',
+  title: 'GitHub Search Code',
+  description: 'Search code across one GitHub repository.',
+  input: githubSearchCodeInput,
+  prompt: {
+    summary: 'Use for code discovery before fetching exact files or snippets.',
+  },
+  smoke: {
+    mode: 'optional',
+    args: { repo: 'openai/openai-node', query: 'chat.completions.create', maxCandidates: 5 },
+  },
+  execute: async (args, ctx) => lookupGitHubCodeSearch({
+    repo: repoOrThrow(args.repo),
+    query: args.query,
+    ref: args.ref,
+    regex: args.regex,
+    pathFilter: args.pathFilter,
+    maxCandidates: args.maxCandidates,
+    maxFilesToScan: args.maxFilesToScan,
+    maxMatches: args.maxMatches,
+    includeTextMatches: args.includeTextMatches,
+    traceId: ctx.traceId,
+    signal: ctx.signal,
   }),
+});
 
-  z.object({
-    action: z.literal('code.search').describe('Search code across a GitHub repository.'),
-    repo: githubRepoSchema,
-    query: z.string().trim().min(2).max(300),
-    ref: z.string().trim().min(1).max(120).optional(),
-    regex: z.string().trim().min(1).max(500).optional(),
-    pathFilter: z.string().trim().min(1).max(300).optional(),
-    maxCandidates: z.number().int().min(1).max(100).optional(),
-    maxFilesToScan: z.number().int().min(1).max(100).optional(),
-    maxMatches: z.number().int().min(1).max(1_000).optional(),
-    includeTextMatches: z.boolean().optional(),
+export const githubGetFileTool = githubSpec({
+  name: 'github_get_file',
+  title: 'GitHub Get File',
+  description: 'Fetch one GitHub file, optionally with a bounded line range.',
+  input: githubGetFileInput,
+  prompt: {
+    summary: 'Use when you already know the exact file path and need the real source.',
+  },
+  smoke: {
+    mode: 'optional',
+    args: { repo: 'openai/openai-node', path: 'README.md' },
+  },
+  execute: async (args, ctx) => lookupGitHubFile({
+    repo: repoOrThrow(args.repo),
+    path: args.path,
+    ref: args.ref,
+    startLine: args.startLine,
+    endLine: args.endLine,
+    includeLineNumbers: args.includeLineNumbers,
+    signal: ctx.signal,
+    traceId: ctx.traceId,
   }),
+});
 
-  z.object({
-    action: z.literal('file.get').describe('Fetch file contents from a GitHub repo (supports line ranges for large files).'),
-    repo: githubRepoSchema,
-    path: z
-      .string()
-      .trim()
-      .min(1)
-      .max(500)
-      .refine((value) => !value.includes('..'), 'path must not contain ".." segments')
-      .describe('The precise file path within the repository.'),
-    ref: z.string().trim().min(1).max(120).optional(),
-    startLine: z.number().int().min(1).max(2_000_000).optional(),
-    endLine: z.number().int().min(1).max(2_000_000).optional(),
-    includeLineNumbers: z.boolean().optional(),
-  }).superRefine((value, ctx) => {
-    const hasStart = value.startLine !== undefined;
-    const hasEnd = value.endLine !== undefined;
-    if (hasStart !== hasEnd) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: 'startLine and endLine must both be provided for ranged lookup',
-        path: hasStart ? ['endLine'] : ['startLine'],
-      });
-      return;
-    }
-    if (hasStart && hasEnd && (value.endLine as number) < (value.startLine as number)) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: 'endLine must be greater than or equal to startLine',
-        path: ['endLine'],
-      });
-    }
+export const githubPageFileTool = githubSpec({
+  name: 'github_page_file',
+  title: 'GitHub Page File',
+  description: 'Read one GitHub file in bounded pages.',
+  input: githubPageFileInput,
+  prompt: {
+    summary: 'Use when a file is too large for a one-shot read.',
+  },
+  smoke: {
+    mode: 'skip',
+    reason: 'Paging is multi-step and better covered by targeted tests.',
+  },
+  execute: async (args, ctx) => lookupGitHubFile({
+    repo: repoOrThrow(args.repo),
+    path: args.path,
+    ref: args.ref,
+    startLine: args.startLine,
+    endLine:
+      args.startLine !== undefined
+        ? args.startLine + Math.max(1, args.maxLines ?? 200) - 1
+        : Math.max(1, args.maxLines ?? 200),
+    includeLineNumbers: args.includeLineNumbers,
+    signal: ctx.signal,
+    traceId: ctx.traceId,
   }),
+});
 
-  z.object({
-    action: z.literal('file.page').describe('Read a file in pages to avoid all-or-nothing large outputs.'),
-    repo: githubRepoSchema,
-    path: z
-      .string()
-      .trim()
-      .min(1)
-      .max(500)
-      .refine((value) => !value.includes('..'), 'path must not contain ".." segments')
-      .describe('The precise file path within the repository.'),
-    ref: z.string().trim().min(1).max(120).optional(),
-    startLine: z.number().int().min(1).max(2_000_000).optional(),
-    maxLines: z.number().int().min(1).max(800).optional(),
-    includeLineNumbers: z.boolean().optional(),
-  }),
-
-  z.object({
-    action: z.literal('file.ranges').describe('Fetch multiple disjoint line ranges from a file in one call.'),
-    repo: githubRepoSchema,
-    path: z
-      .string()
-      .trim()
-      .min(1)
-      .max(500)
-      .refine((value) => !value.includes('..'), 'path must not contain ".." segments')
-      .describe('The precise file path within the repository.'),
-    ref: z.string().trim().min(1).max(120).optional(),
-    ranges: z.array(githubFileRangeSchema).min(1).max(6),
-    includeLineNumbers: z.boolean().optional(),
-  }),
-
-  z.object({
-    action: z.literal('file.snippet').describe('Fetch a tight code snippet around a line number.'),
-    repo: githubRepoSchema,
-    path: z
-      .string()
-      .trim()
-      .min(1)
-      .max(500)
-      .refine((value) => !value.includes('..'), 'path must not contain ".." segments')
-      .describe('The precise file path within the repository.'),
-    ref: z.string().trim().min(1).max(120).optional(),
-    lineNumber: z.number().int().min(1).max(2_000_000),
-    before: z.number().int().min(0).max(200).optional(),
-    after: z.number().int().min(0).max(200).optional(),
-    includeLineNumbers: z.boolean().optional(),
-  }),
-
-  z.object({
-    action: z.literal('issues.search').describe('Search issues in a GitHub repository.'),
-    repo: githubRepoSchema,
-    query: z.string().trim().min(2).max(350),
-    state: z.enum(['open', 'closed', 'all']).optional(),
-    maxResults: z.number().int().min(1).max(20).optional(),
-  }),
-
-  z.object({
-    action: z.literal('prs.search').describe('Search pull requests in a GitHub repository.'),
-    repo: githubRepoSchema,
-    query: z.string().trim().min(2).max(350),
-    state: z.enum(['open', 'closed', 'all']).optional(),
-    maxResults: z.number().int().min(1).max(20).optional(),
-  }),
-
-  z.object({
-    action: z.literal('commits.list').describe('List recent commits for a repo/ref (optionally scoped to a path).'),
-    repo: githubRepoSchema,
-    ref: z.string().trim().min(1).max(120).optional(),
-    path: z.string().trim().min(1).max(500).optional(),
-    sinceIso: z.string().trim().min(1).max(80).optional(),
-    limit: z.number().int().min(1).max(30).optional(),
-  }),
-]);
-
-export const githubTool: ToolDefinition<z.infer<typeof githubToolSchema>> = {
-  name: 'github',
-  description:
-    [
-      'Unified GitHub tool with action-based calls.',
-      'Actions:',
-      '- help: show action index and example payloads',
-      '- repo.get: repo metadata (+ optional README)',
-      '- code.search: search across files (includes match previews when available)',
-      '- file.get: read file (supports line ranges)',
-      '- file.page: paged reads for large files',
-      '- file.ranges: fetch multiple disjoint ranges in one call',
-      '- file.snippet: tight snippet around a line number',
-      '- issues.search / prs.search: search issues or pull requests',
-      '- commits.list: list recent commits/activity',
-      '<USE_ONLY_WHEN> You need grounded data from GitHub. </USE_ONLY_WHEN>',
-    ].join('\n'),
-  schema: githubToolSchema,
-  metadata: { readOnly: true },
+export const githubGetFileRangesTool = githubSpec({
+  name: 'github_get_file_ranges',
+  title: 'GitHub Get File Ranges',
+  description: 'Fetch multiple disjoint line ranges from one GitHub file.',
+  input: githubGetFileRangesInput,
+  prompt: {
+    summary: 'Use when you need multiple exact regions from the same file in one call.',
+  },
+  smoke: {
+    mode: 'skip',
+    reason: 'Range reads are better validated by unit coverage.',
+  },
   execute: async (args, ctx) => {
-    if (args.action === 'help') {
-      return buildRoutedToolHelp('github', {
-        includeExamples: args.includeExamples !== false,
-      });
-    }
-
-    const repo = normalizeGitHubRepoSpecifier(args.repo);
-    if (!repo) {
-      throw new Error('repo must be in owner/repo format or a github.com URL.');
-    }
-
-    switch (args.action) {
-      case 'repo.get': {
-        return lookupGitHubRepo({
-          repo,
-          includeReadme: args.includeReadme,
-          signal: ctx.signal,
-        });
-      }
-
-      case 'code.search': {
-        return lookupGitHubCodeSearch({
-          repo,
-          query: args.query,
-          ref: args.ref,
-          regex: args.regex,
-          pathFilter: args.pathFilter,
-          maxCandidates: args.maxCandidates,
-          maxFilesToScan: args.maxFilesToScan,
-          maxMatches: args.maxMatches,
-          includeTextMatches: args.includeTextMatches,
-          traceId: ctx.traceId,
-          signal: ctx.signal,
-        });
-      }
-
-      case 'file.get': {
-        return lookupGitHubFile({
+    const repo = repoOrThrow(args.repo);
+    const segments = await Promise.all(
+      args.ranges.map(async (range) => ({
+        range,
+        content: await lookupGitHubFile({
           repo,
           path: args.path,
           ref: args.ref,
-          startLine: args.startLine,
-          endLine: args.endLine,
-          includeLineNumbers: args.includeLineNumbers,
-          traceId: ctx.traceId,
-          signal: ctx.signal,
-        });
-      }
-
-      case 'file.page': {
-        const startLine = args.startLine ?? 1;
-        const maxLines = args.maxLines ?? 200;
-        const endLine = startLine + Math.max(0, maxLines - 1);
-        const page = await lookupGitHubFile({
-          repo,
-          path: args.path,
-          ref: args.ref,
-          startLine,
-          endLine,
-          includeLineNumbers: args.includeLineNumbers ?? true,
-          traceId: ctx.traceId,
-          signal: ctx.signal,
-        });
-
-        const record = page && typeof page === 'object' && !Array.isArray(page)
-          ? (page as Record<string, unknown>)
-          : {};
-        const nextStartLine =
-          record.hasMoreAfter === true && typeof record.lineEnd === 'number'
-            ? (record.lineEnd as number) + 1
-            : null;
-
-        return {
-          ...page,
-          pageStartLine: startLine,
-          pageMaxLines: maxLines,
-          nextStartLine,
-        };
-      }
-
-      case 'file.ranges': {
-        const ranges = args.ranges.map((range) => ({
           startLine: range.startLine,
           endLine: range.endLine,
-        }));
-        const reads = [];
-        for (const range of ranges) {
-          const chunk = await lookupGitHubFile({
-            repo,
-            path: args.path,
-            ref: args.ref,
-            startLine: range.startLine,
-            endLine: range.endLine,
-            includeLineNumbers: args.includeLineNumbers ?? true,
-            traceId: ctx.traceId,
-            signal: ctx.signal,
-          });
-          reads.push({ range, ...chunk });
-        }
-        return {
-          repo,
-          path: args.path,
-          ref: args.ref?.trim() || null,
-          rangeCount: ranges.length,
-          ranges,
-          reads,
-        };
-      }
-
-      case 'file.snippet': {
-        const before = args.before ?? 10;
-        const after = args.after ?? 10;
-        const startLine = Math.max(1, args.lineNumber - before);
-        const endLine = Math.max(startLine, args.lineNumber + after);
-        return lookupGitHubFile({
-          repo,
-          path: args.path,
-          ref: args.ref,
-          startLine,
-          endLine,
-          includeLineNumbers: args.includeLineNumbers ?? true,
+          includeLineNumbers: args.includeLineNumbers,
+          signal: ctx.signal,
           traceId: ctx.traceId,
-          signal: ctx.signal,
-        });
-      }
-
-      case 'issues.search': {
-        return searchGitHubIssuesAndPullRequests({
-          repo,
-          query: args.query,
-          type: 'issue',
-          state: args.state,
-          maxResults: args.maxResults,
-          signal: ctx.signal,
-        });
-      }
-
-      case 'prs.search': {
-        return searchGitHubIssuesAndPullRequests({
-          repo,
-          query: args.query,
-          type: 'pr',
-          state: args.state,
-          maxResults: args.maxResults,
-          signal: ctx.signal,
-        });
-      }
-
-      case 'commits.list': {
-        return listGitHubCommits({
-          repo,
-          ref: args.ref,
-          path: args.path,
-          sinceIso: args.sinceIso,
-          limit: args.limit,
-          signal: ctx.signal,
-        });
-      }
-    }
+        }),
+      })),
+    );
+    return {
+      repo,
+      path: args.path,
+      ref: args.ref ?? null,
+      includeLineNumbers: args.includeLineNumbers ?? false,
+      segments,
+    };
   },
-};
+});
+
+export const githubGetFileSnippetTool = githubSpec({
+  name: 'github_get_file_snippet',
+  title: 'GitHub Get File Snippet',
+  description: 'Fetch a tight snippet around one line number in a GitHub file.',
+  input: githubGetFileSnippetInput,
+  prompt: {
+    summary: 'Use when you need local context around one exact line.',
+  },
+  smoke: {
+    mode: 'skip',
+    reason: 'Snippet reads are better validated by unit coverage.',
+  },
+  execute: async (args, ctx) => lookupGitHubFile({
+    repo: repoOrThrow(args.repo),
+    path: args.path,
+    ref: args.ref,
+    startLine: Math.max(1, args.lineNumber - (args.before ?? 20)),
+    endLine: Math.max(1, args.lineNumber + (args.after ?? 20)),
+    includeLineNumbers: args.includeLineNumbers,
+    signal: ctx.signal,
+    traceId: ctx.traceId,
+  }),
+});
+
+export const githubSearchIssuesTool = githubSpec({
+  name: 'github_search_issues',
+  title: 'GitHub Search Issues',
+  description: 'Search issues in one GitHub repository.',
+  input: githubSearchIssuesInput,
+  prompt: {
+    summary: 'Use when you need issue discussions, bug reports, or issue history inside one repository.',
+  },
+  smoke: {
+    mode: 'optional',
+    args: { repo: 'openai/openai-node', query: 'timeout', maxResults: 3 },
+  },
+  execute: async (args, ctx) => searchGitHubIssuesAndPullRequests({
+    repo: repoOrThrow(args.repo),
+    type: 'issue',
+    query: args.query,
+    state: args.state,
+    maxResults: args.maxResults,
+    signal: ctx.signal,
+  }),
+});
+
+export const githubSearchPullRequestsTool = githubSpec({
+  name: 'github_search_pull_requests',
+  title: 'GitHub Search Pull Requests',
+  description: 'Search pull requests in one GitHub repository.',
+  input: githubSearchPrsInput,
+  prompt: {
+    summary: 'Use when you need pull request discussions, status, or merged change history inside one repository.',
+  },
+  smoke: {
+    mode: 'optional',
+    args: { repo: 'openai/openai-node', query: 'streaming', maxResults: 3 },
+  },
+  execute: async (args, ctx) => searchGitHubIssuesAndPullRequests({
+    repo: repoOrThrow(args.repo),
+    type: 'pr',
+    query: args.query,
+    state: args.state,
+    maxResults: args.maxResults,
+    signal: ctx.signal,
+  }),
+});
+
+export const githubListCommitsTool = githubSpec({
+  name: 'github_list_commits',
+  title: 'GitHub List Commits',
+  description: 'List recent commits for one GitHub repository.',
+  input: githubListCommitsInput,
+  prompt: {
+    summary: 'Use when you need recent commit history, authorship, or file-level commit trace inside one repository.',
+  },
+  smoke: {
+    mode: 'optional',
+    args: { repo: 'openai/openai-node', limit: 3 },
+  },
+  execute: async (args, ctx) => listGitHubCommits({
+    repo: repoOrThrow(args.repo),
+    ref: args.ref,
+    path: args.path,
+    sinceIso: args.sinceIso,
+    limit: args.limit,
+    signal: ctx.signal,
+  }),
+});
+
+export const githubTools = [
+  githubGetRepoTool,
+  githubSearchCodeTool,
+  githubGetFileTool,
+  githubPageFileTool,
+  githubGetFileRangesTool,
+  githubGetFileSnippetTool,
+  githubSearchIssuesTool,
+  githubSearchPullRequestsTool,
+  githubListCommitsTool,
+];

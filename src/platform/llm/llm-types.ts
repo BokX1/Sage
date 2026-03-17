@@ -68,12 +68,19 @@ export interface LLMChatMessage {
  * Side effects: none.
  * Error behavior: none.
  */
-export interface ToolDefinition {
+export interface ProviderToolDefinition {
   type: 'function';
   function: {
     name: string;
     description?: string;
     parameters: Record<string, unknown>;
+  };
+}
+
+export interface ProviderAllowedTool {
+  type: 'function';
+  function: {
+    name: string;
   };
 }
 
@@ -91,7 +98,8 @@ export interface LLMRequest {
   apiKey?: string;
   temperature?: number;
   maxTokens?: number;
-  tools?: ToolDefinition[];
+  tools?: ProviderToolDefinition[];
+  allowedTools?: ProviderAllowedTool[];
   toolChoice?:
     | string
     | 'auto'
@@ -99,6 +107,7 @@ export interface LLMRequest {
     | 'none'
     | { type: 'function'; function: { name: string } }
     | Record<string, unknown>;
+  parallelToolCalls?: boolean;
   timeout?: number;
   signal?: AbortSignal;
 }

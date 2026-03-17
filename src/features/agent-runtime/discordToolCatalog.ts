@@ -1,6 +1,5 @@
 export const DISCORD_CONTEXT_ACTION_CATALOG = {
   read_only: [
-    'help',
     'get_user_profile',
     'get_channel_summary',
     'search_channel_summary_archives',
@@ -16,7 +15,6 @@ export const DISCORD_CONTEXT_ACTION_CATALOG = {
 
 export const DISCORD_MESSAGES_ACTION_CATALOG = {
   read_only: [
-    'help',
     'search_history',
     'search_with_context',
     'get_context',
@@ -24,7 +22,6 @@ export const DISCORD_MESSAGES_ACTION_CATALOG = {
     'get_user_timeline',
   ],
   writes: [
-    'send',
     'create_poll',
     'add_reaction',
     'remove_self_reaction',
@@ -34,7 +31,6 @@ export const DISCORD_MESSAGES_ACTION_CATALOG = {
 
 export const DISCORD_FILES_ACTION_CATALOG = {
   read_only: [
-    'help',
     'list_channel',
     'list_server',
     'find_channel',
@@ -47,7 +43,6 @@ export const DISCORD_FILES_ACTION_CATALOG = {
 
 export const DISCORD_SERVER_ACTION_CATALOG = {
   read_only: [
-    'help',
     'list_channels',
     'get_channel',
     'list_roles',
@@ -73,7 +68,7 @@ export const DISCORD_SERVER_ACTION_CATALOG = {
 } as const;
 
 export const DISCORD_ADMIN_ACTION_CATALOG = {
-  read_only: ['help', 'get_invite_url'],
+  read_only: ['get_invite_url'],
   writes: [],
   admin_only: [
     'get_server_key_status',
@@ -100,7 +95,7 @@ export const DISCORD_ADMIN_ACTION_CATALOG = {
 } as const;
 
 export const DISCORD_VOICE_ACTION_CATALOG = {
-  read_only: ['help', 'get_status'],
+  read_only: ['get_status'],
   writes: ['join_current_channel', 'leave'],
   admin_only: [],
 } as const;

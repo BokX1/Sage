@@ -37,6 +37,7 @@
     "db:studio": "prisma studio",
     "doctor": "node --import tsx src/cli/doctor.ts --",
     "ai-provider:probe": "node --import tsx src/cli/ai-provider-probe.ts --",
+    "tools:audit": "node --import tsx src/cli/tool-audit.ts --",
     "tools:smoke": "ts-node -P config/tooling/tsconfig.app.json src/cli/tool-smoke.ts",
     "langgraph:discord:smoke": "node --import tsx src/cli/langgraph-discord-smoke.ts",
     "postinstall": "prisma generate",
@@ -52,7 +53,7 @@
     "hooks:pre-commit": "node scripts/hooks/pre-commit.cjs",
     "hooks:pre-push": "node scripts/hooks/pre-push.cjs",
     "check:local": "npm run lint && npm run typecheck && npm run test",
-    "check:trust": "npm run lint && npm run typecheck && npm run test:audit && npm run test:trust",
+    "check:trust": "npm run lint && npm run typecheck && npm run test:audit && npm run test:trust && npm run tools:audit",
     "check:trust:deep": "npm run check:trust && npm run check:mutation",
     "check": "npm run check:local"
   },

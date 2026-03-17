@@ -16,19 +16,22 @@ vi.mock('@langchain/langgraph', async () => {
   };
 });
 
-vi.mock('@/features/agent-runtime/toolCallExecution', () => ({
+vi.mock('../../../../src/features/agent-runtime/toolCallExecution', () => ({
   executeToolWithTimeout: executeToolWithTimeoutMock,
 }));
 
-vi.mock('@/features/agent-runtime/toolRegistry', () => ({
+vi.mock('../../../../src/features/agent-runtime/toolRegistry', () => ({
   globalToolRegistry: {},
 }));
 
-vi.mock('@/features/admin/adminActionService', () => ({
+vi.mock('../../../../src/features/admin/adminActionService', () => ({
   executeApprovedReviewRequest: executeApprovedReviewRequestMock,
 }));
 
-import { executeApprovedReviewTask, executeDurableToolTask } from '@/features/agent-runtime/langgraph/nativeTools';
+import {
+  executeApprovedReviewTask,
+  executeDurableToolTask,
+} from '../../../../src/features/agent-runtime/langgraph/nativeTools';
 
 function makeToolContext() {
   return {
@@ -67,8 +70,8 @@ describe('langgraph nativeTools', () => {
     executeToolWithTimeoutMock.mockResolvedValueOnce({
       name: 'github',
       success: true,
-      result: fullResult,
-      latencyMs: 42,
+      structuredContent: fullResult,
+      telemetry: { latencyMs: 42 },
     });
 
     const output = await executeDurableToolTask({
@@ -85,7 +88,7 @@ describe('langgraph nativeTools', () => {
     if (output.kind !== 'tool_result') return;
 
     expect(output.result.success).toBe(true);
-    expect(output.result.result).toEqual(fullResult);
+    expect(output.result.structuredContent).toEqual(fullResult);
     expect(JSON.parse(output.content)).toEqual(fullResult);
     expect(output.content).not.toContain('"truncated":true');
   });

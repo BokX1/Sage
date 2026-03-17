@@ -1,167 +1,121 @@
 import { describe, expect, it } from 'vitest';
-import { z } from 'zod';
 
 import {
-  discordAdminTool,
-  discordContextTool,
-  discordFilesTool,
-  discordMessagesTool,
-  discordServerTool,
-} from '@/features/agent-runtime/discordDomainTools';
+  discordAdminTools,
+  discordContextTools,
+  discordFileTools,
+  discordMessageTools,
+  discordServerTools,
+  discordVoiceTools,
+} from '../../../../src/features/agent-runtime/discordDomainTools';
 import {
   DISCORD_ADMIN_ACTION_CATALOG,
   DISCORD_CONTEXT_ACTION_CATALOG,
   DISCORD_FILES_ACTION_CATALOG,
   DISCORD_MESSAGES_ACTION_CATALOG,
   DISCORD_SERVER_ACTION_CATALOG,
-} from '@/features/agent-runtime/discordToolCatalog';
-import { normalizeToolParametersForChatCompletions } from '@/shared/validation/json-schema';
+  DISCORD_VOICE_ACTION_CATALOG,
+} from '../../../../src/features/agent-runtime/discordToolCatalog';
+import type { ToolDefinition } from '../../../../src/features/agent-runtime/toolRegistry';
 
-function extractTopLevelActionConsts(schema: unknown): string[] {
-  if (!schema || typeof schema !== 'object' || Array.isArray(schema)) {
-    throw new Error('Expected JSON schema object');
-  }
-
-  const record = schema as Record<string, unknown>;
-  const normalized = normalizeToolParametersForChatCompletions(record);
-  const properties = normalized.properties;
+function getActionName(tool: ToolDefinition): string {
+  const properties = tool.inputSchema.properties;
   if (!properties || typeof properties !== 'object' || Array.isArray(properties)) {
-    throw new Error('Expected compiled tool schema properties');
+    throw new Error(`Tool ${tool.name} is missing JSON schema properties.`);
   }
-  const actionSchema = (properties as Record<string, unknown>).action;
-  if (!actionSchema || typeof actionSchema !== 'object' || Array.isArray(actionSchema)) {
-    throw new Error('Expected compiled action property schema');
-  }
-  const actions = Array.isArray((actionSchema as Record<string, unknown>).enum)
-    ? ((actionSchema as Record<string, unknown>).enum as unknown[])
-      .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
-    : [];
-
-  return Array.from(new Set(actions)).sort((a, b) => a.localeCompare(b));
+  expect((properties as Record<string, unknown>).action).toBeUndefined();
+  return tool.name.replace(/^discord_(?:context|messages|files|server|admin|voice)_/, '');
 }
 
 function sortedUnique(values: string[]): string[] {
   return Array.from(new Set(values)).sort((a, b) => a.localeCompare(b));
 }
 
-describe('discord domain tool catalogs', () => {
+describe('discord granular tool catalogs', () => {
   const toolCases = [
     {
-      tool: discordContextTool,
       name: 'discord_context',
+      tools: discordContextTools,
       catalog: DISCORD_CONTEXT_ACTION_CATALOG,
-      readOnlyOnly: true,
     },
     {
-      tool: discordMessagesTool,
       name: 'discord_messages',
+      tools: discordMessageTools,
       catalog: DISCORD_MESSAGES_ACTION_CATALOG,
-      readOnlyOnly: false,
     },
     {
-      tool: discordFilesTool,
       name: 'discord_files',
+      tools: discordFileTools,
       catalog: DISCORD_FILES_ACTION_CATALOG,
-      readOnlyOnly: false,
     },
     {
-      tool: discordServerTool,
       name: 'discord_server',
+      tools: discordServerTools,
       catalog: DISCORD_SERVER_ACTION_CATALOG,
-      readOnlyOnly: false,
     },
     {
-      tool: discordAdminTool,
       name: 'discord_admin',
+      tools: discordAdminTools,
       catalog: DISCORD_ADMIN_ACTION_CATALOG,
-      readOnlyOnly: false,
+    },
+    {
+      name: 'discord_voice',
+      tools: discordVoiceTools,
+      catalog: DISCORD_VOICE_ACTION_CATALOG,
     },
   ] as const;
 
-  it.each(toolCases)('schema actions match catalog for $name', ({ tool, catalog }) => {
-    const schema = z.toJSONSchema(tool.schema);
-    const schemaActions = extractTopLevelActionConsts(schema);
-    const catalogActions = Array.from(
-      new Set([...catalog.read_only, ...catalog.writes, ...catalog.admin_only]),
-    ).sort((a, b) => a.localeCompare(b));
+  it.each(toolCases)('covers every catalog action with one granular tool for $name', ({ tools, catalog }) => {
+    const toolActions = tools.map((tool) => getActionName(tool as ToolDefinition));
+    const catalogActions = [
+      ...catalog.read_only,
+      ...catalog.writes,
+      ...catalog.admin_only,
+    ];
 
-    expect(schemaActions).toEqual(catalogActions);
+    expect(sortedUnique(toolActions)).toEqual(sortedUnique(catalogActions));
   });
 
-  it.each(toolCases)('help output is complete for $name', async ({ tool, name, catalog, readOnlyOnly }) => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const result = await (tool as any).execute(
-        { action: 'help' },
-      {
-        traceId: 'trace',
-        userId: 'user-1',
-        channelId: 'channel-1',
-      },
-    );
-
-    expect(result).toEqual(
-      expect.objectContaining({
-        tool: name,
-        type: 'routed_tool_help',
-        purpose: expect.any(String),
-        use_when: expect.any(Array),
-        action_names: expect.any(Array),
-        action_contracts: expect.any(Array),
-        read_only_actions: expect.any(Array),
-        write_actions: expect.any(Array),
-        admin_only_actions: expect.any(Array),
-        guardrails: expect.any(Array),
-      }),
-    );
-
-    const output = result as {
-      action_names: string[];
-      action_contracts: Array<Record<string, unknown>>;
-      read_only_actions: string[];
-      write_actions: string[];
-      admin_only_actions: string[];
-    };
-
-    expect(output.read_only_actions).toEqual([...catalog.read_only]);
-    expect(output.write_actions).toEqual([...catalog.writes]);
-    expect(output.admin_only_actions).toEqual([...catalog.admin_only]);
-    expect(sortedUnique(output.action_names)).toEqual(
-      sortedUnique([...catalog.read_only, ...catalog.writes, ...catalog.admin_only]),
-    );
-
-    for (const contract of output.action_contracts) {
-      expect(contract).toEqual(
-        expect.objectContaining({
-          action: expect.any(String),
-          purpose: expect.any(String),
-          use_when: expect.any(Array),
-          required_fields: expect.any(Array),
-          optional_fields: expect.any(Array),
-          defaults: expect.any(Array),
-          restrictions: expect.any(Array),
-          result_notes: expect.any(Array),
-          common_mistakes: expect.any(Array),
-        }),
-      );
-      expect(Array.isArray(contract.examples)).toBe(true);
+  it.each(toolCases)('uses provider-safe object schemas and runtime metadata for $name', ({ tools }) => {
+    for (const tool of tools) {
+      const registered = tool as ToolDefinition;
+      expect(registered.inputSchema.type).toBe('object');
+      expect(registered.inputSchema.oneOf).toBeUndefined();
+      expect(registered.inputSchema.anyOf).toBeUndefined();
+      expect(registered.inputSchema.allOf).toBeUndefined();
+      expect(['public', 'admin']).toContain(registered.runtime.access);
+      expect(registered.runtime.class).toMatch(/query|mutation|artifact|runtime/);
+      expect(registered.runtime.capabilityTags).toEqual(expect.arrayContaining(['discord']));
+      expect(registered.description.length).toBeGreaterThan(10);
+      expect(registered.prompt?.summary?.length ?? 0).toBeGreaterThan(5);
     }
+  });
 
-    const highRiskActions = new Set([
-      'search_history',
-      'send',
-      'send_attachment',
-      'api',
-    ]);
-    for (const action of output.action_contracts) {
-      const actionName = action.action;
-      if (typeof actionName !== 'string' || !highRiskActions.has(actionName)) continue;
-      expect(action.common_mistakes).toEqual(expect.any(Array));
-      expect((action.common_mistakes as unknown[]).length).toBeGreaterThan(0);
+  it('keeps read-only Discord context tools on the query path', () => {
+    for (const tool of discordContextTools) {
+      const registered = tool as ToolDefinition;
+      expect(registered.runtime.class).toBe('query');
+      expect(registered.runtime.readOnly).toBe(true);
     }
+  });
 
-    if (readOnlyOnly) {
-      expect(output.write_actions).toEqual([]);
-      expect(output.admin_only_actions).toEqual([]);
+  it('marks admin Discord tools as admin access and keeps smoke args action-free', () => {
+    for (const tool of discordAdminTools) {
+      const registered = tool as ToolDefinition;
+      expect(registered.runtime.access).toBe('admin');
+      expect(registered.smoke?.args?.action).toBeUndefined();
+    }
+  });
+
+  it('keeps admin-only server reads marked as admin access', () => {
+    for (const name of [
+      'discord_server_list_members',
+      'discord_server_get_member',
+      'discord_server_get_permission_snapshot',
+      'discord_server_list_automod_rules',
+    ]) {
+      const tool = discordServerTools.find((entry) => entry.name === name) as ToolDefinition | undefined;
+      expect(tool?.runtime.access).toBe('admin');
     }
   });
 });

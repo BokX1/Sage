@@ -72,10 +72,10 @@ function collectSuccessfulLookupPaths(toolResults: ToolResult[]): {
   const successfulPaths = new Set<string>();
 
   for (const result of toolResults) {
-    if (!result.success || result.name !== 'github') continue;
-    if (!result.result || typeof result.result !== 'object' || Array.isArray(result.result)) continue;
+    if (!result.success || !result.name.startsWith('github_')) continue;
+    if (!result.structuredContent || typeof result.structuredContent !== 'object' || Array.isArray(result.structuredContent)) continue;
 
-    const record = result.result as Record<string, unknown>;
+    const record = result.structuredContent as Record<string, unknown>;
     const path = typeof record.path === 'string' ? record.path.trim() : '';
     const repo = typeof record.repo === 'string' ? record.repo.trim() : '';
     if (!path || !looksLikeGitHubFilePath(path)) continue;
@@ -114,9 +114,9 @@ export function enforceGitHubFileGrounding(
   toolResults: ToolResult[],
 ): GitHubGroundingEnforcementResult {
   const hasGitHubLookupFailures = toolResults.some((result) => {
-    if (result.name !== 'github' || result.success) return false;
+    if (!result.name.startsWith('github_') || result.success) return false;
     const error = (result.error ?? '').toLowerCase();
-    return error.includes('github.file.get failed') || error.includes('github_get_file failed');
+    return error.includes('github_get_file failed') || error.includes('github_get_file_snippet failed');
   });
 
   if (!hasGitHubLookupFailures) {

@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { z } from 'zod';
-import { ToolRegistry } from '../../../../src/features/agent-runtime/toolRegistry';
+import { defineToolSpecV2, ToolRegistry } from '../../../../src/features/agent-runtime/toolRegistry';
 import { registerDefaultAgenticTools } from '../../../../src/features/agent-runtime/defaultTools';
 
 describe('ToolRegistry', () => {
@@ -191,8 +191,51 @@ describe('ToolRegistry', () => {
 
       expect(result.success).toBe(true);
       if (result.success) {
-        expect(result.result).toEqual({ echoed: 'hello world' });
+        expect(result.result).toEqual({
+          structuredContent: { echoed: 'hello world' },
+          modelSummary: JSON.stringify({ echoed: 'hello world' }),
+        });
       }
+    });
+
+    it('rejects successful tool outputs that violate declared outputSchema', async () => {
+      const runtimeRegistry = new ToolRegistry();
+      runtimeRegistry.register(
+        defineToolSpecV2({
+          name: 'schema_checked',
+          description: 'Returns a validated payload.',
+          input: z.object({}),
+          outputSchema: {
+            type: 'object',
+            properties: {
+              ok: { type: 'boolean' },
+            },
+            required: ['ok'],
+            additionalProperties: false,
+          },
+          runtime: {
+            class: 'query',
+            readOnly: true,
+            capabilityTags: ['system'],
+          },
+          prompt: {
+            summary: 'Return a schema-checked payload.',
+          },
+          execute: async () => ({
+            structuredContent: { nope: true },
+          }),
+        }),
+      );
+
+      const result = await runtimeRegistry.executeValidated(
+        { name: 'schema_checked', args: {} },
+        { traceId: 'test', userId: 'u1', channelId: 'c1' },
+      );
+
+      expect(result.success).toBe(false);
+      if (result.success) return;
+      expect(result.errorType).toBe('execution');
+      expect(result.error).toContain('did not match its output schema');
     });
 
     it('should return error for invalid tool call during execution', async () => {
@@ -207,14 +250,14 @@ describe('ToolRegistry', () => {
       }
     });
 
-    it('adds missing-action repair guidance for routed tools', async () => {
+    it('keeps direct-tool validation hints for granular tool definitions', async () => {
       const runtimeRegistry = new ToolRegistry();
       registerDefaultAgenticTools(runtimeRegistry);
 
       const result = await runtimeRegistry.executeValidated(
         {
-          name: 'github',
-          args: { repo: 'openai/openai-node' },
+          name: 'github_get_repo',
+          args: {},
         },
         { traceId: 'test', userId: 'u1', channelId: 'c1' },
       );
@@ -222,88 +265,7 @@ describe('ToolRegistry', () => {
       expect(result.success).toBe(false);
       if (result.success) return;
       expect(result.errorType).toBe('validation');
-      expect(result.errorDetails?.repair).toMatchObject({
-        tool: 'github',
-        kind: 'missing_action',
-      });
-      expect(result.errorDetails?.repair?.suggestedActions).toContain('help');
-      expect(result.errorDetails?.repair?.actionContract?.action).toBe('help');
-      expect(result.errorDetails?.repair?.nextStepHint).toContain('Add an "action" field for github.');
-      expect(result.errorDetails?.repair?.nextStepHint).toContain('{ action: "help" }');
-    });
-
-    it('adds unknown-action repair guidance with closest action suggestions', async () => {
-      const runtimeRegistry = new ToolRegistry();
-      registerDefaultAgenticTools(runtimeRegistry);
-
-      const result = await runtimeRegistry.executeValidated(
-        {
-          name: 'github',
-          args: { action: 'repo.gt', repo: 'openai/openai-node' },
-        },
-        { traceId: 'test', userId: 'u1', channelId: 'c1' },
-      );
-
-      expect(result.success).toBe(false);
-      if (result.success) return;
-      expect(result.errorType).toBe('validation');
-      expect(result.errorDetails?.repair).toMatchObject({
-        tool: 'github',
-        kind: 'unknown_action',
-      });
-      expect(result.errorDetails?.repair?.suggestedActions[0]).toBe('repo.get');
-      expect(result.errorDetails?.repair?.actionContract?.action).toBe('repo.get');
-      expect(result.errorDetails?.repair?.nextStepHint).toContain('Action "repo.gt" is not valid for github.');
-      expect(result.errorDetails?.repair?.nextStepHint).toContain('suggested actions');
-    });
-
-    it('avoids expensive fuzzy ranking for oversized unknown action strings', async () => {
-      const runtimeRegistry = new ToolRegistry();
-      registerDefaultAgenticTools(runtimeRegistry);
-      const hugeAction = `repo.get${'x'.repeat(20_000)}`;
-
-      const result = await runtimeRegistry.executeValidated(
-        {
-          name: 'github',
-          args: { action: hugeAction, repo: 'openai/openai-node' },
-        },
-        { traceId: 'test', userId: 'u1', channelId: 'c1' },
-      );
-
-      expect(result.success).toBe(false);
-      if (result.success) return;
-      expect(result.errorType).toBe('validation');
-      expect(result.errorDetails?.repair).toMatchObject({
-        tool: 'github',
-        kind: 'unknown_action',
-      });
-      expect(result.errorDetails?.repair?.suggestedActions).toEqual(['repo.get']);
-      expect(result.errorDetails?.repair?.actionContract?.action).toBe('repo.get');
-      expect(result.errorDetails?.repair?.nextStepHint).toContain('is not valid for github');
-    });
-
-    it('adds invalid-action-payload repair guidance for known routed actions', async () => {
-      const runtimeRegistry = new ToolRegistry();
-      registerDefaultAgenticTools(runtimeRegistry);
-
-      const result = await runtimeRegistry.executeValidated(
-        {
-          name: 'github',
-          args: { action: 'repo.get' },
-        },
-        { traceId: 'test', userId: 'u1', channelId: 'c1' },
-      );
-
-      expect(result.success).toBe(false);
-      if (result.success) return;
-      expect(result.errorType).toBe('validation');
-      expect(result.errorDetails?.repair).toMatchObject({
-        tool: 'github',
-        kind: 'invalid_action_payload',
-      });
-      expect(result.errorDetails?.repair?.actionContract?.action).toBe('repo.get');
-      expect(result.errorDetails?.repair?.actionContract?.requiredFields).toContain('repo');
-      expect(result.errorDetails?.repair?.nextStepHint).toContain('Keep action="repo.get" and fix the payload fields.');
+      expect(result.errorDetails?.hint).toContain('owner/name');
     });
 
     it('keeps direct-tool validation hints without routed repair guidance', async () => {
@@ -322,21 +284,21 @@ describe('ToolRegistry', () => {
       if (result.success) return;
       expect(result.errorType).toBe('validation');
       expect(result.errorDetails?.hint).toContain('packageName');
-      expect(result.errorDetails?.repair).toBeUndefined();
     });
   });
 
   describe('action policy resolution', () => {
-    it('classifies routed Discord writes explicitly without requiring approval', async () => {
+    it('classifies granular Discord writes explicitly without requiring approval', async () => {
       const runtimeRegistry = new ToolRegistry();
       registerDefaultAgenticTools(runtimeRegistry);
 
       const result = await runtimeRegistry.resolveActionPolicy(
         {
-          name: 'discord_messages',
+          name: 'discord_messages_create_poll',
           args: {
-            action: 'send',
-            content: 'hello from Sage',
+            action: 'create_poll',
+            question: 'hello from Sage',
+            answers: ['A', 'B'],
           },
         },
         { traceId: 'test', userId: 'u1', channelId: 'c1' },
@@ -355,7 +317,7 @@ describe('ToolRegistry', () => {
 
       const serverRead = await runtimeRegistry.resolveActionPolicy(
         {
-          name: 'discord_server',
+          name: 'discord_server_list_members',
           args: {
             action: 'list_members',
           },
@@ -365,7 +327,7 @@ describe('ToolRegistry', () => {
 
       const adminRead = await runtimeRegistry.resolveActionPolicy(
         {
-          name: 'discord_admin',
+          name: 'discord_admin_get_server_key_status',
           args: {
             action: 'get_server_key_status',
           },

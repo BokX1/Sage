@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { AiProviderClient } from '@/platform/llm/ai-provider-client';
+import { AiProviderClient } from '../../../../src/platform/llm/ai-provider-client';
 import { stubFetch, type FetchMock } from '../../../testkit/fetch';
 
 type RequestBody = {
@@ -43,6 +43,7 @@ describe('AiProviderClient', () => {
 
   beforeEach(() => {
     fetchMock = stubFetch();
+    AiProviderClient.resetProviderToolControlsSupportCacheForTests();
   });
 
   it('rejects non-HTTP(S) base URLs', () => {
@@ -207,16 +208,16 @@ describe('AiProviderClient', () => {
 
     const body = parseRequestBody(fetchMock, 0);
     const userMessages = body.messages.filter((message) => message.role === 'user');
-    expect(userMessages).toHaveLength(1);
+    expect(userMessages).toHaveLength(2);
     expect(Array.isArray(userMessages[0]?.content)).toBe(true);
     const parts = userMessages[0]?.content as Array<Record<string, unknown>>;
     expect(parts).toEqual(
       expect.arrayContaining([
         { type: 'text', text: 'First turn' },
         { type: 'image_url', image_url: { url: 'https://example.com/1.png' } },
-        { type: 'text', text: 'Second turn' },
       ]),
     );
+    expect(userMessages[1]?.content).toBe('Second turn');
   });
 
   it('strips unsupported $schema keys from tool parameters before sending requests', async () => {
@@ -294,64 +295,39 @@ describe('AiProviderClient', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it('normalizes discriminated top-level union tool schemas into a provider-safe object schema', async () => {
+  it('fails when tools use unsupported top-level union schemas', async () => {
     const client = new AiProviderClient({ baseUrl: 'https://api.test/v1', model: 'test-chat-model' });
 
-    fetchMock.mockResolvedValueOnce({
-      ok: true,
-      status: 200,
-      statusText: 'OK',
-      json: async () => ({ choices: [{ message: { content: 'ok' } }] }),
-      text: async () => 'ok',
-    } satisfies { ok: boolean; status: number; statusText: string; json: () => Promise<unknown>; text: () => Promise<string> });
-
-    await client.chat({
-      messages: [{ role: 'user', content: 'run tool' }],
-      tools: [
-        {
-          type: 'function',
-          function: {
-            name: 'discord_server',
-            parameters: {
-              oneOf: [
-                {
-                  type: 'object',
-                  properties: {
-                    action: { type: 'string', const: 'list_channels' },
-                    limit: { type: 'integer', minimum: 1 },
+    await expect(
+      client.chat({
+        messages: [{ role: 'user', content: 'run tool' }],
+        tools: [
+          {
+            type: 'function',
+            function: {
+              name: 'discord_server_list_channels',
+              parameters: {
+                oneOf: [
+                  {
+                    type: 'object',
+                    properties: {
+                      limit: { type: 'integer', minimum: 1 },
+                    },
                   },
-                  required: ['action'],
-                  additionalProperties: false,
-                },
-                {
-                  type: 'object',
-                  properties: {
-                    action: { type: 'string', const: 'get_channel' },
-                    channelId: { type: 'string' },
+                  {
+                    type: 'object',
+                    properties: {
+                      channelId: { type: 'string' },
+                    },
                   },
-                  required: ['action', 'channelId'],
-                  additionalProperties: false,
-                },
-              ],
+                ],
+              },
             },
           },
-        },
-      ],
-    });
-
-    const body = parseRequestBody(fetchMock, 0);
-    expect(body.tools?.[0]?.function?.parameters).toMatchObject({
-      type: 'object',
-      properties: {
-        action: {
-          type: 'string',
-          enum: ['list_channels', 'get_channel'],
-        },
-        limit: { type: 'integer', minimum: 1 },
-        channelId: { type: 'string' },
-      },
-      required: ['action'],
-    });
+        ],
+      }),
+    ).rejects.toThrow('unsupported top-level schema keyword "oneOf"');
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it('fails fast (no retry) on 400 model validation errors', async () => {
@@ -544,6 +520,163 @@ describe('AiProviderClient', () => {
       tool_call_id: 'call-1',
       content: '{"results":[{"title":"Docs"}]}',
     });
+  });
+
+  it('sends allowed_tools and parallel_tool_calls when the caller narrows the active subset explicitly', async () => {
+    const client = new AiProviderClient({ baseUrl: 'https://api.test/v1', model: 'test-chat-model', maxRetries: 0 });
+
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      statusText: 'OK',
+      json: async () => ({ choices: [{ message: { content: 'done' } }] }),
+      text: async () => 'done',
+    } satisfies { ok: boolean; status: number; statusText: string; json: () => Promise<unknown>; text: () => Promise<string> });
+
+    await client.chat({
+      messages: [{ role: 'user', content: 'Search it' }],
+      tools: [
+        {
+          type: 'function',
+          function: {
+            name: 'google_search',
+            parameters: { type: 'object', properties: {}, required: [] },
+          },
+        },
+        {
+          type: 'function',
+          function: {
+            name: 'web_read',
+            parameters: { type: 'object', properties: {}, required: [] },
+          },
+        },
+      ],
+      allowedTools: [{ type: 'function', function: { name: 'google_search' } }],
+      parallelToolCalls: false,
+    });
+
+    const body = parseRequestBody(fetchMock, 0) as RequestBody & {
+      parallel_tool_calls?: boolean;
+      tool_choice?: Record<string, unknown>;
+    };
+    expect(body.parallel_tool_calls).toBe(false);
+    expect(body.tool_choice).toMatchObject({
+      type: 'allowed_tools',
+      mode: 'auto',
+      tools: [{ type: 'function', function: { name: 'google_search' } }],
+    });
+  });
+
+  it('retries without provider tool controls when the endpoint rejects allowed_tools or parallel_tool_calls', async () => {
+    const client = new AiProviderClient({ baseUrl: 'https://api.test/v1', model: 'test-chat-model', maxRetries: 0 });
+
+    fetchMock
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 400,
+        statusText: 'Bad Request',
+        json: async () => ({}),
+        text: async () => 'unknown field: allowed_tools',
+      } satisfies { ok: boolean; status: number; statusText: string; json: () => Promise<unknown>; text: () => Promise<string> })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        json: async () => ({ choices: [{ message: { content: 'done' } }] }),
+        text: async () => 'done',
+      } satisfies { ok: boolean; status: number; statusText: string; json: () => Promise<unknown>; text: () => Promise<string> });
+
+    await client.chat({
+      messages: [{ role: 'user', content: 'Search it' }],
+      tools: [
+        {
+          type: 'function',
+          function: {
+            name: 'google_search',
+            parameters: { type: 'object', properties: {}, required: [] },
+          },
+        },
+      ],
+      allowedTools: [{ type: 'function', function: { name: 'google_search' } }],
+      parallelToolCalls: false,
+      toolChoice: 'auto',
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const retryBody = parseRequestBody(fetchMock, 1) as RequestBody & {
+      parallel_tool_calls?: boolean;
+      tool_choice?: unknown;
+    };
+    expect(retryBody.parallel_tool_calls).toBeUndefined();
+    expect(retryBody.tool_choice).toBe('auto');
+  });
+
+  it('caches unsupported provider tool controls so later requests skip the failed first attempt', async () => {
+    const firstClient = new AiProviderClient({ baseUrl: 'https://api.test/v1', model: 'test-chat-model', maxRetries: 0 });
+    const secondClient = new AiProviderClient({ baseUrl: 'https://api.test/v1', model: 'test-chat-model', maxRetries: 0 });
+
+    fetchMock
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 400,
+        statusText: 'Bad Request',
+        json: async () => ({}),
+        text: async () => 'unknown field: parallel_tool_calls',
+      } satisfies { ok: boolean; status: number; statusText: string; json: () => Promise<unknown>; text: () => Promise<string> })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        json: async () => ({ choices: [{ message: { content: 'done' } }] }),
+        text: async () => 'done',
+      } satisfies { ok: boolean; status: number; statusText: string; json: () => Promise<unknown>; text: () => Promise<string> })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        json: async () => ({ choices: [{ message: { content: 'done again' } }] }),
+        text: async () => 'done again',
+      } satisfies { ok: boolean; status: number; statusText: string; json: () => Promise<unknown>; text: () => Promise<string> });
+
+    await firstClient.chat({
+      messages: [{ role: 'user', content: 'Search it' }],
+      tools: [
+        {
+          type: 'function',
+          function: {
+            name: 'google_search',
+            parameters: { type: 'object', properties: {}, required: [] },
+          },
+        },
+      ],
+      allowedTools: [{ type: 'function', function: { name: 'google_search' } }],
+      parallelToolCalls: false,
+      toolChoice: 'auto',
+    });
+
+    await secondClient.chat({
+      messages: [{ role: 'user', content: 'Search it again' }],
+      tools: [
+        {
+          type: 'function',
+          function: {
+            name: 'google_search',
+            parameters: { type: 'object', properties: {}, required: [] },
+          },
+        },
+      ],
+      allowedTools: [{ type: 'function', function: { name: 'google_search' } }],
+      parallelToolCalls: false,
+      toolChoice: 'auto',
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    const cachedBody = parseRequestBody(fetchMock, 2) as RequestBody & {
+      parallel_tool_calls?: boolean;
+      tool_choice?: unknown;
+    };
+    expect(cachedBody.parallel_tool_calls).toBeUndefined();
+    expect(cachedBody.tool_choice).toBe('auto');
   });
 
   it('fails when the provider returns malformed tool-call argument JSON', async () => {

@@ -40,9 +40,8 @@ describe('discord files tool send_attachment', () => {
 
     const result = await registry.executeValidated(
       {
-        name: 'discord_files',
+        name: 'discord_files_send_attachment',
         args: {
-          action: 'send_attachment',
           attachmentId: 'att-1',
           channelId: 'channel-2',
           content: 'Here it is.',
@@ -67,8 +66,10 @@ describe('discord files tool send_attachment', () => {
     );
     expect(result.result).toEqual(
       expect.objectContaining({
-        found: true,
-        storedContent: 'Image summary: cat meme',
+        structuredContent: expect.objectContaining({
+          found: true,
+          storedContent: 'Image summary: cat meme',
+        }),
       }),
     );
   });

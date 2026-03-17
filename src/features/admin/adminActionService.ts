@@ -1224,7 +1224,7 @@ export function resolveModerationActionChannelId(params: {
       sourceChannelId: params.sourceChannelId,
       rawChannelId: params.request.channelId,
       rawMessageIds: params.request.messageIds,
-      usage: 'discord_admin.submit_moderation (bulk_delete_messages)',
+      usage: 'discord_admin_submit_moderation (bulk_delete_messages)',
     }).channelId;
   }
 
@@ -1244,7 +1244,7 @@ export function resolveModerationActionChannelId(params: {
       rawMessageId: params.request.messageId,
       rawChannelId: params.request.channelId,
       replyTarget: params.replyTarget,
-      usage: `discord_admin.submit_moderation (${params.request.action})`,
+      usage: `discord_admin_submit_moderation (${params.request.action})`,
     }).channelId;
   }
 
@@ -1333,7 +1333,7 @@ async function prepareMessageModerationEnvelope(
       sourceChannelId: params.sourceChannelId,
       rawChannelId: request.channelId,
       rawMessageIds: request.messageIds,
-      usage: 'discord_admin.submit_moderation (bulk_delete_messages)',
+      usage: 'discord_admin_submit_moderation (bulk_delete_messages)',
     });
     const channel = await fetchGuildChannel(params.guildId, resolvedTargets.channelId);
     const botChannelPermissions = botMember.permissionsIn(channel);
@@ -1415,7 +1415,7 @@ async function prepareMessageModerationEnvelope(
         guildId: params.guildId,
         rawUserId: request.authorUserId,
         replyTarget: params.replyTarget,
-        usage: 'discord_admin.submit_moderation (purge_recent_messages authorUserId)',
+        usage: 'discord_admin_submit_moderation (purge_recent_messages authorUserId)',
         allowReplyTargetInference: false,
       });
       authorUserId = resolvedUser.userId;
@@ -1529,7 +1529,7 @@ async function prepareMessageModerationEnvelope(
     rawMessageId: 'messageId' in request ? request.messageId : undefined,
     rawChannelId: 'channelId' in request ? request.channelId : undefined,
     replyTarget: params.replyTarget,
-    usage: `discord_admin.submit_moderation (${request.action})`,
+    usage: `discord_admin_submit_moderation (${request.action})`,
   });
   const channel = await fetchGuildChannel(params.guildId, target.channelId);
   const botChannelPermissions = botMember.permissionsIn(channel);
@@ -1613,7 +1613,7 @@ async function prepareMessageModerationEnvelope(
     guildId: params.guildId,
     rawUserId: request.userId,
     replyTarget: params.replyTarget,
-    usage: 'discord_admin.submit_moderation (remove_user_reaction)',
+    usage: 'discord_admin_submit_moderation (remove_user_reaction)',
     allowReplyTargetInference: false,
   });
 
@@ -1695,7 +1695,7 @@ async function prepareMemberModerationEnvelope(
     guildId: params.guildId,
     rawUserId: request.userId,
     replyTarget: params.replyTarget,
-    usage: `discord_admin.submit_moderation (${request.action})`,
+    usage: `discord_admin_submit_moderation (${request.action})`,
   });
   const { guild, botMember } = await fetchGuildAndBotMember(params.guildId);
   const botRequirements = moderationBotPermissionsForAction(request.action);
@@ -1741,7 +1741,7 @@ async function prepareMemberModerationEnvelope(
     const replyTarget = assertReplyTargetInGuild({
       guildId: params.guildId,
       replyTarget: params.replyTarget,
-      usage: `discord_admin.submit_moderation (${params.request.action})`,
+    usage: `discord_admin_submit_moderation (${params.request.action})`,
     });
     const replyPreview = extractReplyTargetPreview(replyTarget);
     evidence = {

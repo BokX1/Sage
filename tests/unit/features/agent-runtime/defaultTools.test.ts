@@ -9,31 +9,36 @@ describe('default agentic tools', () => {
     registerDefaultAgenticTools(registry);
     registerDefaultAgenticTools(registry);
 
-    expect(registry.listNames().sort()).toEqual([
-      'discord_admin',
-      'discord_context',
-      'discord_files',
-      'discord_messages',
-      'discord_server',
-      'discord_voice',
-      'github',
+    const names = registry.listNames();
+    expect(names).toEqual(expect.arrayContaining([
+      'discord_context_get_channel_summary',
+      'discord_messages_search_history',
+      'discord_files_read_attachment',
+      'discord_server_list_channels',
+      'discord_admin_create_role',
+      'discord_voice_get_status',
+      'github_get_repo',
+      'web_search',
+      'workflow_npm_github_code_search',
       'image_generate',
       'npm_info',
       'stack_overflow_search',
       'system_tool_stats',
       'system_time',
-      'workflow',
-      'web',
       'wikipedia_search',
-    ].sort());
+    ]));
+    expect(names).not.toContain('discord_admin');
+    expect(names).not.toContain('github');
+    expect(names).not.toContain('web');
+    expect(names).not.toContain('workflow');
   });
 
-  it('marks discord_admin as admin access', () => {
+  it('marks admin Discord tools as admin access', () => {
     const registry = new ToolRegistry();
     registerDefaultAgenticTools(registry);
 
-    const adminTool = registry.get('discord_admin');
-    expect(adminTool?.metadata?.access).toBe('admin');
+    const adminTool = registry.get('discord_admin_create_role');
+    expect(adminTool?.runtime.access).toBe('admin');
   });
 
   it('executes system_time tool', async () => {
@@ -56,8 +61,10 @@ describe('default agentic tools', () => {
     if (!result.success) return;
     expect(result.result).toEqual(
       expect.objectContaining({
-        isoUtc: expect.any(String),
-        unixMs: expect.any(Number),
+        structuredContent: expect.objectContaining({
+          isoUtc: expect.any(String),
+          unixMs: expect.any(Number),
+        }),
       }),
     );
   });
@@ -68,10 +75,11 @@ describe('default agentic tools', () => {
 
     const result = await registry.executeValidated(
       {
-        name: 'discord_messages',
+        name: 'discord_messages_create_poll',
         args: {
-          action: 'send',
-          content: 'Hello from autopilot',
+          action: 'create_poll',
+          question: 'Hello from autopilot',
+          answers: ['A', 'B'],
         },
       },
       {
@@ -95,11 +103,10 @@ describe('default agentic tools', () => {
 
     const result = await registry.executeValidated(
       {
-        name: 'discord_admin',
+        name: 'discord_admin_submit_moderation',
         args: {
           action: 'submit_moderation',
           request: {
-            // wrong schema on purpose: this is an interaction, not a moderation action
             action: 'create_poll',
             question: 'Lunch?',
             answers: ['Pizza', 'Salad'],
@@ -127,7 +134,7 @@ describe('default agentic tools', () => {
 
     const result = await registry.executeValidated(
       {
-        name: 'discord_admin',
+        name: 'discord_admin_update_server_instructions',
         args: {
           action: 'update_server_instructions',
           request: {

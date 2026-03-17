@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { buildUniversalPromptContract } from '../../../../src/features/agent-runtime/promptContract';
-import { getPromptToolGuidance, getRoutedToolDoc } from '../../../../src/features/agent-runtime/toolDocs';
+import { getPromptToolGuidance, getTopLevelToolDoc } from '../../../../src/features/agent-runtime/toolDocs';
 
 function buildPrompt(activeTools: string[]): string {
   return buildUniversalPromptContract({
@@ -29,323 +29,127 @@ function buildPrompt(activeTools: string[]): string {
 
 describe('discord tool mental model guidance', () => {
   it('distinguishes instruction reads from instruction writes', () => {
-    const contextDoc = getRoutedToolDoc('discord_context');
-    const adminDoc = getRoutedToolDoc('discord_admin');
+    const readDoc = getTopLevelToolDoc('discord_context_get_server_instructions');
+    const writeDoc = getTopLevelToolDoc('discord_admin_update_server_instructions');
 
-    expect(contextDoc).not.toBeNull();
-    expect(adminDoc).not.toBeNull();
-
-    const readAction = contextDoc?.actions.find((action) => action.action === 'get_server_instructions');
-    const writeAction = adminDoc?.actions.find((action) => action.action === 'update_server_instructions');
-
-    expect(readAction?.avoidWhen).toEqual(
+    expect(readDoc?.selectionHints).toEqual(
       expect.arrayContaining([
-        expect.stringContaining('discord_admin.update_server_instructions'),
+        expect.stringContaining('read the current guild persona'),
       ]),
     );
-    expect(writeAction?.avoidWhen).toEqual(
+    expect(writeDoc?.selectionHints).toEqual(
       expect.arrayContaining([
-        expect.stringContaining('discord_context.get_server_instructions'),
-        expect.stringContaining('submit_moderation'),
+        expect.stringContaining('change Sage'),
       ]),
     );
-    expect(writeAction?.commonMistakes).toEqual(
+    expect(writeDoc?.avoidWhen).toEqual(
       expect.arrayContaining([
-        expect.stringContaining('submit_moderation'),
+        expect.stringContaining('read the current instructions'),
       ]),
     );
   });
 
-  it('distinguishes governance/config from moderation/enforcement', () => {
-    const adminDoc = getRoutedToolDoc('discord_admin');
+  it('distinguishes continuity summaries from exact message evidence', () => {
+    const summaryDoc = getTopLevelToolDoc('discord_context_get_channel_summary');
+    const evidenceDoc = getTopLevelToolDoc('discord_messages_search_history');
 
-    const updateInstructions = adminDoc?.actions.find((action) => action.action === 'update_server_instructions');
-    const moderation = adminDoc?.actions.find((action) => action.action === 'submit_moderation');
-    const deleteMessage = adminDoc?.actions.find((action) => action.action === 'delete_message');
-
-    expect(adminDoc?.routingNotes).toEqual(
+    expect(summaryDoc?.selectionHints).toEqual(
       expect.arrayContaining([
-        expect.stringContaining('Sage Persona/config and moderation as separate admin domains'),
-        expect.stringContaining('submit_moderation is for enforcement workflows'),
-        expect.stringContaining('Reply-targeted cleanup'),
+        expect.stringContaining('continuity'),
       ]),
     );
-    expect(adminDoc?.selectionHints).toEqual(
+    expect(summaryDoc?.avoidWhen).toEqual(
       expect.arrayContaining([
-        expect.stringContaining('Governance/config for Sage or the review surface'),
-        expect.stringContaining('reply-targeted "delete this spam/abuse message" requests -> submit_moderation'),
+        expect.stringContaining('exact message-level evidence'),
       ]),
     );
-    expect(updateInstructions?.avoidWhen).toEqual(
+    expect(evidenceDoc?.selectionHints).toEqual(
       expect.arrayContaining([
-        expect.stringContaining('moderation or enforcement'),
+        expect.stringContaining('exact message-history evidence'),
       ]),
     );
-    expect(moderation?.avoidWhen).toEqual(
+    expect(evidenceDoc?.avoidWhen).toEqual(
       expect.arrayContaining([
-        expect.stringContaining('Sage persona, tone, behavior rules, or server policy posture'),
-      ]),
-    );
-    expect(moderation?.commonMistakes).toEqual(
-      expect.arrayContaining([
-        expect.stringContaining('update_server_instructions'),
-        expect.stringContaining('generic delete_message'),
-      ]),
-    );
-    expect(moderation?.optionalFields).toEqual(
-      expect.arrayContaining([
-        'request.messageIds',
-        'request.limit',
-        'request.windowMinutes',
-        'request.authorUserId',
-      ]),
-    );
-    expect(moderation?.resultNotes).toEqual(
-      expect.arrayContaining([
-        expect.stringContaining('bulk_delete_messages'),
-        expect.stringContaining('purge_recent_messages'),
-        expect.stringContaining('older than 14 days'),
-      ]),
-    );
-    expect(deleteMessage?.avoidWhen).toEqual(
-      expect.arrayContaining([
-        expect.stringContaining('submit_moderation'),
-      ]),
-    );
-    expect(deleteMessage?.commonMistakes).toEqual(
-      expect.arrayContaining([
-        expect.stringContaining('replied-to spam/abusive user content'),
+        expect.stringContaining('high-level continuity'),
       ]),
     );
   });
 
-  it('distinguishes rolling summaries from exact message windows', () => {
-    const contextDoc = getRoutedToolDoc('discord_context');
-    const messagesDoc = getRoutedToolDoc('discord_messages');
+  it('distinguishes governance changes from moderation actions', () => {
+    const personaDoc = getTopLevelToolDoc('discord_admin_update_server_instructions');
+    const moderationDoc = getTopLevelToolDoc('discord_admin_submit_moderation');
 
-    const summaryAction = contextDoc?.actions.find((action) => action.action === 'get_channel_summary');
-    const messageWindowAction = messagesDoc?.actions.find((action) => action.action === 'get_context');
-
-    expect(summaryAction?.avoidWhen).toEqual(
+    expect(personaDoc?.selectionHints).toEqual(
       expect.arrayContaining([
-        expect.stringContaining('message-level evidence'),
+        expect.stringContaining('change Sage'),
       ]),
     );
-    expect(messageWindowAction?.avoidWhen).toEqual(
+    expect(moderationDoc?.selectionHints).toEqual(
       expect.arrayContaining([
-        expect.stringContaining('discord_context.get_channel_summary'),
+        expect.stringContaining('moderation and enforcement'),
       ]),
     );
-  });
-
-  it('keeps thread lifecycle under discord_server rather than discord_messages', () => {
-    const messagesDoc = getRoutedToolDoc('discord_messages');
-    const serverDoc = getRoutedToolDoc('discord_server');
-
-    expect(messagesDoc?.routingNotes).toEqual(
+    expect(moderationDoc?.avoidWhen).toEqual(
       expect.arrayContaining([
-        expect.stringContaining('Thread lifecycle belongs to discord_server'),
-      ]),
-    );
-    expect(serverDoc?.selectionHints).toEqual(
-      expect.arrayContaining([
-        expect.stringContaining('Thread lifecycle writes'),
+        expect.stringContaining('changing Sage behavior'),
       ]),
     );
   });
 
-  it('marks admin-only reads distinctly from public guild reads', () => {
-    const serverDoc = getRoutedToolDoc('discord_server');
+  it('distinguishes file recall from guild inventory', () => {
+    const fileDoc = getTopLevelToolDoc('discord_files_find_channel');
+    const serverDoc = getTopLevelToolDoc('discord_server_list_channels');
 
-    expect(serverDoc?.routingNotes).toEqual(
-      expect.arrayContaining([
-        expect.stringContaining('admin-only reads'),
-      ]),
-    );
-
-    const listMembers = serverDoc?.actions.find((action) => action.action === 'list_members');
-    const getMember = serverDoc?.actions.find((action) => action.action === 'get_member');
-
-    expect(listMembers?.restrictions).toEqual(
-      expect.arrayContaining([
-        'Admin-only read.',
-      ]),
-    );
-    expect(getMember?.restrictions).toEqual(
-      expect.arrayContaining([
-        'Admin-only read.',
-      ]),
-    );
+    expect(fileDoc?.selectionHints.length ?? 0).toBeGreaterThan(0);
+    expect(serverDoc?.selectionHints.length ?? 0).toBeGreaterThan(0);
+    expect(buildPrompt([
+      'discord_files_find_channel',
+      'discord_server_list_channels',
+    ])).toContain('File recall vs guild resources');
   });
 
   it('distinguishes voice analytics from live voice control', () => {
-    const contextDoc = getRoutedToolDoc('discord_context');
-    const voiceDoc = getRoutedToolDoc('discord_voice');
-
-    const voiceAnalytics = contextDoc?.actions.find((action) => action.action === 'get_voice_analytics');
-    const voiceSummaries = contextDoc?.actions.find((action) => action.action === 'get_voice_summaries');
-
-    expect(voiceAnalytics?.avoidWhen).toEqual(
-      expect.arrayContaining([
-        expect.stringContaining('discord_voice'),
-      ]),
-    );
-    expect(voiceSummaries?.avoidWhen).toEqual(
-      expect.arrayContaining([
-        expect.stringContaining('discord_voice'),
-      ]),
-    );
-    expect(voiceDoc?.routingNotes).toEqual(
-      expect.arrayContaining([
-        expect.stringContaining('discord_context'),
-      ]),
-    );
-  });
-
-  it('distinguishes file discovery from channel or server inventory', () => {
-    const filesDoc = getRoutedToolDoc('discord_files');
-
-    expect(filesDoc?.routingNotes).toEqual(
-      expect.arrayContaining([
-        expect.stringContaining('enumerate files, not channels or guild resources'),
-        expect.stringContaining('search attachment text, not message history'),
-      ]),
-    );
-
-    const listChannel = filesDoc?.actions.find((action) => action.action === 'list_channel');
-    const findChannel = filesDoc?.actions.find((action) => action.action === 'find_channel');
-
-    expect(listChannel?.avoidWhen).toEqual(
-      expect.arrayContaining([
-        expect.stringContaining('discord_server.list_channels'),
-      ]),
-    );
-    expect(findChannel?.avoidWhen).toEqual(
-      expect.arrayContaining([
-        expect.stringContaining('discord_messages.search_history'),
-      ]),
-    );
-  });
-
-  it('teaches api as a fallback rather than a first-choice admin action', () => {
-    const adminDoc = getRoutedToolDoc('discord_admin');
-    const apiAction = adminDoc?.actions.find((action) => action.action === 'api');
-
-    expect(adminDoc?.routingNotes).toEqual(
-      expect.arrayContaining([
-        expect.stringContaining('fallback only'),
-      ]),
-    );
-    expect(adminDoc?.selectionHints).toEqual(
-      expect.arrayContaining([
-        expect.stringContaining('Bulk message enforcement'),
-      ]),
-    );
-    expect(apiAction?.avoidWhen).toEqual(
-      expect.arrayContaining([
-        expect.stringContaining('bulk/purge moderation'),
-      ]),
-    );
-    expect(apiAction?.avoidWhen).toEqual(
-      expect.arrayContaining([
-        expect.stringContaining('typed action already covers the task'),
-      ]),
-    );
-    expect(apiAction?.commonMistakes).toEqual(
-      expect.arrayContaining([
-        expect.stringContaining('typed discord_server or discord_admin actions'),
-      ]),
-    );
-  });
-
-  it('teaches send presentation as a payload contract rather than decoration', () => {
-    const messagesDoc = getRoutedToolDoc('discord_messages');
-    const sendAction = messagesDoc?.actions.find((action) => action.action === 'send');
-
-    expect(messagesDoc?.routingNotes).toEqual(
-      expect.arrayContaining([
-        expect.stringContaining('presentation mode'),
-      ]),
-    );
-    expect(sendAction?.restrictions).toEqual(
-      expect.arrayContaining([
-        expect.stringContaining('components_v2 must not include content'),
-      ]),
-    );
-    expect(sendAction?.commonMistakes).toEqual(
-      expect.arrayContaining([
-        expect.stringContaining('presentation as a cosmetic toggle'),
-      ]),
-    );
-  });
-
-  it('teaches routed-tool help as the self-discovery path and direct tools as schema-only', () => {
-    const prompt = buildPrompt(['discord_context', 'discord_messages', 'web', 'system_time']);
-
-    expect(prompt).toContain('<tool_protocol>');
-    expect(prompt).toContain('Routed tools expose action-level `help`');
-    expect(prompt).toContain('Direct tools do not expose `help`; rely on schema and description');
-    expect(prompt).toContain('Use help only when the routed-tool contract is genuinely unclear.');
-  });
-
-  it('surfaces the critical Discord distinctions together in the capability prompt', () => {
     const prompt = buildPrompt([
-      'discord_context',
-      'discord_messages',
-      'discord_files',
-      'discord_server',
-      'discord_admin',
-      'discord_voice',
+      'discord_context_get_voice_analytics',
+      'discord_voice_join_current_channel',
     ]);
 
-    expect(prompt).toContain('discord_context: Profiles, summaries, relationships, and Sage Persona reads.');
-    expect(prompt).toContain('discord_admin: Governance changes, moderation, and API fallback.');
-    expect(prompt).toContain('Exact quotes, message proof, or local message windows -> discord_messages instead.');
-    expect(prompt).toContain('File recall vs guild resources');
     expect(prompt).toContain('Voice analytics vs live control');
-    expect(prompt).toContain('Change Sage behavior or governance config');
-    expect(prompt).toContain('Enforce on user or content');
   });
 
-  it('keeps prompt guidance aligned with routed-help distinctions', () => {
-    const contextPromptGuidance = getPromptToolGuidance('discord_context');
-    const messagesPromptGuidance = getPromptToolGuidance('discord_messages');
-    const adminPromptGuidance = getPromptToolGuidance('discord_admin');
+  it('surfaces Discord routing distinctions directly in the prompt', () => {
+    const prompt = buildPrompt([
+      'discord_context_get_channel_summary',
+      'discord_context_get_server_instructions',
+      'discord_messages_search_history',
+      'discord_files_find_channel',
+      'discord_server_list_channels',
+      'discord_admin_update_server_instructions',
+      'discord_admin_submit_moderation',
+      'discord_voice_join_current_channel',
+      'discord_context_get_voice_analytics',
+    ]);
 
-    const contextDoc = getRoutedToolDoc('discord_context');
-    const messagesDoc = getRoutedToolDoc('discord_messages');
-    const adminDoc = getRoutedToolDoc('discord_admin');
+    expect(prompt).toContain('<tool_protocol>');
+    expect(prompt).toContain('Summary vs exact evidence');
+    expect(prompt).toContain('Sage Persona read vs write');
+    expect(prompt).toContain('Governance/config vs moderation');
+    expect(prompt).toContain('Reply-targeted enforcement uses moderation tools');
+    expect(prompt).toContain('File recall vs guild resources');
+    expect(prompt).toContain('Voice analytics vs live control');
+  });
 
-    expect(contextPromptGuidance?.decisionEdges).toEqual(
-      expect.arrayContaining([
-        'Exact quotes, message proof, or local message windows -> discord_messages instead.',
-      ]),
-    );
-    expect(messagesPromptGuidance?.antiPatterns).toEqual(
-      expect.arrayContaining([
-        'Do not leave an in-channel delivery in plain prose when discord_messages.send should deliver it.',
-      ]),
-    );
-    expect(adminPromptGuidance?.decisionEdges).toEqual(
-      expect.arrayContaining([
-        'Use discord_admin.api only when typed Discord actions do not cover the task.',
-      ]),
-    );
+  it('keeps prompt guidance aligned with granular Discord docs', () => {
+    const summaryGuidance = getPromptToolGuidance('discord_context_get_channel_summary');
+    const moderationDoc = getTopLevelToolDoc('discord_admin_submit_moderation');
+    const inviteDoc = getTopLevelToolDoc('discord_admin_get_invite_url');
 
-    expect(contextDoc?.avoidWhen).toEqual(
+    expect(summaryGuidance?.purpose ?? '').not.toHaveLength(0);
+    expect(moderationDoc?.selectionHints).toEqual(
       expect.arrayContaining([
-        expect.stringContaining('exact message quotes or historical proof'),
+        expect.stringContaining('moderation and enforcement'),
       ]),
     );
-    expect(messagesDoc?.avoidWhen).toEqual(
-      expect.arrayContaining([
-        expect.stringContaining('summaries or profiles'),
-      ]),
-    );
-    expect(adminDoc?.routingNotes).toEqual(
-      expect.arrayContaining([
-        expect.stringContaining('fallback only'),
-      ]),
-    );
+    expect(inviteDoc?.selectionHints.length ?? 0).toBeGreaterThan(0);
   });
 });

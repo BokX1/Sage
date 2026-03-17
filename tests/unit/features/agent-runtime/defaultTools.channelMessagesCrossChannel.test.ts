@@ -26,9 +26,8 @@ describe('default tools cross-channel message history', () => {
 
     const result = await registry.executeValidated(
       {
-        name: 'discord_messages',
+        name: 'discord_messages_search_history',
         args: {
-          action: 'search_history',
           channelId: 'channel-2',
           query: 'hello world',
         },
@@ -59,9 +58,8 @@ describe('default tools cross-channel message history', () => {
 
     const result = await registry.executeValidated(
       {
-        name: 'discord_messages',
+        name: 'discord_messages_search_history',
         args: {
-          action: 'search_history',
           channelId: 'channel-2',
           query: 'hello world',
         },
@@ -88,9 +86,8 @@ describe('default tools cross-channel message history', () => {
 
     const result = await registry.executeValidated(
       {
-        name: 'discord_messages',
+        name: 'discord_messages_get_context',
         args: {
-          action: 'get_context',
           channelId: 'channel-2',
           messageId: 'msg-123',
         },
@@ -121,9 +118,8 @@ describe('default tools cross-channel message history', () => {
 
     const result = await registry.executeValidated(
       {
-        name: 'discord_messages',
+        name: 'discord_messages_get_context',
         args: {
-          action: 'get_context',
           channelId: 'channel-2',
           messageId: 'msg-123',
         },

@@ -275,7 +275,7 @@ async function runReadPathSmoke(target: SmokeTarget): Promise<void> {
       userId: target.actorUserId,
       channelId: target.channelId,
       guildId: target.guildId,
-      activeToolNames: ['discord_server'],
+      activeToolNames: ['discord_server_list_channels'],
       routeKind: 'discord-smoke',
       currentTurn: null,
       replyTarget: null,
@@ -289,9 +289,8 @@ async function runReadPathSmoke(target: SmokeTarget): Promise<void> {
           tool_calls: [
             {
               id: callId,
-              name: 'discord_server',
+              name: 'discord_server_list_channels',
               args: {
-                action: 'list_channels',
                 limit: 5,
               },
               type: 'tool_call',
@@ -304,10 +303,10 @@ async function runReadPathSmoke(target: SmokeTarget): Promise<void> {
     },
   });
 
-  const toolResult = result.toolResults.find((entry) => entry.name === 'discord_server');
+  const toolResult = result.toolResults.find((entry) => entry.name === 'discord_server_list_channels');
   if (!toolResult?.success) {
     throw new Error(
-      `Graph read-path smoke failed: ${toolResult?.error ?? 'discord_server.list_channels did not produce a successful tool result.'}`,
+      `Graph read-path smoke failed: ${toolResult?.error ?? 'discord_server_list_channels did not produce a successful tool result.'}`,
     );
   }
   if (result.pendingInterrupt?.kind === 'continue_prompt') {
@@ -319,13 +318,13 @@ async function runReadPathSmoke(target: SmokeTarget): Promise<void> {
         originTraceId: traceId,
         channelId: target.channelId,
         guildId: target.guildId,
-        activeToolNames: ['discord_server'],
+          activeToolNames: ['discord_server_list_channels'],
       },
       resumeTraceId: randomUUID(),
     });
 
     console.log(
-      `[PASS] graph read path routed discord_server.list_channels through LangGraph and cleaned the continuation pause (stop=${result.stopReason})`,
+      `[PASS] graph read path routed discord_server_list_channels through LangGraph and cleaned the continuation pause (stop=${result.stopReason})`,
     );
     return;
   }
@@ -334,7 +333,7 @@ async function runReadPathSmoke(target: SmokeTarget): Promise<void> {
   }
 
   console.log(
-    `[PASS] graph read path routed discord_server.list_channels through LangGraph and completed cleanly without a continuation pause (stop=${result.stopReason})`,
+    `[PASS] graph read path routed discord_server_list_channels through LangGraph and completed cleanly without a continuation pause (stop=${result.stopReason})`,
   );
 }
 
@@ -357,7 +356,7 @@ async function runApprovalPathSmoke(target: SmokeTarget): Promise<void> {
         userId: target.actorUserId,
         channelId: target.channelId,
         guildId: target.guildId,
-        activeToolNames: ['discord_admin'],
+        activeToolNames: ['discord_admin_create_role'],
         routeKind: 'discord-smoke',
         currentTurn: null,
         replyTarget: null,
@@ -368,9 +367,8 @@ async function runApprovalPathSmoke(target: SmokeTarget): Promise<void> {
         pendingWriteCalls: [
           {
             id: `${traceId}-call`,
-            name: 'discord_admin',
+            name: 'discord_admin_create_role',
             args: {
-              action: 'create_role',
               name: roleName,
               reason: approvalReason,
             },
@@ -417,7 +415,7 @@ async function runApprovalPathSmoke(target: SmokeTarget): Promise<void> {
         userId: target.actorUserId,
         channelId: target.channelId,
         guildId: target.guildId,
-        activeToolNames: ['discord_admin'],
+        activeToolNames: ['discord_admin_create_role'],
         routeKind: 'discord-smoke',
         currentTurn: null,
         replyTarget: null,
@@ -426,10 +424,10 @@ async function runApprovalPathSmoke(target: SmokeTarget): Promise<void> {
       },
     });
 
-    const toolResult = resumed.toolResults.find((entry) => entry.name === 'discord_admin');
+    const toolResult = resumed.toolResults.find((entry) => entry.name === 'discord_admin_create_role');
     if (!toolResult?.success) {
       throw new Error(
-        `Approval-resume smoke failed: ${toolResult?.error ?? 'discord_admin.create_role did not execute successfully.'}`,
+        `Approval-resume smoke failed: ${toolResult?.error ?? 'discord_admin_create_role did not execute successfully.'}`,
       );
     }
     action = await getApprovalReviewRequestById(requestId);
@@ -446,13 +444,13 @@ async function runApprovalPathSmoke(target: SmokeTarget): Promise<void> {
           originTraceId: traceId,
           channelId: target.channelId,
           guildId: target.guildId,
-          activeToolNames: ['discord_admin'],
+          activeToolNames: ['discord_admin_create_role'],
         },
         resumeTraceId: randomUUID(),
       });
 
       console.log(
-        `[PASS] graph approval path created, approved, resumed, executed discord_admin.create_role, and cleaned the continuation pause (stop=${resumed.stopReason})`,
+        `[PASS] graph approval path created, approved, resumed, executed discord_admin_create_role, and cleaned the continuation pause (stop=${resumed.stopReason})`,
       );
       return;
     }
@@ -461,7 +459,7 @@ async function runApprovalPathSmoke(target: SmokeTarget): Promise<void> {
     }
 
     console.log(
-      `[PASS] graph approval path created, approved, resumed, and executed discord_admin.create_role without requiring a continuation pause (stop=${resumed.stopReason})`,
+      `[PASS] graph approval path created, approved, resumed, and executed discord_admin_create_role without requiring a continuation pause (stop=${resumed.stopReason})`,
     );
   } finally {
     if (!action && requestId) {

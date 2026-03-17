@@ -4,26 +4,30 @@ import type { ToolResult } from '@/features/agent-runtime/toolCallExecution';
 
 function githubSuccess(path: string, repo = 'AjayAntoIsDev/Riko'): ToolResult {
   return {
-    name: 'github',
+    name: 'github_get_file',
     success: true,
-    result: {
+    structuredContent: {
       repo,
       path,
       content: 'file content',
     },
-    latencyMs: 120,
+    telemetry: {
+      latencyMs: 120,
+    },
   };
 }
 
 function githubFailure(
-  message = 'Tool execution failed: github.file.get failed for repo "acme/repo" path "missing/file.txt": HTTP 404: Not Found',
+  message = 'Tool execution failed: github_get_file failed for repo "acme/repo" path "missing/file.txt": HTTP 404: Not Found',
 ): ToolResult {
   return {
-    name: 'github',
+    name: 'github_get_file',
     success: false,
     error: message,
     errorType: 'execution',
-    latencyMs: 110,
+    telemetry: {
+      latencyMs: 110,
+    },
   };
 }
 

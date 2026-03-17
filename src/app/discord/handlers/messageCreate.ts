@@ -121,7 +121,7 @@ function buildAttachmentIngestNotes(params: {
           .join(', ');
         const overflow = params.cachedAttachmentRefs.length - 3;
         notes.push(
-          `[System: Cached attachment references: ${preview}${overflow > 0 ? ` (+${overflow} more)` : ''}. Read content via discord_files action read_attachment or resend via discord_files action send_attachment using attachmentId.]`,
+          `[System: Cached attachment references: ${preview}${overflow > 0 ? ` (+${overflow} more)` : ''}. Read content with discord_files_read_attachment or resend with discord_files_send_attachment using attachmentId.]`,
         );
       }
     } else {
@@ -167,7 +167,7 @@ function buildRuntimeAttachmentBlocks(params: {
       .join(', ');
     const overflow = params.cachedAttachmentRefs.length - 3;
     blocks.push(
-      `[System: Cached attachment references: ${preview}${overflow > 0 ? ` (+${overflow} more)` : ''}. Read via discord_files action read_attachment or resend via discord_files action send_attachment using attachmentId.]`,
+      `[System: Cached attachment references: ${preview}${overflow > 0 ? ` (+${overflow} more)` : ''}. Read with discord_files_read_attachment or resend with discord_files_send_attachment using attachmentId.]`,
     );
   }
 

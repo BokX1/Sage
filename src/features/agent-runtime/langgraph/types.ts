@@ -105,11 +105,13 @@ export interface ToolCallFinalizationEvent {
   rebudgeting?: GraphRebudgetEvent;
 }
 
-export interface SerializedToolResult extends Omit<ToolResult, 'attachments'> {
-  attachmentsMeta?: Array<{
-    filename: string;
+export interface SerializedToolResult extends Omit<ToolResult, 'artifacts'> {
+  artifactsMeta?: Array<{
+    kind: 'file' | 'discord_artifact' | 'governance_only';
+    filename?: string;
     mimetype?: string;
-    byteLength: number;
+    byteLength?: number;
+    visibleSummary?: string;
   }>;
 }
 

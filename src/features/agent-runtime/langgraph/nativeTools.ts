@@ -42,6 +42,13 @@ export interface ActiveToolCatalog {
   allTools: DynamicStructuredTool[];
   readOnlyTools: DynamicStructuredTool[];
   definitions: Map<string, ToolDefinition<unknown>>;
+  providerAllowedToolNames: string[];
+  parallelToolCallsAllowed: boolean;
+}
+
+export interface ReadOnlyToolExecutionPlan {
+  parallelCalls: GraphToolCallDescriptor[];
+  sequentialCalls: GraphToolCallDescriptor[];
 }
 
 export interface PlannedApprovalInterrupt {
@@ -88,53 +95,28 @@ function safeJsonStringify(value: unknown): string | null {
 function serializeToolResult(result: ToolResult): SerializedToolResult {
   return {
     ...result,
-    attachmentsMeta: result.attachments?.map((attachment) => ({
-      filename: attachment.filename,
-      mimetype: attachment.mimetype,
-      byteLength: attachment.data.length,
+    artifactsMeta: result.artifacts?.map((artifact) => ({
+      kind: artifact.kind,
+      filename: artifact.filename,
+      mimetype: artifact.mimetype,
+      byteLength: artifact.data?.length,
+      visibleSummary: artifact.visibleSummary,
     })),
   };
 }
 
-function annotateFinalDelivery(call: GraphToolCallDescriptor, result: ToolResult): ToolResult {
-  if (!result.success) {
-    return result;
-  }
-
-  const action =
-    call.args && typeof call.args === 'object' && !Array.isArray(call.args)
-      ? (call.args as Record<string, unknown>).action
-      : undefined;
-
-  if (call.name === 'discord_messages' && action === 'send_message') {
-    return {
-      ...result,
-      deliveryEffect: {
-        kind: 'final_message',
-        visibleSummary:
-          typeof result.result === 'object' &&
-          result.result &&
-          !Array.isArray(result.result) &&
-          typeof (result.result as Record<string, unknown>).content === 'string'
-            ? ((result.result as Record<string, unknown>).content as string)
-            : undefined,
-      },
-    };
-  }
-
-  return result;
-}
-
 function collectFiles(result: ToolResult): GraphToolFile[] {
-  if (!result.success || !result.attachments?.length) {
+  if (!result.success || !result.artifacts?.length) {
     return [];
   }
 
-  return result.attachments.map((attachment) => ({
-    name: attachment.filename,
-    dataBase64: attachment.data.toString('base64'),
-    mimetype: attachment.mimetype,
-  }));
+  return result.artifacts
+    .filter((artifact) => artifact.kind === 'file' && artifact.data && artifact.filename)
+    .map((artifact) => ({
+      name: artifact.filename as string,
+      dataBase64: (artifact.data as Buffer).toString('base64'),
+      mimetype: artifact.mimetype,
+    }));
 }
 
 function buildToolMessageContent(result: ToolResult): string {
@@ -142,8 +124,16 @@ function buildToolMessageContent(result: ToolResult): string {
     return result.error ?? 'Tool execution failed.';
   }
 
+  if (result.modelSummary?.trim()) {
+    return result.modelSummary.trim();
+  }
+
+  if (result.telemetry.observationPolicy === 'artifact-only') {
+    return 'Artifact created.';
+  }
+
   try {
-    const sanitized = sanitizeToolResultForModel(result.result);
+    const sanitized = sanitizeToolResultForModel(result.structuredContent);
     const serialized = safeJsonStringify(sanitized);
     if (!serialized) {
       return sanitized === undefined ? 'null' : '[unserializable tool result]';
@@ -175,6 +165,44 @@ function isReadOnlyCall(
   return definition.metadata?.readOnly === true;
 }
 
+export function isParallelSafeToolCall(params: {
+  definitions: Map<string, ToolDefinition<unknown>>;
+  call: ToolCall | GraphToolCallDescriptor;
+  context: ToolExecutionContext;
+}): boolean {
+  const definition = params.definitions.get(params.call.name);
+  if (!isReadOnlyCall(definition, params.call.args, params.context)) {
+    return false;
+  }
+  return definition?.annotations?.parallelSafe === true;
+}
+
+export function planReadOnlyToolExecution(params: {
+  definitions: Map<string, ToolDefinition<unknown>>;
+  calls: GraphToolCallDescriptor[];
+  context: ToolExecutionContext;
+}): ReadOnlyToolExecutionPlan {
+  const parallelCalls: GraphToolCallDescriptor[] = [];
+  const sequentialCalls: GraphToolCallDescriptor[] = [];
+
+  for (const call of params.calls) {
+    if (isParallelSafeToolCall({
+      definitions: params.definitions,
+      call,
+      context: params.context,
+    })) {
+      parallelCalls.push(call);
+    } else {
+      sequentialCalls.push(call);
+    }
+  }
+
+  return {
+    parallelCalls,
+    sequentialCalls,
+  };
+}
+
 export const executeDurableToolTask = task(
   { name: 'sage_execute_tool_call' },
   async (input: DurableToolTaskInput): Promise<DurableToolTaskOutput> => {
@@ -189,7 +217,7 @@ export const executeDurableToolTask = task(
           success: false,
           error: `Unknown or inactive tool "${input.call.name}".`,
           errorType: 'validation',
-          latencyMs: 0,
+          telemetry: { latencyMs: 0 },
         },
         files: [],
       };
@@ -206,15 +234,13 @@ export const executeDurableToolTask = task(
         input.context,
         input.timeoutMs,
       );
-      const result = annotateFinalDelivery(input.call, rawResult);
-
       return {
         kind: 'tool_result',
         toolName: input.call.name,
         callId: input.call.id,
-        content: buildToolMessageContent(result),
-        result: serializeToolResult(result),
-        files: collectFiles(result),
+        content: buildToolMessageContent(rawResult),
+        result: serializeToolResult(rawResult),
+        files: collectFiles(rawResult),
       };
     } catch (error) {
       if (error instanceof ApprovalRequiredSignal) {
@@ -268,12 +294,12 @@ export const executeApprovedReviewTask = task(
       result: {
         name: input.toolName,
         success: status === 'executed',
-        result: action?.resultJson ?? { status },
+        structuredContent: action?.resultJson ?? { status },
         error:
           status === 'executed'
             ? undefined
             : action?.errorText ?? `Approval request resolved with status "${status}".`,
-        latencyMs: Math.max(0, Date.now() - startedAt),
+        telemetry: { latencyMs: Math.max(0, Date.now() - startedAt) },
       } satisfies SerializedToolResult,
       files: [] as GraphToolFile[],
       callId: input.callId,
@@ -348,7 +374,7 @@ function buildLangChainTool(params: {
               success: false,
               error: `Tool call "${definition.name}" requires approval.`,
               errorType: 'execution',
-              latencyMs: 0,
+              telemetry: { latencyMs: 0 },
             } satisfies SerializedToolResult,
             files: [] as GraphToolFile[],
           },
@@ -366,7 +392,7 @@ function buildLangChainTool(params: {
     {
       name: definition.name,
       description: definition.description,
-      schema: definition.schema,
+      schema: definition.inputValidator,
       responseFormat: 'content_and_artifact',
     },
   ) as DynamicStructuredTool;
@@ -380,6 +406,7 @@ export function buildActiveToolCatalog(params: {
   const definitions = new Map<string, ToolDefinition<unknown>>();
   const allTools: DynamicStructuredTool[] = [];
   const readOnlyTools: DynamicStructuredTool[] = [];
+  let parallelToolCallsAllowed = params.activeToolNames.length > 0;
 
   for (const toolName of params.activeToolNames) {
     const definition = globalToolRegistry.get(toolName);
@@ -395,7 +422,18 @@ export function buildActiveToolCatalog(params: {
       timeoutMs: params.timeoutMs,
     });
     allTools.push(langChainTool);
-    if (isReadOnlyCall(definition, {}, params.context) || definition.metadata?.readOnlyPredicate) {
+    if (
+      !(
+        definition.annotations?.parallelSafe === true &&
+        (isReadOnlyCall(definition, {}, params.context) || definition.metadata?.readOnlyPredicate)
+      )
+    ) {
+      parallelToolCallsAllowed = false;
+    }
+    if (
+      definition.annotations?.parallelSafe === true &&
+      (isReadOnlyCall(definition, {}, params.context) || definition.metadata?.readOnlyPredicate)
+    ) {
       readOnlyTools.push(langChainTool);
     }
   }
@@ -404,6 +442,8 @@ export function buildActiveToolCatalog(params: {
     allTools,
     readOnlyTools,
     definitions,
+    providerAllowedToolNames: [...definitions.keys()],
+    parallelToolCallsAllowed,
   };
 }
 

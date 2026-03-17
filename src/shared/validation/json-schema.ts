@@ -21,185 +21,189 @@ function sanitizeJsonSchemaValue(value: unknown): unknown {
 }
 
 /**
- * Remove schema-meta fields that some OpenAI-compatible providers reject.
+ * Remove provider-hostile schema meta fields without changing schema meaning.
  */
 export function sanitizeJsonSchemaForProvider<T>(schema: T): T {
   return sanitizeJsonSchemaValue(schema) as T;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
+export interface JsonSchemaValidationResult {
+  valid: boolean;
+  errors: string[];
+}
+
+function formatPath(path: string): string {
+  return path || '(root)';
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
 
-function stableStringify(value: unknown): string {
+function validatePrimitiveType(
+  expectedType: string,
+  value: unknown,
+): boolean {
+  switch (expectedType) {
+    case 'string':
+      return typeof value === 'string';
+    case 'number':
+      return typeof value === 'number' && Number.isFinite(value);
+    case 'integer':
+      return typeof value === 'number' && Number.isInteger(value);
+    case 'boolean':
+      return typeof value === 'boolean';
+    case 'null':
+      return value === null;
+    case 'array':
+      return Array.isArray(value);
+    case 'object':
+      return isPlainObject(value);
+    default:
+      return true;
+  }
+}
+
+function validateAgainstSchema(
+  schema: unknown,
+  value: unknown,
+  path: string,
+  errors: string[],
+): void {
+  if (errors.length >= 25) {
+    return;
+  }
+
+  if (schema === true || schema === undefined || schema === null) {
+    return;
+  }
+
+  if (schema === false) {
+    errors.push(`${formatPath(path)} is not allowed by schema.`);
+    return;
+  }
+
+  if (!isPlainObject(schema)) {
+    return;
+  }
+
+  if (Array.isArray(schema.enum) && !schema.enum.some((entry) => Object.is(entry, value))) {
+    errors.push(`${formatPath(path)} must match one of the allowed enum values.`);
+    return;
+  }
+
+  if ('const' in schema && !Object.is(schema.const, value)) {
+    errors.push(`${formatPath(path)} must match the required constant value.`);
+    return;
+  }
+
+  if (Array.isArray(schema.anyOf) && schema.anyOf.length > 0) {
+    const matched = schema.anyOf.some((candidate) => validateJsonSchema(candidate, value).valid);
+    if (!matched) {
+      errors.push(`${formatPath(path)} did not match any allowed schema variant.`);
+    }
+    return;
+  }
+
+  if (Array.isArray(schema.oneOf) && schema.oneOf.length > 0) {
+    const matches = schema.oneOf.filter((candidate) => validateJsonSchema(candidate, value).valid).length;
+    if (matches !== 1) {
+      errors.push(`${formatPath(path)} must match exactly one allowed schema variant.`);
+    }
+    return;
+  }
+
+  if (Array.isArray(schema.allOf) && schema.allOf.length > 0) {
+    for (const candidate of schema.allOf) {
+      validateAgainstSchema(candidate, value, path, errors);
+      if (errors.length >= 25) return;
+    }
+  }
+
+  const rawTypes = Array.isArray(schema.type) ? schema.type : typeof schema.type === 'string' ? [schema.type] : [];
+  if (rawTypes.length > 0) {
+    const validType = rawTypes.some((expectedType) => validatePrimitiveType(expectedType, value));
+    if (!validType) {
+      errors.push(`${formatPath(path)} must be ${rawTypes.join(' or ')}.`);
+      return;
+    }
+  }
+
+  if (typeof value === 'string') {
+    if (typeof schema.minLength === 'number' && value.length < schema.minLength) {
+      errors.push(`${formatPath(path)} must be at least ${schema.minLength} characters.`);
+    }
+    if (typeof schema.maxLength === 'number' && value.length > schema.maxLength) {
+      errors.push(`${formatPath(path)} must be at most ${schema.maxLength} characters.`);
+    }
+  }
+
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    if (typeof schema.minimum === 'number' && value < schema.minimum) {
+      errors.push(`${formatPath(path)} must be greater than or equal to ${schema.minimum}.`);
+    }
+    if (typeof schema.maximum === 'number' && value > schema.maximum) {
+      errors.push(`${formatPath(path)} must be less than or equal to ${schema.maximum}.`);
+    }
+  }
+
   if (Array.isArray(value)) {
-    return `[${value.map((item) => stableStringify(item)).join(',')}]`;
+    if (typeof schema.minItems === 'number' && value.length < schema.minItems) {
+      errors.push(`${formatPath(path)} must contain at least ${schema.minItems} items.`);
+    }
+    if (typeof schema.maxItems === 'number' && value.length > schema.maxItems) {
+      errors.push(`${formatPath(path)} must contain at most ${schema.maxItems} items.`);
+    }
+    if (schema.items !== undefined) {
+      value.forEach((entry, index) => {
+        validateAgainstSchema(schema.items, entry, `${path}[${index}]`, errors);
+      });
+    }
+    return;
   }
 
-  if (isRecord(value)) {
-    const keys = Object.keys(value).sort((a, b) => a.localeCompare(b));
-    return `{${keys.map((key) => `${JSON.stringify(key)}:${stableStringify(value[key])}`).join(',')}}`;
+  if (!isPlainObject(value)) {
+    return;
   }
 
-  return JSON.stringify(value);
-}
+  const properties = isPlainObject(schema.properties) ? schema.properties : {};
+  const required = Array.isArray(schema.required)
+    ? schema.required.filter((entry): entry is string => typeof entry === 'string')
+    : [];
 
-function cloneSchema<T>(value: T): T {
-  return sanitizeJsonSchemaForProvider(value);
-}
-
-function mergeSchemaList(schemas: Record<string, unknown>[]): Record<string, unknown> {
-  const unique = new Map<string, Record<string, unknown>>();
-  for (const schema of schemas) {
-    unique.set(stableStringify(schema), cloneSchema(schema));
-  }
-  const deduped = Array.from(unique.values());
-  if (deduped.length === 1) {
-    return deduped[0];
-  }
-
-  const constValues = deduped
-    .map((schema) => schema.const)
-    .filter((value) => value !== undefined);
-  if (constValues.length === deduped.length) {
-    const valueType = typeof constValues[0];
-    if (constValues.every((value) => typeof value === valueType)) {
-      const base = { ...deduped[0] };
-      delete base.const;
-      base.enum = Array.from(new Set(constValues));
-      if (!base.type && valueType !== 'undefined') {
-        base.type = valueType;
-      }
-      return base;
+  for (const key of required) {
+    if (!(key in value)) {
+      errors.push(`${formatPath(path ? `${path}.${key}` : key)} is required.`);
     }
   }
 
-  const flattenedAnyOf = deduped.flatMap((schema) => {
-    const anyOf = schema.anyOf;
-    if (Array.isArray(anyOf)) {
-      return anyOf.filter(isRecord).map((entry) => cloneSchema(entry));
-    }
-    return [cloneSchema(schema)];
-  });
-
-  const flattenedUnique = new Map<string, Record<string, unknown>>();
-  for (const schema of flattenedAnyOf) {
-    flattenedUnique.set(stableStringify(schema), schema);
-  }
-
-  return {
-    anyOf: Array.from(flattenedUnique.values()),
-  };
-}
-
-function normalizeTopLevelUnionSchema(schema: Record<string, unknown>): Record<string, unknown> | null {
-  const variants =
-    (Array.isArray(schema.oneOf) ? schema.oneOf : null) ??
-    (Array.isArray(schema.anyOf) ? schema.anyOf : null);
-  if (!variants || variants.length === 0) {
-    return null;
-  }
-
-  const objectVariants = variants.filter(isRecord);
-  if (objectVariants.length !== variants.length) {
-    return null;
-  }
-
-  const mergedProperties = new Map<string, Record<string, unknown>[]>();
-  const requiredSets: string[][] = [];
-  const actionConsts: string[] = [];
-  let allDisallowAdditionalProps = true;
-
-  for (const variant of objectVariants) {
-    if (variant.type !== 'object') {
-      return null;
-    }
-    const properties = variant.properties;
-    if (!isRecord(properties)) {
-      return null;
-    }
-
-    const required = Array.isArray(variant.required)
-      ? variant.required.filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
-      : [];
-    requiredSets.push(required);
-
-    if (variant.additionalProperties !== false) {
-      allDisallowAdditionalProps = false;
-    }
-
-    const actionSchema = properties.action;
-    if (!isRecord(actionSchema) || typeof actionSchema.const !== 'string' || actionSchema.const.trim().length === 0) {
-      return null;
-    }
-    actionConsts.push(actionSchema.const);
-
-    for (const [propertyName, propertySchema] of Object.entries(properties)) {
-      if (!isRecord(propertySchema)) {
-        return null;
-      }
-      const existing = mergedProperties.get(propertyName) ?? [];
-      existing.push(propertySchema);
-      mergedProperties.set(propertyName, existing);
-    }
-  }
-
-  const compiledProperties: Record<string, unknown> = {};
-  for (const [propertyName, propertySchemas] of mergedProperties.entries()) {
-    if (propertyName === 'action') {
-      const first = cloneSchema(propertySchemas[0]);
-      delete first.const;
-      first.type = typeof first.type === 'string' ? first.type : 'string';
-      first.enum = Array.from(new Set(actionConsts));
-      compiledProperties[propertyName] = first;
+  for (const [key, childValue] of Object.entries(value)) {
+    if (key in properties) {
+      validateAgainstSchema(properties[key], childValue, path ? `${path}.${key}` : key, errors);
       continue;
     }
 
-    compiledProperties[propertyName] = mergeSchemaList(propertySchemas);
-  }
+    if (schema.additionalProperties === false) {
+      errors.push(`${formatPath(path ? `${path}.${key}` : key)} is not allowed.`);
+      continue;
+    }
 
-  const requiredIntersection =
-    requiredSets.length > 0
-      ? requiredSets.reduce<string[]>(
-        (acc, current) => acc.filter((value) => current.includes(value)),
-        [...requiredSets[0]],
-      )
-      : [];
-
-  const normalized: Record<string, unknown> = {
-    type: 'object',
-    properties: compiledProperties,
-  };
-  if (requiredIntersection.length > 0) {
-    normalized.required = requiredIntersection;
-  }
-  if (allDisallowAdditionalProps) {
-    normalized.additionalProperties = false;
-  }
-
-  for (const key of ['title', 'description']) {
-    if (typeof schema[key] === 'string' && String(schema[key]).trim().length > 0) {
-      normalized[key] = schema[key];
+    if (schema.additionalProperties !== undefined && schema.additionalProperties !== true) {
+      validateAgainstSchema(
+        schema.additionalProperties,
+        childValue,
+        path ? `${path}.${key}` : key,
+        errors,
+      );
     }
   }
-
-  return normalized;
 }
 
-/**
- * Compile provider-facing tool parameters into a canonical Chat Completions
- * top-level object schema. This preserves routed discriminated-union tools by
- * flattening their top-level oneOf/anyOf into a single object schema with an
- * enum-backed discriminator property.
- */
-export function normalizeToolParametersForChatCompletions(
-  parameters: Record<string, unknown>,
-): Record<string, unknown> {
-  const sanitized = sanitizeJsonSchemaForProvider(parameters);
-  if (!isRecord(sanitized)) {
-    return parameters;
-  }
-
-  const unionNormalized = normalizeTopLevelUnionSchema(sanitized);
-  return unionNormalized ?? sanitized;
+export function validateJsonSchema(schema: unknown, value: unknown): JsonSchemaValidationResult {
+  const errors: string[] = [];
+  validateAgainstSchema(sanitizeJsonSchemaForProvider(schema), value, '', errors);
+  return {
+    valid: errors.length === 0,
+    errors,
+  };
 }

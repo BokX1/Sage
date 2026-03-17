@@ -22,19 +22,23 @@ export {
 export {
   ToolRegistry,
   globalToolRegistry,
+  defineToolSpecV2,
   type ToolDefinition,
+  type ToolSpecV2,
   type ToolExecutionContext,
   type ToolMetadata,
   type ToolValidationResult,
+  type ToolArtifact,
 } from './toolRegistry';
 export { registerDefaultAgenticTools } from './defaultTools';
 export {
-  discordContextTool,
-  discordMessagesTool,
-  discordFilesTool,
-  discordServerTool,
-  discordVoiceTool,
-  discordAdminTool,
+  discordContextTools,
+  discordMessageTools,
+  discordFileTools,
+  discordServerTools,
+  discordVoiceTools,
+  discordAdminTools,
+  discordTools,
 } from './discordDomainTools';
 
 export {
@@ -54,5 +58,6 @@ export {
   type InvocationKind,
 } from './continuityContext';
 
-export { type ToolResult, type ToolAttachment } from './toolCallExecution';
+export { type ToolResult, type ToolResultTelemetry } from './toolCallExecution';
 export { ToolResultCache, buildToolCacheKey, type ToolCacheEntry } from './toolCache';
+export { auditToolRegistry, type ToolAuditFinding, type ToolAuditReport } from './toolAudit';

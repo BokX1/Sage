@@ -1,18 +1,18 @@
 import { z } from 'zod';
-import { ToolDefinition, ToolRegistry, globalToolRegistry } from './toolRegistry';
 import {
-  discordAdminTool,
-  discordContextTool,
-  discordFilesTool,
-  discordMessagesTool,
-  discordServerTool,
-  discordVoiceTool,
+  defineToolSpecV2,
+  type ToolSpecV2,
+  ToolRegistry,
+  globalToolRegistry,
+} from './toolRegistry';
+import {
+  discordTools,
 } from './discordDomainTools';
-import { webTool } from './webTool';
-import { githubTool } from './githubTool';
-import { workflowTool } from './workflowTool';
-import { globalToolMemoStore } from './toolMemoStore';
+import { webTools } from './webTool';
+import { githubTools } from './githubTool';
+import { workflowTools } from './workflowTool';
 import { globalPagedTextStore } from './pagedTextStore';
+import { globalToolMemoStore } from './toolMemoStore';
 import { metrics } from '../../shared/observability/metrics';
 import {
   generateImage,
@@ -21,22 +21,53 @@ import {
   searchStackOverflow,
 } from './toolIntegrations';
 
-const getCurrentDateTimeTool: ToolDefinition<{
-  utcOffsetMinutes?: number;
-}> = {
+const getCurrentDateTimeTool = defineToolSpecV2({
   name: 'system_time',
+  title: 'System Time',
   description:
-    'Calculate timezone offsets for complex scheduling. Note: current UTC time is already in <agent_state> — only call this when you need explicit offset math (e.g., converting between timezones).',
-  schema: z.object({
+    'Calculate timezone offsets for complex scheduling. Current UTC time is already in runtime state, so use this only when explicit offset math is needed.',
+  input: z.object({
     utcOffsetMinutes: z.number().int().min(-720).max(840).optional(),
   }),
-  metadata: { readOnly: true },
+  outputSchema: {
+    type: 'object',
+    properties: {
+      isoUtc: { type: 'string' },
+      unixMs: { type: 'integer' },
+      shiftedTimeIso: { type: 'string' },
+      requestedOffsetMinutes: { type: 'integer' },
+      requestedOffsetLabel: { type: 'string' },
+    },
+    required: ['isoUtc', 'unixMs'],
+    additionalProperties: false,
+  },
+  annotations: {
+    readOnlyHint: true,
+    parallelSafe: true,
+  },
+  runtime: {
+    class: 'query',
+    readOnly: true,
+    observationPolicy: 'tiny',
+    capabilityTags: ['system', 'time'],
+  },
+  prompt: {
+    summary: 'Use only for explicit timezone or offset math beyond the runtime UTC timestamp.',
+    whenToUse: ['The user asks for converted times or offset calculations.'],
+    whenNotToUse: ['The current UTC time in runtime state already answers the question.'],
+  },
+  smoke: {
+    mode: 'required',
+    args: {},
+  },
   execute: async ({ utcOffsetMinutes }) => {
     const now = new Date();
     if (typeof utcOffsetMinutes !== 'number') {
       return {
-        isoUtc: now.toISOString(),
-        unixMs: now.getTime(),
+        structuredContent: {
+          isoUtc: now.toISOString(),
+          unixMs: now.getTime(),
+        },
       };
     }
 
@@ -49,14 +80,16 @@ const getCurrentDateTimeTool: ToolDefinition<{
       .padStart(2, '0')}`;
 
     return {
-      isoUtc: now.toISOString(),
-      shiftedTimeIso: shifted.toISOString(),
-      requestedOffsetMinutes: utcOffsetMinutes,
-      requestedOffsetLabel: offsetLabel,
-      unixMs: now.getTime(),
+      structuredContent: {
+        isoUtc: now.toISOString(),
+        shiftedTimeIso: shifted.toISOString(),
+        requestedOffsetMinutes: utcOffsetMinutes,
+        requestedOffsetLabel: offsetLabel,
+        unixMs: now.getTime(),
+      },
     };
   },
-};
+});
 
 function parseMetricKey(key: string): { name: string; labels: Record<string, string> } {
   const braceIndex = key.indexOf('{');
@@ -102,17 +135,14 @@ function buildToolStatsRows(): ToolStatsRow[] {
     const { name, labels } = parseMetricKey(key);
     const tool = labels.tool;
     if (!tool) continue;
-
-    if (name === 'tool_execution_total') {
-      const row = ensure(tool);
-      row.executions += parsedValue;
-      const status = labels.status ?? 'unknown';
-      if (status === 'success') {
-        row.successes += parsedValue;
-      } else {
-        row.failures[status] = (row.failures[status] ?? 0) + parsedValue;
-      }
-      continue;
+    if (name !== 'tool_execution_total') continue;
+    const row = ensure(tool);
+    row.executions += parsedValue;
+    const status = labels.status ?? 'unknown';
+    if (status === 'success') {
+      row.successes += parsedValue;
+    } else {
+      row.failures[status] = (row.failures[status] ?? 0) + parsedValue;
     }
   }
 
@@ -130,60 +160,120 @@ function buildToolStatsRows(): ToolStatsRow[] {
   return Array.from(rows.values());
 }
 
-const toolStatsTool: ToolDefinition<{ topN?: number; includeRaw?: boolean }> = {
+const toolStatsTool = defineToolSpecV2({
   name: 'system_tool_stats',
-  description:
-    [
-      'Inspect in-process tool telemetry (latency averages, successes, failures, and store occupancy).',
-      'Note: all stats are process-local in-memory views; they reset on restart and are not shared across instances.',
-      '<USE_ONLY_WHEN> You need to debug runtime latency, failures, or local store pressure for tools. </USE_ONLY_WHEN>',
-    ].join('\n'),
-  schema: z.object({
-    topN: z.number().int().min(1).max(50).optional().describe('Maximum number of tools to return (sorted by executions).'),
-    includeRaw: z.boolean().optional().describe('If true, include the raw metrics.dump() string for debugging.'),
+  title: 'System Tool Stats',
+  description: 'Inspect in-process tool telemetry, cache occupancy, and average latency by tool.',
+  input: z.object({
+    topN: z.number().int().min(1).max(50).optional(),
+    includeRaw: z.boolean().optional(),
   }),
-  metadata: { readOnly: true },
+  outputSchema: {
+    type: 'object',
+    properties: {
+      generatedAtIso: { type: 'string' },
+      scope: { type: 'string' },
+      note: { type: 'string' },
+      memo: { type: 'object' },
+      pagedText: { type: 'object' },
+      tools: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            tool: { type: 'string' },
+            executions: { type: 'integer' },
+            successes: { type: 'integer' },
+            failures: { type: 'object' },
+            avgLatencyMs: { type: ['number', 'null'] },
+          },
+          required: ['tool', 'executions', 'successes', 'failures', 'avgLatencyMs'],
+          additionalProperties: false,
+        },
+      },
+      raw: {},
+    },
+    required: ['generatedAtIso', 'scope', 'note', 'memo', 'pagedText', 'tools'],
+    additionalProperties: false,
+  },
+  annotations: {
+    readOnlyHint: true,
+    parallelSafe: true,
+  },
+  runtime: {
+    class: 'query',
+    readOnly: true,
+    observationPolicy: 'default',
+    capabilityTags: ['system', 'tooling', 'telemetry'],
+  },
+  prompt: {
+    summary: 'Inspect tool telemetry and cache state for operator diagnostics.',
+    whenToUse: ['You need runtime tool health, latency, or cache insight.'],
+    whenNotToUse: ['The request is for external facts or normal user-facing research.'],
+  },
+  smoke: {
+    mode: 'required',
+    args: {},
+  },
   execute: async ({ topN, includeRaw }) => {
     const now = new Date();
     const rows = buildToolStatsRows();
     rows.sort((a, b) => b.executions - a.executions);
-    const limited = rows.slice(0, topN ?? 15);
-
     return {
-      generatedAtIso: now.toISOString(),
-      scope: 'process',
-      note:
-        'All tool stats/caches are in-memory only. Multi-instance deployments do not share memoization without Redis/DB (by design).',
-      memo: globalToolMemoStore.stats(now.getTime()),
-      pagedText: globalPagedTextStore.stats(now.getTime()),
-      tools: limited,
-      raw: includeRaw ? metrics.dump() : undefined,
+      structuredContent: {
+        generatedAtIso: now.toISOString(),
+        scope: 'process',
+        note: 'All tool stats and caches are in-memory only.',
+        memo: globalToolMemoStore.stats(now.getTime()),
+        pagedText: globalPagedTextStore.stats(now.getTime()),
+        tools: rows.slice(0, topN ?? 15),
+        raw: includeRaw ? metrics.dump() : undefined,
+      },
     };
   },
-};
+});
 
-const generateImageTool: ToolDefinition<{
-  prompt: string;
-  model?: string;
-  seed?: number;
-  width?: number;
-  height?: number;
-  referenceImageUrl?: string;
-}> = {
+const generateImageTool = defineToolSpecV2({
   name: 'image_generate',
-  description:
-    'Generate an image with Pollinations and return it as an attachment payload for the final runtime response.\n<USE_ONLY_WHEN> The user explicitly requests generating or drawing an image. </USE_ONLY_WHEN>',
-  schema: z.object({
-    prompt: z.string().trim().min(3).max(2_000).describe('The detailed text prompt to generate the image from.'),
+  title: 'Image Generate',
+  description: 'Generate an image with Pollinations as a distinct artifact, not a normal text reply.',
+  input: z.object({
+    prompt: z.string().trim().min(3).max(2_000),
     model: z.string().trim().min(1).max(120).optional(),
     seed: z.number().int().min(0).max(9_999_999).optional(),
     width: z.number().int().min(64).max(2_048).optional(),
     height: z.number().int().min(64).max(2_048).optional(),
     referenceImageUrl: z.string().trim().url().max(2_048).optional(),
   }),
-  metadata: { readOnly: false },
+  outputSchema: {
+    type: 'object',
+    properties: {
+      provider: { type: 'string' },
+      model: { type: 'string' },
+      seed: { type: 'integer' },
+      prompt: { type: 'string' },
+      imageUrl: { type: 'string' },
+    },
+    required: ['provider', 'model', 'prompt', 'imageUrl'],
+    additionalProperties: false,
+  },
+  runtime: {
+    class: 'artifact',
+    readOnly: false,
+    observationPolicy: 'artifact-only',
+    capabilityTags: ['generation', 'image', 'artifact'],
+  },
+  prompt: {
+    summary: 'Create an image artifact when the user explicitly wants generated art or a picture.',
+    whenToUse: ['The request is for a generated image or art asset.'],
+    whenNotToUse: ['A normal text answer is enough and no image artifact is needed.'],
+  },
+  smoke: {
+    mode: 'skip',
+    reason: 'Image generation is provider-dependent and slower than normal smoke checks.',
+  },
   execute: async ({ prompt, model, seed, width, height, referenceImageUrl }, ctx) => {
-    return generateImage({
+    const result = await generateImage({
       prompt,
       model,
       seed,
@@ -191,96 +281,144 @@ const generateImageTool: ToolDefinition<{
       height,
       referenceImageUrl,
       apiKey: ctx.apiKey,
-    });
+    }) as Record<string, unknown> & { artifacts?: unknown[] };
+    const artifacts = Array.isArray(result.artifacts) && result.artifacts.length > 0
+      ? result.artifacts
+      : undefined;
+    const { artifacts: _artifacts, ...structuredContent } = result;
+    void _artifacts;
+    return {
+      structuredContent,
+      artifacts: artifacts as never,
+    };
   },
-};
+});
 
-const npmPackageLookupTool: ToolDefinition<{ packageName: string; version?: string }> = {
+const npmPackageLookupTool = defineToolSpecV2({
   name: 'npm_info',
-  description:
-    'Lookup npm package metadata (latest version, publish time, dependency surface, maintainers, repository). Returns githubRepo when the repository points to GitHub.\n<USE_ONLY_WHEN> You need to retrieve specific metadata, versioning, or dependency info for an npm package. </USE_ONLY_WHEN>',
-  schema: z.object({
-    packageName: z.string().trim().min(1).max(214).describe('The exact npm package name.'),
+  title: 'npm Package Info',
+  description: 'Lookup npm package metadata including versions, repository, and maintainers.',
+  input: z.object({
+    packageName: z.string().trim().min(1).max(214),
     version: z.string().trim().min(1).max(80).optional(),
   }),
-  metadata: { readOnly: true },
-  execute: async ({ packageName, version }, ctx) => {
-    return lookupNpmPackage({
-      packageName,
-      version,
-      signal: ctx.signal,
-    });
+  annotations: {
+    readOnlyHint: true,
+    parallelSafe: true,
   },
-};
+  runtime: {
+    class: 'query',
+    readOnly: true,
+    observationPolicy: 'default',
+    capabilityTags: ['developer', 'npm'],
+  },
+  prompt: {
+    summary: 'Lookup npm package metadata such as versions, maintainers, and repository links.',
+    whenToUse: ['The task is about an npm package or its metadata.'],
+    whenNotToUse: ['The task is about source code inside a known repository instead.'],
+  },
+  smoke: {
+    mode: 'required',
+    args: { packageName: 'openai' },
+  },
+  validationHint: 'Pass packageName and optionally version, for example { "packageName": "zod" }.',
+  execute: async ({ packageName, version }, ctx) => lookupNpmPackage({
+    packageName,
+    version,
+    signal: ctx.signal,
+  }),
+});
 
-const wikipediaLookupTool: ToolDefinition<{
-  query: string;
-  language?: string;
-  maxResults?: number;
-}> = {
+const wikipediaLookupTool = defineToolSpecV2({
   name: 'wikipedia_search',
-  description:
-    'Lookup Wikipedia pages with snippets and canonical links for broad factual topics and fast grounding.\n<USE_ONLY_WHEN> You explicitly need historical, broadly factual, or canonical encyclopedia data. </USE_ONLY_WHEN>',
-  schema: z.object({
-    query: z.string().trim().min(2).max(300).describe('The topic or query to search for on Wikipedia.'),
+  title: 'Wikipedia Search',
+  description: 'Lookup Wikipedia pages with snippets and canonical links for broad factual grounding.',
+  input: z.object({
+    query: z.string().trim().min(2).max(300),
     language: z.string().trim().min(2).max(16).optional(),
     maxResults: z.number().int().min(1).max(10).optional(),
   }),
-  metadata: { readOnly: true },
-  execute: async ({ query, language, maxResults }) => {
-    return lookupWikipedia({
-      query,
-      language,
-      maxResults,
-    });
+  annotations: {
+    readOnlyHint: true,
+    openWorldHint: true,
+    parallelSafe: true,
   },
-};
+  runtime: {
+    class: 'query',
+    readOnly: true,
+    observationPolicy: 'default',
+    capabilityTags: ['research', 'wikipedia'],
+  },
+  prompt: {
+    summary: 'Use Wikipedia for broad factual grounding when freshness is not the main concern.',
+    whenToUse: ['You need encyclopedia-style context or background.'],
+    whenNotToUse: ['The user needs recent or fast-changing information from the open web.'],
+  },
+  smoke: {
+    mode: 'optional',
+    args: { query: 'OpenAI', maxResults: 3 },
+  },
+  execute: async ({ query, language, maxResults }) => lookupWikipedia({
+    query,
+    language,
+    maxResults,
+  }),
+});
 
-const stackOverflowSearchTool: ToolDefinition<{
-  query: string;
-  maxResults?: number;
-  tagged?: string;
-  includeAcceptedAnswer?: boolean;
-}> = {
+const stackOverflowSearchTool = defineToolSpecV2({
   name: 'stack_overflow_search',
-  description:
-    'Search Stack Overflow questions with accepted status and scoring metadata for coding support.\nOptionally fetch the accepted answer body for the top accepted result.\n<USE_ONLY_WHEN> You need to find proven coding solutions, debugging help, or programming Q&A. </USE_ONLY_WHEN>',
-  schema: z.object({
-    query: z.string().trim().min(2).max(350).describe('The explicit coding problem to search StackOverflow for.'),
+  title: 'Stack Overflow Search',
+  description: 'Search Stack Overflow questions and accepted answers for coding support.',
+  input: z.object({
+    query: z.string().trim().min(2).max(350),
     maxResults: z.number().int().min(1).max(15).optional(),
     tagged: z.string().trim().min(1).max(120).optional(),
-    includeAcceptedAnswer: z.boolean().optional().describe('If true, fetch the accepted answer body for the top accepted match (when available).'),
+    includeAcceptedAnswer: z.boolean().optional(),
   }),
-  metadata: { readOnly: true },
-  execute: async ({ query, maxResults, tagged, includeAcceptedAnswer }) => {
-    return searchStackOverflow({
-      query,
-      maxResults,
-      tagged,
-      includeAcceptedAnswer,
-    });
+  annotations: {
+    readOnlyHint: true,
+    parallelSafe: true,
   },
-};
+  runtime: {
+    class: 'query',
+    readOnly: true,
+    observationPolicy: 'default',
+    capabilityTags: ['developer', 'stackoverflow'],
+  },
+  prompt: {
+    summary: 'Search Stack Overflow for programming Q&A, accepted answers, and debugging help.',
+    whenToUse: ['The task is about implementation trouble, error messages, or community fixes.'],
+    whenNotToUse: ['Official docs or direct source code are already the stronger primary source.'],
+  },
+  smoke: {
+    mode: 'optional',
+    args: { query: 'typescript union narrowing', maxResults: 3 },
+  },
+  execute: async ({ query, maxResults, tagged, includeAcceptedAnswer }) => searchStackOverflow({
+    query,
+    maxResults,
+    tagged,
+    includeAcceptedAnswer,
+  }),
+});
 
-const DEFAULT_TOOL_DEFINITIONS = [
+export const DEFAULT_TOOL_DEFINITIONS = [
   getCurrentDateTimeTool,
   toolStatsTool,
-  discordContextTool,
-  discordMessagesTool,
-  discordFilesTool,
-  discordServerTool,
-  discordVoiceTool,
-  discordAdminTool,
+  ...discordTools,
   generateImageTool,
-  webTool,
-  githubTool,
-  workflowTool,
+  ...webTools,
+  ...githubTools,
+  ...workflowTools,
   npmPackageLookupTool,
   wikipediaLookupTool,
   stackOverflowSearchTool,
-] as const;
+];
 
-function registerIfMissing(registry: ToolRegistry, tool: ToolDefinition<unknown>): void {
+function registerIfMissing<TArgs, TStructured>(
+  registry: ToolRegistry,
+  tool: ToolSpecV2<TArgs, TStructured>,
+): void {
   if (!registry.has(tool.name)) {
     registry.register(tool);
   }
@@ -288,6 +426,6 @@ function registerIfMissing(registry: ToolRegistry, tool: ToolDefinition<unknown>
 
 export function registerDefaultAgenticTools(registry: ToolRegistry = globalToolRegistry): void {
   for (const tool of DEFAULT_TOOL_DEFINITIONS) {
-    registerIfMissing(registry, tool as ToolDefinition<unknown>);
+    registerIfMissing(registry, tool as ToolSpecV2<unknown, unknown>);
   }
 }

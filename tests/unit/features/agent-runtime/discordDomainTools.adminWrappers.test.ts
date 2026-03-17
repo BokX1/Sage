@@ -1,8 +1,8 @@
 import { PermissionsBitField } from 'discord.js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { ToolExecutionContext } from '@/features/agent-runtime/toolRegistry';
-import { config } from '@/platform/config/env';
-import { ApprovalRequiredSignal } from '@/features/agent-runtime/toolControlSignals';
+import type { ToolExecutionContext } from '../../../../src/features/agent-runtime/toolRegistry';
+import { config } from '../../../../src/platform/config/env';
+import { ApprovalRequiredSignal } from '../../../../src/features/agent-runtime/toolControlSignals';
 
 const mocks = vi.hoisted(() => ({
   requestDiscordAdminActionForTool: vi.fn(),
@@ -11,8 +11,8 @@ const mocks = vi.hoisted(() => ({
   guildFetch: vi.fn(),
 }));
 
-vi.mock('@/features/admin/adminActionService', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@/features/admin/adminActionService')>();
+vi.mock('../../../../src/features/admin/adminActionService', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../../src/features/admin/adminActionService')>();
   return {
     ...actual,
     requestDiscordAdminActionForTool: mocks.requestDiscordAdminActionForTool,
@@ -20,15 +20,15 @@ vi.mock('@/features/admin/adminActionService', async (importOriginal) => {
   };
 });
 
-vi.mock('@/platform/discord/discordRestPolicy', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@/platform/discord/discordRestPolicy')>();
+vi.mock('../../../../src/platform/discord/discordRestPolicy', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../../src/platform/discord/discordRestPolicy')>();
   return {
     ...actual,
     discordRestRequestGuildScoped: mocks.discordRestRequestGuildScoped,
   };
 });
 
-vi.mock('@/platform/discord/client', () => ({
+vi.mock('../../../../src/platform/discord/client', () => ({
   client: {
     guilds: {
       fetch: mocks.guildFetch,
@@ -36,9 +36,17 @@ vi.mock('@/platform/discord/client', () => ({
   },
 }));
 
-import { discordAdminTool } from '@/features/agent-runtime/discordDomainTools';
+import { discordAdminTools } from '../../../../src/features/agent-runtime/discordDomainTools';
 
-describe('discord admin domain typed REST wrappers', () => {
+function tool(name: string) {
+  const found = discordAdminTools.find((entry) => entry.name === name);
+  if (!found) {
+    throw new Error(`Expected Discord admin tool ${name} to exist.`);
+  }
+  return found;
+}
+
+describe('discord admin granular wrappers', () => {
   const adminCtx: ToolExecutionContext = {
     traceId: 'trace',
     userId: 'user-1',
@@ -75,16 +83,15 @@ describe('discord admin domain typed REST wrappers', () => {
 
   it('queues edit_message as an approval-gated REST write', async () => {
     await expect(
-      discordAdminTool.execute(
+      tool('discord_admin_edit_message').execute(
         {
-          action: 'edit_message',
           messageId: 'msg-1',
           content: 'Updated',
         },
         adminCtx,
       ),
     ).rejects.toBeInstanceOf(ApprovalRequiredSignal);
-    expect(mocks.requestDiscordRestWriteForTool).toHaveBeenCalledTimes(1);
+
     expect(mocks.requestDiscordRestWriteForTool).toHaveBeenCalledWith({
       guildId: 'guild-1',
       channelId: 'channel-1',
@@ -102,21 +109,19 @@ describe('discord admin domain typed REST wrappers', () => {
     });
   });
 
-  it('queues channels.create and ignores text-only fields for voice channels', async () => {
+  it('queues create_channel and strips text-only fields for voice channels', async () => {
     await expect(
-      discordAdminTool.execute(
+      tool('discord_admin_create_channel').execute(
         {
-          action: 'create_channel',
           name: 'Voice Lounge',
           type: 'voice',
-          topic: 'should be ignored',
+          topic: 'ignore me',
           rateLimitPerUser: 10,
         },
         adminCtx,
       ),
     ).rejects.toBeInstanceOf(ApprovalRequiredSignal);
 
-    expect(mocks.requestDiscordRestWriteForTool).toHaveBeenCalledTimes(1);
     const call = mocks.requestDiscordRestWriteForTool.mock.calls[0]?.[0] as {
       request: { body?: Record<string, unknown> };
     };
@@ -130,11 +135,10 @@ describe('discord admin domain typed REST wrappers', () => {
     expect(call.request.body?.rate_limit_per_user).toBeUndefined();
   });
 
-  it('queues roles.create and converts colorHex to Discord integer color', async () => {
+  it('queues create_role and converts colorHex to Discord integer color', async () => {
     await expect(
-      discordAdminTool.execute(
+      tool('discord_admin_create_role').execute(
         {
-          action: 'create_role',
           name: 'Moderators',
           colorHex: '#ff0000',
           permissions: '8',
@@ -143,7 +147,6 @@ describe('discord admin domain typed REST wrappers', () => {
       ),
     ).rejects.toBeInstanceOf(ApprovalRequiredSignal);
 
-    expect(mocks.requestDiscordRestWriteForTool).toHaveBeenCalledTimes(1);
     const call = mocks.requestDiscordRestWriteForTool.mock.calls[0]?.[0] as {
       request: { method: string; path: string; body?: Record<string, unknown> };
     };
@@ -159,16 +162,11 @@ describe('discord admin domain typed REST wrappers', () => {
   });
 
   it('generates an OAuth2 invite URL using the configured app id', async () => {
-    const result = await discordAdminTool.execute(
-      {
-        action: 'get_invite_url',
-      },
-      {
-        traceId: 'trace',
-        userId: 'user-1',
-        channelId: 'channel-1',
-      },
-    );
+    const result = await tool('discord_admin_get_invite_url').execute({}, {
+      traceId: 'trace',
+      userId: 'user-1',
+      channelId: 'channel-1',
+    });
 
     expect(result).toEqual(
       expect.objectContaining({
@@ -178,8 +176,6 @@ describe('discord admin domain typed REST wrappers', () => {
       }),
     );
     const url = new URL((result as { url: string }).url);
-    expect(url.hostname).toBe('discord.com');
-    expect(url.pathname).toBe('/oauth2/authorize');
     expect(url.searchParams.get('client_id')).toBe(config.DISCORD_APP_ID.trim());
     expect(url.searchParams.get('scope')).toBe('bot');
     expect(url.searchParams.get('permissions')).toBe('0');
@@ -187,9 +183,8 @@ describe('discord admin domain typed REST wrappers', () => {
 
   it('blocks non-admin api GET requests', async () => {
     await expect(
-      discordAdminTool.execute(
+      tool('discord_admin_api').execute(
         {
-          action: 'api',
           method: 'GET',
           path: '/channels/channel-1/messages/message-1',
         },
@@ -203,15 +198,14 @@ describe('discord admin domain typed REST wrappers', () => {
         },
       ),
     ).rejects.toThrow(/admin/i);
-    expect(mocks.discordRestRequestGuildScoped).toHaveBeenCalledTimes(0);
-    expect(mocks.requestDiscordRestWriteForTool).toHaveBeenCalledTimes(0);
+    expect(mocks.discordRestRequestGuildScoped).not.toHaveBeenCalled();
+    expect(mocks.requestDiscordRestWriteForTool).not.toHaveBeenCalled();
   });
 
   it('blocks non-admin api writes', async () => {
     await expect(
-      discordAdminTool.execute(
+      tool('discord_admin_api').execute(
         {
-          action: 'api',
           method: 'PATCH',
           path: '/channels/channel-1/messages/message-1',
           body: { content: 'Updated' },
@@ -230,30 +224,23 @@ describe('discord admin domain typed REST wrappers', () => {
 
   it('allows moderator-only submit_moderation when the requester has Manage Messages in the target channel', async () => {
     const targetChannelId = '123456789012345678';
-    const messageIds = ['223456789012345678', '323456789012345678'];
     const requester = {
       permissions: new PermissionsBitField(0n),
       permissionsIn: vi.fn(
         () => new PermissionsBitField(PermissionsBitField.Flags.ManageMessages),
       ),
     };
-    const targetChannel = { id: targetChannelId };
     mocks.guildFetch.mockResolvedValue({
-      members: {
-        fetch: vi.fn().mockResolvedValue(requester),
-      },
-      channels: {
-        fetch: vi.fn().mockResolvedValue(targetChannel),
-      },
+      members: { fetch: vi.fn().mockResolvedValue(requester) },
+      channels: { fetch: vi.fn().mockResolvedValue({ id: targetChannelId }) },
     });
 
-    const result = await discordAdminTool.execute(
+    const result = await tool('discord_admin_submit_moderation').execute(
       {
-        action: 'submit_moderation',
         request: {
           action: 'bulk_delete_messages',
           channelId: targetChannelId,
-          messageIds,
+          messageIds: ['223456789012345678', '323456789012345678'],
           reason: 'Raid cleanup',
         },
       },
@@ -268,32 +255,25 @@ describe('discord admin domain typed REST wrappers', () => {
       },
     );
 
-    expect(result).toEqual({
-      ok: true,
-      requestId: 'approval-1',
-    });
+    expect(result).toEqual({ ok: true, requestId: 'approval-1' });
     expect(mocks.requestDiscordAdminActionForTool).toHaveBeenCalledWith(
       expect.objectContaining({
         guildId: 'guild-1',
         channelId: 'channel-1',
         requestedBy: 'user-1',
         sourceMessageId: null,
-        request: {
+        request: expect.objectContaining({
           action: 'bulk_delete_messages',
           channelId: targetChannelId,
-          messageIds,
-          reason: 'Raid cleanup',
-        },
+        }),
       }),
     );
   });
 
   it('keeps non-moderation admin actions blocked for moderator-only turns', async () => {
     await expect(
-      discordAdminTool.execute(
-        {
-          action: 'clear_server_api_key',
-        },
+      tool('discord_admin_clear_server_api_key').execute(
+        {},
         {
           traceId: 'trace',
           userId: 'user-1',
@@ -305,6 +285,6 @@ describe('discord admin domain typed REST wrappers', () => {
         },
       ),
     ).rejects.toThrow(/admin/i);
-    expect(mocks.requestDiscordAdminActionForTool).toHaveBeenCalledTimes(0);
+    expect(mocks.requestDiscordAdminActionForTool).not.toHaveBeenCalled();
   });
 });

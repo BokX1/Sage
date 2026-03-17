@@ -89,6 +89,7 @@ const CHECK_IDS = {
   aiProviderConfig: 'ai_provider.config',
   aiProviderPing: 'ai_provider.ping',
   aiProviderToolCalls: 'ai_provider.tool_calls',
+  toolsAudit: 'tools.audit',
 } as const;
 
 const CHECK_ORDER: readonly string[] = [
@@ -104,6 +105,7 @@ const CHECK_ORDER: readonly string[] = [
   CHECK_IDS.aiProviderConfig,
   CHECK_IDS.aiProviderPing,
   CHECK_IDS.aiProviderToolCalls,
+  CHECK_IDS.toolsAudit,
 ] as const;
 
 function printHelp() {
@@ -949,6 +951,44 @@ function buildChecks(): CheckDefinition[] {
           status: result.ok ? 'pass' : 'fail',
           message: result.message,
           details: result.details,
+        };
+      },
+    },
+    {
+      id: CHECK_IDS.toolsAudit,
+      title: 'Tool contract audit',
+      run: async () => {
+        const [{ ToolRegistry }, { registerDefaultAgenticTools }, { auditToolRegistry }] = await Promise.all([
+          import('../features/agent-runtime/toolRegistry'),
+          import('../features/agent-runtime/defaultTools'),
+          import('../features/agent-runtime/toolAudit'),
+        ]);
+        const registry = new ToolRegistry();
+        registerDefaultAgenticTools(registry);
+        const report = auditToolRegistry(registry);
+        const details = report.findings.slice(0, 12).map(
+          (finding) => `${finding.severity.toUpperCase()} ${finding.toolName} ${finding.code}: ${finding.message}`,
+        );
+        if (!report.ok) {
+          return {
+            status: 'fail',
+            message: `Tool audit found ${report.summary.failCount} blocking issue(s)`,
+            details,
+          };
+        }
+        if (report.summary.warnCount > 0) {
+          return {
+            status: 'warn',
+            message: `Tool audit found ${report.summary.warnCount} warning(s)`,
+            details,
+          };
+        }
+        return {
+          status: 'pass',
+          message: `Tool audit passed for ${report.summary.toolCount} tools`,
+          details: [
+            `Output schema coverage: ${report.summary.outputSchemaCoverage.declared}/${report.summary.toolCount}`,
+          ],
         };
       },
     },
