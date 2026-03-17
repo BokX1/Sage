@@ -1,7 +1,7 @@
 import type { BaseMessage } from '@langchain/core/messages';
 import type { ApprovalInterruptPayload } from '../toolControlSignals';
 import type { ToolResult } from '../toolCallExecution';
-import type { PromptInputMode } from '../promptContract';
+import type { PromptInputMode, PromptWaitingFollowUp } from '../promptContract';
 import type { GraphToolCallDescriptor } from './nativeTools';
 
 export interface GraphToolFile {
@@ -226,6 +226,7 @@ export interface AgentGraphRuntimeContext {
   recentTranscript?: string | null;
   voiceContext?: string | null;
   promptMode?: PromptInputMode;
+  waitingFollowUp?: PromptWaitingFollowUp | null;
   promptVersion?: string | null;
   promptFingerprint?: string | null;
   runId?: string | null;

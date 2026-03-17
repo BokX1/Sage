@@ -539,7 +539,10 @@ describe('agentRuntime', () => {
       maxIdleWaitMs: 86_400_000,
       lastErrorText: null,
       responseSessionJson: null,
-      waitingStateJson: null,
+      waitingStateJson: {
+        kind: 'user_input',
+        prompt: 'What should I look at next?',
+      },
       compactionStateJson: null,
       checkpointMetadataJson: null,
       startedAt: new Date(now - 5 * 60_000),
@@ -573,6 +576,13 @@ describe('agentRuntime', () => {
       expect.objectContaining({
         context: expect.objectContaining({
           activeToolNames: ['web_search', 'github_search_code', 'discord_messages_search_history'],
+          promptMode: 'waiting_follow_up',
+          waitingFollowUp: {
+            matched: true,
+            matchKind: 'direct_reply',
+            outstandingPrompt: 'What should I look at next?',
+            responseMessageId: 'response-waiting-followup-1',
+          },
         }),
       }),
     );
@@ -933,7 +943,10 @@ describe('agentRuntime', () => {
       maxIdleWaitMs: 86_400_000,
       lastErrorText: null,
       responseSessionJson: null,
-      waitingStateJson: null,
+      waitingStateJson: {
+        kind: 'user_input',
+        prompt: 'Which repository should I check first?',
+      },
       compactionStateJson: null,
       checkpointMetadataJson: { isAdmin: true, canModerate: false },
       startedAt: new Date(now - 5 * 60_000),
@@ -1249,6 +1262,15 @@ describe('agentRuntime', () => {
         threadId: 'thread-waiting-1',
         runName: 'sage_agent_user_input_resume',
         clearWaitingState: true,
+        context: expect.objectContaining({
+          promptMode: 'waiting_follow_up',
+          waitingFollowUp: {
+            matched: true,
+            matchKind: 'direct_reply',
+            outstandingPrompt: 'Which repository should I check first?',
+            responseMessageId: 'response-waiting-1',
+          },
+        }),
         appendedMessages: [
           expect.objectContaining({
             content: 'Check the Sage repo first.',
@@ -1265,6 +1287,82 @@ describe('agentRuntime', () => {
     );
     expect(result.delivery).toBe('response_session');
     expect(result.replyText).toBe('I checked that repository and found the issue.');
+  });
+
+  it('marks a single waiting candidate as a trusted follow-up even without a direct reply target', async () => {
+    const now = Date.now();
+    findWaitingUserInputTaskRunMock.mockResolvedValue({
+      id: 'task-waiting-single-1',
+      threadId: 'thread-waiting-single-1',
+      originTraceId: 'trace-origin',
+      latestTraceId: 'trace-latest',
+      guildId: 'guild-1',
+      channelId: 'channel-1',
+      requestedByUserId: 'user-1',
+      sourceMessageId: 'message-source-single-1',
+      responseMessageId: 'response-waiting-single-1',
+      status: 'waiting_user_input',
+      waitingKind: 'user_input',
+      latestDraftText: 'Want me to keep digging into the repo?',
+      draftRevision: 2,
+      completionKind: 'clarification_question',
+      stopReason: 'user_input_interrupt',
+      nextRunnableAt: null,
+      leaseOwner: null,
+      leaseExpiresAt: null,
+      heartbeatAt: null,
+      resumeCount: 0,
+      taskWallClockMs: 1000,
+      maxTotalDurationMs: 3_600_000,
+      maxIdleWaitMs: 86_400_000,
+      lastErrorText: null,
+      responseSessionJson: null,
+      waitingStateJson: {
+        kind: 'user_input',
+        prompt: 'Want me to keep digging into the repo?',
+      },
+      compactionStateJson: null,
+      checkpointMetadataJson: null,
+      startedAt: new Date(now - 5 * 60_000),
+      completedAt: null,
+      createdAt: new Date(now - 5 * 60_000),
+      updatedAt: new Date(now - 5_000),
+    });
+    continueAgentGraphTurnMock.mockResolvedValue(
+      makeGraphResult({
+        replyText: 'I kept digging and found more context.',
+        activeWindowDurationMs: 600,
+      }),
+    );
+
+    await resumeWaitingTaskRunWithInput({
+      traceId: 'trace-resume-input-single-1',
+      userId: 'user-1',
+      channelId: 'channel-1',
+      guildId: 'guild-1',
+      replyToMessageId: null,
+      userText: 'Proceed',
+      currentTurn: makeCurrentTurn({
+        messageId: 'message-followup-single-1',
+        isDirectReply: false,
+        replyTargetMessageId: null,
+      }),
+      isAdmin: false,
+    });
+
+    expect(continueAgentGraphTurnMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        context: expect.objectContaining({
+          promptMode: 'waiting_follow_up',
+          waitingFollowUp: {
+            matched: true,
+            matchKind: 'single_waiting_run',
+            outstandingPrompt: 'Want me to keep digging into the repo?',
+            responseMessageId: 'response-waiting-single-1',
+          },
+        }),
+      }),
+    );
   });
 
   it('fails a waiting user-input run cleanly after idle expiry instead of starting a fresh turn', async () => {

@@ -255,6 +255,13 @@ const GraphWaitingStateSchema = z.object({
   responseMessageId: z.string().nullable().optional(),
 });
 
+const PromptWaitingFollowUpSchema = z.object({
+  matched: z.boolean(),
+  matchKind: z.enum(['direct_reply', 'single_waiting_run']),
+  outstandingPrompt: z.string(),
+  responseMessageId: z.string().nullable().optional(),
+});
+
 const GraphCompactionStateSchema = z.object({
   workingObjective: z.string(),
   verifiedFacts: z.array(z.string()).default([]),
@@ -302,8 +309,9 @@ const AgentGraphRuntimeSnapshotSchema = z.object({
   focusedContinuity: z.string().nullable().optional(),
   recentTranscript: z.string().nullable().optional(),
   voiceContext: z.string().nullable().optional(),
+  waitingFollowUp: z.union([PromptWaitingFollowUpSchema, z.null()]).optional(),
   promptMode: z
-    .enum(['standard', 'image_only', 'reply_only', 'direct_attention', 'durable_resume'])
+    .enum(['standard', 'image_only', 'reply_only', 'direct_attention', 'durable_resume', 'waiting_follow_up'])
     .optional(),
   promptVersion: z.string().nullable().optional(),
   promptFingerprint: z.string().nullable().optional(),
@@ -335,8 +343,9 @@ const AgentGraphConfigurableSchema = z
     focusedContinuity: z.string().nullable().optional(),
     recentTranscript: z.string().nullable().optional(),
     voiceContext: z.string().nullable().optional(),
+    waitingFollowUp: z.union([PromptWaitingFollowUpSchema, z.null()]).optional(),
     promptMode: z
-      .enum(['standard', 'image_only', 'reply_only', 'direct_attention', 'durable_resume'])
+      .enum(['standard', 'image_only', 'reply_only', 'direct_attention', 'durable_resume', 'waiting_follow_up'])
       .optional(),
     promptVersion: z.string().nullable().optional(),
     promptFingerprint: z.string().nullable().optional(),
@@ -475,6 +484,7 @@ const EMPTY_RUNTIME_CONTEXT: AgentGraphRuntimeContext = {
   focusedContinuity: null,
   recentTranscript: null,
   voiceContext: null,
+  waitingFollowUp: null,
   promptMode: 'standard',
   promptVersion: null,
   promptFingerprint: null,
@@ -500,6 +510,7 @@ export interface StartAgentGraphTurnParams {
   focusedContinuity?: string | null;
   recentTranscript?: string | null;
   voiceContext?: string | null;
+  waitingFollowUp?: AgentGraphRuntimeContext['waitingFollowUp'];
   promptMode?: PromptInputMode;
   promptVersion?: string | null;
   promptFingerprint?: string | null;
@@ -797,6 +808,7 @@ function createRuntimeContext(params: StartAgentGraphTurnParams): AgentGraphRunt
     focusedContinuity: params.focusedContinuity ?? null,
     recentTranscript: params.recentTranscript ?? null,
     voiceContext: params.voiceContext ?? null,
+    waitingFollowUp: params.waitingFollowUp ?? null,
     promptMode: params.promptMode ?? 'standard',
     promptVersion: params.promptVersion ?? null,
     promptFingerprint: params.promptFingerprint ?? null,
@@ -806,7 +818,11 @@ function createRuntimeContext(params: StartAgentGraphTurnParams): AgentGraphRunt
 function snapshotRuntimeContext(runtimeContext: AgentGraphRuntimeContext): AgentGraphPersistedContext {
   const { apiKey, ...persisted } = runtimeContext;
   void apiKey;
-  return persisted;
+  return {
+    ...persisted,
+    promptMode: persisted.promptMode === 'waiting_follow_up' ? 'standard' : persisted.promptMode,
+    waitingFollowUp: null,
+  };
 }
 
 function buildRunnableConfig(params: {
@@ -1554,6 +1570,7 @@ function buildAssistantTurnMessages(params: {
     focusedContinuity: params.runtimeContext.focusedContinuity ?? null,
     recentTranscript: params.runtimeContext.recentTranscript ?? null,
     voiceContext: params.runtimeContext.voiceContext ?? null,
+    waitingFollowUp: params.runtimeContext.waitingFollowUp ?? null,
     graphLimits: {
       maxRounds: graphConfig.sliceMaxSteps,
     },
@@ -3550,6 +3567,13 @@ export async function continueAgentGraphTurn(
     ],
     replyTarget: params.context?.replyTarget ?? existingState.resumeContext.replyTarget ?? null,
   };
+  const persistedMergedContext: AgentGraphRuntimeContext = params.clearWaitingState
+    ? {
+        ...mergedContext,
+        waitingFollowUp: null,
+        promptMode: existingState.resumeContext.promptMode ?? 'standard',
+      }
+    : mergedContext;
   const reopenedResponseSession =
     existingState.responseSession.status === 'final' || existingState.responseSession.status === 'failed'
       ? {
@@ -3564,7 +3588,7 @@ export async function continueAgentGraphTurn(
       goto: resolveContinueNode(existingState),
       update: Object.entries({
         messages: [...(existingState.messages as BaseMessage[]), ...(params.appendedMessages ?? [])],
-        resumeContext: snapshotRuntimeContext(mergedContext),
+        resumeContext: snapshotRuntimeContext(persistedMergedContext),
         replyText: existingState.replyText,
         responseSession: reopenedResponseSession,
         waitingState: params.clearWaitingState ? null : existingState.waitingState,

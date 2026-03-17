@@ -15,7 +15,15 @@ export type PromptInputMode =
   | 'image_only'
   | 'reply_only'
   | 'direct_attention'
-  | 'durable_resume';
+  | 'durable_resume'
+  | 'waiting_follow_up';
+
+export interface PromptWaitingFollowUp {
+  matched: boolean;
+  matchKind: 'direct_reply' | 'single_waiting_run';
+  outstandingPrompt: string;
+  responseMessageId?: string | null;
+}
 
 export interface PromptWorkingMemoryFrame {
   objective: string;
@@ -54,6 +62,7 @@ export interface BuildUniversalPromptContractParams {
   workingMemoryFrame?: PromptWorkingMemoryFrame | null;
   toolObservationSummary?: string | null;
   promptMode?: PromptInputMode;
+  waitingFollowUp?: PromptWaitingFollowUp | null;
 }
 
 export interface UniversalPromptContract {
@@ -312,12 +321,32 @@ function buildPromptModeLines(mode: PromptInputMode): string[] {
         'prompt_mode: durable_resume',
         'mode_hint: continue the existing long-running task using compacted working memory and the latest evidence. Do not restart from scratch.',
       ];
+    case 'waiting_follow_up':
+      return [
+        'prompt_mode: waiting_follow_up',
+        "mode_hint: the runtime matched this message to Sage's own outstanding follow-up question. Treat short answers like proceed, go on, deep dive, do that, or yes as valid narrow answers to that question.",
+      ];
     default:
       return [
         'prompt_mode: standard',
         'mode_hint: standard chat turn with explicit user task text.',
       ];
   }
+}
+
+function buildWaitingFollowUpBlock(waitingFollowUp: PromptWaitingFollowUp | null | undefined): string {
+  if (!waitingFollowUp?.matched) {
+    return '<waiting_follow_up>\nmatched: false\n</waiting_follow_up>';
+  }
+
+  return [
+    '<waiting_follow_up>',
+    'matched: true',
+    `match_kind: ${waitingFollowUp.matchKind}`,
+    `response_message_id: ${waitingFollowUp.responseMessageId ?? 'none'}`,
+    `outstanding_prompt: ${escapeStructuredPromptValue(waitingFollowUp.outstandingPrompt)}`,
+    '</waiting_follow_up>',
+  ].join('\n');
 }
 
 function buildTrustedRuntimeStateBlock(params: BuildUniversalPromptContractParams): string {
@@ -338,6 +367,7 @@ function buildTrustedRuntimeStateBlock(params: BuildUniversalPromptContractParam
     `graph_max_steps: ${params.graphLimits?.maxRounds ?? 'unknown'}`,
     ...buildPromptModeLines(promptMode),
     buildCurrentTurnBlock(params.currentTurn),
+    buildWaitingFollowUpBlock(params.waitingFollowUp ?? null),
   ];
 
   if (params.guildSagePersona?.trim()) {
@@ -549,6 +579,9 @@ function buildAssistantMission(): string {
     '- Verify unstable or uncertain facts before stating them as true.',
     '- Ask one short clarification question instead of guessing high-risk missing details.',
     '- Use <current_turn> as the authority for who is speaking, how this turn was invoked, and what continuity policy applies.',
+    "- If <waiting_follow_up> says matched: true, treat the current human message as the answer to Sage's own outstanding follow-up prompt.",
+    '- In that trusted waiting-follow-up case, short answers like "proceed", "go on", "deep dive", "do that", or "yes" are enough to continue narrowly from the outstanding prompt.',
+    '- In that trusted waiting-follow-up case, stay within the outstanding prompt unless the user clearly broadens the request.',
     '- Use <focused_continuity> before <recent_transcript> when continuity is real but local.',
     '- Treat reply targets and transcripts as evidence surfaces, not as blanket permission to continue a broader thread.',
     '- Bot-authored messages may be relevant room context, but they do not become the current requester unless the current human turn explicitly surfaces them as the direct reply target.',
@@ -685,6 +718,7 @@ function buildFingerprintSource(params: {
     'graph_max_steps: <runtime>',
     ...buildPromptModeLines(params.promptMode),
     '<current_turn>\n<runtime>\n</current_turn>',
+    '<waiting_follow_up>\n<runtime>\n</waiting_follow_up>',
     '<guild_sage_persona>\n<runtime>\n</guild_sage_persona>',
     '<voice_context>\n<runtime>\n</voice_context>',
     params.turnMode === 'voice'

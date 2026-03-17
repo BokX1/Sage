@@ -27,6 +27,7 @@ import {
 import {
   buildPromptContextMessages,
   type PromptInputMode,
+  type PromptWaitingFollowUp,
 } from './promptContract';
 import {
   findWaitingUserInputTaskRun,
@@ -189,6 +190,47 @@ function buildRetryMeta(
       threadId,
       retryKind,
     },
+  };
+}
+
+function readWaitingFollowUpPrompt(waitingTaskRun: {
+  waitingStateJson: unknown;
+  latestDraftText: string;
+}): string {
+  const candidate = waitingTaskRun.waitingStateJson;
+  if (
+    candidate &&
+    typeof candidate === 'object' &&
+    !Array.isArray(candidate) &&
+    typeof (candidate as { prompt?: unknown }).prompt === 'string'
+  ) {
+    const prompt = ((candidate as { prompt?: string }).prompt ?? '').trim();
+    if (prompt.length > 0) {
+      return prompt;
+    }
+  }
+  return waitingTaskRun.latestDraftText.trim();
+}
+
+function buildWaitingFollowUpContext(params: {
+  waitingTaskRun: {
+    sourceMessageId: string | null;
+    responseMessageId: string | null;
+    waitingStateJson: unknown;
+    latestDraftText: string;
+  };
+  replyToMessageId?: string | null;
+}): PromptWaitingFollowUp {
+  const isDirectReply =
+    !!params.replyToMessageId &&
+    (params.replyToMessageId === params.waitingTaskRun.responseMessageId ||
+      params.replyToMessageId === params.waitingTaskRun.sourceMessageId);
+
+  return {
+    matched: true,
+    matchKind: isDirectReply ? 'direct_reply' : 'single_waiting_run',
+    outstandingPrompt: readWaitingFollowUpPrompt(params.waitingTaskRun),
+    responseMessageId: params.waitingTaskRun.responseMessageId ?? null,
   };
 }
 
@@ -952,6 +994,10 @@ export async function resumeWaitingTaskRunWithInput(
     canModerate: params.canModerate ?? false,
     invokedBy: 'reply',
   });
+  const waitingFollowUp = buildWaitingFollowUpContext({
+    waitingTaskRun,
+    replyToMessageId: params.replyToMessageId ?? null,
+  });
 
   try {
     const graphResult = await continueAgentGraphTurn({
@@ -979,7 +1025,8 @@ export async function resumeWaitingTaskRunWithInput(
         routeKind: 'user_input_resume',
         currentTurn: params.currentTurn,
         replyTarget: params.replyTarget ?? null,
-        promptMode: params.promptMode ?? 'standard',
+        promptMode: 'waiting_follow_up',
+        waitingFollowUp,
       },
       appendedMessages: [
         new HumanMessage({

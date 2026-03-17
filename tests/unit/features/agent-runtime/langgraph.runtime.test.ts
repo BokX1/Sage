@@ -220,6 +220,7 @@ vi.mock('@/features/agent-runtime/toolControlSignals', () => ({
 import {
   __getAgentGraphStateForTests,
   __runAgentGraphCommandForTests,
+  continueAgentGraphTurn,
   runAgentGraphTurn,
   runGraphValueStream,
   resumeAgentGraphTurn,
@@ -1907,5 +1908,99 @@ describe('runGraphValueStream', () => {
 
     expect(resumed.graphStatus).toBe('completed');
     expect(resumed.replyText).toContain('All set.');
+  });
+
+  it('drops trusted waiting-follow-up state from persisted resume context after the waiting question is consumed', async () => {
+    await shutdownAgentGraphRuntime();
+    modelInvokeMock.mockResolvedValueOnce(
+      makeFinishTurnMessage('clarification_question', 'Do you want me to keep digging into the repo?'),
+    );
+
+    const initial = await runAgentGraphTurn({
+      traceId: 'trace-waiting-followup-clear-1',
+      userId: 'user-1',
+      channelId: 'channel-1',
+      guildId: 'guild-1',
+      apiKey: 'test-api-key',
+      model: 'test-main-agent-model',
+      temperature: 0.6,
+      timeoutMs: 1_000,
+      maxTokens: 500,
+      messages: [new HumanMessage({ content: 'check the repo owner' })],
+      activeToolNames: ['web_search'],
+      routeKind: 'single',
+      currentTurn: {
+        invokerUserId: 'user-1',
+        invokerDisplayName: 'User One',
+        messageId: 'message-waiting-followup-clear-1',
+        guildId: 'guild-1',
+        channelId: 'channel-1',
+        invokedBy: 'mention',
+        mentionedUserIds: [],
+        isDirectReply: false,
+        replyTargetMessageId: null,
+        replyTargetAuthorId: null,
+        botUserId: 'sage-bot',
+      },
+      replyTarget: null,
+      invokedBy: 'mention',
+      invokerIsAdmin: false,
+    });
+
+    expect(initial.completionKind).toBe('clarification_question');
+    modelInvokeMock.mockResolvedValueOnce(
+      makeFinishTurnMessage('final_answer', 'I kept digging and found the repo details.'),
+    );
+
+    const resumed = await continueAgentGraphTurn({
+      threadId: 'trace-waiting-followup-clear-1',
+      runId: 'trace-waiting-followup-clear-1b',
+      runName: 'sage_agent_user_input_resume',
+      context: {
+        traceId: 'trace-waiting-followup-clear-1b',
+        threadId: 'trace-waiting-followup-clear-1',
+        userId: 'user-1',
+        channelId: 'channel-1',
+        guildId: 'guild-1',
+        apiKey: 'test-api-key',
+        model: 'test-main-agent-model',
+        temperature: 0.6,
+        timeoutMs: 1_000,
+        maxTokens: 500,
+        invokedBy: 'reply',
+        invokerIsAdmin: false,
+        invokerCanModerate: false,
+        activeToolNames: ['web_search'],
+        routeKind: 'user_input_resume',
+        currentTurn: {
+          invokerUserId: 'user-1',
+          invokerDisplayName: 'User One',
+          messageId: 'message-waiting-followup-clear-2',
+          guildId: 'guild-1',
+          channelId: 'channel-1',
+          invokedBy: 'reply',
+          mentionedUserIds: [],
+          isDirectReply: true,
+          replyTargetMessageId: 'response-waiting-followup-clear-1',
+          replyTargetAuthorId: 'sage-bot',
+          botUserId: 'sage-bot',
+        },
+        replyTarget: null,
+        promptMode: 'waiting_follow_up',
+        waitingFollowUp: {
+          matched: true,
+          matchKind: 'direct_reply',
+          outstandingPrompt: 'Do you want me to keep digging into the repo?',
+          responseMessageId: 'response-waiting-followup-clear-1',
+        },
+      },
+      appendedMessages: [new HumanMessage({ content: 'Proceed' })],
+      clearWaitingState: true,
+    });
+
+    expect(resumed.graphStatus).toBe('completed');
+    const checkpointState = await __getAgentGraphStateForTests('trace-waiting-followup-clear-1');
+    expect(checkpointState?.resumeContext.waitingFollowUp).toBeNull();
+    expect(checkpointState?.resumeContext.promptMode).toBe('standard');
   });
 });
