@@ -11,6 +11,7 @@
 
 > [!NOTE]
 > This changelog format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+> Historical entries intentionally preserve the terminology that was current when they were written; use the docs in `docs/` and `README.md` for the current runtime contract.
 
 ---
 

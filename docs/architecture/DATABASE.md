@@ -31,7 +31,7 @@ Sage uses PostgreSQL with Prisma ORM. The current Prisma schema defines 18 model
 ## 📊 Entity Relationship Diagram
 
 > [!NOTE]
-> The ERD below is abbreviated to the core entities most readers need first. The later sections cover the full 17-model schema.
+> The ERD below is abbreviated to the core entities most readers need first. The later sections cover the full 18-model schema.
 
 ```mermaid
 erDiagram

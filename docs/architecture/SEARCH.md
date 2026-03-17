@@ -1,10 +1,10 @@
-# 🔍 Search Architecture (SAG)
+# 🔍 Search Architecture
 
 <p align="center">
   <img src="https://img.shields.io/badge/%F0%9F%8C%BF-Sage%20Search-2d5016?style=for-the-badge&labelColor=4a7c23" alt="Sage Search" />
 </p>
 
-How Sage fetches live information from the web using Search-Augmented Generation.
+How Sage fetches live information from the web through its registered research tools.
 
 ---
 
@@ -22,7 +22,7 @@ How Sage fetches live information from the web using Search-Augmented Generation
 
 ## 🌐 Overview
 
-Sage uses **Search-Augmented Generation (SAG)** to answer time-sensitive or factual queries. Instead of relying solely on training data, Sage can search the web, scrape pages, and synthesize results into a polished response.
+Sage answers time-sensitive or factual queries by invoking web and research tools from the same LangGraph runtime that handles the rest of the turn. Instead of relying solely on training data, Sage can search, read, extract, and synthesize external sources when freshness matters.
 
 ```text
 User asks time-sensitive question
@@ -40,12 +40,12 @@ User asks time-sensitive question
 ```mermaid
 sequenceDiagram
     participant U as User
-    participant S as Search Engine
-    participant B as Bot
+    participant T as Tool Stack
+    participant B as Sage
 
     U->>B: "What's the current price of Bitcoin?"
-    B->>S: Tool-enabled search orchestration
-    S->>B: Synthesized findings + sources
+    B->>T: Search and read relevant sources
+    T->>B: Results and source metadata
     B->>U: Answer with source URLs
 ```
 
@@ -60,13 +60,14 @@ Search execution now follows the same provider-neutral runtime contract as the r
 | Scenario | Runtime behavior |
 | :--- | :--- |
 | Tool orchestration | Uses the configured `AI_PROVIDER_MAIN_AGENT_MODEL` |
-| Fallback synthesis | Uses only explicitly configured search providers; there is no AI-provider search fallback |
+| Search providers | Uses only the explicitly configured search and scrape providers |
+| Fallback synthesis | Happens in the normal runtime loop; there is no hidden AI-provider search fallback |
 
 **Key rules:**
 
 - Sage no longer ships built-in search-model chains or hidden fallback model ids.
 - Search runs only through the configured search providers in `TOOL_WEB_SEARCH_PROVIDER_ORDER`.
-- Source/date normalization and capability validation still apply to search outputs.
+- Source/date normalization and provider capability validation still apply to search outputs.
 
 **Source:** [`src/features/agent-runtime/agentRuntime.ts`](../../src/features/agent-runtime/agentRuntime.ts) and [`src/features/agent-runtime/toolIntegrations.ts`](../../src/features/agent-runtime/toolIntegrations.ts)
 
@@ -117,5 +118,5 @@ Sage supports multiple search and scraping providers with automatic fallback:
 ## 🔗 Related Documentation
 
 - [🔀 Runtime Pipeline](PIPELINE.md) — Where search fits in the message flow
-- [🧩 Model Reference](../reference/MODELS.md) — Search model chains and fallbacks
+- [🧩 Model Reference](../reference/MODELS.md) — Runtime model budgets and verification
 - [🧰 Self-Hosted Tool Stack](../operations/TOOL_STACK.md) — Setting up SearXNG and Crawl4AI locally

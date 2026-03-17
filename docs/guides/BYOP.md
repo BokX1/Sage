@@ -4,7 +4,9 @@
   <img src="https://img.shields.io/badge/%F0%9F%8C%BF-Sage%20BYOP-2d5016?style=for-the-badge&labelColor=4a7c23" alt="BYOP" />
 </p>
 
-Sage's built-in hosted/server-key flow uses a BYOP model: communities provide a Pollinations API key for that integration path. Sage itself is MIT-licensed; Pollinations usage and hosting costs remain separate from the software license, and self-hosted chat turns can target other OpenAI-compatible providers.
+Sage's current hosted/server-key flow uses BYOP: a server admin connects a Pollinations secret key for that guild.
+
+Sage itself remains MIT-licensed and provider-flexible when self-hosted. This page covers only the Pollinations-specific hosted/server-key path.
 
 ---
 
@@ -21,17 +23,19 @@ Sage's built-in hosted/server-key flow uses a BYOP model: communities provide a 
 
 ## 🔑 How It Works
 
-For the built-in Pollinations-backed flow, Sage needs a server key to answer in that guild. This can be provided in two ways:
+For the current hosted/server-key path, Sage needs a usable Pollinations key for the guild.
 
-1. **Server-wide key (BYOP):** A server admin uses Sage's setup card and modal to store a server provider key for the community.
-2. **Host-level key (`SERVER_PROVIDER_API_KEY`):** Optional fallback key the bot owner can set for the whole deployment.
+That can happen in two ways:
 
-This key powers:
+1. **Server-wide key:** a server admin completes the setup card flow and stores a guild key.
+2. **Host-level fallback:** the operator has configured a deployment-level provider key path that Sage can use for the hosted experience.
 
-- 💬 Text chat
-- 👁️ Vision
-- 🎨 Image generation and editing
-- 🎤 Voice-related features when enabled
+The BYOP path currently powers:
+
+- text chat
+- vision-aware chat
+- image generation and image editing
+- any guild turn that depends on the current hosted key path
 
 ### Activation lifecycle
 
@@ -43,10 +47,10 @@ flowchart LR
 
     A[Invite Sage]:::start
       --> B[Talk to Sage once]:::step
-      --> C[Missing-key setup card appears]:::step
+      --> C[Setup card appears]:::step
       --> D[Get Pollinations key]:::step
       --> E[Set Server Key modal]:::step
-      --> F[Sage active for everyone]:::finish
+      --> F[Sage active for the guild]:::finish
 ```
 
 ---
@@ -55,17 +59,15 @@ flowchart LR
 
 ## 🚀 Setup Guide (For Admins)
 
-**Prerequisite:** You must be a server admin or have the **Manage Guild** permission.
-
 ### Step 1: Trigger the setup card
 
-Send a normal message that invokes Sage, such as:
+Invoke Sage normally:
 
 ```text
 @Sage hello
 ```
 
-If the guild does not yet have a usable key, Sage responds with the setup card.
+If the guild has no usable key path yet, Sage responds with the setup card.
 
 ### Step 2: Get your Pollinations key
 
@@ -93,10 +95,10 @@ Use the same setup card controls:
 
 ## 🔐 Key Safety Notes
 
-- The key is server-wide and used for requests originating from that server.
-- Treat your `sk_...` key like a password.
-- Sage's current setup flow uses buttons and modals instead of public command text, which helps avoid accidental channel leakage.
-- If you need to revoke access, clear the key in Sage and/or rotate it in Pollinations.
+- The key is guild-scoped and used for requests originating from that server.
+- Treat `sk_...` keys like passwords.
+- Sage's setup flow uses buttons and modals so keys are not pasted into public chat.
+- If you need to revoke access, clear the key in Sage and rotate it in Pollinations.
 
 ---
 
@@ -104,13 +106,19 @@ Use the same setup card controls:
 
 ## ❓ FAQ
 
-**Q: Do my members need to pay?**  
-**A:** The server key covers member AI usage. Pollinations.ai may offer free tiers, but provider usage and hosting costs are separate from Sage's MIT software license.
+**Q: Do my members need their own key?**  
+**A:** No. The BYOP server key covers the guild.
+
+**Q: Does this change self-hosted provider flexibility?**  
+**A:** No. Sage's runtime chat remains provider-flexible through `AI_PROVIDER_BASE_URL`. BYOP is only the current hosted/server-key path.
+
+**Q: Where do I read more about the upstream integration?**  
+**A:** See [🐝 Pollinations Integration](../reference/POLLINATIONS.md).
 
 ---
 
 ## 📚 Related Documentation
 
-- [⚙️ Configuration Reference](../reference/CONFIGURATION.md) — All env vars
-- [🐝 Pollinations Integration](../reference/POLLINATIONS.md) — How Sage connects upstream
-- [🔒 Security & Privacy](../security/SECURITY_PRIVACY.md) — What Sage stores
+- [⚙️ Configuration Reference](../reference/CONFIGURATION.md)
+- [🐝 Pollinations Integration](../reference/POLLINATIONS.md)
+- [🔒 Security & Privacy](../security/SECURITY_PRIVACY.md)

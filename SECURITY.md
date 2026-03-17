@@ -46,6 +46,7 @@ When deploying Sage:
 - **Never commit** `.env` files with real credentials
 - Use environment variable management in production (secrets managers)
 - Rotate your `DISCORD_TOKEN` if you suspect compromise
+- Treat `AI_PROVIDER_API_KEY`, `IMAGE_PROVIDER_API_KEY`, `SERVER_PROVIDER_API_KEY`, and any guild BYOP/server keys as production secrets
 
 ### Database
 
@@ -55,7 +56,7 @@ When deploying Sage:
 
 ### API Keys
 
-- Keep your `AI_PROVIDER_API_KEY` (or BYOP server key) private
+- Keep `AI_PROVIDER_API_KEY`, image-provider keys, and any guild/server BYOP key private
 - Generate keys with minimal required permissions
 - Revoke and regenerate keys periodically
 
@@ -82,4 +83,5 @@ See [Security & Privacy](docs/security/SECURITY_PRIVACY.md) for full details.
 
 - **AI Provider**: Sage sends chat, profile, and summary requests to whichever OpenAI-compatible endpoint you configure via `AI_PROVIDER_BASE_URL`. The current hosted deployment uses [Pollinations.ai](https://pollinations.ai) as the default provider.
 - **Image Provider**: Image generation and editing requests go to the endpoint configured via `IMAGE_PROVIDER_BASE_URL`.
+- **Server-key validation path**: Sage's current hosted server-key validation and BYOP flow are Pollinations-specific today.
 - Review the privacy policy of your chosen AI and image providers.

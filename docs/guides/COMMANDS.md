@@ -1,6 +1,6 @@
 # 💬 Sage Conversation & Controls
 
-Sage is chat-first. Use normal conversation in Discord instead of relying on a slash-command menu.
+Sage is chat-first. Use normal Discord conversation, replies, buttons, and modals instead of a slash-command menu.
 
 <p align="center">
   <img src="https://img.shields.io/badge/%F0%9F%8C%BF-Sage%20Controls-2d5016?style=for-the-badge&labelColor=4a7c23" alt="Sage Controls" />
@@ -12,9 +12,10 @@ Sage is chat-first. Use normal conversation in Discord instead of relying on a s
 
 - [Quick Reference](#quick-reference)
 - [Triggering Sage](#triggering-sage)
-- [Server Key Setup](#server-key-setup)
+- [Setup Card and Server Keys](#setup-card-and-server-keys)
 - [Voice Control](#voice-control)
-- [Admin Actions](#admin-actions)
+- [Admin and Moderation Requests](#admin-and-moderation-requests)
+- [Interactive Follow-Ups](#interactive-follow-ups)
 - [Related Documentation](#related-documentation)
 
 ---
@@ -24,52 +25,53 @@ Sage is chat-first. Use normal conversation in Discord instead of relying on a s
 | Goal | How to do it |
 | :--- | :--- |
 | Talk to Sage | Mention Sage, reply to Sage, or start with `Sage` |
-| Activate Hosted Sage | Use Sage's setup card buttons and modal |
-| Check or clear the server key | Use the setup card buttons as a server admin |
-| Ask Sage to join voice | Say `Sage, join my voice channel` |
-| Ask Sage to leave voice | Say `Sage, leave voice` |
-| Run admin workflows | Ask in chat; Sage queues approval when needed |
+| Continue a thread | Reply to Sage or use Sage-authored follow-up buttons |
+| Activate hosted/server-key flow | Trigger Sage once in a guild with no usable key |
+| Ask Sage to join voice | `Sage, join my voice channel` |
+| Ask Sage to leave voice | `Sage, leave voice` |
+| Request admin work | Ask in normal chat; Sage queues approval when needed |
 
 ---
 
 ## 🗣️ Triggering Sage
 
-Sage can be triggered in three ways:
+Sage can be triggered in three primary ways:
 
 | Method | Example | Description |
 | :--- | :--- | :--- |
 | Wake word | `Sage, what changed today?` | Start the message with `Sage` |
-| Mention | `@Sage explain this code` | Mention the bot anywhere |
+| Mention | `@Sage explain this stack trace` | Mention the bot anywhere in the message |
 | Reply | Reply to a Sage message | Continue an existing exchange |
 
-Wake word prefixes like `Hey Sage` are also supported.
+Wake word prefixes such as `hey sage` can also be enabled through `WAKE_WORD_PREFIXES_CSV`.
 
 > [!TIP]
-> Configure custom wake words and prefixes with `WAKE_WORDS_CSV` and `WAKE_WORD_PREFIXES_CSV` in your `.env`.
+> Configure wake words with `WAKE_WORDS_CSV` and `WAKE_WORD_PREFIXES_CSV` in `.env`.
 
 ---
 
-## 🔑 Server Key Setup
+## 🔑 Setup Card and Server Keys
 
-For the hosted Pollinations-backed flow, Sage exposes setup controls directly in Discord when a server key is missing.
+When a guild has no usable key path yet, Sage can post an interactive setup card in Discord.
 
 Server admins can use:
 
-- `Get Pollinations Key` to open the current login flow
-- `Set Server Key` to open a secure modal for the `sk_...` key
-- `Check Key` to verify status
-- `Clear Key` to remove the server-wide key
+- `Get Pollinations Key`
+- `Set Server Key`
+- `Check Key`
+- `Clear Key`
 
-Non-admins can still see the setup card, but only admins can submit changes.
+Important context:
 
-> [!NOTE]
-> Self-hosted deployments can skip this flow by setting a host-level `AI_PROVIDER_API_KEY` for any OpenAI-compatible provider, or they can still rely on Sage's in-Discord server activation flow later.
+- This is part of Sage's current hosted/server-key path.
+- Self-hosted runtime chat remains provider-flexible through `AI_PROVIDER_BASE_URL`.
+- If you already set `AI_PROVIDER_API_KEY`, Sage can use that host-level key as a fallback for the configured provider.
 
 ---
 
 ## 🎤 Voice Control
 
-Voice presence follows the same chat-first model.
+Voice is also chat-first.
 
 Examples:
 
@@ -77,40 +79,54 @@ Examples:
 - `Sage, are you in voice right now?`
 - `Sage, leave voice`
 
-Sage handles live voice control through the `discord_voice` tool path and keeps voice analytics and summaries separate under `discord_context`.
+Voice expectations:
+
+- voice status, join, and leave are normal chat requests
+- optional local STT is controlled with `VOICE_*` env vars
+- summary-only voice memory is persisted only when voice transcription is enabled and session summaries are on
 
 ---
 
-## 🛡️ Admin Actions
+## 🛡️ Admin and Moderation Requests
 
-Most higher-impact actions are requested in chat, not through commands.
+Most privileged work is requested in normal chat, not by slash command.
 
 Examples:
 
-- `Sage, search the server for the last thread about release blockers`
-- `Sage, send a setup card in this channel`
-- `Sage, update Sage Persona with this policy`
 - `Sage, create a thread for this incident`
-- `Sage, moderate the last spam message`
+- `Sage, update Sage Persona with this policy`
+- `Sage, review the last spam wave and queue cleanup`
 - `Sage, timeout the author of this replied-to message for 30 minutes`
-- `Sage, remove the timeout for <@1234567890>`
+- `Sage, send the setup card in this channel`
 
-Destructive or sensitive operations still require explicit approval through Sage-authored buttons.
-Requester-facing governance cards stay compact in the source channel and move through states like queued, joined existing review, approved, executed, rejected, failed, or expired.
-If a server review channel is configured, Sage posts the detailed reviewer card there; otherwise the reviewer card stays in the source channel by default.
-Equivalent unresolved requests are coalesced, so repeated asks for the same admin action should point back to one approval review request and one reviewer card instead of spawning duplicates.
-Rejections collect a short reason through a modal and show that reason back on the requester-facing status card.
-For moderation, Sage works best when you reply directly to the target message or provide an exact Discord message link, mention, or ID; it should use exact message-history evidence rather than summaries before taking enforcement action.
-For high-volume cleanup, Sage can queue approval-gated batch moderation through typed flows (explicit bulk delete IDs/URLs or criteria-based recent-message purge); execution skips messages older than 14 days and reports skipped counts instead of failing the whole action.
-Normal channel replies should stay operator-friendly: Sage should not paste raw tool payloads, approval commands, or internal retry chatter into chat while an approval is pending.
+Current behavior:
+
+- higher-impact actions are approval-gated
+- requester status stays compact in the source channel
+- detailed reviewer cards can route to a dedicated governance review channel
+- equivalent unresolved requests are coalesced onto one review request when possible
+- moderation works best when you reply to the target message or give a precise message link, ID, or mention
+
+---
+
+## 🔁 Interactive Follow-Ups
+
+Sage can continue work through Components V2 buttons and modal prompts.
+
+Typical patterns:
+
+- retry a failed turn
+- continue after approval
+- answer a Sage-authored clarification prompt
+- complete a modal-backed follow-up for setup or governance
+
+The current runtime keeps those interactions on the same durable task-run story instead of forcing a brand-new slash command or command session.
 
 ---
 
 ## 🔗 Related Documentation
 
-- [⚡ Quick Start](QUICKSTART.md) — Fastest path to using Sage
-- [🌸 BYOP Mode](BYOP.md) — Hosted Pollinations key setup
-- [❓ FAQ](FAQ.md) — Common questions
-- [🔧 Troubleshooting](TROUBLESHOOTING.md) — Fixes for common failures
-
-<p align="right"><a href="#top">⬆️ Back to top</a></p>
+- [⚡ Quick Start](QUICKSTART.md)
+- [🌸 BYOP Mode](BYOP.md)
+- [❓ FAQ](FAQ.md)
+- [🔧 Troubleshooting](TROUBLESHOOTING.md)

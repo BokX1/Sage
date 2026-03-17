@@ -49,8 +49,9 @@ an individual is officially representing the community in public spaces.
 ## Enforcement
 
 Instances of abusive, harassing, or otherwise unacceptable behavior may be
-reported to the community leaders responsible for enforcement at the project
-repository's issue tracker.
+reported privately through the project maintainers' chosen support or security
+channel. When private reporting is not available, use the repository's issue
+tracker only for non-sensitive conduct concerns.
 
 All complaints will be reviewed and investigated promptly and fairly.
 

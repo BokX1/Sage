@@ -29,7 +29,7 @@ How to run Sage in production with the current repo layout.
 | PostgreSQL | Prisma-compatible | Required |
 | Discord Bot Token | - | From the Discord Developer Portal |
 | Discord App ID | - | Used for bot invite generation and Discord app identity |
-| Explicit AI provider config or hosted server BYOP flow | - | Required for Sage to make upstream model requests |
+| Explicit AI provider config or hosted server-key flow | - | Required for Sage to make upstream model requests |
 | Docker | Optional | Used by the repo's support-service compose files |
 
 > [!NOTE]
@@ -114,7 +114,7 @@ FILE_INGEST_TIKA_BASE_URL=http://127.0.0.1:9998
 Key notes:
 
 - If you set `AI_PROVIDER_API_KEY`, Sage can use that host-level key with your configured AI provider.
-- If you do **not** set `AI_PROVIDER_API_KEY`, Sage can still run and answer in servers that configure an in-Discord server key. Direct-message chat still needs a host-level key because there is no guild-scoped key to fall back to.
+- If you do **not** set `AI_PROVIDER_API_KEY`, Sage can still run in servers that complete the current hosted/server-key path. Direct-message chat still needs a host-level key because there is no guild-scoped key to fall back to.
 - Admin actions and approval-gated flows use Discord-native permissions. Grant `Manage Server` or `Administrator` only to approved operators.
 - Social-graph export is disabled by setting `KAFKA_BROKERS=`.
 
@@ -162,6 +162,7 @@ npm start
 - [ ] `npm run check:trust` passes on the release candidate
 - [ ] Tika is reachable when file ingestion is enabled
 - [ ] `AI_PROVIDER_BASE_URL`, `AI_PROVIDER_MAIN_AGENT_MODEL`, `AI_PROVIDER_PROFILE_AGENT_MODEL`, and `AI_PROVIDER_SUMMARY_AGENT_MODEL` are set explicitly; if you use `AI_PROVIDER_MODEL_PROFILES_JSON`, treat it as optional operator metadata and verify Chat Completions tool-calling support with `npm run doctor -- --llm-ping` or `npm run ai-provider:probe`
+- [ ] If you rely on the current hosted/server-key path, a no-key test guild still shows the setup card correctly
 - [ ] If you want hosted execution tracing, set `LANGSMITH_TRACING=true` and provide `LANGSMITH_API_KEY`
 - [ ] `SAGE_TRACE_DB_ENABLED=true` if you want compact `AgentTrace` ledger rows in Postgres
 - [ ] Approved moderators/admins have `Manage Server` or `Administrator`

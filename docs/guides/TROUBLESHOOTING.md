@@ -7,7 +7,7 @@
 Fast fixes for common Sage issues.
 
 > [!TIP]
-> Start with `npm run doctor`. It catches the majority of setup problems.
+> Start with `npm run doctor`. It catches most setup and configuration problems.
 
 ---
 
@@ -16,11 +16,9 @@ Fast fixes for common Sage issues.
 - [🚦 Quick Diagnostics](#quick-diagnostics)
 - [🔴 Startup Issues](#startup-issues)
 - [🟡 Response Issues](#response-issues)
-- [🟠 Memory & Learning Issues](#memory-learning-issues)
 - [🔵 Interaction Issues](#interaction-issues)
 - [🟣 Database Issues](#database-issues)
 - [⚡ Performance Issues](#performance-issues)
-- [📋 Error Code Reference](#error-code-reference)
 - [🆘 Still Having Issues?](#still-having-issues)
 
 ---
@@ -29,17 +27,23 @@ Fast fixes for common Sage issues.
 
 ## 🚦 Quick Diagnostics
 
-Run the built-in health check:
+Run:
 
 ```bash
 npm run doctor
 ```
 
-This validates:
+For live provider checks:
 
-- ✅ Environment configuration
-- ✅ Database connectivity
-- ✅ AI provider availability plus Chat Completions tool-calling support (if `--llm-ping` or `LLM_DOCTOR_PING=1`)
+```bash
+npm run doctor -- --llm-ping
+```
+
+For a direct model/key probe:
+
+```bash
+npm run ai-provider:probe
+```
 
 ---
 
@@ -49,47 +53,31 @@ This validates:
 
 ### Bot crashes on startup
 
-Use the error message to pick the right fix:
-
 ```mermaid
 flowchart TD
-    %% Fast triage for common startup failures.
     classDef error fill:#ffcdd2,stroke:#c62828,color:black
     classDef fix fill:#c8e6c9,stroke:#2e7d32,color:black
     classDef check fill:#e1f5fe,stroke:#0277bd,color:black
 
     A[Startup crash]:::error --> B{What does the error say?}:::check
-
     B -->|DISCORD_TOKEN is required| C[Set DISCORD_TOKEN in .env]:::fix
-    B -->|Cannot connect to database| D[Verify DATABASE_URL]:::fix
-    B -->|P1001 / connection refused| E[Start PostgreSQL]:::fix
-    B -->|Module not found| F[Run npm install]:::fix
-
-    C --> G[Restart Sage]:::check
-    D --> G
-    E --> G
-    F --> G
+    B -->|Cannot connect to database| D[Check DATABASE_URL and start Postgres]:::fix
+    B -->|P1001 / connection refused| E[Run db container and re-test]:::fix
+    B -->|Module not found| F[Run npm ci]:::fix
 ```
 
 ### “DISCORD_TOKEN is required”
 
-**Cause:** Missing or invalid Discord token.
-
-**Fix:**
-
-1. Get token from <https://discord.com/developers/applications>
-2. Add to `.env`: `DISCORD_TOKEN=your_token_here`
-3. Restart the bot
+Add your bot token to `.env` and restart Sage.
 
 ### “P1001: Cannot connect to database”
 
-**Cause:** PostgreSQL is not running or the URL is incorrect.
+Start the local database if you are using the repo defaults:
 
-**Fix:**
-
-1. Verify PostgreSQL is running
-2. Check `DATABASE_URL` format: `postgresql://user:password@host:5432/sage`
-3. Run `npx prisma migrate deploy` to apply schema migrations
+```bash
+docker compose -f config/services/core/docker-compose.yml up -d db
+npm run db:migrate
+```
 
 ---
 
@@ -101,29 +89,22 @@ flowchart TD
 
 Check these in order:
 
-| Check | Command/Action | Expected |
-| :--- | :--- | :--- |
-| Bot has permissions | Check channel permissions | Send Messages ✅ |
-| Wake word matches | `Sage, hello` | Response |
-| API key active | Use Sage's setup card `Check Key` button | Key status shown |
-| Rate limit | Wait 10 seconds | Try again |
+| Check | What to verify |
+| :--- | :--- |
+| Invocation path | mention, wake word, or reply |
+| Channel permissions | Sage can read and send messages |
+| Provider health | `npm run doctor -- --llm-ping` |
+| Guild key path | setup card / `Check Key` if you rely on the hosted flow |
 
-### “No API key” error in guild
+### “No API key” or missing-key guidance in a guild
 
-**Cause:** Sage has no usable provider credential for this server or host.
+1. Trigger Sage once so the setup card appears
+2. If you want the hosted/server-key path, have an admin complete the Pollinations key flow
+3. If you want a host-level fallback instead, set `AI_PROVIDER_API_KEY` in `.env`
 
-**Fix:**
+### Response is truncated
 
-1. Trigger Sage once in the guild so the missing-key setup card appears
-2. Click `Get Pollinations Key`
-3. Click `Set Server Key` and submit the `sk_...` value in the modal
-4. If you self-host Sage against another OpenAI-compatible provider, set `AI_PROVIDER_API_KEY` in `.env` if you want a host-level fallback key; otherwise use Sage's in-Discord server-key flow
-
-### Response is truncated or cut off
-
-**Cause:** Token limits too low.
-
-**Fix in `.env`:**
+Review:
 
 ```env
 CONTEXT_MAX_INPUT_TOKENS=120000
@@ -133,82 +114,39 @@ CHAT_MAX_OUTPUT_TOKENS=4096
 
 ---
 
-<a id="memory-learning-issues"></a>
-
-## 🟠 Memory & Learning Issues
-
-### Sage doesn’t remember conversations
-
-Possible causes:
-
-1. **Database storage disabled**
-
-   ```env
-   MESSAGE_DB_STORAGE_ENABLED=true  # Must be true
-   ```
-
-2. **Profile update interval too high**
-
-   ```env
-   PROFILE_UPDATE_INTERVAL=5  # Update every 5 messages
-   ```
-
-3. **Memory timeout too short**
-
-   ```env
-   TIMEOUT_MEMORY_MS=600000  # 10 minutes
-   ```
-
-### “520 Error” or JSON parsing errors
-
-**Cause:** LLM response truncated.
-
-**Fix:**
-
-1. Increase timeout: `TIMEOUT_MEMORY_MS=600000`
-2. Make sure `AI_PROVIDER_PROFILE_AGENT_MODEL` is set explicitly, then run `npm run doctor -- --llm-ping` or `npm run ai-provider:probe` to confirm the main runtime model accepts Chat Completions tool calls
-
----
-
 <a id="interaction-issues"></a>
 
 ## 🔵 Interaction Issues
 
 ### Slash commands still appear in Discord
 
-**Cause:** Discord is still showing application commands cached from an older Sage build.
+Discord may still be showing application commands cached from an older Sage build.
 
-**Fix:**
+Fix:
 
-1. Restart the latest Sage build once so startup can clear legacy application commands
-2. Give Discord a short refresh window, then reopen the command picker
-3. Use chat-first entrypoints instead: mention Sage, reply to Sage, or start with `Sage`
+1. restart the latest Sage build once
+2. let startup clear the legacy commands
+3. reopen the command picker
 
 ### “Unknown interaction” error
 
-**Cause:** Bot took too long to respond.
+This usually means the interaction timed out before Sage could respond.
 
-**Fix:**
+Check:
 
-1. Check provider status
-2. Reduce `TIMEOUT_CHAT_MS` if needed
-3. Ensure a stable network connection
+- provider health
+- network stability
+- `TIMEOUT_CHAT_MS`
 
-### Sage repeats approval requests or posts tool chatter in chat
+### Duplicate approval cards or noisy tool chatter
 
-**Cause:** An approval-gated action was retried instead of being coalesced, or an older build exposed tool/approval protocol in the visible reply.
+Sage should coalesce equivalent pending requests and keep tool protocol out of visible replies.
 
-**Expected behavior:**
+If you still see duplicates:
 
-1. One unresolved admin request maps to one approval review request and one reviewer card
-2. Repeated equivalent requests should reuse that open review request instead of creating a second approval card
-3. Channel replies should acknowledge the queued review briefly without raw tool JSON, interrupt payloads, or retry instructions
-
-**Fix:**
-
-1. Upgrade to a build that includes approval coalescing and final-reply scrubbing
-2. Re-run the request once and confirm the same approval review request id is reused
-3. If duplicate pending rows already exist, resolve or expire the stale item and retry
+1. make sure you are on the latest build
+2. expire or resolve stale review items
+3. retry once and confirm Sage reuses the same review request
 
 ---
 
@@ -216,25 +154,22 @@ Possible causes:
 
 ## 🟣 Database Issues
 
-### “P2002: Unique constraint violation”
-
-**Cause:** Duplicate data being inserted.
-
-**Fix:**
-
-1. Usually harmless (duplicate prevention)
-2. Ensure you don’t have duplicate bot instances running
-
 ### Missing tables or columns
 
-**Cause:** Schema out of sync.
-
-**Fix:**
+Apply the tracked baseline migration:
 
 ```bash
-npx prisma migrate deploy                     # Apply tracked migrations
-npx prisma migrate reset --force --skip-generate  # Development-only full reset
+npm run db:migrate
 ```
+
+### Development-only full reset
+
+```bash
+npx prisma migrate reset --force --skip-generate
+```
+
+> [!WARNING]
+> The reset command deletes data. Do not use it on production data.
 
 ---
 
@@ -244,36 +179,22 @@ npx prisma migrate reset --force --skip-generate  # Development-only full reset
 
 ### High memory usage
 
-Reduce these settings:
+Reduce:
 
 ```env
-RING_BUFFER_MAX_MESSAGES_PER_CHANNEL=120  # Reduce from 300
-CONTEXT_TRANSCRIPT_MAX_MESSAGES=12         # Reduce from 24
-RAW_MESSAGE_TTL_DAYS=1                     # Reduce from 3
+RING_BUFFER_MAX_MESSAGES_PER_CHANNEL=120
+CONTEXT_TRANSCRIPT_MAX_MESSAGES=12
+RAW_MESSAGE_TTL_DAYS=1
 ```
 
 ### Slow responses
 
-| Factor | Optimization |
-| :--- | :--- |
-| Model | `AI_PROVIDER_MAIN_AGENT_MODEL` is required; change it only when you intentionally switch provider-side quality/latency profiles |
-| Context | Reduce `CONTEXT_MAX_INPUT_TOKENS` |
-| Network | Check your configured provider/API status |
+Check:
 
----
-
-<a id="error-code-reference"></a>
-
-## 📋 Error Code Reference
-
-| Error | Meaning | Quick Fix |
-| :--- | :--- | :--- |
-| `P1001` | Database connection failed | Start PostgreSQL |
-| `P2002` | Unique constraint violation | Usually safe to ignore |
-| `P2025` | Record not found | Data was already deleted |
-| `520` | LLM response truncated | Increase timeouts |
-| `ECONNREFUSED` | Service unavailable | Check if service is running |
-| `ETIMEDOUT` | Request timed out | Increase `TIMEOUT_CHAT_MS` |
+- provider latency
+- current model choice
+- prompt and transcript budgets
+- whether optional local services are unavailable and forcing slower fallbacks
 
 ---
 
@@ -287,20 +208,23 @@ RAW_MESSAGE_TTL_DAYS=1                     # Reduce from 3
    LOG_LEVEL=debug
    ```
 
-2. Check diagnostics and traces:
+2. Run:
 
    ```bash
    npm run doctor -- --llm-ping
    ```
 
-   Alternative env-var syntax also works: `LLM_DOCTOR_PING=1 npm run doctor`. For a direct model/key check, run `npm run ai-provider:probe`.
-   For deeper trace inspection, review `AgentTrace` rows via `npm run db:studio`.
+3. Inspect traces:
 
-3. Open an issue: <https://github.com/BokX1/Sage/issues>
+   ```bash
+   npm run db:studio
+   ```
+
+4. Open an issue: <https://github.com/BokX1/Sage/issues>
 
 Include:
 
-- Error message
+- the exact error message
 - `npm run doctor` output
-- Steps to reproduce
-- Node.js and OS version
+- steps to reproduce
+- Node.js version and operating system

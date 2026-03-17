@@ -4,7 +4,7 @@
   <img src="https://img.shields.io/badge/%F0%9F%8C%BF-Sage%20Pollinations-2d5016?style=for-the-badge&labelColor=4a7c23" alt="Sage Pollinations" />
 </p>
 
-This guide documents Sage's **Pollinations.ai provider integration**: the built-in BYOP server-key flow, the built-in image generation/editing path, and how to point Sage's OpenAI-compatible chat runtime at Pollinations when you want to use it as the upstream endpoint.
+This guide documents Sage's **Pollinations.ai provider integration**: the current hosted/server-key flow, the built-in image generation/editing path, and how to point Sage's OpenAI-compatible chat runtime at Pollinations when you want to use it as the upstream endpoint.
 
 This document is written for:
 
@@ -102,9 +102,9 @@ Sage accepts successful authenticated profile responses and extracts account fie
 
 When Sage needs a key, it resolves in this order:
 
-1. **Server key** (set through Sage's setup card + modal)
-2. **Optional host-level server-provider key** (`SERVER_PROVIDER_API_KEY` in `.env`)
-3. If neither exists, Sage returns setup guidance and cannot complete chat requests until a key is configured.
+1. **Server key** (set through Sage's setup card + modal for the guild)
+2. **Optional host-level provider key path** if the deployment already has usable runtime credentials configured
+3. If neither exists, Sage returns setup guidance and cannot complete hosted/server-key-path chat requests until a key is configured.
 
 ---
 
@@ -116,7 +116,7 @@ If you want Sage's OpenAI-compatible chat runtime to use Pollinations, these are
 AI_PROVIDER_BASE_URL=https://gen.pollinations.ai/v1
 AI_PROVIDER_MAIN_AGENT_MODEL=your-main-agent-model
 
-# Optional: Global fallback key (used if no BYOP key is set for the server)
+# Optional: Host-level fallback key for the configured chat provider
 AI_PROVIDER_API_KEY=
 ```
 

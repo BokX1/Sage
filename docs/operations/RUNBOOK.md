@@ -53,7 +53,7 @@ flowchart LR
 
 3. Confirm database connectivity and migration state
 4. Send `@Sage health check` or `Sage, are you online?`
-5. If the hosted Pollinations BYOP path is in use, verify the setup card appears in a no-key test guild
+5. If the hosted/server-key path is in use, verify the setup card appears in a no-key test guild
 
 > [!TIP]
 > Use `npm run doctor -- --llm-ping` to include live AI provider ping plus Chat Completions tool-calling probe checks. Alternative env-var syntax also works: `LLM_DOCTOR_PING=1 npm run doctor`. Use `npm run ai-provider:probe` when you want to test a specific key/model directly.
@@ -134,7 +134,7 @@ flowchart TD
    - Dead code, duplication, unused imports/exports
    - Stale/noise comments
    - Legacy/unneeded code or module cleanup
-5. **Update related docs** in `docs/` when behavior/configuration/operations guidance changed
+5. **Update related docs** in `docs/` when behavior, configuration, operations guidance, or user-facing setup copy changed
 6. **Confirm CI security jobs are healthy:**
    - `CodeQL` should be green
    - `dependency-review` should be green when `ENABLE_DEPENDENCY_REVIEW=true` and Dependency Graph is enabled

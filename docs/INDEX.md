@@ -7,7 +7,7 @@
 </p>
 
 <p align="center">
-  <strong>Everything you need to run, configure, and understand Sage.</strong>
+  <strong>Everything you need to run, operate, and understand the current Sage runtime.</strong>
 </p>
 
 > [!IMPORTANT]
@@ -28,7 +28,7 @@ Invite → Activate → Chat
 | Step | Document | Time |
 | :--- | :--- | :--- |
 | 1️⃣ | [⚡ Quick Start](guides/QUICKSTART.md) — Join an existing deployment or self-host quickly | ~5 min |
-| 2️⃣ | [💬 Conversation & Controls](guides/COMMANDS.md) — Chat triggers, setup controls, voice control, and admin action patterns | ~10 min |
+| 2️⃣ | [💬 Conversation & Controls](guides/COMMANDS.md) — Chat triggers, setup controls, voice control, interactive follow-ups, and admin action patterns | ~10 min |
 | 3️⃣ | [❓ FAQ](guides/FAQ.md) — Common questions about setup, behavior, and data storage | As needed |
 
 ---
@@ -41,8 +41,8 @@ Clone → Configure → Deploy → Operate
 
 | Step | Document | Time |
 | :--- | :--- | :--- |
-| 1️⃣ | [📖 Getting Started](guides/GETTING_STARTED.md) — Discord app, `.env`, database, onboarding, invite flow | ~30 min |
-| 2️⃣ | [⚙️ Configuration](reference/CONFIGURATION.md) — Environment variables, grouped by subsystem | ~15 min |
+| 1️⃣ | [📖 Getting Started](guides/GETTING_STARTED.md) — Discord app, `.env`, onboarding, database, and invite flow | ~30 min |
+| 2️⃣ | [⚙️ Configuration](reference/CONFIGURATION.md) — Environment variables grouped by subsystem and operator concern | ~15 min |
 | 3️⃣ | [🧰 Self-Hosted Tool Stack](operations/TOOL_STACK.md) — Local SearXNG, Crawl4AI, and Tika | ~20 min |
 | 4️⃣ | [📋 Operations Runbook](operations/RUNBOOK.md) — Validation, monitoring, and maintenance | Reference |
 
@@ -56,10 +56,10 @@ Architecture → Pipeline → Memory → Database
 
 | Step | Document | Time |
 | :--- | :--- | :--- |
-| 1️⃣ | [🤖 Agentic Architecture](architecture/OVERVIEW.md) — Single-agent design, 15 built-in tools, runtime flow | ~15 min |
+| 1️⃣ | [🤖 Agentic Architecture](architecture/OVERVIEW.md) — Single-agent design, runtime flow, and tool contract | ~15 min |
 | 2️⃣ | [🔀 Runtime Pipeline](architecture/PIPELINE.md) — Context assembly, LangGraph runtime flow, and trace outputs | ~20 min |
 | 3️⃣ | [🧠 Memory System](architecture/MEMORY.md) — Transcript retention, summaries, profiles, and on-demand retrieval | ~15 min |
-| 4️⃣ | [💾 Database Schema](architecture/DATABASE.md) — 17 Prisma models and common operations | ~10 min |
+| 4️⃣ | [💾 Database Schema](architecture/DATABASE.md) — Active Prisma models and common operations | ~10 min |
 | 5️⃣ | [🕸️ Social Graph](architecture/SOCIAL_GRAPH.md) — Optional Memgraph/Redpanda export and analytics design | ~15 min |
 
 ---
@@ -72,7 +72,7 @@ Architecture → Pipeline → Memory → Database
 | :--- | :--- |
 | [⚡ Quick Start](guides/QUICKSTART.md) | Fastest path to an existing deployment or a minimal self-host setup |
 | [📖 Getting Started](guides/GETTING_STARTED.md) | Full setup from source (step-by-step) |
-| [💬 Conversation & Controls](guides/COMMANDS.md) | Chat triggers, setup controls, voice control, and approval-gated admin actions |
+| [💬 Conversation & Controls](guides/COMMANDS.md) | Chat triggers, setup controls, voice control, interactive buttons/modals, and approval-gated admin actions |
 | [❓ FAQ](guides/FAQ.md) | Common questions about setup, behavior, and privacy |
 | [🔧 Troubleshooting](guides/TROUBLESHOOTING.md) | Fixes for common failures and misconfigurations |
 | [🌸 BYOP Mode](guides/BYOP.md) | Bring-Your-Own-Pollen key setup |
@@ -81,18 +81,18 @@ Architecture → Pipeline → Memory → Database
 
 | Document | Description |
 | :--- | :--- |
-| [⚙️ Configuration](reference/CONFIGURATION.md) | Environment variables, grouped by runtime area |
-| [🧩 Model Reference](reference/MODELS.md) | Single-agent model resolution, health tracking, and search fallbacks |
-| [🐝 Pollinations Integration](reference/POLLINATIONS.md) | Current Pollinations-backed hosted/default flows plus built-in BYOP and image integration |
-| [🔌 API Examples](reference/API_EXAMPLES.md) | Annotated `curl` examples for the current Pollinations integration and the optional voice service |
+| [⚙️ Configuration](reference/CONFIGURATION.md) | Environment variables, defaults, and optional smoke/diagnostic knobs |
+| [🧩 Model Reference](reference/MODELS.md) | Model resolution, budget profiles, and live tool-calling verification |
+| [🐝 Pollinations Integration](reference/POLLINATIONS.md) | Current Pollinations-specific hosted/server-key and image flows |
+| [🔌 API Examples](reference/API_EXAMPLES.md) | Annotated request examples for runtime chat, image workflows, and the optional voice service |
 | [🚢 Release Process](reference/RELEASE.md) | SemVer workflow, changelog, and CI checks |
 
 ### 📙 Architecture
 
 | Document | Description |
 | :--- | :--- |
-| [🤖 Agentic Overview](architecture/OVERVIEW.md) | Single-agent design, tool registry, and reliability model |
-| [🔀 Runtime Pipeline](architecture/PIPELINE.md) | Message flow, context assembly, LangGraph runtime flow, and trace outputs |
+| [🤖 Agentic Overview](architecture/OVERVIEW.md) | Single-agent design, tool registry, and durability model |
+| [🔀 Runtime Pipeline](architecture/PIPELINE.md) | Message flow, context assembly, task-run slicing, and trace outputs |
 | [🔍 Search Architecture](architecture/SEARCH.md) | SAG flow, web providers, and guarded search fallbacks |
 | [🧠 Memory System](architecture/MEMORY.md) | How Sage stores memory and fetches richer context on demand |
 | [🎤 Voice System](architecture/VOICE.md) | Voice awareness plus optional local transcription |
@@ -129,6 +129,6 @@ npm run doctor → Troubleshooting → FAQ → GitHub Issue
 
 ---
 
-*Provider-flexible runtime docs. Pollinations is documented here as Sage's current hosted/default integration and built-in BYOP/image path.*
+*The docs use a hybrid provider story: Sage's runtime is provider-flexible, while Pollinations stays explicitly documented wherever the current hosted server-key and image paths are Pollinations-specific.*
 
 <p align="right"><a href="#top">⬆️ Back to top</a></p>

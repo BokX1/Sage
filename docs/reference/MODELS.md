@@ -12,6 +12,7 @@ How Sage selects, constrains, and validates models in the current LangGraph-nati
 - [Runtime Contract](#runtime-contract)
 - [Model Resolution Flow](#model-resolution-flow)
 - [Model Profiles](#model-profiles)
+- [Live Verification](#live-verification)
 - [Search Providers](#search-providers)
 
 ---
@@ -69,6 +70,29 @@ Each model profile can describe:
 | `visionEnabled` | Whether image inputs are allowed |
 
 If a configured model is missing from the profile map, Sage falls back to the base runtime budgets instead of guessing. Live provider compatibility is verified with the Chat Completions tool-calling probe instead of static model-profile capability flags.
+
+---
+
+<a id="live-verification"></a>
+
+## ✅ Live Verification
+
+The recommended verification path is:
+
+```bash
+npm run doctor -- --llm-ping
+```
+
+For a targeted direct probe:
+
+```bash
+npm run ai-provider:probe -- \
+  --base-url https://your-provider.example/v1 \
+  --model your-main-model \
+  --api-key your-key
+```
+
+`AI_PROVIDER_MODEL_PROFILES_JSON` can tune limits, but it should not be treated as proof that a provider/model really supports Sage's tool-calling contract.
 
 ---
 

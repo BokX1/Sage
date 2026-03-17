@@ -5,14 +5,14 @@
 </p>
 
 <h1 align="center">Sage</h1>
-<h3 align="center">The open-source AI agent for Discord communities</h3>
+<h3 align="center">The open-source AI runtime for Discord communities</h3>
 
 <p align="center">
-  <strong>LangGraph-native AI runtime for Discord with long-term memory, live web research, optional voice tooling, and approval-gated admin actions.</strong>
+  <strong>LangGraph-native Discord AI with layered memory, live research, interactive governance, optional voice tooling, and provider-flexible self-hosting.</strong>
 </p>
 
 <p align="center">
-  <sub>Sage combines transcript history, summaries, attachment retrieval, web tools, and optional social-graph services in one single-agent runtime.</sub>
+  <sub>Sage keeps one durable runtime story from onboarding to admin approvals: chat-first Discord UX, one LangGraph loop, one tool registry, and one operator-owned configuration surface.</sub>
 </p>
 
 <p align="center">
@@ -37,7 +37,7 @@
 </p>
 
 <p align="center">
-  <strong>🌐 <a href="https://bokx1.github.io/Sage/">Project Website</a></strong> · <strong>🎮 <a href="docs/guides/QUICKSTART.md">Add Sage to Discord</a></strong> · <strong>💻 <a href="#developer-quick-start">Build & Deploy (Dev Guide)</a></strong>
+  <strong><a href="https://bokx1.github.io/Sage/">Project Website</a></strong> · <strong><a href="docs/guides/QUICKSTART.md">Quick Start</a></strong> · <strong><a href="#developer-quick-start">Developer Quick Start</a></strong>
 </p>
 
 ---
@@ -45,16 +45,14 @@
 ## 🧭 Quick Navigation
 
 - [🎯 What Is Sage?](#what-is-sage)
-- [💡 Why Choose Sage?](#why-choose-sage)
-- [💎 What Makes Sage Different](#what-makes-sage-different)
-- [🎯 Real Community Use Cases](#real-community-use-cases)
-- [🏛️ High-Level Architecture](#high-level-architecture)
-- [✨ Capabilities That Matter](#capabilities-that-matter)
+- [💎 Why Teams Pick It](#why-teams-pick-it)
+- [🏛️ Runtime Architecture](#runtime-architecture)
+- [✨ Capabilities](#capabilities)
 - [🚀 Getting Started](#getting-started)
 - [💻 Developer Quick Start](#developer-quick-start)
 - [🛠️ Configuration](#configuration)
 - [📚 Documentation](#documentation)
-- [💚 Why Teams Choose Sage](#why-teams-choose-sage)
+- [🌟 Community](#community)
 
 ---
 
@@ -62,17 +60,17 @@
 
 ## 🎯 What Is Sage?
 
-Sage is a LangGraph-native AI runtime built for active Discord communities—where context matters, creativity is celebrated, and traditional "chatbot" commands are obsolete.
+Sage is a Discord-native AI runtime built around one durable LangGraph loop.
 
-It's designed to feel like an intelligent, ever-present teammate that adapts to your server's unique needs:
+It is designed for communities that want more than a one-shot chatbot:
 
-- 🧠 **Layered Memory:** Combines recent transcript history, background summaries, user profiles, and attachment retrieval, with optional Memgraph analytics when the social-graph stack is enabled.
-- 🌐 **Live Internet Research:** Uses built-in web and reference tools to pull in current documentation, search results, and cited pages when the runtime needs fresh information.
-- 🎨 **Creative Generation:** Supports vision-aware chat plus built-in image generation and editing through the same runtime loop.
-- 🔀 **LangGraph Tool Loop:** Executes multi-step workflows through LangGraph's bounded graph runtime instead of separate bots or hard-coded command trees.
-- 🧰 **Operator Controls:** Point Sage at any OpenAI-compatible chat endpoint, use the built-in server-key and image flows when you want them, and optionally self-host the search/scrape stack.
+- 🧠 **Layered memory** across recent transcript context, user profiles, channel summaries, attachment recall text, and optional social-graph signals.
+- 🌐 **Live research** through web, GitHub, npm, Wikipedia, Stack Overflow, and workflow tools when freshness matters.
+- 🎨 **Creative output** through built-in image generation plus vision-aware chat flows.
+- 🛡️ **Governed actions** through approval-gated moderation and admin workflows inside Discord.
+- ⚙️ **Operator choice** through an OpenAI-compatible chat runtime, optional self-hosted search/scrape services, optional local voice STT, and optional Memgraph/Redpanda analytics.
 
-**Best fit:** Gaming communities, creative hubs, development teams, and any server scaling beyond simple "vibe-only" chat into genuine AI collaboration.
+The result is a chat-first assistant that can stay grounded, ask for approval when needed, and keep long-running work alive without turning every Discord workflow into slash-command ceremony.
 
 ### How It Works
 
@@ -84,105 +82,64 @@ flowchart LR
     classDef tools fill:#f0d8a8,stroke:#9b6a1d,stroke-width:2px,color:#111
     classDef ops fill:#f3c7c1,stroke:#a24b43,stroke-width:2px,color:#111
 
-    subgraph Discord["Discord Community Surface"]
+    subgraph Discord["Discord Surface"]
         U["Wake Word / Mention / Reply"]:::discord
-        X["Attachments / Images / References"]:::discord
-        V["Optional Live Voice Context"]:::discord
-        A["Natural-Language Admin Requests"]:::discord
+        X["Attachments / Images / Message Links"]:::discord
+        V["Buttons / Modals / Voice Requests"]:::discord
+        A["Admin / Moderation Requests"]:::discord
     end
 
-    subgraph Runtime["Sage LangGraph Runtime"]
+    subgraph Runtime["Sage Runtime"]
         CE["Chat Engine"]:::runtime
         RT["runChatTurn"]:::runtime
-        CB["Context Builder + Token Budgeting"]:::runtime
+        PC["Prompt Contract + Trusted State"]:::runtime
         TL{"Bounded LangGraph Tool Loop"}:::runtime
-        SY["Synthesis + Final Reply"]:::runtime
+        RS["Response Session + Background Task Run"]:::runtime
     end
 
-    subgraph Data["On-Demand Memory + Research"]
-        M["Profiles, Transcript, Summaries, Files"]:::memory
-        G["Social Graph + Voice Analytics"]:::memory
-        W["Web / Docs / Search / GitHub / npm"]:::tools
-        C["Image + Creative Workflow Tools"]:::tools
-        P["Approval Queue + Admin Action Status"]:::ops
+    subgraph Data["On-Demand Context + Services"]
+        M["Profiles / Summaries / Transcript / Attachments"]:::memory
+        G["Voice Analytics / Relationship Signals"]:::memory
+        W["Web / GitHub / npm / Wikipedia / Stack Overflow"]:::tools
+        C["Image Generation + Editing"]:::tools
+        P["Approval Review + Trace Ledger"]:::ops
     end
 
     U --> CE
     X --> CE
     V --> CE
     A --> CE
-    CE --> RT --> CB --> TL
-    TL -->|"fetch only when needed"| M
-    TL -->|"query optional signals"| G
-    TL -->|"live research"| W
-    TL -->|"generate / transform"| C
-    TL -->|"queue gated actions"| P
+    CE --> RT --> PC --> TL --> RS
+    TL --> M
+    TL --> G
+    TL --> W
+    TL --> C
+    TL --> P
     M --> TL
     G --> TL
     W --> TL
     C --> TL
     P --> TL
-    TL --> SY
-    SY --> R["Grounded Reply, Files, and Action Updates"]:::discord
-    SY --> T["Trace + Runtime Health Telemetry"]:::ops
+    RS --> R["Grounded Discord Reply / Cards / Files"]:::discord
 ```
 
-<p align="center">
-  <a href="https://github.com/BokX1/Sage/stargazers"><img src="https://img.shields.io/github/stars/BokX1/Sage?style=for-the-badge&color=f5c542&logo=github" alt="Stars" /></a>
-  <a href="https://github.com/BokX1/Sage/network/members"><img src="https://img.shields.io/github/forks/BokX1/Sage?style=for-the-badge&color=4a90d9" alt="Forks" /></a>
-  <a href="https://github.com/BokX1/Sage/issues"><img src="https://img.shields.io/github/issues/BokX1/Sage?style=for-the-badge&color=d94a4a" alt="Issues" /></a>
-  <img src="https://img.shields.io/github/last-commit/BokX1/Sage?style=for-the-badge&color=4a7c23" alt="Last Commit" />
-</p>
+---
+
+<a id="why-teams-pick-it"></a>
+
+## 💎 Why Teams Pick It
+
+- **Chat-first UX:** Sage is invoked through normal Discord conversation, replies, buttons, and modals instead of a command-heavy menu surface.
+- **Provider-flexible runtime:** Self-hosted deployments can point `AI_PROVIDER_BASE_URL` at any OpenAI-compatible endpoint. The hosted server-key and image path remain explicitly documented where they are Pollinations-specific today.
+- **One runtime contract:** Prompting, tool execution, approvals, retries, trace capture, and background resumability all live in one runtime rather than a pile of separate bots.
+- **Grounded retrieval:** Message history, summaries, file recall, and graph signals are fetched on demand instead of bloating every prompt up front.
+- **Operationally honest docs:** Setup, troubleshooting, and validation align with `npm run onboard`, `npm run doctor`, `npm run check:trust`, and the current compose files in this repo.
 
 ---
 
-<a id="why-choose-sage"></a>
+<a id="runtime-architecture"></a>
 
-## 💡 Why Choose Sage?
-
-- **For Server Owners:** Scale your community seamlessly. Automate onboarding, technical support, and complex workflows with a single, highly-capable autonomous agent.
-- **For Operators & Mods:** Reduce repetitive tasks. Let Sage act as your 24/7 co-pilot, surfacing live internet research and generating weekly ecosystem summaries.
-- **For Community Members:** Enjoy frictionless interaction. From deep roleplay and custom image generation to collaborative coding, Sage remembers your historical context so you never have to repeat yourself.
-
----
-
-<a id="what-makes-sage-different"></a>
-
-## 💎 What Makes Sage Different
-
-- 🛡️ **LangGraph-Native Runtime:** One execution path (`runChatTurn`) powered by LangGraph handles prompt assembly, bounded tool calls, and final replies — keeping behavior inspectable and easier to debug.
-- 🧠 **Layered Memory:** Sage keeps recent transcript context in Postgres, updates user/channel summaries in the background, and fetches richer memory only when the tool loop needs it.
-- 🔍 **Tool-First Research:** Live web search, page reads, GitHub access, npm lookup, and file retrieval all run through the same LangGraph tool loop instead of separate specialty bots.
-- 🧰 **Operator Choice:** The repo ships with starter defaults, supports any OpenAI-compatible chat backend for self-hosting, and can add local search/scrape services plus an optional Memgraph/Redpanda stack.
-
-<p align="right"><a href="#top">⬆️ Back to top</a></p>
-
----
-
-<a id="real-community-use-cases"></a>
-
-## 🎯 Real Community Use Cases
-
-Stop reading about features—see Sage in action. Here is how leading servers leverage the runtime today:
-
-- 🎭 **Immersive Roleplay**  
-  > `Act as the Tavern Keeper from our server's lore. Welcome the new players who just joined and generate a custom image of their starting location.`
-- 📈 **Autonomous Community Scaling**  
-  > `Summarize the top 5 feature requests discussed in #dev-talk this week, then format them into a Jira-ready ticket list.`
-- 🛠️ **Live Technical Support**  
-  > `A user is getting a Next.js hydration error in #help. Search the latest React documentation and provide a step-by-step fix including code blocks.`
-- 👋 **Hyper-Contextual Onboarding**  
-  > `I just joined! What are the main server rules, and based on the recent chatter in #general, what's everyone currently hyped about?`
-- 🎨 **Generative Content Workflows**  
-  > `Write a sci-fi themed announcement for our upcoming tournament and generate a 16:9 cinematic banner image matching our server aesthetic.`
-
----
-
-<a id="high-level-architecture"></a>
-
-## 🏛️ High-Level Architecture
-
-How a message flows through Sage's runtime — from user input to verified reply:
+## 🏛️ Runtime Architecture
 
 <p align="center">
   <img src="./diagram.svg" alt="Repository Architecture" width="100%">
@@ -198,98 +155,75 @@ flowchart TD
 
     subgraph Inputs["Discord Inputs"]
         MSG["Wake Word / Mention / Reply"]:::discord
-        CMD["Slash Commands + Voice Join/Leave"]:::discord
-        FILES["Images, Files, Reply References"]:::discord
-        AUTO["Autopilot / Proactive Triggers"]:::discord
+        FILES["Images / Files / References"]:::discord
+        INT["Components V2 / Modals"]:::discord
+        VOICE["Voice Join / Leave / Status"]:::discord
     end
 
-    subgraph Engine["LangGraph Single-Agent Runtime"]
-        direction TB
+    subgraph Engine["Single-Agent Runtime"]
         CHAT["Chat Engine"]:::runtime
         TURN["runChatTurn"]:::runtime
-        MODEL["Model Resolution"]:::runtime
-        CTX["Context Assembly<br/>system prompt + user profile + guild Sage Persona + transcript + live voice"]:::runtime
-        BUDGET["Token Budgeting + Truncation"]:::runtime
-        LOOP{"LangGraph Tool Loop<br/>max rounds, per-call limits, timeouts"}:::runtime
-        FINAL["Final Draft Cleanup + Attachments"]:::runtime
+        MODEL["Configured AI Provider"]:::runtime
+        CTX["Prompt Contract + Context Budgeting"]:::runtime
+        LOOP{"LangGraph Tool Loop"}:::runtime
+        TASK["Durable Task Run + Response Session"]:::runtime
     end
 
-    subgraph Retrieval["On-Demand Context Surfaces"]
-        direction LR
+    subgraph Retrieval["Context Surfaces"]
         DB["Postgres<br/>profiles, messages, summaries, traces"]:::memory
-        ATT["Attachment Cache + Semantic File Search"]:::memory
-        VOICE["Voice Presence + Summary Memory"]:::memory
-        GRAPH["Relationship Edges + optional Memgraph"]:::memory
+        ATT["Attachment Cache + pgvector Recall"]:::memory
+        SG["Relationship Edges + optional Memgraph"]:::memory
+        VA["Voice Presence + Summary Memory"]:::memory
     end
 
-    subgraph Tools["Tool System"]
-        direction LR
-        DISC["discord_context / discord_messages /<br/>discord_files / discord_admin<br/>memory, search, files, analytics, admin wrappers"]:::tools
-        WEB["web / wikipedia / stack overflow"]:::tools
-        DEV["github / npm / workflow"]:::tools
-        GEN["image generation / editing"]:::tools
+    subgraph Tools["Registered Tool Families"]
+        DISC["Discord context / messages / files / server / admin / voice"]:::tools
+        WEB["web / github / workflow / npm / wikipedia / stack overflow"]:::tools
+        IMG["image_generate"]:::tools
+        SYS["system_time / system_tool_stats"]:::tools
     end
 
-    subgraph Controls["Safety + Operations"]
-        direction LR
-        APPROVAL["Approval-gated admin actions"]:::ops
-        POLICY["Ingestion policy + channel logging gates"]:::ops
-        TRACE["AgentTrace + tool telemetry"]:::ops
+    subgraph Ops["Safety + Operations"]
+        APPROVAL["Approval review requests"]:::ops
+        TRACE["LangSmith + AgentTrace"]:::ops
+        POLICY["Ingestion and permission policy"]:::ops
     end
 
     MSG --> CHAT
-    CMD --> CHAT
     FILES --> CHAT
-    AUTO --> CHAT
-
-    CHAT --> TURN --> MODEL --> CTX --> BUDGET --> LOOP
-
+    INT --> CHAT
+    VOICE --> CHAT
+    CHAT --> TURN --> MODEL --> CTX --> LOOP --> TASK
     LOOP --> DISC
     LOOP --> WEB
-    LOOP --> DEV
-    LOOP --> GEN
-
+    LOOP --> IMG
+    LOOP --> SYS
     DISC --> DB
     DISC --> ATT
-    DISC --> VOICE
-    DISC --> GRAPH
-    GRAPH --> DISC
-    VOICE --> DISC
-    ATT --> DISC
-    DB --> DISC
-
-    DISC -->|"admin write requests"| APPROVAL
+    DISC --> SG
+    DISC --> VA
     POLICY --> CHAT
     POLICY --> DISC
-
-    WEB --> LOOP
-    DEV --> LOOP
-    GEN --> LOOP
-    DISC --> LOOP
-
-    LOOP --> FINAL --> OUT["Discord Reply<br/>text + files + approval status cards"]:::discord
-    FINAL --> TRACE
+    DISC --> APPROVAL
+    TASK --> TRACE
 ```
 
 > [!NOTE]
-> `UserMemory`, `ChannelMemory`, and `SocialGraph` data are not blindly injected. The runtime fetches them on demand through tools so the prompt stays smaller and easier to budget.
-
-<p align="right"><a href="#top">⬆️ Back to top</a></p>
+> Sage no longer documents a slash-command-first runtime. The current product surface is wake word, mention, reply, and Sage-authored interactive follow-ups.
 
 ---
 
-<a id="capabilities-that-matter"></a>
+<a id="capabilities"></a>
 
-## ✨ Capabilities That Matter
+## ✨ Capabilities
 
-- **🧠 Deep Community Memory**: Persists transcript history, summaries, and profile data so follow-up conversations can reuse prior context.
-- **📄 Attachment Intelligence**: Ingests, caches, and understands non-image file content for seamless doc-aware discussions in-channel.
-- **👁️ Multimodal Vision & Generation**: Natively understands images and dynamically generates or edits visuals through Sage's built-in image workflow.
-- **🔍 Live Internet Research**: Adds real-time web search and page-reading tools for questions that need current external sources.
-- **🤖 Zero-Prompt Tool Automation**: Dynamically selects the exact tools needed (search, memory lookup, analytics) based on raw community intent.
-- **🛡️ Runtime Observability**: Includes explicit trace data, model health tracking, and bounded tool execution for easier debugging and operations.
-- **🧪 Production-Ready Quality**: Supported by robust build, test, and trust-gate validation for consistent long-term behavior.
-- **🎤 Immersive Voice Awareness**: Optionally leverages voice analytics to bridge the gap between text history and live voice sessions.
+- **Deep memory:** Recent transcript context, user profiles, channel summaries, attachment recall, and optional graph analytics.
+- **Live research:** Current web results, page reads, GitHub searches, npm metadata, Wikipedia grounding, and Stack Overflow lookups.
+- **Interactive governance:** Approval cards, reviewer routing, moderation batching, and restart-safe action state.
+- **Durable long-running work:** Background slices, resumable waits for user input or approval, and one evolving Discord response session.
+- **Voice features:** Live voice status/join/leave plus optional local STT and summary-only voice memory.
+- **Image workflows:** Prompt-to-image generation and reply-based image editing through the configured image provider.
+- **Operational diagnostics:** `npm run doctor`, `npm run ai-provider:probe`, `npm run tools:audit`, `npm run langgraph:discord:smoke`, and `AgentTrace` / LangSmith visibility.
 
 ---
 
@@ -297,38 +231,39 @@ flowchart TD
 
 ## 🚀 Getting Started
 
-### 🟢 Option A: Connect to an Existing Sage Deployment
+### Option A: Join an Existing Sage Deployment
 
-The fastest way to try Sage if your team or community already runs an instance.
+If your community already has Sage:
 
-**1. Invite the Agent**  
-Use the current invite URL from the operator who hosts that deployment.
+1. Get the current invite URL from the deployment operator.
+2. Mention Sage once in a guild channel.
+3. If the server does not have a usable key path yet, Sage will post the setup card.
+4. A server admin can complete the server-key flow from that card.
 
-**2. Activate BYOP (server key)**  
-*(The current hosted flow uses BYOP — Bring Your Own Pollen.)*
+Hosted guidance remains hybrid:
 
-Sage is chat-first: send `@Sage hello` and Sage replies with a setup card. Use the card buttons to configure your server key through the interactive modal — no slash commands needed.
+- Self-hosted runtime chat is provider-neutral.
+- The built-in hosted server-key and image flows are Pollinations-specific today.
 
-> [!TIP]
-> For self-hosted deployments, `npm run onboard` prints a recommended invite URL and the manual Discord Developer Portal flow is documented in [Getting Started](docs/guides/GETTING_STARTED.md#step-6-invite-sage-to-your-server).
+### Option B: Self-Host from Source
 
-### 🛠️ Option B: Self-Host From Source
+```bash
+git clone https://github.com/BokX1/Sage.git
+cd Sage
+npm ci
+npm run onboard
+docker compose -f config/services/core/docker-compose.yml up -d db tika
+npm run db:migrate
+npm run dev
+```
 
-Full control over your data, models, and tool stack.
+`npm run onboard` supports three practical paths:
 
-**1. Review Prerequisites**  
-Node.js >=22.12, Docker, and PostgreSQL. Memgraph/Redpanda are optional and only needed for the social-graph stack.
+- set a host-level provider key now
+- rely on Sage's in-Discord server activation flow later
+- support both
 
-**2. Follow the Setup Guide**  
-👉 **[📖 Getting Started](docs/guides/GETTING_STARTED.md)** (Covers database initialization, onboarding, and Discord invite flow).
-
-**3. Configure Chat + BYOP**  
-Starter defaults are included in `.env.example`, but self-hosted chat turns can target any OpenAI-compatible endpoint via `AI_PROVIDER_BASE_URL`. Sage's built-in image generation and server-key setup flow can use the current hosted provider integration or your own.
-
-**4. Optional: Local Tool Services**  
-For localized web search and scraping (SearXNG/Crawl4AI), check out the **[🧰 Self-Hosted Tool Stack](docs/operations/TOOL_STACK.md)** guide.
-
-<p align="right"><a href="#top">⬆️ Back to top</a></p>
+For the full walkthrough, use **[📖 Getting Started](docs/guides/GETTING_STARTED.md)**.
 
 ---
 
@@ -336,54 +271,32 @@ For localized web search and scraping (SearXNG/Crawl4AI), check out the **[🧰 
 
 ## 💻 Developer Quick Start
 
-> [!NOTE]
-> Fast path below. For full setup (including Discord app creation) and detailed local deployment instructions, use the **[📖 Getting Started Guide](docs/guides/GETTING_STARTED.md)**.
-
-**1. Clone & Install**
-
 ```bash
 git clone https://github.com/BokX1/Sage.git
 cd Sage
 npm ci
-```
-
-**2. Initialize Infrastructure & Database**
-
-```bash
 npm run onboard
 docker compose -f config/services/core/docker-compose.yml up -d db tika
 npm run db:migrate
-```
-
-`npm run onboard` also supports automation flags for headless setup: `--start-docker --migrate --doctor`.
-
-**3. Build & Run**
-
-```bash
 npm run check:trust
 npm run dev
 ```
 
-**Optional: Stand up Local Tool Services**  
-*(SearXNG, Crawl4AI, Tika)*
+Optional local tool services:
 
 ```bash
 docker compose -f config/services/self-host/docker-compose.tools.yml up -d
 ```
 
-**Essential Release Gates:**
+Helpful operator commands:
 
 ```bash
-npm run check:trust
-npm run build
-npm start
+npm run doctor
+npm run doctor -- --llm-ping
+npm run ai-provider:probe
+npm run tools:audit
+npm run langgraph:discord:smoke
 ```
-
-Advanced release gating and operational runbooks live in:
-
-- `docs/reference/RELEASE.md`
-- `docs/operations/RUNBOOK.md`
-- `docs/architecture/OVERVIEW.md`
 
 ---
 
@@ -391,13 +304,18 @@ Advanced release gating and operational runbooks live in:
 
 ## 🛠️ Configuration
 
-Sage is tuned for highly autonomous community interaction out-of-the-box, but you can tweak its core behavior via your `.env` file:
+Sage's runtime contract is centered on `.env.example` and `src/platform/config/envSchema.ts`.
 
-- ⚙️ **`AUTOPILOT_MODE`**: Set to `manual`, `reserved`, or `talkative` to control how often Sage autonomously replies to community conversations without being directly pinged.
-- ⏱️ **`PROFILE_UPDATE_INTERVAL`**: Controls how often (in messages) a user's long-term behavioral profile is re-analyzed.
-- 📡 **`SAGE_TRACE_DB_ENABLED`**: Persist compact runtime traces to Postgres. Use `LANGSMITH_TRACING=true` for full LangGraph graph/task/node trace visualization.
+High-signal knobs:
 
-See the **[⚙️ Configuration Reference](docs/reference/CONFIGURATION.md)** for a complete index of all adjustable settings.
+- `AI_PROVIDER_BASE_URL` and `AI_PROVIDER_*_MODEL` select the runtime, profile, and summary models.
+- `AUTOPILOT_MODE` controls how proactively Sage joins ambient conversation.
+- `MESSAGE_DB_STORAGE_ENABLED`, `PROFILE_UPDATE_INTERVAL`, and `SUMMARY_*` tune memory behavior.
+- `LANGSMITH_TRACING` and `SAGE_TRACE_DB_ENABLED` control observability.
+- `TOOL_WEB_*`, `SEARXNG_*`, `CRAWL4AI_*`, and provider keys shape the research stack.
+- `VOICE_*` toggles optional local STT and voice-memory behavior.
+
+See **[⚙️ Configuration Reference](docs/reference/CONFIGURATION.md)** for the complete environment surface.
 
 ---
 
@@ -405,36 +323,36 @@ See the **[⚙️ Configuration Reference](docs/reference/CONFIGURATION.md)** fo
 
 ## 📚 Documentation
 
-**🚀 Getting Started & Guides**
+**Start here**
 
-- **[🌐 Project Website](https://bokx1.github.io/Sage/)**: Live landing page for feature overview, positioning, and hosted entry points
-- **[📚 Documentation Hub](docs/INDEX.md)**: Start here for complete navigation
-- **[⚡ Quick Start](docs/guides/QUICKSTART.md)**: 5-minute setup for new users
-- **[📖 Getting Started](docs/guides/GETTING_STARTED.md)**: Full beginner walkthrough
-- **[🎮 Commands](docs/guides/COMMANDS.md)**: Full slash command reference
-- **[❓ FAQ](docs/guides/FAQ.md)** & **[🔧 Troubleshooting](docs/guides/TROUBLESHOOTING.md)**: Common answers and error resolution
+- **[📚 Documentation Hub](docs/INDEX.md)** — complete navigation
+- **[⚡ Quick Start](docs/guides/QUICKSTART.md)** — fastest path into Discord
+- **[📖 Getting Started](docs/guides/GETTING_STARTED.md)** — full source setup
+- **[💬 Conversation & Controls](docs/guides/COMMANDS.md)** — chat-first UX, voice, and admin patterns
 
-**⚙️ Configuration & Operations**
+**Reference**
 
-- **[⚙️ Configuration](docs/reference/CONFIGURATION.md)**: All env vars and defaults
-- **[🗂️ Config Layout](config/README.md)**: CI and self-host config file ownership
-- **[🧰 Self-Hosted Tool Stack](docs/operations/TOOL_STACK.md)**: Local SearXNG/Crawl4AI/Tika stack
-- **[📋 Operations Runbook](docs/operations/RUNBOOK.md)**: Operational and release procedures
+- **[⚙️ Configuration](docs/reference/CONFIGURATION.md)** — env vars and defaults
+- **[🧩 Models](docs/reference/MODELS.md)** — model-budget and provider contract
+- **[🐝 Pollinations Integration](docs/reference/POLLINATIONS.md)** — hosted/server-key and image-specific details
+- **[🔌 API Examples](docs/reference/API_EXAMPLES.md)** — upstream request shapes and service examples
 
-**🧠 Architecture & Security**
+**Architecture and operations**
 
-- **[🤖 Agentic Architecture](docs/architecture/OVERVIEW.md)**: Runtime design and execution flow
-- **[🔍 Search Architecture](docs/architecture/SEARCH.md)**: Search behavior and tool flow
-- **[🧠 Memory Architecture](docs/architecture/MEMORY.md)**: Memory model and context assembly
-- **[🔒 Security & Privacy](docs/security/SECURITY_PRIVACY.md)**: Data handling and privacy controls
+- **[🤖 Architecture Overview](docs/architecture/OVERVIEW.md)** — single-agent runtime design
+- **[🔀 Runtime Pipeline](docs/architecture/PIPELINE.md)** — turn lifecycle and task-run behavior
+- **[🧠 Memory Architecture](docs/architecture/MEMORY.md)** — memory surfaces and retention
+- **[📋 Operations Runbook](docs/operations/RUNBOOK.md)** — validation and incident flow
+- **[🧰 Tool Stack](docs/operations/TOOL_STACK.md)** — self-hosted search/scrape services
+- **[🔒 Security & Privacy](docs/security/SECURITY_PRIVACY.md)** — data handling and trust boundaries
 
 <p align="right"><a href="#top">⬆️ Back to top</a></p>
 
 ---
 
-<a id="why-teams-choose-sage"></a>
+<a id="community"></a>
 
-## 🌟 Community & Contributors
+## 🌟 Community
 
 A massive thank you to everyone who has helped build Sage.
 
@@ -451,8 +369,8 @@ A massive thank you to everyone who has helped build Sage.
 </a>
 
 <p align="center">
-  <strong>Unlock your server's full potential.</strong><br />
-  <a href="https://bokx1.github.io/Sage/"><strong>🌐 Project Website</strong></a> · <a href="docs/guides/QUICKSTART.md"><strong>🚀 Quick Start</strong></a> · <a href="docs/guides/GETTING_STARTED.md"><strong>📖 Read the Docs</strong></a> · <a href="docs/architecture/OVERVIEW.md"><strong>🏛️ Explore Architecture</strong></a>
+  <strong>Build a Discord assistant that can actually stay grounded.</strong><br />
+  <a href="https://bokx1.github.io/Sage/"><strong>Project Website</strong></a> · <a href="docs/guides/QUICKSTART.md"><strong>Quick Start</strong></a> · <a href="docs/guides/GETTING_STARTED.md"><strong>Read the Docs</strong></a> · <a href="docs/architecture/OVERVIEW.md"><strong>Explore Architecture</strong></a>
 </p>
 
 ---

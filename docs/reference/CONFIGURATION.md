@@ -8,7 +8,7 @@ Complete index of all environment variables used by Sage, with descriptions and 
 </p>
 
 > [!TIP]
-> Use `.env.example` as your starting template. Run `npm run onboard` for interactive setup.
+> Use `.env.example` as your starting template. Run `npm run onboard` for guided setup and `npm run doctor` to verify the resulting config.
 > [!NOTE]
 > Values in the tables below match the committed `.env.example` template. Most operational defaults still live in `src/platform/config/envSchema.ts`, but the runtime AI-provider fields must be set explicitly.
 > [!IMPORTANT]
@@ -35,6 +35,7 @@ Complete index of all environment variables used by Sage, with descriptions and 
 - [Timeouts](#timeouts)
 - [Tool Providers](#tool-providers)
 - [Social Graph](#social-graph)
+- [Disposable Discord Smoke Target](#disposable-discord-smoke-target)
 - [Doctor Utility](#doctor-utility)
 
 ---
@@ -327,6 +328,21 @@ These settings control Sage's optional Discord voice features. The local voice s
 
 > [!TIP]
 > Set `KAFKA_BROKERS=` (empty) to disable social graph export entirely.
+
+---
+
+<a id="disposable-discord-smoke-target"></a>
+
+## 🧪 Disposable Discord Smoke Target
+
+These optional values are used by `npm run langgraph:discord:smoke` for a disposable validation guild/channel:
+
+| Variable | Description | Default |
+|:---|:---|:---|
+| `SAGE_DISCORD_SMOKE_GUILD_ID` | Disposable smoke-test guild id | *(empty)* |
+| `SAGE_DISCORD_SMOKE_CHANNEL_ID` | Disposable smoke-test channel id | *(empty)* |
+| `SAGE_DISCORD_SMOKE_USER_ID` | Test user id used for the seeded flow | *(empty)* |
+| `SAGE_DISCORD_SMOKE_REVIEWER_ID` | Reviewer/admin id for approval-path smoke runs | *(empty)* |
 
 ---
 

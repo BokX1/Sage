@@ -37,7 +37,7 @@ Thanks for helping improve Sage! This guide covers the local workflow, expectati
 
 | Requirement | Details |
 | :--- | :--- |
-| **Node.js** | LTS version (CI runs on Node 22.x and 24.x) |
+| **Node.js** | `>=22.12.0` locally; CI also exercises current supported Node lines |
 | **Database** | PostgreSQL via Docker (see `prisma/schema.prisma`) |
 | **Discord creds** | `DISCORD_TOKEN` and `DISCORD_APP_ID` in `.env` |
 
@@ -130,12 +130,13 @@ src/
 
 ## 🎨 Code Style
 
-- Follow the existing **ESLint** and **Prettier** configuration (located in `config/tooling/`).
+- Follow the existing **ESLint** and **Prettier** configuration in `config/tooling/`.
 - Keep tooling/config path changes aligned with [`config/README.md`](config/README.md).
 - Favor **small, well-named modules** and pure functions for core logic.
-- Avoid introducing new prompt strings or altering existing prompt templates unless fixing a bug.
+- Keep runtime behavior, docs, and config in sync when you touch onboarding, prompts, tools, or env vars.
+- Avoid introducing prompt or policy drift: if you change tool/runtime behavior, update the affected docs in the same PR.
 
-Run the formatter:
+Run the linter with autofix:
 
 ```bash
 npm run lint -- --fix
@@ -153,6 +154,7 @@ Before opening a PR, verify each item:
 - [ ] New features include tests
 - [ ] No secrets committed (`.env` must remain ignored)
 - [ ] Documentation updated if behavior changed
+- [ ] `npm run doctor` and onboarding guidance still match the operator story if setup/runtime behavior changed
 - [ ] Commit messages are descriptive
 
 ---

@@ -32,7 +32,7 @@ This document describes what Sage stores and how to control retention. Implement
 | --- | --- | --- |
 | User profile summaries | `UserProfile` | LLM-generated long-term summary of a user. |
 | User profile archives | `UserProfileArchive` | Historical snapshots of user profiles. |
-| Guild settings | `GuildSettings` | Stores server-scoped BYOP key configuration. |
+| Guild settings | `GuildSettings` | Stores server-scoped key configuration and governance review routing. |
 | Sage Persona | `ServerInstructions` | Admin-authored guild Sage Persona configuration available to the runtime. |
 | Sage Persona archives | `ServerInstructionsArchive` | Historical snapshots of Sage Persona updates. |
 | Channel messages | `ChannelMessage` | Stored only if `MESSAGE_DB_STORAGE_ENABLED=true`. |
@@ -42,6 +42,8 @@ This document describes what Sage stores and how to control retention. Implement
 | Voice sessions | `VoiceSession` | Join/leave session history per user/channel. |
 | Voice session summaries | `VoiceConversationSummary` | Summary-only memory of transcribed voice sessions (optional; no raw transcript stored in DB). |
 | Approval review requests | `ApprovalReviewRequest` | Approval-gated graph interrupt, reviewer/requester message ids, and status metadata for governed writes. |
+| Interaction sessions | `DiscordInteractionSession` | Button/modal session state for Sage-authored interactive controls. |
+| Durable task runs | `AgentTaskRun` | Background task-run state, response-session state, wait state, and compaction metadata for long-running work. |
 | Admin audits | `AdminAudit` | Records admin action usage with hashed params. |
 | Agent traces | `AgentTrace` | Compact runtime ledger with LangSmith references, context budget metadata, and final reply text (when DB trace persistence is enabled). |
 

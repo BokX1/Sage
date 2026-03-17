@@ -4,7 +4,7 @@
   <img src="https://img.shields.io/badge/%F0%9F%8C%BF-Sage%20Getting%20Started-2d5016?style=for-the-badge&labelColor=4a7c23" alt="Getting Started" />
 </p>
 
-Set up Sage from source — even if you’ve never built a Discord bot before.
+Set up Sage from source, create the Discord app, and get your first live chat turn working.
 
 <p align="center">
   <img src="https://img.shields.io/badge/Time-~20%20min-blue?style=flat-square" alt="Time" />
@@ -12,7 +12,7 @@ Set up Sage from source — even if you’ve never built a Discord bot before.
   <img src="https://img.shields.io/badge/Steps-7-orange?style=flat-square" alt="Steps" />
 </p>
 
-**Outcome:** A running self-hosted Sage instance, a working invite link, and a clear provider setup choice: host-level key now, server activation later, or both.
+**Outcome:** a running Sage instance, a valid bot invite, working database migrations, and a clear provider setup path.
 
 ---
 
@@ -23,10 +23,10 @@ Set up Sage from source — even if you’ve never built a Discord bot before.
 - [Step 1: Install Required Software](#step-1-install-required-software)
 - [Step 2: Create Your Discord Bot](#step-2-create-your-discord-bot)
 - [Step 3: Download and Configure Sage](#step-3-download-and-configure-sage)
-- [Step 4: Start the Database](#step-4-start-the-database)
+- [Step 4: Start Required Services](#step-4-start-required-services)
 - [Step 5: Start Sage](#step-5-start-sage)
 - [Step 6: Invite Sage to Your Server](#step-6-invite-sage-to-your-server)
-- [Step 7: Activate Your API Key (BYOP)](#step-7-activate-your-api-key-byop)
+- [Step 7: Optional Server-Key Activation](#step-7-optional-server-key-activation)
 - [✅ Verification Checklist](#verification-checklist)
 
 ---
@@ -35,11 +35,12 @@ Set up Sage from source — even if you’ve never built a Discord bot before.
 
 ## ✅ Before You Begin
 
-You’ll need:
+You will need:
 
-- [ ] A **Discord account**
-- [ ] A computer (Windows / macOS / Linux)
-- [ ] Internet access
+- A Discord account
+- A machine running Windows, macOS, or Linux
+- Internet access
+- Permission to create a Discord application for the server you want to test in
 
 Everything else is installed in the steps below.
 
@@ -51,18 +52,17 @@ Everything else is installed in the steps below.
 
 ```mermaid
 flowchart LR
-    %% High-level setup checklist for self-hosting.
     classDef start fill:#dcedc8,stroke:#33691e,stroke-width:2px,color:black
     classDef step fill:#e1f5fe,stroke:#01579b,stroke-width:2px,color:black
     classDef endNode fill:#ffccbc,stroke:#bf360c,stroke-width:2px,color:black
 
     S1["1) Install prerequisites"]:::start
-      --> S2["2) Create Discord app/bot"]:::step
-      --> S3["3) Clone & install Sage"]:::step
-      --> S4["4) Start PostgreSQL"]:::step
-      --> S5["5) Configure .env"]:::step
+      --> S2["2) Create Discord app and bot"]:::step
+      --> S3["3) Run npm run onboard"]:::step
+      --> S4["4) Start db + tika"]:::step
+      --> S5["5) Run migrations and doctor"]:::step
       --> S6["6) Start Sage"]:::step
-      --> S7["7) Invite bot & activate hosted key flow if needed"]:::endNode
+      --> S7["7) Invite and test in Discord"]:::endNode
 ```
 
 ---
@@ -73,36 +73,34 @@ flowchart LR
 
 ### 1.1 Install Node.js
 
-Node.js runs Sage.
+Sage requires Node.js `>=22.12.0`.
 
-1. Go to <https://nodejs.org/en>
-2. Install the **LTS** version
-3. Restart your computer after installation
+1. Visit <https://nodejs.org/en>
+2. Install Node.js `22.12.0` or newer
+3. Restart your terminal after installation
 
 Verify:
 
 ```bash
 node --version
+npm --version
 ```
-
-You should see `v22.12.0` or newer (Sage requires Node.js `>=22.12.0`).
 
 ### 1.2 Install Docker Desktop
 
-Docker runs the database Sage uses to store memory.
+Docker runs the repo's support services locally.
 
-1. Go to <https://www.docker.com/products/docker-desktop/>
-2. Install Docker Desktop for your OS
-3. Start Docker Desktop (it must be running)
+1. Visit <https://www.docker.com/products/docker-desktop/>
+2. Install Docker Desktop
+3. Start Docker Desktop before you continue
 
-> 💡 **Don’t want Docker?** You can use an external PostgreSQL database instead. See [Alternative Database Setup](#alternative-database-without-docker).
+> [!TIP]
+> Sage itself runs as a Node.js process. The repo's compose files are for support services such as PostgreSQL, Tika, SearXNG, Crawl4AI, Memgraph, and the optional voice stack.
 
-### 1.3 Install Git (if you don’t have it)
+### 1.3 Install Git
 
-Git downloads Sage’s code.
-
-1. Go to <https://git-scm.com/downloads/>
-2. Install for your OS using defaults
+1. Visit <https://git-scm.com/downloads/>
+2. Install Git for your OS
 
 ---
 
@@ -110,34 +108,35 @@ Git downloads Sage’s code.
 
 ## 2️⃣ Create Your Discord Bot
 
-### 2.1 Create a Discord Application
+### 2.1 Create the Discord application
 
 1. Open <https://discord.com/developers/applications>
 2. Click **New Application**
-3. Name it (e.g., “Sage”) and click **Create**
+3. Name it and create it
 
-### 2.2 Get Your Application ID
+### 2.2 Copy the Application ID
 
-1. In **General Information**, find **Application ID**
-2. Click **Copy** — you’ll use it in `.env`
+1. Open **General Information**
+2. Copy **Application ID**
+3. Save it for `DISCORD_APP_ID`
 
-### 2.3 Create the Bot + Token
+### 2.3 Create the bot and copy the token
 
-1. Click **Bot** in the sidebar
-2. Click **Reset Token** (or **Add Bot** if it’s new)
-3. Click **Copy** to copy the bot token
+1. Open **Bot**
+2. Create the bot if needed
+3. Click **Reset Token** or **Copy Token**
+4. Save it for `DISCORD_TOKEN`
 
-> ⚠️ **Never share your bot token.** Anyone with it can control your bot.
+> [!WARNING]
+> Never share your bot token. Treat it like a production secret.
 
-### 2.4 Enable Required Permissions (Gateway Intents)
+### 2.4 Enable the required gateway intent
 
-On the Bot page, enable:
+On the **Bot** page, enable:
 
-- ✅ **MESSAGE CONTENT INTENT**
+- **MESSAGE CONTENT INTENT**
 
-Also ensure the bot has permissions to read/send messages in target channels, and voice permissions if using voice features.
-
-Click **Save Changes**.
+You should also give the bot permission to read and send messages in the channels where you plan to use it.
 
 ---
 
@@ -145,49 +144,35 @@ Click **Save Changes**.
 
 ## 3️⃣ Download and Configure Sage
 
-### 3.1 Download Sage
+### 3.1 Clone and install
 
 ```bash
-# Navigate to where you want to put Sage (e.g., Desktop)
-cd Desktop
-
-# Download Sage
 git clone https://github.com/BokX1/Sage.git
-
-# Enter the Sage folder
 cd Sage
-```
-
-### 3.2 Install Dependencies
-
-```bash
 npm ci
 ```
 
-### 3.3 Run the Onboarding Wizard
+### 3.2 Run the onboarding wizard
 
 ```bash
 npm run onboard
 ```
 
-The wizard will ask for:
+The wizard will guide you through:
 
-| Prompt | What to Enter |
+| Prompt | Meaning |
 | :--- | :--- |
-| **DISCORD_TOKEN** | Bot token from Step 2.3 |
-| **DISCORD_APP_ID** | Application ID from Step 2.2 |
-| **DATABASE_URL** | Choose **Use local Docker default** for local setup |
-| **AI_PROVIDER_BASE_URL** | Required base URL for your OpenAI-compatible chat-completions endpoint |
-| **AI provider setup mode** | Choose whether to set a host-level key now, rely on server activation later, or support both |
-| **AI_PROVIDER_API_KEY** | Host-level provider key if you want Sage to have a default key outside the in-Discord server activation flow |
-| **AI_PROVIDER_MAIN_AGENT_MODEL** | Required main runtime agent model id |
-| **AI_PROVIDER_PROFILE_AGENT_MODEL** | Defaults to the main model unless you choose a separate profile model |
-| **AI_PROVIDER_SUMMARY_AGENT_MODEL** | Defaults to the main model unless you choose a separate summary model |
-| **AI_PROVIDER_MODEL_PROFILES_JSON** | Optional JSON object describing budget overrides for configured agent models; use the live doctor/probe checks to confirm Chat Completions tool-calling support for the main model |
+| `DISCORD_TOKEN` | Bot token from the Discord Developer Portal |
+| `DISCORD_APP_ID` | Discord application ID |
+| `DATABASE_URL` | Local Docker default or your own PostgreSQL URL |
+| `AI_PROVIDER_BASE_URL` | Your OpenAI-compatible chat-completions base URL |
+| AI provider setup mode | Host key now, server activation later, or both |
+| `AI_PROVIDER_API_KEY` | Optional host-level key for the configured provider |
+| `AI_PROVIDER_MAIN_AGENT_MODEL` | Main runtime model |
+| `AI_PROVIDER_PROFILE_AGENT_MODEL` | Profile update model |
+| `AI_PROVIDER_SUMMARY_AGENT_MODEL` | Summary model |
 
-> ✅ The wizard also ends with a grouped setup summary for Discord, database, AI provider configuration, and next steps.
-
-**Non-interactive option (CI/automation):**
+The wizard also supports automation-friendly flags:
 
 ```bash
 npm run onboard -- \
@@ -195,7 +180,7 @@ npm run onboard -- \
   --discord-app-id "YOUR_APP_ID" \
   --database-url "postgresql://..." \
   --api-key "YOUR_PROVIDER_KEY" \
-  --model your-chat-model \
+  --model your-main-model \
   --yes \
   --non-interactive \
   --start-docker \
@@ -203,42 +188,44 @@ npm run onboard -- \
   --doctor
 ```
 
-> ℹ️ `--api-key` seeds the optional host-level `AI_PROVIDER_API_KEY`. You can leave it blank and rely on Sage's in-Discord server-key flow instead.
+> [!TIP]
+> Run `npm run onboard -- --help` any time you want the current CLI contract. The docs in this repo are written to match that command output.
 
 ---
 
-<a id="step-4-start-the-database"></a>
+<a id="step-4-start-required-services"></a>
 
-## 4️⃣ Start the Database
+## 4️⃣ Start Required Services
 
-Make sure Docker Desktop is running, then:
+Start PostgreSQL and Tika:
 
 ```bash
 docker compose -f config/services/core/docker-compose.yml up -d db tika
 ```
 
-Wait ~10 seconds, then run:
+Then apply the tracked Prisma baseline:
 
 ```bash
-npx prisma migrate deploy
+npm run db:migrate
 ```
 
-Optional: start the local tool stack (self-host search/scrape/infer):
+Optional local research stack:
 
 ```bash
 docker compose -f config/services/self-host/docker-compose.tools.yml up -d
 ```
 
-If using local tools first, set these `.env` values:
+Optional social-graph stack:
 
-```env
-TOOL_WEB_SEARCH_PROVIDER_ORDER=searxng,tavily,exa
-TOOL_WEB_SCRAPE_PROVIDER_ORDER=crawl4ai,firecrawl,jina,nomnom,raw_fetch
-SEARXNG_BASE_URL=http://127.0.0.1:18080
-CRAWL4AI_BASE_URL=http://127.0.0.1:11235
+```bash
+docker compose -f config/services/self-host/docker-compose.social-graph.yml up -d
 ```
 
-For full details, see [operations/TOOL_STACK.md](../operations/TOOL_STACK.md).
+Optional voice stack:
+
+```bash
+docker compose -f config/services/self-host/docker-compose.voice.yml up -d --build
+```
 
 ---
 
@@ -246,17 +233,36 @@ For full details, see [operations/TOOL_STACK.md](../operations/TOOL_STACK.md).
 
 ## 5️⃣ Start Sage
 
+For development:
+
 ```bash
 npm run dev
 ```
 
-You should see:
+For a production-style local run:
 
-```text
-[info] Logged in as Sage#1234!
+```bash
+npm run build
+npm start
 ```
 
-Keep this terminal window open.
+Before testing in Discord, it is worth running:
+
+```bash
+npm run doctor
+```
+
+And if you want a live provider probe:
+
+```bash
+npm run doctor -- --llm-ping
+```
+
+Expected healthy signals:
+
+- `npm run doctor` reports no blocking failures
+- Sage logs in successfully to Discord
+- database migrations are already applied
 
 ---
 
@@ -264,62 +270,46 @@ Keep this terminal window open.
 
 ## 6️⃣ Invite Sage to Your Server
 
-### 6.1 Generate the Invite Link
+### 6.1 Generate the invite URL
 
-1. Open <https://discord.com/developers/applications>
-2. Select your application
-3. Go to **OAuth2** → **URL Generator**
+`npm run onboard` prints the recommended invite shape automatically after setup.
 
-> [!TIP]
-> `npm run onboard` prints the same recommended invite shape after setup using your configured `DISCORD_APP_ID`.
+You can also build it manually:
 
-### 6.2 Select Scopes + Permissions
+```text
+https://discord.com/oauth2/authorize?client_id=YOUR_DISCORD_APP_ID&scope=bot&permissions=1133568
+```
 
-**Scopes:**
+### 6.2 Authorize the bot
 
-- ✅ `bot`
+1. Open the invite URL
+2. Select your test server
+3. Complete the authorization flow
 
-**Bot Permissions:**
+### 6.3 Test the chat-first entrypoints
 
-| Permission | Integer | Purpose |
-| :--- | :--- | :--- |
-| Send Messages | 2048 | Reply to users |
-| Read Message History | 65536 | Read conversation context |
-| View Channels | 1024 | See channels |
-| Embed Links | 16384 | Post embed-based onboarding and status messages |
-| Connect | 1048576 | Voice awareness |
+Try any of these:
 
-> 💡 **Permission Total:** 1133568 (sum of the permissions above)
-
-### 6.3 Copy and Use the Link
-
-1. Scroll down and copy the **Generated URL**
-2. Open it in your browser
-3. Select a server and click **Authorize**
+- `Sage, hello`
+- `@Sage what changed today?`
+- Reply to a Sage message with `go deeper on this`
 
 ---
 
-<a id="step-7-activate-your-api-key-byop"></a>
+<a id="step-7-optional-server-key-activation"></a>
 
-## 7️⃣ Optional: Activate a Server Key (Pollinations BYOP)
+## 7️⃣ Optional Server-Key Activation
 
-Use this step if you want Sage's built-in server-wide activation flow. If you already configured `AI_PROVIDER_API_KEY` for your self-hosted runtime provider, you can skip it, but you do not have to set a host key anymore.
+Use this step if you are relying on Sage's in-Discord server activation flow instead of only a host-level provider key.
 
-### 7.1 Trigger the setup card
+1. Mention Sage in the guild once
+2. If the server does not have a usable key path yet, Sage posts the setup card
+3. A server admin clicks `Get Pollinations Key`
+4. The admin completes the Pollinations flow and copies the `sk_...` key
+5. The admin clicks `Set Server Key` and submits the key in the modal
 
-1. Mention Sage or start a message with `Sage`
-2. If the guild has no usable key, Sage posts the setup card for that server
-3. Click `Get Pollinations Key` and sign in via Pollinations (GitHub)
-4. Copy the `sk_...` key from the URL
-
-> [!TIP]
-> You can also manage/create keys from the Pollinations dashboard at `enter.pollinations.ai`.
-
-### 7.2 Set the Server Key
-
-1. Click `Set Server Key`
-2. Paste `<your_key>` into the modal
-3. Sage confirms the key is valid and shows account info
+> [!NOTE]
+> This server-key flow is part of Sage's current hosted/Pollinations-specific path. Self-hosted runtime chat remains provider-flexible through `AI_PROVIDER_BASE_URL`.
 
 ---
 
@@ -327,85 +317,26 @@ Use this step if you want Sage's built-in server-wide activation flow. If you al
 
 ## ✅ Verification Checklist
 
+- [ ] `npm run db:migrate` completed successfully
+- [ ] `npm run doctor` passes
 - [ ] Sage appears in your server member list
-- [ ] Mention Sage or use the wake word — Sage should reply in-channel
-- [ ] If you skipped `AI_PROVIDER_API_KEY`, trigger Sage once and confirm the setup card explains how to activate the server
-- [ ] Chat with Sage in any of these ways:
-  - **Wake word:** `Sage, hello!`
-  - **Mention:** `@Sage what's up?`
-  - **Reply:** reply to a Sage message
-  - **Image generation:** `Sage, draw a small robot chef` (returns an image attachment)
-  - **Image editing:** reply to an image: `Sage, make this more cinematic`
+- [ ] `Sage, hello` produces a Discord reply
+- [ ] `@Sage explain this code` works
+- [ ] If you skipped `AI_PROVIDER_API_KEY`, the setup card appears when the server has no usable key
 
-If Sage doesn’t respond:
+Useful smoke prompts:
 
-1. Check terminal logs for errors
-2. Run `npm run doctor`
-3. See [Troubleshooting](TROUBLESHOOTING.md)
+- `Sage, summarize what this project does`
+- `Sage, search the latest Node.js docs for fetch timeout behavior`
+- `Sage, draw a watercolor mountain skyline`
+- `Sage, join my voice channel`
 
 ---
 
 ## 🎯 What’s Next?
 
-### Talk to Sage
-
-- “Sage, tell me about yourself?”
-- “Sage, what’s the weather in Tokyo?”
-- “Sage, summarize our conversation”
-- “Sage, look at this image … and tell me what you see”
-- “Sage, draw a watercolor mountain landscape”
-- *(Reply to an image)* “Sage, turn this into a poster style”
-- “Sage, look at this file …”
-
-### Configure Behavior
-
-Edit `.env` to customize:
-
-- `WAKE_WORDS_CSV` — change what triggers Sage (default: `sage`)
-- `AUTOPILOT_MODE` — set to `talkative` for unprompted responses
-
-### Add Admin Access
-
-Sage admin commands now use Discord-native permissions only.
-
-1. Open **Server Settings** → **Roles**.
-2. Ensure your role has **Manage Server** or **Administrator**.
-3. Restart Sage only if you changed runtime configuration or deployment settings.
-
----
-
-## 📚 Alternative Setups
-
-### Alternative: Database Without Docker
-
-If you don’t want Docker, use any PostgreSQL database:
-
-1. Install PostgreSQL from <https://www.postgresql.org/download/>
-2. Create a database called `sage`
-3. During `npm run onboard`, choose **Paste DATABASE_URL manually**
-4. Enter your connection string:
-
-   `postgresql://username:password@localhost:5432/sage?schema=public`
-
-### Alternative: Production Deployment
-
-```bash
-npm run build
-npm start
-```
-
-Hosting options mentioned in this repo:
-
-- <https://railway.com/>
-- <https://render.com/>
-- <https://www.digitalocean.com/>
-- Your own VPS
-
----
-
-## 🆘 Need Help?
-
-- [FAQ](FAQ.md)
-- [Troubleshooting](TROUBLESHOOTING.md)
-- `npm run doctor`
-- GitHub issues: <https://github.com/BokX1/Sage/issues>
+- [⚡ Quick Start](QUICKSTART.md) for the shortest path
+- [💬 Conversation & Controls](COMMANDS.md) for the current Discord UX
+- [⚙️ Configuration](../reference/CONFIGURATION.md) for all env vars
+- [🔧 Troubleshooting](TROUBLESHOOTING.md) if anything is off
+- [📋 Operations Runbook](../operations/RUNBOOK.md) for validation and incident handling

@@ -4,21 +4,21 @@
   <img src="https://img.shields.io/badge/%F0%9F%8C%BF-Sage%20API%20Examples-2d5016?style=for-the-badge&labelColor=4a7c23" alt="API Examples" />
 </p>
 
-Annotated examples of the request shapes Sage can send to a [Pollinations.ai](https://pollinations.ai) OpenAI-compatible endpoint, plus the optional local voice-service calls used for Discord voice.
+Annotated examples of the upstream request shapes Sage works with today.
 
 > [!NOTE]
-> Replace `sk_YOUR_KEY` with your actual Pollinations secret key for Pollinations examples. Voice-service examples do not require a Pollinations key. These are provider-specific examples, not a statement about Sage's default runtime endpoint; the real runtime also sends its full system prompt and tool definitions where applicable.
+> These examples are illustrative, not byte-for-byte runtime dumps. Sage also sends its full system contract, tool definitions, and trusted runtime state where applicable.
 
 ---
 
 ## 🧭 Quick Navigation
 
-- [Chat Completion](#-chat-completion)
-- [Vision (Image Analysis)](#-vision-image-analysis)
-- [Image Generation](#-image-generation)
-- [Image Editing](#-image-editing)
-- [Voice (STT)](#-voice-stt)
-- [Key Validation](#-key-validation)
+- [Chat Completion](#chat-completion)
+- [Vision (Image Analysis)](#vision-image-analysis)
+- [Image Generation](#image-generation)
+- [Image Editing](#image-editing)
+- [Voice (STT)](#voice-stt)
+- [Key Validation](#key-validation)
 
 ---
 
@@ -26,53 +26,26 @@ Annotated examples of the request shapes Sage can send to a [Pollinations.ai](ht
 
 ## 💬 Chat Completion
 
-The most common request — what Sage sends for every text conversation:
+Sage's runtime expects an OpenAI-compatible chat-completions surface.
 
 ```bash
-curl -sS https://gen.pollinations.ai/v1/chat/completions \
-  -H "Authorization: Bearer sk_YOUR_KEY" \
+curl -sS https://your-provider.example/v1/chat/completions \
+  -H "Authorization: Bearer YOUR_KEY" \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "your-chat-model",
+    "model": "your-main-model",
     "messages": [
-      {
-        "role": "system",
-        "content": "You are Sage, a friendly AI companion in a Discord server."
-      },
-      {
-        "role": "user",
-        "content": "What is TypeScript?"
-      }
+      { "role": "system", "content": "System contract omitted for brevity." },
+      { "role": "user", "content": "What changed in the latest React docs?" }
     ]
   }'
 ```
 
-<details>
-<summary><strong>Expected response shape</strong></summary>
+If you want to validate a real provider/model pair against Sage's contract, use:
 
-```json
-{
-  "id": "chatcmpl-abc123",
-  "object": "chat.completion",
-  "choices": [
-    {
-      "index": 0,
-      "message": {
-        "role": "assistant",
-        "content": "TypeScript is a strongly-typed superset of JavaScript..."
-      },
-      "finish_reason": "stop"
-    }
-  ],
-  "usage": {
-    "prompt_tokens": 42,
-    "completion_tokens": 128,
-    "total_tokens": 170
-  }
-}
+```bash
+npm run ai-provider:probe
 ```
-
-</details>
 
 ---
 
@@ -80,36 +53,27 @@ curl -sS https://gen.pollinations.ai/v1/chat/completions \
 
 ## 👁️ Vision (Image Analysis)
 
-When a user attaches an image, Sage sends multimodal content parts:
+When the configured model supports image inputs, Sage can send content parts like this:
 
 ```bash
-curl -sS https://gen.pollinations.ai/v1/chat/completions \
-  -H "Authorization: Bearer sk_YOUR_KEY" \
+curl -sS https://your-provider.example/v1/chat/completions \
+  -H "Authorization: Bearer YOUR_KEY" \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "your-vision-capable-model",
+    "model": "your-vision-model",
     "messages": [
       {
         "role": "user",
         "content": [
-          {
-            "type": "text",
-            "text": "Describe what you see in this image."
-          },
-          {
-            "type": "image_url",
-            "image_url": {
-              "url": "https://example.com/photo.jpg"
-            }
-          }
+          { "type": "text", "text": "Describe this image." },
+          { "type": "image_url", "image_url": { "url": "https://example.com/photo.jpg" } }
         ]
       }
     ]
   }'
 ```
 
-> [!IMPORTANT]
-> The model must have `vision` capability. Configure that explicitly in `AI_PROVIDER_MODEL_PROFILES_JSON` when you need vision-specific overrides; otherwise Sage falls back to its base runtime defaults.
+Vision enablement is budget/profile metadata in `AI_PROVIDER_MODEL_PROFILES_JSON`; verify the provider/model pair in practice with a live probe.
 
 ---
 
@@ -117,24 +81,21 @@ curl -sS https://gen.pollinations.ai/v1/chat/completions \
 
 ## 🎨 Image Generation
 
-Sage fetches raw image bytes from the Pollinations image endpoint:
+Sage's current built-in image flow is Pollinations-specific:
 
 ```bash
 curl -L "https://gen.pollinations.ai/image/a%20neon%20cyberpunk%20city%20at%20night?model=imagen-4&seed=42&nologo=true&key=sk_YOUR_KEY" \
   --output generated_image.jpg
 ```
 
-### Parameters Sage Sends
+Typical query parameters Sage uses:
 
-| Parameter | Value | Purpose |
-| :--- | :--- | :--- |
-| `model` | `imagen-4` | Image model (default) |
-| `seed` | Random integer | Reproducibility per request |
-| `nologo` | `true` | Removes Pollinations watermark |
-| `key` | `sk_...` | BYOP or global API key |
-
-> [!TIP]
-> Sage runs an **agentic prompt refiner** before calling this endpoint. It rewrites the user's request into an image-optimized prompt using recent conversation context, which is why results are often better than a raw prompt would produce.
+| Parameter | Purpose |
+| :--- | :--- |
+| `model` | image model id |
+| `seed` | reproducibility |
+| `nologo` | watermark preference |
+| `key` | BYOP or host/server key path |
 
 ---
 
@@ -142,14 +103,12 @@ curl -L "https://gen.pollinations.ai/image/a%20neon%20cyberpunk%20city%20at%20ni
 
 ## ✏️ Image Editing
 
-When a user replies to an image with an edit request, Sage adds the `image` parameter:
+Reply-based image edits use the same endpoint with `image=<url>`:
 
 ```bash
-curl -L "https://gen.pollinations.ai/image/make%20it%20look%20like%20a%20watercolor%20painting?model=imagen-4&seed=42&nologo=true&image=https://example.com/source.jpg&key=sk_YOUR_KEY" \
+curl -L "https://gen.pollinations.ai/image/make%20this%20look%20like%20a%20watercolor?model=imagen-4&seed=42&nologo=true&image=https://example.com/source.jpg&key=sk_YOUR_KEY" \
   --output edited_image.jpg
 ```
-
-The difference from generation is the `image=<url>` parameter, which provides the source image for editing.
 
 ---
 
@@ -157,15 +116,14 @@ The difference from generation is the `image=<url>` parameter, which provides th
 
 ## 🔊 Voice (STT)
 
-For local transcription, Sage uses a local HTTP voice service (see `config/services/self-host/docker-compose.voice.yml`):
+For local transcription, Sage uses the optional local voice service:
 
 ```bash
 curl -sS http://127.0.0.1:11333/v1/stt/transcribe \
-  -F "audio=@sample.wav;type=audio/wav" \
-  -F "language=en"
+  -F "audio=@sample.wav;type=audio/wav"
 ```
 
-The response body is JSON with fields like `text`, `language`, `segments`, and `durationMs`.
+The voice service is separate from the chat provider and separate from the Pollinations image/server-key path.
 
 ---
 
@@ -173,37 +131,20 @@ The response body is JSON with fields like `text`, `language`, `segments`, and `
 
 ## 🔑 Key Validation
 
-Sage validates BYOP keys before storing them by calling the profile endpoint:
+Sage validates Pollinations BYOP keys before storing them:
 
 ```bash
 curl -sS https://gen.pollinations.ai/account/profile \
   -H "Authorization: Bearer sk_YOUR_KEY"
 ```
 
-Sage accepts a successful authenticated profile object response and reads identity/balance fields when present.
-
-<details>
-<summary><strong>Expected response shape</strong></summary>
-
-```json
-{
-  "id": "user_abc123",
-  "email": "you@example.com",
-  "plan": "free",
-  "usage": {
-    "requests": 1234,
-    "tokens": 567890
-  }
-}
-```
-
-</details>
+That validation is specific to the current hosted/server-key flow.
 
 ---
 
 ## 🔗 Related Documentation
 
-- [🐝 Pollinations Integration](POLLINATIONS.md) — Full integration reference
-- [🧩 Model Reference](MODELS.md) — Current single-agent model selection and fallbacks
-- [⚙️ Configuration](CONFIGURATION.md) — Environment variables for LLM settings
-- [🌸 BYOP Guide](../guides/BYOP.md) — How to set up Bring-Your-Own-Pollen keys
+- [🐝 Pollinations Integration](POLLINATIONS.md)
+- [🧩 Model Reference](MODELS.md)
+- [⚙️ Configuration](CONFIGURATION.md)
+- [🌸 BYOP Guide](../guides/BYOP.md)

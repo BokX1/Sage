@@ -44,7 +44,7 @@ flowchart LR
     classDef hosted fill:#fff3cd,stroke:#856404,color:black
     classDef sage fill:#cce5ff,stroke:#004085,color:black
 
-    S["Sage runtime"]:::sage --> W["web tool"]:::sage
+    S["Sage runtime"]:::sage --> W["web_search / web_read / web_extract / web_research"]:::sage
     S --> FI["discord_files.read_attachment"]:::sage
 
     W -->|"search order"| S1["SearXNG"]:::local
@@ -165,15 +165,15 @@ Set these optional `.env` values first:
 - `SAGE_DISCORD_SMOKE_USER_ID`
 - `SAGE_DISCORD_SMOKE_REVIEWER_ID`
 
-The smoke script checks:
+The smoke script checks representative non-Discord tools from the current registry:
 
 | Tool | Status |
 | :--- | :--- |
 | `system_time` | Required |
 | `system_tool_stats` | Required |
-| `web` | Required |
-| `github` | Required |
-| `workflow` | Required |
+| `web_search` / `web_read` / `web_research` | Required |
+| `github_search_code` / `github_get_repo` | Required |
+| `workflow_npm_github_code_search` | Required |
 | `npm_info` | Required |
 | `wikipedia_search` | Required |
 | `stack_overflow_search` | Required |
