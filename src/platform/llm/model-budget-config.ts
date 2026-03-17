@@ -9,7 +9,7 @@ export type ModelBudgetConfig = ModelLimits & {
   estimation: TokenEstimateOptions;
 };
 
-const DEFAULT_SAFETY_MARGIN = 200;
+const DEFAULT_SAFETY_MARGIN = 1024;
 const DEFAULT_IMAGE_TOKENS = 1200;
 const DEFAULT_MESSAGE_OVERHEAD = 4;
 

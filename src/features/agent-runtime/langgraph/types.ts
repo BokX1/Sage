@@ -38,24 +38,23 @@ export type GraphCompletionKind =
   | 'final_answer'
   | 'clarification_question'
   | 'approval_pending'
-  | 'pause_handoff'
+  | 'user_input_pending'
   | 'loop_guard'
-  | 'runtime_failure';
+  | 'runtime_failure'
+  | 'cancelled';
 
 export type GraphStopReason =
   | 'assistant_turn_completed'
   | 'approval_interrupt'
-  | 'step_window_exhausted'
-  | 'graph_timeout'
-  | 'max_windows_reached'
-  | 'continuation_expired'
+  | 'user_input_interrupt'
+  | 'background_yield'
   | 'loop_guard'
-  | 'runtime_failure';
+  | 'runtime_failure'
+  | 'cancelled';
 
 export type GraphDeliveryDisposition =
   | 'response_session'
-  | 'approval_handoff'
-  | 'response_session_with_continue';
+  | 'approval_handoff';
 
 export interface GraphArtifactDelivery {
   toolName: string;
@@ -63,7 +62,12 @@ export interface GraphArtifactDelivery {
   visibleSummary?: string;
 }
 
-export type GraphResponseSessionStatus = 'draft' | 'awaiting_approval' | 'paused' | 'final' | 'failed';
+export type GraphResponseSessionStatus =
+  | 'draft'
+  | 'awaiting_approval'
+  | 'waiting_user_input'
+  | 'final'
+  | 'failed';
 
 export interface GraphResponseSession {
   responseSessionId: string;
@@ -83,14 +87,52 @@ export interface GraphContextFrame {
   pendingApprovals: string[];
   deliveryState: 'none' | 'awaiting_approval' | 'paused' | 'final';
   nextAction: string;
+  activeEvidenceRefs?: string[];
+  droppedMessageCutoff?: number;
+  compactionRevision?: number;
 }
+
+export interface GraphWaitingState {
+  kind: 'approval_review' | 'user_input';
+  prompt: string;
+  requestedByUserId: string;
+  channelId: string;
+  guildId: string | null;
+  responseMessageId?: string | null;
+}
+
+export interface GraphCompactionState {
+  workingObjective: string;
+  verifiedFacts: string[];
+  completedActions: string[];
+  openQuestions: string[];
+  pendingApprovals: string[];
+  deliveryState: GraphContextFrame['deliveryState'];
+  nextAction: string;
+  activeEvidenceRefs: string[];
+  droppedMessageCutoff: number;
+  compactionRevision: number;
+  retainedRawMessageCount: number;
+  retainedToolObservationCount: number;
+  reason: 'tool_pressure' | 'round_pressure' | 'message_pressure' | 'approval_resolution' | 'yield_boundary';
+  inputTokensEstimate: number;
+  outputTokensEstimate: number;
+}
+
+export type GraphYieldReason =
+  | 'slice_budget_exhausted'
+  | 'provider_backoff'
+  | 'awaiting_compaction'
+  | 'worker_handoff';
 
 export type GraphFinalizedBy =
   | 'assistant_no_tool_calls'
   | 'approval_interrupt'
-  | 'continuation_pause'
+  | 'user_input_interrupt'
+  | 'background_yield'
   | 'loop_guard'
-  | 'runtime_failure';
+  | 'runtime_failure'
+  | 'cancelled';
 
 export interface ToolCallFinalizationEvent {
   attempted: boolean;
@@ -130,21 +172,7 @@ export interface ApprovalInterruptState {
   requests: ApprovalInterruptRequestState[];
 }
 
-export interface ContinuePromptInterruptState {
-  kind: 'continue_prompt';
-  continuationId: string;
-  pauseReason: 'graph_timeout' | 'step_window_exhausted';
-  requestedByUserId: string;
-  channelId: string;
-  guildId: string | null;
-  summaryText: string;
-  completedWindows: number;
-  maxWindows: number;
-  expiresAtIso: string;
-  resumeNode: 'tool_call_turn' | 'route_tool_phase';
-}
-
-export type GraphInterruptState = ApprovalInterruptState | ContinuePromptInterruptState;
+export type GraphInterruptState = ApprovalInterruptState;
 
 export interface ApprovalResolutionState {
   kind: 'approval_review';
@@ -162,17 +190,9 @@ export interface ApprovalBatchResolutionState {
   resolutions: ApprovalResolutionState[];
 }
 
-export interface ContinuePromptResolutionState {
-  kind: 'continue_prompt';
-  continuationId: string;
-  decision: 'continue' | 'expired';
-  resumedByUserId?: string | null;
-}
-
 export type GraphInterruptResolution =
   | ApprovalResolutionState
-  | ApprovalBatchResolutionState
-  | ContinuePromptResolutionState;
+  | ApprovalBatchResolutionState;
 
 export interface ApprovalResumeDecision {
   requestId: string;
@@ -208,6 +228,7 @@ export interface AgentGraphRuntimeContext {
   promptMode?: PromptInputMode;
   promptVersion?: string | null;
   promptFingerprint?: string | null;
+  runId?: string | null;
 }
 
 export type AgentGraphPersistedContext = Omit<AgentGraphRuntimeContext, 'apiKey'>;
@@ -222,7 +243,7 @@ export interface AgentGraphState {
   toolResults: SerializedToolResult[];
   files: GraphToolFile[];
   roundsCompleted: number;
-  completedWindows: number;
+  sliceIndex: number;
   totalRoundsCompleted: number;
   deduplicatedCallCount: number;
   lastToolBatchFingerprint: string | null;
@@ -236,6 +257,9 @@ export interface AgentGraphState {
   responseSession: GraphResponseSession;
   artifactDeliveries: GraphArtifactDelivery[];
   contextFrame: GraphContextFrame;
+  waitingState: GraphWaitingState | null;
+  compactionState: GraphCompactionState | null;
+  yieldReason: GraphYieldReason | null;
   graphStatus: 'running' | 'interrupted' | 'completed' | 'failed';
   activeWindowDurationMs: number;
   pendingInterrupt: GraphInterruptState | null;
@@ -246,12 +270,5 @@ export type GraphResumeInput =
   | {
       interruptKind: 'approval_review';
       decisions: ApprovalResumeDecision[];
-      resumeTraceId?: string | null;
-    }
-  | {
-      interruptKind: 'continue_prompt';
-      decision: 'continue' | 'expired';
-      continuationId: string;
-      resumedByUserId?: string | null;
       resumeTraceId?: string | null;
     };

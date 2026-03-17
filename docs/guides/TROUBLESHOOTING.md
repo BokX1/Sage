@@ -127,7 +127,8 @@ Check these in order:
 
 ```env
 CONTEXT_MAX_INPUT_TOKENS=120000
-CONTEXT_RESERVED_OUTPUT_TOKENS=12000
+CONTEXT_RESERVED_OUTPUT_TOKENS=4096
+CHAT_MAX_OUTPUT_TOKENS=4096
 ```
 
 ---
@@ -246,8 +247,8 @@ npx prisma migrate reset --force --skip-generate  # Development-only full reset
 Reduce these settings:
 
 ```env
-RING_BUFFER_MAX_MESSAGES_PER_CHANNEL=100  # Reduce from 200
-CONTEXT_TRANSCRIPT_MAX_MESSAGES=10         # Reduce from 15
+RING_BUFFER_MAX_MESSAGES_PER_CHANNEL=120  # Reduce from 300
+CONTEXT_TRANSCRIPT_MAX_MESSAGES=12         # Reduce from 24
 RAW_MESSAGE_TTL_DAYS=1                     # Reduce from 3
 ```
 

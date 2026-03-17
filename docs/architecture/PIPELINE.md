@@ -99,8 +99,7 @@ flowchart LR
 
     A["decide_turn"]:::llm --> B{"Decision"}:::route
     B -->|call_tools| C["tool_call_turn"]:::llm
-    B -->|answer / clarify| F["verify_turn"]:::llm
-    B -->|pause_handoff| I["pause_for_continue"]:::result
+    B -->|answer / clarify| F["closeout_turn"]:::result
     C --> D{"Tool calls?"}:::route
     D -->|Yes| E["route_tool_phase"]:::route
     D -->|No| F
@@ -111,16 +110,15 @@ flowchart LR
     K --> C
     L --> C
     L --> E
-    F --> G["closeout_turn"]:::result
-    G --> H["finalize_turn"]:::result
-    C -->|"step/duration cap with pending work"| I
-    I --> L
+    C -->|"slice cap with pending work"| I["yield_background"]:::result
+    I --> H["finalize_turn"]:::result
+    F --> H
 ```
 
 **Key behaviors**
 
-- **Bounded windows**: `AGENT_GRAPH_MAX_STEPS` limits how many tool-capable assistant/model responses can occur in one continuation window before Sage pauses.
-- **Window closeout summary**: when Sage pauses cleanly because the step window is exhausted, it can spend one extra no-tools model response to summarize concrete progress before posting the Continue handoff. If that closeout pass fails or the pause was caused by graph timeout, Sage falls back to the deterministic runtime summary.
+- **Durable slices**: `AGENT_RUN_SLICE_MAX_STEPS` and `AGENT_RUN_SLICE_MAX_DURATION_MS` bound one worker slice for fairness and recovery, but Sage now keeps normal long tasks running automatically in the background instead of surfacing a Continue prompt.
+- **Background-yield summary**: when Sage hits a slice boundary with work still pending, it can spend one extra no-tools model response to summarize concrete progress before yielding the run back to the background worker. If that pass fails, Sage falls back to the deterministic runtime summary.
 - **Message-native state**: the graph persists LangGraph/LangChain messages plus turn facts, approval state, trace metadata, and final delivery state instead of the old custom pending-tool-loop buffers.
 - **Read/write partitioning**: read-only batches execute through `ToolNode`, and mutating calls execute one at a time.
 - **In-round read dedupe**: identical read-only calls in the same model response are executed once, then fanned back out to the model as per-call tool messages so repeated reads do not waste a full execution slot.
@@ -132,14 +130,18 @@ flowchart LR
 - **Native provider transcript**: follow-up model calls now preserve assistant `tool_calls` and real `tool` messages end to end instead of flattening tool results into synthetic user text.
 - **No fixed message-count clipping**: after rebudgeting, Sage now forwards the full surviving assistant/tool transcript instead of hard-cutting the loop to the last eight messages.
 - **Response-session delivery**: the runtime tracks one primary editable response session, so draft assistant text can be updated in place while tools run and finalized cleanly when the turn ends.
-- **Split outcome semantics**: `completionKind` captures what the turn semantically achieved, `stopReason` captures why the graph stopped or paused, and `deliveryDisposition` tells the outer runtime whether to keep editing the response session, pause it with a Continue affordance, or hand off to approval state.
-- **Per-tool timeout**: each tool call is bounded by `AGENT_GRAPH_TOOL_TIMEOUT_MS`.
+- **Split outcome semantics**: `completionKind` captures what the turn semantically achieved, `stopReason` captures why the graph stopped, and `deliveryDisposition` tells the outer runtime whether to keep editing the response session or hand off to approval state.
+- **Per-tool timeout**: each tool call is bounded by `AGENT_RUN_TOOL_TIMEOUT_MS`.
 - **Durable execution**: every real tool invocation and post-approval execution runs inside a LangGraph `task(...)` boundary so replay and thread resume reuse checkpointed task outputs instead of repeating side effects.
 - **Repair-aware validation feedback**: routed-tool validation failures now carry compact repair guidance into the next model round, including missing/unknown action recovery and the best matching action contract from the routed-tool docs.
-- **Graph wall-clock cap**: the whole orchestration phase is bounded by `AGENT_GRAPH_MAX_DURATION_MS`.
+- **Task-run persistence**: Sage persists `AgentTaskRun` records with the current response session, waiting state, compaction state, lease ownership, and next runnable time so work can survive process restarts and resume on the same Discord message.
+- **Same-thread user-input resume**: when Sage is waiting on a clarifying answer, the next matching user reply resumes the existing LangGraph thread instead of starting a fresh task, so approvals, evidence refs, compaction state, and slice history stay attached to the same durable run.
+- **Graph wall-clock slice cap**: one active slice is bounded by `AGENT_RUN_SLICE_MAX_DURATION_MS`, while the overall task run is separately bounded by `AGENT_RUN_MAX_TOTAL_DURATION_MS`.
+- **Task-run SLA enforcement**: background resumes now enforce the task-level wall-clock, idle-wait, and max-resume budgets before continuing work, returning a clean terminal reply when the durable run has already exhausted its allowed window.
+- **Lease heartbeats**: background workers now refresh `leaseExpiresAt` throughout an active slice instead of only when a run is claimed, which prevents another worker from stealing the same task while one resume is still in flight.
 - **No Sage-side truncation**: Sage no longer compacts model-facing tool results or silently trims provider-bound prompt payloads; oversized requests now fail at the provider/runtime boundary instead of being rewritten locally.
-- **Approval + continuation interrupts**: approval-gated writes pause before side effects, and long-running turns pause at the window boundary with a persisted continuation record and deterministic progress summary built from the latest draft and tool results.
-- **Checkpointed continuation**: resume keeps the same LangGraph thread and prior tool results, resets only the window-local counters, and can continue through another bounded window instead of rebuilding the turn from scratch.
+- **Approval + user-input interrupts**: approval-gated writes pause before side effects, and the only intentional user-visible waits are approval review or required follow-up input from the user.
+- **Automatic context compaction**: long-running task runs now compact prompt-facing working memory across slices, preserving verified facts, next actions, approvals, and evidence references without replaying the full raw transcript forever.
 - **File collection**: tools such as `image_generate` can return files that are merged into the final Discord response.
 
 ---
@@ -156,9 +158,11 @@ Each turn can persist the following compact operator ledger fields to `AgentTrac
 | `promptVersion` | Prompt-contract version string recorded in `tokenJson` / `budgetJson` for the turn |
 | `promptFingerprint` | Stable prompt hash recorded alongside the turn so prompt changes are observable |
 | `terminationReason` | Deprecated legacy alias on `AgentTrace`; normal graph success paths now persist semantic outcome data in `budgetJson.graphRuntime` / `toolJson.graph` instead |
-| `budgetJson.graphRuntime.completionKind` | Semantic turn outcome (`final_answer`, `clarification_question`, `approval_pending`, `pause_handoff`, `loop_guard`, `runtime_failure`) |
-| `budgetJson.graphRuntime.stopReason` | Operational stop cause (`assistant_turn_completed`, `approval_interrupt`, `step_window_exhausted`, `graph_timeout`, `max_windows_reached`, `continuation_expired`, `loop_guard`, `runtime_failure`) |
-| `budgetJson.graphRuntime.deliveryDisposition` | Runtime delivery path (`response_session`, `approval_handoff`, `response_session_with_continue`) |
+| `budgetJson.graphRuntime.completionKind` | Semantic turn outcome (`final_answer`, `clarification_question`, `approval_pending`, `user_input_pending`, `loop_guard`, `runtime_failure`, `cancelled`) |
+| `budgetJson.graphRuntime.stopReason` | Operational stop cause (`assistant_turn_completed`, `approval_interrupt`, `user_input_interrupt`, `background_yield`, `loop_guard`, `runtime_failure`, `cancelled`) |
+| `budgetJson.graphRuntime.deliveryDisposition` | Runtime delivery path (`response_session`, `approval_handoff`) |
+| `budgetJson.graphRuntime.yieldReason` | Internal background handoff cause (`slice_budget_exhausted`, `provider_backoff`, `awaiting_compaction`, `worker_handoff`) when the run keeps going automatically |
+| `budgetJson.graphRuntime.compactionState` | Prompt-facing compaction snapshot, including revision, retained raw-message count, retained evidence refs, and compaction reason |
 | `langSmithRunId` | LangSmith run id for the turn |
 | `langSmithTraceId` | LangSmith trace id for the turn |
 | `budgetJson` | Token-budget allocation per block |
@@ -205,10 +209,22 @@ These values reflect the starter values in `.env.example`:
 | Variable | Description | Starter value |
 | :--- | :--- | :--- |
 | `AI_PROVIDER_MAIN_AGENT_MODEL` | Runtime main agent model for `runChatTurn` | *(required in `.env`)* |
-| `AGENT_GRAPH_MAX_STEPS` | Max tool-capable assistant/model responses per continuation window before Sage pauses or runs a wrap-up summary | `6` |
-| `AGENT_GRAPH_TOOL_TIMEOUT_MS` | Per-tool execution timeout | `45000` |
-| `AGENT_GRAPH_MAX_DURATION_MS` | Max wall-clock duration for one graph turn | `120000` |
-| `AGENT_GRAPH_MAX_OUTPUT_TOKENS` | Max output tokens for graph model calls | `1800` |
+| `AGENT_RUN_SLICE_MAX_STEPS` | Max tool-capable assistant/model responses in one durable worker slice before Sage yields automatically | `6` |
+| `AGENT_RUN_TOOL_TIMEOUT_MS` | Per-tool execution timeout | `45000` |
+| `AGENT_RUN_SLICE_MAX_DURATION_MS` | Max wall-clock duration for one active worker slice | `120000` |
+| `AGENT_RUN_MAX_TOTAL_DURATION_MS` | Max total wall-clock budget for one long-running task run | `3600000` |
+| `AGENT_RUN_MAX_IDLE_WAIT_MS` | Max idle wait budget while Sage is blocked on approval or required user input | `86400000` |
+| `AGENT_RUN_WORKER_POLL_MS` | Background worker poll interval for runnable task runs | `5000` |
+| `AGENT_RUN_LEASE_TTL_MS` | Lease TTL for one worker-owned task run | `30000` |
+| `AGENT_RUN_HEARTBEAT_MS` | Heartbeat interval while a worker owns a task run | `10000` |
+| `AGENT_RUN_MAX_RESUMES` | Max durable slice resumes before Sage fails the task run | `256` |
+| `AGENT_RUN_COMPACTION_ENABLED` | Enable automatic prompt-facing context compaction for long-running runs | `true` |
+| `AGENT_RUN_COMPACTION_TRIGGER_EST_TOKENS` | Estimated prompt tokens that trigger compaction pressure | `36000` |
+| `AGENT_RUN_COMPACTION_TRIGGER_ROUNDS` | Completed rounds before compaction pressure triggers | `6` |
+| `AGENT_RUN_COMPACTION_TRIGGER_TOOL_RESULTS` | Tool-result count before compaction pressure triggers | `12` |
+| `AGENT_RUN_COMPACTION_MAX_RAW_MESSAGES` | Raw assistant/tool message count retained through compaction | `24` |
+| `AGENT_RUN_COMPACTION_MAX_TOOL_OBSERVATIONS` | Tool observations retained in prompt-facing compaction state | `12` |
+| `AGENT_GRAPH_MAX_OUTPUT_TOKENS` | Max output tokens for graph model calls | `4096` |
 | `AGENT_GRAPH_GITHUB_GROUNDED_MODE` | Enable grounded GitHub search mode | `true` |
 | `AGENT_GRAPH_RECURSION_LIMIT` | LangGraph recursion fail-safe above the legal hop count | `16` |
 | `AGENT_GRAPH_MAX_TOOL_CALLS_PER_ROUND` | Max executable tool calls Sage will allow from one model response before it forces a repair pass | `8` |

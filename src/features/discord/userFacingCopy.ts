@@ -16,14 +16,6 @@ export function buildConsumedInteractionText(kind: 'button' | 'form'): string {
   return `That Sage ${subject} was already used, so please ask me for a new one if you still need it.`;
 }
 
-export function buildContinueOwnerMismatchText(): string {
-  return 'I can only continue this for the person who started it.';
-}
-
-export function buildContinueChannelMismatchText(channelId: string): string {
-  return `I can only continue this in <#${channelId}>.`;
-}
-
 export function buildRetryOwnerMismatchText(): string {
   return 'I can only retry this for the person who started it.';
 }
@@ -32,39 +24,8 @@ export function buildRetryChannelMismatchText(channelId: string): string {
   return `I can only retry this in <#${channelId}>.`;
 }
 
-export function buildContinuationButtonLabel(params?: {
-  completedWindows?: number;
-  maxWindows?: number;
-}): string {
-  const completed = params?.completedWindows;
-  const max = params?.maxWindows;
-  if (
-    typeof completed === 'number' &&
-    typeof max === 'number' &&
-    Number.isFinite(completed) &&
-    Number.isFinite(max) &&
-    max > 1
-  ) {
-    const currentWindow = Math.min(max, completed + 1);
-    return `Continue (${currentWindow}/${max})`;
-  }
-  return 'Continue';
-}
-
 export function buildRetryButtonLabel(): string {
   return 'Retry';
-}
-
-export function buildContinuationAccessDeniedText(): string {
-  return 'I can only reopen that for the same person in the same channel.';
-}
-
-export function buildContinuationAlreadyClosedText(): string {
-  return 'I already closed that continuation, so please send me a new message if you want me to keep going.';
-}
-
-export function buildContinuationExpiredText(): string {
-  return 'That continuation expired, so please send me a new message if you want me to keep going.';
 }
 
 export function buildApprovalQueuedHandoffText(params?: {

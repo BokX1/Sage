@@ -28,13 +28,21 @@ import {
 } from './attachment-parser';
 import { isAdminFromMember, isModeratorFromMember } from '../../../platform/discord/admin-permissions';
 import { buildGuildApiKeyMissingResponse } from '../../../features/discord/byopBootstrap';
+import {
+  attachTaskRunResponseSession,
+  resumeWaitingTaskRunWithInput,
+  type RunChatTurnParams,
+} from '../../../features/agent-runtime';
+import {
+  findWaitingUserInputTaskRun,
+  type AgentTaskRunRecord,
+} from '../../../features/agent-runtime/agentTaskRunRepo';
 import { ReplyTargetContext } from '../../../features/agent-runtime/continuityContext';
 import { resolveDefaultInvocationUserText, type PromptInputMode } from '../../../features/agent-runtime/promptContract';
 import {
   createInteractiveButtonSession,
 } from '../../../features/discord/interactiveComponentService';
 import {
-  buildContinuationButtonLabel,
   buildMessageFailureText,
   buildRetryButtonLabel,
 } from '../../../features/discord/userFacingCopy';
@@ -300,6 +308,9 @@ type SendableTypingChannel = {
   send: (
     options: string | { content: string; allowedMentions?: { parse?: string[] } },
   ) => Promise<Message>;
+  messages?: {
+    fetch: (messageId: string) => Promise<Message>;
+  };
 };
 
 type EditableResponseMessage = {
@@ -312,6 +323,35 @@ async function editResponseSessionMessage(
   payload: unknown,
 ): Promise<void> {
   await message.edit(payload);
+}
+
+async function resolveExistingTaskRunResponseMessage(
+  channel: Message['channel'],
+  waitingTaskRun: AgentTaskRunRecord | null,
+): Promise<EditableResponseMessage | null> {
+  if (!waitingTaskRun || !('messages' in channel) || !channel.messages?.fetch) {
+    return null;
+  }
+
+  if (waitingTaskRun.responseMessageId) {
+    const responseMessage = await channel.messages.fetch(waitingTaskRun.responseMessageId).catch(() => null);
+    if (responseMessage) {
+      return responseMessage as EditableResponseMessage;
+    }
+  }
+
+  return null;
+}
+
+async function resolveTaskRunReplyBaseMessage(
+  channel: Message['channel'],
+  waitingTaskRun: AgentTaskRunRecord | null,
+): Promise<Message | null> {
+  if (!waitingTaskRun || !('messages' in channel) || !channel.messages?.fetch || !waitingTaskRun.sourceMessageId) {
+    return null;
+  }
+
+  return channel.messages.fetch(waitingTaskRun.sourceMessageId).catch(() => null);
 }
 
 function isSendableTypingChannel(
@@ -730,86 +770,108 @@ export async function handleMessageCreate(message: Message) {
 
       const invokerIsAdmin = isAdminFromMember(message.member);
       const invokerCanModerate = isModeratorFromMember(message.member);
-      let responseSessionMessage: EditableResponseMessage | null = null;
+      const waitingTaskRun = await findWaitingUserInputTaskRun({
+        guildId: message.guildId,
+        channelId: message.channelId,
+        requestedByUserId: message.author.id,
+        replyToMessageId: referencedMessage?.id ?? null,
+      });
+      let responseSessionMessage = await resolveExistingTaskRunResponseMessage(message.channel, waitingTaskRun);
+      const responseSessionThreadId = waitingTaskRun?.threadId ?? traceId;
+      const responseSessionSourceMessageId = waitingTaskRun?.sourceMessageId ?? message.id;
+      let responseSessionReplyBase =
+        waitingTaskRun && !responseSessionMessage
+          ? await resolveTaskRunReplyBaseMessage(message.channel, waitingTaskRun)
+          : null;
       let responseSessionRevision = -1;
       let responseSessionText = '';
-      const result = await generateChatReply({
-        traceId,
-        userId: message.author.id,
-        channelId: message.channelId,
-        guildId: message.guildId,
-        messageId: message.id,
-        userText: userTextWithAttachments,
-        userContent: userContent ?? userTextWithAttachments,
-        currentTurn,
-        replyTarget,
-        mentionedUserIds,
-        invokedBy: invocation.kind,
-        isVoiceActive,
-        voiceChannelId: activeVoiceChannelId,
-        isAdmin: invokerIsAdmin,
-        canModerate: invokerCanModerate,
-        promptMode,
-        onResponseSessionUpdate: async (update) => {
-          if (update.responseSession.draftRevision <= responseSessionRevision) {
-            return;
-          }
-          const nextDraft = (update.responseSession.latestText || update.replyText || '').trim();
-          if (!nextDraft) {
-            return;
-          }
-          const [primaryDraft] = smartSplit(nextDraft, 2000);
-          const nextPrimaryDraft = primaryDraft || nextDraft;
-          if (!nextPrimaryDraft || nextPrimaryDraft === responseSessionText) {
-            responseSessionRevision = update.responseSession.draftRevision;
-            return;
-          }
-
-          if (!responseSessionMessage) {
-            responseSessionMessage = (await message.reply({
-              content: nextPrimaryDraft,
-              allowedMentions: { repliedUser: false },
-            })) as EditableResponseMessage;
-          } else {
-            await responseSessionMessage.edit({
-              content: nextPrimaryDraft,
-              allowedMentions: { repliedUser: false },
-            });
-          }
+      const onResponseSessionUpdate: NonNullable<RunChatTurnParams['onResponseSessionUpdate']> = async (update) => {
+        if (update.responseSession.draftRevision <= responseSessionRevision) {
+          return;
+        }
+        const nextDraft = (update.responseSession.latestText || update.replyText || '').trim();
+        if (!nextDraft) {
+          return;
+        }
+        const [primaryDraft] = smartSplit(nextDraft, 2000);
+        const nextPrimaryDraft = primaryDraft || nextDraft;
+        if (!nextPrimaryDraft || nextPrimaryDraft === responseSessionText) {
           responseSessionRevision = update.responseSession.draftRevision;
-          responseSessionText = nextPrimaryDraft;
-        },
-      });
+          return;
+        }
+
+        if (!responseSessionMessage) {
+          responseSessionMessage = (await (responseSessionReplyBase ?? message).reply({
+            content: nextPrimaryDraft,
+            allowedMentions: { repliedUser: false },
+          })) as EditableResponseMessage;
+          responseSessionReplyBase = null;
+          void attachTaskRunResponseSession({
+            threadId: responseSessionThreadId,
+            sourceMessageId: responseSessionSourceMessageId,
+            responseMessageId: responseSessionMessage.id,
+            responseSession: {
+              ...update.responseSession,
+              responseMessageId: responseSessionMessage.id,
+              sourceMessageId: update.responseSession.sourceMessageId ?? responseSessionSourceMessageId,
+            },
+          }).catch((error) => {
+            loggerWithTrace.warn({ error, traceId: responseSessionThreadId }, 'Failed to persist response session attachment');
+          });
+        } else {
+          await responseSessionMessage.edit({
+            content: nextPrimaryDraft,
+            allowedMentions: { repliedUser: false },
+          });
+        }
+        responseSessionRevision = update.responseSession.draftRevision;
+        responseSessionText = nextPrimaryDraft;
+      };
+      const result = waitingTaskRun
+        ? await resumeWaitingTaskRunWithInput({
+            traceId,
+            userId: message.author.id,
+            channelId: message.channelId,
+            guildId: message.guildId,
+            replyToMessageId: referencedMessage?.id ?? null,
+            userText: userTextWithAttachments,
+            userContent: userContent ?? userTextWithAttachments,
+            currentTurn,
+            replyTarget,
+            promptMode,
+            isAdmin: invokerIsAdmin,
+            canModerate: invokerCanModerate,
+            onResponseSessionUpdate,
+          })
+        : await generateChatReply({
+            traceId,
+            userId: message.author.id,
+            channelId: message.channelId,
+            guildId: message.guildId,
+            messageId: message.id,
+            userText: userTextWithAttachments,
+            userContent: userContent ?? userTextWithAttachments,
+            currentTurn,
+            replyTarget,
+            mentionedUserIds,
+            invokedBy: invocation.kind,
+            isVoiceActive,
+            voiceChannelId: activeVoiceChannelId,
+            isAdmin: invokerIsAdmin,
+            canModerate: invokerCanModerate,
+            promptMode,
+            onResponseSessionUpdate,
+          });
 
       const replyText = result.replyText || '';
       const files = result.files ?? [];
-      const continuation = result.meta?.continuation;
       const retry = result.meta?.retry;
 
       let didSendAnything = false;
       const approvalQueued = result.delivery === 'approval_handoff';
       let actionButtonId: string | null = null;
       let actionButtonLabel: string | null = null;
-      if (result.delivery === 'response_session_with_continue' && continuation && message.guildId) {
-        try {
-          actionButtonId = await createInteractiveButtonSession({
-            guildId: message.guildId,
-            channelId: message.channelId,
-            createdByUserId: message.author.id,
-            action: {
-              type: 'graph_continue',
-              continuationId: continuation.id,
-              visibility: 'public',
-            },
-          });
-          actionButtonLabel = buildContinuationButtonLabel(result.meta?.continuation);
-        } catch (err) {
-          loggerWithTrace.warn(
-            { err, continuationId: continuation.id, channelId: message.channelId },
-            'Failed to create continuation button session; sending summary without button',
-          );
-        }
-      } else if (retry && message.guildId) {
+      if (retry && message.guildId) {
         try {
           actionButtonId = await createInteractiveButtonSession({
             guildId: message.guildId,
@@ -862,13 +924,13 @@ export async function handleMessageCreate(message: Message) {
         const shouldUseRuntimeCard = !!actionButton;
 
         if ((shouldUseRuntimeCard && (firstReplyContent || files.length > 0)) || firstReplyContent || files.length > 0) {
-          const primaryPayload = shouldUseRuntimeCard
-            ? buildRuntimeResponseCardPayload({
-                text: firstReplyContent || '\u200b',
-                tone: continuation ? 'continue' : retry ? 'retry' : approvalQueued ? 'notice' : 'notice',
-                button: actionButton,
-                files,
-                allowedMentions: { repliedUser: false },
+        const primaryPayload = shouldUseRuntimeCard
+          ? buildRuntimeResponseCardPayload({
+              text: firstReplyContent || '\u200b',
+              tone: retry ? 'retry' : approvalQueued ? 'notice' : 'notice',
+              button: actionButton,
+              files,
+              allowedMentions: { repliedUser: false },
               })
             : {
                 content: firstReplyContent,
@@ -878,7 +940,22 @@ export async function handleMessageCreate(message: Message) {
           if (responseSessionMessage) {
             await editResponseSessionMessage(responseSessionMessage, primaryPayload);
           } else {
-            responseSessionMessage = (await message.reply(primaryPayload)) as EditableResponseMessage;
+            responseSessionMessage = (await (responseSessionReplyBase ?? message).reply(primaryPayload)) as EditableResponseMessage;
+            responseSessionReplyBase = null;
+            void attachTaskRunResponseSession({
+              threadId: responseSessionThreadId,
+              sourceMessageId: responseSessionSourceMessageId,
+              responseMessageId: responseSessionMessage.id,
+              responseSession: result.responseSession
+                ? {
+                    ...result.responseSession,
+                    responseMessageId: responseSessionMessage.id,
+                    sourceMessageId: result.responseSession.sourceMessageId ?? responseSessionSourceMessageId,
+                  }
+                : undefined,
+            }).catch((error) => {
+              loggerWithTrace.warn({ error, traceId: responseSessionThreadId }, 'Failed to persist final response session attachment');
+            });
           }
           didSendAnything = true;
           responseSessionText = firstReplyContent || '\u200b';

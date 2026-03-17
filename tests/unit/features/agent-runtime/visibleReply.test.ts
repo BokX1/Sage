@@ -23,35 +23,29 @@ describe('visibleReply', () => {
       deliveryDisposition: 'response_session',
       emptyFallback: buildLastResortVisibleReply('turn'),
     });
-    const continuationFallback = finalizeVisibleReplyText({
+    const backgroundFallback = finalizeVisibleReplyText({
       replyText: '',
-      deliveryDisposition: 'response_session_with_continue',
-      emptyFallback: buildLastResortVisibleReply('continue_prompt'),
-    });
-    const continuationResumeFallback = finalizeVisibleReplyText({
-      replyText: '',
-      deliveryDisposition: 'response_session_with_continue',
-      emptyFallback: buildLastResortVisibleReply('continue_resume'),
+      deliveryDisposition: 'response_session',
+      emptyFallback: buildLastResortVisibleReply('background_resume'),
     });
     expect(turnFallback).toContain('Please send me one more message');
-    expect(continuationFallback).toContain('press Continue');
-    expect(continuationResumeFallback).toContain('another Continue');
+    expect(backgroundFallback).toContain('one more message');
   });
 
   it('returns route-aware runtime failure copy', () => {
     expect(buildRuntimeFailureReply({ kind: 'turn', category: 'provider' })).toBe(
       'I lost the model connection before I could finish, so please try again.',
     );
-    expect(buildRuntimeFailureReply({ kind: 'continue_resume', category: 'runtime' })).toBe(
-      'I ran into a problem while I was picking that back up, so please press Retry or Continue again.',
+    expect(buildRuntimeFailureReply({ kind: 'background_resume', category: 'runtime' })).toBe(
+      'I ran into a problem while I was picking that back up, so please try again.',
     );
   });
 
   it('prefers a continuation summary over a raw tool-count fallback when the visible reply is empty', () => {
     const result = finalizeVisibleReplyText({
       replyText: 'I checked the relevant GitHub files and still need one more pass to connect the findings.',
-      deliveryDisposition: 'response_session_with_continue',
-      emptyFallback: buildLastResortVisibleReply('continue_prompt'),
+      deliveryDisposition: 'response_session',
+      emptyFallback: buildLastResortVisibleReply('background_resume'),
     });
 
     expect(result).toContain('I checked the relevant GitHub files');

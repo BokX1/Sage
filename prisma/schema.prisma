@@ -108,27 +108,44 @@ model DiscordInteractionSession {
   @@index([expiresAt])
 }
 
-model AgentContinuationSession {
-  id                String   @id @default(cuid())
-  threadId          String
-  originTraceId     String
-  latestTraceId     String
-  guildId           String?
-  channelId         String
-  requestedByUserId String
-  status            String
-  pauseKind         String
-  completedWindows  Int      @default(0)
-  maxWindows        Int
-  summaryText       String   @db.Text
-  resumeNode        String
-  expiresAt         DateTime
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+model AgentTaskRun {
+  id                     String   @id @default(cuid())
+  threadId               String   @unique
+  originTraceId          String
+  latestTraceId          String
+  guildId                String?
+  channelId              String
+  requestedByUserId      String
+  sourceMessageId        String?
+  responseMessageId      String?
+  status                 String
+  waitingKind            String?
+  latestDraftText        String   @db.Text
+  draftRevision          Int      @default(0)
+  completionKind         String?
+  stopReason             String?
+  nextRunnableAt         DateTime?
+  leaseOwner             String?
+  leaseExpiresAt         DateTime?
+  heartbeatAt            DateTime?
+  resumeCount            Int      @default(0)
+  taskWallClockMs        Int      @default(0)
+  maxTotalDurationMs     Int
+  maxIdleWaitMs          Int
+  lastErrorText          String?  @db.Text
+  responseSessionJson    Json?
+  waitingStateJson       Json?
+  compactionStateJson    Json?
+  checkpointMetadataJson Json?
+  startedAt              DateTime @default(now())
+  completedAt            DateTime?
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
 
-  @@index([threadId, createdAt])
-  @@index([channelId, requestedByUserId, status, expiresAt])
-  @@index([status, expiresAt])
+  @@index([channelId, requestedByUserId, status, updatedAt])
+  @@index([status, nextRunnableAt])
+  @@index([leaseExpiresAt])
+  @@index([waitingKind, channelId, requestedByUserId, updatedAt])
 }
 
 model ChannelMessage {

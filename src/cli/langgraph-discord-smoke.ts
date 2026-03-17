@@ -5,7 +5,6 @@ import { randomUUID } from 'node:crypto';
 import dotenv from 'dotenv';
 import { AIMessage } from '@langchain/core/messages';
 
-type AgentGraphTurnResult = import('../features/agent-runtime/langgraph/runtime').AgentGraphTurnResult;
 type ApprovalReviewRequestRecord = import('../features/admin/approvalReviewRequestRepo').ApprovalReviewRequestRecord;
 
 let depsLoaded = false;
@@ -18,7 +17,6 @@ let buildAgentGraphConfig: typeof import('../features/agent-runtime/langgraph/co
 let runSeededAgentGraphTurn: typeof import('../features/agent-runtime/langgraph/runtime').runSeededAgentGraphTurn;
 let resumeAgentGraphTurn: typeof import('../features/agent-runtime/langgraph/runtime').resumeAgentGraphTurn;
 let shutdownAgentGraphRuntime: typeof import('../features/agent-runtime/langgraph/runtime').shutdownAgentGraphRuntime;
-let markGraphContinuationSessionExpired: typeof import('../features/agent-runtime/graphContinuationRepo').markGraphContinuationSessionExpired;
 let getApprovalReviewRequestById: typeof import('../features/admin/approvalReviewRequestRepo').getApprovalReviewRequestById;
 let markApprovalReviewRequestDecisionIfPending: typeof import('../features/admin/approvalReviewRequestRepo').markApprovalReviewRequestDecisionIfPending;
 
@@ -71,7 +69,6 @@ async function loadSmokeRuntimeDeps(): Promise<void> {
     resumeAgentGraphTurn,
     shutdownAgentGraphRuntime,
   } = await import('../features/agent-runtime/langgraph/runtime'));
-  ({ markGraphContinuationSessionExpired } = await import('../features/agent-runtime/graphContinuationRepo'));
   ({
     getApprovalReviewRequestById,
     markApprovalReviewRequestDecisionIfPending,
@@ -212,56 +209,6 @@ async function cleanupCreatedRole(params: {
   );
 }
 
-async function expireContinuationPrompt(params: {
-  threadId: string;
-  result: AgentGraphTurnResult;
-  actorUserId: string;
-  context: {
-    originTraceId: string;
-    channelId: string;
-    guildId: string;
-    activeToolNames: string[];
-  };
-  resumeTraceId: string;
-}): Promise<void> {
-  const interrupt = params.result.pendingInterrupt;
-  if (interrupt?.kind !== 'continue_prompt') {
-    return;
-  }
-
-  await markGraphContinuationSessionExpired(interrupt.continuationId);
-  const finalized = await resumeAgentGraphTurn({
-    threadId: params.threadId,
-    resume: {
-      interruptKind: 'continue_prompt',
-      continuationId: interrupt.continuationId,
-      decision: 'expired',
-      resumedByUserId: params.actorUserId,
-      resumeTraceId: params.resumeTraceId,
-    },
-    context: {
-      traceId: params.resumeTraceId,
-      originTraceId: params.context.originTraceId,
-      userId: params.actorUserId,
-      channelId: params.context.channelId,
-      guildId: params.context.guildId,
-      activeToolNames: params.context.activeToolNames,
-      routeKind: 'discord-smoke',
-      currentTurn: null,
-      replyTarget: null,
-      invokedBy: 'component',
-      invokerIsAdmin: true,
-    },
-  });
-
-  if (finalized.pendingInterrupt) {
-    throw new Error('Continuation cleanup resume re-entered an interrupt instead of finalizing the smoke thread.');
-  }
-  if (finalized.graphStatus !== 'completed') {
-    throw new Error(`Continuation cleanup did not complete the smoke thread (status=${finalized.graphStatus}).`);
-  }
-}
-
 async function runReadPathSmoke(target: SmokeTarget): Promise<void> {
   const graphConfig = buildAgentGraphConfig();
   const traceId = randomUUID();
@@ -298,8 +245,8 @@ async function runReadPathSmoke(target: SmokeTarget): Promise<void> {
           ],
         }),
       ],
-      roundsCompleted: Math.max(0, graphConfig.maxSteps - 1),
-      totalRoundsCompleted: Math.max(0, graphConfig.maxSteps - 1),
+      roundsCompleted: Math.max(0, graphConfig.sliceMaxSteps - 1),
+      totalRoundsCompleted: Math.max(0, graphConfig.sliceMaxSteps - 1),
     },
   });
 
@@ -309,31 +256,12 @@ async function runReadPathSmoke(target: SmokeTarget): Promise<void> {
       `Graph read-path smoke failed: ${toolResult?.error ?? 'discord_server_list_channels did not produce a successful tool result.'}`,
     );
   }
-  if (result.pendingInterrupt?.kind === 'continue_prompt') {
-    await expireContinuationPrompt({
-      threadId: traceId,
-      result,
-      actorUserId: target.actorUserId,
-      context: {
-        originTraceId: traceId,
-        channelId: target.channelId,
-        guildId: target.guildId,
-          activeToolNames: ['discord_server_list_channels'],
-      },
-      resumeTraceId: randomUUID(),
-    });
-
-    console.log(
-      `[PASS] graph read path routed discord_server_list_channels through LangGraph and cleaned the continuation pause (stop=${result.stopReason})`,
-    );
-    return;
-  }
   if (result.graphStatus !== 'completed' || result.pendingInterrupt) {
-    throw new Error('Graph read-path smoke did not finish with either a clean completion or a continuation interrupt.');
+    throw new Error('Graph read-path smoke did not finish cleanly.');
   }
 
   console.log(
-    `[PASS] graph read path routed discord_server_list_channels through LangGraph and completed cleanly without a continuation pause (stop=${result.stopReason})`,
+    `[PASS] graph read path routed discord_server_list_channels through LangGraph and completed cleanly (stop=${result.stopReason})`,
   );
 }
 
@@ -374,8 +302,8 @@ async function runApprovalPathSmoke(target: SmokeTarget): Promise<void> {
             },
           },
         ],
-        roundsCompleted: graphConfig.maxSteps,
-        totalRoundsCompleted: graphConfig.maxSteps,
+        roundsCompleted: graphConfig.sliceMaxSteps,
+        totalRoundsCompleted: graphConfig.sliceMaxSteps,
       },
     });
 
@@ -435,31 +363,12 @@ async function runApprovalPathSmoke(target: SmokeTarget): Promise<void> {
     if (!roleId) {
       throw new Error('Approval-resume smoke executed but did not expose the created role id for cleanup.');
     }
-    if (resumed.pendingInterrupt?.kind === 'continue_prompt') {
-      await expireContinuationPrompt({
-        threadId: traceId,
-        result: resumed,
-        actorUserId: target.actorUserId,
-        context: {
-          originTraceId: traceId,
-          channelId: target.channelId,
-          guildId: target.guildId,
-          activeToolNames: ['discord_admin_create_role'],
-        },
-        resumeTraceId: randomUUID(),
-      });
-
-      console.log(
-        `[PASS] graph approval path created, approved, resumed, executed discord_admin_create_role, and cleaned the continuation pause (stop=${resumed.stopReason})`,
-      );
-      return;
-    }
     if (resumed.graphStatus !== 'completed' || resumed.pendingInterrupt) {
-      throw new Error('Approval-resume smoke did not finish with either a clean completion or a continuation interrupt.');
+      throw new Error('Approval-resume smoke did not finish cleanly.');
     }
 
     console.log(
-      `[PASS] graph approval path created, approved, resumed, and executed discord_admin_create_role without requiring a continuation pause (stop=${resumed.stopReason})`,
+      `[PASS] graph approval path created, approved, resumed, and executed discord_admin_create_role cleanly (stop=${resumed.stopReason})`,
     );
   } finally {
     if (!action && requestId) {

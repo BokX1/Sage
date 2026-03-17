@@ -7,7 +7,7 @@ import { describeContinuityPolicy } from './continuityContext';
 import type { LLMContentPart, LLMMessageContent } from '../../platform/llm/llm-types';
 import { globalToolRegistry } from './toolRegistry';
 
-export const UNIVERSAL_PROMPT_CONTRACT_VERSION = '2026-03-16.plain-text-first-v2';
+export const UNIVERSAL_PROMPT_CONTRACT_VERSION = '2026-03-17.long-running-v1';
 const PROMPT_TOOL_OBSERVATION_MAX_CHARS = 24_000;
 
 export type PromptInputMode =
@@ -15,7 +15,7 @@ export type PromptInputMode =
   | 'image_only'
   | 'reply_only'
   | 'direct_attention'
-  | 'graph_continuation';
+  | 'durable_resume';
 
 export interface PromptWorkingMemoryFrame {
   objective: string;
@@ -25,6 +25,9 @@ export interface PromptWorkingMemoryFrame {
   pendingApprovals: string[];
   deliveryState: 'none' | 'awaiting_approval' | 'paused' | 'final';
   nextAction: string;
+  activeEvidenceRefs?: string[];
+  droppedMessageCutoff?: number;
+  compactionRevision?: number;
 }
 
 export interface BuildUniversalPromptContractParams {
@@ -304,10 +307,10 @@ function buildPromptModeLines(mode: PromptInputMode): string[] {
         'prompt_mode: direct_attention',
         'mode_hint: the user explicitly called Sage for attention without a concrete task yet; acknowledge briefly and ask what they need.',
       ];
-    case 'graph_continuation':
+    case 'durable_resume':
       return [
-        'prompt_mode: graph_continuation',
-        'mode_hint: continue the existing turn using the latest working memory and tool observations. Do not restart the task from scratch.',
+        'prompt_mode: durable_resume',
+        'mode_hint: continue the existing long-running task using compacted working memory and the latest evidence. Do not restart from scratch.',
       ];
     default:
       return [
@@ -398,6 +401,9 @@ function buildTrustedWorkingMemoryBlock(frame: PromptWorkingMemoryFrame | null |
     `pending_approvals: ${resolved.pendingApprovals.join(' | ') || '(none)'}`,
     `delivery_state: ${resolved.deliveryState}`,
     `next_required_action: ${resolved.nextAction || '(none)'}`,
+    `active_evidence_refs: ${(resolved.activeEvidenceRefs ?? []).join(' | ') || '(none)'}`,
+    `dropped_message_cutoff: ${resolved.droppedMessageCutoff ?? 0}`,
+    `compaction_revision: ${resolved.compactionRevision ?? 0}`,
     '</trusted_working_memory>',
   ].join('\n');
 }
@@ -491,9 +497,9 @@ function buildFewShotExamples(activeTools: string[]): string {
 
   if (hasDiscordAdmin) {
     examples.push(
-      '<example name="approval_resume">',
+    '<example name="approval_resume">',
       'If an approval interrupt is already queued, keep the visible draft aligned with the pending action and wait for the review outcome.',
-      'After approval resolves, continue the same task and end with a normal plain-text answer when no more tools are needed.',
+      'After approval resolves, continue the same long-running task and end with a normal plain-text answer when no more tools are needed.',
       '</example>',
     );
   }
@@ -562,6 +568,7 @@ function buildToolProtocol(activeTools: string[]): string {
     '- A single assistant turn may include both plain assistant text and provider-native tool calls.',
     '- If tools are needed, write a concise visible draft for the user and call the tools in the same turn.',
     '- If no more tools are needed, answer directly in plain assistant text and end the turn.',
+    '- If the runtime resumes you after a background yield, continue from working memory and evidence refs instead of replaying the whole task from scratch.',
     '- Use external tools when they materially improve the answer or are required to complete the request.',
     '- Batch read-only calls in one provider-native turn when possible; do not loop one-by-one across rounds.',
     '- If a required parameter is missing, ask a clarification question instead of guessing.',
@@ -578,6 +585,7 @@ function buildCloseoutProtocol(): string {
     '<closeout_protocol>',
     '- No tool calls means the assistant text is the final answer or clarification for this turn.',
     '- If tool calls are present, treat the assistant text as a provisional visible draft that may be edited later.',
+    '- Background yields are operational only. Keep the visible draft coherent so the user can see progress while the task continues automatically.',
     '- If approval review interrupts the turn, keep the draft aligned with the pending work and revise it after the outcome if needed.',
     '- Do not rely on tools to deliver the normal chat reply.',
     '- If approval review interrupts the turn, treat the action as already queued and keep any later visible follow-up brief.',
@@ -688,7 +696,6 @@ function buildFingerprintSource(params: {
         ? ['<autopilot_mode>', 'talkative_mode_enabled', '</autopilot_mode>'].join('\n')
         : '<autopilot_mode>\nnone\n</autopilot_mode>',
     '<user_profile>\n<runtime>\n</user_profile>',
-    '<protocol_repair_state>\n<runtime>\n</protocol_repair_state>',
     '</trusted_runtime_state>',
   ].join('\n');
 
@@ -701,6 +708,9 @@ function buildFingerprintSource(params: {
     'pending_approvals: <runtime>',
     'delivery_state: <runtime>',
     'next_required_action: <runtime>',
+    'active_evidence_refs: <runtime>',
+    'dropped_message_cutoff: <runtime>',
+    'compaction_revision: <runtime>',
     '</trusted_working_memory>',
   ].join('\n');
 

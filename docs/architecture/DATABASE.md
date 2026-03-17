@@ -3,7 +3,7 @@
 Sage uses PostgreSQL with Prisma ORM. The current Prisma schema defines 18 models; this document covers the active tables, relationships, and common query patterns.
 
 > [!IMPORTANT]
-> Sage now ships one current-schema Prisma baseline migration for fresh database rebuilds. Historical migration layering was intentionally removed as part of the flagship runtime reset.
+> Sage now ships one current-schema Prisma baseline migration for fresh database rebuilds. Historical migration layering was intentionally removed as part of the flagship runtime reset, and the baseline bootstraps `CREATE EXTENSION IF NOT EXISTS vector` before any pgvector-backed tables are created.
 
 <p align="center">
   <img src="https://img.shields.io/badge/%F0%9F%8C%BF-Sage%20Database-2d5016?style=for-the-badge&labelColor=4a7c23" alt="Sage Database" />
@@ -371,26 +371,38 @@ Checkpoint-backed approval review requests used to pause and resume the LangGrap
 | `executedAt` | `DateTime?` | Timestamp for executed or failed post-approval side effects |
 | `decisionReasonText` | `String?` | Short rejection reason collected from the governance modal when present |
 
-### `AgentContinuationSession`
+### `AgentTaskRun`
 
-Checkpoint-backed continuation records used when Sage pauses a long-running LangGraph thread at the per-window step or duration boundary.
+Durable task-run records used when Sage keeps a long-running LangGraph thread moving across background worker slices, approval waits, and user-input waits.
 
 | Column | Type | Notes |
 |:---|:---|:---|
 | `id` | `String` (PK) | CUID |
-| `threadId` | `String` | LangGraph thread id shared across continuation windows |
+| `threadId` | `String` | Unique LangGraph thread id for the durable task run |
 | `originTraceId` | `String` | Trace that opened the original graph thread |
-| `latestTraceId` | `String` | Most recent trace id associated with the paused thread |
+| `latestTraceId` | `String` | Most recent trace id associated with the task run |
 | `guildId` | `String?` | Guild scope when present |
-| `channelId` | `String` | Channel allowed to resume the continuation |
-| `requestedByUserId` | `String` | Only this user can resume the continuation |
-| `status` | `String` | `pending` / `resumed` / `expired` |
-| `pauseKind` | `String` | Pause source such as `step_window_exhausted` or `graph_timeout` |
-| `completedWindows` | `Int` | How many bounded execution windows were already consumed |
-| `maxWindows` | `Int` | Hard cap before Sage requires a fresh request |
-| `summaryText` | `Text` | Human-facing progress summary shown with the Continue affordance |
-| `resumeNode` | `String` | Next graph node to enter on resume (`tool_call_turn` or `route_tool_phase`) |
-| `expiresAt` | `DateTime` | Continuation TTL deadline |
+| `channelId` | `String` | Primary channel or thread for the run |
+| `requestedByUserId` | `String` | Original requester for the durable task |
+| `sourceMessageId` | `String?` | Original user message that opened the run |
+| `responseMessageId` | `String?` | Primary Discord message Sage keeps editing across yields and resumes |
+| `status` | `String` | `running` / `waiting_user_input` / `waiting_approval` / `completed` / `failed` / `cancelled` |
+| `waitingKind` | `String?` | Human wait type when paused (`user_input` or `approval_review`) |
+| `latestDraftText` | `Text` | Latest visible response-session text Sage has published |
+| `draftRevision` | `Int` | Monotonic response-session revision counter |
+| `completionKind` | `String?` | Latest semantic graph outcome when known |
+| `stopReason` | `String?` | Latest operational graph stop reason when known |
+| `nextRunnableAt` | `DateTime?` | Next worker wake-up time for automatic background progress |
+| `leaseOwner` / `leaseExpiresAt` / `heartbeatAt` | `String?` / `DateTime?` / `DateTime?` | Worker lease state for crash-safe background execution; active workers refresh the lease heartbeat throughout a running slice |
+| `resumeCount` | `Int` | Number of durable slice resumes consumed so far |
+| `taskWallClockMs` | `Int` | Accumulated active slice runtime used for task-level SLA enforcement |
+| `maxTotalDurationMs` / `maxIdleWaitMs` | `Int` / `Int` | Total task SLA and human-wait SLA budgets |
+| `lastErrorText` | `Text?` | Most recent runtime failure summary, when present |
+| `responseSessionJson` | `Json?` | Persisted response-session metadata |
+| `waitingStateJson` | `Json?` | Persisted approval or user-input wait state |
+| `compactionStateJson` | `Json?` | Persisted prompt-facing compaction state |
+| `checkpointMetadataJson` | `Json?` | Latest runnable-context metadata such as yield reason and resume counters |
+| `startedAt` / `completedAt` | `DateTime` / `DateTime?` | Task-run lifecycle timestamps |
 
 ### `AdminAudit`
 

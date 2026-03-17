@@ -1,16 +1,15 @@
 import { scrubFinalReplyText } from './finalReplyScrubber';
 import type { GraphDeliveryDisposition } from './langgraph/types';
 
-export type LastResortVisibleReplyKind = 'turn' | 'continue_prompt' | 'continue_resume' | 'approval_resume';
-export type RuntimeFailureReplyKind = 'turn' | 'continue_resume';
+export type LastResortVisibleReplyKind = 'turn' | 'background_resume' | 'approval_resume';
+export type RuntimeFailureReplyKind = 'turn' | 'background_resume';
 export type RuntimeFailureCategory = 'provider' | 'runtime';
+export type TaskRunLimitReplyKind = 'duration' | 'idle_wait' | 'resume_limit';
 
 export function buildLastResortVisibleReply(kind: LastResortVisibleReplyKind): string {
   switch (kind) {
-    case 'continue_prompt':
-      return 'I need you to press Continue so I can keep going.';
-    case 'continue_resume':
-      return 'I still need another Continue to keep going from here.';
+    case 'background_resume':
+      return 'I need one more message from you before I can keep going.';
     case 'approval_resume':
       return 'That review is done, so please ask me again if you want me to keep going.';
     case 'turn':
@@ -28,14 +27,26 @@ export function buildRuntimeFailureReply(params: {
   category: RuntimeFailureCategory;
 }): string {
   if (params.category === 'provider') {
-    return params.kind === 'continue_resume'
-      ? 'I lost the model connection while I was picking that back up, so please press Retry or Continue again.'
+    return params.kind === 'background_resume'
+      ? 'I lost the model connection while I was picking that back up, so please try again.'
       : 'I lost the model connection before I could finish, so please try again.';
   }
 
-  return params.kind === 'continue_resume'
-    ? 'I ran into a problem while I was picking that back up, so please press Retry or Continue again.'
+  return params.kind === 'background_resume'
+    ? 'I ran into a problem while I was picking that back up, so please try again.'
     : 'I ran into a problem before I could finish, so please try again.';
+}
+
+export function buildTaskRunLimitReply(kind: TaskRunLimitReplyKind): string {
+  switch (kind) {
+    case 'idle_wait':
+      return 'I waited too long for that reply, so please ask me again.';
+    case 'resume_limit':
+      return 'I had to stop that task after too many retries, so please ask me again.';
+    case 'duration':
+    default:
+      return 'That task took too long, so please ask me again in a smaller step.';
+  }
 }
 
 export function finalizeVisibleReplyText(params: {

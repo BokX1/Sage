@@ -136,11 +136,11 @@ Complete index of all environment variables used by Sage, with descriptions and 
 | `INGESTION_ALLOWLIST_CHANNEL_IDS_CSV` | Channel IDs to include (when mode=`allowlist`) | *(empty)* |
 | `INGESTION_BLOCKLIST_CHANNEL_IDS_CSV` | Channel IDs to always exclude | *(empty)* |
 | `MESSAGE_DB_STORAGE_ENABLED` | Persist messages to PostgreSQL | `true` |
-| `MESSAGE_DB_MAX_MESSAGES_PER_CHANNEL` | Max stored messages per channel | `500` |
+| `MESSAGE_DB_MAX_MESSAGES_PER_CHANNEL` | Max stored messages per channel | `1000` |
 | `PROACTIVE_POSTING_ENABLED` | Enable proactive posting | `true` |
 | `RAW_MESSAGE_TTL_DAYS` | In-memory ring buffer TTL | `3` |
-| `RING_BUFFER_MAX_MESSAGES_PER_CHANNEL` | Max messages in ring buffer per channel | `200` |
-| `CONTEXT_TRANSCRIPT_MAX_MESSAGES` | Max messages in prompt transcript | `15` |
+| `RING_BUFFER_MAX_MESSAGES_PER_CHANNEL` | Max messages in ring buffer per channel | `300` |
+| `CONTEXT_TRANSCRIPT_MAX_MESSAGES` | Max messages in prompt transcript | `24` |
 
 ---
 
@@ -227,9 +227,9 @@ These settings control Sage's optional Discord voice features. The local voice s
 | Variable | Description | Default |
 |:---|:---|:---|
 | `CONTEXT_MAX_INPUT_TOKENS` | Max total input tokens | `120000` |
-| `CONTEXT_RESERVED_OUTPUT_TOKENS` | Reserved output tokens | `1800` |
+| `CONTEXT_RESERVED_OUTPUT_TOKENS` | Reserved output tokens | `4096` |
 | `TOKEN_HEURISTIC_CHARS_PER_TOKEN` | Chars per token for heuristic estimator | `4` |
-| `CHAT_MAX_OUTPUT_TOKENS` | Max output tokens for chat | `1800` |
+| `CHAT_MAX_OUTPUT_TOKENS` | Max output tokens for chat | `4096` |
 
 ---
 
@@ -244,10 +244,22 @@ These settings control Sage's optional Discord voice features. The local voice s
 | `LANGSMITH_API_KEY` | LangSmith API key used when `LANGSMITH_TRACING=true` | *(empty)* |
 | `LANGSMITH_PROJECT` | LangSmith project name when tracing is enabled | `sage` |
 | `SAGE_TRACE_DB_ENABLED` | Persist compact `AgentTrace` ledger rows alongside LangSmith references | `true` |
-| `AGENT_GRAPH_MAX_STEPS` | Max tool-capable assistant/model responses per continuation window before Sage pauses or runs a wrap-up summary | `6` |
-| `AGENT_GRAPH_TOOL_TIMEOUT_MS` | Per-tool execution timeout | `45000` |
-| `AGENT_GRAPH_MAX_DURATION_MS` | Max wall-clock duration for a full graph turn | `120000` |
-| `AGENT_GRAPH_MAX_OUTPUT_TOKENS` | Max output tokens for graph model calls | `1800` |
+| `AGENT_RUN_SLICE_MAX_STEPS` | Max tool-capable assistant/model responses per durable worker slice before Sage yields automatically | `6` |
+| `AGENT_RUN_TOOL_TIMEOUT_MS` | Per-tool execution timeout | `45000` |
+| `AGENT_RUN_SLICE_MAX_DURATION_MS` | Max wall-clock duration for one active worker slice | `120000` |
+| `AGENT_RUN_MAX_TOTAL_DURATION_MS` | Max total wall-clock budget for one long-running task run | `3600000` |
+| `AGENT_RUN_MAX_IDLE_WAIT_MS` | Max idle wait while Sage is blocked on approval or required user input | `86400000` |
+| `AGENT_RUN_WORKER_POLL_MS` | Background worker poll interval for runnable task runs | `5000` |
+| `AGENT_RUN_LEASE_TTL_MS` | Lease TTL for one worker-owned task run | `30000` |
+| `AGENT_RUN_HEARTBEAT_MS` | Heartbeat interval while a worker owns a task run | `10000` |
+| `AGENT_RUN_MAX_RESUMES` | Max durable slice resumes before Sage fails the task run | `256` |
+| `AGENT_RUN_COMPACTION_ENABLED` | Enable automatic prompt-facing context compaction for long-running runs | `true` |
+| `AGENT_RUN_COMPACTION_TRIGGER_EST_TOKENS` | Estimated prompt-token pressure threshold for compaction | `36000` |
+| `AGENT_RUN_COMPACTION_TRIGGER_ROUNDS` | Completed rounds before compaction pressure triggers | `6` |
+| `AGENT_RUN_COMPACTION_TRIGGER_TOOL_RESULTS` | Tool-result count before compaction pressure triggers | `12` |
+| `AGENT_RUN_COMPACTION_MAX_RAW_MESSAGES` | Raw assistant/tool messages retained through compaction | `24` |
+| `AGENT_RUN_COMPACTION_MAX_TOOL_OBSERVATIONS` | Tool observations retained in prompt-facing compaction state | `12` |
+| `AGENT_GRAPH_MAX_OUTPUT_TOKENS` | Max output tokens for graph model calls | `4096` |
 | `AGENT_GRAPH_GITHUB_GROUNDED_MODE` | Enable GitHub grounded search | `true` |
 | `AGENT_GRAPH_RECURSION_LIMIT` | LangGraph recursion fail-safe above the legal hop count | `16` |
 | `AGENT_GRAPH_MAX_TOOL_CALLS_PER_ROUND` | Max executable tool calls allowed from one model response before Sage rejects the batch and asks the model to replan | `8` |
@@ -275,7 +287,7 @@ These settings control Sage's optional Discord voice features. The local voice s
 |:---|:---|:---|
 | `TOOL_WEB_SEARCH_PROVIDER_ORDER` | Search provider priority | `tavily,exa,searxng` |
 | `TOOL_WEB_SEARCH_TIMEOUT_MS` | Per-provider search timeout | `45000` |
-| `TOOL_WEB_SEARCH_MAX_RESULTS` | Results per search call | `6` |
+| `TOOL_WEB_SEARCH_MAX_RESULTS` | Results per search call | `8` |
 | `TOOL_WEB_SCRAPE_PROVIDER_ORDER` | Scrape provider priority | `crawl4ai,firecrawl,jina,nomnom,raw_fetch` |
 | `TOOL_WEB_SCRAPE_TIMEOUT_MS` | Per-provider scrape timeout | `45000` |
 | `TAVILY_API_KEY` | Tavily search API key | *(empty)* |
@@ -291,10 +303,10 @@ These settings control Sage's optional Discord voice features. The local voice s
 | `CRAWL4AI_BEARER_TOKEN` | Crawl4AI auth token | *(empty)* |
 | `JINA_READER_BASE_URL` | Jina Reader base URL | <code>https&#58;//r.jina.ai/http&#58;//</code> |
 | `GITHUB_TOKEN` | GitHub personal access token | *(empty)* |
-| `GITHUB_CODE_SEARCH_MAX_CANDIDATES` | Max GitHub code search candidates | `30` |
-| `GITHUB_REGEX_MAX_FILES` | Max files for GitHub regex search | `20` |
-| `GITHUB_REGEX_MAX_MATCHES` | Max matches for GitHub regex search | `120` |
-| `GITHUB_FILE_LOOKUP_MAX_LINE_SPAN` | Max line span for file lookup | `800` |
+| `GITHUB_CODE_SEARCH_MAX_CANDIDATES` | Max GitHub code search candidates | `50` |
+| `GITHUB_REGEX_MAX_FILES` | Max files for GitHub regex search | `40` |
+| `GITHUB_REGEX_MAX_MATCHES` | Max matches for GitHub regex search | `240` |
+| `GITHUB_FILE_LOOKUP_MAX_LINE_SPAN` | Max line span for file lookup | `1500` |
 
 ---
 

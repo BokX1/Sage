@@ -1,5 +1,11 @@
+-- Baseline rebuild for Sage's current schema.
+-- This baseline is intended for fresh environments and deliberate hard resets.
+
 -- CreateSchema
 CREATE SCHEMA IF NOT EXISTS "public";
+
+-- pgvector is required before creating vector-typed columns.
+CREATE EXTENSION IF NOT EXISTS vector WITH SCHEMA public;
 
 -- CreateTable
 CREATE TABLE "UserProfile" (
@@ -105,7 +111,7 @@ CREATE TABLE "DiscordInteractionSession" (
 );
 
 -- CreateTable
-CREATE TABLE "AgentContinuationSession" (
+CREATE TABLE "AgentTaskRun" (
     "id" TEXT NOT NULL,
     "threadId" TEXT NOT NULL,
     "originTraceId" TEXT NOT NULL,
@@ -113,17 +119,33 @@ CREATE TABLE "AgentContinuationSession" (
     "guildId" TEXT,
     "channelId" TEXT NOT NULL,
     "requestedByUserId" TEXT NOT NULL,
+    "sourceMessageId" TEXT,
+    "responseMessageId" TEXT,
     "status" TEXT NOT NULL,
-    "pauseKind" TEXT NOT NULL,
-    "completedWindows" INTEGER NOT NULL DEFAULT 0,
-    "maxWindows" INTEGER NOT NULL,
-    "summaryText" TEXT NOT NULL,
-    "resumeNode" TEXT NOT NULL,
-    "expiresAt" TIMESTAMP(3) NOT NULL,
+    "waitingKind" TEXT,
+    "latestDraftText" TEXT NOT NULL,
+    "draftRevision" INTEGER NOT NULL DEFAULT 0,
+    "completionKind" TEXT,
+    "stopReason" TEXT,
+    "nextRunnableAt" TIMESTAMP(3),
+    "leaseOwner" TEXT,
+    "leaseExpiresAt" TIMESTAMP(3),
+    "heartbeatAt" TIMESTAMP(3),
+    "resumeCount" INTEGER NOT NULL DEFAULT 0,
+    "taskWallClockMs" INTEGER NOT NULL DEFAULT 0,
+    "maxTotalDurationMs" INTEGER NOT NULL,
+    "maxIdleWaitMs" INTEGER NOT NULL,
+    "lastErrorText" TEXT,
+    "responseSessionJson" JSONB,
+    "waitingStateJson" JSONB,
+    "compactionStateJson" JSONB,
+    "checkpointMetadataJson" JSONB,
+    "startedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "completedAt" TIMESTAMP(3),
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
-    CONSTRAINT "AgentContinuationSession_pkey" PRIMARY KEY ("id")
+    CONSTRAINT "AgentTaskRun_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -332,13 +354,19 @@ CREATE INDEX "DiscordInteractionSession_guildId_createdAt_idx" ON "DiscordIntera
 CREATE INDEX "DiscordInteractionSession_expiresAt_idx" ON "DiscordInteractionSession"("expiresAt");
 
 -- CreateIndex
-CREATE INDEX "AgentContinuationSession_threadId_createdAt_idx" ON "AgentContinuationSession"("threadId", "createdAt");
+CREATE UNIQUE INDEX "AgentTaskRun_threadId_key" ON "AgentTaskRun"("threadId");
 
 -- CreateIndex
-CREATE INDEX "AgentContinuationSession_channelId_requestedByUserId_status_expiresAt_idx" ON "AgentContinuationSession"("channelId", "requestedByUserId", "status", "expiresAt");
+CREATE INDEX "AgentTaskRun_channelId_requestedByUserId_status_updatedAt_idx" ON "AgentTaskRun"("channelId", "requestedByUserId", "status", "updatedAt");
 
 -- CreateIndex
-CREATE INDEX "AgentContinuationSession_status_expiresAt_idx" ON "AgentContinuationSession"("status", "expiresAt");
+CREATE INDEX "AgentTaskRun_status_nextRunnableAt_idx" ON "AgentTaskRun"("status", "nextRunnableAt");
+
+-- CreateIndex
+CREATE INDEX "AgentTaskRun_leaseExpiresAt_idx" ON "AgentTaskRun"("leaseExpiresAt");
+
+-- CreateIndex
+CREATE INDEX "AgentTaskRun_waitingKind_channelId_requestedByUserId_update_idx" ON "AgentTaskRun"("waitingKind", "channelId", "requestedByUserId", "updatedAt");
 
 -- CreateIndex
 CREATE INDEX "ChannelMessage_guildId_channelId_timestamp_idx" ON "ChannelMessage"("guildId", "channelId", "timestamp");
@@ -423,4 +451,3 @@ ALTER TABLE "UserProfileArchive" ADD CONSTRAINT "UserProfileArchive_userId_fkey"
 
 -- AddForeignKey
 ALTER TABLE "ChannelMessageEmbedding" ADD CONSTRAINT "ChannelMessageEmbedding_messageId_fkey" FOREIGN KEY ("messageId") REFERENCES "ChannelMessage"("messageId") ON DELETE CASCADE ON UPDATE CASCADE;
-

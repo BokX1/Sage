@@ -2,6 +2,7 @@ import type { Client } from 'discord.js';
 import { logger } from '../../platform/logging/logger';
 import { prisma } from '../../platform/db/prisma-client';
 import { shutdownAgentGraphRuntime } from '../../features/agent-runtime/langgraph/runtime';
+import { stopAgentTaskRunWorker } from '../../features/agent-runtime/agentTaskRunWorker';
 import { stopChannelSummaryScheduler } from '../../features/summary/channelSummaryScheduler';
 import { stopCompactionScheduler } from '../../features/summary/ltmCompaction';
 import { shutdownKafkaProducer } from '../../platform/social-graph/kafkaProducer';
@@ -24,6 +25,7 @@ async function runShutdown(signal: ShutdownSignal, client: Client): Promise<void
 
     stopChannelSummaryScheduler();
     stopCompactionScheduler();
+    stopAgentTaskRunWorker();
 
     try {
       await client.destroy();

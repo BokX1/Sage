@@ -44,23 +44,16 @@ export const interactiveModalPromptActionSchema = z.object({
   visibility: interactiveButtonVisibilitySchema.optional(),
 });
 
-export const interactiveGraphContinueActionSchema = z.object({
-  type: z.literal('graph_continue'),
-  continuationId: z.string().trim().min(1).max(64),
-  visibility: interactiveButtonVisibilitySchema.optional(),
-});
-
 export const interactiveGraphRetryActionSchema = z.object({
   type: z.literal('graph_retry'),
   threadId: z.string().trim().min(1).max(64),
-  retryKind: z.enum(['turn', 'continue_resume']),
+  retryKind: z.enum(['turn', 'background_resume']),
   visibility: interactiveButtonVisibilitySchema.optional(),
 });
 
 export const interactiveButtonActionSchema = z.discriminatedUnion('type', [
   interactivePromptActionSchema,
   interactiveModalPromptActionSchema,
-  interactiveGraphContinueActionSchema,
   interactiveGraphRetryActionSchema,
 ]);
 
@@ -81,15 +74,10 @@ type StoredInteractiveSessionPayload =
       fields: InteractiveModalField[];
     }
   | {
-      kind: 'graph_continue_button';
-      visibility: 'public' | 'ephemeral';
-      continuationId: string;
-    }
-  | {
       kind: 'graph_retry_button';
       visibility: 'public' | 'ephemeral';
       threadId: string;
-      retryKind: 'turn' | 'continue_resume';
+      retryKind: 'turn' | 'background_resume';
     };
 
 export type ActiveInteractiveSession = StoredInteractiveSessionPayload & {
@@ -144,13 +132,7 @@ export async function createInteractiveButtonSession(params: {
           promptTemplate: params.action.promptTemplate,
           fields: params.action.fields,
         }
-        : params.action.type === 'graph_continue'
-          ? {
-            kind: 'graph_continue_button',
-            visibility: params.action.visibility ?? 'public',
-            continuationId: params.action.continuationId,
-          }
-          : {
+        : {
             kind: 'graph_retry_button',
             visibility: params.action.visibility ?? 'public',
             threadId: params.action.threadId,
@@ -190,15 +172,10 @@ export async function getActiveInteractiveSession(sessionId: string): Promise<Ac
         fields: z.array(interactiveModalFieldSchema).min(1).max(5),
       }),
       z.object({
-        kind: z.literal('graph_continue_button'),
-        visibility: interactiveButtonVisibilitySchema,
-        continuationId: z.string().trim().min(1).max(64),
-      }),
-      z.object({
         kind: z.literal('graph_retry_button'),
         visibility: interactiveButtonVisibilitySchema,
         threadId: z.string().trim().min(1).max(64),
-        retryKind: z.enum(['turn', 'continue_resume']),
+        retryKind: z.enum(['turn', 'background_resume']),
       }),
     ])
     .safeParse(record.payloadJson);

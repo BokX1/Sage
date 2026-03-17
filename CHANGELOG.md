@@ -24,7 +24,25 @@
 
 ## [Unreleased]
 
+### Changed
+- Replaced Sage's layered Prisma migration history with a single current-schema baseline migration, so fresh deploys and intentional hard resets now rebuild from one canonical SQL entrypoint instead of replaying legacy runtime-era migrations.
+
 ### Fixed
+- The Prisma baseline migration now enables `pgvector` before creating embedding columns, so clean database rebuilds do not fail when `AttachmentChunk` and `ChannelMessageEmbedding` are created on a fresh Postgres instance.
+
+### Changed
+- Reworked Sage's LangGraph runtime around durable long-running task runs, so normal long tool workflows now keep progressing automatically in the background on the same Discord response session instead of surfacing manual Continue prompts at every slice boundary.
+- Added automatic prompt-facing context compaction for long-running agent runs, so Sage now carries forward verified facts, completed actions, open questions, pending approvals, next actions, and evidence references across slices without replaying the full raw transcript into every follow-up model call.
+- Retuned Sage's conservative context and retrieval budgets for frontier 128K-256K-class models: long-running compaction now waits for materially larger prompt/tool pressure, transcript and attachment-retrieval windows are wider, chat and graph output reserves are larger, GitHub and web search tools keep more evidence per call, and the environment/docs surface now reflects the current `AGENT_RUN_*` runtime contract instead of stale pre-rewrite names.
+
+### Removed
+- Removed the old continuation-session runtime contract, including normal-task Continue prompts, continuation-window bookkeeping, and the legacy continuation helper copy/docs that no longer match Sage's durable background-worker model.
+
+### Fixed
+- Fixed durable response-session continuity across waiting-user-input resumes and active background slices: resumed runs now keep editing the original Discord draft message, worker updates no longer splinter one task into multiple draft replies in the same slice, and ambiguous same-user follow-up messages no longer silently hijack the wrong waiting task.
+- Fixed durable task-run resume behavior so waiting-for-user-input runs now continue on the same LangGraph thread instead of being closed and restarted as a brand-new turn, preserving the real long-running task state, response session, and compaction context across follow-up answers.
+- Fixed long-running task enforcement and worker ownership: Sage now tracks real accumulated task wall-clock time instead of token estimates, fails runs cleanly when total-duration / idle-wait / resume-count SLAs are exhausted, and keeps worker leases alive with periodic heartbeats throughout active background slices instead of only heartbeating once at claim time.
+- Fixed background-resume failure handling so a task-run resume now returns a clean user-facing failure reply and retry metadata instead of throwing through the runtime and breaking the long-running worker flow.
 - Fixed repeated provider-control fallback latency on OpenAI-compatible endpoints that reject `allowed_tools` or `parallel_tool_calls`: Sage now caches that incompatibility per provider/model and skips the doomed first request on later turns instead of paying the same 400-and-retry penalty every time.
 - Unified Sage's user-facing system error voice across runtime fallbacks, approvals, setup flows, continuation controls, and grounding guards, so failures now read as simple first-person one-line bot replies instead of mixed third-person, `Why:`, `Next:`, and other developer-style copy.
 - Fixed OpenAI-compatible routed tool compilation so discriminated-union tools like `discord_server` now compile into one canonical top-level object schema for Chat Completions tool calling, and the live Discord smoke now uses real UUID trace ids so LangSmith-enabled validation no longer trips over invalid trace identifiers.

@@ -58,7 +58,7 @@ describe('toolExposurePlanner', () => {
     expect(plan.activeToolNames).not.toContain('discord_messages_search_history');
   });
 
-  it('keeps the full eligible surface during continuation resumes', () => {
+  it('keeps the full eligible surface during background resumes', () => {
     const toolMap = new Map<string, ReturnType<typeof makeTool>>(
       [
         ['web_search', makeTool('web_search', ['web', 'search'])],
@@ -71,7 +71,7 @@ describe('toolExposurePlanner', () => {
     const plan = planToolExposure({
       allToolNames: Array.from(toolMap.keys()),
       resolveTool: (toolName) => toolMap.get(toolName),
-      phase: 'continue_resume',
+      phase: 'background_resume',
       invokedBy: 'component',
       isAdmin: false,
       canModerate: false,

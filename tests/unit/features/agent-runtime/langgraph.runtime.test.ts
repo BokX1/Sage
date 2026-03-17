@@ -14,8 +14,6 @@ const {
   executeDurableToolTaskMock,
   executeApprovedReviewTaskMock,
   prepareToolApprovalInterruptMock,
-  createGraphContinuationSessionMock,
-  consumeGraphContinuationSessionMock,
   createOrReuseApprovalReviewRequestFromSignalMock,
 } = vi.hoisted(() => ({
   loggerWarnMock: vi.fn(),
@@ -28,9 +26,22 @@ const {
     return Array.isArray(last?.tool_calls) ? last.tool_calls : [];
   }),
   buildAgentGraphConfigMock: vi.fn(() => ({
-    maxSteps: 2,
+    sliceMaxSteps: 2,
     toolTimeoutMs: 1_000,
-    maxDurationMs: 5_000,
+    maxOutputTokens: 500,
+    sliceMaxDurationMs: 5_000,
+    maxTotalDurationMs: 3_600_000,
+    maxIdleWaitMs: 86_400_000,
+    workerPollMs: 5_000,
+    leaseTtlMs: 30_000,
+    heartbeatMs: 5_000,
+    maxResumes: 50,
+    compactionEnabled: true,
+    compactionTriggerEstimatedTokens: 8_000,
+    compactionTriggerRounds: 3,
+    compactionTriggerToolResults: 6,
+    compactionMaxRawMessages: 12,
+    compactionMaxToolObservations: 8,
     recursionLimit: 8,
     githubGroundedMode: false,
     maxToolCallsPerRound: 8,
@@ -62,42 +73,6 @@ const {
   executeDurableToolTaskMock: vi.fn(),
   executeApprovedReviewTaskMock: vi.fn(),
   prepareToolApprovalInterruptMock: vi.fn(),
-  createGraphContinuationSessionMock: vi.fn(async () => ({
-    id: 'cont-1',
-    threadId: 'trace-pause-1',
-    originTraceId: 'trace-pause-1',
-    latestTraceId: 'trace-pause-1',
-    guildId: 'guild-1',
-    channelId: 'channel-1',
-    requestedByUserId: 'user-1',
-    status: 'pending',
-    pauseKind: 'step_window_exhausted',
-    completedWindows: 1,
-    maxWindows: 4,
-    summaryText: 'summary',
-    resumeNode: 'tool_call_turn',
-    expiresAt: new Date('2026-03-14T00:00:00.000Z'),
-    createdAt: new Date('2026-03-14T00:00:00.000Z'),
-    updatedAt: new Date('2026-03-14T00:00:00.000Z'),
-  })),
-  consumeGraphContinuationSessionMock: vi.fn(async () => ({
-    id: 'cont-1',
-    threadId: 'trace-pause-1',
-    originTraceId: 'trace-pause-1',
-    latestTraceId: 'trace-resume-1',
-    guildId: 'guild-1',
-    channelId: 'channel-1',
-    requestedByUserId: 'user-1',
-    status: 'resumed',
-    pauseKind: 'step_window_exhausted',
-    completedWindows: 1,
-    maxWindows: 4,
-    summaryText: 'summary',
-    resumeNode: 'tool_call_turn',
-    expiresAt: new Date('2026-03-14T00:00:00.000Z'),
-    createdAt: new Date('2026-03-14T00:00:00.000Z'),
-    updatedAt: new Date('2026-03-14T00:00:00.000Z'),
-  })),
   createOrReuseApprovalReviewRequestFromSignalMock: vi.fn(async () => ({
     request: {
       id: 'request-1',
@@ -115,9 +90,25 @@ vi.mock('@/platform/config/env', () => ({
     AI_PROVIDER_API_KEY: 'test-api-key',
     AI_PROVIDER_MAIN_AGENT_MODEL: 'test-main-agent-model',
     LANGSMITH_TRACING: false,
-    AGENT_GRAPH_MAX_STEPS: 2,
-    AGENT_GRAPH_TOOL_TIMEOUT_MS: 1_000,
-    AGENT_GRAPH_MAX_DURATION_MS: 5_000,
+    AGENT_RUN_SLICE_MAX_STEPS: 2,
+    AGENT_RUN_TOOL_TIMEOUT_MS: 1_000,
+    AGENT_RUN_SLICE_MAX_DURATION_MS: 5_000,
+    AGENT_RUN_MAX_TOTAL_DURATION_MS: 3_600_000,
+    AGENT_RUN_MAX_IDLE_WAIT_MS: 86_400_000,
+    AGENT_RUN_WORKER_POLL_MS: 5_000,
+    AGENT_RUN_LEASE_TTL_MS: 30_000,
+    AGENT_RUN_HEARTBEAT_MS: 5_000,
+    AGENT_RUN_MAX_RESUMES: 50,
+    AGENT_RUN_COMPACTION_ENABLED: true,
+    AGENT_RUN_COMPACTION_TRIGGER_EST_TOKENS: 8_000,
+    AGENT_RUN_COMPACTION_TRIGGER_ROUNDS: 3,
+    AGENT_RUN_COMPACTION_TRIGGER_TOOL_RESULTS: 6,
+    AGENT_RUN_COMPACTION_MAX_RAW_MESSAGES: 12,
+    AGENT_RUN_COMPACTION_MAX_TOOL_OBSERVATIONS: 8,
+    AGENT_GRAPH_MAX_OUTPUT_TOKENS: 500,
+    AGENT_GRAPH_MAX_TOOL_CALLS_PER_ROUND: 8,
+    AGENT_GRAPH_MAX_IDENTICAL_TOOL_BATCHES: 2,
+    AGENT_GRAPH_MAX_LOOP_GUARD_RECOVERIES: 1,
     AGENT_GRAPH_RECURSION_LIMIT: 8,
     AGENT_GRAPH_GITHUB_GROUNDED_MODE: false,
   },
@@ -226,12 +217,6 @@ vi.mock('@/features/agent-runtime/toolControlSignals', () => ({
   },
 }));
 
-vi.mock('@/features/agent-runtime/graphContinuationRepo', () => ({
-  GRAPH_CONTINUATION_MAX_WINDOWS: 4,
-  createGraphContinuationSession: createGraphContinuationSessionMock,
-  consumeGraphContinuationSession: consumeGraphContinuationSessionMock,
-}));
-
 import {
   __getAgentGraphStateForTests,
   __runAgentGraphCommandForTests,
@@ -269,7 +254,7 @@ function makeInterruptedState() {
     toolResults: [],
     files: [],
     roundsCompleted: 1,
-    completedWindows: 1,
+    sliceIndex: 1,
     totalRoundsCompleted: 1,
     deduplicatedCallCount: 0,
     lastToolBatchFingerprint: null,
@@ -411,6 +396,35 @@ function makeToolTaskOutcome(params: {
   };
 }
 
+function makeGraphConfig(
+  overrides: Partial<ReturnType<typeof buildAgentGraphConfigMock>> = {},
+): ReturnType<typeof buildAgentGraphConfigMock> {
+  return {
+    sliceMaxSteps: 2,
+    toolTimeoutMs: 1_000,
+    maxOutputTokens: 500,
+    sliceMaxDurationMs: 5_000,
+    maxTotalDurationMs: 3_600_000,
+    maxIdleWaitMs: 86_400_000,
+    workerPollMs: 5_000,
+    leaseTtlMs: 30_000,
+    heartbeatMs: 5_000,
+    maxResumes: 50,
+    compactionEnabled: true,
+    compactionTriggerEstimatedTokens: 8_000,
+    compactionTriggerRounds: 3,
+    compactionTriggerToolResults: 6,
+    compactionMaxRawMessages: 12,
+    compactionMaxToolObservations: 8,
+    recursionLimit: 8,
+    githubGroundedMode: false,
+    maxToolCallsPerRound: 8,
+    maxIdenticalToolBatches: 2,
+    maxLoopGuardRecoveries: 1,
+    ...overrides,
+  };
+}
+
 describe('runGraphValueStream', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -420,16 +434,7 @@ describe('runGraphValueStream', () => {
       const last = messages.at(-1);
       return Array.isArray(last?.tool_calls) ? last.tool_calls : [];
     });
-    buildAgentGraphConfigMock.mockReturnValue({
-      maxSteps: 2,
-      toolTimeoutMs: 1_000,
-      maxDurationMs: 5_000,
-      recursionLimit: 8,
-      githubGroundedMode: false,
-      maxToolCallsPerRound: 8,
-      maxIdenticalToolBatches: 2,
-      maxLoopGuardRecoveries: 1,
-    });
+    buildAgentGraphConfigMock.mockReturnValue(makeGraphConfig());
     buildActiveToolCatalogMock.mockReset();
     buildActiveToolCatalogMock.mockReturnValue({
       allTools: [],
@@ -449,8 +454,6 @@ describe('runGraphValueStream', () => {
     executeApprovedReviewTaskMock.mockReset();
     prepareToolApprovalInterruptMock.mockReset();
     prepareToolApprovalInterruptMock.mockResolvedValue(null);
-    createGraphContinuationSessionMock.mockClear();
-    consumeGraphContinuationSessionMock.mockClear();
     createOrReuseApprovalReviewRequestFromSignalMock.mockClear();
   });
 
@@ -631,16 +634,7 @@ describe('runGraphValueStream', () => {
 
   it('uses a no-tools wrap-up model pass before pausing when the step window is exhausted', async () => {
     await shutdownAgentGraphRuntime();
-    buildAgentGraphConfigMock.mockReturnValue({
-      maxSteps: 1,
-      toolTimeoutMs: 1_000,
-      maxDurationMs: 5_000,
-      recursionLimit: 8,
-      githubGroundedMode: false,
-      maxToolCallsPerRound: 8,
-      maxIdenticalToolBatches: 2,
-      maxLoopGuardRecoveries: 1,
-    });
+    buildAgentGraphConfigMock.mockReturnValue(makeGraphConfig({ sliceMaxSteps: 1 }));
     modelInvokeMock.mockResolvedValueOnce(
       new AIMessage({
         content: '',
@@ -689,25 +683,12 @@ describe('runGraphValueStream', () => {
       invokerIsAdmin: true,
     });
 
-    expect(result.graphStatus).toBe('interrupted');
-    expect(result.stopReason).toBe('step_window_exhausted');
-    expect(result.completionKind).toBe('pause_handoff');
-    expect(result.deliveryDisposition).toBe('response_session_with_continue');
-    expect(result.pendingInterrupt).toMatchObject({
-      kind: 'continue_prompt',
-      completedWindows: 1,
-      maxWindows: 4,
-    });
-    expect(createGraphContinuationSessionMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        threadId: 'trace-pause-1',
-        channelId: 'channel-1',
-        requestedByUserId: 'user-1',
-        completedWindows: 1,
-        resumeNode: 'tool_call_turn',
-      }),
-    );
-    expect(result.replyText).toContain('Please press Continue');
+    expect(result.graphStatus).toBe('completed');
+    expect(result.stopReason).toBe('background_yield');
+    expect(result.completionKind).toBeNull();
+    expect(result.deliveryDisposition).toBe('response_session');
+    expect(result.pendingInterrupt).toBeNull();
+    expect(result.yieldReason).toBe('slice_budget_exhausted');
     expect(result.replyText).toContain('updated the server persona');
     expect(result.replyText).not.toContain('Completed so far: 1 tool call (discord_admin_update_server_instructions).');
     expect(result.roundsCompleted).toBe(1);
@@ -743,113 +724,14 @@ describe('runGraphValueStream', () => {
     expect(result.totalRoundsCompleted).toBe(1);
   });
 
-  it('keeps multiple tool calls in one model response to one operational graph step, then spends one wrap-up provider turn when pausing', async () => {
-    await shutdownAgentGraphRuntime();
-    buildAgentGraphConfigMock.mockReturnValue({
-      maxSteps: 1,
-      toolTimeoutMs: 1_000,
-      maxDurationMs: 5_000,
-      recursionLimit: 8,
-      githubGroundedMode: false,
-      maxToolCallsPerRound: 8,
-      maxIdenticalToolBatches: 2,
-      maxLoopGuardRecoveries: 1,
-    });
-    modelInvokeMock.mockResolvedValueOnce(
-      new AIMessage({
-        content: '',
-        tool_calls: [
-          {
-            id: 'call-multi-1',
-            name: 'discord_admin',
-            args: { action: 'update_server_instructions' },
-            type: 'tool_call',
-          },
-          {
-            id: 'call-multi-2',
-            name: 'discord_admin',
-            args: { action: 'clear_server_api_key' },
-            type: 'tool_call',
-          },
-        ],
-      }),
-    );
-    modelInvokeMock.mockResolvedValueOnce(
-      new AIMessage({
-        content:
-          'I completed both admin changes and need another pass before I can wrap the rest up cleanly.',
-      }),
-    );
-    executeDurableToolTaskMock
-      .mockResolvedValueOnce({
-        kind: 'tool_result',
-        toolName: 'discord_admin',
-        callId: 'call-multi-1',
-        content: '{"ok":true}',
-        result: {
-          name: 'discord_admin',
-          success: true,
-          result: { ok: true },
-          latencyMs: 10,
-        },
-        files: [],
-      })
-      .mockResolvedValueOnce({
-        kind: 'tool_result',
-        toolName: 'discord_admin',
-        callId: 'call-multi-2',
-        content: '{"ok":true}',
-        result: {
-          name: 'discord_admin',
-          success: true,
-          result: { ok: true },
-          latencyMs: 10,
-        },
-        files: [],
-      });
-
-    const result = await runAgentGraphTurn({
-      traceId: 'trace-turn-count-2',
-      userId: 'user-1',
-      channelId: 'channel-1',
-      guildId: 'guild-1',
-      apiKey: 'test-api-key',
-      model: 'test-main-agent-model',
-      temperature: 0.6,
-      timeoutMs: 1_000,
-      maxTokens: 500,
-      messages: [new HumanMessage({ content: 'make the two admin changes' })],
-      activeToolNames: ['discord_admin'],
-      routeKind: 'single',
-      currentTurn: { invokerUserId: 'user-1' },
-      replyTarget: null,
-      invokedBy: 'mention',
-      invokerIsAdmin: true,
-    });
-
-    expect(result.graphStatus).toBe('interrupted');
-    expect(result.pendingInterrupt).toMatchObject({
-      kind: 'continue_prompt',
-    });
-    expect(result.roundsCompleted).toBe(1);
-    expect(result.totalRoundsCompleted).toBe(2);
-    expect(result.toolResults).toHaveLength(2);
-    expect(result.replyText).toContain('completed both admin changes');
-    expect(modelInvokeMock).toHaveBeenCalledTimes(2);
-  });
-
   it('executes every tool call emitted in one model response instead of truncating the batch', async () => {
     await shutdownAgentGraphRuntime();
-    buildAgentGraphConfigMock.mockReturnValue({
-      maxSteps: 3,
-      toolTimeoutMs: 1_000,
-      maxDurationMs: 5_000,
-      recursionLimit: 20,
-      githubGroundedMode: false,
-      maxToolCallsPerRound: 8,
-      maxIdenticalToolBatches: 2,
-      maxLoopGuardRecoveries: 1,
-    });
+    buildAgentGraphConfigMock.mockReturnValue(
+      makeGraphConfig({
+        sliceMaxSteps: 3,
+        recursionLimit: 20,
+      }),
+    );
     modelInvokeMock.mockResolvedValueOnce(
       new AIMessage({
         content: '',
@@ -1065,16 +947,13 @@ describe('runGraphValueStream', () => {
 
   it('rejects an over-cap tool batch before any write executes and gives the model one repair pass', async () => {
     await shutdownAgentGraphRuntime();
-    buildAgentGraphConfigMock.mockReturnValue({
-      maxSteps: 3,
-      toolTimeoutMs: 1_000,
-      maxDurationMs: 5_000,
-      recursionLimit: 20,
-      githubGroundedMode: false,
-      maxToolCallsPerRound: 1,
-      maxIdenticalToolBatches: 2,
-      maxLoopGuardRecoveries: 1,
-    });
+    buildAgentGraphConfigMock.mockReturnValue(
+      makeGraphConfig({
+        sliceMaxSteps: 3,
+        recursionLimit: 20,
+        maxToolCallsPerRound: 1,
+      }),
+    );
     modelInvokeMock
       .mockResolvedValueOnce(
         new AIMessage({
@@ -1133,16 +1012,7 @@ describe('runGraphValueStream', () => {
 
   it('allows one repeated-batch repair cycle, then finalizes with loop_guard if the same write plan repeats again', async () => {
     await shutdownAgentGraphRuntime();
-    buildAgentGraphConfigMock.mockReturnValue({
-      maxSteps: 4,
-      toolTimeoutMs: 1_000,
-      maxDurationMs: 5_000,
-      recursionLimit: 8,
-      githubGroundedMode: false,
-      maxToolCallsPerRound: 8,
-      maxIdenticalToolBatches: 2,
-      maxLoopGuardRecoveries: 1,
-    });
+    buildAgentGraphConfigMock.mockReturnValue(makeGraphConfig({ sliceMaxSteps: 4 }));
     modelInvokeMock
       .mockResolvedValueOnce(
         new AIMessage({
@@ -1292,18 +1162,14 @@ describe('runGraphValueStream', () => {
     expect(getModelBudgetConfigMock).toHaveBeenCalledWith('test-main-agent-model');
   });
 
-  it('preserves graph_timeout when a continuation pause is caused by the active runtime budget', async () => {
+  it('preserves background_yield when the active runtime budget is exhausted', async () => {
     await shutdownAgentGraphRuntime();
-    buildAgentGraphConfigMock.mockReturnValue({
-      maxSteps: 2,
-      toolTimeoutMs: 1_000,
-      maxDurationMs: 1,
-      recursionLimit: 8,
-      githubGroundedMode: false,
-      maxToolCallsPerRound: 8,
-      maxIdenticalToolBatches: 2,
-      maxLoopGuardRecoveries: 1,
-    });
+    buildAgentGraphConfigMock.mockReturnValue(
+      makeGraphConfig({
+        sliceMaxSteps: 2,
+        sliceMaxDurationMs: 1,
+      }),
+    );
     modelInvokeMock.mockResolvedValueOnce(
       new AIMessage({
         content: '',
@@ -1346,26 +1212,23 @@ describe('runGraphValueStream', () => {
       invokerIsAdmin: true,
     });
 
-    expect(result.graphStatus).toBe('interrupted');
-    expect(result.stopReason).toBe('graph_timeout');
-    expect(result.completionKind).toBe('pause_handoff');
-    expect(result.deliveryDisposition).toBe('response_session_with_continue');
-    expect(result.pendingInterrupt).toMatchObject({
-      kind: 'continue_prompt',
-      pauseReason: 'graph_timeout',
-    });
+    expect(result.graphStatus).toBe('completed');
+    expect(result.stopReason).toBe('background_yield');
+    expect(result.deliveryDisposition).toBe('response_session');
+    expect(result.pendingInterrupt).toBeNull();
+    expect(result.yieldReason).toBe('slice_budget_exhausted');
   });
 
-  it('finalizes max-window exhaustion with a wrap-up summary plus continuation-limit guidance instead of a raw tool fragment', async () => {
+  it('finalizes a background yield with a wrap-up summary instead of a raw tool fragment', async () => {
     modelInvokeMock.mockResolvedValueOnce(
       new AIMessage({
         content:
-          'I gathered the key GitHub findings already, but the continuation limit means I need a fresh message to keep going.',
+          'I gathered the key GitHub findings already, and I will keep working through the rest in the background.',
       }),
     );
     const result = await __runAgentGraphCommandForTests({
       threadId: 'trace-max-windows-1',
-      goto: 'pause_for_continue',
+      goto: 'yield_background',
       context: {
         traceId: 'trace-max-windows-1',
         originTraceId: 'trace-max-windows-1',
@@ -1384,7 +1247,7 @@ describe('runGraphValueStream', () => {
         invokedBy: 'mention',
       },
       state: {
-        completedWindows: 3,
+        sliceIndex: 3,
         roundsCompleted: 1,
         totalRoundsCompleted: 7,
         toolResults: Array.from({ length: 7 }, () =>
@@ -1395,11 +1258,11 @@ describe('runGraphValueStream', () => {
     });
 
     expect(result.graphStatus).toBe('completed');
-    expect(result.stopReason).toBe('max_windows_reached');
-    expect(result.completionKind).toBe('pause_handoff');
+    expect(result.stopReason).toBe('background_yield');
+    expect(result.completionKind).toBeNull();
     expect(result.deliveryDisposition).toBe('response_session');
     expect(result.replyText).toContain('gathered the key GitHub findings');
-    expect(result.replyText).toContain('Please send me a new message if you want me to keep going.');
+    expect(result.replyText).not.toContain('Please send me a new message');
     expect(result.replyText).not.toContain('Completed so far: 7 tool calls (github x7).');
     expect(result.totalRoundsCompleted).toBe(8);
   });
@@ -1827,16 +1690,7 @@ describe('runGraphValueStream', () => {
 
   it('resets the active execution budget after an approval resume', async () => {
     await shutdownAgentGraphRuntime();
-    buildAgentGraphConfigMock.mockReturnValue({
-      maxSteps: 1,
-      toolTimeoutMs: 1_000,
-      maxDurationMs: 5_000,
-      recursionLimit: 8,
-      githubGroundedMode: false,
-      maxToolCallsPerRound: 8,
-      maxIdenticalToolBatches: 2,
-      maxLoopGuardRecoveries: 1,
-    });
+    buildAgentGraphConfigMock.mockReturnValue(makeGraphConfig({ sliceMaxSteps: 1 }));
     createOrReuseApprovalReviewRequestFromSignalMock.mockResolvedValueOnce({
       request: {
         id: 'request-timeout-1',
@@ -1946,18 +1800,9 @@ describe('runGraphValueStream', () => {
     expect(resumed.replyText).toContain('Done after approval.');
   });
 
-  it('consumes continuation sessions before resuming the graph', async () => {
+  it('resumes approval interrupts on the same graph thread after the decision arrives', async () => {
     await shutdownAgentGraphRuntime();
-    buildAgentGraphConfigMock.mockReturnValue({
-      maxSteps: 1,
-      toolTimeoutMs: 1_000,
-      maxDurationMs: 5_000,
-      recursionLimit: 8,
-      githubGroundedMode: false,
-      maxToolCallsPerRound: 8,
-      maxIdenticalToolBatches: 2,
-      maxLoopGuardRecoveries: 1,
-    });
+    buildAgentGraphConfigMock.mockReturnValue(makeGraphConfig({ sliceMaxSteps: 1 }));
     modelInvokeMock.mockResolvedValueOnce(
       new AIMessage({
         content: '',
@@ -1971,13 +1816,35 @@ describe('runGraphValueStream', () => {
         ],
       }),
     );
-    executeDurableToolTaskMock.mockResolvedValueOnce(
+    prepareToolApprovalInterruptMock.mockResolvedValueOnce({
+      toolName: 'discord_admin_update_server_instructions',
+      callId: 'call-continue-1',
+      call: {
+        id: 'call-continue-1',
+        name: 'discord_admin_update_server_instructions',
+        args: { reason: 'sync' },
+      },
+      payload: {
+        kind: 'server_instructions_update',
+        guildId: 'guild-1',
+        sourceChannelId: 'channel-1',
+        reviewChannelId: 'channel-review',
+        sourceMessageId: null,
+        requestedBy: 'user-1',
+        dedupeKey: 'dedupe-continue-1',
+        executionPayloadJson: { reason: 'sync' },
+        reviewSnapshotJson: { reason: 'sync' },
+        interruptMetadataJson: { reason: 'sync' },
+      },
+      approvalGroupKey: 'discord_admin:server_instructions',
+    });
+    executeApprovedReviewTaskMock.mockResolvedValueOnce(
       makeToolTaskOutcome({
         toolName: 'discord_admin_update_server_instructions',
         callId: 'call-continue-1',
-        content: '{"ok":true}',
-        structuredContent: { ok: true },
-        latencyMs: 12,
+        content: '{"status":"executed"}',
+        structuredContent: { status: 'executed' },
+        latencyMs: 0,
       }),
     );
 
@@ -2001,8 +1868,8 @@ describe('runGraphValueStream', () => {
     });
 
     expect(initial.pendingInterrupt).toMatchObject({
-      kind: 'continue_prompt',
-      continuationId: 'cont-1',
+      kind: 'approval_review',
+      requestId: 'request-1',
     });
 
     modelInvokeMock.mockResolvedValueOnce(makeFinishTurnMessage('final_answer', 'All set.'));
@@ -2010,10 +1877,14 @@ describe('runGraphValueStream', () => {
     const resumed = await resumeAgentGraphTurn({
       threadId: 'trace-resume-1',
       resume: {
-        interruptKind: 'continue_prompt',
-        decision: 'continue',
-        continuationId: 'cont-1',
-        resumedByUserId: 'user-1',
+        interruptKind: 'approval_review',
+        decisions: [
+          {
+            requestId: 'request-1',
+            status: 'approved',
+            reviewerId: 'user-1',
+          },
+        ],
         resumeTraceId: 'trace-resume-1b',
       },
       context: {
@@ -2034,10 +1905,6 @@ describe('runGraphValueStream', () => {
       },
     });
 
-    expect(consumeGraphContinuationSessionMock).toHaveBeenCalledWith({
-      id: 'cont-1',
-      latestTraceId: 'trace-resume-1b',
-    });
     expect(resumed.graphStatus).toBe('completed');
     expect(resumed.replyText).toContain('All set.');
   });

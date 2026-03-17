@@ -1,13 +1,31 @@
 import type { Message, TextChannel, User } from 'discord.js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { z } from 'zod';
 
-const { mockGenerateChatReply, mockClient, mockFetchAttachmentText } = vi.hoisted(() => {
+const {
+  mockGenerateChatReply,
+  mockClient,
+  mockFetchAttachmentText,
+  mockAttachTaskRunResponseSession,
+  mockResumeWaitingTaskRunWithInput,
+  mockFindWaitingUserInputTaskRun,
+} = vi.hoisted(() => {
   const mockGenerateChatReply = vi.fn();
   const mockClient = {
     user: { id: '123', tag: 'SageBot#0001' },
   };
   const mockFetchAttachmentText = vi.fn();
-  return { mockGenerateChatReply, mockClient, mockFetchAttachmentText };
+  const mockAttachTaskRunResponseSession = vi.fn().mockResolvedValue(undefined);
+  const mockResumeWaitingTaskRunWithInput = vi.fn();
+  const mockFindWaitingUserInputTaskRun = vi.fn().mockResolvedValue(null);
+  return {
+    mockGenerateChatReply,
+    mockClient,
+    mockFetchAttachmentText,
+    mockAttachTaskRunResponseSession,
+    mockResumeWaitingTaskRunWithInput,
+    mockFindWaitingUserInputTaskRun,
+  };
 });
 
 const mockIsRateLimited = vi.hoisted(() => vi.fn(() => false));
@@ -30,6 +48,15 @@ const mockBuildGuildApiKeyMissingResponse = vi.hoisted(() =>
 
 vi.mock('@/features/chat/chat-engine', () => ({
   generateChatReply: mockGenerateChatReply,
+}));
+
+vi.mock('@/features/agent-runtime', () => ({
+  attachTaskRunResponseSession: mockAttachTaskRunResponseSession,
+  resumeWaitingTaskRunWithInput: mockResumeWaitingTaskRunWithInput,
+}));
+
+vi.mock('@/features/agent-runtime/agentTaskRunRepo', () => ({
+  findWaitingUserInputTaskRun: mockFindWaitingUserInputTaskRun,
 }));
 
 vi.mock('@/platform/files/file-handler', () => ({
@@ -77,6 +104,7 @@ vi.mock('@/features/discord/interactiveComponentService', () => ({
     style: params.style === 'primary' ? 1 : 2,
   })),
   createInteractiveButtonSession: mockCreateInteractiveButtonSession,
+  interactiveButtonActionSchema: z.any(),
 }));
 
 vi.mock('@/features/discord/byopBootstrap', () => ({
@@ -102,9 +130,42 @@ function createMockMessage(overrides: Record<string, unknown> = {}): Message {
     username: 'TestUser',
   } as unknown as User;
 
+  const responseMessage = {
+    id: `reply-${messageCounter}`,
+    content: '',
+    edit: vi.fn().mockImplementation(async (payload: { content?: string }) => {
+      if (typeof payload?.content === 'string') {
+        responseMessage.content = payload.content;
+      }
+      return responseMessage;
+    }),
+    delete: vi.fn().mockResolvedValue(undefined),
+  };
+  const sourceMessage = {
+    id: `source-${messageCounter}`,
+    content: '',
+    reply: vi.fn().mockResolvedValue(responseMessage),
+  };
+
   const channel = {
-    send: vi.fn().mockResolvedValue(undefined),
+    send: vi.fn().mockResolvedValue({
+      id: `send-${messageCounter}`,
+      content: '',
+      edit: vi.fn().mockResolvedValue(undefined),
+      delete: vi.fn().mockResolvedValue(undefined),
+    }),
     sendTyping: vi.fn().mockResolvedValue(undefined),
+    messages: {
+      fetch: vi.fn(async (messageId: string) => {
+        if (messageId === responseMessage.id) {
+          return responseMessage;
+        }
+        if (messageId === sourceMessage.id) {
+          return sourceMessage;
+        }
+        throw new Error(`Unknown message id: ${messageId}`);
+      }),
+    },
   } as unknown as TextChannel;
 
   const baseMock: Record<string, unknown> = {
@@ -128,7 +189,9 @@ function createMockMessage(overrides: Record<string, unknown> = {}): Message {
       values: vi.fn(() => []),
     },
     channel,
-    reply: vi.fn().mockResolvedValue(undefined),
+    reply: vi.fn().mockResolvedValue(responseMessage),
+    __responseMessage: responseMessage,
+    __sourceMessage: sourceMessage,
     ...overrides,
   };
 
@@ -145,6 +208,9 @@ describe('messageCreate - ingest + reply gating', () => {
     __resetMessageCreateHandlerStateForTests();
     mockGenerateChatReply.mockReset();
     mockFetchAttachmentText.mockReset();
+    mockAttachTaskRunResponseSession.mockReset();
+    mockResumeWaitingTaskRunWithInput.mockReset();
+    mockFindWaitingUserInputTaskRun.mockReset();
     mockIsRateLimited.mockReset();
     mockIsLoggingEnabled.mockReset();
     mockIngestEvent.mockReset();
@@ -160,6 +226,13 @@ describe('messageCreate - ingest + reply gating', () => {
       mimeType: 'text/plain',
     });
     mockIsRateLimited.mockReturnValue(false);
+    mockAttachTaskRunResponseSession.mockResolvedValue(undefined);
+    mockResumeWaitingTaskRunWithInput.mockResolvedValue({
+      replyText: 'Resumed waiting task',
+      delivery: 'response_session',
+      status: 'completed',
+    });
+    mockFindWaitingUserInputTaskRun.mockResolvedValue(null);
     mockIsLoggingEnabled.mockReturnValue(true);
     mockDeleteAttachmentChunks.mockResolvedValue(undefined);
     mockIngestAttachmentText.mockResolvedValue(undefined);
@@ -312,68 +385,9 @@ describe('messageCreate - ingest + reply gating', () => {
     );
   });
 
-  it('attaches a Continue button when the graph pauses for continuation', async () => {
+  it('does not attach a legacy Continue button for normal response-session replies', async () => {
     mockGenerateChatReply.mockResolvedValueOnce({
-      replyText: 'I checked the first batch and can continue from here.',
-      delivery: 'response_session_with_continue',
-      meta: {
-        continuation: {
-          id: 'cont-1',
-          expiresAtIso: '2026-03-13T09:40:00.000Z',
-          completedWindows: 1,
-          maxWindows: 4,
-          summaryText: 'I checked the first batch and can continue from here.',
-        },
-      },
-      files: [],
-    });
-
-    const message = createMockMessage({
-      content: 'sage keep going',
-    });
-
-    await handleMessageCreate(message);
-
-    expect(mockCreateInteractiveButtonSession).toHaveBeenCalledWith({
-      guildId: 'guild-789',
-      channelId: 'channel-101',
-      createdByUserId: 'user-456',
-      action: {
-        type: 'graph_continue',
-        continuationId: 'cont-1',
-        visibility: 'public',
-      },
-    });
-    expect((message as unknown as { reply: ReturnType<typeof vi.fn> }).reply).toHaveBeenCalledWith(
-      expect.objectContaining({
-        flags: 32768,
-        components: [
-          expect.objectContaining({
-            type: 17,
-            components: expect.arrayContaining([
-              expect.objectContaining({
-                content: 'I checked the first batch and can continue from here.',
-              }),
-              expect.objectContaining({
-                type: 1,
-                components: [
-                  expect.objectContaining({
-                    custom_id: 'sage:ui:continue-1',
-                    label: 'Continue (2/4)',
-                  }),
-                ],
-              }),
-            ]),
-          }),
-        ],
-      }),
-    );
-  });
-
-  it('does not attach a Continue button once the continuation cap has been reached', async () => {
-    mockGenerateChatReply.mockResolvedValueOnce({
-      replyText:
-        'Verified so far: discord_admin: success.\n\nI reached the continuation limit for this request.\n\nAsk me in a new message if you want me to keep going from here.',
+      replyText: 'I checked the first batch and I am still working in the background.',
       delivery: 'response_session',
       meta: undefined,
       files: [],
@@ -388,43 +402,68 @@ describe('messageCreate - ingest + reply gating', () => {
     expect(mockCreateInteractiveButtonSession).not.toHaveBeenCalled();
     expect((message as unknown as { reply: ReturnType<typeof vi.fn> }).reply).toHaveBeenCalledWith(
       expect.objectContaining({
-        content: expect.stringContaining('I reached the continuation limit for this request.'),
+        content: 'I checked the first batch and I am still working in the background.',
         allowedMentions: { repliedUser: false },
         files: [],
       }),
     );
   });
 
-  it('still replies with the continuation summary when button session creation fails', async () => {
-    mockCreateInteractiveButtonSession.mockRejectedValueOnce(new Error('session store offline'));
-    mockGenerateChatReply.mockResolvedValueOnce({
-      replyText: 'I checked the first batch and can continue from here.',
-      delivery: 'response_session_with_continue',
-      meta: {
-        continuation: {
-          id: 'cont-2',
-          expiresAtIso: '2026-03-13T09:40:00.000Z',
-          completedWindows: 1,
-          maxWindows: 4,
-          summaryText: 'I checked the first batch and can continue from here.',
-        },
-      },
-      files: [],
-    });
-
+  it('resumes a waiting run on the existing response message instead of replying to the new user message', async () => {
     const message = createMockMessage({
-      content: 'sage keep going',
+      content: 'sage here is the answer',
+    }) as unknown as Message & {
+      __responseMessage: { id: string; edit: ReturnType<typeof vi.fn> };
+      __sourceMessage: { id: string };
+      reply: ReturnType<typeof vi.fn>;
+    };
+    mockFindWaitingUserInputTaskRun.mockResolvedValueOnce({
+      id: 'run-1',
+      threadId: 'thread-existing',
+      sourceMessageId: message.__sourceMessage.id,
+      responseMessageId: message.__responseMessage.id,
+    });
+    mockResumeWaitingTaskRunWithInput.mockImplementationOnce(async (params) => {
+      await params.onResponseSessionUpdate?.({
+        replyText: 'Updated draft',
+        delivery: 'response_session',
+        responseSession: {
+          responseSessionId: 'thread-existing',
+          status: 'draft',
+          latestText: 'Updated draft',
+          draftRevision: 2,
+          sourceMessageId: message.__sourceMessage.id,
+          responseMessageId: message.__responseMessage.id,
+          linkedArtifactMessageIds: [],
+        },
+        pendingInterrupt: null,
+        completionKind: null,
+        stopReason: 'background_yield',
+      });
+
+      return {
+        runId: 'thread-existing',
+        status: 'completed',
+        replyText: 'Updated draft',
+        delivery: 'response_session',
+        responseSession: {
+          responseSessionId: 'thread-existing',
+          status: 'final',
+          latestText: 'Updated draft',
+          draftRevision: 2,
+          sourceMessageId: message.__sourceMessage.id,
+          responseMessageId: message.__responseMessage.id,
+          linkedArtifactMessageIds: [],
+        },
+        files: [],
+      };
     });
 
     await handleMessageCreate(message);
 
-    expect((message as unknown as { reply: ReturnType<typeof vi.fn> }).reply).toHaveBeenCalledWith(
-      expect.objectContaining({
-        content: 'I checked the first batch and can continue from here.',
-        allowedMentions: { repliedUser: false },
-        files: [],
-      }),
-    );
+    expect(message.__responseMessage.edit).toHaveBeenCalled();
+    expect(message.reply).not.toHaveBeenCalled();
+    expect(mockAttachTaskRunResponseSession).not.toHaveBeenCalled();
   });
 
   it('attaches a Retry button when the runtime returns retry metadata', async () => {

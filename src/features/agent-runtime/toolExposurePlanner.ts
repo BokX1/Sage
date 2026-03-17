@@ -2,7 +2,7 @@ import type { PromptInputMode } from './promptContract';
 import type { ToolClass, ToolDefinition } from './toolRegistry';
 
 type InvocationKind = 'mention' | 'reply' | 'wakeword' | 'autopilot' | 'component';
-type ToolExposurePhase = 'turn' | 'continue_resume' | 'retry';
+type ToolExposurePhase = 'turn' | 'background_resume' | 'retry';
 
 export interface ToolExposurePlan {
   activeToolNames: string[];

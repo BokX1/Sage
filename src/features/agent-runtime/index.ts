@@ -1,9 +1,12 @@
 export {
   runChatTurn,
-  resumeContinuationChatTurn,
+  resumeBackgroundTaskRun,
+  resumeWaitingTaskRunWithInput,
+  attachTaskRunResponseSession,
+  type RetryFailedChatTurnParams,
   type RunChatTurnParams,
   type RunChatTurnResult,
-  type ResumeContinuationChatTurnParams,
+  type ResumeWaitingTaskRunWithInputParams,
 } from './agentRuntime';
 
 export {
@@ -45,6 +48,7 @@ export {
   initializeAgentGraphRuntime,
   shutdownAgentGraphRuntime,
   runAgentGraphTurn,
+  continueAgentGraphTurn,
   resumeAgentGraphTurn,
   type AgentGraphTurnResult,
 } from './langgraph/runtime';

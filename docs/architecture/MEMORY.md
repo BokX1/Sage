@@ -45,12 +45,12 @@ This document describes how Sage stores memory and makes it available to the run
 
 - **In-memory transcript ring buffer**
   - `RAW_MESSAGE_TTL_DAYS` starter value: `3`
-  - `RING_BUFFER_MAX_MESSAGES_PER_CHANNEL` starter value: `200`
+  - `RING_BUFFER_MAX_MESSAGES_PER_CHANNEL` starter value: `300`
 - **Database transcript retention**
   - `MESSAGE_DB_STORAGE_ENABLED=true` persists messages into `ChannelMessage`
-  - `MESSAGE_DB_MAX_MESSAGES_PER_CHANNEL` starter value: `500` caps retained rows per channel
+  - `MESSAGE_DB_MAX_MESSAGES_PER_CHANNEL` starter value: `1000` caps retained rows per channel
 - **Prompt transcript window**
-  - `CONTEXT_TRANSCRIPT_MAX_MESSAGES` starter value: `15`
+  - `CONTEXT_TRANSCRIPT_MAX_MESSAGES` starter value: `24`
 
 Transcript storage and prompt assembly are separate controls. A channel can retain more history in the database than any single prompt includes, and Sage now passes the selected transcript window through without an extra character clamp.
 

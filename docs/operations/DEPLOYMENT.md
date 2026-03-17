@@ -132,7 +132,7 @@ See **[⚙️ Configuration Reference](../reference/CONFIGURATION.md)** for the 
 npx prisma migrate deploy
 ```
 
-Sage now ships a single current-schema Prisma baseline. For a fresh environment or an intentional hard reset, `npx prisma migrate deploy` applies that baseline directly.
+Sage now ships a single current-schema Prisma baseline. For a fresh environment or an intentional hard reset, `npx prisma migrate deploy` applies that baseline directly, including `CREATE EXTENSION IF NOT EXISTS vector` for the pgvector-backed embedding tables.
 
 ### Upgrades
 

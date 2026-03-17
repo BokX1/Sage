@@ -30,11 +30,11 @@ describe('env embedding dimension guard', () => {
     });
   });
 
-  it('uses AGENT_GRAPH_MAX_STEPS default of 6 when not provided', async () => {
+  it('uses AGENT_RUN_SLICE_MAX_STEPS default of 6 when not provided', async () => {
     await withEnv({ NODE_ENV: 'test' }, async () => {
-      delete process.env.AGENT_GRAPH_MAX_STEPS;
+      delete process.env.AGENT_RUN_SLICE_MAX_STEPS;
       const envModule = await importFresh(() => import('@/platform/config/env'));
-      expect(envModule.config.AGENT_GRAPH_MAX_STEPS).toBe(6);
+      expect(envModule.config.AGENT_RUN_SLICE_MAX_STEPS).toBe(6);
     });
   });
 

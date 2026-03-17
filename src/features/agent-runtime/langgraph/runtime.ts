@@ -32,11 +32,6 @@ import type { LLMChatMessage } from '../../../platform/llm/llm-types';
 import { config as appConfig } from '../../../platform/config/env';
 import { logger } from '../../../platform/logging/logger';
 import { createOrReuseApprovalReviewRequestFromSignal } from '../../admin/adminActionService';
-import {
-  consumeGraphContinuationSession,
-  createGraphContinuationSession,
-  GRAPH_CONTINUATION_MAX_WINDOWS,
-} from '../graphContinuationRepo';
 import { scrubFinalReplyText } from '../finalReplyScrubber';
 import type { CurrentTurnContext, ReplyTargetContext } from '../continuityContext';
 import {
@@ -50,7 +45,7 @@ import type { ToolResult } from '../toolCallExecution';
 import type { ToolExecutionContext } from '../toolRegistry';
 import { ApprovalRequiredSignal } from '../toolControlSignals';
 import { createAgentRunTelemetry } from '../observability/langsmith';
-import { buildContinuationUnavailableReply, buildRuntimeFailureReply } from '../visibleReply';
+import { buildRuntimeFailureReply } from '../visibleReply';
 import { buildToolCacheKey } from '../toolCache';
 import { globalToolRegistry } from '../toolRegistry';
 import { buildAgentGraphConfig, type AgentGraphConfig } from './config';
@@ -156,32 +151,30 @@ const ToolCallFinalizationEventSchema = z.object({
   stopReason: z.enum([
     'assistant_turn_completed',
     'approval_interrupt',
-    'step_window_exhausted',
-    'graph_timeout',
-    'max_windows_reached',
-    'continuation_expired',
+    'user_input_interrupt',
+    'background_yield',
     'loop_guard',
     'runtime_failure',
+    'cancelled',
   ]),
   completionKind: z.enum([
     'final_answer',
     'clarification_question',
     'approval_pending',
-    'pause_handoff',
+    'user_input_pending',
     'loop_guard',
     'runtime_failure',
+    'cancelled',
   ]),
-  deliveryDisposition: z.enum([
-    'response_session',
-    'approval_handoff',
-    'response_session_with_continue',
-  ]),
+  deliveryDisposition: z.enum(['response_session', 'approval_handoff']),
   finalizedBy: z.enum([
     'assistant_no_tool_calls',
     'approval_interrupt',
-    'continuation_pause',
+    'user_input_interrupt',
+    'background_yield',
     'loop_guard',
     'runtime_failure',
+    'cancelled',
   ]),
   draftRevision: z.number(),
   contextFrame: z
@@ -193,6 +186,9 @@ const ToolCallFinalizationEventSchema = z.object({
       pendingApprovals: z.array(z.string()),
       deliveryState: z.enum(['none', 'awaiting_approval', 'paused', 'final']),
       nextAction: z.string(),
+      activeEvidenceRefs: z.array(z.string()).optional(),
+      droppedMessageCutoff: z.number().optional(),
+      compactionRevision: z.number().optional(),
     })
     .optional(),
   rebudgeting: GraphRebudgetEventSchema.optional(),
@@ -206,7 +202,7 @@ const GraphArtifactDeliverySchema = z.object({
 
 const GraphResponseSessionSchema = z.object({
   responseSessionId: z.string(),
-  status: z.enum(['draft', 'awaiting_approval', 'paused', 'final', 'failed']),
+  status: z.enum(['draft', 'awaiting_approval', 'waiting_user_input', 'final', 'failed']),
   latestText: z.string(),
   draftRevision: z.number(),
   sourceMessageId: z.string().nullable(),
@@ -222,6 +218,9 @@ const GraphContextFrameSchema = z.object({
   pendingApprovals: z.array(z.string()).default([]),
   deliveryState: z.enum(['none', 'awaiting_approval', 'paused', 'final']).default('none'),
   nextAction: z.string(),
+  activeEvidenceRefs: z.array(z.string()).default([]),
+  droppedMessageCutoff: z.number().default(0),
+  compactionRevision: z.number().default(0),
 });
 
 const ApprovalInterruptStateSchema = z.object({
@@ -229,20 +228,6 @@ const ApprovalInterruptStateSchema = z.object({
   requestId: z.string(),
   batchId: z.string(),
   requests: z.array(ApprovalInterruptRequestStateSchema).min(1),
-});
-
-const ContinuePromptInterruptStateSchema = z.object({
-  kind: z.literal('continue_prompt'),
-  continuationId: z.string(),
-  pauseReason: z.enum(['graph_timeout', 'step_window_exhausted']),
-  requestedByUserId: z.string(),
-  channelId: z.string(),
-  guildId: z.string().nullable(),
-  summaryText: z.string(),
-  completedWindows: z.number(),
-  maxWindows: z.number(),
-  expiresAtIso: z.string(),
-  resumeNode: z.enum(['tool_call_turn', 'route_tool_phase']),
 });
 
 const ApprovalResolutionStateSchema = z.object({
@@ -261,11 +246,37 @@ const ApprovalBatchResolutionStateSchema = z.object({
   resolutions: z.array(ApprovalResolutionStateSchema).min(1),
 });
 
-const ContinuePromptResolutionStateSchema = z.object({
-  kind: z.literal('continue_prompt'),
-  continuationId: z.string(),
-  decision: z.enum(['continue', 'expired']),
-  resumedByUserId: z.string().nullable().optional(),
+const GraphWaitingStateSchema = z.object({
+  kind: z.enum(['approval_review', 'user_input']),
+  prompt: z.string(),
+  requestedByUserId: z.string(),
+  channelId: z.string(),
+  guildId: z.string().nullable(),
+  responseMessageId: z.string().nullable().optional(),
+});
+
+const GraphCompactionStateSchema = z.object({
+  workingObjective: z.string(),
+  verifiedFacts: z.array(z.string()).default([]),
+  completedActions: z.array(z.string()).default([]),
+  openQuestions: z.array(z.string()).default([]),
+  pendingApprovals: z.array(z.string()).default([]),
+  deliveryState: z.enum(['none', 'awaiting_approval', 'paused', 'final']).default('none'),
+  nextAction: z.string(),
+  activeEvidenceRefs: z.array(z.string()).default([]),
+  droppedMessageCutoff: z.number().default(0),
+  compactionRevision: z.number().default(0),
+  retainedRawMessageCount: z.number().default(0),
+  retainedToolObservationCount: z.number().default(0),
+  reason: z.enum([
+    'tool_pressure',
+    'round_pressure',
+    'message_pressure',
+    'approval_resolution',
+    'yield_boundary',
+  ]),
+  inputTokensEstimate: z.number().default(0),
+  outputTokensEstimate: z.number().default(0),
 });
 
 const AgentGraphRuntimeSnapshotSchema = z.object({
@@ -292,10 +303,11 @@ const AgentGraphRuntimeSnapshotSchema = z.object({
   recentTranscript: z.string().nullable().optional(),
   voiceContext: z.string().nullable().optional(),
   promptMode: z
-    .enum(['standard', 'image_only', 'reply_only', 'direct_attention', 'graph_continuation'])
+    .enum(['standard', 'image_only', 'reply_only', 'direct_attention', 'durable_resume'])
     .optional(),
   promptVersion: z.string().nullable().optional(),
   promptFingerprint: z.string().nullable().optional(),
+  runId: z.string().nullable().optional(),
 });
 
 const AgentGraphConfigurableSchema = z
@@ -324,10 +336,11 @@ const AgentGraphConfigurableSchema = z
     recentTranscript: z.string().nullable().optional(),
     voiceContext: z.string().nullable().optional(),
     promptMode: z
-      .enum(['standard', 'image_only', 'reply_only', 'direct_attention', 'graph_continuation'])
+      .enum(['standard', 'image_only', 'reply_only', 'direct_attention', 'durable_resume'])
       .optional(),
     promptVersion: z.string().nullable().optional(),
     promptFingerprint: z.string().nullable().optional(),
+    runId: z.string().nullable().optional(),
   })
   .strip();
 
@@ -345,7 +358,7 @@ const AgentGraphStateSchema = new StateSchema({
     reducer: (left, right) => [...left, ...right],
   }),
   roundsCompleted: z.number().default(0),
-  completedWindows: z.number().default(0),
+  sliceIndex: z.number().default(0),
   totalRoundsCompleted: z.number().default(0),
   deduplicatedCallCount: new ReducedValue(z.number().default(0), {
     reducer: (left, right) => left + right,
@@ -371,9 +384,10 @@ const AgentGraphStateSchema = new StateSchema({
       'final_answer',
       'clarification_question',
       'approval_pending',
-      'pause_handoff',
+      'user_input_pending',
       'loop_guard',
       'runtime_failure',
+      'cancelled',
     ])
     .nullable()
     .default(null),
@@ -381,21 +395,14 @@ const AgentGraphStateSchema = new StateSchema({
     .enum([
       'assistant_turn_completed',
       'approval_interrupt',
-      'step_window_exhausted',
-      'graph_timeout',
-      'max_windows_reached',
-      'continuation_expired',
+      'user_input_interrupt',
+      'background_yield',
       'loop_guard',
       'runtime_failure',
+      'cancelled',
     ])
     .default('assistant_turn_completed'),
-  deliveryDisposition: z
-    .enum([
-      'response_session',
-      'approval_handoff',
-      'response_session_with_continue',
-    ])
-    .default('response_session'),
+  deliveryDisposition: z.enum(['response_session', 'approval_handoff']).default('response_session'),
   responseSession: GraphResponseSessionSchema.default({
     responseSessionId: '',
     status: 'draft',
@@ -416,14 +423,21 @@ const AgentGraphStateSchema = new StateSchema({
     pendingApprovals: [],
     deliveryState: 'none',
     nextAction: 'Decide the next best step.',
+    activeEvidenceRefs: [],
+    droppedMessageCutoff: 0,
+    compactionRevision: 0,
   }),
+  waitingState: z.union([GraphWaitingStateSchema, z.null()]).default(null),
+  compactionState: z.union([GraphCompactionStateSchema, z.null()]).default(null),
+  yieldReason: z
+    .enum(['slice_budget_exhausted', 'provider_backoff', 'awaiting_compaction', 'worker_handoff'])
+    .nullable()
+    .default(null),
   graphStatus: z.enum(['running', 'interrupted', 'completed', 'failed']).default('running'),
   activeWindowDurationMs: z.number().default(0),
-  pendingInterrupt: z
-    .union([ApprovalInterruptStateSchema, ContinuePromptInterruptStateSchema, z.null()])
-    .default(null),
+  pendingInterrupt: z.union([ApprovalInterruptStateSchema, z.null()]).default(null),
   interruptResolution: z
-    .union([ApprovalResolutionStateSchema, ApprovalBatchResolutionStateSchema, ContinuePromptResolutionStateSchema, z.null()])
+    .union([ApprovalResolutionStateSchema, ApprovalBatchResolutionStateSchema, z.null()])
     .default(null),
 });
 
@@ -434,7 +448,7 @@ type GraphNodeName =
   | 'execute_read_tools'
   | 'approval_gate'
   | 'closeout_turn'
-  | 'pause_for_continue'
+  | 'yield_background'
   | 'resume_interrupt'
   | 'finalize_turn';
 
@@ -502,12 +516,22 @@ export interface ResumeAgentGraphTurnParams {
   onStateUpdate?: (state: AgentGraphState) => Promise<void> | void;
 }
 
+export interface ContinueAgentGraphTurnParams {
+  threadId: string;
+  context?: Partial<AgentGraphRuntimeContext>;
+  appendedMessages?: BaseMessage[];
+  clearWaitingState?: boolean;
+  runId?: string;
+  runName?: string;
+  onStateUpdate?: (state: AgentGraphState) => Promise<void> | void;
+}
+
 export interface AgentGraphTurnResult {
   replyText: string;
   toolResults: ToolResult[];
   files: Array<{ attachment: Buffer; name: string }>;
   roundsCompleted: number;
-  completedWindows: number;
+  sliceIndex: number;
   totalRoundsCompleted: number;
   deduplicatedCallCount: number;
   roundEvents: ToolCallRoundEvent[];
@@ -518,7 +542,11 @@ export interface AgentGraphTurnResult {
   responseSession: AgentGraphState['responseSession'];
   artifactDeliveries: AgentGraphState['artifactDeliveries'];
   contextFrame: GraphContextFrame;
+  waitingState: AgentGraphState['waitingState'];
+  compactionState: AgentGraphState['compactionState'];
+  yieldReason: AgentGraphState['yieldReason'];
   graphStatus: AgentGraphState['graphStatus'];
+  activeWindowDurationMs: number;
   pendingInterrupt: AgentGraphState['pendingInterrupt'];
   interruptResolution: AgentGraphState['interruptResolution'];
   langSmithRunId: string | null;
@@ -606,8 +634,7 @@ function bumpResponseSession(params: {
 function buildDeterministicRuntimeSummary(
   state: Pick<AgentGraphState, 'toolResults' | 'messages' | 'replyText'>,
   options?: {
-    paused?: boolean;
-    continuationLimitReached?: boolean;
+    backgroundYield?: boolean;
   },
 ): string {
   const parts: string[] = [];
@@ -632,18 +659,16 @@ function buildDeterministicRuntimeSummary(
     parts.push('I ran into a problem while working on that.');
   }
 
-  if (options?.continuationLimitReached) {
-    parts.push('Please send me a new message if you want me to keep going.');
-  } else if (options?.paused) {
-    parts.push('Please press Continue if you want me to keep going.');
+  if (options?.backgroundYield) {
+    parts.push('I’m still working on that.');
   } else if (parts.length === 0) {
-    parts.push('Please send me another message if you want me to keep going.');
+    parts.push('I’m still working on that.');
   }
 
   return parts.join(' ').trim();
 }
 
-const WINDOW_CLOSEOUT_MAX_OUTPUT_TOKENS = 320;
+const WINDOW_CLOSEOUT_MAX_OUTPUT_TOKENS = 1_200;
 const WINDOW_CLOSEOUT_REQUEST_TIMEOUT_MS = 12_000;
 const WINDOW_CLOSEOUT_TEMPERATURE = 0.2;
 
@@ -676,15 +701,11 @@ function buildWindowCloseoutPromptMessages(params: {
 
 function wrapWindowCloseoutReply(params: {
   summaryBody: string;
-  continuationLimitReached?: boolean;
 }): string {
-  const parts = [params.summaryBody.trim()].filter((part) => part.length > 0);
-  if (params.continuationLimitReached) {
-    parts.push('Please send me a new message if you want me to keep going.');
-  } else {
-    parts.push('Please press Continue if you want me to keep going.');
-  }
-  return parts.join(' ').trim();
+  return [params.summaryBody.trim(), 'I’m still working on that.']
+    .filter((part) => part.length > 0)
+    .join(' ')
+    .trim();
 }
 
 async function buildWindowCloseoutSummary(params: {
@@ -692,22 +713,15 @@ async function buildWindowCloseoutSummary(params: {
   runtimeContext: AgentGraphRuntimeContext;
   toolContext: ToolExecutionContext;
   graphConfig: AgentGraphConfig;
-  pauseReason: 'graph_timeout' | 'step_window_exhausted';
-  continuationLimitReached?: boolean;
+  pauseReason: 'background_yield';
 }): Promise<{
   text: string;
   usedModel: boolean;
   latencyMs: number;
 }> {
-  const deterministic = buildDeterministicRuntimeSummary(
-    params.state,
-    params.continuationLimitReached
-      ? { continuationLimitReached: true }
-      : { paused: true },
-  );
-  if (params.pauseReason === 'graph_timeout') {
-    return { text: deterministic, usedModel: false, latencyMs: 0 };
-  }
+  const deterministic = buildDeterministicRuntimeSummary(params.state, {
+    backgroundYield: true,
+  });
 
   try {
     const response = await invokeAgentModelTask({
@@ -739,10 +753,7 @@ async function buildWindowCloseoutSummary(params: {
     });
     if (summaryBody) {
       return {
-        text: wrapWindowCloseoutReply({
-          summaryBody,
-          continuationLimitReached: params.continuationLimitReached,
-        }),
+        text: wrapWindowCloseoutReply({ summaryBody }),
         usedModel: true,
         latencyMs: response.latencyMs,
       };
@@ -753,9 +764,8 @@ async function buildWindowCloseoutSummary(params: {
         error,
         traceId: params.runtimeContext.traceId,
         threadId: params.runtimeContext.threadId,
-        continuationLimitReached: params.continuationLimitReached ?? false,
       },
-      'Window closeout summary model call failed; using deterministic summary fallback',
+      'Background-yield summary model call failed; using deterministic summary fallback',
     );
   }
 
@@ -856,7 +866,7 @@ function normalizeGraphResult(
     toolResults: deserializeToolResults(state.toolResults),
     files: decodeGraphFiles(state.files),
     roundsCompleted: state.roundsCompleted,
-    completedWindows: state.completedWindows,
+    sliceIndex: state.sliceIndex,
     totalRoundsCompleted: state.totalRoundsCompleted,
     deduplicatedCallCount: state.deduplicatedCallCount,
     roundEvents: state.roundEvents,
@@ -867,7 +877,11 @@ function normalizeGraphResult(
     responseSession: state.responseSession,
     artifactDeliveries: state.artifactDeliveries,
     contextFrame: state.contextFrame,
+    waitingState: state.waitingState,
+    compactionState: state.compactionState,
+    yieldReason: state.yieldReason,
     graphStatus: state.graphStatus,
+    activeWindowDurationMs: state.activeWindowDurationMs,
     pendingInterrupt: state.pendingInterrupt,
     interruptResolution: state.interruptResolution,
     langSmithRunId: langSmith.langSmithRunId,
@@ -981,19 +995,6 @@ interface DurableApprovalMaterializationOutput {
   expiresAtIso: string;
 }
 
-interface DurableContinuationInterruptOutput {
-  id: string;
-  pauseReason: 'graph_timeout' | 'step_window_exhausted';
-  requestedByUserId: string;
-  channelId: string;
-  guildId: string | null;
-  summaryText: string;
-  completedWindows: number;
-  maxWindows: number;
-  expiresAtIso: string;
-  resumeNode: 'tool_call_turn' | 'route_tool_phase';
-}
-
 interface DurableGraphTimestampOutput {
   iso: string;
 }
@@ -1074,63 +1075,6 @@ const materializeApprovalInterruptTask = task(
   },
 );
 
-const createContinuationInterruptTask = task(
-  { name: 'sage_create_continuation_interrupt' },
-  async (input: {
-    threadId: string;
-    originTraceId: string;
-    latestTraceId: string;
-    guildId: string | null;
-    channelId: string;
-    requestedByUserId: string;
-    pauseKind: 'graph_timeout' | 'step_window_exhausted';
-    completedWindows: number;
-    maxWindows: number;
-    summaryText: string;
-    resumeNode: 'tool_call_turn' | 'route_tool_phase';
-  }): Promise<DurableContinuationInterruptOutput> => {
-    const continuation = await createGraphContinuationSession({
-      threadId: input.threadId,
-      originTraceId: input.originTraceId,
-      latestTraceId: input.latestTraceId,
-      guildId: input.guildId,
-      channelId: input.channelId,
-      requestedByUserId: input.requestedByUserId,
-      pauseKind: input.pauseKind,
-      completedWindows: input.completedWindows,
-      maxWindows: input.maxWindows,
-      summaryText: input.summaryText,
-      resumeNode: input.resumeNode,
-    });
-    return {
-      id: continuation.id,
-      pauseReason: input.pauseKind,
-      requestedByUserId: continuation.requestedByUserId,
-      channelId: continuation.channelId,
-      guildId: continuation.guildId,
-      summaryText: continuation.summaryText,
-      completedWindows: continuation.completedWindows,
-      maxWindows: continuation.maxWindows,
-      expiresAtIso: continuation.expiresAt.toISOString(),
-      resumeNode: continuation.resumeNode as 'tool_call_turn' | 'route_tool_phase',
-    };
-  },
-);
-
-const consumeContinuationInterruptTask = task(
-  { name: 'sage_consume_continuation_interrupt' },
-  async (input: {
-    continuationId: string;
-    latestTraceId: string;
-  }): Promise<{ continuationId: string } | null> => {
-    const consumed = await consumeGraphContinuationSession({
-      id: input.continuationId,
-      latestTraceId: input.latestTraceId,
-    });
-    return consumed ? { continuationId: consumed.id } : null;
-  },
-);
-
 function normalizeResolvedApprovalStatus(params: {
   decision: 'approved' | 'rejected' | 'expired';
   actionStatus?: string | null;
@@ -1182,7 +1126,7 @@ function buildToolContext(
 }
 
 function isTimedOut(state: AgentGraphState, graphConfig: AgentGraphConfig): boolean {
-  return state.activeWindowDurationMs >= graphConfig.maxDurationMs;
+  return state.activeWindowDurationMs >= graphConfig.sliceMaxDurationMs;
 }
 
 async function buildExecutionEvent(
@@ -1346,7 +1290,23 @@ function buildContextFrame(state: Pick<
     | 'responseSession'
     | 'artifactDeliveries'
     | 'contextFrame'
+    | 'compactionState'
   >): GraphContextFrame {
+  if (state.compactionState) {
+    return {
+      objective: state.compactionState.workingObjective,
+      verifiedFacts: [...state.compactionState.verifiedFacts],
+      completedActions: [...state.compactionState.completedActions],
+      openQuestions: [...state.compactionState.openQuestions],
+      pendingApprovals: [...state.compactionState.pendingApprovals],
+      deliveryState: state.compactionState.deliveryState,
+      nextAction: state.compactionState.nextAction,
+      activeEvidenceRefs: [...state.compactionState.activeEvidenceRefs],
+      droppedMessageCutoff: state.compactionState.droppedMessageCutoff,
+      compactionRevision: state.compactionState.compactionRevision,
+    };
+  }
+
   const latestAssistantText = scrubFinalReplyText({
     replyText: state.replyText || findLatestAssistantText(state.messages as BaseMessage[]),
   });
@@ -1377,7 +1337,7 @@ function buildContextFrame(state: Pick<
   const deliveryState =
     state.responseSession.status === 'awaiting_approval'
       ? 'awaiting_approval'
-      : state.responseSession.status === 'paused'
+      : state.responseSession.status === 'waiting_user_input'
         ? 'paused'
         : state.responseSession.status === 'final'
           ? 'final'
@@ -1399,6 +1359,9 @@ function buildContextFrame(state: Pick<
     pendingApprovals,
     deliveryState,
     nextAction,
+    activeEvidenceRefs: [],
+    droppedMessageCutoff: 0,
+    compactionRevision: 0,
   };
 }
 
@@ -1415,6 +1378,9 @@ function normalizeWorkingMemoryFrame(frame: GraphContextFrame | null | undefined
     pendingApprovals: [...frame.pendingApprovals],
     deliveryState: frame.deliveryState,
     nextAction: frame.nextAction || fallback.nextAction,
+    activeEvidenceRefs: [...(frame.activeEvidenceRefs ?? [])],
+    droppedMessageCutoff: frame.droppedMessageCutoff ?? 0,
+    compactionRevision: frame.compactionRevision ?? 0,
   };
 }
 
@@ -1432,19 +1398,75 @@ function extractLatestHumanRequestText(messages: BaseMessage[]): string {
   return 'Continue the current turn using the latest working memory and tool results.';
 }
 
-function summarizeToolObservations(results: SerializedToolResult[]): string | null {
+function summarizeToolObservations(results: SerializedToolResult[], maxItems = 6): string | null {
   if (results.length === 0) {
     return null;
   }
 
   return results
-    .slice(-6)
+    .slice(-maxItems)
     .map((result) =>
       result.success
         ? `${result.name}: success${result.telemetry?.cacheHit ? ' (cache)' : ''}`
         : `${result.name}: ${result.error ?? 'failed'}`,
     )
     .join('\n');
+}
+
+function buildCompactionState(params: {
+  state: AgentGraphState;
+  graphConfig: AgentGraphConfig;
+  reason: 'tool_pressure' | 'round_pressure' | 'message_pressure' | 'approval_resolution' | 'yield_boundary';
+}): AgentGraphState['compactionState'] {
+  const rawMessages = params.state.messages as BaseMessage[];
+  const frame = buildContextFrame({
+    ...params.state,
+    compactionState: null,
+  });
+  const retainedRawMessageCount = Math.min(rawMessages.length, params.graphConfig.compactionMaxRawMessages);
+  const retainedToolObservationCount = Math.min(
+    params.state.toolResults.length,
+    params.graphConfig.compactionMaxToolObservations,
+  );
+  return {
+    workingObjective: frame.objective,
+    verifiedFacts: frame.verifiedFacts.slice(-8),
+    completedActions: frame.completedActions.slice(-8),
+    openQuestions: frame.openQuestions.slice(-6),
+    pendingApprovals: frame.pendingApprovals.slice(-4),
+    deliveryState: frame.deliveryState,
+    nextAction: frame.nextAction,
+    activeEvidenceRefs: params.state.toolResults
+      .slice(-retainedToolObservationCount)
+      .map(
+        (result, index) =>
+          `tool:${result.name}#${params.state.toolResults.length - retainedToolObservationCount + index}`,
+      ),
+    droppedMessageCutoff: Math.max(0, rawMessages.length - retainedRawMessageCount),
+    compactionRevision: (params.state.compactionState?.compactionRevision ?? 0) + 1,
+    retainedRawMessageCount,
+    retainedToolObservationCount,
+    reason: params.reason,
+    inputTokensEstimate: estimateMessagesTokens(toLlmMessages(rawMessages)),
+    outputTokensEstimate: params.graphConfig.maxOutputTokens,
+  };
+}
+
+function shouldCompactState(params: {
+  state: AgentGraphState;
+  graphConfig: AgentGraphConfig;
+  estimatedInputTokens: number;
+}): boolean {
+  if (!params.graphConfig.compactionEnabled) {
+    return false;
+  }
+
+  return (
+    params.estimatedInputTokens >= params.graphConfig.compactionTriggerEstimatedTokens ||
+    params.state.roundsCompleted >= params.graphConfig.compactionTriggerRounds ||
+    params.state.toolResults.length >= params.graphConfig.compactionTriggerToolResults ||
+    (params.state.messages as BaseMessage[]).length > params.graphConfig.compactionMaxRawMessages
+  );
 }
 
 function getSerializedToolLatencyMs(result: { telemetry?: { latencyMs?: number } } | null | undefined): number {
@@ -1484,13 +1506,38 @@ function buildAssistantTurnMessages(params: {
   state: AgentGraphState;
   runtimeContext: AgentGraphRuntimeContext;
 }): LLMChatMessage[] {
+  const graphConfig = buildAgentGraphConfig();
   const prepared = buildRebudgetingEvent(
     params.state.messages as BaseMessage[],
     params.runtimeContext.model,
     params.runtimeContext.maxTokens,
   );
-  const frame = buildContextFrame(params.state);
-  const graphConfig = buildAgentGraphConfig();
+  const compactionState =
+    params.state.compactionState ??
+    (shouldCompactState({
+      state: params.state,
+      graphConfig,
+      estimatedInputTokens: prepared.rebudgeting.estimatedTokensAfter,
+    })
+      ? buildCompactionState({
+          state: params.state,
+          graphConfig,
+          reason:
+            params.state.toolResults.length >= graphConfig.compactionTriggerToolResults
+              ? 'tool_pressure'
+              : params.state.roundsCompleted >= graphConfig.compactionTriggerRounds
+                ? 'round_pressure'
+                : 'message_pressure',
+        })
+      : null);
+  const promptMessages =
+    compactionState && compactionState.droppedMessageCutoff > 0
+      ? (params.state.messages as BaseMessage[]).slice(-compactionState.retainedRawMessageCount)
+      : (params.state.messages as BaseMessage[]);
+  const frame = buildContextFrame({
+    ...params.state,
+    compactionState,
+  });
   const contract = buildUniversalPromptContract({
     userProfileSummary: params.runtimeContext.userProfileSummary ?? null,
     currentTurn: resolvePromptCurrentTurn(params.runtimeContext),
@@ -1508,21 +1555,27 @@ function buildAssistantTurnMessages(params: {
     recentTranscript: params.runtimeContext.recentTranscript ?? null,
     voiceContext: params.runtimeContext.voiceContext ?? null,
     graphLimits: {
-      maxRounds: graphConfig.maxSteps,
+      maxRounds: graphConfig.sliceMaxSteps,
     },
     workingMemoryFrame: normalizeWorkingMemoryFrame(frame),
-    toolObservationSummary: summarizeToolObservations(params.state.toolResults),
-    promptMode: 'graph_continuation',
+    toolObservationSummary: summarizeToolObservations(
+      params.state.toolResults,
+      compactionState?.retainedToolObservationCount ?? graphConfig.compactionMaxToolObservations,
+    ),
+    promptMode: 'durable_resume',
   });
   const contextMessageContent = buildPromptContextContent({
     replyTarget: (params.runtimeContext.replyTarget as ReplyTargetContext | null | undefined) ?? null,
     focusedContinuity: params.runtimeContext.focusedContinuity ?? null,
     recentTranscript: params.runtimeContext.recentTranscript ?? null,
-    toolObservationSummary: summarizeToolObservations(params.state.toolResults),
+    toolObservationSummary: summarizeToolObservations(
+      params.state.toolResults,
+      compactionState?.retainedToolObservationCount ?? graphConfig.compactionMaxToolObservations,
+    ),
     includeUserInput: false,
     userText: extractLatestHumanRequestText(params.state.messages as BaseMessage[]),
   });
-  const preparedMessages = toLlmMessages(prepared.trimmedMessages);
+  const preparedMessages = toLlmMessages(promptMessages);
   const messages: LLMChatMessage[] = [
     {
       role: 'system',
@@ -1627,18 +1680,18 @@ function buildToolMessageFromOutcome(params: {
   });
 }
 
-function resolveContinueResumeNode(state: AgentGraphState): 'tool_call_turn' | 'route_tool_phase' {
-  const lastMessage = state.messages.at(-1);
-  if (lastMessage && AIMessage.isInstance(lastMessage) && (lastMessage.tool_calls?.length ?? 0) > 0) {
-    return 'route_tool_phase';
+function resolveBackgroundYieldReason(
+  state: AgentGraphState,
+  graphConfig: AgentGraphConfig,
+): AgentGraphState['yieldReason'] {
+  if (shouldCompactState({
+    state,
+    graphConfig,
+      estimatedInputTokens: estimateMessagesTokens(toLlmMessages(state.messages as BaseMessage[])),
+  })) {
+    return 'awaiting_compaction';
   }
-  return 'tool_call_turn';
-}
-
-function resolveContinuationStopReason(
-  pauseReason: 'graph_timeout' | 'step_window_exhausted',
-): GraphStopReason {
-  return pauseReason === 'graph_timeout' ? 'graph_timeout' : 'step_window_exhausted';
+  return 'slice_budget_exhausted';
 }
 
 function buildReadToolsNode(graphConfig: AgentGraphConfig) {
@@ -1827,11 +1880,12 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
     config: RunnableConfig,
   ): Promise<Command<unknown, Partial<AgentGraphState>, GraphNodeName>> => {
     const runtimeContext = resolveRuntimeContext(state, config);
-    if (isTimedOut(state, graphConfig) || state.roundsCompleted >= graphConfig.maxSteps) {
+    if (isTimedOut(state, graphConfig) || state.roundsCompleted >= graphConfig.sliceMaxSteps) {
       return new Command({
-        goto: 'pause_for_continue',
+        goto: 'yield_background',
         update: {
-          stopReason: isTimedOut(state, graphConfig) ? 'graph_timeout' : 'step_window_exhausted',
+          stopReason: 'background_yield',
+          yieldReason: resolveBackgroundYieldReason(state, graphConfig),
           resumeContext: snapshotRuntimeContext(runtimeContext),
           contextFrame: buildContextFrame(state),
         },
@@ -1851,11 +1905,12 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
     config: RunnableConfig,
   ): Promise<Command<unknown, Partial<AgentGraphState>, GraphNodeName>> => {
     const runtimeContext = resolveRuntimeContext(state, config);
-    if (isTimedOut(state, graphConfig) || state.roundsCompleted >= graphConfig.maxSteps) {
+    if (isTimedOut(state, graphConfig) || state.roundsCompleted >= graphConfig.sliceMaxSteps) {
       return new Command({
-        goto: 'pause_for_continue',
+        goto: 'yield_background',
         update: {
-          stopReason: isTimedOut(state, graphConfig) ? 'graph_timeout' : 'step_window_exhausted',
+          stopReason: 'background_yield',
+          yieldReason: resolveBackgroundYieldReason(state, graphConfig),
           resumeContext: snapshotRuntimeContext(runtimeContext),
           contextFrame: buildContextFrame(state),
         },
@@ -1888,7 +1943,7 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
     const replyText = extractMessageText(aiMessage).trim();
     const toolCalls = getLastAiToolCalls([aiMessage]);
     const nextActiveWindowDurationMs = addActiveWindowDuration(state, response.latencyMs);
-    const timedOutAfterModel = nextActiveWindowDurationMs >= graphConfig.maxDurationMs;
+    const timedOutAfterModel = nextActiveWindowDurationMs >= graphConfig.sliceMaxDurationMs;
     const nextRoundsCompleted = state.roundsCompleted + 1;
     const nextTotalRoundsCompleted = state.totalRoundsCompleted + 1;
     const nextMessages = [...(state.messages as BaseMessage[]), aiMessage];
@@ -1901,7 +1956,7 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
         status: 'draft',
       });
       return new Command({
-        goto: timedOutAfterModel ? 'pause_for_continue' : 'route_tool_phase',
+        goto: timedOutAfterModel ? 'yield_background' : 'route_tool_phase',
         update: {
           messages: [aiMessage],
           replyText: draftText,
@@ -1909,13 +1964,40 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
           activeWindowDurationMs: nextActiveWindowDurationMs,
           roundsCompleted: nextRoundsCompleted,
           totalRoundsCompleted: nextTotalRoundsCompleted,
-          stopReason: timedOutAfterModel ? 'graph_timeout' : state.stopReason,
+          stopReason: timedOutAfterModel ? 'background_yield' : state.stopReason,
+          yieldReason: timedOutAfterModel ? resolveBackgroundYieldReason(state, graphConfig) : null,
           resumeContext: snapshotRuntimeContext(runtimeContext),
+          compactionState:
+            timedOutAfterModel
+              ? buildCompactionState({
+                  state: {
+                    ...state,
+                    messages: nextMessages,
+                    replyText: draftText,
+                    responseSession,
+                  },
+                  graphConfig,
+                  reason: 'yield_boundary',
+                })
+              : state.compactionState,
           contextFrame: buildContextFrame({
             ...state,
             messages: nextMessages,
             replyText: draftText,
             responseSession,
+            compactionState:
+              timedOutAfterModel
+                ? buildCompactionState({
+                    state: {
+                      ...state,
+                      messages: nextMessages,
+                      replyText: draftText,
+                      responseSession,
+                    },
+                    graphConfig,
+                    reason: 'yield_boundary',
+                  })
+                : state.compactionState,
           }),
           finalization: {
             ...state.finalization,
@@ -1927,29 +2009,74 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
 
     const finalReplyText = scrubFinalReplyText({ replyText }) || resolveDraftText(state.responseSession.latestText);
     const completionKind = classifyPlainTextCompletionKind(finalReplyText);
+    const waitingState =
+      completionKind === 'clarification_question'
+        ? {
+            kind: 'user_input' as const,
+            prompt: finalReplyText,
+            requestedByUserId: runtimeContext.userId,
+            channelId: runtimeContext.channelId,
+            guildId: runtimeContext.guildId,
+            responseMessageId: state.responseSession.responseMessageId,
+          }
+        : null;
     const responseSession = bumpResponseSession({
       state,
       latestText: finalReplyText,
-      status: 'final',
+      status: completionKind === 'clarification_question' ? 'waiting_user_input' : 'final',
     });
     return new Command({
-      goto: timedOutAfterModel ? 'pause_for_continue' : 'closeout_turn',
+      goto: timedOutAfterModel ? 'yield_background' : 'closeout_turn',
       update: {
         messages: [aiMessage],
         replyText: finalReplyText,
-        completionKind,
-        stopReason: timedOutAfterModel ? 'graph_timeout' : 'assistant_turn_completed',
-        deliveryDisposition: timedOutAfterModel ? 'response_session_with_continue' : 'response_session',
+        completionKind: timedOutAfterModel ? null : completionKind,
+        stopReason: timedOutAfterModel
+          ? 'background_yield'
+          : completionKind === 'clarification_question'
+            ? 'user_input_interrupt'
+            : 'assistant_turn_completed',
+        deliveryDisposition: 'response_session',
         responseSession,
         activeWindowDurationMs: nextActiveWindowDurationMs,
         roundsCompleted: nextRoundsCompleted,
         totalRoundsCompleted: nextTotalRoundsCompleted,
         resumeContext: snapshotRuntimeContext(runtimeContext),
+        waitingState,
+        yieldReason: timedOutAfterModel ? resolveBackgroundYieldReason(state, graphConfig) : null,
+        compactionState:
+          timedOutAfterModel
+            ? buildCompactionState({
+                state: {
+                  ...state,
+                  messages: nextMessages,
+                  replyText: finalReplyText,
+                  responseSession,
+                  waitingState,
+                } as AgentGraphState,
+                graphConfig,
+                reason: 'yield_boundary',
+              })
+            : state.compactionState,
         contextFrame: buildContextFrame({
           ...state,
           messages: nextMessages,
           replyText: finalReplyText,
           responseSession,
+          compactionState:
+            timedOutAfterModel
+              ? buildCompactionState({
+                  state: {
+                    ...state,
+                    messages: nextMessages,
+                    replyText: finalReplyText,
+                    responseSession,
+                    waitingState,
+                  } as AgentGraphState,
+                  graphConfig,
+                  reason: 'yield_boundary',
+                })
+              : state.compactionState,
         }),
         finalization: {
           ...state.finalization,
@@ -2212,7 +2339,12 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
         : bumpResponseSession({
             state,
             latestText: effectiveReplyText || state.responseSession.latestText,
-            status: state.completionKind === 'loop_guard' || state.completionKind === 'runtime_failure' ? 'failed' : 'final',
+            status:
+              state.completionKind === 'loop_guard' || state.completionKind === 'runtime_failure'
+                ? 'failed'
+                : state.completionKind === 'clarification_question'
+                  ? 'waiting_user_input'
+                  : 'final',
           });
     const completionTimestamp = await captureGraphTimestampTask();
     return new Command({
@@ -2233,8 +2365,10 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
               ? 'approval_interrupt'
               : state.stopReason === 'loop_guard'
                 ? 'loop_guard'
-                : state.stopReason === 'step_window_exhausted' || state.stopReason === 'graph_timeout'
-                  ? 'continuation_pause'
+                : state.stopReason === 'background_yield'
+                  ? 'background_yield'
+                  : state.stopReason === 'user_input_interrupt'
+                    ? 'user_input_interrupt'
                   : state.stopReason === 'runtime_failure'
                     ? 'runtime_failure'
                     : 'assistant_no_tool_calls',
@@ -2524,7 +2658,7 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
     state: AgentGraphState,
     config: RunnableConfig,
   ): Promise<Command<unknown, Partial<AgentGraphState>, GraphNodeName>> => {
-    if (!state.pendingInterrupt) {
+    if (!state.pendingInterrupt || state.pendingInterrupt.kind !== 'approval_review') {
       return new Command({
         goto: 'tool_call_turn',
         update: {},
@@ -2532,157 +2666,6 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
     }
 
     const runtimeContext = resolveRuntimeContext(state, config);
-    if (state.pendingInterrupt.kind === 'continue_prompt') {
-      const resume = interrupt({
-        kind: 'continue_prompt',
-        continuationId: state.pendingInterrupt.continuationId,
-        pauseReason: state.pendingInterrupt.pauseReason,
-        expiresAtIso: state.pendingInterrupt.expiresAtIso,
-        completedWindows: state.pendingInterrupt.completedWindows,
-        maxWindows: state.pendingInterrupt.maxWindows,
-        summaryText: state.pendingInterrupt.summaryText,
-      }) as GraphResumeInput;
-
-      if (resume.interruptKind !== 'continue_prompt') {
-        throw new Error('Continuation interrupt resumed with incompatible payload.');
-      }
-
-      const resumedContext: AgentGraphRuntimeContext = {
-        ...runtimeContext,
-        traceId: resume.resumeTraceId?.trim() || runtimeContext.traceId,
-      };
-
-      if (resume.decision !== 'continue') {
-        const completionTimestamp = await captureGraphTimestampTask();
-        const responseSession = bumpResponseSession({
-          state,
-          latestText: state.replyText.trim() || state.responseSession.latestText || buildContinuationUnavailableReply(),
-          status: 'failed',
-        });
-        return new Command({
-          goto: 'finalize_turn',
-          update: {
-            resumeContext: snapshotRuntimeContext(resumedContext),
-            completionKind: 'pause_handoff',
-            stopReason: 'continuation_expired',
-            deliveryDisposition: 'response_session',
-            responseSession,
-            graphStatus: 'completed',
-            pendingInterrupt: null,
-            interruptResolution: {
-              kind: 'continue_prompt',
-              continuationId: state.pendingInterrupt.continuationId,
-              decision: 'expired',
-              resumedByUserId: resume.resumedByUserId ?? null,
-            },
-            finalization: {
-              attempted: true,
-              succeeded: true,
-              completedAt: completionTimestamp.iso,
-              stopReason: 'continuation_expired',
-              completionKind: 'pause_handoff',
-              deliveryDisposition: 'response_session',
-              finalizedBy: 'runtime_failure',
-              draftRevision: responseSession.draftRevision,
-              contextFrame: buildContextFrame({
-                ...state,
-                responseSession,
-              }),
-            },
-            contextFrame: buildContextFrame({
-              ...state,
-              responseSession,
-            }),
-          },
-        });
-      }
-
-      const consumed = await consumeContinuationInterruptTask({
-        continuationId: resume.continuationId,
-        latestTraceId: resumedContext.traceId,
-      });
-      if (!consumed) {
-        const completionTimestamp = await captureGraphTimestampTask();
-        const responseSession = bumpResponseSession({
-          state,
-          latestText: state.replyText.trim() || buildContinuationUnavailableReply(),
-          status: 'failed',
-        });
-        return new Command({
-          goto: 'finalize_turn',
-          update: {
-            replyText: responseSession.latestText,
-            resumeContext: snapshotRuntimeContext(resumedContext),
-            graphStatus: 'completed',
-            completionKind: 'pause_handoff',
-            stopReason: 'continuation_expired',
-            deliveryDisposition: 'response_session',
-            responseSession,
-            pendingInterrupt: null,
-            interruptResolution: {
-              kind: 'continue_prompt',
-              continuationId: resume.continuationId,
-              decision: 'expired',
-              resumedByUserId: resume.resumedByUserId ?? null,
-            },
-            finalization: {
-              attempted: true,
-              succeeded: true,
-              completedAt: completionTimestamp.iso,
-              stopReason: 'continuation_expired',
-              completionKind: 'pause_handoff',
-              deliveryDisposition: 'response_session',
-              finalizedBy: 'runtime_failure',
-              draftRevision: responseSession.draftRevision,
-              contextFrame: buildContextFrame({
-                ...state,
-                replyText: responseSession.latestText,
-                responseSession,
-              }),
-            },
-            contextFrame: buildContextFrame({
-              ...state,
-              replyText: responseSession.latestText,
-              responseSession,
-            }),
-          },
-        });
-      }
-
-      const resumedSession = bumpResponseSession({
-        state,
-        latestText: state.responseSession.latestText,
-        status: 'draft',
-      });
-      return new Command({
-        goto: state.pendingInterrupt.resumeNode,
-        update: {
-          replyText: resumedSession.latestText,
-          resumeContext: snapshotRuntimeContext(resumedContext),
-          graphStatus: 'running',
-          completionKind: null,
-          stopReason: 'assistant_turn_completed',
-          deliveryDisposition: 'response_session',
-          responseSession: resumedSession,
-          pendingInterrupt: null,
-          interruptResolution: {
-            kind: 'continue_prompt',
-            continuationId: state.pendingInterrupt.continuationId,
-            decision: 'continue',
-            resumedByUserId: resume.resumedByUserId ?? null,
-          },
-          roundsCompleted: 0,
-          activeWindowDurationMs: 0,
-          contextFrame: buildContextFrame({
-            ...state,
-            responseSession: resumedSession,
-            replyText: resumedSession.latestText,
-          }),
-          finalization: buildDefaultFinalization(),
-        },
-      });
-    }
-
     const approvalInterrupt = state.pendingInterrupt;
     const resume = interrupt({
       batchId: approvalInterrupt.batchId,
@@ -2824,140 +2807,68 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
     });
   };
 
-  const pauseForContinueNode = async (
+  const yieldBackgroundNode = async (
     state: AgentGraphState,
     config: RunnableConfig,
   ): Promise<Command<unknown, Partial<AgentGraphState>, GraphNodeName>> => {
     const runtimeContext = resolveRuntimeContext(state, config);
     const toolContext = buildToolContext(state, runtimeContext, 'turn', config);
-    const nextCompletedWindows = state.completedWindows + 1;
-    const pauseReason = isTimedOut(state, graphConfig) ? 'graph_timeout' : 'step_window_exhausted';
-
-    if (nextCompletedWindows >= GRAPH_CONTINUATION_MAX_WINDOWS) {
-      const limitSummary = await buildWindowCloseoutSummary({
-        state,
-        runtimeContext,
-        toolContext,
-        graphConfig,
-        pauseReason,
-        continuationLimitReached: true,
-      });
-      const completionTimestamp = await captureGraphTimestampTask();
-      const responseSession = bumpResponseSession({
-        state,
-        latestText: limitSummary.text,
-        status: 'failed',
-      });
-      return new Command({
-        goto: 'finalize_turn',
-        update: {
-          replyText: limitSummary.text,
-          responseSession,
-          completedWindows: nextCompletedWindows,
-          totalRoundsCompleted:
-            state.totalRoundsCompleted + (limitSummary.usedModel ? 1 : 0),
-          graphStatus: 'completed',
-          completionKind: 'pause_handoff',
-          stopReason: 'max_windows_reached',
-          deliveryDisposition: 'response_session',
-          activeWindowDurationMs: addActiveWindowDuration(state, limitSummary.latencyMs),
-          finalization: {
-            attempted: true,
-            succeeded: true,
-            completedAt: completionTimestamp.iso,
-            stopReason: 'max_windows_reached',
-            completionKind: 'pause_handoff',
-            deliveryDisposition: 'response_session',
-            finalizedBy: 'runtime_failure',
-            draftRevision: responseSession.draftRevision,
-            contextFrame: buildContextFrame({
-              ...state,
-              replyText: limitSummary.text,
-              responseSession,
-            }),
-          },
-          contextFrame: buildContextFrame({
-            ...state,
-            replyText: limitSummary.text,
-            responseSession,
-          }),
-        },
-      });
-    }
-
     const summary = await buildWindowCloseoutSummary({
       state,
       runtimeContext,
       toolContext,
       graphConfig,
-      pauseReason,
+      pauseReason: 'background_yield',
     });
-    const continuation = await createContinuationInterruptTask({
-      threadId: runtimeContext.threadId,
-      originTraceId: runtimeContext.originTraceId,
-      latestTraceId: runtimeContext.traceId,
-      guildId: runtimeContext.guildId,
-      channelId: runtimeContext.channelId,
-      requestedByUserId: runtimeContext.userId,
-      pauseKind: pauseReason,
-      completedWindows: nextCompletedWindows,
-      maxWindows: GRAPH_CONTINUATION_MAX_WINDOWS,
-      summaryText: summary.text,
-      resumeNode: resolveContinueResumeNode(state),
+    const yieldTimestamp = await captureGraphTimestampTask();
+    const compactionState = buildCompactionState({
+      state,
+      graphConfig,
+      reason: 'yield_boundary',
     });
-
-    const interruptTimestamp = await captureGraphTimestampTask();
     const responseSession = bumpResponseSession({
       state,
       latestText: summary.text,
-      status: 'paused',
+      status: state.waitingState?.kind === 'user_input' ? 'waiting_user_input' : state.responseSession.status,
     });
     return new Command({
-      goto: 'resume_interrupt',
+      goto: 'finalize_turn',
       update: {
         replyText: summary.text,
         responseSession,
-        completedWindows: nextCompletedWindows,
+        sliceIndex: state.sliceIndex + 1,
         totalRoundsCompleted:
           state.totalRoundsCompleted + (summary.usedModel ? 1 : 0),
-        graphStatus: 'interrupted',
-        completionKind: 'pause_handoff',
-        stopReason: resolveContinuationStopReason(continuation.pauseReason),
-        deliveryDisposition: 'response_session_with_continue',
+        graphStatus: 'completed',
+        completionKind: state.completionKind,
+        stopReason: 'background_yield',
+        deliveryDisposition: 'response_session',
         activeWindowDurationMs: addActiveWindowDuration(state, summary.latencyMs),
-        pendingInterrupt: {
-          kind: 'continue_prompt',
-          continuationId: continuation.id,
-          pauseReason: continuation.pauseReason,
-          requestedByUserId: continuation.requestedByUserId,
-          channelId: continuation.channelId,
-          guildId: continuation.guildId,
-          summaryText: continuation.summaryText,
-          completedWindows: continuation.completedWindows,
-          maxWindows: continuation.maxWindows,
-          expiresAtIso: continuation.expiresAtIso,
-          resumeNode: continuation.resumeNode,
-        },
+        yieldReason: resolveBackgroundYieldReason(state, graphConfig),
+        compactionState,
+        pendingInterrupt: null,
         interruptResolution: null,
         finalization: {
           attempted: true,
           succeeded: true,
-          completedAt: interruptTimestamp.iso,
-          stopReason: resolveContinuationStopReason(continuation.pauseReason),
-          completionKind: 'pause_handoff',
-          deliveryDisposition: 'response_session_with_continue',
-          finalizedBy: 'continuation_pause',
+          completedAt: yieldTimestamp.iso,
+          stopReason: 'background_yield',
+          completionKind: state.completionKind ?? 'final_answer',
+          deliveryDisposition: 'response_session',
+          finalizedBy: 'background_yield',
           draftRevision: responseSession.draftRevision,
           contextFrame: buildContextFrame({
             ...state,
             replyText: summary.text,
             responseSession,
+            compactionState,
           }),
         },
         contextFrame: buildContextFrame({
           ...state,
           replyText: summary.text,
           responseSession,
+          compactionState,
         }),
       },
     });
@@ -2975,10 +2886,10 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
     context: AgentGraphConfigurableSchema,
   })
     .addNode('decide_turn', decideTurnNode, {
-      ends: ['tool_call_turn', 'pause_for_continue'],
+      ends: ['tool_call_turn', 'yield_background'],
     })
     .addNode('tool_call_turn', toolCallTurnNode, {
-      ends: ['route_tool_phase', 'tool_call_turn', 'pause_for_continue', 'closeout_turn'],
+      ends: ['route_tool_phase', 'tool_call_turn', 'yield_background', 'closeout_turn'],
     })
     .addNode('route_tool_phase', routeToolPhaseNode, {
       ends: ['execute_read_tools', 'approval_gate', 'tool_call_turn', 'closeout_turn', 'finalize_turn'],
@@ -2992,8 +2903,8 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
     .addNode('approval_gate', approvalGateNode, {
       ends: ['resume_interrupt', 'tool_call_turn'],
     })
-    .addNode('pause_for_continue', pauseForContinueNode, {
-      ends: ['resume_interrupt', 'finalize_turn'],
+    .addNode('yield_background', yieldBackgroundNode, {
+      ends: ['finalize_turn'],
     })
     .addNode('resume_interrupt', resumeInterruptNode, {
       ends: ['tool_call_turn', 'route_tool_phase', 'finalize_turn'],
@@ -3050,11 +2961,7 @@ function isRecoverableInterruptedState(state: AgentGraphState): boolean {
   return (
     state.graphStatus === 'interrupted' &&
     !!state.pendingInterrupt &&
-    (
-      state.stopReason === 'approval_interrupt' ||
-      state.stopReason === 'step_window_exhausted' ||
-      state.stopReason === 'graph_timeout'
-    )
+    state.stopReason === 'approval_interrupt'
   );
 }
 
@@ -3064,14 +2971,7 @@ function coerceInterruptedState(value: unknown): AgentGraphState | null {
   }
 
   const state = value as Partial<AgentGraphState>;
-  if (
-    state.graphStatus !== 'interrupted' ||
-    (
-      state.stopReason !== 'approval_interrupt' &&
-      state.stopReason !== 'step_window_exhausted' &&
-      state.stopReason !== 'graph_timeout'
-    )
-  ) {
+  if (state.graphStatus !== 'interrupted' || state.stopReason !== 'approval_interrupt') {
     return null;
   }
 
@@ -3079,24 +2979,16 @@ function coerceInterruptedState(value: unknown): AgentGraphState | null {
   if (!pendingInterrupt || typeof pendingInterrupt !== 'object' || typeof pendingInterrupt.kind !== 'string') {
     return null;
   }
-  if (pendingInterrupt.kind === 'approval_review') {
-    const approvalRequests = (pendingInterrupt as { requests?: unknown[] }).requests;
-    if (
-      typeof pendingInterrupt.requestId !== 'string' ||
-      pendingInterrupt.requestId.trim().length === 0 ||
-      !Array.isArray(approvalRequests) ||
-      approvalRequests.length < 1
-    ) {
-      return null;
-    }
-  } else if (pendingInterrupt.kind === 'continue_prompt') {
-    if (
-      typeof pendingInterrupt.continuationId !== 'string' ||
-      pendingInterrupt.continuationId.trim().length === 0
-    ) {
-      return null;
-    }
-  } else {
+  if (pendingInterrupt.kind !== 'approval_review') {
+    return null;
+  }
+  const approvalRequests = (pendingInterrupt as { requests?: unknown[] }).requests;
+  if (
+    typeof pendingInterrupt.requestId !== 'string' ||
+    pendingInterrupt.requestId.trim().length === 0 ||
+    !Array.isArray(approvalRequests) ||
+    approvalRequests.length < 1
+  ) {
     return null;
   }
 
@@ -3125,16 +3017,11 @@ async function recoverInterruptedGraphState(
     if (!pendingInterrupt) {
       return null;
     }
-    const interruptId =
-      pendingInterrupt.kind === 'approval_review'
-        ? pendingInterrupt.requestId
-        : pendingInterrupt.continuationId;
-
     const logPayload = {
       traceId: state.resumeContext.traceId,
       threadId: state.resumeContext.threadId,
       interruptKind: pendingInterrupt.kind,
-      interruptId,
+      interruptId: pendingInterrupt.requestId,
       recoveryReason: context.reason,
       streamError: context.streamError instanceof Error ? context.streamError.message : undefined,
     };
@@ -3184,7 +3071,7 @@ function normalizeRecoveredGraphState(value: unknown): AgentGraphState | null {
     toolResults: state.toolResults ?? [],
     files: state.files ?? [],
     roundsCompleted: state.roundsCompleted ?? 0,
-    completedWindows: state.completedWindows ?? 0,
+    sliceIndex: state.sliceIndex ?? 0,
     totalRoundsCompleted: state.totalRoundsCompleted ?? 0,
     deduplicatedCallCount: state.deduplicatedCallCount ?? 0,
     lastToolBatchFingerprint: state.lastToolBatchFingerprint ?? null,
@@ -3205,6 +3092,9 @@ function normalizeRecoveredGraphState(value: unknown): AgentGraphState | null {
       ),
     artifactDeliveries: state.artifactDeliveries ?? [],
     contextFrame: state.contextFrame ?? buildDefaultContextFrame(),
+    waitingState: state.waitingState ?? null,
+    compactionState: state.compactionState ?? null,
+    yieldReason: state.yieldReason ?? null,
     graphStatus: state.graphStatus ?? 'running',
     activeWindowDurationMs: state.activeWindowDurationMs ?? 0,
     pendingInterrupt: state.pendingInterrupt ?? null,
@@ -3406,7 +3296,7 @@ function buildInitialState(params: StartAgentGraphTurnParams): AgentGraphState {
     toolResults: [],
     files: [],
     roundsCompleted: 0,
-    completedWindows: 0,
+    sliceIndex: 0,
     totalRoundsCompleted: 0,
     deduplicatedCallCount: 0,
     lastToolBatchFingerprint: null,
@@ -3420,6 +3310,9 @@ function buildInitialState(params: StartAgentGraphTurnParams): AgentGraphState {
     responseSession: buildDefaultResponseSession(params.traceId),
     artifactDeliveries: [],
     contextFrame: buildDefaultContextFrame(),
+    waitingState: null,
+    compactionState: null,
+    yieldReason: null,
     graphStatus: 'running',
     activeWindowDurationMs: 0,
     pendingInterrupt: null,
@@ -3453,7 +3346,7 @@ function buildSeededGraphState(params: {
     toolResults: [],
     files: [],
     roundsCompleted: 0,
-    completedWindows: 0,
+    sliceIndex: 0,
     totalRoundsCompleted: 0,
     deduplicatedCallCount: 0,
     lastToolBatchFingerprint: null,
@@ -3467,6 +3360,9 @@ function buildSeededGraphState(params: {
     responseSession: buildDefaultResponseSession(params.threadId),
     artifactDeliveries: [],
     contextFrame: buildDefaultContextFrame(),
+    waitingState: null,
+    compactionState: null,
+    yieldReason: null,
     graphStatus: 'running',
     activeWindowDurationMs: 0,
     pendingInterrupt: null,
@@ -3583,9 +3479,7 @@ export async function resumeAgentGraphTurn(
       recursionLimit: runtime.config.recursionLimit,
       runId,
       runName:
-        params.resume.interruptKind === 'approval_review'
-          ? 'sage_agent_approval_resume'
-          : 'sage_agent_continue_resume',
+        'sage_agent_approval_resume',
       context: {
         threadId: params.threadId,
         traceId: runId,
@@ -3595,17 +3489,113 @@ export async function resumeAgentGraphTurn(
       tags: [
         'sage',
         'agent-runtime',
-        params.resume.interruptKind === 'approval_review' ? 'approval-resume' : 'continue-resume',
+        'approval-resume',
       ],
       metadata: {
         threadId: params.threadId,
         interruptKind: params.resume.interruptKind,
-        decision:
-          params.resume.interruptKind === 'approval_review'
-            ? params.resume.decisions.map((decision) => `${decision.requestId}:${decision.status}`).join(',')
-            : params.resume.decision,
+        decision: params.resume.decisions.map((decision) => `${decision.requestId}:${decision.status}`).join(','),
       },
     }),
+  );
+  await telemetry.flush();
+  return normalizeGraphResult(output, telemetry.getRunReferences(runId));
+}
+
+function resolveContinueNode(state: AgentGraphState): GraphNodeName {
+  if (state.pendingInterrupt?.kind === 'approval_review') {
+    return 'resume_interrupt';
+  }
+  if (state.pendingReadCalls.length > 0 || state.pendingReadExecutionCalls.length > 0 || state.pendingWriteCalls.length > 0) {
+    return 'route_tool_phase';
+  }
+  return 'decide_turn';
+}
+
+export async function continueAgentGraphTurn(
+  params: ContinueAgentGraphTurnParams,
+): Promise<AgentGraphTurnResult> {
+  const runtime = await getRuntime();
+  const telemetry = createAgentRunTelemetry();
+  const runId = params.runId?.trim() || params.context?.traceId?.trim() || params.threadId;
+  const snapshot = await runtime.graph.getState(
+    buildRunnableConfig({
+      threadId: params.threadId,
+      recursionLimit: runtime.config.recursionLimit,
+      runId: `${runId}:continue-state`,
+      runName: params.runName?.trim() || 'sage_agent_continue_state',
+      context: {
+        threadId: params.threadId,
+        traceId: runId,
+      },
+    }),
+  );
+  const values = snapshot.values;
+  if (!values) {
+    throw new Error(`Agent graph state for thread "${params.threadId}" is unavailable.`);
+  }
+
+  const existingState = normalizeRecoveredGraphState(values);
+  if (!existingState) {
+    throw new Error(`Agent graph state for thread "${params.threadId}" could not be normalized.`);
+  }
+  const mergedContext: AgentGraphRuntimeContext = {
+    ...existingState.resumeContext,
+    traceId: runId,
+    originTraceId: existingState.resumeContext.originTraceId || params.threadId,
+    threadId: params.threadId,
+    ...(params.context ?? {}),
+    activeToolNames: [
+      ...((params.context?.activeToolNames ?? existingState.resumeContext.activeToolNames) ?? []),
+    ],
+    replyTarget: params.context?.replyTarget ?? existingState.resumeContext.replyTarget ?? null,
+  };
+  const reopenedResponseSession =
+    existingState.responseSession.status === 'final' || existingState.responseSession.status === 'failed'
+      ? {
+          ...existingState.responseSession,
+          status: 'draft' as const,
+        }
+      : existingState.responseSession;
+
+  const output = await runGraphValueStream(
+    runtime.graph,
+    new Command({
+      goto: resolveContinueNode(existingState),
+      update: Object.entries({
+        messages: [...(existingState.messages as BaseMessage[]), ...(params.appendedMessages ?? [])],
+        resumeContext: snapshotRuntimeContext(mergedContext),
+        replyText: existingState.replyText,
+        responseSession: reopenedResponseSession,
+        waitingState: params.clearWaitingState ? null : existingState.waitingState,
+        completionKind: null,
+        stopReason: 'assistant_turn_completed',
+        deliveryDisposition: existingState.deliveryDisposition,
+        graphStatus: 'running',
+        yieldReason: null,
+        roundsCompleted: 0,
+        activeWindowDurationMs: 0,
+        finalization: buildDefaultFinalization(),
+      }) as [string, unknown][],
+    }),
+    buildRunnableConfig({
+      threadId: params.threadId,
+      recursionLimit: runtime.config.recursionLimit,
+      runId,
+      runName: params.runName?.trim() || 'sage_agent_continue',
+      context: mergedContext,
+      callbacks: telemetry.callbacks,
+      tags: ['sage', 'agent-runtime', 'langgraph', 'continue'],
+      metadata: {
+        threadId: params.threadId,
+        routeKind: mergedContext.routeKind,
+        channelId: mergedContext.channelId,
+        guildId: mergedContext.guildId,
+        userId: mergedContext.userId,
+        continued: true,
+      },
+    }),
+    params.onStateUpdate,
   );
   await telemetry.flush();
   return normalizeGraphResult(output, telemetry.getRunReferences(runId));

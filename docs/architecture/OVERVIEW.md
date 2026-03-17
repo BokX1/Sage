@@ -25,7 +25,7 @@ How Sage processes every message — from raw Discord event to verified, tool-au
 
 ## 💡 Design Philosophy
 
-Sage is a **single-agent runtime** built around one custom LangGraph execution path. Every message flows through `runChatTurn`, which assembles context and then hands control to the agent graph for model calls, tool execution, approval interrupts, resumable continuation pauses, and finalization.
+Sage is a **single-agent runtime** built around one custom LangGraph execution path. Every message flows through `runChatTurn`, which assembles context and then hands control to the agent graph for model calls, tool execution, approval interrupts, durable background yields, and finalization.
 
 **Why single-agent?**
 
@@ -89,7 +89,7 @@ flowchart TD
 | **Chat Engine** | `src/features/chat/chat-engine.ts` | Entry point — receives Discord events, orchestrates `runChatTurn` |
 | **Agent Runtime** | `src/features/agent-runtime/agentRuntime.ts` | The single `runChatTurn` function: model resolution, prompt assembly, graph invocation, trace persistence, and prompt metadata propagation |
 | **Universal Prompt Contract** | `src/features/agent-runtime/promptContract.ts` | Builds Sage's one canonical XML-tagged system contract plus tagged user content, working-memory frame, prompt version, and prompt fingerprint |
-| **Agent Graph Runtime** | `src/features/agent-runtime/langgraph/runtime.ts` | Custom LangGraph runtime for plain-text-first assistant turns, bounded continuation windows, tool execution, approval + continuation interrupts, response-session state, and checkpointed resumes |
+| **Agent Graph Runtime** | `src/features/agent-runtime/langgraph/runtime.ts` | Custom LangGraph runtime for plain-text-first assistant turns, bounded worker slices, tool execution, approval + user-input interrupts, response-session state, and checkpointed resumes |
 | **Tool Registry** | `src/features/agent-runtime/toolRegistry.ts` | Zod-validated tool definitions with runtime execution metadata |
 | **Default Tools** | `src/features/agent-runtime/defaultTools.ts` | All granular built-in tool definitions registered for the runtime |
 
@@ -117,13 +117,13 @@ sequenceDiagram
 
     alt Tool calls detected
         RT->>AG: Enter LangGraph runtime
-        loop One continuation window (up to AGENT_GRAPH_MAX_STEPS assistant/model responses)
+        loop One durable worker slice (up to AGENT_RUN_SLICE_MAX_STEPS assistant/model responses)
             AG->>T: Execute validated tool calls
             T->>AG: Tool results
             AG->>LLM: Feed results back
             LLM->>AG: Next response
         end
-        AG->>RT: Final answer, approval pause, or continuation summary + attachments
+        AG->>RT: Final answer, approval wait, background yield, or attachments
     end
 
     RT->>RT: Persist LangSmith trace + optional AgentTrace ledger
@@ -135,9 +135,9 @@ sequenceDiagram
 
 1. **Single-agent, single-model** — no route-mapped model selection.
 2. **Tool-driven context** — memory, social graph, voice data are fetched through tools, not pre-injected.
-3. **Bounded graph execution** — configurable max tool-capable assistant/model responses per continuation window (`AGENT_GRAPH_MAX_STEPS`); Sage no longer slices tool-call batches or truncates model-facing tool payloads inside the runtime.
+3. **Bounded graph execution** — configurable max tool-capable assistant/model responses per durable worker slice (`AGENT_RUN_SLICE_MAX_STEPS`); Sage no longer slices tool-call batches or truncates model-facing tool payloads inside the runtime.
 4. **Parallel read-only optimization** — read-only tools can execute concurrently within a step through `ToolNode`.
-5. **Clean pause handoff** — when a step window closes cleanly after tool work, Sage can spend one extra no-tools wrap-up response to summarize progress before the Continue handoff; timeout pauses still fall back to the deterministic runtime summary.
+5. **Clean background yield** — when a slice closes cleanly after tool work, Sage can spend one extra no-tools wrap-up response to summarize progress before yielding back to the background worker; timeout handling still falls back to the deterministic runtime summary.
 6. **Prompt-first observability** — every turn carries `promptVersion` and `promptFingerprint` metadata alongside LangGraph tracing so changes to the canonical system contract or lower-priority context-envelope layout are attributable in traces and smoke runs.
 
 ---

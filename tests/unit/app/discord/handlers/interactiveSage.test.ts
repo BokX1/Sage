@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { z } from 'zod';
 
 const generateChatReplyMock = vi.hoisted(() => vi.fn());
-const resumeContinuationChatTurnMock = vi.hoisted(() => vi.fn());
 const retryFailedChatTurnMock = vi.hoisted(() => vi.fn());
 const parseInteractiveSessionCustomIdMock = vi.hoisted(() => vi.fn());
 const getActiveInteractiveSessionMock = vi.hoisted(() => vi.fn());
@@ -21,7 +21,6 @@ vi.mock('@/features/chat/chat-engine', () => ({
 }));
 
 vi.mock('@/features/agent-runtime/agentRuntime', () => ({
-  resumeContinuationChatTurn: resumeContinuationChatTurnMock,
   retryFailedChatTurn: retryFailedChatTurnMock,
 }));
 
@@ -41,6 +40,7 @@ vi.mock('@/features/discord/interactiveComponentService', () => ({
   consumeActiveInteractiveSession: consumeActiveInteractiveSessionMock,
   createInteractiveButtonSession: createInteractiveButtonSessionMock,
   getActiveInteractiveSession: getActiveInteractiveSessionMock,
+  interactiveButtonActionSchema: z.any(),
   parseInteractiveModalCustomId: vi.fn(),
   parseInteractiveSessionCustomId: parseInteractiveSessionCustomIdMock,
 }));
@@ -280,7 +280,7 @@ describe('interactiveSage delivery', () => {
     );
   });
 
-  it('publishes a continuation summary with a Continue button', async () => {
+  it('does not create a legacy Continue button for plain response-session updates', async () => {
     parseInteractiveSessionCustomIdMock.mockReturnValue('session-2');
     getActiveInteractiveSessionMock.mockResolvedValue({
       kind: 'prompt_button',
@@ -292,17 +292,9 @@ describe('interactiveSage delivery', () => {
       expiresAt: new Date('2026-03-14T00:00:00.000Z'),
     });
     generateChatReplyMock.mockResolvedValue({
-      replyText: 'I checked the first batch and can continue from here.',
-      delivery: 'response_session_with_continue',
-      meta: {
-        continuation: {
-          id: 'cont-1',
-          expiresAtIso: '2026-03-13T09:40:00.000Z',
-          completedWindows: 1,
-          maxWindows: 4,
-          summaryText: 'I checked the first batch and can continue from here.',
-        },
-      },
+      replyText: 'I checked the first batch and I am still working in the background.',
+      delivery: 'response_session',
+      meta: undefined,
       files: [],
     });
 
@@ -325,92 +317,10 @@ describe('interactiveSage delivery', () => {
     const handled = await handleInteractiveButtonSession(interaction as never);
 
     expect(handled).toBe(true);
-    expect(createInteractiveButtonSessionMock).toHaveBeenCalledWith({
-      guildId: 'guild-1',
-      channelId: 'channel-1',
-      createdByUserId: 'user-1',
-      action: {
-        type: 'graph_continue',
-        continuationId: 'cont-1',
-        visibility: 'ephemeral',
-      },
-    });
+    expect(createInteractiveButtonSessionMock).not.toHaveBeenCalled();
     expect(interaction.editReply).toHaveBeenCalledWith(
       expect.objectContaining({
-        flags: 32768,
-        components: [
-          expect.objectContaining({
-            type: 17,
-            components: expect.arrayContaining([
-              expect.objectContaining({
-                content: 'I checked the first batch and can continue from here.',
-              }),
-              expect.objectContaining({
-                type: 1,
-                components: [
-                  expect.objectContaining({
-                    custom_id: 'sage:ui:continue-1',
-                    label: 'Continue (2/4)',
-                  }),
-                ],
-              }),
-            ]),
-          }),
-        ],
-      }),
-    );
-  });
-
-  it('still publishes a continuation summary when button session creation fails', async () => {
-    parseInteractiveSessionCustomIdMock.mockReturnValue('session-2b');
-    getActiveInteractiveSessionMock.mockResolvedValue({
-      kind: 'prompt_button',
-      prompt: 'keep going',
-      visibility: 'ephemeral',
-      guildId: 'guild-1',
-      channelId: 'channel-1',
-      createdByUserId: 'user-1',
-      expiresAt: new Date('2026-03-14T00:00:00.000Z'),
-    });
-    createInteractiveButtonSessionMock.mockRejectedValueOnce(new Error('session store offline'));
-    generateChatReplyMock.mockResolvedValue({
-      replyText: 'I checked the first batch and can continue from here.',
-      delivery: 'response_session_with_continue',
-      meta: {
-        continuation: {
-          id: 'cont-1b',
-          expiresAtIso: '2026-03-13T09:40:00.000Z',
-          completedWindows: 1,
-          maxWindows: 4,
-          summaryText: 'I checked the first batch and can continue from here.',
-        },
-      },
-      files: [],
-    });
-
-    const interaction = {
-      customId: 'session-2b',
-      channelId: 'channel-1',
-      guildId: 'guild-1',
-      user: { id: 'user-1', username: 'user1', globalName: 'User One' },
-      member: { displayName: 'User One' },
-      deferred: false,
-      replied: false,
-      deferReply: vi.fn(async () => {
-        interaction.deferred = true;
-      }),
-      editReply: vi.fn(async () => undefined),
-      reply: vi.fn(async () => undefined),
-      followUp: vi.fn(async () => undefined),
-    };
-
-    const handled = await handleInteractiveButtonSession(interaction as never);
-
-    expect(handled).toBe(true);
-    expect(interaction.editReply).toHaveBeenCalledWith(
-      expect.objectContaining({
-        content: 'I checked the first batch and can continue from here.',
-        files: [],
+        content: 'I checked the first batch and I am still working in the background.',
       }),
     );
   });
@@ -487,84 +397,6 @@ describe('interactiveSage delivery', () => {
                     label: 'Retry',
                   }),
                 ],
-              }),
-            ]),
-          }),
-        ],
-      }),
-    );
-  });
-
-  it('resumes graph continuation sessions instead of generating a fresh prompt turn', async () => {
-    parseInteractiveSessionCustomIdMock.mockReturnValue('session-3');
-    getActiveInteractiveSessionMock.mockResolvedValue({
-      kind: 'graph_continue_button',
-      continuationId: 'cont-2',
-      visibility: 'ephemeral',
-      guildId: 'guild-1',
-      channelId: 'channel-1',
-      createdByUserId: 'user-1',
-      expiresAt: new Date('2026-03-14T00:00:00.000Z'),
-    });
-    resumeContinuationChatTurnMock.mockResolvedValue({
-      replyText: 'Resumed and finished.',
-      delivery: 'response_session',
-      meta: undefined,
-      files: [],
-    });
-
-    const interaction = {
-      customId: 'session-3',
-      id: 'interaction-3',
-      channelId: 'channel-1',
-      guildId: 'guild-1',
-      user: { id: 'user-1', username: 'user1', globalName: 'User One' },
-      member: { displayName: 'User One' },
-      deferred: false,
-      replied: false,
-      deferReply: vi.fn(async () => {
-        interaction.deferred = true;
-      }),
-      deferUpdate: vi.fn(async () => {
-        interaction.deferred = true;
-      }),
-      editReply: vi.fn(async () => undefined),
-      reply: vi.fn(async () => undefined),
-      followUp: vi.fn(async () => undefined),
-    };
-
-    const handled = await handleInteractiveButtonSession(interaction as never);
-
-    expect(handled).toBe(true);
-    expect(resumeContinuationChatTurnMock).toHaveBeenCalledWith({
-      traceId: 'trace-1',
-      userId: 'user-1',
-      channelId: 'channel-1',
-      guildId: 'guild-1',
-      continuationId: 'cont-2',
-      isAdmin: true,
-      canModerate: true,
-    });
-    expect(consumeActiveInteractiveSessionMock).toHaveBeenCalledWith('session-3', {
-      kind: 'graph_continue_button',
-      continuationId: 'cont-2',
-      visibility: 'ephemeral',
-      guildId: 'guild-1',
-      channelId: 'channel-1',
-      createdByUserId: 'user-1',
-      expiresAt: new Date('2026-03-14T00:00:00.000Z'),
-    });
-    expect(generateChatReplyMock).not.toHaveBeenCalled();
-    expect(interaction.deferUpdate).toHaveBeenCalledTimes(1);
-    expect(interaction.editReply).toHaveBeenCalledWith(
-      expect.objectContaining({
-        flags: 32768,
-        components: [
-          expect.objectContaining({
-            type: 17,
-            components: expect.arrayContaining([
-              expect.objectContaining({
-                content: 'Resumed and finished.',
               }),
             ]),
           }),
@@ -651,132 +483,6 @@ describe('interactiveSage delivery', () => {
         ],
       }),
     );
-  });
-
-  it('rejects Continue clicks from a different user before attempting resume', async () => {
-    parseInteractiveSessionCustomIdMock.mockReturnValue('session-4');
-    getActiveInteractiveSessionMock.mockResolvedValue({
-      kind: 'graph_continue_button',
-      continuationId: 'cont-3',
-      visibility: 'public',
-      guildId: 'guild-1',
-      channelId: 'channel-1',
-      createdByUserId: 'user-owner',
-      expiresAt: new Date('2026-03-14T00:00:00.000Z'),
-    });
-
-    const interaction = {
-      customId: 'session-4',
-      id: 'interaction-4',
-      channelId: 'channel-1',
-      guildId: 'guild-1',
-      user: { id: 'user-other', username: 'user2', globalName: 'User Two' },
-      member: { displayName: 'User Two' },
-      deferred: false,
-      replied: false,
-      deferReply: vi.fn(async () => undefined),
-      editReply: vi.fn(async () => undefined),
-      reply: vi.fn(async () => undefined),
-      followUp: vi.fn(async () => undefined),
-    };
-
-    const handled = await handleInteractiveButtonSession(interaction as never);
-
-    expect(handled).toBe(true);
-    expect(consumeActiveInteractiveSessionMock).not.toHaveBeenCalled();
-    expect(resumeContinuationChatTurnMock).not.toHaveBeenCalled();
-    expect(interaction.reply).toHaveBeenCalledWith({
-      content: 'I can only continue this for the person who started it.',
-      ephemeral: true,
-    });
-  });
-
-  it('rejects Continue clicks from the wrong channel with a channel-specific recovery hint', async () => {
-    parseInteractiveSessionCustomIdMock.mockReturnValue('session-5');
-    getActiveInteractiveSessionMock.mockResolvedValue({
-      kind: 'graph_continue_button',
-      continuationId: 'cont-4',
-      visibility: 'public',
-      guildId: 'guild-1',
-      channelId: 'channel-home',
-      createdByUserId: 'user-1',
-      expiresAt: new Date('2026-03-14T00:00:00.000Z'),
-    });
-
-    const interaction = {
-      customId: 'session-5',
-      id: 'interaction-5',
-      channelId: 'channel-other',
-      guildId: 'guild-1',
-      user: { id: 'user-1', username: 'user1', globalName: 'User One' },
-      member: { displayName: 'User One' },
-      deferred: false,
-      replied: false,
-      deferReply: vi.fn(async () => undefined),
-      editReply: vi.fn(async () => undefined),
-      reply: vi.fn(async () => undefined),
-      followUp: vi.fn(async () => undefined),
-    };
-
-    const handled = await handleInteractiveButtonSession(interaction as never);
-
-    expect(handled).toBe(true);
-    expect(consumeActiveInteractiveSessionMock).not.toHaveBeenCalled();
-    expect(resumeContinuationChatTurnMock).not.toHaveBeenCalled();
-    expect(interaction.reply).toHaveBeenCalledWith({
-      content: 'I can only continue this in <#channel-home>.',
-      ephemeral: true,
-    });
-  });
-
-  it('blocks repeated Continue clicks after the first session claim', async () => {
-    parseInteractiveSessionCustomIdMock.mockReturnValue('session-continue-repeat');
-    getActiveInteractiveSessionMock.mockResolvedValue({
-      kind: 'graph_continue_button',
-      continuationId: 'cont-repeat',
-      visibility: 'ephemeral',
-      guildId: 'guild-1',
-      channelId: 'channel-1',
-      createdByUserId: 'user-1',
-      expiresAt: new Date('2026-03-14T00:00:00.000Z'),
-    });
-    consumeActiveInteractiveSessionMock.mockResolvedValueOnce(false);
-
-    const interaction = {
-      customId: 'session-continue-repeat',
-      id: 'interaction-continue-repeat',
-      channelId: 'channel-1',
-      guildId: 'guild-1',
-      user: { id: 'user-1', username: 'user1', globalName: 'User One' },
-      member: { displayName: 'User One' },
-      deferred: false,
-      replied: false,
-      deferUpdate: vi.fn(async () => {
-        interaction.deferred = true;
-      }),
-      editReply: vi.fn(async () => undefined),
-      reply: vi.fn(async () => undefined),
-      followUp: vi.fn(async () => undefined),
-    };
-
-    const handled = await handleInteractiveButtonSession(interaction as never);
-
-    expect(handled).toBe(true);
-    expect(consumeActiveInteractiveSessionMock).toHaveBeenCalledWith('session-continue-repeat', {
-      kind: 'graph_continue_button',
-      continuationId: 'cont-repeat',
-      visibility: 'ephemeral',
-      guildId: 'guild-1',
-      channelId: 'channel-1',
-      createdByUserId: 'user-1',
-      expiresAt: new Date('2026-03-14T00:00:00.000Z'),
-    });
-    expect(resumeContinuationChatTurnMock).not.toHaveBeenCalled();
-    expect(interaction.deferUpdate).not.toHaveBeenCalled();
-    expect(interaction.reply).toHaveBeenCalledWith({
-      content: 'That Sage button was already used, so please ask me for a new one if you still need it.',
-      ephemeral: true,
-    });
   });
 
   it('blocks repeated Retry clicks after the first session claim', async () => {
