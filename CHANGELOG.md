@@ -30,6 +30,7 @@
 
 ### Fixed
 - The Prisma baseline migration now enables `pgvector` before creating embedding columns, so clean database rebuilds do not fail when `AttachmentChunk` and `ChannelMessageEmbedding` are created on a fresh Postgres instance.
+- Fixed durable response-session resume handling so Sage no longer loses the real Discord draft message id after a yield, create a second visible reply for the same task run after process recovery, briefly flash stale pre-restart draft text before the resumed stream catches up, or anchor replacement waiting-input replies to the wrong prior message when the original draft is missing.
 
 ### Changed
 - Reworked Sage's LangGraph runtime around durable long-running task runs, so normal long tool workflows now keep progressing automatically in the background on the same Discord response session instead of surfacing manual Continue prompts at every slice boundary.

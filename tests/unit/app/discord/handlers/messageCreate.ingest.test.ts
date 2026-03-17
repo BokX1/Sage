@@ -466,6 +466,232 @@ describe('messageCreate - ingest + reply gating', () => {
     expect(mockAttachTaskRunResponseSession).not.toHaveBeenCalled();
   });
 
+  it('reuses the persisted response-session json ids after restart when the top-level responseMessageId is missing', async () => {
+    const message = createMockMessage({
+      content: 'sage deep dive this',
+    }) as unknown as Message & {
+      __responseMessage: { id: string; edit: ReturnType<typeof vi.fn> };
+      __sourceMessage: { id: string };
+      reply: ReturnType<typeof vi.fn>;
+    };
+    mockFindWaitingUserInputTaskRun.mockResolvedValueOnce({
+      id: 'run-2',
+      threadId: 'thread-restart-existing',
+      sourceMessageId: message.__sourceMessage.id,
+      responseMessageId: null,
+      responseSessionJson: {
+        responseSessionId: 'thread-restart-existing',
+        status: 'draft',
+        latestText: 'Existing draft',
+        draftRevision: 1,
+        sourceMessageId: message.__sourceMessage.id,
+        responseMessageId: message.__responseMessage.id,
+        linkedArtifactMessageIds: [],
+      },
+    });
+    mockResumeWaitingTaskRunWithInput.mockImplementationOnce(async (params) => {
+      await params.onResponseSessionUpdate?.({
+        replyText: 'Updated after restart',
+        delivery: 'response_session',
+        responseSession: {
+          responseSessionId: 'thread-restart-existing',
+          status: 'draft',
+          latestText: 'Updated after restart',
+          draftRevision: 2,
+          sourceMessageId: message.__sourceMessage.id,
+          responseMessageId: null,
+          linkedArtifactMessageIds: [],
+        },
+        pendingInterrupt: null,
+        completionKind: null,
+        stopReason: 'background_yield',
+      });
+
+      return {
+        runId: 'thread-restart-existing',
+        status: 'completed',
+        replyText: 'Updated after restart',
+        delivery: 'response_session',
+        responseSession: {
+          responseSessionId: 'thread-restart-existing',
+          status: 'final',
+          latestText: 'Updated after restart',
+          draftRevision: 2,
+          sourceMessageId: message.__sourceMessage.id,
+          responseMessageId: null,
+          linkedArtifactMessageIds: [],
+        },
+        files: [],
+      };
+    });
+
+    await handleMessageCreate(message);
+
+    expect(message.__responseMessage.edit).toHaveBeenCalled();
+    expect(message.reply).not.toHaveBeenCalled();
+    expect(mockAttachTaskRunResponseSession).not.toHaveBeenCalled();
+  });
+
+  it('ignores stale resumed draft replays before applying the next real update', async () => {
+    const message = createMockMessage({
+      content: 'sage continue',
+    }) as unknown as Message & {
+      __responseMessage: { id: string; content: string; edit: ReturnType<typeof vi.fn> };
+      __sourceMessage: { id: string };
+      reply: ReturnType<typeof vi.fn>;
+    };
+    message.__responseMessage.content = 'Existing draft';
+    mockFindWaitingUserInputTaskRun.mockResolvedValueOnce({
+      id: 'run-3',
+      threadId: 'thread-stale-replay',
+      sourceMessageId: message.__sourceMessage.id,
+      responseMessageId: message.__responseMessage.id,
+      responseSessionJson: {
+        responseSessionId: 'thread-stale-replay',
+        status: 'draft',
+        latestText: 'Existing draft',
+        draftRevision: 4,
+        sourceMessageId: message.__sourceMessage.id,
+        responseMessageId: message.__responseMessage.id,
+        linkedArtifactMessageIds: [],
+      },
+    });
+    mockResumeWaitingTaskRunWithInput.mockImplementationOnce(async (params) => {
+      await params.onResponseSessionUpdate?.({
+        replyText: 'Existing draft',
+        delivery: 'response_session',
+        responseSession: {
+          responseSessionId: 'thread-stale-replay',
+          status: 'draft',
+          latestText: 'Existing draft',
+          draftRevision: 5,
+          sourceMessageId: message.__sourceMessage.id,
+          responseMessageId: message.__responseMessage.id,
+          linkedArtifactMessageIds: [],
+        },
+        pendingInterrupt: null,
+        completionKind: null,
+        stopReason: 'background_yield',
+      });
+      await params.onResponseSessionUpdate?.({
+        replyText: 'Fresh resumed draft',
+        delivery: 'response_session',
+        responseSession: {
+          responseSessionId: 'thread-stale-replay',
+          status: 'draft',
+          latestText: 'Fresh resumed draft',
+          draftRevision: 6,
+          sourceMessageId: message.__sourceMessage.id,
+          responseMessageId: message.__responseMessage.id,
+          linkedArtifactMessageIds: [],
+        },
+        pendingInterrupt: null,
+        completionKind: null,
+        stopReason: 'background_yield',
+      });
+
+      return {
+        runId: 'thread-stale-replay',
+        status: 'completed',
+        replyText: 'Fresh resumed draft',
+        delivery: 'response_session',
+        responseSession: {
+          responseSessionId: 'thread-stale-replay',
+          status: 'final',
+          latestText: 'Fresh resumed draft',
+          draftRevision: 6,
+          sourceMessageId: message.__sourceMessage.id,
+          responseMessageId: message.__responseMessage.id,
+          linkedArtifactMessageIds: [],
+        },
+        files: [],
+      };
+    });
+
+    await handleMessageCreate(message);
+
+    expect(message.__responseMessage.edit).toHaveBeenCalledTimes(1);
+    expect(message.__responseMessage.edit).toHaveBeenCalledWith({
+      content: 'Fresh resumed draft',
+      allowedMentions: { repliedUser: false },
+    });
+    expect(message.reply).not.toHaveBeenCalled();
+  });
+
+  it('replies to the current follow-up when the original waiting draft message is missing', async () => {
+    const message = createMockMessage({
+      content: 'sage here is more detail',
+    }) as unknown as Message & {
+      __responseMessage: { id: string; edit: ReturnType<typeof vi.fn> };
+      __sourceMessage: { id: string; reply: ReturnType<typeof vi.fn> };
+      reply: ReturnType<typeof vi.fn>;
+      channel: {
+        messages: { fetch: ReturnType<typeof vi.fn> };
+      };
+    };
+    message.channel.messages.fetch.mockImplementation(async (messageId: string) => {
+      if (messageId === message.__sourceMessage.id) {
+        return message.__sourceMessage;
+      }
+      throw new Error(`Unknown message id: ${messageId}`);
+    });
+    mockFindWaitingUserInputTaskRun.mockResolvedValueOnce({
+      id: 'run-4',
+      threadId: 'thread-missing-response-message',
+      sourceMessageId: message.__sourceMessage.id,
+      responseMessageId: 'missing-response-message',
+      responseSessionJson: {
+        responseSessionId: 'thread-missing-response-message',
+        status: 'draft',
+        latestText: 'Need your follow-up',
+        draftRevision: 1,
+        sourceMessageId: message.__sourceMessage.id,
+        responseMessageId: 'missing-response-message',
+        linkedArtifactMessageIds: [],
+      },
+    });
+    mockResumeWaitingTaskRunWithInput.mockImplementationOnce(async (params) => {
+      await params.onResponseSessionUpdate?.({
+        replyText: 'Thanks, continuing now.',
+        delivery: 'response_session',
+        responseSession: {
+          responseSessionId: 'thread-missing-response-message',
+          status: 'draft',
+          latestText: 'Thanks, continuing now.',
+          draftRevision: 2,
+          sourceMessageId: message.__sourceMessage.id,
+          responseMessageId: null,
+          linkedArtifactMessageIds: [],
+        },
+        pendingInterrupt: null,
+        completionKind: null,
+        stopReason: 'background_yield',
+      });
+
+      return {
+        runId: 'thread-missing-response-message',
+        status: 'completed',
+        replyText: 'Thanks, continuing now.',
+        delivery: 'response_session',
+        responseSession: {
+          responseSessionId: 'thread-missing-response-message',
+          status: 'final',
+          latestText: 'Thanks, continuing now.',
+          draftRevision: 2,
+          sourceMessageId: message.__sourceMessage.id,
+          responseMessageId: null,
+          linkedArtifactMessageIds: [],
+        },
+        files: [],
+      };
+    });
+
+    await handleMessageCreate(message);
+
+    expect(message.reply).toHaveBeenCalled();
+    expect(message.__sourceMessage.reply).not.toHaveBeenCalled();
+  });
+
   it('attaches a Retry button when the runtime returns retry metadata', async () => {
     mockGenerateChatReply.mockResolvedValueOnce({
       replyText: 'I lost the model connection before I could finish, so please try again.',

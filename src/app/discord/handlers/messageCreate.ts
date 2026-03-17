@@ -315,6 +315,7 @@ type SendableTypingChannel = {
 
 type EditableResponseMessage = {
   id: string;
+  content?: string;
   edit: (...args: unknown[]) => Promise<unknown>;
 };
 
@@ -325,6 +326,34 @@ async function editResponseSessionMessage(
   await message.edit(payload);
 }
 
+function readPersistedTaskRunResponseSession(taskRun: AgentTaskRunRecord | null): {
+  sourceMessageId: string | null;
+  responseMessageId: string | null;
+  latestText: string | null;
+  draftRevision: number | null;
+} {
+  if (!taskRun?.responseSessionJson || typeof taskRun.responseSessionJson !== 'object' || Array.isArray(taskRun.responseSessionJson)) {
+    return {
+      sourceMessageId: taskRun?.sourceMessageId ?? null,
+      responseMessageId: taskRun?.responseMessageId ?? null,
+      latestText: null,
+      draftRevision: null,
+    };
+  }
+
+  const session = taskRun.responseSessionJson as Record<string, unknown>;
+  return {
+    sourceMessageId:
+      taskRun.sourceMessageId ??
+      (typeof session.sourceMessageId === 'string' ? session.sourceMessageId : null),
+    responseMessageId:
+      taskRun.responseMessageId ??
+      (typeof session.responseMessageId === 'string' ? session.responseMessageId : null),
+    latestText: typeof session.latestText === 'string' ? session.latestText : null,
+    draftRevision: typeof session.draftRevision === 'number' ? session.draftRevision : null,
+  };
+}
+
 async function resolveExistingTaskRunResponseMessage(
   channel: Message['channel'],
   waitingTaskRun: AgentTaskRunRecord | null,
@@ -333,8 +362,9 @@ async function resolveExistingTaskRunResponseMessage(
     return null;
   }
 
-  if (waitingTaskRun.responseMessageId) {
-    const responseMessage = await channel.messages.fetch(waitingTaskRun.responseMessageId).catch(() => null);
+  const persistedRefs = readPersistedTaskRunResponseSession(waitingTaskRun);
+  if (persistedRefs.responseMessageId) {
+    const responseMessage = await channel.messages.fetch(persistedRefs.responseMessageId).catch(() => null);
     if (responseMessage) {
       return responseMessage as EditableResponseMessage;
     }
@@ -342,18 +372,6 @@ async function resolveExistingTaskRunResponseMessage(
 
   return null;
 }
-
-async function resolveTaskRunReplyBaseMessage(
-  channel: Message['channel'],
-  waitingTaskRun: AgentTaskRunRecord | null,
-): Promise<Message | null> {
-  if (!waitingTaskRun || !('messages' in channel) || !channel.messages?.fetch || !waitingTaskRun.sourceMessageId) {
-    return null;
-  }
-
-  return channel.messages.fetch(waitingTaskRun.sourceMessageId).catch(() => null);
-}
-
 function isSendableTypingChannel(
   channel: Message['channel'],
 ): channel is Message['channel'] & SendableTypingChannel {
@@ -777,14 +795,15 @@ export async function handleMessageCreate(message: Message) {
         replyToMessageId: referencedMessage?.id ?? null,
       });
       let responseSessionMessage = await resolveExistingTaskRunResponseMessage(message.channel, waitingTaskRun);
+      const persistedTaskRunResponseSession = readPersistedTaskRunResponseSession(waitingTaskRun);
       const responseSessionThreadId = waitingTaskRun?.threadId ?? traceId;
-      const responseSessionSourceMessageId = waitingTaskRun?.sourceMessageId ?? message.id;
+      const responseSessionSourceMessageId = persistedTaskRunResponseSession.sourceMessageId ?? message.id;
       let responseSessionReplyBase =
-        waitingTaskRun && !responseSessionMessage
-          ? await resolveTaskRunReplyBaseMessage(message.channel, waitingTaskRun)
-          : null;
-      let responseSessionRevision = -1;
-      let responseSessionText = '';
+        waitingTaskRun && !responseSessionMessage ? message : null;
+      let responseSessionRevision = persistedTaskRunResponseSession.draftRevision ?? -1;
+      let responseSessionText =
+        (typeof responseSessionMessage?.content === 'string' ? responseSessionMessage.content.trim() : '') ||
+        (persistedTaskRunResponseSession.latestText?.trim() ?? '');
       const onResponseSessionUpdate: NonNullable<RunChatTurnParams['onResponseSessionUpdate']> = async (update) => {
         if (update.responseSession.draftRevision <= responseSessionRevision) {
           return;
@@ -924,38 +943,45 @@ export async function handleMessageCreate(message: Message) {
         const shouldUseRuntimeCard = !!actionButton;
 
         if ((shouldUseRuntimeCard && (firstReplyContent || files.length > 0)) || firstReplyContent || files.length > 0) {
-        const primaryPayload = shouldUseRuntimeCard
-          ? buildRuntimeResponseCardPayload({
-              text: firstReplyContent || '\u200b',
-              tone: retry ? 'retry' : approvalQueued ? 'notice' : 'notice',
-              button: actionButton,
-              files,
-              allowedMentions: { repliedUser: false },
+          const primaryPayload = shouldUseRuntimeCard
+            ? buildRuntimeResponseCardPayload({
+                text: firstReplyContent || '\u200b',
+                tone: retry ? 'retry' : approvalQueued ? 'notice' : 'notice',
+                button: actionButton,
+                files,
+                allowedMentions: { repliedUser: false },
               })
             : {
                 content: firstReplyContent,
                 allowedMentions: { repliedUser: false },
                 files,
               };
-          if (responseSessionMessage) {
-            await editResponseSessionMessage(responseSessionMessage, primaryPayload);
-          } else {
-            responseSessionMessage = (await (responseSessionReplyBase ?? message).reply(primaryPayload)) as EditableResponseMessage;
-            responseSessionReplyBase = null;
-            void attachTaskRunResponseSession({
-              threadId: responseSessionThreadId,
-              sourceMessageId: responseSessionSourceMessageId,
-              responseMessageId: responseSessionMessage.id,
-              responseSession: result.responseSession
-                ? {
-                    ...result.responseSession,
-                    responseMessageId: responseSessionMessage.id,
-                    sourceMessageId: result.responseSession.sourceMessageId ?? responseSessionSourceMessageId,
-                  }
-                : undefined,
-            }).catch((error) => {
-              loggerWithTrace.warn({ error, traceId: responseSessionThreadId }, 'Failed to persist final response session attachment');
-            });
+          const canSkipPrimaryEdit =
+            !!responseSessionMessage &&
+            !shouldUseRuntimeCard &&
+            files.length === 0 &&
+            (firstReplyContent ?? '') === responseSessionText;
+          if (!canSkipPrimaryEdit) {
+            if (responseSessionMessage) {
+              await editResponseSessionMessage(responseSessionMessage, primaryPayload);
+            } else {
+              responseSessionMessage = (await (responseSessionReplyBase ?? message).reply(primaryPayload)) as EditableResponseMessage;
+              responseSessionReplyBase = null;
+              void attachTaskRunResponseSession({
+                threadId: responseSessionThreadId,
+                sourceMessageId: responseSessionSourceMessageId,
+                responseMessageId: responseSessionMessage.id,
+                responseSession: result.responseSession
+                  ? {
+                      ...result.responseSession,
+                      responseMessageId: responseSessionMessage.id,
+                      sourceMessageId: result.responseSession.sourceMessageId ?? responseSessionSourceMessageId,
+                    }
+                  : undefined,
+              }).catch((error) => {
+                loggerWithTrace.warn({ error, traceId: responseSessionThreadId }, 'Failed to persist final response session attachment');
+              });
+            }
           }
           didSendAnything = true;
           responseSessionText = firstReplyContent || '\u200b';

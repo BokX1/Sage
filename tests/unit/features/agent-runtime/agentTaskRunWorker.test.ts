@@ -261,4 +261,94 @@ describe('agentTaskRunWorker', () => {
       }),
     );
   });
+
+  it('reuses the persisted response-session json ids after restart when the top-level responseMessageId is missing', async () => {
+    listRunnableAgentTaskRunsMock.mockReset();
+    listRunnableAgentTaskRunsMock
+      .mockResolvedValueOnce([
+        {
+          id: 'task-2',
+          threadId: 'thread-2',
+          guildId: 'guild-1',
+          channelId: 'channel-1',
+          requestedByUserId: 'user-1',
+          sourceMessageId: 'message-2',
+          responseMessageId: null,
+          responseSessionJson: {
+            responseSessionId: 'thread-2',
+            status: 'draft',
+            latestText: 'Existing draft',
+            draftRevision: 1,
+            sourceMessageId: 'message-2',
+            responseMessageId: 'response-2',
+            linkedArtifactMessageIds: [],
+          },
+          checkpointMetadataJson: { isAdmin: true, canModerate: false },
+        },
+      ])
+      .mockResolvedValue([]);
+
+    const sourceMessage = {
+      id: 'message-2',
+      edit: vi.fn().mockResolvedValue(undefined),
+      reply: vi.fn(),
+    };
+    const responseMessage = {
+      id: 'response-2',
+      edit: vi.fn().mockResolvedValue(undefined),
+    };
+    sourceMessage.reply.mockResolvedValue(responseMessage);
+
+    clientMock.channels.fetch.mockImplementation(async () =>
+      ({
+        isTextBased: () => true,
+        send: vi.fn().mockResolvedValue(responseMessage),
+        messages: {
+          fetch: vi.fn(async (messageId: string) => {
+            if (messageId === 'message-2') {
+              return sourceMessage;
+            }
+            if (messageId === 'response-2') {
+              return responseMessage;
+            }
+            throw new Error(`Unexpected fetch: ${messageId}`);
+          }),
+        },
+      }) as never,
+    );
+
+    resumeBackgroundTaskRunMock.mockResolvedValue({
+      runId: 'thread-2',
+      status: 'completed',
+      replyText: 'Updated after restart',
+      delivery: 'response_session',
+      responseSession: {
+        responseSessionId: 'thread-2',
+        status: 'final',
+        latestText: 'Updated after restart',
+        draftRevision: 2,
+        sourceMessageId: 'message-2',
+        responseMessageId: null,
+        linkedArtifactMessageIds: [],
+      },
+      files: [],
+    });
+
+    initAgentTaskRunWorker();
+    await vi.advanceTimersByTimeAsync(1_000);
+    await Promise.resolve();
+
+    expect(sourceMessage.reply).not.toHaveBeenCalled();
+    expect(responseMessage.edit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: 'Updated after restart',
+      }),
+    );
+    expect(attachTaskRunResponseSessionMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        threadId: 'thread-2',
+        responseMessageId: 'response-2',
+      }),
+    );
+  });
 });

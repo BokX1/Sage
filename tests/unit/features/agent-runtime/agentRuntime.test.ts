@@ -988,6 +988,87 @@ describe('agentRuntime', () => {
     });
   });
 
+  it('preserves the persisted response message id when a resumed graph result omits it', async () => {
+    const now = Date.now();
+    getAgentTaskRunByThreadIdMock.mockResolvedValue({
+      id: 'task-2b',
+      threadId: 'thread-2b',
+      originTraceId: 'trace-origin',
+      latestTraceId: 'trace-latest',
+      guildId: 'guild-1',
+      channelId: 'channel-1',
+      requestedByUserId: 'user-1',
+      sourceMessageId: 'message-source-2b',
+      responseMessageId: 'response-existing-2b',
+      status: 'running',
+      waitingKind: null,
+      latestDraftText: 'summary',
+      draftRevision: 1,
+      completionKind: null,
+      stopReason: 'background_yield',
+      nextRunnableAt: new Date(Date.now() + 60_000),
+      leaseOwner: 'worker-1',
+      leaseExpiresAt: new Date(Date.now() + 60_000),
+      heartbeatAt: new Date(),
+      resumeCount: 1,
+      taskWallClockMs: 1200,
+      maxTotalDurationMs: 3_600_000,
+      maxIdleWaitMs: 86_400_000,
+      lastErrorText: null,
+      responseSessionJson: {
+        responseSessionId: 'thread-2b',
+        status: 'draft',
+        latestText: 'summary',
+        draftRevision: 1,
+        sourceMessageId: 'message-source-2b',
+        responseMessageId: 'response-existing-2b',
+        linkedArtifactMessageIds: [],
+      },
+      waitingStateJson: null,
+      compactionStateJson: null,
+      checkpointMetadataJson: { isAdmin: true, canModerate: false },
+      startedAt: new Date(now - 5 * 60_000),
+      completedAt: null,
+      createdAt: new Date(now - 5 * 60_000),
+      updatedAt: new Date(now - 5_000),
+    });
+    continueAgentGraphTurnMock.mockResolvedValue(
+      makeGraphResult({
+        replyText: 'Resumed and finished.',
+        activeWindowDurationMs: 500,
+        responseSession: {
+          responseSessionId: 'thread-2b',
+          status: 'final',
+          latestText: 'Resumed and finished.',
+          draftRevision: 2,
+          sourceMessageId: 'message-source-2b',
+          responseMessageId: null,
+          linkedArtifactMessageIds: [],
+        },
+      }),
+    );
+
+    await resumeBackgroundTaskRun({
+      traceId: 'trace-resume-2b',
+      threadId: 'thread-2b',
+      userId: 'user-1',
+      channelId: 'channel-1',
+      guildId: 'guild-1',
+      isAdmin: true,
+    });
+
+    expect(upsertAgentTaskRunMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        threadId: 'thread-2b',
+        responseMessageId: 'response-existing-2b',
+        responseSessionJson: expect.objectContaining({
+          responseMessageId: 'response-existing-2b',
+          sourceMessageId: 'message-source-2b',
+        }),
+      }),
+    );
+  });
+
   it('uses route-aware runtime failure copy when background resume throws', async () => {
     const now = Date.now();
     getAgentTaskRunByThreadIdMock.mockResolvedValue({

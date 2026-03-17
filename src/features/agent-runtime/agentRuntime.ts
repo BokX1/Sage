@@ -258,6 +258,38 @@ async function buildRunChatTurnMeta(params: {
 
 type RuntimeGraphResult = Awaited<ReturnType<typeof runAgentGraphTurn>>;
 
+type PersistedResponseSessionRefs = {
+  sourceMessageId: string | null;
+  responseMessageId: string | null;
+};
+
+function readPersistedResponseSessionRefs(value: unknown): PersistedResponseSessionRefs {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return {
+      sourceMessageId: null,
+      responseMessageId: null,
+    };
+  }
+
+  const record = value as Record<string, unknown>;
+  return {
+    sourceMessageId: typeof record.sourceMessageId === 'string' ? record.sourceMessageId : null,
+    responseMessageId: typeof record.responseMessageId === 'string' ? record.responseMessageId : null,
+  };
+}
+
+function mergeResponseSessionRefs(
+  existingValue: unknown,
+  nextValue: RuntimeGraphResult['responseSession'],
+): RuntimeGraphResult['responseSession'] {
+  const existingRefs = readPersistedResponseSessionRefs(existingValue);
+  return {
+    ...nextValue,
+    sourceMessageId: nextValue?.sourceMessageId ?? existingRefs.sourceMessageId,
+    responseMessageId: nextValue?.responseMessageId ?? existingRefs.responseMessageId,
+  };
+}
+
 function toPendingInterruptSummary(
   pendingInterrupt: RuntimeGraphResult['pendingInterrupt'],
 ): { kind: 'approval_review'; requestId: string } | null {
@@ -355,6 +387,11 @@ async function persistTaskRunFromGraphResult(params: {
   resumeCount?: number;
 }): Promise<void> {
   const status = deriveTaskRunStatus(params.graphResult);
+  const mergedResponseSession = mergeResponseSessionRefs(
+    params.existingTaskRun?.responseSessionJson,
+    params.graphResult.responseSession,
+  );
+  const persistedResponseRefs = readPersistedResponseSessionRefs(params.existingTaskRun?.responseSessionJson);
   const accumulatedWallClockMs =
     (params.existingTaskRun?.taskWallClockMs ?? 0) +
     Math.max(0, Math.trunc(params.graphResult.activeWindowDurationMs ?? 0));
@@ -365,8 +402,15 @@ async function persistTaskRunFromGraphResult(params: {
     guildId: params.existingTaskRun?.guildId ?? params.guildId,
     channelId: params.existingTaskRun?.channelId ?? params.channelId,
     requestedByUserId: params.existingTaskRun?.requestedByUserId ?? params.userId,
-    sourceMessageId: params.existingTaskRun?.sourceMessageId ?? params.sourceMessageId,
-    responseMessageId: params.graphResult.responseSession.responseMessageId,
+    sourceMessageId:
+      params.existingTaskRun?.sourceMessageId ??
+      mergedResponseSession.sourceMessageId ??
+      persistedResponseRefs.sourceMessageId ??
+      params.sourceMessageId,
+    responseMessageId:
+      mergedResponseSession.responseMessageId ??
+      params.existingTaskRun?.responseMessageId ??
+      persistedResponseRefs.responseMessageId,
     status: status === 'waiting_approval' ? 'waiting_approval' : status === 'waiting_user_input' ? 'waiting_user_input' : status === 'running' ? 'running' : status === 'failed' ? 'failed' : status === 'cancelled' ? 'cancelled' : 'completed',
     waitingKind:
       status === 'waiting_approval'
@@ -374,15 +418,15 @@ async function persistTaskRunFromGraphResult(params: {
         : status === 'waiting_user_input'
           ? 'user_input'
           : null,
-    latestDraftText: params.graphResult.responseSession.latestText || params.graphResult.replyText,
-    draftRevision: params.graphResult.responseSession.draftRevision,
+    latestDraftText: mergedResponseSession.latestText || params.graphResult.replyText,
+    draftRevision: mergedResponseSession.draftRevision,
     completionKind: params.graphResult.completionKind,
     stopReason: params.graphResult.stopReason,
     nextRunnableAt:
       status === 'running'
         ? new Date(Date.now() + params.graphConfig.workerPollMs)
         : null,
-    responseSessionJson: params.graphResult.responseSession,
+    responseSessionJson: mergedResponseSession,
     waitingStateJson: params.graphResult.waitingState ?? null,
     compactionStateJson: params.graphResult.compactionState ?? null,
     checkpointMetadataJson: {
@@ -801,6 +845,26 @@ export async function attachTaskRunResponseSession(params: {
     return;
   }
 
+  const mergedResponseSession = params.responseSession
+    ? mergeResponseSessionRefs(existing.responseSessionJson, params.responseSession)
+    : existing.responseSessionJson;
+  const persistedResponseRefs = readPersistedResponseSessionRefs(existing.responseSessionJson);
+  const nextLatestText =
+    mergedResponseSession &&
+    typeof mergedResponseSession === 'object' &&
+    !Array.isArray(mergedResponseSession) &&
+    typeof (mergedResponseSession as { latestText?: unknown }).latestText === 'string'
+      ? ((mergedResponseSession as { latestText?: string }).latestText ?? existing.latestDraftText)
+      : existing.latestDraftText;
+  const nextDraftRevision =
+    mergedResponseSession &&
+    typeof mergedResponseSession === 'object' &&
+    !Array.isArray(mergedResponseSession) &&
+    typeof (mergedResponseSession as { draftRevision?: unknown }).draftRevision === 'number'
+      ? ((mergedResponseSession as { draftRevision?: number }).draftRevision ?? existing.draftRevision)
+      : existing.draftRevision;
+  const mergedResponseRefs = readPersistedResponseSessionRefs(mergedResponseSession);
+
   await upsertAgentTaskRun({
     threadId: existing.threadId,
     originTraceId: existing.originTraceId,
@@ -808,16 +872,23 @@ export async function attachTaskRunResponseSession(params: {
     guildId: existing.guildId,
     channelId: existing.channelId,
     requestedByUserId: existing.requestedByUserId,
-    sourceMessageId: params.sourceMessageId ?? existing.sourceMessageId,
-    responseMessageId: params.responseMessageId ?? existing.responseMessageId,
+    sourceMessageId:
+      params.sourceMessageId ??
+      existing.sourceMessageId ??
+      persistedResponseRefs.sourceMessageId,
+    responseMessageId:
+      params.responseMessageId ??
+      mergedResponseRefs.responseMessageId ??
+      existing.responseMessageId ??
+      persistedResponseRefs.responseMessageId,
     status: existing.status,
     waitingKind: existing.waitingKind,
-    latestDraftText: params.responseSession?.latestText ?? existing.latestDraftText,
-    draftRevision: params.responseSession?.draftRevision ?? existing.draftRevision,
+    latestDraftText: nextLatestText,
+    draftRevision: nextDraftRevision,
     completionKind: existing.completionKind,
     stopReason: existing.stopReason,
     nextRunnableAt: existing.nextRunnableAt,
-    responseSessionJson: params.responseSession ?? existing.responseSessionJson,
+    responseSessionJson: mergedResponseSession,
     waitingStateJson: existing.waitingStateJson,
     compactionStateJson: existing.compactionStateJson,
     checkpointMetadataJson: existing.checkpointMetadataJson,

@@ -22,6 +22,24 @@ type WorkerResponseSessionState = {
   editableMessage: EditableDiscordMessage | null;
 };
 
+function readPersistedResponseSessionRefs(value: unknown): {
+  sourceMessageId: string | null;
+  responseMessageId: string | null;
+} {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return {
+      sourceMessageId: null,
+      responseMessageId: null,
+    };
+  }
+
+  const record = value as Record<string, unknown>;
+  return {
+    sourceMessageId: typeof record.sourceMessageId === 'string' ? record.sourceMessageId : null,
+    responseMessageId: typeof record.responseMessageId === 'string' ? record.responseMessageId : null,
+  };
+}
+
 let workerTimer: NodeJS.Timeout | null = null;
 let workerTickInFlight = false;
 
@@ -194,9 +212,10 @@ async function processRunnableTaskRun(run: AgentTaskRunRecord): Promise<void> {
     isAdmin?: boolean;
     canModerate?: boolean;
   };
+  const persistedResponseRefs = readPersistedResponseSessionRefs(run.responseSessionJson);
   const responseSessionState: WorkerResponseSessionState = {
-    sourceMessageId: run.sourceMessageId,
-    responseMessageId: run.responseMessageId,
+    sourceMessageId: run.sourceMessageId ?? persistedResponseRefs.sourceMessageId,
+    responseMessageId: run.responseMessageId ?? persistedResponseRefs.responseMessageId,
     editableMessage: null,
   };
 
