@@ -6,13 +6,6 @@ import {
   planBudget,
 } from '@/platform/llm/context-budgeter';
 
-const estimator = {
-  charsPerToken: 1,
-  codeCharsPerToken: 1,
-  imageTokens: 10,
-  messageOverheadTokens: 0,
-};
-
 const limits = {
   model: 'test-model',
   maxContextTokens: 80,
@@ -32,11 +25,11 @@ describe('budgeter', () => {
     const shortMsg: LLMChatMessage = { role: 'user', content: 'hello' };
     const longMsg: LLMChatMessage = { role: 'user', content: 'hello world, this is longer' };
 
-    expect(estimateMessageTokens(longMsg, estimator)).toBeGreaterThanOrEqual(
-      estimateMessageTokens(shortMsg, estimator),
+    expect(estimateMessageTokens(longMsg, 'gpt-4o-mini')).toBeGreaterThanOrEqual(
+      estimateMessageTokens(shortMsg, 'gpt-4o-mini'),
     );
-    expect(estimateMessagesTokens([shortMsg, longMsg], estimator)).toBe(
-      estimateMessageTokens(shortMsg, estimator) + estimateMessageTokens(longMsg, estimator),
+    expect(estimateMessagesTokens([shortMsg, longMsg], 'gpt-4o-mini')).toBe(
+      estimateMessageTokens(shortMsg, 'gpt-4o-mini') + estimateMessageTokens(longMsg, 'gpt-4o-mini'),
     );
   });
 });

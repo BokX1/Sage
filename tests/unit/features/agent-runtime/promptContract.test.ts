@@ -44,7 +44,14 @@ function buildContract(
     recentTranscript: 'Recent transcript block',
     voiceContext: 'Voice context block',
     guildSagePersona: 'Keep answers crisp and helpful in this guild.',
-    toolObservationSummary: 'discord_messages_search_history: success',
+    toolObservationEvidence: [
+      {
+        ref: 'discord_messages_search_history#1',
+        toolName: 'discord_messages_search_history',
+        status: 'success',
+        summary: 'Found matching messages in the channel history.',
+      },
+    ],
     ...overrides,
   });
 }
@@ -216,7 +223,14 @@ describe('promptContract', () => {
       model: 'kimi',
       userText: 'first user question',
       recentTranscript: 'first transcript window',
-      toolObservationSummary: 'web_search: success',
+      toolObservationEvidence: [
+        {
+          ref: 'web_search#1',
+          toolName: 'web_search',
+          status: 'success',
+          summary: 'Found one matching result.',
+        },
+      ],
     });
     const second = buildUniversalPromptContract({
       userProfileSummary: 'Different user profile',
@@ -225,7 +239,15 @@ describe('promptContract', () => {
       model: 'glm',
       userText: 'second user question',
       recentTranscript: 'second transcript window',
-      toolObservationSummary: 'web_search: failure',
+      toolObservationEvidence: [
+        {
+          ref: 'web_search#2',
+          toolName: 'web_search',
+          status: 'failure',
+          summary: 'The provider rejected the query.',
+          errorText: 'provider error',
+        },
+      ],
     });
 
     expect(first.promptFingerprint).toBe(second.promptFingerprint);
@@ -289,7 +311,14 @@ describe('promptContract', () => {
       focusedContinuity: 'Focused continuity',
       voiceContext: 'Voice context',
       guildSagePersona: 'Stay crisp.',
-      toolObservationSummary: 'discord_messages_search_history: success',
+      toolObservationEvidence: [
+        {
+          ref: 'discord_messages_search_history#1',
+          toolName: 'discord_messages_search_history',
+          status: 'success',
+          summary: 'Found matching history results.',
+        },
+      ],
     });
 
     expect(contract.systemMessage.length).toBeLessThan(14_000);

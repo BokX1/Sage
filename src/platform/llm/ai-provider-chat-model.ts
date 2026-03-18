@@ -185,6 +185,7 @@ export class AiProviderChatModel extends BaseChatModel<AiProviderChatModelCallOp
       response_metadata: {
         provider: 'ai_provider',
         model: options.model?.trim() || this.modelId,
+        usage: response.usage,
       },
     });
 

@@ -209,7 +209,9 @@ These values reflect the starter values in `.env.example`:
 | Variable | Description | Starter value |
 | :--- | :--- | :--- |
 | `AI_PROVIDER_MAIN_AGENT_MODEL` | Runtime main agent model for `runChatTurn` | *(required in `.env`)* |
-| `PROMPT_TOOL_OBSERVATION_MAX_CHARS` | Max untrusted tool-observation text kept in the prompt before middle truncation | `48000` |
+| Prompt evidence retention | Evidence-aware retained slices for verified facts, unresolved failures, and referenced tool results | Derived from compaction state |
+
+Sage's prompt assembly no longer uses a dedicated raw observation middle-truncation budget. Tool output is compacted into retained evidence slices first, then the final prompt is checked against the tokenizer-backed input budget.
 | `AGENT_WINDOW_CLOSEOUT_MAX_OUTPUT_TOKENS` | Max tokens reserved for the no-tools closeout synthesis pass that writes the final assistant reply | `2400` |
 | `AGENT_WINDOW_CLOSEOUT_REQUEST_TIMEOUT_MS` | Request timeout for the no-tools closeout synthesis pass | `20000` |
 | `AGENT_RUN_SLICE_MAX_STEPS` | Max tool-capable assistant/model responses in one durable worker slice before Sage yields automatically | `10` |

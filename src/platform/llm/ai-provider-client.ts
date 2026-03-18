@@ -10,9 +10,10 @@ import {
 import { CircuitBreaker } from './circuit-breaker';
 import { logger } from '../logging/logger';
 import { metrics } from '../../shared/observability/metrics';
-import { estimateMessagesTokens } from './context-budgeter';
+import { countMessagesTokens } from './context-budgeter';
 import { sanitizeJsonSchemaForProvider } from '../../shared/validation/json-schema';
 import { normalizeTimeoutMs } from '../../shared/utils/timeout';
+import { AppError } from '../../shared/errors/app-error';
 
 interface AiProviderClientConfigInput {
   baseUrl: string;
@@ -283,8 +284,146 @@ function buildAllowedToolsToolChoice(params: {
   };
 }
 
-function shouldRetryWithoutProviderToolControls(errorText: string): boolean {
-  return /allowed_tools|parallel_tool_calls|parallel tool|tool_choice/i.test(errorText);
+function parseProviderErrorDetails(bodyText: string): {
+  message: string;
+  code: string | null;
+  type: string | null;
+  param: string | null;
+} {
+  const trimmedBody = bodyText.slice(0, 500);
+  try {
+    const parsed = JSON.parse(bodyText) as
+      | { error?: { message?: unknown; code?: unknown; type?: unknown; param?: unknown } }
+      | { message?: unknown; code?: unknown; type?: unknown; param?: unknown };
+    const parsedRecord = parsed as {
+      error?: { message?: unknown; code?: unknown; type?: unknown; param?: unknown };
+      message?: unknown;
+      code?: unknown;
+      type?: unknown;
+      param?: unknown;
+    };
+    const candidate =
+      parsedRecord && typeof parsedRecord === 'object' && parsedRecord.error && typeof parsedRecord.error === 'object'
+        ? parsedRecord.error
+        : parsedRecord;
+    return {
+      message:
+        typeof candidate?.message === 'string' && candidate.message.trim().length > 0
+          ? candidate.message.trim()
+          : trimmedBody,
+      code:
+        typeof candidate?.code === 'string' && candidate.code.trim().length > 0
+          ? candidate.code.trim().toLowerCase()
+          : null,
+      type:
+        typeof candidate?.type === 'string' && candidate.type.trim().length > 0
+          ? candidate.type.trim().toLowerCase()
+          : null,
+      param:
+        typeof candidate?.param === 'string' && candidate.param.trim().length > 0
+          ? candidate.param.trim().toLowerCase()
+          : null,
+    };
+  } catch {
+    return {
+      message: trimmedBody,
+      code: null,
+      type: null,
+      param: null,
+    };
+  }
+}
+
+function isStructuredProviderModelError(details: { code: string | null; type: string | null }): boolean {
+  const normalized = [details.code, details.type].filter((value): value is string => Boolean(value));
+  return normalized.some((value) =>
+    new Set([
+      'invalid_model',
+      'model_not_found',
+      'unsupported_model',
+      'invalid_tool_schema',
+      'invalid_schema',
+      'tool_validation_error',
+      'validation_error',
+    ]).has(value),
+  );
+}
+
+function shouldRetryWithoutProviderToolControls(details: {
+  code: string | null;
+  type: string | null;
+  param: string | null;
+}): boolean {
+  const normalized = new Set([details.code, details.type].filter((value): value is string => Boolean(value)));
+  if (normalized.has('invalid_tool_schema') || normalized.has('tool_validation_error')) {
+    return false;
+  }
+  if (
+    !normalized.has('unknown_parameter')
+    && !normalized.has('unsupported_parameter')
+    && !normalized.has('invalid_request_error')
+    && !normalized.has('unsupported_feature')
+  ) {
+    return false;
+  }
+  return details.param === 'parallel_tool_calls' || details.param === 'tool_choice';
+}
+
+function classifyAiProviderHttpError(status: number, statusText: string, bodyText: string): AppError {
+  const details = parseProviderErrorDetails(bodyText);
+  const trimmedBody = details.message;
+  if (status === 400) {
+    if (isStructuredProviderModelError(details)) {
+      return new AppError('AI_PROVIDER_MODEL', `AI provider model error: ${trimmedBody}`, undefined, {
+        status,
+        statusText,
+      });
+    }
+    return new AppError('AI_PROVIDER_BAD_REQUEST', `AI provider bad request: ${trimmedBody}`, undefined, {
+      status,
+      statusText,
+    });
+  }
+  if (status === 401 || status === 403) {
+    return new AppError('AI_PROVIDER_AUTH', `AI provider auth error: ${trimmedBody}`, undefined, {
+      status,
+      statusText,
+    });
+  }
+  if (status === 404) {
+    if (isStructuredProviderModelError(details)) {
+      return new AppError('AI_PROVIDER_MODEL', `AI provider model error: ${trimmedBody}`, undefined, {
+        status,
+        statusText,
+      });
+    }
+    return new AppError('AI_PROVIDER_ENDPOINT', `AI provider endpoint error: ${trimmedBody}`, undefined, {
+      status,
+      statusText,
+    });
+  }
+  if (status === 408 || status === 504) {
+    return new AppError('AI_PROVIDER_TIMEOUT', `AI provider API error: ${status} ${statusText} - ${trimmedBody}`, undefined, {
+      status,
+      statusText,
+    });
+  }
+  if (status === 409 || status === 425 || status === 429) {
+    return new AppError('AI_PROVIDER_RATE_LIMIT', `AI provider rate limit: ${trimmedBody}`, undefined, {
+      status,
+      statusText,
+    });
+  }
+  if (status >= 500) {
+    return new AppError('AI_PROVIDER_UPSTREAM', `AI provider API error: ${status} ${statusText} - ${trimmedBody}`, undefined, {
+      status,
+      statusText,
+    });
+  }
+  return new AppError('EXTERNAL_CALL_FAILED', `AI provider API error: ${status} ${statusText} - ${trimmedBody}`, undefined, {
+    status,
+    statusText,
+  });
 }
 
 export class AiProviderClient implements LLMClient {
@@ -392,13 +531,17 @@ export class AiProviderClient implements LLMClient {
     }
 
     const normalizedMessages = normalizeMessagesForApi(request.messages);
+    const tokenCount = countMessagesTokens(request.messages, model);
     logger.debug(
       {
         model,
         messageCount: request.messages.length,
-        estimatedTokens: estimateMessagesTokens(request.messages),
+        estimatedTokens: tokenCount.totalTokens,
+        tokenCountSource: tokenCount.source,
+        tokenizerEncoding: tokenCount.encodingName,
+        imageTokenReserve: tokenCount.imageTokenReserve,
       },
-      '[Budget] Preflight only; message trimming disabled',
+      '[Budget] Preflight token count',
     );
 
     const requestedProviderToolControls =
@@ -434,7 +577,7 @@ export class AiProviderClient implements LLMClient {
     metrics.increment('llm_calls_total', { model, provider: 'ai_provider' });
 
     let attempt = 0;
-    let lastError: Error | undefined;
+    let lastError: AppError | undefined;
     const maxAttempts = this.config.maxRetries + 1;
 
     while (attempt < maxAttempts) {
@@ -462,39 +605,25 @@ export class AiProviderClient implements LLMClient {
 
         if (!response.ok) {
           const text = await response.text();
+          const errorDetails = parseProviderErrorDetails(text);
 
           if (
             response.status === 400 &&
             includeProviderToolControls &&
-            shouldRetryWithoutProviderToolControls(text)
+            shouldRetryWithoutProviderToolControls(errorDetails)
           ) {
             providerToolControlsSupportCache.set(providerToolControlsCacheKey, false);
             includeProviderToolControls = false;
             logger.warn(
-              { status: response.status, model, error: text.slice(0, 200) },
+              { status: response.status, model, code: errorDetails.code, type: errorDetails.type, param: errorDetails.param },
               '[AiProviderClient] Provider rejected allowed_tools/parallel_tool_calls; retrying without provider tool controls',
             );
             continue;
           }
 
-          if (response.status === 400 && /model|validation/i.test(text)) {
-            const err = new Error(`AI provider model error: ${text}`);
-            logger.error(
-              {
-                status: response.status,
-                model,
-                error: text,
-              },
-              '[AiProviderClient] Invalid model - aborting retries',
-            );
-            throw err;
-          }
-
-          const err = new Error(
-            `AI provider API error: ${response.status} ${response.statusText} - ${text.slice(0, 200)}`,
-          );
+          const err = classifyAiProviderHttpError(response.status, response.statusText, text);
           logger.warn(
-            { status: response.status, error: err.message, timeout },
+            { status: response.status, error: err.message, timeout, code: err.code },
             '[AiProviderClient] API error',
           );
           throw err;
@@ -502,7 +631,14 @@ export class AiProviderClient implements LLMClient {
 
         const data = (await response.json()) as {
           choices?: { message?: CompatibleChatResponseMessage }[];
-          usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number };
+          usage?: {
+            prompt_tokens: number;
+            completion_tokens: number;
+            total_tokens: number;
+            prompt_tokens_details?: { cached_tokens?: number };
+            completion_tokens_details?: { reasoning_tokens?: number };
+            [key: string]: unknown;
+          };
         };
         const message = data.choices?.[0]?.message;
         const content = typeof message?.content === 'string' ? message.content : '';
@@ -537,17 +673,32 @@ export class AiProviderClient implements LLMClient {
               promptTokens: data.usage.prompt_tokens,
               completionTokens: data.usage.completion_tokens,
               totalTokens: data.usage.total_tokens,
+              cachedTokens: data.usage.prompt_tokens_details?.cached_tokens,
+              reasoningTokens: data.usage.completion_tokens_details?.reasoning_tokens,
+              raw: data.usage,
             }
             : undefined,
         };
       } catch (err: unknown) {
-        lastError = err instanceof Error ? err : new Error(String(err));
-
         if (isAbortError(err) || request.signal?.aborted) {
+          lastError =
+            err instanceof AppError
+              ? err
+              : new AppError('AI_PROVIDER_TIMEOUT', 'AI provider request aborted.', err);
           throw lastError;
         }
 
-        if (lastError.message.includes('AI provider model error')) {
+        lastError =
+          err instanceof AppError
+            ? err
+            : new AppError('AI_PROVIDER_NETWORK', err instanceof Error ? err.message : String(err), err);
+
+        if (
+          lastError.code === 'AI_PROVIDER_MODEL'
+          || lastError.code === 'AI_PROVIDER_ENDPOINT'
+          || lastError.code === 'AI_PROVIDER_AUTH'
+          || lastError.code === 'AI_PROVIDER_BAD_REQUEST'
+        ) {
           throw lastError;
         }
 

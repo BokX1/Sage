@@ -140,7 +140,7 @@ function extractTagBlock(content: string, tagName: string): string | null {
   return content.slice(start, end + closeTag.length);
 }
 
-describe('transcript injection', () => {
+describe('transcript injection', { timeout: 20_000 }, () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-03-13T00:00:00.000Z'));

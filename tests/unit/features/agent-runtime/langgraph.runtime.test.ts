@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AIMessage, HumanMessage, ToolMessage } from '@langchain/core/messages';
+import { AppError } from '@/shared/errors/app-error';
 
 const {
   loggerWarnMock,
@@ -144,6 +145,12 @@ vi.mock('@/platform/llm/model-budget-config', () => ({
 }));
 
 vi.mock('@/platform/llm/context-budgeter', () => ({
+  countMessagesTokens: vi.fn(() => ({
+    totalTokens: 0,
+    source: 'local_tokenizer',
+    encodingName: 'o200k_base',
+    imageTokenReserve: 0,
+  })),
   estimateMessagesTokens: vi.fn(() => 0),
   planBudget: vi.fn(() => ({
     availableInputTokens: 8_192,
@@ -332,17 +339,14 @@ function makeInterruptedState() {
 }
 
 function makeFinishTurnMessage(
-  kind: 'final_answer' | 'clarification_question' | 'delivered_via_tool',
+  kind: 'final_answer' | 'clarification_question',
   message?: string,
 ): AIMessage {
-  const content =
-    kind === 'clarification_question'
-      ? message ?? 'What detail should I use?'
-      : kind === 'delivered_via_tool'
-        ? message ?? 'The requested artifact is ready.'
-        : message ?? 'All set.';
+  const replyText = kind === 'clarification_question'
+    ? message ?? 'What detail should I use?'
+    : message ?? 'All set.';
   return new AIMessage({
-    content,
+    content: `<assistant_closeout>${JSON.stringify({ kind, replyText })}</assistant_closeout>`,
   });
 }
 
@@ -1161,7 +1165,12 @@ describe('runGraphValueStream', () => {
 
   it('retries transient provider failures on tool_call_turn without consuming an extra turn', async () => {
     modelInvokeMock
-      .mockRejectedValueOnce(new Error('AI provider API error: 503 Service Unavailable - upstream down'))
+      .mockRejectedValueOnce(
+        new AppError(
+          'AI_PROVIDER_UPSTREAM',
+          'AI provider API error: 503 Service Unavailable - upstream down',
+        ),
+      )
       .mockResolvedValueOnce(
         makeFinishTurnMessage('final_answer', 'Recovered after transient provider failure.'),
       );
@@ -2076,5 +2085,51 @@ describe('runGraphValueStream', () => {
       sourceMessageId: 'message-waiting-followup-clear-2',
       responseMessageId: null,
     });
+  });
+
+  it('treats short actionable input requests as clarification questions even without a trailing question mark', async () => {
+    await shutdownAgentGraphRuntime();
+    modelInvokeMock.mockResolvedValueOnce(
+      makeFinishTurnMessage('clarification_question', 'Tell me which repo to inspect next.'),
+    );
+
+    const result = await runAgentGraphTurn({
+      traceId: 'trace-clarification-no-question-mark-1',
+      userId: 'user-1',
+      channelId: 'channel-1',
+      guildId: 'guild-1',
+      apiKey: 'test-api-key',
+      model: 'test-main-agent-model',
+      temperature: 0.6,
+      timeoutMs: 1_000,
+      maxTokens: 500,
+      messages: [new HumanMessage({ content: 'check bluegaming repos' })],
+      activeToolNames: ['web_search'],
+      routeKind: 'single',
+      currentTurn: {
+        invokerUserId: 'user-1',
+        invokerDisplayName: 'User One',
+        messageId: 'message-clarification-no-question-mark-1',
+        guildId: 'guild-1',
+        channelId: 'channel-1',
+        invokedBy: 'mention',
+        mentionedUserIds: [],
+        isDirectReply: false,
+        replyTargetMessageId: null,
+        replyTargetAuthorId: null,
+        botUserId: 'sage-bot',
+      },
+      replyTarget: null,
+      invokedBy: 'mention',
+      invokerIsAdmin: false,
+    });
+
+    expect(result.completionKind).toBe('clarification_question');
+    expect(result.stopReason).toBe('user_input_interrupt');
+    expect(result.waitingState).toMatchObject({
+      kind: 'user_input',
+      prompt: 'Tell me which repo to inspect next.',
+    });
+    expect(result.responseSession.status).toBe('waiting_user_input');
   });
 });

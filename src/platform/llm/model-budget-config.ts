@@ -1,31 +1,19 @@
 import { config } from '../config/env';
 import { logger } from '../logging/logger';
-import { ModelLimits, TokenEstimateOptions } from './context-budgeter';
+import { ModelLimits } from './context-budgeter';
 
 /**
  * Represents the ModelBudgetConfig type.
  */
-export type ModelBudgetConfig = ModelLimits & {
-  estimation: TokenEstimateOptions;
-};
+export type ModelBudgetConfig = ModelLimits;
 
 const DEFAULT_SAFETY_MARGIN = 1024;
-const DEFAULT_IMAGE_TOKENS = 1200;
-const DEFAULT_MESSAGE_OVERHEAD = 4;
-
-const BASE_ESTIMATION: TokenEstimateOptions = {
-  charsPerToken: config.TOKEN_HEURISTIC_CHARS_PER_TOKEN,
-  codeCharsPerToken: Math.max(3, config.TOKEN_HEURISTIC_CHARS_PER_TOKEN - 0.5),
-  imageTokens: DEFAULT_IMAGE_TOKENS,
-  messageOverheadTokens: DEFAULT_MESSAGE_OVERHEAD,
-};
 
 const BASE_LIMITS: Omit<ModelBudgetConfig, 'model'> = {
   maxContextTokens: config.CONTEXT_MAX_INPUT_TOKENS,
   maxOutputTokens: config.CONTEXT_RESERVED_OUTPUT_TOKENS,
   safetyMarginTokens: DEFAULT_SAFETY_MARGIN,
   visionEnabled: true,
-  estimation: BASE_ESTIMATION,
 };
 
 function normalizeModelName(model?: string): string {
@@ -66,18 +54,6 @@ function parseModelOverridesFromEnv(): Record<string, RawModelProfile> {
   }
 }
 
-function mergeEstimation(
-  base: TokenEstimateOptions,
-  override?: Partial<TokenEstimateOptions>,
-): TokenEstimateOptions {
-  return {
-    charsPerToken: override?.charsPerToken ?? base.charsPerToken,
-    codeCharsPerToken: override?.codeCharsPerToken ?? base.codeCharsPerToken,
-    imageTokens: override?.imageTokens ?? base.imageTokens,
-    messageOverheadTokens: override?.messageOverheadTokens ?? base.messageOverheadTokens,
-  };
-}
-
 function mergeConfig(
   base: ModelBudgetConfig,
   override?: Partial<ModelBudgetConfig>,
@@ -85,7 +61,6 @@ function mergeConfig(
   return {
     ...base,
     ...override,
-    estimation: mergeEstimation(base.estimation, override?.estimation),
   };
 }
 

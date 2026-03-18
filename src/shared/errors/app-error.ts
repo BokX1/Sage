@@ -3,7 +3,17 @@ export type ErrorCode =
   | 'BOOTSTRAP_FAILED'
   | 'DISCORD_LOGIN_FAILED'
   | 'EXTERNAL_CALL_FAILED'
-  | 'TIMEOUT';
+  | 'TIMEOUT'
+  | 'AI_PROVIDER_BAD_REQUEST'
+  | 'AI_PROVIDER_AUTH'
+  | 'AI_PROVIDER_ENDPOINT'
+  | 'AI_PROVIDER_MODEL'
+  | 'AI_PROVIDER_RATE_LIMIT'
+  | 'AI_PROVIDER_NETWORK'
+  | 'AI_PROVIDER_TIMEOUT'
+  | 'AI_PROVIDER_UPSTREAM'
+  | 'RUNTIME_PROTOCOL_INVALID'
+  | 'RUNTIME_FAILURE';
 
 /**
  * Represent a first-party application error with a stable error code.

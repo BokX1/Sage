@@ -174,6 +174,7 @@ import {
   runChatTurn,
 } from '@/features/agent-runtime/agentRuntime';
 import { scrubFinalReplyText } from '@/features/agent-runtime/finalReplyScrubber';
+import { AppError } from '@/shared/errors/app-error';
 
 function makeCurrentTurn(overrides: Partial<CurrentTurnContext> = {}): CurrentTurnContext {
   return {
@@ -433,7 +434,12 @@ describe('agentRuntime', () => {
   });
 
   it('uses provider-aware failure copy and exposes retry metadata when the initial graph run throws a provider error', async () => {
-    runAgentGraphTurnMock.mockRejectedValueOnce(new Error('AI provider API error: 503 Service Unavailable - upstream down'));
+    runAgentGraphTurnMock.mockRejectedValueOnce(
+      new AppError(
+        'AI_PROVIDER_UPSTREAM',
+        'AI provider API error: 503 Service Unavailable - upstream down',
+      ),
+    );
 
     const result = await runChatTurn({
       traceId: 'trace-runtime-failed',
@@ -498,6 +504,87 @@ describe('agentRuntime', () => {
           routeKind: 'turn_retry',
           activeToolNames: ['web', 'github_search_code', 'discord_messages_search_history'],
         }),
+      }),
+    );
+  });
+
+  it('persists the task run after a retry re-enters background execution', async () => {
+    const now = Date.now();
+    globalToolRegistryMock.listNames.mockReturnValue(['web_search'] as never);
+    globalToolRegistryMock.get.mockImplementation(() => ({
+      metadata: { access: 'public' as const },
+      runtime: { access: 'public' as const, capabilityTags: [] },
+    }));
+    getAgentTaskRunByThreadIdMock.mockResolvedValue({
+      id: 'task-retry-running-1',
+      threadId: 'thread-retry-running-1',
+      originTraceId: 'trace-origin',
+      latestTraceId: 'trace-latest',
+      guildId: 'guild-1',
+      channelId: 'channel-1',
+      requestedByUserId: 'user-1',
+      sourceMessageId: 'message-source-retry-1',
+      responseMessageId: 'response-retry-1',
+      status: 'failed',
+      waitingKind: null,
+      latestDraftText: 'I lost the model connection before I could finish, so please try again.',
+      draftRevision: 3,
+      completionKind: 'runtime_failure',
+      stopReason: 'runtime_failure',
+      nextRunnableAt: null,
+      leaseOwner: null,
+      leaseExpiresAt: null,
+      heartbeatAt: null,
+      resumeCount: 2,
+      taskWallClockMs: 1_500,
+      maxTotalDurationMs: 3_600_000,
+      maxIdleWaitMs: 86_400_000,
+      lastErrorText: 'I lost the model connection before I could finish, so please try again.',
+      responseSessionJson: {
+        responseSessionId: 'thread-retry-running-1',
+        status: 'failed',
+        latestText: 'I lost the model connection before I could finish, so please try again.',
+        draftRevision: 3,
+        sourceMessageId: 'message-source-retry-1',
+        responseMessageId: 'response-retry-1',
+        overflowMessageIds: [],
+        linkedArtifactMessageIds: [],
+      },
+      waitingStateJson: null,
+      compactionStateJson: null,
+      checkpointMetadataJson: null,
+      startedAt: new Date(now - 5 * 60_000),
+      completedAt: new Date(now - 30_000),
+      createdAt: new Date(now - 5 * 60_000),
+      updatedAt: new Date(now - 30_000),
+    });
+    retryAgentGraphTurnMock.mockResolvedValue(
+      makeGraphResult({
+        replyText: 'Still working on that now.',
+        stopReason: 'background_yield',
+        completionKind: 'final_answer',
+      }),
+    );
+
+    const result = await retryFailedChatTurn({
+      traceId: 'trace-retry-running-1',
+      threadId: 'thread-retry-running-1',
+      userId: 'user-1',
+      channelId: 'channel-1',
+      guildId: 'guild-1',
+      retryKind: 'background_resume',
+      isAdmin: false,
+      canModerate: false,
+    });
+
+    expect(result.status).toBe('running');
+    expect(upsertAgentTaskRunMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        threadId: 'thread-retry-running-1',
+        status: 'running',
+        sourceMessageId: 'message-source-retry-1',
+        nextRunnableAt: expect.any(Date),
+        resumeCount: 2,
       }),
     );
   });

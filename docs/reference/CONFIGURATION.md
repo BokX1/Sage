@@ -229,8 +229,9 @@ These settings control Sage's optional Discord voice features. The local voice s
 |:---|:---|:---|
 | `CONTEXT_MAX_INPUT_TOKENS` | Max total input tokens | `120000` |
 | `CONTEXT_RESERVED_OUTPUT_TOKENS` | Reserved output tokens | `4096` |
-| `TOKEN_HEURISTIC_CHARS_PER_TOKEN` | Chars per token for heuristic estimator | `4` |
 | `CHAT_MAX_OUTPUT_TOKENS` | Max output tokens for chat | `4096` |
+
+Sage now uses tokenizer-backed preflight counting for prompt budgeting and records provider-reported `usage` after each call when the provider returns it. `AI_PROVIDER_MODEL_PROFILES_JSON` is still optional limit metadata, but it is no longer a chars-per-token estimation surface.
 
 ---
 
@@ -245,7 +246,6 @@ These settings control Sage's optional Discord voice features. The local voice s
 | `LANGSMITH_API_KEY` | LangSmith API key used when `LANGSMITH_TRACING=true` | *(empty)* |
 | `LANGSMITH_PROJECT` | LangSmith project name when tracing is enabled | `sage` |
 | `SAGE_TRACE_DB_ENABLED` | Persist compact `AgentTrace` ledger rows alongside LangSmith references | `true` |
-| `PROMPT_TOOL_OBSERVATION_MAX_CHARS` | Max untrusted tool-observation text kept in the universal prompt before middle truncation | `48000` |
 | `AGENT_WINDOW_CLOSEOUT_MAX_OUTPUT_TOKENS` | Max tokens reserved for the no-tools closeout synthesis pass that writes the final assistant reply | `2400` |
 | `AGENT_WINDOW_CLOSEOUT_REQUEST_TIMEOUT_MS` | Request timeout for the no-tools closeout synthesis pass | `20000` |
 | `AGENT_RUN_SLICE_MAX_STEPS` | Max tool-capable assistant/model responses per durable worker slice before Sage yields automatically | `10` |
@@ -263,6 +263,8 @@ These settings control Sage's optional Discord voice features. The local voice s
 | `AGENT_RUN_COMPACTION_TRIGGER_TOOL_RESULTS` | Tool-result count before compaction pressure triggers | `12` |
 | `AGENT_RUN_COMPACTION_MAX_RAW_MESSAGES` | Raw assistant/tool messages retained through compaction | `24` |
 | `AGENT_RUN_COMPACTION_MAX_TOOL_OBSERVATIONS` | Tool observations retained in prompt-facing compaction state | `12` |
+
+Prompt-facing tool observations are now retained as evidence slices with refs, summaries, and unresolved failures. The runtime still obeys the overall prompt token budget, but it no longer exposes a dedicated middle-truncation char cap for raw observation blobs.
 | `AGENT_GRAPH_MAX_OUTPUT_TOKENS` | Max output tokens for graph model calls | `4096` |
 | `AGENT_GRAPH_GITHUB_GROUNDED_MODE` | Enable GitHub grounded search | `true` |
 | `AGENT_GRAPH_RECURSION_LIMIT` | Optional advanced override for LangGraph's internal hop fail-safe; when unset Sage derives it from `AGENT_RUN_SLICE_MAX_STEPS` so slice yields happen before the low-level graph guard | *(derived; `104` at the starter slice budget)* |

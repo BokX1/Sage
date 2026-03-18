@@ -34,92 +34,98 @@ export function deriveAgentGraphRecursionLimit(sliceMaxSteps: number): number {
     normalizedSliceMaxSteps * DERIVED_RECURSION_STEPS_PER_SLICE_STEP;
 }
 
-export function buildAgentGraphConfig(): AgentGraphConfig {
+export function buildAgentGraphConfigFromEnv(
+  env: Partial<typeof appConfig> = appConfig,
+): AgentGraphConfig {
   const sliceMaxSteps = normalizeStrictlyPositiveInt(
-    appConfig.AGENT_RUN_SLICE_MAX_STEPS as number | undefined,
+    env.AGENT_RUN_SLICE_MAX_STEPS as number | undefined,
     10,
   );
 
   return {
     sliceMaxSteps,
     toolTimeoutMs: normalizeStrictlyPositiveInt(
-      appConfig.AGENT_RUN_TOOL_TIMEOUT_MS as number | undefined,
+      env.AGENT_RUN_TOOL_TIMEOUT_MS as number | undefined,
       45_000,
     ),
     maxOutputTokens: normalizeStrictlyPositiveInt(
-      appConfig.AGENT_GRAPH_MAX_OUTPUT_TOKENS as number | undefined,
+      env.AGENT_GRAPH_MAX_OUTPUT_TOKENS as number | undefined,
       4_096,
     ),
     githubGroundedMode:
-      (appConfig.AGENT_GRAPH_GITHUB_GROUNDED_MODE as boolean | undefined) ?? true,
+      (env.AGENT_GRAPH_GITHUB_GROUNDED_MODE as boolean | undefined) ?? true,
     sliceMaxDurationMs: normalizeStrictlyPositiveInt(
-      appConfig.AGENT_RUN_SLICE_MAX_DURATION_MS as number | undefined,
+      env.AGENT_RUN_SLICE_MAX_DURATION_MS as number | undefined,
       120_000,
     ),
     maxTotalDurationMs: normalizeStrictlyPositiveInt(
-      appConfig.AGENT_RUN_MAX_TOTAL_DURATION_MS as number | undefined,
+      env.AGENT_RUN_MAX_TOTAL_DURATION_MS as number | undefined,
       3_600_000,
     ),
     maxIdleWaitMs: normalizeStrictlyPositiveInt(
-      appConfig.AGENT_RUN_MAX_IDLE_WAIT_MS as number | undefined,
+      env.AGENT_RUN_MAX_IDLE_WAIT_MS as number | undefined,
       86_400_000,
     ),
     workerPollMs: normalizeStrictlyPositiveInt(
-      appConfig.AGENT_RUN_WORKER_POLL_MS as number | undefined,
+      env.AGENT_RUN_WORKER_POLL_MS as number | undefined,
       5_000,
     ),
     leaseTtlMs: normalizeStrictlyPositiveInt(
-      appConfig.AGENT_RUN_LEASE_TTL_MS as number | undefined,
+      env.AGENT_RUN_LEASE_TTL_MS as number | undefined,
       30_000,
     ),
     heartbeatMs: normalizeStrictlyPositiveInt(
-      appConfig.AGENT_RUN_HEARTBEAT_MS as number | undefined,
+      env.AGENT_RUN_HEARTBEAT_MS as number | undefined,
       10_000,
     ),
     maxResumes: normalizeStrictlyPositiveInt(
-      appConfig.AGENT_RUN_MAX_RESUMES as number | undefined,
+      env.AGENT_RUN_MAX_RESUMES as number | undefined,
       256,
     ),
     compactionEnabled:
-      (appConfig.AGENT_RUN_COMPACTION_ENABLED as boolean | undefined) ?? true,
+      (env.AGENT_RUN_COMPACTION_ENABLED as boolean | undefined) ?? true,
     compactionTriggerEstimatedTokens: normalizeStrictlyPositiveInt(
-      appConfig.AGENT_RUN_COMPACTION_TRIGGER_EST_TOKENS as number | undefined,
+      env.AGENT_RUN_COMPACTION_TRIGGER_EST_TOKENS as number | undefined,
       36_000,
     ),
     compactionTriggerRounds: normalizeStrictlyPositiveInt(
-      appConfig.AGENT_RUN_COMPACTION_TRIGGER_ROUNDS as number | undefined,
+      env.AGENT_RUN_COMPACTION_TRIGGER_ROUNDS as number | undefined,
       6,
     ),
     compactionTriggerToolResults: normalizeStrictlyPositiveInt(
-      appConfig.AGENT_RUN_COMPACTION_TRIGGER_TOOL_RESULTS as number | undefined,
+      env.AGENT_RUN_COMPACTION_TRIGGER_TOOL_RESULTS as number | undefined,
       12,
     ),
     compactionMaxRawMessages: normalizeStrictlyPositiveInt(
-      appConfig.AGENT_RUN_COMPACTION_MAX_RAW_MESSAGES as number | undefined,
+      env.AGENT_RUN_COMPACTION_MAX_RAW_MESSAGES as number | undefined,
       24,
     ),
     compactionMaxToolObservations: normalizeStrictlyPositiveInt(
-      appConfig.AGENT_RUN_COMPACTION_MAX_TOOL_OBSERVATIONS as number | undefined,
+      env.AGENT_RUN_COMPACTION_MAX_TOOL_OBSERVATIONS as number | undefined,
       12,
     ),
     // LangGraph recursion is an internal hop fail-safe. Sage's real slice budget is
     // AGENT_RUN_SLICE_MAX_STEPS, so keep the recursion ceiling comfortably above it
     // unless an operator explicitly overrides the low-level safeguard.
     recursionLimit: normalizeStrictlyPositiveInt(
-      appConfig.AGENT_GRAPH_RECURSION_LIMIT as number | undefined,
+      env.AGENT_GRAPH_RECURSION_LIMIT as number | undefined,
       deriveAgentGraphRecursionLimit(sliceMaxSteps),
     ),
     maxToolCallsPerRound: normalizeStrictlyPositiveInt(
-      appConfig.AGENT_GRAPH_MAX_TOOL_CALLS_PER_ROUND as number | undefined,
+      env.AGENT_GRAPH_MAX_TOOL_CALLS_PER_ROUND as number | undefined,
       12,
     ),
     maxIdenticalToolBatches: normalizeStrictlyPositiveInt(
-      appConfig.AGENT_GRAPH_MAX_IDENTICAL_TOOL_BATCHES as number | undefined,
+      env.AGENT_GRAPH_MAX_IDENTICAL_TOOL_BATCHES as number | undefined,
       4,
     ),
     maxLoopGuardRecoveries: normalizeStrictlyPositiveInt(
-      appConfig.AGENT_GRAPH_MAX_LOOP_GUARD_RECOVERIES as number | undefined,
+      env.AGENT_GRAPH_MAX_LOOP_GUARD_RECOVERIES as number | undefined,
       3,
     ),
   };
+}
+
+export function buildAgentGraphConfig(): AgentGraphConfig {
+  return buildAgentGraphConfigFromEnv(appConfig);
 }

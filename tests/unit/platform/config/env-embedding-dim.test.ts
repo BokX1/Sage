@@ -48,11 +48,9 @@ describe('env embedding dimension guard', () => {
 
   it('uses the frontier-tuned prompt and closeout defaults when not provided', async () => {
     await withEnv({ NODE_ENV: 'test' }, async () => {
-      delete process.env.PROMPT_TOOL_OBSERVATION_MAX_CHARS;
       delete process.env.AGENT_WINDOW_CLOSEOUT_MAX_OUTPUT_TOKENS;
       delete process.env.AGENT_WINDOW_CLOSEOUT_REQUEST_TIMEOUT_MS;
       const envModule = await importFresh(() => import('@/platform/config/env'));
-      expect(envModule.config.PROMPT_TOOL_OBSERVATION_MAX_CHARS).toBe(48000);
       expect(envModule.config.AGENT_WINDOW_CLOSEOUT_MAX_OUTPUT_TOKENS).toBe(2400);
       expect(envModule.config.AGENT_WINDOW_CLOSEOUT_REQUEST_TIMEOUT_MS).toBe(20000);
     });

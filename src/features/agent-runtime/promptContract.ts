@@ -4,13 +4,10 @@ import { formatDiscordGuardrailsLines } from './discordToolCatalog';
 import type { RuntimeAutopilotMode } from './autopilotMode';
 import type { CurrentTurnContext, ReplyTargetContext } from './continuityContext';
 import { describeContinuityPolicy } from './continuityContext';
-import { config as appConfig } from '../../platform/config/env';
 import type { LLMContentPart, LLMMessageContent } from '../../platform/llm/llm-types';
 import { globalToolRegistry } from './toolRegistry';
 
 export const UNIVERSAL_PROMPT_CONTRACT_VERSION = '2026-03-17.long-running-v1';
-const PROMPT_TOOL_OBSERVATION_MAX_CHARS =
-  (appConfig.PROMPT_TOOL_OBSERVATION_MAX_CHARS as number | undefined) ?? 48_000;
 
 export type PromptInputMode =
   | 'standard'
@@ -25,6 +22,15 @@ export interface PromptWaitingFollowUp {
   matchKind: 'direct_reply';
   outstandingPrompt: string;
   responseMessageId?: string | null;
+}
+
+export interface ToolObservationEvidence {
+  ref: string;
+  toolName: string;
+  status: 'success' | 'failure';
+  summary: string;
+  errorText?: string | null;
+  cacheHit?: boolean;
 }
 
 export interface PromptWorkingMemoryFrame {
@@ -62,7 +68,7 @@ export interface BuildUniversalPromptContractParams {
   recentTranscript?: string | null;
   voiceContext?: string | null;
   workingMemoryFrame?: PromptWorkingMemoryFrame | null;
-  toolObservationSummary?: string | null;
+  toolObservationEvidence?: ToolObservationEvidence[] | null;
   promptMode?: PromptInputMode;
   waitingFollowUp?: PromptWaitingFollowUp | null;
 }
@@ -78,7 +84,7 @@ export interface BuildPromptContextContentParams {
   replyTarget?: ReplyTargetContext | null;
   focusedContinuity?: string | null;
   recentTranscript?: string | null;
-  toolObservationSummary?: string | null;
+  toolObservationEvidence?: ToolObservationEvidence[] | null;
   includeUserInput?: boolean;
   userText: string;
   userContent?: LLMMessageContent;
@@ -134,15 +140,6 @@ function escapeStructuredPromptValue(value: string): string {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&apos;');
-}
-
-function truncateMiddle(value: string, maxChars: number): string {
-  if (value.length <= maxChars) {
-    return value;
-  }
-  const head = Math.max(0, Math.floor(maxChars * 0.7));
-  const tail = Math.max(0, maxChars - head - 5);
-  return `${value.slice(0, head)}\n...\n${value.slice(value.length - tail)}`;
 }
 
 function wrapTaggedContent(tagName: string, content: LLMMessageContent): LLMMessageContent {
@@ -264,7 +261,7 @@ export function buildPromptContextContent(
     segments.push(transcriptBlock);
   }
 
-  const toolObservationBlock = buildToolObservationContent(params.toolObservationSummary);
+  const toolObservationBlock = buildToolObservationContent(params.toolObservationEvidence);
   if (toolObservationBlock) {
     if (segments.length > 0) {
       segments.push('\n\n');
@@ -619,6 +616,9 @@ function buildCloseoutProtocol(): string {
   return [
     '<closeout_protocol>',
     '- No tool calls means the assistant text is the final answer or clarification for this turn.',
+    '- When no tools are needed, return one <assistant_closeout> XML block containing strict JSON with keys "kind" and "replyText".',
+    '- Valid closeout kinds are: final_answer, clarification_question, approval_pending, user_input_pending, loop_guard, runtime_failure, cancelled.',
+    '- Do not include any visible user-facing text outside the <assistant_closeout> block when no tools are used.',
     '- If tool calls are present, treat the assistant text as a provisional visible draft that may be edited later.',
     '- Background yields are operational only. Keep the visible draft coherent so the user can see progress while the task continues automatically.',
     '- If approval review interrupts the turn, keep the draft aligned with the pending work and revise it after the outcome if needed.',
@@ -664,15 +664,31 @@ function buildTranscriptContextBlock(params: {
   return lines.join('\n');
 }
 
-function buildToolObservationContent(summary: string | null | undefined): string | null {
-  if (!summary?.trim()) {
+function buildToolObservationContent(
+  evidence: ToolObservationEvidence[] | null | undefined,
+): string | null {
+  if (!Array.isArray(evidence) || evidence.length === 0) {
     return null;
   }
 
+  const lines: string[] = ['<untrusted_tool_observations>'];
+  for (const item of evidence) {
+    lines.push(`<observation ref="${escapeStructuredPromptValue(item.ref)}">`);
+    lines.push(`tool: ${escapeStructuredPromptValue(item.toolName)}`);
+    lines.push(`status: ${item.status}`);
+    if (item.cacheHit) {
+      lines.push('cache_hit: true');
+    }
+    lines.push(`summary: ${escapeStructuredPromptValue(item.summary)}`);
+    if (item.errorText?.trim()) {
+      lines.push(`error: ${escapeStructuredPromptValue(item.errorText.trim())}`);
+    }
+    lines.push('</observation>');
+  }
+  lines.push('</untrusted_tool_observations>');
+
   return [
-    '<untrusted_tool_observations>',
-    truncateMiddle(summary.trim(), PROMPT_TOOL_OBSERVATION_MAX_CHARS),
-    '</untrusted_tool_observations>',
+    ...lines,
   ].join('\n');
 }
 
@@ -815,7 +831,7 @@ export function buildPromptContextMessages(
     replyTarget: params.replyTarget,
     focusedContinuity: params.focusedContinuity,
     recentTranscript: params.recentTranscript,
-    toolObservationSummary: params.toolObservationSummary,
+    toolObservationEvidence: params.toolObservationEvidence,
     userText: params.userText,
     userContent: params.userContent,
   });

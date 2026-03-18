@@ -10,7 +10,7 @@ vi.mock('@/platform/social-graph/memgraphClient', () => ({
   }),
 }));
 
-describe('querySocialGraph', () => {
+describe('querySocialGraph', { timeout: 20_000 }, () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });

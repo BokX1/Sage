@@ -46,6 +46,7 @@ import type { ToolResult } from './toolCallExecution';
 import type { GraphDeliveryDisposition, GraphWaitingState } from './langgraph/types';
 
 import { formatLiveVoiceContext } from '../voice/voiceConversationSessionStore';
+import { AppError } from '../../shared/errors/app-error';
 
 const SINGLE_ROUTE_KIND = 'single';
 
@@ -112,6 +113,7 @@ export interface RunChatTurnResult {
   responseSession?: RuntimeGraphResult['responseSession'];
   artifactDeliveries?: RuntimeGraphResult['artifactDeliveries'];
   compactionState?: RuntimeGraphResult['compactionState'];
+  tokenUsage?: RuntimeGraphResult['tokenUsage'];
 }
 
 export interface ResumeWaitingTaskRunWithInputParams {
@@ -173,9 +175,27 @@ function resolveActiveToolNames(params: {
 }
 
 function classifyGraphFailure(error: unknown): RuntimeFailureCategory {
-  const text = error instanceof Error ? error.message : String(error);
-  if (/AI provider|provider offline|provider unavailable|model error|upstream/i.test(text)) {
-    return 'provider';
+  if (error instanceof AppError) {
+    switch (error.code) {
+      case 'AI_PROVIDER_AUTH':
+        return 'provider_auth';
+      case 'AI_PROVIDER_ENDPOINT':
+        return 'provider_config';
+      case 'AI_PROVIDER_MODEL':
+      case 'AI_PROVIDER_BAD_REQUEST':
+        return 'provider_model';
+      case 'AI_PROVIDER_RATE_LIMIT':
+        return 'provider_rate_limit';
+      case 'AI_PROVIDER_TIMEOUT':
+        return 'provider_timeout';
+      case 'AI_PROVIDER_NETWORK':
+      case 'AI_PROVIDER_UPSTREAM':
+        return 'provider_network';
+      case 'RUNTIME_PROTOCOL_INVALID':
+        return 'protocol';
+      default:
+        return 'runtime';
+    }
   }
   return 'runtime';
 }
@@ -416,7 +436,7 @@ async function failTaskRunForLimit(params: {
 
 async function persistTaskRunFromGraphResult(params: {
   traceId: string;
-  sourceMessageId: string;
+  sourceMessageId: string | null;
   guildId: string | null;
   channelId: string;
   userId: string;
@@ -655,6 +675,7 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
   let stopReason: RuntimeGraphResult['stopReason'] | undefined;
   let waitingState: RuntimeGraphResult['waitingState'] | undefined;
   let compactionState: RuntimeGraphResult['compactionState'] | undefined;
+  let tokenUsage: RuntimeGraphResult['tokenUsage'] | undefined;
   let runStatus: RunChatTurnResult['status'] | undefined;
 
   try {
@@ -712,6 +733,7 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
     stopReason = graphResult.stopReason;
     waitingState = graphResult.waitingState;
     compactionState = graphResult.compactionState;
+    tokenUsage = graphResult.tokenUsage;
     runStatus = deriveTaskRunStatus(graphResult);
     meta = await buildRunChatTurnMeta({ pendingInterrupt });
     langSmithRunId = graphResult.langSmithRunId;
@@ -753,6 +775,7 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
       pendingInterrupt,
       waitingState: graphResult.waitingState,
       compactionState: graphResult.compactionState,
+      tokenUsage: graphResult.tokenUsage,
       yieldReason: graphResult.yieldReason,
       interruptResolution: graphResult.interruptResolution,
       langSmithRunId,
@@ -847,6 +870,7 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
       responseSession,
       artifactDeliveries,
       compactionState,
+      tokenUsage,
       debug: {
         messages: runtimeMessages,
         promptVersion: promptEnvelope.version,
@@ -867,7 +891,8 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
     meta,
     responseSession,
     artifactDeliveries,
-    compactionState,
+      compactionState,
+      tokenUsage,
     debug: {
       messages: runtimeMessages,
       promptVersion: promptEnvelope.version,
@@ -1073,6 +1098,7 @@ export async function resumeWaitingTaskRunWithInput(
       responseSession: graphResult.responseSession,
       artifactDeliveries: graphResult.artifactDeliveries,
       compactionState: graphResult.compactionState,
+      tokenUsage: graphResult.tokenUsage,
       files: graphResult.files,
       meta: await buildRunChatTurnMeta({
         pendingInterrupt: toPendingInterruptSummary(graphResult.pendingInterrupt),
@@ -1210,6 +1236,7 @@ export async function resumeBackgroundTaskRun(params: {
       responseSession: graphResult.responseSession,
       artifactDeliveries: graphResult.artifactDeliveries,
       compactionState: graphResult.compactionState,
+      tokenUsage: graphResult.tokenUsage,
       files: graphResult.files,
       meta: await buildRunChatTurnMeta({ pendingInterrupt: toPendingInterruptSummary(graphResult.pendingInterrupt) }),
     };
@@ -1271,6 +1298,8 @@ export async function retryFailedChatTurn(
   }
 
   try {
+    const graphConfig = buildAgentGraphConfig();
+    const existingTaskRun = await getAgentTaskRunByThreadId(params.threadId);
     const graphResult = await retryAgentGraphTurn({
       threadId: params.threadId,
       runId: params.traceId,
@@ -1312,7 +1341,27 @@ export async function retryFailedChatTurn(
       responseSession: graphResult.responseSession,
       artifactDeliveries: graphResult.artifactDeliveries,
       compactionState: graphResult.compactionState,
+      tokenUsage: graphResult.tokenUsage,
     };
+
+    await persistTaskRunFromGraphResult({
+      traceId: params.threadId,
+      sourceMessageId: existingTaskRun?.sourceMessageId ?? null,
+      guildId: params.guildId,
+      channelId: params.channelId,
+      userId: params.userId,
+      isAdmin: params.isAdmin,
+      canModerate: params.canModerate,
+      graphConfig,
+      graphResult,
+      existingTaskRun,
+      resumeCount: existingTaskRun?.resumeCount ?? 0,
+    }).catch((error) => {
+      logger.warn(
+        { error, traceId: params.traceId, threadId: params.threadId },
+        'Failed to persist agent task run state after retry',
+      );
+    });
 
     if (appConfig.SAGE_TRACE_DB_ENABLED) {
       await updateTraceEnd({

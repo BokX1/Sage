@@ -1,15 +1,21 @@
+import { countMessageTokens } from '../../platform/llm/context-budgeter';
 import { config } from '../../platform/config/env';
 
 /**
  * Estimate token usage from plain text length.
  *
  * @param text - Input text to estimate.
- * @returns Approximate token count using the configured chars-per-token heuristic.
+ * @returns Deterministic local tokenizer count for the configured main model.
  *
  * Invariants:
  * - Always returns at least 0.
  */
 export function estimateTokens(text: string): number {
-  const charsPerToken = config.TOKEN_HEURISTIC_CHARS_PER_TOKEN;
-  return charsPerToken > 0 ? Math.ceil(text.length / charsPerToken) : 0;
+  return countMessageTokens(
+    {
+      role: 'user',
+      content: text,
+    },
+    config.AI_PROVIDER_MAIN_AGENT_MODEL,
+  ).totalTokens;
 }

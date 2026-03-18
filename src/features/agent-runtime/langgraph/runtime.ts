@@ -20,7 +20,7 @@ import type { RunnableConfig } from '@langchain/core/runnables';
 import { z } from 'zod';
 import { PostgresSaver } from '@langchain/langgraph-checkpoint-postgres';
 import { getModelBudgetConfig } from '../../../platform/llm/model-budget-config';
-import { estimateMessagesTokens, planBudget } from '../../../platform/llm/context-budgeter';
+import { countMessagesTokens, estimateMessagesTokens, planBudget } from '../../../platform/llm/context-budgeter';
 import { AiProviderChatModel } from '../../../platform/llm/ai-provider-chat-model';
 import {
   extractMessageText,
@@ -39,6 +39,7 @@ import {
   buildPromptContextContent,
   buildUniversalPromptContract,
   type PromptInputMode,
+  type ToolObservationEvidence,
   type PromptWorkingMemoryFrame,
 } from '../promptContract';
 import type { ToolResult } from '../toolCallExecution';
@@ -48,6 +49,7 @@ import { createAgentRunTelemetry } from '../observability/langsmith';
 import { buildRuntimeFailureReply } from '../visibleReply';
 import { buildToolCacheKey } from '../toolCache';
 import { globalToolRegistry } from '../toolRegistry';
+import { AppError } from '../../../shared/errors/app-error';
 import { buildAgentGraphConfig, type AgentGraphConfig } from './config';
 import {
   buildActiveToolCatalog,
@@ -125,6 +127,9 @@ const GraphRebudgetEventSchema = z.object({
   afterCount: z.number(),
   estimatedTokensBefore: z.number(),
   estimatedTokensAfter: z.number(),
+  countSource: z.enum(['local_tokenizer', 'fallback_estimator']),
+  tokenizerEncoding: z.string(),
+  imageTokenReserve: z.number(),
   availableInputTokens: z.number(),
   reservedOutputTokens: z.number(),
   notes: z.array(z.string()),
@@ -258,9 +263,22 @@ const GraphWaitingStateSchema = z.object({
 
 const PromptWaitingFollowUpSchema = z.object({
   matched: z.boolean(),
-  matchKind: z.enum(['direct_reply', 'single_waiting_run']),
+  matchKind: z.enum(['direct_reply']),
   outstandingPrompt: z.string(),
   responseMessageId: z.string().nullable().optional(),
+});
+
+const PlainTextCloseoutSignalSchema = z.object({
+  kind: z.enum([
+    'final_answer',
+    'clarification_question',
+    'approval_pending',
+    'user_input_pending',
+    'loop_guard',
+    'runtime_failure',
+    'cancelled',
+  ]),
+  replyText: z.string().trim().min(1),
 });
 
 const GraphCompactionStateSchema = z.object({
@@ -285,6 +303,19 @@ const GraphCompactionStateSchema = z.object({
   ]),
   inputTokensEstimate: z.number().default(0),
   outputTokensEstimate: z.number().default(0),
+});
+
+const GraphTokenUsageSchema = z.object({
+  countSource: z.enum(['local_tokenizer', 'fallback_estimator']),
+  tokenizerEncoding: z.string(),
+  estimatedInputTokens: z.number().default(0),
+  imageTokenReserve: z.number().default(0),
+  requestCount: z.number().default(0),
+  promptTokens: z.number().default(0),
+  completionTokens: z.number().default(0),
+  totalTokens: z.number().default(0),
+  cachedTokens: z.number().default(0),
+  reasoningTokens: z.number().default(0),
 });
 
 const AgentGraphRuntimeSnapshotSchema = z.object({
@@ -450,6 +481,18 @@ const AgentGraphStateSchema = new StateSchema({
   interruptResolution: z
     .union([ApprovalResolutionStateSchema, ApprovalBatchResolutionStateSchema, z.null()])
     .default(null),
+  tokenUsage: GraphTokenUsageSchema.default({
+    countSource: 'local_tokenizer',
+    tokenizerEncoding: 'o200k_base',
+    estimatedInputTokens: 0,
+    imageTokenReserve: 0,
+    requestCount: 0,
+    promptTokens: 0,
+    completionTokens: 0,
+    totalTokens: 0,
+    cachedTokens: 0,
+    reasoningTokens: 0,
+  }),
 });
 
 type GraphNodeName =
@@ -562,6 +605,7 @@ export interface AgentGraphTurnResult {
   activeWindowDurationMs: number;
   pendingInterrupt: AgentGraphState['pendingInterrupt'];
   interruptResolution: AgentGraphState['interruptResolution'];
+  tokenUsage: AgentGraphState['tokenUsage'];
   langSmithRunId: string | null;
   langSmithTraceId: string | null;
 }
@@ -644,8 +688,97 @@ function resolveDraftText(replyText: string | null | undefined): string {
   return cleaned || 'Working on that now.';
 }
 
-function classifyPlainTextCompletionKind(replyText: string): GraphCompletionKind {
-  return replyText.trim().endsWith('?') ? 'clarification_question' : 'final_answer';
+function parsePlainTextCloseoutSignal(text: string): z.infer<typeof PlainTextCloseoutSignalSchema> | null {
+  const normalized = text.trim();
+  if (!normalized) {
+    return null;
+  }
+
+  const match = normalized.match(/<assistant_closeout>([\s\S]*?)<\/assistant_closeout>/i);
+  if (!match?.[1]) {
+    return null;
+  }
+
+  const payload = match[1].trim();
+  try {
+    return PlainTextCloseoutSignalSchema.parse(JSON.parse(payload));
+  } catch {
+    return null;
+  }
+}
+
+function stripPlainTextCloseoutEnvelope(text: string): string {
+  return text.replace(/<assistant_closeout>[\s\S]*?<\/assistant_closeout>/gi, '').trim();
+}
+
+function buildCloseoutRepairPromptMessages(params: {
+  state: AgentGraphState;
+  runtimeContext: AgentGraphRuntimeContext;
+  invalidReplyText: string;
+}): LLMChatMessage[] {
+  return [
+    {
+      role: 'system',
+      content:
+        'Normalize Sage plain-text closeout output into strict JSON. Return only JSON with keys "kind" and "replyText". ' +
+        'Valid kinds: final_answer, clarification_question, approval_pending, user_input_pending, loop_guard, runtime_failure, cancelled. ' +
+        'Preserve the user-visible reply text. If the assistant is clearly asking the user for one missing detail, use clarification_question. ' +
+        'Do not call tools. Do not add markdown.',
+    },
+    {
+      role: 'user',
+      content: [
+        'Original assistant reply:',
+        params.invalidReplyText.trim(),
+        '',
+        'Return JSON only.',
+      ].join('\n'),
+    },
+  ];
+}
+
+async function normalizePlainTextCloseoutSignal(params: {
+  state: AgentGraphState;
+  runtimeContext: AgentGraphRuntimeContext;
+  toolContext: ToolExecutionContext;
+  graphConfig: AgentGraphConfig;
+  rawReplyText: string;
+}): Promise<z.infer<typeof PlainTextCloseoutSignalSchema>> {
+  const parsedDirectly = parsePlainTextCloseoutSignal(params.rawReplyText);
+  if (parsedDirectly) {
+    return {
+      ...parsedDirectly,
+      replyText: scrubFinalReplyText({ replyText: parsedDirectly.replyText }) ?? parsedDirectly.replyText,
+    };
+  }
+
+  const repair = await invokeAgentModelTask({
+    messages: buildCloseoutRepairPromptMessages({
+      state: params.state,
+      runtimeContext: params.runtimeContext,
+      invalidReplyText: stripPlainTextCloseoutEnvelope(params.rawReplyText) || params.rawReplyText,
+    }),
+    activeToolNames: [],
+    toolContext: params.toolContext,
+    timeoutMs: params.graphConfig.toolTimeoutMs,
+    model: params.runtimeContext.model,
+    apiKey: params.runtimeContext.apiKey,
+    temperature: 0,
+    requestTimeoutMs: params.runtimeContext.timeoutMs,
+    maxTokens: 512,
+  });
+  const repairedText = repair.message.content;
+  const repairedRaw = typeof repairedText === 'string' ? repairedText : extractMessageText(toLangChainMessages([repair.message])[0] as BaseMessage);
+  try {
+    return PlainTextCloseoutSignalSchema.parse(JSON.parse(repairedRaw.trim()));
+  } catch (error) {
+    throw new AppError(
+      'RUNTIME_PROTOCOL_INVALID',
+      'Model omitted a valid plain-text closeout signal and repair normalization failed.',
+      error,
+      { rawReplyText: params.rawReplyText, repairedReplyText: repairedRaw },
+    );
+  }
 }
 
 function bumpResponseSession(params: {
@@ -925,6 +1058,7 @@ function normalizeGraphResult(
     activeWindowDurationMs: state.activeWindowDurationMs,
     pendingInterrupt: state.pendingInterrupt,
     interruptResolution: state.interruptResolution,
+    tokenUsage: state.tokenUsage,
     langSmithRunId: langSmith.langSmithRunId,
     langSmithTraceId: langSmith.langSmithTraceId,
   };
@@ -936,27 +1070,50 @@ function buildRebudgetingEvent(
   maxTokens: number | undefined,
 ): { trimmedMessages: BaseMessage[]; rebudgeting: GraphRebudgetEvent } {
   const preparedMessages = toLlmMessages(messages);
-  const modelConfig = getModelBudgetConfig(resolveGraphModelId(model));
+  const resolvedModel = resolveGraphModelId(model);
+  const modelConfig = getModelBudgetConfig(resolvedModel);
   const budgetPlan = planBudget(modelConfig, {
     reservedOutputTokens: maxTokens ?? modelConfig.maxOutputTokens,
   });
-  const estimatedTokens = estimateMessagesTokens(preparedMessages, modelConfig.estimation);
+  const tokenCount = countMessagesTokens(preparedMessages, resolvedModel);
 
   return {
     trimmedMessages: toLangChainMessages(preparedMessages),
     rebudgeting: {
       beforeCount: preparedMessages.length,
       afterCount: preparedMessages.length,
-      estimatedTokensBefore: estimatedTokens,
-      estimatedTokensAfter: estimatedTokens,
+      estimatedTokensBefore: tokenCount.totalTokens,
+      estimatedTokensAfter: tokenCount.totalTokens,
+      countSource: tokenCount.source,
+      tokenizerEncoding: tokenCount.encodingName,
+      imageTokenReserve: tokenCount.imageTokenReserve,
       availableInputTokens: budgetPlan.availableInputTokens,
       reservedOutputTokens: budgetPlan.reservedOutputTokens,
       notes:
-        estimatedTokens > budgetPlan.availableInputTokens
+        tokenCount.totalTokens > budgetPlan.availableInputTokens
           ? ['Sage no longer re-budgets graph messages before provider calls; overflow is deferred to the provider/runtime boundary.']
           : [],
       trimmed: false,
     },
+  };
+}
+
+function mergeTokenUsage(params: {
+  current: AgentGraphState['tokenUsage'];
+  rebudgeting: GraphRebudgetEvent;
+  usage?: DurableModelInvokeOutput['usage'];
+}): AgentGraphState['tokenUsage'] {
+  return {
+    countSource: params.rebudgeting.countSource,
+    tokenizerEncoding: params.rebudgeting.tokenizerEncoding,
+    estimatedInputTokens: params.rebudgeting.estimatedTokensAfter,
+    imageTokenReserve: params.rebudgeting.imageTokenReserve,
+    requestCount: params.current.requestCount + (params.usage ? 1 : 0),
+    promptTokens: params.current.promptTokens + (params.usage?.promptTokens ?? 0),
+    completionTokens: params.current.completionTokens + (params.usage?.completionTokens ?? 0),
+    totalTokens: params.current.totalTokens + (params.usage?.totalTokens ?? 0),
+    cachedTokens: params.current.cachedTokens + (params.usage?.cachedTokens ?? 0),
+    reasoningTokens: params.current.reasoningTokens + (params.usage?.reasoningTokens ?? 0),
   };
 }
 
@@ -969,18 +1126,19 @@ function resolveGraphModelId(model: string | undefined): string {
 }
 
 function shouldRetryModelInvokeError(error: unknown): boolean {
-  const text = error instanceof Error ? error.message : String(error);
-  if (
-    /401|403|404|unauthorized|forbidden|authentication required|invalid api key|unknown api key|model .*not found|unknown model|unsupported model|validation failed|invalid request|bad request/i.test(
-      text,
-    )
-  ) {
+  if (!(error instanceof AppError)) {
     return false;
   }
 
-  return /408|409|425|429|500|502|503|504|timeout|timed out|ECONNRESET|ECONNREFUSED|EAI_AGAIN|ETIMEDOUT|socket hang up|rate limit|provider offline|provider unavailable|upstream/i.test(
-    text,
-  );
+  switch (error.code) {
+    case 'AI_PROVIDER_RATE_LIMIT':
+    case 'AI_PROVIDER_TIMEOUT':
+    case 'AI_PROVIDER_NETWORK':
+    case 'AI_PROVIDER_UPSTREAM':
+      return true;
+    default:
+      return false;
+  }
 }
 
 const MODEL_INVOKE_RETRY_POLICY = {
@@ -1027,6 +1185,14 @@ interface DurableModelInvokeInput {
 interface DurableModelInvokeOutput {
   message: LLMChatMessage;
   latencyMs: number;
+  usage?: {
+    promptTokens: number;
+    completionTokens: number;
+    totalTokens: number;
+    cachedTokens?: number;
+    reasoningTokens?: number;
+    raw?: Record<string, unknown>;
+  };
 }
 
 interface DurableApprovalMaterializationOutput {
@@ -1078,12 +1244,21 @@ const invokeAgentModelTask = task(
       ? responseMessage
       : new AIMessage({ content: extractMessageText(responseMessage as BaseMessage) });
     const [message] = toLlmMessages([aiMessage]);
+    const usage = aiMessage.response_metadata?.usage;
     return {
       message: message ?? {
         role: 'assistant',
         content: extractMessageText(aiMessage),
       },
       latencyMs: Math.max(0, Date.now() - startedAt),
+      usage:
+        usage &&
+        typeof usage === 'object' &&
+        typeof (usage as { promptTokens?: unknown }).promptTokens === 'number' &&
+        typeof (usage as { completionTokens?: unknown }).completionTokens === 'number' &&
+        typeof (usage as { totalTokens?: unknown }).totalTokens === 'number'
+          ? (usage as DurableModelInvokeOutput['usage'])
+          : undefined,
     };
   },
 );
@@ -1439,19 +1614,24 @@ function extractLatestHumanRequestText(messages: BaseMessage[]): string {
   return 'Continue the current turn using the latest working memory and tool results.';
 }
 
-function summarizeToolObservations(results: SerializedToolResult[], maxItems = 6): string | null {
+function buildToolObservationEvidence(
+  results: SerializedToolResult[],
+  maxItems = 6,
+): ToolObservationEvidence[] {
   if (results.length === 0) {
-    return null;
+    return [];
   }
 
-  return results
-    .slice(-maxItems)
-    .map((result) =>
-      result.success
-        ? `${result.name}: success${result.telemetry?.cacheHit ? ' (cache)' : ''}`
-        : `${result.name}: ${result.error ?? 'failed'}`,
-    )
-    .join('\n');
+  return results.slice(-maxItems).map((result, index) => ({
+    ref: `tool:${result.name}#${results.length - Math.min(results.length, maxItems) + index}`,
+    toolName: result.name,
+    status: result.success ? 'success' : 'failure',
+    summary: result.success
+      ? result.modelSummary?.trim() || `${result.name} completed successfully.`
+      : `${result.name} failed.`,
+    errorText: result.success ? null : result.error ?? result.errorType ?? 'Tool execution failed.',
+    cacheHit: result.telemetry?.cacheHit ?? false,
+  }));
 }
 
 function buildCompactionState(params: {
@@ -1488,7 +1668,10 @@ function buildCompactionState(params: {
     retainedRawMessageCount,
     retainedToolObservationCount,
     reason: params.reason,
-    inputTokensEstimate: estimateMessagesTokens(toLlmMessages(rawMessages)),
+    inputTokensEstimate: estimateMessagesTokens(
+      toLlmMessages(rawMessages),
+      resolveGraphModelId(params.state.resumeContext.model),
+    ),
     outputTokensEstimate: params.graphConfig.maxOutputTokens,
   };
 }
@@ -1600,7 +1783,7 @@ function buildAssistantTurnMessages(params: {
       maxRounds: graphConfig.sliceMaxSteps,
     },
     workingMemoryFrame: normalizeWorkingMemoryFrame(frame),
-    toolObservationSummary: summarizeToolObservations(
+    toolObservationEvidence: buildToolObservationEvidence(
       params.state.toolResults,
       compactionState?.retainedToolObservationCount ?? graphConfig.compactionMaxToolObservations,
     ),
@@ -1610,7 +1793,7 @@ function buildAssistantTurnMessages(params: {
     replyTarget: (params.runtimeContext.replyTarget as ReplyTargetContext | null | undefined) ?? null,
     focusedContinuity: params.runtimeContext.focusedContinuity ?? null,
     recentTranscript: params.runtimeContext.recentTranscript ?? null,
-    toolObservationSummary: summarizeToolObservations(
+    toolObservationEvidence: buildToolObservationEvidence(
       params.state.toolResults,
       compactionState?.retainedToolObservationCount ?? graphConfig.compactionMaxToolObservations,
     ),
@@ -1729,7 +1912,10 @@ function resolveBackgroundYieldReason(
   if (shouldCompactState({
     state,
     graphConfig,
-      estimatedInputTokens: estimateMessagesTokens(toLlmMessages(state.messages as BaseMessage[])),
+      estimatedInputTokens: estimateMessagesTokens(
+        toLlmMessages(state.messages as BaseMessage[]),
+        resolveGraphModelId(state.resumeContext.model),
+      ),
   })) {
     return 'awaiting_compaction';
   }
@@ -2046,12 +2232,24 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
             ...state.finalization,
             rebudgeting: prepared.rebudgeting,
           },
+          tokenUsage: mergeTokenUsage({
+            current: state.tokenUsage,
+            rebudgeting: prepared.rebudgeting,
+            usage: response.usage,
+          }),
         },
       });
     }
 
-    const finalReplyText = scrubFinalReplyText({ replyText }) || resolveDraftText(state.responseSession.latestText);
-    const completionKind = classifyPlainTextCompletionKind(finalReplyText);
+    const closeoutSignal = await normalizePlainTextCloseoutSignal({
+      state,
+      runtimeContext,
+      toolContext,
+      graphConfig,
+      rawReplyText: replyText,
+    });
+    const finalReplyText = scrubFinalReplyText({ replyText: closeoutSignal.replyText }) || resolveDraftText(state.responseSession.latestText);
+    const completionKind = closeoutSignal.kind;
     const waitingState =
       completionKind === 'clarification_question'
         ? {
@@ -2125,6 +2323,11 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
           ...state.finalization,
           rebudgeting: prepared.rebudgeting,
         },
+        tokenUsage: mergeTokenUsage({
+          current: state.tokenUsage,
+          rebudgeting: prepared.rebudgeting,
+          usage: response.usage,
+        }),
       },
     });
   };
@@ -2148,11 +2351,11 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
         replyText: state.replyText || findLatestAssistantText(state.messages as BaseMessage[]),
       });
       const resolvedReplyText = replyText || resolveDraftText(state.responseSession.latestText);
-      const completionKind = classifyPlainTextCompletionKind(resolvedReplyText);
+      const completionKind = state.completionKind ?? 'final_answer';
       const responseSession = bumpResponseSession({
         state,
         latestText: resolvedReplyText,
-        status: 'final',
+        status: completionKind === 'clarification_question' ? 'waiting_user_input' : 'final',
       });
       const nextState = {
         ...state,
@@ -2164,7 +2367,10 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
         update: {
           replyText: resolvedReplyText,
           completionKind,
-          stopReason: 'assistant_turn_completed',
+          stopReason:
+            completionKind === 'clarification_question'
+              ? 'user_input_interrupt'
+              : 'assistant_turn_completed',
           deliveryDisposition: 'response_session',
           responseSession,
           contextFrame: buildContextFrame(nextState),
@@ -3142,6 +3348,18 @@ function normalizeRecoveredGraphState(value: unknown): AgentGraphState | null {
     activeWindowDurationMs: state.activeWindowDurationMs ?? 0,
     pendingInterrupt: state.pendingInterrupt ?? null,
     interruptResolution: state.interruptResolution ?? null,
+    tokenUsage: state.tokenUsage ?? {
+      countSource: 'local_tokenizer',
+      tokenizerEncoding: 'o200k_base',
+      estimatedInputTokens: 0,
+      imageTokenReserve: 0,
+      requestCount: 0,
+      promptTokens: 0,
+      completionTokens: 0,
+      totalTokens: 0,
+      cachedTokens: 0,
+      reasoningTokens: 0,
+    },
   };
 }
 
@@ -3360,6 +3578,18 @@ function buildInitialState(params: StartAgentGraphTurnParams): AgentGraphState {
     activeWindowDurationMs: 0,
     pendingInterrupt: null,
     interruptResolution: null,
+    tokenUsage: {
+      countSource: 'local_tokenizer',
+      tokenizerEncoding: 'o200k_base',
+      estimatedInputTokens: 0,
+      imageTokenReserve: 0,
+      requestCount: 0,
+      promptTokens: 0,
+      completionTokens: 0,
+      totalTokens: 0,
+      cachedTokens: 0,
+      reasoningTokens: 0,
+    },
   };
 }
 
@@ -3410,10 +3640,23 @@ function buildSeededGraphState(params: {
     activeWindowDurationMs: 0,
     pendingInterrupt: null,
     interruptResolution: null,
+    tokenUsage: {
+      countSource: 'local_tokenizer',
+      tokenizerEncoding: 'o200k_base',
+      estimatedInputTokens: 0,
+      imageTokenReserve: 0,
+      requestCount: 0,
+      promptTokens: 0,
+      completionTokens: 0,
+      totalTokens: 0,
+      cachedTokens: 0,
+      reasoningTokens: 0,
+    },
     ...(params.state ?? {}),
   };
 
   seededState.resumeContext = params.state?.resumeContext ?? snapshotRuntimeContext(resolvedContext);
+  seededState.tokenUsage = params.state?.tokenUsage ?? seededState.tokenUsage;
   return seededState;
 }
 

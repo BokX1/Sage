@@ -26,6 +26,8 @@
 ## [Unreleased]
 
 ### Changed
+- Replaced Sage's heuristic runtime budgeting and closeout contract with deterministic runtime behavior: prompt budgeting now uses a local tokenizer plus provider-reported post-call usage instead of chars-per-token guesses, no-tool closeouts now require a structured `<assistant_closeout>` signal instead of punctuation-based inference, and long-running prompt assembly now retains evidence slices with refs instead of trimming one large raw observation blob.
+- Reworked Sage's runtime/provider failure surface around typed error codes, so retries, user-visible fallback copy, and trace metadata now distinguish provider auth/model/rate-limit/network/protocol failures without relying on regex classification of raw error text.
 - Reworked Sage's LangGraph recursion budgeting so the low-level recursion ceiling is now derived from the durable slice budget by default instead of acting as an independently tuned practical limit, which gives frontier models more room to recover within a slice before Sage falls back with a user-visible `loop_guard`.
 - Simplified Sage's model-facing tool exposure contract so every turn now exposes the full eligible tool surface for the current actor and runtime context, eliminating fresh-turn heuristic narrowing and making follow-up requests keep web, GitHub, Discord, and other permitted tool families available by default.
 - Replaced Sage's layered Prisma migration history with a single current-schema baseline migration, so fresh deploys and intentional hard resets now rebuild from one canonical SQL entrypoint instead of replaying legacy runtime-era migrations.
@@ -34,6 +36,8 @@
 
 ### Fixed
 - Fixed a hidden LangGraph read-lane recursion trap: read-only tool batches now exit their subgraph after one execution pass instead of re-entering a generic `ToolNode` loop, which stops legitimate research turns from hitting `recursion_limit` before Sage has actually exhausted its durable slice budget.
+- Fixed retry durability for long-running graph threads: when a Retry action successfully re-enters background work or a waiting state, Sage now persists the updated task-run status, next runnable time, and response-session state instead of only updating the visible Discord reply and leaving the durable worker record behind in its old failed state.
+- Fixed clarification detection for plain-text assistant turns so Sage now recognizes short actionable follow-up requests like `Tell me which repo to inspect next.` even without a trailing question mark, which keeps real clarification turns in `waiting_user_input` instead of silently falling back to fresh-turn handling on the user's next reply.
 - The Prisma baseline migration now enables `pgvector` before creating embedding columns, so clean database rebuilds do not fail when `AttachmentChunk` and `ChannelMessageEmbedding` are created on a fresh Postgres instance.
 - Fixed durable response-session resume handling so Sage no longer loses the real Discord draft message id after a yield, create a second visible reply for the same task run after process recovery, briefly flash stale pre-restart draft text before the resumed stream catches up, or anchor replacement waiting-input replies to the wrong prior message when the original draft is missing.
 - Fixed waiting-follow-up continuity so replies like `Proceed`, `Go on`, or `Deep dive this` can now continue Sage's own outstanding clarification question when the runtime has already matched that message to a real waiting task run, without weakening the broader room-continuity safeguards for unrelated short replies.
@@ -41,6 +45,7 @@
 - Fixed confusing waiting-input reply UX so Sage now keeps the same internal long-running task run but starts a fresh visible Discord reply when a human answers Sage's clarification question, instead of editing the older clarification message and making the follow-up conversation look like it rewrote history.
 - Fixed long-running Discord response delivery for replies that spill past 2,000 characters: Sage now tracks and reconciles overflow text chunks across foreground updates, background worker slices, and final runtime-card deliveries instead of re-posting the same tail messages on later edits.
 - Fixed durable long-running reply continuity so background slices now keep the latest persisted response-session message ids instead of overwriting them with stale task-run snapshots, and the background-resume path no longer releases its lease before the worker finishes publishing the visible result.
+- Fixed the last heuristic provider-compatibility gap in Sage's deterministic runtime rewrite: provider tool-control fallback now only retries on structured unsupported-parameter signals instead of raw error prose, and unstructured `404` responses now surface as provider-endpoint misconfiguration rather than being mislabeled as model failures.
 
 ### Changed
 - Reworked Sage's LangGraph runtime around durable long-running task runs, so normal long tool workflows now keep progressing automatically in the background on the same Discord response session instead of surfacing manual Continue prompts at every slice boundary.

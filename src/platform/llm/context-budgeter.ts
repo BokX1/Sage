@@ -1,3 +1,5 @@
+import { encodingForModel, getEncoding, getEncodingNameForModel } from 'js-tiktoken';
+import { config } from '../config/env';
 import { LLMChatMessage } from './llm-types';
 
 export type ModelLimits = {
@@ -14,72 +16,171 @@ export type BudgetPlan = {
   availableInputTokens: number;
 };
 
-export type TokenEstimateOptions = {
-  charsPerToken: number;
-  codeCharsPerToken: number;
-  imageTokens: number;
-  messageOverheadTokens: number;
+export type TokenCountSource = 'local_tokenizer' | 'fallback_estimator';
+export type TokenEstimateOptions = Record<string, never>;
+
+export type TokenCountResult = {
+  totalTokens: number;
+  source: TokenCountSource;
+  encodingName: string;
+  imageTokenReserve: number;
 };
 
-const DEFAULT_TOKEN_ESTIMATOR: TokenEstimateOptions = {
-  charsPerToken: 4,
-  codeCharsPerToken: 3.5,
-  imageTokens: 1200,
-  messageOverheadTokens: 4,
-};
+const DEFAULT_IMAGE_TOKEN_RESERVE = 1_200;
+const DEFAULT_FALLBACK_ENCODING = 'o200k_base' as const;
+const DEFAULT_MESSAGE_OVERHEAD_TOKENS = 4;
+const encoderCache = new Map<string, ReturnType<typeof getEncoding>>();
 
-function isLikelyCodeOrJson(text: string): boolean {
-  if (text.includes('```')) {
-    return true;
-  }
-
-  const trimmed = text.trim();
-  if (
-    (trimmed.startsWith('{') && trimmed.endsWith('}')) ||
-    (trimmed.startsWith('[') && trimmed.endsWith(']'))
-  ) {
-    return true;
-  }
-
-  const nonWordMatches = text.match(/[^A-Za-z0-9\s]/g) ?? [];
-  const density = text.length > 0 ? nonWordMatches.length / text.length : 0;
-  return density >= 0.3;
+function normalizeModelName(model: string): string {
+  return model.trim().toLowerCase();
 }
 
-export function estimateTextTokens(text: string, opts?: TokenEstimateOptions): number {
-  const estimator = opts ?? DEFAULT_TOKEN_ESTIMATOR;
-  const ratio = isLikelyCodeOrJson(text) ? estimator.codeCharsPerToken : estimator.charsPerToken;
-  if (ratio <= 0) {
-    return text.length;
+function resolveEncodingName(model: string): Parameters<typeof getEncoding>[0] {
+  const normalizedModel = normalizeModelName(model);
+  try {
+    return getEncodingNameForModel(normalizedModel as Parameters<typeof getEncodingNameForModel>[0]);
+  } catch {
+    return DEFAULT_FALLBACK_ENCODING;
   }
-  return Math.ceil(text.length / ratio);
+}
+
+function getTokenizer(model: string): {
+  encodingName: Parameters<typeof getEncoding>[0];
+  encoder: ReturnType<typeof getEncoding>;
+  source: TokenCountSource;
+} {
+  const encodingName = resolveEncodingName(model);
+  const cached = encoderCache.get(encodingName);
+  if (cached) {
+    return {
+      encodingName,
+      encoder: cached,
+      source: encodingName === DEFAULT_FALLBACK_ENCODING ? 'fallback_estimator' : 'local_tokenizer',
+    };
+  }
+
+  let encoder: ReturnType<typeof getEncoding>;
+  if (encodingName === DEFAULT_FALLBACK_ENCODING) {
+    encoder = getEncoding(DEFAULT_FALLBACK_ENCODING);
+  } else {
+    try {
+      encoder = encodingForModel(normalizeModelName(model) as Parameters<typeof encodingForModel>[0]);
+    } catch {
+      encoder = getEncoding(encodingName);
+    }
+  }
+  encoderCache.set(encodingName, encoder);
+  return {
+    encodingName,
+    encoder,
+    source: encodingName === DEFAULT_FALLBACK_ENCODING ? 'fallback_estimator' : 'local_tokenizer',
+  };
+}
+
+function countTextTokens(text: string, encoder: ReturnType<typeof getEncoding>): number {
+  if (!text) {
+    return 0;
+  }
+  return encoder.encode(text).length;
+}
+
+export function countMessageTokens(
+  message: LLMChatMessage,
+  model: string,
+): TokenCountResult {
+  const { encodingName, encoder, source } = getTokenizer(model);
+  let totalTokens = DEFAULT_MESSAGE_OVERHEAD_TOKENS;
+  let imageTokenReserve = 0;
+
+  if (typeof message.content === 'string') {
+    totalTokens += countTextTokens(message.content, encoder);
+  } else {
+    for (const part of message.content) {
+      if (part.type === 'text') {
+        totalTokens += countTextTokens(part.text, encoder);
+      } else if (part.type === 'image_url') {
+        totalTokens += DEFAULT_IMAGE_TOKEN_RESERVE;
+        imageTokenReserve += DEFAULT_IMAGE_TOKEN_RESERVE;
+      }
+    }
+  }
+
+  if (Array.isArray(message.toolCalls) && message.toolCalls.length > 0) {
+    totalTokens += countTextTokens(JSON.stringify(message.toolCalls), encoder);
+  }
+  if (message.toolCallId) {
+    totalTokens += countTextTokens(message.toolCallId, encoder);
+  }
+
+  return {
+    totalTokens,
+    source,
+    encodingName,
+    imageTokenReserve,
+  };
+}
+
+export function countMessagesTokens(
+  messages: LLMChatMessage[],
+  model: string,
+): TokenCountResult {
+  let totalTokens = 0;
+  let imageTokenReserve = 0;
+  let encodingName: string = DEFAULT_FALLBACK_ENCODING;
+  let source: TokenCountSource = 'local_tokenizer';
+
+  for (const message of messages) {
+    const result = countMessageTokens(message, model);
+    totalTokens += result.totalTokens;
+    imageTokenReserve += result.imageTokenReserve;
+    encodingName = result.encodingName;
+    if (result.source === 'fallback_estimator') {
+      source = 'fallback_estimator';
+    }
+  }
+
+  return {
+    totalTokens,
+    source,
+    encodingName,
+    imageTokenReserve,
+  };
+}
+
+function resolveDefaultModel(candidate?: string): string {
+  return candidate?.trim() || config.AI_PROVIDER_MAIN_AGENT_MODEL;
+}
+
+export function estimateTextTokens(
+  text: string,
+  _opts?: TokenEstimateOptions,
+  model?: string,
+): number {
+  return countMessageTokens(
+    {
+      role: 'user',
+      content: text,
+    },
+    resolveDefaultModel(model),
+  ).totalTokens;
 }
 
 export function estimateMessageTokens(
   message: LLMChatMessage,
-  opts?: TokenEstimateOptions,
+  optsOrModel?: TokenEstimateOptions | string,
+  maybeModel?: string,
 ): number {
-  const estimator = opts ?? DEFAULT_TOKEN_ESTIMATOR;
-  if (typeof message.content === 'string') {
-    return estimateTextTokens(message.content, estimator) + estimator.messageOverheadTokens;
-  }
-
-  let total = estimator.messageOverheadTokens;
-  for (const part of message.content) {
-    if (part.type === 'text') {
-      total += estimateTextTokens(part.text, estimator);
-    } else if (part.type === 'image_url') {
-      total += estimator.imageTokens;
-    }
-  }
-  return total;
+  const model = typeof optsOrModel === 'string' ? optsOrModel : maybeModel;
+  return countMessageTokens(message, resolveDefaultModel(model)).totalTokens;
 }
 
 export function estimateMessagesTokens(
   messages: LLMChatMessage[],
-  opts?: TokenEstimateOptions,
+  optsOrModel?: TokenEstimateOptions | string,
+  maybeModel?: string,
 ): number {
-  return messages.reduce((sum, message) => sum + estimateMessageTokens(message, opts), 0);
+  const model = typeof optsOrModel === 'string' ? optsOrModel : maybeModel;
+  return countMessagesTokens(messages, resolveDefaultModel(model)).totalTokens;
 }
 
 export function planBudget(

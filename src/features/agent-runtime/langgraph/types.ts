@@ -15,10 +15,26 @@ export interface GraphRebudgetEvent {
   afterCount: number;
   estimatedTokensBefore: number;
   estimatedTokensAfter: number;
+  countSource: 'local_tokenizer' | 'fallback_estimator';
+  tokenizerEncoding: string;
+  imageTokenReserve: number;
   availableInputTokens: number;
   reservedOutputTokens: number;
   notes: string[];
   trimmed: boolean;
+}
+
+export interface GraphTokenUsage {
+  countSource: 'local_tokenizer' | 'fallback_estimator';
+  tokenizerEncoding: string;
+  estimatedInputTokens: number;
+  imageTokenReserve: number;
+  requestCount: number;
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  cachedTokens: number;
+  reasoningTokens: number;
 }
 
 export interface ToolCallRoundEvent {
@@ -266,6 +282,7 @@ export interface AgentGraphState {
   activeWindowDurationMs: number;
   pendingInterrupt: GraphInterruptState | null;
   interruptResolution: GraphInterruptResolution | null;
+  tokenUsage: GraphTokenUsage;
 }
 
 export type GraphResumeInput =

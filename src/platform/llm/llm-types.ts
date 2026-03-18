@@ -128,6 +128,9 @@ export interface LLMResponse {
     promptTokens: number;
     completionTokens: number;
     totalTokens: number;
+    cachedTokens?: number;
+    reasoningTokens?: number;
+    raw?: Record<string, unknown>;
   };
 }
 

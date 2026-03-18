@@ -3,7 +3,16 @@ import type { GraphDeliveryDisposition } from './langgraph/types';
 
 export type LastResortVisibleReplyKind = 'turn' | 'background_resume' | 'approval_resume';
 export type RuntimeFailureReplyKind = 'turn' | 'background_resume';
-export type RuntimeFailureCategory = 'provider' | 'runtime';
+export type RuntimeFailureCategory =
+  | 'provider'
+  | 'provider_auth'
+  | 'provider_config'
+  | 'provider_model'
+  | 'provider_rate_limit'
+  | 'provider_timeout'
+  | 'provider_network'
+  | 'protocol'
+  | 'runtime';
 export type TaskRunLimitReplyKind = 'duration' | 'idle_wait' | 'resume_limit';
 
 export function buildLastResortVisibleReply(kind: LastResortVisibleReplyKind): string {
@@ -26,10 +35,38 @@ export function buildRuntimeFailureReply(params: {
   kind: RuntimeFailureReplyKind;
   category: RuntimeFailureCategory;
 }): string {
-  if (params.category === 'provider') {
+  if (params.category === 'provider_auth') {
+    return params.kind === 'background_resume'
+      ? 'I lost access to the model while I was picking that back up, so please try again after fixing the key.'
+      : 'I could not reach the model because the provider key or access is invalid.';
+  }
+
+  if (params.category === 'provider_model') {
+    return 'The configured model could not handle that request, so please try again after fixing the model setup.';
+  }
+
+  if (params.category === 'provider_config') {
+    return 'The configured model endpoint could not handle that request, so please try again after fixing the provider setup.';
+  }
+
+  if (params.category === 'provider_rate_limit') {
+    return params.kind === 'background_resume'
+      ? 'The model provider rate-limited me while I was picking that back up, so please try again.'
+      : 'The model provider rate-limited me before I could finish, so please try again.';
+  }
+
+  if (
+    params.category === 'provider' ||
+    params.category === 'provider_timeout' ||
+    params.category === 'provider_network'
+  ) {
     return params.kind === 'background_resume'
       ? 'I lost the model connection while I was picking that back up, so please try again.'
       : 'I lost the model connection before I could finish, so please try again.';
+  }
+
+  if (params.category === 'protocol') {
+    return 'I got an invalid model reply while trying to finish that, so please try again.';
   }
 
   return params.kind === 'background_resume'

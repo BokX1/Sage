@@ -337,8 +337,21 @@ describe('AiProviderClient', () => {
       ok: false,
       status: 400,
       statusText: 'Bad Request',
-      text: async () => 'Model validation failed.',
-      json: async () => ({}),
+      text: async () =>
+        JSON.stringify({
+          error: {
+            code: 'validation_error',
+            type: 'validation_error',
+            message: 'Model validation failed.',
+          },
+        }),
+      json: async () => ({
+        error: {
+          code: 'validation_error',
+          type: 'validation_error',
+          message: 'Model validation failed.',
+        },
+      }),
     } satisfies {
       ok: boolean;
       status: number;
@@ -567,7 +580,7 @@ describe('AiProviderClient', () => {
     });
   });
 
-  it('retries without provider tool controls when the endpoint rejects allowed_tools or parallel_tool_calls', async () => {
+  it('retries without provider tool controls when the provider returns a structured unsupported-parameter error', async () => {
     const client = new AiProviderClient({ baseUrl: 'https://api.test/v1', model: 'test-chat-model', maxRetries: 0 });
 
     fetchMock
@@ -575,8 +588,23 @@ describe('AiProviderClient', () => {
         ok: false,
         status: 400,
         statusText: 'Bad Request',
-        json: async () => ({}),
-        text: async () => 'unknown field: allowed_tools',
+        json: async () => ({
+          error: {
+            code: 'unknown_parameter',
+            type: 'invalid_request_error',
+            param: 'tool_choice',
+            message: 'tool_choice is not supported by this endpoint.',
+          },
+        }),
+        text: async () =>
+          JSON.stringify({
+            error: {
+              code: 'unknown_parameter',
+              type: 'invalid_request_error',
+              param: 'tool_choice',
+              message: 'tool_choice is not supported by this endpoint.',
+            },
+          }),
       } satisfies { ok: boolean; status: number; statusText: string; json: () => Promise<unknown>; text: () => Promise<string> })
       .mockResolvedValueOnce({
         ok: true,
@@ -611,6 +639,71 @@ describe('AiProviderClient', () => {
     expect(retryBody.tool_choice).toBe('auto');
   });
 
+  it('does not retry without provider tool controls when the provider only returns an unstructured 400 message', async () => {
+    const client = new AiProviderClient({ baseUrl: 'https://api.test/v1', model: 'test-chat-model', maxRetries: 0 });
+
+    fetchMock.mockResolvedValueOnce({
+      ok: false,
+      status: 400,
+      statusText: 'Bad Request',
+      json: async () => ({}),
+      text: async () => 'unknown field: allowed_tools',
+    } satisfies { ok: boolean; status: number; statusText: string; json: () => Promise<unknown>; text: () => Promise<string> });
+
+    await expect(
+      client.chat({
+        messages: [{ role: 'user', content: 'Search it' }],
+        tools: [
+          {
+            type: 'function',
+            function: {
+              name: 'google_search',
+              parameters: { type: 'object', properties: {}, required: [] },
+            },
+          },
+        ],
+        allowedTools: [{ type: 'function', function: { name: 'google_search' } }],
+        parallelToolCalls: false,
+        toolChoice: 'auto',
+      }),
+    ).rejects.toThrow('AI provider bad request');
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('classifies generic structured invalid_request_error responses as AI_PROVIDER_BAD_REQUEST', async () => {
+    const client = new AiProviderClient({ baseUrl: 'https://api.test/v1', model: 'test-chat-model', maxRetries: 0 });
+
+    fetchMock.mockResolvedValueOnce({
+      ok: false,
+      status: 400,
+      statusText: 'Bad Request',
+      json: async () => ({
+        error: {
+          code: 'unknown_parameter',
+          type: 'invalid_request_error',
+          param: 'response_format',
+          message: 'response_format is not supported by this endpoint.',
+        },
+      }),
+      text: async () =>
+        JSON.stringify({
+          error: {
+            code: 'unknown_parameter',
+            type: 'invalid_request_error',
+            param: 'response_format',
+            message: 'response_format is not supported by this endpoint.',
+          },
+        }),
+    } satisfies { ok: boolean; status: number; statusText: string; json: () => Promise<unknown>; text: () => Promise<string> });
+
+    await expect(client.chat({ messages: [] })).rejects.toMatchObject({
+      code: 'AI_PROVIDER_BAD_REQUEST',
+      message: expect.stringContaining('AI provider bad request'),
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it('caches unsupported provider tool controls so later requests skip the failed first attempt', async () => {
     const firstClient = new AiProviderClient({ baseUrl: 'https://api.test/v1', model: 'test-chat-model', maxRetries: 0 });
     const secondClient = new AiProviderClient({ baseUrl: 'https://api.test/v1', model: 'test-chat-model', maxRetries: 0 });
@@ -620,8 +713,23 @@ describe('AiProviderClient', () => {
         ok: false,
         status: 400,
         statusText: 'Bad Request',
-        json: async () => ({}),
-        text: async () => 'unknown field: parallel_tool_calls',
+        json: async () => ({
+          error: {
+            code: 'unsupported_parameter',
+            type: 'invalid_request_error',
+            param: 'parallel_tool_calls',
+            message: 'parallel_tool_calls is not supported by this endpoint.',
+          },
+        }),
+        text: async () =>
+          JSON.stringify({
+            error: {
+              code: 'unsupported_parameter',
+              type: 'invalid_request_error',
+              param: 'parallel_tool_calls',
+              message: 'parallel_tool_calls is not supported by this endpoint.',
+            },
+          }),
       } satisfies { ok: boolean; status: number; statusText: string; json: () => Promise<unknown>; text: () => Promise<string> })
       .mockResolvedValueOnce({
         ok: true,
@@ -677,6 +785,52 @@ describe('AiProviderClient', () => {
     };
     expect(cachedBody.parallel_tool_calls).toBeUndefined();
     expect(cachedBody.tool_choice).toBe('auto');
+  });
+
+  it('classifies structured 404 model errors as AI_PROVIDER_MODEL', async () => {
+    const client = new AiProviderClient({ baseUrl: 'https://api.test/v1', model: 'test-chat-model', maxRetries: 0 });
+
+    fetchMock.mockResolvedValueOnce({
+      ok: false,
+      status: 404,
+      statusText: 'Not Found',
+      json: async () => ({
+        error: {
+          code: 'model_not_found',
+          type: 'invalid_model',
+          message: 'Model not found.',
+        },
+      }),
+      text: async () =>
+        JSON.stringify({
+          error: {
+            code: 'model_not_found',
+            type: 'invalid_model',
+            message: 'Model not found.',
+          },
+        }),
+    } satisfies { ok: boolean; status: number; statusText: string; json: () => Promise<unknown>; text: () => Promise<string> });
+
+    await expect(client.chat({ messages: [] })).rejects.toThrow('AI provider model error');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('classifies unstructured 404 responses as AI_PROVIDER_ENDPOINT instead of AI_PROVIDER_MODEL', async () => {
+    const client = new AiProviderClient({ baseUrl: 'https://api.test/v1', model: 'test-chat-model', maxRetries: 3 });
+
+    fetchMock.mockResolvedValueOnce({
+      ok: false,
+      status: 404,
+      statusText: 'Not Found',
+      json: async () => ({}),
+      text: async () => 'route not found',
+    } satisfies { ok: boolean; status: number; statusText: string; json: () => Promise<unknown>; text: () => Promise<string> });
+
+    await expect(client.chat({ messages: [] })).rejects.toMatchObject({
+      code: 'AI_PROVIDER_ENDPOINT',
+      message: expect.stringContaining('AI provider endpoint error'),
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it('fails when the provider returns malformed tool-call argument JSON', async () => {
