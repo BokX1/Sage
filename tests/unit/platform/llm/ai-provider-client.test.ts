@@ -535,7 +535,7 @@ describe('AiProviderClient', () => {
     });
   });
 
-  it('sends allowed_tools and parallel_tool_calls when the caller narrows the active subset explicitly', async () => {
+  it('filters tool definitions to the allowed subset without sending a nonstandard allowed_tools tool_choice payload', async () => {
     const client = new AiProviderClient({ baseUrl: 'https://api.test/v1', model: 'test-chat-model', maxRetries: 0 });
 
     fetchMock.mockResolvedValueOnce({
@@ -569,15 +569,17 @@ describe('AiProviderClient', () => {
     });
 
     const body = parseRequestBody(fetchMock, 0) as RequestBody & {
+      tools?: Array<{ function?: { name?: string } }>;
       parallel_tool_calls?: boolean;
-      tool_choice?: Record<string, unknown>;
+      tool_choice?: unknown;
     };
+    expect(body.tools).toEqual([
+      expect.objectContaining({
+        function: expect.objectContaining({ name: 'google_search' }),
+      }),
+    ]);
     expect(body.parallel_tool_calls).toBe(false);
-    expect(body.tool_choice).toMatchObject({
-      type: 'allowed_tools',
-      mode: 'auto',
-      tools: [{ type: 'function', function: { name: 'google_search' } }],
-    });
+    expect(body.tool_choice).toBeUndefined();
   });
 
   it('retries without provider tool controls when the provider returns a structured unsupported-parameter error', async () => {

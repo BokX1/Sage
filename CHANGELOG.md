@@ -46,6 +46,7 @@
 - Fixed long-running Discord response delivery for replies that spill past 2,000 characters: Sage now tracks and reconciles overflow text chunks across foreground updates, background worker slices, and final runtime-card deliveries instead of re-posting the same tail messages on later edits.
 - Fixed durable long-running reply continuity so background slices now keep the latest persisted response-session message ids instead of overwriting them with stale task-run snapshots, and the background-resume path no longer releases its lease before the worker finishes publishing the visible result.
 - Fixed the last heuristic provider-compatibility gap in Sage's deterministic runtime rewrite: provider tool-control fallback now only retries on structured unsupported-parameter signals instead of raw error prose, and unstructured `404` responses now surface as provider-endpoint misconfiguration rather than being mislabeled as model failures.
+- Fixed OpenAI-compatible tool-call payload compatibility for hosted providers that reject Sage's old custom `allowed_tools` `tool_choice` object: Sage now preserves allowed-tool narrowing by filtering the outbound `tools` array itself, which keeps long-running Discord smoke and live tool turns on the standard Chat Completions request shape.
 
 ### Changed
 - Reworked Sage's LangGraph runtime around durable long-running task runs, so normal long tool workflows now keep progressing automatically in the background on the same Discord response session instead of surfacing manual Continue prompts at every slice boundary.

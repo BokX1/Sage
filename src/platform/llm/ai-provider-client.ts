@@ -257,31 +257,27 @@ function sanitizeToolDefinitionsForProvider(
   }));
 }
 
-function buildAllowedToolsToolChoice(params: {
-  allowedTools: ProviderAllowedTool[] | undefined;
-  fallbackToolChoice: LLMRequest['toolChoice'];
-}): string | Record<string, unknown> | undefined {
-  if (!params.allowedTools || params.allowedTools.length === 0) {
-    return typeof params.fallbackToolChoice === 'string' || typeof params.fallbackToolChoice === 'object'
-      ? params.fallbackToolChoice as string | Record<string, unknown>
-      : undefined;
+function filterToolsByAllowedTools(
+  tools: ProviderToolDefinition[] | undefined,
+  allowedTools: ProviderAllowedTool[] | undefined,
+): ProviderToolDefinition[] | undefined {
+  if (!Array.isArray(tools) || tools.length === 0) {
+    return tools;
+  }
+  if (!Array.isArray(allowedTools) || allowedTools.length === 0) {
+    return tools;
   }
 
-  const mode =
-    typeof params.fallbackToolChoice === 'string' && params.fallbackToolChoice.trim().length > 0
-      ? params.fallbackToolChoice
-      : 'auto';
+  const allowedNames = new Set(
+    allowedTools
+      .map((tool) => tool.function?.name?.trim())
+      .filter((name): name is string => typeof name === 'string' && name.length > 0),
+  );
+  if (allowedNames.size === 0) {
+    return tools;
+  }
 
-  return {
-    type: 'allowed_tools',
-    mode,
-    tools: params.allowedTools.map((tool) => ({
-      type: 'function',
-      function: {
-        name: tool.function.name,
-      },
-    })),
-  };
+  return tools.filter((tool) => allowedNames.has(tool.function.name));
 }
 
 function parseProviderErrorDetails(bodyText: string): {
@@ -544,9 +540,7 @@ export class AiProviderClient implements LLMClient {
       '[Budget] Preflight token count',
     );
 
-    const requestedProviderToolControls =
-      (Array.isArray(request.allowedTools) && request.allowedTools.length > 0)
-      || typeof request.parallelToolCalls === 'boolean';
+    const requestedProviderToolControls = typeof request.parallelToolCalls === 'boolean';
     const providerToolControlsCacheKey = buildProviderToolControlsCacheKey(this.config.baseUrl, model);
     const cachedProviderToolControlsSupport = providerToolControlsSupportCache.get(providerToolControlsCacheKey);
     let includeProviderToolControls =
@@ -556,14 +550,9 @@ export class AiProviderClient implements LLMClient {
       messages: normalizedMessages,
       temperature: request.temperature ?? 0.7,
       max_tokens: request.maxTokens,
-      tools: sanitizeToolDefinitionsForProvider(request.tools),
+      tools: sanitizeToolDefinitionsForProvider(filterToolsByAllowedTools(request.tools, request.allowedTools)),
       parallel_tool_calls: includeProviderToolControls ? request.parallelToolCalls : undefined,
-      tool_choice: includeProviderToolControls
-        ? buildAllowedToolsToolChoice({
-          allowedTools: request.allowedTools,
-          fallbackToolChoice: request.toolChoice,
-        })
-        : request.toolChoice,
+      tool_choice: request.toolChoice,
     });
 
     if (requestedProviderToolControls && cachedProviderToolControlsSupport === false) {
