@@ -995,56 +995,97 @@ describe('agentRuntime', () => {
         resumeCount: 2,
       }),
     );
-    expect(releaseAgentTaskRunLeaseMock).toHaveBeenCalledWith({
-      id: 'task-2',
-      leaseOwner: 'worker-1',
-    });
+    expect(releaseAgentTaskRunLeaseMock).not.toHaveBeenCalled();
   });
 
-  it('preserves the persisted response message id when a resumed graph result omits it', async () => {
+  it('refreshes the latest persisted response-session refs before saving a resumed graph result', async () => {
     const now = Date.now();
-    getAgentTaskRunByThreadIdMock.mockResolvedValue({
-      id: 'task-2b',
-      threadId: 'thread-2b',
-      originTraceId: 'trace-origin',
-      latestTraceId: 'trace-latest',
-      guildId: 'guild-1',
-      channelId: 'channel-1',
-      requestedByUserId: 'user-1',
-      sourceMessageId: 'message-source-2b',
-      responseMessageId: 'response-existing-2b',
-      status: 'running',
-      waitingKind: null,
-      latestDraftText: 'summary',
-      draftRevision: 1,
-      completionKind: null,
-      stopReason: 'background_yield',
-      nextRunnableAt: new Date(Date.now() + 60_000),
-      leaseOwner: 'worker-1',
-      leaseExpiresAt: new Date(Date.now() + 60_000),
-      heartbeatAt: new Date(),
-      resumeCount: 1,
-      taskWallClockMs: 1200,
-      maxTotalDurationMs: 3_600_000,
-      maxIdleWaitMs: 86_400_000,
-      lastErrorText: null,
-      responseSessionJson: {
-        responseSessionId: 'thread-2b',
-        status: 'draft',
-        latestText: 'summary',
+    getAgentTaskRunByThreadIdMock
+      .mockResolvedValueOnce({
+        id: 'task-2b',
+        threadId: 'thread-2b',
+        originTraceId: 'trace-origin',
+        latestTraceId: 'trace-latest',
+        guildId: 'guild-1',
+        channelId: 'channel-1',
+        requestedByUserId: 'user-1',
+        sourceMessageId: 'message-source-2b',
+        responseMessageId: null,
+        status: 'running',
+        waitingKind: null,
+        latestDraftText: 'summary',
         draftRevision: 1,
+        completionKind: null,
+        stopReason: 'background_yield',
+        nextRunnableAt: new Date(Date.now() + 60_000),
+        leaseOwner: 'worker-1',
+        leaseExpiresAt: new Date(Date.now() + 60_000),
+        heartbeatAt: new Date(),
+        resumeCount: 1,
+        taskWallClockMs: 1200,
+        maxTotalDurationMs: 3_600_000,
+        maxIdleWaitMs: 86_400_000,
+        lastErrorText: null,
+        responseSessionJson: {
+          responseSessionId: 'thread-2b',
+          status: 'draft',
+          latestText: 'summary',
+          draftRevision: 1,
+          sourceMessageId: 'message-source-2b',
+          responseMessageId: null,
+          linkedArtifactMessageIds: [],
+        },
+        waitingStateJson: null,
+        compactionStateJson: null,
+        checkpointMetadataJson: { isAdmin: true, canModerate: false },
+        startedAt: new Date(now - 5 * 60_000),
+        completedAt: null,
+        createdAt: new Date(now - 5 * 60_000),
+        updatedAt: new Date(now - 5_000),
+      })
+      .mockResolvedValueOnce({
+        id: 'task-2b',
+        threadId: 'thread-2b',
+        originTraceId: 'trace-origin',
+        latestTraceId: 'trace-latest',
+        guildId: 'guild-1',
+        channelId: 'channel-1',
+        requestedByUserId: 'user-1',
         sourceMessageId: 'message-source-2b',
         responseMessageId: 'response-existing-2b',
-        linkedArtifactMessageIds: [],
-      },
-      waitingStateJson: null,
-      compactionStateJson: null,
-      checkpointMetadataJson: { isAdmin: true, canModerate: false },
-      startedAt: new Date(now - 5 * 60_000),
-      completedAt: null,
-      createdAt: new Date(now - 5 * 60_000),
-      updatedAt: new Date(now - 5_000),
-    });
+        status: 'running',
+        waitingKind: null,
+        latestDraftText: 'summary',
+        draftRevision: 1,
+        completionKind: null,
+        stopReason: 'background_yield',
+        nextRunnableAt: new Date(Date.now() + 60_000),
+        leaseOwner: 'worker-1',
+        leaseExpiresAt: new Date(Date.now() + 60_000),
+        heartbeatAt: new Date(),
+        resumeCount: 1,
+        taskWallClockMs: 1200,
+        maxTotalDurationMs: 3_600_000,
+        maxIdleWaitMs: 86_400_000,
+        lastErrorText: null,
+        responseSessionJson: {
+          responseSessionId: 'thread-2b',
+          status: 'draft',
+          latestText: 'summary',
+          draftRevision: 1,
+          sourceMessageId: 'message-source-2b',
+          responseMessageId: 'response-existing-2b',
+          overflowMessageIds: ['overflow-existing-2b'],
+          linkedArtifactMessageIds: [],
+        },
+        waitingStateJson: null,
+        compactionStateJson: null,
+        checkpointMetadataJson: { isAdmin: true, canModerate: false },
+        startedAt: new Date(now - 5 * 60_000),
+        completedAt: null,
+        createdAt: new Date(now - 5 * 60_000),
+        updatedAt: new Date(now - 5_000),
+      });
     continueAgentGraphTurnMock.mockResolvedValue(
       makeGraphResult({
         replyText: 'Resumed and finished.',
@@ -1077,6 +1118,7 @@ describe('agentRuntime', () => {
         responseSessionJson: expect.objectContaining({
           responseMessageId: 'response-existing-2b',
           sourceMessageId: 'message-source-2b',
+          overflowMessageIds: ['overflow-existing-2b'],
         }),
       }),
     );
@@ -1138,10 +1180,7 @@ describe('agentRuntime', () => {
         retryKind: 'background_resume',
       },
     });
-    expect(releaseAgentTaskRunLeaseMock).toHaveBeenCalledWith({
-      id: 'task-3',
-      leaseOwner: 'worker-1',
-    });
+    expect(releaseAgentTaskRunLeaseMock).not.toHaveBeenCalled();
   });
 
   it('fails background resume cleanly when the task run already exhausted its total duration', async () => {
@@ -1289,53 +1328,9 @@ describe('agentRuntime', () => {
     expect(result.replyText).toBe('I checked that repository and found the issue.');
   });
 
-  it('marks a single waiting candidate as a trusted follow-up even without a direct reply target', async () => {
-    const now = Date.now();
-    findWaitingUserInputTaskRunMock.mockResolvedValue({
-      id: 'task-waiting-single-1',
-      threadId: 'thread-waiting-single-1',
-      originTraceId: 'trace-origin',
-      latestTraceId: 'trace-latest',
-      guildId: 'guild-1',
-      channelId: 'channel-1',
-      requestedByUserId: 'user-1',
-      sourceMessageId: 'message-source-single-1',
-      responseMessageId: 'response-waiting-single-1',
-      status: 'waiting_user_input',
-      waitingKind: 'user_input',
-      latestDraftText: 'Want me to keep digging into the repo?',
-      draftRevision: 2,
-      completionKind: 'clarification_question',
-      stopReason: 'user_input_interrupt',
-      nextRunnableAt: null,
-      leaseOwner: null,
-      leaseExpiresAt: null,
-      heartbeatAt: null,
-      resumeCount: 0,
-      taskWallClockMs: 1000,
-      maxTotalDurationMs: 3_600_000,
-      maxIdleWaitMs: 86_400_000,
-      lastErrorText: null,
-      responseSessionJson: null,
-      waitingStateJson: {
-        kind: 'user_input',
-        prompt: 'Want me to keep digging into the repo?',
-      },
-      compactionStateJson: null,
-      checkpointMetadataJson: null,
-      startedAt: new Date(now - 5 * 60_000),
-      completedAt: null,
-      createdAt: new Date(now - 5 * 60_000),
-      updatedAt: new Date(now - 5_000),
-    });
-    continueAgentGraphTurnMock.mockResolvedValue(
-      makeGraphResult({
-        replyText: 'I kept digging and found more context.',
-        activeWindowDurationMs: 600,
-      }),
-    );
-
-    await resumeWaitingTaskRunWithInput({
+  it("fails cleanly when a follow-up isn't a direct reply to Sage's waiting question", async () => {
+    findWaitingUserInputTaskRunMock.mockResolvedValue(null);
+    const result = await resumeWaitingTaskRunWithInput({
       traceId: 'trace-resume-input-single-1',
       userId: 'user-1',
       channelId: 'channel-1',
@@ -1350,19 +1345,10 @@ describe('agentRuntime', () => {
       isAdmin: false,
     });
 
-    expect(continueAgentGraphTurnMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        context: expect.objectContaining({
-          promptMode: 'waiting_follow_up',
-          waitingFollowUp: {
-            matched: true,
-            matchKind: 'single_waiting_run',
-            outstandingPrompt: 'Want me to keep digging into the repo?',
-            responseMessageId: 'response-waiting-single-1',
-          },
-        }),
-      }),
-    );
+    expect(result.status).toBe('failed');
+    expect(result.replyText).toBe("I couldn't find the question I was waiting on, so please ask me again.");
+    expect(continueAgentGraphTurnMock).not.toHaveBeenCalled();
+    expect(upsertAgentTaskRunMock).not.toHaveBeenCalled();
   });
 
   it('fails a waiting user-input run cleanly after idle expiry instead of starting a fresh turn', async () => {

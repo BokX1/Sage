@@ -619,6 +619,26 @@ function buildDefaultResponseSession(threadId: string): AgentGraphState['respons
   };
 }
 
+function readCurrentTurnMessageId(currentTurn: unknown): string | null {
+  if (!currentTurn || typeof currentTurn !== 'object' || Array.isArray(currentTurn)) {
+    return null;
+  }
+  const candidate = (currentTurn as { messageId?: unknown }).messageId;
+  return typeof candidate === 'string' ? candidate : null;
+}
+
+function buildFollowUpResumeResponseSession(params: {
+  runtimeContext: AgentGraphRuntimeContext;
+  responseSessionId: string;
+}): AgentGraphState['responseSession'] {
+  return {
+    ...buildDefaultResponseSession(params.responseSessionId),
+    sourceMessageId: readCurrentTurnMessageId(params.runtimeContext.currentTurn),
+    // A user-input follow-up starts a fresh visible reply surface while keeping the same task run.
+    status: 'draft',
+  };
+}
+
 function resolveDraftText(replyText: string | null | undefined): string {
   const cleaned = scrubFinalReplyText({ replyText });
   return cleaned || 'Working on that now.';
@@ -3577,8 +3597,16 @@ export async function continueAgentGraphTurn(
         promptMode: existingState.resumeContext.promptMode ?? 'standard',
       }
     : mergedContext;
-  const reopenedResponseSession =
-    existingState.responseSession.status === 'final' || existingState.responseSession.status === 'failed'
+  const isWaitingFollowUpResume =
+    params.clearWaitingState &&
+    existingState.waitingState?.kind === 'user_input' &&
+    mergedContext.promptMode === 'waiting_follow_up';
+  const reopenedResponseSession = isWaitingFollowUpResume
+    ? buildFollowUpResumeResponseSession({
+        runtimeContext: mergedContext,
+        responseSessionId: runId,
+      })
+    : existingState.responseSession.status === 'final' || existingState.responseSession.status === 'failed'
       ? {
           ...existingState.responseSession,
           status: 'draft' as const,

@@ -209,7 +209,7 @@ These values reflect the starter values in `.env.example`:
 | Variable | Description | Starter value |
 | :--- | :--- | :--- |
 | `AI_PROVIDER_MAIN_AGENT_MODEL` | Runtime main agent model for `runChatTurn` | *(required in `.env`)* |
-| `AGENT_RUN_SLICE_MAX_STEPS` | Max tool-capable assistant/model responses in one durable worker slice before Sage yields automatically | `6` |
+| `AGENT_RUN_SLICE_MAX_STEPS` | Max tool-capable assistant/model responses in one durable worker slice before Sage yields automatically | `10` |
 | `AGENT_RUN_TOOL_TIMEOUT_MS` | Per-tool execution timeout | `45000` |
 | `AGENT_RUN_SLICE_MAX_DURATION_MS` | Max wall-clock duration for one active worker slice | `120000` |
 | `AGENT_RUN_MAX_TOTAL_DURATION_MS` | Max total wall-clock budget for one long-running task run | `3600000` |
@@ -226,10 +226,10 @@ These values reflect the starter values in `.env.example`:
 | `AGENT_RUN_COMPACTION_MAX_TOOL_OBSERVATIONS` | Tool observations retained in prompt-facing compaction state | `12` |
 | `AGENT_GRAPH_MAX_OUTPUT_TOKENS` | Max output tokens for graph model calls | `4096` |
 | `AGENT_GRAPH_GITHUB_GROUNDED_MODE` | Enable grounded GitHub search mode | `true` |
-| `AGENT_GRAPH_RECURSION_LIMIT` | LangGraph recursion fail-safe above the legal hop count | `16` |
-| `AGENT_GRAPH_MAX_TOOL_CALLS_PER_ROUND` | Max executable tool calls Sage will allow from one model response before it forces a repair pass | `8` |
-| `AGENT_GRAPH_MAX_IDENTICAL_TOOL_BATCHES` | Consecutive identical tool batches allowed before Sage trips the loop guard | `2` |
-| `AGENT_GRAPH_MAX_LOOP_GUARD_RECOVERIES` | How many structured repair attempts Sage gives the model before finalizing with `loop_guard` | `1` |
+| `AGENT_GRAPH_RECURSION_LIMIT` | LangGraph recursion fail-safe above the legal hop count | `32` |
+| `AGENT_GRAPH_MAX_TOOL_CALLS_PER_ROUND` | Max executable tool calls Sage will allow from one model response before it forces a repair pass | `12` |
+| `AGENT_GRAPH_MAX_IDENTICAL_TOOL_BATCHES` | Consecutive identical tool batches allowed before Sage trips the loop guard | `4` |
+| `AGENT_GRAPH_MAX_LOOP_GUARD_RECOVERIES` | How many structured repair attempts Sage gives the model before finalizing with `loop_guard` | `3` |
 | `LANGSMITH_TRACING` | Enable optional LangSmith graph tracing | `false` |
 | `LANGSMITH_PROJECT` | LangSmith project name | `sage` |
 | `SAGE_TRACE_DB_ENABLED` | Persist compact `AgentTrace` ledger rows | `true` |

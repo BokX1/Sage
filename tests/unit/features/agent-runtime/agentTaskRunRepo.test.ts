@@ -87,7 +87,7 @@ describe('AgentTaskRunRepo.findWaitingUserInputTaskRun', () => {
     expect(result?.threadId).toBe('thread-direct');
   });
 
-  it('returns the only waiting run when there is a single unambiguous candidate', async () => {
+  it('refuses to auto-resume even when there is only one waiting candidate without a direct reply match', async () => {
     mockFindMany.mockResolvedValue([
       makeTaskRunRow({ id: 'run-only', threadId: 'thread-only', responseMessageId: 'response-only' }),
     ]);
@@ -99,7 +99,7 @@ describe('AgentTaskRunRepo.findWaitingUserInputTaskRun', () => {
       replyToMessageId: null,
     });
 
-    expect(result?.threadId).toBe('thread-only');
+    expect(result).toBeNull();
   });
 
   it('refuses to auto-resume when multiple waiting runs exist and the new message is not a direct reply', async () => {

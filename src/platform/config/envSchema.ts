@@ -323,7 +323,7 @@ export const testDefaults: Record<string, string> = {
   // Output / Runtime Control
   CHAT_MAX_OUTPUT_TOKENS: '4096',
   LLM_DOCTOR_PING: '0',
-  AGENT_RUN_SLICE_MAX_STEPS: '6',
+  AGENT_RUN_SLICE_MAX_STEPS: '10',
   AGENT_RUN_TOOL_TIMEOUT_MS: '45000',
   AGENT_GRAPH_MAX_OUTPUT_TOKENS: '4096',
   AGENT_GRAPH_GITHUB_GROUNDED_MODE: 'true',
@@ -340,10 +340,10 @@ export const testDefaults: Record<string, string> = {
   AGENT_RUN_COMPACTION_TRIGGER_TOOL_RESULTS: '12',
   AGENT_RUN_COMPACTION_MAX_RAW_MESSAGES: '24',
   AGENT_RUN_COMPACTION_MAX_TOOL_OBSERVATIONS: '12',
-  AGENT_GRAPH_RECURSION_LIMIT: '16',
-  AGENT_GRAPH_MAX_TOOL_CALLS_PER_ROUND: '8',
-  AGENT_GRAPH_MAX_IDENTICAL_TOOL_BATCHES: '2',
-  AGENT_GRAPH_MAX_LOOP_GUARD_RECOVERIES: '1',
+  AGENT_GRAPH_RECURSION_LIMIT: '32',
+  AGENT_GRAPH_MAX_TOOL_CALLS_PER_ROUND: '12',
+  AGENT_GRAPH_MAX_IDENTICAL_TOOL_BATCHES: '4',
+  AGENT_GRAPH_MAX_LOOP_GUARD_RECOVERIES: '3',
 
   // Security
   SECRET_ENCRYPTION_KEY: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
@@ -508,7 +508,7 @@ export const envSchema = z.object({
   // Output / Runtime Control
   CHAT_MAX_OUTPUT_TOKENS: z.coerce.number().int().min(128).max(16000).default(4096),
   LLM_DOCTOR_PING: z.enum(['0', '1']).default('0'),
-  AGENT_RUN_SLICE_MAX_STEPS: z.coerce.number().int().min(1).max(32).default(6),
+  AGENT_RUN_SLICE_MAX_STEPS: z.coerce.number().int().min(1).max(32).default(10),
   AGENT_RUN_TOOL_TIMEOUT_MS: z.coerce.number().int().min(1000).max(120000).default(45000),
   AGENT_GRAPH_MAX_OUTPUT_TOKENS: z.coerce.number().int().min(128).max(8000).default(4096),
   AGENT_GRAPH_GITHUB_GROUNDED_MODE: z
@@ -531,10 +531,10 @@ export const envSchema = z.object({
   AGENT_RUN_COMPACTION_TRIGGER_TOOL_RESULTS: z.coerce.number().int().min(1).max(256).default(12),
   AGENT_RUN_COMPACTION_MAX_RAW_MESSAGES: z.coerce.number().int().min(2).max(128).default(24),
   AGENT_RUN_COMPACTION_MAX_TOOL_OBSERVATIONS: z.coerce.number().int().min(1).max(128).default(12),
-  AGENT_GRAPH_RECURSION_LIMIT: z.coerce.number().int().min(2).max(64).default(16),
-  AGENT_GRAPH_MAX_TOOL_CALLS_PER_ROUND: z.coerce.number().int().min(1).max(32).default(8),
-  AGENT_GRAPH_MAX_IDENTICAL_TOOL_BATCHES: z.coerce.number().int().min(2).max(8).default(2),
-  AGENT_GRAPH_MAX_LOOP_GUARD_RECOVERIES: z.coerce.number().int().min(0).max(4).default(1),
+  AGENT_GRAPH_RECURSION_LIMIT: z.coerce.number().int().min(2).max(64).default(32),
+  AGENT_GRAPH_MAX_TOOL_CALLS_PER_ROUND: z.coerce.number().int().min(1).max(32).default(12),
+  AGENT_GRAPH_MAX_IDENTICAL_TOOL_BATCHES: z.coerce.number().int().min(2).max(8).default(4),
+  AGENT_GRAPH_MAX_LOOP_GUARD_RECOVERIES: z.coerce.number().int().min(0).max(4).default(3),
 
   // Security
   SECRET_ENCRYPTION_KEY: z.string().regex(/^[0-9a-fA-F]{64}$/),

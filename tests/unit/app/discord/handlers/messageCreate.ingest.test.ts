@@ -408,7 +408,7 @@ describe('messageCreate - ingest + reply gating', () => {
     );
   });
 
-  it('resumes a waiting run on the existing response message instead of replying to the new user message', async () => {
+  it('starts a fresh visible reply on the current follow-up when resuming a waiting run', async () => {
     const message = createMockMessage({
       content: 'sage here is the answer',
     }) as unknown as Message & {
@@ -460,20 +460,22 @@ describe('messageCreate - ingest + reply gating', () => {
 
     await handleMessageCreate(message);
 
-    expect(message.__responseMessage.edit).toHaveBeenCalled();
-    expect(message.reply).not.toHaveBeenCalled();
+    expect(message.reply).toHaveBeenCalled();
+    expect(message.__responseMessage.edit).not.toHaveBeenCalled();
     expect(mockAttachTaskRunResponseSession).toHaveBeenCalledWith(
       expect.objectContaining({
         threadId: 'thread-existing',
+        sourceMessageId: message.id,
         responseMessageId: message.__responseMessage.id,
         responseSession: expect.objectContaining({
+          sourceMessageId: message.id,
           overflowMessageIds: [],
         }),
       }),
     );
   });
 
-  it('reuses the persisted response-session json ids after restart when the top-level responseMessageId is missing', async () => {
+  it('ignores the old waiting draft message after restart and replies on the current follow-up instead', async () => {
     const message = createMockMessage({
       content: 'sage deep dive this',
     }) as unknown as Message & {
@@ -534,103 +536,19 @@ describe('messageCreate - ingest + reply gating', () => {
 
     await handleMessageCreate(message);
 
-    expect(message.__responseMessage.edit).toHaveBeenCalled();
-    expect(message.reply).not.toHaveBeenCalled();
+    expect(message.reply).toHaveBeenCalled();
+    expect(message.__responseMessage.edit).not.toHaveBeenCalled();
     expect(mockAttachTaskRunResponseSession).toHaveBeenCalledWith(
       expect.objectContaining({
         threadId: 'thread-restart-existing',
+        sourceMessageId: message.id,
         responseMessageId: message.__responseMessage.id,
         responseSession: expect.objectContaining({
+          sourceMessageId: message.id,
           overflowMessageIds: [],
         }),
       }),
     );
-  });
-
-  it('ignores stale resumed draft replays before applying the next real update', async () => {
-    const message = createMockMessage({
-      content: 'sage continue',
-    }) as unknown as Message & {
-      __responseMessage: { id: string; content: string; edit: ReturnType<typeof vi.fn> };
-      __sourceMessage: { id: string };
-      reply: ReturnType<typeof vi.fn>;
-    };
-    message.__responseMessage.content = 'Existing draft';
-    mockFindWaitingUserInputTaskRun.mockResolvedValueOnce({
-      id: 'run-3',
-      threadId: 'thread-stale-replay',
-      sourceMessageId: message.__sourceMessage.id,
-      responseMessageId: message.__responseMessage.id,
-      responseSessionJson: {
-        responseSessionId: 'thread-stale-replay',
-        status: 'draft',
-        latestText: 'Existing draft',
-        draftRevision: 4,
-        sourceMessageId: message.__sourceMessage.id,
-        responseMessageId: message.__responseMessage.id,
-        linkedArtifactMessageIds: [],
-      },
-    });
-    mockResumeWaitingTaskRunWithInput.mockImplementationOnce(async (params) => {
-      await params.onResponseSessionUpdate?.({
-        replyText: 'Existing draft',
-        delivery: 'response_session',
-        responseSession: {
-          responseSessionId: 'thread-stale-replay',
-          status: 'draft',
-          latestText: 'Existing draft',
-          draftRevision: 5,
-          sourceMessageId: message.__sourceMessage.id,
-          responseMessageId: message.__responseMessage.id,
-          linkedArtifactMessageIds: [],
-        },
-        pendingInterrupt: null,
-        completionKind: null,
-        stopReason: 'background_yield',
-      });
-      await params.onResponseSessionUpdate?.({
-        replyText: 'Fresh resumed draft',
-        delivery: 'response_session',
-        responseSession: {
-          responseSessionId: 'thread-stale-replay',
-          status: 'draft',
-          latestText: 'Fresh resumed draft',
-          draftRevision: 6,
-          sourceMessageId: message.__sourceMessage.id,
-          responseMessageId: message.__responseMessage.id,
-          linkedArtifactMessageIds: [],
-        },
-        pendingInterrupt: null,
-        completionKind: null,
-        stopReason: 'background_yield',
-      });
-
-      return {
-        runId: 'thread-stale-replay',
-        status: 'completed',
-        replyText: 'Fresh resumed draft',
-        delivery: 'response_session',
-        responseSession: {
-          responseSessionId: 'thread-stale-replay',
-          status: 'final',
-          latestText: 'Fresh resumed draft',
-          draftRevision: 6,
-          sourceMessageId: message.__sourceMessage.id,
-          responseMessageId: message.__responseMessage.id,
-          linkedArtifactMessageIds: [],
-        },
-        files: [],
-      };
-    });
-
-    await handleMessageCreate(message);
-
-    expect(message.__responseMessage.edit).toHaveBeenCalledTimes(1);
-    expect(message.__responseMessage.edit).toHaveBeenCalledWith({
-      content: 'Fresh resumed draft',
-      allowedMentions: { repliedUser: false },
-    });
-    expect(message.reply).not.toHaveBeenCalled();
   });
 
   it('replies to the current follow-up when the original waiting draft message is missing', async () => {
@@ -788,8 +706,8 @@ describe('messageCreate - ingest + reply gating', () => {
         },
       ],
     ]);
-    expect(message.__responseMessage.edit).toHaveBeenCalledTimes(1);
-    expect(message.reply).not.toHaveBeenCalled();
+    expect(message.reply).toHaveBeenCalledTimes(1);
+    expect(message.__responseMessage.edit).not.toHaveBeenCalled();
   });
 
   it('rebuilds missing overflow chunks when a resumed long draft replays the same full text after restart', async () => {
@@ -862,7 +780,7 @@ describe('messageCreate - ingest + reply gating', () => {
 
     expect(message.channel.send).toHaveBeenCalledTimes(2);
     expect(message.__responseMessage.edit).not.toHaveBeenCalled();
-    expect(message.reply).not.toHaveBeenCalled();
+    expect(message.reply).toHaveBeenCalledTimes(1);
   });
 
   it('reconciles overflow chunks when a long final reply uses a runtime card', async () => {
@@ -939,8 +857,8 @@ describe('messageCreate - ingest + reply gating', () => {
 
     expect(mockCreateInteractiveButtonSession).toHaveBeenCalled();
     expect(message.channel.send).toHaveBeenCalledTimes(2);
-    expect(message.__responseMessage.edit).toHaveBeenCalledTimes(2);
-    expect(message.reply).not.toHaveBeenCalled();
+    expect(message.__responseMessage.edit).toHaveBeenCalledTimes(1);
+    expect(message.reply).toHaveBeenCalledTimes(1);
   });
 
   it('attaches a Retry button when the runtime returns retry metadata', async () => {

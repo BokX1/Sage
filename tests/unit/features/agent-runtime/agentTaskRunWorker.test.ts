@@ -146,6 +146,7 @@ describe('agentTaskRunWorker', () => {
       id: 'task-1',
       leaseOwner: expect.stringContaining('sage-task-worker:'),
     });
+    expect(releaseAgentTaskRunLeaseMock).toHaveBeenCalledTimes(1);
   });
 
   it('reuses the first created response message for later updates in the same worker slice', async () => {

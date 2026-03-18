@@ -1999,8 +1999,18 @@ describe('runGraphValueStream', () => {
     });
 
     expect(resumed.graphStatus).toBe('completed');
+    expect(resumed.responseSession).toMatchObject({
+      responseSessionId: 'trace-waiting-followup-clear-1b',
+      sourceMessageId: 'message-waiting-followup-clear-2',
+      responseMessageId: null,
+    });
     const checkpointState = await __getAgentGraphStateForTests('trace-waiting-followup-clear-1');
     expect(checkpointState?.resumeContext.waitingFollowUp).toBeNull();
     expect(checkpointState?.resumeContext.promptMode).toBe('standard');
+    expect(checkpointState?.responseSession).toMatchObject({
+      responseSessionId: 'trace-waiting-followup-clear-1b',
+      sourceMessageId: 'message-waiting-followup-clear-2',
+      responseMessageId: null,
+    });
   });
 });

@@ -29,7 +29,7 @@ export function buildAgentGraphConfig(): AgentGraphConfig {
   return {
     sliceMaxSteps: normalizeStrictlyPositiveInt(
       appConfig.AGENT_RUN_SLICE_MAX_STEPS as number | undefined,
-      6,
+      10,
     ),
     toolTimeoutMs: normalizeStrictlyPositiveInt(
       appConfig.AGENT_RUN_TOOL_TIMEOUT_MS as number | undefined,
@@ -93,19 +93,19 @@ export function buildAgentGraphConfig(): AgentGraphConfig {
     ),
     recursionLimit: normalizeStrictlyPositiveInt(
       appConfig.AGENT_GRAPH_RECURSION_LIMIT as number | undefined,
-      16,
+      32,
     ),
     maxToolCallsPerRound: normalizeStrictlyPositiveInt(
       appConfig.AGENT_GRAPH_MAX_TOOL_CALLS_PER_ROUND as number | undefined,
-      8,
+      12,
     ),
     maxIdenticalToolBatches: normalizeStrictlyPositiveInt(
       appConfig.AGENT_GRAPH_MAX_IDENTICAL_TOOL_BATCHES as number | undefined,
-      2,
+      4,
     ),
     maxLoopGuardRecoveries: normalizeStrictlyPositiveInt(
       appConfig.AGENT_GRAPH_MAX_LOOP_GUARD_RECOVERIES as number | undefined,
-      1,
+      3,
     ),
   };
 }

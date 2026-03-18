@@ -35,7 +35,6 @@ import {
 } from '../../../features/agent-runtime';
 import {
   findWaitingUserInputTaskRun,
-  type AgentTaskRunRecord,
 } from '../../../features/agent-runtime/agentTaskRunRepo';
 import { ReplyTargetContext } from '../../../features/agent-runtime/continuityContext';
 import { resolveDefaultInvocationUserText, type PromptInputMode } from '../../../features/agent-runtime/promptContract';
@@ -320,57 +319,6 @@ type SendableTypingChannel = {
   };
 };
 
-function readPersistedTaskRunResponseSession(taskRun: AgentTaskRunRecord | null): {
-  sourceMessageId: string | null;
-  responseMessageId: string | null;
-  overflowMessageIds: string[];
-  latestText: string | null;
-  draftRevision: number | null;
-} {
-  if (!taskRun?.responseSessionJson || typeof taskRun.responseSessionJson !== 'object' || Array.isArray(taskRun.responseSessionJson)) {
-    return {
-      sourceMessageId: taskRun?.sourceMessageId ?? null,
-      responseMessageId: taskRun?.responseMessageId ?? null,
-      overflowMessageIds: [],
-      latestText: null,
-      draftRevision: null,
-    };
-  }
-
-  const session = taskRun.responseSessionJson as Record<string, unknown>;
-  return {
-    sourceMessageId:
-      taskRun.sourceMessageId ??
-      (typeof session.sourceMessageId === 'string' ? session.sourceMessageId : null),
-    responseMessageId:
-      taskRun.responseMessageId ??
-      (typeof session.responseMessageId === 'string' ? session.responseMessageId : null),
-    overflowMessageIds: Array.isArray(session.overflowMessageIds)
-      ? session.overflowMessageIds.filter((value): value is string => typeof value === 'string')
-      : [],
-    latestText: typeof session.latestText === 'string' ? session.latestText : null,
-    draftRevision: typeof session.draftRevision === 'number' ? session.draftRevision : null,
-  };
-}
-
-async function resolveExistingTaskRunResponseMessage(
-  channel: Message['channel'],
-  waitingTaskRun: AgentTaskRunRecord | null,
-): Promise<ResponseSessionEditableMessage | null> {
-  if (!waitingTaskRun || !('messages' in channel) || !channel.messages?.fetch) {
-    return null;
-  }
-
-  const persistedRefs = readPersistedTaskRunResponseSession(waitingTaskRun);
-  if (persistedRefs.responseMessageId) {
-    const responseMessage = await channel.messages.fetch(persistedRefs.responseMessageId).catch(() => null);
-    if (responseMessage) {
-      return responseMessage as ResponseSessionEditableMessage;
-    }
-  }
-
-  return null;
-}
 function isSendableTypingChannel(
   channel: Message['channel'],
 ): channel is Message['channel'] & SendableTypingChannel {
@@ -793,19 +741,15 @@ export async function handleMessageCreate(message: Message) {
         requestedByUserId: message.author.id,
         replyToMessageId: referencedMessage?.id ?? null,
       });
-      let responseSessionMessage = await resolveExistingTaskRunResponseMessage(message.channel, waitingTaskRun);
-      const persistedTaskRunResponseSession = readPersistedTaskRunResponseSession(waitingTaskRun);
+      const isWaitingTaskRunResume = !!waitingTaskRun;
+      let responseSessionMessage: ResponseSessionEditableMessage | null = null;
       const responseSessionThreadId = waitingTaskRun?.threadId ?? traceId;
-      const responseSessionSourceMessageId = persistedTaskRunResponseSession.sourceMessageId ?? message.id;
-      let responseSessionReplyBase: ResponseSessionReplyAnchor | null = responseSessionMessage
-        ? null
-        : (message as unknown as ResponseSessionReplyAnchor);
-      let responseSessionOverflowMessageIds = [...persistedTaskRunResponseSession.overflowMessageIds];
+      const responseSessionSourceMessageId = message.id;
+      let responseSessionReplyBase: ResponseSessionReplyAnchor | null = message as unknown as ResponseSessionReplyAnchor;
+      let responseSessionOverflowMessageIds: string[] = [];
       let responseSessionOverflowMessages: ResponseSessionEditableMessage[] = [];
-      let responseSessionRevision = persistedTaskRunResponseSession.draftRevision ?? -1;
-      let responseSessionText =
-        (typeof responseSessionMessage?.content === 'string' ? responseSessionMessage.content.trim() : '') ||
-        (persistedTaskRunResponseSession.latestText?.trim() ?? '');
+      let responseSessionRevision = -1;
+      let responseSessionText = '';
       const hasExpectedOverflowCoverage = (text: string): boolean => {
         const chunks = smartSplit(text, 2000);
         return Math.max(chunks.length - 1, 0) === responseSessionOverflowMessageIds.length;
@@ -837,14 +781,14 @@ export async function handleMessageCreate(message: Message) {
         responseSessionReplyBase = null;
         responseSessionOverflowMessageIds = reconciled.overflowMessageIds;
         responseSessionOverflowMessages = reconciled.overflowMessages;
-        void attachTaskRunResponseSession({
+        await attachTaskRunResponseSession({
           threadId: responseSessionThreadId,
           sourceMessageId: responseSessionSourceMessageId,
           responseMessageId: responseSessionMessage.id,
           responseSession: {
             ...update.responseSession,
             responseMessageId: responseSessionMessage.id,
-            sourceMessageId: update.responseSession.sourceMessageId ?? responseSessionSourceMessageId,
+            sourceMessageId: responseSessionSourceMessageId,
             overflowMessageIds: reconciled.overflowMessageIds,
           },
         }).catch((error) => {
@@ -971,8 +915,11 @@ export async function handleMessageCreate(message: Message) {
             hasExpectedOverflowCoverage(replyText.trim());
           if (!canSkipPrimaryEdit) {
             if (shouldUseRuntimeCard || files.length > 0) {
-              if (responseSessionMessage) {
-                await responseSessionMessage.edit(primaryPayload as Parameters<ResponseSessionEditableMessage['edit']>[0]);
+              const editableResponseSessionMessage = responseSessionMessage;
+              if (editableResponseSessionMessage) {
+                await (editableResponseSessionMessage as ResponseSessionEditableMessage).edit(
+                  primaryPayload as Parameters<ResponseSessionEditableMessage['edit']>[0],
+                );
               } else {
                 responseSessionMessage = (await (responseSessionReplyBase ?? (message as unknown as ResponseSessionReplyAnchor)).reply(
                   primaryPayload as Parameters<ResponseSessionReplyAnchor['reply']>[0],
@@ -1007,7 +954,7 @@ export async function handleMessageCreate(message: Message) {
               responseSessionOverflowMessageIds = reconciled.overflowMessageIds;
               responseSessionOverflowMessages = reconciled.overflowMessages;
             }
-            void attachTaskRunResponseSession({
+            await attachTaskRunResponseSession({
               threadId: responseSessionThreadId,
               sourceMessageId: responseSessionSourceMessageId,
               responseMessageId: responseSessionMessage?.id ?? null,
@@ -1015,7 +962,7 @@ export async function handleMessageCreate(message: Message) {
                 ? {
                     ...result.responseSession,
                     responseMessageId: responseSessionMessage?.id ?? result.responseSession.responseMessageId,
-                    sourceMessageId: result.responseSession.sourceMessageId ?? responseSessionSourceMessageId,
+                    sourceMessageId: responseSessionSourceMessageId,
                     overflowMessageIds: responseSessionOverflowMessageIds,
                   }
                 : undefined,
@@ -1026,6 +973,13 @@ export async function handleMessageCreate(message: Message) {
           didSendAnything = true;
           responseSessionText = replyText.trim();
         }
+      }
+
+      if (isWaitingTaskRunResume && responseSessionMessage) {
+        loggerWithTrace.debug(
+          { threadId: responseSessionThreadId, responseMessageId: responseSessionMessage.id },
+          'Waiting follow-up resumed with a fresh visible response session',
+        );
       }
 
       if (didSendAnything) {

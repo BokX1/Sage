@@ -408,7 +408,7 @@ export async function findWaitingUserInputTaskRun(params: {
     }
   }
 
-  return rows.length === 1 ? toRecord(rows[0]!) : null;
+  return null;
 }
 
 export async function deleteAgentTaskRunByThreadId(threadId: string): Promise<void> {

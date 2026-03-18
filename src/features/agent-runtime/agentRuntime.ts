@@ -32,7 +32,6 @@ import {
 import {
   findWaitingUserInputTaskRun,
   getAgentTaskRunByThreadId,
-  releaseAgentTaskRunLease,
   upsertAgentTaskRun,
   updateAgentTaskRunByThreadId,
 } from './agentTaskRunRepo';
@@ -219,16 +218,10 @@ function buildWaitingFollowUpContext(params: {
     waitingStateJson: unknown;
     latestDraftText: string;
   };
-  replyToMessageId?: string | null;
 }): PromptWaitingFollowUp {
-  const isDirectReply =
-    !!params.replyToMessageId &&
-    (params.replyToMessageId === params.waitingTaskRun.responseMessageId ||
-      params.replyToMessageId === params.waitingTaskRun.sourceMessageId);
-
   return {
     matched: true,
-    matchKind: isDirectReply ? 'direct_reply' : 'single_waiting_run',
+    matchKind: 'direct_reply',
     outstandingPrompt: readWaitingFollowUpPrompt(params.waitingTaskRun),
     responseMessageId: params.waitingTaskRun.responseMessageId ?? null,
   };
@@ -434,30 +427,32 @@ async function persistTaskRunFromGraphResult(params: {
   existingTaskRun?: Awaited<ReturnType<typeof getAgentTaskRunByThreadId>> | null;
   resumeCount?: number;
 }): Promise<void> {
+  const latestTaskRun = await getAgentTaskRunByThreadId(params.traceId);
+  const existingTaskRun = latestTaskRun ?? params.existingTaskRun ?? null;
   const status = deriveTaskRunStatus(params.graphResult);
   const mergedResponseSession = mergeResponseSessionRefs(
-    params.existingTaskRun?.responseSessionJson,
+    existingTaskRun?.responseSessionJson,
     params.graphResult.responseSession,
   );
-  const persistedResponseRefs = readPersistedResponseSessionRefs(params.existingTaskRun?.responseSessionJson);
+  const persistedResponseRefs = readPersistedResponseSessionRefs(existingTaskRun?.responseSessionJson);
   const accumulatedWallClockMs =
-    (params.existingTaskRun?.taskWallClockMs ?? 0) +
+    (existingTaskRun?.taskWallClockMs ?? 0) +
     Math.max(0, Math.trunc(params.graphResult.activeWindowDurationMs ?? 0));
   await upsertAgentTaskRun({
     threadId: params.traceId,
-    originTraceId: params.existingTaskRun?.originTraceId ?? params.traceId,
+    originTraceId: existingTaskRun?.originTraceId ?? params.traceId,
     latestTraceId: params.graphResult.langSmithTraceId ?? params.traceId,
-    guildId: params.existingTaskRun?.guildId ?? params.guildId,
-    channelId: params.existingTaskRun?.channelId ?? params.channelId,
-    requestedByUserId: params.existingTaskRun?.requestedByUserId ?? params.userId,
+    guildId: existingTaskRun?.guildId ?? params.guildId,
+    channelId: existingTaskRun?.channelId ?? params.channelId,
+    requestedByUserId: existingTaskRun?.requestedByUserId ?? params.userId,
     sourceMessageId:
-      params.existingTaskRun?.sourceMessageId ??
+      existingTaskRun?.sourceMessageId ??
       mergedResponseSession.sourceMessageId ??
       persistedResponseRefs.sourceMessageId ??
       params.sourceMessageId,
     responseMessageId:
       mergedResponseSession.responseMessageId ??
-      params.existingTaskRun?.responseMessageId ??
+      existingTaskRun?.responseMessageId ??
       persistedResponseRefs.responseMessageId,
     status: status === 'waiting_approval' ? 'waiting_approval' : status === 'waiting_user_input' ? 'waiting_user_input' : status === 'running' ? 'running' : status === 'failed' ? 'failed' : status === 'cancelled' ? 'cancelled' : 'completed',
     waitingKind:
@@ -484,10 +479,10 @@ async function persistTaskRunFromGraphResult(params: {
       isAdmin: params.isAdmin ?? false,
       canModerate: params.canModerate ?? false,
     },
-    maxTotalDurationMs: params.existingTaskRun?.maxTotalDurationMs ?? params.graphConfig.maxTotalDurationMs,
-    maxIdleWaitMs: params.existingTaskRun?.maxIdleWaitMs ?? params.graphConfig.maxIdleWaitMs,
+    maxTotalDurationMs: existingTaskRun?.maxTotalDurationMs ?? params.graphConfig.maxTotalDurationMs,
+    maxIdleWaitMs: existingTaskRun?.maxIdleWaitMs ?? params.graphConfig.maxIdleWaitMs,
     taskWallClockMs: accumulatedWallClockMs,
-    resumeCount: params.resumeCount ?? params.existingTaskRun?.resumeCount ?? 0,
+    resumeCount: params.resumeCount ?? existingTaskRun?.resumeCount ?? 0,
     completedAt: status === 'completed' || status === 'failed' || status === 'cancelled' ? new Date() : null,
   });
 }
@@ -1002,7 +997,6 @@ export async function resumeWaitingTaskRunWithInput(
   });
   const waitingFollowUp = buildWaitingFollowUpContext({
     waitingTaskRun,
-    replyToMessageId: params.replyToMessageId ?? null,
   });
 
   try {
@@ -1138,10 +1132,6 @@ export async function resumeBackgroundTaskRun(params: {
       threadId: taskRun.threadId,
       replyText,
     });
-    await releaseAgentTaskRunLease({
-      id: taskRun.id,
-      leaseOwner: params.leaseOwner ?? taskRun.leaseOwner ?? '',
-    }).catch(() => undefined);
     return {
       runId: params.threadId,
       status: 'failed',
@@ -1208,10 +1198,6 @@ export async function resumeBackgroundTaskRun(params: {
       existingTaskRun: taskRun,
       resumeCount: taskRun.resumeCount + 1,
     });
-    await releaseAgentTaskRunLease({
-      id: taskRun.id,
-      leaseOwner: params.leaseOwner ?? taskRun.leaseOwner ?? '',
-    }).catch(() => undefined);
 
     return {
       runId: params.threadId,
@@ -1228,11 +1214,6 @@ export async function resumeBackgroundTaskRun(params: {
       meta: await buildRunChatTurnMeta({ pendingInterrupt: toPendingInterruptSummary(graphResult.pendingInterrupt) }),
     };
   } catch (error) {
-    await releaseAgentTaskRunLease({
-      id: taskRun.id,
-      leaseOwner: params.leaseOwner ?? taskRun.leaseOwner ?? '',
-    }).catch(() => undefined);
-
     return {
       runId: params.threadId,
       status: 'failed',

@@ -245,7 +245,7 @@ These settings control Sage's optional Discord voice features. The local voice s
 | `LANGSMITH_API_KEY` | LangSmith API key used when `LANGSMITH_TRACING=true` | *(empty)* |
 | `LANGSMITH_PROJECT` | LangSmith project name when tracing is enabled | `sage` |
 | `SAGE_TRACE_DB_ENABLED` | Persist compact `AgentTrace` ledger rows alongside LangSmith references | `true` |
-| `AGENT_RUN_SLICE_MAX_STEPS` | Max tool-capable assistant/model responses per durable worker slice before Sage yields automatically | `6` |
+| `AGENT_RUN_SLICE_MAX_STEPS` | Max tool-capable assistant/model responses per durable worker slice before Sage yields automatically | `10` |
 | `AGENT_RUN_TOOL_TIMEOUT_MS` | Per-tool execution timeout | `45000` |
 | `AGENT_RUN_SLICE_MAX_DURATION_MS` | Max wall-clock duration for one active worker slice | `120000` |
 | `AGENT_RUN_MAX_TOTAL_DURATION_MS` | Max total wall-clock budget for one long-running task run | `3600000` |
@@ -262,10 +262,10 @@ These settings control Sage's optional Discord voice features. The local voice s
 | `AGENT_RUN_COMPACTION_MAX_TOOL_OBSERVATIONS` | Tool observations retained in prompt-facing compaction state | `12` |
 | `AGENT_GRAPH_MAX_OUTPUT_TOKENS` | Max output tokens for graph model calls | `4096` |
 | `AGENT_GRAPH_GITHUB_GROUNDED_MODE` | Enable GitHub grounded search | `true` |
-| `AGENT_GRAPH_RECURSION_LIMIT` | LangGraph recursion fail-safe above the legal hop count | `16` |
-| `AGENT_GRAPH_MAX_TOOL_CALLS_PER_ROUND` | Max executable tool calls allowed from one model response before Sage rejects the batch and asks the model to replan | `8` |
-| `AGENT_GRAPH_MAX_IDENTICAL_TOOL_BATCHES` | Consecutive identical tool batches Sage tolerates before tripping the loop guard | `2` |
-| `AGENT_GRAPH_MAX_LOOP_GUARD_RECOVERIES` | Structured loop-guard repair retries Sage allows before finalizing with `loop_guard` | `1` |
+| `AGENT_GRAPH_RECURSION_LIMIT` | LangGraph recursion fail-safe above the legal hop count | `32` |
+| `AGENT_GRAPH_MAX_TOOL_CALLS_PER_ROUND` | Max executable tool calls allowed from one model response before Sage rejects the batch and asks the model to replan | `12` |
+| `AGENT_GRAPH_MAX_IDENTICAL_TOOL_BATCHES` | Consecutive identical tool batches Sage tolerates before tripping the loop guard | `4` |
+| `AGENT_GRAPH_MAX_LOOP_GUARD_RECOVERIES` | Structured loop-guard repair retries Sage allows before finalizing with `loop_guard` | `3` |
 
 ---
 

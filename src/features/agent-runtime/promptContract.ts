@@ -20,7 +20,7 @@ export type PromptInputMode =
 
 export interface PromptWaitingFollowUp {
   matched: boolean;
-  matchKind: 'direct_reply' | 'single_waiting_run';
+  matchKind: 'direct_reply';
   outstandingPrompt: string;
   responseMessageId?: string | null;
 }
