@@ -3,12 +3,17 @@ import { Message } from 'discord.js';
 import { config as appConfig } from '../../platform/config/env';
 import { client } from '../../platform/discord/client';
 import { logger } from '../../platform/logging/logger';
-import { smartSplit } from '../../shared/text/message-splitter';
 import { buildAgentGraphConfig } from './langgraph/config';
 import type { RunChatTurnParams, RunChatTurnResult } from './agentRuntime';
 import type { AgentTaskRunRecord } from './agentTaskRunRepo';
+import {
+  reconcileResponseSessionChunks,
+  type ResponseSessionChannel,
+  type ResponseSessionEditableMessage,
+  type ResponseSessionReplyAnchor,
+} from '../discord/responseSessionChunkDelivery';
 
-type EditableDiscordMessage = Pick<Message, 'id' | 'edit' | 'reply'>;
+type EditableDiscordMessage = ResponseSessionEditableMessage & Pick<Message, 'reply'>;
 type SendableChannel = {
   isTextBased?: () => boolean;
   send?: (payload: unknown) => Promise<Message>;
@@ -19,17 +24,21 @@ type SendableChannel = {
 type WorkerResponseSessionState = {
   sourceMessageId: string | null;
   responseMessageId: string | null;
+  overflowMessageIds: string[];
   editableMessage: EditableDiscordMessage | null;
+  overflowMessages: ResponseSessionEditableMessage[];
 };
 
 function readPersistedResponseSessionRefs(value: unknown): {
   sourceMessageId: string | null;
   responseMessageId: string | null;
+  overflowMessageIds: string[];
 } {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     return {
       sourceMessageId: null,
       responseMessageId: null,
+      overflowMessageIds: [],
     };
   }
 
@@ -37,6 +46,9 @@ function readPersistedResponseSessionRefs(value: unknown): {
   return {
     sourceMessageId: typeof record.sourceMessageId === 'string' ? record.sourceMessageId : null,
     responseMessageId: typeof record.responseMessageId === 'string' ? record.responseMessageId : null,
+    overflowMessageIds: Array.isArray(record.overflowMessageIds)
+      ? record.overflowMessageIds.filter((value): value is string => typeof value === 'string')
+      : [],
   };
 }
 
@@ -76,13 +88,6 @@ async function fetchEditableResponseMessage(
     }
   }
 
-  if (state.sourceMessageId && channel.messages?.fetch) {
-    const sourceMessage = await channel.messages.fetch(state.sourceMessageId).catch(() => null);
-    if (sourceMessage) {
-      return sourceMessage;
-    }
-  }
-
   return null;
 }
 
@@ -107,46 +112,30 @@ async function publishTaskRunResult(params: {
     return;
   }
 
-  const [primaryChunk, ...restChunks] = smartSplit(nextText, 2_000);
-  const primaryText = primaryChunk || nextText;
   const existing = await fetchEditableResponseMessage(params.run, params.state);
-
-  let responseMessageId =
-    params.state.responseMessageId ??
-    params.run.responseMessageId ??
-    params.update?.responseSession.responseMessageId ??
-    null;
-  if (existing && 'edit' in existing) {
-    if (
-      'reply' in existing &&
-      responseMessageId === null &&
-      params.state.sourceMessageId === existing.id
-    ) {
-      const reply = await existing.reply({
-        content: primaryText,
-        allowedMentions: { repliedUser: false },
-      });
-      responseMessageId = reply.id;
-      params.state.responseMessageId = reply.id;
-      params.state.editableMessage = reply;
-    } else {
-      await existing.edit({
-        content: primaryText,
-        allowedMentions: { repliedUser: false },
-      });
-      responseMessageId = existing.id;
-      params.state.responseMessageId = existing.id;
-      params.state.editableMessage = existing;
-    }
-  } else if (typeof channel.send === 'function') {
-    const sent = await channel.send({
-      content: primaryText,
-      allowedMentions: { repliedUser: false },
-    });
-    responseMessageId = sent.id;
-    params.state.responseMessageId = sent.id;
-    params.state.editableMessage = sent;
-  }
+  const sourceMessage =
+    !existing && params.state.sourceMessageId && channel.messages?.fetch
+      ? await channel.messages.fetch(params.state.sourceMessageId).catch(() => null)
+      : null;
+  const reconciled = await reconcileResponseSessionChunks({
+    channel: channel as unknown as ResponseSessionChannel,
+    nextText,
+    state: {
+      primaryMessage: existing,
+      replyAnchor:
+        !existing && sourceMessage && 'reply' in sourceMessage
+          ? (sourceMessage as ResponseSessionReplyAnchor)
+          : null,
+      overflowMessageIds: params.state.overflowMessageIds,
+      overflowMessages: params.state.overflowMessages,
+    },
+    allowedMentions: { repliedUser: false },
+  });
+  const responseMessageId = reconciled.primaryMessage.id;
+  params.state.responseMessageId = responseMessageId;
+  params.state.editableMessage = reconciled.primaryMessage as EditableDiscordMessage;
+  params.state.overflowMessageIds = reconciled.overflowMessageIds;
+  params.state.overflowMessages = reconciled.overflowMessages;
 
   if (responseMessageId) {
     const { attachTaskRunResponseSession } = await getAgentRuntimeModule();
@@ -158,31 +147,18 @@ async function publishTaskRunResult(params: {
         ? {
             ...params.result.responseSession,
             responseMessageId,
+            overflowMessageIds: reconciled.overflowMessageIds,
           }
         : params.update?.responseSession
           ? {
               ...params.update.responseSession,
               responseMessageId,
+              overflowMessageIds: reconciled.overflowMessageIds,
             }
           : undefined,
     }).catch((error) => {
       logger.warn({ error, threadId: params.run.threadId }, 'Failed to persist worker response session attachment');
     });
-  }
-
-  const isTerminal =
-    params.result.status === 'completed' ||
-    params.result.status === 'failed' ||
-    params.result.status === 'cancelled' ||
-    params.result.status === 'waiting_approval' ||
-    params.result.status === 'waiting_user_input';
-  if (isTerminal && restChunks.length > 0 && typeof channel.send === 'function') {
-    for (const chunk of restChunks) {
-      await channel.send({
-        content: chunk,
-        allowedMentions: { repliedUser: false },
-      });
-    }
   }
 }
 
@@ -216,7 +192,9 @@ async function processRunnableTaskRun(run: AgentTaskRunRecord): Promise<void> {
   const responseSessionState: WorkerResponseSessionState = {
     sourceMessageId: run.sourceMessageId ?? persistedResponseRefs.sourceMessageId,
     responseMessageId: run.responseMessageId ?? persistedResponseRefs.responseMessageId,
+    overflowMessageIds: [...persistedResponseRefs.overflowMessageIds],
     editableMessage: null,
+    overflowMessages: [],
   };
 
   const heartbeatTimer = setInterval(() => {

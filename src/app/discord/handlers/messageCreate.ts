@@ -47,6 +47,13 @@ import {
   buildRetryButtonLabel,
 } from '../../../features/discord/userFacingCopy';
 import { buildRuntimeResponseCardPayload } from '../../../features/discord/runtimeResponseCards';
+import {
+  reconcileOverflowChunks,
+  reconcileResponseSessionChunks,
+  type ResponseSessionChannel,
+  type ResponseSessionEditableMessage,
+  type ResponseSessionReplyAnchor,
+} from '../../../features/discord/responseSessionChunkDelivery';
 
 const processedMessagesKey = Symbol.for('sage.handlers.messageCreate.processed');
 const registrationKey = Symbol.for('sage.handlers.messageCreate.registered');
@@ -313,22 +320,10 @@ type SendableTypingChannel = {
   };
 };
 
-type EditableResponseMessage = {
-  id: string;
-  content?: string;
-  edit: (...args: unknown[]) => Promise<unknown>;
-};
-
-async function editResponseSessionMessage(
-  message: EditableResponseMessage,
-  payload: unknown,
-): Promise<void> {
-  await message.edit(payload);
-}
-
 function readPersistedTaskRunResponseSession(taskRun: AgentTaskRunRecord | null): {
   sourceMessageId: string | null;
   responseMessageId: string | null;
+  overflowMessageIds: string[];
   latestText: string | null;
   draftRevision: number | null;
 } {
@@ -336,6 +331,7 @@ function readPersistedTaskRunResponseSession(taskRun: AgentTaskRunRecord | null)
     return {
       sourceMessageId: taskRun?.sourceMessageId ?? null,
       responseMessageId: taskRun?.responseMessageId ?? null,
+      overflowMessageIds: [],
       latestText: null,
       draftRevision: null,
     };
@@ -349,6 +345,9 @@ function readPersistedTaskRunResponseSession(taskRun: AgentTaskRunRecord | null)
     responseMessageId:
       taskRun.responseMessageId ??
       (typeof session.responseMessageId === 'string' ? session.responseMessageId : null),
+    overflowMessageIds: Array.isArray(session.overflowMessageIds)
+      ? session.overflowMessageIds.filter((value): value is string => typeof value === 'string')
+      : [],
     latestText: typeof session.latestText === 'string' ? session.latestText : null,
     draftRevision: typeof session.draftRevision === 'number' ? session.draftRevision : null,
   };
@@ -357,7 +356,7 @@ function readPersistedTaskRunResponseSession(taskRun: AgentTaskRunRecord | null)
 async function resolveExistingTaskRunResponseMessage(
   channel: Message['channel'],
   waitingTaskRun: AgentTaskRunRecord | null,
-): Promise<EditableResponseMessage | null> {
+): Promise<ResponseSessionEditableMessage | null> {
   if (!waitingTaskRun || !('messages' in channel) || !channel.messages?.fetch) {
     return null;
   }
@@ -366,7 +365,7 @@ async function resolveExistingTaskRunResponseMessage(
   if (persistedRefs.responseMessageId) {
     const responseMessage = await channel.messages.fetch(persistedRefs.responseMessageId).catch(() => null);
     if (responseMessage) {
-      return responseMessage as EditableResponseMessage;
+      return responseMessage as ResponseSessionEditableMessage;
     }
   }
 
@@ -798,12 +797,19 @@ export async function handleMessageCreate(message: Message) {
       const persistedTaskRunResponseSession = readPersistedTaskRunResponseSession(waitingTaskRun);
       const responseSessionThreadId = waitingTaskRun?.threadId ?? traceId;
       const responseSessionSourceMessageId = persistedTaskRunResponseSession.sourceMessageId ?? message.id;
-      let responseSessionReplyBase =
-        waitingTaskRun && !responseSessionMessage ? message : null;
+      let responseSessionReplyBase: ResponseSessionReplyAnchor | null = responseSessionMessage
+        ? null
+        : (message as unknown as ResponseSessionReplyAnchor);
+      let responseSessionOverflowMessageIds = [...persistedTaskRunResponseSession.overflowMessageIds];
+      let responseSessionOverflowMessages: ResponseSessionEditableMessage[] = [];
       let responseSessionRevision = persistedTaskRunResponseSession.draftRevision ?? -1;
       let responseSessionText =
         (typeof responseSessionMessage?.content === 'string' ? responseSessionMessage.content.trim() : '') ||
         (persistedTaskRunResponseSession.latestText?.trim() ?? '');
+      const hasExpectedOverflowCoverage = (text: string): boolean => {
+        const chunks = smartSplit(text, 2000);
+        return Math.max(chunks.length - 1, 0) === responseSessionOverflowMessageIds.length;
+      };
       const onResponseSessionUpdate: NonNullable<RunChatTurnParams['onResponseSessionUpdate']> = async (update) => {
         if (update.responseSession.draftRevision <= responseSessionRevision) {
           return;
@@ -812,39 +818,40 @@ export async function handleMessageCreate(message: Message) {
         if (!nextDraft) {
           return;
         }
-        const [primaryDraft] = smartSplit(nextDraft, 2000);
-        const nextPrimaryDraft = primaryDraft || nextDraft;
-        if (!nextPrimaryDraft || nextPrimaryDraft === responseSessionText) {
+        if (nextDraft === responseSessionText && hasExpectedOverflowCoverage(nextDraft)) {
           responseSessionRevision = update.responseSession.draftRevision;
           return;
         }
-
-        if (!responseSessionMessage) {
-          responseSessionMessage = (await (responseSessionReplyBase ?? message).reply({
-            content: nextPrimaryDraft,
-            allowedMentions: { repliedUser: false },
-          })) as EditableResponseMessage;
-          responseSessionReplyBase = null;
-          void attachTaskRunResponseSession({
-            threadId: responseSessionThreadId,
-            sourceMessageId: responseSessionSourceMessageId,
+        const reconciled = await reconcileResponseSessionChunks({
+          channel: discordChannel as unknown as ResponseSessionChannel,
+          nextText: nextDraft,
+          state: {
+            primaryMessage: responseSessionMessage,
+            replyAnchor: responseSessionReplyBase,
+            overflowMessageIds: responseSessionOverflowMessageIds,
+            overflowMessages: responseSessionOverflowMessages,
+          },
+          allowedMentions: { repliedUser: false },
+        });
+        responseSessionMessage = reconciled.primaryMessage;
+        responseSessionReplyBase = null;
+        responseSessionOverflowMessageIds = reconciled.overflowMessageIds;
+        responseSessionOverflowMessages = reconciled.overflowMessages;
+        void attachTaskRunResponseSession({
+          threadId: responseSessionThreadId,
+          sourceMessageId: responseSessionSourceMessageId,
+          responseMessageId: responseSessionMessage.id,
+          responseSession: {
+            ...update.responseSession,
             responseMessageId: responseSessionMessage.id,
-            responseSession: {
-              ...update.responseSession,
-              responseMessageId: responseSessionMessage.id,
-              sourceMessageId: update.responseSession.sourceMessageId ?? responseSessionSourceMessageId,
-            },
-          }).catch((error) => {
-            loggerWithTrace.warn({ error, traceId: responseSessionThreadId }, 'Failed to persist response session attachment');
-          });
-        } else {
-          await responseSessionMessage.edit({
-            content: nextPrimaryDraft,
-            allowedMentions: { repliedUser: false },
-          });
-        }
+            sourceMessageId: update.responseSession.sourceMessageId ?? responseSessionSourceMessageId,
+            overflowMessageIds: reconciled.overflowMessageIds,
+          },
+        }).catch((error) => {
+          loggerWithTrace.warn({ error, traceId: responseSessionThreadId }, 'Failed to persist response session attachment');
+        });
         responseSessionRevision = update.responseSession.draftRevision;
-        responseSessionText = nextPrimaryDraft;
+        responseSessionText = nextDraft;
       };
       const result = waitingTaskRun
         ? await resumeWaitingTaskRunWithInput({
@@ -930,7 +937,7 @@ export async function handleMessageCreate(message: Message) {
 
       if (!didSendAnything && (replyText || files.length > 0 || responseSessionMessage !== null)) {
         const chunks = smartSplit(replyText, 2000);
-        const [firstChunk, ...restChunks] = chunks;
+        const [firstChunk] = chunks;
         const firstReplyContent = firstChunk;
         const actionButton =
           actionButtonId
@@ -960,36 +967,64 @@ export async function handleMessageCreate(message: Message) {
             !!responseSessionMessage &&
             !shouldUseRuntimeCard &&
             files.length === 0 &&
-            (firstReplyContent ?? '') === responseSessionText;
+            replyText.trim() === responseSessionText &&
+            hasExpectedOverflowCoverage(replyText.trim());
           if (!canSkipPrimaryEdit) {
-            if (responseSessionMessage) {
-              await editResponseSessionMessage(responseSessionMessage, primaryPayload);
-            } else {
-              responseSessionMessage = (await (responseSessionReplyBase ?? message).reply(primaryPayload)) as EditableResponseMessage;
-              responseSessionReplyBase = null;
-              void attachTaskRunResponseSession({
-                threadId: responseSessionThreadId,
-                sourceMessageId: responseSessionSourceMessageId,
-                responseMessageId: responseSessionMessage.id,
-                responseSession: result.responseSession
-                  ? {
-                      ...result.responseSession,
-                      responseMessageId: responseSessionMessage.id,
-                      sourceMessageId: result.responseSession.sourceMessageId ?? responseSessionSourceMessageId,
-                    }
-                  : undefined,
-              }).catch((error) => {
-                loggerWithTrace.warn({ error, traceId: responseSessionThreadId }, 'Failed to persist final response session attachment');
+            if (shouldUseRuntimeCard || files.length > 0) {
+              if (responseSessionMessage) {
+                await responseSessionMessage.edit(primaryPayload as Parameters<ResponseSessionEditableMessage['edit']>[0]);
+              } else {
+                responseSessionMessage = (await (responseSessionReplyBase ?? (message as unknown as ResponseSessionReplyAnchor)).reply(
+                  primaryPayload as Parameters<ResponseSessionReplyAnchor['reply']>[0],
+                )) as ResponseSessionEditableMessage;
+                responseSessionReplyBase = null;
+              }
+              const overflowResult = await reconcileOverflowChunks({
+                channel: discordChannel as unknown as ResponseSessionChannel,
+                overflowTexts: chunks.slice(1),
+                state: {
+                  overflowMessageIds: responseSessionOverflowMessageIds,
+                  overflowMessages: responseSessionOverflowMessages,
+                },
+                allowedMentions: { repliedUser: false },
               });
+              responseSessionOverflowMessageIds = overflowResult.overflowMessageIds;
+              responseSessionOverflowMessages = overflowResult.overflowMessages;
+            } else {
+              const reconciled = await reconcileResponseSessionChunks({
+                channel: discordChannel as unknown as ResponseSessionChannel,
+                nextText: replyText,
+                state: {
+                  primaryMessage: responseSessionMessage,
+                  replyAnchor: responseSessionReplyBase,
+                  overflowMessageIds: responseSessionOverflowMessageIds,
+                  overflowMessages: responseSessionOverflowMessages,
+                },
+                allowedMentions: { repliedUser: false },
+              });
+              responseSessionMessage = reconciled.primaryMessage;
+              responseSessionReplyBase = null;
+              responseSessionOverflowMessageIds = reconciled.overflowMessageIds;
+              responseSessionOverflowMessages = reconciled.overflowMessages;
             }
+            void attachTaskRunResponseSession({
+              threadId: responseSessionThreadId,
+              sourceMessageId: responseSessionSourceMessageId,
+              responseMessageId: responseSessionMessage?.id ?? null,
+              responseSession: result.responseSession
+                ? {
+                    ...result.responseSession,
+                    responseMessageId: responseSessionMessage?.id ?? result.responseSession.responseMessageId,
+                    sourceMessageId: result.responseSession.sourceMessageId ?? responseSessionSourceMessageId,
+                    overflowMessageIds: responseSessionOverflowMessageIds,
+                  }
+                : undefined,
+            }).catch((error) => {
+              loggerWithTrace.warn({ error, traceId: responseSessionThreadId }, 'Failed to persist final response session attachment');
+            });
           }
           didSendAnything = true;
-          responseSessionText = firstReplyContent || '\u200b';
-        }
-
-        for (const chunk of restChunks) {
-          await discordChannel.send(chunk);
-          didSendAnything = true;
+          responseSessionText = replyText.trim();
         }
       }
 

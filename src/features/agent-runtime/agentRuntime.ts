@@ -303,6 +303,7 @@ type RuntimeGraphResult = Awaited<ReturnType<typeof runAgentGraphTurn>>;
 type PersistedResponseSessionRefs = {
   sourceMessageId: string | null;
   responseMessageId: string | null;
+  overflowMessageIds: string[];
 };
 
 function readPersistedResponseSessionRefs(value: unknown): PersistedResponseSessionRefs {
@@ -310,6 +311,7 @@ function readPersistedResponseSessionRefs(value: unknown): PersistedResponseSess
     return {
       sourceMessageId: null,
       responseMessageId: null,
+      overflowMessageIds: [],
     };
   }
 
@@ -317,6 +319,9 @@ function readPersistedResponseSessionRefs(value: unknown): PersistedResponseSess
   return {
     sourceMessageId: typeof record.sourceMessageId === 'string' ? record.sourceMessageId : null,
     responseMessageId: typeof record.responseMessageId === 'string' ? record.responseMessageId : null,
+    overflowMessageIds: Array.isArray(record.overflowMessageIds)
+      ? record.overflowMessageIds.filter((value): value is string => typeof value === 'string')
+      : [],
   };
 }
 
@@ -329,6 +334,7 @@ function mergeResponseSessionRefs(
     ...nextValue,
     sourceMessageId: nextValue?.sourceMessageId ?? existingRefs.sourceMessageId,
     responseMessageId: nextValue?.responseMessageId ?? existingRefs.responseMessageId,
+    overflowMessageIds: nextValue?.overflowMessageIds ?? existingRefs.overflowMessageIds,
   };
 }
 

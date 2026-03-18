@@ -351,4 +351,131 @@ describe('agentTaskRunWorker', () => {
       }),
     );
   });
+
+  it('reconciles long overflow chunks across worker updates instead of re-sending duplicate tails', async () => {
+    const longDraft = `${'A'.repeat(2_000)}${'B'.repeat(2_000)}${'C'.repeat(200)}`;
+    listRunnableAgentTaskRunsMock.mockReset();
+    listRunnableAgentTaskRunsMock
+      .mockResolvedValueOnce([
+        {
+          id: 'task-3',
+          threadId: 'thread-3',
+          guildId: 'guild-1',
+          channelId: 'channel-1',
+          requestedByUserId: 'user-1',
+          sourceMessageId: 'message-3',
+          responseMessageId: 'response-3',
+          checkpointMetadataJson: { isAdmin: true, canModerate: false },
+        },
+      ])
+      .mockResolvedValue([]);
+
+    const responseMessage = {
+      id: 'response-3',
+      content: '',
+      edit: vi.fn().mockImplementation(async (payload: { content?: string }) => {
+        responseMessage.content = payload.content ?? responseMessage.content;
+        return responseMessage;
+      }),
+    };
+    const overflowMessages = [
+      {
+        id: 'overflow-1',
+        content: '',
+        edit: vi.fn().mockImplementation(async (payload: { content?: string }) => {
+          overflowMessages[0].content = payload.content ?? overflowMessages[0].content;
+          return overflowMessages[0];
+        }),
+        delete: vi.fn().mockResolvedValue(undefined),
+      },
+      {
+        id: 'overflow-2',
+        content: '',
+        edit: vi.fn().mockImplementation(async (payload: { content?: string }) => {
+          overflowMessages[1].content = payload.content ?? overflowMessages[1].content;
+          return overflowMessages[1];
+        }),
+        delete: vi.fn().mockResolvedValue(undefined),
+      },
+    ];
+    const sendMock = vi
+      .fn()
+      .mockResolvedValueOnce(overflowMessages[0])
+      .mockResolvedValueOnce(overflowMessages[1]);
+
+    clientMock.channels.fetch.mockImplementation(async () =>
+      ({
+        isTextBased: () => true,
+        send: sendMock,
+        messages: {
+          fetch: vi.fn(async (messageId: string) => {
+            if (messageId === 'response-3') {
+              return responseMessage;
+            }
+            if (messageId === 'overflow-1') {
+              return overflowMessages[0];
+            }
+            if (messageId === 'overflow-2') {
+              return overflowMessages[1];
+            }
+            throw new Error(`Unexpected fetch: ${messageId}`);
+          }),
+        },
+      }) as never,
+    );
+
+    resumeBackgroundTaskRunMock.mockImplementation(
+      async (params: { onResponseSessionUpdate?: (update: Record<string, unknown>) => Promise<void> }) => {
+        await params.onResponseSessionUpdate?.({
+          replyText: longDraft,
+          delivery: 'response_session',
+          responseSession: {
+            responseSessionId: 'thread-3',
+            status: 'draft',
+            latestText: longDraft,
+            draftRevision: 1,
+            sourceMessageId: 'message-3',
+            responseMessageId: 'response-3',
+            linkedArtifactMessageIds: [],
+          },
+          pendingInterrupt: null,
+          completionKind: null,
+          stopReason: 'background_yield',
+        });
+
+        return {
+          runId: 'thread-3',
+          status: 'completed',
+          replyText: longDraft,
+          delivery: 'response_session',
+          responseSession: {
+            responseSessionId: 'thread-3',
+            status: 'final',
+            latestText: longDraft,
+            draftRevision: 1,
+            sourceMessageId: 'message-3',
+            responseMessageId: 'response-3',
+            linkedArtifactMessageIds: [],
+          },
+          files: [],
+        };
+      },
+    );
+
+    initAgentTaskRunWorker();
+    await vi.advanceTimersByTimeAsync(1_000);
+    await Promise.resolve();
+
+    expect(sendMock).toHaveBeenCalledTimes(2);
+    expect(overflowMessages[0].edit).not.toHaveBeenCalled();
+    expect(overflowMessages[1].edit).not.toHaveBeenCalled();
+    expect(attachTaskRunResponseSessionMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        threadId: 'thread-3',
+        responseSession: expect.objectContaining({
+          overflowMessageIds: ['overflow-1', 'overflow-2'],
+        }),
+      }),
+    );
+  });
 });

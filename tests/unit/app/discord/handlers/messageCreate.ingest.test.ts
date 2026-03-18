@@ -404,7 +404,6 @@ describe('messageCreate - ingest + reply gating', () => {
       expect.objectContaining({
         content: 'I checked the first batch and I am still working in the background.',
         allowedMentions: { repliedUser: false },
-        files: [],
       }),
     );
   });
@@ -463,7 +462,15 @@ describe('messageCreate - ingest + reply gating', () => {
 
     expect(message.__responseMessage.edit).toHaveBeenCalled();
     expect(message.reply).not.toHaveBeenCalled();
-    expect(mockAttachTaskRunResponseSession).not.toHaveBeenCalled();
+    expect(mockAttachTaskRunResponseSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        threadId: 'thread-existing',
+        responseMessageId: message.__responseMessage.id,
+        responseSession: expect.objectContaining({
+          overflowMessageIds: [],
+        }),
+      }),
+    );
   });
 
   it('reuses the persisted response-session json ids after restart when the top-level responseMessageId is missing', async () => {
@@ -529,7 +536,15 @@ describe('messageCreate - ingest + reply gating', () => {
 
     expect(message.__responseMessage.edit).toHaveBeenCalled();
     expect(message.reply).not.toHaveBeenCalled();
-    expect(mockAttachTaskRunResponseSession).not.toHaveBeenCalled();
+    expect(mockAttachTaskRunResponseSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        threadId: 'thread-restart-existing',
+        responseMessageId: message.__responseMessage.id,
+        responseSession: expect.objectContaining({
+          overflowMessageIds: [],
+        }),
+      }),
+    );
   });
 
   it('ignores stale resumed draft replays before applying the next real update', async () => {
@@ -690,6 +705,242 @@ describe('messageCreate - ingest + reply gating', () => {
 
     expect(message.reply).toHaveBeenCalled();
     expect(message.__sourceMessage.reply).not.toHaveBeenCalled();
+  });
+
+  it('reconciles long overflow chunks during waiting-run resumes instead of sending duplicate tail messages', async () => {
+    const longDraft = `${'A'.repeat(2_000)}${'B'.repeat(2_000)}${'C'.repeat(200)}`;
+    const message = createMockMessage({
+      content: 'sage continue',
+    }) as unknown as Message & {
+      __responseMessage: { id: string; content: string; edit: ReturnType<typeof vi.fn> };
+      __sourceMessage: { id: string };
+      reply: ReturnType<typeof vi.fn>;
+      channel: {
+        send: ReturnType<typeof vi.fn>;
+      };
+    };
+
+    mockFindWaitingUserInputTaskRun.mockResolvedValueOnce({
+      id: 'run-long-overflow',
+      threadId: 'thread-long-overflow',
+      sourceMessageId: message.__sourceMessage.id,
+      responseMessageId: message.__responseMessage.id,
+      responseSessionJson: {
+        responseSessionId: 'thread-long-overflow',
+        status: 'draft',
+        latestText: '',
+        draftRevision: 0,
+        sourceMessageId: message.__sourceMessage.id,
+        responseMessageId: message.__responseMessage.id,
+        linkedArtifactMessageIds: [],
+      },
+    });
+    mockResumeWaitingTaskRunWithInput.mockImplementationOnce(async (params) => {
+      await params.onResponseSessionUpdate?.({
+        replyText: longDraft,
+        delivery: 'response_session',
+        responseSession: {
+          responseSessionId: 'thread-long-overflow',
+          status: 'draft',
+          latestText: longDraft,
+          draftRevision: 1,
+          sourceMessageId: message.__sourceMessage.id,
+          responseMessageId: message.__responseMessage.id,
+          linkedArtifactMessageIds: [],
+        },
+        pendingInterrupt: null,
+        completionKind: null,
+        stopReason: 'background_yield',
+      });
+
+      return {
+        runId: 'thread-long-overflow',
+        status: 'completed',
+        replyText: longDraft,
+        delivery: 'response_session',
+        responseSession: {
+          responseSessionId: 'thread-long-overflow',
+          status: 'final',
+          latestText: longDraft,
+          draftRevision: 1,
+          sourceMessageId: message.__sourceMessage.id,
+          responseMessageId: message.__responseMessage.id,
+          linkedArtifactMessageIds: [],
+        },
+        files: [],
+      };
+    });
+
+    await handleMessageCreate(message);
+
+    expect(message.channel.send).toHaveBeenCalledTimes(2);
+    expect(message.channel.send.mock.calls).toEqual([
+      [
+        {
+          content: `${'B'.repeat(2_000)}`,
+          allowedMentions: { repliedUser: false },
+        },
+      ],
+      [
+        {
+          content: `${'C'.repeat(200)}`,
+          allowedMentions: { repliedUser: false },
+        },
+      ],
+    ]);
+    expect(message.__responseMessage.edit).toHaveBeenCalledTimes(1);
+    expect(message.reply).not.toHaveBeenCalled();
+  });
+
+  it('rebuilds missing overflow chunks when a resumed long draft replays the same full text after restart', async () => {
+    const longDraft = `${'A'.repeat(2_000)}${'B'.repeat(2_000)}${'C'.repeat(200)}`;
+    const message = createMockMessage({
+      content: 'sage continue',
+    }) as unknown as Message & {
+      __responseMessage: { id: string; content: string; edit: ReturnType<typeof vi.fn> };
+      __sourceMessage: { id: string };
+      reply: ReturnType<typeof vi.fn>;
+      channel: {
+        send: ReturnType<typeof vi.fn>;
+      };
+    };
+    message.__responseMessage.content = 'A'.repeat(2_000);
+
+    mockFindWaitingUserInputTaskRun.mockResolvedValueOnce({
+      id: 'run-replay-missing-overflow',
+      threadId: 'thread-replay-missing-overflow',
+      sourceMessageId: message.__sourceMessage.id,
+      responseMessageId: message.__responseMessage.id,
+      responseSessionJson: {
+        responseSessionId: 'thread-replay-missing-overflow',
+        status: 'draft',
+        latestText: longDraft,
+        draftRevision: 4,
+        sourceMessageId: message.__sourceMessage.id,
+        responseMessageId: message.__responseMessage.id,
+        overflowMessageIds: [],
+        linkedArtifactMessageIds: [],
+      },
+    });
+    mockResumeWaitingTaskRunWithInput.mockImplementationOnce(async (params) => {
+      await params.onResponseSessionUpdate?.({
+        replyText: longDraft,
+        delivery: 'response_session',
+        responseSession: {
+          responseSessionId: 'thread-replay-missing-overflow',
+          status: 'draft',
+          latestText: longDraft,
+          draftRevision: 5,
+          sourceMessageId: message.__sourceMessage.id,
+          responseMessageId: message.__responseMessage.id,
+          linkedArtifactMessageIds: [],
+        },
+        pendingInterrupt: null,
+        completionKind: null,
+        stopReason: 'background_yield',
+      });
+
+      return {
+        runId: 'thread-replay-missing-overflow',
+        status: 'completed',
+        replyText: longDraft,
+        delivery: 'response_session',
+        responseSession: {
+          responseSessionId: 'thread-replay-missing-overflow',
+          status: 'final',
+          latestText: longDraft,
+          draftRevision: 5,
+          sourceMessageId: message.__sourceMessage.id,
+          responseMessageId: message.__responseMessage.id,
+          linkedArtifactMessageIds: [],
+        },
+        files: [],
+      };
+    });
+
+    await handleMessageCreate(message);
+
+    expect(message.channel.send).toHaveBeenCalledTimes(2);
+    expect(message.__responseMessage.edit).not.toHaveBeenCalled();
+    expect(message.reply).not.toHaveBeenCalled();
+  });
+
+  it('reconciles overflow chunks when a long final reply uses a runtime card', async () => {
+    const longDraft = `${'A'.repeat(2_000)}${'B'.repeat(2_000)}${'C'.repeat(200)}`;
+    const message = createMockMessage({
+      content: 'sage continue',
+    }) as unknown as Message & {
+      __responseMessage: { id: string; content: string; edit: ReturnType<typeof vi.fn> };
+      __sourceMessage: { id: string };
+      reply: ReturnType<typeof vi.fn>;
+      channel: {
+        send: ReturnType<typeof vi.fn>;
+      };
+    };
+
+    mockFindWaitingUserInputTaskRun.mockResolvedValueOnce({
+      id: 'run-long-card-overflow',
+      threadId: 'thread-long-card-overflow',
+      sourceMessageId: message.__sourceMessage.id,
+      responseMessageId: message.__responseMessage.id,
+      responseSessionJson: {
+        responseSessionId: 'thread-long-card-overflow',
+        status: 'draft',
+        latestText: '',
+        draftRevision: 0,
+        sourceMessageId: message.__sourceMessage.id,
+        responseMessageId: message.__responseMessage.id,
+        linkedArtifactMessageIds: [],
+      },
+    });
+    mockResumeWaitingTaskRunWithInput.mockImplementationOnce(async (params) => {
+      await params.onResponseSessionUpdate?.({
+        replyText: longDraft,
+        delivery: 'response_session',
+        responseSession: {
+          responseSessionId: 'thread-long-card-overflow',
+          status: 'draft',
+          latestText: longDraft,
+          draftRevision: 1,
+          sourceMessageId: message.__sourceMessage.id,
+          responseMessageId: message.__responseMessage.id,
+          linkedArtifactMessageIds: [],
+        },
+        pendingInterrupt: null,
+        completionKind: null,
+        stopReason: 'background_yield',
+      });
+
+      return {
+        runId: 'thread-long-card-overflow',
+        status: 'completed',
+        replyText: longDraft,
+        delivery: 'response_session',
+        meta: {
+          retry: {
+            threadId: 'thread-long-card-overflow',
+            retryKind: 'turn',
+          },
+        },
+        responseSession: {
+          responseSessionId: 'thread-long-card-overflow',
+          status: 'final',
+          latestText: longDraft,
+          draftRevision: 2,
+          sourceMessageId: message.__sourceMessage.id,
+          responseMessageId: message.__responseMessage.id,
+          linkedArtifactMessageIds: [],
+        },
+        files: [],
+      };
+    });
+
+    await handleMessageCreate(message);
+
+    expect(mockCreateInteractiveButtonSession).toHaveBeenCalled();
+    expect(message.channel.send).toHaveBeenCalledTimes(2);
+    expect(message.__responseMessage.edit).toHaveBeenCalledTimes(2);
+    expect(message.reply).not.toHaveBeenCalled();
   });
 
   it('attaches a Retry button when the runtime returns retry metadata', async () => {

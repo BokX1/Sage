@@ -76,6 +76,7 @@ export interface GraphResponseSession {
   draftRevision: number;
   sourceMessageId: string | null;
   responseMessageId: string | null;
+  overflowMessageIds?: string[];
   linkedArtifactMessageIds: string[];
 }
 

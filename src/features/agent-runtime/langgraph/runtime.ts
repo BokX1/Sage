@@ -207,6 +207,7 @@ const GraphResponseSessionSchema = z.object({
   draftRevision: z.number(),
   sourceMessageId: z.string().nullable(),
   responseMessageId: z.string().nullable(),
+  overflowMessageIds: z.array(z.string()).default([]),
   linkedArtifactMessageIds: z.array(z.string()),
 });
 
@@ -419,6 +420,7 @@ const AgentGraphStateSchema = new StateSchema({
     draftRevision: 0,
     sourceMessageId: null,
     responseMessageId: null,
+    overflowMessageIds: [],
     linkedArtifactMessageIds: [],
   }),
   artifactDeliveries: new ReducedValue(z.array(GraphArtifactDeliverySchema).default([]), {
@@ -612,6 +614,7 @@ function buildDefaultResponseSession(threadId: string): AgentGraphState['respons
     draftRevision: 0,
     sourceMessageId: null,
     responseMessageId: null,
+    overflowMessageIds: [],
     linkedArtifactMessageIds: [],
   };
 }
