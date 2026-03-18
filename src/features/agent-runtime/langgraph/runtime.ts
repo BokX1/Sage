@@ -702,8 +702,10 @@ function buildDeterministicRuntimeSummary(
   return parts.join(' ').trim();
 }
 
-const WINDOW_CLOSEOUT_MAX_OUTPUT_TOKENS = 1_200;
-const WINDOW_CLOSEOUT_REQUEST_TIMEOUT_MS = 12_000;
+const WINDOW_CLOSEOUT_MAX_OUTPUT_TOKENS =
+  (appConfig.AGENT_WINDOW_CLOSEOUT_MAX_OUTPUT_TOKENS as number | undefined) ?? 2_400;
+const WINDOW_CLOSEOUT_REQUEST_TIMEOUT_MS =
+  (appConfig.AGENT_WINDOW_CLOSEOUT_REQUEST_TIMEOUT_MS as number | undefined) ?? 20_000;
 const WINDOW_CLOSEOUT_TEMPERATURE = 0.2;
 
 function buildWindowCloseoutPromptMessages(params: {

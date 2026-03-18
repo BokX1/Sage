@@ -29,6 +29,7 @@
 - Simplified Sage's model-facing tool exposure contract so every turn now exposes the full eligible tool surface for the current actor and runtime context, eliminating fresh-turn heuristic narrowing and making follow-up requests keep web, GitHub, Discord, and other permitted tool families available by default.
 - Replaced Sage's layered Prisma migration history with a single current-schema baseline migration, so fresh deploys and intentional hard resets now rebuild from one canonical SQL entrypoint instead of replaying legacy runtime-era migrations.
 - Retuned Sage's long-running loop-guard defaults for frontier-style multi-step work: each durable worker slice now allows more assistant/model turns, the recursion fail-safe is higher, one model response can propose a larger executable tool batch, and repeated-batch repair gets multiple retries before Sage gives up with a user-visible `loop_guard` fallback.
+- Promoted Sage's remaining hidden prompt/output ceilings into real runtime config: tool-observation prompt text now defaults to a larger frontier-friendly budget, and the no-tools closeout synthesis pass now gets a larger output reserve and longer request timeout instead of being silently capped by hardcoded constants.
 
 ### Fixed
 - The Prisma baseline migration now enables `pgvector` before creating embedding columns, so clean database rebuilds do not fail when `AttachmentChunk` and `ChannelMessageEmbedding` are created on a fresh Postgres instance.

@@ -4,11 +4,13 @@ import { formatDiscordGuardrailsLines } from './discordToolCatalog';
 import type { RuntimeAutopilotMode } from './autopilotMode';
 import type { CurrentTurnContext, ReplyTargetContext } from './continuityContext';
 import { describeContinuityPolicy } from './continuityContext';
+import { config as appConfig } from '../../platform/config/env';
 import type { LLMContentPart, LLMMessageContent } from '../../platform/llm/llm-types';
 import { globalToolRegistry } from './toolRegistry';
 
 export const UNIVERSAL_PROMPT_CONTRACT_VERSION = '2026-03-17.long-running-v1';
-const PROMPT_TOOL_OBSERVATION_MAX_CHARS = 24_000;
+const PROMPT_TOOL_OBSERVATION_MAX_CHARS =
+  (appConfig.PROMPT_TOOL_OBSERVATION_MAX_CHARS as number | undefined) ?? 48_000;
 
 export type PromptInputMode =
   | 'standard'

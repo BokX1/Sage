@@ -323,6 +323,9 @@ export const testDefaults: Record<string, string> = {
   // Output / Runtime Control
   CHAT_MAX_OUTPUT_TOKENS: '4096',
   LLM_DOCTOR_PING: '0',
+  PROMPT_TOOL_OBSERVATION_MAX_CHARS: '48000',
+  AGENT_WINDOW_CLOSEOUT_MAX_OUTPUT_TOKENS: '2400',
+  AGENT_WINDOW_CLOSEOUT_REQUEST_TIMEOUT_MS: '20000',
   AGENT_RUN_SLICE_MAX_STEPS: '10',
   AGENT_RUN_TOOL_TIMEOUT_MS: '45000',
   AGENT_GRAPH_MAX_OUTPUT_TOKENS: '4096',
@@ -508,6 +511,9 @@ export const envSchema = z.object({
   // Output / Runtime Control
   CHAT_MAX_OUTPUT_TOKENS: z.coerce.number().int().min(128).max(16000).default(4096),
   LLM_DOCTOR_PING: z.enum(['0', '1']).default('0'),
+  PROMPT_TOOL_OBSERVATION_MAX_CHARS: z.coerce.number().int().min(4_000).max(200_000).default(48_000),
+  AGENT_WINDOW_CLOSEOUT_MAX_OUTPUT_TOKENS: z.coerce.number().int().min(256).max(8_000).default(2_400),
+  AGENT_WINDOW_CLOSEOUT_REQUEST_TIMEOUT_MS: z.coerce.number().int().min(5_000).max(60_000).default(20_000),
   AGENT_RUN_SLICE_MAX_STEPS: z.coerce.number().int().min(1).max(32).default(10),
   AGENT_RUN_TOOL_TIMEOUT_MS: z.coerce.number().int().min(1000).max(120000).default(45000),
   AGENT_GRAPH_MAX_OUTPUT_TOKENS: z.coerce.number().int().min(128).max(8000).default(4096),
