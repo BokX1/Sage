@@ -25,12 +25,23 @@ export interface AgentGraphConfig {
   maxLoopGuardRecoveries: number;
 }
 
+const DERIVED_RECURSION_BASE_STEPS = 24;
+const DERIVED_RECURSION_STEPS_PER_SLICE_STEP = 8;
+
+export function deriveAgentGraphRecursionLimit(sliceMaxSteps: number): number {
+  const normalizedSliceMaxSteps = normalizeStrictlyPositiveInt(sliceMaxSteps, 10);
+  return DERIVED_RECURSION_BASE_STEPS +
+    normalizedSliceMaxSteps * DERIVED_RECURSION_STEPS_PER_SLICE_STEP;
+}
+
 export function buildAgentGraphConfig(): AgentGraphConfig {
+  const sliceMaxSteps = normalizeStrictlyPositiveInt(
+    appConfig.AGENT_RUN_SLICE_MAX_STEPS as number | undefined,
+    10,
+  );
+
   return {
-    sliceMaxSteps: normalizeStrictlyPositiveInt(
-      appConfig.AGENT_RUN_SLICE_MAX_STEPS as number | undefined,
-      10,
-    ),
+    sliceMaxSteps,
     toolTimeoutMs: normalizeStrictlyPositiveInt(
       appConfig.AGENT_RUN_TOOL_TIMEOUT_MS as number | undefined,
       45_000,
@@ -91,9 +102,12 @@ export function buildAgentGraphConfig(): AgentGraphConfig {
       appConfig.AGENT_RUN_COMPACTION_MAX_TOOL_OBSERVATIONS as number | undefined,
       12,
     ),
+    // LangGraph recursion is an internal hop fail-safe. Sage's real slice budget is
+    // AGENT_RUN_SLICE_MAX_STEPS, so keep the recursion ceiling comfortably above it
+    // unless an operator explicitly overrides the low-level safeguard.
     recursionLimit: normalizeStrictlyPositiveInt(
       appConfig.AGENT_GRAPH_RECURSION_LIMIT as number | undefined,
-      32,
+      deriveAgentGraphRecursionLimit(sliceMaxSteps),
     ),
     maxToolCallsPerRound: normalizeStrictlyPositiveInt(
       appConfig.AGENT_GRAPH_MAX_TOOL_CALLS_PER_ROUND as number | undefined,

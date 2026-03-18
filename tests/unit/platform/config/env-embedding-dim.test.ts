@@ -58,6 +58,14 @@ describe('env embedding dimension guard', () => {
     });
   });
 
+  it('leaves AGENT_GRAPH_RECURSION_LIMIT unset when operators do not override it', async () => {
+    await withEnv({ NODE_ENV: 'test' }, async () => {
+      delete process.env.AGENT_GRAPH_RECURSION_LIMIT;
+      const envModule = await importFresh(() => import('@/platform/config/env'));
+      expect(envModule.config.AGENT_GRAPH_RECURSION_LIMIT).toBeUndefined();
+    });
+  });
+
   it('rejects blank AI provider chat model configuration', async () => {
     await withEnv(
       {

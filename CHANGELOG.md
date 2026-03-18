@@ -26,6 +26,7 @@
 ## [Unreleased]
 
 ### Changed
+- Reworked Sage's LangGraph recursion budgeting so the low-level recursion ceiling is now derived from the durable slice budget by default instead of acting as an independently tuned practical limit, which gives frontier models more room to recover within a slice before Sage falls back with a user-visible `loop_guard`.
 - Simplified Sage's model-facing tool exposure contract so every turn now exposes the full eligible tool surface for the current actor and runtime context, eliminating fresh-turn heuristic narrowing and making follow-up requests keep web, GitHub, Discord, and other permitted tool families available by default.
 - Replaced Sage's layered Prisma migration history with a single current-schema baseline migration, so fresh deploys and intentional hard resets now rebuild from one canonical SQL entrypoint instead of replaying legacy runtime-era migrations.
 - Retuned Sage's long-running loop-guard defaults for frontier-style multi-step work: each durable worker slice now allows more assistant/model turns, the recursion fail-safe is higher, one model response can propose a larger executable tool batch, and repeated-batch repair gets multiple retries before Sage gives up with a user-visible `loop_guard` fallback.

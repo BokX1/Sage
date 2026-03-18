@@ -122,7 +122,7 @@ flowchart LR
 - **Message-native state**: the graph persists LangGraph/LangChain messages plus turn facts, approval state, trace metadata, and final delivery state instead of the old custom pending-tool-loop buffers.
 - **Read/write partitioning**: read-only batches execute through `ToolNode`, and mutating calls execute one at a time.
 - **In-round read dedupe**: identical read-only calls in the same model response are executed once, then fanned back out to the model as per-call tool messages so repeated reads do not waste a full execution slot.
-- **Loop guard**: Sage rejects over-wide tool batches before side effects, gives the model one structured repair chance, and finalizes with `loop_guard` if the next batch repeats the same unsafe plan or LangGraph hits the recursion safety ceiling.
+- **Loop guard**: Sage rejects over-wide tool batches before side effects, gives the model structured repair chances, and treats the LangGraph recursion ceiling as a high internal fail-safe derived from the slice budget instead of the practical work limit for a normal long-running turn.
 - **Plain-text-first closeout**: assistant turns may include both visible text and tool calls; when a turn ends with no tool calls, Sage finalizes directly from the assistant text as either a final answer or a clarification question.
 - **Tool-owned action policy**: routed Discord tools now declare explicit read/write and approval metadata, so admin-only reads stay on the read lane while approval-gated writes enter the approval path through per-tool policy instead of graph-side action-name branching.
 - **Native tool contract**: the runtime consumes structured provider tool calls directly and feeds tool results back as LangChain tool messages.
@@ -229,7 +229,7 @@ These values reflect the starter values in `.env.example`:
 | `AGENT_RUN_COMPACTION_MAX_TOOL_OBSERVATIONS` | Tool observations retained in prompt-facing compaction state | `12` |
 | `AGENT_GRAPH_MAX_OUTPUT_TOKENS` | Max output tokens for graph model calls | `4096` |
 | `AGENT_GRAPH_GITHUB_GROUNDED_MODE` | Enable grounded GitHub search mode | `true` |
-| `AGENT_GRAPH_RECURSION_LIMIT` | LangGraph recursion fail-safe above the legal hop count | `32` |
+| `AGENT_GRAPH_RECURSION_LIMIT` | Optional advanced override for LangGraph's internal hop fail-safe; when unset Sage derives it from `AGENT_RUN_SLICE_MAX_STEPS` so durable slices yield before the low-level graph guard becomes the practical ceiling | *(derived; `104` at the starter slice budget)* |
 | `AGENT_GRAPH_MAX_TOOL_CALLS_PER_ROUND` | Max executable tool calls Sage will allow from one model response before it forces a repair pass | `12` |
 | `AGENT_GRAPH_MAX_IDENTICAL_TOOL_BATCHES` | Consecutive identical tool batches allowed before Sage trips the loop guard | `4` |
 | `AGENT_GRAPH_MAX_LOOP_GUARD_RECOVERIES` | How many structured repair attempts Sage gives the model before finalizing with `loop_guard` | `3` |

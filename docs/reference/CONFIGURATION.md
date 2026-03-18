@@ -265,7 +265,7 @@ These settings control Sage's optional Discord voice features. The local voice s
 | `AGENT_RUN_COMPACTION_MAX_TOOL_OBSERVATIONS` | Tool observations retained in prompt-facing compaction state | `12` |
 | `AGENT_GRAPH_MAX_OUTPUT_TOKENS` | Max output tokens for graph model calls | `4096` |
 | `AGENT_GRAPH_GITHUB_GROUNDED_MODE` | Enable GitHub grounded search | `true` |
-| `AGENT_GRAPH_RECURSION_LIMIT` | LangGraph recursion fail-safe above the legal hop count | `32` |
+| `AGENT_GRAPH_RECURSION_LIMIT` | Optional advanced override for LangGraph's internal hop fail-safe; when unset Sage derives it from `AGENT_RUN_SLICE_MAX_STEPS` so slice yields happen before the low-level graph guard | *(derived; `104` at the starter slice budget)* |
 | `AGENT_GRAPH_MAX_TOOL_CALLS_PER_ROUND` | Max executable tool calls allowed from one model response before Sage rejects the batch and asks the model to replan | `12` |
 | `AGENT_GRAPH_MAX_IDENTICAL_TOOL_BATCHES` | Consecutive identical tool batches Sage tolerates before tripping the loop guard | `4` |
 | `AGENT_GRAPH_MAX_LOOP_GUARD_RECOVERIES` | Structured loop-guard repair retries Sage allows before finalizing with `loop_guard` | `3` |
