@@ -14,7 +14,7 @@ import {
   isInterrupted,
   task,
 } from '@langchain/langgraph';
-import { ToolNode, toolsCondition } from '@langchain/langgraph/prebuilt';
+import { ToolNode } from '@langchain/langgraph/prebuilt';
 import { AIMessage, HumanMessage, ToolMessage, type BaseMessage } from '@langchain/core/messages';
 import type { RunnableConfig } from '@langchain/core/runnables';
 import { z } from 'zod';
@@ -1908,9 +1908,10 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
   })
     .addNode('tools', buildReadToolsNode(graphConfig))
     .addEdge(START, 'tools')
-    .addConditionalEdges('tools', (state) =>
-      toolsCondition(state.messages as BaseMessage[]) === 'tools' ? 'tools' : END,
-    )
+    // Sage already batches and executes the full read set inside buildReadToolsNode, so
+    // this subgraph should always exit after one pass. Leaving a generic ToolNode loop
+    // here can burn recursion hops if a tool batch yields no new ToolMessages.
+    .addEdge('tools', END)
     .compile({
       checkpointer: false,
       name: 'sage_read_tools_subgraph',

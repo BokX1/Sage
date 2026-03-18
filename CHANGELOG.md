@@ -33,6 +33,7 @@
 - Promoted Sage's remaining hidden prompt/output ceilings into real runtime config: tool-observation prompt text now defaults to a larger frontier-friendly budget, and the no-tools closeout synthesis pass now gets a larger output reserve and longer request timeout instead of being silently capped by hardcoded constants.
 
 ### Fixed
+- Fixed a hidden LangGraph read-lane recursion trap: read-only tool batches now exit their subgraph after one execution pass instead of re-entering a generic `ToolNode` loop, which stops legitimate research turns from hitting `recursion_limit` before Sage has actually exhausted its durable slice budget.
 - The Prisma baseline migration now enables `pgvector` before creating embedding columns, so clean database rebuilds do not fail when `AttachmentChunk` and `ChannelMessageEmbedding` are created on a fresh Postgres instance.
 - Fixed durable response-session resume handling so Sage no longer loses the real Discord draft message id after a yield, create a second visible reply for the same task run after process recovery, briefly flash stale pre-restart draft text before the resumed stream catches up, or anchor replacement waiting-input replies to the wrong prior message when the original draft is missing.
 - Fixed waiting-follow-up continuity so replies like `Proceed`, `Go on`, or `Deep dive this` can now continue Sage's own outstanding clarification question when the runtime has already matched that message to a real waiting task run, without weakening the broader room-continuity safeguards for unrelated short replies.

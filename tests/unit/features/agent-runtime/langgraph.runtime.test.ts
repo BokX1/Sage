@@ -10,6 +10,7 @@ const {
   buildActiveToolCatalogMock,
   isReadOnlyToolCallMock,
   planReadOnlyToolExecutionMock,
+  toolsConditionMock,
   toolNodeInvokeMock,
   executeDurableToolTaskMock,
   executeApprovedReviewTaskMock,
@@ -64,6 +65,7 @@ const {
     parallelCalls: Array.isArray(params.calls) ? params.calls : [],
     sequentialCalls: [],
   })),
+  toolsConditionMock: vi.fn(() => 'end'),
   toolNodeInvokeMock: vi.fn<
     (
       input?: { messages?: Array<{ tool_calls?: Array<{ id?: string }> }> },
@@ -194,7 +196,7 @@ vi.mock('@langchain/langgraph/prebuilt', () => ({
       );
     }
   },
-  toolsCondition: vi.fn(() => 'end'),
+  toolsCondition: toolsConditionMock,
 }));
 
 vi.mock('@/features/agent-runtime/langgraph/nativeTools', () => ({
@@ -451,6 +453,8 @@ describe('runGraphValueStream', () => {
     }));
     toolNodeInvokeMock.mockReset();
     toolNodeInvokeMock.mockResolvedValue({ messages: [] });
+    toolsConditionMock.mockReset();
+    toolsConditionMock.mockReturnValue('end');
     executeDurableToolTaskMock.mockReset();
     executeApprovedReviewTaskMock.mockReset();
     prepareToolApprovalInterruptMock.mockReset();
@@ -944,6 +948,66 @@ describe('runGraphValueStream', () => {
       cacheHit: true,
       cacheKind: 'dedupe',
     });
+  });
+
+  it('exits the read-only subgraph after one pass even when ToolNode emits no tool messages', async () => {
+    await shutdownAgentGraphRuntime();
+    isReadOnlyToolCallMock.mockReturnValue(true);
+    buildAgentGraphConfigMock.mockReturnValue(
+      makeGraphConfig({
+        sliceMaxSteps: 3,
+        recursionLimit: 8,
+      }),
+    );
+    buildActiveToolCatalogMock.mockReturnValue({
+      allTools: [{ name: 'github_get_repo' }],
+      readOnlyTools: [],
+      definitions: new Map(),
+    });
+    toolsConditionMock.mockReturnValue('tools');
+    toolNodeInvokeMock.mockResolvedValueOnce({ messages: [] });
+    modelInvokeMock.mockResolvedValueOnce(
+      makeFinishTurnMessage('final_answer', 'Continuing after an empty read batch.'),
+    );
+
+    const result = await __runAgentGraphCommandForTests({
+      threadId: 'trace-read-subgraph-exit-1',
+      goto: 'route_tool_phase',
+      context: {
+        traceId: 'trace-read-subgraph-exit-1',
+        originTraceId: 'trace-read-subgraph-exit-1',
+        userId: 'user-1',
+        channelId: 'channel-1',
+        guildId: 'guild-1',
+        activeToolNames: ['github_get_repo'],
+        routeKind: 'single',
+        currentTurn: { invokerUserId: 'user-1' },
+        replyTarget: null,
+        invokedBy: 'mention',
+      },
+      state: {
+        roundsCompleted: 1,
+        messages: [
+          new AIMessage({
+            content: 'Fetching repo metadata next.',
+            tool_calls: [
+              {
+                id: 'call-read-empty-1',
+                name: 'github_get_repo',
+                args: { repo: 'blueplaysgames3921', includeReadme: false },
+                type: 'tool_call',
+              },
+            ],
+          }),
+        ],
+      },
+    });
+
+    expect(result.graphStatus).toBe('completed');
+    expect(result.stopReason).toBe('assistant_turn_completed');
+    expect(result.replyText).toContain('Continuing after an empty read batch.');
+    expect(result.roundsCompleted).toBe(2);
+    expect(toolNodeInvokeMock).not.toHaveBeenCalled();
   });
 
   it('rejects an over-cap tool batch before any write executes and gives the model one repair pass', async () => {
