@@ -614,7 +614,7 @@ describe('agentRuntime', () => {
       waitingKind: 'user_input',
       latestDraftText: 'What should I look at next?',
       draftRevision: 2,
-      completionKind: 'clarification_question',
+      completionKind: 'user_input_pending',
       stopReason: 'user_input_interrupt',
       nextRunnableAt: null,
       leaseOwner: null,
@@ -947,12 +947,12 @@ describe('agentRuntime', () => {
     });
   });
 
-  it('returns a waiting-user-input task result when the graph asks a clarification question', async () => {
+  it('returns a waiting-user-input task result when the graph requests user input', async () => {
     runAgentGraphTurnMock.mockResolvedValue(
       makeGraphResult({
         replyText: 'Which repository should I check first?',
         graphStatus: 'completed',
-        completionKind: 'clarification_question',
+        completionKind: 'user_input_pending',
         stopReason: 'user_input_interrupt',
         deliveryDisposition: 'response_session',
         waitingState: {
@@ -1341,7 +1341,7 @@ describe('agentRuntime', () => {
       waitingKind: 'user_input',
       latestDraftText: 'Which repository should I check first?',
       draftRevision: 2,
-      completionKind: 'clarification_question',
+      completionKind: 'user_input_pending',
       stopReason: 'user_input_interrupt',
       nextRunnableAt: null,
       leaseOwner: null,
@@ -1455,7 +1455,7 @@ describe('agentRuntime', () => {
       waitingKind: 'user_input',
       latestDraftText: 'Which repository should I check first?',
       draftRevision: 2,
-      completionKind: 'clarification_question',
+      completionKind: 'user_input_pending',
       stopReason: 'user_input_interrupt',
       nextRunnableAt: null,
       leaseOwner: null,

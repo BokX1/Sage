@@ -16,6 +16,7 @@ import {
 } from '@langchain/langgraph';
 import { ToolNode } from '@langchain/langgraph/prebuilt';
 import { AIMessage, HumanMessage, ToolMessage, type BaseMessage } from '@langchain/core/messages';
+import type { DynamicStructuredTool } from '@langchain/core/tools';
 import type { RunnableConfig } from '@langchain/core/runnables';
 import { z } from 'zod';
 import { PostgresSaver } from '@langchain/langgraph-checkpoint-postgres';
@@ -53,11 +54,13 @@ import { AppError } from '../../../shared/errors/app-error';
 import { buildAgentGraphConfig, type AgentGraphConfig } from './config';
 import {
   buildActiveToolCatalog,
+  buildRuntimeControlTools,
   executeApprovedReviewTask,
   executeDurableToolTask,
   isReadOnlyToolCall,
   planReadOnlyToolExecution,
   prepareToolApprovalInterrupt,
+  resolveRuntimeControlSignal,
   type GraphToolCallDescriptor,
 } from './nativeTools';
 import type {
@@ -69,6 +72,7 @@ import type {
   AgentGraphState,
   ApprovalResumeDecision,
   GraphStopReason,
+  PlainTextOutcomeSource,
   GraphResumeInput,
   GraphRebudgetEvent,
   SerializedToolResult,
@@ -164,7 +168,6 @@ const ToolCallFinalizationEventSchema = z.object({
   ]),
   completionKind: z.enum([
     'final_answer',
-    'clarification_question',
     'approval_pending',
     'user_input_pending',
     'loop_guard',
@@ -268,19 +271,6 @@ const PromptWaitingFollowUpSchema = z.object({
   responseMessageId: z.string().nullable().optional(),
 });
 
-const PlainTextCloseoutSignalSchema = z.object({
-  kind: z.enum([
-    'final_answer',
-    'clarification_question',
-    'approval_pending',
-    'user_input_pending',
-    'loop_guard',
-    'runtime_failure',
-    'cancelled',
-  ]),
-  replyText: z.string().trim().min(1),
-});
-
 const GraphCompactionStateSchema = z.object({
   workingObjective: z.string(),
   verifiedFacts: z.array(z.string()).default([]),
@@ -317,6 +307,11 @@ const GraphTokenUsageSchema = z.object({
   cachedTokens: z.number().default(0),
   reasoningTokens: z.number().default(0),
 });
+
+const PlainTextOutcomeSourceSchema = z.enum([
+  'runtime_control_tool',
+  'default_final_answer',
+]);
 
 const AgentGraphRuntimeSnapshotSchema = z.object({
   traceId: z.string(),
@@ -423,7 +418,6 @@ const AgentGraphStateSchema = new StateSchema({
   completionKind: z
     .enum([
       'final_answer',
-      'clarification_question',
       'approval_pending',
       'user_input_pending',
       'loop_guard',
@@ -493,6 +487,7 @@ const AgentGraphStateSchema = new StateSchema({
     cachedTokens: 0,
     reasoningTokens: 0,
   }),
+  plainTextOutcomeSource: z.union([PlainTextOutcomeSourceSchema, z.null()]).default(null),
 });
 
 type GraphNodeName =
@@ -606,6 +601,7 @@ export interface AgentGraphTurnResult {
   pendingInterrupt: AgentGraphState['pendingInterrupt'];
   interruptResolution: AgentGraphState['interruptResolution'];
   tokenUsage: AgentGraphState['tokenUsage'];
+  plainTextOutcomeSource: AgentGraphState['plainTextOutcomeSource'];
   langSmithRunId: string | null;
   langSmithTraceId: string | null;
 }
@@ -686,99 +682,6 @@ function buildFollowUpResumeResponseSession(params: {
 function resolveDraftText(replyText: string | null | undefined): string {
   const cleaned = scrubFinalReplyText({ replyText });
   return cleaned || 'Working on that now.';
-}
-
-function parsePlainTextCloseoutSignal(text: string): z.infer<typeof PlainTextCloseoutSignalSchema> | null {
-  const normalized = text.trim();
-  if (!normalized) {
-    return null;
-  }
-
-  const match = normalized.match(/<assistant_closeout>([\s\S]*?)<\/assistant_closeout>/i);
-  if (!match?.[1]) {
-    return null;
-  }
-
-  const payload = match[1].trim();
-  try {
-    return PlainTextCloseoutSignalSchema.parse(JSON.parse(payload));
-  } catch {
-    return null;
-  }
-}
-
-function stripPlainTextCloseoutEnvelope(text: string): string {
-  return text.replace(/<assistant_closeout>[\s\S]*?<\/assistant_closeout>/gi, '').trim();
-}
-
-function buildCloseoutRepairPromptMessages(params: {
-  state: AgentGraphState;
-  runtimeContext: AgentGraphRuntimeContext;
-  invalidReplyText: string;
-}): LLMChatMessage[] {
-  return [
-    {
-      role: 'system',
-      content:
-        'Normalize Sage plain-text closeout output into strict JSON. Return only JSON with keys "kind" and "replyText". ' +
-        'Valid kinds: final_answer, clarification_question, approval_pending, user_input_pending, loop_guard, runtime_failure, cancelled. ' +
-        'Preserve the user-visible reply text. If the assistant is clearly asking the user for one missing detail, use clarification_question. ' +
-        'Do not call tools. Do not add markdown.',
-    },
-    {
-      role: 'user',
-      content: [
-        'Original assistant reply:',
-        params.invalidReplyText.trim(),
-        '',
-        'Return JSON only.',
-      ].join('\n'),
-    },
-  ];
-}
-
-async function normalizePlainTextCloseoutSignal(params: {
-  state: AgentGraphState;
-  runtimeContext: AgentGraphRuntimeContext;
-  toolContext: ToolExecutionContext;
-  graphConfig: AgentGraphConfig;
-  rawReplyText: string;
-}): Promise<z.infer<typeof PlainTextCloseoutSignalSchema>> {
-  const parsedDirectly = parsePlainTextCloseoutSignal(params.rawReplyText);
-  if (parsedDirectly) {
-    return {
-      ...parsedDirectly,
-      replyText: scrubFinalReplyText({ replyText: parsedDirectly.replyText }) ?? parsedDirectly.replyText,
-    };
-  }
-
-  const repair = await invokeAgentModelTask({
-    messages: buildCloseoutRepairPromptMessages({
-      state: params.state,
-      runtimeContext: params.runtimeContext,
-      invalidReplyText: stripPlainTextCloseoutEnvelope(params.rawReplyText) || params.rawReplyText,
-    }),
-    activeToolNames: [],
-    toolContext: params.toolContext,
-    timeoutMs: params.graphConfig.toolTimeoutMs,
-    model: params.runtimeContext.model,
-    apiKey: params.runtimeContext.apiKey,
-    temperature: 0,
-    requestTimeoutMs: params.runtimeContext.timeoutMs,
-    maxTokens: 512,
-  });
-  const repairedText = repair.message.content;
-  const repairedRaw = typeof repairedText === 'string' ? repairedText : extractMessageText(toLangChainMessages([repair.message])[0] as BaseMessage);
-  try {
-    return PlainTextCloseoutSignalSchema.parse(JSON.parse(repairedRaw.trim()));
-  } catch (error) {
-    throw new AppError(
-      'RUNTIME_PROTOCOL_INVALID',
-      'Model omitted a valid plain-text closeout signal and repair normalization failed.',
-      error,
-      { rawReplyText: params.rawReplyText, repairedReplyText: repairedRaw },
-    );
-  }
 }
 
 function bumpResponseSession(params: {
@@ -1059,6 +962,7 @@ function normalizeGraphResult(
     pendingInterrupt: state.pendingInterrupt,
     interruptResolution: state.interruptResolution,
     tokenUsage: state.tokenUsage,
+    plainTextOutcomeSource: state.plainTextOutcomeSource,
     langSmithRunId: langSmith.langSmithRunId,
     langSmithTraceId: langSmith.langSmithTraceId,
   };
@@ -1180,6 +1084,10 @@ interface DurableModelInvokeInput {
   temperature: number;
   requestTimeoutMs?: number;
   maxTokens?: number;
+  internalTools?: DynamicStructuredTool[];
+  allowedToolNames?: string[];
+  toolChoice?: 'auto' | 'none' | { type: 'function'; function: { name: string } };
+  parallelToolCalls?: boolean;
 }
 
 interface DurableModelInvokeOutput {
@@ -1228,10 +1136,17 @@ const invokeAgentModelTask = task(
             timeoutMs: input.timeoutMs,
           })
         : null;
-    const runnable = baseModel.bindTools(catalog?.allTools ?? [], {
-      tool_choice: 'auto',
-      allowedTools: catalog?.providerAllowedToolNames ?? [],
-      parallelToolCalls: catalog?.parallelToolCallsAllowed ?? false,
+    const internalTools = input.internalTools ?? [];
+    const boundTools = [...(catalog?.allTools ?? []), ...internalTools];
+    const allowedTools = input.allowedToolNames
+      ?? [
+        ...(catalog?.providerAllowedToolNames ?? []),
+        ...internalTools.map((tool) => tool.name).filter((name): name is string => typeof name === 'string' && name.trim().length > 0),
+      ];
+    const runnable = baseModel.bindTools(boundTools, {
+      tool_choice: input.toolChoice ?? 'auto',
+      allowedTools,
+      parallelToolCalls: input.parallelToolCalls ?? catalog?.parallelToolCallsAllowed ?? false,
     });
     const taskConfig = getConfig();
     const responseMessage = await runnable.invoke(toLangChainMessages(input.messages), {
@@ -2164,6 +2079,7 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
       temperature: runtimeContext.temperature,
       requestTimeoutMs: runtimeContext.timeoutMs,
       maxTokens: runtimeContext.maxTokens,
+      internalTools: buildRuntimeControlTools(),
     });
     const [aiMessageCandidate] = toLangChainMessages([response.message]);
     const aiMessage = AIMessage.isInstance(aiMessageCandidate)
@@ -2171,13 +2087,14 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
       : new AIMessage({ content: extractMessageText(aiMessageCandidate as BaseMessage) });
     const replyText = extractMessageText(aiMessage).trim();
     const toolCalls = getLastAiToolCalls([aiMessage]);
+    const runtimeControl = resolveRuntimeControlSignal(toolCalls);
     const nextActiveWindowDurationMs = addActiveWindowDuration(state, response.latencyMs);
     const timedOutAfterModel = nextActiveWindowDurationMs >= graphConfig.sliceMaxDurationMs;
     const nextRoundsCompleted = state.roundsCompleted + 1;
     const nextTotalRoundsCompleted = state.totalRoundsCompleted + 1;
     const nextMessages = [...(state.messages as BaseMessage[]), aiMessage];
 
-    if (toolCalls.length > 0) {
+    if (toolCalls.length > 0 && runtimeControl.controlCount === 0) {
       const draftText = resolveDraftText(replyText);
       const responseSession = bumpResponseSession({
         state,
@@ -2237,21 +2154,65 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
             rebudgeting: prepared.rebudgeting,
             usage: response.usage,
           }),
+          plainTextOutcomeSource: null,
         },
       });
     }
 
-    const closeoutSignal = await normalizePlainTextCloseoutSignal({
-      state,
-      runtimeContext,
-      toolContext,
-      graphConfig,
-      rawReplyText: replyText,
-    });
-    const finalReplyText = scrubFinalReplyText({ replyText: closeoutSignal.replyText }) || resolveDraftText(state.responseSession.latestText);
-    const completionKind = closeoutSignal.kind;
+    let completionKind: GraphCompletionKind;
+    let finalReplyText: string;
+    let plainTextOutcomeSource: PlainTextOutcomeSource;
+
+    if (runtimeControl.controlCount > 0) {
+      if (runtimeControl.invalid || runtimeControl.externalCount > 0 || !runtimeControl.signal) {
+        completionKind = 'runtime_failure';
+        finalReplyText = buildRuntimeFailureReply({
+          kind: 'turn',
+          category: 'runtime',
+        });
+        plainTextOutcomeSource = 'runtime_control_tool';
+      } else {
+        if (replyText.length > 0) {
+          logger.warn(
+            {
+              threadId: runtimeContext.threadId,
+              controlToolName: runtimeControl.signal.toolName,
+            },
+            'Runtime control tool returned alongside visible assistant text; preferring control tool args',
+          );
+        }
+        const controlReplyText = scrubFinalReplyText({ replyText: runtimeControl.signal.replyText });
+        if (!controlReplyText) {
+          completionKind = 'runtime_failure';
+          finalReplyText = buildRuntimeFailureReply({
+            kind: 'turn',
+            category: 'runtime',
+          });
+        } else {
+          completionKind = runtimeControl.signal.kind;
+          finalReplyText = controlReplyText;
+        }
+        plainTextOutcomeSource = 'runtime_control_tool';
+      }
+    } else {
+      const visibleReplyText = scrubFinalReplyText({ replyText });
+      if (!visibleReplyText) {
+        completionKind = 'runtime_failure';
+        finalReplyText = buildRuntimeFailureReply({
+          kind: 'turn',
+          category: 'runtime',
+        });
+      } else {
+        completionKind = 'final_answer';
+        finalReplyText = visibleReplyText;
+      }
+      plainTextOutcomeSource = 'default_final_answer';
+    }
+
+    const waitingForUserInput = completionKind === 'user_input_pending';
+    const runtimeFailed = completionKind === 'runtime_failure';
     const waitingState =
-      completionKind === 'clarification_question'
+      waitingForUserInput
         ? {
             kind: 'user_input' as const,
             prompt: finalReplyText,
@@ -2264,19 +2225,21 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
     const responseSession = bumpResponseSession({
       state,
       latestText: finalReplyText,
-      status: completionKind === 'clarification_question' ? 'waiting_user_input' : 'final',
+      status: waitingForUserInput ? 'waiting_user_input' : runtimeFailed ? 'failed' : 'final',
     });
     return new Command({
-      goto: timedOutAfterModel ? 'yield_background' : 'closeout_turn',
+      goto: 'closeout_turn',
       update: {
         messages: [aiMessage],
         replyText: finalReplyText,
-        completionKind: timedOutAfterModel ? null : completionKind,
-        stopReason: timedOutAfterModel
-          ? 'background_yield'
-          : completionKind === 'clarification_question'
-            ? 'user_input_interrupt'
-            : 'assistant_turn_completed',
+        completionKind,
+        stopReason: waitingForUserInput
+          ? 'user_input_interrupt'
+          : runtimeFailed
+            ? 'runtime_failure'
+            : completionKind === 'cancelled'
+              ? 'cancelled'
+              : 'assistant_turn_completed',
         deliveryDisposition: 'response_session',
         responseSession,
         activeWindowDurationMs: nextActiveWindowDurationMs,
@@ -2284,40 +2247,11 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
         totalRoundsCompleted: nextTotalRoundsCompleted,
         resumeContext: snapshotRuntimeContext(runtimeContext),
         waitingState,
-        yieldReason: timedOutAfterModel ? resolveBackgroundYieldReason(state, graphConfig) : null,
-        compactionState:
-          timedOutAfterModel
-            ? buildCompactionState({
-                state: {
-                  ...state,
-                  messages: nextMessages,
-                  replyText: finalReplyText,
-                  responseSession,
-                  waitingState,
-                } as AgentGraphState,
-                graphConfig,
-                reason: 'yield_boundary',
-              })
-            : state.compactionState,
         contextFrame: buildContextFrame({
           ...state,
           messages: nextMessages,
           replyText: finalReplyText,
           responseSession,
-          compactionState:
-            timedOutAfterModel
-              ? buildCompactionState({
-                  state: {
-                    ...state,
-                    messages: nextMessages,
-                    replyText: finalReplyText,
-                    responseSession,
-                    waitingState,
-                  } as AgentGraphState,
-                  graphConfig,
-                  reason: 'yield_boundary',
-                })
-              : state.compactionState,
         }),
         finalization: {
           ...state.finalization,
@@ -2328,6 +2262,7 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
           rebudgeting: prepared.rebudgeting,
           usage: response.usage,
         }),
+        plainTextOutcomeSource,
       },
     });
   };
@@ -2350,12 +2285,17 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
       const replyText = scrubFinalReplyText({
         replyText: state.replyText || findLatestAssistantText(state.messages as BaseMessage[]),
       });
-      const resolvedReplyText = replyText || resolveDraftText(state.responseSession.latestText);
-      const completionKind = state.completionKind ?? 'final_answer';
+      const completionKind = replyText ? (state.completionKind ?? 'final_answer') : 'runtime_failure';
+      const waitingForUserInput = completionKind === 'user_input_pending';
+      const runtimeFailed = completionKind === 'runtime_failure';
+      const resolvedReplyText = replyText || buildRuntimeFailureReply({
+        kind: 'turn',
+        category: 'runtime',
+      });
       const responseSession = bumpResponseSession({
         state,
         latestText: resolvedReplyText,
-        status: completionKind === 'clarification_question' ? 'waiting_user_input' : 'final',
+        status: waitingForUserInput ? 'waiting_user_input' : runtimeFailed ? 'failed' : 'final',
       });
       const nextState = {
         ...state,
@@ -2368,8 +2308,12 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
           replyText: resolvedReplyText,
           completionKind,
           stopReason:
-            completionKind === 'clarification_question'
+            waitingForUserInput
               ? 'user_input_interrupt'
+              : runtimeFailed
+                ? 'runtime_failure'
+              : completionKind === 'cancelled'
+                ? 'cancelled'
               : 'assistant_turn_completed',
           deliveryDisposition: 'response_session',
           responseSession,
@@ -2582,6 +2526,8 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
     const effectiveReplyText = scrubFinalReplyText({
       replyText: state.replyText || findLatestAssistantText(state.messages as BaseMessage[]),
     });
+    const waitingForUserInput =
+      state.completionKind === 'user_input_pending';
     const responseSession =
       state.responseSession.status === 'final' || state.responseSession.status === 'failed'
         ? state.responseSession
@@ -2591,7 +2537,7 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
             status:
               state.completionKind === 'loop_guard' || state.completionKind === 'runtime_failure'
                 ? 'failed'
-                : state.completionKind === 'clarification_question'
+                : waitingForUserInput
                   ? 'waiting_user_input'
                   : 'final',
           });
@@ -3360,6 +3306,7 @@ function normalizeRecoveredGraphState(value: unknown): AgentGraphState | null {
       cachedTokens: 0,
       reasoningTokens: 0,
     },
+    plainTextOutcomeSource: state.plainTextOutcomeSource ?? null,
   };
 }
 
@@ -3590,6 +3537,7 @@ function buildInitialState(params: StartAgentGraphTurnParams): AgentGraphState {
       cachedTokens: 0,
       reasoningTokens: 0,
     },
+    plainTextOutcomeSource: null,
   };
 }
 
@@ -3652,11 +3600,13 @@ function buildSeededGraphState(params: {
       cachedTokens: 0,
       reasoningTokens: 0,
     },
+    plainTextOutcomeSource: null,
     ...(params.state ?? {}),
   };
 
   seededState.resumeContext = params.state?.resumeContext ?? snapshotRuntimeContext(resolvedContext);
   seededState.tokenUsage = params.state?.tokenUsage ?? seededState.tokenUsage;
+  seededState.plainTextOutcomeSource = params.state?.plainTextOutcomeSource ?? seededState.plainTextOutcomeSource ?? null;
   return seededState;
 }
 

@@ -1,6 +1,7 @@
 import { tool, type DynamicStructuredTool } from '@langchain/core/tools';
 import { task } from '@langchain/langgraph';
 import type { ToolCall } from '@langchain/core/messages/tool';
+import { z } from 'zod';
 import { executeToolWithTimeout, type ToolResult } from '../toolCallExecution';
 import type { ApprovalInterruptPayload } from '../toolControlSignals';
 import { ApprovalRequiredSignal } from '../toolControlSignals';
@@ -57,6 +58,141 @@ export interface PlannedApprovalInterrupt {
   call: GraphToolCallDescriptor;
   payload: ApprovalInterruptPayload;
   approvalGroupKey: string;
+}
+
+export const RUNTIME_REQUEST_USER_INPUT_TOOL_NAME = 'runtime_request_user_input';
+export const RUNTIME_CANCEL_TURN_TOOL_NAME = 'runtime_cancel_turn';
+
+const RuntimeRequestUserInputArgsSchema = z.object({
+  prompt: z.string().trim().min(1),
+});
+
+const RuntimeCancelTurnArgsSchema = z.object({
+  replyText: z.string().trim().min(1),
+});
+
+export type RuntimeControlSignal =
+  | {
+      kind: 'user_input_pending';
+      replyText: string;
+      toolName: typeof RUNTIME_REQUEST_USER_INPUT_TOOL_NAME;
+    }
+  | {
+      kind: 'cancelled';
+      replyText: string;
+      toolName: typeof RUNTIME_CANCEL_TURN_TOOL_NAME;
+    };
+
+export interface ResolvedRuntimeControlSignal {
+  signal: RuntimeControlSignal | null;
+  controlCount: number;
+  externalCount: number;
+  invalid: boolean;
+}
+
+function buildInternalRuntimeTool(params: {
+  name: string;
+  description: string;
+  schema: z.ZodTypeAny;
+}): DynamicStructuredTool {
+  return tool(
+    async () => 'Internal runtime control tool.',
+    {
+      name: params.name,
+      description: params.description,
+      schema: params.schema,
+    },
+  ) as DynamicStructuredTool;
+}
+
+function normalizeToolCallArgs(call: ToolCall | GraphToolCallDescriptor): unknown {
+  return 'args' in call ? call.args : {};
+}
+
+function isRuntimeControlToolName(name: string): boolean {
+  return name === RUNTIME_REQUEST_USER_INPUT_TOOL_NAME || name === RUNTIME_CANCEL_TURN_TOOL_NAME;
+}
+
+export function buildRuntimeControlTools(): DynamicStructuredTool[] {
+  return [
+    buildInternalRuntimeTool({
+      name: RUNTIME_REQUEST_USER_INPUT_TOOL_NAME,
+      description:
+        'Use this when Sage needs one specific user reply before it can continue. The prompt becomes the visible message and the runtime enters waiting_user_input.',
+      schema: RuntimeRequestUserInputArgsSchema,
+    }),
+    buildInternalRuntimeTool({
+      name: RUNTIME_CANCEL_TURN_TOOL_NAME,
+      description:
+        'Use this when Sage must cancel the current task cleanly. replyText becomes the visible terminal message and the runtime marks the turn cancelled.',
+      schema: RuntimeCancelTurnArgsSchema,
+    }),
+  ];
+}
+
+export function resolveRuntimeControlSignal(
+  calls: Array<ToolCall | GraphToolCallDescriptor>,
+): ResolvedRuntimeControlSignal {
+  const controlCalls = calls.filter((call) => isRuntimeControlToolName(call.name));
+  const externalCount = calls.length - controlCalls.length;
+
+  if (controlCalls.length === 0) {
+    return {
+      signal: null,
+      controlCount: 0,
+      externalCount,
+      invalid: false,
+    };
+  }
+
+  if (controlCalls.length !== 1) {
+    return {
+      signal: null,
+      controlCount: controlCalls.length,
+      externalCount,
+      invalid: true,
+    };
+  }
+
+  const [controlCall] = controlCalls;
+  if (!controlCall) {
+    return {
+      signal: null,
+      controlCount: controlCalls.length,
+      externalCount,
+      invalid: true,
+    };
+  }
+
+  if (controlCall.name === RUNTIME_REQUEST_USER_INPUT_TOOL_NAME) {
+    const parsed = RuntimeRequestUserInputArgsSchema.safeParse(normalizeToolCallArgs(controlCall));
+    return {
+      signal: parsed.success
+        ? {
+            kind: 'user_input_pending',
+            replyText: parsed.data.prompt,
+            toolName: RUNTIME_REQUEST_USER_INPUT_TOOL_NAME,
+          }
+        : null,
+      controlCount: 1,
+      externalCount,
+      invalid: !parsed.success,
+    };
+  }
+
+  const parsed = RuntimeCancelTurnArgsSchema.safeParse(normalizeToolCallArgs(controlCall));
+  return {
+    signal: parsed.success
+      ? {
+          kind: 'cancelled',
+          replyText: parsed.data.replyText,
+          toolName: RUNTIME_CANCEL_TURN_TOOL_NAME,
+        }
+      : null,
+    controlCount: 1,
+    externalCount,
+    invalid: !parsed.success,
+  };
 }
 
 function sanitizeToolResultForModel(value: unknown, depth = 0): unknown {

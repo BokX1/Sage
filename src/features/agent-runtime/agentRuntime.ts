@@ -191,8 +191,6 @@ function classifyGraphFailure(error: unknown): RuntimeFailureCategory {
       case 'AI_PROVIDER_NETWORK':
       case 'AI_PROVIDER_UPSTREAM':
         return 'provider_network';
-      case 'RUNTIME_PROTOCOL_INVALID':
-        return 'protocol';
       default:
         return 'runtime';
     }
@@ -369,7 +367,7 @@ function deriveTaskRunStatus(graphResult: RuntimeGraphResult): RunChatTurnResult
   if (graphResult.completionKind === 'approval_pending') {
     return 'waiting_approval';
   }
-  if (graphResult.completionKind === 'clarification_question') {
+  if (graphResult.completionKind === 'user_input_pending') {
     return 'waiting_user_input';
   }
   if (graphResult.completionKind === 'runtime_failure' || graphResult.completionKind === 'loop_guard') {
@@ -496,6 +494,7 @@ async function persistTaskRunFromGraphResult(params: {
       yieldReason: params.graphResult.yieldReason,
       sliceIndex: params.graphResult.sliceIndex,
       totalRoundsCompleted: params.graphResult.totalRoundsCompleted,
+      plainTextOutcomeSource: params.graphResult.plainTextOutcomeSource,
       isAdmin: params.isAdmin ?? false,
       canModerate: params.canModerate ?? false,
     },
@@ -776,6 +775,7 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
       waitingState: graphResult.waitingState,
       compactionState: graphResult.compactionState,
       tokenUsage: graphResult.tokenUsage,
+      plainTextOutcomeSource: graphResult.plainTextOutcomeSource,
       yieldReason: graphResult.yieldReason,
       interruptResolution: graphResult.interruptResolution,
       langSmithRunId,
@@ -1381,6 +1381,7 @@ export async function retryFailedChatTurn(
             graphStatus: graphResult.graphStatus,
             pendingInterrupt,
             interruptResolution: graphResult.interruptResolution,
+            plainTextOutcomeSource: graphResult.plainTextOutcomeSource,
           },
         },
         budgetJson: {
@@ -1397,6 +1398,7 @@ export async function retryFailedChatTurn(
             artifactDeliveries: graphResult.artifactDeliveries,
             contextFrame: graphResult.contextFrame,
             graphStatus: graphResult.graphStatus,
+            plainTextOutcomeSource: graphResult.plainTextOutcomeSource,
           },
         },
         tokenJson: {

@@ -7,7 +7,7 @@ import { describeContinuityPolicy } from './continuityContext';
 import type { LLMContentPart, LLMMessageContent } from '../../platform/llm/llm-types';
 import { globalToolRegistry } from './toolRegistry';
 
-export const UNIVERSAL_PROMPT_CONTRACT_VERSION = '2026-03-17.long-running-v1';
+export const UNIVERSAL_PROMPT_CONTRACT_VERSION = '2026-03-19.plain-text-runtime-control-v1';
 
 export type PromptInputMode =
   | 'standard'
@@ -511,7 +511,7 @@ function buildFewShotExamples(activeTools: string[]): string {
     '</example>',
     '<example name="clean_plain_text_closeout">',
     'After enough evidence exists, stop calling tools and answer directly in plain assistant text.',
-    'If one short missing-information question is required, ask it directly in plain assistant text with no tool calls.',
+    'If one short missing-information question is required, call runtime_request_user_input with the visible prompt text instead of inventing hidden markup.',
     '</example>',
   ];
 
@@ -576,7 +576,7 @@ function buildAssistantMission(): string {
     '- Keep visible replies clean: no hidden reasoning, no JSON, no raw tool payloads, and no narrated chain-of-thought.',
     '- Use Discord-native formatting when it materially helps, otherwise keep it plain and concise.',
     '- Verify unstable or uncertain facts before stating them as true.',
-    '- Ask one short clarification question instead of guessing high-risk missing details.',
+    '- If one specific user reply is required before you can continue safely, call runtime_request_user_input instead of guessing.',
     '- Use <current_turn> as the authority for who is speaking, how this turn was invoked, and what continuity policy applies.',
     "- If <waiting_follow_up> says matched: true, treat the current human message as the answer to Sage's own outstanding follow-up prompt.",
     '- In that trusted waiting-follow-up case, short answers like "proceed", "go on", "deep dive", "do that", or "yes" are enough to continue narrowly from the outstanding prompt.',
@@ -603,7 +603,7 @@ function buildToolProtocol(activeTools: string[]): string {
     '- If the runtime resumes you after a background yield, continue from working memory and evidence refs instead of replaying the whole task from scratch.',
     '- Use external tools when they materially improve the answer or are required to complete the request.',
     '- Batch read-only calls in one provider-native turn when possible; do not loop one-by-one across rounds.',
-    '- If a required parameter is missing, ask a clarification question instead of guessing.',
+    '- If a required parameter is missing, call runtime_request_user_input with one short visible prompt instead of guessing.',
     '- Keep tool choice, tool args, approval payloads, and retry protocol out of the visible reply.',
     ...buildToolRoutingSummary(activeTools),
     ...buildDiscordDisambiguators(activeTools),
@@ -615,16 +615,18 @@ function buildToolProtocol(activeTools: string[]): string {
 function buildCloseoutProtocol(): string {
   return [
     '<closeout_protocol>',
-    '- No tool calls means the assistant text is the final answer or clarification for this turn.',
-    '- When no tools are needed, return one <assistant_closeout> XML block containing strict JSON with keys "kind" and "replyText".',
-    '- Valid closeout kinds are: final_answer, clarification_question, approval_pending, user_input_pending, loop_guard, runtime_failure, cancelled.',
-    '- Do not include any visible user-facing text outside the <assistant_closeout> block when no tools are used.',
+    '- No tool calls means the assistant text is normally the final user-facing answer for this turn.',
+    '- When you can answer directly with no tools, return plain assistant text only.',
+    '- If you need the runtime to wait for the user, call runtime_request_user_input and put the exact visible prompt in its prompt argument.',
+    '- If you need to cancel the current task cleanly, call runtime_cancel_turn and put the visible terminal reply in its replyText argument.',
+    '- Do not emit hidden XML, JSON envelopes, or punctuation-based control hints for no-tool replies.',
+    '- Do not mix runtime_request_user_input or runtime_cancel_turn with external tool calls in the same assistant turn.',
     '- If tool calls are present, treat the assistant text as a provisional visible draft that may be edited later.',
     '- Background yields are operational only. Keep the visible draft coherent so the user can see progress while the task continues automatically.',
     '- If approval review interrupts the turn, keep the draft aligned with the pending work and revise it after the outcome if needed.',
     '- Do not rely on tools to deliver the normal chat reply.',
     '- If approval review interrupts the turn, treat the action as already queued and keep any later visible follow-up brief.',
-    '- If the runtime blocks a repeated or unsafe tool batch, pivot to a different tool plan or ask one short clarification question.',
+    '- If the runtime blocks a repeated or unsafe tool batch, pivot to a different tool plan or call runtime_request_user_input with one short visible prompt.',
     '</closeout_protocol>',
   ].join('\n');
 }

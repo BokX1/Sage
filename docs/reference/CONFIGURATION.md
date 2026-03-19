@@ -246,8 +246,8 @@ Sage now uses tokenizer-backed preflight counting for prompt budgeting and recor
 | `LANGSMITH_API_KEY` | LangSmith API key used when `LANGSMITH_TRACING=true` | *(empty)* |
 | `LANGSMITH_PROJECT` | LangSmith project name when tracing is enabled | `sage` |
 | `SAGE_TRACE_DB_ENABLED` | Persist compact `AgentTrace` ledger rows alongside LangSmith references | `true` |
-| `AGENT_WINDOW_CLOSEOUT_MAX_OUTPUT_TOKENS` | Max tokens reserved for the no-tools closeout synthesis pass that writes the final assistant reply | `2400` |
-| `AGENT_WINDOW_CLOSEOUT_REQUEST_TIMEOUT_MS` | Request timeout for the no-tools closeout synthesis pass | `20000` |
+| `AGENT_WINDOW_CLOSEOUT_MAX_OUTPUT_TOKENS` | Max tokens reserved for the background-yield closeout synthesis pass that writes a progress update before Sage pauses a slice | `2400` |
+| `AGENT_WINDOW_CLOSEOUT_REQUEST_TIMEOUT_MS` | Request timeout for the background-yield closeout synthesis pass | `20000` |
 | `AGENT_RUN_SLICE_MAX_STEPS` | Max tool-capable assistant/model responses per durable worker slice before Sage yields automatically | `10` |
 | `AGENT_RUN_TOOL_TIMEOUT_MS` | Per-tool execution timeout | `45000` |
 | `AGENT_RUN_SLICE_MAX_DURATION_MS` | Max wall-clock duration for one active worker slice | `120000` |

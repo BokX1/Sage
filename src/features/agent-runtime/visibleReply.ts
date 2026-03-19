@@ -11,7 +11,6 @@ export type RuntimeFailureCategory =
   | 'provider_rate_limit'
   | 'provider_timeout'
   | 'provider_network'
-  | 'protocol'
   | 'runtime';
 export type TaskRunLimitReplyKind = 'duration' | 'idle_wait' | 'resume_limit';
 
@@ -63,10 +62,6 @@ export function buildRuntimeFailureReply(params: {
     return params.kind === 'background_resume'
       ? 'I lost the model connection while I was picking that back up, so please try again.'
       : 'I lost the model connection before I could finish, so please try again.';
-  }
-
-  if (params.category === 'protocol') {
-    return 'I got an invalid model reply while trying to finish that, so please try again.';
   }
 
   return params.kind === 'background_resume'

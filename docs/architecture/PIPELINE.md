@@ -158,9 +158,10 @@ Each turn can persist the following compact operator ledger fields to `AgentTrac
 | `promptVersion` | Prompt-contract version string recorded in `tokenJson` / `budgetJson` for the turn |
 | `promptFingerprint` | Stable prompt hash recorded alongside the turn so prompt changes are observable |
 | `terminationReason` | Deprecated legacy alias on `AgentTrace`; normal graph success paths now persist semantic outcome data in `budgetJson.graphRuntime` / `toolJson.graph` instead |
-| `budgetJson.graphRuntime.completionKind` | Semantic turn outcome (`final_answer`, `clarification_question`, `approval_pending`, `user_input_pending`, `loop_guard`, `runtime_failure`, `cancelled`) |
+| `budgetJson.graphRuntime.completionKind` | Semantic turn outcome (`final_answer`, `approval_pending`, `user_input_pending`, `loop_guard`, `runtime_failure`, `cancelled`) |
 | `budgetJson.graphRuntime.stopReason` | Operational stop cause (`assistant_turn_completed`, `approval_interrupt`, `user_input_interrupt`, `background_yield`, `loop_guard`, `runtime_failure`, `cancelled`) |
 | `budgetJson.graphRuntime.deliveryDisposition` | Runtime delivery path (`response_session`, `approval_handoff`) |
+| `budgetJson.graphRuntime.plainTextOutcomeSource` | How a no-tool assistant reply was finalized (`runtime_control_tool`, `default_final_answer`) |
 | `budgetJson.graphRuntime.yieldReason` | Internal background handoff cause (`slice_budget_exhausted`, `provider_backoff`, `awaiting_compaction`, `worker_handoff`) when the run keeps going automatically |
 | `budgetJson.graphRuntime.compactionState` | Prompt-facing compaction snapshot, including revision, retained raw-message count, retained evidence refs, and compaction reason |
 | `langSmithRunId` | LangSmith run id for the turn |

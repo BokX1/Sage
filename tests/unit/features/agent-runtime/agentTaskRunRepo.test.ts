@@ -43,7 +43,7 @@ function makeTaskRunRow(overrides: Record<string, unknown> = {}) {
     waitingKind: 'user_input',
     latestDraftText: 'Need one more detail.',
     draftRevision: 2,
-    completionKind: 'clarification_question',
+    completionKind: 'user_input_pending',
     stopReason: 'user_input_interrupt',
     nextRunnableAt: null,
     leaseOwner: null,

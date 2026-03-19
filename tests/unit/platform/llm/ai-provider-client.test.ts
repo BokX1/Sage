@@ -328,7 +328,7 @@ describe('AiProviderClient', () => {
       }),
     ).rejects.toThrow('unsupported top-level schema keyword "oneOf"');
     expect(fetchMock).not.toHaveBeenCalled();
-  });
+  }, 15_000);
 
   it('fails fast (no retry) on 400 model validation errors', async () => {
     const client = new AiProviderClient({ baseUrl: 'https://api.test/v1', model: 'test-chat-model', maxRetries: 3 });

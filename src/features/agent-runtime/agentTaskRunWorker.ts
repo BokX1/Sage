@@ -231,7 +231,7 @@ async function processRunnableTaskRun(run: AgentTaskRunRecord): Promise<void> {
             status:
               update.completionKind === 'approval_pending'
                 ? 'waiting_approval'
-                : update.completionKind === 'clarification_question'
+                : update.completionKind === 'user_input_pending'
                   ? 'waiting_user_input'
               : update.stopReason === 'background_yield'
                     ? 'running'

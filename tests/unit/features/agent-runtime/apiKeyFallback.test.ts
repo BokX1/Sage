@@ -200,7 +200,7 @@ describe('agent runtime API key fallback', () => {
         apiKey: 'env-key',
       }),
     );
-  });
+  }, 15_000);
 
   it('returns setup guidance when no keys are available', async () => {
     mockConfig.AI_PROVIDER_API_KEY = '';

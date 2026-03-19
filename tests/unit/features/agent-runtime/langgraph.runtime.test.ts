@@ -208,11 +208,53 @@ vi.mock('@langchain/langgraph/prebuilt', () => ({
 
 vi.mock('@/features/agent-runtime/langgraph/nativeTools', () => ({
   buildActiveToolCatalog: buildActiveToolCatalogMock,
+  buildRuntimeControlTools: vi.fn(() => [
+    { name: 'runtime_request_user_input' },
+    { name: 'runtime_cancel_turn' },
+  ]),
   executeApprovedReviewTask: executeApprovedReviewTaskMock,
   executeDurableToolTask: executeDurableToolTaskMock,
   prepareToolApprovalInterrupt: prepareToolApprovalInterruptMock,
   isReadOnlyToolCall: isReadOnlyToolCallMock,
   planReadOnlyToolExecution: planReadOnlyToolExecutionMock,
+  resolveRuntimeControlSignal: vi.fn((calls: Array<{ name: string; args?: Record<string, unknown> }>) => {
+    const controlCalls = calls.filter((call) =>
+      call.name === 'runtime_request_user_input' || call.name === 'runtime_cancel_turn');
+    const externalCount = calls.length - controlCalls.length;
+    if (controlCalls.length === 0) {
+      return { signal: null, controlCount: 0, externalCount, invalid: false };
+    }
+    if (controlCalls.length !== 1) {
+      return { signal: null, controlCount: controlCalls.length, externalCount, invalid: true };
+    }
+    const call = controlCalls[0]!;
+    if (call.name === 'runtime_request_user_input') {
+      return typeof call.args?.prompt === 'string' && call.args.prompt.trim().length > 0
+        ? {
+            signal: {
+              kind: 'user_input_pending',
+              replyText: call.args.prompt,
+              toolName: 'runtime_request_user_input',
+            },
+            controlCount: 1,
+            externalCount,
+            invalid: false,
+          }
+        : { signal: null, controlCount: 1, externalCount, invalid: true };
+    }
+    return typeof call.args?.replyText === 'string' && call.args.replyText.trim().length > 0
+      ? {
+          signal: {
+            kind: 'cancelled',
+            replyText: call.args.replyText,
+            toolName: 'runtime_cancel_turn',
+          },
+          controlCount: 1,
+          externalCount,
+          invalid: false,
+        }
+      : { signal: null, controlCount: 1, externalCount, invalid: true };
+  }),
 }));
 
 vi.mock('@/features/agent-runtime/toolControlSignals', () => ({
@@ -339,14 +381,32 @@ function makeInterruptedState() {
 }
 
 function makeFinishTurnMessage(
-  kind: 'final_answer' | 'clarification_question',
+  kind: 'final_answer' | 'user_input_pending' | 'cancelled',
   message?: string,
 ): AIMessage {
-  const replyText = kind === 'clarification_question'
+  const replyText = kind === 'user_input_pending'
     ? message ?? 'What detail should I use?'
-    : message ?? 'All set.';
+    : kind === 'cancelled'
+      ? message ?? 'Stopping here.'
+      : message ?? 'All set.';
   return new AIMessage({
-    content: `<assistant_closeout>${JSON.stringify({ kind, replyText })}</assistant_closeout>`,
+    content: kind === 'final_answer' ? replyText : '',
+    tool_calls:
+      kind === 'final_answer'
+        ? []
+        : [
+            {
+              id: `control-${kind}`,
+              name:
+                kind === 'user_input_pending'
+                  ? 'runtime_request_user_input'
+                  : 'runtime_cancel_turn',
+              args:
+                kind === 'user_input_pending'
+                  ? { prompt: replyText }
+                  : { replyText },
+            },
+          ],
   });
 }
 
@@ -733,6 +793,160 @@ describe('runGraphValueStream', () => {
     expect(result.totalRoundsCompleted).toBe(1);
   });
 
+  it('finalizes plain no-tool assistant text as a final answer with no classifier pass', async () => {
+    modelInvokeMock.mockResolvedValueOnce(
+      new AIMessage({
+        content: 'All set anyway.',
+      }),
+    );
+
+    const result = await runAgentGraphTurn({
+      traceId: 'trace-plain-fallback-1',
+      userId: 'user-1',
+      channelId: 'channel-1',
+      guildId: 'guild-1',
+      apiKey: 'test-api-key',
+      model: 'test-main-agent-model',
+      temperature: 0.6,
+      timeoutMs: 1_000,
+      maxTokens: 500,
+      messages: [new HumanMessage({ content: 'say hello' })],
+      activeToolNames: [],
+      routeKind: 'single',
+      currentTurn: { invokerUserId: 'user-1' },
+      replyTarget: null,
+      invokedBy: 'mention',
+      invokerIsAdmin: false,
+    });
+
+    expect(result.graphStatus).toBe('completed');
+    expect(result.completionKind).toBe('final_answer');
+    expect(result.stopReason).toBe('assistant_turn_completed');
+    expect(result.replyText).toBe('All set anyway.');
+    expect(result.waitingState).toBeNull();
+    expect(result.plainTextOutcomeSource).toBe('default_final_answer');
+    expect(modelInvokeMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('prefers runtime control tool args when the model also emits stray visible assistant text', async () => {
+    modelInvokeMock.mockResolvedValueOnce(
+      new AIMessage({
+        content: 'Ignore this visible draft',
+        tool_calls: [
+          {
+            id: 'control-1',
+            name: 'runtime_request_user_input',
+            args: { prompt: 'Tell me which repo to inspect next.' },
+          },
+        ],
+      }),
+    );
+
+    const result = await runAgentGraphTurn({
+      traceId: 'trace-plain-fallback-2',
+      userId: 'user-1',
+      channelId: 'channel-1',
+      guildId: 'guild-1',
+      apiKey: 'test-api-key',
+      model: 'test-main-agent-model',
+      temperature: 0.6,
+      timeoutMs: 1_000,
+      maxTokens: 500,
+      messages: [new HumanMessage({ content: 'say hello' })],
+      activeToolNames: [],
+      routeKind: 'single',
+      currentTurn: { invokerUserId: 'user-1' },
+      replyTarget: null,
+      invokedBy: 'mention',
+      invokerIsAdmin: false,
+    });
+
+    expect(result.graphStatus).toBe('completed');
+    expect(result.completionKind).toBe('user_input_pending');
+    expect(result.stopReason).toBe('user_input_interrupt');
+    expect(result.replyText).toBe('Tell me which repo to inspect next.');
+    expect(result.responseSession.status).toBe('waiting_user_input');
+    expect(result.waitingState).toMatchObject({
+      kind: 'user_input',
+      prompt: 'Tell me which repo to inspect next.',
+    });
+    expect(result.plainTextOutcomeSource).toBe('runtime_control_tool');
+    expect(loggerWarnMock).toHaveBeenCalled();
+  });
+
+  it('fails honestly when a no-tool reply scrubs down to empty visible text', async () => {
+    modelInvokeMock.mockResolvedValueOnce(
+      new AIMessage({
+        content: 'Calling web_search now',
+      }),
+    );
+
+    const result = await runAgentGraphTurn({
+      traceId: 'trace-empty-final-reply-1',
+      userId: 'user-1',
+      channelId: 'channel-1',
+      guildId: 'guild-1',
+      apiKey: 'test-api-key',
+      model: 'test-main-agent-model',
+      temperature: 0.6,
+      timeoutMs: 1_000,
+      maxTokens: 500,
+      messages: [new HumanMessage({ content: 'say hello' })],
+      activeToolNames: [],
+      routeKind: 'single',
+      currentTurn: { invokerUserId: 'user-1' },
+      replyTarget: null,
+      invokedBy: 'mention',
+      invokerIsAdmin: false,
+    });
+
+    expect(result.completionKind).toBe('runtime_failure');
+    expect(result.stopReason).toBe('runtime_failure');
+    expect(result.replyText).toContain('I ran into a problem');
+    expect(result.waitingState).toBeNull();
+    expect(result.plainTextOutcomeSource).toBe('default_final_answer');
+  });
+
+  it('fails honestly when a runtime control prompt scrubs down to empty visible text', async () => {
+    modelInvokeMock.mockResolvedValueOnce(
+      new AIMessage({
+        content: '',
+        tool_calls: [
+          {
+            id: 'control-empty-1',
+            name: 'runtime_request_user_input',
+            args: { prompt: 'Suggestion: hidden control text' },
+          },
+        ],
+      }),
+    );
+
+    const result = await runAgentGraphTurn({
+      traceId: 'trace-empty-control-reply-1',
+      userId: 'user-1',
+      channelId: 'channel-1',
+      guildId: 'guild-1',
+      apiKey: 'test-api-key',
+      model: 'test-main-agent-model',
+      temperature: 0.6,
+      timeoutMs: 1_000,
+      maxTokens: 500,
+      messages: [new HumanMessage({ content: 'say hello' })],
+      activeToolNames: [],
+      routeKind: 'single',
+      currentTurn: { invokerUserId: 'user-1' },
+      replyTarget: null,
+      invokedBy: 'mention',
+      invokerIsAdmin: false,
+    });
+
+    expect(result.completionKind).toBe('runtime_failure');
+    expect(result.stopReason).toBe('runtime_failure');
+    expect(result.replyText).toContain('I ran into a problem');
+    expect(result.waitingState).toBeNull();
+    expect(result.plainTextOutcomeSource).toBe('runtime_control_tool');
+  });
+
   it('executes every tool call emitted in one model response instead of truncating the batch', async () => {
     await shutdownAgentGraphRuntime();
     buildAgentGraphConfigMock.mockReturnValue(
@@ -1012,6 +1226,51 @@ describe('runGraphValueStream', () => {
     expect(result.replyText).toContain('Continuing after an empty read batch.');
     expect(result.roundsCompleted).toBe(2);
     expect(toolNodeInvokeMock).not.toHaveBeenCalled();
+  });
+
+  it('fails honestly when route_tool_phase has no tool calls and no usable visible reply text', async () => {
+    await shutdownAgentGraphRuntime();
+
+    const result = await __runAgentGraphCommandForTests({
+      threadId: 'trace-empty-tool-phase-closeout-1',
+      goto: 'route_tool_phase',
+      context: {
+        traceId: 'trace-empty-tool-phase-closeout-1',
+        originTraceId: 'trace-empty-tool-phase-closeout-1',
+        userId: 'user-1',
+        channelId: 'channel-1',
+        guildId: 'guild-1',
+        activeToolNames: ['web_search'],
+        routeKind: 'single',
+        currentTurn: { invokerUserId: 'user-1' },
+        replyTarget: null,
+        invokedBy: 'mention',
+      },
+      state: {
+        messages: [
+          new AIMessage({
+            content: 'Calling web_search now',
+            tool_calls: [],
+          }),
+        ],
+        replyText: '',
+        responseSession: {
+          responseSessionId: 'trace-empty-tool-phase-closeout-1',
+          status: 'draft',
+          latestText: 'Working on that now.',
+          draftRevision: 0,
+          sourceMessageId: null,
+          responseMessageId: null,
+          linkedArtifactMessageIds: [],
+        },
+      },
+    });
+
+    expect(result.graphStatus).toBe('completed');
+    expect(result.completionKind).toBe('runtime_failure');
+    expect(result.stopReason).toBe('runtime_failure');
+    expect(result.replyText).toContain('I ran into a problem');
+    expect(result.responseSession.status).toBe('failed');
   });
 
   it('rejects an over-cap tool batch before any write executes and gives the model one repair pass', async () => {
@@ -1986,7 +2245,7 @@ describe('runGraphValueStream', () => {
   it('drops trusted waiting-follow-up state from persisted resume context after the waiting question is consumed', async () => {
     await shutdownAgentGraphRuntime();
     modelInvokeMock.mockResolvedValueOnce(
-      makeFinishTurnMessage('clarification_question', 'Do you want me to keep digging into the repo?'),
+      makeFinishTurnMessage('user_input_pending', 'Do you want me to keep digging into the repo?'),
     );
 
     const initial = await runAgentGraphTurn({
@@ -2020,7 +2279,7 @@ describe('runGraphValueStream', () => {
       invokerIsAdmin: false,
     });
 
-    expect(initial.completionKind).toBe('clarification_question');
+    expect(initial.completionKind).toBe('user_input_pending');
     modelInvokeMock.mockResolvedValueOnce(
       makeFinishTurnMessage('final_answer', 'I kept digging and found the repo details.'),
     );
@@ -2087,10 +2346,12 @@ describe('runGraphValueStream', () => {
     });
   });
 
-  it('treats short actionable input requests as clarification questions even without a trailing question mark', async () => {
+  it('treats plain-text natural-language questions without runtime control as final answers', async () => {
     await shutdownAgentGraphRuntime();
     modelInvokeMock.mockResolvedValueOnce(
-      makeFinishTurnMessage('clarification_question', 'Tell me which repo to inspect next.'),
+      new AIMessage({
+        content: 'Tell me which repo to inspect next.',
+      }),
     );
 
     const result = await runAgentGraphTurn({
@@ -2124,12 +2385,11 @@ describe('runGraphValueStream', () => {
       invokerIsAdmin: false,
     });
 
-    expect(result.completionKind).toBe('clarification_question');
-    expect(result.stopReason).toBe('user_input_interrupt');
-    expect(result.waitingState).toMatchObject({
-      kind: 'user_input',
-      prompt: 'Tell me which repo to inspect next.',
-    });
-    expect(result.responseSession.status).toBe('waiting_user_input');
+    expect(result.completionKind).toBe('final_answer');
+    expect(result.stopReason).toBe('assistant_turn_completed');
+    expect(result.replyText).toBe('Tell me which repo to inspect next.');
+    expect(result.waitingState).toBeNull();
+    expect(result.responseSession.status).toBe('final');
+    expect(result.plainTextOutcomeSource).toBe('default_final_answer');
   });
 });

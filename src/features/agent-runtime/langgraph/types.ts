@@ -52,12 +52,15 @@ export interface ToolCallRoundEvent {
 
 export type GraphCompletionKind =
   | 'final_answer'
-  | 'clarification_question'
   | 'approval_pending'
   | 'user_input_pending'
   | 'loop_guard'
   | 'runtime_failure'
   | 'cancelled';
+
+export type PlainTextOutcomeSource =
+  | 'runtime_control_tool'
+  | 'default_final_answer';
 
 export type GraphStopReason =
   | 'assistant_turn_completed'
@@ -283,6 +286,7 @@ export interface AgentGraphState {
   pendingInterrupt: GraphInterruptState | null;
   interruptResolution: GraphInterruptResolution | null;
   tokenUsage: GraphTokenUsage;
+  plainTextOutcomeSource: PlainTextOutcomeSource | null;
 }
 
 export type GraphResumeInput =
@@ -291,3 +295,7 @@ export type GraphResumeInput =
       decisions: ApprovalResumeDecision[];
       resumeTraceId?: string | null;
     };
+
+export interface PlainTextOutcomeTelemetry {
+  plainTextOutcomeSource: PlainTextOutcomeSource | null;
+}
