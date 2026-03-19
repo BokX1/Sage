@@ -52,6 +52,7 @@
 - Fixed brittle deterministic-runtime finalization failures where Sage could reject a usable plain-text answer just because the model omitted a hidden closeout tag. Sage now accepts ordinary no-tool assistant text as the final answer path instead of failing the turn on missing closeout markup.
 - Fixed the remaining plain-text-first closeout edge cases: the prompt/runtime contract no longer depends on hidden `assistant_control` output, direct no-tool answers no longer fail just because a model skipped a private closeout tag, and malformed runtime control attempts now fail honestly instead of silently completing the turn with stale draft text.
 - Fixed the last hybrid closeout fallback gaps: no-tool terminal replies no longer synthesize `"Working on that now."` from stale draft state, and empty runtime control prompts/replies now fail honestly instead of reusing older visible text for waits or cancellations.
+- Fixed the last known duplicate background-reply race so Sage now waits for a fresh Discord response surface to be durably attached before arming background continuation, refreshes the latest persisted response-session refs before worker publish, and never lets waiting-follow-up resumes inherit the old clarification message as the next editable surface.
 
 ### Changed
 - Reworked Sage's LangGraph runtime around durable long-running task runs, so normal long tool workflows now keep progressing automatically in the background on the same Discord response session instead of surfacing manual Continue prompts at every slice boundary.

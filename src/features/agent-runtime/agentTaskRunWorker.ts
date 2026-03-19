@@ -32,12 +32,14 @@ type WorkerResponseSessionState = {
 function readPersistedResponseSessionRefs(value: unknown): {
   sourceMessageId: string | null;
   responseMessageId: string | null;
+  surfaceAttached: boolean;
   overflowMessageIds: string[];
 } {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     return {
       sourceMessageId: null,
       responseMessageId: null,
+      surfaceAttached: false,
       overflowMessageIds: [],
     };
   }
@@ -46,6 +48,7 @@ function readPersistedResponseSessionRefs(value: unknown): {
   return {
     sourceMessageId: typeof record.sourceMessageId === 'string' ? record.sourceMessageId : null,
     responseMessageId: typeof record.responseMessageId === 'string' ? record.responseMessageId : null,
+    surfaceAttached: record.surfaceAttached === true,
     overflowMessageIds: Array.isArray(record.overflowMessageIds)
       ? record.overflowMessageIds.filter((value): value is string => typeof value === 'string')
       : [],
@@ -91,6 +94,60 @@ async function fetchEditableResponseMessage(
   return null;
 }
 
+async function refreshWorkerResponseSessionState(
+  run: AgentTaskRunRecord,
+  state: WorkerResponseSessionState,
+): Promise<{
+  status: 'refreshed' | 'missing' | 'failed';
+  expectedCanonicalResponseSurface: boolean;
+}> {
+  const { getAgentTaskRunByThreadId } = await getTaskRunRepo();
+  const latestRun = await getAgentTaskRunByThreadId(run.threadId).catch((error) => {
+    logger.warn(
+      { error, threadId: run.threadId, taskRunId: run.id },
+      'Failed to refresh worker response-session state before publishing',
+    );
+    return undefined;
+  });
+  if (latestRun === undefined) {
+    return {
+      status: 'failed',
+      expectedCanonicalResponseSurface: false,
+    };
+  }
+  if (!latestRun) {
+    return {
+      status: 'missing',
+      expectedCanonicalResponseSurface: false,
+    };
+  }
+
+  const latestPersistedRefs = readPersistedResponseSessionRefs(latestRun.responseSessionJson);
+  const nextSourceMessageId = latestRun.sourceMessageId ?? latestPersistedRefs.sourceMessageId;
+  const nextResponseMessageId = latestRun.responseMessageId ?? latestPersistedRefs.responseMessageId;
+  const nextOverflowMessageIds =
+    latestPersistedRefs.overflowMessageIds.length > 0
+      ? latestPersistedRefs.overflowMessageIds
+      : state.overflowMessageIds;
+
+  if (nextSourceMessageId) {
+    state.sourceMessageId = nextSourceMessageId;
+  }
+  if (nextResponseMessageId && nextResponseMessageId !== state.responseMessageId) {
+    state.responseMessageId = nextResponseMessageId;
+    state.editableMessage = null;
+  }
+  if (nextOverflowMessageIds !== state.overflowMessageIds) {
+    state.overflowMessageIds = [...nextOverflowMessageIds];
+    state.overflowMessages = [];
+  }
+  return {
+    status: 'refreshed',
+    expectedCanonicalResponseSurface:
+      latestPersistedRefs.surfaceAttached || typeof nextResponseMessageId === 'string',
+  };
+}
+
 async function publishTaskRunResult(params: {
   run: AgentTaskRunRecord;
   result: Pick<RunChatTurnResult, 'replyText' | 'responseSession' | 'status'>;
@@ -112,7 +169,48 @@ async function publishTaskRunResult(params: {
     return;
   }
 
-  const existing = await fetchEditableResponseMessage(params.run, params.state);
+  let existing = await fetchEditableResponseMessage(params.run, params.state);
+  let refreshStatus: 'refreshed' | 'missing' | 'failed' = 'refreshed';
+  let expectedCanonicalResponseSurface = !!params.state.responseMessageId;
+  if (!existing) {
+    const refreshResult = await refreshWorkerResponseSessionState(params.run, params.state);
+    refreshStatus = refreshResult.status;
+    expectedCanonicalResponseSurface = refreshResult.expectedCanonicalResponseSurface;
+    existing = await fetchEditableResponseMessage(params.run, params.state);
+  }
+  if (!existing && refreshStatus !== 'refreshed') {
+    logger.warn(
+      {
+        threadId: params.run.threadId,
+        channelId: params.run.channelId,
+        refreshStatus,
+      },
+      'Skipping worker response publish because the canonical response surface could not be revalidated',
+    );
+    return;
+  }
+  if (!existing && expectedCanonicalResponseSurface) {
+    logger.warn(
+      {
+        threadId: params.run.threadId,
+        channelId: params.run.channelId,
+        responseMessageId: params.state.responseMessageId,
+      },
+      'Skipping worker response publish because a canonical response surface should already exist but is not attached',
+    );
+    return;
+  }
+  if (!existing && params.state.responseMessageId) {
+    logger.warn(
+      {
+        threadId: params.run.threadId,
+        channelId: params.run.channelId,
+        responseMessageId: params.state.responseMessageId,
+      },
+      'Skipping worker response publish because the canonical response message could not be fetched',
+    );
+    return;
+  }
   const sourceMessage =
     !existing && params.state.sourceMessageId && channel.messages?.fetch
       ? await channel.messages.fetch(params.state.sourceMessageId).catch(() => null)

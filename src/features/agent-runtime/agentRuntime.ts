@@ -314,6 +314,7 @@ type RuntimeGraphResult = Awaited<ReturnType<typeof runAgentGraphTurn>>;
 type PersistedResponseSessionRefs = {
   sourceMessageId: string | null;
   responseMessageId: string | null;
+  surfaceAttached: boolean;
   overflowMessageIds: string[];
 };
 
@@ -322,6 +323,7 @@ function readPersistedResponseSessionRefs(value: unknown): PersistedResponseSess
     return {
       sourceMessageId: null,
       responseMessageId: null,
+      surfaceAttached: false,
       overflowMessageIds: [],
     };
   }
@@ -330,6 +332,7 @@ function readPersistedResponseSessionRefs(value: unknown): PersistedResponseSess
   return {
     sourceMessageId: typeof record.sourceMessageId === 'string' ? record.sourceMessageId : null,
     responseMessageId: typeof record.responseMessageId === 'string' ? record.responseMessageId : null,
+    surfaceAttached: record.surfaceAttached === true,
     overflowMessageIds: Array.isArray(record.overflowMessageIds)
       ? record.overflowMessageIds.filter((value): value is string => typeof value === 'string')
       : [],
@@ -345,6 +348,7 @@ function mergeResponseSessionRefs(
     ...nextValue,
     sourceMessageId: nextValue?.sourceMessageId ?? existingRefs.sourceMessageId,
     responseMessageId: nextValue?.responseMessageId ?? existingRefs.responseMessageId,
+    surfaceAttached: nextValue?.surfaceAttached ?? existingRefs.surfaceAttached,
     overflowMessageIds: nextValue?.overflowMessageIds ?? existingRefs.overflowMessageIds,
   };
 }
@@ -444,15 +448,31 @@ async function persistTaskRunFromGraphResult(params: {
   graphResult: RuntimeGraphResult;
   existingTaskRun?: Awaited<ReturnType<typeof getAgentTaskRunByThreadId>> | null;
   resumeCount?: number;
+  freshResponseSurface?: boolean;
 }): Promise<void> {
   const latestTaskRun = await getAgentTaskRunByThreadId(params.traceId);
   const existingTaskRun = latestTaskRun ?? params.existingTaskRun ?? null;
   const status = deriveTaskRunStatus(params.graphResult);
-  const mergedResponseSession = mergeResponseSessionRefs(
+  const mergedResponseSessionBase = mergeResponseSessionRefs(
     existingTaskRun?.responseSessionJson,
     params.graphResult.responseSession,
   );
   const persistedResponseRefs = readPersistedResponseSessionRefs(existingTaskRun?.responseSessionJson);
+  const mergedResponseSession = params.freshResponseSurface
+    ? {
+        ...mergedResponseSessionBase,
+        sourceMessageId: params.sourceMessageId ?? params.graphResult.responseSession.sourceMessageId ?? null,
+        responseMessageId: params.graphResult.responseSession.responseMessageId ?? null,
+        surfaceAttached: params.graphResult.responseSession.surfaceAttached ?? false,
+        overflowMessageIds: params.graphResult.responseSession.overflowMessageIds ?? [],
+      }
+    : mergedResponseSessionBase;
+  const runningResponseSurfaceReady =
+    mergedResponseSession.surfaceAttached === true ||
+    typeof mergedResponseSession.responseMessageId === 'string' ||
+    (!params.freshResponseSurface &&
+      (typeof existingTaskRun?.responseMessageId === 'string' ||
+        typeof persistedResponseRefs.responseMessageId === 'string'));
   const accumulatedWallClockMs =
     (existingTaskRun?.taskWallClockMs ?? 0) +
     Math.max(0, Math.trunc(params.graphResult.activeWindowDurationMs ?? 0));
@@ -464,14 +484,18 @@ async function persistTaskRunFromGraphResult(params: {
     channelId: existingTaskRun?.channelId ?? params.channelId,
     requestedByUserId: existingTaskRun?.requestedByUserId ?? params.userId,
     sourceMessageId:
-      existingTaskRun?.sourceMessageId ??
-      mergedResponseSession.sourceMessageId ??
-      persistedResponseRefs.sourceMessageId ??
-      params.sourceMessageId,
+      params.freshResponseSurface
+        ? mergedResponseSession.sourceMessageId ?? params.sourceMessageId
+        : existingTaskRun?.sourceMessageId ??
+          mergedResponseSession.sourceMessageId ??
+          persistedResponseRefs.sourceMessageId ??
+          params.sourceMessageId,
     responseMessageId:
-      mergedResponseSession.responseMessageId ??
-      existingTaskRun?.responseMessageId ??
-      persistedResponseRefs.responseMessageId,
+      params.freshResponseSurface
+        ? mergedResponseSession.responseMessageId
+        : mergedResponseSession.responseMessageId ??
+          existingTaskRun?.responseMessageId ??
+          persistedResponseRefs.responseMessageId,
     status: status === 'waiting_approval' ? 'waiting_approval' : status === 'waiting_user_input' ? 'waiting_user_input' : status === 'running' ? 'running' : status === 'failed' ? 'failed' : status === 'cancelled' ? 'cancelled' : 'completed',
     waitingKind:
       status === 'waiting_approval'
@@ -485,7 +509,9 @@ async function persistTaskRunFromGraphResult(params: {
     stopReason: params.graphResult.stopReason,
     nextRunnableAt:
       status === 'running'
-        ? new Date(Date.now() + params.graphConfig.workerPollMs)
+        ? runningResponseSurfaceReady
+          ? new Date(Date.now() + params.graphConfig.workerPollMs)
+          : null
         : null,
     responseSessionJson: mergedResponseSession,
     waitingStateJson: params.graphResult.waitingState ?? null,
@@ -917,21 +943,32 @@ export async function attachTaskRunResponseSession(params: {
     ? mergeResponseSessionRefs(existing.responseSessionJson, params.responseSession)
     : existing.responseSessionJson;
   const persistedResponseRefs = readPersistedResponseSessionRefs(existing.responseSessionJson);
+  const nextResponseSession =
+    mergedResponseSession && typeof mergedResponseSession === 'object' && !Array.isArray(mergedResponseSession)
+      ? {
+          ...mergedResponseSession,
+          surfaceAttached:
+            typeof params.responseMessageId === 'string'
+              ? true
+              : ((mergedResponseSession as { surfaceAttached?: unknown }).surfaceAttached ?? persistedResponseRefs.surfaceAttached) === true,
+        }
+      : mergedResponseSession;
   const nextLatestText =
-    mergedResponseSession &&
-    typeof mergedResponseSession === 'object' &&
-    !Array.isArray(mergedResponseSession) &&
-    typeof (mergedResponseSession as { latestText?: unknown }).latestText === 'string'
-      ? ((mergedResponseSession as { latestText?: string }).latestText ?? existing.latestDraftText)
+    nextResponseSession &&
+    typeof nextResponseSession === 'object' &&
+    !Array.isArray(nextResponseSession) &&
+    typeof (nextResponseSession as { latestText?: unknown }).latestText === 'string'
+      ? ((nextResponseSession as { latestText?: string }).latestText ?? existing.latestDraftText)
       : existing.latestDraftText;
   const nextDraftRevision =
-    mergedResponseSession &&
-    typeof mergedResponseSession === 'object' &&
-    !Array.isArray(mergedResponseSession) &&
-    typeof (mergedResponseSession as { draftRevision?: unknown }).draftRevision === 'number'
-      ? ((mergedResponseSession as { draftRevision?: number }).draftRevision ?? existing.draftRevision)
+    nextResponseSession &&
+    typeof nextResponseSession === 'object' &&
+    !Array.isArray(nextResponseSession) &&
+    typeof (nextResponseSession as { draftRevision?: unknown }).draftRevision === 'number'
+      ? ((nextResponseSession as { draftRevision?: number }).draftRevision ?? existing.draftRevision)
       : existing.draftRevision;
-  const mergedResponseRefs = readPersistedResponseSessionRefs(mergedResponseSession);
+  const mergedResponseRefs = readPersistedResponseSessionRefs(nextResponseSession);
+  const graphConfig = buildAgentGraphConfig();
 
   await upsertAgentTaskRun({
     threadId: existing.threadId,
@@ -955,8 +992,13 @@ export async function attachTaskRunResponseSession(params: {
     draftRevision: nextDraftRevision,
     completionKind: existing.completionKind,
     stopReason: existing.stopReason,
-    nextRunnableAt: existing.nextRunnableAt,
-    responseSessionJson: mergedResponseSession,
+    nextRunnableAt:
+      existing.status === 'running' &&
+      typeof params.responseMessageId === 'string' &&
+      existing.nextRunnableAt === null
+        ? new Date(Date.now() + graphConfig.workerPollMs)
+        : existing.nextRunnableAt,
+    responseSessionJson: nextResponseSession,
     waitingStateJson: existing.waitingStateJson,
     compactionStateJson: existing.compactionStateJson,
     checkpointMetadataJson: existing.checkpointMetadataJson,
@@ -1075,7 +1117,7 @@ export async function resumeWaitingTaskRunWithInput(
 
     await persistTaskRunFromGraphResult({
       traceId: waitingTaskRun.threadId,
-      sourceMessageId: waitingTaskRun.sourceMessageId ?? params.currentTurn.messageId,
+      sourceMessageId: params.currentTurn.messageId,
       guildId: params.guildId,
       channelId: params.channelId,
       userId: params.userId,
@@ -1085,6 +1127,7 @@ export async function resumeWaitingTaskRunWithInput(
       graphResult,
       existingTaskRun: waitingTaskRun,
       resumeCount: waitingTaskRun.resumeCount + 1,
+      freshResponseSurface: true,
     });
 
     return {

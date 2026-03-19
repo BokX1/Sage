@@ -95,6 +95,7 @@ export interface GraphResponseSession {
   draftRevision: number;
   sourceMessageId: string | null;
   responseMessageId: string | null;
+  surfaceAttached?: boolean;
   overflowMessageIds?: string[];
   linkedArtifactMessageIds: string[];
 }

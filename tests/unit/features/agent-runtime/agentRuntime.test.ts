@@ -168,6 +168,7 @@ vi.mock('@/features/voice/voiceConversationSessionStore', () => ({
 }));
 
 import {
+  attachTaskRunResponseSession,
   resumeBackgroundTaskRun,
   resumeWaitingTaskRunWithInput,
   retryFailedChatTurn,
@@ -947,6 +948,121 @@ describe('agentRuntime', () => {
     });
   });
 
+  it('keeps a background-yield task unrunnable until the response surface is durably attached', async () => {
+    const now = Date.now();
+    runAgentGraphTurnMock.mockResolvedValue(
+      makeGraphResult({
+        replyText: 'I am still working through the rest now.',
+        graphStatus: 'completed',
+        completionKind: 'final_answer',
+        stopReason: 'background_yield',
+        deliveryDisposition: 'response_session',
+        responseSession: {
+          responseSessionId: 'trace-4c',
+          status: 'draft',
+          latestText: 'I am still working through the rest now.',
+          draftRevision: 2,
+          sourceMessageId: 'message-4c',
+          responseMessageId: null,
+          linkedArtifactMessageIds: [],
+        },
+        yieldReason: 'slice_budget_exhausted',
+      }),
+    );
+
+    const result = await runChatTurn({
+      traceId: 'trace-4c',
+      userId: 'user-1',
+      channelId: 'channel-1',
+      guildId: 'guild-1',
+      messageId: 'message-4c',
+      userText: 'keep digging',
+      userProfileSummary: null,
+      currentTurn: makeCurrentTurn({ messageId: 'message-4c' }),
+      invokedBy: 'mention',
+      isAdmin: false,
+    });
+
+    expect(result.status).toBe('running');
+    expect(upsertAgentTaskRunMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        threadId: 'trace-4c',
+        status: 'running',
+        nextRunnableAt: null,
+      }),
+    );
+
+    getAgentTaskRunByThreadIdMock.mockResolvedValueOnce({
+      id: 'task-4c',
+      threadId: 'trace-4c',
+      originTraceId: 'trace-4c',
+      latestTraceId: 'trace-4c',
+      guildId: 'guild-1',
+      channelId: 'channel-1',
+      requestedByUserId: 'user-1',
+      sourceMessageId: 'message-4c',
+      responseMessageId: null,
+      status: 'running',
+      waitingKind: null,
+      latestDraftText: 'I am still working through the rest now.',
+      draftRevision: 2,
+      completionKind: 'final_answer',
+      stopReason: 'background_yield',
+      nextRunnableAt: null,
+      leaseOwner: null,
+      leaseExpiresAt: null,
+      heartbeatAt: null,
+      resumeCount: 0,
+      taskWallClockMs: 0,
+      maxTotalDurationMs: 3_600_000,
+      maxIdleWaitMs: 86_400_000,
+      lastErrorText: null,
+      responseSessionJson: {
+        responseSessionId: 'trace-4c',
+        status: 'draft',
+        latestText: 'I am still working through the rest now.',
+        draftRevision: 2,
+        sourceMessageId: 'message-4c',
+        responseMessageId: null,
+        linkedArtifactMessageIds: [],
+      },
+      waitingStateJson: null,
+      compactionStateJson: null,
+      checkpointMetadataJson: null,
+      startedAt: new Date(now - 5 * 60_000),
+      completedAt: null,
+      createdAt: new Date(now - 5 * 60_000),
+      updatedAt: new Date(now - 5_000),
+    });
+
+    await attachTaskRunResponseSession({
+      threadId: 'trace-4c',
+      sourceMessageId: 'message-4c',
+      responseMessageId: 'response-4c',
+      responseSession: {
+        responseSessionId: 'trace-4c',
+        status: 'draft',
+        latestText: 'I am still working through the rest now.',
+        draftRevision: 2,
+        sourceMessageId: 'message-4c',
+        responseMessageId: 'response-4c',
+        linkedArtifactMessageIds: [],
+      },
+    });
+
+    expect(upsertAgentTaskRunMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        threadId: 'trace-4c',
+        responseMessageId: 'response-4c',
+        nextRunnableAt: expect.any(Date),
+        responseSessionJson: expect.objectContaining({
+          responseMessageId: 'response-4c',
+          surfaceAttached: true,
+        }),
+      }),
+    );
+  });
+
   it('returns a waiting-user-input task result when the graph requests user input', async () => {
     runAgentGraphTurnMock.mockResolvedValue(
       makeGraphResult({
@@ -1407,12 +1523,115 @@ describe('agentRuntime', () => {
     expect(upsertAgentTaskRunMock).toHaveBeenCalledWith(
       expect.objectContaining({
         threadId: 'thread-waiting-1',
+        sourceMessageId: 'message-followup-1',
         resumeCount: 1,
         taskWallClockMs: 1600,
+        responseSessionJson: expect.objectContaining({
+          sourceMessageId: 'message-followup-1',
+          surfaceAttached: false,
+        }),
       }),
     );
     expect(result.delivery).toBe('response_session');
     expect(result.replyText).toBe('I checked that repository and found the issue.');
+  });
+
+  it('does not arm background continuation on a waiting-follow-up resume until the fresh response surface is attached', async () => {
+    const now = Date.now();
+    findWaitingUserInputTaskRunMock.mockResolvedValue({
+      id: 'task-waiting-1b',
+      threadId: 'thread-waiting-1b',
+      originTraceId: 'trace-origin',
+      latestTraceId: 'trace-latest',
+      guildId: 'guild-1',
+      channelId: 'channel-1',
+      requestedByUserId: 'user-1',
+      sourceMessageId: 'message-source-1b',
+      responseMessageId: 'response-waiting-1b',
+      status: 'waiting_user_input',
+      waitingKind: 'user_input',
+      latestDraftText: 'Which repository should I check first?',
+      draftRevision: 2,
+      completionKind: 'user_input_pending',
+      stopReason: 'user_input_interrupt',
+      nextRunnableAt: null,
+      leaseOwner: null,
+      leaseExpiresAt: null,
+      heartbeatAt: null,
+      resumeCount: 0,
+      taskWallClockMs: 1000,
+      maxTotalDurationMs: 3_600_000,
+      maxIdleWaitMs: 86_400_000,
+      lastErrorText: null,
+      responseSessionJson: {
+        responseSessionId: 'thread-waiting-1b',
+        status: 'waiting_user_input',
+        latestText: 'Which repository should I check first?',
+        draftRevision: 2,
+        sourceMessageId: 'message-source-1b',
+        responseMessageId: 'response-waiting-1b',
+        surfaceAttached: true,
+        overflowMessageIds: [],
+        linkedArtifactMessageIds: [],
+      },
+      waitingStateJson: null,
+      compactionStateJson: null,
+      checkpointMetadataJson: null,
+      startedAt: new Date(now - 5 * 60_000),
+      completedAt: null,
+      createdAt: new Date(now - 5 * 60_000),
+      updatedAt: new Date(now - 5_000),
+    });
+    continueAgentGraphTurnMock.mockResolvedValue(
+      makeGraphResult({
+        replyText: 'Progress update: still checking.',
+        completionKind: 'final_answer',
+        stopReason: 'background_yield',
+        graphStatus: 'running',
+        yieldReason: 'slice_budget_exhausted',
+        responseSession: {
+          responseSessionId: 'thread-waiting-1b',
+          status: 'draft',
+          latestText: 'Progress update: still checking.',
+          draftRevision: 1,
+          sourceMessageId: 'message-source-1b',
+          responseMessageId: null,
+          surfaceAttached: false,
+          overflowMessageIds: [],
+          linkedArtifactMessageIds: [],
+        },
+      }),
+    );
+
+    await resumeWaitingTaskRunWithInput({
+      traceId: 'trace-resume-input-1b',
+      userId: 'user-1',
+      channelId: 'channel-1',
+      guildId: 'guild-1',
+      replyToMessageId: 'response-waiting-1b',
+      userText: 'Check the Sage repo first.',
+      currentTurn: makeCurrentTurn({
+        messageId: 'message-followup-1b',
+        replyTargetMessageId: 'response-waiting-1b',
+        isDirectReply: true,
+      }),
+      isAdmin: true,
+    });
+
+    expect(upsertAgentTaskRunMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        threadId: 'thread-waiting-1b',
+        status: 'running',
+        sourceMessageId: 'message-followup-1b',
+        responseMessageId: null,
+        nextRunnableAt: null,
+        responseSessionJson: expect.objectContaining({
+          sourceMessageId: 'message-followup-1b',
+          responseMessageId: null,
+          surfaceAttached: false,
+        }),
+      }),
+    );
   });
 
   it("fails cleanly when a follow-up isn't a direct reply to Sage's waiting question", async () => {

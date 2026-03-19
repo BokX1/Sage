@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const {
   claimRunnableAgentTaskRunMock,
+  getAgentTaskRunByThreadIdMock,
   heartbeatAgentTaskRunMock,
   listRunnableAgentTaskRunsMock,
   releaseAgentTaskRunLeaseMock,
@@ -10,6 +11,7 @@ const {
   clientMock,
 } = vi.hoisted(() => ({
   claimRunnableAgentTaskRunMock: vi.fn(),
+  getAgentTaskRunByThreadIdMock: vi.fn(),
   heartbeatAgentTaskRunMock: vi.fn(),
   listRunnableAgentTaskRunsMock: vi.fn(),
   releaseAgentTaskRunLeaseMock: vi.fn(),
@@ -49,6 +51,7 @@ vi.mock('@/features/agent-runtime/langgraph/config', () => ({
 
 vi.mock('@/features/agent-runtime/agentTaskRunRepo', () => ({
   claimRunnableAgentTaskRun: claimRunnableAgentTaskRunMock,
+  getAgentTaskRunByThreadId: getAgentTaskRunByThreadIdMock,
   heartbeatAgentTaskRun: heartbeatAgentTaskRunMock,
   listRunnableAgentTaskRuns: listRunnableAgentTaskRunsMock,
   releaseAgentTaskRunLease: releaseAgentTaskRunLeaseMock,
@@ -73,6 +76,8 @@ describe('agentTaskRunWorker', () => {
     delete process.env.VITEST_WORKER_ID;
     claimRunnableAgentTaskRunMock.mockReset();
     claimRunnableAgentTaskRunMock.mockResolvedValue(true);
+    getAgentTaskRunByThreadIdMock.mockReset();
+    getAgentTaskRunByThreadIdMock.mockResolvedValue(null);
     heartbeatAgentTaskRunMock.mockReset();
     heartbeatAgentTaskRunMock.mockResolvedValue(undefined);
     listRunnableAgentTaskRunsMock.mockReset();
@@ -165,6 +170,26 @@ describe('agentTaskRunWorker', () => {
         },
       ])
       .mockResolvedValue([]);
+    getAgentTaskRunByThreadIdMock.mockResolvedValue({
+      id: 'task-1',
+      threadId: 'thread-1',
+      guildId: 'guild-1',
+      channelId: 'channel-1',
+      requestedByUserId: 'user-1',
+      sourceMessageId: 'message-1',
+      responseMessageId: null,
+      responseSessionJson: {
+        responseSessionId: 'thread-1',
+        status: 'draft',
+        latestText: 'First draft',
+        draftRevision: 1,
+        sourceMessageId: 'message-1',
+        responseMessageId: null,
+        overflowMessageIds: [],
+        linkedArtifactMessageIds: [],
+      },
+      checkpointMetadataJson: { isAdmin: true, canModerate: false },
+    });
     const sourceMessage = {
       id: 'message-1',
       edit: vi.fn().mockResolvedValue(undefined),
@@ -250,6 +275,7 @@ describe('agentTaskRunWorker', () => {
 
     initAgentTaskRunWorker();
     await vi.advanceTimersByTimeAsync(1_000);
+    await vi.runOnlyPendingTimersAsync();
     await Promise.resolve();
 
     expect(sourceMessage.reply).toHaveBeenCalledTimes(1);
@@ -351,6 +377,317 @@ describe('agentTaskRunWorker', () => {
         responseMessageId: 'response-2',
       }),
     );
+  });
+
+  it('refreshes the latest persisted response-session id before falling back to a fresh reply', async () => {
+    listRunnableAgentTaskRunsMock.mockReset();
+    listRunnableAgentTaskRunsMock
+      .mockResolvedValueOnce([
+        {
+          id: 'task-race',
+          threadId: 'thread-race',
+          guildId: 'guild-1',
+          channelId: 'channel-1',
+          requestedByUserId: 'user-1',
+          sourceMessageId: 'message-race',
+          responseMessageId: null,
+          checkpointMetadataJson: { isAdmin: true, canModerate: false },
+        },
+      ])
+      .mockResolvedValue([]);
+    getAgentTaskRunByThreadIdMock.mockResolvedValue({
+      id: 'task-race',
+      threadId: 'thread-race',
+      guildId: 'guild-1',
+      channelId: 'channel-1',
+      requestedByUserId: 'user-1',
+      sourceMessageId: 'message-race',
+      responseMessageId: 'response-race',
+      responseSessionJson: {
+        responseSessionId: 'thread-race',
+        status: 'draft',
+        latestText: 'Existing draft',
+        draftRevision: 1,
+        sourceMessageId: 'message-race',
+        responseMessageId: 'response-race',
+        overflowMessageIds: [],
+        linkedArtifactMessageIds: [],
+      },
+      checkpointMetadataJson: { isAdmin: true, canModerate: false },
+    });
+
+    const sourceMessage = {
+      id: 'message-race',
+      edit: vi.fn().mockResolvedValue(undefined),
+      reply: vi.fn(),
+    };
+    const responseMessage = {
+      id: 'response-race',
+      edit: vi.fn().mockResolvedValue(undefined),
+    };
+
+    clientMock.channels.fetch.mockImplementation(async () =>
+      ({
+        isTextBased: () => true,
+        send: vi.fn().mockResolvedValue(responseMessage),
+        messages: {
+          fetch: vi.fn(async (messageId: string) => {
+            if (messageId === 'message-race') {
+              return sourceMessage;
+            }
+            if (messageId === 'response-race') {
+              return responseMessage;
+            }
+            throw new Error(`Unexpected fetch: ${messageId}`);
+          }),
+        },
+      }) as never,
+    );
+
+    resumeBackgroundTaskRunMock.mockResolvedValue({
+      runId: 'thread-race',
+      status: 'completed',
+      replyText: 'Updated after refresh',
+      delivery: 'response_session',
+      responseSession: {
+        responseSessionId: 'thread-race',
+        status: 'final',
+        latestText: 'Updated after refresh',
+        draftRevision: 2,
+        sourceMessageId: 'message-race',
+        responseMessageId: null,
+        linkedArtifactMessageIds: [],
+      },
+      files: [],
+    });
+
+    initAgentTaskRunWorker();
+    await vi.advanceTimersByTimeAsync(1_000);
+    await Promise.resolve();
+
+    expect(sourceMessage.reply).not.toHaveBeenCalled();
+    expect(responseMessage.edit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: 'Updated after refresh',
+      }),
+    );
+    expect(attachTaskRunResponseSessionMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        threadId: 'thread-race',
+        responseMessageId: 'response-race',
+      }),
+    );
+  });
+
+  it('does not post a second reply when the canonical response message is bound but temporarily unfetchable', async () => {
+    listRunnableAgentTaskRunsMock.mockReset();
+    listRunnableAgentTaskRunsMock
+      .mockResolvedValueOnce([
+        {
+          id: 'task-missing-response',
+          threadId: 'thread-missing-response',
+          guildId: 'guild-1',
+          channelId: 'channel-1',
+          requestedByUserId: 'user-1',
+          sourceMessageId: 'message-missing-response',
+          responseMessageId: 'response-missing-response',
+          checkpointMetadataJson: { isAdmin: true, canModerate: false },
+        },
+      ])
+      .mockResolvedValue([]);
+
+    const sourceMessage = {
+      id: 'message-missing-response',
+      edit: vi.fn().mockResolvedValue(undefined),
+      reply: vi.fn(),
+    };
+
+    clientMock.channels.fetch.mockImplementation(async () =>
+      ({
+        isTextBased: () => true,
+        send: vi.fn(),
+        messages: {
+          fetch: vi.fn(async (messageId: string) => {
+            if (messageId === 'message-missing-response') {
+              return sourceMessage;
+            }
+            throw new Error(`Missing message: ${messageId}`);
+          }),
+        },
+      }) as never,
+    );
+
+    resumeBackgroundTaskRunMock.mockResolvedValue({
+      runId: 'thread-missing-response',
+      status: 'completed',
+      replyText: 'Should not create a duplicate reply',
+      delivery: 'response_session',
+      responseSession: {
+        responseSessionId: 'thread-missing-response',
+        status: 'final',
+        latestText: 'Should not create a duplicate reply',
+        draftRevision: 2,
+        sourceMessageId: 'message-missing-response',
+        responseMessageId: 'response-missing-response',
+        linkedArtifactMessageIds: [],
+      },
+      files: [],
+    });
+
+    initAgentTaskRunWorker();
+    await vi.advanceTimersByTimeAsync(1_000);
+    await Promise.resolve();
+
+    expect(sourceMessage.reply).not.toHaveBeenCalled();
+    expect(attachTaskRunResponseSessionMock).not.toHaveBeenCalled();
+  });
+
+  it('does not fall back to a fresh reply when worker state refresh fails before publish', async () => {
+    listRunnableAgentTaskRunsMock.mockReset();
+    listRunnableAgentTaskRunsMock
+      .mockResolvedValueOnce([
+        {
+          id: 'task-refresh-failed',
+          threadId: 'thread-refresh-failed',
+          guildId: 'guild-1',
+          channelId: 'channel-1',
+          requestedByUserId: 'user-1',
+          sourceMessageId: 'message-refresh-failed',
+          responseMessageId: null,
+          checkpointMetadataJson: { isAdmin: true, canModerate: false },
+        },
+      ])
+      .mockResolvedValue([]);
+    getAgentTaskRunByThreadIdMock.mockRejectedValue(new Error('db unavailable'));
+
+    const sourceMessage = {
+      id: 'message-refresh-failed',
+      edit: vi.fn().mockResolvedValue(undefined),
+      reply: vi.fn(),
+    };
+
+    clientMock.channels.fetch.mockImplementation(async () =>
+      ({
+        isTextBased: () => true,
+        send: vi.fn(),
+        messages: {
+          fetch: vi.fn(async (messageId: string) => {
+            if (messageId === 'message-refresh-failed') {
+              return sourceMessage;
+            }
+            throw new Error(`Missing message: ${messageId}`);
+          }),
+        },
+      }) as never,
+    );
+
+    resumeBackgroundTaskRunMock.mockResolvedValue({
+      runId: 'thread-refresh-failed',
+      status: 'completed',
+      replyText: 'Should not create a duplicate reply during refresh failure',
+      delivery: 'response_session',
+      responseSession: {
+        responseSessionId: 'thread-refresh-failed',
+        status: 'final',
+        latestText: 'Should not create a duplicate reply during refresh failure',
+        draftRevision: 2,
+        sourceMessageId: 'message-refresh-failed',
+        responseMessageId: null,
+        linkedArtifactMessageIds: [],
+      },
+      files: [],
+    });
+
+    initAgentTaskRunWorker();
+    await vi.advanceTimersByTimeAsync(1_000);
+    await Promise.resolve();
+
+    expect(sourceMessage.reply).not.toHaveBeenCalled();
+    expect(attachTaskRunResponseSessionMock).not.toHaveBeenCalled();
+  });
+
+  it('does not fall back to a fresh reply when persisted response-session metadata says the canonical surface is already attached', async () => {
+    listRunnableAgentTaskRunsMock.mockReset();
+    listRunnableAgentTaskRunsMock
+      .mockResolvedValueOnce([
+        {
+          id: 'task-missing-attachment',
+          threadId: 'thread-missing-attachment',
+          guildId: 'guild-1',
+          channelId: 'channel-1',
+          requestedByUserId: 'user-1',
+          sourceMessageId: 'message-missing-attachment',
+          responseMessageId: null,
+          checkpointMetadataJson: { isAdmin: true, canModerate: false },
+        },
+      ])
+      .mockResolvedValue([]);
+    getAgentTaskRunByThreadIdMock.mockResolvedValue({
+      id: 'task-missing-attachment',
+      threadId: 'thread-missing-attachment',
+      guildId: 'guild-1',
+      channelId: 'channel-1',
+      requestedByUserId: 'user-1',
+      sourceMessageId: 'message-missing-attachment',
+      responseMessageId: null,
+      responseSessionJson: {
+        responseSessionId: 'thread-missing-attachment',
+        status: 'draft',
+        latestText: 'Visible draft already sent',
+        draftRevision: 1,
+        sourceMessageId: 'message-missing-attachment',
+        responseMessageId: null,
+        surfaceAttached: true,
+        overflowMessageIds: [],
+        linkedArtifactMessageIds: [],
+      },
+      checkpointMetadataJson: { isAdmin: true, canModerate: false },
+    });
+
+    const sourceMessage = {
+      id: 'message-missing-attachment',
+      edit: vi.fn().mockResolvedValue(undefined),
+      reply: vi.fn(),
+    };
+
+    clientMock.channels.fetch.mockImplementation(async () =>
+      ({
+        isTextBased: () => true,
+        send: vi.fn(),
+        messages: {
+          fetch: vi.fn(async (messageId: string) => {
+            if (messageId === 'message-missing-attachment') {
+              return sourceMessage;
+            }
+            throw new Error(`Missing message: ${messageId}`);
+          }),
+        },
+      }) as never,
+    );
+
+    resumeBackgroundTaskRunMock.mockResolvedValue({
+      runId: 'thread-missing-attachment',
+      status: 'completed',
+      replyText: 'Should not create a duplicate reply after a failed foreground attachment',
+      delivery: 'response_session',
+      responseSession: {
+        responseSessionId: 'thread-missing-attachment',
+        status: 'final',
+        latestText: 'Should not create a duplicate reply after a failed foreground attachment',
+        draftRevision: 2,
+        sourceMessageId: 'message-missing-attachment',
+        responseMessageId: null,
+        linkedArtifactMessageIds: [],
+      },
+      files: [],
+    });
+
+    initAgentTaskRunWorker();
+    await vi.advanceTimersByTimeAsync(1_000);
+    await Promise.resolve();
+
+    expect(sourceMessage.reply).not.toHaveBeenCalled();
+    expect(attachTaskRunResponseSessionMock).not.toHaveBeenCalled();
   });
 
   it('reconciles long overflow chunks across worker updates instead of re-sending duplicate tails', async () => {
