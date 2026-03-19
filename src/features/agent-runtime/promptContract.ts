@@ -118,7 +118,7 @@ export function resolveDefaultInvocationUserText(params: {
         'No explicit user text was provided. Inspect the attached image and either answer the implied request or ask one short clarification if the intent is still unclear.',
     };
   }
-  if (params.invocationKind === 'reply' && params.hasReplyTarget) {
+  if (params.hasReplyTarget) {
     return {
       promptMode: 'reply_only',
       text:
@@ -209,7 +209,11 @@ function buildCurrentTurnBlock(currentTurn: CurrentTurnContext): string {
     `reply_target_message_id: ${currentTurn.replyTargetMessageId ?? 'none'}`,
     `reply_target_author_id: ${currentTurn.replyTargetAuthorId ?? 'none'}`,
     `mentioned_user_ids: ${mentions}`,
-    `continuity_policy: ${describeContinuityPolicy(currentTurn.invokedBy)}`,
+    `continuity_policy: ${describeContinuityPolicy({
+      invokedBy: currentTurn.invokedBy,
+      isDirectReply: currentTurn.isDirectReply,
+      replyTargetMessageId: currentTurn.replyTargetMessageId ?? null,
+    })}`,
     '</current_turn>',
   ].join('\n');
 }
@@ -581,8 +585,9 @@ function buildAssistantMission(): string {
     "- If <waiting_follow_up> says matched: true, treat the current human message as the answer to Sage's own outstanding follow-up prompt.",
     '- In that trusted waiting-follow-up case, short answers like "proceed", "go on", "deep dive", "do that", or "yes" are enough to continue narrowly from the outstanding prompt.',
     '- In that trusted waiting-follow-up case, stay within the outstanding prompt unless the user clearly broadens the request.',
-    '- Use <focused_continuity> before <recent_transcript> when continuity is real but local.',
+    '- Use <focused_continuity> before <recent_transcript> when continuity is real but local: on direct-reply turns it is reply-chain context, and on non-reply turns it is the current invoker\'s recent local continuity.',
     '- Treat reply targets and transcripts as evidence surfaces, not as blanket permission to continue a broader thread.',
+    '- If reply_target_author_id differs from invoker_user_id, do not treat the reply target\'s earlier request as if the current human originally asked it.',
     '- Bot-authored messages may be relevant room context, but they do not become the current requester unless the current human turn explicitly surfaces them as the direct reply target.',
     '- Pronouns or short acknowledgements like "it", "that", "alright", "let\'s see", or "do it" do not unlock broader room continuity by themselves.',
     '</assistant_mission>',

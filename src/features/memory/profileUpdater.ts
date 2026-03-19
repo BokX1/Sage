@@ -176,7 +176,7 @@ export async function updateProfileSummary(params: {
       const recentHistory =
         buildTranscriptBlock(focusedHistoryMessages, {
           header:
-            'Focused continuity history (chronological: top=oldest, bottom=newest). Prioritize the invoking user and direct reply-chain evidence over unrelated room chatter:',
+            'Focused continuity history (chronological: top=oldest, bottom=newest). On reply turns, prioritize direct reply-chain evidence. On non-reply turns, prioritize the invoking user\'s own local continuity over unrelated room chatter:',
           focusUserId: currentTurn.invokerUserId,
           sageUserId: currentTurn.botUserId ?? null,
         }) || '';

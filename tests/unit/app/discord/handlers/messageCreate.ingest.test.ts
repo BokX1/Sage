@@ -1255,6 +1255,58 @@ describe('messageCreate - ingest + reply gating', () => {
     );
   });
 
+  it('uses the canonical reply-only prompt adapter for empty mentions that directly reply to another human', async () => {
+    const referencedMessage = {
+      id: 'ref-empty-human-1',
+      guildId: 'guild-789',
+      channelId: 'channel-101',
+      author: { id: 'user-999', bot: false, username: 'OtherUser' },
+      member: null,
+      content: 'Can someone summarize this thread?',
+      mentions: {
+        users: new Map<string, User>(),
+      },
+      reference: null,
+      attachments: {
+        first: vi.fn(() => null),
+        values: vi.fn(() => []),
+      },
+      partial: false,
+    };
+
+    const message = createMockMessage({
+      content: '<@123>',
+      mentions: {
+        has: vi.fn((user: User) => user.id === '123'),
+        users: new Map<string, User>(),
+      },
+      reference: { messageId: 'ref-empty-human-1' },
+      referencedMessage,
+    });
+
+    await handleMessageCreate(message);
+
+    expect(mockGenerateChatReply).toHaveBeenCalledTimes(1);
+    expect(mockGenerateChatReply).toHaveBeenCalledWith(
+      expect.objectContaining({
+        invokedBy: 'mention',
+        promptMode: 'reply_only',
+        userText:
+          'The user replied without adding new text. Use the reply target as context, stay narrow, and ask one short clarification if the intent is still unclear.',
+        currentTurn: expect.objectContaining({
+          invokedBy: 'mention',
+          isDirectReply: true,
+          replyTargetAuthorId: 'user-999',
+        }),
+        replyTarget: expect.objectContaining({
+          messageId: 'ref-empty-human-1',
+          authorId: 'user-999',
+          authorIsBot: false,
+        }),
+      }),
+    );
+  });
+
   it('strips a redundant leading wake word from reply text before invoking Sage', async () => {
     const referencedMessage = {
       id: 'ref-redundant-1',

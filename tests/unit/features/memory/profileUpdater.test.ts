@@ -291,6 +291,199 @@ describe('ProfileUpdater', () => {
       expect(recentHistoryBlock).not.toContain('same text');
     });
 
+    it('keeps reply-turn focused history scoped to the reply chain instead of unrelated invoker history', async () => {
+      mockGetRecentMessages.mockReturnValueOnce([
+        {
+          messageId: 'msg-history-u1',
+          guildId: 'G1',
+          channelId: 'C1',
+          authorId: 'U1',
+          authorDisplayName: 'User',
+          authorIsBot: false,
+          content: 'my unrelated earlier release question',
+          timestamp: new Date(),
+          replyToMessageId: undefined,
+          mentionsUserIds: [],
+          mentionsBot: false,
+        },
+        {
+          messageId: 'msg-history-parent',
+          guildId: 'G1',
+          channelId: 'C1',
+          authorId: 'U2',
+          authorDisplayName: 'Other User',
+          authorIsBot: false,
+          content: 'can someone check the deployment logs',
+          timestamp: new Date(),
+          replyToMessageId: undefined,
+          mentionsUserIds: [],
+          mentionsBot: false,
+        },
+        {
+          messageId: 'msg-history-target',
+          guildId: 'G1',
+          channelId: 'C1',
+          authorId: 'U2',
+          authorDisplayName: 'Other User',
+          authorIsBot: false,
+          content: 'bluegaming context from user two',
+          timestamp: new Date(),
+          replyToMessageId: 'msg-history-parent',
+          mentionsUserIds: [],
+          mentionsBot: false,
+        },
+        {
+          messageId: 'msg-history-chain',
+          guildId: 'G1',
+          channelId: 'C1',
+          authorId: 'U1',
+          authorDisplayName: 'User',
+          authorIsBot: false,
+          content: 'I can check that next',
+          timestamp: new Date(),
+          replyToMessageId: 'msg-history-target',
+          mentionsUserIds: [],
+          mentionsBot: false,
+        },
+      ]);
+
+      mockChatFn.mockResolvedValueOnce({
+        text: '{"summary": "<preferences>Keeps reply context scoped</preferences>\\n<active_focus>Investigating the replied-to thread</active_focus>\\n<background>Values attribution</background>"}',
+      });
+
+      const result = await updateProfileSummary({
+        previousSummary: '<preferences>Existing preference</preferences>\n<active_focus>Existing focus</active_focus>\n<background>Existing background</background>',
+        userMessage: 'let me check it',
+        assistantReply: 'I can do that.',
+        currentTurn: makeCurrentTurn({
+          invokedBy: 'reply',
+          isDirectReply: true,
+          replyTargetMessageId: 'msg-history-target',
+          replyTargetAuthorId: 'U2',
+        }),
+        replyTarget: {
+          messageId: 'msg-history-target',
+          guildId: 'G1',
+          channelId: 'C1',
+          authorId: 'U2',
+          authorDisplayName: 'Other User',
+          authorIsBot: false,
+          replyToMessageId: 'msg-history-parent',
+          mentionedUserIds: [],
+          content: 'bluegaming context from user two',
+        },
+        channelId: 'C1',
+        guildId: 'G1',
+        userId: 'U1',
+      });
+
+      expect(result).toBe('<preferences>Keeps reply context scoped</preferences>\n<active_focus>Investigating the replied-to thread</active_focus>\n<background>Values attribution</background>');
+
+      const analystCall = mockChatFn.mock.calls[0][0];
+      const messages = analystCall.messages as ChatMessage[];
+      const userPrompt = messages.find((message) => message.role === 'user')?.content ?? '';
+      const recentHistoryBlock = userPrompt.split('Latest Interaction (Focus):')[0];
+      expect(recentHistoryBlock).toContain('can someone check the deployment logs');
+      expect(recentHistoryBlock).toContain('I can check that next');
+      expect(recentHistoryBlock).not.toContain('my unrelated earlier release question');
+    });
+
+    it('keeps direct-reply mention history scoped to the reply chain instead of unrelated invoker history', async () => {
+      mockGetRecentMessages.mockReturnValueOnce([
+        {
+          messageId: 'msg-history-u1-mention',
+          guildId: 'G1',
+          channelId: 'C1',
+          authorId: 'U1',
+          authorDisplayName: 'User',
+          authorIsBot: false,
+          content: 'my unrelated earlier release question',
+          timestamp: new Date(),
+          replyToMessageId: undefined,
+          mentionsUserIds: [],
+          mentionsBot: false,
+        },
+        {
+          messageId: 'msg-history-parent-mention',
+          guildId: 'G1',
+          channelId: 'C1',
+          authorId: 'U2',
+          authorDisplayName: 'Other User',
+          authorIsBot: false,
+          content: 'can someone check the deployment logs',
+          timestamp: new Date(),
+          replyToMessageId: undefined,
+          mentionsUserIds: [],
+          mentionsBot: false,
+        },
+        {
+          messageId: 'msg-history-target-mention',
+          guildId: 'G1',
+          channelId: 'C1',
+          authorId: 'U2',
+          authorDisplayName: 'Other User',
+          authorIsBot: false,
+          content: 'bluegaming context from user two',
+          timestamp: new Date(),
+          replyToMessageId: 'msg-history-parent-mention',
+          mentionsUserIds: [],
+          mentionsBot: false,
+        },
+        {
+          messageId: 'msg-history-chain-mention',
+          guildId: 'G1',
+          channelId: 'C1',
+          authorId: 'U1',
+          authorDisplayName: 'User',
+          authorIsBot: false,
+          content: 'I can check that next',
+          timestamp: new Date(),
+          replyToMessageId: 'msg-history-target-mention',
+          mentionsUserIds: [],
+          mentionsBot: false,
+        },
+      ]);
+
+      mockChatFn.mockResolvedValueOnce({
+        text: '{"summary": "<preferences>Keeps reply context scoped</preferences>\\n<active_focus>Investigating the replied-to thread</active_focus>\\n<background>Values attribution</background>"}',
+      });
+
+      await updateProfileSummary({
+        previousSummary: '<preferences>Existing preference</preferences>\n<active_focus>Existing focus</active_focus>\n<background>Existing background</background>',
+        userMessage: '@sage let me check it',
+        assistantReply: 'I can do that.',
+        currentTurn: makeCurrentTurn({
+          invokedBy: 'mention',
+          mentionedUserIds: ['B1'],
+          isDirectReply: true,
+          replyTargetMessageId: 'msg-history-target-mention',
+          replyTargetAuthorId: 'U2',
+        }),
+        replyTarget: {
+          messageId: 'msg-history-target-mention',
+          guildId: 'G1',
+          channelId: 'C1',
+          authorId: 'U2',
+          authorDisplayName: 'Other User',
+          authorIsBot: false,
+          replyToMessageId: 'msg-history-parent-mention',
+          mentionedUserIds: [],
+          content: 'bluegaming context from user two',
+        },
+        channelId: 'C1',
+        guildId: 'G1',
+        userId: 'U1',
+      });
+
+      const analystCall = mockChatFn.mock.calls[0][0];
+      const messages = analystCall.messages as ChatMessage[];
+      const userPrompt = messages.find((message) => message.role === 'user')?.content ?? '';
+      const recentHistoryBlock = userPrompt.split('Latest Interaction (Focus):')[0];
+      expect(recentHistoryBlock).toContain('can someone check the deployment logs');
+      expect(recentHistoryBlock).toContain('I can check that next');
+      expect(recentHistoryBlock).not.toContain('my unrelated earlier release question');
+    });
+
     it('normalizes legacy directives into preferences', async () => {
       mockChatFn.mockResolvedValueOnce({
         text: '{"summary": "<directives>Prefers concise answers</directives>\\n<active_focus>Refining prompts</active_focus>\\n<background>Maintains Sage</background>"}',

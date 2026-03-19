@@ -352,16 +352,178 @@ describe('transcript injection', { timeout: 20_000 }, () => {
     const recentTranscript = extractTagBlock(userContent, 'recent_transcript');
 
     expect(currentTurnBlock).toContain('invocation_kind: reply');
-    expect(currentTurnBlock).toContain('continuity_policy: reply_target > same_speaker_recent > explicit_named_subject > ambient_room');
-    expect(focusedContinuity).toContain('once approval lands we can test the new response');
+    expect(currentTurnBlock).toContain('continuity_policy: reply_target_chain > ambient_room');
     expect(focusedContinuity).toContain('waiting for the approval result');
+    expect(focusedContinuity).not.toContain('once approval lands we can test the new response');
     expect(focusedContinuity).not.toContain('does heiryn have tools to update its own memory?');
     expect(recentTranscript).toContain('does heiryn have tools to update its own memory?');
+    expect(recentTranscript).toContain('once approval lands we can test the new response');
     expect(recentTranscript).not.toContain('The approval card was accepted. Response behavior updated.');
     expect(userContent).toContain('<untrusted_reply_target>');
     expect(userContent).toContain('The approval card was accepted. Response behavior updated.');
     expect(userContent).toContain('<untrusted_user_input>');
     expect(userContent).toContain("alright let's see");
+  });
+
+  it('keeps a cross-user reply turn scoped to the reply chain instead of the current invoker history', async () => {
+    appendMessage(
+      makeMessage({
+        messageId: 'msg-u1-unrelated',
+        content: 'my unrelated earlier release question',
+      }),
+    );
+    appendMessage(
+      makeMessage({
+        messageId: 'msg-u2-parent',
+        authorId: 'user-2',
+        authorDisplayName: 'User Two',
+        content: 'can someone check the deployment logs',
+      }),
+    );
+    appendMessage(
+      makeMessage({
+        messageId: 'msg-u2-target',
+        authorId: 'user-2',
+        authorDisplayName: 'User Two',
+        content: 'bluegaming context from user two',
+        replyToMessageId: 'msg-u2-parent',
+      }),
+    );
+    appendMessage(
+      makeMessage({
+        messageId: 'msg-u3-noise',
+        authorId: 'user-3',
+        authorDisplayName: 'User Three',
+        content: 'anyone up for valorant later',
+      }),
+    );
+    appendMessage(
+      makeMessage({
+        messageId: 'msg-u1-chain',
+        content: 'I can check that next',
+        replyToMessageId: 'msg-u2-target',
+      }),
+    );
+
+    await runChatTurn({
+      traceId: 'trace-3b',
+      userId: 'user-1',
+      channelId: 'channel-1',
+      guildId: 'guild-1',
+      messageId: 'msg-current-3b',
+      userText: 'let me check it',
+      userProfileSummary: null,
+      currentTurn: makeCurrentTurn({
+        messageId: 'msg-current-3b',
+        invokedBy: 'reply',
+        isDirectReply: true,
+        replyTargetMessageId: 'msg-u2-target',
+        replyTargetAuthorId: 'user-2',
+      }),
+      replyTarget: {
+        messageId: 'msg-u2-target',
+        guildId: 'guild-1',
+        channelId: 'channel-1',
+        authorId: 'user-2',
+        authorDisplayName: 'User Two',
+        authorIsBot: false,
+        replyToMessageId: 'msg-u2-parent',
+        mentionedUserIds: [],
+        content: 'bluegaming context from user two',
+      },
+    });
+
+    const systemContent = getSystemMessageContent();
+    const userContent = getUserMessageContent();
+    const currentTurnBlock = extractTagBlock(systemContent, 'current_turn');
+    const focusedContinuity = extractTagBlock(userContent, 'focused_continuity');
+    const recentTranscript = extractTagBlock(userContent, 'recent_transcript');
+
+    expect(currentTurnBlock).toContain('invoker_user_id: user-1');
+    expect(currentTurnBlock).toContain('reply_target_author_id: user-2');
+    expect(currentTurnBlock).toContain('continuity_policy: reply_target_chain > ambient_room');
+    expect(focusedContinuity).toContain('can someone check the deployment logs');
+    expect(focusedContinuity).toContain('I can check that next');
+    expect(focusedContinuity).not.toContain('my unrelated earlier release question');
+    expect(recentTranscript).toContain('my unrelated earlier release question');
+    expect(recentTranscript).toContain('anyone up for valorant later');
+  });
+
+  it('keeps a cross-user direct-reply mention turn scoped to the reply chain instead of the current invoker history', async () => {
+    appendMessage(
+      makeMessage({
+        messageId: 'msg-u1-unrelated-mention',
+        content: 'my unrelated earlier release question',
+      }),
+    );
+    appendMessage(
+      makeMessage({
+        messageId: 'msg-u2-parent-mention',
+        authorId: 'user-2',
+        authorDisplayName: 'User Two',
+        content: 'can someone check the deployment logs',
+      }),
+    );
+    appendMessage(
+      makeMessage({
+        messageId: 'msg-u2-target-mention',
+        authorId: 'user-2',
+        authorDisplayName: 'User Two',
+        content: 'bluegaming context from user two',
+        replyToMessageId: 'msg-u2-parent-mention',
+      }),
+    );
+    appendMessage(
+      makeMessage({
+        messageId: 'msg-u1-chain-mention',
+        content: 'I can check that next',
+        replyToMessageId: 'msg-u2-target-mention',
+      }),
+    );
+
+    await runChatTurn({
+      traceId: 'trace-3c',
+      userId: 'user-1',
+      channelId: 'channel-1',
+      guildId: 'guild-1',
+      messageId: 'msg-current-3c',
+      userText: '@sage let me check it',
+      userProfileSummary: null,
+      currentTurn: makeCurrentTurn({
+        messageId: 'msg-current-3c',
+        invokedBy: 'mention',
+        mentionedUserIds: ['sage-bot'],
+        isDirectReply: true,
+        replyTargetMessageId: 'msg-u2-target-mention',
+        replyTargetAuthorId: 'user-2',
+      }),
+      replyTarget: {
+        messageId: 'msg-u2-target-mention',
+        guildId: 'guild-1',
+        channelId: 'channel-1',
+        authorId: 'user-2',
+        authorDisplayName: 'User Two',
+        authorIsBot: false,
+        replyToMessageId: 'msg-u2-parent-mention',
+        mentionedUserIds: [],
+        content: 'bluegaming context from user two',
+      },
+    });
+
+    const systemContent = getSystemMessageContent();
+    const userContent = getUserMessageContent();
+    const currentTurnBlock = extractTagBlock(systemContent, 'current_turn');
+    const focusedContinuity = extractTagBlock(userContent, 'focused_continuity');
+    const recentTranscript = extractTagBlock(userContent, 'recent_transcript');
+
+    expect(currentTurnBlock).toContain('invocation_kind: mention');
+    expect(currentTurnBlock).toContain('direct_reply: true');
+    expect(currentTurnBlock).toContain('reply_target_author_id: user-2');
+    expect(currentTurnBlock).toContain('continuity_policy: reply_target_chain > ambient_room');
+    expect(focusedContinuity).toContain('can someone check the deployment logs');
+    expect(focusedContinuity).toContain('I can check that next');
+    expect(focusedContinuity).not.toContain('my unrelated earlier release question');
+    expect(recentTranscript).toContain('my unrelated earlier release question');
   });
 
   it('keeps same-speaker continuity ahead of busy-room chatter', async () => {
@@ -456,7 +618,7 @@ describe('transcript injection', { timeout: 20_000 }, () => {
     const focusedContinuity = extractTagBlock(userContent, 'focused_continuity');
     const recentTranscript = extractTagBlock(userContent, 'recent_transcript');
 
-    expect(currentTurnBlock).toContain('continuity_policy: current_user_input > same_speaker_recent > explicit_named_subject > ambient_room');
+    expect(currentTurnBlock).toContain('continuity_policy: current_user_input > same_speaker_recent > ambient_room');
     expect(focusedContinuity).toBeNull();
     expect(recentTranscript).toContain('does heiryn have tools to update its own memory?');
     expect(userContent).toContain('Does Heiryn have tools to update its own memory?');

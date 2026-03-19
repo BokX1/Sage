@@ -133,6 +133,28 @@ describe('promptContract', () => {
     expect(prompt).toContain("Treat short answers like proceed, go on, deep dive, do that, or yes as valid narrow answers to that question.");
   });
 
+  it('describes reply-chain-first continuity and cross-user reply guardrails', () => {
+    const prompt = buildContract(['web_search'], {
+      currentTurn: makeCurrentTurn({
+        invokedBy: 'mention',
+        isDirectReply: true,
+        replyTargetMessageId: 'reply-msg-1',
+        replyTargetAuthorId: 'user-2',
+      }),
+      invokedBy: 'mention',
+    }).systemMessage;
+
+    expect(prompt).toContain('continuity_policy: reply_target_chain > ambient_room');
+    expect(prompt).toContain(
+      "Use <focused_continuity> before <recent_transcript> when continuity is real but local: on direct-reply turns it is reply-chain context, and on non-reply turns it is the current invoker's recent local continuity.",
+    );
+    expect(prompt).toContain(
+      "If reply_target_author_id differs from invoker_user_id, do not treat the reply target's earlier request as if the current human originally asked it.",
+    );
+    expect(prompt).not.toContain('explicit_named_subject');
+    expect(prompt).not.toContain('explicit_linkage');
+  });
+
   it('builds prompt messages with the universal system contract plus tagged user content', () => {
     const result = buildPromptContextMessages({
       userProfileSummary: null,
@@ -263,6 +285,18 @@ describe('promptContract', () => {
     expect(
       resolveDefaultInvocationUserText({
         invocationKind: 'reply',
+        hasImageContext: false,
+        hasReplyTarget: true,
+      }),
+    ).toEqual(
+      expect.objectContaining({
+        promptMode: 'reply_only',
+      }),
+    );
+
+    expect(
+      resolveDefaultInvocationUserText({
+        invocationKind: 'mention',
         hasImageContext: false,
         hasReplyTarget: true,
       }),

@@ -43,14 +43,46 @@ function makeMessage(overrides: Record<string, unknown> = {}) {
 
 describe('continuityContext', () => {
   it('describes continuity precedence by invocation kind', () => {
-    expect(describeContinuityPolicy('reply')).toBe(
-      'reply_target > same_speaker_recent > explicit_named_subject > ambient_room',
+    expect(
+      describeContinuityPolicy({
+        invokedBy: 'reply',
+        isDirectReply: true,
+        replyTargetMessageId: 'reply-msg-1',
+      }),
+    ).toBe('reply_target_chain > ambient_room');
+    expect(
+      describeContinuityPolicy({
+        invokedBy: 'mention',
+        isDirectReply: true,
+        replyTargetMessageId: 'reply-msg-1',
+      }),
+    ).toBe('reply_target_chain > ambient_room');
+    expect(
+      describeContinuityPolicy({
+        invokedBy: 'mention',
+        isDirectReply: false,
+        replyTargetMessageId: null,
+      }),
+    ).toBe(
+      'current_user_input > same_speaker_recent > ambient_room',
     );
-    expect(describeContinuityPolicy('mention')).toBe(
-      'current_user_input > same_speaker_recent > explicit_named_subject > ambient_room',
+    expect(
+      describeContinuityPolicy({
+        invokedBy: 'component',
+        isDirectReply: false,
+        replyTargetMessageId: null,
+      }),
+    ).toBe(
+      'component_payload > current_invoker_context > ambient_room',
     );
-    expect(describeContinuityPolicy('component')).toBe(
-      'component_payload > current_invoker_context > explicit_named_subject > ambient_room',
+    expect(
+      describeContinuityPolicy({
+        invokedBy: 'autopilot',
+        isDirectReply: false,
+        replyTargetMessageId: null,
+      }),
+    ).toBe(
+      'room_signal > same_speaker_recent > ambient_room',
     );
   });
 
@@ -169,6 +201,110 @@ describe('continuityContext', () => {
     expect(selected.map((message) => message.messageId)).not.toContain('msg-reply-target');
     expect(selected.map((message) => message.messageId)).not.toContain('msg-sibling');
     expect(selected.map((message) => message.messageId)).not.toContain('msg-unrelated');
+  });
+
+  it('keeps unrelated same-speaker history out of focused continuity on reply turns', () => {
+    const messages = [
+      makeMessage({
+        messageId: 'msg-u1-unrelated',
+        content: 'my unrelated old build question',
+      }),
+      makeMessage({
+        messageId: 'msg-u2-parent',
+        authorId: 'user-2',
+        authorDisplayName: 'User Two',
+        content: 'can someone check the deployment logs',
+      }),
+      makeMessage({
+        messageId: 'msg-u2-target',
+        authorId: 'user-2',
+        authorDisplayName: 'User Two',
+        content: 'bluegaming context from user two',
+        replyToMessageId: 'msg-u2-parent',
+      }),
+      makeMessage({
+        messageId: 'msg-u1-chain',
+        content: 'I can check that next',
+        replyToMessageId: 'msg-u2-target',
+      }),
+    ];
+
+    const selected = selectFocusedContinuityMessages({
+      messages,
+      currentTurn: makeCurrentTurn({
+        invokedBy: 'reply',
+        isDirectReply: true,
+        replyTargetMessageId: 'msg-u2-target',
+        replyTargetAuthorId: 'user-2',
+      }),
+      replyTarget: {
+        messageId: 'msg-u2-target',
+        guildId: 'guild-1',
+        channelId: 'channel-1',
+        authorId: 'user-2',
+        authorDisplayName: 'User Two',
+        authorIsBot: false,
+        replyToMessageId: 'msg-u2-parent',
+        mentionedUserIds: [],
+        content: 'bluegaming context from user two',
+      },
+      excludedMessageIds: ['msg-u2-target'],
+    });
+
+    expect(selected.map((message) => message.messageId)).toEqual(['msg-u2-parent', 'msg-u1-chain']);
+    expect(selected.map((message) => message.messageId)).not.toContain('msg-u1-unrelated');
+  });
+
+  it('treats direct replies with mention-style invocation as reply-scoped continuity', () => {
+    const messages = [
+      makeMessage({
+        messageId: 'msg-u1-unrelated',
+        content: 'my unrelated old build question',
+      }),
+      makeMessage({
+        messageId: 'msg-u2-parent',
+        authorId: 'user-2',
+        authorDisplayName: 'User Two',
+        content: 'can someone check the deployment logs',
+      }),
+      makeMessage({
+        messageId: 'msg-u2-target',
+        authorId: 'user-2',
+        authorDisplayName: 'User Two',
+        content: 'bluegaming context from user two',
+        replyToMessageId: 'msg-u2-parent',
+      }),
+      makeMessage({
+        messageId: 'msg-u1-chain',
+        content: 'I can check that next',
+        replyToMessageId: 'msg-u2-target',
+      }),
+    ];
+
+    const selected = selectFocusedContinuityMessages({
+      messages,
+      currentTurn: makeCurrentTurn({
+        invokedBy: 'mention',
+        isDirectReply: true,
+        replyTargetMessageId: 'msg-u2-target',
+        replyTargetAuthorId: 'user-2',
+      }),
+      replyTarget: {
+        messageId: 'msg-u2-target',
+        guildId: 'guild-1',
+        channelId: 'channel-1',
+        authorId: 'user-2',
+        authorDisplayName: 'User Two',
+        authorIsBot: false,
+        replyToMessageId: 'msg-u2-parent',
+        mentionedUserIds: [],
+        content: 'bluegaming context from user two',
+      },
+      excludedMessageIds: ['msg-u2-target'],
+    });
+
+    expect(selected.map((message) => message.messageId)).toEqual(['msg-u2-parent', 'msg-u1-chain']);
+    expect(selected.map((message) => message.messageId)).not.toContain('msg-u1-unrelated');
   });
 
   it('prefers the newest direct reply neighbors when the local chain exceeds the cap', () => {

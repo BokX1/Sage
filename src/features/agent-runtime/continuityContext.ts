@@ -38,6 +38,17 @@ export interface SelectFocusedContinuityMessagesParams {
   maxReplyNeighborMessages?: number;
 }
 
+export function isReplyScopedTurn(params: {
+  currentTurn: Pick<CurrentTurnContext, 'isDirectReply' | 'replyTargetMessageId'>;
+  replyTarget?: Pick<ReplyTargetContext, 'messageId'> | null;
+}): boolean {
+  return (
+    params.currentTurn.isDirectReply === true &&
+    typeof (params.replyTarget?.messageId ?? params.currentTurn.replyTargetMessageId) === 'string' &&
+    ((params.replyTarget?.messageId ?? params.currentTurn.replyTargetMessageId) as string).length > 0
+  );
+}
+
 function isSystemMessage(message: ChannelMessage): boolean {
   return message.authorId === 'SYSTEM';
 }
@@ -64,18 +75,34 @@ export function extractTextFromMessageContent(content: LLMMessageContent | null 
   return text.length > 0 ? text : null;
 }
 
-export function describeContinuityPolicy(invokedBy: InvocationKind): string {
-  switch (invokedBy) {
-    case 'reply':
-      return 'reply_target > same_speaker_recent > explicit_named_subject > ambient_room';
+export function describeContinuityPolicy(params: {
+  invokedBy: InvocationKind;
+  isDirectReply: boolean;
+  replyTargetMessageId?: string | null;
+  replyTarget?: Pick<ReplyTargetContext, 'messageId'> | null;
+}): string {
+  if (
+    isReplyScopedTurn({
+      currentTurn: {
+        isDirectReply: params.isDirectReply,
+        replyTargetMessageId: params.replyTargetMessageId ?? null,
+      },
+      replyTarget: params.replyTarget,
+    })
+  ) {
+    return 'reply_target_chain > ambient_room';
+  }
+
+  switch (params.invokedBy) {
     case 'component':
-      return 'component_payload > current_invoker_context > explicit_named_subject > ambient_room';
+      return 'component_payload > current_invoker_context > ambient_room';
     case 'autopilot':
-      return 'room_signal > explicit_linkage > same_speaker_recent > ambient_room';
+      return 'room_signal > same_speaker_recent > ambient_room';
     case 'mention':
     case 'wakeword':
+    case 'reply':
     default:
-      return 'current_user_input > same_speaker_recent > explicit_named_subject > ambient_room';
+      return 'current_user_input > same_speaker_recent > ambient_room';
   }
 }
 
@@ -115,46 +142,66 @@ export function selectFocusedContinuityMessages(
     pickedMessages.push(message);
   };
 
-  let sameSpeakerCount = 0;
-  for (let index = messages.length - 1; index >= 0 && sameSpeakerCount < maxSameSpeakerMessages; index -= 1) {
-    const message = messages[index];
-    if (message.authorId !== currentTurn.invokerUserId || message.authorIsBot) {
-      continue;
+  const collectSameSpeakerMessages = (): void => {
+    let sameSpeakerCount = 0;
+    for (
+      let index = messages.length - 1;
+      index >= 0 && sameSpeakerCount < maxSameSpeakerMessages;
+      index -= 1
+    ) {
+      const message = messages[index];
+      if (message.authorId !== currentTurn.invokerUserId || message.authorIsBot) {
+        continue;
+      }
+      addMessage(message);
+      if (pickedIds.has(message.messageId)) {
+        sameSpeakerCount += 1;
+      }
     }
-    addMessage(message);
-    if (pickedIds.has(message.messageId)) {
-      sameSpeakerCount += 1;
-    }
-  }
+  };
 
   const canonicalReplyTargetId = replyTarget?.messageId ?? currentTurn.replyTargetMessageId ?? null;
   const canonicalReplyParentId = replyTarget?.replyToMessageId ?? null;
 
-  if (canonicalReplyParentId) {
-    const parentMessage = messages.find((message) => message.messageId === canonicalReplyParentId);
-    addMessage(parentMessage);
-  }
+  const collectReplyChainMessages = (): void => {
+    if (canonicalReplyParentId) {
+      const parentMessage = messages.find((message) => message.messageId === canonicalReplyParentId);
+      addMessage(parentMessage);
+    }
 
-  let replyNeighborCount = 0;
-  if (canonicalReplyTargetId) {
-    for (
-      let index = messages.length - 1;
-      index >= 0 && replyNeighborCount < maxReplyNeighborMessages;
-      index -= 1
-    ) {
-      const message = messages[index];
-      const isDirectReplyNeighbor =
-        message.messageId === canonicalReplyTargetId ||
-        message.replyToMessageId === canonicalReplyTargetId;
-      if (!isDirectReplyNeighbor) {
-        continue;
-      }
-      const pickedBefore = pickedIds.has(message.messageId);
-      addMessage(message);
-      if (!pickedBefore && pickedIds.has(message.messageId)) {
-        replyNeighborCount += 1;
+    let replyNeighborCount = 0;
+    if (canonicalReplyTargetId) {
+      for (
+        let index = messages.length - 1;
+        index >= 0 && replyNeighborCount < maxReplyNeighborMessages;
+        index -= 1
+      ) {
+        const message = messages[index];
+        const isDirectReplyNeighbor =
+          message.messageId === canonicalReplyTargetId ||
+          message.replyToMessageId === canonicalReplyTargetId;
+        if (!isDirectReplyNeighbor) {
+          continue;
+        }
+        const pickedBefore = pickedIds.has(message.messageId);
+        addMessage(message);
+        if (!pickedBefore && pickedIds.has(message.messageId)) {
+          replyNeighborCount += 1;
+        }
       }
     }
+  };
+
+  if (
+    isReplyScopedTurn({
+      currentTurn,
+      replyTarget,
+    })
+  ) {
+    collectReplyChainMessages();
+  } else {
+    collectSameSpeakerMessages();
+    collectReplyChainMessages();
   }
 
   const orderByMessageId = new Map(messages.map((message, index) => [message.messageId, index]));
