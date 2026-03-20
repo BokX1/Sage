@@ -27,6 +27,7 @@
 
 ### Added
 
+- Added requester-only active-run steering interrupts for long-running tasks: when Sage is still `running`, a direct reply to the canonical live Sage response now queues one latest-wins steering message for the next safe reasoning boundary instead of silently forking a new task.
 - Added a dedicated `npm run langgraph:discord:smoke` command plus disposable-guild env knobs, so operators can validate the real Discord LangGraph read lane and approval/resume write flow without depending on LLM tool selection.
 - Added a dedicated `npm run ai-provider:probe` command plus doctor-backed Chat Completions tool-calling probing, so operators can verify a real AI provider base URL/model/key against Sage's live `tools` / `assistant.tool_calls` / `tool_call_id` contract instead of guessing from static model-profile metadata.
 - Added `npm run tools:audit` plus a matching `tools.audit` doctor check, so operators can now validate the live model-facing tool catalog for description quality, prompt routing metadata, capability-tag coverage, read-only annotations, artifact observation policy, and provider-compiler readiness before relying on a new tool surface.
@@ -63,6 +64,7 @@
 
 ### Changed
 
+- Changed the long-running reply contract so Sage now distinguishes three human-interaction modes explicitly: `running` tasks accept requester-only steering interrupts on the live response message, `waiting_user_input` replies still resume the paused task directly, and replies after terminal completion start a new turn as normal.
 - Raised the default compaction pressure thresholds from 36K to 64K estimated prompt tokens and from 12 to 24 tool results while keeping the 6-round guard in place, so long-running research turns can keep more raw evidence before compacting without losing Sage's protection against low-token loop drift.
 - Replaced Sage's heuristic runtime budgeting and closeout contract with deterministic runtime behavior: prompt budgeting now uses a local tokenizer plus provider-reported post-call usage instead of chars-per-token guesses, no-tool replies now default to ordinary plain assistant text while a dedicated control-classifier/runtime-tool path handles waits and cancellations, and long-running prompt assembly now retains evidence slices with refs instead of trimming one large raw observation blob.
 - Reworked Sage's runtime/provider failure surface around typed error codes, so retries, user-visible fallback copy, and trace metadata now distinguish provider auth/model/rate-limit/network/protocol failures without relying on regex classification of raw error text.
@@ -141,6 +143,8 @@
 
 ### Fixed
 
+- Fixed reply routing for long-running tasks so `waiting_user_input` resumes now require a direct reply to Sage's waiting message, still recover the canonical Sage reply id from persisted response-session state after restart, and keep routing correctly even when Discord reference hydration fails; matched active-run steering replies now use the raw reply target id for exact routing, only fall back to a fresh turn when the task truly became terminal first, and otherwise fail closed instead of silently forking a second task when interrupt queueing is rejected.
+- Fixed the hard-reset Prisma baseline so fresh database rebuilds now include the active-run steering interrupt columns directly in the single canonical baseline migration instead of requiring a follow-up migration layer after reset.
 - Fixed a hidden LangGraph read-lane recursion trap: read-only tool batches now exit their subgraph after one execution pass instead of re-entering a generic `ToolNode` loop, which stops legitimate research turns from hitting `recursion_limit` before Sage has actually exhausted its durable slice budget.
 - Fixed retry durability for long-running graph threads: when a Retry action successfully re-enters background work or a waiting state, Sage now persists the updated task-run status, next runnable time, and response-session state instead of only updating the visible Discord reply and leaving the durable worker record behind in its old failed state.
 - Fixed clarification detection for plain-text assistant turns so Sage now recognizes short actionable follow-up requests like `Tell me which repo to inspect next.` even without a trailing question mark, which keeps real clarification turns in `waiting_user_input` instead of silently falling back to fresh-turn handling on the user's next reply.

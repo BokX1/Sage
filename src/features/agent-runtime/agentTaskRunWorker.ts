@@ -341,6 +341,18 @@ async function processRunnableTaskRun(run: AgentTaskRunRecord): Promise<void> {
       },
     });
 
+    const { getAgentTaskRunByThreadId } = await getTaskRunRepo();
+    const latestTaskRun = await getAgentTaskRunByThreadId(run.threadId).catch(() => null);
+    const shouldSuppressTerminalPublish =
+      result.completionKind === 'final_answer' && latestTaskRun?.status === 'running';
+    if (shouldSuppressTerminalPublish) {
+      logger.info(
+        { threadId: run.threadId, taskRunId: run.id },
+        'Skipping terminal worker publish because a newer active-run interrupt kept the task runnable',
+      );
+      return;
+    }
+
     await publishTaskRunResult({
       run,
       result,

@@ -64,6 +64,7 @@ import {
   type GraphToolCallDescriptor,
 } from './nativeTools';
 import type {
+  ContinueGraphPendingUserInterrupt,
   GraphCompletionKind,
   GraphContextFrame,
   GraphDeliveryDisposition,
@@ -240,6 +241,19 @@ const ApprovalInterruptStateSchema = z.object({
   requests: z.array(ApprovalInterruptRequestStateSchema).min(1),
 });
 
+const UserSteerInterruptStateSchema = z.object({
+  kind: z.literal('user_steer'),
+  revision: z.number(),
+  messageId: z.string(),
+  userId: z.string(),
+  channelId: z.string(),
+  guildId: z.string().nullable(),
+  userText: z.string(),
+  userContent: z.unknown().optional(),
+  queuedAtIso: z.string().nullable().optional(),
+  supersededRevision: z.number().nullable().optional(),
+});
+
 const ApprovalResolutionStateSchema = z.object({
   kind: z.literal('approval_review'),
   requestId: z.string(),
@@ -254,6 +268,13 @@ const ApprovalBatchResolutionStateSchema = z.object({
   kind: z.literal('approval_review_batch'),
   batchId: z.string(),
   resolutions: z.array(ApprovalResolutionStateSchema).min(1),
+});
+
+const UserSteerInterruptResolutionStateSchema = z.object({
+  kind: z.literal('user_steer'),
+  revision: z.number(),
+  messageId: z.string(),
+  consumedAtIso: z.string(),
 });
 
 const GraphWaitingStateSchema = z.object({
@@ -473,9 +494,14 @@ const AgentGraphStateSchema = new StateSchema({
     .default(null),
   graphStatus: z.enum(['running', 'interrupted', 'completed', 'failed']).default('running'),
   activeWindowDurationMs: z.number().default(0),
-  pendingInterrupt: z.union([ApprovalInterruptStateSchema, z.null()]).default(null),
+  pendingInterrupt: z.union([ApprovalInterruptStateSchema, UserSteerInterruptStateSchema, z.null()]).default(null),
   interruptResolution: z
-    .union([ApprovalResolutionStateSchema, ApprovalBatchResolutionStateSchema, z.null()])
+    .union([
+      ApprovalResolutionStateSchema,
+      ApprovalBatchResolutionStateSchema,
+      UserSteerInterruptResolutionStateSchema,
+      z.null(),
+    ])
     .default(null),
   tokenUsage: GraphTokenUsageSchema.default({
     countSource: 'local_tokenizer',
@@ -573,6 +599,7 @@ export interface ContinueAgentGraphTurnParams {
   threadId: string;
   context?: Partial<AgentGraphRuntimeContext>;
   appendedMessages?: BaseMessage[];
+  pendingUserInterrupt?: ContinueGraphPendingUserInterrupt | null;
   clearWaitingState?: boolean;
   runId?: string;
   runName?: string;
@@ -679,6 +706,73 @@ function buildFollowUpResumeResponseSession(params: {
     sourceMessageId: readCurrentTurnMessageId(params.runtimeContext.currentTurn),
     // A user-input follow-up starts a fresh visible reply surface while keeping the same task run.
     status: 'draft',
+  };
+}
+
+function buildUserSteerInterruptHumanMessage(
+  interrupt: Extract<AgentGraphState['pendingInterrupt'], { kind: 'user_steer' }>,
+): HumanMessage {
+  const prefix =
+    'System: A new message arrived from the original requester while this task was still running. ' +
+    'Treat it as steering for the active task, reconcile it with your current progress, and only redirect the objective if the user clearly changed it.\n\n' +
+    'Latest steering message:';
+  const rawContent = interrupt.userContent;
+  if (Array.isArray(rawContent)) {
+    return new HumanMessage({
+      content: [
+        { type: 'text', text: prefix },
+        ...rawContent.filter(
+          (part): part is { type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string } } =>
+            !!part &&
+            typeof part === 'object' &&
+            !Array.isArray(part) &&
+            typeof (part as { type?: unknown }).type === 'string',
+        ),
+      ],
+    });
+  }
+
+  const messageText =
+    typeof rawContent === 'string' && rawContent.trim().length > 0 ? rawContent.trim() : interrupt.userText.trim();
+  return new HumanMessage({
+    content: `${prefix}\n${messageText}`.trim(),
+  });
+}
+
+function consumePendingUserSteerInterrupt(state: AgentGraphState): {
+  state: AgentGraphState;
+  appendedMessages: BaseMessage[];
+  interruptUpdate: Partial<AgentGraphState>;
+} {
+  if (state.pendingInterrupt?.kind !== 'user_steer') {
+    return {
+      state,
+      appendedMessages: [],
+      interruptUpdate: {},
+    };
+  }
+
+  const interruptMessage = buildUserSteerInterruptHumanMessage(state.pendingInterrupt);
+  const consumedAtIso = new Date().toISOString();
+  const nextState: AgentGraphState = {
+    ...state,
+    messages: [...(state.messages as BaseMessage[]), interruptMessage],
+    pendingInterrupt: null,
+    interruptResolution: {
+      kind: 'user_steer',
+      revision: state.pendingInterrupt.revision,
+      messageId: state.pendingInterrupt.messageId,
+      consumedAtIso,
+    },
+  };
+
+  return {
+    state: nextState,
+    appendedMessages: [interruptMessage],
+    interruptUpdate: {
+      pendingInterrupt: null,
+      interruptResolution: nextState.interruptResolution,
+    },
   };
 }
 
@@ -2051,27 +2145,30 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
     state: AgentGraphState,
     config: RunnableConfig,
   ): Promise<Command<unknown, Partial<AgentGraphState>, GraphNodeName>> => {
-    const runtimeContext = resolveRuntimeContext(state, config);
-    if (isTimedOut(state, graphConfig) || state.roundsCompleted >= graphConfig.sliceMaxSteps) {
+    const consumedInterrupt = consumePendingUserSteerInterrupt(state);
+    const effectiveState = consumedInterrupt.state;
+    const runtimeContext = resolveRuntimeContext(effectiveState, config);
+    if (isTimedOut(effectiveState, graphConfig) || effectiveState.roundsCompleted >= graphConfig.sliceMaxSteps) {
       return new Command({
         goto: 'yield_background',
         update: {
           stopReason: 'background_yield',
-          yieldReason: resolveBackgroundYieldReason(state, graphConfig),
+          yieldReason: resolveBackgroundYieldReason(effectiveState, graphConfig),
           resumeContext: snapshotRuntimeContext(runtimeContext),
-          contextFrame: buildContextFrame(state),
+          contextFrame: buildContextFrame(effectiveState),
+          ...consumedInterrupt.interruptUpdate,
         },
       });
     }
-    const toolContext = buildToolContext(state, runtimeContext, 'turn', config);
+    const toolContext = buildToolContext(effectiveState, runtimeContext, 'turn', config);
     const prepared = buildRebudgetingEvent(
-      state.messages as BaseMessage[],
+      effectiveState.messages as BaseMessage[],
       runtimeContext.model,
       runtimeContext.maxTokens,
     );
     const response = await invokeAgentModelTask({
       messages: buildAssistantTurnMessages({
-        state,
+        state: effectiveState,
         runtimeContext,
       }),
       activeToolNames: runtimeContext.activeToolNames,
@@ -2091,36 +2188,36 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
     const replyText = extractMessageText(aiMessage).trim();
     const toolCalls = getLastAiToolCalls([aiMessage]);
     const runtimeControl = resolveRuntimeControlSignal(toolCalls);
-    const nextActiveWindowDurationMs = addActiveWindowDuration(state, response.latencyMs);
+    const nextActiveWindowDurationMs = addActiveWindowDuration(effectiveState, response.latencyMs);
     const timedOutAfterModel = nextActiveWindowDurationMs >= graphConfig.sliceMaxDurationMs;
-    const nextRoundsCompleted = state.roundsCompleted + 1;
-    const nextTotalRoundsCompleted = state.totalRoundsCompleted + 1;
-    const nextMessages = [...(state.messages as BaseMessage[]), aiMessage];
+    const nextRoundsCompleted = effectiveState.roundsCompleted + 1;
+    const nextTotalRoundsCompleted = effectiveState.totalRoundsCompleted + 1;
+    const nextMessages = [...(effectiveState.messages as BaseMessage[]), aiMessage];
 
     if (toolCalls.length > 0 && runtimeControl.controlCount === 0) {
       const draftText = resolveDraftText(replyText);
       const responseSession = bumpResponseSession({
-        state,
+        state: effectiveState,
         latestText: draftText,
         status: 'draft',
       });
       return new Command({
         goto: timedOutAfterModel ? 'yield_background' : 'route_tool_phase',
         update: {
-          messages: [aiMessage],
+          messages: [...consumedInterrupt.appendedMessages, aiMessage],
           replyText: draftText,
           responseSession,
           activeWindowDurationMs: nextActiveWindowDurationMs,
           roundsCompleted: nextRoundsCompleted,
           totalRoundsCompleted: nextTotalRoundsCompleted,
-          stopReason: timedOutAfterModel ? 'background_yield' : state.stopReason,
-          yieldReason: timedOutAfterModel ? resolveBackgroundYieldReason(state, graphConfig) : null,
+          stopReason: timedOutAfterModel ? 'background_yield' : effectiveState.stopReason,
+          yieldReason: timedOutAfterModel ? resolveBackgroundYieldReason(effectiveState, graphConfig) : null,
           resumeContext: snapshotRuntimeContext(runtimeContext),
           compactionState:
             timedOutAfterModel
               ? buildCompactionState({
                   state: {
-                    ...state,
+                    ...effectiveState,
                     messages: nextMessages,
                     replyText: draftText,
                     responseSession,
@@ -2128,17 +2225,17 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
                   graphConfig,
                   reason: 'yield_boundary',
                 })
-              : state.compactionState,
+              : effectiveState.compactionState,
           contextFrame: buildContextFrame({
-            ...state,
+            ...effectiveState,
             messages: nextMessages,
             replyText: draftText,
             responseSession,
             compactionState:
               timedOutAfterModel
                 ? buildCompactionState({
-                    state: {
-                      ...state,
+                  state: {
+                      ...effectiveState,
                       messages: nextMessages,
                       replyText: draftText,
                       responseSession,
@@ -2146,18 +2243,19 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
                     graphConfig,
                     reason: 'yield_boundary',
                   })
-                : state.compactionState,
+                : effectiveState.compactionState,
           }),
           finalization: {
-            ...state.finalization,
+            ...effectiveState.finalization,
             rebudgeting: prepared.rebudgeting,
           },
           tokenUsage: mergeTokenUsage({
-            current: state.tokenUsage,
+            current: effectiveState.tokenUsage,
             rebudgeting: prepared.rebudgeting,
             usage: response.usage,
           }),
           plainTextOutcomeSource: null,
+          ...consumedInterrupt.interruptUpdate,
         },
       });
     }
@@ -2226,14 +2324,14 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
           }
         : null;
     const responseSession = bumpResponseSession({
-      state,
+      state: effectiveState,
       latestText: finalReplyText,
       status: waitingForUserInput ? 'waiting_user_input' : runtimeFailed ? 'failed' : 'final',
     });
     return new Command({
       goto: 'closeout_turn',
       update: {
-        messages: [aiMessage],
+        messages: [...consumedInterrupt.appendedMessages, aiMessage],
         replyText: finalReplyText,
         completionKind,
         stopReason: waitingForUserInput
@@ -2251,21 +2349,22 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
         resumeContext: snapshotRuntimeContext(runtimeContext),
         waitingState,
         contextFrame: buildContextFrame({
-          ...state,
+          ...effectiveState,
           messages: nextMessages,
           replyText: finalReplyText,
           responseSession,
         }),
         finalization: {
-          ...state.finalization,
+          ...effectiveState.finalization,
           rebudgeting: prepared.rebudgeting,
         },
         tokenUsage: mergeTokenUsage({
-          current: state.tokenUsage,
+          current: effectiveState.tokenUsage,
           rebudgeting: prepared.rebudgeting,
           usage: response.usage,
         }),
         plainTextOutcomeSource,
+        ...consumedInterrupt.interruptUpdate,
       },
     });
   };
@@ -3219,7 +3318,7 @@ async function recoverInterruptedGraphState(
       traceId: state.resumeContext.traceId,
       threadId: state.resumeContext.threadId,
       interruptKind: pendingInterrupt.kind,
-      interruptId: pendingInterrupt.requestId,
+      interruptId: pendingInterrupt.kind === 'approval_review' ? pendingInterrupt.requestId : pendingInterrupt.messageId,
       recoveryReason: context.reason,
       streamError: context.streamError instanceof Error ? context.streamError.message : undefined,
     };
@@ -3811,6 +3910,20 @@ export async function continueAgentGraphTurn(
           status: 'draft' as const,
         }
       : existingState.responseSession;
+  const nextPendingInterrupt = params.pendingUserInterrupt
+    ? {
+        kind: 'user_steer' as const,
+        revision: params.pendingUserInterrupt.revision,
+        messageId: params.pendingUserInterrupt.messageId,
+        userId: params.pendingUserInterrupt.userId,
+        channelId: params.pendingUserInterrupt.channelId,
+        guildId: params.pendingUserInterrupt.guildId,
+        userText: params.pendingUserInterrupt.userText,
+        userContent: params.pendingUserInterrupt.userContent,
+        queuedAtIso: params.pendingUserInterrupt.queuedAtIso ?? null,
+        supersededRevision: params.pendingUserInterrupt.supersededRevision ?? null,
+      }
+    : existingState.pendingInterrupt;
 
   const output = await runGraphValueStream(
     runtime.graph,
@@ -3827,6 +3940,8 @@ export async function continueAgentGraphTurn(
         deliveryDisposition: existingState.deliveryDisposition,
         graphStatus: 'running',
         yieldReason: null,
+        pendingInterrupt: nextPendingInterrupt,
+        interruptResolution: null,
         roundsCompleted: 0,
         activeWindowDurationMs: 0,
         finalization: buildDefaultFinalization(),
@@ -3847,6 +3962,7 @@ export async function continueAgentGraphTurn(
         guildId: mergedContext.guildId,
         userId: mergedContext.userId,
         continued: true,
+        hasPendingUserInterrupt: !!params.pendingUserInterrupt,
       },
     }),
     params.onStateUpdate,

@@ -2346,6 +2346,85 @@ describe('runGraphValueStream', () => {
     });
   });
 
+  it('injects a queued active-run steering interrupt exactly once at the next reasoning boundary', async () => {
+    await shutdownAgentGraphRuntime();
+    modelInvokeMock.mockResolvedValueOnce(
+      new AIMessage({
+        content: 'I updated the investigation to follow your latest instruction.',
+        tool_calls: [],
+      }),
+    );
+
+    const resumed = await __runAgentGraphCommandForTests({
+      threadId: 'trace-user-steer-1',
+      goto: 'tool_call_turn',
+      context: {
+        traceId: 'trace-user-steer-1',
+        originTraceId: 'trace-user-steer-1',
+        userId: 'user-1',
+        channelId: 'channel-1',
+        guildId: 'guild-1',
+        apiKey: 'test-api-key',
+        model: 'test-main-agent-model',
+        temperature: 0.6,
+        timeoutMs: 1_000,
+        maxTokens: 500,
+        activeToolNames: [],
+        routeKind: 'background_resume',
+        currentTurn: {
+          invokerUserId: 'user-1',
+          invokerDisplayName: 'User One',
+          messageId: 'message-user-steer-1',
+          guildId: 'guild-1',
+          channelId: 'channel-1',
+          invokedBy: 'component',
+          mentionedUserIds: [],
+          isDirectReply: false,
+          replyTargetMessageId: null,
+          replyTargetAuthorId: null,
+          botUserId: 'sage-bot',
+        },
+        replyTarget: null,
+        invokedBy: 'component',
+      },
+      state: {
+        messages: [new HumanMessage({ content: 'Keep checking the repo.' })],
+        pendingInterrupt: {
+          kind: 'user_steer',
+          revision: 1,
+          messageId: 'message-steer-1',
+          userId: 'user-1',
+          channelId: 'channel-1',
+          guildId: 'guild-1',
+          userText: 'Check the docs before you close this out.',
+          userContent: 'Check the docs before you close this out.',
+          queuedAtIso: '2026-03-20T10:30:00.000Z',
+          supersededRevision: null,
+        },
+      },
+    });
+
+    expect(resumed.replyText).toBe('I updated the investigation to follow your latest instruction.');
+    expect(resumed.interruptResolution).toEqual({
+      kind: 'user_steer',
+      revision: 1,
+      messageId: 'message-steer-1',
+      consumedAtIso: expect.any(String),
+    });
+    const resumedState = await __getAgentGraphStateForTests('trace-user-steer-1');
+    if (!resumedState) {
+      throw new Error('Expected the resumed graph state to be persisted.');
+    }
+    const injectedMessages = resumedState.messages.filter(
+      (message) =>
+        HumanMessage.isInstance(message) &&
+        typeof message.content === 'string' &&
+        message.content.includes('A new message arrived from the original requester while this task was still running.'),
+    );
+    expect(injectedMessages).toHaveLength(1);
+    expect(resumedState.pendingInterrupt).toBeNull();
+  });
+
   it('treats plain-text natural-language questions without runtime control as final answers', async () => {
     await shutdownAgentGraphRuntime();
     modelInvokeMock.mockResolvedValueOnce(

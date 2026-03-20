@@ -32,6 +32,9 @@ import {
 import {
   findWaitingUserInputTaskRun,
   getAgentTaskRunByThreadId,
+  type QueueRunningTaskRunActiveInterruptResult,
+  queueRunningTaskRunActiveInterrupt,
+  readActiveUserInterruptState,
   upsertAgentTaskRun,
   updateAgentTaskRunByThreadId,
 } from './agentTaskRunRepo';
@@ -131,6 +134,18 @@ export interface ResumeWaitingTaskRunWithInputParams {
   canModerate?: boolean;
   onResponseSessionUpdate?: RunChatTurnParams['onResponseSessionUpdate'];
 }
+
+export interface QueueRunningTaskRunActiveInterruptParams {
+  threadId: string;
+  userId: string;
+  channelId: string;
+  guildId: string | null;
+  messageId: string;
+  userText: string;
+  userContent?: LLMMessageContent;
+}
+
+export type QueueActiveRunUserInterruptResult = QueueRunningTaskRunActiveInterruptResult;
 
 export interface RetryFailedChatTurnParams {
   traceId: string;
@@ -436,6 +451,31 @@ async function failTaskRunForLimit(params: {
   });
 }
 
+function toContinuePendingUserInterrupt(taskRun: Awaited<ReturnType<typeof getAgentTaskRunByThreadId>> | null) {
+  const activeInterrupt = taskRun ? readActiveUserInterruptState(taskRun) : null;
+  if (!activeInterrupt || activeInterrupt.revision <= activeInterrupt.consumedRevision) {
+    return null;
+  }
+
+  return {
+    revision: activeInterrupt.revision,
+    messageId: activeInterrupt.payload.messageId,
+    userId: activeInterrupt.payload.userId,
+    channelId: activeInterrupt.payload.channelId,
+    guildId: activeInterrupt.payload.guildId,
+    userText: activeInterrupt.payload.userText,
+    userContent: activeInterrupt.payload.userContent,
+    queuedAtIso: activeInterrupt.queuedAt?.toISOString() ?? null,
+    supersededRevision: activeInterrupt.supersededRevision ?? null,
+  };
+}
+
+function readConsumedActiveInterruptRevision(graphResult: RuntimeGraphResult): number | null {
+  return graphResult.interruptResolution?.kind === 'user_steer'
+    ? graphResult.interruptResolution.revision
+    : null;
+}
+
 async function persistTaskRunFromGraphResult(params: {
   traceId: string;
   sourceMessageId: string | null;
@@ -449,10 +489,23 @@ async function persistTaskRunFromGraphResult(params: {
   existingTaskRun?: Awaited<ReturnType<typeof getAgentTaskRunByThreadId>> | null;
   resumeCount?: number;
   freshResponseSurface?: boolean;
-}): Promise<void> {
+}): Promise<{
+  persistedStatus: RunChatTurnResult['status'];
+  deferredForActiveInterrupt: boolean;
+}> {
   const latestTaskRun = await getAgentTaskRunByThreadId(params.traceId);
   const existingTaskRun = latestTaskRun ?? params.existingTaskRun ?? null;
   const status = deriveTaskRunStatus(params.graphResult);
+  const consumedActiveInterruptRevision = readConsumedActiveInterruptRevision(params.graphResult);
+  const existingActiveInterrupt = existingTaskRun ? readActiveUserInterruptState(existingTaskRun) : null;
+  const nextConsumedActiveInterruptRevision =
+    consumedActiveInterruptRevision === null
+      ? existingTaskRun?.activeUserInterruptConsumedRevision ?? 0
+      : Math.max(existingTaskRun?.activeUserInterruptConsumedRevision ?? 0, consumedActiveInterruptRevision);
+  const deferTerminalCompletionForActiveInterrupt =
+    status === 'completed' &&
+    !!existingActiveInterrupt &&
+    existingActiveInterrupt.revision > nextConsumedActiveInterruptRevision;
   const mergedResponseSessionBase = mergeResponseSessionRefs(
     existingTaskRun?.responseSessionJson,
     params.graphResult.responseSession,
@@ -467,15 +520,25 @@ async function persistTaskRunFromGraphResult(params: {
         overflowMessageIds: params.graphResult.responseSession.overflowMessageIds ?? [],
       }
     : mergedResponseSessionBase;
+  const persistedResponseSession =
+    deferTerminalCompletionForActiveInterrupt && existingTaskRun
+      ? {
+          ...mergedResponseSession,
+          latestText: existingTaskRun.latestDraftText,
+          draftRevision: existingTaskRun.draftRevision,
+          status: 'draft' as const,
+        }
+      : mergedResponseSession;
   const runningResponseSurfaceReady =
-    mergedResponseSession.surfaceAttached === true ||
-    typeof mergedResponseSession.responseMessageId === 'string' ||
+    persistedResponseSession.surfaceAttached === true ||
+    typeof persistedResponseSession.responseMessageId === 'string' ||
     (!params.freshResponseSurface &&
       (typeof existingTaskRun?.responseMessageId === 'string' ||
         typeof persistedResponseRefs.responseMessageId === 'string'));
   const accumulatedWallClockMs =
     (existingTaskRun?.taskWallClockMs ?? 0) +
     Math.max(0, Math.trunc(params.graphResult.activeWindowDurationMs ?? 0));
+  const persistedStatus = deferTerminalCompletionForActiveInterrupt ? 'running' : status;
   await upsertAgentTaskRun({
     threadId: params.traceId,
     originTraceId: existingTaskRun?.originTraceId ?? params.traceId,
@@ -485,35 +548,46 @@ async function persistTaskRunFromGraphResult(params: {
     requestedByUserId: existingTaskRun?.requestedByUserId ?? params.userId,
     sourceMessageId:
       params.freshResponseSurface
-        ? mergedResponseSession.sourceMessageId ?? params.sourceMessageId
+        ? persistedResponseSession.sourceMessageId ?? params.sourceMessageId
         : existingTaskRun?.sourceMessageId ??
-          mergedResponseSession.sourceMessageId ??
+          persistedResponseSession.sourceMessageId ??
           persistedResponseRefs.sourceMessageId ??
           params.sourceMessageId,
     responseMessageId:
       params.freshResponseSurface
-        ? mergedResponseSession.responseMessageId
-        : mergedResponseSession.responseMessageId ??
+        ? persistedResponseSession.responseMessageId
+        : persistedResponseSession.responseMessageId ??
           existingTaskRun?.responseMessageId ??
           persistedResponseRefs.responseMessageId,
-    status: status === 'waiting_approval' ? 'waiting_approval' : status === 'waiting_user_input' ? 'waiting_user_input' : status === 'running' ? 'running' : status === 'failed' ? 'failed' : status === 'cancelled' ? 'cancelled' : 'completed',
+    status:
+      persistedStatus === 'waiting_approval'
+        ? 'waiting_approval'
+        : persistedStatus === 'waiting_user_input'
+          ? 'waiting_user_input'
+          : persistedStatus === 'running'
+            ? 'running'
+            : persistedStatus === 'failed'
+              ? 'failed'
+              : persistedStatus === 'cancelled'
+                ? 'cancelled'
+                : 'completed',
     waitingKind:
-      status === 'waiting_approval'
+      persistedStatus === 'waiting_approval'
         ? 'approval_review'
-        : status === 'waiting_user_input'
+        : persistedStatus === 'waiting_user_input'
           ? 'user_input'
           : null,
-    latestDraftText: mergedResponseSession.latestText || params.graphResult.replyText,
-    draftRevision: mergedResponseSession.draftRevision,
-    completionKind: params.graphResult.completionKind,
-    stopReason: params.graphResult.stopReason,
+    latestDraftText: persistedResponseSession.latestText || params.graphResult.replyText,
+    draftRevision: persistedResponseSession.draftRevision,
+    completionKind: deferTerminalCompletionForActiveInterrupt ? null : params.graphResult.completionKind,
+    stopReason: deferTerminalCompletionForActiveInterrupt ? null : params.graphResult.stopReason,
     nextRunnableAt:
-      status === 'running'
+      persistedStatus === 'running'
         ? runningResponseSurfaceReady
           ? new Date(Date.now() + params.graphConfig.workerPollMs)
           : null
         : null,
-    responseSessionJson: mergedResponseSession,
+    responseSessionJson: persistedResponseSession,
     waitingStateJson: params.graphResult.waitingState ?? null,
     compactionStateJson: params.graphResult.compactionState ?? null,
     checkpointMetadataJson: {
@@ -521,15 +595,34 @@ async function persistTaskRunFromGraphResult(params: {
       sliceIndex: params.graphResult.sliceIndex,
       totalRoundsCompleted: params.graphResult.totalRoundsCompleted,
       plainTextOutcomeSource: params.graphResult.plainTextOutcomeSource,
+      deferredForActiveInterrupt: deferTerminalCompletionForActiveInterrupt,
       isAdmin: params.isAdmin ?? false,
       canModerate: params.canModerate ?? false,
     },
+    activeUserInterruptJson: existingTaskRun?.activeUserInterruptJson ?? null,
+    activeUserInterruptRevision: existingTaskRun?.activeUserInterruptRevision ?? 0,
+    activeUserInterruptConsumedRevision: nextConsumedActiveInterruptRevision,
+    activeUserInterruptQueuedAt: existingTaskRun?.activeUserInterruptQueuedAt ?? null,
+    activeUserInterruptConsumedAt:
+      consumedActiveInterruptRevision === null
+        ? existingTaskRun?.activeUserInterruptConsumedAt ?? null
+        : new Date(),
+    activeUserInterruptSupersededAt: existingTaskRun?.activeUserInterruptSupersededAt ?? null,
+    activeUserInterruptSupersededRevision: existingTaskRun?.activeUserInterruptSupersededRevision ?? null,
     maxTotalDurationMs: existingTaskRun?.maxTotalDurationMs ?? params.graphConfig.maxTotalDurationMs,
     maxIdleWaitMs: existingTaskRun?.maxIdleWaitMs ?? params.graphConfig.maxIdleWaitMs,
     taskWallClockMs: accumulatedWallClockMs,
     resumeCount: params.resumeCount ?? existingTaskRun?.resumeCount ?? 0,
-    completedAt: status === 'completed' || status === 'failed' || status === 'cancelled' ? new Date() : null,
+    completedAt:
+      persistedStatus === 'completed' || persistedStatus === 'failed' || persistedStatus === 'cancelled'
+        ? new Date()
+        : null,
   });
+
+  return {
+    persistedStatus,
+    deferredForActiveInterrupt: deferTerminalCompletionForActiveInterrupt,
+  };
 }
 
 export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTurnResult> {
@@ -1011,6 +1104,20 @@ export async function attachTaskRunResponseSession(params: {
   });
 }
 
+export async function queueActiveRunUserInterrupt(
+  params: QueueRunningTaskRunActiveInterruptParams,
+): Promise<QueueActiveRunUserInterruptResult> {
+  return await queueRunningTaskRunActiveInterrupt({
+    threadId: params.threadId,
+    requestedByUserId: params.userId,
+    guildId: params.guildId,
+    channelId: params.channelId,
+    messageId: params.messageId,
+    userText: params.userText,
+    userContent: params.userContent,
+  });
+}
+
 export async function resumeWaitingTaskRunWithInput(
   params: ResumeWaitingTaskRunWithInputParams,
 ): Promise<RunChatTurnResult> {
@@ -1216,6 +1323,7 @@ export async function resumeBackgroundTaskRun(params: {
     invokedBy: 'component',
   });
   try {
+    const pendingUserInterrupt = toContinuePendingUserInterrupt(taskRun);
     const graphResult = await continueAgentGraphTurn({
       threadId: params.threadId,
       runId: params.traceId,
@@ -1240,6 +1348,7 @@ export async function resumeBackgroundTaskRun(params: {
         activeToolNames,
         routeKind: 'background_resume',
       },
+      pendingUserInterrupt,
       onStateUpdate: params.onResponseSessionUpdate
         ? async (state) => {
             await params.onResponseSessionUpdate?.({
@@ -1254,7 +1363,7 @@ export async function resumeBackgroundTaskRun(params: {
         : undefined,
     });
 
-    await persistTaskRunFromGraphResult({
+    const persistedTaskState = await persistTaskRunFromGraphResult({
       traceId: params.threadId,
       sourceMessageId: taskRun.sourceMessageId ?? params.threadId,
       guildId: params.guildId,
@@ -1270,7 +1379,7 @@ export async function resumeBackgroundTaskRun(params: {
 
     return {
       runId: params.threadId,
-      status: deriveTaskRunStatus(graphResult),
+      status: persistedTaskState.persistedStatus,
       replyText: graphResult.replyText,
       delivery: graphResult.deliveryDisposition,
       completionKind: graphResult.completionKind,

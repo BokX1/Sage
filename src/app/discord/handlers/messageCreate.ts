@@ -30,10 +30,12 @@ import { isAdminFromMember, isModeratorFromMember } from '../../../platform/disc
 import { buildGuildApiKeyMissingResponse } from '../../../features/discord/byopBootstrap';
 import {
   attachTaskRunResponseSession,
+  queueActiveRunUserInterrupt,
   resumeWaitingTaskRunWithInput,
   type RunChatTurnParams,
 } from '../../../features/agent-runtime';
 import {
+  findRunningTaskRunForActiveInterrupt,
   findWaitingUserInputTaskRun,
 } from '../../../features/agent-runtime/agentTaskRunRepo';
 import { ReplyTargetContext } from '../../../features/agent-runtime/continuityContext';
@@ -376,6 +378,7 @@ export async function handleMessageCreate(message: Message) {
     const mentionedUserIds = getMentionedUserIds(message);
     const authorDisplayName =
       message.member?.displayName ?? message.author.username ?? message.author.id;
+    const replyReferenceMessageId = message.reference?.messageId ?? null;
 
     const referencedMessage = await resolveReferencedMessage(message);
     const replyToAuthorId =
@@ -634,6 +637,42 @@ export async function handleMessageCreate(message: Message) {
       return;
     }
 
+    let preMatchedWaitingTaskRun: Awaited<ReturnType<typeof findWaitingUserInputTaskRun>> = null;
+    let preMatchedRunningTaskRun: Awaited<ReturnType<typeof findRunningTaskRunForActiveInterrupt>> = null;
+    if (!invocation) {
+      if (replyReferenceMessageId) {
+        preMatchedWaitingTaskRun = await findWaitingUserInputTaskRun({
+          guildId: message.guildId,
+          channelId: message.channelId,
+          requestedByUserId: message.author.id,
+          replyToMessageId: replyReferenceMessageId,
+        });
+        preMatchedRunningTaskRun = preMatchedWaitingTaskRun
+          ? null
+          : await findRunningTaskRunForActiveInterrupt({
+              guildId: message.guildId,
+              channelId: message.channelId,
+              requestedByUserId: message.author.id,
+              replyToMessageId: replyReferenceMessageId,
+            });
+        if (preMatchedWaitingTaskRun || preMatchedRunningTaskRun) {
+          invocation = {
+            kind: 'reply',
+            cleanedText: message.content,
+          };
+          if (
+            !shouldAllowInvocation({
+              channelId: message.channelId,
+              userId: message.author.id,
+              kind: invocation.kind,
+            })
+          ) {
+            return;
+          }
+        }
+      }
+    }
+
     if (!invocation) {
       if (appConfig.AUTOPILOT_MODE === 'reserved' || appConfig.AUTOPILOT_MODE === 'talkative') {
         invocation = {
@@ -645,12 +684,13 @@ export async function handleMessageCreate(message: Message) {
       }
     }
 
+    const hadMeaningfulInvocationText = invocation.cleanedText.trim().length > 0;
     let promptMode: PromptInputMode = 'standard';
     if (invocation.cleanedText.trim().length === 0) {
       const fallbackPrompt = resolveEmptyInvocationPrompt({
         invocationKind: invocation.kind,
         hasImageContext: hasImageInvocationContext,
-        hasReplyTarget: !!replyTarget,
+        hasReplyTarget: !!replyTarget || replyReferenceMessageId !== null,
       });
       promptMode = fallbackPrompt.promptMode;
       invocation = {
@@ -703,6 +743,7 @@ export async function handleMessageCreate(message: Message) {
         invocation.cleanedText,
         runtimeAttachmentBlocks,
       );
+      const hasMeaningfulSteeringInput = hadMeaningfulInvocationText || runtimeAttachmentBlocks.length > 0;
       const userContent = buildMessageContent(message, {
         allowEmpty: true,
         textOverride: userTextWithAttachments,
@@ -727,7 +768,7 @@ export async function handleMessageCreate(message: Message) {
         channelId: message.channelId,
         invokedBy: invocation.kind,
         mentionedUserIds,
-        isDirectReply: referencedMessage !== null,
+        isDirectReply: replyReferenceMessageId !== null,
         replyTargetMessageId: replyTarget?.messageId ?? null,
         replyTargetAuthorId: replyTarget?.authorId ?? null,
         botUserId: client.user?.id ?? null,
@@ -735,12 +776,62 @@ export async function handleMessageCreate(message: Message) {
 
       const invokerIsAdmin = isAdminFromMember(message.member);
       const invokerCanModerate = isModeratorFromMember(message.member);
-      const waitingTaskRun = await findWaitingUserInputTaskRun({
-        guildId: message.guildId,
-        channelId: message.channelId,
-        requestedByUserId: message.author.id,
-        replyToMessageId: referencedMessage?.id ?? null,
-      });
+      const waitingTaskRun =
+        preMatchedWaitingTaskRun ??
+        (await findWaitingUserInputTaskRun({
+          guildId: message.guildId,
+          channelId: message.channelId,
+          requestedByUserId: message.author.id,
+          replyToMessageId: replyReferenceMessageId,
+        }));
+      const runningTaskRun = waitingTaskRun
+        ? null
+        : preMatchedRunningTaskRun ??
+          (await findRunningTaskRunForActiveInterrupt({
+            guildId: message.guildId,
+            channelId: message.channelId,
+            requestedByUserId: message.author.id,
+            replyToMessageId: replyReferenceMessageId,
+          }));
+      if (runningTaskRun && hasMeaningfulSteeringInput) {
+        let queueResult: 'queued' | 'stale' | 'rejected' = 'rejected';
+        try {
+          queueResult = await queueActiveRunUserInterrupt({
+            threadId: runningTaskRun.threadId,
+            userId: message.author.id,
+            channelId: message.channelId,
+            guildId: message.guildId,
+            messageId: message.id,
+            userText: userTextWithAttachments,
+            userContent: userContent ?? userTextWithAttachments,
+          });
+        } catch (error) {
+          loggerWithTrace.warn(
+            { error, threadId: runningTaskRun.threadId, messageId: message.id },
+            'Failed to queue active-run user interrupt for a matched running task',
+          );
+          throw error;
+        }
+        if (queueResult === 'queued') {
+          loggerWithTrace.info(
+            { threadId: runningTaskRun.threadId, messageId: message.id },
+            'Queued active-run user interrupt for the next reasoning boundary',
+          );
+          return;
+        }
+        if (queueResult === 'stale') {
+          loggerWithTrace.info(
+            { threadId: runningTaskRun.threadId, messageId: message.id },
+            'Matched running task became terminal before active-run interrupt queueing; handling this reply as a fresh turn',
+          );
+        } else {
+          loggerWithTrace.warn(
+            { threadId: runningTaskRun.threadId, messageId: message.id },
+            'Matched running task rejected active-run user interrupt; failing closed instead of forking a fresh turn',
+          );
+          throw new Error('Matched running task rejected active-run user interrupt');
+        }
+      }
       const isWaitingTaskRunResume = !!waitingTaskRun;
       let responseSessionMessage: ResponseSessionEditableMessage | null = null;
       const responseSessionThreadId = waitingTaskRun?.threadId ?? traceId;
@@ -803,7 +894,7 @@ export async function handleMessageCreate(message: Message) {
             userId: message.author.id,
             channelId: message.channelId,
             guildId: message.guildId,
-            replyToMessageId: referencedMessage?.id ?? null,
+            replyToMessageId: replyReferenceMessageId,
             userText: userTextWithAttachments,
             userContent: userContent ?? userTextWithAttachments,
             currentTurn,

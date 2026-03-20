@@ -28,6 +28,15 @@ export type AgentTaskRunStatus =
 
 export type AgentTaskWaitingKind = 'user_input' | 'approval_review';
 
+export interface AgentTaskRunActiveUserInterruptPayload {
+  messageId: string;
+  userId: string;
+  channelId: string;
+  guildId: string | null;
+  userText: string;
+  userContent?: unknown;
+}
+
 export interface AgentTaskRunRecord {
   id: string;
   threadId: string;
@@ -57,6 +66,13 @@ export interface AgentTaskRunRecord {
   waitingStateJson: unknown;
   compactionStateJson: unknown;
   checkpointMetadataJson: unknown;
+  activeUserInterruptJson: unknown;
+  activeUserInterruptRevision: number;
+  activeUserInterruptConsumedRevision: number;
+  activeUserInterruptQueuedAt: Date | null;
+  activeUserInterruptConsumedAt: Date | null;
+  activeUserInterruptSupersededAt: Date | null;
+  activeUserInterruptSupersededRevision: number | null;
   startedAt: Date;
   completedAt: Date | null;
   createdAt: Date;
@@ -95,11 +111,85 @@ function toRecord(value: NonNullable<AgentTaskRunRow>): AgentTaskRunRecord {
     waitingStateJson: value.waitingStateJson,
     compactionStateJson: value.compactionStateJson,
     checkpointMetadataJson: value.checkpointMetadataJson,
+    activeUserInterruptJson: value.activeUserInterruptJson,
+    activeUserInterruptRevision: value.activeUserInterruptRevision,
+    activeUserInterruptConsumedRevision: value.activeUserInterruptConsumedRevision,
+    activeUserInterruptQueuedAt: value.activeUserInterruptQueuedAt,
+    activeUserInterruptConsumedAt: value.activeUserInterruptConsumedAt,
+    activeUserInterruptSupersededAt: value.activeUserInterruptSupersededAt,
+    activeUserInterruptSupersededRevision: value.activeUserInterruptSupersededRevision,
     startedAt: value.startedAt,
     completedAt: value.completedAt,
     createdAt: value.createdAt,
     updatedAt: value.updatedAt,
   };
+}
+
+export interface AgentTaskRunActiveUserInterruptState {
+  payload: AgentTaskRunActiveUserInterruptPayload;
+  revision: number;
+  consumedRevision: number;
+  queuedAt: Date | null;
+  consumedAt: Date | null;
+  supersededAt: Date | null;
+  supersededRevision: number | null;
+}
+
+export type QueueRunningTaskRunActiveInterruptResult = 'queued' | 'stale' | 'rejected';
+
+export function readActiveUserInterruptState(
+  value: Pick<
+    AgentTaskRunRecord,
+    | 'activeUserInterruptJson'
+    | 'activeUserInterruptRevision'
+    | 'activeUserInterruptConsumedRevision'
+    | 'activeUserInterruptQueuedAt'
+    | 'activeUserInterruptConsumedAt'
+    | 'activeUserInterruptSupersededAt'
+    | 'activeUserInterruptSupersededRevision'
+  >,
+): AgentTaskRunActiveUserInterruptState | null {
+  if (!value.activeUserInterruptJson || typeof value.activeUserInterruptJson !== 'object') {
+    return null;
+  }
+
+  const payload = value.activeUserInterruptJson as Record<string, unknown>;
+  if (
+    typeof payload.messageId !== 'string' ||
+    typeof payload.userId !== 'string' ||
+    typeof payload.channelId !== 'string' ||
+    typeof payload.userText !== 'string'
+  ) {
+    return null;
+  }
+
+  return {
+    payload: {
+      messageId: payload.messageId,
+      userId: payload.userId,
+      channelId: payload.channelId,
+      guildId:
+        typeof payload.guildId === 'string' || payload.guildId === null
+          ? (payload.guildId as string | null)
+          : null,
+      userText: payload.userText,
+      userContent: payload.userContent,
+    },
+    revision: value.activeUserInterruptRevision,
+    consumedRevision: value.activeUserInterruptConsumedRevision,
+    queuedAt: value.activeUserInterruptQueuedAt,
+    consumedAt: value.activeUserInterruptConsumedAt,
+    supersededAt: value.activeUserInterruptSupersededAt,
+    supersededRevision: value.activeUserInterruptSupersededRevision,
+  };
+}
+
+function readResponseMessageId(value: unknown): string | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null;
+  }
+  const candidate = (value as Record<string, unknown>).responseMessageId;
+  return typeof candidate === 'string' ? candidate : null;
 }
 
 export async function createAgentTaskRun(params: {
@@ -122,6 +212,13 @@ export async function createAgentTaskRun(params: {
   waitingStateJson?: unknown;
   compactionStateJson?: unknown;
   checkpointMetadataJson?: unknown;
+  activeUserInterruptJson?: unknown;
+  activeUserInterruptRevision?: number;
+  activeUserInterruptConsumedRevision?: number;
+  activeUserInterruptQueuedAt?: Date | null;
+  activeUserInterruptConsumedAt?: Date | null;
+  activeUserInterruptSupersededAt?: Date | null;
+  activeUserInterruptSupersededRevision?: number | null;
   maxTotalDurationMs?: number;
   maxIdleWaitMs?: number;
 }): Promise<AgentTaskRunRecord> {
@@ -146,6 +243,13 @@ export async function createAgentTaskRun(params: {
       waitingStateJson: params.waitingStateJson,
       compactionStateJson: params.compactionStateJson,
       checkpointMetadataJson: params.checkpointMetadataJson,
+      activeUserInterruptJson: params.activeUserInterruptJson,
+      activeUserInterruptRevision: params.activeUserInterruptRevision ?? 0,
+      activeUserInterruptConsumedRevision: params.activeUserInterruptConsumedRevision ?? 0,
+      activeUserInterruptQueuedAt: params.activeUserInterruptQueuedAt ?? null,
+      activeUserInterruptConsumedAt: params.activeUserInterruptConsumedAt ?? null,
+      activeUserInterruptSupersededAt: params.activeUserInterruptSupersededAt ?? null,
+      activeUserInterruptSupersededRevision: params.activeUserInterruptSupersededRevision ?? null,
       maxTotalDurationMs: params.maxTotalDurationMs ?? AGENT_RUN_DEFAULT_MAX_TOTAL_DURATION_MS,
       maxIdleWaitMs: params.maxIdleWaitMs ?? AGENT_RUN_DEFAULT_MAX_IDLE_WAIT_MS,
     },
@@ -184,6 +288,13 @@ export async function upsertAgentTaskRun(params: {
   waitingStateJson?: unknown;
   compactionStateJson?: unknown;
   checkpointMetadataJson?: unknown;
+  activeUserInterruptJson?: unknown;
+  activeUserInterruptRevision?: number;
+  activeUserInterruptConsumedRevision?: number;
+  activeUserInterruptQueuedAt?: Date | null;
+  activeUserInterruptConsumedAt?: Date | null;
+  activeUserInterruptSupersededAt?: Date | null;
+  activeUserInterruptSupersededRevision?: number | null;
   maxTotalDurationMs?: number;
   maxIdleWaitMs?: number;
   taskWallClockMs?: number;
@@ -213,6 +324,13 @@ export async function upsertAgentTaskRun(params: {
       waitingStateJson: params.waitingStateJson,
       compactionStateJson: params.compactionStateJson,
       checkpointMetadataJson: params.checkpointMetadataJson,
+      activeUserInterruptJson: params.activeUserInterruptJson,
+      activeUserInterruptRevision: params.activeUserInterruptRevision ?? 0,
+      activeUserInterruptConsumedRevision: params.activeUserInterruptConsumedRevision ?? 0,
+      activeUserInterruptQueuedAt: params.activeUserInterruptQueuedAt ?? null,
+      activeUserInterruptConsumedAt: params.activeUserInterruptConsumedAt ?? null,
+      activeUserInterruptSupersededAt: params.activeUserInterruptSupersededAt ?? null,
+      activeUserInterruptSupersededRevision: params.activeUserInterruptSupersededRevision ?? null,
       maxTotalDurationMs: params.maxTotalDurationMs ?? AGENT_RUN_DEFAULT_MAX_TOTAL_DURATION_MS,
       maxIdleWaitMs: params.maxIdleWaitMs ?? AGENT_RUN_DEFAULT_MAX_IDLE_WAIT_MS,
       taskWallClockMs: params.taskWallClockMs ?? 0,
@@ -238,6 +356,13 @@ export async function upsertAgentTaskRun(params: {
       waitingStateJson: params.waitingStateJson,
       compactionStateJson: params.compactionStateJson,
       checkpointMetadataJson: params.checkpointMetadataJson,
+      activeUserInterruptJson: params.activeUserInterruptJson ?? undefined,
+      activeUserInterruptRevision: params.activeUserInterruptRevision ?? undefined,
+      activeUserInterruptConsumedRevision: params.activeUserInterruptConsumedRevision ?? undefined,
+      activeUserInterruptQueuedAt: params.activeUserInterruptQueuedAt ?? undefined,
+      activeUserInterruptConsumedAt: params.activeUserInterruptConsumedAt ?? undefined,
+      activeUserInterruptSupersededAt: params.activeUserInterruptSupersededAt ?? undefined,
+      activeUserInterruptSupersededRevision: params.activeUserInterruptSupersededRevision ?? undefined,
       maxTotalDurationMs: params.maxTotalDurationMs ?? undefined,
       maxIdleWaitMs: params.maxIdleWaitMs ?? undefined,
       taskWallClockMs: params.taskWallClockMs ?? undefined,
@@ -271,6 +396,13 @@ export async function updateAgentTaskRunByThreadId(params: {
   waitingStateJson?: unknown;
   compactionStateJson?: unknown;
   checkpointMetadataJson?: unknown;
+  activeUserInterruptJson?: unknown;
+  activeUserInterruptRevision?: number;
+  activeUserInterruptConsumedRevision?: number;
+  activeUserInterruptQueuedAt?: Date | null;
+  activeUserInterruptConsumedAt?: Date | null;
+  activeUserInterruptSupersededAt?: Date | null;
+  activeUserInterruptSupersededRevision?: number | null;
   completedAt?: Date | null;
   lastErrorText?: string | null;
 }): Promise<void> {
@@ -296,6 +428,13 @@ export async function updateAgentTaskRunByThreadId(params: {
       waitingStateJson: params.waitingStateJson,
       compactionStateJson: params.compactionStateJson,
       checkpointMetadataJson: params.checkpointMetadataJson,
+      activeUserInterruptJson: params.activeUserInterruptJson,
+      activeUserInterruptRevision: params.activeUserInterruptRevision,
+      activeUserInterruptConsumedRevision: params.activeUserInterruptConsumedRevision,
+      activeUserInterruptQueuedAt: params.activeUserInterruptQueuedAt,
+      activeUserInterruptConsumedAt: params.activeUserInterruptConsumedAt,
+      activeUserInterruptSupersededAt: params.activeUserInterruptSupersededAt,
+      activeUserInterruptSupersededRevision: params.activeUserInterruptSupersededRevision,
       completedAt: params.completedAt,
       lastErrorText: params.lastErrorText,
     },
@@ -392,7 +531,6 @@ export async function findWaitingUserInputTaskRun(params: {
       guildId: params.guildId,
     },
     orderBy: { updatedAt: 'desc' },
-    take: 5,
   });
 
   if (rows.length === 0) {
@@ -400,15 +538,98 @@ export async function findWaitingUserInputTaskRun(params: {
   }
 
   if (params.replyToMessageId) {
-    const directMatch = rows.find(
-      (row) => row.responseMessageId === params.replyToMessageId || row.sourceMessageId === params.replyToMessageId,
-    );
+    const directMatch = rows.find((row) => {
+      const persistedResponseMessageId = readResponseMessageId(row.responseSessionJson);
+      return row.responseMessageId === params.replyToMessageId || persistedResponseMessageId === params.replyToMessageId;
+    });
     if (directMatch) {
       return toRecord(directMatch);
     }
   }
 
   return null;
+}
+
+export async function findRunningTaskRunForActiveInterrupt(params: {
+  guildId: string | null;
+  channelId: string;
+  requestedByUserId: string;
+  replyToMessageId?: string | null;
+}): Promise<AgentTaskRunRecord | null> {
+  if (!params.replyToMessageId) {
+    return null;
+  }
+
+  const rows = await agentTaskRunDelegate.findMany({
+    where: {
+      status: 'running',
+      channelId: params.channelId,
+      requestedByUserId: params.requestedByUserId,
+      guildId: params.guildId,
+    },
+    orderBy: { updatedAt: 'desc' },
+  });
+
+  const directMatch = rows.find((row) => {
+    const persistedResponseMessageId = readResponseMessageId(row.responseSessionJson);
+    return row.responseMessageId === params.replyToMessageId || persistedResponseMessageId === params.replyToMessageId;
+  });
+  return directMatch ? toRecord(directMatch) : null;
+}
+
+export async function queueRunningTaskRunActiveInterrupt(params: {
+  threadId: string;
+  requestedByUserId: string;
+  guildId: string | null;
+  channelId: string;
+  messageId: string;
+  userText: string;
+  userContent?: unknown;
+  now?: Date;
+}): Promise<QueueRunningTaskRunActiveInterruptResult> {
+  const now = params.now ?? new Date();
+  const existing = await getAgentTaskRunByThreadId(params.threadId);
+  if (!existing || existing.status !== 'running') {
+    return 'stale';
+  }
+  if (
+    existing.requestedByUserId !== params.requestedByUserId ||
+    existing.channelId !== params.channelId ||
+    existing.guildId !== params.guildId
+  ) {
+    return 'rejected';
+  }
+
+  const previousInterrupt = readActiveUserInterruptState(existing);
+  const nextRevision = existing.activeUserInterruptRevision + 1;
+  const payload: AgentTaskRunActiveUserInterruptPayload = {
+    messageId: params.messageId,
+    userId: params.requestedByUserId,
+    channelId: params.channelId,
+    guildId: params.guildId,
+    userText: params.userText,
+    userContent: params.userContent,
+  };
+
+  await agentTaskRunDelegate.update({
+    where: { threadId: params.threadId },
+    data: {
+      activeUserInterruptJson: payload,
+      activeUserInterruptRevision: nextRevision,
+      activeUserInterruptQueuedAt: now,
+      activeUserInterruptConsumedAt: null,
+      activeUserInterruptSupersededAt:
+        previousInterrupt && previousInterrupt.revision > previousInterrupt.consumedRevision ? now : null,
+      activeUserInterruptSupersededRevision:
+        previousInterrupt && previousInterrupt.revision > previousInterrupt.consumedRevision
+          ? previousInterrupt.revision
+          : null,
+      nextRunnableAt: now,
+      completedAt: null,
+    },
+  });
+
+  return 'queued';
 }
 
 export async function deleteAgentTaskRunByThreadId(threadId: string): Promise<void> {

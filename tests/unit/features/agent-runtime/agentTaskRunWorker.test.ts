@@ -816,4 +816,97 @@ describe('agentTaskRunWorker', () => {
       }),
     );
   });
+
+  it('does not publish a terminal worker reply when a newer active interrupt keeps the task running', async () => {
+    getAgentTaskRunByThreadIdMock
+      .mockResolvedValueOnce({
+        id: 'task-terminal-suppressed',
+        threadId: 'thread-terminal-suppressed',
+        guildId: 'guild-1',
+        channelId: 'channel-1',
+        requestedByUserId: 'user-1',
+        sourceMessageId: 'message-terminal-suppressed',
+        responseMessageId: 'response-terminal-suppressed',
+        status: 'running',
+        responseSessionJson: {
+          responseSessionId: 'thread-terminal-suppressed',
+          status: 'draft',
+          latestText: 'Still working.',
+          draftRevision: 2,
+          sourceMessageId: 'message-terminal-suppressed',
+          responseMessageId: 'response-terminal-suppressed',
+          surfaceAttached: true,
+          overflowMessageIds: [],
+          linkedArtifactMessageIds: [],
+        },
+        checkpointMetadataJson: { isAdmin: true, canModerate: false },
+      })
+      .mockResolvedValueOnce({
+        id: 'task-terminal-suppressed',
+        threadId: 'thread-terminal-suppressed',
+        guildId: 'guild-1',
+        channelId: 'channel-1',
+        requestedByUserId: 'user-1',
+        sourceMessageId: 'message-terminal-suppressed',
+        responseMessageId: 'response-terminal-suppressed',
+        status: 'running',
+        responseSessionJson: {
+          responseSessionId: 'thread-terminal-suppressed',
+          status: 'draft',
+          latestText: 'Still working.',
+          draftRevision: 2,
+          sourceMessageId: 'message-terminal-suppressed',
+          responseMessageId: 'response-terminal-suppressed',
+          surfaceAttached: true,
+          overflowMessageIds: [],
+          linkedArtifactMessageIds: [],
+        },
+        checkpointMetadataJson: { isAdmin: true, canModerate: false },
+      });
+
+    const responseMessage = {
+      id: 'response-terminal-suppressed',
+      edit: vi.fn().mockResolvedValue(undefined),
+    };
+
+    clientMock.channels.fetch.mockImplementation(async () =>
+      ({
+        isTextBased: () => true,
+        send: vi.fn(),
+        messages: {
+          fetch: vi.fn(async (messageId: string) => {
+            if (messageId === 'response-terminal-suppressed') {
+              return responseMessage;
+            }
+            throw new Error(`Unexpected fetch: ${messageId}`);
+          }),
+        },
+      }) as never,
+    );
+
+    resumeBackgroundTaskRunMock.mockResolvedValue({
+      runId: 'thread-terminal-suppressed',
+      status: 'completed',
+      replyText: 'Final answer that should be suppressed.',
+      delivery: 'response_session',
+      completionKind: 'final_answer',
+      responseSession: {
+        responseSessionId: 'thread-terminal-suppressed',
+        status: 'final',
+        latestText: 'Final answer that should be suppressed.',
+        draftRevision: 3,
+        sourceMessageId: 'message-terminal-suppressed',
+        responseMessageId: 'response-terminal-suppressed',
+        linkedArtifactMessageIds: [],
+      },
+      files: [],
+    });
+
+    initAgentTaskRunWorker();
+    await vi.advanceTimersByTimeAsync(1_000);
+    await Promise.resolve();
+
+    expect(responseMessage.edit).not.toHaveBeenCalled();
+    expect(attachTaskRunResponseSessionMock).not.toHaveBeenCalled();
+  });
 });

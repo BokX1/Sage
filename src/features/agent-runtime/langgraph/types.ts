@@ -193,7 +193,20 @@ export interface ApprovalInterruptState {
   requests: ApprovalInterruptRequestState[];
 }
 
-export type GraphInterruptState = ApprovalInterruptState;
+export interface UserSteerInterruptState {
+  kind: 'user_steer';
+  revision: number;
+  messageId: string;
+  userId: string;
+  channelId: string;
+  guildId: string | null;
+  userText: string;
+  userContent?: unknown;
+  queuedAtIso?: string | null;
+  supersededRevision?: number | null;
+}
+
+export type GraphInterruptState = ApprovalInterruptState | UserSteerInterruptState;
 
 export interface ApprovalResolutionState {
   kind: 'approval_review';
@@ -213,7 +226,13 @@ export interface ApprovalBatchResolutionState {
 
 export type GraphInterruptResolution =
   | ApprovalResolutionState
-  | ApprovalBatchResolutionState;
+  | ApprovalBatchResolutionState
+  | {
+      kind: 'user_steer';
+      revision: number;
+      messageId: string;
+      consumedAtIso: string;
+    };
 
 export interface ApprovalResumeDecision {
   requestId: string;
@@ -299,4 +318,16 @@ export type GraphResumeInput =
 
 export interface PlainTextOutcomeTelemetry {
   plainTextOutcomeSource: PlainTextOutcomeSource | null;
+}
+
+export interface ContinueGraphPendingUserInterrupt {
+  revision: number;
+  messageId: string;
+  userId: string;
+  channelId: string;
+  guildId: string | null;
+  userText: string;
+  userContent?: unknown;
+  queuedAtIso?: string | null;
+  supersededRevision?: number | null;
 }

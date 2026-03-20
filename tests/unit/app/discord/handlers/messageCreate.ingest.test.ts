@@ -1,4 +1,4 @@
-import type { Message, TextChannel, User } from 'discord.js';
+import { Collection, type Message, type TextChannel, type User } from 'discord.js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 
@@ -7,7 +7,9 @@ const {
   mockClient,
   mockFetchAttachmentText,
   mockAttachTaskRunResponseSession,
+  mockQueueActiveRunUserInterrupt,
   mockResumeWaitingTaskRunWithInput,
+  mockFindRunningTaskRunForActiveInterrupt,
   mockFindWaitingUserInputTaskRun,
 } = vi.hoisted(() => {
   const mockGenerateChatReply = vi.fn();
@@ -16,14 +18,18 @@ const {
   };
   const mockFetchAttachmentText = vi.fn();
   const mockAttachTaskRunResponseSession = vi.fn().mockResolvedValue(undefined);
+  const mockQueueActiveRunUserInterrupt = vi.fn().mockResolvedValue('queued');
   const mockResumeWaitingTaskRunWithInput = vi.fn();
+  const mockFindRunningTaskRunForActiveInterrupt = vi.fn().mockResolvedValue(null);
   const mockFindWaitingUserInputTaskRun = vi.fn().mockResolvedValue(null);
   return {
     mockGenerateChatReply,
     mockClient,
     mockFetchAttachmentText,
     mockAttachTaskRunResponseSession,
+    mockQueueActiveRunUserInterrupt,
     mockResumeWaitingTaskRunWithInput,
+    mockFindRunningTaskRunForActiveInterrupt,
     mockFindWaitingUserInputTaskRun,
   };
 });
@@ -52,10 +58,12 @@ vi.mock('@/features/chat/chat-engine', () => ({
 
 vi.mock('@/features/agent-runtime', () => ({
   attachTaskRunResponseSession: mockAttachTaskRunResponseSession,
+  queueActiveRunUserInterrupt: mockQueueActiveRunUserInterrupt,
   resumeWaitingTaskRunWithInput: mockResumeWaitingTaskRunWithInput,
 }));
 
 vi.mock('@/features/agent-runtime/agentTaskRunRepo', () => ({
+  findRunningTaskRunForActiveInterrupt: mockFindRunningTaskRunForActiveInterrupt,
   findWaitingUserInputTaskRun: mockFindWaitingUserInputTaskRun,
 }));
 
@@ -209,7 +217,9 @@ describe('messageCreate - ingest + reply gating', () => {
     mockGenerateChatReply.mockReset();
     mockFetchAttachmentText.mockReset();
     mockAttachTaskRunResponseSession.mockReset();
+    mockQueueActiveRunUserInterrupt.mockReset();
     mockResumeWaitingTaskRunWithInput.mockReset();
+    mockFindRunningTaskRunForActiveInterrupt.mockReset();
     mockFindWaitingUserInputTaskRun.mockReset();
     mockIsRateLimited.mockReset();
     mockIsLoggingEnabled.mockReset();
@@ -227,11 +237,13 @@ describe('messageCreate - ingest + reply gating', () => {
     });
     mockIsRateLimited.mockReturnValue(false);
     mockAttachTaskRunResponseSession.mockResolvedValue(undefined);
+    mockQueueActiveRunUserInterrupt.mockResolvedValue('queued');
     mockResumeWaitingTaskRunWithInput.mockResolvedValue({
       replyText: 'Resumed waiting task',
       delivery: 'response_session',
       status: 'completed',
     });
+    mockFindRunningTaskRunForActiveInterrupt.mockResolvedValue(null);
     mockFindWaitingUserInputTaskRun.mockResolvedValue(null);
     mockIsLoggingEnabled.mockReturnValue(true);
     mockDeleteAttachmentChunks.mockResolvedValue(undefined);
@@ -473,6 +485,251 @@ describe('messageCreate - ingest + reply gating', () => {
         }),
       }),
     );
+  });
+
+  it('queues a requester reply to a running Sage response as an active interrupt instead of starting a new turn', async () => {
+    const referencedMessage = {
+      id: 'running-response-1',
+      author: {
+        id: '123',
+        bot: true,
+        username: 'SageBot',
+      } as User,
+      member: null,
+      guildId: 'guild-789',
+      channelId: 'channel-101',
+      reference: null,
+      mentions: {
+        users: new Collection<string, User>(),
+      } as Message['mentions'],
+      content: 'Still working on that.',
+    } as Partial<Message>;
+    const message = createMockMessage({
+      content: 'sage switch to the second repo instead',
+      reference: { messageId: 'running-response-1' },
+      fetchReference: vi.fn().mockResolvedValue(referencedMessage),
+    });
+    mockFindRunningTaskRunForActiveInterrupt.mockResolvedValueOnce({
+      id: 'run-running-1',
+      threadId: 'thread-running-1',
+      sourceMessageId: 'source-1',
+      responseMessageId: 'running-response-1',
+      status: 'running',
+    });
+
+    await handleMessageCreate(message);
+
+    expect(mockQueueActiveRunUserInterrupt).toHaveBeenCalledWith(
+      expect.objectContaining({
+        threadId: 'thread-running-1',
+        userId: 'user-456',
+        messageId: message.id,
+        userText: 'switch to the second repo instead',
+      }),
+    );
+    expect(mockGenerateChatReply).not.toHaveBeenCalled();
+    expect(mockResumeWaitingTaskRunWithInput).not.toHaveBeenCalled();
+    expect((message as unknown as { reply: ReturnType<typeof vi.fn> }).reply).not.toHaveBeenCalled();
+  });
+
+  it('fails closed instead of starting a fresh turn when a matched running-task interrupt cannot be queued', async () => {
+    const referencedMessage = {
+      id: 'running-response-queue-failure',
+      author: {
+        id: '123',
+        bot: true,
+        username: 'SageBot',
+      } as User,
+      member: null,
+      guildId: 'guild-789',
+      channelId: 'channel-101',
+      reference: null,
+      mentions: {
+        users: new Collection<string, User>(),
+      } as Message['mentions'],
+      content: 'Still working on that.',
+    } as Partial<Message>;
+    const message = createMockMessage({
+      content: 'sage switch the target to the docs repo',
+      reference: { messageId: 'running-response-queue-failure' },
+      fetchReference: vi.fn().mockResolvedValue(referencedMessage),
+    });
+    mockFindRunningTaskRunForActiveInterrupt.mockResolvedValueOnce({
+      id: 'run-running-queue-failure',
+      threadId: 'thread-running-queue-failure',
+      sourceMessageId: 'source-1',
+      responseMessageId: 'running-response-queue-failure',
+      status: 'running',
+    });
+    mockQueueActiveRunUserInterrupt.mockResolvedValueOnce('rejected');
+
+    await handleMessageCreate(message);
+
+    expect(mockQueueActiveRunUserInterrupt).toHaveBeenCalledWith(
+      expect.objectContaining({
+        threadId: 'thread-running-queue-failure',
+        userId: 'user-456',
+        messageId: message.id,
+      }),
+    );
+    expect(mockGenerateChatReply).not.toHaveBeenCalled();
+    expect(mockResumeWaitingTaskRunWithInput).not.toHaveBeenCalled();
+    expect((message as unknown as { reply: ReturnType<typeof vi.fn> }).reply).toHaveBeenCalledTimes(1);
+  });
+
+  it('falls back to a fresh turn when a matched running task becomes terminal before the interrupt is queued', async () => {
+    const referencedMessage = {
+      id: 'running-response-terminal-race',
+      author: {
+        id: '123',
+        bot: true,
+        username: 'SageBot',
+      } as User,
+      member: null,
+      guildId: 'guild-789',
+      channelId: 'channel-101',
+      reference: null,
+      mentions: {
+        users: new Collection<string, User>(),
+      } as Message['mentions'],
+      content: 'Still working on that.',
+    } as Partial<Message>;
+    const message = createMockMessage({
+      content: 'sage switch the search to the docs repo',
+      reference: { messageId: 'running-response-terminal-race' },
+      fetchReference: vi.fn().mockResolvedValue(referencedMessage),
+    });
+    mockFindRunningTaskRunForActiveInterrupt.mockResolvedValueOnce({
+      id: 'run-running-terminal-race',
+      threadId: 'thread-running-terminal-race',
+      sourceMessageId: 'source-1',
+      responseMessageId: 'running-response-terminal-race',
+      status: 'running',
+    });
+    mockQueueActiveRunUserInterrupt.mockResolvedValueOnce('stale');
+
+    await handleMessageCreate(message);
+
+    expect(mockQueueActiveRunUserInterrupt).toHaveBeenCalledWith(
+      expect.objectContaining({
+        threadId: 'thread-running-terminal-race',
+        userId: 'user-456',
+        messageId: message.id,
+      }),
+    );
+    expect(mockGenerateChatReply).toHaveBeenCalledTimes(1);
+    expect(mockResumeWaitingTaskRunWithInput).not.toHaveBeenCalled();
+  });
+
+  it('keeps waiting-user-input replies on the existing waiting resume path even if a running task would also match', async () => {
+    const referencedMessage = {
+      id: 'waiting-response-1',
+      author: {
+        id: '123',
+        bot: true,
+        username: 'SageBot',
+      } as User,
+      member: null,
+      guildId: 'guild-789',
+      channelId: 'channel-101',
+      reference: null,
+      mentions: {
+        users: new Collection<string, User>(),
+      } as Message['mentions'],
+      content: 'What repo should I inspect?',
+    } as Partial<Message>;
+    const message = createMockMessage({
+      content: 'sage use the second repo',
+      reference: { messageId: 'waiting-response-1' },
+      fetchReference: vi.fn().mockResolvedValue(referencedMessage),
+    });
+    mockFindWaitingUserInputTaskRun.mockResolvedValueOnce({
+      id: 'run-waiting-1',
+      threadId: 'thread-waiting-1',
+      sourceMessageId: 'source-1',
+      responseMessageId: 'waiting-response-1',
+      waitingKind: 'user_input',
+      status: 'waiting_user_input',
+    });
+    mockFindRunningTaskRunForActiveInterrupt.mockResolvedValueOnce({
+      id: 'run-running-2',
+      threadId: 'thread-running-2',
+      sourceMessageId: 'source-1',
+      responseMessageId: 'waiting-response-1',
+      status: 'running',
+    });
+
+    await handleMessageCreate(message);
+
+    expect(mockResumeWaitingTaskRunWithInput).toHaveBeenCalledTimes(1);
+    expect(mockQueueActiveRunUserInterrupt).not.toHaveBeenCalled();
+  });
+
+  it('resumes a waiting task from the raw Discord reply id even when reference hydration fails', async () => {
+    const message = createMockMessage({
+      content: 'Proceed',
+      reference: { messageId: 'waiting-response-fetch-failed' },
+      fetchReference: vi.fn().mockRejectedValue(new Error('reference fetch failed')),
+    });
+    mockFindWaitingUserInputTaskRun.mockResolvedValueOnce({
+      id: 'run-waiting-fetch-failed',
+      threadId: 'thread-waiting-fetch-failed',
+      sourceMessageId: 'source-1',
+      responseMessageId: null,
+      responseSessionJson: {
+        responseSessionId: 'thread-waiting-fetch-failed',
+        status: 'waiting_user_input',
+        latestText: 'Which repo should I inspect?',
+        draftRevision: 2,
+        sourceMessageId: 'source-1',
+        responseMessageId: 'waiting-response-fetch-failed',
+        linkedArtifactMessageIds: [],
+      },
+      waitingKind: 'user_input',
+      status: 'waiting_user_input',
+    });
+
+    await handleMessageCreate(message);
+
+    expect(mockFindWaitingUserInputTaskRun).toHaveBeenCalledWith(
+      expect.objectContaining({
+        replyToMessageId: 'waiting-response-fetch-failed',
+      }),
+    );
+    expect(mockResumeWaitingTaskRunWithInput).toHaveBeenCalledTimes(1);
+    expect(mockGenerateChatReply).not.toHaveBeenCalled();
+  });
+
+  it('queues active-run steering from the raw Discord reply id even when reference hydration fails', async () => {
+    const message = createMockMessage({
+      content: 'sage switch to the docs repo instead',
+      reference: { messageId: 'running-response-fetch-failed' },
+      fetchReference: vi.fn().mockRejectedValue(new Error('reference fetch failed')),
+    });
+    mockFindRunningTaskRunForActiveInterrupt.mockResolvedValueOnce({
+      id: 'run-running-fetch-failed',
+      threadId: 'thread-running-fetch-failed',
+      sourceMessageId: 'source-1',
+      responseMessageId: 'running-response-fetch-failed',
+      status: 'running',
+    });
+
+    await handleMessageCreate(message);
+
+    expect(mockFindRunningTaskRunForActiveInterrupt).toHaveBeenCalledWith(
+      expect.objectContaining({
+        replyToMessageId: 'running-response-fetch-failed',
+      }),
+    );
+    expect(mockQueueActiveRunUserInterrupt).toHaveBeenCalledWith(
+      expect.objectContaining({
+        threadId: 'thread-running-fetch-failed',
+        userId: 'user-456',
+        messageId: message.id,
+        userText: 'switch to the docs repo instead',
+      }),
+    );
+    expect(mockGenerateChatReply).not.toHaveBeenCalled();
   });
 
   it('ignores the old waiting draft message after restart and replies on the current follow-up instead', async () => {

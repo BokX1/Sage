@@ -3,9 +3,12 @@ export {
   resumeBackgroundTaskRun,
   resumeWaitingTaskRunWithInput,
   attachTaskRunResponseSession,
+  queueActiveRunUserInterrupt,
   type RetryFailedChatTurnParams,
   type RunChatTurnParams,
   type RunChatTurnResult,
+  type QueueActiveRunUserInterruptResult,
+  type QueueRunningTaskRunActiveInterruptParams,
   type ResumeWaitingTaskRunWithInputParams,
 } from './agentRuntime';
 

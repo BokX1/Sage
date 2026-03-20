@@ -137,6 +137,13 @@ model AgentTaskRun {
   waitingStateJson       Json?
   compactionStateJson    Json?
   checkpointMetadataJson Json?
+  activeUserInterruptJson             Json?
+  activeUserInterruptRevision         Int      @default(0)
+  activeUserInterruptConsumedRevision Int      @default(0)
+  activeUserInterruptQueuedAt         DateTime?
+  activeUserInterruptConsumedAt       DateTime?
+  activeUserInterruptSupersededAt     DateTime?
+  activeUserInterruptSupersededRevision Int?
   startedAt              DateTime @default(now())
   completedAt            DateTime?
   createdAt              DateTime @default(now())

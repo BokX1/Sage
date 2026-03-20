@@ -399,6 +399,10 @@ Durable task-run records used when Sage keeps a long-running LangGraph thread mo
 | `maxTotalDurationMs` / `maxIdleWaitMs` | `Int` / `Int` | Total task SLA and human-wait SLA budgets |
 | `lastErrorText` | `Text?` | Most recent runtime failure summary, when present |
 | `responseSessionJson` | `Json?` | Persisted response-session metadata |
+| `activeUserInterruptJson` | `Json?` | Latest requester-only steering reply queued while the run is still `running` |
+| `activeUserInterruptRevision` / `activeUserInterruptConsumedRevision` | `Int` / `Int` | Monotonic steering revision and the latest revision the graph has already consumed |
+| `activeUserInterruptQueuedAt` / `activeUserInterruptConsumedAt` | `DateTime?` / `DateTime?` | Audit timestamps for the latest queued steering input and when Sage actually consumed it |
+| `activeUserInterruptSupersededAt` / `activeUserInterruptSupersededRevision` | `DateTime?` / `Int?` | Latest-wins steering metadata when a newer requester reply supersedes an unconsumed interrupt |
 | `waitingStateJson` | `Json?` | Persisted approval or user-input wait state |
 | `compactionStateJson` | `Json?` | Persisted prompt-facing compaction state |
 | `checkpointMetadataJson` | `Json?` | Latest runnable-context metadata such as yield reason and resume counters |

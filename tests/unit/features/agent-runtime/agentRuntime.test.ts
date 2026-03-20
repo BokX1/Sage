@@ -15,6 +15,7 @@ const {
   upsertAgentTaskRunMock,
   getAgentTaskRunByThreadIdMock,
   findWaitingUserInputTaskRunMock,
+  queueRunningTaskRunActiveInterruptMock,
   updateAgentTaskRunByThreadIdMock,
   releaseAgentTaskRunLeaseMock,
 } = vi.hoisted(() => ({
@@ -52,6 +53,7 @@ const {
   upsertAgentTaskRunMock: vi.fn<(...args: unknown[]) => Promise<unknown>>(async () => undefined),
   getAgentTaskRunByThreadIdMock: vi.fn<(...args: unknown[]) => Promise<unknown>>(async () => null),
   findWaitingUserInputTaskRunMock: vi.fn<(...args: unknown[]) => Promise<unknown>>(async () => null),
+  queueRunningTaskRunActiveInterruptMock: vi.fn<(...args: unknown[]) => Promise<unknown>>(async () => 'stale'),
   updateAgentTaskRunByThreadIdMock: vi.fn<(...args: unknown[]) => Promise<unknown>>(async () => undefined),
   releaseAgentTaskRunLeaseMock: vi.fn<(...args: unknown[]) => Promise<unknown>>(async () => undefined),
 }));
@@ -159,6 +161,29 @@ vi.mock('@/features/agent-runtime/agentTaskRunRepo', () => ({
   upsertAgentTaskRun: upsertAgentTaskRunMock,
   getAgentTaskRunByThreadId: getAgentTaskRunByThreadIdMock,
   findWaitingUserInputTaskRun: findWaitingUserInputTaskRunMock,
+  queueRunningTaskRunActiveInterrupt: queueRunningTaskRunActiveInterruptMock,
+  readActiveUserInterruptState: vi.fn((taskRun: Record<string, unknown>) => {
+    const payload = taskRun.activeUserInterruptJson as Record<string, unknown> | null;
+    if (!payload || typeof payload.userText !== 'string') {
+      return null;
+    }
+    return {
+      payload: {
+        messageId: payload.messageId,
+        userId: payload.userId,
+        channelId: payload.channelId,
+        guildId: payload.guildId,
+        userText: payload.userText,
+        userContent: payload.userContent,
+      },
+      revision: taskRun.activeUserInterruptRevision ?? 0,
+      consumedRevision: taskRun.activeUserInterruptConsumedRevision ?? 0,
+      queuedAt: taskRun.activeUserInterruptQueuedAt ?? null,
+      consumedAt: taskRun.activeUserInterruptConsumedAt ?? null,
+      supersededAt: taskRun.activeUserInterruptSupersededAt ?? null,
+      supersededRevision: taskRun.activeUserInterruptSupersededRevision ?? null,
+    };
+  }),
   updateAgentTaskRunByThreadId: updateAgentTaskRunByThreadIdMock,
   releaseAgentTaskRunLease: releaseAgentTaskRunLeaseMock,
 }));
@@ -169,6 +194,7 @@ vi.mock('@/features/voice/voiceConversationSessionStore', () => ({
 
 import {
   attachTaskRunResponseSession,
+  queueActiveRunUserInterrupt,
   resumeBackgroundTaskRun,
   resumeWaitingTaskRunWithInput,
   retryFailedChatTurn,
@@ -292,6 +318,8 @@ describe('agentRuntime', () => {
     getAgentTaskRunByThreadIdMock.mockResolvedValue(null);
     findWaitingUserInputTaskRunMock.mockReset();
     findWaitingUserInputTaskRunMock.mockResolvedValue(null);
+    queueRunningTaskRunActiveInterruptMock.mockReset();
+    queueRunningTaskRunActiveInterruptMock.mockResolvedValue('stale');
     updateAgentTaskRunByThreadIdMock.mockReset();
     updateAgentTaskRunByThreadIdMock.mockResolvedValue(undefined);
     releaseAgentTaskRunLeaseMock.mockReset();
@@ -1174,23 +1202,26 @@ describe('agentRuntime', () => {
     });
 
     expect(result.replyText).toBe('Resumed and finished.');
-    expect(continueAgentGraphTurnMock).toHaveBeenCalledWith({
-      threadId: 'thread-1',
-      runId: 'trace-resume-1',
-      runName: 'sage_agent_background_resume',
-      context: expect.objectContaining({
-        traceId: 'trace-resume-1',
-        userId: 'user-1',
-        channelId: 'channel-1',
-        guildId: 'guild-1',
-        apiKey: 'test-api-key',
-        model: 'test-main-agent-model',
-        invokedBy: 'component',
-        invokerIsAdmin: true,
-        routeKind: 'background_resume',
-        activeToolNames: ['discord_messages', 'discord_admin'],
+    expect(continueAgentGraphTurnMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        threadId: 'thread-1',
+        runId: 'trace-resume-1',
+        runName: 'sage_agent_background_resume',
+        pendingUserInterrupt: null,
+        context: expect.objectContaining({
+          traceId: 'trace-resume-1',
+          userId: 'user-1',
+          channelId: 'channel-1',
+          guildId: 'guild-1',
+          apiKey: 'test-api-key',
+          model: 'test-main-agent-model',
+          invokedBy: 'component',
+          invokerIsAdmin: true,
+          routeKind: 'background_resume',
+          activeToolNames: ['discord_messages', 'discord_admin'],
+        }),
       }),
-    });
+    );
     expect(upsertAgentTaskRunMock).toHaveBeenCalledWith(
       expect.objectContaining({
         threadId: 'thread-1',
@@ -1718,5 +1749,272 @@ describe('agentRuntime', () => {
         status: 'failed',
       }),
     );
+  });
+
+  it('passes a queued active-run user interrupt into the next background graph continue', async () => {
+    const now = Date.now();
+    getAgentTaskRunByThreadIdMock.mockResolvedValue({
+      id: 'task-interrupt-1',
+      threadId: 'thread-interrupt-1',
+      originTraceId: 'trace-origin',
+      latestTraceId: 'trace-latest',
+      guildId: 'guild-1',
+      channelId: 'channel-1',
+      requestedByUserId: 'user-1',
+      sourceMessageId: 'message-source-interrupt-1',
+      responseMessageId: 'response-interrupt-1',
+      status: 'running',
+      waitingKind: null,
+      latestDraftText: 'Still checking.',
+      draftRevision: 3,
+      completionKind: null,
+      stopReason: 'background_yield',
+      nextRunnableAt: new Date(now + 60_000),
+      leaseOwner: 'worker-1',
+      leaseExpiresAt: new Date(now + 60_000),
+      heartbeatAt: new Date(now),
+      resumeCount: 1,
+      taskWallClockMs: 1_500,
+      maxTotalDurationMs: 3_600_000,
+      maxIdleWaitMs: 86_400_000,
+      lastErrorText: null,
+      responseSessionJson: {
+        responseSessionId: 'thread-interrupt-1',
+        status: 'draft',
+        latestText: 'Still checking.',
+        draftRevision: 3,
+        sourceMessageId: 'message-source-interrupt-1',
+        responseMessageId: 'response-interrupt-1',
+        surfaceAttached: true,
+        overflowMessageIds: [],
+        linkedArtifactMessageIds: [],
+      },
+      waitingStateJson: null,
+      compactionStateJson: null,
+      checkpointMetadataJson: { isAdmin: true, canModerate: false },
+      activeUserInterruptJson: {
+        messageId: 'steer-message-1',
+        userId: 'user-1',
+        channelId: 'channel-1',
+        guildId: 'guild-1',
+        userText: 'Check the docs before the repo search.',
+        userContent: 'Check the docs before the repo search.',
+      },
+      activeUserInterruptRevision: 3,
+      activeUserInterruptConsumedRevision: 2,
+      activeUserInterruptQueuedAt: new Date(now - 1_000),
+      activeUserInterruptConsumedAt: null,
+      activeUserInterruptSupersededAt: null,
+      activeUserInterruptSupersededRevision: null,
+      startedAt: new Date(now - 5 * 60_000),
+      completedAt: null,
+      createdAt: new Date(now - 5 * 60_000),
+      updatedAt: new Date(now - 5_000),
+    });
+    continueAgentGraphTurnMock.mockResolvedValue(
+      makeGraphResult({
+        replyText: 'I checked the docs first and then verified the repo.',
+        activeWindowDurationMs: 400,
+        interruptResolution: {
+          kind: 'user_steer',
+          revision: 3,
+          messageId: 'steer-message-1',
+          consumedAtIso: '2026-03-20T10:40:00.000Z',
+        },
+      }),
+    );
+
+    await resumeBackgroundTaskRun({
+      traceId: 'trace-interrupt-1',
+      threadId: 'thread-interrupt-1',
+      userId: 'user-1',
+      channelId: 'channel-1',
+      guildId: 'guild-1',
+      isAdmin: true,
+    });
+
+    expect(continueAgentGraphTurnMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        threadId: 'thread-interrupt-1',
+        pendingUserInterrupt: expect.objectContaining({
+          revision: 3,
+          messageId: 'steer-message-1',
+          userText: 'Check the docs before the repo search.',
+        }),
+      }),
+    );
+    expect(upsertAgentTaskRunMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        threadId: 'thread-interrupt-1',
+        activeUserInterruptConsumedRevision: 3,
+      }),
+    );
+  });
+
+  it('defers terminal persistence when a newer active-run interrupt lands before final completion saves', async () => {
+    const now = Date.now();
+    getAgentTaskRunByThreadIdMock
+      .mockResolvedValueOnce({
+        id: 'task-defer-1',
+        threadId: 'thread-defer-1',
+        originTraceId: 'trace-origin',
+        latestTraceId: 'trace-latest',
+        guildId: 'guild-1',
+        channelId: 'channel-1',
+        requestedByUserId: 'user-1',
+        sourceMessageId: 'message-source-defer-1',
+        responseMessageId: 'response-defer-1',
+        status: 'running',
+        waitingKind: null,
+        latestDraftText: 'Still checking.',
+        draftRevision: 2,
+        completionKind: null,
+        stopReason: 'background_yield',
+        nextRunnableAt: new Date(now + 60_000),
+        leaseOwner: 'worker-1',
+        leaseExpiresAt: new Date(now + 60_000),
+        heartbeatAt: new Date(now),
+        resumeCount: 1,
+        taskWallClockMs: 2_000,
+        maxTotalDurationMs: 3_600_000,
+        maxIdleWaitMs: 86_400_000,
+        lastErrorText: null,
+        responseSessionJson: {
+          responseSessionId: 'thread-defer-1',
+          status: 'draft',
+          latestText: 'Still checking.',
+          draftRevision: 2,
+          sourceMessageId: 'message-source-defer-1',
+          responseMessageId: 'response-defer-1',
+          surfaceAttached: true,
+          overflowMessageIds: [],
+          linkedArtifactMessageIds: [],
+        },
+        waitingStateJson: null,
+        compactionStateJson: null,
+        checkpointMetadataJson: { isAdmin: true, canModerate: false },
+        activeUserInterruptJson: null,
+        activeUserInterruptRevision: 0,
+        activeUserInterruptConsumedRevision: 0,
+        activeUserInterruptQueuedAt: null,
+        activeUserInterruptConsumedAt: null,
+        activeUserInterruptSupersededAt: null,
+        activeUserInterruptSupersededRevision: null,
+        startedAt: new Date(now - 5 * 60_000),
+        completedAt: null,
+        createdAt: new Date(now - 5 * 60_000),
+        updatedAt: new Date(now - 5_000),
+      })
+      .mockResolvedValueOnce({
+        id: 'task-defer-1',
+        threadId: 'thread-defer-1',
+        originTraceId: 'trace-origin',
+        latestTraceId: 'trace-latest',
+        guildId: 'guild-1',
+        channelId: 'channel-1',
+        requestedByUserId: 'user-1',
+        sourceMessageId: 'message-source-defer-1',
+        responseMessageId: 'response-defer-1',
+        status: 'running',
+        waitingKind: null,
+        latestDraftText: 'Still checking.',
+        draftRevision: 2,
+        completionKind: null,
+        stopReason: 'background_yield',
+        nextRunnableAt: new Date(now + 60_000),
+        leaseOwner: 'worker-1',
+        leaseExpiresAt: new Date(now + 60_000),
+        heartbeatAt: new Date(now),
+        resumeCount: 1,
+        taskWallClockMs: 2_000,
+        maxTotalDurationMs: 3_600_000,
+        maxIdleWaitMs: 86_400_000,
+        lastErrorText: null,
+        responseSessionJson: {
+          responseSessionId: 'thread-defer-1',
+          status: 'draft',
+          latestText: 'Still checking.',
+          draftRevision: 2,
+          sourceMessageId: 'message-source-defer-1',
+          responseMessageId: 'response-defer-1',
+          surfaceAttached: true,
+          overflowMessageIds: [],
+          linkedArtifactMessageIds: [],
+        },
+        waitingStateJson: null,
+        compactionStateJson: null,
+        checkpointMetadataJson: { isAdmin: true, canModerate: false },
+        activeUserInterruptJson: {
+          messageId: 'steer-message-late-1',
+          userId: 'user-1',
+          channelId: 'channel-1',
+          guildId: 'guild-1',
+          userText: 'Actually also check the docs.',
+          userContent: 'Actually also check the docs.',
+        },
+        activeUserInterruptRevision: 5,
+        activeUserInterruptConsumedRevision: 4,
+        activeUserInterruptQueuedAt: new Date(now - 500),
+        activeUserInterruptConsumedAt: null,
+        activeUserInterruptSupersededAt: null,
+        activeUserInterruptSupersededRevision: null,
+        startedAt: new Date(now - 5 * 60_000),
+        completedAt: null,
+        createdAt: new Date(now - 5 * 60_000),
+        updatedAt: new Date(now - 1_000),
+      });
+    continueAgentGraphTurnMock.mockResolvedValue(
+      makeGraphResult({
+        replyText: 'Final answer before the late steer.',
+        activeWindowDurationMs: 600,
+      }),
+    );
+
+    const result = await resumeBackgroundTaskRun({
+      traceId: 'trace-defer-1',
+      threadId: 'thread-defer-1',
+      userId: 'user-1',
+      channelId: 'channel-1',
+      guildId: 'guild-1',
+      isAdmin: true,
+    });
+
+    expect(result.status).toBe('running');
+    expect(upsertAgentTaskRunMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        threadId: 'thread-defer-1',
+        status: 'running',
+        completionKind: null,
+        stopReason: null,
+        checkpointMetadataJson: expect.objectContaining({
+          deferredForActiveInterrupt: true,
+        }),
+      }),
+    );
+  });
+
+  it('queues active-run user interrupts through the repo contract', async () => {
+    queueRunningTaskRunActiveInterruptMock.mockResolvedValue('queued');
+
+    const queued = await queueActiveRunUserInterrupt({
+      threadId: 'thread-active-1',
+      userId: 'user-1',
+      channelId: 'channel-1',
+      guildId: 'guild-1',
+      messageId: 'message-active-1',
+      userText: 'Pivot the search to docs first.',
+      userContent: 'Pivot the search to docs first.',
+    });
+
+    expect(queued).toBe('queued');
+    expect(queueRunningTaskRunActiveInterruptMock).toHaveBeenCalledWith({
+      threadId: 'thread-active-1',
+      requestedByUserId: 'user-1',
+      guildId: 'guild-1',
+      channelId: 'channel-1',
+      messageId: 'message-active-1',
+      userText: 'Pivot the search to docs first.',
+      userContent: 'Pivot the search to docs first.',
+    });
   });
 });
