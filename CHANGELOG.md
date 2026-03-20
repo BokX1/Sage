@@ -143,6 +143,7 @@
 
 ### Fixed
 
+- Fixed fresh active-run steering resumes so Sage no longer front-loads a bundle of single-value LangGraph checkpoint updates at continue entry; resumed background-yield threads now reset through a dedicated setup hop, which prevents newer `contextFrame`/resume-state checkpoint collisions from surfacing as `I ran into a problem while I was picking that back up, so please try again.` during real mid-turn steering.
 - Fixed active-run steering resume recovery so requester replies that are queued while Sage is already running in the background now inject as the next human steering message without colliding with LangGraph single-value checkpoint channels, which prevents both the `INVALID_CONCURRENT_GRAPH_UPDATE` / `LastValue can only receive one value per step` failure and the follow-on `Invalid update for channel "resumeContext"` resume crash that were surfacing as `I ran into a problem while I was picking that back up, so please try again.`
 - Fixed foreground active-run steering discovery so the first visible in-progress Sage response now binds a minimal durable `running` task record immediately, which lets direct replies like `stop` steer the live task before the original turn fully persists instead of falling through into a misleading fresh-turn answer on a second message.
 - Fixed the mid-turn steering terminal-race path so a requester reply that lands just as a running task finishes now reopens the same task thread and edits Sage's canonical response-session message instead of silently downgrading into a brand-new visible turn.

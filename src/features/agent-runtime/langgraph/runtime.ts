@@ -399,6 +399,8 @@ const AgentGraphConfigurableSchema = z
     promptVersion: z.string().nullable().optional(),
     promptFingerprint: z.string().nullable().optional(),
     runId: z.string().nullable().optional(),
+    continueClearWaitingState: z.boolean().optional(),
+    continueResponseSession: GraphResponseSessionSchema.nullable().optional(),
   })
   .strip();
 
@@ -3208,11 +3210,33 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
 
   const continueRouteNode = async (
     state: AgentGraphState,
-  ): Promise<Command<unknown, Partial<AgentGraphState>, GraphNodeName>> =>
-    new Command({
-      goto: resolveContinueNode(state),
-      update: {},
+    config: RunnableConfig,
+  ): Promise<Command<unknown, Partial<AgentGraphState>, GraphNodeName>> => {
+    const configured = AgentGraphConfigurableSchema.parse(config.configurable ?? {});
+    const update: Partial<AgentGraphState> = {
+      responseSession: configured.continueResponseSession ?? state.responseSession,
+      waitingState: configured.continueClearWaitingState ? null : state.waitingState,
+      completionKind: null,
+      stopReason: 'assistant_turn_completed',
+      deliveryDisposition: state.deliveryDisposition,
+      graphStatus: 'running',
+      yieldReason: null,
+      pendingInterrupt: state.pendingInterrupt?.kind === 'approval_review' ? state.pendingInterrupt : null,
+      interruptResolution: null,
+      roundsCompleted: 0,
+      activeWindowDurationMs: 0,
+      finalization: buildDefaultFinalization(),
+      plainTextOutcomeSource: null,
+    };
+
+    return new Command({
+      goto: resolveContinueNode({
+        ...state,
+        ...update,
+      } as AgentGraphState),
+      update,
     });
+  };
 
   return new StateGraph({
     state: AgentGraphStateSchema,
@@ -3927,13 +3951,6 @@ export async function continueAgentGraphTurn(
     ],
     replyTarget: params.context?.replyTarget ?? existingState.resumeContext.replyTarget ?? null,
   };
-  const persistedMergedContext: AgentGraphRuntimeContext = params.clearWaitingState
-    ? {
-        ...mergedContext,
-        waitingFollowUp: null,
-        promptMode: existingState.resumeContext.promptMode ?? 'standard',
-      }
-    : mergedContext;
   const isWaitingFollowUpResume =
     params.clearWaitingState &&
     existingState.waitingState?.kind === 'user_input' &&
@@ -3957,8 +3974,6 @@ export async function continueAgentGraphTurn(
     ...(params.appendedMessages ?? []),
     ...(shouldInjectPendingUserInterrupt ? [buildUserSteerInterruptHumanMessage(params.pendingUserInterrupt!)] : []),
   ];
-  const nextPendingInterrupt =
-    existingState.pendingInterrupt?.kind === 'approval_review' ? existingState.pendingInterrupt : null;
 
   const output = await runGraphValueStream(
     runtime.graph,
@@ -3966,20 +3981,6 @@ export async function continueAgentGraphTurn(
       goto: 'continue_route',
       update: Object.entries({
         messages: continueMessages,
-        resumeContext: snapshotRuntimeContext(persistedMergedContext),
-        replyText: existingState.replyText,
-        responseSession: reopenedResponseSession,
-        waitingState: params.clearWaitingState ? null : existingState.waitingState,
-        completionKind: null,
-        stopReason: 'assistant_turn_completed',
-        deliveryDisposition: existingState.deliveryDisposition,
-        graphStatus: 'running',
-        yieldReason: null,
-        pendingInterrupt: nextPendingInterrupt,
-        interruptResolution: null,
-        roundsCompleted: 0,
-        activeWindowDurationMs: 0,
-        finalization: buildDefaultFinalization(),
       }) as [string, unknown][],
     }),
     buildRunnableConfig({
@@ -3987,7 +3988,11 @@ export async function continueAgentGraphTurn(
       recursionLimit: runtime.config.recursionLimit,
       runId,
       runName: params.runName?.trim() || 'sage_agent_continue',
-      context: mergedContext,
+      context: {
+        ...mergedContext,
+        continueClearWaitingState: params.clearWaitingState === true,
+        continueResponseSession: reopenedResponseSession,
+      } as Partial<AgentGraphRuntimeContext>,
       callbacks: telemetry.callbacks,
       tags: ['sage', 'agent-runtime', 'langgraph', 'continue'],
       metadata: {

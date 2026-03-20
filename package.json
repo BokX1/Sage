@@ -40,6 +40,7 @@
     "tools:audit": "node --import tsx src/cli/tool-audit.ts --",
     "tools:smoke": "ts-node -P config/tooling/tsconfig.app.json src/cli/tool-smoke.ts",
     "langgraph:discord:smoke": "node --import tsx src/cli/langgraph-discord-smoke.ts",
+    "langgraph:interrupt:smoke": "node --import tsx src/cli/langgraph-interrupt-smoke.ts",
     "postinstall": "prisma generate",
     "prepack": "npm run build",
     "prepare": "husky",
