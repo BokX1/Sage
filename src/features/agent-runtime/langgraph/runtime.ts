@@ -2409,11 +2409,6 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
             responseMessageId: effectiveState.responseSession.responseMessageId,
           }
         : null;
-    const responseSession = bumpResponseSession({
-      state: effectiveState,
-      latestText: finalReplyText,
-      status: waitingForUserInput ? 'waiting_user_input' : runtimeFailed ? 'failed' : 'final',
-    });
     return new Command({
       goto: 'closeout_turn',
       update: {
@@ -2428,18 +2423,11 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
               ? 'cancelled'
               : 'assistant_turn_completed',
         deliveryDisposition: 'response_session',
-        responseSession,
         activeWindowDurationMs: nextActiveWindowDurationMs,
         roundsCompleted: nextRoundsCompleted,
         totalRoundsCompleted: nextTotalRoundsCompleted,
         resumeContext: snapshotRuntimeContext(runtimeContext),
         waitingState,
-        contextFrame: buildContextFrame({
-          ...effectiveState,
-          messages: nextMessages,
-          replyText: finalReplyText,
-          responseSession,
-        }),
         finalization: {
           ...effectiveState.finalization,
           rebudgeting: prepared.rebudgeting,
@@ -2482,16 +2470,6 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
         kind: 'turn',
         category: 'runtime',
       });
-      const responseSession = bumpResponseSession({
-        state: effectiveState,
-        latestText: resolvedReplyText,
-        status: waitingForUserInput ? 'waiting_user_input' : runtimeFailed ? 'failed' : 'final',
-      });
-      const nextState = {
-        ...effectiveState,
-        replyText: resolvedReplyText,
-        responseSession,
-      };
       return new Command({
         goto: 'closeout_turn',
         update: {
@@ -2507,8 +2485,6 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
                 ? 'cancelled'
               : 'assistant_turn_completed',
           deliveryDisposition: 'response_session',
-          responseSession,
-          contextFrame: buildContextFrame(nextState),
           resumeContext: snapshotRuntimeContext(runtimeContext),
         },
       });
@@ -2933,11 +2909,6 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
         kind: 'turn',
         category: 'runtime',
       });
-      const responseSession = bumpResponseSession({
-        state,
-        latestText: replyText,
-        status: 'failed',
-      });
       return new Command({
         goto: 'closeout_turn',
         update: {
@@ -2945,12 +2916,6 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
           completionKind: 'runtime_failure',
           stopReason: 'runtime_failure',
           deliveryDisposition: 'response_session',
-          responseSession,
-          contextFrame: buildContextFrame({
-            ...state,
-            replyText,
-            responseSession,
-          }),
         },
       });
     }
