@@ -2425,6 +2425,276 @@ describe('runGraphValueStream', () => {
     expect(resumedState.pendingInterrupt).toBeNull();
   });
 
+  it('resumes a background-yielded task with a queued steering message without checkpoint write conflicts', async () => {
+    await shutdownAgentGraphRuntime();
+    buildAgentGraphConfigMock.mockReturnValue(makeGraphConfig({ sliceMaxSteps: 1 }));
+    modelInvokeMock
+      .mockResolvedValueOnce(
+        new AIMessage({
+          content: '',
+          tool_calls: [
+            {
+              id: 'call-user-steer-resume-1',
+              name: 'discord_admin',
+              args: { action: 'update_server_instructions' },
+              type: 'tool_call',
+            },
+          ],
+        }),
+      )
+      .mockResolvedValueOnce(
+        new AIMessage({
+          content: 'I paused after the first tool pass and can keep going from there.',
+        }),
+      )
+      .mockResolvedValueOnce(
+        new AIMessage({
+          content: 'I stopped the remaining work and kept the same task thread.',
+        }),
+      );
+    executeDurableToolTaskMock.mockResolvedValueOnce({
+      kind: 'tool_result',
+      toolName: 'discord_admin_update_server_instructions',
+      callId: 'call-user-steer-resume-1',
+      content: '{"ok":true}',
+      result: makeSuccessfulToolResult('discord_admin_update_server_instructions', { ok: true }, 10),
+      files: [],
+      status: 'executed',
+    });
+
+    const initial = await runAgentGraphTurn({
+      traceId: 'trace-user-steer-continue-1',
+      userId: 'user-1',
+      channelId: 'channel-1',
+      guildId: 'guild-1',
+      apiKey: 'test-api-key',
+      model: 'test-main-agent-model',
+      temperature: 0.6,
+      timeoutMs: 1_000,
+      maxTokens: 500,
+      messages: [new HumanMessage({ content: 'update the server persona in steps' })],
+      activeToolNames: ['discord_admin'],
+      routeKind: 'single',
+      currentTurn: {
+        invokerUserId: 'user-1',
+        invokerDisplayName: 'User One',
+        messageId: 'message-user-steer-continue-1',
+        guildId: 'guild-1',
+        channelId: 'channel-1',
+        invokedBy: 'mention',
+        mentionedUserIds: [],
+        isDirectReply: false,
+        replyTargetMessageId: null,
+        replyTargetAuthorId: null,
+        botUserId: 'sage-bot',
+      },
+      replyTarget: null,
+      invokedBy: 'mention',
+      invokerIsAdmin: true,
+    });
+
+    expect(initial.stopReason).toBe('background_yield');
+
+    const resumed = await continueAgentGraphTurn({
+      threadId: 'trace-user-steer-continue-1',
+      runId: 'trace-user-steer-continue-1b',
+      runName: 'sage_agent_background_resume',
+      context: {
+        traceId: 'trace-user-steer-continue-1b',
+        threadId: 'trace-user-steer-continue-1',
+        userId: 'user-1',
+        channelId: 'channel-1',
+        guildId: 'guild-1',
+        apiKey: 'test-api-key',
+        model: 'test-main-agent-model',
+        temperature: 0.6,
+        timeoutMs: 1_000,
+        maxTokens: 500,
+        invokedBy: 'component',
+        invokerIsAdmin: true,
+        invokerCanModerate: false,
+        activeToolNames: ['discord_admin'],
+        routeKind: 'background_resume',
+        currentTurn: {
+          invokerUserId: 'user-1',
+          invokerDisplayName: 'User One',
+          messageId: 'message-user-steer-continue-2',
+          guildId: 'guild-1',
+          channelId: 'channel-1',
+          invokedBy: 'reply',
+          mentionedUserIds: [],
+          isDirectReply: true,
+          replyTargetMessageId: 'response-user-steer-continue-1',
+          replyTargetAuthorId: 'sage-bot',
+          botUserId: 'sage-bot',
+        },
+        replyTarget: null,
+      },
+      pendingUserInterrupt: {
+        revision: 4,
+        messageId: 'message-steer-continue-1',
+        userId: 'user-1',
+        channelId: 'channel-1',
+        guildId: 'guild-1',
+        userText: 'Stop after the first pass and keep the same task thread.',
+        userContent: 'Stop after the first pass and keep the same task thread.',
+        queuedAtIso: '2026-03-20T14:00:00.000Z',
+        supersededRevision: null,
+      },
+    });
+
+    expect(resumed.replyText).toBe('I stopped the remaining work and kept the same task thread.');
+    const resumedState = await __getAgentGraphStateForTests('trace-user-steer-continue-1');
+    if (!resumedState) {
+      throw new Error('Expected the continued graph state to be persisted.');
+    }
+    const injectedMessages = resumedState.messages.filter(
+      (message) =>
+        HumanMessage.isInstance(message) &&
+        typeof message.content === 'string' &&
+        message.content.includes('A new message arrived from the original requester while this task was still running.'),
+    );
+    expect(injectedMessages).toHaveLength(1);
+    expect(resumedState.pendingInterrupt).toBeNull();
+  });
+
+  it('does not append the same queued steering message twice after a failed resume left it in checkpoint state', async () => {
+    await shutdownAgentGraphRuntime();
+    modelInvokeMock.mockResolvedValueOnce(
+      new AIMessage({
+        content: 'I kept the steering update once and continued cleanly.',
+        tool_calls: [],
+      }),
+    );
+
+    const alreadyInjectedInterruptMessage = new HumanMessage({
+      additional_kwargs: {
+        sageActiveUserInterruptMessageId: 'message-steer-duplicate-1',
+        sageActiveUserInterruptRevision: 7,
+      },
+      content:
+        'System: A new message arrived from the original requester while this task was still running. ' +
+        'Treat it as steering for the active task, reconcile it with your current progress, and only redirect the objective if the user clearly changed it.\n\n' +
+        'Latest steering message:\nStop after the current check.',
+    });
+
+    await __runAgentGraphCommandForTests({
+      threadId: 'trace-user-steer-duplicate-1',
+      goto: 'finalize_turn',
+      context: {
+        traceId: 'trace-user-steer-duplicate-1',
+        originTraceId: 'trace-user-steer-duplicate-1',
+        userId: 'user-1',
+        channelId: 'channel-1',
+        guildId: 'guild-1',
+        apiKey: 'test-api-key',
+        model: 'test-main-agent-model',
+        temperature: 0.6,
+        timeoutMs: 1_000,
+        maxTokens: 500,
+        activeToolNames: [],
+        routeKind: 'background_resume',
+        currentTurn: {
+          invokerUserId: 'user-1',
+          invokerDisplayName: 'User One',
+          messageId: 'message-user-steer-duplicate-0',
+          guildId: 'guild-1',
+          channelId: 'channel-1',
+          invokedBy: 'component',
+          mentionedUserIds: [],
+          isDirectReply: false,
+          replyTargetMessageId: null,
+          replyTargetAuthorId: null,
+          botUserId: 'sage-bot',
+        },
+        replyTarget: null,
+        invokedBy: 'component',
+      },
+      state: {
+        graphStatus: 'completed',
+        completionKind: 'final_answer',
+        stopReason: 'assistant_turn_completed',
+        replyText: 'Still working through the checks.',
+        responseSession: {
+          responseSessionId: 'trace-user-steer-duplicate-1',
+          status: 'final',
+          latestText: 'Still working through the checks.',
+          draftRevision: 1,
+          sourceMessageId: 'message-source-duplicate-1',
+          responseMessageId: 'response-duplicate-1',
+          surfaceAttached: true,
+          overflowMessageIds: [],
+          linkedArtifactMessageIds: [],
+        },
+        messages: [
+          new HumanMessage({ content: 'Keep checking.' }),
+          alreadyInjectedInterruptMessage,
+        ],
+      },
+    });
+
+    const resumed = await continueAgentGraphTurn({
+      threadId: 'trace-user-steer-duplicate-1',
+      runId: 'trace-user-steer-duplicate-1b',
+      runName: 'sage_agent_background_resume',
+      context: {
+        traceId: 'trace-user-steer-duplicate-1b',
+        threadId: 'trace-user-steer-duplicate-1',
+        userId: 'user-1',
+        channelId: 'channel-1',
+        guildId: 'guild-1',
+        apiKey: 'test-api-key',
+        model: 'test-main-agent-model',
+        temperature: 0.6,
+        timeoutMs: 1_000,
+        maxTokens: 500,
+        invokedBy: 'component',
+        invokerIsAdmin: false,
+        invokerCanModerate: false,
+        activeToolNames: [],
+        routeKind: 'background_resume',
+        currentTurn: {
+          invokerUserId: 'user-1',
+          invokerDisplayName: 'User One',
+          messageId: 'message-user-steer-duplicate-1',
+          guildId: 'guild-1',
+          channelId: 'channel-1',
+          invokedBy: 'reply',
+          mentionedUserIds: [],
+          isDirectReply: true,
+          replyTargetMessageId: 'response-duplicate-1',
+          replyTargetAuthorId: 'sage-bot',
+          botUserId: 'sage-bot',
+        },
+        replyTarget: null,
+      },
+      pendingUserInterrupt: {
+        revision: 7,
+        messageId: 'message-steer-duplicate-1',
+        userId: 'user-1',
+        channelId: 'channel-1',
+        guildId: 'guild-1',
+        userText: 'Stop after the current check.',
+        userContent: 'Stop after the current check.',
+        queuedAtIso: '2026-03-20T14:05:00.000Z',
+        supersededRevision: null,
+      },
+    });
+
+    expect(resumed.replyText).toBe('I kept the steering update once and continued cleanly.');
+    const resumedState = await __getAgentGraphStateForTests('trace-user-steer-duplicate-1');
+    if (!resumedState) {
+      throw new Error('Expected the continued graph state to be persisted.');
+    }
+    const injectedMessages = resumedState.messages.filter(
+      (message) =>
+        HumanMessage.isInstance(message) &&
+        (message.additional_kwargs as Record<string, unknown> | undefined)?.sageActiveUserInterruptMessageId ===
+          'message-steer-duplicate-1',
+    );
+    expect(injectedMessages).toHaveLength(1);
+  });
+
   it('treats plain-text natural-language questions without runtime control as final answers', async () => {
     await shutdownAgentGraphRuntime();
     modelInvokeMock.mockResolvedValueOnce(

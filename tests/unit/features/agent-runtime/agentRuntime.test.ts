@@ -1858,12 +1858,7 @@ describe('agentRuntime', () => {
       makeGraphResult({
         replyText: 'I checked the docs first and then verified the repo.',
         activeWindowDurationMs: 400,
-        interruptResolution: {
-          kind: 'user_steer',
-          revision: 3,
-          messageId: 'steer-message-1',
-          consumedAtIso: '2026-03-20T10:40:00.000Z',
-        },
+        interruptResolution: null,
       }),
     );
 

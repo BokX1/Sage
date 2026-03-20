@@ -506,6 +506,7 @@ async function persistTaskRunFromGraphResult(params: {
   existingTaskRun?: Awaited<ReturnType<typeof getAgentTaskRunByThreadId>> | null;
   resumeCount?: number;
   freshResponseSurface?: boolean;
+  consumedActiveInterruptRevisionOverride?: number | null;
 }): Promise<{
   persistedStatus: RunChatTurnResult['status'];
   deferredForActiveInterrupt: boolean;
@@ -513,7 +514,8 @@ async function persistTaskRunFromGraphResult(params: {
   const latestTaskRun = await getAgentTaskRunByThreadId(params.traceId);
   const existingTaskRun = latestTaskRun ?? params.existingTaskRun ?? null;
   const status = deriveTaskRunStatus(params.graphResult);
-  const consumedActiveInterruptRevision = readConsumedActiveInterruptRevision(params.graphResult);
+  const consumedActiveInterruptRevision =
+    params.consumedActiveInterruptRevisionOverride ?? readConsumedActiveInterruptRevision(params.graphResult);
   const existingActiveInterrupt = existingTaskRun ? readActiveUserInterruptState(existingTaskRun) : null;
   const nextConsumedActiveInterruptRevision =
     consumedActiveInterruptRevision === null
@@ -1476,6 +1478,7 @@ export async function resumeBackgroundTaskRun(params: {
       graphResult,
       existingTaskRun: taskRun,
       resumeCount: taskRun.resumeCount + 1,
+      consumedActiveInterruptRevisionOverride: pendingUserInterrupt?.revision ?? null,
     });
 
     return {

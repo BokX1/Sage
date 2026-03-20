@@ -710,7 +710,10 @@ function buildFollowUpResumeResponseSession(params: {
 }
 
 function buildUserSteerInterruptHumanMessage(
-  interrupt: Extract<AgentGraphState['pendingInterrupt'], { kind: 'user_steer' }>,
+  interrupt: Pick<
+    ContinueGraphPendingUserInterrupt,
+    'messageId' | 'revision' | 'userContent' | 'userText'
+  >,
 ): HumanMessage {
   const prefix =
     'System: A new message arrived from the original requester while this task was still running. ' +
@@ -719,6 +722,10 @@ function buildUserSteerInterruptHumanMessage(
   const rawContent = interrupt.userContent;
   if (Array.isArray(rawContent)) {
     return new HumanMessage({
+      additional_kwargs: {
+        sageActiveUserInterruptMessageId: interrupt.messageId,
+        sageActiveUserInterruptRevision: interrupt.revision,
+      },
       content: [
         { type: 'text', text: prefix },
         ...rawContent.filter(
@@ -735,7 +742,27 @@ function buildUserSteerInterruptHumanMessage(
   const messageText =
     typeof rawContent === 'string' && rawContent.trim().length > 0 ? rawContent.trim() : interrupt.userText.trim();
   return new HumanMessage({
+    additional_kwargs: {
+      sageActiveUserInterruptMessageId: interrupt.messageId,
+      sageActiveUserInterruptRevision: interrupt.revision,
+    },
     content: `${prefix}\n${messageText}`.trim(),
+  });
+}
+
+function hasInjectedUserSteerMessage(
+  messages: BaseMessage[],
+  interrupt: Pick<ContinueGraphPendingUserInterrupt, 'messageId' | 'revision'>,
+): boolean {
+  return messages.some((message) => {
+    if (!HumanMessage.isInstance(message)) {
+      return false;
+    }
+    const metadata = message.additional_kwargs as Record<string, unknown> | undefined;
+    return (
+      metadata?.sageActiveUserInterruptMessageId === interrupt.messageId &&
+      metadata?.sageActiveUserInterruptRevision === interrupt.revision
+    );
   });
 }
 
@@ -3910,27 +3937,23 @@ export async function continueAgentGraphTurn(
           status: 'draft' as const,
         }
       : existingState.responseSession;
-  const nextPendingInterrupt = params.pendingUserInterrupt
-    ? {
-        kind: 'user_steer' as const,
-        revision: params.pendingUserInterrupt.revision,
-        messageId: params.pendingUserInterrupt.messageId,
-        userId: params.pendingUserInterrupt.userId,
-        channelId: params.pendingUserInterrupt.channelId,
-        guildId: params.pendingUserInterrupt.guildId,
-        userText: params.pendingUserInterrupt.userText,
-        userContent: params.pendingUserInterrupt.userContent,
-        queuedAtIso: params.pendingUserInterrupt.queuedAtIso ?? null,
-        supersededRevision: params.pendingUserInterrupt.supersededRevision ?? null,
-      }
-    : existingState.pendingInterrupt;
+  const shouldInjectPendingUserInterrupt =
+    !!params.pendingUserInterrupt &&
+    !hasInjectedUserSteerMessage(existingState.messages as BaseMessage[], params.pendingUserInterrupt);
+  const continueMessages = [
+    ...(existingState.messages as BaseMessage[]),
+    ...(params.appendedMessages ?? []),
+    ...(shouldInjectPendingUserInterrupt ? [buildUserSteerInterruptHumanMessage(params.pendingUserInterrupt!)] : []),
+  ];
+  const nextPendingInterrupt =
+    existingState.pendingInterrupt?.kind === 'approval_review' ? existingState.pendingInterrupt : null;
 
   const output = await runGraphValueStream(
     runtime.graph,
     new Command({
       goto: resolveContinueNode(existingState),
       update: Object.entries({
-        messages: [...(existingState.messages as BaseMessage[]), ...(params.appendedMessages ?? [])],
+        messages: continueMessages,
         resumeContext: snapshotRuntimeContext(persistedMergedContext),
         replyText: existingState.replyText,
         responseSession: reopenedResponseSession,
