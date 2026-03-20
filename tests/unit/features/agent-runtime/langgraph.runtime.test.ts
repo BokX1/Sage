@@ -2240,6 +2240,11 @@ describe('runGraphValueStream', () => {
 
     expect(resumed.graphStatus).toBe('completed');
     expect(resumed.replyText).toContain('All set.');
+    const resumedState = await __getAgentGraphStateForTests('trace-resume-1');
+    if (!resumedState) {
+      throw new Error('Expected the resumed approval graph state to be persisted.');
+    }
+    expect(resumedState.resumeContext.traceId).toBe('trace-resume-1b');
   });
 
   it('drops trusted waiting-follow-up state from persisted resume context after the waiting question is consumed', async () => {
@@ -2556,6 +2561,7 @@ describe('runGraphValueStream', () => {
     );
     expect(injectedMessages).toHaveLength(1);
     expect(resumedState.pendingInterrupt).toBeNull();
+    expect(resumedState.resumeContext.traceId).toBe('trace-user-steer-continue-1b');
   });
 
   it('does not append the same queued steering message twice after a failed resume left it in checkpoint state', async () => {
@@ -2741,6 +2747,9 @@ describe('runGraphValueStream', () => {
         completionKind: null,
         stopReason: 'background_yield',
         replyText: 'Working on that now.',
+        toolResults: [
+          makeSuccessfulToolResult('system_time', { iso: '2026-03-21T09:54:51.000Z' }, 10),
+        ],
         responseSession: {
           responseSessionId: 'trace-background-yield-response-session-1',
           status: 'draft',
@@ -2826,6 +2835,11 @@ describe('runGraphValueStream', () => {
       status: 'final',
       surfaceAttached: true,
     });
+    const resumedState = await __getAgentGraphStateForTests('trace-background-yield-response-session-1');
+    if (!resumedState) {
+      throw new Error('Expected the continued graph state to be persisted.');
+    }
+    expect(resumedState.contextFrame.completedActions).toContain('system_time');
   });
 
   it('reopens a just-finished task thread with appended user input without checkpoint write conflicts', async () => {

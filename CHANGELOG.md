@@ -143,6 +143,7 @@
 
 ### Fixed
 
+- Fixed the remaining continued-run LastValue owner conflicts on `contextFrame` and `resumeContext`, so mid-turn steering and approval resumes now leave those derived checkpoint channels to the terminal/yield/interrupt owners instead of double-writing them from transitional routing nodes during the same LangGraph step.
 - Fixed the remaining mid-turn steering closeout collisions on continued runs, so Sage now leaves `responseSession` and `contextFrame` ownership to the terminal closeout node instead of double-writing them during the same LangGraph step; live `stop` replies no longer fail with `Invalid update for channel "responseSession"` or `Invalid update for channel "contextFrame"` when Sage resumes the same task thread.
 - Fixed the stale mid-turn steering reopen path so a requester reply that resumes a just-finished task thread no longer collides on LangGraph single-value checkpoint channels like `responseSession`, `contextFrame`, and `replyText`, preventing the live `I ran into a problem while I was picking that back up, so please try again.` failure on same-thread continuation.
 - Fixed approval resumes after LangGraph continues so Sage no longer zeroes `activeWindowDurationMs` at continue entry before the approval-resume node writes its real consumed duration, preventing the live `Invalid update for channel "activeWindowDurationMs"` checkpoint collision during approval recovery.

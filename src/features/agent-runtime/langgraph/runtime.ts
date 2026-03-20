@@ -2203,27 +2203,19 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
     config: RunnableConfig,
   ): Promise<Command<unknown, Partial<AgentGraphState>, GraphNodeName>> => {
     const continued = buildContinueEntryUpdate(state, config);
-    const effectiveState = continued.state;
-    const runtimeContext = resolveRuntimeContext(effectiveState, config);
-    if (isTimedOut(effectiveState, graphConfig) || effectiveState.roundsCompleted >= graphConfig.sliceMaxSteps) {
+    if (isTimedOut(continued.state, graphConfig) || continued.state.roundsCompleted >= graphConfig.sliceMaxSteps) {
       return new Command({
         goto: 'yield_background',
         update: {
           ...continued.update,
           stopReason: 'background_yield',
-          yieldReason: resolveBackgroundYieldReason(effectiveState, graphConfig),
-          resumeContext: snapshotRuntimeContext(runtimeContext),
-          contextFrame: buildContextFrame(effectiveState),
+          yieldReason: resolveBackgroundYieldReason(continued.state, graphConfig),
         },
       });
     }
     return new Command({
       goto: 'tool_call_turn',
-      update: {
-        ...continued.update,
-        resumeContext: snapshotRuntimeContext(runtimeContext),
-        contextFrame: buildContextFrame(effectiveState),
-      },
+      update: continued.update,
     });
   };
 
@@ -2240,8 +2232,6 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
         update: {
           stopReason: 'background_yield',
           yieldReason: resolveBackgroundYieldReason(effectiveState, graphConfig),
-          resumeContext: snapshotRuntimeContext(runtimeContext),
-          contextFrame: buildContextFrame(effectiveState),
           ...consumedInterrupt.interruptUpdate,
         },
       });
@@ -2298,7 +2288,6 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
           totalRoundsCompleted: nextTotalRoundsCompleted,
           stopReason: timedOutAfterModel ? 'background_yield' : effectiveState.stopReason,
           yieldReason: timedOutAfterModel ? resolveBackgroundYieldReason(effectiveState, graphConfig) : null,
-          resumeContext: snapshotRuntimeContext(runtimeContext),
           compactionState:
             timedOutAfterModel
               ? buildCompactionState({
@@ -2312,25 +2301,6 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
                   reason: 'yield_boundary',
                 })
               : effectiveState.compactionState,
-          contextFrame: buildContextFrame({
-            ...effectiveState,
-            messages: nextMessages,
-            replyText: draftText,
-            responseSession,
-            compactionState:
-              timedOutAfterModel
-                ? buildCompactionState({
-                  state: {
-                      ...effectiveState,
-                      messages: nextMessages,
-                      replyText: draftText,
-                      responseSession,
-                    },
-                    graphConfig,
-                    reason: 'yield_boundary',
-                  })
-                : effectiveState.compactionState,
-          }),
           finalization: {
             ...effectiveState.finalization,
             rebudgeting: prepared.rebudgeting,
@@ -2426,7 +2396,6 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
         activeWindowDurationMs: nextActiveWindowDurationMs,
         roundsCompleted: nextRoundsCompleted,
         totalRoundsCompleted: nextTotalRoundsCompleted,
-        resumeContext: snapshotRuntimeContext(runtimeContext),
         waitingState,
         finalization: {
           ...effectiveState.finalization,
@@ -2485,7 +2454,6 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
                 ? 'cancelled'
               : 'assistant_turn_completed',
           deliveryDisposition: 'response_session',
-          resumeContext: snapshotRuntimeContext(runtimeContext),
         },
       });
     }
@@ -2587,7 +2555,6 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
             consecutiveIdenticalToolBatches,
             loopGuardRecoveries: effectiveState.loopGuardRecoveries + 1,
             roundEvents: [event],
-            contextFrame: buildContextFrame(effectiveState),
           },
         });
       }
@@ -2618,6 +2585,7 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
           completionKind: 'loop_guard',
           stopReason: 'loop_guard',
           deliveryDisposition: 'response_session',
+          resumeContext: snapshotRuntimeContext(runtimeContext),
           responseSession: bumpResponseSession({
             state: effectiveState,
             latestText: buildLoopGuardReply({
@@ -2684,15 +2652,16 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
               }),
             ]
           : [],
-        contextFrame: buildContextFrame(effectiveState),
       },
     });
   };
 
   const closeoutTurnNode = async (
     state: AgentGraphState,
+    config: RunnableConfig,
   ): Promise<Command<unknown, Partial<AgentGraphState>, GraphNodeName>> => {
     const frame = buildContextFrame(state);
+    const runtimeContext = resolveRuntimeContext(state, config);
     const effectiveReplyText = scrubFinalReplyText({
       replyText: state.replyText || findLatestAssistantText(state.messages as BaseMessage[]),
     });
@@ -2717,6 +2686,7 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
       update: {
         replyText: effectiveReplyText,
         responseSession,
+        resumeContext: snapshotRuntimeContext(runtimeContext),
         contextFrame: frame,
         finalization: {
           attempted: true,
@@ -2765,11 +2735,6 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
         pendingReadCalls: update.pendingReadCalls ?? [],
         pendingReadExecutionCalls: update.pendingReadExecutionCalls ?? [],
         activeWindowDurationMs: addActiveWindowDuration(state, readToolDurationMs),
-        contextFrame: buildContextFrame({
-          ...state,
-          toolResults: [...state.toolResults, ...(update.toolResults ?? [])],
-          messages: [...(state.messages as BaseMessage[]), ...((update.messages as BaseMessage[] | undefined) ?? [])],
-        }),
       },
     });
   };
@@ -2861,6 +2826,7 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
             stopReason: 'approval_interrupt',
             deliveryDisposition: 'approval_handoff',
             responseSession,
+            resumeContext: snapshotRuntimeContext(runtimeContext),
             activeWindowDurationMs: addActiveWindowDuration(
               state,
               Math.max(0, Date.now() - approvalPlanningStartedAt),
@@ -2942,6 +2908,7 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
           stopReason: 'approval_interrupt',
           deliveryDisposition: 'approval_handoff',
           responseSession,
+          resumeContext: snapshotRuntimeContext(runtimeContext),
           activeWindowDurationMs: addActiveWindowDuration(state, outcome.latencyMs),
           pendingInterrupt: {
             kind: 'approval_review',
@@ -2994,23 +2961,17 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
     return new Command({
       goto: state.pendingWriteCalls.length > 1 ? 'approval_gate' : 'tool_call_turn',
       update: {
-      activeWindowDurationMs: addActiveWindowDuration(state, getSerializedToolLatencyMs(outcome.result)),
+        activeWindowDurationMs: addActiveWindowDuration(state, getSerializedToolLatencyMs(outcome.result)),
         pendingWriteCalls: state.pendingWriteCalls.slice(1),
         messages: [toolMessage],
         toolResults: [outcome.result],
         files: outcome.files,
-        contextFrame: buildContextFrame({
-          ...state,
-          toolResults: [...state.toolResults, outcome.result],
-          messages: [...(state.messages as BaseMessage[]), toolMessage],
-        }),
       },
     });
   };
 
   const resumeInterruptNode = async (
     state: AgentGraphState,
-    config: RunnableConfig,
   ): Promise<Command<unknown, Partial<AgentGraphState>, GraphNodeName>> => {
     if (!state.pendingInterrupt || state.pendingInterrupt.kind !== 'approval_review') {
       return new Command({
@@ -3019,7 +2980,6 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
       });
     }
 
-    const runtimeContext = resolveRuntimeContext(state, config);
     const approvalInterrupt = state.pendingInterrupt;
     const resume = interrupt({
       batchId: approvalInterrupt.batchId,
@@ -3032,10 +2992,6 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
       })),
     }) as GraphResumeInput;
     const decisions = normalizeApprovalResumeDecisions(approvalInterrupt, resume);
-    const resumedContext: AgentGraphRuntimeContext = {
-      ...runtimeContext,
-      traceId: resume.resumeTraceId?.trim() || runtimeContext.traceId,
-    };
     const toolMessages: ToolMessage[] = [];
     const resolvedResults: SerializedToolResult[] = [];
     const resolvedFiles: AgentGraphState['files'] = [];
@@ -3135,7 +3091,6 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
       goto: hasPendingFollowupWrites ? 'approval_gate' : 'tool_call_turn',
       update: {
         messages: toolMessages,
-        resumeContext: snapshotRuntimeContext(resumedContext),
         graphStatus: 'running',
         roundsCompleted: 0,
         activeWindowDurationMs: consumedDurationMs,
@@ -3150,13 +3105,6 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
         pendingWriteCalls: state.pendingWriteCalls.slice(approvalInterrupt.requests.length),
         toolResults: resolvedResults,
         files: resolvedFiles,
-        contextFrame: buildContextFrame({
-          ...state,
-          replyText: latestReplyText,
-          responseSession,
-          toolResults: [...state.toolResults, ...resolvedResults],
-          messages: [...(state.messages as BaseMessage[]), ...toolMessages],
-        }),
       },
     });
   };
@@ -3190,6 +3138,7 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
       update: {
         replyText: summary.text,
         responseSession,
+        resumeContext: snapshotRuntimeContext(runtimeContext),
         sliceIndex: state.sliceIndex + 1,
         totalRoundsCompleted:
           state.totalRoundsCompleted + (summary.usedModel ? 1 : 0),
