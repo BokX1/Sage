@@ -225,9 +225,9 @@ Sage's prompt assembly no longer uses a dedicated raw observation middle-truncat
 | `AGENT_RUN_HEARTBEAT_MS` | Heartbeat interval while a worker owns a task run | `10000` |
 | `AGENT_RUN_MAX_RESUMES` | Max durable slice resumes before Sage fails the task run | `256` |
 | `AGENT_RUN_COMPACTION_ENABLED` | Enable automatic prompt-facing context compaction for long-running runs | `true` |
-| `AGENT_RUN_COMPACTION_TRIGGER_EST_TOKENS` | Estimated prompt tokens that trigger compaction pressure | `36000` |
+| `AGENT_RUN_COMPACTION_TRIGGER_EST_TOKENS` | Estimated prompt tokens that trigger compaction pressure | `64000` |
 | `AGENT_RUN_COMPACTION_TRIGGER_ROUNDS` | Completed rounds before compaction pressure triggers | `6` |
-| `AGENT_RUN_COMPACTION_TRIGGER_TOOL_RESULTS` | Tool-result count before compaction pressure triggers | `12` |
+| `AGENT_RUN_COMPACTION_TRIGGER_TOOL_RESULTS` | Tool-result count before compaction pressure triggers | `24` |
 | `AGENT_RUN_COMPACTION_MAX_RAW_MESSAGES` | Raw assistant/tool message count retained through compaction | `24` |
 | `AGENT_RUN_COMPACTION_MAX_TOOL_OBSERVATIONS` | Tool observations retained in prompt-facing compaction state | `12` |
 | `AGENT_GRAPH_MAX_OUTPUT_TOKENS` | Max output tokens for graph model calls | `4096` |

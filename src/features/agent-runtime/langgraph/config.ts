@@ -86,7 +86,7 @@ export function buildAgentGraphConfigFromEnv(
       (env.AGENT_RUN_COMPACTION_ENABLED as boolean | undefined) ?? true,
     compactionTriggerEstimatedTokens: normalizeStrictlyPositiveInt(
       env.AGENT_RUN_COMPACTION_TRIGGER_EST_TOKENS as number | undefined,
-      36_000,
+      64_000,
     ),
     compactionTriggerRounds: normalizeStrictlyPositiveInt(
       env.AGENT_RUN_COMPACTION_TRIGGER_ROUNDS as number | undefined,
@@ -94,7 +94,7 @@ export function buildAgentGraphConfigFromEnv(
     ),
     compactionTriggerToolResults: normalizeStrictlyPositiveInt(
       env.AGENT_RUN_COMPACTION_TRIGGER_TOOL_RESULTS as number | undefined,
-      12,
+      24,
     ),
     compactionMaxRawMessages: normalizeStrictlyPositiveInt(
       env.AGENT_RUN_COMPACTION_MAX_RAW_MESSAGES as number | undefined,

@@ -63,6 +63,7 @@
 
 ### Changed
 
+- Raised the default compaction pressure thresholds from 36K to 64K estimated prompt tokens and from 12 to 24 tool results while keeping the 6-round guard in place, so long-running research turns can keep more raw evidence before compacting without losing Sage's protection against low-token loop drift.
 - Replaced Sage's heuristic runtime budgeting and closeout contract with deterministic runtime behavior: prompt budgeting now uses a local tokenizer plus provider-reported post-call usage instead of chars-per-token guesses, no-tool replies now default to ordinary plain assistant text while a dedicated control-classifier/runtime-tool path handles waits and cancellations, and long-running prompt assembly now retains evidence slices with refs instead of trimming one large raw observation blob.
 - Reworked Sage's runtime/provider failure surface around typed error codes, so retries, user-visible fallback copy, and trace metadata now distinguish provider auth/model/rate-limit/network/protocol failures without relying on regex classification of raw error text.
 - Reworked Sage's LangGraph recursion budgeting so the low-level recursion ceiling is now derived from the durable slice budget by default instead of acting as an independently tuned practical limit, which gives frontier models more room to recover within a slice before Sage falls back with a user-visible `loop_guard`.
@@ -386,4 +387,3 @@
 
 [Unreleased]: https://github.com/BokX1/Sage/compare/ae988c1...master
 [1.0.0]: https://github.com/BokX1/Sage/commit/ae988c1
-

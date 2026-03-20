@@ -336,9 +336,9 @@ export const testDefaults: Record<string, string> = {
   AGENT_RUN_HEARTBEAT_MS: '10000',
   AGENT_RUN_MAX_RESUMES: '256',
   AGENT_RUN_COMPACTION_ENABLED: 'true',
-  AGENT_RUN_COMPACTION_TRIGGER_EST_TOKENS: '36000',
+  AGENT_RUN_COMPACTION_TRIGGER_EST_TOKENS: '64000',
   AGENT_RUN_COMPACTION_TRIGGER_ROUNDS: '6',
-  AGENT_RUN_COMPACTION_TRIGGER_TOOL_RESULTS: '12',
+  AGENT_RUN_COMPACTION_TRIGGER_TOOL_RESULTS: '24',
   AGENT_RUN_COMPACTION_MAX_RAW_MESSAGES: '24',
   AGENT_RUN_COMPACTION_MAX_TOOL_OBSERVATIONS: '12',
   AGENT_GRAPH_MAX_TOOL_CALLS_PER_ROUND: '12',
@@ -527,9 +527,9 @@ export const envSchema = z.object({
     .enum(['true', 'false'])
     .default('true')
     .transform((v) => v === 'true'),
-  AGENT_RUN_COMPACTION_TRIGGER_EST_TOKENS: z.coerce.number().int().min(1_000).max(200_000).default(36_000),
+  AGENT_RUN_COMPACTION_TRIGGER_EST_TOKENS: z.coerce.number().int().min(1_000).max(200_000).default(64_000),
   AGENT_RUN_COMPACTION_TRIGGER_ROUNDS: z.coerce.number().int().min(1).max(64).default(6),
-  AGENT_RUN_COMPACTION_TRIGGER_TOOL_RESULTS: z.coerce.number().int().min(1).max(256).default(12),
+  AGENT_RUN_COMPACTION_TRIGGER_TOOL_RESULTS: z.coerce.number().int().min(1).max(256).default(24),
   AGENT_RUN_COMPACTION_MAX_RAW_MESSAGES: z.coerce.number().int().min(2).max(128).default(24),
   AGENT_RUN_COMPACTION_MAX_TOOL_OBSERVATIONS: z.coerce.number().int().min(1).max(128).default(12),
   AGENT_GRAPH_RECURSION_LIMIT: z.coerce.number().int().min(2).max(512).optional(),
