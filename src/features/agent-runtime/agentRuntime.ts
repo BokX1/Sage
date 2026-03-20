@@ -147,6 +147,22 @@ export interface QueueRunningTaskRunActiveInterruptParams {
 
 export type QueueActiveRunUserInterruptResult = QueueRunningTaskRunActiveInterruptResult;
 
+export interface ContinueMatchedTaskRunWithInputParams {
+  traceId: string;
+  threadId: string;
+  userId: string;
+  channelId: string;
+  guildId: string | null;
+  userText: string;
+  userContent?: LLMMessageContent;
+  currentTurn: CurrentTurnContext;
+  replyTarget?: ReplyTargetContext | null;
+  promptMode?: PromptInputMode;
+  isAdmin: boolean;
+  canModerate?: boolean;
+  onResponseSessionUpdate?: RunChatTurnParams['onResponseSessionUpdate'];
+}
+
 export interface RetryFailedChatTurnParams {
   traceId: string;
   threadId: string;
@@ -1391,6 +1407,136 @@ export async function resumeBackgroundTaskRun(params: {
       tokenUsage: graphResult.tokenUsage,
       files: graphResult.files,
       meta: await buildRunChatTurnMeta({ pendingInterrupt: toPendingInterruptSummary(graphResult.pendingInterrupt) }),
+    };
+  } catch (error) {
+    return {
+      runId: params.threadId,
+      status: 'failed',
+      replyText: buildRuntimeFailureReply({
+        kind: 'background_resume',
+        category: classifyGraphFailure(error),
+      }),
+      delivery: 'response_session',
+      meta: buildRetryMeta(params.threadId, 'background_resume'),
+      files: [],
+    };
+  }
+}
+
+export async function continueMatchedTaskRunWithInput(
+  params: ContinueMatchedTaskRunWithInputParams,
+): Promise<RunChatTurnResult> {
+  const apiKey = await resolveApiKeyForRuntime(params.guildId);
+  if (!apiKey) {
+    return buildMissingApiKeyResult(params.guildId);
+  }
+
+  const taskRun = await getAgentTaskRunByThreadId(params.threadId);
+  if (!taskRun) {
+    return {
+      runId: params.threadId,
+      status: 'failed',
+      replyText: 'I couldn’t pick that task back up, so please ask me again.',
+      delivery: 'response_session',
+      files: [],
+    };
+  }
+  if (taskRun.status !== 'completed' || taskRun.completionKind !== 'final_answer') {
+    return {
+      runId: params.threadId,
+      status: 'failed',
+      replyText: 'I couldn’t resume that finished task cleanly, so please ask me again.',
+      delivery: 'response_session',
+      files: [],
+    };
+  }
+
+  const model = appConfig.AI_PROVIDER_MAIN_AGENT_MODEL.trim();
+  const graphConfig = buildAgentGraphConfig();
+  const activeToolNames = resolveActiveToolNames({
+    isAdmin: params.isAdmin,
+    canModerate: params.canModerate ?? false,
+    invokedBy: params.currentTurn.invokedBy,
+  });
+
+  try {
+    const graphResult = await continueAgentGraphTurn({
+      threadId: params.threadId,
+      runId: params.traceId,
+      runName: 'sage_agent_active_interrupt_race_resume',
+      context: {
+        traceId: params.traceId,
+        threadId: params.threadId,
+        userId: params.userId,
+        channelId: params.channelId,
+        guildId: params.guildId,
+        apiKey,
+        model,
+        temperature: 0.6,
+        timeoutMs: appConfig.TIMEOUT_CHAT_MS,
+        maxTokens: normalizeStrictlyPositiveInt(
+          appConfig.AGENT_GRAPH_MAX_OUTPUT_TOKENS as number | undefined,
+          1_800,
+        ),
+        invokedBy: params.currentTurn.invokedBy,
+        invokerIsAdmin: params.isAdmin,
+        invokerCanModerate: params.canModerate ?? false,
+        activeToolNames,
+        routeKind: 'active_interrupt_race_resume',
+        currentTurn: params.currentTurn,
+        replyTarget: params.replyTarget ?? null,
+        promptMode: params.promptMode,
+      },
+      appendedMessages: [
+        new HumanMessage({
+          content: params.userContent ?? params.userText,
+        }),
+      ],
+      onStateUpdate: params.onResponseSessionUpdate
+        ? async (state) => {
+            await params.onResponseSessionUpdate?.({
+              replyText: state.replyText,
+              delivery: state.deliveryDisposition,
+              responseSession: state.responseSession,
+              pendingInterrupt: state.pendingInterrupt,
+              completionKind: state.completionKind,
+              stopReason: state.stopReason,
+            });
+          }
+        : undefined,
+    });
+
+    const persistedTaskState = await persistTaskRunFromGraphResult({
+      traceId: params.threadId,
+      sourceMessageId: taskRun.sourceMessageId ?? params.currentTurn.messageId,
+      guildId: params.guildId,
+      channelId: params.channelId,
+      userId: params.userId,
+      isAdmin: params.isAdmin,
+      canModerate: params.canModerate,
+      graphConfig,
+      graphResult,
+      existingTaskRun: taskRun,
+      resumeCount: taskRun.resumeCount + 1,
+      freshResponseSurface: false,
+    });
+
+    return {
+      runId: params.threadId,
+      status: persistedTaskState.persistedStatus,
+      replyText: graphResult.replyText,
+      delivery: graphResult.deliveryDisposition,
+      completionKind: graphResult.completionKind,
+      stopReason: graphResult.stopReason,
+      waitingState: graphResult.waitingState,
+      responseSession: graphResult.responseSession,
+      artifactDeliveries: graphResult.artifactDeliveries,
+      compactionState: graphResult.compactionState,
+      tokenUsage: graphResult.tokenUsage,
+      files: graphResult.files,
+      meta: await buildRunChatTurnMeta({
+        pendingInterrupt: toPendingInterruptSummary(graphResult.pendingInterrupt),
+      }),
     };
   } catch (error) {
     return {

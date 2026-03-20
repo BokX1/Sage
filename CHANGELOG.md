@@ -143,6 +143,7 @@
 
 ### Fixed
 
+- Fixed the mid-turn steering terminal-race path so a requester reply that lands just as a running task finishes now reopens the same task thread and edits Sage's canonical response-session message instead of silently downgrading into a brand-new visible turn.
 - Fixed reply routing for long-running tasks so `waiting_user_input` resumes now require a direct reply to Sage's waiting message, still recover the canonical Sage reply id from persisted response-session state after restart, and keep routing correctly even when Discord reference hydration fails; matched active-run steering replies now use the raw reply target id for exact routing, only fall back to a fresh turn when the task truly became terminal first, and otherwise fail closed instead of silently forking a second task when interrupt queueing is rejected.
 - Fixed the hard-reset Prisma baseline so fresh database rebuilds now include the active-run steering interrupt columns directly in the single canonical baseline migration instead of requiring a follow-up migration layer after reset.
 - Fixed a hidden LangGraph read-lane recursion trap: read-only tool batches now exit their subgraph after one execution pass instead of re-entering a generic `ToolNode` loop, which stops legitimate research turns from hitting `recursion_limit` before Sage has actually exhausted its durable slice budget.

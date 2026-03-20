@@ -1,6 +1,7 @@
 export {
   runChatTurn,
   resumeBackgroundTaskRun,
+  continueMatchedTaskRunWithInput,
   resumeWaitingTaskRunWithInput,
   attachTaskRunResponseSession,
   queueActiveRunUserInterrupt,
@@ -9,6 +10,7 @@ export {
   type RunChatTurnResult,
   type QueueActiveRunUserInterruptResult,
   type QueueRunningTaskRunActiveInterruptParams,
+  type ContinueMatchedTaskRunWithInputParams,
   type ResumeWaitingTaskRunWithInputParams,
 } from './agentRuntime';
 

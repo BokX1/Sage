@@ -30,13 +30,16 @@ import { isAdminFromMember, isModeratorFromMember } from '../../../platform/disc
 import { buildGuildApiKeyMissingResponse } from '../../../features/discord/byopBootstrap';
 import {
   attachTaskRunResponseSession,
+  continueMatchedTaskRunWithInput,
   queueActiveRunUserInterrupt,
   resumeWaitingTaskRunWithInput,
   type RunChatTurnParams,
 } from '../../../features/agent-runtime';
 import {
+  type AgentTaskRunRecord,
   findRunningTaskRunForActiveInterrupt,
   findWaitingUserInputTaskRun,
+  getAgentTaskRunByThreadId,
 } from '../../../features/agent-runtime/agentTaskRunRepo';
 import { ReplyTargetContext } from '../../../features/agent-runtime/continuityContext';
 import { resolveDefaultInvocationUserText, type PromptInputMode } from '../../../features/agent-runtime/promptContract';
@@ -95,6 +98,24 @@ function getWakeWordPrefixes(): string[] {
       .filter(Boolean);
   }
   return cachedWakeWordPrefixes ?? [];
+}
+
+function readPersistedResponseSessionRefs(value: unknown): {
+  sourceMessageId: string | null;
+  responseMessageId: string | null;
+} {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return {
+      sourceMessageId: null,
+      responseMessageId: null,
+    };
+  }
+
+  const record = value as Record<string, unknown>;
+  return {
+    sourceMessageId: typeof record.sourceMessageId === 'string' ? record.sourceMessageId : null,
+    responseMessageId: typeof record.responseMessageId === 'string' ? record.responseMessageId : null,
+  };
 }
 
 function shouldInlineAttachmentBlocks(params: {
@@ -793,6 +814,8 @@ export async function handleMessageCreate(message: Message) {
             requestedByUserId: message.author.id,
             replyToMessageId: replyReferenceMessageId,
           }));
+      let staleMatchedTaskRun: AgentTaskRunRecord | null = null;
+      let staleRecoveredWaitingTaskRun: AgentTaskRunRecord | null = null;
       if (runningTaskRun && hasMeaningfulSteeringInput) {
         let queueResult: 'queued' | 'stale' | 'rejected' = 'rejected';
         try {
@@ -820,10 +843,39 @@ export async function handleMessageCreate(message: Message) {
           return;
         }
         if (queueResult === 'stale') {
-          loggerWithTrace.info(
-            { threadId: runningTaskRun.threadId, messageId: message.id },
-            'Matched running task became terminal before active-run interrupt queueing; handling this reply as a fresh turn',
-          );
+          const latestMatchedTaskRun = await getAgentTaskRunByThreadId(runningTaskRun.threadId).catch((error) => {
+            loggerWithTrace.warn(
+              { error, threadId: runningTaskRun.threadId, messageId: message.id },
+              'Failed to refresh the matched task after an active-run interrupt stale race',
+            );
+            return null;
+          });
+          if (
+            latestMatchedTaskRun?.status === 'completed' &&
+            latestMatchedTaskRun.completionKind === 'final_answer'
+          ) {
+            staleMatchedTaskRun = latestMatchedTaskRun;
+            loggerWithTrace.info(
+              { threadId: runningTaskRun.threadId, messageId: message.id },
+              'Matched running task completed before active-run interrupt queueing; continuing the same task thread on the canonical response surface',
+            );
+          } else if (latestMatchedTaskRun?.status === 'waiting_user_input') {
+            staleRecoveredWaitingTaskRun = latestMatchedTaskRun;
+            loggerWithTrace.info(
+              { threadId: runningTaskRun.threadId, messageId: message.id },
+              'Matched running task entered waiting-user-input before active-run interrupt queueing; rerouting this reply to the waiting resume path',
+            );
+          } else {
+            loggerWithTrace.info(
+              {
+                threadId: runningTaskRun.threadId,
+                messageId: message.id,
+                recoveredStatus: latestMatchedTaskRun?.status ?? null,
+                recoveredCompletionKind: latestMatchedTaskRun?.completionKind ?? null,
+              },
+              'Matched running task moved into a non-steerable state before active-run interrupt queueing; handling this reply as a fresh turn',
+            );
+          }
         } else {
           loggerWithTrace.warn(
             { threadId: runningTaskRun.threadId, messageId: message.id },
@@ -832,15 +884,54 @@ export async function handleMessageCreate(message: Message) {
           throw new Error('Matched running task rejected active-run user interrupt');
         }
       }
-      const isWaitingTaskRunResume = !!waitingTaskRun;
+      const effectiveWaitingTaskRun = waitingTaskRun ?? staleRecoveredWaitingTaskRun;
+      const isWaitingTaskRunResume = !!effectiveWaitingTaskRun;
+      const persistedMatchedResponseRefs = staleMatchedTaskRun
+        ? readPersistedResponseSessionRefs(staleMatchedTaskRun.responseSessionJson)
+        : { sourceMessageId: null, responseMessageId: null };
       let responseSessionMessage: ResponseSessionEditableMessage | null = null;
-      const responseSessionThreadId = waitingTaskRun?.threadId ?? traceId;
-      const responseSessionSourceMessageId = message.id;
-      let responseSessionReplyBase: ResponseSessionReplyAnchor | null = message as unknown as ResponseSessionReplyAnchor;
+      const responseSessionThreadId = effectiveWaitingTaskRun?.threadId ?? staleMatchedTaskRun?.threadId ?? traceId;
+      const responseSessionSourceMessageId = effectiveWaitingTaskRun
+        ? message.id
+        : staleMatchedTaskRun?.sourceMessageId ??
+          persistedMatchedResponseRefs.sourceMessageId ??
+          message.id;
+      let responseSessionMessageIdHint =
+        staleMatchedTaskRun?.responseMessageId ??
+        persistedMatchedResponseRefs.responseMessageId ??
+        null;
+      let responseSessionReplyBase: ResponseSessionReplyAnchor | null = staleMatchedTaskRun
+        ? null
+        : (message as unknown as ResponseSessionReplyAnchor);
       let responseSessionOverflowMessageIds: string[] = [];
       let responseSessionOverflowMessages: ResponseSessionEditableMessage[] = [];
       let responseSessionRevision = -1;
       let responseSessionText = '';
+      const hydrateExistingResponseSessionMessage = async (): Promise<void> => {
+        if (
+          responseSessionMessage ||
+          !responseSessionMessageIdHint ||
+          typeof discordChannel.messages?.fetch !== 'function'
+        ) {
+          return;
+        }
+        responseSessionMessage =
+          ((await discordChannel.messages.fetch(responseSessionMessageIdHint).catch(() => null)) as
+            | ResponseSessionEditableMessage
+            | null) ?? null;
+      };
+      const ensureStaleMatchedResponseSurface = async (): Promise<void> => {
+        if (!staleMatchedTaskRun) {
+          return;
+        }
+        await hydrateExistingResponseSessionMessage();
+        if (!responseSessionMessageIdHint || !responseSessionMessage) {
+          throw new Error('Matched task continuation requires the canonical response-session message');
+        }
+      };
+      if (staleMatchedTaskRun) {
+        await ensureStaleMatchedResponseSurface();
+      }
       const hasExpectedOverflowCoverage = (text: string): boolean => {
         const chunks = smartSplit(text, 2000);
         return Math.max(chunks.length - 1, 0) === responseSessionOverflowMessageIds.length;
@@ -857,6 +948,7 @@ export async function handleMessageCreate(message: Message) {
           responseSessionRevision = update.responseSession.draftRevision;
           return;
         }
+        await hydrateExistingResponseSessionMessage();
         const reconciled = await reconcileResponseSessionChunks({
           channel: discordChannel as unknown as ResponseSessionChannel,
           nextText: nextDraft,
@@ -869,6 +961,7 @@ export async function handleMessageCreate(message: Message) {
           allowedMentions: { repliedUser: false },
         });
         responseSessionMessage = reconciled.primaryMessage;
+        responseSessionMessageIdHint = reconciled.primaryMessage.id;
         responseSessionReplyBase = null;
         responseSessionOverflowMessageIds = reconciled.overflowMessageIds;
         responseSessionOverflowMessages = reconciled.overflowMessages;
@@ -888,7 +981,7 @@ export async function handleMessageCreate(message: Message) {
         responseSessionRevision = update.responseSession.draftRevision;
         responseSessionText = nextDraft;
       };
-      const result = waitingTaskRun
+      const result = effectiveWaitingTaskRun
         ? await resumeWaitingTaskRunWithInput({
             traceId,
             userId: message.author.id,
@@ -904,6 +997,22 @@ export async function handleMessageCreate(message: Message) {
             canModerate: invokerCanModerate,
             onResponseSessionUpdate,
           })
+        : staleMatchedTaskRun
+          ? await continueMatchedTaskRunWithInput({
+              traceId,
+              threadId: staleMatchedTaskRun.threadId,
+              userId: message.author.id,
+              channelId: message.channelId,
+              guildId: message.guildId,
+              userText: userTextWithAttachments,
+              userContent: userContent ?? userTextWithAttachments,
+              currentTurn,
+              replyTarget,
+              promptMode,
+              isAdmin: invokerIsAdmin,
+              canModerate: invokerCanModerate,
+              onResponseSessionUpdate,
+            })
         : await generateChatReply({
             traceId,
             userId: message.author.id,
@@ -1005,6 +1114,7 @@ export async function handleMessageCreate(message: Message) {
             replyText.trim() === responseSessionText &&
             hasExpectedOverflowCoverage(replyText.trim());
           if (!canSkipPrimaryEdit) {
+            await hydrateExistingResponseSessionMessage();
             if (shouldUseRuntimeCard || files.length > 0) {
               const editableResponseSessionMessage = responseSessionMessage;
               if (editableResponseSessionMessage) {
@@ -1015,6 +1125,7 @@ export async function handleMessageCreate(message: Message) {
                 responseSessionMessage = (await (responseSessionReplyBase ?? (message as unknown as ResponseSessionReplyAnchor)).reply(
                   primaryPayload as Parameters<ResponseSessionReplyAnchor['reply']>[0],
                 )) as ResponseSessionEditableMessage;
+                responseSessionMessageIdHint = responseSessionMessage.id;
                 responseSessionReplyBase = null;
               }
               const overflowResult = await reconcileOverflowChunks({
@@ -1041,6 +1152,7 @@ export async function handleMessageCreate(message: Message) {
                 allowedMentions: { repliedUser: false },
               });
               responseSessionMessage = reconciled.primaryMessage;
+              responseSessionMessageIdHint = reconciled.primaryMessage.id;
               responseSessionReplyBase = null;
               responseSessionOverflowMessageIds = reconciled.overflowMessageIds;
               responseSessionOverflowMessages = reconciled.overflowMessages;

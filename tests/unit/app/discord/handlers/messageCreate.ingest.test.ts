@@ -7,6 +7,8 @@ const {
   mockClient,
   mockFetchAttachmentText,
   mockAttachTaskRunResponseSession,
+  mockContinueMatchedTaskRunWithInput,
+  mockGetAgentTaskRunByThreadId,
   mockQueueActiveRunUserInterrupt,
   mockResumeWaitingTaskRunWithInput,
   mockFindRunningTaskRunForActiveInterrupt,
@@ -18,6 +20,8 @@ const {
   };
   const mockFetchAttachmentText = vi.fn();
   const mockAttachTaskRunResponseSession = vi.fn().mockResolvedValue(undefined);
+  const mockContinueMatchedTaskRunWithInput = vi.fn();
+  const mockGetAgentTaskRunByThreadId = vi.fn().mockResolvedValue(null);
   const mockQueueActiveRunUserInterrupt = vi.fn().mockResolvedValue('queued');
   const mockResumeWaitingTaskRunWithInput = vi.fn();
   const mockFindRunningTaskRunForActiveInterrupt = vi.fn().mockResolvedValue(null);
@@ -27,6 +31,8 @@ const {
     mockClient,
     mockFetchAttachmentText,
     mockAttachTaskRunResponseSession,
+    mockContinueMatchedTaskRunWithInput,
+    mockGetAgentTaskRunByThreadId,
     mockQueueActiveRunUserInterrupt,
     mockResumeWaitingTaskRunWithInput,
     mockFindRunningTaskRunForActiveInterrupt,
@@ -58,6 +64,7 @@ vi.mock('@/features/chat/chat-engine', () => ({
 
 vi.mock('@/features/agent-runtime', () => ({
   attachTaskRunResponseSession: mockAttachTaskRunResponseSession,
+  continueMatchedTaskRunWithInput: mockContinueMatchedTaskRunWithInput,
   queueActiveRunUserInterrupt: mockQueueActiveRunUserInterrupt,
   resumeWaitingTaskRunWithInput: mockResumeWaitingTaskRunWithInput,
 }));
@@ -65,6 +72,7 @@ vi.mock('@/features/agent-runtime', () => ({
 vi.mock('@/features/agent-runtime/agentTaskRunRepo', () => ({
   findRunningTaskRunForActiveInterrupt: mockFindRunningTaskRunForActiveInterrupt,
   findWaitingUserInputTaskRun: mockFindWaitingUserInputTaskRun,
+  getAgentTaskRunByThreadId: mockGetAgentTaskRunByThreadId,
 }));
 
 vi.mock('@/platform/files/file-handler', () => ({
@@ -217,6 +225,8 @@ describe('messageCreate - ingest + reply gating', () => {
     mockGenerateChatReply.mockReset();
     mockFetchAttachmentText.mockReset();
     mockAttachTaskRunResponseSession.mockReset();
+    mockContinueMatchedTaskRunWithInput.mockReset();
+    mockGetAgentTaskRunByThreadId.mockReset();
     mockQueueActiveRunUserInterrupt.mockReset();
     mockResumeWaitingTaskRunWithInput.mockReset();
     mockFindRunningTaskRunForActiveInterrupt.mockReset();
@@ -228,6 +238,22 @@ describe('messageCreate - ingest + reply gating', () => {
     mockDeleteAttachmentChunks.mockReset();
     mockIngestAttachmentText.mockReset();
     mockGenerateChatReply.mockResolvedValue({ replyText: 'Test response', delivery: 'response_session' });
+    mockContinueMatchedTaskRunWithInput.mockResolvedValue({
+      replyText: 'Continued response',
+      delivery: 'response_session',
+      status: 'completed',
+      responseSession: {
+        responseSessionId: 'thread-continued-default',
+        status: 'final',
+        latestText: 'Continued response',
+        draftRevision: 1,
+        sourceMessageId: 'source-continued-default',
+        responseMessageId: 'reply-continued-default',
+        surfaceAttached: true,
+        overflowMessageIds: [],
+        linkedArtifactMessageIds: [],
+      },
+    });
     mockFetchAttachmentText.mockResolvedValue({
       kind: 'ok',
       text: 'default file text',
@@ -238,6 +264,7 @@ describe('messageCreate - ingest + reply gating', () => {
     mockIsRateLimited.mockReturnValue(false);
     mockAttachTaskRunResponseSession.mockResolvedValue(undefined);
     mockQueueActiveRunUserInterrupt.mockResolvedValue('queued');
+    mockGetAgentTaskRunByThreadId.mockResolvedValue(null);
     mockResumeWaitingTaskRunWithInput.mockResolvedValue({
       replyText: 'Resumed waiting task',
       delivery: 'response_session',
@@ -577,9 +604,29 @@ describe('messageCreate - ingest + reply gating', () => {
     expect((message as unknown as { reply: ReturnType<typeof vi.fn> }).reply).toHaveBeenCalledTimes(1);
   });
 
-  it('falls back to a fresh turn when a matched running task becomes terminal before the interrupt is queued', async () => {
+  it('continues the matched task on the same response-session surface when the active-run interrupt races a terminal completion', async () => {
+    const message = createMockMessage({
+      content: 'sage switch the search to the docs repo',
+      reference: { messageId: 'running-response-terminal-race' },
+      fetchReference: vi.fn().mockResolvedValue(null),
+    }) as Message & {
+      __responseMessage: { id: string; edit: ReturnType<typeof vi.fn> };
+      __sourceMessage: { id: string; reply: ReturnType<typeof vi.fn> };
+      channel: {
+        messages: { fetch: ReturnType<typeof vi.fn> };
+      };
+      reply: ReturnType<typeof vi.fn>;
+    };
     const referencedMessage = {
       id: 'running-response-terminal-race',
+      content: 'Still working on that.',
+      edit: vi.fn().mockImplementation(async (payload: { content?: string }) => {
+        if (typeof payload?.content === 'string') {
+          referencedMessage.content = payload.content;
+        }
+        return referencedMessage;
+      }),
+      delete: vi.fn().mockResolvedValue(undefined),
       author: {
         id: '123',
         bot: true,
@@ -592,12 +639,23 @@ describe('messageCreate - ingest + reply gating', () => {
       mentions: {
         users: new Collection<string, User>(),
       } as Message['mentions'],
-      content: 'Still working on that.',
-    } as Partial<Message>;
-    const message = createMockMessage({
-      content: 'sage switch the search to the docs repo',
-      reference: { messageId: 'running-response-terminal-race' },
-      fetchReference: vi.fn().mockResolvedValue(referencedMessage),
+    } as Partial<Message> & {
+      id: string;
+      content: string;
+      edit: ReturnType<typeof vi.fn>;
+      delete: ReturnType<typeof vi.fn>;
+    };
+    message.channel.messages.fetch.mockImplementation(async (messageId: string) => {
+      if (messageId === referencedMessage.id) {
+        return referencedMessage;
+      }
+      if (messageId === message.__responseMessage.id) {
+        return message.__responseMessage;
+      }
+      if (messageId === message.__sourceMessage.id) {
+        return message.__sourceMessage;
+      }
+      throw new Error(`Unknown message id: ${messageId}`);
     });
     mockFindRunningTaskRunForActiveInterrupt.mockResolvedValueOnce({
       id: 'run-running-terminal-race',
@@ -606,7 +664,65 @@ describe('messageCreate - ingest + reply gating', () => {
       responseMessageId: 'running-response-terminal-race',
       status: 'running',
     });
+    mockGetAgentTaskRunByThreadId.mockResolvedValueOnce({
+      id: 'run-running-terminal-race',
+      threadId: 'thread-running-terminal-race',
+      sourceMessageId: 'source-1',
+      responseMessageId: 'running-response-terminal-race',
+      status: 'completed',
+      completionKind: 'final_answer',
+      responseSessionJson: {
+        responseSessionId: 'thread-running-terminal-race',
+        status: 'final',
+        latestText: 'Still working on that.',
+        draftRevision: 4,
+        sourceMessageId: 'source-1',
+        responseMessageId: 'running-response-terminal-race',
+        surfaceAttached: true,
+        overflowMessageIds: [],
+        linkedArtifactMessageIds: [],
+      },
+    });
     mockQueueActiveRunUserInterrupt.mockResolvedValueOnce('stale');
+    mockContinueMatchedTaskRunWithInput.mockImplementationOnce(async (params) => {
+      await params.onResponseSessionUpdate?.({
+        replyText: 'Switching to the docs repo on this same task.',
+        delivery: 'response_session',
+        responseSession: {
+          responseSessionId: 'thread-running-terminal-race',
+          status: 'draft',
+          latestText: 'Switching to the docs repo on this same task.',
+          draftRevision: 5,
+          sourceMessageId: 'source-1',
+          responseMessageId: 'running-response-terminal-race',
+          surfaceAttached: true,
+          overflowMessageIds: [],
+          linkedArtifactMessageIds: [],
+        },
+        pendingInterrupt: null,
+        completionKind: null,
+        stopReason: 'background_yield',
+      });
+
+      return {
+        runId: 'thread-running-terminal-race',
+        status: 'running',
+        replyText: 'Switching to the docs repo on this same task.',
+        delivery: 'response_session',
+        responseSession: {
+          responseSessionId: 'thread-running-terminal-race',
+          status: 'final',
+          latestText: 'Switching to the docs repo on this same task.',
+          draftRevision: 5,
+          sourceMessageId: 'source-1',
+          responseMessageId: 'running-response-terminal-race',
+          surfaceAttached: true,
+          overflowMessageIds: [],
+          linkedArtifactMessageIds: [],
+        },
+        files: [],
+      };
+    });
 
     await handleMessageCreate(message);
 
@@ -617,8 +733,121 @@ describe('messageCreate - ingest + reply gating', () => {
         messageId: message.id,
       }),
     );
-    expect(mockGenerateChatReply).toHaveBeenCalledTimes(1);
+    expect(mockContinueMatchedTaskRunWithInput).toHaveBeenCalledWith(
+      expect.objectContaining({
+        threadId: 'thread-running-terminal-race',
+        userId: 'user-456',
+        userText: 'switch the search to the docs repo',
+      }),
+    );
+    expect(referencedMessage.edit).toHaveBeenCalled();
+    expect(message.reply).not.toHaveBeenCalled();
+    expect(mockGenerateChatReply).not.toHaveBeenCalled();
     expect(mockResumeWaitingTaskRunWithInput).not.toHaveBeenCalled();
+  });
+
+  it('reroutes a stale active-run interrupt into waiting-user-input resume when the matched task entered a waiting state first', async () => {
+    const message = createMockMessage({
+      content: 'sage use the docs repo',
+      reference: { messageId: 'running-response-became-waiting' },
+      fetchReference: vi.fn().mockResolvedValue(null),
+    });
+    mockFindRunningTaskRunForActiveInterrupt.mockResolvedValueOnce({
+      id: 'run-running-became-waiting',
+      threadId: 'thread-running-became-waiting',
+      sourceMessageId: 'source-1',
+      responseMessageId: 'running-response-became-waiting',
+      status: 'running',
+    });
+    mockQueueActiveRunUserInterrupt.mockResolvedValueOnce('stale');
+    mockGetAgentTaskRunByThreadId.mockResolvedValueOnce({
+      id: 'run-running-became-waiting',
+      threadId: 'thread-running-became-waiting',
+      sourceMessageId: 'source-1',
+      responseMessageId: 'running-response-became-waiting',
+      status: 'waiting_user_input',
+      waitingKind: 'user_input',
+      responseSessionJson: {
+        responseSessionId: 'thread-running-became-waiting',
+        status: 'waiting_user_input',
+        latestText: 'Which repo should I check?',
+        draftRevision: 4,
+        sourceMessageId: 'source-1',
+        responseMessageId: 'running-response-became-waiting',
+        surfaceAttached: true,
+        overflowMessageIds: [],
+        linkedArtifactMessageIds: [],
+      },
+    });
+
+    await handleMessageCreate(message);
+
+    expect(mockResumeWaitingTaskRunWithInput).toHaveBeenCalledWith(
+      expect.objectContaining({
+        traceId: 'test-trace-id',
+        replyToMessageId: 'running-response-became-waiting',
+        userText: 'use the docs repo',
+      }),
+    );
+    expect(mockContinueMatchedTaskRunWithInput).not.toHaveBeenCalled();
+    expect(mockGenerateChatReply).not.toHaveBeenCalled();
+  });
+
+  it('fails closed when a stale completed-task continuation cannot rehydrate the canonical response surface', async () => {
+    const message = createMockMessage({
+      content: 'sage switch to the docs repo',
+      reference: { messageId: 'running-response-missing-surface' },
+      fetchReference: vi.fn().mockResolvedValue(null),
+    }) as Message & {
+      __responseMessage: { id: string; edit: ReturnType<typeof vi.fn> };
+      __sourceMessage: { id: string; reply: ReturnType<typeof vi.fn> };
+      channel: {
+        messages: { fetch: ReturnType<typeof vi.fn> };
+      };
+      reply: ReturnType<typeof vi.fn>;
+    };
+    message.channel.messages.fetch.mockImplementation(async (messageId: string) => {
+      if (messageId === message.__responseMessage.id) {
+        return message.__responseMessage;
+      }
+      if (messageId === message.__sourceMessage.id) {
+        return message.__sourceMessage;
+      }
+      throw new Error(`Unknown message id: ${messageId}`);
+    });
+    mockFindRunningTaskRunForActiveInterrupt.mockResolvedValueOnce({
+      id: 'run-running-missing-surface',
+      threadId: 'thread-running-missing-surface',
+      sourceMessageId: 'source-1',
+      responseMessageId: 'running-response-missing-surface',
+      status: 'running',
+    });
+    mockQueueActiveRunUserInterrupt.mockResolvedValueOnce('stale');
+    mockGetAgentTaskRunByThreadId.mockResolvedValueOnce({
+      id: 'run-running-missing-surface',
+      threadId: 'thread-running-missing-surface',
+      sourceMessageId: 'source-1',
+      responseMessageId: 'running-response-missing-surface',
+      status: 'completed',
+      completionKind: 'final_answer',
+      responseSessionJson: {
+        responseSessionId: 'thread-running-missing-surface',
+        status: 'final',
+        latestText: 'Still working on that.',
+        draftRevision: 4,
+        sourceMessageId: 'source-1',
+        responseMessageId: 'running-response-missing-surface',
+        surfaceAttached: true,
+        overflowMessageIds: [],
+        linkedArtifactMessageIds: [],
+      },
+    });
+
+    await handleMessageCreate(message);
+
+    expect(mockContinueMatchedTaskRunWithInput).not.toHaveBeenCalled();
+    expect(mockGenerateChatReply).not.toHaveBeenCalled();
+    expect(message.reply).toHaveBeenCalledTimes(1);
   });
 
   it('keeps waiting-user-input replies on the existing waiting resume path even if a running task would also match', async () => {

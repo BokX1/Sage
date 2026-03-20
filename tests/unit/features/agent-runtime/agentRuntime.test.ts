@@ -194,6 +194,7 @@ vi.mock('@/features/voice/voiceConversationSessionStore', () => ({
 
 import {
   attachTaskRunResponseSession,
+  continueMatchedTaskRunWithInput,
   queueActiveRunUserInterrupt,
   resumeBackgroundTaskRun,
   resumeWaitingTaskRunWithInput,
@@ -1849,6 +1850,202 @@ describe('agentRuntime', () => {
         activeUserInterruptConsumedRevision: 3,
       }),
     );
+  });
+
+  it('continues a just-finished matched task on the same thread instead of forking a fresh turn', async () => {
+    const now = Date.now();
+    getAgentTaskRunByThreadIdMock.mockResolvedValue({
+      id: 'task-terminal-race-1',
+      threadId: 'thread-terminal-race-1',
+      originTraceId: 'trace-origin',
+      latestTraceId: 'trace-latest',
+      guildId: 'guild-1',
+      channelId: 'channel-1',
+      requestedByUserId: 'user-1',
+      sourceMessageId: 'message-source-terminal-race-1',
+      responseMessageId: 'response-terminal-race-1',
+      status: 'completed',
+      waitingKind: null,
+      latestDraftText: 'Step 5/5 complete.',
+      draftRevision: 5,
+      completionKind: 'final_answer',
+      stopReason: 'assistant_turn_completed',
+      nextRunnableAt: null,
+      leaseOwner: null,
+      leaseExpiresAt: null,
+      heartbeatAt: new Date(now),
+      resumeCount: 2,
+      taskWallClockMs: 2_500,
+      maxTotalDurationMs: 3_600_000,
+      maxIdleWaitMs: 86_400_000,
+      lastErrorText: null,
+      responseSessionJson: {
+        responseSessionId: 'thread-terminal-race-1',
+        status: 'final',
+        latestText: 'Step 5/5 complete.',
+        draftRevision: 5,
+        sourceMessageId: 'message-source-terminal-race-1',
+        responseMessageId: 'response-terminal-race-1',
+        surfaceAttached: true,
+        overflowMessageIds: [],
+        linkedArtifactMessageIds: [],
+      },
+      waitingStateJson: null,
+      compactionStateJson: null,
+      checkpointMetadataJson: { isAdmin: true, canModerate: false },
+      activeUserInterruptJson: null,
+      activeUserInterruptRevision: 0,
+      activeUserInterruptConsumedRevision: 0,
+      activeUserInterruptQueuedAt: null,
+      activeUserInterruptConsumedAt: null,
+      activeUserInterruptSupersededAt: null,
+      activeUserInterruptSupersededRevision: null,
+      startedAt: new Date(now - 5 * 60_000),
+      completedAt: new Date(now - 1_000),
+      createdAt: new Date(now - 5 * 60_000),
+      updatedAt: new Date(now - 1_000),
+    });
+    continueAgentGraphTurnMock.mockResolvedValue(
+      makeGraphResult({
+        replyText: 'Switching to the docs repo on the same task.',
+        activeWindowDurationMs: 300,
+        responseSession: {
+          responseSessionId: 'thread-terminal-race-1',
+          status: 'final',
+          latestText: 'Switching to the docs repo on the same task.',
+          draftRevision: 6,
+          sourceMessageId: 'message-source-terminal-race-1',
+          responseMessageId: 'response-terminal-race-1',
+          surfaceAttached: true,
+          overflowMessageIds: [],
+          linkedArtifactMessageIds: [],
+        },
+      }),
+    );
+
+    const result = await continueMatchedTaskRunWithInput({
+      traceId: 'trace-terminal-race-1',
+      threadId: 'thread-terminal-race-1',
+      userId: 'user-1',
+      channelId: 'channel-1',
+      guildId: 'guild-1',
+      userText: 'Stop and switch to docs first.',
+      currentTurn: makeCurrentTurn({
+        messageId: 'message-terminal-race-1',
+        invokedBy: 'reply',
+        isDirectReply: true,
+        replyTargetMessageId: 'response-terminal-race-1',
+        replyTargetAuthorId: 'sage-bot',
+      }),
+      replyTarget: {
+        messageId: 'response-terminal-race-1',
+        guildId: 'guild-1',
+        channelId: 'channel-1',
+        authorId: 'sage-bot',
+        authorDisplayName: 'Sage',
+        authorIsBot: true,
+        content: 'Step 5/5 complete.',
+        mentionedUserIds: [],
+      },
+      promptMode: 'reply_only',
+      isAdmin: true,
+    });
+
+    expect(result.replyText).toBe('Switching to the docs repo on the same task.');
+    expect(continueAgentGraphTurnMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        threadId: 'thread-terminal-race-1',
+        appendedMessages: [new HumanMessage({ content: 'Stop and switch to docs first.' })],
+        context: expect.objectContaining({
+          routeKind: 'active_interrupt_race_resume',
+          currentTurn: expect.objectContaining({
+            messageId: 'message-terminal-race-1',
+          }),
+        }),
+      }),
+    );
+    expect(upsertAgentTaskRunMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        threadId: 'thread-terminal-race-1',
+        sourceMessageId: 'message-source-terminal-race-1',
+        responseMessageId: 'response-terminal-race-1',
+        resumeCount: 3,
+        status: 'completed',
+      }),
+    );
+  });
+
+  it('refuses to reopen a matched task race unless the task really finished with a final answer', async () => {
+    const now = Date.now();
+    getAgentTaskRunByThreadIdMock.mockResolvedValue({
+      id: 'task-terminal-race-invalid-1',
+      threadId: 'thread-terminal-race-invalid-1',
+      originTraceId: 'trace-origin',
+      latestTraceId: 'trace-latest',
+      guildId: 'guild-1',
+      channelId: 'channel-1',
+      requestedByUserId: 'user-1',
+      sourceMessageId: 'message-source-terminal-race-invalid-1',
+      responseMessageId: 'response-terminal-race-invalid-1',
+      status: 'waiting_user_input',
+      waitingKind: 'user_input',
+      latestDraftText: 'Which repo should I check?',
+      draftRevision: 5,
+      completionKind: null,
+      stopReason: 'user_input_interrupt',
+      nextRunnableAt: null,
+      leaseOwner: null,
+      leaseExpiresAt: null,
+      heartbeatAt: new Date(now),
+      resumeCount: 2,
+      taskWallClockMs: 2_500,
+      maxTotalDurationMs: 3_600_000,
+      maxIdleWaitMs: 86_400_000,
+      lastErrorText: null,
+      responseSessionJson: {
+        responseSessionId: 'thread-terminal-race-invalid-1',
+        status: 'waiting_user_input',
+        latestText: 'Which repo should I check?',
+        draftRevision: 5,
+        sourceMessageId: 'message-source-terminal-race-invalid-1',
+        responseMessageId: 'response-terminal-race-invalid-1',
+        surfaceAttached: true,
+        overflowMessageIds: [],
+        linkedArtifactMessageIds: [],
+      },
+      waitingStateJson: null,
+      compactionStateJson: null,
+      checkpointMetadataJson: { isAdmin: true, canModerate: false },
+      activeUserInterruptJson: null,
+      activeUserInterruptRevision: 0,
+      activeUserInterruptConsumedRevision: 0,
+      activeUserInterruptQueuedAt: null,
+      activeUserInterruptConsumedAt: null,
+      activeUserInterruptSupersededAt: null,
+      activeUserInterruptSupersededRevision: null,
+      startedAt: new Date(now - 5 * 60_000),
+      completedAt: null,
+      createdAt: new Date(now - 5 * 60_000),
+      updatedAt: new Date(now - 1_000),
+    });
+
+    const result = await continueMatchedTaskRunWithInput({
+      traceId: 'trace-terminal-race-invalid-1',
+      threadId: 'thread-terminal-race-invalid-1',
+      userId: 'user-1',
+      channelId: 'channel-1',
+      guildId: 'guild-1',
+      userText: 'Use the docs repo.',
+      currentTurn: makeCurrentTurn({
+        messageId: 'message-terminal-race-invalid-1',
+      }),
+      isAdmin: true,
+    });
+
+    expect(result.status).toBe('failed');
+    expect(result.replyText).toBe('I couldn’t resume that finished task cleanly, so please ask me again.');
+    expect(continueAgentGraphTurnMock).not.toHaveBeenCalled();
+    expect(upsertAgentTaskRunMock).not.toHaveBeenCalled();
   });
 
   it('defers terminal persistence when a newer active-run interrupt lands before final completion saves', async () => {
