@@ -521,7 +521,6 @@ const AgentGraphStateSchema = new StateSchema({
 });
 
 type GraphNodeName =
-  | 'continue_prepare'
   | 'continue_route'
   | 'decide_turn'
   | 'tool_call_turn'
@@ -803,6 +802,58 @@ function consumePendingUserSteerInterrupt(state: AgentGraphState): {
     interruptUpdate: {
       pendingInterrupt: null,
       interruptResolution: nextState.interruptResolution,
+    },
+  };
+}
+
+function buildContinueEntryUpdate(
+  state: AgentGraphState,
+  config: RunnableConfig,
+): {
+  state: AgentGraphState;
+  update: Partial<AgentGraphState>;
+} {
+  const configured = AgentGraphConfigurableSchema.parse(config.configurable ?? {});
+  if (state.pendingInterrupt?.kind === 'approval_review' || state.graphStatus === 'running') {
+    return {
+      state,
+      update: {},
+    };
+  }
+
+  const continuedState: AgentGraphState = {
+    ...state,
+    responseSession: configured.continueResponseSession ?? state.responseSession,
+    waitingState: configured.continueClearWaitingState ? null : state.waitingState,
+    completionKind: null,
+    stopReason: 'assistant_turn_completed',
+    deliveryDisposition: state.deliveryDisposition,
+    graphStatus: 'running',
+    yieldReason: null,
+    pendingInterrupt: null,
+    interruptResolution: null,
+    roundsCompleted: 0,
+    activeWindowDurationMs: 0,
+    finalization: buildDefaultFinalization(),
+    plainTextOutcomeSource: null,
+  };
+
+  return {
+    state: continuedState,
+    update: {
+      responseSession: continuedState.responseSession,
+      waitingState: continuedState.waitingState,
+      completionKind: continuedState.completionKind,
+      stopReason: continuedState.stopReason,
+      deliveryDisposition: continuedState.deliveryDisposition,
+      graphStatus: continuedState.graphStatus,
+      yieldReason: continuedState.yieldReason,
+      pendingInterrupt: continuedState.pendingInterrupt,
+      interruptResolution: continuedState.interruptResolution,
+      roundsCompleted: continuedState.roundsCompleted,
+      activeWindowDurationMs: continuedState.activeWindowDurationMs,
+      finalization: continuedState.finalization,
+      plainTextOutcomeSource: continuedState.plainTextOutcomeSource,
     },
   };
 }
@@ -2151,23 +2202,27 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
     state: AgentGraphState,
     config: RunnableConfig,
   ): Promise<Command<unknown, Partial<AgentGraphState>, GraphNodeName>> => {
-    const runtimeContext = resolveRuntimeContext(state, config);
-    if (isTimedOut(state, graphConfig) || state.roundsCompleted >= graphConfig.sliceMaxSteps) {
+    const continued = buildContinueEntryUpdate(state, config);
+    const effectiveState = continued.state;
+    const runtimeContext = resolveRuntimeContext(effectiveState, config);
+    if (isTimedOut(effectiveState, graphConfig) || effectiveState.roundsCompleted >= graphConfig.sliceMaxSteps) {
       return new Command({
         goto: 'yield_background',
         update: {
+          ...continued.update,
           stopReason: 'background_yield',
-          yieldReason: resolveBackgroundYieldReason(state, graphConfig),
+          yieldReason: resolveBackgroundYieldReason(effectiveState, graphConfig),
           resumeContext: snapshotRuntimeContext(runtimeContext),
-          contextFrame: buildContextFrame(state),
+          contextFrame: buildContextFrame(effectiveState),
         },
       });
     }
     return new Command({
       goto: 'tool_call_turn',
       update: {
+        ...continued.update,
         resumeContext: snapshotRuntimeContext(runtimeContext),
-        contextFrame: buildContextFrame(state),
+        contextFrame: buildContextFrame(effectiveState),
       },
     });
   };
@@ -2351,7 +2406,7 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
             requestedByUserId: runtimeContext.userId,
             channelId: runtimeContext.channelId,
             guildId: runtimeContext.guildId,
-            responseMessageId: state.responseSession.responseMessageId,
+            responseMessageId: effectiveState.responseSession.responseMessageId,
           }
         : null;
     const responseSession = bumpResponseSession({
@@ -2404,9 +2459,11 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
     state: AgentGraphState,
     config: RunnableConfig,
   ): Promise<Command<unknown, Partial<AgentGraphState>, GraphNodeName>> => {
-    const toolCalls = getLastAiToolCalls(state.messages as BaseMessage[]);
-    const runtimeContext = resolveRuntimeContext(state, config);
-    const toolContext = buildToolContext(state, runtimeContext, 'turn', config);
+    const continued = buildContinueEntryUpdate(state, config);
+    const effectiveState = continued.state;
+    const toolCalls = getLastAiToolCalls(effectiveState.messages as BaseMessage[]);
+    const runtimeContext = resolveRuntimeContext(effectiveState, config);
+    const toolContext = buildToolContext(effectiveState, runtimeContext, 'turn', config);
     const catalog = buildActiveToolCatalog({
       activeToolNames: runtimeContext.activeToolNames,
       context: toolContext,
@@ -2416,9 +2473,9 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
     const requestedCallCount = toolCalls.length;
     if (requestedCallCount === 0) {
       const replyText = scrubFinalReplyText({
-        replyText: state.replyText || findLatestAssistantText(state.messages as BaseMessage[]),
+        replyText: effectiveState.replyText || findLatestAssistantText(effectiveState.messages as BaseMessage[]),
       });
-      const completionKind = replyText ? (state.completionKind ?? 'final_answer') : 'runtime_failure';
+      const completionKind = replyText ? (effectiveState.completionKind ?? 'final_answer') : 'runtime_failure';
       const waitingForUserInput = completionKind === 'user_input_pending';
       const runtimeFailed = completionKind === 'runtime_failure';
       const resolvedReplyText = replyText || buildRuntimeFailureReply({
@@ -2426,18 +2483,19 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
         category: 'runtime',
       });
       const responseSession = bumpResponseSession({
-        state,
+        state: effectiveState,
         latestText: resolvedReplyText,
         status: waitingForUserInput ? 'waiting_user_input' : runtimeFailed ? 'failed' : 'final',
       });
       const nextState = {
-        ...state,
+        ...effectiveState,
         replyText: resolvedReplyText,
         responseSession,
       };
       return new Command({
         goto: 'closeout_turn',
         update: {
+          ...continued.update,
           replyText: resolvedReplyText,
           completionKind,
           stopReason:
@@ -2497,8 +2555,8 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
     const overLimitCallCount = Math.max(0, uniqueCallCount - graphConfig.maxToolCallsPerRound);
     const batchFingerprint = buildToolBatchFingerprint(batchFingerprintParts);
     const consecutiveIdenticalToolBatches =
-      batchFingerprint && batchFingerprint === state.lastToolBatchFingerprint
-        ? state.consecutiveIdenticalToolBatches + 1
+      batchFingerprint && batchFingerprint === effectiveState.lastToolBatchFingerprint
+        ? effectiveState.consecutiveIdenticalToolBatches + 1
         : batchFingerprint
           ? 1
           : 0;
@@ -2510,7 +2568,7 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
           : undefined;
     const executedAny = readExecutionBatch.length > 0 || pendingWriteCalls.length > 0;
     const repairable = Boolean(
-      guardReason && state.loopGuardRecoveries < graphConfig.maxLoopGuardRecoveries,
+      guardReason && effectiveState.loopGuardRecoveries < graphConfig.maxLoopGuardRecoveries,
     );
 
     if (guardReason) {
@@ -2528,7 +2586,7 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
         overLimitCallCount,
         repairable,
       });
-      const event = await buildExecutionEvent(state, {
+      const event = await buildExecutionEvent(effectiveState, {
         requestedCallCount,
         executedCallCount: 0,
         deduplicatedCallCount: skippedDuplicateCallCount,
@@ -2542,6 +2600,7 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
         return new Command({
           goto: 'tool_call_turn',
           update: {
+            ...continued.update,
             messages: loopGuard.messages,
             toolResults: loopGuard.results,
             pendingReadCalls: [],
@@ -2550,9 +2609,9 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
             deduplicatedCallCount: skippedDuplicateCallCount,
             lastToolBatchFingerprint: batchFingerprint,
             consecutiveIdenticalToolBatches,
-            loopGuardRecoveries: state.loopGuardRecoveries + 1,
+            loopGuardRecoveries: effectiveState.loopGuardRecoveries + 1,
             roundEvents: [event],
-            contextFrame: buildContextFrame(state),
+            contextFrame: buildContextFrame(effectiveState),
           },
         });
       }
@@ -2561,14 +2620,15 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
       return new Command({
         goto: 'finalize_turn',
         update: {
+          ...continued.update,
           messages: loopGuard.messages,
           toolResults: loopGuard.results,
           replyText: buildLoopGuardReply({
             reason: guardReason,
             state: {
-              toolResults: [...state.toolResults, ...loopGuard.results],
-              messages: [...(state.messages as BaseMessage[]), ...loopGuard.messages],
-              replyText: state.replyText,
+              toolResults: [...effectiveState.toolResults, ...loopGuard.results],
+              messages: [...(effectiveState.messages as BaseMessage[]), ...loopGuard.messages],
+              replyText: effectiveState.replyText,
             },
           }),
           pendingReadCalls: [],
@@ -2577,31 +2637,31 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
           deduplicatedCallCount: skippedDuplicateCallCount,
           lastToolBatchFingerprint: batchFingerprint,
           consecutiveIdenticalToolBatches,
-          loopGuardRecoveries: state.loopGuardRecoveries,
+          loopGuardRecoveries: effectiveState.loopGuardRecoveries,
           roundEvents: [event],
           completionKind: 'loop_guard',
           stopReason: 'loop_guard',
           deliveryDisposition: 'response_session',
           responseSession: bumpResponseSession({
-            state,
+            state: effectiveState,
             latestText: buildLoopGuardReply({
               reason: guardReason,
               state: {
-                toolResults: [...state.toolResults, ...loopGuard.results],
-                messages: [...(state.messages as BaseMessage[]), ...loopGuard.messages],
-                replyText: state.replyText,
+                toolResults: [...effectiveState.toolResults, ...loopGuard.results],
+                messages: [...(effectiveState.messages as BaseMessage[]), ...loopGuard.messages],
+                replyText: effectiveState.replyText,
               },
             }),
             status: 'failed',
           }),
           contextFrame: buildContextFrame({
-            ...state,
+            ...effectiveState,
             replyText: buildLoopGuardReply({
               reason: guardReason,
               state: {
-                toolResults: [...state.toolResults, ...loopGuard.results],
-                messages: [...(state.messages as BaseMessage[]), ...loopGuard.messages],
-                replyText: state.replyText,
+                toolResults: [...effectiveState.toolResults, ...loopGuard.results],
+                messages: [...(effectiveState.messages as BaseMessage[]), ...loopGuard.messages],
+                replyText: effectiveState.replyText,
               },
             }),
           }),
@@ -2613,8 +2673,8 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
             completionKind: 'loop_guard',
             deliveryDisposition: 'response_session',
             finalizedBy: 'loop_guard',
-            draftRevision: state.responseSession.draftRevision + 1,
-            contextFrame: buildContextFrame(state),
+            draftRevision: effectiveState.responseSession.draftRevision + 1,
+            contextFrame: buildContextFrame(effectiveState),
           },
         },
       });
@@ -2628,6 +2688,7 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
             ? 'approval_gate'
             : 'tool_call_turn',
       update: {
+        ...continued.update,
         pendingReadCalls: readBatch,
         pendingReadExecutionCalls: readExecutionBatch,
         pendingWriteCalls,
@@ -2637,7 +2698,7 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
         loopGuardRecoveries: 0,
         roundEvents: executedAny
           ? [
-              await buildExecutionEvent(state, {
+              await buildExecutionEvent(effectiveState, {
                 requestedCallCount,
                 executedCallCount: uniqueCallCount,
                 deduplicatedCallCount: skippedDuplicateCallCount,
@@ -2647,7 +2708,7 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
               }),
             ]
           : [],
-        contextFrame: buildContextFrame(state),
+        contextFrame: buildContextFrame(effectiveState),
       },
     });
   };
@@ -3209,32 +3270,6 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
     pendingWriteCalls: [],
   });
 
-  const continuePrepareNode = async (
-    state: AgentGraphState,
-    config: RunnableConfig,
-  ): Promise<Partial<AgentGraphState>> => {
-    const configured = AgentGraphConfigurableSchema.parse(config.configurable ?? {});
-    const pendingInterrupt = state.pendingInterrupt;
-    if (pendingInterrupt && pendingInterrupt.kind === 'approval_review') {
-      return {};
-    }
-    return {
-      responseSession: configured.continueResponseSession ?? state.responseSession,
-      waitingState: configured.continueClearWaitingState ? null : state.waitingState,
-      completionKind: null,
-      stopReason: 'assistant_turn_completed',
-      deliveryDisposition: state.deliveryDisposition,
-      graphStatus: 'running',
-      yieldReason: null,
-      pendingInterrupt: state.pendingInterrupt?.kind === 'approval_review' ? state.pendingInterrupt : null,
-      interruptResolution: null,
-      roundsCompleted: 0,
-      activeWindowDurationMs: 0,
-      finalization: buildDefaultFinalization(),
-      plainTextOutcomeSource: null,
-    };
-  };
-
   const continueRouteNode = async (
     state: AgentGraphState,
   ): Promise<Command<unknown, Partial<AgentGraphState>, GraphNodeName>> => {
@@ -3247,14 +3282,11 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
     state: AgentGraphStateSchema,
     context: AgentGraphConfigurableSchema,
   })
-    .addNode('continue_prepare', continuePrepareNode, {
-      ends: ['continue_route'],
-    })
     .addNode('continue_route', continueRouteNode, {
       ends: ['decide_turn', 'route_tool_phase', 'resume_interrupt'],
     })
     .addNode('decide_turn', decideTurnNode, {
-      ends: ['tool_call_turn', 'yield_background', 'continue_route', 'continue_prepare'],
+      ends: ['tool_call_turn', 'yield_background', 'continue_route'],
     })
     .addNode('tool_call_turn', toolCallTurnNode, {
       ends: ['route_tool_phase', 'tool_call_turn', 'yield_background', 'closeout_turn'],
@@ -3279,7 +3311,6 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
     })
     .addNode('finalize_turn', finalizeTurnNode)
     .addEdge(START, 'decide_turn')
-    .addEdge('continue_prepare', 'continue_route')
     .addEdge('finalize_turn', END)
     .compile({
       checkpointer,
@@ -3987,7 +4018,7 @@ export async function continueAgentGraphTurn(
   const output = await runGraphValueStream(
     runtime.graph,
     new Command({
-      goto: 'continue_prepare',
+      goto: 'continue_route',
       update: Object.entries({
         messages: continueMessages,
       }) as [string, unknown][],
