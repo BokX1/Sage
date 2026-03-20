@@ -519,6 +519,7 @@ const AgentGraphStateSchema = new StateSchema({
 });
 
 type GraphNodeName =
+  | 'continue_route'
   | 'decide_turn'
   | 'tool_call_turn'
   | 'route_tool_phase'
@@ -3205,12 +3206,23 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
     pendingWriteCalls: [],
   });
 
+  const continueRouteNode = async (
+    state: AgentGraphState,
+  ): Promise<Command<unknown, Partial<AgentGraphState>, GraphNodeName>> =>
+    new Command({
+      goto: resolveContinueNode(state),
+      update: {},
+    });
+
   return new StateGraph({
     state: AgentGraphStateSchema,
     context: AgentGraphConfigurableSchema,
   })
+    .addNode('continue_route', continueRouteNode, {
+      ends: ['decide_turn', 'route_tool_phase', 'resume_interrupt'],
+    })
     .addNode('decide_turn', decideTurnNode, {
-      ends: ['tool_call_turn', 'yield_background'],
+      ends: ['tool_call_turn', 'yield_background', 'continue_route'],
     })
     .addNode('tool_call_turn', toolCallTurnNode, {
       ends: ['route_tool_phase', 'tool_call_turn', 'yield_background', 'closeout_turn'],
@@ -3951,7 +3963,7 @@ export async function continueAgentGraphTurn(
   const output = await runGraphValueStream(
     runtime.graph,
     new Command({
-      goto: resolveContinueNode(existingState),
+      goto: 'continue_route',
       update: Object.entries({
         messages: continueMessages,
         resumeContext: snapshotRuntimeContext(persistedMergedContext),
