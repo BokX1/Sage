@@ -3214,6 +3214,10 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
     config: RunnableConfig,
   ): Promise<Partial<AgentGraphState>> => {
     const configured = AgentGraphConfigurableSchema.parse(config.configurable ?? {});
+    const pendingInterrupt = state.pendingInterrupt;
+    if (pendingInterrupt && pendingInterrupt.kind === 'approval_review') {
+      return {};
+    }
     return {
       responseSession: configured.continueResponseSession ?? state.responseSession,
       waitingState: configured.continueClearWaitingState ? null : state.waitingState,
