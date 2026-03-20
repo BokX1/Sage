@@ -32,6 +32,7 @@ import {
 import {
   findWaitingUserInputTaskRun,
   getAgentTaskRunByThreadId,
+  type AgentTaskRunStatus,
   type QueueRunningTaskRunActiveInterruptResult,
   queueRunningTaskRunActiveInterrupt,
   readActiveUserInterruptState,
@@ -1042,9 +1043,95 @@ export async function attachTaskRunResponseSession(params: {
   sourceMessageId?: string | null;
   responseMessageId?: string | null;
   responseSession?: RuntimeGraphResult['responseSession'] | null;
+  requestedByUserId?: string | null;
+  channelId?: string;
+  guildId?: string | null;
+  originTraceId?: string | null;
+  latestTraceId?: string | null;
+  statusIfMissing?: AgentTaskRunStatus;
 }): Promise<void> {
   const existing = await getAgentTaskRunByThreadId(params.threadId);
+  const graphConfig = buildAgentGraphConfig();
+
   if (!existing) {
+    if (!params.requestedByUserId || !params.channelId) {
+      return;
+    }
+
+    const nextResponseSession =
+      params.responseSession &&
+      typeof params.responseSession === 'object' &&
+      !Array.isArray(params.responseSession)
+        ? {
+            ...params.responseSession,
+            sourceMessageId:
+              params.responseSession.sourceMessageId ?? params.sourceMessageId ?? null,
+            responseMessageId:
+              params.responseSession.responseMessageId ?? params.responseMessageId ?? null,
+            surfaceAttached:
+              typeof params.responseMessageId === 'string'
+                ? true
+                : params.responseSession.surfaceAttached === true,
+          }
+        : params.responseSession;
+    const nextDraftText =
+      nextResponseSession &&
+      typeof nextResponseSession === 'object' &&
+      !Array.isArray(nextResponseSession) &&
+      typeof (nextResponseSession as { latestText?: unknown }).latestText === 'string'
+        ? (((nextResponseSession as { latestText?: string }).latestText ?? '').trim() || '')
+        : '';
+    const nextDraftRevision =
+      nextResponseSession &&
+      typeof nextResponseSession === 'object' &&
+      !Array.isArray(nextResponseSession) &&
+      typeof (nextResponseSession as { draftRevision?: unknown }).draftRevision === 'number'
+        ? ((nextResponseSession as { draftRevision?: number }).draftRevision ?? 0)
+        : 0;
+
+    await upsertAgentTaskRun({
+      threadId: params.threadId,
+      originTraceId: params.originTraceId ?? params.threadId,
+      latestTraceId: params.latestTraceId ?? params.threadId,
+      guildId: params.guildId ?? null,
+      channelId: params.channelId,
+      requestedByUserId: params.requestedByUserId,
+      sourceMessageId:
+        params.sourceMessageId ??
+        (nextResponseSession &&
+        typeof nextResponseSession === 'object' &&
+        !Array.isArray(nextResponseSession)
+          ? (((nextResponseSession as { sourceMessageId?: string | null }).sourceMessageId ?? null) as
+              | string
+              | null)
+          : null),
+      responseMessageId:
+        params.responseMessageId ??
+        (nextResponseSession &&
+        typeof nextResponseSession === 'object' &&
+        !Array.isArray(nextResponseSession)
+          ? (((nextResponseSession as { responseMessageId?: string | null }).responseMessageId ?? null) as
+              | string
+              | null)
+          : null),
+      status: params.statusIfMissing ?? 'running',
+      waitingKind: null,
+      latestDraftText: nextDraftText,
+      draftRevision: nextDraftRevision,
+      completionKind: null,
+      stopReason: null,
+      nextRunnableAt: null,
+      responseSessionJson: nextResponseSession,
+      waitingStateJson: null,
+      compactionStateJson: null,
+      checkpointMetadataJson: null,
+      maxTotalDurationMs: graphConfig.maxTotalDurationMs,
+      maxIdleWaitMs: graphConfig.maxIdleWaitMs,
+      taskWallClockMs: 0,
+      resumeCount: 0,
+      completedAt: null,
+      lastErrorText: null,
+    });
     return;
   }
 
@@ -1077,8 +1164,6 @@ export async function attachTaskRunResponseSession(params: {
       ? ((nextResponseSession as { draftRevision?: number }).draftRevision ?? existing.draftRevision)
       : existing.draftRevision;
   const mergedResponseRefs = readPersistedResponseSessionRefs(nextResponseSession);
-  const graphConfig = buildAgentGraphConfig();
-
   await upsertAgentTaskRun({
     threadId: existing.threadId,
     originTraceId: existing.originTraceId,

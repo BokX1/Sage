@@ -967,6 +967,9 @@ export async function handleMessageCreate(message: Message) {
         responseSessionOverflowMessages = reconciled.overflowMessages;
         await attachTaskRunResponseSession({
           threadId: responseSessionThreadId,
+          requestedByUserId: message.author.id,
+          channelId: message.channelId,
+          guildId: message.guildId,
           sourceMessageId: responseSessionSourceMessageId,
           responseMessageId: responseSessionMessage.id,
           responseSession: {
@@ -1159,6 +1162,9 @@ export async function handleMessageCreate(message: Message) {
             }
             await attachTaskRunResponseSession({
               threadId: responseSessionThreadId,
+              requestedByUserId: message.author.id,
+              channelId: message.channelId,
+              guildId: message.guildId,
               sourceMessageId: responseSessionSourceMessageId,
               responseMessageId: responseSessionMessage?.id ?? null,
               responseSession: result.responseSession

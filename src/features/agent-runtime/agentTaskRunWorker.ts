@@ -239,6 +239,9 @@ async function publishTaskRunResult(params: {
     const { attachTaskRunResponseSession } = await getAgentRuntimeModule();
     await attachTaskRunResponseSession({
       threadId: params.run.threadId,
+      requestedByUserId: params.run.requestedByUserId,
+      channelId: params.run.channelId,
+      guildId: params.run.guildId,
       sourceMessageId: params.state.sourceMessageId,
       responseMessageId,
       responseSession: params.result.responseSession

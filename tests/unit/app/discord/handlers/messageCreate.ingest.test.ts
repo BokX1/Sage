@@ -559,6 +559,87 @@ describe('messageCreate - ingest + reply gating', () => {
     expect((message as unknown as { reply: ReturnType<typeof vi.fn> }).reply).not.toHaveBeenCalled();
   });
 
+  it('passes requester identity when attaching a fresh foreground response session so live steering can route before final persistence', async () => {
+    mockGenerateChatReply.mockImplementationOnce(async (params: {
+      messageId: string;
+      onResponseSessionUpdate?: (update: {
+        replyText: string;
+        delivery: 'response_session';
+        responseSession: {
+          responseSessionId: string;
+          status: 'draft';
+          latestText: string;
+          draftRevision: number;
+          sourceMessageId: string;
+          responseMessageId: string | null;
+          surfaceAttached: boolean;
+          overflowMessageIds: string[];
+          linkedArtifactMessageIds: string[];
+        };
+        pendingInterrupt: null;
+        completionKind: null;
+        stopReason: 'background_yield';
+      }) => Promise<void>;
+    }) => {
+      await params.onResponseSessionUpdate?.({
+        replyText: 'Still working through the tool chain now.',
+        delivery: 'response_session',
+        responseSession: {
+          responseSessionId: 'test-trace-id',
+          status: 'draft',
+          latestText: 'Still working through the tool chain now.',
+          draftRevision: 1,
+          sourceMessageId: params.messageId,
+          responseMessageId: null,
+          surfaceAttached: false,
+          overflowMessageIds: [],
+          linkedArtifactMessageIds: [],
+        },
+        pendingInterrupt: null,
+        completionKind: null,
+        stopReason: 'background_yield',
+      });
+
+      return {
+        runId: 'test-trace-id',
+        status: 'running',
+        replyText: 'Still working through the tool chain now.',
+        delivery: 'response_session',
+        responseSession: {
+          responseSessionId: 'test-trace-id',
+          status: 'draft',
+          latestText: 'Still working through the tool chain now.',
+          draftRevision: 1,
+          sourceMessageId: params.messageId,
+          responseMessageId: null,
+          surfaceAttached: false,
+          overflowMessageIds: [],
+          linkedArtifactMessageIds: [],
+        },
+        files: [],
+      };
+    });
+
+    const message = createMockMessage({
+      content: '<@123> keep going',
+      mentions: {
+        has: vi.fn((user: User) => user.id === '123'),
+        users: new Map<string, User>(),
+      },
+    });
+
+    await handleMessageCreate(message);
+
+    expect(mockAttachTaskRunResponseSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        threadId: 'test-trace-id',
+        requestedByUserId: 'user-456',
+        channelId: 'channel-101',
+        guildId: 'guild-789',
+      }),
+    );
+  });
+
   it('fails closed instead of starting a fresh turn when a matched running-task interrupt cannot be queued', async () => {
     const referencedMessage = {
       id: 'running-response-queue-failure',

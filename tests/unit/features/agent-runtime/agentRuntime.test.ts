@@ -1092,6 +1092,48 @@ describe('agentRuntime', () => {
     );
   });
 
+  it('creates a placeholder running task when the first response-session attachment arrives before the task row exists', async () => {
+    getAgentTaskRunByThreadIdMock.mockResolvedValueOnce(null);
+
+    await attachTaskRunResponseSession({
+      threadId: 'trace-foreground-attach-1',
+      requestedByUserId: 'user-foreground-1',
+      channelId: 'channel-foreground-1',
+      guildId: 'guild-foreground-1',
+      sourceMessageId: 'message-foreground-1',
+      responseMessageId: 'response-foreground-1',
+      responseSession: {
+        responseSessionId: 'trace-foreground-attach-1',
+        status: 'draft',
+        latestText: 'Still working on that now.',
+        draftRevision: 1,
+        sourceMessageId: 'message-foreground-1',
+        responseMessageId: 'response-foreground-1',
+        linkedArtifactMessageIds: [],
+        overflowMessageIds: [],
+      },
+    });
+
+    expect(upsertAgentTaskRunMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        threadId: 'trace-foreground-attach-1',
+        requestedByUserId: 'user-foreground-1',
+        channelId: 'channel-foreground-1',
+        guildId: 'guild-foreground-1',
+        sourceMessageId: 'message-foreground-1',
+        responseMessageId: 'response-foreground-1',
+        status: 'running',
+        nextRunnableAt: null,
+        latestDraftText: 'Still working on that now.',
+        responseSessionJson: expect.objectContaining({
+          sourceMessageId: 'message-foreground-1',
+          responseMessageId: 'response-foreground-1',
+          surfaceAttached: true,
+        }),
+      }),
+    );
+  });
+
   it('returns a waiting-user-input task result when the graph requests user input', async () => {
     runAgentGraphTurnMock.mockResolvedValue(
       makeGraphResult({
