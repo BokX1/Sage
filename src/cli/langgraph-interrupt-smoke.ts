@@ -80,6 +80,8 @@ async function main(): Promise<void> {
 
   const graphConfig = buildAgentGraphConfig();
   const threadId = `interrupt-smoke-${Date.now()}-${randomUUID().slice(0, 8)}`;
+  const seedTraceId = randomUUID();
+  const resumeTraceId = randomUUID();
   const sourceMessageId = `${threadId}-source`;
   const responseMessageId = `${threadId}-response`;
 
@@ -88,12 +90,12 @@ async function main(): Promise<void> {
 
   const initial = await runSeededAgentGraphTurn({
     threadId,
-    runId: `${threadId}-seed`,
+    runId: seedTraceId,
     runName: 'sage_agent_interrupt_smoke_seed',
     goto: 'yield_background',
     context: {
-      traceId: `${threadId}-seed`,
-      originTraceId: `${threadId}-seed`,
+      traceId: seedTraceId,
+      originTraceId: seedTraceId,
       threadId,
       userId: 'interrupt-smoke-user',
       channelId: 'interrupt-smoke-channel',
@@ -148,11 +150,11 @@ async function main(): Promise<void> {
 
   const resumed = await continueAgentGraphTurn({
     threadId,
-    runId: `${threadId}-resume`,
+    runId: resumeTraceId,
     runName: 'sage_agent_interrupt_smoke_resume',
     context: {
-      traceId: `${threadId}-resume`,
-      originTraceId: `${threadId}-seed`,
+      traceId: resumeTraceId,
+      originTraceId: seedTraceId,
       threadId,
       userId: 'interrupt-smoke-user',
       channelId: 'interrupt-smoke-channel',
