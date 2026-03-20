@@ -2695,6 +2695,131 @@ describe('runGraphValueStream', () => {
     expect(injectedMessages).toHaveLength(1);
   });
 
+  it('reopens a just-finished task thread with appended user input without checkpoint write conflicts', async () => {
+    await shutdownAgentGraphRuntime();
+    modelInvokeMock.mockResolvedValueOnce(
+      new AIMessage({
+        content: 'I picked that back up on the same task thread.',
+        tool_calls: [],
+      }),
+    );
+
+    await __runAgentGraphCommandForTests({
+      threadId: 'trace-stale-finish-reopen-1',
+      goto: 'finalize_turn',
+      context: {
+        traceId: 'trace-stale-finish-reopen-1',
+        originTraceId: 'trace-stale-finish-reopen-1',
+        userId: 'user-1',
+        channelId: 'channel-1',
+        guildId: 'guild-1',
+        apiKey: 'test-api-key',
+        model: 'test-main-agent-model',
+        temperature: 0.6,
+        timeoutMs: 1_000,
+        maxTokens: 500,
+        activeToolNames: [],
+        routeKind: 'active_interrupt_race_resume',
+        currentTurn: {
+          invokerUserId: 'user-1',
+          invokerDisplayName: 'User One',
+          messageId: 'message-stale-finish-reopen-seed',
+          guildId: 'guild-1',
+          channelId: 'channel-1',
+          invokedBy: 'mention',
+          mentionedUserIds: [],
+          isDirectReply: false,
+          replyTargetMessageId: null,
+          replyTargetAuthorId: null,
+          botUserId: 'sage-bot',
+        },
+        replyTarget: null,
+        invokedBy: 'mention',
+      },
+      state: {
+        graphStatus: 'completed',
+        completionKind: 'final_answer',
+        stopReason: 'assistant_turn_completed',
+        replyText: 'Turn 5/5 complete. Loop complete.',
+        responseSession: {
+          responseSessionId: 'trace-stale-finish-reopen-1',
+          status: 'final',
+          latestText: 'Turn 5/5 complete. Loop complete.',
+          draftRevision: 5,
+          sourceMessageId: 'message-source-stale-finish-reopen-1',
+          responseMessageId: 'response-stale-finish-reopen-1',
+          surfaceAttached: true,
+          overflowMessageIds: [],
+          linkedArtifactMessageIds: [],
+        },
+        messages: [
+          new HumanMessage({ content: 'Run the chain and keep the same task thread if I follow up.' }),
+          new AIMessage({ content: 'Turn 5/5 complete. Loop complete.' }),
+        ],
+      },
+    });
+
+    const resumed = await continueAgentGraphTurn({
+      threadId: 'trace-stale-finish-reopen-1',
+      runId: 'trace-stale-finish-reopen-1b',
+      runName: 'sage_agent_active_interrupt_race_resume',
+      context: {
+        traceId: 'trace-stale-finish-reopen-1b',
+        threadId: 'trace-stale-finish-reopen-1',
+        userId: 'user-1',
+        channelId: 'channel-1',
+        guildId: 'guild-1',
+        apiKey: 'test-api-key',
+        model: 'test-main-agent-model',
+        temperature: 0.6,
+        timeoutMs: 1_000,
+        maxTokens: 500,
+        invokedBy: 'reply',
+        invokerIsAdmin: false,
+        invokerCanModerate: false,
+        activeToolNames: [],
+        routeKind: 'active_interrupt_race_resume',
+        currentTurn: {
+          invokerUserId: 'user-1',
+          invokerDisplayName: 'User One',
+          messageId: 'message-stale-finish-reopen-1',
+          guildId: 'guild-1',
+          channelId: 'channel-1',
+          invokedBy: 'reply',
+          mentionedUserIds: [],
+          isDirectReply: true,
+          replyTargetMessageId: 'response-stale-finish-reopen-1',
+          replyTargetAuthorId: 'sage-bot',
+          botUserId: 'sage-bot',
+        },
+        replyTarget: {
+          messageId: 'response-stale-finish-reopen-1',
+          guildId: 'guild-1',
+          channelId: 'channel-1',
+          authorId: 'sage-bot',
+          authorDisplayName: 'Sage',
+          authorIsBot: true,
+          content: 'Turn 5/5 complete. Loop complete.',
+          mentionedUserIds: [],
+        },
+        promptMode: 'reply_only',
+      },
+      appendedMessages: [
+        new HumanMessage({
+          content: 'stop',
+        }),
+      ],
+    });
+
+    expect(resumed.replyText).toBe('I picked that back up on the same task thread.');
+    expect(resumed.responseSession).toMatchObject({
+      responseSessionId: 'trace-stale-finish-reopen-1',
+      responseMessageId: 'response-stale-finish-reopen-1',
+      status: 'final',
+      surfaceAttached: true,
+    });
+  });
+
   it('treats plain-text natural-language questions without runtime control as final answers', async () => {
     await shutdownAgentGraphRuntime();
     modelInvokeMock.mockResolvedValueOnce(

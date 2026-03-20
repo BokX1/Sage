@@ -3,14 +3,18 @@
 import { randomUUID } from 'node:crypto';
 import dotenv from 'dotenv';
 import { AIMessage, HumanMessage } from '@langchain/core/messages';
+import type { CurrentTurnContext } from '../features/agent-runtime/continuityContext';
 
 let depsLoaded = false;
 let registerDefaultAgenticTools: typeof import('../features/agent-runtime/defaultTools').registerDefaultAgenticTools;
 let buildAgentGraphConfig: typeof import('../features/agent-runtime/langgraph/config').buildAgentGraphConfig;
 let runSeededAgentGraphTurn: typeof import('../features/agent-runtime/langgraph/runtime').runSeededAgentGraphTurn;
 let continueAgentGraphTurn: typeof import('../features/agent-runtime/langgraph/runtime').continueAgentGraphTurn;
+let __runAgentGraphCommandForTests: typeof import('../features/agent-runtime/langgraph/runtime').__runAgentGraphCommandForTests;
 let __getAgentGraphStateForTests: typeof import('../features/agent-runtime/langgraph/runtime').__getAgentGraphStateForTests;
 let shutdownAgentGraphRuntime: typeof import('../features/agent-runtime/langgraph/runtime').shutdownAgentGraphRuntime;
+let continueMatchedTaskRunWithInput: typeof import('../features/agent-runtime/agentRuntime').continueMatchedTaskRunWithInput;
+let upsertAgentTaskRun: typeof import('../features/agent-runtime/agentTaskRunRepo').upsertAgentTaskRun;
 let prisma: typeof import('../platform/db/prisma-client').prisma;
 
 function seedSmokeEnvDefaults(): void {
@@ -47,9 +51,12 @@ async function loadDeps(): Promise<void> {
   ({
     runSeededAgentGraphTurn,
     continueAgentGraphTurn,
+    __runAgentGraphCommandForTests,
     __getAgentGraphStateForTests,
     shutdownAgentGraphRuntime,
   } = await import('../features/agent-runtime/langgraph/runtime'));
+  ({ continueMatchedTaskRunWithInput } = await import('../features/agent-runtime/agentRuntime'));
+  ({ upsertAgentTaskRun } = await import('../features/agent-runtime/agentTaskRunRepo'));
   ({ prisma } = await import('../platform/db/prisma-client'));
   depsLoaded = true;
 }
@@ -58,7 +65,7 @@ function buildSmokeTurn(params: {
   messageId: string;
   invokedBy: 'mention' | 'reply' | 'component';
   replyTargetMessageId: string | null;
-}): Record<string, unknown> {
+}): CurrentTurnContext {
   return {
     invokerUserId: 'interrupt-smoke-user',
     invokerDisplayName: 'Interrupt Smoke User',
@@ -79,7 +86,8 @@ async function main(): Promise<void> {
   registerDefaultAgenticTools();
 
   const graphConfig = buildAgentGraphConfig();
-  const threadId = `interrupt-smoke-${Date.now()}-${randomUUID().slice(0, 8)}`;
+  const smokeId = `${Date.now()}-${randomUUID().slice(0, 8)}`;
+  const threadId = `interrupt-smoke-${smokeId}`;
   const seedTraceId = randomUUID();
   const resumeTraceId = randomUUID();
   const sourceMessageId = `${threadId}-source`;
@@ -210,6 +218,134 @@ async function main(): Promise<void> {
     `[PASS] resumed thread consumed the steering interrupt once (stop=${resumed.stopReason}, completion=${resumed.completionKind})`,
   );
   console.log(`[INFO] final reply: ${resumed.replyText}`);
+
+  const staleThreadId = `interrupt-stale-smoke-${smokeId}`;
+  const staleResponseMessageId = `${staleThreadId}-response`;
+  const staleSourceMessageId = `${staleThreadId}-source`;
+  const staleTraceId = randomUUID();
+  const staleResumeTraceId = randomUUID();
+
+  await __runAgentGraphCommandForTests({
+    threadId: staleThreadId,
+    goto: 'finalize_turn',
+    context: {
+      traceId: staleTraceId,
+      originTraceId: staleTraceId,
+      threadId: staleThreadId,
+      userId: 'interrupt-smoke-user',
+      channelId: 'interrupt-smoke-channel',
+      guildId: 'interrupt-smoke-guild',
+      invokedBy: 'component',
+      invokerIsAdmin: true,
+      invokerCanModerate: true,
+      activeToolNames: [],
+      routeKind: 'active_interrupt_race_resume',
+      currentTurn: buildSmokeTurn({
+        messageId: staleSourceMessageId,
+        invokedBy: 'mention',
+        replyTargetMessageId: null,
+      }),
+      replyTarget: null,
+    },
+    state: {
+      graphStatus: 'completed',
+      completionKind: 'final_answer',
+      stopReason: 'assistant_turn_completed',
+      replyText: 'Turn 5/5 complete. Loop complete.',
+      responseSession: {
+        responseSessionId: staleThreadId,
+        status: 'final',
+        latestText: 'Turn 5/5 complete. Loop complete.',
+        draftRevision: 5,
+        sourceMessageId: staleSourceMessageId,
+        responseMessageId: staleResponseMessageId,
+        surfaceAttached: true,
+        overflowMessageIds: [],
+        linkedArtifactMessageIds: [],
+      },
+      messages: [
+        new HumanMessage({
+          content: 'Run the five-step chain and be ready to stop if I reply mid-flight.',
+        }),
+        new AIMessage({
+          content: 'Turn 5/5 complete. Loop complete.',
+        }),
+      ],
+    },
+  });
+
+  await upsertAgentTaskRun({
+    threadId: staleThreadId,
+    originTraceId: staleTraceId,
+    latestTraceId: staleTraceId,
+    guildId: 'interrupt-smoke-guild',
+    channelId: 'interrupt-smoke-channel',
+    requestedByUserId: 'interrupt-smoke-user',
+    sourceMessageId: staleSourceMessageId,
+    responseMessageId: staleResponseMessageId,
+    status: 'completed',
+    waitingKind: null,
+    latestDraftText: 'Turn 5/5 complete. Loop complete.',
+    draftRevision: 5,
+    completionKind: 'final_answer',
+    stopReason: 'assistant_turn_completed',
+    nextRunnableAt: null,
+    responseSessionJson: {
+      responseSessionId: staleThreadId,
+      status: 'final',
+      latestText: 'Turn 5/5 complete. Loop complete.',
+      draftRevision: 5,
+      sourceMessageId: staleSourceMessageId,
+      responseMessageId: staleResponseMessageId,
+      surfaceAttached: true,
+      overflowMessageIds: [],
+      linkedArtifactMessageIds: [],
+    },
+    waitingStateJson: null,
+    compactionStateJson: null,
+    checkpointMetadataJson: null,
+    maxTotalDurationMs: graphConfig.maxTotalDurationMs,
+    maxIdleWaitMs: graphConfig.maxIdleWaitMs,
+    taskWallClockMs: 0,
+    resumeCount: 0,
+    completedAt: new Date(),
+    lastErrorText: null,
+  });
+
+  const staleResult = await continueMatchedTaskRunWithInput({
+    traceId: staleResumeTraceId,
+    threadId: staleThreadId,
+    userId: 'interrupt-smoke-user',
+    channelId: 'interrupt-smoke-channel',
+    guildId: 'interrupt-smoke-guild',
+    userText: 'stop',
+    userContent: 'stop',
+    currentTurn: {
+      ...buildSmokeTurn({
+        messageId: `${staleThreadId}-stop`,
+        invokedBy: 'reply',
+        replyTargetMessageId: staleResponseMessageId,
+      }),
+      isDirectReply: true,
+    },
+    replyTarget: null,
+    promptMode: 'reply_only',
+    isAdmin: true,
+    canModerate: true,
+  });
+
+  if (staleResult.status === 'failed') {
+    throw new Error(`Expected stale-race continuation to recover cleanly, got failure: ${staleResult.replyText}`);
+  }
+  if (staleResult.responseSession?.responseMessageId !== staleResponseMessageId) {
+    throw new Error(
+      `Expected stale-race continuation to stay on the same response surface, got ${staleResult.responseSession?.responseMessageId ?? 'null'}.`,
+    );
+  }
+  console.log(
+    `[PASS] stale-finish reopen reused the same task thread surface (delivery=${staleResult.delivery}, status=${staleResult.status})`,
+  );
+  console.log(`[INFO] stale-race reply: ${staleResult.replyText}`);
   console.log('Sage LangGraph interrupt smoke completed successfully.');
 }
 

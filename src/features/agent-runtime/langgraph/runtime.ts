@@ -521,6 +521,7 @@ const AgentGraphStateSchema = new StateSchema({
 });
 
 type GraphNodeName =
+  | 'continue_prepare'
   | 'continue_route'
   | 'decide_turn'
   | 'tool_call_turn'
@@ -3208,12 +3209,12 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
     pendingWriteCalls: [],
   });
 
-  const continueRouteNode = async (
+  const continuePrepareNode = async (
     state: AgentGraphState,
     config: RunnableConfig,
-  ): Promise<Command<unknown, Partial<AgentGraphState>, GraphNodeName>> => {
+  ): Promise<Partial<AgentGraphState>> => {
     const configured = AgentGraphConfigurableSchema.parse(config.configurable ?? {});
-    const update: Partial<AgentGraphState> = {
+    return {
       responseSession: configured.continueResponseSession ?? state.responseSession,
       waitingState: configured.continueClearWaitingState ? null : state.waitingState,
       completionKind: null,
@@ -3228,13 +3229,13 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
       finalization: buildDefaultFinalization(),
       plainTextOutcomeSource: null,
     };
+  };
 
+  const continueRouteNode = async (
+    state: AgentGraphState,
+  ): Promise<Command<unknown, Partial<AgentGraphState>, GraphNodeName>> => {
     return new Command({
-      goto: resolveContinueNode({
-        ...state,
-        ...update,
-      } as AgentGraphState),
-      update,
+      goto: resolveContinueNode(state),
     });
   };
 
@@ -3242,11 +3243,14 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
     state: AgentGraphStateSchema,
     context: AgentGraphConfigurableSchema,
   })
+    .addNode('continue_prepare', continuePrepareNode, {
+      ends: ['continue_route'],
+    })
     .addNode('continue_route', continueRouteNode, {
       ends: ['decide_turn', 'route_tool_phase', 'resume_interrupt'],
     })
     .addNode('decide_turn', decideTurnNode, {
-      ends: ['tool_call_turn', 'yield_background', 'continue_route'],
+      ends: ['tool_call_turn', 'yield_background', 'continue_route', 'continue_prepare'],
     })
     .addNode('tool_call_turn', toolCallTurnNode, {
       ends: ['route_tool_phase', 'tool_call_turn', 'yield_background', 'closeout_turn'],
@@ -3271,6 +3275,7 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
     })
     .addNode('finalize_turn', finalizeTurnNode)
     .addEdge(START, 'decide_turn')
+    .addEdge('continue_prepare', 'continue_route')
     .addEdge('finalize_turn', END)
     .compile({
       checkpointer,
@@ -3978,7 +3983,7 @@ export async function continueAgentGraphTurn(
   const output = await runGraphValueStream(
     runtime.graph,
     new Command({
-      goto: 'continue_route',
+      goto: 'continue_prepare',
       update: Object.entries({
         messages: continueMessages,
       }) as [string, unknown][],
