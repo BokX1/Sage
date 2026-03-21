@@ -715,6 +715,14 @@ describe('agentTaskRunWorker', () => {
         responseMessage.content = payload.content ?? responseMessage.content;
         return responseMessage;
       }),
+      reply: vi.fn().mockImplementation(async (payload: { content?: string }) => {
+        if (!overflowMessages[0].content) {
+          overflowMessages[0].content = payload.content ?? overflowMessages[0].content;
+          return overflowMessages[0];
+        }
+        overflowMessages[1].content = payload.content ?? overflowMessages[1].content;
+        return overflowMessages[1];
+      }),
     };
     const overflowMessages = [
       {
@@ -725,6 +733,10 @@ describe('agentTaskRunWorker', () => {
           return overflowMessages[0];
         }),
         delete: vi.fn().mockResolvedValue(undefined),
+        reply: vi.fn().mockImplementation(async (payload: { content?: string }) => {
+          overflowMessages[1].content = payload.content ?? overflowMessages[1].content;
+          return overflowMessages[1];
+        }),
       },
       {
         id: 'overflow-2',
@@ -734,12 +746,10 @@ describe('agentTaskRunWorker', () => {
           return overflowMessages[1];
         }),
         delete: vi.fn().mockResolvedValue(undefined),
+        reply: vi.fn(),
       },
     ];
-    const sendMock = vi
-      .fn()
-      .mockResolvedValueOnce(overflowMessages[0])
-      .mockResolvedValueOnce(overflowMessages[1]);
+    const sendMock = vi.fn();
 
     clientMock.channels.fetch.mockImplementation(async () =>
       ({
@@ -804,7 +814,9 @@ describe('agentTaskRunWorker', () => {
     await vi.advanceTimersByTimeAsync(1_000);
     await Promise.resolve();
 
-    expect(sendMock).toHaveBeenCalledTimes(2);
+    expect(sendMock).not.toHaveBeenCalled();
+    expect(responseMessage.reply).toHaveBeenCalledTimes(1);
+    expect(overflowMessages[0].reply).toHaveBeenCalledTimes(1);
     expect(overflowMessages[0].edit).not.toHaveBeenCalled();
     expect(overflowMessages[1].edit).not.toHaveBeenCalled();
     expect(attachTaskRunResponseSessionMock).toHaveBeenCalledWith(

@@ -14,6 +14,7 @@ export type ResponseSessionEditableMessage = {
   content?: string;
   edit: (payload: MessagePayload) => Promise<unknown>;
   delete?: () => Promise<unknown>;
+  reply?: (payload: MessagePayload) => Promise<ResponseSessionEditableMessage>;
 };
 
 export type ResponseSessionReplyAnchor = {
@@ -89,11 +90,24 @@ export interface ReconcileOverflowChunksParams {
   overflowTexts: string[];
   state: Pick<ResponseSessionChunkState, 'overflowMessageIds' | 'overflowMessages'>;
   allowedMentions?: AllowedMentionsPayload;
+  replyAnchor?: ResponseSessionReplyAnchor | ResponseSessionEditableMessage | null;
 }
 
 export interface ReconcileOverflowChunksResult {
   overflowMessageIds: string[];
   overflowMessages: ResponseSessionEditableMessage[];
+}
+
+function asReplyAnchor(
+  value: ResponseSessionReplyAnchor | ResponseSessionEditableMessage | null | undefined,
+): ResponseSessionReplyAnchor | null {
+  if (!value || typeof value !== 'object' || typeof value.reply !== 'function') {
+    return null;
+  }
+  return {
+    id: value.id,
+    reply: value.reply.bind(value),
+  };
 }
 
 export async function reconcileOverflowChunks(
@@ -110,10 +124,17 @@ export async function reconcileOverflowChunks(
       (await fetchMessageById(params.channel, params.state.overflowMessageIds[index]));
 
     if (!overflowMessage) {
-      overflowMessage = await params.channel.send({
-        content: chunk,
-        allowedMentions,
-      });
+      const replyAnchor =
+        asReplyAnchor(nextOverflowMessages[index - 1]) ?? asReplyAnchor(params.replyAnchor);
+      overflowMessage = replyAnchor
+        ? await replyAnchor.reply({
+            content: chunk,
+            allowedMentions,
+          })
+        : await params.channel.send({
+            content: chunk,
+            allowedMentions,
+          });
       overflowMessage.content = chunk;
     } else {
       await ensureMessageContent(overflowMessage, chunk, allowedMentions);
@@ -175,6 +196,7 @@ export async function reconcileResponseSessionChunks(
       overflowMessages: params.state.overflowMessages,
     },
     allowedMentions,
+    replyAnchor: primaryMessage,
   });
 
   params.state.primaryMessage = primaryMessage;

@@ -146,38 +146,67 @@ function createMockMessage(overrides: Record<string, unknown> = {}): Message {
     username: 'TestUser',
   } as unknown as User;
 
-  const responseMessage = {
-    id: `reply-${messageCounter}`,
+  const messageStore = new Map<string, {
+    id: string;
+    content: string;
+    edit: ReturnType<typeof vi.fn>;
+    delete: ReturnType<typeof vi.fn>;
+    reply: ReturnType<typeof vi.fn>;
+  }>();
+  let childCounter = 0;
+  const createEditableMessage = (id: string) => {
+    const editableMessage = {
+      id,
+      content: '',
+      edit: vi.fn().mockImplementation(async (payload: { content?: string }) => {
+        if (typeof payload?.content === 'string') {
+          editableMessage.content = payload.content;
+        }
+        return editableMessage;
+      }),
+      delete: vi.fn().mockResolvedValue(undefined),
+      reply: vi.fn().mockImplementation(async (payload: { content?: string }) => {
+        childCounter += 1;
+        const child = createEditableMessage(`${id}-child-${childCounter}`);
+        if (typeof payload?.content === 'string') {
+          child.content = payload.content;
+        }
+        return child;
+      }),
+    };
+    messageStore.set(id, editableMessage);
+    return editableMessage;
+  };
+  const responseMessage = createEditableMessage(`reply-${messageCounter}`);
+  const sourceMessage = {
+    id: `source-${messageCounter}`,
     content: '',
-    edit: vi.fn().mockImplementation(async (payload: { content?: string }) => {
+    reply: vi.fn().mockImplementation(async (payload: { content?: string }) => {
       if (typeof payload?.content === 'string') {
         responseMessage.content = payload.content;
       }
       return responseMessage;
     }),
-    delete: vi.fn().mockResolvedValue(undefined),
-  };
-  const sourceMessage = {
-    id: `source-${messageCounter}`,
-    content: '',
-    reply: vi.fn().mockResolvedValue(responseMessage),
   };
 
   const channel = {
-    send: vi.fn().mockResolvedValue({
-      id: `send-${messageCounter}`,
-      content: '',
-      edit: vi.fn().mockResolvedValue(undefined),
-      delete: vi.fn().mockResolvedValue(undefined),
+    send: vi.fn().mockImplementation(async (payload: { content?: string }) => {
+      childCounter += 1;
+      const sentMessage = createEditableMessage(`send-${messageCounter}-${childCounter}`);
+      if (typeof payload?.content === 'string') {
+        sentMessage.content = payload.content;
+      }
+      return sentMessage;
     }),
     sendTyping: vi.fn().mockResolvedValue(undefined),
     messages: {
       fetch: vi.fn(async (messageId: string) => {
-        if (messageId === responseMessage.id) {
-          return responseMessage;
-        }
         if (messageId === sourceMessage.id) {
           return sourceMessage;
+        }
+        const storedMessage = messageStore.get(messageId);
+        if (storedMessage) {
+          return storedMessage;
         }
         throw new Error(`Unknown message id: ${messageId}`);
       }),
@@ -1197,7 +1226,12 @@ describe('messageCreate - ingest + reply gating', () => {
     const message = createMockMessage({
       content: 'sage continue',
     }) as unknown as Message & {
-      __responseMessage: { id: string; content: string; edit: ReturnType<typeof vi.fn> };
+      __responseMessage: {
+        id: string;
+        content: string;
+        edit: ReturnType<typeof vi.fn>;
+        reply: ReturnType<typeof vi.fn>;
+      };
       __sourceMessage: { id: string };
       reply: ReturnType<typeof vi.fn>;
       channel: {
@@ -1258,23 +1292,20 @@ describe('messageCreate - ingest + reply gating', () => {
 
     await handleMessageCreate(message);
 
-    expect(message.channel.send).toHaveBeenCalledTimes(2);
-    expect(message.channel.send.mock.calls).toEqual([
-      [
-        {
-          content: `${'B'.repeat(2_000)}`,
-          allowedMentions: { repliedUser: false },
-        },
-      ],
-      [
-        {
-          content: `${'C'.repeat(200)}`,
-          allowedMentions: { repliedUser: false },
-        },
-      ],
-    ]);
+    const firstOverflowMessage = await message.__responseMessage.reply.mock.results[0]?.value;
+    expect(message.channel.send).not.toHaveBeenCalled();
     expect(message.reply).toHaveBeenCalledTimes(1);
     expect(message.__responseMessage.edit).not.toHaveBeenCalled();
+    expect(message.__responseMessage.reply).toHaveBeenCalledTimes(1);
+    expect(message.__responseMessage.reply).toHaveBeenCalledWith({
+      content: `${'B'.repeat(2_000)}`,
+      allowedMentions: { repliedUser: false },
+    });
+    expect(firstOverflowMessage.reply).toHaveBeenCalledTimes(1);
+    expect(firstOverflowMessage.reply).toHaveBeenCalledWith({
+      content: `${'C'.repeat(200)}`,
+      allowedMentions: { repliedUser: false },
+    });
   });
 
   it('rebuilds missing overflow chunks when a resumed long draft replays the same full text after restart', async () => {
@@ -1282,7 +1313,12 @@ describe('messageCreate - ingest + reply gating', () => {
     const message = createMockMessage({
       content: 'sage continue',
     }) as unknown as Message & {
-      __responseMessage: { id: string; content: string; edit: ReturnType<typeof vi.fn> };
+      __responseMessage: {
+        id: string;
+        content: string;
+        edit: ReturnType<typeof vi.fn>;
+        reply: ReturnType<typeof vi.fn>;
+      };
       __sourceMessage: { id: string };
       reply: ReturnType<typeof vi.fn>;
       channel: {
@@ -1345,9 +1381,12 @@ describe('messageCreate - ingest + reply gating', () => {
 
     await handleMessageCreate(message);
 
-    expect(message.channel.send).toHaveBeenCalledTimes(2);
+    const firstOverflowMessage = await message.__responseMessage.reply.mock.results[0]?.value;
+    expect(message.channel.send).not.toHaveBeenCalled();
     expect(message.__responseMessage.edit).not.toHaveBeenCalled();
     expect(message.reply).toHaveBeenCalledTimes(1);
+    expect(message.__responseMessage.reply).toHaveBeenCalledTimes(1);
+    expect(firstOverflowMessage.reply).toHaveBeenCalledTimes(1);
   });
 
   it('reconciles overflow chunks when a long final reply uses a runtime card', async () => {
@@ -1355,7 +1394,12 @@ describe('messageCreate - ingest + reply gating', () => {
     const message = createMockMessage({
       content: 'sage continue',
     }) as unknown as Message & {
-      __responseMessage: { id: string; content: string; edit: ReturnType<typeof vi.fn> };
+      __responseMessage: {
+        id: string;
+        content: string;
+        edit: ReturnType<typeof vi.fn>;
+        reply: ReturnType<typeof vi.fn>;
+      };
       __sourceMessage: { id: string };
       reply: ReturnType<typeof vi.fn>;
       channel: {
@@ -1423,9 +1467,12 @@ describe('messageCreate - ingest + reply gating', () => {
     await handleMessageCreate(message);
 
     expect(mockCreateInteractiveButtonSession).toHaveBeenCalled();
-    expect(message.channel.send).toHaveBeenCalledTimes(2);
+    const firstOverflowMessage = await message.__responseMessage.reply.mock.results[0]?.value;
+    expect(message.channel.send).not.toHaveBeenCalled();
     expect(message.__responseMessage.edit).toHaveBeenCalledTimes(1);
     expect(message.reply).toHaveBeenCalledTimes(1);
+    expect(message.__responseMessage.reply).toHaveBeenCalledTimes(1);
+    expect(firstOverflowMessage.reply).toHaveBeenCalledTimes(1);
   });
 
   it('attaches a Retry button when the runtime returns retry metadata', async () => {

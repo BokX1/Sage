@@ -1139,6 +1139,7 @@ export async function handleMessageCreate(message: Message) {
                   overflowMessages: responseSessionOverflowMessages,
                 },
                 allowedMentions: { repliedUser: false },
+                replyAnchor: responseSessionMessage,
               });
               responseSessionOverflowMessageIds = overflowResult.overflowMessageIds;
               responseSessionOverflowMessages = overflowResult.overflowMessages;

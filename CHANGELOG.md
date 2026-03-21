@@ -143,6 +143,7 @@
 
 ### Fixed
 
+- Fixed concurrent long Discord replies so overflow chunks stay anchored to their owning response session instead of falling back to the raw channel surface, preventing mixed tail-message spam when multiple users trigger Sage at the same time.
 - Fixed the remaining `activeWindowDurationMs` LastValue collisions on continued runs, so approval resumes and mid-turn steering recovers can extend the same active execution budget within one LangGraph step without crashing the live task thread.
 - Fixed the remaining continued-run LastValue owner conflicts on `contextFrame` and `resumeContext`, so mid-turn steering and approval resumes now leave those derived checkpoint channels to the terminal/yield/interrupt owners instead of double-writing them from transitional routing nodes during the same LangGraph step.
 - Fixed the remaining mid-turn steering closeout collisions on continued runs, so Sage now leaves `responseSession` and `contextFrame` ownership to the terminal closeout node instead of double-writing them during the same LangGraph step; live `stop` replies no longer fail with `Invalid update for channel "responseSession"` or `Invalid update for channel "contextFrame"` when Sage resumes the same task thread.
