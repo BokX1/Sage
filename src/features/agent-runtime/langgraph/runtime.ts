@@ -495,7 +495,13 @@ const AgentGraphStateSchema = new StateSchema({
     .nullable()
     .default(null),
   graphStatus: z.enum(['running', 'interrupted', 'completed', 'failed']).default('running'),
-  activeWindowDurationMs: z.number().default(0),
+  // Multiple nodes can legitimately extend the same active execution window within one
+  // LangGraph step (for example approval resume -> tool call turn). Keep the latest
+  // accumulated total instead of treating this monotonic budget counter like a strict
+  // single-owner snapshot channel.
+  activeWindowDurationMs: new ReducedValue(z.number().default(0), {
+    reducer: (_left, right) => right,
+  }),
   pendingInterrupt: z.union([ApprovalInterruptStateSchema, UserSteerInterruptStateSchema, z.null()]).default(null),
   interruptResolution: z
     .union([

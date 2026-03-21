@@ -2076,7 +2076,7 @@ describe('runGraphValueStream', () => {
         callId: 'call-timeout-1',
         content: '{"status":"executed"}',
         structuredContent: { status: 'executed' },
-        latencyMs: 0,
+        latencyMs: 1_498,
       }),
     );
 
@@ -2131,6 +2131,7 @@ describe('runGraphValueStream', () => {
     expect(resumed.completionKind).toBe('final_answer');
     expect(resumed.deliveryDisposition).toBe('response_session');
     expect(resumed.replyText).toContain('Done after approval.');
+    expect(resumed.activeWindowDurationMs).toBeGreaterThanOrEqual(1_498);
   });
 
   it('resumes approval interrupts on the same graph thread after the decision arrives', async () => {
@@ -2747,6 +2748,7 @@ describe('runGraphValueStream', () => {
         completionKind: null,
         stopReason: 'background_yield',
         replyText: 'Working on that now.',
+        activeWindowDurationMs: 14_987,
         toolResults: [
           makeSuccessfulToolResult('system_time', { iso: '2026-03-21T09:54:51.000Z' }, 10),
         ],
