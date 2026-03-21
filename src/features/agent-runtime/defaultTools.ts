@@ -313,8 +313,8 @@ const npmPackageLookupTool = defineToolSpecV2({
     capabilityTags: ['developer', 'npm'],
   },
   prompt: {
-    summary: 'Lookup npm package metadata such as versions, maintainers, and repository links.',
-    whenToUse: ['The task is about an npm package or its metadata.'],
+    summary: 'Lookup npm package metadata such as latest versions, dist-tags, maintainers, and repository links.',
+    whenToUse: ['The task is about an npm package or its current metadata.'],
     whenNotToUse: ['The task is about source code inside a known repository instead.'],
   },
   smoke: {

@@ -64,6 +64,9 @@
 
 ### Changed
 
+- Changed Sage's timeliness grounding rules so prompts now treat latest/current/today/now/recent/live questions as verification-first work: when a suitable tool is available, Sage is instructed to verify the current state instead of presenting model memory as fresh truth, and when no such tool is available it now prefers an explicit unverified-current-state caveat.
+- Changed Sage's shipped base persona so the static prompt now keeps only the core assistant/runtime contract while deferring public-facing name, tone, vibe, and stylistic flavor to the guild Sage Persona overlay; when no guild persona is configured, Sage now defaults to a neutral helpful voice and may briefly tell admins they can configure the guild persona when that is relevant.
+- Changed Sage's prompt hierarchy and trust model so guild persona now sits explicitly below the fixed system/tool/safety contract as a public-facing expression overlay instead of an ambiguously co-equal runtime instruction source.
 - Changed the long-running reply contract so Sage now distinguishes three human-interaction modes explicitly: `running` tasks accept requester-only steering interrupts on the live response message, `waiting_user_input` replies still resume the paused task directly, and replies after terminal completion start a new turn as normal.
 - Raised the default compaction pressure thresholds from 36K to 64K estimated prompt tokens and from 12 to 24 tool results while keeping the 6-round guard in place, so long-running research turns can keep more raw evidence before compacting without losing Sage's protection against low-token loop drift.
 - Replaced Sage's heuristic runtime budgeting and closeout contract with deterministic runtime behavior: prompt budgeting now uses a local tokenizer plus provider-reported post-call usage instead of chars-per-token guesses, no-tool replies now default to ordinary plain assistant text while a dedicated control-classifier/runtime-tool path handles waits and cancellations, and long-running prompt assembly now retains evidence slices with refs instead of trimming one large raw observation blob.
@@ -262,6 +265,8 @@
 - Removed legacy agentic tool names `web_search`, `web_read`, `web_scrape`, `github_repo`, `github_get_file`, `github_search_code` in favor of unified `web` and `github` action-based tools.
 
 ### Security
+
+- Hardened Sage's prompt assembly against markup breakout and authority confusion: guild persona, user profile, reply-target content, continuity transcript blocks, and raw user input are now escaped before insertion into the tagged prompt contract, reducing the risk that configurable or user-derived text can masquerade as higher-authority prompt structure.
 
 - Removed provider API keys from persisted LangGraph checkpoint state, so resumed Sage turns now rehydrate credentials from runnable context instead of storing raw secrets in durable thread snapshots.
 - Cleaned Sage's runtime copy and leftover compatibility surface: hard-failure and last-resort replies now read like Sage instead of internal runtime/provider jargon, continuation fallback replies are more user-directed, and dead helper exports plus the old single-approval resume compatibility path were removed from the current LangGraph runtime surface.

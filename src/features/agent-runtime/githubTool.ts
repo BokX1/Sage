@@ -209,7 +209,7 @@ export const githubGetRepoTool = githubSpec({
   description: 'Fetch GitHub repository metadata and optionally include the README.',
   input: githubGetRepoInput,
   prompt: {
-    summary: 'Use for repository identity, metadata, README, and links.',
+    summary: 'Use for current repository identity, metadata, README, default branch, and links.',
   },
   smoke: {
     mode: 'optional',
@@ -414,7 +414,7 @@ export const githubListCommitsTool = githubSpec({
   description: 'List recent commits for one GitHub repository.',
   input: githubListCommitsInput,
   prompt: {
-    summary: 'Use when you need recent commit history, authorship, or file-level commit trace inside one repository.',
+    summary: 'Use when you need recent commit history, current repository activity, authorship, or file-level commit trace inside one repository.',
   },
   smoke: {
     mode: 'optional',

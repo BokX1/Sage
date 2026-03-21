@@ -93,7 +93,7 @@ function defaultSelectionHints(tool: TopLevelToolSpec): string[] {
 const TOOL_DOC_OVERRIDES: Record<string, ToolDocOverride> = {
   web_search: {
     selectionHints: [
-      'Use for current or open-web facts when you need recent sources.',
+      'Use for current or open-web facts when you need recent sources or latest-state verification.',
       'Prefer this over Wikipedia when freshness matters.',
     ],
     avoidWhen: [
@@ -104,6 +104,54 @@ const TOOL_DOC_OVERRIDES: Record<string, ToolDocOverride> = {
       decisionEdges: [
         'Fresh external facts -> web_search.',
         'Known exact page -> web_read or web_read_page instead.',
+      ],
+    },
+  },
+  web_read: {
+    selectionHints: [
+      'Use for a known exact page, especially when verifying current content or docs behavior at that URL.',
+    ],
+    avoidWhen: [
+      'You still need discovery or source selection across the open web.',
+    ],
+    promptGuidance: {
+      purpose: 'Verify or read the contents of one known page directly.',
+      decisionEdges: [
+        'Known current docs page or exact URL -> web_read.',
+        'Need discovery across unknown sources -> web_search first.',
+      ],
+    },
+  },
+  web_extract: {
+    selectionHints: [
+      'Use for extracting exact current fields or behaviors from a known page without reading everything.',
+    ],
+    avoidWhen: [
+      'You still need broad discovery or you only need a general page read.',
+    ],
+    promptGuidance: {
+      purpose: 'Extract exact structured facts from one known page.',
+      decisionEdges: [
+        'Known page plus exact fields/behaviors -> web_extract.',
+        'Known page but general reading -> web_read instead.',
+      ],
+    },
+  },
+  npm_info: {
+    selectionHints: [
+      'Use for current npm package metadata such as latest versions, dist-tags, maintainers, and repository links.',
+    ],
+    avoidWhen: [
+      'You already know the repository and need exact source files rather than package-registry metadata.',
+    ],
+    promptGuidance: {
+      purpose: 'Verify current npm package metadata instead of relying on stale package knowledge.',
+      decisionEdges: [
+        'Current package version or dist-tags -> npm_info.',
+        'Exact repository source lookup -> direct GitHub tools instead.',
+      ],
+      antiPatterns: [
+        'Avoid using npm_info as a substitute for exact repository code reads when the repo/path is already known.',
       ],
     },
   },

@@ -107,8 +107,8 @@ export const webSearchTool = defineToolSpecV2({
     capabilityTags: ['web', 'search', 'grounding'],
   },
   prompt: {
-    summary: 'Use for current public-web searching when you need fresh sources, not a single known page.',
-    whenToUse: ['Prefer this before direct reads when you need discovery or source selection.'],
+    summary: 'Use for current public-web searching when you need fresh sources, especially for latest/current/recent facts, not a single known page.',
+    whenToUse: ['Prefer this before direct reads when you need discovery, source selection, or current-state verification.'],
     whenNotToUse: ['Do not use for a URL you already know; use `web_read` or `web_extract` instead.'],
   },
   smoke: {
@@ -166,8 +166,8 @@ export const webReadTool = defineToolSpecV2({
     capabilityTags: ['web', 'read'],
   },
   prompt: {
-    summary: 'Use for reading one known URL after discovery is already done.',
-    whenToUse: ['Use this when the user gave a URL or when a prior search already found the page.'],
+    summary: 'Use for reading one known URL after discovery is already done, including current docs behavior on an exact page.',
+    whenToUse: ['Use this when the user gave a URL or when a prior search already found the page, especially for exact-page current-state verification.'],
     whenNotToUse: ['Do not use for targeted extraction; use `web_extract` when you need specific fields only.'],
   },
   smoke: {
@@ -316,7 +316,7 @@ export const webExtractTool = defineToolSpecV2({
     capabilityTags: ['web', 'extract'],
   },
   prompt: {
-    summary: 'Use when you need structured extraction from a known URL instead of a general read.',
+    summary: 'Use when you need structured extraction from a known URL instead of a general read, including exact current docs fields or behaviors.',
   },
   smoke: {
     mode: 'skip',
@@ -355,7 +355,7 @@ export const webResearchTool = defineToolSpecV2({
     capabilityTags: ['web', 'research'],
   },
   prompt: {
-    summary: 'Use when a single bounded research pass is better than chaining separate web tools.',
+    summary: 'Use when a single bounded research pass is better than chaining separate web tools for recent or multi-source external facts.',
     whenNotToUse: ['Avoid when you only need one known URL or a simple search result list.'],
   },
   smoke: {

@@ -8,6 +8,8 @@ import {
 describe('tool guidance mental model', () => {
   it('teaches top-level search and research arbitration clearly', () => {
     const webSearchGuidance = getPromptToolGuidance('web_search');
+    const webReadGuidance = getPromptToolGuidance('web_read');
+    const webExtractGuidance = getPromptToolGuidance('web_extract');
     const webResearchGuidance = getPromptToolGuidance('web_research');
     const wikipediaDoc = getTopLevelToolDoc('wikipedia_search');
     const stackOverflowDoc = getTopLevelToolDoc('stack_overflow_search');
@@ -21,6 +23,18 @@ describe('tool guidance mental model', () => {
     expect(webResearchGuidance?.antiPatterns).toEqual(
       expect.arrayContaining([
         expect.stringContaining('unbounded crawl loops'),
+      ]),
+    );
+    expect(webReadGuidance?.decisionEdges).toEqual(
+      expect.arrayContaining([
+        'Known current docs page or exact URL -> web_read.',
+        'Need discovery across unknown sources -> web_search first.',
+      ]),
+    );
+    expect(webExtractGuidance?.decisionEdges).toEqual(
+      expect.arrayContaining([
+        'Known page plus exact fields/behaviors -> web_extract.',
+        'Known page but general reading -> web_read instead.',
       ]),
     );
     expect(wikipediaDoc?.selectionHints).toEqual(
@@ -53,7 +67,17 @@ describe('tool guidance mental model', () => {
         'Unknown exact path -> github_search_code first.',
       ]),
     );
+    expect(npmDoc?.selectionHints).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining('current npm package metadata'),
+      ]),
+    );
     expect(npmDoc?.validationHint).toContain('packageName');
+    expect(npmDoc?.promptGuidance?.decisionEdges).toEqual(
+      expect.arrayContaining([
+        'Current package version or dist-tags -> npm_info.',
+      ]),
+    );
     expect(workflowGuidance?.decisionEdges).toEqual(
       expect.arrayContaining([
         'Known repo already -> use direct GitHub tools instead.',
