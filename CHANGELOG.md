@@ -64,6 +64,7 @@
 
 ### Changed
 
+- Changed Sage's dependency baseline to drop the forced `minimatch` override and refresh safe lockfile-level patches, so installs now stop pinning a vulnerable glob-matching version across unrelated dependency trees while still keeping the current Prisma and Discord voice stack stable.
 - Changed Sage's timeliness grounding rules so prompts now treat latest/current/today/now/recent/live questions as verification-first work: when a suitable tool is available, Sage is instructed to verify the current state instead of presenting model memory as fresh truth, and when no such tool is available it now prefers an explicit unverified-current-state caveat.
 - Changed Sage's shipped base persona so the static prompt now keeps only the core assistant/runtime contract while deferring public-facing name, tone, vibe, and stylistic flavor to the guild Sage Persona overlay; when no guild persona is configured, Sage now defaults to a neutral helpful voice and may briefly tell admins they can configure the guild persona when that is relevant.
 - Changed Sage's prompt hierarchy and trust model so guild persona now sits explicitly below the fixed system/tool/safety contract as a public-facing expression overlay instead of an ambiguously co-equal runtime instruction source.

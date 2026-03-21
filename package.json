@@ -103,7 +103,18 @@
     "vitest": "^4.1.0"
   },
   "overrides": {
-    "minimatch": "^10.2.2",
+    "@typescript-eslint/typescript-estree": {
+      "minimatch": "^10.2.4"
+    },
+    "nodemon": {
+      "minimatch": "^10.2.4"
+    },
+    "flat-cache": {
+      "flatted": "^3.4.2"
+    },
+    "onnxruntime-node": {
+      "tar": "^7.5.12"
+    },
     "undici": "^6.24.0"
   }
 }
