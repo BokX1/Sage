@@ -5,7 +5,6 @@ export interface AgentGraphConfig {
   sliceMaxSteps: number;
   toolTimeoutMs: number;
   maxOutputTokens: number;
-  githubGroundedMode: boolean;
   sliceMaxDurationMs: number;
   maxTotalDurationMs: number;
   maxIdleWaitMs: number;
@@ -52,8 +51,6 @@ export function buildAgentGraphConfigFromEnv(
       env.AGENT_GRAPH_MAX_OUTPUT_TOKENS as number | undefined,
       4_096,
     ),
-    githubGroundedMode:
-      (env.AGENT_GRAPH_GITHUB_GROUNDED_MODE as boolean | undefined) ?? true,
     sliceMaxDurationMs: normalizeStrictlyPositiveInt(
       env.AGENT_RUN_SLICE_MAX_DURATION_MS as number | undefined,
       120_000,

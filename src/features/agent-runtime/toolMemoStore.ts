@@ -64,6 +64,12 @@ export function buildToolMemoScopeKey(toolName: string, ctx: ToolExecutionContex
     return `${normalizedTool}::${guildId}`;
   }
 
+  if (normalizedTool.startsWith('mcp__')) {
+    const parts = normalizedTool.split('__');
+    const serverId = parts[1] ?? 'unknown';
+    return `mcp::${serverId}::${guildId}`;
+  }
+
   return `${normalizedTool}::${guildId}`;
 }
 

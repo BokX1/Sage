@@ -34,6 +34,7 @@ Complete index of all environment variables used by Sage, with descriptions and 
 - [Agentic Runtime / Tracing](#agentic-runtime--tracing)
 - [Timeouts](#timeouts)
 - [Tool Providers](#tool-providers)
+- [MCP Servers](#mcp-servers)
 - [Social Graph](#social-graph)
 - [Disposable Discord Smoke Target](#disposable-discord-smoke-target)
 - [Doctor Utility](#doctor-utility)
@@ -266,7 +267,6 @@ Sage now uses tokenizer-backed preflight counting for prompt budgeting and recor
 
 Prompt-facing tool observations are now retained as evidence slices with refs, summaries, and unresolved failures. The runtime still obeys the overall prompt token budget, but it no longer exposes a dedicated middle-truncation char cap for raw observation blobs.
 | `AGENT_GRAPH_MAX_OUTPUT_TOKENS` | Max output tokens for graph model calls | `4096` |
-| `AGENT_GRAPH_GITHUB_GROUNDED_MODE` | Enable GitHub grounded search | `true` |
 | `AGENT_GRAPH_RECURSION_LIMIT` | Optional advanced override for LangGraph's internal hop fail-safe; when unset Sage derives it from `AGENT_RUN_SLICE_MAX_STEPS` so slice yields happen before the low-level graph guard | *(derived; `104` at the starter slice budget)* |
 | `AGENT_GRAPH_MAX_TOOL_CALLS_PER_ROUND` | Max executable tool calls allowed from one model response before Sage rejects the batch and asks the model to replan | `12` |
 | `AGENT_GRAPH_MAX_IDENTICAL_TOOL_BATCHES` | Consecutive identical tool batches Sage tolerates before tripping the loop guard | `4` |
@@ -308,11 +308,28 @@ Prompt-facing tool observations are now retained as evidence slices with refs, s
 | `CRAWL4AI_BASE_URL` | Crawl4AI instance URL | *(empty)* |
 | `CRAWL4AI_BEARER_TOKEN` | Crawl4AI auth token | *(empty)* |
 | `JINA_READER_BASE_URL` | Jina Reader base URL | <code>https&#58;//r.jina.ai/http&#58;//</code> |
-| `GITHUB_TOKEN` | GitHub personal access token | *(empty)* |
-| `GITHUB_CODE_SEARCH_MAX_CANDIDATES` | Max GitHub code search candidates | `50` |
-| `GITHUB_REGEX_MAX_FILES` | Max files for GitHub regex search | `40` |
-| `GITHUB_REGEX_MAX_MATCHES` | Max matches for GitHub regex search | `240` |
-| `GITHUB_FILE_LOOKUP_MAX_LINE_SPAN` | Max line span for file lookup | `1500` |
+
+---
+
+<a id="mcp-servers"></a>
+
+## 🔌 MCP Servers
+
+Sage now discovers optional MCP servers at startup and adapts provider-safe MCP tools into its normal runtime tool registry. Resources and prompts are discovered and audited too, but they are not auto-exposed to the model in this first MCP-backed release.
+
+| Variable | Description | Default |
+|:---|:---|:---|
+| `MCP_SERVERS_JSON` | Optional JSON array of extra MCP server definitions (`stdio` or `streamable_http`) with trust level, transport, and allowlists | *(empty)* |
+| `MCP_GITHUB_ENABLED` | Enable the official GitHub MCP preset | `false` |
+| `MCP_GITHUB_TRANSPORT` | GitHub MCP transport (`stdio` or `streamable_http`) | `stdio` |
+| `MCP_GITHUB_COMMAND` | Command to launch the GitHub MCP server when using `stdio` | *(empty)* |
+| `MCP_GITHUB_ARGS_JSON` | JSON array of command arguments for the GitHub MCP server when using `stdio` | `["stdio","--read-only"]` |
+| `MCP_GITHUB_URL` | Streamable HTTP endpoint for the GitHub MCP server. Sage adds `X-MCP-Readonly` and `X-MCP-Toolsets` automatically for the official remote preset. | <code>https&#58;//api.githubcopilot.com/mcp/</code> |
+| `MCP_GITHUB_TOKEN` | Token passed to the GitHub MCP deployment (PAT or deployment-specific auth) | *(empty)* |
+| `MCP_GITHUB_TOOLSETS_CSV` | Requested read-heavy GitHub toolsets for the starter preset | `context,repos,issues,pull_requests,users` |
+
+> [!IMPORTANT]
+> The built-in runtime no longer ships native `github_*` or `workflow_npm_github_code_search` tools. GitHub capability now comes from configured MCP servers and is exposed under namespaced tool names such as `mcp__github__search_code` when the server is available and its schemas are provider-safe.
 
 ---
 

@@ -42,7 +42,7 @@ async function main(): Promise<void> {
     import('../features/agent-runtime/toolAudit'),
   ]);
   const registry = new ToolRegistry();
-  registerDefaultAgenticTools(registry);
+  await registerDefaultAgenticTools(registry);
   const report = auditToolRegistry(registry);
 
   if (flags.json) {

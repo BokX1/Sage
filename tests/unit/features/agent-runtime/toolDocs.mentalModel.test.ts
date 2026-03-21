@@ -1,9 +1,14 @@
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 
 import {
   getPromptToolGuidance,
   getTopLevelToolDoc,
 } from '../../../../src/features/agent-runtime/toolDocs';
+import { registerDefaultAgenticTools } from '../../../../src/features/agent-runtime/defaultTools';
+
+beforeAll(async () => {
+  await registerDefaultAgenticTools();
+});
 
 describe('tool guidance mental model', () => {
   it('teaches top-level search and research arbitration clearly', () => {
@@ -49,24 +54,9 @@ describe('tool guidance mental model', () => {
     );
   });
 
-  it('teaches developer-tool arbitration clearly', () => {
-    const githubSearchGuidance = getPromptToolGuidance('github_search_code');
-    const githubFileGuidance = getPromptToolGuidance('github_get_file');
+  it('teaches developer-tool arbitration clearly for the shipped baseline tool surface', () => {
     const npmDoc = getTopLevelToolDoc('npm_info');
-    const workflowGuidance = getPromptToolGuidance('workflow_npm_github_code_search');
 
-    expect(githubSearchGuidance?.decisionEdges).toEqual(
-      expect.arrayContaining([
-        'Unknown path inside a repo -> github_search_code.',
-        'Known exact path -> github_get_file or github_get_file_snippet instead.',
-      ]),
-    );
-    expect(githubFileGuidance?.decisionEdges).toEqual(
-      expect.arrayContaining([
-        'Known exact path -> github_get_file.',
-        'Unknown exact path -> github_search_code first.',
-      ]),
-    );
     expect(npmDoc?.selectionHints).toEqual(
       expect.arrayContaining([
         expect.stringContaining('current npm package metadata'),
@@ -76,11 +66,6 @@ describe('tool guidance mental model', () => {
     expect(npmDoc?.promptGuidance?.decisionEdges).toEqual(
       expect.arrayContaining([
         'Current package version or dist-tags -> npm_info.',
-      ]),
-    );
-    expect(workflowGuidance?.decisionEdges).toEqual(
-      expect.arrayContaining([
-        'Known repo already -> use direct GitHub tools instead.',
       ]),
     );
   });
@@ -100,19 +85,8 @@ describe('tool guidance mental model', () => {
     expect(stackOverflowDoc?.purpose).toContain('Stack Overflow');
   });
 
-  it('keeps repo-path lookup and exact-file fetch as separate decisions', () => {
-    const searchDoc = getTopLevelToolDoc('github_search_code');
-    const fileDoc = getTopLevelToolDoc('github_get_file');
-
-    expect(searchDoc?.selectionHints).toEqual(
-      expect.arrayContaining([
-        expect.stringContaining('path'),
-      ]),
-    );
-    expect(fileDoc?.avoidWhen).toEqual(
-      expect.arrayContaining([
-        expect.stringContaining('path is still unknown'),
-      ]),
-    );
+  it('does not advertise optional MCP-backed GitHub docs when the GitHub MCP preset is not enabled', () => {
+    expect(getTopLevelToolDoc('mcp__github__search_code')).toBeNull();
+    expect(getTopLevelToolDoc('mcp__github__get_file_contents')).toBeNull();
   });
 });

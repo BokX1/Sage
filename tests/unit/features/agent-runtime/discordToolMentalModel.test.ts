@@ -1,6 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 
 import { buildUniversalPromptContract } from '../../../../src/features/agent-runtime/promptContract';
+import { registerDefaultAgenticTools } from '../../../../src/features/agent-runtime/defaultTools';
 import { getPromptToolGuidance, getTopLevelToolDoc } from '../../../../src/features/agent-runtime/toolDocs';
 
 function buildPrompt(activeTools: string[]): string {
@@ -26,6 +27,10 @@ function buildPrompt(activeTools: string[]): string {
     turnMode: 'text',
   }).systemMessage;
 }
+
+beforeAll(async () => {
+  await registerDefaultAgenticTools();
+});
 
 describe('discord tool mental model guidance', () => {
   it('distinguishes instruction reads from instruction writes', () => {

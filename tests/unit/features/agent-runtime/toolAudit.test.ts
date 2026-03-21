@@ -5,9 +5,9 @@ import { auditToolRegistry } from '../../../../src/features/agent-runtime/toolAu
 import { defineToolSpecV2, ToolRegistry } from '../../../../src/features/agent-runtime/toolRegistry';
 
 describe('toolAudit', () => {
-  it('passes blocking checks for the shipped default tool surface', () => {
+  it('passes blocking checks for the shipped default tool surface', async () => {
     const registry = new ToolRegistry();
-    registerDefaultAgenticTools(registry);
+    await registerDefaultAgenticTools(registry);
 
     const report = auditToolRegistry(registry);
 

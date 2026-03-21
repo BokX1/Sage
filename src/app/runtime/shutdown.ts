@@ -2,6 +2,7 @@ import type { Client } from 'discord.js';
 import { logger } from '../../platform/logging/logger';
 import { prisma } from '../../platform/db/prisma-client';
 import { shutdownAgentGraphRuntime } from '../../features/agent-runtime/langgraph/runtime';
+import { shutdownMcpTools } from '../../features/agent-runtime';
 import { stopAgentTaskRunWorker } from '../../features/agent-runtime/agentTaskRunWorker';
 import { stopChannelSummaryScheduler } from '../../features/summary/channelSummaryScheduler';
 import { stopCompactionScheduler } from '../../features/summary/ltmCompaction';
@@ -37,6 +38,12 @@ async function runShutdown(signal: ShutdownSignal, client: Client): Promise<void
       await shutdownAgentGraphRuntime();
     } catch (error) {
       logger.warn({ error }, 'Agent graph runtime shutdown failed during shutdown');
+    }
+
+    try {
+      await shutdownMcpTools();
+    } catch (error) {
+      logger.warn({ error }, 'MCP shutdown failed during shutdown');
     }
 
     try {

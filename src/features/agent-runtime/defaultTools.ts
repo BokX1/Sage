@@ -9,8 +9,6 @@ import {
   discordTools,
 } from './discordDomainTools';
 import { webTools } from './webTool';
-import { githubTools } from './githubTool';
-import { workflowTools } from './workflowTool';
 import { globalPagedTextStore } from './pagedTextStore';
 import { globalToolMemoStore } from './toolMemoStore';
 import { metrics } from '../../shared/observability/metrics';
@@ -20,6 +18,7 @@ import {
   lookupWikipedia,
   searchStackOverflow,
 } from './toolIntegrations';
+import { initializeMcpTools } from './mcp/manager';
 
 const getCurrentDateTimeTool = defineToolSpecV2({
   name: 'system_time',
@@ -402,14 +401,12 @@ const stackOverflowSearchTool = defineToolSpecV2({
   }),
 });
 
-export const DEFAULT_TOOL_DEFINITIONS = [
+export const STATIC_TOOL_DEFINITIONS = [
   getCurrentDateTimeTool,
   toolStatsTool,
   ...discordTools,
   generateImageTool,
   ...webTools,
-  ...githubTools,
-  ...workflowTools,
   npmPackageLookupTool,
   wikipediaLookupTool,
   stackOverflowSearchTool,
@@ -424,8 +421,11 @@ function registerIfMissing<TArgs, TStructured>(
   }
 }
 
-export function registerDefaultAgenticTools(registry: ToolRegistry = globalToolRegistry): void {
-  for (const tool of DEFAULT_TOOL_DEFINITIONS) {
+export async function registerDefaultAgenticTools(
+  registry: ToolRegistry = globalToolRegistry,
+): Promise<void> {
+  for (const tool of STATIC_TOOL_DEFINITIONS) {
     registerIfMissing(registry, tool as ToolSpecV2<unknown, unknown>);
   }
+  await initializeMcpTools(registry);
 }

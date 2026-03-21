@@ -27,6 +27,7 @@
 
 ### Added
 
+- Added a first-class MCP substrate for Sage's runtime tool layer: operators can now register trusted or untrusted MCP servers over `stdio` or streamable HTTP, Sage audits discovered tools/resources/prompts deterministically at startup, and provider-safe MCP tools are exposed under stable namespaced runtime tool names such as `mcp__github__search_code`.
 - Added requester-only active-run steering interrupts for long-running tasks: when Sage is still `running`, a direct reply to the canonical live Sage response now queues one latest-wins steering message for the next safe reasoning boundary instead of silently forking a new task.
 - Added a dedicated `npm run langgraph:discord:smoke` command plus disposable-guild env knobs, so operators can validate the real Discord LangGraph read lane and approval/resume write flow without depending on LLM tool selection.
 - Added a dedicated `npm run ai-provider:probe` command plus doctor-backed Chat Completions tool-calling probing, so operators can verify a real AI provider base URL/model/key against Sage's live `tools` / `assistant.tool_calls` / `tool_call_id` contract instead of guessing from static model-profile metadata.
@@ -64,6 +65,7 @@
 
 ### Changed
 
+- Changed Sage's GitHub capability from native built-in tools to an MCP-backed integration model: the optional official GitHub preset is now configured through `MCP_GITHUB_*` / `MCP_SERVERS_JSON`, tool docs and audits treat MCP-backed GitHub tools as part of the developer surface, and only provider-safe MCP tool schemas are exposed to models.
 - Changed Sage's dependency baseline to drop the forced `minimatch` override and refresh safe lockfile-level patches, so installs now stop pinning a vulnerable glob-matching version across unrelated dependency trees while still keeping the current Prisma and Discord voice stack stable.
 - Changed Sage's timeliness grounding rules so prompts now treat latest/current/today/now/recent/live questions as verification-first work: when a suitable tool is available, Sage is instructed to verify the current state instead of presenting model memory as fresh truth, and when no such tool is available it now prefers an explicit unverified-current-state caveat.
 - Changed Sage's shipped base persona so the static prompt now keeps only the core assistant/runtime contract while deferring public-facing name, tone, vibe, and stylistic flavor to the guild Sage Persona overlay; when no guild persona is configured, Sage now defaults to a neutral helpful voice and may briefly tell admins they can configure the guild persona when that is relevant.
@@ -218,6 +220,15 @@
 - Fixed direct image URL detection in Discord messages when links are followed by sentence punctuation, so Sage still picks up the image for vision requests.
 - Fixed LangGraph dependency metadata by declaring `@langchain/core` directly in `package.json`, so fresh installs no longer depend on transitive peer hoisting to satisfy Sage's runtime imports.
 - Fixed attachment-memory parity for uploaded Discord images: logged-channel image attachments are now cached like other attachments, indexed from local Florence recall/OCR text, and can be resent later with `discord` action `files.send_attachment` while returning the same stored grounding text to the model.
+
+### Removed
+
+- Removed Sage's native `github_*` and `workflow_npm_github_code_search` tool surfaces plus the old GitHub grounding env/config knobs from the default runtime, so GitHub capability now comes only from configured MCP servers instead of a half-duplicated built-in stack.
+
+### Security
+
+- Hardened Sage's new MCP host boundary so server trust is config-owned, incompatible MCP tool schemas are disabled explicitly instead of being lossy-coerced into model tools, auth-bearing MCP config stays out of model-visible docs/prompt surfaces, and discovered MCP resources/prompts are tracked host-side without being auto-injected into prompt space.
+- Tightened the official remote GitHub MCP preset so it now enforces `X-MCP-Readonly` plus the configured `X-MCP-Toolsets` allow-list server-side before discovery, reducing accidental overexposure when operators point Sage at the hosted GitHub MCP endpoint.
 - Fixed the Florence image-recall loader wiring: Sage now uses the Transformers.js Florence-compatible auto-model class, so both Hugging Face repo IDs and local filesystem snapshots can be loaded for image attachment recall.
 - Fixed attachment recall resilience and resend targeting: timed-out Florence cold starts no longer poison later retries, historical mixed-attachment rows no longer refresh to the wrong live file when resending, and uncached image uploads no longer consume per-message file-ingest slots in channels without persistent attachment caching.
 - Fixed Discord message citations from history/context lookups: channel-scoped raw-message results now expose `guildId` alongside `channelId`/`messageId`, and DM jump-link placeholders now use Discord’s `@me` token so generated message URLs resolve reliably.

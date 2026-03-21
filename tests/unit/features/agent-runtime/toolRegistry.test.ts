@@ -250,13 +250,13 @@ describe('ToolRegistry', () => {
       }
     });
 
-    it('keeps direct-tool validation hints for granular tool definitions', async () => {
+    it('keeps shipped direct tools on schema validation instead of unknown-tool fallback', async () => {
       const runtimeRegistry = new ToolRegistry();
-      registerDefaultAgenticTools(runtimeRegistry);
+      await registerDefaultAgenticTools(runtimeRegistry);
 
       const result = await runtimeRegistry.executeValidated(
         {
-          name: 'github_get_repo',
+          name: 'discord_files_send_attachment',
           args: {},
         },
         { traceId: 'test', userId: 'u1', channelId: 'c1' },
@@ -265,12 +265,13 @@ describe('ToolRegistry', () => {
       expect(result.success).toBe(false);
       if (result.success) return;
       expect(result.errorType).toBe('validation');
-      expect(result.errorDetails?.hint).toContain('owner/name');
+      expect(result.error).toContain('Invalid arguments');
+      expect(result.error).not.toContain('Unknown tool');
     });
 
     it('keeps direct-tool validation hints without routed repair guidance', async () => {
       const runtimeRegistry = new ToolRegistry();
-      registerDefaultAgenticTools(runtimeRegistry);
+      await registerDefaultAgenticTools(runtimeRegistry);
 
       const result = await runtimeRegistry.executeValidated(
         {
@@ -290,7 +291,7 @@ describe('ToolRegistry', () => {
   describe('action policy resolution', () => {
     it('classifies granular Discord writes explicitly without requiring approval', async () => {
       const runtimeRegistry = new ToolRegistry();
-      registerDefaultAgenticTools(runtimeRegistry);
+      await registerDefaultAgenticTools(runtimeRegistry);
 
       const result = await runtimeRegistry.resolveActionPolicy(
         {
@@ -313,7 +314,7 @@ describe('ToolRegistry', () => {
 
     it('keeps admin-only Discord reads on the read path', async () => {
       const runtimeRegistry = new ToolRegistry();
-      registerDefaultAgenticTools(runtimeRegistry);
+      await registerDefaultAgenticTools(runtimeRegistry);
 
       const serverRead = await runtimeRegistry.resolveActionPolicy(
         {

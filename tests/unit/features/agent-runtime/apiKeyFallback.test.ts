@@ -14,8 +14,7 @@ const mockConfig = vi.hoisted(() => ({
   SERVER_PROVIDER_DASHBOARD_URL: 'https://server-provider.example/dashboard',
   CHAT_MAX_OUTPUT_TOKENS: 800,
   AGENT_GRAPH_MAX_OUTPUT_TOKENS: 800,
-  AGENT_GRAPH_GITHUB_GROUNDED_MODE: false,
-  CONTEXT_TRANSCRIPT_MAX_MESSAGES: 5,
+    CONTEXT_TRANSCRIPT_MAX_MESSAGES: 5,
   AUTOPILOT_MODE: null,
 }));
 
@@ -51,19 +50,6 @@ vi.mock('@/features/settings/guildChannelSettings', () => ({
 vi.mock('@/features/agent-runtime/agent-trace-repo', () => ({
   upsertTraceStart: vi.fn(),
   updateTraceEnd: vi.fn(),
-}));
-
-vi.mock('@/features/agent-runtime/toolIntegrations', () => ({
-  clearGitHubFileLookupCacheForTrace: vi.fn(),
-}));
-
-vi.mock('@/features/agent-runtime/toolGrounding', () => ({
-  enforceGitHubFileGrounding: vi.fn((replyText: string) => ({
-    modified: false,
-    replyText,
-    ungroundedPaths: [],
-    successfulPaths: [],
-  })),
 }));
 
 vi.mock('@/features/agent-runtime/langgraph/runtime', () => ({

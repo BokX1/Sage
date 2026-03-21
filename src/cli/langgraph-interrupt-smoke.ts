@@ -83,7 +83,7 @@ function buildSmokeTurn(params: {
 
 async function main(): Promise<void> {
   await loadDeps();
-  registerDefaultAgenticTools();
+  await registerDefaultAgenticTools();
 
   const graphConfig = buildAgentGraphConfig();
   const smokeId = `${Date.now()}-${randomUUID().slice(0, 8)}`;

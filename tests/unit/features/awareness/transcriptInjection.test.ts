@@ -13,8 +13,7 @@ const mockConfig = vi.hoisted(() => ({
   AI_PROVIDER_MAIN_AGENT_MODEL: 'test-main-agent-model',
   CHAT_MAX_OUTPUT_TOKENS: 800,
   AGENT_GRAPH_MAX_OUTPUT_TOKENS: 800,
-  AGENT_GRAPH_GITHUB_GROUNDED_MODE: false,
-  TIMEOUT_CHAT_MS: 1_000,
+    TIMEOUT_CHAT_MS: 1_000,
   AI_PROVIDER_API_KEY: 'test-key',
   SAGE_TRACE_DB_ENABLED: false,
   LANGSMITH_TRACING: false,
@@ -47,10 +46,6 @@ vi.mock('@/features/settings/guildSagePersonaRepo', () => ({
 vi.mock('@/features/agent-runtime/agent-trace-repo', () => ({
   upsertTraceStart: vi.fn().mockResolvedValue(undefined),
   updateTraceEnd: vi.fn().mockResolvedValue(undefined),
-}));
-
-vi.mock('@/features/agent-runtime/toolIntegrations', () => ({
-  clearGitHubFileLookupCacheForTrace: vi.fn(),
 }));
 
 import { appendMessage, clearChannel } from '@/features/awareness/channelRingBuffer';

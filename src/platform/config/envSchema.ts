@@ -313,11 +313,14 @@ export const testDefaults: Record<string, string> = {
   CRAWL4AI_BASE_URL: '',
   CRAWL4AI_BEARER_TOKEN: '',
   JINA_READER_BASE_URL: 'https://r.jina.ai/http://',
-  GITHUB_TOKEN: '',
-  GITHUB_CODE_SEARCH_MAX_CANDIDATES: '50',
-  GITHUB_REGEX_MAX_FILES: '40',
-  GITHUB_REGEX_MAX_MATCHES: '240',
-  GITHUB_FILE_LOOKUP_MAX_LINE_SPAN: '1500',
+  MCP_SERVERS_JSON: '',
+  MCP_GITHUB_ENABLED: 'false',
+  MCP_GITHUB_TRANSPORT: 'stdio',
+  MCP_GITHUB_COMMAND: '',
+  MCP_GITHUB_ARGS_JSON: '["stdio","--read-only"]',
+  MCP_GITHUB_URL: 'https://api.githubcopilot.com/mcp/',
+  MCP_GITHUB_TOKEN: '',
+  MCP_GITHUB_TOOLSETS_CSV: 'context,repos,issues,pull_requests,users',
 
   // Output / Runtime Control
   CHAT_MAX_OUTPUT_TOKENS: '4096',
@@ -327,7 +330,6 @@ export const testDefaults: Record<string, string> = {
   AGENT_RUN_SLICE_MAX_STEPS: '10',
   AGENT_RUN_TOOL_TIMEOUT_MS: '45000',
   AGENT_GRAPH_MAX_OUTPUT_TOKENS: '4096',
-  AGENT_GRAPH_GITHUB_GROUNDED_MODE: 'true',
   AGENT_RUN_SLICE_MAX_DURATION_MS: '120000',
   AGENT_RUN_MAX_TOTAL_DURATION_MS: '3600000',
   AGENT_RUN_MAX_IDLE_WAIT_MS: '86400000',
@@ -498,11 +500,21 @@ export const envSchema = z.object({
   CRAWL4AI_BASE_URL: optionalHttpOrHttpsUrlSchema,
   CRAWL4AI_BEARER_TOKEN: z.string().optional(),
   JINA_READER_BASE_URL: z.string().default('https://r.jina.ai/http://'),
-  GITHUB_TOKEN: z.string().optional(),
-  GITHUB_CODE_SEARCH_MAX_CANDIDATES: z.coerce.number().int().min(1).max(100).default(50),
-  GITHUB_REGEX_MAX_FILES: z.coerce.number().int().min(1).max(100).default(40),
-  GITHUB_REGEX_MAX_MATCHES: z.coerce.number().int().min(1).max(1000).default(240),
-  GITHUB_FILE_LOOKUP_MAX_LINE_SPAN: z.coerce.number().int().min(10).max(5000).default(1500),
+  MCP_SERVERS_JSON: z.string().trim().default(''),
+  MCP_GITHUB_ENABLED: z.enum(['true', 'false']).default('false').transform((v) => v === 'true'),
+  MCP_GITHUB_TRANSPORT: z.enum(['stdio', 'streamable_http']).default('stdio'),
+  MCP_GITHUB_COMMAND: z.string().trim().default(''),
+  MCP_GITHUB_ARGS_JSON: z.string().trim().default('["stdio","--read-only"]').refine((value) => {
+    try {
+      const parsed = JSON.parse(value) as unknown;
+      return Array.isArray(parsed) && parsed.every((entry) => typeof entry === 'string');
+    } catch {
+      return false;
+    }
+  }, 'MCP_GITHUB_ARGS_JSON must be a JSON array of strings.'),
+  MCP_GITHUB_URL: optionalHttpOrHttpsUrlSchema.default('https://api.githubcopilot.com/mcp/'),
+  MCP_GITHUB_TOKEN: z.string().optional(),
+  MCP_GITHUB_TOOLSETS_CSV: z.string().trim().default('context,repos,issues,pull_requests,users'),
 
   // Output / Runtime Control
   CHAT_MAX_OUTPUT_TOKENS: z.coerce.number().int().min(128).max(16000).default(4096),
@@ -512,10 +524,6 @@ export const envSchema = z.object({
   AGENT_RUN_SLICE_MAX_STEPS: z.coerce.number().int().min(1).max(32).default(10),
   AGENT_RUN_TOOL_TIMEOUT_MS: z.coerce.number().int().min(1000).max(120000).default(45000),
   AGENT_GRAPH_MAX_OUTPUT_TOKENS: z.coerce.number().int().min(128).max(8000).default(4096),
-  AGENT_GRAPH_GITHUB_GROUNDED_MODE: z
-    .enum(['true', 'false'])
-    .default('true')
-    .transform((v) => v === 'true'),
   AGENT_RUN_SLICE_MAX_DURATION_MS: z.coerce.number().int().min(10_000).max(300_000).default(120_000),
   AGENT_RUN_MAX_TOTAL_DURATION_MS: z.coerce.number().int().min(60_000).max(86_400_000).default(3_600_000),
   AGENT_RUN_MAX_IDLE_WAIT_MS: z.coerce.number().int().min(60_000).max(604_800_000).default(86_400_000),

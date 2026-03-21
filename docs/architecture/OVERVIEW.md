@@ -207,7 +207,7 @@ Operators can audit that surface directly with `npm run tools:audit` or `npm run
 
 > [!NOTE]
 > The runtime no longer exposes routed mega-tools with model-facing `action` fields.
-> Every row below is a real registered runtime tool name. This table is the operator-facing mirror of the registry source of truth in `src/features/agent-runtime/defaultTools.ts`, `src/features/agent-runtime/discordDomainTools.ts`, `src/features/agent-runtime/webTool.ts`, `src/features/agent-runtime/githubTool.ts`, and `src/features/agent-runtime/workflowTool.ts`.
+> Every row below is a real registered baseline runtime tool name. This table mirrors the built-in registry sources in `src/features/agent-runtime/defaultTools.ts`, `src/features/agent-runtime/discordDomainTools.ts`, and `src/features/agent-runtime/webTool.ts`. Optional MCP-backed tools are discovered at runtime and are intentionally documented separately from this default inventory.
 
 ### 🧠 Discord Context
 
@@ -318,17 +318,10 @@ Operators can audit that surface directly with `npm run tools:audit` or `npm run
 
 | Tool | Description | Access |
 |:---|:---|:---|
-| `github_get_file` | Fetch a GitHub file. | Public |
-| `github_get_file_ranges` | Fetch selected ranges from a GitHub file. | Public |
-| `github_get_file_snippet` | Fetch a focused GitHub file snippet. | Public |
-| `github_get_repo` | Inspect repository metadata. | Public |
-| `github_list_commits` | List recent repository commits. | Public |
-| `github_page_file` | Continue paging through a GitHub file. | Public |
-| `github_search_code` | Search GitHub code. | Public |
-| `github_search_issues` | Search GitHub issues. | Public |
-| `github_search_pull_requests` | Search GitHub pull requests. | Public |
 | `npm_info` | Lookup npm package metadata. | Public |
-| `workflow_npm_github_code_search` | Chain npm metadata and GitHub code search into one workflow. | Public |
+
+> [!TIP]
+> GitHub capability now comes from configured MCP servers. When the official GitHub MCP preset is enabled, Sage registers namespaced tools such as `mcp__github__search_code` and `mcp__github__get_file_contents` dynamically instead of shipping built-in `github_*` tools.
 
 ### 🎨 Generation
 

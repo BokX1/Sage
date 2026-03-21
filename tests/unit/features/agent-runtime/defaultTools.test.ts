@@ -3,11 +3,11 @@ import { ToolRegistry } from '../../../../src/features/agent-runtime/toolRegistr
 import { registerDefaultAgenticTools } from '../../../../src/features/agent-runtime/defaultTools';
 
 describe('default agentic tools', () => {
-  it('registers baseline tools and is idempotent', () => {
+  it('registers baseline tools and is idempotent', async () => {
     const registry = new ToolRegistry();
 
-    registerDefaultAgenticTools(registry);
-    registerDefaultAgenticTools(registry);
+    await registerDefaultAgenticTools(registry);
+    await registerDefaultAgenticTools(registry);
 
     const names = registry.listNames();
     expect(names).toEqual(expect.arrayContaining([
@@ -17,9 +17,7 @@ describe('default agentic tools', () => {
       'discord_server_list_channels',
       'discord_admin_create_role',
       'discord_voice_get_status',
-      'github_get_repo',
       'web_search',
-      'workflow_npm_github_code_search',
       'image_generate',
       'npm_info',
       'stack_overflow_search',
@@ -33,9 +31,9 @@ describe('default agentic tools', () => {
     expect(names).not.toContain('workflow');
   });
 
-  it('marks admin Discord tools as admin access', () => {
+  it('marks admin Discord tools as admin access', async () => {
     const registry = new ToolRegistry();
-    registerDefaultAgenticTools(registry);
+    await registerDefaultAgenticTools(registry);
 
     const adminTool = registry.get('discord_admin_create_role');
     expect(adminTool?.runtime.access).toBe('admin');
@@ -43,7 +41,7 @@ describe('default agentic tools', () => {
 
   it('executes system_time tool', async () => {
     const registry = new ToolRegistry();
-    registerDefaultAgenticTools(registry);
+    await registerDefaultAgenticTools(registry);
 
     const result = await registry.executeValidated(
       {
@@ -71,7 +69,7 @@ describe('default agentic tools', () => {
 
   it('blocks Discord write actions in autopilot turns', async () => {
     const registry = new ToolRegistry();
-    registerDefaultAgenticTools(registry);
+    await registerDefaultAgenticTools(registry);
 
     const result = await registry.executeValidated(
       {
@@ -99,7 +97,7 @@ describe('default agentic tools', () => {
 
   it('rejects non-moderation actions in discord moderation queue', async () => {
     const registry = new ToolRegistry();
-    registerDefaultAgenticTools(registry);
+    await registerDefaultAgenticTools(registry);
 
     const result = await registry.executeValidated(
       {
@@ -130,7 +128,7 @@ describe('default agentic tools', () => {
 
   it('allows admin tools for admin mentions/replies/wakewords (not command-only)', async () => {
     const registry = new ToolRegistry();
-    registerDefaultAgenticTools(registry);
+    await registerDefaultAgenticTools(registry);
 
     const result = await registry.executeValidated(
       {

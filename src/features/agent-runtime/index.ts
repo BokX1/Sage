@@ -40,6 +40,11 @@ export {
 } from './toolRegistry';
 export { registerDefaultAgenticTools } from './defaultTools';
 export {
+  initializeMcpTools,
+  shutdownMcpTools,
+  listMcpDiscoverySnapshots,
+} from './mcp/manager';
+export {
   discordContextTools,
   discordMessageTools,
   discordFileTools,

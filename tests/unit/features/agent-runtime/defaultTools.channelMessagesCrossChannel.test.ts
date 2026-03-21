@@ -22,7 +22,7 @@ describe('default tools cross-channel message history', () => {
 
   it('passes channelId through for search_history', async () => {
     const registry = new ToolRegistry();
-    registerDefaultAgenticTools(registry);
+    await registerDefaultAgenticTools(registry);
 
     const result = await registry.executeValidated(
       {
@@ -54,7 +54,7 @@ describe('default tools cross-channel message history', () => {
 
   it('blocks cross-channel search_history in autopilot turns', async () => {
     const registry = new ToolRegistry();
-    registerDefaultAgenticTools(registry);
+    await registerDefaultAgenticTools(registry);
 
     const result = await registry.executeValidated(
       {
@@ -82,7 +82,7 @@ describe('default tools cross-channel message history', () => {
 
   it('passes channelId through for get_context', async () => {
     const registry = new ToolRegistry();
-    registerDefaultAgenticTools(registry);
+    await registerDefaultAgenticTools(registry);
 
     const result = await registry.executeValidated(
       {
@@ -114,7 +114,7 @@ describe('default tools cross-channel message history', () => {
 
   it('blocks cross-channel get_context in autopilot turns', async () => {
     const registry = new ToolRegistry();
-    registerDefaultAgenticTools(registry);
+    await registerDefaultAgenticTools(registry);
 
     const result = await registry.executeValidated(
       {

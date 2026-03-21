@@ -389,7 +389,7 @@ async function runApprovalPathSmoke(target: SmokeTarget): Promise<void> {
 
 async function main(): Promise<void> {
   await loadSmokeRuntimeDeps();
-  registerDefaultAgenticTools();
+  await registerDefaultAgenticTools();
   const target = await resolveSmokeTarget();
 
   console.log('Sage LangGraph Discord smoke starting...');

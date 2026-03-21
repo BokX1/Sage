@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import { ToolRegistry } from '../../../../src/features/agent-runtime/toolRegistry';
 import { registerDefaultAgenticTools } from '../../../../src/features/agent-runtime/defaultTools';
 
@@ -7,19 +7,21 @@ import {
   listTopLevelToolDocs,
 } from '../../../../src/features/agent-runtime/toolDocs';
 
-describe('tool selection hints', () => {
-  it('covers every registered top-level tool with shared metadata', () => {
-    const registry = new ToolRegistry();
-    registerDefaultAgenticTools(registry);
+beforeAll(async () => {
+  await registerDefaultAgenticTools();
+});
 
-    const runtimeToolNames = registry.listNames().sort((a, b) => a.localeCompare(b));
+describe('tool selection hints', () => {
+  it('covers every registered top-level tool with shared metadata', async () => {
+    const runtimeToolNames = new ToolRegistry();
+    await registerDefaultAgenticTools(runtimeToolNames);
     const documentedToolNames = listTopLevelToolDocs()
       .map((doc) => doc.tool)
       .sort((a, b) => a.localeCompare(b));
 
-    expect(documentedToolNames).toEqual(runtimeToolNames);
+    expect(documentedToolNames).toEqual(runtimeToolNames.listNames().sort((a, b) => a.localeCompare(b)));
 
-    for (const toolName of runtimeToolNames) {
+    for (const toolName of runtimeToolNames.listNames().sort((a, b) => a.localeCompare(b))) {
       const doc = getTopLevelToolDoc(toolName);
       expect(doc).not.toBeNull();
       expect(doc?.selectionHints.length ?? 0).toBeGreaterThan(0);

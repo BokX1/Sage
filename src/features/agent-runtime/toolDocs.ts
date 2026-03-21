@@ -1,5 +1,4 @@
-import { DEFAULT_TOOL_DEFINITIONS } from './defaultTools';
-type TopLevelToolSpec = (typeof DEFAULT_TOOL_DEFINITIONS)[number];
+import { globalToolRegistry, type ToolDefinition } from './toolRegistry';
 
 export interface PromptToolGuidance {
   purpose?: string;
@@ -65,18 +64,18 @@ function categoryForTool(toolName: string): WebsiteToolCategory {
   if (toolName.startsWith('web_') || toolName === 'wikipedia_search' || toolName === 'stack_overflow_search') {
     return 'search';
   }
-  if (toolName.startsWith('github_') || toolName.startsWith('workflow_') || toolName === 'npm_info') {
+  if (toolName.startsWith('mcp__github__') || toolName === 'npm_info') {
     return 'dev';
   }
   if (toolName.startsWith('image_')) return 'gen';
   return 'system';
 }
 
-function defaultShortName(tool: TopLevelToolSpec): string {
+function defaultShortName(tool: ToolDefinition<unknown>): string {
   return tool.title?.trim() || tool.name;
 }
 
-function defaultSelectionHints(tool: TopLevelToolSpec): string[] {
+function defaultSelectionHints(tool: ToolDefinition<unknown>): string[] {
   const guidance = tool.prompt;
   const hints = [
     guidance?.summary,
@@ -173,19 +172,19 @@ const TOOL_DOC_OVERRIDES: Record<string, ToolDocOverride> = {
       ],
     },
   },
-  github_search_code: {
+  mcp__github__search_code: {
     selectionHints: [
       'Use when the repository path or file location is still unknown.',
     ],
     promptGuidance: {
       purpose: 'Find candidate files or symbols inside a known repository.',
       decisionEdges: [
-        'Unknown path inside a repo -> github_search_code.',
-        'Known exact path -> github_get_file or github_get_file_snippet instead.',
+        'Unknown path inside a repo -> mcp__github__search_code.',
+        'Known exact path -> mcp__github__get_file_contents instead.',
       ],
     },
   },
-  github_get_file: {
+  mcp__github__get_file_contents: {
     selectionHints: [
       'Use when you already know the repo and exact path.',
     ],
@@ -195,19 +194,8 @@ const TOOL_DOC_OVERRIDES: Record<string, ToolDocOverride> = {
     promptGuidance: {
       purpose: 'Fetch one exact repository file.',
       decisionEdges: [
-        'Known exact path -> github_get_file.',
-        'Unknown exact path -> github_search_code first.',
-      ],
-    },
-  },
-  workflow_npm_github_code_search: {
-    selectionHints: [
-      'Use when you need npm package metadata and GitHub code search in one combined step.',
-    ],
-    promptGuidance: {
-      purpose: 'Collapse a routine npm-to-GitHub multi-hop flow into one call.',
-      decisionEdges: [
-        'Known repo already -> use direct GitHub tools instead.',
+        'Known exact path -> mcp__github__get_file_contents.',
+        'Unknown exact path -> mcp__github__search_code first.',
       ],
     },
   },
@@ -245,7 +233,7 @@ const TOOL_DOC_OVERRIDES: Record<string, ToolDocOverride> = {
   },
 };
 
-function buildPromptGuidance(tool: TopLevelToolSpec): PromptToolGuidance | undefined {
+function buildPromptGuidance(tool: ToolDefinition<unknown>): PromptToolGuidance | undefined {
   const override = TOOL_DOC_OVERRIDES[tool.name]?.promptGuidance;
   if (override) {
     return override;
@@ -267,7 +255,7 @@ function buildPromptGuidance(tool: TopLevelToolSpec): PromptToolGuidance | undef
   };
 }
 
-function buildTopLevelDoc(tool: TopLevelToolSpec): TopLevelToolDoc {
+function buildTopLevelDoc(tool: ToolDefinition<unknown>): TopLevelToolDoc {
   const override = TOOL_DOC_OVERRIDES[tool.name];
   const category = override?.websiteCategory ?? categoryForTool(tool.name);
   const short = override?.websiteShort ?? defaultShortName(tool);
@@ -291,18 +279,19 @@ function buildTopLevelDoc(tool: TopLevelToolSpec): TopLevelToolDoc {
   };
 }
 
-const topLevelToolDocs = DEFAULT_TOOL_DEFINITIONS
-  .map((tool) => buildTopLevelDoc(tool))
-  .sort((left, right) => left.tool.localeCompare(right.tool));
-
-const topLevelToolDocMap = new Map(topLevelToolDocs.map((doc) => [doc.tool, doc] as const));
+function buildTopLevelToolDocs(): TopLevelToolDoc[] {
+  return globalToolRegistry
+    .listSpecs()
+    .map((tool) => buildTopLevelDoc(tool))
+    .sort((left, right) => left.tool.localeCompare(right.tool));
+}
 
 export function getTopLevelToolDoc(toolName: string): TopLevelToolDoc | null {
-  return topLevelToolDocMap.get(toolName) ?? null;
+  return buildTopLevelToolDocs().find((doc) => doc.tool === toolName) ?? null;
 }
 
 export function listTopLevelToolDocs(): TopLevelToolDoc[] {
-  return [...topLevelToolDocs];
+  return buildTopLevelToolDocs();
 }
 
 export function getPromptToolGuidance(toolName: string): PromptToolGuidance | null {
@@ -314,9 +303,9 @@ export function getToolValidationHint(toolName: string): string | undefined {
 }
 
 export function listSmokeToolDocs(): TopLevelToolDoc[] {
-  return topLevelToolDocs.filter((doc) => doc.smoke.mode !== 'skip');
+  return buildTopLevelToolDocs().filter((doc) => doc.smoke.mode !== 'skip');
 }
 
 export function buildWebsiteNativeTools(): WebsiteNativeToolRow[] {
-  return topLevelToolDocs.map((doc) => doc.website);
+  return buildTopLevelToolDocs().map((doc) => doc.website);
 }

@@ -45,8 +45,7 @@ const {
     compactionMaxRawMessages: 12,
     compactionMaxToolObservations: 8,
     recursionLimit: 8,
-    githubGroundedMode: false,
-    maxToolCallsPerRound: 8,
+        maxToolCallsPerRound: 8,
     maxIdenticalToolBatches: 2,
     maxLoopGuardRecoveries: 1,
   })),
@@ -113,8 +112,7 @@ vi.mock('@/platform/config/env', () => ({
     AGENT_GRAPH_MAX_IDENTICAL_TOOL_BATCHES: 2,
     AGENT_GRAPH_MAX_LOOP_GUARD_RECOVERIES: 1,
     AGENT_GRAPH_RECURSION_LIMIT: 8,
-    AGENT_GRAPH_GITHUB_GROUNDED_MODE: false,
-  },
+      },
 }));
 
 vi.mock('@/platform/logging/logger', () => ({
@@ -484,8 +482,7 @@ function makeGraphConfig(
     compactionMaxRawMessages: 12,
     compactionMaxToolObservations: 8,
     recursionLimit: 8,
-    githubGroundedMode: false,
-    maxToolCallsPerRound: 8,
+        maxToolCallsPerRound: 8,
     maxIdenticalToolBatches: 2,
     maxLoopGuardRecoveries: 1,
     ...overrides,
@@ -1075,8 +1072,8 @@ describe('runGraphValueStream', () => {
     await shutdownAgentGraphRuntime();
     isReadOnlyToolCallMock.mockReturnValue(true);
     buildActiveToolCatalogMock.mockReturnValue({
-      allTools: [{ name: 'github_search_code' }],
-      readOnlyTools: [{ name: 'github_search_code' }],
+      allTools: [{ name: 'mcp__github__search_code' }],
+      readOnlyTools: [{ name: 'mcp__github__search_code' }],
       definitions: new Map(),
     });
     toolNodeInvokeMock.mockImplementationOnce(async (input?: { messages?: Array<{ tool_calls?: Array<{ id?: string }> }> }) => {
@@ -1088,7 +1085,7 @@ describe('runGraphValueStream', () => {
             tool_call_id: batchCall?.id ?? 'call-read-1',
             artifact: {
               result: {
-                name: 'github_search_code',
+                name: 'mcp__github__search_code',
                 success: true,
                 structuredContent: { ok: true, items: [1] },
                 telemetry: { latencyMs: 7 },
@@ -1113,7 +1110,7 @@ describe('runGraphValueStream', () => {
         userId: 'user-1',
         channelId: 'channel-1',
         guildId: 'guild-1',
-        activeToolNames: ['github_search_code'],
+        activeToolNames: ['mcp__github__search_code'],
         routeKind: 'single',
         currentTurn: { invokerUserId: 'user-1' },
         replyTarget: null,
@@ -1127,13 +1124,13 @@ describe('runGraphValueStream', () => {
             tool_calls: [
               {
                 id: 'call-read-1',
-                name: 'github_search_code',
+                name: 'mcp__github__search_code',
                 args: { q: 'repo status', think: 'ignore' },
                 type: 'tool_call',
               },
               {
                 id: 'call-read-2',
-                name: 'github_search_code',
+                name: 'mcp__github__search_code',
                 args: { think: 'different', q: 'repo status' },
                 type: 'tool_call',
               },
@@ -1178,7 +1175,7 @@ describe('runGraphValueStream', () => {
       }),
     );
     buildActiveToolCatalogMock.mockReturnValue({
-      allTools: [{ name: 'github_get_repo' }],
+      allTools: [{ name: 'mcp__github__get_file_contents' }],
       readOnlyTools: [],
       definitions: new Map(),
     });
@@ -1197,7 +1194,7 @@ describe('runGraphValueStream', () => {
         userId: 'user-1',
         channelId: 'channel-1',
         guildId: 'guild-1',
-        activeToolNames: ['github_get_repo'],
+        activeToolNames: ['mcp__github__get_file_contents'],
         routeKind: 'single',
         currentTurn: { invokerUserId: 'user-1' },
         replyTarget: null,
@@ -1211,7 +1208,7 @@ describe('runGraphValueStream', () => {
             tool_calls: [
               {
                 id: 'call-read-empty-1',
-                name: 'github_get_repo',
+                name: 'mcp__github__get_file_contents',
                 args: { repo: 'blueplaysgames3921', includeReadme: false },
                 type: 'tool_call',
               },
@@ -1584,7 +1581,7 @@ describe('runGraphValueStream', () => {
         roundsCompleted: 1,
         totalRoundsCompleted: 7,
         toolResults: Array.from({ length: 7 }, () =>
-          makeSuccessfulToolResult('github_search_code', { ok: true }, 10),
+          makeSuccessfulToolResult('mcp__github__search_code', { ok: true }, 10),
         ),
         messages: [new AIMessage({ content: 'I will call github again.' })],
       },

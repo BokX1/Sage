@@ -443,69 +443,6 @@ export const nativeTools = [
     "color": "#5865F2"
   },
   {
-    "name": "github_get_file",
-    "short": "GitHub Get File",
-    "desc": "Fetch one GitHub file, optionally with a bounded line range.",
-    "cat": "dev",
-    "color": "#10B981"
-  },
-  {
-    "name": "github_get_file_ranges",
-    "short": "GitHub Get File Ranges",
-    "desc": "Fetch multiple disjoint line ranges from one GitHub file.",
-    "cat": "dev",
-    "color": "#10B981"
-  },
-  {
-    "name": "github_get_file_snippet",
-    "short": "GitHub Get File Snippet",
-    "desc": "Fetch a tight snippet around one line number in a GitHub file.",
-    "cat": "dev",
-    "color": "#10B981"
-  },
-  {
-    "name": "github_get_repo",
-    "short": "GitHub Get Repo",
-    "desc": "Fetch GitHub repository metadata and optionally include the README.",
-    "cat": "dev",
-    "color": "#10B981"
-  },
-  {
-    "name": "github_list_commits",
-    "short": "GitHub List Commits",
-    "desc": "List recent commits for one GitHub repository.",
-    "cat": "dev",
-    "color": "#10B981"
-  },
-  {
-    "name": "github_page_file",
-    "short": "GitHub Page File",
-    "desc": "Read one GitHub file in bounded pages.",
-    "cat": "dev",
-    "color": "#10B981"
-  },
-  {
-    "name": "github_search_code",
-    "short": "GitHub Search Code",
-    "desc": "Search code across one GitHub repository.",
-    "cat": "dev",
-    "color": "#10B981"
-  },
-  {
-    "name": "github_search_issues",
-    "short": "GitHub Search Issues",
-    "desc": "Search issues in one GitHub repository.",
-    "cat": "dev",
-    "color": "#10B981"
-  },
-  {
-    "name": "github_search_pull_requests",
-    "short": "GitHub Search Pull Requests",
-    "desc": "Search pull requests in one GitHub repository.",
-    "cat": "dev",
-    "color": "#10B981"
-  },
-  {
     "name": "image_generate",
     "short": "Image Generate",
     "desc": "Generate an image with Pollinations as a distinct artifact, not a normal text reply.",
@@ -581,13 +518,6 @@ export const nativeTools = [
     "desc": "Lookup Wikipedia pages with snippets and canonical links for broad factual grounding.",
     "cat": "search",
     "color": "#0EA5E9"
-  },
-  {
-    "name": "workflow_npm_github_code_search",
-    "short": "Workflow npm -> GitHub code search",
-    "desc": "Resolve an npm package to its GitHub repository and run one code search there.",
-    "cat": "dev",
-    "color": "#10B981"
   }
 ];
 

@@ -14,8 +14,6 @@ import { isLoggingEnabled } from '../settings/guildChannelSettings';
 import { logger } from '../../platform/logging/logger';
 import { normalizeStrictlyPositiveInt } from '../../shared/utils/numbers';
 import { upsertTraceStart, updateTraceEnd } from './agent-trace-repo';
-import { clearGitHubFileLookupCacheForTrace } from './toolIntegrations';
-import { enforceGitHubFileGrounding } from './toolGrounding';
 import { buildAgentGraphConfig } from './langgraph/config';
 import { resolveApiKeyForRuntime } from './apiKeyResolver';
 import { continueAgentGraphTurn, retryAgentGraphTurn, runAgentGraphTurn } from './langgraph/runtime';
@@ -46,7 +44,6 @@ import {
 } from './continuityContext';
 import { resolveRuntimeAutopilotMode } from './autopilotMode';
 import { globalToolRegistry, type ToolDefinition } from './toolRegistry';
-import type { ToolResult } from './toolCallExecution';
 import type { GraphDeliveryDisposition, GraphWaitingState } from './langgraph/types';
 
 import { formatLiveVoiceContext } from '../voice/voiceConversationSessionStore';
@@ -662,7 +659,6 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
       promptMode = 'standard',
     } = params;
   const clearToolCaches = () => {
-    clearGitHubFileLookupCacheForTrace(traceId);
   };
 
   const recentMessages =
@@ -793,7 +789,6 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
   }
 
   let graphBudgetJson: Record<string, unknown> | undefined;
-  let toolResults: ToolResult[] = [];
   let finalReplyText: string;
   let files: Array<{ attachment: Buffer; name: string }> = [];
   let pendingInterrupt:
@@ -861,7 +856,6 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
     });
     finalReplyText = graphResult.replyText;
     files = graphResult.files;
-    toolResults = graphResult.toolResults;
     pendingInterrupt = toPendingInterruptSummary(graphResult.pendingInterrupt);
     delivery = graphResult.deliveryDisposition;
     responseSession = graphResult.responseSession;
@@ -934,21 +928,7 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
       errorText: error instanceof Error ? error.message : String(error),
     };
   }
-  let groundedReplyText = finalReplyText;
-  if (graphConfig.githubGroundedMode) {
-    const groundingResult = enforceGitHubFileGrounding(groundedReplyText, toolResults);
-    if (groundingResult.modified) {
-      logger.warn(
-        {
-          traceId,
-          ungroundedPaths: groundingResult.ungroundedPaths,
-          successfulPaths: groundingResult.successfulPaths,
-        },
-        'Final response replaced due to ungrounded GitHub file path claims',
-      );
-      groundedReplyText = groundingResult.replyText;
-    }
-  }
+  const groundedReplyText = finalReplyText;
   const safeFinalReplyText = groundedReplyText;
   const budgetJson: Record<string, unknown> = {
       route: SINGLE_ROUTE_KIND,

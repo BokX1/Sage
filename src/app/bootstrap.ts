@@ -25,7 +25,7 @@ export async function bootstrapApp(): Promise<void> {
       await assertAgentTraceSchemaReady();
     }
 
-    registerDefaultAgenticTools();
+    await registerDefaultAgenticTools();
     await initializeAgentGraphRuntime();
     registerMessageCreateHandler();
     registerMessageUpdateHandler();

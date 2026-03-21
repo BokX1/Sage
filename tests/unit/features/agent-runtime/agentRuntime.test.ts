@@ -5,7 +5,6 @@ import type { CurrentTurnContext } from '@/features/agent-runtime/continuityCont
 const {
   upsertTraceStartMock,
   updateTraceEndMock,
-  clearGitHubFileLookupCacheForTraceMock,
   buildPromptContextMessagesMock,
   globalToolRegistryMock,
   runAgentGraphTurnMock,
@@ -21,7 +20,6 @@ const {
 } = vi.hoisted(() => ({
   upsertTraceStartMock: vi.fn(),
   updateTraceEndMock: vi.fn(),
-  clearGitHubFileLookupCacheForTraceMock: vi.fn(),
   buildPromptContextMessagesMock: vi.fn(() => ({
     version: 'test-prompt-v1',
     systemMessage: 'system',
@@ -80,7 +78,6 @@ vi.mock('@/platform/config/env', () => ({
     AGENT_RUN_COMPACTION_TRIGGER_TOOL_RESULTS: 6,
     AGENT_RUN_COMPACTION_MAX_RAW_MESSAGES: 12,
     AGENT_RUN_COMPACTION_MAX_TOOL_OBSERVATIONS: 8,
-    AGENT_GRAPH_GITHUB_GROUNDED_MODE: false,
     AGENT_GRAPH_RECURSION_LIMIT: 8,
     TIMEOUT_CHAT_MS: 1000,
     SAGE_TRACE_DB_ENABLED: true,
@@ -126,23 +123,10 @@ vi.mock('@/features/agent-runtime/promptContract', () => ({
   buildPromptContextMessages: buildPromptContextMessagesMock,
 }));
 
-vi.mock('@/features/agent-runtime/toolGrounding', () => ({
-  enforceGitHubFileGrounding: vi.fn((replyText: string) => ({
-    modified: false,
-    replyText,
-    ungroundedPaths: [],
-    successfulPaths: [],
-  })),
-}));
-
 vi.mock('@/features/agent-runtime/langgraph/runtime', () => ({
   runAgentGraphTurn: runAgentGraphTurnMock,
   continueAgentGraphTurn: continueAgentGraphTurnMock,
   retryAgentGraphTurn: retryAgentGraphTurnMock,
-}));
-
-vi.mock('@/features/agent-runtime/toolIntegrations', () => ({
-  clearGitHubFileLookupCacheForTrace: clearGitHubFileLookupCacheForTraceMock,
 }));
 
 vi.mock('@/features/agent-runtime/autopilotMode', () => ({
@@ -310,7 +294,6 @@ describe('agentRuntime', () => {
     runAgentGraphTurnMock.mockReset();
     continueAgentGraphTurnMock.mockReset();
     retryAgentGraphTurnMock.mockReset();
-    clearGitHubFileLookupCacheForTraceMock.mockReset();
     getApprovalReviewRequestByIdMock.mockReset();
     getApprovalReviewRequestByIdMock.mockResolvedValue(null);
     upsertAgentTaskRunMock.mockReset();
@@ -502,7 +485,7 @@ describe('agentRuntime', () => {
   });
 
   it('retries a failed turn on the same LangGraph thread', async () => {
-    globalToolRegistryMock.listNames.mockReturnValue(['web', 'github_search_code', 'discord_messages_search_history'] as never);
+    globalToolRegistryMock.listNames.mockReturnValue(['web', 'mcp__github__search_code', 'discord_messages_search_history'] as never);
     globalToolRegistryMock.get.mockImplementation((name: string) => ({
       metadata: { access: 'public' as const },
       runtime: { access: 'public' as const, capabilityTags: name === 'web' ? ['web'] : ['developer'] },
@@ -532,7 +515,7 @@ describe('agentRuntime', () => {
         context: expect.objectContaining({
           traceId: 'trace-retry-1',
           routeKind: 'turn_retry',
-          activeToolNames: ['web', 'github_search_code', 'discord_messages_search_history'],
+          activeToolNames: ['web', 'mcp__github__search_code', 'discord_messages_search_history'],
         }),
       }),
     );
@@ -623,7 +606,7 @@ describe('agentRuntime', () => {
     const now = Date.now();
     globalToolRegistryMock.listNames.mockReturnValue([
       'web_search',
-      'github_search_code',
+      'mcp__github__search_code',
       'discord_messages_search_history',
     ] as never);
     globalToolRegistryMock.get.mockImplementation(() => ({
@@ -692,7 +675,7 @@ describe('agentRuntime', () => {
     expect(continueAgentGraphTurnMock).toHaveBeenCalledWith(
       expect.objectContaining({
         context: expect.objectContaining({
-          activeToolNames: ['web_search', 'github_search_code', 'discord_messages_search_history'],
+          activeToolNames: ['web_search', 'mcp__github__search_code', 'discord_messages_search_history'],
           promptMode: 'waiting_follow_up',
           waitingFollowUp: {
             matched: true,
@@ -739,10 +722,10 @@ describe('agentRuntime', () => {
     globalToolRegistryMock.listNames.mockReturnValue([
       'web_search',
       'web_research',
-      'github_search_code',
+      'mcp__github__search_code',
       'discord_messages_search_history',
       'discord_server_list_channels',
-      'workflow_npm_github_code_search',
+      'mcp__github__get_file_contents',
       'image_generate',
       'system_time',
       'system_tool_stats',
@@ -751,10 +734,10 @@ describe('agentRuntime', () => {
       const toolMap: Record<string, { metadata: { access: 'public' | 'admin' }; runtime: { access: 'public' | 'admin'; capabilityTags: string[]; class: string } }> = {
         web_search: { metadata: { access: 'public' }, runtime: { access: 'public', capabilityTags: ['web', 'search'], class: 'query' } },
         web_research: { metadata: { access: 'public' }, runtime: { access: 'public', capabilityTags: ['web', 'research'], class: 'query' } },
-        github_search_code: { metadata: { access: 'public' }, runtime: { access: 'public', capabilityTags: ['github', 'developer'], class: 'query' } },
+        mcp__github__search_code: { metadata: { access: 'public' }, runtime: { access: 'public', capabilityTags: ['github', 'developer'], class: 'query' } },
         discord_messages_search_history: { metadata: { access: 'public' }, runtime: { access: 'public', capabilityTags: ['discord', 'messages'], class: 'query' } },
         discord_server_list_channels: { metadata: { access: 'public' }, runtime: { access: 'public', capabilityTags: ['discord', 'server'], class: 'query' } },
-        workflow_npm_github_code_search: { metadata: { access: 'public' }, runtime: { access: 'public', capabilityTags: ['workflow', 'developer', 'github', 'npm'], class: 'query' } },
+        mcp__github__get_file_contents: { metadata: { access: 'public' }, runtime: { access: 'public', capabilityTags: ['workflow', 'developer', 'github', 'npm'], class: 'query' } },
         image_generate: { metadata: { access: 'public' }, runtime: { access: 'public', capabilityTags: ['generation', 'image'], class: 'artifact' } },
         system_time: { metadata: { access: 'public' }, runtime: { access: 'public', capabilityTags: ['system', 'time'], class: 'query' } },
         system_tool_stats: { metadata: { access: 'public' }, runtime: { access: 'public', capabilityTags: ['system', 'tooling'], class: 'query' } },
@@ -782,10 +765,10 @@ describe('agentRuntime', () => {
     expect(activeToolNames).toEqual([
       'web_search',
       'web_research',
-      'github_search_code',
+      'mcp__github__search_code',
       'discord_messages_search_history',
       'discord_server_list_channels',
-      'workflow_npm_github_code_search',
+      'mcp__github__get_file_contents',
       'image_generate',
       'system_time',
       'system_tool_stats',

@@ -10,19 +10,12 @@ vi.mock('../../../../src/features/agent-runtime/toolIntegrations', () => ({
   scrapeWebPage: vi.fn(),
   runAgenticWebScrape: vi.fn(),
   sanitizePublicUrl: (url: string) => url,
-  lookupGitHubRepo: vi.fn(),
-  lookupGitHubCodeSearch: vi.fn(),
-  lookupGitHubFile: vi.fn(),
-  searchGitHubIssuesAndPullRequests: vi.fn(),
-  listGitHubCommits: vi.fn(),
   lookupNpmPackage: mockLookupNpmPackage,
 }));
 
 import { ToolRegistry } from '../../../../src/features/agent-runtime/toolRegistry';
 import { registerDefaultAgenticTools } from '../../../../src/features/agent-runtime/defaultTools';
-import { githubTools } from '../../../../src/features/agent-runtime/githubTool';
 import { webTools } from '../../../../src/features/agent-runtime/webTool';
-import { workflowTools } from '../../../../src/features/agent-runtime/workflowTool';
 import { discordTools } from '../../../../src/features/agent-runtime/discordDomainTools';
 
 function byName<T extends { name: string }>(tools: readonly T[], name: string): T {
@@ -45,18 +38,12 @@ describe('granular tool contracts', () => {
     routeKind: 'search' as const,
   };
 
-  it('removes legacy help actions from GitHub, web, and workflow tools', async () => {
+  it('removes legacy help actions from web tools', async () => {
     const registry = new ToolRegistry();
-    registry.register(byName(githubTools, 'github_get_repo') as ToolSpecV2<unknown, unknown>);
     registry.register(byName(webTools, 'web_search') as ToolSpecV2<unknown, unknown>);
-    registry.register(
-      byName(workflowTools, 'workflow_npm_github_code_search') as ToolSpecV2<unknown, unknown>,
-    );
 
     const results = await Promise.all([
-      registry.executeValidated({ name: 'github_get_repo', args: { action: 'help' } }, ctx),
       registry.executeValidated({ name: 'web_search', args: { action: 'help' } }, ctx),
-      registry.executeValidated({ name: 'workflow_npm_github_code_search', args: { action: 'help' } }, ctx),
     ]);
 
     for (const result of results) {
@@ -89,27 +76,9 @@ describe('granular tool contracts', () => {
     expect(result.success).toBe(false);
   });
 
-  it('keeps schema hints for granular GitHub tools', async () => {
-    const registry = new ToolRegistry();
-    registry.register(byName(githubTools, 'github_get_repo') as ToolSpecV2<unknown, unknown>);
-
-    const result = await registry.executeValidated(
-      {
-        name: 'github_get_repo',
-        args: {},
-      },
-      ctx,
-    );
-
-    expect(result.success).toBe(false);
-    if (result.success) return;
-    expect(result.errorType).toBe('validation');
-    expect(result.errorDetails?.hint).toContain('owner/name');
-  });
-
   it('keeps metadata validation hints for direct tools', async () => {
     const registry = new ToolRegistry();
-    registerDefaultAgenticTools(registry);
+    await registerDefaultAgenticTools(registry);
 
     const result = await registry.executeValidated(
       {

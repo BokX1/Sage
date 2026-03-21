@@ -19,7 +19,7 @@ import { registerDefaultAgenticTools } from '@/features/agent-runtime/defaultToo
 describe('discord messages tool send attachments', () => {
   it('removes the legacy send_message tool from the model-facing registry', async () => {
     const registry = new ToolRegistry();
-    registerDefaultAgenticTools(registry);
+    await registerDefaultAgenticTools(registry);
 
     const ctx: ToolExecutionContext = {
       traceId: 'trace',
@@ -47,7 +47,7 @@ describe('discord messages tool send attachments', () => {
 
   it('keeps distinct artifact delivery on dedicated artifact tools instead of discord_messages_send', async () => {
     const registry = new ToolRegistry();
-    registerDefaultAgenticTools(registry);
+    await registerDefaultAgenticTools(registry);
 
     const ctx: ToolExecutionContext = {
       traceId: 'trace',

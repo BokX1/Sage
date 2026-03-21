@@ -56,25 +56,6 @@ function summarizeSmokeResult(toolName: string, result: unknown): string {
       const results = Array.isArray(record.results) ? record.results.length : 0;
       return `provider=${provider} results=${results} sourcesRead=${sourcesRead}`;
     }
-    case 'github_get_repo':
-      return `fullName=${String(record.fullName ?? record.repo ?? 'unknown')}`;
-    case 'github_search_code':
-    case 'github_search_issues':
-    case 'github_search_pull_requests': {
-      const results = Array.isArray(record.results) ? record.results.length : 0;
-      return `results=${results}`;
-    }
-    case 'github_get_file':
-    case 'github_get_file_ranges':
-    case 'github_get_file_snippet':
-    case 'github_page_file':
-      return `path=${String(record.path ?? 'unknown')}`;
-    case 'github_list_commits': {
-      const commits = Array.isArray(record.commits) ? record.commits.length : 0;
-      return `commits=${commits}`;
-    }
-    case 'workflow_npm_github_code_search':
-      return `repo=${String(record.githubRepo ?? 'unknown')} action=${String(record.action ?? 'unknown')}`;
     case 'npm_info':
       return `package=${String(record.packageName ?? 'unknown')} latest=${String(record.latestVersion ?? record.version ?? 'n/a')}`;
     case 'wikipedia_search': {
@@ -133,7 +114,7 @@ async function runCheck(check: SmokeCheck): Promise<{ passed: boolean; optional:
 
 async function main(): Promise<void> {
   const registry = new ToolRegistry();
-  registerDefaultAgenticTools(registry);
+  await registerDefaultAgenticTools(registry);
 
   const ctx = buildSmokeContext();
   const checks = buildSmokeChecks(registry, ctx);

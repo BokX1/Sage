@@ -1,4 +1,5 @@
 import { ToolRegistry, globalToolRegistry } from './toolRegistry';
+import { listMcpDiscoverySnapshots } from './mcp/manager';
 
 export type ToolAuditSeverity = 'fail' | 'warn';
 
@@ -11,7 +12,9 @@ export interface ToolAuditFinding {
     | 'query_not_read_only'
     | 'read_hint_missing'
     | 'parallel_safe_not_read_only'
-    | 'artifact_policy_mismatch';
+    | 'artifact_policy_mismatch'
+    | 'mcp_tool_disabled'
+    | 'mcp_server_unavailable';
   message: string;
 }
 
@@ -106,6 +109,30 @@ export function auditToolRegistry(registry: Pick<ToolRegistry, 'listSpecs'> = gl
           toolName: spec.name,
           code: 'artifact_policy_mismatch',
           message: 'Artifact tools must use artifact-only observation policy.',
+        }),
+      );
+    }
+  }
+
+  for (const snapshot of listMcpDiscoverySnapshots()) {
+    if (!snapshot.connected) {
+      findings.push(
+        makeFinding({
+          severity: 'warn',
+          toolName: `mcp:${snapshot.server.id}`,
+          code: 'mcp_server_unavailable',
+          message: snapshot.errorText?.trim() || 'MCP server is configured but unavailable.',
+        }),
+      );
+    }
+    for (const exposure of snapshot.exposure) {
+      if (exposure.exposed) continue;
+      findings.push(
+        makeFinding({
+          severity: 'warn',
+          toolName: `mcp__${snapshot.server.sanitizedId}__${exposure.rawToolName}`,
+          code: 'mcp_tool_disabled',
+          message: exposure.disableReason?.trim() || 'MCP tool was disabled because its schema is not provider-safe.',
         }),
       );
     }

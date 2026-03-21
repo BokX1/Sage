@@ -964,7 +964,7 @@ function buildChecks(): CheckDefinition[] {
           import('../features/agent-runtime/toolAudit'),
         ]);
         const registry = new ToolRegistry();
-        registerDefaultAgenticTools(registry);
+        await registerDefaultAgenticTools(registry);
         const report = auditToolRegistry(registry);
         const details = report.findings.slice(0, 12).map(
           (finding) => `${finding.severity.toUpperCase()} ${finding.toolName} ${finding.code}: ${finding.message}`,

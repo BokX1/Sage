@@ -232,12 +232,16 @@ Sage's prompt assembly no longer uses a dedicated raw observation middle-truncat
 | `AGENT_RUN_COMPACTION_MAX_RAW_MESSAGES` | Raw assistant/tool message count retained through compaction | `24` |
 | `AGENT_RUN_COMPACTION_MAX_TOOL_OBSERVATIONS` | Tool observations retained in prompt-facing compaction state | `12` |
 | `AGENT_GRAPH_MAX_OUTPUT_TOKENS` | Max output tokens for graph model calls | `4096` |
-| `AGENT_GRAPH_GITHUB_GROUNDED_MODE` | Enable grounded GitHub search mode | `true` |
 | `AGENT_GRAPH_RECURSION_LIMIT` | Optional advanced override for LangGraph's internal hop fail-safe; when unset Sage derives it from `AGENT_RUN_SLICE_MAX_STEPS` so durable slices yield before the low-level graph guard becomes the practical ceiling | *(derived; `104` at the starter slice budget)* |
 | `AGENT_GRAPH_MAX_TOOL_CALLS_PER_ROUND` | Max executable tool calls Sage will allow from one model response before it forces a repair pass | `12` |
 | `AGENT_GRAPH_MAX_IDENTICAL_TOOL_BATCHES` | Consecutive identical tool batches allowed before Sage trips the loop guard | `4` |
 | `AGENT_GRAPH_MAX_LOOP_GUARD_RECOVERIES` | How many structured repair attempts Sage gives the model before finalizing with `loop_guard` | `3` |
+| `MCP_SERVERS_JSON` | Optional JSON array of additional MCP servers Sage should discover at startup | *(empty)* |
+| `MCP_GITHUB_ENABLED` | Enable the official GitHub MCP preset | `false` |
+| `MCP_GITHUB_TRANSPORT` | Transport for the GitHub MCP preset (`stdio` or `streamable_http`) | `stdio` |
 | `LANGSMITH_TRACING` | Enable optional LangSmith graph tracing | `false` |
+
+GitHub capability is now provided through configured MCP servers. The default runtime inventory no longer ships legacy `github_*` or workflow-composed GitHub tools. On the official remote preset, Sage adds `X-MCP-Readonly` and `X-MCP-Toolsets` so the hosted GitHub MCP server is narrowed server-side before discovery.
 | `LANGSMITH_PROJECT` | LangSmith project name | `sage` |
 | `SAGE_TRACE_DB_ENABLED` | Persist compact `AgentTrace` ledger rows | `true` |
 

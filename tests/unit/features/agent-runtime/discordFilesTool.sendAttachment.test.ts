@@ -19,7 +19,7 @@ import { registerDefaultAgenticTools } from '@/features/agent-runtime/defaultToo
 describe('discord files tool send_attachment', () => {
   it('allows non-admin resend requests outside autopilot and returns stored grounding text', async () => {
     const registry = new ToolRegistry();
-    registerDefaultAgenticTools(registry);
+    await registerDefaultAgenticTools(registry);
 
     mocks.sendCachedAttachment.mockResolvedValue({
       found: true,

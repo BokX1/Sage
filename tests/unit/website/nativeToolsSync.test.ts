@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 
+import { registerDefaultAgenticTools } from '../../../src/features/agent-runtime/defaultTools';
 import { buildWebsiteNativeTools } from '../../../src/features/agent-runtime/toolDocs';
 
 type NativeToolRow = {
@@ -26,6 +27,10 @@ async function loadWebsiteNativeTools(): Promise<{
 }
 
 describe('website native tools list', () => {
+  beforeAll(async () => {
+    await registerDefaultAgenticTools();
+  });
+
   it('matches the generated runtime metadata rows exactly', async () => {
     const website = await loadWebsiteNativeTools();
     const generated = buildWebsiteNativeTools();

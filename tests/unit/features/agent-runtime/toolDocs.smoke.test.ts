@@ -1,9 +1,14 @@
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 
 import {
   listSmokeToolDocs,
   listTopLevelToolDocs,
 } from '../../../../src/features/agent-runtime/toolDocs';
+import { registerDefaultAgenticTools } from '../../../../src/features/agent-runtime/defaultTools';
+
+beforeAll(async () => {
+  await registerDefaultAgenticTools();
+});
 
 describe('tool smoke metadata', () => {
   it('tracks smokeable tools through the granular tool inventory', () => {
@@ -27,11 +32,9 @@ describe('tool smoke metadata', () => {
       'system_tool_stats',
     ]));
     expect(optional).toEqual(expect.arrayContaining([
-      'github_get_repo',
       'stack_overflow_search',
       'web_search',
       'wikipedia_search',
-      'workflow_npm_github_code_search',
     ]));
     expect(skipped).toEqual(expect.arrayContaining([
       'discord_admin_create_role',

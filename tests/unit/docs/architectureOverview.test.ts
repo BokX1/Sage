@@ -21,7 +21,7 @@ async function loadOverviewToolTableNames(): Promise<string[]> {
 describe('architecture overview tool inventory', () => {
   it('reflects the registered top-level runtime tool inventory in its tool tables', async () => {
     const registry = new ToolRegistry();
-    registerDefaultAgenticTools(registry);
+    await registerDefaultAgenticTools(registry);
 
     const overviewToolNames = await loadOverviewToolTableNames();
     const runtimeToolNames = registry.listNames().sort((a, b) => a.localeCompare(b));

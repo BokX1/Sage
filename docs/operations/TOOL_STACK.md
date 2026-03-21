@@ -171,13 +171,13 @@ The smoke script checks representative non-Discord tools from the current regist
 | :--- | :--- |
 | `system_time` | Required |
 | `system_tool_stats` | Required |
-| `web_search` / `web_read` / `web_research` | Required |
-| `github_search_code` / `github_get_repo` | Required |
-| `workflow_npm_github_code_search` | Required |
+| `web_search` | Required |
 | `npm_info` | Required |
 | `wikipedia_search` | Required |
 | `stack_overflow_search` | Required |
 | `image_generate` | Optional |
+
+Optional MCP-backed tools are included automatically when their servers are configured and available. For example, enabling the GitHub MCP preset adds namespaced tools such as `mcp__github__search_code` to the live smoke inventory.
 
 Attachment extraction health check (Tika):
 
