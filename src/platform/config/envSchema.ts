@@ -262,8 +262,8 @@ export const testDefaults: Record<string, string> = {
   SUMMARY_SCHED_TICK_SEC: '60',
 
   // Context Budgets
-  CONTEXT_MAX_INPUT_TOKENS: '120000',
-  CONTEXT_RESERVED_OUTPUT_TOKENS: '4096',
+  CONTEXT_MAX_INPUT_TOKENS: '180000',
+  CONTEXT_RESERVED_OUTPUT_TOKENS: '6000',
 
   // Agentic Runtime / Embeddings / Tracing
   LANGSMITH_TRACING: 'false',
@@ -297,10 +297,10 @@ export const testDefaults: Record<string, string> = {
 
   // Tool Providers
   TOOL_WEB_SEARCH_PROVIDER_ORDER: 'tavily,exa,searxng',
-  TOOL_WEB_SEARCH_TIMEOUT_MS: '45000',
+  TOOL_WEB_SEARCH_TIMEOUT_MS: '60000',
   TOOL_WEB_SEARCH_MAX_RESULTS: '8',
   TOOL_WEB_SCRAPE_PROVIDER_ORDER: 'crawl4ai,firecrawl,jina,raw_fetch',
-  TOOL_WEB_SCRAPE_TIMEOUT_MS: '45000',
+  TOOL_WEB_SCRAPE_TIMEOUT_MS: '75000',
   TAVILY_API_KEY: '',
   EXA_API_KEY: '',
   SEARXNG_BASE_URL: '',
@@ -341,14 +341,14 @@ export const testDefaults: Record<string, string> = {
   MCP_PRESET_MARKITDOWN_TOKEN: '',
 
   // Output / Runtime Control
-  CHAT_MAX_OUTPUT_TOKENS: '4096',
+  CHAT_MAX_OUTPUT_TOKENS: '6000',
   LLM_DOCTOR_PING: '0',
   AGENT_WINDOW_CLOSEOUT_MAX_OUTPUT_TOKENS: '2400',
   AGENT_WINDOW_CLOSEOUT_REQUEST_TIMEOUT_MS: '20000',
-  AGENT_RUN_SLICE_MAX_STEPS: '10',
-  AGENT_RUN_TOOL_TIMEOUT_MS: '45000',
-  AGENT_GRAPH_MAX_OUTPUT_TOKENS: '4096',
-  AGENT_RUN_SLICE_MAX_DURATION_MS: '120000',
+  AGENT_RUN_SLICE_MAX_STEPS: '14',
+  AGENT_RUN_TOOL_TIMEOUT_MS: '75000',
+  AGENT_GRAPH_MAX_OUTPUT_TOKENS: '6000',
+  AGENT_RUN_SLICE_MAX_DURATION_MS: '180000',
   AGENT_RUN_MAX_TOTAL_DURATION_MS: '3600000',
   AGENT_RUN_MAX_IDLE_WAIT_MS: '86400000',
   AGENT_RUN_WORKER_POLL_MS: '5000',
@@ -356,14 +356,14 @@ export const testDefaults: Record<string, string> = {
   AGENT_RUN_HEARTBEAT_MS: '10000',
   AGENT_RUN_MAX_RESUMES: '256',
   AGENT_RUN_COMPACTION_ENABLED: 'true',
-  AGENT_RUN_COMPACTION_TRIGGER_EST_TOKENS: '64000',
-  AGENT_RUN_COMPACTION_TRIGGER_ROUNDS: '6',
-  AGENT_RUN_COMPACTION_TRIGGER_TOOL_RESULTS: '24',
-  AGENT_RUN_COMPACTION_MAX_RAW_MESSAGES: '24',
-  AGENT_RUN_COMPACTION_MAX_TOOL_OBSERVATIONS: '12',
-  AGENT_GRAPH_MAX_TOOL_CALLS_PER_ROUND: '12',
+  AGENT_RUN_COMPACTION_TRIGGER_EST_TOKENS: '100000',
+  AGENT_RUN_COMPACTION_TRIGGER_ROUNDS: '8',
+  AGENT_RUN_COMPACTION_TRIGGER_TOOL_RESULTS: '32',
+  AGENT_RUN_COMPACTION_MAX_RAW_MESSAGES: '32',
+  AGENT_RUN_COMPACTION_MAX_TOOL_OBSERVATIONS: '16',
+  AGENT_GRAPH_MAX_TOOL_CALLS_PER_ROUND: '14',
   AGENT_GRAPH_MAX_IDENTICAL_TOOL_BATCHES: '4',
-  AGENT_GRAPH_MAX_LOOP_GUARD_RECOVERIES: '3',
+  AGENT_GRAPH_MAX_LOOP_GUARD_RECOVERIES: '4',
 
   // Security
   SECRET_ENCRYPTION_KEY: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
@@ -502,10 +502,10 @@ export const envSchema = z.object({
 
   // Tool Providers
   TOOL_WEB_SEARCH_PROVIDER_ORDER: z.string().default('tavily,exa,searxng'),
-  TOOL_WEB_SEARCH_TIMEOUT_MS: z.coerce.number().int().min(1000).max(180000).default(45000),
+  TOOL_WEB_SEARCH_TIMEOUT_MS: z.coerce.number().int().min(1000).max(180000).default(60000),
   TOOL_WEB_SEARCH_MAX_RESULTS: z.coerce.number().int().min(1).max(10).default(8),
   TOOL_WEB_SCRAPE_PROVIDER_ORDER: z.string().default('crawl4ai,firecrawl,jina,raw_fetch'),
-  TOOL_WEB_SCRAPE_TIMEOUT_MS: z.coerce.number().int().min(1000).max(180000).default(45000),
+  TOOL_WEB_SCRAPE_TIMEOUT_MS: z.coerce.number().int().min(1000).max(180000).default(75000),
   TAVILY_API_KEY: z.string().optional(),
   EXA_API_KEY: z.string().optional(),
   SEARXNG_BASE_URL: optionalHttpOrHttpsUrlSchema,
@@ -581,14 +581,14 @@ export const envSchema = z.object({
   MCP_PRESET_MARKITDOWN_TOKEN: z.string().optional(),
 
   // Output / Runtime Control
-  CHAT_MAX_OUTPUT_TOKENS: z.coerce.number().int().min(128).max(16000).default(4096),
+  CHAT_MAX_OUTPUT_TOKENS: z.coerce.number().int().min(128).max(16000).default(6000),
   LLM_DOCTOR_PING: z.enum(['0', '1']).default('0'),
   AGENT_WINDOW_CLOSEOUT_MAX_OUTPUT_TOKENS: z.coerce.number().int().min(256).max(8_000).default(2_400),
   AGENT_WINDOW_CLOSEOUT_REQUEST_TIMEOUT_MS: z.coerce.number().int().min(5_000).max(60_000).default(20_000),
-  AGENT_RUN_SLICE_MAX_STEPS: z.coerce.number().int().min(1).max(32).default(10),
-  AGENT_RUN_TOOL_TIMEOUT_MS: z.coerce.number().int().min(1000).max(120000).default(45000),
-  AGENT_GRAPH_MAX_OUTPUT_TOKENS: z.coerce.number().int().min(128).max(8000).default(4096),
-  AGENT_RUN_SLICE_MAX_DURATION_MS: z.coerce.number().int().min(10_000).max(300_000).default(120_000),
+  AGENT_RUN_SLICE_MAX_STEPS: z.coerce.number().int().min(1).max(32).default(14),
+  AGENT_RUN_TOOL_TIMEOUT_MS: z.coerce.number().int().min(1000).max(120000).default(75000),
+  AGENT_GRAPH_MAX_OUTPUT_TOKENS: z.coerce.number().int().min(128).max(8000).default(6000),
+  AGENT_RUN_SLICE_MAX_DURATION_MS: z.coerce.number().int().min(10_000).max(300_000).default(180_000),
   AGENT_RUN_MAX_TOTAL_DURATION_MS: z.coerce.number().int().min(60_000).max(86_400_000).default(3_600_000),
   AGENT_RUN_MAX_IDLE_WAIT_MS: z.coerce.number().int().min(60_000).max(604_800_000).default(86_400_000),
   AGENT_RUN_WORKER_POLL_MS: z.coerce.number().int().min(1_000).max(60_000).default(5_000),
@@ -599,15 +599,15 @@ export const envSchema = z.object({
     .enum(['true', 'false'])
     .default('true')
     .transform((v) => v === 'true'),
-  AGENT_RUN_COMPACTION_TRIGGER_EST_TOKENS: z.coerce.number().int().min(1_000).max(200_000).default(64_000),
-  AGENT_RUN_COMPACTION_TRIGGER_ROUNDS: z.coerce.number().int().min(1).max(64).default(6),
-  AGENT_RUN_COMPACTION_TRIGGER_TOOL_RESULTS: z.coerce.number().int().min(1).max(256).default(24),
-  AGENT_RUN_COMPACTION_MAX_RAW_MESSAGES: z.coerce.number().int().min(2).max(128).default(24),
-  AGENT_RUN_COMPACTION_MAX_TOOL_OBSERVATIONS: z.coerce.number().int().min(1).max(128).default(12),
+  AGENT_RUN_COMPACTION_TRIGGER_EST_TOKENS: z.coerce.number().int().min(1_000).max(200_000).default(100_000),
+  AGENT_RUN_COMPACTION_TRIGGER_ROUNDS: z.coerce.number().int().min(1).max(64).default(8),
+  AGENT_RUN_COMPACTION_TRIGGER_TOOL_RESULTS: z.coerce.number().int().min(1).max(256).default(32),
+  AGENT_RUN_COMPACTION_MAX_RAW_MESSAGES: z.coerce.number().int().min(2).max(128).default(32),
+  AGENT_RUN_COMPACTION_MAX_TOOL_OBSERVATIONS: z.coerce.number().int().min(1).max(128).default(16),
   AGENT_GRAPH_RECURSION_LIMIT: z.coerce.number().int().min(2).max(512).optional(),
-  AGENT_GRAPH_MAX_TOOL_CALLS_PER_ROUND: z.coerce.number().int().min(1).max(32).default(12),
+  AGENT_GRAPH_MAX_TOOL_CALLS_PER_ROUND: z.coerce.number().int().min(1).max(32).default(14),
   AGENT_GRAPH_MAX_IDENTICAL_TOOL_BATCHES: z.coerce.number().int().min(2).max(8).default(4),
-  AGENT_GRAPH_MAX_LOOP_GUARD_RECOVERIES: z.coerce.number().int().min(0).max(4).default(3),
+  AGENT_GRAPH_MAX_LOOP_GUARD_RECOVERIES: z.coerce.number().int().min(0).max(4).default(4),
 
   // Security
   SECRET_ENCRYPTION_KEY: z.string().regex(/^[0-9a-fA-F]{64}$/),

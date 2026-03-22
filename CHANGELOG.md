@@ -67,6 +67,7 @@
 
 ### Changed
 
+- Changed Sage's long-running runtime defaults to an aggressive frontier-research profile: larger prompt and output reserves, longer slices and per-tool timeouts, wider per-round tool-call budgets, and later compaction thresholds now let deep research runs keep more working context before yielding while preserving the existing repeated-batch guard.
 - Changed the checked-in environment contract so `.env.example`, runtime env-schema defaults, and the curated MCP preset docs now agree on the shipped preset defaults, while stale rollout labels like "Phase 2" were removed from the example config to keep operator setup copy production-neutral.
 - Changed Sage's public web tool contract to a deterministic three-tool surface: `web_search`, `web_read`, and `web_read_page` now replace the old pseudo-agentic `web_extract` / `web_research` paths, exact-page reads are memoized briefly for long-running turns, and `web_read_page` can seed large-page continuation from a recent `web_read` instead of immediately refetching the same URL.
 - Changed the web provider reliability model from local-only cooldowns to shared provider-health tracking across all search and scrape backends, so Sage now backs off after auth, rate-limit, timeout, network, and upstream failures instead of hammering unhealthy remote providers every turn.

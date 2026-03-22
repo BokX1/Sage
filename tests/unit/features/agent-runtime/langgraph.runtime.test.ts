@@ -1775,6 +1775,84 @@ describe('runGraphValueStream', () => {
     expect(result.replyText).not.toContain('Please send me a new message');
     expect(result.replyText).not.toContain('Completed so far: 7 tool calls (github x7).');
     expect(result.totalRoundsCompleted).toBe(8);
+    expect(result.compactionState).toMatchObject({
+      reason: 'yield_boundary',
+      retainedRawMessageCount: 1,
+      retainedToolObservationCount: 7,
+      compactionRevision: 1,
+    });
+  });
+
+  it('injects compacted working memory into the next model prompt after a yield', async () => {
+    modelInvokeMock.mockResolvedValueOnce(
+      makeFinishTurnMessage('final_answer', 'Continuing from the compacted working set.'),
+    );
+
+    await __runAgentGraphCommandForTests({
+      threadId: 'trace-compaction-prompt-1',
+      goto: 'tool_call_turn',
+      context: {
+        traceId: 'trace-compaction-prompt-1',
+        originTraceId: 'trace-compaction-prompt-1',
+        userId: 'user-1',
+        channelId: 'channel-1',
+        guildId: 'guild-1',
+        apiKey: 'test-api-key',
+        model: 'test-main-agent-model',
+        temperature: 0.6,
+        timeoutMs: 1_000,
+        maxTokens: 500,
+        activeToolNames: ['repo_search_code'],
+        routeKind: 'background_resume',
+        currentTurn: { invokerUserId: 'user-1' },
+        replyTarget: null,
+        invokedBy: 'component',
+      },
+      state: {
+        compactionState: {
+          workingObjective: 'Finish validating the repo regression cleanly.',
+          verifiedFacts: ['GitHub search already succeeded for the target repo.'],
+          completedActions: ['Read the docs page and captured the earlier findings.'],
+          openQuestions: ['Need one final exact source before replying.'],
+          pendingApprovals: [],
+          deliveryState: 'none',
+          nextAction: 'Read one more exact source and then finalize.',
+          activeEvidenceRefs: ['tool:repo_search_code#0'],
+          droppedMessageCutoff: 6,
+          compactionRevision: 2,
+          retainedRawMessageCount: 2,
+          retainedToolObservationCount: 1,
+          reason: 'yield_boundary',
+          inputTokensEstimate: 98000,
+          outputTokensEstimate: 500,
+        },
+        toolResults: [
+          makeSuccessfulToolResult(
+            'repo_search_code',
+            { query: 'replyText LastValue collision', ok: true },
+            10,
+          ),
+        ],
+        messages: [
+          new HumanMessage({ content: 'Keep going and finish the audit.' }),
+          new AIMessage({ content: 'Working through the remaining source now.' }),
+        ],
+      },
+    });
+
+    const promptMessages = modelInvokeMock.mock.calls.at(-1)?.[0] as
+      | Array<{ content?: unknown }>
+      | undefined;
+    const promptText = (promptMessages ?? [])
+      .map((message) =>
+        typeof message.content === 'string' ? message.content : JSON.stringify(message.content),
+      )
+      .join('\n');
+
+    expect(promptText).toContain('GitHub search already succeeded for the target repo.');
+    expect(promptText).toContain('Read the docs page and captured the earlier findings.');
+    expect(promptText).toContain('Need one final exact source before replying.');
+    expect(promptText).toContain('tool:repo_search_code#0');
   });
 
   it('materializes approval interrupts before pausing the graph', async () => {
