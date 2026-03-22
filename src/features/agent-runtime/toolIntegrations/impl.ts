@@ -2,12 +2,17 @@ import { config } from '../../../platform/config/env';
 import { isPrivateOrLocalHostname } from '../../../platform/config/env';
 import { PermissionsBitField } from 'discord.js';
 import { client } from '../../../platform/discord/client';
-import { createLLMClient } from '../../../platform/llm';
 import { prisma } from '../../../platform/db/prisma-client';
 import { logger } from '../../../platform/logging/logger';
 import { normalizeTimeoutMs } from '../../../shared/utils/timeout';
 import { normalizeBoundedInt } from '../../../shared/utils/numbers';
-import { ToolDetailedError, classifyHttpStatus } from '../toolErrors';
+import {
+  ToolDetailedError,
+  classifyHttpStatus,
+  extractToolErrorDetails,
+  type ToolFailureCategory,
+} from '../toolErrors';
+import { callMcpTool, getMcpToolDescriptor } from '../mcp/manager';
 import {
   type IngestedAttachmentRecord,
   findIngestedAttachmentsForLookup,
@@ -43,10 +48,11 @@ const DEFAULT_WEB_SCRAPE_TIMEOUT_MS = 45_000;
 const MIN_FETCH_TIMEOUT_MS = 1_000;
 const MAX_FETCH_TIMEOUT_MS = 600_000;
 const DEFAULT_WEB_SEARCH_MAX_RESULTS = 6;
-const LOCAL_PROVIDER_COOLDOWN_MS = 5 * 60_000;
+const WEB_PROVIDER_TRANSIENT_COOLDOWN_MS = 5 * 60_000;
+const WEB_PROVIDER_UPSTREAM_COOLDOWN_MS = 2 * 60_000;
+const WEB_PROVIDER_AUTH_COOLDOWN_MS = 15 * 60_000;
 const DEFAULT_TAVILY_SEARCH_URL = 'https://api.tavily.com/search';
 const DEFAULT_EXA_SEARCH_URL = 'https://api.exa.ai/search';
-const DEFAULT_FIRECRAWL_BASE_URL = 'https://api.firecrawl.dev/v1';
 const DEFAULT_JINA_READER_BASE_URL = 'https://r.jina.ai/http://';
 const DEFAULT_IMAGE_GEN_TIMEOUT_MS = 360_000;
 /**
@@ -54,18 +60,21 @@ const DEFAULT_IMAGE_GEN_TIMEOUT_MS = 360_000;
  */
 export type SearchDepth = 'quick' | 'balanced' | 'deep';
 type SearchProviderId = 'tavily' | 'exa' | 'searxng';
-type ScrapeProviderId = 'firecrawl' | 'crawl4ai' | 'jina' | 'raw_fetch' | 'nomnom';
-type LocalProviderId = 'searxng' | 'crawl4ai';
-type LocalProviderCooldownState = {
+type ScrapeProviderId = 'firecrawl' | 'crawl4ai' | 'jina' | 'raw_fetch';
+type WebProviderId = SearchProviderId | ScrapeProviderId;
+type WebProviderHealthState = {
   untilMs: number;
   reason: string;
+  category: ToolFailureCategory;
 };
-type LocalProviderRuntimeStatus = {
-  provider: LocalProviderId;
+type WebProviderRuntimeStatus = {
+  provider: WebProviderId;
+  family: 'search' | 'scrape';
   configured: boolean;
   coolingDown: boolean;
   cooldownUntil: string | null;
   cooldownReason: string | null;
+  failureCategory: ToolFailureCategory | null;
 };
 
 type SearchResult = {
@@ -85,7 +94,17 @@ type SearchOutcome = {
   rawContent?: string;
 };
 
-const localProviderCooldowns = new Map<LocalProviderId, LocalProviderCooldownState>();
+const WEB_PROVIDER_IDS: readonly WebProviderId[] = [
+  'tavily',
+  'exa',
+  'searxng',
+  'firecrawl',
+  'crawl4ai',
+  'jina',
+  'raw_fetch',
+] as const;
+
+const webProviderHealth = new Map<WebProviderId, WebProviderHealthState>();
 
 const LOCAL_PROVIDER_CONNECTIVITY_MARKERS = [
   'econnrefused',
@@ -133,67 +152,114 @@ function composeAbortSignal(parentSignal: AbortSignal | undefined, timeoutSignal
   return controller.signal;
 }
 
-function isLocalProviderConnectivityError(error: unknown): boolean {
+function isProviderConnectivityError(error: unknown): boolean {
   const lower = errorText(error).toLowerCase();
   if (/\bhttp\s+\d{3}\b/i.test(lower)) return false;
   return LOCAL_PROVIDER_CONNECTIVITY_MARKERS.some((marker) => lower.includes(marker));
 }
 
-function getLocalProviderCooldown(provider: LocalProviderId): LocalProviderCooldownState | null {
-  const state = localProviderCooldowns.get(provider);
+function getWebProviderHealth(provider: WebProviderId): WebProviderHealthState | null {
+  const state = webProviderHealth.get(provider);
   if (!state) return null;
   if (state.untilMs <= Date.now()) {
-    localProviderCooldowns.delete(provider);
+    webProviderHealth.delete(provider);
     return null;
   }
   return state;
 }
 
-function clearLocalProviderCooldown(provider: LocalProviderId): void {
-  localProviderCooldowns.delete(provider);
+function clearWebProviderHealth(provider: WebProviderId): void {
+  webProviderHealth.delete(provider);
 }
 
-function markLocalProviderCooldown(provider: LocalProviderId, error: unknown): void {
-  if (!isLocalProviderConnectivityError(error)) return;
+function getProviderCooldownMs(category: ToolFailureCategory, retryAfterMs?: number): number | null {
+  switch (category) {
+    case 'unauthorized':
+    case 'forbidden':
+    case 'misconfigured':
+      return WEB_PROVIDER_AUTH_COOLDOWN_MS;
+    case 'rate_limited':
+      return Math.min(Math.max(retryAfterMs ?? WEB_PROVIDER_UPSTREAM_COOLDOWN_MS, 30_000), WEB_PROVIDER_AUTH_COOLDOWN_MS);
+    case 'timeout':
+    case 'network_error':
+      return WEB_PROVIDER_TRANSIENT_COOLDOWN_MS;
+    case 'server_error':
+    case 'upstream_error':
+    case 'unknown':
+      return WEB_PROVIDER_UPSTREAM_COOLDOWN_MS;
+    default:
+      return null;
+  }
+}
+
+function markWebProviderHealth(provider: WebProviderId, error: unknown): void {
+  const details = extractToolErrorDetails(error)
+    ?? (isProviderConnectivityError(error) ? { category: 'network_error' as const } : null);
+  if (!details) return;
+
+  const cooldownMs = getProviderCooldownMs(details.category, details.retryAfterMs);
+  if (cooldownMs === null) return;
+
   const reason = errorText(error);
-  const untilMs = Date.now() + LOCAL_PROVIDER_COOLDOWN_MS;
-  localProviderCooldowns.set(provider, { untilMs, reason });
+  const untilMs = Date.now() + cooldownMs;
+  webProviderHealth.set(provider, {
+    untilMs,
+    reason,
+    category: details.category,
+  });
   logger.warn(
     {
       provider,
       cooldownUntil: new Date(untilMs).toISOString(),
+      failureCategory: details.category,
       reason,
     },
-    'Local provider unreachable; entering cooldown',
+    'Web provider degraded; entering cooldown',
   );
 }
 
-function formatCooldownState(state: LocalProviderCooldownState): string {
+function formatProviderHealthState(state: WebProviderHealthState): string {
   const remainingMs = Math.max(0, state.untilMs - Date.now());
-  return `${Math.ceil(remainingMs / 1000)}s remaining (${state.reason})`;
+  return `${state.category}; ${Math.ceil(remainingMs / 1000)}s remaining (${state.reason})`;
 }
 
-export function __resetLocalProviderCooldownForTests(): void {
-  localProviderCooldowns.clear();
+export function __resetWebProviderHealthForTests(): void {
+  webProviderHealth.clear();
 }
 
-function isLocalProviderConfigured(provider: LocalProviderId): boolean {
-  if (provider === 'searxng') {
-    return !!(config.SEARXNG_BASE_URL as string | undefined)?.trim();
+function isWebProviderConfigured(provider: WebProviderId): boolean {
+  switch (provider) {
+    case 'tavily':
+      return !!(config.TAVILY_API_KEY as string | undefined)?.trim();
+    case 'exa':
+      return !!(config.EXA_API_KEY as string | undefined)?.trim();
+    case 'searxng':
+      return !!(config.SEARXNG_BASE_URL as string | undefined)?.trim();
+    case 'firecrawl':
+      return !!getMcpToolDescriptor('firecrawl', 'firecrawl_scrape') || !!getMcpToolDescriptor('firecrawl', 'scrape');
+    case 'crawl4ai':
+      return !!(config.CRAWL4AI_BASE_URL as string | undefined)?.trim();
+    case 'jina':
+    case 'raw_fetch':
+      return true;
   }
-  return !!(config.CRAWL4AI_BASE_URL as string | undefined)?.trim();
 }
 
-export function getLocalProviderRuntimeStatus(): LocalProviderRuntimeStatus[] {
-  const providers: LocalProviderId[] = ['searxng', 'crawl4ai'];
-  return providers.map((provider) => {
-    const cooldown = getLocalProviderCooldown(provider);
+function providerFamily(provider: WebProviderId): 'search' | 'scrape' {
+  return provider === 'tavily' || provider === 'exa' || provider === 'searxng' ? 'search' : 'scrape';
+}
+
+export function getWebProviderRuntimeStatus(): WebProviderRuntimeStatus[] {
+  return WEB_PROVIDER_IDS.map((provider) => {
+    const cooldown = getWebProviderHealth(provider);
     return {
       provider,
-      configured: isLocalProviderConfigured(provider),
+      family: providerFamily(provider),
+      configured: isWebProviderConfigured(provider),
       coolingDown: !!cooldown,
       cooldownUntil: cooldown ? new Date(cooldown.untilMs).toISOString() : null,
       cooldownReason: cooldown?.reason ?? null,
+      failureCategory: cooldown?.category ?? null,
     };
   });
 }
@@ -210,6 +276,14 @@ function pickString(record: Record<string, unknown>, key: string): string | null
 function pickNumber(record: Record<string, unknown>, key: string): number | null {
   const value = record[key];
   return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+function mcpSchemaHasProperty(schema: Record<string, unknown>, property: string): boolean {
+  const properties =
+    schema.properties && typeof schema.properties === 'object' && !Array.isArray(schema.properties)
+      ? (schema.properties as Record<string, unknown>)
+      : {};
+  return property in properties;
 }
 
 function toRecordList(value: unknown): Record<string, unknown>[] {
@@ -400,7 +474,7 @@ async function fetchJson(
 
   const raw = await response.text();
   if (!response.ok) {
-    const retryAfterMs = parseRetryAfterMs(response.headers.get('retry-after'));
+    const retryAfterMs = parseRetryAfterMs(response.headers?.get?.('retry-after') ?? null);
     const statusText = response.statusText?.trim() ?? '';
     const snippet = raw.trim().slice(0, 240);
     const detail = statusText || snippet || 'Request failed';
@@ -709,22 +783,24 @@ export async function runWebSearch(params: {
   const errors: string[] = [];
 
   for (const provider of providerOrder) {
-    if (provider === 'searxng') {
-      if (!isLocalProviderConfigured('searxng')) {
-        providersSkipped.push(provider);
-        const reason = 'not configured (SEARXNG_BASE_URL is empty)';
-        providersSkipReasons[provider] = reason;
-        errors.push(`${provider}: skipped (${reason})`);
-        continue;
-      }
-      const cooldown = getLocalProviderCooldown('searxng');
-      if (cooldown) {
-        providersSkipped.push(provider);
-        const reason = formatCooldownState(cooldown);
-        providersSkipReasons[provider] = reason;
-        errors.push(`${provider}: skipped (${reason})`);
-        continue;
-      }
+    if (!isWebProviderConfigured(provider)) {
+      providersSkipped.push(provider);
+      const reason = provider === 'searxng'
+        ? 'not configured (SEARXNG_BASE_URL is empty)'
+        : provider === 'tavily'
+          ? 'not configured (TAVILY_API_KEY is empty)'
+          : 'not configured (EXA_API_KEY is empty)';
+      providersSkipReasons[provider] = reason;
+      errors.push(`${provider}: skipped (${reason})`);
+      continue;
+    }
+    const providerHealth = getWebProviderHealth(provider);
+    if (providerHealth) {
+      providersSkipped.push(provider);
+      const reason = formatProviderHealthState(providerHealth);
+      providersSkipReasons[provider] = reason;
+      errors.push(`${provider}: skipped (${reason})`);
+      continue;
     }
     providersTried.push(provider);
     try {
@@ -735,9 +811,7 @@ export async function runWebSearch(params: {
             ? await searchWithExa(params.query, params.depth, maxResults, timeoutMs, params.signal)
             : await searchWithSearxng(params.query, maxResults, timeoutMs, params.signal);
 
-      if (provider === 'searxng') {
-        clearLocalProviderCooldown('searxng');
-      }
+      clearWebProviderHealth(provider);
 
       return {
         query: params.query,
@@ -747,7 +821,7 @@ export async function runWebSearch(params: {
         providersTried,
         providersSkipped,
         providersSkipReasons,
-        localProviderStatus: getLocalProviderRuntimeStatus(),
+        providerHealth: getWebProviderRuntimeStatus(),
         sourceUrls: outcome.sourceUrls,
         answer: outcome.answer,
         results: outcome.results.slice(0, maxResults),
@@ -756,16 +830,14 @@ export async function runWebSearch(params: {
       };
     } catch (error) {
       if (isAbortError(error)) throw error;
-      if (provider === 'searxng') {
-        markLocalProviderCooldown('searxng', error);
-      }
+      markWebProviderHealth(provider, error);
       errors.push(`${provider}: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
   const skippedSuffix =
     providersSkipped.length > 0
-      ? ` Skipped local providers: ${providersSkipped.join(', ')}.`
+      ? ` Skipped providers: ${providersSkipped.join(', ')}.`
       : '';
   throw new Error(
     `web.search failed. Providers attempted: ${providersTried.join(', ')}.${skippedSuffix} ${errors.join(' | ')}`.trim(),
@@ -801,23 +873,34 @@ function extractScrapeContent(record: Record<string, unknown>): { title?: string
 async function scrapeWithFirecrawl(
   url: string,
   timeoutMs: number,
-  signal?: AbortSignal,
+  _signal?: AbortSignal,
 ): Promise<{ provider: string; title?: string; content: string }> {
-  const apiKey = (config.FIRECRAWL_API_KEY as string | undefined)?.trim();
-  if (!apiKey) throw new Error('FIRECRAWL_API_KEY is not configured');
-  const baseUrl = (config.FIRECRAWL_BASE_URL as string | undefined)?.trim() || DEFAULT_FIRECRAWL_BASE_URL;
-  const endpoint = baseUrl.endsWith('/scrape') ? baseUrl : `${baseUrl.replace(/\/$/, '')}/scrape`;
-  const payload = await fetchJson(
-    endpoint,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-      body: JSON.stringify({ url, formats: ['markdown'], onlyMainContent: true }),
-    },
-    timeoutMs,
-    signal,
+  void _signal;
+  const tool =
+    getMcpToolDescriptor('firecrawl', 'firecrawl_scrape')
+    ?? getMcpToolDescriptor('firecrawl', 'scrape');
+  if (!tool) {
+    throw new Error('Firecrawl MCP preset is not configured or did not expose a scrape tool.');
+  }
+
+  const args: Record<string, unknown> = { url };
+  if (mcpSchemaHasProperty(tool.inputSchema, 'formats')) args.formats = ['markdown'];
+  if (mcpSchemaHasProperty(tool.inputSchema, 'format')) args.format = 'markdown';
+  if (mcpSchemaHasProperty(tool.inputSchema, 'onlyMainContent')) args.onlyMainContent = true;
+  if (mcpSchemaHasProperty(tool.inputSchema, 'only_main_content')) args.only_main_content = true;
+  if (mcpSchemaHasProperty(tool.inputSchema, 'timeoutMs')) args.timeoutMs = timeoutMs;
+  else if (mcpSchemaHasProperty(tool.inputSchema, 'timeout')) args.timeout = timeoutMs;
+
+  const payload = await callMcpTool({
+    serverId: 'firecrawl',
+    rawToolName: tool.name,
+    args,
+  });
+  const extracted = extractScrapeContent(
+    payload.structuredContent && typeof payload.structuredContent === 'object' && !Array.isArray(payload.structuredContent)
+      ? (payload.structuredContent as Record<string, unknown>)
+      : { content: payload.modelSummary ?? '' },
   );
-  const extracted = extractScrapeContent(payload);
   if (!extracted) throw new Error('Firecrawl returned empty content');
   return { provider: 'firecrawl', title: extracted.title, content: extracted.content };
 }
@@ -884,94 +967,6 @@ async function scrapeWithRawFetch(
   return { provider: 'raw_fetch', content: stripped };
 }
 
-async function scrapeWithNomnom(
-  url: string,
-  timeoutMs: number,
-  signal?: AbortSignal,
-): Promise<{ provider: string; content: string }> {
-  try {
-    const client = createLLMClient({ agentModel: 'nomnom' });
-    const response = await client.chat({
-      model: 'nomnom',
-      temperature: 0.1,
-      timeout: timeoutMs,
-      signal,
-      messages: [
-        {
-          role: 'system',
-          content: 'You are an agentic web scraper. Using your tools, visit the provided URL, bypass paywalls/blockers if necessary, and extract the main readable content. Return ONLY the content in markdown format, with no conversational filler or preambles.',
-        },
-        {
-          role: 'user',
-          content: `Extract the markdown content of this web page: ${url}`,
-        },
-      ],
-    });
-
-    const content = (response.text ?? '').trim();
-    if (!content) {
-      throw new Error('Nomnom returned empty content.');
-    }
-
-    return { provider: 'nomnom', content };
-  } catch (error) {
-    const errorObj = error instanceof Error ? error : new Error(String(error));
-    if (isAbortError(errorObj)) throw errorObj;
-    logger.warn({ error: errorObj, url }, 'web.read nomnom attempt failed');
-    throw new Error(`Nomnom scraping failed: ${errorObj.message}`, { cause: error });
-  }
-}
-
-export async function runAgenticWebScrape(params: {
-  url: string;
-  instruction: string;
-  signal?: AbortSignal;
-}): Promise<Record<string, unknown>> {
-  const sanitizedUrl = sanitizePublicUrl(params.url);
-  if (!sanitizedUrl) {
-    throw new Error('URL must be a public HTTP(S) URL.');
-  }
-
-  const timeoutMs = toInt((config.TOOL_WEB_SCRAPE_TIMEOUT_MS as number | undefined), DEFAULT_WEB_SCRAPE_TIMEOUT_MS, 5_000, 180_000);
-
-  try {
-    const client = createLLMClient({ agentModel: 'nomnom' });
-    const response = await client.chat({
-      model: 'nomnom',
-      temperature: 0.1,
-      timeout: timeoutMs,
-      signal: params.signal,
-      messages: [
-        {
-          role: 'system',
-          content: 'You are an agentic web scraper. Using your tools, visit the provided URL, and fulfill the user\'s specific extraction instructions. Return ONLY the requested information in markdown format.',
-        },
-        {
-          role: 'user',
-          content: `URL: ${sanitizedUrl}\n\nInstruction: ${params.instruction}\n\nExtract the requested information in markdown format.`,
-        },
-      ],
-    });
-
-    const content = (response.text ?? '').trim();
-    if (!content) {
-      throw new Error('Agentic scraper returned empty content.');
-    }
-
-    return {
-      provider: 'nomnom',
-      url: sanitizedUrl,
-      instruction: params.instruction,
-      content,
-    };
-  } catch (error) {
-    const errorObj = error instanceof Error ? error : new Error(String(error));
-    if (isAbortError(errorObj)) throw errorObj;
-    logger.warn({ error: errorObj, url: sanitizedUrl }, 'web.extract attempt failed');
-    throw new Error(`Agentic scraping failed: ${errorObj.message}`, { cause: error });
-  }
-}
-
 export async function scrapeWebPage(params: {
   url: string;
   providerOrder?: ScrapeProviderId[];
@@ -982,12 +977,12 @@ export async function scrapeWebPage(params: {
     throw new Error('URL must be a public HTTP(S) URL.');
   }
   const timeoutMs = toInt((config.TOOL_WEB_SCRAPE_TIMEOUT_MS as number | undefined), DEFAULT_WEB_SCRAPE_TIMEOUT_MS, 5_000, 180_000);
-  const source = (config.TOOL_WEB_SCRAPE_PROVIDER_ORDER as string | undefined)?.trim() || 'crawl4ai,firecrawl,jina,nomnom,raw_fetch';
+  const source = (config.TOOL_WEB_SCRAPE_PROVIDER_ORDER as string | undefined)?.trim() || 'crawl4ai,firecrawl,jina,raw_fetch';
   const configuredProviderOrder = source
     .split(',')
     .map((value) => value.trim().toLowerCase())
-    .filter((value): value is ScrapeProviderId => ['firecrawl', 'crawl4ai', 'jina', 'raw_fetch', 'nomnom'].includes(value));
-  const fallbackOrder: ScrapeProviderId[] = ['crawl4ai', 'firecrawl', 'jina', 'nomnom', 'raw_fetch'];
+    .filter((value): value is ScrapeProviderId => ['firecrawl', 'crawl4ai', 'jina', 'raw_fetch'].includes(value));
+  const fallbackOrder: ScrapeProviderId[] = ['crawl4ai', 'firecrawl', 'jina', 'raw_fetch'];
   const seedOrder =
     params.providerOrder && params.providerOrder.length > 0
       ? params.providerOrder
@@ -996,7 +991,7 @@ export async function scrapeWebPage(params: {
         : fallbackOrder;
   const seenProviders = new Set<string>();
   const finalOrder: ScrapeProviderId[] = [];
-  for (const provider of [...seedOrder, 'nomnom', 'raw_fetch'] as const) {
+  for (const provider of [...seedOrder, 'raw_fetch'] as const) {
     if (seenProviders.has(provider)) continue;
     seenProviders.add(provider);
     finalOrder.push(provider);
@@ -1007,22 +1002,24 @@ export async function scrapeWebPage(params: {
   const providersSkipped: string[] = [];
   const providersSkipReasons: Record<string, string> = {};
   for (const provider of finalOrder) {
-    if (provider === 'crawl4ai') {
-      if (!isLocalProviderConfigured('crawl4ai')) {
-        providersSkipped.push(provider);
-        const reason = 'not configured (CRAWL4AI_BASE_URL is empty)';
-        providersSkipReasons[provider] = reason;
-        errors.push(`${provider}: skipped (${reason})`);
-        continue;
-      }
-      const cooldown = getLocalProviderCooldown('crawl4ai');
-      if (cooldown) {
-        providersSkipped.push(provider);
-        const reason = formatCooldownState(cooldown);
-        providersSkipReasons[provider] = reason;
-        errors.push(`${provider}: skipped (${reason})`);
-        continue;
-      }
+    if (!isWebProviderConfigured(provider)) {
+      providersSkipped.push(provider);
+      const reason = provider === 'firecrawl'
+        ? 'not configured (Firecrawl MCP preset is unavailable)'
+        : provider === 'crawl4ai'
+          ? 'not configured (CRAWL4AI_BASE_URL is empty)'
+          : 'not configured';
+      providersSkipReasons[provider] = reason;
+      errors.push(`${provider}: skipped (${reason})`);
+      continue;
+    }
+    const providerHealth = getWebProviderHealth(provider);
+    if (providerHealth) {
+      providersSkipped.push(provider);
+      const reason = formatProviderHealthState(providerHealth);
+      providersSkipReasons[provider] = reason;
+      errors.push(`${provider}: skipped (${reason})`);
+      continue;
     }
     providersTried.push(provider);
     try {
@@ -1033,34 +1030,28 @@ export async function scrapeWebPage(params: {
             ? await scrapeWithCrawl4ai(sanitizedUrl, timeoutMs, params.signal)
             : provider === 'jina'
               ? await scrapeWithJina(sanitizedUrl, timeoutMs, params.signal)
-              : provider === 'nomnom'
-                ? await scrapeWithNomnom(sanitizedUrl, timeoutMs, params.signal)
-                : await scrapeWithRawFetch(sanitizedUrl, timeoutMs, params.signal);
-      if (provider === 'crawl4ai') {
-        clearLocalProviderCooldown('crawl4ai');
-      }
+              : await scrapeWithRawFetch(sanitizedUrl, timeoutMs, params.signal);
+      clearWebProviderHealth(provider);
       return {
         url: sanitizedUrl,
         provider: outcome.provider,
         providersTried,
         providersSkipped,
         providersSkipReasons,
-        localProviderStatus: getLocalProviderRuntimeStatus(),
+        providerHealth: getWebProviderRuntimeStatus(),
         title: 'title' in outcome ? outcome.title : undefined,
         content: outcome.content,
       };
     } catch (error) {
       if (isAbortError(error)) throw error;
-      if (provider === 'crawl4ai') {
-        markLocalProviderCooldown('crawl4ai', error);
-      }
+      markWebProviderHealth(provider, error);
       errors.push(`${provider}: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
   const skippedSuffix =
     providersSkipped.length > 0
-      ? ` Skipped local providers: ${providersSkipped.join(', ')}.`
+      ? ` Skipped providers: ${providersSkipped.join(', ')}.`
       : '';
   throw new Error(`web.read failed:${skippedSuffix} ${errors.join(' | ')}`.trim());
 }

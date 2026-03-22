@@ -485,7 +485,7 @@ describe('agentRuntime', () => {
   });
 
   it('retries a failed turn on the same LangGraph thread', async () => {
-    globalToolRegistryMock.listNames.mockReturnValue(['web', 'mcp__github__search_code', 'discord_messages_search_history'] as never);
+    globalToolRegistryMock.listNames.mockReturnValue(['web', 'repo_search_code', 'discord_messages_search_history'] as never);
     globalToolRegistryMock.get.mockImplementation((name: string) => ({
       metadata: { access: 'public' as const },
       runtime: { access: 'public' as const, capabilityTags: name === 'web' ? ['web'] : ['developer'] },
@@ -515,7 +515,7 @@ describe('agentRuntime', () => {
         context: expect.objectContaining({
           traceId: 'trace-retry-1',
           routeKind: 'turn_retry',
-          activeToolNames: ['web', 'mcp__github__search_code', 'discord_messages_search_history'],
+          activeToolNames: ['web', 'repo_search_code', 'discord_messages_search_history'],
         }),
       }),
     );
@@ -606,7 +606,7 @@ describe('agentRuntime', () => {
     const now = Date.now();
     globalToolRegistryMock.listNames.mockReturnValue([
       'web_search',
-      'mcp__github__search_code',
+      'repo_search_code',
       'discord_messages_search_history',
     ] as never);
     globalToolRegistryMock.get.mockImplementation(() => ({
@@ -675,7 +675,7 @@ describe('agentRuntime', () => {
     expect(continueAgentGraphTurnMock).toHaveBeenCalledWith(
       expect.objectContaining({
         context: expect.objectContaining({
-          activeToolNames: ['web_search', 'mcp__github__search_code', 'discord_messages_search_history'],
+          activeToolNames: ['web_search', 'repo_search_code', 'discord_messages_search_history'],
           promptMode: 'waiting_follow_up',
           waitingFollowUp: {
             matched: true,
@@ -721,11 +721,12 @@ describe('agentRuntime', () => {
   it('exposes the full eligible tool surface on fresh turns without heuristic narrowing', async () => {
     globalToolRegistryMock.listNames.mockReturnValue([
       'web_search',
-      'web_research',
-      'mcp__github__search_code',
+      'web_read',
+      'web_read_page',
+      'repo_search_code',
       'discord_messages_search_history',
       'discord_server_list_channels',
-      'mcp__github__get_file_contents',
+      'repo_read_file',
       'image_generate',
       'system_time',
       'system_tool_stats',
@@ -733,11 +734,12 @@ describe('agentRuntime', () => {
     globalToolRegistryMock.get.mockImplementation((name: string) => {
       const toolMap: Record<string, { metadata: { access: 'public' | 'admin' }; runtime: { access: 'public' | 'admin'; capabilityTags: string[]; class: string } }> = {
         web_search: { metadata: { access: 'public' }, runtime: { access: 'public', capabilityTags: ['web', 'search'], class: 'query' } },
-        web_research: { metadata: { access: 'public' }, runtime: { access: 'public', capabilityTags: ['web', 'research'], class: 'query' } },
-        mcp__github__search_code: { metadata: { access: 'public' }, runtime: { access: 'public', capabilityTags: ['github', 'developer'], class: 'query' } },
+        web_read: { metadata: { access: 'public' }, runtime: { access: 'public', capabilityTags: ['web', 'read'], class: 'query' } },
+        web_read_page: { metadata: { access: 'public' }, runtime: { access: 'public', capabilityTags: ['web', 'read', 'paging'], class: 'query' } },
+        repo_search_code: { metadata: { access: 'public' }, runtime: { access: 'public', capabilityTags: ['repo', 'developer'], class: 'query' } },
         discord_messages_search_history: { metadata: { access: 'public' }, runtime: { access: 'public', capabilityTags: ['discord', 'messages'], class: 'query' } },
         discord_server_list_channels: { metadata: { access: 'public' }, runtime: { access: 'public', capabilityTags: ['discord', 'server'], class: 'query' } },
-        mcp__github__get_file_contents: { metadata: { access: 'public' }, runtime: { access: 'public', capabilityTags: ['workflow', 'developer', 'github', 'npm'], class: 'query' } },
+        repo_read_file: { metadata: { access: 'public' }, runtime: { access: 'public', capabilityTags: ['repo', 'developer', 'code'], class: 'query' } },
         image_generate: { metadata: { access: 'public' }, runtime: { access: 'public', capabilityTags: ['generation', 'image'], class: 'artifact' } },
         system_time: { metadata: { access: 'public' }, runtime: { access: 'public', capabilityTags: ['system', 'time'], class: 'query' } },
         system_tool_stats: { metadata: { access: 'public' }, runtime: { access: 'public', capabilityTags: ['system', 'tooling'], class: 'query' } },
@@ -764,11 +766,12 @@ describe('agentRuntime', () => {
     const activeToolNames = runAgentGraphTurnMock.mock.calls.at(-1)?.[0]?.activeToolNames as string[];
     expect(activeToolNames).toEqual([
       'web_search',
-      'web_research',
-      'mcp__github__search_code',
+      'web_read',
+      'web_read_page',
+      'repo_search_code',
       'discord_messages_search_history',
       'discord_server_list_channels',
-      'mcp__github__get_file_contents',
+      'repo_read_file',
       'image_generate',
       'system_time',
       'system_tool_stats',

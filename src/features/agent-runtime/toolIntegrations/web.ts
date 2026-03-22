@@ -1,12 +1,10 @@
 export type { SearchDepth } from './impl';
 export {
-  __resetLocalProviderCooldownForTests,
-  getLocalProviderRuntimeStatus,
+  __resetWebProviderHealthForTests,
+  getWebProviderRuntimeStatus,
   sanitizeUrl,
   sanitizePublicUrl,
   uniqueUrls,
   runWebSearch,
-  runAgenticWebScrape,
   scrapeWebPage,
 } from './impl';
-

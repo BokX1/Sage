@@ -9,8 +9,13 @@ export interface ToolMemoEntry {
   scopeKey: string;
   toolName: string;
   createdAtMs: number;
+  expiresAtMs: number;
   result: unknown;
   resultJsonChars: number;
+}
+
+export interface ToolMemoSetOptions {
+  ttlMs?: number;
 }
 
 export interface ToolMemoStoreConfig {
@@ -127,7 +132,7 @@ export class ToolMemoStore {
   private pruneExpired(nowMs = Date.now()): void {
     if (!this.config.enabled) return;
     for (const [key, entry] of this.entries.entries()) {
-      if (nowMs - entry.createdAtMs > this.config.ttlMs) {
+      if (entry.expiresAtMs <= nowMs) {
         this.entries.delete(key);
       }
     }
@@ -155,7 +160,13 @@ export class ToolMemoStore {
     return entry;
   }
 
-  set(scopeKey: string, toolName: string, args: unknown, result: unknown): ToolMemoEntry | null {
+  set(
+    scopeKey: string,
+    toolName: string,
+    args: unknown,
+    result: unknown,
+    options?: ToolMemoSetOptions,
+  ): ToolMemoEntry | null {
     if (!this.config.enabled) return null;
     this.pruneExpired();
 
@@ -167,11 +178,14 @@ export class ToolMemoStore {
     }
 
     const cacheKey = `${scopeKey}::${buildToolCacheKey(toolName, args)}`;
+    const ttlMs = normalizeBoundedInt(options?.ttlMs, this.config.ttlMs, 1_000, 6 * 60 * 60_000);
+    const createdAtMs = Date.now();
     const entry: ToolMemoEntry = {
       key: cacheKey,
       scopeKey,
       toolName,
-      createdAtMs: Date.now(),
+      createdAtMs,
+      expiresAtMs: createdAtMs + ttlMs,
       result,
       resultJsonChars,
     };

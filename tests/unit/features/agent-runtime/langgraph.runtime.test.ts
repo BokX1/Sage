@@ -1073,8 +1073,8 @@ describe('runGraphValueStream', () => {
     await shutdownAgentGraphRuntime();
     isReadOnlyToolCallMock.mockReturnValue(true);
     buildActiveToolCatalogMock.mockReturnValue({
-      allTools: [{ name: 'mcp__github__search_code' }],
-      readOnlyTools: [{ name: 'mcp__github__search_code' }],
+      allTools: [{ name: 'repo_search_code' }],
+      readOnlyTools: [{ name: 'repo_search_code' }],
       definitions: new Map(),
     });
     toolNodeInvokeMock.mockImplementationOnce(async (input?: { messages?: Array<{ tool_calls?: Array<{ id?: string }> }> }) => {
@@ -1086,7 +1086,7 @@ describe('runGraphValueStream', () => {
             tool_call_id: batchCall?.id ?? 'call-read-1',
             artifact: {
               result: {
-                name: 'mcp__github__search_code',
+                name: 'repo_search_code',
                 success: true,
                 structuredContent: { ok: true, items: [1] },
                 telemetry: { latencyMs: 7 },
@@ -1111,7 +1111,7 @@ describe('runGraphValueStream', () => {
         userId: 'user-1',
         channelId: 'channel-1',
         guildId: 'guild-1',
-        activeToolNames: ['mcp__github__search_code'],
+        activeToolNames: ['repo_search_code'],
         routeKind: 'single',
         currentTurn: { invokerUserId: 'user-1' },
         replyTarget: null,
@@ -1125,13 +1125,13 @@ describe('runGraphValueStream', () => {
             tool_calls: [
               {
                 id: 'call-read-1',
-                name: 'mcp__github__search_code',
+                name: 'repo_search_code',
                 args: { q: 'repo status', think: 'ignore' },
                 type: 'tool_call',
               },
               {
                 id: 'call-read-2',
-                name: 'mcp__github__search_code',
+                name: 'repo_search_code',
                 args: { think: 'different', q: 'repo status' },
                 type: 'tool_call',
               },
@@ -1170,8 +1170,8 @@ describe('runGraphValueStream', () => {
     await shutdownAgentGraphRuntime();
     isReadOnlyToolCallMock.mockReturnValue(true);
     buildActiveToolCatalogMock.mockReturnValue({
-      allTools: [{ name: 'mcp__github__search_code' }],
-      readOnlyTools: [{ name: 'mcp__github__search_code' }],
+      allTools: [{ name: 'repo_search_code' }],
+      readOnlyTools: [{ name: 'repo_search_code' }],
       definitions: new Map(),
     });
     modelInvokeMock.mockResolvedValueOnce(
@@ -1187,7 +1187,7 @@ describe('runGraphValueStream', () => {
         userId: 'user-1',
         channelId: 'channel-1',
         guildId: 'guild-1',
-        activeToolNames: ['mcp__github__search_code'],
+        activeToolNames: ['repo_search_code'],
         routeKind: 'single',
         currentTurn: { invokerUserId: 'user-1' },
         replyTarget: null,
@@ -1197,16 +1197,16 @@ describe('runGraphValueStream', () => {
         roundsCompleted: 1,
         toolResults: [
           {
-            name: 'mcp__github__search_code',
+            name: 'repo_search_code',
             success: false,
             error: 'GitHub code search was denied for this request.',
             errorType: 'execution',
             errorDetails: {
               category: 'unauthorized',
               code: 'github_mcp_search_code_access_denied',
-              operationKey: buildToolCacheKey('mcp__github__search_code', { query: 'repo:owner/repo needle' }),
+              operationKey: buildToolCacheKey('repo_search_code', { query: 'repo:owner/repo needle' }),
               provider: 'github-mcp',
-              hint: 'Use mcp__github__get_file_contents when the exact path is known, or ask for repo/path clarification.',
+              hint: 'Use repo_read_file when the exact path is known, or ask for repo/path clarification.',
               retryable: false,
             },
             telemetry: { latencyMs: 5 },
@@ -1218,7 +1218,7 @@ describe('runGraphValueStream', () => {
             tool_calls: [
               {
                 id: 'call-read-1',
-                name: 'mcp__github__search_code',
+                name: 'repo_search_code',
                 args: { query: 'repo:owner/repo needle' },
                 type: 'tool_call',
               },
@@ -1234,11 +1234,11 @@ describe('runGraphValueStream', () => {
     expect(result.toolResults).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          name: 'mcp__github__search_code',
+          name: 'repo_search_code',
           errorDetails: expect.objectContaining({
             code: 'github_mcp_search_code_retry_blocked',
             category: 'unauthorized',
-            operationKey: buildToolCacheKey('mcp__github__search_code', { query: 'repo:owner/repo needle' }),
+            operationKey: buildToolCacheKey('repo_search_code', { query: 'repo:owner/repo needle' }),
           }),
         }),
       ]),
@@ -1249,8 +1249,8 @@ describe('runGraphValueStream', () => {
     await shutdownAgentGraphRuntime();
     isReadOnlyToolCallMock.mockReturnValue(true);
     buildActiveToolCatalogMock.mockReturnValue({
-      allTools: [{ name: 'mcp__github__search_code' }],
-      readOnlyTools: [{ name: 'mcp__github__search_code' }],
+      allTools: [{ name: 'repo_search_code' }],
+      readOnlyTools: [{ name: 'repo_search_code' }],
       definitions: new Map(),
     });
     toolNodeInvokeMock.mockImplementationOnce(async (input?: { messages?: Array<{ tool_calls?: Array<{ id?: string }> }> }) => {
@@ -1262,7 +1262,7 @@ describe('runGraphValueStream', () => {
             tool_call_id: batchCall?.id ?? 'call-read-2',
             artifact: {
               result: {
-                name: 'mcp__github__search_code',
+                name: 'repo_search_code',
                 success: true,
                 structuredContent: { ok: true, items: [1] },
                 telemetry: { latencyMs: 7 },
@@ -1284,7 +1284,7 @@ describe('runGraphValueStream', () => {
         userId: 'user-1',
         channelId: 'channel-1',
         guildId: 'guild-1',
-        activeToolNames: ['mcp__github__search_code'],
+        activeToolNames: ['repo_search_code'],
         routeKind: 'single',
         currentTurn: { invokerUserId: 'user-1' },
         replyTarget: null,
@@ -1294,16 +1294,16 @@ describe('runGraphValueStream', () => {
         roundsCompleted: 1,
         toolResults: [
           {
-            name: 'mcp__github__search_code',
+            name: 'repo_search_code',
             success: false,
             error: 'GitHub code search was denied for this request.',
             errorType: 'execution',
             errorDetails: {
               category: 'unauthorized',
               code: 'github_mcp_search_code_access_denied',
-              operationKey: buildToolCacheKey('mcp__github__search_code', { query: 'repo:owner/repo needle' }),
+              operationKey: buildToolCacheKey('repo_search_code', { query: 'repo:owner/repo needle' }),
               provider: 'github-mcp',
-              hint: 'Use mcp__github__get_file_contents when the exact path is known, or ask for repo/path clarification.',
+              hint: 'Use repo_read_file when the exact path is known, or ask for repo/path clarification.',
               retryable: false,
             },
             telemetry: { latencyMs: 5 },
@@ -1315,7 +1315,7 @@ describe('runGraphValueStream', () => {
             tool_calls: [
               {
                 id: 'call-read-2',
-                name: 'mcp__github__search_code',
+                name: 'repo_search_code',
                 args: { query: 'repo:owner/other-repo needle' },
                 type: 'tool_call',
               },
@@ -1329,7 +1329,7 @@ describe('runGraphValueStream', () => {
     expect(result.toolResults).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          name: 'mcp__github__search_code',
+          name: 'repo_search_code',
           success: true,
         }),
       ]),
@@ -1355,7 +1355,7 @@ describe('runGraphValueStream', () => {
       }),
     );
     buildActiveToolCatalogMock.mockReturnValue({
-      allTools: [{ name: 'mcp__github__get_file_contents' }],
+      allTools: [{ name: 'repo_read_file' }],
       readOnlyTools: [],
       definitions: new Map(),
     });
@@ -1374,7 +1374,7 @@ describe('runGraphValueStream', () => {
         userId: 'user-1',
         channelId: 'channel-1',
         guildId: 'guild-1',
-        activeToolNames: ['mcp__github__get_file_contents'],
+        activeToolNames: ['repo_read_file'],
         routeKind: 'single',
         currentTurn: { invokerUserId: 'user-1' },
         replyTarget: null,
@@ -1388,7 +1388,7 @@ describe('runGraphValueStream', () => {
             tool_calls: [
               {
                 id: 'call-read-empty-1',
-                name: 'mcp__github__get_file_contents',
+                name: 'repo_read_file',
                 args: { repo: 'blueplaysgames3921', includeReadme: false },
                 type: 'tool_call',
               },
@@ -1761,7 +1761,7 @@ describe('runGraphValueStream', () => {
         roundsCompleted: 1,
         totalRoundsCompleted: 7,
         toolResults: Array.from({ length: 7 }, () =>
-          makeSuccessfulToolResult('mcp__github__search_code', { ok: true }, 10),
+          makeSuccessfulToolResult('repo_search_code', { ok: true }, 10),
         ),
         messages: [new AIMessage({ content: 'I will call github again.' })],
       },

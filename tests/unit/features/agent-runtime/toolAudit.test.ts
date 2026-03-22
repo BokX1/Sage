@@ -49,11 +49,15 @@ describe('toolAudit', () => {
     const registry = new ToolRegistry();
     const diagnostics: McpServerDiagnostic[] = [
       {
-        kind: 'github_capability',
+        kind: 'preset_capability',
+        presetId: 'github',
         serverId: 'github',
         status: 'partial',
-        authProbe: 'pass',
-        codeSearchProbe: 'fail',
+        probes: {
+          discovery: 'pass',
+          auth: 'pass',
+          codeSearch: 'fail',
+        },
         summary: 'GitHub MCP authenticated, but baseline code search is restricted or unavailable.',
         details: ['GitHub code search was denied for this request.'],
       },
@@ -67,7 +71,7 @@ describe('toolAudit', () => {
       expect.arrayContaining([
         expect.objectContaining({
           toolName: 'mcp:github',
-          code: 'mcp_github_capability_partial',
+          code: 'mcp_preset_capability_partial',
         }),
       ]),
     );

@@ -48,9 +48,7 @@ function summarizeSmokeResult(toolName: string, result: unknown): string {
     }
     case 'web_search':
     case 'web_read':
-    case 'web_read_page':
-    case 'web_extract':
-    case 'web_research': {
+    case 'web_read_page': {
       const provider = String(record.provider ?? 'unknown');
       const sourcesRead = typeof record.sourcesRead === 'number' ? record.sourcesRead : 0;
       const results = Array.isArray(record.results) ? record.results.length : 0;
@@ -58,14 +56,21 @@ function summarizeSmokeResult(toolName: string, result: unknown): string {
     }
     case 'npm_info':
       return `package=${String(record.packageName ?? 'unknown')} latest=${String(record.latestVersion ?? record.version ?? 'n/a')}`;
-    case 'wikipedia_search': {
-      const count = Array.isArray(record.results) ? record.results.length : 0;
-      return `results=${count}`;
-    }
-    case 'stack_overflow_search': {
-      const count = Array.isArray(record.results) ? record.results.length : 0;
-      return `results=${count}`;
-    }
+    case 'docs_lookup':
+      return `libraryId=${String(record.libraryId ?? 'unknown')}`;
+    case 'repo_search_code':
+    case 'repo_read_file':
+    case 'repo_get_repository':
+    case 'repo_search_issues':
+    case 'repo_search_pull_requests':
+      return `provider=repo keys=${Object.keys(record).slice(0, 5).join(',') || 'none'}`;
+    case 'browser_open_page':
+    case 'browser_read_page':
+    case 'browser_click':
+    case 'browser_type':
+    case 'browser_capture':
+    case 'browser_extract':
+      return `provider=browser keys=${Object.keys(record).slice(0, 5).join(',') || 'none'}`;
     case 'image_generate': {
       const artifacts = Array.isArray(envelope?.artifacts) ? envelope.artifacts.length : 0;
       return `provider=${String(record.provider ?? 'unknown')} artifacts=${artifacts}`;

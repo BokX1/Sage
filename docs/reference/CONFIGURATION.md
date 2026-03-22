@@ -294,7 +294,7 @@ Prompt-facing tool observations are now retained as evidence slices with refs, s
 | `TOOL_WEB_SEARCH_PROVIDER_ORDER` | Search provider priority | `tavily,exa,searxng` |
 | `TOOL_WEB_SEARCH_TIMEOUT_MS` | Per-provider search timeout | `45000` |
 | `TOOL_WEB_SEARCH_MAX_RESULTS` | Results per search call | `8` |
-| `TOOL_WEB_SCRAPE_PROVIDER_ORDER` | Scrape provider priority | `crawl4ai,firecrawl,jina,nomnom,raw_fetch` |
+| `TOOL_WEB_SCRAPE_PROVIDER_ORDER` | Scrape provider priority | `crawl4ai,firecrawl,jina,raw_fetch` |
 | `TOOL_WEB_SCRAPE_TIMEOUT_MS` | Per-provider scrape timeout | `45000` |
 | `TAVILY_API_KEY` | Tavily search API key | *(empty)* |
 | `EXA_API_KEY` | Exa search API key | *(empty)* |
@@ -303,8 +303,6 @@ Prompt-facing tool observations are now retained as evidence slices with refs, s
 | `SEARXNG_SEARCH_PATH` | SearXNG search path | `/search` |
 | `SEARXNG_CATEGORIES` | SearXNG search categories | `general` |
 | `SEARXNG_LANGUAGE` | SearXNG result language | `en-US` |
-| `FIRECRAWL_API_KEY` | Firecrawl API key | *(empty)* |
-| `FIRECRAWL_BASE_URL` | Firecrawl API base | <code>https&#58;//api.firecrawl.dev/v1</code> |
 | `CRAWL4AI_BASE_URL` | Crawl4AI instance URL | *(empty)* |
 | `CRAWL4AI_BEARER_TOKEN` | Crawl4AI auth token | *(empty)* |
 | `JINA_READER_BASE_URL` | Jina Reader base URL | <code>https&#58;//r.jina.ai/http&#58;//</code> |
@@ -315,21 +313,41 @@ Prompt-facing tool observations are now retained as evidence slices with refs, s
 
 ## 🔌 MCP Servers
 
-Sage now discovers optional MCP servers at startup and adapts provider-safe MCP tools into its normal runtime tool registry. Resources and prompts are discovered and audited too, but they are not auto-exposed to the model in this first MCP-backed release.
+Sage now discovers curated MCP presets and optional extra MCP servers at startup, then binds only provider-safe MCP tools into stable Sage capability names. Resources and prompts are discovered and audited too, but they are not auto-exposed to the model in this release.
 
 | Variable | Description | Default |
 |:---|:---|:---|
-| `MCP_SERVERS_JSON` | Optional JSON array of extra MCP server definitions (`stdio` or `streamable_http`) with trust level, transport, and allowlists | *(empty)* |
-| `MCP_GITHUB_ENABLED` | Enable the official GitHub MCP preset | `false` |
-| `MCP_GITHUB_TRANSPORT` | GitHub MCP transport (`stdio` or `streamable_http`) | `stdio` |
-| `MCP_GITHUB_COMMAND` | Command to launch the GitHub MCP server when using `stdio` | *(empty)* |
-| `MCP_GITHUB_ARGS_JSON` | JSON array of command arguments for the GitHub MCP server when using `stdio` | `["stdio","--read-only"]` |
-| `MCP_GITHUB_URL` | Streamable HTTP endpoint for the GitHub MCP server. Sage adds `X-MCP-Readonly` and `X-MCP-Toolsets` automatically for the official remote preset. | <code>https&#58;//api.githubcopilot.com/mcp/</code> |
-| `MCP_GITHUB_TOKEN` | Token passed to the GitHub MCP deployment (PAT or deployment-specific auth) | *(empty)* |
-| `MCP_GITHUB_TOOLSETS_CSV` | Requested read-heavy GitHub toolsets for the starter preset | `context,repos,issues,pull_requests,users` |
+| `MCP_PRESETS_ENABLED_CSV` | Comma-separated curated MCP presets to enable (`github`, `context7`, `playwright`, `firecrawl`, `markitdown`) | *(empty)* |
+| `MCP_EXTRA_SERVERS_JSON` | Optional JSON array of extra MCP server definitions (`stdio` or `streamable_http`) with trust level, transport, and allowlists | *(empty)* |
+| `MCP_PRESET_GITHUB_TRANSPORT` | GitHub preset transport (`stdio` or `streamable_http`) | `streamable_http` |
+| `MCP_PRESET_GITHUB_COMMAND` | Command to launch the GitHub preset when using `stdio` | *(empty)* |
+| `MCP_PRESET_GITHUB_ARGS_JSON` | JSON array of command arguments for the GitHub preset when using `stdio` | `["stdio","--read-only"]` |
+| `MCP_PRESET_GITHUB_URL` | Streamable HTTP endpoint for the GitHub preset. Sage adds `X-MCP-Readonly` and `X-MCP-Toolsets` automatically for the official remote preset. | <code>https&#58;//api.githubcopilot.com/mcp/</code> |
+| `MCP_PRESET_GITHUB_TOKEN` | Token passed to the GitHub MCP deployment (PAT or deployment-specific auth) | *(empty)* |
+| `MCP_PRESET_GITHUB_TOOLSETS_CSV` | Requested read-heavy GitHub toolsets for the starter preset | `context,repos,issues,pull_requests,users` |
+| `MCP_PRESET_CONTEXT7_TRANSPORT` | Context7 preset transport | `stdio` |
+| `MCP_PRESET_CONTEXT7_COMMAND` | Command to launch the Context7 preset when using `stdio` | *(empty)* |
+| `MCP_PRESET_CONTEXT7_ARGS_JSON` | JSON array of command arguments for the Context7 preset when using `stdio` | `["-y","@upstash/context7-mcp"]` |
+| `MCP_PRESET_CONTEXT7_URL` | Streamable HTTP endpoint for the Context7 preset when using remote transport | *(empty)* |
+| `MCP_PRESET_CONTEXT7_TOKEN` | Context7 API key or token when required | *(empty)* |
+| `MCP_PRESET_PLAYWRIGHT_TRANSPORT` | Playwright preset transport | `stdio` |
+| `MCP_PRESET_PLAYWRIGHT_COMMAND` | Command to launch the Playwright preset when using `stdio` | *(empty)* |
+| `MCP_PRESET_PLAYWRIGHT_ARGS_JSON` | JSON array of command arguments for the Playwright preset when using `stdio` | `["@playwright/mcp@latest"]` |
+| `MCP_PRESET_PLAYWRIGHT_URL` | Streamable HTTP endpoint for the Playwright preset when using remote transport | *(empty)* |
+| `MCP_PRESET_PLAYWRIGHT_TOKEN` | Token passed to the Playwright preset when required | *(empty)* |
+| `MCP_PRESET_FIRECRAWL_TRANSPORT` | Firecrawl preset transport | `streamable_http` |
+| `MCP_PRESET_FIRECRAWL_COMMAND` | Command to launch the Firecrawl preset when using `stdio` | *(empty)* |
+| `MCP_PRESET_FIRECRAWL_ARGS_JSON` | JSON array of command arguments for the Firecrawl preset when using `stdio` | `[]` |
+| `MCP_PRESET_FIRECRAWL_URL` | Streamable HTTP endpoint for the Firecrawl preset | <code>https&#58;//mcp.firecrawl.dev/mcp</code> |
+| `MCP_PRESET_FIRECRAWL_TOKEN` | Firecrawl token used by the preset | *(empty)* |
+| `MCP_PRESET_MARKITDOWN_TRANSPORT` | MarkItDown preset transport | `stdio` |
+| `MCP_PRESET_MARKITDOWN_COMMAND` | Command to launch the MarkItDown preset when using `stdio` | *(empty)* |
+| `MCP_PRESET_MARKITDOWN_ARGS_JSON` | JSON array of command arguments for the MarkItDown preset when using `stdio` | `["markitdown-mcp"]` |
+| `MCP_PRESET_MARKITDOWN_URL` | Streamable HTTP endpoint for the MarkItDown preset when using remote transport | *(empty)* |
+| `MCP_PRESET_MARKITDOWN_TOKEN` | Token passed to the MarkItDown preset when required | *(empty)* |
 
 > [!IMPORTANT]
-> The built-in runtime no longer ships native `github_*` or `workflow_npm_github_code_search` tools. GitHub capability now comes from configured MCP servers and is exposed under namespaced tool names such as `mcp__github__search_code` when the server is available and its schemas are provider-safe.
+> The built-in runtime no longer ships native `github_*` or `workflow_npm_github_code_search` tools. GitHub capability now comes from curated MCP presets and is exposed to the model as stable Sage capabilities like `repo_search_code`, `repo_read_file`, and `repo_get_repository`.
 > [!TIP]
 > `npm run tools:audit` and `npm run doctor -- --only tools.audit` now probe the GitHub MCP preset more precisely when it is enabled and a token is configured. Sage distinguishes discovery success from live capability by checking baseline auth (`get_me`) separately from baseline public code search, so a repo-specific `search_code` denial no longer looks like a blanket GitHub MCP outage.
 

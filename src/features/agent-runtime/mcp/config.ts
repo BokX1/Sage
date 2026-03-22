@@ -1,6 +1,8 @@
 import { config as appConfig } from '../../../platform/config/env';
-import type { McpServerConfig, McpServerDescriptor } from './types';
+import type { McpServerConfig, McpServerDescriptor, McpServerTrustLevel } from './types';
 import { sanitizeMcpServerId } from './naming';
+
+type PresetId = 'github' | 'context7' | 'playwright' | 'firecrawl' | 'markitdown';
 
 function interpolateEnvPlaceholders(value: string, env: NodeJS.ProcessEnv): string {
   return value.replace(/\$\{([A-Z0-9_]+)\}/g, (_match, key: string) => env[key] ?? '');
@@ -30,6 +32,29 @@ function asStringArray(value: unknown): string[] | undefined {
   return normalized.length > 0 ? normalized : undefined;
 }
 
+function parseJsonStringArray(value: string, label: string): string[] {
+  const parsed = JSON.parse(value) as unknown;
+  if (!Array.isArray(parsed) || !parsed.every((entry) => typeof entry === 'string')) {
+    throw new Error(`${label} must be a JSON array of strings.`);
+  }
+  return parsed;
+}
+
+function parseEnabledPresetIds(value: string): Set<PresetId> {
+  const supported = new Set<PresetId>(['github', 'context7', 'playwright', 'firecrawl', 'markitdown']);
+  const enabled = new Set<PresetId>();
+  for (const entry of value.split(',')) {
+    const normalized = entry.trim().toLowerCase();
+    if (!normalized) continue;
+    if (supported.has(normalized as PresetId)) {
+      enabled.add(normalized as PresetId);
+      continue;
+    }
+    throw new Error(`Unsupported MCP preset "${normalized}".`);
+  }
+  return enabled;
+}
+
 function parseServerConfig(value: unknown): McpServerConfig {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     throw new Error('MCP server entries must be objects.');
@@ -55,6 +80,28 @@ function parseServerConfig(value: unknown): McpServerConfig {
     ? (record.allow as Record<string, unknown>)
     : null;
 
+  const base: Omit<McpServerConfig, 'transport'> = {
+    id,
+    enabled: record.enabled !== false,
+    trustLevel: record.trustLevel === 'trusted' ? 'trusted' : 'untrusted',
+    source: 'custom',
+    presetId: undefined,
+    allow: allow
+      ? {
+          tools: asStringArray(allow.tools),
+          resources: asStringArray(allow.resources),
+          prompts: asStringArray(allow.prompts),
+        }
+      : undefined,
+    refresh:
+      record.refresh && typeof record.refresh === 'object' && !Array.isArray(record.refresh)
+        ? {
+            discoverOnInit:
+              (record.refresh as Record<string, unknown>).discoverOnInit !== false,
+          }
+        : undefined,
+  };
+
   if (kind === 'stdio') {
     const command = typeof transportRecord.command === 'string' ? transportRecord.command.trim() : '';
     if (!command) {
@@ -70,9 +117,7 @@ function parseServerConfig(value: unknown): McpServerConfig {
         : undefined;
 
     return {
-      id,
-      enabled: record.enabled !== false,
-      trustLevel: record.trustLevel === 'trusted' ? 'trusted' : 'untrusted',
+      ...base,
       transport: {
         kind,
         command,
@@ -84,20 +129,6 @@ function parseServerConfig(value: unknown): McpServerConfig {
             ? transportRecord.stderr
             : 'inherit',
       },
-      allow: allow
-        ? {
-            tools: asStringArray(allow.tools),
-            resources: asStringArray(allow.resources),
-            prompts: asStringArray(allow.prompts),
-          }
-        : undefined,
-      refresh:
-        record.refresh && typeof record.refresh === 'object' && !Array.isArray(record.refresh)
-          ? {
-              discoverOnInit:
-                (record.refresh as Record<string, unknown>).discoverOnInit !== false,
-            }
-          : undefined,
     };
   }
 
@@ -115,111 +146,169 @@ function parseServerConfig(value: unknown): McpServerConfig {
       : undefined;
 
   return {
-    id,
-    enabled: record.enabled !== false,
-    trustLevel: record.trustLevel === 'trusted' ? 'trusted' : 'untrusted',
+    ...base,
     transport: {
       kind,
       url,
       headers,
     },
-    allow: allow
-      ? {
-          tools: asStringArray(allow.tools),
-          resources: asStringArray(allow.resources),
-          prompts: asStringArray(allow.prompts),
-        }
-      : undefined,
-    refresh:
-      record.refresh && typeof record.refresh === 'object' && !Array.isArray(record.refresh)
-        ? {
-            discoverOnInit:
-              (record.refresh as Record<string, unknown>).discoverOnInit !== false,
-          }
-        : undefined,
   };
 }
 
-function buildGitHubPreset(env: typeof appConfig): McpServerConfig[] {
-  if (!env.MCP_GITHUB_ENABLED) {
-    return [];
-  }
+function buildPresetServerConfig(params: {
+  id: PresetId;
+  trustLevel: McpServerTrustLevel;
+  transport: 'stdio' | 'streamable_http';
+  command: string;
+  argsJson: string;
+  url: string;
+  token?: string;
+  stdioEnv?: Record<string, string>;
+  httpHeaders?: Record<string, string>;
+  allow?: McpServerConfig['allow'];
+}): McpServerConfig {
+  const base: Omit<McpServerConfig, 'transport'> = {
+    id: params.id,
+    enabled: true,
+    trustLevel: params.trustLevel,
+    source: 'preset',
+    presetId: params.id,
+    allow: params.allow,
+  };
 
-  const requestedToolsets = env.MCP_GITHUB_TOOLSETS_CSV
-    .split(',')
-    .map((entry) => entry.trim())
-    .filter((entry) => entry.length > 0)
-    .join(',');
-
-  if (env.MCP_GITHUB_TRANSPORT === 'streamable_http') {
-    if (!env.MCP_GITHUB_URL?.trim()) {
-      throw new Error('MCP_GITHUB_URL is required when MCP_GITHUB_ENABLED=true and MCP_GITHUB_TRANSPORT=streamable_http.');
+  if (params.transport === 'streamable_http') {
+    if (!params.url.trim()) {
+      throw new Error(`MCP_PRESET_${params.id.toUpperCase()}_URL is required when the preset transport is streamable_http.`);
     }
     const headers: Record<string, string> = {
-      'X-MCP-Readonly': 'true',
+      ...(params.httpHeaders ?? {}),
     };
-    if (requestedToolsets.length > 0) {
-      headers['X-MCP-Toolsets'] = requestedToolsets;
+    if (params.token?.trim()) {
+      headers.Authorization = `Bearer ${params.token.trim()}`;
     }
-    if (env.MCP_GITHUB_TOKEN?.trim()) {
-      headers.Authorization = `Bearer ${env.MCP_GITHUB_TOKEN.trim()}`;
-    }
-    return [
-      {
-        id: 'github',
-        enabled: true,
-        trustLevel: 'trusted',
-        transport: {
-          kind: 'streamable_http',
-          url: env.MCP_GITHUB_URL.trim(),
-          headers: Object.keys(headers).length > 0 ? headers : undefined,
-        },
-        allow: {
-          tools: undefined,
-          resources: undefined,
-          prompts: undefined,
-        },
-      },
-    ];
-  }
-
-  if (!env.MCP_GITHUB_COMMAND?.trim()) {
-    throw new Error('MCP_GITHUB_COMMAND is required when MCP_GITHUB_ENABLED=true and MCP_GITHUB_TRANSPORT=stdio.');
-  }
-  const args =
-    env.MCP_GITHUB_ARGS_JSON?.trim()
-      ? JSON.parse(env.MCP_GITHUB_ARGS_JSON) as unknown
-      : [];
-  if (!Array.isArray(args) || !args.every((entry) => typeof entry === 'string')) {
-    throw new Error('MCP_GITHUB_ARGS_JSON must be a JSON array of strings.');
-  }
-
-  const transportEnv: Record<string, string> = {
-    GITHUB_READ_ONLY: '1',
-  };
-  if (requestedToolsets.length > 0) {
-    transportEnv.GITHUB_TOOLSETS = requestedToolsets;
-  }
-  if (env.MCP_GITHUB_TOKEN?.trim()) {
-    transportEnv.GITHUB_PERSONAL_ACCESS_TOKEN = env.MCP_GITHUB_TOKEN.trim();
-  }
-
-  return [
-    {
-      id: 'github',
-      enabled: true,
-      trustLevel: 'trusted',
+    return {
+      ...base,
       transport: {
-        kind: 'stdio',
-        command: env.MCP_GITHUB_COMMAND.trim(),
-        args,
-        env: transportEnv,
-        cwd: undefined,
-        stderr: 'inherit',
+        kind: 'streamable_http',
+        url: params.url.trim(),
+        headers: Object.keys(headers).length > 0 ? headers : undefined,
       },
-      allow: undefined,
+    };
+  }
+
+  if (!params.command.trim()) {
+    throw new Error(`MCP_PRESET_${params.id.toUpperCase()}_COMMAND is required when the preset transport is stdio.`);
+  }
+  const env = {
+    ...(params.stdioEnv ?? {}),
+  };
+  return {
+    ...base,
+    transport: {
+      kind: 'stdio',
+      command: params.command.trim(),
+      args: parseJsonStringArray(params.argsJson, `MCP_PRESET_${params.id.toUpperCase()}_ARGS_JSON`),
+      env: Object.keys(env).length > 0 ? env : undefined,
+      stderr: 'inherit',
     },
-  ];
+  };
+}
+
+function buildPresetConfigs(env: typeof appConfig): McpServerConfig[] {
+  const enabled = parseEnabledPresetIds(env.MCP_PRESETS_ENABLED_CSV);
+  const servers: McpServerConfig[] = [];
+
+  if (enabled.has('github')) {
+    const requestedToolsets = env.MCP_PRESET_GITHUB_TOOLSETS_CSV
+      .split(',')
+      .map((entry) => entry.trim())
+      .filter((entry) => entry.length > 0)
+      .join(',');
+
+    servers.push(
+      buildPresetServerConfig({
+        id: 'github',
+        trustLevel: 'trusted',
+        transport: env.MCP_PRESET_GITHUB_TRANSPORT,
+        command: env.MCP_PRESET_GITHUB_COMMAND,
+        argsJson: env.MCP_PRESET_GITHUB_ARGS_JSON,
+        url: env.MCP_PRESET_GITHUB_URL ?? '',
+        token: env.MCP_PRESET_GITHUB_TOKEN,
+        stdioEnv: {
+          GITHUB_READ_ONLY: '1',
+          ...(requestedToolsets ? { GITHUB_TOOLSETS: requestedToolsets } : {}),
+          ...(env.MCP_PRESET_GITHUB_TOKEN?.trim()
+            ? { GITHUB_PERSONAL_ACCESS_TOKEN: env.MCP_PRESET_GITHUB_TOKEN.trim() }
+            : {}),
+        },
+        httpHeaders: {
+          'X-MCP-Readonly': 'true',
+          ...(requestedToolsets ? { 'X-MCP-Toolsets': requestedToolsets } : {}),
+        },
+      }),
+    );
+  }
+
+  if (enabled.has('context7')) {
+    servers.push(
+      buildPresetServerConfig({
+        id: 'context7',
+        trustLevel: 'trusted',
+        transport: env.MCP_PRESET_CONTEXT7_TRANSPORT,
+        command: env.MCP_PRESET_CONTEXT7_COMMAND,
+        argsJson: env.MCP_PRESET_CONTEXT7_ARGS_JSON,
+        url: env.MCP_PRESET_CONTEXT7_URL ?? '',
+        token: env.MCP_PRESET_CONTEXT7_TOKEN,
+        stdioEnv: env.MCP_PRESET_CONTEXT7_TOKEN?.trim()
+          ? { CONTEXT7_API_KEY: env.MCP_PRESET_CONTEXT7_TOKEN.trim() }
+          : undefined,
+      }),
+    );
+  }
+
+  if (enabled.has('playwright')) {
+    servers.push(
+      buildPresetServerConfig({
+        id: 'playwright',
+        trustLevel: 'trusted',
+        transport: env.MCP_PRESET_PLAYWRIGHT_TRANSPORT,
+        command: env.MCP_PRESET_PLAYWRIGHT_COMMAND,
+        argsJson: env.MCP_PRESET_PLAYWRIGHT_ARGS_JSON,
+        url: env.MCP_PRESET_PLAYWRIGHT_URL ?? '',
+        token: env.MCP_PRESET_PLAYWRIGHT_TOKEN,
+      }),
+    );
+  }
+
+  if (enabled.has('firecrawl')) {
+    servers.push(
+      buildPresetServerConfig({
+        id: 'firecrawl',
+        trustLevel: 'trusted',
+        transport: env.MCP_PRESET_FIRECRAWL_TRANSPORT,
+        command: env.MCP_PRESET_FIRECRAWL_COMMAND,
+        argsJson: env.MCP_PRESET_FIRECRAWL_ARGS_JSON,
+        url: env.MCP_PRESET_FIRECRAWL_URL ?? '',
+        token: env.MCP_PRESET_FIRECRAWL_TOKEN,
+      }),
+    );
+  }
+
+  if (enabled.has('markitdown')) {
+    servers.push(
+      buildPresetServerConfig({
+        id: 'markitdown',
+        trustLevel: 'trusted',
+        transport: env.MCP_PRESET_MARKITDOWN_TRANSPORT,
+        command: env.MCP_PRESET_MARKITDOWN_COMMAND,
+        argsJson: env.MCP_PRESET_MARKITDOWN_ARGS_JSON,
+        url: env.MCP_PRESET_MARKITDOWN_URL ?? '',
+        token: env.MCP_PRESET_MARKITDOWN_TOKEN,
+      }),
+    );
+  }
+
+  return servers;
 }
 
 export function loadMcpServerConfigs(
@@ -227,16 +316,16 @@ export function loadMcpServerConfigs(
   processEnv: NodeJS.ProcessEnv = process.env,
 ): McpServerDescriptor[] {
   const servers: McpServerConfig[] = [];
-  if (env.MCP_SERVERS_JSON?.trim()) {
-    const parsed = JSON.parse(interpolateEnvPlaceholders(env.MCP_SERVERS_JSON, processEnv)) as unknown;
+  if (env.MCP_EXTRA_SERVERS_JSON?.trim()) {
+    const parsed = JSON.parse(interpolateEnvPlaceholders(env.MCP_EXTRA_SERVERS_JSON, processEnv)) as unknown;
     if (!Array.isArray(parsed)) {
-      throw new Error('MCP_SERVERS_JSON must be a JSON array.');
+      throw new Error('MCP_EXTRA_SERVERS_JSON must be a JSON array.');
     }
     for (const entry of parsed) {
       servers.push(parseServerConfig(interpolateUnknown(entry, processEnv)));
     }
   }
-  servers.push(...buildGitHubPreset(env));
+  servers.push(...buildPresetConfigs(env));
 
   const seen = new Set<string>();
   return servers

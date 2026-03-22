@@ -11,13 +11,10 @@ beforeAll(async () => {
 });
 
 describe('tool guidance mental model', () => {
-  it('teaches top-level search and research arbitration clearly', () => {
+  it('teaches the simplified web arbitration clearly', () => {
     const webSearchGuidance = getPromptToolGuidance('web_search');
     const webReadGuidance = getPromptToolGuidance('web_read');
-    const webExtractGuidance = getPromptToolGuidance('web_extract');
-    const webResearchGuidance = getPromptToolGuidance('web_research');
-    const wikipediaDoc = getTopLevelToolDoc('wikipedia_search');
-    const stackOverflowDoc = getTopLevelToolDoc('stack_overflow_search');
+    const webReadPageGuidance = getPromptToolGuidance('web_read_page');
 
     expect(webSearchGuidance?.decisionEdges).toEqual(
       expect.arrayContaining([
@@ -25,31 +22,17 @@ describe('tool guidance mental model', () => {
         'Known exact page -> web_read or web_read_page instead.',
       ]),
     );
-    expect(webResearchGuidance?.antiPatterns).toEqual(
-      expect.arrayContaining([
-        expect.stringContaining('unbounded crawl loops'),
-      ]),
-    );
     expect(webReadGuidance?.decisionEdges).toEqual(
       expect.arrayContaining([
         'Known current docs page or exact URL -> web_read.',
+        'Large exact page -> web_read_page.',
         'Need discovery across unknown sources -> web_search first.',
       ]),
     );
-    expect(webExtractGuidance?.decisionEdges).toEqual(
+    expect(webReadPageGuidance?.decisionEdges).toEqual(
       expect.arrayContaining([
-        'Known page plus exact fields/behaviors -> web_extract.',
-        'Known page but general reading -> web_read instead.',
-      ]),
-    );
-    expect(wikipediaDoc?.selectionHints).toEqual(
-      expect.arrayContaining([
-        expect.stringContaining('Wikipedia'),
-      ]),
-    );
-    expect(stackOverflowDoc?.selectionHints).toEqual(
-      expect.arrayContaining([
-        expect.stringContaining('Stack Overflow'),
+        'Large exact page -> web_read_page.',
+        'Single-page retrieval -> web_read instead.',
       ]),
     );
   });
@@ -72,8 +55,6 @@ describe('tool guidance mental model', () => {
 
   it('keeps direct tools schema-first rather than help-first', () => {
     const npmDoc = getTopLevelToolDoc('npm_info');
-    const wikipediaDoc = getTopLevelToolDoc('wikipedia_search');
-    const stackOverflowDoc = getTopLevelToolDoc('stack_overflow_search');
 
     expect(npmDoc?.validationHint).toContain('packageName');
     expect(npmDoc?.promptGuidance?.antiPatterns).toEqual(
@@ -81,12 +62,14 @@ describe('tool guidance mental model', () => {
         expect.stringContaining('repository'),
       ]),
     );
-    expect(wikipediaDoc?.purpose).toContain('Wikipedia');
-    expect(stackOverflowDoc?.purpose).toContain('Stack Overflow');
   });
 
-  it('does not advertise optional MCP-backed GitHub docs when the GitHub MCP preset is not enabled', () => {
-    expect(getTopLevelToolDoc('mcp__github__search_code')).toBeNull();
-    expect(getTopLevelToolDoc('mcp__github__get_file_contents')).toBeNull();
+  it('does not advertise optional repository or browser capability docs when the relevant presets are not enabled', () => {
+    expect(getTopLevelToolDoc('web_extract')).toBeNull();
+    expect(getTopLevelToolDoc('web_research')).toBeNull();
+    expect(getTopLevelToolDoc('docs_lookup')).toBeNull();
+    expect(getTopLevelToolDoc('repo_search_code')).toBeNull();
+    expect(getTopLevelToolDoc('repo_read_file')).toBeNull();
+    expect(getTopLevelToolDoc('browser_open_page')).toBeNull();
   });
 });

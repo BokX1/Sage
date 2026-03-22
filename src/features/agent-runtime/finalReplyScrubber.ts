@@ -17,7 +17,7 @@ const OPERATIONAL_REPLY_LINE_REGEXES = [
   /^\s*<(?:untrusted_external_data|tool_results?)\b/i,
   /^\s*(?:Suggestion|Hint)\s*:/i,
   /^\s*(?:I|I'll|I will|Let me|First,? I'll|First,? I will|Next,? I'll|Next,? I will)\s+(?:call|use|invoke|run)\b/i,
-  /^\s*(?:Calling|Using|Invoking|Running)\b.+\b(?:tool|discord_[a-z_]+|web_[a-z_]+|mcp__[a-z0-9_]+__[a-z0-9_]+|wikipedia_search|stack_overflow_search|npm_info|system_time|system_tool_stats|image_generate)\b/i,
+  /^\s*(?:Calling|Using|Invoking|Running)\b.+\b(?:tool|discord_[a-z_]+|web_[a-z_]+|repo_[a-z_]+|browser_[a-z_]+|docs_lookup|mcp__[a-z0-9_]+__[a-z0-9_]+|npm_info|system_time|system_tool_stats|image_generate)\b/i,
   /\b(?:tool protocol|tool payload|approval payload|approval command|approvalRequestId|approvalMessageId|expiresAtIso)\b/i,
 ];
 

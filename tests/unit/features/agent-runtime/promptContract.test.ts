@@ -117,7 +117,7 @@ describe('promptContract', () => {
   });
 
   it('teaches current-state verification instead of presenting model memory as fresh truth', () => {
-    const prompt = buildContract(['web_search', 'npm_info', 'mcp__github__search_code']).systemMessage;
+    const prompt = buildContract(['web_search', 'npm_info', 'repo_search_code']).systemMessage;
 
     expect(prompt).toContain('If the user asks for latest, current, today, now, recent, live, or other facts that may have changed, or explicitly asks about current external docs behavior, repo state, or package metadata, do not present model memory as current truth when an available tool can verify it.');
     expect(prompt).toContain('When current-state verification tools are unavailable, answer with an explicit uncertainty or unverified-current-state caveat instead of implying freshness.');
@@ -433,11 +433,10 @@ describe('promptContract', () => {
         'discord_admin_submit_moderation',
         'discord_voice_get_status',
         'web_search',
-        'mcp__github__search_code',
-        'mcp__github__get_file_contents',
+        'repo_search_code',
+        'repo_read_file',
         'npm_info',
-        'wikipedia_search',
-        'stack_overflow_search',
+        'docs_lookup',
         'system_time',
         'system_tool_stats',
         'image_generate',

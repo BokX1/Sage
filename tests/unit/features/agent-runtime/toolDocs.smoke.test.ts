@@ -32,9 +32,7 @@ describe('tool smoke metadata', () => {
       'system_tool_stats',
     ]));
     expect(optional).toEqual(expect.arrayContaining([
-      'stack_overflow_search',
       'web_search',
-      'wikipedia_search',
     ]));
     expect(skipped).toEqual(expect.arrayContaining([
       'discord_admin_create_role',

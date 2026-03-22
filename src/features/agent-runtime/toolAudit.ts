@@ -16,8 +16,8 @@ export interface ToolAuditFinding {
     | 'artifact_policy_mismatch'
     | 'mcp_tool_disabled'
     | 'mcp_server_unavailable'
-    | 'mcp_github_capability_partial'
-    | 'mcp_github_capability_unavailable';
+    | 'mcp_preset_capability_partial'
+    | 'mcp_preset_capability_unavailable';
   message: string;
 }
 
@@ -138,7 +138,7 @@ export function auditToolRegistry(
       findings.push(
         makeFinding({
           severity: 'warn',
-          toolName: `mcp__${snapshot.server.sanitizedId}__${exposure.rawToolName}`,
+          toolName: `mcp:${snapshot.server.id}:${exposure.rawToolName}`,
           code: 'mcp_tool_disabled',
           message: exposure.disableReason?.trim() || 'MCP tool was disabled because its schema is not provider-safe.',
         }),
@@ -147,17 +147,17 @@ export function auditToolRegistry(
   }
 
   for (const diagnostic of options?.mcpDiagnostics ?? []) {
-    if (diagnostic.kind !== 'github_capability' || diagnostic.status === 'healthy') {
+    if (diagnostic.kind !== 'preset_capability' || diagnostic.status === 'healthy') {
       continue;
     }
     findings.push(
       makeFinding({
         severity: 'warn',
-        toolName: `mcp:${diagnostic.serverId}`,
+        toolName: `mcp:${diagnostic.presetId}`,
         code:
           diagnostic.status === 'partial'
-            ? 'mcp_github_capability_partial'
-            : 'mcp_github_capability_unavailable',
+            ? 'mcp_preset_capability_partial'
+            : 'mcp_preset_capability_unavailable',
         message: [diagnostic.summary, ...diagnostic.details].filter((value) => value.trim().length > 0).join(' '),
       }),
     );

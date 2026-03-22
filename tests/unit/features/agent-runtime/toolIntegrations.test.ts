@@ -1,6 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { config } from '@/platform/config/env';
-import * as llm from '@/platform/llm';
 import { stubFetch, type FetchMock } from '../../../testkit/fetch';
 
 const {
@@ -52,13 +51,12 @@ vi.mock('@/platform/discord/client', () => ({
 }));
 
 import {
-  __resetLocalProviderCooldownForTests,
+  __resetWebProviderHealthForTests,
   lookupChannelFileCache,
   lookupServerFileCache,
   readIngestedAttachmentText,
   sendCachedAttachment,
   lookupNpmPackage,
-  runAgenticWebScrape,
   runWebSearch,
   sanitizePublicUrl,
   sanitizeUrl,
@@ -78,7 +76,7 @@ describe('toolIntegrations', () => {
 
   beforeEach(() => {
     fetchMock = stubFetch();
-    __resetLocalProviderCooldownForTests();
+    __resetWebProviderHealthForTests();
     mockFindIngestedAttachmentsForLookup.mockReset();
     mockFindIngestedAttachmentsForLookupInGuild.mockReset();
     mockListIngestedAttachmentsByIds.mockReset();
@@ -274,49 +272,40 @@ describe('toolIntegrations', () => {
     expect(String(typed.content).length).toBeGreaterThan(0);
   });
 
-  it('falls back to nomnom and raw_fetch even when provider order only lists jina', async () => {
+  it('falls back to raw_fetch when jina fails and raw_fetch is available', async () => {
     config.TOOL_WEB_SCRAPE_PROVIDER_ORDER = 'jina';
-    const mockChat = vi.fn().mockRejectedValue(new Error('nomnom unavailable'));
-    const createClientSpy = vi
-      .spyOn(llm, 'createLLMClient')
-      .mockReturnValue({ chat: mockChat } as unknown as ReturnType<typeof llm.createLLMClient>);
-    try {
-      fetchMock
-        .mockResolvedValueOnce({
-          ok: false,
-          status: 500,
-          statusText: 'Internal Server Error',
-          text: async () => 'jina down',
-        } satisfies {
-          ok: boolean;
-          status: number;
-          statusText: string;
-          text: () => Promise<string>;
-        })
-        .mockResolvedValueOnce({
-          ok: true,
-          status: 200,
-          statusText: 'OK',
-          text: async () => '<html><body>Fallback content</body></html>',
-        } satisfies {
-          ok: boolean;
-          status: number;
-          statusText: string;
-          text: () => Promise<string>;
-        });
-
-      const result = await scrapeWebPage({
-        url: 'https://example.com',
+    fetchMock
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 500,
+        statusText: 'Internal Server Error',
+        text: async () => 'jina down',
+      } satisfies {
+        ok: boolean;
+        status: number;
+        statusText: string;
+        text: () => Promise<string>;
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        text: async () => '<html><body>Fallback content</body></html>',
+      } satisfies {
+        ok: boolean;
+        status: number;
+        statusText: string;
+        text: () => Promise<string>;
       });
 
-      const typed = result as { provider: string; content: unknown };
-      expect(typed.provider).toBe('raw_fetch');
-      expect(String(typed.content)).toContain('Fallback content');
-      expect(createClientSpy).toHaveBeenCalledWith({ agentModel: 'nomnom' });
-      expect(fetchMock).toHaveBeenCalledTimes(2);
-    } finally {
-      createClientSpy.mockRestore();
-    }
+    const result = await scrapeWebPage({
+      url: 'https://example.com',
+    });
+
+    const typed = result as { provider: string; content: unknown };
+    expect(typed.provider).toBe('raw_fetch');
+    expect(String(typed.content)).toContain('Fallback content');
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
   it('strips script/style blocks with whitespace-padded closing tags in raw fetch', async () => {
@@ -347,53 +336,6 @@ describe('toolIntegrations', () => {
     expect(content).not.toContain('first()');
     expect(content).not.toContain('.x{color:red}');
     expect(fetchMock).toHaveBeenCalledTimes(1);
-  });
-
-  it('runs agentic web scrape with instruction and sanitized URL', async () => {
-    const mockChat = vi.fn().mockResolvedValue({ text: '## Extracted\n\nDetails' });
-    const createClientSpy = vi
-      .spyOn(llm, 'createLLMClient')
-      .mockReturnValue({ chat: mockChat } as unknown as ReturnType<typeof llm.createLLMClient>);
-
-    const result = await runAgenticWebScrape({
-      url: 'https://example.com#section',
-      instruction: 'Extract the key points.',
-    });
-
-    expect(createClientSpy).toHaveBeenCalledWith({ agentModel: 'nomnom' });
-    expect(mockChat).toHaveBeenCalledWith(
-      expect.objectContaining({
-        model: 'nomnom',
-        temperature: 0.1,
-        messages: expect.arrayContaining([
-          expect.objectContaining({ role: 'system' }),
-          expect.objectContaining({
-            role: 'user',
-            content: expect.stringContaining('URL: https://example.com/'),
-          }),
-        ]),
-      }),
-    );
-    expect(result).toEqual(
-      expect.objectContaining({
-        provider: 'nomnom',
-        url: 'https://example.com/',
-        instruction: 'Extract the key points.',
-        content: '## Extracted\n\nDetails',
-      }),
-    );
-  });
-
-  it('rejects private URLs for agentic web scrape before creating llm client', async () => {
-    const createClientSpy = vi.spyOn(llm, 'createLLMClient');
-
-    await expect(
-      runAgenticWebScrape({
-        url: 'http://localhost:3000/private',
-        instruction: 'Extract the key points.',
-      }),
-    ).rejects.toThrow('URL must be a public HTTP(S) URL.');
-    expect(createClientSpy).not.toHaveBeenCalled();
   });
 
   it('runs web_search through SearXNG when configured', async () => {
@@ -552,6 +494,9 @@ describe('toolIntegrations', () => {
 
   it('keeps web search scoped to configured search providers only', async () => {
     config.TOOL_WEB_SEARCH_PROVIDER_ORDER = 'tavily,exa,searxng';
+    config.TAVILY_API_KEY = 'tvly-test-key';
+    config.EXA_API_KEY = 'exa-test-key';
+    config.SEARXNG_BASE_URL = '';
     fetchMock.mockResolvedValue({
       ok: false,
       status: 500,
@@ -686,7 +631,7 @@ describe('toolIntegrations', () => {
         maxResults: 3,
         providerOrder: ['searxng'],
       }),
-    ).rejects.toThrow('Skipped local providers: searxng');
+    ).rejects.toThrow('Skipped providers: searxng');
 
     const secondCallCount = fetchMock.mock.calls.length;
     expect(secondCallCount).toBe(firstCallCount);
@@ -723,6 +668,92 @@ describe('toolIntegrations', () => {
     });
     expect((second as { provider: string }).provider).toBe('raw_fetch');
     expect(crawlCalls).toBe(1);
+  });
+
+  it('cooldowns remote exa auth failures and skips repeated attempts', async () => {
+    config.TOOL_WEB_SEARCH_PROVIDER_ORDER = 'exa';
+    config.EXA_API_KEY = 'exa-test-key';
+
+    fetchMock.mockResolvedValue({
+      ok: false,
+      status: 401,
+      statusText: 'Unauthorized',
+      text: async () => 'unauthorized',
+      headers: new Headers(),
+    } satisfies {
+      ok: boolean;
+      status: number;
+      statusText: string;
+      text: () => Promise<string>;
+      headers: Headers;
+    });
+
+    await expect(
+      runWebSearch({
+        query: 'sage docs',
+        depth: 'quick',
+        maxResults: 3,
+        providerOrder: ['exa'],
+      }),
+    ).rejects.toThrow('Providers attempted: exa');
+
+    const firstCallCount = fetchMock.mock.calls.length;
+    expect(firstCallCount).toBe(1);
+
+    await expect(
+      runWebSearch({
+        query: 'sage docs',
+        depth: 'quick',
+        maxResults: 3,
+        providerOrder: ['exa'],
+      }),
+    ).rejects.toThrow('Skipped providers: exa');
+
+    expect(fetchMock.mock.calls.length).toBe(firstCallCount);
+  });
+
+  it('cooldowns remote jina rate limits and skips it on the next scrape', async () => {
+    config.TOOL_WEB_SCRAPE_PROVIDER_ORDER = 'jina,raw_fetch';
+    let jinaCalls = 0;
+    let rawCalls = 0;
+
+    fetchMock.mockImplementation(async (input: unknown) => {
+      const url = String(input);
+      if (url.startsWith('https://r.jina.ai/')) {
+        jinaCalls += 1;
+        return {
+          ok: false,
+          status: 429,
+          statusText: 'Too Many Requests',
+          text: async () => 'slow down',
+          headers: new Headers({ 'retry-after': '120' }),
+        };
+      }
+      rawCalls += 1;
+      return {
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        text: async () => '<html><body>raw fallback content</body></html>',
+        headers: new Headers(),
+      };
+    });
+
+    const first = await scrapeWebPage({
+      url: 'https://example.com',
+      providerOrder: ['jina', 'raw_fetch'],
+    });
+    expect((first as { provider: string }).provider).toBe('raw_fetch');
+    expect(jinaCalls).toBe(1);
+    expect(rawCalls).toBe(1);
+
+    const second = await scrapeWebPage({
+      url: 'https://example.com',
+      providerOrder: ['jina', 'raw_fetch'],
+    });
+    expect((second as { provider: string }).provider).toBe('raw_fetch');
+    expect(jinaCalls).toBe(1);
+    expect(rawCalls).toBe(2);
   });
 
   it('looks up cached channel files', async () => {

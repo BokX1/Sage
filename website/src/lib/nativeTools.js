@@ -16,6 +16,13 @@ export const nativeTools = [
     "color": "#5865F2"
   },
   {
+    "name": "discord_admin_archive_thread",
+    "short": "Discord Admin Archive Thread",
+    "desc": "Archive a thread explicitly.",
+    "cat": "discord",
+    "color": "#5865F2"
+  },
+  {
     "name": "discord_admin_clear_governance_review_channel",
     "short": "Discord Admin Clear Governance Review Channel",
     "desc": "Clear the dedicated governance review channel.",
@@ -37,9 +44,30 @@ export const nativeTools = [
     "color": "#5865F2"
   },
   {
+    "name": "discord_admin_create_forum_post",
+    "short": "Discord Admin Create Forum Post",
+    "desc": "Create a forum post in a forum channel.",
+    "cat": "discord",
+    "color": "#5865F2"
+  },
+  {
+    "name": "discord_admin_create_invite",
+    "short": "Discord Admin Create Invite",
+    "desc": "Create a new invite for a channel.",
+    "cat": "discord",
+    "color": "#5865F2"
+  },
+  {
     "name": "discord_admin_create_role",
     "short": "Discord Admin Create Role",
     "desc": "Create a new guild role with Discord admin approval and server context.",
+    "cat": "discord",
+    "color": "#5865F2"
+  },
+  {
+    "name": "discord_admin_create_scheduled_event",
+    "short": "Discord Admin Create Scheduled Event",
+    "desc": "Create a scheduled event for the guild.",
     "cat": "discord",
     "color": "#5865F2"
   },
@@ -54,6 +82,13 @@ export const nativeTools = [
     "name": "discord_admin_delete_role",
     "short": "Discord Admin Delete Role",
     "desc": "Delete an existing guild role with admin approval and guild context.",
+    "cat": "discord",
+    "color": "#5865F2"
+  },
+  {
+    "name": "discord_admin_delete_scheduled_event",
+    "short": "Discord Admin Delete Scheduled Event",
+    "desc": "Delete a scheduled event for the guild.",
     "cat": "discord",
     "color": "#5865F2"
   },
@@ -100,6 +135,13 @@ export const nativeTools = [
     "color": "#5865F2"
   },
   {
+    "name": "discord_admin_list_invites",
+    "short": "Discord Admin List Invites",
+    "desc": "List active guild or channel invites.",
+    "cat": "discord",
+    "color": "#5865F2"
+  },
+  {
     "name": "discord_admin_pin_message",
     "short": "Discord Admin Pin Message",
     "desc": "Pin a message with admin approval.",
@@ -110,6 +152,20 @@ export const nativeTools = [
     "name": "discord_admin_remove_member_role",
     "short": "Discord Admin Remove Member Role",
     "desc": "Remove a role from a member.",
+    "cat": "discord",
+    "color": "#5865F2"
+  },
+  {
+    "name": "discord_admin_reopen_thread",
+    "short": "Discord Admin Reopen Thread",
+    "desc": "Reopen an archived thread explicitly.",
+    "cat": "discord",
+    "color": "#5865F2"
+  },
+  {
+    "name": "discord_admin_revoke_invite",
+    "short": "Discord Admin Revoke Invite",
+    "desc": "Revoke an invite by its code.",
     "cat": "discord",
     "color": "#5865F2"
   },
@@ -138,6 +194,20 @@ export const nativeTools = [
     "name": "discord_admin_unpin_message",
     "short": "Discord Admin Unpin Message",
     "desc": "Unpin a message with admin approval.",
+    "cat": "discord",
+    "color": "#5865F2"
+  },
+  {
+    "name": "discord_admin_update_forum_tags",
+    "short": "Discord Admin Update Forum Tags",
+    "desc": "Replace the applied tags on a forum thread.",
+    "cat": "discord",
+    "color": "#5865F2"
+  },
+  {
+    "name": "discord_admin_update_scheduled_event",
+    "short": "Discord Admin Update Scheduled Event",
+    "desc": "Update a scheduled event for the guild.",
     "cat": "discord",
     "color": "#5865F2"
   },
@@ -457,13 +527,6 @@ export const nativeTools = [
     "color": "#10B981"
   },
   {
-    "name": "stack_overflow_search",
-    "short": "Stack Overflow Search",
-    "desc": "Search Stack Overflow questions and accepted answers for coding support.",
-    "cat": "search",
-    "color": "#0EA5E9"
-  },
-  {
     "name": "system_time",
     "short": "System Time",
     "desc": "Calculate timezone offsets for complex scheduling. Current UTC time is already in runtime state, so use this only when explicit offset math is needed.",
@@ -476,13 +539,6 @@ export const nativeTools = [
     "desc": "Inspect in-process tool telemetry, cache occupancy, and average latency by tool.",
     "cat": "system",
     "color": "#6B7280"
-  },
-  {
-    "name": "web_extract",
-    "short": "Web Extract",
-    "desc": "Read one public URL and extract only the requested fields or facts.",
-    "cat": "search",
-    "color": "#0EA5E9"
   },
   {
     "name": "web_read",
@@ -499,23 +555,9 @@ export const nativeTools = [
     "color": "#0EA5E9"
   },
   {
-    "name": "web_research",
-    "short": "Web Research",
-    "desc": "Run one bounded search-plus-read research bundle over public sources.",
-    "cat": "search",
-    "color": "#0EA5E9"
-  },
-  {
     "name": "web_search",
     "short": "Web Search",
     "desc": "Search the public web and return recent source-grounded results.",
-    "cat": "search",
-    "color": "#0EA5E9"
-  },
-  {
-    "name": "wikipedia_search",
-    "short": "Wikipedia Search",
-    "desc": "Lookup Wikipedia pages with snippets and canonical links for broad factual grounding.",
     "cat": "search",
     "color": "#0EA5E9"
   }

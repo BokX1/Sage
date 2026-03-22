@@ -14,11 +14,11 @@ import { globalToolMemoStore } from './toolMemoStore';
 import { metrics } from '../../shared/observability/metrics';
 import {
   generateImage,
+  getWebProviderRuntimeStatus,
   lookupNpmPackage,
-  lookupWikipedia,
-  searchStackOverflow,
 } from './toolIntegrations';
 import { initializeMcpTools } from './mcp/manager';
+import { registerMcpCapabilityTools } from './mcp/capabilities';
 
 const getCurrentDateTimeTool = defineToolSpecV2({
   name: 'system_time',
@@ -175,6 +175,31 @@ const toolStatsTool = defineToolSpecV2({
       note: { type: 'string' },
       memo: { type: 'object' },
       pagedText: { type: 'object' },
+      webProviders: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            provider: { type: 'string' },
+            family: { type: 'string' },
+            configured: { type: 'boolean' },
+            coolingDown: { type: 'boolean' },
+            cooldownUntil: { type: ['string', 'null'] },
+            cooldownReason: { type: ['string', 'null'] },
+            failureCategory: { type: ['string', 'null'] },
+          },
+          required: [
+            'provider',
+            'family',
+            'configured',
+            'coolingDown',
+            'cooldownUntil',
+            'cooldownReason',
+            'failureCategory',
+          ],
+          additionalProperties: false,
+        },
+      },
       tools: {
         type: 'array',
         items: {
@@ -192,7 +217,7 @@ const toolStatsTool = defineToolSpecV2({
       },
       raw: {},
     },
-    required: ['generatedAtIso', 'scope', 'note', 'memo', 'pagedText', 'tools'],
+    required: ['generatedAtIso', 'scope', 'note', 'memo', 'pagedText', 'webProviders', 'tools'],
     additionalProperties: false,
   },
   annotations: {
@@ -225,6 +250,7 @@ const toolStatsTool = defineToolSpecV2({
         note: 'All tool stats and caches are in-memory only.',
         memo: globalToolMemoStore.stats(now.getTime()),
         pagedText: globalPagedTextStore.stats(now.getTime()),
+        webProviders: getWebProviderRuntimeStatus(),
         tools: rows.slice(0, topN ?? 15),
         raw: includeRaw ? metrics.dump() : undefined,
       },
@@ -328,79 +354,6 @@ const npmPackageLookupTool = defineToolSpecV2({
   }),
 });
 
-const wikipediaLookupTool = defineToolSpecV2({
-  name: 'wikipedia_search',
-  title: 'Wikipedia Search',
-  description: 'Lookup Wikipedia pages with snippets and canonical links for broad factual grounding.',
-  input: z.object({
-    query: z.string().trim().min(2).max(300),
-    language: z.string().trim().min(2).max(16).optional(),
-    maxResults: z.number().int().min(1).max(10).optional(),
-  }),
-  annotations: {
-    readOnlyHint: true,
-    openWorldHint: true,
-    parallelSafe: true,
-  },
-  runtime: {
-    class: 'query',
-    readOnly: true,
-    observationPolicy: 'default',
-    capabilityTags: ['research', 'wikipedia'],
-  },
-  prompt: {
-    summary: 'Use Wikipedia for broad factual grounding when freshness is not the main concern.',
-    whenToUse: ['You need encyclopedia-style context or background.'],
-    whenNotToUse: ['The user needs recent or fast-changing information from the open web.'],
-  },
-  smoke: {
-    mode: 'optional',
-    args: { query: 'OpenAI', maxResults: 3 },
-  },
-  execute: async ({ query, language, maxResults }) => lookupWikipedia({
-    query,
-    language,
-    maxResults,
-  }),
-});
-
-const stackOverflowSearchTool = defineToolSpecV2({
-  name: 'stack_overflow_search',
-  title: 'Stack Overflow Search',
-  description: 'Search Stack Overflow questions and accepted answers for coding support.',
-  input: z.object({
-    query: z.string().trim().min(2).max(350),
-    maxResults: z.number().int().min(1).max(15).optional(),
-    tagged: z.string().trim().min(1).max(120).optional(),
-    includeAcceptedAnswer: z.boolean().optional(),
-  }),
-  annotations: {
-    readOnlyHint: true,
-    parallelSafe: true,
-  },
-  runtime: {
-    class: 'query',
-    readOnly: true,
-    observationPolicy: 'default',
-    capabilityTags: ['developer', 'stackoverflow'],
-  },
-  prompt: {
-    summary: 'Search Stack Overflow for programming Q&A, accepted answers, and debugging help.',
-    whenToUse: ['The task is about implementation trouble, error messages, or community fixes.'],
-    whenNotToUse: ['Official docs or direct source code are already the stronger primary source.'],
-  },
-  smoke: {
-    mode: 'optional',
-    args: { query: 'typescript union narrowing', maxResults: 3 },
-  },
-  execute: async ({ query, maxResults, tagged, includeAcceptedAnswer }) => searchStackOverflow({
-    query,
-    maxResults,
-    tagged,
-    includeAcceptedAnswer,
-  }),
-});
-
 export const STATIC_TOOL_DEFINITIONS = [
   getCurrentDateTimeTool,
   toolStatsTool,
@@ -408,8 +361,6 @@ export const STATIC_TOOL_DEFINITIONS = [
   generateImageTool,
   ...webTools,
   npmPackageLookupTool,
-  wikipediaLookupTool,
-  stackOverflowSearchTool,
 ];
 
 function registerIfMissing<TArgs, TStructured>(
@@ -428,4 +379,5 @@ export async function registerDefaultAgenticTools(
     registerIfMissing(registry, tool as ToolSpecV2<unknown, unknown>);
   }
   await initializeMcpTools(registry);
+  await registerMcpCapabilityTools(registry);
 }

@@ -61,10 +61,10 @@ function categoryColor(category: WebsiteToolCategory): string {
 
 function categoryForTool(toolName: string): WebsiteToolCategory {
   if (toolName.startsWith('discord_')) return 'discord';
-  if (toolName.startsWith('web_') || toolName === 'wikipedia_search' || toolName === 'stack_overflow_search') {
+  if (toolName.startsWith('web_') || toolName === 'docs_lookup' || toolName.startsWith('browser_')) {
     return 'search';
   }
-  if (toolName.startsWith('mcp__github__') || toolName === 'npm_info') {
+  if (toolName.startsWith('repo_') || toolName === 'npm_info') {
     return 'dev';
   }
   if (toolName.startsWith('image_')) return 'gen';
@@ -109,6 +109,7 @@ const TOOL_DOC_OVERRIDES: Record<string, ToolDocOverride> = {
   web_read: {
     selectionHints: [
       'Use for a known exact page, especially when verifying current content or docs behavior at that URL.',
+      'Use `web_read_page` instead when the page is too large for one bounded read.',
     ],
     avoidWhen: [
       'You still need discovery or source selection across the open web.',
@@ -117,22 +118,8 @@ const TOOL_DOC_OVERRIDES: Record<string, ToolDocOverride> = {
       purpose: 'Verify or read the contents of one known page directly.',
       decisionEdges: [
         'Known current docs page or exact URL -> web_read.',
+        'Large exact page -> web_read_page.',
         'Need discovery across unknown sources -> web_search first.',
-      ],
-    },
-  },
-  web_extract: {
-    selectionHints: [
-      'Use for extracting exact current fields or behaviors from a known page without reading everything.',
-    ],
-    avoidWhen: [
-      'You still need broad discovery or you only need a general page read.',
-    ],
-    promptGuidance: {
-      purpose: 'Extract exact structured facts from one known page.',
-      decisionEdges: [
-        'Known page plus exact fields/behaviors -> web_extract.',
-        'Known page but general reading -> web_read instead.',
       ],
     },
   },
@@ -154,45 +141,43 @@ const TOOL_DOC_OVERRIDES: Record<string, ToolDocOverride> = {
       ],
     },
   },
-  web_research: {
+  web_read_page: {
     selectionHints: [
-      'Use for one bounded search-plus-read research pass across a few sources.',
+      'Use for a very large known page when you need bounded continuation instead of one large read.',
     ],
     avoidWhen: [
-      'You only need one exact page.',
+      'You still need source discovery across unknown websites.',
     ],
     promptGuidance: {
-      purpose: 'Do bounded multi-source web research in one tool step.',
+      purpose: 'Continue through one large known page in bounded chunks.',
       decisionEdges: [
-        'Multi-source synthesis in one step -> web_research.',
-        'Single-page retrieval -> web_read or web_read_page instead.',
-      ],
-      antiPatterns: [
-        'Avoid unbounded crawl loops when one bounded research pass is enough.',
+        'Large exact page -> web_read_page.',
+        'Single-page retrieval -> web_read instead.',
+        'Unknown sources -> web_search first.',
       ],
     },
   },
-  mcp__github__search_code: {
+  repo_search_code: {
     selectionHints: [
       'Use when the repository path or file location is still unknown.',
-      'If GitHub code search is denied for this request, stop retrying the same search blindly and pivot to an exact-file read or a clarification request.',
+      'If repository code search is denied for this request, stop retrying the same search blindly and pivot to an exact-file read or a clarification request.',
     ],
     avoidWhen: [
       'The exact owner/repo/path is already known.',
-      'The same run already hit a GitHub code-search access failure for this request.',
+      'The same run already hit a repository code-search access failure for this request.',
     ],
     promptGuidance: {
       purpose: 'Find candidate files or symbols inside a known repository.',
       decisionEdges: [
-        'Unknown path inside a repo -> mcp__github__search_code.',
-        'Known exact path -> mcp__github__get_file_contents instead.',
+        'Unknown path inside a repo -> repo_search_code.',
+        'Known exact path -> repo_read_file instead.',
       ],
       antiPatterns: [
-        'Do not keep retrying GitHub code search after an unauthorized or forbidden result in the same run. Switch to exact-file reads, confirm access, or ask the user for repo/path clarification.',
+        'Do not keep retrying repository code search after an unauthorized or forbidden result in the same run. Switch to exact-file reads, confirm access, or ask the user for repo/path clarification.',
       ],
     },
   },
-  mcp__github__get_file_contents: {
+  repo_read_file: {
     selectionHints: [
       'Use when you already know the repo and exact path.',
     ],
@@ -202,10 +187,62 @@ const TOOL_DOC_OVERRIDES: Record<string, ToolDocOverride> = {
     promptGuidance: {
       purpose: 'Fetch one exact repository file.',
       decisionEdges: [
-        'Known exact path -> mcp__github__get_file_contents.',
-        'Unknown exact path -> mcp__github__search_code first.',
+        'Known exact path -> repo_read_file.',
+        'Unknown exact path -> repo_search_code first.',
       ],
     },
+  },
+  docs_lookup: {
+    selectionHints: [
+      'Use for current technical documentation and code examples for libraries, frameworks, SDKs, APIs, and CLIs.',
+      'Prefer this over general web search when the question is primarily about official technical docs behavior.',
+    ],
+    avoidWhen: [
+      'The task is about a repository file or source tree you already know how to read directly.',
+    ],
+    promptGuidance: {
+      purpose: 'Resolve a technology and read current technical docs through the curated docs preset.',
+      decisionEdges: [
+        'Current library or framework docs question -> docs_lookup.',
+        'General latest public-web facts -> web_search instead.',
+      ],
+    },
+  },
+  browser_open_page: {
+    selectionHints: [
+      'Use to start or change the browser page during an interactive web task.',
+    ],
+    promptGuidance: {
+      purpose: 'Open a page before reading or interacting with it.',
+      decisionEdges: [
+        'Need a browser session -> browser_open_page first.',
+      ],
+    },
+  },
+  browser_read_page: {
+    selectionHints: [
+      'Use to inspect the current browser page state before clicking or typing.',
+    ],
+  },
+  browser_click: {
+    selectionHints: [
+      'Use when the next browser step is clicking a specific element.',
+    ],
+  },
+  browser_type: {
+    selectionHints: [
+      'Use when the next browser step is typing into a field.',
+    ],
+  },
+  browser_capture: {
+    selectionHints: [
+      'Use when you need a screenshot or visual artifact from the current browser state.',
+    ],
+  },
+  browser_extract: {
+    selectionHints: [
+      'Use for precise extraction from the current browser page when the snapshot alone is not enough.',
+    ],
   },
   discord_context_get_channel_summary: {
     selectionHints: [

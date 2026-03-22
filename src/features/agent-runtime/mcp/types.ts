@@ -32,6 +32,8 @@ export interface McpServerConfig {
   id: string;
   enabled: boolean;
   trustLevel: McpServerTrustLevel;
+  source?: 'preset' | 'custom';
+  presetId?: string;
   transport: McpTransportConfig;
   allow?: McpAllowLists;
   refresh?: McpRefreshPolicy;
@@ -95,6 +97,14 @@ export interface McpToolBinding {
   rawToolName: string;
 }
 
+export interface CapabilityHealth {
+  capabilityName: string;
+  serverId: string;
+  rawToolName: string;
+  available: boolean;
+  disableReason?: string;
+}
+
 export interface McpToolExecutionResult {
   structuredContent?: unknown;
   modelSummary?: string;
@@ -103,15 +113,14 @@ export interface McpToolExecutionResult {
 export type McpServerDiagnosticStatus = 'healthy' | 'partial' | 'unavailable';
 export type McpProbeStatus = 'pass' | 'fail' | 'skip';
 
-export interface GitHubMcpCapabilityDiagnostic {
-  kind: 'github_capability';
+export interface McpPresetDiagnostic {
+  kind: 'preset_capability';
+  presetId: string;
   serverId: string;
   status: McpServerDiagnosticStatus;
-  authProbe: McpProbeStatus;
-  codeSearchProbe: McpProbeStatus;
+  probes: Record<string, McpProbeStatus>;
   summary: string;
   details: string[];
 }
 
-export type McpServerDiagnostic =
-  | GitHubMcpCapabilityDiagnostic;
+export type McpServerDiagnostic = McpPresetDiagnostic;

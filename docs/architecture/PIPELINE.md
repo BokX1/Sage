@@ -236,12 +236,12 @@ Sage's prompt assembly no longer uses a dedicated raw observation middle-truncat
 | `AGENT_GRAPH_MAX_TOOL_CALLS_PER_ROUND` | Max executable tool calls Sage will allow from one model response before it forces a repair pass | `12` |
 | `AGENT_GRAPH_MAX_IDENTICAL_TOOL_BATCHES` | Consecutive identical tool batches allowed before Sage trips the loop guard | `4` |
 | `AGENT_GRAPH_MAX_LOOP_GUARD_RECOVERIES` | How many structured repair attempts Sage gives the model before finalizing with `loop_guard` | `3` |
-| `MCP_SERVERS_JSON` | Optional JSON array of additional MCP servers Sage should discover at startup | *(empty)* |
-| `MCP_GITHUB_ENABLED` | Enable the official GitHub MCP preset | `false` |
-| `MCP_GITHUB_TRANSPORT` | Transport for the GitHub MCP preset (`stdio` or `streamable_http`) | `stdio` |
+| `MCP_PRESETS_ENABLED_CSV` | Comma-separated curated MCP presets Sage should enable at startup | *(empty)* |
+| `MCP_EXTRA_SERVERS_JSON` | Optional JSON array of additional MCP servers Sage should discover at startup | *(empty)* |
+| `MCP_PRESET_GITHUB_TRANSPORT` | Transport for the GitHub preset (`stdio` or `streamable_http`) | `streamable_http` |
 | `LANGSMITH_TRACING` | Enable optional LangSmith graph tracing | `false` |
 
-GitHub capability is now provided through configured MCP servers. The default runtime inventory no longer ships legacy `github_*` or workflow-composed GitHub tools. On the official remote preset, Sage adds `X-MCP-Readonly` and `X-MCP-Toolsets` so the hosted GitHub MCP server is narrowed server-side before discovery.
+GitHub capability is now provided through curated MCP presets, but the model-facing inventory stays on stable Sage capabilities like `repo_search_code` and `repo_read_file`. On the official remote GitHub preset, Sage adds `X-MCP-Readonly` and `X-MCP-Toolsets` so the hosted GitHub MCP server is narrowed server-side before discovery.
 | `LANGSMITH_PROJECT` | LangSmith project name | `sage` |
 | `SAGE_TRACE_DB_ENABLED` | Persist compact `AgentTrace` ledger rows | `true` |
 

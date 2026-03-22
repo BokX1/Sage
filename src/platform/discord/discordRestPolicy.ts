@@ -156,6 +156,18 @@ function parseGuildIdFromDiscordChannelResponse(data: unknown): string | null {
   return typeof guildId === 'string' && guildId.trim().length > 0 ? guildId.trim() : null;
 }
 
+function parseGuildIdFromDiscordInviteResponse(data: unknown): string | null {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) {
+    return null;
+  }
+  const guild = (data as Record<string, unknown>).guild;
+  if (!guild || typeof guild !== 'object' || Array.isArray(guild)) {
+    return null;
+  }
+  const guildId = (guild as Record<string, unknown>).id;
+  return typeof guildId === 'string' && guildId.trim().length > 0 ? guildId.trim() : null;
+}
+
 function assertSafeIdSegment(value: string, label: string): void {
   if (!value) {
     throw new Error(`Discord REST ${label} must not be empty.`);
@@ -247,6 +259,29 @@ export async function assertDiscordRestRequestGuildScoped(params: {
     }
   };
 
+  const ensureInviteInGuild = async (code: string): Promise<void> => {
+    const result = await discordRestRequest({
+      method: 'GET',
+      path: `/invites/${code}`,
+      maxResponseChars: 2_000,
+      signal: params.signal,
+    });
+
+    if (!result.ok) {
+      const status = String(result.status ?? 'unknown');
+      const statusText = String(result.statusText ?? '').trim();
+      throw new Error(`Failed to validate invite scope (GET /invites/${code} → ${status} ${statusText}).`);
+    }
+
+    const resolvedGuildId = parseGuildIdFromDiscordInviteResponse(result.data);
+    if (!resolvedGuildId) {
+      throw new Error('Discord REST passthrough is restricted to guild invites.');
+    }
+    if (resolvedGuildId !== guildId) {
+      throw new Error('Discord REST passthrough is restricted to the active guild (cross-guild /invites/* is blocked).');
+    }
+  };
+
   if (root === 'channels') {
     const channelId = segments[1]?.trim();
     if (!channelId) {
@@ -264,6 +299,15 @@ export async function assertDiscordRestRequestGuildScoped(params: {
     }
     assertSafeIdSegment(channelId, 'channel id');
     await ensureChannelInGuild(channelId);
+    return;
+  }
+
+  if (root === 'invites') {
+    const code = segments[1]?.trim();
+    if (!code) {
+      throw new Error('Discord REST invite routes must include an invite code.');
+    }
+    await ensureInviteInGuild(code);
     return;
   }
 

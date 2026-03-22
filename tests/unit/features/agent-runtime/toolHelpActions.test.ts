@@ -8,7 +8,6 @@ const { mockLookupNpmPackage } = vi.hoisted(() => ({
 vi.mock('../../../../src/features/agent-runtime/toolIntegrations', () => ({
   runWebSearch: vi.fn(),
   scrapeWebPage: vi.fn(),
-  runAgenticWebScrape: vi.fn(),
   sanitizePublicUrl: (url: string) => url,
   lookupNpmPackage: mockLookupNpmPackage,
 }));

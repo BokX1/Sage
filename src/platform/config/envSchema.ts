@@ -299,7 +299,7 @@ export const testDefaults: Record<string, string> = {
   TOOL_WEB_SEARCH_PROVIDER_ORDER: 'tavily,exa,searxng',
   TOOL_WEB_SEARCH_TIMEOUT_MS: '45000',
   TOOL_WEB_SEARCH_MAX_RESULTS: '8',
-  TOOL_WEB_SCRAPE_PROVIDER_ORDER: 'crawl4ai,firecrawl,jina,nomnom,raw_fetch',
+  TOOL_WEB_SCRAPE_PROVIDER_ORDER: 'crawl4ai,firecrawl,jina,raw_fetch',
   TOOL_WEB_SCRAPE_TIMEOUT_MS: '45000',
   TAVILY_API_KEY: '',
   EXA_API_KEY: '',
@@ -308,19 +308,37 @@ export const testDefaults: Record<string, string> = {
   SEARXNG_SEARCH_PATH: '/search',
   SEARXNG_CATEGORIES: 'general',
   SEARXNG_LANGUAGE: 'en-US',
-  FIRECRAWL_API_KEY: '',
-  FIRECRAWL_BASE_URL: 'https://api.firecrawl.dev/v1',
   CRAWL4AI_BASE_URL: '',
   CRAWL4AI_BEARER_TOKEN: '',
   JINA_READER_BASE_URL: 'https://r.jina.ai/http://',
-  MCP_SERVERS_JSON: '',
-  MCP_GITHUB_ENABLED: 'false',
-  MCP_GITHUB_TRANSPORT: 'stdio',
-  MCP_GITHUB_COMMAND: '',
-  MCP_GITHUB_ARGS_JSON: '["stdio","--read-only"]',
-  MCP_GITHUB_URL: 'https://api.githubcopilot.com/mcp/',
-  MCP_GITHUB_TOKEN: '',
-  MCP_GITHUB_TOOLSETS_CSV: 'context,repos,issues,pull_requests,users',
+  MCP_PRESETS_ENABLED_CSV: '',
+  MCP_EXTRA_SERVERS_JSON: '',
+  MCP_PRESET_GITHUB_TRANSPORT: 'streamable_http',
+  MCP_PRESET_GITHUB_COMMAND: '',
+  MCP_PRESET_GITHUB_ARGS_JSON: '["stdio","--read-only"]',
+  MCP_PRESET_GITHUB_URL: 'https://api.githubcopilot.com/mcp/',
+  MCP_PRESET_GITHUB_TOKEN: '',
+  MCP_PRESET_GITHUB_TOOLSETS_CSV: 'context,repos,issues,pull_requests,users',
+  MCP_PRESET_CONTEXT7_TRANSPORT: 'stdio',
+  MCP_PRESET_CONTEXT7_COMMAND: '',
+  MCP_PRESET_CONTEXT7_ARGS_JSON: '[]',
+  MCP_PRESET_CONTEXT7_URL: '',
+  MCP_PRESET_CONTEXT7_TOKEN: '',
+  MCP_PRESET_PLAYWRIGHT_TRANSPORT: 'stdio',
+  MCP_PRESET_PLAYWRIGHT_COMMAND: '',
+  MCP_PRESET_PLAYWRIGHT_ARGS_JSON: '[]',
+  MCP_PRESET_PLAYWRIGHT_URL: '',
+  MCP_PRESET_PLAYWRIGHT_TOKEN: '',
+  MCP_PRESET_FIRECRAWL_TRANSPORT: 'stdio',
+  MCP_PRESET_FIRECRAWL_COMMAND: '',
+  MCP_PRESET_FIRECRAWL_ARGS_JSON: '[]',
+  MCP_PRESET_FIRECRAWL_URL: '',
+  MCP_PRESET_FIRECRAWL_TOKEN: '',
+  MCP_PRESET_MARKITDOWN_TRANSPORT: 'stdio',
+  MCP_PRESET_MARKITDOWN_COMMAND: '',
+  MCP_PRESET_MARKITDOWN_ARGS_JSON: '[]',
+  MCP_PRESET_MARKITDOWN_URL: '',
+  MCP_PRESET_MARKITDOWN_TOKEN: '',
 
   // Output / Runtime Control
   CHAT_MAX_OUTPUT_TOKENS: '4096',
@@ -486,7 +504,7 @@ export const envSchema = z.object({
   TOOL_WEB_SEARCH_PROVIDER_ORDER: z.string().default('tavily,exa,searxng'),
   TOOL_WEB_SEARCH_TIMEOUT_MS: z.coerce.number().int().min(1000).max(180000).default(45000),
   TOOL_WEB_SEARCH_MAX_RESULTS: z.coerce.number().int().min(1).max(10).default(8),
-  TOOL_WEB_SCRAPE_PROVIDER_ORDER: z.string().default('crawl4ai,firecrawl,jina,nomnom,raw_fetch'),
+  TOOL_WEB_SCRAPE_PROVIDER_ORDER: z.string().default('crawl4ai,firecrawl,jina,raw_fetch'),
   TOOL_WEB_SCRAPE_TIMEOUT_MS: z.coerce.number().int().min(1000).max(180000).default(45000),
   TAVILY_API_KEY: z.string().optional(),
   EXA_API_KEY: z.string().optional(),
@@ -495,26 +513,72 @@ export const envSchema = z.object({
   SEARXNG_SEARCH_PATH: z.string().default('/search'),
   SEARXNG_CATEGORIES: z.string().default('general'),
   SEARXNG_LANGUAGE: z.string().default('en-US'),
-  FIRECRAWL_API_KEY: z.string().optional(),
-  FIRECRAWL_BASE_URL: httpOrHttpsUrlSchema.default('https://api.firecrawl.dev/v1'),
   CRAWL4AI_BASE_URL: optionalHttpOrHttpsUrlSchema,
   CRAWL4AI_BEARER_TOKEN: z.string().optional(),
   JINA_READER_BASE_URL: z.string().default('https://r.jina.ai/http://'),
-  MCP_SERVERS_JSON: z.string().trim().default(''),
-  MCP_GITHUB_ENABLED: z.enum(['true', 'false']).default('false').transform((v) => v === 'true'),
-  MCP_GITHUB_TRANSPORT: z.enum(['stdio', 'streamable_http']).default('stdio'),
-  MCP_GITHUB_COMMAND: z.string().trim().default(''),
-  MCP_GITHUB_ARGS_JSON: z.string().trim().default('["stdio","--read-only"]').refine((value) => {
+  MCP_PRESETS_ENABLED_CSV: z.string().trim().default(''),
+  MCP_EXTRA_SERVERS_JSON: z.string().trim().default(''),
+  MCP_PRESET_GITHUB_TRANSPORT: z.enum(['stdio', 'streamable_http']).default('streamable_http'),
+  MCP_PRESET_GITHUB_COMMAND: z.string().trim().default(''),
+  MCP_PRESET_GITHUB_ARGS_JSON: z.string().trim().default('["stdio","--read-only"]').refine((value) => {
     try {
       const parsed = JSON.parse(value) as unknown;
       return Array.isArray(parsed) && parsed.every((entry) => typeof entry === 'string');
     } catch {
       return false;
     }
-  }, 'MCP_GITHUB_ARGS_JSON must be a JSON array of strings.'),
-  MCP_GITHUB_URL: optionalHttpOrHttpsUrlSchema.default('https://api.githubcopilot.com/mcp/'),
-  MCP_GITHUB_TOKEN: z.string().optional(),
-  MCP_GITHUB_TOOLSETS_CSV: z.string().trim().default('context,repos,issues,pull_requests,users'),
+  }, 'MCP_PRESET_GITHUB_ARGS_JSON must be a JSON array of strings.'),
+  MCP_PRESET_GITHUB_URL: optionalHttpOrHttpsUrlSchema.default('https://api.githubcopilot.com/mcp/'),
+  MCP_PRESET_GITHUB_TOKEN: z.string().optional(),
+  MCP_PRESET_GITHUB_TOOLSETS_CSV: z.string().trim().default('context,repos,issues,pull_requests,users'),
+  MCP_PRESET_CONTEXT7_TRANSPORT: z.enum(['stdio', 'streamable_http']).default('stdio'),
+  MCP_PRESET_CONTEXT7_COMMAND: z.string().trim().default(''),
+  MCP_PRESET_CONTEXT7_ARGS_JSON: z.string().trim().default('[]').refine((value) => {
+    try {
+      const parsed = JSON.parse(value) as unknown;
+      return Array.isArray(parsed) && parsed.every((entry) => typeof entry === 'string');
+    } catch {
+      return false;
+    }
+  }, 'MCP_PRESET_CONTEXT7_ARGS_JSON must be a JSON array of strings.'),
+  MCP_PRESET_CONTEXT7_URL: optionalHttpOrHttpsUrlSchema.default(''),
+  MCP_PRESET_CONTEXT7_TOKEN: z.string().optional(),
+  MCP_PRESET_PLAYWRIGHT_TRANSPORT: z.enum(['stdio', 'streamable_http']).default('stdio'),
+  MCP_PRESET_PLAYWRIGHT_COMMAND: z.string().trim().default(''),
+  MCP_PRESET_PLAYWRIGHT_ARGS_JSON: z.string().trim().default('[]').refine((value) => {
+    try {
+      const parsed = JSON.parse(value) as unknown;
+      return Array.isArray(parsed) && parsed.every((entry) => typeof entry === 'string');
+    } catch {
+      return false;
+    }
+  }, 'MCP_PRESET_PLAYWRIGHT_ARGS_JSON must be a JSON array of strings.'),
+  MCP_PRESET_PLAYWRIGHT_URL: optionalHttpOrHttpsUrlSchema.default(''),
+  MCP_PRESET_PLAYWRIGHT_TOKEN: z.string().optional(),
+  MCP_PRESET_FIRECRAWL_TRANSPORT: z.enum(['stdio', 'streamable_http']).default('stdio'),
+  MCP_PRESET_FIRECRAWL_COMMAND: z.string().trim().default(''),
+  MCP_PRESET_FIRECRAWL_ARGS_JSON: z.string().trim().default('[]').refine((value) => {
+    try {
+      const parsed = JSON.parse(value) as unknown;
+      return Array.isArray(parsed) && parsed.every((entry) => typeof entry === 'string');
+    } catch {
+      return false;
+    }
+  }, 'MCP_PRESET_FIRECRAWL_ARGS_JSON must be a JSON array of strings.'),
+  MCP_PRESET_FIRECRAWL_URL: optionalHttpOrHttpsUrlSchema.default(''),
+  MCP_PRESET_FIRECRAWL_TOKEN: z.string().optional(),
+  MCP_PRESET_MARKITDOWN_TRANSPORT: z.enum(['stdio', 'streamable_http']).default('stdio'),
+  MCP_PRESET_MARKITDOWN_COMMAND: z.string().trim().default(''),
+  MCP_PRESET_MARKITDOWN_ARGS_JSON: z.string().trim().default('[]').refine((value) => {
+    try {
+      const parsed = JSON.parse(value) as unknown;
+      return Array.isArray(parsed) && parsed.every((entry) => typeof entry === 'string');
+    } catch {
+      return false;
+    }
+  }, 'MCP_PRESET_MARKITDOWN_ARGS_JSON must be a JSON array of strings.'),
+  MCP_PRESET_MARKITDOWN_URL: optionalHttpOrHttpsUrlSchema.default(''),
+  MCP_PRESET_MARKITDOWN_TOKEN: z.string().optional(),
 
   // Output / Runtime Control
   CHAT_MAX_OUTPUT_TOKENS: z.coerce.number().int().min(128).max(16000).default(4096),

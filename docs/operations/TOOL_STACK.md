@@ -44,7 +44,7 @@ flowchart LR
     classDef hosted fill:#fff3cd,stroke:#856404,color:black
     classDef sage fill:#cce5ff,stroke:#004085,color:black
 
-    S["Sage runtime"]:::sage --> W["web_search / web_read / web_extract / web_research"]:::sage
+    S["Sage runtime"]:::sage --> W["web_search / web_read / web_read_page"]:::sage
     S --> FI["discord_files.read_attachment"]:::sage
 
     W -->|"search order"| S1["SearXNG"]:::local
@@ -90,7 +90,7 @@ This starts:
 ```env
 # Self-host first, hosted fallback
 TOOL_WEB_SEARCH_PROVIDER_ORDER=searxng,tavily,exa
-TOOL_WEB_SCRAPE_PROVIDER_ORDER=crawl4ai,firecrawl,jina,nomnom,raw_fetch
+TOOL_WEB_SCRAPE_PROVIDER_ORDER=crawl4ai,firecrawl,jina,raw_fetch
 
 # Local endpoints
 SEARXNG_BASE_URL=http://127.0.0.1:18080
@@ -103,7 +103,8 @@ FILE_INGEST_TIKA_BASE_URL=http://127.0.0.1:9998
 ```env
 TAVILY_API_KEY=tvly-...
 EXA_API_KEY=...
-FIRECRAWL_API_KEY=fc-...
+MCP_PRESETS_ENABLED_CSV=github,context7,firecrawl
+MCP_PRESET_FIRECRAWL_TOKEN=fc-...
 ```
 
 ---
@@ -124,7 +125,7 @@ searxng → tavily → exa
 | Variable | Default | Description |
 | :--- | :--- | :--- |
 | `TOOL_WEB_SEARCH_PROVIDER_ORDER` | `tavily,exa,searxng` | Search provider order |
-| `TOOL_WEB_SCRAPE_PROVIDER_ORDER` | `crawl4ai,firecrawl,jina,nomnom,raw_fetch` | Scrape provider order |
+| `TOOL_WEB_SCRAPE_PROVIDER_ORDER` | `crawl4ai,firecrawl,jina,raw_fetch` | Scrape provider order |
 
 > [!NOTE]
 > The default search order is API-first (`tavily` first); the default scrape order is local-first (`crawl4ai` first). When running the self-hosted stack, set `TOOL_WEB_SEARCH_PROVIDER_ORDER=searxng,tavily,exa` to prefer your local SearXNG instance.
@@ -173,11 +174,10 @@ The smoke script checks representative non-Discord tools from the current regist
 | `system_tool_stats` | Required |
 | `web_search` | Required |
 | `npm_info` | Required |
-| `wikipedia_search` | Required |
-| `stack_overflow_search` | Required |
+| `docs_lookup` | Optional |
 | `image_generate` | Optional |
 
-Optional MCP-backed tools are included automatically when their servers are configured and available. For example, enabling the GitHub MCP preset adds namespaced tools such as `mcp__github__search_code` to the live smoke inventory.
+Optional capability tools are included automatically when their curated MCP presets are configured and available. For example, enabling the GitHub preset adds `repo_search_code` and `repo_read_file`, while enabling Context7 adds `docs_lookup`.
 
 For GitHub MCP specifically, discovery is no longer treated as proof that every GitHub tool can execute. `npm run tools:audit` and the matching doctor check now separate:
 

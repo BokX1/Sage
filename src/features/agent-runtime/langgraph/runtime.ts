@@ -1772,7 +1772,7 @@ function getPriorGithubSearchAccessFailure(params: {
 
   for (let index = params.results.length - 1; index >= 0; index -= 1) {
     const result = params.results[index];
-    if (result.success || result.name !== 'mcp__github__search_code') {
+    if (result.success || result.name !== 'repo_search_code') {
       continue;
     }
     const category = result.errorDetails?.category;
@@ -1792,8 +1792,8 @@ function buildGithubSearchRetryBlockedOutcome(params: {
 }): { message: ToolMessage; result: SerializedToolResult } {
   const errorText =
     params.priorFailure.category === 'forbidden'
-      ? 'GitHub code search was not retried because the same run already hit a forbidden response. Confirm repository access, switch to mcp__github__get_file_contents for a known path, or ask the user for repo/path clarification.'
-      : 'GitHub code search was not retried because the same run already hit an unauthorized response. Confirm GitHub access, switch to mcp__github__get_file_contents for a known path, or ask the user for repo/path clarification.';
+      ? 'GitHub code search was not retried because the same run already hit a forbidden response. Confirm repository access, switch to repo_read_file for a known path, or ask the user for repo/path clarification.'
+      : 'GitHub code search was not retried because the same run already hit an unauthorized response. Confirm GitHub access, switch to repo_read_file for a known path, or ask the user for repo/path clarification.';
   const result: SerializedToolResult = {
     name: params.call.name,
     success: false,
@@ -2574,13 +2574,13 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
         args: call.args,
       };
       const priorGithubSearchAccessFailure =
-        serializedCall.name === 'mcp__github__search_code'
+        serializedCall.name === 'repo_search_code'
           ? getPriorGithubSearchAccessFailure({
               results: effectiveState.toolResults,
               call: serializedCall,
             })
           : null;
-      if (serializedCall.name === 'mcp__github__search_code' && priorGithubSearchAccessFailure) {
+      if (serializedCall.name === 'repo_search_code' && priorGithubSearchAccessFailure) {
         const blocked = buildGithubSearchRetryBlockedOutcome({
           call: serializedCall,
           priorFailure: priorGithubSearchAccessFailure,

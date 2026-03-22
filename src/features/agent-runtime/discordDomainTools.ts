@@ -652,6 +652,135 @@ const oauthInviteUrlSchema = z.object({
   disableGuildSelect: z.boolean().optional(),
 });
 
+const scheduledEventEntityTypeSchema = z.enum(['stage', 'voice', 'external']);
+
+const adminCreateScheduledEventSchema = z.object({
+  action: z.literal('create_scheduled_event').describe('Create a scheduled event. Requires admin context and approval.'),
+  name: z.string().trim().min(1).max(100),
+  entityType: scheduledEventEntityTypeSchema,
+  scheduledStartTime: z.string().trim().min(1).max(80),
+  scheduledEndTime: z.string().trim().min(1).max(80).optional(),
+  channelId: z.string().trim().min(1).max(64).optional(),
+  location: z.string().trim().min(1).max(200).optional(),
+  description: z.string().trim().max(1000).optional(),
+  reason: z.string().trim().max(500).optional(),
+}).superRefine((value, ctx) => {
+  if ((value.entityType === 'stage' || value.entityType === 'voice') && !value.channelId) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['channelId'],
+      message: 'Voice or stage scheduled events require channelId.',
+    });
+  }
+  if (value.entityType === 'external') {
+    if (!value.location) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['location'],
+        message: 'External scheduled events require location.',
+      });
+    }
+    if (!value.scheduledEndTime) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['scheduledEndTime'],
+        message: 'External scheduled events require scheduledEndTime.',
+      });
+    }
+  }
+});
+
+const adminUpdateScheduledEventSchema = z.object({
+  action: z.literal('update_scheduled_event').describe('Update a scheduled event. Requires admin context and approval.'),
+  eventId: z.string().trim().min(1).max(64),
+  name: z.string().trim().min(1).max(100).optional(),
+  entityType: scheduledEventEntityTypeSchema.optional(),
+  scheduledStartTime: z.string().trim().min(1).max(80).optional(),
+  scheduledEndTime: z.string().trim().min(1).max(80).nullable().optional(),
+  channelId: z.string().trim().min(1).max(64).nullable().optional(),
+  location: z.string().trim().min(1).max(200).nullable().optional(),
+  description: z.string().trim().max(1000).nullable().optional(),
+  status: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]).optional(),
+  reason: z.string().trim().max(500).optional(),
+}).superRefine((value, ctx) => {
+  if (
+    value.name === undefined &&
+    value.entityType === undefined &&
+    value.scheduledStartTime === undefined &&
+    value.scheduledEndTime === undefined &&
+    value.channelId === undefined &&
+    value.location === undefined &&
+    value.description === undefined &&
+    value.status === undefined
+  ) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['name'],
+      message: 'Provide at least one mutable scheduled-event field.',
+    });
+  }
+});
+
+const adminDeleteScheduledEventSchema = z.object({
+  action: z.literal('delete_scheduled_event').describe('Delete a scheduled event. Requires admin context and approval.'),
+  eventId: z.string().trim().min(1).max(64),
+  reason: z.string().trim().max(500).optional(),
+});
+
+const adminCreateForumPostSchema = z.object({
+  action: z.literal('create_forum_post').describe('Create a forum post inside a forum channel. Requires admin context and approval.'),
+  forumChannelId: z.string().trim().min(1).max(64),
+  title: z.string().trim().min(1).max(100),
+  content: z.string().trim().min(1).max(4_000),
+  appliedTagIds: z.array(z.string().trim().min(1).max(64)).max(20).optional(),
+  autoArchiveDurationMinutes: discordThreadAutoArchiveDurationSchema.optional(),
+  rateLimitPerUser: z.number().int().min(0).max(21_600).optional(),
+  reason: z.string().trim().max(500).optional(),
+});
+
+const adminUpdateForumTagsSchema = z.object({
+  action: z.literal('update_forum_tags').describe('Replace the applied tags on a forum thread. Requires admin context and approval.'),
+  threadId: z.string().trim().min(1).max(64),
+  appliedTagIds: z.array(z.string().trim().min(1).max(64)).max(20),
+  reason: z.string().trim().max(500).optional(),
+});
+
+const adminArchiveThreadSchema = z.object({
+  action: z.literal('archive_thread').describe('Archive a thread. Requires admin context and approval.'),
+  threadId: z.string().trim().min(1).max(64),
+  locked: z.boolean().optional(),
+  reason: z.string().trim().max(500).optional(),
+});
+
+const adminReopenThreadSchema = z.object({
+  action: z.literal('reopen_thread').describe('Reopen an archived thread. Requires admin context and approval.'),
+  threadId: z.string().trim().min(1).max(64),
+  locked: z.boolean().optional(),
+  reason: z.string().trim().max(500).optional(),
+});
+
+const adminListInvitesSchema = z.object({
+  action: z.literal('list_invites').describe('List active invites for the current guild or one channel. Admin-only read.'),
+  channelId: z.string().trim().min(1).max(64).optional(),
+  limit: z.number().int().min(1).max(100).optional(),
+});
+
+const adminCreateInviteSchema = z.object({
+  action: z.literal('create_invite').describe('Create an invite for a channel. Requires admin context and approval.'),
+  channelId: z.string().trim().min(1).max(64).optional(),
+  maxAgeSeconds: z.number().int().min(0).max(604_800).optional(),
+  maxUses: z.number().int().min(0).max(100).optional(),
+  temporary: z.boolean().optional(),
+  unique: z.boolean().optional(),
+  reason: z.string().trim().max(500).optional(),
+});
+
+const adminRevokeInviteSchema = z.object({
+  action: z.literal('revoke_invite').describe('Revoke an invite by code. Requires admin context and approval.'),
+  code: z.string().trim().min(1).max(128),
+  reason: z.string().trim().max(500).optional(),
+});
+
 const adminGetServerKeyStatusSchema = z.object({
   action: z.literal('get_server_key_status').describe('Check the current server-wide API key status. Admin-only read.'),
 });
@@ -1188,6 +1317,127 @@ export const discordAdminTools = [
     access: 'admin',
     capabilityTags: ['admin'],
     promptSummary: 'Use to generate the bot invite URL.',
+  }),
+  defineDiscordActionTool({
+    name: 'discord_admin_list_invites',
+    title: 'Discord Admin List Invites',
+    description: 'List active guild or channel invites.',
+    schema: adminListInvitesSchema,
+    domain: 'discord_admin',
+    executeDomain: executeDiscordAdminAction,
+    readOnly: true,
+    access: 'admin',
+    capabilityTags: ['admin', 'invites'],
+    promptSummary: 'Use to inspect active invite codes before creating or revoking one.',
+  }),
+  defineDiscordActionTool({
+    name: 'discord_admin_create_invite',
+    title: 'Discord Admin Create Invite',
+    description: 'Create a new invite for a channel.',
+    schema: adminCreateInviteSchema,
+    domain: 'discord_admin',
+    executeDomain: executeDiscordAdminAction,
+    readOnly: false,
+    access: 'admin',
+    capabilityTags: ['admin', 'invites'],
+    promptSummary: 'Use to create a channel invite under admin approval.',
+  }),
+  defineDiscordActionTool({
+    name: 'discord_admin_revoke_invite',
+    title: 'Discord Admin Revoke Invite',
+    description: 'Revoke an invite by its code.',
+    schema: adminRevokeInviteSchema,
+    domain: 'discord_admin',
+    executeDomain: executeDiscordAdminAction,
+    readOnly: false,
+    access: 'admin',
+    capabilityTags: ['admin', 'invites'],
+    promptSummary: 'Use to revoke an invite by code under admin approval.',
+  }),
+  defineDiscordActionTool({
+    name: 'discord_admin_create_scheduled_event',
+    title: 'Discord Admin Create Scheduled Event',
+    description: 'Create a scheduled event for the guild.',
+    schema: adminCreateScheduledEventSchema,
+    domain: 'discord_admin',
+    executeDomain: executeDiscordAdminAction,
+    readOnly: false,
+    access: 'admin',
+    capabilityTags: ['admin', 'events'],
+    promptSummary: 'Use to create a scheduled event under admin approval.',
+  }),
+  defineDiscordActionTool({
+    name: 'discord_admin_update_scheduled_event',
+    title: 'Discord Admin Update Scheduled Event',
+    description: 'Update a scheduled event for the guild.',
+    schema: adminUpdateScheduledEventSchema,
+    domain: 'discord_admin',
+    executeDomain: executeDiscordAdminAction,
+    readOnly: false,
+    access: 'admin',
+    capabilityTags: ['admin', 'events'],
+    promptSummary: 'Use to update an existing scheduled event under admin approval.',
+  }),
+  defineDiscordActionTool({
+    name: 'discord_admin_delete_scheduled_event',
+    title: 'Discord Admin Delete Scheduled Event',
+    description: 'Delete a scheduled event for the guild.',
+    schema: adminDeleteScheduledEventSchema,
+    domain: 'discord_admin',
+    executeDomain: executeDiscordAdminAction,
+    readOnly: false,
+    access: 'admin',
+    capabilityTags: ['admin', 'events'],
+    promptSummary: 'Use to delete a scheduled event under admin approval.',
+  }),
+  defineDiscordActionTool({
+    name: 'discord_admin_create_forum_post',
+    title: 'Discord Admin Create Forum Post',
+    description: 'Create a forum post in a forum channel.',
+    schema: adminCreateForumPostSchema,
+    domain: 'discord_admin',
+    executeDomain: executeDiscordAdminAction,
+    readOnly: false,
+    access: 'admin',
+    observationPolicy: 'artifact-only',
+    capabilityTags: ['admin', 'forum', 'threads', 'artifact'],
+    promptSummary: 'Use to create a forum post under admin approval.',
+  }),
+  defineDiscordActionTool({
+    name: 'discord_admin_update_forum_tags',
+    title: 'Discord Admin Update Forum Tags',
+    description: 'Replace the applied tags on a forum thread.',
+    schema: adminUpdateForumTagsSchema,
+    domain: 'discord_admin',
+    executeDomain: executeDiscordAdminAction,
+    readOnly: false,
+    access: 'admin',
+    capabilityTags: ['admin', 'forum', 'threads'],
+    promptSummary: 'Use to replace forum tags on a managed thread under admin approval.',
+  }),
+  defineDiscordActionTool({
+    name: 'discord_admin_archive_thread',
+    title: 'Discord Admin Archive Thread',
+    description: 'Archive a thread explicitly.',
+    schema: adminArchiveThreadSchema,
+    domain: 'discord_admin',
+    executeDomain: executeDiscordAdminAction,
+    readOnly: false,
+    access: 'admin',
+    capabilityTags: ['admin', 'threads'],
+    promptSummary: 'Use to archive a thread under admin approval.',
+  }),
+  defineDiscordActionTool({
+    name: 'discord_admin_reopen_thread',
+    title: 'Discord Admin Reopen Thread',
+    description: 'Reopen an archived thread explicitly.',
+    schema: adminReopenThreadSchema,
+    domain: 'discord_admin',
+    executeDomain: executeDiscordAdminAction,
+    readOnly: false,
+    access: 'admin',
+    capabilityTags: ['admin', 'threads'],
+    promptSummary: 'Use to reopen an archived thread under admin approval.',
   }),
   defineDiscordActionTool({
     name: 'discord_admin_clear_server_api_key',

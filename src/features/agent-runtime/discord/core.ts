@@ -205,6 +205,12 @@ function buildDiscordBotInviteUrl(params: {
   return url.toString();
 }
 
+function mapScheduledEventEntityType(value: 'stage' | 'voice' | 'external'): 1 | 2 | 3 {
+  if (value === 'stage') return 1;
+  if (value === 'voice') return 2;
+  return 3;
+}
+
 function parseHexColor(value: string): number {
   const normalized = value.trim().replace(/^#/, '');
   const parsed = Number.parseInt(normalized, 16);
@@ -1919,6 +1925,223 @@ export async function executeDiscordAdminAction(
         request: {
           method: args.action === 'add_member_role' ? 'PUT' : 'DELETE',
           path: `/guilds/${requireGuildContext(ctx.guildId)}/members/${data.userId}/roles/${data.roleId}`,
+          reason: data.reason,
+        },
+      });
+    }
+    case 'create_scheduled_event': {
+      const data = asAction<{
+        name: string;
+        entityType: 'stage' | 'voice' | 'external';
+        scheduledStartTime: string;
+        scheduledEndTime?: string;
+        channelId?: string;
+        location?: string;
+        description?: string;
+        reason?: string;
+      }>(args);
+      const body: Record<string, unknown> = {
+        name: data.name,
+        privacy_level: 2,
+        entity_type: mapScheduledEventEntityType(data.entityType),
+        scheduled_start_time: data.scheduledStartTime,
+      };
+      if (data.scheduledEndTime !== undefined) body.scheduled_end_time = data.scheduledEndTime;
+      if (data.channelId !== undefined) body.channel_id = data.channelId;
+      if (data.description !== undefined) body.description = data.description;
+      if (data.location !== undefined) {
+        body.entity_metadata = { location: data.location };
+      }
+      return queueDiscordRestWrite({
+        ctx,
+        actionLabel: 'create_scheduled_event',
+        request: {
+          method: 'POST',
+          path: `/guilds/${requireGuildContext(ctx.guildId)}/scheduled-events`,
+          body,
+          reason: data.reason,
+        },
+      });
+    }
+    case 'update_scheduled_event': {
+      const data = asAction<{
+        eventId: string;
+        name?: string;
+        entityType?: 'stage' | 'voice' | 'external';
+        scheduledStartTime?: string;
+        scheduledEndTime?: string;
+        channelId?: string | null;
+        location?: string | null;
+        description?: string | null;
+        status?: 1 | 2 | 3 | 4;
+        reason?: string;
+      }>(args);
+      const body: Record<string, unknown> = {};
+      if (data.name !== undefined) body.name = data.name;
+      if (data.entityType !== undefined) body.entity_type = mapScheduledEventEntityType(data.entityType);
+      if (data.scheduledStartTime !== undefined) body.scheduled_start_time = data.scheduledStartTime;
+      if (data.scheduledEndTime !== undefined) body.scheduled_end_time = data.scheduledEndTime;
+      if (data.channelId !== undefined) body.channel_id = data.channelId;
+      if (data.description !== undefined) body.description = data.description;
+      if (data.status !== undefined) body.status = data.status;
+      if (data.location !== undefined) {
+        body.entity_metadata = data.location === null ? null : { location: data.location };
+      }
+      return queueDiscordRestWrite({
+        ctx,
+        actionLabel: 'update_scheduled_event',
+        request: {
+          method: 'PATCH',
+          path: `/guilds/${requireGuildContext(ctx.guildId)}/scheduled-events/${data.eventId}`,
+          body,
+          reason: data.reason,
+        },
+      });
+    }
+    case 'delete_scheduled_event': {
+      const data = asAction<{ eventId: string; reason?: string }>(args);
+      return queueDiscordRestWrite({
+        ctx,
+        actionLabel: 'delete_scheduled_event',
+        request: {
+          method: 'DELETE',
+          path: `/guilds/${requireGuildContext(ctx.guildId)}/scheduled-events/${data.eventId}`,
+          reason: data.reason,
+        },
+      });
+    }
+    case 'create_forum_post': {
+      const data = asAction<{
+        forumChannelId: string;
+        title: string;
+        content: string;
+        appliedTagIds?: string[];
+        autoArchiveDurationMinutes?: 60 | 1440 | 4320 | 10080;
+        rateLimitPerUser?: number;
+        reason?: string;
+      }>(args);
+      const body: Record<string, unknown> = {
+        name: data.title,
+        message: {
+          content: data.content,
+          allowed_mentions: { parse: [] },
+        },
+      };
+      if (data.appliedTagIds?.length) body.applied_tags = data.appliedTagIds;
+      if (data.autoArchiveDurationMinutes !== undefined) {
+        body.auto_archive_duration = data.autoArchiveDurationMinutes;
+      }
+      if (data.rateLimitPerUser !== undefined) body.rate_limit_per_user = data.rateLimitPerUser;
+      return queueDiscordRestWrite({
+        ctx,
+        actionLabel: 'create_forum_post',
+        request: {
+          method: 'POST',
+          path: `/channels/${data.forumChannelId}/threads`,
+          body,
+          reason: data.reason,
+        },
+      });
+    }
+    case 'update_forum_tags': {
+      const data = asAction<{ threadId: string; appliedTagIds: string[]; reason?: string }>(args);
+      return queueDiscordRestWrite({
+        ctx,
+        actionLabel: 'update_forum_tags',
+        request: {
+          method: 'PATCH',
+          path: `/channels/${data.threadId}`,
+          body: {
+            applied_tags: data.appliedTagIds,
+          },
+          reason: data.reason,
+        },
+      });
+    }
+    case 'archive_thread':
+    case 'reopen_thread': {
+      const data = asAction<{ threadId: string; locked?: boolean; reason?: string }>(args);
+      return queueDiscordRestWrite({
+        ctx,
+        actionLabel: args.action,
+        request: {
+          method: 'PATCH',
+          path: `/channels/${data.threadId}`,
+          body: {
+            archived: args.action === 'archive_thread',
+            ...(data.locked !== undefined ? { locked: data.locked } : {}),
+          },
+          reason: data.reason,
+        },
+      });
+    }
+    case 'list_invites': {
+      const data = asAction<{ channelId?: string; limit?: number }>(args);
+      assertAdmin(ctx.invokerIsAdmin);
+      const rawInvites = toJsonRecordArray(
+        data.channelId
+          ? await readDiscordGuildResource({
+              ctx,
+              path: `/channels/${data.channelId}/invites`,
+              maxResponseChars: 50_000,
+            })
+          : await readDiscordGuildResource({
+              ctx,
+              path: `/guilds/${requireGuildContext(ctx.guildId)}/invites`,
+              maxResponseChars: 50_000,
+            }),
+      );
+      return {
+        ok: true,
+        action: 'list_invites',
+        guildId: requireGuildContext(ctx.guildId),
+        items: rawInvites.slice(0, data.limit ?? 50).map((invite) => ({
+          code: optionalString(invite.code) ?? null,
+          channelId: isJsonRecord(invite.channel) ? optionalString(invite.channel.id) ?? null : null,
+          guildId: isJsonRecord(invite.guild) ? optionalString(invite.guild.id) ?? null : null,
+          inviterId: isJsonRecord(invite.inviter) ? optionalString(invite.inviter.id) ?? null : null,
+          maxAge: optionalNumber(invite.max_age) ?? null,
+          maxUses: optionalNumber(invite.max_uses) ?? null,
+          temporary: optionalBoolean(invite.temporary) ?? false,
+          uses: optionalNumber(invite.uses) ?? null,
+          createdAt: optionalString(invite.created_at) ?? null,
+          expiresAt: optionalString(invite.expires_at) ?? null,
+        })),
+      };
+    }
+    case 'create_invite': {
+      const data = asAction<{
+        channelId?: string;
+        maxAgeSeconds?: number;
+        maxUses?: number;
+        temporary?: boolean;
+        unique?: boolean;
+        reason?: string;
+      }>(args);
+      return queueDiscordRestWrite({
+        ctx,
+        actionLabel: 'create_invite',
+        request: {
+          method: 'POST',
+          path: `/channels/${(data.channelId?.trim() || ctx.channelId).trim()}/invites`,
+          body: {
+            ...(data.maxAgeSeconds !== undefined ? { max_age: data.maxAgeSeconds } : {}),
+            ...(data.maxUses !== undefined ? { max_uses: data.maxUses } : {}),
+            ...(data.temporary !== undefined ? { temporary: data.temporary } : {}),
+            ...(data.unique !== undefined ? { unique: data.unique } : {}),
+          },
+          reason: data.reason,
+        },
+      });
+    }
+    case 'revoke_invite': {
+      const data = asAction<{ code: string; reason?: string }>(args);
+      return queueDiscordRestWrite({
+        ctx,
+        actionLabel: 'revoke_invite',
+        request: {
+          method: 'DELETE',
+          path: `/invites/${data.code}`,
           reason: data.reason,
         },
       });

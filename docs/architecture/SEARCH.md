@@ -4,7 +4,7 @@
   <img src="https://img.shields.io/badge/%F0%9F%8C%BF-Sage%20Search-2d5016?style=for-the-badge&labelColor=4a7c23" alt="Sage Search" />
 </p>
 
-How Sage fetches live information from the web through its registered research tools.
+How Sage fetches live information from the web through its registered public web tools.
 
 ---
 
@@ -22,7 +22,7 @@ How Sage fetches live information from the web through its registered research t
 
 ## 🌐 Overview
 
-Sage answers time-sensitive or factual queries by invoking web and research tools from the same LangGraph runtime that handles the rest of the turn. Instead of relying solely on training data, Sage can search, read, extract, and synthesize external sources when freshness matters.
+Sage answers time-sensitive or factual queries by invoking the same deterministic web tools from the LangGraph runtime that handles the rest of the turn. Instead of relying solely on training data, Sage can search the public web, read exact pages, and page through large pages when freshness matters.
 
 ```text
 User asks time-sensitive question
@@ -61,13 +61,14 @@ Search execution now follows the same provider-neutral runtime contract as the r
 | :--- | :--- |
 | Tool orchestration | Uses the configured `AI_PROVIDER_MAIN_AGENT_MODEL` |
 | Search providers | Uses only the explicitly configured search and scrape providers |
-| Fallback synthesis | Happens in the normal runtime loop; there is no hidden AI-provider search fallback |
+| Multi-source synthesis | Happens in the normal runtime loop; there is no one-shot hidden research tool |
+| Large pages | Use `web_read_page` to continue through a page without refetching the same content immediately |
 
 **Key rules:**
 
 - Sage no longer ships built-in search-model chains or hidden fallback model ids.
 - Search runs only through the configured search providers in `TOOL_WEB_SEARCH_PROVIDER_ORDER`.
-- Source/date normalization and provider capability validation still apply to search outputs.
+- Source/date normalization, provider health cooldowns, and exact-page memoization still apply to the remaining web tools.
 
 **Source:** [`src/features/agent-runtime/agentRuntime.ts`](../../src/features/agent-runtime/agentRuntime.ts) and [`src/features/agent-runtime/toolIntegrations.ts`](../../src/features/agent-runtime/toolIntegrations.ts)
 
@@ -93,13 +94,12 @@ Sage supports multiple search and scraping providers with automatic fallback:
 
 | Provider | Type | Configuration |
 | :--- | :--- | :--- |
-| Firecrawl | API-based scraper | `FIRECRAWL_API_KEY` |
+| Firecrawl | MCP-backed scraper | `MCP_PRESETS_ENABLED_CSV=firecrawl` plus `MCP_PRESET_FIRECRAWL_*` |
 | Crawl4AI | Self-hosted scraper | `CRAWL4AI_BASE_URL` |
 | Jina Reader | API-based reader | Built-in |
-| Nomnom | LLM-based scraper | Built-in |
 | Raw Fetch | Direct HTTP | Built-in |
 
-**Provider order:** Configured via `TOOL_WEB_SCRAPE_PROVIDER_ORDER` (default: `crawl4ai,firecrawl,jina,nomnom,raw_fetch`)
+**Provider order:** Configured via `TOOL_WEB_SCRAPE_PROVIDER_ORDER` (default: `crawl4ai,firecrawl,jina,raw_fetch`)
 
 ---
 

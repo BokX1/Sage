@@ -277,7 +277,11 @@ Operators can audit that surface directly with `npm run tools:audit` or `npm run
 | `discord_admin_clear_governance_review_channel` | Clear the dedicated governance review channel. | Admin |
 | `discord_admin_clear_server_api_key` | Clear the current server-wide API key. | Admin |
 | `discord_admin_create_channel` | Create a new channel or category. | Admin |
+| `discord_admin_create_forum_post` | Create a new forum post in a guild forum channel. | Admin |
+| `discord_admin_create_invite` | Create a new invite for a guild channel. | Admin |
 | `discord_admin_create_role` | Create a new role. | Admin |
+| `discord_admin_create_scheduled_event` | Create a scheduled event for the guild. | Admin |
+| `discord_admin_delete_scheduled_event` | Delete a scheduled event from the guild. | Admin |
 | `discord_admin_delete_message` | Delete a message with admin approval. | Admin |
 | `discord_admin_delete_role` | Delete a role with admin approval. | Admin |
 | `discord_admin_edit_channel` | Edit an existing channel. | Admin |
@@ -286,12 +290,18 @@ Operators can audit that surface directly with `npm run tools:audit` or `npm run
 | `discord_admin_get_governance_review_status` | Inspect governance review routing. | Admin |
 | `discord_admin_get_invite_url` | Generate an OAuth2 invite URL for the bot. | Admin |
 | `discord_admin_get_server_key_status` | Check whether the guild has a server API key configured. | Admin |
+| `discord_admin_list_invites` | List active invites for the guild. | Admin |
+| `discord_admin_archive_thread` | Archive a managed thread. | Admin |
 | `discord_admin_pin_message` | Pin a message with admin approval. | Admin |
 | `discord_admin_remove_member_role` | Remove a role from a member with admin approval. | Admin |
+| `discord_admin_reopen_thread` | Reopen an archived managed thread. | Admin |
+| `discord_admin_revoke_invite` | Revoke an existing guild invite. | Admin |
 | `discord_admin_send_key_setup_card` | Send an interactive server-key setup card. | Admin |
 | `discord_admin_set_governance_review_channel` | Route governance review cards to a specific channel. | Admin |
 | `discord_admin_submit_moderation` | Submit a moderation or enforcement request. | Admin |
 | `discord_admin_unpin_message` | Unpin a message with admin approval. | Admin |
+| `discord_admin_update_forum_tags` | Update the available forum tags for a forum channel. | Admin |
+| `discord_admin_update_scheduled_event` | Update an existing scheduled event. | Admin |
 | `discord_admin_update_server_instructions` | Submit an admin request to update the guild Sage Persona. | Admin |
 
 ### 🔊 Discord Voice
@@ -306,13 +316,9 @@ Operators can audit that surface directly with `npm run tools:audit` or `npm run
 
 | Tool | Description | Access |
 |:---|:---|:---|
-| `web_extract` | Extract targeted fields from a web page. | Public |
 | `web_read` | Read a web page and return a compact summary. | Public |
 | `web_read_page` | Read a specific paginated or follow-up page. | Public |
-| `web_research` | Run a multi-step research flow. | Public |
 | `web_search` | Search the web. | Public |
-| `wikipedia_search` | Search Wikipedia for broad factual grounding. | Public |
-| `stack_overflow_search` | Search Stack Overflow for coding support. | Public |
 
 ### 💻 Developer
 
@@ -321,7 +327,7 @@ Operators can audit that surface directly with `npm run tools:audit` or `npm run
 | `npm_info` | Lookup npm package metadata. | Public |
 
 > [!TIP]
-> GitHub capability now comes from configured MCP servers. When the official GitHub MCP preset is enabled, Sage registers namespaced tools such as `mcp__github__search_code` and `mcp__github__get_file_contents` dynamically instead of shipping built-in `github_*` tools.
+> GitHub capability now comes from curated MCP presets, but the model sees stable Sage capabilities such as `repo_search_code` and `repo_read_file` instead of raw server-native tool names.
 
 ### 🎨 Generation
 

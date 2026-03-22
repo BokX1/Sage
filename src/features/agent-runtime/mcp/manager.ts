@@ -1,13 +1,10 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
-import { z } from 'zod';
 import { logger } from '../../../platform/logging/logger';
 import {
-  defineToolSpecV2,
   globalToolRegistry,
   type ToolRegistry,
-  type ToolSpecV2,
 } from '../toolRegistry';
 import {
   ToolDetailedError,
@@ -195,7 +192,7 @@ function classifyGitHubToolFailure(params: {
         buildToolErrorDetails({
           ...baseDetails,
           code: 'github_mcp_auth_failed',
-          hint: 'The configured GitHub token could not authenticate with GitHub MCP. Check MCP_GITHUB_TOKEN and the selected transport configuration.',
+          hint: 'The configured GitHub token could not authenticate with GitHub MCP. Check MCP_PRESET_GITHUB_TOKEN and the selected transport configuration.',
           retryable: false,
         }),
         { cause: params.cause },
@@ -213,7 +210,7 @@ function classifyGitHubToolFailure(params: {
             rawToolName: params.rawToolName,
             args: params.args,
           }),
-          hint: 'The GitHub MCP server is reachable, but this repo or query may not be searchable with the current token. If the exact repo/path is known, use mcp__github__get_file_contents instead, or ask the user to confirm repository visibility or provide repo/path.',
+          hint: 'The GitHub MCP server is reachable, but this repo or query may not be searchable with the current token. If the exact repo/path is known, use repo_read_file instead, or ask the user to confirm repository visibility or provide repo/path.',
           retryable: false,
         }),
         { cause: params.cause },
@@ -325,95 +322,19 @@ function extractMcpErrorMessage(result: unknown, fallbackToolName: string): stri
   return `MCP tool "${fallbackToolName}" reported an error.`;
 }
 
-function buildPromptGuidance(tool: McpToolDescriptor, serverId: string) {
-  return {
-    summary:
-      tool.description?.trim() ||
-      `Call the ${tool.name} tool exposed by MCP server "${serverId}" when its capability matches the request.`,
-    argumentNotes: [
-      `This tool is provided by the MCP server "${serverId}".`,
-    ],
-  };
-}
-
-function resolveReadOnlyHint(params: {
-  descriptor: McpServerDescriptor;
-  tool: McpToolDescriptor;
-}): boolean {
-  if (params.descriptor.trustLevel !== 'trusted') {
-    return false;
-  }
-  const annotations = params.tool.annotations ?? {};
-  return annotations.readOnlyHint === true || annotations.readOnly === true;
-}
-
-function buildMcpToolSpec(params: {
-  server: McpServerDescriptor;
-  tool: McpToolDescriptor;
-  toolName: string;
-  manager: McpManager;
-}): ToolSpecV2<unknown, unknown> {
-  const inputSchema = sanitizeJsonSchemaForProvider(params.tool.inputSchema);
-  const inputValidator = convertJsonSchemaToZod(inputSchema);
-  const readOnly = resolveReadOnlyHint({
-    descriptor: params.server,
-    tool: params.tool,
-  });
-
-  return defineToolSpecV2({
-    name: params.toolName,
-    title: params.tool.title ?? params.tool.name,
-    description:
-      params.tool.description?.trim() ||
-      `MCP tool "${params.tool.name}" from server "${params.server.id}".`,
-    input: inputValidator as z.ZodType<unknown>,
-    outputSchema: params.tool.outputSchema ? sanitizeJsonSchemaForProvider(params.tool.outputSchema) : undefined,
-    annotations: {
-      readOnlyHint: readOnly,
-      parallelSafe: readOnly,
-    },
-    runtime: {
-      class: readOnly ? 'query' : 'mutation',
-      readOnly,
-      observationPolicy: 'default',
-      capabilityTags: ['mcp', params.server.sanitizedId],
-      actionPolicy: () => ({
-        mutability: readOnly ? 'read' : 'write',
-        approvalMode: readOnly ? 'none' : 'required',
-        approvalGroupKey: `mcp:${params.server.sanitizedId}:${params.tool.name}`,
-      }),
-    },
-    prompt: buildPromptGuidance(params.tool, params.server.id),
-    smoke: {
-      mode: 'skip',
-      reason: `MCP tool "${params.tool.name}" requires external server availability.`,
-    },
-    validationHint: `This MCP tool expects object-shaped JSON arguments that match the server-advertised schema.`,
-    execute: async (args): Promise<McpToolExecutionResult> =>
-      params.manager.callTool({
-        serverId: params.server.id,
-        rawToolName: params.tool.name,
-        args,
-      }),
-  });
-}
-
 export class McpManager {
   private runtimes = new Map<string, ServerRuntime>();
   private initialized = false;
 
   async initialize(registry: ToolRegistry = globalToolRegistry): Promise<void> {
+    void registry;
     if (this.initialized) {
-      for (const runtime of this.runtimes.values()) {
-        this.registerExposedTools(runtime, registry);
-      }
       return;
     }
     const descriptors = loadMcpServerConfigs();
     for (const descriptor of descriptors) {
       const runtime = await this.connectServer(descriptor);
       this.runtimes.set(descriptor.id, runtime);
-      this.registerExposedTools(runtime, registry);
     }
     this.initialized = true;
   }
@@ -546,23 +467,6 @@ export class McpManager {
     return exposure;
   }
 
-  private registerExposedTools(runtime: ServerRuntime, registry: ToolRegistry): void {
-    for (const result of runtime.snapshot.exposure) {
-      if (!result.exposed || !result.boundToolName) continue;
-      const tool = runtime.snapshot.tools.find((entry) => entry.name === result.rawToolName);
-      if (!tool) continue;
-      if (registry.has(result.boundToolName)) continue;
-      registry.register(
-        buildMcpToolSpec({
-          server: runtime.descriptor,
-          tool,
-          toolName: result.boundToolName,
-          manager: this,
-        }),
-      );
-    }
-  }
-
   listDiscoverySnapshots(): McpDiscoverySnapshot[] {
     return Array.from(this.runtimes.values()).map((runtime) => ({
       ...runtime.snapshot,
@@ -574,119 +478,233 @@ export class McpManager {
     }));
   }
 
+  getToolDescriptor(serverId: string, rawToolName: string): McpToolDescriptor | null {
+    const runtime = this.runtimes.get(serverId);
+    if (!runtime) return null;
+    return runtime.snapshot.tools.find((tool) => tool.name === rawToolName) ?? null;
+  }
+
   async probeDiagnostics(): Promise<McpServerDiagnostic[]> {
     const diagnostics: McpServerDiagnostic[] = [];
 
     for (const runtime of this.runtimes.values()) {
-      if (!isGitHubServer(runtime.descriptor) || !isGitHubAuthConfigured(runtime.descriptor)) {
+      const presetId = runtime.descriptor.presetId;
+      if (!presetId) {
         continue;
       }
 
       if (!runtime.snapshot.connected) {
         diagnostics.push({
-          kind: 'github_capability',
+          kind: 'preset_capability',
+          presetId,
           serverId: runtime.descriptor.id,
           status: 'unavailable',
-          authProbe: 'skip',
-          codeSearchProbe: 'skip',
-          summary: 'GitHub MCP is configured but unavailable.',
-          details: [runtime.snapshot.errorText?.trim() || 'The configured GitHub MCP server could not be reached.'],
+          probes: {
+            discovery: 'fail',
+          },
+          summary: `MCP preset "${presetId}" is configured but unavailable.`,
+          details: [runtime.snapshot.errorText?.trim() || 'The configured MCP server could not be reached.'],
         });
         continue;
       }
 
-      const hasGetMe = isExposedTool(runtime, 'get_me');
-      const hasSearchCode = isExposedTool(runtime, 'search_code');
+      if (presetId === 'github' && isGitHubAuthConfigured(runtime.descriptor)) {
+        const hasGetMe = isExposedTool(runtime, 'get_me');
+        const hasSearchCode = isExposedTool(runtime, 'search_code');
 
-      if (hasGetMe) {
-        try {
-          await this.callTool({
-            serverId: runtime.descriptor.id,
-            rawToolName: 'get_me',
-            args: {},
-          });
-        } catch (error) {
-          const details = extractToolErrorDetails(error);
+        if (hasGetMe) {
+          try {
+            await this.callTool({
+              serverId: runtime.descriptor.id,
+              rawToolName: 'get_me',
+              args: {},
+            });
+          } catch (error) {
+            const details = extractToolErrorDetails(error);
+            diagnostics.push({
+              kind: 'preset_capability',
+              presetId,
+              serverId: runtime.descriptor.id,
+              status: 'unavailable',
+              probes: {
+                discovery: 'pass',
+                auth: 'fail',
+                codeSearch: 'skip',
+              },
+              summary: 'GitHub MCP discovery succeeded, but baseline auth failed.',
+              details: [
+                error instanceof Error ? error.message : String(error),
+                details?.hint ?? 'Check MCP_PRESET_GITHUB_TOKEN and the configured GitHub MCP transport.',
+              ],
+            });
+            continue;
+          }
+        }
+
+        if (!hasSearchCode) {
           diagnostics.push({
-            kind: 'github_capability',
+            kind: 'preset_capability',
+            presetId,
             serverId: runtime.descriptor.id,
-            status: 'unavailable',
-            authProbe: 'fail',
-            codeSearchProbe: 'skip',
-            summary: 'GitHub MCP discovery succeeded, but baseline auth failed.',
+            status: 'partial',
+            probes: {
+              discovery: 'pass',
+              auth: hasGetMe ? 'pass' : 'skip',
+              codeSearch: 'skip',
+            },
+            summary:
+              hasGetMe
+                ? 'GitHub MCP authenticated, but search_code is not exposed in the current tool surface.'
+                : 'GitHub MCP is connected, but neither get_me nor search_code is exposed in the current tool surface.',
             details: [
-              error instanceof Error ? error.message : String(error),
-              details?.hint ?? 'Check MCP_GITHUB_TOKEN and the configured GitHub MCP transport.',
+              hasGetMe
+                ? 'The GitHub MCP server connected successfully, but search_code is not currently exposed or provider-safe.'
+                : 'The current GitHub MCP allowlist or provider-safe exposure rules do not expose the baseline auth or code-search probes.',
             ],
           });
           continue;
         }
+
+        try {
+          await this.callTool({
+            serverId: runtime.descriptor.id,
+            rawToolName: 'search_code',
+            args: {
+              query: 'repo:github/github-mcp-server search_code',
+            },
+          });
+          diagnostics.push({
+            kind: 'preset_capability',
+            presetId,
+            serverId: runtime.descriptor.id,
+            status: 'healthy',
+            probes: {
+              discovery: 'pass',
+              auth: hasGetMe ? 'pass' : 'skip',
+              codeSearch: 'pass',
+            },
+            summary:
+              hasGetMe
+                ? 'GitHub MCP auth and baseline code search both succeeded.'
+                : 'GitHub MCP baseline code search succeeded under the current restricted tool surface.',
+            details:
+              hasGetMe
+                ? []
+                : ['Baseline auth probing was skipped because get_me is not exposed in the current GitHub MCP tool surface.'],
+          });
+        } catch (error) {
+          const details = extractToolErrorDetails(error);
+          diagnostics.push({
+            kind: 'preset_capability',
+            presetId,
+            serverId: runtime.descriptor.id,
+            status: 'partial',
+            probes: {
+              discovery: 'pass',
+              auth: hasGetMe ? 'pass' : 'skip',
+              codeSearch: 'fail',
+            },
+            summary:
+              hasGetMe
+                ? 'GitHub MCP authenticated, but baseline code search is restricted or unavailable.'
+                : 'GitHub MCP search_code is exposed, but baseline auth probing was skipped and code search is restricted or unavailable.',
+            details: [
+              error instanceof Error ? error.message : String(error),
+              ...(!hasGetMe
+                ? ['Baseline auth probing was skipped because get_me is not exposed in the current GitHub MCP tool surface.']
+                : []),
+              details?.hint ?? 'Treat this as a scoped GitHub code-search capability problem, not a blanket MCP outage.',
+            ],
+          });
+        }
+        continue;
       }
 
-      if (!hasSearchCode) {
+      if (presetId === 'context7') {
+        const hasResolveTool = ['resolve-library-id', 'resolve_library_id'].some((name) => isExposedTool(runtime, name));
+        const hasDocsTool = ['get-library-docs', 'get_library_docs', 'query-docs', 'query_docs'].some((name) => isExposedTool(runtime, name));
         diagnostics.push({
-          kind: 'github_capability',
+          kind: 'preset_capability',
+          presetId,
           serverId: runtime.descriptor.id,
-          status: 'partial',
-          authProbe: hasGetMe ? 'pass' : 'skip',
-          codeSearchProbe: 'skip',
+          status: hasResolveTool && hasDocsTool ? 'healthy' : 'partial',
+          probes: {
+            discovery: 'pass',
+            resolve: hasResolveTool ? 'pass' : 'skip',
+            docs: hasDocsTool ? 'pass' : 'skip',
+          },
           summary:
-            hasGetMe
-              ? 'GitHub MCP authenticated, but search_code is not exposed in the current tool surface.'
-              : 'GitHub MCP is connected, but neither get_me nor search_code is exposed in the current tool surface.',
+            hasResolveTool && hasDocsTool
+              ? 'Context7 MCP exposes the required docs lookup tools.'
+              : 'Context7 MCP is connected, but the required resolve/docs tool pair is incomplete.',
           details: [
-            hasGetMe
-              ? 'The GitHub MCP server connected successfully, but search_code is not currently exposed or provider-safe.'
-              : 'The current GitHub MCP allowlist or provider-safe exposure rules do not expose the baseline auth or code-search probes.',
+            ...(hasResolveTool && hasDocsTool
+              ? []
+              : ['Expected both resolve-library-id and get-library-docs/query-docs to be exposed for docs_lookup.']),
           ],
         });
         continue;
       }
 
-      try {
-        await this.callTool({
+      if (presetId === 'playwright') {
+        const hasNavigate = isExposedTool(runtime, 'browser_navigate');
+        const hasSnapshot = isExposedTool(runtime, 'browser_snapshot');
+        diagnostics.push({
+          kind: 'preset_capability',
+          presetId,
           serverId: runtime.descriptor.id,
-          rawToolName: 'search_code',
-          args: {
-            query: 'repo:github/github-mcp-server search_code',
+          status: hasNavigate && hasSnapshot ? 'healthy' : 'partial',
+          probes: {
+            discovery: 'pass',
+            navigate: hasNavigate ? 'pass' : 'skip',
+            snapshot: hasSnapshot ? 'pass' : 'skip',
           },
-        });
-        diagnostics.push({
-          kind: 'github_capability',
-          serverId: runtime.descriptor.id,
-          status: 'healthy',
-          authProbe: hasGetMe ? 'pass' : 'skip',
-          codeSearchProbe: 'pass',
           summary:
-            hasGetMe
-              ? 'GitHub MCP auth and baseline code search both succeeded.'
-              : 'GitHub MCP baseline code search succeeded under the current restricted tool surface.',
+            hasNavigate && hasSnapshot
+              ? 'Playwright MCP exposes the required browser navigation and snapshot tools.'
+              : 'Playwright MCP is connected, but the required browser tool surface is incomplete.',
           details:
-            hasGetMe
+            hasNavigate && hasSnapshot
               ? []
-              : ['Baseline auth probing was skipped because get_me is not exposed in the current GitHub MCP tool surface.'],
+              : ['Expected both browser_navigate and browser_snapshot to be exposed.'],
         });
-      } catch (error) {
-        const details = extractToolErrorDetails(error);
+        continue;
+      }
+
+      if (presetId === 'firecrawl' || presetId === 'markitdown') {
         diagnostics.push({
-          kind: 'github_capability',
+          kind: 'preset_capability',
+          presetId,
           serverId: runtime.descriptor.id,
-          status: 'partial',
-          authProbe: hasGetMe ? 'pass' : 'skip',
-          codeSearchProbe: 'fail',
+          status: runtime.snapshot.tools.length > 0 ? 'healthy' : 'partial',
+          probes: {
+            discovery: 'pass',
+            tools: runtime.snapshot.tools.length > 0 ? 'pass' : 'skip',
+          },
           summary:
-            hasGetMe
-              ? 'GitHub MCP authenticated, but baseline code search is restricted or unavailable.'
-              : 'GitHub MCP search_code is exposed, but baseline auth probing was skipped and code search is restricted or unavailable.',
+            runtime.snapshot.tools.length > 0
+              ? `Preset "${presetId}" connected and exposed tools successfully.`
+              : `Preset "${presetId}" connected, but no tools were exposed.`,
           details: [
-            error instanceof Error ? error.message : String(error),
-            ...(!hasGetMe
-              ? ['Baseline auth probing was skipped because get_me is not exposed in the current GitHub MCP tool surface.']
-              : []),
-            details?.hint ?? 'Treat this as a scoped GitHub code-search capability problem, not a blanket MCP outage.',
+            ...(runtime.snapshot.tools.length > 0
+              ? []
+              : ['Check the preset allowlist and upstream server configuration.']),
           ],
         });
+        continue;
       }
+
+      diagnostics.push({
+        kind: 'preset_capability',
+        presetId,
+        serverId: runtime.descriptor.id,
+        status: 'healthy',
+        probes: {
+          discovery: 'pass',
+        },
+        summary: `Preset "${presetId}" connected successfully.`,
+        details: [],
+      });
     }
 
     return diagnostics;
@@ -782,6 +800,18 @@ export async function shutdownMcpTools(): Promise<void> {
 
 export function listMcpDiscoverySnapshots(): McpDiscoverySnapshot[] {
   return globalMcpManager.listDiscoverySnapshots();
+}
+
+export function getMcpToolDescriptor(serverId: string, rawToolName: string): McpToolDescriptor | null {
+  return globalMcpManager.getToolDescriptor(serverId, rawToolName);
+}
+
+export async function callMcpTool(params: {
+  serverId: string;
+  rawToolName: string;
+  args: unknown;
+}): Promise<McpToolExecutionResult> {
+  return globalMcpManager.callTool(params);
 }
 
 export async function probeMcpServerDiagnostics(): Promise<McpServerDiagnostic[]> {

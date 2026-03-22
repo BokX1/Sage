@@ -20,10 +20,8 @@ describe('default agentic tools', () => {
       'web_search',
       'image_generate',
       'npm_info',
-      'stack_overflow_search',
       'system_tool_stats',
       'system_time',
-      'wikipedia_search',
     ]));
     expect(names).not.toContain('discord_admin');
     expect(names).not.toContain('github');

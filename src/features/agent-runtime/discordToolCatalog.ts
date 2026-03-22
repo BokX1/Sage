@@ -68,11 +68,9 @@ export const DISCORD_SERVER_ACTION_CATALOG = {
 } as const;
 
 export const DISCORD_ADMIN_ACTION_CATALOG = {
-  read_only: ['get_invite_url'],
+  read_only: ['get_server_key_status', 'get_governance_review_status', 'get_invite_url', 'list_invites'],
   writes: [],
   admin_only: [
-    'get_server_key_status',
-    'get_governance_review_status',
     'clear_server_api_key',
     'set_governance_review_channel',
     'clear_governance_review_channel',
@@ -90,6 +88,15 @@ export const DISCORD_ADMIN_ACTION_CATALOG = {
     'delete_role',
     'add_member_role',
     'remove_member_role',
+    'create_scheduled_event',
+    'update_scheduled_event',
+    'delete_scheduled_event',
+    'create_forum_post',
+    'update_forum_tags',
+    'archive_thread',
+    'reopen_thread',
+    'create_invite',
+    'revoke_invite',
     'api',
   ],
 } as const;

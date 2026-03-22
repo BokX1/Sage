@@ -27,6 +27,8 @@
 
 ### Added
 
+- Added a capability-first MCP preset layer for the developer/browser stack: Sage now binds curated GitHub, Context7, Playwright, Firecrawl, and MarkItDown presets behind stable model-facing capabilities such as `repo_search_code`, `repo_read_file`, `docs_lookup`, and `browser_*` instead of exposing raw server-native MCP tool names.
+- Added native Discord operator coverage for scheduled event lifecycle, forum-post/tag management, explicit thread archive/reopen controls, and invite lifecycle actions, all on Sage's existing admin approval and guild-scope governance path.
 - Added a first-class MCP substrate for Sage's runtime tool layer: operators can now register trusted or untrusted MCP servers over `stdio` or streamable HTTP, Sage audits discovered tools/resources/prompts deterministically at startup, and provider-safe MCP tools are exposed under stable namespaced runtime tool names such as `mcp__github__search_code`.
 - Added requester-only active-run steering interrupts for long-running tasks: when Sage is still `running`, a direct reply to the canonical live Sage response now queues one latest-wins steering message for the next safe reasoning boundary instead of silently forking a new task.
 - Added a dedicated `npm run langgraph:discord:smoke` command plus disposable-guild env knobs, so operators can validate the real Discord LangGraph read lane and approval/resume write flow without depending on LLM tool selection.
@@ -64,6 +66,18 @@
 - Added stable attachment cache references (`attachment:<id>`) in transcript notes so cached file content can be retrieved directly via `discord` action `files.read_attachment`.
 
 ### Changed
+
+- Changed Sage's public web tool contract to a deterministic three-tool surface: `web_search`, `web_read`, and `web_read_page` now replace the old pseudo-agentic `web_extract` / `web_research` paths, exact-page reads are memoized briefly for long-running turns, and `web_read_page` can seed large-page continuation from a recent `web_read` instead of immediately refetching the same URL.
+- Changed the web provider reliability model from local-only cooldowns to shared provider-health tracking across all search and scrape backends, so Sage now backs off after auth, rate-limit, timeout, network, and upstream failures instead of hammering unhealthy remote providers every turn.
+- Changed Sage's MCP configuration contract from GitHub-only toggles to curated preset configuration: operators now enable MCP capability families through `MCP_PRESETS_ENABLED_CSV`, `MCP_PRESET_<ID>_*`, and `MCP_EXTRA_SERVERS_JSON`, while doctor/audit output reports preset capability health instead of assuming raw MCP tool exposure is the operator-facing contract.
+- Changed the web scrape lane so Firecrawl is now consumed through the Firecrawl MCP preset when that provider is selected, rather than through the old direct Firecrawl REST env wiring.
+- Changed Sage's model-facing research/developer surface to remove raw `mcp__*` GitHub names from prompts/tests/docs and standardize on stable capability tools like `repo_*`, `docs_lookup`, and `browser_*`.
+
+### Removed
+
+- Removed the public `web_extract` and `web_research` tools plus the hidden `nomnom` web-scrape leg that powered them, so Sage no longer advertises one-shot extraction/research behavior it cannot guarantee or relies on a hard-coded model id outside the normal provider contract.
+- Removed the retired built-in `wikipedia_search` and `stack_overflow_search` tools from Sage's default model-facing tool inventory.
+- Removed the old direct Firecrawl REST configuration surface (`FIRECRAWL_API_KEY`, `FIRECRAWL_BASE_URL`) in favor of the curated Firecrawl MCP preset contract.
 
 - Changed Sage's GitHub capability from native built-in tools to an MCP-backed integration model: the optional official GitHub preset is now configured through `MCP_GITHUB_*` / `MCP_SERVERS_JSON`, tool docs and audits treat MCP-backed GitHub tools as part of the developer surface, and only provider-safe MCP tool schemas are exposed to models.
 - Changed GitHub MCP diagnostics and failure handling so Sage now distinguishes discovery health from live capability: operator audits/doctor runs probe baseline `get_me` auth separately from public `search_code` when those tools are actually exposed, GitHub-specific `401` / `403` failures are classified as scoped auth/access problems instead of a blanket outage, and same-run GitHub code-search auth failures now trip a request-scoped retry breaker instead of suppressing unrelated later searches in the same run.

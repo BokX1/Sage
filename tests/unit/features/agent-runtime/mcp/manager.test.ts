@@ -25,7 +25,6 @@ vi.mock('@modelcontextprotocol/sdk/client/streamableHttp.js', () => ({
 }));
 
 import { McpManager } from '../../../../../src/features/agent-runtime/mcp/manager';
-import { ToolRegistry } from '../../../../../src/features/agent-runtime/toolRegistry';
 import type { McpDiscoverySnapshot, McpServerDescriptor } from '../../../../../src/features/agent-runtime/mcp/types';
 
 function makeServerDescriptor(overrides: Partial<McpServerDescriptor> = {}): McpServerDescriptor {
@@ -34,6 +33,8 @@ function makeServerDescriptor(overrides: Partial<McpServerDescriptor> = {}): Mcp
     sanitizedId: 'github',
     enabled: true,
     trustLevel: 'trusted',
+    source: 'preset',
+    presetId: 'github',
     transport: {
       kind: 'stdio',
       command: 'noop',
@@ -77,7 +78,7 @@ function makeSnapshot(overrides: Partial<McpDiscoverySnapshot> = {}): McpDiscove
 }
 
 describe('McpManager', () => {
-  it('re-registers already discovered MCP tools into a fresh registry after initialization', async () => {
+  it('returns discovered raw MCP tool descriptors for capability binding', async () => {
     const manager = new McpManager();
     const runtime = {
       descriptor: makeServerDescriptor(),
@@ -103,18 +104,11 @@ describe('McpManager', () => {
     (manager as unknown as { initialized: boolean }).initialized = true;
     (manager as unknown as { runtimes: Map<string, unknown> }).runtimes = new Map([['github', runtime]]);
 
-    const registry = new ToolRegistry();
-    await manager.initialize(registry);
-
-    expect(registry.listNames()).toContain('mcp__github__search_code');
-    const execution = await registry.executeValidated(
-      {
-        name: 'mcp__github__search_code',
-        args: { query: 'agentRuntime' },
-      },
-      { traceId: 'trace', userId: 'user', channelId: 'channel' },
+    expect(manager.getToolDescriptor('github', 'search_code')).toEqual(
+      expect.objectContaining({
+        name: 'search_code',
+      }),
     );
-    expect(execution.success).toBe(true);
   });
 
   it('classifies GitHub search_code auth failures as scoped GitHub MCP access problems', async () => {
@@ -226,11 +220,14 @@ describe('McpManager', () => {
 
     expect(diagnostics).toEqual([
       expect.objectContaining({
-        kind: 'github_capability',
+        kind: 'preset_capability',
+        presetId: 'github',
         serverId: 'github',
         status: 'partial',
-        authProbe: 'pass',
-        codeSearchProbe: 'fail',
+        probes: expect.objectContaining({
+          auth: 'pass',
+          codeSearch: 'fail',
+        }),
       }),
     ]);
     expect(callToolMock).toHaveBeenCalledTimes(2);
@@ -272,11 +269,14 @@ describe('McpManager', () => {
 
     expect(diagnostics).toEqual([
       expect.objectContaining({
-        kind: 'github_capability',
+        kind: 'preset_capability',
+        presetId: 'github',
         serverId: 'github',
         status: 'healthy',
-        authProbe: 'skip',
-        codeSearchProbe: 'pass',
+        probes: expect.objectContaining({
+          auth: 'skip',
+          codeSearch: 'pass',
+        }),
       }),
     ]);
     expect(callToolMock).toHaveBeenCalledTimes(1);
