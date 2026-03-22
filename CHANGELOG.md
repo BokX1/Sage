@@ -27,6 +27,26 @@
 
 ### Added
 
+- Added a `TestimonialCarousel` component to the website homepage with animated glass cards, auto-advancing community experience quotes, and dot navigation, placed between the WhySage and StatsStrip sections.
+- Added two new differentiating features to the website comparison table: Server-Wide File Intelligence and Integrated Web Search.
+- Added an animated `gradient-headline` CSS class to the website design system for hero-level text with cycling brand-color gradients.
+- Added a prominent green "Get Sage" CTA button and GitHub icon to the website navigation bar, replacing the previous "View on GitHub" text link.
+- Added "Built with ♥ in TypeScript" personality line and a clickable MIT License link to the website footer.
+- Added a third "Star on GitHub" CTA button to the website hero section alongside Get Sage Free and Self-Host Guide.
+
+### Changed
+
+- Changed the website hero headline from "One AI Teammate For Your Discord Community" to "Your Community's Smartest Member Just Arrived" with animated gradient text for stronger marketing impact.
+- Changed the website hero subtext to benefit-driven copy emphasizing memory, autonomy, and data sovereignty instead of a feature list.
+- Changed the website CTA section copy from "Choose the fastest path" to "Start free in under 60 seconds" with social proof line "MIT Licensed · 80+ tools · Fully open source".
+- Changed the website page title to "Sage — The Agentic AI Teammate for Discord Communities" and updated the meta description with benefit-driven marketing copy.
+- Changed the website footer description from "LangGraph-Powered Runtime" to "agentic AI runtime" and updated copyright to 2025–2026.
+
+### Fixed
+
+- Fixed stale Prisma table count on the website stats strip: corrected from 17 to 18 to match the current `schema.prisma` model count.
+- Fixed inaccurate search provider count on the website stats strip: corrected from 4 to 3 to match the actual codebase (tavily, exa, searxng).
+
 - Added a capability-first MCP preset layer for the developer/browser stack: Sage now binds curated GitHub, Context7, Playwright, Firecrawl, and MarkItDown presets behind stable model-facing capabilities such as `repo_search_code`, `repo_read_file`, `docs_lookup`, and `browser_*` instead of exposing raw server-native MCP tool names.
 - Added native Discord operator coverage for scheduled event lifecycle, forum-post/tag management, explicit thread archive/reopen controls, and invite lifecycle actions, all on Sage's existing admin approval and guild-scope governance path.
 - Added a first-class MCP substrate for Sage's runtime tool layer: operators can now register trusted or untrusted MCP servers over `stdio` or streamable HTTP, Sage audits discovered tools/resources/prompts deterministically at startup, and provider-safe MCP tools are exposed under stable namespaced runtime tool names such as `mcp__github__search_code`.

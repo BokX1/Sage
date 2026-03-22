@@ -12,6 +12,8 @@ const features = [
     { name: 'Self-Hosted / Sovereign', sage: true, traditional: false, desc: 'Your data never leaves your infra' },
     { name: 'Basic Moderation', sage: true, traditional: true, desc: 'Kick, ban, mute, timeouts' },
     { name: 'Chat-First Triggers', sage: true, traditional: false, desc: 'Mentions, replies, and wake-word entrypoints' },
+    { name: 'Server-Wide File Intelligence', sage: true, traditional: false, desc: 'Search, read, and extract text from any shared file across the entire server' },
+    { name: 'Integrated Web Search', sage: true, traditional: false, desc: 'Multi-provider web search with source-grounded results' },
     { name: 'Role Management', sage: true, traditional: true, desc: 'Auto-roles and reaction roles' },
 ];
 

@@ -4,9 +4,9 @@ import { nativeToolCount } from '../lib/nativeTools.js';
 
 const stats = [
     { label: 'Native Tools', value: nativeToolCount, suffix: '+', color: '#78b846', max: 100 },
-    { label: 'Prisma Tables', value: 17, suffix: '', color: '#7AA2F7', max: 30 },
+    { label: 'Prisma Tables', value: 18, suffix: '', color: '#7AA2F7', max: 30 },
     { label: 'Technologies', value: 14, suffix: '', color: '#BB9AF7', max: 20 },
-    { label: 'Search Providers', value: 4, suffix: '', color: '#E0AF68', max: 10 },
+    { label: 'Search Providers', value: 3, suffix: '', color: '#E0AF68', max: 10 },
     { label: 'OpenAI Compatible', value: null, suffix: '', color: '#FF9E64', max: 1 },
 ];
 
