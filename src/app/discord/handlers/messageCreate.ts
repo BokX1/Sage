@@ -817,7 +817,7 @@ export async function handleMessageCreate(message: Message) {
       let staleMatchedTaskRun: AgentTaskRunRecord | null = null;
       let staleRecoveredWaitingTaskRun: AgentTaskRunRecord | null = null;
       if (runningTaskRun && hasMeaningfulSteeringInput) {
-        let queueResult: 'queued' | 'stale' | 'rejected' = 'rejected';
+        let queueResult: 'queued' | 'stale' | 'rejected';
         try {
           queueResult = await queueActiveRunUserInterrupt({
             threadId: runningTaskRun.threadId,

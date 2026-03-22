@@ -44,6 +44,8 @@
 
 ### Fixed
 
+- Fixed the website landing-page contract gate so CI now validates the current hosted/self-hosted CTA copy (`Get Sage Free` and `Self-Host Guide`) instead of failing on stale expectations from the previous marketing copy.
+- Fixed a dead assignment in the running-task interrupt path inside `messageCreate`, eliminating a CodeQL `useless assignment to local variable` warning without changing the active-run steering behavior.
 - Fixed stale Prisma table count on the website stats strip: corrected from 17 to 18 to match the current `schema.prisma` model count.
 - Fixed inaccurate search provider count on the website stats strip: corrected from 4 to 3 to match the actual codebase (tavily, exa, searxng).
 

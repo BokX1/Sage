@@ -35,8 +35,8 @@ describe('website landing page contracts', () => {
   it('surfaces distinct hosted and self-hosted CTA paths on the landing page', async () => {
     const pageSource = await read('website/src/pages/index.astro');
 
-    expect(pageSource).toContain('Add Hosted Sage');
-    expect(pageSource).toContain('Self-Host Sage');
+    expect(pageSource).toContain('Get Sage Free');
+    expect(pageSource).toContain('Self-Host Guide');
     expect(pageSource).toContain("href=\"#quickstart\"");
     expect(pageSource).toContain('docs/guides/GETTING_STARTED.md');
   });
