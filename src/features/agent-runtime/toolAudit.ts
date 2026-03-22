@@ -1,5 +1,6 @@
 import { ToolRegistry, globalToolRegistry } from './toolRegistry';
 import { listMcpDiscoverySnapshots } from './mcp/manager';
+import type { McpServerDiagnostic } from './mcp/types';
 
 export type ToolAuditSeverity = 'fail' | 'warn';
 
@@ -14,7 +15,9 @@ export interface ToolAuditFinding {
     | 'parallel_safe_not_read_only'
     | 'artifact_policy_mismatch'
     | 'mcp_tool_disabled'
-    | 'mcp_server_unavailable';
+    | 'mcp_server_unavailable'
+    | 'mcp_github_capability_partial'
+    | 'mcp_github_capability_unavailable';
   message: string;
 }
 
@@ -36,7 +39,12 @@ function makeFinding(finding: ToolAuditFinding): ToolAuditFinding {
   return finding;
 }
 
-export function auditToolRegistry(registry: Pick<ToolRegistry, 'listSpecs'> = globalToolRegistry): ToolAuditReport {
+export function auditToolRegistry(
+  registry: Pick<ToolRegistry, 'listSpecs'> = globalToolRegistry,
+  options?: {
+    mcpDiagnostics?: McpServerDiagnostic[];
+  },
+): ToolAuditReport {
   const findings: ToolAuditFinding[] = [];
   const specs = registry.listSpecs();
   let outputSchemaDeclared = 0;
@@ -136,6 +144,23 @@ export function auditToolRegistry(registry: Pick<ToolRegistry, 'listSpecs'> = gl
         }),
       );
     }
+  }
+
+  for (const diagnostic of options?.mcpDiagnostics ?? []) {
+    if (diagnostic.kind !== 'github_capability' || diagnostic.status === 'healthy') {
+      continue;
+    }
+    findings.push(
+      makeFinding({
+        severity: 'warn',
+        toolName: `mcp:${diagnostic.serverId}`,
+        code:
+          diagnostic.status === 'partial'
+            ? 'mcp_github_capability_partial'
+            : 'mcp_github_capability_unavailable',
+        message: [diagnostic.summary, ...diagnostic.details].filter((value) => value.trim().length > 0).join(' '),
+      }),
+    );
   }
 
   const failCount = findings.filter((finding) => finding.severity === 'fail').length;

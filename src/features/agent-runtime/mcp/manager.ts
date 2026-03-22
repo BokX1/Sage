@@ -9,11 +9,19 @@ import {
   type ToolRegistry,
   type ToolSpecV2,
 } from '../toolRegistry';
+import {
+  ToolDetailedError,
+  buildToolErrorDetails,
+  extractToolErrorDetails,
+  type ToolErrorDetails,
+} from '../toolErrors';
+import { buildToolCacheKey } from '../toolCache';
 import { sanitizeJsonSchemaForProvider } from '../../../shared/validation/json-schema';
 import { buildStableMcpToolName } from './naming';
 import { convertJsonSchemaToZod } from './jsonSchemaToZod';
 import { loadMcpServerConfigs } from './config';
 import type {
+  McpServerDiagnostic,
   McpDiscoverySnapshot,
   McpPromptDescriptor,
   McpResourceDescriptor,
@@ -101,6 +109,220 @@ function extractStructuredContent(value: unknown): unknown {
     return record.structuredContent;
   }
   return undefined;
+}
+
+function resolveTransportHost(descriptor: McpServerDescriptor): string | undefined {
+  if (descriptor.transport.kind !== 'streamable_http') {
+    return undefined;
+  }
+  try {
+    return new URL(descriptor.transport.url).host;
+  } catch {
+    return undefined;
+  }
+}
+
+function isGitHubServer(descriptor: McpServerDescriptor): boolean {
+  return descriptor.id === 'github' || descriptor.sanitizedId === 'github';
+}
+
+function isGitHubAuthConfigured(descriptor: McpServerDescriptor): boolean {
+  if (!isGitHubServer(descriptor)) {
+    return false;
+  }
+  if (descriptor.transport.kind === 'streamable_http') {
+    return typeof descriptor.transport.headers?.Authorization === 'string'
+      && descriptor.transport.headers.Authorization.trim().length > 0;
+  }
+  return typeof descriptor.transport.env?.GITHUB_PERSONAL_ACCESS_TOKEN === 'string'
+    && descriptor.transport.env.GITHUB_PERSONAL_ACCESS_TOKEN.trim().length > 0;
+}
+
+function isExposedTool(runtime: ServerRuntime, rawToolName: string): boolean {
+  return runtime.snapshot.exposure.some((entry) => entry.exposed && entry.rawToolName === rawToolName);
+}
+
+function buildMcpOperationKey(params: {
+  descriptor: McpServerDescriptor;
+  rawToolName: string;
+  args: unknown;
+}): string {
+  return buildToolCacheKey(
+    buildStableMcpToolName({
+      serverId: params.descriptor.sanitizedId,
+      rawToolName: params.rawToolName,
+    }),
+    params.args,
+  );
+}
+
+function createMcpToolDetailedError(params: {
+  message: string;
+  descriptor: McpServerDescriptor;
+  details: ToolErrorDetails;
+  cause?: unknown;
+}): ToolDetailedError {
+  return new ToolDetailedError(
+    params.message,
+    buildToolErrorDetails({
+      ...params.details,
+      provider: params.details.provider ?? `mcp:${params.descriptor.id}`,
+      host: params.details.host ?? resolveTransportHost(params.descriptor),
+    }),
+    { cause: params.cause },
+  );
+}
+
+function classifyGitHubToolFailure(params: {
+  descriptor: McpServerDescriptor;
+  rawToolName: string;
+  args?: unknown;
+  message: string;
+  details: ToolErrorDetails;
+  cause?: unknown;
+}): ToolDetailedError {
+  const category = params.details.category;
+  const baseDetails = {
+    ...params.details,
+    provider: 'github-mcp',
+    host: resolveTransportHost(params.descriptor),
+  } satisfies ToolErrorDetails;
+
+  if (category === 'unauthorized' || category === 'forbidden') {
+    if (params.rawToolName === 'get_me') {
+      return new ToolDetailedError(
+        'GitHub MCP authentication failed for the configured token.',
+        buildToolErrorDetails({
+          ...baseDetails,
+          code: 'github_mcp_auth_failed',
+          hint: 'The configured GitHub token could not authenticate with GitHub MCP. Check MCP_GITHUB_TOKEN and the selected transport configuration.',
+          retryable: false,
+        }),
+        { cause: params.cause },
+      );
+    }
+
+    if (params.rawToolName === 'search_code') {
+      return new ToolDetailedError(
+        'GitHub code search was denied for this request.',
+        buildToolErrorDetails({
+          ...baseDetails,
+          code: 'github_mcp_search_code_access_denied',
+          operationKey: buildMcpOperationKey({
+            descriptor: params.descriptor,
+            rawToolName: params.rawToolName,
+            args: params.args,
+          }),
+          hint: 'The GitHub MCP server is reachable, but this repo or query may not be searchable with the current token. If the exact repo/path is known, use mcp__github__get_file_contents instead, or ask the user to confirm repository visibility or provide repo/path.',
+          retryable: false,
+        }),
+        { cause: params.cause },
+      );
+    }
+
+    return new ToolDetailedError(
+      `GitHub MCP tool "${params.rawToolName}" was denied for this request.`,
+      buildToolErrorDetails({
+        ...baseDetails,
+        code: 'github_mcp_tool_access_denied',
+        hint: 'The current GitHub token may not have access to the requested repository or resource. Confirm access or ask the user for a narrower repository/path target.',
+        retryable: false,
+      }),
+      { cause: params.cause },
+    );
+  }
+
+  if (category === 'not_found') {
+    return new ToolDetailedError(
+      `GitHub MCP tool "${params.rawToolName}" did not find the requested resource.`,
+      buildToolErrorDetails({
+        ...baseDetails,
+        code: 'github_mcp_not_found',
+        hint: 'Confirm the owner, repository, and exact path or identifier before retrying.',
+        retryable: false,
+      }),
+      { cause: params.cause },
+    );
+  }
+
+  if (
+    category === 'network_error'
+    || category === 'timeout'
+    || category === 'server_error'
+    || category === 'upstream_error'
+    || category === 'misconfigured'
+  ) {
+    return new ToolDetailedError(
+      `GitHub MCP is unavailable for "${params.rawToolName}" right now.`,
+      buildToolErrorDetails({
+        ...baseDetails,
+        code: 'github_mcp_unavailable',
+        hint: 'The GitHub MCP server or upstream GitHub endpoint is unavailable. Treat this as a server or transport problem, not proof that repository access is permanently broken.',
+      }),
+      { cause: params.cause },
+    );
+  }
+
+  return new ToolDetailedError(
+    `GitHub MCP tool "${params.rawToolName}" failed.`,
+    buildToolErrorDetails({
+      ...baseDetails,
+      code: 'github_mcp_tool_failure',
+      hint: 'Treat this as a scoped GitHub MCP tool failure unless diagnostics show a broader outage.',
+    }),
+    { cause: params.cause },
+  );
+}
+
+function classifyMcpToolFailure(params: {
+  descriptor: McpServerDescriptor;
+  rawToolName: string;
+  args?: unknown;
+  message: string;
+  cause?: unknown;
+}): ToolDetailedError {
+  const details =
+    extractToolErrorDetails(params.cause)
+    ?? extractToolErrorDetails(new Error(params.message))
+    ?? buildToolErrorDetails({ category: 'upstream_error' });
+
+  if (isGitHubServer(params.descriptor)) {
+    return classifyGitHubToolFailure({
+      descriptor: params.descriptor,
+      rawToolName: params.rawToolName,
+      args: params.args,
+      message: params.message,
+      details,
+      cause: params.cause,
+    });
+  }
+
+  if (details.category === 'network_error' || details.category === 'timeout') {
+    return createMcpToolDetailedError({
+      message: `MCP server "${params.descriptor.id}" is unavailable for tool "${params.rawToolName}".`,
+      descriptor: params.descriptor,
+      details: {
+        ...details,
+        code: 'mcp_server_unavailable',
+      },
+      cause: params.cause,
+    });
+  }
+
+  return createMcpToolDetailedError({
+    message: `MCP tool "${params.rawToolName}" from server "${params.descriptor.id}" failed.`,
+    descriptor: params.descriptor,
+    details,
+    cause: params.cause,
+  });
+}
+
+function extractMcpErrorMessage(result: unknown, fallbackToolName: string): string {
+  const text = extractTextContent(toRecord(result)?.content).join('\n').trim();
+  if (text) {
+    return text;
+  }
+  return `MCP tool "${fallbackToolName}" reported an error.`;
 }
 
 function buildPromptGuidance(tool: McpToolDescriptor, serverId: string) {
@@ -352,6 +574,124 @@ export class McpManager {
     }));
   }
 
+  async probeDiagnostics(): Promise<McpServerDiagnostic[]> {
+    const diagnostics: McpServerDiagnostic[] = [];
+
+    for (const runtime of this.runtimes.values()) {
+      if (!isGitHubServer(runtime.descriptor) || !isGitHubAuthConfigured(runtime.descriptor)) {
+        continue;
+      }
+
+      if (!runtime.snapshot.connected) {
+        diagnostics.push({
+          kind: 'github_capability',
+          serverId: runtime.descriptor.id,
+          status: 'unavailable',
+          authProbe: 'skip',
+          codeSearchProbe: 'skip',
+          summary: 'GitHub MCP is configured but unavailable.',
+          details: [runtime.snapshot.errorText?.trim() || 'The configured GitHub MCP server could not be reached.'],
+        });
+        continue;
+      }
+
+      const hasGetMe = isExposedTool(runtime, 'get_me');
+      const hasSearchCode = isExposedTool(runtime, 'search_code');
+
+      if (hasGetMe) {
+        try {
+          await this.callTool({
+            serverId: runtime.descriptor.id,
+            rawToolName: 'get_me',
+            args: {},
+          });
+        } catch (error) {
+          const details = extractToolErrorDetails(error);
+          diagnostics.push({
+            kind: 'github_capability',
+            serverId: runtime.descriptor.id,
+            status: 'unavailable',
+            authProbe: 'fail',
+            codeSearchProbe: 'skip',
+            summary: 'GitHub MCP discovery succeeded, but baseline auth failed.',
+            details: [
+              error instanceof Error ? error.message : String(error),
+              details?.hint ?? 'Check MCP_GITHUB_TOKEN and the configured GitHub MCP transport.',
+            ],
+          });
+          continue;
+        }
+      }
+
+      if (!hasSearchCode) {
+        diagnostics.push({
+          kind: 'github_capability',
+          serverId: runtime.descriptor.id,
+          status: 'partial',
+          authProbe: hasGetMe ? 'pass' : 'skip',
+          codeSearchProbe: 'skip',
+          summary:
+            hasGetMe
+              ? 'GitHub MCP authenticated, but search_code is not exposed in the current tool surface.'
+              : 'GitHub MCP is connected, but neither get_me nor search_code is exposed in the current tool surface.',
+          details: [
+            hasGetMe
+              ? 'The GitHub MCP server connected successfully, but search_code is not currently exposed or provider-safe.'
+              : 'The current GitHub MCP allowlist or provider-safe exposure rules do not expose the baseline auth or code-search probes.',
+          ],
+        });
+        continue;
+      }
+
+      try {
+        await this.callTool({
+          serverId: runtime.descriptor.id,
+          rawToolName: 'search_code',
+          args: {
+            query: 'repo:github/github-mcp-server search_code',
+          },
+        });
+        diagnostics.push({
+          kind: 'github_capability',
+          serverId: runtime.descriptor.id,
+          status: 'healthy',
+          authProbe: hasGetMe ? 'pass' : 'skip',
+          codeSearchProbe: 'pass',
+          summary:
+            hasGetMe
+              ? 'GitHub MCP auth and baseline code search both succeeded.'
+              : 'GitHub MCP baseline code search succeeded under the current restricted tool surface.',
+          details:
+            hasGetMe
+              ? []
+              : ['Baseline auth probing was skipped because get_me is not exposed in the current GitHub MCP tool surface.'],
+        });
+      } catch (error) {
+        const details = extractToolErrorDetails(error);
+        diagnostics.push({
+          kind: 'github_capability',
+          serverId: runtime.descriptor.id,
+          status: 'partial',
+          authProbe: hasGetMe ? 'pass' : 'skip',
+          codeSearchProbe: 'fail',
+          summary:
+            hasGetMe
+              ? 'GitHub MCP authenticated, but baseline code search is restricted or unavailable.'
+              : 'GitHub MCP search_code is exposed, but baseline auth probing was skipped and code search is restricted or unavailable.',
+          details: [
+            error instanceof Error ? error.message : String(error),
+            ...(!hasGetMe
+              ? ['Baseline auth probing was skipped because get_me is not exposed in the current GitHub MCP tool surface.']
+              : []),
+            details?.hint ?? 'Treat this as a scoped GitHub code-search capability problem, not a blanket MCP outage.',
+          ],
+        });
+      }
+    }
+
+    return diagnostics;
+  }
+
   async callTool(params: {
     serverId: string;
     rawToolName: string;
@@ -359,12 +699,53 @@ export class McpManager {
   }): Promise<McpToolExecutionResult> {
     const runtime = this.runtimes.get(params.serverId);
     if (!runtime || !runtime.snapshot.connected) {
-      throw new Error(`MCP server "${params.serverId}" is unavailable.`);
+      const descriptor = runtime?.descriptor ?? {
+        id: params.serverId,
+        sanitizedId: params.serverId,
+        enabled: true,
+        trustLevel: 'untrusted',
+        transport: {
+          kind: 'stdio',
+          command: 'unavailable',
+        },
+      } satisfies McpServerDescriptor;
+      throw createMcpToolDetailedError({
+        message: `MCP server "${params.serverId}" is unavailable.`,
+        descriptor,
+        details: {
+          category: 'network_error',
+          code: 'mcp_server_unavailable',
+          hint: 'The configured MCP server is unavailable right now.',
+        },
+      });
     }
-    const result = await runtime.client.callTool({
-      name: params.rawToolName,
-      arguments: toRecord(params.args) ?? {},
-    });
+
+    let result: Awaited<ReturnType<typeof runtime.client.callTool>>;
+    try {
+      result = await runtime.client.callTool({
+        name: params.rawToolName,
+        arguments: toRecord(params.args) ?? {},
+      });
+    } catch (error) {
+      throw classifyMcpToolFailure({
+        descriptor: runtime.descriptor,
+        rawToolName: params.rawToolName,
+        args: params.args,
+        message: error instanceof Error ? error.message : String(error),
+        cause: error,
+      });
+    }
+
+    if (toRecord(result)?.isError === true) {
+      const message = extractMcpErrorMessage(result, params.rawToolName);
+      throw classifyMcpToolFailure({
+        descriptor: runtime.descriptor,
+        rawToolName: params.rawToolName,
+        args: params.args,
+        message,
+        cause: new Error(message),
+      });
+    }
 
     const textBlocks = extractTextContent(result.content);
     return {
@@ -401,4 +782,8 @@ export async function shutdownMcpTools(): Promise<void> {
 
 export function listMcpDiscoverySnapshots(): McpDiscoverySnapshot[] {
   return globalMcpManager.listDiscoverySnapshots();
+}
+
+export async function probeMcpServerDiagnostics(): Promise<McpServerDiagnostic[]> {
+  return globalMcpManager.probeDiagnostics();
 }

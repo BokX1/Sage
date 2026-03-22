@@ -44,6 +44,7 @@ import {
   type PromptWorkingMemoryFrame,
 } from '../promptContract';
 import type { ToolResult } from '../toolCallExecution';
+import type { ToolErrorDetails } from '../toolErrors';
 import type { ToolExecutionContext } from '../toolRegistry';
 import { ApprovalRequiredSignal } from '../toolControlSignals';
 import { createAgentRunTelemetry } from '../observability/langsmith';
@@ -93,6 +94,34 @@ const GraphToolFileSchema = z.object({
   mimetype: z.string().optional(),
 });
 
+const ToolErrorDetailsSchema = z.object({
+  category: z.enum([
+    'validation',
+    'guardrail',
+    'timeout',
+    'rate_limited',
+    'not_found',
+    'unauthorized',
+    'forbidden',
+    'bad_request',
+    'server_error',
+    'network_error',
+    'misconfigured',
+    'upstream_error',
+    'unknown',
+  ]),
+  httpStatus: z.number().optional(),
+  retryAfterMs: z.number().optional(),
+  provider: z.string().optional(),
+  host: z.string().optional(),
+  url: z.string().optional(),
+  code: z.string().optional(),
+  operationKey: z.string().optional(),
+  timeoutMs: z.number().optional(),
+  hint: z.string().optional(),
+  retryable: z.boolean().optional(),
+});
+
 const SerializedToolResultSchema = z.object({
   name: z.string(),
   success: z.boolean(),
@@ -100,6 +129,7 @@ const SerializedToolResultSchema = z.object({
   modelSummary: z.string().optional(),
   error: z.string().optional(),
   errorType: z.string().optional(),
+  errorDetails: ToolErrorDetailsSchema.optional(),
   telemetry: z.object({
     latencyMs: z.number().default(0),
     cacheHit: z.boolean().optional(),
@@ -1734,6 +1764,70 @@ function buildToolObservationEvidence(
   }));
 }
 
+function getPriorGithubSearchAccessFailure(params: {
+  results: SerializedToolResult[];
+  call: GraphToolCallDescriptor;
+}): (ToolErrorDetails & { category: 'unauthorized' | 'forbidden' }) | null {
+  const operationKey = buildToolCacheKey(params.call.name, params.call.args);
+
+  for (let index = params.results.length - 1; index >= 0; index -= 1) {
+    const result = params.results[index];
+    if (result.success || result.name !== 'mcp__github__search_code') {
+      continue;
+    }
+    const category = result.errorDetails?.category;
+    if (
+      (category === 'unauthorized' || category === 'forbidden')
+      && result.errorDetails?.operationKey === operationKey
+    ) {
+      return result.errorDetails as ToolErrorDetails & { category: 'unauthorized' | 'forbidden' };
+    }
+  }
+  return null;
+}
+
+function buildGithubSearchRetryBlockedOutcome(params: {
+  call: GraphToolCallDescriptor;
+  priorFailure: ToolErrorDetails & { category: 'unauthorized' | 'forbidden' };
+}): { message: ToolMessage; result: SerializedToolResult } {
+  const errorText =
+    params.priorFailure.category === 'forbidden'
+      ? 'GitHub code search was not retried because the same run already hit a forbidden response. Confirm repository access, switch to mcp__github__get_file_contents for a known path, or ask the user for repo/path clarification.'
+      : 'GitHub code search was not retried because the same run already hit an unauthorized response. Confirm GitHub access, switch to mcp__github__get_file_contents for a known path, or ask the user for repo/path clarification.';
+  const result: SerializedToolResult = {
+    name: params.call.name,
+    success: false,
+    error: errorText,
+    errorType: 'execution',
+    errorDetails: {
+      ...params.priorFailure,
+      code: 'github_mcp_search_code_retry_blocked',
+      operationKey: params.priorFailure.operationKey,
+      hint:
+        params.priorFailure.hint
+        ?? 'Do not keep retrying GitHub code search after an auth/access failure in the same run. Use an exact-file read if the path is known, or ask the user to confirm repo/path visibility.',
+      retryable: false,
+    },
+    telemetry: { latencyMs: 0 },
+  };
+
+  return {
+    message: buildToolMessageFromOutcome({
+      toolName: params.call.name,
+      callId: params.call.id,
+      content: JSON.stringify({
+        status: 'retry_blocked',
+        category: params.priorFailure.category,
+        message: errorText,
+      }),
+      result,
+      files: [],
+      status: 'error',
+    }),
+    result,
+  };
+}
+
 function buildCompactionState(params: {
   state: AgentGraphState;
   graphConfig: AgentGraphConfig;
@@ -2467,6 +2561,8 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
     const readBatch: GraphToolCallDescriptor[] = [];
     const readExecutionBatch: GraphToolCallDescriptor[] = [];
     const pendingWriteCalls: GraphToolCallDescriptor[] = [];
+    const suppressedToolMessages: ToolMessage[] = [];
+    const suppressedToolResults: SerializedToolResult[] = [];
     const seenReadFingerprints = new Set<string>();
     const batchFingerprintParts: Array<{ readOnly: boolean; fingerprint: string }> = [];
     let skippedDuplicateCallCount = 0;
@@ -2477,6 +2573,22 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
         name: call.name,
         args: call.args,
       };
+      const priorGithubSearchAccessFailure =
+        serializedCall.name === 'mcp__github__search_code'
+          ? getPriorGithubSearchAccessFailure({
+              results: effectiveState.toolResults,
+              call: serializedCall,
+            })
+          : null;
+      if (serializedCall.name === 'mcp__github__search_code' && priorGithubSearchAccessFailure) {
+        const blocked = buildGithubSearchRetryBlockedOutcome({
+          call: serializedCall,
+          priorFailure: priorGithubSearchAccessFailure,
+        });
+        suppressedToolMessages.push(blocked.message);
+        suppressedToolResults.push(blocked.result);
+        continue;
+      }
       const readOnly = isReadOnlyToolCall({
         definitions: catalog.definitions,
         call: serializedCall,
@@ -2639,6 +2751,8 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
             : 'tool_call_turn',
       update: {
         ...continued.update,
+        messages: suppressedToolMessages,
+        toolResults: suppressedToolResults,
         pendingReadCalls: readBatch,
         pendingReadExecutionCalls: readExecutionBatch,
         pendingWriteCalls,

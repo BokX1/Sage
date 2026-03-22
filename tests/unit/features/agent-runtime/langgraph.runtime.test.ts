@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AIMessage, HumanMessage, ToolMessage } from '@langchain/core/messages';
 import { AppError } from '@/shared/errors/app-error';
+import { buildToolCacheKey } from '@/features/agent-runtime/toolCache';
 
 const {
   loggerWarnMock,
@@ -1163,6 +1164,185 @@ describe('runGraphValueStream', () => {
       cacheHit: true,
       cacheKind: 'dedupe',
     });
+  });
+
+  it('blocks repeated GitHub search_code retries in the same run after an auth failure', async () => {
+    await shutdownAgentGraphRuntime();
+    isReadOnlyToolCallMock.mockReturnValue(true);
+    buildActiveToolCatalogMock.mockReturnValue({
+      allTools: [{ name: 'mcp__github__search_code' }],
+      readOnlyTools: [{ name: 'mcp__github__search_code' }],
+      definitions: new Map(),
+    });
+    modelInvokeMock.mockResolvedValueOnce(
+      makeFinishTurnMessage('final_answer', 'I need the exact repo/path or confirmed access before I retry GitHub search.'),
+    );
+
+    const result = await __runAgentGraphCommandForTests({
+      threadId: 'trace-github-search-breaker-1',
+      goto: 'route_tool_phase',
+      context: {
+        traceId: 'trace-github-search-breaker-1',
+        originTraceId: 'trace-github-search-breaker-1',
+        userId: 'user-1',
+        channelId: 'channel-1',
+        guildId: 'guild-1',
+        activeToolNames: ['mcp__github__search_code'],
+        routeKind: 'single',
+        currentTurn: { invokerUserId: 'user-1' },
+        replyTarget: null,
+        invokedBy: 'mention',
+      },
+      state: {
+        roundsCompleted: 1,
+        toolResults: [
+          {
+            name: 'mcp__github__search_code',
+            success: false,
+            error: 'GitHub code search was denied for this request.',
+            errorType: 'execution',
+            errorDetails: {
+              category: 'unauthorized',
+              code: 'github_mcp_search_code_access_denied',
+              operationKey: buildToolCacheKey('mcp__github__search_code', { query: 'repo:owner/repo needle' }),
+              provider: 'github-mcp',
+              hint: 'Use mcp__github__get_file_contents when the exact path is known, or ask for repo/path clarification.',
+              retryable: false,
+            },
+            telemetry: { latencyMs: 5 },
+          },
+        ],
+        messages: [
+          new AIMessage({
+            content: '',
+            tool_calls: [
+              {
+                id: 'call-read-1',
+                name: 'mcp__github__search_code',
+                args: { query: 'repo:owner/repo needle' },
+                type: 'tool_call',
+              },
+            ],
+          }),
+        ],
+      },
+    });
+
+    expect(result.graphStatus).toBe('completed');
+    expect(result.replyText).toContain('exact repo/path');
+    expect(toolNodeInvokeMock).not.toHaveBeenCalled();
+    expect(result.toolResults).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: 'mcp__github__search_code',
+          errorDetails: expect.objectContaining({
+            code: 'github_mcp_search_code_retry_blocked',
+            category: 'unauthorized',
+            operationKey: buildToolCacheKey('mcp__github__search_code', { query: 'repo:owner/repo needle' }),
+          }),
+        }),
+      ]),
+    );
+  });
+
+  it('allows a later GitHub search_code call in the same run when the request meaningfully changes', async () => {
+    await shutdownAgentGraphRuntime();
+    isReadOnlyToolCallMock.mockReturnValue(true);
+    buildActiveToolCatalogMock.mockReturnValue({
+      allTools: [{ name: 'mcp__github__search_code' }],
+      readOnlyTools: [{ name: 'mcp__github__search_code' }],
+      definitions: new Map(),
+    });
+    toolNodeInvokeMock.mockImplementationOnce(async (input?: { messages?: Array<{ tool_calls?: Array<{ id?: string }> }> }) => {
+      const batchCall = input?.messages?.[0]?.tool_calls?.[0];
+      return {
+        messages: [
+          new ToolMessage({
+            content: '{"ok":true,"items":[1]}',
+            tool_call_id: batchCall?.id ?? 'call-read-2',
+            artifact: {
+              result: {
+                name: 'mcp__github__search_code',
+                success: true,
+                structuredContent: { ok: true, items: [1] },
+                telemetry: { latencyMs: 7 },
+              },
+              files: [],
+            },
+            status: 'success',
+          }),
+        ],
+      };
+    });
+
+    const result = await __runAgentGraphCommandForTests({
+      threadId: 'trace-github-search-breaker-2',
+      goto: 'route_tool_phase',
+      context: {
+        traceId: 'trace-github-search-breaker-2',
+        originTraceId: 'trace-github-search-breaker-2',
+        userId: 'user-1',
+        channelId: 'channel-1',
+        guildId: 'guild-1',
+        activeToolNames: ['mcp__github__search_code'],
+        routeKind: 'single',
+        currentTurn: { invokerUserId: 'user-1' },
+        replyTarget: null,
+        invokedBy: 'mention',
+      },
+      state: {
+        roundsCompleted: 1,
+        toolResults: [
+          {
+            name: 'mcp__github__search_code',
+            success: false,
+            error: 'GitHub code search was denied for this request.',
+            errorType: 'execution',
+            errorDetails: {
+              category: 'unauthorized',
+              code: 'github_mcp_search_code_access_denied',
+              operationKey: buildToolCacheKey('mcp__github__search_code', { query: 'repo:owner/repo needle' }),
+              provider: 'github-mcp',
+              hint: 'Use mcp__github__get_file_contents when the exact path is known, or ask for repo/path clarification.',
+              retryable: false,
+            },
+            telemetry: { latencyMs: 5 },
+          },
+        ],
+        messages: [
+          new AIMessage({
+            content: '',
+            tool_calls: [
+              {
+                id: 'call-read-2',
+                name: 'mcp__github__search_code',
+                args: { query: 'repo:owner/other-repo needle' },
+                type: 'tool_call',
+              },
+            ],
+          }),
+        ],
+      },
+    });
+
+    expect(toolNodeInvokeMock).toHaveBeenCalledTimes(1);
+    expect(result.toolResults).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: 'mcp__github__search_code',
+          success: true,
+        }),
+      ]),
+    );
+    expect(result.toolResults).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          errorDetails: expect.objectContaining({
+            code: 'github_mcp_search_code_retry_blocked',
+          }),
+        }),
+      ]),
+    );
   });
 
   it('exits the read-only subgraph after one pass even when ToolNode emits no tool messages', async () => {

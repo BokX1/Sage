@@ -117,7 +117,7 @@ describe('promptContract', () => {
   });
 
   it('teaches current-state verification instead of presenting model memory as fresh truth', () => {
-    const prompt = buildContract(['web_search', 'npm_info', 'github_list_commits']).systemMessage;
+    const prompt = buildContract(['web_search', 'npm_info', 'mcp__github__search_code']).systemMessage;
 
     expect(prompt).toContain('If the user asks for latest, current, today, now, recent, live, or other facts that may have changed, or explicitly asks about current external docs behavior, repo state, or package metadata, do not present model memory as current truth when an available tool can verify it.');
     expect(prompt).toContain('When current-state verification tools are unavailable, answer with an explicit uncertainty or unverified-current-state caveat instead of implying freshness.');

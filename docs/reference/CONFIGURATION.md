@@ -330,6 +330,8 @@ Sage now discovers optional MCP servers at startup and adapts provider-safe MCP 
 
 > [!IMPORTANT]
 > The built-in runtime no longer ships native `github_*` or `workflow_npm_github_code_search` tools. GitHub capability now comes from configured MCP servers and is exposed under namespaced tool names such as `mcp__github__search_code` when the server is available and its schemas are provider-safe.
+> [!TIP]
+> `npm run tools:audit` and `npm run doctor -- --only tools.audit` now probe the GitHub MCP preset more precisely when it is enabled and a token is configured. Sage distinguishes discovery success from live capability by checking baseline auth (`get_me`) separately from baseline public code search, so a repo-specific `search_code` denial no longer looks like a blanket GitHub MCP outage.
 
 ---
 

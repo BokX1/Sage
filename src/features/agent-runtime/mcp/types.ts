@@ -99,3 +99,19 @@ export interface McpToolExecutionResult {
   structuredContent?: unknown;
   modelSummary?: string;
 }
+
+export type McpServerDiagnosticStatus = 'healthy' | 'partial' | 'unavailable';
+export type McpProbeStatus = 'pass' | 'fail' | 'skip';
+
+export interface GitHubMcpCapabilityDiagnostic {
+  kind: 'github_capability';
+  serverId: string;
+  status: McpServerDiagnosticStatus;
+  authProbe: McpProbeStatus;
+  codeSearchProbe: McpProbeStatus;
+  summary: string;
+  details: string[];
+}
+
+export type McpServerDiagnostic =
+  | GitHubMcpCapabilityDiagnostic;

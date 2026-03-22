@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { registerDefaultAgenticTools } from '../../../../src/features/agent-runtime/defaultTools';
 import { auditToolRegistry } from '../../../../src/features/agent-runtime/toolAudit';
 import { defineToolSpecV2, ToolRegistry } from '../../../../src/features/agent-runtime/toolRegistry';
+import type { McpServerDiagnostic } from '../../../../src/features/agent-runtime/mcp/types';
 
 describe('toolAudit', () => {
   it('passes blocking checks for the shipped default tool surface', async () => {
@@ -42,5 +43,33 @@ describe('toolAudit', () => {
       ]),
     );
     expect(report.summary.outputSchemaCoverage.missing).toBe(1);
+  });
+
+  it('surfaces GitHub MCP capability diagnostics separately from discovery', () => {
+    const registry = new ToolRegistry();
+    const diagnostics: McpServerDiagnostic[] = [
+      {
+        kind: 'github_capability',
+        serverId: 'github',
+        status: 'partial',
+        authProbe: 'pass',
+        codeSearchProbe: 'fail',
+        summary: 'GitHub MCP authenticated, but baseline code search is restricted or unavailable.',
+        details: ['GitHub code search was denied for this request.'],
+      },
+    ];
+
+    const report = auditToolRegistry(registry, {
+      mcpDiagnostics: diagnostics,
+    });
+
+    expect(report.findings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          toolName: 'mcp:github',
+          code: 'mcp_github_capability_partial',
+        }),
+      ]),
+    );
   });
 });

@@ -958,14 +958,17 @@ function buildChecks(): CheckDefinition[] {
       id: CHECK_IDS.toolsAudit,
       title: 'Tool contract audit',
       run: async () => {
-        const [{ ToolRegistry }, { registerDefaultAgenticTools }, { auditToolRegistry }] = await Promise.all([
+        const [{ ToolRegistry }, { registerDefaultAgenticTools }, { probeMcpServerDiagnostics }, { auditToolRegistry }] = await Promise.all([
           import('../features/agent-runtime/toolRegistry'),
           import('../features/agent-runtime/defaultTools'),
+          import('../features/agent-runtime/mcp/manager'),
           import('../features/agent-runtime/toolAudit'),
         ]);
         const registry = new ToolRegistry();
         await registerDefaultAgenticTools(registry);
-        const report = auditToolRegistry(registry);
+        const report = auditToolRegistry(registry, {
+          mcpDiagnostics: await probeMcpServerDiagnostics(),
+        });
         const details = report.findings.slice(0, 12).map(
           (finding) => `${finding.severity.toUpperCase()} ${finding.toolName} ${finding.code}: ${finding.message}`,
         );

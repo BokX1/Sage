@@ -28,6 +28,7 @@ export interface ToolErrorDetails {
   host?: string;
   url?: string;
   code?: string;
+  operationKey?: string;
   timeoutMs?: number;
   hint?: string;
   retryable?: boolean;

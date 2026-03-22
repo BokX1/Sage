@@ -179,6 +179,14 @@ The smoke script checks representative non-Discord tools from the current regist
 
 Optional MCP-backed tools are included automatically when their servers are configured and available. For example, enabling the GitHub MCP preset adds namespaced tools such as `mcp__github__search_code` to the live smoke inventory.
 
+For GitHub MCP specifically, discovery is no longer treated as proof that every GitHub tool can execute. `npm run tools:audit` and the matching doctor check now separate:
+
+- connected + authenticated + baseline code search working
+- connected + authenticated + code search partially restricted
+- configured but unavailable or misconfigured
+
+That keeps repo-specific GitHub `401` / `403` failures from being misread as a blanket outage in the hosted GitHub MCP integration.
+
 Attachment extraction health check (Tika):
 
 ```bash

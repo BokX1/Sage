@@ -175,12 +175,20 @@ const TOOL_DOC_OVERRIDES: Record<string, ToolDocOverride> = {
   mcp__github__search_code: {
     selectionHints: [
       'Use when the repository path or file location is still unknown.',
+      'If GitHub code search is denied for this request, stop retrying the same search blindly and pivot to an exact-file read or a clarification request.',
+    ],
+    avoidWhen: [
+      'The exact owner/repo/path is already known.',
+      'The same run already hit a GitHub code-search access failure for this request.',
     ],
     promptGuidance: {
       purpose: 'Find candidate files or symbols inside a known repository.',
       decisionEdges: [
         'Unknown path inside a repo -> mcp__github__search_code.',
         'Known exact path -> mcp__github__get_file_contents instead.',
+      ],
+      antiPatterns: [
+        'Do not keep retrying GitHub code search after an unauthorized or forbidden result in the same run. Switch to exact-file reads, confirm access, or ask the user for repo/path clarification.',
       ],
     },
   },
