@@ -53,7 +53,7 @@ describe('env embedding dimension guard', () => {
       expect(envModule.config.AGENT_RUN_SLICE_MAX_STEPS).toBe(14);
       expect(envModule.config.AGENT_RUN_TOOL_TIMEOUT_MS).toBe(75000);
       expect(envModule.config.AGENT_RUN_SLICE_MAX_DURATION_MS).toBe(180000);
-      expect(envModule.config.AGENT_GRAPH_MAX_OUTPUT_TOKENS).toBe(6000);
+      expect(envModule.config.AGENT_GRAPH_MAX_OUTPUT_TOKENS).toBe(4096);
       expect(envModule.config.AGENT_RUN_COMPACTION_TRIGGER_EST_TOKENS).toBe(100000);
       expect(envModule.config.AGENT_RUN_COMPACTION_TRIGGER_ROUNDS).toBe(8);
       expect(envModule.config.AGENT_RUN_COMPACTION_TRIGGER_TOOL_RESULTS).toBe(32);
@@ -63,8 +63,8 @@ describe('env embedding dimension guard', () => {
       expect(envModule.config.AGENT_GRAPH_MAX_IDENTICAL_TOOL_BATCHES).toBe(4);
       expect(envModule.config.AGENT_GRAPH_MAX_LOOP_GUARD_RECOVERIES).toBe(4);
       expect(envModule.config.CONTEXT_MAX_INPUT_TOKENS).toBe(180000);
-      expect(envModule.config.CONTEXT_RESERVED_OUTPUT_TOKENS).toBe(6000);
-      expect(envModule.config.CHAT_MAX_OUTPUT_TOKENS).toBe(6000);
+      expect(envModule.config.CONTEXT_RESERVED_OUTPUT_TOKENS).toBe(4096);
+      expect(envModule.config.CHAT_MAX_OUTPUT_TOKENS).toBe(4096);
       expect(envModule.config.TOOL_WEB_SEARCH_TIMEOUT_MS).toBe(60000);
       expect(envModule.config.TOOL_WEB_SCRAPE_TIMEOUT_MS).toBe(75000);
     });
