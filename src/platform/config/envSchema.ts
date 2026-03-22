@@ -321,22 +321,22 @@ export const testDefaults: Record<string, string> = {
   MCP_PRESET_GITHUB_TOOLSETS_CSV: 'context,repos,issues,pull_requests,users',
   MCP_PRESET_CONTEXT7_TRANSPORT: 'stdio',
   MCP_PRESET_CONTEXT7_COMMAND: '',
-  MCP_PRESET_CONTEXT7_ARGS_JSON: '[]',
+  MCP_PRESET_CONTEXT7_ARGS_JSON: '["-y","@upstash/context7-mcp"]',
   MCP_PRESET_CONTEXT7_URL: '',
   MCP_PRESET_CONTEXT7_TOKEN: '',
   MCP_PRESET_PLAYWRIGHT_TRANSPORT: 'stdio',
   MCP_PRESET_PLAYWRIGHT_COMMAND: '',
-  MCP_PRESET_PLAYWRIGHT_ARGS_JSON: '[]',
+  MCP_PRESET_PLAYWRIGHT_ARGS_JSON: '["@playwright/mcp@latest"]',
   MCP_PRESET_PLAYWRIGHT_URL: '',
   MCP_PRESET_PLAYWRIGHT_TOKEN: '',
-  MCP_PRESET_FIRECRAWL_TRANSPORT: 'stdio',
+  MCP_PRESET_FIRECRAWL_TRANSPORT: 'streamable_http',
   MCP_PRESET_FIRECRAWL_COMMAND: '',
   MCP_PRESET_FIRECRAWL_ARGS_JSON: '[]',
-  MCP_PRESET_FIRECRAWL_URL: '',
+  MCP_PRESET_FIRECRAWL_URL: 'https://mcp.firecrawl.dev/mcp',
   MCP_PRESET_FIRECRAWL_TOKEN: '',
   MCP_PRESET_MARKITDOWN_TRANSPORT: 'stdio',
   MCP_PRESET_MARKITDOWN_COMMAND: '',
-  MCP_PRESET_MARKITDOWN_ARGS_JSON: '[]',
+  MCP_PRESET_MARKITDOWN_ARGS_JSON: '["markitdown-mcp"]',
   MCP_PRESET_MARKITDOWN_URL: '',
   MCP_PRESET_MARKITDOWN_TOKEN: '',
 
@@ -533,7 +533,7 @@ export const envSchema = z.object({
   MCP_PRESET_GITHUB_TOOLSETS_CSV: z.string().trim().default('context,repos,issues,pull_requests,users'),
   MCP_PRESET_CONTEXT7_TRANSPORT: z.enum(['stdio', 'streamable_http']).default('stdio'),
   MCP_PRESET_CONTEXT7_COMMAND: z.string().trim().default(''),
-  MCP_PRESET_CONTEXT7_ARGS_JSON: z.string().trim().default('[]').refine((value) => {
+  MCP_PRESET_CONTEXT7_ARGS_JSON: z.string().trim().default('["-y","@upstash/context7-mcp"]').refine((value) => {
     try {
       const parsed = JSON.parse(value) as unknown;
       return Array.isArray(parsed) && parsed.every((entry) => typeof entry === 'string');
@@ -545,7 +545,7 @@ export const envSchema = z.object({
   MCP_PRESET_CONTEXT7_TOKEN: z.string().optional(),
   MCP_PRESET_PLAYWRIGHT_TRANSPORT: z.enum(['stdio', 'streamable_http']).default('stdio'),
   MCP_PRESET_PLAYWRIGHT_COMMAND: z.string().trim().default(''),
-  MCP_PRESET_PLAYWRIGHT_ARGS_JSON: z.string().trim().default('[]').refine((value) => {
+  MCP_PRESET_PLAYWRIGHT_ARGS_JSON: z.string().trim().default('["@playwright/mcp@latest"]').refine((value) => {
     try {
       const parsed = JSON.parse(value) as unknown;
       return Array.isArray(parsed) && parsed.every((entry) => typeof entry === 'string');
@@ -555,7 +555,7 @@ export const envSchema = z.object({
   }, 'MCP_PRESET_PLAYWRIGHT_ARGS_JSON must be a JSON array of strings.'),
   MCP_PRESET_PLAYWRIGHT_URL: optionalHttpOrHttpsUrlSchema.default(''),
   MCP_PRESET_PLAYWRIGHT_TOKEN: z.string().optional(),
-  MCP_PRESET_FIRECRAWL_TRANSPORT: z.enum(['stdio', 'streamable_http']).default('stdio'),
+  MCP_PRESET_FIRECRAWL_TRANSPORT: z.enum(['stdio', 'streamable_http']).default('streamable_http'),
   MCP_PRESET_FIRECRAWL_COMMAND: z.string().trim().default(''),
   MCP_PRESET_FIRECRAWL_ARGS_JSON: z.string().trim().default('[]').refine((value) => {
     try {
@@ -565,11 +565,11 @@ export const envSchema = z.object({
       return false;
     }
   }, 'MCP_PRESET_FIRECRAWL_ARGS_JSON must be a JSON array of strings.'),
-  MCP_PRESET_FIRECRAWL_URL: optionalHttpOrHttpsUrlSchema.default(''),
+  MCP_PRESET_FIRECRAWL_URL: optionalHttpOrHttpsUrlSchema.default('https://mcp.firecrawl.dev/mcp'),
   MCP_PRESET_FIRECRAWL_TOKEN: z.string().optional(),
   MCP_PRESET_MARKITDOWN_TRANSPORT: z.enum(['stdio', 'streamable_http']).default('stdio'),
   MCP_PRESET_MARKITDOWN_COMMAND: z.string().trim().default(''),
-  MCP_PRESET_MARKITDOWN_ARGS_JSON: z.string().trim().default('[]').refine((value) => {
+  MCP_PRESET_MARKITDOWN_ARGS_JSON: z.string().trim().default('["markitdown-mcp"]').refine((value) => {
     try {
       const parsed = JSON.parse(value) as unknown;
       return Array.isArray(parsed) && parsed.every((entry) => typeof entry === 'string');
