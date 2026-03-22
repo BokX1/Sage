@@ -2463,6 +2463,12 @@ describe('runGraphValueStream', () => {
     });
 
     expect(initial.completionKind).toBe('user_input_pending');
+    const waitingCheckpointState = await __getAgentGraphStateForTests('trace-waiting-followup-clear-1');
+    expect(waitingCheckpointState?.replyText).toBe('Do you want me to keep digging into the repo?');
+    expect(waitingCheckpointState?.responseSession).toMatchObject({
+      status: 'waiting_user_input',
+      latestText: 'Do you want me to keep digging into the repo?',
+    });
     modelInvokeMock.mockResolvedValueOnce(
       makeFinishTurnMessage('final_answer', 'I kept digging and found the repo details.'),
     );
@@ -3021,14 +3027,59 @@ describe('runGraphValueStream', () => {
     expect(resumedState.contextFrame.completedActions).toContain('system_time');
   });
 
-  it('reopens a just-finished task thread with appended user input without checkpoint write conflicts', async () => {
+  it('reopens a just-finished task thread with a draft tool-call reply and final answer without checkpoint write conflicts', async () => {
     await shutdownAgentGraphRuntime();
-    modelInvokeMock.mockResolvedValueOnce(
-      new AIMessage({
-        content: 'I picked that back up on the same task thread.',
-        tool_calls: [],
-      }),
-    );
+    isReadOnlyToolCallMock.mockReturnValue(true);
+    buildActiveToolCatalogMock.mockReturnValue({
+      allTools: [{ name: 'repo_search_code' }],
+      readOnlyTools: [{ name: 'repo_search_code' }],
+      definitions: new Map(),
+    });
+    toolNodeInvokeMock.mockImplementationOnce(async (input?: { messages?: Array<{ tool_calls?: Array<{ id?: string }> }> }) => {
+      const batchCall = input?.messages?.[0]?.tool_calls?.[0];
+      return {
+        messages: [
+          new ToolMessage({
+            content: '{"ok":true,"items":[{"path":"src/runtime.ts"}]}',
+            tool_call_id: batchCall?.id ?? 'call-stale-finish-reopen-1',
+            artifact: {
+              result: {
+                name: 'repo_search_code',
+                success: true,
+                structuredContent: {
+                  ok: true,
+                  items: [{ path: 'src/runtime.ts' }],
+                },
+                telemetry: { latencyMs: 7 },
+              },
+              files: [],
+            },
+            status: 'success',
+          }),
+        ],
+      };
+    });
+    modelInvokeMock
+      .mockResolvedValueOnce(
+        new AIMessage({
+          content: 'Found it.',
+          tool_calls: [
+            {
+              id: 'call-stale-finish-reopen-1',
+              name: 'repo_search_code',
+              args: { query: 'repo:owner/repo stale replyText' },
+              type: 'tool_call',
+            },
+          ],
+        }),
+      )
+      .mockResolvedValueOnce(
+        new AIMessage({
+          content:
+            'I picked that back up on the same task thread, confirmed the stale reply state was cleared, and finished the follow-up cleanly.',
+          tool_calls: [],
+        }),
+      );
 
     await __runAgentGraphCommandForTests({
       threadId: 'trace-stale-finish-reopen-1',
@@ -3044,7 +3095,7 @@ describe('runGraphValueStream', () => {
         temperature: 0.6,
         timeoutMs: 1_000,
         maxTokens: 500,
-        activeToolNames: [],
+        activeToolNames: ['repo_search_code'],
         routeKind: 'active_interrupt_race_resume',
         currentTurn: {
           invokerUserId: 'user-1',
@@ -3103,7 +3154,7 @@ describe('runGraphValueStream', () => {
         invokedBy: 'reply',
         invokerIsAdmin: false,
         invokerCanModerate: false,
-        activeToolNames: [],
+        activeToolNames: ['repo_search_code'],
         routeKind: 'active_interrupt_race_resume',
         currentTurn: {
           invokerUserId: 'user-1',
@@ -3137,11 +3188,35 @@ describe('runGraphValueStream', () => {
       ],
     });
 
-    expect(resumed.replyText).toBe('I picked that back up on the same task thread.');
+    expect(resumed.replyText).toBe(
+      'I picked that back up on the same task thread, confirmed the stale reply state was cleared, and finished the follow-up cleanly.',
+    );
     expect(resumed.responseSession).toMatchObject({
       responseSessionId: 'trace-stale-finish-reopen-1',
       responseMessageId: 'response-stale-finish-reopen-1',
       status: 'final',
+      surfaceAttached: true,
+    });
+    expect(resumed.responseSession?.latestText).toBe(
+      'I picked that back up on the same task thread, confirmed the stale reply state was cleared, and finished the follow-up cleanly.',
+    );
+    expect(resumed.responseSession?.draftRevision).toBeGreaterThan(5);
+    expect(resumed.replyText).not.toBe('Found it.');
+    expect(resumed.replyText).not.toBe('Turn 5/5 complete. Loop complete.');
+    expect(toolNodeInvokeMock).toHaveBeenCalledTimes(1);
+    const resumedState = await __getAgentGraphStateForTests('trace-stale-finish-reopen-1');
+    if (!resumedState) {
+      throw new Error('Expected the reopened graph state to be persisted.');
+    }
+    expect(resumedState.replyText).toBe(
+      'I picked that back up on the same task thread, confirmed the stale reply state was cleared, and finished the follow-up cleanly.',
+    );
+    expect(resumedState.responseSession).toMatchObject({
+      responseSessionId: 'trace-stale-finish-reopen-1',
+      responseMessageId: 'response-stale-finish-reopen-1',
+      status: 'final',
+      latestText:
+        'I picked that back up on the same task thread, confirmed the stale reply state was cleared, and finished the follow-up cleanly.',
       surfaceAttached: true,
     });
   });

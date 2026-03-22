@@ -165,6 +165,7 @@
 
 ### Fixed
 
+- Fixed same-thread running-task reopen handling so Sage now clears stale carried-forward `replyText` when it reopens a completed or failed task on the existing response surface, prefers the newest assistant turn over old draft state during closeout, and no longer crashes with LangGraph `Invalid update for channel "replyText"` when a resumed follow-up emits an interim draft like `Found it.` before the final answer.
 - Fixed concurrent long Discord replies so overflow chunks stay anchored to their owning response session instead of falling back to the raw channel surface, preventing mixed tail-message spam when multiple users trigger Sage at the same time.
 - Fixed the remaining `activeWindowDurationMs` LastValue collisions on continued runs, so approval resumes and mid-turn steering recovers can extend the same active execution budget within one LangGraph step without crashing the live task thread.
 - Fixed the remaining continued-run LastValue owner conflicts on `contextFrame` and `resumeContext`, so mid-turn steering and approval resumes now leave those derived checkpoint channels to the terminal/yield/interrupt owners instead of double-writing them from transitional routing nodes during the same LangGraph step.

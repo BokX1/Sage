@@ -796,12 +796,12 @@ describe('messageCreate - ingest + reply gating', () => {
     mockQueueActiveRunUserInterrupt.mockResolvedValueOnce('stale');
     mockContinueMatchedTaskRunWithInput.mockImplementationOnce(async (params) => {
       await params.onResponseSessionUpdate?.({
-        replyText: 'Switching to the docs repo on this same task.',
+        replyText: 'Found it.',
         delivery: 'response_session',
         responseSession: {
           responseSessionId: 'thread-running-terminal-race',
           status: 'draft',
-          latestText: 'Switching to the docs repo on this same task.',
+          latestText: 'Found it.',
           draftRevision: 5,
           sourceMessageId: 'source-1',
           responseMessageId: 'running-response-terminal-race',
@@ -814,16 +814,39 @@ describe('messageCreate - ingest + reply gating', () => {
         stopReason: 'background_yield',
       });
 
-      return {
-        runId: 'thread-running-terminal-race',
-        status: 'running',
-        replyText: 'Switching to the docs repo on this same task.',
+      await params.onResponseSessionUpdate?.({
+        replyText:
+          'Found it. I switched the search to the docs repo on this same task thread and finished the follow-up cleanly.',
         delivery: 'response_session',
         responseSession: {
           responseSessionId: 'thread-running-terminal-race',
           status: 'final',
-          latestText: 'Switching to the docs repo on this same task.',
-          draftRevision: 5,
+          latestText:
+            'Found it. I switched the search to the docs repo on this same task thread and finished the follow-up cleanly.',
+          draftRevision: 6,
+          sourceMessageId: 'source-1',
+          responseMessageId: 'running-response-terminal-race',
+          surfaceAttached: true,
+          overflowMessageIds: [],
+          linkedArtifactMessageIds: [],
+        },
+        pendingInterrupt: null,
+        completionKind: 'final_answer',
+        stopReason: 'assistant_turn_completed',
+      });
+
+      return {
+        runId: 'thread-running-terminal-race',
+        status: 'completed',
+        replyText:
+          'Found it. I switched the search to the docs repo on this same task thread and finished the follow-up cleanly.',
+        delivery: 'response_session',
+        responseSession: {
+          responseSessionId: 'thread-running-terminal-race',
+          status: 'final',
+          latestText:
+            'Found it. I switched the search to the docs repo on this same task thread and finished the follow-up cleanly.',
+          draftRevision: 6,
           sourceMessageId: 'source-1',
           responseMessageId: 'running-response-terminal-race',
           surfaceAttached: true,
@@ -854,6 +877,18 @@ describe('messageCreate - ingest + reply gating', () => {
     expect(message.reply).not.toHaveBeenCalled();
     expect(mockGenerateChatReply).not.toHaveBeenCalled();
     expect(mockResumeWaitingTaskRunWithInput).not.toHaveBeenCalled();
+    const responseSessionAttachCalls = mockAttachTaskRunResponseSession.mock.calls
+      .map(([params]) => params)
+      .filter((params) => params?.threadId === 'thread-running-terminal-race');
+    expect(responseSessionAttachCalls).toHaveLength(2);
+    expect(responseSessionAttachCalls.map((params) => params.responseMessageId)).toEqual([
+      'running-response-terminal-race',
+      'running-response-terminal-race',
+    ]);
+    expect(responseSessionAttachCalls.map((params) => params.responseSession?.latestText)).toEqual([
+      'Found it.',
+      'Found it. I switched the search to the docs repo on this same task thread and finished the follow-up cleanly.',
+    ]);
   });
 
   it('reroutes a stale active-run interrupt into waiting-user-input resume when the matched task entered a waiting state first', async () => {

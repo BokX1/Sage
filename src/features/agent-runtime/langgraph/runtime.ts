@@ -697,6 +697,28 @@ function findLatestAssistantText(messages: BaseMessage[]): string {
   return '';
 }
 
+function resolveVisibleReplyTextFromState(
+  state: Pick<AgentGraphState, 'messages' | 'replyText'> & {
+    plainTextOutcomeSource?: AgentGraphState['plainTextOutcomeSource'];
+  },
+): string {
+  const cleanedReplyText = scrubFinalReplyText({
+    replyText: state.replyText,
+  });
+  if (state.plainTextOutcomeSource === 'runtime_control_tool' && cleanedReplyText) {
+    return cleanedReplyText;
+  }
+
+  const latestAssistantText = scrubFinalReplyText({
+    replyText: findLatestAssistantText(state.messages as BaseMessage[]),
+  });
+  if (latestAssistantText) {
+    return latestAssistantText;
+  }
+
+  return cleanedReplyText;
+}
+
 function buildDefaultFinalization(): ToolCallFinalizationEvent {
   return {
     attempted: false,
@@ -857,8 +879,15 @@ function buildContinueEntryUpdate(
     };
   }
 
+  const clearTransientReplyText =
+    (state.graphStatus === 'completed' || state.graphStatus === 'failed') &&
+    state.completionKind !== 'user_input_pending' &&
+    state.responseSession.status !== 'waiting_user_input';
+  const continuedReplyText = clearTransientReplyText ? '' : state.replyText;
+
   const continuedState: AgentGraphState = {
     ...state,
+    replyText: continuedReplyText,
     responseSession: configured.continueResponseSession ?? state.responseSession,
     waitingState: configured.continueClearWaitingState ? null : state.waitingState,
     completionKind: null,
@@ -890,6 +919,7 @@ function buildContinueEntryUpdate(
       activeWindowDurationMs: continuedState.activeWindowDurationMs,
       finalization: continuedState.finalization,
       plainTextOutcomeSource: continuedState.plainTextOutcomeSource,
+      ...(clearTransientReplyText ? { replyText: continuedReplyText } : {}),
     },
   };
 }
@@ -925,17 +955,10 @@ function buildDeterministicRuntimeSummary(
   const parts: string[] = [];
   const successful = state.toolResults.filter((result) => result.success);
   const failed = state.toolResults.filter((result) => !result.success);
-  const latestAssistantText = scrubFinalReplyText({
-    replyText: findLatestAssistantText(state.messages as BaseMessage[]),
-  });
-  const cleanedReplyText = scrubFinalReplyText({
-    replyText: state.replyText,
-  });
+  const visibleReplyText = resolveVisibleReplyTextFromState(state);
 
-  if (latestAssistantText) {
-    parts.push(latestAssistantText);
-  } else if (cleanedReplyText) {
-    parts.push(cleanedReplyText);
+  if (visibleReplyText) {
+    parts.push(visibleReplyText);
   } else if (successful.length > 0 && failed.length > 0) {
     parts.push('I made some progress, but I also ran into a problem.');
   } else if (successful.length > 0) {
@@ -1153,8 +1176,9 @@ function normalizeGraphResult(
   state: AgentGraphState,
   langSmith: { langSmithRunId: string | null; langSmithTraceId: string | null },
 ): AgentGraphTurnResult {
+  const visibleReplyText = resolveVisibleReplyTextFromState(state) || state.replyText;
   return {
-    replyText: state.replyText,
+    replyText: visibleReplyText,
     toolResults: deserializeToolResults(state.toolResults),
     files: decodeGraphFiles(state.files),
     roundsCompleted: state.roundsCompleted,
@@ -1632,6 +1656,7 @@ function buildContextFrame(state: Pick<
     | 'messages'
     | 'toolResults'
     | 'replyText'
+    | 'plainTextOutcomeSource'
     | 'pendingInterrupt'
     | 'responseSession'
     | 'artifactDeliveries'
@@ -1653,9 +1678,7 @@ function buildContextFrame(state: Pick<
     };
   }
 
-  const latestAssistantText = scrubFinalReplyText({
-    replyText: state.replyText || findLatestAssistantText(state.messages as BaseMessage[]),
-  });
+  const latestAssistantText = resolveVisibleReplyTextFromState(state);
   const successfulResults = state.toolResults.filter((result) => result.success);
   const failedResults = state.toolResults.filter((result) => !result.success);
   const objective =
@@ -2529,9 +2552,7 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
 
     const requestedCallCount = toolCalls.length;
     if (requestedCallCount === 0) {
-      const replyText = scrubFinalReplyText({
-        replyText: effectiveState.replyText || findLatestAssistantText(effectiveState.messages as BaseMessage[]),
-      });
+      const replyText = resolveVisibleReplyTextFromState(effectiveState);
       const completionKind = replyText ? (effectiveState.completionKind ?? 'final_answer') : 'runtime_failure';
       const waitingForUserInput = completionKind === 'user_input_pending';
       const runtimeFailed = completionKind === 'runtime_failure';
@@ -2782,9 +2803,12 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
   ): Promise<Command<unknown, Partial<AgentGraphState>, GraphNodeName>> => {
     const frame = buildContextFrame(state);
     const runtimeContext = resolveRuntimeContext(state, config);
-    const effectiveReplyText = scrubFinalReplyText({
-      replyText: state.replyText || findLatestAssistantText(state.messages as BaseMessage[]),
-    });
+    const effectiveReplyText =
+      resolveVisibleReplyTextFromState(state) ||
+      buildRuntimeFailureReply({
+        kind: 'turn',
+        category: 'runtime',
+      });
     const waitingForUserInput =
       state.completionKind === 'user_input_pending';
     const responseSession =
