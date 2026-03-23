@@ -69,15 +69,41 @@ vi.mock('@/features/agent-runtime/toolRegistry', () => ({
   globalToolRegistry: globalToolRegistryMock,
 }));
 
-import { runChatTurn } from '@/features/agent-runtime/agentRuntime';
+import { runChatTurn as runChatTurnImpl } from '@/features/agent-runtime/agentRuntime';
 
-function makeCurrentTurn(overrides: Partial<CurrentTurnContext> = {}): CurrentTurnContext {
+type RoutedParam<T> = Omit<T, 'originChannelId' | 'responseChannelId'> & {
+  channelId?: string;
+  originChannelId?: string;
+  responseChannelId?: string;
+};
+
+function withRouting<T extends { originChannelId: string; responseChannelId: string }>(
+  params: RoutedParam<T>,
+): T {
+  const responseChannelId = params.responseChannelId ?? params.channelId ?? 'channel-1';
+  const originChannelId = params.originChannelId ?? params.channelId ?? responseChannelId;
+  return {
+    ...params,
+    originChannelId,
+    responseChannelId,
+  } as T;
+}
+
+const runChatTurn = (params: RoutedParam<Parameters<typeof runChatTurnImpl>[0]>) =>
+  runChatTurnImpl(withRouting(params));
+
+function makeCurrentTurn(
+  overrides: Partial<CurrentTurnContext> & { channelId?: string } = {},
+): CurrentTurnContext {
+  const responseChannelId = overrides.responseChannelId ?? overrides.channelId ?? 'channel-1';
+  const originChannelId = overrides.originChannelId ?? overrides.channelId ?? responseChannelId;
   return {
     invokerUserId: 'user-1',
     invokerDisplayName: 'User One',
     messageId: 'msg-1',
     guildId: 'guild-1',
-    channelId: 'channel-1',
+    originChannelId,
+    responseChannelId,
     invokedBy: 'mention',
     mentionedUserIds: [],
     isDirectReply: false,

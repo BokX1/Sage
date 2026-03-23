@@ -8,7 +8,8 @@ export interface CurrentTurnContext {
   invokerDisplayName: string;
   messageId: string;
   guildId: string | null;
-  channelId: string;
+  originChannelId: string;
+  responseChannelId: string;
   invokedBy: InvocationKind;
   mentionedUserIds: string[];
   isDirectReply: boolean;

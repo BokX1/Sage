@@ -97,7 +97,7 @@ async function fetchEditableResponseMessage(
     return state.editableMessage;
   }
 
-  const channel = (await client.channels.fetch(run.channelId).catch(() => null)) as SendableChannel | null;
+  const channel = (await client.channels.fetch(run.responseChannelId).catch(() => null)) as SendableChannel | null;
   if (!channel || typeof channel.isTextBased !== 'function' || !channel.isTextBased()) {
     return null;
   }
@@ -111,6 +111,62 @@ async function fetchEditableResponseMessage(
   }
 
   return null;
+}
+
+async function fetchWorkerSendableChannel(channelId: string): Promise<SendableChannel | null> {
+  const fetched = (await client.channels.fetch(channelId).catch(() => null)) as SendableChannel | null;
+  if (!fetched || typeof fetched.isTextBased !== 'function' || !fetched.isTextBased()) {
+    return null;
+  }
+  return fetched;
+}
+
+async function resolveWorkerPublishSurface(params: {
+  run: AgentTaskRunRecord;
+  state: WorkerResponseSessionState;
+}): Promise<{
+  channel: SendableChannel | null;
+  responseChannelId: string;
+  fellBackToOriginChannel: boolean;
+}> {
+  const currentChannel = await fetchWorkerSendableChannel(params.run.responseChannelId);
+  if (currentChannel) {
+    return {
+      channel: currentChannel,
+      responseChannelId: params.run.responseChannelId,
+      fellBackToOriginChannel: false,
+    };
+  }
+
+  if (params.run.responseChannelId !== params.run.originChannelId) {
+    const fallbackChannel = await fetchWorkerSendableChannel(params.run.originChannelId);
+    if (fallbackChannel) {
+      logger.warn(
+        {
+          threadId: params.run.threadId,
+          originChannelId: params.run.originChannelId,
+          responseChannelId: params.run.responseChannelId,
+        },
+        'Worker response surface is unavailable; falling back to the origin channel',
+      );
+      params.run.responseChannelId = params.run.originChannelId;
+      params.state.responseMessageId = null;
+      params.state.editableMessage = null;
+      params.state.overflowMessageIds = [];
+      params.state.overflowMessages = [];
+      return {
+        channel: fallbackChannel,
+        responseChannelId: params.run.originChannelId,
+        fellBackToOriginChannel: true,
+      };
+    }
+  }
+
+  return {
+    channel: null,
+    responseChannelId: params.run.responseChannelId,
+    fellBackToOriginChannel: false,
+  };
 }
 
 async function refreshWorkerResponseSessionState(
@@ -173,8 +229,9 @@ async function publishTaskRunResult(params: {
   update?: Parameters<NonNullable<RunChatTurnParams['onResponseSessionUpdate']>>[0];
   state: WorkerResponseSessionState;
 }): Promise<void> {
-  const channel = (await client.channels.fetch(params.run.channelId).catch(() => null)) as SendableChannel | null;
-  if (!channel || typeof channel.isTextBased !== 'function' || !channel.isTextBased()) {
+  const publishSurface = await resolveWorkerPublishSurface(params);
+  const channel = publishSurface.channel;
+  if (!channel) {
     return;
   }
 
@@ -191,7 +248,7 @@ async function publishTaskRunResult(params: {
   let existing = await fetchEditableResponseMessage(params.run, params.state);
   let refreshStatus: 'refreshed' | 'missing' | 'failed' = 'refreshed';
   let expectedCanonicalResponseSurface = !!params.state.responseMessageId;
-  if (!existing) {
+  if (!existing && !publishSurface.fellBackToOriginChannel) {
     const refreshResult = await refreshWorkerResponseSessionState(params.run, params.state);
     refreshStatus = refreshResult.status;
     expectedCanonicalResponseSurface = refreshResult.expectedCanonicalResponseSurface;
@@ -201,7 +258,8 @@ async function publishTaskRunResult(params: {
     logger.warn(
       {
         threadId: params.run.threadId,
-        channelId: params.run.channelId,
+        originChannelId: params.run.originChannelId,
+        responseChannelId: params.run.responseChannelId,
         refreshStatus,
       },
       'Skipping worker response publish because the canonical response surface could not be revalidated',
@@ -212,7 +270,8 @@ async function publishTaskRunResult(params: {
     logger.warn(
       {
         threadId: params.run.threadId,
-        channelId: params.run.channelId,
+        originChannelId: params.run.originChannelId,
+        responseChannelId: params.run.responseChannelId,
         responseMessageId: params.state.responseMessageId,
       },
       'Skipping worker response publish because a canonical response surface should already exist but is not attached',
@@ -223,7 +282,8 @@ async function publishTaskRunResult(params: {
     logger.warn(
       {
         threadId: params.run.threadId,
-        channelId: params.run.channelId,
+        originChannelId: params.run.originChannelId,
+        responseChannelId: params.run.responseChannelId,
         responseMessageId: params.state.responseMessageId,
       },
       'Skipping worker response publish because the canonical response message could not be fetched',
@@ -259,7 +319,8 @@ async function publishTaskRunResult(params: {
     await attachTaskRunResponseSession({
       threadId: params.run.threadId,
       requestedByUserId: params.run.requestedByUserId,
-      channelId: params.run.channelId,
+      originChannelId: params.run.originChannelId,
+      responseChannelId: publishSurface.responseChannelId,
       guildId: params.run.guildId,
       sourceMessageId: params.state.sourceMessageId,
       responseMessageId,
@@ -345,7 +406,8 @@ async function processRunnableTaskRun(run: AgentTaskRunRecord): Promise<void> {
         return runChatTurn({
           traceId: run.threadId,
           userId: run.requestedByUserId,
-          channelId: run.channelId,
+          originChannelId: run.originChannelId,
+          responseChannelId: run.responseChannelId,
           guildId: run.guildId,
           messageId: run.threadId,
           userText: scheduledBootstrap.prompt,
@@ -355,7 +417,8 @@ async function processRunnableTaskRun(run: AgentTaskRunRecord): Promise<void> {
             invokerDisplayName: 'Scheduler',
             messageId: run.threadId,
             guildId: run.guildId,
-            channelId: run.channelId,
+            originChannelId: run.originChannelId,
+            responseChannelId: run.responseChannelId,
             invokedBy: 'component',
             mentionedUserIds: scheduledBootstrap.mentionedUserIds,
             isDirectReply: false,
@@ -394,7 +457,8 @@ async function processRunnableTaskRun(run: AgentTaskRunRecord): Promise<void> {
         threadId: run.threadId,
         leaseOwner,
         userId: run.requestedByUserId,
-        channelId: run.channelId,
+        originChannelId: run.originChannelId,
+        responseChannelId: run.responseChannelId,
         guildId: run.guildId,
         invokerAuthority,
         isAdmin: checkpointMetadata.isAdmin ?? false,

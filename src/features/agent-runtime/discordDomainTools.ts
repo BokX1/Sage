@@ -35,6 +35,7 @@ const DISCORD_SERVER_ADMIN_READ_ACTIONS = new Set([
 const DISCORD_ADMIN_READ_ACTIONS = new Set([
   'get_server_key_status',
   'get_governance_review_status',
+  'get_invoke_thread_status',
 ]);
 
 function isReadOnlyDiscordDomainCall(
@@ -1163,6 +1164,10 @@ const adminGetGovernanceReviewStatusSchema = z.object({
   action: z.literal('get_governance_review_status').describe('Inspect where governance review cards are routed for this server. Admin-only read.'),
 });
 
+const adminGetInvokeThreadStatusSchema = z.object({
+  action: z.literal('get_invoke_thread_status').describe('Inspect which channels automatically route fresh Sage invokes into public message threads. Admin-only read.'),
+});
+
 const adminClearServerApiKeySchema = z.object({
   action: z.literal('clear_server_api_key').describe('Clear the current server-wide API key immediately. Admin-only write. Disabled in autopilot turns.'),
 });
@@ -1174,6 +1179,17 @@ const adminSetGovernanceReviewChannelSchema = z.object({
 
 const adminClearGovernanceReviewChannelSchema = z.object({
   action: z.literal('clear_governance_review_channel').describe('Clear the dedicated governance review channel so reviews render in the source channel by default. Admin-only write. Disabled in autopilot turns.'),
+});
+
+const adminEnableInvokeThreadChannelSchema = z.object({
+  action: z.literal('enable_invoke_thread_channel').describe('Route fresh Sage invokes in a text or announcement channel into a public message thread. Admin-only write. Disabled in autopilot turns.'),
+  channelId: z.string().trim().min(1).max(64),
+  autoArchiveDurationMinutes: discordThreadAutoArchiveDurationSchema.optional(),
+});
+
+const adminDisableInvokeThreadChannelSchema = z.object({
+  action: z.literal('disable_invoke_thread_channel').describe('Disable automatic thread-on-invoke routing for a channel. Admin-only write. Disabled in autopilot turns.'),
+  channelId: z.string().trim().min(1).max(64),
 });
 
 const adminGetArtifactVaultStatusSchema = z.object({
@@ -1858,6 +1874,18 @@ const discordAdminTools = [
     promptSummary: 'Use to inspect governance review routing.',
   }),
   defineDiscordActionTool({
+    name: 'discord_governance_get_invoke_thread_status',
+    title: 'Discord Admin Get Invoke Thread Status',
+    description: 'Inspect which channels auto-route Sage invokes into public message threads.',
+    schema: adminGetInvokeThreadStatusSchema,
+    domain: 'discord_admin',
+    executeDomain: executeDiscordAdminAction,
+    readOnly: true,
+    access: 'admin',
+    capabilityTags: ['admin', 'governance', 'threads'],
+    promptSummary: 'Use to inspect thread-on-invoke routing for this server.',
+  }),
+  defineDiscordActionTool({
     name: 'discord_governance_get_artifact_vault_status',
     title: 'Discord Admin Get Artifact Vault Status',
     description: 'Inspect where Sage publishes default artifact vault posts.',
@@ -2039,6 +2067,18 @@ const discordAdminTools = [
     promptSummary: 'Use to configure the governance review channel.',
   }),
   defineDiscordActionTool({
+    name: 'discord_governance_enable_invoke_thread_channel',
+    title: 'Discord Admin Enable Invoke Thread Channel',
+    description: 'Route fresh Sage invokes in a channel into a public message thread.',
+    schema: adminEnableInvokeThreadChannelSchema,
+    domain: 'discord_admin',
+    executeDomain: executeDiscordAdminAction,
+    readOnly: false,
+    access: 'admin',
+    capabilityTags: ['admin', 'governance', 'threads'],
+    promptSummary: 'Use to enable automatic thread-on-invoke routing for a channel.',
+  }),
+  defineDiscordActionTool({
     name: 'discord_governance_set_artifact_vault_channel',
     title: 'Discord Admin Set Artifact Vault Channel',
     description: 'Route default artifact publications to a specific text channel or thread.',
@@ -2073,6 +2113,18 @@ const discordAdminTools = [
     access: 'admin',
     capabilityTags: ['admin', 'governance'],
     promptSummary: 'Use to clear the governance review channel override.',
+  }),
+  defineDiscordActionTool({
+    name: 'discord_governance_disable_invoke_thread_channel',
+    title: 'Discord Admin Disable Invoke Thread Channel',
+    description: 'Disable automatic thread-on-invoke routing for a channel.',
+    schema: adminDisableInvokeThreadChannelSchema,
+    domain: 'discord_admin',
+    executeDomain: executeDiscordAdminAction,
+    readOnly: false,
+    access: 'admin',
+    capabilityTags: ['admin', 'governance', 'threads'],
+    promptSummary: 'Use to disable automatic thread-on-invoke routing for a channel.',
   }),
   defineDiscordActionTool({
     name: 'discord_governance_clear_artifact_vault_channel',

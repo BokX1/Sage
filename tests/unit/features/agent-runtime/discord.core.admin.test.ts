@@ -31,7 +31,9 @@ describe('executeDiscordAdminAction', () => {
     upsertModerationPolicyForTool.mockResolvedValue({ ok: true });
   });
 
-  it('forwards policyId to moderation policy upserts so edits can target the existing policy identity', async () => {
+  it(
+    'forwards policyId to moderation policy upserts so edits can target the existing policy identity',
+    async () => {
     const { executeDiscordAdminAction } = await import('@/features/agent-runtime/discord/core');
 
     await executeDiscordAdminAction(
@@ -67,5 +69,7 @@ describe('executeDiscordAdminAction', () => {
         name: 'Rename policy',
       }),
     );
-  });
+    },
+    15_000,
+  );
 });

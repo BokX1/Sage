@@ -604,6 +604,8 @@ export interface StartAgentGraphTurnParams {
   traceId: string;
   userId: string;
   channelId: string;
+  originChannelId?: string;
+  responseChannelId?: string;
   guildId: string | null;
   apiKey?: string;
   model?: string;
@@ -1093,6 +1095,8 @@ function createRuntimeContext(params: StartAgentGraphTurnParams): AgentGraphRunt
     threadId: params.traceId,
     userId: params.userId,
     channelId: params.channelId,
+    originChannelId: params.originChannelId ?? params.channelId,
+    responseChannelId: params.responseChannelId ?? params.channelId,
     guildId: params.guildId,
     apiKey: params.apiKey,
     model: params.model,
@@ -1928,7 +1932,8 @@ function resolvePromptCurrentTurn(runtimeContext: AgentGraphRuntimeContext): Cur
     typeof candidate.invokerUserId === 'string' &&
     typeof candidate.invokerDisplayName === 'string' &&
     typeof candidate.messageId === 'string' &&
-    typeof candidate.channelId === 'string' &&
+    typeof candidate.originChannelId === 'string' &&
+    typeof candidate.responseChannelId === 'string' &&
     typeof candidate.invokedBy === 'string'
   ) {
     return candidate as CurrentTurnContext;
@@ -1939,7 +1944,8 @@ function resolvePromptCurrentTurn(runtimeContext: AgentGraphRuntimeContext): Cur
     invokerDisplayName: 'Current User',
     messageId: runtimeContext.traceId || 'graph-turn',
     guildId: runtimeContext.guildId,
-    channelId: runtimeContext.channelId,
+    originChannelId: runtimeContext.originChannelId ?? runtimeContext.channelId,
+    responseChannelId: runtimeContext.responseChannelId ?? runtimeContext.channelId,
     invokedBy: runtimeContext.invokedBy ?? 'component',
     mentionedUserIds: [],
     isDirectReply: false,

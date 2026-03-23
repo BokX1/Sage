@@ -187,24 +187,69 @@ vi.mock('@/features/voice/voiceConversationSessionStore', () => ({
 }));
 
 import {
-  attachTaskRunResponseSession,
-  continueMatchedTaskRunWithInput,
+  attachTaskRunResponseSession as attachTaskRunResponseSessionImpl,
+  continueMatchedTaskRunWithInput as continueMatchedTaskRunWithInputImpl,
   queueActiveRunUserInterrupt,
-  resumeBackgroundTaskRun,
-  resumeWaitingTaskRunWithInput,
-  retryFailedChatTurn,
-  runChatTurn,
+  resumeBackgroundTaskRun as resumeBackgroundTaskRunImpl,
+  resumeWaitingTaskRunWithInput as resumeWaitingTaskRunWithInputImpl,
+  retryFailedChatTurn as retryFailedChatTurnImpl,
+  runChatTurn as runChatTurnImpl,
 } from '@/features/agent-runtime/agentRuntime';
 import { scrubFinalReplyText } from '@/features/agent-runtime/finalReplyScrubber';
 import { AppError } from '@/shared/errors/app-error';
 
-function makeCurrentTurn(overrides: Partial<CurrentTurnContext> = {}): CurrentTurnContext {
+type RoutedParam<T> = Omit<T, 'originChannelId' | 'responseChannelId'> & {
+  channelId?: string;
+  originChannelId?: string;
+  responseChannelId?: string;
+};
+
+function withRouting<T extends { originChannelId: string; responseChannelId: string }>(
+  params: RoutedParam<T>,
+): T {
+  const responseChannelId = params.responseChannelId ?? params.channelId ?? 'channel-1';
+  const originChannelId = params.originChannelId ?? params.channelId ?? responseChannelId;
+  return {
+    ...params,
+    originChannelId,
+    responseChannelId,
+  } as T;
+}
+
+const runChatTurn = (params: RoutedParam<Parameters<typeof runChatTurnImpl>[0]>) =>
+  runChatTurnImpl(withRouting(params));
+const retryFailedChatTurn = (params: RoutedParam<Parameters<typeof retryFailedChatTurnImpl>[0]>) =>
+  retryFailedChatTurnImpl(withRouting(params));
+const resumeWaitingTaskRunWithInput = (
+  params: RoutedParam<Parameters<typeof resumeWaitingTaskRunWithInputImpl>[0]>,
+) => resumeWaitingTaskRunWithInputImpl(withRouting(params));
+const continueMatchedTaskRunWithInput = (
+  params: RoutedParam<Parameters<typeof continueMatchedTaskRunWithInputImpl>[0]>,
+) => continueMatchedTaskRunWithInputImpl(withRouting(params));
+const resumeBackgroundTaskRun = (
+  params: RoutedParam<Parameters<typeof resumeBackgroundTaskRunImpl>[0]>,
+) => resumeBackgroundTaskRunImpl(withRouting(params));
+const attachTaskRunResponseSession = (
+  params: RoutedParam<Parameters<typeof attachTaskRunResponseSessionImpl>[0]>,
+) =>
+  attachTaskRunResponseSessionImpl({
+    ...params,
+    originChannelId: params.originChannelId ?? params.channelId,
+    responseChannelId: params.responseChannelId ?? params.channelId,
+  });
+
+function makeCurrentTurn(
+  overrides: Partial<CurrentTurnContext> & { channelId?: string } = {},
+): CurrentTurnContext {
+  const responseChannelId = overrides.responseChannelId ?? overrides.channelId ?? 'channel-1';
+  const originChannelId = overrides.originChannelId ?? overrides.channelId ?? responseChannelId;
   return {
     invokerUserId: 'user-1',
     invokerDisplayName: 'User One',
     messageId: 'message-1',
     guildId: 'guild-1',
-    channelId: 'channel-1',
+    originChannelId,
+    responseChannelId,
     invokedBy: 'mention',
     mentionedUserIds: [],
     isDirectReply: false,
@@ -1152,7 +1197,8 @@ describe('agentRuntime', () => {
     await attachTaskRunResponseSession({
       threadId: 'trace-foreground-attach-1',
       requestedByUserId: 'user-foreground-1',
-      channelId: 'channel-foreground-1',
+      originChannelId: 'channel-foreground-1',
+      responseChannelId: 'channel-foreground-1',
       guildId: 'guild-foreground-1',
       sourceMessageId: 'message-foreground-1',
       responseMessageId: 'response-foreground-1',
@@ -1172,7 +1218,8 @@ describe('agentRuntime', () => {
       expect.objectContaining({
         threadId: 'trace-foreground-attach-1',
         requestedByUserId: 'user-foreground-1',
-        channelId: 'channel-foreground-1',
+        originChannelId: 'channel-foreground-1',
+        responseChannelId: 'channel-foreground-1',
         guildId: 'guild-foreground-1',
         sourceMessageId: 'message-foreground-1',
         responseMessageId: 'response-foreground-1',
@@ -1256,7 +1303,8 @@ describe('agentRuntime', () => {
       originTraceId: 'trace-origin',
       latestTraceId: 'trace-latest',
       guildId: 'guild-1',
-      channelId: 'channel-1',
+      originChannelId: 'channel-1',
+      responseChannelId: 'channel-1',
       requestedByUserId: 'user-1',
       sourceMessageId: 'message-source-1',
       responseMessageId: 'response-1',
@@ -1298,7 +1346,8 @@ describe('agentRuntime', () => {
       traceId: 'trace-resume-1',
       threadId: 'thread-1',
       userId: 'user-1',
-      channelId: 'channel-1',
+      originChannelId: 'channel-1',
+      responseChannelId: 'channel-1',
       guildId: 'guild-1',
       invokerAuthority: 'admin',
       isAdmin: true,
@@ -1315,6 +1364,8 @@ describe('agentRuntime', () => {
           traceId: 'trace-resume-1',
           userId: 'user-1',
           channelId: 'channel-1',
+          originChannelId: 'channel-1',
+          responseChannelId: 'channel-1',
           guildId: 'guild-1',
           apiKey: 'test-api-key',
           model: 'test-main-agent-model',

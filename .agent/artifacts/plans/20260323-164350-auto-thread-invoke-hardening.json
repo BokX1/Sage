@@ -1,0 +1,127 @@
+{
+  "schema_version": "2.0",
+  "artifact_type": "plan",
+  "plan_id": "20260323-164350-auto-thread-invoke-hardening",
+  "status": "completed",
+  "created_utc": "2026-03-23T16:43:50.563Z",
+  "updated_utc": "2026-03-24T02:03:00.000Z",
+  "objective": "Close red-team gaps in auto thread-on-invoke routing, task continuation, and operator diagnostics",
+  "success_criteria": [
+    "Missing stored response threads fail open to the current channel instead of dropping the invoke.",
+    "Parent-channel replies to a threaded source message resume the existing waiting or running task instead of forking a fresh turn.",
+    "Invoke-thread governance status surfaces missing bot thread permissions and enabling a broken channel policy is rejected."
+  ],
+  "constraints": [
+    "Keep the fix surgical within the new auto thread-on-invoke routing, task matching, and governance status seams.",
+    "Preserve the explicit originChannelId/responseChannelId routing model introduced by the thread-on-invoke rewrite."
+  ],
+  "scope": {
+    "in": [
+      "Threaded response-surface recovery in the Discord message-create handler",
+      "Task-run matching rules for waiting and active tasks replying from parent channels",
+      "Governance health and validation for invoke-thread channel policies",
+      "Regression coverage and changelog updates for the above behavior"
+    ],
+    "out": [
+      "Broad Discord tool-surface refactors unrelated to invoke-thread routing",
+      "Database schema changes beyond the already-added invoke-thread policy model"
+    ]
+  },
+  "milestones": [
+    {
+      "id": "intake",
+      "title": "Capture intake snapshot and touched scope",
+      "status": "completed",
+      "notes": [
+        "Work item scaffolded from the local workflow generator."
+      ]
+    },
+    {
+      "id": "implement",
+      "title": "Implement the scoped changes",
+      "status": "completed",
+      "notes": [
+        "Added fail-open recovery for missing stored response channels in messageCreate and in the background task worker.",
+        "Matched threaded parent-message replies back to waiting/running task runs by sourceMessageId only when the response surface is a distinct thread, and stopped reusing approval-paused threads.",
+        "Added invoke-thread permission health reporting and blocked enablement when Sage lacks required thread permissions."
+      ]
+    },
+    {
+      "id": "validate",
+      "title": "Run validation and publish the completion report",
+      "status": "completed",
+      "notes": [
+        "Ran workflow validation, lint, full test suite, build, docs checks, repeated trust runs, tool audit, and mutation-critical coverage.",
+        "Added targeted regressions for stale-surface fallback in both foreground and worker paths, threaded parent-message continuation, invoke-thread router status filtering, and governance permission diagnostics.",
+        "Final red-team pass found no new in-scope issues."
+      ]
+    }
+  ],
+  "progress": [
+    {
+      "timestamp_utc": "2026-03-23T16:43:50.563Z",
+      "summary": "Created the local work item scaffold."
+    },
+    {
+      "timestamp_utc": "2026-03-24T02:03:00.000Z",
+      "summary": "Closed the remaining worker and waiting-approval routing gaps, reran the full validation stack, and completed a clean final red-team pass."
+    }
+  ],
+  "decision_log": [
+    {
+      "timestamp_utc": "2026-03-23T16:49:00.000Z",
+      "decision": "Treat missing stored response surfaces as a recoverable routing failure and fall back to the current channel.",
+      "rationale": "The feature contract promises fail-open behavior; dropping the turn was a regression."
+    },
+    {
+      "timestamp_utc": "2026-03-23T16:50:00.000Z",
+      "decision": "Match parent-message replies by sourceMessageId only for task runs whose response surface is a distinct thread.",
+      "rationale": "This preserves the new threaded continuation model without reintroducing same-channel auto-resume ambiguity."
+    },
+    {
+      "timestamp_utc": "2026-03-23T16:51:00.000Z",
+      "decision": "Reject invoke-thread policy enablement when Sage currently lacks CreatePublicThreads or SendMessagesInThreads, and expose the same health in status reads.",
+      "rationale": "Operators should not silently enable a broken policy."
+    },
+    {
+      "timestamp_utc": "2026-03-24T01:15:00.000Z",
+      "decision": "Treat worker fallback to the origin channel as an intentional response-surface reset and skip stale canonical-response revalidation for that publish attempt.",
+      "rationale": "Without that reset, the worker reloaded dead-thread metadata and talked itself out of publishing the recovered reply."
+    },
+    {
+      "timestamp_utc": "2026-03-24T01:25:00.000Z",
+      "decision": "Limit source-message thread reuse to running and waiting-user-input task runs only.",
+      "rationale": "Approval-paused tasks should not attract fresh parent-channel invokes into their old thread."
+    }
+  ],
+  "discoveries": [
+    {
+      "timestamp_utc": "2026-03-23T16:47:00.000Z",
+      "summary": "The stale completed-task reopen path reused persisted response-channel metadata before checking whether the underlying Discord thread still existed.",
+      "evidence": [
+        "The red-team pass reproduced an early return in messageCreate when a persisted responseChannelId could not be rehydrated."
+      ]
+    },
+    {
+      "timestamp_utc": "2026-03-23T16:48:00.000Z",
+      "summary": "Task matching only recognized replies to Sage's response message; parent-channel replies to the original source message were routed into the old thread but still forked a fresh turn.",
+      "evidence": [
+        "The auto-thread routing reused response threads by sourceMessageId, but the waiting/running repo matchers only checked responseMessageId until this hardening pass."
+      ]
+    },
+    {
+      "timestamp_utc": "2026-03-24T01:10:00.000Z",
+      "summary": "The background worker still reloaded stale canonical-response metadata after falling back from a deleted thread, which prevented the recovered reply from being published.",
+      "evidence": [
+        "The new worker regression initially failed because refreshWorkerResponseSessionState repopulated the dead thread's responseMessageId after the fallback path had already cleared the in-memory response-session state."
+      ]
+    }
+  ],
+  "validation_strategy": [
+    "Run targeted Vitest coverage for agentTaskRunRepo, messageCreate routing, and governance wrappers before the full suite.",
+    "Run workflow validation plus lint, full tests, build, docs gates, and trust deep because the changes touch runtime code and tracked Markdown."
+  ],
+  "notes": [
+    "The deep trust gate briefly created a local mutation report under reports/; the generated file was removed so the workspace stays aligned to the canonical artifact layout."
+  ]
+}

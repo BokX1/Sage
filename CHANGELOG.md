@@ -28,6 +28,7 @@
 ### Added
 
 - Added a Discord-native artifact lifecycle with staged attachment intake, text artifact creation, revision history, and publish/republish flows, so Sage can now manage Discord work products as tracked artifacts instead of only reading cached attachments or re-sending old files.
+- Added admin-configurable thread-on-invoke routing for Discord text and announcement channels, so opted-in channels can now push fresh Sage invokes into public message threads automatically while active or waiting task continuations keep using their existing response thread.
 - Added explicit Discord authority tiers (`member`, `moderator`, `admin`, `owner`) to Sage's runtime, tool exposure, and checkpointed task metadata, so moderator actions, admin governance, and owner-only server-key operations now follow one consistent authority contract across fresh turns, resumes, and approvals.
 - Added full moderation case workflow operations on top of deterministic moderation policies: moderators can now inspect cases, review offender history, acknowledge incidents, resolve cases with reasons, and add case notes without falling back to ad hoc message-only moderation handling.
 - Added richer scheduled-task operations for Discord operators, including pause/resume, run-now, skip-next, and clone flows, so server reminders and scheduled Sage jobs behave like a durable operator scheduler instead of a minimal create/list/cancel surface.
@@ -43,6 +44,7 @@
 
 ### Changed
 
+- Changed Sage's Discord task-run routing contract from one implicit `channelId` to explicit origin and response surfaces, so auto-threaded replies, waiting-user-input resumes, retry flows, BYOP setup cards, and worker-delivered drafts/finals now stay attached to the correct visible Discord surface instead of assuming the invoke channel and reply channel are always the same.
 - Changed Prisma migration history back down to one canonical baseline directory for the current schema, so deliberate hard resets now rebuild Sage from a single migration entrypoint instead of carrying extra local legacy migration folders alongside the active baseline.
 - Changed Sage's model-facing Discord tool surface from the old mixed `discord_admin_*`, `discord_server_*`, and `discord_files_*` layout to stable capability families such as `discord_artifact_*`, `discord_moderation_*`, `discord_schedule_*`, `discord_spaces_*`, and `discord_governance_*`, so prompts, audits, tests, and tool docs now describe one product-shaped Discord operations surface instead of backend-era naming splits.
 - Changed Discord attachment handling to treat cached attachment reads as the intake path into the new artifact system, with guild-scoped vault/default-channel settings and tracked publication metadata, instead of teaching cached resend as Sage's primary file workflow.
@@ -59,6 +61,7 @@
 
 ### Fixed
 
+- Fixed auto thread-on-invoke continuity so missing stored response threads now fall back to the current channel in both the foreground handler and the background worker, parent-channel replies to a threaded Sage source message now resume the existing active or waiting-user-input task instead of forking fresh work, and governance status now reports missing thread permissions before operators enable a broken channel policy.
 - Fixed Discord thread resolution actions so archive/reopen requests with a resolution note now stay on the same admin approval path as the plain thread-state change instead of silently bypassing review when a note is attached.
 - Fixed artifact-backed forum post safety so starter messages now reject overlong artifact text before Discord API submission, preventing approval-time failures from oversized forum post bodies.
 - Fixed scheduled `agent_run` startup durability so scheduled Sage jobs now enqueue directly onto the durable task-run worker path from the first slice, preserving scheduler provenance and authority on the same runtime substrate as other long-running tasks.

@@ -18,6 +18,9 @@ const mocks = vi.hoisted(() => ({
   setGuildArtifactVaultChannelId: vi.fn(),
   getGuildModLogChannelId: vi.fn(),
   setGuildModLogChannelId: vi.fn(),
+  listGuildChannelInvokePolicies: vi.fn(),
+  upsertGuildChannelInvokePolicy: vi.fn(),
+  deleteGuildChannelInvokePolicy: vi.fn(),
   getArtifactLatestTextContentForTool: vi.fn(),
 }));
 
@@ -59,6 +62,18 @@ vi.mock('../../../../src/features/settings/guildSettingsRepo', () => ({
   getGuildModLogChannelId: mocks.getGuildModLogChannelId,
   setGuildModLogChannelId: mocks.setGuildModLogChannelId,
 }));
+
+vi.mock('../../../../src/features/settings/guildChannelInvokePolicyRepo', async (importOriginal) => {
+  const actual = await importOriginal<
+    typeof import('../../../../src/features/settings/guildChannelInvokePolicyRepo')
+  >();
+  return {
+    ...actual,
+    listGuildChannelInvokePolicies: mocks.listGuildChannelInvokePolicies,
+    upsertGuildChannelInvokePolicy: mocks.upsertGuildChannelInvokePolicy,
+    deleteGuildChannelInvokePolicy: mocks.deleteGuildChannelInvokePolicy,
+  };
+});
 
 vi.mock('../../../../src/features/artifacts/service', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../../../src/features/artifacts/service')>();
@@ -134,8 +149,16 @@ describe('discord admin granular wrappers', () => {
     mocks.channelFetch.mockReset().mockResolvedValue({
       id: 'channel-2',
       guildId: 'guild-1',
+      type: 0,
       isDMBased: () => false,
       isTextBased: () => true,
+      permissionsFor: vi.fn(
+        () =>
+          new PermissionsBitField(
+            PermissionsBitField.Flags.CreatePublicThreads |
+              PermissionsBitField.Flags.SendMessagesInThreads,
+          ),
+      ),
     });
     mocks.getGuildApprovalReviewChannelId.mockReset().mockResolvedValue(null);
     mocks.setGuildApprovalReviewChannelId.mockReset().mockResolvedValue(undefined);
@@ -143,6 +166,14 @@ describe('discord admin granular wrappers', () => {
     mocks.setGuildArtifactVaultChannelId.mockReset().mockResolvedValue(undefined);
     mocks.getGuildModLogChannelId.mockReset().mockResolvedValue(null);
     mocks.setGuildModLogChannelId.mockReset().mockResolvedValue(undefined);
+    mocks.listGuildChannelInvokePolicies.mockReset().mockResolvedValue([]);
+    mocks.upsertGuildChannelInvokePolicy.mockReset().mockResolvedValue({
+      guildId: 'guild-1',
+      channelId: 'channel-2',
+      mode: 'public_from_message',
+      autoArchiveDurationMinutes: null,
+    });
+    mocks.deleteGuildChannelInvokePolicy.mockReset().mockResolvedValue(undefined);
     mocks.getArtifactLatestTextContentForTool.mockReset().mockResolvedValue({
       artifactId: 'artifact-1',
       name: 'Release Notes',
@@ -354,6 +385,63 @@ describe('discord admin granular wrappers', () => {
     await tool('discord_governance_clear_mod_log_channel').execute({}, adminCtx);
 
     expect(mocks.setGuildModLogChannelId).toHaveBeenLastCalledWith('guild-1', null);
+  });
+
+  it('reports invoke-thread channel permission health in governance status', async () => {
+    mocks.listGuildChannelInvokePolicies.mockResolvedValueOnce([
+      {
+        guildId: 'guild-1',
+        channelId: 'channel-2',
+        mode: 'public_from_message',
+        autoArchiveDurationMinutes: null,
+      },
+    ]);
+
+    mocks.channelFetch.mockResolvedValueOnce({
+      id: 'channel-2',
+      guildId: 'guild-1',
+      type: 0,
+      isDMBased: () => false,
+      isTextBased: () => true,
+      permissionsFor: vi.fn(() => new PermissionsBitField(0n)),
+    });
+
+    const status = await tool('discord_governance_get_invoke_thread_status').execute({}, adminCtx);
+
+    expect(status).toEqual(
+      expect.objectContaining({
+        ok: true,
+        action: 'get_invoke_thread_status',
+        items: [
+          expect.objectContaining({
+            channelId: 'channel-2',
+            supportsMode: true,
+            threadRoutingHealthy: false,
+            missingBotPermissions: ['CreatePublicThreads', 'SendMessagesInThreads'],
+          }),
+        ],
+      }),
+    );
+  });
+
+  it('rejects enabling invoke-thread routing when Sage lacks required thread permissions', async () => {
+    mocks.channelFetch.mockResolvedValueOnce({
+      id: 'channel-2',
+      guildId: 'guild-1',
+      type: 0,
+      isDMBased: () => false,
+      isTextBased: () => true,
+      permissionsFor: vi.fn(() => new PermissionsBitField(0n)),
+    });
+
+    await expect(
+      tool('discord_governance_enable_invoke_thread_channel').execute(
+        {
+          channelId: 'channel-2',
+        },
+        adminCtx,
+      ),
+    ).rejects.toThrow(/CreatePublicThreads, SendMessagesInThreads/i);
   });
 
   it('builds forum posts from artifact content when artifactId is provided', async () => {

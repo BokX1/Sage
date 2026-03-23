@@ -39,7 +39,8 @@ function makeTaskRunRow(overrides: Record<string, unknown> = {}) {
     originTraceId: 'thread-1',
     latestTraceId: 'trace-1',
     guildId: 'guild-1',
-    channelId: 'channel-1',
+    originChannelId: 'channel-1',
+    responseChannelId: 'channel-1',
     requestedByUserId: 'user-1',
     sourceMessageId: 'source-1',
     responseMessageId: 'response-1',
@@ -149,6 +150,28 @@ describe('AgentTaskRunRepo.findWaitingUserInputTaskRun', () => {
     expect(result).toBeNull();
   });
 
+  it('resumes a waiting run when the user replies to the original parent-channel source message for a threaded response surface', async () => {
+    mockFindMany.mockResolvedValue([
+      makeTaskRunRow({
+        id: 'run-threaded-source',
+        threadId: 'thread-threaded-source',
+        originChannelId: 'channel-parent',
+        responseChannelId: 'thread-response-1',
+        sourceMessageId: 'user-source-message',
+        responseMessageId: 'sage-waiting-message',
+      }),
+    ]);
+
+    const result = await findWaitingUserInputTaskRun({
+      guildId: 'guild-1',
+      channelId: 'channel-parent',
+      requestedByUserId: 'user-1',
+      replyToMessageId: 'user-source-message',
+    });
+
+    expect(result?.threadId).toBe('thread-threaded-source');
+  });
+
   it('matches a waiting run when the canonical Sage reply only exists inside persisted response-session state', async () => {
     mockFindMany.mockResolvedValue([
       makeTaskRunRow({
@@ -228,6 +251,30 @@ describe('AgentTaskRunRepo active-run steering interrupts', () => {
     });
 
     expect(result?.threadId).toBe('thread-running-cap-6');
+  });
+
+  it('matches a running threaded task when the user replies to the parent-channel source message', async () => {
+    mockFindMany.mockResolvedValue([
+      makeTaskRunRow({
+        id: 'run-running-threaded-source',
+        threadId: 'thread-running-threaded-source',
+        status: 'running',
+        waitingKind: null,
+        originChannelId: 'channel-parent',
+        responseChannelId: 'thread-response-2',
+        sourceMessageId: 'parent-source-message',
+        responseMessageId: 'sage-running-message',
+      }),
+    ]);
+
+    const result = await findRunningTaskRunForActiveInterrupt({
+      guildId: 'guild-1',
+      channelId: 'channel-parent',
+      requestedByUserId: 'user-1',
+      replyToMessageId: 'parent-source-message',
+    });
+
+    expect(result?.threadId).toBe('thread-running-threaded-source');
   });
 
   it('queues the latest active interrupt and records supersession metadata when replacing an unconsumed one', async () => {

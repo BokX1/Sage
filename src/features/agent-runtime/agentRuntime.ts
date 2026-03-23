@@ -58,7 +58,8 @@ const SINGLE_ROUTE_KIND = 'single';
 export interface RunChatTurnParams {
   traceId: string;
   userId: string;
-  channelId: string;
+  originChannelId: string;
+  responseChannelId: string;
   guildId: string | null;
   voiceChannelId?: string | null;
   messageId: string;
@@ -125,7 +126,8 @@ export interface RunChatTurnResult {
 export interface ResumeWaitingTaskRunWithInputParams {
   traceId: string;
   userId: string;
-  channelId: string;
+  originChannelId: string;
+  responseChannelId: string;
   guildId: string | null;
   replyToMessageId?: string | null;
   userText: string;
@@ -155,7 +157,8 @@ export interface ContinueMatchedTaskRunWithInputParams {
   traceId: string;
   threadId: string;
   userId: string;
-  channelId: string;
+  originChannelId: string;
+  responseChannelId: string;
   guildId: string | null;
   userText: string;
   userContent?: LLMMessageContent;
@@ -172,7 +175,8 @@ export interface RetryFailedChatTurnParams {
   traceId: string;
   threadId: string;
   userId: string;
-  channelId: string;
+  originChannelId: string;
+  responseChannelId: string;
   guildId: string | null;
   retryKind: 'turn' | 'background_resume';
   invokerAuthority: DiscordAuthorityTier;
@@ -510,7 +514,8 @@ async function persistTaskRunFromGraphResult(params: {
   traceId: string;
   sourceMessageId: string | null;
   guildId: string | null;
-  channelId: string;
+  originChannelId: string;
+  responseChannelId: string;
   userId: string;
   invokerAuthority?: DiscordAuthorityTier;
   isAdmin?: boolean;
@@ -577,7 +582,8 @@ async function persistTaskRunFromGraphResult(params: {
     originTraceId: existingTaskRun?.originTraceId ?? params.traceId,
     latestTraceId: params.graphResult.langSmithTraceId ?? params.traceId,
     guildId: existingTaskRun?.guildId ?? params.guildId,
-    channelId: existingTaskRun?.channelId ?? params.channelId,
+    originChannelId: existingTaskRun?.originChannelId ?? params.originChannelId,
+    responseChannelId: existingTaskRun?.responseChannelId ?? params.responseChannelId,
     requestedByUserId: existingTaskRun?.requestedByUserId ?? params.userId,
     sourceMessageId:
       params.freshResponseSurface
@@ -663,7 +669,8 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
   const {
     traceId,
     userId,
-    channelId,
+    originChannelId,
+    responseChannelId,
     guildId,
     voiceChannelId,
     userText,
@@ -681,8 +688,8 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
   };
 
   const recentMessages =
-    guildId && isLoggingEnabled(guildId, channelId)
-      ? getRecentMessages({ guildId, channelId, limit: appConfig.CONTEXT_TRANSCRIPT_MAX_MESSAGES })
+    guildId && isLoggingEnabled(guildId, responseChannelId)
+      ? getRecentMessages({ guildId, channelId: responseChannelId, limit: appConfig.CONTEXT_TRANSCRIPT_MAX_MESSAGES })
       : [];
 
   const excludedAmbientMessageIds = [params.messageId];
@@ -724,7 +731,7 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
   const apiKey = await resolveApiKeyForRuntime(guildId);
   if (!apiKey) {
     logger.warn(
-      { guildId, channelId, userId },
+      { guildId, channelId: responseChannelId, userId, originChannelId },
       'No API key configured for chat turn; returning setup guidance response',
     );
     clearToolCaches();
@@ -782,7 +789,7 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
       await upsertTraceStart({
         id: traceId,
         guildId,
-        channelId,
+        channelId: responseChannelId,
         userId,
         routeKind: SINGLE_ROUTE_KIND,
         tokenJson: {
@@ -834,7 +841,9 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
     const graphResult = await runAgentGraphTurn({
       traceId,
       userId,
-      channelId,
+      channelId: responseChannelId,
+      originChannelId,
+      responseChannelId,
       guildId,
       apiKey,
       model,
@@ -893,7 +902,8 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
       traceId,
       sourceMessageId: params.messageId,
       guildId,
-      channelId,
+      originChannelId,
+      responseChannelId,
       userId,
       isAdmin,
       canModerate,
@@ -1046,7 +1056,8 @@ export async function attachTaskRunResponseSession(params: {
   responseMessageId?: string | null;
   responseSession?: RuntimeGraphResult['responseSession'] | null;
   requestedByUserId?: string | null;
-  channelId?: string;
+  originChannelId?: string;
+  responseChannelId?: string;
   guildId?: string | null;
   originTraceId?: string | null;
   latestTraceId?: string | null;
@@ -1056,7 +1067,7 @@ export async function attachTaskRunResponseSession(params: {
   const graphConfig = buildAgentGraphConfig();
 
   if (!existing) {
-    if (!params.requestedByUserId || !params.channelId) {
+    if (!params.requestedByUserId || !params.originChannelId || !params.responseChannelId) {
       return;
     }
 
@@ -1096,7 +1107,8 @@ export async function attachTaskRunResponseSession(params: {
       originTraceId: params.originTraceId ?? params.threadId,
       latestTraceId: params.latestTraceId ?? params.threadId,
       guildId: params.guildId ?? null,
-      channelId: params.channelId,
+      originChannelId: params.originChannelId,
+      responseChannelId: params.responseChannelId,
       requestedByUserId: params.requestedByUserId,
       sourceMessageId:
         params.sourceMessageId ??
@@ -1171,7 +1183,8 @@ export async function attachTaskRunResponseSession(params: {
     originTraceId: existing.originTraceId,
     latestTraceId: existing.latestTraceId,
     guildId: existing.guildId,
-    channelId: existing.channelId,
+    originChannelId: existing.originChannelId,
+    responseChannelId: existing.responseChannelId,
     requestedByUserId: existing.requestedByUserId,
     sourceMessageId:
       params.sourceMessageId ??
@@ -1226,7 +1239,7 @@ export async function resumeWaitingTaskRunWithInput(
 ): Promise<RunChatTurnResult> {
   const waitingTaskRun = await findWaitingUserInputTaskRun({
     guildId: params.guildId,
-    channelId: params.channelId,
+    channelId: params.responseChannelId,
     requestedByUserId: params.userId,
     replyToMessageId: params.replyToMessageId ?? null,
   });
@@ -1284,7 +1297,9 @@ export async function resumeWaitingTaskRunWithInput(
         traceId: params.traceId,
         threadId: waitingTaskRun.threadId,
         userId: params.userId,
-        channelId: params.channelId,
+        channelId: params.responseChannelId,
+        originChannelId: params.originChannelId,
+        responseChannelId: params.responseChannelId,
         guildId: params.guildId,
         apiKey,
         model,
@@ -1329,7 +1344,8 @@ export async function resumeWaitingTaskRunWithInput(
       traceId: waitingTaskRun.threadId,
       sourceMessageId: params.currentTurn.messageId,
       guildId: params.guildId,
-      channelId: params.channelId,
+      originChannelId: params.originChannelId,
+      responseChannelId: params.responseChannelId,
       userId: params.userId,
       invokerAuthority: params.invokerAuthority,
       isAdmin: params.isAdmin,
@@ -1378,7 +1394,8 @@ export async function resumeBackgroundTaskRun(params: {
   threadId: string;
   leaseOwner?: string | null;
   userId: string;
-  channelId: string;
+  originChannelId: string;
+  responseChannelId: string;
   guildId: string | null;
   invokerAuthority: DiscordAuthorityTier;
   isAdmin: boolean;
@@ -1436,7 +1453,9 @@ export async function resumeBackgroundTaskRun(params: {
         traceId: params.traceId,
         threadId: params.threadId,
         userId: params.userId,
-        channelId: params.channelId,
+        channelId: params.responseChannelId,
+        originChannelId: params.originChannelId,
+        responseChannelId: params.responseChannelId,
         guildId: params.guildId,
         apiKey,
         model,
@@ -1472,7 +1491,8 @@ export async function resumeBackgroundTaskRun(params: {
       traceId: params.threadId,
       sourceMessageId: taskRun.sourceMessageId ?? params.threadId,
       guildId: params.guildId,
-      channelId: params.channelId,
+      originChannelId: params.originChannelId,
+      responseChannelId: params.responseChannelId,
       userId: params.userId,
       invokerAuthority: params.invokerAuthority,
       isAdmin: params.isAdmin,
@@ -1558,7 +1578,9 @@ export async function continueMatchedTaskRunWithInput(
         traceId: params.traceId,
         threadId: params.threadId,
         userId: params.userId,
-        channelId: params.channelId,
+        channelId: params.responseChannelId,
+        originChannelId: params.originChannelId,
+        responseChannelId: params.responseChannelId,
         guildId: params.guildId,
         apiKey,
         model,
@@ -1601,7 +1623,8 @@ export async function continueMatchedTaskRunWithInput(
       traceId: params.threadId,
       sourceMessageId: taskRun.sourceMessageId ?? params.currentTurn.messageId,
       guildId: params.guildId,
-      channelId: params.channelId,
+      originChannelId: params.originChannelId,
+      responseChannelId: params.responseChannelId,
       userId: params.userId,
       invokerAuthority: params.invokerAuthority,
       isAdmin: params.isAdmin,
@@ -1665,7 +1688,7 @@ export async function retryFailedChatTurn(
       await upsertTraceStart({
         id: params.traceId,
         guildId: params.guildId,
-        channelId: params.channelId,
+        channelId: params.responseChannelId,
         userId: params.userId,
         routeKind,
         tokenJson: {
@@ -1697,7 +1720,9 @@ export async function retryFailedChatTurn(
         traceId: params.traceId,
         threadId: params.threadId,
         userId: params.userId,
-        channelId: params.channelId,
+        channelId: params.responseChannelId,
+        originChannelId: params.originChannelId,
+        responseChannelId: params.responseChannelId,
         guildId: params.guildId,
         apiKey,
         model,
@@ -1738,7 +1763,8 @@ export async function retryFailedChatTurn(
       traceId: params.threadId,
       sourceMessageId: existingTaskRun?.sourceMessageId ?? null,
       guildId: params.guildId,
-      channelId: params.channelId,
+      originChannelId: params.originChannelId,
+      responseChannelId: params.responseChannelId,
       userId: params.userId,
       invokerAuthority: params.invokerAuthority,
       isAdmin: params.isAdmin,

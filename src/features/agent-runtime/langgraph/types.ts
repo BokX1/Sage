@@ -248,6 +248,8 @@ export interface AgentGraphRuntimeContext {
   threadId: string;
   userId: string;
   channelId: string;
+  originChannelId?: string;
+  responseChannelId?: string;
   guildId: string | null;
   apiKey?: string;
   model?: string;

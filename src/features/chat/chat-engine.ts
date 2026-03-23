@@ -51,7 +51,8 @@ function resolveProfileUpdateInterval(): number {
 export async function generateChatReply(params: {
   traceId: string;
   userId: string;
-  channelId: string;
+  originChannelId: string;
+  responseChannelId: string;
   guildId: string | null;
   messageId: string;
   userText: string;
@@ -75,7 +76,8 @@ export async function generateChatReply(params: {
     const {
       traceId,
       userId,
-      channelId,
+      originChannelId,
+      responseChannelId,
       guildId,
       messageId,
       userText,
@@ -110,7 +112,8 @@ export async function generateChatReply(params: {
     const result = await runChatTurn({
       traceId,
       userId,
-      channelId,
+      originChannelId,
+      responseChannelId,
       guildId,
       messageId,
       userText,
@@ -146,7 +149,7 @@ export async function generateChatReply(params: {
         const compactionTask = compactUserProfile({
           userId,
           guildId,
-          channelId,
+          channelId: responseChannelId,
           previousSummary: profileSummary ?? '',
         })
           .then((compactedSummary) => {
@@ -211,7 +214,7 @@ export async function generateChatReply(params: {
           assistantReply: replyText,
           currentTurn,
           replyTarget: replyTarget ?? null,
-          channelId,
+          channelId: responseChannelId,
           guildId,
           userId,
           apiKey,

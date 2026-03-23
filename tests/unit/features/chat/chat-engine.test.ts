@@ -43,13 +43,18 @@ vi.mock('@/features/memory/userProfileCompaction', () => ({
 
 import { __resetChatEngineStateForTests, generateChatReply } from '@/features/chat/chat-engine';
 
-function makeCurrentTurn(overrides: Partial<CurrentTurnContext> = {}): CurrentTurnContext {
+function makeCurrentTurn(
+  overrides: Partial<CurrentTurnContext> & { channelId?: string } = {},
+): CurrentTurnContext {
+  const responseChannelId = overrides.responseChannelId ?? overrides.channelId ?? 'chan1';
+  const originChannelId = overrides.originChannelId ?? overrides.channelId ?? responseChannelId;
   return {
     invokerUserId: 'user1',
     invokerDisplayName: 'User One',
     messageId: 'msg1',
     guildId: null,
-    channelId: 'chan1',
+    originChannelId,
+    responseChannelId,
     invokedBy: 'mention',
     mentionedUserIds: [],
     isDirectReply: false,
@@ -80,7 +85,8 @@ describe('ChatEngine', () => {
     const result = await generateChatReply({
       traceId: 'test-trace',
       userId: 'user1',
-      channelId: 'chan1',
+      originChannelId: 'chan1',
+      responseChannelId: 'chan1',
       guildId: null,
       messageId: 'msg1',
       userText: 'Hi',
@@ -93,15 +99,16 @@ describe('ChatEngine', () => {
       expect.objectContaining({
         traceId: 'test-trace',
         userId: 'user1',
-        channelId: 'chan1',
-      guildId: null,
-      messageId: 'msg1',
-      userText: 'Hi',
-      userProfileSummary: null,
-      currentTurn: makeCurrentTurn(),
-      replyTarget: null,
-    }),
-  );
+        originChannelId: 'chan1',
+        responseChannelId: 'chan1',
+        guildId: null,
+        messageId: 'msg1',
+        userText: 'Hi',
+        userProfileSummary: null,
+        currentTurn: makeCurrentTurn(),
+        replyTarget: null,
+      }),
+    );
   });
 
   it('loads profile summary and passes it into runChatTurn', async () => {
@@ -114,7 +121,8 @@ describe('ChatEngine', () => {
     await generateChatReply({
       traceId: 'test-trace',
       userId: 'user1',
-      channelId: 'chan1',
+      originChannelId: 'chan1',
+      responseChannelId: 'chan1',
       guildId: null,
       messageId: 'msg1',
       userText: 'Hi',
@@ -140,7 +148,8 @@ describe('ChatEngine', () => {
     await generateChatReply({
       traceId: 'test',
       userId: 'user1',
-      channelId: 'chan1',
+      originChannelId: 'chan1',
+      responseChannelId: 'chan1',
       guildId: 'guild1',
       messageId: 'msg1',
       userText: 'I like dark mode',
@@ -184,7 +193,8 @@ describe('ChatEngine', () => {
     await generateChatReply({
       traceId: 'test-1',
       userId: 'user1',
-      channelId: 'chan1',
+      originChannelId: 'chan1',
+      responseChannelId: 'chan1',
       guildId: 'guild1',
       messageId: 'msg1',
       userText: 'First message',
@@ -194,7 +204,8 @@ describe('ChatEngine', () => {
     await generateChatReply({
       traceId: 'test-2',
       userId: 'user1',
-      channelId: 'chan1',
+      originChannelId: 'chan1',
+      responseChannelId: 'chan1',
       guildId: 'guild1',
       messageId: 'msg2',
       userText: 'Second message',
@@ -213,7 +224,8 @@ describe('ChatEngine', () => {
     await generateChatReply({
       traceId: 'test',
       userId: 'user1',
-      channelId: 'chan1',
+      originChannelId: 'chan1',
+      responseChannelId: 'chan1',
       guildId: 'guild1',
       messageId: 'msg1',
       userText: 'hello',
@@ -235,7 +247,8 @@ describe('ChatEngine', () => {
     await generateChatReply({
       traceId: 'test',
       userId: 'user1',
-      channelId: 'chan1',
+      originChannelId: 'chan1',
+      responseChannelId: 'chan1',
       guildId: 'guild1',
       messageId: 'msg1',
       userText: 'Can you refine this?',

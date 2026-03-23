@@ -43,6 +43,21 @@ CREATE TABLE "GuildSettings" (
 );
 
 -- CreateTable
+CREATE TABLE "GuildChannelInvokePolicy" (
+    "id" TEXT NOT NULL,
+    "guildId" TEXT NOT NULL,
+    "channelId" TEXT NOT NULL,
+    "mode" TEXT NOT NULL DEFAULT 'public_from_message',
+    "autoArchiveDurationMinutes" INTEGER,
+    "createdByUserId" TEXT NOT NULL,
+    "updatedByUserId" TEXT NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "GuildChannelInvokePolicy_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
 CREATE TABLE "ServerInstructions" (
     "guildId" TEXT NOT NULL,
     "instructionsText" TEXT NOT NULL,
@@ -120,7 +135,8 @@ CREATE TABLE "AgentTaskRun" (
     "originTraceId" TEXT NOT NULL,
     "latestTraceId" TEXT NOT NULL,
     "guildId" TEXT,
-    "channelId" TEXT NOT NULL,
+    "originChannelId" TEXT NOT NULL,
+    "responseChannelId" TEXT NOT NULL,
     "requestedByUserId" TEXT NOT NULL,
     "sourceMessageId" TEXT,
     "responseMessageId" TEXT,
@@ -499,6 +515,12 @@ CREATE TABLE "ChannelMessageEmbedding" (
 CREATE INDEX "UserProfileArchive_userId_createdAt_idx" ON "UserProfileArchive"("userId", "createdAt");
 
 -- CreateIndex
+CREATE UNIQUE INDEX "GuildChannelInvokePolicy_guildId_channelId_key" ON "GuildChannelInvokePolicy"("guildId", "channelId");
+
+-- CreateIndex
+CREATE INDEX "GuildChannelInvokePolicy_guildId_updatedAt_idx" ON "GuildChannelInvokePolicy"("guildId", "updatedAt");
+
+-- CreateIndex
 CREATE INDEX "ServerInstructionsArchive_guildId_createdAt_idx" ON "ServerInstructionsArchive"("guildId", "createdAt");
 
 -- CreateIndex
@@ -529,7 +551,10 @@ CREATE INDEX "DiscordInteractionSession_expiresAt_idx" ON "DiscordInteractionSes
 CREATE UNIQUE INDEX "AgentTaskRun_threadId_key" ON "AgentTaskRun"("threadId");
 
 -- CreateIndex
-CREATE INDEX "AgentTaskRun_channelId_requestedByUserId_status_updatedAt_idx" ON "AgentTaskRun"("channelId", "requestedByUserId", "status", "updatedAt");
+CREATE INDEX "AgentTaskRun_originChannelId_requestedByUserId_status_updatedAt_idx" ON "AgentTaskRun"("originChannelId", "requestedByUserId", "status", "updatedAt");
+
+-- CreateIndex
+CREATE INDEX "AgentTaskRun_responseChannelId_requestedByUserId_status_updatedAt_idx" ON "AgentTaskRun"("responseChannelId", "requestedByUserId", "status", "updatedAt");
 
 -- CreateIndex
 CREATE INDEX "AgentTaskRun_status_nextRunnableAt_idx" ON "AgentTaskRun"("status", "nextRunnableAt");
@@ -538,7 +563,10 @@ CREATE INDEX "AgentTaskRun_status_nextRunnableAt_idx" ON "AgentTaskRun"("status"
 CREATE INDEX "AgentTaskRun_leaseExpiresAt_idx" ON "AgentTaskRun"("leaseExpiresAt");
 
 -- CreateIndex
-CREATE INDEX "AgentTaskRun_waitingKind_channelId_requestedByUserId_update_idx" ON "AgentTaskRun"("waitingKind", "channelId", "requestedByUserId", "updatedAt");
+CREATE INDEX "AgentTaskRun_sourceMessageId_status_updatedAt_idx" ON "AgentTaskRun"("sourceMessageId", "status", "updatedAt");
+
+-- CreateIndex
+CREATE INDEX "AgentTaskRun_waitingKind_responseChannelId_requestedByUserId_update_idx" ON "AgentTaskRun"("waitingKind", "responseChannelId", "requestedByUserId", "updatedAt");
 
 -- CreateIndex
 CREATE INDEX "ChannelMessage_guildId_channelId_timestamp_idx" ON "ChannelMessage"("guildId", "channelId", "timestamp");

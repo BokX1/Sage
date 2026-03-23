@@ -163,9 +163,30 @@ export const nativeTools = [
     "color": "#5865F2"
   },
   {
+    "name": "discord_governance_disable_invoke_thread_channel",
+    "short": "Discord Admin Disable Invoke Thread Channel",
+    "desc": "Disable automatic thread-on-invoke routing for a channel.",
+    "cat": "discord",
+    "color": "#5865F2"
+  },
+  {
+    "name": "discord_governance_enable_invoke_thread_channel",
+    "short": "Discord Admin Enable Invoke Thread Channel",
+    "desc": "Route fresh Sage invokes in a channel into a public message thread.",
+    "cat": "discord",
+    "color": "#5865F2"
+  },
+  {
     "name": "discord_governance_get_artifact_vault_status",
     "short": "Discord Admin Get Artifact Vault Status",
     "desc": "Inspect where Sage publishes default artifact vault posts.",
+    "cat": "discord",
+    "color": "#5865F2"
+  },
+  {
+    "name": "discord_governance_get_invoke_thread_status",
+    "short": "Discord Admin Get Invoke Thread Status",
+    "desc": "Inspect which channels auto-route Sage invokes into public message threads.",
     "cat": "discord",
     "color": "#5865F2"
   },

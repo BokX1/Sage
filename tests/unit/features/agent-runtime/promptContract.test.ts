@@ -8,13 +8,18 @@ import {
   resolveDefaultInvocationUserText,
 } from '../../../../src/features/agent-runtime/promptContract';
 
-function makeCurrentTurn(overrides: Partial<CurrentTurnContext> = {}): CurrentTurnContext {
+function makeCurrentTurn(
+  overrides: Partial<CurrentTurnContext> & { channelId?: string } = {},
+): CurrentTurnContext {
+  const responseChannelId = overrides.responseChannelId ?? overrides.channelId ?? 'channel-1';
+  const originChannelId = overrides.originChannelId ?? overrides.channelId ?? responseChannelId;
   return {
     invokerUserId: 'user-1',
     invokerDisplayName: 'User One',
     messageId: 'msg-1',
     guildId: 'guild-1',
-    channelId: 'channel-1',
+    originChannelId,
+    responseChannelId,
     invokedBy: 'mention',
     mentionedUserIds: [],
     isDirectReply: false,

@@ -17,6 +17,9 @@ const {
   const mockGenerateChatReply = vi.fn();
   const mockClient = {
     user: { id: '123', tag: 'SageBot#0001' },
+    channels: {
+      fetch: vi.fn(),
+    },
   };
   const mockFetchAttachmentText = vi.fn();
   const mockAttachTaskRunResponseSession = vi.fn().mockResolvedValue(undefined);
@@ -59,6 +62,16 @@ const mockBuildGuildApiKeyMissingResponse = vi.hoisted(() =>
 );
 const mockEvaluateMessageModeration = vi.hoisted(() =>
   vi.fn().mockResolvedValue({ suppressInvocation: false, caseId: null }),
+);
+const mockResolveInvokeResponseSurface = vi.hoisted(() =>
+  vi.fn(async ({ message }: { message: Message }) => ({
+    originChannelId: message.channelId,
+    responseChannelId: message.channelId,
+    responseChannel: message.channel,
+    responseThreadId: null,
+    threadCreated: false,
+    fallbackReason: null,
+  })),
 );
 
 vi.mock('@/features/chat/chat-engine', () => ({
@@ -132,6 +145,10 @@ vi.mock('@/features/discord/byopBootstrap', () => ({
 
 vi.mock('@/features/moderation/runtime', () => ({
   evaluateMessageModeration: mockEvaluateMessageModeration,
+}));
+
+vi.mock('@/features/discord/invokeThreadRouting', () => ({
+  resolveInvokeResponseSurface: mockResolveInvokeResponseSurface,
 }));
 
 import { config } from '@/platform/config/env';
@@ -321,6 +338,7 @@ describe('messageCreate - ingest + reply gating', () => {
       flags: 32768,
       components: [],
     });
+    mockClient.channels.fetch.mockReset().mockResolvedValue(null);
     config.FILE_INGEST_MAX_ATTACHMENTS_PER_MESSAGE = defaultMaxAttachmentsPerMessage;
     messageCounter = 0;
     resetInvocationCooldowns();
@@ -496,6 +514,8 @@ describe('messageCreate - ingest + reply gating', () => {
     mockFindWaitingUserInputTaskRun.mockResolvedValueOnce({
       id: 'run-1',
       threadId: 'thread-existing',
+      originChannelId: 'channel-101',
+      responseChannelId: 'channel-101',
       sourceMessageId: message.__sourceMessage.id,
       responseMessageId: message.__responseMessage.id,
     });
@@ -542,6 +562,8 @@ describe('messageCreate - ingest + reply gating', () => {
     expect(mockAttachTaskRunResponseSession).toHaveBeenCalledWith(
       expect.objectContaining({
         threadId: 'thread-existing',
+        originChannelId: 'channel-101',
+        responseChannelId: 'channel-101',
         sourceMessageId: message.id,
         responseMessageId: message.__responseMessage.id,
         responseSession: expect.objectContaining({
@@ -672,7 +694,8 @@ describe('messageCreate - ingest + reply gating', () => {
       expect.objectContaining({
         threadId: 'test-trace-id',
         requestedByUserId: 'user-456',
-        channelId: 'channel-101',
+        originChannelId: 'channel-101',
+        responseChannelId: 'channel-101',
         guildId: 'guild-789',
       }),
     );
@@ -779,6 +802,8 @@ describe('messageCreate - ingest + reply gating', () => {
     mockFindRunningTaskRunForActiveInterrupt.mockResolvedValueOnce({
       id: 'run-running-terminal-race',
       threadId: 'thread-running-terminal-race',
+      originChannelId: 'channel-101',
+      responseChannelId: 'channel-101',
       sourceMessageId: 'source-1',
       responseMessageId: 'running-response-terminal-race',
       status: 'running',
@@ -786,6 +811,8 @@ describe('messageCreate - ingest + reply gating', () => {
     mockGetAgentTaskRunByThreadId.mockResolvedValueOnce({
       id: 'run-running-terminal-race',
       threadId: 'thread-running-terminal-race',
+      originChannelId: 'channel-101',
+      responseChannelId: 'channel-101',
       sourceMessageId: 'source-1',
       responseMessageId: 'running-response-terminal-race',
       status: 'completed',
@@ -880,6 +907,8 @@ describe('messageCreate - ingest + reply gating', () => {
         threadId: 'thread-running-terminal-race',
         userId: 'user-456',
         userText: 'switch the search to the docs repo',
+        originChannelId: 'channel-101',
+        responseChannelId: 'channel-101',
       }),
     );
     expect(referencedMessage.edit).toHaveBeenCalled();
@@ -909,6 +938,8 @@ describe('messageCreate - ingest + reply gating', () => {
     mockFindRunningTaskRunForActiveInterrupt.mockResolvedValueOnce({
       id: 'run-running-became-waiting',
       threadId: 'thread-running-became-waiting',
+      originChannelId: 'channel-101',
+      responseChannelId: 'channel-101',
       sourceMessageId: 'source-1',
       responseMessageId: 'running-response-became-waiting',
       status: 'running',
@@ -917,6 +948,8 @@ describe('messageCreate - ingest + reply gating', () => {
     mockGetAgentTaskRunByThreadId.mockResolvedValueOnce({
       id: 'run-running-became-waiting',
       threadId: 'thread-running-became-waiting',
+      originChannelId: 'channel-101',
+      responseChannelId: 'channel-101',
       sourceMessageId: 'source-1',
       responseMessageId: 'running-response-became-waiting',
       status: 'waiting_user_input',
@@ -941,13 +974,15 @@ describe('messageCreate - ingest + reply gating', () => {
         traceId: 'test-trace-id',
         replyToMessageId: 'running-response-became-waiting',
         userText: 'use the docs repo',
+        originChannelId: 'channel-101',
+        responseChannelId: 'channel-101',
       }),
     );
     expect(mockContinueMatchedTaskRunWithInput).not.toHaveBeenCalled();
     expect(mockGenerateChatReply).not.toHaveBeenCalled();
   });
 
-  it('fails closed when a stale completed-task continuation cannot rehydrate the canonical response surface', async () => {
+  it('falls back to the current channel when a stale completed-task continuation loses its canonical response surface', async () => {
     const message = createMockMessage({
       content: 'sage switch to the docs repo',
       reference: { messageId: 'running-response-missing-surface' },
@@ -980,6 +1015,8 @@ describe('messageCreate - ingest + reply gating', () => {
     mockGetAgentTaskRunByThreadId.mockResolvedValueOnce({
       id: 'run-running-missing-surface',
       threadId: 'thread-running-missing-surface',
+      originChannelId: 'channel-101',
+      responseChannelId: 'thread-404',
       sourceMessageId: 'source-1',
       responseMessageId: 'running-response-missing-surface',
       status: 'completed',
@@ -999,7 +1036,11 @@ describe('messageCreate - ingest + reply gating', () => {
 
     await handleMessageCreate(message);
 
-    expect(mockContinueMatchedTaskRunWithInput).not.toHaveBeenCalled();
+    expect(mockContinueMatchedTaskRunWithInput).toHaveBeenCalledWith(
+      expect.objectContaining({
+        responseChannelId: 'channel-101',
+      }),
+    );
     expect(mockGenerateChatReply).not.toHaveBeenCalled();
     expect(message.reply).toHaveBeenCalledTimes(1);
   });
@@ -1029,6 +1070,8 @@ describe('messageCreate - ingest + reply gating', () => {
     mockFindWaitingUserInputTaskRun.mockResolvedValueOnce({
       id: 'run-waiting-1',
       threadId: 'thread-waiting-1',
+      originChannelId: 'channel-101',
+      responseChannelId: 'channel-101',
       sourceMessageId: 'source-1',
       responseMessageId: 'waiting-response-1',
       waitingKind: 'user_input',
@@ -1037,6 +1080,8 @@ describe('messageCreate - ingest + reply gating', () => {
     mockFindRunningTaskRunForActiveInterrupt.mockResolvedValueOnce({
       id: 'run-running-2',
       threadId: 'thread-running-2',
+      originChannelId: 'channel-101',
+      responseChannelId: 'channel-101',
       sourceMessageId: 'source-1',
       responseMessageId: 'waiting-response-1',
       status: 'running',
@@ -1057,6 +1102,8 @@ describe('messageCreate - ingest + reply gating', () => {
     mockFindWaitingUserInputTaskRun.mockResolvedValueOnce({
       id: 'run-waiting-fetch-failed',
       threadId: 'thread-waiting-fetch-failed',
+      originChannelId: 'channel-101',
+      responseChannelId: 'channel-101',
       sourceMessageId: 'source-1',
       responseMessageId: null,
       responseSessionJson: {
@@ -1126,6 +1173,8 @@ describe('messageCreate - ingest + reply gating', () => {
     mockFindWaitingUserInputTaskRun.mockResolvedValueOnce({
       id: 'run-2',
       threadId: 'thread-restart-existing',
+      originChannelId: 'channel-101',
+      responseChannelId: 'channel-101',
       sourceMessageId: message.__sourceMessage.id,
       responseMessageId: null,
       responseSessionJson: {
@@ -1181,6 +1230,8 @@ describe('messageCreate - ingest + reply gating', () => {
     expect(mockAttachTaskRunResponseSession).toHaveBeenCalledWith(
       expect.objectContaining({
         threadId: 'thread-restart-existing',
+        originChannelId: 'channel-101',
+        responseChannelId: 'channel-101',
         sourceMessageId: message.id,
         responseMessageId: message.__responseMessage.id,
         responseSession: expect.objectContaining({
@@ -1265,6 +1316,114 @@ describe('messageCreate - ingest + reply gating', () => {
     expect(message.__sourceMessage.reply).not.toHaveBeenCalled();
   });
 
+  it('falls back to the current channel when a stored threaded response surface is missing', async () => {
+    const message = createMockMessage({
+      content: 'sage continue here',
+      reference: { messageId: 'parent-source-message' },
+      fetchReference: vi.fn().mockResolvedValue(null),
+    }) as unknown as Message & {
+      __responseMessage: { id: string };
+      reply: ReturnType<typeof vi.fn>;
+    };
+
+    mockFindWaitingUserInputTaskRun.mockResolvedValueOnce({
+      id: 'run-thread-missing-surface',
+      threadId: 'thread-thread-missing-surface',
+      originChannelId: 'channel-101',
+      responseChannelId: 'thread-404',
+      sourceMessageId: 'parent-source-message',
+      responseMessageId: 'missing-response-message',
+      responseSessionJson: {
+        responseSessionId: 'thread-thread-missing-surface',
+        status: 'draft',
+        latestText: 'Need your follow-up',
+        draftRevision: 1,
+        sourceMessageId: 'parent-source-message',
+        responseMessageId: 'missing-response-message',
+        linkedArtifactMessageIds: [],
+      },
+    });
+    mockClient.channels.fetch.mockResolvedValueOnce(null);
+    mockResumeWaitingTaskRunWithInput.mockResolvedValueOnce({
+      runId: 'thread-thread-missing-surface',
+      status: 'completed',
+      replyText: 'Recovered on the parent channel.',
+      delivery: 'response_session',
+      responseSession: {
+        responseSessionId: 'thread-thread-missing-surface',
+        status: 'final',
+        latestText: 'Recovered on the parent channel.',
+        draftRevision: 2,
+        sourceMessageId: message.id,
+        responseMessageId: null,
+        linkedArtifactMessageIds: [],
+      },
+      files: [],
+    });
+
+    await handleMessageCreate(message);
+
+    expect(mockResumeWaitingTaskRunWithInput).toHaveBeenCalledWith(
+      expect.objectContaining({
+        responseChannelId: 'channel-101',
+      }),
+    );
+    expect(message.reply).toHaveBeenCalled();
+    expect(mockGenerateChatReply).not.toHaveBeenCalled();
+  });
+
+  it('continues a waiting threaded task when the user replies to the parent source message', async () => {
+    const threadChannel = {
+      id: 'thread-response-1',
+      send: vi.fn().mockResolvedValue({
+        id: 'thread-send-1',
+        edit: vi.fn(),
+        delete: vi.fn(),
+        reply: vi.fn(),
+      }),
+      sendTyping: vi.fn().mockResolvedValue(undefined),
+      messages: {
+        fetch: vi.fn().mockRejectedValue(new Error('not found')),
+      },
+    };
+    const message = createMockMessage({
+      content: 'sage here is the follow-up',
+      reference: { messageId: 'parent-source-message' },
+      fetchReference: vi.fn().mockResolvedValue(null),
+    });
+
+    mockFindWaitingUserInputTaskRun.mockResolvedValueOnce({
+      id: 'run-parent-followup-threaded',
+      threadId: 'thread-parent-followup-threaded',
+      originChannelId: 'channel-101',
+      responseChannelId: 'thread-response-1',
+      sourceMessageId: 'parent-source-message',
+      responseMessageId: 'sage-response-message',
+      status: 'waiting_user_input',
+      waitingKind: 'user_input',
+      responseSessionJson: {
+        responseSessionId: 'thread-parent-followup-threaded',
+        status: 'draft',
+        latestText: 'Need one more detail.',
+        draftRevision: 1,
+        sourceMessageId: 'parent-source-message',
+        responseMessageId: 'sage-response-message',
+        linkedArtifactMessageIds: [],
+      },
+    });
+    mockClient.channels.fetch.mockResolvedValueOnce(threadChannel);
+
+    await handleMessageCreate(message);
+
+    expect(mockResumeWaitingTaskRunWithInput).toHaveBeenCalledWith(
+      expect.objectContaining({
+        responseChannelId: 'thread-response-1',
+      }),
+    );
+    expect(mockGenerateChatReply).not.toHaveBeenCalled();
+    expect(threadChannel.sendTyping).toHaveBeenCalled();
+  });
+
   it('reconciles long overflow chunks during waiting-run resumes instead of sending duplicate tail messages', async () => {
     const longDraft = `${'A'.repeat(2_000)}${'B'.repeat(2_000)}${'C'.repeat(200)}`;
     const message = createMockMessage({
@@ -1286,6 +1445,8 @@ describe('messageCreate - ingest + reply gating', () => {
     mockFindWaitingUserInputTaskRun.mockResolvedValueOnce({
       id: 'run-long-overflow',
       threadId: 'thread-long-overflow',
+      originChannelId: 'channel-101',
+      responseChannelId: 'channel-101',
       sourceMessageId: message.__sourceMessage.id,
       responseMessageId: message.__responseMessage.id,
       responseSessionJson: {
@@ -1374,6 +1535,8 @@ describe('messageCreate - ingest + reply gating', () => {
     mockFindWaitingUserInputTaskRun.mockResolvedValueOnce({
       id: 'run-replay-missing-overflow',
       threadId: 'thread-replay-missing-overflow',
+      originChannelId: 'channel-101',
+      responseChannelId: 'channel-101',
       sourceMessageId: message.__sourceMessage.id,
       responseMessageId: message.__responseMessage.id,
       responseSessionJson: {
@@ -1454,6 +1617,8 @@ describe('messageCreate - ingest + reply gating', () => {
     mockFindWaitingUserInputTaskRun.mockResolvedValueOnce({
       id: 'run-long-card-overflow',
       threadId: 'thread-long-card-overflow',
+      originChannelId: 'channel-101',
+      responseChannelId: 'channel-101',
       sourceMessageId: message.__sourceMessage.id,
       responseMessageId: message.__responseMessage.id,
       responseSessionJson: {

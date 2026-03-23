@@ -52,13 +52,18 @@ import { appendMessage, clearChannel } from '@/features/awareness/channelRingBuf
 import { runChatTurn } from '@/features/agent-runtime/agentRuntime';
 import { isLoggingEnabled } from '@/features/settings/guildChannelSettings';
 
-function makeCurrentTurn(overrides: Partial<CurrentTurnContext> = {}): CurrentTurnContext {
+function makeCurrentTurn(
+  overrides: Partial<CurrentTurnContext> & { channelId?: string } = {},
+): CurrentTurnContext {
+  const responseChannelId = overrides.responseChannelId ?? overrides.channelId ?? 'channel-1';
+  const originChannelId = overrides.originChannelId ?? overrides.channelId ?? responseChannelId;
   return {
     invokerUserId: 'user-1',
     invokerDisplayName: 'User One',
     messageId: 'msg-current',
     guildId: 'guild-1',
-    channelId: 'channel-1',
+    originChannelId,
+    responseChannelId,
     invokedBy: 'mention',
     mentionedUserIds: [],
     isDirectReply: false,
@@ -218,7 +223,8 @@ describe('transcript injection', { timeout: 20_000 }, () => {
     await runChatTurn({
       traceId: 'trace-1',
       userId: 'user-1',
-      channelId: 'channel-1',
+      originChannelId: 'channel-1',
+      responseChannelId: 'channel-1',
       guildId: 'guild-1',
       messageId: 'msg-current',
       userText: 'Invoke',
@@ -260,7 +266,8 @@ describe('transcript injection', { timeout: 20_000 }, () => {
     await runChatTurn({
       traceId: 'trace-2',
       userId: 'user-2',
-      channelId: 'channel-1',
+      originChannelId: 'channel-1',
+      responseChannelId: 'channel-1',
       guildId: 'guild-1',
       messageId: 'msg-current-2',
       userText: 'Invoke',
@@ -315,7 +322,8 @@ describe('transcript injection', { timeout: 20_000 }, () => {
     await runChatTurn({
       traceId: 'trace-3',
       userId: 'user-1',
-      channelId: 'channel-1',
+      originChannelId: 'channel-1',
+      responseChannelId: 'channel-1',
       guildId: 'guild-1',
       messageId: 'msg-current-3',
       userText: "alright let's see",
@@ -403,7 +411,8 @@ describe('transcript injection', { timeout: 20_000 }, () => {
     await runChatTurn({
       traceId: 'trace-3b',
       userId: 'user-1',
-      channelId: 'channel-1',
+      originChannelId: 'channel-1',
+      responseChannelId: 'channel-1',
       guildId: 'guild-1',
       messageId: 'msg-current-3b',
       userText: 'let me check it',
@@ -479,7 +488,8 @@ describe('transcript injection', { timeout: 20_000 }, () => {
     await runChatTurn({
       traceId: 'trace-3c',
       userId: 'user-1',
-      channelId: 'channel-1',
+      originChannelId: 'channel-1',
+      responseChannelId: 'channel-1',
       guildId: 'guild-1',
       messageId: 'msg-current-3c',
       userText: '@sage let me check it',
@@ -554,7 +564,8 @@ describe('transcript injection', { timeout: 20_000 }, () => {
     await runChatTurn({
       traceId: 'trace-4',
       userId: 'user-1',
-      channelId: 'channel-1',
+      originChannelId: 'channel-1',
+      responseChannelId: 'channel-1',
       guildId: 'guild-1',
       messageId: 'msg-current-4',
       userText: 'keep the same direction but terser',
@@ -597,7 +608,8 @@ describe('transcript injection', { timeout: 20_000 }, () => {
     await runChatTurn({
       traceId: 'trace-5',
       userId: 'user-1',
-      channelId: 'channel-1',
+      originChannelId: 'channel-1',
+      responseChannelId: 'channel-1',
       guildId: 'guild-1',
       messageId: 'msg-current-5',
       userText: 'Does Heiryn have tools to update its own memory?',
@@ -639,7 +651,8 @@ describe('transcript injection', { timeout: 20_000 }, () => {
     await runChatTurn({
       traceId: 'trace-5b',
       userId: 'user-1',
-      channelId: 'channel-1',
+      originChannelId: 'channel-1',
+      responseChannelId: 'channel-1',
       guildId: 'guild-1',
       messageId: 'msg-current-5b',
       userText: 'did that finish cleanly?',
@@ -682,7 +695,8 @@ describe('transcript injection', { timeout: 20_000 }, () => {
     await runChatTurn({
       traceId: 'trace-5c',
       userId: 'user-1',
-      channelId: 'channel-1',
+      originChannelId: 'channel-1',
+      responseChannelId: 'channel-1',
       guildId: 'guild-1',
       messageId: 'msg-current-5c',
       userText: 'can you summarize that for me?',
@@ -742,7 +756,8 @@ describe('transcript injection', { timeout: 20_000 }, () => {
     await runChatTurn({
       traceId: 'trace-6',
       userId: 'user-1',
-      channelId: 'channel-1',
+      originChannelId: 'channel-1',
+      responseChannelId: 'channel-1',
       guildId: 'guild-1',
       messageId: 'msg-current-6',
       userText: "alright let's see",

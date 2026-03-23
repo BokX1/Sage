@@ -33,6 +33,7 @@ import {
   resolveAuthorityTierFromMember,
 } from '../../../platform/discord/admin-permissions';
 import { buildGuildApiKeyMissingResponse } from '../../../features/discord/byopBootstrap';
+import { resolveInvokeResponseSurface } from '../../../features/discord/invokeThreadRouting';
 import {
   attachTaskRunResponseSession,
   continueMatchedTaskRunWithInput,
@@ -338,10 +339,7 @@ async function persistQueuedImageAttachment(params: {
 
 type SendableTypingChannel = {
   sendTyping: () => Promise<unknown>;
-  // Minimal subset of the Discord.js send API used by this handler.
-  send: (
-    options: string | { content: string; allowedMentions?: { parse?: string[] } },
-  ) => Promise<Message>;
+  send: (options: unknown) => Promise<Message>;
   messages?: {
     fetch: (messageId: string) => Promise<Message>;
   };
@@ -352,6 +350,82 @@ function isSendableTypingChannel(
 ): channel is Message['channel'] & SendableTypingChannel {
   const candidate = channel as unknown as { sendTyping?: unknown; send?: unknown };
   return typeof candidate.sendTyping === 'function' && typeof candidate.send === 'function';
+}
+
+async function fetchSendableChannelById(channelId: string): Promise<(Message['channel'] & SendableTypingChannel) | null> {
+  const fetched = await client.channels.fetch(channelId).catch(() => null);
+  if (!fetched) {
+    return null;
+  }
+  return isSendableTypingChannel(fetched as Message['channel'])
+    ? (fetched as Message['channel'] & SendableTypingChannel)
+    : null;
+}
+
+async function resolveExistingTaskResponseSurface(params: {
+  taskRun: Pick<AgentTaskRunRecord, 'originChannelId' | 'responseChannelId'>;
+  message: Message;
+  loggerWithTrace: typeof logger;
+}): Promise<{
+  originChannelId: string;
+  responseChannelId: string;
+  responseChannel: Message['channel'] & SendableTypingChannel;
+  responseThreadId: string | null;
+  threadCreated: false;
+  fallbackReason: string | null;
+}> {
+  if (
+    params.taskRun.responseChannelId === params.message.channelId &&
+    isSendableTypingChannel(params.message.channel)
+  ) {
+    return {
+      originChannelId: params.message.channelId,
+      responseChannelId: params.taskRun.responseChannelId,
+      responseChannel: params.message.channel,
+      responseThreadId:
+        params.taskRun.responseChannelId === params.taskRun.originChannelId
+          ? null
+          : params.taskRun.responseChannelId,
+      threadCreated: false,
+      fallbackReason: null,
+    };
+  }
+
+  const fetched = await fetchSendableChannelById(params.taskRun.responseChannelId);
+  if (fetched) {
+    return {
+      originChannelId: params.message.channelId,
+      responseChannelId: params.taskRun.responseChannelId,
+      responseChannel: fetched,
+      responseThreadId:
+        params.taskRun.responseChannelId === params.taskRun.originChannelId
+          ? null
+          : params.taskRun.responseChannelId,
+      threadCreated: false,
+      fallbackReason: null,
+    };
+  }
+
+  if (isSendableTypingChannel(params.message.channel)) {
+    params.loggerWithTrace.warn(
+      {
+        originChannelId: params.message.channelId,
+        responseChannelId: params.taskRun.responseChannelId,
+      },
+      'Stored response surface is unavailable; falling back to the current channel surface',
+    );
+    return {
+      originChannelId: params.message.channelId,
+      responseChannelId: params.message.channelId,
+      responseChannel: params.message.channel,
+      responseThreadId:
+        params.message.channelId === params.taskRun.originChannelId ? null : params.message.channelId,
+      threadCreated: false,
+      fallbackReason: 'stored_response_channel_missing',
+    };
+  }
+
+  throw new Error('Resolved response surface is not sendable');
 }
 
 function getMentionedUserIds(message: Message): string[] {
@@ -746,24 +820,10 @@ export async function handleMessageCreate(message: Message) {
       return;
     }
 
-    if (!isSendableTypingChannel(message.channel)) {
-      loggerWithTrace.warn({ channelId: message.channelId }, 'Channel does not support send/sendTyping');
-      return;
-    }
-    const discordChannel = message.channel;
-
     try {
       loggerWithTrace.info(
         { msg: 'Message received', textLength: invocation.cleanedText?.length ?? 0 },
       );
-
-      await discordChannel.sendTyping();
-      typingInterval = setInterval(() => {
-        void discordChannel.sendTyping().catch(() => {
-          // Ignore typing errors (for example, missing permissions or deleted channels).
-        });
-      }, 8000);
-      typingInterval.unref?.();
 
       const includeAttachmentBlocks = shouldInlineAttachmentBlocks({
         invokedBy: invocation.kind,
@@ -786,6 +846,10 @@ export async function handleMessageCreate(message: Message) {
         textOverride: userTextWithAttachments,
       });
 
+      const invokerAuthority = resolveAuthorityTierFromMember(message.member, message.guild?.ownerId ?? null);
+      const invokerIsAdmin = isAdminFromMember(message.member);
+      const invokerCanModerate = isModeratorFromMember(message.member);
+
       let isVoiceActive = false;
       let activeVoiceChannelId: string | null = null;
       if (message.guildId && message.member?.voice?.channelId) {
@@ -796,24 +860,6 @@ export async function handleMessageCreate(message: Message) {
           activeVoiceChannelId = message.member.voice.channelId;
         }
       }
-
-      const currentTurn = {
-        invokerUserId: message.author.id,
-        invokerDisplayName: authorDisplayName,
-        messageId: message.id,
-        guildId: message.guildId,
-        channelId: message.channelId,
-        invokedBy: invocation.kind,
-        mentionedUserIds,
-        isDirectReply: replyReferenceMessageId !== null,
-        replyTargetMessageId: replyTarget?.messageId ?? null,
-        replyTargetAuthorId: replyTarget?.authorId ?? null,
-        botUserId: client.user?.id ?? null,
-      };
-
-      const invokerAuthority = resolveAuthorityTierFromMember(message.member, message.guild?.ownerId ?? null);
-      const invokerIsAdmin = isAdminFromMember(message.member);
-      const invokerCanModerate = isModeratorFromMember(message.member);
       const waitingTaskRun =
         preMatchedWaitingTaskRun ??
         (await findWaitingUserInputTaskRun({
@@ -903,6 +949,63 @@ export async function handleMessageCreate(message: Message) {
       }
       const effectiveWaitingTaskRun = waitingTaskRun ?? staleRecoveredWaitingTaskRun;
       const isWaitingTaskRunResume = !!effectiveWaitingTaskRun;
+      const routedSurface = effectiveWaitingTaskRun
+        ? await resolveExistingTaskResponseSurface({
+            taskRun: effectiveWaitingTaskRun,
+            message,
+            loggerWithTrace,
+          })
+        : staleMatchedTaskRun
+          ? await resolveExistingTaskResponseSurface({
+              taskRun: staleMatchedTaskRun,
+              message,
+              loggerWithTrace,
+            })
+          : await resolveInvokeResponseSurface({
+              message,
+              invokeText: invocation.cleanedText,
+            });
+      const discordChannel = routedSurface.responseChannel;
+      if (!discordChannel) {
+        loggerWithTrace.warn(
+          { originChannelId: message.channelId, responseChannelId: routedSurface.responseChannelId },
+          'Resolved response surface is not sendable',
+        );
+        return;
+      }
+      try {
+        await discordChannel.sendTyping();
+      } catch (error) {
+        loggerWithTrace.warn(
+          {
+            error,
+            originChannelId: message.channelId,
+            responseChannelId: routedSurface.responseChannelId,
+          },
+          'Skipping invoke because the resolved response surface cannot send typing updates',
+        );
+        return;
+      }
+      typingInterval = setInterval(() => {
+        void discordChannel.sendTyping().catch(() => {
+          // Ignore typing errors (for example, missing permissions or deleted channels).
+        });
+      }, 8000);
+      typingInterval.unref?.();
+      const currentTurn = {
+        invokerUserId: message.author.id,
+        invokerDisplayName: authorDisplayName,
+        messageId: message.id,
+        guildId: message.guildId,
+        originChannelId: message.channelId,
+        responseChannelId: routedSurface.responseChannelId,
+        invokedBy: invocation.kind,
+        mentionedUserIds,
+        isDirectReply: replyReferenceMessageId !== null,
+        replyTargetMessageId: replyTarget?.messageId ?? null,
+        replyTargetAuthorId: replyTarget?.authorId ?? null,
+        botUserId: client.user?.id ?? null,
+      };
       const persistedMatchedResponseRefs = staleMatchedTaskRun
         ? readPersistedResponseSessionRefs(staleMatchedTaskRun.responseSessionJson)
         : { sourceMessageId: null, responseMessageId: null };
@@ -917,9 +1020,13 @@ export async function handleMessageCreate(message: Message) {
         staleMatchedTaskRun?.responseMessageId ??
         persistedMatchedResponseRefs.responseMessageId ??
         null;
-      let responseSessionReplyBase: ResponseSessionReplyAnchor | null = staleMatchedTaskRun
-        ? null
-        : (message as unknown as ResponseSessionReplyAnchor);
+      if (staleMatchedTaskRun && routedSurface.responseChannelId !== staleMatchedTaskRun.responseChannelId) {
+        responseSessionMessageIdHint = null;
+      }
+      let responseSessionReplyBase: ResponseSessionReplyAnchor | null =
+        routedSurface.responseChannelId === message.channelId
+          ? (message as unknown as ResponseSessionReplyAnchor)
+          : null;
       let responseSessionOverflowMessageIds: string[] = [];
       let responseSessionOverflowMessages: ResponseSessionEditableMessage[] = [];
       let responseSessionRevision = -1;
@@ -939,6 +1046,9 @@ export async function handleMessageCreate(message: Message) {
       };
       const ensureStaleMatchedResponseSurface = async (): Promise<void> => {
         if (!staleMatchedTaskRun) {
+          return;
+        }
+        if (routedSurface.responseChannelId !== staleMatchedTaskRun.responseChannelId) {
           return;
         }
         await hydrateExistingResponseSessionMessage();
@@ -985,7 +1095,8 @@ export async function handleMessageCreate(message: Message) {
         await attachTaskRunResponseSession({
           threadId: responseSessionThreadId,
           requestedByUserId: message.author.id,
-          channelId: message.channelId,
+          originChannelId: message.channelId,
+          responseChannelId: routedSurface.responseChannelId,
           guildId: message.guildId,
           sourceMessageId: responseSessionSourceMessageId,
           responseMessageId: responseSessionMessage.id,
@@ -1005,7 +1116,8 @@ export async function handleMessageCreate(message: Message) {
         ? await resumeWaitingTaskRunWithInput({
             traceId,
             userId: message.author.id,
-            channelId: message.channelId,
+            originChannelId: message.channelId,
+            responseChannelId: routedSurface.responseChannelId,
             guildId: message.guildId,
             replyToMessageId: replyReferenceMessageId,
             userText: userTextWithAttachments,
@@ -1023,7 +1135,8 @@ export async function handleMessageCreate(message: Message) {
               traceId,
               threadId: staleMatchedTaskRun.threadId,
               userId: message.author.id,
-              channelId: message.channelId,
+              originChannelId: message.channelId,
+              responseChannelId: routedSurface.responseChannelId,
               guildId: message.guildId,
               userText: userTextWithAttachments,
               userContent: userContent ?? userTextWithAttachments,
@@ -1038,7 +1151,8 @@ export async function handleMessageCreate(message: Message) {
         : await generateChatReply({
             traceId,
             userId: message.author.id,
-            channelId: message.channelId,
+            originChannelId: message.channelId,
+            responseChannelId: routedSurface.responseChannelId,
             guildId: message.guildId,
             messageId: message.id,
             userText: userTextWithAttachments,
@@ -1068,7 +1182,7 @@ export async function handleMessageCreate(message: Message) {
         try {
           actionButtonId = await createInteractiveButtonSession({
             guildId: message.guildId,
-            channelId: message.channelId,
+            channelId: routedSurface.responseChannelId,
             createdByUserId: message.author.id,
             action: {
               type: 'graph_retry',
@@ -1080,7 +1194,7 @@ export async function handleMessageCreate(message: Message) {
           actionButtonLabel = buildRetryButtonLabel();
         } catch (err) {
           loggerWithTrace.warn(
-            { err, retryThreadId: retry.threadId, channelId: message.channelId },
+            { err, retryThreadId: retry.threadId, channelId: routedSurface.responseChannelId },
             'Failed to create retry button session; sending retry text without button',
           );
         }
@@ -1094,11 +1208,19 @@ export async function handleMessageCreate(message: Message) {
         const missing = buildGuildApiKeyMissingResponse({
           isAdmin: invokerIsAdmin,
         });
-        await message.reply({
-          flags: missing.flags,
-          components: missing.components,
-          allowedMentions: { repliedUser: false },
-        });
+        if (routedSurface.responseChannelId === message.channelId) {
+          await message.reply({
+            flags: missing.flags,
+            components: missing.components,
+            allowedMentions: { repliedUser: false },
+          });
+        } else {
+          await discordChannel.send({
+            flags: missing.flags,
+            components: missing.components,
+            allowedMentions: { repliedUser: false },
+          } as Parameters<SendableTypingChannel['send']>[0]);
+        }
         didSendAnything = true;
       }
 
@@ -1184,7 +1306,8 @@ export async function handleMessageCreate(message: Message) {
             await attachTaskRunResponseSession({
               threadId: responseSessionThreadId,
               requestedByUserId: message.author.id,
-              channelId: message.channelId,
+              originChannelId: message.channelId,
+              responseChannelId: routedSurface.responseChannelId,
               guildId: message.guildId,
               sourceMessageId: responseSessionSourceMessageId,
               responseMessageId: responseSessionMessage?.id ?? null,

@@ -554,6 +554,110 @@ describe('agentTaskRunWorker', () => {
     );
   });
 
+  it('falls back to the origin channel when the stored response thread is gone', async () => {
+    listRunnableAgentTaskRunsMock.mockReset();
+    listRunnableAgentTaskRunsMock
+      .mockResolvedValueOnce([
+        {
+          id: 'task-thread-gone',
+          threadId: 'thread-thread-gone',
+          guildId: 'guild-1',
+          originChannelId: 'channel-origin',
+          responseChannelId: 'thread-missing',
+          requestedByUserId: 'user-1',
+          sourceMessageId: 'message-origin',
+          responseMessageId: 'response-thread-gone',
+          checkpointMetadataJson: { isAdmin: true, canModerate: false },
+        },
+      ])
+      .mockResolvedValue([]);
+    getAgentTaskRunByThreadIdMock.mockResolvedValue({
+      id: 'task-thread-gone',
+      threadId: 'thread-thread-gone',
+      guildId: 'guild-1',
+      originChannelId: 'channel-origin',
+      responseChannelId: 'thread-missing',
+      requestedByUserId: 'user-1',
+      sourceMessageId: 'message-origin',
+      responseMessageId: 'response-thread-gone',
+      responseSessionJson: {
+        responseSessionId: 'thread-thread-gone',
+        status: 'draft',
+        latestText: 'Existing thread response',
+        draftRevision: 1,
+        sourceMessageId: 'message-origin',
+        responseMessageId: 'response-thread-gone',
+        overflowMessageIds: [],
+        linkedArtifactMessageIds: [],
+      },
+      checkpointMetadataJson: { isAdmin: true, canModerate: false },
+    });
+
+    const sourceMessage = {
+      id: 'message-origin',
+      edit: vi.fn().mockResolvedValue(undefined),
+      reply: vi.fn(),
+    };
+    const fallbackResponse = {
+      id: 'response-origin-fallback',
+      edit: vi.fn().mockResolvedValue(undefined),
+    };
+    sourceMessage.reply.mockResolvedValue(fallbackResponse);
+
+    clientMock.channels.fetch.mockImplementation(async (...args: unknown[]) => {
+      const channelId = args[0] as string;
+      if (channelId === 'thread-missing') {
+        return null;
+      }
+      if (channelId === 'channel-origin') {
+        return {
+          isTextBased: () => true,
+          send: vi.fn().mockResolvedValue(fallbackResponse),
+          messages: {
+            fetch: vi.fn(async (messageId: string) => {
+              if (messageId === 'message-origin') {
+                return sourceMessage;
+              }
+              throw new Error(`Unexpected fetch: ${messageId}`);
+            }),
+          },
+        } as never;
+      }
+      return null;
+    });
+
+    resumeBackgroundTaskRunMock.mockResolvedValue({
+      runId: 'thread-thread-gone',
+      status: 'completed',
+      replyText: 'Recovered on the parent channel.',
+      delivery: 'response_session',
+      responseSession: {
+        responseSessionId: 'thread-thread-gone',
+        status: 'final',
+        latestText: 'Recovered on the parent channel.',
+        draftRevision: 2,
+        sourceMessageId: 'message-origin',
+        responseMessageId: null,
+        linkedArtifactMessageIds: [],
+      },
+      files: [],
+    });
+
+    initAgentTaskRunWorker();
+    await vi.advanceTimersByTimeAsync(1_000);
+    await Promise.resolve();
+
+    expect(sourceMessage.reply).toHaveBeenCalledTimes(1);
+    expect(attachTaskRunResponseSessionMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        threadId: 'thread-thread-gone',
+        originChannelId: 'channel-origin',
+        responseChannelId: 'channel-origin',
+        responseMessageId: 'response-origin-fallback',
+      }),
+    );
+  });
+
   it('does not post a second reply when the canonical response message is bound but temporarily unfetchable', async () => {
     listRunnableAgentTaskRunsMock.mockReset();
     listRunnableAgentTaskRunsMock

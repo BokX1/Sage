@@ -40,6 +40,21 @@ model GuildSettings {
   createdAt               DateTime @default(now())
 }
 
+model GuildChannelInvokePolicy {
+  id                         String   @id @default(cuid())
+  guildId                    String
+  channelId                  String
+  mode                       String   @default("public_from_message")
+  autoArchiveDurationMinutes Int?
+  createdByUserId            String
+  updatedByUserId            String
+  createdAt                  DateTime @default(now())
+  updatedAt                  DateTime @updatedAt
+
+  @@unique([guildId, channelId])
+  @@index([guildId, updatedAt])
+}
+
 model ServerInstructions {
   guildId          String   @id
   instructionsText String   @db.Text
@@ -117,7 +132,8 @@ model AgentTaskRun {
   originTraceId          String
   latestTraceId          String
   guildId                String?
-  channelId              String
+  originChannelId        String
+  responseChannelId      String
   requestedByUserId      String
   sourceMessageId        String?
   responseMessageId      String?
@@ -152,10 +168,12 @@ model AgentTaskRun {
   createdAt              DateTime @default(now())
   updatedAt              DateTime @updatedAt
 
-  @@index([channelId, requestedByUserId, status, updatedAt])
+  @@index([originChannelId, requestedByUserId, status, updatedAt])
+  @@index([responseChannelId, requestedByUserId, status, updatedAt])
   @@index([status, nextRunnableAt])
   @@index([leaseExpiresAt])
-  @@index([waitingKind, channelId, requestedByUserId, updatedAt])
+  @@index([sourceMessageId, status, updatedAt])
+  @@index([waitingKind, responseChannelId, requestedByUserId, updatedAt])
 }
 
 model ChannelMessage {

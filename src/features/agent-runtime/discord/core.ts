@@ -63,6 +63,12 @@ import {
   setGuildModLogChannelId,
 } from '../../settings/guildSettingsRepo';
 import {
+  deleteGuildChannelInvokePolicy,
+  isSupportedThreadAutoArchiveDuration,
+  listGuildChannelInvokePolicies,
+  upsertGuildChannelInvokePolicy,
+} from '../../settings/guildChannelInvokePolicyRepo';
+import {
   createTextArtifactForTool,
   getArtifactForTool,
   getArtifactLatestTextContentForTool,
@@ -144,6 +150,10 @@ type DiscordRestResult = Record<string, unknown> & {
 const VIEW_CHANNEL_REQUIREMENTS = [
   { flag: PermissionsBitField.Flags.ViewChannel, label: 'ViewChannel' },
 ];
+const INVOKE_THREAD_PERMISSION_REQUIREMENTS = [
+  { flag: PermissionsBitField.Flags.CreatePublicThreads, label: 'CreatePublicThreads' },
+  { flag: PermissionsBitField.Flags.SendMessagesInThreads, label: 'SendMessagesInThreads' },
+] as const;
 
 function asAction<T>(args: DiscordActionArgs): T {
   return args as unknown as T;
@@ -165,6 +175,37 @@ async function requireGuildTextChannel(channelId: string, guildId: string, error
     throw new Error(`${errorLabel} must support text messages.`);
   }
   return channel;
+}
+
+async function requireInvokeThreadParentChannel(channelId: string, guildId: string) {
+  const channel = await client.channels.fetch(channelId).catch(() => null);
+  if (!channel || channel.isDMBased() || !('guildId' in channel) || channel.guildId !== guildId) {
+    throw new Error('Invoke-thread routing must target a guild channel in the active server.');
+  }
+  if ('isThread' in channel && typeof channel.isThread === 'function' && channel.isThread()) {
+    throw new Error('Invoke-thread routing only supports parent text or announcement channels, not existing threads.');
+  }
+  if (channel.type !== ChannelType.GuildText && channel.type !== ChannelType.GuildAnnouncement) {
+    throw new Error('Invoke-thread routing only supports text and announcement channels in v1.');
+  }
+  return channel;
+}
+
+function readInvokeThreadPermissionHealth(channel: Awaited<ReturnType<typeof client.channels.fetch>>) {
+  const permissions =
+    channel && 'permissionsFor' in channel && typeof channel.permissionsFor === 'function' && client.user?.id
+      ? channel.permissionsFor(client.user.id)
+      : null;
+  const missingPermissions = permissions
+    ? INVOKE_THREAD_PERMISSION_REQUIREMENTS.filter(({ flag }) => !permissions.has(flag)).map(
+        ({ label }) => label,
+      )
+    : INVOKE_THREAD_PERMISSION_REQUIREMENTS.map(({ label }) => label);
+
+  return {
+    missingPermissions,
+    threadRoutingHealthy: missingPermissions.length === 0,
+  };
 }
 
 function isGuildVoiceChannel(
@@ -2665,6 +2706,38 @@ export async function executeDiscordAdminAction(
         routingMode: modLogChannelId === null ? 'policy_explicit_only' : 'dedicated_mod_log_channel',
       };
     }
+    case 'get_invoke_thread_status': {
+      assertAdminAuthority(ctx);
+      const guildId = requireGuildContext(ctx.guildId);
+      const policies = await listGuildChannelInvokePolicies(guildId);
+      const items = await Promise.all(
+        policies.map(async (policy) => {
+          const channel = await client.channels.fetch(policy.channelId).catch(() => null);
+          const type =
+            channel && 'type' in channel ? channel.type : null;
+          const supportsMode =
+            type === ChannelType.GuildText || type === ChannelType.GuildAnnouncement;
+          const permissionHealth = readInvokeThreadPermissionHealth(channel);
+          return {
+            channelId: policy.channelId,
+            mode: policy.mode,
+            autoArchiveDurationMinutes: policy.autoArchiveDurationMinutes,
+            supportsMode,
+            channelType: type,
+            missingChannel: channel === null,
+            missingBotPermissions: permissionHealth.missingPermissions,
+            threadRoutingHealthy: supportsMode && !permissionHealth.missingPermissions.length,
+          };
+        }),
+      );
+      return {
+        ok: true,
+        action: 'get_invoke_thread_status',
+        guildId,
+        mode: 'public_from_message',
+        items,
+      };
+    }
     case 'clear_server_api_key': {
       assertOwner(ctx);
       assertNotAutopilot(ctx.invokedBy, 'clear_server_api_key');
@@ -2755,6 +2828,54 @@ export async function executeDiscordAdminAction(
         action: 'clear_mod_log_channel',
         guildId,
         message: 'Default moderation log alerts will now rely on explicit policy notification channels only.',
+      };
+    }
+    case 'enable_invoke_thread_channel': {
+      assertAdminAuthority(ctx);
+      assertNotAutopilot(ctx.invokedBy, 'enable_invoke_thread_channel');
+      const data = asAction<{ channelId: string; autoArchiveDurationMinutes?: number }>(args);
+      const guildId = requireGuildContext(ctx.guildId);
+      const channel = await requireInvokeThreadParentChannel(data.channelId, guildId);
+      const permissionHealth = readInvokeThreadPermissionHealth(channel);
+      if (
+        data.autoArchiveDurationMinutes !== undefined &&
+        !isSupportedThreadAutoArchiveDuration(data.autoArchiveDurationMinutes)
+      ) {
+        throw new Error('Invoke-thread routing only supports Discord thread auto-archive durations of 60, 1440, 4320, or 10080 minutes.');
+      }
+      if (permissionHealth.missingPermissions.length > 0) {
+        throw new Error(
+          `Invoke-thread routing needs bot permissions on that channel: ${permissionHealth.missingPermissions.join(', ')}.`,
+        );
+      }
+      const policy = await upsertGuildChannelInvokePolicy({
+        guildId,
+        channelId: data.channelId,
+        autoArchiveDurationMinutes: data.autoArchiveDurationMinutes ?? null,
+        updatedByUserId: ctx.userId,
+      });
+      return {
+        ok: true,
+        action: 'enable_invoke_thread_channel',
+        guildId,
+        channelId: policy.channelId,
+        mode: policy.mode,
+        autoArchiveDurationMinutes: policy.autoArchiveDurationMinutes,
+        message: 'Fresh Sage invokes in this channel will now route into a public message thread when possible.',
+      };
+    }
+    case 'disable_invoke_thread_channel': {
+      assertAdminAuthority(ctx);
+      assertNotAutopilot(ctx.invokedBy, 'disable_invoke_thread_channel');
+      const data = asAction<{ channelId: string }>(args);
+      const guildId = requireGuildContext(ctx.guildId);
+      await deleteGuildChannelInvokePolicy(guildId, data.channelId);
+      return {
+        ok: true,
+        action: 'disable_invoke_thread_channel',
+        guildId,
+        channelId: data.channelId,
+        message: 'Fresh Sage invokes in this channel will now stay on the channel surface by default.',
       };
     }
     case 'send_key_setup_card': {

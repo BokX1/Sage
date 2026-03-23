@@ -1,13 +1,55 @@
 import { prisma } from '../../platform/db/prisma-client';
-import type { AgentTaskRun as PrismaAgentTaskRun } from '@prisma/client';
+
+type AgentTaskRunRow = {
+  id: string;
+  threadId: string;
+  originTraceId: string;
+  latestTraceId: string;
+  guildId: string | null;
+  originChannelId: string;
+  responseChannelId: string;
+  requestedByUserId: string;
+  sourceMessageId: string | null;
+  responseMessageId: string | null;
+  status: string;
+  waitingKind: string | null;
+  latestDraftText: string;
+  draftRevision: number;
+  completionKind: string | null;
+  stopReason: string | null;
+  nextRunnableAt: Date | null;
+  leaseOwner: string | null;
+  leaseExpiresAt: Date | null;
+  heartbeatAt: Date | null;
+  resumeCount: number;
+  taskWallClockMs: number;
+  maxTotalDurationMs: number;
+  maxIdleWaitMs: number;
+  lastErrorText: string | null;
+  responseSessionJson: unknown;
+  waitingStateJson: unknown;
+  compactionStateJson: unknown;
+  checkpointMetadataJson: unknown;
+  activeUserInterruptJson: unknown;
+  activeUserInterruptRevision: number;
+  activeUserInterruptConsumedRevision: number;
+  activeUserInterruptQueuedAt: Date | null;
+  activeUserInterruptConsumedAt: Date | null;
+  activeUserInterruptSupersededAt: Date | null;
+  activeUserInterruptSupersededRevision: number | null;
+  startedAt: Date;
+  completedAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
 
 type AgentTaskRunDelegate = {
-  create: (args: unknown) => Promise<PrismaAgentTaskRun>;
-  findUnique: (args: unknown) => Promise<PrismaAgentTaskRun | null>;
-  upsert: (args: unknown) => Promise<PrismaAgentTaskRun>;
-  update: (args: unknown) => Promise<PrismaAgentTaskRun>;
+  create: (args: unknown) => Promise<AgentTaskRunRow>;
+  findUnique: (args: unknown) => Promise<AgentTaskRunRow | null>;
+  upsert: (args: unknown) => Promise<AgentTaskRunRow>;
+  update: (args: unknown) => Promise<AgentTaskRunRow>;
   updateMany: (args: unknown) => Promise<{ count: number }>;
-  findMany: (args: unknown) => Promise<PrismaAgentTaskRun[]>;
+  findMany: (args: unknown) => Promise<AgentTaskRunRow[]>;
   deleteMany: (args: unknown) => Promise<unknown>;
 };
 
@@ -43,7 +85,8 @@ export interface AgentTaskRunRecord {
   originTraceId: string;
   latestTraceId: string;
   guildId: string | null;
-  channelId: string;
+  originChannelId: string;
+  responseChannelId: string;
   requestedByUserId: string;
   sourceMessageId: string | null;
   responseMessageId: string | null;
@@ -79,8 +122,6 @@ export interface AgentTaskRunRecord {
   updatedAt: Date;
 }
 
-type AgentTaskRunRow = Awaited<ReturnType<typeof agentTaskRunDelegate.findUnique>>;
-
 function toRecord(value: NonNullable<AgentTaskRunRow>): AgentTaskRunRecord {
   return {
     id: value.id,
@@ -88,7 +129,8 @@ function toRecord(value: NonNullable<AgentTaskRunRow>): AgentTaskRunRecord {
     originTraceId: value.originTraceId,
     latestTraceId: value.latestTraceId,
     guildId: value.guildId,
-    channelId: value.channelId,
+    originChannelId: value.originChannelId,
+    responseChannelId: value.responseChannelId,
     requestedByUserId: value.requestedByUserId,
     sourceMessageId: value.sourceMessageId,
     responseMessageId: value.responseMessageId,
@@ -197,7 +239,8 @@ export async function createAgentTaskRun(params: {
   originTraceId: string;
   latestTraceId: string;
   guildId: string | null;
-  channelId: string;
+  originChannelId: string;
+  responseChannelId: string;
   requestedByUserId: string;
   sourceMessageId?: string | null;
   responseMessageId?: string | null;
@@ -228,7 +271,8 @@ export async function createAgentTaskRun(params: {
       originTraceId: params.originTraceId,
       latestTraceId: params.latestTraceId,
       guildId: params.guildId,
-      channelId: params.channelId,
+      originChannelId: params.originChannelId,
+      responseChannelId: params.responseChannelId,
       requestedByUserId: params.requestedByUserId,
       sourceMessageId: params.sourceMessageId ?? null,
       responseMessageId: params.responseMessageId ?? null,
@@ -273,7 +317,8 @@ export async function upsertAgentTaskRun(params: {
   originTraceId: string;
   latestTraceId: string;
   guildId: string | null;
-  channelId: string;
+  originChannelId: string;
+  responseChannelId: string;
   requestedByUserId: string;
   sourceMessageId?: string | null;
   responseMessageId?: string | null;
@@ -309,7 +354,8 @@ export async function upsertAgentTaskRun(params: {
       originTraceId: params.originTraceId,
       latestTraceId: params.latestTraceId,
       guildId: params.guildId,
-      channelId: params.channelId,
+      originChannelId: params.originChannelId,
+      responseChannelId: params.responseChannelId,
       requestedByUserId: params.requestedByUserId,
       sourceMessageId: params.sourceMessageId ?? null,
       responseMessageId: params.responseMessageId ?? null,
@@ -341,7 +387,8 @@ export async function upsertAgentTaskRun(params: {
     update: {
       latestTraceId: params.latestTraceId,
       guildId: params.guildId,
-      channelId: params.channelId,
+      originChannelId: params.originChannelId,
+      responseChannelId: params.responseChannelId,
       requestedByUserId: params.requestedByUserId,
       sourceMessageId: params.sourceMessageId ?? undefined,
       responseMessageId: params.responseMessageId ?? undefined,
@@ -378,6 +425,8 @@ export async function upsertAgentTaskRun(params: {
 export async function updateAgentTaskRunByThreadId(params: {
   threadId: string;
   latestTraceId?: string;
+  originChannelId?: string;
+  responseChannelId?: string;
   sourceMessageId?: string | null;
   responseMessageId?: string | null;
   status?: AgentTaskRunStatus;
@@ -410,6 +459,8 @@ export async function updateAgentTaskRunByThreadId(params: {
     where: { threadId: params.threadId },
     data: {
       latestTraceId: params.latestTraceId,
+      originChannelId: params.originChannelId,
+      responseChannelId: params.responseChannelId,
       sourceMessageId: params.sourceMessageId,
       responseMessageId: params.responseMessageId,
       status: params.status,
@@ -526,7 +577,10 @@ export async function findWaitingUserInputTaskRun(params: {
     where: {
       status: 'waiting_user_input',
       waitingKind: 'user_input',
-      channelId: params.channelId,
+      OR: [
+        { responseChannelId: params.channelId },
+        { originChannelId: params.channelId },
+      ],
       requestedByUserId: params.requestedByUserId,
       guildId: params.guildId,
     },
@@ -540,10 +594,23 @@ export async function findWaitingUserInputTaskRun(params: {
   if (params.replyToMessageId) {
     const directMatch = rows.find((row) => {
       const persistedResponseMessageId = readResponseMessageId(row.responseSessionJson);
-      return row.responseMessageId === params.replyToMessageId || persistedResponseMessageId === params.replyToMessageId;
+      return (
+        row.responseMessageId === params.replyToMessageId ||
+        persistedResponseMessageId === params.replyToMessageId
+      );
     });
     if (directMatch) {
       return toRecord(directMatch);
+    }
+
+    const threadedSourceMatch = rows.find((row) => {
+      return (
+        row.sourceMessageId === params.replyToMessageId &&
+        row.responseChannelId !== row.originChannelId
+      );
+    });
+    if (threadedSourceMatch) {
+      return toRecord(threadedSourceMatch);
     }
   }
 
@@ -563,7 +630,10 @@ export async function findRunningTaskRunForActiveInterrupt(params: {
   const rows = await agentTaskRunDelegate.findMany({
     where: {
       status: 'running',
-      channelId: params.channelId,
+      OR: [
+        { responseChannelId: params.channelId },
+        { originChannelId: params.channelId },
+      ],
       requestedByUserId: params.requestedByUserId,
       guildId: params.guildId,
     },
@@ -572,9 +642,43 @@ export async function findRunningTaskRunForActiveInterrupt(params: {
 
   const directMatch = rows.find((row) => {
     const persistedResponseMessageId = readResponseMessageId(row.responseSessionJson);
-    return row.responseMessageId === params.replyToMessageId || persistedResponseMessageId === params.replyToMessageId;
+    return (
+      row.responseMessageId === params.replyToMessageId ||
+      persistedResponseMessageId === params.replyToMessageId
+    );
   });
-  return directMatch ? toRecord(directMatch) : null;
+  if (directMatch) {
+    return toRecord(directMatch);
+  }
+
+  const threadedSourceMatch = rows.find((row) => {
+    return (
+      row.sourceMessageId === params.replyToMessageId &&
+      row.responseChannelId !== row.originChannelId
+    );
+  });
+  return threadedSourceMatch ? toRecord(threadedSourceMatch) : null;
+}
+
+export async function findLatestTaskRunBySourceMessageId(params: {
+  guildId: string | null;
+  sourceMessageId: string;
+  requestedByUserId?: string;
+  statuses?: AgentTaskRunStatus[];
+}): Promise<AgentTaskRunRecord | null> {
+  const rows = await agentTaskRunDelegate.findMany({
+    where: {
+      guildId: params.guildId,
+      sourceMessageId: params.sourceMessageId,
+      ...(params.requestedByUserId ? { requestedByUserId: params.requestedByUserId } : {}),
+      ...(params.statuses?.length ? { status: { in: params.statuses } } : {}),
+    },
+    orderBy: { updatedAt: 'desc' },
+    take: 1,
+  });
+
+  const [row] = rows;
+  return row ? toRecord(row) : null;
 }
 
 export async function queueRunningTaskRunActiveInterrupt(params: {
@@ -594,7 +698,7 @@ export async function queueRunningTaskRunActiveInterrupt(params: {
   }
   if (
     existing.requestedByUserId !== params.requestedByUserId ||
-    existing.channelId !== params.channelId ||
+    (existing.responseChannelId !== params.channelId && existing.originChannelId !== params.channelId) ||
     existing.guildId !== params.guildId
   ) {
     return 'rejected';
