@@ -252,7 +252,7 @@ const TOOL_DOC_OVERRIDES: Record<string, ToolDocOverride> = {
       'You need exact message-level evidence.',
     ],
   },
-  discord_messages_search_history: {
+  discord_history_search_history: {
     selectionHints: [
       'Use for exact message-history evidence in one channel.',
     ],
@@ -260,7 +260,7 @@ const TOOL_DOC_OVERRIDES: Record<string, ToolDocOverride> = {
       'You only need high-level continuity or recap.',
     ],
   },
-  discord_admin_update_server_instructions: {
+  discord_governance_update_server_instructions: {
     selectionHints: [
       'Use to change Sage’s guild persona or behavior instructions.',
     ],
@@ -268,7 +268,7 @@ const TOOL_DOC_OVERRIDES: Record<string, ToolDocOverride> = {
       'You only need to read the current instructions.',
     ],
   },
-  discord_admin_submit_moderation: {
+  discord_moderation_submit_action: {
     selectionHints: [
       'Use for moderation and enforcement requests, especially reply-targeted cleanup.',
     ],

@@ -7,7 +7,9 @@ const {
   listRunnableAgentTaskRunsMock,
   releaseAgentTaskRunLeaseMock,
   resumeBackgroundTaskRunMock,
+  runChatTurnMock,
   attachTaskRunResponseSessionMock,
+  getUserProfileRecordMock,
   clientMock,
 } = vi.hoisted(() => ({
   claimRunnableAgentTaskRunMock: vi.fn(),
@@ -16,7 +18,9 @@ const {
   listRunnableAgentTaskRunsMock: vi.fn(),
   releaseAgentTaskRunLeaseMock: vi.fn(),
   resumeBackgroundTaskRunMock: vi.fn(),
+  runChatTurnMock: vi.fn(),
   attachTaskRunResponseSessionMock: vi.fn(),
+  getUserProfileRecordMock: vi.fn(),
   clientMock: {
     isReady: vi.fn(() => true),
     channels: {
@@ -59,7 +63,12 @@ vi.mock('@/features/agent-runtime/agentTaskRunRepo', () => ({
 
 vi.mock('@/features/agent-runtime/agentRuntime', () => ({
   resumeBackgroundTaskRun: resumeBackgroundTaskRunMock,
+  runChatTurn: runChatTurnMock,
   attachTaskRunResponseSession: attachTaskRunResponseSessionMock,
+}));
+
+vi.mock('@/features/memory/userProfileRepo', () => ({
+  getUserProfileRecord: getUserProfileRecordMock,
 }));
 
 import {
@@ -97,8 +106,18 @@ describe('agentTaskRunWorker', () => {
       .mockResolvedValue([]);
     releaseAgentTaskRunLeaseMock.mockReset();
     releaseAgentTaskRunLeaseMock.mockResolvedValue(undefined);
+    runChatTurnMock.mockReset();
+    runChatTurnMock.mockResolvedValue({
+      runId: 'thread-1',
+      status: 'completed',
+      replyText: 'done',
+      delivery: 'response_session',
+      files: [],
+    });
     attachTaskRunResponseSessionMock.mockReset();
     attachTaskRunResponseSessionMock.mockResolvedValue(undefined);
+    getUserProfileRecordMock.mockReset();
+    getUserProfileRecordMock.mockResolvedValue(null);
     clientMock.isReady.mockReturnValue(true);
     clientMock.channels.fetch.mockResolvedValue(null);
   });
@@ -287,6 +306,62 @@ describe('agentTaskRunWorker', () => {
         responseMessageId: 'response-1',
       }),
     );
+  });
+
+  it('boots scheduled agent-runs from the worker instead of resuming them as existing checkpoints', async () => {
+    listRunnableAgentTaskRunsMock.mockReset();
+    listRunnableAgentTaskRunsMock
+      .mockResolvedValueOnce([
+        {
+          id: 'task-1',
+          threadId: 'scheduled:task-1:run-1',
+          guildId: 'guild-1',
+          channelId: 'channel-1',
+          requestedByUserId: 'user-1',
+          sourceMessageId: 'scheduled:task-1:run-1',
+          responseMessageId: null,
+          responseSessionJson: {
+            sourceMessageId: 'scheduled:task-1:run-1',
+            responseMessageId: null,
+            overflowMessageIds: [],
+            surfaceAttached: false,
+          },
+          checkpointMetadataJson: {
+            trigger: 'scheduled_agent_run',
+            bootstrapPrompt: 'Check the moderation queue',
+            bootstrapMentionedUserIds: ['user-2'],
+            invokerAuthority: 'owner',
+            isAdmin: true,
+            canModerate: true,
+          },
+        },
+      ])
+      .mockResolvedValue([]);
+
+    runChatTurnMock.mockResolvedValue({
+      runId: 'scheduled:task-1:run-1',
+      status: 'completed',
+      replyText: 'Queued work finished.',
+      delivery: 'response_session',
+      files: [],
+    });
+
+    initAgentTaskRunWorker();
+    await vi.advanceTimersByTimeAsync(1_000);
+    await vi.runOnlyPendingTimersAsync();
+
+    expect(runChatTurnMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        traceId: 'scheduled:task-1:run-1',
+        userId: 'user-1',
+        userText: 'Check the moderation queue',
+        mentionedUserIds: ['user-2'],
+        invokerAuthority: 'owner',
+        isAdmin: true,
+        canModerate: true,
+      }),
+    );
+    expect(resumeBackgroundTaskRunMock).not.toHaveBeenCalled();
   });
 
   it('reuses the persisted response-session json ids after restart when the top-level responseMessageId is missing', async () => {

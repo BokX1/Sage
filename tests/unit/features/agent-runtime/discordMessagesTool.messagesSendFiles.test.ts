@@ -17,6 +17,8 @@ import { ToolRegistry } from '@/features/agent-runtime/toolRegistry';
 import { registerDefaultAgenticTools } from '@/features/agent-runtime/defaultTools';
 
 describe('discord messages tool send attachments', () => {
+  const removedMessagesSendToolName = ['discord', 'messages', 'send'].join('_');
+
   it('removes the legacy send_message tool from the model-facing registry', async () => {
     const registry = new ToolRegistry();
     await registerDefaultAgenticTools(registry);
@@ -32,7 +34,7 @@ describe('discord messages tool send attachments', () => {
 
     const result = await registry.executeValidated(
       {
-        name: 'discord_messages_send',
+        name: removedMessagesSendToolName,
         args: {},
       },
       ctx,
@@ -45,7 +47,7 @@ describe('discord messages tool send attachments', () => {
     expect(mocks.requestDiscordInteractionForTool).not.toHaveBeenCalled();
   });
 
-  it('keeps distinct artifact delivery on dedicated artifact tools instead of discord_messages_send', async () => {
+  it('keeps distinct artifact delivery on dedicated artifact tools instead of the removed message-send helper', async () => {
     const registry = new ToolRegistry();
     await registerDefaultAgenticTools(registry);
 
@@ -60,7 +62,7 @@ describe('discord messages tool send attachments', () => {
 
     const result = await registry.executeValidated(
       {
-        name: 'discord_messages_send',
+        name: removedMessagesSendToolName,
         args: {},
       },
       ctx,

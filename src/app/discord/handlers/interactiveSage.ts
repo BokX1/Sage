@@ -20,7 +20,11 @@ import {
 import { logger } from '../../../platform/logging/logger';
 import { generateTraceId } from '../../../shared/observability/trace-id-generator';
 import { smartSplit } from '../../../shared/text/message-splitter';
-import { isAdminFromMember, isModeratorFromMember } from '../../../platform/discord/admin-permissions';
+import {
+  isAdminFromMember,
+  isModeratorFromMember,
+  resolveAuthorityTierFromMember,
+} from '../../../platform/discord/admin-permissions';
 import { client } from '../../../platform/discord/client';
 import {
   buildConsumedInteractionText,
@@ -156,6 +160,10 @@ async function runInteractivePrompt(params: {
 
   await params.interaction.deferReply({ ephemeral: params.ephemeral });
   const invokerDisplayName = resolveInteractionDisplayName(params.interaction);
+  const invokerAuthority = resolveAuthorityTierFromMember(
+    params.interaction.member,
+    params.interaction.guild?.ownerId ?? null,
+  );
   const invokerIsAdmin = isAdminFromMember(params.interaction.member);
   const invokerCanModerate = isModeratorFromMember(params.interaction.member);
   const result = await generateChatReply({
@@ -183,6 +191,7 @@ async function runInteractivePrompt(params: {
     invokedBy: 'component',
     isVoiceActive: false,
     voiceChannelId: null,
+    invokerAuthority,
     isAdmin: invokerIsAdmin,
     canModerate: invokerCanModerate,
   });
@@ -259,6 +268,10 @@ export async function handleInteractiveButtonSession(
       return true;
     }
     await interaction.deferUpdate();
+    const invokerAuthority = resolveAuthorityTierFromMember(
+      interaction.member,
+      interaction.guild?.ownerId ?? null,
+    );
     const invokerIsAdmin = isAdminFromMember(interaction.member);
     const invokerCanModerate = isModeratorFromMember(interaction.member);
     const result = await retryFailedChatTurn({
@@ -268,6 +281,7 @@ export async function handleInteractiveButtonSession(
       channelId: interaction.channelId,
       guildId: interaction.guildId,
       retryKind: session.retryKind,
+      invokerAuthority,
       isAdmin: invokerIsAdmin,
       canModerate: invokerCanModerate,
     });

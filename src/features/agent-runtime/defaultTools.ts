@@ -17,6 +17,7 @@ import {
   getWebProviderRuntimeStatus,
   lookupNpmPackage,
 } from './toolIntegrations';
+import { getArtifactRuntimeDiagnostics } from '../artifacts/service';
 import { getModerationRuntimeDiagnostics } from '../moderation/runtime';
 import { getScheduledTaskRuntimeDiagnostics } from '../scheduler/service';
 import { initializeMcpTools } from './mcp/manager';
@@ -175,6 +176,16 @@ function emptyModerationDiagnostics(): Record<string, unknown> {
   };
 }
 
+function emptyArtifactDiagnostics(): Record<string, unknown> {
+  return {
+    ready: false,
+    totalArtifacts: 0,
+    totalRevisions: 0,
+    publishedLinks: 0,
+    error: 'unavailable',
+  };
+}
+
 function emptySchedulerDiagnostics(): Record<string, unknown> {
   return {
     ready: false,
@@ -201,6 +212,7 @@ const toolStatsTool = defineToolSpecV2({
       note: { type: 'string' },
       memo: { type: 'object' },
       pagedText: { type: 'object' },
+      artifacts: { type: 'object' },
       moderation: { type: 'object' },
       scheduler: { type: 'object' },
       webProviders: {
@@ -245,7 +257,7 @@ const toolStatsTool = defineToolSpecV2({
       },
       raw: {},
     },
-    required: ['generatedAtIso', 'scope', 'note', 'memo', 'pagedText', 'moderation', 'scheduler', 'webProviders', 'tools'],
+    required: ['generatedAtIso', 'scope', 'note', 'memo', 'pagedText', 'artifacts', 'moderation', 'scheduler', 'webProviders', 'tools'],
     additionalProperties: false,
   },
   annotations: {
@@ -278,6 +290,7 @@ const toolStatsTool = defineToolSpecV2({
         note: 'All tool stats and caches are in-memory only.',
         memo: globalToolMemoStore.stats(now.getTime()),
         pagedText: globalPagedTextStore.stats(now.getTime()),
+        artifacts: await getArtifactRuntimeDiagnostics().catch(() => emptyArtifactDiagnostics()),
         moderation: await getModerationRuntimeDiagnostics().catch(() => emptyModerationDiagnostics()),
         scheduler: await getScheduledTaskRuntimeDiagnostics().catch(() => emptySchedulerDiagnostics()),
         webProviders: getWebProviderRuntimeStatus(),

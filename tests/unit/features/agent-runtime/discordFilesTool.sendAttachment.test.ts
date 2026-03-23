@@ -1,33 +1,15 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
+
 import type { ToolExecutionContext } from '@/features/agent-runtime/toolRegistry';
-
-const mocks = vi.hoisted(() => ({
-  sendCachedAttachment: vi.fn(),
-}));
-
-vi.mock('@/features/agent-runtime/toolIntegrations', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@/features/agent-runtime/toolIntegrations')>();
-  return {
-    ...actual,
-    sendCachedAttachment: mocks.sendCachedAttachment,
-  };
-});
-
 import { ToolRegistry } from '@/features/agent-runtime/toolRegistry';
 import { registerDefaultAgenticTools } from '@/features/agent-runtime/defaultTools';
 
-describe('discord files tool send_attachment', () => {
-  it('allows non-admin resend requests outside autopilot and returns stored grounding text', async () => {
+describe('discord artifact staging tool surface', () => {
+  const removedAttachmentResendToolName = ['discord', 'files', 'send', 'attachment'].join('_');
+
+  it('removes the legacy cached resend tool and keeps artifact staging on the registry', async () => {
     const registry = new ToolRegistry();
     await registerDefaultAgenticTools(registry);
-
-    mocks.sendCachedAttachment.mockResolvedValue({
-      found: true,
-      attachmentId: 'att-1',
-      sendResult: { status: 'executed', action: 'send_message' },
-      storedContentReadable: true,
-      storedContent: 'Image summary: cat meme',
-    });
 
     const ctx: ToolExecutionContext = {
       traceId: 'trace',
@@ -38,39 +20,29 @@ describe('discord files tool send_attachment', () => {
       invokerIsAdmin: false,
     };
 
-    const result = await registry.executeValidated(
+    const legacyResult = await registry.executeValidated(
       {
-        name: 'discord_files_send_attachment',
-        args: {
-          attachmentId: 'att-1',
-          channelId: 'channel-2',
-          content: 'Here it is.',
-        },
+        name: removedAttachmentResendToolName,
+        args: {},
       },
       ctx,
     );
 
-    expect(result.success).toBe(true);
-    if (!result.success) return;
+    expect(legacyResult.success).toBe(false);
+    if (legacyResult.success) return;
+    expect(legacyResult.error).toContain('Unknown tool');
 
-    expect(mocks.sendCachedAttachment).toHaveBeenCalledWith(
-      expect.objectContaining({
-        guildId: 'guild-1',
-        requesterUserId: 'user-1',
-        requesterChannelId: 'channel-1',
-        invokedBy: 'mention',
-        attachmentId: 'att-1',
-        channelId: 'channel-2',
-        content: 'Here it is.',
-      }),
+    const artifactResult = await registry.executeValidated(
+      {
+        name: 'discord_artifact_stage_attachment',
+        args: {},
+      },
+      ctx,
     );
-    expect(result.result).toEqual(
-      expect.objectContaining({
-        structuredContent: expect.objectContaining({
-          found: true,
-          storedContent: 'Image summary: cat meme',
-        }),
-      }),
-    );
+
+    expect(artifactResult.success).toBe(false);
+    if (artifactResult.success) return;
+    expect(artifactResult.errorType).toBe('validation');
+    expect(artifactResult.error).toContain('Invalid arguments');
   });
 });

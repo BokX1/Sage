@@ -3,6 +3,7 @@ import type { ApprovalInterruptPayload } from '../toolControlSignals';
 import type { ToolResult } from '../toolCallExecution';
 import type { PromptInputMode, PromptWaitingFollowUp } from '../promptContract';
 import type { GraphToolCallDescriptor } from './nativeTools';
+import type { DiscordAuthorityTier } from '../../../platform/discord/admin-permissions';
 
 export interface GraphToolFile {
   name: string;
@@ -254,6 +255,7 @@ export interface AgentGraphRuntimeContext {
   timeoutMs?: number;
   maxTokens?: number;
   invokedBy?: 'mention' | 'reply' | 'wakeword' | 'autopilot' | 'component';
+  invokerAuthority?: DiscordAuthorityTier;
   invokerIsAdmin?: boolean;
   invokerCanModerate?: boolean;
   activeToolNames: string[];

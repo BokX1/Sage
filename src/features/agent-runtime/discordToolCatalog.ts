@@ -36,8 +36,16 @@ export const DISCORD_FILES_ACTION_CATALOG = {
     'find_channel',
     'find_server',
     'read_attachment',
+    'list_artifacts',
+    'get_artifact',
+    'list_artifact_revisions',
   ],
-  writes: ['send_attachment'],
+  writes: [
+    'stage_attachment_artifact',
+    'create_text_artifact',
+    'replace_artifact',
+    'publish_artifact',
+  ],
   admin_only: [],
 } as const;
 
@@ -67,6 +75,8 @@ export const DISCORD_SERVER_ACTION_CATALOG = {
     'list_moderation_policies',
     'get_moderation_policy',
     'list_moderation_cases',
+    'get_moderation_case',
+    'get_moderation_member_history',
     'list_scheduled_tasks',
     'get_scheduled_task',
   ],
@@ -84,8 +94,16 @@ export const DISCORD_ADMIN_ACTION_CATALOG = {
     'submit_moderation',
     'upsert_moderation_policy',
     'disable_moderation_policy',
+    'acknowledge_moderation_case',
+    'resolve_moderation_case',
+    'add_moderation_case_note',
     'upsert_scheduled_task',
     'cancel_scheduled_task',
+    'pause_scheduled_task',
+    'resume_scheduled_task',
+    'run_scheduled_task_now',
+    'skip_scheduled_task_next_run',
+    'clone_scheduled_task',
     'edit_message',
     'delete_message',
     'pin_message',
@@ -106,7 +124,6 @@ export const DISCORD_ADMIN_ACTION_CATALOG = {
     'reopen_thread',
     'create_invite',
     'revoke_invite',
-    'api',
   ],
 } as const;
 
@@ -127,9 +144,8 @@ export const DISCORD_TOOL_ACTION_CATALOG = {
 
 export const DISCORD_GUARDRAILS = [
   'Writes are disallowed in autopilot turns.',
-  'Governance/admin actions require admin context; moderation actions require the relevant Discord moderation permissions; API passthrough is guild-scoped and approval-gated for non-GET writes.',
-  'API passthrough blocks bot-wide endpoints (for example /users/@me) and direct /webhooks/* routes.',
-  'API passthrough redacts sensitive fields (tokens/secrets) from results.',
+  'Governance/admin actions require the matching authority tier; moderation actions require the relevant Discord moderation permissions.',
+  'The model-facing Discord surface is typed-only. Use artifact, moderation, scheduler, spaces, governance, context, history, or voice tools instead of raw REST fallbacks.',
   'Some actions require a guild context (guildId). If no guildId is available, avoid guild-only actions.',
 ] as const;
 

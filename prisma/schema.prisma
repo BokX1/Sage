@@ -34,6 +34,8 @@ model GuildSettings {
   pollinationsApiKey      String? // Guild-provided BYOP key (fallback for users)
   approvalReviewChannelId String?
   timezone                String?
+  artifactVaultChannelId  String?
+  modLogChannelId         String?
   updatedAt               DateTime @updatedAt
   createdAt               DateTime @default(now())
 }
@@ -199,6 +201,71 @@ model IngestedAttachment {
   @@index([messageId])
 }
 
+model DiscordArtifact {
+  id                       String   @id @default(cuid())
+  guildId                  String
+  originChannelId          String?
+  createdByUserId          String
+  name                     String
+  filename                 String
+  mediaKind                String
+  mimeType                 String?
+  descriptionText          String?  @db.Text
+  latestRevisionNumber     Int      @default(0)
+  latestPublishedChannelId String?
+  latestPublishedMessageId String?
+  createdAt                DateTime @default(now())
+  updatedAt                DateTime @updatedAt
+
+  revisions DiscordArtifactRevision[]
+  links     DiscordArtifactLink[]
+
+  @@index([guildId, updatedAt])
+  @@index([guildId, createdByUserId, updatedAt])
+}
+
+model DiscordArtifactRevision {
+  id                 String   @id @default(cuid())
+  artifactId         String
+  revisionNumber     Int
+  createdByUserId    String
+  sourceKind         String
+  sourceAttachmentId String?
+  sourceRevisionId   String?
+  format             String?
+  filename           String
+  mimeType           String?
+  contentText        String?  @db.Text
+  sizeBytes          Int?
+  metadataJson       Json?
+  createdAt          DateTime @default(now())
+
+  artifact DiscordArtifact @relation(fields: [artifactId], references: [id], onDelete: Cascade)
+  links    DiscordArtifactLink[]
+
+  @@unique([artifactId, revisionNumber])
+  @@index([artifactId, createdAt])
+  @@index([sourceAttachmentId])
+}
+
+model DiscordArtifactLink {
+  id                String   @id @default(cuid())
+  artifactId        String
+  revisionId        String
+  guildId           String
+  channelId         String
+  messageId         String
+  publishedByUserId String?
+  createdAt         DateTime @default(now())
+
+  artifact DiscordArtifact         @relation(fields: [artifactId], references: [id], onDelete: Cascade)
+  revision DiscordArtifactRevision @relation(fields: [revisionId], references: [id], onDelete: Cascade)
+
+  @@index([artifactId, createdAt])
+  @@index([guildId, channelId, createdAt])
+  @@index([messageId])
+}
+
 model ChannelSummary {
   id              String   @id @default(cuid())
   guildId         String
@@ -350,13 +417,17 @@ model ModerationCase {
   policyId        String?
   source          String
   status          String
+  lifecycleStatus String   @default("open")
   action          String
   targetUserId    String?
   sourceMessageId String?
   channelId       String?
   reviewChannelId String?
   createdByUserId String?
+  acknowledgedByUserId String?
+  acknowledgedAt  DateTime?
   executedByUserId String?
+  resolutionReasonText String? @db.Text
   evidenceJson    Json?
   metadataJson    Json?
   resolvedAt      DateTime?
@@ -364,12 +435,29 @@ model ModerationCase {
   updatedAt       DateTime @updatedAt
 
   policy ModerationPolicy? @relation(fields: [policyId], references: [id], onDelete: SetNull)
+  notes  ModerationCaseNote[]
 
   @@index([guildId, createdAt])
   @@index([guildId, targetUserId, createdAt])
   @@index([guildId, sourceMessageId, createdAt])
   @@index([policyId, createdAt])
   @@index([status, createdAt])
+  @@index([guildId, lifecycleStatus, createdAt])
+}
+
+model ModerationCaseNote {
+  id              String   @id @default(cuid())
+  caseId          String
+  guildId         String
+  createdByUserId String
+  noteText        String   @db.Text
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  moderationCase ModerationCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+
+  @@index([caseId, createdAt])
+  @@index([guildId, createdAt])
 }
 
 model ScheduledTask {
@@ -383,6 +471,7 @@ model ScheduledTask {
   cronExpr       String?
   runAt          DateTime?
   nextRunAt      DateTime?
+  skipUntil      DateTime?
   lastRunAt      DateTime?
   lastSuccessAt  DateTime?
   leaseOwner     String?

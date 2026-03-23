@@ -34,6 +34,8 @@ CREATE TABLE "GuildSettings" (
     "pollinationsApiKey" TEXT,
     "approvalReviewChannelId" TEXT,
     "timezone" TEXT,
+    "artifactVaultChannelId" TEXT,
+    "modLogChannelId" TEXT,
     "updatedAt" TIMESTAMP(3) NOT NULL,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
@@ -197,6 +199,60 @@ CREATE TABLE "IngestedAttachment" (
 );
 
 -- CreateTable
+CREATE TABLE "DiscordArtifact" (
+    "id" TEXT NOT NULL,
+    "guildId" TEXT NOT NULL,
+    "originChannelId" TEXT,
+    "createdByUserId" TEXT NOT NULL,
+    "name" TEXT NOT NULL,
+    "filename" TEXT NOT NULL,
+    "mediaKind" TEXT NOT NULL,
+    "mimeType" TEXT,
+    "descriptionText" TEXT,
+    "latestRevisionNumber" INTEGER NOT NULL DEFAULT 0,
+    "latestPublishedChannelId" TEXT,
+    "latestPublishedMessageId" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "DiscordArtifact_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "DiscordArtifactRevision" (
+    "id" TEXT NOT NULL,
+    "artifactId" TEXT NOT NULL,
+    "revisionNumber" INTEGER NOT NULL,
+    "createdByUserId" TEXT NOT NULL,
+    "sourceKind" TEXT NOT NULL,
+    "sourceAttachmentId" TEXT,
+    "sourceRevisionId" TEXT,
+    "format" TEXT,
+    "filename" TEXT NOT NULL,
+    "mimeType" TEXT,
+    "contentText" TEXT,
+    "sizeBytes" INTEGER,
+    "metadataJson" JSONB,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "DiscordArtifactRevision_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "DiscordArtifactLink" (
+    "id" TEXT NOT NULL,
+    "artifactId" TEXT NOT NULL,
+    "revisionId" TEXT NOT NULL,
+    "guildId" TEXT NOT NULL,
+    "channelId" TEXT NOT NULL,
+    "messageId" TEXT NOT NULL,
+    "publishedByUserId" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "DiscordArtifactLink_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
 CREATE TABLE "ChannelSummary" (
     "id" TEXT NOT NULL,
     "guildId" TEXT NOT NULL,
@@ -339,13 +395,17 @@ CREATE TABLE "ModerationCase" (
     "policyId" TEXT,
     "source" TEXT NOT NULL,
     "status" TEXT NOT NULL,
+    "lifecycleStatus" TEXT NOT NULL DEFAULT 'open',
     "action" TEXT NOT NULL,
     "targetUserId" TEXT,
     "sourceMessageId" TEXT,
     "channelId" TEXT,
     "reviewChannelId" TEXT,
     "createdByUserId" TEXT,
+    "acknowledgedByUserId" TEXT,
+    "acknowledgedAt" TIMESTAMP(3),
     "executedByUserId" TEXT,
+    "resolutionReasonText" TEXT,
     "evidenceJson" JSONB,
     "metadataJson" JSONB,
     "resolvedAt" TIMESTAMP(3),
@@ -353,6 +413,19 @@ CREATE TABLE "ModerationCase" (
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
     CONSTRAINT "ModerationCase_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "ModerationCaseNote" (
+    "id" TEXT NOT NULL,
+    "caseId" TEXT NOT NULL,
+    "guildId" TEXT NOT NULL,
+    "createdByUserId" TEXT NOT NULL,
+    "noteText" TEXT NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "ModerationCaseNote_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -367,6 +440,7 @@ CREATE TABLE "ScheduledTask" (
     "cronExpr" TEXT,
     "runAt" TIMESTAMP(3),
     "nextRunAt" TIMESTAMP(3),
+    "skipUntil" TIMESTAMP(3),
     "lastRunAt" TIMESTAMP(3),
     "lastSuccessAt" TIMESTAMP(3),
     "leaseOwner" TEXT,
@@ -485,6 +559,30 @@ CREATE INDEX "IngestedAttachment_messageId_idx" ON "IngestedAttachment"("message
 CREATE UNIQUE INDEX "IngestedAttachment_messageId_attachmentIndex_key" ON "IngestedAttachment"("messageId", "attachmentIndex");
 
 -- CreateIndex
+CREATE INDEX "DiscordArtifact_guildId_updatedAt_idx" ON "DiscordArtifact"("guildId", "updatedAt");
+
+-- CreateIndex
+CREATE INDEX "DiscordArtifact_guildId_createdByUserId_updatedAt_idx" ON "DiscordArtifact"("guildId", "createdByUserId", "updatedAt");
+
+-- CreateIndex
+CREATE INDEX "DiscordArtifactRevision_artifactId_createdAt_idx" ON "DiscordArtifactRevision"("artifactId", "createdAt");
+
+-- CreateIndex
+CREATE INDEX "DiscordArtifactRevision_sourceAttachmentId_idx" ON "DiscordArtifactRevision"("sourceAttachmentId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "DiscordArtifactRevision_artifactId_revisionNumber_key" ON "DiscordArtifactRevision"("artifactId", "revisionNumber");
+
+-- CreateIndex
+CREATE INDEX "DiscordArtifactLink_artifactId_createdAt_idx" ON "DiscordArtifactLink"("artifactId", "createdAt");
+
+-- CreateIndex
+CREATE INDEX "DiscordArtifactLink_guildId_channelId_createdAt_idx" ON "DiscordArtifactLink"("guildId", "channelId", "createdAt");
+
+-- CreateIndex
+CREATE INDEX "DiscordArtifactLink_messageId_idx" ON "DiscordArtifactLink"("messageId");
+
+-- CreateIndex
 CREATE INDEX "ChannelSummary_guildId_channelId_updatedAt_idx" ON "ChannelSummary"("guildId", "channelId", "updatedAt");
 
 -- CreateIndex
@@ -563,6 +661,15 @@ CREATE INDEX "ModerationCase_policyId_createdAt_idx" ON "ModerationCase"("policy
 CREATE INDEX "ModerationCase_status_createdAt_idx" ON "ModerationCase"("status", "createdAt");
 
 -- CreateIndex
+CREATE INDEX "ModerationCase_guildId_lifecycleStatus_createdAt_idx" ON "ModerationCase"("guildId", "lifecycleStatus", "createdAt");
+
+-- CreateIndex
+CREATE INDEX "ModerationCaseNote_caseId_createdAt_idx" ON "ModerationCaseNote"("caseId", "createdAt");
+
+-- CreateIndex
+CREATE INDEX "ModerationCaseNote_guildId_createdAt_idx" ON "ModerationCaseNote"("guildId", "createdAt");
+
+-- CreateIndex
 CREATE INDEX "ScheduledTask_guildId_createdAt_idx" ON "ScheduledTask"("guildId", "createdAt");
 
 -- CreateIndex
@@ -596,10 +703,23 @@ CREATE INDEX "ChannelMessageEmbedding_guildId_channelId_idx" ON "ChannelMessageE
 ALTER TABLE "UserProfileArchive" ADD CONSTRAINT "UserProfileArchive_userId_fkey" FOREIGN KEY ("userId") REFERENCES "UserProfile"("userId") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
+ALTER TABLE "DiscordArtifactRevision" ADD CONSTRAINT "DiscordArtifactRevision_artifactId_fkey" FOREIGN KEY ("artifactId") REFERENCES "DiscordArtifact"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "DiscordArtifactLink" ADD CONSTRAINT "DiscordArtifactLink_artifactId_fkey" FOREIGN KEY ("artifactId") REFERENCES "DiscordArtifact"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "DiscordArtifactLink" ADD CONSTRAINT "DiscordArtifactLink_revisionId_fkey" FOREIGN KEY ("revisionId") REFERENCES "DiscordArtifactRevision"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
 ALTER TABLE "ModerationCase" ADD CONSTRAINT "ModerationCase_policyId_fkey" FOREIGN KEY ("policyId") REFERENCES "ModerationPolicy"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "ModerationCaseNote" ADD CONSTRAINT "ModerationCaseNote_caseId_fkey" FOREIGN KEY ("caseId") REFERENCES "ModerationCase"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "ScheduledTaskRun" ADD CONSTRAINT "ScheduledTaskRun_taskId_fkey" FOREIGN KEY ("taskId") REFERENCES "ScheduledTask"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "ChannelMessageEmbedding" ADD CONSTRAINT "ChannelMessageEmbedding_messageId_fkey" FOREIGN KEY ("messageId") REFERENCES "ChannelMessage"("messageId") ON DELETE CASCADE ON UPDATE CASCADE;
+

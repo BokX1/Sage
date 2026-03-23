@@ -231,22 +231,42 @@ export type ModerationCaseStatus =
   | 'failed'
   | 'noop';
 
+export type ModerationCaseLifecycleStatus =
+  | 'open'
+  | 'acknowledged'
+  | 'resolved'
+  | 'voided';
+
 export interface ModerationCaseRecord {
   id: string;
   guildId: string;
   policyId: string | null;
   source: ModerationCaseSource;
   status: ModerationCaseStatus;
+  lifecycleStatus: ModerationCaseLifecycleStatus;
   action: string;
   targetUserId: string | null;
   sourceMessageId: string | null;
   channelId: string | null;
   reviewChannelId: string | null;
   createdByUserId: string | null;
+  acknowledgedByUserId: string | null;
+  acknowledgedAt: Date | null;
   executedByUserId: string | null;
+  resolutionReasonText: string | null;
   evidenceJson: Record<string, unknown> | null;
   metadataJson: Record<string, unknown> | null;
   resolvedAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface ModerationCaseNoteRecord {
+  id: string;
+  caseId: string;
+  guildId: string;
+  createdByUserId: string;
+  noteText: string;
   createdAt: Date;
   updatedAt: Date;
 }

@@ -61,11 +61,20 @@ describe('guildSettingsRepo.upsertGuildApiKey', () => {
 
     expect(encryptSecretMock).toHaveBeenCalledWith('sk_secret');
     expect(encryptSecretMock).toHaveBeenCalledTimes(1);
-    expect(upsertMock).toHaveBeenCalledWith({
-      where: { guildId: 'g1' },
-      create: { guildId: 'g1', pollinationsApiKey: 'enc:v1:sk_secret', approvalReviewChannelId: null, timezone: null },
-      update: { pollinationsApiKey: 'enc:v1:sk_secret' },
-    });
+    expect(upsertMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { guildId: 'g1' },
+        create: expect.objectContaining({
+          guildId: 'g1',
+          pollinationsApiKey: 'enc:v1:sk_secret',
+          approvalReviewChannelId: null,
+          timezone: null,
+          artifactVaultChannelId: null,
+          modLogChannelId: null,
+        }),
+        update: { pollinationsApiKey: 'enc:v1:sk_secret' },
+      }),
+    );
   });
 
   it('reuses one encrypted value for both create and update paths', async () => {
@@ -76,11 +85,20 @@ describe('guildSettingsRepo.upsertGuildApiKey', () => {
     await upsertGuildApiKey('g1', 'sk_secret');
 
     expect(encryptSecretMock).toHaveBeenCalledTimes(1);
-    expect(upsertMock).toHaveBeenCalledWith({
-      where: { guildId: 'g1' },
-      create: { guildId: 'g1', pollinationsApiKey: 'enc:v1:unique', approvalReviewChannelId: null, timezone: null },
-      update: { pollinationsApiKey: 'enc:v1:unique' },
-    });
+    expect(upsertMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { guildId: 'g1' },
+        create: expect.objectContaining({
+          guildId: 'g1',
+          pollinationsApiKey: 'enc:v1:unique',
+          approvalReviewChannelId: null,
+          timezone: null,
+          artifactVaultChannelId: null,
+          modLogChannelId: null,
+        }),
+        update: { pollinationsApiKey: 'enc:v1:unique' },
+      }),
+    );
   });
 
   it('stores null when clearing key', async () => {
@@ -89,10 +107,19 @@ describe('guildSettingsRepo.upsertGuildApiKey', () => {
     const { upsertGuildApiKey } = await import('../../../../src/features/settings/guildSettingsRepo');
     await upsertGuildApiKey('g1', null);
 
-    expect(upsertMock).toHaveBeenCalledWith({
-      where: { guildId: 'g1' },
-      create: { guildId: 'g1', pollinationsApiKey: null, approvalReviewChannelId: null, timezone: null },
-      update: { pollinationsApiKey: null },
-    });
+    expect(upsertMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { guildId: 'g1' },
+        create: expect.objectContaining({
+          guildId: 'g1',
+          pollinationsApiKey: null,
+          approvalReviewChannelId: null,
+          timezone: null,
+          artifactVaultChannelId: null,
+          modLogChannelId: null,
+        }),
+        update: { pollinationsApiKey: null },
+      }),
+    );
   });
 });

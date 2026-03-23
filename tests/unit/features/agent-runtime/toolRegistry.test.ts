@@ -256,7 +256,7 @@ describe('ToolRegistry', () => {
 
       const result = await runtimeRegistry.executeValidated(
         {
-          name: 'discord_files_send_attachment',
+          name: 'discord_artifact_stage_attachment',
           args: {},
         },
         { traceId: 'test', userId: 'u1', channelId: 'c1' },
@@ -295,7 +295,7 @@ describe('ToolRegistry', () => {
 
       const result = await runtimeRegistry.resolveActionPolicy(
         {
-          name: 'discord_messages_create_poll',
+          name: 'discord_spaces_create_poll',
           args: {
             action: 'create_poll',
             question: 'hello from Sage',
@@ -318,7 +318,7 @@ describe('ToolRegistry', () => {
 
       const serverRead = await runtimeRegistry.resolveActionPolicy(
         {
-          name: 'discord_server_list_members',
+          name: 'discord_moderation_list_members',
           args: {
             action: 'list_members',
           },
@@ -328,7 +328,7 @@ describe('ToolRegistry', () => {
 
       const adminRead = await runtimeRegistry.resolveActionPolicy(
         {
-          name: 'discord_admin_get_server_key_status',
+          name: 'discord_governance_get_server_key_status',
           args: {
             action: 'get_server_key_status',
           },

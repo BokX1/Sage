@@ -37,10 +37,14 @@ vi.mock('../../../../src/platform/discord/client', () => ({
   },
 }));
 
-import { discordServerTools, discordVoiceTools } from '../../../../src/features/agent-runtime/discordDomainTools';
+import {
+  discordModerationTools,
+  discordSpacesTools,
+  discordVoiceTools,
+} from '../../../../src/features/agent-runtime/discordDomainTools';
 
 function serverTool(name: string) {
-  const found = discordServerTools.find((entry) => entry.name === name);
+  const found = [...discordSpacesTools, ...discordModerationTools].find((entry) => entry.name === name);
   if (!found) throw new Error(`Missing server tool ${name}`);
   return found;
 }
@@ -64,6 +68,7 @@ describe('discord granular server and voice tools', () => {
   const adminCtx: ToolExecutionContext = {
     ...publicCtx,
     invokerIsAdmin: true,
+    invokerAuthority: 'admin',
   };
 
   beforeEach(() => {
@@ -85,7 +90,7 @@ describe('discord granular server and voice tools', () => {
     });
     mocks.filterChannelIdsByMemberAccess.mockResolvedValue(new Set(['channel-1']));
 
-    const result = await serverTool('discord_server_list_channels').execute({}, publicCtx);
+    const result = await serverTool('discord_spaces_list_channels').execute({}, publicCtx);
 
     expect(mocks.discordRestRequestGuildScoped).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -118,11 +123,11 @@ describe('discord granular server and voice tools', () => {
       threadId: 'thread-1',
     });
 
-    const result = await serverTool('discord_server_create_thread').execute(
+    const result = await serverTool('discord_spaces_create_thread').execute(
       {
         name: 'Release follow-up',
       },
-      publicCtx,
+      adminCtx,
     );
 
     expect(mocks.requestDiscordInteractionForTool).toHaveBeenCalledWith(
@@ -168,7 +173,7 @@ describe('discord granular server and voice tools', () => {
       },
     });
 
-    const result = await serverTool('discord_server_get_permission_snapshot').execute(
+    const result = await serverTool('discord_moderation_get_permission_snapshot').execute(
       {
         channelId: 'channel-1',
         userId: 'user-2',
@@ -192,13 +197,13 @@ describe('discord granular server and voice tools', () => {
 
   it('blocks thread updates in autopilot turns', async () => {
     await expect(
-      serverTool('discord_server_update_thread').execute(
+      serverTool('discord_spaces_update_thread').execute(
         {
           threadId: 'thread-1',
           archived: true,
         },
         {
-          ...publicCtx,
+          ...adminCtx,
           invokedBy: 'autopilot',
         },
       ),
@@ -206,9 +211,9 @@ describe('discord granular server and voice tools', () => {
   });
 
   it('requires parentChannelId when archived threads are requested', () => {
-    const schema = serverTool('discord_server_list_threads').schema;
+    const schema = serverTool('discord_spaces_list_threads').schema;
     if (!schema) {
-      throw new Error('Expected discord_server_list_threads to expose a runtime schema.');
+      throw new Error('Expected discord_spaces_list_threads to expose a runtime schema.');
     }
     const parsed = schema.safeParse({
       includeArchived: true,

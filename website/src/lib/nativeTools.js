@@ -2,247 +2,86 @@
 // Do not edit by hand.
 export const nativeTools = [
   {
-    "name": "discord_admin_add_member_role",
-    "short": "Discord Admin Add Member Role",
-    "desc": "Add an existing guild role to a member with admin approval.",
+    "name": "discord_artifact_create_text",
+    "short": "Discord Artifact Create Text",
+    "desc": "Create a new text or structured-text artifact.",
     "cat": "discord",
     "color": "#5865F2"
   },
   {
-    "name": "discord_admin_api",
-    "short": "Discord Admin Api",
-    "desc": "Guild-scoped raw Discord API fallback.",
+    "name": "discord_artifact_find_channel_attachments",
+    "short": "Discord Files Find Channel",
+    "desc": "Search attachment text in the current channel.",
     "cat": "discord",
     "color": "#5865F2"
   },
   {
-    "name": "discord_admin_archive_thread",
-    "short": "Discord Admin Archive Thread",
-    "desc": "Archive a thread explicitly.",
+    "name": "discord_artifact_find_guild_attachments",
+    "short": "Discord Files Find Server",
+    "desc": "Search attachment text across the guild.",
     "cat": "discord",
     "color": "#5865F2"
   },
   {
-    "name": "discord_admin_cancel_scheduled_task",
-    "short": "Discord Admin Cancel Scheduled Task",
-    "desc": "Cancel a scheduled reminder or scheduled Sage job.",
+    "name": "discord_artifact_get",
+    "short": "Discord Artifact Get",
+    "desc": "Retrieve one Discord artifact and its latest revision metadata.",
     "cat": "discord",
     "color": "#5865F2"
   },
   {
-    "name": "discord_admin_clear_governance_review_channel",
-    "short": "Discord Admin Clear Governance Review Channel",
-    "desc": "Clear the dedicated governance review channel.",
+    "name": "discord_artifact_list",
+    "short": "Discord Artifact List",
+    "desc": "List stored Discord artifacts in the active guild or origin channel.",
     "cat": "discord",
     "color": "#5865F2"
   },
   {
-    "name": "discord_admin_clear_server_api_key",
-    "short": "Discord Admin Clear Server Api Key",
-    "desc": "Clear the current server-wide API key.",
+    "name": "discord_artifact_list_channel_attachments",
+    "short": "Discord Files List Channel",
+    "desc": "List cached attachments in the current channel.",
     "cat": "discord",
     "color": "#5865F2"
   },
   {
-    "name": "discord_admin_create_channel",
-    "short": "Discord Admin Create Channel",
-    "desc": "Create a new channel or category.",
+    "name": "discord_artifact_list_guild_attachments",
+    "short": "Discord Files List Server",
+    "desc": "List cached attachments across the guild.",
     "cat": "discord",
     "color": "#5865F2"
   },
   {
-    "name": "discord_admin_create_forum_post",
-    "short": "Discord Admin Create Forum Post",
-    "desc": "Create a forum post in a forum channel.",
+    "name": "discord_artifact_list_revisions",
+    "short": "Discord Artifact List Revisions",
+    "desc": "List recent revisions for one artifact.",
     "cat": "discord",
     "color": "#5865F2"
   },
   {
-    "name": "discord_admin_create_invite",
-    "short": "Discord Admin Create Invite",
-    "desc": "Create a new invite for a channel.",
+    "name": "discord_artifact_publish",
+    "short": "Discord Artifact Publish",
+    "desc": "Publish the latest artifact revision into a Discord channel or thread.",
     "cat": "discord",
     "color": "#5865F2"
   },
   {
-    "name": "discord_admin_create_role",
-    "short": "Discord Admin Create Role",
-    "desc": "Create a new guild role with Discord admin approval and server context.",
+    "name": "discord_artifact_read_attachment",
+    "short": "Discord Files Read Attachment",
+    "desc": "Read cached attachment text in pages.",
     "cat": "discord",
     "color": "#5865F2"
   },
   {
-    "name": "discord_admin_create_scheduled_event",
-    "short": "Discord Admin Create Scheduled Event",
-    "desc": "Create a scheduled event for the guild.",
+    "name": "discord_artifact_replace",
+    "short": "Discord Artifact Replace",
+    "desc": "Create a new revision for an existing artifact from text or an existing attachment.",
     "cat": "discord",
     "color": "#5865F2"
   },
   {
-    "name": "discord_admin_delete_message",
-    "short": "Discord Admin Delete Message",
-    "desc": "Delete a message with admin approval.",
-    "cat": "discord",
-    "color": "#5865F2"
-  },
-  {
-    "name": "discord_admin_delete_role",
-    "short": "Discord Admin Delete Role",
-    "desc": "Delete an existing guild role with admin approval and guild context.",
-    "cat": "discord",
-    "color": "#5865F2"
-  },
-  {
-    "name": "discord_admin_delete_scheduled_event",
-    "short": "Discord Admin Delete Scheduled Event",
-    "desc": "Delete a scheduled event for the guild.",
-    "cat": "discord",
-    "color": "#5865F2"
-  },
-  {
-    "name": "discord_admin_disable_moderation_policy",
-    "short": "Discord Admin Disable Moderation Policy",
-    "desc": "Disable an existing moderation policy.",
-    "cat": "discord",
-    "color": "#5865F2"
-  },
-  {
-    "name": "discord_admin_edit_channel",
-    "short": "Discord Admin Edit Channel",
-    "desc": "Edit an existing channel.",
-    "cat": "discord",
-    "color": "#5865F2"
-  },
-  {
-    "name": "discord_admin_edit_message",
-    "short": "Discord Admin Edit Message",
-    "desc": "Edit a message with admin approval.",
-    "cat": "discord",
-    "color": "#5865F2"
-  },
-  {
-    "name": "discord_admin_edit_role",
-    "short": "Discord Admin Edit Role",
-    "desc": "Edit an existing guild role, including name, color, or permissions, with approval.",
-    "cat": "discord",
-    "color": "#5865F2"
-  },
-  {
-    "name": "discord_admin_get_governance_review_status",
-    "short": "Discord Admin Get Governance Review Status",
-    "desc": "Inspect where governance review cards are routed.",
-    "cat": "discord",
-    "color": "#5865F2"
-  },
-  {
-    "name": "discord_admin_get_invite_url",
-    "short": "Discord Admin Get Invite Url",
-    "desc": "Generate an OAuth2 invite URL for the bot.",
-    "cat": "discord",
-    "color": "#5865F2"
-  },
-  {
-    "name": "discord_admin_get_server_key_status",
-    "short": "Discord Admin Get Server Key Status",
-    "desc": "Check the current server-wide API key status.",
-    "cat": "discord",
-    "color": "#5865F2"
-  },
-  {
-    "name": "discord_admin_list_invites",
-    "short": "Discord Admin List Invites",
-    "desc": "List active guild or channel invites.",
-    "cat": "discord",
-    "color": "#5865F2"
-  },
-  {
-    "name": "discord_admin_pin_message",
-    "short": "Discord Admin Pin Message",
-    "desc": "Pin a message with admin approval.",
-    "cat": "discord",
-    "color": "#5865F2"
-  },
-  {
-    "name": "discord_admin_remove_member_role",
-    "short": "Discord Admin Remove Member Role",
-    "desc": "Remove a role from a member.",
-    "cat": "discord",
-    "color": "#5865F2"
-  },
-  {
-    "name": "discord_admin_reopen_thread",
-    "short": "Discord Admin Reopen Thread",
-    "desc": "Reopen an archived thread explicitly.",
-    "cat": "discord",
-    "color": "#5865F2"
-  },
-  {
-    "name": "discord_admin_revoke_invite",
-    "short": "Discord Admin Revoke Invite",
-    "desc": "Revoke an invite by its code.",
-    "cat": "discord",
-    "color": "#5865F2"
-  },
-  {
-    "name": "discord_admin_send_key_setup_card",
-    "short": "Discord Admin Send Key Setup Card",
-    "desc": "Send an interactive server-key setup card.",
-    "cat": "discord",
-    "color": "#5865F2"
-  },
-  {
-    "name": "discord_admin_set_governance_review_channel",
-    "short": "Discord Admin Set Governance Review Channel",
-    "desc": "Route governance review cards to a specific text channel.",
-    "cat": "discord",
-    "color": "#5865F2"
-  },
-  {
-    "name": "discord_admin_submit_moderation",
-    "short": "Discord Admin Submit Moderation",
-    "desc": "Submit a moderation or enforcement request.",
-    "cat": "discord",
-    "color": "#5865F2"
-  },
-  {
-    "name": "discord_admin_unpin_message",
-    "short": "Discord Admin Unpin Message",
-    "desc": "Unpin a message with admin approval.",
-    "cat": "discord",
-    "color": "#5865F2"
-  },
-  {
-    "name": "discord_admin_update_forum_tags",
-    "short": "Discord Admin Update Forum Tags",
-    "desc": "Replace the applied tags on a forum thread.",
-    "cat": "discord",
-    "color": "#5865F2"
-  },
-  {
-    "name": "discord_admin_update_scheduled_event",
-    "short": "Discord Admin Update Scheduled Event",
-    "desc": "Update a scheduled event for the guild.",
-    "cat": "discord",
-    "color": "#5865F2"
-  },
-  {
-    "name": "discord_admin_update_server_instructions",
-    "short": "Discord Admin Update Server Instructions",
-    "desc": "Submit an admin request to update the guild Sage Persona.",
-    "cat": "discord",
-    "color": "#5865F2"
-  },
-  {
-    "name": "discord_admin_upsert_moderation_policy",
-    "short": "Discord Admin Upsert Moderation Policy",
-    "desc": "Create or update an autonomous moderation policy.",
-    "cat": "discord",
-    "color": "#5865F2"
-  },
-  {
-    "name": "discord_admin_upsert_scheduled_task",
-    "short": "Discord Admin Upsert Scheduled Task",
-    "desc": "Create or update a scheduled reminder or scheduled Sage job.",
+    "name": "discord_artifact_stage_attachment",
+    "short": "Discord Artifact Stage Attachment",
+    "desc": "Turn an ingested Discord attachment into a durable Sage artifact revision.",
     "cat": "discord",
     "color": "#5865F2"
   },
@@ -250,13 +89,6 @@ export const nativeTools = [
     "name": "discord_context_get_channel_summary",
     "short": "Discord Context Get Channel Summary",
     "desc": "Fetch rolling and long-term summary context for the current channel.",
-    "cat": "discord",
-    "color": "#5865F2"
-  },
-  {
-    "name": "discord_context_get_server_instructions",
-    "short": "Discord Context Get Server Instructions",
-    "desc": "Read the current guild Sage Persona instructions.",
     "cat": "discord",
     "color": "#5865F2"
   },
@@ -303,252 +135,567 @@ export const nativeTools = [
     "color": "#5865F2"
   },
   {
-    "name": "discord_files_find_channel",
-    "short": "Discord Files Find Channel",
-    "desc": "Search attachment text in the current channel.",
+    "name": "discord_governance_clear_artifact_vault_channel",
+    "short": "Discord Admin Clear Artifact Vault Channel",
+    "desc": "Clear the dedicated artifact vault channel override.",
     "cat": "discord",
     "color": "#5865F2"
   },
   {
-    "name": "discord_files_find_server",
-    "short": "Discord Files Find Server",
-    "desc": "Search attachment text across the guild.",
+    "name": "discord_governance_clear_mod_log_channel",
+    "short": "Discord Admin Clear Mod Log Channel",
+    "desc": "Clear the dedicated moderation log channel override.",
     "cat": "discord",
     "color": "#5865F2"
   },
   {
-    "name": "discord_files_list_channel",
-    "short": "Discord Files List Channel",
-    "desc": "List cached attachments in the current channel.",
+    "name": "discord_governance_clear_review_channel",
+    "short": "Discord Admin Clear Governance Review Channel",
+    "desc": "Clear the dedicated governance review channel.",
     "cat": "discord",
     "color": "#5865F2"
   },
   {
-    "name": "discord_files_list_server",
-    "short": "Discord Files List Server",
-    "desc": "List cached attachments across the guild.",
+    "name": "discord_governance_clear_server_api_key",
+    "short": "Discord Admin Clear Server Api Key",
+    "desc": "Clear the current server-wide API key.",
     "cat": "discord",
     "color": "#5865F2"
   },
   {
-    "name": "discord_files_read_attachment",
-    "short": "Discord Files Read Attachment",
-    "desc": "Read cached attachment text in pages.",
+    "name": "discord_governance_get_artifact_vault_status",
+    "short": "Discord Admin Get Artifact Vault Status",
+    "desc": "Inspect where Sage publishes default artifact vault posts.",
     "cat": "discord",
     "color": "#5865F2"
   },
   {
-    "name": "discord_files_send_attachment",
-    "short": "Discord Files Send Attachment",
-    "desc": "Resend a cached attachment as a distinct artifact.",
+    "name": "discord_governance_get_mod_log_status",
+    "short": "Discord Admin Get Mod Log Status",
+    "desc": "Inspect where Sage posts default moderation log alerts.",
     "cat": "discord",
     "color": "#5865F2"
   },
   {
-    "name": "discord_messages_add_reaction",
-    "short": "Discord Messages Add Reaction",
-    "desc": "Add a reaction to a Discord message.",
+    "name": "discord_governance_get_review_status",
+    "short": "Discord Admin Get Governance Review Status",
+    "desc": "Inspect where governance review cards are routed.",
     "cat": "discord",
     "color": "#5865F2"
   },
   {
-    "name": "discord_messages_create_poll",
-    "short": "Discord Messages Create Poll",
-    "desc": "Create a poll in Discord.",
+    "name": "discord_governance_get_server_instructions",
+    "short": "Discord Context Get Server Instructions",
+    "desc": "Read the current guild Sage Persona instructions.",
     "cat": "discord",
     "color": "#5865F2"
   },
   {
-    "name": "discord_messages_get_context",
+    "name": "discord_governance_get_server_key_status",
+    "short": "Discord Admin Get Server Key Status",
+    "desc": "Check the current server-wide API key status.",
+    "cat": "discord",
+    "color": "#5865F2"
+  },
+  {
+    "name": "discord_governance_send_key_setup_card",
+    "short": "Discord Admin Send Key Setup Card",
+    "desc": "Send an interactive server-key setup card.",
+    "cat": "discord",
+    "color": "#5865F2"
+  },
+  {
+    "name": "discord_governance_set_artifact_vault_channel",
+    "short": "Discord Admin Set Artifact Vault Channel",
+    "desc": "Route default artifact publications to a specific text channel or thread.",
+    "cat": "discord",
+    "color": "#5865F2"
+  },
+  {
+    "name": "discord_governance_set_mod_log_channel",
+    "short": "Discord Admin Set Mod Log Channel",
+    "desc": "Route default moderation log alerts to a specific text channel or thread.",
+    "cat": "discord",
+    "color": "#5865F2"
+  },
+  {
+    "name": "discord_governance_set_review_channel",
+    "short": "Discord Admin Set Governance Review Channel",
+    "desc": "Route governance review cards to a specific text channel.",
+    "cat": "discord",
+    "color": "#5865F2"
+  },
+  {
+    "name": "discord_governance_update_server_instructions",
+    "short": "Discord Admin Update Server Instructions",
+    "desc": "Submit an admin request to update the guild Sage Persona.",
+    "cat": "discord",
+    "color": "#5865F2"
+  },
+  {
+    "name": "discord_history_get_context",
     "short": "Discord Messages Get Context",
     "desc": "Retrieve messages before and after a given message ID.",
     "cat": "discord",
     "color": "#5865F2"
   },
   {
-    "name": "discord_messages_get_user_timeline",
+    "name": "discord_history_get_user_timeline",
     "short": "Discord Messages Get User Timeline",
     "desc": "Show recent messages from a user across the guild.",
     "cat": "discord",
     "color": "#5865F2"
   },
   {
-    "name": "discord_messages_remove_self_reaction",
-    "short": "Discord Messages Remove Self Reaction",
-    "desc": "Remove Sage’s own reaction from a Discord message.",
-    "cat": "discord",
-    "color": "#5865F2"
-  },
-  {
-    "name": "discord_messages_search_guild",
+    "name": "discord_history_search_guild",
     "short": "Discord Messages Search Guild",
     "desc": "Search raw message history across the guild.",
     "cat": "discord",
     "color": "#5865F2"
   },
   {
-    "name": "discord_messages_search_history",
+    "name": "discord_history_search_history",
     "short": "Discord Messages Search History",
     "desc": "Search channel message history.",
     "cat": "discord",
     "color": "#5865F2"
   },
   {
-    "name": "discord_messages_search_with_context",
+    "name": "discord_history_search_with_context",
     "short": "Discord Messages Search With Context",
     "desc": "Search channel history and expand context around the best match.",
     "cat": "discord",
     "color": "#5865F2"
   },
   {
-    "name": "discord_server_add_thread_member",
-    "short": "Discord Server Add Thread Member",
-    "desc": "Add a member to a thread.",
+    "name": "discord_moderation_ack_case",
+    "short": "Discord Moderation Acknowledge Case",
+    "desc": "Acknowledge a moderation case for follow-up.",
     "cat": "discord",
     "color": "#5865F2"
   },
   {
-    "name": "discord_server_create_thread",
-    "short": "Discord Server Create Thread",
-    "desc": "Create a Discord thread.",
+    "name": "discord_moderation_add_case_note",
+    "short": "Discord Moderation Add Case Note",
+    "desc": "Add a moderator note to a moderation case.",
     "cat": "discord",
     "color": "#5865F2"
   },
   {
-    "name": "discord_server_get_channel",
-    "short": "Discord Server Get Channel",
-    "desc": "Retrieve detailed metadata for one guild channel.",
+    "name": "discord_moderation_disable_policy",
+    "short": "Discord Admin Disable Moderation Policy",
+    "desc": "Disable an existing moderation policy.",
     "cat": "discord",
     "color": "#5865F2"
   },
   {
-    "name": "discord_server_get_member",
+    "name": "discord_moderation_get_case",
+    "short": "Discord Moderation Get Case",
+    "desc": "Retrieve one moderation case and its notes.",
+    "cat": "discord",
+    "color": "#5865F2"
+  },
+  {
+    "name": "discord_moderation_get_member",
     "short": "Discord Server Get Member",
     "desc": "Retrieve one guild member.",
     "cat": "discord",
     "color": "#5865F2"
   },
   {
-    "name": "discord_server_get_moderation_policy",
-    "short": "Discord Server Get Moderation Policy",
-    "desc": "Retrieve one moderation policy by id or name.",
+    "name": "discord_moderation_get_member_history",
+    "short": "Discord Moderation Get Member History",
+    "desc": "Retrieve moderation history for one guild member.",
     "cat": "discord",
     "color": "#5865F2"
   },
   {
-    "name": "discord_server_get_permission_snapshot",
+    "name": "discord_moderation_get_permission_snapshot",
     "short": "Discord Server Get Permission Snapshot",
     "desc": "Resolve permissions for a user or role in a specific channel.",
     "cat": "discord",
     "color": "#5865F2"
   },
   {
-    "name": "discord_server_get_scheduled_event",
-    "short": "Discord Server Get Scheduled Event",
-    "desc": "Retrieve one scheduled event for the active guild.",
+    "name": "discord_moderation_get_policy",
+    "short": "Discord Server Get Moderation Policy",
+    "desc": "Retrieve one moderation policy by id or name.",
     "cat": "discord",
     "color": "#5865F2"
   },
   {
-    "name": "discord_server_get_scheduled_task",
-    "short": "Discord Server Get Scheduled Task",
-    "desc": "Retrieve one scheduled task and its recent execution history.",
-    "cat": "discord",
-    "color": "#5865F2"
-  },
-  {
-    "name": "discord_server_get_thread",
-    "short": "Discord Server Get Thread",
-    "desc": "Retrieve detailed metadata for one thread.",
-    "cat": "discord",
-    "color": "#5865F2"
-  },
-  {
-    "name": "discord_server_join_thread",
-    "short": "Discord Server Join Thread",
-    "desc": "Join an existing Discord thread as Sage so later thread-scoped actions can proceed.",
-    "cat": "discord",
-    "color": "#5865F2"
-  },
-  {
-    "name": "discord_server_leave_thread",
-    "short": "Discord Server Leave Thread",
-    "desc": "Leave an existing Discord thread as Sage after thread-scoped work is complete.",
-    "cat": "discord",
-    "color": "#5865F2"
-  },
-  {
-    "name": "discord_server_list_automod_rules",
+    "name": "discord_moderation_list_automod_rules",
     "short": "Discord Server List Automod Rules",
     "desc": "List AutoMod rules for the active guild.",
     "cat": "discord",
     "color": "#5865F2"
   },
   {
-    "name": "discord_server_list_channels",
-    "short": "Discord Server List Channels",
-    "desc": "List accessible guild channels and categories.",
-    "cat": "discord",
-    "color": "#5865F2"
-  },
-  {
-    "name": "discord_server_list_members",
-    "short": "Discord Server List Members",
-    "desc": "List guild members for inspection, moderation context, or membership lookup.",
-    "cat": "discord",
-    "color": "#5865F2"
-  },
-  {
-    "name": "discord_server_list_moderation_cases",
+    "name": "discord_moderation_list_cases",
     "short": "Discord Server List Moderation Cases",
     "desc": "List recent moderation cases for the guild.",
     "cat": "discord",
     "color": "#5865F2"
   },
   {
-    "name": "discord_server_list_moderation_policies",
+    "name": "discord_moderation_list_members",
+    "short": "Discord Server List Members",
+    "desc": "List guild members for inspection, moderation context, or membership lookup.",
+    "cat": "discord",
+    "color": "#5865F2"
+  },
+  {
+    "name": "discord_moderation_list_policies",
     "short": "Discord Server List Moderation Policies",
     "desc": "List Sage moderation policies and imported external AutoMod inventory.",
     "cat": "discord",
     "color": "#5865F2"
   },
   {
-    "name": "discord_server_list_roles",
-    "short": "Discord Server List Roles",
-    "desc": "List guild roles with compact permission summaries.",
+    "name": "discord_moderation_resolve_case",
+    "short": "Discord Moderation Resolve Case",
+    "desc": "Resolve or void a moderation case.",
     "cat": "discord",
     "color": "#5865F2"
   },
   {
-    "name": "discord_server_list_scheduled_events",
-    "short": "Discord Server List Scheduled Events",
-    "desc": "List scheduled events for the active guild.",
+    "name": "discord_moderation_submit_action",
+    "short": "Discord Admin Submit Moderation",
+    "desc": "Submit a moderation or enforcement request.",
     "cat": "discord",
     "color": "#5865F2"
   },
   {
-    "name": "discord_server_list_scheduled_tasks",
+    "name": "discord_moderation_upsert_policy",
+    "short": "Discord Admin Upsert Moderation Policy",
+    "desc": "Create or update an autonomous moderation policy.",
+    "cat": "discord",
+    "color": "#5865F2"
+  },
+  {
+    "name": "discord_schedule_cancel_task",
+    "short": "Discord Admin Cancel Scheduled Task",
+    "desc": "Cancel a scheduled reminder or scheduled Sage job.",
+    "cat": "discord",
+    "color": "#5865F2"
+  },
+  {
+    "name": "discord_schedule_clone_task",
+    "short": "Discord Schedule Clone Task",
+    "desc": "Clone an existing scheduled task.",
+    "cat": "discord",
+    "color": "#5865F2"
+  },
+  {
+    "name": "discord_schedule_get_task",
+    "short": "Discord Server Get Scheduled Task",
+    "desc": "Retrieve one scheduled task and its recent execution history.",
+    "cat": "discord",
+    "color": "#5865F2"
+  },
+  {
+    "name": "discord_schedule_list_tasks",
     "short": "Discord Server List Scheduled Tasks",
     "desc": "List configured scheduled reminders and scheduled Sage jobs.",
     "cat": "discord",
     "color": "#5865F2"
   },
   {
-    "name": "discord_server_list_threads",
+    "name": "discord_schedule_pause_task",
+    "short": "Discord Schedule Pause Task",
+    "desc": "Pause an active scheduled task.",
+    "cat": "discord",
+    "color": "#5865F2"
+  },
+  {
+    "name": "discord_schedule_resume_task",
+    "short": "Discord Schedule Resume Task",
+    "desc": "Resume a paused scheduled task.",
+    "cat": "discord",
+    "color": "#5865F2"
+  },
+  {
+    "name": "discord_schedule_run_now",
+    "short": "Discord Schedule Run Now",
+    "desc": "Run a scheduled task immediately.",
+    "cat": "discord",
+    "color": "#5865F2"
+  },
+  {
+    "name": "discord_schedule_skip_next",
+    "short": "Discord Schedule Skip Next",
+    "desc": "Skip the next scheduled run for a task.",
+    "cat": "discord",
+    "color": "#5865F2"
+  },
+  {
+    "name": "discord_schedule_upsert_task",
+    "short": "Discord Admin Upsert Scheduled Task",
+    "desc": "Create or update a scheduled reminder or scheduled Sage job.",
+    "cat": "discord",
+    "color": "#5865F2"
+  },
+  {
+    "name": "discord_spaces_add_member_role",
+    "short": "Discord Admin Add Member Role",
+    "desc": "Add an existing guild role to a member with admin approval.",
+    "cat": "discord",
+    "color": "#5865F2"
+  },
+  {
+    "name": "discord_spaces_add_reaction",
+    "short": "Discord Messages Add Reaction",
+    "desc": "Add a reaction to a Discord message.",
+    "cat": "discord",
+    "color": "#5865F2"
+  },
+  {
+    "name": "discord_spaces_add_thread_member",
+    "short": "Discord Server Add Thread Member",
+    "desc": "Add a member to a thread.",
+    "cat": "discord",
+    "color": "#5865F2"
+  },
+  {
+    "name": "discord_spaces_archive_thread",
+    "short": "Discord Admin Archive Thread",
+    "desc": "Archive a thread explicitly.",
+    "cat": "discord",
+    "color": "#5865F2"
+  },
+  {
+    "name": "discord_spaces_create_channel",
+    "short": "Discord Admin Create Channel",
+    "desc": "Create a new channel or category.",
+    "cat": "discord",
+    "color": "#5865F2"
+  },
+  {
+    "name": "discord_spaces_create_forum_post",
+    "short": "Discord Admin Create Forum Post",
+    "desc": "Create a forum post in a forum channel.",
+    "cat": "discord",
+    "color": "#5865F2"
+  },
+  {
+    "name": "discord_spaces_create_invite",
+    "short": "Discord Admin Create Invite",
+    "desc": "Create a new invite for a channel.",
+    "cat": "discord",
+    "color": "#5865F2"
+  },
+  {
+    "name": "discord_spaces_create_poll",
+    "short": "Discord Messages Create Poll",
+    "desc": "Create a poll in Discord.",
+    "cat": "discord",
+    "color": "#5865F2"
+  },
+  {
+    "name": "discord_spaces_create_role",
+    "short": "Discord Admin Create Role",
+    "desc": "Create a new guild role with Discord admin approval and server context.",
+    "cat": "discord",
+    "color": "#5865F2"
+  },
+  {
+    "name": "discord_spaces_create_scheduled_event",
+    "short": "Discord Admin Create Scheduled Event",
+    "desc": "Create a scheduled event for the guild.",
+    "cat": "discord",
+    "color": "#5865F2"
+  },
+  {
+    "name": "discord_spaces_create_thread",
+    "short": "Discord Server Create Thread",
+    "desc": "Create a Discord thread.",
+    "cat": "discord",
+    "color": "#5865F2"
+  },
+  {
+    "name": "discord_spaces_delete_message",
+    "short": "Discord Admin Delete Message",
+    "desc": "Delete a message with admin approval.",
+    "cat": "discord",
+    "color": "#5865F2"
+  },
+  {
+    "name": "discord_spaces_delete_role",
+    "short": "Discord Admin Delete Role",
+    "desc": "Delete an existing guild role with admin approval and guild context.",
+    "cat": "discord",
+    "color": "#5865F2"
+  },
+  {
+    "name": "discord_spaces_delete_scheduled_event",
+    "short": "Discord Admin Delete Scheduled Event",
+    "desc": "Delete a scheduled event for the guild.",
+    "cat": "discord",
+    "color": "#5865F2"
+  },
+  {
+    "name": "discord_spaces_edit_channel",
+    "short": "Discord Admin Edit Channel",
+    "desc": "Edit an existing channel.",
+    "cat": "discord",
+    "color": "#5865F2"
+  },
+  {
+    "name": "discord_spaces_edit_message",
+    "short": "Discord Admin Edit Message",
+    "desc": "Edit a message with admin approval.",
+    "cat": "discord",
+    "color": "#5865F2"
+  },
+  {
+    "name": "discord_spaces_edit_role",
+    "short": "Discord Admin Edit Role",
+    "desc": "Edit an existing guild role, including name, color, or permissions, with approval.",
+    "cat": "discord",
+    "color": "#5865F2"
+  },
+  {
+    "name": "discord_spaces_get_channel",
+    "short": "Discord Server Get Channel",
+    "desc": "Retrieve detailed metadata for one guild channel.",
+    "cat": "discord",
+    "color": "#5865F2"
+  },
+  {
+    "name": "discord_spaces_get_invite_url",
+    "short": "Discord Admin Get Invite Url",
+    "desc": "Generate an OAuth2 invite URL for the bot.",
+    "cat": "discord",
+    "color": "#5865F2"
+  },
+  {
+    "name": "discord_spaces_get_scheduled_event",
+    "short": "Discord Server Get Scheduled Event",
+    "desc": "Retrieve one scheduled event for the active guild.",
+    "cat": "discord",
+    "color": "#5865F2"
+  },
+  {
+    "name": "discord_spaces_get_thread",
+    "short": "Discord Server Get Thread",
+    "desc": "Retrieve detailed metadata for one thread.",
+    "cat": "discord",
+    "color": "#5865F2"
+  },
+  {
+    "name": "discord_spaces_join_thread",
+    "short": "Discord Server Join Thread",
+    "desc": "Join an existing Discord thread as Sage so later thread-scoped actions can proceed.",
+    "cat": "discord",
+    "color": "#5865F2"
+  },
+  {
+    "name": "discord_spaces_leave_thread",
+    "short": "Discord Server Leave Thread",
+    "desc": "Leave an existing Discord thread as Sage after thread-scoped work is complete.",
+    "cat": "discord",
+    "color": "#5865F2"
+  },
+  {
+    "name": "discord_spaces_list_channels",
+    "short": "Discord Server List Channels",
+    "desc": "List accessible guild channels and categories.",
+    "cat": "discord",
+    "color": "#5865F2"
+  },
+  {
+    "name": "discord_spaces_list_invites",
+    "short": "Discord Admin List Invites",
+    "desc": "List active guild or channel invites.",
+    "cat": "discord",
+    "color": "#5865F2"
+  },
+  {
+    "name": "discord_spaces_list_roles",
+    "short": "Discord Server List Roles",
+    "desc": "List guild roles with compact permission summaries.",
+    "cat": "discord",
+    "color": "#5865F2"
+  },
+  {
+    "name": "discord_spaces_list_scheduled_events",
+    "short": "Discord Server List Scheduled Events",
+    "desc": "List scheduled events for the active guild.",
+    "cat": "discord",
+    "color": "#5865F2"
+  },
+  {
+    "name": "discord_spaces_list_threads",
     "short": "Discord Server List Threads",
     "desc": "List active or archived guild threads.",
     "cat": "discord",
     "color": "#5865F2"
   },
   {
-    "name": "discord_server_remove_thread_member",
+    "name": "discord_spaces_pin_message",
+    "short": "Discord Admin Pin Message",
+    "desc": "Pin a message with admin approval.",
+    "cat": "discord",
+    "color": "#5865F2"
+  },
+  {
+    "name": "discord_spaces_remove_member_role",
+    "short": "Discord Admin Remove Member Role",
+    "desc": "Remove a role from a member.",
+    "cat": "discord",
+    "color": "#5865F2"
+  },
+  {
+    "name": "discord_spaces_remove_self_reaction",
+    "short": "Discord Messages Remove Self Reaction",
+    "desc": "Remove Sage’s own reaction from a Discord message.",
+    "cat": "discord",
+    "color": "#5865F2"
+  },
+  {
+    "name": "discord_spaces_remove_thread_member",
     "short": "Discord Server Remove Thread Member",
     "desc": "Remove a member from a thread.",
     "cat": "discord",
     "color": "#5865F2"
   },
   {
-    "name": "discord_server_update_thread",
+    "name": "discord_spaces_reopen_thread",
+    "short": "Discord Admin Reopen Thread",
+    "desc": "Reopen an archived thread explicitly.",
+    "cat": "discord",
+    "color": "#5865F2"
+  },
+  {
+    "name": "discord_spaces_revoke_invite",
+    "short": "Discord Admin Revoke Invite",
+    "desc": "Revoke an invite by its code.",
+    "cat": "discord",
+    "color": "#5865F2"
+  },
+  {
+    "name": "discord_spaces_unpin_message",
+    "short": "Discord Admin Unpin Message",
+    "desc": "Unpin a message with admin approval.",
+    "cat": "discord",
+    "color": "#5865F2"
+  },
+  {
+    "name": "discord_spaces_update_forum_tags",
+    "short": "Discord Admin Update Forum Tags",
+    "desc": "Replace the applied tags on a forum thread.",
+    "cat": "discord",
+    "color": "#5865F2"
+  },
+  {
+    "name": "discord_spaces_update_scheduled_event",
+    "short": "Discord Admin Update Scheduled Event",
+    "desc": "Update a scheduled event for the guild.",
+    "cat": "discord",
+    "color": "#5865F2"
+  },
+  {
+    "name": "discord_spaces_update_thread",
     "short": "Discord Server Update Thread",
     "desc": "Rename or change archive or lock settings for a thread.",
     "cat": "discord",

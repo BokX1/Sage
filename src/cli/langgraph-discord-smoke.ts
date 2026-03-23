@@ -222,7 +222,7 @@ async function runReadPathSmoke(target: SmokeTarget): Promise<void> {
       userId: target.actorUserId,
       channelId: target.channelId,
       guildId: target.guildId,
-      activeToolNames: ['discord_server_list_channels'],
+      activeToolNames: ['discord_spaces_list_channels'],
       routeKind: 'discord-smoke',
       currentTurn: null,
       replyTarget: null,
@@ -236,7 +236,7 @@ async function runReadPathSmoke(target: SmokeTarget): Promise<void> {
           tool_calls: [
             {
               id: callId,
-              name: 'discord_server_list_channels',
+              name: 'discord_spaces_list_channels',
               args: {
                 limit: 5,
               },
@@ -250,10 +250,10 @@ async function runReadPathSmoke(target: SmokeTarget): Promise<void> {
     },
   });
 
-  const toolResult = result.toolResults.find((entry) => entry.name === 'discord_server_list_channels');
+  const toolResult = result.toolResults.find((entry) => entry.name === 'discord_spaces_list_channels');
   if (!toolResult?.success) {
     throw new Error(
-      `Graph read-path smoke failed: ${toolResult?.error ?? 'discord_server_list_channels did not produce a successful tool result.'}`,
+      `Graph read-path smoke failed: ${toolResult?.error ?? 'discord_spaces_list_channels did not produce a successful tool result.'}`,
     );
   }
   if (result.graphStatus !== 'completed' || result.pendingInterrupt) {
@@ -261,7 +261,7 @@ async function runReadPathSmoke(target: SmokeTarget): Promise<void> {
   }
 
   console.log(
-    `[PASS] graph read path routed discord_server_list_channels through LangGraph and completed cleanly (stop=${result.stopReason})`,
+    `[PASS] graph read path routed discord_spaces_list_channels through LangGraph and completed cleanly (stop=${result.stopReason})`,
   );
 }
 
@@ -284,7 +284,7 @@ async function runApprovalPathSmoke(target: SmokeTarget): Promise<void> {
         userId: target.actorUserId,
         channelId: target.channelId,
         guildId: target.guildId,
-        activeToolNames: ['discord_admin_create_role'],
+        activeToolNames: ['discord_spaces_create_role'],
         routeKind: 'discord-smoke',
         currentTurn: null,
         replyTarget: null,
@@ -295,7 +295,7 @@ async function runApprovalPathSmoke(target: SmokeTarget): Promise<void> {
         pendingWriteCalls: [
           {
             id: `${traceId}-call`,
-            name: 'discord_admin_create_role',
+            name: 'discord_spaces_create_role',
             args: {
               name: roleName,
               reason: approvalReason,
@@ -343,7 +343,7 @@ async function runApprovalPathSmoke(target: SmokeTarget): Promise<void> {
         userId: target.actorUserId,
         channelId: target.channelId,
         guildId: target.guildId,
-        activeToolNames: ['discord_admin_create_role'],
+        activeToolNames: ['discord_spaces_create_role'],
         routeKind: 'discord-smoke',
         currentTurn: null,
         replyTarget: null,
@@ -352,10 +352,10 @@ async function runApprovalPathSmoke(target: SmokeTarget): Promise<void> {
       },
     });
 
-    const toolResult = resumed.toolResults.find((entry) => entry.name === 'discord_admin_create_role');
+    const toolResult = resumed.toolResults.find((entry) => entry.name === 'discord_spaces_create_role');
     if (!toolResult?.success) {
       throw new Error(
-        `Approval-resume smoke failed: ${toolResult?.error ?? 'discord_admin_create_role did not execute successfully.'}`,
+        `Approval-resume smoke failed: ${toolResult?.error ?? 'discord_spaces_create_role did not execute successfully.'}`,
       );
     }
     action = await getApprovalReviewRequestById(requestId);
@@ -368,7 +368,7 @@ async function runApprovalPathSmoke(target: SmokeTarget): Promise<void> {
     }
 
     console.log(
-      `[PASS] graph approval path created, approved, resumed, and executed discord_admin_create_role cleanly (stop=${resumed.stopReason})`,
+      `[PASS] graph approval path created, approved, resumed, and executed discord_spaces_create_role cleanly (stop=${resumed.stopReason})`,
     );
   } finally {
     if (!action && requestId) {

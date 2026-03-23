@@ -30,6 +30,7 @@ const listScheduledTaskRuns = vi.hoisted(() => vi.fn());
 const listScheduledTasksByGuild = vi.hoisted(() => vi.fn());
 const markScheduledTaskRunStart = vi.hoisted(() => vi.fn());
 const upsertScheduledTask = vi.hoisted(() => vi.fn());
+const createAgentTaskRun = vi.hoisted(() => vi.fn());
 
 vi.mock('@/platform/discord/client', () => ({
   client,
@@ -55,6 +56,10 @@ vi.mock('@/features/scheduler/scheduledTaskRepo', () => ({
   upsertScheduledTask,
 }));
 
+vi.mock('@/features/agent-runtime/agentTaskRunRepo', () => ({
+  createAgentTaskRun,
+}));
+
 function createTask(overrides: Partial<ScheduledTaskRecord> = {}): ScheduledTaskRecord {
   return {
     id: 'task-1',
@@ -69,6 +74,7 @@ function createTask(overrides: Partial<ScheduledTaskRecord> = {}): ScheduledTask
     nextRunAt: new Date('2026-03-23T10:00:00.000Z'),
     lastRunAt: null,
     lastSuccessAt: null,
+    skipUntil: null,
     leaseOwner: 'scheduler',
     leaseExpiresAt: null,
     payloadJson: {
@@ -78,7 +84,11 @@ function createTask(overrides: Partial<ScheduledTaskRecord> = {}): ScheduledTask
       userIds: ['user-2'],
     },
     provenanceJson: {
-      source: 'discord_admin_tool',
+      source: 'discord_schedule_tool',
+      requestedByUserId: 'user-1',
+      invokerAuthority: 'admin',
+      isAdmin: true,
+      canModerate: true,
     },
     lastErrorText: null,
     createdAt: new Date('2026-03-23T09:00:00.000Z'),
@@ -117,6 +127,7 @@ describe('scheduler service red-team regressions', () => {
     });
     completeScheduledTaskRun.mockResolvedValue(undefined);
     completeScheduledTask.mockResolvedValue(undefined);
+    createAgentTaskRun.mockResolvedValue(undefined);
     channelFetch.mockResolvedValue({
       id: 'channel-1',
       guildId: 'guild-1',
@@ -133,6 +144,9 @@ describe('scheduler service red-team regressions', () => {
       upsertScheduledTaskForTool({
         guildId: 'guild-1',
         requestedByUserId: 'user-1',
+        invokerAuthority: 'admin',
+        isAdmin: true,
+        canModerate: true,
         kind: 'reminder_message',
         channelId: 'channel-1',
         timezone: 'Mars/Olympus',
@@ -156,10 +170,13 @@ describe('scheduler service red-team regressions', () => {
       upsertScheduledTaskForTool({
         guildId: 'guild-1',
         requestedByUserId: 'user-1',
+        invokerAuthority: 'admin',
+        isAdmin: true,
+        canModerate: true,
         kind: 'reminder_message',
         channelId: 'channel-1',
         timezone: 'Asia/Kuala_Lumpur',
-        runAtIso: '2026-03-23T10:00:00.000Z',
+        runAtIso: '2027-03-23T10:00:00.000Z',
         payload: {
           kind: 'reminder_message',
           content: 'Reminder',
@@ -184,6 +201,9 @@ describe('scheduler service red-team regressions', () => {
       upsertScheduledTaskForTool({
         guildId: 'guild-1',
         requestedByUserId: 'user-1',
+        invokerAuthority: 'admin',
+        isAdmin: true,
+        canModerate: true,
         taskId: 'task-2',
         kind: 'reminder_message',
         channelId: 'channel-1',
@@ -212,6 +232,9 @@ describe('scheduler service red-team regressions', () => {
       upsertScheduledTaskForTool({
         guildId: 'guild-1',
         requestedByUserId: 'user-1',
+        invokerAuthority: 'admin',
+        isAdmin: true,
+        canModerate: true,
         kind: 'reminder_message',
         channelId: 'channel-2',
         payload: {
@@ -222,6 +245,77 @@ describe('scheduler service red-team regressions', () => {
     ).rejects.toThrow('Scheduled task target channel must belong to the active guild.');
 
     expect(upsertScheduledTask).not.toHaveBeenCalled();
+  });
+
+  it('stores scheduler provenance with the creator authority tier', async () => {
+    const { upsertScheduledTaskForTool } = await import('@/features/scheduler/service');
+
+    await upsertScheduledTaskForTool({
+      guildId: 'guild-1',
+      requestedByUserId: 'user-1',
+      invokerAuthority: 'owner',
+      isAdmin: true,
+      canModerate: true,
+      kind: 'agent_run',
+      channelId: 'channel-1',
+      runAtIso: '2027-03-23T10:00:00.000Z',
+      payload: {
+        kind: 'agent_run',
+        prompt: 'Check the backlog',
+      },
+    });
+
+    expect(upsertScheduledTask).toHaveBeenCalledWith(
+      expect.objectContaining({
+        provenanceJson: expect.objectContaining({
+          source: 'discord_schedule_tool',
+          requestedByUserId: 'user-1',
+          invokerAuthority: 'owner',
+          isAdmin: true,
+          canModerate: true,
+        }),
+      }),
+    );
+  });
+
+  it('uses the current caller authority when cloning a scheduled task', async () => {
+    getScheduledTaskById.mockResolvedValue(
+      createTask({
+        id: 'task-source',
+        runAt: new Date('2027-03-23T10:00:00.000Z'),
+        nextRunAt: new Date('2027-03-23T10:00:00.000Z'),
+        provenanceJson: {
+          source: 'discord_schedule_tool',
+          requestedByUserId: 'owner-1',
+          invokerAuthority: 'owner',
+          isAdmin: true,
+          canModerate: true,
+        },
+      }),
+    );
+
+    const { cloneScheduledTaskForTool } = await import('@/features/scheduler/service');
+
+    await cloneScheduledTaskForTool({
+      guildId: 'guild-1',
+      requestedByUserId: 'admin-2',
+      invokerAuthority: 'admin',
+      isAdmin: true,
+      canModerate: true,
+      taskId: 'task-source',
+    });
+
+    expect(upsertScheduledTask).toHaveBeenCalledWith(
+      expect.objectContaining({
+        createdByUserId: 'admin-2',
+        provenanceJson: expect.objectContaining({
+          requestedByUserId: 'admin-2',
+          invokerAuthority: 'admin',
+          isAdmin: true,
+          canModerate: true,
+        }),
+      }),
+    );
   });
 
   it('fails reminder execution when the stored channel no longer belongs to the task guild', async () => {
@@ -255,6 +349,56 @@ describe('scheduler service red-team regressions', () => {
         id: 'task-1',
         succeeded: false,
         lastErrorText: 'Scheduled task target channel must belong to the active guild.',
+      }),
+    );
+  });
+
+  it('queues scheduled agent-runs onto the durable task-run worker path with preserved authority', async () => {
+    const { executeScheduledTask } = await import('@/features/scheduler/service');
+
+    const result = await executeScheduledTask(
+      createTask({
+        kind: 'agent_run',
+        payloadJson: {
+          kind: 'agent_run',
+          prompt: 'Review the moderation queue',
+          mentionedUserIds: ['user-2'],
+        },
+        provenanceJson: {
+          source: 'discord_schedule_tool',
+          requestedByUserId: 'user-1',
+          invokerAuthority: 'owner',
+          isAdmin: true,
+          canModerate: true,
+        },
+      }),
+    );
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        kind: 'agent_run',
+        status: 'queued',
+        taskRunThreadId: 'scheduled:task-1:run-1',
+        scheduledTaskId: 'task-1',
+        scheduledTaskRunId: 'run-1',
+      }),
+    );
+    expect(createAgentTaskRun).toHaveBeenCalledWith(
+      expect.objectContaining({
+        threadId: 'scheduled:task-1:run-1',
+        requestedByUserId: 'user-1',
+        status: 'running',
+        nextRunnableAt: expect.any(Date),
+        checkpointMetadataJson: expect.objectContaining({
+          trigger: 'scheduled_agent_run',
+          scheduledTaskId: 'task-1',
+          scheduledTaskRunId: 'run-1',
+          bootstrapPrompt: 'Review the moderation queue',
+          bootstrapMentionedUserIds: ['user-2'],
+          invokerAuthority: 'owner',
+          isAdmin: true,
+          canModerate: true,
+        }),
       }),
     );
   });

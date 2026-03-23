@@ -305,7 +305,7 @@ describe('AiProviderClient', () => {
           {
             type: 'function',
             function: {
-              name: 'discord_server_list_channels',
+              name: 'discord_spaces_list_channels',
               parameters: {
                 oneOf: [
                   {

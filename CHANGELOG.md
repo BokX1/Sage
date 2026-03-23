@@ -27,6 +27,11 @@
 
 ### Added
 
+- Added a Discord-native artifact lifecycle with staged attachment intake, text artifact creation, revision history, and publish/republish flows, so Sage can now manage Discord work products as tracked artifacts instead of only reading cached attachments or re-sending old files.
+- Added explicit Discord authority tiers (`member`, `moderator`, `admin`, `owner`) to Sage's runtime, tool exposure, and checkpointed task metadata, so moderator actions, admin governance, and owner-only server-key operations now follow one consistent authority contract across fresh turns, resumes, and approvals.
+- Added full moderation case workflow operations on top of deterministic moderation policies: moderators can now inspect cases, review offender history, acknowledge incidents, resolve cases with reasons, and add case notes without falling back to ad hoc message-only moderation handling.
+- Added richer scheduled-task operations for Discord operators, including pause/resume, run-now, skip-next, and clone flows, so server reminders and scheduled Sage jobs behave like a durable operator scheduler instead of a minimal create/list/cancel surface.
+
 - Added deterministic guild moderation policies with Discord-native AutoMod sync, runtime-only safety rules, shared moderation case history, and new admin/server tools for listing, inspecting, enabling, and disabling Sage-managed moderation policy state.
 - Added durable scheduled reminders and scheduled Sage jobs with timezone-aware one-time/cron scheduling, idempotent run records, and new Discord admin/server tools for creating, inspecting, listing, and cancelling scheduled tasks.
 - Added a `TestimonialCarousel` component to the website homepage with animated glass cards, auto-advancing community experience quotes, and dot navigation, placed between the WhySage and StatsStrip sections.
@@ -37,6 +42,11 @@
 - Added a third "Star on GitHub" CTA button to the website hero section alongside Get Sage Free and Self-Host Guide.
 
 ### Changed
+
+- Changed Prisma migration history back down to one canonical baseline directory for the current schema, so deliberate hard resets now rebuild Sage from a single migration entrypoint instead of carrying extra local legacy migration folders alongside the active baseline.
+- Changed Sage's model-facing Discord tool surface from the old mixed `discord_admin_*`, `discord_server_*`, and `discord_files_*` layout to stable capability families such as `discord_artifact_*`, `discord_moderation_*`, `discord_schedule_*`, `discord_spaces_*`, and `discord_governance_*`, so prompts, audits, tests, and tool docs now describe one product-shaped Discord operations surface instead of backend-era naming splits.
+- Changed Discord attachment handling to treat cached attachment reads as the intake path into the new artifact system, with guild-scoped vault/default-channel settings and tracked publication metadata, instead of teaching cached resend as Sage's primary file workflow.
+- Changed Discord moderation and scheduler governance so policy writes stay admin-scoped, moderator operations stay within moderation authority, owner-only server-key actions remain root-governed, and every Discord write still re-checks guild scope and role hierarchy at execution time.
 
 - Changed the Prisma reset baseline to one fresh current-schema migration that already includes moderation policies, moderation cases, scheduled tasks, scheduled task runs, and guild timezones, so intentional Sage rebuilds now bootstrap the latest database shape in one deploy step instead of replaying an intermediate delta.
 - Changed Discord message moderation to a deterministic hot-path runtime that evaluates before normal invocation, reuses the existing moderation execution safeguards for autonomous actions, and records moderation/scheduler diagnostics through `system_tool_stats` instead of depending on a model call per message.
@@ -49,6 +59,12 @@
 
 ### Fixed
 
+- Fixed Discord thread resolution actions so archive/reopen requests with a resolution note now stay on the same admin approval path as the plain thread-state change instead of silently bypassing review when a note is attached.
+- Fixed artifact-backed forum post safety so starter messages now reject overlong artifact text before Discord API submission, preventing approval-time failures from oversized forum post bodies.
+- Fixed scheduled `agent_run` startup durability so scheduled Sage jobs now enqueue directly onto the durable task-run worker path from the first slice, preserving scheduler provenance and authority on the same runtime substrate as other long-running tasks.
+- Fixed Discord artifact authorization so artifact inventory, reads, revision history, replacement, and publish flows now honor the requester's source-channel access instead of exposing guild-internal artifacts across channels the requester cannot view.
+- Fixed scheduled Sage jobs so `agent_run` tasks now preserve the creator's stored Discord authority tier during execution, and fixed the new Discord operations tool surface so artifact writes and structural thread writes are explicitly admin-scoped instead of silently defaulting public.
+- Fixed Discord governance and spaces operations so admins can now configure artifact-vault and moderation-log default channels through Sage itself, forum posts can be created directly from text-based artifacts, and thread archive/reopen flows can attach a resolution note before changing thread state.
 - Fixed autonomous moderation policy edits so `policyId`-targeted updates now preserve policy identity, fail closed if Discord AutoMod disable sync cannot be confirmed, and reject cross-guild notification channels instead of silently drifting policy ownership or alert routing.
 - Fixed autonomous moderation policy compilation so blocked-domain rules no longer double-enforce through both Sage runtime and Discord AutoMod, and moderator-alert or review-case policies now require a real notification channel instead of silently creating invisible case records.
 - Fixed scheduled-task guardrails so invalid explicit timezones are rejected before updating guild defaults, failed task writes no longer mutate guild timezone defaults, and reminder or agent-run tasks cannot be created, updated, or executed against channels outside the active guild.
@@ -106,6 +122,8 @@
 - Changed Sage's model-facing research/developer surface to remove raw `mcp__*` GitHub names from prompts/tests/docs and standardize on stable capability tools like `repo_*`, `docs_lookup`, and `browser_*`.
 
 ### Removed
+
+- Removed the raw model-facing `discord_admin_api` passthrough and retired the old cached-file resend mental model from Sage's public Discord tool contract, so Discord operations now stay on typed, authority-aware tool families instead of exposing an unsafe escape hatch or pretending attachments can be edited in place.
 
 - Removed the public `web_extract` and `web_research` tools plus the hidden `nomnom` web-scrape leg that powered them, so Sage no longer advertises one-shot extraction/research behavior it cannot guarantee or relies on a hard-coded model id outside the normal provider contract.
 - Removed the retired built-in `wikipedia_search` and `stack_overflow_search` tools from Sage's default model-facing tool inventory.

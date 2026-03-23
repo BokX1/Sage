@@ -27,7 +27,11 @@ import {
   isImageAttachment,
   getVisionImageUrl,
 } from './attachment-parser';
-import { isAdminFromMember, isModeratorFromMember } from '../../../platform/discord/admin-permissions';
+import {
+  isAdminFromMember,
+  isModeratorFromMember,
+  resolveAuthorityTierFromMember,
+} from '../../../platform/discord/admin-permissions';
 import { buildGuildApiKeyMissingResponse } from '../../../features/discord/byopBootstrap';
 import {
   attachTaskRunResponseSession,
@@ -159,7 +163,7 @@ function buildAttachmentIngestNotes(params: {
           .join(', ');
         const overflow = params.cachedAttachmentRefs.length - 3;
         notes.push(
-          `[System: Cached attachment references: ${preview}${overflow > 0 ? ` (+${overflow} more)` : ''}. Read content with discord_files_read_attachment or resend with discord_files_send_attachment using attachmentId.]`,
+          `[System: Cached attachment references: ${preview}${overflow > 0 ? ` (+${overflow} more)` : ''}. Read content with discord_artifact_read_attachment or stage it into the artifact lifecycle with discord_artifact_stage_attachment using attachmentId.]`,
         );
       }
     } else {
@@ -205,7 +209,7 @@ function buildRuntimeAttachmentBlocks(params: {
       .join(', ');
     const overflow = params.cachedAttachmentRefs.length - 3;
     blocks.push(
-      `[System: Cached attachment references: ${preview}${overflow > 0 ? ` (+${overflow} more)` : ''}. Read with discord_files_read_attachment or resend with discord_files_send_attachment using attachmentId.]`,
+      `[System: Cached attachment references: ${preview}${overflow > 0 ? ` (+${overflow} more)` : ''}. Read with discord_artifact_read_attachment or stage with discord_artifact_stage_attachment using attachmentId.]`,
     );
   }
 
@@ -807,6 +811,7 @@ export async function handleMessageCreate(message: Message) {
         botUserId: client.user?.id ?? null,
       };
 
+      const invokerAuthority = resolveAuthorityTierFromMember(message.member, message.guild?.ownerId ?? null);
       const invokerIsAdmin = isAdminFromMember(message.member);
       const invokerCanModerate = isModeratorFromMember(message.member);
       const waitingTaskRun =
@@ -1008,6 +1013,7 @@ export async function handleMessageCreate(message: Message) {
             currentTurn,
             replyTarget,
             promptMode,
+            invokerAuthority,
             isAdmin: invokerIsAdmin,
             canModerate: invokerCanModerate,
             onResponseSessionUpdate,
@@ -1024,6 +1030,7 @@ export async function handleMessageCreate(message: Message) {
               currentTurn,
               replyTarget,
               promptMode,
+              invokerAuthority,
               isAdmin: invokerIsAdmin,
               canModerate: invokerCanModerate,
               onResponseSessionUpdate,
@@ -1042,6 +1049,7 @@ export async function handleMessageCreate(message: Message) {
             invokedBy: invocation.kind,
             isVoiceActive,
             voiceChannelId: activeVoiceChannelId,
+            invokerAuthority,
             isAdmin: invokerIsAdmin,
             canModerate: invokerCanModerate,
             promptMode,

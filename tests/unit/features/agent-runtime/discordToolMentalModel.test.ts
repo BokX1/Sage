@@ -34,8 +34,8 @@ beforeAll(async () => {
 
 describe('discord tool mental model guidance', () => {
   it('distinguishes instruction reads from instruction writes', () => {
-    const readDoc = getTopLevelToolDoc('discord_context_get_server_instructions');
-    const writeDoc = getTopLevelToolDoc('discord_admin_update_server_instructions');
+    const readDoc = getTopLevelToolDoc('discord_governance_get_server_instructions');
+    const writeDoc = getTopLevelToolDoc('discord_governance_update_server_instructions');
 
     expect(readDoc?.selectionHints).toEqual(
       expect.arrayContaining([
@@ -56,7 +56,7 @@ describe('discord tool mental model guidance', () => {
 
   it('distinguishes continuity summaries from exact message evidence', () => {
     const summaryDoc = getTopLevelToolDoc('discord_context_get_channel_summary');
-    const evidenceDoc = getTopLevelToolDoc('discord_messages_search_history');
+    const evidenceDoc = getTopLevelToolDoc('discord_history_search_history');
 
     expect(summaryDoc?.selectionHints).toEqual(
       expect.arrayContaining([
@@ -81,8 +81,8 @@ describe('discord tool mental model guidance', () => {
   });
 
   it('distinguishes governance changes from moderation actions', () => {
-    const personaDoc = getTopLevelToolDoc('discord_admin_update_server_instructions');
-    const moderationDoc = getTopLevelToolDoc('discord_admin_submit_moderation');
+    const personaDoc = getTopLevelToolDoc('discord_governance_update_server_instructions');
+    const moderationDoc = getTopLevelToolDoc('discord_moderation_submit_action');
 
     expect(personaDoc?.selectionHints).toEqual(
       expect.arrayContaining([
@@ -102,15 +102,15 @@ describe('discord tool mental model guidance', () => {
   });
 
   it('distinguishes file recall from guild inventory', () => {
-    const fileDoc = getTopLevelToolDoc('discord_files_find_channel');
-    const serverDoc = getTopLevelToolDoc('discord_server_list_channels');
+    const fileDoc = getTopLevelToolDoc('discord_artifact_find_channel_attachments');
+    const serverDoc = getTopLevelToolDoc('discord_spaces_list_channels');
 
     expect(fileDoc?.selectionHints.length ?? 0).toBeGreaterThan(0);
     expect(serverDoc?.selectionHints.length ?? 0).toBeGreaterThan(0);
     expect(buildPrompt([
-      'discord_files_find_channel',
-      'discord_server_list_channels',
-    ])).toContain('File recall vs guild resources');
+      'discord_artifact_find_channel_attachments',
+      'discord_spaces_list_channels',
+    ])).toContain('Artifact workflow vs guild resources');
   });
 
   it('distinguishes voice analytics from live voice control', () => {
@@ -125,12 +125,12 @@ describe('discord tool mental model guidance', () => {
   it('surfaces Discord routing distinctions directly in the prompt', () => {
     const prompt = buildPrompt([
       'discord_context_get_channel_summary',
-      'discord_context_get_server_instructions',
-      'discord_messages_search_history',
-      'discord_files_find_channel',
-      'discord_server_list_channels',
-      'discord_admin_update_server_instructions',
-      'discord_admin_submit_moderation',
+      'discord_governance_get_server_instructions',
+      'discord_history_search_history',
+      'discord_artifact_find_channel_attachments',
+      'discord_spaces_list_channels',
+      'discord_governance_update_server_instructions',
+      'discord_moderation_submit_action',
       'discord_voice_join_current_channel',
       'discord_context_get_voice_analytics',
     ]);
@@ -140,14 +140,14 @@ describe('discord tool mental model guidance', () => {
     expect(prompt).toContain('Sage Persona read vs write');
     expect(prompt).toContain('Governance/config vs moderation');
     expect(prompt).toContain('Reply-targeted enforcement uses moderation tools');
-    expect(prompt).toContain('File recall vs guild resources');
+    expect(prompt).toContain('Artifact workflow vs guild resources');
     expect(prompt).toContain('Voice analytics vs live control');
   });
 
   it('keeps prompt guidance aligned with granular Discord docs', () => {
     const summaryGuidance = getPromptToolGuidance('discord_context_get_channel_summary');
-    const moderationDoc = getTopLevelToolDoc('discord_admin_submit_moderation');
-    const inviteDoc = getTopLevelToolDoc('discord_admin_get_invite_url');
+    const moderationDoc = getTopLevelToolDoc('discord_moderation_submit_action');
+    const inviteDoc = getTopLevelToolDoc('discord_spaces_get_invite_url');
 
     expect(summaryGuidance?.purpose ?? '').not.toHaveLength(0);
     expect(moderationDoc?.selectionHints).toEqual(

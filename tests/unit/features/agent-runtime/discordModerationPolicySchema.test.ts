@@ -12,7 +12,7 @@ function byName<T extends { name: string }>(tools: readonly T[], name: string): 
 
 describe('discord moderation policy schema', () => {
   it('requires notifyChannelId when the main policy action alerts moderators', () => {
-    const tool = byName(discordTools, 'discord_admin_upsert_moderation_policy');
+    const tool = byName(discordTools, 'discord_moderation_upsert_policy');
     const parsed = tool.inputValidator?.safeParse({
       policyId: 'policy-1',
       name: 'Alert Mods',
@@ -43,7 +43,7 @@ describe('discord moderation policy schema', () => {
   });
 
   it('requires notifyChannelId when an escalation opens a review case', () => {
-    const tool = byName(discordTools, 'discord_admin_upsert_moderation_policy');
+    const tool = byName(discordTools, 'discord_moderation_upsert_policy');
     const parsed = tool.inputValidator?.safeParse({
       name: 'Escalated Review',
       mode: 'enforce',
@@ -81,7 +81,7 @@ describe('discord moderation policy schema', () => {
   });
 
   it('accepts review-capable moderation policies when notifyChannelId is provided', () => {
-    const tool = byName(discordTools, 'discord_admin_upsert_moderation_policy');
+    const tool = byName(discordTools, 'discord_moderation_upsert_policy');
     const parsed = tool.inputValidator?.safeParse({
       name: 'Escalated Review',
       mode: 'enforce',

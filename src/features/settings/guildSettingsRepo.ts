@@ -1,6 +1,17 @@
 import { prisma } from '../../platform/db/prisma-client';
 import { decryptSecret, encryptSecret } from '../../platform/security/secret-crypto';
 
+function buildDefaultGuildSettingsCreate(guildId: string) {
+  return {
+    guildId,
+    pollinationsApiKey: null,
+    approvalReviewChannelId: null,
+    timezone: null,
+    artifactVaultChannelId: null,
+    modLogChannelId: null,
+  };
+}
+
 export async function getGuildApiKey(guildId: string): Promise<string | undefined> {
   const settings = await prisma.guildSettings.findUnique({
     where: { guildId },
@@ -35,18 +46,64 @@ export async function getGuildTimezone(guildId: string): Promise<string | null> 
   return value ? value : null;
 }
 
+export async function getGuildArtifactVaultChannelId(guildId: string): Promise<string | null> {
+  const settings = await prisma.guildSettings.findUnique({
+    where: { guildId },
+    select: { artifactVaultChannelId: true },
+  });
+
+  const value = settings?.artifactVaultChannelId?.trim();
+  return value ? value : null;
+}
+
+export async function getGuildModLogChannelId(guildId: string): Promise<string | null> {
+  const settings = await prisma.guildSettings.findUnique({
+    where: { guildId },
+    select: { modLogChannelId: true },
+  });
+
+  const value = settings?.modLogChannelId?.trim();
+  return value ? value : null;
+}
+
 export async function setGuildTimezone(guildId: string, timezone: string | null): Promise<void> {
   const normalized = timezone?.trim() || null;
   await prisma.guildSettings.upsert({
     where: { guildId },
     create: {
-      guildId,
-      pollinationsApiKey: null,
-      approvalReviewChannelId: null,
+      ...buildDefaultGuildSettingsCreate(guildId),
       timezone: normalized,
     },
     update: {
       timezone: normalized,
+    },
+  });
+}
+
+export async function setGuildArtifactVaultChannelId(guildId: string, artifactVaultChannelId: string | null): Promise<void> {
+  const normalized = artifactVaultChannelId?.trim() || null;
+  await prisma.guildSettings.upsert({
+    where: { guildId },
+    create: {
+      ...buildDefaultGuildSettingsCreate(guildId),
+      artifactVaultChannelId: normalized,
+    },
+    update: {
+      artifactVaultChannelId: normalized,
+    },
+  });
+}
+
+export async function setGuildModLogChannelId(guildId: string, modLogChannelId: string | null): Promise<void> {
+  const normalized = modLogChannelId?.trim() || null;
+  await prisma.guildSettings.upsert({
+    where: { guildId },
+    create: {
+      ...buildDefaultGuildSettingsCreate(guildId),
+      modLogChannelId: normalized,
+    },
+    update: {
+      modLogChannelId: normalized,
     },
   });
 }
@@ -59,8 +116,7 @@ export async function setGuildApprovalReviewChannelId(
   await prisma.guildSettings.upsert({
     where: { guildId },
     create: {
-      guildId,
-      pollinationsApiKey: null,
+      ...buildDefaultGuildSettingsCreate(guildId),
       approvalReviewChannelId: normalized,
     },
     update: {
@@ -71,19 +127,21 @@ export async function setGuildApprovalReviewChannelId(
 
 export async function upsertGuildApiKey(guildId: string, apiKey: string | null): Promise<void> {
   if (apiKey === null) {
-    // If setting to null, we can strictly update or delete. Upsert with null is valid if record exists.
-    // Simpler: upsert with update/create logic.
     await prisma.guildSettings.upsert({
       where: { guildId },
-      create: { guildId, pollinationsApiKey: null, approvalReviewChannelId: null, timezone: null },
+      create: buildDefaultGuildSettingsCreate(guildId),
       update: { pollinationsApiKey: null },
     });
-  } else {
-    const encryptedApiKey = encryptSecret(apiKey);
-    await prisma.guildSettings.upsert({
-      where: { guildId },
-      create: { guildId, pollinationsApiKey: encryptedApiKey, approvalReviewChannelId: null, timezone: null },
-      update: { pollinationsApiKey: encryptedApiKey },
-    });
+    return;
   }
+
+  const encryptedApiKey = encryptSecret(apiKey);
+  await prisma.guildSettings.upsert({
+    where: { guildId },
+    create: {
+      ...buildDefaultGuildSettingsCreate(guildId),
+      pollinationsApiKey: encryptedApiKey,
+    },
+    update: { pollinationsApiKey: encryptedApiKey },
+  });
 }

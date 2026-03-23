@@ -1,5 +1,5 @@
 import { prisma } from '../../platform/db/prisma-client';
-import type { ModerationCaseRecord, ModerationPolicyRecord } from './types';
+import type { ModerationCaseNoteRecord, ModerationCaseRecord, ModerationPolicyRecord } from './types';
 
 type ModerationPolicyRow = {
   id: string;
@@ -29,16 +29,30 @@ type ModerationCaseRow = {
   policyId: string | null;
   source: string;
   status: string;
+  lifecycleStatus: string;
   action: string;
   targetUserId: string | null;
   sourceMessageId: string | null;
   channelId: string | null;
   reviewChannelId: string | null;
   createdByUserId: string | null;
+  acknowledgedByUserId: string | null;
+  acknowledgedAt: Date | null;
   executedByUserId: string | null;
+  resolutionReasonText: string | null;
   evidenceJson: unknown;
   metadataJson: unknown;
   resolvedAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+type ModerationCaseNoteRow = {
+  id: string;
+  caseId: string;
+  guildId: string;
+  createdByUserId: string;
+  noteText: string;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -55,12 +69,18 @@ type ModerationPolicyDelegate = {
 
 type ModerationCaseDelegate = {
   create: (args: unknown) => Promise<ModerationCaseRow>;
+  findUnique: (args: unknown) => Promise<ModerationCaseRow | null>;
   findMany: (args: unknown) => Promise<ModerationCaseRow[]>;
   update: (args: unknown) => Promise<ModerationCaseRow>;
+};
+type ModerationCaseNoteDelegate = {
+  create: (args: unknown) => Promise<ModerationCaseNoteRow>;
+  findMany: (args: unknown) => Promise<ModerationCaseNoteRow[]>;
 };
 
 const policyDelegate = (prisma as unknown as { moderationPolicy: ModerationPolicyDelegate }).moderationPolicy;
 const caseDelegate = (prisma as unknown as { moderationCase: ModerationCaseDelegate }).moderationCase;
+const caseNoteDelegate = (prisma as unknown as { moderationCaseNote: ModerationCaseNoteDelegate }).moderationCaseNote;
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === 'object' && !Array.isArray(value)
@@ -85,9 +105,14 @@ function toCaseRecord(row: ModerationCaseRow): ModerationCaseRecord {
     ...row,
     source: row.source as ModerationCaseRecord['source'],
     status: row.status as ModerationCaseRecord['status'],
+    lifecycleStatus: row.lifecycleStatus as ModerationCaseRecord['lifecycleStatus'],
     evidenceJson: asRecord(row.evidenceJson),
     metadataJson: asRecord(row.metadataJson),
   };
+}
+
+function toCaseNoteRecord(row: ModerationCaseNoteRow): ModerationCaseNoteRecord {
+  return row;
 }
 
 export async function listModerationPoliciesByGuild(guildId: string): Promise<ModerationPolicyRecord[]> {
@@ -332,13 +357,17 @@ export async function createModerationCase(params: {
   policyId?: string | null;
   source: ModerationCaseRecord['source'];
   status: ModerationCaseRecord['status'];
+  lifecycleStatus?: ModerationCaseRecord['lifecycleStatus'];
   action: string;
   targetUserId?: string | null;
   sourceMessageId?: string | null;
   channelId?: string | null;
   reviewChannelId?: string | null;
   createdByUserId?: string | null;
+  acknowledgedByUserId?: string | null;
+  acknowledgedAt?: Date | null;
   executedByUserId?: string | null;
+  resolutionReasonText?: string | null;
   evidenceJson?: Record<string, unknown> | null;
   metadataJson?: Record<string, unknown> | null;
   resolvedAt?: Date | null;
@@ -349,13 +378,17 @@ export async function createModerationCase(params: {
       policyId: params.policyId ?? null,
       source: params.source,
       status: params.status,
+      lifecycleStatus: params.lifecycleStatus ?? 'open',
       action: params.action,
       targetUserId: params.targetUserId ?? null,
       sourceMessageId: params.sourceMessageId ?? null,
       channelId: params.channelId ?? null,
       reviewChannelId: params.reviewChannelId ?? null,
       createdByUserId: params.createdByUserId ?? null,
+      acknowledgedByUserId: params.acknowledgedByUserId ?? null,
+      acknowledgedAt: params.acknowledgedAt ?? null,
       executedByUserId: params.executedByUserId ?? null,
+      resolutionReasonText: params.resolutionReasonText ?? null,
       evidenceJson: params.evidenceJson ?? undefined,
       metadataJson: params.metadataJson ?? undefined,
       resolvedAt: params.resolvedAt ?? null,
@@ -368,11 +401,13 @@ export async function listModerationCasesByGuild(params: {
   guildId: string;
   limit?: number;
   policyId?: string;
+  targetUserId?: string;
 }): Promise<ModerationCaseRecord[]> {
   const rows = await caseDelegate.findMany({
     where: {
       guildId: params.guildId,
       ...(params.policyId ? { policyId: params.policyId } : {}),
+      ...(params.targetUserId ? { targetUserId: params.targetUserId } : {}),
     },
     orderBy: { createdAt: 'desc' },
     take: params.limit ?? 25,
@@ -380,20 +415,69 @@ export async function listModerationCasesByGuild(params: {
   return rows.map(toCaseRecord);
 }
 
+export async function getModerationCaseById(id: string): Promise<ModerationCaseRecord | null> {
+  const row = await caseDelegate.findUnique({ where: { id } });
+  return row ? toCaseRecord(row) : null;
+}
+
 export async function markModerationCaseResolved(params: {
   id: string;
   status: ModerationCaseRecord['status'];
+  lifecycleStatus?: ModerationCaseRecord['lifecycleStatus'];
   executedByUserId?: string | null;
+  resolutionReasonText?: string | null;
   metadataJson?: Record<string, unknown> | null;
 }): Promise<ModerationCaseRecord> {
   const row = await caseDelegate.update({
     where: { id: params.id },
     data: {
       status: params.status,
+      lifecycleStatus: params.lifecycleStatus ?? 'resolved',
       executedByUserId: params.executedByUserId ?? null,
+      resolutionReasonText: params.resolutionReasonText ?? null,
       metadataJson: params.metadataJson ?? undefined,
       resolvedAt: new Date(),
     },
   });
   return toCaseRecord(row);
+}
+
+export async function acknowledgeModerationCase(params: {
+  id: string;
+  acknowledgedByUserId: string;
+}): Promise<ModerationCaseRecord> {
+  const row = await caseDelegate.update({
+    where: { id: params.id },
+    data: {
+      lifecycleStatus: 'acknowledged',
+      acknowledgedByUserId: params.acknowledgedByUserId,
+      acknowledgedAt: new Date(),
+    },
+  });
+  return toCaseRecord(row);
+}
+
+export async function addModerationCaseNote(params: {
+  caseId: string;
+  guildId: string;
+  createdByUserId: string;
+  noteText: string;
+}): Promise<ModerationCaseNoteRecord> {
+  const row = await caseNoteDelegate.create({
+    data: {
+      caseId: params.caseId,
+      guildId: params.guildId,
+      createdByUserId: params.createdByUserId,
+      noteText: params.noteText,
+    },
+  });
+  return toCaseNoteRecord(row);
+}
+
+export async function listModerationCaseNotes(caseId: string): Promise<ModerationCaseNoteRecord[]> {
+  const rows = await caseNoteDelegate.findMany({
+    where: { caseId },
+    orderBy: { createdAt: 'asc' },
+  });
+  return rows.map(toCaseNoteRecord);
 }

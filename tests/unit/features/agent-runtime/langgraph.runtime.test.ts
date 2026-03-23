@@ -723,10 +723,10 @@ describe('runGraphValueStream', () => {
     );
     executeDurableToolTaskMock.mockResolvedValueOnce({
       kind: 'tool_result',
-      toolName: 'discord_admin_update_server_instructions',
+      toolName: 'discord_governance_update_server_instructions',
       callId: 'call-1',
       content: '{"ok":true}',
-      result: makeSuccessfulToolResult('discord_admin_update_server_instructions', { ok: true }, 12),
+      result: makeSuccessfulToolResult('discord_governance_update_server_instructions', { ok: true }, 12),
       files: [],
       status: 'executed',
     });
@@ -757,7 +757,7 @@ describe('runGraphValueStream', () => {
     expect(result.pendingInterrupt).toBeNull();
     expect(result.yieldReason).toBe('slice_budget_exhausted');
     expect(result.replyText).toContain('updated the server persona');
-    expect(result.replyText).not.toContain('Completed so far: 1 tool call (discord_admin_update_server_instructions).');
+    expect(result.replyText).not.toContain('Completed so far: 1 tool call (discord_governance_update_server_instructions).');
     expect(result.roundsCompleted).toBe(1);
     expect(result.totalRoundsCompleted).toBe(2);
     expect(modelInvokeMock).toHaveBeenCalledTimes(2);
@@ -959,31 +959,31 @@ describe('runGraphValueStream', () => {
         tool_calls: [
           {
             id: 'call-overflow-1',
-            name: 'discord_admin_update_server_instructions',
+            name: 'discord_governance_update_server_instructions',
             args: { reason: 'sync' },
             type: 'tool_call',
           },
           {
             id: 'call-overflow-2',
-            name: 'discord_admin_clear_server_api_key',
+            name: 'discord_governance_clear_server_api_key',
             args: {},
             type: 'tool_call',
           },
           {
             id: 'call-overflow-3',
-            name: 'discord_admin_get_server_key_status',
+            name: 'discord_governance_get_server_key_status',
             args: {},
             type: 'tool_call',
           },
           {
             id: 'call-overflow-4',
-            name: 'discord_admin_create_channel',
+            name: 'discord_spaces_create_channel',
             args: { name: 'ops', type: 0 },
             type: 'tool_call',
           },
           {
             id: 'call-overflow-5',
-            name: 'discord_admin_create_role',
+            name: 'discord_spaces_create_role',
             args: { name: 'ops-role' },
             type: 'tool_call',
           },
@@ -996,7 +996,7 @@ describe('runGraphValueStream', () => {
     executeDurableToolTaskMock
       .mockResolvedValueOnce(
         makeToolTaskOutcome({
-          toolName: 'discord_admin_update_server_instructions',
+          toolName: 'discord_governance_update_server_instructions',
           callId: 'call-overflow-1',
           content: '{"ok":true,"action":"update_server_instructions"}',
           structuredContent: { ok: true, action: 'update_server_instructions' },
@@ -1004,7 +1004,7 @@ describe('runGraphValueStream', () => {
       )
       .mockResolvedValueOnce(
         makeToolTaskOutcome({
-          toolName: 'discord_admin_clear_server_api_key',
+          toolName: 'discord_governance_clear_server_api_key',
           callId: 'call-overflow-2',
           content: '{"ok":true,"action":"clear_server_api_key"}',
           structuredContent: { ok: true, action: 'clear_server_api_key' },
@@ -1012,7 +1012,7 @@ describe('runGraphValueStream', () => {
       )
       .mockResolvedValueOnce(
         makeToolTaskOutcome({
-          toolName: 'discord_admin_get_server_key_status',
+          toolName: 'discord_governance_get_server_key_status',
           callId: 'call-overflow-3',
           content: '{"ok":true,"action":"get_server_key_status"}',
           structuredContent: { ok: true, action: 'get_server_key_status' },
@@ -1020,7 +1020,7 @@ describe('runGraphValueStream', () => {
       )
       .mockResolvedValueOnce(
         makeToolTaskOutcome({
-          toolName: 'discord_admin_create_channel',
+          toolName: 'discord_spaces_create_channel',
           callId: 'call-overflow-4',
           content: '{"ok":true,"action":"create_channel"}',
           structuredContent: { ok: true, action: 'create_channel' },
@@ -1028,7 +1028,7 @@ describe('runGraphValueStream', () => {
       )
       .mockResolvedValueOnce(
         makeToolTaskOutcome({
-          toolName: 'discord_admin_create_role',
+          toolName: 'discord_spaces_create_role',
           callId: 'call-overflow-5',
           content: '{"ok":true,"action":"create_role"}',
           structuredContent: { ok: true, action: 'create_role' },
@@ -1686,7 +1686,7 @@ describe('runGraphValueStream', () => {
         tool_calls: [
           {
             id: 'call-time-budget-1',
-            name: 'discord_admin_clear_server_api_key',
+            name: 'discord_governance_clear_server_api_key',
             args: {},
             type: 'tool_call',
           },
@@ -1695,7 +1695,7 @@ describe('runGraphValueStream', () => {
     );
     executeDurableToolTaskMock.mockResolvedValueOnce(
       makeToolTaskOutcome({
-        toolName: 'discord_admin_clear_server_api_key',
+        toolName: 'discord_governance_clear_server_api_key',
         callId: 'call-time-budget-1',
         content: '{"ok":true}',
         structuredContent: { ok: true },
@@ -1714,7 +1714,7 @@ describe('runGraphValueStream', () => {
       timeoutMs: 1_000,
       maxTokens: 500,
       messages: [new HumanMessage({ content: 'do the admin action and keep going' })],
-      activeToolNames: ['discord_admin_clear_server_api_key'],
+      activeToolNames: ['discord_governance_clear_server_api_key'],
       routeKind: 'single',
       currentTurn: { invokerUserId: 'user-1' },
       replyTarget: null,
@@ -2128,13 +2128,13 @@ describe('runGraphValueStream', () => {
           tool_calls: [
             {
               id: 'call-approve-1',
-              name: 'discord_admin_create_channel',
+              name: 'discord_spaces_create_channel',
               args: { name: 'ops-summary', type: 0 },
               type: 'tool_call',
             },
             {
               id: 'call-approve-2',
-              name: 'discord_admin_create_role',
+              name: 'discord_spaces_create_role',
               args: { name: 'ops-summary-role' },
               type: 'tool_call',
             },
@@ -2144,11 +2144,11 @@ describe('runGraphValueStream', () => {
       .mockResolvedValueOnce(makeFinishTurnMessage('final_answer', 'Done.'));
     prepareToolApprovalInterruptMock
       .mockResolvedValueOnce({
-        toolName: 'discord_admin_create_channel',
+        toolName: 'discord_spaces_create_channel',
         callId: 'call-approve-1',
         call: {
           id: 'call-approve-1',
-          name: 'discord_admin_create_channel',
+          name: 'discord_spaces_create_channel',
           args: { name: 'ops-summary', type: 0 },
         },
         payload: {
@@ -2166,11 +2166,11 @@ describe('runGraphValueStream', () => {
         approvalGroupKey: 'discord_admin:rest_write',
       })
       .mockResolvedValueOnce({
-        toolName: 'discord_admin_create_role',
+        toolName: 'discord_spaces_create_role',
         callId: 'call-approve-2',
         call: {
           id: 'call-approve-2',
-          name: 'discord_admin_create_role',
+          name: 'discord_spaces_create_role',
           args: { name: 'ops-summary-role' },
         },
         payload: {
@@ -2190,7 +2190,7 @@ describe('runGraphValueStream', () => {
     executeApprovedReviewTaskMock
       .mockResolvedValueOnce(
         makeToolTaskOutcome({
-          toolName: 'discord_admin_create_channel',
+          toolName: 'discord_spaces_create_channel',
           callId: 'call-approve-1',
           content: '{"status":"executed","step":1}',
           structuredContent: { step: 1, status: 'executed' },
@@ -2198,7 +2198,7 @@ describe('runGraphValueStream', () => {
       )
       .mockResolvedValueOnce(
         makeToolTaskOutcome({
-          toolName: 'discord_admin_create_role',
+          toolName: 'discord_spaces_create_role',
           callId: 'call-approve-2',
           content: '{"status":"executed","step":2}',
           structuredContent: { step: 2, status: 'executed' },
@@ -2216,7 +2216,7 @@ describe('runGraphValueStream', () => {
       timeoutMs: 1_000,
       maxTokens: 500,
       messages: [new HumanMessage({ content: 'create a channel and post a summary there' })],
-      activeToolNames: ['discord_admin_create_channel', 'discord_admin_create_role'],
+      activeToolNames: ['discord_spaces_create_channel', 'discord_spaces_create_role'],
       routeKind: 'single',
       currentTurn: { invokerUserId: 'user-1' },
       replyTarget: null,
@@ -2261,7 +2261,7 @@ describe('runGraphValueStream', () => {
         temperature: 0.6,
         timeoutMs: 1_000,
         maxTokens: 500,
-        activeToolNames: ['discord_admin_create_channel', 'discord_admin_create_role'],
+        activeToolNames: ['discord_spaces_create_channel', 'discord_spaces_create_role'],
         routeKind: 'single',
         currentTurn: { invokerUserId: 'user-1' },
         replyTarget: null,
@@ -2294,7 +2294,7 @@ describe('runGraphValueStream', () => {
           tool_calls: [
             {
               id: 'call-timeout-1',
-              name: 'discord_admin_update_server_instructions',
+              name: 'discord_governance_update_server_instructions',
               args: { reason: 'sync' },
               type: 'tool_call',
             },
@@ -2304,11 +2304,11 @@ describe('runGraphValueStream', () => {
       .mockResolvedValueOnce(makeFinishTurnMessage('final_answer', 'Done after approval.'))
       .mockResolvedValue(makeFinishTurnMessage('final_answer', 'Done after approval.'));
     prepareToolApprovalInterruptMock.mockResolvedValueOnce({
-      toolName: 'discord_admin_update_server_instructions',
+      toolName: 'discord_governance_update_server_instructions',
       callId: 'call-timeout-1',
       call: {
         id: 'call-timeout-1',
-        name: 'discord_admin_update_server_instructions',
+        name: 'discord_governance_update_server_instructions',
         args: { reason: 'sync' },
       },
       payload: {
@@ -2327,7 +2327,7 @@ describe('runGraphValueStream', () => {
     });
     executeApprovedReviewTaskMock.mockResolvedValueOnce(
       makeToolTaskOutcome({
-        toolName: 'discord_admin_update_server_instructions',
+        toolName: 'discord_governance_update_server_instructions',
         callId: 'call-timeout-1',
         content: '{"status":"executed"}',
         structuredContent: { status: 'executed' },
@@ -2346,7 +2346,7 @@ describe('runGraphValueStream', () => {
       timeoutMs: 1_000,
       maxTokens: 500,
       messages: [new HumanMessage({ content: 'update the server persona' })],
-      activeToolNames: ['discord_admin_update_server_instructions'],
+      activeToolNames: ['discord_governance_update_server_instructions'],
       routeKind: 'single',
       currentTurn: { invokerUserId: 'user-1' },
       replyTarget: null,
@@ -2372,7 +2372,7 @@ describe('runGraphValueStream', () => {
         temperature: 0.6,
         timeoutMs: 1_000,
         maxTokens: 500,
-        activeToolNames: ['discord_admin_update_server_instructions'],
+        activeToolNames: ['discord_governance_update_server_instructions'],
         routeKind: 'single',
         currentTurn: { invokerUserId: 'user-1' },
         replyTarget: null,
@@ -2398,7 +2398,7 @@ describe('runGraphValueStream', () => {
         tool_calls: [
           {
             id: 'call-continue-1',
-            name: 'discord_admin_update_server_instructions',
+            name: 'discord_governance_update_server_instructions',
             args: { reason: 'sync' },
             type: 'tool_call',
           },
@@ -2406,11 +2406,11 @@ describe('runGraphValueStream', () => {
       }),
     );
     prepareToolApprovalInterruptMock.mockResolvedValueOnce({
-      toolName: 'discord_admin_update_server_instructions',
+      toolName: 'discord_governance_update_server_instructions',
       callId: 'call-continue-1',
       call: {
         id: 'call-continue-1',
-        name: 'discord_admin_update_server_instructions',
+        name: 'discord_governance_update_server_instructions',
         args: { reason: 'sync' },
       },
       payload: {
@@ -2429,7 +2429,7 @@ describe('runGraphValueStream', () => {
     });
     executeApprovedReviewTaskMock.mockResolvedValueOnce(
       makeToolTaskOutcome({
-        toolName: 'discord_admin_update_server_instructions',
+        toolName: 'discord_governance_update_server_instructions',
         callId: 'call-continue-1',
         content: '{"status":"executed"}',
         structuredContent: { status: 'executed' },
@@ -2448,7 +2448,7 @@ describe('runGraphValueStream', () => {
       timeoutMs: 1_000,
       maxTokens: 500,
       messages: [new HumanMessage({ content: 'update the server persona' })],
-      activeToolNames: ['discord_admin_update_server_instructions'],
+      activeToolNames: ['discord_governance_update_server_instructions'],
       routeKind: 'single',
       currentTurn: { invokerUserId: 'user-1' },
       replyTarget: null,
@@ -2485,7 +2485,7 @@ describe('runGraphValueStream', () => {
         temperature: 0.6,
         timeoutMs: 1_000,
         maxTokens: 500,
-        activeToolNames: ['discord_admin_update_server_instructions'],
+        activeToolNames: ['discord_governance_update_server_instructions'],
         routeKind: 'single',
         currentTurn: { invokerUserId: 'user-1' },
         replyTarget: null,
@@ -2721,10 +2721,10 @@ describe('runGraphValueStream', () => {
       );
     executeDurableToolTaskMock.mockResolvedValueOnce({
       kind: 'tool_result',
-      toolName: 'discord_admin_update_server_instructions',
+      toolName: 'discord_governance_update_server_instructions',
       callId: 'call-user-steer-resume-1',
       content: '{"ok":true}',
-      result: makeSuccessfulToolResult('discord_admin_update_server_instructions', { ok: true }, 10),
+      result: makeSuccessfulToolResult('discord_governance_update_server_instructions', { ok: true }, 10),
       files: [],
       status: 'executed',
     });

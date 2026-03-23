@@ -35,9 +35,9 @@ describe('tool smoke metadata', () => {
       'web_search',
     ]));
     expect(skipped).toEqual(expect.arrayContaining([
-      'discord_admin_create_role',
+      'discord_spaces_create_role',
       'discord_context_get_channel_summary',
-      'discord_server_list_threads',
+      'discord_spaces_list_threads',
       'image_generate',
       'web_read_page',
     ]));

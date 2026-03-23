@@ -43,8 +43,12 @@ import {
   selectFocusedContinuityMessages,
 } from './continuityContext';
 import { resolveRuntimeAutopilotMode } from './autopilotMode';
-import { globalToolRegistry, type ToolDefinition } from './toolRegistry';
+import { globalToolRegistry, type ToolAccessTier, type ToolDefinition } from './toolRegistry';
 import type { GraphDeliveryDisposition, GraphWaitingState } from './langgraph/types';
+import {
+  hasAuthorityAtLeast,
+  type DiscordAuthorityTier,
+} from '../../platform/discord/admin-permissions';
 
 import { formatLiveVoiceContext } from '../voice/voiceConversationSessionStore';
 import { AppError } from '../../shared/errors/app-error';
@@ -66,6 +70,7 @@ export interface RunChatTurnParams {
   mentionedUserIds?: string[];
   invokedBy?: 'mention' | 'reply' | 'wakeword' | 'autopilot' | 'component';
   isVoiceActive?: boolean;
+  invokerAuthority?: DiscordAuthorityTier;
   isAdmin?: boolean;
   canModerate?: boolean;
   promptMode?: PromptInputMode;
@@ -128,6 +133,7 @@ export interface ResumeWaitingTaskRunWithInputParams {
   currentTurn: CurrentTurnContext;
   replyTarget?: ReplyTargetContext | null;
   promptMode?: PromptInputMode;
+  invokerAuthority: DiscordAuthorityTier;
   isAdmin: boolean;
   canModerate?: boolean;
   onResponseSessionUpdate?: RunChatTurnParams['onResponseSessionUpdate'];
@@ -156,6 +162,7 @@ export interface ContinueMatchedTaskRunWithInputParams {
   currentTurn: CurrentTurnContext;
   replyTarget?: ReplyTargetContext | null;
   promptMode?: PromptInputMode;
+  invokerAuthority: DiscordAuthorityTier;
   isAdmin: boolean;
   canModerate?: boolean;
   onResponseSessionUpdate?: RunChatTurnParams['onResponseSessionUpdate'];
@@ -168,19 +175,35 @@ export interface RetryFailedChatTurnParams {
   channelId: string;
   guildId: string | null;
   retryKind: 'turn' | 'background_resume';
+  invokerAuthority: DiscordAuthorityTier;
   isAdmin: boolean;
   canModerate?: boolean;
 }
 
 type ToolInvocationKind = 'mention' | 'reply' | 'wakeword' | 'autopilot' | 'component';
 
-function getToolAccessTier(tool: Pick<ToolDefinition<unknown>, 'runtime' | 'metadata'>): 'public' | 'admin' {
+function getToolAccessTier(tool: Pick<ToolDefinition<unknown>, 'runtime' | 'metadata'>): ToolAccessTier {
   return tool.runtime?.access ?? tool.metadata?.access ?? 'public';
 }
 
+function canUseToolAccessTier(
+  authority: DiscordAuthorityTier,
+  access: ToolAccessTier,
+): boolean {
+  switch (access) {
+    case 'public':
+      return true;
+    case 'moderator':
+      return hasAuthorityAtLeast(authority, 'moderator');
+    case 'admin':
+      return hasAuthorityAtLeast(authority, 'admin');
+    case 'owner':
+      return authority === 'owner';
+  }
+}
+
 function resolveActiveToolNames(params: {
-  isAdmin: boolean;
-  canModerate: boolean;
+  authority: DiscordAuthorityTier;
   invokedBy: ToolInvocationKind;
 }): string[] {
   return globalToolRegistry.listNames().filter((toolName) => {
@@ -189,17 +212,10 @@ function resolveActiveToolNames(params: {
       return false;
     }
     const access = getToolAccessTier(tool);
-    if (access === 'public') {
-      return true;
-    }
     if (params.invokedBy === 'autopilot') {
-      return false;
+      return access === 'public';
     }
-    if (params.isAdmin) {
-      return true;
-    }
-    const capabilityTags = tool.runtime?.capabilityTags ?? [];
-    return params.canModerate && capabilityTags.includes('moderation');
+    return canUseToolAccessTier(params.authority, access);
   });
 }
 
@@ -496,6 +512,7 @@ async function persistTaskRunFromGraphResult(params: {
   guildId: string | null;
   channelId: string;
   userId: string;
+  invokerAuthority?: DiscordAuthorityTier;
   isAdmin?: boolean;
   canModerate?: boolean;
   graphConfig: ReturnType<typeof buildAgentGraphConfig>;
@@ -612,6 +629,7 @@ async function persistTaskRunFromGraphResult(params: {
       totalRoundsCompleted: params.graphResult.totalRoundsCompleted,
       plainTextOutcomeSource: params.graphResult.plainTextOutcomeSource,
       deferredForActiveInterrupt: deferTerminalCompletionForActiveInterrupt,
+      invokerAuthority: params.invokerAuthority ?? (params.isAdmin ? 'admin' : params.canModerate ? 'moderator' : 'member'),
       isAdmin: params.isAdmin ?? false,
       canModerate: params.canModerate ?? false,
     },
@@ -656,8 +674,9 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
     isVoiceActive,
     isAdmin = false,
     canModerate = false,
-      promptMode = 'standard',
-    } = params;
+    invokerAuthority = isAdmin ? 'admin' : canModerate ? 'moderator' : 'member',
+    promptMode = 'standard',
+  } = params;
   const clearToolCaches = () => {
   };
 
@@ -731,8 +750,7 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
   });
 
   const activeToolNames = resolveActiveToolNames({
-    isAdmin,
-    canModerate,
+    authority: invokerAuthority,
     invokedBy,
   });
   const promptEnvelope = buildPromptContextMessages({
@@ -748,6 +766,7 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
     recentTranscript: transcriptBlock,
     voiceContext: liveVoiceContext,
     invokedBy,
+    invokerAuthority,
     invokerIsAdmin: isAdmin,
     invokerCanModerate: canModerate,
     inGuild: guildId !== null,
@@ -831,6 +850,7 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
       currentTurn,
       replyTarget,
       invokedBy,
+      invokerAuthority,
       invokerIsAdmin: isAdmin,
       invokerCanModerate: canModerate,
       userProfileSummary: params.userProfileSummary,
@@ -1248,8 +1268,7 @@ export async function resumeWaitingTaskRunWithInput(
 
   const model = appConfig.AI_PROVIDER_MAIN_AGENT_MODEL.trim();
   const activeToolNames = resolveActiveToolNames({
-    isAdmin: params.isAdmin,
-    canModerate: params.canModerate ?? false,
+    authority: params.invokerAuthority,
     invokedBy: 'reply',
   });
   const waitingFollowUp = buildWaitingFollowUpContext({
@@ -1276,6 +1295,7 @@ export async function resumeWaitingTaskRunWithInput(
           1_800,
         ),
         invokedBy: 'reply',
+        invokerAuthority: params.invokerAuthority,
         invokerIsAdmin: params.isAdmin,
         invokerCanModerate: params.canModerate ?? false,
         activeToolNames,
@@ -1311,6 +1331,7 @@ export async function resumeWaitingTaskRunWithInput(
       guildId: params.guildId,
       channelId: params.channelId,
       userId: params.userId,
+      invokerAuthority: params.invokerAuthority,
       isAdmin: params.isAdmin,
       canModerate: params.canModerate,
       graphConfig,
@@ -1359,6 +1380,7 @@ export async function resumeBackgroundTaskRun(params: {
   userId: string;
   channelId: string;
   guildId: string | null;
+  invokerAuthority: DiscordAuthorityTier;
   isAdmin: boolean;
   canModerate?: boolean;
   onResponseSessionUpdate?: RunChatTurnParams['onResponseSessionUpdate'];
@@ -1401,8 +1423,7 @@ export async function resumeBackgroundTaskRun(params: {
   }
 
   const activeToolNames = resolveActiveToolNames({
-    isAdmin: params.isAdmin,
-    canModerate: params.canModerate ?? false,
+    authority: params.invokerAuthority,
     invokedBy: 'component',
   });
   try {
@@ -1426,6 +1447,7 @@ export async function resumeBackgroundTaskRun(params: {
           1_800,
         ),
         invokedBy: 'component',
+        invokerAuthority: params.invokerAuthority,
         invokerIsAdmin: params.isAdmin,
         invokerCanModerate: params.canModerate ?? false,
         activeToolNames,
@@ -1452,6 +1474,7 @@ export async function resumeBackgroundTaskRun(params: {
       guildId: params.guildId,
       channelId: params.channelId,
       userId: params.userId,
+      invokerAuthority: params.invokerAuthority,
       isAdmin: params.isAdmin,
       canModerate: params.canModerate,
       graphConfig,
@@ -1522,8 +1545,7 @@ export async function continueMatchedTaskRunWithInput(
   const model = appConfig.AI_PROVIDER_MAIN_AGENT_MODEL.trim();
   const graphConfig = buildAgentGraphConfig();
   const activeToolNames = resolveActiveToolNames({
-    isAdmin: params.isAdmin,
-    canModerate: params.canModerate ?? false,
+    authority: params.invokerAuthority,
     invokedBy: params.currentTurn.invokedBy,
   });
 
@@ -1547,6 +1569,7 @@ export async function continueMatchedTaskRunWithInput(
           1_800,
         ),
         invokedBy: params.currentTurn.invokedBy,
+        invokerAuthority: params.invokerAuthority,
         invokerIsAdmin: params.isAdmin,
         invokerCanModerate: params.canModerate ?? false,
         activeToolNames,
@@ -1580,6 +1603,7 @@ export async function continueMatchedTaskRunWithInput(
       guildId: params.guildId,
       channelId: params.channelId,
       userId: params.userId,
+      invokerAuthority: params.invokerAuthority,
       isAdmin: params.isAdmin,
       canModerate: params.canModerate,
       graphConfig,
@@ -1631,8 +1655,7 @@ export async function retryFailedChatTurn(
 
   const model = appConfig.AI_PROVIDER_MAIN_AGENT_MODEL.trim();
   const activeToolNames = resolveActiveToolNames({
-    isAdmin: params.isAdmin,
-    canModerate: params.canModerate ?? false,
+    authority: params.invokerAuthority,
     invokedBy: 'component',
   });
   const routeKind = params.retryKind === 'background_resume' ? 'background_retry' : 'turn_retry';
@@ -1685,6 +1708,7 @@ export async function retryFailedChatTurn(
           1_800,
         ),
         invokedBy: 'component',
+        invokerAuthority: params.invokerAuthority,
         invokerIsAdmin: params.isAdmin,
         invokerCanModerate: params.canModerate ?? false,
         activeToolNames,
@@ -1716,6 +1740,7 @@ export async function retryFailedChatTurn(
       guildId: params.guildId,
       channelId: params.channelId,
       userId: params.userId,
+      invokerAuthority: params.invokerAuthority,
       isAdmin: params.isAdmin,
       canModerate: params.canModerate,
       graphConfig,

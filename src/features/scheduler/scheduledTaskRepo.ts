@@ -12,6 +12,7 @@ type ScheduledTaskRow = {
   cronExpr: string | null;
   runAt: Date | null;
   nextRunAt: Date | null;
+  skipUntil: Date | null;
   lastRunAt: Date | null;
   lastSuccessAt: Date | null;
   leaseOwner: string | null;
@@ -103,6 +104,7 @@ export async function upsertScheduledTask(params: {
   cronExpr?: string | null;
   runAt?: Date | null;
   nextRunAt?: Date | null;
+  skipUntil?: Date | null;
   payloadJson: ScheduledTaskRecord['payloadJson'];
   provenanceJson?: Record<string, unknown> | null;
 }): Promise<ScheduledTaskRecord> {
@@ -117,6 +119,7 @@ export async function upsertScheduledTask(params: {
         cronExpr: params.cronExpr ?? null,
         runAt: params.runAt ?? null,
         nextRunAt: params.nextRunAt ?? null,
+        skipUntil: params.skipUntil ?? null,
         payloadJson: params.payloadJson,
         provenanceJson: params.provenanceJson ?? undefined,
         lastErrorText: null,
@@ -136,6 +139,7 @@ export async function upsertScheduledTask(params: {
       cronExpr: params.cronExpr ?? null,
       runAt: params.runAt ?? null,
       nextRunAt: params.nextRunAt ?? null,
+      skipUntil: params.skipUntil ?? null,
       payloadJson: params.payloadJson,
       provenanceJson: params.provenanceJson ?? undefined,
     },
@@ -149,6 +153,7 @@ export async function cancelScheduledTask(id: string): Promise<ScheduledTaskReco
     data: {
       status: 'cancelled',
       nextRunAt: null,
+      skipUntil: null,
       leaseOwner: null,
       leaseExpiresAt: null,
     },
@@ -166,7 +171,11 @@ export async function listDueScheduledTasks(params: {
     where: {
       status: 'active',
       nextRunAt: { lte: params.now },
-      OR: [{ leaseExpiresAt: null }, { leaseExpiresAt: { lte: params.now } }],
+      OR: [
+        { skipUntil: null },
+        { skipUntil: { lte: params.now } },
+      ],
+      AND: [{ OR: [{ leaseExpiresAt: null }, { leaseExpiresAt: { lte: params.now } }] }],
     },
     orderBy: [{ nextRunAt: 'asc' }],
     take: params.limit ?? 10,
@@ -246,6 +255,7 @@ export async function completeScheduledTask(params: {
       leaseOwner: null,
       leaseExpiresAt: null,
       nextRunAt: params.nextRunAt,
+      skipUntil: null,
       lastRunAt: params.finishedAt ?? new Date(),
       lastSuccessAt: params.succeeded ? params.finishedAt ?? new Date() : undefined,
       lastErrorText: params.lastErrorText ?? null,
@@ -282,4 +292,25 @@ export async function listScheduledTaskRuns(params: {
     take: params.limit ?? 10,
   });
   return rows.map(toTaskRunRecord);
+}
+
+export async function updateScheduledTaskState(params: {
+  id: string;
+  status?: ScheduledTaskRecord['status'];
+  nextRunAt?: Date | null;
+  skipUntil?: Date | null;
+  lastErrorText?: string | null;
+}): Promise<ScheduledTaskRecord> {
+  const row = await taskDelegate.update({
+    where: { id: params.id },
+    data: {
+      ...(params.status !== undefined ? { status: params.status } : {}),
+      ...(params.nextRunAt !== undefined ? { nextRunAt: params.nextRunAt } : {}),
+      ...(params.skipUntil !== undefined ? { skipUntil: params.skipUntil } : {}),
+      ...(params.lastErrorText !== undefined ? { lastErrorText: params.lastErrorText } : {}),
+      leaseOwner: null,
+      leaseExpiresAt: null,
+    },
+  });
+  return toTaskRecord(row);
 }

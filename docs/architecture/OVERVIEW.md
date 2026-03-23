@@ -214,7 +214,7 @@ Operators can audit that surface directly with `npm run tools:audit` or `npm run
 | Tool | Description | Access |
 |:---|:---|:---|
 | `discord_context_get_channel_summary` | Fetch rolling and archived summary context for the current channel. | Public |
-| `discord_context_get_server_instructions` | Read the current guild Sage Persona instructions. | Public |
+| `discord_governance_get_server_instructions` | Read the current guild Sage Persona instructions. | Public |
 | `discord_context_get_social_graph` | Retrieve social graph relationships for a user. | Public |
 | `discord_context_get_top_relationships` | Show the strongest recent relationship edges in the guild. | Public |
 | `discord_context_get_user_profile` | Fetch the best-effort profile for a user. | Public |
@@ -226,92 +226,113 @@ Operators can audit that surface directly with `npm run tools:audit` or `npm run
 
 | Tool | Description | Access |
 |:---|:---|:---|
-| `discord_messages_add_reaction` | Add a reaction to a Discord message. | Public |
-| `discord_messages_create_poll` | Create a poll in Discord. | Public |
-| `discord_messages_get_context` | Retrieve messages before and after a message ID. | Public |
-| `discord_messages_get_user_timeline` | Show recent messages from a user across the guild. | Public |
-| `discord_messages_remove_self_reaction` | Remove Sage's own reaction from a message. | Public |
-| `discord_messages_search_guild` | Search raw message history across the guild. | Public |
-| `discord_messages_search_history` | Search channel message history. | Public |
-| `discord_messages_search_with_context` | Search channel history and expand context around the best match. | Public |
+| `discord_spaces_add_reaction` | Add a reaction to a Discord message. | Public |
+| `discord_spaces_create_poll` | Create a poll in Discord. | Public |
+| `discord_history_get_context` | Retrieve messages before and after a message ID. | Public |
+| `discord_history_get_user_timeline` | Show recent messages from a user across the guild. | Public |
+| `discord_spaces_remove_self_reaction` | Remove Sage's own reaction from a message. | Public |
+| `discord_history_search_guild` | Search raw message history across the guild. | Public |
+| `discord_history_search_history` | Search channel message history. | Public |
+| `discord_history_search_with_context` | Search channel history and expand context around the best match. | Public |
 
 ### 📎 Discord Files
 
 | Tool | Description | Access |
 |:---|:---|:---|
-| `discord_files_find_channel` | Search attachment text in the current channel. | Public |
-| `discord_files_find_server` | Search attachment text across the guild. | Public |
-| `discord_files_list_channel` | List cached attachments in the current channel. | Public |
-| `discord_files_list_server` | List cached attachments across the guild. | Public |
-| `discord_files_read_attachment` | Read cached attachment text in pages. | Public |
-| `discord_files_send_attachment` | Resend a cached attachment as a distinct artifact. | Public |
+| `discord_artifact_find_channel_attachments` | Search attachment text in the current channel. | Public |
+| `discord_artifact_find_guild_attachments` | Search attachment text across the guild. | Public |
+| `discord_artifact_create_text` | Create a new text or structured-text artifact. | Public |
+| `discord_artifact_get` | Retrieve one Discord artifact and its latest revision metadata. | Public |
+| `discord_artifact_list` | List stored Discord artifacts in the active guild or origin channel. | Public |
+| `discord_artifact_list_channel_attachments` | List cached attachments in the current channel. | Public |
+| `discord_artifact_list_guild_attachments` | List cached attachments across the guild. | Public |
+| `discord_artifact_list_revisions` | List recent revisions for one artifact. | Public |
+| `discord_artifact_publish` | Publish the latest artifact revision into a Discord channel or thread. | Public |
+| `discord_artifact_read_attachment` | Read cached attachment text in pages. | Public |
+| `discord_artifact_replace` | Create a new revision for an existing artifact from text or an existing attachment. | Public |
+| `discord_artifact_stage_attachment` | Turn an ingested Discord attachment into a durable Sage artifact revision. | Public |
 
 ### 🏛️ Discord Server
 
 | Tool | Description | Access |
 |:---|:---|:---|
-| `discord_server_add_thread_member` | Add a member to a thread. | Public |
-| `discord_server_create_thread` | Create a thread in Discord. | Public |
-| `discord_server_get_channel` | Inspect a guild channel or category. | Public |
-| `discord_server_get_member` | Inspect a guild member. | Admin |
-| `discord_server_get_moderation_policy` | Inspect one Sage moderation policy or imported external AutoMod rule. | Admin |
-| `discord_server_get_permission_snapshot` | Inspect guild permission state for a member or role. | Admin |
-| `discord_server_get_scheduled_event` | Inspect a scheduled event. | Public |
-| `discord_server_get_scheduled_task` | Inspect one durable scheduled reminder or scheduled Sage job. | Admin |
-| `discord_server_get_thread` | Inspect a thread. | Public |
-| `discord_server_join_thread` | Join a thread as Sage. | Public |
-| `discord_server_leave_thread` | Leave a thread as Sage. | Public |
-| `discord_server_list_automod_rules` | List guild AutoMod rules. | Admin |
-| `discord_server_list_channels` | List guild channels and categories. | Public |
-| `discord_server_list_members` | List guild members. | Admin |
-| `discord_server_list_moderation_cases` | List recent Sage moderation cases for the guild. | Admin |
-| `discord_server_list_moderation_policies` | List Sage moderation policies and imported external AutoMod inventory. | Admin |
-| `discord_server_list_roles` | List guild roles. | Public |
-| `discord_server_list_scheduled_events` | List guild scheduled events. | Public |
-| `discord_server_list_scheduled_tasks` | List durable scheduled reminders and scheduled Sage jobs. | Admin |
-| `discord_server_list_threads` | List guild threads. | Public |
-| `discord_server_remove_thread_member` | Remove a member from a thread. | Public |
-| `discord_server_update_thread` | Rename or update archive and lock settings for a thread. | Public |
+| `discord_spaces_add_thread_member` | Add a member to a thread. | Public |
+| `discord_spaces_create_thread` | Create a thread in Discord. | Public |
+| `discord_spaces_get_channel` | Inspect a guild channel or category. | Public |
+| `discord_moderation_get_case` | Retrieve one moderation case and its notes. | Moderator |
+| `discord_moderation_get_member` | Inspect a guild member. | Moderator |
+| `discord_moderation_get_member_history` | Retrieve moderation history for one guild member. | Moderator |
+| `discord_moderation_get_policy` | Inspect one Sage moderation policy or imported external AutoMod rule. | Moderator |
+| `discord_moderation_get_permission_snapshot` | Inspect guild permission state for a member or role. | Moderator |
+| `discord_spaces_get_scheduled_event` | Inspect a scheduled event. | Public |
+| `discord_schedule_get_task` | Inspect one durable scheduled reminder or scheduled Sage job. | Admin |
+| `discord_spaces_get_thread` | Inspect a thread. | Public |
+| `discord_spaces_join_thread` | Join a thread as Sage. | Public |
+| `discord_spaces_leave_thread` | Leave a thread as Sage. | Public |
+| `discord_moderation_list_automod_rules` | List guild AutoMod rules. | Moderator |
+| `discord_spaces_list_channels` | List guild channels and categories. | Public |
+| `discord_moderation_list_members` | List guild members. | Moderator |
+| `discord_moderation_list_cases` | List recent Sage moderation cases for the guild. | Moderator |
+| `discord_moderation_list_policies` | List Sage moderation policies and imported external AutoMod inventory. | Moderator |
+| `discord_spaces_list_roles` | List guild roles. | Public |
+| `discord_spaces_list_scheduled_events` | List guild scheduled events. | Public |
+| `discord_schedule_list_tasks` | List durable scheduled reminders and scheduled Sage jobs. | Admin |
+| `discord_spaces_list_threads` | List guild threads. | Public |
+| `discord_spaces_remove_thread_member` | Remove a member from a thread. | Public |
+| `discord_spaces_update_thread` | Rename or update archive and lock settings for a thread. | Public |
 
 ### 🛡️ Discord Admin
 
 | Tool | Description | Access |
 |:---|:---|:---|
-| `discord_admin_add_member_role` | Add a role to a member with admin approval. | Admin |
-| `discord_admin_api` | Use the guild-scoped raw Discord API fallback. | Admin |
-| `discord_admin_cancel_scheduled_task` | Cancel a durable scheduled reminder or scheduled Sage job. | Admin |
-| `discord_admin_clear_governance_review_channel` | Clear the dedicated governance review channel. | Admin |
-| `discord_admin_clear_server_api_key` | Clear the current server-wide API key. | Admin |
-| `discord_admin_create_channel` | Create a new channel or category. | Admin |
-| `discord_admin_create_forum_post` | Create a new forum post in a guild forum channel. | Admin |
-| `discord_admin_create_invite` | Create a new invite for a guild channel. | Admin |
-| `discord_admin_create_role` | Create a new role. | Admin |
-| `discord_admin_create_scheduled_event` | Create a scheduled event for the guild. | Admin |
-| `discord_admin_delete_scheduled_event` | Delete a scheduled event from the guild. | Admin |
-| `discord_admin_delete_message` | Delete a message with admin approval. | Admin |
-| `discord_admin_delete_role` | Delete a role with admin approval. | Admin |
-| `discord_admin_disable_moderation_policy` | Disable a deterministic moderation policy without removing its history. | Admin |
-| `discord_admin_edit_channel` | Edit an existing channel. | Admin |
-| `discord_admin_edit_message` | Edit a message with admin approval. | Admin |
-| `discord_admin_edit_role` | Edit an existing role. | Admin |
-| `discord_admin_get_governance_review_status` | Inspect governance review routing. | Admin |
-| `discord_admin_get_invite_url` | Generate an OAuth2 invite URL for the bot. | Admin |
-| `discord_admin_get_server_key_status` | Check whether the guild has a server API key configured. | Admin |
-| `discord_admin_list_invites` | List active invites for the guild. | Admin |
-| `discord_admin_archive_thread` | Archive a managed thread. | Admin |
-| `discord_admin_pin_message` | Pin a message with admin approval. | Admin |
-| `discord_admin_remove_member_role` | Remove a role from a member with admin approval. | Admin |
-| `discord_admin_reopen_thread` | Reopen an archived managed thread. | Admin |
-| `discord_admin_revoke_invite` | Revoke an existing guild invite. | Admin |
-| `discord_admin_send_key_setup_card` | Send an interactive server-key setup card. | Admin |
-| `discord_admin_set_governance_review_channel` | Route governance review cards to a specific channel. | Admin |
-| `discord_admin_submit_moderation` | Submit a moderation or enforcement request. | Admin |
-| `discord_admin_unpin_message` | Unpin a message with admin approval. | Admin |
-| `discord_admin_upsert_moderation_policy` | Create or update an autonomous moderation policy. | Admin |
-| `discord_admin_upsert_scheduled_task` | Create or update a durable scheduled reminder or scheduled Sage job. | Admin |
-| `discord_admin_update_forum_tags` | Update the available forum tags for a forum channel. | Admin |
-| `discord_admin_update_scheduled_event` | Update an existing scheduled event. | Admin |
-| `discord_admin_update_server_instructions` | Submit an admin request to update the guild Sage Persona. | Admin |
+| `discord_spaces_add_member_role` | Add a role to a member with admin approval. | Admin |
+| `discord_schedule_cancel_task` | Cancel a durable scheduled reminder or scheduled Sage job. | Admin |
+| `discord_schedule_clone_task` | Clone an existing scheduled task. | Admin |
+| `discord_governance_clear_artifact_vault_channel` | Clear the dedicated artifact vault channel override. | Admin |
+| `discord_governance_clear_mod_log_channel` | Clear the dedicated moderation log channel override. | Admin |
+| `discord_governance_clear_review_channel` | Clear the dedicated governance review channel. | Admin |
+| `discord_governance_clear_server_api_key` | Clear the current server-wide API key. | Owner |
+| `discord_spaces_create_channel` | Create a new channel or category. | Admin |
+| `discord_spaces_create_forum_post` | Create a new forum post in a guild forum channel. | Admin |
+| `discord_spaces_create_invite` | Create a new invite for a guild channel. | Admin |
+| `discord_spaces_create_role` | Create a new role. | Admin |
+| `discord_spaces_create_scheduled_event` | Create a scheduled event for the guild. | Admin |
+| `discord_spaces_delete_scheduled_event` | Delete a scheduled event from the guild. | Admin |
+| `discord_spaces_delete_message` | Delete a message with admin approval. | Admin |
+| `discord_spaces_delete_role` | Delete a role with admin approval. | Admin |
+| `discord_moderation_ack_case` | Acknowledge a moderation case for follow-up. | Moderator |
+| `discord_moderation_add_case_note` | Add a moderator note to a moderation case. | Moderator |
+| `discord_moderation_disable_policy` | Disable a deterministic moderation policy without removing its history. | Admin |
+| `discord_spaces_edit_channel` | Edit an existing channel. | Admin |
+| `discord_spaces_edit_message` | Edit a message with admin approval. | Admin |
+| `discord_spaces_edit_role` | Edit an existing role. | Admin |
+| `discord_governance_get_artifact_vault_status` | Inspect default artifact vault routing. | Admin |
+| `discord_governance_get_mod_log_status` | Inspect default moderation log routing. | Admin |
+| `discord_governance_get_review_status` | Inspect governance review routing. | Admin |
+| `discord_spaces_get_invite_url` | Generate an OAuth2 invite URL for the bot. | Admin |
+| `discord_governance_get_server_key_status` | Check whether the guild has a server API key configured. | Admin |
+| `discord_spaces_list_invites` | List active invites for the guild. | Admin |
+| `discord_spaces_archive_thread` | Archive a managed thread. | Admin |
+| `discord_spaces_pin_message` | Pin a message with admin approval. | Admin |
+| `discord_spaces_remove_member_role` | Remove a role from a member with admin approval. | Admin |
+| `discord_moderation_resolve_case` | Resolve or void a moderation case. | Moderator |
+| `discord_spaces_reopen_thread` | Reopen an archived managed thread. | Admin |
+| `discord_spaces_revoke_invite` | Revoke an existing guild invite. | Admin |
+| `discord_governance_send_key_setup_card` | Send an interactive server-key setup card. | Owner |
+| `discord_governance_set_artifact_vault_channel` | Route default artifact publications to a specific channel or thread. | Admin |
+| `discord_governance_set_mod_log_channel` | Route default moderation log alerts to a specific channel or thread. | Admin |
+| `discord_governance_set_review_channel` | Route governance review cards to a specific channel. | Admin |
+| `discord_moderation_submit_action` | Submit a moderation or enforcement request. | Moderator |
+| `discord_spaces_unpin_message` | Unpin a message with admin approval. | Admin |
+| `discord_moderation_upsert_policy` | Create or update an autonomous moderation policy. | Admin |
+| `discord_schedule_pause_task` | Pause an active scheduled task. | Admin |
+| `discord_schedule_resume_task` | Resume a paused scheduled task. | Admin |
+| `discord_schedule_run_now` | Run a scheduled task immediately. | Admin |
+| `discord_schedule_skip_next` | Skip the next scheduled run for a task. | Admin |
+| `discord_schedule_upsert_task` | Create or update a durable scheduled reminder or scheduled Sage job. | Admin |
+| `discord_spaces_update_forum_tags` | Update the available forum tags for a forum channel. | Admin |
+| `discord_spaces_update_scheduled_event` | Update an existing scheduled event. | Admin |
+| `discord_governance_update_server_instructions` | Submit an admin request to update the guild Sage Persona. | Admin |
 
 ### 🔊 Discord Voice
 

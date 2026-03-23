@@ -46,11 +46,13 @@ export {
 } from './mcp/manager';
 export {
   discordContextTools,
-  discordMessageTools,
-  discordFileTools,
-  discordServerTools,
+  discordHistoryTools,
+  discordArtifactTools,
+  discordModerationTools,
+  discordScheduleTools,
+  discordSpacesTools,
+  discordGovernanceTools,
   discordVoiceTools,
-  discordAdminTools,
   discordTools,
 } from './discordDomainTools';
 

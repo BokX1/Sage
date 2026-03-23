@@ -11,9 +11,13 @@ import { executeAutonomousModerationAction } from '../admin/adminActionService';
 import type { PreparedModerationAction } from '../admin/discordModeration';
 import { compileModerationPolicy } from './compiler';
 import {
+  acknowledgeModerationCase,
+  addModerationCaseNote,
   createModerationCase,
+  getModerationCaseById,
   getModerationPolicyById,
   getModerationPolicyByGuildName,
+  listModerationCaseNotes,
   listModerationCasesByGuild,
   listModerationPoliciesByGuild,
   markModerationCaseResolved,
@@ -26,12 +30,14 @@ import {
 import type {
   ModerationActionSpec,
   ModerationCaseRecord,
+  ModerationCaseStatus,
   ModerationPolicyMode,
   ModerationPolicyRecord,
   ModerationPolicySpec,
   ModerationRuntimeDiagnostic,
   ModerationTriggerSpec,
 } from './types';
+import { getGuildModLogChannelId } from '../settings/guildSettingsRepo';
 
 const POLICY_CACHE_TTL_MS = 15_000;
 const BURST_WINDOW_CACHE = new Map<string, number[]>();
@@ -43,6 +49,10 @@ let lastDiagnosticSnapshot: ModerationRuntimeDiagnostic | null = null;
 function optionalString(value: string | null | undefined): string | null {
   const trimmed = value?.trim();
   return trimmed ? trimmed : null;
+}
+
+function trimOptional(value: string | null | undefined): string | null {
+  return optionalString(value);
 }
 
 function normalizeText(value: string): string {
@@ -262,6 +272,19 @@ async function sendModerationAlert(params: {
   })).catch(() => undefined);
 }
 
+async function sendModerationLog(params: {
+  guildId: string;
+  preferredChannelId?: string | null;
+  content: string;
+}): Promise<void> {
+  const fallbackChannelId = await getGuildModLogChannelId(params.guildId).catch(() => null);
+  await sendModerationAlert({
+    guildId: params.guildId,
+    channelId: params.preferredChannelId ?? fallbackChannelId,
+    content: params.content,
+  });
+}
+
 async function validateGuildNotificationChannel(params: {
   guildId: string;
   channelId: string | null | undefined;
@@ -399,6 +422,7 @@ async function handleMatchedPolicy(params: {
       policyId: params.policy.id,
       source: params.source,
       status: 'dry_run',
+      lifecycleStatus: 'resolved',
       action: effectiveAction.type,
       targetUserId,
       sourceMessageId: params.message?.id ?? null,
@@ -427,6 +451,7 @@ async function handleMatchedPolicy(params: {
           : effectiveAction.type === 'open_review_case'
             ? 'open_review'
             : 'logged',
+      lifecycleStatus: 'open',
       action: effectiveAction.type,
       targetUserId,
       sourceMessageId: params.message?.id ?? null,
@@ -437,6 +462,11 @@ async function handleMatchedPolicy(params: {
       metadataJson: {
         mode: 'enforce',
       },
+    });
+    await sendModerationLog({
+      guildId: params.policy.guildId,
+      preferredChannelId: params.policy.notifyChannelId,
+      content: `Policy "${params.policy.name}" opened case ${caseRecord.id} for <@${targetUserId ?? 'unknown'}>.`,
     });
     if (params.policy.notifyChannelId) {
       await sendModerationAlert({
@@ -464,6 +494,7 @@ async function handleMatchedPolicy(params: {
       policyId: params.policy.id,
       source: params.source,
       status: 'failed',
+      lifecycleStatus: 'voided',
       action: effectiveAction.type,
       targetUserId,
       sourceMessageId: params.message?.id ?? null,
@@ -486,6 +517,7 @@ async function handleMatchedPolicy(params: {
     policyId: params.policy.id,
     source: params.source,
     status: 'logged',
+    lifecycleStatus: 'open',
     action: preparedAction.action,
     targetUserId,
     sourceMessageId: params.message?.id ?? null,
@@ -509,10 +541,16 @@ async function handleMatchedPolicy(params: {
     const resolved = await markModerationCaseResolved({
       id: caseRecord.id,
       status: 'executed',
+      lifecycleStatus: 'resolved',
       executedByUserId: 'sage:auto',
       metadataJson: {
         preparedAction,
       },
+    });
+    await sendModerationLog({
+      guildId: params.policy.guildId,
+      preferredChannelId: params.policy.notifyChannelId,
+      content: `Policy "${params.policy.name}" resolved case ${resolved.id} against <@${targetUserId ?? 'unknown'}>.`,
     });
     if (params.policy.notifyChannelId) {
       await sendModerationAlert({
@@ -530,6 +568,7 @@ async function handleMatchedPolicy(params: {
     const resolved = await markModerationCaseResolved({
       id: caseRecord.id,
       status: 'failed',
+      lifecycleStatus: 'voided',
       executedByUserId: 'sage:auto',
       metadataJson: {
         preparedAction,
@@ -737,10 +776,12 @@ export async function listModerationCasesForTool(params: {
   guildId: string;
   limit?: number;
   policyId?: string;
+  targetUserId?: string;
 }): Promise<Record<string, unknown>> {
   const cases = await listModerationCasesByGuild({
     guildId: params.guildId,
     policyId: params.policyId,
+    targetUserId: params.targetUserId,
     limit: params.limit ?? 25,
   });
   return {
@@ -751,6 +792,150 @@ export async function listModerationCasesForTool(params: {
       ...entry,
       createdAt: entry.createdAt.toISOString(),
       updatedAt: entry.updatedAt.toISOString(),
+      resolvedAt: entry.resolvedAt?.toISOString() ?? null,
+    })),
+  };
+}
+
+export async function getModerationCaseForTool(params: {
+  guildId: string;
+  caseId: string;
+}): Promise<Record<string, unknown>> {
+  const caseRecord = await getModerationCaseById(params.caseId);
+  if (!caseRecord || caseRecord.guildId !== params.guildId) {
+    throw new Error('Moderation case not found.');
+  }
+  const notes = await listModerationCaseNotes(caseRecord.id);
+  return {
+    ok: true,
+    action: 'get_moderation_case',
+    case: {
+      ...caseRecord,
+      createdAt: caseRecord.createdAt.toISOString(),
+      updatedAt: caseRecord.updatedAt.toISOString(),
+      acknowledgedAt: caseRecord.acknowledgedAt?.toISOString() ?? null,
+      resolvedAt: caseRecord.resolvedAt?.toISOString() ?? null,
+    },
+    notes: notes.map((note) => ({
+      ...note,
+      createdAt: note.createdAt.toISOString(),
+      updatedAt: note.updatedAt.toISOString(),
+    })),
+  };
+}
+
+export async function acknowledgeModerationCaseForTool(params: {
+  guildId: string;
+  caseId: string;
+  requestedByUserId: string;
+}): Promise<Record<string, unknown>> {
+  const caseRecord = await getModerationCaseById(params.caseId);
+  if (!caseRecord || caseRecord.guildId !== params.guildId) {
+    throw new Error('Moderation case not found.');
+  }
+  const updated = await acknowledgeModerationCase({
+    id: caseRecord.id,
+    acknowledgedByUserId: params.requestedByUserId,
+  });
+  await sendModerationLog({
+    guildId: params.guildId,
+    preferredChannelId: caseRecord.reviewChannelId,
+    content: `Case ${updated.id} acknowledged by <@${params.requestedByUserId}>.`,
+  });
+  return {
+    ok: true,
+    action: 'acknowledge_moderation_case',
+    caseId: updated.id,
+    lifecycleStatus: updated.lifecycleStatus,
+    acknowledgedAt: updated.acknowledgedAt?.toISOString() ?? null,
+  };
+}
+
+export async function resolveModerationCaseForTool(params: {
+  guildId: string;
+  caseId: string;
+  requestedByUserId: string;
+  outcome: Extract<ModerationCaseStatus, 'executed' | 'failed' | 'noop'>;
+  reasonText?: string | null;
+}): Promise<Record<string, unknown>> {
+  const caseRecord = await getModerationCaseById(params.caseId);
+  if (!caseRecord || caseRecord.guildId !== params.guildId) {
+    throw new Error('Moderation case not found.');
+  }
+  const lifecycleStatus = params.outcome === 'failed' ? 'voided' : 'resolved';
+  const updated = await markModerationCaseResolved({
+    id: caseRecord.id,
+    status: params.outcome,
+    lifecycleStatus,
+    executedByUserId: params.requestedByUserId,
+    resolutionReasonText: trimOptional(params.reasonText ?? null),
+    metadataJson: caseRecord.metadataJson ?? undefined,
+  });
+  await sendModerationLog({
+    guildId: params.guildId,
+    preferredChannelId: caseRecord.reviewChannelId,
+    content: `Case ${updated.id} ${lifecycleStatus} by <@${params.requestedByUserId}>${trimOptional(params.reasonText ?? null) ? `: ${trimOptional(params.reasonText ?? null)}` : '.'}`,
+  });
+  return {
+    ok: true,
+    action: 'resolve_moderation_case',
+    caseId: updated.id,
+    status: updated.status,
+    lifecycleStatus: updated.lifecycleStatus,
+    resolvedAt: updated.resolvedAt?.toISOString() ?? null,
+  };
+}
+
+export async function addModerationCaseNoteForTool(params: {
+  guildId: string;
+  caseId: string;
+  requestedByUserId: string;
+  noteText: string;
+}): Promise<Record<string, unknown>> {
+  const caseRecord = await getModerationCaseById(params.caseId);
+  if (!caseRecord || caseRecord.guildId !== params.guildId) {
+    throw new Error('Moderation case not found.');
+  }
+  const note = await addModerationCaseNote({
+    caseId: caseRecord.id,
+    guildId: params.guildId,
+    createdByUserId: params.requestedByUserId,
+    noteText: params.noteText,
+  });
+  return {
+    ok: true,
+    action: 'add_moderation_case_note',
+    caseId: caseRecord.id,
+    note: {
+      ...note,
+      createdAt: note.createdAt.toISOString(),
+      updatedAt: note.updatedAt.toISOString(),
+    },
+  };
+}
+
+export async function getModerationMemberHistoryForTool(params: {
+  guildId: string;
+  targetUserId: string;
+  limit?: number;
+}): Promise<Record<string, unknown>> {
+  const cases = await listModerationCasesByGuild({
+    guildId: params.guildId,
+    targetUserId: params.targetUserId,
+    limit: params.limit ?? 25,
+  });
+  return {
+    ok: true,
+    action: 'get_moderation_member_history',
+    guildId: params.guildId,
+    targetUserId: params.targetUserId,
+    strikeCount: cases.filter((entry) => entry.status === 'executed').length,
+    openCaseCount: cases.filter((entry) => entry.lifecycleStatus === 'open' || entry.lifecycleStatus === 'acknowledged').length,
+    items: cases.map((entry) => ({
+      ...entry,
+      createdAt: entry.createdAt.toISOString(),
+      updatedAt: entry.updatedAt.toISOString(),
+      acknowledgedAt: entry.acknowledgedAt?.toISOString() ?? null,
       resolvedAt: entry.resolvedAt?.toISOString() ?? null,
     })),
   };
@@ -864,6 +1049,7 @@ export async function recordNativeAutoModerationExecution(params: {
     policyId: linkedPolicy?.id ?? null,
     source: 'native_automod',
     status: 'executed',
+    lifecycleStatus: 'resolved',
     action: String(params.execution.action.type),
     targetUserId: params.execution.userId,
     sourceMessageId: optionalString(params.execution.messageId) ?? null,

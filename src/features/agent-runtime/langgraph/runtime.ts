@@ -377,6 +377,7 @@ const AgentGraphRuntimeSnapshotSchema = z.object({
   timeoutMs: z.number().optional(),
   maxTokens: z.number().optional(),
   invokedBy: z.enum(['mention', 'reply', 'wakeword', 'autopilot', 'component']).optional(),
+  invokerAuthority: z.enum(['member', 'moderator', 'admin', 'owner']).optional(),
   invokerIsAdmin: z.boolean().optional(),
   invokerCanModerate: z.boolean().optional(),
   activeToolNames: z.array(z.string()),
@@ -411,6 +412,7 @@ const AgentGraphConfigurableSchema = z
     timeoutMs: z.number().optional(),
     maxTokens: z.number().optional(),
     invokedBy: z.enum(['mention', 'reply', 'wakeword', 'autopilot', 'component']).optional(),
+    invokerAuthority: z.enum(['member', 'moderator', 'admin', 'owner']).optional(),
     invokerIsAdmin: z.boolean().optional(),
     invokerCanModerate: z.boolean().optional(),
     activeToolNames: z.array(z.string()).optional(),
@@ -581,6 +583,7 @@ const EMPTY_RUNTIME_CONTEXT: AgentGraphRuntimeContext = {
   timeoutMs: undefined,
   maxTokens: undefined,
   invokedBy: 'mention',
+  invokerAuthority: 'member',
   invokerIsAdmin: undefined,
   activeToolNames: [],
   routeKind: 'single',
@@ -622,6 +625,7 @@ export interface StartAgentGraphTurnParams {
   promptVersion?: string | null;
   promptFingerprint?: string | null;
   invokedBy?: AgentGraphRuntimeContext['invokedBy'];
+  invokerAuthority?: AgentGraphRuntimeContext['invokerAuthority'];
   invokerIsAdmin?: boolean;
   invokerCanModerate?: boolean;
   onStateUpdate?: (state: AgentGraphState) => Promise<void> | void;
@@ -1096,6 +1100,7 @@ function createRuntimeContext(params: StartAgentGraphTurnParams): AgentGraphRunt
     timeoutMs: params.timeoutMs,
     maxTokens: params.maxTokens,
     invokedBy: params.invokedBy,
+    invokerAuthority: params.invokerAuthority,
     invokerIsAdmin: params.invokerIsAdmin,
     invokerCanModerate: params.invokerCanModerate,
     activeToolNames: [...params.activeToolNames],
@@ -1486,6 +1491,7 @@ function buildToolContext(
     channelId: runtimeContext.channelId,
     guildId: runtimeContext.guildId,
     apiKey: runtimeContext.apiKey,
+    invokerAuthority: runtimeContext.invokerAuthority,
     invokerIsAdmin: runtimeContext.invokerIsAdmin,
     invokerCanModerate: runtimeContext.invokerCanModerate,
     invokedBy: runtimeContext.invokedBy,
@@ -1985,6 +1991,7 @@ function buildAssistantTurnMessages(params: {
     activeTools: params.runtimeContext.activeToolNames,
     model: params.runtimeContext.model ?? null,
     invokedBy: params.runtimeContext.invokedBy ?? null,
+    invokerAuthority: params.runtimeContext.invokerAuthority,
     invokerIsAdmin: params.runtimeContext.invokerIsAdmin,
     invokerCanModerate: params.runtimeContext.invokerCanModerate,
     inGuild: params.runtimeContext.guildId !== null,

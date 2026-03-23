@@ -38,7 +38,17 @@ const {
   globalToolRegistryMock: {
     listNames: vi.fn(() => []),
     get: vi.fn(
-      (name: string): { metadata?: { access?: 'public' | 'admin' } } | undefined => {
+      (
+        name: string,
+      ):
+        | {
+            metadata?: { access?: 'public' | 'moderator' | 'admin' | 'owner' };
+            runtime?: {
+              access?: 'public' | 'moderator' | 'admin' | 'owner';
+              capabilityTags?: string[];
+            };
+          }
+        | undefined => {
         void name;
         return undefined;
       },
@@ -485,7 +495,7 @@ describe('agentRuntime', () => {
   });
 
   it('retries a failed turn on the same LangGraph thread', async () => {
-    globalToolRegistryMock.listNames.mockReturnValue(['web', 'repo_search_code', 'discord_messages_search_history'] as never);
+    globalToolRegistryMock.listNames.mockReturnValue(['web', 'repo_search_code', 'discord_history_search_history'] as never);
     globalToolRegistryMock.get.mockImplementation((name: string) => ({
       metadata: { access: 'public' as const },
       runtime: { access: 'public' as const, capabilityTags: name === 'web' ? ['web'] : ['developer'] },
@@ -503,6 +513,7 @@ describe('agentRuntime', () => {
       userId: 'user-1',
       channelId: 'channel-1',
       guildId: 'guild-1',
+      invokerAuthority: 'member',
       retryKind: 'turn',
       isAdmin: false,
       canModerate: false,
@@ -515,7 +526,7 @@ describe('agentRuntime', () => {
         context: expect.objectContaining({
           traceId: 'trace-retry-1',
           routeKind: 'turn_retry',
-          activeToolNames: ['web', 'repo_search_code', 'discord_messages_search_history'],
+          activeToolNames: ['web', 'repo_search_code', 'discord_history_search_history'],
         }),
       }),
     );
@@ -585,6 +596,7 @@ describe('agentRuntime', () => {
       userId: 'user-1',
       channelId: 'channel-1',
       guildId: 'guild-1',
+      invokerAuthority: 'member',
       retryKind: 'background_resume',
       isAdmin: false,
       canModerate: false,
@@ -607,7 +619,7 @@ describe('agentRuntime', () => {
     globalToolRegistryMock.listNames.mockReturnValue([
       'web_search',
       'repo_search_code',
-      'discord_messages_search_history',
+      'discord_history_search_history',
     ] as never);
     globalToolRegistryMock.get.mockImplementation(() => ({
       metadata: { access: 'public' as const },
@@ -662,6 +674,7 @@ describe('agentRuntime', () => {
       userId: 'user-1',
       channelId: 'channel-1',
       guildId: 'guild-1',
+      invokerAuthority: 'member',
       replyToMessageId: 'response-waiting-followup-1',
       userText: 'deep dive this',
       currentTurn: makeCurrentTurn({
@@ -675,7 +688,7 @@ describe('agentRuntime', () => {
     expect(continueAgentGraphTurnMock).toHaveBeenCalledWith(
       expect.objectContaining({
         context: expect.objectContaining({
-          activeToolNames: ['web_search', 'repo_search_code', 'discord_messages_search_history'],
+          activeToolNames: ['web_search', 'repo_search_code', 'discord_history_search_history'],
           promptMode: 'waiting_follow_up',
           waitingFollowUp: {
             matched: true,
@@ -691,7 +704,7 @@ describe('agentRuntime', () => {
   it('does not expose admin-only tools to non-admin turns', async () => {
     globalToolRegistryMock.listNames.mockReturnValue(['web', 'discord_admin'] as never);
     globalToolRegistryMock.get.mockImplementation((name: string) => {
-      const access: 'public' | 'admin' = name === 'discord_admin' ? 'admin' : 'public';
+      const access: 'public' | 'moderator' | 'admin' = name === 'discord_admin' ? 'admin' : 'public';
       return { metadata: { access } };
     });
     runAgentGraphTurnMock.mockResolvedValue(makeGraphResult({ replyText: 'ok' }));
@@ -724,21 +737,21 @@ describe('agentRuntime', () => {
       'web_read',
       'web_read_page',
       'repo_search_code',
-      'discord_messages_search_history',
-      'discord_server_list_channels',
+      'discord_history_search_history',
+      'discord_spaces_list_channels',
       'repo_read_file',
       'image_generate',
       'system_time',
       'system_tool_stats',
     ] as never);
     globalToolRegistryMock.get.mockImplementation((name: string) => {
-      const toolMap: Record<string, { metadata: { access: 'public' | 'admin' }; runtime: { access: 'public' | 'admin'; capabilityTags: string[]; class: string } }> = {
+      const toolMap: Record<string, { metadata: { access: 'public' | 'moderator' | 'admin' | 'owner' }; runtime: { access: 'public' | 'moderator' | 'admin' | 'owner'; capabilityTags: string[]; class: string } }> = {
         web_search: { metadata: { access: 'public' }, runtime: { access: 'public', capabilityTags: ['web', 'search'], class: 'query' } },
         web_read: { metadata: { access: 'public' }, runtime: { access: 'public', capabilityTags: ['web', 'read'], class: 'query' } },
         web_read_page: { metadata: { access: 'public' }, runtime: { access: 'public', capabilityTags: ['web', 'read', 'paging'], class: 'query' } },
         repo_search_code: { metadata: { access: 'public' }, runtime: { access: 'public', capabilityTags: ['repo', 'developer'], class: 'query' } },
-        discord_messages_search_history: { metadata: { access: 'public' }, runtime: { access: 'public', capabilityTags: ['discord', 'messages'], class: 'query' } },
-        discord_server_list_channels: { metadata: { access: 'public' }, runtime: { access: 'public', capabilityTags: ['discord', 'server'], class: 'query' } },
+        discord_history_search_history: { metadata: { access: 'public' }, runtime: { access: 'public', capabilityTags: ['discord', 'messages'], class: 'query' } },
+        discord_spaces_list_channels: { metadata: { access: 'public' }, runtime: { access: 'public', capabilityTags: ['discord', 'server'], class: 'query' } },
         repo_read_file: { metadata: { access: 'public' }, runtime: { access: 'public', capabilityTags: ['repo', 'developer', 'code'], class: 'query' } },
         image_generate: { metadata: { access: 'public' }, runtime: { access: 'public', capabilityTags: ['generation', 'image'], class: 'artifact' } },
         system_time: { metadata: { access: 'public' }, runtime: { access: 'public', capabilityTags: ['system', 'time'], class: 'query' } },
@@ -769,8 +782,8 @@ describe('agentRuntime', () => {
       'web_read',
       'web_read_page',
       'repo_search_code',
-      'discord_messages_search_history',
-      'discord_server_list_channels',
+      'discord_history_search_history',
+      'discord_spaces_list_channels',
       'repo_read_file',
       'image_generate',
       'system_time',
@@ -779,14 +792,15 @@ describe('agentRuntime', () => {
   });
 
   it('exposes discord_admin to moderator-only turns for moderation workflows', async () => {
-    globalToolRegistryMock.listNames.mockReturnValue(['web', 'discord_admin_submit_moderation'] as never);
+    globalToolRegistryMock.listNames.mockReturnValue(['web', 'discord_moderation_submit_action'] as never);
     globalToolRegistryMock.get.mockImplementation((name: string) => {
-      const access: 'public' | 'admin' = name === 'discord_admin_submit_moderation' ? 'admin' : 'public';
+      const access: 'public' | 'moderator' | 'admin' =
+        name === 'discord_moderation_submit_action' ? 'moderator' : 'public';
       return {
         metadata: { access },
         runtime: {
           access,
-          capabilityTags: name === 'discord_admin_submit_moderation' ? ['moderation'] : [],
+          capabilityTags: name === 'discord_moderation_submit_action' ? ['moderation'] : [],
         },
       };
     });
@@ -810,7 +824,7 @@ describe('agentRuntime', () => {
 
     expect(runAgentGraphTurnMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        activeToolNames: ['web', 'discord_admin_submit_moderation'],
+        activeToolNames: ['web', 'discord_moderation_submit_action'],
         invokerCanModerate: true,
       }),
     );
@@ -819,7 +833,7 @@ describe('agentRuntime', () => {
   it('does not expose admin-only tools during autopilot turns even for admins', async () => {
     globalToolRegistryMock.listNames.mockReturnValue(['web', 'discord_admin'] as never);
     globalToolRegistryMock.get.mockImplementation((name: string) => {
-      const access: 'public' | 'admin' = name === 'discord_admin' ? 'admin' : 'public';
+      const access: 'public' | 'moderator' | 'admin' = name === 'discord_admin' ? 'admin' : 'public';
       return { metadata: { access } };
     });
     runAgentGraphTurnMock.mockResolvedValue(makeGraphResult({ replyText: 'ok' }));
@@ -843,6 +857,60 @@ describe('agentRuntime', () => {
     expect(runAgentGraphTurnMock).toHaveBeenCalledWith(
       expect.objectContaining({
         activeToolNames: ['web'],
+      }),
+    );
+  });
+
+  it('keeps artifact writes and structural thread writes out of member turns', async () => {
+    globalToolRegistryMock.listNames.mockReturnValue([
+      'discord_artifact_list',
+      'discord_artifact_replace',
+      'discord_artifact_publish',
+      'discord_spaces_list_channels',
+      'discord_spaces_create_thread',
+      'discord_spaces_add_thread_member',
+    ] as never);
+    globalToolRegistryMock.get.mockImplementation((name: string) => {
+      const accessByName: Record<string, 'public' | 'moderator' | 'admin' | 'owner'> = {
+        discord_artifact_list: 'public',
+        discord_artifact_replace: 'admin',
+        discord_artifact_publish: 'admin',
+        discord_spaces_list_channels: 'public',
+        discord_spaces_create_thread: 'admin',
+        discord_spaces_add_thread_member: 'admin',
+      };
+      const access = accessByName[name] ?? 'public';
+      return {
+        metadata: { access },
+        runtime: {
+          access,
+          capabilityTags: ['discord'],
+          class: access === 'public' ? 'query' : 'mutation',
+        },
+      };
+    });
+    runAgentGraphTurnMock.mockResolvedValue(makeGraphResult({ replyText: 'ok' }));
+
+    await runChatTurn({
+      traceId: 'trace-discord-authority-1',
+      userId: 'user-1',
+      channelId: 'channel-1',
+      guildId: 'guild-1',
+      messageId: 'message-discord-authority-1',
+      userText: 'look up the artifact inventory and open a thread',
+      userProfileSummary: null,
+      currentTurn: makeCurrentTurn({
+        messageId: 'message-discord-authority-1',
+      }),
+      invokedBy: 'mention',
+      isAdmin: false,
+      canModerate: false,
+      invokerAuthority: 'member',
+    });
+
+    expect(runAgentGraphTurnMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        activeToolNames: ['discord_artifact_list', 'discord_spaces_list_channels'],
       }),
     );
   });
@@ -1173,9 +1241,14 @@ describe('agentRuntime', () => {
 
   it('rehydrates current runtime policy and credentials when resuming background work', async () => {
     const now = Date.now();
-    globalToolRegistryMock.listNames.mockReturnValue(['discord_messages', 'discord_admin'] as never);
+    globalToolRegistryMock.listNames.mockReturnValue([
+      'discord_history_search_history',
+      'discord_governance_get_review_status',
+    ] as never);
     globalToolRegistryMock.get.mockImplementation((name: string) =>
-      name === 'discord_admin' ? ({ metadata: { access: 'admin' } } as never) : ({ metadata: { access: 'public' } } as never),
+      name === 'discord_governance_get_review_status'
+        ? ({ metadata: { access: 'admin' } } as never)
+        : ({ metadata: { access: 'public' } } as never),
     );
     getAgentTaskRunByThreadIdMock.mockResolvedValue({
       id: 'task-2',
@@ -1227,6 +1300,7 @@ describe('agentRuntime', () => {
       userId: 'user-1',
       channelId: 'channel-1',
       guildId: 'guild-1',
+      invokerAuthority: 'admin',
       isAdmin: true,
     });
 
@@ -1247,7 +1321,7 @@ describe('agentRuntime', () => {
           invokedBy: 'component',
           invokerIsAdmin: true,
           routeKind: 'background_resume',
-          activeToolNames: ['discord_messages', 'discord_admin'],
+          activeToolNames: ['discord_history_search_history', 'discord_governance_get_review_status'],
         }),
       }),
     );
@@ -1371,6 +1445,7 @@ describe('agentRuntime', () => {
       userId: 'user-1',
       channelId: 'channel-1',
       guildId: 'guild-1',
+      invokerAuthority: 'admin',
       isAdmin: true,
     });
 
@@ -1431,6 +1506,7 @@ describe('agentRuntime', () => {
       userId: 'user-1',
       channelId: 'channel-1',
       guildId: 'guild-1',
+      invokerAuthority: 'admin',
       isAdmin: true,
     });
 
@@ -1488,6 +1564,7 @@ describe('agentRuntime', () => {
       userId: 'user-1',
       channelId: 'channel-1',
       guildId: 'guild-1',
+      invokerAuthority: 'admin',
       isAdmin: true,
     });
 
@@ -1549,6 +1626,7 @@ describe('agentRuntime', () => {
       userId: 'user-1',
       channelId: 'channel-1',
       guildId: 'guild-1',
+      invokerAuthority: 'admin',
       replyToMessageId: 'response-waiting-1',
       userText: 'Check the Sage repo first.',
       currentTurn: makeCurrentTurn({
@@ -1668,6 +1746,7 @@ describe('agentRuntime', () => {
       userId: 'user-1',
       channelId: 'channel-1',
       guildId: 'guild-1',
+      invokerAuthority: 'admin',
       replyToMessageId: 'response-waiting-1b',
       userText: 'Check the Sage repo first.',
       currentTurn: makeCurrentTurn({
@@ -1701,6 +1780,7 @@ describe('agentRuntime', () => {
       userId: 'user-1',
       channelId: 'channel-1',
       guildId: 'guild-1',
+      invokerAuthority: 'member',
       replyToMessageId: null,
       userText: 'Proceed',
       currentTurn: makeCurrentTurn({
@@ -1760,6 +1840,7 @@ describe('agentRuntime', () => {
       userId: 'user-1',
       channelId: 'channel-1',
       guildId: 'guild-1',
+      invokerAuthority: 'admin',
       replyToMessageId: 'response-waiting-2',
       userText: 'Check the Sage repo first.',
       currentTurn: makeCurrentTurn({
@@ -1854,6 +1935,7 @@ describe('agentRuntime', () => {
       userId: 'user-1',
       channelId: 'channel-1',
       guildId: 'guild-1',
+      invokerAuthority: 'admin',
       isAdmin: true,
     });
 
@@ -1952,6 +2034,7 @@ describe('agentRuntime', () => {
       userId: 'user-1',
       channelId: 'channel-1',
       guildId: 'guild-1',
+      invokerAuthority: 'admin',
       userText: 'Stop and switch to docs first.',
       currentTurn: makeCurrentTurn({
         messageId: 'message-terminal-race-1',
@@ -2058,6 +2141,7 @@ describe('agentRuntime', () => {
       userId: 'user-1',
       channelId: 'channel-1',
       guildId: 'guild-1',
+      invokerAuthority: 'admin',
       userText: 'Use the docs repo.',
       currentTurn: makeCurrentTurn({
         messageId: 'message-terminal-race-invalid-1',
@@ -2196,6 +2280,7 @@ describe('agentRuntime', () => {
       userId: 'user-1',
       channelId: 'channel-1',
       guildId: 'guild-1',
+      invokerAuthority: 'admin',
       isAdmin: true,
     });
 

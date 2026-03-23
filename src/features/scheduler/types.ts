@@ -1,5 +1,5 @@
 export type ScheduledTaskKind = 'reminder_message' | 'agent_run';
-export type ScheduledTaskStatus = 'active' | 'disabled' | 'cancelled';
+export type ScheduledTaskStatus = 'active' | 'paused' | 'cancelled';
 export type ScheduledTaskRunStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
 
 export interface ReminderMessagePayload {
@@ -28,6 +28,7 @@ export interface ScheduledTaskRecord {
   cronExpr: string | null;
   runAt: Date | null;
   nextRunAt: Date | null;
+  skipUntil: Date | null;
   lastRunAt: Date | null;
   lastSuccessAt: Date | null;
   leaseOwner: string | null;
@@ -56,6 +57,7 @@ export interface ScheduledTaskRunRecord {
 export interface ScheduledTaskRuntimeDiagnostic {
   ready: boolean;
   activeTasks: number;
+  pausedTasks: number;
   leasedTasks: number;
   dueTasks: number;
 }

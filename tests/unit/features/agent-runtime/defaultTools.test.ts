@@ -12,10 +12,10 @@ describe('default agentic tools', () => {
     const names = registry.listNames();
     expect(names).toEqual(expect.arrayContaining([
       'discord_context_get_channel_summary',
-      'discord_messages_search_history',
-      'discord_files_read_attachment',
-      'discord_server_list_channels',
-      'discord_admin_create_role',
+      'discord_history_search_history',
+      'discord_artifact_read_attachment',
+      'discord_spaces_list_channels',
+      'discord_spaces_create_role',
       'discord_voice_get_status',
       'web_search',
       'image_generate',
@@ -33,7 +33,7 @@ describe('default agentic tools', () => {
     const registry = new ToolRegistry();
     await registerDefaultAgenticTools(registry);
 
-    const adminTool = registry.get('discord_admin_create_role');
+    const adminTool = registry.get('discord_spaces_create_role');
     expect(adminTool?.runtime.access).toBe('admin');
   });
 
@@ -71,7 +71,7 @@ describe('default agentic tools', () => {
 
     const result = await registry.executeValidated(
       {
-        name: 'discord_messages_create_poll',
+        name: 'discord_spaces_create_poll',
         args: {
           action: 'create_poll',
           question: 'Hello from autopilot',
@@ -99,7 +99,7 @@ describe('default agentic tools', () => {
 
     const result = await registry.executeValidated(
       {
-        name: 'discord_admin_submit_moderation',
+        name: 'discord_moderation_submit_action',
         args: {
           action: 'submit_moderation',
           request: {
@@ -130,7 +130,7 @@ describe('default agentic tools', () => {
 
     const result = await registry.executeValidated(
       {
-        name: 'discord_admin_update_server_instructions',
+        name: 'discord_governance_update_server_instructions',
         args: {
           action: 'update_server_instructions',
           request: {

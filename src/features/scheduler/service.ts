@@ -1,12 +1,6 @@
 import { client } from '../../platform/discord/client';
-import { logger } from '../../platform/logging/logger';
-import type { CurrentTurnContext } from '../agent-runtime/continuityContext';
-import type { GraphResponseSession } from '../agent-runtime/langgraph/types';
-import {
-  reconcileResponseSessionChunks,
-  type ResponseSessionChannel,
-  type ResponseSessionEditableMessage,
-} from '../discord/responseSessionChunkDelivery';
+import type { DiscordAuthorityTier } from '../../platform/discord/admin-permissions';
+import type { ResponseSessionEditableMessage } from '../discord/responseSessionChunkDelivery';
 import { getGuildTimezone, setGuildTimezone } from '../settings/guildSettingsRepo';
 import {
   assertValidTimezone,
@@ -24,6 +18,7 @@ import {
   listScheduledTasksByGuild,
   markScheduledTaskRunStart,
   upsertScheduledTask,
+  updateScheduledTaskState,
 } from './scheduledTaskRepo';
 import type {
   AgentRunPayload,
@@ -50,6 +45,34 @@ let lastSchedulerDiagnosticSnapshot: ScheduledTaskRuntimeDiagnostic | null = nul
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+function readScheduledInvokerAuthority(value: unknown): DiscordAuthorityTier | null {
+  return value === 'member' || value === 'moderator' || value === 'admin' || value === 'owner'
+    ? value
+    : null;
+}
+
+function readScheduledTaskAuthority(provenanceJson: Record<string, unknown> | null | undefined): {
+  invokerAuthority: DiscordAuthorityTier;
+  isAdmin: boolean;
+  canModerate: boolean;
+} {
+  const invokerAuthority = readScheduledInvokerAuthority(provenanceJson?.invokerAuthority) ?? 'admin';
+  const isAdmin =
+    typeof provenanceJson?.isAdmin === 'boolean'
+      ? provenanceJson.isAdmin
+      : invokerAuthority === 'admin' || invokerAuthority === 'owner';
+  const canModerate =
+    typeof provenanceJson?.canModerate === 'boolean'
+      ? provenanceJson.canModerate
+      : invokerAuthority !== 'member';
+
+  return {
+    invokerAuthority,
+    isAdmin,
+    canModerate,
+  };
 }
 
 async function fetchTextChannel(channelId: string, expectedGuildId?: string): Promise<SendableGuildChannel> {
@@ -120,6 +143,9 @@ async function resolveTaskTimezone(params: {
 export async function upsertScheduledTaskForTool(params: {
   guildId: string;
   requestedByUserId: string;
+  invokerAuthority: DiscordAuthorityTier;
+  isAdmin: boolean;
+  canModerate: boolean;
   taskId?: string;
   kind: ScheduledTaskKind;
   channelId: string;
@@ -156,16 +182,20 @@ export async function upsertScheduledTaskForTool(params: {
     guildId: params.guildId,
     channelId: params.channelId,
     createdByUserId: params.requestedByUserId,
-    kind: params.kind,
-    status: 'active',
-    timezone: timezoneResolution.timezone,
-    cronExpr: params.cronExpr ?? null,
-    runAt,
-    nextRunAt,
-    payloadJson: params.payload,
+      kind: params.kind,
+      status: 'active',
+      timezone: timezoneResolution.timezone,
+      cronExpr: params.cronExpr ?? null,
+      runAt,
+      nextRunAt,
+      skipUntil: null,
+      payloadJson: params.payload,
     provenanceJson: {
-      source: 'discord_admin_tool',
+      source: 'discord_schedule_tool',
       requestedByUserId: params.requestedByUserId,
+      invokerAuthority: params.invokerAuthority,
+      isAdmin: params.isAdmin,
+      canModerate: params.canModerate,
     },
   });
 
@@ -184,6 +214,7 @@ export async function upsertScheduledTaskForTool(params: {
       cronExpr: task.cronExpr,
       runAt: task.runAt?.toISOString() ?? null,
       nextRunAt: task.nextRunAt?.toISOString() ?? null,
+      skipUntil: task.skipUntil?.toISOString() ?? null,
       channelId: task.channelId,
     },
   };
@@ -222,6 +253,7 @@ export async function listScheduledTasksForTool(params: {
       cronExpr: task.cronExpr,
       runAt: task.runAt?.toISOString() ?? null,
       nextRunAt: task.nextRunAt?.toISOString() ?? null,
+      skipUntil: task.skipUntil?.toISOString() ?? null,
       lastRunAt: task.lastRunAt?.toISOString() ?? null,
       lastSuccessAt: task.lastSuccessAt?.toISOString() ?? null,
       channelId: task.channelId,
@@ -250,6 +282,7 @@ export async function getScheduledTaskForTool(params: {
       ...task,
       runAt: task.runAt?.toISOString() ?? null,
       nextRunAt: task.nextRunAt?.toISOString() ?? null,
+      skipUntil: task.skipUntil?.toISOString() ?? null,
       lastRunAt: task.lastRunAt?.toISOString() ?? null,
       lastSuccessAt: task.lastSuccessAt?.toISOString() ?? null,
       leaseExpiresAt: task.leaseExpiresAt?.toISOString() ?? null,
@@ -265,6 +298,134 @@ export async function getScheduledTaskForTool(params: {
       updatedAt: run.updatedAt.toISOString(),
     })),
   };
+}
+
+async function requireGuildTask(params: { guildId: string; taskId: string }): Promise<ScheduledTaskRecordType> {
+  const task = await getScheduledTaskById(params.taskId);
+  if (!task || task.guildId !== params.guildId) {
+    throw new Error('Scheduled task not found.');
+  }
+  return task;
+}
+
+export async function pauseScheduledTaskForTool(params: {
+  guildId: string;
+  taskId: string;
+}): Promise<Record<string, unknown>> {
+  const task = await requireGuildTask(params);
+  const updated = await updateScheduledTaskState({
+    id: task.id,
+    status: 'paused',
+  });
+  return {
+    ok: true,
+    action: 'pause_scheduled_task',
+    taskId: updated.id,
+    status: updated.status,
+  };
+}
+
+export async function resumeScheduledTaskForTool(params: {
+  guildId: string;
+  taskId: string;
+}): Promise<Record<string, unknown>> {
+  const task = await requireGuildTask(params);
+  const baseTime = task.nextRunAt ?? task.runAt;
+  const nextRunAt =
+    task.cronExpr
+      ? computeNextRecurringRun({
+          cronExpr: task.cronExpr,
+          timezone: task.timezone,
+          from: baseTime ?? new Date(),
+        })
+      : baseTime;
+  const updated = await updateScheduledTaskState({
+    id: task.id,
+    status: 'active',
+    nextRunAt,
+    skipUntil: null,
+  });
+  return {
+    ok: true,
+    action: 'resume_scheduled_task',
+    taskId: updated.id,
+    status: updated.status,
+    nextRunAt: updated.nextRunAt?.toISOString() ?? null,
+  };
+}
+
+export async function runScheduledTaskNowForTool(params: {
+  guildId: string;
+  taskId: string;
+}): Promise<Record<string, unknown>> {
+  const task = await requireGuildTask(params);
+  const now = new Date();
+  const updated = await updateScheduledTaskState({
+    id: task.id,
+    status: 'active',
+    nextRunAt: now,
+    skipUntil: null,
+  });
+  return {
+    ok: true,
+    action: 'run_scheduled_task_now',
+    taskId: updated.id,
+    status: updated.status,
+    nextRunAt: updated.nextRunAt?.toISOString() ?? null,
+  };
+}
+
+export async function skipScheduledTaskNextRunForTool(params: {
+  guildId: string;
+  taskId: string;
+}): Promise<Record<string, unknown>> {
+  const task = await requireGuildTask(params);
+  if (!task.cronExpr) {
+    throw new Error('skip_next is only available for recurring scheduled tasks.');
+  }
+  const from = task.nextRunAt ?? task.runAt ?? new Date();
+  const nextRunAt = computeNextRecurringRun({
+    cronExpr: task.cronExpr,
+    timezone: task.timezone,
+    from,
+  });
+  const updated = await updateScheduledTaskState({
+    id: task.id,
+    nextRunAt,
+    skipUntil: nextRunAt,
+  });
+  return {
+    ok: true,
+    action: 'skip_scheduled_task_next_run',
+    taskId: updated.id,
+    nextRunAt: updated.nextRunAt?.toISOString() ?? null,
+  };
+}
+
+export async function cloneScheduledTaskForTool(params: {
+  guildId: string;
+  requestedByUserId: string;
+  invokerAuthority: DiscordAuthorityTier;
+  isAdmin: boolean;
+  canModerate: boolean;
+  taskId: string;
+  channelId?: string;
+  timezone?: string;
+}): Promise<Record<string, unknown>> {
+  const task = await requireGuildTask(params);
+  return upsertScheduledTaskForTool({
+    guildId: params.guildId,
+    requestedByUserId: params.requestedByUserId,
+    invokerAuthority: params.invokerAuthority,
+    isAdmin: params.isAdmin,
+    canModerate: params.canModerate,
+    kind: task.kind,
+    channelId: params.channelId?.trim() || task.channelId,
+    timezone: params.timezone?.trim() || task.timezone,
+    cronExpr: task.cronExpr,
+    runAtIso: task.runAt?.toISOString() ?? null,
+    payload: task.payloadJson,
+  });
 }
 
 async function executeReminderTask(task: ScheduledTaskRecordType): Promise<Record<string, unknown>> {
@@ -291,142 +452,53 @@ async function executeReminderTask(task: ScheduledTaskRecordType): Promise<Recor
 }
 
 async function executeAgentRunTask(task: ScheduledTaskRecordType, scheduledRun: ScheduledTaskRunRecord): Promise<Record<string, unknown>> {
-  const { generateChatReply } = await import('../chat/chat-engine');
-  const { attachTaskRunResponseSession } = await import('../agent-runtime/agentRuntime');
+  const { createAgentTaskRun } = await import('../agent-runtime/agentTaskRunRepo');
   const payload = readAgentRunPayload(task.payloadJson);
+  const authority = readScheduledTaskAuthority(task.provenanceJson);
   const traceId = `scheduled:${task.id}:${scheduledRun.id}`;
-  const channel = await fetchTextChannel(task.channelId, task.guildId);
-  let responseMessage: ResponseSessionEditableMessage | null = null;
-  let overflowMessages: ResponseSessionEditableMessage[] = [];
-  let overflowMessageIds: string[] = [];
-  let latestText = '';
-  let latestRevision = -1;
 
-  const currentTurn: CurrentTurnContext = {
-    invokerUserId: task.createdByUserId,
-    invokerDisplayName: 'Scheduler',
-    messageId: traceId,
+  await createAgentTaskRun({
+    threadId: traceId,
+    originTraceId: traceId,
+    latestTraceId: traceId,
     guildId: task.guildId,
     channelId: task.channelId,
-    invokedBy: 'component',
-    mentionedUserIds: payload.mentionedUserIds ?? [],
-    isDirectReply: false,
-    replyTargetMessageId: null,
-    replyTargetAuthorId: null,
-    botUserId: client.user?.id ?? null,
-  };
-
-  const onResponseSessionUpdate = async (update: {
-    replyText: string;
-    responseSession: GraphResponseSession;
-  }) => {
-    if (update.responseSession.draftRevision <= latestRevision) {
-      return;
-    }
-    const draft = (update.responseSession.latestText || update.replyText || '').trim();
-    if (!draft || draft === latestText) {
-      latestRevision = update.responseSession.draftRevision;
-      return;
-    }
-
-    const reconciled = await reconcileResponseSessionChunks({
-      channel: channel as unknown as ResponseSessionChannel,
-      nextText: draft,
-      state: {
-        primaryMessage: responseMessage,
-        replyAnchor: null,
-        overflowMessageIds,
-        overflowMessages,
-      },
-      allowedMentions: { repliedUser: false },
-    });
-    responseMessage = reconciled.primaryMessage;
-    overflowMessageIds = reconciled.overflowMessageIds;
-    overflowMessages = reconciled.overflowMessages;
-    latestText = draft;
-    latestRevision = update.responseSession.draftRevision;
-
-    await attachTaskRunResponseSession({
-      threadId: traceId,
-      requestedByUserId: task.createdByUserId,
-      channelId: task.channelId,
-      guildId: task.guildId,
+    requestedByUserId: task.createdByUserId,
+    sourceMessageId: traceId,
+    responseMessageId: null,
+    status: 'running',
+    latestDraftText: '',
+    draftRevision: 0,
+    completionKind: null,
+    stopReason: null,
+    nextRunnableAt: new Date(),
+    responseSessionJson: {
       sourceMessageId: traceId,
-      responseMessageId: responseMessage.id,
-      responseSession: {
-        ...update.responseSession,
-        sourceMessageId: traceId,
-        responseMessageId: responseMessage.id,
-        overflowMessageIds,
-        surfaceAttached: true,
-      },
-    }).catch((error) => {
-      logger.warn({ error, threadId: traceId, taskId: task.id }, 'Failed to persist scheduled agent-run response session');
-    });
-  };
-
-  const result = await generateChatReply({
-    traceId,
-    userId: task.createdByUserId,
-    channelId: task.channelId,
-    guildId: task.guildId,
-    messageId: traceId,
-    userText: payload.prompt,
-    currentTurn,
-    mentionedUserIds: payload.mentionedUserIds ?? [],
-    invokedBy: 'component',
-    isAdmin: false,
-    canModerate: false,
-    onResponseSessionUpdate: async (update) => {
-      await onResponseSessionUpdate({
-        replyText: update.replyText,
-        responseSession: update.responseSession,
-      });
+      responseMessageId: null,
+      overflowMessageIds: [],
+      surfaceAttached: false,
+      latestText: '',
+      draftRevision: 0,
+      status: 'draft',
+    },
+    checkpointMetadataJson: {
+      trigger: 'scheduled_agent_run',
+      scheduledTaskId: task.id,
+      scheduledTaskRunId: scheduledRun.id,
+      bootstrapPrompt: payload.prompt,
+      bootstrapMentionedUserIds: payload.mentionedUserIds ?? [],
+      invokerAuthority: authority.invokerAuthority,
+      isAdmin: authority.isAdmin,
+      canModerate: authority.canModerate,
     },
   });
 
-  const finalText = result.replyText.trim();
-  if (finalText && finalText !== latestText) {
-    const reconciled = await reconcileResponseSessionChunks({
-      channel: channel as unknown as ResponseSessionChannel,
-      nextText: finalText,
-      state: {
-        primaryMessage: responseMessage,
-        replyAnchor: null,
-        overflowMessageIds,
-        overflowMessages,
-      },
-      allowedMentions: { repliedUser: false },
-    });
-    responseMessage = reconciled.primaryMessage;
-    overflowMessageIds = reconciled.overflowMessageIds;
-    overflowMessages = reconciled.overflowMessages;
-    latestText = finalText;
-    await attachTaskRunResponseSession({
-      threadId: traceId,
-      requestedByUserId: task.createdByUserId,
-      channelId: task.channelId,
-      guildId: task.guildId,
-      sourceMessageId: traceId,
-      responseMessageId: responseMessage.id,
-      responseSession: result.responseSession
-        ? {
-            ...result.responseSession,
-            sourceMessageId: traceId,
-            responseMessageId: responseMessage.id,
-            overflowMessageIds,
-            surfaceAttached: true,
-          }
-        : undefined,
-    }).catch(() => undefined);
-  }
-
   return {
     kind: 'agent_run',
-    status: 'completed',
-    delivery: result.delivery,
-    responseMessageId: responseMessage?.id ?? null,
-    completionKind: result.meta?.kind ?? null,
+    status: 'queued',
+    taskRunThreadId: traceId,
+    scheduledTaskId: task.id,
+    scheduledTaskRunId: scheduledRun.id,
   };
 }
 
@@ -503,18 +575,21 @@ export async function executeScheduledTask(task: ScheduledTaskRecordType): Promi
 export async function getScheduledTaskRuntimeDiagnostics(): Promise<ScheduledTaskRuntimeDiagnostic> {
   const guildIds = client.guilds.cache.map((guild) => guild.id);
   let activeTasks = 0;
+  let pausedTasks = 0;
   let leasedTasks = 0;
   let dueTasks = 0;
   const now = Date.now();
   for (const guildId of guildIds) {
     const tasks = await listScheduledTasksByGuild(guildId).catch(() => []);
     activeTasks += tasks.filter((task) => task.status === 'active').length;
+    pausedTasks += tasks.filter((task) => task.status === 'paused').length;
     leasedTasks += tasks.filter((task) => task.leaseExpiresAt && task.leaseExpiresAt.getTime() > now).length;
     dueTasks += tasks.filter((task) => task.status === 'active' && task.nextRunAt && task.nextRunAt.getTime() <= now).length;
   }
   const diagnostic: ScheduledTaskRuntimeDiagnostic = {
     ready: true,
     activeTasks,
+    pausedTasks,
     leasedTasks,
     dueTasks,
   };

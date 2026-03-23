@@ -319,6 +319,7 @@ async function main(): Promise<void> {
     channelId: 'interrupt-smoke-channel',
     guildId: 'interrupt-smoke-guild',
     userText: 'stop',
+    invokerAuthority: 'admin',
     userContent: 'stop',
     currentTurn: {
       ...buildSmokeTurn({

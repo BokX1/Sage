@@ -9,6 +9,7 @@ const consumeActiveInteractiveSessionMock = vi.hoisted(() => vi.fn());
 const createInteractiveButtonSessionMock = vi.hoisted(() => vi.fn(async () => 'sage:ui:continue-1'));
 const isAdminFromMemberMock = vi.hoisted(() => vi.fn(() => true));
 const isModeratorFromMemberMock = vi.hoisted(() => vi.fn(() => true));
+const resolveAuthorityTierFromMemberMock = vi.hoisted(() => vi.fn(() => 'admin'));
 const buildGuildApiKeyMissingResponseMock = vi.hoisted(() =>
   vi.fn(() => ({
     flags: 32768,
@@ -56,6 +57,7 @@ vi.mock('@/shared/text/message-splitter', () => ({
 vi.mock('@/platform/discord/admin-permissions', () => ({
   isAdminFromMember: isAdminFromMemberMock,
   isModeratorFromMember: isModeratorFromMemberMock,
+  resolveAuthorityTierFromMember: resolveAuthorityTierFromMemberMock,
 }));
 
 vi.mock('@/platform/discord/client', () => ({
@@ -71,6 +73,7 @@ describe('interactiveSage delivery', () => {
     vi.clearAllMocks();
     isAdminFromMemberMock.mockReturnValue(true);
     isModeratorFromMemberMock.mockReturnValue(true);
+    resolveAuthorityTierFromMemberMock.mockReturnValue('admin');
     consumeActiveInteractiveSessionMock.mockResolvedValue(true);
   });
 
@@ -454,6 +457,7 @@ describe('interactiveSage delivery', () => {
       channelId: 'channel-1',
       guildId: 'guild-1',
       retryKind: 'turn',
+      invokerAuthority: 'admin',
       isAdmin: true,
       canModerate: true,
     });

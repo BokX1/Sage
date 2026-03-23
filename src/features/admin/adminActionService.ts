@@ -365,8 +365,29 @@ export type DiscordRestWriteRequest = {
 };
 
 type DiscordRestWritePendingPayload = {
-  request: DiscordRestWriteRequest;
+  request?: DiscordRestWriteRequest;
+  requests?: DiscordRestWriteRequest[];
 };
+
+function readPendingDiscordRestWriteRequests(payload: unknown): DiscordRestWriteRequest[] {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    throw new Error('Approval review REST write payload is invalid or unreadable.');
+  }
+  const record = payload as { request?: unknown; requests?: unknown };
+  if (Array.isArray(record.requests)) {
+    const requests = record.requests.filter(
+      (value): value is DiscordRestWriteRequest => !!value && typeof value === 'object' && !Array.isArray(value),
+    );
+    if (requests.length === 0) {
+      throw new Error('Approval review REST write payload is missing requests.');
+    }
+    return requests;
+  }
+  if (record.request && typeof record.request === 'object' && !Array.isArray(record.request)) {
+    return [record.request as DiscordRestWriteRequest];
+  }
+  throw new Error('Approval review REST write payload is missing requests.');
+}
 
 function hashForAudit(value: string): string {
   return crypto.createHash('sha256').update(value).digest('hex');
@@ -1224,7 +1245,7 @@ export function resolveModerationActionChannelId(params: {
       sourceChannelId: params.sourceChannelId,
       rawChannelId: params.request.channelId,
       rawMessageIds: params.request.messageIds,
-      usage: 'discord_admin_submit_moderation (bulk_delete_messages)',
+      usage: 'discord_moderation_submit_action (bulk_delete_messages)',
     }).channelId;
   }
 
@@ -1244,7 +1265,7 @@ export function resolveModerationActionChannelId(params: {
       rawMessageId: params.request.messageId,
       rawChannelId: params.request.channelId,
       replyTarget: params.replyTarget,
-      usage: `discord_admin_submit_moderation (${params.request.action})`,
+      usage: `discord_moderation_submit_action (${params.request.action})`,
     }).channelId;
   }
 
@@ -1333,7 +1354,7 @@ async function prepareMessageModerationEnvelope(
       sourceChannelId: params.sourceChannelId,
       rawChannelId: request.channelId,
       rawMessageIds: request.messageIds,
-      usage: 'discord_admin_submit_moderation (bulk_delete_messages)',
+      usage: 'discord_moderation_submit_action (bulk_delete_messages)',
     });
     const channel = await fetchGuildChannel(params.guildId, resolvedTargets.channelId);
     const botChannelPermissions = botMember.permissionsIn(channel);
@@ -1415,7 +1436,7 @@ async function prepareMessageModerationEnvelope(
         guildId: params.guildId,
         rawUserId: request.authorUserId,
         replyTarget: params.replyTarget,
-        usage: 'discord_admin_submit_moderation (purge_recent_messages authorUserId)',
+        usage: 'discord_moderation_submit_action (purge_recent_messages authorUserId)',
         allowReplyTargetInference: false,
       });
       authorUserId = resolvedUser.userId;
@@ -1529,7 +1550,7 @@ async function prepareMessageModerationEnvelope(
     rawMessageId: 'messageId' in request ? request.messageId : undefined,
     rawChannelId: 'channelId' in request ? request.channelId : undefined,
     replyTarget: params.replyTarget,
-    usage: `discord_admin_submit_moderation (${request.action})`,
+    usage: `discord_moderation_submit_action (${request.action})`,
   });
   const channel = await fetchGuildChannel(params.guildId, target.channelId);
   const botChannelPermissions = botMember.permissionsIn(channel);
@@ -1613,7 +1634,7 @@ async function prepareMessageModerationEnvelope(
     guildId: params.guildId,
     rawUserId: request.userId,
     replyTarget: params.replyTarget,
-    usage: 'discord_admin_submit_moderation (remove_user_reaction)',
+    usage: 'discord_moderation_submit_action (remove_user_reaction)',
     allowReplyTargetInference: false,
   });
 
@@ -1695,7 +1716,7 @@ async function prepareMemberModerationEnvelope(
     guildId: params.guildId,
     rawUserId: request.userId,
     replyTarget: params.replyTarget,
-    usage: `discord_admin_submit_moderation (${request.action})`,
+    usage: `discord_moderation_submit_action (${request.action})`,
   });
   const { guild, botMember } = await fetchGuildAndBotMember(params.guildId);
   const botRequirements = moderationBotPermissionsForAction(request.action);
@@ -1741,7 +1762,7 @@ async function prepareMemberModerationEnvelope(
     const replyTarget = assertReplyTargetInGuild({
       guildId: params.guildId,
       replyTarget: params.replyTarget,
-    usage: `discord_admin_submit_moderation (${params.request.action})`,
+    usage: `discord_moderation_submit_action (${params.request.action})`,
     });
     const replyPreview = extractReplyTargetPreview(replyTarget);
     evidence = {
@@ -3502,41 +3523,59 @@ async function executePendingAction(params: {
   }
 
   if (params.action.kind === 'discord_rest_write') {
-    const payload = params.action.executionPayloadJson as DiscordRestWritePendingPayload;
-    const request = payload.request;
-    const auditReasonBase = request.reason?.trim() || `${request.method} ${request.path}`;
-    const auditReason = withAuditReason(
-      auditReasonBase,
-      params.action.id,
-      params.action.requestedBy,
-      params.approvedBy,
-    );
+    const requests = readPendingDiscordRestWriteRequests(params.action.executionPayloadJson);
+    const results: unknown[] = [];
+    for (const request of requests) {
+      const auditReasonBase = request.reason?.trim() || `${request.method} ${request.path}`;
+      const auditReason = withAuditReason(
+        auditReasonBase,
+        params.action.id,
+        params.action.requestedBy,
+        params.approvedBy,
+      );
 
-    const result = await discordRestRequestGuildScoped({
-      guildId: params.action.guildId,
-      method: request.method,
-      path: request.path,
-      query: request.query,
-      body: request.body,
-      multipartBodyMode: request.multipartBodyMode,
-      files: request.files,
-      reason: auditReason,
-      maxResponseChars: request.maxResponseChars,
-    });
+      const result = await discordRestRequestGuildScoped({
+        guildId: params.action.guildId,
+        method: request.method,
+        path: request.path,
+        query: request.query,
+        body: request.body,
+        multipartBodyMode: request.multipartBodyMode,
+        files: request.files,
+        reason: auditReason,
+        maxResponseChars: request.maxResponseChars,
+      });
 
-    if (!result.ok) {
-      const status = String(result.status ?? 'unknown');
-      const statusText = String(result.statusText ?? '');
-      const errorText = String(result.error ?? 'Unknown error');
-      throw new Error(`Discord REST write failed (${status} ${statusText}): ${errorText}`);
+      if (!result.ok) {
+        const status = String(result.status ?? 'unknown');
+        const statusText = String(result.statusText ?? '');
+        const errorText = String(result.error ?? 'Unknown error');
+        throw new Error(`Discord REST write failed (${status} ${statusText}): ${errorText}`);
+      }
+
+      results.push(result);
+    }
+
+    if (requests.length === 1) {
+      const request = requests[0];
+      return {
+        action: 'discord_rest_write',
+        status: 'executed',
+        method: request.method,
+        path: request.path,
+        result: results[0],
+      };
     }
 
     return {
-      action: 'discord_rest_write',
+      action: 'discord_rest_write_sequence',
       status: 'executed',
-      method: request.method,
-      path: request.path,
-      result,
+      requestCount: requests.length,
+      requests: requests.map((request) => ({
+        method: request.method,
+        path: request.path,
+      })),
+      results,
     };
   }
 
@@ -3737,6 +3776,58 @@ export async function prepareDiscordRestWriteApprovalForTool(params: {
   } satisfies ApprovalInterruptPayload;
 }
 
+export async function prepareDiscordRestWriteSequenceApprovalForTool(params: {
+  guildId: string;
+  channelId: string;
+  requestedBy: string;
+  sourceMessageId?: string | null;
+  requests: DiscordRestWriteRequest[];
+}): Promise<ApprovalInterruptPayload> {
+  if (params.requests.length === 0) {
+    throw new Error('Discord REST write sequence must include at least one request.');
+  }
+  for (const request of params.requests) {
+    await assertDiscordRestRequestGuildScoped({
+      guildId: params.guildId,
+      method: request.method,
+      path: request.path,
+    });
+  }
+
+  const reviewChannelId = await getGuildApprovalReviewChannelId(params.guildId) ?? params.channelId;
+
+  return {
+    kind: 'discord_rest_write',
+    guildId: params.guildId,
+    sourceChannelId: params.channelId,
+    reviewChannelId,
+    sourceMessageId: params.sourceMessageId ?? null,
+    requestedBy: params.requestedBy,
+    dedupeKey: buildApprovalReviewDedupeKey('discord_rest_write', {
+      requests: params.requests.map((request) => ({
+        method: request.method,
+        path: request.path,
+        query: request.query,
+        body: request.body,
+      })),
+    }),
+    executionPayloadJson: {
+      requests: params.requests,
+    } satisfies DiscordRestWritePendingPayload,
+    reviewSnapshotJson: {
+      requestCount: params.requests.length,
+      requests: params.requests.map((request) => ({
+        method: request.method,
+        path: request.path,
+      })),
+    },
+    interruptMetadataJson: {
+      requestCount: params.requests.length,
+      paths: params.requests.map((request) => request.path),
+    },
+  } satisfies ApprovalInterruptPayload;
+}
+
 export async function requestDiscordRestWriteForTool(params: {
   guildId: string;
   channelId: string;
@@ -3745,6 +3836,16 @@ export async function requestDiscordRestWriteForTool(params: {
   request: DiscordRestWriteRequest;
 }): Promise<never> {
   throw new ApprovalRequiredSignal(await prepareDiscordRestWriteApprovalForTool(params));
+}
+
+export async function requestDiscordRestWriteSequenceForTool(params: {
+  guildId: string;
+  channelId: string;
+  requestedBy: string;
+  sourceMessageId?: string | null;
+  requests: DiscordRestWriteRequest[];
+}): Promise<never> {
+  throw new ApprovalRequiredSignal(await prepareDiscordRestWriteSequenceApprovalForTool(params));
 }
 
 export async function createOrReuseApprovalReviewRequestFromSignal(params: {

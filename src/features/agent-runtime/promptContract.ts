@@ -6,6 +6,7 @@ import type { CurrentTurnContext, ReplyTargetContext } from './continuityContext
 import { describeContinuityPolicy } from './continuityContext';
 import type { LLMContentPart, LLMMessageContent } from '../../platform/llm/llm-types';
 import { globalToolRegistry } from './toolRegistry';
+import type { DiscordAuthorityTier } from '../../platform/discord/admin-permissions';
 
 export const UNIVERSAL_PROMPT_CONTRACT_VERSION = '2026-03-21.guild-persona-first-default-v2';
 
@@ -52,6 +53,7 @@ export interface BuildUniversalPromptContractParams {
   activeTools?: string[];
   model?: string | null;
   invokedBy?: string | null;
+  invokerAuthority?: DiscordAuthorityTier;
   invokerIsAdmin?: boolean;
   invokerCanModerate?: boolean;
   inGuild?: boolean;
@@ -392,6 +394,7 @@ function buildTrustedRuntimeStateBlock(params: BuildUniversalPromptContractParam
     `model: ${params.model?.trim() || 'unknown'}`,
     `tools_available: ${activeTools.length > 0 ? activeTools.join(', ') : 'none'}`,
     `invoked_by: ${params.invokedBy ?? 'unknown'}`,
+    `invoker_authority: ${params.invokerAuthority ?? 'member'}`,
     `invoker_is_admin: ${params.invokerIsAdmin ?? false}`,
     `invoker_can_moderate: ${params.invokerCanModerate ?? false}`,
     `in_guild: ${params.inGuild ?? false}`,
@@ -510,40 +513,43 @@ function buildToolRoutingSummary(activeTools: string[]): string[] {
 function buildDiscordDisambiguators(activeTools: string[]): string[] {
   const hasToolWithPrefix = (prefix: string) => activeTools.some((toolName) => toolName.startsWith(prefix));
   const hasDiscordContextTool = hasToolWithPrefix('discord_context_');
-  const hasDiscordMessagesTool = hasToolWithPrefix('discord_messages_');
-  const hasDiscordFilesTool = hasToolWithPrefix('discord_files_');
-  const hasDiscordServerTool = hasToolWithPrefix('discord_server_');
-  const hasDiscordAdminTool = hasToolWithPrefix('discord_admin_');
+  const hasDiscordHistoryTool = hasToolWithPrefix('discord_history_');
+  const hasDiscordArtifactTool = hasToolWithPrefix('discord_artifact_');
+  const hasDiscordModerationTool = hasToolWithPrefix('discord_moderation_');
+  const hasDiscordScheduleTool = hasToolWithPrefix('discord_schedule_');
+  const hasDiscordSpacesTool = hasToolWithPrefix('discord_spaces_');
+  const hasDiscordGovernanceTool = hasToolWithPrefix('discord_governance_');
   const hasDiscordVoiceTool = hasToolWithPrefix('discord_voice_');
 
   return [
-    hasDiscordContextTool && hasDiscordMessagesTool
-      ? '- Summary vs exact evidence: use context summary tools for recap, and message tools for quotes or message-level proof.'
+    hasDiscordContextTool && hasDiscordHistoryTool
+      ? '- Summary vs exact evidence: use context summary tools for recap, and history tools for quotes or message-level proof.'
       : '',
-    hasDiscordContextTool && hasDiscordAdminTool
-      ? '- Sage Persona read vs write: context tools read the guild persona, while admin tools change it.'
+    hasDiscordContextTool && hasDiscordGovernanceTool
+      ? '- Sage Persona read vs write: context tools read the guild persona, while governance tools change it.'
       : '',
-    hasDiscordAdminTool
-      ? '- Governance/config vs moderation: Sage Persona changes how Sage behaves; moderation acts on users, messages, reactions, or content.'
+    hasDiscordGovernanceTool && hasDiscordModerationTool
+      ? '- Governance/config vs moderation: governance changes Sage or server defaults, while moderation acts on users, messages, or policy enforcement.'
       : '',
-    hasDiscordAdminTool
+    hasDiscordModerationTool
       ? '- Reply-targeted enforcement uses moderation tools, not general chat replies.'
       : '',
-    hasDiscordFilesTool && hasDiscordServerTool
-      ? '- File recall vs guild resources: file tools are for attachments, while server tools inspect channels, threads, members, roles, and other guild resources.'
+    hasDiscordArtifactTool && hasDiscordSpacesTool
+      ? '- Artifact workflow vs guild resources: artifact tools manage files and revisions, while spaces tools inspect or change channels, threads, events, invites, and related structures.'
       : '',
     hasDiscordContextTool && hasDiscordVoiceTool
       ? '- Voice analytics vs live control: context tools cover voice analytics and summaries, while voice tools handle current voice status and join or leave.'
       : '',
-    hasDiscordAdminTool && hasDiscordServerTool
-      ? '- Typed Discord tools come before raw API fallback. Use the raw Discord API tool only after typed tools do not cover the task.'
+    hasDiscordScheduleTool && hasDiscordSpacesTool
+      ? '- Scheduled jobs are durable reminders or Sage runs; spaces tools change the current Discord structure directly.'
       : '',
   ].filter((line) => line.length > 0);
 }
 
 function buildFewShotExamples(activeTools: string[]): string {
-  const hasDiscordMessages = activeTools.some((toolName) => toolName.startsWith('discord_messages_'));
-  const hasDiscordAdmin = activeTools.some((toolName) => toolName.startsWith('discord_admin_'));
+  const hasDiscordArtifact = activeTools.some((toolName) => toolName.startsWith('discord_artifact_'));
+  const hasDiscordModeration = activeTools.some((toolName) => toolName.startsWith('discord_moderation_'));
+  const hasDiscordSchedule = activeTools.some((toolName) => toolName.startsWith('discord_schedule_'));
 
   const examples: string[] = [
     '<few_shot_examples>',
@@ -563,7 +569,7 @@ function buildFewShotExamples(activeTools: string[]): string {
     '</example>',
   ];
 
-  if (hasDiscordMessages) {
+  if (hasDiscordArtifact) {
     examples.push(
       '<example name="artifact_separate_from_main_reply">',
       'If a tool creates a distinct Discord-native artifact, keep the main conversational answer in assistant text.',
@@ -572,7 +578,7 @@ function buildFewShotExamples(activeTools: string[]): string {
     );
   }
 
-  if (hasDiscordAdmin) {
+  if (hasDiscordModeration || hasDiscordSchedule) {
     examples.push(
     '<example name="approval_resume">',
       'If an approval interrupt is already queued, keep the visible draft aligned with the pending action and wait for the review outcome.',

@@ -56,9 +56,9 @@ describe('granular tool contracts', () => {
     const registry = new ToolRegistry();
     const tools = [
       byName(discordTools, 'discord_context_get_channel_summary'),
-      byName(discordTools, 'discord_messages_search_history'),
-      byName(discordTools, 'discord_server_list_channels'),
-      byName(discordTools, 'discord_admin_create_role'),
+      byName(discordTools, 'discord_history_search_history'),
+      byName(discordTools, 'discord_spaces_list_channels'),
+      byName(discordTools, 'discord_spaces_create_role'),
     ];
 
     for (const tool of tools) {
@@ -69,7 +69,7 @@ describe('granular tool contracts', () => {
     expect(tools[0]?.inputValidator?.safeParse({}).success).toBe(true);
 
     const result = registry.validateToolCall({
-      name: 'discord_messages_search_history',
+      name: 'discord_history_search_history',
       args: { action: 'help' },
     });
     expect(result.success).toBe(false);

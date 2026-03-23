@@ -6,6 +6,7 @@ import { buildToolErrorDetails, extractToolErrorDetails, type ToolErrorDetails }
 import type { CurrentTurnContext, ReplyTargetContext } from './continuityContext';
 import { isToolControlSignal, type ApprovalInterruptPayload } from './toolControlSignals';
 import { sanitizeJsonSchemaForProvider, validateJsonSchema } from '../../shared/validation/json-schema';
+import type { DiscordAuthorityTier } from '../../platform/discord/admin-permissions';
 
 const MAX_ARGS_SIZE = 256 * 1024;
 
@@ -294,6 +295,7 @@ export interface ToolExecutionContext {
   channelId: string;
   guildId?: string | null;
   apiKey?: string;
+  invokerAuthority?: DiscordAuthorityTier;
   invokerIsAdmin?: boolean;
   invokerCanModerate?: boolean;
   invokedBy?: 'mention' | 'reply' | 'wakeword' | 'autopilot' | 'component';
@@ -305,7 +307,7 @@ export interface ToolExecutionContext {
 
 export type ToolActionMutability = 'read' | 'write';
 export type ToolClass = 'query' | 'mutation' | 'artifact' | 'runtime';
-export type ToolAccessTier = 'public' | 'admin';
+export type ToolAccessTier = 'public' | 'moderator' | 'admin' | 'owner';
 export type ToolObservationPolicy = 'tiny' | 'default' | 'large' | 'streaming' | 'artifact-only';
 
 export interface ToolAnnotations {

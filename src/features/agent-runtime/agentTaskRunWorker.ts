@@ -66,6 +66,25 @@ async function getAgentRuntimeModule() {
   return import('./agentRuntime');
 }
 
+function readScheduledBootstrapState(value: unknown): {
+  prompt: string;
+  mentionedUserIds: string[];
+} | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null;
+  }
+  const record = value as Record<string, unknown>;
+  if (record.trigger !== 'scheduled_agent_run' || typeof record.bootstrapPrompt !== 'string') {
+    return null;
+  }
+  return {
+    prompt: record.bootstrapPrompt,
+    mentionedUserIds: Array.isArray(record.bootstrapMentionedUserIds)
+      ? record.bootstrapMentionedUserIds.filter((entry): entry is string => typeof entry === 'string')
+      : [],
+  };
+}
+
 function resolveWorkerLeaseOwner(): string {
   return `sage-task-worker:${process.pid}:${randomUUID()}`;
 }
@@ -266,7 +285,7 @@ async function publishTaskRunResult(params: {
 async function processRunnableTaskRun(run: AgentTaskRunRecord): Promise<void> {
   const { claimRunnableAgentTaskRun, heartbeatAgentTaskRun, releaseAgentTaskRunLease } =
     await getTaskRunRepo();
-  const { resumeBackgroundTaskRun } = await getAgentRuntimeModule();
+  const { resumeBackgroundTaskRun, runChatTurn } = await getAgentRuntimeModule();
   const leaseOwner = resolveWorkerLeaseOwner();
   const graphConfig = buildAgentGraphConfig();
   const leaseExpiresAt = new Date(Date.now() + graphConfig.leaseTtlMs);
@@ -286,9 +305,11 @@ async function processRunnableTaskRun(run: AgentTaskRunRecord): Promise<void> {
   }).catch(() => undefined);
 
   const checkpointMetadata = (run.checkpointMetadataJson ?? {}) as {
+    invokerAuthority?: 'member' | 'moderator' | 'admin' | 'owner';
     isAdmin?: boolean;
     canModerate?: boolean;
   };
+  const scheduledBootstrap = readScheduledBootstrapState(run.checkpointMetadataJson);
   const persistedResponseRefs = readPersistedResponseSessionRefs(run.responseSessionJson);
   const responseSessionState: WorkerResponseSessionState = {
     sourceMessageId: run.sourceMessageId ?? persistedResponseRefs.sourceMessageId,
@@ -314,35 +335,90 @@ async function processRunnableTaskRun(run: AgentTaskRunRecord): Promise<void> {
   heartbeatTimer.unref();
 
   try {
-    const result = await resumeBackgroundTaskRun({
-      traceId: randomUUID(),
-      threadId: run.threadId,
-      leaseOwner,
-      userId: run.requestedByUserId,
-      channelId: run.channelId,
-      guildId: run.guildId,
-      isAdmin: checkpointMetadata.isAdmin ?? false,
-      canModerate: checkpointMetadata.canModerate ?? false,
-      onResponseSessionUpdate: async (update) => {
-        await publishTaskRunResult({
-          run,
-          result: {
-            replyText: update.replyText,
-            responseSession: update.responseSession,
-            status:
-              update.completionKind === 'approval_pending'
-                ? 'waiting_approval'
-                : update.completionKind === 'user_input_pending'
-                  ? 'waiting_user_input'
-              : update.stopReason === 'background_yield'
-                    ? 'running'
-                    : 'completed',
+    const invokerAuthority =
+      checkpointMetadata.invokerAuthority ??
+      (checkpointMetadata.isAdmin ? 'admin' : checkpointMetadata.canModerate ? 'moderator' : 'member');
+    const result = scheduledBootstrap
+      ? await (async () => {
+        const { getUserProfileRecord } = await import('../memory/userProfileRepo');
+        const userProfileSummary = (await getUserProfileRecord(run.requestedByUserId).catch(() => null))?.summary ?? null;
+        return runChatTurn({
+          traceId: run.threadId,
+          userId: run.requestedByUserId,
+          channelId: run.channelId,
+          guildId: run.guildId,
+          messageId: run.threadId,
+          userText: scheduledBootstrap.prompt,
+          userProfileSummary,
+          currentTurn: {
+            invokerUserId: run.requestedByUserId,
+            invokerDisplayName: 'Scheduler',
+            messageId: run.threadId,
+            guildId: run.guildId,
+            channelId: run.channelId,
+            invokedBy: 'component',
+            mentionedUserIds: scheduledBootstrap.mentionedUserIds,
+            isDirectReply: false,
+            replyTargetMessageId: null,
+            replyTargetAuthorId: null,
+            botUserId: client.user?.id ?? null,
           },
-          update,
-          state: responseSessionState,
+          mentionedUserIds: scheduledBootstrap.mentionedUserIds,
+          invokedBy: 'component',
+          invokerAuthority,
+          isAdmin: checkpointMetadata.isAdmin ?? false,
+          canModerate: checkpointMetadata.canModerate ?? false,
+          onResponseSessionUpdate: async (update) => {
+            await publishTaskRunResult({
+              run,
+              result: {
+                replyText: update.replyText,
+                responseSession: update.responseSession,
+                status:
+                  update.completionKind === 'approval_pending'
+                    ? 'waiting_approval'
+                    : update.completionKind === 'user_input_pending'
+                      ? 'waiting_user_input'
+                      : update.stopReason === 'background_yield'
+                        ? 'running'
+                        : 'completed',
+              },
+              update,
+              state: responseSessionState,
+            });
+          },
         });
-      },
-    });
+      })()
+      : await resumeBackgroundTaskRun({
+        traceId: randomUUID(),
+        threadId: run.threadId,
+        leaseOwner,
+        userId: run.requestedByUserId,
+        channelId: run.channelId,
+        guildId: run.guildId,
+        invokerAuthority,
+        isAdmin: checkpointMetadata.isAdmin ?? false,
+        canModerate: checkpointMetadata.canModerate ?? false,
+        onResponseSessionUpdate: async (update) => {
+          await publishTaskRunResult({
+            run,
+            result: {
+              replyText: update.replyText,
+              responseSession: update.responseSession,
+              status:
+                update.completionKind === 'approval_pending'
+                  ? 'waiting_approval'
+                  : update.completionKind === 'user_input_pending'
+                    ? 'waiting_user_input'
+                    : update.stopReason === 'background_yield'
+                      ? 'running'
+                      : 'completed',
+            },
+            update,
+            state: responseSessionState,
+          });
+        },
+      });
 
     const { getAgentTaskRunByThreadId } = await getTaskRunRepo();
     const latestTaskRun = await getAgentTaskRunByThreadId(run.threadId).catch(() => null);

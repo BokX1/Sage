@@ -37,12 +37,12 @@ describe('tool selection hints', () => {
         expect.stringContaining('continuity'),
       ]),
     );
-    expect(getTopLevelToolDoc('discord_messages_search_history')?.selectionHints).toEqual(
+    expect(getTopLevelToolDoc('discord_history_search_history')?.selectionHints).toEqual(
       expect.arrayContaining([
         expect.stringContaining('exact message-history evidence'),
       ]),
     );
-    expect(getTopLevelToolDoc('discord_admin_submit_moderation')?.avoidWhen).toEqual(
+    expect(getTopLevelToolDoc('discord_moderation_submit_action')?.avoidWhen).toEqual(
       expect.arrayContaining([
         expect.stringContaining('changing Sage behavior'),
       ]),

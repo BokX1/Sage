@@ -40,6 +40,7 @@ import {
   lookupGuildSagePersonaForTool,
   requestSagePersonaUpdateForTool,
   requestDiscordRestWriteForTool,
+  requestDiscordRestWriteSequenceForTool,
   type DiscordRestWriteRequest,
 } from '../../admin/adminActionService';
 import {
@@ -49,21 +50,49 @@ import { filterChannelIdsByMemberAccess } from '../../../platform/discord/channe
 import { client } from '../../../platform/discord/client';
 import { config } from '../../../platform/config/env';
 import { VoiceManager } from '../../voice/voiceManager';
+import { hasAuthorityAtLeast } from '../../../platform/discord/admin-permissions';
 import { isLoggingEnabled } from '../../settings/guildChannelSettings';
 import { buildGuildApiKeySetupCardMessage } from '../../discord/byopBootstrap';
 import { clearGuildApiKey, getGuildApiKeyStatus } from '../../settings/guildApiKeyService';
-import { getGuildApprovalReviewChannelId, setGuildApprovalReviewChannelId } from '../../settings/guildSettingsRepo';
 import {
+  getGuildApprovalReviewChannelId,
+  getGuildArtifactVaultChannelId,
+  getGuildModLogChannelId,
+  setGuildApprovalReviewChannelId,
+  setGuildArtifactVaultChannelId,
+  setGuildModLogChannelId,
+} from '../../settings/guildSettingsRepo';
+import {
+  createTextArtifactForTool,
+  getArtifactForTool,
+  getArtifactLatestTextContentForTool,
+  listArtifactRevisionsForTool,
+  listArtifactsForTool,
+  publishArtifactForTool,
+  replaceArtifactForTool,
+  stageAttachmentAsArtifactForTool,
+} from '../../artifacts/service';
+import {
+  acknowledgeModerationCaseForTool,
+  addModerationCaseNoteForTool,
   disableModerationPolicyForTool,
+  getModerationCaseForTool,
+  getModerationMemberHistoryForTool,
   getModerationPolicyForTool,
   listModerationCasesForTool,
   listModerationPoliciesForTool,
+  resolveModerationCaseForTool,
   upsertModerationPolicyForTool,
 } from '../../moderation/runtime';
 import {
   cancelScheduledTaskForTool,
+  cloneScheduledTaskForTool,
   getScheduledTaskForTool,
   listScheduledTasksForTool,
+  pauseScheduledTaskForTool,
+  resumeScheduledTaskForTool,
+  runScheduledTaskNowForTool,
+  skipScheduledTaskNextRunForTool,
   upsertScheduledTaskForTool,
 } from '../../scheduler/service';
 
@@ -127,6 +156,17 @@ function requireGuildContext(guildId?: string | null): string {
   return guildId;
 }
 
+async function requireGuildTextChannel(channelId: string, guildId: string, errorLabel: string) {
+  const channel = await client.channels.fetch(channelId).catch(() => null);
+  if (!channel || channel.isDMBased() || !('guildId' in channel) || channel.guildId !== guildId) {
+    throw new Error(`${errorLabel} must be a guild channel in the active server.`);
+  }
+  if (typeof channel.isTextBased !== 'function' || !channel.isTextBased()) {
+    throw new Error(`${errorLabel} must support text messages.`);
+  }
+  return channel;
+}
+
 function isGuildVoiceChannel(
   channel: { type?: number } | null | undefined,
 ): channel is VoiceChannel {
@@ -143,6 +183,28 @@ function assertAdmin(invokerIsAdmin: boolean | undefined): void {
   if (!invokerIsAdmin) {
     throw new Error('Admin privileges are required for this action.');
   }
+}
+
+function assertAuthorityAtLeast(
+  authority: ToolExecutionContext['invokerAuthority'],
+  required: 'moderator' | 'admin' | 'owner',
+): void {
+  if (!hasAuthorityAtLeast(authority ?? 'member', required)) {
+    const label = required === 'moderator' ? 'moderator' : required;
+    throw new Error(`${label.charAt(0).toUpperCase()}${label.slice(1)} privileges are required for this action.`);
+  }
+}
+
+function assertModerator(ctx: ToolExecutionContext): void {
+  assertAuthorityAtLeast(ctx.invokerAuthority, 'moderator');
+}
+
+function assertAdminAuthority(ctx: ToolExecutionContext): void {
+  assertAuthorityAtLeast(ctx.invokerAuthority, 'admin');
+}
+
+function assertOwner(ctx: ToolExecutionContext): void {
+  assertAuthorityAtLeast(ctx.invokerAuthority, 'owner');
 }
 
 async function assertInvokerCanSubmitModeration(params: {
@@ -545,6 +607,23 @@ function queueDiscordRestWrite(params: {
     requestedBy: params.ctx.userId,
     sourceMessageId: params.ctx.currentTurn?.messageId ?? null,
     request: params.request,
+  });
+}
+
+function queueDiscordRestWriteSequence(params: {
+  ctx: ToolExecutionContext;
+  actionLabel: string;
+  requests: DiscordRestWriteRequest[];
+}): Promise<Record<string, unknown>> {
+  assertAdmin(params.ctx.invokerIsAdmin);
+  assertNotAutopilot(params.ctx.invokedBy, params.actionLabel);
+  const guildId = requireGuildContext(params.ctx.guildId);
+  return requestDiscordRestWriteSequenceForTool({
+    guildId,
+    channelId: params.ctx.channelId,
+    requestedBy: params.ctx.userId,
+    sourceMessageId: params.ctx.currentTurn?.messageId ?? null,
+    requests: params.requests,
   });
 }
 
@@ -1019,6 +1098,102 @@ export async function executeDiscordFilesAction(
         startChar: data.startChar,
       });
     }
+    case 'list_artifacts': {
+      const data = asAction<{ channelId?: string; createdByUserId?: string; limit?: number }>(args);
+      return listArtifactsForTool({
+        guildId: requireGuildContext(ctx.guildId),
+        requesterUserId: ctx.userId,
+        channelId: data.channelId?.trim() || null,
+        createdByUserId: data.createdByUserId?.trim() || null,
+        limit: data.limit,
+      });
+    }
+    case 'get_artifact': {
+      const data = asAction<{ artifactId: string }>(args);
+      return getArtifactForTool({
+        guildId: requireGuildContext(ctx.guildId),
+        requesterUserId: ctx.userId,
+        artifactId: data.artifactId,
+      });
+    }
+    case 'stage_attachment_artifact': {
+      const data = asAction<{ attachmentId: string; name?: string; descriptionText?: string }>(args);
+      assertNotAutopilot(ctx.invokedBy, 'stage_attachment_artifact');
+      assertAdminAuthority(ctx);
+      return stageAttachmentAsArtifactForTool({
+        guildId: requireGuildContext(ctx.guildId),
+        requesterUserId: ctx.userId,
+        currentChannelId: ctx.channelId,
+        attachmentId: data.attachmentId,
+        name: data.name,
+        descriptionText: data.descriptionText ?? null,
+      });
+    }
+    case 'create_text_artifact': {
+      const data = asAction<{
+        name: string;
+        filename?: string;
+        format?: string;
+        content: string;
+        descriptionText?: string;
+      }>(args);
+      assertNotAutopilot(ctx.invokedBy, 'create_text_artifact');
+      assertAdminAuthority(ctx);
+      return createTextArtifactForTool({
+        guildId: requireGuildContext(ctx.guildId),
+        channelId: ctx.channelId,
+        requestedByUserId: ctx.userId,
+        name: data.name,
+        filename: data.filename,
+        format: data.format ?? null,
+        content: data.content,
+        descriptionText: data.descriptionText ?? null,
+      });
+    }
+    case 'replace_artifact': {
+      const data = asAction<{
+        artifactId: string;
+        content?: string;
+        filename?: string;
+        format?: string;
+        attachmentId?: string;
+      }>(args);
+      assertNotAutopilot(ctx.invokedBy, 'replace_artifact');
+      assertAdminAuthority(ctx);
+      return replaceArtifactForTool({
+        guildId: requireGuildContext(ctx.guildId),
+        requesterUserId: ctx.userId,
+        artifactId: data.artifactId,
+        requestedByUserId: ctx.userId,
+        content: data.content,
+        filename: data.filename,
+        format: data.format ?? null,
+        attachmentId: data.attachmentId,
+      });
+    }
+    case 'publish_artifact': {
+      const data = asAction<{ artifactId: string; channelId?: string; content?: string }>(args);
+      assertNotAutopilot(ctx.invokedBy, 'publish_artifact');
+      assertAdminAuthority(ctx);
+      return publishArtifactForTool({
+        guildId: requireGuildContext(ctx.guildId),
+        requesterUserId: ctx.userId,
+        requesterChannelId: ctx.channelId,
+        artifactId: data.artifactId,
+        channelId: data.channelId,
+        content: data.content,
+        invokedBy: ctx.invokedBy,
+      });
+    }
+    case 'list_artifact_revisions': {
+      const data = asAction<{ artifactId: string; limit?: number }>(args);
+      return listArtifactRevisionsForTool({
+        guildId: requireGuildContext(ctx.guildId),
+        requesterUserId: ctx.userId,
+        artifactId: data.artifactId,
+        limit: data.limit,
+      });
+    }
     default:
       throw new Error(`Unsupported discord_files action: ${args.action}`);
   }
@@ -1217,7 +1392,7 @@ export async function executeDiscordServerAction(
     }
     case 'list_members': {
       const data = asAction<{ query?: string; roleId?: string; limit?: number }>(args);
-      assertAdmin(ctx.invokerIsAdmin);
+      assertModerator(ctx);
       const limit = data.limit ?? 25;
       const path = data.query?.trim()
         ? `/guilds/${requireGuildContext(ctx.guildId)}/members/search`
@@ -1244,7 +1419,7 @@ export async function executeDiscordServerAction(
     }
     case 'get_member': {
       const data = asAction<{ userId: string }>(args);
-      assertAdmin(ctx.invokerIsAdmin);
+      assertModerator(ctx);
       const member = toJsonRecord(
         await readDiscordGuildResource({
           ctx,
@@ -1260,7 +1435,7 @@ export async function executeDiscordServerAction(
     }
     case 'get_permission_snapshot': {
       const data = asAction<{ channelId: string; userId?: string; roleId?: string }>(args);
-      assertAdmin(ctx.invokerIsAdmin);
+      assertModerator(ctx);
       const guild = await client.guilds.fetch(requireGuildContext(ctx.guildId));
       const channel = await guild.channels.fetch(data.channelId);
       if (!channel || channel.isDMBased() || !('permissionsFor' in channel)) {
@@ -1291,7 +1466,7 @@ export async function executeDiscordServerAction(
     }
     case 'list_automod_rules': {
       const data = asAction<{ limit?: number }>(args);
-      assertAdmin(ctx.invokerIsAdmin);
+      assertModerator(ctx);
       const rules = toJsonRecordArray(
         await readDiscordGuildResource({
           ctx,
@@ -1307,14 +1482,14 @@ export async function executeDiscordServerAction(
       };
     }
     case 'list_moderation_policies': {
-      assertAdmin(ctx.invokerIsAdmin);
+      assertModerator(ctx);
       return listModerationPoliciesForTool({
         guildId: requireGuildContext(ctx.guildId),
       });
     }
     case 'get_moderation_policy': {
       const data = asAction<{ policyId?: string; name?: string }>(args);
-      assertAdmin(ctx.invokerIsAdmin);
+      assertModerator(ctx);
       return getModerationPolicyForTool({
         guildId: requireGuildContext(ctx.guildId),
         policyId: data.policyId,
@@ -1322,12 +1497,30 @@ export async function executeDiscordServerAction(
       });
     }
     case 'list_moderation_cases': {
-      const data = asAction<{ limit?: number; policyId?: string }>(args);
-      assertAdmin(ctx.invokerIsAdmin);
+      const data = asAction<{ limit?: number; policyId?: string; targetUserId?: string }>(args);
+      assertModerator(ctx);
       return listModerationCasesForTool({
         guildId: requireGuildContext(ctx.guildId),
         limit: data.limit,
         policyId: data.policyId,
+        targetUserId: data.targetUserId,
+      });
+    }
+    case 'get_moderation_case': {
+      const data = asAction<{ caseId: string }>(args);
+      assertModerator(ctx);
+      return getModerationCaseForTool({
+        guildId: requireGuildContext(ctx.guildId),
+        caseId: data.caseId,
+      });
+    }
+    case 'get_moderation_member_history': {
+      const data = asAction<{ targetUserId: string; limit?: number }>(args);
+      assertModerator(ctx);
+      return getModerationMemberHistoryForTool({
+        guildId: requireGuildContext(ctx.guildId),
+        targetUserId: data.targetUserId,
+        limit: data.limit,
       });
     }
     case 'list_scheduled_tasks': {
@@ -1352,6 +1545,7 @@ export async function executeDiscordServerAction(
         autoArchiveDurationMinutes?: 60 | 1440 | 4320 | 10080;
         reason?: string;
       }>(args);
+      assertAdminAuthority(ctx);
       assertNotAutopilot(ctx.invokedBy, 'create_thread');
       return requestDiscordInteractionForTool({
         guildId: requireGuildContext(ctx.guildId),
@@ -1377,6 +1571,7 @@ export async function executeDiscordServerAction(
         autoArchiveDurationMinutes?: 60 | 1440 | 4320 | 10080;
         reason?: string;
       }>(args);
+      assertAdminAuthority(ctx);
       assertNotAutopilot(ctx.invokedBy, 'update_thread');
       return requestDiscordInteractionForTool({
         guildId: requireGuildContext(ctx.guildId),
@@ -1397,6 +1592,7 @@ export async function executeDiscordServerAction(
     case 'join_thread':
     case 'leave_thread': {
       const data = asAction<{ threadId: string; reason?: string }>(args);
+      assertAdminAuthority(ctx);
       assertNotAutopilot(ctx.invokedBy, args.action);
       return requestDiscordInteractionForTool({
         guildId: requireGuildContext(ctx.guildId),
@@ -1413,6 +1609,7 @@ export async function executeDiscordServerAction(
     case 'add_thread_member':
     case 'remove_thread_member': {
       const data = asAction<{ threadId: string; userId: string; reason?: string }>(args);
+      assertAdminAuthority(ctx);
       assertNotAutopilot(ctx.invokedBy, args.action);
       return requestDiscordInteractionForTool({
         guildId: requireGuildContext(ctx.guildId),
@@ -1798,6 +1995,39 @@ export async function executeDiscordAdminAction(
         replyTarget: ctx.replyTarget,
       });
     }
+    case 'acknowledge_moderation_case': {
+      const data = asAction<{ caseId: string }>(args);
+      assertModerator(ctx);
+      assertNotAutopilot(ctx.invokedBy, 'acknowledge_moderation_case');
+      return acknowledgeModerationCaseForTool({
+        guildId: requireGuildContext(ctx.guildId),
+        caseId: data.caseId,
+        requestedByUserId: ctx.userId,
+      });
+    }
+    case 'resolve_moderation_case': {
+      const data = asAction<{ caseId: string; outcome: 'executed' | 'failed' | 'noop'; reasonText?: string }>(args);
+      assertModerator(ctx);
+      assertNotAutopilot(ctx.invokedBy, 'resolve_moderation_case');
+      return resolveModerationCaseForTool({
+        guildId: requireGuildContext(ctx.guildId),
+        caseId: data.caseId,
+        requestedByUserId: ctx.userId,
+        outcome: data.outcome,
+        reasonText: data.reasonText ?? null,
+      });
+    }
+    case 'add_moderation_case_note': {
+      const data = asAction<{ caseId: string; noteText: string }>(args);
+      assertModerator(ctx);
+      assertNotAutopilot(ctx.invokedBy, 'add_moderation_case_note');
+      return addModerationCaseNoteForTool({
+        guildId: requireGuildContext(ctx.guildId),
+        caseId: data.caseId,
+        requestedByUserId: ctx.userId,
+        noteText: data.noteText,
+      });
+    }
     case 'upsert_moderation_policy': {
       const data = asAction<{
         policyId?: string;
@@ -1839,11 +2069,14 @@ export async function executeDiscordAdminAction(
         runAtIso?: string | null;
         payload: Record<string, unknown>;
       }>(args);
-      assertAdmin(ctx.invokerIsAdmin);
+      assertAdminAuthority(ctx);
       assertNotAutopilot(ctx.invokedBy, 'upsert_scheduled_task');
       return upsertScheduledTaskForTool({
         guildId: requireGuildContext(ctx.guildId),
         requestedByUserId: ctx.userId,
+        invokerAuthority: ctx.invokerAuthority ?? 'member',
+        isAdmin: ctx.invokerIsAdmin ?? false,
+        canModerate: ctx.invokerCanModerate ?? false,
         taskId: data.taskId,
         kind: data.kind,
         channelId: data.channelId?.trim() || ctx.channelId,
@@ -1860,6 +2093,57 @@ export async function executeDiscordAdminAction(
       return cancelScheduledTaskForTool({
         guildId: requireGuildContext(ctx.guildId),
         taskId: data.taskId,
+      });
+    }
+    case 'pause_scheduled_task': {
+      const data = asAction<{ taskId: string }>(args);
+      assertAdminAuthority(ctx);
+      assertNotAutopilot(ctx.invokedBy, 'pause_scheduled_task');
+      return pauseScheduledTaskForTool({
+        guildId: requireGuildContext(ctx.guildId),
+        taskId: data.taskId,
+      });
+    }
+    case 'resume_scheduled_task': {
+      const data = asAction<{ taskId: string }>(args);
+      assertAdminAuthority(ctx);
+      assertNotAutopilot(ctx.invokedBy, 'resume_scheduled_task');
+      return resumeScheduledTaskForTool({
+        guildId: requireGuildContext(ctx.guildId),
+        taskId: data.taskId,
+      });
+    }
+    case 'run_scheduled_task_now': {
+      const data = asAction<{ taskId: string }>(args);
+      assertAdminAuthority(ctx);
+      assertNotAutopilot(ctx.invokedBy, 'run_scheduled_task_now');
+      return runScheduledTaskNowForTool({
+        guildId: requireGuildContext(ctx.guildId),
+        taskId: data.taskId,
+      });
+    }
+    case 'skip_scheduled_task_next_run': {
+      const data = asAction<{ taskId: string }>(args);
+      assertAdminAuthority(ctx);
+      assertNotAutopilot(ctx.invokedBy, 'skip_scheduled_task_next_run');
+      return skipScheduledTaskNextRunForTool({
+        guildId: requireGuildContext(ctx.guildId),
+        taskId: data.taskId,
+      });
+    }
+    case 'clone_scheduled_task': {
+      const data = asAction<{ taskId: string; channelId?: string; timezone?: string }>(args);
+      assertAdminAuthority(ctx);
+      assertNotAutopilot(ctx.invokedBy, 'clone_scheduled_task');
+      return cloneScheduledTaskForTool({
+        guildId: requireGuildContext(ctx.guildId),
+        requestedByUserId: ctx.userId,
+        invokerAuthority: ctx.invokerAuthority ?? 'member',
+        isAdmin: ctx.invokerIsAdmin ?? false,
+        canModerate: ctx.invokerCanModerate ?? false,
+        taskId: data.taskId,
+        channelId: data.channelId,
+        timezone: data.timezone,
       });
     }
     case 'edit_message': {
@@ -2128,17 +2412,41 @@ export async function executeDiscordAdminAction(
     case 'create_forum_post': {
       const data = asAction<{
         forumChannelId: string;
-        title: string;
-        content: string;
+        title?: string;
+        content?: string;
+        artifactId?: string;
         appliedTagIds?: string[];
         autoArchiveDurationMinutes?: 60 | 1440 | 4320 | 10080;
         rateLimitPerUser?: number;
         reason?: string;
       }>(args);
+      let title = data.title?.trim() || '';
+      let content = data.content?.trim() || '';
+      if (data.artifactId?.trim()) {
+        const artifact = await getArtifactLatestTextContentForTool({
+          guildId: requireGuildContext(ctx.guildId),
+          requesterUserId: ctx.userId,
+          artifactId: data.artifactId.trim(),
+        });
+        title = title || artifact.name.trim() || artifact.filename.trim();
+        content = content || artifact.contentText;
+      }
+      if (!title) {
+        throw new Error('Forum posts require a title or an artifact with a name.');
+      }
+      if (title.length > 100) {
+        throw new Error('Forum post title exceeds Discord limits. Shorten the title or artifact name before posting.');
+      }
+      if (!content) {
+        throw new Error('Forum posts require content or a text artifact.');
+      }
+      if (content.length > 2_000) {
+        throw new Error('Forum post starter content exceeds Discord limits. Shorten the content or artifact before posting.');
+      }
       const body: Record<string, unknown> = {
-        name: data.title,
+        name: title,
         message: {
-          content: data.content,
+          content,
           allowed_mentions: { parse: [] },
         },
       };
@@ -2175,7 +2483,55 @@ export async function executeDiscordAdminAction(
     }
     case 'archive_thread':
     case 'reopen_thread': {
-      const data = asAction<{ threadId: string; locked?: boolean; reason?: string }>(args);
+      const data = asAction<{
+        threadId: string;
+        locked?: boolean;
+        resolutionNoteText?: string;
+        resolutionArtifactId?: string;
+        reason?: string;
+      }>(args);
+      const resolutionNoteText = data.resolutionNoteText?.trim() || '';
+      const resolutionArtifactId = data.resolutionArtifactId?.trim() || '';
+      if (resolutionNoteText || resolutionArtifactId) {
+        let noteText = resolutionNoteText;
+        if (resolutionArtifactId) {
+          const artifact = await getArtifactLatestTextContentForTool({
+            guildId: requireGuildContext(ctx.guildId),
+            requesterUserId: ctx.userId,
+            artifactId: resolutionArtifactId,
+          });
+          noteText = noteText || artifact.contentText;
+        }
+        if (!noteText) {
+          throw new Error('Resolution note content could not be derived from the provided inputs.');
+        }
+        if (noteText.length > 2_000) {
+          throw new Error('Resolution note exceeds Discord message limits. Shorten the note or artifact before changing thread state.');
+        }
+        return queueDiscordRestWriteSequence({
+          ctx,
+          actionLabel: args.action,
+          requests: [
+            {
+              method: 'POST',
+              path: `/channels/${data.threadId}/messages`,
+              body: {
+                content: noteText,
+                allowed_mentions: { parse: [] },
+              },
+            },
+            {
+              method: 'PATCH',
+              path: `/channels/${data.threadId}`,
+              body: {
+                archived: args.action === 'archive_thread',
+                ...(data.locked !== undefined ? { locked: data.locked } : {}),
+              },
+              reason: data.reason,
+            },
+          ],
+        });
+      }
       return queueDiscordRestWrite({
         ctx,
         actionLabel: args.action,
@@ -2284,8 +2640,33 @@ export async function executeDiscordAdminAction(
         routingMode: reviewChannelId === null ? 'source_channel' : 'dedicated_review_channel',
       };
     }
+    case 'get_artifact_vault_status': {
+      assertAdminAuthority(ctx);
+      const guildId = requireGuildContext(ctx.guildId);
+      const artifactVaultChannelId = await getGuildArtifactVaultChannelId(guildId);
+      return {
+        ok: true,
+        action: 'get_artifact_vault_status',
+        guildId,
+        artifactVaultChannelId,
+        effectivePublishChannelId: artifactVaultChannelId ?? ctx.channelId,
+        routingMode: artifactVaultChannelId === null ? 'source_channel_default' : 'dedicated_artifact_vault',
+      };
+    }
+    case 'get_mod_log_status': {
+      assertAdminAuthority(ctx);
+      const guildId = requireGuildContext(ctx.guildId);
+      const modLogChannelId = await getGuildModLogChannelId(guildId);
+      return {
+        ok: true,
+        action: 'get_mod_log_status',
+        guildId,
+        modLogChannelId,
+        routingMode: modLogChannelId === null ? 'policy_explicit_only' : 'dedicated_mod_log_channel',
+      };
+    }
     case 'clear_server_api_key': {
-      assertAdmin(ctx.invokerIsAdmin);
+      assertOwner(ctx);
       assertNotAutopilot(ctx.invokedBy, 'clear_server_api_key');
       await clearGuildApiKey(requireGuildContext(ctx.guildId));
       return {
@@ -2296,17 +2677,11 @@ export async function executeDiscordAdminAction(
       };
     }
     case 'set_governance_review_channel': {
-      assertAdmin(ctx.invokerIsAdmin);
+      assertAdminAuthority(ctx);
       assertNotAutopilot(ctx.invokedBy, 'set_governance_review_channel');
       const data = asAction<{ channelId: string }>(args);
       const guildId = requireGuildContext(ctx.guildId);
-      const channel = await client.channels.fetch(data.channelId);
-      if (!channel || channel.isDMBased() || !('guildId' in channel) || channel.guildId !== guildId) {
-        throw new Error('Review channel must be a guild channel in the active server.');
-      }
-      if (typeof channel.isTextBased !== 'function' || !channel.isTextBased()) {
-        throw new Error('Review channel must support text messages.');
-      }
+      await requireGuildTextChannel(data.channelId, guildId, 'Review channel');
       await setGuildApprovalReviewChannelId(guildId, data.channelId);
       return {
         ok: true,
@@ -2317,7 +2692,7 @@ export async function executeDiscordAdminAction(
       };
     }
     case 'clear_governance_review_channel': {
-      assertAdmin(ctx.invokerIsAdmin);
+      assertAdminAuthority(ctx);
       assertNotAutopilot(ctx.invokedBy, 'clear_governance_review_channel');
       const guildId = requireGuildContext(ctx.guildId);
       await setGuildApprovalReviewChannelId(guildId, null);
@@ -2328,8 +2703,62 @@ export async function executeDiscordAdminAction(
         message: 'Governance reviews will now render in the source channel by default.',
       };
     }
+    case 'set_artifact_vault_channel': {
+      assertAdminAuthority(ctx);
+      assertNotAutopilot(ctx.invokedBy, 'set_artifact_vault_channel');
+      const data = asAction<{ channelId: string }>(args);
+      const guildId = requireGuildContext(ctx.guildId);
+      await requireGuildTextChannel(data.channelId, guildId, 'Artifact vault channel');
+      await setGuildArtifactVaultChannelId(guildId, data.channelId);
+      return {
+        ok: true,
+        action: 'set_artifact_vault_channel',
+        guildId,
+        artifactVaultChannelId: data.channelId,
+        message: 'Default artifact publishes will now use the selected artifact vault channel.',
+      };
+    }
+    case 'clear_artifact_vault_channel': {
+      assertAdminAuthority(ctx);
+      assertNotAutopilot(ctx.invokedBy, 'clear_artifact_vault_channel');
+      const guildId = requireGuildContext(ctx.guildId);
+      await setGuildArtifactVaultChannelId(guildId, null);
+      return {
+        ok: true,
+        action: 'clear_artifact_vault_channel',
+        guildId,
+        message: 'Default artifact publishes will now fall back to the active channel unless a target is provided.',
+      };
+    }
+    case 'set_mod_log_channel': {
+      assertAdminAuthority(ctx);
+      assertNotAutopilot(ctx.invokedBy, 'set_mod_log_channel');
+      const data = asAction<{ channelId: string }>(args);
+      const guildId = requireGuildContext(ctx.guildId);
+      await requireGuildTextChannel(data.channelId, guildId, 'Moderation log channel');
+      await setGuildModLogChannelId(guildId, data.channelId);
+      return {
+        ok: true,
+        action: 'set_mod_log_channel',
+        guildId,
+        modLogChannelId: data.channelId,
+        message: 'Default moderation log alerts will now use the selected moderation log channel.',
+      };
+    }
+    case 'clear_mod_log_channel': {
+      assertAdminAuthority(ctx);
+      assertNotAutopilot(ctx.invokedBy, 'clear_mod_log_channel');
+      const guildId = requireGuildContext(ctx.guildId);
+      await setGuildModLogChannelId(guildId, null);
+      return {
+        ok: true,
+        action: 'clear_mod_log_channel',
+        guildId,
+        message: 'Default moderation log alerts will now rely on explicit policy notification channels only.',
+      };
+    }
     case 'send_key_setup_card': {
-      assertAdmin(ctx.invokerIsAdmin);
+      assertOwner(ctx);
       assertNotAutopilot(ctx.invokedBy, 'send_key_setup_card');
       const setupCard = buildGuildApiKeySetupCardMessage();
       const result = await discordRestRequestGuildScoped({

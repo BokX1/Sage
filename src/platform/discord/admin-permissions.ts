@@ -5,6 +5,25 @@ type GuildAdminInteractionLike = {
   member?: unknown;
   inGuild: () => boolean;
 };
+type GuildMemberLike = {
+  permissions?: PermissionSource;
+  user?: {
+    id?: string;
+  } | null;
+  id?: string;
+  guild?: {
+    ownerId?: string;
+  } | null;
+};
+
+export type DiscordAuthorityTier = 'member' | 'moderator' | 'admin' | 'owner';
+
+const AUTHORITY_RANK: Record<DiscordAuthorityTier, number> = {
+  member: 0,
+  moderator: 1,
+  admin: 2,
+  owner: 3,
+};
 
 function toPermissionsBitField(source: PermissionSource): PermissionsBitField | null {
   if (source === null || source === undefined) {
@@ -48,22 +67,53 @@ export function hasModerationPermissions(source: PermissionSource): boolean {
   );
 }
 
-export function isAdminFromMember(member: unknown): boolean {
+function readMemberUserId(member: GuildMemberLike): string | null {
+  const userId = member.user?.id?.trim() ?? member.id?.trim() ?? '';
+  return userId.length > 0 ? userId : null;
+}
+
+export function resolveAuthorityTierFromMember(
+  member: unknown,
+  guildOwnerId?: string | null,
+): DiscordAuthorityTier {
   if (!member || typeof member !== 'object' || !('permissions' in member)) {
-    return false;
+    return 'member';
   }
 
-  const source = (member as { permissions?: PermissionSource }).permissions;
-  return hasAdminPermissions(source);
+  const candidate = member as GuildMemberLike;
+  const source = candidate.permissions;
+  const effectiveGuildOwnerId = guildOwnerId?.trim() || candidate.guild?.ownerId?.trim() || null;
+  const memberUserId = readMemberUserId(candidate);
+  if (effectiveGuildOwnerId && memberUserId && effectiveGuildOwnerId === memberUserId) {
+    return 'owner';
+  }
+  if (hasAdminPermissions(source)) {
+    return 'admin';
+  }
+  if (hasModerationPermissions(source)) {
+    return 'moderator';
+  }
+  return 'member';
+}
+
+export function hasAuthorityAtLeast(
+  authority: DiscordAuthorityTier | null | undefined,
+  required: DiscordAuthorityTier,
+): boolean {
+  const actual = authority ?? 'member';
+  return AUTHORITY_RANK[actual] >= AUTHORITY_RANK[required];
+}
+
+export function isOwnerFromMember(member: unknown, guildOwnerId?: string | null): boolean {
+  return resolveAuthorityTierFromMember(member, guildOwnerId) === 'owner';
+}
+
+export function isAdminFromMember(member: unknown): boolean {
+  return hasAuthorityAtLeast(resolveAuthorityTierFromMember(member), 'admin');
 }
 
 export function isModeratorFromMember(member: unknown): boolean {
-  if (!member || typeof member !== 'object' || !('permissions' in member)) {
-    return false;
-  }
-
-  const source = (member as { permissions?: PermissionSource }).permissions;
-  return hasModerationPermissions(source);
+  return hasAuthorityAtLeast(resolveAuthorityTierFromMember(member), 'moderator');
 }
 
 export function isAdminInteraction(interaction: GuildAdminInteractionLike): boolean {
@@ -71,5 +121,5 @@ export function isAdminInteraction(interaction: GuildAdminInteractionLike): bool
     return false;
   }
 
-  return isAdminFromMember(interaction.member);
+  return hasAuthorityAtLeast(resolveAuthorityTierFromMember(interaction.member), 'admin');
 }

@@ -16,6 +16,7 @@ import type { PromptInputMode } from '../agent-runtime/promptContract';
 import { LLMMessageContent } from '../../platform/llm/llm-types';
 import { config } from '../../platform/config/env';
 import type { RunChatTurnParams, RunChatTurnResult } from '../agent-runtime/agentRuntime';
+import type { DiscordAuthorityTier } from '../../platform/discord/admin-permissions';
 
 import { limitByKey } from '../../shared/async/perKeyConcurrency';
 
@@ -61,6 +62,7 @@ export async function generateChatReply(params: {
   invokedBy?: 'mention' | 'reply' | 'wakeword' | 'autopilot' | 'component';
   isVoiceActive?: boolean;
   voiceChannelId?: string | null;
+  invokerAuthority?: DiscordAuthorityTier;
   isAdmin?: boolean;
   canModerate?: boolean;
   promptMode?: PromptInputMode;
@@ -86,6 +88,7 @@ export async function generateChatReply(params: {
       voiceChannelId,
       isAdmin = false,
       canModerate = false,
+      invokerAuthority = isAdmin ? 'admin' : canModerate ? 'moderator' : 'member',
       promptMode,
       onResponseSessionUpdate,
     } = params;
@@ -119,6 +122,7 @@ export async function generateChatReply(params: {
       invokedBy,
       isVoiceActive,
       voiceChannelId: voiceChannelId ?? null,
+      invokerAuthority,
       isAdmin,
       canModerate,
       promptMode,

@@ -26,7 +26,7 @@ function makeCurrentTurn(overrides: Partial<CurrentTurnContext> = {}): CurrentTu
 }
 
 function buildContract(
-  activeTools: string[] = ['discord_messages_search_history', 'web_search'],
+  activeTools: string[] = ['discord_history_search_history', 'web_search'],
   overrides: Partial<Parameters<typeof buildUniversalPromptContract>[0]> = {},
 ) {
   return buildUniversalPromptContract({
@@ -46,8 +46,8 @@ function buildContract(
     guildSagePersona: 'Keep answers crisp and helpful in this guild.',
     toolObservationEvidence: [
       {
-        ref: 'discord_messages_search_history#1',
-        toolName: 'discord_messages_search_history',
+        ref: 'discord_history_search_history#1',
+        toolName: 'discord_history_search_history',
         status: 'success',
         summary: 'Found matching messages in the channel history.',
       },
@@ -91,10 +91,10 @@ describe('promptContract', () => {
   it('keeps tool protocol, closeout contract, and injection boundaries in one place', () => {
     const prompt = buildContract([
       'discord_context_get_channel_summary',
-      'discord_context_get_server_instructions',
-      'discord_messages_search_history',
-      'discord_admin_update_server_instructions',
-      'discord_admin_submit_moderation',
+      'discord_governance_get_server_instructions',
+      'discord_history_search_history',
+      'discord_governance_update_server_instructions',
+      'discord_moderation_submit_action',
       'web_search',
       'system_time',
     ]).systemMessage;
@@ -266,7 +266,7 @@ describe('promptContract', () => {
         replyTargetMessageId: 'reply-msg-1',
         replyTargetAuthorId: 'user-2',
       }),
-      activeTools: ['discord_messages_search_history'],
+      activeTools: ['discord_history_search_history'],
       model: 'kimi',
       userText: 'Please answer this follow-up',
       userContent: [
@@ -337,7 +337,7 @@ describe('promptContract', () => {
     const second = buildUniversalPromptContract({
       userProfileSummary: null,
       currentTurn: makeCurrentTurn(),
-      activeTools: ['discord_messages_search_history', 'web_search'],
+      activeTools: ['discord_history_search_history', 'web_search'],
       model: 'kimi',
       userText: 'hello',
     });
@@ -427,10 +427,10 @@ describe('promptContract', () => {
       currentTurn: makeCurrentTurn(),
       activeTools: [
         'discord_context_get_channel_summary',
-        'discord_messages_search_history',
-        'discord_files_find_channel',
-        'discord_server_list_channels',
-        'discord_admin_submit_moderation',
+        'discord_history_search_history',
+        'discord_artifact_find_channel_attachments',
+        'discord_spaces_list_channels',
+        'discord_moderation_submit_action',
         'discord_voice_get_status',
         'web_search',
         'repo_search_code',
@@ -454,8 +454,8 @@ describe('promptContract', () => {
       guildSagePersona: 'Stay crisp.',
       toolObservationEvidence: [
         {
-          ref: 'discord_messages_search_history#1',
-          toolName: 'discord_messages_search_history',
+          ref: 'discord_history_search_history#1',
+          toolName: 'discord_history_search_history',
           status: 'success',
           summary: 'Found matching history results.',
         },
