@@ -33,6 +33,7 @@ model GuildSettings {
   guildId                 String   @id
   pollinationsApiKey      String? // Guild-provided BYOP key (fallback for users)
   approvalReviewChannelId String?
+  timezone                String?
   updatedAt               DateTime @updatedAt
   createdAt               DateTime @default(now())
 }
@@ -311,6 +312,112 @@ model AgentTrace {
   @@index([threadId, createdAt])
   @@index([approvalRequestId, createdAt])
   @@index([langSmithTraceId, createdAt])
+}
+
+model ModerationPolicy {
+  id                String   @id @default(cuid())
+  guildId           String
+  name              String
+  descriptionText   String?  @db.Text
+  family            String
+  backend           String
+  ownership         String
+  mode              String
+  version           Int      @default(1)
+  createdByUserId   String?
+  updatedByUserId   String?
+  externalRuleId    String?
+  notifyChannelId   String?
+  policySpecJson    Json
+  compiledPolicyJson Json
+  lastSyncedAt      DateTime?
+  lastConflictText  String?  @db.Text
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  cases ModerationCase[]
+
+  @@index([guildId, updatedAt])
+  @@index([guildId, family, updatedAt])
+  @@index([guildId, ownership, updatedAt])
+  @@unique([guildId, name])
+  @@unique([guildId, externalRuleId])
+}
+
+model ModerationCase {
+  id              String   @id @default(cuid())
+  guildId         String
+  policyId        String?
+  source          String
+  status          String
+  action          String
+  targetUserId    String?
+  sourceMessageId String?
+  channelId       String?
+  reviewChannelId String?
+  createdByUserId String?
+  executedByUserId String?
+  evidenceJson    Json?
+  metadataJson    Json?
+  resolvedAt      DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  policy ModerationPolicy? @relation(fields: [policyId], references: [id], onDelete: SetNull)
+
+  @@index([guildId, createdAt])
+  @@index([guildId, targetUserId, createdAt])
+  @@index([guildId, sourceMessageId, createdAt])
+  @@index([policyId, createdAt])
+  @@index([status, createdAt])
+}
+
+model ScheduledTask {
+  id             String   @id @default(cuid())
+  guildId        String
+  channelId      String
+  createdByUserId String
+  kind           String
+  status         String
+  timezone       String
+  cronExpr       String?
+  runAt          DateTime?
+  nextRunAt      DateTime?
+  lastRunAt      DateTime?
+  lastSuccessAt  DateTime?
+  leaseOwner     String?
+  leaseExpiresAt DateTime?
+  payloadJson    Json
+  provenanceJson Json?
+  lastErrorText  String?  @db.Text
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  runs ScheduledTaskRun[]
+
+  @@index([guildId, createdAt])
+  @@index([guildId, status, nextRunAt])
+  @@index([leaseExpiresAt])
+}
+
+model ScheduledTaskRun {
+  id           String   @id @default(cuid())
+  taskId       String
+  dedupeKey    String
+  status       String
+  scheduledFor DateTime
+  startedAt    DateTime?
+  finishedAt   DateTime?
+  errorText    String?  @db.Text
+  resultJson   Json?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  task ScheduledTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@unique([taskId, dedupeKey])
+  @@index([taskId, createdAt])
+  @@index([status, scheduledFor])
 }
 
 model AttachmentChunk {

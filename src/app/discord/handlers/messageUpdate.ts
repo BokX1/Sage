@@ -4,6 +4,7 @@ import { logger } from '../../../platform/logging/logger';
 import { ingestEvent } from '../../../features/ingest/ingestEvent';
 import { isLoggingEnabled } from '../../../features/settings/guildChannelSettings';
 import { extractVisibleMessageText } from './attachment-parser';
+import { evaluateMessageModeration } from '../../../features/moderation/runtime';
 
 const registrationKey = Symbol.for('sage.handlers.messageUpdate.registered');
 
@@ -41,7 +42,17 @@ export async function handleMessageUpdate(
 ): Promise<void> {
   try {
     const message = await resolveUpdatedMessage(newMessage);
-    if (!message || !message.guildId || !message.author?.bot) {
+    if (!message || !message.guildId || !message.author) {
+      return;
+    }
+
+    if (!message.author.bot) {
+      await evaluateMessageModeration({
+        message,
+        isEdit: true,
+      }).catch((error) => {
+        logger.warn({ error, msgId: message.id, guildId: message.guildId }, 'Message edit moderation evaluation failed');
+      });
       return;
     }
 
@@ -62,7 +73,7 @@ export async function handleMessageUpdate(
         messageId: message.id,
         authorId: message.author.id,
         authorDisplayName,
-        authorIsBot: true,
+        authorIsBot: !!message.author.bot,
         content: extractVisibleMessageText(message, { allowEmpty: true }) ?? '',
         timestamp: message.createdAt,
         replyToMessageId: message.reference?.messageId,

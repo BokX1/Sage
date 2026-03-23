@@ -7,6 +7,7 @@ const mockClient = vi.hoisted(() => ({
 
 const mockIngestEvent = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
 const mockIsLoggingEnabled = vi.hoisted(() => vi.fn(() => true));
+const mockEvaluateMessageModeration = vi.hoisted(() => vi.fn().mockResolvedValue({ suppressInvocation: false }));
 
 vi.mock('@/platform/discord/client', () => ({
   client: mockClient,
@@ -18,6 +19,10 @@ vi.mock('@/features/ingest/ingestEvent', () => ({
 
 vi.mock('@/features/settings/guildChannelSettings', () => ({
   isLoggingEnabled: mockIsLoggingEnabled,
+}));
+
+vi.mock('@/features/moderation/runtime', () => ({
+  evaluateMessageModeration: mockEvaluateMessageModeration,
 }));
 
 import {
@@ -66,6 +71,7 @@ describe('messageUpdate handler', () => {
     vi.clearAllMocks();
     __resetMessageUpdateHandlerStateForTests();
     mockIsLoggingEnabled.mockReturnValue(true);
+    mockEvaluateMessageModeration.mockResolvedValue({ suppressInvocation: false });
   });
 
   it('re-ingests edited bot messages using visible Components V2 text', async () => {
@@ -122,6 +128,12 @@ describe('messageUpdate handler', () => {
 
     await handleMessageUpdate(updatedMessage, updatedMessage);
 
+    expect(mockEvaluateMessageModeration).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: updatedMessage,
+        isEdit: true,
+      }),
+    );
     expect(mockIngestEvent).not.toHaveBeenCalled();
   });
 });

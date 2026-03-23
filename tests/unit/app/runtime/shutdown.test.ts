@@ -3,9 +3,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const stopChannelSummaryScheduler = vi.hoisted(() => vi.fn());
 const stopCompactionScheduler = vi.hoisted(() => vi.fn());
+const stopAgentTaskRunWorker = vi.hoisted(() => vi.fn());
+const stopScheduledTaskWorker = vi.hoisted(() => vi.fn());
 const prismaDisconnect = vi.hoisted(() => vi.fn());
 const shutdownKafkaProducer = vi.hoisted(() => vi.fn());
 const shutdownAgentGraphRuntime = vi.hoisted(() => vi.fn());
+const shutdownMcpTools = vi.hoisted(() => vi.fn());
 
 vi.mock('@/features/summary/channelSummaryScheduler', () => ({
   stopChannelSummaryScheduler,
@@ -13,6 +16,14 @@ vi.mock('@/features/summary/channelSummaryScheduler', () => ({
 
 vi.mock('@/features/summary/ltmCompaction', () => ({
   stopCompactionScheduler,
+}));
+
+vi.mock('@/features/agent-runtime/agentTaskRunWorker', () => ({
+  stopAgentTaskRunWorker,
+}));
+
+vi.mock('@/features/scheduler/worker', () => ({
+  stopScheduledTaskWorker,
 }));
 
 vi.mock('@/platform/db/prisma-client', () => ({
@@ -29,14 +40,21 @@ vi.mock('@/features/agent-runtime/langgraph/runtime', () => ({
   shutdownAgentGraphRuntime,
 }));
 
+vi.mock('@/features/agent-runtime', () => ({
+  shutdownMcpTools,
+}));
+
 describe('registerShutdownHooks', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     stopChannelSummaryScheduler.mockReturnValue(undefined);
     stopCompactionScheduler.mockReturnValue(undefined);
+    stopAgentTaskRunWorker.mockReturnValue(undefined);
+    stopScheduledTaskWorker.mockReturnValue(undefined);
     prismaDisconnect.mockResolvedValue(undefined);
     shutdownKafkaProducer.mockResolvedValue(undefined);
     shutdownAgentGraphRuntime.mockResolvedValue(undefined);
+    shutdownMcpTools.mockResolvedValue(undefined);
   });
 
   it('stops scheduler, destroys client, and disconnects prisma on SIGTERM', async () => {
@@ -63,8 +81,11 @@ describe('registerShutdownHooks', () => {
 
     expect(stopChannelSummaryScheduler).toHaveBeenCalledTimes(1);
     expect(stopCompactionScheduler).toHaveBeenCalledTimes(1);
+    expect(stopAgentTaskRunWorker).toHaveBeenCalledTimes(1);
+    expect(stopScheduledTaskWorker).toHaveBeenCalledTimes(1);
     expect(client.destroy).toHaveBeenCalledTimes(1);
     expect(shutdownAgentGraphRuntime).toHaveBeenCalledTimes(1);
+    expect(shutdownMcpTools).toHaveBeenCalledTimes(1);
     expect(prismaDisconnect).toHaveBeenCalledTimes(1);
     expect(shutdownKafkaProducer).toHaveBeenCalledTimes(1);
     expect(processExitMock).toHaveBeenCalledWith(0);

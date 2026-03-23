@@ -27,6 +27,8 @@
 
 ### Added
 
+- Added deterministic guild moderation policies with Discord-native AutoMod sync, runtime-only safety rules, shared moderation case history, and new admin/server tools for listing, inspecting, enabling, and disabling Sage-managed moderation policy state.
+- Added durable scheduled reminders and scheduled Sage jobs with timezone-aware one-time/cron scheduling, idempotent run records, and new Discord admin/server tools for creating, inspecting, listing, and cancelling scheduled tasks.
 - Added a `TestimonialCarousel` component to the website homepage with animated glass cards, auto-advancing community experience quotes, and dot navigation, placed between the WhySage and StatsStrip sections.
 - Added two new differentiating features to the website comparison table: Server-Wide File Intelligence and Integrated Web Search.
 - Added an animated `gradient-headline` CSS class to the website design system for hero-level text with cycling brand-color gradients.
@@ -36,6 +38,9 @@
 
 ### Changed
 
+- Changed the Prisma reset baseline to one fresh current-schema migration that already includes moderation policies, moderation cases, scheduled tasks, scheduled task runs, and guild timezones, so intentional Sage rebuilds now bootstrap the latest database shape in one deploy step instead of replaying an intermediate delta.
+- Changed Discord message moderation to a deterministic hot-path runtime that evaluates before normal invocation, reuses the existing moderation execution safeguards for autonomous actions, and records moderation/scheduler diagnostics through `system_tool_stats` instead of depending on a model call per message.
+- Changed Sage's Discord bootstrap contract to register guild-member and AutoMod gateway handlers plus the scheduled-task worker at startup, while the documented config now calls out the required Discord privileged intents for autonomous moderation features.
 - Changed the website hero headline from "One AI Teammate For Your Discord Community" to "Your Community's Smartest Member Just Arrived" with animated gradient text for stronger marketing impact.
 - Changed the website hero subtext to benefit-driven copy emphasizing memory, autonomy, and data sovereignty instead of a feature list.
 - Changed the website CTA section copy from "Choose the fastest path" to "Start free in under 60 seconds" with social proof line "MIT Licensed · 80+ tools · Fully open source".
@@ -44,6 +49,9 @@
 
 ### Fixed
 
+- Fixed autonomous moderation policy edits so `policyId`-targeted updates now preserve policy identity, fail closed if Discord AutoMod disable sync cannot be confirmed, and reject cross-guild notification channels instead of silently drifting policy ownership or alert routing.
+- Fixed autonomous moderation policy compilation so blocked-domain rules no longer double-enforce through both Sage runtime and Discord AutoMod, and moderator-alert or review-case policies now require a real notification channel instead of silently creating invisible case records.
+- Fixed scheduled-task guardrails so invalid explicit timezones are rejected before updating guild defaults, failed task writes no longer mutate guild timezone defaults, and reminder or agent-run tasks cannot be created, updated, or executed against channels outside the active guild.
 - Fixed the website landing-page contract gate so CI now validates the current hosted/self-hosted CTA copy (`Get Sage Free` and `Self-Host Guide`) instead of failing on stale expectations from the previous marketing copy.
 - Fixed a dead assignment in the running-task interrupt path inside `messageCreate`, eliminating a CodeQL `useless assignment to local variable` warning without changing the active-run steering behavior.
 - Fixed stale Prisma table count on the website stats strip: corrected from 17 to 18 to match the current `schema.prisma` model count.

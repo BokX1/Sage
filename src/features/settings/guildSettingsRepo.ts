@@ -25,6 +25,32 @@ export async function getGuildApprovalReviewChannelId(guildId: string): Promise<
   return value ? value : null;
 }
 
+export async function getGuildTimezone(guildId: string): Promise<string | null> {
+  const settings = await prisma.guildSettings.findUnique({
+    where: { guildId },
+    select: { timezone: true },
+  });
+
+  const value = settings?.timezone?.trim();
+  return value ? value : null;
+}
+
+export async function setGuildTimezone(guildId: string, timezone: string | null): Promise<void> {
+  const normalized = timezone?.trim() || null;
+  await prisma.guildSettings.upsert({
+    where: { guildId },
+    create: {
+      guildId,
+      pollinationsApiKey: null,
+      approvalReviewChannelId: null,
+      timezone: normalized,
+    },
+    update: {
+      timezone: normalized,
+    },
+  });
+}
+
 export async function setGuildApprovalReviewChannelId(
   guildId: string,
   approvalReviewChannelId: string | null,
@@ -49,14 +75,14 @@ export async function upsertGuildApiKey(guildId: string, apiKey: string | null):
     // Simpler: upsert with update/create logic.
     await prisma.guildSettings.upsert({
       where: { guildId },
-      create: { guildId, pollinationsApiKey: null, approvalReviewChannelId: null },
+      create: { guildId, pollinationsApiKey: null, approvalReviewChannelId: null, timezone: null },
       update: { pollinationsApiKey: null },
     });
   } else {
     const encryptedApiKey = encryptSecret(apiKey);
     await prisma.guildSettings.upsert({
       where: { guildId },
-      create: { guildId, pollinationsApiKey: encryptedApiKey, approvalReviewChannelId: null },
+      create: { guildId, pollinationsApiKey: encryptedApiKey, approvalReviewChannelId: null, timezone: null },
       update: { pollinationsApiKey: encryptedApiKey },
     });
   }

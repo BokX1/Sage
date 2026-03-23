@@ -17,6 +17,7 @@ import { upsertIngestedAttachment } from '../../../features/attachments/ingested
 import { deleteAttachmentChunks, ingestAttachmentText } from '../../../features/embeddings';
 import { queueImageAttachmentRecall } from '../../../features/attachments/imageAttachmentRecallWorker';
 import { normalizeNonNegativeInt, normalizePositiveInt } from '../../../shared/utils/numbers';
+import { evaluateMessageModeration } from '../../../features/moderation/runtime';
 import {
   appendAttachmentBlocksToText,
   buildAttachmentBlockFromResult,
@@ -421,6 +422,17 @@ export async function handleMessageCreate(message: Message) {
         mentionsBot: isMentioned,
         mentionsUserIds: mentionedUserIds,
       });
+      return;
+    }
+
+    const moderationResult = await evaluateMessageModeration({
+      message,
+    });
+    if (moderationResult.suppressInvocation) {
+      logger.info(
+        { msgId: message.id, guildId: message.guildId, caseId: moderationResult.caseId ?? null },
+        'Suppressed normal invocation because deterministic moderation handled the message',
+      );
       return;
     }
 

@@ -53,6 +53,19 @@ import { isLoggingEnabled } from '../../settings/guildChannelSettings';
 import { buildGuildApiKeySetupCardMessage } from '../../discord/byopBootstrap';
 import { clearGuildApiKey, getGuildApiKeyStatus } from '../../settings/guildApiKeyService';
 import { getGuildApprovalReviewChannelId, setGuildApprovalReviewChannelId } from '../../settings/guildSettingsRepo';
+import {
+  disableModerationPolicyForTool,
+  getModerationPolicyForTool,
+  listModerationCasesForTool,
+  listModerationPoliciesForTool,
+  upsertModerationPolicyForTool,
+} from '../../moderation/runtime';
+import {
+  cancelScheduledTaskForTool,
+  getScheduledTaskForTool,
+  listScheduledTasksForTool,
+  upsertScheduledTaskForTool,
+} from '../../scheduler/service';
 
 export const discordRestFileInputSchema = z.object({
   fieldName: z.string().trim().min(1).max(120).optional(),
@@ -1293,6 +1306,44 @@ export async function executeDiscordServerAction(
         items: rules.slice(0, data.limit ?? 50).map((rule) => shapeAutomodRuleRecord(rule)),
       };
     }
+    case 'list_moderation_policies': {
+      assertAdmin(ctx.invokerIsAdmin);
+      return listModerationPoliciesForTool({
+        guildId: requireGuildContext(ctx.guildId),
+      });
+    }
+    case 'get_moderation_policy': {
+      const data = asAction<{ policyId?: string; name?: string }>(args);
+      assertAdmin(ctx.invokerIsAdmin);
+      return getModerationPolicyForTool({
+        guildId: requireGuildContext(ctx.guildId),
+        policyId: data.policyId,
+        name: data.name,
+      });
+    }
+    case 'list_moderation_cases': {
+      const data = asAction<{ limit?: number; policyId?: string }>(args);
+      assertAdmin(ctx.invokerIsAdmin);
+      return listModerationCasesForTool({
+        guildId: requireGuildContext(ctx.guildId),
+        limit: data.limit,
+        policyId: data.policyId,
+      });
+    }
+    case 'list_scheduled_tasks': {
+      assertAdmin(ctx.invokerIsAdmin);
+      return listScheduledTasksForTool({
+        guildId: requireGuildContext(ctx.guildId),
+      });
+    }
+    case 'get_scheduled_task': {
+      const data = asAction<{ taskId: string }>(args);
+      assertAdmin(ctx.invokerIsAdmin);
+      return getScheduledTaskForTool({
+        guildId: requireGuildContext(ctx.guildId),
+        taskId: data.taskId,
+      });
+    }
     case 'create_thread': {
       const data = asAction<{
         name: string;
@@ -1745,6 +1796,70 @@ export async function executeDiscordAdminAction(
         request: data.request,
         currentTurn: ctx.currentTurn,
         replyTarget: ctx.replyTarget,
+      });
+    }
+    case 'upsert_moderation_policy': {
+      const data = asAction<{
+        policyId?: string;
+        name: string;
+        descriptionText?: string;
+        mode: 'dry_run' | 'enforce' | 'disabled';
+        spec: Record<string, unknown>;
+      }>(args);
+      assertAdmin(ctx.invokerIsAdmin);
+      assertNotAutopilot(ctx.invokedBy, 'upsert_moderation_policy');
+      return upsertModerationPolicyForTool({
+        guildId: requireGuildContext(ctx.guildId),
+        requestedByUserId: ctx.userId,
+        policyId: data.policyId,
+        name: data.name,
+        descriptionText: data.descriptionText ?? null,
+        mode: data.mode,
+        spec: data.spec as never,
+      });
+    }
+    case 'disable_moderation_policy': {
+      const data = asAction<{ policyId?: string; name?: string }>(args);
+      assertAdmin(ctx.invokerIsAdmin);
+      assertNotAutopilot(ctx.invokedBy, 'disable_moderation_policy');
+      return disableModerationPolicyForTool({
+        guildId: requireGuildContext(ctx.guildId),
+        requestedByUserId: ctx.userId,
+        policyId: data.policyId,
+        name: data.name,
+      });
+    }
+    case 'upsert_scheduled_task': {
+      const data = asAction<{
+        taskId?: string;
+        kind: 'reminder_message' | 'agent_run';
+        channelId?: string;
+        timezone?: string;
+        cronExpr?: string | null;
+        runAtIso?: string | null;
+        payload: Record<string, unknown>;
+      }>(args);
+      assertAdmin(ctx.invokerIsAdmin);
+      assertNotAutopilot(ctx.invokedBy, 'upsert_scheduled_task');
+      return upsertScheduledTaskForTool({
+        guildId: requireGuildContext(ctx.guildId),
+        requestedByUserId: ctx.userId,
+        taskId: data.taskId,
+        kind: data.kind,
+        channelId: data.channelId?.trim() || ctx.channelId,
+        timezone: data.timezone,
+        cronExpr: data.cronExpr ?? null,
+        runAtIso: data.runAtIso ?? null,
+        payload: data.payload as never,
+      });
+    }
+    case 'cancel_scheduled_task': {
+      const data = asAction<{ taskId: string }>(args);
+      assertAdmin(ctx.invokerIsAdmin);
+      assertNotAutopilot(ctx.invokedBy, 'cancel_scheduled_task');
+      return cancelScheduledTaskForTool({
+        guildId: requireGuildContext(ctx.guildId),
+        taskId: data.taskId,
       });
     }
     case 'edit_message': {

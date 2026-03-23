@@ -254,16 +254,21 @@ Operators can audit that surface directly with `npm run tools:audit` or `npm run
 | `discord_server_create_thread` | Create a thread in Discord. | Public |
 | `discord_server_get_channel` | Inspect a guild channel or category. | Public |
 | `discord_server_get_member` | Inspect a guild member. | Admin |
+| `discord_server_get_moderation_policy` | Inspect one Sage moderation policy or imported external AutoMod rule. | Admin |
 | `discord_server_get_permission_snapshot` | Inspect guild permission state for a member or role. | Admin |
 | `discord_server_get_scheduled_event` | Inspect a scheduled event. | Public |
+| `discord_server_get_scheduled_task` | Inspect one durable scheduled reminder or scheduled Sage job. | Admin |
 | `discord_server_get_thread` | Inspect a thread. | Public |
 | `discord_server_join_thread` | Join a thread as Sage. | Public |
 | `discord_server_leave_thread` | Leave a thread as Sage. | Public |
 | `discord_server_list_automod_rules` | List guild AutoMod rules. | Admin |
 | `discord_server_list_channels` | List guild channels and categories. | Public |
 | `discord_server_list_members` | List guild members. | Admin |
+| `discord_server_list_moderation_cases` | List recent Sage moderation cases for the guild. | Admin |
+| `discord_server_list_moderation_policies` | List Sage moderation policies and imported external AutoMod inventory. | Admin |
 | `discord_server_list_roles` | List guild roles. | Public |
 | `discord_server_list_scheduled_events` | List guild scheduled events. | Public |
+| `discord_server_list_scheduled_tasks` | List durable scheduled reminders and scheduled Sage jobs. | Admin |
 | `discord_server_list_threads` | List guild threads. | Public |
 | `discord_server_remove_thread_member` | Remove a member from a thread. | Public |
 | `discord_server_update_thread` | Rename or update archive and lock settings for a thread. | Public |
@@ -274,6 +279,7 @@ Operators can audit that surface directly with `npm run tools:audit` or `npm run
 |:---|:---|:---|
 | `discord_admin_add_member_role` | Add a role to a member with admin approval. | Admin |
 | `discord_admin_api` | Use the guild-scoped raw Discord API fallback. | Admin |
+| `discord_admin_cancel_scheduled_task` | Cancel a durable scheduled reminder or scheduled Sage job. | Admin |
 | `discord_admin_clear_governance_review_channel` | Clear the dedicated governance review channel. | Admin |
 | `discord_admin_clear_server_api_key` | Clear the current server-wide API key. | Admin |
 | `discord_admin_create_channel` | Create a new channel or category. | Admin |
@@ -284,6 +290,7 @@ Operators can audit that surface directly with `npm run tools:audit` or `npm run
 | `discord_admin_delete_scheduled_event` | Delete a scheduled event from the guild. | Admin |
 | `discord_admin_delete_message` | Delete a message with admin approval. | Admin |
 | `discord_admin_delete_role` | Delete a role with admin approval. | Admin |
+| `discord_admin_disable_moderation_policy` | Disable a deterministic moderation policy without removing its history. | Admin |
 | `discord_admin_edit_channel` | Edit an existing channel. | Admin |
 | `discord_admin_edit_message` | Edit a message with admin approval. | Admin |
 | `discord_admin_edit_role` | Edit an existing role. | Admin |
@@ -300,6 +307,8 @@ Operators can audit that surface directly with `npm run tools:audit` or `npm run
 | `discord_admin_set_governance_review_channel` | Route governance review cards to a specific channel. | Admin |
 | `discord_admin_submit_moderation` | Submit a moderation or enforcement request. | Admin |
 | `discord_admin_unpin_message` | Unpin a message with admin approval. | Admin |
+| `discord_admin_upsert_moderation_policy` | Create or update an autonomous moderation policy. | Admin |
+| `discord_admin_upsert_scheduled_task` | Create or update a durable scheduled reminder or scheduled Sage job. | Admin |
 | `discord_admin_update_forum_tags` | Update the available forum tags for a forum channel. | Admin |
 | `discord_admin_update_scheduled_event` | Update an existing scheduled event. | Admin |
 | `discord_admin_update_server_instructions` | Submit an admin request to update the guild Sage Persona. | Admin |

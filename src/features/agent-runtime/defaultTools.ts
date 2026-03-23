@@ -17,6 +17,8 @@ import {
   getWebProviderRuntimeStatus,
   lookupNpmPackage,
 } from './toolIntegrations';
+import { getModerationRuntimeDiagnostics } from '../moderation/runtime';
+import { getScheduledTaskRuntimeDiagnostics } from '../scheduler/service';
 import { initializeMcpTools } from './mcp/manager';
 import { registerMcpCapabilityTools } from './mcp/capabilities';
 
@@ -159,6 +161,30 @@ function buildToolStatsRows(): ToolStatsRow[] {
   return Array.from(rows.values());
 }
 
+function emptyModerationDiagnostics(): Record<string, unknown> {
+  return {
+    ready: false,
+    requiredGatewayIntents: [],
+    missingGatewayIntents: [],
+    declaredGatewayIntents: [],
+    totalPolicies: 0,
+    enforcePolicies: 0,
+    dryRunPolicies: 0,
+    externalNativePolicies: 0,
+    error: 'unavailable',
+  };
+}
+
+function emptySchedulerDiagnostics(): Record<string, unknown> {
+  return {
+    ready: false,
+    activeTasks: 0,
+    leasedTasks: 0,
+    dueTasks: 0,
+    error: 'unavailable',
+  };
+}
+
 const toolStatsTool = defineToolSpecV2({
   name: 'system_tool_stats',
   title: 'System Tool Stats',
@@ -175,6 +201,8 @@ const toolStatsTool = defineToolSpecV2({
       note: { type: 'string' },
       memo: { type: 'object' },
       pagedText: { type: 'object' },
+      moderation: { type: 'object' },
+      scheduler: { type: 'object' },
       webProviders: {
         type: 'array',
         items: {
@@ -217,7 +245,7 @@ const toolStatsTool = defineToolSpecV2({
       },
       raw: {},
     },
-    required: ['generatedAtIso', 'scope', 'note', 'memo', 'pagedText', 'webProviders', 'tools'],
+    required: ['generatedAtIso', 'scope', 'note', 'memo', 'pagedText', 'moderation', 'scheduler', 'webProviders', 'tools'],
     additionalProperties: false,
   },
   annotations: {
@@ -250,6 +278,8 @@ const toolStatsTool = defineToolSpecV2({
         note: 'All tool stats and caches are in-memory only.',
         memo: globalToolMemoStore.stats(now.getTime()),
         pagedText: globalPagedTextStore.stats(now.getTime()),
+        moderation: await getModerationRuntimeDiagnostics().catch(() => emptyModerationDiagnostics()),
+        scheduler: await getScheduledTaskRuntimeDiagnostics().catch(() => emptySchedulerDiagnostics()),
         webProviders: getWebProviderRuntimeStatus(),
         tools: rows.slice(0, topN ?? 15),
         raw: includeRaw ? metrics.dump() : undefined,

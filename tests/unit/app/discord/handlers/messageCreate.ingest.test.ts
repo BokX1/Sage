@@ -57,6 +57,9 @@ const mockBuildGuildApiKeyMissingResponse = vi.hoisted(() =>
     components: [],
   })),
 );
+const mockEvaluateMessageModeration = vi.hoisted(() =>
+  vi.fn().mockResolvedValue({ suppressInvocation: false, caseId: null }),
+);
 
 vi.mock('@/features/chat/chat-engine', () => ({
   generateChatReply: mockGenerateChatReply,
@@ -125,6 +128,10 @@ vi.mock('@/features/discord/interactiveComponentService', () => ({
 
 vi.mock('@/features/discord/byopBootstrap', () => ({
   buildGuildApiKeyMissingResponse: mockBuildGuildApiKeyMissingResponse,
+}));
+
+vi.mock('@/features/moderation/runtime', () => ({
+  evaluateMessageModeration: mockEvaluateMessageModeration,
 }));
 
 import { config } from '@/platform/config/env';
@@ -266,7 +273,9 @@ describe('messageCreate - ingest + reply gating', () => {
     mockUpsertIngestedAttachment.mockReset();
     mockDeleteAttachmentChunks.mockReset();
     mockIngestAttachmentText.mockReset();
+    mockEvaluateMessageModeration.mockReset();
     mockGenerateChatReply.mockResolvedValue({ replyText: 'Test response', delivery: 'response_session' });
+    mockEvaluateMessageModeration.mockResolvedValue({ suppressInvocation: false, caseId: null });
     mockContinueMatchedTaskRunWithInput.mockResolvedValue({
       replyText: 'Continued response',
       delivery: 'response_session',

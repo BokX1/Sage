@@ -64,6 +64,11 @@ export const DISCORD_SERVER_ACTION_CATALOG = {
     'get_member',
     'get_permission_snapshot',
     'list_automod_rules',
+    'list_moderation_policies',
+    'get_moderation_policy',
+    'list_moderation_cases',
+    'list_scheduled_tasks',
+    'get_scheduled_task',
   ],
 } as const;
 
@@ -77,6 +82,10 @@ export const DISCORD_ADMIN_ACTION_CATALOG = {
     'send_key_setup_card',
     'update_server_instructions',
     'submit_moderation',
+    'upsert_moderation_policy',
+    'disable_moderation_policy',
+    'upsert_scheduled_task',
+    'cancel_scheduled_task',
     'edit_message',
     'delete_message',
     'pin_message',

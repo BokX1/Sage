@@ -33,6 +33,7 @@ CREATE TABLE "GuildSettings" (
     "guildId" TEXT NOT NULL,
     "pollinationsApiKey" TEXT,
     "approvalReviewChannelId" TEXT,
+    "timezone" TEXT,
     "updatedAt" TIMESTAMP(3) NOT NULL,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
@@ -307,6 +308,96 @@ CREATE TABLE "AgentTrace" (
 );
 
 -- CreateTable
+CREATE TABLE "ModerationPolicy" (
+    "id" TEXT NOT NULL,
+    "guildId" TEXT NOT NULL,
+    "name" TEXT NOT NULL,
+    "descriptionText" TEXT,
+    "family" TEXT NOT NULL,
+    "backend" TEXT NOT NULL,
+    "ownership" TEXT NOT NULL,
+    "mode" TEXT NOT NULL,
+    "version" INTEGER NOT NULL DEFAULT 1,
+    "createdByUserId" TEXT,
+    "updatedByUserId" TEXT,
+    "externalRuleId" TEXT,
+    "notifyChannelId" TEXT,
+    "policySpecJson" JSONB NOT NULL,
+    "compiledPolicyJson" JSONB NOT NULL,
+    "lastSyncedAt" TIMESTAMP(3),
+    "lastConflictText" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "ModerationPolicy_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "ModerationCase" (
+    "id" TEXT NOT NULL,
+    "guildId" TEXT NOT NULL,
+    "policyId" TEXT,
+    "source" TEXT NOT NULL,
+    "status" TEXT NOT NULL,
+    "action" TEXT NOT NULL,
+    "targetUserId" TEXT,
+    "sourceMessageId" TEXT,
+    "channelId" TEXT,
+    "reviewChannelId" TEXT,
+    "createdByUserId" TEXT,
+    "executedByUserId" TEXT,
+    "evidenceJson" JSONB,
+    "metadataJson" JSONB,
+    "resolvedAt" TIMESTAMP(3),
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "ModerationCase_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "ScheduledTask" (
+    "id" TEXT NOT NULL,
+    "guildId" TEXT NOT NULL,
+    "channelId" TEXT NOT NULL,
+    "createdByUserId" TEXT NOT NULL,
+    "kind" TEXT NOT NULL,
+    "status" TEXT NOT NULL,
+    "timezone" TEXT NOT NULL,
+    "cronExpr" TEXT,
+    "runAt" TIMESTAMP(3),
+    "nextRunAt" TIMESTAMP(3),
+    "lastRunAt" TIMESTAMP(3),
+    "lastSuccessAt" TIMESTAMP(3),
+    "leaseOwner" TEXT,
+    "leaseExpiresAt" TIMESTAMP(3),
+    "payloadJson" JSONB NOT NULL,
+    "provenanceJson" JSONB,
+    "lastErrorText" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "ScheduledTask_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "ScheduledTaskRun" (
+    "id" TEXT NOT NULL,
+    "taskId" TEXT NOT NULL,
+    "dedupeKey" TEXT NOT NULL,
+    "status" TEXT NOT NULL,
+    "scheduledFor" TIMESTAMP(3) NOT NULL,
+    "startedAt" TIMESTAMP(3),
+    "finishedAt" TIMESTAMP(3),
+    "errorText" TEXT,
+    "resultJson" JSONB,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "ScheduledTaskRun_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
 CREATE TABLE "AttachmentChunk" (
     "id" TEXT NOT NULL,
     "attachmentId" TEXT NOT NULL,
@@ -442,6 +533,54 @@ CREATE INDEX "AgentTrace_approvalRequestId_createdAt_idx" ON "AgentTrace"("appro
 CREATE INDEX "AgentTrace_langSmithTraceId_createdAt_idx" ON "AgentTrace"("langSmithTraceId", "createdAt");
 
 -- CreateIndex
+CREATE INDEX "ModerationPolicy_guildId_updatedAt_idx" ON "ModerationPolicy"("guildId", "updatedAt");
+
+-- CreateIndex
+CREATE INDEX "ModerationPolicy_guildId_family_updatedAt_idx" ON "ModerationPolicy"("guildId", "family", "updatedAt");
+
+-- CreateIndex
+CREATE INDEX "ModerationPolicy_guildId_ownership_updatedAt_idx" ON "ModerationPolicy"("guildId", "ownership", "updatedAt");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "ModerationPolicy_guildId_name_key" ON "ModerationPolicy"("guildId", "name");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "ModerationPolicy_guildId_externalRuleId_key" ON "ModerationPolicy"("guildId", "externalRuleId");
+
+-- CreateIndex
+CREATE INDEX "ModerationCase_guildId_createdAt_idx" ON "ModerationCase"("guildId", "createdAt");
+
+-- CreateIndex
+CREATE INDEX "ModerationCase_guildId_targetUserId_createdAt_idx" ON "ModerationCase"("guildId", "targetUserId", "createdAt");
+
+-- CreateIndex
+CREATE INDEX "ModerationCase_guildId_sourceMessageId_createdAt_idx" ON "ModerationCase"("guildId", "sourceMessageId", "createdAt");
+
+-- CreateIndex
+CREATE INDEX "ModerationCase_policyId_createdAt_idx" ON "ModerationCase"("policyId", "createdAt");
+
+-- CreateIndex
+CREATE INDEX "ModerationCase_status_createdAt_idx" ON "ModerationCase"("status", "createdAt");
+
+-- CreateIndex
+CREATE INDEX "ScheduledTask_guildId_createdAt_idx" ON "ScheduledTask"("guildId", "createdAt");
+
+-- CreateIndex
+CREATE INDEX "ScheduledTask_guildId_status_nextRunAt_idx" ON "ScheduledTask"("guildId", "status", "nextRunAt");
+
+-- CreateIndex
+CREATE INDEX "ScheduledTask_leaseExpiresAt_idx" ON "ScheduledTask"("leaseExpiresAt");
+
+-- CreateIndex
+CREATE INDEX "ScheduledTaskRun_taskId_createdAt_idx" ON "ScheduledTaskRun"("taskId", "createdAt");
+
+-- CreateIndex
+CREATE INDEX "ScheduledTaskRun_status_scheduledFor_idx" ON "ScheduledTaskRun"("status", "scheduledFor");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "ScheduledTaskRun_taskId_dedupeKey_key" ON "ScheduledTaskRun"("taskId", "dedupeKey");
+
+-- CreateIndex
 CREATE INDEX "AttachmentChunk_attachmentId_idx" ON "AttachmentChunk"("attachmentId");
 
 -- CreateIndex
@@ -455,6 +594,12 @@ CREATE INDEX "ChannelMessageEmbedding_guildId_channelId_idx" ON "ChannelMessageE
 
 -- AddForeignKey
 ALTER TABLE "UserProfileArchive" ADD CONSTRAINT "UserProfileArchive_userId_fkey" FOREIGN KEY ("userId") REFERENCES "UserProfile"("userId") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "ModerationCase" ADD CONSTRAINT "ModerationCase_policyId_fkey" FOREIGN KEY ("policyId") REFERENCES "ModerationPolicy"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "ScheduledTaskRun" ADD CONSTRAINT "ScheduledTaskRun_taskId_fkey" FOREIGN KEY ("taskId") REFERENCES "ScheduledTask"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "ChannelMessageEmbedding" ADD CONSTRAINT "ChannelMessageEmbedding_messageId_fkey" FOREIGN KEY ("messageId") REFERENCES "ChannelMessage"("messageId") ON DELETE CASCADE ON UPDATE CASCADE;

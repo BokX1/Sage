@@ -23,6 +23,13 @@ export const nativeTools = [
     "color": "#5865F2"
   },
   {
+    "name": "discord_admin_cancel_scheduled_task",
+    "short": "Discord Admin Cancel Scheduled Task",
+    "desc": "Cancel a scheduled reminder or scheduled Sage job.",
+    "cat": "discord",
+    "color": "#5865F2"
+  },
+  {
     "name": "discord_admin_clear_governance_review_channel",
     "short": "Discord Admin Clear Governance Review Channel",
     "desc": "Clear the dedicated governance review channel.",
@@ -89,6 +96,13 @@ export const nativeTools = [
     "name": "discord_admin_delete_scheduled_event",
     "short": "Discord Admin Delete Scheduled Event",
     "desc": "Delete a scheduled event for the guild.",
+    "cat": "discord",
+    "color": "#5865F2"
+  },
+  {
+    "name": "discord_admin_disable_moderation_policy",
+    "short": "Discord Admin Disable Moderation Policy",
+    "desc": "Disable an existing moderation policy.",
     "cat": "discord",
     "color": "#5865F2"
   },
@@ -215,6 +229,20 @@ export const nativeTools = [
     "name": "discord_admin_update_server_instructions",
     "short": "Discord Admin Update Server Instructions",
     "desc": "Submit an admin request to update the guild Sage Persona.",
+    "cat": "discord",
+    "color": "#5865F2"
+  },
+  {
+    "name": "discord_admin_upsert_moderation_policy",
+    "short": "Discord Admin Upsert Moderation Policy",
+    "desc": "Create or update an autonomous moderation policy.",
+    "cat": "discord",
+    "color": "#5865F2"
+  },
+  {
+    "name": "discord_admin_upsert_scheduled_task",
+    "short": "Discord Admin Upsert Scheduled Task",
+    "desc": "Create or update a scheduled reminder or scheduled Sage job.",
     "cat": "discord",
     "color": "#5865F2"
   },
@@ -401,6 +429,13 @@ export const nativeTools = [
     "color": "#5865F2"
   },
   {
+    "name": "discord_server_get_moderation_policy",
+    "short": "Discord Server Get Moderation Policy",
+    "desc": "Retrieve one moderation policy by id or name.",
+    "cat": "discord",
+    "color": "#5865F2"
+  },
+  {
     "name": "discord_server_get_permission_snapshot",
     "short": "Discord Server Get Permission Snapshot",
     "desc": "Resolve permissions for a user or role in a specific channel.",
@@ -411,6 +446,13 @@ export const nativeTools = [
     "name": "discord_server_get_scheduled_event",
     "short": "Discord Server Get Scheduled Event",
     "desc": "Retrieve one scheduled event for the active guild.",
+    "cat": "discord",
+    "color": "#5865F2"
+  },
+  {
+    "name": "discord_server_get_scheduled_task",
+    "short": "Discord Server Get Scheduled Task",
+    "desc": "Retrieve one scheduled task and its recent execution history.",
     "cat": "discord",
     "color": "#5865F2"
   },
@@ -457,6 +499,20 @@ export const nativeTools = [
     "color": "#5865F2"
   },
   {
+    "name": "discord_server_list_moderation_cases",
+    "short": "Discord Server List Moderation Cases",
+    "desc": "List recent moderation cases for the guild.",
+    "cat": "discord",
+    "color": "#5865F2"
+  },
+  {
+    "name": "discord_server_list_moderation_policies",
+    "short": "Discord Server List Moderation Policies",
+    "desc": "List Sage moderation policies and imported external AutoMod inventory.",
+    "cat": "discord",
+    "color": "#5865F2"
+  },
+  {
     "name": "discord_server_list_roles",
     "short": "Discord Server List Roles",
     "desc": "List guild roles with compact permission summaries.",
@@ -467,6 +523,13 @@ export const nativeTools = [
     "name": "discord_server_list_scheduled_events",
     "short": "Discord Server List Scheduled Events",
     "desc": "List scheduled events for the active guild.",
+    "cat": "discord",
+    "color": "#5865F2"
+  },
+  {
+    "name": "discord_server_list_scheduled_tasks",
+    "short": "Discord Server List Scheduled Tasks",
+    "desc": "List configured scheduled reminders and scheduled Sage jobs.",
     "cat": "discord",
     "color": "#5865F2"
   },

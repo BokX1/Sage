@@ -502,6 +502,195 @@ const serverListAutomodRulesSchema = z.object({
   limit: z.number().int().min(1).max(100).optional(),
 });
 
+const moderationActionSpecSchema = z.object({
+  type: z.enum(['log_only', 'alert_mods', 'delete_or_block_message', 'timeout_member', 'open_review_case']),
+  timeoutMinutes: z.number().int().min(1).max(40_320).optional(),
+}).superRefine((value, ctx) => {
+  if (value.type === 'timeout_member' && value.timeoutMinutes === undefined) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'timeoutMinutes is required when type is timeout_member.',
+      path: ['timeoutMinutes'],
+    });
+  }
+});
+
+const moderationEscalationSpecSchema = z.object({
+  threshold: z.number().int().min(2).max(20),
+  windowMinutes: z.number().int().min(1).max(10_080),
+  action: moderationActionSpecSchema,
+});
+
+const moderationKeywordTriggerSchema = z.object({
+  kind: z.literal('keyword_filter'),
+  keywords: z.array(z.string().trim().min(1).max(120)).min(1).max(50),
+  allowList: z.array(z.string().trim().min(1).max(120)).max(50).optional(),
+  exemptChannelIds: z.array(z.string().trim().min(1).max(64)).max(50).optional(),
+  exemptRoleIds: z.array(z.string().trim().min(1).max(64)).max(50).optional(),
+});
+
+const moderationRegexTriggerSchema = z.object({
+  kind: z.literal('regex_filter'),
+  patterns: z.array(z.string().trim().min(1).max(300)).min(1).max(20),
+  allowList: z.array(z.string().trim().min(1).max(120)).max(50).optional(),
+  exemptChannelIds: z.array(z.string().trim().min(1).max(64)).max(50).optional(),
+  exemptRoleIds: z.array(z.string().trim().min(1).max(64)).max(50).optional(),
+});
+
+const moderationBlockedDomainsTriggerSchema = z.object({
+  kind: z.literal('blocked_domains'),
+  domains: z.array(z.string().trim().min(1).max(255)).min(1).max(50),
+  exemptChannelIds: z.array(z.string().trim().min(1).max(64)).max(50).optional(),
+  exemptRoleIds: z.array(z.string().trim().min(1).max(64)).max(50).optional(),
+});
+
+const moderationInviteLinksTriggerSchema = z.object({
+  kind: z.literal('invite_links'),
+  allowInternalInvites: z.boolean().optional(),
+  exemptChannelIds: z.array(z.string().trim().min(1).max(64)).max(50).optional(),
+  exemptRoleIds: z.array(z.string().trim().min(1).max(64)).max(50).optional(),
+});
+
+const moderationMentionSpamTriggerSchema = z.object({
+  kind: z.literal('mention_spam'),
+  mentionTotalLimit: z.number().int().min(1).max(50),
+  exemptChannelIds: z.array(z.string().trim().min(1).max(64)).max(50).optional(),
+  exemptRoleIds: z.array(z.string().trim().min(1).max(64)).max(50).optional(),
+});
+
+const moderationGenericSpamTriggerSchema = z.object({
+  kind: z.literal('generic_spam'),
+  exemptChannelIds: z.array(z.string().trim().min(1).max(64)).max(50).optional(),
+  exemptRoleIds: z.array(z.string().trim().min(1).max(64)).max(50).optional(),
+});
+
+const moderationBurstSpamTriggerSchema = z.object({
+  kind: z.literal('burst_spam'),
+  maxMessages: z.number().int().min(2).max(50),
+  windowSeconds: z.number().int().min(5).max(3_600),
+  exemptChannelIds: z.array(z.string().trim().min(1).max(64)).max(50).optional(),
+  exemptRoleIds: z.array(z.string().trim().min(1).max(64)).max(50).optional(),
+});
+
+const moderationDuplicateMessagesTriggerSchema = z.object({
+  kind: z.literal('duplicate_messages'),
+  maxDuplicates: z.number().int().min(2).max(20),
+  windowSeconds: z.number().int().min(5).max(3_600),
+  exemptChannelIds: z.array(z.string().trim().min(1).max(64)).max(50).optional(),
+  exemptRoleIds: z.array(z.string().trim().min(1).max(64)).max(50).optional(),
+});
+
+const moderationCapsAbuseTriggerSchema = z.object({
+  kind: z.literal('caps_abuse'),
+  minLength: z.number().int().min(5).max(2_000),
+  uppercaseRatio: z.number().min(0.5).max(1),
+  exemptChannelIds: z.array(z.string().trim().min(1).max(64)).max(50).optional(),
+  exemptRoleIds: z.array(z.string().trim().min(1).max(64)).max(50).optional(),
+});
+
+const moderationAttachmentPolicyTriggerSchema = z.object({
+  kind: z.literal('attachment_policy'),
+  blockedExtensions: z.array(z.string().trim().min(1).max(20)).max(50).optional(),
+  blockedContentTypes: z.array(z.string().trim().min(1).max(120)).max(50).optional(),
+  maxBytes: z.number().int().min(1).max(100_000_000).optional(),
+  exemptChannelIds: z.array(z.string().trim().min(1).max(64)).max(50).optional(),
+  exemptRoleIds: z.array(z.string().trim().min(1).max(64)).max(50).optional(),
+});
+
+const moderationAccountAgeGateTriggerSchema = z.object({
+  kind: z.literal('account_age_gate'),
+  minAccountAgeMinutes: z.number().int().min(1).max(525_600),
+});
+
+const moderationUsernameFilterTriggerSchema = z.object({
+  kind: z.literal('username_filter'),
+  keywords: z.array(z.string().trim().min(1).max(120)).max(50).optional(),
+  patterns: z.array(z.string().trim().min(1).max(300)).max(20).optional(),
+}).superRefine((value, ctx) => {
+  if ((!value.keywords || value.keywords.length === 0) && (!value.patterns || value.patterns.length === 0)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Provide at least one keyword or regex pattern.',
+      path: ['keywords'],
+    });
+  }
+});
+
+const moderationJoinVelocityTriggerSchema = z.object({
+  kind: z.literal('join_velocity'),
+  maxJoins: z.number().int().min(2).max(100),
+  windowSeconds: z.number().int().min(5).max(86_400),
+});
+
+const moderationPolicySpecSchema = z.object({
+  family: z.enum(['content_filter', 'spam_filter', 'member_safety', 'attachment_policy']),
+  trigger: z.discriminatedUnion('kind', [
+    moderationKeywordTriggerSchema,
+    moderationRegexTriggerSchema,
+    moderationBlockedDomainsTriggerSchema,
+    moderationInviteLinksTriggerSchema,
+    moderationMentionSpamTriggerSchema,
+    moderationGenericSpamTriggerSchema,
+    moderationBurstSpamTriggerSchema,
+    moderationDuplicateMessagesTriggerSchema,
+    moderationCapsAbuseTriggerSchema,
+    moderationAttachmentPolicyTriggerSchema,
+    moderationAccountAgeGateTriggerSchema,
+    moderationUsernameFilterTriggerSchema,
+    moderationJoinVelocityTriggerSchema,
+  ]),
+  action: moderationActionSpecSchema,
+  escalation: moderationEscalationSpecSchema.nullish(),
+  notifyChannelId: z.string().trim().min(1).max(64).optional(),
+}).superRefine((value, ctx) => {
+  const needsNotifyChannel =
+    value.action.type === 'alert_mods' ||
+    value.action.type === 'open_review_case' ||
+    value.escalation?.action.type === 'alert_mods' ||
+    value.escalation?.action.type === 'open_review_case';
+
+  if (needsNotifyChannel && !value.notifyChannelId?.trim()) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'notifyChannelId is required when the policy or escalation action alerts moderators or opens review cases.',
+      path: ['notifyChannelId'],
+    });
+  }
+});
+
+const serverListModerationPoliciesSchema = z.object({
+  action: z.literal('list_moderation_policies').describe('List Sage moderation policies and imported external AutoMod inventory. Admin-only read.'),
+});
+
+const serverGetModerationPolicySchema = z.object({
+  action: z.literal('get_moderation_policy').describe('Retrieve one moderation policy by id or name. Admin-only read.'),
+  policyId: z.string().trim().min(1).max(64).optional(),
+  name: z.string().trim().min(1).max(100).optional(),
+}).superRefine((value, ctx) => {
+  if (!value.policyId && !value.name) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Provide policyId or name.',
+      path: ['policyId'],
+    });
+  }
+});
+
+const serverListModerationCasesSchema = z.object({
+  action: z.literal('list_moderation_cases').describe('List recent moderation cases for the guild. Admin-only read.'),
+  limit: z.number().int().min(1).max(100).optional(),
+  policyId: z.string().trim().min(1).max(64).optional(),
+});
+
+const serverListScheduledTasksSchema = z.object({
+  action: z.literal('list_scheduled_tasks').describe('List configured Sage scheduled tasks for the guild. Admin-only read.'),
+});
+
+const serverGetScheduledTaskSchema = z.object({
+  action: z.literal('get_scheduled_task').describe('Retrieve one scheduled task and its recent runs. Admin-only read.'),
+  taskId: z.string().trim().min(1).max(64),
+});
+
 const serverUpdateThreadSchema = z.object({
   action: z.literal('update_thread').describe('Rename or change archive/lock settings for a thread. Disabled in autopilot turns.'),
   threadId: z.string().trim().min(1).max(64),
@@ -568,6 +757,85 @@ const serverThreadMemberActionSchema = (
 const instructionsUpdateServerSchema = z.object({
   action: z.literal('update_server_instructions').describe('Submit an admin request to update the guild Sage Persona. This changes Sage behavior, persona, or policy config, not moderation or enforcement; use discord_context_get_server_instructions to read the current text.'),
   request: sagePersonaUpdateRequestSchema,
+});
+
+const adminUpsertModerationPolicySchema = z.object({
+  action: z.literal('upsert_moderation_policy').describe('Create or update an autonomous moderation policy. Admin-only write.'),
+  policyId: z.string().trim().min(1).max(64).optional(),
+  name: z.string().trim().min(1).max(100),
+  descriptionText: z.string().trim().max(500).optional(),
+  mode: z.enum(['dry_run', 'enforce', 'disabled']).default('dry_run'),
+  spec: moderationPolicySpecSchema,
+});
+
+const adminDisableModerationPolicySchema = z.object({
+  action: z.literal('disable_moderation_policy').describe('Disable a moderation policy by id or name. Admin-only write.'),
+  policyId: z.string().trim().min(1).max(64).optional(),
+  name: z.string().trim().min(1).max(100).optional(),
+}).superRefine((value, ctx) => {
+  if (!value.policyId && !value.name) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Provide policyId or name.',
+      path: ['policyId'],
+    });
+  }
+});
+
+const reminderTaskPayloadSchema = z.object({
+  kind: z.literal('reminder_message'),
+  content: z.string().trim().min(1).max(8_000),
+  roleIds: z.array(z.string().trim().min(1).max(64)).max(20).optional(),
+  userIds: z.array(z.string().trim().min(1).max(64)).max(20).optional(),
+});
+
+const agentRunTaskPayloadSchema = z.object({
+  kind: z.literal('agent_run'),
+  prompt: z.string().trim().min(1).max(8_000),
+  mentionedUserIds: z.array(z.string().trim().min(1).max(64)).max(20).optional(),
+});
+
+const scheduledTaskPayloadSchema = z.discriminatedUnion('kind', [
+  reminderTaskPayloadSchema,
+  agentRunTaskPayloadSchema,
+]);
+
+const adminUpsertScheduledTaskSchema = z.object({
+  action: z.literal('upsert_scheduled_task').describe('Create or update a durable scheduled reminder or scheduled Sage run. Admin-only write.'),
+  taskId: z.string().trim().min(1).max(64).optional(),
+  kind: z.enum(['reminder_message', 'agent_run']),
+  channelId: z.string().trim().min(1).max(64).optional(),
+  timezone: z.string().trim().min(1).max(120).optional(),
+  cronExpr: z.string().trim().min(1).max(120).optional(),
+  runAtIso: z.string().trim().min(1).max(80).optional(),
+  payload: scheduledTaskPayloadSchema,
+}).superRefine((value, ctx) => {
+  if (!value.cronExpr && !value.runAtIso) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Provide cronExpr or runAtIso.',
+      path: ['cronExpr'],
+    });
+  }
+  if (value.cronExpr && value.runAtIso) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Provide only one of cronExpr or runAtIso.',
+      path: ['cronExpr'],
+    });
+  }
+  if (value.payload.kind !== value.kind) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'payload.kind must match kind.',
+      path: ['payload', 'kind'],
+    });
+  }
+});
+
+const adminCancelScheduledTaskSchema = z.object({
+  action: z.literal('cancel_scheduled_task').describe('Cancel an existing scheduled task. Admin-only write.'),
+  taskId: z.string().trim().min(1).max(64),
 });
 
 const messagesEditSchema = z.object({
@@ -1213,6 +1481,66 @@ export const discordServerTools = [
     promptSummary: 'Use to inspect AutoMod rules.',
   }),
   defineDiscordActionTool({
+    name: 'discord_server_list_moderation_policies',
+    title: 'Discord Server List Moderation Policies',
+    description: 'List Sage moderation policies and imported external AutoMod inventory.',
+    schema: serverListModerationPoliciesSchema,
+    domain: 'discord_server',
+    executeDomain: executeDiscordServerAction,
+    readOnly: true,
+    access: 'admin',
+    capabilityTags: ['server', 'moderation'],
+    promptSummary: 'Use to inspect moderation policy inventory.',
+  }),
+  defineDiscordActionTool({
+    name: 'discord_server_get_moderation_policy',
+    title: 'Discord Server Get Moderation Policy',
+    description: 'Retrieve one moderation policy by id or name.',
+    schema: serverGetModerationPolicySchema,
+    domain: 'discord_server',
+    executeDomain: executeDiscordServerAction,
+    readOnly: true,
+    access: 'admin',
+    capabilityTags: ['server', 'moderation'],
+    promptSummary: 'Use to inspect one moderation policy.',
+  }),
+  defineDiscordActionTool({
+    name: 'discord_server_list_moderation_cases',
+    title: 'Discord Server List Moderation Cases',
+    description: 'List recent moderation cases for the guild.',
+    schema: serverListModerationCasesSchema,
+    domain: 'discord_server',
+    executeDomain: executeDiscordServerAction,
+    readOnly: true,
+    access: 'admin',
+    capabilityTags: ['server', 'moderation'],
+    promptSummary: 'Use to inspect autonomous and manual moderation case history.',
+  }),
+  defineDiscordActionTool({
+    name: 'discord_server_list_scheduled_tasks',
+    title: 'Discord Server List Scheduled Tasks',
+    description: 'List configured scheduled reminders and scheduled Sage jobs.',
+    schema: serverListScheduledTasksSchema,
+    domain: 'discord_server',
+    executeDomain: executeDiscordServerAction,
+    readOnly: true,
+    access: 'admin',
+    capabilityTags: ['server', 'scheduler'],
+    promptSummary: 'Use to inspect scheduled tasks for the guild.',
+  }),
+  defineDiscordActionTool({
+    name: 'discord_server_get_scheduled_task',
+    title: 'Discord Server Get Scheduled Task',
+    description: 'Retrieve one scheduled task and its recent execution history.',
+    schema: serverGetScheduledTaskSchema,
+    domain: 'discord_server',
+    executeDomain: executeDiscordServerAction,
+    readOnly: true,
+    access: 'admin',
+    capabilityTags: ['server', 'scheduler'],
+    promptSummary: 'Use to inspect one scheduled task in detail.',
+  }),
+  defineDiscordActionTool({
     name: 'discord_server_create_thread',
     title: 'Discord Server Create Thread',
     description: 'Create a Discord thread.',
@@ -1514,6 +1842,54 @@ export const discordAdminTools = [
     access: 'admin',
     capabilityTags: ['admin', 'moderation'],
     promptSummary: 'Use for moderation or enforcement actions that need approval.',
+  }),
+  defineDiscordActionTool({
+    name: 'discord_admin_upsert_moderation_policy',
+    title: 'Discord Admin Upsert Moderation Policy',
+    description: 'Create or update an autonomous moderation policy.',
+    schema: adminUpsertModerationPolicySchema,
+    domain: 'discord_admin',
+    executeDomain: executeDiscordAdminAction,
+    readOnly: false,
+    access: 'admin',
+    capabilityTags: ['admin', 'moderation'],
+    promptSummary: 'Use to create or update deterministic moderation policy rules.',
+  }),
+  defineDiscordActionTool({
+    name: 'discord_admin_disable_moderation_policy',
+    title: 'Discord Admin Disable Moderation Policy',
+    description: 'Disable an existing moderation policy.',
+    schema: adminDisableModerationPolicySchema,
+    domain: 'discord_admin',
+    executeDomain: executeDiscordAdminAction,
+    readOnly: false,
+    access: 'admin',
+    capabilityTags: ['admin', 'moderation'],
+    promptSummary: 'Use to disable a moderation policy without deleting its case history.',
+  }),
+  defineDiscordActionTool({
+    name: 'discord_admin_upsert_scheduled_task',
+    title: 'Discord Admin Upsert Scheduled Task',
+    description: 'Create or update a scheduled reminder or scheduled Sage job.',
+    schema: adminUpsertScheduledTaskSchema,
+    domain: 'discord_admin',
+    executeDomain: executeDiscordAdminAction,
+    readOnly: false,
+    access: 'admin',
+    capabilityTags: ['admin', 'scheduler'],
+    promptSummary: 'Use to create or update durable scheduled reminders and scheduled Sage runs.',
+  }),
+  defineDiscordActionTool({
+    name: 'discord_admin_cancel_scheduled_task',
+    title: 'Discord Admin Cancel Scheduled Task',
+    description: 'Cancel a scheduled reminder or scheduled Sage job.',
+    schema: adminCancelScheduledTaskSchema,
+    domain: 'discord_admin',
+    executeDomain: executeDiscordAdminAction,
+    readOnly: false,
+    access: 'admin',
+    capabilityTags: ['admin', 'scheduler'],
+    promptSummary: 'Use to cancel an existing scheduled task.',
   }),
   defineDiscordActionTool({
     name: 'discord_admin_edit_message',

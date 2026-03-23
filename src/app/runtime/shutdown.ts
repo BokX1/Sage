@@ -4,6 +4,7 @@ import { prisma } from '../../platform/db/prisma-client';
 import { shutdownAgentGraphRuntime } from '../../features/agent-runtime/langgraph/runtime';
 import { shutdownMcpTools } from '../../features/agent-runtime';
 import { stopAgentTaskRunWorker } from '../../features/agent-runtime/agentTaskRunWorker';
+import { stopScheduledTaskWorker } from '../../features/scheduler/worker';
 import { stopChannelSummaryScheduler } from '../../features/summary/channelSummaryScheduler';
 import { stopCompactionScheduler } from '../../features/summary/ltmCompaction';
 import { shutdownKafkaProducer } from '../../platform/social-graph/kafkaProducer';
@@ -27,6 +28,7 @@ async function runShutdown(signal: ShutdownSignal, client: Client): Promise<void
     stopChannelSummaryScheduler();
     stopCompactionScheduler();
     stopAgentTaskRunWorker();
+    stopScheduledTaskWorker();
 
     try {
       await client.destroy();

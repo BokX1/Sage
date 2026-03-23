@@ -3428,6 +3428,24 @@ async function executeQueuedDiscordAction(params: {
   }
 }
 
+export async function executeAutonomousModerationAction(params: {
+  action: PreparedModerationAction;
+  guildId: string;
+  channelId: string;
+  actionId: string;
+  requestedBy: string;
+  approvedBy?: string;
+}): Promise<Record<string, unknown>> {
+  return executeQueuedDiscordAction({
+    action: params.action,
+    guildId: params.guildId,
+    channelId: params.channelId,
+    actionId: params.actionId,
+    requestedBy: params.requestedBy,
+    approvedBy: params.approvedBy ?? 'sage:auto',
+  });
+}
+
 async function executePendingAction(params: {
   action: ApprovalReviewRequestRecord;
   approvedBy: string;

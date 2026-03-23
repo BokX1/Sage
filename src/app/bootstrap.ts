@@ -1,6 +1,12 @@
 import { client } from '../platform/discord/client';
 import { registerGuildCreateHandler } from './discord/handlers/guildCreate';
+import { registerGuildMemberAddHandler } from './discord/handlers/guildMemberAdd';
+import { registerGuildMemberUpdateHandler } from './discord/handlers/guildMemberUpdate';
 import { registerInteractionCreateHandler } from './discord/handlers/interactionCreate';
+import { registerAutoModerationActionExecutionHandler } from './discord/handlers/autoModerationActionExecution';
+import { registerAutoModerationRuleCreateHandler } from './discord/handlers/autoModerationRuleCreate';
+import { registerAutoModerationRuleDeleteHandler } from './discord/handlers/autoModerationRuleDelete';
+import { registerAutoModerationRuleUpdateHandler } from './discord/handlers/autoModerationRuleUpdate';
 import { registerMessageCreateHandler } from './discord/handlers/messageCreate';
 import { registerMessageUpdateHandler } from './discord/handlers/messageUpdate';
 import { registerMessageReactionAddHandler } from './discord/handlers/messageReactionAdd';
@@ -12,6 +18,7 @@ import { assertAgentTraceSchemaReady } from '../features/agent-runtime/agent-tra
 import { registerDefaultAgenticTools } from '../features/agent-runtime';
 import { initAgentTaskRunWorker } from '../features/agent-runtime/agentTaskRunWorker';
 import { initializeAgentGraphRuntime } from '../features/agent-runtime/langgraph/runtime';
+import { initScheduledTaskWorker } from '../features/scheduler/worker';
 import { registerShutdownHooks } from './runtime/shutdown';
 import { initChannelSummaryScheduler } from '../features/summary/channelSummaryScheduler';
 import { startCompactionScheduler } from '../features/summary/ltmCompaction';
@@ -30,6 +37,12 @@ export async function bootstrapApp(): Promise<void> {
     registerMessageCreateHandler();
     registerMessageUpdateHandler();
     registerMessageReactionAddHandler();
+    registerGuildMemberAddHandler();
+    registerGuildMemberUpdateHandler();
+    registerAutoModerationRuleCreateHandler();
+    registerAutoModerationRuleUpdateHandler();
+    registerAutoModerationRuleDeleteHandler();
+    registerAutoModerationActionExecutionHandler();
     registerInteractionCreateHandler();
     registerVoiceStateUpdateHandler();
     registerReadyHandler(client);
@@ -39,6 +52,7 @@ export async function bootstrapApp(): Promise<void> {
     initImageAttachmentRecallWorker();
     initApprovalCardCleanupScheduler();
     initAgentTaskRunWorker();
+    initScheduledTaskWorker();
     registerShutdownHooks({ client });
 
     if (!config.AI_PROVIDER_API_KEY) {

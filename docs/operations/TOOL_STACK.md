@@ -179,6 +179,14 @@ The smoke script checks representative non-Discord tools from the current regist
 
 Optional capability tools are included automatically when their curated MCP presets are configured and available. For example, enabling the GitHub preset adds `repo_search_code` and `repo_read_file`, while enabling Context7 adds `docs_lookup`.
 
+Sage's new autonomous moderation policies and durable scheduled reminders/jobs stay **Discord-native**, not MCP-backed. They rely on the live bot runtime, guild permissions, and Discord gateway support rather than the generic tool-smoke path. Use `system_tool_stats`, `npm run tools:audit`, and the live Discord smoke together when validating that surface.
+
+If you plan to enable autonomous moderation, the Discord application must also enable:
+
+- `GuildMembers`
+- `AutoModerationConfiguration`
+- `AutoModerationExecution`
+
 For GitHub MCP specifically, discovery is no longer treated as proof that every GitHub tool can execute. `npm run tools:audit` and the matching doctor check now separate:
 
 - connected + authenticated + baseline code search working

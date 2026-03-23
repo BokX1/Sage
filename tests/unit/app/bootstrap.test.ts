@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mockClient = vi.hoisted(() => ({
   login: vi.fn().mockResolvedValue(undefined),
+  on: vi.fn(),
 }));
 
 const mockRegisterDefaultAgenticTools = vi.hoisted(() => vi.fn());
@@ -13,10 +14,18 @@ const mockRegisterInteractionCreateHandler = vi.hoisted(() => vi.fn());
 const mockRegisterVoiceStateUpdateHandler = vi.hoisted(() => vi.fn());
 const mockRegisterReadyHandler = vi.hoisted(() => vi.fn());
 const mockRegisterGuildCreateHandler = vi.hoisted(() => vi.fn());
+const mockRegisterGuildMemberAddHandler = vi.hoisted(() => vi.fn());
+const mockRegisterGuildMemberUpdateHandler = vi.hoisted(() => vi.fn());
+const mockRegisterAutoModerationRuleCreateHandler = vi.hoisted(() => vi.fn());
+const mockRegisterAutoModerationRuleUpdateHandler = vi.hoisted(() => vi.fn());
+const mockRegisterAutoModerationRuleDeleteHandler = vi.hoisted(() => vi.fn());
+const mockRegisterAutoModerationActionExecutionHandler = vi.hoisted(() => vi.fn());
 const mockInitChannelSummaryScheduler = vi.hoisted(() => vi.fn());
 const mockStartCompactionScheduler = vi.hoisted(() => vi.fn());
 const mockInitImageAttachmentRecallWorker = vi.hoisted(() => vi.fn());
 const mockInitApprovalCardCleanupScheduler = vi.hoisted(() => vi.fn());
+const mockInitAgentTaskRunWorker = vi.hoisted(() => vi.fn());
+const mockInitScheduledTaskWorker = vi.hoisted(() => vi.fn());
 const mockRegisterShutdownHooks = vi.hoisted(() => vi.fn());
 const mockAssertAgentTraceSchemaReady = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
 
@@ -64,6 +73,30 @@ vi.mock('@/app/discord/handlers/guildCreate', () => ({
   registerGuildCreateHandler: mockRegisterGuildCreateHandler,
 }));
 
+vi.mock('@/app/discord/handlers/guildMemberAdd', () => ({
+  registerGuildMemberAddHandler: mockRegisterGuildMemberAddHandler,
+}));
+
+vi.mock('@/app/discord/handlers/guildMemberUpdate', () => ({
+  registerGuildMemberUpdateHandler: mockRegisterGuildMemberUpdateHandler,
+}));
+
+vi.mock('@/app/discord/handlers/autoModerationRuleCreate', () => ({
+  registerAutoModerationRuleCreateHandler: mockRegisterAutoModerationRuleCreateHandler,
+}));
+
+vi.mock('@/app/discord/handlers/autoModerationRuleUpdate', () => ({
+  registerAutoModerationRuleUpdateHandler: mockRegisterAutoModerationRuleUpdateHandler,
+}));
+
+vi.mock('@/app/discord/handlers/autoModerationRuleDelete', () => ({
+  registerAutoModerationRuleDeleteHandler: mockRegisterAutoModerationRuleDeleteHandler,
+}));
+
+vi.mock('@/app/discord/handlers/autoModerationActionExecution', () => ({
+  registerAutoModerationActionExecutionHandler: mockRegisterAutoModerationActionExecutionHandler,
+}));
+
 vi.mock('@/features/summary/channelSummaryScheduler', () => ({
   initChannelSummaryScheduler: mockInitChannelSummaryScheduler,
 }));
@@ -78,6 +111,14 @@ vi.mock('@/features/attachments/imageAttachmentRecallWorker', () => ({
 
 vi.mock('@/features/admin/approvalCardCleanupScheduler', () => ({
   initApprovalCardCleanupScheduler: mockInitApprovalCardCleanupScheduler,
+}));
+
+vi.mock('@/features/agent-runtime/agentTaskRunWorker', () => ({
+  initAgentTaskRunWorker: mockInitAgentTaskRunWorker,
+}));
+
+vi.mock('@/features/scheduler/worker', () => ({
+  initScheduledTaskWorker: mockInitScheduledTaskWorker,
 }));
 
 vi.mock('@/app/runtime/shutdown', () => ({
@@ -109,6 +150,12 @@ describe('bootstrapApp', () => {
     expect(mockRegisterMessageCreateHandler).toHaveBeenCalledTimes(1);
     expect(mockRegisterMessageUpdateHandler).toHaveBeenCalledTimes(1);
     expect(mockRegisterMessageReactionAddHandler).toHaveBeenCalledTimes(1);
+    expect(mockRegisterGuildMemberAddHandler).toHaveBeenCalledTimes(1);
+    expect(mockRegisterGuildMemberUpdateHandler).toHaveBeenCalledTimes(1);
+    expect(mockRegisterAutoModerationRuleCreateHandler).toHaveBeenCalledTimes(1);
+    expect(mockRegisterAutoModerationRuleUpdateHandler).toHaveBeenCalledTimes(1);
+    expect(mockRegisterAutoModerationRuleDeleteHandler).toHaveBeenCalledTimes(1);
+    expect(mockRegisterAutoModerationActionExecutionHandler).toHaveBeenCalledTimes(1);
     expect(mockRegisterInteractionCreateHandler).toHaveBeenCalledTimes(1);
     expect(mockRegisterVoiceStateUpdateHandler).toHaveBeenCalledTimes(1);
     expect(mockRegisterReadyHandler).toHaveBeenCalledWith(mockClient);
@@ -117,6 +164,8 @@ describe('bootstrapApp', () => {
     expect(mockStartCompactionScheduler).toHaveBeenCalledTimes(1);
     expect(mockInitImageAttachmentRecallWorker).toHaveBeenCalledTimes(1);
     expect(mockInitApprovalCardCleanupScheduler).toHaveBeenCalledTimes(1);
+    expect(mockInitAgentTaskRunWorker).toHaveBeenCalledTimes(1);
+    expect(mockInitScheduledTaskWorker).toHaveBeenCalledTimes(1);
     expect(mockRegisterShutdownHooks).toHaveBeenCalledWith({ client: mockClient });
     expect(mockClient.login).toHaveBeenCalledWith('test-token');
   });
