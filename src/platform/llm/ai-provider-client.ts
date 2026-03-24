@@ -1009,19 +1009,32 @@ export class AiProviderClient implements LLMClient {
     metrics.increment('llm_calls_total', { model, provider: String(effectiveProviderId) });
     logger.debug({ url, model, messageCount: request.messages.length }, '[AiProviderClient] Codex request');
 
-    const payload = {
+    const payload: Record<string, unknown> = {
       model,
       store: false,
       stream: true,
-      instructions: normalizedMessages.instructions,
+      instructions: normalizedMessages.instructions || 'You are Sage, a helpful assistant.',
       input: normalizedMessages.input,
       text: { verbosity: 'medium' },
       include: ['reasoning.encrypted_content'],
-      tools: normalizedTools,
-      tool_choice: normalizeCodexToolChoice(request.toolChoice),
-      parallel_tool_calls: request.parallelToolCalls,
-      temperature: request.temperature ?? 0.7,
     };
+
+    if (normalizedTools && normalizedTools.length > 0) {
+      payload.tools = normalizedTools;
+    }
+
+    const normalizedToolChoice = normalizeCodexToolChoice(request.toolChoice);
+    if (normalizedToolChoice !== undefined) {
+      payload.tool_choice = normalizedToolChoice;
+    }
+
+    if (typeof request.parallelToolCalls === 'boolean') {
+      payload.parallel_tool_calls = request.parallelToolCalls;
+    }
+
+    if (typeof request.temperature === 'number' && Number.isFinite(request.temperature)) {
+      payload.temperature = request.temperature;
+    }
 
     let attempt = 0;
     let lastError: AppError | undefined;

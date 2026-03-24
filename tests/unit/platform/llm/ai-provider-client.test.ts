@@ -542,12 +542,46 @@ describe('AiProviderClient', () => {
 
     const body = parseRequestBody(fetchMock, 0);
     expect(body.instructions).toBe('system prompt');
+    expect(body).not.toHaveProperty('temperature');
     expect(body.input).toEqual([
       {
         role: 'user',
         content: [{ type: 'input_text', text: 'search for it' }],
       },
     ]);
+  });
+
+  it('adds fallback instructions for Codex requests when no system prompt is present', async () => {
+    const client = new AiProviderClient({ baseUrl: 'https://chatgpt.com/backend-api', model: 'gpt-5.4', maxRetries: 0 });
+
+    fetchMock.mockResolvedValueOnce(
+      createSseResponse([
+        {
+          type: 'response.completed',
+          response: {
+            status: 'completed',
+            usage: {
+              input_tokens: 1,
+              output_tokens: 1,
+              total_tokens: 2,
+            },
+          },
+        },
+      ]),
+    );
+
+    await client.chat({
+      providerId: 'openai_codex',
+      baseUrl: 'https://chatgpt.com/backend-api',
+      model: 'gpt-5.4',
+      apiKey: createCodexJwtToken('acct_codex'),
+      authSource: 'host_codex_auth',
+      messages: [{ role: 'user', content: 'hello' }],
+    });
+
+    const body = parseRequestBody(fetchMock, 0);
+    expect(body.instructions).toBe('You are Sage, a helpful assistant.');
+    expect(body).not.toHaveProperty('temperature');
   });
 
   it('does not retry after an abort error', async () => {
