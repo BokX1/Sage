@@ -61,10 +61,19 @@ describe('ChannelSummaryScheduler', () => {
     vi.clearAllMocks();
     vi.mocked(isLoggingEnabled).mockReturnValue(true);
     mockResolveTextProviderRoute.mockResolvedValue({
-      providerId: 'default',
+      providerId: 'openai_codex',
       lane: 'summary',
-      baseUrl: 'https://fallback.example/v1',
-      model: 'summary-model',
+      baseUrl: 'https://chatgpt.com/backend-api',
+      model: 'gpt-5.4',
+      apiKey: 'host-codex-token',
+      authSource: 'host_codex_auth',
+      fallbackRoute: {
+        providerId: 'default',
+        baseUrl: 'https://fallback.example/v1',
+        model: 'summary-model',
+        apiKey: 'fallback-key',
+        authSource: 'host_api_key',
+      },
     });
   });
 
@@ -138,6 +147,38 @@ describe('ChannelSummaryScheduler', () => {
     await scheduler.tick();
 
     expect(summarizeWindow).toHaveBeenCalledTimes(1);
+    expect(summarizeWindow).toHaveBeenCalledWith(
+      expect.objectContaining({
+        providerId: 'openai_codex',
+        providerBaseUrl: 'https://chatgpt.com/backend-api',
+        providerModel: 'gpt-5.4',
+        apiKey: 'host-codex-token',
+        apiKeySource: 'host_codex_auth',
+        fallbackRoute: expect.objectContaining({
+          providerId: 'default',
+          baseUrl: 'https://fallback.example/v1',
+          model: 'summary-model',
+          apiKey: 'fallback-key',
+          authSource: 'host_api_key',
+        }),
+      }),
+    );
+    expect(summarizeProfile).toHaveBeenCalledWith(
+      expect.objectContaining({
+        providerId: 'openai_codex',
+        providerBaseUrl: 'https://chatgpt.com/backend-api',
+        providerModel: 'gpt-5.4',
+        apiKey: 'host-codex-token',
+        apiKeySource: 'host_codex_auth',
+        fallbackRoute: expect.objectContaining({
+          providerId: 'default',
+          baseUrl: 'https://fallback.example/v1',
+          model: 'summary-model',
+          apiKey: 'fallback-key',
+          authSource: 'host_api_key',
+        }),
+      }),
+    );
     expect(upsertSpy).toHaveBeenCalled();
 
     scheduler.markDirty({
@@ -245,5 +286,73 @@ describe('ChannelSummaryScheduler', () => {
 
     expect(summarizeWindow).not.toHaveBeenCalled();
     expect(summarizeProfile).not.toHaveBeenCalled();
+  });
+
+  it('resolves and forwards the summary provider route during forceSummarize', async () => {
+    const summaryStore = new InMemoryChannelSummaryStore();
+    const messageStore = new InMemoryMessageStore();
+    const nowMs = Date.now();
+    const summarizeWindow = vi.fn().mockResolvedValue({
+      windowStart: new Date(nowMs - 1000),
+      windowEnd: new Date(nowMs),
+      summaryText: 'Rolling summary',
+      topics: [],
+      threads: [],
+      decisions: [],
+      actionItems: [],
+      unresolved: [],
+      glossary: {},
+    });
+    const summarizeProfile = vi.fn().mockResolvedValue({
+      windowStart: new Date(nowMs - 1000),
+      windowEnd: new Date(nowMs),
+      summaryText: 'Profile summary',
+      topics: [],
+      threads: [],
+      decisions: [],
+      actionItems: [],
+      unresolved: [],
+      glossary: {},
+    });
+
+    const scheduler = new ChannelSummaryScheduler({
+      summaryStore,
+      messageStore,
+      summarizeWindow,
+      summarizeProfile,
+      now: () => nowMs,
+    });
+
+    await messageStore.append(
+      createMessage({
+        id: 'msg-force-1',
+        guildId: 'guild-1',
+        channelId: 'channel-1',
+        timestamp: new Date(nowMs - 500),
+        content: 'Force summary me',
+      }),
+    );
+
+    await scheduler.forceSummarize('guild-1', 'channel-1');
+
+    expect(mockResolveTextProviderRoute).toHaveBeenCalledWith('guild-1', 'summary');
+    expect(summarizeWindow).toHaveBeenCalledWith(
+      expect.objectContaining({
+        providerId: 'openai_codex',
+        providerBaseUrl: 'https://chatgpt.com/backend-api',
+        providerModel: 'gpt-5.4',
+        apiKey: 'host-codex-token',
+        apiKeySource: 'host_codex_auth',
+      }),
+    );
+    expect(summarizeProfile).toHaveBeenCalledWith(
+      expect.objectContaining({
+        providerId: 'openai_codex',
+        providerBaseUrl: 'https://chatgpt.com/backend-api',
+        providerModel: 'gpt-5.4',
+        apiKey: 'host-codex-token',
+        apiKeySource: 'host_codex_auth',
+      }),
+    );
   });
 });

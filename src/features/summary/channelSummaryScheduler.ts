@@ -10,8 +10,10 @@ import {
   summarizeChannelWindow,
   StructuredSummary,
 } from './summarizeChannelWindow';
-import { resolveTextProviderRoute } from '../agent-runtime/apiKeyResolver';
-import type { LLMAuthSource } from '../../platform/llm/llm-types';
+import {
+  resolveTextProviderRoute,
+  type ResolvedTextProviderRoute,
+} from '../agent-runtime/apiKeyResolver';
 
 export interface DirtyChannelParams {
   guildId: string | null;
@@ -201,8 +203,7 @@ export class ChannelSummaryScheduler {
       state,
       rollingSummary,
       false,
-      summaryRoute.apiKey,
-      summaryRoute.authSource,
+      summaryRoute,
     );
 
     this.dirtyChannels.delete(key);
@@ -212,8 +213,6 @@ export class ChannelSummaryScheduler {
     guildId: string,
     channelId: string,
     windowMinutesOverride?: number,
-    apiKey?: string,
-    apiKeySource?: LLMAuthSource,
   ): Promise<StructuredSummary | null> {
     if (!isLoggingEnabled(guildId, channelId)) {
       logger.warn({ guildId, channelId }, 'Force summary aborted: logging disabled');
@@ -236,12 +235,18 @@ export class ChannelSummaryScheduler {
       return null;
     }
 
+    const summaryRoute = await resolveTextProviderRoute(guildId, 'summary');
+
     const rollingSummary = await this.summarizeWindow({
       messages,
       windowStart,
       windowEnd,
-      apiKey,
-      apiKeySource,
+      providerId: summaryRoute.providerId,
+      providerBaseUrl: summaryRoute.baseUrl,
+      providerModel: summaryRoute.model,
+      apiKey: summaryRoute.apiKey,
+      apiKeySource: summaryRoute.authSource,
+      fallbackRoute: summaryRoute.fallbackRoute,
     });
 
     await this.summaryStore.upsertSummary({
@@ -271,8 +276,7 @@ export class ChannelSummaryScheduler {
       },
       rollingSummary,
       true, // force update
-      apiKey,
-      apiKeySource,
+      summaryRoute,
     );
 
     return rollingSummary;
@@ -282,8 +286,7 @@ export class ChannelSummaryScheduler {
     state: DirtyChannelState,
     rollingSummary: StructuredSummary,
     force = false,
-    apiKey?: string,
-    apiKeySource?: LLMAuthSource,
+    summaryRoute?: ResolvedTextProviderRoute,
   ): Promise<void> {
     const lastProfile = await this.summaryStore.getLatestSummary({
       guildId: state.guildId as string,
@@ -315,8 +318,12 @@ export class ChannelSummaryScheduler {
         }
           : null,
         latestRollingSummary: rollingSummary,
-        apiKey,
-        apiKeySource,
+        providerId: summaryRoute?.providerId,
+        providerBaseUrl: summaryRoute?.baseUrl,
+        providerModel: summaryRoute?.model,
+        apiKey: summaryRoute?.apiKey,
+        apiKeySource: summaryRoute?.authSource,
+        fallbackRoute: summaryRoute?.fallbackRoute,
       });
 
     await this.summaryStore.upsertSummary({

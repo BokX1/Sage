@@ -31,6 +31,7 @@
 
 ### Fixed
 
+- Fixed the channel-summary scheduler so both rolling summaries and long-term profile summaries now preserve the resolved text-provider route end to end, preventing post-reset/background summary jobs from silently dropping back to the generic API-key path when host Codex auth is the active runtime provider.
 - Fixed the LangGraph runtime provider-context handoff so Sage now preserves the resolved Codex route (`providerId`, `baseUrl`, and fallback metadata) inside graph turns instead of silently dropping back to the generic Chat Completions path that surfaced false OpenAI quota/rate-limit errors even with healthy host Codex auth.
 - Fixed stuck Discord daemon retries when a background task's canonical response message disappears after binding: terminal worker publishes now clear stale response-session refs and re-post a fresh visible reply instead of looping forever on the missing canonical surface.
 - Fixed host Codex runtime routing so Sage now talks to the real ChatGPT Codex responses backend with the required `chatgpt-account-id` header and responses/tool-call protocol, instead of incorrectly sending ChatGPT OAuth tokens to the generic OpenAI `chat/completions` API path.
