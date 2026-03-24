@@ -26,6 +26,27 @@ function createEditableMessage(id: string) {
   return message;
 }
 
+function createComponentsV2EditError() {
+  return {
+    code: 50035,
+    message:
+      "Invalid Form Body\ncontent[MESSAGE_CANNOT_USE_LEGACY_FIELDS_WITH_COMPONENTS_V2]: The 'content' field cannot be used when using MessageFlags.IS_COMPONENTS_V2",
+    rawError: {
+      errors: {
+        content: {
+          _errors: [
+            {
+              code: 'MESSAGE_CANNOT_USE_LEGACY_FIELDS_WITH_COMPONENTS_V2',
+              message:
+                "The 'content' field cannot be used when using MessageFlags.IS_COMPONENTS_V2",
+            },
+          ],
+        },
+      },
+    },
+  };
+}
+
 describe('responseSessionChunkDelivery', () => {
   it('keeps overflow chunks anchored to each response session during concurrent long replies', async () => {
     const sharedChannel = {
@@ -79,5 +100,37 @@ describe('responseSessionChunkDelivery', () => {
       'primary-b-child-1-child-1',
       'primary-b-child-1-child-1-child-1',
     ]);
+  });
+
+  it('replaces a non-editable components-v2 primary message with a fresh reply instead of retrying edits forever', async () => {
+    const channel = {
+      send: vi.fn(),
+      messages: {
+        fetch: vi.fn(),
+      },
+    };
+    const primary = createEditableMessage('components-v2-primary');
+    const staleOverflow = createEditableMessage('stale-overflow');
+    primary.edit.mockRejectedValueOnce(createComponentsV2EditError());
+
+    const reconciled = await reconcileResponseSessionChunks({
+      channel,
+      nextText: 'Recovered text reply',
+      state: {
+        primaryMessage: primary,
+        replyAnchor: null,
+        overflowMessageIds: [staleOverflow.id],
+        overflowMessages: [staleOverflow],
+      },
+      allowedMentions: { repliedUser: false },
+    });
+
+    expect(primary.edit).toHaveBeenCalledTimes(1);
+    expect(primary.reply).toHaveBeenCalledTimes(1);
+    expect(channel.send).not.toHaveBeenCalled();
+    expect(staleOverflow.delete).toHaveBeenCalledTimes(1);
+    expect(reconciled.primaryMessage.id).toBe('components-v2-primary-child-1');
+    expect(reconciled.primaryText).toBe('Recovered text reply');
+    expect(reconciled.overflowMessageIds).toEqual([]);
   });
 });

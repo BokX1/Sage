@@ -51,6 +51,42 @@ export interface ReconcileResponseSessionChunksResult {
   overflowMessages: ResponseSessionEditableMessage[];
 }
 
+function isComponentsV2LegacyContentEditError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') {
+    return false;
+  }
+  const candidate = error as {
+    code?: unknown;
+    message?: unknown;
+    rawError?: {
+      errors?: {
+        content?: {
+          _errors?: Array<{ code?: unknown; message?: unknown }>;
+        };
+      };
+    };
+  };
+  const message =
+    typeof candidate.message === 'string'
+      ? candidate.message
+      : '';
+  if (message.includes('MESSAGE_CANNOT_USE_LEGACY_FIELDS_WITH_COMPONENTS_V2')) {
+    return true;
+  }
+  if (candidate.code === 50035) {
+    const nestedErrors = candidate.rawError?.errors?.content?._errors;
+    if (Array.isArray(nestedErrors)) {
+      return nestedErrors.some(
+        (nested) =>
+          nested?.code === 'MESSAGE_CANNOT_USE_LEGACY_FIELDS_WITH_COMPONENTS_V2' ||
+          (typeof nested?.message === 'string' &&
+            nested.message.includes('MESSAGE_CANNOT_USE_LEGACY_FIELDS_WITH_COMPONENTS_V2')),
+      );
+    }
+  }
+  return false;
+}
+
 async function fetchMessageById(
   channel: ResponseSessionChannel,
   messageId: string | null | undefined,
@@ -65,15 +101,23 @@ async function ensureMessageContent(
   message: ResponseSessionEditableMessage,
   content: string,
   allowedMentions?: AllowedMentionsPayload,
-): Promise<void> {
+): Promise<'updated' | 'unchanged' | 'immutable'> {
   if ((message.content ?? '') === content) {
-    return;
+    return 'unchanged';
   }
-  await message.edit({
-    content,
-    allowedMentions,
-  });
+  try {
+    await message.edit({
+      content,
+      allowedMentions,
+    });
+  } catch (error) {
+    if (isComponentsV2LegacyContentEditError(error)) {
+      return 'immutable';
+    }
+    throw error;
+  }
   message.content = content;
+  return 'updated';
 }
 
 async function deleteMessageIfPresent(
@@ -137,7 +181,21 @@ export async function reconcileOverflowChunks(
           });
       overflowMessage.content = chunk;
     } else {
-      await ensureMessageContent(overflowMessage, chunk, allowedMentions);
+      const updateResult = await ensureMessageContent(overflowMessage, chunk, allowedMentions);
+      if (updateResult === 'immutable') {
+        const replyAnchor =
+          asReplyAnchor(nextOverflowMessages[index - 1]) ?? asReplyAnchor(params.replyAnchor);
+        overflowMessage = replyAnchor
+          ? await replyAnchor.reply({
+              content: chunk,
+              allowedMentions,
+            })
+          : await params.channel.send({
+              content: chunk,
+              allowedMentions,
+            });
+        overflowMessage.content = chunk;
+      }
     }
 
     nextOverflowMessages.push(overflowMessage);
@@ -185,7 +243,31 @@ export async function reconcileResponseSessionChunks(
       primaryMessage.content = primaryText;
     }
   } else {
-    await ensureMessageContent(primaryMessage, primaryText, allowedMentions);
+    const updateResult = await ensureMessageContent(primaryMessage, primaryText, allowedMentions);
+    if (updateResult === 'immutable') {
+      await reconcileOverflowChunks({
+        channel: params.channel,
+        overflowTexts: [],
+        state: {
+          overflowMessageIds: params.state.overflowMessageIds,
+          overflowMessages: params.state.overflowMessages,
+        },
+        allowedMentions,
+      });
+      params.state.overflowMessageIds = [];
+      params.state.overflowMessages = [];
+      const replacementAnchor = asReplyAnchor(primaryMessage);
+      primaryMessage = replacementAnchor
+        ? await replacementAnchor.reply({
+            content: primaryText,
+            allowedMentions,
+          })
+        : await params.channel.send({
+            content: primaryText,
+            allowedMentions,
+          });
+      primaryMessage.content = primaryText;
+    }
   }
 
   const overflowResult = await reconcileOverflowChunks({
