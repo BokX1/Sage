@@ -1032,10 +1032,6 @@ export class AiProviderClient implements LLMClient {
       payload.parallel_tool_calls = request.parallelToolCalls;
     }
 
-    if (typeof request.temperature === 'number' && Number.isFinite(request.temperature)) {
-      payload.temperature = request.temperature;
-    }
-
     let attempt = 0;
     let lastError: AppError | undefined;
     const maxAttempts = this.config.maxRetries + 1;

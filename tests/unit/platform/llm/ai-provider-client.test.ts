@@ -584,6 +584,40 @@ describe('AiProviderClient', () => {
     expect(body).not.toHaveProperty('temperature');
   });
 
+  it('does not forward explicit temperature to the Codex backend', async () => {
+    const client = new AiProviderClient({ baseUrl: 'https://chatgpt.com/backend-api', model: 'gpt-5.4', maxRetries: 0 });
+
+    fetchMock.mockResolvedValueOnce(
+      createSseResponse([
+        {
+          type: 'response.completed',
+          response: {
+            status: 'completed',
+            usage: {
+              input_tokens: 1,
+              output_tokens: 1,
+              total_tokens: 2,
+            },
+          },
+        },
+      ]),
+    );
+
+    await client.chat({
+      providerId: 'openai_codex',
+      baseUrl: 'https://chatgpt.com/backend-api',
+      model: 'gpt-5.4',
+      apiKey: createCodexJwtToken('acct_codex'),
+      authSource: 'host_codex_auth',
+      temperature: 0.6,
+      messages: [{ role: 'user', content: 'hello' }],
+    });
+
+    const body = parseRequestBody(fetchMock, 0);
+    expect(body.instructions).toBe('You are Sage, a helpful assistant.');
+    expect(body).not.toHaveProperty('temperature');
+  });
+
   it('does not retry after an abort error', async () => {
     const client = new AiProviderClient({ baseUrl: 'https://api.test/v1', model: 'test-chat-model', maxRetries: 3 });
     const abortError = new DOMException('The operation was aborted.', 'AbortError');
