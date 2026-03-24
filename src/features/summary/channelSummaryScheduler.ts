@@ -10,7 +10,8 @@ import {
   summarizeChannelWindow,
   StructuredSummary,
 } from './summarizeChannelWindow';
-import { getGuildApiKey } from '../settings/guildSettingsRepo';
+import { resolveRuntimeCredential } from '../agent-runtime/apiKeyResolver';
+import type { LLMAuthSource } from '../../platform/llm/llm-types';
 
 export interface DirtyChannelParams {
   guildId: string | null;
@@ -166,14 +167,14 @@ export class ChannelSummaryScheduler {
       return;
     }
 
-    const guildApiKey = await getGuildApiKey(state.guildId);
-    const apiKey = guildApiKey ?? appConfig.AI_PROVIDER_API_KEY;
+    const credential = await resolveRuntimeCredential(state.guildId);
 
     const rollingSummary = await this.summarizeWindow({
       messages,
       windowStart,
       windowEnd,
-      apiKey,
+      apiKey: credential.apiKey,
+      apiKeySource: credential.authSource,
     });
 
     await this.summaryStore.upsertSummary({
@@ -192,7 +193,7 @@ export class ChannelSummaryScheduler {
       glossary: rollingSummary.glossary,
     });
 
-    await this.maybeUpdateProfileSummary(state, rollingSummary, false, apiKey);
+    await this.maybeUpdateProfileSummary(state, rollingSummary, false, credential.apiKey, credential.authSource);
 
     this.dirtyChannels.delete(key);
   }
@@ -202,6 +203,7 @@ export class ChannelSummaryScheduler {
     channelId: string,
     windowMinutesOverride?: number,
     apiKey?: string,
+    apiKeySource?: LLMAuthSource,
   ): Promise<StructuredSummary | null> {
     if (!isLoggingEnabled(guildId, channelId)) {
       logger.warn({ guildId, channelId }, 'Force summary aborted: logging disabled');
@@ -229,6 +231,7 @@ export class ChannelSummaryScheduler {
       windowStart,
       windowEnd,
       apiKey,
+      apiKeySource,
     });
 
     await this.summaryStore.upsertSummary({
@@ -259,6 +262,7 @@ export class ChannelSummaryScheduler {
       rollingSummary,
       true, // force update
       apiKey,
+      apiKeySource,
     );
 
     return rollingSummary;
@@ -269,6 +273,7 @@ export class ChannelSummaryScheduler {
     rollingSummary: StructuredSummary,
     force = false,
     apiKey?: string,
+    apiKeySource?: LLMAuthSource,
   ): Promise<void> {
     const lastProfile = await this.summaryStore.getLatestSummary({
       guildId: state.guildId as string,
@@ -284,9 +289,9 @@ export class ChannelSummaryScheduler {
       return;
     }
 
-    const profileSummary = await this.summarizeProfile({
-      previousSummary: lastProfile
-        ? {
+      const profileSummary = await this.summarizeProfile({
+        previousSummary: lastProfile
+          ? {
           windowStart: lastProfile.windowStart,
           windowEnd: lastProfile.windowEnd,
           summaryText: lastProfile.summaryText,
@@ -298,10 +303,11 @@ export class ChannelSummaryScheduler {
           sentiment: lastProfile.sentiment,
           glossary: lastProfile.glossary ?? {},
         }
-        : null,
-      latestRollingSummary: rollingSummary,
-      apiKey,
-    });
+          : null,
+        latestRollingSummary: rollingSummary,
+        apiKey,
+        apiKeySource,
+      });
 
     await this.summaryStore.upsertSummary({
       guildId: state.guildId as string,

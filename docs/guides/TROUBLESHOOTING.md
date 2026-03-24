@@ -100,7 +100,8 @@ Check these in order:
 
 1. Trigger Sage once so the setup card appears
 2. If you want the hosted/server-key path, have an admin complete the Pollinations key flow
-3. If you want a host-level fallback instead, set `AI_PROVIDER_API_KEY` in `.env`
+3. If you want shared host Codex auth instead, run `npm run auth:codex:login` on the host
+4. If you want a plain host-level fallback instead, set `AI_PROVIDER_API_KEY` in `.env`
 
 ### Response is truncated
 

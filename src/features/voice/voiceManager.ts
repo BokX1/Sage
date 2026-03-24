@@ -9,8 +9,8 @@ import { VoiceChannel } from 'discord.js';
 import { logger } from '../../platform/logging/logger';
 import { EventEmitter } from 'events';
 import { config } from '../../platform/config/env';
+import { resolveRuntimeCredential } from '../agent-runtime/apiKeyResolver';
 import { isLoggingEnabled } from '../settings/guildChannelSettings';
-import { getGuildApiKey } from '../settings/guildSettingsRepo';
 import { createVoiceConversationSummary } from './voiceConversationSummaryRepo';
 import {
   startVoiceConversationSession,
@@ -165,11 +165,11 @@ export class VoiceManager extends EventEmitter {
     }
     const speakerStats = Array.from(speakerCounts.values()).sort((a, b) => b.utteranceCount - a.utteranceCount);
 
-    const guildKey = await getGuildApiKey(session.guildId);
-    const apiKey = guildKey ?? config.AI_PROVIDER_API_KEY;
+    const credential = await resolveRuntimeCredential(session.guildId);
     const structured = await summarizeVoiceConversationSession({
       session: { ...session, endedAt },
-      apiKey,
+      apiKey: credential.apiKey,
+      apiKeySource: credential.authSource,
     });
 
     if (!structured) {

@@ -13,6 +13,8 @@ const mockConfig = vi.hoisted(() => ({
   AI_PROVIDER_API_KEY: '',
 }));
 
+const mockResolveRuntimeCredential = vi.hoisted(() => vi.fn());
+
 vi.mock('@/platform/config/env', () => ({
   config: mockConfig,
 }));
@@ -21,8 +23,8 @@ vi.mock('@/features/settings/guildChannelSettings', () => ({
   isLoggingEnabled: vi.fn(() => true),
 }));
 
-vi.mock('@/features/settings/guildSettingsRepo', () => ({
-  getGuildApiKey: vi.fn().mockResolvedValue(undefined),
+vi.mock('@/features/agent-runtime/apiKeyResolver', () => ({
+  resolveRuntimeCredential: mockResolveRuntimeCredential,
 }));
 
 import { InMemoryMessageStore } from '@/features/awareness/messageStore';
@@ -58,6 +60,7 @@ describe('ChannelSummaryScheduler', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(isLoggingEnabled).mockReturnValue(true);
+    mockResolveRuntimeCredential.mockResolvedValue({});
   });
 
   it('upserts rolling summary and respects min interval', async () => {

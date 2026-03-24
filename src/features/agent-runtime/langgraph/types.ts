@@ -4,6 +4,7 @@ import type { ToolResult } from '../toolCallExecution';
 import type { PromptInputMode, PromptWaitingFollowUp } from '../promptContract';
 import type { GraphToolCallDescriptor } from './nativeTools';
 import type { DiscordAuthorityTier } from '../../../platform/discord/admin-permissions';
+import type { LLMAuthSource } from '../../../platform/llm/llm-types';
 
 export interface GraphToolFile {
   name: string;
@@ -252,6 +253,7 @@ export interface AgentGraphRuntimeContext {
   responseChannelId?: string;
   guildId: string | null;
   apiKey?: string;
+  apiKeySource?: LLMAuthSource;
   model?: string;
   temperature: number;
   timeoutMs?: number;

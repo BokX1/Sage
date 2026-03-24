@@ -65,9 +65,17 @@ Complete index of all environment variables used by Sage, with descriptions and 
 | Variable | Description | Default |
 |:---|:---|:---|
 | `AI_PROVIDER_BASE_URL` | Base URL for your OpenAI-compatible chat-completions endpoint | *(required)* |
-| `AI_PROVIDER_API_KEY` | Optional host-level fallback key for the configured AI provider; leave empty to rely on the in-Discord server key flow | *(empty)* |
+| `AI_PROVIDER_API_KEY` | Optional host-level fallback key for the configured AI provider; Sage now prefers shared host Codex OAuth when available and falls back to this key when host auth is missing or unhealthy | *(empty)* |
+| `OPENAI_CODEX_AUTH_CLIENT_ID` | Client id for the shared host-level Codex OAuth login | *(empty)* |
+| `OPENAI_CODEX_AUTH_AUTHORIZE_URL` | Authorize URL for the host-level Codex OAuth flow | OpenAI authorize endpoint |
+| `OPENAI_CODEX_AUTH_TOKEN_URL` | Token URL for the host-level Codex OAuth flow | OpenAI token endpoint |
+| `OPENAI_CODEX_AUTH_REDIRECT_URI` | Redirect URI Sage expects during the host-level Codex OAuth flow | `http://127.0.0.1:1455/auth/callback` |
+| `OPENAI_CODEX_AUTH_SCOPES` | OAuth scopes for the shared host-level Codex login | `openid offline_access profile email` |
 | `AI_PROVIDER_MAIN_AGENT_MODEL` | Primary runtime agent model | *(required)* |
 | `AI_PROVIDER_MODEL_PROFILES_JSON` | Optional JSON object keyed by model id with token-budget limits Sage should trust; use the live provider probe to verify Chat Completions tool-calling support instead of relying on this field for runtime compatibility | *(optional)* |
+
+> [!NOTE]
+> Sage now supports three distinct provider credential paths: shared **host Codex auth** via `npm run auth:codex:login`, shared **host API key fallback** via `AI_PROVIDER_API_KEY`, and guild-scoped **Pollinations server-key activation** for the hosted BYOP path.
 
 ---
 

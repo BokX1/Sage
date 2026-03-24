@@ -4,7 +4,7 @@ import type { CurrentTurnContext } from '@/features/agent-runtime/continuityCont
 const mockRunChatTurn = vi.hoisted(() => vi.fn());
 const mockGetUserProfileRecord = vi.hoisted(() => vi.fn());
 const mockUpsertUserProfile = vi.hoisted(() => vi.fn());
-const mockGetGuildApiKey = vi.hoisted(() => vi.fn());
+const mockResolveRuntimeCredential = vi.hoisted(() => vi.fn());
 const mockUpdateProfileSummary = vi.hoisted(() => vi.fn());
 const mockNeedsCompaction = vi.hoisted(() => vi.fn());
 const mockCompactUserProfile = vi.hoisted(() => vi.fn());
@@ -27,8 +27,8 @@ vi.mock('@/features/memory/userProfileRepo', () => ({
   upsertUserProfile: mockUpsertUserProfile,
 }));
 
-vi.mock('@/features/settings/guildSettingsRepo', () => ({
-  getGuildApiKey: mockGetGuildApiKey,
+vi.mock('@/features/agent-runtime/apiKeyResolver', () => ({
+  resolveRuntimeCredential: mockResolveRuntimeCredential,
 }));
 
 vi.mock('@/features/memory/profileUpdater', () => ({
@@ -71,7 +71,7 @@ describe('ChatEngine', () => {
     mockConfig.AI_PROVIDER_API_KEY = 'bot-key';
     mockConfig.PROFILE_UPDATE_INTERVAL = 1;
     mockGetUserProfileRecord.mockResolvedValue(null);
-    mockGetGuildApiKey.mockResolvedValue('guild-key');
+    mockResolveRuntimeCredential.mockResolvedValue({ apiKey: 'guild-key', authSource: 'guild_api_key' });
     mockNeedsCompaction.mockReturnValue(false);
     mockCompactUserProfile.mockResolvedValue(null);
     mockRunChatTurn.mockResolvedValue({ replyText: 'ok', delivery: 'chat_reply' });
@@ -166,6 +166,7 @@ describe('ChatEngine', () => {
       guildId: 'guild1',
       userId: 'user1',
       apiKey: 'guild-key',
+      apiKeySource: 'guild_api_key',
     });
 
     await Promise.resolve();

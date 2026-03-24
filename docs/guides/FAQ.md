@@ -133,7 +133,8 @@ npm run dev
 
 Not always.
 
-- if you want a deployment-wide fallback for the configured provider, set `AI_PROVIDER_API_KEY`
+- if you want Sage to prefer one shared host-level Codex login, run `npm run auth:codex:login`
+- if you want a deployment-wide fallback key for the configured provider, set `AI_PROVIDER_API_KEY`
 - if you want to rely on Sage's current hosted/server-key path, you can activate the guild through the setup card flow instead
 
 </details>

@@ -84,6 +84,8 @@ export interface ProviderAllowedTool {
   };
 }
 
+export type LLMAuthSource = 'host_codex_auth' | 'host_api_key' | 'guild_api_key' | 'explicit';
+
 /**
  * Define a chat request sent to an LLM client.
  *
@@ -96,6 +98,7 @@ export interface LLMRequest {
   messages: LLMChatMessage[];
   model?: string;
   apiKey?: string;
+  authSource?: LLMAuthSource;
   temperature?: number;
   maxTokens?: number;
   tools?: ProviderToolDefinition[];

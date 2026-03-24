@@ -55,6 +55,23 @@ model GuildChannelInvokePolicy {
   @@index([guildId, updatedAt])
 }
 
+model HostProviderAuth {
+  provider             String   @id
+  encryptedAccessToken String
+  encryptedRefreshToken String
+  expiresAt            DateTime
+  accountId            String?
+  status               String
+  lastErrorText        String?  @db.Text
+  refreshLeaseOwner    String?
+  refreshLeaseExpiresAt DateTime?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@index([status, updatedAt])
+  @@index([refreshLeaseExpiresAt])
+}
+
 model ServerInstructions {
   guildId          String   @id
   instructionsText String   @db.Text

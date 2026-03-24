@@ -108,6 +108,10 @@ vi.mock('@/features/settings/guildSettingsRepo', () => ({
   getGuildApiKey: vi.fn(async () => null),
 }));
 
+vi.mock('@/features/auth/hostCodexAuthService', () => ({
+  resolvePreferredHostAuthCredential: vi.fn(async () => ({})),
+}));
+
 vi.mock('@/features/settings/guildSagePersonaRepo', () => ({
   getGuildSagePersonaText: vi.fn(async () => null),
 }));

@@ -1,6 +1,6 @@
 import { getUserProfileRecord, upsertUserProfile } from '../memory/userProfileRepo';
-import { getGuildApiKey } from '../settings/guildSettingsRepo';
 import { updateProfileSummary } from '../memory/profileUpdater';
+import { resolveRuntimeCredential } from '../agent-runtime/apiKeyResolver';
 import {
   compactUserProfile,
   needsCompaction,
@@ -176,7 +176,8 @@ export async function generateChatReply(params: {
 
     // 3. Update Profile (Background, Throttled)
     // Only trigger profile update every PROFILE_UPDATE_INTERVAL messages
-    const apiKey = (guildId ? await getGuildApiKey(guildId) : undefined) ?? config.AI_PROVIDER_API_KEY;
+    const credential = await resolveRuntimeCredential(guildId);
+    const apiKey = credential.apiKey;
 
     if (apiKey) {
       const nowMs = Date.now();
@@ -218,6 +219,7 @@ export async function generateChatReply(params: {
           guildId,
           userId,
           apiKey,
+          apiKeySource: credential.authSource,
         })
           .then((newSummary) => {
             if (newSummary && newSummary !== profileSummary) {

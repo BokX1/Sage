@@ -29,7 +29,7 @@ import {
   toLangChainMessages,
   toLlmMessages,
 } from '../../../platform/llm/langchain-interop';
-import type { LLMChatMessage } from '../../../platform/llm/llm-types';
+import type { LLMAuthSource, LLMChatMessage } from '../../../platform/llm/llm-types';
 import { config as appConfig } from '../../../platform/config/env';
 import { logger } from '../../../platform/logging/logger';
 import { createOrReuseApprovalReviewRequestFromSignal } from '../../admin/adminActionService';
@@ -407,6 +407,7 @@ const AgentGraphConfigurableSchema = z
     channelId: z.string().optional(),
     guildId: z.string().nullable().optional(),
     apiKey: z.string().optional(),
+    apiKeySource: z.enum(['host_codex_auth', 'host_api_key', 'guild_api_key', 'explicit']).optional(),
     model: z.string().optional(),
     temperature: z.number().optional(),
     timeoutMs: z.number().optional(),
@@ -578,6 +579,7 @@ const EMPTY_RUNTIME_CONTEXT: AgentGraphRuntimeContext = {
   channelId: '',
   guildId: null,
   apiKey: undefined,
+  apiKeySource: undefined,
   model: undefined,
   temperature: 0.6,
   timeoutMs: undefined,
@@ -608,6 +610,7 @@ export interface StartAgentGraphTurnParams {
   responseChannelId?: string;
   guildId: string | null;
   apiKey?: string;
+  apiKeySource?: LLMAuthSource;
   model?: string;
   temperature: number;
   timeoutMs?: number;
@@ -1050,6 +1053,7 @@ async function buildWindowCloseoutSummary(params: {
       timeoutMs: params.graphConfig.toolTimeoutMs,
       model: params.runtimeContext.model,
       apiKey: params.runtimeContext.apiKey,
+      apiKeySource: params.runtimeContext.apiKeySource,
       temperature: WINDOW_CLOSEOUT_TEMPERATURE,
       requestTimeoutMs: Math.min(
         params.runtimeContext.timeoutMs ?? WINDOW_CLOSEOUT_REQUEST_TIMEOUT_MS,
@@ -1099,6 +1103,7 @@ function createRuntimeContext(params: StartAgentGraphTurnParams): AgentGraphRunt
     responseChannelId: params.responseChannelId ?? params.channelId,
     guildId: params.guildId,
     apiKey: params.apiKey,
+    apiKeySource: params.apiKeySource,
     model: params.model,
     temperature: params.temperature,
     timeoutMs: params.timeoutMs,
@@ -1306,6 +1311,7 @@ const MODEL_INVOKE_RETRY_POLICY = {
 function createGraphChatModel(params: {
   model?: string;
   apiKey?: string;
+  apiKeySource?: LLMAuthSource;
   temperature: number;
   timeoutMs?: number;
   maxTokens?: number;
@@ -1316,6 +1322,7 @@ function createGraphChatModel(params: {
     baseUrl: appConfig.AI_PROVIDER_BASE_URL,
     model,
     apiKey: params.apiKey ?? appConfig.AI_PROVIDER_API_KEY,
+    authSource: params.apiKeySource,
     temperature: params.temperature,
     timeout: params.timeoutMs,
     maxTokens: params.maxTokens,
@@ -1329,6 +1336,7 @@ interface DurableModelInvokeInput {
   timeoutMs: number;
   model?: string;
   apiKey?: string;
+  apiKeySource?: LLMAuthSource;
   temperature: number;
   requestTimeoutMs?: number;
   maxTokens?: number;
@@ -1372,6 +1380,7 @@ const invokeAgentModelTask = task(
     const baseModel = createGraphChatModel({
       model: input.model,
       apiKey: input.apiKey,
+      apiKeySource: input.apiKeySource,
       temperature: input.temperature,
       timeoutMs: input.requestTimeoutMs,
       maxTokens: input.maxTokens,
@@ -2388,6 +2397,7 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
       timeoutMs: graphConfig.toolTimeoutMs,
       model: runtimeContext.model,
       apiKey: runtimeContext.apiKey,
+      apiKeySource: runtimeContext.apiKeySource,
       temperature: runtimeContext.temperature,
       requestTimeoutMs: runtimeContext.timeoutMs,
       maxTokens: runtimeContext.maxTokens,

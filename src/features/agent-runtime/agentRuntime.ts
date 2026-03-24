@@ -15,7 +15,7 @@ import { logger } from '../../platform/logging/logger';
 import { normalizeStrictlyPositiveInt } from '../../shared/utils/numbers';
 import { upsertTraceStart, updateTraceEnd } from './agent-trace-repo';
 import { buildAgentGraphConfig } from './langgraph/config';
-import { resolveApiKeyForRuntime } from './apiKeyResolver';
+import { resolveRuntimeCredential } from './apiKeyResolver';
 import { continueAgentGraphTurn, retryAgentGraphTurn, runAgentGraphTurn } from './langgraph/runtime';
 import {
   buildTaskRunLimitReply,
@@ -728,7 +728,8 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
       ? formatLiveVoiceContext({ guildId, voiceChannelId, now: new Date() })
       : null;
 
-  const apiKey = await resolveApiKeyForRuntime(guildId);
+  const runtimeCredential = await resolveRuntimeCredential(guildId);
+  const apiKey = runtimeCredential.apiKey;
   if (!apiKey) {
     logger.warn(
       { guildId, channelId: responseChannelId, userId, originChannelId },
@@ -846,6 +847,7 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
       responseChannelId,
       guildId,
       apiKey,
+      apiKeySource: runtimeCredential.authSource,
       model,
       temperature: 0.6,
       timeoutMs: appConfig.TIMEOUT_CHAT_MS,
@@ -1254,8 +1256,8 @@ export async function resumeWaitingTaskRunWithInput(
     };
   }
 
-  const apiKey = await resolveApiKeyForRuntime(params.guildId);
-  if (!apiKey) {
+  const runtimeCredential = await resolveRuntimeCredential(params.guildId);
+  if (!runtimeCredential.apiKey) {
     return buildMissingApiKeyResult(params.guildId);
   }
 
@@ -1301,7 +1303,8 @@ export async function resumeWaitingTaskRunWithInput(
         originChannelId: params.originChannelId,
         responseChannelId: params.responseChannelId,
         guildId: params.guildId,
-        apiKey,
+        apiKey: runtimeCredential.apiKey,
+        apiKeySource: runtimeCredential.authSource,
         model,
         temperature: 0.6,
         timeoutMs: appConfig.TIMEOUT_CHAT_MS,
@@ -1402,8 +1405,8 @@ export async function resumeBackgroundTaskRun(params: {
   canModerate?: boolean;
   onResponseSessionUpdate?: RunChatTurnParams['onResponseSessionUpdate'];
 }): Promise<RunChatTurnResult> {
-  const apiKey = await resolveApiKeyForRuntime(params.guildId);
-  if (!apiKey) {
+  const runtimeCredential = await resolveRuntimeCredential(params.guildId);
+  if (!runtimeCredential.apiKey) {
     return buildMissingApiKeyResult(params.guildId);
   }
 
@@ -1457,7 +1460,8 @@ export async function resumeBackgroundTaskRun(params: {
         originChannelId: params.originChannelId,
         responseChannelId: params.responseChannelId,
         guildId: params.guildId,
-        apiKey,
+        apiKey: runtimeCredential.apiKey,
+        apiKeySource: runtimeCredential.authSource,
         model,
         temperature: 0.6,
         timeoutMs: appConfig.TIMEOUT_CHAT_MS,
@@ -1537,8 +1541,8 @@ export async function resumeBackgroundTaskRun(params: {
 export async function continueMatchedTaskRunWithInput(
   params: ContinueMatchedTaskRunWithInputParams,
 ): Promise<RunChatTurnResult> {
-  const apiKey = await resolveApiKeyForRuntime(params.guildId);
-  if (!apiKey) {
+  const runtimeCredential = await resolveRuntimeCredential(params.guildId);
+  if (!runtimeCredential.apiKey) {
     return buildMissingApiKeyResult(params.guildId);
   }
 
@@ -1582,7 +1586,8 @@ export async function continueMatchedTaskRunWithInput(
         originChannelId: params.originChannelId,
         responseChannelId: params.responseChannelId,
         guildId: params.guildId,
-        apiKey,
+        apiKey: runtimeCredential.apiKey,
+        apiKeySource: runtimeCredential.authSource,
         model,
         temperature: 0.6,
         timeoutMs: appConfig.TIMEOUT_CHAT_MS,
@@ -1671,8 +1676,8 @@ export async function continueMatchedTaskRunWithInput(
 export async function retryFailedChatTurn(
   params: RetryFailedChatTurnParams,
 ): Promise<RunChatTurnResult> {
-  const apiKey = await resolveApiKeyForRuntime(params.guildId);
-  if (!apiKey) {
+  const runtimeCredential = await resolveRuntimeCredential(params.guildId);
+  if (!runtimeCredential.apiKey) {
     return buildMissingApiKeyResult(params.guildId);
   }
 
@@ -1724,7 +1729,8 @@ export async function retryFailedChatTurn(
         originChannelId: params.originChannelId,
         responseChannelId: params.responseChannelId,
         guildId: params.guildId,
-        apiKey,
+        apiKey: runtimeCredential.apiKey,
+        apiKeySource: runtimeCredential.authSource,
         model,
         temperature: 0.6,
         timeoutMs: appConfig.TIMEOUT_CHAT_MS,

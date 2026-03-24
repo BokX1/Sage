@@ -65,7 +65,8 @@ Important context:
 
 - This is part of Sage's current hosted/server-key path.
 - Self-hosted runtime chat remains provider-flexible through `AI_PROVIDER_BASE_URL`.
-- If you already set `AI_PROVIDER_API_KEY`, Sage can use that host-level key as a fallback for the configured provider.
+- Sage now prefers shared host Codex auth when the operator runs `npm run auth:codex:login`.
+- If you also set `AI_PROVIDER_API_KEY`, Sage can use that host-level key as a fallback for the configured provider.
 
 ---
 

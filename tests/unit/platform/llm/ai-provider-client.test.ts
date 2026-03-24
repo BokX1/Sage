@@ -2,6 +2,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AiProviderClient } from '../../../../src/platform/llm/ai-provider-client';
 import { stubFetch, type FetchMock } from '../../../testkit/fetch';
 
+const hostAuthMocks = vi.hoisted(() => ({
+  handleHostCodexProviderAuthFailure: vi.fn(),
+}));
+
+vi.mock('../../../../src/features/auth/hostCodexAuthService', () => ({
+  handleHostCodexProviderAuthFailure: hostAuthMocks.handleHostCodexProviderAuthFailure,
+}));
+
 type RequestBody = {
   messages: Array<{
     role: string;
@@ -44,6 +52,7 @@ describe('AiProviderClient', () => {
   beforeEach(() => {
     fetchMock = stubFetch();
     AiProviderClient.resetProviderToolControlsSupportCacheForTests();
+    hostAuthMocks.handleHostCodexProviderAuthFailure.mockReset().mockResolvedValue({});
   });
 
   it('rejects non-HTTP(S) base URLs', () => {
@@ -362,6 +371,43 @@ describe('AiProviderClient', () => {
 
     await expect(client.chat({ messages: [] })).rejects.toThrow('AI provider model error');
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('retries once on host Codex auth failures using the fallback credential', async () => {
+    const client = new AiProviderClient({ baseUrl: 'https://api.test/v1', model: 'test-chat-model', maxRetries: 0 });
+    hostAuthMocks.handleHostCodexProviderAuthFailure.mockResolvedValueOnce({
+      apiKey: 'env-fallback-key',
+      authSource: 'host_api_key',
+    });
+
+    fetchMock
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 401,
+        statusText: 'Unauthorized',
+        text: async () => 'unauthorized',
+        json: async () => ({}),
+      } satisfies { ok: boolean; status: number; statusText: string; json: () => Promise<unknown>; text: () => Promise<string> })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        json: async () => ({ choices: [{ message: { content: 'done' } }] }),
+        text: async () => 'done',
+      } satisfies { ok: boolean; status: number; statusText: string; json: () => Promise<unknown>; text: () => Promise<string> });
+
+    const result = await client.chat({
+      messages: [{ role: 'user', content: 'test' }],
+      apiKey: 'host-codex-token',
+      authSource: 'host_codex_auth',
+    });
+
+    expect(result.text).toBe('done');
+    expect(hostAuthMocks.handleHostCodexProviderAuthFailure).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect((fetchMock.mock.calls[1]?.[1] as { headers?: Record<string, string> }).headers?.Authorization).toBe(
+      'Bearer env-fallback-key',
+    );
   });
 
   it('does not retry after an abort error', async () => {

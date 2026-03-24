@@ -27,6 +27,7 @@
 
 ### Added
 
+- Added shared host-level Codex auth for self-hosted Sage deployments, including encrypted token storage, automatic refresh with lease-based locking, operator-facing Discord status reads/cards, and new `npm run auth:codex:{login,status,clear}` flows so one VM login can power runtime chat across every guild on that host.
 - Added a Discord-native artifact lifecycle with staged attachment intake, text artifact creation, revision history, and publish/republish flows, so Sage can now manage Discord work products as tracked artifacts instead of only reading cached attachments or re-sending old files.
 - Added admin-configurable thread-on-invoke routing for Discord text and announcement channels, so opted-in channels can now push fresh Sage invokes into public message threads automatically while active or waiting task continuations keep using their existing response thread.
 - Added explicit Discord authority tiers (`member`, `moderator`, `admin`, `owner`) to Sage's runtime, tool exposure, and checkpointed task metadata, so moderator actions, admin governance, and owner-only server-key operations now follow one consistent authority contract across fresh turns, resumes, and approvals.
@@ -44,6 +45,7 @@
 
 ### Changed
 
+- Changed host credential resolution so Sage now prefers healthy shared host Codex OAuth over `AI_PROVIDER_API_KEY`, while still falling back to the existing host API key path or guild Pollinations server-key activation when host auth is absent or unhealthy.
 - Changed Sage's Discord task-run routing contract from one implicit `channelId` to explicit origin and response surfaces, so auto-threaded replies, waiting-user-input resumes, retry flows, BYOP setup cards, and worker-delivered drafts/finals now stay attached to the correct visible Discord surface instead of assuming the invoke channel and reply channel are always the same.
 - Changed Prisma migration history back down to one canonical baseline directory for the current schema, so deliberate hard resets now rebuild Sage from a single migration entrypoint instead of carrying extra local legacy migration folders alongside the active baseline.
 - Changed Sage's model-facing Discord tool surface from the old mixed `discord_admin_*`, `discord_server_*`, and `discord_files_*` layout to stable capability families such as `discord_artifact_*`, `discord_moderation_*`, `discord_schedule_*`, `discord_spaces_*`, and `discord_governance_*`, so prompts, audits, tests, and tool docs now describe one product-shaped Discord operations surface instead of backend-era naming splits.
@@ -61,6 +63,8 @@
 
 ### Fixed
 
+- Fixed host-level Codex auth recovery so invalid bearer tokens now self-demote back to the host API-key fallback after a live auth failure, unreadable encrypted host-auth rows now degrade cleanly instead of bricking bootstrap/runtime resolution, and Discord/operator status surfaces now redact host-wide account/error details from shared-guild visibility.
+- Fixed self-hosted missing-key guidance and operator docs so Sage now points operators at `npm run auth:codex:login` as the preferred host setup path instead of only describing a static host API key.
 - Fixed auto thread-on-invoke continuity so missing stored response threads now fall back to the current channel in both the foreground handler and the background worker, parent-channel replies to a threaded Sage source message now resume the existing active or waiting-user-input task instead of forking fresh work, and governance status now reports missing thread permissions before operators enable a broken channel policy.
 - Fixed Discord thread resolution actions so archive/reopen requests with a resolution note now stay on the same admin approval path as the plain thread-state change instead of silently bypassing review when a note is attached.
 - Fixed artifact-backed forum post safety so starter messages now reject overlong artifact text before Discord API submission, preventing approval-time failures from oversized forum post bodies.

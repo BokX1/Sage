@@ -307,6 +307,7 @@ Operators can audit that surface directly with `npm run tools:audit` or `npm run
 | `discord_spaces_edit_message` | Edit a message with admin approval. | Admin |
 | `discord_spaces_edit_role` | Edit an existing role. | Admin |
 | `discord_governance_get_artifact_vault_status` | Inspect default artifact vault routing. | Admin |
+| `discord_governance_get_host_auth_status` | Inspect the shared host-level Codex auth status and fallback behavior. | Admin |
 | `discord_governance_get_mod_log_status` | Inspect default moderation log routing. | Admin |
 | `discord_governance_get_invoke_thread_status` | Inspect thread-on-invoke channel routing. | Admin |
 | `discord_governance_get_review_status` | Inspect governance review routing. | Admin |
@@ -319,6 +320,7 @@ Operators can audit that surface directly with `npm run tools:audit` or `npm run
 | `discord_moderation_resolve_case` | Resolve or void a moderation case. | Moderator |
 | `discord_spaces_reopen_thread` | Reopen an archived managed thread. | Admin |
 | `discord_spaces_revoke_invite` | Revoke an existing guild invite. | Admin |
+| `discord_governance_send_host_auth_status_card` | Post the current host auth status in the active channel. | Admin |
 | `discord_governance_send_key_setup_card` | Send an interactive server-key setup card. | Owner |
 | `discord_governance_set_artifact_vault_channel` | Route default artifact publications to a specific channel or thread. | Admin |
 | `discord_governance_enable_invoke_thread_channel` | Route fresh Sage invokes in a channel into public message threads. | Admin |

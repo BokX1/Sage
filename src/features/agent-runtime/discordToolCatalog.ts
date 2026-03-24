@@ -83,7 +83,7 @@ export const DISCORD_SERVER_ACTION_CATALOG = {
 } as const;
 
 export const DISCORD_ADMIN_ACTION_CATALOG = {
-  read_only: ['get_server_key_status', 'get_governance_review_status', 'get_invoke_thread_status', 'get_invite_url', 'list_invites'],
+  read_only: ['get_server_key_status', 'get_host_auth_status', 'get_governance_review_status', 'get_invoke_thread_status', 'get_invite_url', 'list_invites'],
   writes: [],
   admin_only: [
     'clear_server_api_key',
@@ -92,6 +92,7 @@ export const DISCORD_ADMIN_ACTION_CATALOG = {
     'enable_invoke_thread_channel',
     'disable_invoke_thread_channel',
     'send_key_setup_card',
+    'send_host_auth_status_card',
     'update_server_instructions',
     'submit_moderation',
     'upsert_moderation_policy',

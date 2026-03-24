@@ -103,7 +103,7 @@ Sage accepts successful authenticated profile responses and extracts account fie
 When Sage needs a key, it resolves in this order:
 
 1. **Server key** (set through Sage's setup card + modal for the guild)
-2. **Optional host-level provider key path** if the deployment already has usable runtime credentials configured
+2. **Optional shared host auth path** if the deployment already has usable host Codex auth or a host API key fallback configured
 3. If neither exists, Sage returns setup guidance and cannot complete hosted/server-key-path chat requests until a key is configured.
 
 ---
@@ -116,9 +116,11 @@ If you want Sage's OpenAI-compatible chat runtime to use Pollinations, these are
 AI_PROVIDER_BASE_URL=https://gen.pollinations.ai/v1
 AI_PROVIDER_MAIN_AGENT_MODEL=your-main-agent-model
 
-# Optional: Host-level fallback key for the configured chat provider
+# Optional: Shared host fallback key for the configured chat provider
 AI_PROVIDER_API_KEY=
 ```
+
+If you want Sage to prefer shared host Codex auth instead, run `npm run auth:codex:login` on the host and keep `AI_PROVIDER_API_KEY` as the fallback path.
 
 ### Recommended: keep `AI_PROVIDER_BASE_URL` at the `/v1` root
 

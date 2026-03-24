@@ -7,6 +7,7 @@ import path from 'path';
 import { createInterface } from 'readline/promises';
 import type { EnvSchema } from '../platform/config/envSchema';
 import { envSchema, parseEnvSafe } from '../platform/config/envSchema';
+import { getHostCodexAuthStatus } from '../features/auth/hostCodexAuthService';
 import {
   probeAiProviderPing,
   probeAiProviderToolCalling,
@@ -87,6 +88,7 @@ const CHECK_IDS = {
   dbMigrations: 'db.migrations',
   servicesTika: 'services.tika',
   aiProviderConfig: 'ai_provider.config',
+  hostCodexAuth: 'host_auth.codex',
   aiProviderPing: 'ai_provider.ping',
   aiProviderToolCalls: 'ai_provider.tool_calls',
   toolsAudit: 'tools.audit',
@@ -103,6 +105,7 @@ const CHECK_ORDER: readonly string[] = [
   CHECK_IDS.dbMigrations,
   CHECK_IDS.servicesTika,
   CHECK_IDS.aiProviderConfig,
+  CHECK_IDS.hostCodexAuth,
   CHECK_IDS.aiProviderPing,
   CHECK_IDS.aiProviderToolCalls,
   CHECK_IDS.toolsAudit,
@@ -377,6 +380,8 @@ export function buildDoctorNextAction(results: CheckResult[]): string {
         return 'Run `npm ci` and `npm run postinstall`, then rerun `npm run doctor`.';
       case CHECK_IDS.aiProviderToolCalls:
         return 'Run `npm run ai-provider:probe` with a valid AI provider key/model, then switch to a model that supports Chat Completions tool calling if the probe fails.';
+      case CHECK_IDS.hostCodexAuth:
+        return 'Run `npm run auth:codex:login` on the host, or set `AI_PROVIDER_API_KEY` as the fallback credential source, then rerun `npm run doctor`.';
       default:
         return `Address the blocking check \`${firstFailure.id}\`, then rerun \`npm run doctor\`.`;
     }
@@ -881,6 +886,62 @@ function buildChecks(): CheckDefinition[] {
       },
     },
     {
+      id: CHECK_IDS.hostCodexAuth,
+      title: 'Host Codex auth status',
+      run: async () => {
+        const status = await getHostCodexAuthStatus();
+        if (!status.configured) {
+          return {
+            status: status.runtimeSource === 'host_api_key' ? 'pass' : 'warn',
+            message:
+              status.runtimeSource === 'host_api_key'
+                ? 'Host Codex auth is not configured; Sage will use the host API key fallback'
+                : 'Host Codex auth is not configured and no host API key fallback is available',
+            details: [
+              'Run `npm run auth:codex:login` on the host to configure shared Codex auth.',
+              ...(status.runtimeSource === 'missing'
+                ? ['Alternatively set `AI_PROVIDER_API_KEY` for the existing host fallback path.']
+                : []),
+            ],
+          };
+        }
+
+        const details = [
+          `Runtime source: ${status.runtimeSource}`,
+          `Account ID: ${status.accountId ?? 'unknown'}`,
+          `Expires at: ${status.expiresAt}`,
+          ...(status.warning ? [`Compatibility warning: ${status.warning}`] : []),
+          ...(status.lastErrorText ? [`Last error: ${status.lastErrorText}`] : []),
+        ];
+
+        if (status.status === 'active') {
+          return {
+            status: status.compatibility === 'likely_incompatible' ? 'warn' : 'pass',
+            message:
+              status.compatibility === 'likely_incompatible'
+                ? 'Host Codex auth is active, but the configured AI provider base URL may be incompatible'
+                : 'Host Codex auth is active',
+            details,
+          };
+        }
+
+        return {
+          status: status.fallbackHostApiKeyConfigured ? 'warn' : 'fail',
+          message:
+            status.status === 'expired'
+              ? 'Host Codex auth is expired'
+              : 'Host Codex auth refresh failed',
+          details: [
+            ...details,
+            status.fallbackHostApiKeyConfigured
+              ? 'Sage will fall back to the host API key until Codex auth is repaired.'
+              : 'No host API key fallback is configured.',
+            'Run `npm run auth:codex:login` to refresh the shared host auth.',
+          ],
+        };
+      },
+    },
+    {
       id: CHECK_IDS.aiProviderPing,
       title: 'Live AI provider ping',
       run: async (ctx) => {
@@ -896,10 +957,14 @@ function buildChecks(): CheckDefinition[] {
             message: 'Skipped (environment schema failed)',
           };
         }
+        const hostAuthStatus = await getHostCodexAuthStatus();
         if (!ctx.parsedEnv.AI_PROVIDER_API_KEY?.trim()) {
           return {
             status: 'skip',
-            message: 'Skipped (no host AI provider key configured; Discord server-key flow can still work)',
+            message:
+              hostAuthStatus.configured && hostAuthStatus.status === 'active'
+                ? 'Skipped (doctor ping still needs an explicit AI provider key or direct probe args even though host Codex auth is active)'
+                : 'Skipped (no host AI provider key configured; Discord server-key flow or host Codex auth can still work)',
             details: [
               'Use `npm run ai-provider:probe -- --api-key <key> --model <model> --base-url <url>` when you want to verify a BYOP or host key directly.',
             ],
@@ -933,10 +998,14 @@ function buildChecks(): CheckDefinition[] {
             message: 'Skipped (environment schema failed)',
           };
         }
+        const hostAuthStatus = await getHostCodexAuthStatus();
         if (!ctx.parsedEnv.AI_PROVIDER_API_KEY?.trim()) {
           return {
             status: 'skip',
-            message: 'Skipped (no host AI provider key configured; tool-calling probe is still available for BYOP keys)',
+            message:
+              hostAuthStatus.configured && hostAuthStatus.status === 'active'
+                ? 'Skipped (tool-calling probe still needs an explicit AI provider key or direct probe args even though host Codex auth is active)'
+                : 'Skipped (no host AI provider key configured; tool-calling probe is still available for BYOP keys)',
             details: [
               'Run `npm run ai-provider:probe -- --api-key <key> --model <model> --base-url <url>` to test Chat Completions tool-calling support directly.',
             ],

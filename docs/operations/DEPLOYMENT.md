@@ -113,8 +113,9 @@ FILE_INGEST_TIKA_BASE_URL=http://127.0.0.1:9998
 
 Key notes:
 
-- If you set `AI_PROVIDER_API_KEY`, Sage can use that host-level key with your configured AI provider.
-- If you do **not** set `AI_PROVIDER_API_KEY`, Sage can still run in servers that complete the current hosted/server-key path. Direct-message chat still needs a host-level key because there is no guild-scoped key to fall back to.
+- Preferred host auth path: run `npm run auth:codex:login` on the VM/host to configure one shared Codex OAuth login for the deployment.
+- If you also set `AI_PROVIDER_API_KEY`, Sage uses it as the automatic host fallback when Codex auth is absent or unhealthy.
+- If you do **not** configure either host Codex auth or `AI_PROVIDER_API_KEY`, Sage can still run in servers that complete the current hosted/server-key path. Direct-message chat still needs a host-level credential because there is no guild-scoped key to fall back to.
 - Admin actions and approval-gated flows use Discord-native permissions. Grant `Manage Server` or `Administrator` only to approved operators.
 - Social-graph export is disabled by setting `KAFKA_BROKERS=`.
 
@@ -161,6 +162,7 @@ npm start
 - [ ] `npm run doctor` passes
 - [ ] `npm run check:trust` passes on the release candidate
 - [ ] Tika is reachable when file ingestion is enabled
+- [ ] If you want shared host Codex auth, `npm run auth:codex:status` reports an active login
 - [ ] `AI_PROVIDER_BASE_URL`, `AI_PROVIDER_MAIN_AGENT_MODEL`, `AI_PROVIDER_PROFILE_AGENT_MODEL`, and `AI_PROVIDER_SUMMARY_AGENT_MODEL` are set explicitly; if you use `AI_PROVIDER_MODEL_PROFILES_JSON`, treat it as optional operator metadata and verify Chat Completions tool-calling support with `npm run doctor -- --llm-ping` or `npm run ai-provider:probe`
 - [ ] If you rely on the current hosted/server-key path, a no-key test guild still shows the setup card correctly
 - [ ] If you want hosted execution tracing, set `LANGSMITH_TRACING=true` and provide `LANGSMITH_API_KEY`

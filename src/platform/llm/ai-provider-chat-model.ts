@@ -11,11 +11,12 @@ import type { Runnable } from '@langchain/core/runnables';
 import type { BaseLanguageModelInput } from '@langchain/core/language_models/base';
 import { convertToOpenAITool } from '@langchain/core/utils/function_calling';
 import { AiProviderClient } from './ai-provider-client';
-import type { ProviderAllowedTool, ProviderToolDefinition } from './llm-types';
+import type { LLMAuthSource, ProviderAllowedTool, ProviderToolDefinition } from './llm-types';
 import { toLlmMessages, toLangChainToolCalls } from './langchain-interop';
 
 export interface AiProviderChatModelCallOptions extends BaseChatModelCallOptions {
   apiKey?: string;
+  authSource?: LLMAuthSource;
   model?: string;
   temperature?: number;
   maxTokens?: number;
@@ -28,6 +29,7 @@ export interface AiProviderChatModelFields extends BaseChatModelParams {
   baseUrl: string;
   model: string;
   apiKey?: string;
+  authSource?: LLMAuthSource;
   temperature: number;
   timeout?: number;
   maxTokens?: number;
@@ -100,6 +102,7 @@ export class AiProviderChatModel extends BaseChatModel<AiProviderChatModelCallOp
 
   private readonly modelId: string;
   private readonly apiKey?: string;
+  private readonly authSource?: LLMAuthSource;
   private readonly temperature: number;
   private readonly timeoutMs?: number;
   private readonly maxTokens?: number;
@@ -109,6 +112,7 @@ export class AiProviderChatModel extends BaseChatModel<AiProviderChatModelCallOp
     super(fields);
     this.modelId = fields.model.trim();
     this.apiKey = fields.apiKey?.trim() || undefined;
+    this.authSource = fields.authSource;
     this.temperature = fields.temperature;
     this.timeoutMs = fields.timeout;
     this.maxTokens = fields.maxTokens;
@@ -122,7 +126,7 @@ export class AiProviderChatModel extends BaseChatModel<AiProviderChatModelCallOp
   }
 
   get callKeys(): string[] {
-    return [...super.callKeys, 'apiKey', 'model', 'temperature', 'maxTokens', 'tools', 'tool_choice', 'allowedTools', 'parallelToolCalls'];
+    return [...super.callKeys, 'apiKey', 'authSource', 'model', 'temperature', 'maxTokens', 'tools', 'tool_choice', 'allowedTools', 'parallelToolCalls'];
   }
 
   _llmType(): string {
@@ -157,6 +161,7 @@ export class AiProviderChatModel extends BaseChatModel<AiProviderChatModelCallOp
       messages: toLlmMessages(messages),
       model: options.model?.trim() || this.modelId,
       apiKey: options.apiKey?.trim() || this.apiKey,
+      authSource: options.authSource ?? this.authSource,
       temperature: options.temperature ?? this.temperature,
       maxTokens: options.maxTokens ?? this.maxTokens,
       tools: normalizeBoundTools(options.tools),

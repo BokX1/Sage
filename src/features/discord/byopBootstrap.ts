@@ -234,7 +234,7 @@ export function buildGuildApiKeyWelcomeMessage(): GuildApiKeySetupCardPayload {
         [
           '**Get Live**',
           '- **Hosted Sage**: trigger me once, then let a server admin connect the server key below.',
-          '- **Self-hosted Sage**: run `npm run onboard`, invite your own bot, and optionally use a host-level provider key instead.',
+          '- **Self-hosted Sage**: run `npm run onboard`, invite your own bot, and optionally use `npm run auth:codex:login` or a host-level provider key.',
         ].join('\n'),
       ),
       textBlock(

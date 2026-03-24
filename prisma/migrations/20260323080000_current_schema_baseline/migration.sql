@@ -58,6 +58,23 @@ CREATE TABLE "GuildChannelInvokePolicy" (
 );
 
 -- CreateTable
+CREATE TABLE "HostProviderAuth" (
+    "provider" TEXT NOT NULL,
+    "encryptedAccessToken" TEXT NOT NULL,
+    "encryptedRefreshToken" TEXT NOT NULL,
+    "expiresAt" TIMESTAMP(3) NOT NULL,
+    "accountId" TEXT,
+    "status" TEXT NOT NULL,
+    "lastErrorText" TEXT,
+    "refreshLeaseOwner" TEXT,
+    "refreshLeaseExpiresAt" TIMESTAMP(3),
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "HostProviderAuth_pkey" PRIMARY KEY ("provider")
+);
+
+-- CreateTable
 CREATE TABLE "ServerInstructions" (
     "guildId" TEXT NOT NULL,
     "instructionsText" TEXT NOT NULL,
@@ -519,6 +536,12 @@ CREATE UNIQUE INDEX "GuildChannelInvokePolicy_guildId_channelId_key" ON "GuildCh
 
 -- CreateIndex
 CREATE INDEX "GuildChannelInvokePolicy_guildId_updatedAt_idx" ON "GuildChannelInvokePolicy"("guildId", "updatedAt");
+
+-- CreateIndex
+CREATE INDEX "HostProviderAuth_status_updatedAt_idx" ON "HostProviderAuth"("status", "updatedAt");
+
+-- CreateIndex
+CREATE INDEX "HostProviderAuth_refreshLeaseExpiresAt_idx" ON "HostProviderAuth"("refreshLeaseExpiresAt");
 
 -- CreateIndex
 CREATE INDEX "ServerInstructionsArchive_guildId_createdAt_idx" ON "ServerInstructionsArchive"("guildId", "createdAt");

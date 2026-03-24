@@ -1,7 +1,7 @@
 import { createLLMClient } from '../../platform/llm';
 import { config as appConfig } from '../../platform/config/env';
 import { logger } from '../../platform/logging/logger';
-import { LLMClient, LLMRequest } from '../../platform/llm/llm-types';
+import { LLMAuthSource, LLMClient, LLMRequest } from '../../platform/llm/llm-types';
 import { limitByKey } from '../../shared/async/perKeyConcurrency';
 import { getRecentMessages } from '../awareness/channelRingBuffer';
 import { buildTranscriptBlock } from '../awareness/transcriptBuilder';
@@ -109,6 +109,7 @@ export async function updateProfileSummary(params: {
   guildId: string | null;
   userId: string;
   apiKey?: string;
+  apiKeySource?: LLMAuthSource;
 }): Promise<string | null> {
   const {
     previousSummary,
@@ -191,6 +192,7 @@ export async function updateProfileSummary(params: {
         assistantReply,
         replyTarget: replyTarget ?? null,
         apiKey,
+        apiKeySource: params.apiKeySource,
       });
 
       if (!updatedSummaryText) {
@@ -238,8 +240,9 @@ async function runAnalyst(params: {
   assistantReply: string;
   replyTarget?: ReplyTargetContext | null;
   apiKey?: string;
+  apiKeySource?: LLMAuthSource;
 }): Promise<string | null> {
-  const { previousSummary, recentHistory, userMessage, assistantReply, replyTarget, apiKey } = params;
+  const { previousSummary, recentHistory, userMessage, assistantReply, replyTarget, apiKey, apiKeySource } = params;
   const client = getAnalystClient();
 
   const replyTargetText = extractTextFromMessageContent(replyTarget?.content);
@@ -279,6 +282,7 @@ Output the updated summary:`;
     temperature: 0.3, // Analyst temperature: creative but focused
     maxTokens: 2048,
     apiKey,
+    authSource: apiKeySource,
     timeout: appConfig.TIMEOUT_MEMORY_MS, // Relaxed timeout for background
   };
 

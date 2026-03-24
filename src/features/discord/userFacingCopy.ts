@@ -46,11 +46,11 @@ export function buildMissingHostedGuildActivationFallbackText(): string {
 }
 
 export function buildMissingSelfHostedGuildApiKeyText(): string {
-  return "I'm not set up to chat in this server yet, so please ask the bot operator to add the AI provider key.";
+  return "I'm not set up to chat in this server yet, so please ask the bot operator to run `npm run auth:codex:login` or add the AI provider key.";
 }
 
 export function buildMissingHostApiKeyText(): string {
-  return "I'm not set up to chat yet, so please ask the bot operator to add the AI provider key.";
+  return "I'm not set up to chat yet, so please ask the bot operator to run `npm run auth:codex:login` or add the AI provider key.";
 }
 
 export function buildApprovalGuildOnlyText(): string {

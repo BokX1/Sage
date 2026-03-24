@@ -75,7 +75,8 @@ That gives you:
 
 - your own Discord application
 - your own provider endpoint via `AI_PROVIDER_BASE_URL`
-- optional host-level provider key via `AI_PROVIDER_API_KEY`
+- optional shared host Codex login via `npm run auth:codex:login`
+- optional host-level provider key fallback via `AI_PROVIDER_API_KEY`
 - optional local services for search, scraping, social graph, and voice
 
 For the full walkthrough, use [📖 Getting Started](GETTING_STARTED.md).

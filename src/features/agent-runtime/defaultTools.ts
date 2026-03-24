@@ -17,6 +17,7 @@ import {
   getWebProviderRuntimeStatus,
   lookupNpmPackage,
 } from './toolIntegrations';
+import { getPublicHostCodexAuthStatus } from '../auth/hostCodexAuthService';
 import { getArtifactRuntimeDiagnostics } from '../artifacts/service';
 import { getModerationRuntimeDiagnostics } from '../moderation/runtime';
 import { getScheduledTaskRuntimeDiagnostics } from '../scheduler/service';
@@ -196,6 +197,16 @@ function emptySchedulerDiagnostics(): Record<string, unknown> {
   };
 }
 
+function emptyHostAuthDiagnostics(): Record<string, unknown> {
+  return {
+    configured: false,
+    runtimeSource: 'missing',
+    fallbackHostApiKeyConfigured: false,
+    compatibility: 'unknown',
+    warning: 'unavailable',
+  };
+}
+
 const toolStatsTool = defineToolSpecV2({
   name: 'system_tool_stats',
   title: 'System Tool Stats',
@@ -215,6 +226,7 @@ const toolStatsTool = defineToolSpecV2({
       artifacts: { type: 'object' },
       moderation: { type: 'object' },
       scheduler: { type: 'object' },
+      hostAuth: { type: 'object' },
       webProviders: {
         type: 'array',
         items: {
@@ -257,7 +269,7 @@ const toolStatsTool = defineToolSpecV2({
       },
       raw: {},
     },
-    required: ['generatedAtIso', 'scope', 'note', 'memo', 'pagedText', 'artifacts', 'moderation', 'scheduler', 'webProviders', 'tools'],
+    required: ['generatedAtIso', 'scope', 'note', 'memo', 'pagedText', 'artifacts', 'moderation', 'scheduler', 'hostAuth', 'webProviders', 'tools'],
     additionalProperties: false,
   },
   annotations: {
@@ -293,6 +305,7 @@ const toolStatsTool = defineToolSpecV2({
         artifacts: await getArtifactRuntimeDiagnostics().catch(() => emptyArtifactDiagnostics()),
         moderation: await getModerationRuntimeDiagnostics().catch(() => emptyModerationDiagnostics()),
         scheduler: await getScheduledTaskRuntimeDiagnostics().catch(() => emptySchedulerDiagnostics()),
+        hostAuth: await getPublicHostCodexAuthStatus().catch(() => emptyHostAuthDiagnostics()),
         webProviders: getWebProviderRuntimeStatus(),
         tools: rows.slice(0, topN ?? 15),
         raw: includeRaw ? metrics.dump() : undefined,

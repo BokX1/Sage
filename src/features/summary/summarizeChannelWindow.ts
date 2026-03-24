@@ -1,6 +1,6 @@
 import { config as appConfig } from '../../platform/config/env';
 import { createLLMClient } from '../../platform/llm';
-import { LLMClient, LLMRequest } from '../../platform/llm/llm-types';
+import { LLMAuthSource, LLMClient, LLMRequest } from '../../platform/llm/llm-types';
 import { logger } from '../../platform/logging/logger';
 import { ChannelMessage } from '../awareness/awareness-types';
 import { jsonrepair } from 'jsonrepair';
@@ -106,6 +106,7 @@ export async function summarizeChannelWindow(params: {
   windowStart: Date;
   windowEnd: Date;
   apiKey?: string;
+  apiKeySource?: LLMAuthSource;
 }): Promise<StructuredSummary> {
   const boundedMessages = boundMessages(params.messages, params.windowStart, params.windowEnd);
   const messageText = buildMessageLines(boundedMessages);
@@ -119,7 +120,7 @@ Summarize this conversation:`;
 
   try {
     // Step 1: Analyst (strict JSON output)
-    const analysisText = await runAnalyst(STM_ANALYST_PROMPT, userPrompt, params.apiKey);
+    const analysisText = await runAnalyst(STM_ANALYST_PROMPT, userPrompt, params.apiKey, params.apiKeySource);
 
     if (!analysisText) {
       logger.warn('STM: Analyst returned empty, using fallback');
@@ -149,6 +150,7 @@ export async function summarizeChannelProfile(params: {
   previousSummary: StructuredSummary | null;
   latestRollingSummary: StructuredSummary;
   apiKey?: string;
+  apiKeySource?: LLMAuthSource;
 }): Promise<StructuredSummary> {
   const previousText = params.previousSummary
     ? formatSummaryAsText(params.previousSummary)
@@ -169,7 +171,7 @@ Output the updated channel profile:`;
 
   try {
     // Step 1: Analyst (strict JSON output)
-    const analysisText = await runAnalyst(LTM_ANALYST_PROMPT, userPrompt, params.apiKey);
+    const analysisText = await runAnalyst(LTM_ANALYST_PROMPT, userPrompt, params.apiKey, params.apiKeySource);
 
     if (!analysisText) {
       logger.warn('LTM: Analyst returned empty, preserving previous');
@@ -205,6 +207,7 @@ async function runAnalyst(
   systemPrompt: string,
   userPrompt: string,
   apiKey?: string,
+  apiKeySource?: LLMAuthSource,
 ): Promise<string | null> {
   const client = getAnalystClient();
 
@@ -216,6 +219,7 @@ async function runAnalyst(
     temperature: 0.5,
     maxTokens: 2048,
     apiKey,
+    authSource: apiKeySource,
   };
 
   try {

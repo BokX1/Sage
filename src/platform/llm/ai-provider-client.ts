@@ -14,6 +14,7 @@ import { countMessagesTokens } from './context-budgeter';
 import { sanitizeJsonSchemaForProvider } from '../../shared/validation/json-schema';
 import { normalizeTimeoutMs } from '../../shared/utils/timeout';
 import { AppError } from '../../shared/errors/app-error';
+import { handleHostCodexProviderAuthFailure } from '../../features/auth/hostCodexAuthService';
 
 interface AiProviderClientConfigInput {
   baseUrl: string;
@@ -510,7 +511,7 @@ export class AiProviderClient implements LLMClient {
     });
   }
 
-  private async _chat(request: LLMRequest): Promise<LLMResponse> {
+  private async _chat(request: LLMRequest, authRecoveryAttempted = false): Promise<LLMResponse> {
     const url = `${this.config.baseUrl}/chat/completions`;
     const rawModel = request.model || this.config.model;
     const model = rawModel.trim();
@@ -611,6 +612,25 @@ export class AiProviderClient implements LLMClient {
           }
 
           const err = classifyAiProviderHttpError(response.status, response.statusText, text);
+          if (
+            !authRecoveryAttempted &&
+            request.authSource === 'host_codex_auth' &&
+            (response.status === 401 || response.status === 403)
+          ) {
+            const recovered = await handleHostCodexProviderAuthFailure({
+              errorText: err.message,
+            });
+            if (recovered.apiKey?.trim()) {
+              return this._chat(
+                {
+                  ...request,
+                  apiKey: recovered.apiKey.trim(),
+                  authSource: recovered.authSource,
+                },
+                true,
+              );
+            }
+          }
           logger.warn(
             { status: response.status, error: err.message, timeout, code: err.code },
             '[AiProviderClient] API error',

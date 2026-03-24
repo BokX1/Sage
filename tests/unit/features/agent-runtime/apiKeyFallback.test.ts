@@ -19,6 +19,7 @@ const mockConfig = vi.hoisted(() => ({
 }));
 
 const mockGetGuildApiKey = vi.hoisted(() => vi.fn());
+const mockResolvePreferredHostAuthCredential = vi.hoisted(() => vi.fn());
 const mockGetGuildSagePersonaText = vi.hoisted(() => vi.fn());
 const mockRunAgentGraphTurn = vi.hoisted(() => vi.fn());
 const mockBuildPromptContextMessages = vi.hoisted(() => vi.fn());
@@ -59,6 +60,10 @@ vi.mock('@/features/agent-runtime/langgraph/runtime', () => ({
 
 vi.mock('@/features/settings/guildSettingsRepo', () => ({
   getGuildApiKey: mockGetGuildApiKey,
+}));
+
+vi.mock('@/features/auth/hostCodexAuthService', () => ({
+  resolvePreferredHostAuthCredential: mockResolvePreferredHostAuthCredential,
 }));
 
 vi.mock('@/features/settings/guildSagePersonaRepo', () => ({
@@ -167,6 +172,7 @@ describe('agent runtime API key fallback', () => {
     mockConfig.SERVER_PROVIDER_PROFILE_URL = 'https://server-provider.example/account/profile';
     mockConfig.SERVER_PROVIDER_DASHBOARD_URL = 'https://server-provider.example/dashboard';
     mockGetGuildSagePersonaText.mockResolvedValue(null);
+    mockGetGuildApiKey.mockReset().mockResolvedValue(undefined);
     mockRunAgentGraphTurn.mockReset();
     mockBuildPromptContextMessages.mockReset();
     mockBuildPromptContextMessages.mockReturnValue({
@@ -189,6 +195,7 @@ describe('agent runtime API key fallback', () => {
     });
     globalToolRegistryMock.listNames.mockReturnValue([]);
     globalToolRegistryMock.get.mockReturnValue(undefined);
+    mockResolvePreferredHostAuthCredential.mockReset().mockResolvedValue({});
   });
 
   it('uses global API key when guild key is unavailable', async () => {
@@ -236,7 +243,7 @@ describe('agent runtime API key fallback', () => {
     });
 
     expect(result.replyText).toBe(
-      "I'm not set up to chat in this server yet, so please ask the bot operator to add the AI provider key.",
+      "I'm not set up to chat in this server yet, so please ask the bot operator to run `npm run auth:codex:login` or add the AI provider key.",
     );
     expect(result.meta).toEqual({
       kind: 'missing_api_key',
@@ -280,5 +287,38 @@ describe('agent runtime API key fallback', () => {
       },
     });
     expect(mockRunAgentGraphTurn).not.toHaveBeenCalled();
+  });
+
+  it('prefers host Codex auth over the host API key when available', async () => {
+    mockRunAgentGraphTurn.mockResolvedValueOnce(makeGraphResult({ replyText: 'ok' }));
+    mockGetGuildApiKey.mockResolvedValueOnce(undefined);
+    mockResolvePreferredHostAuthCredential.mockResolvedValueOnce({
+      apiKey: 'codex-oauth-token',
+      authSource: 'host_codex_auth',
+    });
+
+    const result = await runChatTurn({
+      traceId: 'trace-4',
+      userId: 'user-4',
+      channelId: 'channel-4',
+      guildId: 'guild-4',
+      messageId: 'msg-4',
+      userText: 'Hello',
+      userProfileSummary: null,
+      currentTurn: makeCurrentTurn({
+        invokerUserId: 'user-4',
+        invokerDisplayName: 'User Four',
+        messageId: 'msg-4',
+        guildId: 'guild-4',
+        channelId: 'channel-4',
+      }),
+    });
+
+    expect(result.replyText).toBe('ok');
+    expect(mockRunAgentGraphTurn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        apiKey: 'codex-oauth-token',
+      }),
+    );
   });
 });

@@ -22,6 +22,7 @@ const mocks = vi.hoisted(() => ({
   upsertGuildChannelInvokePolicy: vi.fn(),
   deleteGuildChannelInvokePolicy: vi.fn(),
   getArtifactLatestTextContentForTool: vi.fn(),
+  getPublicHostCodexAuthStatus: vi.fn(),
 }));
 
 vi.mock('../../../../src/features/admin/adminActionService', async (importOriginal) => {
@@ -82,6 +83,10 @@ vi.mock('../../../../src/features/artifacts/service', async (importOriginal) => 
     getArtifactLatestTextContentForTool: mocks.getArtifactLatestTextContentForTool,
   };
 });
+
+vi.mock('../../../../src/features/auth/hostCodexAuthService', () => ({
+  getPublicHostCodexAuthStatus: mocks.getPublicHostCodexAuthStatus,
+}));
 
 import { discordTools } from '../../../../src/features/agent-runtime/discordDomainTools';
 
@@ -181,6 +186,17 @@ describe('discord admin granular wrappers', () => {
       revisionId: 'revision-1',
       revisionNumber: 2,
       contentText: 'Artifact body',
+    });
+    mocks.getPublicHostCodexAuthStatus.mockReset().mockResolvedValue({
+      configured: true,
+      provider: 'openai_codex',
+      status: 'active',
+      expiresAt: '2026-03-24T12:00:00.000Z',
+      runtimeSource: 'host_codex_auth',
+      fallbackHostApiKeyConfigured: true,
+      compatibility: 'unknown',
+      warning: null,
+      hasOperatorError: false,
     });
   });
 
@@ -282,6 +298,41 @@ describe('discord admin granular wrappers', () => {
     expect(url.searchParams.get('client_id')).toBe(config.DISCORD_APP_ID.trim());
     expect(url.searchParams.get('scope')).toBe('bot');
     expect(url.searchParams.get('permissions')).toBe('0');
+  });
+
+  it('returns host auth status for admin operators', async () => {
+    const result = await tool('discord_governance_get_host_auth_status').execute({}, adminCtx);
+
+    expect(mocks.getPublicHostCodexAuthStatus).toHaveBeenCalledTimes(1);
+    expect(result).toEqual(
+      expect.objectContaining({
+        ok: true,
+        action: 'get_host_auth_status',
+        status: expect.objectContaining({
+          configured: true,
+          runtimeSource: 'host_codex_auth',
+        }),
+      }),
+    );
+  });
+
+  it('posts a host auth status card for admins', async () => {
+    const result = await tool('discord_governance_send_host_auth_status_card').execute({}, adminCtx);
+
+    expect(mocks.discordRestRequestGuildScoped).toHaveBeenCalledWith(
+      expect.objectContaining({
+        guildId: 'guild-1',
+        method: 'POST',
+        path: '/channels/channel-1/messages',
+      }),
+    );
+    expect(result).toEqual(
+      expect.objectContaining({
+        ok: true,
+        action: 'send_host_auth_status_card',
+        channelId: 'channel-1',
+      }),
+    );
   });
 
   it('allows moderator-only submit_moderation when the requester has Manage Messages in the target channel', async () => {

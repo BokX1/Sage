@@ -184,6 +184,13 @@ export const nativeTools = [
     "color": "#5865F2"
   },
   {
+    "name": "discord_governance_get_host_auth_status",
+    "short": "Discord Admin Get Host Auth Status",
+    "desc": "Inspect the shared host-level Codex auth status and fallback behavior.",
+    "cat": "discord",
+    "color": "#5865F2"
+  },
+  {
     "name": "discord_governance_get_invoke_thread_status",
     "short": "Discord Admin Get Invoke Thread Status",
     "desc": "Inspect which channels auto-route Sage invokes into public message threads.",
@@ -215,6 +222,13 @@ export const nativeTools = [
     "name": "discord_governance_get_server_key_status",
     "short": "Discord Admin Get Server Key Status",
     "desc": "Check the current server-wide API key status.",
+    "cat": "discord",
+    "color": "#5865F2"
+  },
+  {
+    "name": "discord_governance_send_host_auth_status_card",
+    "short": "Discord Admin Send Host Auth Status Card",
+    "desc": "Post the current host auth status in the active channel.",
     "cat": "discord",
     "color": "#5865F2"
   },

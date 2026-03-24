@@ -53,7 +53,9 @@ import { VoiceManager } from '../../voice/voiceManager';
 import { hasAuthorityAtLeast } from '../../../platform/discord/admin-permissions';
 import { isLoggingEnabled } from '../../settings/guildChannelSettings';
 import { buildGuildApiKeySetupCardMessage } from '../../discord/byopBootstrap';
+import { buildRuntimeResponseCardPayload } from '../../discord/runtimeResponseCards';
 import { clearGuildApiKey, getGuildApiKeyStatus } from '../../settings/guildApiKeyService';
+import { getPublicHostCodexAuthStatus } from '../../auth/hostCodexAuthService';
 import {
   getGuildApprovalReviewChannelId,
   getGuildArtifactVaultChannelId,
@@ -206,6 +208,46 @@ function readInvokeThreadPermissionHealth(channel: Awaited<ReturnType<typeof cli
     missingPermissions,
     threadRoutingHealthy: missingPermissions.length === 0,
   };
+}
+
+function formatHostAuthStatusText(
+  status: Awaited<ReturnType<typeof getPublicHostCodexAuthStatus>>,
+): string {
+  if (!status.configured) {
+    return [
+      '**Host Codex Auth**',
+      `- **Configured**: No`,
+      `- **Runtime Source**: ${status.runtimeSource === 'host_api_key' ? 'Host API key fallback' : 'Missing host credentials'}`,
+      `- **Host API Key Fallback**: ${status.fallbackHostApiKeyConfigured ? 'Configured' : 'Missing'}`,
+      '- **Operator Action**: Run `npm run auth:codex:login` on the host or configure `AI_PROVIDER_API_KEY`.',
+    ].join('\n');
+  }
+
+  const statusLabel =
+    status.status === 'active'
+      ? 'Active'
+      : status.status === 'expired'
+        ? 'Expired'
+        : 'Refresh failed';
+  const runtimeSource =
+    status.runtimeSource === 'host_codex_auth' ? 'Host Codex auth' : 'Host API key fallback';
+  const lines = [
+    '**Host Codex Auth**',
+    `- **Configured**: Yes`,
+    `- **Status**: ${statusLabel}`,
+    `- **Runtime Source**: ${runtimeSource}`,
+    `- **Expires At**: ${status.expiresAt}`,
+    `- **Host API Key Fallback**: ${status.fallbackHostApiKeyConfigured ? 'Configured' : 'Missing'}`,
+  ];
+
+  if (status.warning) {
+    lines.push(`- **Compatibility Warning**: ${status.warning}`);
+  }
+  if (status.hasOperatorError) {
+    lines.push('- **Operator Note**: A host-level auth error is recorded. Use the host CLI status flow for detailed diagnostics.');
+  }
+
+  return lines.join('\n');
 }
 
 function isGuildVoiceChannel(
@@ -2668,6 +2710,15 @@ export async function executeDiscordAdminAction(
         status,
       };
     }
+    case 'get_host_auth_status': {
+      assertAdminAuthority(ctx);
+      const status = await getPublicHostCodexAuthStatus();
+      return {
+        ok: true,
+        action: 'get_host_auth_status',
+        status,
+      };
+    }
     case 'get_governance_review_status': {
       assertAdmin(ctx.invokerIsAdmin);
       const guildId = requireGuildContext(ctx.guildId);
@@ -2898,6 +2949,34 @@ export async function executeDiscordAdminAction(
         action: 'send_key_setup_card',
         guildId: requireGuildContext(ctx.guildId),
         channelId: ctx.channelId,
+        data: result.data,
+      };
+    }
+    case 'send_host_auth_status_card': {
+      assertAdminAuthority(ctx);
+      assertNotAutopilot(ctx.invokedBy, 'send_host_auth_status_card');
+      const status = await getPublicHostCodexAuthStatus();
+      const card = buildRuntimeResponseCardPayload({
+        text: formatHostAuthStatusText(status),
+        tone: status.configured && status.status === 'active' ? 'continue' : 'notice',
+      });
+      const result = await discordRestRequestGuildScoped({
+        guildId: requireGuildContext(ctx.guildId),
+        method: 'POST',
+        path: `/channels/${ctx.channelId}/messages`,
+        body: {
+          flags: card.flags,
+          components: card.components,
+          allowed_mentions: { parse: [] },
+        },
+        signal: ctx.signal,
+      });
+      return {
+        ok: result.ok === true,
+        action: 'send_host_auth_status_card',
+        guildId: requireGuildContext(ctx.guildId),
+        channelId: ctx.channelId,
+        status,
         data: result.data,
       };
     }

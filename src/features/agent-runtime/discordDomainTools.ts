@@ -34,6 +34,7 @@ const DISCORD_SERVER_ADMIN_READ_ACTIONS = new Set([
 
 const DISCORD_ADMIN_READ_ACTIONS = new Set([
   'get_server_key_status',
+  'get_host_auth_status',
   'get_governance_review_status',
   'get_invoke_thread_status',
 ]);
@@ -1160,6 +1161,10 @@ const adminGetServerKeyStatusSchema = z.object({
   action: z.literal('get_server_key_status').describe('Check the current server-wide API key status. Admin-only read.'),
 });
 
+const adminGetHostAuthStatusSchema = z.object({
+  action: z.literal('get_host_auth_status').describe('Inspect the shared host-level Codex auth status and fallback behavior. Admin-only read.'),
+});
+
 const adminGetGovernanceReviewStatusSchema = z.object({
   action: z.literal('get_governance_review_status').describe('Inspect where governance review cards are routed for this server. Admin-only read.'),
 });
@@ -1220,6 +1225,10 @@ const adminClearModLogChannelSchema = z.object({
 
 const adminSendKeySetupCardSchema = z.object({
   action: z.literal('send_key_setup_card').describe('Send an interactive server-key setup card in the current channel. Admin-only write. Disabled in autopilot turns.'),
+});
+
+const adminSendHostAuthStatusCardSchema = z.object({
+  action: z.literal('send_host_auth_status_card').describe('Post a host-auth status card in the current channel. Admin-only write. Disabled in autopilot turns.'),
 });
 
 const voiceGetStatusSchema = z.object({
@@ -1862,6 +1871,18 @@ const discordAdminTools = [
     promptSummary: 'Use to inspect the current server key status.',
   }),
   defineDiscordActionTool({
+    name: 'discord_governance_get_host_auth_status',
+    title: 'Discord Admin Get Host Auth Status',
+    description: 'Inspect the shared host-level Codex auth status and fallback behavior.',
+    schema: adminGetHostAuthStatusSchema,
+    domain: 'discord_admin',
+    executeDomain: executeDiscordAdminAction,
+    readOnly: true,
+    access: 'admin',
+    capabilityTags: ['admin', 'governance'],
+    promptSummary: 'Use to inspect the shared host auth state for this deployment.',
+  }),
+  defineDiscordActionTool({
     name: 'discord_governance_get_review_status',
     title: 'Discord Admin Get Governance Review Status',
     description: 'Inspect where governance review cards are routed.',
@@ -2162,6 +2183,19 @@ const discordAdminTools = [
     observationPolicy: 'artifact-only',
     capabilityTags: ['admin', 'artifact'],
     promptSummary: 'Use to send the server-key setup card artifact.',
+  }),
+  defineDiscordActionTool({
+    name: 'discord_governance_send_host_auth_status_card',
+    title: 'Discord Admin Send Host Auth Status Card',
+    description: 'Post the current host auth status in the active channel.',
+    schema: adminSendHostAuthStatusCardSchema,
+    domain: 'discord_admin',
+    executeDomain: executeDiscordAdminAction,
+    readOnly: false,
+    access: 'admin',
+    observationPolicy: 'artifact-only',
+    capabilityTags: ['admin', 'governance'],
+    promptSummary: 'Use to post a host auth status card for operators in the current channel.',
   }),
   defineDiscordActionTool({
     name: 'discord_governance_update_server_instructions',

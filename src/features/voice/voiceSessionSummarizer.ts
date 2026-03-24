@@ -1,7 +1,7 @@
 import { jsonrepair } from 'jsonrepair';
 import { config as appConfig } from '../../platform/config/env';
 import { createLLMClient } from '../../platform/llm';
-import { LLMClient, LLMRequest } from '../../platform/llm/llm-types';
+import { LLMAuthSource, LLMClient, LLMRequest } from '../../platform/llm/llm-types';
 import { logger } from '../../platform/logging/logger';
 import { VoiceConversationSession } from './voiceConversationSessionStore';
 
@@ -102,6 +102,7 @@ function formatUtterances(session: VoiceConversationSession): string {
 export async function summarizeVoiceConversationSession(params: {
   session: VoiceConversationSession;
   apiKey?: string;
+  apiKeySource?: LLMAuthSource;
 }): Promise<StructuredVoiceSummary | null> {
   if (params.session.utterances.length === 0) return null;
   const transcript = formatUtterances(params.session);
@@ -126,6 +127,7 @@ Summarize this voice session:`;
     temperature: 0.4,
     maxTokens: 2048,
     apiKey: params.apiKey,
+    authSource: params.apiKeySource,
   };
 
   try {

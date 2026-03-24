@@ -39,6 +39,10 @@ vi.mock('@/features/settings/guildSettingsRepo', () => ({
   getGuildApiKey: vi.fn().mockResolvedValue('test-key'),
 }));
 
+vi.mock('@/features/auth/hostCodexAuthService', () => ({
+  resolvePreferredHostAuthCredential: vi.fn().mockResolvedValue({}),
+}));
+
 vi.mock('@/features/settings/guildSagePersonaRepo', () => ({
   getGuildSagePersonaText: mockGetGuildSagePersonaText,
 }));

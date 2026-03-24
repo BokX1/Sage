@@ -166,7 +166,7 @@ The wizard will guide you through:
 | `DISCORD_APP_ID` | Discord application ID |
 | `DATABASE_URL` | Local Docker default or your own PostgreSQL URL |
 | `AI_PROVIDER_BASE_URL` | Your OpenAI-compatible chat-completions base URL |
-| AI provider setup mode | Host key now, server activation later, or both |
+| AI provider setup mode | Host Codex auth, host key now, server activation later, or both |
 | `AI_PROVIDER_API_KEY` | Optional host-level key for the configured provider |
 | `AI_PROVIDER_MAIN_AGENT_MODEL` | Main runtime model |
 | `AI_PROVIDER_PROFILE_AGENT_MODEL` | Profile update model |
@@ -261,6 +261,7 @@ npm run doctor -- --llm-ping
 Expected healthy signals:
 
 - `npm run doctor` reports no blocking failures
+- If you use shared host Codex auth, `npm run auth:codex:status` reports an active login
 - Sage logs in successfully to Discord
 - database migrations are already applied
 
@@ -300,7 +301,7 @@ Try any of these:
 
 ## 7️⃣ Optional Server-Key Activation
 
-Use this step if you are relying on Sage's in-Discord server activation flow instead of only a host-level provider key.
+Use this step if you are relying on Sage's in-Discord server activation flow instead of only host-level credentials.
 
 1. Mention Sage in the guild once
 2. If the server does not have a usable key path yet, Sage posts the setup card
@@ -309,7 +310,7 @@ Use this step if you are relying on Sage's in-Discord server activation flow ins
 5. The admin clicks `Set Server Key` and submits the key in the modal
 
 > [!NOTE]
-> This server-key flow is part of Sage's current hosted/Pollinations-specific path. Self-hosted runtime chat remains provider-flexible through `AI_PROVIDER_BASE_URL`.
+> This server-key flow is part of Sage's current hosted/Pollinations-specific path. Self-hosted runtime chat remains provider-flexible through `AI_PROVIDER_BASE_URL`, and the host can now prefer a shared Codex OAuth login via `npm run auth:codex:login`.
 
 ---
 
@@ -322,6 +323,7 @@ Use this step if you are relying on Sage's in-Discord server activation flow ins
 - [ ] Sage appears in your server member list
 - [ ] `Sage, hello` produces a Discord reply
 - [ ] `@Sage explain this code` works
+- [ ] If you use shared host Codex auth, `npm run auth:codex:status` shows an active login
 - [ ] If you skipped `AI_PROVIDER_API_KEY`, the setup card appears when the server has no usable key
 
 Useful smoke prompts:

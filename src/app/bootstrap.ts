@@ -23,6 +23,7 @@ import { registerShutdownHooks } from './runtime/shutdown';
 import { initChannelSummaryScheduler } from '../features/summary/channelSummaryScheduler';
 import { startCompactionScheduler } from '../features/summary/ltmCompaction';
 import { initImageAttachmentRecallWorker } from '../features/attachments/imageAttachmentRecallWorker';
+import { getHostCodexAuthStatus } from '../features/auth/hostCodexAuthService';
 import { AppError } from '../shared/errors/app-error';
 import { logger } from '../platform/logging/logger';
 
@@ -55,9 +56,18 @@ export async function bootstrapApp(): Promise<void> {
     initScheduledTaskWorker();
     registerShutdownHooks({ client });
 
-    if (!config.AI_PROVIDER_API_KEY) {
+    const hostAuthStatus = await getHostCodexAuthStatus();
+    if (hostAuthStatus.configured && hostAuthStatus.status === 'active') {
+      logger.info(
+        {
+          accountId: hostAuthStatus.accountId,
+          runtimeSource: hostAuthStatus.runtimeSource,
+        },
+        'Host Codex auth is active',
+      );
+    } else if (!config.AI_PROVIDER_API_KEY) {
       logger.warn(
-        'No host-level AI provider key found. Sage can still respond if a server admin configures an in-Discord server API key.',
+        'No host-level Codex auth or AI provider key found. Sage can still respond if a server admin configures an in-Discord server API key.',
       );
     }
 

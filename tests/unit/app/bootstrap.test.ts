@@ -28,6 +28,13 @@ const mockInitAgentTaskRunWorker = vi.hoisted(() => vi.fn());
 const mockInitScheduledTaskWorker = vi.hoisted(() => vi.fn());
 const mockRegisterShutdownHooks = vi.hoisted(() => vi.fn());
 const mockAssertAgentTraceSchemaReady = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
+const mockGetHostCodexAuthStatus = vi.hoisted(() => vi.fn().mockResolvedValue({
+  configured: false,
+  runtimeSource: 'missing',
+  fallbackHostApiKeyConfigured: false,
+  compatibility: 'unknown',
+  warning: null,
+}));
 
 vi.mock('@/platform/discord/client', () => ({
   client: mockClient,
@@ -125,6 +132,10 @@ vi.mock('@/app/runtime/shutdown', () => ({
   registerShutdownHooks: mockRegisterShutdownHooks,
 }));
 
+vi.mock('@/features/auth/hostCodexAuthService', () => ({
+  getHostCodexAuthStatus: mockGetHostCodexAuthStatus,
+}));
+
 vi.mock('@/platform/config/env', () => ({
   config: {
     DISCORD_TOKEN: 'test-token',
@@ -139,6 +150,13 @@ describe('bootstrapApp', () => {
   beforeEach(() => {
     mockAssertAgentTraceSchemaReady.mockResolvedValue(undefined);
     mockClient.login.mockResolvedValue(undefined);
+    mockGetHostCodexAuthStatus.mockResolvedValue({
+      configured: false,
+      runtimeSource: 'missing',
+      fallbackHostApiKeyConfigured: false,
+      compatibility: 'unknown',
+      warning: null,
+    });
   });
 
   it('initializes runtime and starts both summary schedulers', async () => {
