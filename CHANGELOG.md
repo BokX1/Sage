@@ -27,7 +27,11 @@
 
 ### Added
 
-- Added a real OpenClaw-style host Codex login flow for self-hosted operators: `npm run auth:codex:login` now embeds the public Codex client, listens on `http://127.0.0.1:1455/auth/callback` first, and falls back to pasted redirect URLs/codes for remote or headless VMs instead of requiring operators to invent an OAuth client id.
+- Added a real OpenClaw-style host Codex login flow for self-hosted operators: `npm run auth:codex:login` now embeds the public Codex client, listens on `http://localhost:1455/auth/callback` first, and falls back to pasted redirect URLs/codes for remote or headless VMs instead of requiring operators to invent an OAuth client id.
+
+### Fixed
+
+- Fixed the default host Codex OAuth redirect URI to use `http://localhost:1455/auth/callback`, matching the public Codex client registration that OpenAI accepts instead of the broken `127.0.0.1` variant that returned `unknown_error`.
 - Added shared host-level Codex auth for self-hosted Sage deployments, including encrypted token storage, automatic refresh with lease-based locking, operator-facing Discord status reads/cards, and new `npm run auth:codex:{login,status,clear}` flows so one VM login can power runtime chat across every guild on that host.
 - Added a Discord-native artifact lifecycle with staged attachment intake, text artifact creation, revision history, and publish/republish flows, so Sage can now manage Discord work products as tracked artifacts instead of only reading cached attachments or re-sending old files.
 - Added admin-configurable thread-on-invoke routing for Discord text and announcement channels, so opted-in channels can now push fresh Sage invokes into public message threads automatically while active or waiting task continuations keep using their existing response thread.

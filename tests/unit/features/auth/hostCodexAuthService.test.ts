@@ -4,7 +4,7 @@ const mockConfig = vi.hoisted(() => ({
   AI_PROVIDER_API_KEY: 'env-fallback-key',
   OPENAI_CODEX_AUTH_AUTHORIZE_URL: 'https://auth.openai.com/oauth/authorize',
   OPENAI_CODEX_AUTH_TOKEN_URL: 'https://auth.openai.com/oauth/token',
-  OPENAI_CODEX_AUTH_REDIRECT_URI: 'http://127.0.0.1:1455/auth/callback',
+  OPENAI_CODEX_AUTH_REDIRECT_URI: 'http://localhost:1455/auth/callback',
   OPENAI_CODEX_AUTH_SCOPES: 'openid profile email offline_access',
 }));
 
@@ -52,7 +52,7 @@ describe('hostCodexAuthService', () => {
     mockConfig.AI_PROVIDER_API_KEY = 'env-fallback-key';
     mockConfig.OPENAI_CODEX_AUTH_AUTHORIZE_URL = 'https://auth.openai.com/oauth/authorize';
     mockConfig.OPENAI_CODEX_AUTH_TOKEN_URL = 'https://auth.openai.com/oauth/token';
-    mockConfig.OPENAI_CODEX_AUTH_REDIRECT_URI = 'http://127.0.0.1:1455/auth/callback';
+    mockConfig.OPENAI_CODEX_AUTH_REDIRECT_URI = 'http://localhost:1455/auth/callback';
     mockConfig.OPENAI_CODEX_AUTH_SCOPES = 'openid profile email offline_access';
 
     repoMocks.getHostProviderAuth.mockReset().mockResolvedValue(null);
@@ -72,10 +72,10 @@ describe('hostCodexAuthService', () => {
     expect(login.state).toBeTruthy();
     expect(login.verifier).toBeTruthy();
     expect(login.challenge).toBeTruthy();
-    expect(login.redirectUri).toBe('http://127.0.0.1:1455/auth/callback');
+    expect(login.redirectUri).toBe('http://localhost:1455/auth/callback');
     expect(url.origin + url.pathname).toBe('https://auth.openai.com/oauth/authorize');
     expect(url.searchParams.get('client_id')).toBe('app_EMoamEEZ73f0CkXaXp7hrann');
-    expect(url.searchParams.get('redirect_uri')).toBe('http://127.0.0.1:1455/auth/callback');
+    expect(url.searchParams.get('redirect_uri')).toBe('http://localhost:1455/auth/callback');
     expect(url.searchParams.get('scope')).toBe('openid profile email offline_access');
     expect(url.searchParams.get('code_challenge_method')).toBe('S256');
     expect(url.searchParams.get('codex_cli_simplified_flow')).toBe('true');
@@ -83,7 +83,7 @@ describe('hostCodexAuthService', () => {
 
   it('extracts the authorization code from a pasted redirect URL', () => {
     const code = extractAuthorizationCodeFromInput({
-      input: 'http://127.0.0.1:1455/auth/callback?code=abc123&state=state-1',
+      input: 'http://localhost:1455/auth/callback?code=abc123&state=state-1',
       expectedState: 'state-1',
     });
 
@@ -282,4 +282,3 @@ describe('hostCodexAuthService', () => {
     );
   });
 });
-

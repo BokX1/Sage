@@ -21,7 +21,7 @@ const HOST_CODEX_UNREADABLE_AUTH_ERROR =
 const OPENCLAW_STYLE_PUBLIC_CLIENT_ID = 'app_EMoamEEZ73f0CkXaXp7hrann';
 const OPENCLAW_STYLE_AUTHORIZE_URL = 'https://auth.openai.com/oauth/authorize';
 const OPENCLAW_STYLE_TOKEN_URL = 'https://auth.openai.com/oauth/token';
-const OPENCLAW_STYLE_REDIRECT_URI = 'http://127.0.0.1:1455/auth/callback';
+const OPENCLAW_STYLE_REDIRECT_URI = 'http://localhost:1455/auth/callback';
 const OPENCLAW_STYLE_SCOPES = 'openid profile email offline_access';
 
 type HostCodexAuthState = 'active' | 'expired' | 'refresh_failed';
@@ -577,4 +577,3 @@ export async function getPublicHostCodexAuthStatus(): Promise<PublicHostCodexAut
 export async function clearHostCodexAuthRecord(): Promise<void> {
   await clearHostProviderAuth(HOST_CODEX_PROVIDER_ID);
 }
-

@@ -114,7 +114,7 @@ FILE_INGEST_TIKA_BASE_URL=http://127.0.0.1:9998
 Key notes:
 
 - Preferred host auth path: run `npm run auth:codex:login` on the VM/host to configure one shared Codex OAuth login for the deployment.
-- The login flow now follows the real host-side Codex pattern: Sage embeds the public client id, waits on `http://127.0.0.1:1455/auth/callback` first, and then falls back to a pasted redirect URL/code if the VM is remote or headless.
+- The login flow now follows the real host-side Codex pattern: Sage embeds the public client id, waits on `http://localhost:1455/auth/callback` first, and then falls back to a pasted redirect URL/code if the VM is remote or headless.
 - When host Codex auth is healthy, Sage routes the main, profile, and summary text lanes to OpenAI/Codex automatically using the built-in `gpt-5.4` route.
 - If you also set `AI_PROVIDER_API_KEY`, Sage uses it as the automatic host fallback when Codex auth is absent or unhealthy.
 - If you do **not** configure either host Codex auth or `AI_PROVIDER_API_KEY`, Sage can still run in servers that complete the current hosted/server-key path. Direct-message chat still needs a host-level credential because there is no guild-scoped key to fall back to.
