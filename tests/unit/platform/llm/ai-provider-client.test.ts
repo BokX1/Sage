@@ -22,7 +22,38 @@ type RequestBody = {
     tool_call_id?: string;
   }>;
   tools?: Array<{ function?: { name?: string; parameters?: unknown } }>;
+  input?: unknown[];
+  instructions?: string;
 };
+
+function createCodexJwtToken(accountId = 'acct_test'): string {
+  const encode = (value: object) =>
+    Buffer.from(JSON.stringify(value))
+      .toString('base64')
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=+$/g, '');
+
+  return `${encode({ alg: 'none', typ: 'JWT' })}.${encode({
+    'https://api.openai.com/auth': { chatgpt_account_id: accountId },
+  })}.signature`;
+}
+
+function createSseResponse(events: unknown[]): Response {
+  const body = events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join('') + 'data: [DONE]\n\n';
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(new TextEncoder().encode(body));
+      controller.close();
+    },
+  });
+  return new Response(stream, {
+    status: 200,
+    headers: {
+      'content-type': 'text/event-stream',
+    },
+  });
+}
 
 function hasKeyDeep(value: unknown, key: string): boolean {
   if (Array.isArray(value)) {
@@ -396,9 +427,9 @@ describe('AiProviderClient', () => {
     const result = await client.chat({
       messages: [{ role: 'user', content: 'test' }],
       providerId: 'openai_codex',
-      baseUrl: 'https://api.openai.com/v1',
+      baseUrl: 'https://chatgpt.com/backend-api',
       model: 'gpt-5.4',
-      apiKey: 'host-codex-token',
+      apiKey: createCodexJwtToken(),
       authSource: 'host_codex_auth',
       fallbackRoute: {
         providerId: 'default',
@@ -412,10 +443,111 @@ describe('AiProviderClient', () => {
     expect(result.text).toBe('done');
     expect(hostAuthMocks.handleHostCodexProviderAuthFailure).toHaveBeenCalledTimes(1);
     expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[0]?.[0]).toBe('https://chatgpt.com/backend-api/codex/responses');
     expect(fetchMock.mock.calls[1]?.[0]).toBe('https://fallback.example/v1/chat/completions');
+    expect((fetchMock.mock.calls[1]?.[1] as { headers?: Record<string, string> }).headers?.['chatgpt-account-id']).toBeUndefined();
     expect((fetchMock.mock.calls[1]?.[1] as { headers?: Record<string, string> }).headers?.Authorization).toBe(
       'Bearer env-fallback-key',
     );
+  });
+
+  it('uses the ChatGPT Codex responses backend and parses tool calls', async () => {
+    const client = new AiProviderClient({ baseUrl: 'https://chatgpt.com/backend-api', model: 'gpt-5.4', maxRetries: 0 });
+
+    fetchMock.mockResolvedValueOnce(
+      createSseResponse([
+        {
+          type: 'response.output_item.added',
+          item: { type: 'message', id: 'msg_1' },
+        },
+        {
+          type: 'response.output_text.delta',
+          delta: 'Need a lookup first.',
+        },
+        {
+          type: 'response.output_item.added',
+          item: {
+            type: 'function_call',
+            id: 'fc_1',
+            call_id: 'call_1',
+            name: 'google_search',
+            arguments: '',
+          },
+        },
+        {
+          type: 'response.function_call_arguments.delta',
+          delta: '{"query":"latest',
+        },
+        {
+          type: 'response.function_call_arguments.done',
+          arguments: '{"query":"latest discord components v2"}',
+        },
+        {
+          type: 'response.completed',
+          response: {
+            status: 'completed',
+            usage: {
+              input_tokens: 10,
+              output_tokens: 4,
+              total_tokens: 14,
+            },
+          },
+        },
+      ]),
+    );
+
+    const result = await client.chat({
+      providerId: 'openai_codex',
+      baseUrl: 'https://chatgpt.com/backend-api',
+      model: 'gpt-5.4',
+      apiKey: createCodexJwtToken('acct_codex'),
+      authSource: 'host_codex_auth',
+      messages: [
+        { role: 'system', content: 'system prompt' },
+        { role: 'user', content: 'search for it' },
+      ],
+      tools: [
+        {
+          type: 'function',
+          function: {
+            name: 'google_search',
+            parameters: { type: 'object', properties: {}, required: [] },
+          },
+        },
+      ],
+      toolChoice: 'auto',
+      parallelToolCalls: true,
+    });
+
+    expect(result.text).toBe('');
+    expect(result.reasoningText).toBe('Need a lookup first.');
+    expect(result.toolCalls).toEqual([
+      {
+        id: 'fc_1',
+        name: 'google_search',
+        args: { query: 'latest discord components v2' },
+      },
+    ]);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0]?.[0]).toBe('https://chatgpt.com/backend-api/codex/responses');
+    const requestInit = fetchMock.mock.calls[0]?.[1] as { headers?: Record<string, string>; body?: string };
+    expect(requestInit.headers).toMatchObject({
+      Authorization: expect.stringMatching(/^Bearer /),
+      'chatgpt-account-id': 'acct_codex',
+      'OpenAI-Beta': 'responses=experimental',
+      originator: 'pi',
+      Accept: 'text/event-stream',
+    });
+
+    const body = parseRequestBody(fetchMock, 0);
+    expect(body.instructions).toBe('system prompt');
+    expect(body.input).toEqual([
+      {
+        role: 'user',
+        content: [{ type: 'input_text', text: 'search for it' }],
+      },
+    ]);
   });
 
   it('does not retry after an abort error', async () => {

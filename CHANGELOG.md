@@ -31,6 +31,7 @@
 
 ### Fixed
 
+- Fixed host Codex runtime routing so Sage now talks to the real ChatGPT Codex responses backend with the required `chatgpt-account-id` header and responses/tool-call protocol, instead of incorrectly sending ChatGPT OAuth tokens to the generic OpenAI `chat/completions` API path.
 - Fixed the default host Codex OAuth redirect URI to use `http://localhost:1455/auth/callback`, matching the public Codex client registration that OpenAI accepts instead of the broken `127.0.0.1` variant that returned `unknown_error`.
 - Added shared host-level Codex auth for self-hosted Sage deployments, including encrypted token storage, automatic refresh with lease-based locking, operator-facing Discord status reads/cards, and new `npm run auth:codex:{login,status,clear}` flows so one VM login can power runtime chat across every guild on that host.
 - Added a Discord-native artifact lifecycle with staged attachment intake, text artifact creation, revision history, and publish/republish flows, so Sage can now manage Discord work products as tracked artifacts instead of only reading cached attachments or re-sending old files.

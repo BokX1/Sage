@@ -307,7 +307,7 @@ describe('agent runtime provider fallback', () => {
     mockResolveTextProviderRoute.mockResolvedValueOnce({
       providerId: 'openai_codex',
       lane: 'main',
-      baseUrl: 'https://api.openai.com/v1',
+      baseUrl: 'https://chatgpt.com/backend-api',
       model: 'gpt-5.4',
       apiKey: 'codex-oauth-token',
       authSource: 'host_codex_auth',
@@ -341,11 +341,10 @@ describe('agent runtime provider fallback', () => {
     expect(mockRunAgentGraphTurn).toHaveBeenCalledWith(
       expect.objectContaining({
         providerId: 'openai_codex',
-        baseUrl: 'https://api.openai.com/v1',
+        baseUrl: 'https://chatgpt.com/backend-api',
         model: 'gpt-5.4',
         apiKey: 'codex-oauth-token',
       }),
     );
   });
 });
-

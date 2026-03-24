@@ -62,12 +62,80 @@ type CompatibleChatResponseMessage = {
   tool_calls?: CompatibleChatToolCall[];
 };
 
+type CodexInputContentPart =
+  | { type: 'input_text'; text: string }
+  | { type: 'input_image'; image_url: string; detail: 'auto' };
+
+type CodexInputItem =
+  | { role: 'user'; content: CodexInputContentPart[] }
+  | {
+      type: 'message';
+      role: 'assistant';
+      content: Array<{ type: 'output_text'; text: string; annotations: unknown[] }>;
+      status: 'completed';
+      id: string;
+    }
+  | {
+      type: 'function_call';
+      id: string;
+      call_id: string;
+      name: string;
+      arguments: string;
+    }
+  | {
+      type: 'function_call_output';
+      call_id: string;
+      output: string;
+    };
+
+type CodexToolDefinition = {
+  type: 'function';
+  name: string;
+  description?: string;
+  parameters: Record<string, unknown>;
+  strict: boolean;
+};
+
+type CodexResponseUsage = {
+  input_tokens?: number;
+  output_tokens?: number;
+  total_tokens?: number;
+  input_tokens_details?: { cached_tokens?: number };
+  [key: string]: unknown;
+};
+
+type CodexResponseEvent =
+  | {
+      type: 'response.completed';
+      response?: { usage?: CodexResponseUsage; status?: string };
+    }
+  | {
+      type: 'response.output_item.added';
+      item?: { type?: string; id?: string; call_id?: string; name?: string; arguments?: string };
+    }
+  | { type: 'response.output_text.delta'; delta?: string }
+  | { type: 'response.reasoning_summary_text.delta'; delta?: string }
+  | { type: 'response.function_call_arguments.delta'; delta?: string }
+  | { type: 'response.function_call_arguments.done'; arguments?: string }
+  | { type: 'error'; code?: string; message?: string }
+  | {
+      type: 'response.failed';
+      response?: {
+        error?: { code?: string; message?: string };
+        incomplete_details?: { reason?: string };
+      };
+    }
+  | { type?: string; [key: string]: unknown };
+
 const DEFAULT_TIMEOUT_MS = 180_000;
 const MIN_TIMEOUT_MS = 1_000;
 const MAX_TIMEOUT_MS = 300_000;
 const DEFAULT_MAX_RETRIES = 2;
 const MAX_RETRIES = 5;
 const providerToolControlsSupportCache = new Map<string, boolean>();
+const CODEX_BASE_URL = 'https://chatgpt.com/backend-api';
+const CODEX_RESPONSES_BETA = 'responses=experimental';
+const CODEX_ACCOUNT_ID_CLAIM = 'https://api.openai.com/auth';
 
 function buildProviderToolControlsCacheKey(baseUrl: string, model: string): string {
   return `${baseUrl}::${model.trim().toLowerCase()}`;
@@ -146,6 +214,18 @@ function extractSystemText(content: CompatibleChatMessage['content']): string {
     .join('\n');
 }
 
+function extractTextContent(content: LLMMessageContent): string {
+  if (typeof content === 'string') {
+    return content;
+  }
+
+  return content
+    .filter((part) => part.type === 'text')
+    .map((part) => part.text)
+    .filter((value) => value.trim().length > 0)
+    .join('\n');
+}
+
 function collapseSystemMessages(messages: CompatibleChatMessage[]): CompatibleChatMessage[] {
   const systemParts: string[] = [];
   const nonSystemMessages: CompatibleChatMessage[] = [];
@@ -207,6 +287,237 @@ function assertSafeBaseUrl(rawBaseUrl: string): string {
     throw new Error('AI provider base URL must use HTTP(S).');
   }
   return parsed.toString().replace(/\/$/, '');
+}
+
+function decodeJwtPayload(token: string): Record<string, unknown> | null {
+  const parts = token.split('.');
+  if (parts.length < 2) {
+    return null;
+  }
+
+  try {
+    const payload = parts[1]
+      .replace(/-/g, '+')
+      .replace(/_/g, '/')
+      .padEnd(Math.ceil(parts[1].length / 4) * 4, '=');
+    return JSON.parse(Buffer.from(payload, 'base64').toString('utf8')) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+function extractCodexAccountId(token: string): string {
+  const payload = decodeJwtPayload(token);
+  const authClaim = payload?.[CODEX_ACCOUNT_ID_CLAIM];
+  if (authClaim && typeof authClaim === 'object' && !Array.isArray(authClaim)) {
+    const accountId = (authClaim as Record<string, unknown>).chatgpt_account_id;
+    if (typeof accountId === 'string' && accountId.trim().length > 0) {
+      return accountId.trim();
+    }
+  }
+
+  throw new AppError(
+    'AI_PROVIDER_AUTH',
+    'Host Codex auth token is missing the required ChatGPT account id claim.',
+  );
+}
+
+function normalizeCodexIdentifier(rawValue: string, prefix: string): string {
+  const sanitized = rawValue.replace(/[^a-zA-Z0-9_-]/g, '_').replace(/_+/g, '_').replace(/^_+|_+$/g, '');
+  const prefixed = sanitized.length > 0 ? sanitized : `${prefix}_${Date.now().toString(36)}`;
+  const normalized = prefixed.startsWith(prefix) ? prefixed : `${prefix}_${prefixed}`;
+  return normalized.slice(0, 64);
+}
+
+function normalizeCodexToolChoice(
+  toolChoice: LLMRequest['toolChoice'],
+): string | { type: 'function'; name: string } | undefined {
+  if (toolChoice === undefined) {
+    return undefined;
+  }
+
+  if (typeof toolChoice === 'string') {
+    return toolChoice;
+  }
+
+  if (
+    toolChoice &&
+    typeof toolChoice === 'object' &&
+    !Array.isArray(toolChoice) &&
+    toolChoice.type === 'function' &&
+    toolChoice.function &&
+    typeof toolChoice.function === 'object' &&
+    typeof (toolChoice.function as { name?: unknown }).name === 'string'
+  ) {
+    const name = (toolChoice.function as { name: string }).name.trim();
+    if (name.length > 0) {
+      return { type: 'function', name };
+    }
+  }
+
+  return undefined;
+}
+
+function normalizeCodexInputMessages(messages: LLMRequest['messages']): {
+  instructions?: string;
+  input: CodexInputItem[];
+} {
+  const collapsedMessages = collapseSystemMessages(
+    messages.map((message) => ({
+      role: message.role,
+      content: message.content,
+      tool_calls: serializeToolCallsForApi(message.toolCalls),
+      tool_call_id: message.toolCallId,
+    })),
+  );
+
+  const instructions =
+    collapsedMessages[0]?.role === 'system'
+      ? extractSystemText(collapsedMessages[0].content).trim() || undefined
+      : undefined;
+  const conversationalMessages =
+    collapsedMessages[0]?.role === 'system' ? collapsedMessages.slice(1) : collapsedMessages;
+
+  const input: CodexInputItem[] = [];
+
+  conversationalMessages.forEach((message, messageIndex) => {
+    if (message.role === 'user') {
+      if (typeof message.content === 'string') {
+        input.push({
+          role: 'user',
+          content: [{ type: 'input_text', text: message.content }],
+        });
+        return;
+      }
+
+      const content = message.content.flatMap<CodexInputContentPart>((part) => {
+        if (part.type === 'text') {
+          return part.text.trim().length > 0 ? [{ type: 'input_text', text: part.text }] : [];
+        }
+        return [{ type: 'input_image', image_url: part.image_url.url, detail: 'auto' }];
+      });
+
+      if (content.length > 0) {
+        input.push({ role: 'user', content });
+      }
+      return;
+    }
+
+    if (message.role === 'assistant') {
+      const assistantText = extractSystemText(message.content).trim();
+      if (assistantText.length > 0) {
+        input.push({
+          type: 'message',
+          role: 'assistant',
+          content: [{ type: 'output_text', text: assistantText, annotations: [] }],
+          status: 'completed',
+          id: normalizeCodexIdentifier(`msg_${messageIndex}`, 'msg'),
+        });
+      }
+
+      for (const [toolIndex, toolCall] of (message.tool_calls ?? []).entries()) {
+        const rawCallId = toolCall.id?.trim() || `call_${messageIndex}_${toolIndex}`;
+        const callId = normalizeCodexIdentifier(rawCallId, 'call');
+        input.push({
+          type: 'function_call',
+          id: normalizeCodexIdentifier(`${rawCallId}_item`, 'fc'),
+          call_id: callId,
+          name: toolCall.function?.name?.trim() || 'unknown_tool',
+          arguments: toolCall.function?.arguments ?? '{}',
+        });
+      }
+      return;
+    }
+
+    if (message.role === 'tool') {
+      input.push({
+        type: 'function_call_output',
+        call_id: normalizeCodexIdentifier(message.tool_call_id?.trim() || `call_${messageIndex}`, 'call'),
+        output: extractTextContent(message.content).trim() || '(empty tool result)',
+      });
+    }
+  });
+
+  return { instructions, input };
+}
+
+function normalizeCodexTools(tools: ProviderToolDefinition[] | undefined): CodexToolDefinition[] | undefined {
+  if (!tools || tools.length === 0) {
+    return undefined;
+  }
+
+  return tools.map((tool) => ({
+    type: 'function',
+    name: tool.function.name,
+    description: tool.function.description,
+    parameters: tool.function.parameters,
+    strict: false,
+  }));
+}
+
+function resolveCodexResponsesUrl(rawBaseUrl: string): string {
+  const normalized = assertSafeBaseUrl(rawBaseUrl || CODEX_BASE_URL).replace(/\/+$/, '');
+  if (normalized.endsWith('/codex/responses')) {
+    return normalized;
+  }
+  if (normalized.endsWith('/codex')) {
+    return `${normalized}/responses`;
+  }
+  return `${normalized}/codex/responses`;
+}
+
+async function* parseServerSentEvents(response: Response): AsyncGenerator<CodexResponseEvent, void, void> {
+  if (!response.body) {
+    return;
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) {
+        break;
+      }
+
+      buffer += decoder.decode(value, { stream: true });
+      let separatorIndex = buffer.indexOf('\n\n');
+
+      while (separatorIndex !== -1) {
+        const chunk = buffer.slice(0, separatorIndex);
+        buffer = buffer.slice(separatorIndex + 2);
+        const payload = chunk
+          .split('\n')
+          .filter((line) => line.startsWith('data:'))
+          .map((line) => line.slice(5).trim())
+          .join('\n')
+          .trim();
+
+        if (payload && payload !== '[DONE]') {
+          try {
+            yield JSON.parse(payload) as CodexResponseEvent;
+          } catch {
+            // Ignore malformed chunks.
+          }
+        }
+
+        separatorIndex = buffer.indexOf('\n\n');
+      }
+    }
+  } finally {
+    try {
+      await reader.cancel();
+    } catch {
+      // Ignore cleanup failures.
+    }
+    try {
+      reader.releaseLock();
+    } catch {
+      // Ignore cleanup failures.
+    }
+  }
 }
 
 function sanitizeToolDefinitionsForProvider(
@@ -512,6 +823,295 @@ export class AiProviderClient implements LLMClient {
   }
 
   private async _chat(request: LLMRequest, authRecoveryAttempted = false): Promise<LLMResponse> {
+    const effectiveProviderId = request.providerId ?? 'default';
+    if (effectiveProviderId === 'openai_codex') {
+      return this._chatOpenAICodexResponses(request, authRecoveryAttempted);
+    }
+    return this._chatCompatibleCompletions(request, authRecoveryAttempted);
+  }
+
+  private async retryWithFallbackRoute(
+    request: LLMRequest,
+    authRecoveryAttempted: boolean,
+  ): Promise<LLMResponse | null> {
+    if (
+      authRecoveryAttempted ||
+      request.authSource !== 'host_codex_auth' ||
+      !request.fallbackRoute?.apiKey?.trim()
+    ) {
+      return null;
+    }
+
+    return this._chat(
+      {
+        ...request,
+        providerId: request.fallbackRoute.providerId,
+        baseUrl: request.fallbackRoute.baseUrl,
+        model: request.fallbackRoute.model,
+        apiKey: request.fallbackRoute.apiKey.trim(),
+        authSource: request.fallbackRoute.authSource,
+        fallbackRoute: undefined,
+      },
+      true,
+    );
+  }
+
+  private async parseCodexResponsesStream(response: Response): Promise<LLMResponse> {
+    let text = '';
+    let reasoningText = '';
+    let usage: CodexResponseUsage | undefined;
+    let status: string | undefined;
+    let currentFunctionCallId: string | null = null;
+    let currentFunctionCallItemId: string | null = null;
+    let currentFunctionName: string | null = null;
+    let currentFunctionArgs = '';
+    const toolCalls = new Map<string, LLMToolCall>();
+
+    for await (const event of parseServerSentEvents(response)) {
+      switch (event.type) {
+        case 'response.output_item.added': {
+          const item = (
+            event as Extract<CodexResponseEvent, { type: 'response.output_item.added' }>
+          ).item;
+          if (item?.type === 'function_call') {
+            currentFunctionCallId = item.call_id?.trim() || null;
+            currentFunctionCallItemId = item.id?.trim() || null;
+            currentFunctionName = item.name?.trim() || null;
+            currentFunctionArgs = item.arguments ?? '';
+          }
+          break;
+        }
+        case 'response.output_text.delta':
+          text += event.delta ?? '';
+          break;
+        case 'response.reasoning_summary_text.delta':
+          reasoningText += event.delta ?? '';
+          break;
+        case 'response.function_call_arguments.delta':
+          if (currentFunctionCallId) {
+            currentFunctionArgs += (
+              event as Extract<CodexResponseEvent, { type: 'response.function_call_arguments.delta' }>
+            ).delta ?? '';
+          }
+          break;
+        case 'response.function_call_arguments.done':
+          if (currentFunctionCallId) {
+            currentFunctionArgs = (
+              event as Extract<CodexResponseEvent, { type: 'response.function_call_arguments.done' }>
+            ).arguments ?? currentFunctionArgs;
+            let args: unknown;
+            try {
+              args = JSON.parse(currentFunctionArgs || '{}');
+            } catch (error) {
+              throw new AppError(
+                'AI_PROVIDER_BAD_REQUEST',
+                `AI provider returned malformed JSON arguments for tool "${currentFunctionName || 'unknown_tool'}".`,
+                error instanceof Error ? error : undefined,
+              );
+            }
+            toolCalls.set(currentFunctionCallId, {
+              id: currentFunctionCallItemId ?? currentFunctionCallId,
+              name: currentFunctionName || 'unknown_tool',
+              args,
+            });
+          }
+          currentFunctionCallId = null;
+          currentFunctionCallItemId = null;
+          currentFunctionName = null;
+          currentFunctionArgs = '';
+          break;
+        case 'response.completed': {
+          const responseEvent = event as Extract<CodexResponseEvent, { type: 'response.completed' }>;
+          usage = responseEvent.response?.usage;
+          status = responseEvent.response?.status;
+          break;
+        }
+        case 'response.failed': {
+          const failedEvent = event as Extract<CodexResponseEvent, { type: 'response.failed' }>;
+          const message =
+            failedEvent.response?.error?.message
+            || failedEvent.response?.incomplete_details?.reason
+            || 'Codex response failed.';
+          throw new AppError('AI_PROVIDER_UPSTREAM', `AI provider API error: ${message}`);
+        }
+        case 'error': {
+          const errorEvent = event as Extract<CodexResponseEvent, { type: 'error' }>;
+          const message = errorEvent.message || errorEvent.code || 'Unknown Codex error.';
+          throw new AppError('AI_PROVIDER_UPSTREAM', `AI provider API error: ${message}`);
+        }
+        default:
+          break;
+      }
+    }
+
+    const normalizedToolCalls = Array.from(toolCalls.values());
+    const finalReasoningText = reasoningText.trim();
+    const finalText = text.trim();
+
+    return {
+      text: normalizedToolCalls.length > 0 ? '' : finalText,
+      toolCalls: normalizedToolCalls.length > 0 ? normalizedToolCalls : undefined,
+      reasoningText:
+        normalizedToolCalls.length > 0
+          ? finalReasoningText || (finalText.length > 0 ? finalText : undefined)
+          : finalReasoningText || undefined,
+      usage: usage
+        ? {
+            promptTokens: usage.input_tokens ?? 0,
+            completionTokens: usage.output_tokens ?? 0,
+            totalTokens: usage.total_tokens ?? 0,
+            cachedTokens: usage.input_tokens_details?.cached_tokens,
+            raw: {
+              ...usage,
+              status,
+            },
+          }
+        : undefined,
+    };
+  }
+
+  private async _chatOpenAICodexResponses(
+    request: LLMRequest,
+    authRecoveryAttempted = false,
+  ): Promise<LLMResponse> {
+    const effectiveBaseUrl = assertSafeBaseUrl(request.baseUrl?.trim() || this.config.baseUrl);
+    const effectiveProviderId = request.providerId ?? 'openai_codex';
+    const model = (request.model || this.config.model).trim();
+    if (!model) {
+      throw new Error('AI provider request model must be configured.');
+    }
+
+    const apiKey = request.apiKey || this.config.apiKey;
+    if (!apiKey?.trim()) {
+      throw new AppError('AI_PROVIDER_AUTH', 'Host Codex auth token is missing.');
+    }
+
+    const accountId = extractCodexAccountId(apiKey.trim());
+    const url = resolveCodexResponsesUrl(effectiveBaseUrl || CODEX_BASE_URL);
+    const normalizedMessages = normalizeCodexInputMessages(request.messages);
+    const normalizedTools = normalizeCodexTools(
+      sanitizeToolDefinitionsForProvider(filterToolsByAllowedTools(request.tools, request.allowedTools)),
+    );
+    const tokenCount = countMessagesTokens(request.messages, model);
+
+    logger.debug(
+      {
+        model,
+        messageCount: request.messages.length,
+        estimatedTokens: tokenCount.totalTokens,
+        tokenCountSource: tokenCount.source,
+        tokenizerEncoding: tokenCount.encodingName,
+        imageTokenReserve: tokenCount.imageTokenReserve,
+      },
+      '[Budget] Preflight token count',
+    );
+
+    metrics.increment('llm_calls_total', { model, provider: String(effectiveProviderId) });
+    logger.debug({ url, model, messageCount: request.messages.length }, '[AiProviderClient] Codex request');
+
+    const payload = {
+      model,
+      store: false,
+      stream: true,
+      instructions: normalizedMessages.instructions,
+      input: normalizedMessages.input,
+      text: { verbosity: 'medium' },
+      include: ['reasoning.encrypted_content'],
+      tools: normalizedTools,
+      tool_choice: normalizeCodexToolChoice(request.toolChoice),
+      parallel_tool_calls: request.parallelToolCalls,
+      temperature: request.temperature ?? 0.7,
+    };
+
+    let attempt = 0;
+    let lastError: AppError | undefined;
+    const maxAttempts = this.config.maxRetries + 1;
+
+    while (attempt < maxAttempts) {
+      try {
+        const controller = new AbortController();
+        const timeout = normalizeTimeoutMs(request.timeout, {
+          fallbackMs: this.config.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+          minMs: MIN_TIMEOUT_MS,
+          maxMs: MAX_TIMEOUT_MS,
+        });
+        const id = setTimeout(() => controller.abort(), timeout);
+        id.unref?.();
+
+        let response: Response;
+        try {
+          response = await fetch(url, {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${apiKey.trim()}`,
+              'Content-Type': 'application/json',
+              Accept: 'text/event-stream',
+              'OpenAI-Beta': CODEX_RESPONSES_BETA,
+              'chatgpt-account-id': accountId,
+              originator: 'pi',
+            },
+            body: JSON.stringify(payload),
+            signal: composeAbortSignal(request.signal, controller.signal),
+          });
+        } finally {
+          clearTimeout(id);
+        }
+
+        if (!response.ok) {
+          const text = await response.text();
+          const err = classifyAiProviderHttpError(response.status, response.statusText, text);
+          if (response.status === 401 || response.status === 403) {
+            await handleHostCodexProviderAuthFailure({ errorText: err.message });
+            const fallbackResponse = await this.retryWithFallbackRoute(request, authRecoveryAttempted);
+            if (fallbackResponse) {
+              return fallbackResponse;
+            }
+          }
+          throw err;
+        }
+
+        const parsed = await this.parseCodexResponsesStream(response);
+        logger.debug({ usage: parsed.usage }, '[AiProviderClient] Codex success');
+        return parsed;
+      } catch (err: unknown) {
+        if (isAbortError(err) || request.signal?.aborted) {
+          lastError =
+            err instanceof AppError
+              ? err
+              : new AppError('AI_PROVIDER_TIMEOUT', 'AI provider request aborted.', err);
+          throw lastError;
+        }
+
+        lastError =
+          err instanceof AppError
+            ? err
+            : new AppError('AI_PROVIDER_NETWORK', err instanceof Error ? err.message : String(err), err);
+
+        if (
+          lastError.code === 'AI_PROVIDER_MODEL'
+          || lastError.code === 'AI_PROVIDER_ENDPOINT'
+          || lastError.code === 'AI_PROVIDER_AUTH'
+          || lastError.code === 'AI_PROVIDER_BAD_REQUEST'
+        ) {
+          throw lastError;
+        }
+
+        attempt += 1;
+
+        if (attempt < maxAttempts) {
+          metrics.increment('llm_failures_total', { model, type: 'retry', provider: String(effectiveProviderId) });
+          logger.warn({ attempt, error: lastError.message }, '[AiProviderClient] Codex retry');
+          await sleep(500 * Math.pow(2, attempt), request.signal);
+        }
+      }
+    }
+
+    metrics.increment('llm_failures_total', { model, type: 'exhausted', provider: String(effectiveProviderId) });
+    logger.error({ error: lastError }, '[AiProviderClient] Codex failed after retries');
+    throw lastError;
+  }
+
+  private async _chatCompatibleCompletions(request: LLMRequest, authRecoveryAttempted = false): Promise<LLMResponse> {
     const effectiveBaseUrl = assertSafeBaseUrl(request.baseUrl?.trim() || this.config.baseUrl);
     const effectiveProviderId = request.providerId ?? 'default';
     const url = `${effectiveBaseUrl}/chat/completions`;
@@ -622,19 +1222,9 @@ export class AiProviderClient implements LLMClient {
             await handleHostCodexProviderAuthFailure({
               errorText: err.message,
             });
-            if (request.fallbackRoute?.apiKey?.trim()) {
-              return this._chat(
-                {
-                  ...request,
-                  providerId: request.fallbackRoute.providerId,
-                  baseUrl: request.fallbackRoute.baseUrl,
-                  model: request.fallbackRoute.model,
-                  apiKey: request.fallbackRoute.apiKey.trim(),
-                  authSource: request.fallbackRoute.authSource,
-                  fallbackRoute: undefined,
-                },
-                true,
-              );
+            const fallbackResponse = await this.retryWithFallbackRoute(request, authRecoveryAttempted);
+            if (fallbackResponse) {
+              return fallbackResponse;
             }
           }
           logger.warn(

@@ -10,7 +10,7 @@ export interface ResolvedTextProviderRoute extends LLMProviderRoute {
   fallbackRoute?: LLMProviderRoute;
 }
 
-const BUILTIN_CODEX_BASE_URL = 'https://api.openai.com/v1';
+const BUILTIN_CODEX_BASE_URL = 'https://chatgpt.com/backend-api';
 const BUILTIN_CODEX_MODEL = 'gpt-5.4';
 
 function resolveDefaultLaneModel(lane: TextModelLane): string {
