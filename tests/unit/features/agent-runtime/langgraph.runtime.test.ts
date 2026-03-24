@@ -7,6 +7,7 @@ const {
   loggerWarnMock,
   loggerInfoMock,
   modelInvokeMock,
+  modelFieldsCaptureMock,
   getLastAiToolCallsMock,
   buildAgentGraphConfigMock,
   buildActiveToolCatalogMock,
@@ -24,6 +25,7 @@ const {
   modelInvokeMock: vi.fn<(messages?: unknown, options?: unknown) => Promise<unknown>>(
     async () => new HumanMessage({ content: 'unused' }),
   ),
+  modelFieldsCaptureMock: vi.fn(),
   getLastAiToolCallsMock: vi.fn((messages: Array<{ tool_calls?: unknown[] }>) => {
     const last = messages.at(-1);
     return Array.isArray(last?.tool_calls) ? last.tool_calls : [];
@@ -159,6 +161,10 @@ vi.mock('@/platform/llm/context-budgeter', () => ({
 
 vi.mock('@/platform/llm/ai-provider-chat-model', () => ({
   AiProviderChatModel: class {
+    constructor(fields: unknown) {
+      modelFieldsCaptureMock(fields);
+    }
+
     bindTools() {
       return this;
     }
@@ -494,6 +500,7 @@ describe('runGraphValueStream', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     modelInvokeMock.mockReset();
+    modelFieldsCaptureMock.mockReset();
     modelInvokeMock.mockResolvedValue(new HumanMessage({ content: 'unused' }));
     getLastAiToolCallsMock.mockImplementation((messages: Array<{ tool_calls?: unknown[] }>) => {
       const last = messages.at(-1);
@@ -789,6 +796,56 @@ describe('runGraphValueStream', () => {
     expect(result.replyText).toContain('All set.');
     expect(result.roundsCompleted).toBe(1);
     expect(result.totalRoundsCompleted).toBe(1);
+  });
+
+  it('preserves the resolved provider route in runtime context so model invokes stay on Codex when selected', async () => {
+    modelInvokeMock.mockResolvedValueOnce(makeFinishTurnMessage('final_answer', 'Codex path is active.'));
+
+    const result = await runAgentGraphTurn({
+      traceId: 'trace-codex-route-1',
+      userId: 'user-1',
+      channelId: 'channel-1',
+      guildId: 'guild-1',
+      providerId: 'openai_codex',
+      baseUrl: 'https://chatgpt.com/backend-api',
+      apiKey: 'codex-oauth-token',
+      apiKeySource: 'host_codex_auth',
+      fallbackRoute: {
+        providerId: 'default',
+        baseUrl: 'https://fallback.example/v1',
+        model: 'test-main-agent-model',
+        apiKey: 'env-key',
+        authSource: 'host_api_key',
+      },
+      model: 'gpt-5.4',
+      temperature: 0.6,
+      timeoutMs: 1_000,
+      maxTokens: 500,
+      messages: [new HumanMessage({ content: 'say hello' })],
+      activeToolNames: [],
+      routeKind: 'single',
+      currentTurn: { invokerUserId: 'user-1' },
+      replyTarget: null,
+      invokedBy: 'mention',
+      invokerIsAdmin: false,
+    });
+
+    expect(result.replyText).toBe('Codex path is active.');
+    expect(modelFieldsCaptureMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        providerId: 'openai_codex',
+        baseUrl: 'https://chatgpt.com/backend-api',
+        apiKey: 'codex-oauth-token',
+        authSource: 'host_codex_auth',
+        fallbackRoute: expect.objectContaining({
+          providerId: 'default',
+          baseUrl: 'https://fallback.example/v1',
+          model: 'test-main-agent-model',
+          apiKey: 'env-key',
+          authSource: 'host_api_key',
+        }),
+      }),
+    );
   });
 
   it('finalizes plain no-tool assistant text as a final answer with no classifier pass', async () => {

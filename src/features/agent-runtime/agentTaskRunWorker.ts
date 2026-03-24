@@ -29,6 +29,19 @@ type WorkerResponseSessionState = {
   overflowMessages: ResponseSessionEditableMessage[];
 };
 
+function shouldFailOpenMissingCanonicalResponseSurface(
+  status: Pick<RunChatTurnResult, 'status'>['status'],
+): boolean {
+  return status !== 'running';
+}
+
+function clearWorkerCanonicalResponseSurface(state: WorkerResponseSessionState): void {
+  state.responseMessageId = null;
+  state.editableMessage = null;
+  state.overflowMessageIds = [];
+  state.overflowMessages = [];
+}
+
 function readPersistedResponseSessionRefs(value: unknown): {
   sourceMessageId: string | null;
   responseMessageId: string | null;
@@ -150,10 +163,7 @@ async function resolveWorkerPublishSurface(params: {
         'Worker response surface is unavailable; falling back to the origin channel',
       );
       params.run.responseChannelId = params.run.originChannelId;
-      params.state.responseMessageId = null;
-      params.state.editableMessage = null;
-      params.state.overflowMessageIds = [];
-      params.state.overflowMessages = [];
+      clearWorkerCanonicalResponseSurface(params.state);
       return {
         channel: fallbackChannel,
         responseChannelId: params.run.originChannelId,
@@ -265,6 +275,25 @@ async function publishTaskRunResult(params: {
       'Skipping worker response publish because the canonical response surface could not be revalidated',
     );
     return;
+  }
+  if (
+    !existing &&
+    !publishSurface.fellBackToOriginChannel &&
+    shouldFailOpenMissingCanonicalResponseSurface(params.result.status) &&
+    (expectedCanonicalResponseSurface || !!params.state.responseMessageId)
+  ) {
+    logger.warn(
+      {
+        threadId: params.run.threadId,
+        originChannelId: params.run.originChannelId,
+        responseChannelId: params.run.responseChannelId,
+        responseMessageId: params.state.responseMessageId,
+        status: params.result.status,
+      },
+      'Worker canonical response message is unavailable during terminal publish; clearing stale response-session refs and failing open to a fresh reply',
+    );
+    clearWorkerCanonicalResponseSurface(params.state);
+    expectedCanonicalResponseSurface = false;
   }
   if (!existing && expectedCanonicalResponseSurface) {
     logger.warn(

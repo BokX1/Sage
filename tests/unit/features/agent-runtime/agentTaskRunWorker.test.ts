@@ -658,7 +658,7 @@ describe('agentTaskRunWorker', () => {
     );
   });
 
-  it('does not post a second reply when the canonical response message is bound but temporarily unfetchable', async () => {
+  it('does not post a second reply when the canonical response message is bound but temporarily unfetchable during an in-progress worker draft', async () => {
     listRunnableAgentTaskRunsMock.mockReset();
     listRunnableAgentTaskRunsMock
       .mockResolvedValueOnce([
@@ -698,13 +698,13 @@ describe('agentTaskRunWorker', () => {
 
     resumeBackgroundTaskRunMock.mockResolvedValue({
       runId: 'thread-missing-response',
-      status: 'completed',
-      replyText: 'Should not create a duplicate reply',
+      status: 'running',
+      replyText: 'Still drafting without a duplicate reply',
       delivery: 'response_session',
       responseSession: {
         responseSessionId: 'thread-missing-response',
-        status: 'final',
-        latestText: 'Should not create a duplicate reply',
+        status: 'draft',
+        latestText: 'Still drafting without a duplicate reply',
         draftRevision: 2,
         sourceMessageId: 'message-missing-response',
         responseMessageId: 'response-missing-response',
@@ -719,6 +719,100 @@ describe('agentTaskRunWorker', () => {
 
     expect(sourceMessage.reply).not.toHaveBeenCalled();
     expect(attachTaskRunResponseSessionMock).not.toHaveBeenCalled();
+  });
+
+  it('falls back to a fresh reply when the canonical response message is missing during terminal worker publish', async () => {
+    listRunnableAgentTaskRunsMock.mockReset();
+    listRunnableAgentTaskRunsMock
+      .mockResolvedValueOnce([
+        {
+          id: 'task-terminal-missing-response',
+          threadId: 'thread-terminal-missing-response',
+          guildId: 'guild-1',
+          channelId: 'channel-1',
+          requestedByUserId: 'user-1',
+          sourceMessageId: 'message-terminal-missing-response',
+          responseMessageId: 'response-terminal-missing-response',
+          checkpointMetadataJson: { isAdmin: true, canModerate: false },
+        },
+      ])
+      .mockResolvedValue([]);
+    getAgentTaskRunByThreadIdMock.mockResolvedValue({
+      id: 'task-terminal-missing-response',
+      threadId: 'thread-terminal-missing-response',
+      guildId: 'guild-1',
+      channelId: 'channel-1',
+      requestedByUserId: 'user-1',
+      sourceMessageId: 'message-terminal-missing-response',
+      responseMessageId: 'response-terminal-missing-response',
+      responseSessionJson: {
+        responseSessionId: 'thread-terminal-missing-response',
+        status: 'draft',
+        latestText: 'Existing draft',
+        draftRevision: 1,
+        sourceMessageId: 'message-terminal-missing-response',
+        responseMessageId: 'response-terminal-missing-response',
+        overflowMessageIds: [],
+        linkedArtifactMessageIds: [],
+      },
+      checkpointMetadataJson: { isAdmin: true, canModerate: false },
+    });
+
+    const sourceMessage = {
+      id: 'message-terminal-missing-response',
+      edit: vi.fn().mockResolvedValue(undefined),
+      reply: vi.fn(),
+    };
+    const replacementResponse = {
+      id: 'response-terminal-replacement',
+      edit: vi.fn().mockResolvedValue(undefined),
+    };
+    sourceMessage.reply.mockResolvedValue(replacementResponse);
+
+    clientMock.channels.fetch.mockImplementation(async () =>
+      ({
+        isTextBased: () => true,
+        send: vi.fn().mockResolvedValue(replacementResponse),
+        messages: {
+          fetch: vi.fn(async (messageId: string) => {
+            if (messageId === 'message-terminal-missing-response') {
+              return sourceMessage;
+            }
+            throw new Error(`Missing message: ${messageId}`);
+          }),
+        },
+      }) as never,
+    );
+
+    resumeBackgroundTaskRunMock.mockResolvedValue({
+      runId: 'thread-terminal-missing-response',
+      status: 'completed',
+      replyText: 'Recovered terminal reply',
+      delivery: 'response_session',
+      responseSession: {
+        responseSessionId: 'thread-terminal-missing-response',
+        status: 'final',
+        latestText: 'Recovered terminal reply',
+        draftRevision: 2,
+        sourceMessageId: 'message-terminal-missing-response',
+        responseMessageId: 'response-terminal-missing-response',
+        linkedArtifactMessageIds: [],
+      },
+      files: [],
+    });
+
+    initAgentTaskRunWorker();
+    await vi.advanceTimersByTimeAsync(1_000);
+    await Promise.resolve();
+
+    expect(sourceMessage.reply).toHaveBeenCalledTimes(1);
+    expect(attachTaskRunResponseSessionMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        threadId: 'thread-terminal-missing-response',
+        sourceMessageId: 'message-terminal-missing-response',
+        responseMessageId: 'response-terminal-replacement',
+      }),
+    );
   });
 
   it('does not fall back to a fresh reply when worker state refresh fails before publish', async () => {
@@ -785,7 +879,7 @@ describe('agentTaskRunWorker', () => {
     expect(attachTaskRunResponseSessionMock).not.toHaveBeenCalled();
   });
 
-  it('does not fall back to a fresh reply when persisted response-session metadata says the canonical surface is already attached', async () => {
+  it('falls back to a fresh reply when persisted response-session metadata says the canonical surface is already attached but the canonical message is gone at terminal publish', async () => {
     listRunnableAgentTaskRunsMock.mockReset();
     listRunnableAgentTaskRunsMock
       .mockResolvedValueOnce([
@@ -828,11 +922,16 @@ describe('agentTaskRunWorker', () => {
       edit: vi.fn().mockResolvedValue(undefined),
       reply: vi.fn(),
     };
+    const replacementResponse = {
+      id: 'response-missing-attachment-replacement',
+      edit: vi.fn().mockResolvedValue(undefined),
+    };
+    sourceMessage.reply.mockResolvedValue(replacementResponse);
 
     clientMock.channels.fetch.mockImplementation(async () =>
       ({
         isTextBased: () => true,
-        send: vi.fn(),
+        send: vi.fn().mockResolvedValue(replacementResponse),
         messages: {
           fetch: vi.fn(async (messageId: string) => {
             if (messageId === 'message-missing-attachment') {
@@ -847,12 +946,12 @@ describe('agentTaskRunWorker', () => {
     resumeBackgroundTaskRunMock.mockResolvedValue({
       runId: 'thread-missing-attachment',
       status: 'completed',
-      replyText: 'Should not create a duplicate reply after a failed foreground attachment',
+      replyText: 'Recovered after stale foreground attachment metadata',
       delivery: 'response_session',
       responseSession: {
         responseSessionId: 'thread-missing-attachment',
         status: 'final',
-        latestText: 'Should not create a duplicate reply after a failed foreground attachment',
+        latestText: 'Recovered after stale foreground attachment metadata',
         draftRevision: 2,
         sourceMessageId: 'message-missing-attachment',
         responseMessageId: null,
@@ -865,8 +964,14 @@ describe('agentTaskRunWorker', () => {
     await vi.advanceTimersByTimeAsync(1_000);
     await Promise.resolve();
 
-    expect(sourceMessage.reply).not.toHaveBeenCalled();
-    expect(attachTaskRunResponseSessionMock).not.toHaveBeenCalled();
+    expect(sourceMessage.reply).toHaveBeenCalledTimes(1);
+    expect(attachTaskRunResponseSessionMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        threadId: 'thread-missing-attachment',
+        sourceMessageId: 'message-missing-attachment',
+        responseMessageId: 'response-missing-attachment-replacement',
+      }),
+    );
   });
 
   it('reconciles long overflow chunks across worker updates instead of re-sending duplicate tails', async () => {
