@@ -9,6 +9,7 @@ const mockStore = vi.hoisted(() => ({
 
 const mockGetChannelSummaryStore = vi.hoisted(() => vi.fn(() => mockStore));
 const mockSummarizeChannelProfile = vi.hoisted(() => vi.fn());
+const mockResolveTextProviderRoute = vi.hoisted(() => vi.fn());
 
 vi.mock('@/features/summary/channelSummaryStoreRegistry', () => ({
   getChannelSummaryStore: mockGetChannelSummaryStore,
@@ -16,6 +17,10 @@ vi.mock('@/features/summary/channelSummaryStoreRegistry', () => ({
 
 vi.mock('@/features/summary/summarizeChannelWindow', () => ({
   summarizeChannelProfile: mockSummarizeChannelProfile,
+}));
+
+vi.mock('@/features/agent-runtime/apiKeyResolver', () => ({
+  resolveTextProviderRoute: mockResolveTextProviderRoute,
 }));
 
 import {
@@ -56,6 +61,14 @@ describe('ltmCompaction', () => {
       decisions: [],
       actionItems: [],
       glossary: {},
+    });
+    mockResolveTextProviderRoute.mockResolvedValue({
+      providerId: 'default',
+      lane: 'summary',
+      baseUrl: 'https://fallback.example/v1',
+      model: 'summary-model',
+      apiKey: 'fallback-key',
+      authSource: 'host_api_key',
     });
   });
 

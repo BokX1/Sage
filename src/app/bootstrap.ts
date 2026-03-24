@@ -61,7 +61,7 @@ export async function bootstrapApp(): Promise<void> {
       logger.info(
         {
           accountId: hostAuthStatus.accountId,
-          runtimeSource: hostAuthStatus.runtimeSource,
+          activeTextProvider: hostAuthStatus.activeTextProvider,
         },
         'Host Codex auth is active',
       );

@@ -14,12 +14,11 @@ const mockConfig = vi.hoisted(() => ({
   SERVER_PROVIDER_DASHBOARD_URL: 'https://server-provider.example/dashboard',
   CHAT_MAX_OUTPUT_TOKENS: 800,
   AGENT_GRAPH_MAX_OUTPUT_TOKENS: 800,
-    CONTEXT_TRANSCRIPT_MAX_MESSAGES: 5,
+  CONTEXT_TRANSCRIPT_MAX_MESSAGES: 5,
   AUTOPILOT_MODE: null,
 }));
 
-const mockGetGuildApiKey = vi.hoisted(() => vi.fn());
-const mockResolvePreferredHostAuthCredential = vi.hoisted(() => vi.fn());
+const mockResolveTextProviderRoute = vi.hoisted(() => vi.fn());
 const mockGetGuildSagePersonaText = vi.hoisted(() => vi.fn());
 const mockRunAgentGraphTurn = vi.hoisted(() => vi.fn());
 const mockBuildPromptContextMessages = vi.hoisted(() => vi.fn());
@@ -58,12 +57,8 @@ vi.mock('@/features/agent-runtime/langgraph/runtime', () => ({
   resumeAgentGraphTurn: vi.fn(),
 }));
 
-vi.mock('@/features/settings/guildSettingsRepo', () => ({
-  getGuildApiKey: mockGetGuildApiKey,
-}));
-
-vi.mock('@/features/auth/hostCodexAuthService', () => ({
-  resolvePreferredHostAuthCredential: mockResolvePreferredHostAuthCredential,
+vi.mock('@/features/agent-runtime/apiKeyResolver', () => ({
+  resolveTextProviderRoute: mockResolveTextProviderRoute,
 }));
 
 vi.mock('@/features/settings/guildSagePersonaRepo', () => ({
@@ -164,7 +159,7 @@ function makeGraphResult(overrides: Partial<Awaited<ReturnType<typeof mockRunAge
   };
 }
 
-describe('agent runtime API key fallback', () => {
+describe('agent runtime provider fallback', () => {
   beforeEach(() => {
     mockConfig.AI_PROVIDER_API_KEY = 'env-key';
     mockConfig.SERVER_PROVIDER_AUTHORIZE_URL =
@@ -172,7 +167,6 @@ describe('agent runtime API key fallback', () => {
     mockConfig.SERVER_PROVIDER_PROFILE_URL = 'https://server-provider.example/account/profile';
     mockConfig.SERVER_PROVIDER_DASHBOARD_URL = 'https://server-provider.example/dashboard';
     mockGetGuildSagePersonaText.mockResolvedValue(null);
-    mockGetGuildApiKey.mockReset().mockResolvedValue(undefined);
     mockRunAgentGraphTurn.mockReset();
     mockBuildPromptContextMessages.mockReset();
     mockBuildPromptContextMessages.mockReturnValue({
@@ -195,12 +189,18 @@ describe('agent runtime API key fallback', () => {
     });
     globalToolRegistryMock.listNames.mockReturnValue([]);
     globalToolRegistryMock.get.mockReturnValue(undefined);
-    mockResolvePreferredHostAuthCredential.mockReset().mockResolvedValue({});
+    mockResolveTextProviderRoute.mockReset().mockResolvedValue({
+      providerId: 'default',
+      lane: 'main',
+      baseUrl: 'https://fallback.example/v1',
+      model: 'test-main-agent-model',
+      apiKey: 'env-key',
+      authSource: 'host_api_key',
+    });
   });
 
-  it('uses global API key when guild key is unavailable', async () => {
+  it('uses the fallback provider route when Codex is unavailable', async () => {
     mockRunAgentGraphTurn.mockResolvedValueOnce(makeGraphResult({ replyText: 'ok' }));
-    mockGetGuildApiKey.mockResolvedValueOnce(undefined);
 
     const result = await runChatTurn({
       traceId: 'trace-1',
@@ -216,14 +216,22 @@ describe('agent runtime API key fallback', () => {
     expect(result.replyText).toBe('ok');
     expect(mockRunAgentGraphTurn).toHaveBeenCalledWith(
       expect.objectContaining({
+        providerId: 'default',
+        baseUrl: 'https://fallback.example/v1',
+        model: 'test-main-agent-model',
         apiKey: 'env-key',
       }),
     );
   }, 15_000);
 
-  it('returns setup guidance when no keys are available', async () => {
+  it('returns setup guidance when no route credentials are available', async () => {
     mockConfig.AI_PROVIDER_API_KEY = '';
-    mockGetGuildApiKey.mockResolvedValueOnce(undefined);
+    mockResolveTextProviderRoute.mockResolvedValueOnce({
+      providerId: 'default',
+      lane: 'main',
+      baseUrl: 'https://fallback.example/v1',
+      model: 'test-main-agent-model',
+    });
 
     const result = await runChatTurn({
       traceId: 'trace-2',
@@ -254,13 +262,18 @@ describe('agent runtime API key fallback', () => {
     expect(mockRunAgentGraphTurn).not.toHaveBeenCalled();
   });
 
-  it('returns hosted activation guidance when the server-key flow points at Pollinations', async () => {
+  it('returns hosted activation guidance when the fallback flow points at Pollinations', async () => {
     mockConfig.AI_PROVIDER_API_KEY = '';
     mockConfig.SERVER_PROVIDER_AUTHORIZE_URL =
       'https://enter.pollinations.ai/authorize?redirect_url=https://pollinations.ai/&permissions=profile,balance,usage';
     mockConfig.SERVER_PROVIDER_PROFILE_URL = 'https://gen.pollinations.ai/account/profile';
     mockConfig.SERVER_PROVIDER_DASHBOARD_URL = 'https://enter.pollinations.ai/dashboard';
-    mockGetGuildApiKey.mockResolvedValueOnce(undefined);
+    mockResolveTextProviderRoute.mockResolvedValueOnce({
+      providerId: 'default',
+      lane: 'main',
+      baseUrl: 'https://fallback.example/v1',
+      model: 'test-main-agent-model',
+    });
 
     const result = await runChatTurn({
       traceId: 'trace-3',
@@ -289,12 +302,22 @@ describe('agent runtime API key fallback', () => {
     expect(mockRunAgentGraphTurn).not.toHaveBeenCalled();
   });
 
-  it('prefers host Codex auth over the host API key when available', async () => {
+  it('prefers the Codex provider route when host Codex auth is available', async () => {
     mockRunAgentGraphTurn.mockResolvedValueOnce(makeGraphResult({ replyText: 'ok' }));
-    mockGetGuildApiKey.mockResolvedValueOnce(undefined);
-    mockResolvePreferredHostAuthCredential.mockResolvedValueOnce({
+    mockResolveTextProviderRoute.mockResolvedValueOnce({
+      providerId: 'openai_codex',
+      lane: 'main',
+      baseUrl: 'https://api.openai.com/v1',
+      model: 'gpt-5.4',
       apiKey: 'codex-oauth-token',
       authSource: 'host_codex_auth',
+      fallbackRoute: {
+        providerId: 'default',
+        baseUrl: 'https://fallback.example/v1',
+        model: 'test-main-agent-model',
+        apiKey: 'env-key',
+        authSource: 'host_api_key',
+      },
     });
 
     const result = await runChatTurn({
@@ -317,8 +340,12 @@ describe('agent runtime API key fallback', () => {
     expect(result.replyText).toBe('ok');
     expect(mockRunAgentGraphTurn).toHaveBeenCalledWith(
       expect.objectContaining({
+        providerId: 'openai_codex',
+        baseUrl: 'https://api.openai.com/v1',
+        model: 'gpt-5.4',
         apiKey: 'codex-oauth-token',
       }),
     );
   });
 });
+

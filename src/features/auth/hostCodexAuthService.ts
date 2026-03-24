@@ -1,7 +1,6 @@
 import { createHash, randomBytes, randomUUID } from 'crypto';
 import { config as appConfig } from '../../platform/config/env';
 import { logger } from '../../platform/logging/logger';
-import type { LLMAuthSource } from '../../platform/llm/llm-types';
 import {
   claimHostProviderRefreshLease,
   clearHostProviderAuth,
@@ -19,52 +18,47 @@ const HOST_CODEX_REFRESH_WAIT_MS = 500;
 const HOST_CODEX_REFRESH_WAIT_ATTEMPTS = 20;
 const HOST_CODEX_UNREADABLE_AUTH_ERROR =
   'Stored host Codex auth could not be decrypted. Re-run `npm run auth:codex:login` on the host.';
+const OPENCLAW_STYLE_PUBLIC_CLIENT_ID = 'app_EMoamEEZ73f0CkXaXp7hrann';
+const OPENCLAW_STYLE_AUTHORIZE_URL = 'https://auth.openai.com/oauth/authorize';
+const OPENCLAW_STYLE_TOKEN_URL = 'https://auth.openai.com/oauth/token';
+const OPENCLAW_STYLE_REDIRECT_URI = 'http://127.0.0.1:1455/auth/callback';
+const OPENCLAW_STYLE_SCOPES = 'openid profile email offline_access';
+
+type HostCodexAuthState = 'active' | 'expired' | 'refresh_failed';
+type ActiveTextProvider = 'openai_codex' | 'default' | 'missing';
 
 export type HostCodexAuthStatus =
   | {
       configured: false;
-      runtimeSource: 'host_api_key' | 'missing';
-      fallbackHostApiKeyConfigured: boolean;
-      compatibility: 'unknown';
-      warning: string | null;
+      activeTextProvider: ActiveTextProvider;
+      fallbackTextProviderConfigured: boolean;
     }
   | {
       configured: true;
       provider: typeof HOST_CODEX_PROVIDER_ID;
-      status: 'active' | 'expired' | 'refresh_failed';
+      status: HostCodexAuthState;
       accountId: string | null;
       expiresAt: string;
-      runtimeSource: 'host_codex_auth' | 'host_api_key';
-      fallbackHostApiKeyConfigured: boolean;
-      compatibility: 'unknown' | 'likely_incompatible';
-      warning: string | null;
+      activeTextProvider: ActiveTextProvider;
+      fallbackTextProviderConfigured: boolean;
       lastErrorText: string | null;
     };
 
 export type PublicHostCodexAuthStatus =
   | {
       configured: false;
-      runtimeSource: 'host_api_key' | 'missing';
-      fallbackHostApiKeyConfigured: boolean;
-      compatibility: 'unknown';
-      warning: string | null;
+      activeTextProvider: ActiveTextProvider;
+      fallbackTextProviderConfigured: boolean;
     }
   | {
       configured: true;
       provider: typeof HOST_CODEX_PROVIDER_ID;
-      status: 'active' | 'expired' | 'refresh_failed';
+      status: HostCodexAuthState;
       expiresAt: string;
-      runtimeSource: 'host_codex_auth' | 'host_api_key';
-      fallbackHostApiKeyConfigured: boolean;
-      compatibility: 'unknown' | 'likely_incompatible';
-      warning: string | null;
+      activeTextProvider: ActiveTextProvider;
+      fallbackTextProviderConfigured: boolean;
       hasOperatorError: boolean;
     };
-
-export interface PreferredHostAuthCredential {
-  apiKey?: string;
-  authSource?: Extract<LLMAuthSource, 'host_codex_auth' | 'host_api_key'>;
-}
 
 type SafeHostProviderAuthRead =
   | {
@@ -85,6 +79,14 @@ interface OAuthTokenResponse {
   account_id?: string;
 }
 
+interface CodexOAuthConfig {
+  clientId: string;
+  authorizeUrl: string;
+  tokenUrl: string;
+  redirectUri: string;
+  scopes: string;
+}
+
 function sleep(delayMs: number): Promise<void> {
   return new Promise((resolve) => {
     const timeoutId = setTimeout(resolve, delayMs);
@@ -92,41 +94,28 @@ function sleep(delayMs: number): Promise<void> {
   });
 }
 
-function trimOptional(value: string | undefined): string | undefined {
+function trimOptional(value: string | undefined | null): string | undefined {
   const normalized = value?.trim();
   return normalized ? normalized : undefined;
-}
-
-function buildCompatibilityWarning(): { compatibility: 'unknown' | 'likely_incompatible'; warning: string | null } {
-  const host = (() => {
-    try {
-      return new URL(appConfig.AI_PROVIDER_BASE_URL).hostname.toLowerCase();
-    } catch {
-      return '';
-    }
-  })();
-
-  if (
-    host.includes('pollinations.ai') ||
-    host.includes('example.invalid') ||
-    host.includes('gen.pollinations.ai')
-  ) {
-    return {
-      compatibility: 'likely_incompatible',
-      warning:
-        'The current AI_PROVIDER_BASE_URL does not look like a Codex OAuth-compatible endpoint. Host Codex auth may fail unless you point Sage at a compatible backend or proxy.',
-    };
-  }
-
-  return {
-    compatibility: 'unknown',
-    warning: null,
-  };
 }
 
 function getHostApiKeyFallback(): string | undefined {
   const apiKey = appConfig.AI_PROVIDER_API_KEY?.trim();
   return apiKey || undefined;
+}
+
+function resolveActiveTextProvider(params: {
+  codexConfigured: boolean;
+  codexStatus?: HostCodexAuthState;
+  fallbackTextProviderConfigured: boolean;
+}): ActiveTextProvider {
+  if (params.codexConfigured && params.codexStatus === 'active') {
+    return 'openai_codex';
+  }
+  if (params.fallbackTextProviderConfigured) {
+    return 'default';
+  }
+  return 'missing';
 }
 
 async function readHostProviderAuthSafe(): Promise<SafeHostProviderAuthRead> {
@@ -209,6 +198,16 @@ function deriveAccountId(params: { responseAccountId?: string; accessToken: stri
   }
 
   const jwt = decodeJwtPayload(params.accessToken);
+  const authClaim = jwt?.['https://api.openai.com/auth'];
+  if (authClaim && typeof authClaim === 'object' && !Array.isArray(authClaim)) {
+    const chatgptAccountId = trimOptional(
+      (authClaim as Record<string, unknown>).chatgpt_account_id as string | undefined,
+    );
+    if (chatgptAccountId) {
+      return chatgptAccountId;
+    }
+  }
+
   const claims = ['account_id', 'sub', 'org_id'];
   for (const claim of claims) {
     const value = jwt?.[claim];
@@ -228,23 +227,18 @@ function resolveExpiresAt(response: OAuthTokenResponse): Date {
   return new Date(Date.now() + expiresInSec * 1000);
 }
 
-function assertCodexOAuthConfigured(): { clientId: string; authorizeUrl: string; tokenUrl: string; redirectUri: string; scopes: string } {
-  const clientId = trimOptional(appConfig.OPENAI_CODEX_AUTH_CLIENT_ID);
-  if (!clientId) {
-    throw new Error('OPENAI_CODEX_AUTH_CLIENT_ID is required for host Codex auth.');
-  }
-
+function resolveCodexOAuthConfig(): CodexOAuthConfig {
   return {
-    clientId,
-    authorizeUrl: appConfig.OPENAI_CODEX_AUTH_AUTHORIZE_URL,
-    tokenUrl: appConfig.OPENAI_CODEX_AUTH_TOKEN_URL,
-    redirectUri: appConfig.OPENAI_CODEX_AUTH_REDIRECT_URI,
-    scopes: appConfig.OPENAI_CODEX_AUTH_SCOPES,
+    clientId: OPENCLAW_STYLE_PUBLIC_CLIENT_ID,
+    authorizeUrl: trimOptional(appConfig.OPENAI_CODEX_AUTH_AUTHORIZE_URL) ?? OPENCLAW_STYLE_AUTHORIZE_URL,
+    tokenUrl: trimOptional(appConfig.OPENAI_CODEX_AUTH_TOKEN_URL) ?? OPENCLAW_STYLE_TOKEN_URL,
+    redirectUri: trimOptional(appConfig.OPENAI_CODEX_AUTH_REDIRECT_URI) ?? OPENCLAW_STYLE_REDIRECT_URI,
+    scopes: trimOptional(appConfig.OPENAI_CODEX_AUTH_SCOPES) ?? OPENCLAW_STYLE_SCOPES,
   };
 }
 
 async function requestToken(body: URLSearchParams): Promise<OAuthTokenResponse> {
-  const oauth = assertCodexOAuthConfigured();
+  const oauth = resolveCodexOAuthConfig();
   const response = await fetch(oauth.tokenUrl, {
     method: 'POST',
     headers: {
@@ -263,7 +257,10 @@ async function requestToken(body: URLSearchParams): Promise<OAuthTokenResponse> 
 
   if (!response.ok) {
     const message =
-      payload && typeof payload === 'object' && !Array.isArray(payload) && typeof (payload as Record<string, unknown>).error_description === 'string'
+      payload &&
+      typeof payload === 'object' &&
+      !Array.isArray(payload) &&
+      typeof (payload as Record<string, unknown>).error_description === 'string'
         ? String((payload as Record<string, unknown>).error_description)
         : text || `HTTP ${response.status}`;
     throw new Error(`Codex OAuth token request failed: ${message}`);
@@ -286,8 +283,9 @@ export function createHostCodexAuthLogin(): {
   verifier: string;
   challenge: string;
   authorizeUrl: string;
+  redirectUri: string;
 } {
-  const oauth = assertCodexOAuthConfigured();
+  const oauth = resolveCodexOAuthConfig();
   const state = base64UrlEncode(randomBytes(24));
   const verifier = base64UrlEncode(randomBytes(48));
   const challenge = buildCodeChallenge(verifier);
@@ -299,12 +297,16 @@ export function createHostCodexAuthLogin(): {
   url.searchParams.set('code_challenge', challenge);
   url.searchParams.set('code_challenge_method', 'S256');
   url.searchParams.set('state', state);
+  url.searchParams.set('id_token_add_organizations', 'true');
+  url.searchParams.set('codex_cli_simplified_flow', 'true');
+  url.searchParams.set('originator', 'pi');
 
   return {
     state,
     verifier,
     challenge,
     authorizeUrl: url.toString(),
+    redirectUri: oauth.redirectUri,
   };
 }
 
@@ -319,8 +321,8 @@ export function extractAuthorizationCodeFromInput(params: {
 
   if (/^https?:\/\//i.test(trimmed)) {
     const url = new URL(trimmed);
-    const code = trimOptional(url.searchParams.get('code') ?? undefined);
-    const state = trimOptional(url.searchParams.get('state') ?? undefined);
+    const code = trimOptional(url.searchParams.get('code'));
+    const state = trimOptional(url.searchParams.get('state'));
     if (!code) {
       throw new Error('Redirect URL did not include a code parameter.');
     }
@@ -337,7 +339,7 @@ export async function completeHostCodexAuthLogin(params: {
   code: string;
   verifier: string;
 }): Promise<{ accountId: string | null; expiresAt: Date }> {
-  const oauth = assertCodexOAuthConfigured();
+  const oauth = resolveCodexOAuthConfig();
   const response = await requestToken(
     new URLSearchParams({
       grant_type: 'authorization_code',
@@ -380,7 +382,7 @@ async function refreshHostCodexAuthOnce(): Promise<string | undefined> {
   }
   const currentRecord = current.record;
 
-  const oauth = assertCodexOAuthConfigured();
+  const oauth = resolveCodexOAuthConfig();
   const refreshToken = trimOptional(currentRecord.refreshToken);
   if (!refreshToken) {
     await updateHostProviderAuthStatus({
@@ -427,14 +429,17 @@ async function refreshHostCodexAuthOnce(): Promise<string | undefined> {
 async function waitForRefreshResult(): Promise<string | undefined> {
   for (let attempt = 0; attempt < HOST_CODEX_REFRESH_WAIT_ATTEMPTS; attempt += 1) {
     await sleep(HOST_CODEX_REFRESH_WAIT_MS);
-    const current = await getHostProviderAuth(HOST_CODEX_PROVIDER_ID);
+    const current = await getHostProviderAuth(HOST_CODEX_PROVIDER_ID).catch(() => null);
     if (!current) {
       return undefined;
     }
     if (current.expiresAt.getTime() > Date.now() + HOST_CODEX_REFRESH_SKEW_MS && current.status === 'active') {
       return current.accessToken;
     }
-    if (!current.refreshLeaseOwner || (current.refreshLeaseExpiresAt && current.refreshLeaseExpiresAt.getTime() <= Date.now())) {
+    if (
+      !current.refreshLeaseOwner
+      || (current.refreshLeaseExpiresAt && current.refreshLeaseExpiresAt.getTime() <= Date.now())
+    ) {
       return undefined;
     }
   }
@@ -450,8 +455,8 @@ export async function resolveHostCodexAccessToken(): Promise<string | undefined>
   const currentRecord = current.record;
 
   if (
-    currentRecord.expiresAt.getTime() > Date.now() + HOST_CODEX_REFRESH_SKEW_MS &&
-    currentRecord.status === 'active'
+    currentRecord.expiresAt.getTime() > Date.now() + HOST_CODEX_REFRESH_SKEW_MS
+    && currentRecord.status === 'active'
   ) {
     return currentRecord.accessToken;
   }
@@ -487,61 +492,28 @@ export async function resolveHostCodexAccessToken(): Promise<string | undefined>
   }
 }
 
-export async function resolvePreferredHostAuthToken(): Promise<string | undefined> {
-  const credential = await resolvePreferredHostAuthCredential();
-  return credential.apiKey;
-}
-
-export async function resolvePreferredHostAuthCredential(): Promise<PreferredHostAuthCredential> {
-  const codexToken = await resolveHostCodexAccessToken();
-  if (codexToken) {
-    return {
-      apiKey: codexToken,
-      authSource: 'host_codex_auth',
-    };
-  }
-
-  const fallback = getHostApiKeyFallback();
-  if (fallback) {
-    return {
-      apiKey: fallback,
-      authSource: 'host_api_key',
-    };
-  }
-
-  return {};
-}
-
 export async function handleHostCodexProviderAuthFailure(params: {
   errorText: string;
-}): Promise<PreferredHostAuthCredential> {
+}): Promise<void> {
   await updateHostProviderAuthStatus({
     provider: HOST_CODEX_PROVIDER_ID,
     status: 'refresh_failed',
     lastErrorText: `Provider rejected the stored host Codex access token: ${params.errorText}`,
   }).catch(() => undefined);
-  const fallback = getHostApiKeyFallback();
-  if (fallback) {
-    return {
-      apiKey: fallback,
-      authSource: 'host_api_key',
-    };
-  }
-  return {};
 }
 
 export async function getHostCodexAuthStatus(): Promise<HostCodexAuthStatus> {
   const current = await readHostProviderAuthSafe();
-  const fallbackHostApiKeyConfigured = !!getHostApiKeyFallback();
-  const compatibility = buildCompatibilityWarning();
+  const fallbackTextProviderConfigured = !!getHostApiKeyFallback();
 
   if (!current.record && !current.metadata) {
     return {
       configured: false,
-      runtimeSource: fallbackHostApiKeyConfigured ? 'host_api_key' : 'missing',
-      fallbackHostApiKeyConfigured,
-      compatibility: 'unknown',
-      warning: null,
+      activeTextProvider: resolveActiveTextProvider({
+        codexConfigured: false,
+        fallbackTextProviderConfigured,
+      }),
+      fallbackTextProviderConfigured,
     };
   }
 
@@ -549,15 +521,17 @@ export async function getHostCodexAuthStatus(): Promise<HostCodexAuthStatus> {
   if (!currentState) {
     return {
       configured: false,
-      runtimeSource: fallbackHostApiKeyConfigured ? 'host_api_key' : 'missing',
-      fallbackHostApiKeyConfigured,
-      compatibility: 'unknown',
-      warning: null,
+      activeTextProvider: resolveActiveTextProvider({
+        codexConfigured: false,
+        fallbackTextProviderConfigured,
+      }),
+      fallbackTextProviderConfigured,
     };
   }
+
   const now = Date.now();
   const expired = currentState.expiresAt.getTime() <= now;
-  const status =
+  const status: HostCodexAuthState =
     currentState.status === 'refresh_failed'
       ? 'refresh_failed'
       : expired
@@ -570,10 +544,12 @@ export async function getHostCodexAuthStatus(): Promise<HostCodexAuthStatus> {
     status,
     accountId: currentState.accountId,
     expiresAt: currentState.expiresAt.toISOString(),
-    runtimeSource: status === 'active' ? 'host_codex_auth' : fallbackHostApiKeyConfigured ? 'host_api_key' : 'host_codex_auth',
-    fallbackHostApiKeyConfigured,
-    compatibility: compatibility.compatibility,
-    warning: compatibility.warning,
+    activeTextProvider: resolveActiveTextProvider({
+      codexConfigured: true,
+      codexStatus: status,
+      fallbackTextProviderConfigured,
+    }),
+    fallbackTextProviderConfigured,
     lastErrorText: current.readErrorText ?? currentState.lastErrorText,
   };
 }
@@ -588,10 +564,8 @@ export function toPublicHostCodexAuthStatus(status: HostCodexAuthStatus): Public
     provider: status.provider,
     status: status.status,
     expiresAt: status.expiresAt,
-    runtimeSource: status.runtimeSource,
-    fallbackHostApiKeyConfigured: status.fallbackHostApiKeyConfigured,
-    compatibility: status.compatibility,
-    warning: status.warning,
+    activeTextProvider: status.activeTextProvider,
+    fallbackTextProviderConfigured: status.fallbackTextProviderConfigured,
     hasOperatorError: !!status.lastErrorText,
   };
 }
@@ -603,3 +577,4 @@ export async function getPublicHostCodexAuthStatus(): Promise<PublicHostCodexAut
 export async function clearHostCodexAuthRecord(): Promise<void> {
   await clearHostProviderAuth(HOST_CODEX_PROVIDER_ID);
 }
+

@@ -512,7 +512,9 @@ export class AiProviderClient implements LLMClient {
   }
 
   private async _chat(request: LLMRequest, authRecoveryAttempted = false): Promise<LLMResponse> {
-    const url = `${this.config.baseUrl}/chat/completions`;
+    const effectiveBaseUrl = assertSafeBaseUrl(request.baseUrl?.trim() || this.config.baseUrl);
+    const effectiveProviderId = request.providerId ?? 'default';
+    const url = `${effectiveBaseUrl}/chat/completions`;
     const rawModel = request.model || this.config.model;
     const model = rawModel.trim();
     if (!model) {
@@ -542,7 +544,7 @@ export class AiProviderClient implements LLMClient {
     );
 
     const requestedProviderToolControls = typeof request.parallelToolCalls === 'boolean';
-    const providerToolControlsCacheKey = buildProviderToolControlsCacheKey(this.config.baseUrl, model);
+    const providerToolControlsCacheKey = buildProviderToolControlsCacheKey(effectiveBaseUrl, model);
     const cachedProviderToolControlsSupport = providerToolControlsSupportCache.get(providerToolControlsCacheKey);
     let includeProviderToolControls =
       requestedProviderToolControls && cachedProviderToolControlsSupport !== false;
@@ -557,14 +559,14 @@ export class AiProviderClient implements LLMClient {
     });
 
     if (requestedProviderToolControls && cachedProviderToolControlsSupport === false) {
-      logger.debug(
-        { model, baseUrl: this.config.baseUrl },
+        logger.debug(
+        { model, baseUrl: effectiveBaseUrl },
         '[AiProviderClient] Skipping provider tool controls because this provider/model was previously marked unsupported',
       );
     }
 
     logger.debug({ url, model, messageCount: request.messages.length }, '[AiProviderClient] Request');
-    metrics.increment('llm_calls_total', { model, provider: 'ai_provider' });
+    metrics.increment('llm_calls_total', { model, provider: String(effectiveProviderId) });
 
     let attempt = 0;
     let lastError: AppError | undefined;
@@ -617,15 +619,19 @@ export class AiProviderClient implements LLMClient {
             request.authSource === 'host_codex_auth' &&
             (response.status === 401 || response.status === 403)
           ) {
-            const recovered = await handleHostCodexProviderAuthFailure({
+            await handleHostCodexProviderAuthFailure({
               errorText: err.message,
             });
-            if (recovered.apiKey?.trim()) {
+            if (request.fallbackRoute?.apiKey?.trim()) {
               return this._chat(
                 {
                   ...request,
-                  apiKey: recovered.apiKey.trim(),
-                  authSource: recovered.authSource,
+                  providerId: request.fallbackRoute.providerId,
+                  baseUrl: request.fallbackRoute.baseUrl,
+                  model: request.fallbackRoute.model,
+                  apiKey: request.fallbackRoute.apiKey.trim(),
+                  authSource: request.fallbackRoute.authSource,
+                  fallbackRoute: undefined,
                 },
                 true,
               );
@@ -714,14 +720,14 @@ export class AiProviderClient implements LLMClient {
         attempt += 1;
 
         if (attempt < maxAttempts) {
-          metrics.increment('llm_failures_total', { model, type: 'retry' });
+          metrics.increment('llm_failures_total', { model, type: 'retry', provider: String(effectiveProviderId) });
           logger.warn({ attempt, error: lastError.message }, '[AiProviderClient] Retry');
           await sleep(500 * Math.pow(2, attempt), request.signal);
         }
       }
     }
 
-    metrics.increment('llm_failures_total', { model, type: 'exhausted' });
+    metrics.increment('llm_failures_total', { model, type: 'exhausted', provider: String(effectiveProviderId) });
     logger.error({ error: lastError }, '[AiProviderClient] Failed after retries');
     throw lastError;
   }

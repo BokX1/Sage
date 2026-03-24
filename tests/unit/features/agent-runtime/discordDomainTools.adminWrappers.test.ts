@@ -192,10 +192,8 @@ describe('discord admin granular wrappers', () => {
       provider: 'openai_codex',
       status: 'active',
       expiresAt: '2026-03-24T12:00:00.000Z',
-      runtimeSource: 'host_codex_auth',
-      fallbackHostApiKeyConfigured: true,
-      compatibility: 'unknown',
-      warning: null,
+      activeTextProvider: 'openai_codex',
+      fallbackTextProviderConfigured: true,
       hasOperatorError: false,
     });
   });
@@ -310,7 +308,7 @@ describe('discord admin granular wrappers', () => {
         action: 'get_host_auth_status',
         status: expect.objectContaining({
           configured: true,
-          runtimeSource: 'host_codex_auth',
+          activeTextProvider: 'openai_codex',
         }),
       }),
     );

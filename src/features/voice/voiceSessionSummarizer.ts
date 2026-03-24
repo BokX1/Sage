@@ -1,7 +1,6 @@
 import { jsonrepair } from 'jsonrepair';
-import { config as appConfig } from '../../platform/config/env';
 import { createLLMClient } from '../../platform/llm';
-import { LLMAuthSource, LLMClient, LLMRequest } from '../../platform/llm/llm-types';
+import { LLMAuthSource, LLMClient, LLMProviderId, LLMProviderRoute, LLMRequest } from '../../platform/llm/llm-types';
 import { logger } from '../../platform/logging/logger';
 import { VoiceConversationSession } from './voiceConversationSessionStore';
 
@@ -46,8 +45,7 @@ let analystClientCache: LLMClient | null = null;
 
 function getAnalystClient(): LLMClient {
   if (analystClientCache) return analystClientCache;
-  const model = appConfig.AI_PROVIDER_SUMMARY_AGENT_MODEL.trim();
-  analystClientCache = createLLMClient({ agentModel: model });
+  analystClientCache = createLLMClient();
   return analystClientCache;
 }
 
@@ -101,8 +99,12 @@ function formatUtterances(session: VoiceConversationSession): string {
 
 export async function summarizeVoiceConversationSession(params: {
   session: VoiceConversationSession;
+  providerId?: LLMProviderId | string;
+  providerBaseUrl?: string;
+  providerModel?: string;
   apiKey?: string;
   apiKeySource?: LLMAuthSource;
+  fallbackRoute?: LLMProviderRoute;
 }): Promise<StructuredVoiceSummary | null> {
   if (params.session.utterances.length === 0) return null;
   const transcript = formatUtterances(params.session);
@@ -124,10 +126,14 @@ Summarize this voice session:`;
       { role: 'system', content: VOICE_SUMMARY_PROMPT },
       { role: 'user', content: userPrompt },
     ],
+    providerId: params.providerId,
+    baseUrl: params.providerBaseUrl,
+    model: params.providerModel,
     temperature: 0.4,
     maxTokens: 2048,
     apiKey: params.apiKey,
     authSource: params.apiKeySource,
+    fallbackRoute: params.fallbackRoute,
   };
 
   try {

@@ -9,7 +9,7 @@ import { VoiceChannel } from 'discord.js';
 import { logger } from '../../platform/logging/logger';
 import { EventEmitter } from 'events';
 import { config } from '../../platform/config/env';
-import { resolveRuntimeCredential } from '../agent-runtime/apiKeyResolver';
+import { resolveTextProviderRoute } from '../agent-runtime/apiKeyResolver';
 import { isLoggingEnabled } from '../settings/guildChannelSettings';
 import { createVoiceConversationSummary } from './voiceConversationSummaryRepo';
 import {
@@ -165,11 +165,15 @@ export class VoiceManager extends EventEmitter {
     }
     const speakerStats = Array.from(speakerCounts.values()).sort((a, b) => b.utteranceCount - a.utteranceCount);
 
-    const credential = await resolveRuntimeCredential(session.guildId);
+    const summaryRoute = await resolveTextProviderRoute(session.guildId, 'summary');
     const structured = await summarizeVoiceConversationSession({
       session: { ...session, endedAt },
-      apiKey: credential.apiKey,
-      apiKeySource: credential.authSource,
+      providerId: summaryRoute.providerId,
+      providerBaseUrl: summaryRoute.baseUrl,
+      providerModel: summaryRoute.model,
+      apiKey: summaryRoute.apiKey,
+      apiKeySource: summaryRoute.authSource,
+      fallbackRoute: summaryRoute.fallbackRoute,
     });
 
     if (!structured) {

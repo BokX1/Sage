@@ -1,6 +1,5 @@
-import { config as appConfig } from '../../platform/config/env';
 import { createLLMClient } from '../../platform/llm';
-import { LLMAuthSource, LLMClient, LLMRequest } from '../../platform/llm/llm-types';
+import { LLMAuthSource, LLMClient, LLMProviderId, LLMProviderRoute, LLMRequest } from '../../platform/llm/llm-types';
 import { logger } from '../../platform/logging/logger';
 import { ChannelMessage } from '../awareness/awareness-types';
 import { jsonrepair } from 'jsonrepair';
@@ -87,9 +86,8 @@ let analystClientCache: LLMClient | null = null;
 
 function getAnalystClient(): LLMClient {
   if (analystClientCache) return analystClientCache;
-  const model = appConfig.AI_PROVIDER_SUMMARY_AGENT_MODEL.trim();
-  analystClientCache = createLLMClient({ agentModel: model });
-  logger.debug({ model }, 'Summary analyst client initialized');
+  analystClientCache = createLLMClient();
+  logger.debug('Summary analyst client initialized');
   return analystClientCache;
 }
 
@@ -105,8 +103,12 @@ export async function summarizeChannelWindow(params: {
   messages: ChannelMessage[];
   windowStart: Date;
   windowEnd: Date;
+  providerId?: LLMProviderId | string;
+  providerBaseUrl?: string;
+  providerModel?: string;
   apiKey?: string;
   apiKeySource?: LLMAuthSource;
+  fallbackRoute?: LLMProviderRoute;
 }): Promise<StructuredSummary> {
   const boundedMessages = boundMessages(params.messages, params.windowStart, params.windowEnd);
   const messageText = buildMessageLines(boundedMessages);
@@ -120,7 +122,16 @@ Summarize this conversation:`;
 
   try {
     // Step 1: Analyst (strict JSON output)
-    const analysisText = await runAnalyst(STM_ANALYST_PROMPT, userPrompt, params.apiKey, params.apiKeySource);
+    const analysisText = await runAnalyst(
+      STM_ANALYST_PROMPT,
+      userPrompt,
+      params.providerId,
+      params.providerBaseUrl,
+      params.providerModel,
+      params.apiKey,
+      params.apiKeySource,
+      params.fallbackRoute,
+    );
 
     if (!analysisText) {
       logger.warn('STM: Analyst returned empty, using fallback');
@@ -149,8 +160,12 @@ Summarize this conversation:`;
 export async function summarizeChannelProfile(params: {
   previousSummary: StructuredSummary | null;
   latestRollingSummary: StructuredSummary;
+  providerId?: LLMProviderId | string;
+  providerBaseUrl?: string;
+  providerModel?: string;
   apiKey?: string;
   apiKeySource?: LLMAuthSource;
+  fallbackRoute?: LLMProviderRoute;
 }): Promise<StructuredSummary> {
   const previousText = params.previousSummary
     ? formatSummaryAsText(params.previousSummary)
@@ -171,7 +186,16 @@ Output the updated channel profile:`;
 
   try {
     // Step 1: Analyst (strict JSON output)
-    const analysisText = await runAnalyst(LTM_ANALYST_PROMPT, userPrompt, params.apiKey, params.apiKeySource);
+    const analysisText = await runAnalyst(
+      LTM_ANALYST_PROMPT,
+      userPrompt,
+      params.providerId,
+      params.providerBaseUrl,
+      params.providerModel,
+      params.apiKey,
+      params.apiKeySource,
+      params.fallbackRoute,
+    );
 
     if (!analysisText) {
       logger.warn('LTM: Analyst returned empty, preserving previous');
@@ -206,8 +230,12 @@ Output the updated channel profile:`;
 async function runAnalyst(
   systemPrompt: string,
   userPrompt: string,
+  providerId: LLMProviderId | string | undefined,
+  providerBaseUrl: string | undefined,
+  providerModel: string | undefined,
   apiKey?: string,
   apiKeySource?: LLMAuthSource,
+  fallbackRoute?: LLMProviderRoute,
 ): Promise<string | null> {
   const client = getAnalystClient();
 
@@ -216,10 +244,14 @@ async function runAnalyst(
       { role: 'system', content: systemPrompt },
       { role: 'user', content: userPrompt },
     ],
+    providerId,
+    baseUrl: providerBaseUrl,
+    model: providerModel,
     temperature: 0.5,
     maxTokens: 2048,
     apiKey,
     authSource: apiKeySource,
+    fallbackRoute,
   };
 
   try {

@@ -892,14 +892,14 @@ function buildChecks(): CheckDefinition[] {
         const status = await getHostCodexAuthStatus();
         if (!status.configured) {
           return {
-            status: status.runtimeSource === 'host_api_key' ? 'pass' : 'warn',
+            status: status.activeTextProvider === 'default' ? 'pass' : 'warn',
             message:
-              status.runtimeSource === 'host_api_key'
-                ? 'Host Codex auth is not configured; Sage will use the host API key fallback'
+              status.activeTextProvider === 'default'
+                ? 'Host Codex auth is not configured; Sage will use the configured fallback text provider'
                 : 'Host Codex auth is not configured and no host API key fallback is available',
             details: [
               'Run `npm run auth:codex:login` on the host to configure shared Codex auth.',
-              ...(status.runtimeSource === 'missing'
+              ...(status.activeTextProvider === 'missing'
                 ? ['Alternatively set `AI_PROVIDER_API_KEY` for the existing host fallback path.']
                 : []),
             ],
@@ -907,35 +907,31 @@ function buildChecks(): CheckDefinition[] {
         }
 
         const details = [
-          `Runtime source: ${status.runtimeSource}`,
+          `Active text provider: ${status.activeTextProvider}`,
           `Account ID: ${status.accountId ?? 'unknown'}`,
           `Expires at: ${status.expiresAt}`,
-          ...(status.warning ? [`Compatibility warning: ${status.warning}`] : []),
           ...(status.lastErrorText ? [`Last error: ${status.lastErrorText}`] : []),
         ];
 
         if (status.status === 'active') {
           return {
-            status: status.compatibility === 'likely_incompatible' ? 'warn' : 'pass',
-            message:
-              status.compatibility === 'likely_incompatible'
-                ? 'Host Codex auth is active, but the configured AI provider base URL may be incompatible'
-                : 'Host Codex auth is active',
+            status: 'pass',
+            message: 'Host Codex auth is active',
             details,
           };
         }
 
         return {
-          status: status.fallbackHostApiKeyConfigured ? 'warn' : 'fail',
+          status: status.fallbackTextProviderConfigured ? 'warn' : 'fail',
           message:
             status.status === 'expired'
               ? 'Host Codex auth is expired'
               : 'Host Codex auth refresh failed',
           details: [
             ...details,
-            status.fallbackHostApiKeyConfigured
-              ? 'Sage will fall back to the host API key until Codex auth is repaired.'
-              : 'No host API key fallback is configured.',
+            status.fallbackTextProviderConfigured
+              ? 'Sage will fall back to the configured text provider until Codex auth is repaired.'
+              : 'No fallback text-provider auth is configured.',
             'Run `npm run auth:codex:login` to refresh the shared host auth.',
           ],
         };

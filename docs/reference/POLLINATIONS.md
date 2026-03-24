@@ -120,7 +120,7 @@ AI_PROVIDER_MAIN_AGENT_MODEL=your-main-agent-model
 AI_PROVIDER_API_KEY=
 ```
 
-If you want Sage to prefer shared host Codex auth instead, run `npm run auth:codex:login` on the host and keep `AI_PROVIDER_API_KEY` as the fallback path.
+If you want Sage to prefer shared host Codex auth instead, run `npm run auth:codex:login` on the host and keep `AI_PROVIDER_API_KEY` as the fallback path. When that host login is healthy, Sage routes the main, profile, and summary text lanes to OpenAI/Codex automatically; it does not try to reuse Codex auth against Pollinations endpoints.
 
 ### Recommended: keep `AI_PROVIDER_BASE_URL` at the `/v1` root
 

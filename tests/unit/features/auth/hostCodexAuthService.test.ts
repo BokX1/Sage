@@ -2,12 +2,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mockConfig = vi.hoisted(() => ({
   AI_PROVIDER_API_KEY: 'env-fallback-key',
-  AI_PROVIDER_BASE_URL: 'https://api.openai.example/v1',
-  OPENAI_CODEX_AUTH_CLIENT_ID: 'client_test_123',
   OPENAI_CODEX_AUTH_AUTHORIZE_URL: 'https://auth.openai.com/oauth/authorize',
   OPENAI_CODEX_AUTH_TOKEN_URL: 'https://auth.openai.com/oauth/token',
   OPENAI_CODEX_AUTH_REDIRECT_URI: 'http://127.0.0.1:1455/auth/callback',
-  OPENAI_CODEX_AUTH_SCOPES: 'openid offline_access profile email',
+  OPENAI_CODEX_AUTH_SCOPES: 'openid profile email offline_access',
 }));
 
 const repoMocks = vi.hoisted(() => ({
@@ -42,24 +40,20 @@ import {
   completeHostCodexAuthLogin,
   createHostCodexAuthLogin,
   extractAuthorizationCodeFromInput,
+  getHostCodexAuthStatus,
   getPublicHostCodexAuthStatus,
   handleHostCodexProviderAuthFailure,
-  getHostCodexAuthStatus,
   resolveHostCodexAccessToken,
-  resolvePreferredHostAuthCredential,
-  resolvePreferredHostAuthToken,
 } from '@/features/auth/hostCodexAuthService';
 
 describe('hostCodexAuthService', () => {
   beforeEach(() => {
     vi.stubGlobal('fetch', mockFetch);
     mockConfig.AI_PROVIDER_API_KEY = 'env-fallback-key';
-    mockConfig.AI_PROVIDER_BASE_URL = 'https://api.openai.example/v1';
-    mockConfig.OPENAI_CODEX_AUTH_CLIENT_ID = 'client_test_123';
     mockConfig.OPENAI_CODEX_AUTH_AUTHORIZE_URL = 'https://auth.openai.com/oauth/authorize';
     mockConfig.OPENAI_CODEX_AUTH_TOKEN_URL = 'https://auth.openai.com/oauth/token';
     mockConfig.OPENAI_CODEX_AUTH_REDIRECT_URI = 'http://127.0.0.1:1455/auth/callback';
-    mockConfig.OPENAI_CODEX_AUTH_SCOPES = 'openid offline_access profile email';
+    mockConfig.OPENAI_CODEX_AUTH_SCOPES = 'openid profile email offline_access';
 
     repoMocks.getHostProviderAuth.mockReset().mockResolvedValue(null);
     repoMocks.getHostProviderAuthMetadata.mockReset().mockResolvedValue(null);
@@ -71,18 +65,20 @@ describe('hostCodexAuthService', () => {
     mockFetch.mockReset();
   });
 
-  it('builds a PKCE authorize URL for host login', () => {
+  it('builds an OpenClaw-style PKCE authorize URL for host login', () => {
     const login = createHostCodexAuthLogin();
     const url = new URL(login.authorizeUrl);
 
     expect(login.state).toBeTruthy();
     expect(login.verifier).toBeTruthy();
     expect(login.challenge).toBeTruthy();
+    expect(login.redirectUri).toBe('http://127.0.0.1:1455/auth/callback');
     expect(url.origin + url.pathname).toBe('https://auth.openai.com/oauth/authorize');
-    expect(url.searchParams.get('client_id')).toBe('client_test_123');
+    expect(url.searchParams.get('client_id')).toBe('app_EMoamEEZ73f0CkXaXp7hrann');
     expect(url.searchParams.get('redirect_uri')).toBe('http://127.0.0.1:1455/auth/callback');
-    expect(url.searchParams.get('scope')).toBe('openid offline_access profile email');
+    expect(url.searchParams.get('scope')).toBe('openid profile email offline_access');
     expect(url.searchParams.get('code_challenge_method')).toBe('S256');
+    expect(url.searchParams.get('codex_cli_simplified_flow')).toBe('true');
   });
 
   it('extracts the authorization code from a pasted redirect URL', () => {
@@ -100,7 +96,7 @@ describe('hostCodexAuthService', () => {
       text: async () =>
         JSON.stringify({
           access_token:
-            'header.eyJzdWIiOiJhY2N0X3N0b3JlZCJ9.signature',
+            'header.eyJodHRwczovL2FwaS5vcGVuYWkuY29tL2F1dGgiOnsiY2hhdGdwdF9hY2NvdW50X2lkIjoiYWNjdF9zdG9yZWQifX0.signature',
           refresh_token: 'refresh-1',
           expires_in: 3600,
         }),
@@ -113,42 +109,14 @@ describe('hostCodexAuthService', () => {
 
     expect(repoMocks.upsertHostProviderAuth).toHaveBeenCalledWith(
       expect.objectContaining({
-        accessToken: 'header.eyJzdWIiOiJhY2N0X3N0b3JlZCJ9.signature',
+        accessToken:
+          'header.eyJodHRwczovL2FwaS5vcGVuYWkuY29tL2F1dGgiOnsiY2hhdGdwdF9hY2NvdW50X2lkIjoiYWNjdF9zdG9yZWQifX0.signature',
         refreshToken: 'refresh-1',
         status: 'active',
         accountId: 'acct_stored',
       }),
     );
     expect(result.accountId).toBe('acct_stored');
-  });
-
-  it('prefers active host Codex auth over the host API key fallback', async () => {
-    repoMocks.getHostProviderAuthMetadata.mockResolvedValueOnce({
-      provider: 'openai_codex',
-      expiresAt: new Date(Date.now() + 60 * 60_000),
-      accountId: 'acct_1',
-      status: 'active',
-      lastErrorText: null,
-      refreshLeaseOwner: null,
-      refreshLeaseExpiresAt: null,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    });
-    repoMocks.getHostProviderAuth.mockResolvedValueOnce({
-      provider: 'openai_codex',
-      accessToken: 'codex-access-token',
-      refreshToken: 'codex-refresh-token',
-      expiresAt: new Date(Date.now() + 60 * 60_000),
-      accountId: 'acct_1',
-      status: 'active',
-      lastErrorText: null,
-      refreshLeaseOwner: null,
-      refreshLeaseExpiresAt: null,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    });
-
-    await expect(resolvePreferredHostAuthToken()).resolves.toBe('codex-access-token');
   });
 
   it('refreshes expired host auth and returns the new access token', async () => {
@@ -198,12 +166,11 @@ describe('hostCodexAuthService', () => {
     expect(repoMocks.releaseHostProviderRefreshLease).toHaveBeenCalled();
   });
 
-  it('reports a compatibility warning for likely incompatible base URLs', async () => {
-    mockConfig.AI_PROVIDER_BASE_URL = 'https://text.pollinations.ai/openai';
+  it('reports the active text provider instead of compatibility warnings', async () => {
     repoMocks.getHostProviderAuthMetadata.mockResolvedValueOnce({
       provider: 'openai_codex',
       expiresAt: new Date(Date.now() + 60 * 60_000),
-      accountId: 'acct_warn',
+      accountId: 'acct_active',
       status: 'active',
       lastErrorText: null,
       refreshLeaseOwner: null,
@@ -216,7 +183,7 @@ describe('hostCodexAuthService', () => {
       accessToken: 'codex-access-token',
       refreshToken: 'codex-refresh-token',
       expiresAt: new Date(Date.now() + 60 * 60_000),
-      accountId: 'acct_warn',
+      accountId: 'acct_active',
       status: 'active',
       lastErrorText: null,
       refreshLeaseOwner: null,
@@ -228,8 +195,9 @@ describe('hostCodexAuthService', () => {
     await expect(getHostCodexAuthStatus()).resolves.toEqual(
       expect.objectContaining({
         configured: true,
-        compatibility: 'likely_incompatible',
-        warning: expect.stringContaining('does not look like a Codex OAuth-compatible endpoint'),
+        status: 'active',
+        activeTextProvider: 'openai_codex',
+        fallbackTextProviderConfigured: true,
       }),
     );
   });
@@ -239,8 +207,8 @@ describe('hostCodexAuthService', () => {
     expect(repoMocks.clearHostProviderAuth).toHaveBeenCalledWith('openai_codex');
   });
 
-  it('marks rejected host Codex auth unhealthy and falls back to the host API key', async () => {
-    const recovered = await handleHostCodexProviderAuthFailure({
+  it('marks rejected host Codex auth unhealthy without leaking fallback credentials', async () => {
+    await handleHostCodexProviderAuthFailure({
       errorText: 'AI provider auth error: unauthorized',
     });
 
@@ -250,10 +218,6 @@ describe('hostCodexAuthService', () => {
         status: 'refresh_failed',
       }),
     );
-    expect(recovered).toEqual({
-      apiKey: 'env-fallback-key',
-      authSource: 'host_api_key',
-    });
   });
 
   it('degrades unreadable stored host auth to fallback status instead of throwing', async () => {
@@ -270,14 +234,13 @@ describe('hostCodexAuthService', () => {
     });
     repoMocks.getHostProviderAuth.mockRejectedValue(new Error('bad decrypt'));
 
-    await expect(resolvePreferredHostAuthCredential()).resolves.toEqual({
-      apiKey: 'env-fallback-key',
-      authSource: 'host_api_key',
-    });
+    await expect(resolveHostCodexAccessToken()).resolves.toBeUndefined();
     await expect(getHostCodexAuthStatus()).resolves.toEqual(
       expect.objectContaining({
         configured: true,
         status: 'refresh_failed',
+        activeTextProvider: 'default',
+        fallbackTextProviderConfigured: true,
         lastErrorText: expect.stringContaining('could not be decrypted'),
       }),
     );
@@ -313,8 +276,10 @@ describe('hostCodexAuthService', () => {
       expect.objectContaining({
         configured: true,
         status: 'refresh_failed',
+        activeTextProvider: 'default',
         hasOperatorError: true,
       }),
     );
   });
 });
+

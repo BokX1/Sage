@@ -11,12 +11,15 @@ import type { Runnable } from '@langchain/core/runnables';
 import type { BaseLanguageModelInput } from '@langchain/core/language_models/base';
 import { convertToOpenAITool } from '@langchain/core/utils/function_calling';
 import { AiProviderClient } from './ai-provider-client';
-import type { LLMAuthSource, ProviderAllowedTool, ProviderToolDefinition } from './llm-types';
+import type { LLMAuthSource, LLMProviderId, LLMProviderRoute, ProviderAllowedTool, ProviderToolDefinition } from './llm-types';
 import { toLlmMessages, toLangChainToolCalls } from './langchain-interop';
 
 export interface AiProviderChatModelCallOptions extends BaseChatModelCallOptions {
+  baseUrl?: string;
+  providerId?: LLMProviderId | string;
   apiKey?: string;
   authSource?: LLMAuthSource;
+  fallbackRoute?: LLMProviderRoute;
   model?: string;
   temperature?: number;
   maxTokens?: number;
@@ -27,9 +30,11 @@ export interface AiProviderChatModelCallOptions extends BaseChatModelCallOptions
 
 export interface AiProviderChatModelFields extends BaseChatModelParams {
   baseUrl: string;
+  providerId?: LLMProviderId | string;
   model: string;
   apiKey?: string;
   authSource?: LLMAuthSource;
+  fallbackRoute?: LLMProviderRoute;
   temperature: number;
   timeout?: number;
   maxTokens?: number;
@@ -101,8 +106,11 @@ export class AiProviderChatModel extends BaseChatModel<AiProviderChatModelCallOp
   lc_namespace = ['sage', 'llm'];
 
   private readonly modelId: string;
+  private readonly baseUrl: string;
+  private readonly providerId?: LLMProviderId | string;
   private readonly apiKey?: string;
   private readonly authSource?: LLMAuthSource;
+  private readonly fallbackRoute?: LLMProviderRoute;
   private readonly temperature: number;
   private readonly timeoutMs?: number;
   private readonly maxTokens?: number;
@@ -110,9 +118,12 @@ export class AiProviderChatModel extends BaseChatModel<AiProviderChatModelCallOp
 
   constructor(fields: AiProviderChatModelFields) {
     super(fields);
+    this.baseUrl = fields.baseUrl;
+    this.providerId = fields.providerId;
     this.modelId = fields.model.trim();
     this.apiKey = fields.apiKey?.trim() || undefined;
     this.authSource = fields.authSource;
+    this.fallbackRoute = fields.fallbackRoute;
     this.temperature = fields.temperature;
     this.timeoutMs = fields.timeout;
     this.maxTokens = fields.maxTokens;
@@ -126,7 +137,7 @@ export class AiProviderChatModel extends BaseChatModel<AiProviderChatModelCallOp
   }
 
   get callKeys(): string[] {
-    return [...super.callKeys, 'apiKey', 'authSource', 'model', 'temperature', 'maxTokens', 'tools', 'tool_choice', 'allowedTools', 'parallelToolCalls'];
+    return [...super.callKeys, 'baseUrl', 'providerId', 'apiKey', 'authSource', 'fallbackRoute', 'model', 'temperature', 'maxTokens', 'tools', 'tool_choice', 'allowedTools', 'parallelToolCalls'];
   }
 
   _llmType(): string {
@@ -159,9 +170,12 @@ export class AiProviderChatModel extends BaseChatModel<AiProviderChatModelCallOp
     void runManager;
     const response = await this.client.chat({
       messages: toLlmMessages(messages),
+      baseUrl: options.baseUrl?.trim() || this.baseUrl,
+      providerId: options.providerId ?? this.providerId,
       model: options.model?.trim() || this.modelId,
       apiKey: options.apiKey?.trim() || this.apiKey,
       authSource: options.authSource ?? this.authSource,
+      fallbackRoute: options.fallbackRoute ?? this.fallbackRoute,
       temperature: options.temperature ?? this.temperature,
       maxTokens: options.maxTokens ?? this.maxTokens,
       tools: normalizeBoundTools(options.tools),

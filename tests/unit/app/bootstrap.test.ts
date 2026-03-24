@@ -30,10 +30,8 @@ const mockRegisterShutdownHooks = vi.hoisted(() => vi.fn());
 const mockAssertAgentTraceSchemaReady = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
 const mockGetHostCodexAuthStatus = vi.hoisted(() => vi.fn().mockResolvedValue({
   configured: false,
-  runtimeSource: 'missing',
-  fallbackHostApiKeyConfigured: false,
-  compatibility: 'unknown',
-  warning: null,
+  activeTextProvider: 'missing',
+  fallbackTextProviderConfigured: false,
 }));
 
 vi.mock('@/platform/discord/client', () => ({
@@ -152,10 +150,8 @@ describe('bootstrapApp', () => {
     mockClient.login.mockResolvedValue(undefined);
     mockGetHostCodexAuthStatus.mockResolvedValue({
       configured: false,
-      runtimeSource: 'missing',
-      fallbackHostApiKeyConfigured: false,
-      compatibility: 'unknown',
-      warning: null,
+      activeTextProvider: 'missing',
+      fallbackTextProviderConfigured: false,
     });
   });
 

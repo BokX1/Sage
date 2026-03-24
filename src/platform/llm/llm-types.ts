@@ -86,6 +86,16 @@ export interface ProviderAllowedTool {
 
 export type LLMAuthSource = 'host_codex_auth' | 'host_api_key' | 'guild_api_key' | 'explicit';
 
+export type LLMProviderId = 'openai_codex' | 'default' | 'explicit';
+
+export interface LLMProviderRoute {
+  providerId: LLMProviderId | string;
+  baseUrl: string;
+  model: string;
+  apiKey?: string;
+  authSource?: LLMAuthSource;
+}
+
 /**
  * Define a chat request sent to an LLM client.
  *
@@ -97,8 +107,11 @@ export type LLMAuthSource = 'host_codex_auth' | 'host_api_key' | 'guild_api_key'
 export interface LLMRequest {
   messages: LLMChatMessage[];
   model?: string;
+  baseUrl?: string;
+  providerId?: LLMProviderId | string;
   apiKey?: string;
   authSource?: LLMAuthSource;
+  fallbackRoute?: LLMProviderRoute;
   temperature?: number;
   maxTokens?: number;
   tools?: ProviderToolDefinition[];

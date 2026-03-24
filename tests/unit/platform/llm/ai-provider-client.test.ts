@@ -373,12 +373,9 @@ describe('AiProviderClient', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it('retries once on host Codex auth failures using the fallback credential', async () => {
+  it('retries once on host Codex auth failures using the fallback route', async () => {
     const client = new AiProviderClient({ baseUrl: 'https://api.test/v1', model: 'test-chat-model', maxRetries: 0 });
-    hostAuthMocks.handleHostCodexProviderAuthFailure.mockResolvedValueOnce({
-      apiKey: 'env-fallback-key',
-      authSource: 'host_api_key',
-    });
+    hostAuthMocks.handleHostCodexProviderAuthFailure.mockResolvedValueOnce(undefined);
 
     fetchMock
       .mockResolvedValueOnce({
@@ -398,13 +395,24 @@ describe('AiProviderClient', () => {
 
     const result = await client.chat({
       messages: [{ role: 'user', content: 'test' }],
+      providerId: 'openai_codex',
+      baseUrl: 'https://api.openai.com/v1',
+      model: 'gpt-5.4',
       apiKey: 'host-codex-token',
       authSource: 'host_codex_auth',
+      fallbackRoute: {
+        providerId: 'default',
+        baseUrl: 'https://fallback.example/v1',
+        model: 'fallback-model',
+        apiKey: 'env-fallback-key',
+        authSource: 'host_api_key',
+      },
     });
 
     expect(result.text).toBe('done');
     expect(hostAuthMocks.handleHostCodexProviderAuthFailure).toHaveBeenCalledTimes(1);
     expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[1]?.[0]).toBe('https://fallback.example/v1/chat/completions');
     expect((fetchMock.mock.calls[1]?.[1] as { headers?: Record<string, string> }).headers?.Authorization).toBe(
       'Bearer env-fallback-key',
     );

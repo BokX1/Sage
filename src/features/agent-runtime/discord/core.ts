@@ -217,8 +217,8 @@ function formatHostAuthStatusText(
     return [
       '**Host Codex Auth**',
       `- **Configured**: No`,
-      `- **Runtime Source**: ${status.runtimeSource === 'host_api_key' ? 'Host API key fallback' : 'Missing host credentials'}`,
-      `- **Host API Key Fallback**: ${status.fallbackHostApiKeyConfigured ? 'Configured' : 'Missing'}`,
+      `- **Active Text Provider**: ${status.activeTextProvider === 'default' ? 'Configured fallback provider' : 'Missing'}`,
+      `- **Fallback Text Provider Auth**: ${status.fallbackTextProviderConfigured ? 'Configured' : 'Missing'}`,
       '- **Operator Action**: Run `npm run auth:codex:login` on the host or configure `AI_PROVIDER_API_KEY`.',
     ].join('\n');
   }
@@ -229,20 +229,21 @@ function formatHostAuthStatusText(
       : status.status === 'expired'
         ? 'Expired'
         : 'Refresh failed';
-  const runtimeSource =
-    status.runtimeSource === 'host_codex_auth' ? 'Host Codex auth' : 'Host API key fallback';
+  const activeProvider =
+    status.activeTextProvider === 'openai_codex'
+      ? 'OpenAI Codex'
+      : status.activeTextProvider === 'default'
+        ? 'Configured fallback provider'
+        : 'Missing';
   const lines = [
     '**Host Codex Auth**',
     `- **Configured**: Yes`,
     `- **Status**: ${statusLabel}`,
-    `- **Runtime Source**: ${runtimeSource}`,
+    `- **Active Text Provider**: ${activeProvider}`,
     `- **Expires At**: ${status.expiresAt}`,
-    `- **Host API Key Fallback**: ${status.fallbackHostApiKeyConfigured ? 'Configured' : 'Missing'}`,
+    `- **Fallback Text Provider Auth**: ${status.fallbackTextProviderConfigured ? 'Configured' : 'Missing'}`,
   ];
 
-  if (status.warning) {
-    lines.push(`- **Compatibility Warning**: ${status.warning}`);
-  }
   if (status.hasOperatorError) {
     lines.push('- **Operator Note**: A host-level auth error is recorded. Use the host CLI status flow for detailed diagnostics.');
   }

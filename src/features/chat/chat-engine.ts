@@ -1,6 +1,6 @@
 import { getUserProfileRecord, upsertUserProfile } from '../memory/userProfileRepo';
 import { updateProfileSummary } from '../memory/profileUpdater';
-import { resolveRuntimeCredential } from '../agent-runtime/apiKeyResolver';
+import { resolveTextProviderRoute } from '../agent-runtime/apiKeyResolver';
 import {
   compactUserProfile,
   needsCompaction,
@@ -176,8 +176,8 @@ export async function generateChatReply(params: {
 
     // 3. Update Profile (Background, Throttled)
     // Only trigger profile update every PROFILE_UPDATE_INTERVAL messages
-    const credential = await resolveRuntimeCredential(guildId);
-    const apiKey = credential.apiKey;
+    const profileRoute = await resolveTextProviderRoute(guildId, 'profile');
+    const apiKey = profileRoute.apiKey;
 
     if (apiKey) {
       const nowMs = Date.now();
@@ -218,8 +218,12 @@ export async function generateChatReply(params: {
           channelId: responseChannelId,
           guildId,
           userId,
+          providerId: profileRoute.providerId,
+          providerBaseUrl: profileRoute.baseUrl,
+          providerModel: profileRoute.model,
           apiKey,
-          apiKeySource: credential.authSource,
+          apiKeySource: profileRoute.authSource,
+          fallbackRoute: profileRoute.fallbackRoute,
         })
           .then((newSummary) => {
             if (newSummary && newSummary !== profileSummary) {

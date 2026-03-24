@@ -15,7 +15,7 @@ import { logger } from '../../platform/logging/logger';
 import { normalizeStrictlyPositiveInt } from '../../shared/utils/numbers';
 import { upsertTraceStart, updateTraceEnd } from './agent-trace-repo';
 import { buildAgentGraphConfig } from './langgraph/config';
-import { resolveRuntimeCredential } from './apiKeyResolver';
+import { resolveTextProviderRoute } from './apiKeyResolver';
 import { continueAgentGraphTurn, retryAgentGraphTurn, runAgentGraphTurn } from './langgraph/runtime';
 import {
   buildTaskRunLimitReply,
@@ -728,8 +728,8 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
       ? formatLiveVoiceContext({ guildId, voiceChannelId, now: new Date() })
       : null;
 
-  const runtimeCredential = await resolveRuntimeCredential(guildId);
-  const apiKey = runtimeCredential.apiKey;
+  const runtimeRoute = await resolveTextProviderRoute(guildId, 'main');
+  const apiKey = runtimeRoute.apiKey;
   if (!apiKey) {
     logger.warn(
       { guildId, channelId: responseChannelId, userId, originChannelId },
@@ -747,7 +747,7 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
       logger.warn({ error, guildId }, 'Failed to load guild Sage Persona (non-fatal)');
     }
   }
-  const model = appConfig.AI_PROVIDER_MAIN_AGENT_MODEL.trim();
+  const model = runtimeRoute.model;
   const graphConfig = buildAgentGraphConfig();
   const graphLimits = {
     maxRounds: graphConfig.sliceMaxSteps,
@@ -846,8 +846,11 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
       originChannelId,
       responseChannelId,
       guildId,
+      providerId: runtimeRoute.providerId,
+      baseUrl: runtimeRoute.baseUrl,
       apiKey,
-      apiKeySource: runtimeCredential.authSource,
+      apiKeySource: runtimeRoute.authSource,
+      fallbackRoute: runtimeRoute.fallbackRoute,
       model,
       temperature: 0.6,
       timeoutMs: appConfig.TIMEOUT_CHAT_MS,
@@ -1256,8 +1259,8 @@ export async function resumeWaitingTaskRunWithInput(
     };
   }
 
-  const runtimeCredential = await resolveRuntimeCredential(params.guildId);
-  if (!runtimeCredential.apiKey) {
+  const runtimeRoute = await resolveTextProviderRoute(params.guildId, 'main');
+  if (!runtimeRoute.apiKey) {
     return buildMissingApiKeyResult(params.guildId);
   }
 
@@ -1281,7 +1284,7 @@ export async function resumeWaitingTaskRunWithInput(
     };
   }
 
-  const model = appConfig.AI_PROVIDER_MAIN_AGENT_MODEL.trim();
+  const model = runtimeRoute.model;
   const activeToolNames = resolveActiveToolNames({
     authority: params.invokerAuthority,
     invokedBy: 'reply',
@@ -1303,8 +1306,11 @@ export async function resumeWaitingTaskRunWithInput(
         originChannelId: params.originChannelId,
         responseChannelId: params.responseChannelId,
         guildId: params.guildId,
-        apiKey: runtimeCredential.apiKey,
-        apiKeySource: runtimeCredential.authSource,
+        providerId: runtimeRoute.providerId,
+        baseUrl: runtimeRoute.baseUrl,
+        apiKey: runtimeRoute.apiKey,
+        apiKeySource: runtimeRoute.authSource,
+        fallbackRoute: runtimeRoute.fallbackRoute,
         model,
         temperature: 0.6,
         timeoutMs: appConfig.TIMEOUT_CHAT_MS,
@@ -1405,8 +1411,8 @@ export async function resumeBackgroundTaskRun(params: {
   canModerate?: boolean;
   onResponseSessionUpdate?: RunChatTurnParams['onResponseSessionUpdate'];
 }): Promise<RunChatTurnResult> {
-  const runtimeCredential = await resolveRuntimeCredential(params.guildId);
-  if (!runtimeCredential.apiKey) {
+  const runtimeRoute = await resolveTextProviderRoute(params.guildId, 'main');
+  if (!runtimeRoute.apiKey) {
     return buildMissingApiKeyResult(params.guildId);
   }
 
@@ -1421,7 +1427,7 @@ export async function resumeBackgroundTaskRun(params: {
     };
   }
 
-  const model = appConfig.AI_PROVIDER_MAIN_AGENT_MODEL.trim();
+  const model = runtimeRoute.model;
   const graphConfig = buildAgentGraphConfig();
   const limitKind = resolveTaskRunLimitKind({
     taskRun,
@@ -1460,8 +1466,11 @@ export async function resumeBackgroundTaskRun(params: {
         originChannelId: params.originChannelId,
         responseChannelId: params.responseChannelId,
         guildId: params.guildId,
-        apiKey: runtimeCredential.apiKey,
-        apiKeySource: runtimeCredential.authSource,
+        providerId: runtimeRoute.providerId,
+        baseUrl: runtimeRoute.baseUrl,
+        apiKey: runtimeRoute.apiKey,
+        apiKeySource: runtimeRoute.authSource,
+        fallbackRoute: runtimeRoute.fallbackRoute,
         model,
         temperature: 0.6,
         timeoutMs: appConfig.TIMEOUT_CHAT_MS,
@@ -1541,8 +1550,8 @@ export async function resumeBackgroundTaskRun(params: {
 export async function continueMatchedTaskRunWithInput(
   params: ContinueMatchedTaskRunWithInputParams,
 ): Promise<RunChatTurnResult> {
-  const runtimeCredential = await resolveRuntimeCredential(params.guildId);
-  if (!runtimeCredential.apiKey) {
+  const runtimeRoute = await resolveTextProviderRoute(params.guildId, 'main');
+  if (!runtimeRoute.apiKey) {
     return buildMissingApiKeyResult(params.guildId);
   }
 
@@ -1566,7 +1575,7 @@ export async function continueMatchedTaskRunWithInput(
     };
   }
 
-  const model = appConfig.AI_PROVIDER_MAIN_AGENT_MODEL.trim();
+  const model = runtimeRoute.model;
   const graphConfig = buildAgentGraphConfig();
   const activeToolNames = resolveActiveToolNames({
     authority: params.invokerAuthority,
@@ -1586,8 +1595,11 @@ export async function continueMatchedTaskRunWithInput(
         originChannelId: params.originChannelId,
         responseChannelId: params.responseChannelId,
         guildId: params.guildId,
-        apiKey: runtimeCredential.apiKey,
-        apiKeySource: runtimeCredential.authSource,
+        providerId: runtimeRoute.providerId,
+        baseUrl: runtimeRoute.baseUrl,
+        apiKey: runtimeRoute.apiKey,
+        apiKeySource: runtimeRoute.authSource,
+        fallbackRoute: runtimeRoute.fallbackRoute,
         model,
         temperature: 0.6,
         timeoutMs: appConfig.TIMEOUT_CHAT_MS,
@@ -1676,12 +1688,12 @@ export async function continueMatchedTaskRunWithInput(
 export async function retryFailedChatTurn(
   params: RetryFailedChatTurnParams,
 ): Promise<RunChatTurnResult> {
-  const runtimeCredential = await resolveRuntimeCredential(params.guildId);
-  if (!runtimeCredential.apiKey) {
+  const runtimeRoute = await resolveTextProviderRoute(params.guildId, 'main');
+  if (!runtimeRoute.apiKey) {
     return buildMissingApiKeyResult(params.guildId);
   }
 
-  const model = appConfig.AI_PROVIDER_MAIN_AGENT_MODEL.trim();
+  const model = runtimeRoute.model;
   const activeToolNames = resolveActiveToolNames({
     authority: params.invokerAuthority,
     invokedBy: 'component',
@@ -1729,8 +1741,11 @@ export async function retryFailedChatTurn(
         originChannelId: params.originChannelId,
         responseChannelId: params.responseChannelId,
         guildId: params.guildId,
-        apiKey: runtimeCredential.apiKey,
-        apiKeySource: runtimeCredential.authSource,
+        providerId: runtimeRoute.providerId,
+        baseUrl: runtimeRoute.baseUrl,
+        apiKey: runtimeRoute.apiKey,
+        apiKeySource: runtimeRoute.authSource,
+        fallbackRoute: runtimeRoute.fallbackRoute,
         model,
         temperature: 0.6,
         timeoutMs: appConfig.TIMEOUT_CHAT_MS,

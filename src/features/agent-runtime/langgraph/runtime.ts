@@ -29,7 +29,7 @@ import {
   toLangChainMessages,
   toLlmMessages,
 } from '../../../platform/llm/langchain-interop';
-import type { LLMAuthSource, LLMChatMessage } from '../../../platform/llm/llm-types';
+import type { LLMAuthSource, LLMChatMessage, LLMProviderId, LLMProviderRoute } from '../../../platform/llm/llm-types';
 import { config as appConfig } from '../../../platform/config/env';
 import { logger } from '../../../platform/logging/logger';
 import { createOrReuseApprovalReviewRequestFromSignal } from '../../admin/adminActionService';
@@ -372,7 +372,19 @@ const AgentGraphRuntimeSnapshotSchema = z.object({
   userId: z.string(),
   channelId: z.string(),
   guildId: z.string().nullable(),
+  providerId: z.string().optional(),
+  baseUrl: z.string().optional(),
   model: z.string().optional(),
+  fallbackRoute: z
+    .object({
+      providerId: z.string(),
+      baseUrl: z.string(),
+      model: z.string(),
+      apiKey: z.string().optional(),
+      authSource: z.enum(['host_codex_auth', 'host_api_key', 'guild_api_key', 'explicit']).optional(),
+    })
+    .nullable()
+    .optional(),
   temperature: z.number(),
   timeoutMs: z.number().optional(),
   maxTokens: z.number().optional(),
@@ -406,8 +418,19 @@ const AgentGraphConfigurableSchema = z
     userId: z.string().optional(),
     channelId: z.string().optional(),
     guildId: z.string().nullable().optional(),
+    providerId: z.string().optional(),
+    baseUrl: z.string().optional(),
     apiKey: z.string().optional(),
     apiKeySource: z.enum(['host_codex_auth', 'host_api_key', 'guild_api_key', 'explicit']).optional(),
+    fallbackRoute: z
+      .object({
+        providerId: z.string(),
+        baseUrl: z.string(),
+        model: z.string(),
+        apiKey: z.string().optional(),
+        authSource: z.enum(['host_codex_auth', 'host_api_key', 'guild_api_key', 'explicit']).optional(),
+      })
+      .optional(),
     model: z.string().optional(),
     temperature: z.number().optional(),
     timeoutMs: z.number().optional(),
@@ -578,8 +601,11 @@ const EMPTY_RUNTIME_CONTEXT: AgentGraphRuntimeContext = {
   userId: '',
   channelId: '',
   guildId: null,
+  providerId: undefined,
+  baseUrl: undefined,
   apiKey: undefined,
   apiKeySource: undefined,
+  fallbackRoute: undefined,
   model: undefined,
   temperature: 0.6,
   timeoutMs: undefined,
@@ -609,8 +635,11 @@ export interface StartAgentGraphTurnParams {
   originChannelId?: string;
   responseChannelId?: string;
   guildId: string | null;
+  providerId?: LLMProviderId | string;
+  baseUrl?: string;
   apiKey?: string;
   apiKeySource?: LLMAuthSource;
+  fallbackRoute?: LLMProviderRoute;
   model?: string;
   temperature: number;
   timeoutMs?: number;
@@ -1129,10 +1158,16 @@ function createRuntimeContext(params: StartAgentGraphTurnParams): AgentGraphRunt
 }
 
 function snapshotRuntimeContext(runtimeContext: AgentGraphRuntimeContext): AgentGraphPersistedContext {
-  const { apiKey, ...persisted } = runtimeContext;
+  const { apiKey, fallbackRoute, ...persisted } = runtimeContext;
   void apiKey;
   return {
     ...persisted,
+    fallbackRoute: fallbackRoute
+      ? {
+          ...fallbackRoute,
+          apiKey: undefined,
+        }
+      : undefined,
     promptMode: persisted.promptMode === 'waiting_follow_up' ? 'standard' : persisted.promptMode,
     waitingFollowUp: null,
   };
@@ -1309,9 +1344,12 @@ const MODEL_INVOKE_RETRY_POLICY = {
 } as const;
 
 function createGraphChatModel(params: {
+  providerId?: LLMProviderId | string;
+  baseUrl?: string;
   model?: string;
   apiKey?: string;
   apiKeySource?: LLMAuthSource;
+  fallbackRoute?: LLMProviderRoute;
   temperature: number;
   timeoutMs?: number;
   maxTokens?: number;
@@ -1319,10 +1357,12 @@ function createGraphChatModel(params: {
   const model = resolveGraphModelId(params.model);
 
   return new AiProviderChatModel({
-    baseUrl: appConfig.AI_PROVIDER_BASE_URL,
+    baseUrl: params.baseUrl?.trim() || appConfig.AI_PROVIDER_BASE_URL,
+    providerId: params.providerId,
     model,
     apiKey: params.apiKey ?? appConfig.AI_PROVIDER_API_KEY,
     authSource: params.apiKeySource,
+    fallbackRoute: params.fallbackRoute,
     temperature: params.temperature,
     timeout: params.timeoutMs,
     maxTokens: params.maxTokens,
@@ -1334,9 +1374,12 @@ interface DurableModelInvokeInput {
   activeToolNames: string[];
   toolContext: ToolExecutionContext;
   timeoutMs: number;
+  providerId?: LLMProviderId | string;
+  baseUrl?: string;
   model?: string;
   apiKey?: string;
   apiKeySource?: LLMAuthSource;
+  fallbackRoute?: LLMProviderRoute;
   temperature: number;
   requestTimeoutMs?: number;
   maxTokens?: number;
@@ -1378,9 +1421,12 @@ const invokeAgentModelTask = task(
   async (input: DurableModelInvokeInput): Promise<DurableModelInvokeOutput> => {
     const startedAt = Date.now();
     const baseModel = createGraphChatModel({
+      providerId: input.providerId,
+      baseUrl: input.baseUrl,
       model: input.model,
       apiKey: input.apiKey,
       apiKeySource: input.apiKeySource,
+      fallbackRoute: input.fallbackRoute,
       temperature: input.temperature,
       timeoutMs: input.requestTimeoutMs,
       maxTokens: input.maxTokens,
@@ -2395,9 +2441,12 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
       activeToolNames: runtimeContext.activeToolNames,
       toolContext,
       timeoutMs: graphConfig.toolTimeoutMs,
+      providerId: runtimeContext.providerId,
+      baseUrl: runtimeContext.baseUrl,
       model: runtimeContext.model,
       apiKey: runtimeContext.apiKey,
       apiKeySource: runtimeContext.apiKeySource,
+      fallbackRoute: runtimeContext.fallbackRoute,
       temperature: runtimeContext.temperature,
       requestTimeoutMs: runtimeContext.timeoutMs,
       maxTokens: runtimeContext.maxTokens,

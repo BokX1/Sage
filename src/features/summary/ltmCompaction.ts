@@ -1,5 +1,6 @@
 import { config } from '../../platform/config/env';
 import { logger } from '../../platform/logging/logger';
+import { resolveTextProviderRoute } from '../agent-runtime/apiKeyResolver';
 import { ChannelSummaryKind, ChannelSummaryStore } from './channelSummaryStore';
 import { getChannelSummaryStore } from './channelSummaryStoreRegistry';
 import { summarizeChannelProfile } from './summarizeChannelWindow';
@@ -95,7 +96,17 @@ export async function compactChannelProfile(
       actionItems: [],
       glossary: {},
     },
-    apiKey: options.apiKey,
+    ...(await (async () => {
+      const summaryRoute = await resolveTextProviderRoute(guildId, 'summary');
+      return {
+        providerId: summaryRoute.providerId,
+        providerBaseUrl: summaryRoute.baseUrl,
+        providerModel: summaryRoute.model,
+        apiKey: summaryRoute.apiKey,
+        apiKeySource: summaryRoute.authSource,
+        fallbackRoute: summaryRoute.fallbackRoute,
+      };
+    })()),
   });
 
   await store.upsertSummary({

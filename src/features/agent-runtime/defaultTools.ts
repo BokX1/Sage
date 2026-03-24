@@ -200,10 +200,9 @@ function emptySchedulerDiagnostics(): Record<string, unknown> {
 function emptyHostAuthDiagnostics(): Record<string, unknown> {
   return {
     configured: false,
-    runtimeSource: 'missing',
-    fallbackHostApiKeyConfigured: false,
-    compatibility: 'unknown',
-    warning: 'unavailable',
+    activeTextProvider: 'missing',
+    fallbackTextProviderConfigured: false,
+    hasOperatorError: false,
   };
 }
 

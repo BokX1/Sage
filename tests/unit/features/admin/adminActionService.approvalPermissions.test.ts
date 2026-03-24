@@ -170,6 +170,10 @@ vi.mock('@/features/settings/guildSettingsRepo', () => ({
   getGuildApiKey: mocks.getGuildApiKey,
 }));
 
+vi.mock('@/features/auth/hostCodexAuthService', () => ({
+  resolveHostCodexAccessToken: vi.fn(async () => undefined),
+}));
+
 vi.mock('@/features/settings/guildSagePersonaRepo', () => ({
   clearGuildSagePersona: mocks.clearGuildSagePersona,
   getGuildSagePersonaRecord: mocks.getGuildSagePersonaRecord,

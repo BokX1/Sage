@@ -10,7 +10,7 @@ import {
   summarizeChannelWindow,
   StructuredSummary,
 } from './summarizeChannelWindow';
-import { resolveRuntimeCredential } from '../agent-runtime/apiKeyResolver';
+import { resolveTextProviderRoute } from '../agent-runtime/apiKeyResolver';
 import type { LLMAuthSource } from '../../platform/llm/llm-types';
 
 export interface DirtyChannelParams {
@@ -167,14 +167,18 @@ export class ChannelSummaryScheduler {
       return;
     }
 
-    const credential = await resolveRuntimeCredential(state.guildId);
+    const summaryRoute = await resolveTextProviderRoute(state.guildId, 'summary');
 
     const rollingSummary = await this.summarizeWindow({
       messages,
       windowStart,
       windowEnd,
-      apiKey: credential.apiKey,
-      apiKeySource: credential.authSource,
+      providerId: summaryRoute.providerId,
+      providerBaseUrl: summaryRoute.baseUrl,
+      providerModel: summaryRoute.model,
+      apiKey: summaryRoute.apiKey,
+      apiKeySource: summaryRoute.authSource,
+      fallbackRoute: summaryRoute.fallbackRoute,
     });
 
     await this.summaryStore.upsertSummary({
@@ -193,7 +197,13 @@ export class ChannelSummaryScheduler {
       glossary: rollingSummary.glossary,
     });
 
-    await this.maybeUpdateProfileSummary(state, rollingSummary, false, credential.apiKey, credential.authSource);
+    await this.maybeUpdateProfileSummary(
+      state,
+      rollingSummary,
+      false,
+      summaryRoute.apiKey,
+      summaryRoute.authSource,
+    );
 
     this.dirtyChannels.delete(key);
   }

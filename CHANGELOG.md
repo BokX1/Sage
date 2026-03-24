@@ -27,6 +27,7 @@
 
 ### Added
 
+- Added a real OpenClaw-style host Codex login flow for self-hosted operators: `npm run auth:codex:login` now embeds the public Codex client, listens on `http://127.0.0.1:1455/auth/callback` first, and falls back to pasted redirect URLs/codes for remote or headless VMs instead of requiring operators to invent an OAuth client id.
 - Added shared host-level Codex auth for self-hosted Sage deployments, including encrypted token storage, automatic refresh with lease-based locking, operator-facing Discord status reads/cards, and new `npm run auth:codex:{login,status,clear}` flows so one VM login can power runtime chat across every guild on that host.
 - Added a Discord-native artifact lifecycle with staged attachment intake, text artifact creation, revision history, and publish/republish flows, so Sage can now manage Discord work products as tracked artifacts instead of only reading cached attachments or re-sending old files.
 - Added admin-configurable thread-on-invoke routing for Discord text and announcement channels, so opted-in channels can now push fresh Sage invokes into public message threads automatically while active or waiting task continuations keep using their existing response thread.
@@ -44,6 +45,12 @@
 - Added a third "Star on GitHub" CTA button to the website hero section alongside Get Sage Free and Self-Host Guide.
 
 ### Changed
+
+- Changed Sage's text-model routing so healthy host Codex auth now switches the main, profile, and summary lanes onto the built-in OpenAI/Codex `gpt-5.4` route automatically, while the existing `AI_PROVIDER_*` settings remain the fallback/default provider path instead of acting like a generic credential bucket.
+
+### Removed
+
+- Removed the operator-facing `OPENAI_CODEX_AUTH_CLIENT_ID` requirement from Sage's host-auth contract; the Codex login flow now uses the embedded public client configuration directly.
 
 - Changed host credential resolution so Sage now prefers healthy shared host Codex OAuth over `AI_PROVIDER_API_KEY`, while still falling back to the existing host API key path or guild Pollinations server-key activation when host auth is absent or unhealthy.
 - Changed Sage's Discord task-run routing contract from one implicit `channelId` to explicit origin and response surfaces, so auto-threaded replies, waiting-user-input resumes, retry flows, BYOP setup cards, and worker-delivered drafts/finals now stay attached to the correct visible Discord surface instead of assuming the invoke channel and reply channel are always the same.

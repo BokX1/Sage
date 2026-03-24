@@ -13,7 +13,7 @@ const mockConfig = vi.hoisted(() => ({
   AI_PROVIDER_API_KEY: '',
 }));
 
-const mockResolveRuntimeCredential = vi.hoisted(() => vi.fn());
+const mockResolveTextProviderRoute = vi.hoisted(() => vi.fn());
 
 vi.mock('@/platform/config/env', () => ({
   config: mockConfig,
@@ -24,7 +24,7 @@ vi.mock('@/features/settings/guildChannelSettings', () => ({
 }));
 
 vi.mock('@/features/agent-runtime/apiKeyResolver', () => ({
-  resolveRuntimeCredential: mockResolveRuntimeCredential,
+  resolveTextProviderRoute: mockResolveTextProviderRoute,
 }));
 
 import { InMemoryMessageStore } from '@/features/awareness/messageStore';
@@ -60,7 +60,12 @@ describe('ChannelSummaryScheduler', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(isLoggingEnabled).mockReturnValue(true);
-    mockResolveRuntimeCredential.mockResolvedValue({});
+    mockResolveTextProviderRoute.mockResolvedValue({
+      providerId: 'default',
+      lane: 'summary',
+      baseUrl: 'https://fallback.example/v1',
+      model: 'summary-model',
+    });
   });
 
   it('upserts rolling summary and respects min interval', async () => {

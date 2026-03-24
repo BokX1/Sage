@@ -3,7 +3,7 @@
 How Sage selects, constrains, and validates models in the current LangGraph-native runtime.
 
 > [!NOTE]
-> Message handling runs through one agent loop. The runtime model, profile model, and summary model are all explicitly configured through `AI_PROVIDER_*` variables.
+> Message handling runs through one agent loop. The fallback/default text provider is still configured through `AI_PROVIDER_*`, but healthy host Codex auth now overrides all three text lanes automatically with the built-in OpenAI/Codex route.
 
 ---
 
@@ -21,11 +21,12 @@ How Sage selects, constrains, and validates models in the current LangGraph-nati
 
 Sage is provider-neutral at the runtime layer:
 
-- Runtime chat uses `AI_PROVIDER_BASE_URL` plus `AI_PROVIDER_MAIN_AGENT_MODEL`
-- Profile updates use `AI_PROVIDER_PROFILE_AGENT_MODEL`
-- Channel summaries use `AI_PROVIDER_SUMMARY_AGENT_MODEL`
+- If healthy host Codex auth exists, runtime chat, profile updates, and channel summaries all route to OpenAI/Codex with the built-in `gpt-5.4` model
+- Otherwise runtime chat uses `AI_PROVIDER_BASE_URL` plus `AI_PROVIDER_MAIN_AGENT_MODEL`
+- Profile updates then use `AI_PROVIDER_PROFILE_AGENT_MODEL`
+- Channel summaries then use `AI_PROVIDER_SUMMARY_AGENT_MODEL`
 - `AI_PROVIDER_MODEL_PROFILES_JSON` is optional; use the live doctor/probe checks to verify whether the main agent model really supports Sage's Chat Completions tool-calling contract
-- Sage does not fetch a remote model catalog and does not ship built-in fallback model ids
+- Sage does not fetch a remote model catalog; the only built-in text route is the host-auth-driven OpenAI/Codex override
 
 This behavior is implemented in `runChatTurn` and the shared AI-provider transport/model adapter.
 
@@ -39,17 +40,19 @@ flowchart TD
     classDef model fill:#d4edda,stroke:#155724,stroke-width:2px,color:black
 
     A[Incoming message]:::logic --> B[runChatTurn]:::logic
-    B --> C[Read explicit AI provider config]:::logic
-    C --> D[Primary compatible chat response]:::model
-    D --> E{Tool calls needed?}:::logic
-    E -->|Yes| F[LangGraph runtime]:::logic
-    F --> G[Final answer + attachments]:::model
-    E -->|No| G
+    B --> C{"Healthy host Codex auth?"}:::logic
+    C -->|Yes| D["OpenAI/Codex route (gpt-5.4)"]:::model
+    C -->|No| E["Configured fallback text provider"]:::model
+    D --> F{Tool calls needed?}:::logic
+    E --> F
+    F -->|Yes| G[LangGraph runtime]:::logic
+    G --> H[Final answer + attachments]:::model
+    F -->|No| H
 ```
 
 ### Key Rules
 
-1. Chat turns use one explicitly configured runtime model per turn.
+1. Chat turns use one resolved provider route per turn: Codex when host auth is healthy, otherwise the configured fallback/default provider.
 2. Tool usage extends capability without changing the runtime into a different route or agent.
 3. Image and web capabilities come from tools plus the configured model-profile data, not from a separate runtime catalog.
 4. Provider reasoning stays internal to the model. Sage does not surface or persist provider reasoning text in normal operation.

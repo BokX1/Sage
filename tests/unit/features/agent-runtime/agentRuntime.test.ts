@@ -109,7 +109,7 @@ vi.mock('@/features/settings/guildSettingsRepo', () => ({
 }));
 
 vi.mock('@/features/auth/hostCodexAuthService', () => ({
-  resolvePreferredHostAuthCredential: vi.fn(async () => ({})),
+  resolveHostCodexAccessToken: vi.fn(async () => undefined),
 }));
 
 vi.mock('@/features/settings/guildSagePersonaRepo', () => ({

@@ -1,7 +1,7 @@
 import { createLLMClient } from '../../platform/llm';
 import { config as appConfig } from '../../platform/config/env';
 import { logger } from '../../platform/logging/logger';
-import { LLMAuthSource, LLMClient, LLMRequest } from '../../platform/llm/llm-types';
+import { LLMAuthSource, LLMClient, LLMProviderId, LLMProviderRoute, LLMRequest } from '../../platform/llm/llm-types';
 import { limitByKey } from '../../shared/async/perKeyConcurrency';
 import { getRecentMessages } from '../awareness/channelRingBuffer';
 import { buildTranscriptBlock } from '../awareness/transcriptBuilder';
@@ -82,13 +82,9 @@ function getAnalystClient(): LLMClient {
     return analystClientCache;
   }
 
-  const profileAgentModel = appConfig.AI_PROVIDER_PROFILE_AGENT_MODEL.trim();
-  analystClientCache = createLLMClient({ agentModel: profileAgentModel });
+  analystClientCache = createLLMClient();
 
-  logger.debug(
-    { model: profileAgentModel },
-    'Analyst client initialized',
-  );
+  logger.debug('Analyst client initialized');
 
   return analystClientCache;
 }
@@ -108,8 +104,12 @@ export async function updateProfileSummary(params: {
   channelId: string;
   guildId: string | null;
   userId: string;
+  providerId?: LLMProviderId | string;
+  providerBaseUrl?: string;
+  providerModel?: string;
   apiKey?: string;
   apiKeySource?: LLMAuthSource;
+  fallbackRoute?: LLMProviderRoute;
 }): Promise<string | null> {
   const {
     previousSummary,
@@ -193,6 +193,10 @@ export async function updateProfileSummary(params: {
         replyTarget: replyTarget ?? null,
         apiKey,
         apiKeySource: params.apiKeySource,
+        providerId: params.providerId,
+        providerBaseUrl: params.providerBaseUrl,
+        providerModel: params.providerModel,
+        fallbackRoute: params.fallbackRoute,
       });
 
       if (!updatedSummaryText) {
@@ -239,10 +243,26 @@ async function runAnalyst(params: {
   userMessage: string;
   assistantReply: string;
   replyTarget?: ReplyTargetContext | null;
+  providerId?: LLMProviderId | string;
+  providerBaseUrl?: string;
+  providerModel?: string;
   apiKey?: string;
   apiKeySource?: LLMAuthSource;
+  fallbackRoute?: LLMProviderRoute;
 }): Promise<string | null> {
-  const { previousSummary, recentHistory, userMessage, assistantReply, replyTarget, apiKey, apiKeySource } = params;
+  const {
+    previousSummary,
+    recentHistory,
+    userMessage,
+    assistantReply,
+    replyTarget,
+    providerId,
+    providerBaseUrl,
+    providerModel,
+    apiKey,
+    apiKeySource,
+    fallbackRoute,
+  } = params;
   const client = getAnalystClient();
 
   const replyTargetText = extractTextFromMessageContent(replyTarget?.content);
@@ -279,10 +299,14 @@ Output the updated summary:`;
       { role: 'system', content: ANALYST_SYSTEM_PROMPT },
       { role: 'user', content: userPrompt },
     ],
+    providerId,
+    baseUrl: providerBaseUrl,
+    model: providerModel,
     temperature: 0.3, // Analyst temperature: creative but focused
     maxTokens: 2048,
     apiKey,
     authSource: apiKeySource,
+    fallbackRoute,
     timeout: appConfig.TIMEOUT_MEMORY_MS, // Relaxed timeout for background
   };
 
