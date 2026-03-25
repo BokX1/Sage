@@ -70,6 +70,7 @@ Complete index of all environment variables used by Sage, with descriptions and 
 | `OPENAI_CODEX_AUTH_TOKEN_URL` | Token URL for the host-level Codex OAuth flow | OpenAI token endpoint |
 | `OPENAI_CODEX_AUTH_REDIRECT_URI` | Redirect URI Sage expects during the host-level Codex OAuth flow | `http://localhost:1455/auth/callback` |
 | `OPENAI_CODEX_AUTH_SCOPES` | OAuth scopes for the shared host-level Codex login | `openid profile email offline_access` |
+| `OPENAI_CODEX_REASONING_EFFORT` | Optional Codex reasoning effort override for Sage's built-in host Codex route (`none`, `low`, `medium`, `high`, `xhigh`) | *(empty = backend default)* |
 | `AI_PROVIDER_MAIN_AGENT_MODEL` | Main-agent model for Sage's fallback/default text provider route | *(required)* |
 | `AI_PROVIDER_MODEL_PROFILES_JSON` | Optional JSON object keyed by model id with token-budget limits Sage should trust; use the live provider probe to verify Chat Completions tool-calling support instead of relying on this field for runtime compatibility | *(optional)* |
 

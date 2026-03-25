@@ -136,6 +136,7 @@ const providerToolControlsSupportCache = new Map<string, boolean>();
 const CODEX_BASE_URL = 'https://chatgpt.com/backend-api';
 const CODEX_RESPONSES_BETA = 'responses=experimental';
 const CODEX_ACCOUNT_ID_CLAIM = 'https://api.openai.com/auth';
+const CODEX_REASONING_EFFORTS = new Set(['none', 'low', 'medium', 'high', 'xhigh']);
 
 function buildProviderToolControlsCacheKey(baseUrl: string, model: string): string {
   return `${baseUrl}::${model.trim().toLowerCase()}`;
@@ -464,6 +465,22 @@ function resolveCodexResponsesUrl(rawBaseUrl: string): string {
     return `${normalized}/responses`;
   }
   return `${normalized}/codex/responses`;
+}
+
+function resolveConfiguredCodexReasoningEffort():
+  | 'none'
+  | 'low'
+  | 'medium'
+  | 'high'
+  | 'xhigh'
+  | undefined {
+  const rawValue = process.env.OPENAI_CODEX_REASONING_EFFORT?.trim().toLowerCase();
+  if (!rawValue) {
+    return undefined;
+  }
+  return CODEX_REASONING_EFFORTS.has(rawValue)
+    ? (rawValue as 'none' | 'low' | 'medium' | 'high' | 'xhigh')
+    : undefined;
 }
 
 async function* parseServerSentEvents(response: Response): AsyncGenerator<CodexResponseEvent, void, void> {
@@ -1018,6 +1035,11 @@ export class AiProviderClient implements LLMClient {
       text: { verbosity: 'medium' },
       include: ['reasoning.encrypted_content'],
     };
+
+    const reasoningEffort = resolveConfiguredCodexReasoningEffort();
+    if (reasoningEffort) {
+      payload.reasoning = { effort: reasoningEffort };
+    }
 
     if (normalizedTools && normalizedTools.length > 0) {
       payload.tools = normalizedTools;

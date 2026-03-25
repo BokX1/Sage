@@ -281,6 +281,7 @@ export const testDefaults: Record<string, string> = {
   OPENAI_CODEX_AUTH_TOKEN_URL: 'https://auth.openai.com/oauth/token',
   OPENAI_CODEX_AUTH_REDIRECT_URI: 'http://localhost:1455/auth/callback',
   OPENAI_CODEX_AUTH_SCOPES: 'openid offline_access profile email',
+  OPENAI_CODEX_REASONING_EFFORT: '',
   AI_PROVIDER_MAIN_AGENT_MODEL: 'test-main-agent-model',
   AI_PROVIDER_PROFILE_AGENT_MODEL: 'test-profile-agent-model',
   AI_PROVIDER_SUMMARY_AGENT_MODEL: 'test-summary-agent-model',
@@ -478,6 +479,9 @@ export const envSchema = z.object({
   OPENAI_CODEX_AUTH_TOKEN_URL: httpsUrlSchema.default('https://auth.openai.com/oauth/token'),
   OPENAI_CODEX_AUTH_REDIRECT_URI: z.string().trim().url().default('http://localhost:1455/auth/callback'),
   OPENAI_CODEX_AUTH_SCOPES: z.string().trim().min(1).default('openid offline_access profile email'),
+  OPENAI_CODEX_REASONING_EFFORT: z
+    .enum(['', 'none', 'low', 'medium', 'high', 'xhigh'])
+    .default(''),
   AI_PROVIDER_MAIN_AGENT_MODEL: z.string().trim().min(1),
   AI_PROVIDER_PROFILE_AGENT_MODEL: z.string().trim().min(1),
   AI_PROVIDER_SUMMARY_AGENT_MODEL: z.string().trim().min(1),

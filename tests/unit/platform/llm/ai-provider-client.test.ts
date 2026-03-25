@@ -79,11 +79,17 @@ function parseRequestBody(fetchMock: FetchMock, callIndex: number): RequestBody 
 
 describe('AiProviderClient', () => {
   let fetchMock: FetchMock;
+  const originalCodexReasoningEffort = process.env.OPENAI_CODEX_REASONING_EFFORT;
 
   beforeEach(() => {
     fetchMock = stubFetch();
     AiProviderClient.resetProviderToolControlsSupportCacheForTests();
     hostAuthMocks.handleHostCodexProviderAuthFailure.mockReset().mockResolvedValue({});
+    if (originalCodexReasoningEffort === undefined) {
+      delete process.env.OPENAI_CODEX_REASONING_EFFORT;
+    } else {
+      process.env.OPENAI_CODEX_REASONING_EFFORT = originalCodexReasoningEffort;
+    }
   });
 
   it('rejects non-HTTP(S) base URLs', () => {
@@ -616,6 +622,42 @@ describe('AiProviderClient', () => {
     const body = parseRequestBody(fetchMock, 0);
     expect(body.instructions).toBe('You are Sage, a helpful assistant.');
     expect(body).not.toHaveProperty('temperature');
+    expect(body).not.toHaveProperty('reasoning');
+  });
+
+  it('forwards configured reasoning effort to the Codex backend', async () => {
+    process.env.OPENAI_CODEX_REASONING_EFFORT = 'medium';
+    const client = new AiProviderClient({ baseUrl: 'https://chatgpt.com/backend-api', model: 'gpt-5.4', maxRetries: 0 });
+
+    fetchMock.mockResolvedValueOnce(
+      createSseResponse([
+        {
+          type: 'response.completed',
+          response: {
+            status: 'completed',
+            usage: {
+              input_tokens: 1,
+              output_tokens: 1,
+              total_tokens: 2,
+            },
+          },
+        },
+      ]),
+    );
+
+    await client.chat({
+      providerId: 'openai_codex',
+      baseUrl: 'https://chatgpt.com/backend-api',
+      model: 'gpt-5.4',
+      apiKey: createCodexJwtToken('acct_codex'),
+      authSource: 'host_codex_auth',
+      messages: [{ role: 'user', content: 'hello' }],
+    });
+
+    const body = parseRequestBody(fetchMock, 0) as RequestBody & {
+      reasoning?: { effort?: string };
+    };
+    expect(body.reasoning).toEqual({ effort: 'medium' });
   });
 
   it('does not retry after an abort error', async () => {

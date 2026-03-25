@@ -28,6 +28,7 @@
 ### Added
 
 - Added a real OpenClaw-style host Codex login flow for self-hosted operators: `npm run auth:codex:login` now embeds the public Codex client, listens on `http://localhost:1455/auth/callback` first, and falls back to pasted redirect URLs/codes for remote or headless VMs instead of requiring operators to invent an OAuth client id.
+- Added an optional `OPENAI_CODEX_REASONING_EFFORT` env override so self-hosted operators can pin Sage's built-in Codex route to `none`, `low`, `medium`, `high`, or `xhigh` without changing the fallback/default provider configuration.
 
 ### Fixed
 
