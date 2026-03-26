@@ -276,6 +276,7 @@ vi.mock('@/features/agent-runtime/toolControlSignals', () => ({
 import {
   __getAgentGraphStateForTests,
   __runAgentGraphCommandForTests,
+  __setAgentGraphStateForTests,
   continueAgentGraphTurn,
   runAgentGraphTurn,
   runGraphValueStream,
@@ -3444,6 +3445,184 @@ describe('runGraphValueStream', () => {
         'I picked that back up on the same task thread, confirmed the stale reply state was cleared, and finished the follow-up cleanly.',
       surfaceAttached: true,
     });
+  });
+
+  it('recovers a stale terminal running checkpoint before continue can fork another final branch', async () => {
+    await shutdownAgentGraphRuntime();
+
+    await __runAgentGraphCommandForTests({
+      threadId: 'trace-stale-terminal-running-recover-1',
+      goto: 'finalize_turn',
+      context: {
+        traceId: 'trace-stale-terminal-running-recover-1',
+        threadId: 'trace-stale-terminal-running-recover-1',
+        userId: 'user-1',
+        channelId: 'channel-1',
+        guildId: 'guild-1',
+        apiKey: 'test-api-key',
+        model: 'test-main-agent-model',
+        temperature: 0.6,
+        timeoutMs: 1_000,
+        maxTokens: 500,
+        invokedBy: 'component',
+        invokerIsAdmin: false,
+        invokerCanModerate: false,
+        activeToolNames: ['repo_search_code'],
+        routeKind: 'background_resume',
+        currentTurn: {
+          invokerUserId: 'user-1',
+          invokerDisplayName: 'User One',
+          messageId: 'message-stale-terminal-running-recover-1',
+          guildId: 'guild-1',
+          channelId: 'channel-1',
+          invokedBy: 'component',
+          mentionedUserIds: [],
+          isDirectReply: false,
+          replyTargetMessageId: null,
+          replyTargetAuthorId: null,
+          botUserId: 'sage-bot',
+        },
+        replyTarget: null,
+      },
+      state: {
+        completionKind: 'final_answer',
+        stopReason: 'assistant_turn_completed',
+        replyText: 'Gemma 3 is basically a family of open multimodal models from Google.',
+        responseSession: {
+          responseSessionId: 'trace-stale-terminal-running-recover-1',
+          status: 'final',
+          latestText: 'Gemma 3 is basically a family of open multimodal models from Google.',
+          draftRevision: 2,
+          sourceMessageId: 'message-source-stale-terminal-running-recover-1',
+          responseMessageId: 'response-stale-terminal-running-recover-1',
+          surfaceAttached: true,
+          overflowMessageIds: [],
+          linkedArtifactMessageIds: [],
+        },
+        messages: [
+          new HumanMessage({ content: 'What is Gemma 3?' }),
+          new AIMessage({ content: 'Gemma 3 is basically a family of open multimodal models from Google.' }),
+        ],
+        finalization: {
+          attempted: false,
+          succeeded: true,
+          completedAt: '2026-03-25T16:05:30.000Z',
+          stopReason: 'assistant_turn_completed',
+          completionKind: 'final_answer',
+          deliveryDisposition: 'response_session',
+          finalizedBy: 'assistant_no_tool_calls',
+          draftRevision: 1,
+          contextFrame: {
+            objective: 'Answer the current user request.',
+            verifiedFacts: [],
+            completedActions: [],
+            openQuestions: [],
+            pendingApprovals: [],
+            deliveryState: 'final',
+            nextAction: 'Finalize the assistant reply.',
+          },
+        },
+      },
+    });
+    await __setAgentGraphStateForTests(
+      'trace-stale-terminal-running-recover-1',
+      {
+        graphStatus: 'running',
+        responseSession: {
+          responseSessionId: 'trace-stale-terminal-running-recover-1',
+          status: 'draft',
+          latestText: 'Gemma 3 is basically a family of open multimodal models from Google.',
+          draftRevision: 2,
+          sourceMessageId: 'message-source-stale-terminal-running-recover-1',
+          responseMessageId: 'response-stale-terminal-running-recover-1',
+          surfaceAttached: true,
+          overflowMessageIds: [],
+          linkedArtifactMessageIds: [],
+        },
+        finalization: {
+          attempted: false,
+          succeeded: true,
+          completedAt: '2026-03-25T16:05:30.000Z',
+          stopReason: 'assistant_turn_completed',
+          completionKind: 'final_answer',
+          deliveryDisposition: 'response_session',
+          finalizedBy: 'assistant_no_tool_calls',
+          draftRevision: 1,
+          contextFrame: {
+            objective: 'Answer the current user request.',
+            verifiedFacts: [],
+            completedActions: [],
+            openQuestions: [],
+            pendingApprovals: [],
+            deliveryState: 'final',
+            nextAction: 'Finalize the assistant reply.',
+          },
+        },
+      },
+      'continue_route',
+    );
+    const seededRunningState = await __getAgentGraphStateForTests('trace-stale-terminal-running-recover-1');
+    expect(seededRunningState?.graphStatus).toBe('running');
+    expect(seededRunningState?.replyText).toBe(
+      'Gemma 3 is basically a family of open multimodal models from Google.',
+    );
+
+    const resumed = await continueAgentGraphTurn({
+      threadId: 'trace-stale-terminal-running-recover-1',
+      runId: 'trace-stale-terminal-running-recover-1b',
+      runName: 'sage_agent_background_resume',
+      context: {
+        traceId: 'trace-stale-terminal-running-recover-1b',
+        threadId: 'trace-stale-terminal-running-recover-1',
+        userId: 'user-1',
+        channelId: 'channel-1',
+        guildId: 'guild-1',
+        apiKey: 'test-api-key',
+        model: 'test-main-agent-model',
+        temperature: 0.6,
+        timeoutMs: 1_000,
+        maxTokens: 500,
+        invokedBy: 'component',
+        invokerIsAdmin: false,
+        invokerCanModerate: false,
+        activeToolNames: ['repo_search_code'],
+        routeKind: 'background_resume',
+        currentTurn: {
+          invokerUserId: 'user-1',
+          invokerDisplayName: 'User One',
+          messageId: 'message-stale-terminal-running-recover-1',
+          guildId: 'guild-1',
+          channelId: 'channel-1',
+          invokedBy: 'component',
+          mentionedUserIds: [],
+          isDirectReply: false,
+          replyTargetMessageId: null,
+          replyTargetAuthorId: null,
+          botUserId: 'sage-bot',
+        },
+        replyTarget: null,
+      },
+    });
+
+    expect(resumed.graphStatus).toBe('completed');
+    expect(resumed.replyText).toBe('Gemma 3 is basically a family of open multimodal models from Google.');
+    expect(resumed.responseSession).toMatchObject({
+      responseSessionId: 'trace-stale-terminal-running-recover-1',
+      responseMessageId: 'response-stale-terminal-running-recover-1',
+      status: 'final',
+      latestText: 'Gemma 3 is basically a family of open multimodal models from Google.',
+      surfaceAttached: true,
+    });
+    expect(modelInvokeMock).not.toHaveBeenCalled();
+    const resumedState = await __getAgentGraphStateForTests('trace-stale-terminal-running-recover-1');
+    if (!resumedState) {
+      throw new Error('Expected the recovered graph state to be persisted.');
+    }
+    expect(resumedState.graphStatus).toBe('completed');
+    expect(resumedState.finalization.attempted).toBe(true);
+    expect(resumedState.replyText).toBe(
+      'Gemma 3 is basically a family of open multimodal models from Google.',
+    );
   });
 
   it('treats plain-text natural-language questions without runtime control as final answers', async () => {

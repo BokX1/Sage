@@ -757,6 +757,30 @@ function resolveVisibleReplyTextFromState(
   return cleanedReplyText;
 }
 
+function normalizeRecoveredTerminalMessages(
+  messages: BaseMessage[],
+  completionKind: AgentGraphState['completionKind'],
+  effectiveReplyText: string,
+): BaseMessage[] {
+  if (completionKind !== 'final_answer' || !effectiveReplyText) {
+    return messages;
+  }
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (!AIMessage.isInstance(message)) {
+      continue;
+    }
+    const nextMessages = [...messages];
+    nextMessages[index] = new AIMessage({
+      ...message.toDict().data,
+      content: effectiveReplyText,
+      tool_calls: Array.isArray(message.tool_calls) ? message.tool_calls : [],
+    });
+    return nextMessages;
+  }
+  return [...messages, new AIMessage({ content: effectiveReplyText })];
+}
+
 function buildDefaultFinalization(): ToolCallFinalizationEvent {
   return {
     attempted: false,
@@ -3883,6 +3907,28 @@ export async function __getAgentGraphStateForTests(threadId: string): Promise<Ag
   return values ? (values as AgentGraphState) : null;
 }
 
+export async function __setAgentGraphStateForTests(
+  threadId: string,
+  state: Partial<AgentGraphState>,
+  asNode: GraphNodeName = 'finalize_turn',
+): Promise<void> {
+  const runtime = await getRuntime();
+  await runtime.graph.updateState(
+    buildRunnableConfig({
+      threadId,
+      recursionLimit: runtime.config.recursionLimit,
+      runId: `${threadId}:state-set`,
+      runName: 'sage_agent_state_set',
+      context: {
+        threadId,
+        traceId: threadId,
+      },
+    }),
+    state,
+    asNode,
+  );
+}
+
 function buildInitialState(params: StartAgentGraphTurnParams): AgentGraphState {
   return {
     messages: params.messages,
@@ -4138,6 +4184,167 @@ function resolveContinueNode(state: AgentGraphState): GraphNodeName {
   return 'decide_turn';
 }
 
+function isRecoverableTerminalRunningContinueState(state: AgentGraphState): boolean {
+  if (state.graphStatus !== 'running') {
+    return false;
+  }
+  if (state.pendingInterrupt || state.waitingState) {
+    return false;
+  }
+  if (
+    state.pendingReadCalls.length > 0 ||
+    state.pendingReadExecutionCalls.length > 0 ||
+    state.pendingWriteCalls.length > 0
+  ) {
+    return false;
+  }
+  if (
+    state.completionKind !== 'final_answer' &&
+    state.completionKind !== 'runtime_failure' &&
+    state.completionKind !== 'cancelled' &&
+    state.completionKind !== 'loop_guard'
+  ) {
+    return false;
+  }
+  if (
+    state.stopReason !== 'assistant_turn_completed' &&
+    state.stopReason !== 'runtime_failure' &&
+    state.stopReason !== 'cancelled' &&
+    state.stopReason !== 'loop_guard'
+  ) {
+    return false;
+  }
+  if (state.completionKind === 'final_answer' && getLastAiToolCalls(state.messages as BaseMessage[]).length > 0) {
+    return false;
+  }
+  return Boolean(resolveVisibleReplyTextFromState(state));
+}
+
+async function recoverTerminalRunningContinueState(params: {
+  runtime: AgentGraphRuntime;
+  runId: string;
+  threadId: string;
+  mergedContext: AgentGraphRuntimeContext;
+  state: AgentGraphState;
+  onStateUpdate?: (state: AgentGraphState) => Promise<void> | void;
+}): Promise<AgentGraphState | null> {
+  if (!isRecoverableTerminalRunningContinueState(params.state)) {
+    return null;
+  }
+
+  const effectiveReplyText =
+    resolveVisibleReplyTextFromState(params.state) ||
+    buildRuntimeFailureReply({
+      kind: 'turn',
+      category: 'runtime',
+    });
+  const completionTimestamp = { iso: new Date().toISOString() };
+  const frame = buildContextFrame({
+    ...params.state,
+    replyText: effectiveReplyText,
+  });
+  const responseSession =
+    params.state.responseSession.status === 'final' || params.state.responseSession.status === 'failed'
+      ? {
+          ...params.state.responseSession,
+          latestText: effectiveReplyText || params.state.responseSession.latestText,
+        }
+      : bumpResponseSession({
+          state: params.state,
+          latestText: effectiveReplyText || params.state.responseSession.latestText,
+          status:
+            params.state.completionKind === 'loop_guard' || params.state.completionKind === 'runtime_failure'
+              ? 'failed'
+              : 'final',
+        });
+  const recoveredState: AgentGraphState = {
+    ...params.state,
+    messages: normalizeRecoveredTerminalMessages(
+      params.state.messages as BaseMessage[],
+      params.state.completionKind,
+      effectiveReplyText,
+    ),
+    replyText: effectiveReplyText,
+    resumeContext: snapshotRuntimeContext(params.mergedContext),
+    responseSession,
+    contextFrame: frame,
+    graphStatus: 'completed',
+    yieldReason: null,
+    finalization: {
+      attempted: true,
+      succeeded: true,
+      completedAt: completionTimestamp.iso,
+      stopReason: params.state.stopReason,
+      completionKind: params.state.completionKind ?? 'runtime_failure',
+      deliveryDisposition: params.state.deliveryDisposition,
+      finalizedBy:
+        params.state.stopReason === 'loop_guard'
+          ? 'loop_guard'
+          : params.state.stopReason === 'runtime_failure'
+            ? 'runtime_failure'
+            : params.state.stopReason === 'cancelled'
+              ? 'cancelled'
+              : 'assistant_no_tool_calls',
+      draftRevision: responseSession.draftRevision,
+      contextFrame: frame,
+      rebudgeting: params.state.finalization.rebudgeting,
+    },
+  };
+
+  try {
+    await params.runtime.graph.updateState(
+      buildRunnableConfig({
+        threadId: params.threadId,
+        recursionLimit: params.runtime.config.recursionLimit,
+        runId: `${params.runId}:continue-stale-terminal-recovery`,
+        runName: 'sage_agent_continue_stale_terminal_recovery',
+        context: params.mergedContext,
+      }),
+      {
+        replyText: recoveredState.replyText,
+        resumeContext: recoveredState.resumeContext,
+        responseSession: recoveredState.responseSession,
+        contextFrame: recoveredState.contextFrame,
+        graphStatus: recoveredState.graphStatus,
+        yieldReason: recoveredState.yieldReason,
+        finalization: recoveredState.finalization,
+      },
+      'finalize_turn',
+    );
+    await params.onStateUpdate?.(recoveredState);
+    logger.warn(
+      {
+        threadId: params.threadId,
+        traceId: params.mergedContext.traceId,
+        completionKind: params.state.completionKind,
+        stopReason: params.state.stopReason,
+      },
+      'Recovered a stale terminal running graph checkpoint before continue could fork another terminal branch',
+    );
+    return recoveredState;
+  } catch (error) {
+    logger.warn(
+      {
+        error,
+        threadId: params.threadId,
+        traceId: params.mergedContext.traceId,
+      },
+      'Failed to persist a stale terminal running graph checkpoint recovery before continue; returning the repaired state without checkpoint mutation',
+    );
+  }
+  await params.onStateUpdate?.(recoveredState);
+  logger.warn(
+    {
+      threadId: params.threadId,
+      traceId: params.mergedContext.traceId,
+      completionKind: params.state.completionKind,
+      stopReason: params.state.stopReason,
+    },
+    'Recovered a stale terminal running graph checkpoint before continue could fork another terminal branch',
+  );
+  return recoveredState;
+}
+
 export async function continueAgentGraphTurn(
   params: ContinueAgentGraphTurnParams,
 ): Promise<AgentGraphTurnResult> {
@@ -4176,26 +4383,43 @@ export async function continueAgentGraphTurn(
     ],
     replyTarget: params.context?.replyTarget ?? existingState.resumeContext.replyTarget ?? null,
   };
+  const recoveredTerminalState = await recoverTerminalRunningContinueState({
+    runtime,
+    runId,
+    threadId: params.threadId,
+    mergedContext,
+    state: existingState,
+    onStateUpdate: params.onStateUpdate,
+  });
+  const continueState = recoveredTerminalState ?? existingState;
+  const hasFreshContinueInput =
+    (params.appendedMessages?.length ?? 0) > 0 ||
+    !!params.pendingUserInterrupt ||
+    params.clearWaitingState === true;
+  if (recoveredTerminalState && !hasFreshContinueInput) {
+    await telemetry.flush();
+    return normalizeGraphResult(recoveredTerminalState, telemetry.getRunReferences(runId));
+  }
   const isWaitingFollowUpResume =
     params.clearWaitingState &&
-    existingState.waitingState?.kind === 'user_input' &&
+    continueState.waitingState?.kind === 'user_input' &&
     mergedContext.promptMode === 'waiting_follow_up';
   const reopenedResponseSession = isWaitingFollowUpResume
     ? buildFollowUpResumeResponseSession({
         runtimeContext: mergedContext,
         responseSessionId: runId,
       })
-    : existingState.responseSession.status === 'final' || existingState.responseSession.status === 'failed'
+    : continueState.responseSession.status === 'final' || continueState.responseSession.status === 'failed'
       ? {
-          ...existingState.responseSession,
+          ...continueState.responseSession,
           status: 'draft' as const,
         }
-      : existingState.responseSession;
+      : continueState.responseSession;
   const shouldInjectPendingUserInterrupt =
     !!params.pendingUserInterrupt &&
-    !hasInjectedUserSteerMessage(existingState.messages as BaseMessage[], params.pendingUserInterrupt);
+    !hasInjectedUserSteerMessage(continueState.messages as BaseMessage[], params.pendingUserInterrupt);
   const continueMessages = [
-    ...(existingState.messages as BaseMessage[]),
+    ...(continueState.messages as BaseMessage[]),
     ...(params.appendedMessages ?? []),
     ...(shouldInjectPendingUserInterrupt ? [buildUserSteerInterruptHumanMessage(params.pendingUserInterrupt!)] : []),
   ];

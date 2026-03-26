@@ -32,6 +32,7 @@
 
 ### Fixed
 
+- Fixed a rare LangGraph continue/resume race where a checkpoint could already contain a final answer but still be marked `running`, letting a stale closeout branch and a fresh model branch both write `replyText` in one step. Sage now repairs that checkpoint to a completed state before resuming, preventing those intermittent user-facing crashes from leaking through as LastValue merge errors.
 - Fixed Codex tool-call replay so Sage now preserves provider `call_id` values and synthesizes explicit error tool outputs when a read-tool batch fails to return a result for a requested call, preventing broken replay transcripts from hitting the Codex backend with `No tool output found for function call ...` errors across many tools.
 - Fixed the channel-summary scheduler so both rolling summaries and long-term profile summaries now preserve the resolved text-provider route end to end, preventing post-reset/background summary jobs from silently dropping back to the generic API-key path when host Codex auth is the active runtime provider.
 - Fixed the LangGraph runtime provider-context handoff so Sage now preserves the resolved Codex route (`providerId`, `baseUrl`, and fallback metadata) inside graph turns instead of silently dropping back to the generic Chat Completions path that surfaced false OpenAI quota/rate-limit errors even with healthy host Codex auth.
