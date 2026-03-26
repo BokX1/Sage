@@ -529,7 +529,7 @@ describe('AiProviderClient', () => {
     expect(result.reasoningText).toBe('Need a lookup first.');
     expect(result.toolCalls).toEqual([
       {
-        id: 'fc_1',
+        id: 'call_1',
         name: 'google_search',
         args: { query: 'latest discord components v2' },
       },
@@ -555,6 +555,126 @@ describe('AiProviderClient', () => {
         content: [{ type: 'input_text', text: 'search for it' }],
       },
     ]);
+  });
+
+  it('preserves Codex call ids across assistant tool-call replay and matching tool outputs', async () => {
+    const client = new AiProviderClient({ baseUrl: 'https://chatgpt.com/backend-api', model: 'gpt-5.4', maxRetries: 0 });
+
+    fetchMock.mockResolvedValueOnce(
+      createSseResponse([
+        {
+          type: 'response.completed',
+          response: {
+            status: 'completed',
+            usage: {
+              input_tokens: 4,
+              output_tokens: 2,
+              total_tokens: 6,
+            },
+          },
+        },
+      ]),
+    );
+
+    await client.chat({
+      providerId: 'openai_codex',
+      baseUrl: 'https://chatgpt.com/backend-api',
+      model: 'gpt-5.4',
+      apiKey: createCodexJwtToken('acct_codex'),
+      authSource: 'host_codex_auth',
+      messages: [
+        { role: 'user', content: 'Look it up' },
+        {
+          role: 'assistant',
+          content: '',
+          toolCalls: [
+            {
+              id: 'call_1',
+              name: 'google_search',
+              args: { query: 'discord components v2' },
+            },
+          ],
+        },
+        {
+          role: 'tool',
+          toolCallId: 'call_1',
+          content: '{"results":[{"title":"Docs"}]}',
+        },
+      ],
+      tools: [
+        {
+          type: 'function',
+          function: {
+            name: 'google_search',
+            parameters: { type: 'object', properties: {}, required: [] },
+          },
+        },
+      ],
+    });
+
+    const body = parseRequestBody(fetchMock, 0) as RequestBody & {
+      input?: Array<Record<string, unknown>>;
+    };
+    expect(body.input).toEqual([
+      {
+        role: 'user',
+        content: [{ type: 'input_text', text: 'Look it up' }],
+      },
+      {
+        type: 'function_call',
+        id: 'fc_call_1_item',
+        call_id: 'call_1',
+        name: 'google_search',
+        arguments: '{"query":"discord components v2"}',
+      },
+      {
+        type: 'function_call_output',
+        call_id: 'call_1',
+        output: '{"results":[{"title":"Docs"}]}',
+      },
+    ]);
+  });
+
+  it('fails locally before fetch when a Codex transcript is missing a tool output', async () => {
+    const client = new AiProviderClient({ baseUrl: 'https://chatgpt.com/backend-api', model: 'gpt-5.4', maxRetries: 0 });
+
+    await expect(
+      client.chat({
+        providerId: 'openai_codex',
+        baseUrl: 'https://chatgpt.com/backend-api',
+        model: 'gpt-5.4',
+        apiKey: createCodexJwtToken('acct_codex'),
+        authSource: 'host_codex_auth',
+        messages: [
+          { role: 'user', content: 'Look it up' },
+          {
+            role: 'assistant',
+            content: '',
+            toolCalls: [
+              {
+                id: 'call_1',
+                name: 'google_search',
+                args: { query: 'discord components v2' },
+              },
+            ],
+          },
+        ],
+        tools: [
+          {
+            type: 'function',
+            function: {
+              name: 'google_search',
+              parameters: { type: 'object', properties: {}, required: [] },
+            },
+          },
+        ],
+      }),
+    ).rejects.toMatchObject({
+      code: 'AI_PROVIDER_BAD_REQUEST',
+      message: expect.stringContaining('missing tool outputs for function call(s): call_1'),
+    });
+
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it('adds fallback instructions for Codex requests when no system prompt is present', async () => {

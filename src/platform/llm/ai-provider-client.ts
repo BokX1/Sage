@@ -442,6 +442,32 @@ function normalizeCodexInputMessages(messages: LLMRequest['messages']): {
   return { instructions, input };
 }
 
+function validateCodexInputTranscript(input: CodexInputItem[]): void {
+  const pendingCalls = new Set<string>();
+  const completedCalls = new Set<string>();
+
+  for (const item of input) {
+    if ('type' in item && item.type === 'function_call') {
+      pendingCalls.add(item.call_id);
+      continue;
+    }
+
+    if ('type' in item && item.type === 'function_call_output') {
+      completedCalls.add(item.call_id);
+    }
+  }
+
+  const missingOutputs = Array.from(pendingCalls).filter((callId) => !completedCalls.has(callId));
+  if (missingOutputs.length === 0) {
+    return;
+  }
+
+  throw new AppError(
+    'AI_PROVIDER_BAD_REQUEST',
+    `Codex transcript is missing tool outputs for function call(s): ${missingOutputs.join(', ')}.`,
+  );
+}
+
 function normalizeCodexTools(tools: ProviderToolDefinition[] | undefined): CodexToolDefinition[] | undefined {
   if (!tools || tools.length === 0) {
     return undefined;
@@ -879,7 +905,6 @@ export class AiProviderClient implements LLMClient {
     let usage: CodexResponseUsage | undefined;
     let status: string | undefined;
     let currentFunctionCallId: string | null = null;
-    let currentFunctionCallItemId: string | null = null;
     let currentFunctionName: string | null = null;
     let currentFunctionArgs = '';
     const toolCalls = new Map<string, LLMToolCall>();
@@ -892,7 +917,6 @@ export class AiProviderClient implements LLMClient {
           ).item;
           if (item?.type === 'function_call') {
             currentFunctionCallId = item.call_id?.trim() || null;
-            currentFunctionCallItemId = item.id?.trim() || null;
             currentFunctionName = item.name?.trim() || null;
             currentFunctionArgs = item.arguments ?? '';
           }
@@ -927,13 +951,12 @@ export class AiProviderClient implements LLMClient {
               );
             }
             toolCalls.set(currentFunctionCallId, {
-              id: currentFunctionCallItemId ?? currentFunctionCallId,
+              id: currentFunctionCallId,
               name: currentFunctionName || 'unknown_tool',
               args,
             });
           }
           currentFunctionCallId = null;
-          currentFunctionCallItemId = null;
           currentFunctionName = null;
           currentFunctionArgs = '';
           break;
@@ -1035,6 +1058,7 @@ export class AiProviderClient implements LLMClient {
       text: { verbosity: 'medium' },
       include: ['reasoning.encrypted_content'],
     };
+    validateCodexInputTranscript(normalizedMessages.input);
 
     const reasoningEffort = resolveConfiguredCodexReasoningEffort();
     if (reasoningEffort) {

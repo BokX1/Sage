@@ -1919,6 +1919,45 @@ function buildGithubSearchRetryBlockedOutcome(params: {
   };
 }
 
+function buildMissingReadToolOutputOutcome(params: {
+  call: GraphToolCallDescriptor;
+}): { message: ToolMessage; result: SerializedToolResult } {
+  const errorText =
+    `Sage executed "${params.call.name}" but did not receive a tool output for call ` +
+    `"${params.call.id ?? `${params.call.name}-call`}". The tool result was marked as failed ` +
+    'so the provider transcript stays balanced.';
+
+  const result: SerializedToolResult = {
+    name: params.call.name,
+    success: false,
+    error: errorText,
+    errorType: 'execution',
+    errorDetails: {
+      category: 'unknown',
+      code: 'missing_tool_output',
+      hint:
+        'The runtime expected a ToolMessage for this call but none was produced. Inspect the tool batch execution path and tool_call_id matching.',
+      retryable: false,
+    },
+    telemetry: { latencyMs: 0 },
+  };
+
+  return {
+    message: buildToolMessageFromOutcome({
+      toolName: params.call.name,
+      callId: params.call.id,
+      content: JSON.stringify({
+        status: 'missing_tool_output',
+        message: errorText,
+      }),
+      result,
+      files: [],
+      status: 'error',
+    }),
+    result,
+  };
+}
+
 function buildCompactionState(params: {
   state: AgentGraphState;
   graphConfig: AgentGraphConfig;
@@ -2273,6 +2312,14 @@ function buildReadToolsNode(graphConfig: AgentGraphConfig) {
           )) as { messages?: ToolMessage[] })
         : { messages: [] };
     const parallelMessages = Array.isArray(parallelOutput.messages) ? parallelOutput.messages : [];
+    const parallelMessagesByCallId = new Map<string, ToolMessage>();
+    for (const message of parallelMessages) {
+      const callId = typeof message.tool_call_id === 'string' ? message.tool_call_id.trim() : '';
+      if (!callId || parallelMessagesByCallId.has(callId)) {
+        continue;
+      }
+      parallelMessagesByCallId.set(callId, message);
+    }
     const sequentialOutcomes = await Promise.all(
       executionPlan.sequentialCalls.map(async (call) => ({
         call,
@@ -2313,7 +2360,9 @@ function buildReadToolsNode(graphConfig: AgentGraphConfig) {
       executionPlan.parallelCalls.map(async (call, index) => ({
         call,
         fingerprint: await resolveToolCallFingerprint(call, toolContext),
-        message: parallelMessages[index] ?? null,
+        message:
+          (call.id ? parallelMessagesByCallId.get(call.id) : undefined)
+          ?? (!call.id && parallelMessages.length === executionPlan.parallelCalls.length ? parallelMessages[index] ?? null : null),
       })),
     );
     const executedEntries = [...parallelEntries, ...sequentialEntries];
@@ -2347,6 +2396,9 @@ function buildReadToolsNode(graphConfig: AgentGraphConfig) {
       const fingerprint = await resolveToolCallFingerprint(call, toolContext);
       const matched = executedByFingerprint.get(fingerprint);
       if (!matched) {
+        const missing = buildMissingReadToolOutputOutcome({ call });
+        toolMessages.push(missing.message);
+        nextToolResults.push(missing.result);
         continue;
       }
       const duplicate = call.id !== matched.call.id;

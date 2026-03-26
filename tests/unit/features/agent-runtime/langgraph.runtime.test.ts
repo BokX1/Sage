@@ -1223,6 +1223,96 @@ describe('runGraphValueStream', () => {
     });
   });
 
+  it('synthesizes an error tool output when a parallel read batch omits one requested call result', async () => {
+    await shutdownAgentGraphRuntime();
+    isReadOnlyToolCallMock.mockReturnValue(true);
+    buildActiveToolCatalogMock.mockReturnValue({
+      allTools: [{ name: 'repo_search_code' }],
+      readOnlyTools: [{ name: 'repo_search_code' }],
+      definitions: new Map(),
+    });
+    toolNodeInvokeMock.mockImplementationOnce(async (input?: { messages?: Array<{ tool_calls?: Array<{ id?: string }> }> }) => {
+      const batchCall = input?.messages?.[0]?.tool_calls?.[0];
+      return {
+        messages: [
+          new ToolMessage({
+            content: '{"ok":true,"items":[1]}',
+            tool_call_id: batchCall?.id ?? 'call-read-1',
+            artifact: {
+              result: {
+                name: 'repo_search_code',
+                success: true,
+                structuredContent: { ok: true, items: [1] },
+                telemetry: { latencyMs: 7 },
+              },
+              files: [],
+            },
+            status: 'success',
+          }),
+        ],
+      };
+    });
+    modelInvokeMock.mockResolvedValueOnce(
+      makeFinishTurnMessage('final_answer', 'Recovered after a missing tool output.'),
+    );
+
+    const result = await __runAgentGraphCommandForTests({
+      threadId: 'trace-read-missing-output-1',
+      goto: 'route_tool_phase',
+      context: {
+        traceId: 'trace-read-missing-output-1',
+        originTraceId: 'trace-read-missing-output-1',
+        userId: 'user-1',
+        channelId: 'channel-1',
+        guildId: 'guild-1',
+        activeToolNames: ['repo_search_code'],
+        routeKind: 'single',
+        currentTurn: { invokerUserId: 'user-1' },
+        replyTarget: null,
+        invokedBy: 'mention',
+      },
+      state: {
+        roundsCompleted: 1,
+        messages: [
+          new AIMessage({
+            content: '',
+            tool_calls: [
+              {
+                id: 'call-read-1',
+                name: 'repo_search_code',
+                args: { q: 'repo status' },
+                type: 'tool_call',
+              },
+              {
+                id: 'call-read-2',
+                name: 'repo_search_code',
+                args: { q: 'repo health' },
+                type: 'tool_call',
+              },
+            ],
+          }),
+        ],
+      },
+    });
+
+    expect(result.graphStatus).toBe('completed');
+    expect(result.replyText).toContain('Recovered after a missing tool output.');
+    expect(result.toolResults).toHaveLength(2);
+    expect(result.toolResults[0]).toMatchObject({ success: true });
+    expect(result.toolResults[1]).toMatchObject({
+      success: false,
+      errorDetails: {
+        code: 'missing_tool_output',
+      },
+    });
+
+    const checkpointState = await __getAgentGraphStateForTests('trace-read-missing-output-1');
+    const toolMessages = checkpointState?.messages.filter((message) => message instanceof ToolMessage) ?? [];
+    expect(toolMessages).toHaveLength(2);
+    expect(toolMessages.map((message) => message.tool_call_id)).toEqual(['call-read-1', 'call-read-2']);
+    expect(toolMessages[1]?.content).toContain('missing_tool_output');
+  });
+
   it('blocks repeated GitHub search_code retries in the same run after an auth failure', async () => {
     await shutdownAgentGraphRuntime();
     isReadOnlyToolCallMock.mockReturnValue(true);
