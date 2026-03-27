@@ -1574,6 +1574,18 @@ describe('agentRuntime', () => {
         retryKind: 'background_resume',
       },
     });
+    expect(updateAgentTaskRunByThreadIdMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        threadId: 'thread-1',
+        status: 'failed',
+        completionKind: 'runtime_failure',
+        stopReason: 'runtime_failure',
+        nextRunnableAt: null,
+        latestDraftText: 'I ran into a problem while I was picking that back up, so please try again.',
+        lastErrorText: 'I ran into a problem while I was picking that back up, so please try again.',
+        responseSessionJson: null,
+      }),
+    );
     expect(releaseAgentTaskRunLeaseMock).not.toHaveBeenCalled();
   });
 

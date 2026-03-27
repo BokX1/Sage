@@ -1314,6 +1314,104 @@ describe('runGraphValueStream', () => {
     expect(toolMessages[1]?.content).toContain('missing_tool_output');
   });
 
+  it('routes a resumed outstanding tool-call checkpoint back through tool execution before invoking Codex again', async () => {
+    await shutdownAgentGraphRuntime();
+    isReadOnlyToolCallMock.mockReturnValue(true);
+    buildActiveToolCatalogMock.mockReturnValue({
+      allTools: [{ name: 'repo_search_code' }],
+      readOnlyTools: [{ name: 'repo_search_code' }],
+      definitions: new Map(),
+    });
+    toolNodeInvokeMock.mockImplementationOnce(async (input?: { messages?: Array<{ tool_calls?: Array<{ id?: string }> }> }) => {
+      const batchCall = input?.messages?.[0]?.tool_calls?.[0];
+      return {
+        messages: [
+          new ToolMessage({
+            content: '{"ok":true,"items":[{"path":"src/runtime.ts"}]}',
+            tool_call_id: batchCall?.id ?? 'call-resume-tool-1',
+            artifact: {
+              result: {
+                name: 'repo_search_code',
+                success: true,
+                structuredContent: {
+                  ok: true,
+                  items: [{ path: 'src/runtime.ts' }],
+                },
+                telemetry: { latencyMs: 9 },
+              },
+              files: [],
+            },
+            status: 'success',
+          }),
+        ],
+      };
+    });
+    modelInvokeMock.mockResolvedValueOnce(
+      makeFinishTurnMessage('final_answer', 'I resumed the pending tool call cleanly and finished the answer.'),
+    );
+
+    const result = await __runAgentGraphCommandForTests({
+      threadId: 'trace-resume-outstanding-tool-1',
+      goto: 'continue_route',
+      context: {
+        traceId: 'trace-resume-outstanding-tool-1',
+        originTraceId: 'trace-resume-outstanding-tool-1',
+        userId: 'user-1',
+        channelId: 'channel-1',
+        guildId: 'guild-1',
+        activeToolNames: ['repo_search_code'],
+        routeKind: 'background_resume',
+        currentTurn: { invokerUserId: 'user-1' },
+        replyTarget: null,
+        invokedBy: 'component',
+      },
+      state: {
+        graphStatus: 'running',
+        stopReason: 'background_yield',
+        completionKind: null,
+        roundsCompleted: 1,
+        responseSession: {
+          responseSessionId: 'trace-resume-outstanding-tool-1',
+          status: 'draft',
+          latestText: 'Still working on it.',
+          draftRevision: 1,
+          sourceMessageId: null,
+          responseMessageId: null,
+          linkedArtifactMessageIds: [],
+        },
+        messages: [
+          new HumanMessage({ content: 'Check the runtime file.' }),
+          new AIMessage({
+            content: 'Searching now.',
+            tool_calls: [
+              {
+                id: 'call-resume-tool-1',
+                name: 'repo_search_code',
+                args: { query: 'repo:owner/repo runtime file' },
+                type: 'tool_call',
+              },
+            ],
+          }),
+          new HumanMessage({ content: 'Also tell me what changed after you finish.' }),
+        ],
+      },
+    });
+
+    expect(result.graphStatus).toBe('completed');
+    expect(result.replyText).toContain('resumed the pending tool call cleanly');
+    expect(toolNodeInvokeMock).toHaveBeenCalledTimes(1);
+    expect(result.toolResults).toHaveLength(1);
+    expect(result.toolResults[0]).toMatchObject({
+      name: 'repo_search_code',
+      success: true,
+    });
+
+    const toolBatch = toolNodeInvokeMock.mock.calls[0]?.[0] as
+      | { messages?: Array<{ tool_calls?: Array<{ id?: string }> }> }
+      | undefined;
+    expect(toolBatch?.messages?.[0]?.tool_calls?.map((call) => call.id)).toEqual(['call-resume-tool-1']);
+  });
+
   it('blocks repeated GitHub search_code retries in the same run after an auth failure', async () => {
     await shutdownAgentGraphRuntime();
     isReadOnlyToolCallMock.mockReturnValue(true);

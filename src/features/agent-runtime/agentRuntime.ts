@@ -485,6 +485,46 @@ async function failTaskRunForLimit(params: {
   });
 }
 
+async function failTaskRunAfterBackgroundResumeError(params: {
+  taskRun: Awaited<ReturnType<typeof getAgentTaskRunByThreadId>>;
+  replyText: string;
+}): Promise<void> {
+  if (!params.taskRun) {
+    return;
+  }
+
+  const existingResponseSession =
+    params.taskRun.responseSessionJson &&
+    typeof params.taskRun.responseSessionJson === 'object' &&
+    !Array.isArray(params.taskRun.responseSessionJson)
+      ? (params.taskRun.responseSessionJson as Record<string, unknown>)
+      : null;
+
+  await updateAgentTaskRunByThreadId({
+    threadId: params.taskRun.threadId,
+    status: 'failed',
+    waitingKind: null,
+    latestDraftText: params.replyText,
+    completionKind: 'runtime_failure',
+    stopReason: 'runtime_failure',
+    nextRunnableAt: null,
+    completedAt: new Date(),
+    lastErrorText: params.replyText,
+    responseSessionJson: existingResponseSession
+      ? {
+          ...existingResponseSession,
+          latestText: params.replyText,
+          status: 'failed',
+        }
+      : params.taskRun.responseSessionJson,
+  }).catch((error) => {
+    logger.warn(
+      { error, threadId: params.taskRun?.threadId },
+      'Failed to mark task run as failed after a background resume error',
+    );
+  });
+}
+
 function toContinuePendingUserInterrupt(taskRun: Awaited<ReturnType<typeof getAgentTaskRunByThreadId>> | null) {
   const activeInterrupt = taskRun ? readActiveUserInterruptState(taskRun) : null;
   if (!activeInterrupt || activeInterrupt.revision <= activeInterrupt.consumedRevision) {
@@ -1533,13 +1573,18 @@ export async function resumeBackgroundTaskRun(params: {
       meta: await buildRunChatTurnMeta({ pendingInterrupt: toPendingInterruptSummary(graphResult.pendingInterrupt) }),
     };
   } catch (error) {
+    const replyText = buildRuntimeFailureReply({
+      kind: 'background_resume',
+      category: classifyGraphFailure(error),
+    });
+    await failTaskRunAfterBackgroundResumeError({
+      taskRun,
+      replyText,
+    });
     return {
       runId: params.threadId,
       status: 'failed',
-      replyText: buildRuntimeFailureReply({
-        kind: 'background_resume',
-        category: classifyGraphFailure(error),
-      }),
+      replyText,
       delivery: 'response_session',
       meta: buildRetryMeta(params.threadId, 'background_resume'),
       files: [],

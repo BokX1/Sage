@@ -986,6 +986,65 @@ function buildContinueEntryUpdate(
   };
 }
 
+function coerceOutstandingToolCallDescriptors(message: AIMessage): GraphToolCallDescriptor[] {
+  if (!Array.isArray(message.tool_calls) || message.tool_calls.length === 0) {
+    return [];
+  }
+
+  return message.tool_calls.flatMap((toolCall) => {
+    if (!toolCall || typeof toolCall !== 'object') {
+      return [];
+    }
+
+    const callId = typeof toolCall.id === 'string' ? toolCall.id.trim() : '';
+    const name = typeof toolCall.name === 'string' ? toolCall.name.trim() : '';
+    const args =
+      toolCall.args && typeof toolCall.args === 'object' && !Array.isArray(toolCall.args)
+        ? toolCall.args
+        : {};
+
+    if (!callId || !name) {
+      return [];
+    }
+
+    return [
+      {
+        id: callId,
+        name,
+        args,
+      },
+    ];
+  });
+}
+
+function findMostRecentOutstandingToolCalls(messages: BaseMessage[]): GraphToolCallDescriptor[] {
+  const completedCallIds = new Set<string>();
+
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (ToolMessage.isInstance(message)) {
+      const callId = typeof message.tool_call_id === 'string' ? message.tool_call_id.trim() : '';
+      if (callId) {
+        completedCallIds.add(callId);
+      }
+      continue;
+    }
+
+    if (!AIMessage.isInstance(message)) {
+      continue;
+    }
+
+    const outstanding = coerceOutstandingToolCallDescriptors(message).filter(
+      (toolCall) => !toolCall.id || !completedCallIds.has(toolCall.id),
+    );
+    if (outstanding.length > 0) {
+      return outstanding;
+    }
+  }
+
+  return [];
+}
+
 function resolveDraftText(replyText: string | null | undefined): string {
   const cleaned = scrubFinalReplyText({ replyText });
   return cleaned || 'Working on that now.';
@@ -2692,7 +2751,7 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
   ): Promise<Command<unknown, Partial<AgentGraphState>, GraphNodeName>> => {
     const continued = buildContinueEntryUpdate(state, config);
     const effectiveState = continued.state;
-    const toolCalls = getLastAiToolCalls(effectiveState.messages as BaseMessage[]);
+    const toolCalls = findMostRecentOutstandingToolCalls(effectiveState.messages as BaseMessage[]);
     const runtimeContext = resolveRuntimeContext(effectiveState, config);
     const toolContext = buildToolContext(effectiveState, runtimeContext, 'turn', config);
     const catalog = buildActiveToolCatalog({
@@ -4181,6 +4240,9 @@ function resolveContinueNode(state: AgentGraphState): GraphNodeName {
   if (state.pendingReadCalls.length > 0 || state.pendingReadExecutionCalls.length > 0 || state.pendingWriteCalls.length > 0) {
     return 'route_tool_phase';
   }
+  if (findMostRecentOutstandingToolCalls(state.messages as BaseMessage[]).length > 0) {
+    return 'route_tool_phase';
+  }
   return 'decide_turn';
 }
 
@@ -4214,7 +4276,7 @@ function isRecoverableTerminalRunningContinueState(state: AgentGraphState): bool
   ) {
     return false;
   }
-  if (state.completionKind === 'final_answer' && getLastAiToolCalls(state.messages as BaseMessage[]).length > 0) {
+  if (state.completionKind === 'final_answer' && findMostRecentOutstandingToolCalls(state.messages as BaseMessage[]).length > 0) {
     return false;
   }
   return Boolean(resolveVisibleReplyTextFromState(state));
