@@ -31,6 +31,7 @@
 
 ### Added
 
+- Added Sage Code Mode as the primary model-facing execution surface: the runtime now exposes `runtime_execute_code`, runs short JavaScript programs against scoped host-bridge runners with per-task workspaces/effect logs under `data/code-mode/`, and lets the host bridge enforce late approval decisions on effectful writes instead of teaching the model a sprawling top-level tool menu.
 - Added a real OpenClaw-style host Codex login flow for self-hosted operators: `npm run auth:codex:login` now embeds the public Codex client, listens on `http://localhost:1455/auth/callback` first, and falls back to pasted redirect URLs/codes for remote or headless VMs instead of requiring operators to invent an OAuth client id.
 - Added an optional `OPENAI_CODEX_REASONING_EFFORT` env override so self-hosted operators can pin Sage's built-in Codex route to `none`, `low`, `medium`, `high`, or `xhigh` without changing the fallback/default provider configuration.
 
@@ -45,6 +46,9 @@
 - Fixed ChatGPT Codex request shaping so Sage now always sends fallback `instructions` and omits unsupported `temperature` fields entirely, preventing authenticated self-hosted Codex runs from failing with backend `400` errors that looked like false quota or rate-limit issues when the main, profile, or summary lanes forwarded their normal temperatures.
 - Fixed response-session publishing for Discord components-v2 surfaces so Sage now detaches from non-editable setup-card messages, posts a fresh text reply, and clears stale overflow chunks instead of leaving one stuck task-run worker in a permanent retry loop.
 - Fixed the default host Codex OAuth redirect URI to use `http://localhost:1455/auth/callback`, matching the public Codex client registration that OpenAI accepts instead of the broken `127.0.0.1` variant that returned `unknown_error`.
+- Fixed Code Mode boundary handling so the host bridge now honors the runtime-filtered active tool list, approval resumes stay bound to the original effect hash, and identical code reruns within one task no longer silently replay stale effect logs from an earlier execution.
+- Fixed Code Mode egress validation so `sage.http.fetch(...)` now blocks DNS-resolved private/local targets and disables automatic redirect following, closing an SSRF path where public-looking hostnames or redirects could still land on internal network services.
+- Fixed the JavaScript Code Mode runner boundary so user code now executes in a separate child process, and compiled builds launch that runner under Node's permission system to block direct filesystem, network, worker, and child-process access if code escapes the host bridge.
 - Added shared host-level Codex auth for self-hosted Sage deployments, including encrypted token storage, automatic refresh with lease-based locking, operator-facing Discord status reads/cards, and new `npm run auth:codex:{login,status,clear}` flows so one VM login can power runtime chat across every guild on that host.
 - Added a Discord-native artifact lifecycle with staged attachment intake, text artifact creation, revision history, and publish/republish flows, so Sage can now manage Discord work products as tracked artifacts instead of only reading cached attachments or re-sending old files.
 - Added admin-configurable thread-on-invoke routing for Discord text and announcement channels, so opted-in channels can now push fresh Sage invokes into public message threads automatically while active or waiting task continuations keep using their existing response thread.
@@ -63,11 +67,17 @@
 
 ### Changed
 
+- Changed Sage's model-facing execution contract from "pick among the whole default tool catalog" to "use Code Mode first and reach host capabilities through the bridge", while keeping the existing Discord, moderation, scheduler, artifact, and web capabilities as internal host-backed bridge operations.
 - Changed Sage's text-model routing so healthy host Codex auth now switches the main, profile, and summary lanes onto the built-in OpenAI/Codex `gpt-5.4` route automatically, while the existing `AI_PROVIDER_*` settings remain the fallback/default provider path instead of acting like a generic credential bucket.
+- Changed Sage's product shape to a lean-core runtime: the tracked docs, website copy, starter env, and architecture references now describe a chat-first Discord runtime centered on text turns, approvals, summaries, artifacts, moderation, and scheduling instead of the older voice/social-graph-heavy story.
+- Changed the checked-in config and service layout to a smaller operator surface by removing voice/social-graph env sections, deleted compose stacks, and stale onboarding references, so fresh self-host deployments now align with the actual supported lean-core modules.
+- Changed Code Mode to the JavaScript lane only for now, removing the weaker Python runner until Sage has a stronger isolation story for secondary execution languages.
 
 ### Removed
 
 - Removed the operator-facing `OPENAI_CODEX_AUTH_CLIENT_ID` requirement from Sage's host-auth contract; the Codex login flow now uses the embedded public client configuration directly.
+- Removed the deprecated voice and social-graph product families from the tracked runtime: Discord voice handlers, voice/session persistence, Memgraph/Kafka export, social-graph query paths, related service scaffolding, and their dedicated test suites/docs are gone instead of being left behind as dormant feature flags.
+- Removed legacy Discord voice/social-graph tools from Sage's default model-facing inventory, shrinking the built-in tool surface down to the lean-core chat, context, artifacts, governance, moderation, scheduling, search, and system capabilities that still exist in the runtime.
 
 - Changed host credential resolution so Sage now prefers healthy shared host Codex OAuth over `AI_PROVIDER_API_KEY`, while still falling back to the existing host API key path or guild Pollinations server-key activation when host auth is absent or unhealthy.
 - Changed Sage's Discord task-run routing contract from one implicit `channelId` to explicit origin and response surfaces, so auto-threaded replies, waiting-user-input resumes, retry flows, BYOP setup cards, and worker-delivered drafts/finals now stay attached to the correct visible Discord surface instead of assuming the invoke channel and reply channel are always the same.

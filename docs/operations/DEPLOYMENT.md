@@ -76,12 +76,6 @@ npm start
 
 This adds local SearXNG, Crawl4AI, and Tika-backed extraction paths. Sage still runs as its own process.
 
-Optional social-graph infrastructure is separate:
-
-```bash
-docker compose -f config/services/self-host/docker-compose.social-graph.yml up -d
-```
-
 ---
 
 <a id="environment-setup"></a>
@@ -119,8 +113,6 @@ Key notes:
 - If you also set `AI_PROVIDER_API_KEY`, Sage uses it as the automatic host fallback when Codex auth is absent or unhealthy.
 - If you do **not** configure either host Codex auth or `AI_PROVIDER_API_KEY`, Sage can still run in servers that complete the current hosted/server-key path. Direct-message chat still needs a host-level credential because there is no guild-scoped key to fall back to.
 - Admin actions and approval-gated flows use Discord-native permissions. Grant `Manage Server` or `Administrator` only to approved operators.
-- Social-graph export is disabled by setting `KAFKA_BROKERS=`.
-
 See **[⚙️ Configuration Reference](../reference/CONFIGURATION.md)** for the full environment surface.
 
 ---

@@ -43,11 +43,9 @@ function buildContract(
     invokerIsAdmin: false,
     invokerCanModerate: false,
     inGuild: true,
-    turnMode: 'text',
     userText: 'What happened in this channel today?',
     focusedContinuity: 'Focused continuity block',
     recentTranscript: 'Recent transcript block',
-    voiceContext: 'Voice context block',
     guildSagePersona: 'Keep answers crisp and helpful in this guild.',
     toolObservationEvidence: [
       {
@@ -436,7 +434,6 @@ describe('promptContract', () => {
         'discord_artifact_find_channel_attachments',
         'discord_spaces_list_channels',
         'discord_moderation_submit_action',
-        'discord_voice_get_status',
         'web_search',
         'repo_search_code',
         'repo_read_file',
@@ -451,11 +448,9 @@ describe('promptContract', () => {
       invokerIsAdmin: true,
       invokerCanModerate: true,
       inGuild: true,
-      turnMode: 'text',
       userText: 'Handle this request safely and precisely.',
       recentTranscript: 'Transcript',
       focusedContinuity: 'Focused continuity',
-      voiceContext: 'Voice context',
       guildSagePersona: 'Stay crisp.',
       toolObservationEvidence: [
         {

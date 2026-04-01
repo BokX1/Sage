@@ -11,12 +11,12 @@ describe('default agentic tools', () => {
 
     const names = registry.listNames();
     expect(names).toEqual(expect.arrayContaining([
+      'runtime_execute_code',
       'discord_context_get_channel_summary',
       'discord_history_search_history',
       'discord_artifact_read_attachment',
       'discord_spaces_list_channels',
       'discord_spaces_create_role',
-      'discord_voice_get_status',
       'web_search',
       'image_generate',
       'npm_info',

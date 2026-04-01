@@ -4,10 +4,6 @@ export const DISCORD_CONTEXT_ACTION_CATALOG = {
     'get_channel_summary',
     'search_channel_summary_archives',
     'get_server_instructions',
-    'get_social_graph',
-    'get_top_relationships',
-    'get_voice_analytics',
-    'get_voice_summaries',
   ],
   writes: [],
   admin_only: [],
@@ -130,25 +126,18 @@ export const DISCORD_ADMIN_ACTION_CATALOG = {
   ],
 } as const;
 
-export const DISCORD_VOICE_ACTION_CATALOG = {
-  read_only: ['get_status'],
-  writes: ['join_current_channel', 'leave'],
-  admin_only: [],
-} as const;
-
 export const DISCORD_TOOL_ACTION_CATALOG = {
   discord_context: DISCORD_CONTEXT_ACTION_CATALOG,
   discord_messages: DISCORD_MESSAGES_ACTION_CATALOG,
   discord_files: DISCORD_FILES_ACTION_CATALOG,
   discord_server: DISCORD_SERVER_ACTION_CATALOG,
   discord_admin: DISCORD_ADMIN_ACTION_CATALOG,
-  discord_voice: DISCORD_VOICE_ACTION_CATALOG,
 } as const;
 
 export const DISCORD_GUARDRAILS = [
   'Writes are disallowed in autopilot turns.',
   'Governance/admin actions require the matching authority tier; moderation actions require the relevant Discord moderation permissions.',
-  'The model-facing Discord surface is typed-only. Use artifact, moderation, scheduler, spaces, governance, context, history, or voice tools instead of raw REST fallbacks.',
+  'The model-facing Discord surface is typed-only. Use artifact, moderation, scheduler, spaces, governance, context, or history tools instead of raw REST fallbacks.',
   'Some actions require a guild context (guildId). If no guildId is available, avoid guild-only actions.',
 ] as const;
 

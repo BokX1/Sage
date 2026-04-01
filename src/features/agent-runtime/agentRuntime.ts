@@ -49,11 +49,10 @@ import {
   hasAuthorityAtLeast,
   type DiscordAuthorityTier,
 } from '../../platform/discord/admin-permissions';
-
-import { formatLiveVoiceContext } from '../voice/voiceConversationSessionStore';
 import { AppError } from '../../shared/errors/app-error';
 
 const SINGLE_ROUTE_KIND = 'single';
+const CODE_MODE_SURFACE_TAG = 'code_mode_surface';
 
 export interface RunChatTurnParams {
   traceId: string;
@@ -61,7 +60,6 @@ export interface RunChatTurnParams {
   originChannelId: string;
   responseChannelId: string;
   guildId: string | null;
-  voiceChannelId?: string | null;
   messageId: string;
   userText: string;
   userContent?: LLMMessageContent;
@@ -70,7 +68,6 @@ export interface RunChatTurnParams {
   replyTarget?: ReplyTargetContext | null;
   mentionedUserIds?: string[];
   invokedBy?: 'mention' | 'reply' | 'wakeword' | 'autopilot' | 'component';
-  isVoiceActive?: boolean;
   invokerAuthority?: DiscordAuthorityTier;
   isAdmin?: boolean;
   canModerate?: boolean;
@@ -210,7 +207,7 @@ function resolveActiveToolNames(params: {
   authority: DiscordAuthorityTier;
   invokedBy: ToolInvocationKind;
 }): string[] {
-  return globalToolRegistry.listNames().filter((toolName) => {
+  const eligibleToolNames = globalToolRegistry.listNames().filter((toolName) => {
     const tool = globalToolRegistry.get(toolName);
     if (!tool) {
       return false;
@@ -221,6 +218,17 @@ function resolveActiveToolNames(params: {
     }
     return canUseToolAccessTier(params.authority, access);
   });
+
+  const codeModeTools = eligibleToolNames.filter((toolName) => {
+    const tool = globalToolRegistry.get(toolName);
+    return tool?.runtime?.capabilityTags?.includes(CODE_MODE_SURFACE_TAG) === true;
+  });
+
+  if (codeModeTools.length > 0) {
+    return codeModeTools;
+  }
+
+  return eligibleToolNames;
 }
 
 function classifyGraphFailure(error: unknown): RuntimeFailureCategory {
@@ -712,13 +720,11 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
     originChannelId,
     responseChannelId,
     guildId,
-    voiceChannelId,
     userText,
     userContent,
     currentTurn,
     replyTarget,
     invokedBy = 'mention',
-    isVoiceActive,
     isAdmin = false,
     canModerate = false,
     invokerAuthority = isAdmin ? 'admin' : canModerate ? 'moderator' : 'member',
@@ -761,11 +767,6 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
           focusUserId: currentTurn.invokerUserId,
           sageUserId: currentTurn.botUserId ?? null,
         })
-      : null;
-
-  const liveVoiceContext =
-    guildId && isVoiceActive && voiceChannelId
-      ? formatLiveVoiceContext({ guildId, voiceChannelId, now: new Date() })
       : null;
 
   const runtimeRoute = await resolveTextProviderRoute(guildId, 'main');
@@ -812,13 +813,11 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
     userContent,
     focusedContinuity: focusedContinuityBlock,
     recentTranscript: transcriptBlock,
-    voiceContext: liveVoiceContext,
     invokedBy,
     invokerAuthority,
     invokerIsAdmin: isAdmin,
     invokerCanModerate: canModerate,
     inGuild: guildId !== null,
-    turnMode: isVoiceActive ? 'voice' : 'text',
     autopilotMode,
     graphLimits,
     promptMode,
@@ -911,7 +910,6 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
       guildSagePersona,
       focusedContinuity: focusedContinuityBlock,
       recentTranscript: transcriptBlock,
-      voiceContext: liveVoiceContext,
       promptMode,
       onStateUpdate: params.onResponseSessionUpdate
         ? async (state) => {

@@ -61,8 +61,6 @@ export async function generateChatReply(params: {
   replyTarget?: ReplyTargetContext | null;
   mentionedUserIds?: string[];
   invokedBy?: 'mention' | 'reply' | 'wakeword' | 'autopilot' | 'component';
-  isVoiceActive?: boolean;
-  voiceChannelId?: string | null;
   invokerAuthority?: DiscordAuthorityTier;
   isAdmin?: boolean;
   canModerate?: boolean;
@@ -86,8 +84,6 @@ export async function generateChatReply(params: {
       replyTarget,
       mentionedUserIds,
       invokedBy = 'mention',
-      isVoiceActive,
-      voiceChannelId,
       isAdmin = false,
       canModerate = false,
       invokerAuthority = isAdmin ? 'admin' : canModerate ? 'moderator' : 'member',
@@ -123,8 +119,6 @@ export async function generateChatReply(params: {
       replyTarget: replyTarget ?? null,
       mentionedUserIds,
       invokedBy,
-      isVoiceActive,
-      voiceChannelId: voiceChannelId ?? null,
       invokerAuthority,
       isAdmin,
       canModerate,

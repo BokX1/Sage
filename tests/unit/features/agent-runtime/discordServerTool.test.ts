@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { ChannelType, PermissionsBitField } from 'discord.js';
+import { PermissionsBitField } from 'discord.js';
 import type { ToolExecutionContext } from '../../../../src/features/agent-runtime/toolRegistry';
 
 const mocks = vi.hoisted(() => ({
@@ -40,7 +40,6 @@ vi.mock('../../../../src/platform/discord/client', () => ({
 import {
   discordModerationTools,
   discordSpacesTools,
-  discordVoiceTools,
 } from '../../../../src/features/agent-runtime/discordDomainTools';
 
 function serverTool(name: string) {
@@ -49,13 +48,7 @@ function serverTool(name: string) {
   return found;
 }
 
-function voiceTool(name: string) {
-  const found = discordVoiceTools.find((entry) => entry.name === name);
-  if (!found) throw new Error(`Missing voice tool ${name}`);
-  return found;
-}
-
-describe('discord granular server and voice tools', () => {
+describe('discord granular server and moderation tools', () => {
   const publicCtx: ToolExecutionContext = {
     traceId: 'trace',
     userId: 'user-1',
@@ -232,65 +225,4 @@ describe('discord granular server and voice tools', () => {
     );
   });
 
-  it('reports voice connection status', async () => {
-    mocks.guildFetch.mockResolvedValue({
-      channels: {
-        fetch: vi.fn().mockResolvedValue({ id: 'voice-1', name: 'Standup' }),
-      },
-    });
-
-    const { VoiceManager } = await import('../../../../src/features/voice/voiceManager');
-    const getConnectionSpy = vi.spyOn(VoiceManager.getInstance(), 'getConnection').mockReturnValue({
-      joinConfig: { channelId: 'voice-1' },
-    } as never);
-
-    const result = await voiceTool('discord_voice_get_status').execute({}, publicCtx);
-
-    expect(result).toEqual(
-      expect.objectContaining({
-        ok: true,
-        action: 'get_status',
-        connected: true,
-        channelId: 'voice-1',
-        channelName: 'Standup',
-      }),
-    );
-
-    getConnectionSpy.mockRestore();
-  });
-
-  it('joins the invoker current voice channel', async () => {
-    const channel = {
-      id: 'voice-2',
-      name: 'Pairing',
-      type: ChannelType.GuildVoice,
-      guild: { id: 'guild-1' },
-    };
-    mocks.guildFetch.mockResolvedValue({
-      members: {
-        fetch: vi.fn().mockResolvedValue({
-          voice: { channel },
-        }),
-      },
-    });
-
-    const { VoiceManager } = await import('../../../../src/features/voice/voiceManager');
-    const joinSpy = vi.spyOn(VoiceManager.getInstance(), 'joinChannel').mockResolvedValue({} as never);
-
-    const result = await voiceTool('discord_voice_join_current_channel').execute({}, publicCtx);
-
-    expect(joinSpy).toHaveBeenCalledWith({
-      channel,
-      initiatedByUserId: 'user-1',
-    });
-    expect(result).toEqual(
-      expect.objectContaining({
-        ok: true,
-        action: 'join_current_channel',
-        channelId: 'voice-2',
-      }),
-    );
-
-    joinSpy.mockRestore();
-  });
 });

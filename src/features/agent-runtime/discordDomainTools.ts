@@ -17,7 +17,6 @@ import {
   executeDiscordFilesAction,
   executeDiscordMessagesAction,
   executeDiscordServerAction,
-  executeDiscordVoiceAction,
 } from './discord/core';
 import { defineToolSpecV2, type ToolExecutionContext } from './toolRegistry';
 import {
@@ -222,29 +221,6 @@ const summarySearchChannelArchivesSchema = z.object({
 
 const instructionsGetServerSchema = z.object({
   action: z.literal('get_server_instructions').describe('Fetch the current admin-authored Sage Persona for this guild. Read-only guild behavior/persona config; not an admin write or memory surface.'),
-});
-
-const analyticsGetSocialGraphSchema = z.object({
-  action: z.literal('get_social_graph').describe('Retrieve social graph relationships for a user.'),
-  userId: z.string().trim().min(1).max(64).optional(),
-  maxEdges: z.number().int().min(1).max(30).optional(),
-});
-
-const analyticsTopRelationshipsSchema = z.object({
-  action: z.literal('get_top_relationships').describe('Show the top interaction pairs in this server.'),
-  limit: z.number().int().min(1).max(30).optional(),
-});
-
-const analyticsGetVoiceAnalyticsSchema = z.object({
-  action: z.literal('get_voice_analytics').describe('Retrieve voice participation analytics. Use discord_voice_get_status, discord_voice_join_current_channel, or discord_voice_leave for live voice control.'),
-  userId: z.string().trim().min(1).max(64).optional(),
-});
-
-const analyticsVoiceSummariesSchema = z.object({
-  action: z.literal('get_voice_summaries').describe('Retrieve recent voice session summaries. Use discord_voice_get_status, discord_voice_join_current_channel, or discord_voice_leave for live voice control.'),
-  voiceChannelId: z.string().trim().min(1).max(64).optional(),
-  sinceHours: z.number().int().min(1).max(2_160).optional(),
-  limit: z.number().int().min(1).max(10).optional(),
 });
 
 const messagesSearchHistorySchema = addSinceVariantValidation(
@@ -1231,18 +1207,6 @@ const adminSendHostAuthStatusCardSchema = z.object({
   action: z.literal('send_host_auth_status_card').describe('Post a host-auth status card in the current channel. Admin-only write. Disabled in autopilot turns.'),
 });
 
-const voiceGetStatusSchema = z.object({
-  action: z.literal('get_status').describe('Show the bot voice connection status for this guild.'),
-});
-
-const voiceJoinCurrentChannelSchema = z.object({
-  action: z.literal('join_current_channel').describe('Join the invoker’s current voice channel. Disabled in autopilot turns.'),
-});
-
-const voiceLeaveSchema = z.object({
-  action: z.literal('leave').describe('Leave the active guild voice channel. Disabled in autopilot turns.'),
-});
-
 const discordContextToolDefs = [
   defineDiscordActionTool({
     name: 'discord_context_get_user_profile',
@@ -1287,50 +1251,6 @@ const discordContextToolDefs = [
     readOnly: true,
     capabilityTags: ['context', 'persona'],
     promptSummary: 'Use to read the current guild persona or behavior overlay.',
-  }),
-  defineDiscordActionTool({
-    name: 'discord_context_get_social_graph',
-    title: 'Discord Context Get Social Graph',
-    description: 'Retrieve social graph relationships for a user.',
-    schema: analyticsGetSocialGraphSchema,
-    domain: 'discord_context',
-    executeDomain: executeDiscordContextAction,
-    readOnly: true,
-    capabilityTags: ['context', 'relationships'],
-    promptSummary: 'Use for relationship and interaction context around one user.',
-  }),
-  defineDiscordActionTool({
-    name: 'discord_context_get_top_relationships',
-    title: 'Discord Context Get Top Relationships',
-    description: 'Show the top interaction pairs in this server.',
-    schema: analyticsTopRelationshipsSchema,
-    domain: 'discord_context',
-    executeDomain: executeDiscordContextAction,
-    readOnly: true,
-    capabilityTags: ['context', 'relationships'],
-    promptSummary: 'Use for broad social-graph relationship summaries.',
-  }),
-  defineDiscordActionTool({
-    name: 'discord_context_get_voice_analytics',
-    title: 'Discord Context Get Voice Analytics',
-    description: 'Retrieve voice participation analytics.',
-    schema: analyticsGetVoiceAnalyticsSchema,
-    domain: 'discord_context',
-    executeDomain: executeDiscordContextAction,
-    readOnly: true,
-    capabilityTags: ['context', 'voice'],
-    promptSummary: 'Use for voice analytics, not live voice control.',
-  }),
-  defineDiscordActionTool({
-    name: 'discord_context_get_voice_summaries',
-    title: 'Discord Context Get Voice Summaries',
-    description: 'Retrieve recent voice session summaries.',
-    schema: analyticsVoiceSummariesSchema,
-    domain: 'discord_context',
-    executeDomain: executeDiscordContextAction,
-    readOnly: true,
-    capabilityTags: ['context', 'voice'],
-    promptSummary: 'Use for recent voice session summaries and history.',
   }),
 ] as const;
 
@@ -2518,49 +2438,12 @@ const discordAdminTools = [
   }),
 ] as const;
 
-export const discordVoiceTools = [
-  defineDiscordActionTool({
-    name: 'discord_voice_get_status',
-    title: 'Discord Voice Get Status',
-    description: 'Show the bot voice connection status for this guild.',
-    schema: voiceGetStatusSchema,
-    domain: 'discord_voice',
-    executeDomain: executeDiscordVoiceAction,
-    readOnly: true,
-    capabilityTags: ['voice'],
-    promptSummary: 'Use for current voice connection status.',
-  }),
-  defineDiscordActionTool({
-    name: 'discord_voice_join_current_channel',
-    title: 'Discord Voice Join Current Channel',
-    description: 'Join the invoker’s current voice channel.',
-    schema: voiceJoinCurrentChannelSchema,
-    domain: 'discord_voice',
-    executeDomain: executeDiscordVoiceAction,
-    readOnly: false,
-    capabilityTags: ['voice'],
-    promptSummary: 'Use to join the invoker’s voice channel.',
-  }),
-  defineDiscordActionTool({
-    name: 'discord_voice_leave',
-    title: 'Discord Voice Leave',
-    description: 'Leave the active guild voice channel.',
-    schema: voiceLeaveSchema,
-    domain: 'discord_voice',
-    executeDomain: executeDiscordVoiceAction,
-    readOnly: false,
-    capabilityTags: ['voice'],
-    promptSummary: 'Use to leave the current voice channel.',
-  }),
-] as const;
-
 const discordToolSurface = [
   ...discordContextToolDefs,
   ...discordMessageTools,
   ...discordFileTools,
   ...discordServerTools,
   ...discordAdminTools,
-  ...discordVoiceTools,
 ] as const;
 
 export const discordContextTools = discordToolSurface.filter((tool) =>

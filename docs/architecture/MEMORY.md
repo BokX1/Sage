@@ -17,8 +17,7 @@ This document describes how Sage stores memory and makes it available to the run
 - [5) Short-term memory: rolling channel summary](#5-short-term-memory-rolling-channel-summary)
 - [6) Long-term memory: channel summary](#6-long-term-memory-channel-summary)
 - [7) Throttled user profile updates](#7-throttled-user-profile-updates)
-- [8) Relationship graph and social layers](#8-relationship-graph-and-social-layers)
-- [9) Voice awareness in memory](#9-voice-awareness-in-memory)
+- [8) Attachment recall and message retrieval](#8-attachment-recall-and-message-retrieval)
 - [🔗 Related documentation](#related-documentation)
 
 ---
@@ -34,8 +33,6 @@ This document describes how Sage stores memory and makes it available to the run
 | **Channel summaries** | Rolling and profile summaries for channels; continuity context rather than quote-level evidence. | `ChannelSummary` | `src/features/summary/*` |
 | **Raw transcript** | Recent message history for prompt context and retrieval. | Ring buffer plus optional `ChannelMessage` persistence | `src/features/awareness/*`, `src/features/ingest/ingestEvent.ts` |
 | **Attachment cache** | Persisted attachment recall text for on-demand retrieval and resend. Uploaded images store Florence-generated recall/OCR text; other files store extracted text. | `IngestedAttachment`, `AttachmentChunk` | `src/features/attachments/*`, `src/app/discord/handlers/messageCreate.ts` |
-| **Relationship graph** | Relationship weights derived from mentions, replies, reactions, and voice overlap. | `RelationshipEdge`, optional Memgraph export | `src/features/relationships/*`, `src/features/social-graph/*` |
-| **Voice sessions** | Voice join/leave history and optional summary-only session memory. | `VoiceSession`, `VoiceConversationSummary` | `src/features/voice/*` |
 
 ---
 
@@ -60,13 +57,6 @@ Attachment behavior:
 - Stored attachment text is loaded on demand through `discord_files` actions such as `list_channel`, `list_server`, and `read_attachment`.
 - Sage can resend a cached original file or image through `discord_files` action `send_attachment`; the tool result also returns the stored recall/extracted text so the follow-up reply stays grounded.
 
-Voice transcript behavior:
-
-- Live STT utterances are kept **in-memory only** during a voice session.
-- When voice session summaries are enabled, Sage stores only the structured summary row in `VoiceConversationSummary`, not the raw utterance transcript.
-
----
-
 <a id="3-context-assembly-flow"></a>
 
 ## 3) Context assembly flow
@@ -81,15 +71,14 @@ flowchart LR
     subgraph Storage
         DB[(PostgreSQL)]:::storage
         RB[Ring Buffer]:::storage
-        VS[Live Voice Session Store]:::storage
     end
 
     subgraph Tools
         U[discord_context.get_user_profile]:::tools
         C[discord_context.get_channel_summary]:::tools
         A[discord_context.search_channel_summary_archives]:::tools
-        G[discord_context.get_social_graph]:::tools
         F[discord_files.read_attachment]:::tools
+        H[discord_history.search_with_context]:::tools
     end
 
     subgraph Builder["Prompt Contract"]
@@ -97,18 +86,17 @@ flowchart LR
     end
 
     RB --> MB
-    VS --> MB
     MB --> LLM[LLM Request + LangGraph Runtime]:::llm
     DB --> U
     DB --> C
     DB --> A
-    DB --> G
     DB --> F
+    DB --> H
     LLM --> U
     LLM --> C
     LLM --> A
-    LLM --> G
     LLM --> F
+    LLM --> H
 ```
 
 Runtime notes:
@@ -117,7 +105,7 @@ Runtime notes:
 - User profile summary is the only long-term profile block always embedded up front, and it now lives inside the universal XML prompt contract built by `buildPromptContextMessages`.
 - Sage now uses one canonical prompt contract in `src/features/agent-runtime/promptContract.ts`, with fixed sections for system rules, tool protocol, closeout protocol, trusted runtime state, trusted working memory, and explicitly tagged untrusted context.
 - The profile is best-effort personalization, not an authoritative rule surface: it is rendered inside `<user_profile>` as soft personalization context that may lag behind the latest turn because profile updates happen asynchronously.
-- Channel summaries, archives, social-graph data, file cache data, and wider message history are fetched only if the model chooses the corresponding tool action.
+- Channel summaries, archives, file cache data, and wider message history are fetched only if the model chooses the corresponding tool action.
 - `discord_context.get_channel_summary` returns rolling channel summary context for continuity and situational awareness. It is not a substitute for message-history evidence.
 - Exact historical verification should use `discord_messages.search_history`, `discord_messages.search_with_context`, or `discord_messages.get_context`.
 
@@ -143,7 +131,7 @@ Canonical system-message sections:
 - `<trusted_runtime_state>`
 - `<trusted_working_memory>`
 
-Trusted runtime state carries the current turn facts, guild Sage Persona, voice mode, autopilot mode, and profile summary. Trusted working memory carries the loop-level frame:
+Trusted runtime state carries the current turn facts, guild Sage Persona, autopilot mode, and profile summary. Trusted working memory carries the loop-level frame:
 
 - `objective`
 - `verified_facts`
@@ -166,7 +154,6 @@ What is **not** preloaded:
 
 - channel summaries
 - archived summaries
-- social-graph results
 - attachment cache text
 - historical message search results
 
@@ -236,44 +223,24 @@ The latest profile is stored in `UserProfile.summary`, and prior versions can be
 
 ---
 
-<a id="8-relationship-graph-and-social-layers"></a>
+<a id="8-attachment-recall-and-message-retrieval"></a>
 
-## 8) Relationship graph and social layers
+## 8) Attachment recall and message retrieval
 
-**Files:** `src/features/relationships/*`, `src/features/social-graph/socialGraphQuery.ts`
+**Files:** `src/features/attachments/*`, `src/features/history/*`
 
-Relationship edges are updated from mentions, replies, reactions, and voice overlap. At query time, Sage maps ranked relationships into Dunbar-style labels:
+Sage's lean-core memory model now prefers durable text evidence over derived social signals:
 
-- `intimate`
-- `close`
-- `active`
-- `acquaintance`
-- `distant`
+- attachment text is cached in `IngestedAttachment` and chunked into `AttachmentChunk`
+- exact historical evidence comes from `ChannelMessage` and `ChannelMessageEmbedding`
+- the runtime can fetch channel summaries for continuity, then pivot to exact message windows or attachment pages when it needs proof
 
-These signals are returned through `discord_context` actions such as `get_social_graph` and `get_top_relationships`.
+That keeps the default context core small and auditable:
 
-If the optional Memgraph/Redpanda stack is enabled, Sage can also export interaction events and query richer graph analytics from Memgraph.
-
----
-
-<a id="9-voice-awareness-in-memory"></a>
-
-## 9) Voice awareness in memory
-
-Voice presence events are stored in `VoiceSession` as join/leave windows and durations.
-
-`discord_context` action `get_voice_analytics` summarizes:
-
-- who is currently in voice
-- how long a user has been active today
-- lightweight voice-activity signals for response context
-
-Optional voice session summary memory:
-
-- If `VOICE_STT_ENABLED=true`, Sage can transcribe in-channel audio while connected.
-- Utterance transcripts stay **in-memory only** in the live session store.
-- On leave/disconnect, Sage can persist a **summary-only** record to `VoiceConversationSummary`.
-- These summaries are retrievable via `discord_context` action `get_voice_summaries`.
+- rolling/profile summaries for continuity
+- user profiles for personalization
+- raw message retrieval for evidence
+- attachment recall for durable file context
 
 ---
 

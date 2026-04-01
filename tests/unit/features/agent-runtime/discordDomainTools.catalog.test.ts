@@ -8,7 +8,6 @@ import {
   discordModerationTools,
   discordScheduleTools,
   discordSpacesTools,
-  discordVoiceTools,
 } from '../../../../src/features/agent-runtime/discordDomainTools';
 import type { ToolDefinition } from '../../../../src/features/agent-runtime/toolRegistry';
 
@@ -21,7 +20,6 @@ describe('discord granular tool catalogs', () => {
     { prefix: 'discord_schedule_', tools: discordScheduleTools },
     { prefix: 'discord_spaces_', tools: discordSpacesTools },
     { prefix: 'discord_governance_', tools: discordGovernanceTools },
-    { prefix: 'discord_voice_', tools: discordVoiceTools },
   ] as const;
 
   it.each(toolCases)('keeps every tool name aligned to the $prefix family', ({ prefix, tools }) => {

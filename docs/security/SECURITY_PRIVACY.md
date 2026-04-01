@@ -38,9 +38,6 @@ This document describes what Sage stores and how to control retention. Implement
 | Channel messages | `ChannelMessage` | Stored only if `MESSAGE_DB_STORAGE_ENABLED=true`. |
 | Ingested attachments | `IngestedAttachment` | Non-image attachment extraction cache (text + metadata) for on-demand retrieval. |
 | Channel summaries | `ChannelSummary` | Rolling + profile summaries, plus metadata (topics, decisions, etc.). |
-| Relationship edges | `RelationshipEdge` | Probabilistic relationship weights from mentions/replies/voice overlap. |
-| Voice sessions | `VoiceSession` | Join/leave session history per user/channel. |
-| Voice session summaries | `VoiceConversationSummary` | Summary-only memory of transcribed voice sessions (optional; no raw transcript stored in DB). |
 | Approval review requests | `ApprovalReviewRequest` | Approval-gated graph interrupt, reviewer/requester message ids, and status metadata for governed writes. |
 | Interaction sessions | `DiscordInteractionSession` | Button/modal session state for Sage-authored interactive controls. |
 | Durable task runs | `AgentTaskRun` | Background task-run state, response-session state, wait state, and compaction metadata for long-running work. |
@@ -55,10 +52,9 @@ This document describes what Sage stores and how to control retention. Implement
 
 These settings control what Sage ingests and logs:
 
-- `INGESTION_ENABLED=false` disables message/voice ingestion entirely.
+- `INGESTION_ENABLED=false` disables message ingestion entirely.
 - `INGESTION_MODE=allowlist` limits ingestion to channels listed in `INGESTION_ALLOWLIST_CHANNEL_IDS_CSV`.
 - `INGESTION_BLOCKLIST_CHANNEL_IDS_CSV` excludes specific channels.
-- Voice transcription (STT) also requires `VOICE_STT_ENABLED=true` and only runs in channels where logging is enabled by the ingestion policy.
 
 ---
 
@@ -71,8 +67,7 @@ These settings control what Sage ingests and logs:
   - `RING_BUFFER_MAX_MESSAGES_PER_CHANNEL`
 - **DB transcripts** are trimmed per channel to `MESSAGE_DB_MAX_MESSAGES_PER_CHANNEL`.
 - **Prompt transcript windows** are selected by message count via `CONTEXT_TRANSCRIPT_MAX_MESSAGES`; Sage no longer applies a second prompt-character truncation pass.
-- **Voice transcription utterances** are kept in-memory only and discarded when the voice session ends; only summary rows persist (when enabled).
-- **Attachment cache** persists extracted non-image file text/metadata (including optional voice-message transcripts) in `IngestedAttachment` until deleted manually.
+- **Attachment cache** persists extracted non-image file text/metadata in `IngestedAttachment` until deleted manually.
 - **Summaries and profiles** persist until deleted manually.
 - **Agent traces** are stored only when `SAGE_TRACE_DB_ENABLED=true`.
 
@@ -89,17 +84,16 @@ When generating replies, Sage sends:
 
 - The user’s message content
 - Reply references (if the user replied to another message)
-- Recent transcript and optional live voice context when Sage is active in voice
+- Recent transcript and relevant reply context
 - User profile summary embedded inside the runtime system prompt
 - Guild Sage Persona when guild-specific behavior has been configured
-- Tool-fetched summaries, archives, social-graph data, or attachment cache results only when the runtime requests them through tools
+- Tool-fetched summaries, archives, or attachment cache results only when the runtime requests them through tools
 - Stored message-history retrieval results when the runtime calls `discord_messages` actions `search_history` / `get_context` (permission-gated; optional `channelId` can target other channels)
 - Guild-resource metadata when the runtime calls `discord_server` actions such as `list_channels`, `get_channel`, `list_threads`, or `get_scheduled_event` (channel/thread reads are permission-filtered; member/permission/AutoMod reads are admin-only)
 - Attachment text blocks for the current turn when inline analysis is needed
 - Attachment-cache retrieval results when the runtime calls `discord_files` actions `list_channel` or `list_server` (server-wide results are permission-filtered)
 - When an admin authorizes `discord_admin` action `api` calls that include multipart `files` sourced from a URL, Sage will fetch those files from public HTTP(S) URLs to upload them to Discord (private/local hosts are blocked).
 - Image URLs for vision-capable requests
-- When voice session summary is enabled, Sage may send an utterance-level transcript (text) to the AI provider to generate a summary. Voice audio is sent only to the local voice service (STT), not to the AI provider.
 
 Sage does **not** log API keys or tokens. Keep `.env` out of version control.
 

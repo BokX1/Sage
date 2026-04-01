@@ -208,6 +208,34 @@ const TOOL_DOC_OVERRIDES: Record<string, ToolDocOverride> = {
       ],
     },
   },
+  runtime_execute_code: {
+    selectionHints: [
+      'Use as the primary execution surface when Sage needs host capabilities, composed reads, late approval writes, or workspace state in one coherent step.',
+      'Prefer short deterministic programs over long tool-chaining plans in assistant text.',
+    ],
+    avoidWhen: [
+      'A plain assistant-text answer is enough and no execution is needed.',
+      'You only need a runtime control tool such as waiting for user input or cancelling the current turn.',
+    ],
+    promptGuidance: {
+      purpose: 'Run short JavaScript programs against Sage’s host bridge instead of manually orchestrating many narrow tools.',
+      decisionEdges: [
+        'Need several host-backed reads or one composed workflow -> runtime_execute_code.',
+        'Need a write that may require approval -> runtime_execute_code and let the bridge pause at effect time.',
+        'No execution needed -> answer directly in assistant text.',
+      ],
+      antiPatterns: [
+        'Do not narrate a long multi-tool plan when one short Code Mode program can verify or perform the work directly.',
+      ],
+      argumentNotes: [
+        'JavaScript is the default fast lane.',
+        'Use sage.tool(name, args), sage.http.fetch(...), and sage.workspace.* inside the program.',
+      ],
+    },
+    websiteShort: 'Runtime Execute Code',
+    websiteDesc: 'Run short JavaScript programs against Sage’s host bridge instead of juggling many narrow tools directly.',
+    websiteCategory: 'system',
+  },
   browser_open_page: {
     selectionHints: [
       'Use to start or change the browser page during an interactive web task.',

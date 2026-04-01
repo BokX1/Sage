@@ -5,7 +5,7 @@ const ConfigSimulator = () => {
     const [config, setConfig] = useState({
         "agent.mode": "autonomous",
         "memory.ltm_enabled": true,
-        "voice.transcription": true,
+        "approval.gated_writes": true,
         "rag.max_context_tokens": 8192,
         "tools.allow_unsafe": false
     });
@@ -46,24 +46,24 @@ const ConfigSimulator = () => {
                         </button>
                     </div>
 
-                    {/* Toggle: Voice Transcription */}
+                    {/* Toggle: Approval-Gated Writes */}
                     <div className="flex items-center justify-between">
                         <div>
-                            <span className="text-white text-sm font-medium block">Voice Transcription</span>
-                            <span className="text-slate-500 text-xs">Active audio stream processing</span>
+                            <span className="text-white text-sm font-medium block">Approval Workflow</span>
+                            <span className="text-slate-500 text-xs">High-impact writes require review</span>
                         </div>
                         <button
                             type="button"
-                            onClick={() => updateConfig("voice.transcription", !config["voice.transcription"])}
+                            onClick={() => updateConfig("approval.gated_writes", !config["approval.gated_writes"])}
                             role="switch"
-                            aria-checked={config["voice.transcription"]}
-                            aria-label="Toggle voice transcription"
-                            className={`w-12 h-6 rounded-full p-1 transition-colors ${config["voice.transcription"] ? 'bg-[#78b846]' : 'bg-slate-700'}`}
+                            aria-checked={config["approval.gated_writes"]}
+                            aria-label="Toggle approval-gated writes"
+                            className={`w-12 h-6 rounded-full p-1 transition-colors ${config["approval.gated_writes"] ? 'bg-[#78b846]' : 'bg-slate-700'}`}
                         >
                             <motion.div
                                 layout
                                 className="w-4 h-4 bg-white rounded-full shadow-md"
-                                animate={{ x: config["voice.transcription"] ? 24 : 0 }}
+                                animate={{ x: config["approval.gated_writes"] ? 24 : 0 }}
                             />
                         </button>
                     </div>
@@ -134,7 +134,7 @@ const ConfigSimulator = () => {
                     )}
                     {/* Audio to Brain */}
                     <line x1="70%" y1="35%" x2="50%" y2="55%" stroke="rgba(255,255,255,0.05)" strokeWidth="2" />
-                    {config["voice.transcription"] && (
+                    {config["approval.gated_writes"] && (
                         <motion.line
                             x1="70%" y1="35%" x2="50%" y2="55%"
                             stroke="rgba(122,162,247,0.4)"
@@ -167,20 +167,20 @@ const ConfigSimulator = () => {
                                 >
                                     <span className={`text-xl md:text-2xl transition-opacity duration-500 ${config["memory.ltm_enabled"] ? 'opacity-100' : 'opacity-40 grayscale'}`}>💾</span>
                                 </motion.div>
-                                <span className={`text-[10px] md:text-[11px] uppercase font-mono tracking-[0.2em] relative z-20 bg-[#06080c] px-2 rounded ${config["memory.ltm_enabled"] ? 'text-[#BB9AF7]' : 'text-slate-600'}`}>Memgraph</span>
+                                <span className={`text-[10px] md:text-[11px] uppercase font-mono tracking-[0.2em] relative z-20 bg-[#06080c] px-2 rounded ${config["memory.ltm_enabled"] ? 'text-[#BB9AF7]' : 'text-slate-600'}`}>Summaries</span>
                             </div>
 
-                            {/* Voice Input Node */}
+                            {/* Approval Input Node */}
                             <div className="flex flex-col items-center gap-4">
                                 <motion.div
-                                    className={`w-14 h-14 md:w-16 md:h-16 rounded-full border flex items-center justify-center relative backdrop-blur-md transition-all duration-500 z-20 ${config["voice.transcription"] ? 'border-[#7AA2F7] bg-[#7AA2F7]/20 shadow-[0_0_30px_rgba(122,162,247,0.3)]' : 'border-white/10 bg-[#0a0f16]/80 shadow-none'}`}
-                                    animate={{ y: config["voice.transcription"] ? [0, -5, 0] : 0 }}
+                                    className={`w-14 h-14 md:w-16 md:h-16 rounded-full border flex items-center justify-center relative backdrop-blur-md transition-all duration-500 z-20 ${config["approval.gated_writes"] ? 'border-[#7AA2F7] bg-[#7AA2F7]/20 shadow-[0_0_30px_rgba(122,162,247,0.3)]' : 'border-white/10 bg-[#0a0f16]/80 shadow-none'}`}
+                                    animate={{ y: config["approval.gated_writes"] ? [0, -5, 0] : 0 }}
                                     transition={{ repeat: Infinity, duration: 4, ease: "easeInOut", delay: 1 }}
                                 >
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`transition-all duration-500 md:w-6 md:h-6 ${config["voice.transcription"] ? 'text-[#7AA2F7]' : 'text-slate-600'}`}><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="22"></line></svg>
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`transition-all duration-500 md:w-6 md:h-6 ${config["approval.gated_writes"] ? 'text-[#7AA2F7]' : 'text-slate-600'}`}><path d="M9 12l2 2 4-4"></path><path d="M12 3l7 4v5c0 5-3.5 8-7 9-3.5-1-7-4-7-9V7l7-4z"></path></svg>
 
-                                    {/* Audio Waves */}
-                                    {config["voice.transcription"] && (
+                                    {/* Approval pulses */}
+                                    {config["approval.gated_writes"] && (
                                         <div className="absolute -bottom-10 md:-bottom-12 w-[50px] md:w-[60px] h-[30px] flex items-start justify-center gap-1 overflow-hidden z-10 pointer-events-none">
                                             {[1, 2, 3, 4, 5].map((i) => (
                                                 <motion.div
@@ -193,7 +193,7 @@ const ConfigSimulator = () => {
                                         </div>
                                     )}
                                 </motion.div>
-                                <span className={`text-[10px] md:text-[11px] uppercase font-mono tracking-[0.2em] relative z-20 bg-[#06080c] px-2 rounded ${config["voice.transcription"] ? 'text-[#7AA2F7]' : 'text-slate-600'}`}>Audio Rx</span>
+                                <span className={`text-[10px] md:text-[11px] uppercase font-mono tracking-[0.2em] relative z-20 bg-[#06080c] px-2 rounded ${config["approval.gated_writes"] ? 'text-[#7AA2F7]' : 'text-slate-600'}`}>Approval</span>
                             </div>
                         </div>
                     </div>

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { ChannelType, PermissionsBitField, type VoiceChannel } from 'discord.js';
+import { ChannelType, PermissionsBitField } from 'discord.js';
 
 import type { ToolExecutionContext } from '../toolRegistry';
 import type { ApprovalInterruptPayload } from '../toolControlSignals';
@@ -21,10 +21,6 @@ import {
   sendCachedAttachment,
   searchAttachmentChunksInChannel,
   searchAttachmentChunksInGuild,
-  lookupSocialGraph,
-  lookupTopSocialGraphEdges,
-  lookupVoiceAnalytics,
-  lookupVoiceSessionSummaries,
   lookupUserMessageTimeline,
 } from '../toolIntegrations';
 import {
@@ -49,9 +45,7 @@ import {
 import { filterChannelIdsByMemberAccess } from '../../../platform/discord/channel-access';
 import { client } from '../../../platform/discord/client';
 import { config } from '../../../platform/config/env';
-import { VoiceManager } from '../../voice/voiceManager';
 import { hasAuthorityAtLeast } from '../../../platform/discord/admin-permissions';
-import { isLoggingEnabled } from '../../settings/guildChannelSettings';
 import { buildGuildApiKeySetupCardMessage } from '../../discord/byopBootstrap';
 import { buildRuntimeResponseCardPayload } from '../../discord/runtimeResponseCards';
 import { clearGuildApiKey, getGuildApiKeyStatus } from '../../settings/guildApiKeyService';
@@ -249,12 +243,6 @@ function formatHostAuthStatusText(
   }
 
   return lines.join('\n');
-}
-
-function isGuildVoiceChannel(
-  channel: { type?: number } | null | undefined,
-): channel is VoiceChannel {
-  return !!channel && channel.type === ChannelType.GuildVoice;
 }
 
 function assertNotAutopilot(invokedBy: string | undefined, actionLabel: string): void {
@@ -1049,42 +1037,6 @@ export async function executeDiscordContextAction(
         guildId: requireGuildContext(ctx.guildId),
       });
     }
-    case 'get_social_graph': {
-      const data = asAction<{ userId?: string; maxEdges?: number }>(args);
-      return lookupSocialGraph({
-        guildId: ctx.guildId ?? null,
-        userId: data.userId?.trim() || ctx.userId,
-        maxEdges: data.maxEdges,
-      });
-    }
-    case 'get_top_relationships': {
-      const data = asAction<{ limit?: number }>(args);
-      assertNotAutopilot(ctx.invokedBy, 'get_top_relationships');
-      return lookupTopSocialGraphEdges({
-        guildId: ctx.guildId ?? null,
-        limit: data.limit,
-      });
-    }
-    case 'get_voice_analytics': {
-      const data = asAction<{ userId?: string }>(args);
-      return lookupVoiceAnalytics({
-        guildId: ctx.guildId ?? null,
-        userId: data.userId?.trim() || ctx.userId,
-      });
-    }
-    case 'get_voice_summaries': {
-      const data = asAction<{
-        voiceChannelId?: string;
-        sinceHours?: number;
-        limit?: number;
-      }>(args);
-      return lookupVoiceSessionSummaries({
-        guildId: ctx.guildId ?? null,
-        voiceChannelId: data.voiceChannelId?.trim() || undefined,
-        sinceHours: data.sinceHours,
-        limit: data.limit,
-      });
-    }
     default:
       throw new Error(`Unsupported discord_context action: ${args.action}`);
   }
@@ -1710,84 +1662,6 @@ export async function executeDiscordServerAction(
     }
     default:
       throw new Error(`Unsupported discord_server action: ${args.action}`);
-  }
-}
-
-export async function executeDiscordVoiceAction(
-  args: DiscordActionArgs,
-  ctx: ToolExecutionContext,
-): Promise<unknown> {
-  const guildId = requireGuildContext(ctx.guildId);
-
-  switch (args.action) {
-    case 'get_status': {
-      const voiceManager = VoiceManager.getInstance();
-      const connection = voiceManager.getConnection(guildId);
-      const channelId = connection?.joinConfig.channelId ?? null;
-      const guild = await client.guilds.fetch(guildId);
-      const channel = channelId ? await guild.channels.fetch(channelId).catch(() => null) : null;
-
-      return {
-        ok: true,
-        action: 'get_status',
-        guildId,
-        connected: !!connection,
-        channelId,
-        channelName: channel && 'name' in channel ? channel.name : null,
-        transcriptionActive:
-          !!channelId && config.VOICE_STT_ENABLED && isLoggingEnabled(guildId, channelId),
-      };
-    }
-    case 'join_current_channel': {
-      assertNotAutopilot(ctx.invokedBy, 'join_current_channel');
-      const guild = await client.guilds.fetch(guildId);
-      const member = await guild.members.fetch(ctx.userId).catch(() => null);
-      if (!member) {
-        throw new Error('Could not resolve the invoking member for voice join.');
-      }
-
-      const channel = member.voice.channel;
-      if (!isGuildVoiceChannel(channel)) {
-        throw new Error('You must be in a standard voice channel to use this action. Stage channels are not supported.');
-      }
-
-      const voiceManager = VoiceManager.getInstance();
-      await voiceManager.joinChannel({ channel, initiatedByUserId: ctx.userId });
-
-      return {
-        ok: true,
-        action: 'join_current_channel',
-        guildId,
-        channelId: channel.id,
-        channelName: channel.name,
-        transcriptionActive: config.VOICE_STT_ENABLED && isLoggingEnabled(guildId, channel.id),
-      };
-    }
-    case 'leave': {
-      assertNotAutopilot(ctx.invokedBy, 'leave');
-      const voiceManager = VoiceManager.getInstance();
-      const connection = voiceManager.getConnection(guildId);
-      if (!connection) {
-        return {
-          ok: true,
-          action: 'leave',
-          guildId,
-          connected: false,
-          message: 'Sage is not currently in a voice channel.',
-        };
-      }
-
-      await voiceManager.leaveChannel(guildId);
-      return {
-        ok: true,
-        action: 'leave',
-        guildId,
-        connected: false,
-        message: 'Left the active voice channel.',
-      };
-    }
-    default:
-      throw new Error(`Unsupported discord_voice action: ${args.action}`);
   }
 }
 

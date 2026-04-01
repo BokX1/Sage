@@ -13,7 +13,6 @@ Sage is chat-first. Use normal Discord conversation, replies, buttons, and modal
 - [Quick Reference](#quick-reference)
 - [Triggering Sage](#triggering-sage)
 - [Setup Card and Server Keys](#setup-card-and-server-keys)
-- [Voice Control](#voice-control)
 - [Admin and Moderation Requests](#admin-and-moderation-requests)
 - [Interactive Follow-Ups](#interactive-follow-ups)
 - [Related Documentation](#related-documentation)
@@ -27,8 +26,6 @@ Sage is chat-first. Use normal Discord conversation, replies, buttons, and modal
 | Talk to Sage | Mention Sage, reply to Sage, or start with `Sage` |
 | Continue a thread | Reply to Sage or use Sage-authored follow-up buttons |
 | Activate hosted/server-key flow | Trigger Sage once in a guild with no usable key |
-| Ask Sage to join voice | `Sage, join my voice channel` |
-| Ask Sage to leave voice | `Sage, leave voice` |
 | Request admin work | Ask in normal chat; Sage queues approval when needed |
 
 ---
@@ -67,24 +64,6 @@ Important context:
 - Self-hosted runtime chat remains provider-flexible through `AI_PROVIDER_BASE_URL`.
 - Sage now prefers shared host Codex auth when the operator runs `npm run auth:codex:login`.
 - If you also set `AI_PROVIDER_API_KEY`, Sage can use that host-level key as a fallback for the configured provider.
-
----
-
-## 🎤 Voice Control
-
-Voice is also chat-first.
-
-Examples:
-
-- `Sage, join my current voice channel`
-- `Sage, are you in voice right now?`
-- `Sage, leave voice`
-
-Voice expectations:
-
-- voice status, join, and leave are normal chat requests
-- optional local STT is controlled with `VOICE_*` env vars
-- summary-only voice memory is persisted only when voice transcription is enabled and session summaries are on
 
 ---
 

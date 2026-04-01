@@ -25,13 +25,13 @@ How Sage processes every message — from raw Discord event to verified, tool-au
 
 ## 💡 Design Philosophy
 
-Sage is a **single-agent runtime** built around one custom LangGraph execution path. Every message flows through `runChatTurn`, which assembles context and then hands control to the agent graph for model calls, tool execution, approval interrupts, durable background yields, and finalization.
+Sage is a **single-agent runtime** built around one custom LangGraph execution path. Every message flows through `runChatTurn`, which assembles context and then hands control to the agent graph for model calls, Code Mode execution, approval interrupts, durable background yields, and finalization.
 
 **Why single-agent?**
 
 - **Predictability:** One canonical execution path means deterministic behavior and simpler debugging.
-- **Clean context:** Memory, social graph, voice analytics, and file content are fetched **on demand** through tools — not blindly pre-injected into every prompt.
-- **Composability:** New capabilities are added as tools, not as new agents or router branches.
+- **Clean context:** Memory, summaries, message history, and file content are fetched **on demand** through tools — not blindly pre-injected into every prompt.
+- **Composability:** The model now sees one primary execution surface, `runtime_execute_code`, and uses Sage's host bridge for composed work instead of juggling a huge public tool menu.
 
 ---
 
@@ -49,7 +49,6 @@ flowchart TD
 
     subgraph Discord["Discord Layer"]
         ME[Message Events]:::discord
-        VE[Voice Events]:::discord
         IC[Interactive Components]:::discord
     end
 
@@ -63,7 +62,6 @@ flowchart TD
     subgraph Memory["Memory Layer"]
         PG[(PostgreSQL)]:::memory
         RB[Ring Buffer]:::memory
-        MG[(Memgraph)]:::memory
     end
 
     subgraph Tools["Tool Registry"]
@@ -75,12 +73,11 @@ flowchart TD
     end
 
     ME --> CE --> RT
-    VE --> CE
     IC --> CE
     RT --> PC --> LLM[AI Provider]:::llm
     LLM --> AG
     AG --> MT & ST & DT & AT & GT
-    MT --> PG & MG
+    MT --> PG
     AG -->|"Final Answer"| ME
 ```
 
@@ -91,7 +88,7 @@ flowchart TD
 | **Universal Prompt Contract** | `src/features/agent-runtime/promptContract.ts` | Builds Sage's one canonical XML-tagged system contract plus tagged user content, working-memory frame, prompt version, and prompt fingerprint |
 | **Agent Graph Runtime** | `src/features/agent-runtime/langgraph/runtime.ts` | Custom LangGraph runtime for plain-text-first assistant turns, bounded worker slices, tool execution, approval + user-input interrupts, response-session state, and checkpointed resumes |
 | **Tool Registry** | `src/features/agent-runtime/toolRegistry.ts` | Zod-validated tool definitions with runtime execution metadata |
-| **Default Tools** | `src/features/agent-runtime/defaultTools.ts` | All granular built-in tool definitions registered for the runtime |
+| **Default Tools** | `src/features/agent-runtime/defaultTools.ts` | Registers the primary Code Mode tool plus the internal host-backed capability inventory |
 
 ---
 
@@ -112,14 +109,14 @@ sequenceDiagram
     CE->>RT: Invoke with context params
     RT->>RT: Resolve model from explicit AI provider config
     RT->>RT: Build universal prompt contract + tagged user context
-    RT->>LLM: Send prompt + tool specs
-    LLM->>RT: Response (text or tool calls)
+    RT->>LLM: Send prompt + active runtime tool surface
+    LLM->>RT: Response (text or Code Mode call)
 
-    alt Tool calls detected
+    alt Code execution detected
         RT->>AG: Enter LangGraph runtime
         loop One durable worker slice (up to AGENT_RUN_SLICE_MAX_STEPS assistant/model responses)
-            AG->>T: Execute validated tool calls
-            T->>AG: Tool results
+            AG->>T: Execute Code Mode bridge calls and host effects
+            T->>AG: Structured execution results, approvals, or artifacts
             AG->>LLM: Feed results back
             LLM->>AG: Next response
         end
@@ -133,8 +130,8 @@ sequenceDiagram
 
 **Key runtime rules:**
 
-1. **Single-agent, single-model** — no route-mapped model selection.
-2. **Tool-driven context** — memory, social graph, voice data are fetched through tools, not pre-injected.
+1. **Single-agent, provider-routed text runtime** — Sage stays on one runtime path while resolving either the built-in Codex route or the configured fallback text provider.
+2. **Code Mode first** — `runtime_execute_code` is the primary model-facing execution surface, and host capabilities are reached through the Sage bridge instead of a giant top-level tool menu.
 3. **Bounded graph execution** — configurable max tool-capable assistant/model responses per durable worker slice (`AGENT_RUN_SLICE_MAX_STEPS`); Sage no longer slices tool-call batches or truncates model-facing tool payloads inside the runtime.
 4. **Parallel read-only optimization** — read-only tools can execute concurrently within a step through `ToolNode`.
 5. **Clean background yield** — when a slice closes cleanly after tool work, Sage can spend one extra no-tools wrap-up response to summarize progress before yielding back to the background worker; timeout handling still falls back to the deterministic runtime summary.
@@ -146,7 +143,7 @@ sequenceDiagram
 
 ## 🔧 Tool-Oriented Architecture
 
-Tools are the primary extension mechanism. Sage now uses one canonical MCP-like internal tool contract and compiles that into provider-edge Chat Completions tools on demand.
+Code Mode is now the primary model-facing execution mechanism. Sage still uses one canonical internal tool contract, but it is primarily consumed behind the host bridge rather than exposed wholesale to the model.
 
 Each tool carries:
 
@@ -162,7 +159,7 @@ The runtime now enforces that contract instead of treating it as descriptive met
 - `outputSchema` is validated at execution time when a tool declares it.
 - Observation summaries are generated per tool policy (`tiny`, `default`, `large`, `streaming`, `artifact-only`) instead of one global fallback path.
 - Only tools marked `parallelSafe` are batched into the parallel read lane; other reads stay sequential.
-- Every turn now exposes the full eligible tool surface for the current actor and runtime context; Sage relies on tool definitions plus runtime policy enforcement instead of heuristic subset routing.
+- Every turn still registers the full internal host capability inventory, but the default model-facing surface now collapses to Code Mode so the model programs against the bridge instead of hand-routing dozens of capabilities.
 
 ```typescript
 interface ToolSpecV2<TArgs, TStructured = unknown> {
@@ -215,12 +212,14 @@ Operators can audit that surface directly with `npm run tools:audit` or `npm run
 |:---|:---|:---|
 | `discord_context_get_channel_summary` | Fetch rolling and archived summary context for the current channel. | Public |
 | `discord_governance_get_server_instructions` | Read the current guild Sage Persona instructions. | Public |
-| `discord_context_get_social_graph` | Retrieve social graph relationships for a user. | Public |
-| `discord_context_get_top_relationships` | Show the strongest recent relationship edges in the guild. | Public |
 | `discord_context_get_user_profile` | Fetch the best-effort profile for a user. | Public |
-| `discord_context_get_voice_analytics` | Retrieve voice participation analytics. | Public |
-| `discord_context_get_voice_summaries` | Retrieve recent voice session summaries. | Public |
 | `discord_context_search_channel_summary_archives` | Search archived summary context for the current channel. | Public |
+
+### 🧩 Code Mode
+
+| Tool | Description | Access |
+|:---|:---|:---|
+| `runtime_execute_code` | Execute short JavaScript programs against Sage's host bridge and per-task virtual workspace. | Public |
 
 ### 💬 Discord Messages
 
@@ -339,14 +338,6 @@ Operators can audit that surface directly with `npm run tools:audit` or `npm run
 | `discord_spaces_update_scheduled_event` | Update an existing scheduled event. | Admin |
 | `discord_governance_update_server_instructions` | Submit an admin request to update the guild Sage Persona. | Admin |
 
-### 🔊 Discord Voice
-
-| Tool | Description | Access |
-|:---|:---|:---|
-| `discord_voice_get_status` | Show the bot voice connection status for this guild. | Public |
-| `discord_voice_join_current_channel` | Join the invoker's current voice channel. | Public |
-| `discord_voice_leave` | Leave the active guild voice channel. | Public |
-
 ### 🌐 Web And Research
 
 | Tool | Description | Access |
@@ -406,8 +397,6 @@ src/
 │   ├── chat/                   # Chat orchestration and rate limiting
 │   ├── memory/                 # Profiles and memory update flows
 │   ├── summary/                # Channel summarization and compaction
-│   ├── social-graph/           # Query/migration/setup logic and analytics
-│   ├── voice/                  # Voice presence, sessions, analytics
 │   └── ...                     # Awareness, settings, ingest, embeddings, admin
 ├── platform/                   # Discord, DB, LLM, config, logging, security adapters
 ├── shared/                     # Pure cross-cutting helpers and error utilities
@@ -424,8 +413,6 @@ src/
 - [🔍 Search Architecture](SEARCH.md) — SAG flow, search modes, tool providers
 - [🧠 Memory System](MEMORY.md) — How Sage stores, summarizes, and injects memory
 - [💾 Database Schema](DATABASE.md) — All PostgreSQL tables and relationships
-- [🕸️ Social Graph](SOCIAL_GRAPH.md) — GNN pipeline and Memgraph integration
-- [🎤 Voice System](VOICE.md) — Voice awareness and companion
 - [⚙️ Configuration](../reference/CONFIGURATION.md) — All environment variables
 
 <p align="right"><a href="#top">⬆️ Back to top</a></p>

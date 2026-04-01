@@ -23,6 +23,7 @@ import { getModerationRuntimeDiagnostics } from '../moderation/runtime';
 import { getScheduledTaskRuntimeDiagnostics } from '../scheduler/service';
 import { initializeMcpTools } from './mcp/manager';
 import { registerMcpCapabilityTools } from './mcp/capabilities';
+import { runtimeExecuteCodeTool } from '../code-mode/tool';
 
 const getCurrentDateTimeTool = defineToolSpecV2({
   name: 'system_time',
@@ -410,6 +411,7 @@ const npmPackageLookupTool = defineToolSpecV2({
 });
 
 export const STATIC_TOOL_DEFINITIONS = [
+  runtimeExecuteCodeTool,
   getCurrentDateTimeTool,
   toolStatsTool,
   ...discordTools,

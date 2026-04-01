@@ -3,10 +3,9 @@ import { motion, useInView } from 'framer-motion';
 
 const features = [
     { name: 'Autonomous Tool Execution', sage: true, traditional: false, desc: 'Tools activate without being asked' },
-    { name: 'Graph-Native Social Intelligence', sage: true, traditional: false, desc: 'Memgraph-powered relationship tracking' },
+    { name: 'Layered Context Retrieval', sage: true, traditional: false, desc: 'Summaries, history, and file recall without prompt stuffing' },
     { name: '7-Stage Memory Pipeline', sage: true, traditional: false, desc: 'Contextual recall across conversations' },
     { name: 'OpenAI-Compatible LLM API', sage: true, traditional: false, desc: 'Works with any OpenAI-compatible provider across hosted or self-hosted deployments' },
-    { name: 'Voice Channel Transcription', sage: true, traditional: false, desc: 'Auto-transcribe and summarize voice' },
     { name: 'AI Image Generation', sage: true, traditional: false, desc: 'Prompt refinement + generation pipeline' },
     { name: 'Conversational Configuration', sage: true, traditional: false, desc: 'Change settings via natural language' },
     { name: 'Self-Hosted / Sovereign', sage: true, traditional: false, desc: 'Your data never leaves your infra' },

@@ -198,43 +198,6 @@ describe('historyBackfill', () => {
     expect(mockChannelMessages.rows).toHaveLength(12);
   });
 
-  it('disables social graph publishing during backfill ingestion', async () => {
-    const message = {
-      id: 'msg-1',
-      guildId: 'guild-1',
-      channelId: 'channel-1',
-      content: 'hello',
-      createdAt: new Date('2024-01-01T00:00:00.000Z'),
-      createdTimestamp: new Date('2024-01-01T00:00:00.000Z').getTime(),
-      author: { id: 'user-1', username: 'User 1', bot: false },
-      member: { displayName: 'User 1' },
-      mentions: {
-        users: new Map([['user-2', {}]]),
-        has: vi.fn(() => false),
-      },
-      reference: null,
-    };
-
-    const fetchMessages = vi.fn().mockResolvedValue(new Map([['msg-1', message]]));
-    mockFetchChannel.mockResolvedValue(
-      new TestTextChannel({
-        id: 'channel-1',
-        guildId: 'guild-1',
-        messages: { fetch: fetchMessages },
-      }),
-    );
-
-    await backfillChannelHistory('channel-1', 1);
-
-    expect(ingestEvent).toHaveBeenCalledWith(
-      expect.objectContaining({
-        type: 'message',
-        messageId: 'msg-1',
-      }),
-      { publishSocialGraph: false },
-    );
-  });
-
   it('captures visible embed and Components V2 text during backfill', async () => {
     const message = {
       id: 'msg-rich-1',
@@ -289,7 +252,6 @@ describe('historyBackfill', () => {
           'Deployment completed successfully.',
         ].join('\n\n'),
       }),
-      { publishSocialGraph: false },
     );
   });
 });

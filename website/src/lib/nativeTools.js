@@ -93,37 +93,9 @@ export const nativeTools = [
     "color": "#5865F2"
   },
   {
-    "name": "discord_context_get_social_graph",
-    "short": "Discord Context Get Social Graph",
-    "desc": "Retrieve social graph relationships for a user.",
-    "cat": "discord",
-    "color": "#5865F2"
-  },
-  {
-    "name": "discord_context_get_top_relationships",
-    "short": "Discord Context Get Top Relationships",
-    "desc": "Show the top interaction pairs in this server.",
-    "cat": "discord",
-    "color": "#5865F2"
-  },
-  {
     "name": "discord_context_get_user_profile",
     "short": "Discord Context Get User Profile",
     "desc": "Fetch the best-effort personalization profile for a user.",
-    "cat": "discord",
-    "color": "#5865F2"
-  },
-  {
-    "name": "discord_context_get_voice_analytics",
-    "short": "Discord Context Get Voice Analytics",
-    "desc": "Retrieve voice participation analytics.",
-    "cat": "discord",
-    "color": "#5865F2"
-  },
-  {
-    "name": "discord_context_get_voice_summaries",
-    "short": "Discord Context Get Voice Summaries",
-    "desc": "Retrieve recent voice session summaries.",
     "cat": "discord",
     "color": "#5865F2"
   },
@@ -737,27 +709,6 @@ export const nativeTools = [
     "color": "#5865F2"
   },
   {
-    "name": "discord_voice_get_status",
-    "short": "Discord Voice Get Status",
-    "desc": "Show the bot voice connection status for this guild.",
-    "cat": "discord",
-    "color": "#5865F2"
-  },
-  {
-    "name": "discord_voice_join_current_channel",
-    "short": "Discord Voice Join Current Channel",
-    "desc": "Join the invoker’s current voice channel.",
-    "cat": "discord",
-    "color": "#5865F2"
-  },
-  {
-    "name": "discord_voice_leave",
-    "short": "Discord Voice Leave",
-    "desc": "Leave the active guild voice channel.",
-    "cat": "discord",
-    "color": "#5865F2"
-  },
-  {
     "name": "image_generate",
     "short": "Image Generate",
     "desc": "Generate an image with Pollinations as a distinct artifact, not a normal text reply.",
@@ -770,6 +721,13 @@ export const nativeTools = [
     "desc": "Lookup npm package metadata including versions, repository, and maintainers.",
     "cat": "dev",
     "color": "#10B981"
+  },
+  {
+    "name": "runtime_execute_code",
+    "short": "Runtime Execute Code",
+    "desc": "Run short JavaScript programs against Sage’s host bridge instead of juggling many narrow tools directly.",
+    "cat": "system",
+    "color": "#6B7280"
   },
   {
     "name": "system_time",

@@ -116,6 +116,8 @@ import {
 } from '../agent-runtime/continuityContext';
 import { resolveTextProviderRoute } from '../agent-runtime/apiKeyResolver';
 import { ApprovalRequiredSignal, type ApprovalInterruptPayload } from '../agent-runtime/toolControlSignals';
+import { resumeApprovedCodeModeExecution } from '../code-mode/executor';
+import type { CodeModeApprovalExecutionPayload } from '../code-mode/types';
 
 const APPROVAL_TTL_MS = 10 * 60 * 1_000;
 const RESOLVED_APPROVAL_CARD_DELETE_DELAY_MS = 60_000;
@@ -3576,6 +3578,27 @@ async function executePendingAction(params: {
         path: request.path,
       })),
       results,
+    };
+  }
+
+  if (params.action.kind === 'code_mode_effect') {
+    const payload = params.action.executionPayloadJson as CodeModeApprovalExecutionPayload;
+    const resumed = await resumeApprovedCodeModeExecution({
+      payload,
+      approvedBy: params.approvedBy,
+    });
+
+    return {
+      action: 'code_mode_effect',
+      status: 'executed',
+      executionId: resumed.executionId,
+      taskId: resumed.taskId,
+      language: resumed.language,
+      result: resumed.result,
+      stdout: resumed.stdout,
+      stderr: resumed.stderr,
+      bridgeCalls: resumed.bridgeCalls,
+      workspaceSummary: resumed.workspaceSummary,
     };
   }
 

@@ -307,61 +307,6 @@ CREATE TABLE "ChannelSummary" (
 );
 
 -- CreateTable
-CREATE TABLE "VoiceSession" (
-    "id" TEXT NOT NULL,
-    "guildId" TEXT NOT NULL,
-    "channelId" TEXT NOT NULL,
-    "userId" TEXT NOT NULL,
-    "displayName" TEXT,
-    "startedAt" TIMESTAMP(3) NOT NULL,
-    "endedAt" TIMESTAMP(3),
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" TIMESTAMP(3) NOT NULL,
-
-    CONSTRAINT "VoiceSession_pkey" PRIMARY KEY ("id")
-);
-
--- CreateTable
-CREATE TABLE "VoiceConversationSummary" (
-    "id" TEXT NOT NULL,
-    "guildId" TEXT NOT NULL,
-    "voiceChannelId" TEXT NOT NULL,
-    "voiceChannelName" TEXT,
-    "initiatedByUserId" TEXT NOT NULL,
-    "startedAt" TIMESTAMP(3) NOT NULL,
-    "endedAt" TIMESTAMP(3) NOT NULL,
-    "speakerStatsJson" JSONB NOT NULL,
-    "summaryText" TEXT NOT NULL,
-    "topicsJson" JSONB,
-    "threadsJson" JSONB,
-    "decisionsJson" JSONB,
-    "actionItemsJson" JSONB,
-    "unresolvedJson" JSONB,
-    "sentiment" TEXT,
-    "glossaryJson" JSONB,
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" TIMESTAMP(3) NOT NULL,
-
-    CONSTRAINT "VoiceConversationSummary_pkey" PRIMARY KEY ("id")
-);
-
--- CreateTable
-CREATE TABLE "RelationshipEdge" (
-    "id" TEXT NOT NULL,
-    "guildId" TEXT NOT NULL,
-    "userA" TEXT NOT NULL,
-    "userB" TEXT NOT NULL,
-    "weight" DOUBLE PRECISION NOT NULL DEFAULT 0,
-    "confidence" DOUBLE PRECISION NOT NULL DEFAULT 0,
-    "featuresJson" JSONB NOT NULL,
-    "manualOverride" DOUBLE PRECISION,
-    "updatedAt" TIMESTAMP(3) NOT NULL,
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
-    CONSTRAINT "RelationshipEdge_pkey" PRIMARY KEY ("id")
-);
-
--- CreateTable
 CREATE TABLE "AdminAudit" (
     "id" TEXT NOT NULL,
     "guildId" TEXT NOT NULL,
@@ -638,27 +583,6 @@ CREATE INDEX "ChannelSummary_guildId_channelId_updatedAt_idx" ON "ChannelSummary
 
 -- CreateIndex
 CREATE UNIQUE INDEX "ChannelSummary_guildId_channelId_kind_key" ON "ChannelSummary"("guildId", "channelId", "kind");
-
--- CreateIndex
-CREATE INDEX "VoiceSession_guildId_channelId_startedAt_idx" ON "VoiceSession"("guildId", "channelId", "startedAt");
-
--- CreateIndex
-CREATE INDEX "VoiceSession_guildId_userId_startedAt_idx" ON "VoiceSession"("guildId", "userId", "startedAt");
-
--- CreateIndex
-CREATE INDEX "VoiceSession_guildId_userId_endedAt_idx" ON "VoiceSession"("guildId", "userId", "endedAt");
-
--- CreateIndex
-CREATE INDEX "VoiceConversationSummary_guildId_endedAt_idx" ON "VoiceConversationSummary"("guildId", "endedAt");
-
--- CreateIndex
-CREATE INDEX "VoiceConversationSummary_guildId_voiceChannelId_endedAt_idx" ON "VoiceConversationSummary"("guildId", "voiceChannelId", "endedAt");
-
--- CreateIndex
-CREATE INDEX "RelationshipEdge_guildId_updatedAt_idx" ON "RelationshipEdge"("guildId", "updatedAt");
-
--- CreateIndex
-CREATE UNIQUE INDEX "RelationshipEdge_guildId_userA_userB_key" ON "RelationshipEdge"("guildId", "userA", "userB");
 
 -- CreateIndex
 CREATE INDEX "AdminAudit_guildId_createdAt_idx" ON "AdminAudit"("guildId", "createdAt");

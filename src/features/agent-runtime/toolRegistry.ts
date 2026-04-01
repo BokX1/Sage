@@ -299,6 +299,7 @@ export interface ToolExecutionContext {
   invokerIsAdmin?: boolean;
   invokerCanModerate?: boolean;
   invokedBy?: 'mention' | 'reply' | 'wakeword' | 'autopilot' | 'component';
+  activeToolNames?: string[];
   routeKind?: string;
   currentTurn?: CurrentTurnContext;
   replyTarget?: ReplyTargetContext | null;

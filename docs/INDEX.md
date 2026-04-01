@@ -28,7 +28,7 @@ Invite → Activate → Chat
 | Step | Document | Time |
 | :--- | :--- | :--- |
 | 1️⃣ | [⚡ Quick Start](guides/QUICKSTART.md) — Join an existing deployment or self-host quickly | ~5 min |
-| 2️⃣ | [💬 Conversation & Controls](guides/COMMANDS.md) — Chat triggers, setup controls, voice control, interactive follow-ups, and admin action patterns | ~10 min |
+| 2️⃣ | [💬 Conversation & Controls](guides/COMMANDS.md) — Chat triggers, setup controls, interactive follow-ups, and admin action patterns | ~10 min |
 | 3️⃣ | [❓ FAQ](guides/FAQ.md) — Common questions about setup, behavior, and data storage | As needed |
 
 ---
@@ -60,7 +60,6 @@ Architecture → Pipeline → Memory → Database
 | 2️⃣ | [🔀 Runtime Pipeline](architecture/PIPELINE.md) — Context assembly, LangGraph runtime flow, and trace outputs | ~20 min |
 | 3️⃣ | [🧠 Memory System](architecture/MEMORY.md) — Transcript retention, summaries, profiles, and on-demand retrieval | ~15 min |
 | 4️⃣ | [💾 Database Schema](architecture/DATABASE.md) — Active Prisma models and common operations | ~10 min |
-| 5️⃣ | [🕸️ Social Graph](architecture/SOCIAL_GRAPH.md) — Optional Memgraph/Redpanda export and analytics design | ~15 min |
 
 ---
 
@@ -72,7 +71,7 @@ Architecture → Pipeline → Memory → Database
 | :--- | :--- |
 | [⚡ Quick Start](guides/QUICKSTART.md) | Fastest path to an existing deployment or a minimal self-host setup |
 | [📖 Getting Started](guides/GETTING_STARTED.md) | Full setup from source (step-by-step) |
-| [💬 Conversation & Controls](guides/COMMANDS.md) | Chat triggers, setup controls, voice control, interactive buttons/modals, and approval-gated admin actions |
+| [💬 Conversation & Controls](guides/COMMANDS.md) | Chat triggers, setup controls, interactive buttons/modals, and approval-gated admin actions |
 | [❓ FAQ](guides/FAQ.md) | Common questions about setup, behavior, and privacy |
 | [🔧 Troubleshooting](guides/TROUBLESHOOTING.md) | Fixes for common failures and misconfigurations |
 | [🌸 BYOP Mode](guides/BYOP.md) | Bring-Your-Own-Pollen key setup |
@@ -84,7 +83,7 @@ Architecture → Pipeline → Memory → Database
 | [⚙️ Configuration](reference/CONFIGURATION.md) | Environment variables, defaults, and optional smoke/diagnostic knobs |
 | [🧩 Model Reference](reference/MODELS.md) | Model resolution, budget profiles, and live tool-calling verification |
 | [🐝 Pollinations Integration](reference/POLLINATIONS.md) | Current Pollinations-specific hosted/server-key and image flows |
-| [🔌 API Examples](reference/API_EXAMPLES.md) | Annotated request examples for runtime chat, image workflows, and the optional voice service |
+| [🔌 API Examples](reference/API_EXAMPLES.md) | Annotated request examples for runtime chat and image workflows |
 | [🚢 Release Process](reference/RELEASE.md) | SemVer workflow, changelog, and CI checks |
 
 ### 📙 Architecture
@@ -95,9 +94,7 @@ Architecture → Pipeline → Memory → Database
 | [🔀 Runtime Pipeline](architecture/PIPELINE.md) | Message flow, context assembly, task-run slicing, and trace outputs |
 | [🔍 Search Architecture](architecture/SEARCH.md) | SAG flow, web providers, and guarded search fallbacks |
 | [🧠 Memory System](architecture/MEMORY.md) | How Sage stores memory and fetches richer context on demand |
-| [🎤 Voice System](architecture/VOICE.md) | Voice awareness plus optional local transcription |
 | [💾 Database Schema](architecture/DATABASE.md) | PostgreSQL schema, ERD, and common operations |
-| [🕸️ Social Graph](architecture/SOCIAL_GRAPH.md) | Event export, Memgraph analytics, and query behavior |
 
 ### 📕 Operations
 
@@ -106,7 +103,6 @@ Architecture → Pipeline → Memory → Database
 | [📋 Operations Runbook](operations/RUNBOOK.md) | Production health checks, validation, and incident response |
 | [🚀 Deployment Guide](operations/DEPLOYMENT.md) | Run Sage with Node.js plus the repo's compose-managed support services |
 | [🧰 Self-Hosted Tool Stack](operations/TOOL_STACK.md) | SearXNG, Crawl4AI, and Tika with hosted fallback |
-| [🛠️ Social Graph Setup](operations/SOCIAL_GRAPH_SETUP.md) | Memgraph + Redpanda setup, topic creation, and manual analytics ops |
 
 ### 📓 Security
 

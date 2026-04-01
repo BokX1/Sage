@@ -52,7 +52,6 @@ export {
   discordScheduleTools,
   discordSpacesTools,
   discordGovernanceTools,
-  discordVoiceTools,
   discordTools,
 } from './discordDomainTools';
 

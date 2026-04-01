@@ -1,5 +1,0 @@
-{
-    "exclude": [
-        "src/social-graph/mage-modules"
-    ]
-}

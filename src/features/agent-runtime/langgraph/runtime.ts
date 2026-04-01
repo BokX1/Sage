@@ -400,7 +400,6 @@ const AgentGraphRuntimeSnapshotSchema = z.object({
   guildSagePersona: z.string().nullable().optional(),
   focusedContinuity: z.string().nullable().optional(),
   recentTranscript: z.string().nullable().optional(),
-  voiceContext: z.string().nullable().optional(),
   waitingFollowUp: z.union([PromptWaitingFollowUpSchema, z.null()]).optional(),
   promptMode: z
     .enum(['standard', 'image_only', 'reply_only', 'direct_attention', 'durable_resume', 'waiting_follow_up'])
@@ -447,7 +446,6 @@ const AgentGraphConfigurableSchema = z
     guildSagePersona: z.string().nullable().optional(),
     focusedContinuity: z.string().nullable().optional(),
     recentTranscript: z.string().nullable().optional(),
-    voiceContext: z.string().nullable().optional(),
     waitingFollowUp: z.union([PromptWaitingFollowUpSchema, z.null()]).optional(),
     promptMode: z
       .enum(['standard', 'image_only', 'reply_only', 'direct_attention', 'durable_resume', 'waiting_follow_up'])
@@ -621,7 +619,6 @@ const EMPTY_RUNTIME_CONTEXT: AgentGraphRuntimeContext = {
   guildSagePersona: null,
   focusedContinuity: null,
   recentTranscript: null,
-  voiceContext: null,
   waitingFollowUp: null,
   promptMode: 'standard',
   promptVersion: null,
@@ -653,7 +650,6 @@ export interface StartAgentGraphTurnParams {
   guildSagePersona?: string | null;
   focusedContinuity?: string | null;
   recentTranscript?: string | null;
-  voiceContext?: string | null;
   waitingFollowUp?: AgentGraphRuntimeContext['waitingFollowUp'];
   promptMode?: PromptInputMode;
   promptVersion?: string | null;
@@ -1235,7 +1231,6 @@ function createRuntimeContext(params: StartAgentGraphTurnParams): AgentGraphRunt
     guildSagePersona: params.guildSagePersona ?? null,
     focusedContinuity: params.focusedContinuity ?? null,
     recentTranscript: params.recentTranscript ?? null,
-    voiceContext: params.voiceContext ?? null,
     waitingFollowUp: params.waitingFollowUp ?? null,
     promptMode: params.promptMode ?? 'standard',
     promptVersion: params.promptVersion ?? null,
@@ -1640,6 +1635,7 @@ function buildToolContext(
     invokerIsAdmin: runtimeContext.invokerIsAdmin,
     invokerCanModerate: runtimeContext.invokerCanModerate,
     invokedBy: runtimeContext.invokedBy,
+    activeToolNames: runtimeContext.activeToolNames,
     routeKind: runtimeContext.routeKind,
     currentTurn: runtimeContext.currentTurn as ToolExecutionContext['currentTurn'],
     replyTarget: runtimeContext.replyTarget as ToolExecutionContext['replyTarget'],
@@ -2181,13 +2177,11 @@ function buildAssistantTurnMessages(params: {
     invokerIsAdmin: params.runtimeContext.invokerIsAdmin,
     invokerCanModerate: params.runtimeContext.invokerCanModerate,
     inGuild: params.runtimeContext.guildId !== null,
-    turnMode: params.runtimeContext.voiceContext ? 'voice' : 'text',
     guildSagePersona: params.runtimeContext.guildSagePersona ?? null,
     replyTarget: (params.runtimeContext.replyTarget as ReplyTargetContext | null | undefined) ?? null,
     userText: extractLatestHumanRequestText(params.state.messages as BaseMessage[]),
     focusedContinuity: params.runtimeContext.focusedContinuity ?? null,
     recentTranscript: params.runtimeContext.recentTranscript ?? null,
-    voiceContext: params.runtimeContext.voiceContext ?? null,
     waitingFollowUp: params.runtimeContext.waitingFollowUp ?? null,
     graphLimits: {
       maxRounds: graphConfig.sliceMaxSteps,

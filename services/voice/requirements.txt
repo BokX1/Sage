@@ -1,7 +1,0 @@
-fastapi==0.115.8
-uvicorn[standard]==0.34.0
-python-multipart==0.0.20
-
-# STT
-faster-whisper==1.1.1
-requests==2.32.5

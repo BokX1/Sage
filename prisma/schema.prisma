@@ -322,62 +322,6 @@ model ChannelSummary {
   @@index([guildId, channelId, updatedAt])
 }
 
-model VoiceSession {
-  id          String    @id @default(cuid())
-  guildId     String
-  channelId   String
-  userId      String
-  displayName String?
-  startedAt   DateTime
-  endedAt     DateTime?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-
-  @@index([guildId, channelId, startedAt])
-  @@index([guildId, userId, startedAt])
-  @@index([guildId, userId, endedAt])
-}
-
-model VoiceConversationSummary {
-  id                String   @id @default(cuid())
-  guildId           String
-  voiceChannelId    String
-  voiceChannelName  String?
-  initiatedByUserId String
-  startedAt         DateTime
-  endedAt           DateTime
-  speakerStatsJson  Json
-  summaryText       String   @db.Text
-  topicsJson        Json?
-  threadsJson       Json?
-  decisionsJson     Json?
-  actionItemsJson   Json?
-  unresolvedJson    Json?
-  sentiment         String?
-  glossaryJson      Json?
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-
-  @@index([guildId, endedAt])
-  @@index([guildId, voiceChannelId, endedAt])
-}
-
-model RelationshipEdge {
-  id             String   @id @default(cuid())
-  guildId        String
-  userA          String // Always userA < userB (lexicographically)
-  userB          String
-  weight         Float    @default(0) // 0.0-1.0 relationship strength
-  confidence     Float    @default(0) // 0.0-1.0 evidence strength
-  featuresJson   Json // { mentions, replies, voice, meta }
-  manualOverride Float? // Admin-set override (0.0-1.0)
-  updatedAt      DateTime @updatedAt
-  createdAt      DateTime @default(now())
-
-  @@unique([guildId, userA, userB])
-  @@index([guildId, updatedAt])
-}
-
 model AdminAudit {
   id         String   @id @default(cuid())
   guildId    String

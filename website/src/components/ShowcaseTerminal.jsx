@@ -14,13 +14,13 @@ const scenarios = [
         ],
     },
     {
-        label: 'Voice_Context_Recovery.sh',
-        desc: 'Extracting temporal conversational data',
-        userMsg: "Sage, what did we discuss in voice chat yesterday?",
+        label: 'Summary_Context_Recovery.sh',
+        desc: 'Reconstructing channel decisions from stored summaries and history',
+        userMsg: "Sage, what did we decide about the OAuth rollout yesterday?",
         trace: [
-            { tool: 'discord_context', status: 'ok', text: 'action=get_voice_analytics → Found 2 sessions: #general-voice (45min), #dev-talk (20min)' },
-            { tool: 'discord_context', status: 'ok', text: 'action=get_channel_summary → Loading rolling summary for #general around session timestamp' },
-            { tool: 'discord_messages', status: 'ok', text: 'action=search_with_context → Semantic search + context: messages near voice session window' },
+            { tool: 'discord_context', status: 'ok', text: 'action=get_channel_summary → Loading rolling summary for #dev around yesterday evening' },
+            { tool: 'discord_context', status: 'ok', text: 'action=search_channel_summary_archives → Found archived profile summary with OAuth migration note' },
+            { tool: 'discord_messages', status: 'ok', text: 'action=search_with_context → Exact messages around the deployment discussion loaded' },
         ],
     },
     {

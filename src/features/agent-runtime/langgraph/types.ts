@@ -273,7 +273,6 @@ export interface AgentGraphRuntimeContext {
   guildSagePersona?: string | null;
   focusedContinuity?: string | null;
   recentTranscript?: string | null;
-  voiceContext?: string | null;
   promptMode?: PromptInputMode;
   waitingFollowUp?: PromptWaitingFollowUp | null;
   promptVersion?: string | null;

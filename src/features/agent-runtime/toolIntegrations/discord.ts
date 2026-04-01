@@ -12,8 +12,4 @@ export {
   searchChannelArchives,
   lookupUserMemory,
   lookupChannelMemory,
-  lookupSocialGraph,
-  lookupTopSocialGraphEdges,
-  lookupVoiceAnalytics,
-  lookupVoiceSessionSummaries,
 } from './impl';

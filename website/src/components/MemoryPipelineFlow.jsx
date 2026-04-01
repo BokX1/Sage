@@ -6,8 +6,8 @@ const stages = [
     { icon: '📝', label: 'Ring Buffer', desc: 'Last N messages loaded from in-memory transcript', color: '#7AA2F7' },
     { icon: '📊', label: 'Rolling Summary', desc: 'LLM-generated channel summary injected', color: '#E0AF68' },
     { icon: '👤', label: 'User Profile', desc: 'Long-term personalization narrative from PostgreSQL', color: '#BB9AF7' },
-    { icon: '🕸️', label: 'Social Graph', desc: 'Dunbar layers + reciprocity from Memgraph GNN', color: '#BB9AF7' },
-    { icon: '🔧', label: 'Tool Queries', desc: 'Dynamic tool calls fire: search, files, voice analytics', color: '#E0AF68' },
+    { icon: '📎', label: 'Attachment Recall', desc: 'Cached files and extracted text are loaded on demand', color: '#BB9AF7' },
+    { icon: '🔧', label: 'Tool Queries', desc: 'Dynamic tool calls fire: search, files, summaries, history', color: '#E0AF68' },
     { icon: '🤖', label: 'LLM Context', desc: 'Complete context window assembled → sent to model', color: '#78b846' },
 ];
 
@@ -89,7 +89,7 @@ export default function MemoryPipelineFlow() {
                     </span>
                 </h2>
                 <p className="text-lg text-slate-400 max-w-2xl mx-auto font-light">
-                    Every message triggers a 7-stage pipeline that assembles the ideal context window. Scroll to watch it flow.
+                    Every message triggers a lean context pipeline that assembles the right working set without flooding the model. Scroll to watch it flow.
                 </p>
             </motion.div>
 

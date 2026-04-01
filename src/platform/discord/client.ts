@@ -12,7 +12,7 @@ import { Client, GatewayIntentBits, Partials } from 'discord.js';
  * - Does not throw.
  *
  * Invariants:
- * - Intents include message, guild, and voice features required by handlers.
+ * - Intents include only the lean-core Discord features required by handlers.
  */
 export const client = new Client({
   intents: [
@@ -20,8 +20,6 @@ export const client = new Client({
     GatewayIntentBits.GuildMembers,
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent,
-    GatewayIntentBits.GuildMessageReactions,
-    GatewayIntentBits.GuildVoiceStates,
     GatewayIntentBits.AutoModerationConfiguration,
     GatewayIntentBits.AutoModerationExecution,
   ],

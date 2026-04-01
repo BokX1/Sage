@@ -3,7 +3,7 @@ import { normalizeTimeoutMs } from '../../shared/utils/timeout';
 /**
  * Represents the AttachmentExtractor type.
  */
-export type AttachmentExtractor = 'native' | 'tika' | 'voice_stt' | 'vision' | 'none';
+export type AttachmentExtractor = 'native' | 'tika' | 'vision' | 'none';
 
 /**
  * Represents the FetchAttachmentTextOptions type.

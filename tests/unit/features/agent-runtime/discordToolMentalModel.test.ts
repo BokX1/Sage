@@ -25,7 +25,6 @@ function buildPrompt(activeTools: string[]): string {
     activeTools,
     model: 'kimi',
     inGuild: true,
-    turnMode: 'text',
   }).systemMessage;
 }
 
@@ -114,15 +113,6 @@ describe('discord tool mental model guidance', () => {
     ])).toContain('Artifact workflow vs guild resources');
   });
 
-  it('distinguishes voice analytics from live voice control', () => {
-    const prompt = buildPrompt([
-      'discord_context_get_voice_analytics',
-      'discord_voice_join_current_channel',
-    ]);
-
-    expect(prompt).toContain('Voice analytics vs live control');
-  });
-
   it('surfaces Discord routing distinctions directly in the prompt', () => {
     const prompt = buildPrompt([
       'discord_context_get_channel_summary',
@@ -132,8 +122,6 @@ describe('discord tool mental model guidance', () => {
       'discord_spaces_list_channels',
       'discord_governance_update_server_instructions',
       'discord_moderation_submit_action',
-      'discord_voice_join_current_channel',
-      'discord_context_get_voice_analytics',
     ]);
 
     expect(prompt).toContain('<tool_protocol>');
@@ -142,7 +130,6 @@ describe('discord tool mental model guidance', () => {
     expect(prompt).toContain('Governance/config vs moderation');
     expect(prompt).toContain('Reply-targeted enforcement uses moderation tools');
     expect(prompt).toContain('Artifact workflow vs guild resources');
-    expect(prompt).toContain('Voice analytics vs live control');
   });
 
   it('keeps prompt guidance aligned with granular Discord docs', () => {

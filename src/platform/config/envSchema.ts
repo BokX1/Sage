@@ -198,16 +198,6 @@ export const testDefaults: Record<string, string> = {
   DISCORD_APP_ID: 'test-discord-app-id',
   DATABASE_URL: 'test-database-url',
 
-  // Social Graph
-  MEMGRAPH_HOST: 'localhost',
-  MEMGRAPH_PORT: '7687',
-  MEMGRAPH_USER: '',
-  MEMGRAPH_PASSWORD: '',
-  MEMGRAPH_KAFKA_BOOTSTRAP_SERVERS: 'redpanda:9092',
-  KAFKA_BROKERS: '',
-  KAFKA_INTERACTIONS_TOPIC: 'sage.social.interactions',
-  KAFKA_VOICE_TOPIC: 'sage.social.voice-sessions',
-
   // Bot Behavior
   LOG_LEVEL: 'info',
   RATE_LIMIT_MAX: '100',
@@ -217,21 +207,6 @@ export const testDefaults: Record<string, string> = {
   WAKE_WORD_PREFIXES_CSV: '!',
   WAKEWORD_COOLDOWN_SEC: '10',
   WAKEWORD_MAX_RESPONSES_PER_MIN_PER_CHANNEL: '5',
-
-  // Voice
-  VOICE_SERVICE_BASE_URL: 'http://127.0.0.1:11333',
-  VOICE_STT_ENABLED: 'false',
-  VOICE_STT_MODEL_ID: 'deepdml/faster-whisper-large-v3-turbo-ct2',
-  VOICE_STT_COMPUTE_TYPE: 'int8',
-  VOICE_STT_END_SILENCE_MS: '900',
-  VOICE_STT_MAX_UTTERANCE_MS: '15000',
-  VOICE_STT_MIN_UTTERANCE_MS: '400',
-  VOICE_LIVE_CONTEXT_LOOKBACK_SEC: '180',
-  VOICE_LIVE_CONTEXT_MAX_UTTERANCES: '80',
-  VOICE_SESSION_SUMMARY_ENABLED: 'true',
-  VOICE_MESSAGE_STT_ENABLED: 'false',
-  VOICE_MESSAGE_STT_MAX_SECONDS: '120',
-  VOICE_MESSAGE_STT_MAX_BYTES: '5000000',
 
   // Message Storage / Ingestion
   INGESTION_ENABLED: 'true',
@@ -384,16 +359,6 @@ export const envSchema = z.object({
   DISCORD_APP_ID: z.string().min(1),
   DATABASE_URL: z.string().min(1),
 
-  // Social Graph
-  MEMGRAPH_HOST: z.string().default('localhost'),
-  MEMGRAPH_PORT: z.coerce.number().int().positive().default(7687),
-  MEMGRAPH_USER: z.string().default(''),
-  MEMGRAPH_PASSWORD: z.string().default(''),
-  MEMGRAPH_KAFKA_BOOTSTRAP_SERVERS: z.string().default('redpanda:9092'),
-  KAFKA_BROKERS: z.string().default(''),
-  KAFKA_INTERACTIONS_TOPIC: z.string().default('sage.social.interactions'),
-  KAFKA_VOICE_TOPIC: z.string().default('sage.social.voice-sessions'),
-
   // Bot Behavior
   LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']),
   RATE_LIMIT_MAX: z.coerce.number().int().positive().max(1000),
@@ -403,21 +368,6 @@ export const envSchema = z.object({
   WAKE_WORD_PREFIXES_CSV: z.string(),
   WAKEWORD_COOLDOWN_SEC: z.coerce.number().int().min(0),
   WAKEWORD_MAX_RESPONSES_PER_MIN_PER_CHANNEL: z.coerce.number().int().min(0),
-
-  // Voice
-  VOICE_SERVICE_BASE_URL: httpOrHttpsUrlSchema.default('http://127.0.0.1:11333'),
-  VOICE_STT_ENABLED: z.enum(['true', 'false']).default('false').transform((v) => v === 'true'),
-  VOICE_STT_MODEL_ID: z.string().default('deepdml/faster-whisper-large-v3-turbo-ct2'),
-  VOICE_STT_COMPUTE_TYPE: z.enum(['int8', 'int8_float16', 'float16', 'float32']).default('int8'),
-  VOICE_STT_END_SILENCE_MS: z.coerce.number().int().min(100).max(10_000).default(900),
-  VOICE_STT_MAX_UTTERANCE_MS: z.coerce.number().int().min(500).max(120_000).default(15_000),
-  VOICE_STT_MIN_UTTERANCE_MS: z.coerce.number().int().min(0).max(10_000).default(400),
-  VOICE_LIVE_CONTEXT_LOOKBACK_SEC: z.coerce.number().int().min(10).max(3600).default(180),
-  VOICE_LIVE_CONTEXT_MAX_UTTERANCES: z.coerce.number().int().min(5).max(500).default(80),
-  VOICE_SESSION_SUMMARY_ENABLED: z.enum(['true', 'false']).default('true').transform((v) => v === 'true'),
-  VOICE_MESSAGE_STT_ENABLED: z.enum(['true', 'false']).default('false').transform((v) => v === 'true'),
-  VOICE_MESSAGE_STT_MAX_SECONDS: z.coerce.number().int().min(10).max(600).default(120),
-  VOICE_MESSAGE_STT_MAX_BYTES: z.coerce.number().int().min(1024).max(104857600).default(5000000),
 
   // Message Storage / Ingestion
   INGESTION_ENABLED: z.enum(['true', 'false']).transform((v) => v === 'true'),

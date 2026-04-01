@@ -85,7 +85,6 @@ describe('messageUpdate handler', () => {
         authorIsBot: true,
         content: 'Retry completed successfully.',
       }),
-      { publishSocialGraph: false },
     );
   });
 
@@ -113,7 +112,6 @@ describe('messageUpdate handler', () => {
         messageId: 'msg-partial-1',
         content: 'Approval finished and the source message was updated.',
       }),
-      { publishSocialGraph: false },
     );
   });
 

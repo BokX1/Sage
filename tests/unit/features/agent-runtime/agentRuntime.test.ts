@@ -186,10 +186,6 @@ vi.mock('@/features/agent-runtime/agentTaskRunRepo', () => ({
   releaseAgentTaskRunLease: releaseAgentTaskRunLeaseMock,
 }));
 
-vi.mock('@/features/voice/voiceConversationSessionStore', () => ({
-  formatLiveVoiceContext: vi.fn(() => null),
-}));
-
 import {
   attachTaskRunResponseSession as attachTaskRunResponseSessionImpl,
   continueMatchedTaskRunWithInput as continueMatchedTaskRunWithInputImpl,

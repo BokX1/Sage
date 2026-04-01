@@ -20,7 +20,6 @@ import NavBar from '../components/NavBar.jsx';
 import ComparisonTable from '../components/ComparisonTable.jsx';
 import ScrollProgress from '../components/ScrollProgress.jsx';
 import WhySage from '../components/WhySage.jsx';
-import VoiceVisualizer from '../components/VoiceVisualizer.jsx';
 import TestimonialCarousel from '../components/TestimonialCarousel.jsx';
 import { nativeToolCount } from '../lib/nativeTools.js';
 
@@ -29,7 +28,7 @@ const nativeToolsLabel = `${nativeToolCount}+`;
 
 <Layout 
  	title="Sage — The Agentic AI Teammate for Discord Communities" 
-	description={`Sage is a chat-first AI teammate for Discord — ${nativeToolsLabel} native tools, hybrid memory, social graph reasoning, and zero-prompt automation. Free to use, MIT licensed, fully self-hostable.`}>
+	description={`Sage is a chat-first AI teammate for Discord — ${nativeToolsLabel} native tools, layered memory, approval-aware automation, and full self-hosting. Free to use, MIT licensed.`}>
 	
 	<!-- Scroll Progress Indicator -->
 	<ScrollProgress client:load />
@@ -262,48 +261,6 @@ const nativeToolsLabel = `${nativeToolCount}+`;
 		</div>
 
 		<!-- ═══════════════════════════════════════ -->
-		<!--  5.5 MULTIMODAL VOICE SYSTEM           -->
-		<!-- ═══════════════════════════════════════ -->
-		<section class="relative max-w-7xl mx-auto px-6 py-24 grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
-			<div class="absolute top-[20%] left-[-10%] w-[400px] h-[400px] rounded-full bg-[#78b846]/[0.03] blur-[100px] pointer-events-none"></div>
-			
-			<div class="z-10 order-2 lg:order-1 lg:pr-12">
-				<div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#141a23] border border-[#2d4530] text-[#a9df7c] text-xs font-mono mb-6">
-					<span class="w-2 h-2 rounded-full bg-[#78b846]"></span>
-					Multimodal Processing
-				</div>
-				<h2 class="text-4xl lg:text-5xl font-bold text-white mb-6 leading-tight">
-					Native <span class="text-transparent bg-clip-text bg-gradient-to-r from-[#78b846] to-[#a9df7c]">Voice</span> Intelligence
-				</h2>
-				<p class="text-lg text-slate-400 font-light leading-relaxed mb-6">
-					Sage doesn't just read, it listens. With a built-in transcription pipeline, Sage can join voice channels and recover high-signal context for real-time coordination.
-				</p>
-				<ul class="space-y-3 font-mono text-sm text-slate-300">
-					<li class="flex items-center gap-3">
-						<span class="text-[#78b846]">▹</span> Automatic Voice transcription
-					</li>
-					<li class="flex items-center gap-3">
-						<span class="text-[#78b846]">▹</span> Summary-only session memory
-					</li>
-					<li class="flex items-center gap-3">
-						<span class="text-[#78b846]">▹</span> Multi-user speaker separation
-					</li>
-				</ul>
-			</div>
-
-			<div class="z-10 order-1 lg:order-2">
-				<VoiceVisualizer client:visible />
-			</div>
-		</section>
-
-		<!-- ── Dot Divider ── -->
-		<div class="divider-dots max-w-5xl mx-auto px-6" aria-hidden="true">
-			<span class="dot"></span>
-			<span class="dot" style="background: rgba(122,162,247,0.4); box-shadow: 0 0 8px rgba(122,162,247,0.3);"></span>
-			<span class="dot"></span>
-		</div>
-
-		<!-- ═══════════════════════════════════════ -->
 		<!--  6. CREATIVE INTELLIGENCE              -->
 		<!-- ═══════════════════════════════════════ -->
 		<div class="relative">
@@ -467,7 +424,7 @@ const nativeToolsLabel = `${nativeToolCount}+`;
 						<li><a href="#tech-stack" class="text-slate-400 hover:text-[#a9df7c] transition-colors">Tech Stack</a></li>
 						<li><a href="#architecture" class="text-slate-400 hover:text-[#a9df7c] transition-colors">Agent Trace</a></li>
 						<li><a href="https://github.com/BokX1/Sage/tree/master/docs/architecture" target="_blank" rel="noopener noreferrer" class="text-slate-400 hover:text-[#a9df7c] transition-colors">Memory Pipeline</a></li>
-						<li><a href="https://github.com/BokX1/Sage/blob/master/docs/architecture/SOCIAL_GRAPH.md" target="_blank" rel="noopener noreferrer" class="text-slate-400 hover:text-[#a9df7c] transition-colors">Social Graph</a></li>
+						<li><a href="https://github.com/BokX1/Sage/blob/master/docs/architecture/PIPELINE.md" target="_blank" rel="noopener noreferrer" class="text-slate-400 hover:text-[#a9df7c] transition-colors">Runtime Pipeline</a></li>
 					</ul>
 				</div>
 
@@ -508,9 +465,9 @@ const nativeToolsLabel = `${nativeToolCount}+`;
 						<span class="w-1.5 h-1.5 rounded-full bg-[#7AA2F7]"></span>
 						PostgreSQL
 					</span>
-					<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-[#BB9AF7]/10 border border-[#BB9AF7]/20 text-[10px] font-mono text-[#BB9AF7]">
-						<span class="w-1.5 h-1.5 rounded-full bg-[#BB9AF7]"></span>
-						Memgraph
+					<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-[#E0AF68]/10 border border-[#E0AF68]/20 text-[10px] font-mono text-[#E0AF68]">
+						<span class="w-1.5 h-1.5 rounded-full bg-[#E0AF68]"></span>
+						LangGraph
 					</span>
 				</div>
 			</div>
