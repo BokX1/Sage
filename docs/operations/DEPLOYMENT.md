@@ -208,4 +208,4 @@ npm run db:studio
 - [📖 Getting Started](../guides/GETTING_STARTED.md) — Initial setup walkthrough
 - [⚙️ Configuration](../reference/CONFIGURATION.md) — All environment variables
 - [📋 Operations Runbook](RUNBOOK.md) — Day-to-day operations
-- [🧰 Self-Hosted Tool Stack](TOOL_STACK.md) — Local tool stack setup
+- [🧰 Self-Hosted Retrieval Stack](TOOL_STACK.md) — Local retrieval stack setup

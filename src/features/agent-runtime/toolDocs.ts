@@ -1,4 +1,4 @@
-import { globalToolRegistry, type ToolDefinition } from './toolRegistry';
+import { globalToolRegistry } from './toolRegistry';
 
 export interface PromptToolGuidance {
   purpose?: string;
@@ -7,7 +7,7 @@ export interface PromptToolGuidance {
   argumentNotes?: string[];
 }
 
-export type WebsiteToolCategory = 'discord' | 'search' | 'dev' | 'gen' | 'system';
+export type WebsiteToolCategory = 'system';
 
 export interface WebsiteNativeToolRow {
   name: string;
@@ -34,337 +34,51 @@ export interface TopLevelToolDoc {
   smoke: ToolSmokeDoc;
 }
 
-type ToolDocOverride = {
-  selectionHints?: string[];
-  avoidWhen?: string[];
-  promptGuidance?: PromptToolGuidance;
-  websiteShort?: string;
-  websiteDesc?: string;
-  websiteCategory?: WebsiteToolCategory;
-  websiteColor?: string;
+const CODE_MODE_DOC: TopLevelToolDoc = {
+  tool: 'runtime_execute_code',
+  purpose: 'Run short JavaScript programs against Sage’s direct bridge namespaces.',
+  selectionHints: [
+    'Use as Sage’s only host execution surface when the task needs reads, writes, HTTP, or workspace state.',
+    'Prefer one short deterministic program over long narrated plans or multi-step tool orchestration.',
+  ],
+  avoidWhen: [
+    'A direct assistant-text answer is enough and no execution is needed.',
+    'You only need the runtime to wait for user input or cancel the turn.',
+  ],
+  promptGuidance: {
+    purpose: 'Run short JavaScript against direct bridge namespaces such as discord, history, context, artifacts, approvals, admin, moderation, schedule, http, and workspace.',
+    decisionEdges: [
+      'Need host-backed reads or writes -> runtime_execute_code.',
+      'Need outbound fetch -> runtime_execute_code with http.fetch(...).',
+      'Need task-local files -> runtime_execute_code with workspace.*.',
+      'No execution needed -> answer directly in assistant text.',
+    ],
+    antiPatterns: [
+      'Do not invent a generic dispatch helper or search for hidden tool names.',
+      'Do not narrate a long plan when one short program can verify or perform the work directly.',
+    ],
+    argumentNotes: [
+      'Use top-level namespaces directly, for example discord.messages.send(...), history.search(...), context.summary.get(...), admin.instructions.update(...).',
+      'There is no sage.* root object and no tool-discovery fallback.',
+    ],
+  },
+  validationHint: 'Pass { "language": "javascript", "code": "return await history.recent({ channelId: \\"123\\", limit: 5 });" }.',
+  website: {
+    name: 'runtime_execute_code',
+    short: 'Runtime Execute Code',
+    desc: 'Run short JavaScript against direct bridge namespaces for Discord, history, context, admin, moderation, scheduling, HTTP, and workspace access.',
+    cat: 'system',
+    color: '#6B7280',
+  },
+  smoke: { mode: 'skip', reason: 'Code Mode behavior is covered by execution tests rather than registry smoke args.' },
 };
-
-function categoryColor(category: WebsiteToolCategory): string {
-  switch (category) {
-    case 'discord':
-      return '#5865F2';
-    case 'search':
-      return '#0EA5E9';
-    case 'dev':
-      return '#10B981';
-    case 'gen':
-      return '#F59E0B';
-    case 'system':
-      return '#6B7280';
-  }
-}
-
-function categoryForTool(toolName: string): WebsiteToolCategory {
-  if (toolName.startsWith('discord_')) return 'discord';
-  if (toolName.startsWith('web_') || toolName === 'docs_lookup' || toolName.startsWith('browser_')) {
-    return 'search';
-  }
-  if (toolName.startsWith('repo_') || toolName === 'npm_info') {
-    return 'dev';
-  }
-  if (toolName.startsWith('image_')) return 'gen';
-  return 'system';
-}
-
-function defaultShortName(tool: ToolDefinition<unknown>): string {
-  return tool.title?.trim() || tool.name;
-}
-
-function defaultSelectionHints(tool: ToolDefinition<unknown>): string[] {
-  const guidance = tool.prompt;
-  const hints = [
-    guidance?.summary,
-    ...(guidance?.whenToUse ?? []),
-  ].filter((value): value is string => typeof value === 'string' && value.trim().length > 0);
-
-  if (hints.length > 0) {
-    return hints;
-  }
-
-  return [tool.description];
-}
-
-const TOOL_DOC_OVERRIDES: Record<string, ToolDocOverride> = {
-  web_search: {
-    selectionHints: [
-      'Use for current or open-web facts when you need recent sources or latest-state verification.',
-      'Prefer this over Wikipedia when freshness matters.',
-    ],
-    avoidWhen: [
-      'You already know the exact page to read.',
-    ],
-    promptGuidance: {
-      purpose: 'Search the public web for recent facts and candidate sources.',
-      decisionEdges: [
-        'Fresh external facts -> web_search.',
-        'Known exact page -> web_read or web_read_page instead.',
-      ],
-    },
-  },
-  web_read: {
-    selectionHints: [
-      'Use for a known exact page, especially when verifying current content or docs behavior at that URL.',
-      'Use `web_read_page` instead when the page is too large for one bounded read.',
-    ],
-    avoidWhen: [
-      'You still need discovery or source selection across the open web.',
-    ],
-    promptGuidance: {
-      purpose: 'Verify or read the contents of one known page directly.',
-      decisionEdges: [
-        'Known current docs page or exact URL -> web_read.',
-        'Large exact page -> web_read_page.',
-        'Need discovery across unknown sources -> web_search first.',
-      ],
-    },
-  },
-  npm_info: {
-    selectionHints: [
-      'Use for current npm package metadata such as latest versions, dist-tags, maintainers, and repository links.',
-    ],
-    avoidWhen: [
-      'You already know the repository and need exact source files rather than package-registry metadata.',
-    ],
-    promptGuidance: {
-      purpose: 'Verify current npm package metadata instead of relying on stale package knowledge.',
-      decisionEdges: [
-        'Current package version or dist-tags -> npm_info.',
-        'Exact repository source lookup -> direct GitHub tools instead.',
-      ],
-      antiPatterns: [
-        'Avoid using npm_info as a substitute for exact repository code reads when the repo/path is already known.',
-      ],
-    },
-  },
-  web_read_page: {
-    selectionHints: [
-      'Use for a very large known page when you need bounded continuation instead of one large read.',
-    ],
-    avoidWhen: [
-      'You still need source discovery across unknown websites.',
-    ],
-    promptGuidance: {
-      purpose: 'Continue through one large known page in bounded chunks.',
-      decisionEdges: [
-        'Large exact page -> web_read_page.',
-        'Single-page retrieval -> web_read instead.',
-        'Unknown sources -> web_search first.',
-      ],
-    },
-  },
-  repo_search_code: {
-    selectionHints: [
-      'Use when the repository path or file location is still unknown.',
-      'If repository code search is denied for this request, stop retrying the same search blindly and pivot to an exact-file read or a clarification request.',
-    ],
-    avoidWhen: [
-      'The exact owner/repo/path is already known.',
-      'The same run already hit a repository code-search access failure for this request.',
-    ],
-    promptGuidance: {
-      purpose: 'Find candidate files or symbols inside a known repository.',
-      decisionEdges: [
-        'Unknown path inside a repo -> repo_search_code.',
-        'Known exact path -> repo_read_file instead.',
-      ],
-      antiPatterns: [
-        'Do not keep retrying repository code search after an unauthorized or forbidden result in the same run. Switch to exact-file reads, confirm access, or ask the user for repo/path clarification.',
-      ],
-    },
-  },
-  repo_read_file: {
-    selectionHints: [
-      'Use when you already know the repo and exact path.',
-    ],
-    avoidWhen: [
-      'The path is still unknown.',
-    ],
-    promptGuidance: {
-      purpose: 'Fetch one exact repository file.',
-      decisionEdges: [
-        'Known exact path -> repo_read_file.',
-        'Unknown exact path -> repo_search_code first.',
-      ],
-    },
-  },
-  docs_lookup: {
-    selectionHints: [
-      'Use for current technical documentation and code examples for libraries, frameworks, SDKs, APIs, and CLIs.',
-      'Prefer this over general web search when the question is primarily about official technical docs behavior.',
-    ],
-    avoidWhen: [
-      'The task is about a repository file or source tree you already know how to read directly.',
-    ],
-    promptGuidance: {
-      purpose: 'Resolve a technology and read current technical docs through the curated docs preset.',
-      decisionEdges: [
-        'Current library or framework docs question -> docs_lookup.',
-        'General latest public-web facts -> web_search instead.',
-      ],
-    },
-  },
-  runtime_execute_code: {
-    selectionHints: [
-      'Use as the primary execution surface when Sage needs host capabilities, composed reads, late approval writes, or workspace state in one coherent step.',
-      'Prefer short deterministic programs over long tool-chaining plans in assistant text.',
-    ],
-    avoidWhen: [
-      'A plain assistant-text answer is enough and no execution is needed.',
-      'You only need a runtime control tool such as waiting for user input or cancelling the current turn.',
-    ],
-    promptGuidance: {
-      purpose: 'Run short JavaScript programs against Sage’s host bridge instead of manually orchestrating many narrow tools.',
-      decisionEdges: [
-        'Need several host-backed reads or one composed workflow -> runtime_execute_code.',
-        'Need a write that may require approval -> runtime_execute_code and let the bridge pause at effect time.',
-        'No execution needed -> answer directly in assistant text.',
-      ],
-      antiPatterns: [
-        'Do not narrate a long multi-tool plan when one short Code Mode program can verify or perform the work directly.',
-      ],
-      argumentNotes: [
-        'JavaScript is the default fast lane.',
-        'Use sage.tool(name, args), sage.http.fetch(...), and sage.workspace.* inside the program.',
-      ],
-    },
-    websiteShort: 'Runtime Execute Code',
-    websiteDesc: 'Run short JavaScript programs against Sage’s host bridge instead of juggling many narrow tools directly.',
-    websiteCategory: 'system',
-  },
-  browser_open_page: {
-    selectionHints: [
-      'Use to start or change the browser page during an interactive web task.',
-    ],
-    promptGuidance: {
-      purpose: 'Open a page before reading or interacting with it.',
-      decisionEdges: [
-        'Need a browser session -> browser_open_page first.',
-      ],
-    },
-  },
-  browser_read_page: {
-    selectionHints: [
-      'Use to inspect the current browser page state before clicking or typing.',
-    ],
-  },
-  browser_click: {
-    selectionHints: [
-      'Use when the next browser step is clicking a specific element.',
-    ],
-  },
-  browser_type: {
-    selectionHints: [
-      'Use when the next browser step is typing into a field.',
-    ],
-  },
-  browser_capture: {
-    selectionHints: [
-      'Use when you need a screenshot or visual artifact from the current browser state.',
-    ],
-  },
-  browser_extract: {
-    selectionHints: [
-      'Use for precise extraction from the current browser page when the snapshot alone is not enough.',
-    ],
-  },
-  discord_context_get_channel_summary: {
-    selectionHints: [
-      'Use for continuity and recap, not exact message proof.',
-    ],
-    avoidWhen: [
-      'You need exact message-level evidence.',
-    ],
-  },
-  discord_history_search_history: {
-    selectionHints: [
-      'Use for exact message-history evidence in one channel.',
-    ],
-    avoidWhen: [
-      'You only need high-level continuity or recap.',
-    ],
-  },
-  discord_governance_update_server_instructions: {
-    selectionHints: [
-      'Use to change Sage’s guild persona or behavior instructions.',
-    ],
-    avoidWhen: [
-      'You only need to read the current instructions.',
-    ],
-  },
-  discord_moderation_submit_action: {
-    selectionHints: [
-      'Use for moderation and enforcement requests, especially reply-targeted cleanup.',
-    ],
-    avoidWhen: [
-      'You are changing Sage behavior or governance config rather than enforcing on content or users.',
-    ],
-  },
-};
-
-function buildPromptGuidance(tool: ToolDefinition<unknown>): PromptToolGuidance | undefined {
-  const override = TOOL_DOC_OVERRIDES[tool.name]?.promptGuidance;
-  if (override) {
-    return override;
-  }
-  const prompt = tool.prompt;
-  const decisionEdges = [...(prompt?.whenToUse ?? [])];
-  const antiPatterns = prompt?.whenNotToUse ? [...prompt.whenNotToUse] : undefined;
-  const argumentNotes = prompt?.argumentNotes ? [...prompt.argumentNotes] : undefined;
-
-  if (!prompt?.summary && decisionEdges.length === 0 && !antiPatterns && !argumentNotes) {
-    return undefined;
-  }
-
-  return {
-    purpose: prompt?.summary,
-    decisionEdges,
-    antiPatterns,
-    argumentNotes,
-  };
-}
-
-function buildTopLevelDoc(tool: ToolDefinition<unknown>): TopLevelToolDoc {
-  const override = TOOL_DOC_OVERRIDES[tool.name];
-  const category = override?.websiteCategory ?? categoryForTool(tool.name);
-  const short = override?.websiteShort ?? defaultShortName(tool);
-  const desc = override?.websiteDesc ?? tool.description;
-
-  return {
-    tool: tool.name,
-    purpose: tool.description,
-    selectionHints: override?.selectionHints ?? defaultSelectionHints(tool),
-    avoidWhen: override?.avoidWhen ?? tool.prompt?.whenNotToUse,
-    promptGuidance: buildPromptGuidance(tool),
-    validationHint: tool.validationHint,
-    website: {
-      name: tool.name,
-      short,
-      desc,
-      cat: category,
-      color: override?.websiteColor ?? categoryColor(category),
-    },
-    smoke: tool.smoke ?? { mode: 'skip', reason: 'No smoke metadata defined.' },
-  };
-}
-
-function buildTopLevelToolDocs(): TopLevelToolDoc[] {
-  return globalToolRegistry
-    .listSpecs()
-    .map((tool) => buildTopLevelDoc(tool))
-    .sort((left, right) => left.tool.localeCompare(right.tool));
-}
 
 export function getTopLevelToolDoc(toolName: string): TopLevelToolDoc | null {
-  return buildTopLevelToolDocs().find((doc) => doc.tool === toolName) ?? null;
+  return toolName === CODE_MODE_DOC.tool ? CODE_MODE_DOC : null;
 }
 
 export function listTopLevelToolDocs(): TopLevelToolDoc[] {
-  return buildTopLevelToolDocs();
+  return globalToolRegistry.has(CODE_MODE_DOC.tool) ? [CODE_MODE_DOC] : [];
 }
 
 export function getPromptToolGuidance(toolName: string): PromptToolGuidance | null {
@@ -376,9 +90,10 @@ export function getToolValidationHint(toolName: string): string | undefined {
 }
 
 export function listSmokeToolDocs(): TopLevelToolDoc[] {
-  return buildTopLevelToolDocs().filter((doc) => doc.smoke.mode !== 'skip');
+  return listTopLevelToolDocs().filter((doc) => doc.smoke.mode !== 'skip');
 }
 
 export function buildWebsiteNativeTools(): WebsiteNativeToolRow[] {
-  return buildTopLevelToolDocs().map((doc) => doc.website);
+  return listTopLevelToolDocs().map((doc) => doc.website);
 }
+

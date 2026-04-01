@@ -14,7 +14,7 @@ How a single message flows through Sage's single-agent runtime from Discord even
 - [Context Assembly](#context-assembly)
 - [Agent Graph](#agent-graph)
 - [Trace Outputs](#trace-outputs)
-- [Tool-Oriented Data Access](#tool-oriented-data-access)
+- [Bridge-Native Data Access](#bridge-native-data-access)
 - [Configuration](#configuration)
 - [Related Documentation](#related-documentation)
 
@@ -38,11 +38,11 @@ flowchart TD
     B --> C[runChatTurn]:::runtime
     C --> D[Resolve Model]:::runtime
     D --> E["Build Universal Prompt Contract<br/>(XML system contract + tagged turn data)"]:::runtime
-    E --> G[Send to LLM with tool specs]:::llm
-    G --> H{Tool calls?}:::llm
+    E --> G[Send to LLM with runtime_execute_code]:::llm
+    G --> H{Code execution needed?}:::llm
 
     H -->|Yes| I[Agent Graph]:::tools
-    I --> J["Validate and execute tools<br/>collect results and files"]:::tools
+    I --> J["Run JS against bridge namespaces<br/>collect results and files"]:::tools
     J --> K[Feed results back to LLM]:::llm
     K --> H
 
@@ -55,7 +55,7 @@ flowchart TD
 
 1. **Model resolution**: `runChatTurn` reads `AI_PROVIDER_MAIN_AGENT_MODEL`. Sage no longer ships a built-in agent-model fallback; runtime boot requires explicit AI-provider model configuration.
 2. **Context composition**: `buildPromptContextMessages` assembles one canonical XML-tagged system contract plus one lower-priority tagged context message. The system contract now carries only durable operator invariants, tool and closeout protocol, trusted runtime state, and trusted working memory; reply targets, transcript windows, tool observations, and current user content stay in the tagged user-context envelope instead of being duplicated into the system role.
-3. **LLM request**: Sage sends the assembled messages plus the active tool schemas for this turn.
+3. **LLM request**: Sage sends the assembled messages plus the single `runtime_execute_code` schema for this turn.
 4. **Agent graph**: Sage enters the LangGraph-native runtime built on reducer-backed message state, durable tasks, `ToolNode` read batches, explicit read/write partitioning, and in-graph approval or continuation interrupts/resumes until the objective is satisfied, clarification is required, or the run pauses cleanly.
 5. **Final reply**: plain text is cleaned, tool-produced files are attached, and the final payload is returned to Discord.
 6. **Trace persistence**: LangGraph node and task execution is recorded in LangSmith, and Sage can additionally persist a compact `AgentTrace` ledger row with LangSmith references.
@@ -79,8 +79,8 @@ flowchart TD
 | 7 | Current user message | Triggering text and multimodal content wrapped as `<untrusted_user_input>` |
 
 > [!NOTE]
-> Channel summaries, archived summaries, attachment cache results, and wider message history are not preloaded into every turn. The model fetches them on demand through the split Discord tools when it decides they are needed.
-> `discord_context.get_channel_summary` is a continuity surface, not historical evidence. For exact verification Sage should use `discord_messages.search_history`, `discord_messages.search_with_context`, or `discord_messages.get_context`.
+> Channel summaries, artifact content, and wider message history are not preloaded into every turn. The model fetches them on demand through bridge-native Code Mode namespaces when it decides they are needed.
+> `context.summary.get(...)` is a continuity surface, not historical evidence. For exact verification Sage should use `history.search(...)`, `history.recent(...)`, or `discord.messages.get(...)`.
 
 The runtime records a stable `promptVersion` plus `promptFingerprint` for the full reusable prompt surface, including both the system contract template and the lower-priority context-envelope layout, so prompt changes are attributable in debugging and smoke runs without hashing live per-turn content.
 
@@ -124,8 +124,8 @@ flowchart LR
 - **In-round read dedupe**: identical read-only calls in the same model response are executed once, then fanned back out to the model as per-call tool messages so repeated reads do not waste a full execution slot.
 - **Loop guard**: Sage rejects over-wide tool batches before side effects, gives the model structured repair chances, and treats the LangGraph recursion ceiling as a high internal fail-safe derived from the slice budget instead of the practical work limit for a normal long-running turn.
 - **Plain-text-first closeout**: assistant turns may include both visible text and tool calls; when a turn ends with no tool calls, Sage finalizes directly from the assistant text as a final answer unless the model used an explicit runtime control tool for wait/cancel semantics.
-- **Tool-owned action policy**: routed Discord tools now declare explicit read/write and approval metadata, so admin-only reads stay on the read lane while approval-gated writes enter the approval path through per-tool policy instead of graph-side action-name branching.
-- **Native tool contract**: the runtime consumes structured provider tool calls directly and feeds tool results back as LangChain tool messages.
+- **Bridge-owned action policy**: Code Mode bridge methods declare explicit read/write and approval metadata, so admin-only reads stay on the read lane while approval-gated writes enter the approval path through bridge policy instead of graph-side action-name branching.
+- **Native execution contract**: the runtime consumes structured provider tool calls directly, but the only model-facing capability is `runtime_execute_code`, which runs short JS programs against direct namespaces.
 - **Provider-neutral model node**: the graph now invokes Sage's `AiProviderChatModel`, which targets an operator-defined AI provider over the OpenAI-compatible chat-completions contract exposed at `AI_PROVIDER_BASE_URL`.
 - **Native provider transcript**: follow-up model calls now preserve assistant `tool_calls` and real `tool` messages end to end instead of flattening tool results into synthetic user text.
 - **No fixed message-count clipping**: after rebudgeting, Sage now forwards the full surviving assistant/tool transcript instead of hard-cutting the loop to the last eight messages.
@@ -143,7 +143,7 @@ flowchart LR
 - **No Sage-side truncation**: Sage no longer compacts model-facing tool results or silently trims provider-bound prompt payloads; oversized requests now fail at the provider/runtime boundary instead of being rewritten locally.
 - **Approval + user-input interrupts**: approval-gated writes pause before side effects, and the only intentional user-visible waits are approval review or required follow-up input from the user.
 - **Automatic context compaction**: long-running task runs now compact prompt-facing working memory across slices, preserving verified facts, next actions, approvals, and evidence references without replaying the full raw transcript forever.
-- **File collection**: tools such as `image_generate` can return files that are merged into the final Discord response.
+- **File collection**: bridge-backed execution can return artifacts and files that are merged into the final Discord response.
 
 ---
 
@@ -179,22 +179,21 @@ Each turn can persist the following compact operator ledger fields to `AgentTrac
 
 ---
 
-<a id="tool-oriented-data-access"></a>
+<a id="bridge-native-data-access"></a>
 
-## 🧰 Tool-Oriented Data Access
+## 🧰 Bridge-Native Data Access
 
-Most richer context is loaded on demand through the split Discord tools:
+Most richer context is loaded on demand through bridge-native Code Mode namespaces:
 
 | Data | Tool action | Storage |
 | :--- | :--- | :--- |
-| User profile | `discord_context.get_user_profile` | PostgreSQL (`UserProfile`) |
-| Channel summaries | `discord_context.get_channel_summary` | PostgreSQL (`ChannelSummary`) |
-| Archived channel summaries | `discord_context.search_channel_summary_archives` | PostgreSQL plus pgvector-backed archive search |
-| Sage Persona | `discord_context.get_server_instructions` | PostgreSQL (`ServerInstructions`, stored internally as guild Sage Persona config) |
-| Cached file text | `discord_files.list_channel`, `discord_files.list_server`, `discord_files.read_attachment` | PostgreSQL (`IngestedAttachment`) |
-| Semantic file search | `discord_files.find_channel`, `discord_files.find_server` | pgvector (`AttachmentChunk`) |
-| Message history | `discord_messages.search_history`, `discord_messages.search_with_context`, `discord_messages.get_context`, `discord_messages.search_guild`, `discord_messages.get_user_timeline` | PostgreSQL (`ChannelMessage`) plus pgvector (`ChannelMessageEmbedding`) |
-| Invite generation | `discord_admin.get_invite_url` | Computed from `DISCORD_APP_ID` |
+| User profile | `context.profile.get(...)` | PostgreSQL (`UserProfile`) |
+| Channel summaries | `context.summary.get(...)` | PostgreSQL (`ChannelSummary`) |
+| Sage Persona | `admin.instructions.get(...)` | PostgreSQL (`ServerInstructions`, stored internally as guild Sage Persona config) |
+| Artifact content | `artifacts.get(...)` | PostgreSQL artifact and attachment tables |
+| Artifact publication | `artifacts.publish(...)` | PostgreSQL artifact tables plus Discord delivery state |
+| Message history | `history.search(...)`, `history.recent(...)`, `discord.messages.get(...)`, `discord.messages.list(...)`, `discord.messages.search(...)` | PostgreSQL (`ChannelMessage`) plus pgvector (`ChannelMessageEmbedding`) |
+| Guild/channel metadata | `discord.channels.get(...)`, `discord.channels.list(...)`, admin-scoped bridge reads | Discord API plus runtime context |
 
 Some read actions are blocked in Autopilot mode, and all write/admin actions remain permission-gated.
 
@@ -249,7 +248,7 @@ GitHub capability is now provided through curated MCP presets, but the model-fac
 
 ## 🔗 Related Documentation
 
-- [🤖 Agentic Architecture](OVERVIEW.md) — High-level design and tool registry
+- [🤖 Agentic Architecture](OVERVIEW.md) — High-level design and bridge-native Code Mode contract
 - [🧠 Memory System](MEMORY.md) — How Sage stores memory and fetches richer context
 - [🔍 Search Architecture](SEARCH.md) — SAG flow and search providers
 - [🧩 Model Reference](../reference/MODELS.md) — Model resolution and health tracking

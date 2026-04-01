@@ -29,7 +29,7 @@ This document describes how Sage stores memory and makes it available to the run
 | Memory type | Purpose | Storage | Key files |
 | :--- | :--- | :--- | :--- |
 | **User profile** | Long-term personalization profile per user, stored as soft preferences, active focus, and durable background context. | `UserProfile`, `UserProfileArchive` | `src/features/memory/profileUpdater.ts`, `src/features/memory/userProfileRepo.ts` |
-| **Sage Persona** | Admin-authored guild-scoped Sage Persona configuration and archive history. Stored internally in `ServerInstructions` tables and treated as adjacent config, not long-term memory about users or channels. | `ServerInstructions`, `ServerInstructionsArchive` | `src/features/admin/*`, `src/features/agent-runtime/discordDomainTools.ts`, `src/features/agent-runtime/discord/core.ts` |
+| **Sage Persona** | Admin-authored guild-scoped Sage Persona configuration and archive history. Stored internally in `ServerInstructions` tables and treated as adjacent config, not long-term memory about users or channels. | `ServerInstructions`, `ServerInstructionsArchive` | `src/features/admin/*`, `src/features/code-mode/bridge/adminDomain.ts`, `src/features/agent-runtime/discord/core.ts` |
 | **Channel summaries** | Rolling and profile summaries for channels; continuity context rather than quote-level evidence. | `ChannelSummary` | `src/features/summary/*` |
 | **Raw transcript** | Recent message history for prompt context and retrieval. | Ring buffer plus optional `ChannelMessage` persistence | `src/features/awareness/*`, `src/features/ingest/ingestEvent.ts` |
 | **Attachment cache** | Persisted attachment recall text for on-demand retrieval and resend. Uploaded images store Florence-generated recall/OCR text; other files store extracted text. | `IngestedAttachment`, `AttachmentChunk` | `src/features/attachments/*`, `src/app/discord/handlers/messageCreate.ts` |
@@ -54,8 +54,8 @@ Transcript storage and prompt assembly are separate controls. A channel can reta
 Attachment behavior:
 
 - Transcript rows store cache references and message metadata, not full historical attachment bodies.
-- Stored attachment text is loaded on demand through `discord_files` actions such as `list_channel`, `list_server`, and `read_attachment`.
-- Sage can resend a cached original file or image through `discord_files` action `send_attachment`; the tool result also returns the stored recall/extracted text so the follow-up reply stays grounded.
+- Stored attachment text is loaded on demand through bridge-native artifact reads such as `artifacts.get(...)`.
+- Sage can publish or republish durable work products through `artifacts.publish(...)`, while keeping the stored recall or extracted text available for grounded follow-up replies.
 
 <a id="3-context-assembly-flow"></a>
 
@@ -74,11 +74,10 @@ flowchart LR
     end
 
     subgraph Tools
-        U[discord_context.get_user_profile]:::tools
-        C[discord_context.get_channel_summary]:::tools
-        A[discord_context.search_channel_summary_archives]:::tools
-        F[discord_files.read_attachment]:::tools
-        H[discord_history.search_with_context]:::tools
+        U["context.profile.get(...)"]:::tools
+        C["context.summary.get(...)"]:::tools
+        F["artifacts.get(...)"]:::tools
+        H["history.search(...)"]:::tools
     end
 
     subgraph Builder["Prompt Contract"]
@@ -89,12 +88,10 @@ flowchart LR
     MB --> LLM[LLM Request + LangGraph Runtime]:::llm
     DB --> U
     DB --> C
-    DB --> A
     DB --> F
     DB --> H
     LLM --> U
     LLM --> C
-    LLM --> A
     LLM --> F
     LLM --> H
 ```
@@ -105,9 +102,9 @@ Runtime notes:
 - User profile summary is the only long-term profile block always embedded up front, and it now lives inside the universal XML prompt contract built by `buildPromptContextMessages`.
 - Sage now uses one canonical prompt contract in `src/features/agent-runtime/promptContract.ts`, with fixed sections for system rules, tool protocol, closeout protocol, trusted runtime state, trusted working memory, and explicitly tagged untrusted context.
 - The profile is best-effort personalization, not an authoritative rule surface: it is rendered inside `<user_profile>` as soft personalization context that may lag behind the latest turn because profile updates happen asynchronously.
-- Channel summaries, archives, file cache data, and wider message history are fetched only if the model chooses the corresponding tool action.
-- `discord_context.get_channel_summary` returns rolling channel summary context for continuity and situational awareness. It is not a substitute for message-history evidence.
-- Exact historical verification should use `discord_messages.search_history`, `discord_messages.search_with_context`, or `discord_messages.get_context`.
+- Channel summaries, artifact content, and wider message history are fetched only if the model chooses the corresponding bridge call inside Code Mode.
+- `context.summary.get(...)` returns rolling or profile summary context for continuity and situational awareness. It is not a substitute for message-history evidence.
+- Exact historical verification should use `history.search(...)`, `history.recent(...)`, or `discord.messages.get(...)`.
 
 ---
 
@@ -198,7 +195,7 @@ Long-term channel summary updates are scheduler-driven:
 
 - `SUMMARY_PROFILE_MIN_INTERVAL_SEC` starter value `21600` gates profile updates
 - output is stored in `ChannelSummary` with `kind = 'profile'`
-- the runtime reads these summaries through `discord_context` actions when needed
+- the runtime reads these summaries through `context.summary.get(...)` when needed
 
 There is no dedicated summarize command surface in the current product; summarization is requested through normal chat.
 

@@ -365,7 +365,7 @@ Run `npm run doctor -- --llm-ping` for a cross-platform one-off live ping/probe 
 ## 🔗 Related Documentation
 
 - [📖 Getting Started](../guides/GETTING_STARTED.md) — Setup walkthrough with `npm run onboard`
-- [🧰 Self-Hosted Tool Stack](../operations/TOOL_STACK.md) — SearXNG/Crawl4AI/Tika setup
+- [🧰 Self-Hosted Retrieval Stack](../operations/TOOL_STACK.md) — SearXNG/Crawl4AI/Tika setup
 - [🚢 Release Process](RELEASE.md) — CI checks and release gates
 
 <p align="right"><a href="#top">⬆️ Back to top</a></p>

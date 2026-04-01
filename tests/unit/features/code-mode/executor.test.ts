@@ -1,17 +1,11 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { promises as fs } from 'node:fs';
 import { z } from 'zod';
-import {
-  defineToolSpecV2,
-  ToolRegistry,
-  type ToolExecutionContext,
-} from '../../../../src/features/agent-runtime/toolRegistry';
+import type { ToolExecutionContext } from '../../../../src/features/agent-runtime/toolRegistry';
 import { ApprovalRequiredSignal } from '../../../../src/features/agent-runtime/toolControlSignals';
-import {
-  executeCodeMode,
-  resumeApprovedCodeModeExecution,
-} from '../../../../src/features/code-mode/executor';
+import { executeCodeMode, resumeApprovedCodeModeExecution } from '../../../../src/features/code-mode/executor';
 import { getOrCreateCodeModeTaskWorkspace } from '../../../../src/features/code-mode/workspace';
+import { BridgeRegistry, buildBridgeMethod } from '../../../../src/features/code-mode/bridge/common';
 
 function makeToolContext(overrides: Partial<ToolExecutionContext> = {}): ToolExecutionContext {
   return {
@@ -34,7 +28,7 @@ function makeToolContext(overrides: Partial<ToolExecutionContext> = {}): ToolExe
       replyTargetAuthorId: null,
       botUserId: 'sage-bot',
     },
-    activeToolNames: [],
+    activeToolNames: ['runtime_execute_code'],
     ...overrides,
   };
 }
@@ -49,97 +43,94 @@ afterEach(async () => {
 });
 
 describe('Code Mode executor', () => {
-  it('executes JavaScript against internal bridge tools and workspace helpers', async () => {
-    const registry = new ToolRegistry();
+  it('executes JavaScript against direct bridge namespaces and workspace helpers', async () => {
+    const registry = new BridgeRegistry();
     registry.register(
-      defineToolSpecV2({
-        name: 'test_echo',
-        description: 'Echo a value for tests.',
+      buildBridgeMethod({
+        namespace: 'history',
+        method: 'recent',
         input: z.object({
-          value: z.string(),
+          channelId: z.string(),
+          limit: z.number().int().optional(),
         }),
-        runtime: {
-          class: 'query',
-          readOnly: true,
+        mutability: 'read',
+        async execute(args) {
+          return {
+            items: [
+              {
+                channelId: args.channelId,
+                content: 'hello',
+              },
+            ],
+            limit: args.limit ?? 25,
+          };
         },
-        execute: async ({ value }) => ({
-          structuredContent: { echoed: value },
-          modelSummary: value,
-        }),
       }),
     );
 
     const result = await executeCodeMode({
       language: 'javascript',
       code: `
-        const value = await sage.tool('test_echo', { value: 'hello' });
-        await sage.workspace.write('note.txt', 'remember me');
-        const reread = await sage.workspace.read('note.txt');
-        return { value, reread };
+        const recent = await history.recent({ channelId: 'channel-1', limit: 2 });
+        await workspace.write({ path: 'note.txt', content: 'remember me' });
+        const reread = await workspace.read('note.txt');
+        return { recent, reread };
       `,
-      toolContext: makeToolContext({ activeToolNames: ['test_echo'] }),
+      toolContext: makeToolContext(),
       registry,
     });
 
     expect(result.result).toEqual({
-      value: { echoed: 'hello' },
+      recent: {
+        items: [{ channelId: 'channel-1', content: 'hello' }],
+        limit: 2,
+      },
       reread: { path: 'note.txt', content: 'remember me' },
     });
     expect(result.bridgeCalls.map((entry) => entry.label)).toEqual([
-      'tool.test_echo',
+      'history.recent',
       'workspace.write',
       'workspace.read',
     ]);
   });
 
   it('replays earlier effects and resumes the same execution after approval', async () => {
-    const registry = new ToolRegistry();
+    const registry = new BridgeRegistry();
     let readExecutions = 0;
     let writeExecutions = 0;
 
     registry.register(
-      defineToolSpecV2({
-        name: 'test_read_counter',
-        description: 'Count read executions.',
-        input: z.object({}),
-        runtime: {
-          class: 'query',
-          readOnly: true,
-        },
-        execute: async () => {
+      buildBridgeMethod({
+        namespace: 'history',
+        method: 'recent',
+        input: z.object({
+          channelId: z.string(),
+        }),
+        mutability: 'read',
+        async execute() {
           readExecutions += 1;
-          return { structuredContent: { readExecutions } };
+          return { readExecutions };
         },
       }),
     );
 
     registry.register(
-      defineToolSpecV2({
-        name: 'test_write_counter',
-        description: 'Count write executions.',
-        input: z.object({}),
-        runtime: {
-          class: 'mutation',
-          readOnly: false,
-          actionPolicy: async (_args, ctx) => ({
-            mutability: 'write',
-            approvalMode: 'required',
-            prepareApproval: async () => ({
-              kind: 'test_write_counter',
-              guildId: ctx.guildId ?? 'guild-1',
-              sourceChannelId: ctx.channelId,
-              reviewChannelId: 'review-channel-1',
-              sourceMessageId: ctx.currentTurn?.messageId ?? null,
-              requestedBy: ctx.userId,
-              dedupeKey: 'test-write-counter',
-              executionPayloadJson: {},
-              reviewSnapshotJson: { action: 'test_write_counter' },
-            }),
-          }),
-        },
-        execute: async () => {
+      buildBridgeMethod({
+        namespace: 'discord',
+        method: 'messages.send',
+        input: z.object({
+          channelId: z.string(),
+          content: z.string(),
+        }),
+        mutability: 'write',
+        approvalMode: 'required',
+        async execute(args) {
           writeExecutions += 1;
-          return { structuredContent: { writeExecutions } };
+          return {
+            messageId: `sent-${writeExecutions}`,
+            channelId: args.channelId,
+            content: args.content,
+          };
         },
       }),
     );
@@ -149,11 +140,11 @@ describe('Code Mode executor', () => {
       await executeCodeMode({
         language: 'javascript',
         code: `
-          const first = await sage.tool('test_read_counter', {});
-          const second = await sage.tool('test_write_counter', {});
+          const first = await history.recent({ channelId: 'channel-1' });
+          const second = await discord.messages.send({ channelId: 'channel-1', content: 'Ship it' });
           return { first, second };
         `,
-        toolContext: makeToolContext({ activeToolNames: ['test_read_counter', 'test_write_counter'] }),
+        toolContext: makeToolContext(),
         registry,
       });
     } catch (error) {
@@ -180,76 +171,57 @@ describe('Code Mode executor', () => {
     expect(writeExecutions).toBe(1);
     expect(resumed.result).toEqual({
       first: { readExecutions: 1 },
-      second: { writeExecutions: 1 },
+      second: {
+        messageId: 'sent-1',
+        channelId: 'channel-1',
+        content: 'Ship it',
+      },
     });
-  });
+  }, 15_000);
 
-  it('keeps Code Mode constrained to the runtime-filtered active tool list', async () => {
-    const registry = new ToolRegistry();
-    registry.register(
-      defineToolSpecV2({
-        name: 'public_echo',
-        description: 'Public echo tool.',
-        input: z.object({ value: z.string() }),
-        runtime: { class: 'query', readOnly: true },
-        execute: async ({ value }) => ({ structuredContent: { echoed: value } }),
-      }),
-    );
-    registry.register(
-      defineToolSpecV2({
-        name: 'admin_secret',
-        description: 'Sensitive admin-only tool.',
-        input: z.object({}),
-        runtime: { class: 'query', readOnly: true, access: 'admin' },
-        execute: async () => ({ structuredContent: { secret: true } }),
-      }),
-    );
-
+  it('injects direct namespaces and removes the legacy sage root object', async () => {
     const result = await executeCodeMode({
       language: 'javascript',
       code: `
         return {
-          listed: (await sage.tools.list()).map((tool) => tool.name),
-          publicEcho: await sage.tool('public_echo', { value: 'ok' }),
+          hasSage: typeof sage,
+          hasDiscord: typeof discord,
+          hasHistory: typeof history,
+          hasWorkspace: typeof workspace,
         };
       `,
-      toolContext: makeToolContext({ activeToolNames: ['public_echo'] }),
-      registry,
+      toolContext: makeToolContext(),
+      registry: new BridgeRegistry(),
     });
 
     expect(result.result).toEqual({
-      listed: ['public_echo'],
-      publicEcho: { echoed: 'ok' },
+      hasSage: 'undefined',
+      hasDiscord: 'object',
+      hasHistory: 'object',
+      hasWorkspace: 'object',
     });
-
-    await expect(
-      executeCodeMode({
-        language: 'javascript',
-        code: `return await sage.tool('admin_secret', {});`,
-        toolContext: makeToolContext({ activeToolNames: ['public_echo'] }),
-        registry,
-      }),
-    ).rejects.toThrow('not available to this Code Mode turn');
   });
 
   it('treats identical code reruns as fresh executions within the same task', async () => {
-    const registry = new ToolRegistry();
+    const registry = new BridgeRegistry();
     let readExecutions = 0;
     registry.register(
-      defineToolSpecV2({
-        name: 'test_repeat_read',
-        description: 'Count repeated read executions.',
-        input: z.object({}),
-        runtime: { class: 'query', readOnly: true },
-        execute: async () => {
+      buildBridgeMethod({
+        namespace: 'history',
+        method: 'recent',
+        input: z.object({
+          channelId: z.string(),
+        }),
+        mutability: 'read',
+        async execute() {
           readExecutions += 1;
-          return { structuredContent: { readExecutions } };
+          return { readExecutions };
         },
       }),
     );
 
-    const toolContext = makeToolContext({ activeToolNames: ['test_repeat_read'] });
-    const code = `return await sage.tool('test_repeat_read', {});`;
+    const toolContext = makeToolContext();
+    const code = `return await history.recent({ channelId: 'channel-1' });`;
     const first = await executeCodeMode({
       language: 'javascript',
       code,
@@ -269,32 +241,24 @@ describe('Code Mode executor', () => {
   });
 
   it('rejects tampered approval resumes whose request hash no longer matches the original effect', async () => {
-    const registry = new ToolRegistry();
+    const registry = new BridgeRegistry();
     registry.register(
-      defineToolSpecV2({
-        name: 'approval_write',
-        description: 'Approval-gated write.',
-        input: z.object({}),
-        runtime: {
-          class: 'mutation',
-          readOnly: false,
-          actionPolicy: async (_args, ctx) => ({
-            mutability: 'write',
-            approvalMode: 'required',
-            prepareApproval: async () => ({
-              kind: 'approval_write',
-              guildId: ctx.guildId ?? 'guild-1',
-              sourceChannelId: ctx.channelId,
-              reviewChannelId: 'review-channel-1',
-              sourceMessageId: ctx.currentTurn?.messageId ?? null,
-              requestedBy: ctx.userId,
-              dedupeKey: 'approval-write',
-              executionPayloadJson: {},
-              reviewSnapshotJson: { action: 'approval_write' },
-            }),
-          }),
+      buildBridgeMethod({
+        namespace: 'discord',
+        method: 'messages.send',
+        input: z.object({
+          channelId: z.string(),
+          content: z.string(),
+        }),
+        mutability: 'write',
+        approvalMode: 'required',
+        async execute(args) {
+          return {
+            messageId: 'sent-1',
+            channelId: args.channelId,
+            content: args.content,
+          };
         },
-        execute: async () => ({ structuredContent: { wrote: true } }),
       }),
     );
 
@@ -302,8 +266,8 @@ describe('Code Mode executor', () => {
     try {
       await executeCodeMode({
         language: 'javascript',
-        code: `return await sage.tool('approval_write', {});`,
-        toolContext: makeToolContext({ activeToolNames: ['approval_write'] }),
+        code: `return await discord.messages.send({ channelId: 'channel-1', content: 'hello' });`,
+        toolContext: makeToolContext(),
         registry,
       });
     } catch (error) {
@@ -329,5 +293,5 @@ describe('Code Mode executor', () => {
         registry,
       }),
     ).rejects.toThrow('approval');
-  });
+  }, 15_000);
 });

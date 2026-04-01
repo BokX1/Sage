@@ -1,4 +1,5 @@
 import type { ToolArtifact, ToolExecutionContext } from '../agent-runtime/toolRegistry';
+import type { BridgeNamespace } from './bridge/types';
 
 export type CodeModeLanguage = 'javascript';
 
@@ -8,7 +9,6 @@ export interface CodeModeExecutionRequest {
   language: CodeModeLanguage;
   code: string;
   toolContext: ToolExecutionContext;
-  accessibleToolNames: string[];
   timeoutMs: number;
   approvalGrant?: CodeModeApprovalGrant | null;
 }
@@ -32,7 +32,7 @@ export interface SerializedToolArtifact {
 
 export interface CodeModeEffectRecord {
   index: number;
-  operationKind: 'tool' | 'http' | 'workspace';
+  operationKind: BridgeNamespace | 'http' | 'workspace';
   requestHash: string;
   mutability: 'read' | 'write';
   status: 'executed' | 'approval_required' | 'denied' | 'failed';
@@ -55,7 +55,6 @@ export interface CodeModeExecutionSnapshot {
   taskId: string;
   language: CodeModeLanguage;
   code: string;
-  accessibleToolNames: string[];
   timeoutMs: number;
   toolContext: ToolExecutionContext;
   createdAtIso: string;
@@ -64,7 +63,7 @@ export interface CodeModeExecutionSnapshot {
 
 export interface CodeModeBridgeCallLogEntry {
   index: number;
-  operationKind: 'tool' | 'http' | 'workspace';
+  operationKind: BridgeNamespace | 'http' | 'workspace';
   label: string;
   mutability: 'read' | 'write';
   status: 'executed' | 'approval_required' | 'denied' | 'failed' | 'replayed';

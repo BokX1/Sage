@@ -1,4 +1,5 @@
 import vm from 'node:vm';
+import type { BridgeNamespace } from './bridge/types';
 
 type ParentToChildMessage = {
   type: 'start';
@@ -7,8 +8,21 @@ type ParentToChildMessage = {
 };
 
 type ChildToParentMessage =
-  | { type: 'tool'; id: number; name: string; args: unknown }
-  | { type: 'tools.list'; id: number }
+  | {
+      type: 'bridge.call';
+      id: number;
+      namespace:
+        | 'discord'
+        | 'history'
+        | 'context'
+        | 'artifacts'
+        | 'approvals'
+        | 'admin'
+        | 'moderation'
+        | 'schedule';
+      method: string;
+      args: unknown;
+    }
   | {
       type: 'http.fetch';
       id: number;
@@ -23,7 +37,14 @@ type ChildToParentMessage =
   | { type: 'final'; ok: true; result: unknown; stdout: string[]; stderr: string[] }
   | { type: 'final'; ok: false; error: string; stdout: string[]; stderr: string[] };
 
-type ParentResponseMessage = { type: 'response'; id: number; ok: true; result: unknown } | { type: 'response'; id: number; ok: false; error: string };
+type ParentResponseMessage =
+  | { type: 'response'; id: number; ok: true; result: unknown }
+  | { type: 'response'; id: number; ok: false; error: string };
+
+type ParentCallMessage =
+  | Extract<ChildToParentMessage, { type: 'bridge.call' }>
+  | Extract<ChildToParentMessage, { type: 'http.fetch' }>
+  | Extract<ChildToParentMessage, { type: 'workspace' }>;
 
 let nextRequestId = 1;
 
@@ -34,7 +55,9 @@ function sendMessage(message: ChildToParentMessage) {
   process.send(message);
 }
 
-async function callParent(message: Exclude<ChildToParentMessage, { type: 'final'; ok: true; result: unknown; stdout: string[]; stderr: string[] } | { type: 'final'; ok: false; error: string; stdout: string[]; stderr: string[] }>) {
+async function callParent(
+  message: ParentCallMessage,
+) {
   const id = nextRequestId++;
   return await new Promise<unknown>((resolve, reject) => {
     const onMessage = (incoming: unknown) => {
@@ -55,44 +78,112 @@ async function callParent(message: Exclude<ChildToParentMessage, { type: 'final'
   });
 }
 
-function createSageBridge() {
-  return {
-    tool: (name: string, args: unknown) => callParent({ type: 'tool', name, args, id: 0 }),
-    tools: {
-      list: () => callParent({ type: 'tools.list', id: 0 }),
-    },
-    http: {
-      fetch: (url: string, options?: { method?: string; headers?: Record<string, string>; bodyText?: string }) =>
-        callParent({
-          type: 'http.fetch',
-          id: 0,
-          params: {
-            url,
-            method: options?.method,
-            headers: options?.headers,
-            bodyText: options?.bodyText,
-          },
-        }),
-    },
-    workspace: {
-      read: (filePath: string) => callParent({ type: 'workspace', id: 0, action: 'read', args: { path: filePath } }),
-      write: (filePath: string, content: string) =>
-        callParent({ type: 'workspace', id: 0, action: 'write', args: { path: filePath, content } }),
-      append: (filePath: string, content: string) =>
-        callParent({ type: 'workspace', id: 0, action: 'append', args: { path: filePath, content } }),
-      list: (filePath = '.') => callParent({ type: 'workspace', id: 0, action: 'list', args: { path: filePath } }),
-      search: (query: string, filePath = '.') =>
-        callParent({ type: 'workspace', id: 0, action: 'search', args: { query, path: filePath } }),
-      delete: (filePath: string) => callParent({ type: 'workspace', id: 0, action: 'delete', args: { path: filePath } }),
-    },
-  };
+function createBridgeNamespace(namespace: BridgeNamespace, methods: string[]) {
+  return Object.freeze(
+    Object.fromEntries(
+      methods.map((method) => [
+        method.split('.').slice(-1)[0]!,
+        (args: unknown) => callParent({ type: 'bridge.call', id: 0, namespace, method, args }),
+      ]),
+    ),
+  );
+}
+
+function createDiscordBridge() {
+  return Object.freeze({
+    channels: createBridgeNamespace('discord', ['channels.get', 'channels.list']),
+    messages: createBridgeNamespace('discord', ['messages.get', 'messages.list', 'messages.search', 'messages.send', 'messages.reply']),
+    reactions: createBridgeNamespace('discord', ['reactions.add']),
+    members: createBridgeNamespace('discord', ['members.get']),
+    roles: createBridgeNamespace('discord', ['roles.add', 'roles.remove']),
+  });
+}
+
+function createNestedBridge() {
+  return Object.freeze({
+    summary: createBridgeNamespace('context', ['summary.get']),
+    profile: createBridgeNamespace('context', ['profile.get']),
+  });
+}
+
+function createArtifactsBridge() {
+  return Object.freeze({
+    list: (args?: unknown) => callParent({ type: 'bridge.call', id: 0, namespace: 'artifacts', method: 'list', args }),
+    get: (args: unknown) => callParent({ type: 'bridge.call', id: 0, namespace: 'artifacts', method: 'get', args }),
+    create: (args: unknown) => callParent({ type: 'bridge.call', id: 0, namespace: 'artifacts', method: 'create', args }),
+    update: (args: unknown) => callParent({ type: 'bridge.call', id: 0, namespace: 'artifacts', method: 'update', args }),
+    publish: (args: unknown) => callParent({ type: 'bridge.call', id: 0, namespace: 'artifacts', method: 'publish', args }),
+  });
+}
+
+function createApprovalsBridge() {
+  return Object.freeze({
+    get: (args: unknown) => callParent({ type: 'bridge.call', id: 0, namespace: 'approvals', method: 'get', args }),
+    list: (args: unknown) => callParent({ type: 'bridge.call', id: 0, namespace: 'approvals', method: 'list', args }),
+  });
+}
+
+function createAdminBridge() {
+  return Object.freeze({
+    instructions: createBridgeNamespace('admin', ['instructions.get', 'instructions.update']),
+  });
+}
+
+function createModerationBridge() {
+  return Object.freeze({
+    cases: createBridgeNamespace('moderation', ['cases.list', 'cases.get', 'cases.acknowledge', 'cases.resolve']),
+    notes: createBridgeNamespace('moderation', ['notes.create']),
+  });
+}
+
+function createScheduleBridge() {
+  return Object.freeze({
+    jobs: createBridgeNamespace('schedule', ['jobs.list', 'jobs.create', 'jobs.cancel', 'jobs.run', 'jobs.runs']),
+  });
+}
+
+function createHistoryBridge() {
+  return Object.freeze({
+    recent: (args: unknown) => callParent({ type: 'bridge.call', id: 0, namespace: 'history', method: 'recent', args }),
+    search: (args: unknown) => callParent({ type: 'bridge.call', id: 0, namespace: 'history', method: 'search', args }),
+  });
+}
+
+function createHttpBridge() {
+  return Object.freeze({
+    fetch: (params: { url: string; method?: string; headers?: Record<string, string>; bodyText?: string }) =>
+      callParent({ type: 'http.fetch', id: 0, params }),
+  });
+}
+
+function createWorkspaceBridge() {
+  return Object.freeze({
+    read: (path: string) => callParent({ type: 'workspace', id: 0, action: 'read', args: { path } }),
+    write: (params: { path: string; content: string }) =>
+      callParent({ type: 'workspace', id: 0, action: 'write', args: params }),
+    append: (params: { path: string; content: string }) =>
+      callParent({ type: 'workspace', id: 0, action: 'append', args: params }),
+    list: (path = '.') => callParent({ type: 'workspace', id: 0, action: 'list', args: { path } }),
+    search: (params: { query: string; path?: string }) =>
+      callParent({ type: 'workspace', id: 0, action: 'search', args: { path: params.path ?? '.', query: params.query } }),
+    delete: (path: string) => callParent({ type: 'workspace', id: 0, action: 'delete', args: { path } }),
+  });
 }
 
 async function runCode(code: string, timeoutMs: number) {
   const stdout: string[] = [];
   const stderr: string[] = [];
   const sandbox = {
-    sage: createSageBridge(),
+    discord: createDiscordBridge(),
+    history: createHistoryBridge(),
+    context: createNestedBridge(),
+    artifacts: createArtifactsBridge(),
+    approvals: createApprovalsBridge(),
+    admin: createAdminBridge(),
+    moderation: createModerationBridge(),
+    schedule: createScheduleBridge(),
+    http: createHttpBridge(),
+    workspace: createWorkspaceBridge(),
     console: {
       log: (...values: unknown[]) => stdout.push(values.map((value) => String(value)).join(' ')),
       error: (...values: unknown[]) => stderr.push(values.map((value) => String(value)).join(' ')),
@@ -136,7 +227,13 @@ async function runCode(code: string, timeoutMs: number) {
 process.once('message', async (message: unknown) => {
   const startMessage = message as ParentToChildMessage;
   if (!startMessage || startMessage.type !== 'start') {
-    sendMessage({ type: 'final', ok: false, error: 'Code Mode child did not receive a valid start message.', stdout: [], stderr: [] });
+    sendMessage({
+      type: 'final',
+      ok: false,
+      error: 'Code Mode child did not receive a valid start message.',
+      stdout: [],
+      stderr: [],
+    });
     return;
   }
 

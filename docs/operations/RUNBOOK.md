@@ -260,7 +260,7 @@ npm run check:trust
 ## 🔗 Related Documentation
 
 - [🚀 Deployment Guide](DEPLOYMENT.md) — Production deployment options
-- [🧰 Self-Hosted Tool Stack](TOOL_STACK.md) — Local SearXNG/Crawl4AI/Tika setup
+- [🧰 Self-Hosted Retrieval Stack](TOOL_STACK.md) — Local SearXNG/Crawl4AI/Tika setup
 - [⚙️ Configuration](../reference/CONFIGURATION.md) — All environment variables
 - [🚢 Release Process](../reference/RELEASE.md) — SemVer workflow and CI checks
 - [🔒 Security & Privacy](../security/SECURITY_PRIVACY.md) — Data handling and retention

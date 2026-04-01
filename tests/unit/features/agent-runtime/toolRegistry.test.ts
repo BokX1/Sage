@@ -250,13 +250,13 @@ describe('ToolRegistry', () => {
       }
     });
 
-    it('keeps shipped direct tools on schema validation instead of unknown-tool fallback', async () => {
+    it('keeps the shipped Code Mode surface on schema validation instead of unknown-tool fallback', async () => {
       const runtimeRegistry = new ToolRegistry();
       await registerDefaultAgenticTools(runtimeRegistry);
 
       const result = await runtimeRegistry.executeValidated(
         {
-          name: 'discord_artifact_stage_attachment',
+          name: 'runtime_execute_code',
           args: {},
         },
         { traceId: 'test', userId: 'u1', channelId: 'c1' },
@@ -269,13 +269,13 @@ describe('ToolRegistry', () => {
       expect(result.error).not.toContain('Unknown tool');
     });
 
-    it('keeps direct-tool validation hints without routed repair guidance', async () => {
+    it('keeps Code Mode validation hints on the single execution surface', async () => {
       const runtimeRegistry = new ToolRegistry();
       await registerDefaultAgenticTools(runtimeRegistry);
 
       const result = await runtimeRegistry.executeValidated(
         {
-          name: 'npm_info',
+          name: 'runtime_execute_code',
           args: {},
         },
         { traceId: 'test', userId: 'u1', channelId: 'c1' },
@@ -284,22 +284,22 @@ describe('ToolRegistry', () => {
       expect(result.success).toBe(false);
       if (result.success) return;
       expect(result.errorType).toBe('validation');
-      expect(result.errorDetails?.hint).toContain('packageName');
+      expect(result.errorDetails?.hint).toContain('"language"');
+      expect(result.errorDetails?.hint).toContain('history.recent');
     });
   });
 
   describe('action policy resolution', () => {
-    it('classifies granular Discord writes explicitly without requiring approval', async () => {
+    it('classifies runtime_execute_code as a write-capable runtime action', async () => {
       const runtimeRegistry = new ToolRegistry();
       await registerDefaultAgenticTools(runtimeRegistry);
 
       const result = await runtimeRegistry.resolveActionPolicy(
         {
-          name: 'discord_spaces_create_poll',
+          name: 'runtime_execute_code',
           args: {
-            action: 'create_poll',
-            question: 'hello from Sage',
-            answers: ['A', 'B'],
+            language: 'javascript',
+            code: `return await history.recent({ channelId: 'channel-1', limit: 5 });`,
           },
         },
         { traceId: 'test', userId: 'u1', channelId: 'c1' },
@@ -312,38 +312,40 @@ describe('ToolRegistry', () => {
       });
     });
 
-    it('keeps admin-only Discord reads on the read path', async () => {
+    it('keeps the single execution surface available on the same read-free approval-free path for admins too', async () => {
       const runtimeRegistry = new ToolRegistry();
       await registerDefaultAgenticTools(runtimeRegistry);
 
-      const serverRead = await runtimeRegistry.resolveActionPolicy(
+      const memberRun = await runtimeRegistry.resolveActionPolicy(
         {
-          name: 'discord_moderation_list_members',
+          name: 'runtime_execute_code',
           args: {
-            action: 'list_members',
+            language: 'javascript',
+            code: `return await context.summary.get({ channelId: 'channel-1', kind: 'profile' });`,
           },
         },
         { traceId: 'test', userId: 'u1', channelId: 'c1' },
       );
 
-      const adminRead = await runtimeRegistry.resolveActionPolicy(
+      const adminRun = await runtimeRegistry.resolveActionPolicy(
         {
-          name: 'discord_governance_get_server_key_status',
+          name: 'runtime_execute_code',
           args: {
-            action: 'get_server_key_status',
+            language: 'javascript',
+            code: `return await admin.instructions.get({ guildId: 'guild-1' });`,
           },
         },
-        { traceId: 'test', userId: 'u1', channelId: 'c1' },
+        { traceId: 'test', userId: 'u1', channelId: 'c1', invokerAuthority: 'admin' },
       );
 
-      expect(serverRead).not.toBeNull();
-      expect(serverRead?.policy).toMatchObject({
-        mutability: 'read',
+      expect(memberRun).not.toBeNull();
+      expect(memberRun?.policy).toMatchObject({
+        mutability: 'write',
         approvalMode: 'none',
       });
-      expect(adminRead).not.toBeNull();
-      expect(adminRead?.policy).toMatchObject({
-        mutability: 'read',
+      expect(adminRun).not.toBeNull();
+      expect(adminRun?.policy).toMatchObject({
+        mutability: 'write',
         approvalMode: 'none',
       });
     });

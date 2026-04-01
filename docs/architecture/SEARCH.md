@@ -4,7 +4,7 @@
   <img src="https://img.shields.io/badge/%F0%9F%8C%BF-Sage%20Search-2d5016?style=for-the-badge&labelColor=4a7c23" alt="Sage Search" />
 </p>
 
-How Sage fetches live information from the web through its registered public web tools.
+How Sage fetches live information from the web through bridge-native Code Mode execution and host-managed retrieval providers.
 
 ---
 
@@ -22,12 +22,12 @@ How Sage fetches live information from the web through its registered public web
 
 ## 🌐 Overview
 
-Sage answers time-sensitive or factual queries by invoking the same deterministic web tools from the LangGraph runtime that handles the rest of the turn. Instead of relying solely on training data, Sage can search the public web, read exact pages, and page through large pages when freshness matters.
+Sage answers time-sensitive or factual queries by invoking bridge-native Code Mode execution from the same LangGraph runtime that handles the rest of the turn. Instead of relying solely on training data, Sage can search the public web, read exact pages, and page through large pages when freshness matters.
 
 ```text
 User asks time-sensitive question
     → Sage evaluates need for live information
-    → Sage invokes web search tool dynamically
+    → Sage executes JS that calls http.fetch(...) or other host retrieval paths
     → User gets fresh, sourced answer
 ```
 
@@ -59,16 +59,16 @@ Search execution now follows the same provider-neutral runtime contract as the r
 
 | Scenario | Runtime behavior |
 | :--- | :--- |
-| Tool orchestration | Uses the configured `AI_PROVIDER_MAIN_AGENT_MODEL` |
+| Code orchestration | Uses the configured `AI_PROVIDER_MAIN_AGENT_MODEL` |
 | Search providers | Uses only the explicitly configured search and scrape providers |
 | Multi-source synthesis | Happens in the normal runtime loop; there is no one-shot hidden research tool |
-| Large pages | Use `web_read_page` to continue through a page without refetching the same content immediately |
+| Large pages | Page or chunk content inside Code Mode instead of exposing a separate public paging tool |
 
 **Key rules:**
 
 - Sage no longer ships built-in search-model chains or hidden fallback model ids.
 - Search runs only through the configured search providers in `TOOL_WEB_SEARCH_PROVIDER_ORDER`.
-- Source/date normalization, provider health cooldowns, and exact-page memoization still apply to the remaining web tools.
+- Source/date normalization, provider health cooldowns, and exact-page retrieval safeguards still apply inside the host retrieval layer.
 
 **Source:** [`src/features/agent-runtime/agentRuntime.ts`](../../src/features/agent-runtime/agentRuntime.ts) and [`src/features/agent-runtime/toolIntegrations.ts`](../../src/features/agent-runtime/toolIntegrations.ts)
 
@@ -119,4 +119,4 @@ Sage supports multiple search and scraping providers with automatic fallback:
 
 - [🔀 Runtime Pipeline](PIPELINE.md) — Where search fits in the message flow
 - [🧩 Model Reference](../reference/MODELS.md) — Runtime model budgets and verification
-- [🧰 Self-Hosted Tool Stack](../operations/TOOL_STACK.md) — Setting up SearXNG and Crawl4AI locally
+- [🧰 Self-Hosted Retrieval Stack](../operations/TOOL_STACK.md) — Setting up SearXNG and Crawl4AI locally

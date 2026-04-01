@@ -11,7 +11,7 @@ export const runtimeExecuteCodeTool = defineToolSpecV2({
   name: 'runtime_execute_code',
   title: 'Runtime Execute Code',
   description:
-    'Execute short JavaScript programs inside Sage Code Mode. Use this instead of calling many narrow tools directly. The code receives a host bridge named sage with sage.tool(name, args), sage.tools.list(), sage.http.fetch(...), and sage.workspace.* helpers. Code Mode uses scoped host bridge access, task-local workspaces, and a separate runner process, but it still should not be treated as a perfectly hardened system sandbox.',
+    'Execute short JavaScript programs inside Sage Code Mode. Use this as the only execution surface for host capabilities. The code receives top-level bridge namespaces such as discord, history, context, artifacts, approvals, admin, moderation, schedule, http, and workspace. Code Mode uses scoped host bridge access, task-local workspaces, and a separate runner process, but it still should not be treated as a perfectly hardened system sandbox.',
   input: codeModeInputSchema,
   outputSchema: {
     type: 'object',
@@ -62,10 +62,10 @@ export const runtimeExecuteCodeTool = defineToolSpecV2({
   },
   prompt: {
     summary:
-      'Use this as Sage’s primary execution surface when you need host capabilities. Write short code against the sage bridge instead of calling many narrow tools directly.',
+      'Use this as Sage’s only host execution surface. Write short JavaScript against the injected bridge namespaces.',
     whenToUse: [
       'You need to inspect, transform, combine, or act on multiple host capabilities in one coherent step.',
-      'You need to call sage.tool(name, args), sage.http.fetch(...), or sage.workspace.* from a single program.',
+      'You need to use namespaces like discord, history, context, artifacts, admin, moderation, schedule, http, or workspace from one program.',
     ],
     whenNotToUse: [
       'A plain assistant-text answer is enough and no execution is needed.',
@@ -73,17 +73,16 @@ export const runtimeExecuteCodeTool = defineToolSpecV2({
     ],
     argumentNotes: [
       'JavaScript code runs as an async function body and may end with return ... .',
-      'Use sage.tools.list() when you need to inspect the internal host bridge tool inventory.',
+      'There is no generic tool-dispatch helper. Call the injected namespaces directly, for example discord.messages.send(...) or history.search(...).',
     ],
   },
   validationHint:
-    'Pass { "language": "javascript", "code": "const tools = await sage.tools.list(); return tools;" }.',
+    'Pass { "language": "javascript", "code": "return await history.recent({ channelId: "123", limit: 5 });" }.',
   execute: async ({ language, code }, ctx: ToolExecutionContext) => {
     const result = await executeCodeMode({
       language,
       code,
       toolContext: ctx,
-      accessibleToolNames: ctx.activeToolNames ?? [],
     });
 
     return {

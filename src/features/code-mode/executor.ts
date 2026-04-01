@@ -1,8 +1,7 @@
 import { fork } from 'node:child_process';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import type { ToolExecutionContext, ToolRegistry } from '../agent-runtime/toolRegistry';
-import { globalToolRegistry } from '../agent-runtime/toolRegistry';
+import type { ToolExecutionContext } from '../agent-runtime/toolRegistry';
 import type {
   CodeModeApprovalExecutionPayload,
   CodeModeApprovalGrant,
@@ -23,12 +22,27 @@ import {
   workspaceSearch,
   workspaceWriteText,
 } from './workspace';
+import type { BridgeRegistry } from './bridge/common';
+import { globalBridgeRegistry } from './bridge/registry';
 
 const DEFAULT_CODE_TIMEOUT_MS = 90_000;
 
 type CodeModeChildRequestMessage =
-  | { type: 'tool'; id: number; name: string; args: unknown }
-  | { type: 'tools.list'; id: number }
+  | {
+      type: 'bridge.call';
+      id: number;
+      namespace:
+        | 'discord'
+        | 'history'
+        | 'context'
+        | 'artifacts'
+        | 'approvals'
+        | 'admin'
+        | 'moderation'
+        | 'schedule';
+      method: string;
+      args: unknown;
+    }
   | {
       type: 'http.fetch';
       id: number;
@@ -59,31 +73,6 @@ function normalizeTaskId(ctx: ToolExecutionContext): string {
 
 function buildExecutionId(ctx: ToolExecutionContext, language: string): string {
   return `${normalizeTaskId(ctx)}:${language}:${randomUUID()}`;
-}
-
-function normalizeAccessibleToolNames(params: {
-  registry: ToolRegistry;
-  toolContext: ToolExecutionContext;
-  explicitToolNames?: string[];
-}): string[] {
-  const candidateNames = params.explicitToolNames ?? params.toolContext.activeToolNames ?? [];
-  const deduped = new Set<string>();
-  const normalized: string[] = [];
-  for (const name of candidateNames) {
-    if (typeof name !== 'string') {
-      continue;
-    }
-    const trimmed = name.trim();
-    if (!trimmed || trimmed === 'runtime_execute_code' || deduped.has(trimmed)) {
-      continue;
-    }
-    if (!params.registry.get(trimmed)) {
-      continue;
-    }
-    deduped.add(trimmed);
-    normalized.push(trimmed);
-  }
-  return normalized;
 }
 
 function buildWorkspaceHandlers(workspace: Awaited<ReturnType<typeof getOrCreateCodeModeTaskWorkspace>>) {
@@ -181,13 +170,8 @@ async function executeJavascript(params: {
       }
       const typedMessage = message as CodeModeChildRequestMessage | CodeModeChildResponseMessage;
       try {
-        if (typedMessage.type === 'tool') {
-          const result = await params.session.tool(typedMessage.name, typedMessage.args);
-          child.send({ type: 'response', id: typedMessage.id, ok: true, result } satisfies CodeModeChildResponseMessage);
-          return;
-        }
-        if (typedMessage.type === 'tools.list') {
-          const result = params.session.listTools();
+        if (typedMessage.type === 'bridge.call') {
+          const result = await params.session.call(typedMessage.namespace, typedMessage.method, typedMessage.args);
           child.send({ type: 'response', id: typedMessage.id, ok: true, result } satisfies CodeModeChildResponseMessage);
           return;
         }
@@ -261,20 +245,14 @@ export async function executeCodeMode(params: {
   code: string;
   toolContext: ToolExecutionContext;
   timeoutMs?: number;
-  registry?: ToolRegistry;
+  registry?: BridgeRegistry;
   approvalGrant?: CodeModeApprovalGrant | null;
   executionId?: string;
-  accessibleToolNames?: string[];
 }): Promise<CodeModeExecutionResult> {
   const taskId = normalizeTaskId(params.toolContext);
-  const registry = params.registry ?? globalToolRegistry;
+  const registry = params.registry ?? globalBridgeRegistry;
   const executionId = params.executionId ?? buildExecutionId(params.toolContext, params.language);
   const workspace = await getOrCreateCodeModeTaskWorkspace(taskId);
-  const accessibleToolNames = normalizeAccessibleToolNames({
-    registry,
-    toolContext: params.toolContext,
-    explicitToolNames: params.accessibleToolNames,
-  });
 
   const request: CodeModeExecutionRequest = {
     executionId,
@@ -282,7 +260,6 @@ export async function executeCodeMode(params: {
     language: params.language,
     code: params.code,
     toolContext: params.toolContext,
-    accessibleToolNames,
     timeoutMs: params.timeoutMs ?? DEFAULT_CODE_TIMEOUT_MS,
     approvalGrant: params.approvalGrant,
   };
@@ -292,7 +269,6 @@ export async function executeCodeMode(params: {
     taskId,
     language: request.language,
     code: request.code,
-    accessibleToolNames,
     timeoutMs: request.timeoutMs,
     toolContext: request.toolContext,
     createdAtIso: new Date().toISOString(),
@@ -303,7 +279,6 @@ export async function executeCodeMode(params: {
     executionId,
     workspace,
     toolContext: request.toolContext,
-    accessibleToolNames,
     timeoutMs: request.timeoutMs,
     approvalGrant: request.approvalGrant,
     registry,
@@ -331,7 +306,7 @@ export async function executeCodeMode(params: {
 export async function resumeApprovedCodeModeExecution(params: {
   payload: CodeModeApprovalExecutionPayload;
   approvedBy: string;
-  registry?: ToolRegistry;
+  registry?: BridgeRegistry;
 }): Promise<CodeModeExecutionResult> {
   const workspace = await getOrCreateCodeModeTaskWorkspace(params.payload.taskId);
   const snapshot = await loadCodeModeExecutionSnapshot(workspace, params.payload.executionId);
@@ -352,7 +327,6 @@ export async function resumeApprovedCodeModeExecution(params: {
     code: snapshot.code,
     timeoutMs: snapshot.timeoutMs,
     executionId: snapshot.executionId,
-    accessibleToolNames: snapshot.accessibleToolNames,
     toolContext: {
       ...snapshot.toolContext,
       approvalResume: {

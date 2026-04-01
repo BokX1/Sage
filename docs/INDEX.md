@@ -43,7 +43,7 @@ Clone → Configure → Deploy → Operate
 | :--- | :--- | :--- |
 | 1️⃣ | [📖 Getting Started](guides/GETTING_STARTED.md) — Discord app, `.env`, onboarding, database, and invite flow | ~30 min |
 | 2️⃣ | [⚙️ Configuration](reference/CONFIGURATION.md) — Environment variables grouped by subsystem and operator concern | ~15 min |
-| 3️⃣ | [🧰 Self-Hosted Tool Stack](operations/TOOL_STACK.md) — Local SearXNG, Crawl4AI, and Tika | ~20 min |
+| 3️⃣ | [🧰 Self-Hosted Retrieval Stack](operations/TOOL_STACK.md) — Local SearXNG, Crawl4AI, and Tika | ~20 min |
 | 4️⃣ | [📋 Operations Runbook](operations/RUNBOOK.md) — Validation, monitoring, and maintenance | Reference |
 
 ---
@@ -90,7 +90,7 @@ Architecture → Pipeline → Memory → Database
 
 | Document | Description |
 | :--- | :--- |
-| [🤖 Agentic Overview](architecture/OVERVIEW.md) | Single-agent design, tool registry, and durability model |
+| [🤖 Agentic Overview](architecture/OVERVIEW.md) | Single-agent design, Code Mode contract, and durability model |
 | [🔀 Runtime Pipeline](architecture/PIPELINE.md) | Message flow, context assembly, task-run slicing, and trace outputs |
 | [🔍 Search Architecture](architecture/SEARCH.md) | SAG flow, web providers, and guarded search fallbacks |
 | [🧠 Memory System](architecture/MEMORY.md) | How Sage stores memory and fetches richer context on demand |
@@ -102,7 +102,7 @@ Architecture → Pipeline → Memory → Database
 | :--- | :--- |
 | [📋 Operations Runbook](operations/RUNBOOK.md) | Production health checks, validation, and incident response |
 | [🚀 Deployment Guide](operations/DEPLOYMENT.md) | Run Sage with Node.js plus the repo's compose-managed support services |
-| [🧰 Self-Hosted Tool Stack](operations/TOOL_STACK.md) | SearXNG, Crawl4AI, and Tika with hosted fallback |
+| [🧰 Self-Hosted Retrieval Stack](operations/TOOL_STACK.md) | SearXNG, Crawl4AI, and Tika with hosted fallback |
 
 ### 📓 Security
 

@@ -18,9 +18,9 @@ const scenarios = [
         desc: 'Reconstructing channel decisions from stored summaries and history',
         userMsg: "Sage, what did we decide about the OAuth rollout yesterday?",
         trace: [
-            { tool: 'discord_context', status: 'ok', text: 'action=get_channel_summary → Loading rolling summary for #dev around yesterday evening' },
-            { tool: 'discord_context', status: 'ok', text: 'action=search_channel_summary_archives → Found archived profile summary with OAuth migration note' },
-            { tool: 'discord_messages', status: 'ok', text: 'action=search_with_context → Exact messages around the deployment discussion loaded' },
+            { tool: 'runtime_execute_code', status: 'ok', text: 'context.summary.get({ channelId, kind: "rolling" }) → Loading rolling summary for #dev around yesterday evening' },
+            { tool: 'runtime_execute_code', status: 'ok', text: 'history.search({ query: "OAuth rollout", channelId }) → Exact discussion window loaded from stored messages' },
+            { tool: 'runtime_execute_code', status: 'ok', text: 'admin.instructions.get({ guildId }) → Confirmed the active Sage Persona before answering' },
         ],
     },
     {
@@ -39,8 +39,7 @@ const scenarios = [
 const toolIcons = {
     stack_overflow_search: '📚',
     web: '🌐',
-    discord_context: '💬',
-    discord_messages: '💬',
+    runtime_execute_code: '⚡',
     github: '📦',
 };
 

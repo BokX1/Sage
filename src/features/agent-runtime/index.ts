@@ -44,16 +44,6 @@ export {
   shutdownMcpTools,
   listMcpDiscoverySnapshots,
 } from './mcp/manager';
-export {
-  discordContextTools,
-  discordHistoryTools,
-  discordArtifactTools,
-  discordModerationTools,
-  discordScheduleTools,
-  discordSpacesTools,
-  discordGovernanceTools,
-  discordTools,
-} from './discordDomainTools';
 
 export {
   initializeAgentGraphRuntime,

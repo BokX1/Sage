@@ -1,7 +1,7 @@
 import crypto from 'crypto';
 import * as dns from 'node:dns/promises';
-import { globalToolRegistry, type ToolExecutionContext, type ToolRegistry } from '../agent-runtime/toolRegistry';
-import { executeToolWithTimeout } from '../agent-runtime/toolCallExecution';
+import { z } from 'zod';
+import type { ToolExecutionContext } from '../agent-runtime/toolRegistry';
 import { ApprovalRequiredSignal, type ApprovalInterruptPayload } from '../agent-runtime/toolControlSignals';
 import { getGuildApprovalReviewChannelId } from '../settings/guildSettingsRepo';
 import { isPrivateOrLocalHostname } from '../../platform/config/envSchema';
@@ -16,11 +16,18 @@ import {
   loadCodeModeEffectLog,
   saveCodeModeEffectLog,
   type CodeModeTaskWorkspace,
-  serializeArtifacts,
 } from './workspace';
+import type { BridgeRegistry } from './bridge/common';
+import { globalBridgeRegistry } from './bridge/registry';
+import type { BridgeMethodSummary, BridgeNamespace } from './bridge/types';
 
 type CodeModeOperation =
-  | { kind: 'tool'; toolName: string; args: unknown }
+  | {
+      kind: 'bridge';
+      namespace: BridgeNamespace;
+      method: string;
+      args: unknown;
+    }
   | {
       kind: 'http';
       request: {
@@ -39,9 +46,14 @@ type CodeModeOperation =
 export interface HostBridgeSession {
   readonly bridgeCalls: CodeModeBridgeCallLogEntry[];
   readonly artifacts: ReturnType<typeof deserializeArtifacts>;
-  listTools(): Array<{ name: string; description: string; inputSchema: Record<string, unknown> }>;
-  tool(name: string, args: unknown): Promise<unknown>;
-  httpFetch(params: { url: string; method?: string; headers?: Record<string, string>; bodyText?: string }): Promise<unknown>;
+  listMethods(): BridgeMethodSummary[];
+  call(namespace: BridgeNamespace, method: string, args: unknown): Promise<unknown>;
+  httpFetch(params: {
+    url: string;
+    method?: string;
+    headers?: Record<string, string>;
+    bodyText?: string;
+  }): Promise<unknown>;
   workspaceCall(action: string, args: Record<string, unknown>): Promise<unknown>;
 }
 
@@ -49,10 +61,9 @@ export interface HostBridgeSessionParams {
   executionId: string;
   workspace: CodeModeTaskWorkspace;
   toolContext: ToolExecutionContext;
-  accessibleToolNames: string[];
   timeoutMs: number;
   approvalGrant?: CodeModeApprovalGrant | null;
-  registry?: ToolRegistry;
+  registry?: BridgeRegistry;
   workspaceHandlers: {
     read(args: Record<string, unknown>): Promise<unknown>;
     write(args: Record<string, unknown>): Promise<unknown>;
@@ -64,8 +75,7 @@ export interface HostBridgeSessionParams {
 }
 
 function stableHash(value: unknown): string {
-  const json = JSON.stringify(value);
-  return crypto.createHash('sha256').update(json).digest('hex');
+  return crypto.createHash('sha256').update(JSON.stringify(value)).digest('hex');
 }
 
 function buildApprovalPayload(params: {
@@ -75,7 +85,6 @@ function buildApprovalPayload(params: {
   executionId: string;
   taskId: string;
   requestHash: string;
-  underlyingPayload?: ApprovalInterruptPayload | null;
 }): ApprovalInterruptPayload {
   const guildId = params.toolContext.guildId?.trim();
   const userId = params.toolContext.userId?.trim();
@@ -87,12 +96,10 @@ function buildApprovalPayload(params: {
   return {
     kind: 'code_mode_effect',
     guildId,
-    sourceChannelId: params.underlyingPayload?.sourceChannelId ?? channelId,
-    reviewChannelId:
-      params.underlyingPayload?.reviewChannelId ??
-      params.toolContext.channelId,
-    sourceMessageId: params.underlyingPayload?.sourceMessageId ?? params.toolContext.currentTurn?.messageId ?? null,
-    requestedBy: params.underlyingPayload?.requestedBy ?? userId,
+    sourceChannelId: channelId,
+    reviewChannelId: channelId,
+    sourceMessageId: params.toolContext.currentTurn?.messageId ?? null,
+    requestedBy: userId,
     dedupeKey: `code_mode_effect:${params.executionId}:${params.effectIndex}:${params.requestHash}`,
     executionPayloadJson: {
       executionId: params.executionId,
@@ -106,14 +113,11 @@ function buildApprovalPayload(params: {
       effectLabel: params.effectLabel,
       effectIndex: params.effectIndex,
       executionId: params.executionId,
-      underlyingKind: params.underlyingPayload?.kind ?? null,
-      underlyingReview: params.underlyingPayload?.reviewSnapshotJson ?? null,
     },
     interruptMetadataJson: {
       effectIndex: params.effectIndex,
       effectLabel: params.effectLabel,
       executionId: params.executionId,
-      underlyingKind: params.underlyingPayload?.kind ?? null,
     },
   };
 }
@@ -121,14 +125,6 @@ function buildApprovalPayload(params: {
 function isWriteHttpMethod(method: string | undefined): boolean {
   const normalized = (method ?? 'GET').trim().toUpperCase();
   return normalized !== 'GET' && normalized !== 'HEAD' && normalized !== 'OPTIONS';
-}
-
-async function fetchReviewChannelId(toolContext: ToolExecutionContext): Promise<string | null> {
-  if (!toolContext.guildId) {
-    return null;
-  }
-  const configured = await getGuildApprovalReviewChannelId(toolContext.guildId).catch(() => null);
-  return configured ?? toolContext.channelId ?? null;
 }
 
 export async function resolveHostnameForCodeMode(hostname: string) {
@@ -172,7 +168,7 @@ async function performHttpFetch(
   const bodyText = await response.text();
   return {
     mutability: isWriteHttpMethod(method) ? 'write' : 'read',
-    label: `http.${method} ${url.hostname}${url.pathname}`,
+    label: `http.fetch ${method} ${url.hostname}${url.pathname}`,
     result: {
       url: url.toString(),
       ok: response.ok,
@@ -184,10 +180,14 @@ async function performHttpFetch(
   };
 }
 
+function parseWorkspaceArgs(args: Record<string, unknown>) {
+  return z.record(z.string(), z.unknown()).parse(args);
+}
+
 export async function createHostBridgeSession(
   params: HostBridgeSessionParams,
 ): Promise<HostBridgeSession> {
-  const registry = params.registry ?? globalToolRegistry;
+  const registry = params.registry ?? globalBridgeRegistry;
   const effectLog = await loadCodeModeEffectLog(params.workspace, params.executionId);
   const bridgeCalls: CodeModeBridgeCallLogEntry[] = [];
   const restoredArtifacts = new Map<number, ReturnType<typeof deserializeArtifacts>>();
@@ -232,7 +232,7 @@ export async function createHostBridgeSession(
         params.approvalGrant?.effectIndex === index &&
         params.approvalGrant.requestHash === existing.requestHash;
       if (existing.status === 'approval_required' && approvalGrantMatchesCurrentEffect) {
-        // Fall through and execute the approved effect below.
+        // Continue to re-execute the approved effect.
       } else if (existing.status === 'approval_required' && params.approvalGrant?.effectIndex === index) {
         throw new Error(`Code Mode approval replay for effect #${index} no longer matches the original request hash.`);
       } else if (existing.status === 'approval_required') {
@@ -244,230 +244,178 @@ export async function createHostBridgeSession(
             executionId: params.executionId,
             taskId: params.workspace.taskId,
             requestHash,
-            underlyingPayload: existing.approval?.kind
-              ? ({
-                  kind: existing.approval.kind,
-                  guildId: params.toolContext.guildId ?? '',
-                  sourceChannelId: params.toolContext.channelId,
-                  reviewChannelId: existing.approval.reviewChannelId ?? params.toolContext.channelId,
-                  requestedBy: params.toolContext.userId,
-                  dedupeKey: `replay:${params.executionId}:${index}`,
-                  executionPayloadJson: {},
-                  reviewSnapshotJson: {},
-                } as ApprovalInterruptPayload)
-              : null,
           }),
         );
       }
+      if (existing.status === 'failed') {
+        throw new Error(existing.errorText ?? 'Code Mode effect failed previously.');
+      }
     }
 
-    let mutability: 'read' | 'write' = 'read';
+    let operationKind: CodeModeBridgeCallLogEntry['operationKind'];
     let label: string;
-    let result: unknown;
-    let artifacts = [] as ReturnType<typeof deserializeArtifacts>;
+    let mutability: 'read' | 'write';
+    let approvalMode: 'none' | 'required' = 'none';
+    let executor: () => Promise<unknown>;
 
-    if (operation.kind === 'tool') {
-      if (!params.accessibleToolNames.includes(operation.toolName)) {
-        throw new Error(`Tool "${operation.toolName}" is not available to this Code Mode turn.`);
+    if (operation.kind === 'bridge') {
+      const method = registry.get(operation.namespace, operation.method);
+      if (!method) {
+        throw new Error(`Bridge method "${operation.namespace}.${operation.method}" is not available.`);
       }
-      const resolved = await registry.resolveActionPolicy(
-        { name: operation.toolName, args: operation.args },
-        params.toolContext,
-      );
-      if (!resolved) {
-        throw new Error(`Unable to resolve action policy for tool "${operation.toolName}".`);
-      }
-      mutability = resolved.policy.mutability;
-      label = `tool.${operation.toolName}`;
-      if (
-        mutability === 'write' &&
-        resolved.policy.approvalMode === 'required' &&
-        params.approvalGrant?.effectIndex !== index
-      ) {
-        const underlyingPayload =
-          typeof resolved.policy.prepareApproval === 'function'
-            ? await resolved.policy.prepareApproval(resolved.args, params.toolContext)
-            : {
-                kind: 'code_mode_effect_write',
-                guildId: params.toolContext.guildId ?? '',
-                sourceChannelId: params.toolContext.channelId,
-                reviewChannelId: (await fetchReviewChannelId(params.toolContext)) ?? params.toolContext.channelId,
-                sourceMessageId: params.toolContext.currentTurn?.messageId ?? null,
-                requestedBy: params.toolContext.userId,
-                dedupeKey: `tool:${operation.toolName}:${index}:${requestHash}`,
-                executionPayloadJson: { toolName: operation.toolName, args: operation.args },
-                reviewSnapshotJson: { toolName: operation.toolName, args: operation.args },
-              };
-        const payload = buildApprovalPayload({
-          toolContext: params.toolContext,
-          effectIndex: index,
-          effectLabel: label,
-          executionId: params.executionId,
-          taskId: params.workspace.taskId,
-          requestHash,
-          underlyingPayload,
-        });
-        const now = new Date().toISOString();
-        effectLog[index] = {
-          index,
-          operationKind: 'tool',
-          requestHash,
-          mutability,
-          status: 'approval_required',
-          label,
-          approval: {
-            requestHash: requestHash,
-            kind: payload.kind,
-            reviewChannelId: payload.reviewChannelId,
-          },
-          createdAtIso: now,
-          updatedAtIso: now,
-        };
-        await saveLog();
-        bridgeCalls.push({
-          index,
-          operationKind: 'tool',
-          label,
-          mutability,
-          status: 'approval_required',
-          replayed: false,
-        });
-        throw new ApprovalRequiredSignal(payload);
-      }
-      const toolResult = await executeToolWithTimeout(
-        registry,
-        { name: operation.toolName, args: operation.args },
-        params.toolContext,
-        params.timeoutMs,
-      );
-      if (!toolResult.success) {
-        throw new Error(toolResult.error ?? `Tool "${operation.toolName}" failed.`);
-      }
-      result = toolResult.structuredContent;
-      artifacts = toolResult.artifacts ?? [];
+      const parsedArgs = method.input.parse(operation.args);
+      operationKind = method.namespace;
+      label = `${method.namespace}.${method.method}`;
+      mutability = method.mutability;
+      approvalMode = method.approvalMode ?? 'none';
+      executor = async () => method.execute(parsedArgs, { toolContext: params.toolContext });
     } else if (operation.kind === 'http') {
-      const httpOutcome = await performHttpFetch(params, operation.request);
-      mutability = httpOutcome.mutability;
-      label = httpOutcome.label;
-      if (mutability === 'write' && params.approvalGrant?.effectIndex !== index) {
-        const reviewChannelId = (await fetchReviewChannelId(params.toolContext)) ?? params.toolContext.channelId;
-        const payload = buildApprovalPayload({
-          toolContext: params.toolContext,
-          effectIndex: index,
-          effectLabel: label,
-          executionId: params.executionId,
-          taskId: params.workspace.taskId,
-          requestHash,
-          underlyingPayload: {
-            kind: 'code_mode_http_write',
-            guildId: params.toolContext.guildId ?? '',
-            sourceChannelId: params.toolContext.channelId,
-            reviewChannelId,
-            sourceMessageId: params.toolContext.currentTurn?.messageId ?? null,
-            requestedBy: params.toolContext.userId,
-            dedupeKey: `http:${index}:${requestHash}`,
-            executionPayloadJson: operation.request,
-            reviewSnapshotJson: operation.request,
-          },
-        });
-        const now = new Date().toISOString();
-        effectLog[index] = {
-          index,
-          operationKind: 'http',
-          requestHash,
-          mutability,
-          status: 'approval_required',
-          label,
-          approval: {
-            requestHash: requestHash,
-            kind: payload.kind,
-            reviewChannelId: payload.reviewChannelId,
-          },
-          createdAtIso: now,
-          updatedAtIso: now,
-        };
-        await saveLog();
-        bridgeCalls.push({
-          index,
-          operationKind: 'http',
-          label,
-          mutability,
-          status: 'approval_required',
-          replayed: false,
-        });
-        throw new ApprovalRequiredSignal(payload);
-      }
-      result = httpOutcome.result;
+      operationKind = 'http';
+      const prepared = await performHttpFetch(params, operation.request);
+      label = prepared.label;
+      mutability = prepared.mutability;
+      executor = async () => prepared.result;
     } else {
+      operationKind = 'workspace';
       label = `workspace.${operation.action}`;
-      if (operation.action === 'read') {
-        result = await params.workspaceHandlers.read(operation.args);
-      } else if (operation.action === 'write') {
-        mutability = 'write';
-        result = await params.workspaceHandlers.write(operation.args);
-      } else if (operation.action === 'append') {
-        mutability = 'write';
-        result = await params.workspaceHandlers.append(operation.args);
-      } else if (operation.action === 'list') {
-        result = await params.workspaceHandlers.list(operation.args);
-      } else if (operation.action === 'search') {
-        result = await params.workspaceHandlers.search(operation.args);
-      } else if (operation.action === 'delete') {
-        mutability = 'write';
-        result = await params.workspaceHandlers.delete(operation.args);
-      } else {
-        throw new Error(`Unsupported workspace action "${operation.action}".`);
-      }
+      mutability = operation.action === 'read' || operation.action === 'list' || operation.action === 'search'
+        ? 'read'
+        : 'write';
+      const parsedArgs = parseWorkspaceArgs(operation.args);
+      executor = async () => {
+        switch (operation.action) {
+          case 'read':
+            return params.workspaceHandlers.read(parsedArgs);
+          case 'write':
+            return params.workspaceHandlers.write(parsedArgs);
+          case 'append':
+            return params.workspaceHandlers.append(parsedArgs);
+          case 'list':
+            return params.workspaceHandlers.list(parsedArgs);
+          case 'search':
+            return params.workspaceHandlers.search(parsedArgs);
+          case 'delete':
+            return params.workspaceHandlers.delete(parsedArgs);
+          default:
+            throw new Error(`Unknown workspace action "${operation.action}".`);
+        }
+      };
     }
 
-    const now = new Date().toISOString();
-    effectLog[index] = {
-      index,
-      operationKind: operation.kind,
-      requestHash,
-      mutability,
-      status: 'executed',
-      label,
-      result,
-      artifacts: serializeArtifacts(artifacts),
-      createdAtIso: existing?.createdAtIso ?? now,
-      updatedAtIso: now,
-    };
-    await saveLog();
-    replayArtifacts(index, effectLog[index]!);
-    bridgeCalls.push({
-      index,
-      operationKind: operation.kind,
-      label,
-      mutability,
-      status: 'executed',
-      replayed: false,
-    });
-    return result;
+    if (mutability === 'write' && approvalMode === 'required' && !params.approvalGrant) {
+      const approval = buildApprovalPayload({
+        toolContext: params.toolContext,
+        effectIndex: index,
+        effectLabel: label,
+        executionId: params.executionId,
+        taskId: params.workspace.taskId,
+        requestHash,
+      });
+      const reviewChannelId = await fetchReviewChannelId(params.toolContext);
+      const approvalPayload = {
+        ...approval,
+        reviewChannelId: reviewChannelId ?? approval.reviewChannelId,
+      };
+      effectLog[index] = {
+        index,
+        operationKind,
+        requestHash,
+        mutability,
+        status: 'approval_required',
+        label,
+        approval: {
+          requestId: null,
+          requestHash,
+          kind: approvalPayload.kind,
+          reviewChannelId: approvalPayload.reviewChannelId,
+        },
+        createdAtIso: new Date().toISOString(),
+        updatedAtIso: new Date().toISOString(),
+      };
+      await saveLog();
+      bridgeCalls.push({
+        index,
+        operationKind,
+        label,
+        mutability,
+        status: 'approval_required',
+        replayed: false,
+      });
+      throw new ApprovalRequiredSignal(approvalPayload);
+    }
+
+    try {
+      const result = await executor();
+      effectLog[index] = {
+        index,
+        operationKind,
+        requestHash,
+        mutability,
+        status: 'executed',
+        label,
+        result,
+        artifacts: [],
+        createdAtIso: existing?.createdAtIso ?? new Date().toISOString(),
+        updatedAtIso: new Date().toISOString(),
+      };
+      await saveLog();
+      bridgeCalls.push({
+        index,
+        operationKind,
+        label,
+        mutability,
+        status: 'executed',
+        replayed: false,
+      });
+      return result;
+    } catch (error) {
+      if (error instanceof ApprovalRequiredSignal) {
+        throw error;
+      }
+      effectLog[index] = {
+        index,
+        operationKind,
+        requestHash,
+        mutability,
+        status: 'failed',
+        label,
+        errorText: error instanceof Error ? error.message : String(error),
+        createdAtIso: existing?.createdAtIso ?? new Date().toISOString(),
+        updatedAtIso: new Date().toISOString(),
+      };
+      await saveLog();
+      bridgeCalls.push({
+        index,
+        operationKind,
+        label,
+        mutability,
+        status: 'failed',
+        replayed: false,
+      });
+      throw error;
+    }
   };
 
   return {
     bridgeCalls,
     artifacts: Array.from(restoredArtifacts.values()).flat(),
-    listTools() {
-      return params.accessibleToolNames.flatMap((toolName) => {
-        const tool = registry.get(toolName);
-        if (!tool) return [];
-        return [{
-          name: tool.name,
-          description: tool.description,
-          inputSchema: tool.inputSchema,
-        }];
-      });
-    },
-    tool(name: string, args: unknown) {
-      return executeOperation({ kind: 'tool', toolName: name, args });
-    },
-    httpFetch(request) {
-      return executeOperation({ kind: 'http', request });
-    },
-    workspaceCall(action, args) {
-      return executeOperation({ kind: 'workspace', action, args });
-    },
+    listMethods: () => registry.list(),
+    call: async (namespace, method, args) =>
+      executeOperation({
+        kind: 'bridge',
+        namespace,
+        method,
+        args,
+      }),
+    httpFetch: async (request) => executeOperation({ kind: 'http', request }),
+    workspaceCall: async (action, args) => executeOperation({ kind: 'workspace', action, args }),
   };
+}
+
+async function fetchReviewChannelId(toolContext: ToolExecutionContext): Promise<string | null> {
+  if (!toolContext.guildId) {
+    return null;
+  }
+  const configured = await getGuildApprovalReviewChannelId(toolContext.guildId).catch(() => null);
+  return configured ?? toolContext.channelId ?? null;
 }

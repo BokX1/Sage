@@ -47,7 +47,6 @@ async function createSession() {
     executionId: 'execution-1',
     workspace,
     toolContext: makeToolContext(),
-    accessibleToolNames: [],
     timeoutMs: 5_000,
     workspaceHandlers: {
       read: async () => ({}),
