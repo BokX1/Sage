@@ -190,7 +190,6 @@ Useful log patterns:
 | Pattern | Meaning |
 | :--- | :--- |
 | `[info] Logged in as` | Bot started successfully |
-| `Cleared legacy Discord application commands...` | Startup cleaned stale slash-command registrations from older builds |
 | `[error] P1001` | Database connection issue |
 
 ### Traces

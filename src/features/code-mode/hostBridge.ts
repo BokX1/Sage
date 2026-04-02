@@ -1,7 +1,7 @@
 import crypto from 'crypto';
 import * as dns from 'node:dns/promises';
 import { z } from 'zod';
-import type { ToolExecutionContext } from '../agent-runtime/toolRegistry';
+import type { ToolExecutionContext } from '../agent-runtime/runtimeToolContract';
 import { ApprovalRequiredSignal, type ApprovalInterruptPayload } from '../agent-runtime/toolControlSignals';
 import { getGuildApprovalReviewChannelId } from '../settings/guildSettingsRepo';
 import { isPrivateOrLocalHostname } from '../../platform/config/envSchema';
@@ -17,9 +17,13 @@ import {
   saveCodeModeEffectLog,
   type CodeModeTaskWorkspace,
 } from './workspace';
-import type { BridgeRegistry } from './bridge/common';
-import { globalBridgeRegistry } from './bridge/registry';
 import type { BridgeMethodSummary, BridgeNamespace } from './bridge/types';
+import {
+  FIXED_BRIDGE_CONTRACT,
+  listBridgeMethodSummaries,
+  listBridgeMethodSummariesForAuthority,
+  type FixedBridgeContract,
+} from './bridge/contract';
 
 type CodeModeOperation =
   | {
@@ -63,7 +67,7 @@ export interface HostBridgeSessionParams {
   toolContext: ToolExecutionContext;
   timeoutMs: number;
   approvalGrant?: CodeModeApprovalGrant | null;
-  registry?: BridgeRegistry;
+  bridgeContract?: FixedBridgeContract;
   workspaceHandlers: {
     read(args: Record<string, unknown>): Promise<unknown>;
     write(args: Record<string, unknown>): Promise<unknown>;
@@ -187,7 +191,7 @@ function parseWorkspaceArgs(args: Record<string, unknown>) {
 export async function createHostBridgeSession(
   params: HostBridgeSessionParams,
 ): Promise<HostBridgeSession> {
-  const registry = params.registry ?? globalBridgeRegistry;
+  const bridgeContract = params.bridgeContract ?? FIXED_BRIDGE_CONTRACT;
   const effectLog = await loadCodeModeEffectLog(params.workspace, params.executionId);
   const bridgeCalls: CodeModeBridgeCallLogEntry[] = [];
   const restoredArtifacts = new Map<number, ReturnType<typeof deserializeArtifacts>>();
@@ -259,16 +263,31 @@ export async function createHostBridgeSession(
     let executor: () => Promise<unknown>;
 
     if (operation.kind === 'bridge') {
-      const method = registry.get(operation.namespace, operation.method);
-      if (!method) {
-        throw new Error(`Bridge method "${operation.namespace}.${operation.method}" is not available.`);
+      if (operation.namespace === 'admin' && operation.method === 'runtime.getCapabilities') {
+        operationKind = 'admin';
+        label = 'admin.runtime.getCapabilities';
+        mutability = 'read';
+        executor = async () => {
+          const methods = listBridgeMethodSummariesForAuthority(params.toolContext.invokerAuthority);
+          const namespaces = Array.from(new Set(methods.map((method) => method.namespace)));
+          return {
+            kind: 'capabilities',
+            namespaces,
+            methods,
+          };
+        };
+      } else {
+        const method = bridgeContract[operation.namespace]?.[operation.method];
+        if (!method) {
+          throw new Error(`Bridge method "${operation.namespace}.${operation.method}" is not available.`);
+        }
+        const parsedArgs = method.input.parse(operation.args);
+        operationKind = method.namespace;
+        label = `${method.namespace}.${method.method}`;
+        mutability = method.mutability;
+        approvalMode = method.approvalMode ?? 'none';
+        executor = async () => method.execute(parsedArgs, { toolContext: params.toolContext });
       }
-      const parsedArgs = method.input.parse(operation.args);
-      operationKind = method.namespace;
-      label = `${method.namespace}.${method.method}`;
-      mutability = method.mutability;
-      approvalMode = method.approvalMode ?? 'none';
-      executor = async () => method.execute(parsedArgs, { toolContext: params.toolContext });
     } else if (operation.kind === 'http') {
       operationKind = 'http';
       const prepared = await performHttpFetch(params, operation.request);
@@ -399,7 +418,7 @@ export async function createHostBridgeSession(
   return {
     bridgeCalls,
     artifacts: Array.from(restoredArtifacts.values()).flat(),
-    listMethods: () => registry.list(),
+    listMethods: () => listBridgeMethodSummaries(),
     call: async (namespace, method, args) =>
       executeOperation({
         kind: 'bridge',

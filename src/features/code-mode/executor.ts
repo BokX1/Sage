@@ -1,7 +1,7 @@
 import { fork } from 'node:child_process';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import type { ToolExecutionContext } from '../agent-runtime/toolRegistry';
+import type { ToolExecutionContext } from '../agent-runtime/runtimeToolContract';
 import type {
   CodeModeApprovalExecutionPayload,
   CodeModeApprovalGrant,
@@ -22,8 +22,7 @@ import {
   workspaceSearch,
   workspaceWriteText,
 } from './workspace';
-import type { BridgeRegistry } from './bridge/common';
-import { globalBridgeRegistry } from './bridge/registry';
+import type { FixedBridgeContract } from './bridge/contract';
 
 const DEFAULT_CODE_TIMEOUT_MS = 90_000;
 
@@ -245,12 +244,11 @@ export async function executeCodeMode(params: {
   code: string;
   toolContext: ToolExecutionContext;
   timeoutMs?: number;
-  registry?: BridgeRegistry;
+  bridgeContract?: FixedBridgeContract;
   approvalGrant?: CodeModeApprovalGrant | null;
   executionId?: string;
 }): Promise<CodeModeExecutionResult> {
   const taskId = normalizeTaskId(params.toolContext);
-  const registry = params.registry ?? globalBridgeRegistry;
   const executionId = params.executionId ?? buildExecutionId(params.toolContext, params.language);
   const workspace = await getOrCreateCodeModeTaskWorkspace(taskId);
 
@@ -281,7 +279,7 @@ export async function executeCodeMode(params: {
     toolContext: request.toolContext,
     timeoutMs: request.timeoutMs,
     approvalGrant: request.approvalGrant,
-    registry,
+    bridgeContract: params.bridgeContract,
     workspaceHandlers: buildWorkspaceHandlers(workspace),
   });
 
@@ -306,7 +304,7 @@ export async function executeCodeMode(params: {
 export async function resumeApprovedCodeModeExecution(params: {
   payload: CodeModeApprovalExecutionPayload;
   approvedBy: string;
-  registry?: BridgeRegistry;
+  bridgeContract?: FixedBridgeContract;
 }): Promise<CodeModeExecutionResult> {
   const workspace = await getOrCreateCodeModeTaskWorkspace(params.payload.taskId);
   const snapshot = await loadCodeModeExecutionSnapshot(workspace, params.payload.executionId);
@@ -341,6 +339,6 @@ export async function resumeApprovedCodeModeExecution(params: {
       requestHash,
       reviewerId: params.approvedBy,
     },
-    registry: params.registry,
+    bridgeContract: params.bridgeContract,
   });
 }

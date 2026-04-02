@@ -48,7 +48,7 @@ describe('interactionCreate handler', () => {
     delete g[registrationKey];
   });
 
-  it('ignores legacy slash commands instead of surfacing a fallback reply', async () => {
+  it('returns early for chat input commands without sending a fallback reply', async () => {
     const { registerInteractionCreateHandler } = await import('@/app/discord/handlers/interactionCreate');
     registerInteractionCreateHandler();
 

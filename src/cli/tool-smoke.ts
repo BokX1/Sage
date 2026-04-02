@@ -1,8 +1,8 @@
 /* eslint-disable no-console */
 
-import { registerDefaultAgenticTools } from '../features/agent-runtime/defaultTools';
-import type { ToolExecutionContext } from '../features/agent-runtime/toolRegistry';
-import { ToolRegistry } from '../features/agent-runtime/toolRegistry';
+import { runtimeExecuteCodeTool } from '../features/code-mode/tool';
+import type { ToolExecutionContext } from '../features/agent-runtime/runtimeToolContract';
+import { executeValidatedRuntimeTool } from '../features/agent-runtime/runtimeToolContract';
 
 type SmokeCheck = {
   name: string;
@@ -24,14 +24,17 @@ function buildSmokeContext(): ToolExecutionContext {
   };
 }
 
-function summarizeSmokeResult(toolName: string, result: unknown): string {
+function summarizeSmokeResult(result: unknown): string {
   const envelope =
     result && typeof result === 'object' && !Array.isArray(result)
       ? (result as Record<string, unknown>)
       : null;
 
   const record =
-    envelope && typeof envelope.structuredContent === 'object' && envelope.structuredContent && !Array.isArray(envelope.structuredContent)
+    envelope &&
+      typeof envelope.structuredContent === 'object' &&
+      envelope.structuredContent &&
+      !Array.isArray(envelope.structuredContent)
       ? (envelope.structuredContent as Record<string, unknown>)
       : envelope;
 
@@ -39,32 +42,34 @@ function summarizeSmokeResult(toolName: string, result: unknown): string {
     return `resultType=${typeof result}`;
   }
 
-  void toolName;
   return `keys=${Object.keys(record).slice(0, 5).join(',') || 'none'}`;
 }
 
-function buildSmokeChecks(registry: ToolRegistry, ctx: ToolExecutionContext): SmokeCheck[] {
-  return registry.listSpecs()
-    .filter((spec) => spec.runtime.class !== 'runtime')
-    .filter((spec) => spec.smoke?.mode && spec.smoke.mode !== 'skip')
-    .map((spec) => ({
-      name: spec.name,
-      optional: spec.smoke?.mode === 'optional',
-      run: async () => {
-        const result = await registry.executeValidated(
-          {
-            name: spec.name,
-            args: spec.smoke?.args ?? {},
-          },
-          ctx,
-        );
-        if (!result.success) {
-          const hint = result.errorDetails?.hint ? ` hint=${result.errorDetails.hint}` : '';
-          throw new Error(`${result.error}${hint}`);
-        }
-        return summarizeSmokeResult(spec.name, result.result);
-      },
-    }));
+function buildSmokeChecks(ctx: ToolExecutionContext): SmokeCheck[] {
+  const spec = runtimeExecuteCodeTool;
+  if (!spec.smoke || spec.smoke.mode === 'skip') {
+    return [];
+  }
+
+  return [{
+    name: spec.name,
+    optional: spec.smoke.mode === 'optional',
+    run: async () => {
+      const result = await executeValidatedRuntimeTool(
+        runtimeExecuteCodeTool,
+        {
+          name: spec.name,
+          args: spec.smoke?.args ?? {},
+        },
+        ctx,
+      );
+      if (!result.success) {
+        const hint = result.errorDetails?.hint ? ` hint=${result.errorDetails.hint}` : '';
+        throw new Error(`${result.error}${hint}`);
+      }
+      return summarizeSmokeResult(result.result);
+    },
+  }];
 }
 
 async function runCheck(check: SmokeCheck): Promise<{ passed: boolean; optional: boolean }> {
@@ -81,12 +86,9 @@ async function runCheck(check: SmokeCheck): Promise<{ passed: boolean; optional:
 }
 
 async function main(): Promise<void> {
-  const registry = new ToolRegistry();
-  await registerDefaultAgenticTools(registry);
-
   const ctx = buildSmokeContext();
-  const checks = buildSmokeChecks(registry, ctx);
-  const skipped = registry.listSpecs().filter((spec) => spec.smoke?.mode === 'skip');
+  const checks = buildSmokeChecks(ctx);
+  const skipped = runtimeExecuteCodeTool.smoke?.mode === 'skip' ? [runtimeExecuteCodeTool] : [];
 
   console.log('Sage runtime surface smoke starting...');
   for (const spec of skipped) {

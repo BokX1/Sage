@@ -16,14 +16,12 @@ describe('userProfileXml', () => {
     expect(parsed?.background).toEqual(['Maintains Sage']);
   });
 
-  it('normalizes legacy directives into preferences', () => {
+  it('rejects summaries with unknown legacy tags', () => {
     const normalized = normalizeUserProfileSummary(
-      '<directives>Prefers concise answers</directives>\n<active_focus>Refining prompts</active_focus>\n<background>Maintains Sage</background>',
+      '<legacy_preferences>Prefers concise answers</legacy_preferences>\n<active_focus>Refining prompts</active_focus>\n<background>Maintains Sage</background>',
     );
 
-    expect(normalized).toBe(
-      '<preferences>Prefers concise answers</preferences>\n<active_focus>Refining prompts</active_focus>\n<background>Maintains Sage</background>',
-    );
+    expect(normalized).toBeNull();
   });
 
   it('rejects malformed summaries that do not contain all required sections', () => {

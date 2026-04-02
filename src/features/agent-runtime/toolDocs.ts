@@ -1,5 +1,3 @@
-import { globalToolRegistry } from './toolRegistry';
-
 export interface PromptToolGuidance {
   purpose?: string;
   decisionEdges: string[];
@@ -78,7 +76,7 @@ export function getTopLevelToolDoc(toolName: string): TopLevelToolDoc | null {
 }
 
 export function listTopLevelToolDocs(): TopLevelToolDoc[] {
-  return globalToolRegistry.has(CODE_MODE_DOC.tool) ? [CODE_MODE_DOC] : [];
+  return [CODE_MODE_DOC];
 }
 
 export function getPromptToolGuidance(toolName: string): PromptToolGuidance | null {
@@ -96,4 +94,3 @@ export function listSmokeToolDocs(): TopLevelToolDoc[] {
 export function buildWebsiteNativeTools(): WebsiteNativeToolRow[] {
   return listTopLevelToolDocs().map((doc) => doc.website);
 }
-

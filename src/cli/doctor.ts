@@ -1023,15 +1023,11 @@ function buildChecks(): CheckDefinition[] {
       id: CHECK_IDS.toolsAudit,
       title: 'Tool contract audit',
       run: async () => {
-        const [{ ToolRegistry }, { registerDefaultAgenticTools }, { probeMcpServerDiagnostics }, { auditToolRegistry }] = await Promise.all([
-          import('../features/agent-runtime/toolRegistry'),
-          import('../features/agent-runtime/defaultTools'),
+        const [{ probeMcpServerDiagnostics }, { auditRuntimeSurface }] = await Promise.all([
           import('../features/agent-runtime/mcp/manager'),
           import('../features/agent-runtime/toolAudit'),
         ]);
-        const registry = new ToolRegistry();
-        await registerDefaultAgenticTools(registry);
-        const report = auditToolRegistry(registry, {
+        const report = auditRuntimeSurface({
           mcpDiagnostics: await probeMcpServerDiagnostics(),
         });
         const details = report.findings.slice(0, 12).map(
@@ -1053,7 +1049,7 @@ function buildChecks(): CheckDefinition[] {
         }
         return {
           status: 'pass',
-          message: `Tool audit passed for ${report.summary.toolCount} tools`,
+          message: `Tool audit passed for ${report.summary.toolCount} runtime capabilities`,
           details: [
             `Output schema coverage: ${report.summary.outputSchemaCoverage.declared}/${report.summary.toolCount}`,
           ],

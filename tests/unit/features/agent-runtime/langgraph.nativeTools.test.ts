@@ -20,10 +20,6 @@ vi.mock('../../../../src/features/agent-runtime/toolCallExecution', () => ({
   executeToolWithTimeout: executeToolWithTimeoutMock,
 }));
 
-vi.mock('../../../../src/features/agent-runtime/toolRegistry', () => ({
-  globalToolRegistry: {},
-}));
-
 vi.mock('../../../../src/features/admin/adminActionService', () => ({
   executeApprovedReviewRequest: executeApprovedReviewRequestMock,
 }));
@@ -68,17 +64,17 @@ describe('langgraph nativeTools', () => {
       })),
     };
     executeToolWithTimeoutMock.mockResolvedValueOnce({
-      name: 'github',
+      name: 'runtime_execute_code',
       success: true,
       structuredContent: fullResult,
       telemetry: { latencyMs: 42 },
     });
 
     const output = await executeDurableToolTask({
-      activeToolNames: ['github'],
+      activeToolNames: ['runtime_execute_code'],
       call: {
-        name: 'github',
-        args: { action: 'search_code', query: 'tool loop' },
+        name: 'runtime_execute_code',
+        args: { language: 'javascript', code: 'return 1;' },
       },
       context: makeToolContext(),
       timeoutMs: 1_000,

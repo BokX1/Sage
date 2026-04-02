@@ -80,7 +80,7 @@ flowchart TD
 
 > [!NOTE]
 > Channel summaries, artifact content, and wider message history are not preloaded into every turn. The model fetches them on demand through bridge-native Code Mode namespaces when it decides they are needed.
-> `context.summary.get(...)` is a continuity surface, not historical evidence. For exact verification Sage should use `history.search(...)`, `history.recent(...)`, or `discord.messages.get(...)`.
+> `context.summary.get(...)` is a continuity surface, not historical evidence. For exact verification Sage should use `history.search(...)`, `history.recent(...)`, or `history.get(...)`.
 
 The runtime records a stable `promptVersion` plus `promptFingerprint` for the full reusable prompt surface, including both the system contract template and the lower-priority context-envelope layout, so prompt changes are attributable in debugging and smoke runs without hashing live per-turn content.
 
@@ -192,7 +192,7 @@ Most richer context is loaded on demand through bridge-native Code Mode namespac
 | Sage Persona | `admin.instructions.get(...)` | PostgreSQL (`ServerInstructions`, stored internally as guild Sage Persona config) |
 | Artifact content | `artifacts.get(...)` | PostgreSQL artifact and attachment tables |
 | Artifact publication | `artifacts.publish(...)` | PostgreSQL artifact tables plus Discord delivery state |
-| Message history | `history.search(...)`, `history.recent(...)`, `discord.messages.get(...)`, `discord.messages.list(...)`, `discord.messages.search(...)` | PostgreSQL (`ChannelMessage`) plus pgvector (`ChannelMessageEmbedding`) |
+| Message history | `history.get(...)`, `history.search(...)`, `history.recent(...)` | PostgreSQL (`ChannelMessage`) plus pgvector (`ChannelMessageEmbedding`) |
 | Guild/channel metadata | `discord.channels.get(...)`, `discord.channels.list(...)`, admin-scoped bridge reads | Discord API plus runtime context |
 
 Some read actions are blocked in Autopilot mode, and all write/admin actions remain permission-gated.

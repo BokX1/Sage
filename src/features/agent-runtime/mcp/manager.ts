@@ -3,10 +3,6 @@ import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { logger } from '../../../platform/logging/logger';
 import {
-  globalToolRegistry,
-  type ToolRegistry,
-} from '../toolRegistry';
-import {
   ToolDetailedError,
   buildToolErrorDetails,
   extractToolErrorDetails,
@@ -326,8 +322,7 @@ export class McpManager {
   private runtimes = new Map<string, ServerRuntime>();
   private initialized = false;
 
-  async initialize(registry: ToolRegistry = globalToolRegistry): Promise<void> {
-    void registry;
+  async initialize(): Promise<void> {
     if (this.initialized) {
       return;
     }
@@ -790,8 +785,8 @@ export class McpManager {
 
 export const globalMcpManager = new McpManager();
 
-export async function initializeMcpTools(registry: ToolRegistry = globalToolRegistry): Promise<void> {
-  await globalMcpManager.initialize(registry);
+export async function initializeMcpTools(): Promise<void> {
+  await globalMcpManager.initialize();
 }
 
 export async function shutdownMcpTools(): Promise<void> {

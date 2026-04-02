@@ -92,7 +92,7 @@ function createBridgeNamespace(namespace: BridgeNamespace, methods: string[]) {
 function createDiscordBridge() {
   return Object.freeze({
     channels: createBridgeNamespace('discord', ['channels.get', 'channels.list']),
-    messages: createBridgeNamespace('discord', ['messages.get', 'messages.list', 'messages.search', 'messages.send', 'messages.reply']),
+    messages: createBridgeNamespace('discord', ['messages.send', 'messages.reply']),
     reactions: createBridgeNamespace('discord', ['reactions.add']),
     members: createBridgeNamespace('discord', ['members.get']),
     roles: createBridgeNamespace('discord', ['roles.add', 'roles.remove']),
@@ -126,6 +126,7 @@ function createApprovalsBridge() {
 function createAdminBridge() {
   return Object.freeze({
     instructions: createBridgeNamespace('admin', ['instructions.get', 'instructions.update']),
+    runtime: createBridgeNamespace('admin', ['runtime.getCapabilities']),
   });
 }
 
@@ -144,6 +145,7 @@ function createScheduleBridge() {
 
 function createHistoryBridge() {
   return Object.freeze({
+    get: (args: unknown) => callParent({ type: 'bridge.call', id: 0, namespace: 'history', method: 'get', args }),
     recent: (args: unknown) => callParent({ type: 'bridge.call', id: 0, namespace: 'history', method: 'recent', args }),
     search: (args: unknown) => callParent({ type: 'bridge.call', id: 0, namespace: 'history', method: 'search', args }),
   });

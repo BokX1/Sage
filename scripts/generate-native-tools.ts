@@ -1,7 +1,6 @@
 import { writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
-import { registerDefaultAgenticTools } from '../src/features/agent-runtime/defaultTools';
 import { buildWebsiteNativeTools } from '../src/features/agent-runtime/toolDocs';
 
 export function renderNativeToolsModuleSource(): string {
@@ -17,7 +16,6 @@ export function renderNativeToolsModuleSource(): string {
 }
 
 async function main(): Promise<void> {
-  await registerDefaultAgenticTools();
   const outputPath = path.resolve(__dirname, '../website/src/lib/nativeTools.js');
   await writeFile(outputPath, renderNativeToolsModuleSource(), 'utf8');
   console.log(`Wrote ${outputPath}`);

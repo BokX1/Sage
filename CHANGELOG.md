@@ -29,6 +29,8 @@
 - Prevented background LangGraph resumes from re-entering the Codex model with unresolved tool-call checkpoints after a yield, which stops rare `missing tool outputs` transcript failures across read and approval tool paths.
 - Persist failed background-resume task runs as terminal failures so worker retries stop instead of reclaiming the same broken run indefinitely.
 - Fixed the bridge-native rewrite cleanup so the remaining docs, website demos, reply scrubber, and checked-in runtime surface now consistently describe `runtime_execute_code` plus direct namespaces instead of stale legacy tool names like `discord_context`, `discord_messages`, `web_search`, or `image_generate`.
+- Fixed the final hard-cut bridge-native cleanup so Sage no longer depends on the removed tool registry or bridge registry abstractions in its public runtime contract, legacy Discord startup cleanup paths are gone, `history.*` now owns archived message reads, and Code Mode can report its real capability surface through `admin.runtime.getCapabilities()`.
+- Fixed Code Mode capability introspection so `admin.runtime.getCapabilities()` now reports the current actor's usable bridge surface instead of leaking the full hidden method inventory, which keeps planning and operator debugging aligned with real member/mod/admin authority.
 
 ### Added
 

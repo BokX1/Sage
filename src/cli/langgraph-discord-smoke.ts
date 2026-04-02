@@ -12,7 +12,7 @@ let appConfig: typeof import('../platform/config/env').config;
 let client: typeof import('../platform/discord/client').client;
 let prisma: typeof import('../platform/db/prisma-client').prisma;
 let discordRestRequestGuildScoped: typeof import('../platform/discord/discordRestPolicy').discordRestRequestGuildScoped;
-let registerDefaultAgenticTools: typeof import('../features/agent-runtime/defaultTools').registerDefaultAgenticTools;
+let initializeRuntimeSurface: typeof import('../features/agent-runtime/runtimeSurface').initializeRuntimeSurface;
 let buildAgentGraphConfig: typeof import('../features/agent-runtime/langgraph/config').buildAgentGraphConfig;
 let runSeededAgentGraphTurn: typeof import('../features/agent-runtime/langgraph/runtime').runSeededAgentGraphTurn;
 let resumeAgentGraphTurn: typeof import('../features/agent-runtime/langgraph/runtime').resumeAgentGraphTurn;
@@ -62,7 +62,7 @@ async function loadSmokeRuntimeDeps(): Promise<void> {
   ({ client } = await import('../platform/discord/client'));
   ({ prisma } = await import('../platform/db/prisma-client'));
   ({ discordRestRequestGuildScoped } = await import('../platform/discord/discordRestPolicy'));
-  ({ registerDefaultAgenticTools } = await import('../features/agent-runtime/defaultTools'));
+  ({ initializeRuntimeSurface } = await import('../features/agent-runtime/runtimeSurface'));
   ({ buildAgentGraphConfig } = await import('../features/agent-runtime/langgraph/config'));
   ({
     runSeededAgentGraphTurn,
@@ -389,7 +389,7 @@ async function runApprovalPathSmoke(target: SmokeTarget): Promise<void> {
 
 async function main(): Promise<void> {
   await loadSmokeRuntimeDeps();
-  await registerDefaultAgenticTools();
+  await initializeRuntimeSurface();
   const target = await resolveSmokeTarget();
 
   console.log('Sage LangGraph Discord smoke starting...');

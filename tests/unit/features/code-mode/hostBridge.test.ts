@@ -8,7 +8,7 @@ vi.mock('node:dns/promises', () => ({
 
 import * as hostBridge from '../../../../src/features/code-mode/hostBridge';
 import { getOrCreateCodeModeTaskWorkspace } from '../../../../src/features/code-mode/workspace';
-import type { ToolExecutionContext } from '../../../../src/features/agent-runtime/toolRegistry';
+import type { ToolExecutionContext } from '../../../../src/features/agent-runtime/runtimeToolContract';
 
 function makeToolContext(overrides: Partial<ToolExecutionContext> = {}): ToolExecutionContext {
   return {
@@ -47,6 +47,24 @@ async function createSession() {
     executionId: 'execution-1',
     workspace,
     toolContext: makeToolContext(),
+    timeoutMs: 5_000,
+    workspaceHandlers: {
+      read: async () => ({}),
+      write: async () => ({}),
+      append: async () => ({}),
+      list: async () => ([]),
+      search: async () => ([]),
+      delete: async () => ({}),
+    },
+  });
+}
+
+async function createSessionWithContext(overrides: Partial<ToolExecutionContext> = {}) {
+  const workspace = await getOrCreateCodeModeTaskWorkspace('thread-bridge');
+  return hostBridge.createHostBridgeSession({
+    executionId: 'execution-1',
+    workspace,
+    toolContext: makeToolContext(overrides),
     timeoutMs: 5_000,
     workspaceHandlers: {
       read: async () => ({}),
@@ -106,6 +124,51 @@ describe('Code Mode host bridge http.fetch', () => {
         headers: expect.objectContaining({
           location: 'http://127.0.0.1/private',
         }),
+      }),
+    );
+  });
+});
+
+describe('Code Mode host bridge admin.runtime.getCapabilities', () => {
+  it('filters reported methods down to the current actor authority', async () => {
+    const session = await createSessionWithContext({ invokerAuthority: 'member' });
+
+    const result = await session.call('admin', 'runtime.getCapabilities', {});
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        kind: 'capabilities',
+        namespaces: expect.not.arrayContaining(['approvals']),
+        methods: expect.arrayContaining([
+          expect.objectContaining({ key: 'discord.channels.get', access: 'public' }),
+          expect.objectContaining({ key: 'history.search', access: 'public' }),
+        ]),
+      }),
+    );
+    expect(result).toEqual(
+      expect.objectContaining({
+        methods: expect.not.arrayContaining([
+          expect.objectContaining({ key: 'discord.members.get' }),
+          expect.objectContaining({ key: 'discord.roles.add' }),
+          expect.objectContaining({ key: 'moderation.cases.resolve' }),
+        ]),
+      }),
+    );
+  });
+
+  it('includes admin and moderator methods when the current actor has authority', async () => {
+    const session = await createSessionWithContext({ invokerAuthority: 'admin' });
+
+    const result = await session.call('admin', 'runtime.getCapabilities', {});
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        namespaces: expect.arrayContaining(['admin', 'approvals', 'moderation']),
+        methods: expect.arrayContaining([
+          expect.objectContaining({ key: 'discord.members.get', access: 'admin' }),
+          expect.objectContaining({ key: 'discord.roles.add', access: 'admin' }),
+          expect.objectContaining({ key: 'moderation.cases.resolve', access: 'moderator' }),
+        ]),
       }),
     );
   });

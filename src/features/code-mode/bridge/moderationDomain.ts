@@ -8,7 +8,7 @@ import {
   markModerationCaseResolved,
 } from '../../moderation/moderationPolicyRepo';
 import type { ModerationCaseStatus } from '../../moderation/types';
-import { buildBridgeMethod, requireGuildId } from './common';
+import { defineBridgeMethod, requireGuildId } from './common';
 
 function serializeCase(record: NonNullable<Awaited<ReturnType<typeof getModerationCaseById>>>) {
   return {
@@ -21,7 +21,7 @@ function serializeCase(record: NonNullable<Awaited<ReturnType<typeof getModerati
 }
 
 export const moderationDomainMethods = [
-  buildBridgeMethod({
+  defineBridgeMethod({
     namespace: 'moderation',
     method: 'cases.list',
     input: z.object({
@@ -39,7 +39,7 @@ export const moderationDomainMethods = [
       return cases.map((record) => serializeCase(record));
     },
   }),
-  buildBridgeMethod({
+  defineBridgeMethod({
     namespace: 'moderation',
     method: 'cases.get',
     input: z.object({
@@ -63,7 +63,7 @@ export const moderationDomainMethods = [
       };
     },
   }),
-  buildBridgeMethod({
+  defineBridgeMethod({
     namespace: 'moderation',
     method: 'cases.acknowledge',
     input: z.object({
@@ -80,7 +80,7 @@ export const moderationDomainMethods = [
       return serializeCase(updated);
     },
   }),
-  buildBridgeMethod({
+  defineBridgeMethod({
     namespace: 'moderation',
     method: 'cases.resolve',
     input: z.object({
@@ -103,7 +103,7 @@ export const moderationDomainMethods = [
       return serializeCase(updated);
     },
   }),
-  buildBridgeMethod({
+  defineBridgeMethod({
     namespace: 'moderation',
     method: 'notes.create',
     input: z.object({

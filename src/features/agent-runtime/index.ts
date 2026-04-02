@@ -28,17 +28,14 @@ export {
 } from './promptContract';
 
 export {
-  ToolRegistry,
-  globalToolRegistry,
-  defineToolSpecV2,
   type ToolDefinition,
-  type ToolSpecV2,
   type ToolExecutionContext,
-  type ToolMetadata,
   type ToolValidationResult,
   type ToolArtifact,
-} from './toolRegistry';
-export { registerDefaultAgenticTools } from './defaultTools';
+  defineRuntimeToolSpec,
+  type RuntimeToolSpec,
+} from './runtimeToolContract';
+export { initializeRuntimeSurface } from './runtimeSurface';
 export {
   initializeMcpTools,
   shutdownMcpTools,
@@ -65,4 +62,4 @@ export {
 
 export { type ToolResult, type ToolResultTelemetry } from './toolCallExecution';
 export { ToolResultCache, buildToolCacheKey, type ToolCacheEntry } from './toolCache';
-export { auditToolRegistry, type ToolAuditFinding, type ToolAuditReport } from './toolAudit';
+export { auditRuntimeSurface, type ToolAuditFinding, type ToolAuditReport } from './toolAudit';

@@ -485,13 +485,15 @@ describe('ProfileUpdater', () => {
       expect(recentHistoryBlock).not.toContain('my unrelated earlier release question');
     });
 
-    it('normalizes legacy directives into preferences', async () => {
+    it('preserves the previous summary when the analyst returns an unknown profile tag', async () => {
       mockChatFn.mockResolvedValueOnce({
-        text: '{"summary": "<directives>Prefers concise answers</directives>\\n<active_focus>Refining prompts</active_focus>\\n<background>Maintains Sage</background>"}',
+        text: '{"summary": "<legacy_preferences>Prefers concise answers</legacy_preferences>\\n<active_focus>Refining prompts</active_focus>\\n<background>Maintains Sage</background>"}',
       });
 
+      const previousSummary =
+        '<preferences>Existing preference</preferences>\n<active_focus>Existing focus</active_focus>\n<background>Existing background</background>';
       const result = await updateProfileSummary({
-        previousSummary: null,
+        previousSummary,
         userMessage: 'Keep it brief',
         assistantReply: 'Will do.',
         currentTurn: makeCurrentTurn(),
@@ -500,7 +502,7 @@ describe('ProfileUpdater', () => {
         userId: 'U1',
       });
 
-      expect(result).toBe('<preferences>Prefers concise answers</preferences>\n<active_focus>Refining prompts</active_focus>\n<background>Maintains Sage</background>');
+      expect(result).toBe(previousSummary);
     });
 
     it('preserves the previous summary when required profile sections are missing', async () => {

@@ -1,4 +1,3 @@
-/** Execute validated tool calls with timeout and structured result logging. */
 import { logger } from '../../platform/logging/logger';
 import { metrics } from '../../shared/observability/metrics';
 import {
@@ -11,12 +10,13 @@ import {
 } from './toolErrors';
 import { isToolControlSignal } from './toolControlSignals';
 import {
+  executeValidatedRuntimeTool,
   normalizeToolSuccessResult,
+  type RegisteredRuntimeToolSpec,
   type ToolArtifact,
   type ToolExecutionContext,
   type ToolObservationPolicy,
-  type ToolRegistry,
-} from './toolRegistry';
+} from './runtimeToolContract';
 
 export interface ToolResultTelemetry {
   latencyMs: number;
@@ -67,7 +67,7 @@ function sanitizeErrorMessage(value: string | undefined): string | undefined {
 }
 
 export async function executeToolWithTimeout(
-  registry: ToolRegistry,
+  definition: RegisteredRuntimeToolSpec<unknown>,
   call: { name: string; args: unknown },
   ctx: ToolExecutionContext,
   timeoutMs: number,
@@ -101,22 +101,11 @@ export async function executeToolWithTimeout(
     timeoutHandle.unref?.();
   });
 
-  const executionPromise = registry.executeValidated(call, ctxWithSignal)
+  const executionPromise = executeValidatedRuntimeTool(definition, call, ctxWithSignal)
     .then((result) => {
       const latencyMs = Date.now() - start;
-      const definition = registry.get(call.name);
       if (result.success) {
-        if (!definition) {
-          return {
-            name: call.name,
-            success: false,
-            error: `Unknown tool "${call.name}".`,
-            errorType: 'validation',
-            telemetry: { latencyMs },
-          } satisfies ToolResult;
-        }
         const normalized = result.result as ReturnType<typeof normalizeToolSuccessResult>;
-
         return {
           name: call.name,
           success: true,
@@ -137,7 +126,7 @@ export async function executeToolWithTimeout(
         errorDetails: result.errorDetails,
         telemetry: {
           latencyMs,
-          observationPolicy: definition?.runtime.observationPolicy,
+          observationPolicy: definition.runtime.observationPolicy,
         },
       } satisfies ToolResult;
     })

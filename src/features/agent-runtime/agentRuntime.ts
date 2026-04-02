@@ -43,16 +43,14 @@ import {
   selectFocusedContinuityMessages,
 } from './continuityContext';
 import { resolveRuntimeAutopilotMode } from './autopilotMode';
-import { globalToolRegistry, type ToolAccessTier, type ToolDefinition } from './toolRegistry';
+import { resolveRuntimeSurfaceToolNames } from './runtimeSurface';
 import type { GraphDeliveryDisposition, GraphWaitingState } from './langgraph/types';
 import {
-  hasAuthorityAtLeast,
   type DiscordAuthorityTier,
 } from '../../platform/discord/admin-permissions';
 import { AppError } from '../../shared/errors/app-error';
 
 const SINGLE_ROUTE_KIND = 'single';
-const CODE_MODE_SURFACE_TAG = 'code_mode_surface';
 
 export interface RunChatTurnParams {
   traceId: string;
@@ -183,52 +181,14 @@ export interface RetryFailedChatTurnParams {
 
 type ToolInvocationKind = 'mention' | 'reply' | 'wakeword' | 'autopilot' | 'component';
 
-function getToolAccessTier(tool: Pick<ToolDefinition<unknown>, 'runtime' | 'metadata'>): ToolAccessTier {
-  return tool.runtime?.access ?? tool.metadata?.access ?? 'public';
-}
-
-function canUseToolAccessTier(
-  authority: DiscordAuthorityTier,
-  access: ToolAccessTier,
-): boolean {
-  switch (access) {
-    case 'public':
-      return true;
-    case 'moderator':
-      return hasAuthorityAtLeast(authority, 'moderator');
-    case 'admin':
-      return hasAuthorityAtLeast(authority, 'admin');
-    case 'owner':
-      return authority === 'owner';
-  }
-}
-
 function resolveActiveToolNames(params: {
   authority: DiscordAuthorityTier;
   invokedBy: ToolInvocationKind;
 }): string[] {
-  const eligibleToolNames = globalToolRegistry.listNames().filter((toolName) => {
-    const tool = globalToolRegistry.get(toolName);
-    if (!tool) {
-      return false;
-    }
-    const access = getToolAccessTier(tool);
-    if (params.invokedBy === 'autopilot') {
-      return access === 'public';
-    }
-    return canUseToolAccessTier(params.authority, access);
+  return resolveRuntimeSurfaceToolNames({
+    authority: params.authority,
+    invokedBy: params.invokedBy,
   });
-
-  const codeModeTools = eligibleToolNames.filter((toolName) => {
-    const tool = globalToolRegistry.get(toolName);
-    return tool?.runtime?.capabilityTags?.includes(CODE_MODE_SURFACE_TAG) === true;
-  });
-
-  if (codeModeTools.length > 0) {
-    return codeModeTools;
-  }
-
-  return eligibleToolNames;
 }
 
 function classifyGraphFailure(error: unknown): RuntimeFailureCategory {

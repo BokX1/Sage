@@ -24,15 +24,10 @@ describe('ready handler', () => {
     delete g[readyKey];
   });
 
-  it('clears legacy application commands before startup backfill', async () => {
+  it('starts startup backfill for cached guild text channels', async () => {
     type ChannelStub = { isTextBased: () => boolean; isDMBased: () => boolean };
-    const setGlobalCommands = vi.fn().mockResolvedValue([]);
-    const setGuildOneCommands = vi.fn().mockResolvedValue([]);
-    const setGuildTwoCommands = vi.fn().mockResolvedValue([]);
     type ReadyClientStub = {
       user: { tag: string };
-      application: { commands: { set: typeof setGlobalCommands } };
-      guilds: { cache: Map<string, { id: string; commands: { set: typeof setGuildOneCommands } }> };
       channels: { cache: { filter: (predicate: (channel: ChannelStub) => boolean) => Map<string, ChannelStub> } };
     };
 
@@ -55,17 +50,6 @@ describe('ready handler', () => {
 
     const readyDiscordClient = {
       user: { tag: 'sage#0001' },
-      application: {
-        commands: {
-          set: setGlobalCommands,
-        },
-      },
-      guilds: {
-        cache: new Map([
-          ['guild-1', { id: 'guild-1', commands: { set: setGuildOneCommands } }],
-          ['guild-2', { id: 'guild-2', commands: { set: setGuildTwoCommands } }],
-        ]),
-      },
       channels: {
         cache: {
           filter: (
@@ -84,9 +68,6 @@ describe('ready handler', () => {
 
     await (readyCallback as (client: ReadyClientStub) => Promise<void>)(readyDiscordClient);
 
-    expect(setGlobalCommands).toHaveBeenCalledWith([]);
-    expect(setGuildOneCommands).toHaveBeenCalledWith([]);
-    expect(setGuildTwoCommands).toHaveBeenCalledWith([]);
     expect(mockBackfillChannelHistory).toHaveBeenCalledTimes(2);
     expect(mockBackfillChannelHistory).toHaveBeenCalledWith('ch-1', 12);
     expect(mockBackfillChannelHistory).toHaveBeenCalledWith('ch-2', 12);

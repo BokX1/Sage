@@ -1,11 +1,12 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { promises as fs } from 'node:fs';
 import { z } from 'zod';
-import type { ToolExecutionContext } from '../../../../src/features/agent-runtime/toolRegistry';
+import type { ToolExecutionContext } from '../../../../src/features/agent-runtime/runtimeToolContract';
 import { ApprovalRequiredSignal } from '../../../../src/features/agent-runtime/toolControlSignals';
 import { executeCodeMode, resumeApprovedCodeModeExecution } from '../../../../src/features/code-mode/executor';
 import { getOrCreateCodeModeTaskWorkspace } from '../../../../src/features/code-mode/workspace';
-import { BridgeRegistry, buildBridgeMethod } from '../../../../src/features/code-mode/bridge/common';
+import { defineBridgeMethod } from '../../../../src/features/code-mode/bridge/common';
+import type { FixedBridgeContract } from '../../../../src/features/code-mode/bridge/contract';
 
 function makeToolContext(overrides: Partial<ToolExecutionContext> = {}): ToolExecutionContext {
   return {
@@ -33,6 +34,20 @@ function makeToolContext(overrides: Partial<ToolExecutionContext> = {}): ToolExe
   };
 }
 
+function makeBridgeContract(overrides: Partial<FixedBridgeContract> = {}): FixedBridgeContract {
+  return {
+    discord: {},
+    history: {},
+    context: {},
+    artifacts: {},
+    approvals: {},
+    admin: {},
+    moderation: {},
+    schedule: {},
+    ...overrides,
+  };
+}
+
 async function cleanupWorkspace(taskId = 'thread-1') {
   const workspace = await getOrCreateCodeModeTaskWorkspace(taskId);
   await fs.rm(workspace.rootDir, { recursive: true, force: true });
@@ -44,29 +59,30 @@ afterEach(async () => {
 
 describe('Code Mode executor', () => {
   it('executes JavaScript against direct bridge namespaces and workspace helpers', async () => {
-    const registry = new BridgeRegistry();
-    registry.register(
-      buildBridgeMethod({
-        namespace: 'history',
-        method: 'recent',
-        input: z.object({
-          channelId: z.string(),
-          limit: z.number().int().optional(),
+    const bridgeContract = makeBridgeContract({
+      history: {
+        recent: defineBridgeMethod({
+          namespace: 'history',
+          method: 'recent',
+          input: z.object({
+            channelId: z.string(),
+            limit: z.number().int().optional(),
+          }),
+          mutability: 'read',
+          async execute(args) {
+            return {
+              items: [
+                {
+                  channelId: args.channelId,
+                  content: 'hello',
+                },
+              ],
+              limit: args.limit ?? 25,
+            };
+          },
         }),
-        mutability: 'read',
-        async execute(args) {
-          return {
-            items: [
-              {
-                channelId: args.channelId,
-                content: 'hello',
-              },
-            ],
-            limit: args.limit ?? 25,
-          };
-        },
-      }),
-    );
+      },
+    });
 
     const result = await executeCodeMode({
       language: 'javascript',
@@ -77,7 +93,7 @@ describe('Code Mode executor', () => {
         return { recent, reread };
       `,
       toolContext: makeToolContext(),
-      registry,
+      bridgeContract,
     });
 
     expect(result.result).toEqual({
@@ -95,45 +111,44 @@ describe('Code Mode executor', () => {
   });
 
   it('replays earlier effects and resumes the same execution after approval', async () => {
-    const registry = new BridgeRegistry();
     let readExecutions = 0;
     let writeExecutions = 0;
-
-    registry.register(
-      buildBridgeMethod({
-        namespace: 'history',
-        method: 'recent',
-        input: z.object({
-          channelId: z.string(),
+    const bridgeContract = makeBridgeContract({
+      history: {
+        recent: defineBridgeMethod({
+          namespace: 'history',
+          method: 'recent',
+          input: z.object({
+            channelId: z.string(),
+          }),
+          mutability: 'read',
+          async execute() {
+            readExecutions += 1;
+            return { readExecutions };
+          },
         }),
-        mutability: 'read',
-        async execute() {
-          readExecutions += 1;
-          return { readExecutions };
-        },
-      }),
-    );
-
-    registry.register(
-      buildBridgeMethod({
-        namespace: 'discord',
-        method: 'messages.send',
-        input: z.object({
-          channelId: z.string(),
-          content: z.string(),
+      },
+      discord: {
+        'messages.send': defineBridgeMethod({
+          namespace: 'discord',
+          method: 'messages.send',
+          input: z.object({
+            channelId: z.string(),
+            content: z.string(),
+          }),
+          mutability: 'write',
+          approvalMode: 'required',
+          async execute(args) {
+            writeExecutions += 1;
+            return {
+              messageId: `sent-${writeExecutions}`,
+              channelId: args.channelId,
+              content: args.content,
+            };
+          },
         }),
-        mutability: 'write',
-        approvalMode: 'required',
-        async execute(args) {
-          writeExecutions += 1;
-          return {
-            messageId: `sent-${writeExecutions}`,
-            channelId: args.channelId,
-            content: args.content,
-          };
-        },
-      }),
-    );
+      },
+    });
 
     let signal: ApprovalRequiredSignal | null = null;
     try {
@@ -145,7 +160,7 @@ describe('Code Mode executor', () => {
           return { first, second };
         `,
         toolContext: makeToolContext(),
-        registry,
+        bridgeContract,
       });
     } catch (error) {
       signal = error as ApprovalRequiredSignal;
@@ -164,7 +179,7 @@ describe('Code Mode executor', () => {
         requestHash: string;
       },
       approvedBy: 'reviewer-1',
-      registry,
+      bridgeContract,
     });
 
     expect(readExecutions).toBe(1);
@@ -191,7 +206,6 @@ describe('Code Mode executor', () => {
         };
       `,
       toolContext: makeToolContext(),
-      registry: new BridgeRegistry(),
     });
 
     expect(result.result).toEqual({
@@ -203,22 +217,23 @@ describe('Code Mode executor', () => {
   });
 
   it('treats identical code reruns as fresh executions within the same task', async () => {
-    const registry = new BridgeRegistry();
     let readExecutions = 0;
-    registry.register(
-      buildBridgeMethod({
-        namespace: 'history',
-        method: 'recent',
-        input: z.object({
-          channelId: z.string(),
+    const bridgeContract = makeBridgeContract({
+      history: {
+        recent: defineBridgeMethod({
+          namespace: 'history',
+          method: 'recent',
+          input: z.object({
+            channelId: z.string(),
+          }),
+          mutability: 'read',
+          async execute() {
+            readExecutions += 1;
+            return { readExecutions };
+          },
         }),
-        mutability: 'read',
-        async execute() {
-          readExecutions += 1;
-          return { readExecutions };
-        },
-      }),
-    );
+      },
+    });
 
     const toolContext = makeToolContext();
     const code = `return await history.recent({ channelId: 'channel-1' });`;
@@ -226,13 +241,13 @@ describe('Code Mode executor', () => {
       language: 'javascript',
       code,
       toolContext,
-      registry,
+      bridgeContract,
     });
     const second = await executeCodeMode({
       language: 'javascript',
       code,
       toolContext,
-      registry,
+      bridgeContract,
     });
 
     expect(first.result).toEqual({ readExecutions: 1 });
@@ -241,26 +256,27 @@ describe('Code Mode executor', () => {
   });
 
   it('rejects tampered approval resumes whose request hash no longer matches the original effect', async () => {
-    const registry = new BridgeRegistry();
-    registry.register(
-      buildBridgeMethod({
-        namespace: 'discord',
-        method: 'messages.send',
-        input: z.object({
-          channelId: z.string(),
-          content: z.string(),
+    const bridgeContract = makeBridgeContract({
+      discord: {
+        'messages.send': defineBridgeMethod({
+          namespace: 'discord',
+          method: 'messages.send',
+          input: z.object({
+            channelId: z.string(),
+            content: z.string(),
+          }),
+          mutability: 'write',
+          approvalMode: 'required',
+          async execute(args) {
+            return {
+              messageId: 'sent-1',
+              channelId: args.channelId,
+              content: args.content,
+            };
+          },
         }),
-        mutability: 'write',
-        approvalMode: 'required',
-        async execute(args) {
-          return {
-            messageId: 'sent-1',
-            channelId: args.channelId,
-            content: args.content,
-          };
-        },
-      }),
-    );
+      },
+    });
 
     let signal: ApprovalRequiredSignal | null = null;
     try {
@@ -268,7 +284,7 @@ describe('Code Mode executor', () => {
         language: 'javascript',
         code: `return await discord.messages.send({ channelId: 'channel-1', content: 'hello' });`,
         toolContext: makeToolContext(),
-        registry,
+        bridgeContract,
       });
     } catch (error) {
       signal = error as ApprovalRequiredSignal;
@@ -290,7 +306,7 @@ describe('Code Mode executor', () => {
       resumeApprovedCodeModeExecution({
         payload,
         approvedBy: 'reviewer-1',
-        registry,
+        bridgeContract,
       }),
     ).rejects.toThrow('approval');
   }, 15_000);

@@ -36,15 +36,11 @@ async function main(): Promise<void> {
   const flags = parseFlags(process.argv.slice(2));
   seedAuditEnvDefaults();
 
-  const [{ ToolRegistry }, { registerDefaultAgenticTools }, { probeMcpServerDiagnostics }, { auditToolRegistry }] = await Promise.all([
-    import('../features/agent-runtime/toolRegistry'),
-    import('../features/agent-runtime/defaultTools'),
+  const [{ probeMcpServerDiagnostics }, { auditRuntimeSurface }] = await Promise.all([
     import('../features/agent-runtime/mcp/manager'),
     import('../features/agent-runtime/toolAudit'),
   ]);
-  const registry = new ToolRegistry();
-  await registerDefaultAgenticTools(registry);
-  const report = auditToolRegistry(registry, {
+  const report = auditRuntimeSurface({
     mcpDiagnostics: await probeMcpServerDiagnostics(),
   });
 

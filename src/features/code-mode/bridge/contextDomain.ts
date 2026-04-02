@@ -1,10 +1,10 @@
 import { z } from 'zod';
 import { prisma } from '../../../platform/db/prisma-client';
-import { buildBridgeMethod, requireGuildId } from './common';
+import { defineBridgeMethod, requireGuildId } from './common';
 import { normalizeUserProfileSummary, parseUserProfileSummary } from '../../memory/userProfileXml';
 
 export const contextDomainMethods = [
-  buildBridgeMethod({
+  defineBridgeMethod({
     namespace: 'context',
     method: 'summary.get',
     input: z.object({
@@ -45,7 +45,7 @@ export const contextDomainMethods = [
       };
     },
   }),
-  buildBridgeMethod({
+  defineBridgeMethod({
     namespace: 'context',
     method: 'profile.get',
     input: z.object({

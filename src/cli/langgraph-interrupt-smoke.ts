@@ -6,7 +6,7 @@ import { AIMessage, HumanMessage } from '@langchain/core/messages';
 import type { CurrentTurnContext } from '../features/agent-runtime/continuityContext';
 
 let depsLoaded = false;
-let registerDefaultAgenticTools: typeof import('../features/agent-runtime/defaultTools').registerDefaultAgenticTools;
+let initializeRuntimeSurface: typeof import('../features/agent-runtime/runtimeSurface').initializeRuntimeSurface;
 let buildAgentGraphConfig: typeof import('../features/agent-runtime/langgraph/config').buildAgentGraphConfig;
 let runSeededAgentGraphTurn: typeof import('../features/agent-runtime/langgraph/runtime').runSeededAgentGraphTurn;
 let continueAgentGraphTurn: typeof import('../features/agent-runtime/langgraph/runtime').continueAgentGraphTurn;
@@ -46,7 +46,7 @@ async function loadDeps(): Promise<void> {
   }
 
   seedSmokeEnvDefaults();
-  ({ registerDefaultAgenticTools } = await import('../features/agent-runtime/defaultTools'));
+  ({ initializeRuntimeSurface } = await import('../features/agent-runtime/runtimeSurface'));
   ({ buildAgentGraphConfig } = await import('../features/agent-runtime/langgraph/config'));
   ({
     runSeededAgentGraphTurn,
@@ -84,7 +84,7 @@ function buildSmokeTurn(params: {
 
 async function main(): Promise<void> {
   await loadDeps();
-  await registerDefaultAgenticTools();
+  await initializeRuntimeSurface();
 
   const graphConfig = buildAgentGraphConfig();
   const smokeId = `${Date.now()}-${randomUUID().slice(0, 8)}`;

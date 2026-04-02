@@ -44,12 +44,11 @@ import {
   type PromptWorkingMemoryFrame,
 } from '../promptContract';
 import type { ToolResult } from '../toolCallExecution';
-import type { ToolExecutionContext } from '../toolRegistry';
+import type { ToolExecutionContext } from '../runtimeToolContract';
 import { ApprovalRequiredSignal } from '../toolControlSignals';
 import { createAgentRunTelemetry } from '../observability/langsmith';
 import { buildRuntimeFailureReply } from '../visibleReply';
 import { buildToolCacheKey } from '../toolCache';
-import { globalToolRegistry } from '../toolRegistry';
 import { AppError } from '../../../shared/errors/app-error';
 import { buildAgentGraphConfig, type AgentGraphConfig } from './config';
 import {
@@ -1669,28 +1668,8 @@ async function resolveToolCallFingerprint(
   call: GraphToolCallDescriptor,
   context: ToolExecutionContext,
 ): Promise<string> {
-  const fallback = buildToolCacheKey(call.name, call.args);
-
-  try {
-    const resolved = await globalToolRegistry.resolveActionPolicy(call, context);
-    const idempotencyKey = resolved?.policy.idempotencyKey;
-    let candidate: string | null | undefined;
-
-    if (typeof idempotencyKey === 'string') {
-      candidate = idempotencyKey;
-    } else if (typeof idempotencyKey === 'function' && resolved) {
-      candidate = idempotencyKey(resolved.args, context);
-    }
-
-    const normalized = candidate?.trim();
-    if (normalized) {
-      return `${call.name}::${normalized}`;
-    }
-  } catch {
-    // Fall back to the stable semantic cache key when policy resolution is unavailable.
-  }
-
-  return fallback;
+  void context;
+  return buildToolCacheKey(call.name, call.args);
 }
 
 function buildToolBatchFingerprint(

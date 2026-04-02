@@ -3,8 +3,7 @@ import path from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
-import { ToolRegistry } from '../../../src/features/agent-runtime/toolRegistry';
-import { registerDefaultAgenticTools } from '../../../src/features/agent-runtime/defaultTools';
+import { listRuntimeSurfaceToolNames } from '../../../src/features/agent-runtime/runtimeSurface';
 
 async function loadOverviewToolTableNames(): Promise<string[]> {
   const overviewPath = path.resolve(
@@ -20,11 +19,8 @@ async function loadOverviewToolTableNames(): Promise<string[]> {
 
 describe('architecture overview tool inventory', () => {
   it('reflects the registered top-level runtime tool inventory in its tool tables', async () => {
-    const registry = new ToolRegistry();
-    await registerDefaultAgenticTools(registry);
-
     const overviewToolNames = await loadOverviewToolTableNames();
-    const runtimeToolNames = registry.listNames().sort((a, b) => a.localeCompare(b));
+    const runtimeToolNames = listRuntimeSurfaceToolNames().sort((a, b) => a.localeCompare(b));
 
     expect(overviewToolNames.sort((a, b) => a.localeCompare(b))).toEqual(runtimeToolNames);
   });

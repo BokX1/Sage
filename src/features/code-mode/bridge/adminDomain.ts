@@ -1,13 +1,13 @@
 import { z } from 'zod';
 import { prisma } from '../../../platform/db/prisma-client';
-import { buildBridgeMethod, requireGuildId } from './common';
+import { defineBridgeMethod, requireGuildId } from './common';
 
 function normalizeInstructionsText(value: string): string {
   return value.replace(/\r\n/g, '\n').trim();
 }
 
 export const adminDomainMethods = [
-  buildBridgeMethod({
+  defineBridgeMethod({
     namespace: 'admin',
     method: 'instructions.get',
     input: z.object({
@@ -33,7 +33,7 @@ export const adminDomainMethods = [
       };
     },
   }),
-  buildBridgeMethod({
+  defineBridgeMethod({
     namespace: 'admin',
     method: 'instructions.update',
     input: z.object({

@@ -13,7 +13,7 @@ const demoFlow = [
     { type: 'typing' },
   { type: 'tool', name: 'runtime_execute_code · context.summary.get(...)', status: '✓', color: '#7AA2F7' },
   { type: 'tool', name: 'runtime_execute_code · history.search(...)', status: '✓', color: '#BB9AF7' },
-  { type: 'tool', name: 'runtime_execute_code · discord.messages.list(...)', status: '✓', color: '#E0AF68' },
+  { type: 'tool', name: 'runtime_execute_code · history.get(...)', status: '✓', color: '#E0AF68' },
     {
         type: 'sage',
         text: "Yesterday's #dev discussion confirmed the OAuth rollout should use PKCE for the mobile app first, then phase the web migration after staging verification. Sarah volunteered to write the migration guide.",

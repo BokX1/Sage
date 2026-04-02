@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { defineToolSpecV2, type ToolExecutionContext } from '../agent-runtime/toolRegistry';
+import { defineRuntimeToolSpec, type ToolExecutionContext } from '../agent-runtime/runtimeToolContract';
 import { executeCodeMode } from './executor';
 
 const codeModeInputSchema = z.object({
@@ -7,7 +7,7 @@ const codeModeInputSchema = z.object({
   code: z.string().trim().min(1).max(120_000),
 });
 
-export const runtimeExecuteCodeTool = defineToolSpecV2({
+export const runtimeExecuteCodeTool = defineRuntimeToolSpec({
   name: 'runtime_execute_code',
   title: 'Runtime Execute Code',
   description:
@@ -73,7 +73,7 @@ export const runtimeExecuteCodeTool = defineToolSpecV2({
     ],
     argumentNotes: [
       'JavaScript code runs as an async function body and may end with return ... .',
-      'There is no generic tool-dispatch helper. Call the injected namespaces directly, for example discord.messages.send(...) or history.search(...).',
+      'There is no generic tool-dispatch helper. Call the injected namespaces directly, for example discord.messages.send(...), history.search(...), or admin.runtime.getCapabilities().',
     ],
   },
   validationHint:
@@ -99,7 +99,12 @@ export const runtimeExecuteCodeTool = defineToolSpecV2({
       modelSummary:
         typeof result.result === 'string'
           ? result.result
-          : `Code Mode executed ${result.bridgeCalls.length} bridge call(s) in ${result.language}.`,
+          : result.result &&
+              typeof result.result === 'object' &&
+              !Array.isArray(result.result) &&
+              Array.isArray((result.result as { namespaces?: unknown }).namespaces)
+            ? `Available bridge namespaces: ${((result.result as { namespaces: string[] }).namespaces).join(', ')}.`
+            : `Code Mode executed ${result.bridgeCalls.length} bridge call(s) in ${result.language}.`,
       artifacts: result.artifacts,
     };
   },

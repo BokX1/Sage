@@ -9,7 +9,7 @@ import {
   listArtifactsByGuild,
   updateArtifactMetadata,
 } from '../../artifacts/artifactRepo';
-import { buildBridgeMethod, fetchWritableTextChannel, requireGuildId } from './common';
+import { defineBridgeMethod, fetchWritableTextChannel, requireGuildId } from './common';
 
 function serializeArtifact(record: NonNullable<Awaited<ReturnType<typeof getArtifactById>>>) {
   return {
@@ -27,7 +27,7 @@ function serializeRevision(record: NonNullable<Awaited<ReturnType<typeof getLate
 }
 
 export const artifactsDomainMethods = [
-  buildBridgeMethod({
+  defineBridgeMethod({
     namespace: 'artifacts',
     method: 'list',
     input: z.object({
@@ -48,7 +48,7 @@ export const artifactsDomainMethods = [
       return items.map(serializeArtifact);
     },
   }),
-  buildBridgeMethod({
+  defineBridgeMethod({
     namespace: 'artifacts',
     method: 'get',
     input: z.object({
@@ -72,7 +72,7 @@ export const artifactsDomainMethods = [
       };
     },
   }),
-  buildBridgeMethod({
+  defineBridgeMethod({
     namespace: 'artifacts',
     method: 'create',
     input: z.object({
@@ -117,7 +117,7 @@ export const artifactsDomainMethods = [
       };
     },
   }),
-  buildBridgeMethod({
+  defineBridgeMethod({
     namespace: 'artifacts',
     method: 'update',
     input: z.object({
@@ -166,7 +166,7 @@ export const artifactsDomainMethods = [
       };
     },
   }),
-  buildBridgeMethod({
+  defineBridgeMethod({
     namespace: 'artifacts',
     method: 'publish',
     input: z.object({

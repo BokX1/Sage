@@ -31,7 +31,7 @@ const scenarios = [
             { tool: 'github', status: 'ok', text: 'action=repo.get → Fetching BokX1/Sage metadata: 14 dirs, TypeScript, MIT' },
             { tool: 'github', status: 'ok', text: 'action=code.search → query: "agentRuntime" → 3 files found' },
             { tool: 'github', status: 'ok', text: 'action=file.page → Reading src/features/agent-runtime/agentRuntime.ts (paged)' },
-            { tool: 'github', status: 'ok', text: 'action=file.page → Reading src/features/agent-runtime/defaultTools.ts (paged)' },
+            { tool: 'github', status: 'ok', text: 'action=file.page → Reading src/features/agent-runtime/runtimeSurface.ts (paged)' },
         ],
     },
 ];

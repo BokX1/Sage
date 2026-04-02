@@ -1,5 +1,5 @@
 import type { z } from 'zod';
-import type { ToolExecutionContext } from '../../agent-runtime/toolRegistry';
+import type { ToolExecutionContext } from '../../agent-runtime/runtimeToolContract';
 
 export type BridgeNamespace =
   | 'discord'
@@ -27,10 +27,6 @@ export interface BridgeMethodDefinition<TArgs = unknown> {
   access?: BridgeAccess;
   approvalMode?: BridgeApprovalMode;
   execute: (args: TArgs, context: BridgeMethodContext) => Promise<unknown>;
-}
-
-export interface RegisteredBridgeMethod<TArgs = unknown> extends BridgeMethodDefinition<TArgs> {
-  key: string;
 }
 
 export interface BridgeMethodSummary {

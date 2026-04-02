@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { prisma } from '../../../platform/db/prisma-client';
-import { assertReadableChannelAccess, buildBridgeMethod } from './common';
+import { assertReadableChannelAccess, defineBridgeMethod } from './common';
 
 function formatMessageRow(row: {
   messageId: string;
@@ -27,7 +27,29 @@ function formatMessageRow(row: {
 }
 
 export const historyDomainMethods = [
-  buildBridgeMethod({
+  defineBridgeMethod({
+    namespace: 'history',
+    method: 'get',
+    input: z.object({
+      messageId: z.string().trim().min(1),
+      channelId: z.string().trim().min(1),
+    }),
+    mutability: 'read',
+    async execute(args, context) {
+      await assertReadableChannelAccess({
+        toolContext: context.toolContext,
+        channelIds: [args.channelId],
+      });
+      const row = await prisma.channelMessage.findUnique({
+        where: { messageId: args.messageId },
+      });
+      if (!row || row.channelId !== args.channelId) {
+        return null;
+      }
+      return formatMessageRow(row);
+    },
+  }),
+  defineBridgeMethod({
     namespace: 'history',
     method: 'recent',
     input: z.object({
@@ -54,7 +76,7 @@ export const historyDomainMethods = [
       };
     },
   }),
-  buildBridgeMethod({
+  defineBridgeMethod({
     namespace: 'history',
     method: 'search',
     input: z.object({

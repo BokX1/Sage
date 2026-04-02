@@ -6,8 +6,8 @@ import {
 import { PermissionsBitField, type Guild, type GuildBasedChannel } from 'discord.js';
 import { client } from '../../../platform/discord/client';
 import { filterChannelIdsByMemberAccess, type ChannelPermissionRequirement } from '../../../platform/discord/channel-access';
-import type { BridgeAccess, BridgeMethodDefinition, BridgeMethodSummary, RegisteredBridgeMethod } from './types';
-import type { ToolExecutionContext } from '../../agent-runtime/toolRegistry';
+import type { BridgeAccess, BridgeMethodDefinition } from './types';
+import type { ToolExecutionContext } from '../../agent-runtime/runtimeToolContract';
 
 const READ_HISTORY_REQUIREMENTS: ChannelPermissionRequirement[] = [
   { flag: PermissionsBitField.Flags.ViewChannel, label: 'ViewChannel' },
@@ -19,45 +19,11 @@ const SEND_MESSAGE_REQUIREMENTS: ChannelPermissionRequirement[] = [
   { flag: PermissionsBitField.Flags.SendMessages, label: 'SendMessages' },
 ];
 
-export class BridgeRegistry {
-  private readonly methods = new Map<string, RegisteredBridgeMethod<unknown>>();
-
-  register<TArgs>(definition: BridgeMethodDefinition<TArgs>): void {
-    const key = toBridgeMethodKey(definition.namespace, definition.method);
-    this.methods.set(
-      key,
-      {
-        ...definition,
-        key,
-        access: definition.access ?? 'public',
-        approvalMode: definition.approvalMode ?? 'none',
-      } as RegisteredBridgeMethod<unknown>,
-    );
-  }
-
-  get(namespace: string, method: string): RegisteredBridgeMethod<unknown> | undefined {
-    return this.methods.get(toBridgeMethodKey(namespace, method));
-  }
-
-  list(): BridgeMethodSummary[] {
-    return Array.from(this.methods.values())
-      .map((method) => ({
-        key: method.key,
-        namespace: method.namespace,
-        method: method.method,
-        mutability: method.mutability,
-        access: method.access ?? 'public',
-        approvalMode: method.approvalMode ?? 'none',
-      }))
-      .sort((left, right) => left.key.localeCompare(right.key));
-  }
-}
-
 export function toBridgeMethodKey(namespace: string, method: string): string {
   return `${namespace.trim()}.${method.trim()}`;
 }
 
-export function buildBridgeMethod<TArgs>(definition: BridgeMethodDefinition<TArgs>): BridgeMethodDefinition<TArgs> {
+export function defineBridgeMethod<TArgs>(definition: BridgeMethodDefinition<TArgs>): BridgeMethodDefinition<TArgs> {
   return definition;
 }
 

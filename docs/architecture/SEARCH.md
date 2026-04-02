@@ -70,7 +70,7 @@ Search execution now follows the same provider-neutral runtime contract as the r
 - Search runs only through the configured search providers in `TOOL_WEB_SEARCH_PROVIDER_ORDER`.
 - Source/date normalization, provider health cooldowns, and exact-page retrieval safeguards still apply inside the host retrieval layer.
 
-**Source:** [`src/features/agent-runtime/agentRuntime.ts`](../../src/features/agent-runtime/agentRuntime.ts) and [`src/features/agent-runtime/bridgeBackends.ts`](../../src/features/agent-runtime/bridgeBackends.ts)
+**Source:** [`src/features/agent-runtime/agentRuntime.ts`](../../src/features/agent-runtime/agentRuntime.ts) and [`src/features/code-mode/hostBridge.ts`](../../src/features/code-mode/hostBridge.ts)
 
 ---
 

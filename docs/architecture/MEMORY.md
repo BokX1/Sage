@@ -29,7 +29,7 @@ This document describes how Sage stores memory and makes it available to the run
 | Memory type | Purpose | Storage | Key files |
 | :--- | :--- | :--- | :--- |
 | **User profile** | Long-term personalization profile per user, stored as soft preferences, active focus, and durable background context. | `UserProfile`, `UserProfileArchive` | `src/features/memory/profileUpdater.ts`, `src/features/memory/userProfileRepo.ts` |
-| **Sage Persona** | Admin-authored guild-scoped Sage Persona configuration and archive history. Stored internally in `ServerInstructions` tables and treated as adjacent config, not long-term memory about users or channels. | `ServerInstructions`, `ServerInstructionsArchive` | `src/features/admin/*`, `src/features/code-mode/bridge/adminDomain.ts`, `src/features/agent-runtime/discord/core.ts` |
+| **Sage Persona** | Admin-authored guild-scoped Sage Persona configuration and archive history. Stored internally in `ServerInstructions` tables and treated as adjacent config, not long-term memory about users or channels. | `ServerInstructions`, `ServerInstructionsArchive` | `src/features/admin/*`, `src/features/code-mode/bridge/adminDomain.ts` |
 | **Channel summaries** | Rolling and profile summaries for channels; continuity context rather than quote-level evidence. | `ChannelSummary` | `src/features/summary/*` |
 | **Raw transcript** | Recent message history for prompt context and retrieval. | Ring buffer plus optional `ChannelMessage` persistence | `src/features/awareness/*`, `src/features/ingest/ingestEvent.ts` |
 | **Attachment cache** | Persisted attachment recall text for on-demand retrieval and resend. Uploaded images store Florence-generated recall/OCR text; other files store extracted text. | `IngestedAttachment`, `AttachmentChunk` | `src/features/attachments/*`, `src/app/discord/handlers/messageCreate.ts` |
@@ -104,7 +104,7 @@ Runtime notes:
 - The profile is best-effort personalization, not an authoritative rule surface: it is rendered inside `<user_profile>` as soft personalization context that may lag behind the latest turn because profile updates happen asynchronously.
 - Channel summaries, artifact content, and wider message history are fetched only if the model chooses the corresponding bridge call inside Code Mode.
 - `context.summary.get(...)` returns rolling or profile summary context for continuity and situational awareness. It is not a substitute for message-history evidence.
-- Exact historical verification should use `history.search(...)`, `history.recent(...)`, or `discord.messages.get(...)`.
+- Exact historical verification should use `history.search(...)`, `history.recent(...)`, or `history.get(...)`.
 
 ---
 
@@ -213,7 +213,7 @@ Sage updates user profiles asynchronously with throttling:
 - Analysis model: `AI_PROVIDER_PROFILE_AGENT_MODEL` (required; optional `AI_PROVIDER_MODEL_PROFILES_JSON` entries can refine limits)
 - Formatter/repair step: `jsonrepair` is used to recover strict JSON output
 - Concurrency guard: per-user sequential protection prevents overlapping profile updates
-- Stored profile contract: exactly `<preferences>`, `<active_focus>`, and `<background>`; legacy `<directives>` rows are normalized on read/write for compatibility
+- Stored profile contract: exactly `<preferences>`, `<active_focus>`, and `<background>`
 - Input sources: current user text, assistant reply, recent transcript window, and reply/reference text when present; image/file-only content is not interpreted into profile updates in this pass
 
 The latest profile is stored in `UserProfile.summary`, and prior versions can be archived in `UserProfileArchive`.

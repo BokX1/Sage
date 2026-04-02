@@ -5,7 +5,7 @@ const mockClient = vi.hoisted(() => ({
   on: vi.fn(),
 }));
 
-const mockRegisterDefaultAgenticTools = vi.hoisted(() => vi.fn());
+const mockInitializeRuntimeSurface = vi.hoisted(() => vi.fn());
 const mockInitializeAgentGraphRuntime = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
 const mockRegisterMessageCreateHandler = vi.hoisted(() => vi.fn());
 const mockRegisterMessageUpdateHandler = vi.hoisted(() => vi.fn());
@@ -37,7 +37,7 @@ vi.mock('@/platform/discord/client', () => ({
 }));
 
 vi.mock('@/features/agent-runtime', () => ({
-  registerDefaultAgenticTools: mockRegisterDefaultAgenticTools,
+  initializeRuntimeSurface: mockInitializeRuntimeSurface,
 }));
 
 vi.mock('@/features/agent-runtime/langgraph/runtime', () => ({
@@ -148,7 +148,7 @@ describe('bootstrapApp', () => {
   it('initializes runtime and starts both summary schedulers', async () => {
     await bootstrapApp();
 
-    expect(mockRegisterDefaultAgenticTools).toHaveBeenCalledTimes(1);
+    expect(mockInitializeRuntimeSurface).toHaveBeenCalledTimes(1);
     expect(mockInitializeAgentGraphRuntime).toHaveBeenCalledTimes(1);
     expect(mockAssertAgentTraceSchemaReady).toHaveBeenCalledTimes(1);
     expect(mockRegisterMessageCreateHandler).toHaveBeenCalledTimes(1);

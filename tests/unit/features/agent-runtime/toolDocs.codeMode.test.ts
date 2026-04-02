@@ -1,6 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
-import { globalToolRegistry } from '../../../../src/features/agent-runtime/toolRegistry';
-import { registerDefaultAgenticTools } from '../../../../src/features/agent-runtime/defaultTools';
+import { describe, expect, it } from 'vitest';
 import {
   buildWebsiteNativeTools,
   getPromptToolGuidance,
@@ -8,15 +6,12 @@ import {
   getTopLevelToolDoc,
   listTopLevelToolDocs,
 } from '../../../../src/features/agent-runtime/toolDocs';
-
-beforeEach(async () => {
-  await registerDefaultAgenticTools();
-});
+import { listRuntimeSurfaceToolNames } from '../../../../src/features/agent-runtime/runtimeSurface';
 
 describe('Code Mode tool docs', () => {
   it('documents only the bridge-native runtime surface', () => {
     expect(listTopLevelToolDocs().map((doc) => doc.tool)).toEqual(['runtime_execute_code']);
-    expect(globalToolRegistry.listNames()).toContain('runtime_execute_code');
+    expect(listRuntimeSurfaceToolNames()).toEqual(['runtime_execute_code']);
   });
 
   it('teaches direct namespaces instead of legacy sage.* helpers', () => {

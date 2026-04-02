@@ -22,10 +22,7 @@ const mockResolveTextProviderRoute = vi.hoisted(() => vi.fn());
 const mockGetGuildSagePersonaText = vi.hoisted(() => vi.fn());
 const mockRunAgentGraphTurn = vi.hoisted(() => vi.fn());
 const mockBuildPromptContextMessages = vi.hoisted(() => vi.fn());
-const globalToolRegistryMock = vi.hoisted(() => ({
-  listNames: vi.fn(() => []),
-  get: vi.fn(() => undefined),
-}));
+const mockResolveRuntimeSurfaceToolNames = vi.hoisted(() => vi.fn(() => ['runtime_execute_code']));
 
 vi.mock('@/platform/config/env', () => ({
   config: mockConfig,
@@ -65,8 +62,8 @@ vi.mock('@/features/settings/guildSagePersonaRepo', () => ({
   getGuildSagePersonaText: mockGetGuildSagePersonaText,
 }));
 
-vi.mock('@/features/agent-runtime/toolRegistry', () => ({
-  globalToolRegistry: globalToolRegistryMock,
+vi.mock('@/features/agent-runtime/runtimeSurface', () => ({
+  resolveRuntimeSurfaceToolNames: mockResolveRuntimeSurfaceToolNames,
 }));
 
 import { runChatTurn as runChatTurnImpl } from '@/features/agent-runtime/agentRuntime';
@@ -187,8 +184,7 @@ describe('agent runtime provider fallback', () => {
         new HumanMessage({ content: 'hello' }),
       ],
     });
-    globalToolRegistryMock.listNames.mockReturnValue([]);
-    globalToolRegistryMock.get.mockReturnValue(undefined);
+    mockResolveRuntimeSurfaceToolNames.mockReturnValue(['runtime_execute_code']);
     mockResolveTextProviderRoute.mockReset().mockResolvedValue({
       providerId: 'default',
       lane: 'main',

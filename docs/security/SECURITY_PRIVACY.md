@@ -88,7 +88,7 @@ When generating replies, Sage sends:
 - User profile summary embedded inside the runtime system prompt
 - Guild Sage Persona when guild-specific behavior has been configured
 - Bridge-fetched summaries, history windows, or artifact content only when Code Mode requests them through `context.*`, `history.*`, `discord.*`, or `artifacts.*`
-- Stored message-history retrieval results when the runtime executes calls such as `history.search(...)`, `history.recent(...)`, or `discord.messages.get(...)`
+- Stored message-history retrieval results when the runtime executes calls such as `history.search(...)`, `history.recent(...)`, or `history.get(...)`
 - Guild-resource metadata when the runtime executes bridge reads such as `discord.channels.get(...)`, `discord.channels.list(...)`, or admin-scoped member/role reads
 - Attachment text blocks for the current turn when inline analysis is needed
 - Attachment and artifact retrieval results when the runtime executes `artifacts.get(...)` or related bridge reads

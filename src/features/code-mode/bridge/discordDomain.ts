@@ -1,44 +1,17 @@
 import { z } from 'zod';
 import { client } from '../../../platform/discord/client';
-import { prisma } from '../../../platform/db/prisma-client';
 import {
   assertBridgeAccess,
   assertReadableChannelAccess,
-  buildBridgeMethod,
+  defineBridgeMethod,
   fetchGuildChannel,
   fetchGuildFromContext,
   fetchWritableTextChannel,
   requireGuildId,
 } from './common';
 
-function formatStoredMessage(row: {
-  messageId: string;
-  guildId: string | null;
-  channelId: string;
-  authorId: string;
-  authorDisplayName: string;
-  authorIsBot: boolean;
-  timestamp: Date;
-  content: string;
-  replyToMessageId: string | null;
-  mentionsUserIds: unknown;
-}) {
-  return {
-    messageId: row.messageId,
-    guildId: row.guildId,
-    channelId: row.channelId,
-    authorId: row.authorId,
-    authorDisplayName: row.authorDisplayName,
-    authorIsBot: row.authorIsBot,
-    timestamp: row.timestamp.toISOString(),
-    content: row.content,
-    replyToMessageId: row.replyToMessageId,
-    mentionsUserIds: Array.isArray(row.mentionsUserIds) ? row.mentionsUserIds : [],
-  };
-}
-
 export const discordDomainMethods = [
-  buildBridgeMethod({
+  defineBridgeMethod({
     namespace: 'discord',
     method: 'channels.get',
     input: z.object({
@@ -64,7 +37,7 @@ export const discordDomainMethods = [
       };
     },
   }),
-  buildBridgeMethod({
+  defineBridgeMethod({
     namespace: 'discord',
     method: 'channels.list',
     input: z.object({
@@ -86,85 +59,7 @@ export const discordDomainMethods = [
       return items;
     },
   }),
-  buildBridgeMethod({
-    namespace: 'discord',
-    method: 'messages.get',
-    input: z.object({
-      messageId: z.string().trim().min(1),
-      channelId: z.string().trim().min(1),
-    }),
-    mutability: 'read',
-    async execute(args, context) {
-      await assertReadableChannelAccess({
-        toolContext: context.toolContext,
-        channelIds: [args.channelId],
-      });
-      const row = await prisma.channelMessage.findUnique({
-        where: { messageId: args.messageId },
-      });
-      if (!row || row.channelId !== args.channelId) {
-        return null;
-      }
-      return formatStoredMessage(row);
-    },
-  }),
-  buildBridgeMethod({
-    namespace: 'discord',
-    method: 'messages.list',
-    input: z.object({
-      channelId: z.string().trim().min(1),
-      limit: z.number().int().min(1).max(100).optional(),
-    }),
-    mutability: 'read',
-    async execute(args, context) {
-      await assertReadableChannelAccess({
-        toolContext: context.toolContext,
-        channelIds: [args.channelId],
-      });
-      const rows = await prisma.channelMessage.findMany({
-        where: {
-          channelId: args.channelId,
-          guildId: context.toolContext.guildId ?? undefined,
-        },
-        orderBy: { timestamp: 'desc' },
-        take: args.limit ?? 25,
-      });
-      return rows.reverse().map(formatStoredMessage);
-    },
-  }),
-  buildBridgeMethod({
-    namespace: 'discord',
-    method: 'messages.search',
-    input: z.object({
-      query: z.string().trim().min(1).max(500),
-      channelId: z.string().trim().min(1).optional(),
-      limit: z.number().int().min(1).max(100).optional(),
-    }),
-    mutability: 'read',
-    async execute(args, context) {
-      const rows = await prisma.channelMessage.findMany({
-        where: {
-          guildId: context.toolContext.guildId ?? undefined,
-          ...(args.channelId ? { channelId: args.channelId } : {}),
-          content: {
-            contains: args.query,
-            mode: 'insensitive',
-          },
-        },
-        orderBy: { timestamp: 'desc' },
-        take: args.limit ?? 25,
-      });
-      const channelIds = Array.from(new Set(rows.map((row) => row.channelId)));
-      if (channelIds.length > 0) {
-        await assertReadableChannelAccess({
-          toolContext: context.toolContext,
-          channelIds,
-        });
-      }
-      return rows.map(formatStoredMessage);
-    },
-  }),
-  buildBridgeMethod({
+  defineBridgeMethod({
     namespace: 'discord',
     method: 'messages.send',
     input: z.object({
@@ -187,7 +82,7 @@ export const discordDomainMethods = [
       };
     },
   }),
-  buildBridgeMethod({
+  defineBridgeMethod({
     namespace: 'discord',
     method: 'messages.reply',
     input: z.object({
@@ -219,7 +114,7 @@ export const discordDomainMethods = [
       };
     },
   }),
-  buildBridgeMethod({
+  defineBridgeMethod({
     namespace: 'discord',
     method: 'reactions.add',
     input: z.object({
@@ -245,7 +140,7 @@ export const discordDomainMethods = [
       return { ok: true };
     },
   }),
-  buildBridgeMethod({
+  defineBridgeMethod({
     namespace: 'discord',
     method: 'members.get',
     input: z.object({
@@ -269,7 +164,7 @@ export const discordDomainMethods = [
       };
     },
   }),
-  buildBridgeMethod({
+  defineBridgeMethod({
     namespace: 'discord',
     method: 'roles.add',
     input: z.object({
@@ -294,7 +189,7 @@ export const discordDomainMethods = [
       return { ok: true, userId: args.userId, roleId: args.roleId };
     },
   }),
-  buildBridgeMethod({
+  defineBridgeMethod({
     namespace: 'discord',
     method: 'roles.remove',
     input: z.object({

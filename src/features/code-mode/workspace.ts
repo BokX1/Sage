@@ -2,7 +2,7 @@ import crypto from 'crypto';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { logger } from '../../platform/logging/logger';
-import type { ToolArtifact } from '../agent-runtime/toolRegistry';
+import type { ToolArtifact } from '../agent-runtime/runtimeToolContract';
 import type {
   CodeModeEffectRecord,
   CodeModeExecutionSnapshot,

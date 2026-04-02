@@ -12,7 +12,7 @@ import {
   upsertScheduledTask,
 } from '../../scheduler/scheduledTaskRepo';
 import type { AgentRunPayload, ReminderMessagePayload } from '../../scheduler/types';
-import { buildBridgeMethod, fetchWritableTextChannel, requireGuildId } from './common';
+import { defineBridgeMethod, fetchWritableTextChannel, requireGuildId } from './common';
 
 function serializeTask(task: Awaited<ReturnType<typeof getScheduledTaskById>> extends infer T ? Exclude<T, null> : never) {
   return {
@@ -29,7 +29,7 @@ function serializeTask(task: Awaited<ReturnType<typeof getScheduledTaskById>> ex
 }
 
 export const scheduleDomainMethods = [
-  buildBridgeMethod({
+  defineBridgeMethod({
     namespace: 'schedule',
     method: 'jobs.list',
     input: z.object({
@@ -43,7 +43,7 @@ export const scheduleDomainMethods = [
       return tasks.map((task) => serializeTask(task));
     },
   }),
-  buildBridgeMethod({
+  defineBridgeMethod({
     namespace: 'schedule',
     method: 'jobs.create',
     input: z.object({
@@ -121,7 +121,7 @@ export const scheduleDomainMethods = [
       return serializeTask(task);
     },
   }),
-  buildBridgeMethod({
+  defineBridgeMethod({
     namespace: 'schedule',
     method: 'jobs.cancel',
     input: z.object({
@@ -138,7 +138,7 @@ export const scheduleDomainMethods = [
       return serializeTask(await cancelScheduledTask(task.id));
     },
   }),
-  buildBridgeMethod({
+  defineBridgeMethod({
     namespace: 'schedule',
     method: 'jobs.run',
     input: z.object({
@@ -171,7 +171,7 @@ export const scheduleDomainMethods = [
       };
     },
   }),
-  buildBridgeMethod({
+  defineBridgeMethod({
     namespace: 'schedule',
     method: 'jobs.runs',
     input: z.object({

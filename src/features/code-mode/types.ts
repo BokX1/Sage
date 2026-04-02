@@ -1,4 +1,4 @@
-import type { ToolArtifact, ToolExecutionContext } from '../agent-runtime/toolRegistry';
+import type { ToolArtifact, ToolExecutionContext } from '../agent-runtime/runtimeToolContract';
 import type { BridgeNamespace } from './bridge/types';
 
 export type CodeModeLanguage = 'javascript';

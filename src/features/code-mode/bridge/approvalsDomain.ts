@@ -3,7 +3,7 @@ import {
   getApprovalReviewRequestById,
   listApprovalReviewRequestsByThreadId,
 } from '../../admin/approvalReviewRequestRepo';
-import { buildBridgeMethod } from './common';
+import { defineBridgeMethod } from './common';
 
 function serializeApprovalRecord(record: Awaited<ReturnType<typeof getApprovalReviewRequestById>> extends infer T
   ? Exclude<T, null>
@@ -31,7 +31,7 @@ function serializeApprovalRecord(record: Awaited<ReturnType<typeof getApprovalRe
 }
 
 export const approvalsDomainMethods = [
-  buildBridgeMethod({
+  defineBridgeMethod({
     namespace: 'approvals',
     method: 'get',
     input: z.object({
@@ -44,7 +44,7 @@ export const approvalsDomainMethods = [
       return record ? serializeApprovalRecord(record) : null;
     },
   }),
-  buildBridgeMethod({
+  defineBridgeMethod({
     namespace: 'approvals',
     method: 'list',
     input: z.object({

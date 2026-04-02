@@ -5,7 +5,8 @@ import { z } from 'zod';
 import { executeToolWithTimeout, type ToolResult } from '../toolCallExecution';
 import type { ApprovalInterruptPayload } from '../toolControlSignals';
 import { ApprovalRequiredSignal } from '../toolControlSignals';
-import { globalToolRegistry, type ToolDefinition, type ToolExecutionContext } from '../toolRegistry';
+import type { ToolDefinition, ToolExecutionContext } from '../runtimeToolContract';
+import { getRuntimeSurfaceTool } from '../runtimeSurface';
 import type { GraphToolFile, SerializedToolResult } from './types';
 
 export interface GraphToolCallDescriptor {
@@ -289,7 +290,7 @@ function isReadOnlyCall(
     return false;
   }
 
-  const predicate = definition.metadata?.readOnlyPredicate;
+  const predicate = definition.runtime.readOnlyPredicate;
   if (typeof predicate === 'function') {
     try {
       return predicate(args, context);
@@ -298,7 +299,7 @@ function isReadOnlyCall(
     }
   }
 
-  return definition.metadata?.readOnly === true;
+  return definition.runtime.readOnly === true;
 }
 
 export function isParallelSafeToolCall(params: {
@@ -342,7 +343,8 @@ export function planReadOnlyToolExecution(params: {
 export const executeDurableToolTask = task(
   { name: 'sage_execute_tool_call' },
   async (input: DurableToolTaskInput): Promise<DurableToolTaskOutput> => {
-    if (!input.activeToolNames.includes(input.call.name)) {
+    const definition = getRuntimeSurfaceTool(input.call.name);
+    if (!definition || !input.activeToolNames.includes(input.call.name)) {
       return {
         kind: 'tool_result',
         toolName: input.call.name,
@@ -362,7 +364,7 @@ export const executeDurableToolTask = task(
     const startedAt = Date.now();
     try {
       const rawResult = await executeToolWithTimeout(
-        globalToolRegistry,
+        definition,
         {
           name: input.call.name,
           args: input.call.args,
@@ -449,34 +451,8 @@ export async function prepareToolApprovalInterrupt(params: {
   call: GraphToolCallDescriptor;
   context: ToolExecutionContext;
 }): Promise<PlannedApprovalInterrupt | null> {
-  if (!params.activeToolNames.includes(params.call.name)) {
-    return null;
-  }
-
-  try {
-    const resolved = await globalToolRegistry.resolveActionPolicy(params.call, params.context);
-    if (!resolved) {
-      return null;
-    }
-
-    if (resolved.policy.mutability !== 'write' || resolved.policy.approvalMode !== 'required') {
-      return null;
-    }
-
-    if (typeof resolved.policy.prepareApproval !== 'function') {
-      return null;
-    }
-
-    return {
-      toolName: params.call.name,
-      callId: params.call.id,
-      call: params.call,
-      payload: await resolved.policy.prepareApproval(resolved.args, params.context),
-      approvalGroupKey: resolved.policy.approvalGroupKey?.trim() || `${params.call.name}:approval`,
-    };
-  } catch {
-    return null;
-  }
+  void params;
+  return null;
 }
 
 function buildLangChainTool(params: {
@@ -542,10 +518,10 @@ export function buildActiveToolCatalog(params: {
   const definitions = new Map<string, ToolDefinition<unknown>>();
   const allTools: DynamicStructuredTool[] = [];
   const readOnlyTools: DynamicStructuredTool[] = [];
-  let parallelToolCallsAllowed = params.activeToolNames.length > 0;
+  let parallelToolCallsAllowed = false;
 
   for (const toolName of params.activeToolNames) {
-    const definition = globalToolRegistry.get(toolName);
+    const definition = getRuntimeSurfaceTool(toolName);
     if (!definition) {
       continue;
     }
@@ -559,17 +535,10 @@ export function buildActiveToolCatalog(params: {
     });
     allTools.push(langChainTool);
     if (
-      !(
-        definition.annotations?.parallelSafe === true &&
-        (isReadOnlyCall(definition, {}, params.context) || definition.metadata?.readOnlyPredicate)
-      )
-    ) {
-      parallelToolCallsAllowed = false;
-    }
-    if (
       definition.annotations?.parallelSafe === true &&
-      (isReadOnlyCall(definition, {}, params.context) || definition.metadata?.readOnlyPredicate)
+      isReadOnlyCall(definition, {}, params.context)
     ) {
+      parallelToolCallsAllowed = true;
       readOnlyTools.push(langChainTool);
     }
   }
