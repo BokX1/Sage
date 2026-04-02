@@ -9,12 +9,12 @@ describe('toolCache', () => {
   });
 
   it('ignores think fields when building keys', () => {
-    const a = buildToolCacheKey('web_search', {
+    const a = buildToolCacheKey('external_lookup', {
       query: 'release notes',
       think: 'plan A',
       nested: { think: 'plan B', page: 1 },
     });
-    const b = buildToolCacheKey('web_search', {
+    const b = buildToolCacheKey('external_lookup', {
       query: 'release notes',
       think: 'plan C',
       nested: { think: 'plan D', page: 1 },

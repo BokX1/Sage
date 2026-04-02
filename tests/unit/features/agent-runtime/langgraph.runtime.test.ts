@@ -300,7 +300,7 @@ function makeInterruptedState() {
       maxTokens: 500,
       invokedBy: 'mention',
       invokerIsAdmin: true,
-      activeToolNames: ['discord_admin'],
+      activeToolNames: ['admin.instructions.update'],
       routeKind: 'single',
       currentTurn: { invokerUserId: 'user-1' },
       replyTarget: null,
@@ -333,7 +333,7 @@ function makeInterruptedState() {
         verifiedFacts: [],
         completedActions: [],
         openQuestions: [],
-        pendingApprovals: ['discord_admin:request-1'],
+        pendingApprovals: ['admin.instructions.update:request-1'],
         deliveryState: 'awaiting_approval',
         nextAction: 'Wait for approval resolution.',
       },
@@ -356,7 +356,7 @@ function makeInterruptedState() {
       verifiedFacts: [],
       completedActions: [],
       openQuestions: [],
-      pendingApprovals: ['discord_admin:request-1'],
+      pendingApprovals: ['admin.instructions.update:request-1'],
       deliveryState: 'awaiting_approval',
       nextAction: 'Wait for approval resolution.',
     },
@@ -371,7 +371,7 @@ function makeInterruptedState() {
           requestId: 'request-1',
           call: {
             id: 'call-1',
-            name: 'discord_admin',
+            name: 'admin.instructions.update',
             args: { action: 'update_server_instructions' },
           },
           payload: {
@@ -716,7 +716,7 @@ describe('runGraphValueStream', () => {
         tool_calls: [
           {
             id: 'call-1',
-            name: 'discord_admin',
+            name: 'admin.instructions.update',
             args: { action: 'update_server_instructions' },
             type: 'tool_call',
           },
@@ -750,7 +750,7 @@ describe('runGraphValueStream', () => {
       timeoutMs: 1_000,
       maxTokens: 500,
       messages: [new HumanMessage({ content: 'update the server persona' })],
-      activeToolNames: ['discord_admin'],
+      activeToolNames: ['admin.instructions.update'],
       routeKind: 'single',
       currentTurn: { invokerUserId: 'user-1' },
       replyTarget: null,
@@ -785,7 +785,7 @@ describe('runGraphValueStream', () => {
       timeoutMs: 1_000,
       maxTokens: 500,
       messages: [new HumanMessage({ content: 'say hello' })],
-      activeToolNames: ['discord_admin'],
+      activeToolNames: ['admin.instructions.update'],
       routeKind: 'single',
       currentTurn: { invokerUserId: 'user-1' },
       replyTarget: null,
@@ -933,7 +933,7 @@ describe('runGraphValueStream', () => {
   it('fails honestly when a no-tool reply scrubs down to empty visible text', async () => {
     modelInvokeMock.mockResolvedValueOnce(
       new AIMessage({
-        content: 'Calling web_search now',
+        content: 'Calling runtime_execute_code now',
       }),
     );
 
@@ -1104,7 +1104,7 @@ describe('runGraphValueStream', () => {
       timeoutMs: 1_000,
       maxTokens: 500,
       messages: [new HumanMessage({ content: 'handle the admin actions in order' })],
-      activeToolNames: ['discord_admin'],
+      activeToolNames: ['admin.instructions.update'],
       routeKind: 'single',
       currentTurn: { invokerUserId: 'user-1' },
       replyTarget: null,
@@ -1131,8 +1131,8 @@ describe('runGraphValueStream', () => {
     await shutdownAgentGraphRuntime();
     isReadOnlyToolCallMock.mockReturnValue(true);
     buildActiveToolCatalogMock.mockReturnValue({
-      allTools: [{ name: 'repo_search_code' }],
-      readOnlyTools: [{ name: 'repo_search_code' }],
+      allTools: [{ name: 'repo_lookup' }],
+      readOnlyTools: [{ name: 'repo_lookup' }],
       definitions: new Map(),
     });
     toolNodeInvokeMock.mockImplementationOnce(async (input?: { messages?: Array<{ tool_calls?: Array<{ id?: string }> }> }) => {
@@ -1144,7 +1144,7 @@ describe('runGraphValueStream', () => {
             tool_call_id: batchCall?.id ?? 'call-read-1',
             artifact: {
               result: {
-                name: 'repo_search_code',
+                name: 'repo_lookup',
                 success: true,
                 structuredContent: { ok: true, items: [1] },
                 telemetry: { latencyMs: 7 },
@@ -1169,7 +1169,7 @@ describe('runGraphValueStream', () => {
         userId: 'user-1',
         channelId: 'channel-1',
         guildId: 'guild-1',
-        activeToolNames: ['repo_search_code'],
+        activeToolNames: ['repo_lookup'],
         routeKind: 'single',
         currentTurn: { invokerUserId: 'user-1' },
         replyTarget: null,
@@ -1183,13 +1183,13 @@ describe('runGraphValueStream', () => {
             tool_calls: [
               {
                 id: 'call-read-1',
-                name: 'repo_search_code',
+                name: 'repo_lookup',
                 args: { q: 'repo status', think: 'ignore' },
                 type: 'tool_call',
               },
               {
                 id: 'call-read-2',
-                name: 'repo_search_code',
+                name: 'repo_lookup',
                 args: { think: 'different', q: 'repo status' },
                 type: 'tool_call',
               },
@@ -1228,8 +1228,8 @@ describe('runGraphValueStream', () => {
     await shutdownAgentGraphRuntime();
     isReadOnlyToolCallMock.mockReturnValue(true);
     buildActiveToolCatalogMock.mockReturnValue({
-      allTools: [{ name: 'repo_search_code' }],
-      readOnlyTools: [{ name: 'repo_search_code' }],
+      allTools: [{ name: 'repo_lookup' }],
+      readOnlyTools: [{ name: 'repo_lookup' }],
       definitions: new Map(),
     });
     toolNodeInvokeMock.mockImplementationOnce(async (input?: { messages?: Array<{ tool_calls?: Array<{ id?: string }> }> }) => {
@@ -1241,7 +1241,7 @@ describe('runGraphValueStream', () => {
             tool_call_id: batchCall?.id ?? 'call-read-1',
             artifact: {
               result: {
-                name: 'repo_search_code',
+                name: 'repo_lookup',
                 success: true,
                 structuredContent: { ok: true, items: [1] },
                 telemetry: { latencyMs: 7 },
@@ -1266,7 +1266,7 @@ describe('runGraphValueStream', () => {
         userId: 'user-1',
         channelId: 'channel-1',
         guildId: 'guild-1',
-        activeToolNames: ['repo_search_code'],
+        activeToolNames: ['repo_lookup'],
         routeKind: 'single',
         currentTurn: { invokerUserId: 'user-1' },
         replyTarget: null,
@@ -1280,13 +1280,13 @@ describe('runGraphValueStream', () => {
             tool_calls: [
               {
                 id: 'call-read-1',
-                name: 'repo_search_code',
+                name: 'repo_lookup',
                 args: { q: 'repo status' },
                 type: 'tool_call',
               },
               {
                 id: 'call-read-2',
-                name: 'repo_search_code',
+                name: 'repo_lookup',
                 args: { q: 'repo health' },
                 type: 'tool_call',
               },
@@ -1318,8 +1318,8 @@ describe('runGraphValueStream', () => {
     await shutdownAgentGraphRuntime();
     isReadOnlyToolCallMock.mockReturnValue(true);
     buildActiveToolCatalogMock.mockReturnValue({
-      allTools: [{ name: 'repo_search_code' }],
-      readOnlyTools: [{ name: 'repo_search_code' }],
+      allTools: [{ name: 'repo_lookup' }],
+      readOnlyTools: [{ name: 'repo_lookup' }],
       definitions: new Map(),
     });
     toolNodeInvokeMock.mockImplementationOnce(async (input?: { messages?: Array<{ tool_calls?: Array<{ id?: string }> }> }) => {
@@ -1331,7 +1331,7 @@ describe('runGraphValueStream', () => {
             tool_call_id: batchCall?.id ?? 'call-resume-tool-1',
             artifact: {
               result: {
-                name: 'repo_search_code',
+                name: 'repo_lookup',
                 success: true,
                 structuredContent: {
                   ok: true,
@@ -1359,7 +1359,7 @@ describe('runGraphValueStream', () => {
         userId: 'user-1',
         channelId: 'channel-1',
         guildId: 'guild-1',
-        activeToolNames: ['repo_search_code'],
+        activeToolNames: ['repo_lookup'],
         routeKind: 'background_resume',
         currentTurn: { invokerUserId: 'user-1' },
         replyTarget: null,
@@ -1386,7 +1386,7 @@ describe('runGraphValueStream', () => {
             tool_calls: [
               {
                 id: 'call-resume-tool-1',
-                name: 'repo_search_code',
+                name: 'repo_lookup',
                 args: { query: 'repo:owner/repo runtime file' },
                 type: 'tool_call',
               },
@@ -1402,7 +1402,7 @@ describe('runGraphValueStream', () => {
     expect(toolNodeInvokeMock).toHaveBeenCalledTimes(1);
     expect(result.toolResults).toHaveLength(1);
     expect(result.toolResults[0]).toMatchObject({
-      name: 'repo_search_code',
+      name: 'repo_lookup',
       success: true,
     });
 
@@ -1412,91 +1412,12 @@ describe('runGraphValueStream', () => {
     expect(toolBatch?.messages?.[0]?.tool_calls?.map((call) => call.id)).toEqual(['call-resume-tool-1']);
   });
 
-  it('blocks repeated GitHub search_code retries in the same run after an auth failure', async () => {
+  it('executes a pending repo lookup even after an earlier auth failure in the same run', async () => {
     await shutdownAgentGraphRuntime();
     isReadOnlyToolCallMock.mockReturnValue(true);
     buildActiveToolCatalogMock.mockReturnValue({
-      allTools: [{ name: 'repo_search_code' }],
-      readOnlyTools: [{ name: 'repo_search_code' }],
-      definitions: new Map(),
-    });
-    modelInvokeMock.mockResolvedValueOnce(
-      makeFinishTurnMessage('final_answer', 'I need the exact repo/path or confirmed access before I retry GitHub search.'),
-    );
-
-    const result = await __runAgentGraphCommandForTests({
-      threadId: 'trace-github-search-breaker-1',
-      goto: 'route_tool_phase',
-      context: {
-        traceId: 'trace-github-search-breaker-1',
-        originTraceId: 'trace-github-search-breaker-1',
-        userId: 'user-1',
-        channelId: 'channel-1',
-        guildId: 'guild-1',
-        activeToolNames: ['repo_search_code'],
-        routeKind: 'single',
-        currentTurn: { invokerUserId: 'user-1' },
-        replyTarget: null,
-        invokedBy: 'mention',
-      },
-      state: {
-        roundsCompleted: 1,
-        toolResults: [
-          {
-            name: 'repo_search_code',
-            success: false,
-            error: 'GitHub code search was denied for this request.',
-            errorType: 'execution',
-            errorDetails: {
-              category: 'unauthorized',
-              code: 'github_mcp_search_code_access_denied',
-              operationKey: buildToolCacheKey('repo_search_code', { query: 'repo:owner/repo needle' }),
-              provider: 'github-mcp',
-              hint: 'Use repo_read_file when the exact path is known, or ask for repo/path clarification.',
-              retryable: false,
-            },
-            telemetry: { latencyMs: 5 },
-          },
-        ],
-        messages: [
-          new AIMessage({
-            content: '',
-            tool_calls: [
-              {
-                id: 'call-read-1',
-                name: 'repo_search_code',
-                args: { query: 'repo:owner/repo needle' },
-                type: 'tool_call',
-              },
-            ],
-          }),
-        ],
-      },
-    });
-
-    expect(result.graphStatus).toBe('completed');
-    expect(result.replyText).toContain('exact repo/path');
-    expect(toolNodeInvokeMock).not.toHaveBeenCalled();
-    expect(result.toolResults).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          name: 'repo_search_code',
-          errorDetails: expect.objectContaining({
-            code: 'github_mcp_search_code_retry_blocked',
-            category: 'unauthorized',
-            operationKey: buildToolCacheKey('repo_search_code', { query: 'repo:owner/repo needle' }),
-          }),
-        }),
-      ]),
-    );
-  });
-
-  it('allows a later GitHub search_code call in the same run when the request meaningfully changes', async () => {
-    await shutdownAgentGraphRuntime();
-    isReadOnlyToolCallMock.mockReturnValue(true);
-    buildActiveToolCatalogMock.mockReturnValue({
-      allTools: [{ name: 'repo_search_code' }],
-      readOnlyTools: [{ name: 'repo_search_code' }],
+      allTools: [{ name: 'repo_lookup' }],
+      readOnlyTools: [{ name: 'repo_lookup' }],
       definitions: new Map(),
     });
     toolNodeInvokeMock.mockImplementationOnce(async (input?: { messages?: Array<{ tool_calls?: Array<{ id?: string }> }> }) => {
@@ -1508,7 +1429,7 @@ describe('runGraphValueStream', () => {
             tool_call_id: batchCall?.id ?? 'call-read-2',
             artifact: {
               result: {
-                name: 'repo_search_code',
+                name: 'repo_lookup',
                 success: true,
                 structuredContent: { ok: true, items: [1] },
                 telemetry: { latencyMs: 7 },
@@ -1530,7 +1451,7 @@ describe('runGraphValueStream', () => {
         userId: 'user-1',
         channelId: 'channel-1',
         guildId: 'guild-1',
-        activeToolNames: ['repo_search_code'],
+        activeToolNames: ['repo_lookup'],
         routeKind: 'single',
         currentTurn: { invokerUserId: 'user-1' },
         replyTarget: null,
@@ -1540,16 +1461,16 @@ describe('runGraphValueStream', () => {
         roundsCompleted: 1,
         toolResults: [
           {
-            name: 'repo_search_code',
+            name: 'repo_lookup',
             success: false,
             error: 'GitHub code search was denied for this request.',
             errorType: 'execution',
             errorDetails: {
               category: 'unauthorized',
               code: 'github_mcp_search_code_access_denied',
-              operationKey: buildToolCacheKey('repo_search_code', { query: 'repo:owner/repo needle' }),
+              operationKey: buildToolCacheKey('repo_lookup', { query: 'repo:owner/repo needle' }),
               provider: 'github-mcp',
-              hint: 'Use repo_read_file when the exact path is known, or ask for repo/path clarification.',
+              hint: 'Use repo_file_read when the exact path is known, or ask for repo/path clarification.',
               retryable: false,
             },
             telemetry: { latencyMs: 5 },
@@ -1560,9 +1481,9 @@ describe('runGraphValueStream', () => {
             content: '',
             tool_calls: [
               {
-                id: 'call-read-2',
-                name: 'repo_search_code',
-                args: { query: 'repo:owner/other-repo needle' },
+                id: 'call-read-1',
+                name: 'repo_lookup',
+                args: { query: 'repo:owner/repo needle' },
                 type: 'tool_call',
               },
             ],
@@ -1572,20 +1493,15 @@ describe('runGraphValueStream', () => {
     });
 
     expect(toolNodeInvokeMock).toHaveBeenCalledTimes(1);
+    const toolBatch = toolNodeInvokeMock.mock.calls[0]?.[0] as
+      | { messages?: Array<{ tool_calls?: Array<{ id?: string }> }> }
+      | undefined;
+    expect(toolBatch?.messages?.[0]?.tool_calls?.map((call) => call.id)).toEqual(['call-read-1']);
     expect(result.toolResults).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          name: 'repo_search_code',
+          name: 'repo_lookup',
           success: true,
-        }),
-      ]),
-    );
-    expect(result.toolResults).not.toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          errorDetails: expect.objectContaining({
-            code: 'github_mcp_search_code_retry_blocked',
-          }),
         }),
       ]),
     );
@@ -1601,7 +1517,7 @@ describe('runGraphValueStream', () => {
       }),
     );
     buildActiveToolCatalogMock.mockReturnValue({
-      allTools: [{ name: 'repo_read_file' }],
+      allTools: [{ name: 'repo_file_read' }],
       readOnlyTools: [],
       definitions: new Map(),
     });
@@ -1620,7 +1536,7 @@ describe('runGraphValueStream', () => {
         userId: 'user-1',
         channelId: 'channel-1',
         guildId: 'guild-1',
-        activeToolNames: ['repo_read_file'],
+        activeToolNames: ['repo_file_read'],
         routeKind: 'single',
         currentTurn: { invokerUserId: 'user-1' },
         replyTarget: null,
@@ -1634,7 +1550,7 @@ describe('runGraphValueStream', () => {
             tool_calls: [
               {
                 id: 'call-read-empty-1',
-                name: 'repo_read_file',
+                name: 'repo_file_read',
                 args: { repo: 'blueplaysgames3921', includeReadme: false },
                 type: 'tool_call',
               },
@@ -1663,7 +1579,7 @@ describe('runGraphValueStream', () => {
         userId: 'user-1',
         channelId: 'channel-1',
         guildId: 'guild-1',
-        activeToolNames: ['web_search'],
+        activeToolNames: ['external_lookup'],
         routeKind: 'single',
         currentTurn: { invokerUserId: 'user-1' },
         replyTarget: null,
@@ -1672,7 +1588,7 @@ describe('runGraphValueStream', () => {
       state: {
         messages: [
           new AIMessage({
-            content: 'Calling web_search now',
+            content: 'Calling runtime_execute_code now',
             tool_calls: [],
           }),
         ],
@@ -1712,13 +1628,13 @@ describe('runGraphValueStream', () => {
           tool_calls: [
             {
               id: 'call-cap-1',
-              name: 'discord_admin',
+              name: 'admin.instructions.update',
               args: { action: 'create_channel', name: 'ops-1' },
               type: 'tool_call',
             },
             {
               id: 'call-cap-2',
-              name: 'discord_admin',
+              name: 'admin.instructions.update',
               args: { action: 'create_channel', name: 'ops-2' },
               type: 'tool_call',
             },
@@ -1740,7 +1656,7 @@ describe('runGraphValueStream', () => {
       timeoutMs: 1_000,
       maxTokens: 500,
       messages: [new HumanMessage({ content: 'create two channels' })],
-      activeToolNames: ['discord_admin'],
+      activeToolNames: ['admin.instructions.update'],
       routeKind: 'single',
       currentTurn: { invokerUserId: 'user-1' },
       replyTarget: null,
@@ -1771,7 +1687,7 @@ describe('runGraphValueStream', () => {
           tool_calls: [
             {
               id: 'call-repeat-1',
-              name: 'discord_admin',
+              name: 'admin.instructions.update',
               args: { action: 'create_channel', name: 'ops-loop' },
               type: 'tool_call',
             },
@@ -1784,7 +1700,7 @@ describe('runGraphValueStream', () => {
           tool_calls: [
             {
               id: 'call-repeat-2',
-              name: 'discord_admin',
+              name: 'admin.instructions.update',
               args: { action: 'create_channel', name: 'ops-loop' },
               type: 'tool_call',
             },
@@ -1797,7 +1713,7 @@ describe('runGraphValueStream', () => {
           tool_calls: [
             {
               id: 'call-repeat-3',
-              name: 'discord_admin',
+              name: 'admin.instructions.update',
               args: { action: 'create_channel', name: 'ops-loop' },
               type: 'tool_call',
             },
@@ -1806,11 +1722,11 @@ describe('runGraphValueStream', () => {
       );
     executeDurableToolTaskMock.mockResolvedValueOnce({
       kind: 'tool_result',
-      toolName: 'discord_admin',
+      toolName: 'admin.instructions.update',
       callId: 'call-repeat-1',
       content: '{"ok":true}',
       result: {
-        name: 'discord_admin',
+        name: 'admin.instructions.update',
         success: true,
         result: { ok: true },
         latencyMs: 9,
@@ -1829,7 +1745,7 @@ describe('runGraphValueStream', () => {
       timeoutMs: 1_000,
       maxTokens: 500,
       messages: [new HumanMessage({ content: 'create the ops loop channel' })],
-      activeToolNames: ['discord_admin'],
+      activeToolNames: ['admin.instructions.update'],
       routeKind: 'single',
       currentTurn: { invokerUserId: 'user-1' },
       replyTarget: null,
@@ -2007,7 +1923,7 @@ describe('runGraphValueStream', () => {
         roundsCompleted: 1,
         totalRoundsCompleted: 7,
         toolResults: Array.from({ length: 7 }, () =>
-          makeSuccessfulToolResult('repo_search_code', { ok: true }, 10),
+          makeSuccessfulToolResult('repo_lookup', { ok: true }, 10),
         ),
         messages: [new AIMessage({ content: 'I will call github again.' })],
       },
@@ -2048,7 +1964,7 @@ describe('runGraphValueStream', () => {
         temperature: 0.6,
         timeoutMs: 1_000,
         maxTokens: 500,
-        activeToolNames: ['repo_search_code'],
+        activeToolNames: ['repo_lookup'],
         routeKind: 'background_resume',
         currentTurn: { invokerUserId: 'user-1' },
         replyTarget: null,
@@ -2063,7 +1979,7 @@ describe('runGraphValueStream', () => {
           pendingApprovals: [],
           deliveryState: 'none',
           nextAction: 'Read one more exact source and then finalize.',
-          activeEvidenceRefs: ['tool:repo_search_code#0'],
+          activeEvidenceRefs: ['tool:repo_lookup#0'],
           droppedMessageCutoff: 6,
           compactionRevision: 2,
           retainedRawMessageCount: 2,
@@ -2074,7 +1990,7 @@ describe('runGraphValueStream', () => {
         },
         toolResults: [
           makeSuccessfulToolResult(
-            'repo_search_code',
+            'repo_lookup',
             { query: 'replyText LastValue collision', ok: true },
             10,
           ),
@@ -2098,7 +2014,7 @@ describe('runGraphValueStream', () => {
     expect(promptText).toContain('GitHub search already succeeded for the target repo.');
     expect(promptText).toContain('Read the docs page and captured the earlier findings.');
     expect(promptText).toContain('Need one final exact source before replying.');
-    expect(promptText).toContain('tool:repo_search_code#0');
+    expect(promptText).toContain('tool:repo_lookup#0');
   });
 
   it('materializes approval interrupts before pausing the graph', async () => {
@@ -2108,7 +2024,7 @@ describe('runGraphValueStream', () => {
         tool_calls: [
           {
             id: 'call-approve-1',
-            name: 'discord_admin',
+            name: 'admin.instructions.update',
             args: { action: 'update_server_instructions' },
             type: 'tool_call',
           },
@@ -2116,11 +2032,11 @@ describe('runGraphValueStream', () => {
       }),
     );
     prepareToolApprovalInterruptMock.mockResolvedValueOnce({
-      toolName: 'discord_admin',
+      toolName: 'admin.instructions.update',
       callId: 'call-approve-1',
       call: {
         id: 'call-approve-1',
-        name: 'discord_admin',
+        name: 'admin.instructions.update',
         args: { action: 'update_server_instructions' },
       },
       payload: {
@@ -2135,7 +2051,7 @@ describe('runGraphValueStream', () => {
         reviewSnapshotJson: { action: 'update_server_instructions' },
         interruptMetadataJson: { action: 'update_server_instructions' },
       },
-      approvalGroupKey: 'discord_admin:server_instructions',
+      approvalGroupKey: 'admin.instructions.update:server_instructions',
     });
 
     const result = await runAgentGraphTurn({
@@ -2149,7 +2065,7 @@ describe('runGraphValueStream', () => {
       timeoutMs: 1_000,
       maxTokens: 500,
       messages: [new HumanMessage({ content: 'update the server persona' })],
-      activeToolNames: ['discord_admin'],
+      activeToolNames: ['admin.instructions.update'],
       routeKind: 'single',
       currentTurn: { invokerUserId: 'user-1' },
       replyTarget: null,
@@ -2181,11 +2097,11 @@ describe('runGraphValueStream', () => {
 
   it('can seed approval_gate execution directly for deterministic graph validation', async () => {
     prepareToolApprovalInterruptMock.mockResolvedValueOnce({
-      toolName: 'discord_admin',
+      toolName: 'admin.instructions.update',
       callId: 'call-seeded-approval-1',
       call: {
         id: 'call-seeded-approval-1',
-        name: 'discord_admin',
+        name: 'admin.instructions.update',
         args: { action: 'create_role', name: 'seeded-role' },
       },
       payload: {
@@ -2200,7 +2116,7 @@ describe('runGraphValueStream', () => {
         reviewSnapshotJson: { action: 'create_role' },
         interruptMetadataJson: { action: 'create_role' },
       },
-      approvalGroupKey: 'discord_admin:rest_write',
+      approvalGroupKey: 'admin.instructions.update:rest_write',
     });
 
     const result = await __runAgentGraphCommandForTests({
@@ -2212,7 +2128,7 @@ describe('runGraphValueStream', () => {
         userId: 'user-1',
         channelId: 'channel-1',
         guildId: 'guild-1',
-        activeToolNames: ['discord_admin'],
+        activeToolNames: ['admin.instructions.update'],
         routeKind: 'single',
         currentTurn: { invokerUserId: 'user-1' },
         replyTarget: null,
@@ -2223,7 +2139,7 @@ describe('runGraphValueStream', () => {
         pendingWriteCalls: [
           {
             id: 'call-seeded-approval-1',
-            name: 'discord_admin',
+            name: 'admin.instructions.update',
             args: { action: 'create_role', name: 'seeded-role' },
           },
         ],
@@ -2283,13 +2199,13 @@ describe('runGraphValueStream', () => {
         tool_calls: [
           {
             id: 'call-boundary-1',
-            name: 'discord_admin',
+            name: 'admin.instructions.update',
             args: { action: 'update_server_instructions' },
             type: 'tool_call',
           },
           {
             id: 'call-boundary-2',
-            name: 'discord_admin',
+            name: 'admin.instructions.update',
             args: { action: 'clear_server_api_key' },
             type: 'tool_call',
           },
@@ -2298,11 +2214,11 @@ describe('runGraphValueStream', () => {
     );
     prepareToolApprovalInterruptMock
       .mockResolvedValueOnce({
-        toolName: 'discord_admin',
+        toolName: 'admin.instructions.update',
         callId: 'call-boundary-1',
         call: {
           id: 'call-boundary-1',
-          name: 'discord_admin',
+          name: 'admin.instructions.update',
           args: { action: 'update_server_instructions' },
         },
         payload: {
@@ -2317,7 +2233,7 @@ describe('runGraphValueStream', () => {
           reviewSnapshotJson: { action: 'update_server_instructions' },
           interruptMetadataJson: { action: 'update_server_instructions' },
         },
-        approvalGroupKey: 'discord_admin:server_instructions',
+        approvalGroupKey: 'admin.instructions.update:server_instructions',
       })
       .mockResolvedValueOnce(null);
 
@@ -2332,7 +2248,7 @@ describe('runGraphValueStream', () => {
       timeoutMs: 1_000,
       maxTokens: 500,
       messages: [new HumanMessage({ content: 'update the persona, then clear the key' })],
-      activeToolNames: ['discord_admin'],
+      activeToolNames: ['admin.instructions.update'],
       routeKind: 'single',
       currentTurn: { invokerUserId: 'user-1' },
       replyTarget: null,
@@ -2409,7 +2325,7 @@ describe('runGraphValueStream', () => {
           reviewSnapshotJson: { step: 1 },
           interruptMetadataJson: { step: 1 },
         },
-        approvalGroupKey: 'discord_admin:rest_write',
+        approvalGroupKey: 'admin.instructions.update:rest_write',
       })
       .mockResolvedValueOnce({
         toolName: 'discord_spaces_create_role',
@@ -2431,7 +2347,7 @@ describe('runGraphValueStream', () => {
           reviewSnapshotJson: { step: 2 },
           interruptMetadataJson: { step: 2 },
         },
-        approvalGroupKey: 'discord_admin:rest_write',
+        approvalGroupKey: 'admin.instructions.update:rest_write',
       });
     executeApprovedReviewTaskMock
       .mockResolvedValueOnce(
@@ -2569,7 +2485,7 @@ describe('runGraphValueStream', () => {
         reviewSnapshotJson: { action: 'update_server_instructions' },
         interruptMetadataJson: { action: 'update_server_instructions' },
       },
-      approvalGroupKey: 'discord_admin:server_instructions',
+      approvalGroupKey: 'admin.instructions.update:server_instructions',
     });
     executeApprovedReviewTaskMock.mockResolvedValueOnce(
       makeToolTaskOutcome({
@@ -2671,7 +2587,7 @@ describe('runGraphValueStream', () => {
         reviewSnapshotJson: { reason: 'sync' },
         interruptMetadataJson: { reason: 'sync' },
       },
-      approvalGroupKey: 'discord_admin:server_instructions',
+      approvalGroupKey: 'admin.instructions.update:server_instructions',
     });
     executeApprovedReviewTaskMock.mockResolvedValueOnce(
       makeToolTaskOutcome({
@@ -2766,7 +2682,7 @@ describe('runGraphValueStream', () => {
       timeoutMs: 1_000,
       maxTokens: 500,
       messages: [new HumanMessage({ content: 'check the repo owner' })],
-      activeToolNames: ['web_search'],
+      activeToolNames: ['external_lookup'],
       routeKind: 'single',
       currentTurn: {
         invokerUserId: 'user-1',
@@ -2815,7 +2731,7 @@ describe('runGraphValueStream', () => {
         invokedBy: 'reply',
         invokerIsAdmin: false,
         invokerCanModerate: false,
-        activeToolNames: ['web_search'],
+        activeToolNames: ['external_lookup'],
         routeKind: 'user_input_resume',
         currentTurn: {
           invokerUserId: 'user-1',
@@ -2948,7 +2864,7 @@ describe('runGraphValueStream', () => {
           tool_calls: [
             {
               id: 'call-user-steer-resume-1',
-              name: 'discord_admin',
+              name: 'admin.instructions.update',
               args: { action: 'update_server_instructions' },
               type: 'tool_call',
             },
@@ -2986,7 +2902,7 @@ describe('runGraphValueStream', () => {
       timeoutMs: 1_000,
       maxTokens: 500,
       messages: [new HumanMessage({ content: 'update the server persona in steps' })],
-      activeToolNames: ['discord_admin'],
+      activeToolNames: ['admin.instructions.update'],
       routeKind: 'single',
       currentTurn: {
         invokerUserId: 'user-1',
@@ -3026,7 +2942,7 @@ describe('runGraphValueStream', () => {
         invokedBy: 'component',
         invokerIsAdmin: true,
         invokerCanModerate: false,
-        activeToolNames: ['discord_admin'],
+        activeToolNames: ['admin.instructions.update'],
         routeKind: 'background_resume',
         currentTurn: {
           invokerUserId: 'user-1',
@@ -3257,7 +3173,7 @@ describe('runGraphValueStream', () => {
         replyText: 'Working on that now.',
         activeWindowDurationMs: 14_987,
         toolResults: [
-          makeSuccessfulToolResult('system_time', { iso: '2026-03-21T09:54:51.000Z' }, 10),
+          makeSuccessfulToolResult('clock_lookup', { iso: '2026-03-21T09:54:51.000Z' }, 10),
         ],
         responseSession: {
           responseSessionId: 'trace-background-yield-response-session-1',
@@ -3348,15 +3264,15 @@ describe('runGraphValueStream', () => {
     if (!resumedState) {
       throw new Error('Expected the continued graph state to be persisted.');
     }
-    expect(resumedState.contextFrame.completedActions).toContain('system_time');
+    expect(resumedState.contextFrame.completedActions).toContain('clock_lookup');
   });
 
   it('reopens a just-finished task thread with a draft tool-call reply and final answer without checkpoint write conflicts', async () => {
     await shutdownAgentGraphRuntime();
     isReadOnlyToolCallMock.mockReturnValue(true);
     buildActiveToolCatalogMock.mockReturnValue({
-      allTools: [{ name: 'repo_search_code' }],
-      readOnlyTools: [{ name: 'repo_search_code' }],
+      allTools: [{ name: 'repo_lookup' }],
+      readOnlyTools: [{ name: 'repo_lookup' }],
       definitions: new Map(),
     });
     toolNodeInvokeMock.mockImplementationOnce(async (input?: { messages?: Array<{ tool_calls?: Array<{ id?: string }> }> }) => {
@@ -3368,7 +3284,7 @@ describe('runGraphValueStream', () => {
             tool_call_id: batchCall?.id ?? 'call-stale-finish-reopen-1',
             artifact: {
               result: {
-                name: 'repo_search_code',
+                name: 'repo_lookup',
                 success: true,
                 structuredContent: {
                   ok: true,
@@ -3390,7 +3306,7 @@ describe('runGraphValueStream', () => {
           tool_calls: [
             {
               id: 'call-stale-finish-reopen-1',
-              name: 'repo_search_code',
+              name: 'repo_lookup',
               args: { query: 'repo:owner/repo stale replyText' },
               type: 'tool_call',
             },
@@ -3419,7 +3335,7 @@ describe('runGraphValueStream', () => {
         temperature: 0.6,
         timeoutMs: 1_000,
         maxTokens: 500,
-        activeToolNames: ['repo_search_code'],
+        activeToolNames: ['repo_lookup'],
         routeKind: 'active_interrupt_race_resume',
         currentTurn: {
           invokerUserId: 'user-1',
@@ -3478,7 +3394,7 @@ describe('runGraphValueStream', () => {
         invokedBy: 'reply',
         invokerIsAdmin: false,
         invokerCanModerate: false,
-        activeToolNames: ['repo_search_code'],
+        activeToolNames: ['repo_lookup'],
         routeKind: 'active_interrupt_race_resume',
         currentTurn: {
           invokerUserId: 'user-1',
@@ -3565,7 +3481,7 @@ describe('runGraphValueStream', () => {
         invokedBy: 'component',
         invokerIsAdmin: false,
         invokerCanModerate: false,
-        activeToolNames: ['repo_search_code'],
+        activeToolNames: ['repo_lookup'],
         routeKind: 'background_resume',
         currentTurn: {
           invokerUserId: 'user-1',
@@ -3683,7 +3599,7 @@ describe('runGraphValueStream', () => {
         invokedBy: 'component',
         invokerIsAdmin: false,
         invokerCanModerate: false,
-        activeToolNames: ['repo_search_code'],
+        activeToolNames: ['repo_lookup'],
         routeKind: 'background_resume',
         currentTurn: {
           invokerUserId: 'user-1',
@@ -3742,7 +3658,7 @@ describe('runGraphValueStream', () => {
       timeoutMs: 1_000,
       maxTokens: 500,
       messages: [new HumanMessage({ content: 'check bluegaming repos' })],
-      activeToolNames: ['web_search'],
+      activeToolNames: ['external_lookup'],
       routeKind: 'single',
       currentTurn: {
         invokerUserId: 'user-1',

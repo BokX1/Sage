@@ -238,7 +238,7 @@ Sage's prompt assembly no longer uses a dedicated raw observation middle-truncat
 | `MCP_PRESET_GITHUB_TRANSPORT` | Transport for the GitHub preset (`stdio` or `streamable_http`) | `streamable_http` |
 | `LANGSMITH_TRACING` | Enable optional LangSmith graph tracing | `false` |
 
-GitHub capability is now provided through curated MCP presets, but the model-facing inventory stays on stable Sage capabilities like `repo_search_code` and `repo_read_file`. On the official remote GitHub preset, Sage adds `X-MCP-Readonly` and `X-MCP-Toolsets` so the hosted GitHub MCP server is narrowed server-side before discovery.
+GitHub capability is now provided through curated MCP presets and consumed from bridge-native Code Mode instead of a separate public GitHub tool menu. On the official remote GitHub preset, Sage adds `X-MCP-Readonly` and `X-MCP-Toolsets` so the hosted GitHub MCP server is narrowed server-side before discovery.
 | `LANGSMITH_PROJECT` | LangSmith project name | `sage` |
 | `SAGE_TRACE_DB_ENABLED` | Persist compact `AgentTrace` ledger rows | `true` |
 

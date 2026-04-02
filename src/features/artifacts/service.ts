@@ -3,7 +3,7 @@ import { PermissionsBitField } from 'discord.js';
 import { filterChannelIdsByMemberAccess } from '../../platform/discord/channel-access';
 import { requestDiscordInteractionForTool } from '../admin/adminActionService';
 import { listIngestedAttachmentsByIds } from '../attachments/ingestedAttachmentRepo';
-import { sendCachedAttachment } from '../agent-runtime/toolIntegrations';
+import { sendCachedAttachment } from '../agent-runtime/bridgeBackends';
 import { getGuildArtifactVaultChannelId } from '../settings/guildSettingsRepo';
 import {
   countArtifactDiagnostics,

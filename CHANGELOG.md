@@ -78,6 +78,7 @@
 ### Removed
 
 - Removed the legacy model-facing Discord tool catalog and its routed wrapper surface from the baseline runtime, so the checked-in architecture, tests, and website metadata now describe the bridge-native Code Mode contract instead of the old public tool inventory.
+- Removed the last checked-in tool-era seams and GitHub-search retry special cases from the public repo surface, so smoke flows, tests, docs, and user-facing reply scrubbing no longer depend on legacy names like `discord_context`, `discord_messages`, `web_search`, `image_generate`, or `toolIntegrations`.
 - Removed the operator-facing `OPENAI_CODEX_AUTH_CLIENT_ID` requirement from Sage's host-auth contract; the Codex login flow now uses the embedded public client configuration directly.
 - Removed the deprecated voice and social-graph product families from the tracked runtime: Discord voice handlers, voice/session persistence, Memgraph/Kafka export, social-graph query paths, related service scaffolding, and their dedicated test suites/docs are gone instead of being left behind as dormant feature flags.
 - Removed legacy Discord voice/social-graph tools from Sage's default model-facing inventory, shrinking the built-in tool surface down to the lean-core chat, context, artifacts, governance, moderation, scheduling, search, and system capabilities that still exist in the runtime.

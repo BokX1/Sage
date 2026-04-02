@@ -10,9 +10,9 @@ vi.mock('@/platform/discord/channel-access', () => ({
 }));
 
 import * as embeddings from '@/features/embeddings';
-import { lookupChannelMessage, searchChannelMessages } from '@/features/agent-runtime/toolIntegrations';
+import { lookupChannelMessage, searchChannelMessages } from '@/features/agent-runtime/bridgeBackends';
 
-describe('toolIntegrations channel message access checks', () => {
+describe('bridgeBackends channel message access checks', () => {
   const originalMessageDbStorage = config.MESSAGE_DB_STORAGE_ENABLED;
 
   beforeEach(() => {

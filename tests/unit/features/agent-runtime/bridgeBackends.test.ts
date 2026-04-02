@@ -62,9 +62,9 @@ import {
   sanitizeUrl,
   scrapeWebPage,
   searchStackOverflow,
-} from '@/features/agent-runtime/toolIntegrations';
+} from '@/features/agent-runtime/bridgeBackends';
 
-describe('toolIntegrations', () => {
+describe('bridgeBackends', () => {
   const originalSearchOrder = config.TOOL_WEB_SEARCH_PROVIDER_ORDER;
   const originalSearxngBase = config.SEARXNG_BASE_URL;
   const originalScrapeOrder = config.TOOL_WEB_SCRAPE_PROVIDER_ORDER;
@@ -338,7 +338,7 @@ describe('toolIntegrations', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it('runs web_search through SearXNG when configured', async () => {
+  it('runs external_lookup through SearXNG when configured', async () => {
     config.TOOL_WEB_SEARCH_PROVIDER_ORDER = 'searxng';
     config.SEARXNG_BASE_URL = 'http://localhost:8080';
 

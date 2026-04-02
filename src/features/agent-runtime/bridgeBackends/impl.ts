@@ -2279,7 +2279,7 @@ export async function searchChannelMessages(params: {
     items,
     scope: 'raw_channel_messages',
     guidance:
-      'Use `discord_messages` action get_context with messageId to fetch surrounding messages before finalizing a precise answer.',
+      'Use `discord.messages.get(...)`, `discord.messages.list(...)`, or `history.recent(...)` to fetch surrounding messages before finalizing a precise answer.',
   };
 }
 
@@ -2663,7 +2663,7 @@ export async function searchGuildMessages(params: {
     items,
     scope: 'raw_guild_messages',
     guidance:
-      'Use `discord_messages` action get_context with channelId + messageId to fetch surrounding messages before quoting precisely.',
+      'Use `discord.messages.get(...)`, `discord.messages.list(...)`, or `history.recent(...)` to fetch surrounding messages before quoting precisely.',
   };
 }
 
@@ -2773,7 +2773,7 @@ export async function lookupUserMessageTimeline(params: {
     items,
     scope: 'raw_guild_messages',
     guidance:
-      'Use `discord_messages` action get_context with channelId + messageId for exact surrounding context when needed.',
+      'Use `discord.messages.get(...)`, `discord.messages.list(...)`, or `history.recent(...)` for exact surrounding context when needed.',
   };
 }
 
@@ -2801,7 +2801,7 @@ export async function lookupChannelMessage(params: {
       content: 'Channel message lookup is unavailable because MESSAGE_DB_STORAGE_ENABLED=false.',
       items: [],
       scope: 'raw_channel_messages',
-    guidance: 'Enable DB transcript storage to use `discord_messages` action get_context.',
+    guidance: 'Enable DB transcript storage to use `discord.messages.get(...)`, `discord.messages.list(...)`, or `history.recent(...)`.',
     };
   }
 
@@ -3063,7 +3063,7 @@ export async function searchChannelArchives(params: {
       items: [],
       scope: 'channel_archive_profiles',
       guidance:
-      'Use `discord_messages` action search_history for raw historical message retrieval when transcript-level evidence is needed.',
+      'Use `history.search(...)` or `discord.messages.search(...)` for raw historical message retrieval when transcript-level evidence is needed.',
     };
   }
 
@@ -3110,7 +3110,7 @@ export async function searchChannelArchives(params: {
     items,
     scope: 'channel_archive_profiles',
     guidance:
-      'Archive results are weekly channel summary snapshots, not raw message transcripts. Use `discord_messages` action search_history for exact historical messages.',
+      'Archive results are weekly channel summary snapshots, not raw message transcripts. Use `history.search(...)` or `discord.messages.search(...)` for exact historical messages.',
   };
 }
 
@@ -3205,7 +3205,7 @@ export async function lookupChannelMemory(params: {
       recentAttachmentCount: 0,
       scope: 'channel_summary',
       guidance:
-        'Use `discord_messages` action search_history for raw historical transcript retrieval when you need exact message-level evidence.',
+        'Use `history.search(...)` or `discord.messages.search(...)` when you need exact message-level evidence.',
     };
   }
 
@@ -3229,7 +3229,7 @@ export async function lookupChannelMemory(params: {
     })),
     scope: 'channel_summary',
     guidance:
-      'For exact historical messages, use `discord_messages` actions search_history and then get_context.',
+      'For exact historical messages, use `history.search(...)` or `discord.messages.search(...)` and then `discord.messages.get(...)` or `history.recent(...)`.',
   };
 }
 
@@ -3318,7 +3318,7 @@ export async function generateImage(params: {
   const logUrl = new URL(requestUrl.toString());
   if (logUrl.searchParams.has('key')) logUrl.searchParams.set('key', '[redacted]');
 
-  logger.info({ model, seed, imageBaseUrl, promptLength: prompt.length }, 'image_generate: requesting image from configured image provider');
+  logger.info({ model, seed, imageBaseUrl, promptLength: prompt.length }, 'Requesting image output from the configured image provider');
   const response = await fetchWithTimeout(
     requestUrl.toString(),
     { method: 'GET' },

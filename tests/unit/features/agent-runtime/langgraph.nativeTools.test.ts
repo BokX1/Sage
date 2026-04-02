@@ -96,7 +96,7 @@ describe('langgraph nativeTools', () => {
   it('serializes approved review execution results without compaction metadata', async () => {
     executeApprovedReviewRequestMock.mockResolvedValueOnce({
       status: 'executed',
-      kind: 'discord_admin',
+      kind: 'admin.instructions.update',
       resultJson: {
         roleId: 'role-1',
         audit: Array.from({ length: 10 }, (_, index) => ({
@@ -109,7 +109,7 @@ describe('langgraph nativeTools', () => {
 
     const output = await executeApprovedReviewTask({
       requestId: 'request-1',
-      toolName: 'discord_admin',
+      toolName: 'admin.instructions.update',
       callId: 'call-1',
       reviewerId: 'reviewer-1',
       decisionReasonText: 'approved in test',
@@ -120,7 +120,7 @@ describe('langgraph nativeTools', () => {
     expect(output.result.success).toBe(true);
     const parsed = JSON.parse(output.content) as Record<string, unknown>;
     expect(parsed.status).toBe('executed');
-    expect(parsed.kind).toBe('discord_admin');
+    expect(parsed.kind).toBe('admin.instructions.update');
     expect(parsed).not.toHaveProperty('truncated');
     expect(parsed).toHaveProperty('result');
   });

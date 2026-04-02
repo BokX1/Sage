@@ -8,11 +8,11 @@
 <h3 align="center">The open-source AI runtime for Discord communities</h3>
 
 <p align="center">
-  <strong>LangGraph-native Discord AI with layered memory, live research, interactive governance, optional voice tooling, and provider-flexible self-hosting.</strong>
+  <strong>LangGraph-native Discord AI with layered memory, bridge-native Code Mode, interactive governance, and provider-flexible self-hosting.</strong>
 </p>
 
 <p align="center">
-  <sub>Sage keeps one durable runtime story from onboarding to admin approvals: chat-first Discord UX, one LangGraph loop, one tool registry, and one operator-owned configuration surface.</sub>
+  <sub>Sage keeps one durable runtime story from onboarding to admin approvals: chat-first Discord UX, one LangGraph loop, one Code Mode execution surface, and one operator-owned configuration surface.</sub>
 </p>
 
 <p align="center">
@@ -33,7 +33,6 @@
 <p align="center">
   <img src="https://skillicons.dev/icons?i=ts,nodejs,discord,postgres,prisma,docker" alt="Tech Stack" />
   <br>
-  <img src="https://img.shields.io/badge/Optional%20Memgraph-FF3366?style=for-the-badge&logo=memgraph&logoColor=white" alt="Optional Memgraph" />
 </p>
 
 <p align="center">
@@ -64,11 +63,11 @@ Sage is a Discord-native AI runtime built around one durable LangGraph loop.
 
 It is designed for communities that want more than a one-shot chatbot:
 
-- 🧠 **Layered memory** across recent transcript context, user profiles, channel summaries, attachment recall text, and optional social-graph signals.
-- 🌐 **Live research** through web, GitHub, npm, Wikipedia, Stack Overflow, and workflow tools when freshness matters.
-- 🎨 **Creative output** through built-in image generation plus vision-aware chat flows.
+- 🧠 **Layered memory** across recent transcript context, user profiles, channel summaries, and attachment recall text.
+- 🌐 **Live research** through host-managed retrieval and exact-page reads when freshness matters.
+- ⚡ **Bridge-native execution** through one Code Mode path that writes short JS against direct namespaces instead of juggling a sprawling public tool menu.
 - 🛡️ **Governed actions** through approval-gated moderation and admin workflows inside Discord.
-- ⚙️ **Operator choice** through an OpenAI-compatible chat runtime, optional self-hosted search/scrape services, optional local voice STT, and optional Memgraph/Redpanda analytics.
+- ⚙️ **Operator choice** through an OpenAI-compatible chat runtime, host-managed retrieval providers, and a self-hosted deployment you can inspect end to end.
 
 The result is a chat-first assistant that can stay grounded, ask for approval when needed, and keep long-running work alive without turning every Discord workflow into slash-command ceremony.
 
@@ -85,7 +84,7 @@ flowchart LR
     subgraph Discord["Discord Surface"]
         U["Wake Word / Mention / Reply"]:::discord
         X["Attachments / Images / Message Links"]:::discord
-        V["Buttons / Modals / Voice Requests"]:::discord
+        V["Buttons / Modals / Approval Requests"]:::discord
         A["Admin / Moderation Requests"]:::discord
     end
 
@@ -99,9 +98,9 @@ flowchart LR
 
     subgraph Data["On-Demand Context + Services"]
         M["Profiles / Summaries / Transcript / Attachments"]:::memory
-        G["Voice Analytics / Relationship Signals"]:::memory
-        W["Web / GitHub / npm / Wikipedia / Stack Overflow"]:::tools
-        C["Image Generation + Editing"]:::tools
+        G["Stored Search / Retrieval Context"]:::memory
+        W["Bridge Domains: discord / history / context / http"]:::tools
+        C["Artifacts / Moderation / Schedule"]:::tools
         P["Approval Review + Trace Ledger"]:::ops
     end
 
@@ -157,7 +156,7 @@ flowchart TD
         MSG["Wake Word / Mention / Reply"]:::discord
         FILES["Images / Files / References"]:::discord
         INT["Components V2 / Modals"]:::discord
-        VOICE["Voice Join / Leave / Status"]:::discord
+        VOICE["Reply / Component Resume / Approval State"]:::discord
     end
 
     subgraph Engine["Single-Agent Runtime"]
@@ -172,15 +171,15 @@ flowchart TD
     subgraph Retrieval["Context Surfaces"]
         DB["Postgres<br/>profiles, messages, summaries, traces"]:::memory
         ATT["Attachment Cache + pgvector Recall"]:::memory
-        SG["Relationship Edges + optional Memgraph"]:::memory
-        VA["Voice Presence + Summary Memory"]:::memory
+        SG["Channel Messages / Summaries / Profiles"]:::memory
+        VA["Attachment Recall / Workspace State"]:::memory
     end
 
-    subgraph Tools["Registered Tool Families"]
-        DISC["Discord context / messages / files / server / admin / voice"]:::tools
-        WEB["web / github / workflow / npm / wikipedia / stack overflow"]:::tools
-        IMG["image_generate"]:::tools
-        SYS["system_time / system_tool_stats"]:::tools
+    subgraph Tools["Bridge-Native Execution"]
+        DISC["runtime_execute_code"]:::tools
+        WEB["discord / history / context / artifacts / approvals / admin"]:::tools
+        IMG["moderation / schedule / http / workspace"]:::tools
+        SYS["Response session + approval interrupts"]:::tools
     end
 
     subgraph Ops["Safety + Operations"]
@@ -217,12 +216,11 @@ flowchart TD
 
 ## ✨ Capabilities
 
-- **Deep memory:** Recent transcript context, user profiles, channel summaries, attachment recall, and optional graph analytics.
-- **Live research:** Current web results, page reads, GitHub searches, npm metadata, Wikipedia grounding, and Stack Overflow lookups.
+- **Deep memory:** Recent transcript context, user profiles, channel summaries, and attachment recall.
+- **Live research:** Current web results and exact page reads through the host-managed retrieval stack.
 - **Interactive governance:** Approval cards, reviewer routing, moderation batching, and restart-safe action state.
 - **Durable long-running work:** Background slices, resumable waits for user input or approval, and one evolving Discord response session.
-- **Voice features:** Live voice status/join/leave plus optional local STT and summary-only voice memory.
-- **Image workflows:** Prompt-to-image generation and reply-based image editing through the configured image provider.
+- **Bridge-native execution:** One public runtime surface, `runtime_execute_code`, with direct namespaces for Discord, memory, admin, moderation, scheduling, HTTP, and workspace access.
 - **Operational diagnostics:** `npm run doctor`, `npm run ai-provider:probe`, `npm run tools:audit`, `npm run langgraph:discord:smoke`, and `AgentTrace` / LangSmith visibility.
 
 ---
@@ -312,8 +310,7 @@ High-signal knobs:
 - `AUTOPILOT_MODE` controls how proactively Sage joins ambient conversation.
 - `MESSAGE_DB_STORAGE_ENABLED`, `PROFILE_UPDATE_INTERVAL`, and `SUMMARY_*` tune memory behavior.
 - `LANGSMITH_TRACING` and `SAGE_TRACE_DB_ENABLED` control observability.
-- `TOOL_WEB_*`, `SEARXNG_*`, `CRAWL4AI_*`, and provider keys shape the research stack.
-- `VOICE_*` toggles optional local STT and voice-memory behavior.
+- `TOOL_WEB_*`, `SEARXNG_*`, `CRAWL4AI_*`, and provider keys shape the retrieval stack.
 
 See **[⚙️ Configuration Reference](docs/reference/CONFIGURATION.md)** for the complete environment surface.
 
@@ -328,7 +325,7 @@ See **[⚙️ Configuration Reference](docs/reference/CONFIGURATION.md)** for th
 - **[📚 Documentation Hub](docs/INDEX.md)** — complete navigation
 - **[⚡ Quick Start](docs/guides/QUICKSTART.md)** — fastest path into Discord
 - **[📖 Getting Started](docs/guides/GETTING_STARTED.md)** — full source setup
-- **[💬 Conversation & Controls](docs/guides/COMMANDS.md)** — chat-first UX, voice, and admin patterns
+- **[💬 Conversation & Controls](docs/guides/COMMANDS.md)** — chat-first UX, approvals, and admin patterns
 
 **Reference**
 

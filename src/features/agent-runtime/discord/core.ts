@@ -22,7 +22,7 @@ import {
   searchAttachmentChunksInChannel,
   searchAttachmentChunksInGuild,
   lookupUserMessageTimeline,
-} from '../toolIntegrations';
+} from '../bridgeBackends';
 import {
   type DiscordModerationActionRequest,
   type SagePersonaUpdateRequest,
@@ -726,7 +726,7 @@ export async function prepareDiscordAdminActionApproval(
       assertAdmin(ctx.invokerIsAdmin);
       assertNotAutopilot(ctx.invokedBy, 'update_server_instructions');
       return {
-        approvalGroupKey: 'discord_admin:server_instructions',
+        approvalGroupKey: 'admin.instructions.update:server_instructions',
         payload: await prepareSagePersonaUpdateApprovalForTool({
           guildId: requireGuildContext(ctx.guildId),
           channelId: ctx.channelId,
@@ -741,7 +741,7 @@ export async function prepareDiscordAdminActionApproval(
       assertNotAutopilot(ctx.invokedBy, 'submit_moderation');
       await assertInvokerCanSubmitModeration({ ctx, request: data.request });
       return {
-        approvalGroupKey: 'discord_admin:moderation',
+        approvalGroupKey: 'admin.instructions.update:moderation',
         payload: await prepareDiscordModerationApprovalForTool({
           guildId: requireGuildContext(ctx.guildId),
           channelId: ctx.channelId,
@@ -761,7 +761,7 @@ export async function prepareDiscordAdminActionApproval(
         reason?: string;
       }>(args);
       return {
-        approvalGroupKey: 'discord_admin:rest_write',
+        approvalGroupKey: 'admin.instructions.update:rest_write',
         payload: await prepareQueuedDiscordRestWriteApproval({
           ctx,
           actionLabel: 'edit_message',
@@ -793,7 +793,7 @@ export async function prepareDiscordAdminActionApproval(
             ? { method: 'PUT' as const, path: `/channels/${channelId}/pins/${data.messageId}` }
             : { method: 'DELETE' as const, path: `/channels/${channelId}/pins/${data.messageId}` };
       return {
-        approvalGroupKey: 'discord_admin:rest_write',
+        approvalGroupKey: 'admin.instructions.update:rest_write',
         payload: await prepareQueuedDiscordRestWriteApproval({
           ctx,
           actionLabel: args.action,
@@ -827,7 +827,7 @@ export async function prepareDiscordAdminActionApproval(
         if (data.rateLimitPerUser !== undefined) body.rate_limit_per_user = data.rateLimitPerUser;
       }
       return {
-        approvalGroupKey: 'discord_admin:rest_write',
+        approvalGroupKey: 'admin.instructions.update:rest_write',
         payload: await prepareQueuedDiscordRestWriteApproval({
           ctx,
           actionLabel: 'create_channel',
@@ -857,7 +857,7 @@ export async function prepareDiscordAdminActionApproval(
       if (data.nsfw !== undefined) body.nsfw = data.nsfw;
       if (data.rateLimitPerUser !== undefined) body.rate_limit_per_user = data.rateLimitPerUser;
       return {
-        approvalGroupKey: 'discord_admin:rest_write',
+        approvalGroupKey: 'admin.instructions.update:rest_write',
         payload: await prepareQueuedDiscordRestWriteApproval({
           ctx,
           actionLabel: 'edit_channel',
@@ -885,7 +885,7 @@ export async function prepareDiscordAdminActionApproval(
       if (data.mentionable !== undefined) body.mentionable = data.mentionable;
       if (data.permissions !== undefined) body.permissions = data.permissions;
       return {
-        approvalGroupKey: 'discord_admin:rest_write',
+        approvalGroupKey: 'admin.instructions.update:rest_write',
         payload: await prepareQueuedDiscordRestWriteApproval({
           ctx,
           actionLabel: 'create_role',
@@ -915,7 +915,7 @@ export async function prepareDiscordAdminActionApproval(
       if (data.mentionable !== undefined) body.mentionable = data.mentionable;
       if (data.permissions !== undefined) body.permissions = data.permissions;
       return {
-        approvalGroupKey: 'discord_admin:rest_write',
+        approvalGroupKey: 'admin.instructions.update:rest_write',
         payload: await prepareQueuedDiscordRestWriteApproval({
           ctx,
           actionLabel: 'edit_role',
@@ -931,7 +931,7 @@ export async function prepareDiscordAdminActionApproval(
     case 'delete_role': {
       const data = asAction<{ roleId: string; reason?: string }>(args);
       return {
-        approvalGroupKey: 'discord_admin:rest_write',
+        approvalGroupKey: 'admin.instructions.update:rest_write',
         payload: await prepareQueuedDiscordRestWriteApproval({
           ctx,
           actionLabel: 'delete_role',
@@ -947,7 +947,7 @@ export async function prepareDiscordAdminActionApproval(
     case 'remove_member_role': {
       const data = asAction<{ userId: string; roleId: string; reason?: string }>(args);
       return {
-        approvalGroupKey: 'discord_admin:rest_write',
+        approvalGroupKey: 'admin.instructions.update:rest_write',
         payload: await prepareQueuedDiscordRestWriteApproval({
           ctx,
           actionLabel: args.action,
@@ -974,7 +974,7 @@ export async function prepareDiscordAdminActionApproval(
         return null;
       }
       return {
-        approvalGroupKey: 'discord_admin:rest_write',
+        approvalGroupKey: 'admin.instructions.update:rest_write',
         payload: await prepareQueuedDiscordRestWriteApproval({
           ctx,
           actionLabel: 'api',
@@ -1038,7 +1038,7 @@ export async function executeDiscordContextAction(
       });
     }
     default:
-      throw new Error(`Unsupported discord_context action: ${args.action}`);
+      throw new Error(`Unsupported context bridge action: ${args.action}`);
   }
 }
 
@@ -1231,7 +1231,7 @@ export async function executeDiscordFilesAction(
       });
     }
     default:
-      throw new Error(`Unsupported discord_files action: ${args.action}`);
+      throw new Error(`Unsupported artifacts bridge action: ${args.action}`);
   }
 }
 
@@ -1661,7 +1661,7 @@ export async function executeDiscordServerAction(
       });
     }
     default:
-      throw new Error(`Unsupported discord_server action: ${args.action}`);
+      throw new Error(`Unsupported discord bridge action: ${args.action}`);
   }
 }
 
@@ -1918,7 +1918,7 @@ export async function executeDiscordMessagesAction(
       });
     }
     default:
-      throw new Error(`Unsupported discord_messages action: ${args.action}`);
+      throw new Error(`Unsupported message bridge action: ${args.action}`);
   }
 }
 
@@ -2931,6 +2931,6 @@ export async function executeDiscordAdminAction(
       });
     }
     default:
-      throw new Error(`Unsupported discord_admin action: ${args.action}`);
+      throw new Error(`Unsupported admin bridge action: ${args.action}`);
   }
 }

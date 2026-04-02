@@ -640,7 +640,7 @@ export class McpManager {
           details: [
             ...(hasResolveTool && hasDocsTool
               ? []
-              : ['Expected both resolve-library-id and get-library-docs/query-docs to be exposed for docs_lookup.']),
+              : ['Expected both resolve-library-id and get-library-docs/query-docs to be exposed for bridge-backed Context7 docs access.']),
           ],
         });
         continue;

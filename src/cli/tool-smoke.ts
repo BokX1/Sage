@@ -39,45 +39,8 @@ function summarizeSmokeResult(toolName: string, result: unknown): string {
     return `resultType=${typeof result}`;
   }
 
-  switch (toolName) {
-    case 'system_time':
-      return `isoUtc=${String(record.isoUtc ?? 'n/a')}`;
-    case 'system_tool_stats': {
-      const tools = Array.isArray(record.tools) ? record.tools.length : 0;
-      return `scope=${String(record.scope ?? 'unknown')} tools=${tools}`;
-    }
-    case 'web_search':
-    case 'web_read':
-    case 'web_read_page': {
-      const provider = String(record.provider ?? 'unknown');
-      const sourcesRead = typeof record.sourcesRead === 'number' ? record.sourcesRead : 0;
-      const results = Array.isArray(record.results) ? record.results.length : 0;
-      return `provider=${provider} results=${results} sourcesRead=${sourcesRead}`;
-    }
-    case 'npm_info':
-      return `package=${String(record.packageName ?? 'unknown')} latest=${String(record.latestVersion ?? record.version ?? 'n/a')}`;
-    case 'docs_lookup':
-      return `libraryId=${String(record.libraryId ?? 'unknown')}`;
-    case 'repo_search_code':
-    case 'repo_read_file':
-    case 'repo_get_repository':
-    case 'repo_search_issues':
-    case 'repo_search_pull_requests':
-      return `provider=repo keys=${Object.keys(record).slice(0, 5).join(',') || 'none'}`;
-    case 'browser_open_page':
-    case 'browser_read_page':
-    case 'browser_click':
-    case 'browser_type':
-    case 'browser_capture':
-    case 'browser_extract':
-      return `provider=browser keys=${Object.keys(record).slice(0, 5).join(',') || 'none'}`;
-    case 'image_generate': {
-      const artifacts = Array.isArray(envelope?.artifacts) ? envelope.artifacts.length : 0;
-      return `provider=${String(record.provider ?? 'unknown')} artifacts=${artifacts}`;
-    }
-    default:
-      return `keys=${Object.keys(record).slice(0, 5).join(',') || 'none'}`;
-  }
+  void toolName;
+  return `keys=${Object.keys(record).slice(0, 5).join(',') || 'none'}`;
 }
 
 function buildSmokeChecks(registry: ToolRegistry, ctx: ToolExecutionContext): SmokeCheck[] {
@@ -125,7 +88,7 @@ async function main(): Promise<void> {
   const checks = buildSmokeChecks(registry, ctx);
   const skipped = registry.listSpecs().filter((spec) => spec.smoke?.mode === 'skip');
 
-  console.log('Sage tool smoke checks starting...');
+  console.log('Sage runtime surface smoke starting...');
   for (const spec of skipped) {
     console.log(`[SKIP] ${spec.name} ${spec.smoke?.reason ?? 'No smoke runner configured.'}`);
   }
@@ -140,6 +103,9 @@ async function main(): Promise<void> {
   console.log(
     `Completed ${checks.length} checks. requiredFailures=${requiredFailures} optionalFailures=${optionalFailures} skipped=${skipped.length}`,
   );
+  if (checks.length === 0) {
+    console.log('No direct smoke probes are configured because Sage now ships a single bridge-native runtime surface.');
+  }
   if (requiredFailures > 0) {
     process.exitCode = 1;
   }

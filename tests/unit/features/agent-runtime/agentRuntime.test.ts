@@ -368,7 +368,7 @@ describe('agentRuntime', () => {
   it('scrubs tool narration and raw approval payloads from final reply text', () => {
     const scrubbed = scrubFinalReplyText({
       replyText: [
-        'I will call `discord_admin` now.',
+        'I will call `admin.instructions.update` now.',
         '```json',
         '{"action":"update_server_instructions","reason":"sync"}',
         '```',
@@ -380,7 +380,7 @@ describe('agentRuntime', () => {
   });
 
   it('suppresses the normal chat reply when approval is queued', async () => {
-    globalToolRegistryMock.listNames.mockReturnValue(['discord_admin'] as never);
+    globalToolRegistryMock.listNames.mockReturnValue(['admin.instructions.update'] as never);
     globalToolRegistryMock.get.mockReturnValue({ metadata: { access: 'admin' } } as never);
     runAgentGraphTurnMock.mockResolvedValue(
       makeGraphResult({
@@ -540,7 +540,7 @@ describe('agentRuntime', () => {
   });
 
   it('retries a failed turn on the same LangGraph thread', async () => {
-    globalToolRegistryMock.listNames.mockReturnValue(['web', 'repo_search_code', 'discord_history_search_history'] as never);
+    globalToolRegistryMock.listNames.mockReturnValue(['web', 'repo_lookup', 'history.search'] as never);
     globalToolRegistryMock.get.mockImplementation((name: string) => ({
       metadata: { access: 'public' as const },
       runtime: { access: 'public' as const, capabilityTags: name === 'web' ? ['web'] : ['developer'] },
@@ -571,7 +571,7 @@ describe('agentRuntime', () => {
         context: expect.objectContaining({
           traceId: 'trace-retry-1',
           routeKind: 'turn_retry',
-          activeToolNames: ['web', 'repo_search_code', 'discord_history_search_history'],
+          activeToolNames: ['web', 'repo_lookup', 'history.search'],
         }),
       }),
     );
@@ -579,7 +579,7 @@ describe('agentRuntime', () => {
 
   it('persists the task run after a retry re-enters background execution', async () => {
     const now = Date.now();
-    globalToolRegistryMock.listNames.mockReturnValue(['web_search'] as never);
+    globalToolRegistryMock.listNames.mockReturnValue(['external_lookup'] as never);
     globalToolRegistryMock.get.mockImplementation(() => ({
       metadata: { access: 'public' as const },
       runtime: { access: 'public' as const, capabilityTags: [] },
@@ -662,9 +662,9 @@ describe('agentRuntime', () => {
   it('keeps all eligible tools available for generic follow-up resumes', async () => {
     const now = Date.now();
     globalToolRegistryMock.listNames.mockReturnValue([
-      'web_search',
-      'repo_search_code',
-      'discord_history_search_history',
+      'external_lookup',
+      'repo_lookup',
+      'history.search',
     ] as never);
     globalToolRegistryMock.get.mockImplementation(() => ({
       metadata: { access: 'public' as const },
@@ -733,7 +733,7 @@ describe('agentRuntime', () => {
     expect(continueAgentGraphTurnMock).toHaveBeenCalledWith(
       expect.objectContaining({
         context: expect.objectContaining({
-          activeToolNames: ['web_search', 'repo_search_code', 'discord_history_search_history'],
+          activeToolNames: ['external_lookup', 'repo_lookup', 'history.search'],
           promptMode: 'waiting_follow_up',
           waitingFollowUp: {
             matched: true,
@@ -747,9 +747,9 @@ describe('agentRuntime', () => {
   });
 
   it('does not expose admin-only tools to non-admin turns', async () => {
-    globalToolRegistryMock.listNames.mockReturnValue(['web', 'discord_admin'] as never);
+    globalToolRegistryMock.listNames.mockReturnValue(['web', 'admin.instructions.update'] as never);
     globalToolRegistryMock.get.mockImplementation((name: string) => {
-      const access: 'public' | 'moderator' | 'admin' = name === 'discord_admin' ? 'admin' : 'public';
+      const access: 'public' | 'moderator' | 'admin' = name === 'admin.instructions.update' ? 'admin' : 'public';
       return { metadata: { access } };
     });
     runAgentGraphTurnMock.mockResolvedValue(makeGraphResult({ replyText: 'ok' }));
@@ -778,29 +778,29 @@ describe('agentRuntime', () => {
 
   it('exposes the full eligible tool surface on fresh turns without heuristic narrowing', async () => {
     globalToolRegistryMock.listNames.mockReturnValue([
-      'web_search',
+      'external_lookup',
       'web_read',
       'web_read_page',
-      'repo_search_code',
-      'discord_history_search_history',
-      'discord_spaces_list_channels',
-      'repo_read_file',
-      'image_generate',
-      'system_time',
-      'system_tool_stats',
+      'repo_lookup',
+      'history.search',
+      'discord.channels.list',
+      'repo_file_read',
+      'image_render',
+      'clock_lookup',
+      'runtime_stats',
     ] as never);
     globalToolRegistryMock.get.mockImplementation((name: string) => {
       const toolMap: Record<string, { metadata: { access: 'public' | 'moderator' | 'admin' | 'owner' }; runtime: { access: 'public' | 'moderator' | 'admin' | 'owner'; capabilityTags: string[]; class: string } }> = {
-        web_search: { metadata: { access: 'public' }, runtime: { access: 'public', capabilityTags: ['web', 'search'], class: 'query' } },
+        external_lookup: { metadata: { access: 'public' }, runtime: { access: 'public', capabilityTags: ['web', 'search'], class: 'query' } },
         web_read: { metadata: { access: 'public' }, runtime: { access: 'public', capabilityTags: ['web', 'read'], class: 'query' } },
         web_read_page: { metadata: { access: 'public' }, runtime: { access: 'public', capabilityTags: ['web', 'read', 'paging'], class: 'query' } },
-        repo_search_code: { metadata: { access: 'public' }, runtime: { access: 'public', capabilityTags: ['repo', 'developer'], class: 'query' } },
-        discord_history_search_history: { metadata: { access: 'public' }, runtime: { access: 'public', capabilityTags: ['discord', 'messages'], class: 'query' } },
-        discord_spaces_list_channels: { metadata: { access: 'public' }, runtime: { access: 'public', capabilityTags: ['discord', 'server'], class: 'query' } },
-        repo_read_file: { metadata: { access: 'public' }, runtime: { access: 'public', capabilityTags: ['repo', 'developer', 'code'], class: 'query' } },
-        image_generate: { metadata: { access: 'public' }, runtime: { access: 'public', capabilityTags: ['generation', 'image'], class: 'artifact' } },
-        system_time: { metadata: { access: 'public' }, runtime: { access: 'public', capabilityTags: ['system', 'time'], class: 'query' } },
-        system_tool_stats: { metadata: { access: 'public' }, runtime: { access: 'public', capabilityTags: ['system', 'tooling'], class: 'query' } },
+        repo_lookup: { metadata: { access: 'public' }, runtime: { access: 'public', capabilityTags: ['repo', 'developer'], class: 'query' } },
+        'history.search': { metadata: { access: 'public' }, runtime: { access: 'public', capabilityTags: ['discord', 'messages'], class: 'query' } },
+        'discord.channels.list': { metadata: { access: 'public' }, runtime: { access: 'public', capabilityTags: ['discord', 'server'], class: 'query' } },
+        repo_file_read: { metadata: { access: 'public' }, runtime: { access: 'public', capabilityTags: ['repo', 'developer', 'code'], class: 'query' } },
+        image_render: { metadata: { access: 'public' }, runtime: { access: 'public', capabilityTags: ['generation', 'image'], class: 'artifact' } },
+        clock_lookup: { metadata: { access: 'public' }, runtime: { access: 'public', capabilityTags: ['system', 'time'], class: 'query' } },
+        runtime_stats: { metadata: { access: 'public' }, runtime: { access: 'public', capabilityTags: ['system', 'tooling'], class: 'query' } },
       };
       return toolMap[name] as never;
     });
@@ -823,29 +823,29 @@ describe('agentRuntime', () => {
 
     const activeToolNames = runAgentGraphTurnMock.mock.calls.at(-1)?.[0]?.activeToolNames as string[];
     expect(activeToolNames).toEqual([
-      'web_search',
+      'external_lookup',
       'web_read',
       'web_read_page',
-      'repo_search_code',
-      'discord_history_search_history',
-      'discord_spaces_list_channels',
-      'repo_read_file',
-      'image_generate',
-      'system_time',
-      'system_tool_stats',
+      'repo_lookup',
+      'history.search',
+      'discord.channels.list',
+      'repo_file_read',
+      'image_render',
+      'clock_lookup',
+      'runtime_stats',
     ]);
   });
 
-  it('exposes discord_admin to moderator-only turns for moderation workflows', async () => {
-    globalToolRegistryMock.listNames.mockReturnValue(['web', 'discord_moderation_submit_action'] as never);
+  it('exposes admin.instructions.update to moderator-only turns for moderation workflows', async () => {
+    globalToolRegistryMock.listNames.mockReturnValue(['web', 'moderation.actions.create'] as never);
     globalToolRegistryMock.get.mockImplementation((name: string) => {
       const access: 'public' | 'moderator' | 'admin' =
-        name === 'discord_moderation_submit_action' ? 'moderator' : 'public';
+        name === 'moderation.actions.create' ? 'moderator' : 'public';
       return {
         metadata: { access },
         runtime: {
           access,
-          capabilityTags: name === 'discord_moderation_submit_action' ? ['moderation'] : [],
+          capabilityTags: name === 'moderation.actions.create' ? ['moderation'] : [],
         },
       };
     });
@@ -869,16 +869,16 @@ describe('agentRuntime', () => {
 
     expect(runAgentGraphTurnMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        activeToolNames: ['web', 'discord_moderation_submit_action'],
+        activeToolNames: ['web', 'moderation.actions.create'],
         invokerCanModerate: true,
       }),
     );
   });
 
   it('does not expose admin-only tools during autopilot turns even for admins', async () => {
-    globalToolRegistryMock.listNames.mockReturnValue(['web', 'discord_admin'] as never);
+    globalToolRegistryMock.listNames.mockReturnValue(['web', 'admin.instructions.update'] as never);
     globalToolRegistryMock.get.mockImplementation((name: string) => {
-      const access: 'public' | 'moderator' | 'admin' = name === 'discord_admin' ? 'admin' : 'public';
+      const access: 'public' | 'moderator' | 'admin' = name === 'admin.instructions.update' ? 'admin' : 'public';
       return { metadata: { access } };
     });
     runAgentGraphTurnMock.mockResolvedValue(makeGraphResult({ replyText: 'ok' }));
@@ -908,21 +908,21 @@ describe('agentRuntime', () => {
 
   it('keeps artifact writes and structural thread writes out of member turns', async () => {
     globalToolRegistryMock.listNames.mockReturnValue([
-      'discord_artifact_list',
-      'discord_artifact_replace',
-      'discord_artifact_publish',
-      'discord_spaces_list_channels',
-      'discord_spaces_create_thread',
-      'discord_spaces_add_thread_member',
+      'artifacts.list',
+      'artifacts.update',
+      'artifacts.publish',
+      'discord.channels.list',
+      'discord.threads.create',
+      'discord.threads.members.add',
     ] as never);
     globalToolRegistryMock.get.mockImplementation((name: string) => {
       const accessByName: Record<string, 'public' | 'moderator' | 'admin' | 'owner'> = {
-        discord_artifact_list: 'public',
-        discord_artifact_replace: 'admin',
-        discord_artifact_publish: 'admin',
-        discord_spaces_list_channels: 'public',
-        discord_spaces_create_thread: 'admin',
-        discord_spaces_add_thread_member: 'admin',
+        'artifacts.list': 'public',
+        'artifacts.update': 'admin',
+        'artifacts.publish': 'admin',
+        'discord.channels.list': 'public',
+        'discord.threads.create': 'admin',
+        'discord.threads.members.add': 'admin',
       };
       const access = accessByName[name] ?? 'public';
       return {
@@ -955,7 +955,7 @@ describe('agentRuntime', () => {
 
     expect(runAgentGraphTurnMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        activeToolNames: ['discord_artifact_list', 'discord_spaces_list_channels'],
+        activeToolNames: ['artifacts.list', 'discord.channels.list'],
       }),
     );
   });
@@ -1289,11 +1289,11 @@ describe('agentRuntime', () => {
   it('rehydrates current runtime policy and credentials when resuming background work', async () => {
     const now = Date.now();
     globalToolRegistryMock.listNames.mockReturnValue([
-      'discord_history_search_history',
-      'discord_governance_get_review_status',
+      'history.search',
+      'approvals.list',
     ] as never);
     globalToolRegistryMock.get.mockImplementation((name: string) =>
-      name === 'discord_governance_get_review_status'
+      name === 'approvals.list'
         ? ({ metadata: { access: 'admin' } } as never)
         : ({ metadata: { access: 'public' } } as never),
     );
@@ -1372,7 +1372,7 @@ describe('agentRuntime', () => {
           invokedBy: 'component',
           invokerIsAdmin: true,
           routeKind: 'background_resume',
-          activeToolNames: ['discord_history_search_history', 'discord_governance_get_review_status'],
+          activeToolNames: ['history.search', 'approvals.list'],
         }),
       }),
     );

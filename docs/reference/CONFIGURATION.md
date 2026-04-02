@@ -329,7 +329,7 @@ Sage now discovers curated MCP presets and optional extra MCP servers at startup
 | `MCP_PRESET_MARKITDOWN_TOKEN` | Token passed to the MarkItDown preset when required | *(empty)* |
 
 > [!IMPORTANT]
-> The built-in runtime no longer ships native `github_*` or `workflow_npm_github_code_search` tools. GitHub capability now comes from curated MCP presets and is exposed to the model as stable Sage capabilities like `repo_search_code`, `repo_read_file`, and `repo_get_repository`.
+> The built-in runtime no longer ships native `github_*` or `workflow_npm_github_code_search` tools. GitHub capability now comes from curated MCP presets and is consumed through bridge-native Code Mode instead of a separate public GitHub tool menu.
 > [!TIP]
 > `npm run tools:audit` and `npm run doctor -- --only tools.audit` now probe the GitHub MCP preset more precisely when it is enabled and a token is configured. Sage distinguishes discovery success from live capability by checking baseline auth (`get_me`) separately from baseline public code search, so a repo-specific `search_code` denial no longer looks like a blanket GitHub MCP outage.
 
