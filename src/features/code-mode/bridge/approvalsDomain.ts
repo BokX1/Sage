@@ -34,6 +34,7 @@ export const approvalsDomainMethods = [
   defineBridgeMethod({
     namespace: 'approvals',
     method: 'get',
+    summary: 'Read one approval request by id.',
     input: z.object({
       requestId: z.string().trim().min(1),
     }),
@@ -47,6 +48,7 @@ export const approvalsDomainMethods = [
   defineBridgeMethod({
     namespace: 'approvals',
     method: 'list',
+    summary: 'List approval requests for one task thread.',
     input: z.object({
       threadId: z.string().trim().min(1),
     }),

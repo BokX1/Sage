@@ -64,6 +64,7 @@ type CodeModeParentStartMessage = {
   type: 'start';
   code: string;
   timeoutMs: number;
+  methods: Awaited<ReturnType<Awaited<ReturnType<typeof createHostBridgeSession>>['listMethods']>>;
 };
 
 function normalizeTaskId(ctx: ToolExecutionContext): string {
@@ -229,6 +230,7 @@ async function executeJavascript(params: {
       type: 'start',
       code: params.request.code,
       timeoutMs: params.request.timeoutMs,
+      methods: params.session.listMethods(),
     } satisfies CodeModeParentStartMessage);
   });
 }

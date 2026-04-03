@@ -64,6 +64,7 @@ describe('Code Mode executor', () => {
         recent: defineBridgeMethod({
           namespace: 'history',
           method: 'recent',
+          summary: 'Read recent history.',
           input: z.object({
             channelId: z.string(),
             limit: z.number().int().optional(),
@@ -118,6 +119,7 @@ describe('Code Mode executor', () => {
         recent: defineBridgeMethod({
           namespace: 'history',
           method: 'recent',
+          summary: 'Read recent history.',
           input: z.object({
             channelId: z.string(),
           }),
@@ -132,6 +134,7 @@ describe('Code Mode executor', () => {
         'messages.send': defineBridgeMethod({
           namespace: 'discord',
           method: 'messages.send',
+          summary: 'Send a message.',
           input: z.object({
             channelId: z.string(),
             content: z.string(),
@@ -223,6 +226,7 @@ describe('Code Mode executor', () => {
         recent: defineBridgeMethod({
           namespace: 'history',
           method: 'recent',
+          summary: 'Read recent history.',
           input: z.object({
             channelId: z.string(),
           }),
@@ -261,6 +265,7 @@ describe('Code Mode executor', () => {
         'messages.send': defineBridgeMethod({
           namespace: 'discord',
           method: 'messages.send',
+          summary: 'Send a message.',
           input: z.object({
             channelId: z.string(),
             content: z.string(),

@@ -18,9 +18,9 @@ import {
   type CodeModeTaskWorkspace,
 } from './workspace';
 import type { BridgeMethodSummary, BridgeNamespace } from './bridge/types';
+import { assertBridgeAccess } from './bridge/common';
 import {
   FIXED_BRIDGE_CONTRACT,
-  listBridgeMethodSummaries,
   listBridgeMethodSummariesForAuthority,
   type FixedBridgeContract,
 } from './bridge/contract';
@@ -162,13 +162,18 @@ async function performHttpFetch(
   }
 
   const method = (request.method ?? 'GET').trim().toUpperCase();
-  const response = await fetch(url, {
-    method,
-    headers: request.headers,
-    body: request.bodyText,
-    signal: params.toolContext.signal,
-    redirect: 'manual',
-  });
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      method,
+      headers: request.headers,
+      body: request.bodyText,
+      signal: params.toolContext.signal,
+      redirect: 'manual',
+    });
+  } catch (error) {
+    throw new Error(describeFetchFailure(error, url), { cause: error });
+  }
   const bodyText = await response.text();
   return {
     mutability: isWriteHttpMethod(method) ? 'write' : 'read',
@@ -182,6 +187,21 @@ async function performHttpFetch(
       bodyText,
     },
   };
+}
+
+function describeFetchFailure(error: unknown, url: URL): string {
+  const parts: string[] = [];
+  let current: unknown = error;
+  while (current instanceof Error) {
+    const code =
+      typeof (current as Error & { code?: unknown }).code === 'string'
+        ? (current as Error & { code: string }).code
+        : null;
+    parts.push(code ? `${current.message} (${code})` : current.message);
+    current = (current as Error & { cause?: unknown }).cause;
+  }
+  const detail = parts.filter(Boolean).join(' -> ') || String(error);
+  return `Code Mode http.fetch failed for ${url.toString()}: ${detail}`;
 }
 
 function parseWorkspaceArgs(args: Record<string, unknown>) {
@@ -281,6 +301,7 @@ export async function createHostBridgeSession(
         if (!method) {
           throw new Error(`Bridge method "${operation.namespace}.${operation.method}" is not available.`);
         }
+        assertBridgeAccess(params.toolContext, method.access);
         const parsedArgs = method.input.parse(operation.args);
         operationKind = method.namespace;
         label = `${method.namespace}.${method.method}`;
@@ -418,7 +439,7 @@ export async function createHostBridgeSession(
   return {
     bridgeCalls,
     artifacts: Array.from(restoredArtifacts.values()).flat(),
-    listMethods: () => listBridgeMethodSummaries(),
+    listMethods: () => listBridgeMethodSummariesForAuthority(params.toolContext.invokerAuthority),
     call: async (namespace, method, args) =>
       executeOperation({
         kind: 'bridge',

@@ -159,7 +159,8 @@ The public contract is intentionally boring:
 
 - `discord.*` handles live Discord actions.
 - `history.*` handles stored message retrieval and search.
-- `context.*` handles summaries, profile memory, and runtime capability introspection.
+- `context.*` handles summaries and profile memory.
+- `admin.runtime.getCapabilities()` handles bridge capability introspection.
 - `http.fetch(...)` is the only public network path.
 - `workspace.*` is the only public file surface, scoped to the task workspace.
 

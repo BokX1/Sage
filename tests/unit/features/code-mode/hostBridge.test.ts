@@ -138,11 +138,37 @@ describe('Code Mode host bridge admin.runtime.getCapabilities', () => {
     expect(result).toEqual(
       expect.objectContaining({
         kind: 'capabilities',
-        namespaces: expect.not.arrayContaining(['approvals']),
+        namespaces: expect.arrayContaining(['discord', 'history', 'http', 'workspace']),
         methods: expect.arrayContaining([
-          expect.objectContaining({ key: 'discord.channels.get', access: 'public' }),
-          expect.objectContaining({ key: 'history.search', access: 'public' }),
+          expect.objectContaining({
+            key: 'discord.channels.get',
+            access: 'public',
+            summary: expect.any(String),
+            requiredArgs: ['channelId'],
+            optionalArgs: [],
+          }),
+          expect.objectContaining({
+            key: 'history.search',
+            access: 'public',
+            requiredArgs: ['query'],
+            optionalArgs: expect.arrayContaining(['channelId', 'limit']),
+          }),
+          expect.objectContaining({
+            key: 'http.fetch',
+            access: 'public',
+            requiredArgs: ['url'],
+          }),
+          expect.objectContaining({
+            key: 'workspace.write',
+            approvalMode: 'required',
+            requiredArgs: ['path', 'content'],
+          }),
         ]),
+      }),
+    );
+    expect(result).toEqual(
+      expect.objectContaining({
+        namespaces: expect.not.arrayContaining(['approvals']),
       }),
     );
     expect(result).toEqual(
@@ -166,10 +192,26 @@ describe('Code Mode host bridge admin.runtime.getCapabilities', () => {
         namespaces: expect.arrayContaining(['admin', 'approvals', 'moderation']),
         methods: expect.arrayContaining([
           expect.objectContaining({ key: 'discord.members.get', access: 'admin' }),
+          expect.objectContaining({ key: 'discord.threads.create', access: 'admin' }),
           expect.objectContaining({ key: 'discord.roles.add', access: 'admin' }),
           expect.objectContaining({ key: 'moderation.cases.resolve', access: 'moderator' }),
+          expect.objectContaining({ key: 'schedule.jobs.pause', access: 'admin' }),
         ]),
       }),
+    );
+  });
+
+  it('surfaces underlying network error details for http.fetch failures', async () => {
+    const session = await createSession();
+    vi.mocked(dns.lookup).mockImplementation(async () => [{ address: '93.184.216.34', family: 4 }] as never);
+    const rootCause = Object.assign(new Error('unable to get local issuer certificate'), {
+      code: 'UNABLE_TO_GET_ISSUER_CERT_LOCALLY',
+    });
+    const fetchError = new Error('fetch failed', { cause: rootCause });
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(fetchError));
+
+    await expect(session.httpFetch({ url: 'https://example.com/' })).rejects.toThrow(
+      'UNABLE_TO_GET_ISSUER_CERT_LOCALLY',
     );
   });
 });

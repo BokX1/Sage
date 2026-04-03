@@ -110,6 +110,7 @@ Key notes:
 - Preferred host auth path: run `npm run auth:codex:login` on the VM/host to configure one shared Codex OAuth login for the deployment.
 - The login flow now follows the real host-side Codex pattern: Sage embeds the public client id, waits on `http://localhost:1455/auth/callback` first, and then falls back to a pasted redirect URL/code if the VM is remote or headless.
 - When host Codex auth is healthy, Sage routes the main, profile, and summary text lanes to OpenAI/Codex automatically using the built-in `gpt-5.4` route.
+- On Linux hosts that rely on the system CA bundle, set `NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt` in the Sage service environment so Node HTTPS works reliably for Codex auth and `http.fetch(...)`.
 - If you also set `AI_PROVIDER_API_KEY`, Sage uses it as the automatic host fallback when Codex auth is absent or unhealthy.
 - If you do **not** configure either host Codex auth or `AI_PROVIDER_API_KEY`, Sage can still run in servers that complete the current hosted/server-key path. Direct-message chat still needs a host-level credential because there is no guild-scoped key to fall back to.
 - Admin actions and approval-gated flows use Discord-native permissions. Grant `Manage Server` or `Administrator` only to approved operators.
@@ -157,6 +158,7 @@ npm start
 - [ ] `npm run check:trust` passes on the release candidate
 - [ ] Tika is reachable when file ingestion is enabled
 - [ ] If you want shared host Codex auth, `npm run auth:codex:status` reports an active login
+- [ ] If the host depends on the system CA store, the service exports `NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt`
 - [ ] `AI_PROVIDER_BASE_URL`, `AI_PROVIDER_MAIN_AGENT_MODEL`, `AI_PROVIDER_PROFILE_AGENT_MODEL`, and `AI_PROVIDER_SUMMARY_AGENT_MODEL` are set explicitly for the fallback/default text provider route; if you use `AI_PROVIDER_MODEL_PROFILES_JSON`, treat it as optional operator metadata and verify Chat Completions tool-calling support with `npm run doctor -- --llm-ping` or `npm run ai-provider:probe`
 - [ ] If you rely on the current hosted/server-key path, a no-key test guild still shows the setup card correctly
 - [ ] If you want hosted execution tracing, set `LANGSMITH_TRACING=true` and provide `LANGSMITH_API_KEY`

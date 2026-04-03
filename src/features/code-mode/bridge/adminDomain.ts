@@ -10,6 +10,7 @@ export const adminDomainMethods = [
   defineBridgeMethod({
     namespace: 'admin',
     method: 'instructions.get',
+    summary: 'Read the current server instructions for the active guild.',
     input: z.object({
       guildId: z.string().trim().min(1).optional(),
     }),
@@ -36,6 +37,7 @@ export const adminDomainMethods = [
   defineBridgeMethod({
     namespace: 'admin',
     method: 'instructions.update',
+    summary: 'Replace the current server instructions for the active guild.',
     input: z.object({
       guildId: z.string().trim().min(1).optional(),
       instructionsText: z.string().trim().min(1).max(20_000),

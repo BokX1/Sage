@@ -30,6 +30,7 @@ export const artifactsDomainMethods = [
   defineBridgeMethod({
     namespace: 'artifacts',
     method: 'list',
+    summary: 'List text artifacts in the active guild.',
     input: z.object({
       guildId: z.string().trim().min(1).optional(),
       channelId: z.string().trim().min(1).optional(),
@@ -51,6 +52,7 @@ export const artifactsDomainMethods = [
   defineBridgeMethod({
     namespace: 'artifacts',
     method: 'get',
+    summary: 'Read one artifact with its latest revision and recent revision history.',
     input: z.object({
       artifactId: z.string().trim().min(1),
     }),
@@ -75,6 +77,7 @@ export const artifactsDomainMethods = [
   defineBridgeMethod({
     namespace: 'artifacts',
     method: 'create',
+    summary: 'Create a new text artifact with an initial revision.',
     input: z.object({
       guildId: z.string().trim().min(1).optional(),
       name: z.string().trim().min(1).max(200),
@@ -120,6 +123,7 @@ export const artifactsDomainMethods = [
   defineBridgeMethod({
     namespace: 'artifacts',
     method: 'update',
+    summary: 'Update artifact metadata or create a new text revision.',
     input: z.object({
       artifactId: z.string().trim().min(1),
       name: z.string().trim().min(1).max(200).optional(),
@@ -169,6 +173,7 @@ export const artifactsDomainMethods = [
   defineBridgeMethod({
     namespace: 'artifacts',
     method: 'publish',
+    summary: 'Publish the latest text revision of an artifact to a Discord channel.',
     input: z.object({
       artifactId: z.string().trim().min(1),
       channelId: z.string().trim().min(1),

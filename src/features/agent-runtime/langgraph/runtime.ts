@@ -58,7 +58,6 @@ import {
   executeDurableToolTask,
   isReadOnlyToolCall,
   planReadOnlyToolExecution,
-  prepareToolApprovalInterrupt,
   resolveRuntimeControlSignal,
   type GraphToolCallDescriptor,
 } from './nativeTools';
@@ -2670,6 +2669,39 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
     });
 
     const requestedCallCount = toolCalls.length;
+    if (requestedCallCount > 1) {
+      const detail =
+        'Sage now supports only one public execution capability per assistant turn. Return plain text or emit a single runtime_execute_code call.';
+      const loopGuard = buildLoopGuardToolMessages({
+        calls: toolCalls.map((call) => ({
+          id: call.id,
+          name: call.name,
+          args: call.args,
+        })),
+        reason: 'too_many_tool_calls',
+        detail,
+        requestedCallCount,
+        uniqueCallCount: requestedCallCount,
+        skippedDuplicateCallCount: 0,
+        overLimitCallCount: Math.max(0, requestedCallCount - 1),
+        repairable: true,
+      });
+      return new Command({
+        goto: 'tool_call_turn',
+        update: {
+          ...continued.update,
+          messages: loopGuard.messages,
+          toolResults: loopGuard.results,
+          pendingReadCalls: [],
+          pendingReadExecutionCalls: [],
+          pendingWriteCalls: [],
+          deduplicatedCallCount: 0,
+          lastToolBatchFingerprint: null,
+          consecutiveIdenticalToolBatches: 0,
+          loopGuardRecoveries: effectiveState.loopGuardRecoveries + 1,
+        },
+      });
+    }
     if (requestedCallCount === 0) {
       const replyText = resolveVisibleReplyTextFromState(effectiveState);
       const completionKind = replyText ? (effectiveState.completionKind ?? 'final_answer') : 'runtime_failure';
@@ -2997,119 +3029,6 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
 
     const runtimeContext = resolveRuntimeContext(state, config);
     const turnToolContext = buildToolContext(state, runtimeContext, 'turn', config);
-    const approvalPlanningStartedAt = Date.now();
-    const preparedApproval = await prepareToolApprovalInterrupt({
-      activeToolNames: runtimeContext.activeToolNames,
-      call: currentWriteCall,
-      context: turnToolContext,
-    });
-    if (preparedApproval) {
-      const preparedBatch = [preparedApproval];
-      for (let index = 1; index < state.pendingWriteCalls.length; index += 1) {
-        const candidate = await prepareToolApprovalInterrupt({
-          activeToolNames: runtimeContext.activeToolNames,
-          call: state.pendingWriteCalls[index]!,
-          context: turnToolContext,
-        });
-        if (!candidate || candidate.approvalGroupKey !== preparedApproval.approvalGroupKey) {
-          break;
-        }
-        preparedBatch.push(candidate);
-      }
-
-      const batchId = buildApprovalBatchId(
-        runtimeContext.threadId,
-        preparedBatch.map((entry) => entry.call),
-      );
-      const approvalRequests: NonNullable<Extract<AgentGraphState['pendingInterrupt'], { kind: 'approval_review' }>['requests']> = [];
-
-      for (let index = 0; index < preparedBatch.length; index += 1) {
-        const prepared = preparedBatch[index]!;
-        const materialized = await materializeApprovalInterruptTask({
-          threadId: runtimeContext.threadId,
-          originTraceId: runtimeContext.originTraceId,
-          payload: {
-            ...prepared.payload,
-            interruptMetadataJson: {
-              ...(prepared.payload.interruptMetadataJson &&
-              typeof prepared.payload.interruptMetadataJson === 'object' &&
-              !Array.isArray(prepared.payload.interruptMetadataJson)
-                ? (prepared.payload.interruptMetadataJson as Record<string, unknown>)
-                : {}),
-              langgraphApprovalBatch: {
-                batchId,
-                batchIndex: index,
-                batchSize: preparedBatch.length,
-                approvalGroupKey: prepared.approvalGroupKey,
-              },
-            },
-          },
-        });
-        if (materialized.coalesced && materialized.threadId !== runtimeContext.threadId && index > 0) {
-          break;
-        }
-        approvalRequests.push({
-          requestId: materialized.requestId,
-          call: prepared.call,
-          payload: prepared.payload,
-          coalesced: materialized.coalesced,
-          expiresAtIso: materialized.expiresAtIso,
-        });
-      }
-
-      if (approvalRequests.length > 0) {
-        const interruptTimestamp = await captureGraphTimestampTask();
-        const responseSession = bumpResponseSession({
-          state,
-          latestText: resolveDraftText(state.replyText || state.responseSession.latestText),
-          status: 'awaiting_approval',
-        });
-        return new Command({
-          goto: 'resume_interrupt',
-          update: {
-            replyText: responseSession.latestText,
-            graphStatus: 'interrupted',
-            completionKind: 'approval_pending',
-            stopReason: 'approval_interrupt',
-            deliveryDisposition: 'approval_handoff',
-            responseSession,
-            resumeContext: snapshotRuntimeContext(runtimeContext),
-            activeWindowDurationMs: addActiveWindowDuration(
-              state,
-              Math.max(0, Date.now() - approvalPlanningStartedAt),
-            ),
-            pendingInterrupt: {
-              kind: 'approval_review',
-              requestId: approvalRequests[0]!.requestId,
-              batchId,
-              requests: approvalRequests,
-            },
-            interruptResolution: null,
-            finalization: {
-              attempted: false,
-              succeeded: true,
-              completedAt: interruptTimestamp.iso,
-              stopReason: 'approval_interrupt',
-              completionKind: 'approval_pending',
-              deliveryDisposition: 'approval_handoff',
-              finalizedBy: 'approval_interrupt',
-              draftRevision: responseSession.draftRevision,
-              contextFrame: buildContextFrame({
-                ...state,
-                responseSession,
-                replyText: responseSession.latestText,
-              }),
-            },
-            contextFrame: buildContextFrame({
-              ...state,
-              responseSession,
-              replyText: responseSession.latestText,
-            }),
-          },
-        });
-      }
-    }
-
     const outcome = await executeDurableToolTask({
       activeToolNames: runtimeContext.activeToolNames,
       call: currentWriteCall,

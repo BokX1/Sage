@@ -30,6 +30,7 @@ export const historyDomainMethods = [
   defineBridgeMethod({
     namespace: 'history',
     method: 'get',
+    summary: 'Read one stored message from Sage’s archived history.',
     input: z.object({
       messageId: z.string().trim().min(1),
       channelId: z.string().trim().min(1),
@@ -52,6 +53,7 @@ export const historyDomainMethods = [
   defineBridgeMethod({
     namespace: 'history',
     method: 'recent',
+    summary: 'Read recent stored messages from one visible channel.',
     input: z.object({
       channelId: z.string().trim().min(1),
       limit: z.number().int().min(1).max(100).optional(),
@@ -79,6 +81,7 @@ export const historyDomainMethods = [
   defineBridgeMethod({
     namespace: 'history',
     method: 'search',
+    summary: 'Search stored message history in the active guild.',
     input: z.object({
       query: z.string().trim().min(1).max(500),
       channelId: z.string().trim().min(1).optional(),

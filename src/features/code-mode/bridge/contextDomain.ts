@@ -7,6 +7,7 @@ export const contextDomainMethods = [
   defineBridgeMethod({
     namespace: 'context',
     method: 'summary.get',
+    summary: 'Read a stored rolling or profile summary for a channel.',
     input: z.object({
       channelId: z.string().trim().min(1),
       kind: z.enum(['rolling', 'profile']).default('profile'),
@@ -48,6 +49,7 @@ export const contextDomainMethods = [
   defineBridgeMethod({
     namespace: 'context',
     method: 'profile.get',
+    summary: 'Read a stored user profile summary and parsed profile fields.',
     input: z.object({
       userId: z.string().trim().min(1),
     }),

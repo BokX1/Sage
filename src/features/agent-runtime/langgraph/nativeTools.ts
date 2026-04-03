@@ -53,14 +53,6 @@ export interface ReadOnlyToolExecutionPlan {
   sequentialCalls: GraphToolCallDescriptor[];
 }
 
-export interface PlannedApprovalInterrupt {
-  toolName: string;
-  callId?: string;
-  call: GraphToolCallDescriptor;
-  payload: ApprovalInterruptPayload;
-  approvalGroupKey: string;
-}
-
 export const RUNTIME_REQUEST_USER_INPUT_TOOL_NAME = 'runtime_request_user_input';
 export const RUNTIME_CANCEL_TURN_TOOL_NAME = 'runtime_cancel_turn';
 
@@ -445,15 +437,6 @@ export const executeApprovedReviewTask = task(
     };
   },
 );
-
-export async function prepareToolApprovalInterrupt(params: {
-  activeToolNames: string[];
-  call: GraphToolCallDescriptor;
-  context: ToolExecutionContext;
-}): Promise<PlannedApprovalInterrupt | null> {
-  void params;
-  return null;
-}
 
 function buildLangChainTool(params: {
   definition: ToolDefinition<unknown>;

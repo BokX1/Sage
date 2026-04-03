@@ -25,7 +25,13 @@
 
 ## [Unreleased]
 
+### Changed
+- Changed Sage's bridge-native runtime to a manifest-driven SDK contract: the injected namespaces, `admin.runtime.getCapabilities()` output, and provider-free smoke coverage now come from the same bounded bridge surface instead of separate hardcoded runtime lists.
+- Changed the Discord and scheduler bridge surface from a minimal proof-of-concept to a fuller bounded operator SDK, adding message edits, reaction removal, thread lifecycle, role reads, moderation-side message deletion/removal, and the missing scheduled-job get/update/pause/resume paths while keeping destructive deletes on the moderation namespace.
+
 ### Fixed
+- Fixed Code Mode bridge introspection and smoke verification so Sage now reports summary text plus required/optional args for each live method, surfaces real DNS/TLS/connect causes from `http.fetch(...)` failures, and can verify capabilities/workspace/http/history directly without a full model turn.
+- Fixed the LangGraph hard-cut cleanup so approval interrupts now come only from real Code Mode effect execution instead of the stale speculative pre-approval branch the runtime was still carrying.
 - Prevented background LangGraph resumes from re-entering the Codex model with unresolved tool-call checkpoints after a yield, which stops rare `missing tool outputs` transcript failures across read and approval tool paths.
 - Persist failed background-resume task runs as terminal failures so worker retries stop instead of reclaiming the same broken run indefinitely.
 - Fixed the bridge-native rewrite cleanup so the remaining docs, website demos, reply scrubber, and checked-in runtime surface now consistently describe `runtime_execute_code` plus direct namespaces instead of stale legacy tool names like `discord_context`, `discord_messages`, `web_search`, or `image_generate`.

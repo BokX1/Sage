@@ -10,6 +10,7 @@ export type BridgeNamespace =
   | 'admin'
   | 'moderation'
   | 'schedule';
+export type InjectedBridgeNamespace = BridgeNamespace | 'http' | 'workspace';
 
 export type BridgeMutability = 'read' | 'write';
 export type BridgeAccess = 'public' | 'moderator' | 'admin' | 'owner';
@@ -22,6 +23,7 @@ export interface BridgeMethodContext {
 export interface BridgeMethodDefinition<TArgs = unknown> {
   namespace: BridgeNamespace;
   method: string;
+  summary: string;
   input: z.ZodType<TArgs>;
   mutability: BridgeMutability;
   access?: BridgeAccess;
@@ -31,9 +33,12 @@ export interface BridgeMethodDefinition<TArgs = unknown> {
 
 export interface BridgeMethodSummary {
   key: string;
-  namespace: BridgeNamespace;
+  namespace: InjectedBridgeNamespace;
   method: string;
+  summary: string;
   mutability: BridgeMutability;
   access: BridgeAccess;
   approvalMode: BridgeApprovalMode;
+  requiredArgs: string[];
+  optionalArgs: string[];
 }

@@ -33,7 +33,8 @@ export function assertBridgeAccess(
 ): void {
   const required = requiredAccess ?? 'public';
   const authority = toolContext.invokerAuthority ?? 'member';
-  if (!hasAuthorityAtLeast(authority, required as DiscordAuthorityTier)) {
+  const normalizedRequired = required === 'public' ? 'member' : required;
+  if (!hasAuthorityAtLeast(authority, normalizedRequired as DiscordAuthorityTier)) {
     throw new Error(`This operation requires ${required} access.`);
   }
 }
