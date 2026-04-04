@@ -37,8 +37,8 @@ import { scrubFinalReplyText } from '../finalReplyScrubber';
 import type { CurrentTurnContext, ReplyTargetContext } from '../continuityContext';
 import {
   buildDefaultWorkingMemoryFrame,
-  buildPromptContextContent,
-  buildUniversalPromptContract,
+  buildPromptPreludeMessages,
+  resolvePromptBuildMode,
   type PromptInputMode,
   type ToolObservationEvidence,
   type PromptWorkingMemoryFrame,
@@ -2081,7 +2081,7 @@ function buildAssistantTurnMessages(params: {
     ...params.state,
     compactionState,
   });
-  const contract = buildUniversalPromptContract({
+  const promptPrelude = buildPromptPreludeMessages({
     userProfileSummary: params.runtimeContext.userProfileSummary ?? null,
     currentTurn: resolvePromptCurrentTurn(params.runtimeContext),
     activeTools: params.runtimeContext.activeToolNames,
@@ -2105,34 +2105,24 @@ function buildAssistantTurnMessages(params: {
       params.state.toolResults,
       compactionState?.retainedToolObservationCount ?? graphConfig.compactionMaxToolObservations,
     ),
-    promptMode: 'durable_resume',
-  });
-  const contextMessageContent = buildPromptContextContent({
-    replyTarget: (params.runtimeContext.replyTarget as ReplyTargetContext | null | undefined) ?? null,
-    focusedContinuity: params.runtimeContext.focusedContinuity ?? null,
-    recentTranscript: params.runtimeContext.recentTranscript ?? null,
-    toolObservationEvidence: buildToolObservationEvidence(
-      params.state.toolResults,
-      compactionState?.retainedToolObservationCount ?? graphConfig.compactionMaxToolObservations,
-    ),
+    promptMode:
+      params.runtimeContext.promptMode === 'waiting_follow_up'
+        ? 'waiting_follow_up'
+        : params.runtimeContext.promptMode ?? 'standard',
+    buildMode: resolvePromptBuildMode({
+      buildMode: params.runtimeContext.routeKind === 'approval_resume'
+        ? 'approval_resume'
+        : params.runtimeContext.routeKind === 'user_input_resume'
+          ? 'user_input_resume'
+          : params.runtimeContext.routeKind === 'background_resume' ||
+              params.runtimeContext.routeKind === 'background_retry'
+            ? 'background_resume'
+            : 'interactive',
+    }),
     includeUserInput: false,
-    userText: extractLatestHumanRequestText(params.state.messages as BaseMessage[]),
   });
   const preparedMessages = toLlmMessages(promptMessages);
-  const messages: LLMChatMessage[] = [
-    {
-      role: 'system',
-      content: contract.systemMessage,
-    },
-  ];
-  if (contextMessageContent) {
-    messages.push({
-      role: 'user',
-      content: typeof contextMessageContent === 'string' ? contextMessageContent : contextMessageContent,
-    });
-  }
-  messages.push(...preparedMessages);
-  return messages;
+  return [...toLlmMessages(promptPrelude.messages), ...preparedMessages];
 }
 
 function isGraphRecursionLimitError(error: unknown): boolean {

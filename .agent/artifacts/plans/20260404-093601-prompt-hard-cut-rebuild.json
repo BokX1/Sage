@@ -1,0 +1,115 @@
+{
+  "schema_version": "2.0",
+  "artifact_type": "plan",
+  "plan_id": "20260404-093601-prompt-hard-cut-rebuild",
+  "status": "completed",
+  "created_utc": "2026-04-04T09:36:01.359Z",
+  "updated_utc": "2026-04-04T10:40:00.000Z",
+  "objective": "Rebuild Sage prompt end to end around a lean manifest-driven Code Mode prompt stack and clean out the legacy prompt architecture.",
+  "success_criteria": [
+    "Replace the XML-style prompt contract with a lean Markdown core plus trusted and untrusted context frames.",
+    "Use one prompt builder path for foreground turns and LangGraph resumes.",
+    "Align prompt capability teaching with the bridge manifest and current actor authority.",
+    "Remove prompt-era legacy wording from tests and architecture docs."
+  ],
+  "constraints": [
+    "Keep runtime_execute_code as the only public execution tool.",
+    "Do not add a compatibility layer for the old prompt format.",
+    "Update CHANGELOG.md for all src and docs work in this unit."
+  ],
+  "scope": {
+    "in": [
+      "src/features/agent-runtime/prompt/**",
+      "src/features/agent-runtime/promptContract.ts",
+      "src/features/agent-runtime/agentRuntime.ts",
+      "src/features/agent-runtime/langgraph/runtime.ts",
+      "tests/unit/features/agent-runtime/**",
+      "tests/unit/features/awareness/transcriptInjection.test.ts",
+      "docs/architecture/**",
+      "CHANGELOG.md"
+    ],
+    "out": [
+      "VM deployment",
+      "bridge method contract changes",
+      "provider routing changes"
+    ]
+  },
+  "milestones": [
+    {
+      "id": "intake",
+      "title": "Capture intake snapshot and touched scope",
+      "status": "completed",
+      "notes": [
+        "Work item scaffolded from the local workflow generator."
+      ]
+    },
+    {
+      "id": "implement",
+      "title": "Implement the scoped changes",
+      "status": "completed",
+      "notes": [
+        "Added a dedicated prompt package with builder, capability snapshot helpers, and prompt types.",
+        "Rewired runChatTurn and LangGraph prompt assembly onto one builder path.",
+        "Removed the old monolithic prompt implementation in favor of prompt package exports."
+      ]
+    },
+    {
+      "id": "validate",
+      "title": "Run validation and publish the completion report",
+      "status": "completed",
+      "notes": [
+        "Prompt-focused Vitest suites passed.",
+        "Full repository validation stack passed, including check:trust:deep."
+      ]
+    }
+  ],
+  "progress": [
+    {
+      "timestamp_utc": "2026-04-04T09:36:01.359Z",
+      "summary": "Created the local work item scaffold."
+    },
+    {
+      "timestamp_utc": "2026-04-04T10:12:00.000Z",
+      "summary": "Replaced the XML prompt contract with a Markdown core plus trusted and untrusted prompt frames."
+    },
+    {
+      "timestamp_utc": "2026-04-04T10:40:00.000Z",
+      "summary": "Finished doc/test cleanup and completed the full validation stack."
+    }
+  ],
+  "decision_log": [
+    {
+      "timestamp_utc": "2026-04-04T09:55:00.000Z",
+      "decision": "Keep promptContract.ts as a compatibility export surface while moving the actual implementation into src/features/agent-runtime/prompt/.",
+      "rationale": "This preserves import stability while still completing the hard-cut replacement of the monolithic prompt implementation."
+    },
+    {
+      "timestamp_utc": "2026-04-04T10:18:00.000Z",
+      "decision": "Keep full rich capability details in runtime introspection, but trim the prompt snapshot to a leaner manifest-derived method list so the trusted frame stays compact.",
+      "rationale": "The prompt needs a compact capability map for planning, while admin.runtime.getCapabilities() can still carry the richer operator-facing detail."
+    }
+  ],
+  "discoveries": [
+    {
+      "timestamp_utc": "2026-04-04T09:48:00.000Z",
+      "summary": "runChatTurn was still seeding prompt scaffolding into graph state before the hard-cut cleanup.",
+      "evidence": [
+        "agentRuntime.ts passed promptEnvelope.messages into graph startup while langgraph/runtime.ts also rebuilt prompt prelude messages on model turns."
+      ]
+    },
+    {
+      "timestamp_utc": "2026-04-04T10:05:00.000Z",
+      "summary": "Transcript injection tests were asserting against old XML-tagged graph-seeded prompt messages rather than the current prompt envelope.",
+      "evidence": [
+        "tests/unit/features/awareness/transcriptInjection.test.ts parsed XML tags from graph input messages instead of validating result.debug.messages from the new prompt builder."
+      ]
+    }
+  ],
+  "validation_strategy": [
+    "Run targeted Vitest suites for prompt contract and transcript continuity behavior.",
+    "Run full lint, test, build, docs, artifact validation, workflow audit, and deep trust checks."
+  ],
+  "notes": [
+    "Prompt JSON frames are now intentionally compact rather than pretty-printed."
+  ]
+}

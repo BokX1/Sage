@@ -1,3 +1,8 @@
+import {
+  buildPromptCapabilityArgumentNotes,
+  buildPromptCapabilityOwnershipLines,
+} from './prompt';
+
 export interface PromptToolGuidance {
   purpose?: string;
   decisionEdges: string[];
@@ -44,7 +49,7 @@ const CODE_MODE_DOC: TopLevelToolDoc = {
     'You only need the runtime to wait for user input or cancel the turn.',
   ],
   promptGuidance: {
-    purpose: 'Run short JavaScript against direct bridge namespaces such as discord, history, context, artifacts, approvals, admin, moderation, schedule, http, and workspace.',
+    purpose: `Run short JavaScript against the direct bridge namespaces.\n${buildPromptCapabilityOwnershipLines().join('\n')}`,
     decisionEdges: [
       'Need host-backed reads or writes -> runtime_execute_code.',
       'Need outbound fetch -> runtime_execute_code with http.fetch(...).',
@@ -55,10 +60,7 @@ const CODE_MODE_DOC: TopLevelToolDoc = {
       'Do not invent a generic dispatch helper or search for hidden tool names.',
       'Do not narrate a long plan when one short program can verify or perform the work directly.',
     ],
-    argumentNotes: [
-      'Use top-level namespaces directly, for example discord.messages.send(...), history.search(...), context.summary.get(...), admin.instructions.update(...).',
-      'There is no sage.* root object and no tool-discovery fallback.',
-    ],
+    argumentNotes: buildPromptCapabilityArgumentNotes(),
   },
   validationHint: 'Pass { "language": "javascript", "code": "return await history.recent({ channelId: \\"123\\", limit: 5 });" }.',
   website: {

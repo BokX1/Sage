@@ -26,10 +26,12 @@
 ## [Unreleased]
 
 ### Changed
+- Changed Sage's prompt architecture to a hard-cut manifest-driven Code Mode stack: the runtime now builds one Markdown instructions core plus a trusted JSON context frame and an explicitly untrusted context envelope, and both foreground turns and LangGraph resumes share that same prompt builder instead of carrying the retired XML-tagged contract in multiple runtime paths.
 - Changed Sage's bridge-native runtime to a manifest-driven SDK contract: the injected namespaces, `admin.runtime.getCapabilities()` output, and provider-free smoke coverage now come from the same bounded bridge surface instead of separate hardcoded runtime lists.
 - Changed the Discord and scheduler bridge surface from a minimal proof-of-concept to a fuller bounded operator SDK, adding message edits, reaction removal, thread lifecycle, role reads, moderation-side message deletion/removal, and the missing scheduled-job get/update/pause/resume paths while keeping destructive deletes on the moderation namespace.
 
 ### Fixed
+- Fixed prompt/runtime drift so graph turns no longer persist prompt scaffolding inside conversation state, transcript continuity tests now validate the trusted/untrusted prompt frames directly, and docs/operator references no longer teach the removed XML prompt format or prompt-era legacy tool wording.
 - Fixed Code Mode bridge introspection and smoke verification so Sage now reports summary text plus required/optional args for each live method, surfaces real DNS/TLS/connect causes from `http.fetch(...)` failures, and can verify capabilities/workspace/http/history directly without a full model turn.
 - Fixed the LangGraph hard-cut cleanup so approval interrupts now come only from real Code Mode effect execution instead of the stale speculative pre-approval branch the runtime was still carrying.
 - Prevented background LangGraph resumes from re-entering the Codex model with unresolved tool-call checkpoints after a yield, which stops rare `missing tool outputs` transcript failures across read and approval tool paths.

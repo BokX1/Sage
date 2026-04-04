@@ -37,7 +37,7 @@ flowchart TD
     A[Discord Message]:::discord --> B[Chat Engine]:::runtime
     B --> C[runChatTurn]:::runtime
     C --> D[Resolve Model]:::runtime
-    D --> E["Build Universal Prompt Contract<br/>(XML system contract + tagged turn data)"]:::runtime
+    D --> E["Build Prompt Envelope<br/>(Markdown core + trusted/untrusted frames)"]:::runtime
     E --> G[Send to LLM with runtime_execute_code]:::llm
     G --> H{Code execution needed?}:::llm
 
@@ -54,9 +54,9 @@ flowchart TD
 **Step-by-step**
 
 1. **Model resolution**: `runChatTurn` reads `AI_PROVIDER_MAIN_AGENT_MODEL`. Sage no longer ships a built-in agent-model fallback; runtime boot requires explicit AI-provider model configuration.
-2. **Context composition**: `buildPromptContextMessages` assembles one canonical XML-tagged system contract plus one lower-priority tagged context message. The system contract now carries only durable operator invariants, tool and closeout protocol, trusted runtime state, and trusted working memory; reply targets, transcript windows, tool observations, and current user content stay in the tagged user-context envelope instead of being duplicated into the system role.
+2. **Context composition**: `buildPromptContextMessages` assembles one Markdown instructions core, one trusted JSON context frame, and one explicitly untrusted context envelope. The core carries durable runtime rules, namespace ownership, trust boundaries, and reply rules; reply targets, transcript windows, tool observations, and current user content stay in the lower-priority untrusted envelope instead of being duplicated into the trusted system role.
 3. **LLM request**: Sage sends the assembled messages plus the single `runtime_execute_code` schema for this turn.
-4. **Agent graph**: Sage enters the LangGraph-native runtime built on reducer-backed message state, durable tasks, `ToolNode` read batches, explicit read/write partitioning, and in-graph approval or continuation interrupts/resumes until the objective is satisfied, clarification is required, or the run pauses cleanly.
+4. **Agent graph**: Sage enters the LangGraph-native runtime built on reducer-backed message state, durable tasks, direct Code Mode execution, and in-graph approval or continuation interrupts/resumes until the objective is satisfied, clarification is required, or the run pauses cleanly.
 5. **Final reply**: plain text is cleaned, tool-produced files are attached, and the final payload is returned to Discord.
 6. **Trace persistence**: LangGraph node and task execution is recorded in LangSmith, and Sage can additionally persist a compact `AgentTrace` ledger row with LangSmith references.
 
@@ -70,19 +70,17 @@ flowchart TD
 
 | Priority | Block | Source |
 | :---: | :--- | :--- |
-| 1 | System contract | `<system_contract>`, `<instruction_hierarchy>`, `<assistant_mission>`, `<tool_protocol>`, `<closeout_protocol>`, `<safety_and_injection_policy>`, `<few_shot_examples>` |
-| 2 | Trusted runtime state | `<trusted_runtime_state>` with `<current_turn>`, guild Sage Persona, autopilot mode, user profile summary, and runtime turn metadata |
-| 3 | Trusted working memory | `<trusted_working_memory>` with objective, verified facts, completed actions, open questions, pending approvals, delivery state, and next required action |
-| 4 | Lower-priority context envelope | `<untrusted_reply_target>` when present |
-| 5 | Transcript context | `<focused_continuity>` and `<recent_transcript>` nested inside `<untrusted_recent_transcript>` when available |
-| 6 | Tool observations | `<untrusted_tool_observations>` summary from the active graph loop |
-| 7 | Current user message | Triggering text and multimodal content wrapped as `<untrusted_user_input>` |
+| 1 | Instructions core | Markdown sections for execution model, namespace ownership, capability rules, trust boundaries, reply rules, and persona overlay |
+| 2 | Trusted context frame | JSON block with build mode, actor authority, current turn, reply target metadata, working memory, guild persona, and capability snapshot |
+| 3 | Untrusted context envelope | JSON block plus optional reply-target content and latest user input |
+| 4 | Transcript context | `focusedContinuity` and `recentTranscript` inside the untrusted envelope metadata when available |
+| 5 | Tool observations | Untrusted tool observation metadata inside the same envelope |
 
 > [!NOTE]
 > Channel summaries, artifact content, and wider message history are not preloaded into every turn. The model fetches them on demand through bridge-native Code Mode namespaces when it decides they are needed.
 > `context.summary.get(...)` is a continuity surface, not historical evidence. For exact verification Sage should use `history.search(...)`, `history.recent(...)`, or `history.get(...)`.
 
-The runtime records a stable `promptVersion` plus `promptFingerprint` for the full reusable prompt surface, including both the system contract template and the lower-priority context-envelope layout, so prompt changes are attributable in debugging and smoke runs without hashing live per-turn content.
+The runtime records a stable `promptVersion` plus `promptFingerprint` for the full reusable prompt surface, including both the Markdown instructions core and the trusted/untrusted frame schema, so prompt changes are attributable in debugging and smoke runs without hashing live per-turn content.
 
 ---
 
@@ -120,8 +118,8 @@ flowchart LR
 - **Durable slices**: `AGENT_RUN_SLICE_MAX_STEPS` and `AGENT_RUN_SLICE_MAX_DURATION_MS` bound one worker slice for fairness and recovery, but Sage now keeps normal long tasks running automatically in the background instead of surfacing a Continue prompt.
 - **Background-yield summary**: when Sage hits a slice boundary with work still pending, it can spend one extra no-tools model response to summarize concrete progress before yielding the run back to the background worker. If that pass fails, Sage falls back to the deterministic runtime summary.
 - **Message-native state**: the graph persists LangGraph/LangChain messages plus turn facts, approval state, trace metadata, and final delivery state instead of the old custom pending-tool-loop buffers.
-- **Read/write partitioning**: read-only batches execute through `ToolNode`, and mutating calls execute one at a time.
-- **In-round read dedupe**: identical read-only calls in the same model response are executed once, then fanned back out to the model as per-call tool messages so repeated reads do not waste a full execution slot.
+- **Effect-aware execution**: Code Mode composes multiple bridge reads and writes inside one JavaScript run, while approval-gated effects still pause at the actual host bridge boundary.
+- **In-run read dedupe**: identical read requests can still be coalesced inside the runtime so repeated reads do not waste extra host work during one execution turn.
 - **Loop guard**: Sage rejects over-wide tool batches before side effects, gives the model structured repair chances, and treats the LangGraph recursion ceiling as a high internal fail-safe derived from the slice budget instead of the practical work limit for a normal long-running turn.
 - **Plain-text-first closeout**: assistant turns may include both visible text and tool calls; when a turn ends with no tool calls, Sage finalizes directly from the assistant text as a final answer unless the model used an explicit runtime control tool for wait/cancel semantics.
 - **Bridge-owned action policy**: Code Mode bridge methods declare explicit read/write and approval metadata, so admin-only reads stay on the read lane while approval-gated writes enter the approval path through bridge policy instead of graph-side action-name branching.

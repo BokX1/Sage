@@ -782,7 +782,12 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
     graphLimits,
     promptMode,
   });
-  const runtimeMessages = promptEnvelope.messages;
+  const promptMessages = promptEnvelope.messages;
+  const conversationMessages: BaseMessage[] = [
+    new HumanMessage({
+      content: userContent ?? userText,
+    }),
+  ];
 
   if (appConfig.SAGE_TRACE_DB_ENABLED) {
     try {
@@ -857,7 +862,7 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
         appConfig.AGENT_GRAPH_MAX_OUTPUT_TOKENS as number | undefined,
         1_800,
       ),
-      messages: runtimeMessages,
+      messages: conversationMessages,
       activeToolNames,
       routeKind: SINGLE_ROUTE_KIND,
       currentTurn,
@@ -1023,7 +1028,7 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
       compactionState,
       tokenUsage,
       debug: {
-        messages: runtimeMessages,
+        messages: promptMessages,
         promptVersion: promptEnvelope.version,
         promptFingerprint: promptEnvelope.promptFingerprint,
       },
@@ -1045,7 +1050,7 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
       compactionState,
       tokenUsage,
     debug: {
-      messages: runtimeMessages,
+      messages: promptMessages,
       promptVersion: promptEnvelope.version,
       promptFingerprint: promptEnvelope.promptFingerprint,
     },

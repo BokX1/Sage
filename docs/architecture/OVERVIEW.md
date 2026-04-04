@@ -55,7 +55,7 @@ flowchart TD
     subgraph Runtime["Single-Agent Runtime"]
         CE[Chat Engine]:::runtime
         RT[runChatTurn]:::runtime
-        PC["Universal Prompt Contract"]:::runtime
+        PC["Prompt Builder"]:::runtime
         AG["Agent Graph (LangGraph)"]:::runtime
     end
 
@@ -82,7 +82,7 @@ flowchart TD
 |:---|:---|:---|
 | **Chat Engine** | `src/features/chat/chat-engine.ts` | Entry point — receives Discord events, orchestrates `runChatTurn` |
 | **Agent Runtime** | `src/features/agent-runtime/agentRuntime.ts` | The single `runChatTurn` function: model resolution, prompt assembly, graph invocation, trace persistence, and prompt metadata propagation |
-| **Universal Prompt Contract** | `src/features/agent-runtime/promptContract.ts` | Builds Sage's one canonical XML-tagged system contract plus tagged user content, working-memory frame, prompt version, and prompt fingerprint |
+| **Prompt Builder** | `src/features/agent-runtime/promptContract.ts` | Builds Sage's Markdown instructions core, trusted JSON context frame, untrusted context envelope, prompt version, and prompt fingerprint from one manifest-driven path |
 | **Agent Graph Runtime** | `src/features/agent-runtime/langgraph/runtime.ts` | Custom LangGraph runtime for plain-text-first assistant turns, bounded worker slices, tool execution, approval + user-input interrupts, response-session state, and checkpointed resumes |
 | **Runtime Surface** | `src/features/agent-runtime/runtimeSurface.ts` | Declares the single shipped model-facing capability, `runtime_execute_code` |
 | **Runtime Tool Contract** | `src/features/agent-runtime/runtimeToolContract.ts` | Typed execution contract for the single public runtime tool |
@@ -105,7 +105,7 @@ sequenceDiagram
     U->>CE: Discord message
     CE->>RT: Invoke with context params
     RT->>RT: Resolve model from explicit AI provider config
-    RT->>RT: Build universal prompt contract + tagged user context
+    RT->>RT: Build prompt core + trusted context frame + untrusted context envelope
     RT->>LLM: Send prompt + active runtime tool surface
     LLM->>RT: Response (text or Code Mode call)
 
@@ -132,7 +132,7 @@ sequenceDiagram
 3. **Bounded graph execution** — configurable max tool-capable assistant/model responses per durable worker slice (`AGENT_RUN_SLICE_MAX_STEPS`); Sage no longer slices tool-call batches or truncates model-facing tool payloads inside the runtime.
 4. **Direct bridge execution** — Code Mode runs short JavaScript against a fixed bridge SDK instead of a public menu of named tools.
 5. **Clean background yield** — when a slice closes cleanly after tool work, Sage can spend one extra no-tools wrap-up response to summarize progress before yielding back to the background worker; timeout handling still falls back to the deterministic runtime summary.
-6. **Prompt-first observability** — every turn carries `promptVersion` and `promptFingerprint` metadata alongside LangGraph tracing so changes to the canonical system contract or lower-priority context-envelope layout are attributable in traces and smoke runs.
+6. **Prompt-first observability** — every turn carries `promptVersion` and `promptFingerprint` metadata alongside LangGraph tracing so changes to the Markdown instructions core, trusted frame schema, or untrusted envelope layout are attributable in traces and smoke runs.
 
 ---
 
@@ -166,7 +166,7 @@ The public contract is intentionally boring:
 
 For first-class introspection inside Code Mode, Sage exposes `admin.runtime.getCapabilities()`, which returns the structured namespace and method inventory the runtime actually injects.
 
-The runtime teaches silent Code Mode usage through the universal prompt contract and keeps normal user-facing answers in assistant text rather than execution payloads.
+The runtime teaches silent Code Mode usage through one manifest-driven prompt builder and keeps normal user-facing answers in assistant text rather than execution payloads.
 
 Operators can audit that surface directly with `npm run tools:audit` or `npm run doctor -- --only tools.audit`, which verifies that Sage still ships the intended single public runtime surface.
 

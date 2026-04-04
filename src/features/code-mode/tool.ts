@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { defineRuntimeToolSpec, type ToolExecutionContext } from '../agent-runtime/runtimeToolContract';
+import { buildPromptCapabilityArgumentNotes } from '../agent-runtime/prompt';
 import { executeCodeMode } from './executor';
 
 const codeModeInputSchema = z.object({
@@ -69,11 +70,11 @@ export const runtimeExecuteCodeTool = defineRuntimeToolSpec({
     ],
     whenNotToUse: [
       'A plain assistant-text answer is enough and no execution is needed.',
-      'You only need runtime_request_user_input or runtime_cancel_turn.',
+      'The turn only needs a visible wait or cancel control rather than host execution.',
     ],
     argumentNotes: [
       'JavaScript code runs as an async function body and may end with return ... .',
-      'There is no generic tool-dispatch helper. Call the injected namespaces directly, for example discord.messages.send(...), history.search(...), or admin.runtime.getCapabilities().',
+      ...buildPromptCapabilityArgumentNotes(),
     ],
   },
   validationHint:

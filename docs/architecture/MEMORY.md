@@ -80,7 +80,7 @@ flowchart LR
         H["history.search(...)"]:::tools
     end
 
-    subgraph Builder["Prompt Contract"]
+    subgraph Builder["Prompt Builder"]
         MB[buildPromptContextMessages]:::builder
     end
 
@@ -99,8 +99,8 @@ flowchart LR
 Runtime notes:
 
 - Memory is not pre-fetched through a separate graph executor.
-- User profile summary is the only long-term profile block always embedded up front, and it now lives inside the universal XML prompt contract built by `buildPromptContextMessages`.
-- Sage now uses one canonical prompt contract in `src/features/agent-runtime/promptContract.ts`, with fixed sections for system rules, tool protocol, closeout protocol, trusted runtime state, trusted working memory, and explicitly tagged untrusted context.
+- User profile summary is the only long-term profile block always embedded up front, and it now lives inside the trusted prompt context frame built by `buildPromptContextMessages`.
+- Sage now uses one canonical prompt builder in `src/features/agent-runtime/promptContract.ts`, with a Markdown instructions core, a trusted JSON context frame, and an explicitly untrusted context envelope.
 - The profile is best-effort personalization, not an authoritative rule surface: it is rendered inside `<user_profile>` as soft personalization context that may lag behind the latest turn because profile updates happen asynchronously.
 - Channel summaries, artifact content, and wider message history are fetched only if the model chooses the corresponding bridge call inside Code Mode.
 - `context.summary.get(...)` returns rolling or profile summary context for continuity and situational awareness. It is not a substitute for message-history evidence.
@@ -114,21 +114,19 @@ Runtime notes:
 
 **File:** `src/features/agent-runtime/promptContract.ts`
 
-`buildPromptContextMessages` now owns the full turn prompt surface. It builds one universal XML-tagged system message plus one lower-priority tagged context message.
+`buildPromptContextMessages` now owns the full turn prompt surface. It builds one Markdown instructions core, one trusted JSON context frame, and one lower-priority untrusted context envelope.
 
-Canonical system-message sections:
+Instructions-core sections:
 
-- `<system_contract>`
-- `<instruction_hierarchy>`
-- `<assistant_mission>`
-- `<tool_protocol>`
-- `<closeout_protocol>`
-- `<safety_and_injection_policy>`
-- `<few_shot_examples>`
-- `<trusted_runtime_state>`
-- `<trusted_working_memory>`
+- `# Sage Runtime`
+- `## Execution model`
+- `## Namespace ownership`
+- `## Capability rules`
+- `## Trust boundaries`
+- `## Reply rules`
+- `## Persona overlay`
 
-Trusted runtime state carries the current turn facts, guild Sage Persona, autopilot mode, and profile summary. Trusted working memory carries the loop-level frame:
+Trusted context frame carries the current turn facts, actor authority, build mode, guild Sage Persona, profile summary, capability snapshot, and working memory. Working memory carries the loop-level frame:
 
 - `objective`
 - `verified_facts`
@@ -138,14 +136,14 @@ Trusted runtime state carries the current turn facts, guild Sage Persona, autopi
 - `delivery_state`
 - `next_required_action`
 
-The lower-priority context envelope carries the explicitly tagged untrusted blocks:
+The lower-priority context envelope carries:
 
-- `<untrusted_reply_target>`
-- `<untrusted_recent_transcript>`
-- `<untrusted_tool_observations>`
-- `<untrusted_user_input>`
+- reply-target metadata and optional content
+- transcript continuity metadata
+- tool observation metadata
+- the latest user input
 
-Untrusted context is tagged and kept out of the system role instead of being duplicated into high-authority instruction space.
+Untrusted context is explicitly labeled as data and kept out of the trusted system role instead of being duplicated into high-authority instruction space.
 
 What is **not** preloaded:
 
@@ -156,7 +154,7 @@ What is **not** preloaded:
 
 These are returned only when the runtime requests them through tools.
 
-Runtime prompt assembly no longer truncates or drops blocks before provider submission, and the graph loop no longer applies a fixed post-budget message-count slice before the next model call. The prompt contract also emits a stable `promptFingerprint` plus a version string so trace/debug surfaces can correlate behavior to an exact reusable prompt revision. The remaining operator knobs are:
+Runtime prompt assembly no longer truncates or drops blocks before provider submission, and the graph loop no longer applies a fixed post-budget message-count slice before the next model call. The prompt builder also emits a stable `promptFingerprint` plus a version string so trace/debug surfaces can correlate behavior to an exact reusable prompt revision. The remaining operator knobs are:
 
 | Budget | Env var |
 | :--- | :--- |
