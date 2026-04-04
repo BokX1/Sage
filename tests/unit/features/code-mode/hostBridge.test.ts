@@ -9,6 +9,7 @@ vi.mock('node:dns/promises', () => ({
 import * as hostBridge from '../../../../src/features/code-mode/hostBridge';
 import { getOrCreateCodeModeTaskWorkspace } from '../../../../src/features/code-mode/workspace';
 import type { ToolExecutionContext } from '../../../../src/features/agent-runtime/runtimeToolContract';
+import { ApprovalRequiredSignal } from '../../../../src/features/agent-runtime/toolControlSignals';
 
 function makeToolContext(overrides: Partial<ToolExecutionContext> = {}): ToolExecutionContext {
   return {
@@ -212,6 +213,31 @@ describe('Code Mode host bridge admin.runtime.getCapabilities', () => {
 
     await expect(session.httpFetch({ url: 'https://example.com/' })).rejects.toThrow(
       'UNABLE_TO_GET_ISSUER_CERT_LOCALLY',
+    );
+  });
+
+  it('stores a human-friendly review snapshot for code mode write approvals', async () => {
+    const session = await createSession();
+
+    const thrown = await session.call('discord', 'messages.send', {
+      channelId: 'channel-live',
+      content: 'Deployment complete. Shipping now.',
+    }).catch((error) => error);
+
+    expect(thrown).toBeInstanceOf(ApprovalRequiredSignal);
+    const payload = (thrown as ApprovalRequiredSignal).payload;
+    expect(payload.kind).toBe('code_mode_effect');
+    expect(payload.reviewSnapshotJson).toEqual(
+      expect.objectContaining({
+        kind: 'code_mode_effect',
+        effectLabel: 'discord.messages.send',
+        title: 'Sage Action Review',
+        intent: 'Send a Discord message',
+        target: '<#channel-live>',
+        impact: 'Posts a new message in the selected channel.',
+        risk: 'low',
+        preview: 'Deployment complete. Shipping now.',
+      }),
     );
   });
 });

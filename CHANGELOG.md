@@ -31,6 +31,7 @@
 - Changed the Discord and scheduler bridge surface from a minimal proof-of-concept to a fuller bounded operator SDK, adding message edits, reaction removal, thread lifecycle, role reads, moderation-side message deletion/removal, and the missing scheduled-job get/update/pause/resume paths while keeping destructive deletes on the moderation namespace.
 
 ### Fixed
+- Fixed `code_mode_effect` approval cards so Code Mode reviews now show plain-language Sage action titles, targets, impact, and previews for non-technical reviewers instead of falling back to the raw internal approval kind.
 - Fixed prompt/runtime drift so graph turns no longer persist prompt scaffolding inside conversation state, transcript continuity tests now validate the trusted/untrusted prompt frames directly, and docs/operator references no longer teach the removed XML prompt format or prompt-era legacy tool wording.
 - Fixed the hard-cut prompt/runtime handoff so Sage now explicitly uses the internal runtime wait/cancel controls for durable follow-up and cancellation states, and resumed or retried graph turns always carry the current prompt version/fingerprint instead of dropping prompt metadata on non-fresh paths.
 - Fixed Code Mode bridge introspection and smoke verification so Sage now reports summary text plus required/optional args for each live method, surfaces real DNS/TLS/connect causes from `http.fetch(...)` failures, and can verify capabilities/workspace/http/history directly without a full model turn.

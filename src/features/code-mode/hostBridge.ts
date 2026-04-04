@@ -10,6 +10,8 @@ import type {
   CodeModeApprovalGrant,
   CodeModeBridgeCallLogEntry,
   CodeModeEffectRecord,
+  CodeModeEffectReviewRisk,
+  CodeModeEffectReviewSnapshot,
 } from './types';
 import {
   deserializeArtifacts,
@@ -82,6 +84,353 @@ function stableHash(value: unknown): string {
   return crypto.createHash('sha256').update(JSON.stringify(value)).digest('hex');
 }
 
+function asTrimmedString(value: unknown): string | null {
+  if (typeof value !== 'string') {
+    return null;
+  }
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function truncatePreview(value: string | null, maxChars = 280): string | undefined {
+  if (!value) {
+    return undefined;
+  }
+  return value.length <= maxChars ? value : `${value.slice(0, Math.max(1, maxChars - 1))}…`;
+}
+
+function buildCodeModeEffectReviewSnapshot(params: {
+  effectLabel: string;
+  executionId: string;
+  effectIndex: number;
+  title?: string;
+  intent?: string;
+  target?: string;
+  impact?: string;
+  risk?: CodeModeEffectReviewRisk;
+  preview?: string;
+}): CodeModeEffectReviewSnapshot {
+  return {
+    kind: 'code_mode_effect',
+    effectLabel: params.effectLabel,
+    effectIndex: params.effectIndex,
+    executionId: params.executionId,
+    title: params.title,
+    intent: params.intent,
+    target: params.target,
+    impact: params.impact,
+    risk: params.risk,
+    preview: params.preview,
+  };
+}
+
+function describeBridgeEffect(params: {
+  namespace: BridgeNamespace;
+  method: string;
+  args: unknown;
+  definitionSummary: string;
+}): Omit<CodeModeEffectReviewSnapshot, 'kind' | 'effectLabel' | 'effectIndex' | 'executionId'> {
+  const record = typeof params.args === 'object' && params.args && !Array.isArray(params.args)
+    ? params.args as Record<string, unknown>
+    : {};
+  const channelId = asTrimmedString(record.channelId);
+  const messageId = asTrimmedString(record.messageId);
+  const threadId = asTrimmedString(record.threadId);
+  const userId = asTrimmedString(record.userId);
+  const roleId = asTrimmedString(record.roleId);
+  const content = asTrimmedString(record.content);
+  const emoji = asTrimmedString(record.emoji);
+  const name = asTrimmedString(record.name);
+  const artifactId = asTrimmedString(record.artifactId);
+  const caseId = asTrimmedString(record.caseId);
+  const jobId = asTrimmedString(record.jobId);
+
+  switch (`${params.namespace}.${params.method}`) {
+    case 'discord.messages.send':
+      return {
+        title: 'Sage Action Review',
+        intent: 'Send a Discord message',
+        target: channelId ? `<#${channelId}>` : 'Selected channel',
+        impact: 'Posts a new message in the selected channel.',
+        risk: 'low',
+        preview: truncatePreview(content),
+      };
+    case 'discord.messages.reply':
+      return {
+        title: 'Sage Action Review',
+        intent: 'Reply to a Discord message',
+        target: channelId && messageId ? `Message ${messageId} in <#${channelId}>` : 'Selected message',
+        impact: 'Posts a reply in the same conversation thread.',
+        risk: 'low',
+        preview: truncatePreview(content),
+      };
+    case 'discord.messages.edit':
+      return {
+        title: 'Sage Action Review',
+        intent: 'Edit a Sage message',
+        target: channelId && messageId ? `Message ${messageId} in <#${channelId}>` : 'Existing Sage message',
+        impact: 'Updates a message Sage already posted.',
+        risk: 'medium',
+        preview: truncatePreview(content),
+      };
+    case 'discord.reactions.add':
+      return {
+        title: 'Sage Action Review',
+        intent: 'Add a reaction',
+        target: channelId && messageId ? `Message ${messageId} in <#${channelId}>` : 'Selected message',
+        impact: 'Adds one reaction to the selected message.',
+        risk: 'low',
+        preview: truncatePreview(emoji ? `Emoji: ${emoji}` : null),
+      };
+    case 'discord.reactions.remove':
+      return {
+        title: 'Sage Action Review',
+        intent: 'Remove Sage’s reaction',
+        target: channelId && messageId ? `Message ${messageId} in <#${channelId}>` : 'Selected message',
+        impact: 'Removes Sage’s own reaction from the selected message.',
+        risk: 'low',
+        preview: truncatePreview(emoji ? `Emoji: ${emoji}` : null),
+      };
+    case 'discord.threads.create':
+      return {
+        title: 'Thread Review',
+        intent: 'Create a Discord thread',
+        target: channelId ? `<#${channelId}>` : 'Selected channel',
+        impact: 'Starts a new discussion thread in the selected channel.',
+        risk: 'medium',
+        preview: truncatePreview(name ? `Thread name: ${name}` : null),
+      };
+    case 'discord.threads.update':
+      return {
+        title: 'Thread Review',
+        intent: 'Update a Discord thread',
+        target: threadId ? `Thread ${threadId}` : 'Selected thread',
+        impact: 'Changes thread settings such as its name or archive state.',
+        risk: 'medium',
+        preview: truncatePreview(name ? `Thread name: ${name}` : null),
+      };
+    case 'discord.threads.join':
+      return {
+        title: 'Thread Review',
+        intent: 'Join a Discord thread',
+        target: threadId ? `Thread ${threadId}` : 'Selected thread',
+        impact: 'Makes Sage join the selected thread.',
+        risk: 'low',
+      };
+    case 'discord.threads.leave':
+      return {
+        title: 'Thread Review',
+        intent: 'Leave a Discord thread',
+        target: threadId ? `Thread ${threadId}` : 'Selected thread',
+        impact: 'Makes Sage leave the selected thread.',
+        risk: 'low',
+      };
+    case 'discord.threads.addMember':
+      return {
+        title: 'Thread Review',
+        intent: 'Add someone to a thread',
+        target: threadId ? `Thread ${threadId}` : 'Selected thread',
+        impact: 'Adds a member to the selected thread.',
+        risk: 'medium',
+        preview: truncatePreview(userId ? `Member: <@${userId}>` : null),
+      };
+    case 'discord.threads.removeMember':
+      return {
+        title: 'Thread Review',
+        intent: 'Remove someone from a thread',
+        target: threadId ? `Thread ${threadId}` : 'Selected thread',
+        impact: 'Removes a member from the selected thread.',
+        risk: 'medium',
+        preview: truncatePreview(userId ? `Member: <@${userId}>` : null),
+      };
+    case 'discord.threads.archive':
+      return {
+        title: 'Thread Review',
+        intent: 'Archive a Discord thread',
+        target: threadId ? `Thread ${threadId}` : 'Selected thread',
+        impact: 'Closes the selected thread until it is reopened.',
+        risk: 'medium',
+      };
+    case 'discord.threads.reopen':
+      return {
+        title: 'Thread Review',
+        intent: 'Reopen a Discord thread',
+        target: threadId ? `Thread ${threadId}` : 'Selected thread',
+        impact: 'Reopens an archived thread.',
+        risk: 'medium',
+      };
+    case 'discord.roles.add':
+      return {
+        title: 'Role Review',
+        intent: 'Add a role to a member',
+        target: userId ? `<@${userId}>` : 'Selected member',
+        impact: 'Grants an existing role to a server member.',
+        risk: 'high',
+        preview: truncatePreview(roleId ? `Role ID: ${roleId}` : null),
+      };
+    case 'discord.roles.remove':
+      return {
+        title: 'Role Review',
+        intent: 'Remove a role from a member',
+        target: userId ? `<@${userId}>` : 'Selected member',
+        impact: 'Removes an existing role from a server member.',
+        risk: 'high',
+        preview: truncatePreview(roleId ? `Role ID: ${roleId}` : null),
+      };
+    case 'artifacts.create':
+      return {
+        title: 'Artifact Review',
+        intent: 'Create a text artifact',
+        target: asTrimmedString(record.name) ?? 'New artifact',
+        impact: 'Creates a reusable text artifact Sage can manage and publish later.',
+        risk: 'medium',
+        preview: truncatePreview(asTrimmedString(record.descriptionText) ?? asTrimmedString(record.content)),
+      };
+    case 'artifacts.update':
+      return {
+        title: 'Artifact Review',
+        intent: 'Update a text artifact',
+        target: artifactId ?? 'Existing artifact',
+        impact: 'Changes the saved contents or metadata of an artifact.',
+        risk: 'medium',
+        preview: truncatePreview(asTrimmedString(record.descriptionText) ?? asTrimmedString(record.content)),
+      };
+    case 'artifacts.publish':
+      return {
+        title: 'Artifact Publish Review',
+        intent: 'Publish an artifact to Discord',
+        target: channelId ? `<#${channelId}>` : 'Selected channel',
+        impact: 'Posts the latest artifact contents into the selected Discord channel.',
+        risk: 'medium',
+        preview: truncatePreview(artifactId ? `Artifact ID: ${artifactId}` : null),
+      };
+    case 'admin.instructions.update':
+      return {
+        title: 'Sage Persona Review',
+        intent: 'Update Sage’s server instructions',
+        target: 'Server-wide Sage behavior',
+        impact: 'Changes how Sage behaves for future conversations in this server.',
+        risk: 'high',
+        preview: truncatePreview(asTrimmedString(record.instructionsText)),
+      };
+    case 'moderation.cases.acknowledge':
+      return {
+        title: 'Moderation Review',
+        intent: 'Acknowledge a moderation case',
+        target: caseId ?? 'Moderation case',
+        impact: 'Marks a moderation case as acknowledged for follow-up.',
+        risk: 'medium',
+      };
+    case 'moderation.cases.resolve':
+      return {
+        title: 'Moderation Review',
+        intent: 'Resolve a moderation case',
+        target: caseId ?? 'Moderation case',
+        impact: 'Closes a moderation case with an outcome and optional reason.',
+        risk: 'high',
+        preview: truncatePreview(asTrimmedString(record.resolutionReasonText)),
+      };
+    case 'moderation.notes.create':
+      return {
+        title: 'Moderation Review',
+        intent: 'Add a moderation note',
+        target: caseId ?? 'Moderation case',
+        impact: 'Adds an internal moderation note to the case record.',
+        risk: 'medium',
+        preview: truncatePreview(asTrimmedString(record.noteText)),
+      };
+    case 'moderation.messages.delete':
+      return {
+        title: 'Moderation Review',
+        intent: 'Delete a Discord message',
+        target: channelId && messageId ? `Message ${messageId} in <#${channelId}>` : 'Selected message',
+        impact: 'Removes a message from the server through the moderation path.',
+        risk: 'high',
+        preview: truncatePreview(asTrimmedString(record.reasonText)),
+      };
+    case 'moderation.messages.bulkDelete':
+      return {
+        title: 'Moderation Review',
+        intent: 'Bulk delete Discord messages',
+        target: channelId ? `<#${channelId}>` : 'Selected channel',
+        impact: 'Deletes multiple recent messages in one moderation action.',
+        risk: 'critical',
+        preview: truncatePreview(asTrimmedString(record.reasonText)),
+      };
+    case 'moderation.reactions.removeUser':
+      return {
+        title: 'Moderation Review',
+        intent: 'Remove a user reaction',
+        target: channelId && messageId ? `Message ${messageId} in <#${channelId}>` : 'Selected message',
+        impact: 'Removes one user’s reaction from the selected message.',
+        risk: 'medium',
+        preview: truncatePreview(asTrimmedString(record.reasonText) ?? (userId ? `User: <@${userId}>` : null)),
+      };
+    case 'schedule.jobs.create':
+      return {
+        title: 'Schedule Review',
+        intent: 'Create a scheduled job',
+        target: channelId ? `<#${channelId}>` : 'Scheduled task',
+        impact: 'Creates a new scheduled reminder or agent run.',
+        risk: 'medium',
+        preview: truncatePreview(asTrimmedString(record.runAtIso) ?? asTrimmedString(record.cronExpr)),
+      };
+    case 'schedule.jobs.update':
+      return {
+        title: 'Schedule Review',
+        intent: 'Update a scheduled job',
+        target: jobId ?? 'Scheduled job',
+        impact: 'Changes an existing reminder or agent run schedule.',
+        risk: 'medium',
+        preview: truncatePreview(asTrimmedString(record.runAtIso) ?? asTrimmedString(record.cronExpr)),
+      };
+    case 'schedule.jobs.pause':
+      return {
+        title: 'Schedule Review',
+        intent: 'Pause a scheduled job',
+        target: jobId ?? 'Scheduled job',
+        impact: 'Temporarily stops a scheduled job from running.',
+        risk: 'medium',
+      };
+    case 'schedule.jobs.resume':
+      return {
+        title: 'Schedule Review',
+        intent: 'Resume a scheduled job',
+        target: jobId ?? 'Scheduled job',
+        impact: 'Restarts a paused scheduled job.',
+        risk: 'medium',
+      };
+    case 'schedule.jobs.cancel':
+      return {
+        title: 'Schedule Review',
+        intent: 'Cancel a scheduled job',
+        target: jobId ?? 'Scheduled job',
+        impact: 'Permanently stops a scheduled job from running again.',
+        risk: 'high',
+      };
+    case 'schedule.jobs.run':
+      return {
+        title: 'Schedule Review',
+        intent: 'Run a scheduled job now',
+        target: jobId ?? 'Scheduled job',
+        impact: 'Triggers the selected scheduled job immediately.',
+        risk: 'medium',
+      };
+    default:
+      return {
+        title: 'Sage Action Review',
+        intent: params.definitionSummary,
+        target: 'Requested Sage action',
+        impact: 'Runs a reviewed action through Sage’s controlled runtime.',
+        risk: params.namespace === 'moderation' || params.namespace === 'admin'
+          ? 'high'
+          : params.namespace === 'discord' && params.method.startsWith('roles.')
+            ? 'high'
+            : 'medium',
+      };
+  }
+}
+
 function buildApprovalPayload(params: {
   toolContext: ToolExecutionContext;
   effectIndex: number;
@@ -89,6 +438,7 @@ function buildApprovalPayload(params: {
   executionId: string;
   taskId: string;
   requestHash: string;
+  reviewSnapshot?: CodeModeEffectReviewSnapshot;
 }): ApprovalInterruptPayload {
   const guildId = params.toolContext.guildId?.trim();
   const userId = params.toolContext.userId?.trim();
@@ -112,7 +462,7 @@ function buildApprovalPayload(params: {
       effectLabel: params.effectLabel,
       requestHash: params.requestHash,
     } satisfies CodeModeApprovalExecutionPayload,
-    reviewSnapshotJson: {
+    reviewSnapshotJson: params.reviewSnapshot ?? {
       kind: 'code_mode_effect',
       effectLabel: params.effectLabel,
       effectIndex: params.effectIndex,
@@ -260,6 +610,14 @@ export async function createHostBridgeSession(
       } else if (existing.status === 'approval_required' && params.approvalGrant?.effectIndex === index) {
         throw new Error(`Code Mode approval replay for effect #${index} no longer matches the original request hash.`);
       } else if (existing.status === 'approval_required') {
+        const existingReviewSnapshot =
+          existing.approval?.kind === 'code_mode_effect'
+            ? buildCodeModeEffectReviewSnapshot({
+                effectLabel: existing.label,
+                effectIndex: index,
+                executionId: params.executionId,
+              })
+            : undefined;
         throw new ApprovalRequiredSignal(
           buildApprovalPayload({
             toolContext: params.toolContext,
@@ -268,6 +626,7 @@ export async function createHostBridgeSession(
             executionId: params.executionId,
             taskId: params.workspace.taskId,
             requestHash,
+            reviewSnapshot: existingReviewSnapshot,
           }),
         );
       }
@@ -281,6 +640,7 @@ export async function createHostBridgeSession(
     let mutability: 'read' | 'write';
     let approvalMode: 'none' | 'required' = 'none';
     let executor: () => Promise<unknown>;
+    let reviewSnapshot: CodeModeEffectReviewSnapshot | undefined;
 
     if (operation.kind === 'bridge') {
       if (operation.namespace === 'admin' && operation.method === 'runtime.getCapabilities') {
@@ -307,6 +667,17 @@ export async function createHostBridgeSession(
         label = `${method.namespace}.${method.method}`;
         mutability = method.mutability;
         approvalMode = method.approvalMode ?? 'none';
+        reviewSnapshot = buildCodeModeEffectReviewSnapshot({
+          effectLabel: label,
+          effectIndex: index,
+          executionId: params.executionId,
+          ...describeBridgeEffect({
+            namespace: method.namespace,
+            method: method.method,
+            args: parsedArgs,
+            definitionSummary: method.summary,
+          }),
+        });
         executor = async () => method.execute(parsedArgs, { toolContext: params.toolContext });
       }
     } else if (operation.kind === 'http') {
@@ -350,6 +721,7 @@ export async function createHostBridgeSession(
         executionId: params.executionId,
         taskId: params.workspace.taskId,
         requestHash,
+        reviewSnapshot,
       });
       const reviewChannelId = await fetchReviewChannelId(params.toolContext);
       const approvalPayload = {

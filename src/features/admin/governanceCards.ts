@@ -12,6 +12,8 @@ import {
 } from 'discord-api-types/payloads/v10';
 import type { ApprovalReviewRequestRecord } from './approvalReviewRequestRepo';
 import { readPreparedModerationEnvelope, type PreparedModerationEnvelope } from './discordModeration';
+import { listBridgeMethodSummaries } from '../code-mode/bridge/contract';
+import type { CodeModeEffectReviewSnapshot } from '../code-mode/types';
 
 type InteractiveApiButtonStyle =
   | ApiButtonStyle.Primary
@@ -34,6 +36,10 @@ export type GovernanceMessagePayload = {
   flags: MessageFlags;
   components: APIMessageTopLevelComponent[];
 };
+
+const BRIDGE_METHOD_SUMMARY_BY_KEY = new Map(
+  listBridgeMethodSummaries().map((summary) => [summary.key, summary]),
+);
 
 function truncate(value: string, maxChars: number): string {
   if (value.length <= maxChars) return value;
@@ -313,6 +319,112 @@ function summarizeDiscordRestWrite(request: Record<string, unknown>): Governance
   };
 }
 
+function summarizeCodeModeEffect(action: ApprovalReviewRequestRecord): GovernanceSummary {
+  const reviewSnapshot = normalizeUnknownRecord(action.reviewSnapshotJson) as CodeModeEffectReviewSnapshot | null;
+  const payload = normalizeUnknownRecord(action.executionPayloadJson) ?? {};
+  const effectLabel =
+    asString(reviewSnapshot?.effectLabel) ??
+    asString(payload.effectLabel) ??
+    'code_mode_effect';
+  const directTitle = asString(reviewSnapshot?.title);
+  const directIntent = asString(reviewSnapshot?.intent);
+  const directTarget = asString(reviewSnapshot?.target);
+  const directImpact = asString(reviewSnapshot?.impact);
+  const directPreview = asString(reviewSnapshot?.preview);
+  const directRisk = asString(reviewSnapshot?.risk);
+
+  if (directTitle || directIntent || directTarget || directImpact || directPreview || directRisk) {
+    return {
+      title: directTitle ?? 'Sage Action Review',
+      intent: directIntent ?? 'Run a Sage action',
+      target: directTarget ?? 'Requested action',
+      impact: directImpact ?? 'Runs a reviewed action through Sage’s controlled runtime.',
+      risk:
+        directRisk === 'low' || directRisk === 'medium' || directRisk === 'high' || directRisk === 'critical'
+          ? directRisk
+          : 'medium',
+      preview: directPreview ?? undefined,
+    };
+  }
+
+  if (effectLabel.startsWith('http.fetch ')) {
+    const [, method = 'GET', target = 'external service'] = effectLabel.split(/\s+/, 3);
+    const isRead = method === 'GET' || method === 'HEAD' || method === 'OPTIONS';
+    return {
+      title: 'External Request Review',
+      intent: `${method} request to an external service`,
+      target,
+      impact: isRead
+        ? 'Reads data from an external service through Sage’s managed network path.'
+        : 'Sends data to an external service through Sage’s managed network path.',
+      risk: isRead ? 'low' : 'high',
+      preview: target,
+    };
+  }
+
+  if (effectLabel.startsWith('workspace.')) {
+    const actionName = effectLabel.slice('workspace.'.length);
+    return {
+      title: 'Workspace Review',
+      intent:
+        actionName === 'write'
+          ? 'Write to the task workspace'
+          : actionName === 'append'
+            ? 'Append to a workspace file'
+            : actionName === 'delete'
+              ? 'Delete from the task workspace'
+              : `Run workspace action: ${actionName}`,
+      target: 'Current task workspace',
+      impact: 'Changes files inside Sage’s temporary task workspace.',
+      risk: actionName === 'delete' ? 'high' : 'medium',
+    };
+  }
+
+  const bridgeSummary = BRIDGE_METHOD_SUMMARY_BY_KEY.get(effectLabel);
+  if (bridgeSummary) {
+    return {
+      title:
+        bridgeSummary.namespace === 'admin'
+          ? 'Sage Persona Review'
+          : bridgeSummary.namespace === 'artifacts'
+            ? 'Artifact Review'
+            : bridgeSummary.namespace === 'moderation'
+              ? 'Moderation Review'
+              : bridgeSummary.namespace === 'schedule'
+                ? 'Schedule Review'
+                : bridgeSummary.namespace === 'approvals'
+                  ? 'Approval Review'
+                  : 'Sage Action Review',
+      intent: bridgeSummary.summary,
+      target:
+        bridgeSummary.namespace === 'discord'
+          ? 'Discord server'
+          : bridgeSummary.namespace === 'artifacts'
+            ? 'Saved artifact'
+            : bridgeSummary.namespace === 'schedule'
+              ? 'Scheduled job'
+              : 'Requested action',
+      impact: 'Runs a reviewed action through Sage’s controlled runtime.',
+      risk:
+        bridgeSummary.access === 'admin' || bridgeSummary.access === 'moderator'
+          ? 'high'
+          : bridgeSummary.mutability === 'write'
+            ? 'medium'
+            : 'low',
+      preview: effectLabel,
+    };
+  }
+
+  return {
+    title: 'Sage Action Review',
+    intent: 'Run a Sage action',
+    target: 'Requested action',
+    impact: 'Runs a reviewed action through Sage’s controlled runtime.',
+    risk: 'medium',
+    preview: effectLabel,
+  };
+}
+
 function summarizeApprovalRequest(action: ApprovalReviewRequestRecord): GovernanceSummary {
   const payload = normalizeUnknownRecord(action.executionPayloadJson) ?? {};
 
@@ -329,6 +441,10 @@ function summarizeApprovalRequest(action: ApprovalReviewRequestRecord): Governan
   if (action.kind === 'discord_rest_write') {
     const request = normalizeUnknownRecord(payload.request) ?? {};
     return summarizeDiscordRestWrite(request);
+  }
+
+  if (action.kind === 'code_mode_effect') {
+    return summarizeCodeModeEffect(action);
   }
 
   return {
@@ -376,6 +492,7 @@ function buildRequesterStateCopy(params: {
   const { action, coalesced, summary } = params;
   const lines = [
     `**${statusLabel(action, coalesced)}**`,
+    summary.title,
     summary.intent,
     `Target: ${summary.target}`,
   ];
@@ -437,6 +554,7 @@ export function buildApprovalReviewReviewerCardPayload(params: {
   const reviewState = params.action.status === 'pending' ? 'Review required' : statusLabel(params.action);
   const lines = [
     `**${reviewState}**`,
+    summary.title,
     summary.intent,
     `Requester: <@${params.action.requestedBy}>`,
     `Target: ${summary.target}`,
@@ -517,6 +635,7 @@ export function buildApprovalReviewDetailsText(action: ApprovalReviewRequestReco
 
   return [
     `Action ID: \`${action.id}\``,
+    `Review: ${summary.title}`,
     `Kind: ${action.kind}`,
     `State: ${statusLabel(action)}`,
     `Requester: <@${action.requestedBy}>`,

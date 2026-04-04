@@ -92,3 +92,18 @@ export interface CodeModeApprovalExecutionPayload {
   effectLabel: string;
   requestHash?: string;
 }
+
+export type CodeModeEffectReviewRisk = 'low' | 'medium' | 'high' | 'critical';
+
+export interface CodeModeEffectReviewSnapshot {
+  kind: 'code_mode_effect';
+  effectLabel: string;
+  effectIndex: number;
+  executionId: string;
+  title?: string;
+  intent?: string;
+  target?: string;
+  impact?: string;
+  risk?: CodeModeEffectReviewRisk;
+  preview?: string;
+}

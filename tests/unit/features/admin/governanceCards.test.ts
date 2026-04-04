@@ -224,4 +224,87 @@ describe('governanceCards', () => {
       'Outcome summary: requested=3, eligible=2, deleted=1, skipped older than 14 days=1, not_found=1.',
     );
   });
+
+  it('renders code mode effect approvals with human-friendly Discord action copy', () => {
+    const action = makeReviewRequest({
+      kind: 'code_mode_effect',
+      executionPayloadJson: {
+        executionId: 'exec-123',
+        taskId: 'task-123',
+        effectIndex: 2,
+        effectLabel: 'discord.messages.send',
+        requestHash: 'hash-123',
+      },
+      reviewSnapshotJson: {
+        kind: 'code_mode_effect',
+        effectLabel: 'discord.messages.send',
+        effectIndex: 2,
+        executionId: 'exec-123',
+        title: 'Sage Action Review',
+        intent: 'Send a Discord message',
+        target: '<#channel-live>',
+        impact: 'Posts a new message in the selected channel.',
+        risk: 'low',
+        preview: 'Deployment complete. Shipping now.',
+      },
+    });
+
+    const reviewerPayload = buildApprovalReviewReviewerCardPayload({
+      action,
+      approveCustomId: 'approve-code',
+      rejectCustomId: 'reject-code',
+      detailsCustomId: 'details-code',
+    });
+    const requesterPayload = buildApprovalReviewRequesterCardPayload({ action });
+    const detailsText = buildApprovalReviewDetailsText(action);
+    const reviewerSerialized = JSON.stringify(reviewerPayload);
+    const requesterSerialized = JSON.stringify(requesterPayload);
+
+    expect(reviewerSerialized).toContain('Review required');
+    expect(reviewerSerialized).toContain('Send a Discord message');
+    expect(reviewerSerialized).toContain('<#channel-live>');
+    expect(reviewerSerialized).toContain('Posts a new message in the selected channel.');
+    expect(reviewerSerialized).toContain('Low risk');
+    expect(reviewerSerialized).toContain('Deployment complete. Shipping now.');
+    expect(requesterSerialized).toContain('Send a Discord message');
+    expect(requesterSerialized).not.toContain('code_mode_effect');
+    expect(detailsText).toContain('Review: Sage Action Review');
+    expect(detailsText).toContain('Intent: Send a Discord message');
+    expect(detailsText).toContain('Target: <#channel-live>');
+  });
+
+  it('falls back to a readable workspace summary for older code mode effect approvals', () => {
+    const action = makeReviewRequest({
+      kind: 'code_mode_effect',
+      executionPayloadJson: {
+        executionId: 'exec-legacy',
+        taskId: 'task-legacy',
+        effectIndex: 1,
+        effectLabel: 'workspace.delete',
+        requestHash: 'hash-legacy',
+      },
+      reviewSnapshotJson: {
+        kind: 'code_mode_effect',
+        effectLabel: 'workspace.delete',
+        effectIndex: 1,
+        executionId: 'exec-legacy',
+      },
+    });
+
+    const reviewerPayload = buildApprovalReviewReviewerCardPayload({
+      action,
+      approveCustomId: 'approve-legacy',
+      rejectCustomId: 'reject-legacy',
+      detailsCustomId: 'details-legacy',
+    });
+    const detailsText = buildApprovalReviewDetailsText(action);
+    const reviewerSerialized = JSON.stringify(reviewerPayload);
+
+    expect(reviewerSerialized).toContain('Workspace Review');
+    expect(reviewerSerialized).toContain('Delete from the task workspace');
+    expect(reviewerSerialized).toContain('Current task workspace');
+    expect(reviewerSerialized).not.toContain('code_mode_effect');
+    expect(detailsText).toContain('Intent: Delete from the task workspace');
+    expect(detailsText).toContain('Target: Current task workspace');
+  });
 });
