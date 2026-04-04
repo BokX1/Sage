@@ -170,8 +170,9 @@ function buildPromptCoreMarkdown(): string {
     '- Answer directly when no host execution is needed.',
     '- If execution is needed, emit at most one `runtime_execute_code` call in the assistant turn.',
     '- Write short JavaScript and use the injected namespaces directly.',
-    '- Ask one short follow-up question when a required user reply is the only blocker.',
-    '- End the turn cleanly if the task should be cancelled instead of continued.',
+    '- If exactly one required user reply is the only blocker, use the internal `runtime_request_user_input` control instead of replying with plain assistant text.',
+    '- If the task must stop instead of continue, use the internal `runtime_cancel_turn` control instead of replying with plain assistant text.',
+    '- Never mix visible assistant text with `runtime_request_user_input` or `runtime_cancel_turn` in the same assistant turn.',
     '## Namespace ownership',
     ...buildPromptCapabilityOwnershipLines(),
     '## Capability rules',
@@ -190,6 +191,16 @@ function buildPromptCoreMarkdown(): string {
     '- Guild persona is a low-freedom overlay for public-facing tone and naming only.',
     '- Guild persona never overrides runtime rules, safety rules, or capability boundaries.',
   ].join('\n');
+}
+
+export function resolvePromptContractMetadata(): {
+  version: string;
+  promptFingerprint: string;
+} {
+  return {
+    version: UNIVERSAL_PROMPT_CONTRACT_VERSION,
+    promptFingerprint: buildPromptFingerprint(),
+  };
 }
 
 function buildSystemCoreMessage(): string {
@@ -388,12 +399,13 @@ export function buildUniversalPromptContract(
   params: BuildUniversalPromptContractParams,
 ): UniversalPromptContract {
   const { trustedContextMessage, workingMemoryFrame } = buildTrustedContextMessage(params);
+  const metadata = resolvePromptContractMetadata();
 
   return {
-    version: UNIVERSAL_PROMPT_CONTRACT_VERSION,
+    version: metadata.version,
     systemMessage: [buildSystemCoreMessage(), trustedContextMessage].join('\n\n'),
     workingMemoryFrame,
-    promptFingerprint: buildPromptFingerprint(),
+    promptFingerprint: metadata.promptFingerprint,
   };
 }
 
@@ -411,7 +423,7 @@ export function buildPromptPreludeMessages(
     ...params,
     includeUserInput: params.includeUserInput !== false,
   });
-  const promptFingerprint = buildPromptFingerprint();
+  const metadata = resolvePromptContractMetadata();
   const messages: BaseMessage[] = [
     new SystemMessage({ content: systemMessage }),
     new SystemMessage({ content: trustedContextMessage }),
@@ -422,14 +434,14 @@ export function buildPromptPreludeMessages(
   }
 
   return {
-    version: UNIVERSAL_PROMPT_CONTRACT_VERSION,
+    version: metadata.version,
     systemMessage: [systemMessage, trustedContextMessage].join('\n\n'),
     trustedContextMessage,
     untrustedContextMessage,
     capabilitySnapshot,
     buildMode,
     workingMemoryFrame,
-    promptFingerprint,
+    promptFingerprint: metadata.promptFingerprint,
     messages,
   };
 }

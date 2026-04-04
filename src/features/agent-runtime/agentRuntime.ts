@@ -24,6 +24,7 @@ import {
 } from './visibleReply';
 import {
   buildPromptContextMessages,
+  resolvePromptContractMetadata,
   type PromptInputMode,
   type PromptWaitingFollowUp,
 } from './promptContract';
@@ -1292,6 +1293,7 @@ export async function resumeWaitingTaskRunWithInput(
     authority: params.invokerAuthority,
     invokedBy: 'reply',
   });
+  const promptMetadata = resolvePromptContractMetadata();
   const waitingFollowUp = buildWaitingFollowUpContext({
     waitingTaskRun,
   });
@@ -1327,6 +1329,8 @@ export async function resumeWaitingTaskRunWithInput(
         invokerCanModerate: params.canModerate ?? false,
         activeToolNames,
         routeKind: 'user_input_resume',
+        promptVersion: promptMetadata.version,
+        promptFingerprint: promptMetadata.promptFingerprint,
         currentTurn: params.currentTurn,
         replyTarget: params.replyTarget ?? null,
         promptMode: 'waiting_follow_up',
@@ -1455,6 +1459,7 @@ export async function resumeBackgroundTaskRun(params: {
     authority: params.invokerAuthority,
     invokedBy: 'component',
   });
+  const promptMetadata = resolvePromptContractMetadata();
   try {
     const pendingUserInterrupt = toContinuePendingUserInterrupt(taskRun);
     const graphResult = await continueAgentGraphTurn({
@@ -1487,6 +1492,8 @@ export async function resumeBackgroundTaskRun(params: {
         invokerCanModerate: params.canModerate ?? false,
         activeToolNames,
         routeKind: 'background_resume',
+        promptVersion: promptMetadata.version,
+        promptFingerprint: promptMetadata.promptFingerprint,
       },
       pendingUserInterrupt,
       onStateUpdate: params.onResponseSessionUpdate
@@ -1589,6 +1596,7 @@ export async function continueMatchedTaskRunWithInput(
     authority: params.invokerAuthority,
     invokedBy: params.currentTurn.invokedBy,
   });
+  const promptMetadata = resolvePromptContractMetadata();
 
   try {
     const graphResult = await continueAgentGraphTurn({
@@ -1621,6 +1629,8 @@ export async function continueMatchedTaskRunWithInput(
         invokerCanModerate: params.canModerate ?? false,
         activeToolNames,
         routeKind: 'active_interrupt_race_resume',
+        promptVersion: promptMetadata.version,
+        promptFingerprint: promptMetadata.promptFingerprint,
         currentTurn: params.currentTurn,
         replyTarget: params.replyTarget ?? null,
         promptMode: params.promptMode,
@@ -1706,6 +1716,7 @@ export async function retryFailedChatTurn(
     authority: params.invokerAuthority,
     invokedBy: 'component',
   });
+  const promptMetadata = resolvePromptContractMetadata();
   const routeKind = params.retryKind === 'background_resume' ? 'background_retry' : 'turn_retry';
 
   if (appConfig.SAGE_TRACE_DB_ENABLED) {
@@ -1767,6 +1778,8 @@ export async function retryFailedChatTurn(
         invokerCanModerate: params.canModerate ?? false,
         activeToolNames,
         routeKind,
+        promptVersion: promptMetadata.version,
+        promptFingerprint: promptMetadata.promptFingerprint,
       },
     });
 

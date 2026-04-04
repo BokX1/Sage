@@ -2,6 +2,7 @@ export {
   UNIVERSAL_PROMPT_CONTRACT_VERSION,
   buildDefaultWorkingMemoryFrame,
   buildPromptContextMessages,
+  resolvePromptContractMetadata,
   buildPromptPreludeMessages,
   buildUniversalPromptContract,
   resolveDefaultInvocationUserText,

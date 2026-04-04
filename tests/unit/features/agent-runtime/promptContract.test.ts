@@ -103,6 +103,8 @@ describe('promptContract', () => {
     const prompt = buildContract().systemMessage;
 
     expect(prompt).toContain('emit at most one `runtime_execute_code` call');
+    expect(prompt).toContain('use the internal `runtime_request_user_input` control');
+    expect(prompt).toContain('use the internal `runtime_cancel_turn` control');
     expect(prompt).toContain('- discord: Live Discord actions only.');
     expect(prompt).toContain('- history: Stored transcript retrieval and search only.');
     expect(prompt).toContain('call `admin.runtime.getCapabilities()` from Code Mode');

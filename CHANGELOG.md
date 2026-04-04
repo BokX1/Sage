@@ -32,6 +32,7 @@
 
 ### Fixed
 - Fixed prompt/runtime drift so graph turns no longer persist prompt scaffolding inside conversation state, transcript continuity tests now validate the trusted/untrusted prompt frames directly, and docs/operator references no longer teach the removed XML prompt format or prompt-era legacy tool wording.
+- Fixed the hard-cut prompt/runtime handoff so Sage now explicitly uses the internal runtime wait/cancel controls for durable follow-up and cancellation states, and resumed or retried graph turns always carry the current prompt version/fingerprint instead of dropping prompt metadata on non-fresh paths.
 - Fixed Code Mode bridge introspection and smoke verification so Sage now reports summary text plus required/optional args for each live method, surfaces real DNS/TLS/connect causes from `http.fetch(...)` failures, and can verify capabilities/workspace/http/history directly without a full model turn.
 - Fixed the LangGraph hard-cut cleanup so approval interrupts now come only from real Code Mode effect execution instead of the stale speculative pre-approval branch the runtime was still carrying.
 - Prevented background LangGraph resumes from re-entering the Codex model with unresolved tool-call checkpoints after a yield, which stops rare `missing tool outputs` transcript failures across read and approval tool paths.

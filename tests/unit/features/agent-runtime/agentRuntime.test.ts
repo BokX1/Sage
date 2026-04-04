@@ -6,6 +6,7 @@ const {
   upsertTraceStartMock,
   updateTraceEndMock,
   buildPromptContextMessagesMock,
+  resolvePromptContractMetadataMock,
   resolveRuntimeSurfaceToolNamesMock,
   runAgentGraphTurnMock,
   continueAgentGraphTurnMock,
@@ -34,6 +35,10 @@ const {
     },
     promptFingerprint: 'fingerprint-1',
     messages: [new HumanMessage({ content: 'hello' })],
+  })),
+  resolvePromptContractMetadataMock: vi.fn(() => ({
+    version: 'test-prompt-v1',
+    promptFingerprint: 'fingerprint-1',
   })),
   resolveRuntimeSurfaceToolNamesMock: vi.fn(() => ['runtime_execute_code']),
   runAgentGraphTurnMock: vi.fn(),
@@ -117,6 +122,7 @@ vi.mock('@/features/agent-runtime/agent-trace-repo', () => ({
 
 vi.mock('@/features/agent-runtime/promptContract', () => ({
   buildPromptContextMessages: buildPromptContextMessagesMock,
+  resolvePromptContractMetadata: resolvePromptContractMetadataMock,
 }));
 
 vi.mock('@/features/agent-runtime/langgraph/runtime', () => ({
@@ -323,6 +329,10 @@ describe('agentRuntime', () => {
       },
       promptFingerprint: 'fingerprint-1',
       messages: [new HumanMessage({ content: 'hello' })],
+    });
+    resolvePromptContractMetadataMock.mockReturnValue({
+      version: 'test-prompt-v1',
+      promptFingerprint: 'fingerprint-1',
     });
     resolveRuntimeSurfaceToolNamesMock.mockReturnValue(['runtime_execute_code']);
     upsertTraceStartMock.mockResolvedValue(undefined);
@@ -2258,6 +2268,227 @@ describe('agentRuntime', () => {
         stopReason: null,
         checkpointMetadataJson: expect.objectContaining({
           deferredForActiveInterrupt: true,
+        }),
+      }),
+    );
+  });
+
+  it('passes prompt metadata through waiting, background, matched, and retry graph resumes', async () => {
+    const now = Date.now();
+    continueAgentGraphTurnMock.mockResolvedValue(makeGraphResult());
+    retryAgentGraphTurnMock.mockResolvedValue(makeGraphResult());
+
+    findWaitingUserInputTaskRunMock.mockResolvedValueOnce({
+      id: 'task-waiting-meta-1',
+      threadId: 'thread-waiting-meta-1',
+      originTraceId: 'trace-origin',
+      latestTraceId: 'trace-latest',
+      guildId: 'guild-1',
+      channelId: 'channel-1',
+      requestedByUserId: 'user-1',
+      sourceMessageId: 'message-source-meta-1',
+      responseMessageId: 'response-waiting-meta-1',
+      status: 'waiting_user_input',
+      waitingKind: 'user_input',
+      latestDraftText: 'Which repo should I check?',
+      draftRevision: 2,
+      completionKind: 'user_input_pending',
+      stopReason: 'user_input_interrupt',
+      nextRunnableAt: null,
+      leaseOwner: null,
+      leaseExpiresAt: null,
+      heartbeatAt: null,
+      resumeCount: 0,
+      taskWallClockMs: 1000,
+      maxTotalDurationMs: 3_600_000,
+      maxIdleWaitMs: 86_400_000,
+      lastErrorText: null,
+      responseSessionJson: null,
+      waitingStateJson: { prompt: 'Which repo should I check?' },
+      compactionStateJson: null,
+      checkpointMetadataJson: null,
+      startedAt: new Date(now - 60_000),
+      completedAt: null,
+      createdAt: new Date(now - 60_000),
+      updatedAt: new Date(now - 10_000),
+    });
+
+    await resumeWaitingTaskRunWithInput({
+      traceId: 'trace-resume-meta-1',
+      userId: 'user-1',
+      channelId: 'channel-1',
+      guildId: 'guild-1',
+      invokerAuthority: 'member',
+      userText: 'Use the docs repo.',
+      currentTurn: makeCurrentTurn({
+        messageId: 'message-resume-meta-1',
+        invokedBy: 'reply',
+        isDirectReply: true,
+        replyTargetMessageId: 'response-waiting-meta-1',
+        replyTargetAuthorId: 'sage-bot',
+      }),
+      isAdmin: false,
+    });
+
+    expect(continueAgentGraphTurnMock).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        context: expect.objectContaining({
+          promptVersion: 'test-prompt-v1',
+          promptFingerprint: 'fingerprint-1',
+        }),
+      }),
+    );
+
+    getAgentTaskRunByThreadIdMock.mockResolvedValueOnce({
+      id: 'task-background-meta-1',
+      threadId: 'thread-background-meta-1',
+      originTraceId: 'trace-origin',
+      latestTraceId: 'trace-latest',
+      guildId: 'guild-1',
+      channelId: 'channel-1',
+      requestedByUserId: 'user-1',
+      sourceMessageId: 'message-source-background-meta-1',
+      responseMessageId: 'response-background-meta-1',
+      status: 'running',
+      waitingKind: null,
+      latestDraftText: 'Still checking.',
+      draftRevision: 2,
+      completionKind: null,
+      stopReason: 'background_yield',
+      nextRunnableAt: new Date(now + 60_000),
+      leaseOwner: 'worker-1',
+      leaseExpiresAt: new Date(now + 60_000),
+      heartbeatAt: new Date(now),
+      resumeCount: 1,
+      taskWallClockMs: 1_500,
+      maxTotalDurationMs: 3_600_000,
+      maxIdleWaitMs: 86_400_000,
+      lastErrorText: null,
+      responseSessionJson: null,
+      waitingStateJson: null,
+      compactionStateJson: null,
+      checkpointMetadataJson: null,
+      activeUserInterruptJson: null,
+      activeUserInterruptRevision: 0,
+      activeUserInterruptConsumedRevision: 0,
+      activeUserInterruptQueuedAt: null,
+      activeUserInterruptConsumedAt: null,
+      activeUserInterruptSupersededAt: null,
+      activeUserInterruptSupersededRevision: null,
+      startedAt: new Date(now - 60_000),
+      completedAt: null,
+      createdAt: new Date(now - 60_000),
+      updatedAt: new Date(now - 5_000),
+    });
+
+    await resumeBackgroundTaskRun({
+      traceId: 'trace-background-meta-1',
+      threadId: 'thread-background-meta-1',
+      userId: 'user-1',
+      channelId: 'channel-1',
+      guildId: 'guild-1',
+      invokerAuthority: 'admin',
+      isAdmin: true,
+    });
+
+    expect(continueAgentGraphTurnMock).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        context: expect.objectContaining({
+          promptVersion: 'test-prompt-v1',
+          promptFingerprint: 'fingerprint-1',
+        }),
+      }),
+    );
+
+    getAgentTaskRunByThreadIdMock.mockResolvedValueOnce({
+      id: 'task-matched-meta-1',
+      threadId: 'thread-matched-meta-1',
+      originTraceId: 'trace-origin',
+      latestTraceId: 'trace-latest',
+      guildId: 'guild-1',
+      channelId: 'channel-1',
+      requestedByUserId: 'user-1',
+      sourceMessageId: 'message-source-matched-meta-1',
+      responseMessageId: 'response-matched-meta-1',
+      status: 'completed',
+      waitingKind: null,
+      latestDraftText: 'Done.',
+      draftRevision: 2,
+      completionKind: 'final_answer',
+      stopReason: 'assistant_turn_completed',
+      nextRunnableAt: null,
+      leaseOwner: null,
+      leaseExpiresAt: null,
+      heartbeatAt: null,
+      resumeCount: 1,
+      taskWallClockMs: 1_500,
+      maxTotalDurationMs: 3_600_000,
+      maxIdleWaitMs: 86_400_000,
+      lastErrorText: null,
+      responseSessionJson: null,
+      waitingStateJson: null,
+      compactionStateJson: null,
+      checkpointMetadataJson: null,
+      activeUserInterruptJson: null,
+      activeUserInterruptRevision: 0,
+      activeUserInterruptConsumedRevision: 0,
+      activeUserInterruptQueuedAt: null,
+      activeUserInterruptConsumedAt: null,
+      activeUserInterruptSupersededAt: null,
+      activeUserInterruptSupersededRevision: null,
+      startedAt: new Date(now - 60_000),
+      completedAt: new Date(now - 5_000),
+      createdAt: new Date(now - 60_000),
+      updatedAt: new Date(now - 5_000),
+    });
+
+    await continueMatchedTaskRunWithInput({
+      traceId: 'trace-matched-meta-1',
+      threadId: 'thread-matched-meta-1',
+      userId: 'user-1',
+      channelId: 'channel-1',
+      guildId: 'guild-1',
+      invokerAuthority: 'admin',
+      userText: 'Continue on the same task.',
+      currentTurn: makeCurrentTurn({
+        messageId: 'message-matched-meta-1',
+        invokedBy: 'reply',
+        isDirectReply: true,
+        replyTargetMessageId: 'response-matched-meta-1',
+        replyTargetAuthorId: 'sage-bot',
+      }),
+      isAdmin: true,
+    });
+
+    expect(continueAgentGraphTurnMock).toHaveBeenNthCalledWith(
+      3,
+      expect.objectContaining({
+        context: expect.objectContaining({
+          promptVersion: 'test-prompt-v1',
+          promptFingerprint: 'fingerprint-1',
+        }),
+      }),
+    );
+
+    await retryFailedChatTurn({
+      traceId: 'trace-retry-meta-1',
+      threadId: 'thread-retry-meta-1',
+      userId: 'user-1',
+      channelId: 'channel-1',
+      guildId: 'guild-1',
+      invokerAuthority: 'member',
+      retryKind: 'turn',
+      isAdmin: false,
+      canModerate: false,
+    });
+
+    expect(retryAgentGraphTurnMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        context: expect.objectContaining({
+          promptVersion: 'test-prompt-v1',
+          promptFingerprint: 'fingerprint-1',
         }),
       }),
     );

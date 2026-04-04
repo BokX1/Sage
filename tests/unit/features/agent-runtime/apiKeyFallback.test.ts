@@ -22,6 +22,10 @@ const mockResolveTextProviderRoute = vi.hoisted(() => vi.fn());
 const mockGetGuildSagePersonaText = vi.hoisted(() => vi.fn());
 const mockRunAgentGraphTurn = vi.hoisted(() => vi.fn());
 const mockBuildPromptContextMessages = vi.hoisted(() => vi.fn());
+const mockResolvePromptContractMetadata = vi.hoisted(() => vi.fn(() => ({
+  version: 'test-prompt-v1',
+  promptFingerprint: 'fingerprint-1',
+})));
 const mockResolveRuntimeSurfaceToolNames = vi.hoisted(() => vi.fn(() => ['runtime_execute_code']));
 
 vi.mock('@/platform/config/env', () => ({
@@ -38,6 +42,7 @@ vi.mock('@/features/awareness/transcriptBuilder', () => ({
 
 vi.mock('@/features/agent-runtime/promptContract', () => ({
   buildPromptContextMessages: mockBuildPromptContextMessages,
+  resolvePromptContractMetadata: mockResolvePromptContractMetadata,
 }));
 
 vi.mock('@/features/settings/guildChannelSettings', () => ({

@@ -38,6 +38,7 @@ import type { CurrentTurnContext, ReplyTargetContext } from '../continuityContex
 import {
   buildDefaultWorkingMemoryFrame,
   buildPromptPreludeMessages,
+  resolvePromptContractMetadata,
   resolvePromptBuildMode,
   type PromptInputMode,
   type ToolObservationEvidence,
@@ -1198,6 +1199,7 @@ async function buildWindowCloseoutSummary(params: {
 }
 
 function createRuntimeContext(params: StartAgentGraphTurnParams): AgentGraphRuntimeContext {
+  const promptMetadata = resolvePromptContractMetadata();
   return {
     traceId: params.traceId,
     originTraceId: params.traceId,
@@ -1230,8 +1232,8 @@ function createRuntimeContext(params: StartAgentGraphTurnParams): AgentGraphRunt
     recentTranscript: params.recentTranscript ?? null,
     waitingFollowUp: params.waitingFollowUp ?? null,
     promptMode: params.promptMode ?? 'standard',
-    promptVersion: params.promptVersion ?? null,
-    promptFingerprint: params.promptFingerprint ?? null,
+    promptVersion: params.promptVersion ?? promptMetadata.version,
+    promptFingerprint: params.promptFingerprint ?? promptMetadata.promptFingerprint,
   };
 }
 
@@ -4236,6 +4238,7 @@ export async function continueAgentGraphTurn(
   if (!existingState) {
     throw new Error(`Agent graph state for thread "${params.threadId}" could not be normalized.`);
   }
+  const promptMetadata = resolvePromptContractMetadata();
   const mergedContext: AgentGraphRuntimeContext = {
     ...existingState.resumeContext,
     traceId: runId,
@@ -4246,6 +4249,14 @@ export async function continueAgentGraphTurn(
       ...((params.context?.activeToolNames ?? existingState.resumeContext.activeToolNames) ?? []),
     ],
     replyTarget: params.context?.replyTarget ?? existingState.resumeContext.replyTarget ?? null,
+    promptVersion:
+      params.context?.promptVersion ??
+      existingState.resumeContext.promptVersion ??
+      promptMetadata.version,
+    promptFingerprint:
+      params.context?.promptFingerprint ??
+      existingState.resumeContext.promptFingerprint ??
+      promptMetadata.promptFingerprint,
   };
   const recoveredTerminalState = await recoverTerminalRunningContinueState({
     runtime,
@@ -4334,6 +4345,7 @@ export async function retryAgentGraphTurn(params: {
   const runtime = await getRuntime();
   const telemetry = createAgentRunTelemetry();
   const runId = params.runId?.trim() || params.context.traceId?.trim() || params.threadId;
+  const promptMetadata = resolvePromptContractMetadata();
   const output = await runGraphValueStream(
     runtime.graph,
     null as Parameters<AgentGraphRuntime['graph']['invoke']>[0],
@@ -4345,6 +4357,9 @@ export async function retryAgentGraphTurn(params: {
       context: {
         ...params.context,
         threadId: params.threadId,
+        promptVersion: params.context.promptVersion ?? promptMetadata.version,
+        promptFingerprint:
+          params.context.promptFingerprint ?? promptMetadata.promptFingerprint,
       },
       callbacks: telemetry.callbacks,
       tags: ['sage', 'agent-runtime', 'langgraph', 'retry'],
