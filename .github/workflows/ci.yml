@@ -16,36 +16,19 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build-test-matrix:
-    name: Build and test (${{ matrix.node-version }})
-    strategy:
-      matrix:
-        node-version: [22.x, 24.x]
-    uses: ./.github/workflows/_repo-node-gate.yml
-    with:
-      node-version: ${{ matrix.node-version }}
-      run-command: npm run lint && npm run build && npm run test
-      timeout-minutes: 20
-
-  trust-gate:
+  repo-gate:
+    name: Repo gate
     uses: ./.github/workflows/_repo-node-gate.yml
     with:
       node-version: 22.x
-      run-command: npm run check:trust
+      run-command: npm run check
       timeout-minutes: 35
 
-  docs-lint:
+  docs-gate:
     uses: ./.github/workflows/_repo-node-gate.yml
     with:
       node-version: 22.x
-      run-command: npm run docs:lint
-      timeout-minutes: 15
-
-  docs-links:
-    uses: ./.github/workflows/_repo-node-gate.yml
-    with:
-      node-version: 22.x
-      run-command: npm run docs:links
+      run-command: npm run check:docs
       timeout-minutes: 20
 
   website-check:

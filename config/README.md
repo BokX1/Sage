@@ -20,7 +20,6 @@ This directory contains tracked configuration consumed by CI, local development 
 | `config/tooling/vitest.config.mjs` | Vitest configuration used by `npm run test`. |
 | `config/tooling/prettier.config.json` | Prettier formatting defaults. |
 | `config/tooling/sage.markdownlint-cli2.jsonc` | Markdown lint rules used by the tracked docs gate in CI and local workflows. |
-| `config/tooling/hook-gates.json` | Machine-readable scope rules for tracked Husky gate selection. |
 | `config/tooling/docs-links.json` | Machine-readable docs link-check policy shared by local and CI docs validation. |
 
 ## `config/services` Files
@@ -33,6 +32,6 @@ This directory contains tracked configuration consumed by CI, local development 
 
 ## Maintenance Rules
 
-1. Treat `config/tooling/` as the canonical source for tracked build, docs, and hook config.
+1. Treat `config/tooling/` as the canonical source for tracked build and docs config.
 2. Keep `config/services/` defaults local-first and non-production by design.
 3. If renaming a config file, update all references in `.github/workflows`, `package.json`, scripts, and docs in the same change.

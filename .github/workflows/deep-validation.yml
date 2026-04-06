@@ -1,0 +1,15 @@
+name: Deep Validation
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deep-validation:
+    uses: ./.github/workflows/_repo-node-gate.yml
+    with:
+      node-version: 22.x
+      run-command: npm run check:trust:deep
+      timeout-minutes: 50

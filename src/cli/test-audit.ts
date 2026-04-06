@@ -65,7 +65,7 @@ async function main(): Promise<void> {
   const failOnWarnings = readBoolean('TEST_AUDIT_FAIL_ON_WARNINGS', true);
   const requireStrongAssertions = readBoolean('TEST_AUDIT_REQUIRE_STRONG_ASSERTIONS', true);
   const reportPath =
-    process.env.TEST_AUDIT_REPORT_PATH?.trim() || '.agent/reports/test-audit-latest.json';
+    process.env.TEST_AUDIT_REPORT_PATH?.trim() || 'coverage/quality/test-audit-latest.json';
 
   const files = await collectTestFiles(rootDir);
   const failures: AuditIssue[] = [];

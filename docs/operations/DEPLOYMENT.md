@@ -155,7 +155,8 @@ npm start
 - [ ] PostgreSQL is reachable from `DATABASE_URL`
 - [ ] `npx prisma migrate deploy` completed successfully
 - [ ] `npm run doctor` passes
-- [ ] `npm run check:trust` passes on the release candidate
+- [ ] `npm run check` passes on the release candidate
+- [ ] `npm run check:trust:deep` passes before release packaging
 - [ ] Tika is reachable when file ingestion is enabled
 - [ ] If you want shared host Codex auth, `npm run auth:codex:status` reports an active login
 - [ ] If the host depends on the system CA store, the service exports `NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt`

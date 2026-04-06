@@ -132,7 +132,7 @@ flowchart LR
 - **Provider-flexible runtime:** Self-hosted deployments can point `AI_PROVIDER_BASE_URL` at any OpenAI-compatible endpoint. The hosted server-key and image path remain explicitly documented where they are Pollinations-specific today.
 - **One runtime contract:** Prompting, tool execution, approvals, retries, trace capture, and background resumability all live in one runtime rather than a pile of separate bots.
 - **Grounded retrieval:** Message history, summaries, file recall, and graph signals are fetched on demand instead of bloating every prompt up front.
-- **Operationally honest docs:** Setup, troubleshooting, and validation align with `npm run onboard`, `npm run doctor`, `npm run check:trust`, and the current compose files in this repo.
+- **Operationally honest docs:** Setup, troubleshooting, and validation align with `npm run onboard`, `npm run doctor`, `npm run check`, and the current compose files in this repo.
 
 ---
 
@@ -276,7 +276,7 @@ npm ci
 npm run onboard
 docker compose -f config/services/core/docker-compose.yml up -d db tika
 npm run db:migrate
-npm run check:trust
+npm run check
 npm run dev
 ```
 
@@ -291,6 +291,8 @@ Helpful operator commands:
 ```bash
 npm run doctor
 npm run doctor -- --llm-ping
+npm run check
+npm run check:trust:deep
 npm run ai-provider:probe
 npm run tools:audit
 npm run langgraph:discord:smoke

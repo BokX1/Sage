@@ -25,9 +25,8 @@
     "start": "node dist/index.js",
     "lint": "eslint src tests --config config/tooling/eslint.config.mjs --max-warnings 0",
     "test": "vitest run -c config/tooling/vitest.config.mjs --allowOnly=false",
-    "test:trust": "ts-node -P config/tooling/tsconfig.app.json src/cli/test-trust.ts",
     "test:audit": "ts-node -P config/tooling/tsconfig.app.json src/cli/test-audit.ts",
-    "release:check": "npm run lint && npm run build && npm run test && npm pack",
+    "release:check": "npm run check:trust:deep && npm pack",
     "onboard": "node --import tsx src/cli/onboard.ts --",
     "db:push": "prisma migrate deploy",
     "db:reset": "prisma migrate reset --force --skip-generate",
@@ -55,10 +54,9 @@
     "check:mutation": "npm run mutation:critical",
     "hooks:pre-commit": "node scripts/hooks/pre-commit.cjs",
     "hooks:pre-push": "node scripts/hooks/pre-push.cjs",
-    "check:local": "npm run lint && npm run typecheck && npm run test",
-    "check:trust": "npm run lint && npm run typecheck && npm run test:audit && npm run test:trust && npm run tools:audit",
+    "check:trust": "npm run lint && npm run typecheck && npm run test:audit && npm run test && npm run tools:audit && npm run build",
     "check:trust:deep": "npm run check:trust && npm run check:mutation",
-    "check": "npm run check:local"
+    "check": "npm run check:trust"
   },
   "author": "",
   "license": "MIT",

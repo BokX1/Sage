@@ -10,7 +10,7 @@
     "json"
   ],
   "jsonReporter": {
-    "fileName": "reports/mutation/critical-mutation.json"
+    "fileName": "coverage/mutation/critical-mutation.json"
   },
   "coverageAnalysis": "perTest",
   "ignoreStatic": true,

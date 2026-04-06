@@ -1,47 +1,10 @@
-const fs = require("node:fs");
 const path = require("node:path");
 const { spawn } = require("node:child_process");
 
 const REPO_ROOT = path.resolve(__dirname, "..", "..");
-const POLICY_PATH = path.join(REPO_ROOT, "config", "tooling", "hook-gates.json");
-const LOCAL_EXTENSION_PATH = path.join(REPO_ROOT, ".agent", "workflows", "hook-gate.cjs");
 
 function toPosixPath(value) {
   return value.split(path.sep).join("/");
-}
-
-function uniqueSpecs(specs) {
-  const seen = new Set();
-  const unique = [];
-  for (const spec of specs) {
-    const key = JSON.stringify(spec);
-    if (seen.has(key)) {
-      continue;
-    }
-    seen.add(key);
-    unique.push(spec);
-  }
-  return unique;
-}
-
-function pathExists(targetPath) {
-  return fs.existsSync(targetPath);
-}
-
-function readPolicy() {
-  return JSON.parse(fs.readFileSync(POLICY_PATH, "utf8"));
-}
-
-function matchesExact(file, values) {
-  return values.includes(file);
-}
-
-function matchesPrefix(file, prefixes) {
-  return prefixes.some((prefix) => file.startsWith(prefix));
-}
-
-function matchesExtension(file, extensions) {
-  return extensions.some((extension) => file.endsWith(extension));
 }
 
 function resolveCommand(command) {
@@ -101,99 +64,38 @@ async function runSpec(spec) {
   }
 }
 
-async function getChangedFiles(mode) {
-  if (mode === "pre-commit") {
-    const result = await runCommand("git", [
-      "diff",
-      "--cached",
-      "--name-only",
-      "--diff-filter=ACMR",
-    ]);
-    if (result.code !== 0) {
-      throw new Error(result.stderr.trim() || "Unable to inspect staged files.");
-    }
-    return result.stdout
-      .split(/\r?\n/u)
-      .map((line) => toPosixPath(line.trim()))
-      .filter(Boolean);
-  }
-
-  let diffArgs = ["show", "--pretty=", "--name-only", "HEAD"];
-  const upstream = await runCommand("git", [
-    "rev-parse",
-    "--abbrev-ref",
-    "--symbolic-full-name",
-    "@{upstream}",
+async function getStagedFiles() {
+  const result = await runCommand("git", [
+    "diff",
+    "--cached",
+    "--name-only",
+    "--diff-filter=ACMR",
   ]);
-
-  if (upstream.code === 0) {
-    diffArgs = ["diff", "--name-only", `${upstream.stdout.trim()}...HEAD`];
-  }
-
-  const result = await runCommand("git", diffArgs);
   if (result.code !== 0) {
-    throw new Error(result.stderr.trim() || "Unable to inspect pushed files.");
+    throw new Error(result.stderr.trim() || "Unable to inspect staged files.");
   }
-
   return result.stdout
     .split(/\r?\n/u)
     .map((line) => toPosixPath(line.trim()))
     .filter(Boolean);
 }
 
-function withFiles(specs, files) {
-  return specs.map((spec) => [...spec, ...files]);
+function isMarkdownFile(file) {
+  return file.endsWith(".md");
 }
 
-function selectSpecs(mode, changedFiles, policy) {
-  const specs = [];
-
-  const hasLintScope = changedFiles.some(
-    (file) => matchesPrefix(file, policy.lint_prefixes) || matchesExact(file, policy.lint_exact)
-  );
-  const hasBuildScope = changedFiles.some(
-    (file) => matchesPrefix(file, policy.build_prefixes) || matchesExact(file, policy.build_exact)
-  );
-  const hasTrustScope = changedFiles.some(
-    (file) => matchesPrefix(file, policy.trust_prefixes) || matchesExact(file, policy.trust_exact)
-  );
-  const hasWebsiteScope = changedFiles.some(
-    (file) =>
-      matchesPrefix(file, policy.website_prefixes) || matchesExact(file, policy.website_exact)
-  );
-  const docsFiles = changedFiles.filter(
-    (file) => matchesExtension(file, policy.docs_extensions) || matchesExact(file, policy.docs_exact)
-  );
-
+function selectSpecs(mode, changedFiles = []) {
   if (mode === "pre-commit") {
-    if (hasLintScope) {
-      specs.push(...policy.commands.pre_commit_lint);
+    const docsFiles = changedFiles.filter(isMarkdownFile);
+    if (docsFiles.length === 0) {
+      return [];
     }
-    if (docsFiles.length > 0) {
-      specs.push(...withFiles(policy.commands.docs_lint, docsFiles));
-    }
-    return uniqueSpecs(specs);
+    return [
+      ["npm", "run", "docs:lint", "--", ...docsFiles],
+      ["npm", "run", "docs:links", "--", ...docsFiles],
+    ];
   }
-
-  if (hasTrustScope) {
-    specs.push(...policy.commands.pre_push_trust);
-  } else if (hasBuildScope) {
-    specs.push(...policy.commands.pre_push_check);
-    specs.push(...policy.commands.pre_push_build);
-  } else if (hasLintScope) {
-    specs.push(...policy.commands.pre_push_check);
-  }
-
-  if (hasWebsiteScope) {
-    specs.push(...policy.commands.website_check);
-  }
-
-  if (docsFiles.length > 0) {
-    specs.push(...withFiles(policy.commands.docs_lint, docsFiles));
-    specs.push(...withFiles(policy.commands.docs_links, docsFiles));
-  }
-
-  return uniqueSpecs(specs);
+  return [["npm", "run", "check"]];
 }
 
 async function runHook(mode) {
@@ -201,9 +103,8 @@ async function runHook(mode) {
     throw new Error("Expected hook mode to be pre-commit or pre-push.");
   }
 
-  const changedFiles = await getChangedFiles(mode);
-  const policy = readPolicy();
-  const specs = selectSpecs(mode, changedFiles, policy);
+  const changedFiles = mode === "pre-commit" ? await getStagedFiles() : [];
+  const specs = selectSpecs(mode, changedFiles);
 
   if (specs.length === 0) {
     process.stdout.write(`[hooks] No matching repo commands for ${mode}. Skipping.\n`);
@@ -215,19 +116,12 @@ async function runHook(mode) {
       await runSpec(spec);
     }
   }
-
-  if (pathExists(LOCAL_EXTENSION_PATH)) {
-    await runSpec(["node", ".agent/workflows/hook-gate.cjs", mode]);
-  }
 }
 
 module.exports = {
-  LOCAL_EXTENSION_PATH,
-  POLICY_PATH,
   REPO_ROOT,
-  getChangedFiles,
-  pathExists,
-  readPolicy,
+  getStagedFiles,
+  isMarkdownFile,
   resolveCommand,
   runCommand,
   runHook,

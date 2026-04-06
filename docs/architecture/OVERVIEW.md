@@ -198,7 +198,7 @@ Operators can audit that surface directly with `npm run tools:audit` or `npm run
 | **Error classification** | Execution-stage kind (`validation`/`execution`/`timeout`) plus actionable categories (HTTP status, rate limit, network error, etc.) surfaced to the LLM |
 | **Observability** | LangSmith captures graph execution and Sage can persist a compact `AgentTrace` ledger with route, budget, tool, token, final-reply, and tool-exposure metadata |
 | **Runtime surface audit** | `npm run tools:audit` and `tools.audit` in `doctor` verify that Sage still ships exactly the intended Code Mode surface |
-| **Build/test gates** | `check:trust` runs lint + typecheck + test audit + shuffled test validation, and includes the runtime-surface audit gate |
+| **Build/test gates** | `check` / `check:trust` runs lint + typecheck + test audit + full tests + runtime-surface audit + build; `check:trust:deep` adds the critical mutation lane for release/manual validation |
 
 ---
 

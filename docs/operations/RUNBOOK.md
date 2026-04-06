@@ -118,25 +118,25 @@ flowchart TD
     classDef cleanup fill:#fff3cd,stroke:#856404,color:black
     classDef docs fill:#d4edda,stroke:#155724,color:black
 
-    A[npm run check:trust]:::gate --> B[npm run doctor]:::gate
-    B --> C[npm run build]:::gate
-    C --> D[Touched-scope cleanup]:::cleanup
-    D --> E[Update docs]:::docs
-    E --> F[Confirm CI health]:::gate
+    A[npm run check]:::gate --> B[npm run doctor]:::gate
+    B --> C[Touched-scope cleanup]:::cleanup
+    C --> D[Update docs]:::docs
+    D --> E[Confirm CI health]:::gate
+    E --> F[npm run check:trust:deep for release/manual deep validation]:::gate
     F --> G[npm pack]:::gate
 ```
 
-1. **Run `npm run check:trust`** — lint + typecheck + static test audit + repeated/shuffled test validation
+1. **Run `npm run check`** — the canonical fast-core gate (`npm run check:trust` is the same command): lint + typecheck + static test audit + full test suite + runtime-surface audit + build
 2. **Run `npm run doctor`** — runtime health check
-3. **Run `npm run build`** — compile TypeScript
-4. **Touched-scope cleanup pass:**
+3. **Touched-scope cleanup pass:**
    - Dead code, duplication, unused imports/exports
    - Stale/noise comments
    - Legacy/unneeded code or module cleanup
-5. **Update related docs** in `docs/` when behavior, configuration, operations guidance, or user-facing setup copy changed
-6. **Confirm CI security jobs are healthy:**
+4. **Update related docs** in `docs/` when behavior, configuration, operations guidance, or user-facing setup copy changed
+5. **Confirm CI security jobs are healthy:**
    - `CodeQL` should be green
    - `dependency-review` should be green when `ENABLE_DEPENDENCY_REVIEW=true` and Dependency Graph is enabled
+6. **Run `npm run check:trust:deep`** before release packaging or when you want the mutation-backed deep lane
 7. **Create a release artifact** with `npm pack` when needed
 
 ---
@@ -148,8 +148,8 @@ flowchart TD
 Use when preparing a local release artifact:
 
 ```bash
-npm run check:trust
-npm run build
+npm run check
+npm run check:trust:deep
 npm run doctor
 # Perform touched-scope cleanup and docs sync
 npm pack
@@ -187,7 +187,7 @@ flowchart TD
 **Response steps:**
 
 1. **Capture** trace IDs and relevant logs
-2. **Reproduce** with the captured inputs on the canonical runtime path and run `npm run check:trust` for deterministic validation
+2. **Reproduce** with the captured inputs on the canonical runtime path and run `npm run check` for deterministic validation
 3. **Diagnose** — check if schema-related: run `npx prisma migrate deploy` and re-check
 4. **Roll back** by deploying the previous app artifact and verified database state if needed
 5. **Document** the incident and resolution
@@ -233,8 +233,11 @@ npm run doctor
 # Health check with LLM ping
 npm run doctor -- --llm-ping
 
-# Run the trust gate
-npm run check:trust
+# Run the fast-core gate
+npm run check
+
+# Run the deep validation lane when needed
+npm run check:trust:deep
 ```
 
 ---

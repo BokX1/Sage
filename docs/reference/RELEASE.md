@@ -33,14 +33,16 @@ This project follows **Semantic Versioning (SemVer)**: `MAJOR.MINOR.PATCH`.
 
 ## ✅ Local Baseline (Required)
 
-All release work starts from the same baseline local gate:
+All release work starts from the same fast-core local gate:
 
 ```bash
-npm run check:trust
+npm run check
 ```
 
-`npm run check:trust` is the canonical local trust gate and does not require optional external gating tooling.
-It runs lint/typecheck, static test quality audit, and repeated/shuffled test validation.
+`npm run check` and `npm run check:trust` are equivalent. This fast-core gate is the canonical day-to-day validation path.
+It runs lint, typecheck, the static test-quality audit, the full Vitest suite, the runtime-surface audit, and the TypeScript build.
+
+Use `npm run check:trust:deep` only for release/manual deep validation when you also want the critical mutation lane.
 
 ---
 
@@ -52,8 +54,8 @@ It runs lint/typecheck, static test quality audit, and repeated/shuffled test va
    - `package.json`
    - `CHANGELOG.md`
 2. **Run required validations**
-   - `npm run check:trust`
-   - `npm run build`
+   - `npm run check`
+   - `npm run check:trust:deep`
    - `npm run doctor`
    - `npm pack`
 3. **Perform touched-scope cleanup**
@@ -71,6 +73,7 @@ It runs lint/typecheck, static test quality audit, and repeated/shuffled test va
    - Align `docs/operations/` and `docs/reference/` with behavior, release, and runbook changes.
 8. **Run release supply-chain workflow**
    - Execute `.github/workflows/release-supply-chain.yml` via `workflow_dispatch` or GitHub Release publish event.
+   - Use `.github/workflows/deep-validation.yml` when you want the deep gate without publishing a release artifact.
    - Ensure package artifact, CycloneDX SBOM, and provenance attestation are generated.
 9. **Tag and publish artifacts** (if applicable)
 
@@ -105,7 +108,8 @@ If you enable dependency review, make sure repository Dependency Graph is enable
 ```bash
 npm ci
 NODE_ENV=test DISCORD_TOKEN=test-token DISCORD_APP_ID=test-app-id DATABASE_URL=postgresql://postgres:password@127.0.0.1:5432/sage?schema=public npx prisma migrate deploy
-NODE_ENV=test DISCORD_TOKEN=test-token DISCORD_APP_ID=test-app-id DATABASE_URL=postgresql://postgres:password@127.0.0.1:5432/sage?schema=public npm run check:trust
+NODE_ENV=test DISCORD_TOKEN=test-token DISCORD_APP_ID=test-app-id DATABASE_URL=postgresql://postgres:password@127.0.0.1:5432/sage?schema=public npm run check
+NODE_ENV=test DISCORD_TOKEN=test-token DISCORD_APP_ID=test-app-id DATABASE_URL=postgresql://postgres:password@127.0.0.1:5432/sage?schema=public npm run check:trust:deep
 ```
 
 ### Windows (PowerShell)
@@ -117,7 +121,8 @@ $env:DISCORD_TOKEN="test-token"
 $env:DISCORD_APP_ID="test-app-id"
 $env:DATABASE_URL="postgresql://postgres:password@127.0.0.1:5432/sage?schema=public"
 npx prisma migrate deploy
-npm run check:trust
+npm run check
+npm run check:trust:deep
 ```
 
 ---

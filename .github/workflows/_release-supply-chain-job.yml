@@ -42,11 +42,8 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Trust gate
-        run: npm run check:trust
-
-      - name: Build
-        run: npm run build
+      - name: Deep trust gate
+        run: npm run check:trust:deep
 
       - name: Pack npm artifact
         id: pack
