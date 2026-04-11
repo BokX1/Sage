@@ -6,6 +6,7 @@ const stopCompactionScheduler = vi.hoisted(() => vi.fn());
 const stopAgentTaskRunWorker = vi.hoisted(() => vi.fn());
 const stopScheduledTaskWorker = vi.hoisted(() => vi.fn());
 const prismaDisconnect = vi.hoisted(() => vi.fn());
+const shutdownKafkaProducer = vi.hoisted(() => vi.fn());
 const shutdownAgentGraphRuntime = vi.hoisted(() => vi.fn());
 const shutdownMcpTools = vi.hoisted(() => vi.fn());
 
@@ -31,6 +32,10 @@ vi.mock('@/platform/db/prisma-client', () => ({
   },
 }));
 
+vi.mock('@/platform/social-graph/kafkaProducer', () => ({
+  shutdownKafkaProducer,
+}));
+
 vi.mock('@/features/agent-runtime/langgraph/runtime', () => ({
   shutdownAgentGraphRuntime,
 }));
@@ -47,6 +52,7 @@ describe('registerShutdownHooks', () => {
     stopAgentTaskRunWorker.mockReturnValue(undefined);
     stopScheduledTaskWorker.mockReturnValue(undefined);
     prismaDisconnect.mockResolvedValue(undefined);
+    shutdownKafkaProducer.mockResolvedValue(undefined);
     shutdownAgentGraphRuntime.mockResolvedValue(undefined);
     shutdownMcpTools.mockResolvedValue(undefined);
   });
@@ -81,6 +87,7 @@ describe('registerShutdownHooks', () => {
     expect(shutdownAgentGraphRuntime).toHaveBeenCalledTimes(1);
     expect(shutdownMcpTools).toHaveBeenCalledTimes(1);
     expect(prismaDisconnect).toHaveBeenCalledTimes(1);
+    expect(shutdownKafkaProducer).toHaveBeenCalledTimes(1);
     expect(processExitMock).toHaveBeenCalledWith(0);
   });
 });

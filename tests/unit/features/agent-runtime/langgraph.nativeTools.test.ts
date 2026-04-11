@@ -20,6 +20,10 @@ vi.mock('../../../../src/features/agent-runtime/toolCallExecution', () => ({
   executeToolWithTimeout: executeToolWithTimeoutMock,
 }));
 
+vi.mock('../../../../src/features/agent-runtime/toolRegistry', () => ({
+  globalToolRegistry: {},
+}));
+
 vi.mock('../../../../src/features/admin/adminActionService', () => ({
   executeApprovedReviewRequest: executeApprovedReviewRequestMock,
 }));
@@ -64,17 +68,17 @@ describe('langgraph nativeTools', () => {
       })),
     };
     executeToolWithTimeoutMock.mockResolvedValueOnce({
-      name: 'runtime_execute_code',
+      name: 'github',
       success: true,
       structuredContent: fullResult,
       telemetry: { latencyMs: 42 },
     });
 
     const output = await executeDurableToolTask({
-      activeToolNames: ['runtime_execute_code'],
+      activeToolNames: ['github'],
       call: {
-        name: 'runtime_execute_code',
-        args: { language: 'javascript', code: 'return 1;' },
+        name: 'github',
+        args: { action: 'search_code', query: 'tool loop' },
       },
       context: makeToolContext(),
       timeoutMs: 1_000,
@@ -92,7 +96,7 @@ describe('langgraph nativeTools', () => {
   it('serializes approved review execution results without compaction metadata', async () => {
     executeApprovedReviewRequestMock.mockResolvedValueOnce({
       status: 'executed',
-      kind: 'admin.instructions.update',
+      kind: 'discord_admin',
       resultJson: {
         roleId: 'role-1',
         audit: Array.from({ length: 10 }, (_, index) => ({
@@ -105,7 +109,7 @@ describe('langgraph nativeTools', () => {
 
     const output = await executeApprovedReviewTask({
       requestId: 'request-1',
-      toolName: 'admin.instructions.update',
+      toolName: 'discord_admin',
       callId: 'call-1',
       reviewerId: 'reviewer-1',
       decisionReasonText: 'approved in test',
@@ -116,7 +120,7 @@ describe('langgraph nativeTools', () => {
     expect(output.result.success).toBe(true);
     const parsed = JSON.parse(output.content) as Record<string, unknown>;
     expect(parsed.status).toBe('executed');
-    expect(parsed.kind).toBe('admin.instructions.update');
+    expect(parsed.kind).toBe('discord_admin');
     expect(parsed).not.toHaveProperty('truncated');
     expect(parsed).toHaveProperty('result');
   });

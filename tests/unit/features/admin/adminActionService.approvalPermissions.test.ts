@@ -909,7 +909,7 @@ describe('adminActionService approval permissions', () => {
     });
     mocks.resumeAgentGraphTurn.mockResolvedValue({
       replyText: 'Approved. I completed that action.',
-      toolResults: [{ name: 'admin.instructions.update', success: true, latencyMs: 0 }],
+      toolResults: [{ name: 'discord_admin', success: true, latencyMs: 0 }],
       files: [],
       roundsCompleted: 1,
       completedWindows: 0,

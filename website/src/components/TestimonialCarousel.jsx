@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 
 const testimonials = [
     {
-        quote: "Sage pulled the exact deployment decision from our summaries and message history before anyone had to dig through old threads. It's like having a teammate who remembers the entire server.",
+        quote: "Sage figured out what we were working on from our voice chat and pulled up the relevant docs before anyone asked. It's like having a team member who never misses a meeting.",
         author: 'Community Admin',
         role: 'Discord Server · 500+ members',
         accent: '#78b846',
@@ -21,7 +21,7 @@ const testimonials = [
         accent: '#B49CEC',
     },
     {
-        quote: "The approval flow is the killer feature. Sage can prepare real admin work in chat, but the risky stuff still lands in a review lane instead of going rogue.",
+        quote: "The social graph is incredible. Sage remembers who works on what, who talked to whom, and surfaces context that would take me 30 minutes to find manually.",
         author: 'Project Lead',
         role: 'Development Team · 40 members',
         accent: '#5CCCB4',

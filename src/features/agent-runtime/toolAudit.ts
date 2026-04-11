@@ -1,6 +1,6 @@
+import { ToolRegistry, globalToolRegistry } from './toolRegistry';
 import { listMcpDiscoverySnapshots } from './mcp/manager';
 import type { McpServerDiagnostic } from './mcp/types';
-import { getRuntimeSurfaceTools } from './runtimeSurface';
 
 export type ToolAuditSeverity = 'fail' | 'warn';
 
@@ -39,11 +39,14 @@ function makeFinding(finding: ToolAuditFinding): ToolAuditFinding {
   return finding;
 }
 
-export function auditRuntimeSurface(options?: {
-  mcpDiagnostics?: McpServerDiagnostic[];
-}): ToolAuditReport {
+export function auditToolRegistry(
+  registry: Pick<ToolRegistry, 'listSpecs'> = globalToolRegistry,
+  options?: {
+    mcpDiagnostics?: McpServerDiagnostic[];
+  },
+): ToolAuditReport {
   const findings: ToolAuditFinding[] = [];
-  const specs = getRuntimeSurfaceTools();
+  const specs = registry.listSpecs();
   let outputSchemaDeclared = 0;
 
   for (const spec of specs) {
@@ -58,7 +61,7 @@ export function auditRuntimeSurface(options?: {
           severity: 'fail',
           toolName: spec.name,
           code: 'description_short',
-          message: 'Runtime capability descriptions should be specific enough to route reliably.',
+          message: 'Tool descriptions should be specific enough to route reliably.',
         }),
       );
     }
@@ -69,7 +72,7 @@ export function auditRuntimeSurface(options?: {
           severity: 'fail',
           toolName: spec.name,
           code: 'prompt_summary_missing',
-          message: 'Runtime capability is missing concise prompt routing guidance.',
+          message: 'Tool is missing concise prompt routing guidance.',
         }),
       );
     }
@@ -80,7 +83,7 @@ export function auditRuntimeSurface(options?: {
           severity: 'fail',
           toolName: spec.name,
           code: 'query_not_read_only',
-          message: 'Query capabilities must be explicitly marked read-only.',
+          message: 'Query tools must be explicitly marked read-only.',
         }),
       );
     }
@@ -91,7 +94,7 @@ export function auditRuntimeSurface(options?: {
           severity: 'warn',
           toolName: spec.name,
           code: 'read_hint_missing',
-          message: 'Query capabilities should declare readOnlyHint for MCP-style annotations.',
+          message: 'Query tools should declare readOnlyHint for MCP-style annotations.',
         }),
       );
     }
@@ -102,7 +105,7 @@ export function auditRuntimeSurface(options?: {
           severity: 'fail',
           toolName: spec.name,
           code: 'parallel_safe_not_read_only',
-          message: 'Only read-only capabilities may be marked parallelSafe.',
+          message: 'Only read-only tools may be marked parallelSafe.',
         }),
       );
     }
@@ -113,7 +116,7 @@ export function auditRuntimeSurface(options?: {
           severity: 'fail',
           toolName: spec.name,
           code: 'artifact_policy_mismatch',
-          message: 'Artifact capabilities must use artifact-only observation policy.',
+          message: 'Artifact tools must use artifact-only observation policy.',
         }),
       );
     }

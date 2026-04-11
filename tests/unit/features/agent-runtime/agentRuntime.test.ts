@@ -6,8 +6,7 @@ const {
   upsertTraceStartMock,
   updateTraceEndMock,
   buildPromptContextMessagesMock,
-  resolvePromptContractMetadataMock,
-  resolveRuntimeSurfaceToolNamesMock,
+  globalToolRegistryMock,
   runAgentGraphTurnMock,
   continueAgentGraphTurnMock,
   retryAgentGraphTurnMock,
@@ -36,11 +35,25 @@ const {
     promptFingerprint: 'fingerprint-1',
     messages: [new HumanMessage({ content: 'hello' })],
   })),
-  resolvePromptContractMetadataMock: vi.fn(() => ({
-    version: 'test-prompt-v1',
-    promptFingerprint: 'fingerprint-1',
-  })),
-  resolveRuntimeSurfaceToolNamesMock: vi.fn(() => ['runtime_execute_code']),
+  globalToolRegistryMock: {
+    listNames: vi.fn(() => []),
+    get: vi.fn(
+      (
+        name: string,
+      ):
+        | {
+            metadata?: { access?: 'public' | 'moderator' | 'admin' | 'owner' };
+            runtime?: {
+              access?: 'public' | 'moderator' | 'admin' | 'owner';
+              capabilityTags?: string[];
+            };
+          }
+        | undefined => {
+        void name;
+        return undefined;
+      },
+    ),
+  },
   runAgentGraphTurnMock: vi.fn(),
   continueAgentGraphTurnMock: vi.fn(),
   retryAgentGraphTurnMock: vi.fn(),
@@ -122,7 +135,6 @@ vi.mock('@/features/agent-runtime/agent-trace-repo', () => ({
 
 vi.mock('@/features/agent-runtime/promptContract', () => ({
   buildPromptContextMessages: buildPromptContextMessagesMock,
-  resolvePromptContractMetadata: resolvePromptContractMetadataMock,
 }));
 
 vi.mock('@/features/agent-runtime/langgraph/runtime', () => ({
@@ -135,8 +147,8 @@ vi.mock('@/features/agent-runtime/autopilotMode', () => ({
   resolveRuntimeAutopilotMode: vi.fn(() => null),
 }));
 
-vi.mock('@/features/agent-runtime/runtimeSurface', () => ({
-  resolveRuntimeSurfaceToolNames: resolveRuntimeSurfaceToolNamesMock,
+vi.mock('@/features/agent-runtime/toolRegistry', () => ({
+  globalToolRegistry: globalToolRegistryMock,
 }));
 
 vi.mock('@/features/admin/approvalReviewRequestRepo', () => ({
@@ -172,6 +184,10 @@ vi.mock('@/features/agent-runtime/agentTaskRunRepo', () => ({
   }),
   updateAgentTaskRunByThreadId: updateAgentTaskRunByThreadIdMock,
   releaseAgentTaskRunLease: releaseAgentTaskRunLeaseMock,
+}));
+
+vi.mock('@/features/voice/voiceConversationSessionStore', () => ({
+  formatLiveVoiceContext: vi.fn(() => null),
 }));
 
 import {
@@ -330,11 +346,8 @@ describe('agentRuntime', () => {
       promptFingerprint: 'fingerprint-1',
       messages: [new HumanMessage({ content: 'hello' })],
     });
-    resolvePromptContractMetadataMock.mockReturnValue({
-      version: 'test-prompt-v1',
-      promptFingerprint: 'fingerprint-1',
-    });
-    resolveRuntimeSurfaceToolNamesMock.mockReturnValue(['runtime_execute_code']);
+    globalToolRegistryMock.listNames.mockReturnValue([]);
+    globalToolRegistryMock.get.mockReturnValue(undefined);
     upsertTraceStartMock.mockResolvedValue(undefined);
     updateTraceEndMock.mockResolvedValue(undefined);
     runAgentGraphTurnMock.mockReset();
@@ -359,7 +372,7 @@ describe('agentRuntime', () => {
   it('scrubs tool narration and raw approval payloads from final reply text', () => {
     const scrubbed = scrubFinalReplyText({
       replyText: [
-        'I will call `admin.instructions.update` now.',
+        'I will call `discord_admin` now.',
         '```json',
         '{"action":"update_server_instructions","reason":"sync"}',
         '```',
@@ -371,7 +384,8 @@ describe('agentRuntime', () => {
   });
 
   it('suppresses the normal chat reply when approval is queued', async () => {
-    resolveRuntimeSurfaceToolNamesMock.mockReturnValue(['admin.instructions.update']);
+    globalToolRegistryMock.listNames.mockReturnValue(['discord_admin'] as never);
+    globalToolRegistryMock.get.mockReturnValue({ metadata: { access: 'admin' } } as never);
     runAgentGraphTurnMock.mockResolvedValue(
       makeGraphResult({
         replyText: '',
@@ -530,7 +544,11 @@ describe('agentRuntime', () => {
   });
 
   it('retries a failed turn on the same LangGraph thread', async () => {
-    resolveRuntimeSurfaceToolNamesMock.mockReturnValue(['web', 'repo_lookup', 'history.search']);
+    globalToolRegistryMock.listNames.mockReturnValue(['web', 'repo_search_code', 'discord_history_search_history'] as never);
+    globalToolRegistryMock.get.mockImplementation((name: string) => ({
+      metadata: { access: 'public' as const },
+      runtime: { access: 'public' as const, capabilityTags: name === 'web' ? ['web'] : ['developer'] },
+    }));
     retryAgentGraphTurnMock.mockResolvedValue(
       makeGraphResult({
         replyText: 'Recovered after retry.',
@@ -557,7 +575,7 @@ describe('agentRuntime', () => {
         context: expect.objectContaining({
           traceId: 'trace-retry-1',
           routeKind: 'turn_retry',
-          activeToolNames: ['web', 'repo_lookup', 'history.search'],
+          activeToolNames: ['web', 'repo_search_code', 'discord_history_search_history'],
         }),
       }),
     );
@@ -565,7 +583,11 @@ describe('agentRuntime', () => {
 
   it('persists the task run after a retry re-enters background execution', async () => {
     const now = Date.now();
-    resolveRuntimeSurfaceToolNamesMock.mockReturnValue(['external_lookup']);
+    globalToolRegistryMock.listNames.mockReturnValue(['web_search'] as never);
+    globalToolRegistryMock.get.mockImplementation(() => ({
+      metadata: { access: 'public' as const },
+      runtime: { access: 'public' as const, capabilityTags: [] },
+    }));
     getAgentTaskRunByThreadIdMock.mockResolvedValue({
       id: 'task-retry-running-1',
       threadId: 'thread-retry-running-1',
@@ -643,11 +665,15 @@ describe('agentRuntime', () => {
 
   it('keeps all eligible tools available for generic follow-up resumes', async () => {
     const now = Date.now();
-    resolveRuntimeSurfaceToolNamesMock.mockReturnValue([
-      'external_lookup',
-      'repo_lookup',
-      'history.search',
-    ]);
+    globalToolRegistryMock.listNames.mockReturnValue([
+      'web_search',
+      'repo_search_code',
+      'discord_history_search_history',
+    ] as never);
+    globalToolRegistryMock.get.mockImplementation(() => ({
+      metadata: { access: 'public' as const },
+      runtime: { access: 'public' as const, capabilityTags: [] },
+    }));
     findWaitingUserInputTaskRunMock.mockResolvedValue({
       id: 'task-waiting-followup-1',
       threadId: 'thread-waiting-followup-1',
@@ -711,7 +737,7 @@ describe('agentRuntime', () => {
     expect(continueAgentGraphTurnMock).toHaveBeenCalledWith(
       expect.objectContaining({
         context: expect.objectContaining({
-          activeToolNames: ['external_lookup', 'repo_lookup', 'history.search'],
+          activeToolNames: ['web_search', 'repo_search_code', 'discord_history_search_history'],
           promptMode: 'waiting_follow_up',
           waitingFollowUp: {
             matched: true,
@@ -725,7 +751,11 @@ describe('agentRuntime', () => {
   });
 
   it('does not expose admin-only tools to non-admin turns', async () => {
-    resolveRuntimeSurfaceToolNamesMock.mockReturnValue(['web']);
+    globalToolRegistryMock.listNames.mockReturnValue(['web', 'discord_admin'] as never);
+    globalToolRegistryMock.get.mockImplementation((name: string) => {
+      const access: 'public' | 'moderator' | 'admin' = name === 'discord_admin' ? 'admin' : 'public';
+      return { metadata: { access } };
+    });
     runAgentGraphTurnMock.mockResolvedValue(makeGraphResult({ replyText: 'ok' }));
 
     await runChatTurn({
@@ -751,18 +781,33 @@ describe('agentRuntime', () => {
   });
 
   it('exposes the full eligible tool surface on fresh turns without heuristic narrowing', async () => {
-    resolveRuntimeSurfaceToolNamesMock.mockReturnValue([
-      'external_lookup',
+    globalToolRegistryMock.listNames.mockReturnValue([
+      'web_search',
       'web_read',
       'web_read_page',
-      'repo_lookup',
-      'history.search',
-      'discord.channels.list',
-      'repo_file_read',
-      'image_render',
-      'clock_lookup',
-      'runtime_stats',
-    ]);
+      'repo_search_code',
+      'discord_history_search_history',
+      'discord_spaces_list_channels',
+      'repo_read_file',
+      'image_generate',
+      'system_time',
+      'system_tool_stats',
+    ] as never);
+    globalToolRegistryMock.get.mockImplementation((name: string) => {
+      const toolMap: Record<string, { metadata: { access: 'public' | 'moderator' | 'admin' | 'owner' }; runtime: { access: 'public' | 'moderator' | 'admin' | 'owner'; capabilityTags: string[]; class: string } }> = {
+        web_search: { metadata: { access: 'public' }, runtime: { access: 'public', capabilityTags: ['web', 'search'], class: 'query' } },
+        web_read: { metadata: { access: 'public' }, runtime: { access: 'public', capabilityTags: ['web', 'read'], class: 'query' } },
+        web_read_page: { metadata: { access: 'public' }, runtime: { access: 'public', capabilityTags: ['web', 'read', 'paging'], class: 'query' } },
+        repo_search_code: { metadata: { access: 'public' }, runtime: { access: 'public', capabilityTags: ['repo', 'developer'], class: 'query' } },
+        discord_history_search_history: { metadata: { access: 'public' }, runtime: { access: 'public', capabilityTags: ['discord', 'messages'], class: 'query' } },
+        discord_spaces_list_channels: { metadata: { access: 'public' }, runtime: { access: 'public', capabilityTags: ['discord', 'server'], class: 'query' } },
+        repo_read_file: { metadata: { access: 'public' }, runtime: { access: 'public', capabilityTags: ['repo', 'developer', 'code'], class: 'query' } },
+        image_generate: { metadata: { access: 'public' }, runtime: { access: 'public', capabilityTags: ['generation', 'image'], class: 'artifact' } },
+        system_time: { metadata: { access: 'public' }, runtime: { access: 'public', capabilityTags: ['system', 'time'], class: 'query' } },
+        system_tool_stats: { metadata: { access: 'public' }, runtime: { access: 'public', capabilityTags: ['system', 'tooling'], class: 'query' } },
+      };
+      return toolMap[name] as never;
+    });
     runAgentGraphTurnMock.mockResolvedValue(makeGraphResult({ replyText: 'ok' }));
 
     await runChatTurn({
@@ -782,21 +827,32 @@ describe('agentRuntime', () => {
 
     const activeToolNames = runAgentGraphTurnMock.mock.calls.at(-1)?.[0]?.activeToolNames as string[];
     expect(activeToolNames).toEqual([
-      'external_lookup',
+      'web_search',
       'web_read',
       'web_read_page',
-      'repo_lookup',
-      'history.search',
-      'discord.channels.list',
-      'repo_file_read',
-      'image_render',
-      'clock_lookup',
-      'runtime_stats',
+      'repo_search_code',
+      'discord_history_search_history',
+      'discord_spaces_list_channels',
+      'repo_read_file',
+      'image_generate',
+      'system_time',
+      'system_tool_stats',
     ]);
   });
 
-  it('exposes admin.instructions.update to moderator-only turns for moderation workflows', async () => {
-    resolveRuntimeSurfaceToolNamesMock.mockReturnValue(['web', 'moderation.actions.create']);
+  it('exposes discord_admin to moderator-only turns for moderation workflows', async () => {
+    globalToolRegistryMock.listNames.mockReturnValue(['web', 'discord_moderation_submit_action'] as never);
+    globalToolRegistryMock.get.mockImplementation((name: string) => {
+      const access: 'public' | 'moderator' | 'admin' =
+        name === 'discord_moderation_submit_action' ? 'moderator' : 'public';
+      return {
+        metadata: { access },
+        runtime: {
+          access,
+          capabilityTags: name === 'discord_moderation_submit_action' ? ['moderation'] : [],
+        },
+      };
+    });
     runAgentGraphTurnMock.mockResolvedValue(makeGraphResult({ replyText: 'ok' }));
 
     await runChatTurn({
@@ -817,14 +873,18 @@ describe('agentRuntime', () => {
 
     expect(runAgentGraphTurnMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        activeToolNames: ['web', 'moderation.actions.create'],
+        activeToolNames: ['web', 'discord_moderation_submit_action'],
         invokerCanModerate: true,
       }),
     );
   });
 
   it('does not expose admin-only tools during autopilot turns even for admins', async () => {
-    resolveRuntimeSurfaceToolNamesMock.mockReturnValue(['web']);
+    globalToolRegistryMock.listNames.mockReturnValue(['web', 'discord_admin'] as never);
+    globalToolRegistryMock.get.mockImplementation((name: string) => {
+      const access: 'public' | 'moderator' | 'admin' = name === 'discord_admin' ? 'admin' : 'public';
+      return { metadata: { access } };
+    });
     runAgentGraphTurnMock.mockResolvedValue(makeGraphResult({ replyText: 'ok' }));
 
     await runChatTurn({
@@ -851,7 +911,33 @@ describe('agentRuntime', () => {
   });
 
   it('keeps artifact writes and structural thread writes out of member turns', async () => {
-    resolveRuntimeSurfaceToolNamesMock.mockReturnValue(['artifacts.list', 'discord.channels.list']);
+    globalToolRegistryMock.listNames.mockReturnValue([
+      'discord_artifact_list',
+      'discord_artifact_replace',
+      'discord_artifact_publish',
+      'discord_spaces_list_channels',
+      'discord_spaces_create_thread',
+      'discord_spaces_add_thread_member',
+    ] as never);
+    globalToolRegistryMock.get.mockImplementation((name: string) => {
+      const accessByName: Record<string, 'public' | 'moderator' | 'admin' | 'owner'> = {
+        discord_artifact_list: 'public',
+        discord_artifact_replace: 'admin',
+        discord_artifact_publish: 'admin',
+        discord_spaces_list_channels: 'public',
+        discord_spaces_create_thread: 'admin',
+        discord_spaces_add_thread_member: 'admin',
+      };
+      const access = accessByName[name] ?? 'public';
+      return {
+        metadata: { access },
+        runtime: {
+          access,
+          capabilityTags: ['discord'],
+          class: access === 'public' ? 'query' : 'mutation',
+        },
+      };
+    });
     runAgentGraphTurnMock.mockResolvedValue(makeGraphResult({ replyText: 'ok' }));
 
     await runChatTurn({
@@ -873,13 +959,14 @@ describe('agentRuntime', () => {
 
     expect(runAgentGraphTurnMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        activeToolNames: ['artifacts.list', 'discord.channels.list'],
+        activeToolNames: ['discord_artifact_list', 'discord_spaces_list_channels'],
       }),
     );
   });
 
   it('persists tool-loop termination metadata into trace budgets', async () => {
-    resolveRuntimeSurfaceToolNamesMock.mockReturnValue(['web']);
+    globalToolRegistryMock.listNames.mockReturnValue(['web'] as never);
+    globalToolRegistryMock.get.mockReturnValue({ metadata: { access: 'public' } } as never);
     runAgentGraphTurnMock.mockResolvedValue(
       makeGraphResult({
         replyText: 'Final answer',
@@ -1205,10 +1292,15 @@ describe('agentRuntime', () => {
 
   it('rehydrates current runtime policy and credentials when resuming background work', async () => {
     const now = Date.now();
-    resolveRuntimeSurfaceToolNamesMock.mockReturnValue([
-      'history.search',
-      'approvals.list',
-    ]);
+    globalToolRegistryMock.listNames.mockReturnValue([
+      'discord_history_search_history',
+      'discord_governance_get_review_status',
+    ] as never);
+    globalToolRegistryMock.get.mockImplementation((name: string) =>
+      name === 'discord_governance_get_review_status'
+        ? ({ metadata: { access: 'admin' } } as never)
+        : ({ metadata: { access: 'public' } } as never),
+    );
     getAgentTaskRunByThreadIdMock.mockResolvedValue({
       id: 'task-2',
       threadId: 'thread-1',
@@ -1284,7 +1376,7 @@ describe('agentRuntime', () => {
           invokedBy: 'component',
           invokerIsAdmin: true,
           routeKind: 'background_resume',
-          activeToolNames: ['history.search', 'approvals.list'],
+          activeToolNames: ['discord_history_search_history', 'discord_governance_get_review_status'],
         }),
       }),
     );
@@ -2268,227 +2360,6 @@ describe('agentRuntime', () => {
         stopReason: null,
         checkpointMetadataJson: expect.objectContaining({
           deferredForActiveInterrupt: true,
-        }),
-      }),
-    );
-  });
-
-  it('passes prompt metadata through waiting, background, matched, and retry graph resumes', async () => {
-    const now = Date.now();
-    continueAgentGraphTurnMock.mockResolvedValue(makeGraphResult());
-    retryAgentGraphTurnMock.mockResolvedValue(makeGraphResult());
-
-    findWaitingUserInputTaskRunMock.mockResolvedValueOnce({
-      id: 'task-waiting-meta-1',
-      threadId: 'thread-waiting-meta-1',
-      originTraceId: 'trace-origin',
-      latestTraceId: 'trace-latest',
-      guildId: 'guild-1',
-      channelId: 'channel-1',
-      requestedByUserId: 'user-1',
-      sourceMessageId: 'message-source-meta-1',
-      responseMessageId: 'response-waiting-meta-1',
-      status: 'waiting_user_input',
-      waitingKind: 'user_input',
-      latestDraftText: 'Which repo should I check?',
-      draftRevision: 2,
-      completionKind: 'user_input_pending',
-      stopReason: 'user_input_interrupt',
-      nextRunnableAt: null,
-      leaseOwner: null,
-      leaseExpiresAt: null,
-      heartbeatAt: null,
-      resumeCount: 0,
-      taskWallClockMs: 1000,
-      maxTotalDurationMs: 3_600_000,
-      maxIdleWaitMs: 86_400_000,
-      lastErrorText: null,
-      responseSessionJson: null,
-      waitingStateJson: { prompt: 'Which repo should I check?' },
-      compactionStateJson: null,
-      checkpointMetadataJson: null,
-      startedAt: new Date(now - 60_000),
-      completedAt: null,
-      createdAt: new Date(now - 60_000),
-      updatedAt: new Date(now - 10_000),
-    });
-
-    await resumeWaitingTaskRunWithInput({
-      traceId: 'trace-resume-meta-1',
-      userId: 'user-1',
-      channelId: 'channel-1',
-      guildId: 'guild-1',
-      invokerAuthority: 'member',
-      userText: 'Use the docs repo.',
-      currentTurn: makeCurrentTurn({
-        messageId: 'message-resume-meta-1',
-        invokedBy: 'reply',
-        isDirectReply: true,
-        replyTargetMessageId: 'response-waiting-meta-1',
-        replyTargetAuthorId: 'sage-bot',
-      }),
-      isAdmin: false,
-    });
-
-    expect(continueAgentGraphTurnMock).toHaveBeenNthCalledWith(
-      1,
-      expect.objectContaining({
-        context: expect.objectContaining({
-          promptVersion: 'test-prompt-v1',
-          promptFingerprint: 'fingerprint-1',
-        }),
-      }),
-    );
-
-    getAgentTaskRunByThreadIdMock.mockResolvedValueOnce({
-      id: 'task-background-meta-1',
-      threadId: 'thread-background-meta-1',
-      originTraceId: 'trace-origin',
-      latestTraceId: 'trace-latest',
-      guildId: 'guild-1',
-      channelId: 'channel-1',
-      requestedByUserId: 'user-1',
-      sourceMessageId: 'message-source-background-meta-1',
-      responseMessageId: 'response-background-meta-1',
-      status: 'running',
-      waitingKind: null,
-      latestDraftText: 'Still checking.',
-      draftRevision: 2,
-      completionKind: null,
-      stopReason: 'background_yield',
-      nextRunnableAt: new Date(now + 60_000),
-      leaseOwner: 'worker-1',
-      leaseExpiresAt: new Date(now + 60_000),
-      heartbeatAt: new Date(now),
-      resumeCount: 1,
-      taskWallClockMs: 1_500,
-      maxTotalDurationMs: 3_600_000,
-      maxIdleWaitMs: 86_400_000,
-      lastErrorText: null,
-      responseSessionJson: null,
-      waitingStateJson: null,
-      compactionStateJson: null,
-      checkpointMetadataJson: null,
-      activeUserInterruptJson: null,
-      activeUserInterruptRevision: 0,
-      activeUserInterruptConsumedRevision: 0,
-      activeUserInterruptQueuedAt: null,
-      activeUserInterruptConsumedAt: null,
-      activeUserInterruptSupersededAt: null,
-      activeUserInterruptSupersededRevision: null,
-      startedAt: new Date(now - 60_000),
-      completedAt: null,
-      createdAt: new Date(now - 60_000),
-      updatedAt: new Date(now - 5_000),
-    });
-
-    await resumeBackgroundTaskRun({
-      traceId: 'trace-background-meta-1',
-      threadId: 'thread-background-meta-1',
-      userId: 'user-1',
-      channelId: 'channel-1',
-      guildId: 'guild-1',
-      invokerAuthority: 'admin',
-      isAdmin: true,
-    });
-
-    expect(continueAgentGraphTurnMock).toHaveBeenNthCalledWith(
-      2,
-      expect.objectContaining({
-        context: expect.objectContaining({
-          promptVersion: 'test-prompt-v1',
-          promptFingerprint: 'fingerprint-1',
-        }),
-      }),
-    );
-
-    getAgentTaskRunByThreadIdMock.mockResolvedValueOnce({
-      id: 'task-matched-meta-1',
-      threadId: 'thread-matched-meta-1',
-      originTraceId: 'trace-origin',
-      latestTraceId: 'trace-latest',
-      guildId: 'guild-1',
-      channelId: 'channel-1',
-      requestedByUserId: 'user-1',
-      sourceMessageId: 'message-source-matched-meta-1',
-      responseMessageId: 'response-matched-meta-1',
-      status: 'completed',
-      waitingKind: null,
-      latestDraftText: 'Done.',
-      draftRevision: 2,
-      completionKind: 'final_answer',
-      stopReason: 'assistant_turn_completed',
-      nextRunnableAt: null,
-      leaseOwner: null,
-      leaseExpiresAt: null,
-      heartbeatAt: null,
-      resumeCount: 1,
-      taskWallClockMs: 1_500,
-      maxTotalDurationMs: 3_600_000,
-      maxIdleWaitMs: 86_400_000,
-      lastErrorText: null,
-      responseSessionJson: null,
-      waitingStateJson: null,
-      compactionStateJson: null,
-      checkpointMetadataJson: null,
-      activeUserInterruptJson: null,
-      activeUserInterruptRevision: 0,
-      activeUserInterruptConsumedRevision: 0,
-      activeUserInterruptQueuedAt: null,
-      activeUserInterruptConsumedAt: null,
-      activeUserInterruptSupersededAt: null,
-      activeUserInterruptSupersededRevision: null,
-      startedAt: new Date(now - 60_000),
-      completedAt: new Date(now - 5_000),
-      createdAt: new Date(now - 60_000),
-      updatedAt: new Date(now - 5_000),
-    });
-
-    await continueMatchedTaskRunWithInput({
-      traceId: 'trace-matched-meta-1',
-      threadId: 'thread-matched-meta-1',
-      userId: 'user-1',
-      channelId: 'channel-1',
-      guildId: 'guild-1',
-      invokerAuthority: 'admin',
-      userText: 'Continue on the same task.',
-      currentTurn: makeCurrentTurn({
-        messageId: 'message-matched-meta-1',
-        invokedBy: 'reply',
-        isDirectReply: true,
-        replyTargetMessageId: 'response-matched-meta-1',
-        replyTargetAuthorId: 'sage-bot',
-      }),
-      isAdmin: true,
-    });
-
-    expect(continueAgentGraphTurnMock).toHaveBeenNthCalledWith(
-      3,
-      expect.objectContaining({
-        context: expect.objectContaining({
-          promptVersion: 'test-prompt-v1',
-          promptFingerprint: 'fingerprint-1',
-        }),
-      }),
-    );
-
-    await retryFailedChatTurn({
-      traceId: 'trace-retry-meta-1',
-      threadId: 'thread-retry-meta-1',
-      userId: 'user-1',
-      channelId: 'channel-1',
-      guildId: 'guild-1',
-      invokerAuthority: 'member',
-      retryKind: 'turn',
-      isAdmin: false,
-      canModerate: false,
-    });
-
-    expect(retryAgentGraphTurnMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        context: expect.objectContaining({
-          promptVersion: 'test-prompt-v1',
-          promptFingerprint: 'fingerprint-1',
         }),
       }),
     );

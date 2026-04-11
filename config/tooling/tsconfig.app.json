@@ -2,8 +2,12 @@
   "compilerOptions": {
     "target": "ES2022",
     "module": "commonjs",
+    "moduleResolution": "node10",
     "lib": [
       "ES2022"
+    ],
+    "types": [
+      "node"
     ],
     "outDir": "../../dist",
     "rootDir": "../../src",
@@ -11,6 +15,7 @@
     "noImplicitAny": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
+    "ignoreDeprecations": "6.0",
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
     "baseUrl": "../../",

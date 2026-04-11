@@ -7,6 +7,7 @@ import { stopAgentTaskRunWorker } from '../../features/agent-runtime/agentTaskRu
 import { stopScheduledTaskWorker } from '../../features/scheduler/worker';
 import { stopChannelSummaryScheduler } from '../../features/summary/channelSummaryScheduler';
 import { stopCompactionScheduler } from '../../features/summary/ltmCompaction';
+import { shutdownKafkaProducer } from '../../platform/social-graph/kafkaProducer';
 
 type ShutdownSignal = NodeJS.Signals | 'UNHANDLED_REJECTION' | 'UNCAUGHT_EXCEPTION';
 
@@ -52,6 +53,13 @@ async function runShutdown(signal: ShutdownSignal, client: Client): Promise<void
     } catch (error) {
       logger.warn({ error }, 'Prisma disconnect failed during shutdown');
     }
+
+    try {
+      await shutdownKafkaProducer();
+    } catch (error) {
+      logger.warn({ error }, 'Kafka producer shutdown failed during shutdown');
+    }
+
     logger.info({ signal }, 'Shutdown complete');
   })();
 

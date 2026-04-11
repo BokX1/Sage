@@ -1,7 +1,8 @@
 /* eslint-disable no-console */
 
-import dotenv from 'dotenv';
-import type { ToolExecutionContext } from '../features/agent-runtime/runtimeToolContract';
+import { registerDefaultAgenticTools } from '../features/agent-runtime/defaultTools';
+import type { ToolExecutionContext } from '../features/agent-runtime/toolRegistry';
+import { ToolRegistry } from '../features/agent-runtime/toolRegistry';
 
 type SmokeCheck = {
   name: string;
@@ -14,142 +15,93 @@ function errorText(error: unknown): string {
   return String(error);
 }
 
-function summarizeResult(value: unknown): string {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    return `resultType=${typeof value}`;
-  }
-  return `keys=${Object.keys(value as Record<string, unknown>).slice(0, 8).join(',') || 'none'}`;
-}
-
 function buildSmokeContext(): ToolExecutionContext {
   return {
-    traceId: 'bridge-smoke',
-    graphThreadId: 'bridge-smoke',
-    userId: process.env.SAGE_BRIDGE_SMOKE_USER_ID?.trim() || 'bridge-smoke-user',
-    channelId: process.env.SAGE_BRIDGE_SMOKE_CHANNEL_ID?.trim() || 'bridge-smoke-channel',
-    guildId: process.env.SAGE_BRIDGE_SMOKE_GUILD_ID?.trim() || null,
-    invokerAuthority: 'admin',
-    invokerIsAdmin: true,
-    invokerCanModerate: true,
-    activeToolNames: ['runtime_execute_code'],
-    currentTurn: {
-      invokerUserId: process.env.SAGE_BRIDGE_SMOKE_USER_ID?.trim() || 'bridge-smoke-user',
-      invokerDisplayName: 'Bridge Smoke',
-      messageId: 'bridge-smoke-message',
-      guildId: process.env.SAGE_BRIDGE_SMOKE_GUILD_ID?.trim() || null,
-      originChannelId: process.env.SAGE_BRIDGE_SMOKE_CHANNEL_ID?.trim() || 'bridge-smoke-channel',
-      responseChannelId: process.env.SAGE_BRIDGE_SMOKE_CHANNEL_ID?.trim() || 'bridge-smoke-channel',
-      invokedBy: 'component',
-      mentionedUserIds: [],
-      isDirectReply: false,
-      replyTargetMessageId: null,
-      replyTargetAuthorId: null,
-      botUserId: 'sage-bot',
-    },
+    traceId: 'tool-smoke',
+    userId: 'tool-smoke',
+    channelId: 'tool-smoke',
+    apiKey: process.env.AI_PROVIDER_API_KEY,
   };
 }
 
-function seedSmokeEnvDefaults(): void {
-  dotenv.config({ quiet: true });
+function summarizeSmokeResult(toolName: string, result: unknown): string {
+  const envelope =
+    result && typeof result === 'object' && !Array.isArray(result)
+      ? (result as Record<string, unknown>)
+      : null;
 
-  const defaults = {
-    LANGSMITH_TRACING: 'false',
-    SAGE_TRACE_DB_ENABLED: 'true',
-    AI_PROVIDER_BASE_URL: 'https://example.invalid/v1',
-    AI_PROVIDER_MAIN_AGENT_MODEL: 'smoke-main',
-    AI_PROVIDER_PROFILE_AGENT_MODEL: 'smoke-profile',
-    AI_PROVIDER_SUMMARY_AGENT_MODEL: 'smoke-summary',
-    IMAGE_PROVIDER_BASE_URL: 'https://example.invalid/image',
-    IMAGE_PROVIDER_MODEL: 'smoke-image',
-    SERVER_PROVIDER_PROFILE_URL: 'https://example.invalid/profile',
-    SERVER_PROVIDER_AUTHORIZE_URL: 'https://example.invalid/authorize',
-    SERVER_PROVIDER_DASHBOARD_URL: 'https://example.invalid/dashboard',
-  } as const;
+  const record =
+    envelope && typeof envelope.structuredContent === 'object' && envelope.structuredContent && !Array.isArray(envelope.structuredContent)
+      ? (envelope.structuredContent as Record<string, unknown>)
+      : envelope;
 
-  for (const [key, value] of Object.entries(defaults)) {
-    if (!process.env[key]?.trim()) {
-      process.env[key] = value;
+  if (!record) {
+    return `resultType=${typeof result}`;
+  }
+
+  switch (toolName) {
+    case 'system_time':
+      return `isoUtc=${String(record.isoUtc ?? 'n/a')}`;
+    case 'system_tool_stats': {
+      const tools = Array.isArray(record.tools) ? record.tools.length : 0;
+      return `scope=${String(record.scope ?? 'unknown')} tools=${tools}`;
     }
+    case 'web_search':
+    case 'web_read':
+    case 'web_read_page': {
+      const provider = String(record.provider ?? 'unknown');
+      const sourcesRead = typeof record.sourcesRead === 'number' ? record.sourcesRead : 0;
+      const results = Array.isArray(record.results) ? record.results.length : 0;
+      return `provider=${provider} results=${results} sourcesRead=${sourcesRead}`;
+    }
+    case 'npm_info':
+      return `package=${String(record.packageName ?? 'unknown')} latest=${String(record.latestVersion ?? record.version ?? 'n/a')}`;
+    case 'docs_lookup':
+      return `libraryId=${String(record.libraryId ?? 'unknown')}`;
+    case 'repo_search_code':
+    case 'repo_read_file':
+    case 'repo_get_repository':
+    case 'repo_search_issues':
+    case 'repo_search_pull_requests':
+      return `provider=repo keys=${Object.keys(record).slice(0, 5).join(',') || 'none'}`;
+    case 'browser_open_page':
+    case 'browser_read_page':
+    case 'browser_click':
+    case 'browser_type':
+    case 'browser_capture':
+    case 'browser_extract':
+      return `provider=browser keys=${Object.keys(record).slice(0, 5).join(',') || 'none'}`;
+    case 'image_generate': {
+      const artifacts = Array.isArray(envelope?.artifacts) ? envelope.artifacts.length : 0;
+      return `provider=${String(record.provider ?? 'unknown')} artifacts=${artifacts}`;
+    }
+    default:
+      return `keys=${Object.keys(record).slice(0, 5).join(',') || 'none'}`;
   }
 }
 
-async function runCode(ctx: ToolExecutionContext, code: string) {
-  const [{ executeValidatedRuntimeTool }, { runtimeExecuteCodeTool }] = await Promise.all([
-    import('../features/agent-runtime/runtimeToolContract'),
-    import('../features/code-mode/tool'),
-  ]);
-  const result = await executeValidatedRuntimeTool(
-    runtimeExecuteCodeTool,
-    {
-      name: runtimeExecuteCodeTool.name,
-      args: {
-        language: 'javascript',
-        code,
-      },
-    },
-    ctx,
-  );
-  if (!result.success) {
-    const hint = result.errorDetails?.hint ? ` hint=${result.errorDetails.hint}` : '';
-    throw new Error(`${result.error}${hint}`);
-  }
-  return result.result.structuredContent;
-}
-
-function buildSmokeChecks(ctx: ToolExecutionContext): SmokeCheck[] {
-  const historyChannelId = process.env.SAGE_BRIDGE_SMOKE_CHANNEL_ID?.trim();
-  const checks: SmokeCheck[] = [
-    {
-      name: 'bridge.capabilities',
-      optional: false,
+function buildSmokeChecks(registry: ToolRegistry, ctx: ToolExecutionContext): SmokeCheck[] {
+  return registry.listSpecs()
+    .filter((spec) => spec.runtime.class !== 'runtime')
+    .filter((spec) => spec.smoke?.mode && spec.smoke.mode !== 'skip')
+    .map((spec) => ({
+      name: spec.name,
+      optional: spec.smoke?.mode === 'optional',
       run: async () => {
-        const result = await runCode(ctx, 'return await admin.runtime.getCapabilities();');
-        return summarizeResult(result);
-      },
-    },
-    {
-      name: 'bridge.workspace',
-      optional: false,
-      run: async () => {
-        const result = await runCode(
+        const result = await registry.executeValidated(
+          {
+            name: spec.name,
+            args: spec.smoke?.args ?? {},
+          },
           ctx,
-          `
-            await workspace.write({ path: 'smoke/note.txt', content: 'bridge smoke' });
-            const reread = await workspace.read('smoke/note.txt');
-            const listing = await workspace.list('smoke');
-            return { reread, listing };
-          `,
         );
-        return summarizeResult(result);
+        if (!result.success) {
+          const hint = result.errorDetails?.hint ? ` hint=${result.errorDetails.hint}` : '';
+          throw new Error(`${result.error}${hint}`);
+        }
+        return summarizeSmokeResult(spec.name, result.result);
       },
-    },
-    {
-      name: 'bridge.http',
-      optional: false,
-      run: async () => {
-        const url = process.env.SAGE_BRIDGE_SMOKE_URL?.trim() || 'http://example.com';
-        const result = await runCode(ctx, `return await http.fetch({ url: ${JSON.stringify(url)} });`);
-        return summarizeResult(result);
-      },
-    },
-  ];
-
-  checks.push({
-    name: 'bridge.history',
-    optional: !historyChannelId,
-    run: async () => {
-      if (!historyChannelId) {
-        throw new Error('Set SAGE_BRIDGE_SMOKE_CHANNEL_ID to run history smoke.');
-      }
-      const result = await runCode(
-        ctx,
-        `return await history.recent({ channelId: ${JSON.stringify(historyChannelId)}, limit: 1 });`,
-      );
-      return summarizeResult(result);
-    },
-  });
-
-  return checks;
+    }));
 }
 
 async function runCheck(check: SmokeCheck): Promise<{ passed: boolean; optional: boolean }> {
@@ -166,11 +118,18 @@ async function runCheck(check: SmokeCheck): Promise<{ passed: boolean; optional:
 }
 
 async function main(): Promise<void> {
-  seedSmokeEnvDefaults();
-  const ctx = buildSmokeContext();
-  const checks = buildSmokeChecks(ctx);
+  const registry = new ToolRegistry();
+  await registerDefaultAgenticTools(registry);
 
-  console.log('Sage bridge-native smoke starting...');
+  const ctx = buildSmokeContext();
+  const checks = buildSmokeChecks(registry, ctx);
+  const skipped = registry.listSpecs().filter((spec) => spec.smoke?.mode === 'skip');
+
+  console.log('Sage tool smoke checks starting...');
+  for (const spec of skipped) {
+    console.log(`[SKIP] ${spec.name} ${spec.smoke?.reason ?? 'No smoke runner configured.'}`);
+  }
+
   const outcomes = [];
   for (const check of checks) {
     outcomes.push(await runCheck(check));
@@ -179,7 +138,7 @@ async function main(): Promise<void> {
   const requiredFailures = outcomes.filter((entry) => !entry.passed && !entry.optional).length;
   const optionalFailures = outcomes.filter((entry) => !entry.passed && entry.optional).length;
   console.log(
-    `Completed ${checks.length} checks. requiredFailures=${requiredFailures} optionalFailures=${optionalFailures}`,
+    `Completed ${checks.length} checks. requiredFailures=${requiredFailures} optionalFailures=${optionalFailures} skipped=${skipped.length}`,
   );
   if (requiredFailures > 0) {
     process.exitCode = 1;
@@ -187,6 +146,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((error) => {
-  console.error(`Bridge smoke script failed: ${errorText(error)}`);
+  console.error(`Tool smoke script failed: ${errorText(error)}`);
   process.exit(1);
 });

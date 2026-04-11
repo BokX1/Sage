@@ -1,0 +1,62 @@
+services:
+  memgraph:
+    image: memgraph/memgraph-mage:latest
+    container_name: sage-memgraph
+    ports:
+      - "7687:7687"
+      - "7444:7444"
+    volumes:
+      - memgraph-data:/var/lib/memgraph
+      - ../../../services/social-graph/mage-modules/custom.py:/usr/lib/memgraph/query_modules/custom.py
+      - ../../../services/social-graph/mage-modules/tgn_memory.py:/usr/lib/memgraph/query_modules/tgn_memory.py
+      - ../../../services/social-graph/mage-modules/hyperbolic.py:/usr/lib/memgraph/query_modules/hyperbolic.py
+      - ../../../services/social-graph/mage-modules/het_attention.py:/usr/lib/memgraph/query_modules/het_attention.py
+      - ../../../services/social-graph/mage-modules/graph_transformer.py:/usr/lib/memgraph/query_modules/graph_transformer.py
+      - ../../../services/social-graph/mage-modules/cold_start.py:/usr/lib/memgraph/query_modules/cold_start.py
+    environment:
+      - MEMGRAPH_ENTERPRISE_LICENSE=
+    command: >
+      --log-level=WARNING
+      --also-log-to-stderr
+      --kafka-bootstrap-servers=${MEMGRAPH_KAFKA_BOOTSTRAP_SERVERS:-redpanda:9092}
+    depends_on:
+      - redpanda
+    restart: unless-stopped
+
+  redpanda:
+    image: docker.redpanda.com/redpandadata/redpanda:latest
+    container_name: sage-redpanda
+    command:
+      - redpanda
+      - start
+      - --smp
+      - "1"
+      - --memory
+      - 512M
+      - --overprovisioned
+      - --kafka-addr
+      - internal://0.0.0.0:9092,external://0.0.0.0:19092
+      - --advertise-kafka-addr
+      - internal://redpanda:9092,external://localhost:19092
+    ports:
+      - "19092:19092"
+      - "8081:8081"
+      - "8082:8082"
+    volumes:
+      - redpanda-data:/var/lib/redpanda/data
+    restart: unless-stopped
+
+  redpanda-console:
+    image: docker.redpanda.com/redpandadata/console:latest
+    container_name: sage-redpanda-console
+    ports:
+      - "8080:8080"
+    environment:
+      - KAFKA_BROKERS=redpanda:9092
+    depends_on:
+      - redpanda
+    restart: unless-stopped
+
+volumes:
+  memgraph-data:
+  redpanda-data:

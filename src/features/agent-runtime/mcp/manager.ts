@@ -3,6 +3,10 @@ import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { logger } from '../../../platform/logging/logger';
 import {
+  globalToolRegistry,
+  type ToolRegistry,
+} from '../toolRegistry';
+import {
   ToolDetailedError,
   buildToolErrorDetails,
   extractToolErrorDetails,
@@ -322,7 +326,8 @@ export class McpManager {
   private runtimes = new Map<string, ServerRuntime>();
   private initialized = false;
 
-  async initialize(): Promise<void> {
+  async initialize(registry: ToolRegistry = globalToolRegistry): Promise<void> {
+    void registry;
     if (this.initialized) {
       return;
     }
@@ -635,7 +640,7 @@ export class McpManager {
           details: [
             ...(hasResolveTool && hasDocsTool
               ? []
-              : ['Expected both resolve-library-id and get-library-docs/query-docs to be exposed for bridge-backed Context7 docs access.']),
+              : ['Expected both resolve-library-id and get-library-docs/query-docs to be exposed for docs_lookup.']),
           ],
         });
         continue;
@@ -785,8 +790,8 @@ export class McpManager {
 
 export const globalMcpManager = new McpManager();
 
-export async function initializeMcpTools(): Promise<void> {
-  await globalMcpManager.initialize();
+export async function initializeMcpTools(registry: ToolRegistry = globalToolRegistry): Promise<void> {
+  await globalMcpManager.initialize(registry);
 }
 
 export async function shutdownMcpTools(): Promise<void> {

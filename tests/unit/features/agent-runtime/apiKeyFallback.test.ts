@@ -22,11 +22,10 @@ const mockResolveTextProviderRoute = vi.hoisted(() => vi.fn());
 const mockGetGuildSagePersonaText = vi.hoisted(() => vi.fn());
 const mockRunAgentGraphTurn = vi.hoisted(() => vi.fn());
 const mockBuildPromptContextMessages = vi.hoisted(() => vi.fn());
-const mockResolvePromptContractMetadata = vi.hoisted(() => vi.fn(() => ({
-  version: 'test-prompt-v1',
-  promptFingerprint: 'fingerprint-1',
-})));
-const mockResolveRuntimeSurfaceToolNames = vi.hoisted(() => vi.fn(() => ['runtime_execute_code']));
+const globalToolRegistryMock = vi.hoisted(() => ({
+  listNames: vi.fn(() => []),
+  get: vi.fn(() => undefined),
+}));
 
 vi.mock('@/platform/config/env', () => ({
   config: mockConfig,
@@ -42,7 +41,6 @@ vi.mock('@/features/awareness/transcriptBuilder', () => ({
 
 vi.mock('@/features/agent-runtime/promptContract', () => ({
   buildPromptContextMessages: mockBuildPromptContextMessages,
-  resolvePromptContractMetadata: mockResolvePromptContractMetadata,
 }));
 
 vi.mock('@/features/settings/guildChannelSettings', () => ({
@@ -67,8 +65,8 @@ vi.mock('@/features/settings/guildSagePersonaRepo', () => ({
   getGuildSagePersonaText: mockGetGuildSagePersonaText,
 }));
 
-vi.mock('@/features/agent-runtime/runtimeSurface', () => ({
-  resolveRuntimeSurfaceToolNames: mockResolveRuntimeSurfaceToolNames,
+vi.mock('@/features/agent-runtime/toolRegistry', () => ({
+  globalToolRegistry: globalToolRegistryMock,
 }));
 
 import { runChatTurn as runChatTurnImpl } from '@/features/agent-runtime/agentRuntime';
@@ -189,7 +187,8 @@ describe('agent runtime provider fallback', () => {
         new HumanMessage({ content: 'hello' }),
       ],
     });
-    mockResolveRuntimeSurfaceToolNames.mockReturnValue(['runtime_execute_code']);
+    globalToolRegistryMock.listNames.mockReturnValue([]);
+    globalToolRegistryMock.get.mockReturnValue(undefined);
     mockResolveTextProviderRoute.mockReset().mockResolvedValue({
       providerId: 'default',
       lane: 'main',

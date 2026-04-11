@@ -39,6 +39,10 @@ vi.mock('@/features/embeddings', () => ({
   queueChannelMessageEmbedding: mockQueueChannelMessageEmbedding,
 }));
 
+vi.mock('@/platform/social-graph/kafkaProducer', () => ({
+  publishInteraction: vi.fn(async () => undefined),
+}));
+
 import { ingestEvent } from '../../../../src/features/ingest/ingestEvent';
 
 describe('ingestEvent - db retention', () => {

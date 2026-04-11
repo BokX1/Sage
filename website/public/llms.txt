@@ -1,16 +1,16 @@
-# Sage AI - Chat-First Community Runtime
+# Sage AI - Autonomous Community Engineer
 
-> The lean-core autonomous runtime for Discord communities.
+> The GraphRAG-Powered Autonomous Agent for Discord.
 
-Sage is an enterprise-grade autonomous system designed to orchestrate and manage digital communities. It uses a chat-first runtime with PostgreSQL-backed memory, approval-aware governance, and provider-flexible model routing rather than a command-only bot workflow.
+Sage is an enterprise-grade autonomous system designed to orchestrate and manage digital communities. It leverages a hybrid PostgreSQL and Memgraph architecture, functioning as a Cognitive Runtime rather than a basic bot.
 
 ## Architecture Data
 
-*   **Database Stack**: PostgreSQL (profiles, summaries, messages, approvals, artifacts, task runs).
+*   **Database Stack**: PostgreSQL (Long-Term Memory profiles & summaries), Memgraph (9-pillar GNN Social Graph for real-time PageRank and Dunbar layers).
 *   **Infrastructure Context**: Sage retrieves context dynamically via tool calls rather than prepending massive raw transcripts.
-*   **Capabilities**: Chat-first agent runtime, approval-gated governance, durable background tasks, file intelligence, and end-to-end workflow execution.
+*   **Capabilities**: Multi-Agent Orchestration, GraphRAG Community Management, Knowledge Graph Moderation, End-to-End Workflow Execution.
 
 ## References
 
 *   **GitHub**: https://github.com/BokX1/Sage
-*   **Technologies**: Discord API, PostgreSQL, LangGraph, Pollinations.ai, OpenAI Codex auth.
+*   **Technologies**: Discord API, Memgraph, PostgreSQL, Pollinations.ai.

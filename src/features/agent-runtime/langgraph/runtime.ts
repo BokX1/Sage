@@ -37,19 +37,20 @@ import { scrubFinalReplyText } from '../finalReplyScrubber';
 import type { CurrentTurnContext, ReplyTargetContext } from '../continuityContext';
 import {
   buildDefaultWorkingMemoryFrame,
-  buildPromptPreludeMessages,
-  resolvePromptContractMetadata,
-  resolvePromptBuildMode,
+  buildPromptContextContent,
+  buildUniversalPromptContract,
   type PromptInputMode,
   type ToolObservationEvidence,
   type PromptWorkingMemoryFrame,
 } from '../promptContract';
 import type { ToolResult } from '../toolCallExecution';
-import type { ToolExecutionContext } from '../runtimeToolContract';
+import type { ToolErrorDetails } from '../toolErrors';
+import type { ToolExecutionContext } from '../toolRegistry';
 import { ApprovalRequiredSignal } from '../toolControlSignals';
 import { createAgentRunTelemetry } from '../observability/langsmith';
 import { buildRuntimeFailureReply } from '../visibleReply';
 import { buildToolCacheKey } from '../toolCache';
+import { globalToolRegistry } from '../toolRegistry';
 import { AppError } from '../../../shared/errors/app-error';
 import { buildAgentGraphConfig, type AgentGraphConfig } from './config';
 import {
@@ -59,6 +60,7 @@ import {
   executeDurableToolTask,
   isReadOnlyToolCall,
   planReadOnlyToolExecution,
+  prepareToolApprovalInterrupt,
   resolveRuntimeControlSignal,
   type GraphToolCallDescriptor,
 } from './nativeTools';
@@ -398,6 +400,7 @@ const AgentGraphRuntimeSnapshotSchema = z.object({
   guildSagePersona: z.string().nullable().optional(),
   focusedContinuity: z.string().nullable().optional(),
   recentTranscript: z.string().nullable().optional(),
+  voiceContext: z.string().nullable().optional(),
   waitingFollowUp: z.union([PromptWaitingFollowUpSchema, z.null()]).optional(),
   promptMode: z
     .enum(['standard', 'image_only', 'reply_only', 'direct_attention', 'durable_resume', 'waiting_follow_up'])
@@ -444,6 +447,7 @@ const AgentGraphConfigurableSchema = z
     guildSagePersona: z.string().nullable().optional(),
     focusedContinuity: z.string().nullable().optional(),
     recentTranscript: z.string().nullable().optional(),
+    voiceContext: z.string().nullable().optional(),
     waitingFollowUp: z.union([PromptWaitingFollowUpSchema, z.null()]).optional(),
     promptMode: z
       .enum(['standard', 'image_only', 'reply_only', 'direct_attention', 'durable_resume', 'waiting_follow_up'])
@@ -617,6 +621,7 @@ const EMPTY_RUNTIME_CONTEXT: AgentGraphRuntimeContext = {
   guildSagePersona: null,
   focusedContinuity: null,
   recentTranscript: null,
+  voiceContext: null,
   waitingFollowUp: null,
   promptMode: 'standard',
   promptVersion: null,
@@ -648,6 +653,7 @@ export interface StartAgentGraphTurnParams {
   guildSagePersona?: string | null;
   focusedContinuity?: string | null;
   recentTranscript?: string | null;
+  voiceContext?: string | null;
   waitingFollowUp?: AgentGraphRuntimeContext['waitingFollowUp'];
   promptMode?: PromptInputMode;
   promptVersion?: string | null;
@@ -1199,7 +1205,6 @@ async function buildWindowCloseoutSummary(params: {
 }
 
 function createRuntimeContext(params: StartAgentGraphTurnParams): AgentGraphRuntimeContext {
-  const promptMetadata = resolvePromptContractMetadata();
   return {
     traceId: params.traceId,
     originTraceId: params.traceId,
@@ -1230,10 +1235,11 @@ function createRuntimeContext(params: StartAgentGraphTurnParams): AgentGraphRunt
     guildSagePersona: params.guildSagePersona ?? null,
     focusedContinuity: params.focusedContinuity ?? null,
     recentTranscript: params.recentTranscript ?? null,
+    voiceContext: params.voiceContext ?? null,
     waitingFollowUp: params.waitingFollowUp ?? null,
     promptMode: params.promptMode ?? 'standard',
-    promptVersion: params.promptVersion ?? promptMetadata.version,
-    promptFingerprint: params.promptFingerprint ?? promptMetadata.promptFingerprint,
+    promptVersion: params.promptVersion ?? null,
+    promptFingerprint: params.promptFingerprint ?? null,
   };
 }
 
@@ -1634,7 +1640,6 @@ function buildToolContext(
     invokerIsAdmin: runtimeContext.invokerIsAdmin,
     invokerCanModerate: runtimeContext.invokerCanModerate,
     invokedBy: runtimeContext.invokedBy,
-    activeToolNames: runtimeContext.activeToolNames,
     routeKind: runtimeContext.routeKind,
     currentTurn: runtimeContext.currentTurn as ToolExecutionContext['currentTurn'],
     replyTarget: runtimeContext.replyTarget as ToolExecutionContext['replyTarget'],
@@ -1669,8 +1674,28 @@ async function resolveToolCallFingerprint(
   call: GraphToolCallDescriptor,
   context: ToolExecutionContext,
 ): Promise<string> {
-  void context;
-  return buildToolCacheKey(call.name, call.args);
+  const fallback = buildToolCacheKey(call.name, call.args);
+
+  try {
+    const resolved = await globalToolRegistry.resolveActionPolicy(call, context);
+    const idempotencyKey = resolved?.policy.idempotencyKey;
+    let candidate: string | null | undefined;
+
+    if (typeof idempotencyKey === 'string') {
+      candidate = idempotencyKey;
+    } else if (typeof idempotencyKey === 'function' && resolved) {
+      candidate = idempotencyKey(resolved.args, context);
+    }
+
+    const normalized = candidate?.trim();
+    if (normalized) {
+      return `${call.name}::${normalized}`;
+    }
+  } catch {
+    // Fall back to the stable semantic cache key when policy resolution is unavailable.
+  }
+
+  return fallback;
 }
 
 function buildToolBatchFingerprint(
@@ -1913,6 +1938,69 @@ function buildToolObservationEvidence(
   }));
 }
 
+function getPriorGithubSearchAccessFailure(params: {
+  results: SerializedToolResult[];
+  call: GraphToolCallDescriptor;
+}): (ToolErrorDetails & { category: 'unauthorized' | 'forbidden' }) | null {
+  const operationKey = buildToolCacheKey(params.call.name, params.call.args);
+
+  for (let index = params.results.length - 1; index >= 0; index -= 1) {
+    const result = params.results[index];
+    if (result.success || result.name !== 'repo_search_code') {
+      continue;
+    }
+    const category = result.errorDetails?.category;
+    if (
+      (category === 'unauthorized' || category === 'forbidden')
+      && result.errorDetails?.operationKey === operationKey
+    ) {
+      return result.errorDetails as ToolErrorDetails & { category: 'unauthorized' | 'forbidden' };
+    }
+  }
+  return null;
+}
+
+function buildGithubSearchRetryBlockedOutcome(params: {
+  call: GraphToolCallDescriptor;
+  priorFailure: ToolErrorDetails & { category: 'unauthorized' | 'forbidden' };
+}): { message: ToolMessage; result: SerializedToolResult } {
+  const errorText =
+    params.priorFailure.category === 'forbidden'
+      ? 'GitHub code search was not retried because the same run already hit a forbidden response. Confirm repository access, switch to repo_read_file for a known path, or ask the user for repo/path clarification.'
+      : 'GitHub code search was not retried because the same run already hit an unauthorized response. Confirm GitHub access, switch to repo_read_file for a known path, or ask the user for repo/path clarification.';
+  const result: SerializedToolResult = {
+    name: params.call.name,
+    success: false,
+    error: errorText,
+    errorType: 'execution',
+    errorDetails: {
+      ...params.priorFailure,
+      code: 'github_mcp_search_code_retry_blocked',
+      operationKey: params.priorFailure.operationKey,
+      hint:
+        params.priorFailure.hint
+        ?? 'Do not keep retrying GitHub code search after an auth/access failure in the same run. Use an exact-file read if the path is known, or ask the user to confirm repo/path visibility.',
+      retryable: false,
+    },
+    telemetry: { latencyMs: 0 },
+  };
+
+  return {
+    message: buildToolMessageFromOutcome({
+      toolName: params.call.name,
+      callId: params.call.id,
+      content: JSON.stringify({
+        status: 'retry_blocked',
+        category: params.priorFailure.category,
+        message: errorText,
+      }),
+      result,
+      files: [],
+      status: 'error',
+    }),
+    result,
+  };
+}
 
 function buildMissingReadToolOutputOutcome(params: {
   call: GraphToolCallDescriptor;
@@ -2083,7 +2171,7 @@ function buildAssistantTurnMessages(params: {
     ...params.state,
     compactionState,
   });
-  const promptPrelude = buildPromptPreludeMessages({
+  const contract = buildUniversalPromptContract({
     userProfileSummary: params.runtimeContext.userProfileSummary ?? null,
     currentTurn: resolvePromptCurrentTurn(params.runtimeContext),
     activeTools: params.runtimeContext.activeToolNames,
@@ -2093,11 +2181,13 @@ function buildAssistantTurnMessages(params: {
     invokerIsAdmin: params.runtimeContext.invokerIsAdmin,
     invokerCanModerate: params.runtimeContext.invokerCanModerate,
     inGuild: params.runtimeContext.guildId !== null,
+    turnMode: params.runtimeContext.voiceContext ? 'voice' : 'text',
     guildSagePersona: params.runtimeContext.guildSagePersona ?? null,
     replyTarget: (params.runtimeContext.replyTarget as ReplyTargetContext | null | undefined) ?? null,
     userText: extractLatestHumanRequestText(params.state.messages as BaseMessage[]),
     focusedContinuity: params.runtimeContext.focusedContinuity ?? null,
     recentTranscript: params.runtimeContext.recentTranscript ?? null,
+    voiceContext: params.runtimeContext.voiceContext ?? null,
     waitingFollowUp: params.runtimeContext.waitingFollowUp ?? null,
     graphLimits: {
       maxRounds: graphConfig.sliceMaxSteps,
@@ -2107,24 +2197,34 @@ function buildAssistantTurnMessages(params: {
       params.state.toolResults,
       compactionState?.retainedToolObservationCount ?? graphConfig.compactionMaxToolObservations,
     ),
-    promptMode:
-      params.runtimeContext.promptMode === 'waiting_follow_up'
-        ? 'waiting_follow_up'
-        : params.runtimeContext.promptMode ?? 'standard',
-    buildMode: resolvePromptBuildMode({
-      buildMode: params.runtimeContext.routeKind === 'approval_resume'
-        ? 'approval_resume'
-        : params.runtimeContext.routeKind === 'user_input_resume'
-          ? 'user_input_resume'
-          : params.runtimeContext.routeKind === 'background_resume' ||
-              params.runtimeContext.routeKind === 'background_retry'
-            ? 'background_resume'
-            : 'interactive',
-    }),
+    promptMode: 'durable_resume',
+  });
+  const contextMessageContent = buildPromptContextContent({
+    replyTarget: (params.runtimeContext.replyTarget as ReplyTargetContext | null | undefined) ?? null,
+    focusedContinuity: params.runtimeContext.focusedContinuity ?? null,
+    recentTranscript: params.runtimeContext.recentTranscript ?? null,
+    toolObservationEvidence: buildToolObservationEvidence(
+      params.state.toolResults,
+      compactionState?.retainedToolObservationCount ?? graphConfig.compactionMaxToolObservations,
+    ),
     includeUserInput: false,
+    userText: extractLatestHumanRequestText(params.state.messages as BaseMessage[]),
   });
   const preparedMessages = toLlmMessages(promptMessages);
-  return [...toLlmMessages(promptPrelude.messages), ...preparedMessages];
+  const messages: LLMChatMessage[] = [
+    {
+      role: 'system',
+      content: contract.systemMessage,
+    },
+  ];
+  if (contextMessageContent) {
+    messages.push({
+      role: 'user',
+      content: typeof contextMessageContent === 'string' ? contextMessageContent : contextMessageContent,
+    });
+  }
+  messages.push(...preparedMessages);
+  return messages;
 }
 
 function isGraphRecursionLimitError(error: unknown): boolean {
@@ -2661,39 +2761,6 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
     });
 
     const requestedCallCount = toolCalls.length;
-    if (requestedCallCount > 1) {
-      const detail =
-        'Sage now supports only one public execution capability per assistant turn. Return plain text or emit a single runtime_execute_code call.';
-      const loopGuard = buildLoopGuardToolMessages({
-        calls: toolCalls.map((call) => ({
-          id: call.id,
-          name: call.name,
-          args: call.args,
-        })),
-        reason: 'too_many_tool_calls',
-        detail,
-        requestedCallCount,
-        uniqueCallCount: requestedCallCount,
-        skippedDuplicateCallCount: 0,
-        overLimitCallCount: Math.max(0, requestedCallCount - 1),
-        repairable: true,
-      });
-      return new Command({
-        goto: 'tool_call_turn',
-        update: {
-          ...continued.update,
-          messages: loopGuard.messages,
-          toolResults: loopGuard.results,
-          pendingReadCalls: [],
-          pendingReadExecutionCalls: [],
-          pendingWriteCalls: [],
-          deduplicatedCallCount: 0,
-          lastToolBatchFingerprint: null,
-          consecutiveIdenticalToolBatches: 0,
-          loopGuardRecoveries: effectiveState.loopGuardRecoveries + 1,
-        },
-      });
-    }
     if (requestedCallCount === 0) {
       const replyText = resolveVisibleReplyTextFromState(effectiveState);
       const completionKind = replyText ? (effectiveState.completionKind ?? 'final_answer') : 'runtime_failure';
@@ -2737,6 +2804,22 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
         name: call.name,
         args: call.args,
       };
+      const priorGithubSearchAccessFailure =
+        serializedCall.name === 'repo_search_code'
+          ? getPriorGithubSearchAccessFailure({
+              results: effectiveState.toolResults,
+              call: serializedCall,
+            })
+          : null;
+      if (serializedCall.name === 'repo_search_code' && priorGithubSearchAccessFailure) {
+        const blocked = buildGithubSearchRetryBlockedOutcome({
+          call: serializedCall,
+          priorFailure: priorGithubSearchAccessFailure,
+        });
+        suppressedToolMessages.push(blocked.message);
+        suppressedToolResults.push(blocked.result);
+        continue;
+      }
       const readOnly = isReadOnlyToolCall({
         definitions: catalog.definitions,
         call: serializedCall,
@@ -3021,6 +3104,119 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
 
     const runtimeContext = resolveRuntimeContext(state, config);
     const turnToolContext = buildToolContext(state, runtimeContext, 'turn', config);
+    const approvalPlanningStartedAt = Date.now();
+    const preparedApproval = await prepareToolApprovalInterrupt({
+      activeToolNames: runtimeContext.activeToolNames,
+      call: currentWriteCall,
+      context: turnToolContext,
+    });
+    if (preparedApproval) {
+      const preparedBatch = [preparedApproval];
+      for (let index = 1; index < state.pendingWriteCalls.length; index += 1) {
+        const candidate = await prepareToolApprovalInterrupt({
+          activeToolNames: runtimeContext.activeToolNames,
+          call: state.pendingWriteCalls[index]!,
+          context: turnToolContext,
+        });
+        if (!candidate || candidate.approvalGroupKey !== preparedApproval.approvalGroupKey) {
+          break;
+        }
+        preparedBatch.push(candidate);
+      }
+
+      const batchId = buildApprovalBatchId(
+        runtimeContext.threadId,
+        preparedBatch.map((entry) => entry.call),
+      );
+      const approvalRequests: NonNullable<Extract<AgentGraphState['pendingInterrupt'], { kind: 'approval_review' }>['requests']> = [];
+
+      for (let index = 0; index < preparedBatch.length; index += 1) {
+        const prepared = preparedBatch[index]!;
+        const materialized = await materializeApprovalInterruptTask({
+          threadId: runtimeContext.threadId,
+          originTraceId: runtimeContext.originTraceId,
+          payload: {
+            ...prepared.payload,
+            interruptMetadataJson: {
+              ...(prepared.payload.interruptMetadataJson &&
+              typeof prepared.payload.interruptMetadataJson === 'object' &&
+              !Array.isArray(prepared.payload.interruptMetadataJson)
+                ? (prepared.payload.interruptMetadataJson as Record<string, unknown>)
+                : {}),
+              langgraphApprovalBatch: {
+                batchId,
+                batchIndex: index,
+                batchSize: preparedBatch.length,
+                approvalGroupKey: prepared.approvalGroupKey,
+              },
+            },
+          },
+        });
+        if (materialized.coalesced && materialized.threadId !== runtimeContext.threadId && index > 0) {
+          break;
+        }
+        approvalRequests.push({
+          requestId: materialized.requestId,
+          call: prepared.call,
+          payload: prepared.payload,
+          coalesced: materialized.coalesced,
+          expiresAtIso: materialized.expiresAtIso,
+        });
+      }
+
+      if (approvalRequests.length > 0) {
+        const interruptTimestamp = await captureGraphTimestampTask();
+        const responseSession = bumpResponseSession({
+          state,
+          latestText: resolveDraftText(state.replyText || state.responseSession.latestText),
+          status: 'awaiting_approval',
+        });
+        return new Command({
+          goto: 'resume_interrupt',
+          update: {
+            replyText: responseSession.latestText,
+            graphStatus: 'interrupted',
+            completionKind: 'approval_pending',
+            stopReason: 'approval_interrupt',
+            deliveryDisposition: 'approval_handoff',
+            responseSession,
+            resumeContext: snapshotRuntimeContext(runtimeContext),
+            activeWindowDurationMs: addActiveWindowDuration(
+              state,
+              Math.max(0, Date.now() - approvalPlanningStartedAt),
+            ),
+            pendingInterrupt: {
+              kind: 'approval_review',
+              requestId: approvalRequests[0]!.requestId,
+              batchId,
+              requests: approvalRequests,
+            },
+            interruptResolution: null,
+            finalization: {
+              attempted: false,
+              succeeded: true,
+              completedAt: interruptTimestamp.iso,
+              stopReason: 'approval_interrupt',
+              completionKind: 'approval_pending',
+              deliveryDisposition: 'approval_handoff',
+              finalizedBy: 'approval_interrupt',
+              draftRevision: responseSession.draftRevision,
+              contextFrame: buildContextFrame({
+                ...state,
+                responseSession,
+                replyText: responseSession.latestText,
+              }),
+            },
+            contextFrame: buildContextFrame({
+              ...state,
+              responseSession,
+              replyText: responseSession.latestText,
+            }),
+          },
+        });
+      }
+    }
+
     const outcome = await executeDurableToolTask({
       activeToolNames: runtimeContext.activeToolNames,
       call: currentWriteCall,
@@ -4238,7 +4434,6 @@ export async function continueAgentGraphTurn(
   if (!existingState) {
     throw new Error(`Agent graph state for thread "${params.threadId}" could not be normalized.`);
   }
-  const promptMetadata = resolvePromptContractMetadata();
   const mergedContext: AgentGraphRuntimeContext = {
     ...existingState.resumeContext,
     traceId: runId,
@@ -4249,14 +4444,6 @@ export async function continueAgentGraphTurn(
       ...((params.context?.activeToolNames ?? existingState.resumeContext.activeToolNames) ?? []),
     ],
     replyTarget: params.context?.replyTarget ?? existingState.resumeContext.replyTarget ?? null,
-    promptVersion:
-      params.context?.promptVersion ??
-      existingState.resumeContext.promptVersion ??
-      promptMetadata.version,
-    promptFingerprint:
-      params.context?.promptFingerprint ??
-      existingState.resumeContext.promptFingerprint ??
-      promptMetadata.promptFingerprint,
   };
   const recoveredTerminalState = await recoverTerminalRunningContinueState({
     runtime,
@@ -4345,7 +4532,6 @@ export async function retryAgentGraphTurn(params: {
   const runtime = await getRuntime();
   const telemetry = createAgentRunTelemetry();
   const runId = params.runId?.trim() || params.context.traceId?.trim() || params.threadId;
-  const promptMetadata = resolvePromptContractMetadata();
   const output = await runGraphValueStream(
     runtime.graph,
     null as Parameters<AgentGraphRuntime['graph']['invoke']>[0],
@@ -4357,9 +4543,6 @@ export async function retryAgentGraphTurn(params: {
       context: {
         ...params.context,
         threadId: params.threadId,
-        promptVersion: params.context.promptVersion ?? promptMetadata.version,
-        promptFingerprint:
-          params.context.promptFingerprint ?? promptMetadata.promptFingerprint,
       },
       callbacks: telemetry.callbacks,
       tags: ['sage', 'agent-runtime', 'langgraph', 'retry'],

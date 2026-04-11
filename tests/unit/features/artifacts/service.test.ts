@@ -29,7 +29,7 @@ vi.mock('@/features/attachments/ingestedAttachmentRepo', () => ({
   listIngestedAttachmentsByIds,
 }));
 
-vi.mock('@/features/artifacts/cachedAttachmentPublish', () => ({
+vi.mock('@/features/agent-runtime/toolIntegrations', () => ({
   sendCachedAttachment,
 }));
 

@@ -102,5 +102,5 @@ async function processBackfillMessage(message: Message): Promise<void> {
     replyToMessageId: message.reference?.messageId,
     mentionsBot: isMentioned,
     mentionsUserIds,
-  });
+  }, { publishSocialGraph: false });
 }

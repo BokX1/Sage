@@ -1,4 +1,4 @@
-const ALLOWED_TAGS = new Set(['preferences', 'active_focus', 'background']);
+const ALLOWED_TAGS = new Set(['preferences', 'directives', 'active_focus', 'background']);
 
 export interface ParsedUserProfile {
   preferences: string[];
@@ -51,13 +51,15 @@ export function parseUserProfileSummary(summary: string): ParsedUserProfile | nu
   if (hasUnknownTags(trimmed)) return null;
 
   const preferenceMatches = collectTagMatches(trimmed, 'preferences');
+  const legacyDirectiveMatches = collectTagMatches(trimmed, 'directives');
   const activeFocusMatches = collectTagMatches(trimmed, 'active_focus');
   const backgroundMatches = collectTagMatches(trimmed, 'background');
 
-  if (preferenceMatches.length !== 1) return null;
+  if (preferenceMatches.length + legacyDirectiveMatches.length !== 1) return null;
   if (activeFocusMatches.length !== 1 || backgroundMatches.length !== 1) return null;
 
-  const preferencesContent = extractTagContent(trimmed, 'preferences');
+  const preferencesContent = extractTagContent(trimmed, 'preferences')
+    ?? extractTagContent(trimmed, 'directives');
   const activeFocusContent = extractTagContent(trimmed, 'active_focus');
   const backgroundContent = extractTagContent(trimmed, 'background');
 

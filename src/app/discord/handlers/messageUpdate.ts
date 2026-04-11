@@ -65,20 +65,23 @@ export async function handleMessageUpdate(
     const mentionedUserIds = getMentionedUserIds(message);
     const isMentioned = !!(client.user && message.mentions.has(client.user));
 
-    await ingestEvent({
-      type: 'message',
-      guildId: message.guildId,
-      channelId: message.channelId,
-      messageId: message.id,
-      authorId: message.author.id,
-      authorDisplayName,
-      authorIsBot: !!message.author.bot,
-      content: extractVisibleMessageText(message, { allowEmpty: true }) ?? '',
-      timestamp: message.createdAt,
-      replyToMessageId: message.reference?.messageId,
-      mentionsBot: isMentioned,
-      mentionsUserIds: mentionedUserIds,
-    });
+    await ingestEvent(
+      {
+        type: 'message',
+        guildId: message.guildId,
+        channelId: message.channelId,
+        messageId: message.id,
+        authorId: message.author.id,
+        authorDisplayName,
+        authorIsBot: !!message.author.bot,
+        content: extractVisibleMessageText(message, { allowEmpty: true }) ?? '',
+        timestamp: message.createdAt,
+        replyToMessageId: message.reference?.messageId,
+        mentionsBot: isMentioned,
+        mentionsUserIds: mentionedUserIds,
+      },
+      { publishSocialGraph: false },
+    );
   } catch (err) {
     logger.error({ err, msgId: newMessage.id }, 'MessageUpdate handler failed');
   }

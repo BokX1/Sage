@@ -50,6 +50,7 @@ If you are a server admin:
 | Research | `@Sage check the latest docs for this API` |
 | Image generation | `Sage, draw a neon skyline at sunset` |
 | Image editing | Reply to an image: `Sage, make this more cinematic` |
+| Voice control | `Sage, join my voice channel` |
 
 > [!NOTE]
 > The built-in hosted/server-key and image flow are Pollinations-specific today. The self-hosted runtime itself is still provider-flexible.
@@ -76,7 +77,7 @@ That gives you:
 - your own provider endpoint via `AI_PROVIDER_BASE_URL`
 - optional shared host Codex login via `npm run auth:codex:login`
 - optional host-level provider key fallback via `AI_PROVIDER_API_KEY`
-- optional local services for search and scraping
+- optional local services for search, scraping, social graph, and voice
 
 For the full walkthrough, use [📖 Getting Started](GETTING_STARTED.md).
 
@@ -91,6 +92,7 @@ For the full walkthrough, use [📖 Getting Started](GETTING_STARTED.md).
 | Missing-key guidance | Trigger Sage once so the setup card appears |
 | Bot online but silent | Check mention/wake word/reply entrypoints and channel permissions |
 | Provider probe fails | Run `npm run doctor -- --llm-ping` or `npm run ai-provider:probe` |
+| Voice join does nothing | Make sure you are already in a standard voice channel |
 
 For deeper debugging, use [🔧 Troubleshooting](TROUBLESHOOTING.md).
 

@@ -26,6 +26,7 @@ Complete index of all environment variables used by Sage, with descriptions and 
 - [Embeddings](#embeddings)
 - [Memory Compaction](#memory-compaction)
 - [Message Storage / Ingestion](#message-storage--ingestion)
+- [Voice (STT)](#voice-stt)
 - [File Ingestion](#file-ingestion)
 - [Channel Summaries](#channel-summaries)
 - [Bot Behavior](#bot-behavior)
@@ -34,6 +35,7 @@ Complete index of all environment variables used by Sage, with descriptions and 
 - [Timeouts](#timeouts)
 - [Tool Providers](#tool-providers)
 - [MCP Servers](#mcp-servers)
+- [Social Graph](#social-graph)
 - [Disposable Discord Smoke Target](#disposable-discord-smoke-target)
 - [Doctor Utility](#doctor-utility)
 
@@ -142,7 +144,7 @@ Complete index of all environment variables used by Sage, with descriptions and 
 
 | Variable | Description | Default |
 |:---|:---|:---|
-| `INGESTION_ENABLED` | Enable message ingestion | `true` |
+| `INGESTION_ENABLED` | Enable message/voice ingestion | `true` |
 | `INGESTION_MODE` | `all` or `allowlist` | `all` |
 | `INGESTION_ALLOWLIST_CHANNEL_IDS_CSV` | Channel IDs to include (when mode=`allowlist`) | *(empty)* |
 | `INGESTION_BLOCKLIST_CHANNEL_IDS_CSV` | Channel IDs to always exclude | *(empty)* |
@@ -152,6 +154,33 @@ Complete index of all environment variables used by Sage, with descriptions and 
 | `RAW_MESSAGE_TTL_DAYS` | In-memory ring buffer TTL | `3` |
 | `RING_BUFFER_MAX_MESSAGES_PER_CHANNEL` | Max messages in ring buffer per channel | `300` |
 | `CONTEXT_TRANSCRIPT_MAX_MESSAGES` | Max messages in prompt transcript | `24` |
+
+---
+
+<a id="voice-stt"></a>
+
+## 🎤 Voice (STT)
+
+These settings control Sage's optional Discord voice features. The local voice service can be run via `config/services/self-host/docker-compose.voice.yml`.
+
+| Variable | Description | Default |
+|:---|:---|:---|
+| `VOICE_SERVICE_BASE_URL` | Base URL for the local voice service | <code>http&#58;//127.0.0.1:11333</code> |
+| `VOICE_STT_ENABLED` | Enable voice transcription while Sage is connected | `false` |
+| `VOICE_STT_MODEL_ID` | Local STT model id used by the voice service | `deepdml/faster-whisper-large-v3-turbo-ct2` |
+| `VOICE_STT_COMPUTE_TYPE` | `faster-whisper` compute type | `int8` |
+| `VOICE_STT_END_SILENCE_MS` | End an utterance after this much silence | `900` |
+| `VOICE_STT_MAX_UTTERANCE_MS` | Hard cap per utterance chunk | `15000` |
+| `VOICE_STT_MIN_UTTERANCE_MS` | Skip utterances shorter than this | `400` |
+| `VOICE_MESSAGE_STT_ENABLED` | Transcribe Discord voice messages in text channels | `false` |
+| `VOICE_MESSAGE_STT_MAX_SECONDS` | Max duration (seconds) to transcribe per voice message | `120` |
+| `VOICE_MESSAGE_STT_MAX_BYTES` | Max download bytes per voice message | `5000000` |
+| `VOICE_LIVE_CONTEXT_LOOKBACK_SEC` | How far back to include in live voice context | `180` |
+| `VOICE_LIVE_CONTEXT_MAX_UTTERANCES` | Max utterances for injected live voice context | `80` |
+| `VOICE_SESSION_SUMMARY_ENABLED` | Persist summary-only voice session memory on leave | `true` |
+
+> [!IMPORTANT]
+> Voice transcription is additionally gated by channel logging policy (ingestion allowlist/blocklist). If a channel is not log-enabled, STT will not run even if `VOICE_STT_ENABLED=true` or `VOICE_MESSAGE_STT_ENABLED=true`.
 
 ---
 
@@ -329,9 +358,29 @@ Sage now discovers curated MCP presets and optional extra MCP servers at startup
 | `MCP_PRESET_MARKITDOWN_TOKEN` | Token passed to the MarkItDown preset when required | *(empty)* |
 
 > [!IMPORTANT]
-> The built-in runtime no longer ships native `github_*` or `workflow_npm_github_code_search` tools. GitHub capability now comes from curated MCP presets and is consumed through bridge-native Code Mode instead of a separate public GitHub tool menu.
+> The built-in runtime no longer ships native `github_*` or `workflow_npm_github_code_search` tools. GitHub capability now comes from curated MCP presets and is exposed to the model as stable Sage capabilities like `repo_search_code`, `repo_read_file`, and `repo_get_repository`.
 > [!TIP]
 > `npm run tools:audit` and `npm run doctor -- --only tools.audit` now probe the GitHub MCP preset more precisely when it is enabled and a token is configured. Sage distinguishes discovery success from live capability by checking baseline auth (`get_me`) separately from baseline public code search, so a repo-specific `search_code` denial no longer looks like a blanket GitHub MCP outage.
+
+---
+
+<a id="social-graph"></a>
+
+## 🕸️ Social Graph (Memgraph + Kafka)
+
+| Variable | Description | Default |
+|:---|:---|:---|
+| `MEMGRAPH_HOST` | Memgraph hostname | `localhost` |
+| `MEMGRAPH_PORT` | Memgraph Bolt port | `7687` |
+| `MEMGRAPH_USER` | Memgraph username | *(empty)* |
+| `MEMGRAPH_PASSWORD` | Memgraph password | *(empty)* |
+| `MEMGRAPH_KAFKA_BOOTSTRAP_SERVERS` | Kafka brokers (Docker internal) | `redpanda:9092` |
+| `KAFKA_BROKERS` | Kafka brokers (host facing) | `localhost:19092` |
+| `KAFKA_INTERACTIONS_TOPIC` | Interaction events topic | `sage.social.interactions` |
+| `KAFKA_VOICE_TOPIC` | Voice session events topic | `sage.social.voice-sessions` |
+
+> [!TIP]
+> Set `KAFKA_BROKERS=` (empty) to disable social graph export entirely.
 
 ---
 
@@ -365,7 +414,8 @@ Run `npm run doctor -- --llm-ping` for a cross-platform one-off live ping/probe 
 ## 🔗 Related Documentation
 
 - [📖 Getting Started](../guides/GETTING_STARTED.md) — Setup walkthrough with `npm run onboard`
-- [🧰 Self-Hosted Retrieval Stack](../operations/TOOL_STACK.md) — SearXNG/Crawl4AI/Tika setup
+- [🧰 Self-Hosted Tool Stack](../operations/TOOL_STACK.md) — SearXNG/Crawl4AI/Tika setup
+- [🕸️ Social Graph Setup](../operations/SOCIAL_GRAPH_SETUP.md) — Memgraph + Redpanda
 - [🚢 Release Process](RELEASE.md) — CI checks and release gates
 
 <p align="right"><a href="#top">⬆️ Back to top</a></p>

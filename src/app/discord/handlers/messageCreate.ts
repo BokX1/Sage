@@ -11,6 +11,8 @@ import { detectInvocation } from '../../../features/invocation/wake-word-detecto
 import { shouldAllowInvocation } from '../../../features/invocation/invocation-rate-limiter';
 import { fetchAttachmentText, type FetchAttachmentResult } from '../../../platform/files/file-handler';
 import { smartSplit } from '../../../shared/text/message-splitter';
+import { VoiceManager } from '../../../features/voice/voiceManager';
+import { transcribeDiscordVoiceMessageAttachment } from '../../../features/voice/voiceMessageTranscriber';
 import { upsertIngestedAttachment } from '../../../features/attachments/ingestedAttachmentRepo';
 import { deleteAttachmentChunks, ingestAttachmentText } from '../../../features/embeddings';
 import { queueImageAttachmentRecall } from '../../../features/attachments/imageAttachmentRecallWorker';
@@ -549,6 +551,8 @@ export async function handleMessageCreate(message: Message) {
       0,
     );
     const ingestTimeoutMs = normalizePositiveInt(appConfig.FILE_INGEST_TIMEOUT_MS, 45_000);
+    const voiceSttMaxBytes = normalizeNonNegativeInt(appConfig.VOICE_MESSAGE_STT_MAX_BYTES, perFileMaxBytes);
+    const voiceSttMaxSeconds = normalizePositiveInt(appConfig.VOICE_MESSAGE_STT_MAX_SECONDS, 120);
     const shouldPersistAttachmentCache =
       !!message.guildId && isLoggingEnabled(message.guildId, message.channelId);
     const attachmentsForIngest = shouldPersistAttachmentCache
@@ -559,6 +563,10 @@ export async function handleMessageCreate(message: Message) {
     const attachmentBlocks: string[] = [];
     const ingestAttachmentNotes: string[] = [];
     const cachedAttachmentRefs: Array<{ filename: string; attachmentId: string }> = [];
+    const shouldTranscribeVoiceMessages =
+      shouldPersistAttachmentCache &&
+      appConfig.VOICE_MESSAGE_STT_ENABLED &&
+      message.flags?.has?.('IsVoiceMessage');
 
     let remainingAttachmentBytes = perMessageMaxBytes;
     let queuedImageRecallWork = false;
@@ -596,22 +604,48 @@ export async function handleMessageCreate(message: Message) {
       }
 
       let attachmentResult: FetchAttachmentResult;
-      const maxBytes = Math.max(0, Math.min(perFileMaxBytes, remainingAttachmentBytes));
-      if (maxBytes <= 0) {
-        attachmentResult = {
-          kind: 'too_large',
-          message: `[System: File '${attachmentName}' omitted due to size limits.]`,
-          extractor: 'none',
-        };
+      if (shouldTranscribeVoiceMessages) {
+        const voiceMaxBytes = Math.max(
+          0,
+          Math.min(voiceSttMaxBytes, remainingAttachmentBytes, perFileMaxBytes),
+        );
+        if (voiceMaxBytes <= 0) {
+          attachmentResult = {
+            kind: 'too_large',
+            message: `[System: Voice message '${attachmentName}' omitted due to size limits.]`,
+            extractor: 'voice_stt',
+            mimeType: attachment.contentType ?? null,
+          };
+        } else {
+          attachmentResult = await transcribeDiscordVoiceMessageAttachment({
+            url: attachment.url ?? '',
+            filename: attachmentName,
+            contentType: attachment.contentType ?? null,
+            declaredSizeBytes: attachment.size ?? null,
+            durationSeconds: attachment.duration ?? null,
+            timeoutMs: ingestTimeoutMs,
+            maxBytes: voiceMaxBytes,
+            maxSeconds: voiceSttMaxSeconds,
+          });
+        }
       } else {
-        attachmentResult = await fetchAttachmentText(attachment.url ?? '', attachmentName, {
-          timeoutMs: ingestTimeoutMs,
-          maxBytes,
-          contentType: attachment.contentType ?? null,
-          declaredSizeBytes: attachment.size ?? null,
-          tikaBaseUrl: appConfig.FILE_INGEST_TIKA_BASE_URL,
-          ocrEnabled: appConfig.FILE_INGEST_OCR_ENABLED,
-        });
+        const maxBytes = Math.max(0, Math.min(perFileMaxBytes, remainingAttachmentBytes));
+        if (maxBytes <= 0) {
+          attachmentResult = {
+            kind: 'too_large',
+            message: `[System: File '${attachmentName}' omitted due to size limits.]`,
+            extractor: 'none',
+          };
+        } else {
+          attachmentResult = await fetchAttachmentText(attachment.url ?? '', attachmentName, {
+            timeoutMs: ingestTimeoutMs,
+            maxBytes,
+            contentType: attachment.contentType ?? null,
+            declaredSizeBytes: attachment.size ?? null,
+            tikaBaseUrl: appConfig.FILE_INGEST_TIKA_BASE_URL,
+            ocrEnabled: appConfig.FILE_INGEST_OCR_ENABLED,
+          });
+        }
       }
 
       const attachmentBlock = buildAttachmentBlockFromResult(
@@ -816,6 +850,16 @@ export async function handleMessageCreate(message: Message) {
       const invokerIsAdmin = isAdminFromMember(message.member);
       const invokerCanModerate = isModeratorFromMember(message.member);
 
+      let isVoiceActive = false;
+      let activeVoiceChannelId: string | null = null;
+      if (message.guildId && message.member?.voice?.channelId) {
+        const voiceManager = VoiceManager.getInstance();
+        const connection = voiceManager.getConnection(message.guildId);
+        if (connection && connection.joinConfig.channelId === message.member.voice.channelId) {
+          isVoiceActive = true;
+          activeVoiceChannelId = message.member.voice.channelId;
+        }
+      }
       const waitingTaskRun =
         preMatchedWaitingTaskRun ??
         (await findWaitingUserInputTaskRun({
@@ -1117,6 +1161,8 @@ export async function handleMessageCreate(message: Message) {
             replyTarget,
             mentionedUserIds,
             invokedBy: invocation.kind,
+            isVoiceActive,
+            voiceChannelId: activeVoiceChannelId,
             invokerAuthority,
             isAdmin: invokerIsAdmin,
             canModerate: invokerCanModerate,

@@ -28,19 +28,33 @@ export {
 } from './promptContract';
 
 export {
+  ToolRegistry,
+  globalToolRegistry,
+  defineToolSpecV2,
   type ToolDefinition,
+  type ToolSpecV2,
   type ToolExecutionContext,
+  type ToolMetadata,
   type ToolValidationResult,
   type ToolArtifact,
-  defineRuntimeToolSpec,
-  type RuntimeToolSpec,
-} from './runtimeToolContract';
-export { initializeRuntimeSurface } from './runtimeSurface';
+} from './toolRegistry';
+export { registerDefaultAgenticTools } from './defaultTools';
 export {
   initializeMcpTools,
   shutdownMcpTools,
   listMcpDiscoverySnapshots,
 } from './mcp/manager';
+export {
+  discordContextTools,
+  discordHistoryTools,
+  discordArtifactTools,
+  discordModerationTools,
+  discordScheduleTools,
+  discordSpacesTools,
+  discordGovernanceTools,
+  discordVoiceTools,
+  discordTools,
+} from './discordDomainTools';
 
 export {
   initializeAgentGraphRuntime,
@@ -62,4 +76,4 @@ export {
 
 export { type ToolResult, type ToolResultTelemetry } from './toolCallExecution';
 export { ToolResultCache, buildToolCacheKey, type ToolCacheEntry } from './toolCache';
-export { auditRuntimeSurface, type ToolAuditFinding, type ToolAuditReport } from './toolAudit';
+export { auditToolRegistry, type ToolAuditFinding, type ToolAuditReport } from './toolAudit';

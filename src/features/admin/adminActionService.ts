@@ -116,8 +116,6 @@ import {
 } from '../agent-runtime/continuityContext';
 import { resolveTextProviderRoute } from '../agent-runtime/apiKeyResolver';
 import { ApprovalRequiredSignal, type ApprovalInterruptPayload } from '../agent-runtime/toolControlSignals';
-import { resumeApprovedCodeModeExecution } from '../code-mode/executor';
-import type { CodeModeApprovalExecutionPayload } from '../code-mode/types';
 
 const APPROVAL_TTL_MS = 10 * 60 * 1_000;
 const RESOLVED_APPROVAL_CARD_DELETE_DELAY_MS = 60_000;
@@ -1247,7 +1245,7 @@ export function resolveModerationActionChannelId(params: {
       sourceChannelId: params.sourceChannelId,
       rawChannelId: params.request.channelId,
       rawMessageIds: params.request.messageIds,
-      usage: 'moderation.actions.create (bulk_delete_messages)',
+      usage: 'discord_moderation_submit_action (bulk_delete_messages)',
     }).channelId;
   }
 
@@ -1267,7 +1265,7 @@ export function resolveModerationActionChannelId(params: {
       rawMessageId: params.request.messageId,
       rawChannelId: params.request.channelId,
       replyTarget: params.replyTarget,
-      usage: `moderation.actions.create (${params.request.action})`,
+      usage: `discord_moderation_submit_action (${params.request.action})`,
     }).channelId;
   }
 
@@ -1356,7 +1354,7 @@ async function prepareMessageModerationEnvelope(
       sourceChannelId: params.sourceChannelId,
       rawChannelId: request.channelId,
       rawMessageIds: request.messageIds,
-      usage: 'moderation.actions.create (bulk_delete_messages)',
+      usage: 'discord_moderation_submit_action (bulk_delete_messages)',
     });
     const channel = await fetchGuildChannel(params.guildId, resolvedTargets.channelId);
     const botChannelPermissions = botMember.permissionsIn(channel);
@@ -1438,7 +1436,7 @@ async function prepareMessageModerationEnvelope(
         guildId: params.guildId,
         rawUserId: request.authorUserId,
         replyTarget: params.replyTarget,
-        usage: 'moderation.actions.create (purge_recent_messages authorUserId)',
+        usage: 'discord_moderation_submit_action (purge_recent_messages authorUserId)',
         allowReplyTargetInference: false,
       });
       authorUserId = resolvedUser.userId;
@@ -1552,7 +1550,7 @@ async function prepareMessageModerationEnvelope(
     rawMessageId: 'messageId' in request ? request.messageId : undefined,
     rawChannelId: 'channelId' in request ? request.channelId : undefined,
     replyTarget: params.replyTarget,
-    usage: `moderation.actions.create (${request.action})`,
+    usage: `discord_moderation_submit_action (${request.action})`,
   });
   const channel = await fetchGuildChannel(params.guildId, target.channelId);
   const botChannelPermissions = botMember.permissionsIn(channel);
@@ -1636,7 +1634,7 @@ async function prepareMessageModerationEnvelope(
     guildId: params.guildId,
     rawUserId: request.userId,
     replyTarget: params.replyTarget,
-    usage: 'moderation.actions.create (remove_user_reaction)',
+    usage: 'discord_moderation_submit_action (remove_user_reaction)',
     allowReplyTargetInference: false,
   });
 
@@ -1718,7 +1716,7 @@ async function prepareMemberModerationEnvelope(
     guildId: params.guildId,
     rawUserId: request.userId,
     replyTarget: params.replyTarget,
-    usage: `moderation.actions.create (${request.action})`,
+    usage: `discord_moderation_submit_action (${request.action})`,
   });
   const { guild, botMember } = await fetchGuildAndBotMember(params.guildId);
   const botRequirements = moderationBotPermissionsForAction(request.action);
@@ -1764,7 +1762,7 @@ async function prepareMemberModerationEnvelope(
     const replyTarget = assertReplyTargetInGuild({
       guildId: params.guildId,
       replyTarget: params.replyTarget,
-    usage: `moderation.actions.create (${params.request.action})`,
+    usage: `discord_moderation_submit_action (${params.request.action})`,
     });
     const replyPreview = extractReplyTargetPreview(replyTarget);
     evidence = {
@@ -3578,27 +3576,6 @@ async function executePendingAction(params: {
         path: request.path,
       })),
       results,
-    };
-  }
-
-  if (params.action.kind === 'code_mode_effect') {
-    const payload = params.action.executionPayloadJson as CodeModeApprovalExecutionPayload;
-    const resumed = await resumeApprovedCodeModeExecution({
-      payload,
-      approvedBy: params.approvedBy,
-    });
-
-    return {
-      action: 'code_mode_effect',
-      status: 'executed',
-      executionId: resumed.executionId,
-      taskId: resumed.taskId,
-      language: resumed.language,
-      result: resumed.result,
-      stdout: resumed.stdout,
-      stderr: resumed.stderr,
-      bridgeCalls: resumed.bridgeCalls,
-      workspaceSummary: resumed.workspaceSummary,
     };
   }
 

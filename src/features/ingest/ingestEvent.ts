@@ -5,6 +5,7 @@ import { PrismaMessageStore } from '../awareness/prismaMessageStore';
 import { ChannelMessage } from '../awareness/awareness-types';
 import { isLoggingEnabled } from '../settings/guildChannelSettings';
 import { getChannelSummaryScheduler } from '../summary/channelSummaryScheduler';
+import { publishInteraction } from '../../platform/social-graph/kafkaProducer';
 import { queueChannelMessageEmbedding } from '../embeddings';
 import { normalizePositiveInt } from '../../shared/utils/numbers';
 
@@ -27,7 +28,24 @@ export interface MessageEvent {
   mentionsUserIds: string[];
 }
 
-export type Event = MessageEvent;
+/**
+ * Voice state event captured from Discord.
+ */
+export interface VoiceEvent {
+  type: 'voice';
+  guildId: string | null;
+  channelId: string;
+  channelName: string;
+  userId: string;
+  userDisplayName: string;
+  action: 'join' | 'leave' | 'move';
+  timestamp: Date;
+}
+
+/**
+ * Union of all event types that can be ingested.
+ */
+export type Event = MessageEvent | VoiceEvent;
 
 const prismaMessageStore = new PrismaMessageStore();
 
@@ -35,6 +53,10 @@ const prismaMessageStore = new PrismaMessageStore();
 function resolveDbRetentionLimit(): number {
   const fallbackLimit = normalizePositiveInt(config.CONTEXT_TRANSCRIPT_MAX_MESSAGES, 1);
   return normalizePositiveInt(config.MESSAGE_DB_MAX_MESSAGES_PER_CHANNEL as number | undefined, fallbackLimit);
+}
+
+export interface IngestEventOptions {
+  publishSocialGraph?: boolean;
 }
 
 /**
@@ -51,7 +73,7 @@ function resolveDbRetentionLimit(): number {
  * 2. Log the event
  * 3. Store in transcript ledger (Future)
  */
-export async function ingestEvent(event: Event): Promise<void> {
+export async function ingestEvent(event: Event, options: IngestEventOptions = {}): Promise<void> {
   try {
     // Skip if no guildId (DMs) or logging disabled
     if (!event.guildId || !isLoggingEnabled(event.guildId, event.channelId)) {
@@ -97,6 +119,38 @@ export async function ingestEvent(event: Event): Promise<void> {
         });
       }
 
+      // Publish social interactions to Kafka/Memgraph (best-effort).
+      // Respect existing logging gates by publishing only from within ingestEvent
+      // after isLoggingEnabled checks have passed.
+      if (options.publishSocialGraph !== false && !isBotMessage) {
+        const interactionTimestamp = message.timestamp.toISOString();
+        const guildId = event.guildId;
+        for (const mentionedUserId of message.mentionsUserIds) {
+          if (!mentionedUserId) continue;
+          if (mentionedUserId === message.authorId) continue;
+
+          void publishInteraction({
+            type: 'MENTION',
+            guildId,
+            sourceUserId: message.authorId,
+            targetUserId: mentionedUserId,
+            channelId: message.channelId,
+            timestamp: interactionTimestamp,
+          });
+        }
+
+        if (event.replyToAuthorId && event.replyToAuthorId !== message.authorId) {
+          void publishInteraction({
+            type: 'REPLY',
+            guildId,
+            sourceUserId: message.authorId,
+            targetUserId: event.replyToAuthorId,
+            channelId: message.channelId,
+            timestamp: interactionTimestamp,
+          });
+        }
+      }
+
       const scheduler = getChannelSummaryScheduler();
       if (scheduler) {
         scheduler.markDirty({
@@ -107,6 +161,28 @@ export async function ingestEvent(event: Event): Promise<void> {
           humanMessageCountIncrement: isBotMessage ? 0 : 1,
         });
       }
+    } else if (event.type === 'voice') {
+      // SYNTHETIC SYSTEM MESSAGE FOR TRANSCRIPT
+      // This allows the LLM to "see" voice activity in the short-term context.
+      const content = `[Voice] ${event.userDisplayName} ${event.action} voice channel "${event.channelName}"`;
+
+      const syntheticMessage: ChannelMessage = {
+        messageId: `voice-${event.timestamp.getTime()}-${event.userId}`,
+        guildId: event.guildId,
+        // Keep voice activity scoped to the originating voice channel transcript.
+        channelId: event.channelId,
+        authorId: 'SYSTEM',
+        authorDisplayName: 'System',
+        authorIsBot: false,
+        timestamp: event.timestamp,
+        content,
+        mentionsUserIds: [event.userId],
+        mentionsBot: false,
+      };
+
+      appendMessage(syntheticMessage);
+
+      // Keep synthetic voice activity ephemeral in memory; only user-authored messages are persisted.
     }
   } catch (err) {
     // CRITICAL: Never let ingestion errors break the handler

@@ -17,6 +17,7 @@ Annotated examples of the upstream request shapes Sage works with today.
 - [Vision (Image Analysis)](#vision-image-analysis)
 - [Image Generation](#image-generation)
 - [Image Editing](#image-editing)
+- [Voice (STT)](#voice-stt)
 - [Key Validation](#key-validation)
 
 ---
@@ -108,6 +109,21 @@ Reply-based image edits use the same endpoint with `image=<url>`:
 curl -L "https://gen.pollinations.ai/image/make%20this%20look%20like%20a%20watercolor?model=imagen-4&seed=42&nologo=true&image=https://example.com/source.jpg&key=sk_YOUR_KEY" \
   --output edited_image.jpg
 ```
+
+---
+
+<a id="voice-stt"></a>
+
+## 🔊 Voice (STT)
+
+For local transcription, Sage uses the optional local voice service:
+
+```bash
+curl -sS http://127.0.0.1:11333/v1/stt/transcribe \
+  -F "audio=@sample.wav;type=audio/wav"
+```
+
+The voice service is separate from the chat provider and separate from the Pollinations image/server-key path.
 
 ---
 

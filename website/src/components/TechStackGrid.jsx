@@ -7,7 +7,9 @@ const CdnIcon = ({ src, alt, ...props }) => (
 
 const Icons = {
   Postgres: (props) => <CdnIcon src="https://cdn.simpleicons.org/postgresql/white" alt="PostgreSQL" {...props} style={{ filter: 'none' }} />,
+  Memgraph: (props) => <svg viewBox="0 0 24 24" fill="currentColor" {...props}><path d="M12 21.033A9.033 9.033 0 1 1 21.033 12 9.043 9.043 0 0 1 12 21.033zm0-16.711a7.678 7.678 0 1 0 7.678 7.678A7.687 7.687 0 0 0 12 4.322zm1.536 9.61a2.169 2.169 0 1 1 2.169 2.169 2.172 2.172 0 0 1-2.169-2.169zm-5.071 0a2.169 2.169 0 1 1 2.169 2.169 2.172 2.172 0 0 1-2.169-2.169zM12 9.423a2.169 2.169 0 1 1 2.169 2.169A2.171 2.171 0 0 1 12 9.423z" /></svg>,
   Prisma: (props) => <CdnIcon src="https://cdn.simpleicons.org/prisma/white" alt="Prisma" {...props} style={{ filter: 'none' }} />,
+  Redpanda: (props) => <svg viewBox="0 0 24 24" fill="currentColor" {...props}><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14H9V8h2v8zm4 0h-2V8h2v8z" /></svg>,
   NodeJs: (props) => <CdnIcon src="https://cdn.simpleicons.org/nodedotjs/white" alt="Node.js" {...props} style={{ filter: 'none' }} />,
   Docker: (props) => <CdnIcon src="https://cdn.simpleicons.org/docker/white" alt="Docker" {...props} style={{ filter: 'none' }} />,
   Zod: (props) => <CdnIcon src="https://cdn.simpleicons.org/zod/white" alt="Zod" {...props} style={{ filter: 'none' }} />,
@@ -26,7 +28,9 @@ const techLayers = {
     side: 'left',
     nodes: [
       { name: 'PostgreSQL', role: 'Primary data store — 17 tables, pgvector', color: '#7AA2F7', icon: Icons.Postgres },
-      { name: 'Prisma', role: 'Type-safe ORM with baseline migrations', color: '#7AA2F7', icon: Icons.Prisma }
+      { name: 'Memgraph', role: 'Real-time graph DB for social relations', color: '#BB9AF7', icon: Icons.Memgraph },
+      { name: 'Prisma', role: 'Type-safe ORM with auto-migrations', color: '#7AA2F7', icon: Icons.Prisma },
+      { name: 'Redpanda', role: 'Kafka-compliant event streaming queue', color: '#FF9E64', icon: Icons.Redpanda }
     ]
   },
   engine: {
@@ -36,7 +40,7 @@ const techLayers = {
     nodes: [
       { name: 'Node.js', role: 'Single-agent runtime with TypeScript (v5.9)', color: '#78b846', icon: Icons.NodeJs },
       { name: 'LangGraph', role: 'Graph-native agentic orchestration framework', color: '#78b846', icon: Icons.LangGraph },
-      { name: 'discord.js', role: 'Discord gateway and interaction bindings', color: '#BB9AF7', icon: Icons.Discord },
+      { name: 'discord.js', role: 'Discord gateway & voice bindings', color: '#BB9AF7', icon: Icons.Discord },
       { name: 'Docker', role: 'Container orchestration & networking', color: '#7AA2F7', icon: Icons.Docker },
       { name: 'Zod', role: 'Strict schema validation for tool inputs', color: '#BB9AF7', icon: Icons.Zod }
     ]
@@ -149,7 +153,7 @@ export default function TechStackGrid() {
           </span>
         </h2>
         <p className="text-lg text-slate-400 max-w-2xl mx-auto font-light">
-          Lean-core building blocks. Every layer is connected and purpose-built for chat-first agentic orchestration.
+          14 core technologies. Zero compromises. Every layer is connected and purpose-built for agentic AI orchestration.
         </p>
       </motion.div>
 

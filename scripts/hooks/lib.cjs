@@ -27,10 +27,10 @@ function runCommand(command, args, options = {}) {
       isWindowsCmd ? process.env.ComSpec || "cmd.exe" : resolvedCommand,
       isWindowsCmd ? ["/d", "/s", "/c", resolvedCommand, ...args] : args,
       {
-      cwd: options.cwd ?? REPO_ROOT,
-      env: { ...process.env, ...(options.env ?? {}) },
-      stdio: options.capture === false ? "inherit" : ["ignore", "pipe", "pipe"],
-      }
+        cwd: options.cwd ?? REPO_ROOT,
+        env: { ...process.env, ...(options.env ?? {}) },
+        stdio: options.capture === false ? "inherit" : ["ignore", "pipe", "pipe"],
+      },
     );
 
     let stdout = "";
@@ -74,6 +74,7 @@ async function getStagedFiles() {
   if (result.code !== 0) {
     throw new Error(result.stderr.trim() || "Unable to inspect staged files.");
   }
+
   return result.stdout
     .split(/\r?\n/u)
     .map((line) => toPosixPath(line.trim()))
@@ -95,6 +96,7 @@ function selectSpecs(mode, changedFiles = []) {
       ["npm", "run", "docs:links", "--", ...docsFiles],
     ];
   }
+
   return [["npm", "run", "check"]];
 }
 
@@ -108,13 +110,14 @@ async function runHook(mode) {
 
   if (specs.length === 0) {
     process.stdout.write(`[hooks] No matching repo commands for ${mode}. Skipping.\n`);
-  } else {
-    process.stdout.write(
-      `[hooks] ${mode} repo commands: ${JSON.stringify(specs)} for files ${JSON.stringify(changedFiles)}\n`
-    );
-    for (const spec of specs) {
-      await runSpec(spec);
-    }
+    return;
+  }
+
+  process.stdout.write(
+    `[hooks] ${mode} repo commands: ${JSON.stringify(specs)} for files ${JSON.stringify(changedFiles)}\n`,
+  );
+  for (const spec of specs) {
+    await runSpec(spec);
   }
 }
 

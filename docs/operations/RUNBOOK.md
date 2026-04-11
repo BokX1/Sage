@@ -69,6 +69,7 @@ flowchart LR
 | Pattern | Severity | Meaning |
 |:---|:---|:---|
 | `[info] Logged in as Sage#1234` | ✅ | Bot started successfully |
+| `Cleared legacy Discord application commands...` | ✅ | Startup removed stale slash-command registrations from older builds |
 | `[error] P1001` | 🔴 | Database connection lost |
 | `[error] ECONNREFUSED` | 🔴 | Service unavailable |
 | `[error] 520` | 🟡 | LLM response truncated |
@@ -211,6 +212,16 @@ npm run db:studio
 npx prisma migrate reset --force --skip-generate
 ```
 
+### Social Graph
+
+```bash
+# Set up Kafka topics and Memgraph streams
+npm run social-graph:setup
+
+# Migrate historical PostgreSQL data to Memgraph
+npx ts-node -P config/tooling/tsconfig.app.json src/cli/social-graph/migratePostgresToMemgraph.ts
+```
+
 ### Tool Stack
 
 ```bash
@@ -262,7 +273,8 @@ npm run check:trust:deep
 ## 🔗 Related Documentation
 
 - [🚀 Deployment Guide](DEPLOYMENT.md) — Production deployment options
-- [🧰 Self-Hosted Retrieval Stack](TOOL_STACK.md) — Local SearXNG/Crawl4AI/Tika setup
+- [🧰 Self-Hosted Tool Stack](TOOL_STACK.md) — Local SearXNG/Crawl4AI/Tika setup
+- [🛠️ Social Graph Setup](SOCIAL_GRAPH_SETUP.md) — Memgraph + Redpanda infrastructure
 - [⚙️ Configuration](../reference/CONFIGURATION.md) — All environment variables
 - [🚢 Release Process](../reference/RELEASE.md) — SemVer workflow and CI checks
 - [🔒 Security & Privacy](../security/SECURITY_PRIVACY.md) — Data handling and retention

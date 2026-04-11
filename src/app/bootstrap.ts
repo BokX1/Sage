@@ -9,11 +9,13 @@ import { registerAutoModerationRuleDeleteHandler } from './discord/handlers/auto
 import { registerAutoModerationRuleUpdateHandler } from './discord/handlers/autoModerationRuleUpdate';
 import { registerMessageCreateHandler } from './discord/handlers/messageCreate';
 import { registerMessageUpdateHandler } from './discord/handlers/messageUpdate';
+import { registerMessageReactionAddHandler } from './discord/handlers/messageReactionAdd';
 import { registerReadyHandler } from './discord/handlers/ready';
+import { registerVoiceStateUpdateHandler } from './discord/handlers/voiceStateUpdate';
 import { initApprovalCardCleanupScheduler } from '../features/admin/approvalCardCleanupScheduler';
 import { config } from '../platform/config/env';
 import { assertAgentTraceSchemaReady } from '../features/agent-runtime/agent-trace-preflight';
-import { initializeRuntimeSurface } from '../features/agent-runtime';
+import { registerDefaultAgenticTools } from '../features/agent-runtime';
 import { initAgentTaskRunWorker } from '../features/agent-runtime/agentTaskRunWorker';
 import { initializeAgentGraphRuntime } from '../features/agent-runtime/langgraph/runtime';
 import { initScheduledTaskWorker } from '../features/scheduler/worker';
@@ -31,10 +33,11 @@ export async function bootstrapApp(): Promise<void> {
       await assertAgentTraceSchemaReady();
     }
 
-    await initializeRuntimeSurface();
+    await registerDefaultAgenticTools();
     await initializeAgentGraphRuntime();
     registerMessageCreateHandler();
     registerMessageUpdateHandler();
+    registerMessageReactionAddHandler();
     registerGuildMemberAddHandler();
     registerGuildMemberUpdateHandler();
     registerAutoModerationRuleCreateHandler();
@@ -42,6 +45,7 @@ export async function bootstrapApp(): Promise<void> {
     registerAutoModerationRuleDeleteHandler();
     registerAutoModerationActionExecutionHandler();
     registerInteractionCreateHandler();
+    registerVoiceStateUpdateHandler();
     registerReadyHandler(client);
     registerGuildCreateHandler(client);
     initChannelSummaryScheduler();

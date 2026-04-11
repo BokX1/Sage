@@ -9,14 +9,14 @@ import { motion, AnimatePresence } from 'framer-motion';
  */
 
 const demoFlow = [
-    { type: 'user', avatar: '👤', name: 'Alex', text: 'Hey Sage, what did we decide about the OAuth rollout yesterday?' },
+    { type: 'user', avatar: '👤', name: 'Alex', text: 'Hey Sage, what were we discussing yesterday in voice chat?' },
     { type: 'typing' },
-  { type: 'tool', name: 'runtime_execute_code · context.summary.get(...)', status: '✓', color: '#7AA2F7' },
-  { type: 'tool', name: 'runtime_execute_code · history.search(...)', status: '✓', color: '#BB9AF7' },
-  { type: 'tool', name: 'runtime_execute_code · history.get(...)', status: '✓', color: '#E0AF68' },
+  { type: 'tool', name: 'discord_context · get_voice_analytics', status: '✓', color: '#7AA2F7' },
+  { type: 'tool', name: 'discord_context · get_channel_summary', status: '✓', color: '#BB9AF7' },
+  { type: 'tool', name: 'discord_messages · search_with_context', status: '✓', color: '#E0AF68' },
     {
         type: 'sage',
-        text: "Yesterday's #dev discussion confirmed the OAuth rollout should use PKCE for the mobile app first, then phase the web migration after staging verification. Sarah volunteered to write the migration guide.",
+        text: "Yesterday's voice session in #dev-talk (42 min) focused on migrating the auth system to OAuth2. Key decision: use PKCE flow for the mobile app. Sarah volunteered to write the migration guide.",
     },
 ];
 

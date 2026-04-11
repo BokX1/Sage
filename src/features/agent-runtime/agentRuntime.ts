@@ -24,7 +24,6 @@ import {
 } from './visibleReply';
 import {
   buildPromptContextMessages,
-  resolvePromptContractMetadata,
   type PromptInputMode,
   type PromptWaitingFollowUp,
 } from './promptContract';
@@ -44,11 +43,14 @@ import {
   selectFocusedContinuityMessages,
 } from './continuityContext';
 import { resolveRuntimeAutopilotMode } from './autopilotMode';
-import { resolveRuntimeSurfaceToolNames } from './runtimeSurface';
+import { globalToolRegistry, type ToolAccessTier, type ToolDefinition } from './toolRegistry';
 import type { GraphDeliveryDisposition, GraphWaitingState } from './langgraph/types';
 import {
+  hasAuthorityAtLeast,
   type DiscordAuthorityTier,
 } from '../../platform/discord/admin-permissions';
+
+import { formatLiveVoiceContext } from '../voice/voiceConversationSessionStore';
 import { AppError } from '../../shared/errors/app-error';
 
 const SINGLE_ROUTE_KIND = 'single';
@@ -59,6 +61,7 @@ export interface RunChatTurnParams {
   originChannelId: string;
   responseChannelId: string;
   guildId: string | null;
+  voiceChannelId?: string | null;
   messageId: string;
   userText: string;
   userContent?: LLMMessageContent;
@@ -67,6 +70,7 @@ export interface RunChatTurnParams {
   replyTarget?: ReplyTargetContext | null;
   mentionedUserIds?: string[];
   invokedBy?: 'mention' | 'reply' | 'wakeword' | 'autopilot' | 'component';
+  isVoiceActive?: boolean;
   invokerAuthority?: DiscordAuthorityTier;
   isAdmin?: boolean;
   canModerate?: boolean;
@@ -182,13 +186,40 @@ export interface RetryFailedChatTurnParams {
 
 type ToolInvocationKind = 'mention' | 'reply' | 'wakeword' | 'autopilot' | 'component';
 
+function getToolAccessTier(tool: Pick<ToolDefinition<unknown>, 'runtime' | 'metadata'>): ToolAccessTier {
+  return tool.runtime?.access ?? tool.metadata?.access ?? 'public';
+}
+
+function canUseToolAccessTier(
+  authority: DiscordAuthorityTier,
+  access: ToolAccessTier,
+): boolean {
+  switch (access) {
+    case 'public':
+      return true;
+    case 'moderator':
+      return hasAuthorityAtLeast(authority, 'moderator');
+    case 'admin':
+      return hasAuthorityAtLeast(authority, 'admin');
+    case 'owner':
+      return authority === 'owner';
+  }
+}
+
 function resolveActiveToolNames(params: {
   authority: DiscordAuthorityTier;
   invokedBy: ToolInvocationKind;
 }): string[] {
-  return resolveRuntimeSurfaceToolNames({
-    authority: params.authority,
-    invokedBy: params.invokedBy,
+  return globalToolRegistry.listNames().filter((toolName) => {
+    const tool = globalToolRegistry.get(toolName);
+    if (!tool) {
+      return false;
+    }
+    const access = getToolAccessTier(tool);
+    if (params.invokedBy === 'autopilot') {
+      return access === 'public';
+    }
+    return canUseToolAccessTier(params.authority, access);
   });
 }
 
@@ -681,11 +712,13 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
     originChannelId,
     responseChannelId,
     guildId,
+    voiceChannelId,
     userText,
     userContent,
     currentTurn,
     replyTarget,
     invokedBy = 'mention',
+    isVoiceActive,
     isAdmin = false,
     canModerate = false,
     invokerAuthority = isAdmin ? 'admin' : canModerate ? 'moderator' : 'member',
@@ -728,6 +761,11 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
           focusUserId: currentTurn.invokerUserId,
           sageUserId: currentTurn.botUserId ?? null,
         })
+      : null;
+
+  const liveVoiceContext =
+    guildId && isVoiceActive && voiceChannelId
+      ? formatLiveVoiceContext({ guildId, voiceChannelId, now: new Date() })
       : null;
 
   const runtimeRoute = await resolveTextProviderRoute(guildId, 'main');
@@ -774,21 +812,18 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
     userContent,
     focusedContinuity: focusedContinuityBlock,
     recentTranscript: transcriptBlock,
+    voiceContext: liveVoiceContext,
     invokedBy,
     invokerAuthority,
     invokerIsAdmin: isAdmin,
     invokerCanModerate: canModerate,
     inGuild: guildId !== null,
+    turnMode: isVoiceActive ? 'voice' : 'text',
     autopilotMode,
     graphLimits,
     promptMode,
   });
-  const promptMessages = promptEnvelope.messages;
-  const conversationMessages: BaseMessage[] = [
-    new HumanMessage({
-      content: userContent ?? userText,
-    }),
-  ];
+  const runtimeMessages = promptEnvelope.messages;
 
   if (appConfig.SAGE_TRACE_DB_ENABLED) {
     try {
@@ -863,7 +898,7 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
         appConfig.AGENT_GRAPH_MAX_OUTPUT_TOKENS as number | undefined,
         1_800,
       ),
-      messages: conversationMessages,
+      messages: runtimeMessages,
       activeToolNames,
       routeKind: SINGLE_ROUTE_KIND,
       currentTurn,
@@ -876,6 +911,7 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
       guildSagePersona,
       focusedContinuity: focusedContinuityBlock,
       recentTranscript: transcriptBlock,
+      voiceContext: liveVoiceContext,
       promptMode,
       onStateUpdate: params.onResponseSessionUpdate
         ? async (state) => {
@@ -1029,7 +1065,7 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
       compactionState,
       tokenUsage,
       debug: {
-        messages: promptMessages,
+        messages: runtimeMessages,
         promptVersion: promptEnvelope.version,
         promptFingerprint: promptEnvelope.promptFingerprint,
       },
@@ -1051,7 +1087,7 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<RunChatTur
       compactionState,
       tokenUsage,
     debug: {
-      messages: promptMessages,
+      messages: runtimeMessages,
       promptVersion: promptEnvelope.version,
       promptFingerprint: promptEnvelope.promptFingerprint,
     },
@@ -1293,7 +1329,6 @@ export async function resumeWaitingTaskRunWithInput(
     authority: params.invokerAuthority,
     invokedBy: 'reply',
   });
-  const promptMetadata = resolvePromptContractMetadata();
   const waitingFollowUp = buildWaitingFollowUpContext({
     waitingTaskRun,
   });
@@ -1329,8 +1364,6 @@ export async function resumeWaitingTaskRunWithInput(
         invokerCanModerate: params.canModerate ?? false,
         activeToolNames,
         routeKind: 'user_input_resume',
-        promptVersion: promptMetadata.version,
-        promptFingerprint: promptMetadata.promptFingerprint,
         currentTurn: params.currentTurn,
         replyTarget: params.replyTarget ?? null,
         promptMode: 'waiting_follow_up',
@@ -1459,7 +1492,6 @@ export async function resumeBackgroundTaskRun(params: {
     authority: params.invokerAuthority,
     invokedBy: 'component',
   });
-  const promptMetadata = resolvePromptContractMetadata();
   try {
     const pendingUserInterrupt = toContinuePendingUserInterrupt(taskRun);
     const graphResult = await continueAgentGraphTurn({
@@ -1492,8 +1524,6 @@ export async function resumeBackgroundTaskRun(params: {
         invokerCanModerate: params.canModerate ?? false,
         activeToolNames,
         routeKind: 'background_resume',
-        promptVersion: promptMetadata.version,
-        promptFingerprint: promptMetadata.promptFingerprint,
       },
       pendingUserInterrupt,
       onStateUpdate: params.onResponseSessionUpdate
@@ -1596,7 +1626,6 @@ export async function continueMatchedTaskRunWithInput(
     authority: params.invokerAuthority,
     invokedBy: params.currentTurn.invokedBy,
   });
-  const promptMetadata = resolvePromptContractMetadata();
 
   try {
     const graphResult = await continueAgentGraphTurn({
@@ -1629,8 +1658,6 @@ export async function continueMatchedTaskRunWithInput(
         invokerCanModerate: params.canModerate ?? false,
         activeToolNames,
         routeKind: 'active_interrupt_race_resume',
-        promptVersion: promptMetadata.version,
-        promptFingerprint: promptMetadata.promptFingerprint,
         currentTurn: params.currentTurn,
         replyTarget: params.replyTarget ?? null,
         promptMode: params.promptMode,
@@ -1716,7 +1743,6 @@ export async function retryFailedChatTurn(
     authority: params.invokerAuthority,
     invokedBy: 'component',
   });
-  const promptMetadata = resolvePromptContractMetadata();
   const routeKind = params.retryKind === 'background_resume' ? 'background_retry' : 'turn_retry';
 
   if (appConfig.SAGE_TRACE_DB_ENABLED) {
@@ -1778,8 +1804,6 @@ export async function retryFailedChatTurn(
         invokerCanModerate: params.canModerate ?? false,
         activeToolNames,
         routeKind,
-        promptVersion: promptMetadata.version,
-        promptFingerprint: promptMetadata.promptFingerprint,
       },
     });
 

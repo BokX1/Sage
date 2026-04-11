@@ -234,6 +234,14 @@ This is why “make it more cyberpunk” works even without restating the full p
 
 ---
 
+## 🔊 Voice (STT) in Sage
+
+Sage's optional Discord voice transcription features (local STT) are handled by Sage's optional local voice service, not Pollinations.
+
+See: `docs/architecture/VOICE.md`.
+
+---
+
 ## ✅ Verify Pollinations upstream (smoke tests)
 
 These are fast checks you can run outside Discord to confirm upstream connectivity.
@@ -281,6 +289,14 @@ curl -L "$POLLINATIONS_API/image/a%20cat%20wearing%20sunglasses?model=imagen-4&s
 - Make sure you used Discord **Reply** (not just quoted text).
 - Sage uses images from: message attachments, replied-to message attachments, stickers, embed preview images (when available), and direct image URLs ending in common extensions (for example, `.png`, `.jpg`, `.webp`, `.gif`).
 - If you invoke Sage with an image but no text (mention/wakeword only), Sage will apply a default “describe the image” prompt.
+
+### Voice transcription does nothing
+
+- Ensure the bot is in a voice channel (`Sage, join my voice channel`)
+- Ensure `VOICE_STT_ENABLED=true`
+- Ensure the local voice service is running and reachable at `VOICE_SERVICE_BASE_URL` (see `config/services/self-host/docker-compose.voice.yml`)
+
+---
 
 ## 🔗 Resources
 

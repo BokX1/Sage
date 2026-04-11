@@ -5,11 +5,13 @@ const mockClient = vi.hoisted(() => ({
   on: vi.fn(),
 }));
 
-const mockInitializeRuntimeSurface = vi.hoisted(() => vi.fn());
+const mockRegisterDefaultAgenticTools = vi.hoisted(() => vi.fn());
 const mockInitializeAgentGraphRuntime = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
 const mockRegisterMessageCreateHandler = vi.hoisted(() => vi.fn());
 const mockRegisterMessageUpdateHandler = vi.hoisted(() => vi.fn());
+const mockRegisterMessageReactionAddHandler = vi.hoisted(() => vi.fn());
 const mockRegisterInteractionCreateHandler = vi.hoisted(() => vi.fn());
+const mockRegisterVoiceStateUpdateHandler = vi.hoisted(() => vi.fn());
 const mockRegisterReadyHandler = vi.hoisted(() => vi.fn());
 const mockRegisterGuildCreateHandler = vi.hoisted(() => vi.fn());
 const mockRegisterGuildMemberAddHandler = vi.hoisted(() => vi.fn());
@@ -37,7 +39,7 @@ vi.mock('@/platform/discord/client', () => ({
 }));
 
 vi.mock('@/features/agent-runtime', () => ({
-  initializeRuntimeSurface: mockInitializeRuntimeSurface,
+  registerDefaultAgenticTools: mockRegisterDefaultAgenticTools,
 }));
 
 vi.mock('@/features/agent-runtime/langgraph/runtime', () => ({
@@ -56,8 +58,16 @@ vi.mock('@/app/discord/handlers/messageUpdate', () => ({
   registerMessageUpdateHandler: mockRegisterMessageUpdateHandler,
 }));
 
+vi.mock('@/app/discord/handlers/messageReactionAdd', () => ({
+  registerMessageReactionAddHandler: mockRegisterMessageReactionAddHandler,
+}));
+
 vi.mock('@/app/discord/handlers/interactionCreate', () => ({
   registerInteractionCreateHandler: mockRegisterInteractionCreateHandler,
+}));
+
+vi.mock('@/app/discord/handlers/voiceStateUpdate', () => ({
+  registerVoiceStateUpdateHandler: mockRegisterVoiceStateUpdateHandler,
 }));
 
 vi.mock('@/app/discord/handlers/ready', () => ({
@@ -148,11 +158,12 @@ describe('bootstrapApp', () => {
   it('initializes runtime and starts both summary schedulers', async () => {
     await bootstrapApp();
 
-    expect(mockInitializeRuntimeSurface).toHaveBeenCalledTimes(1);
+    expect(mockRegisterDefaultAgenticTools).toHaveBeenCalledTimes(1);
     expect(mockInitializeAgentGraphRuntime).toHaveBeenCalledTimes(1);
     expect(mockAssertAgentTraceSchemaReady).toHaveBeenCalledTimes(1);
     expect(mockRegisterMessageCreateHandler).toHaveBeenCalledTimes(1);
     expect(mockRegisterMessageUpdateHandler).toHaveBeenCalledTimes(1);
+    expect(mockRegisterMessageReactionAddHandler).toHaveBeenCalledTimes(1);
     expect(mockRegisterGuildMemberAddHandler).toHaveBeenCalledTimes(1);
     expect(mockRegisterGuildMemberUpdateHandler).toHaveBeenCalledTimes(1);
     expect(mockRegisterAutoModerationRuleCreateHandler).toHaveBeenCalledTimes(1);
@@ -160,6 +171,7 @@ describe('bootstrapApp', () => {
     expect(mockRegisterAutoModerationRuleDeleteHandler).toHaveBeenCalledTimes(1);
     expect(mockRegisterAutoModerationActionExecutionHandler).toHaveBeenCalledTimes(1);
     expect(mockRegisterInteractionCreateHandler).toHaveBeenCalledTimes(1);
+    expect(mockRegisterVoiceStateUpdateHandler).toHaveBeenCalledTimes(1);
     expect(mockRegisterReadyHandler).toHaveBeenCalledWith(mockClient);
     expect(mockRegisterGuildCreateHandler).toHaveBeenCalledWith(mockClient);
     expect(mockInitChannelSummaryScheduler).toHaveBeenCalledTimes(1);

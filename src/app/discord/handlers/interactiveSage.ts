@@ -191,6 +191,8 @@ async function runInteractivePrompt(params: {
     },
     replyTarget: null,
     invokedBy: 'component',
+    isVoiceActive: false,
+    voiceChannelId: null,
     invokerAuthority,
     isAdmin: invokerIsAdmin,
     canModerate: invokerCanModerate,

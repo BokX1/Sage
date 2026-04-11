@@ -96,6 +96,14 @@ export function registerInteractionCreateHandler() {
       if (!interaction.isChatInputCommand()) {
         return;
       }
+
+      logger.debug(
+        {
+          interactionId: interaction.id,
+          commandName: interaction.commandName,
+        },
+        'Ignoring legacy slash command interaction for commandless Discord runtime',
+      );
     } catch (err) {
       logger.error({ err }, 'Interaction handler error');
       await sendInteractionFailure(interaction);

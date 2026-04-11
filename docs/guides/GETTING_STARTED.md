@@ -95,7 +95,7 @@ Docker runs the repo's support services locally.
 3. Start Docker Desktop before you continue
 
 > [!TIP]
-> Sage itself runs as a Node.js process. The repo's compose files are for support services such as PostgreSQL, Tika, SearXNG, and Crawl4AI.
+> Sage itself runs as a Node.js process. The repo's compose files are for support services such as PostgreSQL, Tika, SearXNG, Crawl4AI, Memgraph, and the optional voice stack.
 
 ### 1.3 Install Git
 
@@ -215,6 +215,18 @@ Optional local research stack:
 docker compose -f config/services/self-host/docker-compose.tools.yml up -d
 ```
 
+Optional social-graph stack:
+
+```bash
+docker compose -f config/services/self-host/docker-compose.social-graph.yml up -d
+```
+
+Optional voice stack:
+
+```bash
+docker compose -f config/services/self-host/docker-compose.voice.yml up -d --build
+```
+
 ---
 
 <a id="step-5-start-sage"></a>
@@ -319,6 +331,7 @@ Useful smoke prompts:
 - `Sage, summarize what this project does`
 - `Sage, search the latest Node.js docs for fetch timeout behavior`
 - `Sage, draw a watercolor mountain skyline`
+- `Sage, join my voice channel`
 
 ---
 

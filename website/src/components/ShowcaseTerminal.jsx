@@ -14,13 +14,13 @@ const scenarios = [
         ],
     },
     {
-        label: 'Summary_Context_Recovery.sh',
-        desc: 'Reconstructing channel decisions from stored summaries and history',
-        userMsg: "Sage, what did we decide about the OAuth rollout yesterday?",
+        label: 'Voice_Context_Recovery.sh',
+        desc: 'Extracting temporal conversational data',
+        userMsg: "Sage, what did we discuss in voice chat yesterday?",
         trace: [
-            { tool: 'runtime_execute_code', status: 'ok', text: 'context.summary.get({ channelId, kind: "rolling" }) → Loading rolling summary for #dev around yesterday evening' },
-            { tool: 'runtime_execute_code', status: 'ok', text: 'history.search({ query: "OAuth rollout", channelId }) → Exact discussion window loaded from stored messages' },
-            { tool: 'runtime_execute_code', status: 'ok', text: 'admin.instructions.get({ guildId }) → Confirmed the active Sage Persona before answering' },
+            { tool: 'discord_context', status: 'ok', text: 'action=get_voice_analytics → Found 2 sessions: #general-voice (45min), #dev-talk (20min)' },
+            { tool: 'discord_context', status: 'ok', text: 'action=get_channel_summary → Loading rolling summary for #general around session timestamp' },
+            { tool: 'discord_messages', status: 'ok', text: 'action=search_with_context → Semantic search + context: messages near voice session window' },
         ],
     },
     {
@@ -31,7 +31,7 @@ const scenarios = [
             { tool: 'github', status: 'ok', text: 'action=repo.get → Fetching BokX1/Sage metadata: 14 dirs, TypeScript, MIT' },
             { tool: 'github', status: 'ok', text: 'action=code.search → query: "agentRuntime" → 3 files found' },
             { tool: 'github', status: 'ok', text: 'action=file.page → Reading src/features/agent-runtime/agentRuntime.ts (paged)' },
-            { tool: 'github', status: 'ok', text: 'action=file.page → Reading src/features/agent-runtime/runtimeSurface.ts (paged)' },
+            { tool: 'github', status: 'ok', text: 'action=file.page → Reading src/features/agent-runtime/defaultTools.ts (paged)' },
         ],
     },
 ];
@@ -39,7 +39,8 @@ const scenarios = [
 const toolIcons = {
     stack_overflow_search: '📚',
     web: '🌐',
-    runtime_execute_code: '⚡',
+    discord_context: '💬',
+    discord_messages: '💬',
     github: '📦',
 };
 

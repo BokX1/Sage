@@ -17,11 +17,14 @@ const pages = [
     { title: "Memory Pipeline", url: `${BASE}/architecture/MEMORY.md`, icon: "🧠", cat: "architecture" },
     { title: "Database Schema", url: `${BASE}/architecture/DATABASE.md`, icon: "🗄️", cat: "architecture" },
     { title: "Processing Pipeline", url: `${BASE}/architecture/PIPELINE.md`, icon: "⚙️", cat: "architecture" },
+    { title: "Social Graph", url: `${BASE}/architecture/SOCIAL_GRAPH.md`, icon: "🕸️", cat: "architecture" },
     { title: "Search Architecture", url: `${BASE}/architecture/SEARCH.md`, icon: "🔍", cat: "architecture" },
+    { title: "Voice System", url: `${BASE}/architecture/VOICE.md`, icon: "🎙️", cat: "architecture" },
 
     // ── Operations ──
     { title: "Deployment Guide", url: `${BASE}/operations/DEPLOYMENT.md`, icon: "📦", cat: "operations" },
     { title: "Runbook", url: `${BASE}/operations/RUNBOOK.md`, icon: "📋", cat: "operations" },
+    { title: "Social Graph Setup", url: `${BASE}/operations/SOCIAL_GRAPH_SETUP.md`, icon: "🔗", cat: "operations" },
     { title: "Tool Stack", url: `${BASE}/operations/TOOL_STACK.md`, icon: "🛠️", cat: "operations" },
 
     // ── Reference ──

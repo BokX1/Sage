@@ -12,7 +12,7 @@ let appConfig: typeof import('../platform/config/env').config;
 let client: typeof import('../platform/discord/client').client;
 let prisma: typeof import('../platform/db/prisma-client').prisma;
 let discordRestRequestGuildScoped: typeof import('../platform/discord/discordRestPolicy').discordRestRequestGuildScoped;
-let initializeRuntimeSurface: typeof import('../features/agent-runtime/runtimeSurface').initializeRuntimeSurface;
+let registerDefaultAgenticTools: typeof import('../features/agent-runtime/defaultTools').registerDefaultAgenticTools;
 let buildAgentGraphConfig: typeof import('../features/agent-runtime/langgraph/config').buildAgentGraphConfig;
 let runSeededAgentGraphTurn: typeof import('../features/agent-runtime/langgraph/runtime').runSeededAgentGraphTurn;
 let resumeAgentGraphTurn: typeof import('../features/agent-runtime/langgraph/runtime').resumeAgentGraphTurn;
@@ -62,7 +62,7 @@ async function loadSmokeRuntimeDeps(): Promise<void> {
   ({ client } = await import('../platform/discord/client'));
   ({ prisma } = await import('../platform/db/prisma-client'));
   ({ discordRestRequestGuildScoped } = await import('../platform/discord/discordRestPolicy'));
-  ({ initializeRuntimeSurface } = await import('../features/agent-runtime/runtimeSurface'));
+  ({ registerDefaultAgenticTools } = await import('../features/agent-runtime/defaultTools'));
   ({ buildAgentGraphConfig } = await import('../features/agent-runtime/langgraph/config'));
   ({
     runSeededAgentGraphTurn,
@@ -93,10 +93,11 @@ function asRecord(value: unknown): Record<string, unknown> | null {
     : null;
 }
 
-function extractRuntimeResultValue(toolResult: unknown): Record<string, unknown> | null {
-  const root = asRecord(toolResult);
-  const structuredContent = asRecord(root?.structuredContent);
-  return asRecord(structuredContent?.result);
+function extractRoleId(resultJson: unknown): string | null {
+  const root = asRecord(resultJson);
+  const result = asRecord(root?.result);
+  const data = asRecord(result?.data);
+  return typeof data?.id === 'string' && data.id.trim().length > 0 ? data.id.trim() : null;
 }
 
 async function waitForDiscordReady(): Promise<void> {
@@ -185,18 +186,27 @@ async function cleanupApprovalArtifacts(action: ApprovalReviewRequestRecord | nu
   });
 }
 
-async function cleanupCreatedMessage(params: {
+async function cleanupCreatedRole(params: {
   guildId: string;
-  channelId: string;
-  messageId: string | null;
+  roleId: string | null;
   actionId: string;
 }): Promise<void> {
-  await deleteDiscordMessageIfPresent({
+  if (!params.roleId) {
+    return;
+  }
+  const result = await discordRestRequestGuildScoped({
     guildId: params.guildId,
-    channelId: params.channelId,
-    messageId: params.messageId,
-    reason: `[sage smoke:${params.actionId}] cleanup created message`,
+    method: 'DELETE',
+    path: `/guilds/${params.guildId}/roles/${params.roleId}`,
+    reason: `[sage smoke:${params.actionId}] cleanup created role`,
+    maxResponseChars: 500,
   });
+  if (result.ok || result.status === 404) {
+    return;
+  }
+  throw new Error(
+    `Discord role cleanup failed (${String(result.status ?? 'unknown')} ${String(result.statusText ?? '').trim()})`,
+  );
 }
 
 async function runReadPathSmoke(target: SmokeTarget): Promise<void> {
@@ -212,7 +222,7 @@ async function runReadPathSmoke(target: SmokeTarget): Promise<void> {
       userId: target.actorUserId,
       channelId: target.channelId,
       guildId: target.guildId,
-      activeToolNames: ['runtime_execute_code'],
+      activeToolNames: ['discord_spaces_list_channels'],
       routeKind: 'discord-smoke',
       currentTurn: null,
       replyTarget: null,
@@ -226,10 +236,9 @@ async function runReadPathSmoke(target: SmokeTarget): Promise<void> {
           tool_calls: [
             {
               id: callId,
-              name: 'runtime_execute_code',
+              name: 'discord_spaces_list_channels',
               args: {
-                language: 'javascript',
-                code: `return await discord.channels.list({ guildId: ${JSON.stringify(target.guildId)} });`,
+                limit: 5,
               },
               type: 'tool_call',
             },
@@ -241,10 +250,10 @@ async function runReadPathSmoke(target: SmokeTarget): Promise<void> {
     },
   });
 
-  const toolResult = result.toolResults.find((entry) => entry.name === 'runtime_execute_code');
+  const toolResult = result.toolResults.find((entry) => entry.name === 'discord_spaces_list_channels');
   if (!toolResult?.success) {
     throw new Error(
-      `Graph read-path smoke failed: ${toolResult?.error ?? 'runtime_execute_code did not produce a successful tool result.'}`,
+      `Graph read-path smoke failed: ${toolResult?.error ?? 'discord_spaces_list_channels did not produce a successful tool result.'}`,
     );
   }
   if (result.graphStatus !== 'completed' || result.pendingInterrupt) {
@@ -252,29 +261,30 @@ async function runReadPathSmoke(target: SmokeTarget): Promise<void> {
   }
 
   console.log(
-    `[PASS] graph read path routed runtime_execute_code through LangGraph and completed cleanly (stop=${result.stopReason})`,
+    `[PASS] graph read path routed discord_spaces_list_channels through LangGraph and completed cleanly (stop=${result.stopReason})`,
   );
 }
 
 async function runApprovalPathSmoke(target: SmokeTarget): Promise<void> {
   const graphConfig = buildAgentGraphConfig();
   const traceId = randomUUID();
-  const messageText = `sage smoke ${Date.now().toString(36)} approval validation`;
+  const roleName = `sage-smoke-${Date.now().toString(36)}`;
+  const approvalReason = 'Sage LangGraph live smoke approval/resume validation';
   let requestId: string | null = null;
   let action: ApprovalReviewRequestRecord | null = null;
-  let createdMessageId: string | null = null;
+  let roleId: string | null = null;
 
   try {
     const queued = await runSeededAgentGraphTurn({
       threadId: traceId,
-      goto: 'route_tool_phase',
+      goto: 'approval_gate',
       context: {
         traceId,
         originTraceId: traceId,
         userId: target.actorUserId,
         channelId: target.channelId,
         guildId: target.guildId,
-        activeToolNames: ['runtime_execute_code'],
+        activeToolNames: ['discord_spaces_create_role'],
         routeKind: 'discord-smoke',
         currentTurn: null,
         replyTarget: null,
@@ -282,21 +292,15 @@ async function runApprovalPathSmoke(target: SmokeTarget): Promise<void> {
         invokerIsAdmin: true,
       },
       state: {
-        messages: [
-          new AIMessage({
-            content: '',
-            tool_calls: [
-              {
-                id: `${traceId}-call`,
-                name: 'runtime_execute_code',
-                args: {
-                  language: 'javascript',
-                  code: `return await discord.messages.send({ channelId: ${JSON.stringify(target.channelId)}, content: ${JSON.stringify(messageText)} });`,
-                },
-                type: 'tool_call',
-              },
-            ],
-          }),
+        pendingWriteCalls: [
+          {
+            id: `${traceId}-call`,
+            name: 'discord_spaces_create_role',
+            args: {
+              name: roleName,
+              reason: approvalReason,
+            },
+          },
         ],
         roundsCompleted: graphConfig.sliceMaxSteps,
         totalRoundsCompleted: graphConfig.sliceMaxSteps,
@@ -339,7 +343,7 @@ async function runApprovalPathSmoke(target: SmokeTarget): Promise<void> {
         userId: target.actorUserId,
         channelId: target.channelId,
         guildId: target.guildId,
-        activeToolNames: ['runtime_execute_code'],
+        activeToolNames: ['discord_spaces_create_role'],
         routeKind: 'discord-smoke',
         currentTurn: null,
         replyTarget: null,
@@ -348,38 +352,34 @@ async function runApprovalPathSmoke(target: SmokeTarget): Promise<void> {
       },
     });
 
-    const toolResult = resumed.toolResults.find((entry) => entry.name === 'runtime_execute_code');
+    const toolResult = resumed.toolResults.find((entry) => entry.name === 'discord_spaces_create_role');
     if (!toolResult?.success) {
       throw new Error(
-        `Approval-resume smoke failed: ${toolResult?.error ?? 'runtime_execute_code did not execute successfully.'}`,
+        `Approval-resume smoke failed: ${toolResult?.error ?? 'discord_spaces_create_role did not execute successfully.'}`,
       );
     }
-    const runtimeResult = extractRuntimeResultValue(toolResult);
-    createdMessageId =
-      typeof runtimeResult?.messageId === 'string' && runtimeResult.messageId.trim().length > 0
-        ? runtimeResult.messageId.trim()
-        : null;
-    if (!createdMessageId) {
-      throw new Error('Approval-resume smoke executed but did not expose the created message id for cleanup.');
+    action = await getApprovalReviewRequestById(requestId);
+    roleId = extractRoleId(action?.resultJson);
+    if (!roleId) {
+      throw new Error('Approval-resume smoke executed but did not expose the created role id for cleanup.');
     }
     if (resumed.graphStatus !== 'completed' || resumed.pendingInterrupt) {
       throw new Error('Approval-resume smoke did not finish cleanly.');
     }
 
     console.log(
-      `[PASS] graph approval path created, approved, resumed, and executed runtime_execute_code cleanly (stop=${resumed.stopReason})`,
+      `[PASS] graph approval path created, approved, resumed, and executed discord_spaces_create_role cleanly (stop=${resumed.stopReason})`,
     );
   } finally {
     if (!action && requestId) {
       action = await getApprovalReviewRequestById(requestId).catch(() => null);
     }
-    await cleanupCreatedMessage({
+    await cleanupCreatedRole({
       guildId: target.guildId,
-      channelId: target.channelId,
-      messageId: createdMessageId,
+      roleId,
       actionId: action?.id ?? traceId,
     }).catch((error) => {
-      console.warn(`[WARN] failed to clean up smoke message: ${error instanceof Error ? error.message : String(error)}`);
+      console.warn(`[WARN] failed to clean up smoke role: ${error instanceof Error ? error.message : String(error)}`);
     });
     await cleanupApprovalArtifacts(action).catch((error) => {
       console.warn(`[WARN] failed to clean up approval artifacts: ${error instanceof Error ? error.message : String(error)}`);
@@ -389,7 +389,7 @@ async function runApprovalPathSmoke(target: SmokeTarget): Promise<void> {
 
 async function main(): Promise<void> {
   await loadSmokeRuntimeDeps();
-  await initializeRuntimeSurface();
+  await registerDefaultAgenticTools();
   const target = await resolveSmokeTarget();
 
   console.log('Sage LangGraph Discord smoke starting...');

@@ -36,7 +36,7 @@ Sage itself is MIT-licensed. Costs depend on the provider and infrastructure you
 
 - self-hosted runtime chat can point at any OpenAI-compatible provider
 - the current hosted/server-key path uses Pollinations-specific BYOP
-- you may also choose to run optional infrastructure such as PostgreSQL, Tika, SearXNG, or Crawl4AI
+- you may also choose to run optional infrastructure such as PostgreSQL, Tika, SearXNG, Crawl4AI, Memgraph, or the local voice service
 
 </details>
 
@@ -69,6 +69,7 @@ Sage is a Discord-native AI runtime built around one durable LangGraph loop with
 - live research tools
 - approval-gated governance
 - image workflows
+- optional voice tooling
 
 </details>
 
@@ -97,6 +98,17 @@ Yes.
 </details>
 
 <details>
+<summary><strong>Can Sage work with voice?</strong></summary>
+
+Yes, in two layers:
+
+- voice status/join/leave control
+- optional local STT and summary-only voice memory when `VOICE_*` features are enabled
+
+</details>
+
+---
+
 <a id="setup--configuration"></a>
 
 ## 🔧 Setup & Configuration
@@ -210,9 +222,18 @@ Potentially:
 - channel messages
 - ingested attachment text
 - channel summaries
+- voice session and voice summary data
+- relationship edges
 - compact traces and approval/task-run state
 
-The exact stored surface depends on your configuration and which retained modules you enable.
+The exact stored surface depends on your configuration and which optional features you enable.
+
+</details>
+
+<details>
+<summary><strong>Does Sage store raw voice transcripts?</strong></summary>
+
+Not as a normal persisted feature. Live STT utterances stay in memory during the session, and Sage persists summary-only voice memory when configured to do so.
 
 </details>
 

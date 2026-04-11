@@ -1,10 +1,10 @@
-# 🧰 Self-Hosted Retrieval Stack
+# 🧰 Self-Hosted Tool Stack
 
 <p align="center">
   <img src="https://img.shields.io/badge/%F0%9F%8C%BF-Sage%20Tool%20Stack-2d5016?style=for-the-badge&labelColor=4a7c23" alt="Tool Stack" />
 </p>
 
-Run Sage with a local-first retrieval stack for maximum privacy and control. In the bridge-native runtime, these services sit behind `http.fetch(...)`, attachment ingestion, and internal host services instead of appearing as separate model-facing tools.
+Run Sage with a local-first tool stack for maximum privacy and control, with hosted providers as automatic fallback.
 
 ---
 
@@ -23,7 +23,7 @@ Run Sage with a local-first retrieval stack for maximum privacy and control. In 
 
 ## 🌐 Overview
 
-Sage's bridge-native runtime supports both self-hosted and hosted retrieval providers. By running local services, you get:
+Sage's tool layer supports both self-hosted and hosted providers. By running local services, you get:
 
 | Benefit | Description |
 | :--- | :--- |
@@ -44,8 +44,8 @@ flowchart LR
     classDef hosted fill:#fff3cd,stroke:#856404,color:black
     classDef sage fill:#cce5ff,stroke:#004085,color:black
 
-    S["Sage runtime"]:::sage --> W["http.fetch(...) via host retrieval services"]:::sage
-    S --> FI["artifact / attachment ingestion"]:::sage
+    S["Sage runtime"]:::sage --> W["web_search / web_read / web_read_page"]:::sage
+    S --> FI["discord_files.read_attachment"]:::sage
 
     W -->|"search order"| S1["SearXNG"]:::local
     W -->|"search order"| S2["Tavily"]:::hosted
@@ -145,15 +145,15 @@ searxng → tavily → exa
 
 ## ✅ Validation
 
-Run the smoke test to verify the public runtime surface and related bridge metadata:
+Run the smoke test to verify all tools are working:
 
 ```bash
 npm run tools:smoke
 ```
 
-The smoke script now sees only the single public runtime tool: `runtime_execute_code`. It validates the checked-in runtime registry shape rather than issuing legacy direct tool probes.
+The smoke script executes the runtime tool surface itself from shared tool metadata, so the smoke inventory, prompt guidance, website capability grid, and validation hints stay aligned.
 
-Run the dedicated live LangGraph smoke against a disposable guild/channel to validate the Discord read lane plus approval/resume write path end to end:
+Discord domain tools are intentionally reported as skipped here because they require live guild/current-turn context. Run the dedicated live LangGraph smoke against a disposable guild/channel to validate the Discord read lane plus approval/resume write path end to end:
 
 ```bash
 npm run langgraph:discord:smoke
@@ -166,15 +166,20 @@ Set these optional `.env` values first:
 - `SAGE_DISCORD_SMOKE_USER_ID`
 - `SAGE_DISCORD_SMOKE_REVIEWER_ID`
 
-Expected current public registry shape:
+The smoke script checks representative non-Discord tools from the current registry:
 
 | Tool | Status |
 | :--- | :--- |
-| `runtime_execute_code` | Required |
+| `system_time` | Required |
+| `system_tool_stats` | Required |
+| `web_search` | Required |
+| `npm_info` | Required |
+| `docs_lookup` | Optional |
+| `image_generate` | Optional |
 
-Optional MCP-backed capabilities and retrieval providers remain available to the host runtime, but they are reached through Code Mode and bridge services rather than by exposing separate default tool names to the model.
+Optional capability tools are included automatically when their curated MCP presets are configured and available. For example, enabling the GitHub preset adds `repo_search_code` and `repo_read_file`, while enabling Context7 adds `docs_lookup`.
 
-Sage's moderation, scheduling, approvals, and Discord delivery remain **Discord-native**, not MCP-backed. Use `npm run tools:audit` and the live Discord smoke together when validating that surface.
+Sage's new autonomous moderation policies and durable scheduled reminders/jobs stay **Discord-native**, not MCP-backed. They rely on the live bot runtime, guild permissions, and Discord gateway support rather than the generic tool-smoke path. Use `system_tool_stats`, `npm run tools:audit`, and the live Discord smoke together when validating that surface.
 
 If you plan to enable autonomous moderation, the Discord application must also enable:
 

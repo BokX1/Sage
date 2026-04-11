@@ -1,6 +1,6 @@
 # 💾 Database Schema
 
-Sage uses PostgreSQL with Prisma ORM. The current Prisma schema defines the lean-core runtime, context, approval, artifact, moderation, and scheduling tables used by the active product.
+Sage uses PostgreSQL with Prisma ORM. The current Prisma schema defines 18 models; this document covers the active tables, relationships, and common query patterns.
 
 > [!IMPORTANT]
 > Sage now ships one current-schema Prisma baseline migration for fresh database rebuilds. Historical migration layering was intentionally removed as part of the flagship runtime reset, and the baseline bootstraps `CREATE EXTENSION IF NOT EXISTS vector` before any pgvector-backed tables are created.
@@ -31,7 +31,7 @@ Sage uses PostgreSQL with Prisma ORM. The current Prisma schema defines the lean
 ## 📊 Entity Relationship Diagram
 
 > [!NOTE]
-> The ERD below is abbreviated to the core entities most readers need first. The later sections cover the active lean-core schema.
+> The ERD below is abbreviated to the core entities most readers need first. The later sections cover the full 18-model schema.
 
 ```mermaid
 erDiagram
@@ -89,6 +89,34 @@ erDiagram
         string channelId
         string kind
         text summaryText
+    }
+
+    VoiceSession {
+        string id PK
+        string guildId
+        string channelId
+        string userId
+        datetime startedAt
+        datetime endedAt
+    }
+
+    VoiceConversationSummary {
+        string id PK
+        string guildId
+        string voiceChannelId
+        string initiatedByUserId
+        datetime startedAt
+        datetime endedAt
+        text summaryText
+    }
+
+    RelationshipEdge {
+        string id PK
+        string guildId
+        string userA
+        string userB
+        float weight
+        float confidence
     }
 
     AgentTrace {
@@ -214,6 +242,50 @@ Rolling and profile channel summaries with structured metadata.
 | `sentiment` / `glossaryJson` | `String?` / `Json?` | Sentiment + glossary |
 
 Unique constraint: `[guildId, channelId, kind]`
+
+### `VoiceSession`
+
+Discord voice channel presence tracking.
+
+| Column | Type | Notes |
+|:---|:---|:---|
+| `id` | `String` (PK) | CUID |
+| `guildId` / `channelId` / `userId` | `String` | Session scope |
+| `displayName` | `String?` | User display name at session time |
+| `startedAt` / `endedAt` | `DateTime` | Session duration |
+
+### `VoiceConversationSummary`
+
+Summary-only memory for a transcribed voice session (optional feature).
+
+| Column | Type | Notes |
+|:---|:---|:---|
+| `id` | `String` (PK) | CUID |
+| `guildId` / `voiceChannelId` | `String` | Guild + voice channel scope |
+| `voiceChannelName` | `String?` | Channel display name at session time |
+| `initiatedByUserId` | `String` | User who triggered Sage's live voice join flow |
+| `startedAt` / `endedAt` | `DateTime` | Session window |
+| `speakerStatsJson` | `Json` | Per-speaker utterance counts (summary metadata) |
+| `summaryText` | `String` | LLM-generated narrative summary |
+| `topicsJson` / `threadsJson` / `unresolvedJson` | `Json?` | Structured metadata |
+| `decisionsJson` / `actionItemsJson` | `Json?` | Extracted decisions/actions |
+| `sentiment` / `glossaryJson` | `String?` / `Json?` | Sentiment + glossary |
+
+### `RelationshipEdge`
+
+Probabilistic user relationships from interaction signals.
+
+| Column | Type | Notes |
+|:---|:---|:---|
+| `id` | `String` (PK) | CUID |
+| `guildId` | `String` | Guild scope |
+| `userA` / `userB` | `String` | Lexicographically ordered pair |
+| `weight` | `Float` | 0.0–1.0 relationship strength |
+| `confidence` | `Float` | 0.0–1.0 evidence strength |
+| `featuresJson` | `Json` | `{ mentions, replies, voice, meta }` |
+| `manualOverride` | `Float?` | Admin-set override (0.0–1.0) |
+
+Unique constraint: `[guildId, userA, userB]`
 
 ---
 
@@ -376,6 +448,7 @@ npx prisma migrate reset --force --skip-generate
 ## 🔗 Related Documentation
 
 - [🧠 Memory System](MEMORY.md) — How Sage stores, summarizes, and injects memory
+- [🕸️ Social Graph](SOCIAL_GRAPH.md) — GNN pipeline and Memgraph integration
 - [🔒 Security & Privacy](../security/SECURITY_PRIVACY.md) — Data handling and retention
 - [⚙️ Configuration](../reference/CONFIGURATION.md) — All database-related env vars
 - [🚀 Deployment Guide](../operations/DEPLOYMENT.md) — Database setup for production
