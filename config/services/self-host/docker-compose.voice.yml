@@ -6,7 +6,7 @@ services:
     # - GET  /health
     # - POST /v1/stt/transcribe  (multipart audio=wav)
     build:
-      context: ../../services/voice
+      context: ../../../services/voice
       dockerfile: Dockerfile
     container_name: sage-voice
     restart: unless-stopped
@@ -18,4 +18,4 @@ services:
       VOICE_STT_COMPUTE_TYPE: ${VOICE_STT_COMPUTE_TYPE:-int8}
     volumes:
       # Optional: persist HF/model cache between restarts.
-      - ../../data/voice/models:/app/.cache
+      - ../../../data/voice/models:/app/.cache

@@ -29,6 +29,7 @@
 - Prevented background LangGraph resumes from re-entering the Codex model with unresolved tool-call checkpoints after a yield, which stops rare `missing tool outputs` transcript failures across read and approval tool paths.
 - Persist failed background-resume task runs as terminal failures so worker retries stop instead of reclaiming the same broken run indefinitely.
 - Fixed the TypeScript 6 toolchain path for local and CI validation: explicit Node types plus Node-style module resolution now keep `ts-node`, `tsc`, and the LangGraph prebuilt imports working after the Dependabot dev-tool refresh instead of failing inside the trust gate.
+- Fixed the optional self-hosted voice compose stack so `config/services/self-host/docker-compose.voice.yml` now resolves the checked-in `services/voice` build context and shared model-cache directory correctly, allowing operators to bring up the local STT sidecar on real deployments.
 
 ### Added
 
