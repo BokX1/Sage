@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { AIMessage, HumanMessage, ToolMessage } from '@langchain/core/messages';
+import { AIMessage, HumanMessage, ToolMessage, type BaseMessage } from '@langchain/core/messages';
 import { AppError } from '@/shared/errors/app-error';
 import { buildToolCacheKey } from '@/features/agent-runtime/toolCache';
 
@@ -212,6 +212,8 @@ vi.mock('@langchain/langgraph/prebuilt', () => ({
 }));
 
 vi.mock('@/features/agent-runtime/langgraph/nativeTools', () => ({
+  RUNTIME_REQUEST_USER_INPUT_TOOL_NAME: 'runtime_request_user_input',
+  RUNTIME_CANCEL_TURN_TOOL_NAME: 'runtime_cancel_turn',
   buildActiveToolCatalog: buildActiveToolCatalogMock,
   buildRuntimeControlTools: vi.fn(() => [
     { name: 'runtime_request_user_input' },
@@ -414,6 +416,37 @@ function makeFinishTurnMessage(
             },
           ],
   });
+}
+
+function findOutstandingToolCallIds(messages: BaseMessage[]): string[] {
+  const completedCallIds = new Set<string>();
+
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (ToolMessage.isInstance(message)) {
+      const callId = typeof message.tool_call_id === 'string' ? message.tool_call_id.trim() : '';
+      if (callId) {
+        completedCallIds.add(callId);
+      }
+      continue;
+    }
+  }
+
+  const outstanding: string[] = [];
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (!AIMessage.isInstance(message) || !Array.isArray(message.tool_calls)) {
+      continue;
+    }
+    for (const toolCall of message.tool_calls) {
+      const callId = typeof toolCall?.id === 'string' ? toolCall.id.trim() : '';
+      if (callId && !completedCallIds.has(callId)) {
+        outstanding.push(callId);
+      }
+    }
+  }
+
+  return outstanding.reverse();
 }
 
 function makeConfig() {
@@ -928,6 +961,108 @@ describe('runGraphValueStream', () => {
     });
     expect(result.plainTextOutcomeSource).toBe('runtime_control_tool');
     expect(loggerWarnMock).toHaveBeenCalled();
+  });
+
+  it('persists a matching tool output when runtime_request_user_input pauses the graph', async () => {
+    await shutdownAgentGraphRuntime();
+    modelInvokeMock.mockResolvedValueOnce(
+      new AIMessage({
+        content: '',
+        tool_calls: [
+          {
+            id: 'control-user-input-1',
+            name: 'runtime_request_user_input',
+            args: { prompt: 'Tell me which repo to inspect next.' },
+          },
+        ],
+      }),
+    );
+
+    const result = await runAgentGraphTurn({
+      traceId: 'trace-control-tool-output-1',
+      userId: 'user-1',
+      channelId: 'channel-1',
+      guildId: 'guild-1',
+      apiKey: 'test-api-key',
+      model: 'test-main-agent-model',
+      temperature: 0.6,
+      timeoutMs: 1_000,
+      maxTokens: 500,
+      messages: [new HumanMessage({ content: 'ask me which repo to inspect next' })],
+      activeToolNames: [],
+      routeKind: 'single',
+      currentTurn: { invokerUserId: 'user-1' },
+      replyTarget: null,
+      invokedBy: 'mention',
+      invokerIsAdmin: false,
+    });
+
+    expect(result.completionKind).toBe('user_input_pending');
+    const checkpointState = await __getAgentGraphStateForTests('trace-control-tool-output-1');
+    if (!checkpointState) {
+      throw new Error('Expected runtime-control checkpoint state to be persisted.');
+    }
+    const matchingToolOutput = checkpointState.messages.find(
+      (message) =>
+        ToolMessage.isInstance(message) &&
+        message.tool_call_id === 'control-user-input-1',
+    );
+    expect(matchingToolOutput).toBeDefined();
+    expect(findOutstandingToolCallIds(checkpointState.messages)).toEqual([]);
+  });
+
+  it('still closes the transcript cleanly when runtime control tools are mixed with external tool calls', async () => {
+    await shutdownAgentGraphRuntime();
+    modelInvokeMock.mockResolvedValueOnce(
+      new AIMessage({
+        content: '',
+        tool_calls: [
+          {
+            id: 'control-mixed-1',
+            name: 'runtime_request_user_input',
+            args: { prompt: 'Which repo should I inspect?' },
+          },
+          {
+            id: 'external-mixed-1',
+            name: 'repo_search_code',
+            args: { query: 'langgraph' },
+          },
+        ],
+      }),
+    );
+
+    const result = await runAgentGraphTurn({
+      traceId: 'trace-control-tool-mixed-1',
+      userId: 'user-1',
+      channelId: 'channel-1',
+      guildId: 'guild-1',
+      apiKey: 'test-api-key',
+      model: 'test-main-agent-model',
+      temperature: 0.6,
+      timeoutMs: 1_000,
+      maxTokens: 500,
+      messages: [new HumanMessage({ content: 'Figure it out and ask me if needed.' })],
+      activeToolNames: ['repo_search_code'],
+      routeKind: 'single',
+      currentTurn: { invokerUserId: 'user-1' },
+      replyTarget: null,
+      invokedBy: 'mention',
+      invokerIsAdmin: false,
+    });
+
+    expect(result.completionKind).toBe('runtime_failure');
+    const checkpointState = await __getAgentGraphStateForTests('trace-control-tool-mixed-1');
+    if (!checkpointState) {
+      throw new Error('Expected mixed runtime-control checkpoint state to be persisted.');
+    }
+    expect(findOutstandingToolCallIds(checkpointState.messages)).toEqual([]);
+    expect(
+      checkpointState.messages.filter(
+        (message) =>
+          ToolMessage.isInstance(message) &&
+          (message.tool_call_id === 'control-mixed-1' || message.tool_call_id === 'external-mixed-1'),
+      ),
+    ).toHaveLength(2);
   });
 
   it('fails honestly when a no-tool reply scrubs down to empty visible text', async () => {
@@ -2857,6 +2992,164 @@ describe('runGraphValueStream', () => {
       sourceMessageId: 'message-waiting-followup-clear-2',
       responseMessageId: null,
     });
+  });
+
+  it('keeps the transcript complete when a user-input pause is followed by an approval pause and resume', async () => {
+    await shutdownAgentGraphRuntime();
+    buildAgentGraphConfigMock.mockReturnValue(makeGraphConfig({ sliceMaxSteps: 1 }));
+    modelInvokeMock
+      .mockResolvedValueOnce(makeFinishTurnMessage('user_input_pending', 'Which role name should I use?'))
+      .mockResolvedValueOnce(
+        new AIMessage({
+          content: '',
+          tool_calls: [
+            {
+              id: 'call-approval-after-input-1',
+              name: 'discord_spaces_create_role',
+              args: { name: 'ops-summary-role' },
+              type: 'tool_call',
+            },
+          ],
+        }),
+      )
+      .mockResolvedValueOnce(makeFinishTurnMessage('final_answer', 'Created the approved role and wrapped up cleanly.'));
+    prepareToolApprovalInterruptMock.mockResolvedValueOnce({
+      toolName: 'discord_spaces_create_role',
+      callId: 'call-approval-after-input-1',
+      call: {
+        id: 'call-approval-after-input-1',
+        name: 'discord_spaces_create_role',
+        args: { name: 'ops-summary-role' },
+      },
+      payload: {
+        kind: 'discord_rest_write',
+        guildId: 'guild-1',
+        sourceChannelId: 'channel-1',
+        reviewChannelId: 'channel-review',
+        sourceMessageId: null,
+        requestedBy: 'user-1',
+        dedupeKey: 'dedupe-after-input-1',
+        executionPayloadJson: { name: 'ops-summary-role' },
+        reviewSnapshotJson: { name: 'ops-summary-role' },
+        interruptMetadataJson: { name: 'ops-summary-role' },
+      },
+      approvalGroupKey: 'discord_admin:rest_write',
+    });
+    executeApprovedReviewTaskMock.mockResolvedValueOnce(
+      makeToolTaskOutcome({
+        toolName: 'discord_spaces_create_role',
+        callId: 'call-approval-after-input-1',
+        content: '{"status":"executed","roleId":"role-1"}',
+        structuredContent: { status: 'executed', roleId: 'role-1' },
+      }),
+    );
+
+    const initial = await runAgentGraphTurn({
+      traceId: 'trace-nested-pause-1',
+      userId: 'user-1',
+      channelId: 'channel-1',
+      guildId: 'guild-1',
+      apiKey: 'test-api-key',
+      model: 'test-main-agent-model',
+      temperature: 0.6,
+      timeoutMs: 1_000,
+      maxTokens: 500,
+      messages: [new HumanMessage({ content: 'Create a role, but ask me what name to use first.' })],
+      activeToolNames: ['discord_spaces_create_role'],
+      routeKind: 'single',
+      currentTurn: { invokerUserId: 'user-1' },
+      replyTarget: null,
+      invokedBy: 'mention',
+      invokerIsAdmin: true,
+    });
+
+    expect(initial.completionKind).toBe('user_input_pending');
+
+    const queuedApproval = await continueAgentGraphTurn({
+      threadId: 'trace-nested-pause-1',
+      runId: 'trace-nested-pause-1b',
+      runName: 'sage_agent_user_input_resume',
+      context: {
+        traceId: 'trace-nested-pause-1b',
+        threadId: 'trace-nested-pause-1',
+        userId: 'user-1',
+        channelId: 'channel-1',
+        guildId: 'guild-1',
+        apiKey: 'test-api-key',
+        model: 'test-main-agent-model',
+        temperature: 0.6,
+        timeoutMs: 1_000,
+        maxTokens: 500,
+        invokedBy: 'reply',
+        invokerIsAdmin: true,
+        invokerCanModerate: false,
+        activeToolNames: ['discord_spaces_create_role'],
+        routeKind: 'user_input_resume',
+        currentTurn: {
+          invokerUserId: 'user-1',
+          invokerDisplayName: 'User One',
+          messageId: 'message-nested-pause-1b',
+          guildId: 'guild-1',
+          channelId: 'channel-1',
+          invokedBy: 'reply',
+          mentionedUserIds: [],
+          isDirectReply: true,
+          replyTargetMessageId: 'response-nested-pause-1',
+          replyTargetAuthorId: 'sage-bot',
+          botUserId: 'sage-bot',
+        },
+        replyTarget: null,
+        promptMode: 'waiting_follow_up',
+        waitingFollowUp: {
+          matched: true,
+          matchKind: 'direct_reply',
+          outstandingPrompt: 'Which role name should I use?',
+          responseMessageId: 'response-nested-pause-1',
+        },
+      },
+      appendedMessages: [new HumanMessage({ content: 'Use ops-summary-role.' })],
+      clearWaitingState: true,
+    });
+
+    expect(queuedApproval.graphStatus).toBe('interrupted');
+    expect(queuedApproval.completionKind).toBe('approval_pending');
+    expect(queuedApproval.pendingInterrupt).toMatchObject({
+      kind: 'approval_review',
+      requestId: 'request-1',
+    });
+
+    const finalized = await resumeAgentGraphTurn({
+      threadId: 'trace-nested-pause-1',
+      resume: {
+        interruptKind: 'approval_review',
+        decisions: [{ requestId: 'request-1', status: 'approved', reviewerId: 'reviewer-1' }],
+        resumeTraceId: 'trace-nested-pause-1c',
+      },
+      context: {
+        userId: 'user-1',
+        channelId: 'channel-1',
+        guildId: 'guild-1',
+        apiKey: 'test-api-key',
+        model: 'test-main-agent-model',
+        temperature: 0.6,
+        timeoutMs: 1_000,
+        maxTokens: 500,
+        activeToolNames: ['discord_spaces_create_role'],
+        routeKind: 'approval_resume',
+        currentTurn: { invokerUserId: 'user-1' },
+        replyTarget: null,
+        invokedBy: 'component',
+        invokerIsAdmin: true,
+      },
+    });
+
+    expect(finalized.graphStatus).toBe('completed');
+    expect(finalized.replyText).toContain('Created the approved role');
+    const finalizedState = await __getAgentGraphStateForTests('trace-nested-pause-1');
+    if (!finalizedState) {
+      throw new Error('Expected the nested-pause checkpoint state to be persisted.');
+    }
+    expect(findOutstandingToolCallIds(finalizedState.messages)).toEqual([]);
   });
 
   it('injects a queued active-run steering interrupt exactly once at the next reasoning boundary', async () => {

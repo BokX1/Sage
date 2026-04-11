@@ -61,8 +61,11 @@ import {
   isReadOnlyToolCall,
   planReadOnlyToolExecution,
   prepareToolApprovalInterrupt,
+  RUNTIME_CANCEL_TURN_TOOL_NAME,
+  RUNTIME_REQUEST_USER_INPUT_TOOL_NAME,
   resolveRuntimeControlSignal,
   type GraphToolCallDescriptor,
+  type ResolvedRuntimeControlSignal,
 } from './nativeTools';
 import type {
   ContinueGraphPendingUserInterrupt,
@@ -2315,6 +2318,97 @@ function buildToolMessageFromOutcome(params: {
   });
 }
 
+function buildRuntimeControlToolOutputs(params: {
+  calls: GraphToolCallDescriptor[];
+  runtimeControl: ResolvedRuntimeControlSignal;
+  finalReplyText: string;
+}): {
+  messages: ToolMessage[];
+  results: SerializedToolResult[];
+} {
+  if (params.calls.length === 0 || params.runtimeControl.controlCount === 0) {
+    return {
+      messages: [],
+      results: [],
+    };
+  }
+
+  const genericReason = params.runtimeControl.externalCount > 0
+    ? 'Runtime control tools cannot be combined with external tools in the same response.'
+    : params.runtimeControl.invalid
+      ? 'Runtime control tool arguments were invalid.'
+      : !params.runtimeControl.signal
+        ? 'Runtime control tool could not be resolved.'
+        : null;
+  const validSignal =
+    !params.runtimeControl.invalid &&
+    params.runtimeControl.externalCount === 0 &&
+    !!params.runtimeControl.signal;
+  const messages: ToolMessage[] = [];
+  const results: SerializedToolResult[] = [];
+
+  for (const call of params.calls) {
+    const isRuntimeControlCall =
+      call.name === RUNTIME_REQUEST_USER_INPUT_TOOL_NAME || call.name === RUNTIME_CANCEL_TURN_TOOL_NAME;
+    const success = Boolean(validSignal && isRuntimeControlCall);
+    const contentPayload = success
+      ? params.runtimeControl.signal?.kind === 'user_input_pending'
+        ? {
+            status: 'user_input_pending',
+            prompt: params.finalReplyText,
+          }
+        : {
+            status: 'cancelled',
+            replyText: params.finalReplyText,
+          }
+      : {
+          status: 'error',
+          error: isRuntimeControlCall
+            ? genericReason ?? 'Runtime control tool failed.'
+            : 'External tool call was dropped because runtime control tools must run alone.',
+        };
+    const result: SerializedToolResult = success
+      ? {
+          name: call.name,
+          success: true,
+          structuredContent: contentPayload,
+          modelSummary:
+            params.runtimeControl.signal?.kind === 'user_input_pending'
+              ? 'Requested one specific user reply before continuing.'
+              : 'Cancelled the current task cleanly.',
+          telemetry: { latencyMs: 0 },
+        }
+      : {
+          name: call.name,
+          success: false,
+          structuredContent: contentPayload,
+          error:
+            typeof contentPayload.error === 'string'
+              ? contentPayload.error
+              : 'Runtime control tool failed.',
+          errorType: 'validation',
+          telemetry: { latencyMs: 0 },
+        };
+    const content = JSON.stringify(contentPayload);
+    messages.push(
+      buildToolMessageFromOutcome({
+        toolName: call.name,
+        callId: call.id,
+        content,
+        result,
+        files: [],
+        status: success ? 'success' : 'error',
+      }),
+    );
+    results.push(result);
+  }
+
+  return {
+    messages,
+    results,
+  };
+}
+
 function resolveBackgroundYieldReason(
   state: AgentGraphState,
   graphConfig: AgentGraphConfig,
@@ -2699,6 +2793,16 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
       plainTextOutcomeSource = 'default_final_answer';
     }
 
+    const runtimeControlToolOutputs = buildRuntimeControlToolOutputs({
+      calls: toolCalls.map((call) => ({
+        id: typeof call.id === 'string' ? call.id : undefined,
+        name: call.name,
+        args: call.args,
+      })),
+      runtimeControl,
+      finalReplyText,
+    });
+
     const waitingForUserInput = completionKind === 'user_input_pending';
     const runtimeFailed = completionKind === 'runtime_failure';
     const waitingState =
@@ -2715,7 +2819,7 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
     return new Command({
       goto: 'closeout_turn',
       update: {
-        messages: [...consumedInterrupt.appendedMessages, aiMessage],
+        messages: [...consumedInterrupt.appendedMessages, aiMessage, ...runtimeControlToolOutputs.messages],
         replyText: finalReplyText,
         completionKind,
         stopReason: waitingForUserInput
@@ -2739,6 +2843,7 @@ function createCompiledAgentGraph(checkpointer: PostgresSaver | MemorySaver, gra
           rebudgeting: prepared.rebudgeting,
           usage: response.usage,
         }),
+        toolResults: runtimeControlToolOutputs.results,
         plainTextOutcomeSource,
         ...consumedInterrupt.interruptUpdate,
       },
